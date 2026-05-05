@@ -17,6 +17,13 @@
             hx-target="body">
       {{t "Continue →" $.Lang}}
     </button>
+    {{/* Persistent shortcut to the post-issuance audit log + Revoke
+         page. Sits at the entry point of the issuer flow so an operator
+         can jump straight to managing existing credentials without
+         walking back through DPG → Schema → Mode → Issue first. */}}
+    <a href="/issuer/credentials" class="btn ghost" style="margin-left:auto">
+      {{t "View issued credentials →" $.Lang}}
+    </a>
   </div>
 </section>
 {{end}}
