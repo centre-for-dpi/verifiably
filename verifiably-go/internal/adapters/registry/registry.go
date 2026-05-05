@@ -41,6 +41,37 @@ func New() *Registry {
 	}
 }
 
+// IssuerSigningKey delegates to the first registered issuer adapter that
+// exposes one. The status-list HTTP path needs to sign the published
+// list with the same key the walt.id issuer signs credentials with;
+// when verifiably-go runs in `registry` mode the handler reaches it
+// through the Registry, so we proxy here. Today only the walt.id
+// adapter implements this — Inji Certify and the mock adapter return
+// nothing — so the first one we find is the right one.
+//
+// Registry doesn't statically depend on the walt.id package (would
+// flip the dependency direction); we use a duck-typed interface check
+// against backend.Adapter at runtime.
+func (r *Registry) IssuerSigningKey(ctx context.Context) ([]byte, string, error) {
+	type signer interface {
+		IssuerSigningKey(ctx context.Context) ([]byte, string, error)
+	}
+	r.mu.RLock()
+	candidates := make([]backend.Adapter, 0, len(r.issuers))
+	for _, a := range r.issuers {
+		candidates = append(candidates, a)
+	}
+	r.mu.RUnlock()
+	for _, a := range candidates {
+		s, ok := a.(signer)
+		if !ok {
+			continue
+		}
+		return s.IssuerSigningKey(ctx)
+	}
+	return nil, "", fmt.Errorf("registry: no registered issuer adapter exposes IssuerSigningKey")
+}
+
 // AllAdapters returns every distinct adapter registered across all roles.
 // Used by the factory to surface concrete types for role-agnostic wiring
 // (e.g. attaching per-adapter HTTP routes).
