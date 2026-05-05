@@ -94,7 +94,9 @@ func TestGzipRoundTrip(t *testing.T) {
 }
 
 func TestZlibRoundTrip(t *testing.T) {
-	a := New(256)
+	// IETF Token Status List uses LSB-first bit ordering — both source
+	// and decoded forms have to use it for the round-trip to match.
+	a := NewIETF(256)
 	for i := 1; i < 256; i += 13 {
 		if err := a.Set(i, true); err != nil {
 			t.Fatal(err)
@@ -112,6 +114,33 @@ func TestZlibRoundTrip(t *testing.T) {
 		if a.Get(i) != b.Get(i) {
 			t.Fatalf("round-trip mismatch at bit %d", i)
 		}
+	}
+}
+
+// TestBitstringLSBFirst pins the IETF Token Status List bit-ordering
+// convention to a couple of concrete byte values so a future refactor
+// can't silently flip back to MSB-first without breaking this test.
+func TestBitstringLSBFirst(t *testing.T) {
+	b := NewIETF(16)
+	if err := b.Set(0, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.Bytes()[0]; got != 0x01 {
+		t.Fatalf("bit 0 in byte 0 (LSB-first): got 0x%x, want 0x01", got)
+	}
+	b = NewIETF(16)
+	if err := b.Set(7, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.Bytes()[0]; got != 0x80 {
+		t.Fatalf("bit 7 in byte 0 (LSB-first): got 0x%x, want 0x80", got)
+	}
+	b = NewIETF(16)
+	if err := b.Set(8, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.Bytes()[1]; got != 0x01 {
+		t.Fatalf("bit 8 in byte 1 (LSB-first): got 0x%x, want 0x01", got)
 	}
 }
 

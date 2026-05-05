@@ -10,9 +10,23 @@
 //
 // Each format is a fixed-size bitstring where bit i represents the
 // revocation state of the credential we allocated index i to. A 1 bit means
-// "revoked"; 0 means "issued and valid". Both specs use the same on-the-wire
-// convention: bit 0 of the bitstring is the MOST-significant bit of byte 0
-// (network/big-endian, MSB-first within each byte).
+// "revoked"; 0 means "issued and valid".
+//
+// Bit ordering DIFFERS between the two specs:
+//
+//   - W3C BSL 2023 §5.1 — MSB-first within each byte. Bit 0 of the
+//     bitstring is the MOST-significant bit of byte 0 (network/big-endian).
+//
+//   - IETF Token Status List draft-ietf-oauth-status-list §4.2.1 —
+//     LSB-first within each byte. Bit 0 is the LEAST-significant bit
+//     of byte 0.
+//
+// The Bitstring type is parameterized on which convention it uses so the
+// Store for each kind can construct the right one. Mixing the two would
+// cause a verifier (which reads with the spec-mandated ordering) to see a
+// freshly-issued credential's bit at a different position than the
+// allocator wrote it to — manifesting as "credential reads as revoked
+// when it shouldn't" / "Revoke makes the credential valid" polarity flips.
 //
 // The signing layer in jws.go wraps the encoded payload as a JWT for both
 // formats — VCDM 2.0 explicitly permits "Securing VC with JOSE" so a JWT
@@ -36,26 +50,51 @@ const DefaultBits = 131072
 
 // Bitstring is a fixed-size mutable bit array. Concurrent calls to Set /
 // Get / Encode are safe — every read or mutation goes through the mu.
+//
+// lsbFirst chooses between W3C BSL 2023 (MSB-first, false) and IETF
+// Token Status List (LSB-first, true) bit-position-within-byte conventions.
 type Bitstring struct {
-	mu   sync.RWMutex
-	bits []byte // length = ceil(size / 8)
-	size int    // number of bits this list can address
+	mu       sync.RWMutex
+	bits     []byte // length = ceil(size / 8)
+	size     int    // number of bits this list can address
+	lsbFirst bool   // false = W3C (MSB-first), true = IETF (LSB-first)
 }
 
-// New returns an all-zeros bitstring of the given bit length. Length is
-// rounded up to a multiple of 8 by the storage layer (the bitstring still
-// only addresses [0, size)).
+// New returns an all-zeros W3C-conventional (MSB-first) bitstring of the
+// given bit length. Length is rounded up to a multiple of 8 by the
+// storage layer (the bitstring still only addresses [0, size)).
 func New(size int) *Bitstring {
+	return newBitstring(size, false)
+}
+
+// NewIETF returns an all-zeros IETF Token Status List bitstring (LSB-first
+// bit ordering within each byte). Use this for sd_jwt_vc credentials per
+// draft-ietf-oauth-status-list §4.2.1.
+func NewIETF(size int) *Bitstring {
+	return newBitstring(size, true)
+}
+
+func newBitstring(size int, lsbFirst bool) *Bitstring {
 	if size <= 0 {
 		size = DefaultBits
 	}
-	return &Bitstring{bits: make([]byte, (size+7)/8), size: size}
+	return &Bitstring{bits: make([]byte, (size+7)/8), size: size, lsbFirst: lsbFirst}
 }
 
 // FromBytes wraps an existing byte buffer (e.g. one we just loaded from
 // disk) without copying. size is the addressable bit count, NOT the byte
-// count — the caller must ensure len(b)*8 >= size.
+// count — the caller must ensure len(b)*8 >= size. Defaults to the
+// W3C MSB-first convention; use FromBytesIETF for SD-JWT lists.
 func FromBytes(b []byte, size int) (*Bitstring, error) {
+	return fromBytes(b, size, false)
+}
+
+// FromBytesIETF is FromBytes for IETF Token Status List (LSB-first).
+func FromBytesIETF(b []byte, size int) (*Bitstring, error) {
+	return fromBytes(b, size, true)
+}
+
+func fromBytes(b []byte, size int, lsbFirst bool) (*Bitstring, error) {
 	if size <= 0 {
 		return nil, fmt.Errorf("statuslist: size must be positive")
 	}
@@ -64,7 +103,7 @@ func FromBytes(b []byte, size int) (*Bitstring, error) {
 	}
 	cp := make([]byte, len(b))
 	copy(cp, b)
-	return &Bitstring{bits: cp, size: size}, nil
+	return &Bitstring{bits: cp, size: size, lsbFirst: lsbFirst}, nil
 }
 
 // Size returns the number of addressable bits.
@@ -79,6 +118,17 @@ func (b *Bitstring) Bytes() []byte {
 	return out
 }
 
+// bitPos resolves the (byteIdx, bitMask) pair for index i under whichever
+// convention this Bitstring was constructed with.
+func (b *Bitstring) bitPos(i int) (int, byte) {
+	byteIdx := i / 8
+	off := uint(i % 8)
+	if !b.lsbFirst {
+		off = 7 - off // MSB-first (W3C)
+	}
+	return byteIdx, 1 << off
+}
+
 // Get reads bit i. Out-of-range indices return false (callers shouldn't
 // hit this unless the log got corrupted; the caller is responsible for
 // staying inside [0, Size())).
@@ -88,9 +138,8 @@ func (b *Bitstring) Get(i int) bool {
 	if i < 0 || i >= b.size {
 		return false
 	}
-	byteIdx := i / 8
-	bitIdx := 7 - uint(i%8) // MSB-first within each byte (W3C BSL 2023 §5.1)
-	return b.bits[byteIdx]&(1<<bitIdx) != 0
+	byteIdx, mask := b.bitPos(i)
+	return b.bits[byteIdx]&mask != 0
 }
 
 // Set assigns bit i. Returns an error on out-of-range so the caller's log
@@ -101,12 +150,11 @@ func (b *Bitstring) Set(i int, v bool) error {
 	if i < 0 || i >= b.size {
 		return fmt.Errorf("statuslist: index %d out of range [0, %d)", i, b.size)
 	}
-	byteIdx := i / 8
-	bitIdx := 7 - uint(i%8)
+	byteIdx, mask := b.bitPos(i)
 	if v {
-		b.bits[byteIdx] |= 1 << bitIdx
+		b.bits[byteIdx] |= mask
 	} else {
-		b.bits[byteIdx] &^= 1 << bitIdx
+		b.bits[byteIdx] &^= mask
 	}
 	return nil
 }

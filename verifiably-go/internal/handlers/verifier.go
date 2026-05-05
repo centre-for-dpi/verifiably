@@ -36,6 +36,14 @@ func (h *H) ShowVerify(w http.ResponseWriter, r *http.Request) {
 func verifierPresentableSchemas(schemas []vctypes.Schema) []vctypes.Schema {
 	out := make([]vctypes.Schema, 0, len(schemas))
 	for _, s := range schemas {
+		// Mirror the issuer schema page: only show user-built schemas. The
+		// walt.id stock catalog is hidden in the issuer flow, so surfacing
+		// it on the verifier card grid would create a confusing one-way
+		// asymmetry where operators can verify against credential types
+		// they were never able to issue.
+		if !s.Custom {
+			continue
+		}
 		if len(s.Variants) == 0 {
 			// Custom schemas carry no variants — trust the adapter that
 			// surfaced them (they've already passed the issuer flow).

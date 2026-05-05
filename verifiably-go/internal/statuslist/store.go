@@ -69,10 +69,28 @@ func NewStore(kind, listID, path, publishURL string) (*Store, error) {
 	return s, nil
 }
 
+// newBitsForKind picks the right bit-ordering convention for this Store.
+// kind="bitstring" → W3C MSB-first; kind="token" → IETF LSB-first. Critical:
+// passing the wrong convention silently corrupts the wire format — verifiers
+// see flipped bits relative to what the allocator wrote.
+func (s *Store) newBitsForKind(size int) *Bitstring {
+	if s.Kind == "token" {
+		return NewIETF(size)
+	}
+	return New(size)
+}
+
+func (s *Store) bitsFromBytes(b []byte, size int) (*Bitstring, error) {
+	if s.Kind == "token" {
+		return FromBytesIETF(b, size)
+	}
+	return FromBytes(b, size)
+}
+
 func (s *Store) load() error {
 	b, err := os.ReadFile(s.path)
 	if os.IsNotExist(err) {
-		s.bits = New(DefaultBits)
+		s.bits = s.newBitsForKind(DefaultBits)
 		s.nextFree = 0
 		return s.save()
 	}
@@ -86,7 +104,11 @@ func (s *Store) load() error {
 	if d.Size <= 0 {
 		d.Size = DefaultBits
 	}
-	bs, err := decodeRawBytes(d.Bits, d.Size)
+	raw, err := base64.RawURLEncoding.DecodeString(d.Bits)
+	if err != nil {
+		return fmt.Errorf("statuslist: decode raw: %w", err)
+	}
+	bs, err := s.bitsFromBytes(raw, d.Size)
 	if err != nil {
 		return fmt.Errorf("statuslist: decode bits: %w", err)
 	}
@@ -256,16 +278,9 @@ func (s *Store) PublishTokenStatusList(key *SigningKey) (string, error) {
 
 // --- helpers ---
 
-// encodeRawBytes / decodeRawBytes write the bitstring storage to disk as
-// base64url with no compression. We don't gzip the at-rest form because
-// gzip headers vary across implementations and bit-for-bit equality after
-// a load+save round-trip matters for test stability.
+// encodeRawBytes writes the bitstring storage to disk as base64url with
+// no compression. We don't gzip the at-rest form because gzip headers
+// vary across implementations and bit-for-bit equality after a load+save
+// round-trip matters for test stability. The decode counterpart lives
+// inline in load() so it can dispatch on s.Kind for bit ordering.
 func encodeRawBytes(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
-
-func decodeRawBytes(s string, size int) (*Bitstring, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		return nil, fmt.Errorf("statuslist: decode raw: %w", err)
-	}
-	return FromBytes(raw, size)
-}

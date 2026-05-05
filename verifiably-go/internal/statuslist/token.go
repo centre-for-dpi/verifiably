@@ -32,7 +32,10 @@ func (b *Bitstring) EncodeZlibBase64URL() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf.Bytes()), nil
 }
 
-// DecodeZlibBase64URL is the inverse, mainly for round-trip tests.
+// DecodeZlibBase64URL is the inverse, mainly for round-trip tests. The
+// resulting Bitstring uses IETF (LSB-first) bit ordering — that's the
+// convention the on-the-wire bytes are meant to be interpreted with per
+// draft-ietf-oauth-status-list §4.2.1.
 func DecodeZlibBase64URL(s string, size int) (*Bitstring, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
@@ -47,5 +50,5 @@ func DecodeZlibBase64URL(s string, size int) (*Bitstring, error) {
 	if _, err := out.ReadFrom(zr); err != nil {
 		return nil, fmt.Errorf("statuslist: zlib read: %w", err)
 	}
-	return FromBytes(out.Bytes(), size)
+	return FromBytesIETF(out.Bytes(), size)
 }
