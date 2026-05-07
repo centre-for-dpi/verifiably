@@ -67,7 +67,7 @@ services:
     depends_on:
       - caddy
     environment:
-      SERVICE_HOST: localhost
+      SERVICE_HOST: ${VERIFIABLY_PUBLIC_HOST:-localhost}
       ISSUER_API_PORT: ${WALTID_ISSUER_PORT:-7002}
     volumes:
       # Walt.id config files live under deploy/k8s/config/issuer/ so the
@@ -81,7 +81,7 @@ services:
     depends_on:
       - caddy
     environment:
-      SERVICE_HOST: localhost
+      SERVICE_HOST: ${VERIFIABLY_PUBLIC_HOST:-localhost}
       VERIFIER_API_PORT: ${WALTID_VERIFIER_PORT:-7003}
     volumes:
       - ../../k8s/config/verifier:/waltid-verifier-api/config:ro
@@ -95,7 +95,7 @@ services:
       caddy:
         condition: service_started
     environment:
-      SERVICE_HOST: localhost
+      SERVICE_HOST: ${VERIFIABLY_PUBLIC_HOST:-localhost}
       WALLET_BACKEND_PORT: ${WALTID_WALLET_PORT:-7001}
       DB_NAME: ${POSTGRES_DB:-waltid}
       DB_USERNAME: ${POSTGRES_USER:-waltid}
