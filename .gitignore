@@ -73,3 +73,10 @@ verifiably-go/deploy/k8s/**/*.tfplan
 # Script-local terraform output dirs (kubeconfig, rendered kind config).
 verifiably-go/deploy/k8s/terraform/.tfstate/
 verifiably-go/deploy/k8s/terraform/bootstrap/local-kind/.tfstate/
+
+# Walt.id issuer credential catalog (runtime). The committed
+# *.baseline.conf is the seed; deploy.sh cp -n's it to the runtime path
+# below on first `up`. User-added schemas (from the issuer's UI) get
+# appended to the runtime file by internal/adapters/waltid/issuer.go,
+# and we DO NOT want git to revert that on the next pull/checkout.
+verifiably-go/deploy/k8s/config/issuer/credential-issuer-metadata.conf

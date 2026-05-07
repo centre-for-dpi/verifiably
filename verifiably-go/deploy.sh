@@ -657,6 +657,12 @@ cmd_up() {
   # client_id / presentation_definition_uri and the wallet 500s.
   render_waltid_service_confs
 
+  # Walt.id custom-credential catalog. Seeded from a committed baseline
+  # on first `up`; subsequent `up`s leave it alone so user-added schemas
+  # (appended by internal/adapters/waltid/issuer.go via SaveCustomSchema)
+  # survive every git pull/checkout. The runtime path is gitignored.
+  seed_credential_issuer_catalog
+
   # WSO2's accountrecoveryendpoint signup-success page is patched at
   # container start with a meta-refresh redirect; the URL it points at
   # is SIGNUP_REDIRECT_URL. Resolved through url_for so subdomain mode
@@ -1174,6 +1180,36 @@ render_waltid_service_confs() {
   printf 'baseUrl = "%s"\n' "$issuer_url"   > "$issuer_conf"
   printf 'baseUrl = "%s"\n' "$verifier_url" > "$verifier_conf"
   green "  rendered walt.id service confs (issuer=$issuer_url, verifier=$verifier_url)"
+}
+
+# seed_credential_issuer_catalog seeds the runtime credential-issuer-metadata.conf
+# from the committed *.baseline.conf when the runtime file doesn't yet exist.
+# Idempotent — `cp -n` (no-clobber) means a second run is a no-op even if the
+# operator has hand-edited the runtime file or added schemas through the UI.
+#
+# Why this lives in a runtime path while the seed lives in the repo: walt.id's
+# issuer-api appends new credential-config blocks to this file when an operator
+# saves a custom schema (internal/adapters/waltid/issuer.go: SaveCustomSchema).
+# The seed (*.baseline.conf) is tracked in git so a fresh clone has a working
+# catalog; the runtime file is gitignored so user-added schemas survive every
+# `git pull`, `git checkout`, and `git stash pop` that would otherwise revert
+# the file to its committed shape.
+#
+# To accept upstream baseline updates after the seed has been customised, the
+# operator merges the new entries from *.baseline.conf into the runtime file
+# by hand. Diffs between them are intentional state.
+seed_credential_issuer_catalog() {
+  local baseline="$SCRIPT_DIR/deploy/k8s/config/issuer/credential-issuer-metadata.baseline.conf"
+  local runtime="$SCRIPT_DIR/deploy/k8s/config/issuer/credential-issuer-metadata.conf"
+  if [[ ! -f "$baseline" ]]; then
+    red "  WARN: $baseline missing — issuer catalog seed skipped"
+    return 0
+  fi
+  if [[ -f "$runtime" ]]; then
+    return 0
+  fi
+  cp "$baseline" "$runtime"
+  green "  seeded $runtime from baseline"
 }
 
 render_wso2_deployment_toml() {
