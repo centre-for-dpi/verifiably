@@ -122,6 +122,70 @@ WSO2IS doesn't seed app users automatically — for the WSO2IS login
 button you either register a user at `https://<host>:9443/console` or
 stick with Keycloak, which does come pre-seeded.
 
+### Bring your own OIDC provider
+
+You don't have to keep Keycloak / WSO2IS — sign-in providers come from
+three places and get merged at startup:
+
+| Source | What it is | Survives `./deploy.sh run all`? |
+|---|---|---|
+| `config/auth-providers.system.json` | Demo defaults (Keycloak + WSO2IS) written by `deploy.sh`. | No — rewritten every run. |
+| `config/auth-providers.user.json`   | Whatever you add via the admin UI. | Yes. |
+| `VERIFIABLY_OIDC_PROVIDERS` env     | A JSON array that replaces both files for that boot. | Yes (it's an env var). |
+
+If both files have a provider with the same `id`, the user file wins.
+That's how you "edit" a demo provider — re-add it via the UI with the
+same id and your version takes over.
+
+**To skip the demo IdPs entirely on a fresh install**, set
+`VERIFIABLY_NO_DEFAULT_IDPS=1` before running `deploy.sh`. The system
+file ends up empty, so the next visit to `/auth` shows a one-time setup
+form where you can register your own provider before signing in:
+
+```bash
+VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh up all
+VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh run all
+# browse to /auth → "First-run setup" form
+```
+
+**To manage providers after install**, click the **Admin** link
+(top-right). The admin sign-in is a single shared account, separate
+from the issuer / holder / verifier OIDC sessions, with no
+self-registration — defaults to `admin` / `admin`, override with
+`VERIFIABLY_ADMIN_USER` / `VERIFIABLY_ADMIN_PASSWORD` before starting
+the container. From the admin page you can delete any registered
+provider. New providers are added from the regular sign-in page (the
+form below the provider tiles), not from the admin page — so the
+admin role is purely curation. Demo defaults deleted from the admin UI
+come back on the next `./deploy.sh run all`; use
+`VERIFIABLY_NO_DEFAULT_IDPS=1` to retire them properly.
+
+**To control the surface**, set `VERIFIABLY_AUTH_ADMIN` before
+starting the container:
+
+| Value | Admin page | "+ Add OIDC provider" form on `/auth` | Persistence |
+|---|---|---|---|
+| `rw` *(default)* | Visible (login, list, delete) | Visible | Works |
+| `ro`             | Visible (login, list, delete) | **Hidden** — only the admin curates the list | Works |
+| `off`            | **Hidden** (404, no nav link, no admin login) | **Hidden** | Works (env / system file only) |
+
+`off` locks the UI down entirely — no admin layer, no user self-add. The
+provider list comes only from the sources the operator controls outside
+the UI: `VERIFIABLY_OIDC_PROVIDERS` (env JSON), `auth-providers.system.json`
+(deploy.sh-managed), or per-field env overrides. `ro` is the right
+choice when an admin curates a fixed list from inside the UI and end
+users should pick from it without adding their own. `rw` is full surface.
+
+Persistence is independent of the mode — providers added via the sign-in
+form (rw + first-run only) persist to `auth-providers.user.json` and
+survive `./deploy.sh run all`. A fresh install with no providers
+configured anywhere bypasses the `off`/`ro` lockdown for the bootstrap
+form on `/auth` so you can't accidentally lock yourself out.
+
+OIDC discovery is required — your server must serve
+`/.well-known/openid-configuration`. Plain OAuth2, SAML, and LDAP need
+a different integration.
+
 ### Stopping
 
 ```bash

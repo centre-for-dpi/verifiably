@@ -38,6 +38,13 @@
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
       </svg>
     </button>
+    {{if .AuthAdminAvailable}}
+    <a href="{{if and .Session .Session.IsAdmin}}/admin/auth-providers{{else}}/admin/login{{end}}"
+       class="nav-link-btn"
+       title="{{if and .Session .Session.IsAdmin}}Manage OIDC providers{{else}}Admin sign-in{{end}}">
+      Admin{{if and .Session .Session.IsAdmin}} ✓{{end}}
+    </a>
+    {{end}}
     {{if and .Session .Session.AuthProvider}}
     <form method="post" action="/auth/logout" style="display:inline">
       <button type="submit" class="theme-toggle" title="Sign out" aria-label="Sign out">

@@ -34,6 +34,26 @@ Each `BACKEND.*` function has a `// TODO:` comment naming the concrete endpoint.
 
 ## Authentication
 
+OIDC providers are configured in two layered files plus a runtime admin UI:
+
+- `config/auth-providers.system.json` — bootstrap providers written by `deploy.sh` (defaults: Keycloak + WSO2 IS). Re-run-safe; `./deploy.sh run all` overwrites it. Set `VERIFIABLY_NO_DEFAULT_IDPS=1` to skip the demo defaults entirely — the UI then shows a first-run form on `/auth` that lets the operator register their own provider before signing in.
+- `config/auth-providers.user.json` — admin-UI-managed providers. Persisted across `./deploy.sh` runs. Created on first POST to `/admin/auth-providers` (or migrated automatically from any pre-existing `auth-providers.docker.json.bak`). User entries override system entries with the same `id`.
+- `VERIFIABLY_OIDC_PROVIDERS` env (JSON array) — when set, replaces both files for that boot. Highest precedence; useful for IaC / Helm / Compose deploys.
+
+Per-field env overrides (`VERIFIABLY_OIDC_<ID>_{ISSUER_URL,CLIENT_ID,CLIENT_SECRET,DISPLAY_NAME,KIND,SCOPES,INSECURE_SKIP_VERIFY}`) apply on top of the file/env-JSON merge.
+
+Surface control via `VERIFIABLY_AUTH_ADMIN`. Persistence is independent of this flag — it works in every mode.
+
+| Value      | Admin page | `/auth` "+ Add" form | Effect |
+|------------|------------|----------------------|--------|
+| `rw` (default) | Visible (login + list + delete) | Visible | Full surface; admin curates AND users can self-add. |
+| `ro`       | Visible (login + list + delete) | Hidden  | Admin curates a fixed list; end users can only pick from existing tiles. |
+| `off`      | 404 (no nav link, no admin login) | Hidden  | No UI for provider management at all. Providers come only from `VERIFIABLY_OIDC_PROVIDERS` / `auth-providers.system.json` / per-field env overrides. |
+
+Fresh-install (registry empty) bypasses the `ro` and `off` add-form lockdown so a single env flag can't permanently shut out bootstrapping.
+
+Admins can delete rows of any source (`user`, `system`, `env`). System / env rows reappear on the next `./deploy.sh run all` / container restart — that's the desired behaviour during admin iteration; for permanent removal, edit the source (deploy.sh's `auth_providers_for` / the env var) and restart.
+
 The UI already has a Keycloak / WSO2 provider selection on the auth screen. Once authenticated, whatever session token your IDP returns should be attached to every `BACKEND.*` call. A clean way to do this:
 
 ```js

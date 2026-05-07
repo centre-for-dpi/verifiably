@@ -9,6 +9,23 @@ import (
 	"sync"
 )
 
+// Source labels how a provider entered the registry. Used by the admin
+// UI to refuse destructive edits on system-managed providers and by
+// tests to assert layered-merge precedence. Free-form string so future
+// loaders can introduce new sources without expanding an enum.
+//
+// Conventions:
+//   - "system"  — written by deploy.sh into auth-providers.system.json
+//   - "user"    — written by the admin UI into auth-providers.user.json
+//   - "env"     — VERIFIABLY_OIDC_PROVIDERS env or per-field env overrides
+//   - "runtime" — added via legacy POST /auth/custom (in-memory only)
+const (
+	SourceSystem  = "system"
+	SourceUser    = "user"
+	SourceEnv     = "env"
+	SourceRuntime = "runtime"
+)
+
 // Provider describes one configured identity provider.
 type Provider interface {
 	// ID is the stable key (lower-case, hyphen-free) used in URL paths and on
@@ -18,6 +35,11 @@ type Provider interface {
 	DisplayName() string
 	// Kind is a short protocol/subtitle hint, e.g. "OIDC".
 	Kind() string
+	// Source is "system" | "user" | "env" | "runtime"; see the Source*
+	// constants. The admin UI uses it to decide whether the row is
+	// editable/deletable. Providers built before sources were tracked
+	// return "" — treat that as equivalent to SourceRuntime.
+	Source() string
 	// AuthorizeURL returns the full URL to redirect the browser to, including
 	// state and PKCE verifier (which it must track per-session).
 	AuthorizeURL(ctx context.Context, state, pkceVerifier, redirectURI string) (string, error)
@@ -65,6 +87,10 @@ type ProviderConfig struct {
 	ClientSecret       string   `json:"clientSecret,omitempty"`
 	Scopes             []string `json:"scopes,omitempty"`
 	InsecureSkipVerify bool     `json:"insecureSkipVerify,omitempty"`
+	// Source is set by the loader, never persisted. JSON tag deliberately
+	// "-" so a hand-edited user.json that contains "source":"system" can't
+	// trick the loader into mis-labelling itself.
+	Source string `json:"-"`
 }
 
 // Registry is the set of configured providers. Thread-safe — startup
@@ -119,9 +145,10 @@ func (r *Registry) Lookup(id string) Provider {
 
 // Descriptor is the flat shape templates render from — pure data, no methods.
 type Descriptor struct {
-	ID   string
-	Name string
-	Kind string
+	ID     string
+	Name   string
+	Kind   string
+	Source string
 }
 
 // Descriptors returns templated-render-safe copies of each provider.
@@ -130,7 +157,24 @@ func (r *Registry) Descriptors() []Descriptor {
 	defer r.mu.RUnlock()
 	out := make([]Descriptor, 0, len(r.items))
 	for _, p := range r.items {
-		out = append(out, Descriptor{ID: p.ID(), Name: p.DisplayName(), Kind: p.Kind()})
+		out = append(out, Descriptor{
+			ID: p.ID(), Name: p.DisplayName(), Kind: p.Kind(), Source: p.Source(),
+		})
 	}
 	return out
+}
+
+// Remove deletes the provider with the given ID. Returns true if a row
+// was removed, false if no provider matched. Idempotent — callers can
+// safely retry.
+func (r *Registry) Remove(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, p := range r.items {
+		if p.ID() == id {
+			r.items = append(r.items[:i], r.items[i+1:]...)
+			return true
+		}
+	}
+	return false
 }

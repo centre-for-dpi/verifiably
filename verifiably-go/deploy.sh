@@ -502,14 +502,32 @@ JSON
   green "wrote $out"
 }
 
-# auth_providers_for writes the scenario-specific auth-providers.json.
-# Every scenario advertises BOTH Keycloak and WSO2IS — the auth page always
-# offers the user a choice of sign-in provider regardless of which DPG
-# stack is active. Scenario selection only gates the DPG services, not the
-# IdP options.
+# auth_providers_for writes the deploy-managed bootstrap providers to
+# config/auth-providers.system.json. The Go loader then layers
+# config/auth-providers.user.json (admin-UI managed) on top, so reruns
+# of `./deploy.sh run all` no longer wipe the operator's additions.
+#
+# Every scenario advertises BOTH Keycloak and WSO2IS by default. Set
+# VERIFIABLY_NO_DEFAULT_IDPS=1 to write an empty list — useful for
+# operators who run their own IdP and would rather start with the empty
+# first-run UI than dismiss the demo tiles every install.
 auth_providers_for() {
   local scenario="$1"  # kept for signature compatibility; unused here
-  local out="$SCRIPT_DIR/config/auth-providers.json"
+  local out="$SCRIPT_DIR/config/auth-providers.system.json"
+
+  if [[ "${VERIFIABLY_NO_DEFAULT_IDPS:-0}" == "1" ]]; then
+    mkdir -p "$(dirname "$out")"
+    printf '[]\n' > "$out"
+    green "wrote $out (no default IdPs — first-run UI will prompt)"
+    # Drop the legacy filename if it exists so the new loader doesn't
+    # second-fallback into stale Keycloak/WSO2 entries.
+    rm -f "$SCRIPT_DIR/config/auth-providers.json"
+    return
+  fi
+  # Legacy filename preserved as a side-effect copy so a half-upgraded
+  # deployment (new deploy.sh, old binary that still reads
+  # auth-providers.json) keeps booting until the operator re-pulls.
+  local legacy_out="$SCRIPT_DIR/config/auth-providers.json"
   # Resolve IdP URLs through url_for so localhost-port and per-subdomain
   # both work. Keycloak is a vanilla http URL (the demo container runs
   # plain HTTP); WSO2 needs https + insecureSkipVerify because its self-
@@ -569,7 +587,8 @@ auth_providers_for() {
     done
     printf '\n]\n'
   } > "$out"
-  green "wrote $out"
+  cp "$out" "$legacy_out"
+  green "wrote $out (+ $legacy_out for back-compat)"
 }
 
 # ---------------------------------------------------------------- subcommands
@@ -1041,6 +1060,32 @@ start_container() {
   if [[ -n "$docker_gid" ]]; then
     group_add_args=( --group-add "$docker_gid" )
   fi
+  # Touch the user-managed providers file before mount: docker would
+  # auto-create a directory in its place if the bind target was missing.
+  # The Go side tolerates an empty file (loader treats it as []).
+  #
+  # IMPORTANT: chmod 0666 so the container-side process (running as a
+  # non-root UID that doesn't match the host's $USER) can write back to
+  # the file when an operator adds a provider via the UI. Without this
+  # step, /auth/custom and /admin/auth-providers/*/delete fail with
+  # "permission denied: open /app/config/auth-providers.user.json".
+  # World-writable is acceptable here — the file lives under the
+  # operator's home dir, contains no secrets the operator doesn't
+  # already control, and follows the same pattern used for the walt.id
+  # catalog file mount further down.
+  local user_providers_path="$SCRIPT_DIR/config/auth-providers.user.json"
+  if [[ ! -f "$user_providers_path" ]]; then
+    printf '[]\n' > "$user_providers_path"
+    green "  created empty $user_providers_path (admin UI will populate)"
+  fi
+  chmod 0666 "$user_providers_path" 2>/dev/null || true
+  # Pick the system-providers file we feed the container. Prefer the new
+  # Docker-rewritten variant; fall back to the legacy filename if a
+  # half-upgraded host hasn't run the rewriter yet.
+  local system_providers_mount="$SCRIPT_DIR/config/auth-providers.system.docker.json"
+  if [[ ! -f "$system_providers_mount" ]]; then
+    system_providers_mount="$SCRIPT_DIR/config/auth-providers.docker.json"
+  fi
   docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --network "${COMPOSE_PROJECT}_default" \
@@ -1048,7 +1093,8 @@ start_container() {
     "${group_add_args[@]}" \
     -p "${VERIFIABLY_HOST_PORT}:8080" \
     -v "$SCRIPT_DIR/config/backends.docker.json:/app/config/backends.json:ro" \
-    -v "$SCRIPT_DIR/config/auth-providers.docker.json:/app/config/auth-providers.json:ro" \
+    -v "$system_providers_mount:/app/config/auth-providers.system.json:ro" \
+    -v "$user_providers_path:/app/config/auth-providers.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${VERIFIABLY_CONTAINER}-locales:/app/locales" \
@@ -1060,6 +1106,9 @@ start_container() {
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \
+    -e VERIFIABLY_AUTH_ADMIN="${VERIFIABLY_AUTH_ADMIN:-rw}" \
+    -e VERIFIABLY_ADMIN_USER="${VERIFIABLY_ADMIN_USER:-}" \
+    -e VERIFIABLY_ADMIN_PASSWORD="${VERIFIABLY_ADMIN_PASSWORD:-}" \
     "$VERIFIABLY_IMAGE" >/dev/null
 
   sleep 1
@@ -1310,8 +1359,14 @@ EOF
 backends_for_docker() {
   local src="$SCRIPT_DIR/config/backends.json"
   local dst="$SCRIPT_DIR/config/backends.docker.json"
-  local auth_src="$SCRIPT_DIR/config/auth-providers.json"
-  local auth_dst="$SCRIPT_DIR/config/auth-providers.docker.json"
+  # Read the authoritative bootstrap file; prefer the new system filename
+  # but fall back to the legacy auth-providers.json if a half-upgraded
+  # deployment hasn't re-run auth_providers_for yet.
+  local auth_src="$SCRIPT_DIR/config/auth-providers.system.json"
+  if [[ ! -f "$auth_src" ]]; then
+    auth_src="$SCRIPT_DIR/config/auth-providers.json"
+  fi
+  local auth_dst="$SCRIPT_DIR/config/auth-providers.system.docker.json"
 
   PUBLIC_HOST_FOR_REWRITE="${VERIFIABLY_PUBLIC_HOST}" \
     KEYCLOAK_PORT_FOR_REWRITE="${KEYCLOAK_PORT}" \

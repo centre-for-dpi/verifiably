@@ -1,0 +1,76 @@
+{{define "content_admin_auth_providers"}}
+<section class="view active">
+  <div class="section-label">
+    <span class="num">99</span>
+    <span class="caps">{{t "Admin · OIDC providers" $.Lang}}</span>
+  </div>
+  <h1 class="page-title">{{t "Manage" $.Lang}}<br><em>{{t "OIDC providers" $.Lang}}</em>.</h1>
+  <p class="subtitle">
+    {{t "Remove identity providers users can sign in through. New providers are added from the regular sign-in page (the form below the provider tiles)." $.Lang}}
+    {{with .Body.StorePath}}
+      <span style="font-size:0.78rem;color:var(--ink-mute)">
+        {{t "User-managed providers persist to" $.Lang}} <span class="mono">{{.}}</span>.
+      </span>
+    {{end}}
+  </p>
+
+  <div class="btn-row" style="margin:0 0 1.5rem 0">
+    <form method="post" action="/admin/logout" style="display:inline">
+      <button class="btn ghost small" type="submit">{{t "Sign out of admin" $.Lang}}</button>
+    </form>
+  </div>
+
+  {{with .Body}}
+  <table class="cred-table" style="width:100%;margin-bottom:2rem">
+    <thead>
+      <tr>
+        <th style="text-align:left">Display name</th>
+        <th style="text-align:left">ID</th>
+        <th style="text-align:left">Kind</th>
+        <th style="text-align:left">Source</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{if not .Providers}}
+        <tr><td colspan="5" style="font-style:italic;color:var(--ink-mute);padding:0.6rem 0">
+          {{t "No providers configured." $.Lang}}
+        </td></tr>
+      {{end}}
+      {{range .Providers}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td><span class="mono">{{.ID}}</span></td>
+        <td>{{.Kind}}</td>
+        <td>
+          {{if eq .Source "user"}}
+            <span class="pill ok">user</span>
+          {{else if eq .Source "system"}}
+            <span class="pill" title="Managed by deploy.sh — will reappear on next deploy">system</span>
+          {{else if eq .Source "env"}}
+            <span class="pill" title="Sourced from environment variable — will reappear on next container start">env</span>
+          {{else}}
+            <span class="pill">{{.Source}}</span>
+          {{end}}
+        </td>
+        <td style="text-align:right">
+          <form method="post" action="/admin/auth-providers/{{.ID}}/delete" style="display:inline"
+                onsubmit="return confirm('Remove provider {{.Name}}?{{if ne .Source "user"}}\n\nNote: this provider is {{.Source}}-managed and will be re-created on the next deploy.sh / container restart unless you also remove it from its source.{{end}}');">
+            <button class="btn ghost small" type="submit">{{t "Delete" $.Lang}}</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+
+  <div style="font-size:0.85rem;color:var(--ink-mute);font-style:italic;background:var(--bg-elev);border-left:3px solid var(--line);padding:0.75rem 1rem">
+    {{if eq .Mode "ro"}}
+      {{t "Read-only mode (VERIFIABLY_AUTH_ADMIN=ro): users see only the provider tiles you've curated — the \"+ Add OIDC provider\" form on the sign-in page is hidden. To allow user adds, restart the container with VERIFIABLY_AUTH_ADMIN=rw." $.Lang}}
+    {{else}}
+      {{t "Read-write mode (VERIFIABLY_AUTH_ADMIN=rw): users can also add their own providers from the sign-in page. To curate the list yourself and hide the user-add form, restart the container with VERIFIABLY_AUTH_ADMIN=ro." $.Lang}}
+    {{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}

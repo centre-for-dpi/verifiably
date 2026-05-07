@@ -25,46 +25,31 @@
              Zitadel, Dex, Ory Hydra, etc.). Plain OAuth2, SAML, and LDAP
              servers don't expose discovery and will fail at submit with
              a "could not parse provider config" toast — that's the right
-             error for the operator to see, not a silent half-broken sign-in. */}}
+             error for the operator to see, not a silent half-broken sign-in.
+
+             Admin can hide this entire expansion via /admin/auth-providers
+             (the AllowAddProvider toggle). When .AllowAddProvider is
+             false, regular users see ONLY the provider tiles. */}}
+        {{if .AllowAddProvider}}
         <details style="margin-top:1.5rem">
           <summary class="caps" style="cursor:pointer;font-size:0.7rem;color:var(--ink-soft)">+ {{t "Add OIDC provider" $.Lang}}</summary>
           <p style="font-size:0.78rem;color:var(--ink-mute);margin:0.75rem 0 1rem;font-style:italic">
             {{t "OIDC only — server must serve /.well-known/openid-configuration. Plain OAuth2, SAML, and LDAP need a different integration." $.Lang}}
           </p>
-          <form hx-post="/auth/custom" hx-target="#main" hx-swap="innerHTML"
-                style="display:flex;flex-direction:column;gap:0.6rem">
-            <label style="display:flex;flex-direction:column;gap:0.25rem">
-              <span class="caps" style="font-size:0.65rem">{{t "Display name" $.Lang}}</span>
-              <input type="text" name="display_name" placeholder="My Keycloak" required
-                     style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink)">
-            </label>
-            <label style="display:flex;flex-direction:column;gap:0.25rem">
-              <span class="caps" style="font-size:0.65rem">{{t "Issuer URL" $.Lang}}</span>
-              <input type="url" name="issuer_url" placeholder="https://idp.example.com/realms/foo" required
-                     style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:var(--mono)">
-            </label>
-            <label style="display:flex;flex-direction:column;gap:0.25rem">
-              <span class="caps" style="font-size:0.65rem">{{t "Client ID" $.Lang}}</span>
-              <input type="text" name="client_id" required
-                     style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:var(--mono)">
-            </label>
-            <label style="display:flex;flex-direction:column;gap:0.25rem">
-              <span class="caps" style="font-size:0.65rem">{{t "Client secret (optional)" $.Lang}}</span>
-              <input type="password" name="client_secret" autocomplete="off"
-                     style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:var(--mono)">
-            </label>
-            <label style="display:flex;flex-direction:column;gap:0.25rem">
-              <span class="caps" style="font-size:0.65rem">{{t "Scopes (comma-separated, defaults to openid,profile,email)" $.Lang}}</span>
-              <input type="text" name="scopes" placeholder="openid,profile,email"
-                     style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:var(--mono)">
-            </label>
-            <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.78rem;color:var(--ink-soft)">
-              <input type="checkbox" name="insecure_skip_verify">
-              {{t "Skip TLS verification (self-signed certs only)" $.Lang}}
-            </label>
-            <button class="btn" type="submit" style="margin-top:0.4rem">{{t "Register & sign in" $.Lang}}</button>
-          </form>
+          {{template "_oidc_provider_form" (dict "Action" "/auth/custom" "SubmitLabel" (t "Register & sign in" $.Lang))}}
         </details>
+        {{end}}
+      {{else if .FirstRun}}
+        <p class="subtitle" style="margin-bottom:1.25rem">
+          <strong>{{t "First-run setup:" $.Lang}}</strong>
+          {{t "no identity providers are configured yet. Register your OIDC server below — it will be persisted to" $.Lang}}
+          <span class="mono" style="font-size:0.8em">config/auth-providers.user.json</span>
+          {{t "and survive subsequent ./deploy.sh runs." $.Lang}}
+        </p>
+        <p style="font-size:0.78rem;color:var(--ink-mute);margin:0 0 1rem;font-style:italic">
+          {{t "OIDC only — server must serve /.well-known/openid-configuration. Plain OAuth2, SAML, and LDAP need a different integration." $.Lang}}
+        </p>
+        {{template "_oidc_provider_form" (dict "Action" "/auth/custom" "SubmitLabel" (t "Register & continue" $.Lang))}}
       {{else}}
         <p class="subtitle" style="margin-bottom:1.25rem">
           <strong>{{t "Demo mode:" $.Lang}}</strong> {{t "no identity providers are configured. Click below to continue." $.Lang}}
@@ -77,4 +62,49 @@
     </div>
   </div>
 </section>
+{{end}}
+
+{{/*
+  _oidc_provider_form is the shared "Add OIDC provider" form used by both
+  /auth (in-memory custom + first-run bootstrap) and /admin/auth-providers
+  (persisted add). Caller passes:
+    Action      — the URL the form posts to
+    SubmitLabel — the button text
+  Field names match the handler form parsers in handlers.go and
+  admin_auth_providers.go (display_name, issuer_url, client_id, etc.).
+*/}}
+{{define "_oidc_provider_form"}}
+<form method="post" action="{{.Action}}"
+      style="display:flex;flex-direction:column;gap:0.6rem">
+  <label style="display:flex;flex-direction:column;gap:0.25rem">
+    <span class="caps" style="font-size:0.65rem">Display name</span>
+    <input type="text" name="display_name" placeholder="My Keycloak" required
+           style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink)">
+  </label>
+  <label style="display:flex;flex-direction:column;gap:0.25rem">
+    <span class="caps" style="font-size:0.65rem">Issuer URL</span>
+    <input type="url" name="issuer_url" placeholder="https://idp.example.com/realms/foo" required
+           style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:var(--mono)">
+  </label>
+  <label style="display:flex;flex-direction:column;gap:0.25rem">
+    <span class="caps" style="font-size:0.65rem">Client ID</span>
+    <input type="text" name="client_id" required
+           style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:var(--mono)">
+  </label>
+  <label style="display:flex;flex-direction:column;gap:0.25rem">
+    <span class="caps" style="font-size:0.65rem">Client secret (optional)</span>
+    <input type="password" name="client_secret" autocomplete="off"
+           style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:var(--mono)">
+  </label>
+  <label style="display:flex;flex-direction:column;gap:0.25rem">
+    <span class="caps" style="font-size:0.65rem">Scopes (comma-separated, defaults to openid,profile,email)</span>
+    <input type="text" name="scopes" placeholder="openid,profile,email"
+           style="padding:0.4rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:var(--mono)">
+  </label>
+  <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.78rem;color:var(--ink-soft)">
+    <input type="checkbox" name="insecure_skip_verify">
+    Skip TLS verification (self-signed certs only)
+  </label>
+  <button class="btn" type="submit" style="margin-top:0.4rem">{{.SubmitLabel}}</button>
+</form>
 {{end}}

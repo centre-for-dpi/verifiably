@@ -107,13 +107,17 @@ func main() {
 	authReg := buildAuthRegistry()
 	wireAuthHelpers()
 	translator := buildTranslator()
+	authStore := buildAuthUserStore()
+	adminMode := authAdminMode()
 	h := &handlers.H{
-		Adapter:    adapter,
-		Sessions:   handlers.NewStore(),
-		Templates:  tmpl,
-		AuthReg:    authReg,
-		Translator: translator,
-		Debug:      debug,
+		Adapter:       adapter,
+		Sessions:      handlers.NewStore(),
+		Templates:     tmpl,
+		AuthReg:       authReg,
+		Translator:    translator,
+		Debug:         debug,
+		AuthStore:     authStore,
+		AuthAdminMode: adminMode,
 	}
 	// Issuance audit log + revocation status lists. Optional: when the
 	// state directory isn't writable we log and continue with the features
@@ -170,6 +174,11 @@ func main() {
 	mux.HandleFunc("POST /auth/custom", h.AddCustomProvider)
 	mux.HandleFunc("GET /auth/callback", h.AuthCallback)
 	mux.HandleFunc("POST /auth/logout", h.Logout)
+	mux.HandleFunc("GET /admin/login", h.ShowAdminLogin)
+	mux.HandleFunc("POST /admin/login", h.AdminLogin)
+	mux.HandleFunc("POST /admin/logout", h.AdminLogout)
+	mux.HandleFunc("GET /admin/auth-providers", h.ShowAuthProvidersAdmin)
+	mux.HandleFunc("POST /admin/auth-providers/{id}/delete", h.DeleteAuthProvider)
 	mux.HandleFunc("GET /lang", h.SetLang)
 	mux.HandleFunc("POST /lang", h.SetLang)
 	mux.HandleFunc("GET /qr", h.QRImage)

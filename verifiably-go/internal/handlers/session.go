@@ -31,6 +31,12 @@ type Session struct {
 	HolderDpg   string
 	VerifierDpg string
 
+	// IsAdmin is the standalone admin-session flag. Independent of the OIDC
+	// Role/AuthOK so an operator can be signed in as both admin (managing
+	// providers) and as an issuer/holder/verifier (using the demo). Set by
+	// AdminLogin, cleared by AdminLogout.
+	IsAdmin bool
+
 	// DPG-picker state — which card is expanded on each picker screen.
 	// Expansion and selection are the same action in this UI: expanding a
 	// card selects that DPG; collapsing it unselects.

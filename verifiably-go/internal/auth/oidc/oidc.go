@@ -28,6 +28,12 @@ type Config struct {
 	// DisplayName and Kind render on the auth page button.
 	DisplayName string
 	Kind        string
+	// Source labels where the config came from (system file, user file,
+	// env, or runtime add-form). See auth.Source* constants. The Provider
+	// surfaces this verbatim via Source() so the admin UI can refuse to
+	// edit system-managed entries. Optional; an unset value reads as
+	// SourceRuntime to callers.
+	Source string
 
 	// IssuerURL is the base of the OIDC issuer used for SERVER-SIDE work:
 	// fetching the .well-known/openid-configuration document and calling
@@ -100,6 +106,8 @@ func New(cfg Config) (*Provider, error) {
 func (p *Provider) ID() string          { return p.cfg.ID }
 func (p *Provider) DisplayName() string { return p.cfg.DisplayName }
 func (p *Provider) Kind() string        { return p.cfg.Kind }
+func (p *Provider) Source() string      { return p.cfg.Source }
+func (p *Provider) Config() Config      { return p.cfg }
 
 func (p *Provider) discover(ctx context.Context) (*discoveryMeta, error) {
 	if p.meta != nil {

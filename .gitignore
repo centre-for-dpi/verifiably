@@ -30,6 +30,11 @@ verifiably-go/config/backends.json
 verifiably-go/config/backends.docker.json
 verifiably-go/config/auth-providers.json
 verifiably-go/config/auth-providers.docker.json
+verifiably-go/config/auth-providers.system.json
+verifiably-go/config/auth-providers.system.docker.json
+verifiably-go/config/auth-providers.user.json
+verifiably-go/config/auth-providers.docker.json.bak
+verifiably-go/config/auth-providers.docker.json.bak.migrated
 # Rendered from wso2-deployment.toml.template by deploy.sh; contains the
 # current VERIFIABLY_PUBLIC_HOST which differs per deployment.
 verifiably-go/deploy/compose/stack/wso2-deployment.toml

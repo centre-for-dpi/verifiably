@@ -82,6 +82,20 @@ body {
 }
 .theme-toggle:hover { border-color: var(--ink); color: var(--ink); }
 
+/* Rectangular nav button for text labels (Admin link, etc.).
+   Same border treatment as .theme-toggle so the topbar stays visually
+   consistent, but text-shaped — a 36px-square circle would either
+   crop "Admin" or balloon to a stadium. */
+.nav-link-btn {
+  background: transparent; border: 1px solid var(--line); color: var(--ink-soft);
+  height: 36px; padding: 0 0.7rem; border-radius: 2px;
+  display: inline-flex; align-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem; letter-spacing: 0.04em;
+  text-decoration: none; cursor: pointer; transition: all 0.2s ease;
+}
+.nav-link-btn:hover { border-color: var(--ink); color: var(--ink); }
+
 .main { max-width: 1120px; margin: 0 auto; padding: 4rem 2.5rem 6rem; }
 @media (max-width: 720px) {
   .nav { padding: 1rem 1.25rem; }

@@ -33,6 +33,19 @@ type H struct {
 	Translator Translator
 	Debug      bool // DEBUG_SHOW_MOCK_MARKERS equivalent
 
+	// AuthStore persists OIDC providers added via /auth/custom across
+	// deploy runs. Wired in every admin mode (including "off") because
+	// persistence is independent of the admin surface — locking down
+	// the admin page should never silently disable user adds.
+	AuthStore *auth.UserStore
+	// AuthAdminMode gates the admin auth-providers UI:
+	//   "rw"  — list + add + edit + delete (default)
+	//   "ro"  — list only; mutating POSTs return 403
+	//   "off" — page route 404s, nav link hidden
+	// Anything else is treated as "rw". Honored by ShowAuthProvidersAdmin
+	// + AddAuthProvider + DeleteAuthProvider.
+	AuthAdminMode string
+
 	// IssuanceLog is the audit log of every credential the operator has
 	// issued through the /issuer/issue flow. Powers /issuer/credentials
 	// (list page) and Revoke. Optional — when nil the list page returns 404
@@ -245,6 +258,12 @@ type PageData struct {
 	Body            any // page-specific sub-data
 	FlashToast      string // one-shot toast message via HX-Trigger header alternative
 	Lang            string // current UI language code from the verifiably_lang cookie
+	// AuthAdminAvailable is true when H.AuthAdminMode != "off" so the
+	// topbar can hide the "Admin" link on deployments that disabled it
+	// entirely. Independent of any session state — the link goes to
+	// /admin/login when the visitor isn't already an admin, and to
+	// /admin/auth-providers when they are.
+	AuthAdminAvailable bool
 }
 
 // langFromRequest returns the current UI language code (default "en") from
@@ -280,9 +299,10 @@ func (h *H) SetLang(w http.ResponseWriter, r *http.Request) {
 
 func (h *H) pageData(sess *Session, body any) PageData {
 	return PageData{
-		Debug:   h.Debug,
-		Session: sess,
-		Body:    body,
+		Debug:              h.Debug,
+		Session:            sess,
+		Body:               body,
+		AuthAdminAvailable: h.AuthAdminMode != "off",
 	}
 }
 
@@ -310,6 +330,8 @@ func titleFor(page string) string {
 		"redirect_notice":        "Redirect",
 		"docs_index":             "Docs",
 		"docs_view":              "Docs",
+		"admin_login":            "Admin · Sign in",
+		"admin_auth_providers":   "Admin · OIDC providers",
 	}[page]
 }
 
@@ -331,6 +353,8 @@ func crumbFor(page string) string {
 		"redirect_notice":       "redirect",
 		"docs_index":            "docs",
 		"docs_view":             "docs",
+		"admin_login":           "admin → sign in",
+		"admin_auth_providers":  "admin → auth providers",
 	}[page]
 }
 
@@ -409,34 +433,98 @@ func (h *H) Auth(w http.ResponseWriter, r *http.Request) {
 	if h.AuthReg != nil {
 		providers = h.AuthReg.Descriptors()
 	}
+	// FirstRun is the registry-empty bootstrap mode. The /auth/custom
+	// form persists in both states; FirstRun just promotes the form
+	// from a collapsed <details> to the page's primary action so a
+	// fresh install (deploy.sh --no-default-idps) doesn't land on an
+	// empty-tile page that gives the operator nothing to click.
+	firstRun := len(providers) == 0 && h.AuthStore != nil
+	// "+ Add OIDC provider" expansion visibility is driven by the admin
+	// mode flag: ro hides it, off and rw show it. FirstRun bypasses ro
+	// so an admin can't accidentally lock everyone out of bootstrapping
+	// a fresh install.
+	allowAdd := h.addFormVisible() || firstRun
 	h.render(w, r, "auth", h.pageData(sess, map[string]any{
-		"Providers": providers,
+		"Providers":        providers,
+		"FirstRun":         firstRun,
+		"AllowAddProvider": allowAdd,
 	}))
 }
 
-// AddCustomProvider handles POST /auth/custom — a runtime "Add OIDC provider"
-// form on the auth page. Lets the operator paste an issuer URL + client
-// credentials and start signing in without restarting verifiably-go or
-// editing config files.
+// addFormVisible returns whether the "+ Add OIDC provider" expansion on
+// /auth should render for regular users. Visible only in `rw`. `ro`
+// hides it because the admin curates the list; `off` hides it because
+// there's no provider-management surface in the UI at all (providers
+// must be set via env / system file / deploy.sh).
+//
+// Persistence still works in every mode — a fresh-install operator
+// reaching the FirstRun branch (registry empty) bypasses this flag and
+// gets the form regardless, so flipping `off` can't permanently lock
+// everyone out of bootstrapping.
+func (h *H) addFormVisible() bool {
+	return h.adminModeOrDefault() == "rw"
+}
+
+// AddCustomProvider handles POST /auth/custom — the persistent "Add OIDC
+// provider" form on the auth page. Validates discovery via oidcBuildProvider,
+// writes to the user store so the entry survives `./deploy.sh run all`,
+// and registers the result in-memory so the new tile appears on the next
+// /auth render.
+//
+// Auth model: any session that has picked a role can register a provider.
+// First-run installs (registry empty) reach the same form via /auth's
+// FirstRun branch; the path is identical, just the page copy differs.
 //
 // Honest about scope: works only with servers that speak OIDC discovery
 // (must serve /.well-known/openid-configuration). The form prose calls
-// this out, and oidc.New() — which the wiring hook calls under the hood —
-// fails fast with a clear error if discovery doesn't return a valid
-// document. SAML, plain OAuth2, LDAP need separate provider types.
+// this out. SAML, plain OAuth2, LDAP need separate provider types.
 //
-// Re-submitting with the same display name updates the existing entry in
-// place (Registry.Register replaces same-ID providers), so the operator
-// can iterate on a misconfigured provider without restart-thrash.
+// Re-submitting with the same display name updates the existing entry
+// in place (Registry.Register + UserStore.Add both upsert by id), so the
+// operator can iterate on a misconfigured provider without restart-thrash.
 func (h *H) AddCustomProvider(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
-	if sess.Role == "" {
+	// First-run window OR any session with a role chosen — let through.
+	// Anonymous visitors with no role get punted to /role first.
+	registryEmpty := h.AuthReg == nil || len(h.AuthReg.All()) == 0
+	if sess.Role == "" && !registryEmpty {
 		h.redirect(w, r, "/")
 		return
 	}
-	if h.AuthReg == nil {
-		h.errorToast(w, r, "Auth registry unavailable")
+	// Server-side enforcement of the mode-driven add-form gate. The
+	// /auth template hides the form when AuthAdminMode=ro, but a hand-
+	// crafted curl could still POST here — re-check and refuse. First-
+	// run (registry empty) bypasses the gate for the same reason the
+	// template does: lockout-prevention.
+	if !registryEmpty && !h.addFormVisible() {
+		h.errorToast(w, r, "Adding new identity providers is disabled by the administrator.")
 		return
+	}
+	if h.persistProviderFromForm(w, r) {
+		h.redirect(w, r, "/auth")
+	}
+}
+
+// persistProviderFromForm parses the shared add-form fields, validates
+// via oidcBuildProvider, persists to the user store, and registers
+// in-memory. Returns true on success (caller redirects), false on
+// failure (toast already emitted by this function).
+//
+// Lives here in handlers.go (not admin_*.go) because the public /auth/custom
+// path uses it too; the admin and bootstrap surfaces went away in favour
+// of a single persistent endpoint.
+func (h *H) persistProviderFromForm(w http.ResponseWriter, r *http.Request) bool {
+	if h.AuthReg == nil {
+		h.errorToast(w, r, "Auth registry unavailable.")
+		return false
+	}
+	if h.AuthStore == nil {
+		// AuthStore is wired in every admin mode (including "off") so
+		// reaching here means a misconfigured deployment / test scaffold,
+		// not a deliberate lockdown. Surface as a server error rather
+		// than the user-facing "disabled by admin" copy.
+		h.errorToast(w, r, "Provider persistence is unconfigured on this deployment.")
+		return false
 	}
 	_ = r.ParseForm()
 	displayName := strings.TrimSpace(r.FormValue("display_name"))
@@ -447,8 +535,8 @@ func (h *H) AddCustomProvider(w http.ResponseWriter, r *http.Request) {
 	insecure := r.FormValue("insecure_skip_verify") == "on"
 
 	if displayName == "" || issuer == "" || clientID == "" {
-		h.errorToast(w, r, "Display name, issuer URL, and client ID are required")
-		return
+		h.errorToast(w, r, "Display name, issuer URL, and client ID are required.")
+		return false
 	}
 	scopes := defaultOIDCScopes
 	if scopesRaw != "" {
@@ -471,19 +559,28 @@ func (h *H) AddCustomProvider(w http.ResponseWriter, r *http.Request) {
 		ClientSecret:       clientSecret,
 		Scopes:             scopes,
 		InsecureSkipVerify: insecure,
+		Source:             auth.SourceUser,
 	})
 	if err != nil {
-		// Most common failure mode: the URL doesn't expose
-		// /.well-known/openid-configuration, so coreos/go-oidc returns
-		// a clear "404 Not Found" or "could not parse provider config".
-		// Surface verbatim — that's exactly the diagnostic the operator
-		// needs to fix the URL or accept that this server isn't OIDC.
 		h.errorToast(w, r, "Could not register OIDC provider: "+err.Error())
-		return
+		return false
+	}
+	if _, err := h.AuthStore.Add(auth.ProviderConfig{
+		ID:                 id,
+		Type:               "oidc",
+		DisplayName:        displayName,
+		Kind:               "OIDC",
+		IssuerURL:          issuer,
+		ClientID:           clientID,
+		ClientSecret:       clientSecret,
+		Scopes:             scopes,
+		InsecureSkipVerify: insecure,
+	}); err != nil {
+		h.errorToast(w, r, "Could not persist provider: "+err.Error())
+		return false
 	}
 	h.AuthReg.Register(p)
-	// Re-render the auth page so the new provider tile appears immediately.
-	h.redirect(w, r, "/auth")
+	return true
 }
 
 // defaultOIDCScopes are what every OIDC provider implicitly accepts.
@@ -674,6 +771,10 @@ type CustomProviderInput struct {
 	ClientSecret       string
 	Scopes             []string
 	InsecureSkipVerify bool
+	// Source labels the resulting registry entry. Admin-UI callers pass
+	// auth.SourceUser; the legacy /auth/custom POST leaves it empty so
+	// the build hook treats it as auth.SourceRuntime.
+	Source string
 }
 
 // SetOIDCHelpers installs the state, PKCE verifier, and runtime-provider
