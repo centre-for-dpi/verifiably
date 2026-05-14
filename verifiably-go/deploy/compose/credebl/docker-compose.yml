@@ -29,7 +29,7 @@ services:
     container_name: credebl-postgres
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     environment:
       POSTGRES_USER: credebl
       POSTGRES_DB: credebl
@@ -98,7 +98,7 @@ services:
     restart: unless-stopped
     profiles: ["credebl"]
     command: server /data --console-address ":9001"
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     environment:
       MINIO_ROOT_USER: minioadmin
     volumes:
@@ -128,7 +128,7 @@ services:
     depends_on:
       credebl-minio:
         condition: service_healthy
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_BUCKET: credebl-bucket
@@ -176,7 +176,7 @@ services:
     user: "0:0"
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     environment:
       # schema-file-server expects CRYPTO_PRIVATE_KEY as base64 of the raw key.
       # CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY is computed by ensure_credebl_env()
@@ -231,7 +231,7 @@ services:
       ln -sfn /app/libs/prisma-service/prisma/data/geo-location-master-data /app/prisma/data/geo-location-master-data &&
       npx prisma migrate deploy --schema=./libs/prisma-service/prisma/schema.prisma &&
       npx ts-node ./libs/prisma-service/prisma/seed.ts'
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
       - "${CREDEBL_KEYCLOAK_HOST:-localhost}:host-gateway"
@@ -249,7 +249,7 @@ services:
     container_name: credebl-platform-admin-bootstrap
     restart: "no"
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     entrypoint:
       - /bin/sh
       - -c
@@ -277,7 +277,7 @@ services:
     container_name: credebl-api-gateway
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     environment:
       OOB_BATCH_SIZE: "50"
       PROOF_REQ_CONN_LIMIT: "50"
@@ -311,7 +311,7 @@ services:
     container_name: credebl-user
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     depends_on:
@@ -334,7 +334,7 @@ services:
     container_name: credebl-utility
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     environment:
       AWS_SDK_LOAD_CONFIG: "1"
     volumes:
@@ -357,7 +357,7 @@ services:
     container_name: credebl-connection
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     depends_on:
@@ -382,7 +382,7 @@ services:
     container_name: credebl-issuance
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     environment:
@@ -411,7 +411,7 @@ services:
     container_name: credebl-ledger
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     depends_on:
@@ -438,7 +438,7 @@ services:
     container_name: credebl-organization
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     depends_on:
@@ -467,7 +467,7 @@ services:
     container_name: credebl-verification
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     environment:
@@ -500,7 +500,7 @@ services:
     container_name: credebl-agent-provisioning
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     environment:
       ROOT_PATH: ${CREDEBL_COMPOSE_DIR:-.}/.agent-runtime/agent-config
       INBOUND_PORT_START: "9200"
@@ -541,7 +541,7 @@ services:
     container_name: credebl-agent-service
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     environment:
@@ -553,15 +553,15 @@ services:
       SOCKET_HOST: http://credebl-api-gateway:5000
     command: >
       sh -ec '
-        : "${PLATFORM_WALLET_NAME:?PLATFORM_WALLET_NAME is required}";
-        : "${PLATFORM_WALLET_PASSWORD:?PLATFORM_WALLET_PASSWORD is required}";
-        : "${AGENT_API_KEY:?AGENT_API_KEY is required}";
-        : "${WALLET_STORAGE_HOST:?WALLET_STORAGE_HOST is required}";
-        : "${WALLET_STORAGE_PORT:?WALLET_STORAGE_PORT is required}";
-        : "${WALLET_STORAGE_USER:?WALLET_STORAGE_USER is required}";
-        : "${WALLET_STORAGE_PASSWORD:?WALLET_STORAGE_PASSWORD is required}";
-        : "${SOCKET_HOST:?SOCKET_HOST is required}";
-        : "${AFJ_VERSION:?AFJ_VERSION is required}";
+        : "$${PLATFORM_WALLET_NAME:?PLATFORM_WALLET_NAME is required}";
+        : "$${PLATFORM_WALLET_PASSWORD:?PLATFORM_WALLET_PASSWORD is required}";
+        : "$${AGENT_API_KEY:?AGENT_API_KEY is required}";
+        : "$${WALLET_STORAGE_HOST:?WALLET_STORAGE_HOST is required}";
+        : "$${WALLET_STORAGE_PORT:?WALLET_STORAGE_PORT is required}";
+        : "$${WALLET_STORAGE_USER:?WALLET_STORAGE_USER is required}";
+        : "$${WALLET_STORAGE_PASSWORD:?WALLET_STORAGE_PASSWORD is required}";
+        : "$${SOCKET_HOST:?SOCKET_HOST is required}";
+        : "$${AFJ_VERSION:?AFJ_VERSION is required}";
         sleep 30 && node dist/apps/agent-service/main.js
       '
     volumes:
@@ -586,7 +586,7 @@ services:
     container_name: credebl-cloud-wallet
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     depends_on:
@@ -607,7 +607,7 @@ services:
     container_name: credebl-oid4vc-issuance
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     depends_on:
@@ -630,7 +630,7 @@ services:
     container_name: credebl-oid4vc-verification
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     depends_on:
@@ -653,7 +653,7 @@ services:
     container_name: credebl-ecosystem
     restart: unless-stopped
     profiles: ["credebl"]
-    env_file: config/credebl.env
+    env_file: ${CREDEBL_COMPOSE_DIR}/config/credebl.env
     extra_hosts:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
     depends_on:
