@@ -567,7 +567,13 @@ JSON
     _credebl_email="${CREDEBL_ADMIN_EMAIL}"
     _credebl_password="changeme"
     _credebl_crypto_key="${CREDEBL_CRYPTO_PRIVATE_KEY}"
-    _credebl_org_id=""
+    # Auto-detect org UUID from compose-managed postgres (set after provisioning)
+    _credebl_org_id="${CREDEBL_ORG_ID:-}"
+    if [[ -z "$_credebl_org_id" ]] && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^credebl-postgres$'; then
+      _credebl_org_id="$(docker exec -i credebl-postgres sh -c \
+        'PGPASSWORD="$POSTGRES_PASSWORD" psql -U credebl -d credebl -Atqc "SELECT id FROM organisation WHERE name='"'"'Platform-admin'"'"' LIMIT 1;"' \
+        2>/dev/null | tr -d '\r')"
+    fi
     _credebl_issuer_id=""
     _credebl_verifier_id=""
     _credebl_internal_base_url="http://credebl-api-gateway:5000"
@@ -1008,6 +1014,12 @@ cmd_up() {
     bold "▶ Provisioning CREDEBL platform-admin shared agent"
     ensure_credebl_platform_admin_shared_agent \
       || red "  CREDEBL shared agent provisioning failed (proceeding — re-run manually)"
+
+    # Credo container only exists after provisioning — apply patches now
+    echo -n "  Patching Credo CredentialEvents: "
+    _credebl_patch_credo_credential_events
+    echo -n "  Patching Credo ProofEvents: "
+    _credebl_patch_credo_proof_events
 
     bold "▶ Setting up CREDEBL platform-admin tenant wallet"
     ensure_credebl_platform_admin_tenant \
@@ -1775,9 +1787,10 @@ JSEOF
 
 _credebl_patch_credo_credential_events() {
   local credo_container
-  credo_container="$(docker ps --format '{{.Names}}' | grep -v '^credebl-' | grep -v '^[0-9a-f]\{12\}_credebl' | head -1)"
+  # Credo containers are named <UUID>_<org-name> (e.g. 70b082ae-..._Platform-admin)
+  credo_container="$(docker ps --format '{{.Names}}' | grep -E '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_' | head -1)"
   if [[ -z "$credo_container" ]]; then
-    echo "  No Credo controller container found — skipping."
+    echo "no Credo container yet — skipping"
     return 0
   fi
   local patch_script
@@ -1809,9 +1822,9 @@ JSEOF
 
 _credebl_patch_credo_proof_events() {
   local credo_container
-  credo_container="$(docker ps --format '{{.Names}}' | grep -v '^credebl-' | grep -v '^[0-9a-f]\{12\}_credebl' | head -1)"
+  credo_container="$(docker ps --format '{{.Names}}' | grep -E '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_' | head -1)"
   if [[ -z "$credo_container" ]]; then
-    echo "  No Credo controller container found — skipping."
+    echo "no Credo container yet — skipping"
     return 0
   fi
   local patch_script
@@ -2215,6 +2228,10 @@ ensure_credebl_platform_admin_shared_agent() {
     [[ "$endpoint" =~ ^https?:// ]] \
       && token_url="${endpoint%/}/agent/token" \
       || token_url="http://${endpoint}/agent/token"
+    # Docker bridge IPs (172.x.x.1) are not routable from Windows host —
+    # replace with 127.0.0.1 (port is published on all interfaces).
+    token_url="${token_url//172.24.0.1/127.0.0.1}"
+    token_url="${token_url//172.17.0.1/127.0.0.1}"
     curl -sf --max-time 8 -X POST -H "Authorization: $_agent_key" "$token_url" >/dev/null
   }
 
