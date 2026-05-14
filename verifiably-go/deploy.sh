@@ -1360,10 +1360,15 @@ ensure_credebl_env() {
 
   # On re-runs, reload previously-generated secrets so we don't regenerate
   # them and break the already-initialized postgres/minio volumes.
+  # Use a line-by-line parser instead of `source` — values like "Inji Wallet"
+  # contain spaces that bash would try to execute as commands when sourced.
   if [[ -f "$env_file" ]]; then
-    # set -a exports every variable we source so the [[ -z ]] guards below
-    # see them even though they weren't in the original shell environment.
-    set -a; source "$env_file"; set +a
+    while IFS='=' read -r _key _val; do
+      # skip blank lines and comments
+      [[ "$_key" =~ ^[[:space:]]*(#|$) ]] && continue
+      [[ -z "${_key// /}" ]] && continue
+      export "${_key}=${_val}"
+    done < "$env_file"
   fi
 
   # Auto-generate any missing secrets
