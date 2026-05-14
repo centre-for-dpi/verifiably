@@ -35,7 +35,7 @@ services:
       POSTGRES_DB: credebl
     volumes:
       - credebl_postgres_data:/var/lib/postgresql/data
-      - ./config/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ${CREDEBL_COMPOSE_DIR}/config/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U credebl -d credebl"]
       interval: 10s
@@ -198,7 +198,7 @@ services:
     profiles: ["credebl"]
     command: ["python3", "/oob-redirect.py"]
     volumes:
-      - ./oob-redirect.py:/oob-redirect.py:ro
+      - ${CREDEBL_COMPOSE_DIR}/oob-redirect.py:/oob-redirect.py:ro
     depends_on:
       - credebl-minio
 
@@ -228,7 +228,7 @@ services:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
       - "${CREDEBL_KEYCLOAK_HOST:-localhost}:host-gateway"
     volumes:
-      - ./config/credebl-master-table.json:/app/prisma/data/credebl-master-table/credebl-master-table.json:ro
+      - ${CREDEBL_COMPOSE_DIR}/config/credebl-master-table.json:/app/prisma/data/credebl-master-table/credebl-master-table.json:ro
     depends_on:
       credebl-postgres:
         condition: service_healthy
@@ -249,7 +249,7 @@ services:
       - "${VERIFIABLY_PUBLIC_HOST:-localhost}:host-gateway"
       - "${CREDEBL_KEYCLOAK_HOST:-localhost}:host-gateway"
     volumes:
-      - ./bootstrap-platform-admin.sh:/work/bootstrap-platform-admin.sh:ro
+      - ${CREDEBL_COMPOSE_DIR}/bootstrap-platform-admin.sh:/work/bootstrap-platform-admin.sh:ro
     depends_on:
       credebl-postgres:
         condition: service_healthy
@@ -326,7 +326,7 @@ services:
     environment:
       AWS_SDK_LOAD_CONFIG: "1"
     volumes:
-      - ./config/aws/config:/root/.aws/config:ro
+      - ${CREDEBL_COMPOSE_DIR}/config/aws/config:/root/.aws/config:ro
     depends_on:
       credebl-nats:
         condition: service_healthy
