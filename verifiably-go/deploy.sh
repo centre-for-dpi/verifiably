@@ -50,7 +50,7 @@ export VERIFIABLY_ENV_FILE
 
 : "${VERIFIABLY_COMPOSE_FILE:=$SCRIPT_DIR/deploy/compose/stack/docker-compose.yml}"
 : "${VERIFIABLY_COMPOSE_OVERRIDE:=$SCRIPT_DIR/deploy/docker-compose.injiweb-fix.yml}"
-: "${VERIFIABLY_PUBLIC_HOST:=172.24.0.1}"
+: "${VERIFIABLY_PUBLIC_HOST:=localhost}"
 : "${PUBLIC_HOST:=$VERIFIABLY_PUBLIC_HOST}"
 : "${VERIFIABLY_ADDR:=:8080}"
 : "${VERIFIABLY_HOST_PORT:=8080}"
@@ -1376,6 +1376,7 @@ start_container() {
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \
+    -e VERIFIABLY_AUTH_PROVIDERS_FILE=/app/config/auth-providers.system.json \
     -e VERIFIABLY_AUTH_ADMIN="${VERIFIABLY_AUTH_ADMIN:-rw}" \
     -e VERIFIABLY_ADMIN_USER="${VERIFIABLY_ADMIN_USER:-}" \
     -e VERIFIABLY_ADMIN_PASSWORD="${VERIFIABLY_ADMIN_PASSWORD:-}" \
