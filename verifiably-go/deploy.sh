@@ -875,6 +875,28 @@ cmd_up() {
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     profile_args+=( --profile subdomain )
   fi
+  # If the project network exists but was created manually (no compose labels),
+  # Compose will refuse to use it. Remove it so Compose can recreate it with
+  # the correct labels. Safe: only removes when zero containers are attached.
+  _net="${COMPOSE_PROJECT}_default"
+  if docker network inspect "$_net" >/dev/null 2>&1; then
+    _net_label=$(docker network inspect "$_net" \
+      --format '{{index .Labels "com.docker.compose.network"}}' 2>/dev/null)
+    if [[ -z "$_net_label" ]]; then
+      _attached=$(docker network inspect "$_net" \
+        --format '{{len .Containers}}' 2>/dev/null || echo "1")
+      if [[ "$_attached" == "0" ]]; then
+        docker network rm "$_net" 2>/dev/null || true
+      else
+        echo "ERROR: network $_net has no compose labels and $_attached container(s) attached." >&2
+        echo "  Run: docker compose -p ${COMPOSE_PROJECT} down" >&2
+        echo "  Then retry: ./deploy.sh up ${scenario}" >&2
+        exit 1
+      fi
+    fi
+  fi
+  unset _net _net_label _attached
+
   compose "${profile_args[@]}" up -d "${services[@]}"
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     compose "${profile_args[@]}" up -d caddy-public
