@@ -1336,7 +1336,7 @@ start_container() {
     -v "$user_providers_path:/app/config/auth-providers.user.json" \
     -v "$custom_schemas_path:/app/config/custom-schemas.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
-    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v //var/run/docker.sock://var/run/docker.sock \
     -v "${VERIFIABLY_CONTAINER}-locales:/app/locales" \
     -e VERIFIABLY_ADAPTER=registry \
     -e VERIFIABLY_ADDR=:8080 \
