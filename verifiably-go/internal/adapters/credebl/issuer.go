@@ -111,6 +111,14 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 	if err != nil {
 		return backend.IssueToWalletResult{}, err
 	}
+	templateID := req.Schema.ID
+	if strings.HasPrefix(templateID, "custom-") {
+		resolved, rerr := a.resolveTemplateID(ctx, req.Schema)
+		if rerr != nil {
+			return backend.IssueToWalletResult{}, fmt.Errorf("resolve template: %w", rerr)
+		}
+		templateID = resolved
+	}
 	payload := make(map[string]any, len(req.SubjectData))
 	for k, v := range req.SubjectData {
 		payload[k] = v
@@ -119,7 +127,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		AuthorizationType: "preAuthorizedCodeFlow",
 		PIN:               a.cfg.DefaultPIN,
 		Credentials: []offerCredential{
-			{TemplateID: req.Schema.ID, Payload: payload},
+			{TemplateID: templateID, Payload: payload},
 		},
 	}
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/create-offer", a.cfg.OrgID, a.cfg.IssuerID)
@@ -251,4 +259,159 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// --- custom schema push to CREDEBL ---
+
+type schemaCreateRequest struct {
+	Type          string           `json:"type"`
+	SchemaPayload schemaPayloadBody `json:"schemaPayload"`
+}
+
+type schemaPayloadBody struct {
+	SchemaName  string       `json:"schemaName"`
+	SchemaType  string       `json:"schemaType"`
+	Attributes  []schemaAttr `json:"attributes"`
+	Description string       `json:"description"`
+	OrgID       string       `json:"orgId"`
+}
+
+type schemaAttr struct {
+	AttributeName string `json:"attributeName"`
+	DataType      string `json:"schemaDataType"`
+	DisplayName   string `json:"displayName"`
+	IsRequired    bool   `json:"isRequired"`
+}
+
+type schemaCreateResponse struct {
+	Data struct {
+		SchemaLedgerID string `json:"schemaLedgerId"`
+		SchemaID       string `json:"schemaId"`
+		ID             string `json:"id"`
+	} `json:"data"`
+}
+
+type templateCreateRequest struct {
+	Name         string            `json:"name"`
+	Format       string            `json:"format"`
+	SignerOption  string            `json:"signerOption"`
+	CanBeRevoked bool              `json:"canBeRevoked"`
+	Template     templateCreateBody `json:"template"`
+}
+
+type templateCreateBody struct {
+	Vct        string              `json:"vct"`
+	Attributes []templateAttribute `json:"attributes"`
+}
+
+type templateCreateResponse struct {
+	Data struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+// SaveCustomSchema creates a CREDEBL schema + credential template for a
+// verifiably-go custom schema and caches the mapping so IssueToWallet can
+// resolve the custom-* ID to the CREDEBL template UUID.
+func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) error {
+	ctx, err := a.authCtx(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = a.createCredeblTemplate(ctx, schema)
+	return err
+}
+
+// DeleteCustomSchema removes the in-memory custom-* → CREDEBL UUID mapping.
+// The CREDEBL template itself is left in place (no delete API exposed).
+func (a *Adapter) DeleteCustomSchema(_ context.Context, id string) error {
+	a.customTemplates.Delete(id)
+	return nil
+}
+
+// resolveTemplateID returns the CREDEBL template UUID for a schema.
+// For non-custom schemas the ID is already the CREDEBL UUID. For custom-*
+// schemas it checks the in-memory cache first, then the live template list
+// (handles container restarts), and finally creates the template lazily.
+func (a *Adapter) resolveTemplateID(ctx context.Context, schema vctypes.Schema) (string, error) {
+	if v, ok := a.customTemplates.Load(schema.ID); ok {
+		return v.(string), nil
+	}
+	// Cache miss — fetch template list and match by name (restart recovery).
+	path := fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/template", a.cfg.OrgID, a.cfg.IssuerID)
+	var listResp templateListResponse
+	if err := a.client.DoJSON(ctx, http.MethodGet, path, nil, &listResp, nil); err == nil {
+		for _, t := range listResp.Data {
+			if t.Name == schema.Name {
+				a.customTemplates.Store(schema.ID, t.ID)
+				return t.ID, nil
+			}
+		}
+	}
+	// Not found — create lazily and cache.
+	return a.createCredeblTemplate(ctx, schema)
+}
+
+// createCredeblTemplate calls the CREDEBL API to create a schema + template
+// for the given custom schema, stores the result in customTemplates, and
+// returns the CREDEBL template UUID.
+func (a *Adapter) createCredeblTemplate(ctx context.Context, schema vctypes.Schema) (string, error) {
+	sAttrs := make([]schemaAttr, 0, len(schema.FieldsSpec))
+	for _, f := range schema.FieldsSpec {
+		sAttrs = append(sAttrs, schemaAttr{
+			AttributeName: f.Name,
+			DataType:      f.Datatype,
+			DisplayName:   f.Name,
+			IsRequired:    f.Required,
+		})
+	}
+	schemaBody := schemaCreateRequest{
+		Type: "json",
+		SchemaPayload: schemaPayloadBody{
+			SchemaName:  schema.Name,
+			SchemaType:  "no_ledger",
+			Attributes:  sAttrs,
+			Description: schema.Name,
+			OrgID:       a.cfg.OrgID,
+		},
+	}
+	var schemaResp schemaCreateResponse
+	if err := a.client.DoJSON(ctx, http.MethodPost,
+		fmt.Sprintf("/v1/orgs/%s/schemas", a.cfg.OrgID),
+		schemaBody, &schemaResp, nil); err != nil {
+		return "", fmt.Errorf("credebl create schema: %w", err)
+	}
+	vct := schemaResp.Data.SchemaLedgerID
+	if vct == "" {
+		vct = schemaResp.Data.SchemaID
+	}
+	if vct == "" {
+		vct = schemaResp.Data.ID
+	}
+	if vct == "" {
+		return "", fmt.Errorf("credebl: schema creation returned empty id")
+	}
+
+	tAttrs := make([]templateAttribute, 0, len(schema.FieldsSpec))
+	for _, f := range schema.FieldsSpec {
+		tAttrs = append(tAttrs, templateAttribute{Key: f.Name, ValueType: f.Datatype, Disclose: false})
+	}
+	tmplBody := templateCreateRequest{
+		Name:         schema.Name,
+		Format:       "dc+sd-jwt",
+		SignerOption:  "DID",
+		CanBeRevoked: false,
+		Template:     templateCreateBody{Vct: vct, Attributes: tAttrs},
+	}
+	var tmplResp templateCreateResponse
+	if err := a.client.DoJSON(ctx, http.MethodPost,
+		fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/template", a.cfg.OrgID, a.cfg.IssuerID),
+		tmplBody, &tmplResp, nil); err != nil {
+		return "", fmt.Errorf("credebl create template: %w", err)
+	}
+	if tmplResp.Data.ID == "" {
+		return "", fmt.Errorf("credebl: template creation returned empty id")
+	}
+	a.customTemplates.Store(schema.ID, tmplResp.Data.ID)
+	return tmplResp.Data.ID, nil
 }

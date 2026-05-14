@@ -24,6 +24,11 @@ type Adapter struct {
 	// race to register two OID4VP verifiers.
 	verifierMu sync.Mutex
 	verifierID string
+
+	// customTemplates maps verifiably-go custom schema IDs (custom-*) to
+	// the CREDEBL credential template UUID created for them. Populated by
+	// SaveCustomSchema and lazily re-populated on IssueToWallet cache miss.
+	customTemplates sync.Map
 }
 
 // New constructs an Adapter.
@@ -59,11 +64,6 @@ func (a *Adapter) ListHolderDpgs(_ context.Context) (map[string]vctypes.DPG, err
 func (a *Adapter) ListVerifierDpgs(_ context.Context) (map[string]vctypes.DPG, error) {
 	return nil, nil
 }
-
-// --- Schema persistence is registry-owned; these are no-ops. ---
-
-func (a *Adapter) SaveCustomSchema(_ context.Context, _ vctypes.Schema) error { return nil }
-func (a *Adapter) DeleteCustomSchema(_ context.Context, _ string) error       { return nil }
 
 // --- Holder / wallet: CREDEBL has no wallet component. ---
 
