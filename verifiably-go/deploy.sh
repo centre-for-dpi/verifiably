@@ -1744,7 +1744,7 @@ process.stdout.write('patched (' + count + ' occurrences)\n');
 JSEOF
   docker cp "$patch_script" credebl-utility:/tmp/patch_utility.js
   rm -f "$patch_script"
-  docker exec --user root credebl-utility node /tmp/patch_utility.js
+  docker exec --user root credebl-utility node //tmp/patch_utility.js
 }
 
 _credebl_patch_api_gateway_context_validator() {
@@ -1767,7 +1767,7 @@ process.stdout.write('patched\n');
 JSEOF
   docker cp "$patch_script" credebl-api-gateway:/tmp/patch_api_gw.js
   rm -f "$patch_script"
-  docker exec --user root credebl-api-gateway node /tmp/patch_api_gw.js
+  docker exec --user root credebl-api-gateway node //tmp/patch_api_gw.js
 }
 
 _credebl_patch_credo_credential_events() {
@@ -1797,7 +1797,7 @@ JSEOF
   docker cp "$patch_script" "${credo_container}:/tmp/patch_credo.js"
   rm -f "$patch_script"
   local result
-  result="$(docker exec --user root "$credo_container" node /tmp/patch_credo.js)"
+  result="$(docker exec --user root "$credo_container" node //tmp/patch_credo.js)"
   printf '%s\n' "$result"
   if [[ "$result" == "patched" ]]; then
     docker restart "$credo_container" >/dev/null
@@ -1836,7 +1836,7 @@ JSEOF
   docker cp "$patch_script" "${credo_container}:/tmp/patch_proof.js"
   rm -f "$patch_script"
   local result
-  result="$(docker exec --user root "$credo_container" node /tmp/patch_proof.js)"
+  result="$(docker exec --user root "$credo_container" node //tmp/patch_proof.js)"
   printf '%s\n' "$result"
   if [[ "$result" == "patched" ]]; then
     docker restart "$credo_container" >/dev/null
@@ -1860,7 +1860,7 @@ process.stdout.write('patched\n');
 JSEOF
   docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance.js
   rm -f "$patch_script"
-  docker exec --user root credebl-issuance node /tmp/patch_issuance.js
+  docker exec --user root credebl-issuance node //tmp/patch_issuance.js
 }
 
 _credebl_patch_issuance_context_urls() {
@@ -1882,7 +1882,7 @@ process.stdout.write('patched\n');
 JSEOF
   docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance_ctx.js
   rm -f "$patch_script"
-  docker exec --user root credebl-issuance node /tmp/patch_issuance_ctx.js
+  docker exec --user root credebl-issuance node //tmp/patch_issuance_ctx.js
 }
 
 _credebl_patch_issuance_oob_credential_save() {
@@ -1928,7 +1928,7 @@ process.stdout.write('patched\n');
 JSEOF
   docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance_oob.js
   rm -f "$patch_script"
-  docker exec --user root credebl-issuance node /tmp/patch_issuance_oob.js
+  docker exec --user root credebl-issuance node //tmp/patch_issuance_oob.js
 }
 
 _credebl_patch_issuance_qr_encoding() {
@@ -1948,7 +1948,7 @@ process.stdout.write('patched\n');
 JSEOF
   docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance_qr.js
   rm -f "$patch_script"
-  docker exec --user root credebl-issuance node /tmp/patch_issuance_qr.js
+  docker exec --user root credebl-issuance node //tmp/patch_issuance_qr.js
 }
 
 _credebl_patch_issuance_qr_deeplink() {
@@ -1968,7 +1968,7 @@ process.stdout.write('patched\n');
 JSEOF
   docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance_qrl.js
   rm -f "$patch_script"
-  docker exec --user root credebl-issuance node /tmp/patch_issuance_qrl.js
+  docker exec --user root credebl-issuance node //tmp/patch_issuance_qrl.js
 }
 
 _credebl_patch_verification_qr_encoding() {
@@ -1988,7 +1988,7 @@ process.stdout.write('patched\n');
 JSEOF
   docker cp "$patch_script" credebl-verification:/tmp/patch_verif_qr.js
   rm -f "$patch_script"
-  docker exec --user root credebl-verification node /tmp/patch_verif_qr.js
+  docker exec --user root credebl-verification node //tmp/patch_verif_qr.js
 }
 
 _credebl_patch_agent_service_create_tenant() {
@@ -2008,7 +2008,7 @@ process.stdout.write('patched\n');
 JSEOF
   docker cp "$patch_script" credebl-agent-service:/tmp/patch_agent_ct.js
   rm -f "$patch_script"
-  docker exec --user root credebl-agent-service node /tmp/patch_agent_ct.js
+  docker exec --user root credebl-agent-service node //tmp/patch_agent_ct.js
 }
 
 _credebl_patch_agent_service_normalize_url() {
@@ -2041,7 +2041,7 @@ if (changed) { fs.writeFileSync(path, content); process.stdout.write('patched\n'
 JSEOF
   docker cp "$patch_script" credebl-agent-service:/tmp/patch_agent_nu.js
   rm -f "$patch_script"
-  docker exec --user root credebl-agent-service node /tmp/patch_agent_nu.js
+  docker exec --user root credebl-agent-service node //tmp/patch_agent_nu.js
 }
 
 # apply_credebl_patches applies all 12 container patches in the correct order.
