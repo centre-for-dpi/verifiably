@@ -574,7 +574,13 @@ JSON
         'PGPASSWORD="$POSTGRES_PASSWORD" psql -U credebl -d credebl -Atqc "SELECT id FROM organisation WHERE name='"'"'Platform-admin'"'"' LIMIT 1;"' \
         2>/dev/null | tr -d '\r')"
     fi
-    _credebl_issuer_id=""
+    # Auto-detect issuer UUID from DB (populated by ensure_credebl_oid4vc_issuer)
+    _credebl_issuer_id="${CREDEBL_ISSUER_ID:-}"
+    if [[ -z "$_credebl_issuer_id" ]] && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^credebl-postgres$'; then
+      _credebl_issuer_id="$(docker exec -i credebl-postgres sh -c \
+        'PGPASSWORD="$POSTGRES_PASSWORD" psql -U credebl -d credebl -Atqc "SELECT id FROM oidc_issuer WHERE \"orgId\"=(SELECT id FROM organisation WHERE name='"'"'Platform-admin'"'"' LIMIT 1) LIMIT 1;"' \
+        2>/dev/null | tr -d '\r')"
+    fi
     _credebl_verifier_id=""
     _credebl_internal_base_url="http://credebl-api-gateway:5000"
   fi
@@ -1024,6 +1030,15 @@ cmd_up() {
     bold "▶ Setting up CREDEBL platform-admin tenant wallet"
     ensure_credebl_platform_admin_tenant \
       || red "  CREDEBL tenant wallet setup failed (proceeding — re-run manually)"
+
+    bold "▶ Provisioning CREDEBL OID4VCI issuer + credential template"
+    ensure_credebl_oid4vc_issuer \
+      || red "  CREDEBL OID4VCI issuer setup failed (proceeding — re-run manually)"
+
+    # Re-generate backends.json now that CREDEBL_ISSUER_ID is known.
+    # The first call (top of cmd_up) runs before provisioning, so issuerId=""
+    # there. This second call writes the final correct value.
+    backends_for "$scenario"
   fi
 
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
@@ -2143,47 +2158,169 @@ PYEOF
   docker exec --user root credebl-agent-provisioning python3 //tmp/patch_spin_up.py
 }
 
-# apply_credebl_patches applies all 12 container patches in the correct order.
+# _credebl_patch_agent_port_range patches docker_start_agent.sh to use
+# AGENT_PORT_START and INBOUND_PORT_START env vars as defaults instead of
+# hardcoded 8001/9001. Without this, Credo picks port 9002 which conflicts
+# with MinIO's 9002:9000 mapping on the waltid_default compose project.
+_credebl_patch_agent_port_range() {
+  local guard="PATCH-PORT-RANGE"
+  local script_path="/app/agent-provisioning/AFJ/scripts/docker_start_agent.sh"
+
+  if MSYS_NO_PATHCONV=1 docker exec credebl-agent-provisioning grep -q "$guard" "$script_path" 2>/dev/null; then
+    echo "already patched"
+    return 0
+  fi
+
+  local patcher
+  patcher="$(mktemp /tmp/patch_port_range_XXXXXX.py)"
+  cat > "$patcher" << 'PYEOF'
+import sys
+
+with open('/app/agent-provisioning/AFJ/scripts/docker_start_agent.sh', 'rb') as f:
+    content = f.read()
+
+GUARD = b'PATCH-PORT-RANGE'
+if GUARD in content:
+    sys.stdout.write('already patched\n')
+    sys.exit(0)
+
+old_admin  = b'ADMIN_PORT=8001\n'
+new_admin  = b'ADMIN_PORT=${AGENT_PORT_START:-8001}  # PATCH-PORT-RANGE\n'
+old_inbound = b'INBOUND_PORT=9001\n'
+new_inbound = b'INBOUND_PORT=${INBOUND_PORT_START:-9001}\n'
+
+if old_admin not in content:
+    sys.stderr.write('ERROR: ADMIN_PORT=8001 not found\n')
+    sys.exit(1)
+if old_inbound not in content:
+    sys.stderr.write('ERROR: INBOUND_PORT=9001 not found\n')
+    sys.exit(1)
+
+content = content.replace(old_admin, new_admin, 1)
+content = content.replace(old_inbound, new_inbound, 1)
+
+with open('/app/agent-provisioning/AFJ/scripts/docker_start_agent.sh', 'wb') as f:
+    f.write(content)
+sys.stdout.write('patched\n')
+PYEOF
+  docker cp "$patcher" credebl-agent-provisioning:/tmp/patch_port_range.py
+  rm -f "$patcher"
+  MSYS_NO_PATHCONV=1 docker exec --user root credebl-agent-provisioning python3 /tmp/patch_port_range.py
+}
+
+# _credebl_patch_ledger_schema_jwt replaces the raw hex SCHEMA_FILE_SERVER_TOKEN
+# with a valid HS256 JWT signed with JWT_TOKEN_SECRET.
+# The schema file server (oak_middleware_jwt) validates Bearer tokens as JWTs —
+# the raw hex string is not a JWT and is rejected with 401, blocking schema creation.
+_credebl_patch_ledger_schema_jwt() {
+  local guard="PATCH-SCHEMA-JWT"
+  local js_path="/app/dist/apps/ledger/main.js"
+  if MSYS_NO_PATHCONV=1 docker exec credebl-ledger node -e "
+    const fs=require('fs');
+    const c=fs.readFileSync('$js_path','utf8');
+    process.exit(c.includes('$guard') ? 0 : 1);
+  " 2>/dev/null; then
+    echo "already patched"
+    return 0
+  fi
+
+  local jwt_token_secret
+  jwt_token_secret="$(docker exec credebl-schema-file-server env 2>/dev/null \
+    | grep '^JWT_TOKEN_SECRET=' | cut -d= -f2-)"
+  if [[ -z "$jwt_token_secret" ]]; then
+    echo "ERROR: could not read JWT_TOKEN_SECRET from schema-file-server"
+    return 1
+  fi
+
+  local jwt_token
+  jwt_token="$(python3 - "$jwt_token_secret" << 'PYEOF'
+import sys, base64, hmac, hashlib, json
+secret = sys.argv[1]
+padding = "=" * (4 - len(secret) % 4) if len(secret) % 4 else ""
+key = base64.b64decode(secret + padding)
+def b64u(data):
+    if isinstance(data, dict):
+        data = json.dumps(data, separators=(',',':')).encode()
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+h = b64u({"alg":"HS256","typ":"JWT"})
+p = b64u({"iss":"Credebl","id":"cdpi-fixed-token"})
+msg = f"{h}.{p}"
+sig = hmac.new(key, msg.encode(), hashlib.sha256).digest()
+print(f"{msg}.{b64u(sig)}")
+PYEOF
+)"
+  if [[ -z "$jwt_token" ]]; then
+    echo "ERROR: failed to generate JWT"
+    return 1
+  fi
+
+  local patcher
+  patcher="$(mktemp /tmp/patch_schema_jwt_XXXXXX.js)"
+  # Note: $js_path and $guard expand here; $jwt_token expands here.
+  # The outer quotes on EOF are intentional (no single-quoting) so variables expand.
+  cat > "$patcher" << EOF
+const fs = require('fs');
+const content = fs.readFileSync('$js_path', 'utf8');
+const GUARD = '$guard';
+if (content.includes(GUARD)) { process.stdout.write('already patched\n'); process.exit(0); }
+const OLD = 'process.env.SCHEMA_FILE_SERVER_TOKEN';
+if (!content.includes(OLD)) { process.stderr.write('ERROR: pattern not found\n'); process.exit(1); }
+const NEW = '"$jwt_token" /* $guard */';
+fs.writeFileSync('$js_path', content.split(OLD).join(NEW));
+process.stdout.write('patched\n');
+EOF
+  docker cp "$patcher" credebl-ledger:/tmp/patch_schema_jwt.js
+  rm -f "$patcher"
+  MSYS_NO_PATHCONV=1 docker exec --user root credebl-ledger node /tmp/patch_schema_jwt.js 2>&1
+}
+
+# apply_credebl_patches applies all container patches in the correct order.
 apply_credebl_patches() {
   echo "  Applying CREDEBL container patches..."
 
-  echo -n "  [1/12] Utility service S3→MinIO endpoint: "
+  echo -n "  [1/14] Utility service S3→MinIO endpoint: "
   _credebl_patch_utility_s3
   docker restart credebl-utility >/dev/null
 
-  echo -n "  [2/12] API gateway @context validator: "
+  echo -n "  [2/14] API gateway @context validator: "
   _credebl_patch_api_gateway_context_validator
   docker restart credebl-api-gateway >/dev/null
 
-  echo -n "  [3/12] Issuance schema URL dedup: "
+  echo -n "  [3/14] Issuance schema URL dedup: "
   _credebl_patch_issuance_schema_url
-  echo -n "  [4/12] Issuance @context URL normalization: "
+  echo -n "  [4/14] Issuance @context URL normalization: "
   _credebl_patch_issuance_context_urls
-  echo -n "  [5/12] Issuance OOB credential DB save (upsert): "
+  echo -n "  [5/14] Issuance OOB credential DB save (upsert): "
   _credebl_patch_issuance_oob_credential_save
-  echo -n "  [6/12] Issuance QR code attachment encoding: "
+  echo -n "  [6/14] Issuance QR code attachment encoding: "
   _credebl_patch_issuance_qr_encoding
-  echo -n "  [7/12] Issuance QR uses full deeplink URL: "
+  echo -n "  [7/14] Issuance QR uses full deeplink URL: "
   _credebl_patch_issuance_qr_deeplink
   docker restart credebl-issuance >/dev/null
 
-  echo -n "  [8/12] Verification QR code attachment encoding: "
+  echo -n "  [8/14] Verification QR code attachment encoding: "
   _credebl_patch_verification_qr_encoding
   docker restart credebl-verification >/dev/null
 
-  echo -n "  [9/12] Agent-service shared wallet create-tenant (root JWT): "
+  echo -n "  [9/14] Ledger service SCHEMA_FILE_SERVER_TOKEN (valid JWT): "
+  _credebl_patch_ledger_schema_jwt
+  docker restart credebl-ledger >/dev/null
+
+  echo -n "  [10/14] Agent-service shared wallet create-tenant (root JWT): "
   _credebl_patch_agent_service_create_tenant
-  echo -n "  [10/12] Agent-service normalizeUrlWithProtocol (http for Credo): "
+  echo -n "  [11/14] Agent-service normalizeUrlWithProtocol (http for Credo): "
   _credebl_patch_agent_service_normalize_url
   docker restart credebl-agent-service >/dev/null
 
-  echo -n "  [11/12] Agent-provisioning docker_start_agent.sh (waltid_default network): "
+  echo -n "  [12/14] Agent-provisioning docker_start_agent.sh (waltid_default network): "
   _credebl_patch_agent_spin_up_script
+  echo -n "  [13/14] Agent-provisioning port range (AGENT_PORT_START/INBOUND_PORT_START): "
+  _credebl_patch_agent_port_range
 
   # Credo patches — only if Credo is running
-  echo -n "  [12/12] Credo CredentialEvents guard: "
+  echo -n "  [14/14] Credo CredentialEvents guard: "
   _credebl_patch_credo_credential_events
-  echo -n "  [13/12] Credo ProofEvents guard: "
+  echo -n "  [15/14] Credo ProofEvents guard: "
   _credebl_patch_credo_proof_events
 
   echo "  Waiting for restarted containers to be ready (up to 90s)..."
@@ -2422,10 +2559,253 @@ process.stdout.write(encrypted);
 
   green "  Platform-admin tenant wallet configured (tenantId=${tenant_id})"
 
-  # Restart agent-service so it picks up the new apiKey
+  # Restart agent-service so it picks up the new apiKey.
+  # Wait until it logs "listening to NATS" before returning — callers depend on
+  # NATS subscriptions being active (e.g. ensure_credebl_oid4vc_issuer).
   docker restart credebl-agent-service >/dev/null
-  sleep 20
-  green "  Agent-service restarted."
+
+  # Wait for Docker to report the container as running, then capture StartedAt
+  # so we can poll logs --since <start_ts> and avoid false positives from
+  # "listening to NATS" lines emitted by a PREVIOUS restart cycle.
+  local start_ts=""
+  local wait_tries=0
+  while [[ $wait_tries -lt 30 ]]; do
+    local ctr_status
+    ctr_status=$(docker inspect credebl-agent-service --format '{{.State.Status}}' 2>/dev/null || echo "")
+    if [[ "$ctr_status" == "running" ]]; then
+      start_ts=$(docker inspect credebl-agent-service --format '{{.State.StartedAt}}' 2>/dev/null || echo "")
+      break
+    fi
+    sleep 1; wait_tries=$(( wait_tries + 1 ))
+  done
+
+  local nats_ready=false
+  local deadline=$(( $(date +%s) + 90 ))
+  while [[ "$(date +%s)" -lt "$deadline" ]]; do
+    local log_output
+    if [[ -n "$start_ts" ]]; then
+      log_output=$(docker logs credebl-agent-service --since "$start_ts" 2>/dev/null || true)
+    else
+      log_output=$(docker logs credebl-agent-service --tail=30 2>/dev/null || true)
+    fi
+    if printf '%s' "$log_output" | grep -q "listening to NATS"; then
+      nats_ready=true
+      break
+    fi
+    sleep 3
+  done
+  if [[ "$nats_ready" == "true" ]]; then
+    green "  Agent-service restarted and listening to NATS."
+  else
+    red "  Agent-service did not reach NATS-ready state in 90s — proceeding anyway"
+  fi
+}
+
+# ensure_credebl_oid4vc_issuer ensures Platform-admin has:
+#   1. A did:key (creates one if absent)
+#   2. An OID4VCI issuer record in oidc_issuer (creates one if absent)
+#   3. At least one credential template on that issuer (creates one if absent)
+# Exports CREDEBL_ISSUER_ID with the issuer DB UUID.
+# Idempotent — skips creation steps when existing rows are found.
+ensure_credebl_oid4vc_issuer() {
+  local _db_pw="$CREDEBL_POSTGRES_PASSWORD"
+  local _org_id="70b082ae-2ad7-4f15-9f82-394069793d05"
+  local _api="http://127.0.0.1:${CREDEBL_API_PORT:-5001}"
+  local _email="${CREDEBL_ADMIN_EMAIL:-admin@cdpi.dev}"
+  local _kc_port="${KEYCLOAK_PORT:-8080}"
+
+  _credebl_pg3() {
+    docker exec -i credebl-postgres env PGPASSWORD="$_db_pw" \
+      psql -U credebl -d credebl "$@"
+  }
+
+  # --- Sign in — use Python helper to avoid quoting issues ------------------
+  local tmp_py
+  tmp_py="$(mktemp /tmp/credebl_issuer_XXXXXX.py)"
+  cat > "$tmp_py" << 'PYEOF'
+import sys, json, subprocess, urllib.request, os
+
+org_id   = sys.argv[1]
+api      = sys.argv[2]
+email    = sys.argv[3]
+kc_port  = sys.argv[4]
+
+# Encrypt password via CryptoJS in agent-service container
+enc_pass = subprocess.check_output(
+    ['docker', 'exec', '-i', 'credebl-agent-service', 'node', '-e',
+     "const C=require('crypto-js');process.stdout.write(C.AES.encrypt(JSON.stringify('changeme'),process.env.CRYPTO_PRIVATE_KEY).toString())"],
+    stderr=subprocess.DEVNULL).decode().strip()
+
+# Sign in
+req = urllib.request.Request(
+    f'{api}/v1/auth/signin',
+    data=json.dumps({'email': email, 'password': enc_pass}).encode(),
+    headers={'Content-Type': 'application/json'},
+    method='POST')
+with urllib.request.urlopen(req, timeout=15) as r:
+    d = json.load(r)
+jwt = d['data']['access_token']
+headers = {'Authorization': f'Bearer {jwt}', 'Content-Type': 'application/json'}
+
+def api_get(path):
+    req = urllib.request.Request(f'{api}{path}', headers={'Authorization': f'Bearer {jwt}'})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.load(r)
+    except Exception:
+        return {}
+
+def api_post(path, body):
+    req = urllib.request.Request(f'{api}{path}', data=json.dumps(body).encode(), headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        return json.loads(e.read())
+
+import subprocess as sp
+
+# --- DID ---
+def pg(sql):
+    out = sp.run(['docker','exec','-i','credebl-postgres','env',
+                  f'PGPASSWORD={os.environ["CREDEBL_POSTGRES_PASSWORD"]}',
+                  'psql','-U','credebl','-d','credebl','-Atqc',sql],
+                 capture_output=True, text=True).stdout.strip()
+    return out
+
+org_did = pg(f"SELECT COALESCE(\"orgDid\",'') FROM org_agents WHERE \"orgId\"='{org_id}' LIMIT 1;")
+if not org_did:
+    import os as _os
+    seed = _os.urandom(16).hex()
+    did_payload = {'seed': seed, 'keyType': 'ed25519', 'method': 'key',
+                   'ledger': '', 'privatekey': '', 'network': '', 'domain': '',
+                   'role': '', 'endorserDid': '', 'clientSocketId': '', 'isPrimaryDid': True}
+    api_post(f'/v1/orgs/{org_id}/agents/did', did_payload)
+    import time
+    for _ in range(20):
+        time.sleep(3)
+        org_did = pg(f"SELECT COALESCE(\"orgDid\",'') FROM org_agents WHERE \"orgId\"='{org_id}' LIMIT 1;")
+        if org_did:
+            break
+    if not org_did:
+        print('ERROR:did_timeout', flush=True)
+        sys.exit(1)
+    print(f'INFO:did_created:{org_did}', flush=True)
+else:
+    print(f'INFO:did_exists:{org_did}', flush=True)
+
+# --- OID4VCI issuer ---
+issuer_id = pg(f"SELECT id FROM oidc_issuer WHERE \"orgId\"='{org_id}' LIMIT 1;")
+if not issuer_id:
+    iss_body = {
+        'issuerId': 'platform-admin-issuer',
+        'credentialIssuerHost': api,
+        'orgId': org_id,
+        'orgDid': org_did,
+        'authorizationServerUrl': f'http://127.0.0.1:{kc_port}/realms/credebl-realm',
+        'batchCredentialIssuanceSize': 1,
+        'display': [{'name': 'Platform Admin Issuer', 'locale': 'en'}]
+    }
+    resp = api_post(f'/v1/orgs/{org_id}/oid4vc/issuers', iss_body)
+    issuer_id = (resp.get('data') or {}).get('id', '')
+    if not issuer_id:
+        print(f'ERROR:issuer_create:{json.dumps(resp)}', flush=True)
+        sys.exit(1)
+    print(f'INFO:issuer_created:{issuer_id}', flush=True)
+else:
+    print(f'INFO:issuer_exists:{issuer_id}', flush=True)
+
+# --- credential template ---
+tmpl_resp = api_get(f'/v1/orgs/{org_id}/oid4vc/{issuer_id}/template')
+tmpl_count = len((tmpl_resp.get('data') or []))
+if tmpl_count == 0:
+    # Create schema
+    schema_body = {
+        'type': 'json',
+        'schemaPayload': {
+            'schemaName': 'Employment',
+            'schemaType': 'no_ledger',
+            'attributes': [
+                {'attributeName':'given_name',            'schemaDataType':'string','displayName':'Given Name',       'isRequired':True},
+                {'attributeName':'family_name',           'schemaDataType':'string','displayName':'Family Name',      'isRequired':True},
+                {'attributeName':'employer_name',         'schemaDataType':'string','displayName':'Employer Name',    'isRequired':True},
+                {'attributeName':'employment_status',     'schemaDataType':'string','displayName':'Employment Status','isRequired':True},
+                {'attributeName':'position_title',        'schemaDataType':'string','displayName':'Position Title',   'isRequired':True},
+                {'attributeName':'employment_start_date', 'schemaDataType':'string','displayName':'Start Date',       'isRequired':True},
+                {'attributeName':'document_number',       'schemaDataType':'string','displayName':'Document Number',  'isRequired':False},
+            ],
+            'description': 'Employment Credential',
+            'orgId': org_id
+        }
+    }
+    sr = api_post(f'/v1/orgs/{org_id}/schemas', schema_body)
+    schema_id = (sr.get('data') or {}).get('schemaLedgerId') or \
+                (sr.get('data') or {}).get('schemaId') or \
+                (sr.get('data') or {}).get('id', '')
+    if not schema_id:
+        print(f'ERROR:schema_create:{json.dumps(sr)}', flush=True)
+        sys.exit(1)
+    print(f'INFO:schema_created:{schema_id}', flush=True)
+    # Create template
+    tmpl_body = {
+        'name': 'Employment Credential',
+        'format': 'dc+sd-jwt',
+        'signerOption': 'DID',
+        'canBeRevoked': False,
+        'template': {
+            'vct': schema_id,
+            'attributes': [
+                {'key':'given_name',            'value_type':'string','disclose':False},
+                {'key':'employer_name',         'value_type':'string','disclose':False},
+                {'key':'employment_status',     'value_type':'string','disclose':False},
+                {'key':'family_name',           'value_type':'string','disclose':True},
+                {'key':'document_number',       'value_type':'string','disclose':True},
+                {'key':'position_title',        'value_type':'string','disclose':True},
+                {'key':'employment_start_date', 'value_type':'string','disclose':True},
+            ]
+        }
+    }
+    tr = api_post(f'/v1/orgs/{org_id}/oid4vc/{issuer_id}/template', tmpl_body)
+    tmpl_id = (tr.get('data') or {}).get('id', '')
+    if not tmpl_id:
+        print(f'ERROR:template_create:{json.dumps(tr)}', flush=True)
+        sys.exit(1)
+    print(f'INFO:template_created:{tmpl_id}', flush=True)
+else:
+    print(f'INFO:templates_exist:{tmpl_count}', flush=True)
+
+print(f'ISSUER_ID:{issuer_id}', flush=True)
+PYEOF
+
+  local py_out
+  py_out="$(CREDEBL_POSTGRES_PASSWORD="$_db_pw" python3 "$tmp_py" "$_org_id" "$_api" "$_email" "$_kc_port" 2>&1)"
+  local py_exit=$?
+  rm -f "$tmp_py"
+
+  # Print INFO lines as progress, stop on ERROR
+  local issuer_db_id=""
+  while IFS= read -r line; do
+    case "$line" in
+      INFO:did_created:*)   green "  DID created: ${line#INFO:did_created:}" ;;
+      INFO:did_exists:*)    echo  "  DID already exists: ${line#INFO:did_exists:}" ;;
+      INFO:issuer_created:*) green "  OID4VCI issuer created: ${line#INFO:issuer_created:}" ;;
+      INFO:issuer_exists:*) echo  "  OID4VCI issuer already exists: ${line#INFO:issuer_exists:}" ;;
+      INFO:schema_created:*) echo "  Schema created: ${line#INFO:schema_created:}" ;;
+      INFO:template_created:*) green "  Credential template created: ${line#INFO:template_created:}" ;;
+      INFO:templates_exist:*) echo "  Credential templates already exist (${line#INFO:templates_exist:})" ;;
+      ERROR:*)              red "  $line"; py_exit=1 ;;
+      ISSUER_ID:*)          issuer_db_id="${line#ISSUER_ID:}" ;;
+      *)                    echo "  $line" ;;
+    esac
+  done <<< "$py_out"
+
+  if [[ $py_exit -ne 0 ]] || [[ -z "$issuer_db_id" ]]; then
+    red "  ensure_credebl_oid4vc_issuer failed (exit=$py_exit)"
+    return 1
+  fi
+
+  export CREDEBL_ISSUER_ID="$issuer_db_id"
+  green "  CREDEBL OID4VCI issuer ready (issuerId=${issuer_db_id})"
 }
 
 # render_wso2_deployment_toml envsubsts wso2-deployment.toml.template
