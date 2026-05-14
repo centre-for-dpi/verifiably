@@ -875,12 +875,6 @@ cmd_up() {
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     profile_args+=( --profile subdomain )
   fi
-  # Ensure the shared compose project network exists before starting any
-  # services. CREDEBL (and other DPGs) declare it as external so they can
-  # join the same Docker network as the verifiably-go server. If no waltid
-  # services have been started yet the network won't exist — create it now.
-  docker network create "${COMPOSE_PROJECT}_default" 2>/dev/null || true
-
   compose "${profile_args[@]}" up -d "${services[@]}"
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     compose "${profile_args[@]}" up -d caddy-public
