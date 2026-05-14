@@ -1325,7 +1325,10 @@ start_container() {
   if [[ ! -f "$system_providers_mount" ]]; then
     system_providers_mount="$SCRIPT_DIR/config/auth-providers.docker.json"
   fi
-  docker run -d \
+  # MSYS_NO_PATHCONV=1 prevents Git Bash from converting Unix paths like
+  # /var/run/docker.sock to C:\Program Files\Git\var\run\docker.sock.
+  # Docker Desktop on Windows handles MSYS-style paths (/c/Users/...) natively.
+  MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --network "${COMPOSE_PROJECT}_default" \
     --add-host=host.docker.internal:host-gateway \
@@ -1336,7 +1339,7 @@ start_container() {
     -v "$user_providers_path:/app/config/auth-providers.user.json" \
     -v "$custom_schemas_path:/app/config/custom-schemas.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
-    -v //var/run/docker.sock://var/run/docker.sock \
+    -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${VERIFIABLY_CONTAINER}-locales:/app/locales" \
     -e VERIFIABLY_ADAPTER=registry \
     -e VERIFIABLY_ADDR=:8080 \
@@ -2044,6 +2047,89 @@ JSEOF
   docker exec --user root credebl-agent-service node //tmp/patch_agent_nu.js
 }
 
+# _credebl_patch_agent_spin_up_script patches docker_start_agent.sh inside
+# credebl-agent-provisioning to attach spawned Credo containers to waltid_default
+# and use the postgres container hostname instead of 172.17.0.1.
+# On Docker Desktop (Windows/Mac) spawned Credo containers land on afj_default,
+# not docker0, so 172.17.0.1 is unreachable and credebl-postgres:5432 must be used.
+_credebl_patch_agent_spin_up_script() {
+  local guard="PATCH-WALTID-NET"
+  local script_path="/app/agent-provisioning/AFJ/scripts/docker_start_agent.sh"
+
+  if docker exec credebl-agent-provisioning grep -q "$guard" "$script_path" 2>/dev/null; then
+    echo "already patched"
+    return 0
+  fi
+
+  # Write helper: patch_compose.sh — fixes config JSON + appends network to compose YAML
+  local helper_script
+  helper_script="$(mktemp /tmp/patch_compose_helper_XXXXXX.sh)"
+  cat > "$helper_script" << 'SHEOF'
+#!/bin/sh
+CONFIG_FILE="$1"
+COMPOSE_FILE="$2"
+python3 - "$CONFIG_FILE" << 'PYEOF'
+import json, sys
+fname = sys.argv[1]
+with open(fname) as f:
+    cfg = json.load(f)
+port = cfg.get('walletUrl', ':5432').split(':')[-1]
+agency_id = cfg.get('webhookUrl', '').rsplit('/wh/', 1)[-1]
+cfg['walletUrl'] = 'credebl-postgres:' + port
+if agency_id:
+    cfg['webhookUrl'] = 'http://credebl-agent-service:5001/wh/' + agency_id
+with open(fname, 'w') as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+python3 - "$COMPOSE_FILE" << 'PYEOF'
+import sys
+fname = sys.argv[1]
+with open(fname) as f:
+    c = f.read()
+if 'waltid_default' not in c:
+    c = c.replace('    command:', '    networks:\n      - waltid_default\n    command:')
+    c += '\nnetworks:\n  waltid_default:\n    external: true\n'
+    with open(fname, 'w') as f:
+        f.write(c)
+PYEOF
+SHEOF
+  docker cp "$helper_script" credebl-agent-provisioning:/tmp/patch_compose_helper.sh
+  rm -f "$helper_script"
+  docker exec --user root credebl-agent-provisioning sh -c \
+    "chmod +x /tmp/patch_compose_helper.sh && mv /tmp/patch_compose_helper.sh /app/agent-provisioning/AFJ/scripts/patch_compose.sh"
+
+  # Patch docker_start_agent.sh to call the helper after both files are generated
+  local patcher
+  patcher="$(mktemp /tmp/patch_spin_up_XXXXXX.py)"
+  cat > "$patcher" << 'PYEOF'
+import sys
+
+with open('/app/agent-provisioning/AFJ/scripts/docker_start_agent.sh') as f:
+    content = f.read()
+
+GUARD = 'PATCH-WALTID-NET'
+if GUARD in content:
+    sys.stdout.write('already patched\n')
+    sys.exit(0)
+
+anchor = '  echo "docker-compose generated successfully!"\n'
+if anchor not in content:
+    sys.stderr.write('ERROR: anchor not found in docker_start_agent.sh\n')
+    sys.exit(1)
+
+fix = ('  # ' + GUARD + ': attach Credo to waltid_default; use credebl-postgres hostname\n'
+       '  sh /app/agent-provisioning/AFJ/scripts/patch_compose.sh "${CONFIG_FILE}" "${DOCKER_COMPOSE}"\n')
+content = content.replace(anchor, anchor + fix, 1)
+
+with open('/app/agent-provisioning/AFJ/scripts/docker_start_agent.sh', 'w') as f:
+    f.write(content)
+sys.stdout.write('patched\n')
+PYEOF
+  docker cp "$patcher" credebl-agent-provisioning:/tmp/patch_spin_up.py
+  rm -f "$patcher"
+  docker exec --user root credebl-agent-provisioning python3 //tmp/patch_spin_up.py
+}
+
 # apply_credebl_patches applies all 12 container patches in the correct order.
 apply_credebl_patches() {
   echo "  Applying CREDEBL container patches..."
@@ -2078,10 +2164,13 @@ apply_credebl_patches() {
   _credebl_patch_agent_service_normalize_url
   docker restart credebl-agent-service >/dev/null
 
+  echo -n "  [11/12] Agent-provisioning docker_start_agent.sh (waltid_default network): "
+  _credebl_patch_agent_spin_up_script
+
   # Credo patches — only if Credo is running
-  echo -n "  [11/12] Credo CredentialEvents guard: "
+  echo -n "  [12/12] Credo CredentialEvents guard: "
   _credebl_patch_credo_credential_events
-  echo -n "  [12/12] Credo ProofEvents guard: "
+  echo -n "  [13/12] Credo ProofEvents guard: "
   _credebl_patch_credo_proof_events
 
   echo "  Waiting for restarted containers to be ready (up to 90s)..."
@@ -2229,12 +2318,17 @@ ensure_credebl_platform_admin_tenant() {
   # Fix DB record if stored with https://
   _credebl_pg2 -q -c "UPDATE org_agents SET \"agentEndPoint\" = replace(\"agentEndPoint\", 'https://', 'http://') WHERE \"agentEndPoint\" LIKE 'https://%';" 2>/dev/null || true
 
+  # On Docker Desktop (Windows/Mac), Docker bridge IPs (172.x.x.1) are not reachable
+  # from the host — use 127.0.0.1 instead (port is published on all interfaces).
+  local curl_endpoint="${endpoint//172.24.0.1/127.0.0.1}"
+  curl_endpoint="${curl_endpoint//172.17.0.1/127.0.0.1}"
+
   # Get root JWT (retry up to 8 times — Credo may still be starting)
   local root_jwt attempt=1
   while [[ $attempt -le 8 ]]; do
     root_jwt="$(curl -sf --max-time 10 -X POST \
       -H "Authorization: $_agent_key" \
-      "${endpoint}/agent/token" 2>/dev/null \
+      "${curl_endpoint}/agent/token" 2>/dev/null \
       | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('token', d.get('access_token','')))" 2>/dev/null || true)"
     [[ -n "$root_jwt" ]] && break
     echo "  Credo not ready (attempt ${attempt}/8), waiting 5s..."
@@ -2262,7 +2356,7 @@ ensure_credebl_platform_admin_tenant() {
       -H "Authorization: Bearer ${root_jwt}" \
       -H "Content-Type: application/json" \
       -d '{"config":{"label":"Platform-admin"}}' \
-      "${endpoint}/multi-tenancy/create-tenant" 2>/dev/null || true)"
+      "${curl_endpoint}/multi-tenancy/create-tenant" 2>/dev/null || true)"
     tenant_id="$(printf '%s' "$create_resp" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || true)"
     if [[ -z "$tenant_id" ]]; then
       red "  Error: Failed to create tenant. Response: $create_resp"
@@ -2277,7 +2371,7 @@ ensure_credebl_platform_admin_tenant() {
   local tenant_jwt
   tenant_jwt="$(curl -sf --max-time 10 -X POST \
     -H "Authorization: Bearer ${root_jwt}" \
-    "${endpoint}/multi-tenancy/get-token/${tenant_id}" 2>/dev/null \
+    "${curl_endpoint}/multi-tenancy/get-token/${tenant_id}" 2>/dev/null \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('token', d.get('access_token','')))" 2>/dev/null || true)"
 
   if [[ -z "$tenant_jwt" ]]; then
