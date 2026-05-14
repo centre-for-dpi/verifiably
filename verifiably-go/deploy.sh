@@ -1611,6 +1611,7 @@ SESSION_LIMIT=2147483647
 INMEMORY_LRU_CACHE_LIMIT=2147483647
 TRUST_SERVICE_AUTH_TYPE=NoAuth
 TRUST_LIST_URL=https://example.com/trust-list.json
+ALLOW_INSECURE_HTTP_URLS=true
 EOF
   # Set CREDEBL_COMPOSE_DIR for use in compose volume bind mounts
   export CREDEBL_COMPOSE_DIR="$SCRIPT_DIR/deploy/compose/credebl"
