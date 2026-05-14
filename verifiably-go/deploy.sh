@@ -1354,6 +1354,18 @@ ensure_credebl_env() {
   _credebl_public_url=$(url_for credebl "$VERIFIABLY_PUBLIC_HOST" "$CREDEBL_API_PORT")
   _credebl_minio_public_url=$(url_for credebl-minio "$VERIFIABLY_PUBLIC_HOST" "9002")
 
+  local env_dir="$SCRIPT_DIR/deploy/compose/credebl/config"
+  mkdir -p "$env_dir"
+  local env_file="$env_dir/credebl.env"
+
+  # On re-runs, reload previously-generated secrets so we don't regenerate
+  # them and break the already-initialized postgres/minio volumes.
+  if [[ -f "$env_file" ]]; then
+    # set -a exports every variable we source so the [[ -z ]] guards below
+    # see them even though they weren't in the original shell environment.
+    set -a; source "$env_file"; set +a
+  fi
+
   # Auto-generate any missing secrets
   [[ -z "$CREDEBL_POSTGRES_PASSWORD" ]]        && CREDEBL_POSTGRES_PASSWORD=$(openssl rand -hex 16)
   [[ -z "$CREDEBL_MINIO_ROOT_PASSWORD" ]]      && CREDEBL_MINIO_ROOT_PASSWORD=$(openssl rand -hex 16)
@@ -1370,10 +1382,6 @@ ensure_credebl_env() {
   # Export so the compose environment: block can substitute it via ${VAR}.
   export CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY
   CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY=$(printf '%s' "$CREDEBL_CRYPTO_PRIVATE_KEY" | base64 | tr -d '\n')
-
-  local env_dir="$SCRIPT_DIR/deploy/compose/credebl/config"
-  mkdir -p "$env_dir"
-  local env_file="$env_dir/credebl.env"
 
   # KEYCLOAK_ADMIN_PASSWORD comes from the shared compose Keycloak
   local _kc_admin_pass="${KEYCLOAK_ADMIN_PASSWORD:-keycloak}"

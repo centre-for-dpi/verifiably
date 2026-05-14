@@ -689,4 +689,4 @@ volumes:
 # ---------------------------------------------------------------------------
 networks:
   default:
-    name: ${COMPOSE_PROJECT}_default
+    name: waltid_default
