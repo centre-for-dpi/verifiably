@@ -1359,6 +1359,10 @@ ensure_credebl_env() {
   [[ -z "$CREDEBL_NEXTAUTH_SECRET" ]]          && CREDEBL_NEXTAUTH_SECRET=$(openssl rand -hex 32)
   [[ -z "$CREDEBL_KEYCLOAK_CLIENT_SECRET" ]]   && CREDEBL_KEYCLOAK_CLIENT_SECRET=$(openssl rand -hex 16)
   [[ -z "$CREDEBL_SCHEMA_FILE_SERVER_TOKEN" ]] && CREDEBL_SCHEMA_FILE_SERVER_TOKEN=$(openssl rand -hex 32)
+  # schema-file-server needs CRYPTO_PRIVATE_KEY as base64 of the raw key.
+  # Export so the compose environment: block can substitute it via ${VAR}.
+  export CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY
+  CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY=$(printf '%s' "$CREDEBL_CRYPTO_PRIVATE_KEY" | base64 | tr -d '\n')
 
   local env_dir="$SCRIPT_DIR/deploy/compose/credebl/config"
   mkdir -p "$env_dir"

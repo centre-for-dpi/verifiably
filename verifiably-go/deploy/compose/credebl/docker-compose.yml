@@ -178,9 +178,11 @@ services:
     profiles: ["credebl"]
     env_file: config/credebl.env
     environment:
-      # schema-file-server expects CRYPTO_PRIVATE_KEY as base64-encoded string.
-      # This is base64("cdpi-poc-crypto-key-change-me") — override in credebl.env if changed.
-      CRYPTO_PRIVATE_KEY: "Y2RwaS1wb2MtY3J5cHRvLWtleS1jaGFuZ2UtbWU="
+      # schema-file-server expects CRYPTO_PRIVATE_KEY as base64 of the raw key.
+      # CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY is computed by ensure_credebl_env()
+      # and exported to the shell before `docker compose up`. The fallback is
+      # base64("cdpi-poc-crypto-key-change-me") — the deploy.sh default key.
+      CRYPTO_PRIVATE_KEY: "${CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY:-Y2RwaS1wb2MtY3J5cHRvLWtleS1jaGFuZ2UtbWU=}"
     depends_on:
       credebl-postgres:
         condition: service_healthy
