@@ -1347,6 +1347,13 @@ stop_container() {
 # writes deploy/compose/credebl/config/credebl.env with all the variables
 # that CREDEBL services need. Called before docker compose up.
 ensure_credebl_env() {
+  # In subdomain mode, CREDEBL api-gateway and MinIO are fronted by Caddy
+  # (credebl.<domain> and credebl-minio.<domain>) — compute their public URLs
+  # the same way url_for() does for every other service.
+  local _credebl_public_url _credebl_minio_public_url
+  _credebl_public_url=$(url_for credebl "$VERIFIABLY_PUBLIC_HOST" "$CREDEBL_API_PORT")
+  _credebl_minio_public_url=$(url_for credebl-minio "$VERIFIABLY_PUBLIC_HOST" "9002")
+
   # Auto-generate any missing secrets
   [[ -z "$CREDEBL_POSTGRES_PASSWORD" ]]        && CREDEBL_POSTGRES_PASSWORD=$(openssl rand -hex 16)
   [[ -z "$CREDEBL_MINIO_ROOT_PASSWORD" ]]      && CREDEBL_MINIO_ROOT_PASSWORD=$(openssl rand -hex 16)
@@ -1438,15 +1445,15 @@ JWT_SECRET=${CREDEBL_JWT_SECRET}
 JWT_EXPIRY=1d
 NEXTAUTH_SECRET=${CREDEBL_NEXTAUTH_SECRET}
 NEXTAUTH_COOKIE_DOMAIN=
-API_ENDPOINT=${VERIFIABLY_PUBLIC_HOST}:${CREDEBL_API_PORT}
+API_ENDPOINT=${_credebl_public_url#http://}
 VPS_IP=${VERIFIABLY_PUBLIC_HOST}
-PLATFORM_WEB_URL=http://${VERIFIABLY_PUBLIC_HOST}:${CREDEBL_API_PORT}
-FRONT_END_URL=http://${VERIFIABLY_PUBLIC_HOST}:${CREDEBL_API_PORT}
-STUDIO_URL=http://${VERIFIABLY_PUBLIC_HOST}:3010
+PLATFORM_WEB_URL=${_credebl_public_url}
+FRONT_END_URL=${_credebl_public_url}
+STUDIO_URL=${_credebl_public_url}
 SOCKET_HOST=http://credebl-api-gateway:5000
-ENABLE_CORS_IP_LIST=http://${VERIFIABLY_PUBLIC_HOST}:${CREDEBL_API_PORT},http://localhost:${CREDEBL_API_PORT}
+ENABLE_CORS_IP_LIST=${_credebl_public_url},http://localhost:${CREDEBL_API_PORT}
 SHORTENED_URL_DOMAIN=
-DEEPLINK_DOMAIN=http://${VERIFIABLY_PUBLIC_HOST}:9002/credebl-bucket
+DEEPLINK_DOMAIN=${_credebl_minio_public_url}/credebl-bucket
 MOBILE_APP=Inji Wallet
 MOBILE_APP_NAME=Inji Wallet
 MOBILE_APP_DOWNLOAD_URL=https://inji.io
@@ -2454,6 +2461,8 @@ render_public_caddyfile() {
     "keycloak|keycloak:8180|http"  # auto-skipped when VERIFIABLY_KEYCLOAK_EXTERNAL_ISSUER_URL is set, via the empty-slug branch below
     "wso2|wso2is:9443|https-skipverify"
     "verifiably|verifiably-go:8080|http"
+    "credebl|credebl-api-gateway:5000|http"
+    "credebl-minio|credebl-minio:9000|http"
   )
 
   {
