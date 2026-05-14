@@ -130,6 +130,21 @@ url_for() {
 
 # Per-service ports used in the stanzas + URL rewrite map.
 : "${WALTID_ISSUER_PORT:=7002}"
+# CREDEBL — external stack managed by init-credebl.sh (cdpi-poc). Not a
+# compose service; verifiably-go reaches it via network URL. Set these in
+# .env or export before running ./deploy.sh up credebl.
+: "${CREDEBL_API_URL:=}"             # e.g. http://161.97.152.40:5000 or https://credebl.example.com
+: "${CREDEBL_EMAIL:=}"               # platform-admin email
+: "${CREDEBL_PASSWORD:=}"            # plaintext; encrypted by adapter at sign-in
+: "${CREDEBL_CRYPTO_PRIVATE_KEY:=}"  # CRYPTO_PRIVATE_KEY from credebl/.env
+: "${CREDEBL_ORG_ID:=}"              # org UUID provisioned by init-credebl.sh
+: "${CREDEBL_ISSUER_ID:=}"           # OID4VCI issuer DB ID from init-credebl.sh
+: "${CREDEBL_VERIFIER_ID:=}"         # optional — auto-provisioned on first verify
+: "${CREDEBL_DEFAULT_PIN:=1234}"
+: "${CREDEBL_INTERNAL_BASE_URL:=}"   # optional — Docker-internal host the Credo
+                                     # controller advertises in offer URIs. Set
+                                     # when offers embed a Docker service name that
+                                     # wallets can't resolve. Leave empty otherwise.
 : "${WALTID_WALLET_PORT:=7001}"
 : "${WALTID_VERIFIER_PORT:=7003}"
 : "${CERTIFY_NGINX_PORT:=8091}"
@@ -185,6 +200,9 @@ INJIWEB_SERVICES=(
   injiweb-mock-identity injiweb-esignet injiweb-oidc-ui
   injiweb-minio injiweb-datashare injiweb-mimoto injiweb-ui
 )
+# CREDEBL is an external service managed by init-credebl.sh (cdpi-poc repo).
+# No compose services are needed — verifiably-go reaches it via CREDEBL_API_URL.
+CREDEBL_SERVICES=()
 
 # ------------------------------------------------------------------ helpers
 
@@ -234,6 +252,7 @@ scenario_services() {
         "${TRANSLATOR_SERVICES[@]}" \
         "${INJI_CORE_SERVICES[@]}" \
         "${INJIWEB_SERVICES[@]}"
+      # CREDEBL is external — no compose services, but the scenario is valid.
       ;;
     waltid)
       printf '%s\n' \
@@ -248,8 +267,15 @@ scenario_services() {
         "${IDP_KEYCLOAK[@]}" "${IDP_WSO2IS[@]}" \
         "${TRANSLATOR_SERVICES[@]}"
       ;;
+    credebl)
+      # CREDEBL itself is external — only the shared IdP + translator containers
+      # are needed alongside it.
+      printf '%s\n' \
+        "${IDP_KEYCLOAK[@]}" "${IDP_WSO2IS[@]}" \
+        "${TRANSLATOR_SERVICES[@]}"
+      ;;
     *)
-      red "unknown scenario: $scenario (want: all | waltid | inji)"; return 1;;
+      red "unknown scenario: $scenario (want: all | waltid | inji | credebl)"; return 1;;
   esac
 }
 
@@ -471,15 +497,68 @@ JSON
 JSON
 )
 
+  # CREDEBL stanza — only rendered when CREDEBL_API_URL is non-empty.
+  local credebl_stanza=""
+  if [[ -n "$CREDEBL_API_URL" ]]; then
+    credebl_stanza=$(cat <<JSON
+    {
+      "vendor": "CREDEBL",
+      "type": "credebl",
+      "roles": ["issuer", "verifier"],
+      "dpg": {
+        "Vendor": "CREDEBL",
+        "Version": "v2.x",
+        "Tag": "API-based",
+        "Tagline": "Enterprise-grade, multi-tenant VC platform — SD-JWT VC issuance and OID4VP verification.",
+        "FlowPreAuth": true,
+        "FlowPlain": "OID4VCI with pre-authorized code flow; OID4VP DCQL for presentation.",
+        "Formats": ["sd_jwt_vc (IETF)"],
+        "FormatsPlain": "SD-JWT VC (dc+sd-jwt, IETF draft).",
+        "DirectPDF": false,
+        "DirectPDFPlain": "No PDF export — credentials are delivered to a wallet via OID4VCI.",
+        "Caveats": "Holder wallet required for OID4VP; CREDEBL has no built-in wallet component.",
+        "Capabilities": [
+          {"Kind": "flow",        "Key": "pre_auth",      "Title": "Pre-authorized code flow", "Body": "Issuer stages the offer; wallet redeems at the token endpoint using the PIN."},
+          {"Kind": "flow",        "Key": "oid4vp",        "Title": "OID4VP · DCQL",            "Body": "Verifier sends a DCQL query; holder wallet presents a matching SD-JWT VC."},
+          {"Kind": "token",       "Key": "issuer_signed", "Title": "Issuer-signed tokens",     "Body": "Tokens signed by the CREDEBL org's DID key."},
+          {"Kind": "mode",        "Key": "wallet",        "Title": "Wallet delivery",          "Body": "Offer URI scanned or pasted into any OID4VCI-compatible wallet."},
+          {"Kind": "bulk_source", "Key": "csv",           "Title": "Bulk from CSV",            "Body": "Operator uploads a CSV; each row issues one SD-JWT VC credential offer."},
+          {"Kind": "limitation",  "Key": "no_holder",     "Title": "No built-in holder wallet", "Body": "CREDEBL is an issuer + verifier platform; use Inji Web or any OID4VCI wallet as the holder."}
+        ]
+      },
+      "config": {
+        "baseUrl": "${CREDEBL_API_URL}",
+        "email": "${CREDEBL_EMAIL}",
+        "password": "${CREDEBL_PASSWORD}",
+        "cryptoPrivateKey": "${CREDEBL_CRYPTO_PRIVATE_KEY}",
+        "orgId": "${CREDEBL_ORG_ID}",
+        "issuerId": "${CREDEBL_ISSUER_ID}",
+        "verifierId": "${CREDEBL_VERIFIER_ID}",
+        "defaultPin": "${CREDEBL_DEFAULT_PIN}",
+        "internalBaseUrl": "${CREDEBL_INTERNAL_BASE_URL}",
+        "publicBaseUrl": "${CREDEBL_API_URL}"
+      }
+    }
+JSON
+)
+  fi
+
   # Assemble the backends array based on scenario.
   local entries=()
   case "$scenario" in
     all)
-      entries=( "$waltid_stanza" "$inji_authcode_stanza" "$inji_preauth_stanza" "$inji_verify_stanza" "$injiweb_stanza" );;
+      entries=( "$waltid_stanza" "$inji_authcode_stanza" "$inji_preauth_stanza" "$inji_verify_stanza" "$injiweb_stanza" )
+      # Include CREDEBL when configured — it's external so always reachable.
+      [[ -n "$credebl_stanza" ]] && entries+=( "$credebl_stanza" )
+      ;;
     waltid)
       entries=( "$waltid_stanza" );;
     inji)
       entries=( "$inji_authcode_stanza" "$inji_preauth_stanza" "$inji_verify_stanza" "$injiweb_stanza" );;
+    credebl)
+      [[ -z "$credebl_stanza" ]] && { red "CREDEBL_API_URL is required for the credebl scenario"; return 1; }
+      entries=( "$credebl_stanza" )
+      ;;
     *)
       red "unknown scenario: $scenario"; return 1;;
   esac
@@ -595,7 +674,7 @@ auth_providers_for() {
 
 cmd_up() {
   local scenario="${1:-}"
-  [[ -n "$scenario" ]] || { red "usage: deploy.sh up <all|waltid|inji>"; exit 2; }
+  [[ -n "$scenario" ]] || { red "usage: deploy.sh up <all|waltid|inji|credebl>"; exit 2; }
   scenario_services "$scenario" > /dev/null  # validate
 
   require docker
@@ -924,7 +1003,7 @@ cmd_status() {
 
 cmd_config() {
   local scenario="${1:-}"
-  [[ -n "$scenario" ]] || { red "usage: deploy.sh config <all|waltid|inji>"; exit 2; }
+  [[ -n "$scenario" ]] || { red "usage: deploy.sh config <all|waltid|inji|credebl>"; exit 2; }
   backends_for "$scenario"
   echo "---"
   cat "$SCRIPT_DIR/config/backends.json"
@@ -932,7 +1011,7 @@ cmd_config() {
 
 cmd_run() {
   local scenario="${1:-}"
-  [[ -n "$scenario" ]] || { red "usage: deploy.sh run <all|waltid|inji>"; exit 2; }
+  [[ -n "$scenario" ]] || { red "usage: deploy.sh run <all|waltid|inji|credebl>"; exit 2; }
   require docker
   backends_for "$scenario"
   auth_providers_for "$scenario"
@@ -1514,22 +1593,26 @@ usage() {
 usage: deploy.sh <command> [scenario]
 
 commands:
-  up <all|waltid|inji>     start compose services + build & run verifiably-go container
-  down [all|waltid|inji]   stop them (default: all)
-  run <all|waltid|inji>    rebuild + restart only the verifiably-go container
-                           (use when the DPG stack is already up)
-  config <all|waltid|inji> print the backends.json that would be generated
-  status                   summarise what's running
-  reset                    wipe every waltid_* named volume — fixes keystore/DB
-                           desync ("KER-KMA-004 No such alias: ..."). DESTRUCTIVE;
-                           asks for explicit 'RESET' confirmation.
+  up <all|waltid|inji|credebl>     start compose services + build & run verifiably-go container
+  down [all|waltid|inji|credebl]   stop them (default: all)
+  run <all|waltid|inji|credebl>    rebuild + restart only the verifiably-go container
+                                   (use when the DPG stack is already up)
+  config <all|waltid|inji|credebl> print the backends.json that would be generated
+  status                           summarise what's running
+  reset                            wipe every waltid_* named volume — fixes keystore/DB
+                                   desync ("KER-KMA-004 No such alias: ..."). DESTRUCTIVE;
+                                   asks for explicit 'RESET' confirmation.
 
 scenarios:
-  all     every DPG + both IdPs + LibreTranslate
-  waltid  walt.id stack + Keycloak + LibreTranslate
-  inji    Inji Certify (×2) + Inji Verify + Inji Web + WSO2IS + LibreTranslate
+  all      every DPG + both IdPs + LibreTranslate
+           (includes CREDEBL when CREDEBL_API_URL is set)
+  waltid   walt.id stack + Keycloak + LibreTranslate
+  inji     Inji Certify (×2) + Inji Verify + Inji Web + WSO2IS + LibreTranslate
+  credebl  CREDEBL (external) + Keycloak + WSO2IS + LibreTranslate
+           requires: CREDEBL_API_URL, CREDEBL_EMAIL, CREDEBL_PASSWORD,
+                     CREDEBL_CRYPTO_PRIVATE_KEY, CREDEBL_ORG_ID, CREDEBL_ISSUER_ID
 
-all three scenarios include a containerised verifiably-go on port $VERIFIABLY_HOST_PORT,
+all scenarios include a containerised verifiably-go on port $VERIFIABLY_HOST_PORT,
 attached to the compose network (${COMPOSE_PROJECT}_default).
 EOF
 }
