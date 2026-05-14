@@ -42,8 +42,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -63,8 +62,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -84,8 +82,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -112,8 +109,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -150,8 +146,7 @@ services:
           mc admin user add local "$${AWS_ACCESS_KEY_ID}" "$${AWS_SECRET_ACCESS_KEY}"
         mc admin policy attach local readwrite --user "$${AWS_ACCESS_KEY_ID}"
         echo 'MinIO setup complete'
-    networks:
-      - waltid_default
+
 
   # ── Mailpit (SMTP mock — replaces SendGrid) ─────────────────────────────────
   credebl-mailpit:
@@ -162,8 +157,7 @@ services:
     ports:
       - "1027:1025"
       - "8027:8025"
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -186,8 +180,7 @@ services:
     depends_on:
       credebl-postgres:
         condition: service_healthy
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -208,8 +201,7 @@ services:
       - ./oob-redirect.py:/oob-redirect.py:ro
     depends_on:
       - credebl-minio
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -240,8 +232,7 @@ services:
     depends_on:
       credebl-postgres:
         condition: service_healthy
-    networks:
-      - waltid_default
+
 
   # ── Platform admin bootstrap sync ───────────────────────────────────────────
   credebl-platform-admin-bootstrap:
@@ -264,8 +255,7 @@ services:
         condition: service_healthy
       credebl-seed:
         condition: service_completed_successfully
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -298,8 +288,7 @@ services:
       timeout: 10s
       retries: 10
       start_period: 60s
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -321,8 +310,7 @@ services:
         condition: service_healthy
       credebl-platform-admin-bootstrap:
         condition: service_completed_successfully
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -344,8 +332,7 @@ services:
         condition: service_healthy
       credebl-api-gateway:
         condition: service_healthy
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -369,8 +356,7 @@ services:
         condition: service_started
       credebl-user:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -398,8 +384,7 @@ services:
         condition: service_started
       credebl-connection:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -425,8 +410,7 @@ services:
         condition: service_started
       credebl-issuance:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -454,8 +438,7 @@ services:
         condition: service_started
       credebl-ledger:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -487,8 +470,7 @@ services:
         condition: service_started
       credebl-organization:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -528,8 +510,7 @@ services:
         condition: service_started
       credebl-verification:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -573,8 +554,7 @@ services:
         condition: service_healthy
       credebl-platform-admin-bootstrap:
         condition: service_completed_successfully
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -594,8 +574,7 @@ services:
         condition: service_healthy
       credebl-api-gateway:
         condition: service_healthy
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -617,8 +596,7 @@ services:
         condition: service_healthy
       credebl-issuance:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -640,8 +618,7 @@ services:
         condition: service_healthy
       credebl-verification:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -665,8 +642,7 @@ services:
         condition: service_started
       credebl-organization:
         condition: service_started
-    networks:
-      - waltid_default
+
     deploy:
       resources:
         limits:
@@ -681,11 +657,6 @@ volumes:
   credebl_nats_data:
   credebl_minio_data:
 
-# ---------------------------------------------------------------------------
-# Network — the waltid compose project's default network, pre-created by
-# deploy.sh before `compose up`. Declared external so Compose skips label
-# validation (labels on a pre-created network differ from compose-managed).
-# ---------------------------------------------------------------------------
-networks:
-  waltid_default:
-    external: true
+# No networks section needed: the merged compose project has a single
+# default network (waltid_default) declared in the stack compose file.
+# Services that omit `networks:` automatically join it.

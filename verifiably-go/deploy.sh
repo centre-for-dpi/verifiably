@@ -875,12 +875,6 @@ cmd_up() {
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     profile_args+=( --profile subdomain )
   fi
-  # Ensure the shared project network exists before compose up.
-  # CREDEBL declares it as external: true so Compose skips label validation —
-  # the network just needs to exist. Idempotent: silently ignored when already
-  # present regardless of how it was created.
-  docker network create "${COMPOSE_PROJECT}_default" 2>/dev/null || true
-
   compose "${profile_args[@]}" up -d "${services[@]}"
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     compose "${profile_args[@]}" up -d caddy-public
