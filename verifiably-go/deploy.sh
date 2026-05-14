@@ -130,13 +130,31 @@ url_for() {
 
 # Per-service ports used in the stanzas + URL rewrite map.
 : "${WALTID_ISSUER_PORT:=7002}"
-# CREDEBL — external stack managed by init-credebl.sh (cdpi-poc). Not a
-# compose service; verifiably-go reaches it via network URL. Set these in
-# .env or export before running ./deploy.sh up credebl.
+# CREDEBL — compose-managed DPG stack (deploy/compose/credebl/).
+# `./deploy.sh up credebl` spins up all CREDEBL services locally.
+# To use an EXTERNAL CREDEBL instead, set CREDEBL_API_URL and friends.
+: "${CREDEBL_API_PORT:=5001}"             # host port for api-gateway (5000 conflicts with LibreTranslate)
+: "${CREDEBL_MINIO_CONSOLE_PORT:=9013}"
+: "${CREDEBL_POSTGRES_PASSWORD:=}"        # auto-generated in ensure_credebl_env if empty
+: "${CREDEBL_MINIO_ROOT_PASSWORD:=}"
+: "${CREDEBL_MINIO_ACCESS_KEY:=credebls3}"
+: "${CREDEBL_MINIO_SECRET_KEY:=}"
+: "${CREDEBL_JWT_SECRET:=}"
+: "${CREDEBL_JWT_TOKEN_SECRET:=}"
+: "${CREDEBL_PLATFORM_SEED:=}"
+: "${CREDEBL_AGENT_API_KEY:=}"
+: "${CREDEBL_PLATFORM_WALLET_PASSWORD:=}"
+: "${CREDEBL_NEXTAUTH_SECRET:=}"
+: "${CREDEBL_KEYCLOAK_CLIENT_SECRET:=}"
+: "${CREDEBL_SCHEMA_FILE_SERVER_TOKEN:=}"
+: "${CREDEBL_CRYPTO_PRIVATE_KEY:=cdpi-poc-crypto-key-change-me}"
+: "${CREDEBL_ADMIN_EMAIL:=admin@cdpi.dev}"
+: "${CREDEBL_KEYCLOAK_HOST:=localhost}"    # bare hostname of shared Keycloak (for extra_hosts)
+: "${CREDEBL_COMPOSE_DIR:=}"              # set by deploy.sh to deploy/compose/credebl abs path
+# External CREDEBL (legacy): set CREDEBL_API_URL to point at an external CREDEBL instance
 : "${CREDEBL_API_URL:=}"             # e.g. http://161.97.152.40:5000 or https://credebl.example.com
 : "${CREDEBL_EMAIL:=}"               # platform-admin email
 : "${CREDEBL_PASSWORD:=}"            # plaintext; encrypted by adapter at sign-in
-: "${CREDEBL_CRYPTO_PRIVATE_KEY:=}"  # CRYPTO_PRIVATE_KEY from credebl/.env
 : "${CREDEBL_ORG_ID:=}"              # org UUID provisioned by init-credebl.sh
 : "${CREDEBL_ISSUER_ID:=}"           # OID4VCI issuer DB ID from init-credebl.sh
 : "${CREDEBL_VERIFIER_ID:=}"         # optional — auto-provisioned on first verify
@@ -200,9 +218,21 @@ INJIWEB_SERVICES=(
   injiweb-mock-identity injiweb-esignet injiweb-oidc-ui
   injiweb-minio injiweb-datashare injiweb-mimoto injiweb-ui
 )
-# CREDEBL is an external service managed by init-credebl.sh (cdpi-poc repo).
-# No compose services are needed — verifiably-go reaches it via CREDEBL_API_URL.
-CREDEBL_SERVICES=()
+# CREDEBL compose services — started when `./deploy.sh up credebl` is used
+# without an external CREDEBL_API_URL.
+CREDEBL_SERVICES=(
+  credebl-postgres credebl-redis credebl-nats
+  credebl-minio credebl-minio-setup
+  credebl-mailpit
+  credebl-schema-file-server credebl-oob-redirector
+  credebl-seed credebl-platform-admin-bootstrap
+  credebl-api-gateway credebl-user credebl-utility
+  credebl-connection credebl-issuance credebl-ledger
+  credebl-organization credebl-verification
+  credebl-agent-provisioning credebl-agent-service
+  credebl-cloud-wallet credebl-oid4vc-issuance
+  credebl-oid4vc-verification credebl-ecosystem
+)
 
 # ------------------------------------------------------------------ helpers
 
@@ -235,6 +265,13 @@ compose() {
     sed "s|{{VERIFIABLY_GO_DIR}}|$SCRIPT_DIR|g" "$VERIFIABLY_COMPOSE_OVERRIDE" > "$rendered"
     extra+=( -f "$rendered" )
   fi
+  # Always include the CREDEBL compose file when it exists. Docker compose
+  # profiles (--profile credebl) control which services actually start — the
+  # file being present doesn't start anything on its own.
+  local credebl_compose="$SCRIPT_DIR/deploy/compose/credebl/docker-compose.yml"
+  if [[ -f "$credebl_compose" ]]; then
+    extra+=( -f "$credebl_compose" )
+  fi
   docker compose -p "$COMPOSE_PROJECT" -f "$VERIFIABLY_COMPOSE_FILE" "${extra[@]}" "$@"
 }
 
@@ -252,7 +289,10 @@ scenario_services() {
         "${TRANSLATOR_SERVICES[@]}" \
         "${INJI_CORE_SERVICES[@]}" \
         "${INJIWEB_SERVICES[@]}"
-      # CREDEBL is external — no compose services, but the scenario is valid.
+      # Include CREDEBL compose services when no external URL is configured.
+      if [[ -z "$CREDEBL_API_URL" && -n "$CREDEBL_POSTGRES_PASSWORD" ]]; then
+        printf '%s\n' "${CREDEBL_SERVICES[@]}"
+      fi
       ;;
     waltid)
       printf '%s\n' \
@@ -268,9 +308,9 @@ scenario_services() {
         "${TRANSLATOR_SERVICES[@]}"
       ;;
     credebl)
-      # CREDEBL itself is external — only the shared IdP + translator containers
-      # are needed alongside it.
+      # CREDEBL compose-managed: all CREDEBL services + shared IdP + translator.
       printf '%s\n' \
+        "${CREDEBL_SERVICES[@]}" \
         "${IDP_KEYCLOAK[@]}" "${IDP_WSO2IS[@]}" \
         "${TRANSLATOR_SERVICES[@]}"
       ;;
@@ -284,6 +324,13 @@ scenario_services() {
 # docker compose.
 scenario_needs_injiweb() {
   scenario_services "$1" | grep -q '^injiweb-' && echo yes || echo no
+}
+
+# scenario_needs_credebl prints "yes" if the scenario includes any credebl-*
+# service — that decides whether we need to pass `--profile credebl` to
+# docker compose and run the CREDEBL bootstrap functions.
+scenario_needs_credebl() {
+  scenario_services "$1" | grep -q '^credebl-' && echo yes || echo no
 }
 
 # backends_for writes a scenario-specific config/backends.json. The content
@@ -497,9 +544,35 @@ JSON
 JSON
 )
 
-  # CREDEBL stanza — only rendered when CREDEBL_API_URL is non-empty.
+  # CREDEBL stanza — rendered for external (CREDEBL_API_URL set) or compose-managed
+  # (scenario includes credebl-* services).
   local credebl_stanza=""
+  local _credebl_url=""
+  local _credebl_email="" _credebl_password="" _credebl_crypto_key=""
+  local _credebl_org_id="" _credebl_issuer_id="" _credebl_verifier_id=""
+  local _credebl_internal_base_url=""
   if [[ -n "$CREDEBL_API_URL" ]]; then
+    # External CREDEBL
+    _credebl_url="$CREDEBL_API_URL"
+    _credebl_email="$CREDEBL_EMAIL"
+    _credebl_password="$CREDEBL_PASSWORD"
+    _credebl_crypto_key="$CREDEBL_CRYPTO_PRIVATE_KEY"
+    _credebl_org_id="$CREDEBL_ORG_ID"
+    _credebl_issuer_id="$CREDEBL_ISSUER_ID"
+    _credebl_verifier_id="$CREDEBL_VERIFIER_ID"
+    _credebl_internal_base_url="$CREDEBL_INTERNAL_BASE_URL"
+  elif [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    # Compose-managed CREDEBL
+    _credebl_url=$(url_for credebl "$VERIFIABLY_PUBLIC_HOST" "$CREDEBL_API_PORT")
+    _credebl_email="${CREDEBL_ADMIN_EMAIL}"
+    _credebl_password="changeme"
+    _credebl_crypto_key="${CREDEBL_CRYPTO_PRIVATE_KEY}"
+    _credebl_org_id=""
+    _credebl_issuer_id=""
+    _credebl_verifier_id=""
+    _credebl_internal_base_url="http://credebl-api-gateway:5000"
+  fi
+  if [[ -n "$_credebl_url" ]]; then
     credebl_stanza=$(cat <<JSON
     {
       "vendor": "CREDEBL",
@@ -527,16 +600,16 @@ JSON
         ]
       },
       "config": {
-        "baseUrl": "${CREDEBL_API_URL}",
-        "email": "${CREDEBL_EMAIL}",
-        "password": "${CREDEBL_PASSWORD}",
-        "cryptoPrivateKey": "${CREDEBL_CRYPTO_PRIVATE_KEY}",
-        "orgId": "${CREDEBL_ORG_ID}",
-        "issuerId": "${CREDEBL_ISSUER_ID}",
-        "verifierId": "${CREDEBL_VERIFIER_ID}",
+        "baseUrl": "${_credebl_url}",
+        "email": "${_credebl_email}",
+        "password": "${_credebl_password}",
+        "cryptoPrivateKey": "${_credebl_crypto_key}",
+        "orgId": "${_credebl_org_id}",
+        "issuerId": "${_credebl_issuer_id}",
+        "verifierId": "${_credebl_verifier_id}",
         "defaultPin": "${CREDEBL_DEFAULT_PIN}",
-        "internalBaseUrl": "${CREDEBL_INTERNAL_BASE_URL}",
-        "publicBaseUrl": "${CREDEBL_API_URL}"
+        "internalBaseUrl": "${_credebl_internal_base_url}",
+        "publicBaseUrl": "${_credebl_url}"
       }
     }
 JSON
@@ -548,7 +621,7 @@ JSON
   case "$scenario" in
     all)
       entries=( "$waltid_stanza" "$inji_authcode_stanza" "$inji_preauth_stanza" "$inji_verify_stanza" "$injiweb_stanza" )
-      # Include CREDEBL when configured — it's external so always reachable.
+      # Include CREDEBL when configured (external or compose-managed).
       [[ -n "$credebl_stanza" ]] && entries+=( "$credebl_stanza" )
       ;;
     waltid)
@@ -556,7 +629,7 @@ JSON
     inji)
       entries=( "$inji_authcode_stanza" "$inji_preauth_stanza" "$inji_verify_stanza" "$injiweb_stanza" );;
     credebl)
-      [[ -z "$credebl_stanza" ]] && { red "CREDEBL_API_URL is required for the credebl scenario"; return 1; }
+      [[ -z "$credebl_stanza" ]] && { red "CREDEBL not configured — either set CREDEBL_API_URL or ensure compose-managed CREDEBL secrets are generated"; return 1; }
       entries=( "$credebl_stanza" )
       ;;
     *)
@@ -776,12 +849,24 @@ cmd_up() {
     export ESIGNET_BASE_URL=$(url_for esignet "$VERIFIABLY_PUBLIC_HOST" "$ESIGNET_PUBLIC_PORT")
   fi
 
+  # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE
+  # docker compose up so the generated config/credebl.env file exists when
+  # compose reads it for the CREDEBL service definitions.
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    bold "▶ Preparing CREDEBL environment"
+    ensure_credebl_env
+    write_credebl_agent_runtime_env
+  fi
+
   bold "▶ Starting DPG services via docker compose"
   local -a services
   readarray -t services < <(scenario_services "$scenario")
   local profile_args=()
   if [[ "$(scenario_needs_injiweb "$scenario")" == "yes" ]]; then
     profile_args+=( --profile injiweb )
+  fi
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    profile_args+=( --profile credebl )
   fi
   # Per-subdomain mode (VERIFIABLY_HOSTS_PATTERN set) brings up the
   # caddy-public service that fronts every container on 80/443. Skipped
@@ -882,6 +967,25 @@ cmd_up() {
     repair_injiweb_client_redirect_uri
   fi
 
+  # Bootstrap CREDEBL: import Keycloak realm, apply patches, provision shared agent.
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    bold "▶ Bootstrapping CREDEBL Keycloak realm"
+    bootstrap_credebl_keycloak_realm \
+      || red "  CREDEBL Keycloak realm import failed (proceeding — re-run bootstrap_credebl_keycloak_realm manually)"
+
+    bold "▶ Applying CREDEBL container patches"
+    apply_credebl_patches \
+      || red "  CREDEBL patch application failed (proceeding — some features may not work)"
+
+    bold "▶ Provisioning CREDEBL platform-admin shared agent"
+    ensure_credebl_platform_admin_shared_agent \
+      || red "  CREDEBL shared agent provisioning failed (proceeding — re-run manually)"
+
+    bold "▶ Setting up CREDEBL platform-admin tenant wallet"
+    ensure_credebl_platform_admin_tenant \
+      || red "  CREDEBL tenant wallet setup failed (proceeding — re-run manually)"
+  fi
+
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
   # operator can SEE which step is slow or stuck. Previously this was
@@ -953,6 +1057,9 @@ cmd_down() {
   if [[ "$(scenario_needs_injiweb "$scenario")" == "yes" ]]; then
     profile_args+=( --profile injiweb )
   fi
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    profile_args+=( --profile credebl )
+  fi
   compose "${profile_args[@]}" stop "${services[@]}"
 }
 
@@ -991,7 +1098,7 @@ cmd_reset() {
 
 cmd_status() {
   bold "▶ Running compose services"
-  compose --profile injiweb ps --format '  {{.Service}}  {{.Status}}' 2>/dev/null | sort -u
+  compose --profile injiweb --profile credebl ps --format '  {{.Service}}  {{.Status}}' 2>/dev/null | sort -u
   echo
   bold "▶ verifiably-go container"
   if docker ps --filter "name=^${VERIFIABLY_CONTAINER}$" --format '  {{.Names}}  {{.Status}}  {{.Ports}}' | grep -q .; then
@@ -1046,6 +1153,13 @@ wait_for_services() {
   esac
   case "$scenario" in
     all|inji)      ports+=( 8082 8091 8094 );;
+  esac
+  case "$scenario" in
+    all|credebl)
+      if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+        ports+=( "$CREDEBL_API_PORT" )
+      fi
+      ;;
   esac
   # De-dup; bash-ish.
   local seen="" p
@@ -1223,6 +1337,916 @@ stop_container() {
   if docker ps -a --filter "name=^${VERIFIABLY_CONTAINER}$" -q | grep -q .; then
     docker rm -f "$VERIFIABLY_CONTAINER" >/dev/null 2>&1 || true
   fi
+}
+
+# =============================================================================
+# CREDEBL helpers
+# =============================================================================
+
+# ensure_credebl_env auto-generates secrets for any empty CREDEBL_* vars and
+# writes deploy/compose/credebl/config/credebl.env with all the variables
+# that CREDEBL services need. Called before docker compose up.
+ensure_credebl_env() {
+  # Auto-generate any missing secrets
+  [[ -z "$CREDEBL_POSTGRES_PASSWORD" ]]        && CREDEBL_POSTGRES_PASSWORD=$(openssl rand -hex 16)
+  [[ -z "$CREDEBL_MINIO_ROOT_PASSWORD" ]]      && CREDEBL_MINIO_ROOT_PASSWORD=$(openssl rand -hex 16)
+  [[ -z "$CREDEBL_MINIO_SECRET_KEY" ]]         && CREDEBL_MINIO_SECRET_KEY=$(openssl rand -hex 16)
+  [[ -z "$CREDEBL_JWT_SECRET" ]]               && CREDEBL_JWT_SECRET=$(openssl rand -hex 32)
+  [[ -z "$CREDEBL_JWT_TOKEN_SECRET" ]]         && CREDEBL_JWT_TOKEN_SECRET=$(openssl rand -hex 32)
+  [[ -z "$CREDEBL_PLATFORM_SEED" ]]            && CREDEBL_PLATFORM_SEED=$(openssl rand -hex 16)
+  [[ -z "$CREDEBL_AGENT_API_KEY" ]]            && CREDEBL_AGENT_API_KEY=$(openssl rand -hex 16)
+  [[ -z "$CREDEBL_PLATFORM_WALLET_PASSWORD" ]] && CREDEBL_PLATFORM_WALLET_PASSWORD=$(openssl rand -hex 16)
+  [[ -z "$CREDEBL_NEXTAUTH_SECRET" ]]          && CREDEBL_NEXTAUTH_SECRET=$(openssl rand -hex 32)
+  [[ -z "$CREDEBL_KEYCLOAK_CLIENT_SECRET" ]]   && CREDEBL_KEYCLOAK_CLIENT_SECRET=$(openssl rand -hex 16)
+  [[ -z "$CREDEBL_SCHEMA_FILE_SERVER_TOKEN" ]] && CREDEBL_SCHEMA_FILE_SERVER_TOKEN=$(openssl rand -hex 32)
+
+  local env_dir="$SCRIPT_DIR/deploy/compose/credebl/config"
+  mkdir -p "$env_dir"
+  local env_file="$env_dir/credebl.env"
+
+  # KEYCLOAK_ADMIN_PASSWORD comes from the shared compose Keycloak
+  local _kc_admin_pass="${KEYCLOAK_ADMIN_PASSWORD:-keycloak}"
+
+  cat > "$env_file" <<EOF
+POSTGRES_USER=credebl
+POSTGRES_PASSWORD=${CREDEBL_POSTGRES_PASSWORD}
+POSTGRES_DB=credebl
+DATABASE_URL=postgresql://credebl:${CREDEBL_POSTGRES_PASSWORD}@credebl-postgres:5432/credebl
+POOL_DATABASE_URL=postgresql://credebl:${CREDEBL_POSTGRES_PASSWORD}@credebl-postgres:5432/credebl
+REDIS_HOST=credebl-redis
+REDIS_PORT=6379
+REDIS_PASSWORD=
+NATS_AUTH_TYPE=none
+NATS_URL=nats://credebl-nats:4222
+HIDE_EXPERIMENTAL_OIDC_CONTROLLERS=false
+KEYCLOAK_ADMIN_USER=admin
+KEYCLOAK_ADMIN_PASSWORD=${_kc_admin_pass}
+KEYCLOAK_DOMAIN=http://keycloak:8180/
+KEYCLOAK_ADMIN_URL=http://keycloak:8180
+KEYCLOAK_MASTER_REALM=master
+KEYCLOAK_REALM=credebl-realm
+KEYCLOAK_CLIENT_ID=credebl-client
+KEYCLOAK_CLIENT_SECRET=${CREDEBL_KEYCLOAK_CLIENT_SECRET}
+KEYCLOAK_MANAGEMENT_CLIENT_ID=adminClient
+KEYCLOAK_MANAGEMENT_CLIENT_SECRET=${CREDEBL_KEYCLOAK_CLIENT_SECRET}
+PLATFORM_ADMIN_KEYCLOAK_ID=credebl-client
+PLATFORM_ADMIN_KEYCLOAK_SECRET=${CREDEBL_KEYCLOAK_CLIENT_SECRET}
+ADMIN_KEYCLOAK_ID=adminClient
+ADMIN_KEYCLOAK_SECRET=${CREDEBL_KEYCLOAK_CLIENT_SECRET}
+PLATFORM_ADMIN_OLD_CLIENT_ID=
+SUPPORTED_SSO_CLIENTS=CREDEBL
+PLATFORM_ADMIN_INITIAL_PASSWORD=changeme
+KEYCLOAK_PUBLIC_URL=http://${VERIFIABLY_PUBLIC_HOST}:${KEYCLOAK_PORT}
+KEYCLOAK_HOST=${CREDEBL_KEYCLOAK_HOST}
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=${CREDEBL_MINIO_ROOT_PASSWORD}
+MINIO_CONSOLE_PORT=${CREDEBL_MINIO_CONSOLE_PORT}
+AWS_ACCESS_KEY_ID=${CREDEBL_MINIO_ACCESS_KEY}
+AWS_SECRET_ACCESS_KEY=${CREDEBL_MINIO_SECRET_KEY}
+AWS_ACCESS_KEY=${CREDEBL_MINIO_ACCESS_KEY}
+AWS_SECRET_KEY=${CREDEBL_MINIO_SECRET_KEY}
+AWS_PUBLIC_ACCESS_KEY=${CREDEBL_MINIO_ACCESS_KEY}
+AWS_PUBLIC_SECRET_KEY=${CREDEBL_MINIO_SECRET_KEY}
+AWS_PUBLIC_REGION=us-east-1
+AWS_ENDPOINT=http://credebl-minio:9000
+AWS_REGION=us-east-1
+S3_BUCKET_NAME=credebl-bucket
+S3_STOREOBJECT_BUCKET=credebl-bucket
+AWS_BUCKET=credebl-bucket
+AWS_S3_STOREOBJECT_ACCESS_KEY=${CREDEBL_MINIO_ACCESS_KEY}
+AWS_S3_STOREOBJECT_SECRET_KEY=${CREDEBL_MINIO_SECRET_KEY}
+AWS_S3_STOREOBJECT_REGION=us-east-1
+AWS_S3_STOREOBJECT_BUCKET=credebl-bucket
+AWS_S3_STOREOBJECT_ENDPOINT=http://credebl-minio:9000
+EMAIL_PROVIDER=smtp
+SENDGRID_API_KEY=SG.mock-not-used
+SMTP_HOST=credebl-mailpit
+SMTP_PORT=1025
+SMTP_SECURE=false
+SMTP_USER=mailpit
+SMTP_PASS=mailpit
+EMAIL_FROM=noreply@cdpi-poc.local
+API_GATEWAY_PROTOCOL=http
+API_GATEWAY_HOST=0.0.0.0
+API_GATEWAY_PORT=5000
+PLATFORM_SEED=${CREDEBL_PLATFORM_SEED}
+JWT_SECRET=${CREDEBL_JWT_SECRET}
+JWT_EXPIRY=1d
+NEXTAUTH_SECRET=${CREDEBL_NEXTAUTH_SECRET}
+NEXTAUTH_COOKIE_DOMAIN=
+API_ENDPOINT=${VERIFIABLY_PUBLIC_HOST}:${CREDEBL_API_PORT}
+VPS_IP=${VERIFIABLY_PUBLIC_HOST}
+PLATFORM_WEB_URL=http://${VERIFIABLY_PUBLIC_HOST}:${CREDEBL_API_PORT}
+FRONT_END_URL=http://${VERIFIABLY_PUBLIC_HOST}:${CREDEBL_API_PORT}
+STUDIO_URL=http://${VERIFIABLY_PUBLIC_HOST}:3010
+SOCKET_HOST=http://credebl-api-gateway:5000
+ENABLE_CORS_IP_LIST=http://${VERIFIABLY_PUBLIC_HOST}:${CREDEBL_API_PORT},http://localhost:${CREDEBL_API_PORT}
+SHORTENED_URL_DOMAIN=
+DEEPLINK_DOMAIN=http://${VERIFIABLY_PUBLIC_HOST}:9002/credebl-bucket
+MOBILE_APP=Inji Wallet
+MOBILE_APP_NAME=Inji Wallet
+MOBILE_APP_DOWNLOAD_URL=https://inji.io
+PLAY_STORE_DOWNLOAD_LINK=https://play.google.com/store/apps/details?id=io.mosip.residentapp
+IOS_DOWNLOAD_LINK=https://apps.apple.com/in/app/inji-wallet/id1631979601
+APP_PROTOCOL=http
+BRAND_LOGO=http://${VERIFIABLY_PUBLIC_HOST}:9002/credebl-bucket/orgLogos/credebl-logo.png
+PLATFORM_NAME=CREDEBL
+PUBLIC_PLATFORM_SUPPORT_EMAIL=support@cdpi-poc.local
+POWERED_BY=CDPI
+POWERED_BY_URL=https://cdpi.dev
+ORGANIZATION=credebl
+CONTEXT=platform
+APP=api
+CONSOLE_LOG_FLAG=true
+ELK_LOG=false
+LOG_LEVEL=info
+NEXT_PUBLIC_ACTIVE_THEME=credebl
+OOB_BATCH_SIZE=50
+PROOF_REQ_CONN_LIMIT=50
+PLATFORM_ADMIN_EMAIL=${CREDEBL_ADMIN_EMAIL}
+CRYPTO_PRIVATE_KEY=${CREDEBL_CRYPTO_PRIVATE_KEY}
+PLATFORM_WALLET_NAME=platformadminwallet
+PLATFORM_WALLET_PASSWORD=${CREDEBL_PLATFORM_WALLET_PASSWORD}
+AGENT_API_KEY=${CREDEBL_AGENT_API_KEY}
+AGENT_PROTOCOL=http
+WALLET_STORAGE_HOST=172.17.0.1
+WALLET_STORAGE_PORT=5432
+WALLET_STORAGE_USER=credebl
+WALLET_STORAGE_PASSWORD=${CREDEBL_POSTGRES_PASSWORD}
+GEO_LOCATION_MASTER_DATA_IMPORT_SCRIPT=libs/prisma-service/prisma/scripts/geo_location_data_import.sh
+UPDATE_CLIENT_CREDENTIAL_SCRIPT=libs/prisma-service/prisma/scripts/update_client_credential_data.sh
+LEDGER_URL=http://test.bcovrin.vonx.io
+GENESIS_URL=http://test.bcovrin.vonx.io/genesis
+AGENT_PORT_START=8200
+AGENT_PORT_END=8299
+INBOUND_PORT_START=9200
+AFJ_VERSION=ghcr.io/credebl/credo-controller:latest
+AFJ_AGENT_SPIN_UP=/agent-provisioning/AFJ/scripts/docker_start_agent.sh
+AFJ_AGENT_ENDPOINT_PATH=/agent-provisioning/AFJ/endpoints/
+TAILS_FILE_SERVER=https://tails.vonx.io
+SCHEMA_FILE_SERVER_PORT=4000
+SCHEMA_FILE_SERVER_URL=http://credebl-schema-file-server:4000/schemas/
+NEXT_PUBLIC_SCHEMA_FILE_SERVER_URL=http://credebl-schema-file-server:4000/schemas/
+SCHEMA_FILE_SERVER_TOKEN=${CREDEBL_SCHEMA_FILE_SERVER_TOKEN}
+JWT_TOKEN_SECRET=${CREDEBL_JWT_TOKEN_SECRET}
+ISSUER=Credebl
+CREDENTIAL_FORMAT=SD_JWT_VC
+EOF
+  green "  wrote $env_file"
+}
+
+# write_credebl_agent_runtime_env creates the .agent-runtime/ directory structure
+# and writes agent.env for the agent-provisioning + agent-service bind mounts.
+write_credebl_agent_runtime_env() {
+  local base="$SCRIPT_DIR/deploy/compose/credebl/.agent-runtime"
+  mkdir -p "$base/agent-config" "$base/token" "$base/endpoints"
+  # Guard against previous run leaving agent.env as a directory
+  [[ -d "$base/agent.env" ]] && rm -rf "$base/agent.env"
+  cat > "$base/agent.env" <<EOF
+LEDGER_URL=http://test.bcovrin.vonx.io
+GENESIS_URL=http://test.bcovrin.vonx.io/genesis
+TAILS_FILE_SERVER=https://tails.vonx.io
+AGENT_HTTP_URL=http://${VERIFIABLY_PUBLIC_HOST}
+AGENT_WS_URL=ws://${VERIFIABLY_PUBLIC_HOST}
+CONNECT_TIMEOUT=10
+MAX_CONNECTIONS=1000
+IDLE_TIMEOUT=30000
+SESSION_ACQUIRE_TIMEOUT=2147483647
+SESSION_LIMIT=2147483647
+INMEMORY_LRU_CACHE_LIMIT=2147483647
+TRUST_SERVICE_AUTH_TYPE=NoAuth
+TRUST_LIST_URL=https://example.com/trust-list.json
+EOF
+  # Set CREDEBL_COMPOSE_DIR for use in compose volume bind mounts
+  export CREDEBL_COMPOSE_DIR="$SCRIPT_DIR/deploy/compose/credebl"
+  green "  wrote $base/agent.env (CREDEBL_COMPOSE_DIR=$CREDEBL_COMPOSE_DIR)"
+}
+
+# bootstrap_credebl_keycloak_realm imports the credebl-realm into the shared
+# Keycloak. Idempotent — skips import when the realm already exists.
+bootstrap_credebl_keycloak_realm() {
+  local kc_base="http://localhost:${KEYCLOAK_PORT}"
+  local realm_file="$SCRIPT_DIR/deploy/compose/credebl/config/keycloak-realm.json"
+  local _kc_admin_pass="${KEYCLOAK_ADMIN_PASSWORD:-keycloak}"
+
+  # Wait for Keycloak
+  local tries=0
+  while ! curl -sf --max-time 5 "$kc_base/realms/master/.well-known/openid-configuration" >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    if [[ $tries -gt 60 ]]; then
+      red "  Keycloak not reachable after 60s — skipping CREDEBL realm import"
+      return 1
+    fi
+    sleep 2
+  done
+
+  # Get admin token
+  local token
+  token=$(curl -sf --max-time 15 -X POST \
+    "$kc_base/realms/master/protocol/openid-connect/token" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "client_id=admin-cli&username=admin&password=${_kc_admin_pass}&grant_type=password" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])' 2>/dev/null) || true
+  if [[ -z "$token" ]]; then
+    red "  Could not get Keycloak admin token — skipping CREDEBL realm import"
+    return 1
+  fi
+
+  # Check if realm already exists
+  local realm_exists
+  realm_exists=$(curl -sf --max-time 10 \
+    "$kc_base/admin/realms/credebl-realm" \
+    -H "Authorization: Bearer ${token}" \
+    | python3 -c 'import json,sys; print("yes")' 2>/dev/null) || realm_exists=""
+
+  if [[ "$realm_exists" == "yes" ]]; then
+    green "  credebl-realm already exists in Keycloak — skipping import"
+  else
+    green "  Importing credebl-realm into Keycloak"
+    # Patch redirectUris with the CREDEBL_API_PORT before importing
+    local patched_realm
+    patched_realm=$(python3 - "$realm_file" "${VERIFIABLY_PUBLIC_HOST}" "${CREDEBL_API_PORT}" <<'PY'
+import json, sys
+with open(sys.argv[1]) as f:
+    realm = json.load(f)
+host = sys.argv[2]
+port = sys.argv[3]
+studio_url = f"http://{host}:{port}"
+for client in realm.get("clients", []):
+    if client.get("clientId") in ("credebl-client", "adminClient"):
+        client["redirectUris"] = [f"{studio_url}/*", "http://localhost/*"]
+        client["webOrigins"] = [studio_url, "http://localhost"]
+print(json.dumps(realm))
+PY
+) || true
+    if [[ -n "$patched_realm" ]]; then
+      curl -sf --max-time 30 -X POST \
+        "$kc_base/admin/realms" \
+        -H "Authorization: Bearer ${token}" \
+        -H "Content-Type: application/json" \
+        -d "$patched_realm" >/dev/null \
+        && green "  credebl-realm imported successfully" \
+        || red "  Realm import failed — check Keycloak logs"
+    else
+      red "  Failed to patch realm JSON — importing as-is"
+      curl -sf --max-time 30 -X POST \
+        "$kc_base/admin/realms" \
+        -H "Authorization: Bearer ${token}" \
+        -H "Content-Type: application/json" \
+        --data-binary "@$realm_file" >/dev/null \
+        && green "  credebl-realm imported" \
+        || red "  Realm import failed — check Keycloak logs"
+    fi
+  fi
+
+  # Ensure openid scope with sub claim is present (required for keycloakUserId lookup)
+  local scope_id
+  scope_id=$(curl -sf --max-time 10 \
+    "$kc_base/admin/realms/credebl-realm/client-scopes" \
+    -H "Authorization: Bearer ${token}" \
+    | python3 -c 'import json,sys; s=[x["id"] for x in json.load(sys.stdin) if x["name"]=="openid"]; print(s[0] if s else "")' 2>/dev/null) || true
+
+  if [[ -z "$scope_id" ]]; then
+    curl -sf --max-time 15 -X POST \
+      "$kc_base/admin/realms/credebl-realm/client-scopes" \
+      -H "Authorization: Bearer ${token}" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "openid",
+        "description": "OpenID Connect built-in scope",
+        "protocol": "openid-connect",
+        "attributes": {"include.in.token.scope": "true"},
+        "protocolMappers": [{
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {"access.token.sub.claim": "true", "id.token.sub.claim": "true"}
+        }]
+      }' >/dev/null || true
+    scope_id=$(curl -sf --max-time 10 \
+      "$kc_base/admin/realms/credebl-realm/client-scopes" \
+      -H "Authorization: Bearer ${token}" \
+      | python3 -c 'import json,sys; s=[x["id"] for x in json.load(sys.stdin) if x["name"]=="openid"]; print(s[0] if s else "")' 2>/dev/null) || true
+    [[ -n "$scope_id" ]] && green "  openid scope created (id: $scope_id)"
+  fi
+
+  if [[ -n "$scope_id" ]]; then
+    for client_name in credebl-client adminClient; do
+      local client_id
+      client_id=$(curl -sf --max-time 10 \
+        "$kc_base/admin/realms/credebl-realm/clients?clientId=${client_name}" \
+        -H "Authorization: Bearer ${token}" \
+        | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' 2>/dev/null) || true
+      if [[ -n "$client_id" ]]; then
+        curl -sf --max-time 10 -X PUT \
+          "$kc_base/admin/realms/credebl-realm/clients/${client_id}/default-client-scopes/${scope_id}" \
+          -H "Authorization: Bearer ${token}" >/dev/null || true
+      fi
+    done
+    green "  openid scope linked to credebl-client and adminClient"
+  fi
+}
+
+# ---- CREDEBL container patch functions ----
+# Each function is idempotent (checks for guard string before patching).
+# These are ported from cdpi-poc/credebl/init-credebl.sh.
+
+_credebl_patch_utility_s3() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_utility_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/utility/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('s3ForcePathStyle')) { process.stdout.write('already patched\n'); process.exit(0); }
+const marker = 'new aws_sdk_1.S3({';
+let count = 0;
+let idx = 0;
+while ((idx = content.indexOf(marker, idx)) >= 0) {
+  const insertAt = idx + marker.length;
+  const inject = 'endpoint:process.env.AWS_ENDPOINT,s3ForcePathStyle:true,';
+  content = content.substring(0, insertAt) + inject + content.substring(insertAt);
+  idx = insertAt + inject.length;
+  count++;
+}
+if (count === 0) { process.stderr.write('ERROR: aws_sdk_1.S3 constructor not found\n'); process.exit(1); }
+fs.writeFileSync(path, content);
+process.stdout.write('patched (' + count + ' occurrences)\n');
+JSEOF
+  docker cp "$patch_script" credebl-utility:/tmp/patch_utility.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-utility node /tmp/patch_utility.js
+}
+
+_credebl_patch_api_gateway_context_validator() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_api_gw_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/api-gateway/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('PATCH2: require_tld+normalize')) { process.stdout.write('already patched\n'); process.exit(0); }
+const funcIdx = content.indexOf('function IsCredentialJsonLdContext');
+if (funcIdx < 0) { process.stderr.write('ERROR: function IsCredentialJsonLdContext not found\n'); process.exit(1); }
+const target = '(0, class_validator_1.isURL)(v)';
+const after = content.indexOf(target, funcIdx);
+if (after < 0 || after > funcIdx + 1000) { process.stderr.write('ERROR: isURL(v) call not found near function\n'); process.exit(1); }
+const replacement = '/*PATCH2: require_tld+normalize*/(function(u){while(u&&u.indexOf("://http")>0){u=u.slice(u.indexOf("://http")+3);}return (0,class_validator_1.isURL)(u,{require_tld:false});})(v)';
+content = content.substring(0, after) + replacement + content.substring(after + target.length);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-api-gateway:/tmp/patch_api_gw.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-api-gateway node /tmp/patch_api_gw.js
+}
+
+_credebl_patch_credo_credential_events() {
+  local credo_container
+  credo_container="$(docker ps --format '{{.Names}}' | grep -v '^credebl-' | grep -v '^[0-9a-f]\{12\}_credebl' | head -1)"
+  if [[ -z "$credo_container" ]]; then
+    echo "  No Credo controller container found — skipping."
+    return 0
+  fi
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_credo_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/build/events/CredentialEvents.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('getFormatData unavailable')) { process.stdout.write('already patched\n'); process.exit(0); }
+if (content.includes('withTenantAgent')) { process.stdout.write('new API (no patch needed)\n'); process.exit(0); }
+const pattern = /^(\s+)const data = await agent\.modules\.credentials\.getFormatData\(record\.id\);\n\s+body\.credentialData = data;/m;
+const m = content.match(pattern);
+if (!m) { process.stderr.write('ERROR: patch target not found in CredentialEvents.js\n'); process.exit(1); }
+const indent = m[1];
+const replacement = `${indent}try {\n${indent}    if (agent.modules && agent.modules.credentials) {\n${indent}        const data = await agent.modules.credentials.getFormatData(record.id);\n${indent}        body.credentialData = data;\n${indent}    }\n${indent}} catch (e) {\n${indent}    // getFormatData unavailable in this agent context (e.g. multi-tenancy root agent)\n${indent}}`;
+content = content.replace(pattern, replacement);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" "${credo_container}:/tmp/patch_credo.js"
+  rm -f "$patch_script"
+  local result
+  result="$(docker exec --user root "$credo_container" node /tmp/patch_credo.js)"
+  printf '%s\n' "$result"
+  if [[ "$result" == "patched" ]]; then
+    docker restart "$credo_container" >/dev/null
+  fi
+}
+
+_credebl_patch_credo_proof_events() {
+  local credo_container
+  credo_container="$(docker ps --format '{{.Names}}' | grep -v '^credebl-' | grep -v '^[0-9a-f]\{12\}_credebl' | head -1)"
+  if [[ -z "$credo_container" ]]; then
+    echo "  No Credo controller container found — skipping."
+    return 0
+  fi
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_proof_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/build/events/ProofEvents.js';
+let c = fs.readFileSync(path, 'utf8');
+if (c.includes('proofData try-catch guard')) { process.stdout.write('already patched\n'); process.exit(0); }
+if (c.includes(".split('tenant-')")) { process.stdout.write('new API (no patch needed)\n'); process.exit(0); }
+const tenantIdTarget = 'tenantId: event.metadata.contextCorrelationId,';
+if (c.indexOf(tenantIdTarget) >= 0) {
+  c = c.replace(tenantIdTarget,
+    "tenantId: event.metadata.contextCorrelationId.indexOf('tenant-') === 0 ? event.metadata.contextCorrelationId.slice(7) : event.metadata.contextCorrelationId, // tenant- prefix guard");
+}
+const getFormatTarget = 'const data = await tenantAgent.proofs.getFormatData(record.id);\n            body.proofData = data;';
+if (c.indexOf(getFormatTarget) >= 0) {
+  c = c.replace(getFormatTarget,
+    'try { if (tenantAgent && tenantAgent.proofs) { const data = await tenantAgent.proofs.getFormatData(record.id); body.proofData = data; } } catch (e) { /* proofData try-catch guard */ }');
+}
+if (!c.includes('proofData try-catch guard')) { process.stderr.write('ERROR: patch target not found in ProofEvents.js\n'); process.exit(1); }
+fs.writeFileSync(path, c);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" "${credo_container}:/tmp/patch_proof.js"
+  rm -f "$patch_script"
+  local result
+  result="$(docker exec --user root "$credo_container" node /tmp/patch_proof.js)"
+  printf '%s\n' "$result"
+  if [[ "$result" == "patched" ]]; then
+    docker restart "$credo_container" >/dev/null
+  fi
+}
+
+_credebl_patch_issuance_schema_url() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_issuance_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/issuance/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('indexOf("://http")')) { process.stdout.write('already patched\n'); process.exit(0); }
+const target = 'async getW3CSchemaAttributes(schemaUrl) {';
+if (!content.includes(target)) { process.stderr.write('ERROR: patch target not found\n'); process.exit(1); }
+const fixLines = ' while (schemaUrl && schemaUrl.indexOf("://http") > 0) { schemaUrl = schemaUrl.slice(schemaUrl.indexOf("://") + 3); }';
+content = content.replace(target, target + fixLines);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-issuance node /tmp/patch_issuance.js
+}
+
+_credebl_patch_issuance_context_urls() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_issuance_ctx_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/issuance/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('_ctx.map(function(url)')) { process.stdout.write('already patched\n'); process.exit(0); }
+const target = "'Validated/Updated Issuance dates credential offer'";
+const idx = content.indexOf(target);
+if (idx < 0) { process.stderr.write('ERROR: patch target not found in issuance/main.js\n'); process.exit(1); }
+const insertAfter = content.indexOf(';', idx) + 1;
+const normCode = ' if(credentialOffer){for(const _co of credentialOffer){const _ctx=_co&&_co.credential&&_co.credential["@context"];if(Array.isArray(_ctx)){_co.credential["@context"]=_ctx.map(function(url){while(typeof url==="string"&&url.indexOf("://http")>0){url=url.slice(url.indexOf("://")+3);}return url;});}}}';
+content = content.substring(0, insertAfter) + normCode + content.substring(insertAfter);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance_ctx.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-issuance node /tmp/patch_issuance_ctx.js
+}
+
+_credebl_patch_issuance_oob_credential_save() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_issuance_oob_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/issuance/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('PATCH9B: fallback UUID')) { process.stdout.write('already patched\n'); process.exit(0); }
+
+if (!content.includes('PATCH9: oob credential upsert')) {
+  const oldSig = 'async updateSchemaIdByThreadId(threadId, schemaId) {';
+  if (!content.includes(oldSig)) { process.stderr.write('ERROR: fn signature not found\n'); process.exit(1); }
+  content = content.replace(oldSig, 'async updateSchemaIdByThreadId(threadId, schemaId, orgId) { /*PATCH9: oob credential upsert*/');
+
+  const oldUpdate = 'await this.prisma.credentials.update({\n                where: { threadId },\n                data: {\n                    schemaId\n                }\n            });';
+  if (!content.includes(oldUpdate)) { process.stderr.write('ERROR: credentials.update block not found\n'); process.exit(1); }
+  const newUpsert = "await this.prisma.credentials.upsert({\n                where: { threadId },\n                update: { schemaId },\n                create: {\n                    threadId: threadId,\n                    schemaId: schemaId,\n                    orgId: orgId || null,\n                    createdBy: orgId || '00000000-0000-0000-0000-000000000000', /*PATCH9B: fallback UUID*/\n                    lastChangedBy: orgId || '00000000-0000-0000-0000-000000000000',\n                    state: 'offer-sent',\n                    credentialExchangeId: '',\n                    credDefId: ''\n                }\n            });";
+  content = content.replace(oldUpdate, newUpsert);
+
+  const oldCall1 = 'this.issuanceRepository.updateSchemaIdByThreadId((_b = record === null || record === void 0 ? void 0 : record.value) === null || _b === void 0 ? void 0 : _b.threadId, schemaId);';
+  if (content.includes(oldCall1)) {
+    content = content.replace(oldCall1, 'this.issuanceRepository.updateSchemaIdByThreadId((_b = record === null || record === void 0 ? void 0 : record.value) === null || _b === void 0 ? void 0 : _b.threadId, schemaId, orgId);');
+  }
+}
+
+const old9b = 'this.issuanceRepository.updateSchemaIdByThreadId(credentialCreateOfferDetails.response.credentialRequestThId, schemaId);';
+if (content.includes(old9b)) {
+  content = content.replace(old9b, 'this.issuanceRepository.updateSchemaIdByThreadId(credentialCreateOfferDetails.response.credentialRequestThId, schemaId, orgId); /*PATCH9B: orgId in OOB call*/');
+}
+
+if (content.includes('createdBy: orgId,')) {
+  content = content.replace('createdBy: orgId,', "createdBy: orgId || '00000000-0000-0000-0000-000000000000', /*PATCH9B: fallback UUID*/");
+}
+if (content.includes('lastChangedBy: orgId,')) {
+  content = content.replace('lastChangedBy: orgId,', "lastChangedBy: orgId || '00000000-0000-0000-0000-000000000000',");
+}
+
+if (!content.includes('PATCH9B: fallback UUID')) { process.stderr.write('ERROR: final guard verification failed\n'); process.exit(1); }
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance_oob.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-issuance node /tmp/patch_issuance_oob.js
+}
+
+_credebl_patch_issuance_qr_encoding() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_issuance_qr_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/issuance/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('PATCH10: qr encoding')) { process.stdout.write('already patched\n'); process.exit(0); }
+const old = "{\n                    filename: 'qrcode.png',\n                    content: outOfBandIssuanceQrCode.split(';base64,')[1],\n                    contentType: 'image/png',\n                    disposition: 'attachment'\n                }";
+const nw  = "{\n                    filename: 'qrcode.png',\n                    content: outOfBandIssuanceQrCode.split(';base64,')[1],\n                    contentType: 'image/png',\n                    encoding: 'base64', /*PATCH10: qr encoding*/\n                    contentDisposition: 'attachment'\n                }";
+if (!content.includes(old)) { process.stderr.write('ERROR: attachment pattern not found\n'); process.exit(1); }
+content = content.replace(old, nw);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance_qr.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-issuance node /tmp/patch_issuance_qr.js
+}
+
+_credebl_patch_issuance_qr_deeplink() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_issuance_qrl_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/issuance/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('PATCH12: qr uses deepLinkURL')) { process.stdout.write('already patched\n'); process.exit(0); }
+const old = 'const outOfBandIssuanceQrCode = await QRCode.toDataURL(shortenUrl, qrCodeOptions);';
+const nw  = 'const outOfBandIssuanceQrCode = await QRCode.toDataURL(deepLinkURL, qrCodeOptions); /*PATCH12: qr uses deepLinkURL*/';
+if (!content.includes(old)) { process.stderr.write('ERROR: QR deeplink pattern not found\n'); process.exit(1); }
+content = content.replace(old, nw);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-issuance:/tmp/patch_issuance_qrl.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-issuance node /tmp/patch_issuance_qrl.js
+}
+
+_credebl_patch_verification_qr_encoding() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_verif_qr_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/verification/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('PATCH11: qr encoding')) { process.stdout.write('already patched\n'); process.exit(0); }
+const old = "outOfBandVerificationQrCode.split(';base64,')[1],\n                contentType: 'image/png',\n                disposition: 'attachment'";
+const nw  = "outOfBandVerificationQrCode.split(';base64,')[1],\n                contentType: 'image/png',\n                encoding: 'base64', /*PATCH11: qr encoding*/\n                contentDisposition: 'attachment'";
+if (!content.includes(old)) { process.stderr.write('ERROR: attachment pattern not found in verification main.js\n'); process.exit(1); }
+content = content.replace(old, nw);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-verification:/tmp/patch_verif_qr.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-verification node /tmp/patch_verif_qr.js
+}
+
+_credebl_patch_agent_service_create_tenant() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_agent_ct_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/agent-service/main.js';
+let content = fs.readFileSync(path, 'utf8');
+if (content.includes('PATCH: create-tenant needs root JWT')) { process.stdout.write('already patched\n'); process.exit(0); }
+const target = 'const tenantDetails = await this.commonService.httpPost(`${endpoint}${common_constant_1.CommonConstants.URL_SHAGENT_CREATE_TENANT}`, createTenantOptions, { headers: { authorization: agentApiKey } });\n        return tenantDetails;\n    }\n    async handleCreateDid';
+if (!content.includes(target)) { process.stderr.write('ERROR: patch target not found in agent-service/main.js\n'); process.exit(1); }
+const replacement = 'const rootTokenResp = await this.commonService.httpPost(endpoint + "/agent/token", {}, { headers: { authorization: process.env.AGENT_API_KEY } }); // PATCH: create-tenant needs root JWT\n        const rootJwt = "Bearer " + ((rootTokenResp && rootTokenResp.token) || (rootTokenResp && rootTokenResp.access_token) || "");\n        const tenantDetails = await this.commonService.httpPost(`${endpoint}${common_constant_1.CommonConstants.URL_SHAGENT_CREATE_TENANT}`, createTenantOptions, { headers: { authorization: rootJwt } });\n        return tenantDetails;\n    }\n    async handleCreateDid';
+content = content.replace(target, replacement);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-agent-service:/tmp/patch_agent_ct.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-agent-service node /tmp/patch_agent_ct.js
+}
+
+_credebl_patch_agent_service_normalize_url() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_agent_nu_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/agent-service/main.js';
+let content = fs.readFileSync(path, 'utf8');
+const guardA = 'PATCH8: normalizeUrlWithProtocol uses AGENT_PROTOCOL';
+const guardB = 'PATCH8b: https to http for Credo';
+const needsA = !content.includes(guardA);
+const needsB = !content.includes(guardB);
+if (!needsA && !needsB) { process.stdout.write('already patched\n'); process.exit(0); }
+let changed = false;
+if (needsA) {
+  const targetA = 'return `${process.env.API_GATEWAY_PROTOCOL}://${baseUrl}`;';
+  if (!content.includes(targetA)) { process.stderr.write('ERROR: PATCH8a target not found\n'); process.exit(1); }
+  content = content.replace(targetA, '/* ' + guardA + ' */ return `${process.env.AGENT_PROTOCOL || "http"}://${baseUrl}`;');
+  changed = true;
+}
+if (needsB) {
+  const targetB = "if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {\n            return baseUrl;\n        }";
+  if (!content.includes(targetB)) { process.stderr.write('ERROR: PATCH8b target not found\n'); process.exit(1); }
+  const repB = "/* " + guardB + " */ if (baseUrl.startsWith('https://')) { return 'http://' + baseUrl.slice(8); }\n        if (baseUrl.startsWith('http://')) { return baseUrl; }";
+  content = content.replace(targetB, repB);
+  changed = true;
+}
+if (changed) { fs.writeFileSync(path, content); process.stdout.write('patched\n'); }
+JSEOF
+  docker cp "$patch_script" credebl-agent-service:/tmp/patch_agent_nu.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-agent-service node /tmp/patch_agent_nu.js
+}
+
+# apply_credebl_patches applies all 12 container patches in the correct order.
+apply_credebl_patches() {
+  echo "  Applying CREDEBL container patches..."
+
+  echo -n "  [1/12] Utility service S3→MinIO endpoint: "
+  _credebl_patch_utility_s3
+  docker restart credebl-utility >/dev/null
+
+  echo -n "  [2/12] API gateway @context validator: "
+  _credebl_patch_api_gateway_context_validator
+  docker restart credebl-api-gateway >/dev/null
+
+  echo -n "  [3/12] Issuance schema URL dedup: "
+  _credebl_patch_issuance_schema_url
+  echo -n "  [4/12] Issuance @context URL normalization: "
+  _credebl_patch_issuance_context_urls
+  echo -n "  [5/12] Issuance OOB credential DB save (upsert): "
+  _credebl_patch_issuance_oob_credential_save
+  echo -n "  [6/12] Issuance QR code attachment encoding: "
+  _credebl_patch_issuance_qr_encoding
+  echo -n "  [7/12] Issuance QR uses full deeplink URL: "
+  _credebl_patch_issuance_qr_deeplink
+  docker restart credebl-issuance >/dev/null
+
+  echo -n "  [8/12] Verification QR code attachment encoding: "
+  _credebl_patch_verification_qr_encoding
+  docker restart credebl-verification >/dev/null
+
+  echo -n "  [9/12] Agent-service shared wallet create-tenant (root JWT): "
+  _credebl_patch_agent_service_create_tenant
+  echo -n "  [10/12] Agent-service normalizeUrlWithProtocol (http for Credo): "
+  _credebl_patch_agent_service_normalize_url
+  docker restart credebl-agent-service >/dev/null
+
+  # Credo patches — only if Credo is running
+  echo -n "  [11/12] Credo CredentialEvents guard: "
+  _credebl_patch_credo_credential_events
+  echo -n "  [12/12] Credo ProofEvents guard: "
+  _credebl_patch_credo_proof_events
+
+  echo "  Waiting for restarted containers to be ready (up to 90s)..."
+  local deadline=$(( $(date +%s) + 90 ))
+  while [[ "$(date +%s)" -lt "$deadline" ]]; do
+    local gw_health as_log
+    gw_health="$(docker inspect credebl-api-gateway --format '{{.State.Health.Status}}' 2>/dev/null || true)"
+    as_log="$(docker logs credebl-agent-service --tail=5 2>/dev/null || true)"
+    if [[ "$gw_health" == "healthy" ]] && printf '%s' "$as_log" | grep -q 'listening to NATS'; then
+      break
+    fi
+    sleep 3
+  done
+  green "  CREDEBL patches applied."
+}
+
+# ensure_credebl_platform_admin_shared_agent waits for the platform-admin
+# shared agent to be provisioned (agentSpinUpStatus=2, endpoint set, Credo responding).
+# Retries up to 6 times with full re-provision on each attempt.
+ensure_credebl_platform_admin_shared_agent() {
+  local _db_pw="$CREDEBL_POSTGRES_PASSWORD"
+  local _agent_key="$CREDEBL_AGENT_API_KEY"
+
+  _credebl_pg() {
+    docker exec -i credebl-postgres env PGPASSWORD="$_db_pw" \
+      psql -U credebl -d credebl "$@"
+  }
+
+  _platform_admin_agent_ready() {
+    local row status endpoint token_url
+    row="$(_credebl_pg -Atqc "
+      SELECT COALESCE(oa.\"agentSpinUpStatus\"::text, ''),
+             COALESCE(oa.\"agentEndPoint\", '')
+      FROM organisation o
+      LEFT JOIN org_agents oa ON oa.\"orgId\" = o.id
+      WHERE o.name = 'Platform-admin'
+      LIMIT 1;" 2>/dev/null | tr -d '\r')"
+    status="${row%%|*}"
+    endpoint="${row#*|}"
+    [[ "$status" != "2" ]] && return 1
+    [[ -z "$endpoint" ]] && return 1
+    [[ "$endpoint" =~ ^https?:// ]] \
+      && token_url="${endpoint%/}/agent/token" \
+      || token_url="http://${endpoint}/agent/token"
+    curl -sf --max-time 8 -X POST -H "Authorization: $_agent_key" "$token_url" >/dev/null
+  }
+
+  echo "  Waiting for platform-admin-bootstrap to complete..."
+  local tries=0
+  while ! docker inspect credebl-platform-admin-bootstrap --format '{{.State.Status}}' 2>/dev/null | grep -qE '^exited$'; do
+    tries=$((tries + 1))
+    [[ $tries -gt 90 ]] && { red "  platform-admin-bootstrap timed out"; return 1; }
+    sleep 2
+  done
+  local exit_code
+  exit_code=$(docker inspect credebl-platform-admin-bootstrap --format '{{.State.ExitCode}}' 2>/dev/null || echo "1")
+  if [[ "$exit_code" != "0" ]]; then
+    red "  platform-admin-bootstrap exited with code $exit_code"
+    return 1
+  fi
+
+  if _platform_admin_agent_ready; then
+    green "  Platform-admin shared agent is ready."
+    return 0
+  fi
+
+  local attempt=1
+  while [[ $attempt -le 6 ]]; do
+    echo "  Not ready (attempt $attempt/6). Restarting agent-provisioning + agent-service..."
+    # Clear stale org_agents record
+    _credebl_pg -q -c "
+      DELETE FROM org_agents oa
+      USING organisation o
+      WHERE oa.\"orgId\" = o.id
+        AND o.name = 'Platform-admin'
+        AND (oa.\"agentSpinUpStatus\" <> 2 OR COALESCE(oa.\"agentEndPoint\", '') = '');" 2>/dev/null || true
+    # Drop stale wallet DB if it exists
+    _credebl_pg -d postgres -q -c "
+      SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'platformadminwallet';
+      DROP DATABASE IF EXISTS \"platformadminwallet\";" 2>/dev/null || true
+    # Remove stale Credo containers
+    docker ps -a --format '{{.Names}}' 2>/dev/null | while IFS= read -r cname; do
+      [[ "$cname" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_ ]] \
+        && docker rm -f "$cname" 2>/dev/null || true
+    done
+
+    docker restart credebl-agent-provisioning >/dev/null
+    # Wait for agent-provisioning NATS subscription
+    local nats_wait=0
+    while [[ $nats_wait -lt 45 ]]; do
+      sleep 5; nats_wait=$((nats_wait + 5))
+      if docker logs --since 45s credebl-agent-provisioning 2>/dev/null | grep -q "Microservice is listening"; then
+        echo "  agent-provisioning NATS ready (${nats_wait}s)"
+        break
+      fi
+    done
+
+    docker restart credebl-agent-service >/dev/null
+    echo "  Waiting 130s for full provisioning cycle..."
+    sleep 130
+
+    if _platform_admin_agent_ready; then
+      green "  Platform-admin shared agent is ready."
+      return 0
+    fi
+    local extra=0
+    while [[ $extra -lt 90 ]]; do
+      sleep 15; extra=$((extra + 15))
+      _platform_admin_agent_ready && { green "  Platform-admin shared agent is ready."; return 0; }
+      echo "  Still waiting... (${extra}s extra)"
+    done
+    attempt=$((attempt + 1))
+  done
+  red "  Platform-admin shared agent did not reach ready state — check: docker logs credebl-agent-service"
+  return 1
+}
+
+# ensure_credebl_platform_admin_tenant creates a Credo multi-tenancy tenant for
+# Platform-admin and stores the encrypted tenant JWT in org_agents.apiKey.
+ensure_credebl_platform_admin_tenant() {
+  local _db_pw="$CREDEBL_POSTGRES_PASSWORD"
+  local _agent_key="$CREDEBL_AGENT_API_KEY"
+
+  _credebl_pg2() {
+    docker exec -i credebl-postgres env PGPASSWORD="$_db_pw" \
+      psql -U credebl -d credebl "$@"
+  }
+
+  # Get agent endpoint from DB
+  local endpoint
+  endpoint="$(_credebl_pg2 -Atqc "
+    SELECT oa.\"agentEndPoint\" FROM org_agents oa
+    JOIN organisation o ON o.id = oa.\"orgId\"
+    WHERE o.name = 'Platform-admin' AND oa.\"agentSpinUpStatus\" = 2
+    LIMIT 1;" 2>/dev/null | tr -d '\r')"
+
+  if [[ -z "$endpoint" ]]; then
+    red "  Error: Platform-admin agent endpoint not found in DB."
+    return 1
+  fi
+
+  # Normalize to http:// (Credo admin ports only serve HTTP)
+  [[ "$endpoint" == https://* ]] && endpoint="http://${endpoint#https://}"
+  [[ "$endpoint" =~ ^http:// ]] || endpoint="http://${endpoint}"
+  # Fix DB record if stored with https://
+  _credebl_pg2 -q -c "UPDATE org_agents SET \"agentEndPoint\" = replace(\"agentEndPoint\", 'https://', 'http://') WHERE \"agentEndPoint\" LIKE 'https://%';" 2>/dev/null || true
+
+  # Get root JWT (retry up to 8 times — Credo may still be starting)
+  local root_jwt attempt=1
+  while [[ $attempt -le 8 ]]; do
+    root_jwt="$(curl -sf --max-time 10 -X POST \
+      -H "Authorization: $_agent_key" \
+      "${endpoint}/agent/token" 2>/dev/null \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('token', d.get('access_token','')))" 2>/dev/null || true)"
+    [[ -n "$root_jwt" ]] && break
+    echo "  Credo not ready (attempt ${attempt}/8), waiting 5s..."
+    sleep 5
+    attempt=$((attempt + 1))
+  done
+
+  if [[ -z "$root_jwt" ]]; then
+    red "  Error: Failed to get root JWT from Credo at ${endpoint}"
+    return 1
+  fi
+
+  # Check if tenant already exists in DB
+  local tenant_id
+  tenant_id="$(_credebl_pg2 -Atqc "
+    SELECT COALESCE(oa.\"tenantId\", '') FROM org_agents oa
+    JOIN organisation o ON o.id = oa.\"orgId\"
+    WHERE o.name = 'Platform-admin'
+    LIMIT 1;" 2>/dev/null | tr -d '\r')"
+
+  if [[ -z "$tenant_id" ]]; then
+    echo "  Creating Platform-admin tenant in Credo multi-tenant agent..."
+    local create_resp
+    create_resp="$(curl -sf --max-time 15 -X POST \
+      -H "Authorization: Bearer ${root_jwt}" \
+      -H "Content-Type: application/json" \
+      -d '{"config":{"label":"Platform-admin"}}' \
+      "${endpoint}/multi-tenancy/create-tenant" 2>/dev/null || true)"
+    tenant_id="$(printf '%s' "$create_resp" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || true)"
+    if [[ -z "$tenant_id" ]]; then
+      red "  Error: Failed to create tenant. Response: $create_resp"
+      return 1
+    fi
+    echo "  Tenant created: $tenant_id"
+  else
+    echo "  Tenant already exists: $tenant_id"
+  fi
+
+  # Get fresh tenant JWT
+  local tenant_jwt
+  tenant_jwt="$(curl -sf --max-time 10 -X POST \
+    -H "Authorization: Bearer ${root_jwt}" \
+    "${endpoint}/multi-tenancy/get-token/${tenant_id}" 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('token', d.get('access_token','')))" 2>/dev/null || true)"
+
+  if [[ -z "$tenant_jwt" ]]; then
+    red "  Error: Failed to get tenant JWT for tenant ${tenant_id}"
+    return 1
+  fi
+
+  # Encrypt tenant JWT with CryptoJS AES (same as CREDEBL's dataEncryption method)
+  local encrypted_jwt
+  encrypted_jwt="$(docker exec -i credebl-agent-service node -e "
+const CryptoJS = require('crypto-js');
+const token = '${tenant_jwt}';
+const key = process.env.CRYPTO_PRIVATE_KEY;
+const encrypted = CryptoJS.AES.encrypt(JSON.stringify(token), key).toString();
+process.stdout.write(encrypted);
+" 2>/dev/null)"
+
+  if [[ -z "$encrypted_jwt" ]]; then
+    red "  Error: Failed to encrypt tenant JWT"
+    return 1
+  fi
+
+  # Store tenantId + encrypted apiKey in DB
+  _credebl_pg2 -v ON_ERROR_STOP=1 -q -c "
+    UPDATE org_agents oa
+    SET \"tenantId\" = '${tenant_id}',
+        \"apiKey\"   = '${encrypted_jwt}'
+    FROM organisation o
+    WHERE oa.\"orgId\" = o.id
+      AND o.name = 'Platform-admin';" >/dev/null
+
+  green "  Platform-admin tenant wallet configured (tenantId=${tenant_id})"
+
+  # Restart agent-service so it picks up the new apiKey
+  docker restart credebl-agent-service >/dev/null
+  sleep 20
+  green "  Agent-service restarted."
 }
 
 # render_wso2_deployment_toml envsubsts wso2-deployment.toml.template
@@ -1530,6 +2554,7 @@ port_to_internal = {
     "3004": "injiweb-ui:3004",
     "8099": "injiweb-mimoto:8099",
     "3005": "injiweb-oidc-ui:3000",
+    "5001": "credebl-api-gateway:5000",
 }
 
 import re
@@ -1605,12 +2630,16 @@ commands:
 
 scenarios:
   all      every DPG + both IdPs + LibreTranslate
-           (includes CREDEBL when CREDEBL_API_URL is set)
+           (includes compose-managed CREDEBL when CREDEBL_API_URL is not set
+            and CREDEBL_POSTGRES_PASSWORD is set; otherwise includes external
+            CREDEBL when CREDEBL_API_URL is set)
   waltid   walt.id stack + Keycloak + LibreTranslate
   inji     Inji Certify (×2) + Inji Verify + Inji Web + WSO2IS + LibreTranslate
-  credebl  CREDEBL (external) + Keycloak + WSO2IS + LibreTranslate
-           requires: CREDEBL_API_URL, CREDEBL_EMAIL, CREDEBL_PASSWORD,
-                     CREDEBL_CRYPTO_PRIVATE_KEY, CREDEBL_ORG_ID, CREDEBL_ISSUER_ID
+  credebl  all CREDEBL services (compose-managed) + Keycloak + WSO2IS + LibreTranslate
+           secrets are auto-generated if not set in .env
+           to use external CREDEBL instead: set CREDEBL_API_URL, CREDEBL_EMAIL,
+           CREDEBL_PASSWORD, CREDEBL_CRYPTO_PRIVATE_KEY, CREDEBL_ORG_ID, CREDEBL_ISSUER_ID
+           (but compose-managed CREDEBL is preferred for local dev)
 
 all scenarios include a containerised verifiably-go on port $VERIFIABLY_HOST_PORT,
 attached to the compose network (${COMPOSE_PROJECT}_default).

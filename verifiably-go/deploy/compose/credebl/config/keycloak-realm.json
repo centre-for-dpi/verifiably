@@ -1,0 +1,174 @@
+{
+  "realm": "credebl-realm",
+  "displayName": "CDPI PoC Realm",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 86400,
+  "clientScopes": [
+    {
+      "name": "openid",
+      "description": "OpenID Connect built-in scope: openid",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false",
+        "consent.screen.text": ""
+      },
+      "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "credebl-client",
+      "name": "CREDEBL Platform Client",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:5000/*",
+        "http://127.0.0.1:5000/*",
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "webOrigins": ["*"],
+      "defaultClientScopes": [
+        "openid",
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ],
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "email",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "adminClient",
+      "name": "CREDEBL Platform Admin Client",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "protocolMappers": [
+        {
+          "name": "realm-management-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "multivalued": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "claim.name": "resource_access.realm-management.roles",
+            "jsonType.label": "String",
+            "client_id": "realm-management"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "email",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "credebl-wallet-client",
+      "name": "CREDEBL Wallet Client (public)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "inji://callback",
+        "openid://callback",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "webOrigins": ["*"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "platform-admin", "description": "CREDEBL platform administrator" },
+      { "name": "org-admin", "description": "Organization administrator" },
+      { "name": "issuer", "description": "Credential issuer" },
+      { "name": "verifier", "description": "Credential verifier" },
+      { "name": "holder", "description": "Credential holder" }
+    ]
+  },
+  "users": [
+    {
+      "username": "service-account-adminClient",
+      "enabled": true,
+      "serviceAccountClientId": "adminClient",
+      "clientRoles": {
+        "realm-management": [
+          "realm-admin"
+        ]
+      }
+    }
+  ]
+}
