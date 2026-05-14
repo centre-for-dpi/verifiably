@@ -856,6 +856,15 @@ cmd_up() {
     bold "▶ Preparing CREDEBL environment"
     ensure_credebl_env
     write_credebl_agent_runtime_env
+    # The CREDEBL seed script creates the platform-admin user in Keycloak's
+    # credebl-realm. If that realm doesn't exist yet the seed exits 1 and
+    # every service that depends on it also fails. Fix: start Keycloak before
+    # the full compose up and import the realm so it exists when seed runs.
+    bold "▶ Pre-starting Keycloak for CREDEBL realm import"
+    compose up -d keycloak
+    bold "▶ Importing CREDEBL Keycloak realm (pre-seed)"
+    bootstrap_credebl_keycloak_realm \
+      || red "  CREDEBL Keycloak realm import failed — seed will likely fail"
   fi
 
   bold "▶ Starting DPG services via docker compose"
@@ -989,12 +998,9 @@ cmd_up() {
     repair_injiweb_client_redirect_uri
   fi
 
-  # Bootstrap CREDEBL: import Keycloak realm, apply patches, provision shared agent.
+  # Bootstrap CREDEBL: apply patches and provision shared agent.
+  # Keycloak realm import already ran before compose up (see pre-seed block above).
   if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
-    bold "▶ Bootstrapping CREDEBL Keycloak realm"
-    bootstrap_credebl_keycloak_realm \
-      || red "  CREDEBL Keycloak realm import failed (proceeding — re-run bootstrap_credebl_keycloak_realm manually)"
-
     bold "▶ Applying CREDEBL container patches"
     apply_credebl_patches \
       || red "  CREDEBL patch application failed (proceeding — some features may not work)"
@@ -1623,17 +1629,21 @@ bootstrap_credebl_keycloak_realm() {
     green "  Importing credebl-realm into Keycloak"
     # Patch redirectUris with the CREDEBL_API_PORT before importing
     local patched_realm
-    patched_realm=$(python3 - "$realm_file" "${VERIFIABLY_PUBLIC_HOST}" "${CREDEBL_API_PORT}" <<'PY'
+    patched_realm=$(python3 - "$realm_file" "${VERIFIABLY_PUBLIC_HOST}" "${CREDEBL_API_PORT}" "${CREDEBL_KEYCLOAK_CLIENT_SECRET}" <<'PY'
 import json, sys
 with open(sys.argv[1]) as f:
     realm = json.load(f)
 host = sys.argv[2]
 port = sys.argv[3]
+client_secret = sys.argv[4]
 studio_url = f"http://{host}:{port}"
 for client in realm.get("clients", []):
     if client.get("clientId") in ("credebl-client", "adminClient"):
         client["redirectUris"] = [f"{studio_url}/*", "http://localhost/*"]
         client["webOrigins"] = [studio_url, "http://localhost"]
+        # Replace the ${KEYCLOAK_CLIENT_SECRET} placeholder with the actual secret
+        if client.get("secret", "").startswith("${"):
+            client["secret"] = client_secret
 print(json.dumps(realm))
 PY
 ) || true
