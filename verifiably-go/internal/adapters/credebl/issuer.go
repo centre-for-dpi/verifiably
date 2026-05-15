@@ -396,7 +396,7 @@ func (a *Adapter) createCredeblTemplate(ctx context.Context, schema vctypes.Sche
 
 	tAttrs := make([]templateAttribute, 0, len(schema.FieldsSpec))
 	for _, f := range schema.FieldsSpec {
-		tAttrs = append(tAttrs, templateAttribute{Key: f.Name, ValueType: f.Datatype, Disclose: false})
+		tAttrs = append(tAttrs, templateAttribute{Key: f.Name, ValueType: f.Datatype, Disclose: true})
 	}
 	tmplBody := templateCreateRequest{
 		Name:         schema.Name,
