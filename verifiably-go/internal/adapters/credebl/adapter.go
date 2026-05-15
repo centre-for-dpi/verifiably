@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -67,11 +68,18 @@ func (a *Adapter) withAuth(ctx context.Context, fn func(context.Context) error) 
 
 // rewritePublic replaces internal Docker hostnames in s with the public URL
 // so OID4VCI offer URIs are wallet-reachable from outside the container network.
+// CREDEBL returns credential_offer_uri as a percent-encoded query param value
+// (e.g. http%3A%2F%2F172.24.0.1%2Foid4vci%2F...), so we replace both the
+// plain and percent-encoded forms.
 func (a *Adapter) rewritePublic(s string) string {
 	if a.cfg.InternalBaseURL == "" || a.cfg.PublicBaseURL == "" {
 		return s
 	}
-	return strings.ReplaceAll(s, a.cfg.InternalBaseURL, a.cfg.PublicBaseURL)
+	s = strings.ReplaceAll(s, a.cfg.InternalBaseURL, a.cfg.PublicBaseURL)
+	s = strings.ReplaceAll(s,
+		url.QueryEscape(a.cfg.InternalBaseURL),
+		url.QueryEscape(a.cfg.PublicBaseURL))
+	return s
 }
 
 // --- Catalog methods: registry holds its own map from backends.json. ---
