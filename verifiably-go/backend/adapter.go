@@ -182,6 +182,7 @@ type IssueToWalletResult struct {
 	OfferID   string        // adapter-assigned id for tracing / retrieval
 	Flow      string        // echoes the flow actually used (may differ from request)
 	ExpiresIn time.Duration // how long until the offer becomes invalid
+	PIN       string        // pre-auth PIN the holder must enter in the wallet (empty when not required)
 }
 
 // IssueAsPDFResult describes a generated PDF credential.

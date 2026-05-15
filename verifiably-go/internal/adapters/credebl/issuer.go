@@ -144,6 +144,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		OfferURI: offerURI,
 		OfferID:  extractOfferID(offerURI),
 		Flow:     "pre_auth",
+		PIN:      resp.Data.IssuanceSession.UserPin,
 	}, nil
 }
 
