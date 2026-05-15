@@ -33,14 +33,9 @@ type dcqlQuery struct {
 }
 
 type dcqlCredential struct {
-	ID     string    `json:"id"`
-	Format string    `json:"format"`
-	Meta   *dcqlMeta `json:"meta,omitempty"`
-	Claims []dcqlClaim `json:"claims"`
-}
-
-type dcqlMeta struct {
-	VctValues []string `json:"vct_values,omitempty"`
+	ID     string      `json:"id"`
+	Format string      `json:"format"`
+	Claims []dcqlClaim `json:"claims,omitempty"`
 }
 
 type dcqlClaim struct {
@@ -108,21 +103,15 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 		}
 	}
 
-	claims := make([]dcqlClaim, 0, len(tpl.Fields))
-	for _, f := range tpl.Fields {
-		claims = append(claims, dcqlClaim{Path: []string{f}})
-	}
-
 	var body presentationCreateRequest
 	body.RequestSigner.Method = "DID"
 	body.ResponseMode = "direct_post"
 	cred := dcqlCredential{
 		ID:     "vc-1",
 		Format: "dc+sd-jwt",
-		Claims: claims,
 	}
-	if tpl.Vct != "" {
-		cred.Meta = &dcqlMeta{VctValues: []string{tpl.Vct}}
+	for _, f := range tpl.Fields {
+		cred.Claims = append(cred.Claims, dcqlClaim{Path: []string{f}})
 	}
 	body.DCQL.Query.Credentials = []dcqlCredential{cred}
 
@@ -158,15 +147,23 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) (backend.VerificationResult, error) {
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vp/verifier-presentation?id=%s", a.cfg.OrgID, state)
 	deadline := time.Now().Add(30 * time.Second)
-	var resp verifierPresentationResponse
 	for {
+		var rawBytes []byte
 		if err := a.withAuth(ctx, func(ctx context.Context) error {
-			return a.client.DoJSON(ctx, http.MethodGet, path, nil, &resp, nil)
+			var err error
+			rawBytes, err = a.client.DoRaw(ctx, http.MethodGet, path, nil, "", http.Header{"Accept": []string{"application/json"}})
+			return err
 		}); err != nil {
 			return backend.VerificationResult{}, fmt.Errorf("poll presentation: %w", err)
 		}
+		var resp verifierPresentationResponse
+		if err := json.Unmarshal(rawBytes, &resp); err != nil {
+			return backend.VerificationResult{}, fmt.Errorf("decode poll response: %w", err)
+		}
+		log.Printf("[credebl] poll state=%q presentationDoc=%d bytes", resp.Data.State, len(resp.Data.PresentationDocument))
 		switch resp.Data.State {
 		case "ResponseVerified":
+			log.Printf("[credebl] ResponseVerified raw: %.3000s", string(rawBytes))
 			return backend.VerificationResult{
 				Valid:             true,
 				Method:            "OID4VP · selective — SD-JWT VC",
