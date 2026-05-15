@@ -118,6 +118,7 @@ func main() {
 		Debug:         debug,
 		AuthStore:     authStore,
 		AuthAdminMode: adminMode,
+		APIKeys:       handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
 	}
 	// Issuance audit log + revocation status lists. Optional: when the
 	// state directory isn't writable we log and continue with the features
@@ -268,6 +269,25 @@ func main() {
 	mux.HandleFunc("POST /verifier/verify/response", h.SimulateResponse)
 	mux.HandleFunc("POST /verifier/verify/direct", h.VerifyDirect)
 	mux.HandleFunc("POST /verifier/verify/build", h.BuildVerifierTemplate)
+
+	// REST API — /api/v1/*
+	// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
+	mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
+	mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
+	mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
+	mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
+	mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)
+	mux.HandleFunc("POST /api/v1/credentials/{id}/reinstate", h.APIReinstate)
+	mux.HandleFunc("POST /api/v1/verify/request", h.APIVerifyRequest)
+	mux.HandleFunc("GET /api/v1/verify/result/{state}", h.APIVerifyResult)
+
+	// API docs — redirect to static files already served by the staticFS handler.
+	mux.HandleFunc("GET /api/docs", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/scalar.html", http.StatusFound)
+	})
+	mux.HandleFunc("GET /api/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/openapi.yaml", http.StatusFound)
+	})
 
 	log.Printf("verifiably-go listening on %s (debug markers: %v)", addr, debug)
 	if err := http.ListenAndServe(addr, mux); err != nil {

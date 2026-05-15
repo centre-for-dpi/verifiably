@@ -62,6 +62,10 @@ type H struct {
 	// SD-JWT VCs it issues. Optional; nil disables SD-JWT revocation.
 	TokenStore *statuslist.Store
 
+	// APIKeys gates /api/v1/* endpoints. Populated from VERIFIABLY_API_KEYS
+	// ("name1:key1,name2:key2"). When nil or empty, all API routes return 503.
+	APIKeys APIKeyMap
+
 	// signingKeyOnce + signingKey lazily fetch the walt.id issuer JWK on
 	// the first /status-list/* request, then cache the parsed
 	// *statuslist.SigningKey for the lifetime of the process. Going through
