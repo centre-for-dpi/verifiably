@@ -35,6 +35,15 @@ func (tc *tokenCache) get() (string, bool) {
 	return tc.token, true
 }
 
+// clear invalidates the cached token so the next call to getToken re-authenticates.
+// Used when CREDEBL rejects the token with 401 (stale session after a concurrent login).
+func (tc *tokenCache) clear() {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	tc.token = ""
+	tc.expires = time.Time{}
+}
+
 // set stores a token and derives its expiry from the JWT exp claim.
 func (tc *tokenCache) set(token string) {
 	tc.mu.Lock()

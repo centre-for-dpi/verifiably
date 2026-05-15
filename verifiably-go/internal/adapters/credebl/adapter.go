@@ -3,6 +3,7 @@ package credebl
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -42,6 +43,26 @@ func New(cfg Config, vendor string) (*Adapter, error) {
 		client:     httpx.New(cfg.BaseURL),
 		verifierID: cfg.VerifierID,
 	}, nil
+}
+
+// withAuth executes fn with a CREDEBL bearer token in the context, retrying
+// once on HTTP 401 (stale session after a concurrent Studio login invalidated
+// the cached token via CREDEBL's deleteInactiveSessions cleanup).
+func (a *Adapter) withAuth(ctx context.Context, fn func(context.Context) error) error {
+	authCtx, err := a.authCtx(ctx)
+	if err != nil {
+		return err
+	}
+	err = fn(authCtx)
+	if httpx.IsStatus(err, http.StatusUnauthorized) {
+		a.cache.clear()
+		authCtx, err = a.authCtx(ctx)
+		if err != nil {
+			return err
+		}
+		err = fn(authCtx)
+	}
+	return err
 }
 
 // rewritePublic replaces internal Docker hostnames in s with the public URL

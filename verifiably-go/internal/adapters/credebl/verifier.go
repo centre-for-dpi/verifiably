@@ -92,11 +92,6 @@ func (a *Adapter) ListOID4VPTemplates(ctx context.Context) (map[string]vctypes.O
 // DCQL-based presentation API. Returns the openid4vp:// authorization_request
 // URI the holder scans, plus the session ID used by FetchPresentationResult.
 func (a *Adapter) RequestPresentation(ctx context.Context, req backend.PresentationRequest) (backend.PresentationRequestResult, error) {
-	ctx, err := a.authCtx(ctx)
-	if err != nil {
-		return backend.PresentationRequestResult{}, err
-	}
-
 	var tpl vctypes.OID4VPTemplate
 	if req.Template != nil {
 		tpl = *req.Template
@@ -109,11 +104,6 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 		if tpl, ok = templates[req.TemplateKey]; !ok {
 			return backend.PresentationRequestResult{}, fmt.Errorf("credebl: unknown template key %q", req.TemplateKey)
 		}
-	}
-
-	verifierID, err := a.ensureVerifier(ctx)
-	if err != nil {
-		return backend.PresentationRequestResult{}, err
 	}
 
 	claims := make([]dcqlClaim, 0, len(tpl.Fields))
@@ -133,34 +123,43 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 		},
 	}
 
-	path := fmt.Sprintf("/v1/orgs/%s/oid4vp/presentation?verifierId=%s", a.cfg.OrgID, verifierID)
-	var resp presentationCreateResponse
-	if err := a.client.DoJSON(ctx, http.MethodPost, path, body, &resp, nil); err != nil {
-		return backend.PresentationRequestResult{}, fmt.Errorf("create presentation: %w", err)
+	var result backend.PresentationRequestResult
+	if err := a.withAuth(ctx, func(ctx context.Context) error {
+		verifierID, err := a.ensureVerifier(ctx)
+		if err != nil {
+			return err
+		}
+		path := fmt.Sprintf("/v1/orgs/%s/oid4vp/presentation?verifierId=%s", a.cfg.OrgID, verifierID)
+		var resp presentationCreateResponse
+		if err := a.client.DoJSON(ctx, http.MethodPost, path, body, &resp, nil); err != nil {
+			return fmt.Errorf("create presentation: %w", err)
+		}
+		if resp.Data.AuthorizationRequest == "" {
+			return fmt.Errorf("credebl: create-presentation returned empty authorizationRequest")
+		}
+		result = backend.PresentationRequestResult{
+			RequestURI: resp.Data.AuthorizationRequest,
+			State:      resp.Data.VerificationSession.ID,
+			Template:   tpl,
+		}
+		return nil
+	}); err != nil {
+		return backend.PresentationRequestResult{}, err
 	}
-	if resp.Data.AuthorizationRequest == "" {
-		return backend.PresentationRequestResult{}, fmt.Errorf("credebl: create-presentation returned empty authorizationRequest")
-	}
-	return backend.PresentationRequestResult{
-		RequestURI: resp.Data.AuthorizationRequest,
-		State:      resp.Data.VerificationSession.ID,
-		Template:   tpl,
-	}, nil
+	return result, nil
 }
 
 // FetchPresentationResult polls CREDEBL's verification session until the holder
 // submits a presentation or the context is cancelled.
 // state is the verificationSession.id from RequestPresentation.
 func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) (backend.VerificationResult, error) {
-	authCtx, err := a.authCtx(ctx)
-	if err != nil {
-		return backend.VerificationResult{}, err
-	}
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vp/verifier-presentation?id=%s", a.cfg.OrgID, state)
 	deadline := time.Now().Add(30 * time.Second)
 	var resp verifierPresentationResponse
 	for {
-		if err := a.client.DoJSON(authCtx, http.MethodGet, path, nil, &resp, nil); err != nil {
+		if err := a.withAuth(ctx, func(ctx context.Context) error {
+			return a.client.DoJSON(ctx, http.MethodGet, path, nil, &resp, nil)
+		}); err != nil {
 			return backend.VerificationResult{}, fmt.Errorf("poll presentation: %w", err)
 		}
 		switch resp.Data.State {

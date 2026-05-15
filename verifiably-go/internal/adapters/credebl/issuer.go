@@ -36,13 +36,11 @@ type templateListResponse struct {
 // vctypes.Schema. Schema.ID is the template DB ID — passed back verbatim as
 // templateId in the IssueToWallet offer payload.
 func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.Schema, error) {
-	ctx, err := a.authCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/template", a.cfg.OrgID, a.cfg.IssuerID)
 	var resp templateListResponse
-	if err := a.client.DoJSON(ctx, http.MethodGet, path, nil, &resp, nil); err != nil {
+	if err := a.withAuth(ctx, func(ctx context.Context) error {
+		return a.client.DoJSON(ctx, http.MethodGet, path, nil, &resp, nil)
+	}); err != nil {
 		return nil, fmt.Errorf("list templates: %w", err)
 	}
 	out := make([]vctypes.Schema, 0, len(resp.Data))
@@ -107,15 +105,16 @@ type offerCreateResponse struct {
 // pre-authorized code flow. Returns the openid-credential-offer:// URI the
 // Verifiably UI renders as a QR code for the holder's wallet.
 func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (backend.IssueToWalletResult, error) {
-	ctx, err := a.authCtx(ctx)
-	if err != nil {
-		return backend.IssueToWalletResult{}, err
-	}
+	// Resolve templateID first (may need auth for custom-* schemas).
 	templateID := req.Schema.ID
 	if strings.HasPrefix(templateID, "custom-") {
-		resolved, rerr := a.resolveTemplateID(ctx, req.Schema)
-		if rerr != nil {
-			return backend.IssueToWalletResult{}, fmt.Errorf("resolve template: %w", rerr)
+		var resolved string
+		if err := a.withAuth(ctx, func(ctx context.Context) error {
+			var rerr error
+			resolved, rerr = a.resolveTemplateID(ctx, req.Schema)
+			return rerr
+		}); err != nil {
+			return backend.IssueToWalletResult{}, fmt.Errorf("resolve template: %w", err)
 		}
 		templateID = resolved
 	}
@@ -132,7 +131,9 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 	}
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/create-offer", a.cfg.OrgID, a.cfg.IssuerID)
 	var resp offerCreateResponse
-	if err := a.client.DoJSON(ctx, http.MethodPost, path, body, &resp, nil); err != nil {
+	if err := a.withAuth(ctx, func(ctx context.Context) error {
+		return a.client.DoJSON(ctx, http.MethodPost, path, body, &resp, nil)
+	}); err != nil {
 		return backend.IssueToWalletResult{}, fmt.Errorf("create-offer: %w", err)
 	}
 	if resp.Data.CredentialOffer == "" {
@@ -314,12 +315,10 @@ type templateCreateResponse struct {
 // verifiably-go custom schema and caches the mapping so IssueToWallet can
 // resolve the custom-* ID to the CREDEBL template UUID.
 func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) error {
-	ctx, err := a.authCtx(ctx)
-	if err != nil {
+	return a.withAuth(ctx, func(ctx context.Context) error {
+		_, err := a.createCredeblTemplate(ctx, schema)
 		return err
-	}
-	_, err = a.createCredeblTemplate(ctx, schema)
-	return err
+	})
 }
 
 // DeleteCustomSchema removes the in-memory custom-* → CREDEBL UUID mapping.
