@@ -1128,6 +1128,7 @@ cmd_reset() {
   echo "    waltid_injiweb-db + friends                          (Inji Web / Mimoto / eSignet / mock-identity)"
   echo "    waltid_postgres + waltid_citizens-data               (walt.id + bulk-issuance citizens)"
   echo "    waltid_locales / waltid_lt-data / waltid_caddy-data  (translator + TLS state)"
+  echo "    waltid_credebl_postgres_data / _redis_data / _nats_data / _minio_data (CREDEBL)"
   echo
   echo "  Use this when a keystore regenerated but its aliases are still"
   echo "  in the DB — symptom: 'KER-KMA-004 -- No such alias: <uuid>' in"
@@ -1138,7 +1139,7 @@ cmd_reset() {
     red "  aborted"; return 0
   fi
   stop_container
-  compose --profile injiweb down -v 2>&1 | tail -10
+  compose --profile injiweb --profile credebl down -v 2>&1 | tail -10
   # Belt-and-braces: remove any stragglers not claimed by docker compose
   # (different project name / previous owner). Silent on not-found.
   local vols
