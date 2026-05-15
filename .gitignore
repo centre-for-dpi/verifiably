@@ -87,3 +87,4 @@ verifiably-go/deploy/k8s/config/issuer/credential-issuer-metadata.conf
 # .agent-runtime/ holds Credo controller state, agent configs, and tokens.
 verifiably-go/deploy/compose/credebl/config/credebl.env
 verifiably-go/deploy/compose/credebl/.agent-runtime/
+verifiably-go/deploy/compose/stack/.env
