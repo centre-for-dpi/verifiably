@@ -12,6 +12,8 @@ import (
 
 // credentialTemplate is the shape returned by
 // GET /v1/orgs/{orgId}/oid4vc/{issuerId}/template.
+// CREDEBL stores the template body in a column named "attributes" and returns it
+// under that key in GET responses, even though the POST body uses "template".
 type credentialTemplate struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -19,7 +21,7 @@ type credentialTemplate struct {
 	Template struct {
 		Vct        string              `json:"vct"`
 		Attributes []templateAttribute `json:"attributes"`
-	} `json:"template"`
+	} `json:"attributes"`
 }
 
 type templateAttribute struct {

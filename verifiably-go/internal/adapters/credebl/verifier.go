@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/httpx"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -31,14 +33,14 @@ type dcqlQuery struct {
 }
 
 type dcqlCredential struct {
-	ID     string       `json:"id"`
-	Format string       `json:"format"`
-	Meta   dcqlMeta     `json:"meta"`
-	Claims []dcqlClaim  `json:"claims"`
+	ID     string    `json:"id"`
+	Format string    `json:"format"`
+	Meta   *dcqlMeta `json:"meta,omitempty"`
+	Claims []dcqlClaim `json:"claims"`
 }
 
 type dcqlMeta struct {
-	VctValues []string `json:"vct_values"`
+	VctValues []string `json:"vct_values,omitempty"`
 }
 
 type dcqlClaim struct {
@@ -114,14 +116,15 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 	var body presentationCreateRequest
 	body.RequestSigner.Method = "DID"
 	body.ResponseMode = "direct_post"
-	body.DCQL.Query.Credentials = []dcqlCredential{
-		{
-			ID:     "vc-1",
-			Format: "dc+sd-jwt",
-			Meta:   dcqlMeta{VctValues: []string{tpl.Vct}},
-			Claims: claims,
-		},
+	cred := dcqlCredential{
+		ID:     "vc-1",
+		Format: "dc+sd-jwt",
+		Claims: claims,
 	}
+	if tpl.Vct != "" {
+		cred.Meta = &dcqlMeta{VctValues: []string{tpl.Vct}}
+	}
+	body.DCQL.Query.Credentials = []dcqlCredential{cred}
 
 	var result backend.PresentationRequestResult
 	if err := a.withAuth(ctx, func(ctx context.Context) error {
@@ -172,7 +175,7 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 				Subject:           "(from credential)",
 				Issued:            time.Now().UTC(),
 				CheckedRevocation: true,
-				DisclosedFields:   flattenJSON(resp.Data.PresentationDocument),
+				DisclosedFields:   extractDisclosedFields(resp.Data.PresentationDocument),
 			}, nil
 		case "Error":
 			return backend.VerificationResult{
@@ -200,6 +203,8 @@ func (a *Adapter) VerifyDirect(_ context.Context, _ backend.DirectVerifyRequest)
 
 // ensureVerifier returns the OID4VP verifier DB ID, auto-provisioning a verifier
 // named "verifiably-go" on first use when no verifierId was set in config.
+// On 409 (verifier exists from a prior run) it recovers by listing the org's
+// verifiers and matching on publicVerifierId — same pattern as resolveTemplateID.
 func (a *Adapter) ensureVerifier(ctx context.Context) (string, error) {
 	a.verifierMu.Lock()
 	defer a.verifierMu.Unlock()
@@ -219,14 +224,35 @@ func (a *Adapter) ensureVerifier(ctx context.Context) (string, error) {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	if err := a.client.DoJSON(ctx, http.MethodPost, path, body, &resp, nil); err != nil {
+	err := a.client.DoJSON(ctx, http.MethodPost, path, body, &resp, nil)
+	if err == nil {
+		if resp.Data.ID == "" {
+			return "", fmt.Errorf("credebl: provision verifier returned empty id")
+		}
+		a.verifierID = resp.Data.ID
+		return a.verifierID, nil
+	}
+	if !httpx.IsStatus(err, http.StatusConflict) {
 		return "", fmt.Errorf("provision verifier: %w", err)
 	}
-	if resp.Data.ID == "" {
-		return "", fmt.Errorf("credebl: provision verifier returned empty id")
+	// 409 — verifier already registered (container restart); look it up by publicVerifierId.
+	type verifierEntry struct {
+		ID               string `json:"id"`
+		PublicVerifierID string `json:"publicVerifierId"`
 	}
-	a.verifierID = resp.Data.ID
-	return a.verifierID, nil
+	var listResp struct {
+		Data []verifierEntry `json:"data"`
+	}
+	if err := a.client.DoJSON(ctx, http.MethodGet, path, nil, &listResp, nil); err != nil {
+		return "", fmt.Errorf("list verifiers after 409: %w", err)
+	}
+	for _, v := range listResp.Data {
+		if v.PublicVerifierID == "verifiably-go" {
+			a.verifierID = v.ID
+			return a.verifierID, nil
+		}
+	}
+	return "", fmt.Errorf("credebl: verifier 'verifiably-go' not found after 409")
 }
 
 // --- helpers ---
@@ -255,21 +281,82 @@ func schemaKey(name string) string {
 	return s
 }
 
-// flattenJSON converts a JSON object to a string map for DisclosedFields.
-func flattenJSON(raw json.RawMessage) map[string]string {
+// jwtTechnicalFields lists JWT/SD-JWT protocol fields that are not credential claims.
+var jwtTechnicalFields = map[string]bool{
+	"iss": true, "sub": true, "aud": true, "exp": true, "nbf": true, "iat": true,
+	"jti": true, "vct": true, "_sd": true, "_sd_alg": true, "cnf": true,
+	"status": true, "type": true, "@context": true,
+}
+
+// extractDisclosedFields pulls credential claim values from CREDEBL's
+// presentationDocument. The shape varies by verification flow:
+//   - Flat SD-JWT payload: {"given_name":"…","iss":"…",…}
+//   - DCQL nested:         {"credentials":{"vc-1":{"given_name":"…",…}}}
+//
+// JWT/SD-JWT protocol fields are omitted so only human-readable claims remain.
+func extractDisclosedFields(raw json.RawMessage) map[string]string {
 	if len(raw) == 0 {
 		return nil
 	}
+	log.Printf("[credebl] presentationDocument (%d bytes): %.800s", len(raw), string(raw))
+
 	var doc map[string]any
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	if err := json.Unmarshal(raw, &doc); err != nil || doc == nil {
 		return nil
 	}
-	out := make(map[string]string, len(doc))
-	for k, v := range doc {
-		out[k] = fmt.Sprintf("%v", v)
+
+	// DCQL nested: {"credentials":{"vc-1":{…claims…}}}
+	if credsAny, ok := doc["credentials"]; ok {
+		if credsMap, ok := credsAny.(map[string]any); ok {
+			out := make(map[string]string)
+			for _, v := range credsMap {
+				if claimMap, ok := v.(map[string]any); ok {
+					mergeClaimValues(out, claimMap)
+				}
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
 	}
+
+	// Flat (decoded SD-JWT VC payload or PEX result at top level)
+	out := make(map[string]string, len(doc))
+	mergeClaimValues(out, doc)
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+// mergeClaimValues copies non-technical claim values from src into dst,
+// stringifying each value appropriately.
+func mergeClaimValues(dst map[string]string, src map[string]any) {
+	for k, v := range src {
+		if jwtTechnicalFields[k] {
+			continue
+		}
+		switch tv := v.(type) {
+		case string:
+			dst[k] = tv
+		case bool:
+			dst[k] = fmt.Sprintf("%v", tv)
+		case float64:
+			if tv == float64(int64(tv)) {
+				dst[k] = fmt.Sprintf("%d", int64(tv))
+			} else {
+				dst[k] = fmt.Sprintf("%g", tv)
+			}
+		case map[string]any:
+			b, _ := json.Marshal(tv)
+			dst[k] = string(b)
+		case []any:
+			b, _ := json.Marshal(tv)
+			dst[k] = string(b)
+		default:
+			if v != nil {
+				dst[k] = fmt.Sprintf("%v", tv)
+			}
+		}
+	}
 }
