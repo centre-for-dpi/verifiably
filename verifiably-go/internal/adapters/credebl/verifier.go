@@ -2,6 +2,7 @@ package credebl
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -55,6 +56,9 @@ type verifierPresentationResponse struct {
 	Data struct {
 		State                string          `json:"state"`
 		PresentationDocument json.RawMessage `json:"presentationDocument"`
+		AuthorizationResponsePayload struct {
+			VpToken string `json:"vp_token"`
+		} `json:"authorizationResponsePayload"`
 	} `json:"data"`
 }
 
@@ -164,6 +168,10 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 		switch resp.Data.State {
 		case "ResponseVerified":
 			log.Printf("[credebl] ResponseVerified raw: %.3000s", string(rawBytes))
+			fields := extractDisclosedFields(resp.Data.PresentationDocument)
+			if len(fields) == 0 && resp.Data.AuthorizationResponsePayload.VpToken != "" {
+				fields = extractDisclosedFieldsFromVpToken(resp.Data.AuthorizationResponsePayload.VpToken)
+			}
 			return backend.VerificationResult{
 				Valid:             true,
 				Method:            "OID4VP · selective — SD-JWT VC",
@@ -172,7 +180,7 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 				Subject:           "(from credential)",
 				Issued:            time.Now().UTC(),
 				CheckedRevocation: true,
-				DisclosedFields:   extractDisclosedFields(resp.Data.PresentationDocument),
+				DisclosedFields:   fields,
 			}, nil
 		case "Error":
 			return backend.VerificationResult{
@@ -253,6 +261,90 @@ func (a *Adapter) ensureVerifier(ctx context.Context) (string, error) {
 }
 
 // --- helpers ---
+
+// extractDisclosedFieldsFromVpToken parses a DCQL vp_token JSON string of the
+// form {"vc-1":"eyJ...header.payload~disc1~disc2~kbjwt"} and extracts the
+// disclosed credential claims from each compact SD-JWT entry.
+func extractDisclosedFieldsFromVpToken(vpToken string) map[string]string {
+	var tokenMap map[string]string
+	if err := json.Unmarshal([]byte(vpToken), &tokenMap); err != nil {
+		log.Printf("[credebl] vp_token parse error: %v", err)
+		return nil
+	}
+	out := make(map[string]string)
+	for credID, compact := range tokenMap {
+		fields := extractClaimsFromCompactSdJwt(compact)
+		log.Printf("[credebl] %s: extracted %d fields from SD-JWT", credID, len(fields))
+		for k, v := range fields {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// extractClaimsFromCompactSdJwt decodes a compact SD-JWT
+// (header.payload~disclosure1~disclosure2~[kb-jwt]) and returns the
+// disclosed claim values. Disclosures are base64url-encoded JSON arrays
+// [salt, name, value]. JWT payload non-selective claims are also included.
+func extractClaimsFromCompactSdJwt(compact string) map[string]string {
+	parts := strings.Split(compact, "~")
+	if len(parts) == 0 {
+		return nil
+	}
+	jwtParts := strings.Split(parts[0], ".")
+	if len(jwtParts) < 2 {
+		return nil
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(jwtParts[1])
+	if err != nil {
+		return nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		return nil
+	}
+	out := make(map[string]string)
+	// Non-selective claims from JWT payload (excludes technical fields + _sd)
+	mergeClaimValues(out, payload)
+
+	// Selective disclosures: skip empty parts and the KB-JWT (contains dots)
+	for _, disc := range parts[1:] {
+		if disc == "" || strings.Contains(disc, ".") {
+			continue
+		}
+		discBytes, err := base64.RawURLEncoding.DecodeString(disc)
+		if err != nil {
+			continue
+		}
+		var arr []any
+		if err := json.Unmarshal(discBytes, &arr); err != nil || len(arr) < 3 {
+			continue
+		}
+		name, ok := arr[1].(string)
+		if !ok || jwtTechnicalFields[name] {
+			continue
+		}
+		switch v := arr[2].(type) {
+		case string:
+			out[name] = v
+		case bool:
+			out[name] = fmt.Sprintf("%v", v)
+		case float64:
+			if v == float64(int64(v)) {
+				out[name] = fmt.Sprintf("%d", int64(v))
+			} else {
+				out[name] = fmt.Sprintf("%g", v)
+			}
+		default:
+			b, _ := json.Marshal(arr[2])
+			out[name] = string(b)
+		}
+	}
+	return out
+}
 
 // schemaKey converts a schema name to a stable lowercase underscore key
 // suitable for use as a map key in the OID4VP template index.
