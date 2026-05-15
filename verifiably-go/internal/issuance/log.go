@@ -223,6 +223,33 @@ func (l *Log) Get(id string) (IssuedCredential, bool) {
 	return IssuedCredential{}, false
 }
 
+// MarkReinstate clears a previously-set RevokedAt timestamp, restoring the
+// credential to active status. No-op when the entry is already active.
+// ownerKey enforcement mirrors MarkRevoked.
+func (l *Log) MarkReinstate(id, ownerKey string) (IssuedCredential, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i, c := range l.items {
+		if c.ID != id {
+			continue
+		}
+		if ownerKey != "" && c.OwnerKey != ownerKey {
+			return IssuedCredential{}, fmt.Errorf("issuance: mark reinstate: id %q not found", id)
+		}
+		if c.RevokedAt == nil {
+			return c, nil
+		}
+		l.items[i].RevokedAt = nil
+		if err := l.save(); err != nil {
+			now := time.Now().UTC()
+			l.items[i].RevokedAt = &now
+			return IssuedCredential{}, err
+		}
+		return l.items[i], nil
+	}
+	return IssuedCredential{}, fmt.Errorf("issuance: mark reinstate: id %q not found", id)
+}
+
 // MarkRevoked stamps the entry's RevokedAt to now. Returns the updated
 // entry. No-op (still nil error) if already revoked — Revoke is naturally
 // idempotent.
