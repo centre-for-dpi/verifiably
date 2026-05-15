@@ -150,7 +150,8 @@ url_for() {
 : "${CREDEBL_CRYPTO_PRIVATE_KEY:=cdpi-poc-crypto-key-change-me}"
 : "${CREDEBL_ADMIN_EMAIL:=admin@cdpi.dev}"
 : "${CREDEBL_KEYCLOAK_HOST:=localhost}"    # bare hostname of shared Keycloak (for extra_hosts)
-: "${CREDEBL_COMPOSE_DIR:=}"              # set by deploy.sh to deploy/compose/credebl abs path
+: "${CREDEBL_COMPOSE_DIR:=$SCRIPT_DIR/deploy/compose/credebl}"
+export CREDEBL_COMPOSE_DIR
 # External CREDEBL (legacy): set CREDEBL_API_URL to point at an external CREDEBL instance
 : "${CREDEBL_API_URL:=}"             # e.g. http://161.97.152.40:5000 or https://credebl.example.com
 : "${CREDEBL_EMAIL:=}"               # platform-admin email
@@ -289,8 +290,8 @@ scenario_services() {
         "${TRANSLATOR_SERVICES[@]}" \
         "${INJI_CORE_SERVICES[@]}" \
         "${INJIWEB_SERVICES[@]}"
-      # Include CREDEBL compose services when no external URL is configured.
-      if [[ -z "$CREDEBL_API_URL" && -n "$CREDEBL_POSTGRES_PASSWORD" ]]; then
+      # Include compose-managed CREDEBL unless an external URL is configured.
+      if [[ -z "$CREDEBL_API_URL" ]]; then
         printf '%s\n' "${CREDEBL_SERVICES[@]}"
       fi
       ;;
@@ -1614,8 +1615,6 @@ TRUST_SERVICE_AUTH_TYPE=NoAuth
 TRUST_LIST_URL=https://example.com/trust-list.json
 ALLOW_INSECURE_HTTP_URLS=true
 EOF
-  # Set CREDEBL_COMPOSE_DIR for use in compose volume bind mounts
-  export CREDEBL_COMPOSE_DIR="$SCRIPT_DIR/deploy/compose/credebl"
   green "  wrote $base/agent.env (CREDEBL_COMPOSE_DIR=$CREDEBL_COMPOSE_DIR)"
 }
 
@@ -3194,9 +3193,8 @@ commands:
 
 scenarios:
   all      every DPG + both IdPs + LibreTranslate
-           (includes compose-managed CREDEBL when CREDEBL_API_URL is not set
-            and CREDEBL_POSTGRES_PASSWORD is set; otherwise includes external
-            CREDEBL when CREDEBL_API_URL is set)
+           (includes compose-managed CREDEBL unless CREDEBL_API_URL is set;
+            secrets are auto-generated on first run)
   waltid   walt.id stack + Keycloak + LibreTranslate
   inji     Inji Certify (×2) + Inji Verify + Inji Web + WSO2IS + LibreTranslate
   credebl  all CREDEBL services (compose-managed) + Keycloak + WSO2IS + LibreTranslate
