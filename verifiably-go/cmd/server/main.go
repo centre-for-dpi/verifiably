@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,24 +26,62 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/verifiably/verifiably-go/internal/adapters/factory"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
 	"github.com/verifiably/verifiably-go/internal/handlers"
 	"github.com/verifiably/verifiably-go/internal/issuance"
+	"github.com/verifiably/verifiably-go/internal/jobs"
+	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
+	"github.com/verifiably/verifiably-go/internal/storage/pg"
+	redisstore "github.com/verifiably/verifiably-go/internal/storage/redis"
+	"github.com/verifiably/verifiably-go/internal/tracing"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
-// wireIssuanceAndStatusLists initializes the on-disk audit log + the two
-// status-list stores and binds them to the handler. Designed to be lossy:
-// any error here disables the feature surface but doesn't block startup,
-// because the rest of the demo (DPG picker, schema browser, holder/wallet
-// flows) still works fine without revocation.
-func wireIssuanceAndStatusLists(h *handlers.H) error {
+// wireIssuanceAndStatusLists initializes the audit log + the two status-list
+// stores. When pool is non-nil the PostgreSQL backends are used; otherwise the
+// file-backed stores persist to VERIFIABLY_STATE_DIR.
+// Designed to be lossy: errors disable the feature surface without blocking
+// startup (the DPG picker, schema browser, and holder/wallet flows still work).
+func wireIssuanceAndStatusLists(ctx context.Context, h *handlers.H, pool *pgxpool.Pool) error {
+	publicURL := strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/")
+	if publicURL == "" {
+		publicURL = "http://localhost:8080"
+	}
+	if pool != nil {
+		return wireIssuancePG(ctx, h, pool, publicURL)
+	}
+	return wireIssuanceFile(h, publicURL)
+}
+
+// wireIssuancePG wires PostgreSQL-backed stores.
+func wireIssuancePG(_ context.Context, h *handlers.H, pool *pgxpool.Pool, publicURL string) error {
+
+	h.IssuanceLog = pg.NewIssuanceLog(pool)
+
+	bs, err := pg.NewStatusListStore(pool, "bitstring", "v1", publicURL+"/status-list/bitstring/v1")
+	if err != nil {
+		return fmt.Errorf("pg: bitstring store: %w", err)
+	}
+	h.BitstringStore = bs
+
+	tk, err := pg.NewStatusListStore(pool, "token", "v1", publicURL+"/status-list/token/v1")
+	if err != nil {
+		return fmt.Errorf("pg: token store: %w", err)
+	}
+	h.TokenStore = tk
+	return nil
+}
+
+// wireIssuanceFile wires the original file-backed stores.
+func wireIssuanceFile(h *handlers.H, publicURL string) error {
 	stateDir := os.Getenv("VERIFIABLY_STATE_DIR")
 	if stateDir == "" {
 		stateDir = "state"
@@ -50,21 +89,12 @@ func wireIssuanceAndStatusLists(h *handlers.H) error {
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir state dir: %w", err)
 	}
-	logPath := filepath.Join(stateDir, "issued-credentials.json")
-	logger, err := issuance.NewLog(logPath)
+	logger, err := issuance.NewLog(filepath.Join(stateDir, "issued-credentials.json"))
 	if err != nil {
 		return fmt.Errorf("open issuance log: %w", err)
 	}
 	h.IssuanceLog = logger
 
-	// Public URL the verifier dereferences. VERIFIABLY_PUBLIC_URL is set
-	// by deploy.sh to the browser-facing origin
-	// ("http://172.24.0.1:8080" / "https://vc.bootcamp.cdpi.dev"); we
-	// append the route shape exposed in mux.HandleFunc above.
-	publicURL := strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/")
-	if publicURL == "" {
-		publicURL = "http://localhost:8080"
-	}
 	bs, err := statuslist.NewStore("bitstring", "v1",
 		filepath.Join(stateDir, "status-list-bitstring-v1.json"),
 		publicURL+"/status-list/bitstring/v1")
@@ -72,6 +102,7 @@ func wireIssuanceAndStatusLists(h *handlers.H) error {
 		return fmt.Errorf("open bitstring store: %w", err)
 	}
 	h.BitstringStore = bs
+
 	tk, err := statuslist.NewStore("token", "v1",
 		filepath.Join(stateDir, "status-list-token-v1.json"),
 		publicURL+"/status-list/token/v1")
@@ -80,6 +111,21 @@ func wireIssuanceAndStatusLists(h *handlers.H) error {
 	}
 	h.TokenStore = tk
 	return nil
+}
+
+// maskDSN replaces the password in a DSN with *** for log output.
+func maskDSN(dsn string) string {
+	// postgres://user:pass@host/db → postgres://user:***@host/db
+	if i := strings.Index(dsn, "://"); i >= 0 {
+		rest := dsn[i+3:]
+		if j := strings.Index(rest, "@"); j >= 0 {
+			creds := rest[:j]
+			if k := strings.Index(creds, ":"); k >= 0 {
+				return dsn[:i+3] + creds[:k+1] + "***" + rest[j:]
+			}
+		}
+	}
+	return dsn
 }
 
 func main() {
@@ -100,7 +146,11 @@ func main() {
 	}
 	debug := os.Getenv("VERIFIABLY_DEBUG_MOCK_MARKERS") == "1"
 
-	tmpl, err := loadTemplates("templates")
+	// Build translator before templates so MakeTranslateFunc can capture it
+	// in a closure registered in the FuncMap at parse time (no global state).
+	translator := buildTranslator()
+
+	tmpl, err := loadTemplates("templates", translator)
 	if err != nil {
 		log.Fatalf("template load: %v", err)
 	}
@@ -110,18 +160,29 @@ func main() {
 	// config/backends.json; default "mock" keeps the in-memory demo adapter.
 	adapter := selectAdapter()
 
-	// Session store: persistent when VERIFIABLY_SESSION_SECRET is set.
-	// The store flushes to VERIFIABLY_STATE_DIR/sessions/ every 5 s and
-	// performs a final flush on SIGTERM/SIGINT. Without the secret the store
-	// is in-memory only (original behaviour — fine for dev and bare-metal run).
 	shutCtx, shutCancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer shutCancel()
-	sessionStore := buildSessionStore()
+
+	// Open the PostgreSQL pool once (if configured) so sessions + issuance log
+	// + status lists all share the same connection pool and migration run.
+	var pgPool *pgxpool.Pool
+	if dsn := os.Getenv("VERIFIABLY_DATABASE_URL"); dsn != "" {
+		p, err := pg.Open(shutCtx, dsn)
+		if err != nil {
+			log.Printf("pg: failed to open (%v) — falling back to file-backed stores", err)
+		} else {
+			log.Printf("storage: PostgreSQL backend active (%s)", maskDSN(dsn))
+			pgPool = p
+		}
+	}
+
+	// Session store: PostgreSQL when pool is available, otherwise the file-backed
+	// encrypted store (flushed every 5 s with a final flush on shutdown).
+	sessionStore := buildSessionStore(shutCtx, pgPool)
 	sessionStore.StartFlusher(shutCtx)
 
 	authReg := buildAuthRegistry()
 	wireAuthHelpers()
-	translator := buildTranslator()
 	authStore := buildAuthUserStore()
 	adminMode := authAdminMode()
 	h := &handlers.H{
@@ -134,6 +195,7 @@ func main() {
 		AuthStore:     authStore,
 		AuthAdminMode: adminMode,
 		APIKeys:       handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
+		RateLimiter:   handlers.NewRateLimiter(),
 	}
 	// Issuance audit log + revocation status lists. Optional: when the
 	// state directory isn't writable we log and continue with the features
@@ -141,9 +203,34 @@ func main() {
 	// allocate). VERIFIABLY_STATE_DIR defaults to ./state on bare metal
 	// and /app/state in the docker image (Dockerfile mounts a volume there
 	// so revocations survive container rebuilds).
-	if err := wireIssuanceAndStatusLists(h); err != nil {
+	if err := wireIssuanceAndStatusLists(shutCtx, h, pgPool); err != nil {
 		log.Printf("status-list: feature disabled — %v", err)
 	}
+
+	// Async bulk issuance job queue. Worker count is configurable via
+	// VERIFIABLY_BULK_WORKERS (default 4). When PostgreSQL is available
+	// the queue persists job state in bulk_jobs so in-flight jobs survive
+	// a graceful restart (running jobs restart from pending on next boot).
+	bulkWorkers := 4
+	if wStr := os.Getenv("VERIFIABLY_BULK_WORKERS"); wStr != "" {
+		if n, err := strconv.Atoi(wStr); err == nil && n > 0 {
+			bulkWorkers = n
+		}
+	}
+	h.BulkJobQueue = jobs.NewQueue(shutCtx, pgPool, bulkWorkers)
+	log.Printf("bulk queue: %d workers (pg=%v)", bulkWorkers, pgPool != nil)
+
+	// Distributed tracing. The global tracer is set before any handler runs
+	// so tracing.Start() / tracing.Global() are safe to call from handlers.
+	//
+	// Export modes (stackable):
+	//   VERIFIABLY_OTEL_ENDPOINT set → OTLP/HTTP JSON → Grafana Tempo / Jaeger
+	//   Always → SlogExporter (one structured log line per span; Loki picks up
+	//             trace_id for log-to-trace correlation without extra infra).
+	//
+	// Sample rate: VERIFIABLY_OTEL_SAMPLE_RATE (float 0.0-1.0, default 1.0).
+	// Service name: VERIFIABLY_OTEL_SERVICE_NAME (default "verifiably-go").
+	tracer := buildTracer(shutCtx)
 
 	// /docs browser reads markdown from VERIFIABLY_DOCS_ROOT (set by the
 	// Dockerfile to /app/docs-src — a snapshot of the repo's .md files).
@@ -159,13 +246,41 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Liveness + readiness for K8s probes. /healthz: always 200 once the
-	// process is up. /readyz: same today; if a future startup step is
-	// async, gate it on a sync.Once-set ready flag instead.
+	// process is up. /readyz: checks VERIFIABLY_READYZ_URL reachability (2 s
+	// timeout) when the env var is set; 503 if the primary adapter is down.
+	// /metrics: Prometheus text format; protected by API key when keys are configured.
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		if len(h.APIKeys) > 0 {
+			if _, ok := h.APIKeys.Authenticate(r); !ok {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="verifiably"`)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+		metrics.Handler().ServeHTTP(w, r)
+	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if targetURL := os.Getenv("VERIFIABLY_READYZ_URL"); targetURL != "" {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodHead, targetURL, nil)
+			if err != nil {
+				http.Error(w, "readyz: bad VERIFIABLY_READYZ_URL", http.StatusServiceUnavailable)
+				return
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
+			if err != nil {
+				http.Error(w, "adapter unreachable: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ready"))
 	})
@@ -287,6 +402,9 @@ func main() {
 
 	// REST API — /api/v1/*
 	// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
+	mux.HandleFunc("POST /api/v1/credentials/issue/bulk/async", h.APIIssueBulkAsync)
+	mux.HandleFunc("GET /api/v1/bulk/{jobID}/events", h.APIBulkJobEvents)
+	mux.HandleFunc("GET /api/v1/bulk/{jobID}", h.APIBulkJobStatus)
 	mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
 	mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
 	mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
@@ -304,7 +422,10 @@ func main() {
 		http.Redirect(w, r, "/static/openapi.yaml", http.StatusFound)
 	})
 
-	srv := &http.Server{Addr: addr, Handler: mux}
+	// Wrap the mux with tracing (outermost) then request-ID. Order matters:
+	// tracing middleware creates the root span for every request; the request-ID
+	// middleware runs inside it so the request-id attribute appears on the span.
+	srv := &http.Server{Addr: addr, Handler: tracing.Middleware(tracer)(withRequestID(mux))}
 
 	go func() {
 		log.Printf("verifiably-go listening on %s (debug markers: %v)", addr, debug)
@@ -321,31 +442,70 @@ func main() {
 	if err := srv.Shutdown(drainCtx); err != nil {
 		log.Printf("verifiably-go forced shutdown: %v", err)
 	}
+	// Flush any buffered spans to the OTLP collector before exiting.
+	if err := tracer.Shutdown(drainCtx); err != nil {
+		log.Printf("tracing: shutdown: %v", err)
+	}
+}
+
+// buildTracer initialises the process-wide tracer from environment variables
+// and installs it via tracing.SetGlobal. Logs the active configuration.
+func buildTracer(_ context.Context) *tracing.Tracer {
+	svcName := os.Getenv("VERIFIABLY_OTEL_SERVICE_NAME")
+	if svcName == "" {
+		svcName = "verifiably-go"
+	}
+
+	sampleRate := 1.0
+	if s := os.Getenv("VERIFIABLY_OTEL_SAMPLE_RATE"); s != "" {
+		if f, err := strconv.ParseFloat(s, 64); err == nil && f >= 0 && f <= 1 {
+			sampleRate = f
+		}
+	}
+
+	// Always include the slog exporter for Loki log-to-trace correlation.
+	var exp tracing.SpanExporter = tracing.SlogExporter{}
+
+	if endpoint := os.Getenv("VERIFIABLY_OTEL_ENDPOINT"); endpoint != "" {
+		otlp := tracing.NewOTLPExporter(endpoint)
+		exp = tracing.CombinedExporter{exp, otlp}
+		log.Printf("tracing: OTLP → %s (service=%s sample=%.2f)", endpoint, svcName, sampleRate)
+	} else {
+		log.Printf("tracing: slog-only (set VERIFIABLY_OTEL_ENDPOINT for OTLP; service=%s sample=%.2f)", svcName, sampleRate)
+	}
+
+	t := tracing.NewTracer(svcName, sampleRate, exp)
+	tracing.SetGlobal(t)
+	return t
 }
 
 // buildSessionStore returns a persistent store backed by encrypted files in
 // VERIFIABLY_STATE_DIR/sessions/. The encryption key is taken from
 // VERIFIABLY_SESSION_SECRET; when that env var is absent the key is loaded
 // from (or generated into) VERIFIABLY_STATE_DIR/session.key so the secret
-// survives container restarts without operator intervention, as long as the
-// state dir is on a persistent volume. Falls back to in-memory if the state
-// dir is not writable.
-func buildSessionStore() *handlers.Store {
+// survives container restarts without operator intervention. Session blobs are
+// encrypted (AES-256-GCM) in all backends — file, PG, and Redis — using the
+// same derived key, so a credential leak of any backing store does not expose
+// live OAuth tokens.
+//
+// Backend priority order:
+//  1. VERIFIABLY_REDIS_URL set → Redis (true multi-replica; pair with Caddy cookie lb)
+//  2. pool (VERIFIABLY_DATABASE_URL) non-nil → PostgreSQL (restart-safe, single-replica)
+//  3. VERIFIABLY_SESSION_SECRET set → encrypted file store (single-replica)
+//  4. otherwise → in-memory only (dev/test)
+func buildSessionStore(_ context.Context, pool *pgxpool.Pool) handlers.SessionStore {
+	// Derive the AES key from the session secret early — all backends need it.
 	stateDir := os.Getenv("VERIFIABLY_STATE_DIR")
 	if stateDir == "" {
 		stateDir = "state"
 	}
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		log.Printf("session store: state dir not writable (%v), using in-memory store", err)
-		return handlers.NewStore()
-	}
-
 	secret := os.Getenv("VERIFIABLY_SESSION_SECRET")
 	if secret == "" {
 		keyPath := filepath.Join(stateDir, "session.key")
 		if data, err := os.ReadFile(keyPath); err == nil {
 			secret = strings.TrimSpace(string(data))
 		} else {
+			_ = os.MkdirAll(stateDir, 0o700)
 			b := make([]byte, 32)
 			if _, err := rand.Read(b); err == nil {
 				secret = hex.EncodeToString(b)
@@ -353,6 +513,33 @@ func buildSessionStore() *handlers.Store {
 				log.Printf("session store: generated new session key at %s", keyPath)
 			}
 		}
+	}
+	var aesKey []byte
+	if secret != "" {
+		k := sha256.Sum256([]byte(secret))
+		aesKey = k[:]
+	} else {
+		log.Printf("session store: WARNING — no session secret; sessions will be stored unencrypted")
+	}
+
+	if redisURL := os.Getenv("VERIFIABLY_REDIS_URL"); redisURL != "" {
+		client, err := redisstore.Dial(redisURL)
+		if err != nil {
+			log.Printf("session store: redis unavailable (%v), trying postgres/file", err)
+		} else {
+			log.Printf("session store: using Redis backend (encrypted=%v)", aesKey != nil)
+			return redisstore.NewSessionStore(client, aesKey)
+		}
+	}
+
+	if pool != nil {
+		log.Printf("session store: using PostgreSQL backend (encrypted=%v)", aesKey != nil)
+		return pg.NewSessionStore(pool, aesKey)
+	}
+
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		log.Printf("session store: state dir not writable (%v), using in-memory store", err)
+		return handlers.NewStore()
 	}
 	if secret == "" {
 		log.Printf("session store: cannot obtain session secret, using in-memory store")
@@ -370,11 +557,31 @@ func (slogWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// ctxKeyRequestID is the context key for the per-request ID.
+type ctxKeyRequestID struct{}
+
+// withRequestID generates a unique X-Request-ID for every inbound request,
+// echoes it in the response header, and stores it in the context so handlers
+// can include it in log attributes. If the client already sends X-Request-ID
+// we propagate it unchanged (enables tracing across service boundaries).
+func withRequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-ID")
+		if id == "" {
+			b := make([]byte, 8)
+			_, _ = rand.Read(b)
+			id = hex.EncodeToString(b)
+		}
+		w.Header().Set("X-Request-ID", id)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKeyRequestID{}, id)))
+	})
+}
+
 // loadTemplates walks templates/ and parses every *.html file into a single tree
 // with template names matching their {{define}} directives.
-func loadTemplates(root string) (*template.Template, error) {
+func loadTemplates(root string, tr handlers.Translator) (*template.Template, error) {
 	var tmpl *template.Template
-	fns := funcMap()
+	fns := funcMap(tr)
 	// render lets the layout dispatch to a content sub-template by name
 	// (html/template's built-in {{template}} action requires a constant name).
 	fns["render"] = func(name string, data any) (template.HTML, error) {
@@ -404,7 +611,7 @@ func loadTemplates(root string) (*template.Template, error) {
 
 // funcMap exposes small helpers to templates. Kept minimal — if this grows
 // past a dozen entries, move to its own file.
-func funcMap() template.FuncMap {
+func funcMap(tr handlers.Translator) template.FuncMap {
 	return template.FuncMap{
 		"titleIf": func(cond bool, s string) string {
 			if cond {
@@ -436,12 +643,9 @@ func funcMap() template.FuncMap {
 		// dict builds a map[string]any from alternating key/value args so templates
 		// can pass multiple named params into sub-templates.
 		// Usage: {{template "partial" (dict "K1" v1 "K2" v2)}}
-		// t is the translation helper bound at parse time. Takes (text, lang)
-		// — the current lang is passed in via `$.Lang` in templates.
-		// handlers.TranslateFunc looks up the request-scoped translator +
-		// context via package state set in handlers.(*H).render before
-		// template execution.
-		"t": handlers.TranslateFunc,
+		// t is the translation helper. Takes (text, lang); lang comes from $.Lang.
+		// MakeTranslateFunc captures tr at startup — no per-request global state.
+		"t": handlers.MakeTranslateFunc(tr),
 
 		// hasCapability returns true if the given DPG declares a capability
 		// with the given Kind+Key. Templates use it to hide flow-specific UI
