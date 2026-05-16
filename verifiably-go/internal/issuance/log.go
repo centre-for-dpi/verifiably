@@ -12,6 +12,8 @@
 package issuance
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -66,9 +68,10 @@ type IssuedCredential struct {
 	HolderHint string `json:"holderHint,omitempty"`
 
 	// SubjectFields is a verbatim copy of the issued claim set. Used for
-	// search and so the list page can render a tooltip / details pane
-	// without having to refetch from walt.id.
-	SubjectFields map[string]string `json:"subjectFields,omitempty"`
+	// in-memory search and the list page's tooltip / details pane.
+	// Tagged json:"-" so PII is never written to the on-disk JSON log;
+	// it lives only in process memory and is cleared on container restart.
+	SubjectFields map[string]string `json:"-"`
 
 	// OfferURI is what the wallet scans. Recorded so the operator can
 	// re-share if the wallet hasn't claimed the offer yet.
@@ -87,6 +90,10 @@ type IssuedCredential struct {
 	// if the credential's Std doesn't support a status list (e.g. mdoc).
 	// Without a StatusList entry the Revoke button stays disabled.
 	StatusList *StatusListEntry `json:"statusList,omitempty"`
+
+	// PrevHash is the SHA-256 hex hash of the preceding entry's immutable
+	// fields. Empty on the first entry. Use VerifyChain to check integrity.
+	PrevHash string `json:"prevHash,omitempty"`
 }
 
 // StatusListEntry is the (which list, which bit) pointer the Revoke
@@ -126,12 +133,42 @@ type Filter struct {
 	OwnerKey string
 }
 
+// Backend is the interface satisfied by both the file-backed *Log and the
+// PostgreSQL-backed pg.IssuanceLog. Wire the right one in main.go based on
+// whether VERIFIABLY_DATABASE_URL is set.
+type Backend interface {
+	Append(c IssuedCredential) (IssuedCredential, error)
+	Get(id string) (IssuedCredential, bool)
+	List(f Filter) []IssuedCredential
+	Summary() Stats
+	MarkRevoked(id, ownerKey string) (IssuedCredential, error)
+	MarkReinstate(id, ownerKey string) (IssuedCredential, error)
+	VerifyChain() []error
+}
+
 // Log is the JSON-backed store. Methods serialize through mu so concurrent
 // HTTP handlers can issue + revoke + list without racing.
 type Log struct {
 	path  string
 	mu    sync.RWMutex
 	items []IssuedCredential
+}
+
+// ChainHashOf returns the SHA-256 hex hash of the immutable fields of c.
+// \x00 byte separators prevent cross-field collisions. Both the file-backed
+// Log and the PostgreSQL IssuanceLog use this function so the hash chain is
+// identical regardless of which backend is active.
+func ChainHashOf(c IssuedCredential) string {
+	h := sha256.New()
+	for _, s := range []string{
+		c.ID, c.SchemaID, c.IssuerDpg, c.OwnerKey,
+		c.IssuedAt.UTC().Format(time.RFC3339Nano),
+		c.PrevHash,
+	} {
+		_, _ = h.Write([]byte(s))
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // NewLog opens (or lazily creates) the JSON file at path. The directory
@@ -200,6 +237,9 @@ func (l *Log) Append(c IssuedCredential) (IssuedCredential, error) {
 		if existing.ID == c.ID {
 			return IssuedCredential{}, fmt.Errorf("issuance: append: id %q already exists", c.ID)
 		}
+	}
+	if len(l.items) > 0 {
+		c.PrevHash = ChainHashOf(l.items[len(l.items)-1])
 	}
 	l.items = append(l.items, c)
 	if err := l.save(); err != nil {
@@ -325,6 +365,31 @@ func (l *Log) List(f Filter) []IssuedCredential {
 		return out[i].IssuedAt.After(out[j].IssuedAt)
 	})
 	return out
+}
+
+// VerifyChain walks the log and checks that each entry's PrevHash equals the
+// hash of its predecessor. Returns one error per broken link; an empty slice
+// means the chain is intact. Entries without a PrevHash (written before
+// hash-chaining shipped) are skipped so old logs aren't flagged as corrupt.
+func (l *Log) VerifyChain() []error {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	var errs []error
+	for i := 1; i < len(l.items); i++ {
+		if l.items[i].PrevHash == "" {
+			continue
+		}
+		want := ChainHashOf(l.items[i-1])
+		if l.items[i].PrevHash != want {
+			errs = append(errs, fmt.Errorf(
+				"chain break at entry %q (index %d): stored=%s…, computed=%s…",
+				l.items[i].ID, i,
+				l.items[i].PrevHash[:min(8, len(l.items[i].PrevHash))],
+				want[:8],
+			))
+		}
+	}
+	return errs
 }
 
 // matchesQuery looks for q in the human-visible fields. Subject values are

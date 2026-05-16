@@ -185,6 +185,77 @@ func TestOwnerKeyScoping(t *testing.T) {
 	}
 }
 
+// ─── Hash chain ───────────────────────────────────────────────────────────────
+
+func TestHashChain_AppendSetsHash(t *testing.T) {
+	dir := t.TempDir()
+	l, _ := NewLog(filepath.Join(dir, "log.json"))
+
+	a, _ := l.Append(IssuedCredential{ID: "first", SchemaID: "s1"})
+	if a.PrevHash != "" {
+		t.Errorf("genesis entry should have empty PrevHash, got %q", a.PrevHash)
+	}
+	b, _ := l.Append(IssuedCredential{ID: "second", SchemaID: "s1"})
+	if b.PrevHash == "" {
+		t.Fatal("second entry must have non-empty PrevHash")
+	}
+	if b.PrevHash != chainHashOf(a) {
+		t.Errorf("second.PrevHash = %q\nwant chainHashOf(first) = %q", b.PrevHash, chainHashOf(a))
+	}
+}
+
+func TestHashChain_VerifyIntact(t *testing.T) {
+	dir := t.TempDir()
+	l, _ := NewLog(filepath.Join(dir, "log.json"))
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := l.Append(IssuedCredential{ID: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if errs := l.VerifyChain(); len(errs) != 0 {
+		t.Fatalf("intact chain should pass VerifyChain: %v", errs)
+	}
+}
+
+func TestHashChain_VerifyTampered(t *testing.T) {
+	dir := t.TempDir()
+	l, _ := NewLog(filepath.Join(dir, "log.json"))
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := l.Append(IssuedCredential{ID: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Corrupt PrevHash of the third entry.
+	l.mu.Lock()
+	orig := l.items[2].PrevHash
+	l.items[2].PrevHash = "deadbeef" + orig[8:]
+	l.mu.Unlock()
+
+	errs := l.VerifyChain()
+	if len(errs) == 0 {
+		t.Fatal("tampered chain should fail VerifyChain")
+	}
+}
+
+func TestHashChain_BackwardCompat(t *testing.T) {
+	// Entries without PrevHash (pre-chain) must not be flagged as corrupt.
+	dir := t.TempDir()
+	l, _ := NewLog(filepath.Join(dir, "log.json"))
+
+	// Inject a pre-chain entry directly, bypassing Append's hash logic.
+	l.mu.Lock()
+	l.items = append(l.items, IssuedCredential{ID: "legacy", IssuedAt: time.Now().UTC()})
+	l.mu.Unlock()
+
+	// Append a chained entry on top — it will link to "legacy".
+	if _, err := l.Append(IssuedCredential{ID: "chained"}); err != nil {
+		t.Fatal(err)
+	}
+	if errs := l.VerifyChain(); len(errs) != 0 {
+		t.Fatalf("chain after legacy entry should pass: %v", errs)
+	}
+}
+
 func TestSummary(t *testing.T) {
 	dir := t.TempDir()
 	l, err := NewLog(filepath.Join(dir, "log.json"))
