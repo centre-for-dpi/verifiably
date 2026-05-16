@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -89,7 +90,11 @@ func (h *H) ShowIssue(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/issuer/dpg")
 		return
 	}
-	schemas, _ := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, ok := findSchemaByID(schemas, sess.SchemaID)
 	if !ok {
 		h.errorToast(w, r, "selected schema missing")
@@ -174,7 +179,11 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	sess.IssuerDpg = issuerDpg
 	sess.SchemaID = schemaID
 
-	schemas, _ := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, _ := findSchemaByID(schemas, schemaID)
 	schema = h.resolveFields(schema)
 	// Gather subject data from form (falls back to prefill)
@@ -211,6 +220,7 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.StatusList = binding
+		issueStart := time.Now()
 		res, err := h.Adapter.IssueToWallet(r.Context(), req)
 		if err != nil {
 			h.errorToast(w, r, err.Error())
@@ -220,12 +230,14 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 			"schema", schema.ID,
 			"dpg", sess.IssuerDpg,
 			"dest", "wallet",
+			"duration_ms", time.Since(issueStart).Milliseconds(),
 		)
 		h.recordIssuance(sess, schema, sess.IssuerDpg, subject, res.OfferURI, binding)
 		h.renderFragment(w, r, "fragment_issue_wallet_result", res)
 		return
 	}
 	// PDF
+	pdfStart := time.Now()
 	res, err := h.Adapter.IssueAsPDF(r.Context(), req)
 	if err != nil {
 		h.errorToast(w, r, err.Error())
@@ -235,6 +247,7 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		"schema", schema.ID,
 		"dpg", sess.IssuerDpg,
 		"dest", "pdf",
+		"duration_ms", time.Since(pdfStart).Milliseconds(),
 	)
 	h.renderFragment(w, r, "fragment_issue_pdf_result", map[string]any{
 		"Schema":    schema,
@@ -250,7 +263,11 @@ func (h *H) SetSingleSource(w http.ResponseWriter, r *http.Request) {
 	if source == "" {
 		source = "manual"
 	}
-	schemas, _ := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	schema = h.resolveFields(schema)
 	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
@@ -278,7 +295,11 @@ func (h *H) SimulateCSV(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Upload a CSV first")
 		return
 	}
-	schemas, _ := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	file, _, err := r.FormFile("csv_file")
 	if err != nil {
@@ -319,7 +340,11 @@ func (h *H) SimulateCSV(w http.ResponseWriter, r *http.Request) {
 // PreviewPDF opens the PDF preview modal.
 func (h *H) PreviewPDF(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
-	schemas, _ := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
 	res, err := h.Adapter.IssueAsPDF(r.Context(), backend.IssueRequest{

@@ -285,6 +285,57 @@ func (s *Store) PublishTokenStatusList(key *SigningKey) (string, error) {
 	return key.SignJWT("statuslist+jwt", claims)
 }
 
+// RawBytes returns a snapshot of the raw (uncompressed) bit bytes. Used by
+// the PostgreSQL backend to persist bit state without file I/O.
+func (s *Store) RawBytes() []byte {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	b := s.bits.Bytes()
+	out := make([]byte, len(b))
+	copy(out, b)
+	return out
+}
+
+// LoadRawBytes replaces the in-memory Bitstring with bytes from an external
+// source (e.g. PostgreSQL). The nextFree counter is also restored.
+// Call this immediately after NewStore before any Allocate/Revoke calls.
+func (s *Store) LoadRawBytes(raw []byte, nextFree int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	bs, err := s.bitsFromBytes(raw, len(raw)*8)
+	if err != nil {
+		return err
+	}
+	s.bits = bs
+	s.nextFree = nextFree
+	return nil
+}
+
+// GetKind returns the Kind field. Used by Backend interface consumers.
+func (s *Store) GetKind() string { return s.Kind }
+
+// GetListID returns the ListID field. Used by Backend interface consumers.
+func (s *Store) GetListID() string { return s.ListID }
+
+// GetPublishURL returns the PublishURL field. Used by Backend interface consumers.
+func (s *Store) GetPublishURL() string { return s.PublishURL }
+
+// Backend is the interface satisfied by both the file-backed *Store and the
+// PostgreSQL-backed pg.StatusListStore. Wire the right one in main.go.
+type Backend interface {
+	Allocate() (int, error)
+	Revoke(index int) error
+	Reinstate(index int) error
+	IsRevoked(index int) bool
+	Size() int
+	NextFree() int
+	GetKind() string
+	GetListID() string
+	GetPublishURL() string
+	PublishBitstringJWT(key *SigningKey) (string, error)
+	PublishTokenStatusList(key *SigningKey) (string, error)
+}
+
 // --- helpers ---
 
 // encodeRawBytes writes the bitstring storage to disk as base64url with

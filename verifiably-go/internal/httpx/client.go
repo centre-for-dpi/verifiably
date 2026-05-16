@@ -15,6 +15,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/verifiably/verifiably-go/internal/tracing"
 )
 
 // tokenCtxKey is the private context key for a bearer token. Handlers put the
@@ -98,6 +100,7 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, body any, out 
 			req.Header.Set(k, v)
 		}
 	}
+	tracing.Inject(ctx, req.Header)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", method, u, err)
@@ -142,6 +145,7 @@ func (c *Client) DoForm(ctx context.Context, method, path string, form url.Value
 			req.Header.Set(k, v)
 		}
 	}
+	tracing.Inject(ctx, req.Header)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", method, u, err)
@@ -188,6 +192,7 @@ func (c *Client) DoRaw(ctx context.Context, method, path string, body io.Reader,
 			req.Header.Set(k, v)
 		}
 	}
+	tracing.Inject(ctx, req.Header)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: %w", method, u, err)

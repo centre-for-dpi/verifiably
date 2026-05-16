@@ -22,14 +22,17 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
-	"log"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/issuance"
+	"github.com/verifiably/verifiably-go/internal/metrics"
+	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -58,9 +61,9 @@ func ParseAPIKeys(s string) APIKeyMap {
 	return m
 }
 
-// authenticate extracts and validates the Bearer token. Returns the key name
+// Authenticate extracts and validates the Bearer token. Returns the key name
 // on success. Uses constant-time comparison to avoid timing side-channels.
-func (km APIKeyMap) authenticate(r *http.Request) (string, bool) {
+func (km APIKeyMap) Authenticate(r *http.Request) (string, bool) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
 		return "", false
@@ -102,7 +105,7 @@ func (h *H) requireAPIAuth(w http.ResponseWriter, r *http.Request) (string, bool
 		apiError(w, http.StatusServiceUnavailable, "API not enabled (VERIFIABLY_API_KEYS not set)")
 		return "", false
 	}
-	name, ok := h.APIKeys.authenticate(r)
+	name, ok := h.APIKeys.Authenticate(r)
 	if !ok {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="verifiably"`)
 		apiError(w, http.StatusUnauthorized, "invalid or missing API key")
@@ -111,28 +114,34 @@ func (h *H) requireAPIAuth(w http.ResponseWriter, r *http.Request) (string, bool
 	return name, true
 }
 
-// firstIssuerDPG returns the first available issuer DPG name, or "" if none.
+// firstIssuerDPG returns the lexicographically first available issuer DPG name,
+// or "" if none. Sorted so parallel requests always pick the same DPG.
 func (h *H) firstIssuerDPG(ctx context.Context) string {
 	dpgs, err := h.Adapter.ListIssuerDpgs(ctx)
 	if err != nil || len(dpgs) == 0 {
 		return ""
 	}
+	names := make([]string, 0, len(dpgs))
 	for name := range dpgs {
-		return name
+		names = append(names, name)
 	}
-	return ""
+	sort.Strings(names)
+	return names[0]
 }
 
-// firstVerifierDPG returns the first available verifier DPG name, or "".
+// firstVerifierDPG returns the lexicographically first available verifier DPG
+// name, or "". Sorted so parallel requests always pick the same DPG.
 func (h *H) firstVerifierDPG(ctx context.Context) string {
 	dpgs, err := h.Adapter.ListVerifierDpgs(ctx)
 	if err != nil || len(dpgs) == 0 {
 		return ""
 	}
+	names := make([]string, 0, len(dpgs))
 	for name := range dpgs {
-		return name
+		names = append(names, name)
 	}
-	return ""
+	sort.Strings(names)
+	return names[0]
 }
 
 // apiRecordIssuance writes an audit-log entry for an API-initiated issuance.
@@ -176,7 +185,7 @@ func (h *H) apiRecordIssuance(keyName string, schema vctypes.Schema, issuerDpg, 
 		}
 	}
 	if _, err := h.IssuanceLog.Append(rec); err != nil {
-		log.Printf("api: issuance log append %s: %v", id, err)
+		slog.Warn("api: issuance log append failed", "id", id, "err", err)
 		return ""
 	}
 	return id
@@ -210,6 +219,11 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if h.RateLimiter != nil && !h.RateLimiter.Allow(keyName, r) {
+		w.Header().Set("Retry-After", "60")
+		apiError(w, http.StatusTooManyRequests, "rate limit exceeded — retry in 60 s")
+		return
+	}
 	var req apiIssueRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -220,7 +234,11 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := apiCtx(r, keyName)
-	schemas, _ := h.Adapter.ListAllSchemas(ctx)
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	if err != nil {
+		apiError(w, http.StatusServiceUnavailable, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, ok2 := findSchemaByID(schemas, req.SchemaID)
 	if !ok2 {
 		apiError(w, http.StatusNotFound, "schema not found: "+req.SchemaID)
@@ -239,6 +257,7 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
 		return
 	}
+	issueStart := time.Now()
 	res, err := h.Adapter.IssueToWallet(ctx, backend.IssueRequest{
 		IssuerDpg:   req.IssuerDpg,
 		Schema:      schema,
@@ -246,16 +265,21 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 		Flow:        "pre_auth",
 		StatusList:  binding,
 	})
+	issueDur := time.Since(issueStart)
+	metrics.ObserveDuration("adapter_duration_seconds", issueDur, "dpg", req.IssuerDpg, "op", "issue")
 	if err != nil {
+		metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", req.SchemaID, "status", "error")
 		apiError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", req.SchemaID, "status", "ok")
 	credID := h.apiRecordIssuance(keyName, schema, req.IssuerDpg, res.OfferURI, req.SubjectData, binding)
 	slog.Info("api: credential issued",
 		"credential_id", credID,
 		"schema", req.SchemaID,
 		"dpg", req.IssuerDpg,
 		"api_key", keyName,
+		"duration_ms", issueDur.Milliseconds(),
 	)
 	out := apiIssueResult{
 		CredentialID: credID,
@@ -292,10 +316,18 @@ type apiBulkRowOut struct {
 	Error        string `json:"error,omitempty"`
 }
 
+// maxBulkRows caps the number of rows accepted in a single APIIssueBulk call.
+const maxBulkRows = 500
+
 // APIIssueBulk handles POST /api/v1/credentials/issue/bulk.
 func (h *H) APIIssueBulk(w http.ResponseWriter, r *http.Request) {
 	keyName, ok := h.requireAPIAuth(w, r)
 	if !ok {
+		return
+	}
+	if h.RateLimiter != nil && !h.RateLimiter.Allow(keyName, r) {
+		w.Header().Set("Retry-After", "60")
+		apiError(w, http.StatusTooManyRequests, "rate limit exceeded — retry in 60 s")
 		return
 	}
 	var req apiIssueBulkRequest
@@ -311,8 +343,16 @@ func (h *H) APIIssueBulk(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "rows must not be empty")
 		return
 	}
+	if len(req.Rows) > maxBulkRows {
+		apiError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("rows exceeds limit (%d max, got %d)", maxBulkRows, len(req.Rows)))
+		return
+	}
 	ctx := apiCtx(r, keyName)
-	schemas, _ := h.Adapter.ListAllSchemas(ctx)
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	if err != nil {
+		apiError(w, http.StatusServiceUnavailable, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, ok2 := findSchemaByID(schemas, req.SchemaID)
 	if !ok2 {
 		apiError(w, http.StatusNotFound, "schema not found: "+req.SchemaID)
@@ -326,6 +366,8 @@ func (h *H) APIIssueBulk(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusServiceUnavailable, "no issuer DPG available")
 		return
 	}
+	ctx, bulkCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer bulkCancel()
 	out := apiIssueBulkResult{Rows: make([]apiBulkRowOut, 0, len(req.Rows))}
 	for i, row := range req.Rows {
 		binding, berr := h.allocateStatusListBinding(schema)
@@ -334,6 +376,7 @@ func (h *H) APIIssueBulk(w http.ResponseWriter, r *http.Request) {
 			out.Rows = append(out.Rows, apiBulkRowOut{Row: i + 1, Status: "failed", Error: berr.Error()})
 			continue
 		}
+		rowStart := time.Now()
 		res, ierr := h.Adapter.IssueToWallet(ctx, backend.IssueRequest{
 			IssuerDpg:   req.IssuerDpg,
 			Schema:      schema,
@@ -341,11 +384,14 @@ func (h *H) APIIssueBulk(w http.ResponseWriter, r *http.Request) {
 			Flow:        "pre_auth",
 			StatusList:  binding,
 		})
+		metrics.ObserveDuration("adapter_duration_seconds", time.Since(rowStart), "dpg", req.IssuerDpg, "op", "issue")
 		if ierr != nil {
+			metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", req.SchemaID, "status", "error")
 			out.Rejected++
 			out.Rows = append(out.Rows, apiBulkRowOut{Row: i + 1, Status: "failed", Error: ierr.Error()})
 			continue
 		}
+		metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", req.SchemaID, "status", "ok")
 		credID := h.apiRecordIssuance(keyName, schema, req.IssuerDpg, res.OfferURI, row, binding)
 		out.Accepted++
 		out.Rows = append(out.Rows, apiBulkRowOut{Row: i + 1, CredentialID: credID, OfferURI: res.OfferURI, PIN: res.PIN, Status: "issued"})
@@ -404,18 +450,21 @@ func (h *H) APIGetCredential(w http.ResponseWriter, r *http.Request) {
 	if rec.RevokedAt != nil {
 		status = "revoked"
 	}
+	// subject_fields is in-memory only (json:"-" on IssuedCredential prevents
+	// PII from being written to the on-disk log). It is populated for the
+	// current process lifetime but nil after a container restart.
 	apiJSON(w, http.StatusOK, map[string]any{
-		"id":            rec.ID,
-		"schema_id":     rec.SchemaID,
-		"schema_name":   rec.SchemaName,
-		"issuer_dpg":    rec.IssuerDpg,
-		"holder_hint":   rec.HolderHint,
+		"id":             rec.ID,
+		"schema_id":      rec.SchemaID,
+		"schema_name":    rec.SchemaName,
+		"issuer_dpg":     rec.IssuerDpg,
+		"holder_hint":    rec.HolderHint,
 		"subject_fields": rec.SubjectFields,
-		"offer_uri":     rec.OfferURI,
-		"issued_at":     rec.IssuedAt,
-		"status":        status,
-		"revoked_at":    rec.RevokedAt,
-		"status_list":   rec.StatusList,
+		"offer_uri":      rec.OfferURI,
+		"issued_at":      rec.IssuedAt,
+		"status":         status,
+		"revoked_at":     rec.RevokedAt,
+		"status_list":    rec.StatusList,
 	})
 }
 
@@ -507,20 +556,13 @@ func (h *H) APIReinstate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// reinstateStoreForKind returns the store if it supports Reinstate. Kept
-// separate from storeForKind which only exposes Revoke.
-func (h *H) reinstateStoreForKind(kind string) interface {
-	Reinstate(int) error
-} {
+// reinstateStoreForKind returns the store for the given kind.
+func (h *H) reinstateStoreForKind(kind string) statuslist.Backend {
 	switch kind {
 	case "bitstring":
-		if h.BitstringStore != nil {
-			return h.BitstringStore
-		}
+		return h.BitstringStore
 	case "token":
-		if h.TokenStore != nil {
-			return h.TokenStore
-		}
+		return h.TokenStore
 	}
 	return nil
 }
@@ -554,7 +596,11 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := apiCtx(r, keyName)
-	schemas, _ := h.Adapter.ListAllSchemas(ctx)
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	if err != nil {
+		apiError(w, http.StatusServiceUnavailable, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, ok2 := findSchemaByID(schemas, req.SchemaID)
 	if !ok2 {
 		apiError(w, http.StatusNotFound, "schema not found: "+req.SchemaID)
@@ -582,16 +628,20 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 		WireFormat:     "dc+sd-jwt",
 		Disclosure:     "selective — SD-JWT VC (dc+sd-jwt)",
 	}
+	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(ctx, backend.PresentationRequest{
 		VerifierDpg: req.VerifierDpg,
 		TemplateKey: "custom",
 		Template:    &tpl,
 		Policies:    []string{"signature", "expired", "not-before"},
 	})
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(verifyStart), "dpg", req.VerifierDpg, "op", "verify")
 	if err != nil {
+		metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", req.SchemaID, "status", "error")
 		apiError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", req.SchemaID, "status", "ok")
 	apiJSON(w, http.StatusOK, apiVerifyRequestResult{
 		RequestURI: res.RequestURI,
 		State:      res.State,
@@ -634,4 +684,195 @@ func (h *H) APIVerifyResult(w http.ResponseWriter, r *http.Request) {
 		"disclosed":  res.DisclosedFields,
 		"checked_at": time.Now().UTC(),
 	})
+}
+
+// ── Async bulk issuance ───────────────────────────────────────────────────────
+
+// APIIssueBulkAsync handles POST /api/v1/credentials/issue/bulk/async.
+// It validates the request synchronously, submits a job to the worker pool,
+// and returns HTTP 202 immediately with the job ID. The client tracks
+// progress via GET /api/v1/bulk/{jobID} or the SSE stream
+// GET /api/v1/bulk/{jobID}/events.
+func (h *H) APIIssueBulkAsync(w http.ResponseWriter, r *http.Request) {
+	keyName, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	if h.BulkJobQueue == nil {
+		apiError(w, http.StatusServiceUnavailable, "async bulk queue not configured")
+		return
+	}
+	if h.RateLimiter != nil && !h.RateLimiter.Allow(keyName, r) {
+		w.Header().Set("Retry-After", "60")
+		apiError(w, http.StatusTooManyRequests, "rate limit exceeded — retry in 60 s")
+		return
+	}
+	var req apiIssueBulkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.SchemaID == "" {
+		apiError(w, http.StatusBadRequest, "schema_id required")
+		return
+	}
+	if len(req.Rows) == 0 {
+		apiError(w, http.StatusBadRequest, "rows must not be empty")
+		return
+	}
+	if len(req.Rows) > maxBulkRows {
+		apiError(w, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("rows exceeds limit (%d max, got %d)", maxBulkRows, len(req.Rows)))
+		return
+	}
+	ctx := apiCtx(r, keyName)
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	if err != nil {
+		apiError(w, http.StatusServiceUnavailable, "backend unavailable: "+err.Error())
+		return
+	}
+	schema, ok2 := findSchemaByID(schemas, req.SchemaID)
+	if !ok2 {
+		apiError(w, http.StatusNotFound, "schema not found: "+req.SchemaID)
+		return
+	}
+	schema = h.resolveFields(schema)
+	if req.IssuerDpg == "" {
+		req.IssuerDpg = h.firstIssuerDPG(ctx)
+	}
+	if req.IssuerDpg == "" {
+		apiError(w, http.StatusServiceUnavailable, "no issuer DPG available")
+		return
+	}
+
+	// Capture loop variables so the closure is safe to call from a goroutine.
+	issuerDpg := req.IssuerDpg
+	schemaSnap := schema
+	workFn := func(rowCtx context.Context, row map[string]string) error {
+		binding, berr := h.allocateStatusListBinding(schemaSnap)
+		if berr != nil {
+			return berr
+		}
+		res, ierr := h.Adapter.IssueToWallet(rowCtx, backend.IssueRequest{
+			IssuerDpg:   issuerDpg,
+			Schema:      schemaSnap,
+			SubjectData: row,
+			Flow:        "pre_auth",
+			StatusList:  binding,
+		})
+		if ierr != nil {
+			metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", req.SchemaID, "status", "error")
+			return ierr
+		}
+		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", req.SchemaID, "status", "ok")
+		h.apiRecordIssuance(keyName, schemaSnap, issuerDpg, res.OfferURI, row, binding)
+		return nil
+	}
+
+	jobID, err := h.BulkJobQueue.Submit(r.Context(), req.Rows, workFn)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "submit job: "+err.Error())
+		return
+	}
+	apiJSON(w, http.StatusAccepted, map[string]any{
+		"job_id":     jobID,
+		"total":      len(req.Rows),
+		"status_url": "/api/v1/bulk/" + jobID,
+		"events_url": "/api/v1/bulk/" + jobID + "/events",
+	})
+}
+
+// APIBulkJobStatus handles GET /api/v1/bulk/{jobID}.
+// Returns the current job state as JSON.
+func (h *H) APIBulkJobStatus(w http.ResponseWriter, r *http.Request) {
+	_, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	if h.BulkJobQueue == nil {
+		apiError(w, http.StatusServiceUnavailable, "async bulk queue not configured")
+		return
+	}
+	jobID := r.PathValue("jobID")
+	if jobID == "" {
+		apiError(w, http.StatusBadRequest, "jobID required")
+		return
+	}
+	job, found := h.BulkJobQueue.Status(r.Context(), jobID)
+	if !found {
+		apiError(w, http.StatusNotFound, "job not found: "+jobID)
+		return
+	}
+	apiJSON(w, http.StatusOK, map[string]any{
+		"job_id":     job.ID,
+		"status":     job.Status,
+		"total":      job.Total,
+		"done":       job.Done,
+		"errors":     job.Errors,
+		"error_msg":  job.ErrorMsg,
+		"created_at": job.CreatedAt,
+		"updated_at": job.UpdatedAt,
+	})
+}
+
+// APIBulkJobEvents handles GET /api/v1/bulk/{jobID}/events.
+// Streams Server-Sent Events until the job finishes or the client disconnects.
+// Each event: data: {"job_id":"...","status":"...","total":N,"done":M,"errors":K}\n\n
+// If the job is already done when the client connects, one final event is sent
+// immediately and the stream closes.
+func (h *H) APIBulkJobEvents(w http.ResponseWriter, r *http.Request) {
+	_, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	if h.BulkJobQueue == nil {
+		apiError(w, http.StatusServiceUnavailable, "async bulk queue not configured")
+		return
+	}
+	jobID := r.PathValue("jobID")
+	if jobID == "" {
+		apiError(w, http.StatusBadRequest, "jobID required")
+		return
+	}
+	// Verify the job exists before opening the stream.
+	job, found := h.BulkJobQueue.Status(r.Context(), jobID)
+	if !found {
+		apiError(w, http.StatusNotFound, "job not found: "+jobID)
+		return
+	}
+
+	flusher, ok2 := w.(http.Flusher)
+	if !ok2 {
+		apiError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // disable nginx buffering
+
+	// If the job already finished, send one terminal event and close.
+	if job.Status == "done" || job.Status == "error" {
+		if b, err := json.Marshal(map[string]any{
+			"job_id": job.ID, "status": job.Status,
+			"total": job.Total, "done": job.Done, "errors": job.Errors,
+		}); err == nil {
+			fmt.Fprintf(w, "data: %s\n\n", b)
+			flusher.Flush()
+		}
+		return
+	}
+
+	ch := h.BulkJobQueue.Subscribe(r.Context(), jobID)
+	for p := range ch {
+		b, err := json.Marshal(p)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(w, "data: %s\n\n", b)
+		flusher.Flush()
+		if p.Status == "done" || p.Status == "error" {
+			return
+		}
+	}
 }

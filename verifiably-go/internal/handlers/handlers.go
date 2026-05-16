@@ -7,13 +7,17 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/auth"
 	"github.com/verifiably/verifiably-go/internal/issuance"
+	"github.com/verifiably/verifiably-go/internal/jobs"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
@@ -27,7 +31,7 @@ type Translator interface {
 // H is the handler struct; holds deps injected from main.
 type H struct {
 	Adapter    backend.Adapter
-	Sessions   *Store
+	Sessions   SessionStore
 	Templates  *template.Template
 	AuthReg    *auth.Registry
 	Translator Translator
@@ -51,20 +55,32 @@ type H struct {
 	// (list page) and Revoke. Optional — when nil the list page returns 404
 	// and the issuance flow simply doesn't record (back-compat with tests
 	// + the mock adapter integration).
-	IssuanceLog *issuance.Log
+	IssuanceLog issuance.Backend
 
 	// BitstringStore is the W3C Bitstring Status List 2023 the verifiably-go
 	// instance hosts for VCDM 2.0 credentials it issues. Optional; nil
 	// disables W3C revocation end-to-end.
-	BitstringStore *statuslist.Store
+	BitstringStore statuslist.Backend
 
 	// TokenStore is the IETF Token Status List the instance hosts for
 	// SD-JWT VCs it issues. Optional; nil disables SD-JWT revocation.
-	TokenStore *statuslist.Store
+	TokenStore statuslist.Backend
 
 	// APIKeys gates /api/v1/* endpoints. Populated from VERIFIABLY_API_KEYS
 	// ("name1:key1,name2:key2"). When nil or empty, all API routes return 503.
 	APIKeys APIKeyMap
+
+	// RateLimiter throttles POST /api/v1/credentials/issue and .../bulk.
+	// Built from VERIFIABLY_RATE_KEY_RPM (default 60/min) and
+	// VERIFIABLY_RATE_IP_RPM (default 20/min). nil disables rate limiting.
+	RateLimiter *RateLimiter
+
+	// BulkJobQueue is the async worker pool for bulk credential issuance.
+	// When non-nil, POST /api/v1/credentials/issue/bulk/async submits a job
+	// and returns 202 immediately; the client polls .../bulk/{id} or streams
+	// .../bulk/{id}/events for progress. nil falls back to the synchronous
+	// /api/v1/credentials/issue/bulk endpoint.
+	BulkJobQueue *jobs.Queue
 
 	// signingKeyMu guards lazy fetching of the walt.id issuer JWK.
 	// After a successful fetch signingKey is non-nil and the hot path
@@ -105,6 +121,18 @@ func externalHost(r *http.Request) string {
 	return r.Host
 }
 
+// publicBase returns the browser-facing origin used to build absolute URLs
+// such as OIDC redirect URIs. VERIFIABLY_PUBLIC_URL is the authoritative
+// source (set by deploy.sh to the actual public domain); this avoids trusting
+// X-Forwarded-Host from potentially untrusted clients. Falls back to
+// externalScheme + externalHost when the env var is unset (dev/bare-metal).
+func publicBase(r *http.Request) string {
+	if pub := strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/"); pub != "" {
+		return pub
+	}
+	return externalScheme(r) + "://" + externalHost(r)
+}
+
 func isHTMX(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
@@ -130,11 +158,6 @@ func (h *H) render(w http.ResponseWriter, r *http.Request, page string, data Pag
 	if data.Lang == "" {
 		data.Lang = h.langFor(r)
 	}
-	// Translator is looked up via package-level var because html/template's
-	// funcs are bound at parse time; the t() helper takes (text, lang) and
-	// does the lookup itself.
-	installTranslatorForRequest(r.Context(), h.Translator)
-
 	name := "layout"
 	if isHTMX(r) && r.Header.Get("HX-Target") == "main" {
 		name = data.ContentTemplate
@@ -158,46 +181,23 @@ func (h *H) render(w http.ResponseWriter, r *http.Request, page string, data Pag
 	_, _ = w.Write(translated)
 }
 
-// installTranslatorForRequest stores the per-request context + translator so
-// the package-level `t` helper can use them. Safe for the single-request
-// shape of our handlers (each render installs its own pair before executing).
-// For concurrent handler executions we lock so the assignment is atomic; the
-// duration between install and execute is a few microseconds so contention is
-// essentially nil.
-func installTranslatorForRequest(ctx context.Context, tr Translator) {
-	translatorMu.Lock()
-	activeTranslator = tr
-	activeContext = ctx
-	translatorMu.Unlock()
-}
-
-var (
-	translatorMu     sync.Mutex
-	activeTranslator Translator
-	activeContext    context.Context
-)
-
-// TranslateFunc is the stable parse-time template helper. Exposed via
-// main.go's funcMap; looks up translator + context from package state.
-func TranslateFunc(text, lang string) string {
-	translatorMu.Lock()
-	tr, ctx := activeTranslator, activeContext
-	translatorMu.Unlock()
-	if tr == nil || lang == "" || lang == "en" {
-		return text
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return tr.Translate(ctx, text, lang)
-}
-
-// The `t` and `lang` template funcs are bound at parse time — html/template
-// ignores Funcs() called after Parse, so the clone-per-request pattern is
-// broken for these. Instead we use a shared Translator and key each call on
-// the lang passed in as a template argument: `{{t "Hello" $.Lang}}`.
+// MakeTranslateFunc returns the `t` template helper bound to tr. Call once at
+// startup and register the result in the funcMap. Because tr is fixed after
+// startup (it is h.Translator, which is never replaced), the closure has no
+// mutable state — all package-level globals and the installTranslatorForRequest
+// pattern are gone, eliminating the race under concurrent requests.
 //
-// No per-request Clone is needed.
+// The context passed to tr.Translate is context.Background() because the `t`
+// function signature is fixed by html/template (it receives only the text and
+// lang arguments); request cancellation is handled at the translateHTML layer.
+func MakeTranslateFunc(tr Translator) func(string, string) string {
+	return func(text, lang string) string {
+		if tr == nil || lang == "" || lang == "en" {
+			return text
+		}
+		return tr.Translate(context.Background(), text, lang)
+	}
+}
 
 // renderFragment renders a named sub-template directly (for HTMX partial swaps).
 // Applies the same post-render translation pass as render() when a non-English
@@ -212,7 +212,6 @@ func (h *H) renderFragment(w http.ResponseWriter, r *http.Request, name string, 
 		}
 		return
 	}
-	installTranslatorForRequest(r.Context(), h.Translator)
 	var buf bytes.Buffer
 	if err := h.Templates.ExecuteTemplate(&buf, name, data); err != nil {
 		log.Printf("fragment error (%s): %v", name, err)
@@ -229,9 +228,6 @@ func (h *H) renderFragments(w http.ResponseWriter, r *http.Request, data any, na
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	lang := h.langFor(r)
 	translating := lang != "" && lang != "en" && h.Translator != nil
-	if translating {
-		installTranslatorForRequest(r.Context(), h.Translator)
-	}
 	for _, name := range names {
 		if !translating {
 			if err := h.Templates.ExecuteTemplate(w, name, data); err != nil {
@@ -291,13 +287,16 @@ func (h *H) SetLang(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: false,
 		MaxAge:   365 * 24 * 3600,
 	})
-	// Redirect back to the referrer or the landing page so the new language
-	// takes effect on an immediate re-render.
-	ref := r.Referer()
-	if ref == "" {
-		ref = "/"
+	// Redirect back to the referrer's path-only component so the new language
+	// takes effect on an immediate re-render. We parse and discard the origin
+	// to prevent an open redirect: only the path (+ query + fragment) is used.
+	dest := "/"
+	if ref := r.Referer(); ref != "" {
+		if u, err := url.Parse(ref); err == nil && u.Path != "" {
+			dest = u.RequestURI() // path?query#fragment, no scheme/host
+		}
 	}
-	h.redirect(w, r, ref)
+	h.redirect(w, r, dest)
 }
 
 func (h *H) pageData(sess *Session, body any) PageData {
@@ -664,7 +663,7 @@ func (h *H) StartAuth(w http.ResponseWriter, r *http.Request) {
 	sess.PendingProvider = p.ID()
 	sess.PendingState = state
 	sess.PendingPKCE = verifier
-	redirect := externalScheme(r) + "://" + externalHost(r) + "/auth/callback"
+	redirect := publicBase(r) + "/auth/callback"
 	url, err := p.AuthorizeURL(r.Context(), state, verifier, redirect)
 	if err != nil {
 		h.errorToast(w, r, err.Error())
@@ -692,7 +691,7 @@ func (h *H) AuthCallback(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Auth provider no longer configured")
 		return
 	}
-	redirect := externalScheme(r) + "://" + externalHost(r) + "/auth/callback"
+	redirect := publicBase(r) + "/auth/callback"
 	tok, err := p.Exchange(r.Context(), q.Get("code"), sess.PendingPKCE, redirect)
 	if err != nil {
 		h.errorToast(w, r, "Token exchange: "+err.Error())
@@ -1020,6 +1019,7 @@ func (h *H) PickVerifierDpg(w http.ResponseWriter, r *http.Request) {
 // the `toast` listener, so the user sees nothing. That was the silent-failure
 // symptom on Send presentation and Check for holder response.
 func (h *H) errorToast(w http.ResponseWriter, r *http.Request, msg string) {
+	slog.Warn("handler error", "method", r.Method, "path", r.URL.Path, "msg", msg)
 	if isHTMX(r) {
 		payload, err := json.Marshal(map[string]string{"toast": msg})
 		if err != nil {

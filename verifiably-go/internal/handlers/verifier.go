@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -20,7 +21,11 @@ func (h *H) ShowVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dpgs, _ := h.Adapter.ListVerifierDpgs(r.Context())
-	schemas, _ := h.Adapter.ListAllSchemas(r.Context())
+	schemas, err := h.Adapter.ListAllSchemas(r.Context())
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	if sess.VerifierSchemaFilter == "" {
 		sess.VerifierSchemaFilter = "all"
 	}
@@ -383,6 +388,7 @@ func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Generate a request first")
 		return
 	}
+	pollStart := time.Now()
 	res, err := h.Adapter.FetchPresentationResult(r.Context(), sess.CurrentOID4VPState, sess.CurrentOID4VPTemplate)
 	if err != nil {
 		h.errorToast(w, r, err.Error())
@@ -421,6 +427,7 @@ func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
 		"format", res.Format,
 		"dpg", sess.VerifierDpg,
 		"fields_count", len(res.DisclosedFields),
+		"duration_ms", time.Since(pollStart).Milliseconds(),
 	)
 	h.renderFragments(w, r, res, "fragment_verify_result", "fragment_verify_stop_polling")
 }

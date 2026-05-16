@@ -55,7 +55,11 @@ func (h *H) BulkSource(w http.ResponseWriter, r *http.Request) {
 	}
 	sess.BulkSource = source
 	// Re-render the bulk form area with the chosen source's mini-form.
-	schemas, _ := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	schema = h.resolveFields(schema)
 	h.renderFragment(w, r, "fragment_issue_bulk_form", map[string]any{
@@ -117,7 +121,11 @@ func (h *H) BulkFromDB(w http.ResponseWriter, r *http.Request) {
 // the existing CSV path, via dispatch in SimulateCSV). Calls the adapter
 // and renders the preview fragment with the result.
 func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, rows []map[string]string, label string) {
-	schemas, _ := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	schema = h.resolveFields(schema)
 	res, err := h.Adapter.IssueBulk(r.Context(), backend.IssueBulkRequest{

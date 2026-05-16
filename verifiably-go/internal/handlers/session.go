@@ -135,6 +135,15 @@ type Session struct {
 	NextExampleIdx int
 }
 
+// SessionStore is the interface satisfied by the file-backed *Store and the
+// PostgreSQL/Redis-backed backends. Wire the right one in main.go based on
+// VERIFIABLY_DATABASE_URL / VERIFIABLY_REDIS_URL.
+type SessionStore interface {
+	Get(r *http.Request) *Session
+	MustGet(w http.ResponseWriter, r *http.Request) *Session
+	StartFlusher(ctx context.Context)
+}
+
 // Store is a thread-safe session store keyed by cookie ID.
 //
 // Persistence: when dir != "" the store periodically flushes all sessions to
@@ -210,7 +219,7 @@ func (s *Store) load() {
 		if err != nil {
 			continue
 		}
-		plain, err := sessionDecrypt(s.key, data)
+		plain, err := SessionDecrypt(s.key, data)
 		if err != nil {
 			continue
 		}
@@ -233,28 +242,34 @@ func (s *Store) load() {
 }
 
 func (s *Store) flush() {
+	// Marshal all sessions while holding the lock so json.Marshal sees each
+	// session's fields in a consistent state relative to store mutations.
+	// Encryption and disk I/O happen after releasing the lock so we don't
+	// block request handlers for the duration of the writes.
 	s.mu.Lock()
-	snapshot := make(map[string]*Session, len(s.sessions))
+	type pending struct{ id string; data []byte }
+	items := make([]pending, 0, len(s.sessions))
 	for id, sess := range s.sessions {
-		snapshot[id] = sess
-	}
-	s.mu.Unlock()
-
-	for id, sess := range snapshot {
 		data, err := json.Marshal(sess)
 		if err != nil {
 			continue
 		}
-		enc, err := sessionEncrypt(s.key, data)
+		items = append(items, pending{id, data})
+	}
+	s.mu.Unlock()
+
+	for _, p := range items {
+		enc, err := SessionEncrypt(s.key, p.data)
 		if err != nil {
 			continue
 		}
-		_ = os.WriteFile(filepath.Join(s.dir, id+".sess"), enc, 0o600)
+		_ = os.WriteFile(filepath.Join(s.dir, p.id+".sess"), enc, 0o600)
 	}
 }
 
-// sessionEncrypt encrypts plain with AES-256-GCM. Output: nonce || ciphertext.
-func sessionEncrypt(key, plain []byte) ([]byte, error) {
+// SessionEncrypt encrypts plain with AES-256-GCM. Output: nonce || ciphertext.
+// Exported so the PG and Redis session backends can use the same scheme.
+func SessionEncrypt(key, plain []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -270,8 +285,9 @@ func sessionEncrypt(key, plain []byte) ([]byte, error) {
 	return gcm.Seal(nonce, nonce, plain, nil), nil
 }
 
-// sessionDecrypt reverses sessionEncrypt.
-func sessionDecrypt(key, data []byte) ([]byte, error) {
+// SessionDecrypt reverses SessionEncrypt.
+// Exported so the PG and Redis session backends can use the same scheme.
+func SessionDecrypt(key, data []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -286,6 +302,7 @@ func sessionDecrypt(key, data []byte) ([]byte, error) {
 	}
 	return gcm.Open(nil, data[:ns], data[ns:], nil)
 }
+
 
 func (s *Store) getOrCreate(r *http.Request, w http.ResponseWriter) *Session {
 	s.mu.Lock()
@@ -313,6 +330,7 @@ func (s *Store) getOrCreate(r *http.Request, w http.ResponseWriter) *Session {
 			Value:    id,
 			Path:     "/",
 			HttpOnly: true,
+			Secure:   externalScheme(r) == "https",
 			SameSite: http.SameSiteLaxMode,
 			Expires:  time.Now().Add(24 * time.Hour),
 		})

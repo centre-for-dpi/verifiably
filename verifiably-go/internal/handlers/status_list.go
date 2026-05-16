@@ -64,7 +64,7 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if id == "" || id != h.BitstringStore.ListID {
+	if id == "" || id != h.BitstringStore.GetListID() {
 		http.Error(w, "unknown status list id", http.StatusNotFound)
 		return
 	}
@@ -101,7 +101,7 @@ func (h *H) PublishTokenStatusList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if id == "" || id != h.TokenStore.ListID {
+	if id == "" || id != h.TokenStore.GetListID() {
 		http.Error(w, "unknown status list id", http.StatusNotFound)
 		return
 	}
