@@ -66,14 +66,13 @@ type H struct {
 	// ("name1:key1,name2:key2"). When nil or empty, all API routes return 503.
 	APIKeys APIKeyMap
 
-	// signingKeyOnce + signingKey lazily fetch the walt.id issuer JWK on
-	// the first /status-list/* request, then cache the parsed
-	// *statuslist.SigningKey for the lifetime of the process. Going through
-	// sync.Once means the first concurrent fetch waits for onboard +
-	// JWK parse, all later ones are lock-free.
-	signingKeyOnce sync.Once
-	signingKey     *statuslist.SigningKey
-	signingKeyErr  error
+	// signingKeyMu guards lazy fetching of the walt.id issuer JWK.
+	// After a successful fetch signingKey is non-nil and the hot path
+	// takes only an RLock. Errors are NOT cached — each failed attempt
+	// retries on the next /status-list/* request so the feature self-heals
+	// when walt.id comes up after a slow compose-up.
+	signingKeyMu sync.RWMutex
+	signingKey   *statuslist.SigningKey
 }
 
 // isHTMX returns true if the request came from HTMX.

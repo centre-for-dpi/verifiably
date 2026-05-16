@@ -35,7 +35,7 @@ type Session struct {
 
 	// Onboarding selections — selected DPG per role
 	Role        string // "issuer" | "holder" | "verifier"
-	AuthOK      bool
+	AuthOK      bool   `json:"-"` // not persisted — cleared on restart so user must re-auth
 	IssuerDpg   string
 	HolderDpg   string
 	VerifierDpg string
@@ -100,13 +100,20 @@ type Session struct {
 	LastWalletError string
 
 	// Auth: OIDC round-trip state + tokens stored after callback.
+	// OIDC tokens and transient round-trip state are tagged json:"-" so they
+	// are never written to the encrypted session files on disk. They expire
+	// quickly and are re-acquired on the next login. AuthOK is also excluded
+	// (see its declaration above) so a restarted container doesn't present a
+	// stale "logged in" state — the user must re-authenticate.
+	// UserEmail, UserSubject, AuthProvider, and WalletUserKey ARE persisted so
+	// the upstream wallet partition key survives container restarts.
 	PendingProvider string
-	PendingState    string
-	PendingPKCE     string
+	PendingState    string `json:"-"`
+	PendingPKCE     string `json:"-"`
 	AuthProvider    string // id of the provider that completed auth
-	AccessToken     string
-	RefreshToken    string
-	IDToken         string
+	AccessToken     string `json:"-"`
+	RefreshToken    string `json:"-"`
+	IDToken         string `json:"-"`
 	UserEmail       string
 	// UserSubject is the OIDC `sub` claim — the stable per-user id the
 	// provider assigns. Used (combined with AuthProvider) as the
