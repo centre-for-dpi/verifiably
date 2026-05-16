@@ -1852,42 +1852,81 @@ write_credebl_agent_runtime_env() {
   fi
   : "${_public_base:=$_ip_http_url}"  # fallback: IP (nginx sub_filter becomes a no-op)
 
+  # Ledger config: operator can override via env vars; BCovrin test is the
+  # safe demo default. Production deployments MUST set CREDEBL_LEDGER_URL and
+  # CREDEBL_GENESIS_URL to a production-grade ledger (Sovrin MainNet, etc.).
+  local _ledger_url="${CREDEBL_LEDGER_URL:-http://test.bcovrin.vonx.io}"
+  local _genesis_url="${CREDEBL_GENESIS_URL:-http://test.bcovrin.vonx.io/genesis}"
+  local _tails_url="${CREDEBL_TAILS_FILE_SERVER:-https://tails.vonx.io}"
+
+  # Session limits: default to reasonable values tuned for a single-server
+  # demo/pilot. Operator can override via CREDEBL_SESSION_LIMIT and
+  # CREDEBL_SESSION_ACQUIRE_TIMEOUT (ms). 2147483647 (Int32.MAX) was the
+  # previous placeholder — effectively unbounded, which risks memory exhaustion.
+  local _session_limit="${CREDEBL_SESSION_LIMIT:-500}"
+  local _session_acquire_timeout="${CREDEBL_SESSION_ACQUIRE_TIMEOUT:-30000}"
+
+  # ALLOW_INSECURE_HTTP_URLS: only needed in IP-only (non-TLS) mode.
+  # In domain mode the agent communicates over HTTPS, so insecure URLs are not
+  # required and should be disabled for security.
+  local _allow_insecure="true"
+  [[ -n "$VERIFIABLY_PUBLIC_DOMAIN" ]] && _allow_insecure="false"
+
   cat > "$base/agent.env" <<EOF
-LEDGER_URL=http://test.bcovrin.vonx.io
-GENESIS_URL=http://test.bcovrin.vonx.io/genesis
-TAILS_FILE_SERVER=https://tails.vonx.io
+LEDGER_URL=${_ledger_url}
+GENESIS_URL=${_genesis_url}
+TAILS_FILE_SERVER=${_tails_url}
 AGENT_HTTP_URL=${_agent_http_url}
 AGENT_WS_URL=${_agent_ws_url}
 CONNECT_TIMEOUT=10
 MAX_CONNECTIONS=1000
 IDLE_TIMEOUT=30000
-SESSION_ACQUIRE_TIMEOUT=2147483647
-SESSION_LIMIT=2147483647
-INMEMORY_LRU_CACHE_LIMIT=2147483647
+SESSION_ACQUIRE_TIMEOUT=${_session_acquire_timeout}
+SESSION_LIMIT=${_session_limit}
+INMEMORY_LRU_CACHE_LIMIT=${_session_limit}
 TRUST_SERVICE_AUTH_TYPE=NoAuth
-TRUST_LIST_URL=https://example.com/trust-list.json
-ALLOW_INSECURE_HTTP_URLS=true
+ALLOW_INSECURE_HTTP_URLS=${_allow_insecure}
 EOF
-  green "  wrote $base/agent.env (AGENT_HTTP_URL=${_agent_http_url})"
+  green "  wrote $base/agent.env (AGENT_HTTP_URL=${_agent_http_url}, ALLOW_INSECURE=${_allow_insecure}, SESSION_LIMIT=${_session_limit})"
 
   # Generate nginx-oid4vci.conf — mounts into credebl-oid4vci-rewriter.
   # In domain mode the agent already embeds the domain URL natively, so
   # sub_filter '_ip_http_url' → '_public_base' is a transparent no-op (nothing
   # to replace). In IP-only mode _public_base == _ip_http_url, also a no-op.
   # The nginx sidecar remains as a passthrough safety net in both modes.
+  # Rate limit: allow operator to tune; defaults are conservative for a demo
+  # server. Each wallet session makes ~3 requests (auth + VP + poll), so
+  # 10r/s per IP with a burst of 30 handles ~10 concurrent wallet sessions
+  # without tripping over normal usage. Raise for higher-traffic pilots.
+  local _rate_limit="${CREDEBL_NGINX_RATE_LIMIT:-10r/s}"
+  local _rate_burst="${CREDEBL_NGINX_RATE_BURST:-30}"
+
   cat > "$base/nginx-oid4vci.conf" <<NGINXEOF
+# Rate-limit zone: keyed by client IP, 10 MB shared memory (~160k IPs).
+limit_req_zone \$binary_remote_addr zone=oid4vc:10m rate=${_rate_limit};
+limit_req_status 429;
+
 server {
     listen 80;
 
-    location / {
+    # Only expose OID4VCI and OID4VP wallet-facing paths.
+    # The Credo agent's control-plane and admin endpoints are NOT forwarded.
+    location ~ ^/(oid4vci|oid4vp|openid4vc)/ {
+        limit_req zone=oid4vc burst=${_rate_burst} nodelay;
+
         proxy_pass http://host.docker.internal:${_agent_api_port};
         proxy_http_version 1.1;
         # Disable upstream compression so sub_filter can read the plain body.
         proxy_set_header Accept-Encoding "";
 
         sub_filter_once off;
-        sub_filter_types application/json text/plain text/html;
+        sub_filter_types application/json text/plain;
         sub_filter '${_ip_http_url}' '${_public_base}';
+    }
+
+    # Block all other paths — return 404 rather than proxying agent internals.
+    location / {
+        return 404;
     }
 }
 NGINXEOF

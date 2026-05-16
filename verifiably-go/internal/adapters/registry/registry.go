@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 
@@ -96,12 +97,18 @@ func (r *Registry) IssuerSigningKey(ctx context.Context) ([]byte, string, error)
 		IssuerSigningKey(ctx context.Context) ([]byte, string, error)
 	}
 	r.mu.RLock()
-	candidates := make([]backend.Adapter, 0, len(r.issuers))
-	for _, a := range r.issuers {
-		candidates = append(candidates, a)
+	vendors := make([]string, 0, len(r.issuers))
+	for v := range r.issuers {
+		vendors = append(vendors, v)
 	}
 	r.mu.RUnlock()
-	for _, a := range candidates {
+	// Sort vendors so the first signer-capable adapter is always the same
+	// across calls, regardless of Go map iteration order.
+	sort.Strings(vendors)
+	for _, v := range vendors {
+		r.mu.RLock()
+		a := r.issuers[v]
+		r.mu.RUnlock()
 		s, ok := a.(signer)
 		if !ok {
 			continue
@@ -591,16 +598,20 @@ func (r *Registry) ListOID4VPTemplates(ctx context.Context) (map[string]vctypes.
 	r.mu.RUnlock()
 
 	out := map[string]vctypes.OID4VPTemplate{}
-	for _, ad := range ads {
+	for vendor, ad := range ads {
 		tpl, err := ad.ListOID4VPTemplates(ctx)
 		if err != nil {
 			continue
 		}
 		for k, v := range tpl {
-			if _, dup := out[k]; dup {
+			// Prefix with the vendor name so templates from different adapters
+			// (e.g. "waltid:age-verification" vs "credebl:age-verification")
+			// never silently overwrite each other in the merged map.
+			key := vendor + ":" + k
+			if _, dup := out[key]; dup {
 				continue
 			}
-			out[k] = v
+			out[key] = v
 		}
 	}
 	return out, nil
@@ -611,28 +622,42 @@ func (r *Registry) RequestPresentation(ctx context.Context, req backend.Presenta
 	if err != nil {
 		return backend.PresentationRequestResult{}, err
 	}
+	// Strip the vendor prefix from TemplateKey when the caller passes back a
+	// key obtained from this registry's ListOID4VPTemplates — those keys are
+	// prefixed "vendor:original" to prevent cross-adapter collisions. The
+	// adapter only knows its own bare key ("original"), not the registry key.
+	if inner, ok := strings.CutPrefix(req.TemplateKey, req.VerifierDpg+":"); ok {
+		req.TemplateKey = inner
+	}
 	res, err := ad.RequestPresentation(ctx, req)
 	if err != nil {
 		return res, err
 	}
-	// Tag the state with the vendor DPG so FetchPresentationResult can route
-	// back to the same adapter without needing an interface change.
-	res.State = req.VerifierDpg + "\x00" + res.State
+	// Tag the state with the vendor DPG using a scheme-prefix so
+	// FetchPresentationResult can route back to the same adapter without an
+	// interface change. Format: "dpg:<vendor>:<inner-state>". The inner state
+	// may itself contain colons, which is fine — strings.Cut on the first ":"
+	// after "dpg:" stops at the right boundary.
+	res.State = "dpg:" + req.VerifierDpg + ":" + res.State
 	return res, nil
 }
 
 func (r *Registry) FetchPresentationResult(ctx context.Context, state, templateKey string) (backend.VerificationResult, error) {
 	// The state is tagged with the vendor DPG by RequestPresentation above.
-	// Parse and route deterministically; fall back to first-adapter for any
-	// untagged state (legacy sessions created before this change).
-	if dpg, inner, ok := strings.Cut(state, "\x00"); ok {
-		ad, err := r.verifierFor(dpg)
+	// Format: "dpg:<vendor>:<inner-state>". Parse and route deterministically;
+	// fall back to first-adapter for any untagged state (legacy sessions or
+	// single-vendor deployments that never went through this registry).
+	if after, ok := strings.CutPrefix(state, "dpg:"); ok {
+		vendor, inner, _ := strings.Cut(after, ":")
+		ad, err := r.verifierFor(vendor)
 		if err != nil {
 			return backend.VerificationResult{}, err
 		}
 		return ad.FetchPresentationResult(ctx, inner, templateKey)
 	}
-	// Legacy path: no tag — route to first adapter (single-verifier deployments).
+	// Legacy path: no tag — only safe for single-verifier deployments.
+	// With multiple verifiers, we cannot deterministically pick one; fail fast
+	// so the caller knows to re-initiate the verification flow.
 	r.mu.RLock()
 	ads := make([]backend.Adapter, 0, len(r.verifiers))
 	for _, ad := range r.verifiers {
@@ -641,6 +666,9 @@ func (r *Registry) FetchPresentationResult(ctx context.Context, state, templateK
 	r.mu.RUnlock()
 	if len(ads) == 0 {
 		return backend.VerificationResult{}, fmt.Errorf("%w: no verifier configured", backend.ErrUnknownDPG)
+	}
+	if len(ads) > 1 {
+		return backend.VerificationResult{}, fmt.Errorf("verification session predates multi-vendor routing; please re-initiate the verification flow")
 	}
 	return ads[0].FetchPresentationResult(ctx, state, templateKey)
 }
