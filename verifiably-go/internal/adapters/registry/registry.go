@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -610,25 +611,37 @@ func (r *Registry) RequestPresentation(ctx context.Context, req backend.Presenta
 	if err != nil {
 		return backend.PresentationRequestResult{}, err
 	}
-	return ad.RequestPresentation(ctx, req)
+	res, err := ad.RequestPresentation(ctx, req)
+	if err != nil {
+		return res, err
+	}
+	// Tag the state with the vendor DPG so FetchPresentationResult can route
+	// back to the same adapter without needing an interface change.
+	res.State = req.VerifierDpg + "\x00" + res.State
+	return res, nil
 }
 
 func (r *Registry) FetchPresentationResult(ctx context.Context, state, templateKey string) (backend.VerificationResult, error) {
-	// Must route to the verifier adapter that issued the request. M1 routes to
-	// the single configured verifier; M4 updates the signature to carry
-	// VerifierDpg explicitly so state collisions across verifiers can't happen.
+	// The state is tagged with the vendor DPG by RequestPresentation above.
+	// Parse and route deterministically; fall back to first-adapter for any
+	// untagged state (legacy sessions created before this change).
+	if dpg, inner, ok := strings.Cut(state, "\x00"); ok {
+		ad, err := r.verifierFor(dpg)
+		if err != nil {
+			return backend.VerificationResult{}, err
+		}
+		return ad.FetchPresentationResult(ctx, inner, templateKey)
+	}
+	// Legacy path: no tag — route to first adapter (single-verifier deployments).
 	r.mu.RLock()
 	ads := make([]backend.Adapter, 0, len(r.verifiers))
 	for _, ad := range r.verifiers {
 		ads = append(ads, ad)
 	}
 	r.mu.RUnlock()
-
 	if len(ads) == 0 {
 		return backend.VerificationResult{}, fmt.Errorf("%w: no verifier configured", backend.ErrUnknownDPG)
 	}
-	// First adapter wins; when multiple are configured, the state token's
-	// prefix will route deterministically (M4).
 	return ads[0].FetchPresentationResult(ctx, state, templateKey)
 }
 

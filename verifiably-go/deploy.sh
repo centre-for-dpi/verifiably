@@ -118,7 +118,15 @@ url_for() {
     local slug
     slug=$(resolve_slug "$name")
     if [[ -n "$slug" ]]; then
-      printf "${VERIFIABLY_HOSTS_PATTERN}%s" "$slug" "$suffix"
+      # Avoid double-prefix: if slug == first label of VERIFIABLY_PUBLIC_DOMAIN
+      # (e.g. slug "verifiably" + domain "verifiably.ysalabs.work"), use the
+      # bare domain URL instead of prepending the slug again.
+      local _first_label="${VERIFIABLY_PUBLIC_DOMAIN%%.*}"
+      if [[ -n "$VERIFIABLY_PUBLIC_DOMAIN" && "$slug" == "$_first_label" ]]; then
+        printf "https://%s%s" "$VERIFIABLY_PUBLIC_DOMAIN" "$suffix"
+      else
+        printf "${VERIFIABLY_HOSTS_PATTERN}%s" "$slug" "$suffix"
+      fi
       return
     fi
   fi
@@ -149,7 +157,7 @@ url_for() {
 : "${CREDEBL_SCHEMA_FILE_SERVER_TOKEN:=}"
 : "${CREDEBL_CRYPTO_PRIVATE_KEY:=cdpi-poc-crypto-key-change-me}"
 : "${CREDEBL_ADMIN_EMAIL:=admin@cdpi.dev}"
-: "${CREDEBL_KEYCLOAK_HOST:=localhost}"    # bare hostname of shared Keycloak (for extra_hosts)
+: "${CREDEBL_KEYCLOAK_HOST:=${VERIFIABLY_PUBLIC_HOST}}"    # bare hostname of shared Keycloak (for extra_hosts)
 : "${CREDEBL_COMPOSE_DIR:=$SCRIPT_DIR/deploy/compose/credebl}"
 export CREDEBL_COMPOSE_DIR
 # External CREDEBL (legacy): set CREDEBL_API_URL to point at an external CREDEBL instance
@@ -239,7 +247,21 @@ CREDEBL_SERVICES=(
 
 red()    { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 green()  { printf '\033[32m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
 bold()   { printf '\033[1m%s\033[0m\n' "$*"; }
+
+# set_env_var <file> <VAR> <value>
+# Upserts VAR=value in an existing .env file. Replaces existing line or
+# appends. Handles sed portably (no -i.bak needed on Linux/Git-Bash).
+set_env_var() {
+  local file="$1" var="$2" val="$3"
+  [[ -f "$file" ]] || return 0
+  if grep -q "^${var}=" "$file" 2>/dev/null; then
+    sed -i "s|^${var}=.*|${var}=${val}|" "$file"
+  else
+    printf '\n%s=%s\n' "$var" "$val" >> "$file"
+  fi
+}
 
 require() {
   local cmd="$1"
@@ -583,7 +605,10 @@ JSON
         2>/dev/null | tr -d '\r')"
     fi
     _credebl_verifier_id=""
-    _credebl_internal_base_url="http://credebl-api-gateway:5000"
+    # The Credo agent controller embeds AGENT_HTTP_URL (bare server IP) in
+    # credential offer URIs.  Set internalBaseUrl to that same value so the
+    # rewritePublic() call in the adapter rewrites it to the public domain URL.
+    _credebl_internal_base_url="http://${VERIFIABLY_PUBLIC_HOST}"
   fi
   if [[ -n "$_credebl_url" ]]; then
     credebl_stanza=$(cat <<JSON
@@ -677,7 +702,7 @@ JSON
 # operators who run their own IdP and would rather start with the empty
 # first-run UI than dismiss the demo tiles every install.
 auth_providers_for() {
-  local scenario="$1"  # kept for signature compatibility; unused here
+  local scenario="$1"
   local out="$SCRIPT_DIR/config/auth-providers.system.json"
 
   if [[ "${VERIFIABLY_NO_DEFAULT_IDPS:-0}" == "1" ]]; then
@@ -712,9 +737,28 @@ auth_providers_for() {
       keycloak_client_secret_kv=""
     fi
   else
-    keycloak_issuer="$(url_for keycloak "$VERIFIABLY_PUBLIC_HOST" "$KEYCLOAK_PORT")/realms/${KEYCLOAK_REALM}"
-    keycloak_client_id="${KEYCLOAK_CLIENT_ID}"
+    # CREDEBL scenarios use a dedicated realm (credebl-realm / credebl-client).
+    # If KEYCLOAK_REALM is still the non-CREDEBL default ("vcplatform"), switch
+    # automatically when the scenario includes CREDEBL. An operator who explicitly
+    # sets KEYCLOAK_REALM to something other than "vcplatform" keeps their value.
+    local _kc_realm="${KEYCLOAK_REALM}"
+    local _kc_client="${KEYCLOAK_CLIENT_ID}"
+    if [[ "$(scenario_needs_credebl "$scenario")" == "yes" && "$_kc_realm" == "vcplatform" ]]; then
+      _kc_realm="credebl-realm"
+      [[ "$_kc_client" == "vcplatform" ]] && _kc_client="credebl-client"
+    fi
+    keycloak_issuer="$(url_for keycloak "$VERIFIABLY_PUBLIC_HOST" "$KEYCLOAK_PORT")/realms/${_kc_realm}"
+    keycloak_client_id="${_kc_client}"
+    # credebl-client is confidential — include the secret so the token exchange succeeds.
     keycloak_client_secret_kv=""
+    if [[ "$_kc_realm" == "credebl-realm" ]]; then
+      local _credebl_env="$SCRIPT_DIR/deploy/compose/credebl/config/credebl.env"
+      local _credebl_kc_secret="${CREDEBL_KEYCLOAK_CLIENT_SECRET:-}"
+      if [[ -z "$_credebl_kc_secret" && -f "$_credebl_env" ]]; then
+        _credebl_kc_secret=$(grep '^CREDEBL_KEYCLOAK_CLIENT_SECRET=' "$_credebl_env" | cut -d= -f2- | tr -d '\r')
+      fi
+      [[ -n "$_credebl_kc_secret" ]] && keycloak_client_secret_kv=',"clientSecret":"'"$_credebl_kc_secret"'"'
+    fi
   fi
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     wso2_issuer="$(url_for wso2 "$VERIFIABLY_PUBLIC_HOST" "$WSO2_PORT")/oauth2/token"
@@ -765,6 +809,52 @@ cmd_up() {
 
   require docker
 
+  # First-time setup: if no .env exists and we are not reading from .env.example,
+  # run the setup wizard so the operator sets VERIFIABLY_PUBLIC_HOST before any
+  # service starts. Skip if a previous .env already existed (VERIFIABLY_ENV_FILE
+  # will point at it) or if the operator explicitly set VERIFIABLY_PUBLIC_HOST.
+  local _env_file="$SCRIPT_DIR/.env"
+  if [[ ! -f "$_env_file" && "${VERIFIABLY_PUBLIC_HOST:-localhost}" == "localhost" ]]; then
+    yellow "  No .env found — running first-time setup wizard."
+    echo
+    cmd_setup
+    echo
+    # Re-source the newly written .env so the rest of cmd_up sees the values
+    set -o allexport
+    # shellcheck disable=SC1090
+    source "$_env_file"
+    set +o allexport
+  fi
+
+  # Detect VERIFIABLY_PUBLIC_HOST change vs. what is baked into running
+  # containers (SERVICE_HOST env var on issuer-api / verifier-api / wallet-api,
+  # and KC_HOSTNAME_URL on keycloak). When the host changed, recreate those
+  # containers so they pick up the new URLs before any client tries to use them.
+  local _running_host=""
+  _running_host=$(docker inspect waltid-issuer-api-1 \
+    --format '{{range .Config.Env}}{{.}}\n{{end}}' 2>/dev/null \
+    | grep '^SERVICE_HOST=' | cut -d= -f2- || true)
+  if [[ -n "$_running_host" && "$_running_host" != "$VERIFIABLY_PUBLIC_HOST" ]]; then
+    yellow "  VERIFIABLY_PUBLIC_HOST changed: ${_running_host} → ${VERIFIABLY_PUBLIC_HOST}"
+    yellow "  Recreating issuer-api, verifier-api, wallet-api, and keycloak."
+    for _svc in issuer-api verifier-api wallet-api keycloak; do
+      compose up -d --force-recreate "$_svc" 2>/dev/null || true
+    done
+  fi
+
+  # Export compose env vars that differ between IP mode and subdomain mode.
+  # These are read by docker-compose via shell environment substitution.
+  if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
+    # caddy-public owns :80/:443; bind main Caddy's :80 to localhost only
+    # so the two services don't collide on the host port.
+    export CADDY_HTTP_PORT="127.0.0.1:8079"
+    export KC_HOSTNAME_URL
+    KC_HOSTNAME_URL=$(url_for keycloak "$VERIFIABLY_PUBLIC_HOST" "${KEYCLOAK_PORT:-8180}")
+  else
+    export CADDY_HTTP_PORT="80"
+    export KC_HOSTNAME_URL="http://${VERIFIABLY_PUBLIC_HOST}:${KEYCLOAK_PORT:-8180}"
+  fi
+
   bold "▶ Preparing config for scenario=$scenario"
   backends_for "$scenario"
   auth_providers_for "$scenario"
@@ -796,7 +886,7 @@ cmd_up() {
     bold "▶ Rendering mimoto-issuers-config.json"
     ( cd "$SCRIPT_DIR/deploy/compose/injiweb" && \
       VERIFIABLY_HOSTS_PATTERN="$VERIFIABLY_HOSTS_PATTERN" \
-      VERIFIABLY_PUBLIC_DOMAIN="$VERIFIABLY_PUBLIC_DOMAIN" \
+      VERIFIABLY_PUBLIC_DOMAIN="${VERIFIABLY_PUBLIC_DOMAIN:-}" \
       ./render-config.sh ) || red "  mimoto config render failed (proceeding)"
   fi
 
@@ -1099,6 +1189,141 @@ print(json.dumps(cur))
   green "  repaired wallet-demo-client redirect_uris (+$want)"
 }
 
+cmd_setup() {
+  local env_file="$SCRIPT_DIR/.env"
+  bold "▶ verifiably-go setup wizard"
+  echo
+  echo "  This writes ${env_file} with the settings for your deployment."
+  echo "  Press Enter to keep the value shown in [brackets]."
+  echo
+
+  # ── Host / IP ─────────────────────────────────────────────────────────────
+  # VERIFIABLY_PUBLIC_HOST must always be an IP address — Docker containers
+  # route back to the host via this IP. A domain name here breaks internal
+  # agent networking. Put the domain in the HTTPS question below.
+  local _default_host="${VERIFIABLY_PUBLIC_HOST:-localhost}"
+  # Suggest the current LAN IP when the stored value is still a placeholder.
+  if [[ "$_default_host" == "localhost" ]] || [[ ! "$_default_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    _default_host=$(ip route get 1 2>/dev/null | awk '{print $NF; exit}' || hostname -I 2>/dev/null | awk '{print $1}' || echo "${VERIFIABLY_PUBLIC_HOST:-localhost}")
+  fi
+  printf "  Server IP address (must be an IPv4, e.g. 10.0.0.1) [%s]: " "$_default_host"
+  local _host
+  read -r _host
+  _host="${_host:-$_default_host}"
+  if [[ ! "$_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$_host" != "localhost" ]]; then
+    yellow "  WARNING: '${_host}' does not look like an IP address."
+    yellow "  Docker agent networking requires an IP — enter the IP on the next run if things fail."
+  fi
+
+  # ── Domain mode ───────────────────────────────────────────────────────────
+  local _default_domain_yn="N"
+  [[ -n "${VERIFIABLY_PUBLIC_DOMAIN:-}" ]] && _default_domain_yn="Y"
+
+  printf "  Enable HTTPS via Let's Encrypt? (needs DNS *.domain pointing here + ports 80/443 open) [%s]: " "$_default_domain_yn"
+  local _domain_yn
+  read -r _domain_yn
+  _domain_yn="${_domain_yn:-$_default_domain_yn}"
+
+  local _domain="" _le_email="" _hosts_pattern=""
+  if [[ "${_domain_yn,,}" == y* ]]; then
+    # Infer the base domain from the host when possible:
+    #   verifiably.ysalabs.work → ysalabs.work  (strip first label of a subdomain)
+    #   ysalabs.work            → ysalabs.work  (already a base domain)
+    local _inferred_domain=""
+    if [[ "$_host" == *.*.* ]]; then
+      _inferred_domain="${_host#*.}"
+    elif [[ "$_host" == *.* ]]; then
+      _inferred_domain="$_host"
+    fi
+    local _default_domain="${VERIFIABLY_PUBLIC_DOMAIN:-$_inferred_domain}"
+    printf "  Base domain for subdomains (e.g. ysalabs.work) [%s]: " "$_default_domain"
+    local _domain_input
+    read -r _domain_input
+    _domain="${_domain_input:-$_default_domain}"
+
+    if [[ -z "$_domain" ]]; then
+      yellow "  WARNING: no domain entered — domain mode disabled."
+    else
+      local _default_le_email="${VERIFIABLY_LE_EMAIL:-}"
+      printf "  Let's Encrypt email (for TLS certificates) [%s]: " "$_default_le_email"
+      local _le_input
+      read -r _le_input
+      _le_email="${_le_input:-$_default_le_email}"
+
+      _hosts_pattern="https://%s.${_domain}"
+
+      echo
+      yellow "  Subdomains that will be created:"
+      for _svc in verifiably keycloak credebl walt-issuer walt-wallet walt-verifier; do
+        printf "    https://%s.%s\n" "$_svc" "$_domain"
+      done
+      echo "  (plus inji-*, esignet, mimoto, wso2 when those scenarios are active)"
+    fi
+  fi
+
+  # ── Keycloak ──────────────────────────────────────────────────────────────
+  local _default_kc_pass="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+  printf "  Keycloak admin password [%s]: " "$_default_kc_pass"
+  local _kc_pass
+  read -r _kc_pass
+  _kc_pass="${_kc_pass:-$_default_kc_pass}"
+
+  # ── CREDEBL ───────────────────────────────────────────────────────────────
+  local _default_credebl_email="${CREDEBL_ADMIN_EMAIL:-admin@cdpi.dev}"
+  printf "  CREDEBL platform admin email [%s]: " "$_default_credebl_email"
+  local _credebl_email
+  read -r _credebl_email
+  _credebl_email="${_credebl_email:-$_default_credebl_email}"
+
+  # ── Write .env ────────────────────────────────────────────────────────────
+  echo
+  bold "  Writing ${env_file}"
+  {
+    printf '# Generated by ./deploy.sh setup on %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '# Edit manually or re-run '\''./deploy.sh setup'\'' to change settings.\n\n'
+
+    printf 'VERIFIABLY_PUBLIC_HOST=%s\n' "$_host"
+    printf 'PUBLIC_HOST=%s\n\n' "$_host"
+
+    if [[ -n "$_domain" ]]; then
+      printf 'VERIFIABLY_PUBLIC_DOMAIN=%s\n' "$_domain"
+      printf 'VERIFIABLY_HOSTS_PATTERN=%s\n' "$_hosts_pattern"
+      printf 'VERIFIABLY_LE_EMAIL=%s\n\n' "$_le_email"
+    fi
+
+    printf 'KEYCLOAK_ADMIN_USER=admin\n'
+    printf 'KEYCLOAK_ADMIN_PASSWORD=%s\n\n' "$_kc_pass"
+
+    printf 'CREDEBL_ADMIN_EMAIL=%s\n' "$_credebl_email"
+  } > "$env_file"
+
+  # ── Sync deploy/compose/stack/.env ────────────────────────────────────────
+  # render-config.sh sources stack/.env directly for Inji/mimoto URL rendering,
+  # and docker compose falls back to it when run without --env-file.
+  # Keep the shared vars in sync so both paths produce the same result.
+  local _stack_env="$SCRIPT_DIR/deploy/compose/stack/.env"
+  if [[ -f "$_stack_env" ]]; then
+    bold "  Syncing $_stack_env"
+    set_env_var "$_stack_env" "PUBLIC_HOST"               "$_host"
+    set_env_var "$_stack_env" "VERIFIABLY_PUBLIC_HOST"    "$_host"
+    if [[ -n "$_domain" ]]; then
+      set_env_var "$_stack_env" "VERIFIABLY_PUBLIC_DOMAIN"  "$_domain"
+      set_env_var "$_stack_env" "VERIFIABLY_HOSTS_PATTERN"  "$_hosts_pattern"
+      set_env_var "$_stack_env" "VERIFIABLY_LE_EMAIL"       "$_le_email"
+    else
+      # Remove domain vars if domain mode was disabled
+      sed -i '/^VERIFIABLY_PUBLIC_DOMAIN=/d;/^VERIFIABLY_HOSTS_PATTERN=/d;/^VERIFIABLY_LE_EMAIL=/d' "$_stack_env" 2>/dev/null || true
+    fi
+  fi
+
+  if [[ -n "$_domain" ]]; then
+    green "  Done — domain mode enabled."
+    echo "  Make sure DNS *.${_domain} points to ${_host} and run './deploy.sh up <scenario>'."
+  else
+    green "  Done — run './deploy.sh up <scenario>' to start the stack."
+  fi
+}
+
 cmd_down() {
   local scenario="${1:-all}"
   scenario_services "$scenario" > /dev/null  # validate
@@ -1312,10 +1537,13 @@ start_container() {
   # hosts that don't have a docker group (rootless setups).
   local docker_gid
   docker_gid=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
-  local group_add_args=()
-  if [[ -n "$docker_gid" ]]; then
-    group_add_args=( --group-add "$docker_gid" )
+  if [[ -z "$docker_gid" ]]; then
+    # Docker Desktop for Windows: the socket doesn't exist at a POSIX path
+    # from Git Bash, but inside the container it's mounted as srw-rw---- root:root
+    # (GID 0). Fall back to GID 0 so UID 65532 can connect via --group-add.
+    docker_gid=0
   fi
+  local group_add_args=( --group-add "$docker_gid" )
   # Touch the user-managed providers file before mount: docker would
   # auto-create a directory in its place if the bind target was missing.
   # The Go side tolerates an empty file (loader treats it as []).
@@ -1449,8 +1677,8 @@ ensure_credebl_env() {
   export CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY
   CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY=$(printf '%s' "$CREDEBL_CRYPTO_PRIVATE_KEY" | base64 | tr -d '\n')
 
-  # KEYCLOAK_ADMIN_PASSWORD comes from the shared compose Keycloak
-  local _kc_admin_pass="${KEYCLOAK_ADMIN_PASSWORD:-keycloak}"
+  # KEYCLOAK_ADMIN_PASSWORD comes from the shared compose Keycloak (compose default is "admin")
+  local _kc_admin_pass="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 
   cat > "$env_file" <<EOF
 POSTGRES_USER=credebl
@@ -1466,8 +1694,8 @@ NATS_URL=nats://credebl-nats:4222
 HIDE_EXPERIMENTAL_OIDC_CONTROLLERS=false
 KEYCLOAK_ADMIN_USER=admin
 KEYCLOAK_ADMIN_PASSWORD=${_kc_admin_pass}
-KEYCLOAK_DOMAIN=http://keycloak:8180/
-KEYCLOAK_ADMIN_URL=http://keycloak:8180
+KEYCLOAK_DOMAIN=http://keycloak:${KEYCLOAK_PORT}/
+KEYCLOAK_ADMIN_URL=http://keycloak:${KEYCLOAK_PORT}
 KEYCLOAK_MASTER_REALM=master
 KEYCLOAK_REALM=credebl-realm
 KEYCLOAK_CLIENT_ID=credebl-client
@@ -1526,7 +1754,7 @@ FRONT_END_URL=${_credebl_public_url}
 STUDIO_URL=${_credebl_public_url}
 SOCKET_HOST=http://credebl-api-gateway:5000
 ENABLE_CORS_IP_LIST=${_credebl_public_url},http://localhost:${CREDEBL_API_PORT}
-SHORTENED_URL_DOMAIN=
+SHORTENED_URL_DOMAIN=${_credebl_public_url}
 DEEPLINK_DOMAIN=${_credebl_minio_public_url}/credebl-bucket
 MOBILE_APP=Inji Wallet
 MOBILE_APP_NAME=Inji Wallet
@@ -1599,12 +1827,37 @@ write_credebl_agent_runtime_env() {
   mkdir -p "$base/agent-config" "$base/token" "$base/endpoints"
   # Guard against previous run leaving agent.env as a directory
   [[ -d "$base/agent.env" ]] && rm -rf "$base/agent.env"
+  # Always compute the IP-based URLs first.
+  local _ip_http_url="http://${VERIFIABLY_PUBLIC_HOST}"
+  local _ip_ws_url="ws://${VERIFIABLY_PUBLIC_HOST}"
+  local _agent_api_port="${CREDEBL_AGENT_API_PORT:-8001}"
+
+  # In domain mode, AGENT_HTTP_URL is set to the public HTTPS domain URL so that:
+  #   1. The Credo agent embeds the domain in OID4VCI metadata natively.
+  #   2. DPoP htu validation succeeds: wallet sends htu=https://credebl.domain/...
+  #      and the agent expects the same URL — they must match exactly.
+  # agent-service uses CONTROLLER_ENDPOINT (IP:port from endpoints JSON), not
+  # AGENT_HTTP_URL, so changing to the domain URL is safe for inter-service calls.
+  local _agent_http_url="$_ip_http_url"
+  local _agent_ws_url="$_ip_ws_url"
+  local _public_base=""
+  if [[ -n "$VERIFIABLY_PUBLIC_DOMAIN" ]]; then
+    local _cslug
+    _cslug=$(resolve_slug "credebl" 2>/dev/null || echo "credebl")
+    if [[ -n "$_cslug" ]]; then
+      _public_base="https://${_cslug}.${VERIFIABLY_PUBLIC_DOMAIN}"
+      _agent_http_url="$_public_base"
+      _agent_ws_url="wss://${_cslug}.${VERIFIABLY_PUBLIC_DOMAIN}"
+    fi
+  fi
+  : "${_public_base:=$_ip_http_url}"  # fallback: IP (nginx sub_filter becomes a no-op)
+
   cat > "$base/agent.env" <<EOF
 LEDGER_URL=http://test.bcovrin.vonx.io
 GENESIS_URL=http://test.bcovrin.vonx.io/genesis
 TAILS_FILE_SERVER=https://tails.vonx.io
-AGENT_HTTP_URL=http://${VERIFIABLY_PUBLIC_HOST}
-AGENT_WS_URL=ws://${VERIFIABLY_PUBLIC_HOST}
+AGENT_HTTP_URL=${_agent_http_url}
+AGENT_WS_URL=${_agent_ws_url}
 CONNECT_TIMEOUT=10
 MAX_CONNECTIONS=1000
 IDLE_TIMEOUT=30000
@@ -1615,15 +1868,64 @@ TRUST_SERVICE_AUTH_TYPE=NoAuth
 TRUST_LIST_URL=https://example.com/trust-list.json
 ALLOW_INSECURE_HTTP_URLS=true
 EOF
-  green "  wrote $base/agent.env (CREDEBL_COMPOSE_DIR=$CREDEBL_COMPOSE_DIR)"
+  green "  wrote $base/agent.env (AGENT_HTTP_URL=${_agent_http_url})"
+
+  # Generate nginx-oid4vci.conf — mounts into credebl-oid4vci-rewriter.
+  # In domain mode the agent already embeds the domain URL natively, so
+  # sub_filter '_ip_http_url' → '_public_base' is a transparent no-op (nothing
+  # to replace). In IP-only mode _public_base == _ip_http_url, also a no-op.
+  # The nginx sidecar remains as a passthrough safety net in both modes.
+  cat > "$base/nginx-oid4vci.conf" <<NGINXEOF
+server {
+    listen 80;
+
+    location / {
+        proxy_pass http://host.docker.internal:${_agent_api_port};
+        proxy_http_version 1.1;
+        # Disable upstream compression so sub_filter can read the plain body.
+        proxy_set_header Accept-Encoding "";
+
+        sub_filter_once off;
+        sub_filter_types application/json text/plain text/html;
+        sub_filter '${_ip_http_url}' '${_public_base}';
+    }
+}
+NGINXEOF
+  green "  wrote $base/nginx-oid4vci.conf (${_ip_http_url} → ${_public_base})"
 }
 
 # bootstrap_credebl_keycloak_realm imports the credebl-realm into the shared
-# Keycloak. Idempotent — skips import when the realm already exists.
+# Keycloak. Idempotent — skips import when the realm already exists, but always
+# patches redirectUris and client-scope links so they reflect the current domain.
 bootstrap_credebl_keycloak_realm() {
   local kc_base="http://localhost:${KEYCLOAK_PORT}"
   local realm_file="$SCRIPT_DIR/deploy/compose/credebl/config/keycloak-realm.json"
-  local _kc_admin_pass="${KEYCLOAK_ADMIN_PASSWORD:-keycloak}"
+  local _kc_admin_pass="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+
+  # Compute the verifiably-go public URL for domain-mode redirect URIs.
+  # When the slug equals the first label of the domain we use the bare domain
+  # (e.g. slug "verifiably" + "verifiably.ysalabs.work" → https://verifiably.ysalabs.work).
+  local _verifiably_url=""
+  if [[ -n "$VERIFIABLY_PUBLIC_DOMAIN" ]]; then
+    local _first_label="${VERIFIABLY_PUBLIC_DOMAIN%%.*}"
+    local _vslug
+    _vslug=$(resolve_slug "verifiably" 2>/dev/null || echo "verifiably")
+    if [[ "$_vslug" == "$_first_label" ]]; then
+      _verifiably_url="https://${VERIFIABLY_PUBLIC_DOMAIN}"
+    elif [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
+      _verifiably_url=$(printf "${VERIFIABLY_HOSTS_PATTERN}" "${_vslug}")
+    fi
+  fi
+
+  # Helper: fetch a fresh admin-cli token. Called at start and again after
+  # the realm import which can take > 60 s (KC default token TTL).
+  _kc_token() {
+    curl -sf --max-time 15 -X POST \
+      "$kc_base/realms/master/protocol/openid-connect/token" \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      -d "client_id=admin-cli&username=admin&password=${_kc_admin_pass}&grant_type=password" \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])' 2>/dev/null
+  }
 
   # Wait for Keycloak
   local tries=0
@@ -1636,43 +1938,41 @@ bootstrap_credebl_keycloak_realm() {
     sleep 2
   done
 
-  # Get admin token
   local token
-  token=$(curl -sf --max-time 15 -X POST \
-    "$kc_base/realms/master/protocol/openid-connect/token" \
-    -H "Content-Type: application/x-www-form-urlencoded" \
-    -d "client_id=admin-cli&username=admin&password=${_kc_admin_pass}&grant_type=password" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])' 2>/dev/null) || true
+  token=$(_kc_token) || true
   if [[ -z "$token" ]]; then
     red "  Could not get Keycloak admin token — skipping CREDEBL realm import"
     return 1
   fi
 
-  # Check if realm already exists
-  local realm_exists
-  realm_exists=$(curl -sf --max-time 10 \
+  # Check if realm already exists (use HTTP status directly — avoids python3 pipe failures on Windows)
+  local realm_http
+  realm_http=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
     "$kc_base/admin/realms/credebl-realm" \
-    -H "Authorization: Bearer ${token}" \
-    | python3 -c 'import json,sys; print("yes")' 2>/dev/null) || realm_exists=""
+    -H "Authorization: Bearer ${token}" 2>/dev/null) || realm_http=""
 
-  if [[ "$realm_exists" == "yes" ]]; then
+  if [[ "$realm_http" == "200" ]]; then
     green "  credebl-realm already exists in Keycloak — skipping import"
   else
     green "  Importing credebl-realm into Keycloak"
-    # Patch redirectUris with the CREDEBL_API_PORT before importing
+    # Patch redirectUris to include both the IP-based studio URL and, when in
+    # domain mode, the verifiably-go domain URL so the OIDC callback succeeds.
     local patched_realm
-    patched_realm=$(python3 - "$realm_file" "${VERIFIABLY_PUBLIC_HOST}" "${CREDEBL_API_PORT}" "${CREDEBL_KEYCLOAK_CLIENT_SECRET}" <<'PY'
+    patched_realm=$(python3 - "$realm_file" "${VERIFIABLY_PUBLIC_HOST}" "${CREDEBL_API_PORT}" "${CREDEBL_KEYCLOAK_CLIENT_SECRET}" "${_verifiably_url}" <<'PY'
 import json, sys
 with open(sys.argv[1]) as f:
     realm = json.load(f)
-host = sys.argv[2]
-port = sys.argv[3]
-client_secret = sys.argv[4]
+host, port, client_secret, verifiably_url = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 studio_url = f"http://{host}:{port}"
+redirect_uris = [f"{studio_url}/*", "http://localhost/*"]
+web_origins   = [studio_url, "http://localhost"]
+if verifiably_url:
+    redirect_uris += [f"{verifiably_url}/*", f"{verifiably_url}/auth/callback"]
+    web_origins.append(verifiably_url)
 for client in realm.get("clients", []):
     if client.get("clientId") in ("credebl-client", "adminClient"):
-        client["redirectUris"] = [f"{studio_url}/*", "http://localhost/*"]
-        client["webOrigins"] = [studio_url, "http://localhost"]
+        client["redirectUris"] = redirect_uris
+        client["webOrigins"]   = web_origins
         # Replace the ${KEYCLOAK_CLIENT_SECRET} placeholder with the actual secret
         if client.get("secret", "").startswith("${"):
             client["secret"] = client_secret
@@ -1699,53 +1999,177 @@ PY
     fi
   fi
 
-  # Ensure openid scope with sub claim is present (required for keycloakUserId lookup)
-  local scope_id
-  scope_id=$(curl -sf --max-time 10 \
-    "$kc_base/admin/realms/credebl-realm/client-scopes" \
-    -H "Authorization: Bearer ${token}" \
-    | python3 -c 'import json,sys; s=[x["id"] for x in json.load(sys.stdin) if x["name"]=="openid"]; print(s[0] if s else "")' 2>/dev/null) || true
-
-  if [[ -z "$scope_id" ]]; then
-    curl -sf --max-time 15 -X POST \
-      "$kc_base/admin/realms/credebl-realm/client-scopes" \
-      -H "Authorization: Bearer ${token}" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "name": "openid",
-        "description": "OpenID Connect built-in scope",
-        "protocol": "openid-connect",
-        "attributes": {"include.in.token.scope": "true"},
-        "protocolMappers": [{
-          "name": "sub",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-sub-mapper",
-          "consentRequired": false,
-          "config": {"access.token.sub.claim": "true", "id.token.sub.claim": "true"}
-        }]
-      }' >/dev/null || true
-    scope_id=$(curl -sf --max-time 10 \
-      "$kc_base/admin/realms/credebl-realm/client-scopes" \
-      -H "Authorization: Bearer ${token}" \
-      | python3 -c 'import json,sys; s=[x["id"] for x in json.load(sys.stdin) if x["name"]=="openid"]; print(s[0] if s else "")' 2>/dev/null) || true
-    [[ -n "$scope_id" ]] && green "  openid scope created (id: $scope_id)"
+  # Refresh token — the realm import above can take > 60 s (KC default TTL),
+  # which would silently break every subsequent API call.
+  token=$(_kc_token) || true
+  if [[ -z "$token" ]]; then
+    red "  Could not refresh KC token after realm import — scope/redirect fixes skipped"
+    return 0
   fi
 
-  if [[ -n "$scope_id" ]]; then
-    for client_name in credebl-client adminClient; do
-      local client_id
-      client_id=$(curl -sf --max-time 10 \
-        "$kc_base/admin/realms/credebl-realm/clients?clientId=${client_name}" \
+  # Idempotently sync client secret and (in domain mode) redirectUris/webOrigins.
+  # Runs unconditionally so a fresh token after realm import never leaves the
+  # client with a blank secret or stale redirect URIs.
+  local _kc_client_secret="${CREDEBL_KEYCLOAK_CLIENT_SECRET:-}"
+  # Fall back to reading credebl.env directly (e.g. when called standalone).
+  if [[ -z "$_kc_client_secret" ]]; then
+    local _credebl_env="$SCRIPT_DIR/deploy/compose/credebl/config/credebl.env"
+    [[ -f "$_credebl_env" ]] && \
+      _kc_client_secret=$(grep '^CREDEBL_KEYCLOAK_CLIENT_SECRET=' "$_credebl_env" \
+        | cut -d= -f2- | tr -d '\r')
+  fi
+  for client_name in credebl-client adminClient; do
+    local client_id
+    client_id=$(curl -sf --max-time 10 \
+      "$kc_base/admin/realms/credebl-realm/clients?clientId=${client_name}" \
+      -H "Authorization: Bearer ${token}" \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' 2>/dev/null) || true
+    [[ -z "$client_id" ]] && continue
+    # Write current client JSON to a temp file to avoid pipe+heredoc conflict.
+    local tmp_client
+    tmp_client=$(mktemp /tmp/kc_client_XXXXXX.json)
+    curl -sf --max-time 10 \
+      "$kc_base/admin/realms/credebl-realm/clients/${client_id}" \
+      -H "Authorization: Bearer ${token}" \
+      -o "$tmp_client" 2>/dev/null || true
+    local patched_client
+    patched_client=$(python3 - "${_verifiably_url}" "${_kc_client_secret}" "$tmp_client" <<'PY'
+import json, sys
+verifiably_url, client_secret, client_file = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(client_file) as f:
+    client = json.load(f)
+# Always sync the client secret so a realm re-import never leaves it blank.
+if client_secret:
+    client["secret"] = client_secret
+# Add domain redirect URIs when in domain mode.
+if verifiably_url:
+    uris = client.get("redirectUris", [])
+    for u in [f"{verifiably_url}/*", f"{verifiably_url}/auth/callback"]:
+        if u not in uris:
+            uris.append(u)
+    client["redirectUris"] = uris
+    origins = client.get("webOrigins", [])
+    if verifiably_url not in origins:
+        origins.append(verifiably_url)
+    client["webOrigins"] = origins
+print(json.dumps(client))
+PY
+) || true
+    rm -f "$tmp_client"
+    if [[ -n "$patched_client" ]]; then
+      curl -sf --max-time 10 -X PUT \
+        "$kc_base/admin/realms/credebl-realm/clients/${client_id}" \
         -H "Authorization: Bearer ${token}" \
-        | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' 2>/dev/null) || true
-      if [[ -n "$client_id" ]]; then
+        -H "Content-Type: application/json" \
+        -d "$patched_client" >/dev/null || true
+    fi
+  done
+  [[ -n "$_verifiably_url" ]] && \
+    green "  client secret + redirectUris synced (domain: $_verifiably_url)" || \
+    green "  client secret synced"
+
+  # Helper: fetch or create a client-scope by name; prints the scope UUID.
+  _kc_ensure_scope() {
+    local scope_name="$1" scope_body="$2"
+    local sid
+    sid=$(curl -sf --max-time 10 \
+      "$kc_base/admin/realms/credebl-realm/client-scopes" \
+      -H "Authorization: Bearer ${token}" \
+      | python3 -c "import json,sys; s=[x['id'] for x in json.load(sys.stdin) if x['name']=='${scope_name}']; print(s[0] if s else '')" 2>/dev/null) || true
+    if [[ -z "$sid" ]]; then
+      curl -sf --max-time 15 -X POST \
+        "$kc_base/admin/realms/credebl-realm/client-scopes" \
+        -H "Authorization: Bearer ${token}" \
+        -H "Content-Type: application/json" \
+        -d "$scope_body" >/dev/null || true
+      sid=$(curl -sf --max-time 10 \
+        "$kc_base/admin/realms/credebl-realm/client-scopes" \
+        -H "Authorization: Bearer ${token}" \
+        | python3 -c "import json,sys; s=[x['id'] for x in json.load(sys.stdin) if x['name']=='${scope_name}']; print(s[0] if s else '')" 2>/dev/null) || true
+      [[ -n "$sid" ]] && green "  ${scope_name} scope created (id: $sid)"
+    fi
+    echo "$sid"
+  }
+
+  # Ensure openid scope with sub claim (required for keycloakUserId lookup)
+  local openid_scope_id
+  openid_scope_id=$(_kc_ensure_scope "openid" '{
+    "name": "openid",
+    "description": "OpenID Connect built-in scope",
+    "protocol": "openid-connect",
+    "attributes": {"include.in.token.scope": "true"},
+    "protocolMappers": [{"name": "sub", "protocol": "openid-connect",
+      "protocolMapper": "oidc-sub-mapper", "consentRequired": false,
+      "config": {"access.token.sub.claim": "true", "id.token.sub.claim": "true"}}]
+  }')
+
+  # Ensure profile scope (name/given_name/family_name/preferred_username)
+  local profile_scope_id
+  profile_scope_id=$(_kc_ensure_scope "profile" '{
+    "name": "profile",
+    "description": "OpenID Connect built-in scope: user profile",
+    "protocol": "openid-connect",
+    "attributes": {"include.in.token.scope": "true"},
+    "protocolMappers": [
+      {"name": "full name", "protocol": "openid-connect",
+       "protocolMapper": "oidc-full-name-mapper", "consentRequired": false,
+       "config": {"id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true"}},
+      {"name": "given name", "protocol": "openid-connect",
+       "protocolMapper": "oidc-usermodel-attribute-mapper", "consentRequired": false,
+       "config": {"userinfo.token.claim": "true", "user.attribute": "firstName",
+         "id.token.claim": "true", "access.token.claim": "true",
+         "claim.name": "given_name", "jsonType.label": "String"}},
+      {"name": "family name", "protocol": "openid-connect",
+       "protocolMapper": "oidc-usermodel-attribute-mapper", "consentRequired": false,
+       "config": {"userinfo.token.claim": "true", "user.attribute": "lastName",
+         "id.token.claim": "true", "access.token.claim": "true",
+         "claim.name": "family_name", "jsonType.label": "String"}},
+      {"name": "username", "protocol": "openid-connect",
+       "protocolMapper": "oidc-usermodel-attribute-mapper", "consentRequired": false,
+       "config": {"userinfo.token.claim": "true", "user.attribute": "username",
+         "id.token.claim": "true", "access.token.claim": "true",
+         "claim.name": "preferred_username", "jsonType.label": "String"}}
+    ]
+  }')
+
+  # Ensure email scope
+  local email_scope_id
+  email_scope_id=$(_kc_ensure_scope "email" '{
+    "name": "email",
+    "description": "OpenID Connect built-in scope: email address",
+    "protocol": "openid-connect",
+    "attributes": {"include.in.token.scope": "true"},
+    "protocolMappers": [
+      {"name": "email", "protocol": "openid-connect",
+       "protocolMapper": "oidc-usermodel-attribute-mapper", "consentRequired": false,
+       "config": {"userinfo.token.claim": "true", "user.attribute": "email",
+         "id.token.claim": "true", "access.token.claim": "true",
+         "claim.name": "email", "jsonType.label": "String"}},
+      {"name": "email verified", "protocol": "openid-connect",
+       "protocolMapper": "oidc-usermodel-property-mapper", "consentRequired": false,
+       "config": {"userinfo.token.claim": "true", "user.attribute": "emailVerified",
+         "id.token.claim": "true", "access.token.claim": "true",
+         "claim.name": "email_verified", "jsonType.label": "boolean"}}
+    ]
+  }')
+
+  # Link all scopes to credebl-client and adminClient
+  for client_name in credebl-client adminClient; do
+    local client_id
+    client_id=$(curl -sf --max-time 10 \
+      "$kc_base/admin/realms/credebl-realm/clients?clientId=${client_name}" \
+      -H "Authorization: Bearer ${token}" \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' 2>/dev/null) || true
+    if [[ -n "$client_id" ]]; then
+      for sid in "$openid_scope_id" "$profile_scope_id" "$email_scope_id"; do
+        [[ -z "$sid" ]] && continue
         curl -sf --max-time 10 -X PUT \
-          "$kc_base/admin/realms/credebl-realm/clients/${client_id}/default-client-scopes/${scope_id}" \
+          "$kc_base/admin/realms/credebl-realm/clients/${client_id}/default-client-scopes/${sid}" \
           -H "Authorization: Bearer ${token}" >/dev/null || true
-      fi
-    done
-    green "  openid scope linked to credebl-client and adminClient"
-  fi
+      done
+    fi
+  done
+  green "  openid/profile/email scopes linked to credebl-client and adminClient"
 }
 
 # ---- CREDEBL container patch functions ----
@@ -2611,7 +3035,14 @@ process.stdout.write(encrypted);
 # Idempotent — skips creation steps when existing rows are found.
 ensure_credebl_oid4vc_issuer() {
   local _db_pw="$CREDEBL_POSTGRES_PASSWORD"
-  local _org_id="70b082ae-2ad7-4f15-9f82-394069793d05"
+  local _org_id
+  _org_id="$(docker exec -i credebl-postgres env PGPASSWORD="$_db_pw" \
+    psql -U credebl -d credebl -Atqc "SELECT id FROM organisation WHERE name='Platform-admin' LIMIT 1;" \
+    2>/dev/null | tr -d '\r')"
+  if [[ -z "$_org_id" ]]; then
+    red "  Could not determine Platform-admin org UUID from DB"
+    return 1
+  fi
   local _api="http://127.0.0.1:${CREDEBL_API_PORT:-5001}"
   local _email="${CREDEBL_ADMIN_EMAIL:-admin@cdpi.dev}"
   local _kc_port="${KEYCLOAK_PORT:-8080}"
@@ -3044,8 +3475,29 @@ EOF
           "$name" "$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
         continue
       fi
-      subdomain="${slug}.${VERIFIABLY_PUBLIC_DOMAIN}"
+      # Avoid double-prefix when slug == first label of VERIFIABLY_PUBLIC_DOMAIN.
+      local _first_label="${VERIFIABLY_PUBLIC_DOMAIN%%.*}"
+      if [[ -n "$VERIFIABLY_PUBLIC_DOMAIN" && "$slug" == "$_first_label" ]]; then
+        subdomain="${VERIFIABLY_PUBLIC_DOMAIN}"
+      else
+        subdomain="${slug}.${VERIFIABLY_PUBLIC_DOMAIN}"
+      fi
       printf '%s {\n' "$subdomain"
+      # OID4VCI requests must bypass the CREDEBL API gateway (which returns
+      # 404 for /oid4vci/*) and go directly to the Credo agent controller.
+      # caddy-public reaches it via host.docker.internal because the agent
+      # container is on afj_default, a separate network from waltid_default.
+      if [[ "$name" == "credebl" ]]; then
+        # Route OID4VCI and OID4VP agent paths through the nginx sidecar.
+        # The sidecar proxies to the Credo agent (host.docker.internal:8001)
+        # and, as a safety net, rewrites any bare-IP URLs in response bodies.
+        # /openid4vc/* is the OID4VP wallet-facing path (authorization-requests,
+        # presentations) — without this rule caddy falls through to the API
+        # gateway which returns 404 to the wallet.
+        printf '\thandle /oid4vci/* {\n\t\treverse_proxy credebl-oid4vci-rewriter:80\n\t}\n'
+        printf '\thandle /oid4vp/* {\n\t\treverse_proxy credebl-oid4vci-rewriter:80\n\t}\n'
+        printf '\thandle /openid4vc/* {\n\t\treverse_proxy credebl-oid4vci-rewriter:80\n\t}\n'
+      fi
       case "$proto" in
         https-skipverify)
           printf '\treverse_proxy https://%s {\n\t\ttransport http {\n\t\t\ttls_insecure_skip_verify\n\t\t}\n\t}\n' "$upstream"
@@ -3181,6 +3633,9 @@ usage() {
 usage: deploy.sh <command> [scenario]
 
 commands:
+  setup                            interactive wizard — writes .env with your host/IP,
+                                   Keycloak admin password, and CREDEBL email. Auto-runs
+                                   on first 'up' if .env does not exist.
   up <all|waltid|inji|credebl>     start compose services + build & run verifiably-go container
   down [all|waltid|inji|credebl]   stop them (default: all)
   run <all|waltid|inji|credebl>    rebuild + restart only the verifiably-go container
@@ -3214,6 +3669,7 @@ main() {
     up)      shift; cmd_up "$@";;
     down)    shift; cmd_down "$@";;
     reset)   cmd_reset;;
+    setup)   cmd_setup;;
     status)  cmd_status;;
     config)  shift; cmd_config "$@";;
     run)     shift; cmd_run "$@";;
