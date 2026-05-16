@@ -1582,6 +1582,16 @@ start_container() {
   if [[ ! -f "$system_providers_mount" ]]; then
     system_providers_mount="$SCRIPT_DIR/config/auth-providers.docker.json"
   fi
+  # Init the state volume: the distroless nonroot user (UID 65532) can't
+  # write to a newly created Docker named volume (owned root:root). Run a
+  # one-shot alpine container to pre-create the sessions subdir and fix
+  # ownership. Idempotent — safe to re-run on every start.
+  MSYS_NO_PATHCONV=1 docker run --rm \
+    -v "${VERIFIABLY_CONTAINER}-state:/vol" \
+    alpine:3.18 \
+    sh -c "mkdir -p /vol/sessions && chown -R 65532:65532 /vol && chmod 700 /vol" \
+    >/dev/null 2>&1 || true
+
   # MSYS_NO_PATHCONV=1 prevents Git Bash from converting Unix paths like
   # /var/run/docker.sock to C:\Program Files\Git\var\run\docker.sock.
   # Docker Desktop on Windows handles MSYS-style paths (/c/Users/...) natively.
