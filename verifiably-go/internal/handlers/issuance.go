@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -215,6 +216,11 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 			h.errorToast(w, r, err.Error())
 			return
 		}
+		slog.Info("credential issued to wallet",
+			"schema", schema.ID,
+			"dpg", sess.IssuerDpg,
+			"dest", "wallet",
+		)
 		h.recordIssuance(sess, schema, sess.IssuerDpg, subject, res.OfferURI, binding)
 		h.renderFragment(w, r, "fragment_issue_wallet_result", res)
 		return
@@ -225,6 +231,11 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, err.Error())
 		return
 	}
+	slog.Info("credential issued as PDF",
+		"schema", schema.ID,
+		"dpg", sess.IssuerDpg,
+		"dest", "pdf",
+	)
 	h.renderFragment(w, r, "fragment_issue_pdf_result", map[string]any{
 		"Schema":    schema,
 		"PDFResult": res,

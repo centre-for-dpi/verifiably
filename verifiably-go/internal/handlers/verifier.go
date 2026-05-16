@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -414,6 +415,13 @@ func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
 		h.renderFragment(w, r, "fragment_verify_result", res)
 		return
 	}
+	slog.Info("oid4vp verification completed",
+		"valid", res.Valid,
+		"method", res.Method,
+		"format", res.Format,
+		"dpg", sess.VerifierDpg,
+		"fields_count", len(res.DisclosedFields),
+	)
 	h.renderFragments(w, r, res, "fragment_verify_result", "fragment_verify_stop_polling")
 }
 

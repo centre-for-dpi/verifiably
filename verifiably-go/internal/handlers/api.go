@@ -23,6 +23,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -250,6 +251,12 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	credID := h.apiRecordIssuance(keyName, schema, req.IssuerDpg, res.OfferURI, req.SubjectData, binding)
+	slog.Info("api: credential issued",
+		"credential_id", credID,
+		"schema", req.SchemaID,
+		"dpg", req.IssuerDpg,
+		"api_key", keyName,
+	)
 	out := apiIssueResult{
 		CredentialID: credID,
 		OfferURI:     res.OfferURI,

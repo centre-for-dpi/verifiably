@@ -1611,6 +1611,7 @@ start_container() {
     -v "${VERIFIABLY_CONTAINER}-state:/app/state" \
     -e VERIFIABLY_ADAPTER=registry \
     -e VERIFIABLY_ADDR=:8080 \
+    -e VERIFIABLY_LOG_JSON=1 \
     -e VERIFIABLY_STATE_DIR=/app/state \
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
