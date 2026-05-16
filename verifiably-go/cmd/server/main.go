@@ -11,6 +11,9 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -19,9 +22,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/verifiably/verifiably-go/internal/adapters/factory"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
@@ -104,6 +109,15 @@ func main() {
 	// config/backends.json; default "mock" keeps the in-memory demo adapter.
 	adapter := selectAdapter()
 
+	// Session store: persistent when VERIFIABLY_SESSION_SECRET is set.
+	// The store flushes to VERIFIABLY_STATE_DIR/sessions/ every 5 s and
+	// performs a final flush on SIGTERM/SIGINT. Without the secret the store
+	// is in-memory only (original behaviour — fine for dev and bare-metal run).
+	shutCtx, shutCancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer shutCancel()
+	sessionStore := buildSessionStore()
+	sessionStore.StartFlusher(shutCtx)
+
 	authReg := buildAuthRegistry()
 	wireAuthHelpers()
 	translator := buildTranslator()
@@ -111,7 +125,7 @@ func main() {
 	adminMode := authAdminMode()
 	h := &handlers.H{
 		Adapter:       adapter,
-		Sessions:      handlers.NewStore(),
+		Sessions:      sessionStore,
 		Templates:     tmpl,
 		AuthReg:       authReg,
 		Translator:    translator,
@@ -293,6 +307,44 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// buildSessionStore returns a persistent store backed by encrypted files in
+// VERIFIABLY_STATE_DIR/sessions/. The encryption key is taken from
+// VERIFIABLY_SESSION_SECRET; when that env var is absent the key is loaded
+// from (or generated into) VERIFIABLY_STATE_DIR/session.key so the secret
+// survives container restarts without operator intervention, as long as the
+// state dir is on a persistent volume. Falls back to in-memory if the state
+// dir is not writable.
+func buildSessionStore() *handlers.Store {
+	stateDir := os.Getenv("VERIFIABLY_STATE_DIR")
+	if stateDir == "" {
+		stateDir = "state"
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		log.Printf("session store: state dir not writable (%v), using in-memory store", err)
+		return handlers.NewStore()
+	}
+
+	secret := os.Getenv("VERIFIABLY_SESSION_SECRET")
+	if secret == "" {
+		keyPath := filepath.Join(stateDir, "session.key")
+		if data, err := os.ReadFile(keyPath); err == nil {
+			secret = strings.TrimSpace(string(data))
+		} else {
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err == nil {
+				secret = hex.EncodeToString(b)
+				_ = os.WriteFile(keyPath, []byte(secret+"\n"), 0o600)
+				log.Printf("session store: generated new session key at %s", keyPath)
+			}
+		}
+	}
+	if secret == "" {
+		log.Printf("session store: cannot obtain session secret, using in-memory store")
+		return handlers.NewStore()
+	}
+	return handlers.NewPersistentStore(filepath.Join(stateDir, "sessions"), secret)
 }
 
 // slogWriter routes legacy `log` package output through slog so JSON mode

@@ -1598,8 +1598,10 @@ start_container() {
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${VERIFIABLY_CONTAINER}-locales:/app/locales" \
+    -v "${VERIFIABLY_CONTAINER}-state:/app/state" \
     -e VERIFIABLY_ADAPTER=registry \
     -e VERIFIABLY_ADDR=:8080 \
+    -e VERIFIABLY_STATE_DIR=/app/state \
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
@@ -1610,6 +1612,7 @@ start_container() {
     -e VERIFIABLY_AUTH_ADMIN="${VERIFIABLY_AUTH_ADMIN:-rw}" \
     -e VERIFIABLY_ADMIN_USER="${VERIFIABLY_ADMIN_USER:-}" \
     -e VERIFIABLY_ADMIN_PASSWORD="${VERIFIABLY_ADMIN_PASSWORD:-}" \
+    ${VERIFIABLY_SESSION_SECRET:+-e VERIFIABLY_SESSION_SECRET="$VERIFIABLY_SESSION_SECRET"} \
     "$VERIFIABLY_IMAGE" >/dev/null
 
   sleep 1

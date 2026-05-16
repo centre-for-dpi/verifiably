@@ -1,9 +1,18 @@
 package handlers
 
 import (
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -120,13 +129,155 @@ type Session struct {
 }
 
 // Store is a thread-safe session store keyed by cookie ID.
+//
+// Persistence: when dir != "" the store periodically flushes all sessions to
+// encrypted JSON files in dir (one file per session, AES-256-GCM). On the
+// next startup it replays them so sessions survive container restarts.
+// The flush interval is 5 seconds; a final flush runs on Stop().
+// When dir == "" the store is purely in-memory (original behaviour).
 type Store struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
+
+	dir string   // "" = in-memory only
+	key []byte   // 32-byte AES key; nil when dir == ""
 }
 
+// NewStore returns a purely in-memory session store (original behaviour).
 func NewStore() *Store {
 	return &Store{sessions: map[string]*Session{}}
+}
+
+// NewPersistentStore returns a session store that flushes to dir every 5 s.
+// secret is any string; it is SHA-256'd to derive the 32-byte AES key.
+// Existing sessions in dir are loaded immediately so they survive restarts.
+func NewPersistentStore(dir, secret string) *Store {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		log.Printf("session store: cannot create dir %q, falling back to in-memory: %v", dir, err)
+		return NewStore()
+	}
+	h := sha256.Sum256([]byte(secret))
+	s := &Store{
+		sessions: map[string]*Session{},
+		dir:      dir,
+		key:      h[:],
+	}
+	s.load()
+	return s
+}
+
+// StartFlusher starts the background goroutine that periodically flushes
+// sessions to disk. It stops when ctx is cancelled, performing a final flush.
+// Call this after NewPersistentStore; it is a no-op for in-memory stores.
+func (s *Store) StartFlusher(ctx context.Context) {
+	if s.dir == "" {
+		return
+	}
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				s.flush()
+			case <-ctx.Done():
+				s.flush()
+				return
+			}
+		}
+	}()
+}
+
+func (s *Store) load() {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return
+	}
+	loaded := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sess") {
+			continue
+		}
+		id := strings.TrimSuffix(e.Name(), ".sess")
+		data, err := os.ReadFile(filepath.Join(s.dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		plain, err := sessionDecrypt(s.key, data)
+		if err != nil {
+			continue
+		}
+		var sess Session
+		if err := json.Unmarshal(plain, &sess); err != nil {
+			continue
+		}
+		// Discard sessions that have gone stale (>24 h since cookie expiry).
+		// We use the file mtime as the last-active timestamp.
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > 24*time.Hour {
+			os.Remove(filepath.Join(s.dir, e.Name()))
+			continue
+		}
+		s.sessions[id] = &sess
+		loaded++
+	}
+	if loaded > 0 {
+		log.Printf("session store: loaded %d session(s) from %s", loaded, s.dir)
+	}
+}
+
+func (s *Store) flush() {
+	s.mu.Lock()
+	snapshot := make(map[string]*Session, len(s.sessions))
+	for id, sess := range s.sessions {
+		snapshot[id] = sess
+	}
+	s.mu.Unlock()
+
+	for id, sess := range snapshot {
+		data, err := json.Marshal(sess)
+		if err != nil {
+			continue
+		}
+		enc, err := sessionEncrypt(s.key, data)
+		if err != nil {
+			continue
+		}
+		_ = os.WriteFile(filepath.Join(s.dir, id+".sess"), enc, 0o600)
+	}
+}
+
+// sessionEncrypt encrypts plain with AES-256-GCM. Output: nonce || ciphertext.
+func sessionEncrypt(key, plain []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	return gcm.Seal(nonce, nonce, plain, nil), nil
+}
+
+// sessionDecrypt reverses sessionEncrypt.
+func sessionDecrypt(key, data []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	ns := gcm.NonceSize()
+	if len(data) < ns {
+		return nil, os.ErrInvalid
+	}
+	return gcm.Open(nil, data[:ns], data[ns:], nil)
 }
 
 func (s *Store) getOrCreate(r *http.Request, w http.ResponseWriter) *Session {
