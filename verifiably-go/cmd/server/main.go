@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/verifiably/verifiably-go/internal/adapters/factory"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
@@ -303,9 +304,22 @@ func main() {
 		http.Redirect(w, r, "/static/openapi.yaml", http.StatusFound)
 	})
 
-	log.Printf("verifiably-go listening on %s (debug markers: %v)", addr, debug)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{Addr: addr, Handler: mux}
+
+	go func() {
+		log.Printf("verifiably-go listening on %s (debug markers: %v)", addr, debug)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("http server: %v", err)
+		}
+	}()
+
+	<-shutCtx.Done()
+	log.Printf("verifiably-go shutting down …")
+	// Allow up to 10 s for in-flight requests to drain, then hard-close.
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer drainCancel()
+	if err := srv.Shutdown(drainCtx); err != nil {
+		log.Printf("verifiably-go forced shutdown: %v", err)
 	}
 }
 

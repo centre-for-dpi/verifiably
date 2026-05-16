@@ -3,6 +3,7 @@ package credebl
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -46,24 +47,54 @@ func New(cfg Config, vendor string) (*Adapter, error) {
 	}, nil
 }
 
-// withAuth executes fn with a CREDEBL bearer token in the context, retrying
-// once on HTTP 401 (stale session after a concurrent Studio login invalidated
-// the cached token via CREDEBL's deleteInactiveSessions cleanup).
+// withAuth executes fn with a CREDEBL bearer token in the context.
+// It retries once on HTTP 401 (stale session after a concurrent Studio login
+// invalidated the cached token) and once on HTTP 5xx / network errors (transient
+// upstream failures). The 401 retry re-authenticates; the 5xx retry reuses the
+// same token. Both retries are logged so operators can trace stale-token races.
 func (a *Adapter) withAuth(ctx context.Context, fn func(context.Context) error) error {
 	authCtx, err := a.authCtx(ctx)
 	if err != nil {
 		return err
 	}
 	err = fn(authCtx)
-	if httpx.IsStatus(err, http.StatusUnauthorized) {
+
+	switch {
+	case httpx.IsStatus(err, http.StatusUnauthorized):
+		log.Printf("[credebl] 401 from upstream — clearing token cache and retrying")
 		a.cache.clear()
 		authCtx, err = a.authCtx(ctx)
 		if err != nil {
 			return err
 		}
 		err = fn(authCtx)
+
+	case isTransient(err):
+		log.Printf("[credebl] transient error — retrying once: %v", err)
+		err = fn(authCtx)
 	}
+
 	return err
+}
+
+// isTransient returns true for HTTP 5xx responses and context-less network
+// errors (dial failures, connection resets). It does NOT retry 4xx errors
+// (caller bugs) or context cancellations.
+func isTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	for _, code := range []int{
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+	} {
+		if httpx.IsStatus(err, code) {
+			return true
+		}
+	}
+	return false
 }
 
 // rewritePublic replaces internal Docker hostnames in s with the public URL

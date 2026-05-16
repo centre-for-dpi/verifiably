@@ -48,6 +48,11 @@ type Config struct {
 	// Defaults to "1234" when empty.
 	DefaultPIN string `json:"defaultPin"`
 
+	// PollTimeout is how long FetchPresentationResult waits for the holder
+	// to submit a presentation before returning Pending. Parsed from the
+	// JSON field "pollTimeoutSeconds" (integer). Defaults to 120 s.
+	PollTimeoutSeconds int `json:"pollTimeoutSeconds"`
+
 	// InternalBaseURL / PublicBaseURL handle offer URI rewriting.
 	// CREDEBL's Credo controller may embed its internal Docker hostname
 	// inside offer URIs; verifiably-go rewrites those to PublicBaseURL so
@@ -77,14 +82,14 @@ func UnmarshalConfig(raw json.RawMessage) (Config, error) {
 	if c.CryptoPrivateKey == "" {
 		return c, fmt.Errorf("credebl: cryptoPrivateKey is required")
 	}
-	if c.OrgID == "" {
-		return c, fmt.Errorf("credebl: orgId is required")
-	}
-	if c.IssuerID == "" {
-		return c, fmt.Errorf("credebl: issuerId is required")
-	}
+	// orgId and issuerId are populated by the deploy-time provisioning flow.
+	// They may be empty right after a fresh deploy if provisioning is still
+	// running; the adapter will return a clear error at operation time.
 	if c.DefaultPIN == "" {
 		c.DefaultPIN = "1234"
+	}
+	if c.PollTimeoutSeconds <= 0 {
+		c.PollTimeoutSeconds = 120
 	}
 	if c.PublicBaseURL == "" {
 		c.PublicBaseURL = c.BaseURL

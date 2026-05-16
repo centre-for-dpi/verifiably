@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/verifiably/verifiably-go/internal/statuslist"
@@ -68,12 +69,14 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 	}
 	key, err := h.resolveSigningKey(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		log.Printf("status-list/bitstring: signing key unavailable: %v", err)
+		http.Error(w, "status list signing key unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	jwt, err := h.BitstringStore.PublishBitstringJWT(key)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("status-list/bitstring: publish failed: %v", err)
+		http.Error(w, "status list unavailable", http.StatusInternalServerError)
 		return
 	}
 	// Per VCDM 2.0 + IANA media-type registry, JOSE-secured VCs use the
@@ -103,12 +106,14 @@ func (h *H) PublishTokenStatusList(w http.ResponseWriter, r *http.Request) {
 	}
 	key, err := h.resolveSigningKey(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		log.Printf("status-list/token: signing key unavailable: %v", err)
+		http.Error(w, "status list signing key unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	jwt, err := h.TokenStore.PublishTokenStatusList(key)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("status-list/token: publish failed: %v", err)
+		http.Error(w, "status list unavailable", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/statuslist+jwt")

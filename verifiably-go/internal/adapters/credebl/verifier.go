@@ -150,14 +150,19 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 // state is the verificationSession.id from RequestPresentation.
 func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) (backend.VerificationResult, error) {
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vp/verifier-presentation?id=%s", a.cfg.OrgID, state)
-	deadline := time.Now().Add(30 * time.Second)
+	timeout := time.Duration(a.cfg.PollTimeoutSeconds) * time.Second
+	pollCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for {
 		var rawBytes []byte
-		if err := a.withAuth(ctx, func(ctx context.Context) error {
+		if err := a.withAuth(pollCtx, func(ctx context.Context) error {
 			var err error
 			rawBytes, err = a.client.DoRaw(ctx, http.MethodGet, path, nil, "", http.Header{"Accept": []string{"application/json"}})
 			return err
 		}); err != nil {
+			if pollCtx.Err() != nil {
+				return backend.VerificationResult{Pending: true}, nil
+			}
 			return backend.VerificationResult{}, fmt.Errorf("poll presentation: %w", err)
 		}
 		var resp verifierPresentationResponse
@@ -188,16 +193,12 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 				Method: "OID4VP · CREDEBL",
 			}, nil
 		}
-		if time.Now().After(deadline) {
-			break
-		}
 		select {
-		case <-ctx.Done():
+		case <-pollCtx.Done():
 			return backend.VerificationResult{Pending: true}, nil
 		case <-time.After(time.Second):
 		}
 	}
-	return backend.VerificationResult{Pending: true}, nil
 }
 
 // VerifyDirect is not supported — CREDEBL does not expose a synchronous

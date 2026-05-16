@@ -22,7 +22,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -175,7 +175,7 @@ func (h *H) apiRecordIssuance(keyName string, schema vctypes.Schema, issuerDpg, 
 		}
 	}
 	if _, err := h.IssuanceLog.Append(rec); err != nil {
-		fmt.Printf("api issuance log append %s: %v\n", id, err)
+		log.Printf("api: issuance log append %s: %v", id, err)
 		return ""
 	}
 	return id
