@@ -13,7 +13,10 @@ COPY internal ./internal
 COPY vctypes ./vctypes
 
 # Static binary — no cgo, no dynamic libs, safe to drop into distroless.
+# -mod=mod lets Go resolve indirect deps that aren't yet listed in go.mod
+# using the module cache already populated by `go mod download`.
 RUN CGO_ENABLED=0 GOOS=linux go build \
+    -mod=mod \
     -trimpath -ldflags="-s -w" \
     -o /out/verifiably ./cmd/server
 
