@@ -14,3 +14,14 @@
 :{$VERIFIER_API_PORT:7003} {
     reverse_proxy http://verifier-api:{$VERIFIER_API_PORT:7003}
 }
+
+# CREDEBL OID4VCI: the Credo agent embeds AGENT_HTTP_URL (port 80) in every
+# credential_offer_uri. Route those requests to the platform-admin agent
+# controller, which is always provisioned at CREDEBL_AGENT_API_PORT (8001).
+# For multi-tenant deployments a dynamic routing layer is needed; this static
+# rule covers the single-org demo use case.
+:80 {
+    handle /oid4vci/* {
+        reverse_proxy host.docker.internal:{$CREDEBL_AGENT_API_PORT:8001}
+    }
+}
