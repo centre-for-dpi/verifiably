@@ -262,10 +262,30 @@ func (a *Adapter) ensureVerifier(ctx context.Context) (string, error) {
 
 // --- helpers ---
 
-// extractDisclosedFieldsFromVpToken parses a DCQL vp_token JSON string of the
-// form {"vc-1":"eyJ...header.payload~disc1~disc2~kbjwt"} and extracts the
-// disclosed credential claims from each compact SD-JWT entry.
+// extractDisclosedFieldsFromVpToken parses a DCQL vp_token JSON string and
+// extracts disclosed credential claims from each compact SD-JWT entry.
+// Handles two formats emitted by different CREDEBL/Credo versions:
+//   - old: {"vc-1":"eyJ...~disc1~disc2"}        (string per credential)
+//   - new: {"vc-1":["eyJ...~disc1~disc2"]}       (array per credential)
 func extractDisclosedFieldsFromVpToken(vpToken string) map[string]string {
+	// Try the array format first (newer CREDEBL).
+	var arrayMap map[string][]string
+	if err := json.Unmarshal([]byte(vpToken), &arrayMap); err == nil {
+		out := make(map[string]string)
+		for credID, compacts := range arrayMap {
+			for _, compact := range compacts {
+				fields := extractClaimsFromCompactSdJwt(compact)
+				log.Printf("[credebl] %s: extracted %d fields from SD-JWT (array format)", credID, len(fields))
+				for k, v := range fields {
+					out[k] = v
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	// Fall back to the string format (older CREDEBL).
 	var tokenMap map[string]string
 	if err := json.Unmarshal([]byte(vpToken), &tokenMap); err != nil {
 		log.Printf("[credebl] vp_token parse error: %v", err)
