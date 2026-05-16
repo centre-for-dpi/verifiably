@@ -15,6 +15,7 @@ package credebl
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 )
 
 // Config is the per-backend config blob the registry passes in via backends.json.
@@ -62,6 +63,19 @@ type Config struct {
 }
 
 // UnmarshalConfig extracts and validates a Config from a raw JSON blob.
+// Sensitive fields (email, password, cryptoPrivateKey, orgId, issuerId,
+// verifierId) are overridden by their CREDEBL_* environment variables when
+// set, so backends.json can omit secrets entirely.
+//
+// Env var mapping:
+//
+//	CREDEBL_EMAIL            → Email
+//	CREDEBL_PASSWORD         → Password
+//	CREDEBL_CRYPTO_PRIVATE_KEY → CryptoPrivateKey
+//	CREDEBL_ORG_ID           → OrgID
+//	CREDEBL_ISSUER_ID        → IssuerID
+//	CREDEBL_VERIFIER_ID      → VerifierID
+//	CREDEBL_API_URL          → BaseURL   (when non-empty, takes priority)
 func UnmarshalConfig(raw json.RawMessage) (Config, error) {
 	var c Config
 	if len(raw) == 0 {
@@ -70,17 +84,40 @@ func UnmarshalConfig(raw json.RawMessage) (Config, error) {
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return c, err
 	}
+	// Env vars take priority over JSON so secrets stay out of backends.json.
+	if v := os.Getenv("CREDEBL_API_URL"); v != "" {
+		c.BaseURL = v
+	}
+	if v := os.Getenv("CREDEBL_EMAIL"); v != "" {
+		c.Email = v
+	}
+	if v := os.Getenv("CREDEBL_PASSWORD"); v != "" {
+		c.Password = v
+	}
+	if v := os.Getenv("CREDEBL_CRYPTO_PRIVATE_KEY"); v != "" {
+		c.CryptoPrivateKey = v
+	}
+	if v := os.Getenv("CREDEBL_ORG_ID"); v != "" {
+		c.OrgID = v
+	}
+	if v := os.Getenv("CREDEBL_ISSUER_ID"); v != "" {
+		c.IssuerID = v
+	}
+	if v := os.Getenv("CREDEBL_VERIFIER_ID"); v != "" {
+		c.VerifierID = v
+	}
+
 	if c.BaseURL == "" {
-		return c, fmt.Errorf("credebl: baseUrl is required")
+		return c, fmt.Errorf("credebl: baseUrl is required (set baseUrl in backends.json or CREDEBL_API_URL env var)")
 	}
 	if c.Email == "" {
-		return c, fmt.Errorf("credebl: email is required")
+		return c, fmt.Errorf("credebl: email is required (set email in backends.json or CREDEBL_EMAIL env var)")
 	}
 	if c.Password == "" {
-		return c, fmt.Errorf("credebl: password is required")
+		return c, fmt.Errorf("credebl: password is required (set password in backends.json or CREDEBL_PASSWORD env var)")
 	}
 	if c.CryptoPrivateKey == "" {
-		return c, fmt.Errorf("credebl: cryptoPrivateKey is required")
+		return c, fmt.Errorf("credebl: cryptoPrivateKey is required (set cryptoPrivateKey in backends.json or CREDEBL_CRYPTO_PRIVATE_KEY env var)")
 	}
 	// orgId and issuerId are populated by the deploy-time provisioning flow.
 	// They may be empty right after a fresh deploy if provisioning is still

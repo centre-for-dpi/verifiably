@@ -5,10 +5,50 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
+
+// sfGroup is a minimal stdlib-only singleflight implementation. It coalesces
+// concurrent calls with the same key so that only one in-flight call to fn
+// executes at a time; the others block and share its result.
+type sfGroup struct {
+	mu       sync.Mutex
+	inflight map[string]*sfCall
+}
+
+type sfCall struct {
+	wg  sync.WaitGroup
+	val string
+	err error
+}
+
+func (g *sfGroup) Do(key string, fn func() (string, error)) (string, error) {
+	g.mu.Lock()
+	if g.inflight == nil {
+		g.inflight = make(map[string]*sfCall)
+	}
+	if c, ok := g.inflight[key]; ok {
+		g.mu.Unlock()
+		c.wg.Wait()
+		return c.val, c.err
+	}
+	c := &sfCall{}
+	c.wg.Add(1)
+	g.inflight[key] = c
+	g.mu.Unlock()
+
+	c.val, c.err = fn()
+	c.wg.Done()
+
+	g.mu.Lock()
+	delete(g.inflight, key)
+	g.mu.Unlock()
+
+	return c.val, c.err
+}
 
 // credentialTemplate is the shape returned by
 // GET /v1/orgs/{orgId}/oid4vc/{issuerId}/template.
@@ -335,23 +375,39 @@ func (a *Adapter) DeleteCustomSchema(_ context.Context, id string) error {
 // For non-custom schemas the ID is already the CREDEBL UUID. For custom-*
 // schemas it checks the in-memory cache first, then the live template list
 // (handles container restarts), and finally creates the template lazily.
+//
+// Concurrent calls for the same schema.ID are coalesced by templateSF so that
+// at most one CREDEBL template-creation request races per key, eliminating
+// duplicate templates from parallel bulk-issuance requests.
 func (a *Adapter) resolveTemplateID(ctx context.Context, schema vctypes.Schema) (string, error) {
 	if v, ok := a.customTemplates.Load(schema.ID); ok {
 		return v.(string), nil
 	}
-	// Cache miss — fetch template list and match by name (restart recovery).
-	path := fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/template", a.cfg.OrgID, a.cfg.IssuerID)
-	var listResp templateListResponse
-	if err := a.client.DoJSON(ctx, http.MethodGet, path, nil, &listResp, nil); err == nil {
-		for _, t := range listResp.Data {
-			if t.Name == schema.Name {
-				a.customTemplates.Store(schema.ID, t.ID)
-				return t.ID, nil
+	return a.templateSF.Do(schema.ID, func() (string, error) {
+		// Re-check cache after acquiring the singleflight slot: another
+		// goroutine may have populated it while we were waiting.
+		if v, ok := a.customTemplates.Load(schema.ID); ok {
+			return v.(string), nil
+		}
+		// Fetch template list and match by name + vct (restart recovery).
+		// Also check vct: a template created before the vct-fix (where vct was a
+		// CREDEBL schema UUID instead of CustomTypeName) must not be reused,
+		// otherwise issued credentials carry the wrong vct and the verifier PD
+		// filter won't match.
+		path := fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/template", a.cfg.OrgID, a.cfg.IssuerID)
+		wantVct := schema.CustomTypeName()
+		var listResp templateListResponse
+		if err := a.client.DoJSON(ctx, http.MethodGet, path, nil, &listResp, nil); err == nil {
+			for _, t := range listResp.Data {
+				if t.Name == schema.Name && t.Template.Vct == wantVct {
+					a.customTemplates.Store(schema.ID, t.ID)
+					return t.ID, nil
+				}
 			}
 		}
-	}
-	// Not found — create lazily and cache.
-	return a.createCredeblTemplate(ctx, schema)
+		// Not found (or existing template has wrong vct) — create lazily and cache.
+		return a.createCredeblTemplate(ctx, schema)
+	})
 }
 
 // createCredeblTemplate calls the CREDEBL API to create a schema + template
@@ -383,16 +439,10 @@ func (a *Adapter) createCredeblTemplate(ctx context.Context, schema vctypes.Sche
 		schemaBody, &schemaResp, nil); err != nil {
 		return "", fmt.Errorf("credebl create schema: %w", err)
 	}
-	vct := schemaResp.Data.SchemaLedgerID
-	if vct == "" {
-		vct = schemaResp.Data.SchemaID
-	}
-	if vct == "" {
-		vct = schemaResp.Data.ID
-	}
-	if vct == "" {
-		return "", fmt.Errorf("credebl: schema creation returned empty id")
-	}
+	// Use CustomTypeName() as vct so issued credentials' vct claim matches
+	// what assembleCustomTemplate puts in the verifier PD filter — otherwise
+	// the wallet finds no credential matching the presentation definition.
+	vct := schema.CustomTypeName()
 
 	tAttrs := make([]templateAttribute, 0, len(schema.FieldsSpec))
 	for _, f := range schema.FieldsSpec {

@@ -2,8 +2,10 @@ package credebl
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,6 +34,9 @@ type Adapter struct {
 	// the CREDEBL credential template UUID created for them. Populated by
 	// SaveCustomSchema and lazily re-populated on IssueToWallet cache miss.
 	customTemplates sync.Map
+	// templateSF coalesces concurrent resolveTemplateID calls for the same
+	// schema.ID so that at most one CREDEBL template creation races per key.
+	templateSF sfGroup
 }
 
 // New constructs an Adapter.
@@ -61,7 +66,7 @@ func (a *Adapter) withAuth(ctx context.Context, fn func(context.Context) error) 
 
 	switch {
 	case httpx.IsStatus(err, http.StatusUnauthorized):
-		log.Printf("[credebl] 401 from upstream — clearing token cache and retrying")
+		slog.Warn("credebl: 401 from upstream — clearing token cache and retrying")
 		a.cache.clear()
 		authCtx, err = a.authCtx(ctx)
 		if err != nil {
@@ -70,18 +75,25 @@ func (a *Adapter) withAuth(ctx context.Context, fn func(context.Context) error) 
 		err = fn(authCtx)
 
 	case isTransient(err):
-		log.Printf("[credebl] transient error — retrying once: %v", err)
+		slog.Warn("credebl: transient error — retrying once", "err", err)
 		err = fn(authCtx)
 	}
 
 	return err
 }
 
-// isTransient returns true for HTTP 5xx responses and context-less network
-// errors (dial failures, connection resets). It does NOT retry 4xx errors
-// (caller bugs) or context cancellations.
+// isTransient returns true for HTTP 5xx responses and TCP-level network errors
+// (connection refused, connection reset). It does NOT retry:
+//   - 4xx errors (caller bugs — retry won't help)
+//   - context cancellation / deadline exceeded (would cause double-issuance)
 func isTransient(err error) bool {
 	if err == nil {
+		return false
+	}
+	// Never retry on context timeout or cancellation: a timed-out issuance
+	// request may have succeeded on the CREDEBL side, so retrying would issue
+	// the credential twice.
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return false
 	}
 	for _, code := range []int{
@@ -93,6 +105,12 @@ func isTransient(err error) bool {
 		if httpx.IsStatus(err, code) {
 			return true
 		}
+	}
+	// TCP-level failures (connection refused, connection reset, ECONNRESET).
+	// These are safe to retry because no HTTP request reached CREDEBL.
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
 	}
 	return false
 }

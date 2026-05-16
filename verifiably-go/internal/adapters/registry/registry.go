@@ -3,7 +3,7 @@ package registry
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -337,7 +337,7 @@ func (r *Registry) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error)
 			// because Inji Certify is unhealthy (for example) blocks walt.id
 			// flows that have nothing to do with it. Callers that need
 			// per-DPG precision should use ListSchemas(ctx, vendor) directly.
-			log.Printf("registry: ListSchemas(%q) failed, skipping: %v", v, err)
+			slog.Warn("registry: ListSchemas failed, skipping", "vendor", v, "err", err)
 			continue
 		}
 		for _, s := range sch {

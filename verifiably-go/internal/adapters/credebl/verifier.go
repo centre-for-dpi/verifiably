@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -169,10 +169,9 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 		if err := json.Unmarshal(rawBytes, &resp); err != nil {
 			return backend.VerificationResult{}, fmt.Errorf("decode poll response: %w", err)
 		}
-		log.Printf("[credebl] poll state=%q presentationDoc=%d bytes", resp.Data.State, len(resp.Data.PresentationDocument))
+		slog.Debug("credebl: poll response", "state", resp.Data.State, "doc_bytes", len(resp.Data.PresentationDocument))
 		switch resp.Data.State {
 		case "ResponseVerified":
-			log.Printf("[credebl] ResponseVerified raw: %.3000s", string(rawBytes))
 			fields := extractDisclosedFields(resp.Data.PresentationDocument)
 			if len(fields) == 0 && resp.Data.AuthorizationResponsePayload.VpToken != "" {
 				fields = extractDisclosedFieldsFromVpToken(resp.Data.AuthorizationResponsePayload.VpToken)
@@ -276,7 +275,7 @@ func extractDisclosedFieldsFromVpToken(vpToken string) map[string]string {
 		for credID, compacts := range arrayMap {
 			for _, compact := range compacts {
 				fields := extractClaimsFromCompactSdJwt(compact)
-				log.Printf("[credebl] %s: extracted %d fields from SD-JWT (array format)", credID, len(fields))
+				slog.Debug("credebl: extracted fields from SD-JWT", "cred_id", credID, "fields", len(fields), "format", "array")
 				for k, v := range fields {
 					out[k] = v
 				}
@@ -289,13 +288,13 @@ func extractDisclosedFieldsFromVpToken(vpToken string) map[string]string {
 	// Fall back to the string format (older CREDEBL).
 	var tokenMap map[string]string
 	if err := json.Unmarshal([]byte(vpToken), &tokenMap); err != nil {
-		log.Printf("[credebl] vp_token parse error: %v", err)
+		slog.Warn("credebl: vp_token string-format parse error", "err", err)
 		return nil
 	}
 	out := make(map[string]string)
 	for credID, compact := range tokenMap {
 		fields := extractClaimsFromCompactSdJwt(compact)
-		log.Printf("[credebl] %s: extracted %d fields from SD-JWT", credID, len(fields))
+		slog.Debug("credebl: extracted fields from SD-JWT", "cred_id", credID, "fields", len(fields), "format", "string")
 		for k, v := range fields {
 			out[k] = v
 		}
@@ -408,7 +407,11 @@ func extractDisclosedFields(raw json.RawMessage) map[string]string {
 	if len(raw) == 0 {
 		return nil
 	}
-	log.Printf("[credebl] presentationDocument (%d bytes): %.800s", len(raw), string(raw))
+	excerpt := string(raw)
+	if len(excerpt) > 800 {
+		excerpt = excerpt[:800]
+	}
+	slog.Debug("credebl: presentationDocument", "bytes", len(raw), "excerpt", excerpt)
 
 	var doc map[string]any
 	if err := json.Unmarshal(raw, &doc); err != nil || doc == nil {
