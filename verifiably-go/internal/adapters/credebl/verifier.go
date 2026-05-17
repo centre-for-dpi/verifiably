@@ -112,7 +112,7 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 	body.ResponseMode = "direct_post"
 	cred := dcqlCredential{
 		ID:     "vc-1",
-		Format: "dc+sd-jwt",
+		Format: dcqlFormatForTemplate(tpl),
 	}
 	for _, f := range tpl.Fields {
 		cred.Claims = append(cred.Claims, dcqlClaim{Path: []string{f}})
@@ -388,6 +388,23 @@ func schemaKey(name string) string {
 		return "credential"
 	}
 	return s
+}
+
+// dcqlFormatForTemplate returns the SD-JWT VC format string for the DCQL credential
+// query. CREDEBL issues dc+sd-jwt, but cross-adapter verification (e.g. presenting
+// a walt.id-issued vc+sd-jwt via CREDEBL) requires the actual credential wire format
+// so CREDEBL's Credo-TS can match the received credential's typ against the query.
+func dcqlFormatForTemplate(tpl vctypes.OID4VPTemplate) string {
+	if tpl.WireFormat != "" {
+		return tpl.WireFormat
+	}
+	// Fall back based on the taxonomy grouping.
+	switch tpl.Format {
+	case "sd_jwt_vc (IETF)":
+		return "vc+sd-jwt"
+	default:
+		return "dc+sd-jwt"
+	}
 }
 
 // jwtTechnicalFields lists JWT/SD-JWT protocol fields that are not credential claims.
