@@ -176,11 +176,11 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 	res, err := h.Adapter.RequestPresentation(r.Context(), req)
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(verifyStart), "dpg", sess.VerifierDpg, "op", "verify")
 	if err != nil {
-		metrics.Inc("verification_requested_total", "dpg", sess.VerifierDpg, "schema", r.FormValue("schema_id"), "status", "error")
+		metrics.Inc("verification_requested_total", "dpg", sess.VerifierDpg, "schema", tpl.Title, "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
-	metrics.Inc("verification_requested_total", "dpg", sess.VerifierDpg, "schema", r.FormValue("schema_id"), "status", "ok")
+	metrics.Inc("verification_requested_total", "dpg", sess.VerifierDpg, "schema", tpl.Title, "status", "ok")
 	sess.CurrentOID4VPLink = res.RequestURI
 	sess.CurrentOID4VPState = res.State
 	sess.CurrentOID4VPTemplate = "custom"
@@ -433,7 +433,11 @@ func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
 		verifyStatus = "error"
 	}
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(pollStart), "dpg", sess.VerifierDpg, "op", "verify")
-	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", sess.CustomOID4VPSchemaID, "status", verifyStatus)
+	completedSchemaLabel := sess.CustomOID4VPSchemaID
+	if sess.CustomOID4VPTemplate != nil {
+		completedSchemaLabel = sess.CustomOID4VPTemplate.Title
+	}
+	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", completedSchemaLabel, "status", verifyStatus)
 	h.attachTrustStatus(r, &res)
 	slog.Info("oid4vp verification completed",
 		"valid", res.Valid,

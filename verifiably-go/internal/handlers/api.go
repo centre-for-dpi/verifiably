@@ -268,11 +268,11 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 	issueDur := time.Since(issueStart)
 	metrics.ObserveDuration("adapter_duration_seconds", issueDur, "dpg", req.IssuerDpg, "op", "issue")
 	if err != nil {
-		metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", req.SchemaID, "status", "error")
+		metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", schema.Name, "status", "error")
 		apiError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", req.SchemaID, "status", "ok")
+	metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", schema.Name, "status", "ok")
 	credID := h.apiRecordIssuance(keyName, schema, req.IssuerDpg, res.OfferURI, req.SubjectData, binding)
 	slog.Info("api: credential issued",
 		"credential_id", credID,
@@ -386,12 +386,12 @@ func (h *H) APIIssueBulk(w http.ResponseWriter, r *http.Request) {
 		})
 		metrics.ObserveDuration("adapter_duration_seconds", time.Since(rowStart), "dpg", req.IssuerDpg, "op", "issue")
 		if ierr != nil {
-			metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", req.SchemaID, "status", "error")
+			metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", schema.Name, "status", "error")
 			out.Rejected++
 			out.Rows = append(out.Rows, apiBulkRowOut{Row: i + 1, Status: "failed", Error: ierr.Error()})
 			continue
 		}
-		metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", req.SchemaID, "status", "ok")
+		metrics.Inc("credential_issued_total", "dpg", req.IssuerDpg, "schema", schema.Name, "status", "ok")
 		credID := h.apiRecordIssuance(keyName, schema, req.IssuerDpg, res.OfferURI, row, binding)
 		out.Accepted++
 		out.Rows = append(out.Rows, apiBulkRowOut{Row: i + 1, CredentialID: credID, OfferURI: res.OfferURI, PIN: res.PIN, Status: "issued"})
@@ -637,11 +637,11 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 	})
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(verifyStart), "dpg", req.VerifierDpg, "op", "verify")
 	if err != nil {
-		metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", req.SchemaID, "status", "error")
+		metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", schema.Name, "status", "error")
 		apiError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", req.SchemaID, "status", "ok")
+	metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", schema.Name, "status", "ok")
 	apiJSON(w, http.StatusOK, apiVerifyRequestResult{
 		RequestURI: res.RequestURI,
 		State:      res.State,
@@ -761,10 +761,10 @@ func (h *H) APIIssueBulkAsync(w http.ResponseWriter, r *http.Request) {
 			StatusList:  binding,
 		})
 		if ierr != nil {
-			metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", req.SchemaID, "status", "error")
+			metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaSnap.Name, "status", "error")
 			return ierr
 		}
-		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", req.SchemaID, "status", "ok")
+		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaSnap.Name, "status", "ok")
 		h.apiRecordIssuance(keyName, schemaSnap, issuerDpg, res.OfferURI, row, binding)
 		return nil
 	}

@@ -138,15 +138,15 @@ func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, 
 	})
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(bulkStart), "dpg", sess.IssuerDpg, "op", "issue")
 	if err != nil {
-		metrics.Inc("credential_issued_total", "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "error")
+		metrics.Inc("credential_issued_total", "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
 	if res.Accepted > 0 {
-		metrics.IncN("credential_issued_total", int64(res.Accepted), "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "ok")
+		metrics.IncN("credential_issued_total", int64(res.Accepted), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "ok")
 	}
 	if res.Rejected > 0 {
-		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "error")
+		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
 	}
 	header := schemaFieldsOfH(schema)
 	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)

@@ -225,11 +225,11 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		res, err := h.Adapter.IssueToWallet(r.Context(), req)
 		metrics.ObserveDuration("adapter_duration_seconds", time.Since(issueStart), "dpg", issuerDpg, "op", "issue")
 		if err != nil {
-			metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaID, "status", "error")
+			metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schema.Name, "status", "error")
 			h.errorToast(w, r, err.Error())
 			return
 		}
-		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaID, "status", "ok")
+		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schema.Name, "status", "ok")
 		slog.Info("credential issued to wallet",
 			"schema", schema.ID,
 			"dpg", sess.IssuerDpg,
@@ -245,11 +245,11 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	res, err := h.Adapter.IssueAsPDF(r.Context(), req)
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(pdfStart), "dpg", issuerDpg, "op", "issue")
 	if err != nil {
-		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaID, "status", "error")
+		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schema.Name, "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
-	metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaID, "status", "ok")
+	metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schema.Name, "status", "ok")
 	slog.Info("credential issued as PDF",
 		"schema", schema.ID,
 		"dpg", sess.IssuerDpg,
@@ -328,15 +328,15 @@ func (h *H) SimulateCSV(w http.ResponseWriter, r *http.Request) {
 	})
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(bulkStart), "dpg", sess.IssuerDpg, "op", "issue")
 	if err != nil {
-		metrics.Inc("credential_issued_total", "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "error")
+		metrics.Inc("credential_issued_total", "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
 	if res.Accepted > 0 {
-		metrics.IncN("credential_issued_total", int64(res.Accepted), "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "ok")
+		metrics.IncN("credential_issued_total", int64(res.Accepted), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "ok")
 	}
 	if res.Rejected > 0 {
-		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "error")
+		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
 	}
 	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
 	h.renderFragment(w, r, "fragment_issue_csv_preview", map[string]any{
