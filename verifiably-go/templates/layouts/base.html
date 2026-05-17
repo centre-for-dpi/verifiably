@@ -39,11 +39,16 @@
       </svg>
     </button>
     {{if .AuthAdminAvailable}}
-    <a href="{{if and .Session .Session.IsAdmin}}/admin/auth-providers{{else}}/admin/login{{end}}"
-       class="nav-link-btn"
-       title="{{if and .Session .Session.IsAdmin}}Manage OIDC providers{{else}}Admin sign-in{{end}}">
-      Admin{{if and .Session .Session.IsAdmin}} ✓{{end}}
-    </a>
+    {{if and .Session .Session.IsAdmin}}
+    <div style="display:inline-flex;align-items:center;gap:0.15rem;border:1px solid var(--line);border-radius:2px;padding:0.1rem 0.3rem">
+      <span style="font-size:0.68rem;color:var(--ink-mute);padding:0 0.25rem;white-space:nowrap">Admin ✓</span>
+      <a href="/admin/auth-providers" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="OIDC providers">Providers</a>
+      <a href="/admin/trust" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Trust registry">Trust</a>
+      <a href="/admin/metrics" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Metrics &amp; observability">Metrics</a>
+    </div>
+    {{else}}
+    <a href="/admin/login" class="nav-link-btn" title="Admin sign-in">Admin</a>
+    {{end}}
     {{end}}
     {{if and .Session .Session.AuthProvider}}
     <form method="post" action="/auth/logout" style="display:inline">

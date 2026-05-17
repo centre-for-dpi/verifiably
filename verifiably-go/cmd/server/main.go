@@ -195,8 +195,10 @@ func main() {
 		Debug:         debug,
 		AuthStore:     authStore,
 		AuthAdminMode: adminMode,
-		APIKeys:       handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
-		RateLimiter:   handlers.NewRateLimiter(),
+		APIKeys:        handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
+		RateLimiter:    handlers.NewRateLimiter(),
+		PrometheusURL:  os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
+		GrafanaURL:     os.Getenv("VERIFIABLY_GRAFANA_URL"),
 	}
 	// Issuance audit log + revocation status lists. Optional: when the
 	// state directory isn't writable we log and continue with the features
@@ -345,6 +347,7 @@ func main() {
 	mux.HandleFunc("POST /admin/logout", h.AdminLogout)
 	mux.HandleFunc("GET /admin/auth-providers", h.ShowAuthProvidersAdmin)
 	mux.HandleFunc("POST /admin/auth-providers/{id}/delete", h.DeleteAuthProvider)
+	mux.HandleFunc("GET /admin/metrics", h.ShowAdminMetrics)
 	// Trust registry — public signed JWT + admin CRUD UI
 	mux.HandleFunc("GET /trust-registry", h.ServeTrustRegistry)
 	mux.HandleFunc("GET /admin/trust", h.ShowTrustRegistry)

@@ -211,6 +211,116 @@ func (r *registry) writeTo(w io.Writer) {
 	}
 }
 
+// ── Snapshot types ────────────────────────────────────────────────────────────
+
+// CounterSample is a point-in-time reading of a single labelled counter.
+type CounterSample struct {
+	Name   string
+	Labels map[string]string
+	Value  int64
+}
+
+// HistoSample is a point-in-time reading of a single labelled histogram.
+type HistoSample struct {
+	Name       string
+	Labels     map[string]string
+	Count      int64
+	SumSeconds float64
+	// Buckets holds cumulative counts for each upper bound in histoBuckets
+	// plus +Inf as the last element.
+	Buckets [6]int64
+	// UpperBounds mirrors histoBuckets for template iteration.
+	UpperBounds [5]float64
+}
+
+// Samples returns a point-in-time snapshot of all counters and histograms
+// in the Default registry. Safe to call concurrently.
+func Samples() ([]CounterSample, []HistoSample) { return Default.samples() }
+
+func (r *registry) samples() ([]CounterSample, []HistoSample) {
+	ctrs, hists := r.snapshot()
+	cs := make([]CounterSample, len(ctrs))
+	for i, c := range ctrs {
+		cs[i] = CounterSample{
+			Name:   c.name,
+			Labels: parseLabels(c.ls),
+			Value:  c.val.Load(),
+		}
+	}
+	hs := make([]HistoSample, len(hists))
+	for i, h := range hists {
+		var buckets [6]int64
+		for j := range buckets {
+			buckets[j] = h.buckets[j].Load()
+		}
+		var ub [5]float64
+		copy(ub[:], histoBuckets)
+		hs[i] = HistoSample{
+			Name:        h.name,
+			Labels:      parseLabels(h.ls),
+			Count:       h.count.Load(),
+			SumSeconds:  float64(h.sumNS.Load()) / 1e9,
+			Buckets:     buckets,
+			UpperBounds: ub,
+		}
+	}
+	return cs, hs
+}
+
+// parseLabels parses the Prometheus label string produced by labStr back into
+// a key→value map. The format is: key1="escaped_val1",key2="escaped_val2".
+// Values containing commas are not handled (our label values never do).
+func parseLabels(ls string) map[string]string {
+	if ls == "" {
+		return nil
+	}
+	m := make(map[string]string)
+	for _, part := range strings.Split(ls, ",") {
+		idx := strings.IndexByte(part, '=')
+		if idx < 0 {
+			continue
+		}
+		key := part[:idx]
+		val := part[idx+1:]
+		if len(val) >= 2 && val[0] == '"' && val[len(val)-1] == '"' {
+			val = unescapeLabVal(val[1 : len(val)-1])
+		}
+		m[key] = val
+	}
+	return m
+}
+
+func unescapeLabVal(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case '\\':
+				b.WriteByte('\\')
+			case '"':
+				b.WriteByte('"')
+			case 'n':
+				b.WriteByte('\n')
+			case 'r':
+				b.WriteByte('\r')
+			default:
+				b.WriteByte(s[i])
+				b.WriteByte(s[i+1])
+			}
+			i += 2
+		} else {
+			b.WriteByte(s[i])
+			i++
+		}
+	}
+	return b.String()
+}
+
 // ── Package-level helpers using Default ──────────────────────────────────────
 
 // Inc increments the named counter by 1.

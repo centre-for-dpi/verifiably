@@ -93,6 +93,16 @@ type H struct {
 	TrustJWTSecret  []byte
 	TrustJWTIssuer  string
 
+	// PrometheusURL is the base URL of the Prometheus server used to back
+	// the /admin/metrics UI with persistent historical data.
+	// Example: "http://prometheus:9090". Set via VERIFIABLY_PROMETHEUS_URL.
+	// When empty the admin metrics page falls back to in-process counters.
+	PrometheusURL string
+
+	// GrafanaURL is the Grafana base URL shown as a link on /admin/metrics.
+	// Example: "http://localhost:3100". Set via VERIFIABLY_GRAFANA_URL.
+	GrafanaURL string
+
 	// signingKeyMu guards lazy fetching of the walt.id issuer JWK.
 	// After a successful fetch signingKey is non-nil and the hot path
 	// takes only an RLock. Errors are NOT cached — each failed attempt
@@ -346,6 +356,7 @@ func titleFor(page string) string {
 		"admin_login":            "Admin · Sign in",
 		"admin_auth_providers":   "Admin · OIDC providers",
 		"admin_trust":            "Admin · Trust registry",
+		"admin_metrics":          "Admin · Metrics",
 	}[page]
 }
 
@@ -370,6 +381,7 @@ func crumbFor(page string) string {
 		"admin_login":           "admin → sign in",
 		"admin_auth_providers":  "admin → auth providers",
 		"admin_trust":           "admin → trust registry",
+		"admin_metrics":         "admin → metrics",
 	}[page]
 }
 
