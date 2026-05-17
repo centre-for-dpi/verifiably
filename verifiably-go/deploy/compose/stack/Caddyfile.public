@@ -80,3 +80,7 @@ credebl-minio.verifiably.ysalabs.work {
 	reverse_proxy credebl-minio:9000
 }
 
+grafana.verifiably.ysalabs.work {
+	reverse_proxy grafana:3000
+}
+
