@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -169,11 +170,15 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		Policies:    policies,
 		WebhookURL:  strings.TrimSpace(r.FormValue("webhook_url")),
 	}
+	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(r.Context(), req)
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(verifyStart), "dpg", sess.VerifierDpg, "op", "verify")
 	if err != nil {
+		metrics.Inc("verification_requested_total", "dpg", sess.VerifierDpg, "schema", r.FormValue("schema_id"), "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
+	metrics.Inc("verification_requested_total", "dpg", sess.VerifierDpg, "schema", r.FormValue("schema_id"), "status", "ok")
 	sess.CurrentOID4VPLink = res.RequestURI
 	sess.CurrentOID4VPState = res.State
 	sess.CurrentOID4VPTemplate = "custom"
@@ -421,6 +426,12 @@ func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
 		h.renderFragment(w, r, "fragment_verify_result", res)
 		return
 	}
+	verifyStatus := "ok"
+	if !res.Valid {
+		verifyStatus = "error"
+	}
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(pollStart), "dpg", sess.VerifierDpg, "op", "verify")
+	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", sess.CustomOID4VPSchemaID, "status", verifyStatus)
 	slog.Info("oid4vp verification completed",
 		"valid", res.Valid,
 		"method", res.Method,
@@ -466,13 +477,21 @@ func (h *H) VerifyDirect(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Scanner did not return a credential payload")
 		return
 	}
+	directStart := time.Now()
 	res, err := h.Adapter.VerifyDirect(r.Context(), backend.DirectVerifyRequest{
 		VerifierDpg: sess.VerifierDpg, Method: method, CredentialData: credData,
 	})
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(directStart), "dpg", sess.VerifierDpg, "op", "verify")
 	if err != nil {
+		metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
+	directStatus := "ok"
+	if !res.Valid {
+		directStatus = "error"
+	}
+	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", directStatus)
 	h.attachIssuerDisplay(r, &res)
 	h.renderFragment(w, r, "fragment_verify_result", res)
 }

@@ -30,6 +30,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/metrics"
 )
 
 // BulkSource swaps the active bulk-source chip and renders the corresponding
@@ -128,15 +129,24 @@ func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, 
 	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	schema = h.resolveFields(schema)
+	bulkStart := time.Now()
 	res, err := h.Adapter.IssueBulk(r.Context(), backend.IssueBulkRequest{
 		IssuerDpg: sess.IssuerDpg,
 		Schema:    schema,
 		Rows:      rows,
 		RowCount:  len(rows),
 	})
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(bulkStart), "dpg", sess.IssuerDpg, "op", "issue")
 	if err != nil {
+		metrics.Inc("credential_issued_total", "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
+	}
+	if res.Accepted > 0 {
+		metrics.IncN("credential_issued_total", int64(res.Accepted), "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "ok")
+	}
+	if res.Rejected > 0 {
+		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "error")
 	}
 	header := schemaFieldsOfH(schema)
 	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)

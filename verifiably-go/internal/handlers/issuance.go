@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -222,10 +223,13 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		req.StatusList = binding
 		issueStart := time.Now()
 		res, err := h.Adapter.IssueToWallet(r.Context(), req)
+		metrics.ObserveDuration("adapter_duration_seconds", time.Since(issueStart), "dpg", issuerDpg, "op", "issue")
 		if err != nil {
+			metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaID, "status", "error")
 			h.errorToast(w, r, err.Error())
 			return
 		}
+		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaID, "status", "ok")
 		slog.Info("credential issued to wallet",
 			"schema", schema.ID,
 			"dpg", sess.IssuerDpg,
@@ -239,10 +243,13 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	// PDF
 	pdfStart := time.Now()
 	res, err := h.Adapter.IssueAsPDF(r.Context(), req)
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(pdfStart), "dpg", issuerDpg, "op", "issue")
 	if err != nil {
+		metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaID, "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
+	metrics.Inc("credential_issued_total", "dpg", issuerDpg, "schema", schemaID, "status", "ok")
 	slog.Info("credential issued as PDF",
 		"schema", schema.ID,
 		"dpg", sess.IssuerDpg,
@@ -312,15 +319,24 @@ func (h *H) SimulateCSV(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Parse CSV: "+parseErr.Error())
 		return
 	}
+	bulkStart := time.Now()
 	res, err := h.Adapter.IssueBulk(r.Context(), backend.IssueBulkRequest{
 		IssuerDpg: sess.IssuerDpg,
 		Schema:    schema,
 		Rows:      rows,
 		RowCount:  len(rows),
 	})
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(bulkStart), "dpg", sess.IssuerDpg, "op", "issue")
 	if err != nil {
+		metrics.Inc("credential_issued_total", "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
+	}
+	if res.Accepted > 0 {
+		metrics.IncN("credential_issued_total", int64(res.Accepted), "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "ok")
+	}
+	if res.Rejected > 0 {
+		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.ID, "status", "error")
 	}
 	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
 	h.renderFragment(w, r, "fragment_issue_csv_preview", map[string]any{
