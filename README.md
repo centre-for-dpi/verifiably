@@ -14,6 +14,8 @@ Supported DPGs out of the box:
 - **Inji Certify** v0.14.0 — issuer, both OID4VCI pre-authorised code and authorization code flows
 - **Inji Web Wallet** v0.16.0 — holder via the MOSIP Inji Web SPA + Mimoto BFF
 - **Inji Verify** v0.16.0 — verifier via Inji Verify's QR-upload and OID4VP endpoints
+- **CREDEBL** — issuer (OID4VCI pre-auth) + verifier (OID4VP) via CREDEBL's 18-service stack;
+  bootstrapped automatically including Keycloak realm, platform-admin, DID, and credential template
 
 Plus OIDC sign-in via **Keycloak** or **WSO2 Identity Server**, and
 app-wide translation via **LibreTranslate** (English / French / Spanish).
@@ -26,11 +28,11 @@ Before the quickstart will succeed on a fresh machine:
 |---|---|
 | **Docker Engine 24+** with Compose v2 (`docker compose`, not `docker-compose`) | Every DPG + IdP + translator runs as a container; the compose file uses v2-only features. |
 | **Non-root Docker access** — your user is in the `docker` group | `deploy.sh` invokes `docker` without `sudo`. `sudo usermod -aG docker "$USER" && newgrp docker` once. Verify with `docker ps` (no sudo). |
-| **~8 GB RAM free** for `./deploy.sh up all` | The full stack runs ~25 containers, including a JVM-heavy WSO2IS (~1 GB) and MOSIP services. `waltid` / `inji` scenarios are much lighter. |
-| **Ports free** on the host: 80, 443, 3001, 3004, 3005, 5432–5437, 7001–7003, 8080, 8090–8099, 8180, 8182, 9443 | Compose publishes each DPG on its canonical port. Check `sudo ss -ltn` before starting; `lsof -i :8080` to find who's holding any conflict. |
+| **~8 GB RAM free** for `waltid` or `inji` scenarios; **~12 GB** for `all` (includes CREDEBL's 18 microservices) | Check `free -h` before starting. On a low-RAM VPS, add swap: `fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`. |
+| **Ports free** on the host: 80, 443, 3001, 3004, 3005, 5432–5437, 7001–7003, 8080, 8090–8099, 8180, 8182, 9443 | Compose publishes each DPG on its canonical port. Check `sudo ss -ltn` before starting; `lsof -i :8080` to find who holds any conflict. |
 | **`envsubst`** (part of `gettext`) in your `$PATH` | `deploy.sh` renders `wso2-deployment.toml` from a template with it. Most Linux distros have it preinstalled; on macOS: `brew install gettext` + `brew link --force gettext`. |
-| **Go 1.25+** *(optional)* | Only needed if you want to run `verifiably-go` outside docker via `go run ./cmd/server`. `./deploy.sh run` builds its own container image. |
-| **`curl`, `jq`, `python3`** | `deploy.sh` and the WSO2 bootstrap use them for seeding OIDC clients + rendering configs. |
+| **Go 1.25+** *(optional)* | Only needed if you want to run `verifiably-go` outside docker via `go run ./cmd/server`. `./deploy.sh up` builds its own container image. |
+| **`curl`, `jq`, `python3`** | `deploy.sh` and the bootstrap scripts (Keycloak, WSO2IS, CREDEBL) use them for seeding OIDC clients, rendering configs, and patching CREDEBL containers. |
 
 Docker Hub has the two first-party images the stack pulls:
 
@@ -41,25 +43,26 @@ All other containers pull from their vendors' official Docker Hub repos.
 
 ## Quickstart
 
-Clone, set your deployment's public hostname, bring it up:
+Clone, run the setup wizard, bring the stack up:
 
 ```bash
 git clone https://github.com/centre-for-dpi/demo-daas-3-0.git
 cd demo-daas-3-0/verifiably-go
 
-cp .env.example .env     # defaults target localhost
-# If you're deploying to something other than localhost, edit
-# VERIFIABLY_PUBLIC_HOST in .env now — see the next section.
+./deploy.sh setup    # interactive wizard — writes .env with your IP / domain
+                     # (auto-runs on first 'up' if .env is missing)
 
-./deploy.sh up  all      # pull images + start every DPG container
-./deploy.sh run all      # build + launch the verifiably-go container
+./deploy.sh up all   # pull images + start every DPG container +
+                     # build & launch the verifiably-go container
 ```
 
-First `up` takes 5–15 minutes on a fast connection (MOSIP images are large).
+First `up all` takes 15–30 minutes on a fast connection (CREDEBL pulls ~46 images
+and its bootstrap provisions a Keycloak realm, DID, issuer, and credential template).
 Subsequent runs are seconds. When it's done, point a browser at:
 
 ```
-http://localhost:8080
+http://localhost:8080          # if you chose localhost in setup
+https://verifiably.<domain>   # if you enabled Let's Encrypt in setup
 ```
 
 You should see the role-picker landing page. Click **Issuer**, log in as
@@ -67,25 +70,32 @@ You should see the role-picker landing page. Click **Issuer**, log in as
 
 ### Deploying somewhere other than localhost (EC2, bare-metal demo box, …)
 
-There is **exactly one variable** to change. Edit `.env` *before* running
-`deploy.sh up` and set `VERIFIABLY_PUBLIC_HOST` to the hostname the
-browser will reach the services on:
+Run the setup wizard — it asks for your server's IP, whether to enable
+Let's Encrypt subdomains, Keycloak admin password, and CREDEBL admin email,
+then writes `verifiably-go/.env`:
+
+```bash
+./deploy.sh setup
+```
+
+The key variable it sets is `VERIFIABLY_PUBLIC_HOST` (the IP the browser
+reaches services on). Everything downstream — `backends.json` browser-facing
+URLs, Mimoto's OIDC redirect_uris, Keycloak/WSO2IS issuer URLs, eSignet
+redirects, the WSO2 `hostname` in `wso2-deployment.toml` — is derived by
+substituting `${VERIFIABLY_PUBLIC_HOST}` inside `deploy.sh`. Nothing needs
+hand-editing.
+
+You can also set it manually in `.env` before running `up`:
 
 ```ini
-# Laptop (default in .env.example):
+# Laptop / localhost (default):
 VERIFIABLY_PUBLIC_HOST=172.24.0.1
 
 # EC2 / remote host:
 VERIFIABLY_PUBLIC_HOST=ec2-1-2-3-4.compute-1.amazonaws.com
 ```
 
-Everything downstream — `backends.json` browser-facing URLs, Mimoto's
-OIDC redirect_uris, Keycloak/WSO2IS issuer URLs, eSignet redirects, the
-WSO2 `hostname` in `wso2-deployment.toml` — is derived by substituting
-`${VERIFIABLY_PUBLIC_HOST}` inside `deploy.sh`, so nothing else needs
-hand-editing.
-
-Then `./deploy.sh up all && ./deploy.sh run all` stands the stack up at
+Then `./deploy.sh up all` stands the stack up at
 `http://${VERIFIABLY_PUBLIC_HOST}:8080`. Full variable reference + TLS /
 proxy notes in
 [`verifiably-go/docs/deploy.md`](verifiably-go/docs/deploy.md).
@@ -131,6 +141,7 @@ resolve):
 walt-issuer.example.com   A   <IP>
 walt-wallet.example.com   A   <IP>
 walt-verifier.example.com A   <IP>
+credebl.example.com       A   <IP>
 inji-certify.example.com  A   <IP>
 …
 ```
@@ -152,7 +163,18 @@ certs; production HTTPS uses 443. The legacy per-service ports
 (7001-7003, 8180, 9443, 3001, 3004, …) can stay closed — nothing
 external talks to them when subdomains are in play.
 
-**4. Set three vars in `verifiably-go/.env`:**
+**4. Run setup and choose "Yes" to Let's Encrypt:**
+
+```bash
+./deploy.sh setup
+# → Enable HTTPS via Let's Encrypt? Y
+# → Base domain: example.com
+# → Let's Encrypt email: you@example.com
+# → CREDEBL platform admin email: admin@example.com
+```
+
+This writes `VERIFIABLY_PUBLIC_DOMAIN`, `VERIFIABLY_HOSTS_PATTERN`, and
+`VERIFIABLY_LE_EMAIL` to your `.env`. You can also set them manually:
 
 ```ini
 VERIFIABLY_PUBLIC_DOMAIN=example.com
@@ -161,8 +183,7 @@ VERIFIABLY_LE_EMAIL=you@example.com
 ```
 
 The `%s` is a `printf` placeholder — `deploy.sh` substitutes each
-service's slug into it. `LE_EMAIL` is what Let's Encrypt uses for
-cert-expiry notices.
+service's slug into it.
 
 **5. (Optional) Customise the subdomain labels.** Defaults are listed
 below. Override any of them by setting `VERIFIABLY_SLUG_<NAME>` in
@@ -175,6 +196,7 @@ block, not exposed):
 | `walt-issuer.<domain>` | walt.id `issuer-api` (OID4VCI wellknown) | `VERIFIABLY_SLUG_WALT_ISSUER` |
 | `walt-wallet.<domain>` | walt.id `wallet-api` | `VERIFIABLY_SLUG_WALT_WALLET` |
 | `walt-verifier.<domain>` | walt.id `verifier-api` (OID4VP) | `VERIFIABLY_SLUG_WALT_VERIFIER` |
+| `credebl.<domain>` | CREDEBL API gateway + Credo agent | `VERIFIABLY_SLUG_CREDEBL` |
 | `keycloak.<domain>` | Keycloak demo IdP | `VERIFIABLY_SLUG_KEYCLOAK` |
 | `wso2.<domain>` | WSO2 IS demo IdP | `VERIFIABLY_SLUG_WSO2` |
 | `inji-certify.<domain>` | Inji Certify (auth-code flow) | `VERIFIABLY_SLUG_INJI_CERTIFY` |
@@ -189,7 +211,6 @@ block, not exposed):
 
 ```bash
 ./deploy.sh up all
-./deploy.sh run all
 ```
 
 First run, expect ~30 seconds of extra startup while Caddy negotiates
@@ -210,9 +231,9 @@ If you get a cert error or `502 Bad Gateway`, the usual culprits are:
 - DNS hasn't propagated yet (give it 1-2 minutes for fresh records).
 - Port 80 isn't open → LE challenge fails → cert never issues. Fix the
   firewall and `docker restart caddy-public`.
-- `VERIFIABLY_HOSTS_PATTERN` was unset on `./deploy.sh run all` (only
-  `up` had it) → walt.id's `SERVICE_HOST` advertises the wrong URL
-  inside the wellknown. Fix by putting both subdomain vars in `.env`
+- `VERIFIABLY_HOSTS_PATTERN` was unset on `./deploy.sh up all` (only
+  the domain vars in `.env` had it) → walt.id's `SERVICE_HOST` advertises
+  the wrong URL inside the wellknown. Put both subdomain vars in `.env`
   so every invocation sees them.
 
 To switch **back** to legacy `<host>:<port>` mode, comment out
@@ -224,24 +245,28 @@ always-on internal Caddy on 7001/7002/7003.
 
 ```bash
 # if necessary to your use case, remember to run deploy script as 
-`VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh run all` 
+`VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh up all` 
 ```
 
 ### Scenarios
 
-`deploy.sh` supports three scenarios so you don't have to boot
+`deploy.sh` supports four scenarios so you don't have to boot
 everything when you only care about one stack. Every scenario includes
-**both** Keycloak and WSO2 Identity Server so the sign-in page always
-offers both OIDC providers; the scenario only gates which DPG backends
-come up.
+Keycloak so the sign-in page always offers an OIDC provider; the
+scenario gates which DPG backends come up.
 
-| Scenario     | DPG services                                   | IdPs (always both)  | RAM  |
-|--------------|------------------------------------------------|---------------------|------|
-| `all`        | walt.id + Inji Certify + Inji Web + Inji Verify | Keycloak + WSO2IS  | ~8 GB |
-| `waltid`     | walt.id Community Stack                        | Keycloak + WSO2IS   | ~2 GB |
-| `inji`       | Inji Certify + Inji Web + Inji Verify          | Keycloak + WSO2IS   | ~5 GB |
+| Scenario | DPG services | IdPs | RAM |
+|---|---|---|---|
+| `all` | walt.id + Inji Certify + Inji Web + Inji Verify + CREDEBL | Keycloak + WSO2IS | ~12 GB |
+| `waltid` | walt.id Community Stack | Keycloak | ~2 GB |
+| `inji` | Inji Certify + Inji Web + Inji Verify | WSO2IS | ~5 GB |
+| `credebl` | CREDEBL (18 microservices) | Keycloak + WSO2IS | ~4 GB |
 
 Usage is the same pattern: `./deploy.sh <up|run|down|status|config> <scenario>`.
+
+The `run` subcommand rebuilds and restarts **only** the verifiably-go
+container without touching compose — useful when the DPG stack is already
+up and you just changed verifiably-go's code or config.
 
 ### Credentials for demo flows
 
@@ -254,17 +279,23 @@ Pre-seeded for every fresh `./deploy.sh up`:
 | Keycloak realm `vcplatform` | `admin`  | `admin`  | same |
 | WSO2IS master (admin console at `https://<host>:9443/console`) | `admin` | `admin` | WSO2IS stock defaults |
 | eSignet mock-identity (Inji Web holder flow only) | Individual ID `8267411072` | PIN/OTP `111111` | `deploy/compose/injiweb/` mock-identity seed |
+| CREDEBL platform admin | *(set in setup wizard)* | *(auto-generated if blank)* | `verifiably-go/.env` → `CREDEBL_ADMIN_EMAIL` / `CREDEBL_PASSWORD` |
 
 WSO2IS doesn't seed app users automatically — for the WSO2IS login
 button you either register a user at `https://<host>:9443/console` or
 stick with Keycloak, which does come pre-seeded.
+
+CREDEBL credentials are generated on first `./deploy.sh up credebl|all` and
+written to `.env`. Re-running `up` is idempotent — existing credentials are
+reused and CREDEBL's bootstrap steps are skipped if the platform-admin and
+issuer already exist.
 
 ### Bring your own OIDC provider
 
 You don't have to keep Keycloak / WSO2IS — sign-in providers come from
 three places and get merged at startup:
 
-| Source | What it is | Survives `./deploy.sh run all`? |
+| Source | What it is | Survives `./deploy.sh up all`? |
 |---|---|---|
 | `config/auth-providers.system.json` | Demo defaults (Keycloak + WSO2IS) written by `deploy.sh`. | No — rewritten every run. |
 | `config/auth-providers.user.json`   | Whatever you add via the admin UI. | Yes. |
@@ -281,7 +312,6 @@ form where you can register your own provider before signing in:
 
 ```bash
 VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh up all
-VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh run all
 # browse to /auth → "First-run setup" form
 ```
 
@@ -296,11 +326,11 @@ form below the provider tiles), not from the admin page — so the
 admin role is purely curation.
 
 Demo defaults deleted from the admin UI
-come back on the next `./deploy.sh run all`; use
+come back on the next `./deploy.sh up all`; use
 `VERIFIABLY_NO_DEFAULT_IDPS=1` to ensure they remain retired properly.
 
 ```bash
-VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh run all
+VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh up all
 # only your custom providers will remain
 ```
 
@@ -322,12 +352,12 @@ users should pick from it without adding their own. `rw` is full surface.
 
 Persistence is independent of the mode — providers added via the sign-in
 form (rw + first-run only) persist to `auth-providers.user.json` and
-survive `./deploy.sh run all`. A fresh install with no providers
+survive `./deploy.sh up all`. A fresh install with no providers
 configured anywhere bypasses the `off`/`ro` lockdown for the bootstrap
 form on `/auth` so you can't accidentally lock yourself out.
 
 ```bash
-VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh run all
+VERIFIABLY_NO_DEFAULT_IDPS=1 ./deploy.sh up all
 # run this after setting the VERIFIABLY_AUTH_ADMIN variable in .env
 # and then refresh your browser for updated UI
 ```
@@ -338,7 +368,7 @@ keeps the type definitions, and a sibling `config/custom-schemas.user.json`
 mirror keeps the verifiably-go-specific metadata (issuer attribution,
 per-OIDC-subject scoping, the Custom flag) that walt.id's wellknown
 can't carry. Both are bind-mounted into the container; both survive
-`./deploy.sh run all`. Holders' wallets persist on the Postgres named
+`./deploy.sh up all`. Holders' wallets persist on the Postgres named
 volume `wallet-db` and the `wallet-api-data` named volume — those only
 go away on `./deploy.sh reset`.
 
@@ -352,7 +382,7 @@ a different integration.
 ./deploy.sh down all
 ```
 
-### Clearing persistent data after Stopping
+### Clearing persistent data after stopping
 
 ```bash
 ./deploy.sh reset
@@ -373,14 +403,19 @@ This will help clear persistent volumes e.g.,:
  Volume waltid_injiweb-db  Removed
  Volume waltid_injiweb-esignet-keystore  Removed
  Volume waltid_certify-preauth-pkcs12  Removed
+ Volume waltid_credebl_postgres_data  Removed
+ Volume waltid_credebl_redis_data  Removed
+ Volume waltid_credebl_nats_data  Removed
+ Volume waltid_credebl_minio_data  Removed
 ```
 
 Persistent docker volumes (eSignet DB, Inji Certify keystore, walt.id
-wallet DB) are preserved between runs and may persist after running the reset script. 
+wallet DB, CREDEBL Postgres/Redis/NATS/MinIO) are preserved between runs
+and may persist after running the reset script.
 
-To start from a fully clean
-slate, remove the project volumes with `docker volume rm waltid_<name>` —
-see [verifiably-go/docs/deploy.md](verifiably-go/docs/deploy.md#full-reset)
+To start from a fully clean slate, remove the project volumes with
+`docker volume rm waltid_<name>` — see
+[verifiably-go/docs/deploy.md](verifiably-go/docs/deploy.md#full-reset)
 for the exact list.
 
 ## Troubleshooting
@@ -448,6 +483,20 @@ docker volume rm waltid_certify-db waltid_certify-pkcs12 waltid_certify-preauth-
 ./deploy.sh up <scenario>
 ```
 
+**CREDEBL bootstrap fails or "OID4VCI rewriter config failed" warning**
+
+CREDEBL's bootstrap provisions a Keycloak realm, platform-admin account,
+DID, OID4VCI issuer, and credential template on first `up`. If a step
+fails partway through (e.g. Keycloak wasn't ready yet), re-running
+`./deploy.sh up credebl` or `./deploy.sh up all` is idempotent — each
+bootstrap step checks whether the resource already exists before creating it.
+
+If you see `OID4VCI rewriter config failed — credential offer downloads will 502`
+in the startup log, the nginx sidecar that rewrites CREDEBL credential offer
+URLs couldn't determine the Credo agent's dynamic admin port. This resolves
+automatically on the next `up` once CREDEBL's agent-provisioning service has
+written its port config.
+
 **`./deploy.sh` calls `docker` and gets "permission denied"**
 
 Your user isn't in the `docker` group. Fix once:
@@ -474,10 +523,11 @@ Each of the three core roles has a dedicated flow:
 
 **Issuer** — pick a DPG (capability-aware cards so you only see what
 that vendor can do) → pick or build a schema → pick flow mode (auth-code
-vs pre-authorized-code for Inji; always pre-auth for walt.id) → enter
+vs pre-authorized-code for Inji; pre-auth for walt.id and CREDEBL) → enter
 one subject or upload a bulk CSV → get back a real OID4VCI offer URI +
 QR code, or for Inji a printable PDF with an embedded status-list-ready
-QR.
+QR. Bulk issuance runs as an async job (HTTP 202 + SSE progress stream)
+so large CSVs don't block the UI.
 
 **Holder** — pick a wallet DPG → scan, paste, or select an example
 offer → review the pending offer → accept it into the wallet → present
@@ -510,6 +560,15 @@ coming from DPG responses.
   Certify kid mismatch, Inji Verify UI render-order config, Inji Web
   PUBLIC_HOST coupling), version-compatibility caveats.
 
+- **[verifiably-go/docs/spec-versions.md](verifiably-go/docs/spec-versions.md)**
+  — pinned OID4VCI / OID4VP / SD-JWT VC / W3C VC 2.0 draft versions
+  implemented by each adapter, known wire-format gaps, and update instructions.
+
+- **[verifiably-go/docs/haip-conformance.md](verifiably-go/docs/haip-conformance.md)**
+  — HAIP (High Assurance Interop Profile) gap analysis: which requirements
+  each adapter meets (✅), partially meets (⚠️), or is missing (❌), with a
+  prioritised closure plan.
+
 - **[verifiably-go/docs/integration.md](verifiably-go/docs/integration.md)**
   — adapter-to-endpoint mapping per DPG, how to swap `MockAdapter` for a
   real implementation, how authenticated requests flow through the OIDC
@@ -519,6 +578,11 @@ coming from DPG responses.
   — copy-paste recipes for the bulk-issuance feature (CSV fixtures,
   SELECT queries against the seeded `citizens` postgres, and a dockerized
   "ministry registry" scenario to exercise the Secured-API bulk source).
+
+- **[verifiably-go/TODO.md](verifiably-go/TODO.md)**
+  — resolved security and reliability items (P0–P3) from the 2026-05-16
+  review, plus the long-tail architectural backlog (Vault/SSM, mTLS, push
+  revocation, VERIFIABLY_MODE).
 
 ## License
 
