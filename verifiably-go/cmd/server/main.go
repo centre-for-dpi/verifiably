@@ -42,6 +42,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/storage/pg"
 	redisstore "github.com/verifiably/verifiably-go/internal/storage/redis"
 	"github.com/verifiably/verifiably-go/internal/tracing"
+	"github.com/verifiably/verifiably-go/internal/trust"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -207,6 +208,40 @@ func main() {
 		log.Printf("status-list: feature disabled — %v", err)
 	}
 
+	// National trust registry — served as a signed JWT at GET /trust-registry.
+	// Uses PostgreSQL when pool is available; falls back to in-memory (dev/test).
+	// The JWT HMAC key is derived from the session secret so operators don't
+	// need to manage a separate signing secret.
+	{
+		var trustKey []byte
+		if s := os.Getenv("VERIFIABLY_SESSION_SECRET"); s != "" {
+			k := sha256.Sum256([]byte(s))
+			trustKey = k[:]
+		} else {
+			stateDir := os.Getenv("VERIFIABLY_STATE_DIR")
+			if stateDir == "" {
+				stateDir = "state"
+			}
+			if data, err := os.ReadFile(filepath.Join(stateDir, "session.key")); err == nil {
+				if s2 := strings.TrimSpace(string(data)); s2 != "" {
+					k := sha256.Sum256([]byte(s2))
+					trustKey = k[:]
+				}
+			}
+		}
+		if pgPool != nil {
+			h.TrustRegistry = trust.NewPGStore(pgPool)
+		} else {
+			h.TrustRegistry = trust.NewMemStore()
+		}
+		h.TrustJWTSecret = trustKey
+		h.TrustJWTIssuer = strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/")
+		if h.TrustJWTIssuer == "" {
+			h.TrustJWTIssuer = "verifiably-go"
+		}
+		log.Printf("trust registry: active (pg=%v, jwt-issuer=%s)", pgPool != nil, h.TrustJWTIssuer)
+	}
+
 	// Async bulk issuance job queue. Worker count is configurable via
 	// VERIFIABLY_BULK_WORKERS (default 4). When PostgreSQL is available
 	// the queue persists job state in bulk_jobs so in-flight jobs survive
@@ -310,6 +345,11 @@ func main() {
 	mux.HandleFunc("POST /admin/logout", h.AdminLogout)
 	mux.HandleFunc("GET /admin/auth-providers", h.ShowAuthProvidersAdmin)
 	mux.HandleFunc("POST /admin/auth-providers/{id}/delete", h.DeleteAuthProvider)
+	// Trust registry — public signed JWT + admin CRUD UI
+	mux.HandleFunc("GET /trust-registry", h.ServeTrustRegistry)
+	mux.HandleFunc("GET /admin/trust", h.ShowTrustRegistry)
+	mux.HandleFunc("POST /admin/trust", h.AddTrustedIssuer)
+	mux.HandleFunc("DELETE /admin/trust/{did}", h.DeleteTrustedIssuer)
 	mux.HandleFunc("GET /lang", h.SetLang)
 	mux.HandleFunc("POST /lang", h.SetLang)
 	mux.HandleFunc("GET /qr", h.QRImage)

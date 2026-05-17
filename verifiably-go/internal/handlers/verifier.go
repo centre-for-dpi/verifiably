@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/metrics"
+	"github.com/verifiably/verifiably-go/internal/trust"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -432,6 +434,7 @@ func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
 	}
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(pollStart), "dpg", sess.VerifierDpg, "op", "verify")
 	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", sess.CustomOID4VPSchemaID, "status", verifyStatus)
+	h.attachTrustStatus(r, &res)
 	slog.Info("oid4vp verification completed",
 		"valid", res.Valid,
 		"method", res.Method,
@@ -492,8 +495,31 @@ func (h *H) VerifyDirect(w http.ResponseWriter, r *http.Request) {
 		directStatus = "error"
 	}
 	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", directStatus)
+	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
 	h.renderFragment(w, r, "fragment_verify_result", res)
+}
+
+// attachTrustStatus populates VerificationResult.TrustStatus / TrustReason
+// by checking the issuer DID against the configured trust registry.
+// No-op when TrustRegistry is nil or Issuer is empty.
+func (h *H) attachTrustStatus(r *http.Request, res *backend.VerificationResult) {
+	if h.TrustRegistry == nil || res.Issuer == "" {
+		return
+	}
+	err := h.TrustRegistry.IsTrusted(r.Context(), res.Issuer, res.CredentialTitle)
+	if err == nil {
+		res.TrustStatus = "trusted"
+		return
+	}
+	if errors.Is(err, trust.ErrUntrusted) {
+		res.TrustStatus = "untrusted"
+		res.TrustReason = err.Error()
+		return
+	}
+	// I/O error — mark unknown, log but don't block the result.
+	slog.Warn("trust registry lookup failed", "issuer", res.Issuer, "err", err)
+	res.TrustStatus = "unknown"
 }
 
 // attachIssuerDisplay populates VerificationResult.IssuerDisplay by looking

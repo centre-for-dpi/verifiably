@@ -414,4 +414,12 @@ type VerificationResult struct {
 	// IssuerDisplayName. Empty when no matching schema exists (e.g.
 	// credentials minted by a different deployment).
 	IssuerDisplay string
+
+	// TrustStatus is set by the verifier handler after a trust-registry
+	// lookup on the Issuer DID. Values: "trusted", "untrusted", "unknown"
+	// (registry configured but DID not found), or "" (no registry wired).
+	TrustStatus string
+	// TrustReason carries the explanation when TrustStatus is "untrusted",
+	// e.g. "accreditation expired on 2026-01-01".
+	TrustReason string
 }

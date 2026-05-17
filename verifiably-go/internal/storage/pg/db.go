@@ -93,6 +93,15 @@ CREATE TABLE IF NOT EXISTS bulk_jobs (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     error_msg  TEXT        NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS trusted_issuers (
+    did           TEXT        PRIMARY KEY,
+    display_name  TEXT        NOT NULL DEFAULT '',
+    schemas       TEXT[]      NOT NULL DEFAULT '{}',
+    accredited_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_until   TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 	_, err := pool.Exec(ctx, ddl)
 	return err

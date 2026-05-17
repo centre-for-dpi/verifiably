@@ -19,6 +19,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
+	"github.com/verifiably/verifiably-go/internal/trust"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -81,6 +82,16 @@ type H struct {
 	// .../bulk/{id}/events for progress. nil falls back to the synchronous
 	// /api/v1/credentials/issue/bulk endpoint.
 	BulkJobQueue *jobs.Queue
+
+	// TrustRegistry is the national trust registry used to validate issuer
+	// DIDs during credential verification. When non-nil, every terminal
+	// OID4VP result and every VerifyDirect call checks the Issuer DID
+	// against the registry and populates VerificationResult.TrustStatus.
+	// nil disables trust-registry checks (all results show TrustStatus="").
+	// TrustJWTSecret is the HMAC key used to sign the /trust-registry JWT.
+	TrustRegistry   trust.Registry
+	TrustJWTSecret  []byte
+	TrustJWTIssuer  string
 
 	// signingKeyMu guards lazy fetching of the walt.id issuer JWK.
 	// After a successful fetch signingKey is non-nil and the hot path
@@ -334,6 +345,7 @@ func titleFor(page string) string {
 		"docs_view":              "Docs",
 		"admin_login":            "Admin · Sign in",
 		"admin_auth_providers":   "Admin · OIDC providers",
+		"admin_trust":            "Admin · Trust registry",
 	}[page]
 }
 
@@ -357,6 +369,7 @@ func crumbFor(page string) string {
 		"docs_view":             "docs",
 		"admin_login":           "admin → sign in",
 		"admin_auth_providers":  "admin → auth providers",
+		"admin_trust":           "admin → trust registry",
 	}[page]
 }
 

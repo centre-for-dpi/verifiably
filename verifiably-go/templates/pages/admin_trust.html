@@ -1,0 +1,112 @@
+{{define "content_admin_trust"}}
+<section class="view active">
+  <div class="section-label">
+    <span class="num">99</span>
+    <span class="caps">{{t "Admin · Trust registry" $.Lang}}</span>
+  </div>
+  <h1 class="page-title">{{t "Trusted" $.Lang}}<br><em>{{t "issuers" $.Lang}}</em>.</h1>
+  <p class="subtitle">
+    {{t "Manage the national trust registry. Credentials from issuers listed here are marked as trusted during verification. The registry is published as a signed JWT at" $.Lang}}
+    <span class="mono"><a href="/trust-registry" target="_blank">/trust-registry</a></span>.
+  </p>
+
+  <div class="btn-row" style="margin:0 0 1.5rem 0">
+    <form method="post" action="/admin/logout" style="display:inline">
+      <button class="btn ghost small" type="submit">{{t "Sign out of admin" $.Lang}}</button>
+    </form>
+  </div>
+
+  {{/* Add issuer form */}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem;margin-bottom:2rem">
+    <h3 style="margin:0 0 1rem;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem">
+      {{t "Add trusted issuer" $.Lang}}
+    </h3>
+    <form
+      hx-post="/admin/trust"
+      hx-target="#trust-list"
+      hx-swap="outerHTML"
+      style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "DID *" $.Lang}}
+        <input class="input" type="text" name="did" placeholder="did:web:issuer.example" required>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Display name" $.Lang}}
+        <input class="input" type="text" name="display_name" placeholder="National Education Authority">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Schemas (comma-separated IDs, blank = all)" $.Lang}}
+        <input class="input" type="text" name="schemas" placeholder="UniversityDegreeCredential, ProfessionalLicense">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Valid until (YYYY-MM-DD, optional)" $.Lang}}
+        <input class="input" type="date" name="valid_until">
+      </label>
+      <div style="grid-column:1/-1;display:flex;gap:0.75rem;margin-top:0.25rem">
+        <button class="btn small" type="submit">{{t "Add issuer →" $.Lang}}</button>
+      </div>
+    </form>
+  </div>
+
+  {{/* Issuer table — wrapped in a div so HTMX can replace only the list */}}
+  <div id="trust-list">
+    {{template "fragment_trust_list" .Body}}
+  </div>
+</section>
+{{end}}
+
+{{define "fragment_trust_list"}}
+<table class="cred-table" style="width:100%">
+  <thead>
+    <tr>
+      <th style="text-align:left">DID</th>
+      <th style="text-align:left">Display name</th>
+      <th style="text-align:left">Schemas</th>
+      <th style="text-align:left">Accredited</th>
+      <th style="text-align:left">Valid until</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{if not .Issuers}}
+      <tr>
+        <td colspan="6" style="font-style:italic;color:var(--ink-mute);padding:0.75rem 0">
+          No trusted issuers configured. Add the first one above.
+        </td>
+      </tr>
+    {{end}}
+    {{range .Issuers}}
+    <tr>
+      <td><span class="mono" style="font-size:0.8rem;word-break:break-all">{{.DID}}</span></td>
+      <td>{{if .DisplayName}}{{.DisplayName}}{{else}}<span style="color:var(--ink-mute)">—</span>{{end}}</td>
+      <td>
+        {{if .Schemas}}
+          {{range .Schemas}}<span class="pill" style="margin-right:0.25rem">{{.}}</span>{{end}}
+        {{else}}
+          <span class="pill ok">all</span>
+        {{end}}
+      </td>
+      <td style="font-size:0.82rem;color:var(--ink-soft)">{{.AccreditedAt.Format "2006-01-02"}}</td>
+      <td style="font-size:0.82rem">
+        {{if .ValidUntil.IsZero}}
+          <span style="color:var(--ink-mute)">—</span>
+        {{else if .IsExpired}}
+          <span class="pill err">expired {{.ValidUntil.Format "2006-01-02"}}</span>
+        {{else}}
+          {{.ValidUntil.Format "2006-01-02"}}
+        {{end}}
+      </td>
+      <td style="text-align:right">
+        <button class="btn ghost small"
+                hx-delete="/admin/trust/{{.DID}}"
+                hx-target="#trust-list"
+                hx-swap="outerHTML"
+                hx-confirm="Remove {{.DID}} from the trust registry?">
+          Delete
+        </button>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
