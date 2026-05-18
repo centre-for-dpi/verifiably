@@ -52,6 +52,9 @@ services:
     environment:
       VERIFIABLY_ROLES: hub
       VERIFIABLY_ADAPTER: registry
+      # Hub-specific backends file — no DPG adapters needed (Hub only routes
+      # trust registry and /verify; DPG backends live on member nodes).
+      VERIFIABLY_BACKENDS_FILE: /app/config/hub-backends.json
       VERIFIABLY_DATABASE_URL: postgres://${POSTGRES_USER:-verifiably}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-verifiably}?sslmode=disable
       VERIFIABLY_PUBLIC_URL: ${VERIFIABLY_PUBLIC_URL:?VERIFIABLY_PUBLIC_URL is required}
       VERIFIABLY_SESSION_SECRET: ${VERIFIABLY_SESSION_SECRET:?VERIFIABLY_SESSION_SECRET is required}
