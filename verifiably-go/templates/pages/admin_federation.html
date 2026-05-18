@@ -58,6 +58,10 @@
           <option value="fail-open">fail-open (valid with warning if unavailable)</option>
         </select>
       </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem;grid-column:1/-1">
+        {{t "Verifier API key (hub uses this to call the member's /api/v1/verify/request)" $.Lang}}
+        <input class="input" type="password" name="verifier_api_key" placeholder="Leave blank if the member's verify API is open">
+      </label>
       <div style="grid-column:1/-1;display:flex;gap:0.75rem;margin-top:0.25rem">
         <button class="btn small" type="submit">{{t "Register member →" $.Lang}}</button>
       </div>
@@ -111,6 +115,12 @@
       <td style="font-size:0.82rem">
         {{if .ServiceEndpoint}}
           <a href="{{.ServiceEndpoint}}/healthz" target="_blank" class="mono" style="font-size:0.78rem">{{.ServiceEndpoint}}</a>
+          <br>
+          {{if .VerifierAPIKey}}
+            <span class="pill ok" style="font-size:0.7rem" title="Verifier API key set — hub can route OID4VP">verifier ✓</span>
+          {{else}}
+            <span class="pill" style="font-size:0.7rem;background:var(--warn-bg,#fffbe6);color:var(--warn,#b58900)" title="No verifier API key — OID4VP may fail if the verify endpoint requires auth">verifier (open)</span>
+          {{end}}
         {{else}}
           <span style="color:var(--ink-mute)">—</span>
         {{end}}
@@ -183,8 +193,14 @@
         {{end}}
       </td>
       {{end}}
-      <td style="text-align:right">
+      <td style="text-align:right;white-space:nowrap">
         <button class="btn ghost small"
+                hx-get="/admin/federation/members/{{.DID}}/edit"
+                hx-target="#federation-list"
+                hx-swap="outerHTML">
+          Edit
+        </button>
+        <button class="btn ghost small" style="margin-left:0.25rem"
                 hx-post="/admin/federation/members/{{.DID}}/delete"
                 hx-target="#federation-list"
                 hx-swap="outerHTML"
@@ -196,6 +212,71 @@
     {{end}}
   </tbody>
 </table>
+{{end}}
+
+{{define "fragment_federation_edit_form"}}
+{{/* Wraps in #federation-list so swapping back to the list works */}}
+<div id="federation-list">
+  <div style="background:var(--bg-elev);border:1px solid var(--accent,#1565c0);border-radius:4px;padding:1.25rem 1.5rem;margin-bottom:1rem">
+    <h3 style="margin:0 0 0.25rem;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem">
+      Edit federation member
+    </h3>
+    <p class="mono" style="font-size:0.78rem;color:var(--ink-mute);margin:0 0 1rem;word-break:break-all">{{.Member.DID}}</p>
+    <form
+      hx-post="/admin/federation/members/{{.Member.DID}}/edit"
+      hx-target="#federation-list"
+      hx-swap="outerHTML"
+      style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        Display name
+        <input class="input" type="text" name="display_name" value="{{.Member.DisplayName}}" placeholder="Ministerio de Educación">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        Service endpoint
+        <input class="input" type="url" name="service_endpoint" value="{{.Member.ServiceEndpoint}}" placeholder="https://issuer.gov">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        Valid until (YYYY-MM-DD, optional)
+        <input class="input" type="date" name="valid_until"
+               value="{{if not .Member.ValidUntil.IsZero}}{{.Member.ValidUntil.Format "2006-01-02"}}{{end}}">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        Schemas (comma-separated IDs, blank = all)
+        <input class="input" type="text" name="schemas"
+               value="{{range $i, $s := .Member.Schemas}}{{if $i}}, {{end}}{{$s}}{{end}}"
+               placeholder="UniversityDegree, DriverLicense">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        Status list endpoints (comma-separated URLs)
+        <input class="input" type="text" name="status_list_endpoints"
+               value="{{range $i, $ep := .Member.StatusListEndpoints}}{{if $i}}, {{end}}{{$ep}}{{end}}"
+               placeholder="https://issuer.gov/status-list/bitstring/v1">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        Status list policy
+        <select class="input" name="status_list_policy">
+          <option value="fail-closed"{{if ne .Member.StatusListPolicy "fail-open"}} selected{{end}}>fail-closed (default — revoked if unavailable)</option>
+          <option value="fail-open"{{if eq .Member.StatusListPolicy "fail-open"}} selected{{end}}>fail-open (valid with warning if unavailable)</option>
+        </select>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem;grid-column:1/-1">
+        Verifier API key
+        <input class="input" type="password" name="verifier_api_key"
+               placeholder="{{if .Member.VerifierAPIKey}}Leave blank to keep existing key{{else}}Leave blank if the member's verify API is open{{end}}">
+        {{if .Member.VerifierAPIKey}}<span style="font-size:0.75rem;color:var(--ink-mute)">A key is currently set. Leave blank to keep it.</span>{{end}}
+      </label>
+      <div style="grid-column:1/-1;display:flex;gap:0.75rem;margin-top:0.25rem">
+        <button class="btn small" type="submit">Save changes →</button>
+        <button class="btn ghost small" type="button"
+                hx-get="/admin/federation/members"
+                hx-target="#federation-list"
+                hx-swap="outerHTML">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 {{end}}
 
 {{define "fragment_api_key_display"}}
