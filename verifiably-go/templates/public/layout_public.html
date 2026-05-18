@@ -1,0 +1,41 @@
+{{define "layout_public"}}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · CDPI</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+    .public-header { border-bottom: 1px solid var(--line); padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.75rem; }
+    .public-header-logo { font-family: 'Josefin Sans', sans-serif; font-weight: 700; font-size: 1rem; letter-spacing: 0.04em; }
+    .public-header-sub { font-size: 0.78rem; color: var(--ink-mute); letter-spacing: 0.05em; text-transform: uppercase; }
+    .public-main { flex: 1; max-width: 680px; margin: 0 auto; padding: 2rem 1.5rem; width: 100%; box-sizing: border-box; }
+    .public-footer { border-top: 1px solid var(--line); padding: 0.75rem 1.5rem; text-align: center; font-size: 0.72rem; color: var(--ink-mute); }
+    .schema-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 0.75rem; margin: 1.5rem 0; }
+    .schema-card { cursor: pointer; padding: 1rem; text-align: left; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-elev); transition: border-color 0.15s, box-shadow 0.15s; }
+    .schema-card:hover { border-color: var(--accent, #6366f1); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent,#6366f1) 15%, transparent); }
+    .schema-card.selected { border-color: var(--accent, #6366f1); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent,#6366f1) 20%, transparent); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+    .verify-badge { border-radius: 8px; padding: 1.25rem 1.5rem; margin-top: 1rem; }
+    .verify-badge.ok { background: var(--ok-bg, #f0fdf4); border: 2px solid var(--ok, #22c55e); }
+    .verify-badge.err { background: var(--err-bg, #fef2f2); border: 2px solid var(--err, #ef4444); }
+  </style>
+</head>
+<body>
+  <header class="public-header">
+    <span class="public-header-logo">CDPI</span>
+    <span class="public-header-sub">Verificación de credenciales</span>
+  </header>
+  <main class="public-main" id="main">
+    {{render .ContentTemplate .}}
+  </main>
+  <footer class="public-footer">
+    Plataforma de verificación · Centro de Datos Públicos e Innovación
+  </footer>
+</body>
+</html>
+{{end}}

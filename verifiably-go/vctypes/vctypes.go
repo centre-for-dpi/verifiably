@@ -91,6 +91,16 @@ type Schema struct {
 	AdditionalTypes []string
 	FieldsSpec      []FieldSpec
 
+	// SourceIssuerDID identifies the issuer DID that defined this schema.
+	// Set by the Hub's schema aggregator on federated schemas so the public
+	// /verify portal can perform trust checks against the correct issuer.
+	SourceIssuerDID string `json:"sourceIssuerDid,omitempty"`
+
+	// SourceDeployment is the Hub's Registry adapter key (member.ID from
+	// federation.json) for the issuer that owns this schema. Used by
+	// PublicVerifyRequest to route the OID4VP request to the correct verifier.
+	SourceDeployment string `json:"sourceDeployment,omitempty"`
+
 	// Variants lists every wire-format this credential type is available in.
 	// For walt.id, one credential name (e.g. "IdentityCredential") is served
 	// under several configuration ids (one per format). The schema picker

@@ -422,4 +422,13 @@ type VerificationResult struct {
 	// TrustReason carries the explanation when TrustStatus is "untrusted",
 	// e.g. "accreditation expired on 2026-01-01".
 	TrustReason string
+
+	// StatusListSource is set by the Hub's public verify handler after checking
+	// the Hub's cached copy of the issuer's status list endpoint.
+	// "live" = endpoint confirmed reachable at verification time;
+	// "cached" = Hub used its stored copy (issuer endpoint was unreachable);
+	// "unknown" = no status list data available (no cache and fetch failed);
+	// "" = not checked (no status list cache wired, or no Hub role active).
+	StatusListSource   string
+	StatusListCachedAt *time.Time
 }

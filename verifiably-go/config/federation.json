@@ -1,0 +1,26 @@
+{
+  "ecosystem": {
+    "name": "CDPI Ecosystem",
+    "trustRegistryURL": "https://verify.cdpi.dev/trust-registry",
+    "schemaRegistryURL": "https://verify.cdpi.dev/api/schemas",
+    "hubURL": "https://verify.cdpi.dev"
+  },
+  "members": [
+    {
+      "id": "issuer-a",
+      "name": "Ministerio de Educación",
+      "deploymentURL": "https://issuer-a.gov",
+      "did": "did:web:issuer-a.gov",
+      "roles": ["issuer"],
+      "verifierBackendType": "walt_community",
+      "verifierConfig": {
+        "verifierBaseUrl": "https://issuer-a.gov/verifier",
+        "standardVersion": "draft13"
+      },
+      "statusListEndpoints": [
+        "https://issuer-a.gov/status-list/bitstring/v1"
+      ],
+      "statusListPolicy": "fail-closed"
+    }
+  ]
+}
