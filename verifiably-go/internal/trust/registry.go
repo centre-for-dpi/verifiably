@@ -42,14 +42,29 @@ type Registry interface {
 
 // TrustedIssuer is one entry in the trust registry.
 type TrustedIssuer struct {
-	DID         string    `json:"did"`
-	DisplayName string    `json:"display_name"`
+	DID         string   `json:"did"`
+	DisplayName string   `json:"display_name"`
 	// Schemas lists the credential schema IDs this issuer is authorised to
 	// issue. An empty slice means "all schemas" (wildcard — use sparingly).
-	Schemas     []string  `json:"schemas"`
+	Schemas []string `json:"schemas"`
+
+	// ServiceEndpoint is the base URL of the issuer's verifiably-go deployment.
+	// Used by the Hub to fetch schemas and check healthz.
+	// Example: "https://issuer-a.gov"
+	ServiceEndpoint string `json:"service_endpoint,omitempty"`
+
+	// StatusListEndpoints are the public URLs of this issuer's revocation lists.
+	// The Hub fetches and caches these for offline verification.
+	StatusListEndpoints []string `json:"status_list_endpoints,omitempty"`
+
+	// StatusListPolicy governs Hub behaviour when a status list is unavailable.
+	// "fail-closed" (default): treat credential as invalid.
+	// "fail-open": treat as valid with a visible warning.
+	StatusListPolicy string `json:"status_list_policy,omitempty"`
+
 	AccreditedAt time.Time `json:"accredited_at"`
 	// ValidUntil is the expiry of the accreditation. Zero means no expiry.
-	ValidUntil  time.Time `json:"valid_until,omitempty"`
+	ValidUntil time.Time `json:"valid_until,omitempty"`
 }
 
 // IsExpired reports whether the accreditation has passed its ValidUntil date.

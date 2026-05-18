@@ -73,15 +73,29 @@ func (s *pgStore) Add(ctx context.Context, e TrustedIssuer) error {
 	if schemas == nil {
 		schemas = []string{}
 	}
+	statusListEndpoints := e.StatusListEndpoints
+	if statusListEndpoints == nil {
+		statusListEndpoints = []string{}
+	}
+	policy := e.StatusListPolicy
+	if policy == "" {
+		policy = "fail-closed"
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO trusted_issuers (did, display_name, schemas, accredited_at, valid_until)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO trusted_issuers
+		  (did, display_name, schemas, accredited_at, valid_until,
+		   service_endpoint, status_list_endpoints, status_list_policy)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (did) DO UPDATE
-		  SET display_name   = EXCLUDED.display_name,
-		      schemas        = EXCLUDED.schemas,
-		      accredited_at  = EXCLUDED.accredited_at,
-		      valid_until    = EXCLUDED.valid_until`,
-		e.DID, e.DisplayName, schemas, e.AccreditedAt.UTC(), validUntil)
+		  SET display_name          = EXCLUDED.display_name,
+		      schemas               = EXCLUDED.schemas,
+		      accredited_at         = EXCLUDED.accredited_at,
+		      valid_until           = EXCLUDED.valid_until,
+		      service_endpoint      = EXCLUDED.service_endpoint,
+		      status_list_endpoints = EXCLUDED.status_list_endpoints,
+		      status_list_policy    = EXCLUDED.status_list_policy`,
+		e.DID, e.DisplayName, schemas, e.AccreditedAt.UTC(), validUntil,
+		e.ServiceEndpoint, statusListEndpoints, policy)
 	if err != nil {
 		return fmt.Errorf("trust: upsert issuer: %w", err)
 	}
@@ -100,7 +114,8 @@ func (s *pgStore) Remove(ctx context.Context, did string) error {
 
 func (s *pgStore) refresh(ctx context.Context) ([]TrustedIssuer, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT did, display_name, schemas, accredited_at, valid_until
+		SELECT did, display_name, schemas, accredited_at, valid_until,
+		       service_endpoint, status_list_endpoints, status_list_policy
 		FROM trusted_issuers
 		ORDER BY did`)
 	if err != nil {
@@ -112,7 +127,8 @@ func (s *pgStore) refresh(ctx context.Context) ([]TrustedIssuer, error) {
 	for rows.Next() {
 		var e TrustedIssuer
 		var validUntil *time.Time
-		if err := rows.Scan(&e.DID, &e.DisplayName, &e.Schemas, &e.AccreditedAt, &validUntil); err != nil {
+		if err := rows.Scan(&e.DID, &e.DisplayName, &e.Schemas, &e.AccreditedAt, &validUntil,
+			&e.ServiceEndpoint, &e.StatusListEndpoints, &e.StatusListPolicy); err != nil {
 			return nil, fmt.Errorf("trust: scan issuer row: %w", err)
 		}
 		if validUntil != nil {
@@ -120,6 +136,9 @@ func (s *pgStore) refresh(ctx context.Context) ([]TrustedIssuer, error) {
 		}
 		if e.Schemas == nil {
 			e.Schemas = []string{}
+		}
+		if e.StatusListEndpoints == nil {
+			e.StatusListEndpoints = []string{}
 		}
 		result = append(result, e)
 	}

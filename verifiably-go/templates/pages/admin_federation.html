@@ -1,0 +1,222 @@
+{{define "content_admin_federation"}}
+<section class="view active">
+  <div class="section-label">
+    <span class="num">99</span>
+    <span class="caps">{{t "Admin · Federation members" $.Lang}}</span>
+  </div>
+  <h1 class="page-title">{{t "Ecosystem" $.Lang}}<br><em>{{t "members" $.Lang}}</em>.</h1>
+  <p class="subtitle">
+    {{t "Manage accredited issuers in the federation. Members are stored in the trust registry and published at" $.Lang}}
+    <span class="mono"><a href="/trust-registry" target="_blank">/trust-registry</a></span>.
+    {{t "The Hub routes OID4VP to each member's verifier adapter by state prefix." $.Lang}}
+  </p>
+
+  <div class="btn-row" style="margin:0 0 1.5rem 0">
+    <form method="post" action="/admin/logout" style="display:inline">
+      <button class="btn ghost small" type="submit">{{t "Sign out of admin" $.Lang}}</button>
+    </form>
+  </div>
+
+  {{/* Register member form */}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem;margin-bottom:2rem">
+    <h3 style="margin:0 0 1rem;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem">
+      {{t "Register federation member" $.Lang}}
+    </h3>
+    <form
+      hx-post="/admin/federation/members"
+      hx-target="#federation-list"
+      hx-swap="outerHTML"
+      style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "DID *" $.Lang}}
+        <input class="input" type="text" name="did" placeholder="did:web:issuer.gov" required>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Display name" $.Lang}}
+        <input class="input" type="text" name="display_name" placeholder="Ministerio de Educación">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Service endpoint" $.Lang}}
+        <input class="input" type="url" name="service_endpoint" placeholder="https://issuer.gov">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Valid until (YYYY-MM-DD, optional)" $.Lang}}
+        <input class="input" type="date" name="valid_until">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Schemas (comma-separated IDs, blank = all)" $.Lang}}
+        <input class="input" type="text" name="schemas" placeholder="UniversityDegree, DriverLicense">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Status list endpoints (comma-separated URLs)" $.Lang}}
+        <input class="input" type="text" name="status_list_endpoints" placeholder="https://issuer.gov/status-list/bitstring/v1">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">
+        {{t "Status list policy" $.Lang}}
+        <select class="input" name="status_list_policy">
+          <option value="fail-closed">fail-closed (default — revoked if unavailable)</option>
+          <option value="fail-open">fail-open (valid with warning if unavailable)</option>
+        </select>
+      </label>
+      <div style="grid-column:1/-1;display:flex;gap:0.75rem;margin-top:0.25rem">
+        <button class="btn small" type="submit">{{t "Register member →" $.Lang}}</button>
+      </div>
+    </form>
+  </div>
+
+  {{/* API key display slot — filled by IssueAPIKey, empty by default */}}
+  <div id="api-key-display"></div>
+
+  {{/* Member list */}}
+  <div id="federation-list">
+    {{template "fragment_federation_list" .Body}}
+  </div>
+</section>
+{{end}}
+
+{{define "fragment_federation_list"}}
+<table class="cred-table" style="width:100%">
+  <thead>
+    <tr>
+      <th style="text-align:left">DID</th>
+      <th style="text-align:left">Name</th>
+      <th style="text-align:left">Service endpoint</th>
+      <th style="text-align:left">Policy</th>
+      <th style="text-align:left">Accredited</th>
+      <th style="text-align:left">Valid until</th>
+      <th style="text-align:center">Health</th>
+      {{if .HasAPIKeyStore}}<th style="text-align:left">API key</th>{{end}}
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{if not .Members}}
+      <tr>
+        <td colspan="{{if .HasAPIKeyStore}}9{{else}}8{{end}}" style="font-style:italic;color:var(--ink-mute);padding:0.75rem 0">
+          No federation members registered. Add the first one above.
+        </td>
+      </tr>
+    {{end}}
+    {{range .Members}}
+    <tr>
+      <td>
+        <span class="mono" style="font-size:0.8rem;word-break:break-all">{{.DID}}</span>
+        {{if .Schemas}}
+          <br>{{range .Schemas}}<span class="pill" style="margin-right:0.2rem;font-size:0.72rem">{{.}}</span>{{end}}
+        {{else}}
+          <br><span class="pill ok" style="font-size:0.72rem">all schemas</span>
+        {{end}}
+      </td>
+      <td>{{if .DisplayName}}{{.DisplayName}}{{else}}<span style="color:var(--ink-mute)">—</span>{{end}}</td>
+      <td style="font-size:0.82rem">
+        {{if .ServiceEndpoint}}
+          <a href="{{.ServiceEndpoint}}/healthz" target="_blank" class="mono" style="font-size:0.78rem">{{.ServiceEndpoint}}</a>
+        {{else}}
+          <span style="color:var(--ink-mute)">—</span>
+        {{end}}
+      </td>
+      <td>
+        {{if eq .StatusListPolicy "fail-open"}}
+          <span class="pill" style="background:var(--warn-bg,#fffbe6);color:var(--warn,#b58900)">fail-open</span>
+        {{else}}
+          <span class="pill ok">fail-closed</span>
+        {{end}}
+      </td>
+      <td style="font-size:0.82rem;color:var(--ink-soft)">{{.AccreditedAt.Format "2006-01-02"}}</td>
+      <td style="font-size:0.82rem">
+        {{if .ValidUntil.IsZero}}
+          <span style="color:var(--ink-mute)">—</span>
+        {{else if .IsExpired}}
+          <span class="pill err">expired {{.ValidUntil.Format "2006-01-02"}}</span>
+        {{else}}
+          {{.ValidUntil.Format "2006-01-02"}}
+        {{end}}
+      </td>
+      <td style="text-align:center">
+        {{$health := index $.MemberHealth .DID}}
+        {{$days := daysUntil .ValidUntil}}
+        {{if not $health.Checked}}
+          {{/* Not yet probed — show gray pending dot */}}
+          <span title="Endpoint not yet probed" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#9e9e9e;vertical-align:middle"></span>
+        {{else if not $health.Up}}
+          {{/* Endpoint down — gray/red */}}
+          <span title="Endpoint offline" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#d32f2f;vertical-align:middle"></span>
+        {{else if .IsExpired}}
+          {{/* Expired — red */}}
+          <span title="Accreditation expired" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#d32f2f;vertical-align:middle"></span>
+        {{else if and (not .ValidUntil.IsZero) (lt $days 30)}}
+          {{/* <30 days — red */}}
+          <span title="Expires in {{$days}} days" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#d32f2f;vertical-align:middle"></span>
+        {{else if and (not .ValidUntil.IsZero) (lt $days 90)}}
+          {{/* 30–90 days — yellow */}}
+          <span title="Expires in {{$days}} days" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#f9a825;vertical-align:middle"></span>
+        {{else}}
+          {{/* >90 days or no expiry — green */}}
+          <span title="{{if .ValidUntil.IsZero}}No expiry set{{else}}Expires in {{$days}} days{{end}}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#388e3c;vertical-align:middle"></span>
+        {{end}}
+      </td>
+      {{if $.HasAPIKeyStore}}
+      <td style="font-size:0.82rem;white-space:nowrap">
+        {{if index $.MemberKeys .DID}}
+          <span class="pill ok" style="font-size:0.72rem">active</span>
+          <button class="btn ghost small" style="margin-left:0.4rem"
+                  hx-post="/admin/federation/members/{{.DID}}/api-key/revoke"
+                  hx-target="#federation-list"
+                  hx-swap="outerHTML"
+                  hx-confirm="Revoke API key for {{.DID}}?">
+            Revoke
+          </button>
+          <button class="btn ghost small" style="margin-left:0.2rem"
+                  hx-post="/admin/federation/members/{{.DID}}/api-key"
+                  hx-target="#api-key-display"
+                  hx-swap="outerHTML">
+            Rotate
+          </button>
+        {{else}}
+          <span style="color:var(--ink-mute);font-size:0.78rem">none</span>
+          <button class="btn small" style="margin-left:0.4rem"
+                  hx-post="/admin/federation/members/{{.DID}}/api-key"
+                  hx-target="#api-key-display"
+                  hx-swap="outerHTML">
+            Generate
+          </button>
+        {{end}}
+      </td>
+      {{end}}
+      <td style="text-align:right">
+        <button class="btn ghost small"
+                hx-post="/admin/federation/members/{{.DID}}/delete"
+                hx-target="#federation-list"
+                hx-swap="outerHTML"
+                hx-confirm="Remove {{.DID}} from the federation?">
+          Remove
+        </button>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "fragment_api_key_display"}}
+<div id="api-key-display">
+{{if .APIKey}}
+<div style="background:var(--ok-bg,#edfdf0);border:1px solid var(--ok,#4caf50);border-radius:4px;padding:1rem 1.25rem;margin-bottom:1.5rem">
+  <p style="font-weight:600;font-size:0.9rem;margin:0 0 0.35rem">
+    API key for <span class="mono" style="font-size:0.85rem">{{.DID}}</span>
+  </p>
+  <p style="font-size:0.8rem;color:var(--ink-soft);margin:0 0 0.75rem">
+    Copy this token now — it will not be shown again. Share it with the issuer so they can call
+    <span class="mono" style="font-size:0.78rem">GET /api/ecosystem/issuers/{{.DID}}/stats</span>.
+  </p>
+  <div style="display:flex;align-items:center;gap:0.75rem">
+    <code id="api-key-token" style="font-size:0.78rem;word-break:break-all;flex:1;padding:0.5rem 0.75rem;background:var(--bg-code,#f5f5f5);border-radius:2px;border:1px solid var(--line)">{{.APIKey}}</code>
+    <button class="btn small"
+            onclick="navigator.clipboard.writeText(document.getElementById('api-key-token').textContent).then(()=>{this.textContent='Copied ✓';setTimeout(()=>{this.textContent='Copy'},2000)})">
+      Copy
+    </button>
+  </div>
+</div>
+{{end}}
+</div>
+{{end}}
