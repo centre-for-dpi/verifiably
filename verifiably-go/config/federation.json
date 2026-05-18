@@ -9,16 +9,16 @@
     {
       "id": "issuer-a",
       "name": "Ministerio de Educación",
-      "deploymentURL": "https://issuer-a.gov",
-      "did": "did:web:issuer-a.gov",
+      "deploymentURL": "https://verifiably.minerd.credenciales.ysalabs.work",
+      "did": "did:web:minerd.credenciales.ysalabs.work",
       "roles": ["issuer"],
-      "verifierBackendType": "walt_community",
+      "verifierBackendType": "verifiably",
       "verifierConfig": {
-        "verifierBaseUrl": "https://issuer-a.gov/verifier",
-        "standardVersion": "draft13"
+        "serviceEndpoint": "https://verifiably.minerd.credenciales.ysalabs.work",
+        "apiKey": "cbec7d882296f1a02affc0148cbf8c7af13c6c112781169c60975305dd16fceb"
       },
       "statusListEndpoints": [
-        "https://issuer-a.gov/status-list/bitstring/v1"
+        "https://verifiably.minerd.credenciales.ysalabs.work/status-list/bitstring/v1"
       ],
       "statusListPolicy": "fail-closed"
     }
