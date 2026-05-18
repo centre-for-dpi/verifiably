@@ -97,6 +97,90 @@ func TestHandler_Empty(t *testing.T) {
 	}
 }
 
+// ── Gauge ─────────────────────────────────────────────────────────────────────
+
+func TestGauge_SetAndFormat(t *testing.T) {
+	r := newRegistry()
+	r.SetGauge("trusted_issuer_days_until_expiry", 45, "did", "did:web:a.gov", "name", "Issuer A")
+
+	var buf strings.Builder
+	r.writeTo(&buf)
+	out := buf.String()
+
+	if !strings.Contains(out, "# TYPE trusted_issuer_days_until_expiry gauge") {
+		t.Errorf("missing gauge TYPE line:\n%s", out)
+	}
+	if !strings.Contains(out, `trusted_issuer_days_until_expiry{did="did:web:a.gov",name="Issuer A"} 45`) {
+		t.Errorf("missing gauge value line:\n%s", out)
+	}
+}
+
+func TestGauge_Update(t *testing.T) {
+	r := newRegistry()
+	r.SetGauge("endpoint_up", 1, "did", "did:web:a.gov")
+	r.SetGauge("endpoint_up", 0, "did", "did:web:a.gov")
+
+	var buf strings.Builder
+	r.writeTo(&buf)
+	out := buf.String()
+
+	if !strings.Contains(out, `endpoint_up{did="did:web:a.gov"} 0`) {
+		t.Errorf("gauge should reflect latest value (0):\n%s", out)
+	}
+	if strings.Contains(out, `} 1`) {
+		t.Errorf("old gauge value 1 should be gone:\n%s", out)
+	}
+}
+
+func TestGauge_Delete(t *testing.T) {
+	r := newRegistry()
+	r.SetGauge("cleanup_gauge", 99, "did", "did:web:gone.gov")
+	r.DeleteGauge("cleanup_gauge", "did", "did:web:gone.gov")
+
+	var buf strings.Builder
+	r.writeTo(&buf)
+	out := buf.String()
+
+	if strings.Contains(out, "cleanup_gauge") {
+		t.Errorf("deleted gauge should not appear in output:\n%s", out)
+	}
+}
+
+func TestGauge_DeleteNoop(t *testing.T) {
+	r := newRegistry()
+	// Deleting a gauge that was never set should not panic
+	r.DeleteGauge("nonexistent_gauge", "k", "v")
+}
+
+func TestGauge_NoLabels(t *testing.T) {
+	r := newRegistry()
+	r.SetGauge("simple_gauge", 7)
+
+	var buf strings.Builder
+	r.writeTo(&buf)
+	out := buf.String()
+
+	if !strings.Contains(out, "simple_gauge 7") {
+		t.Errorf("no-label gauge format wrong:\n%s", out)
+	}
+}
+
+func TestGauge_MultipleEntries(t *testing.T) {
+	r := newRegistry()
+	r.SetGauge("expiry", 30, "did", "did:web:a.gov")
+	r.SetGauge("expiry", 90, "did", "did:web:b.gov")
+
+	var buf strings.Builder
+	r.writeTo(&buf)
+	out := buf.String()
+
+	// TYPE line should appear exactly once
+	count := strings.Count(out, "# TYPE expiry gauge")
+	if count != 1 {
+		t.Errorf("TYPE line should appear once, got %d:\n%s", count, out)
+	}
+}
+
 func TestConcurrent_Inc(t *testing.T) {
 	r := newRegistry()
 	done := make(chan struct{})

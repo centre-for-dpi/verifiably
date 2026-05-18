@@ -41,16 +41,25 @@ type histo struct {
 	buckets [6]atomic.Int64 // len(histoBuckets) upper bounds + 1 for +Inf
 }
 
+// gge is a labelled gauge (value can increase or decrease).
+type gge struct {
+	name string
+	ls   string
+	val  atomic.Int64 // stores value as-is; callers use integer gauge values
+}
+
 type registry struct {
-	mu   sync.Mutex
-	ctrs map[string]*ctr
-	hist map[string]*histo
+	mu     sync.Mutex
+	ctrs   map[string]*ctr
+	hist   map[string]*histo
+	gauges map[string]*gge
 }
 
 func newRegistry() *registry {
 	return &registry{
-		ctrs: make(map[string]*ctr),
-		hist: make(map[string]*histo),
+		ctrs:   make(map[string]*ctr),
+		hist:   make(map[string]*histo),
+		gauges: make(map[string]*gge),
 	}
 }
 
@@ -117,6 +126,32 @@ func (r *registry) IncN(name string, n int64, labels ...string) {
 	r.counter(name, labels).val.Add(n)
 }
 
+// SetGauge sets the named gauge to v. Labels must be key, value pairs.
+// The entry is created if it does not exist.
+func (r *registry) SetGauge(name string, v int64, labels ...string) {
+	ls := labStr(labels)
+	k := mapKey(name, ls)
+	r.mu.Lock()
+	g, ok := r.gauges[k]
+	if !ok {
+		g = &gge{name: name, ls: ls}
+		r.gauges[k] = g
+	}
+	r.mu.Unlock()
+	g.val.Store(v)
+}
+
+// DeleteGauge removes the named gauge entry from the registry. No-op when
+// the entry does not exist. Use to remove stale per-instance gauges when an
+// issuer is deregistered from the trust registry.
+func (r *registry) DeleteGauge(name string, labels ...string) {
+	ls := labStr(labels)
+	k := mapKey(name, ls)
+	r.mu.Lock()
+	delete(r.gauges, k)
+	r.mu.Unlock()
+}
+
 // ObserveDuration records d in the named histogram.
 func (r *registry) ObserveDuration(name string, d time.Duration, labels ...string) {
 	h := r.histogram(name, labels)
@@ -140,7 +175,7 @@ func (r *registry) Handler() http.Handler {
 	})
 }
 
-func (r *registry) snapshot() ([]*ctr, []*histo) {
+func (r *registry) snapshot() ([]*ctr, []*histo, []*gge) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	ctrs := make([]*ctr, 0, len(r.ctrs))
@@ -151,11 +186,15 @@ func (r *registry) snapshot() ([]*ctr, []*histo) {
 	for _, h := range r.hist {
 		hists = append(hists, h)
 	}
-	return ctrs, hists
+	gges := make([]*gge, 0, len(r.gauges))
+	for _, g := range r.gauges {
+		gges = append(gges, g)
+	}
+	return ctrs, hists, gges
 }
 
 func (r *registry) writeTo(w io.Writer) {
-	ctrs, hists := r.snapshot()
+	ctrs, hists, gges := r.snapshot()
 
 	sort.Slice(ctrs, func(i, j int) bool {
 		if ctrs[i].name != ctrs[j].name {
@@ -209,6 +248,25 @@ func (r *registry) writeTo(w io.Writer) {
 			fmt.Fprintf(w, "%s_count %d\n", h.name, h.count.Load())
 		}
 	}
+
+	sort.Slice(gges, func(i, j int) bool {
+		if gges[i].name != gges[j].name {
+			return gges[i].name < gges[j].name
+		}
+		return gges[i].ls < gges[j].ls
+	})
+	lastName = ""
+	for _, g := range gges {
+		if g.name != lastName {
+			fmt.Fprintf(w, "# TYPE %s gauge\n", g.name)
+			lastName = g.name
+		}
+		if g.ls != "" {
+			fmt.Fprintf(w, "%s{%s} %d\n", g.name, g.ls, g.val.Load())
+		} else {
+			fmt.Fprintf(w, "%s %d\n", g.name, g.val.Load())
+		}
+	}
 }
 
 // ── Snapshot types ────────────────────────────────────────────────────────────
@@ -238,7 +296,7 @@ type HistoSample struct {
 func Samples() ([]CounterSample, []HistoSample) { return Default.samples() }
 
 func (r *registry) samples() ([]CounterSample, []HistoSample) {
-	ctrs, hists := r.snapshot()
+	ctrs, hists, _ := r.snapshot()
 	cs := make([]CounterSample, len(ctrs))
 	for i, c := range ctrs {
 		cs[i] = CounterSample{
@@ -333,6 +391,12 @@ func IncN(name string, n int64, labels ...string) { Default.IncN(name, n, labels
 func ObserveDuration(name string, d time.Duration, labels ...string) {
 	Default.ObserveDuration(name, d, labels...)
 }
+
+// SetGauge sets the named gauge to v. Labels must be key, value pairs.
+func SetGauge(name string, v int64, labels ...string) { Default.SetGauge(name, v, labels...) }
+
+// DeleteGauge removes a gauge entry. Use to clean up stale per-instance gauges.
+func DeleteGauge(name string, labels ...string) { Default.DeleteGauge(name, labels...) }
 
 // Handler returns an http.Handler that serves /metrics in Prometheus format.
 func Handler() http.Handler { return Default.Handler() }
