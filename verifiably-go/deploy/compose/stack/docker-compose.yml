@@ -272,8 +272,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      # Passed to init.sh so did_url rows use the right DID.
+      # Empty = dev (did:web:certify-nginx). Set ISSUER_DID_DOMAIN in .env
+      # for production federation (did:web:{domain}).
+      ISSUER_DID_DOMAIN: ${ISSUER_DID_DOMAIN:-}
     volumes:
-      - ./inji/certify/init.sql:/docker-entrypoint-initdb.d/certify_init.sql
+      - ./inji/certify/init.sh:/docker-entrypoint-initdb.d/certify_init.sh
+      - ./inji/certify/init.sql:/var/init-templates/certify_init.sql:ro
       - certify-db:/var/lib/postgresql/data
     ports:
       - "5433:5432"
@@ -297,6 +302,9 @@ services:
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
       - enable_certify_artifactory=false
       - download_hsm_client=false
+      # Full DID URL embedded in issued credentials. Empty ISSUER_DID_DOMAIN
+      # falls back to Docker-internal did:web:certify-nginx (dev only).
+      - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-nginx}
       - mosip_certify_domain_url=http://certify-nginx:80
       # Route token validation through our local esignet instead of
       # inji-certify's default "I'm my own auth server" mode. The Farmer
@@ -389,11 +397,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      # init-preauth.sh uses ISSUER_DID_DOMAIN to compute the DID:
+      # empty = did:web:certify-preauth-nginx (dev); set = did:web:{domain}
+      # (same as primary in prod — inji_proxy merges both keys into one DID doc).
+      ISSUER_DID_DOMAIN: ${ISSUER_DID_DOMAIN:-}
     volumes:
-      # Use the pre-auth-specific init so credential_config rows advertise
-      # did:web:certify-preauth-nginx, not did:web:certify-nginx. That's
-      # what keeps the two instances from colliding on DID resolution.
-      - ./inji/certify/init-preauth.sql:/docker-entrypoint-initdb.d/certify_init.sql
+      - ./inji/certify/init-preauth.sh:/docker-entrypoint-initdb.d/certify_init.sh
+      - ./inji/certify/init-preauth.sql:/var/init-templates/certify_init.sql:ro
       - certify-preauth-db:/var/lib/postgresql/data
     ports:
       - "5436:5432"
@@ -441,6 +451,9 @@ services:
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
       - enable_certify_artifactory=false
       - download_hsm_client=false
+      # In production (ISSUER_DID_DOMAIN set), both primary and preauth use the
+      # same public DID. inji_proxy merges both instances' keys in the DID doc.
+      - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-preauth-nginx}
       # Critical difference from the primary inji-certify: the domain URL
       # points at THIS container (its own hostname on the default network),
       # and we do NOT override any of the mosip.certify.authn.* or
