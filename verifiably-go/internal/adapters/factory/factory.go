@@ -15,6 +15,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/adapters/injiverify"
 	"github.com/verifiably/verifiably-go/internal/adapters/injiweb"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
+	verifiablyapi "github.com/verifiably/verifiably-go/internal/adapters/verifiably"
 	"github.com/verifiably/verifiably-go/internal/adapters/waltid"
 )
 
@@ -52,6 +53,12 @@ func Build(entry registry.BackendEntry) (backend.Adapter, error) {
 			return nil, fmt.Errorf("parse config: %w", err)
 		}
 		return injiweb.New(cfg, entry.Vendor)
+	case "verifiably":
+		cfg, err := verifiablyapi.UnmarshalConfig(entry.Config)
+		if err != nil {
+			return nil, fmt.Errorf("parse config: %w", err)
+		}
+		return verifiablyapi.New(cfg)
 	}
 	return nil, nil
 }
