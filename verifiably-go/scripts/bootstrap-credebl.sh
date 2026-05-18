@@ -357,15 +357,28 @@ _credebl_configure_oid4vci_rewriter() {
     return 1
   fi
 
-  # Patch the proxy_pass line if the port has changed.
-  local current_port
-  current_port="$(grep 'proxy_pass' "$nginx_conf" 2>/dev/null \
-    | grep -oE ':[0-9]+;' | tr -d ':;' || true)"
-  if [[ "$current_port" != "$actual_port" ]]; then
-    sed -i "s|proxy_pass http://host.docker.internal:[0-9]*;|proxy_pass http://host.docker.internal:${actual_port};|" "$nginx_conf"
-    green "  Updated nginx-oid4vci.conf: port ${current_port:-?} → ${actual_port}"
+  # Determine the upstream host for proxy_pass. On Linux the rewriter container
+  # sits on the custom Docker network (credebl_default) and cannot route to
+  # 172.17.0.1 (the default bridge gateway that host.docker.internal resolves to
+  # on Linux). Use the Credo container's IP on the shared network instead.
+  # On Docker Desktop (Mac/Windows) host.docker.internal is a special DNS name
+  # that the VM resolves correctly, so we keep it as fallback only.
+  local credo_ip
+  credo_ip="$(docker inspect "${credo_container}" \
+    --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null \
+    | awk 'NF{print $1}' | head -1)"
+  local upstream_host="${credo_ip:-host.docker.internal}"
+
+  # Patch the proxy_pass line whenever the host or port changed.
+  local current_upstream
+  current_upstream="$(grep 'proxy_pass' "$nginx_conf" 2>/dev/null \
+    | grep -oE 'http://[^;]+' | sed 's|http://||' || true)"
+  local desired_upstream="${upstream_host}:${actual_port}"
+  if [[ "$current_upstream" != "$desired_upstream" ]]; then
+    sed -i "s|proxy_pass http://[^;]*;|proxy_pass http://${desired_upstream};|" "$nginx_conf"
+    green "  Updated nginx-oid4vci.conf: ${current_upstream:-?} → ${desired_upstream}"
   else
-    green "  nginx-oid4vci.conf already using port ${actual_port}"
+    green "  nginx-oid4vci.conf already using ${desired_upstream}"
   fi
 
   # Start or restart the rewriter so it picks up the patched config.
