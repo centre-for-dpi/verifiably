@@ -102,6 +102,31 @@ CREATE TABLE IF NOT EXISTS trusted_issuers (
     valid_until   TIMESTAMPTZ,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE trusted_issuers
+    ADD COLUMN IF NOT EXISTS service_endpoint      TEXT   NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS status_list_endpoints TEXT[] NOT NULL DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS status_list_policy    TEXT   NOT NULL DEFAULT 'fail-closed';
+
+CREATE TABLE IF NOT EXISTS verification_events (
+    id              TEXT        PRIMARY KEY,
+    issuer_did      TEXT        NOT NULL DEFAULT '',
+    schema_id       TEXT        NOT NULL DEFAULT '',
+    schema_name     TEXT        NOT NULL DEFAULT '',
+    verifier_dpg    TEXT        NOT NULL DEFAULT '',
+    deployment_id   TEXT        NOT NULL DEFAULT '',
+    status          TEXT        NOT NULL DEFAULT '',
+    trust_status    TEXT        NOT NULL DEFAULT '',
+    status_list_src TEXT        NOT NULL DEFAULT '',
+    verified_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ve_issuer_did_idx ON verification_events (issuer_did, verified_at DESC);
+
+CREATE TABLE IF NOT EXISTS issuer_api_keys (
+    did        TEXT        PRIMARY KEY,
+    key_hash   TEXT        NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 	_, err := pool.Exec(ctx, ddl)
 	return err

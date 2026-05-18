@@ -12,10 +12,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -34,12 +38,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/verifiably/verifiably-go/internal/adapters/factory"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
+	"github.com/verifiably/verifiably-go/internal/didresolver"
+	"github.com/verifiably/verifiably-go/internal/federation"
 	"github.com/verifiably/verifiably-go/internal/handlers"
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
 	"github.com/verifiably/verifiably-go/internal/metrics"
+	"github.com/verifiably/verifiably-go/internal/roles"
+	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
+	"github.com/verifiably/verifiably-go/internal/statuslistcache"
 	"github.com/verifiably/verifiably-go/internal/storage/pg"
+	"github.com/verifiably/verifiably-go/internal/verification"
 	redisstore "github.com/verifiably/verifiably-go/internal/storage/redis"
 	"github.com/verifiably/verifiably-go/internal/tracing"
 	"github.com/verifiably/verifiably-go/internal/trust"
@@ -210,10 +220,36 @@ func main() {
 		log.Printf("status-list: feature disabled — %v", err)
 	}
 
+	// Verification events log (Fase 6) — PostgreSQL only (by design: file-backed
+	// logs don't scale for Hub aggregation and can't support efficient issuer stats
+	// queries). nil when pool is absent — deployments without DB run fine without it.
+	if pgPool != nil {
+		h.VerificationLog = verification.NewPGLog(pgPool)
+		log.Printf("verification log: PostgreSQL backend active")
+	}
+
+	// Issuer API key store (Fase 7) — PostgreSQL only. nil disables the
+	// ecosystem analytics API and the key management UI in admin federation.
+	if pgPool != nil {
+		h.IssuerAPIKeyStore = trust.NewPGAPIKeyStore(pgPool)
+		log.Printf("issuer API key store: PostgreSQL backend active")
+	}
+
+	// Trust Registry health monitor (Fase 9) — probes each registered issuer's
+	// /healthz every 5 minutes and emits Prometheus gauges for alerting.
+	// Wired only when Hub role is active and a trust registry is configured.
+	// In non-hub deployments the monitor is nil (feature silently disabled).
+	if activeRoles.Has(roles.Hub) && h.TrustRegistry != nil {
+		hm := trust.NewMonitor()
+		h.TrustHealthMonitor = hm
+		hm.Start(shutCtx, h.TrustRegistry)
+		log.Printf("trust health monitor: started (expiry=hourly, endpoint=5min)")
+	}
+
 	// National trust registry — served as a signed JWT at GET /trust-registry.
 	// Uses PostgreSQL when pool is available; falls back to in-memory (dev/test).
-	// The JWT HMAC key is derived from the session secret so operators don't
-	// need to manage a separate signing secret.
+	// Signing: ES256 when VERIFIABLY_TRUST_SIGNING_KEY is set; HS256 (dev) otherwise.
+	// The public key is published at GET /.well-known/jwks.json.
 	{
 		var trustKey []byte
 		if s := os.Getenv("VERIFIABLY_SESSION_SECRET"); s != "" {
@@ -241,7 +277,74 @@ func main() {
 		if h.TrustJWTIssuer == "" {
 			h.TrustJWTIssuer = "verifiably-go"
 		}
-		log.Printf("trust registry: active (pg=%v, jwt-issuer=%s)", pgPool != nil, h.TrustJWTIssuer)
+		signingKey, err := loadTrustSigningKey()
+		if err != nil {
+			log.Printf("trust registry: ES256 key error (%v); signing disabled — trust registry unavailable", err)
+		} else {
+			h.TrustSigningKey = signingKey
+		}
+		log.Printf("trust registry: active (pg=%v, jwt-issuer=%s, alg=%s)",
+			pgPool != nil, h.TrustJWTIssuer, trustAlg(h.TrustSigningKey))
+	}
+
+	// Parse deployment roles. Done here (not at route-registration time) so the hub
+	// bootstrap and status-list cache wiring below can use it too.
+	// VERIFIABLY_ROLES="" (default) → all roles active (backwards-compatible).
+	activeRoles := roles.FromEnv()
+	activeRoles.Log()
+
+	// DID resolver — did:web with 10-minute document cache.
+	// Used by status list verification (Fase 10) and federation member validation (Fase 5).
+	h.DIDResolver = didresolver.NewWebResolver()
+
+	// --- Hub bootstrap (hub role only) ---
+	// In hub mode the Registry is seeded with one verifier adapter per federation
+	// member so FetchPresentationResult can route OID4VP responses by state prefix
+	// ("dpg:<member-id>:<inner-state>"). The trust registry is seeded from
+	// federation.json only on the very first boot (when it contains no entries);
+	// subsequent runs use DB as the authoritative source.
+	if activeRoles.Has(roles.Hub) {
+		if reg, ok := adapter.(*registry.Registry); ok {
+			bootstrapHub(shutCtx, reg, h)
+		} else {
+			log.Printf("hub: VERIFIABLY_ADAPTER=registry required for hub mode — federation bootstrap skipped")
+		}
+	}
+
+	// Status list cache (Fase 10) — wired for all roles so issuer deployments
+	// can also use it if needed. The background poller only runs in Hub mode.
+	{
+		slStateDir := os.Getenv("VERIFIABLY_STATE_DIR")
+		if slStateDir == "" {
+			slStateDir = "state"
+		}
+		slFetcher := statuslistcache.NewFetcher(slStateDir, h.DIDResolver)
+		h.StatusListCache = slFetcher
+		if activeRoles.Has(roles.Hub) && h.TrustRegistry != nil {
+			statuslistcache.NewPoller(slFetcher, h.TrustRegistry).Start(shutCtx)
+			log.Printf("status list cache: poller started (hub mode)")
+		}
+	}
+
+	// Schema federation cache (Fase 3) — Hub mode only.
+	// Aggregates schemas from all trusted issuers with a ServiceEndpoint.
+	// The TTL is 5 min; a background goroutine refreshes in the background so
+	// citizen /verify loads never block on upstream HTTP.
+	if activeRoles.Has(roles.Hub) && h.TrustRegistry != nil {
+		fedPath := os.Getenv("VERIFIABLY_FEDERATION_CONFIG")
+		if fedPath == "" {
+			fedPath = "config/federation.json"
+		}
+		memberIDs := map[string]string{}
+		if cfg, err := federation.LoadConfig(fedPath); err == nil {
+			for _, m := range cfg.Members {
+				memberIDs[m.DID] = m.ID
+			}
+		}
+		agg := schemacache.NewAggregator(5*time.Minute, memberIDs)
+		h.SchemaCache = agg
+		agg.Start(shutCtx, h.TrustRegistry)
+		log.Printf("schema cache: federation aggregator started (%d member IDs known)", len(memberIDs))
 	}
 
 	// Async bulk issuance job queue. Worker count is configurable via
@@ -282,6 +385,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// --- Core (always active regardless of roles) ---
 	// Liveness + readiness for K8s probes. /healthz: always 200 once the
 	// process is up. /readyz: checks VERIFIABLY_READYZ_URL reachability (2 s
 	// timeout) when the env var is set; 503 if the primary adapter is down.
@@ -321,19 +425,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ready"))
 	})
-
-	// Static files
-	staticFS := http.FileServer(http.Dir("static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", staticFS))
-
-	// Offer-hosting route for adapters that stage credential_offer JSON
-	// locally. Dispatches on /offers/{slug}/{id}; adapters store offers and
-	// serve them by id through factory.OffersHandler.
-	if reg, ok := adapter.(*registry.Registry); ok {
-		mux.Handle("/offers/", factory.OffersHandler(reg))
-	}
-
-	// Landing + auth
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	mux.HandleFunc("GET /{$}", h.Landing)
 	mux.HandleFunc("POST /role", h.PickRole)
 	mux.HandleFunc("GET /auth", h.Auth)
@@ -345,19 +437,18 @@ func main() {
 	mux.HandleFunc("GET /admin/login", h.ShowAdminLogin)
 	mux.HandleFunc("POST /admin/login", h.AdminLogin)
 	mux.HandleFunc("POST /admin/logout", h.AdminLogout)
-	mux.HandleFunc("GET /admin/auth-providers", h.ShowAuthProvidersAdmin)
-	mux.HandleFunc("POST /admin/auth-providers/{id}/delete", h.DeleteAuthProvider)
-	mux.HandleFunc("GET /admin/metrics", h.ShowAdminMetrics)
-	// Trust registry — public signed JWT + admin CRUD UI
-	mux.HandleFunc("GET /trust-registry", h.ServeTrustRegistry)
-	mux.HandleFunc("GET /admin/trust", h.ShowTrustRegistry)
-	mux.HandleFunc("POST /admin/trust", h.AddTrustedIssuer)
-	mux.HandleFunc("DELETE /admin/trust/{did}", h.DeleteTrustedIssuer)
 	mux.HandleFunc("GET /lang", h.SetLang)
 	mux.HandleFunc("POST /lang", h.SetLang)
 	mux.HandleFunc("GET /qr", h.QRImage)
 	mux.HandleFunc("GET /docs", h.DocsIndex)
 	mux.HandleFunc("GET /docs/view", h.DocsView)
+
+	// Offer-hosting route for adapters that stage credential_offer JSON
+	// locally. Dispatches on /offers/{slug}/{id}; adapters store offers and
+	// serve them by id through factory.OffersHandler.
+	if reg, ok := adapter.(*registry.Registry); ok {
+		mux.Handle("/offers/", factory.OffersHandler(reg))
+	}
 
 	// Inji Web integration: certify-nginx routes POST /v1/certify/issuance/credential
 	// back to us at host.docker.internal:8080/inji-proxy/issuance/credential. We
@@ -367,103 +458,151 @@ func main() {
 	// did:web resolution split PER INJI CERTIFY INSTANCE. Each instance has
 	// its own DID (did:web:certify-nginx for primary, did:web:certify-preauth-nginx
 	// for pre-auth) and its own handler that fetches ONLY that instance's
-	// upstream did.json — no merge, no ordering, no ambient kid-collision
-	// risk. Each handler also synthesises verificationMethod aliases for
-	// every kid the corresponding injidid.Observer has seen the instance
-	// sign with, so Inji Verify's strict kid matcher can resolve the key.
+	// upstream did.json — no merge, no ordering, no ambient kid-collision risk.
 	mux.HandleFunc("GET /inji-proxy/.well-known/did.json", h.InjiProxyPrimaryDidJSON)
 	mux.HandleFunc("GET /inji-proxy-preauth/.well-known/did.json", h.InjiProxyPreauthDidJSON)
-	// Bitstring status-list credentials are signed with a DIFFERENT kid than
-	// the main VC (both derive from the same key, different code paths).
-	// Proxy this endpoint too so rememberSigningKids() records the status-list
-	// kid and our did.json advertises it before Inji Verify tries to resolve.
+	// Proxy the status-list endpoint so rememberSigningKids() records the
+	// status-list kid before Inji Verify tries to resolve it.
 	mux.HandleFunc("GET /inji-proxy/credentials/status-list/{id}", h.InjiProxyStatusList)
 
-	// Issuer
-	mux.HandleFunc("GET /issuer/dpg", h.ShowIssuerDpgs)
-	mux.HandleFunc("POST /issuer/dpg", h.PickIssuerDpg)
-	mux.HandleFunc("POST /issuer/dpg/toggle", h.ToggleIssuerDpg)
-	mux.HandleFunc("GET /issuer/schema", h.ShowSchemaBrowser)
-	mux.HandleFunc("GET /issuer/schema/search", h.SchemaSearch)
-	mux.HandleFunc("POST /issuer/schema/filter", h.SetSchemaFilter)
-	mux.HandleFunc("POST /issuer/schema/expand", h.ToggleSchemaExpand)
-	mux.HandleFunc("POST /issuer/schema/select", h.SelectSchema)
-	mux.HandleFunc("POST /issuer/schema/delete", h.DeleteSchema)
-	mux.HandleFunc("GET /issuer/schema/build", h.ShowSchemaBuilder)
-	mux.HandleFunc("POST /issuer/schema/build/preview", h.SchemaPreview)
-	mux.HandleFunc("POST /issuer/schema/build/add-field", h.AddSchemaField)
-	mux.HandleFunc("POST /issuer/schema/build/remove-field", h.RemoveSchemaField)
-	mux.HandleFunc("POST /issuer/schema/build/save", h.SaveSchema)
-	mux.HandleFunc("GET /issuer/mode", h.ShowIssuanceMode)
-	mux.HandleFunc("POST /issuer/mode", h.SetIssuanceMode)
-	// Public status-list endpoints — verifiers GET these to check
-	// revocation. Must be unauthenticated and survive any session cookie
-	// gymnastics, hence registered before any auth middleware below.
-	mux.HandleFunc("GET /status-list/bitstring/{id}", h.PublishBitstringStatusList)
-	mux.HandleFunc("GET /status-list/token/{id}", h.PublishTokenStatusList)
+	// --- Schema federation (schemas | hub) ---
+	// GET /api/schemas exposes the issuer's custom schemas as a public JSON API
+	// so the Hub's schema aggregator can aggregate across all federation members.
+	// OPTIONS is registered separately because Go 1.22's mux matches by method.
+	if activeRoles.Has(roles.Schemas) {
+		mux.HandleFunc("GET /api/schemas", h.ServePublicSchemas)
+		mux.HandleFunc("OPTIONS /api/schemas", h.ServePublicSchemas)
+	}
 
-	// Issued-credentials list page + Revoke action.
-	mux.HandleFunc("GET /issuer/credentials", h.ShowIssuedCredentials)
-	mux.HandleFunc("GET /issuer/credentials/search", h.IssuedCredentialsSearch)
-	mux.HandleFunc("POST /issuer/credentials/{id}/revoke", h.RevokeIssuedCredential)
+	// --- Trust registry (trust | hub) ---
+	// Public signed JWT at GET /trust-registry + JWKS at /.well-known/jwks.json
+	// + admin CRUD UI.
+	if activeRoles.Has(roles.Trust) {
+		mux.HandleFunc("GET /trust-registry", h.ServeTrustRegistry)
+		mux.HandleFunc("GET /.well-known/jwks.json", h.ServeJWKS)
+		mux.HandleFunc("GET /admin/trust", h.ShowTrustRegistry)
+		mux.HandleFunc("POST /admin/trust", h.AddTrustedIssuer)
+		mux.HandleFunc("DELETE /admin/trust/{did}", h.DeleteTrustedIssuer)
+	}
 
-	mux.HandleFunc("GET /issuer/issue", h.ShowIssue)
-	mux.HandleFunc("POST /issuer/issue", h.SubmitIssue)
-	mux.HandleFunc("POST /issuer/issue/source", h.SetSingleSource)
-	mux.HandleFunc("POST /issuer/issue/csv", h.SimulateCSV)
-	mux.HandleFunc("POST /issuer/issue/bulk/source", h.BulkSource)
-	mux.HandleFunc("POST /issuer/issue/bulk/api", h.BulkFromAPI)
-	mux.HandleFunc("POST /issuer/issue/bulk/db", h.BulkFromDB)
-	mux.HandleFunc("GET /issuer/issue/pdf/{id}", h.DownloadPDF)
-	mux.HandleFunc("POST /issuer/issue/preview-pdf", h.PreviewPDF)
+	// --- Admin shared (issuer | verifier) ---
+	if activeRoles.Has(roles.Issuer) || activeRoles.Has(roles.Verifier) {
+		mux.HandleFunc("GET /admin/auth-providers", h.ShowAuthProvidersAdmin)
+		mux.HandleFunc("POST /admin/auth-providers/{id}/delete", h.DeleteAuthProvider)
+		mux.HandleFunc("GET /admin/metrics", h.ShowAdminMetrics)
+	}
 
-	// Holder / Wallet
-	mux.HandleFunc("GET /holder/dpg", h.ShowHolderDpgs)
-	mux.HandleFunc("POST /holder/dpg", h.PickHolderDpg)
-	mux.HandleFunc("POST /holder/dpg/toggle", h.ToggleHolderDpg)
-	mux.HandleFunc("GET /holder/wallet", h.ShowWallet)
-	mux.HandleFunc("POST /holder/wallet/scan", h.ScanOffer)
-	mux.HandleFunc("POST /holder/wallet/paste", h.PasteOffer)
-	mux.HandleFunc("POST /holder/wallet/example", h.PrefillExample)
-	mux.HandleFunc("POST /holder/wallet/accept", h.AcceptCred)
-	mux.HandleFunc("POST /holder/wallet/reject", h.RejectCred)
-	mux.HandleFunc("GET /holder/present", h.ShowPresent)
-	mux.HandleFunc("POST /holder/present/confirm", h.ConfirmPresent)
-	mux.HandleFunc("POST /holder/present/submit", h.SubmitPresent)
-	mux.HandleFunc("POST /holder/present/decline", h.DeclinePresent)
-	mux.HandleFunc("POST /holder/wallet/delete", h.DeleteCredential)
+	// --- Issuer ---
+	if activeRoles.Has(roles.Issuer) {
+		mux.HandleFunc("GET /issuer/dpg", h.ShowIssuerDpgs)
+		mux.HandleFunc("POST /issuer/dpg", h.PickIssuerDpg)
+		mux.HandleFunc("POST /issuer/dpg/toggle", h.ToggleIssuerDpg)
+		mux.HandleFunc("GET /issuer/schema", h.ShowSchemaBrowser)
+		mux.HandleFunc("GET /issuer/schema/search", h.SchemaSearch)
+		mux.HandleFunc("POST /issuer/schema/filter", h.SetSchemaFilter)
+		mux.HandleFunc("POST /issuer/schema/expand", h.ToggleSchemaExpand)
+		mux.HandleFunc("POST /issuer/schema/select", h.SelectSchema)
+		mux.HandleFunc("POST /issuer/schema/delete", h.DeleteSchema)
+		mux.HandleFunc("GET /issuer/schema/build", h.ShowSchemaBuilder)
+		mux.HandleFunc("POST /issuer/schema/build/preview", h.SchemaPreview)
+		mux.HandleFunc("POST /issuer/schema/build/add-field", h.AddSchemaField)
+		mux.HandleFunc("POST /issuer/schema/build/remove-field", h.RemoveSchemaField)
+		mux.HandleFunc("POST /issuer/schema/build/save", h.SaveSchema)
+		mux.HandleFunc("GET /issuer/mode", h.ShowIssuanceMode)
+		mux.HandleFunc("POST /issuer/mode", h.SetIssuanceMode)
+		// Public status-list endpoints — unauthenticated, used by verifiers to
+		// check revocation status of credentials this instance issued.
+		mux.HandleFunc("GET /status-list/bitstring/{id}", h.PublishBitstringStatusList)
+		mux.HandleFunc("GET /status-list/token/{id}", h.PublishTokenStatusList)
+		mux.HandleFunc("GET /issuer/credentials", h.ShowIssuedCredentials)
+		mux.HandleFunc("GET /issuer/credentials/search", h.IssuedCredentialsSearch)
+		mux.HandleFunc("POST /issuer/credentials/{id}/revoke", h.RevokeIssuedCredential)
+		mux.HandleFunc("GET /issuer/issue", h.ShowIssue)
+		mux.HandleFunc("POST /issuer/issue", h.SubmitIssue)
+		mux.HandleFunc("POST /issuer/issue/source", h.SetSingleSource)
+		mux.HandleFunc("POST /issuer/issue/csv", h.SimulateCSV)
+		mux.HandleFunc("POST /issuer/issue/bulk/source", h.BulkSource)
+		mux.HandleFunc("POST /issuer/issue/bulk/api", h.BulkFromAPI)
+		mux.HandleFunc("POST /issuer/issue/bulk/db", h.BulkFromDB)
+		mux.HandleFunc("GET /issuer/issue/pdf/{id}", h.DownloadPDF)
+		mux.HandleFunc("POST /issuer/issue/preview-pdf", h.PreviewPDF)
+		// REST API — issuance endpoints.
+		// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
+		mux.HandleFunc("POST /api/v1/credentials/issue/bulk/async", h.APIIssueBulkAsync)
+		mux.HandleFunc("GET /api/v1/bulk/{jobID}/events", h.APIBulkJobEvents)
+		mux.HandleFunc("GET /api/v1/bulk/{jobID}", h.APIBulkJobStatus)
+		mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
+		mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
+		mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
+		mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
+		mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)
+		mux.HandleFunc("POST /api/v1/credentials/{id}/reinstate", h.APIReinstate)
+	}
 
-	// Verifier
-	mux.HandleFunc("GET /verifier/dpg", h.ShowVerifierDpgs)
-	mux.HandleFunc("POST /verifier/dpg", h.PickVerifierDpg)
-	mux.HandleFunc("POST /verifier/dpg/toggle", h.ToggleVerifierDpg)
-	mux.HandleFunc("GET /verifier/verify", h.ShowVerify)
-	mux.HandleFunc("POST /verifier/verify/request", h.GenerateRequest)
-	mux.HandleFunc("POST /verifier/verify/response", h.SimulateResponse)
-	mux.HandleFunc("POST /verifier/verify/direct", h.VerifyDirect)
-	mux.HandleFunc("POST /verifier/verify/build", h.BuildVerifierTemplate)
+	// --- Holder ---
+	if activeRoles.Has(roles.Holder) {
+		mux.HandleFunc("GET /holder/dpg", h.ShowHolderDpgs)
+		mux.HandleFunc("POST /holder/dpg", h.PickHolderDpg)
+		mux.HandleFunc("POST /holder/dpg/toggle", h.ToggleHolderDpg)
+		mux.HandleFunc("GET /holder/wallet", h.ShowWallet)
+		mux.HandleFunc("POST /holder/wallet/scan", h.ScanOffer)
+		mux.HandleFunc("POST /holder/wallet/paste", h.PasteOffer)
+		mux.HandleFunc("POST /holder/wallet/example", h.PrefillExample)
+		mux.HandleFunc("POST /holder/wallet/accept", h.AcceptCred)
+		mux.HandleFunc("POST /holder/wallet/reject", h.RejectCred)
+		mux.HandleFunc("GET /holder/present", h.ShowPresent)
+		mux.HandleFunc("POST /holder/present/confirm", h.ConfirmPresent)
+		mux.HandleFunc("POST /holder/present/submit", h.SubmitPresent)
+		mux.HandleFunc("POST /holder/present/decline", h.DeclinePresent)
+		mux.HandleFunc("POST /holder/wallet/delete", h.DeleteCredential)
+	}
 
-	// REST API — /api/v1/*
-	// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
-	mux.HandleFunc("POST /api/v1/credentials/issue/bulk/async", h.APIIssueBulkAsync)
-	mux.HandleFunc("GET /api/v1/bulk/{jobID}/events", h.APIBulkJobEvents)
-	mux.HandleFunc("GET /api/v1/bulk/{jobID}", h.APIBulkJobStatus)
-	mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
-	mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
-	mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
-	mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
-	mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)
-	mux.HandleFunc("POST /api/v1/credentials/{id}/reinstate", h.APIReinstate)
-	mux.HandleFunc("POST /api/v1/verify/request", h.APIVerifyRequest)
-	mux.HandleFunc("GET /api/v1/verify/result/{state}", h.APIVerifyResult)
+	// --- Verifier ---
+	if activeRoles.Has(roles.Verifier) {
+		mux.HandleFunc("GET /verifier/dpg", h.ShowVerifierDpgs)
+		mux.HandleFunc("POST /verifier/dpg", h.PickVerifierDpg)
+		mux.HandleFunc("POST /verifier/dpg/toggle", h.ToggleVerifierDpg)
+		mux.HandleFunc("GET /verifier/verify", h.ShowVerify)
+		mux.HandleFunc("POST /verifier/verify/request", h.GenerateRequest)
+		mux.HandleFunc("POST /verifier/verify/response", h.SimulateResponse)
+		mux.HandleFunc("POST /verifier/verify/direct", h.VerifyDirect)
+		mux.HandleFunc("POST /verifier/verify/build", h.BuildVerifierTemplate)
+		// REST API — verification endpoints.
+		mux.HandleFunc("POST /api/v1/verify/request", h.APIVerifyRequest)
+		mux.HandleFunc("GET /api/v1/verify/result/{state}", h.APIVerifyResult)
+	}
 
-	// API docs — redirect to static files already served by the staticFS handler.
-	mux.HandleFunc("GET /api/docs", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/scalar.html", http.StatusFound)
-	})
-	mux.HandleFunc("GET /api/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/openapi.yaml", http.StatusFound)
-	})
+	// --- API docs (issuer | verifier) ---
+	if activeRoles.Has(roles.Issuer) || activeRoles.Has(roles.Verifier) {
+		mux.HandleFunc("GET /api/docs", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/static/scalar.html", http.StatusFound)
+		})
+		mux.HandleFunc("GET /api/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/static/openapi.yaml", http.StatusFound)
+		})
+	}
+
+	// --- Hub (hub role only) ---
+	// Public citizen verification portal (/verify) + schema federation API
+	// (GET /schemas returns aggregated schemas from all members) + admin CRUD.
+	if activeRoles.Has(roles.Hub) {
+		// Public portal — no auth required. Rate-limited by IP via h.RateLimiter.
+		mux.HandleFunc("GET /verify", h.ShowPublicVerify)
+		mux.HandleFunc("POST /verify/request", h.PublicVerifyRequest)
+		mux.HandleFunc("GET /verify/result/{state}", h.PublicVerifyResult)
+		// Federated schema registry — returns schemas aggregated from all members.
+		mux.HandleFunc("GET /schemas", h.ServeHubSchemas)
+		mux.HandleFunc("OPTIONS /schemas", h.ServeHubSchemas)
+		// Admin federation member CRUD.
+		mux.HandleFunc("GET /admin/federation/members", h.ShowFederationMembers)
+		mux.HandleFunc("POST /admin/federation/members", h.RegisterFederationMember)
+		mux.HandleFunc("POST /admin/federation/members/{did}/delete", h.DeleteFederationMember)
+		// Issuer API key lifecycle (Fase 7).
+		mux.HandleFunc("POST /admin/federation/members/{did}/api-key", h.IssueAPIKey)
+		mux.HandleFunc("POST /admin/federation/members/{did}/api-key/revoke", h.RevokeAPIKey)
+		// Ecosystem analytics API (Fase 7) — Bearer API key auth.
+		mux.HandleFunc("GET /api/ecosystem/issuers/{did}/stats", h.GetEcosystemIssuerStats)
+	}
 
 	// Wrap the mux with tracing (outermost) then request-ID. Order matters:
 	// tracing middleware creates the root span for every request; the request-ID
@@ -620,6 +759,107 @@ func withRequestID(next http.Handler) http.Handler {
 	})
 }
 
+// bootstrapHub loads federation members and wires them into the Hub's Registry.
+// For each member with a VerifierBackendType, a verifier adapter is built and
+// registered so OID4VP state routing ("dpg:<member-id>:...") works correctly.
+// If the trust registry is empty on first boot, members are seeded from
+// federation.json; subsequent boots leave DB entries untouched.
+func bootstrapHub(ctx context.Context, reg *registry.Registry, h *handlers.H) {
+	fedPath := os.Getenv("VERIFIABLY_FEDERATION_CONFIG")
+	if fedPath == "" {
+		fedPath = "config/federation.json"
+	}
+	cfg, err := federation.LoadConfig(fedPath)
+	if err != nil {
+		log.Printf("hub: federation config unavailable (%v) — starting with empty member set", err)
+		return
+	}
+
+	// Register a verifier adapter for each member that declares one.
+	for _, e := range cfg.ToBackendEntries() {
+		ad, err := factory.Build(e)
+		if err != nil {
+			log.Printf("hub: build verifier for member %q: %v", e.Vendor, err)
+			continue
+		}
+		if ad == nil {
+			log.Printf("hub: member %q type=%q not supported — skipping", e.Vendor, e.Type)
+			continue
+		}
+		reg.Register(e.Vendor, e.DPG, e.Roles, ad)
+		log.Printf("hub: registered member %q as verifier (type=%s)", e.Vendor, e.Type)
+	}
+
+	// Seed trust registry from federation.json only when the DB is empty.
+	if h.TrustRegistry == nil {
+		return
+	}
+	existing, err := h.TrustRegistry.TrustedIssuers(ctx)
+	if err != nil {
+		log.Printf("hub: query trust registry: %v", err)
+		return
+	}
+	if len(existing) > 0 {
+		log.Printf("hub: trust registry has %d member(s) — skipping seed from %s", len(existing), fedPath)
+		return
+	}
+	for _, m := range cfg.Members {
+		entry := trust.TrustedIssuer{
+			DID:          m.DID,
+			DisplayName:  m.Name,
+			AccreditedAt: time.Now().UTC(),
+		}
+		if err := h.TrustRegistry.Add(ctx, entry); err != nil {
+			log.Printf("hub: seed trust registry for %q: %v", m.DID, err)
+			continue
+		}
+	}
+	log.Printf("hub: seeded trust registry with %d member(s) from %s", len(cfg.Members), fedPath)
+}
+
+// loadTrustSigningKey loads the ECDSA P-256 private key used to sign the
+// trust registry JWT (ES256). When VERIFIABLY_TRUST_SIGNING_KEY is set it
+// must contain a PEM-encoded EC private key (openssl ecparam + openssl ec).
+// When the env var is absent an ephemeral key is generated — works for dev/test
+// but the public key changes on every restart so external verifiers can't cache it.
+func loadTrustSigningKey() (*ecdsa.PrivateKey, error) {
+	pemStr := os.Getenv("VERIFIABLY_TRUST_SIGNING_KEY")
+	if pemStr == "" {
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, fmt.Errorf("trust: generate ephemeral ES256 key: %w", err)
+		}
+		log.Printf("trust registry: VERIFIABLY_TRUST_SIGNING_KEY not set — using ephemeral ES256 key (dev only; set key for production)")
+		return key, nil
+	}
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("trust: VERIFIABLY_TRUST_SIGNING_KEY is not valid PEM")
+	}
+	key, err := x509.ParseECPrivateKey(block.Bytes)
+	if err != nil {
+		// Also try PKCS8 format (openssl genpkey output)
+		parsed, err2 := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err2 != nil {
+			return nil, fmt.Errorf("trust: parse VERIFIABLY_TRUST_SIGNING_KEY (EC: %v; PKCS8: %v)", err, err2)
+		}
+		ec, ok := parsed.(*ecdsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("trust: VERIFIABLY_TRUST_SIGNING_KEY is not an EC key")
+		}
+		return ec, nil
+	}
+	return key, nil
+}
+
+// trustAlg returns the JWT algorithm string for logging.
+func trustAlg(key *ecdsa.PrivateKey) string {
+	if key != nil {
+		return "ES256"
+	}
+	return "HS256"
+}
+
 // loadTemplates walks templates/ and parses every *.html file into a single tree
 // with template names matching their {{define}} directives.
 func loadTemplates(root string, tr handlers.Translator) (*template.Template, error) {
@@ -661,6 +901,16 @@ func funcMap(tr handlers.Translator) template.FuncMap {
 				return s
 			}
 			return ""
+		},
+		// daysUntil returns the whole number of days from now until t.
+		// Returns a large positive number (99999) when t is zero (no expiry set),
+		// so templates treat no-expiry as "green" without a special case.
+		// Returns a negative number when t is in the past (expired).
+		"daysUntil": func(t time.Time) int {
+			if t.IsZero() {
+				return 99999
+			}
+			return int(time.Until(t).Hours() / 24)
 		},
 		"hasPrefix":         strings.HasPrefix,
 		"replaceUnderscore": func(s string) string { return strings.ReplaceAll(s, "_", " ") },

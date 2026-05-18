@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -16,10 +17,14 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/auth"
+	"github.com/verifiably/verifiably-go/internal/didresolver"
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
+	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
+	"github.com/verifiably/verifiably-go/internal/statuslistcache"
 	"github.com/verifiably/verifiably-go/internal/trust"
+	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -88,10 +93,50 @@ type H struct {
 	// OID4VP result and every VerifyDirect call checks the Issuer DID
 	// against the registry and populates VerificationResult.TrustStatus.
 	// nil disables trust-registry checks (all results show TrustStatus="").
-	// TrustJWTSecret is the HMAC key used to sign the /trust-registry JWT.
+	// TrustJWTSecret is the HMAC key used to sign the /trust-registry JWT (HS256 dev path).
 	TrustRegistry   trust.Registry
 	TrustJWTSecret  []byte
 	TrustJWTIssuer  string
+	// TrustSigningKey is the ECDSA P-256 private key for ES256 JWT signing.
+	// When non-nil, GET /trust-registry uses ES256 and GET /.well-known/jwks.json
+	// exposes the matching public key. When nil, falls back to HS256 (dev only).
+	// Set from VERIFIABLY_TRUST_SIGNING_KEY (PEM); an ephemeral key is generated
+	// when the env var is absent so the endpoint always works.
+	TrustSigningKey *ecdsa.PrivateKey
+	// DIDResolver resolves did:web DIDs to their DID Documents.
+	// Used by status list verification (Fase 10) and federation validation (Fase 5).
+	// Wired at startup with a WebResolver (10-minute document cache).
+	DIDResolver didresolver.Resolver
+
+	// StatusListCache holds cached copies of trusted issuers' status list JWTs.
+	// Wired in Hub mode by cmd/server/main.go; nil disables the availability check
+	// on the public /verify portal (StatusListSource will be "" for all results).
+	StatusListCache statuslistcache.Cache
+
+	// SchemaCache aggregates schemas from all federation members (Hub mode).
+	// When non-nil, ShowPublicVerify uses the federated schema list and
+	// PublicVerifyRequest routes by SourceDeployment to the correct adapter.
+	// Wired at startup in hub mode by cmd/server/main.go.
+	SchemaCache *schemacache.Aggregator
+
+	// VerificationLog records completed verification events for ecosystem
+	// analytics (Fase 6). PostgreSQL-backed in Hub mode; nil disables logging
+	// so file-only deployments work without a DB. Events are written in a
+	// fire-and-forget goroutine — errors are logged but never block the response.
+	VerificationLog verification.Log
+
+	// TrustHealthMonitor probes registered issuers' /healthz endpoints every
+	// 5 minutes and emits trusted_issuer_endpoint_up / trusted_issuer_days_until_expiry
+	// Prometheus gauges (Fase 9). In-memory status is used to render the health
+	// semaphore in the admin federation page. nil disables health monitoring.
+	TrustHealthMonitor *trust.Monitor
+
+	// IssuerAPIKeyStore manages per-issuer API keys for the ecosystem
+	// analytics API (Fase 7). PostgreSQL-backed; nil when no DB is available
+	// (disables GET /api/ecosystem/issuers/{did}/stats and the key management
+	// UI in admin federation). Keys are stored as SHA-256 hashes; plaintext
+	// is shown once at generation time and never stored.
+	IssuerAPIKeyStore trust.APIKeyStore
 
 	// PrometheusURL is the base URL of the Prometheus server used to back
 	// the /admin/metrics UI with persistent historical data.
@@ -357,6 +402,8 @@ func titleFor(page string) string {
 		"admin_auth_providers":   "Admin · OIDC providers",
 		"admin_trust":            "Admin · Trust registry",
 		"admin_metrics":          "Admin · Metrics",
+		"admin_federation":       "Admin · Federation",
+		"public_verify":          "Verificar",
 	}[page]
 }
 
