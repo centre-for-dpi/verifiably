@@ -1265,6 +1265,46 @@ ensure_credebl_platform_admin_shared_agent() {
       psql -U credebl -d credebl "$@"
   }
 
+  # Rewrite org_agents.agentEndPoint to use the Credo container's Docker-internal
+  # IP. On Linux VPS, agent-provisioning writes the public IP (e.g. 161.97.152.40)
+  # into the endpoint file, and agent-service copies it to DB. Docker containers
+  # cannot reach the host's public IP via hairpin NAT, causing ETIMEDOUT on every
+  # subsequent issuance/verification call. Container IPs are reachable from both
+  # agent-service (same Docker network) and the deploy script (Linux host routes
+  # directly to Docker bridge subnets). Docker Desktop uses hostnames like
+  # host.docker.internal, which don't match the public-IP regex, so this is a no-op.
+  _normalize_credo_endpoint() {
+    local _credo_ctr
+    _credo_ctr="$(docker ps --format '{{.Names}}' \
+      | grep -E '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_' \
+      | head -1)"
+    [[ -z "$_credo_ctr" ]] && return 0
+    local _credo_net_ip
+    _credo_net_ip="$(docker inspect "$_credo_ctr" \
+      --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null \
+      | awk 'NF{print $1}' | head -1)"
+    [[ -z "$_credo_net_ip" ]] && return 0
+    local _cur_ep
+    _cur_ep="$(_credebl_pg -Atqc "
+      SELECT COALESCE(oa.\"agentEndPoint\",'')
+      FROM org_agents oa JOIN organisation o ON o.id = oa.\"orgId\"
+      WHERE o.name = 'Platform-admin' LIMIT 1;" 2>/dev/null | tr -d '\r')"
+    local _ep_host="${_cur_ep#http://}"; _ep_host="${_ep_host#https://}"; _ep_host="${_ep_host%%:*}"
+    # Only rewrite when the stored host is a public IP (not 10/172/192.168 or hostname)
+    if [[ "$_ep_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+       && [[ ! "$_ep_host" =~ ^(10\.|172\.|192\.168\.) ]] \
+       && [[ "$_ep_host" != "$_credo_net_ip" ]]; then
+      local _ep_port="${_cur_ep##*:}"
+      local _new_ep="http://${_credo_net_ip}:${_ep_port}"
+      _credebl_pg -q -c "
+        UPDATE org_agents oa
+        SET \"agentEndPoint\" = '${_new_ep}'
+        FROM organisation o
+        WHERE oa.\"orgId\" = o.id AND o.name = 'Platform-admin';" 2>/dev/null || true
+      echo "  agentEndPoint: ${_cur_ep} → ${_new_ep} (Docker-internal)"
+    fi
+  }
+
   _platform_admin_agent_ready() {
     local row status endpoint token_url
     row="$(_credebl_pg -Atqc "
@@ -1303,6 +1343,7 @@ ensure_credebl_platform_admin_shared_agent() {
   fi
 
   if _platform_admin_agent_ready; then
+    _normalize_credo_endpoint
     green "  Platform-admin shared agent is ready."
     return 0
   fi
@@ -1336,6 +1377,7 @@ ensure_credebl_platform_admin_shared_agent() {
         FROM organisation o
         WHERE oa.\"orgId\" = o.id AND o.name = 'Platform-admin';" 2>/dev/null || true
       if _platform_admin_agent_ready; then
+        _normalize_credo_endpoint
         green "  Platform-admin shared agent recovered (wallet already existed)."
         return 0
       fi
@@ -1383,13 +1425,18 @@ ensure_credebl_platform_admin_shared_agent() {
     sleep 130
 
     if _platform_admin_agent_ready; then
+      _normalize_credo_endpoint
       green "  Platform-admin shared agent is ready."
       return 0
     fi
     local extra=0
     while [[ $extra -lt 90 ]]; do
       sleep 15; extra=$((extra + 15))
-      _platform_admin_agent_ready && { green "  Platform-admin shared agent is ready."; return 0; }
+      if _platform_admin_agent_ready; then
+        _normalize_credo_endpoint
+        green "  Platform-admin shared agent is ready."
+        return 0
+      fi
       echo "  Still waiting... (${extra}s extra)"
     done
     attempt=$((attempt + 1))
