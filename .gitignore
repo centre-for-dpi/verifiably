@@ -81,3 +81,10 @@ verifiably-go/deploy/k8s/terraform/bootstrap/local-kind/.tfstate/
 # appended to the runtime file by internal/adapters/waltid/issuer.go,
 # and we DO NOT want git to revert that on the next pull/checkout.
 verifiably-go/deploy/k8s/config/issuer/credential-issuer-metadata.conf
+verifiably-go/deploy/compose/hub/.env
+verifiably-go/deploy/compose/credebl/config/credebl.env
+verifiably-go/deploy/compose/credebl/.agent-runtime/endpoints/dfffc22c-e706-49ad-87f7-8568e8d856e0_Platform-admin.json
+verifiably-go/deploy/compose/credebl/.agent-runtime/agent-config/dfffc22c-e706-49ad-87f7-8568e8d856e0_Platform-admin.json
+verifiably-go/deploy/compose/credebl/.agent-runtime/nginx-oid4vci.conf
+verifiably-go/deploy/compose/credebl/.agent-runtime/agent.env
+verifiably-go/config/trust-signing-key.pem
