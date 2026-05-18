@@ -10,12 +10,18 @@
 #            config/federation.json \
 #            deploy/compose/hub/federation-targets.json
 #
-# Start:
-#   docker compose -f deploy/compose/hub/docker-compose.yml up -d
+# Start (localhost / dev):
+#   ./deploy.sh up hub
+#   Hub:        http://localhost:8080
+#   Grafana:    http://localhost:3100  (admin / <GRAFANA_PASSWORD>)
+#   Prometheus: http://localhost:9090  (internal — firewall in production)
 #
-# Grafana:    http://localhost:3100  (admin / admin)
-# Prometheus: http://localhost:9090
-# Hub:        http://localhost:8080
+# Start (production TLS — set VERIFIABLY_PUBLIC_DOMAIN + VERIFIABLY_LE_EMAIL):
+#   ./deploy.sh up hub
+#   Hub:     https://<VERIFIABLY_PUBLIC_DOMAIN>
+#   Grafana: https://grafana.<VERIFIABLY_PUBLIC_DOMAIN>
+#   Caddy acquires Let's Encrypt certificates automatically.
+#   Firewall ports 8080, 3100, 9090 from public access; only 80 + 443 needed.
 #
 name: verifiably-hub
 
@@ -89,8 +95,10 @@ services:
       # Generated federation targets (update with generate-federation-prometheus.sh)
       - ./federation-targets.json:/etc/prometheus/federation-targets.json:ro
       - prometheus-data:/prometheus
+    # Port published for local/dev access. In production, firewall port 9090
+    # and query Prometheus only through Grafana (internal network).
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "${PROMETHEUS_PORT:-127.0.0.1:9090}:9090"
     networks:
       - hub
     healthcheck:
@@ -114,6 +122,8 @@ services:
       - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
+    # In TLS mode Grafana is accessed via Caddy at grafana.<domain>; the
+    # direct port bind is kept for dev/localhost convenience.
     ports:
       - "${GRAFANA_PORT:-3100}:3000"
     depends_on:
@@ -127,6 +137,39 @@ services:
       timeout: 5s
       retries: 3
 
+  # caddy — TLS reverse proxy for production deployments.
+  # Activated only when VERIFIABLY_PUBLIC_DOMAIN is set (tls compose profile).
+  # In localhost/dev mode this service does not start; direct port binds handle traffic.
+  caddy:
+    image: caddy:2.8
+    container_name: hub-caddy
+    restart: unless-stopped
+    profiles:
+      - tls
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      HUB_DOMAIN: ${VERIFIABLY_PUBLIC_DOMAIN:?set VERIFIABLY_PUBLIC_DOMAIN in .env for tls profile}
+      LE_EMAIL: ${VERIFIABLY_LE_EMAIL:?set VERIFIABLY_LE_EMAIL in .env for tls profile}
+    volumes:
+      - ./Caddyfile.hub:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      verifiably-go:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    networks:
+      - hub
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
 volumes:
   postgres-data:
     name: hub-postgres-data
@@ -136,6 +179,10 @@ volumes:
     name: hub-prometheus-data
   grafana-data:
     name: hub-grafana-data
+  caddy-data:
+    name: hub-caddy-data
+  caddy-config:
+    name: hub-caddy-config
 
 networks:
   hub:

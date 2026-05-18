@@ -808,6 +808,21 @@ ensure_hub_env() {
   grafana_pass="${grafana_pass:-admin}"
   set_env_var "$HUB_ENV_FILE" "GRAFANA_PASSWORD" "$grafana_pass"
 
+  # Optional: production TLS via Caddy (tls compose profile).
+  local hub_domain le_email
+  printf "  Public domain for TLS (e.g. verify.cdpi.dev — leave blank for localhost): "
+  read -r hub_domain
+  if [[ -n "$hub_domain" ]]; then
+    set_env_var "$HUB_ENV_FILE" "VERIFIABLY_PUBLIC_DOMAIN" "$hub_domain"
+    # VERIFIABLY_PUBLIC_URL should use https when a domain is set.
+    set_env_var "$HUB_ENV_FILE" "VERIFIABLY_PUBLIC_URL" "https://${hub_domain}"
+    printf "  Let's Encrypt email: "
+    read -r le_email
+    set_env_var "$HUB_ENV_FILE" "VERIFIABLY_LE_EMAIL" "${le_email}"
+    # In TLS mode Grafana is served at grafana.<domain> via Caddy.
+    set_env_var "$HUB_ENV_FILE" "GRAFANA_EXTERNAL_URL" "https://grafana.${hub_domain}"
+  fi
+
   green "  hub env: deploy/compose/hub/.env (created)"
 }
 
@@ -850,24 +865,45 @@ cmd_up_hub() {
   bold "▶ Hub: building image ($hub_image)"
   docker build --progress=plain -t "$hub_image" "$SCRIPT_DIR"
 
-  bold "▶ Hub: starting stack (postgres + verifiably-go + prometheus + grafana)"
-  hub_compose up -d
+  # Read VERIFIABLY_PUBLIC_DOMAIN from hub .env to decide whether to activate
+  # the tls compose profile (which brings up Caddy with Let's Encrypt).
+  local hub_domain=""
+  hub_domain=$(grep -E '^VERIFIABLY_PUBLIC_DOMAIN=' "$HUB_ENV_FILE" 2>/dev/null \
+    | cut -d= -f2- | tr -d '"' || true)
+
+  local profile_args=()
+  if [[ -n "$hub_domain" ]]; then
+    profile_args+=( --profile tls )
+    bold "▶ Hub: starting stack with TLS (Caddy + Let's Encrypt) for ${hub_domain}"
+  else
+    bold "▶ Hub: starting stack (postgres + verifiably-go + prometheus + grafana)"
+  fi
+  hub_compose "${profile_args[@]}" up -d
 
   # Read ports for the summary (fall back to defaults from .env.example).
-  local hub_port prom_port grafana_port
+  local hub_port prom_port grafana_port grafana_ext
   hub_port=$(grep -E '^HUB_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 8080)
   prom_port=$(grep -E '^PROMETHEUS_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 9090)
   grafana_port=$(grep -E '^GRAFANA_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 3100)
+  grafana_ext=$(grep -E '^GRAFANA_EXTERNAL_URL=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
   hub_port="${hub_port:-8080}"
   prom_port="${prom_port:-9090}"
   grafana_port="${grafana_port:-3100}"
 
   echo
   green "  Hub is up."
-  echo "    Hub:        http://localhost:${hub_port}"
-  echo "    Admin:      http://localhost:${hub_port}/admin/login"
-  echo "    Prometheus: http://localhost:${prom_port}"
-  echo "    Grafana:    http://localhost:${grafana_port}  (admin / <GRAFANA_PASSWORD>)"
+  if [[ -n "$hub_domain" ]]; then
+    echo "    Hub:        https://${hub_domain}"
+    echo "    Admin:      https://${hub_domain}/admin/login"
+    echo "    Grafana:    https://grafana.${hub_domain}  (admin / <GRAFANA_PASSWORD>)"
+    echo "    Prometheus: http://localhost:${prom_port}  (loopback only)"
+    yellow "  Caddy is acquiring Let's Encrypt certificates — first request may be slow."
+  else
+    echo "    Hub:        http://localhost:${hub_port}"
+    echo "    Admin:      http://localhost:${hub_port}/admin/login"
+    echo "    Prometheus: http://localhost:${prom_port}"
+    echo "    Grafana:    ${grafana_ext:-http://localhost:${grafana_port}}  (admin / <GRAFANA_PASSWORD>)"
+  fi
 }
 
 cmd_down_hub() {

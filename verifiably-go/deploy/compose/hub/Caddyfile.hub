@@ -1,0 +1,24 @@
+# Hub Caddyfile — production TLS reverse proxy (tls compose profile).
+# Activated by deploy.sh when VERIFIABLY_PUBLIC_DOMAIN is set in hub .env.
+# Variables are resolved by Caddy at startup from the container environment:
+#   HUB_DOMAIN  — bare apex or subdomain, e.g. verify.cdpi.dev
+#   LE_EMAIL    — Let's Encrypt contact email
+
+{
+	email {$LE_EMAIL}
+}
+
+# Public Hub — citizen-facing /verify portal + Trust Registry + API
+{$HUB_DOMAIN} {
+	reverse_proxy verifiably-go:8080
+}
+
+# Grafana — ops/admin dashboards
+# Restrict to trusted IPs in production: uncomment the block below and replace
+# with your ops CIDR. Leave open for demos where the panel is non-sensitive.
+#
+#   @blocked not remote_ip 10.0.0.0/8 192.168.0.0/16
+#   respond @blocked "Forbidden" 403
+grafana.{$HUB_DOMAIN} {
+	reverse_proxy hub-grafana:3000
+}
