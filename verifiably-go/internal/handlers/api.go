@@ -570,9 +570,14 @@ func (h *H) reinstateStoreForKind(kind string) statuslist.Backend {
 // ── Verify request ────────────────────────────────────────────────────────────
 
 type apiVerifyRequest struct {
-	SchemaID    string   `json:"schema_id"`
-	VerifierDpg string   `json:"verifier_dpg,omitempty"`
-	Fields      []string `json:"fields,omitempty"`
+	SchemaID    string                `json:"schema_id"`
+	VerifierDpg string                `json:"verifier_dpg,omitempty"`
+	Fields      []string              `json:"fields,omitempty"`
+	// Template, when provided, is used verbatim and schema_id is used only to
+	// look up display metadata. This lets hub nodes pass the full OID4VP
+	// template (disclosure, format, field list) without re-deriving it on the
+	// member side.
+	Template *vctypes.OID4VPTemplate `json:"template,omitempty"`
 }
 
 type apiVerifyRequestResult struct {
@@ -591,21 +596,11 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	if req.SchemaID == "" {
-		apiError(w, http.StatusBadRequest, "schema_id required")
+	if req.SchemaID == "" && req.Template == nil {
+		apiError(w, http.StatusBadRequest, "schema_id or template required")
 		return
 	}
 	ctx := apiCtx(r, keyName)
-	schemas, err := h.Adapter.ListAllSchemas(ctx)
-	if err != nil {
-		apiError(w, http.StatusServiceUnavailable, "backend unavailable: "+err.Error())
-		return
-	}
-	schema, ok2 := findSchemaByID(schemas, req.SchemaID)
-	if !ok2 {
-		apiError(w, http.StatusNotFound, "schema not found: "+req.SchemaID)
-		return
-	}
 	if req.VerifierDpg == "" {
 		req.VerifierDpg = h.firstVerifierDPG(ctx)
 	}
@@ -613,20 +608,36 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusServiceUnavailable, "no verifier DPG available")
 		return
 	}
-	fields := req.Fields
-	if len(fields) == 0 {
-		for _, f := range schema.FieldsSpec {
-			fields = append(fields, f.Name)
+
+	var tpl vctypes.OID4VPTemplate
+	if req.Template != nil {
+		tpl = *req.Template
+	} else {
+		schemas, err := h.Adapter.ListAllSchemas(ctx)
+		if err != nil {
+			apiError(w, http.StatusServiceUnavailable, "backend unavailable: "+err.Error())
+			return
 		}
-	}
-	tpl := vctypes.OID4VPTemplate{
-		Title:          schema.Name,
-		Fields:         fields,
-		Format:         schema.Std,
-		CredentialType: schema.Name,
-		Vct:            schema.Vct,
-		WireFormat:     "dc+sd-jwt",
-		Disclosure:     "selective — SD-JWT VC (dc+sd-jwt)",
+		schema, ok2 := findSchemaByID(schemas, req.SchemaID)
+		if !ok2 {
+			apiError(w, http.StatusNotFound, "schema not found: "+req.SchemaID)
+			return
+		}
+		fields := req.Fields
+		if len(fields) == 0 {
+			for _, f := range schema.FieldsSpec {
+				fields = append(fields, f.Name)
+			}
+		}
+		tpl = vctypes.OID4VPTemplate{
+			Title:          schema.Name,
+			Fields:         fields,
+			Format:         schema.Std,
+			CredentialType: schema.Name,
+			Vct:            schema.Vct,
+			WireFormat:     "dc+sd-jwt",
+			Disclosure:     "selective — SD-JWT VC (dc+sd-jwt)",
+		}
 	}
 	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(ctx, backend.PresentationRequest{
@@ -637,11 +648,11 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 	})
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(verifyStart), "dpg", req.VerifierDpg, "op", "verify")
 	if err != nil {
-		metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", schema.Name, "status", "error")
+		metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", tpl.Title, "status", "error")
 		apiError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", schema.Name, "status", "ok")
+	metrics.Inc("verification_requested_total", "dpg", req.VerifierDpg, "schema", tpl.Title, "status", "ok")
 	apiJSON(w, http.StatusOK, apiVerifyRequestResult{
 		RequestURI: res.RequestURI,
 		State:      res.State,
