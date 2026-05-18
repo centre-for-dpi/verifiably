@@ -1294,6 +1294,41 @@ ensure_credebl_platform_admin_shared_agent() {
     return 0
   fi
 
+  # Recovery: "wallet already been created" — Credo is running but walletProvision
+  # could not re-provision the wallet (it already exists from a prior run), so
+  # agentSpinUpStatus stays at 1. If the endpoint is set and Credo responds, skip
+  # the full re-provision cycle and advance status to 2 directly so the tenant
+  # setup step can proceed without destroying and recreating everything.
+  local _endpoint_row
+  _endpoint_row="$(_credebl_pg -Atqc "
+    SELECT COALESCE(oa.\"agentEndPoint\",''), COALESCE(oa.\"agentSpinUpStatus\"::text,'')
+    FROM org_agents oa JOIN organisation o ON o.id = oa.\"orgId\"
+    WHERE o.name = 'Platform-admin'
+    LIMIT 1;" 2>/dev/null | tr -d '\r')"
+  local _ep="${_endpoint_row%%|*}"
+  local _st="${_endpoint_row#*|}"
+
+  if [[ "$_st" == "1" && -n "$_ep" ]]; then
+    local _token_url="${_ep//172.24.0.1/127.0.0.1}"
+    _token_url="${_token_url//172.17.0.1/127.0.0.1}"
+    [[ "$_token_url" =~ ^https?:// ]] || _token_url="http://${_token_url}"
+    if curl -sf --max-time 8 -X POST -H "Authorization: $_agent_key" "${_token_url}/agent/token" >/dev/null 2>&1; then
+      echo "  Credo responding at ${_ep} with status=1 — advancing to status=2 (wallet already provisioned)"
+      local _shared_type_id
+      _shared_type_id="$(_credebl_pg -Atqc "SELECT id FROM org_agents_type WHERE agent='SHARED' LIMIT 1;" 2>/dev/null | tr -d '\r')"
+      _credebl_pg -q -c "
+        UPDATE org_agents oa
+        SET \"agentSpinUpStatus\" = 2,
+            \"orgAgentTypeId\" = COALESCE(oa.\"orgAgentTypeId\", '${_shared_type_id}')
+        FROM organisation o
+        WHERE oa.\"orgId\" = o.id AND o.name = 'Platform-admin';" 2>/dev/null || true
+      if _platform_admin_agent_ready; then
+        green "  Platform-admin shared agent recovered (wallet already existed)."
+        return 0
+      fi
+    fi
+  fi
+
   local attempt=1
   while [[ $attempt -le 6 ]]; do
     echo "  Not ready (attempt $attempt/6). Restarting agent-provisioning + agent-service..."
@@ -1308,10 +1343,15 @@ ensure_credebl_platform_admin_shared_agent() {
     _credebl_pg -d postgres -q -c "
       SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'platformadminwallet';
       DROP DATABASE IF EXISTS \"platformadminwallet\";" 2>/dev/null || true
-    # Remove stale Credo containers
+    # Remove stale Credo containers AND their runtime files so agent-provisioning
+    # does not re-use the old endpoint/port allocation on the next spinup attempt.
+    local _rt="$SCRIPT_DIR/deploy/compose/credebl/.agent-runtime"
     docker ps -a --format '{{.Names}}' 2>/dev/null | while IFS= read -r cname; do
-      [[ "$cname" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_ ]] \
-        && docker rm -f "$cname" 2>/dev/null || true
+      [[ "$cname" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_ ]] || continue
+      docker rm -f "$cname" 2>/dev/null || true
+      local _uuid="${cname%%_*}"
+      rm -f "$_rt/endpoints/${_uuid}_Platform-admin.json" \
+            "$_rt/agent-config/${_uuid}_Platform-admin.json" 2>/dev/null || true
     done
 
     docker restart credebl-agent-provisioning >/dev/null
@@ -1356,12 +1396,15 @@ ensure_credebl_platform_admin_tenant() {
       psql -U credebl -d credebl "$@"
   }
 
-  # Get agent endpoint from DB
+  # Get agent endpoint from DB — accept any status as long as endpoint is set.
+  # Status=1 can occur when Credo was provisioned but walletProvision failed
+  # (wallet already existed); the recovery path in ensure_credebl_platform_admin_shared_agent
+  # advances status to 2 before calling us, but we tolerate status=1 as a fallback.
   local endpoint
   endpoint="$(_credebl_pg2 -Atqc "
     SELECT oa.\"agentEndPoint\" FROM org_agents oa
     JOIN organisation o ON o.id = oa.\"orgId\"
-    WHERE o.name = 'Platform-admin' AND oa.\"agentSpinUpStatus\" = 2
+    WHERE o.name = 'Platform-admin' AND COALESCE(oa.\"agentEndPoint\", '') != ''
     LIMIT 1;" 2>/dev/null | tr -d '\r')"
 
   if [[ -z "$endpoint" ]]; then
@@ -1455,10 +1498,25 @@ process.stdout.write(encrypted);
   _credebl_pg2 -v ON_ERROR_STOP=1 -q -c "
     UPDATE org_agents oa
     SET \"tenantId\" = '${tenant_id}',
-        \"apiKey\"   = '${encrypted_jwt}'
+        \"apiKey\"   = '${encrypted_jwt}',
+        \"agentSpinUpStatus\" = 2
     FROM organisation o
     WHERE oa.\"orgId\" = o.id
       AND o.name = 'Platform-admin';" >/dev/null
+
+  # Ensure orgAgentTypeId=SHARED is set — agent-service's walletProvision failure
+  # path leaves this null, which causes oidcIssuerCreate to fail with PrismaClientValidationError.
+  local _shared_type_id
+  _shared_type_id="$(_credebl_pg2 -Atqc "SELECT id FROM org_agents_type WHERE agent='SHARED' LIMIT 1;" 2>/dev/null | tr -d '\r')"
+  if [[ -n "$_shared_type_id" ]]; then
+    _credebl_pg2 -q -c "
+      UPDATE org_agents oa
+      SET \"orgAgentTypeId\" = '${_shared_type_id}'
+      FROM organisation o
+      WHERE oa.\"orgId\" = o.id
+        AND o.name = 'Platform-admin'
+        AND oa.\"orgAgentTypeId\" IS NULL;" 2>/dev/null || true
+  fi
 
   green "  Platform-admin tenant wallet configured (tenantId=${tenant_id})"
 
