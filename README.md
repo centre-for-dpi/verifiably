@@ -405,10 +405,31 @@ issuers:
       "verifierConfig": { "verifierBaseUrl": "https://issuer-a.gov/verifier", "standardVersion": "draft13" },
       "statusListEndpoints": ["https://issuer-a.gov/status-list/bitstring/v1"],
       "statusListPolicy": "fail-closed"
+    },
+    {
+      "id": "issuer-b",
+      "name": "Ministerio de Trabajo",
+      "did": "did:web:issuer-b.gov",
+      "service_endpoint": "https://verifiably.issuer-b.gov",
+      "verifierBackendType": "verifiably",
+      "verifierConfig": {
+        "serviceEndpoint": "https://verifiably.issuer-b.gov",
+        "apiKey": "<VERIFIABLY_API_KEYS secret for this member>"
+      },
+      "statusListEndpoints": ["https://verifiably.issuer-b.gov/status-list/bitstring/v1"],
+      "statusListPolicy": "fail-closed"
     }
   ]
 }
 ```
+
+Supported `verifierBackendType` values:
+
+| Value | Backend | `verifierConfig` fields |
+|---|---|---|
+| `walt_community` | walt.id Community Stack verifier-api | `verifierBaseUrl`, `standardVersion` (`draft13` or `draft20`) |
+| `verifiably` | Another verifiably-go instance (OID4VP via API key) | `serviceEndpoint`, `apiKey` |
+| `credebl` | CREDEBL OID4VP endpoint | `orgId`, `apiUrl`, `email`, `password` |
 
 For dev/local testing the `members` array can be empty — the Hub boots fine with
 no registered members.
@@ -461,6 +482,10 @@ This brings up four containers:
 curl -s http://localhost:8080/healthz
 # {"status":"ok"}
 
+# Public verify portal (citizen-facing, no login required)
+# The hub root / now redirects here — not the role-picker
+curl -sI http://localhost:8080/verify
+
 # Trust Registry JWT
 curl -s http://localhost:8080/trust-registry | cut -c1-60
 
@@ -474,14 +499,20 @@ curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep healt
 open http://localhost:3100   # login: admin / <GRAFANA_PASSWORD>
 ```
 
+> **Note:** In hub mode the root path `/` serves the citizen-facing public
+> verification portal (`/verify`). The admin UI lives at `/admin/login`.
+
 **9. (Optional) Register an issuer from the admin UI:**
 
 Browse to `http://localhost:8080/admin/login` → log in with `admin` /
-`<VERIFIABLY_ADMIN_PASSWORD>` → go to **Federation Members** → fill in the
-DID, service endpoint, and status list URLs → **Register**.
+`<VERIFIABLY_ADMIN_PASSWORD>`. After login you land on the **Hub Overview**
+page; navigate to **Federation Members** → fill in the DID, service endpoint,
+and status list URLs → **Register**.
 
-From the same page you can generate an API key for each issuer so they can
-call `GET /api/ecosystem/issuers/{did}/stats` to pull their verification stats.
+Members added through the admin UI are immediately included in the schema
+aggregator — no restart required. From the same page you can generate an API
+key for each issuer so they can call `GET /api/ecosystem/issuers/{did}/stats`
+to pull their verification stats.
 
 **Stopping the Hub stack:**
 
@@ -731,6 +762,36 @@ docker compose -f deploy/compose/stack/docker-compose.yml rm -fs certify-postgre
 docker volume rm waltid_certify-db waltid_certify-pkcs12 waltid_certify-preauth-db waltid_certify-preauth-pkcs12
 ./deploy.sh up <scenario>
 ```
+
+**Hub: OID4VP authorization request returns 504 on Linux**
+
+Wallet scans a QR code from the public `/verify` portal, loads for a long
+time, then reports "presentation request expired". Fetching the
+`request_uri` URL directly returns `504 Gateway Timeout`.
+
+Root cause: the `credebl-oid4vci-rewriter` nginx sidecar proxies wallet
+requests to the Credo agent via `host.docker.internal`, which resolves to
+`172.17.0.1` (Docker's default bridge) on Linux. The Credo Platform-admin
+container lives on the compose project network (`172.24.x.x`), so port 8023
+is unreachable from the bridge IP.
+
+Fix — run this after `deploy.sh up credebl` or after any Credo agent restart:
+
+```bash
+cd /path/to/demo-daas-3-0/verifiably-go
+source .env
+source scripts/common.sh
+source scripts/bootstrap-credebl.sh
+_credebl_configure_oid4vci_rewriter
+```
+
+The function detects the container's actual Docker network IP, patches
+`nginx-oid4vci.conf`, and restarts the rewriter. It is idempotent — safe to
+re-run. This is called automatically during `deploy.sh up credebl` after
+platform-admin provisioning, but not on a plain container restart.
+
+This issue does not affect Docker Desktop (Mac/Windows) where
+`host.docker.internal` routes through the VM correctly.
 
 **CREDEBL bootstrap fails or "OID4VCI rewriter config failed" warning**
 
