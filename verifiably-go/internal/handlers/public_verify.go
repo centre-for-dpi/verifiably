@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"log"
 	"log/slog"
@@ -18,34 +19,48 @@ import (
 type publicPageData struct {
 	Title           string
 	ContentTemplate string
+	Lang            string
 	Body            any
 }
 
 // renderPublicPage renders a full public page using layout_public (no auth nav).
 // For HTMX boost targets that set HX-Target: main, only the content block is rendered.
+// Applies the same post-render translation pass as render() when a non-English language is active.
 func (h *H) renderPublicPage(w http.ResponseWriter, r *http.Request, page string, body any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	lang := langFromRequest(r)
 	pd := publicPageData{
 		Title:           publicPageTitle(page),
 		ContentTemplate: "content_public_" + page,
+		Lang:            lang,
 		Body:            body,
 	}
 	tmplName := "layout_public"
 	if isHTMX(r) && r.Header.Get("HX-Target") == "main" {
 		tmplName = pd.ContentTemplate
 	}
-	if err := h.Templates.ExecuteTemplate(w, tmplName, pd); err != nil {
+	if lang == "" || lang == "en" || h.Translator == nil {
+		if err := h.Templates.ExecuteTemplate(w, tmplName, pd); err != nil {
+			log.Printf("public template error (page=%s): %v", page, err)
+			http.Error(w, "internal server error", 500)
+		}
+		return
+	}
+	var buf bytes.Buffer
+	if err := h.Templates.ExecuteTemplate(&buf, tmplName, pd); err != nil {
 		log.Printf("public template error (page=%s): %v", page, err)
 		http.Error(w, "internal server error", 500)
+		return
 	}
+	_, _ = w.Write(translateHTML(r.Context(), buf.Bytes(), lang, h.Translator))
 }
 
 func publicPageTitle(page string) string {
 	switch page {
 	case "verify":
-		return "Verificar credencial"
+		return "Verify credential"
 	}
-	return "Verificación"
+	return "Verification"
 }
 
 // publicSchemas returns the schemas available for the public /verify portal.
@@ -208,17 +223,17 @@ func (h *H) BuildPublicVerifyTemplate(w http.ResponseWriter, r *http.Request) {
 // Returns fragment_public_qr with the OID4VP QR code and polling setup.
 func (h *H) PublicVerifyRequest(w http.ResponseWriter, r *http.Request) {
 	if h.RateLimiter != nil && !h.RateLimiter.Allow("public-verify", r) {
-		h.errorToast(w, r, "Demasiadas solicitudes — intentá de nuevo en un momento")
+		h.errorToast(w, r, "Too many requests — try again in a moment")
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		h.errorToast(w, r, "Solicitud inválida")
+		h.errorToast(w, r, "Invalid request")
 		return
 	}
 
 	schemaID := strings.TrimSpace(r.FormValue("schema_id"))
 	if schemaID == "" {
-		h.errorToast(w, r, "Seleccioná un tipo de documento primero")
+		h.errorToast(w, r, "Select a document type first")
 		return
 	}
 
@@ -232,7 +247,7 @@ func (h *H) PublicVerifyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if picked == nil {
-		h.errorToast(w, r, "Tipo de documento no reconocido")
+		h.errorToast(w, r, "Document type not recognized")
 		return
 	}
 
@@ -282,7 +297,7 @@ func (h *H) PublicVerifyRequest(w http.ResponseWriter, r *http.Request) {
 	// Route by SourceDeployment to the correct member's verifier adapter.
 	verifierDpgs, err := h.Adapter.ListVerifierDpgs(r.Context())
 	if err != nil || len(verifierDpgs) == 0 {
-		h.errorToast(w, r, "No hay verificadores disponibles en este momento")
+		h.errorToast(w, r, "No verifiers available at this time")
 		return
 	}
 	dpgKey := picked.SourceDeployment
@@ -303,7 +318,7 @@ func (h *H) PublicVerifyRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("public verify: RequestPresentation failed",
 			"dpg", dpgKey, "schema", picked.Name, "err", err)
-		h.errorToast(w, r, "No se pudo generar la solicitud de verificación")
+		h.errorToast(w, r, "El servicio de verificación del emisor no está disponible en este momento. Intente de nuevo más tarde.")
 		return
 	}
 
@@ -329,7 +344,7 @@ func (h *H) PublicVerifyResult(w http.ResponseWriter, r *http.Request) {
 		h.renderFragment(w, r, "fragment_public_result", map[string]any{
 			"State":   state,
 			"Pending": false,
-			"Error":   "Error al recuperar el resultado",
+			"Error":   "Error retrieving result",
 		})
 		return
 	}

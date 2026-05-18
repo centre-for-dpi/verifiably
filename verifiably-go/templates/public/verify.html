@@ -1,9 +1,9 @@
 {{define "content_public_verify"}}
 <div>
-  <h1 class="page-title" style="margin-bottom:0.5rem">Verificá<br><em>tu documento</em>.</h1>
+  <h1 class="page-title" style="margin-bottom:0.5rem">Verify<br><em>your document</em>.</h1>
   <p class="subtitle" style="margin-bottom:1.5rem">
-    Seleccioná el tipo de documento, elegí los campos a compartir
-    y escaneá el código QR con tu wallet compatible.
+    Select the document type, choose the fields to share,
+    and scan the QR code with your compatible wallet.
   </p>
 
   <form id="public-verify-form"
@@ -12,15 +12,15 @@
         hx-swap="outerHTML">
 
     <div class="field" style="margin-bottom:1rem">
-      <label style="font-size:0.8rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em">Divulgación de datos</label>
+      <label style="font-size:0.8rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em">Data disclosure</label>
       <div style="display:flex;gap:1.25rem;font-size:0.85rem;margin-top:0.35rem;flex-wrap:wrap">
         <label style="display:inline-flex;align-items:center;gap:0.35rem;cursor:pointer">
           <input type="radio" name="disclosure" value="selective" checked>
-          selectiva — solo los campos marcados
+          selective — only marked fields
         </label>
         <label style="display:inline-flex;align-items:center;gap:0.35rem;cursor:pointer">
           <input type="radio" name="disclosure" value="full">
-          completa — toda la credencial
+          full — entire credential
         </label>
       </div>
     </div>
@@ -30,7 +30,7 @@
     </div>
 
     <button class="btn" type="submit" style="margin-top:1rem">
-      Generar código QR →
+      Generate QR code →
     </button>
   </form>
 
@@ -60,7 +60,7 @@
   {{/* Search */}}
   <input type="search"
          name="q"
-         placeholder="Buscar credenciales…"
+         placeholder="Search credentials…"
          value="{{.Query}}"
          autocomplete="off"
          hx-post="/verify/build"
@@ -75,8 +75,8 @@
 <div class="schema-list" style="max-height:340px;overflow-y:auto">
   {{if not .Schemas}}
   <div style="font-size:0.85rem;color:var(--ink-mute);padding:1rem 0;grid-column:1 / -1">
-    No hay credenciales disponibles en este momento.
-    Volvé más tarde o contactá al administrador del sistema.
+    No credentials available at this time.
+    Try again later or contact the system administrator.
   </div>
   {{end}}
 
@@ -90,12 +90,12 @@
     <h4 style="margin:0 0 0.25rem">{{.Name}}</h4>
     {{if .IssuerDisplayName}}
     <div style="font-size:0.75rem;color:var(--ink-soft);margin-bottom:0.25rem">
-      Emitido por <strong>{{.IssuerDisplayName}}</strong>
+      Issued by <strong>{{.IssuerDisplayName}}</strong>
     </div>
     {{end}}
     <div class="desc" style="font-size:0.78rem;margin-bottom:0.4rem">
-      {{len .FieldsSpec}} campo{{if ne (len .FieldsSpec) 1}}s{{end}} ·
-      {{if .Variants}}{{len .Variants}} formato{{if ne (len .Variants) 1}}s{{end}}{{else}}{{.Std}}{{end}}
+      {{len .FieldsSpec}} field{{if ne (len .FieldsSpec) 1}}s{{end}} ·
+      {{if .Variants}}{{len .Variants}} format{{if ne (len .Variants) 1}}s{{end}}{{else}}{{.Std}}{{end}}
     </div>
 
     {{if .Variants}}
@@ -140,7 +140,7 @@
 
 
 {{define "fragment_public_verify_preview"}}
-<div class="caps" style="margin-bottom:0.4rem;font-size:0.7rem">Campos de <em>{{.Schema.Name}}</em></div>
+<div class="caps" style="margin-bottom:0.4rem;font-size:0.7rem">Fields for <em>{{.Schema.Name}}</em></div>
 <div style="display:flex;flex-wrap:wrap;gap:0.5rem 1.25rem;font-size:0.85rem;padding:0.5rem 0">
   {{range .Schema.FieldsSpec}}
   <label style="display:inline-flex;align-items:center;gap:0.35rem;cursor:pointer">
@@ -152,8 +152,8 @@
 </div>
 <div style="margin-top:0.75rem;padding:0.75rem 1rem;background:var(--bg);border-left:3px solid var(--ok,#16a34a);font-size:0.82rem;border-radius:0 4px 4px 0">
   <strong>{{.Template.Title}}</strong> · <span class="mono">{{.Template.Format}}</span><br>
-  Solicitando: <span class="mono">{{range $i, $f := .Template.Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span><br>
-  Divulgación: <em>{{.Template.Disclosure}}</em>
+  Requesting: <span class="mono">{{range $i, $f := .Template.Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span><br>
+  Disclosure: <em>{{.Template.Disclosure}}</em>
 </div>
 {{end}}
 
@@ -162,20 +162,20 @@
 <div id="qr-area" style="margin-top:1.5rem">
   <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:1.5rem">
     <h3 style="margin:0 0 0.5rem;font-family:'Josefin Sans',sans-serif;font-size:1rem;font-weight:500">
-      Escaneá con tu wallet
+      Scan with your wallet
     </h3>
     <p style="font-size:0.82rem;color:var(--ink-soft);margin:0 0 1.25rem">
-      Tipo de credencial: <strong>{{.SchemaTitle}}</strong>
+      Credential type: <strong>{{.SchemaTitle}}</strong>
     </p>
 
     <div style="display:flex;flex-direction:column;align-items:center;gap:1rem">
       <img src="/qr?text={{.RequestURI}}"
-           alt="Código QR de verificación"
+           alt="Verification QR code"
            width="200" height="200"
            style="border:1px solid var(--line);border-radius:6px;display:block">
 
       <div style="font-size:0.76rem;color:var(--ink-mute);text-align:center;max-width:340px">
-        O abrí este link directamente en tu wallet:<br>
+        Or open this link directly in your wallet:<br>
         <a href="{{.RequestURI}}" class="mono"
            style="font-size:0.7rem;word-break:break-all;color:var(--ink-soft)">
           {{.RequestURI}}
@@ -205,26 +205,26 @@
      hx-trigger="every 3s">
   <div style="display:flex;align-items:center;gap:0.6rem;padding:0.75rem 0;font-size:0.85rem;color:var(--ink-soft)">
     <span class="spin" style="width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent,#6366f1);border-radius:50%;flex-shrink:0"></span>
-    Esperando respuesta del wallet…
+    Waiting for wallet response…
   </div>
 </div>
 {{else if .Error}}
 <div id="result-area" style="margin-top:0.75rem">
   <div class="pill err" style="padding:0.5rem 0.75rem;font-size:0.85rem">{{.Error}}</div>
-  <div style="margin-top:0.75rem"><a href="/verify" class="btn ghost small">Intentar de nuevo</a></div>
+  <div style="margin-top:0.75rem"><a href="/verify" class="btn ghost small">Try again</a></div>
 </div>
 {{else if .Valid}}
 <div id="result-area">
   <div class="verify-badge ok" style="margin-top:0.75rem">
     <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.75rem">
       <span style="font-size:1.4rem">✅</span>
-      <strong style="font-size:1rem;color:var(--ok,#16a34a)">VERIFICADO</strong>
+      <strong style="font-size:1rem;color:var(--ok,#16a34a)">VERIFIED</strong>
     </div>
     {{if .CredentialTitle}}
-    <p style="margin:0.2rem 0;font-size:0.88rem"><strong>Tipo:</strong> {{.CredentialTitle}}</p>
+    <p style="margin:0.2rem 0;font-size:0.88rem"><strong>Type:</strong> {{.CredentialTitle}}</p>
     {{end}}
     {{if .IssuerDisplay}}
-    <p style="margin:0.2rem 0;font-size:0.88rem"><strong>Emisor:</strong> {{.IssuerDisplay}}</p>
+    <p style="margin:0.2rem 0;font-size:0.88rem"><strong>Issuer:</strong> {{.IssuerDisplay}}</p>
     {{else if .Issuer}}
     <p style="margin:0.2rem 0;font-size:0.82rem;color:var(--ink-soft)">
       <strong>DID:</strong> <span class="mono" style="font-size:0.75rem">{{.Issuer}}</span>
@@ -233,22 +233,22 @@
     {{if eq .TrustStatus "trusted"}}
     <p style="margin:0.2rem 0;font-size:0.82rem">
       <strong>Trust:</strong>
-      <span class="pill ok" style="font-size:0.72rem">acreditado ✓</span>
+      <span class="pill ok" style="font-size:0.72rem">accredited ✓</span>
     </p>
     {{end}}
     {{if .StatusListSource}}
     <p style="margin:0.2rem 0;font-size:0.8rem;color:var(--ink-soft)">
-      <strong>Estado revocación:</strong>
-      {{if eq .StatusListSource "live"}}<span class="pill ok" style="font-size:0.7rem">verificado en vivo</span>
-      {{else if eq .StatusListSource "cached"}}<span class="pill" style="font-size:0.7rem;background:var(--warn-bg,#fffbe6);color:var(--warn,#b58900)">caché del hub</span>
-      {{else}}<span class="pill" style="font-size:0.7rem">desconocido</span>
+      <strong>Revocation status:</strong>
+      {{if eq .StatusListSource "live"}}<span class="pill ok" style="font-size:0.7rem">verified live</span>
+      {{else if eq .StatusListSource "cached"}}<span class="pill" style="font-size:0.7rem;background:var(--warn-bg,#fffbe6);color:var(--warn,#b58900)">hub cache</span>
+      {{else}}<span class="pill" style="font-size:0.7rem">unknown</span>
       {{end}}
     </p>
     {{end}}
     {{if .DisclosedFields}}
     <details style="margin-top:0.75rem">
       <summary style="font-size:0.8rem;cursor:pointer;color:var(--ink-soft);user-select:none">
-        Ver datos presentados
+        View presented data
       </summary>
       <table style="width:100%;margin-top:0.5rem;font-size:0.8rem;border-collapse:collapse">
         {{range $k,$v := .DisclosedFields}}
@@ -260,10 +260,10 @@
       </table>
     </details>
     {{end}}
-    {{if .VerifiedAt}}<p style="margin:0.75rem 0 0;font-size:0.75rem;color:var(--ink-mute)">Verificado el {{.VerifiedAt}}</p>{{end}}
+    {{if .VerifiedAt}}<p style="margin:0.75rem 0 0;font-size:0.75rem;color:var(--ink-mute)">Verified on {{.VerifiedAt}}</p>{{end}}
   </div>
   <div style="margin-top:0.75rem">
-    <a href="/verify" class="btn ghost small">Verificar otro documento</a>
+    <a href="/verify" class="btn ghost small">Verify another document</a>
   </div>
 </div>
 {{else}}
@@ -271,22 +271,22 @@
   <div class="verify-badge err" style="margin-top:0.75rem">
     <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem">
       <span style="font-size:1.4rem">❌</span>
-      <strong style="font-size:1rem;color:var(--err,#dc2626)">NO VERIFICADO</strong>
+      <strong style="font-size:1rem;color:var(--err,#dc2626)">NOT VERIFIED</strong>
     </div>
     {{if .TrustReason}}
     <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">{{.TrustReason}}</p>
     {{else if eq .TrustStatus "untrusted"}}
     <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">
-      El emisor no está acreditado en el registro de confianza.
+      The issuer is not accredited in the trust registry.
     </p>
     {{else}}
     <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">
-      La credencial no pudo ser verificada. Verificá que sea válida y no esté revocada.
+      The credential could not be verified. Check that it is valid and not revoked.
     </p>
     {{end}}
   </div>
   <div style="margin-top:0.75rem">
-    <a href="/verify" class="btn ghost small">Intentar de nuevo</a>
+    <a href="/verify" class="btn ghost small">Try again</a>
   </div>
 </div>
 {{end}}

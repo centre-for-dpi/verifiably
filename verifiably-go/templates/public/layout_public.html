@@ -1,10 +1,13 @@
 {{define "layout_public"}}
 <!DOCTYPE html>
-<html lang="es">
+<html lang="{{if .Lang}}{{.Lang}}{{else}}en{{end}}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}} · CDPI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600;700&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
   <style>
@@ -12,6 +15,7 @@
     .public-header { border-bottom: 1px solid var(--line); padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.75rem; }
     .public-header-logo { font-family: 'Josefin Sans', sans-serif; font-weight: 700; font-size: 1rem; letter-spacing: 0.04em; }
     .public-header-sub { font-size: 0.78rem; color: var(--ink-mute); letter-spacing: 0.05em; text-transform: uppercase; }
+    .public-header-right { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
     .public-main { flex: 1; max-width: 680px; margin: 0 auto; padding: 2rem 1.5rem; width: 100%; box-sizing: border-box; }
     .public-footer { border-top: 1px solid var(--line); padding: 0.75rem 1.5rem; text-align: center; font-size: 0.72rem; color: var(--ink-mute); }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -24,13 +28,23 @@
 <body>
   <header class="public-header">
     <span class="public-header-logo">CDPI</span>
-    <span class="public-header-sub">Verificación de credenciales</span>
+    <span class="public-header-sub">Credential Verification</span>
+    <div class="public-header-right">
+      <form method="post" action="/lang" style="display:inline-flex;align-items:center;gap:0.35rem">
+        <select name="lang" onchange="this.form.submit()" aria-label="Language"
+                style="background:var(--bg);border:1px solid var(--line);color:var(--ink);font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:2px">
+          <option value="en" {{if eq .Lang "en"}}selected{{end}}>EN</option>
+          <option value="fr" {{if eq .Lang "fr"}}selected{{end}}>FR</option>
+          <option value="es" {{if or (eq .Lang "es") (eq .Lang "")}}selected{{end}}>ES</option>
+        </select>
+      </form>
+    </div>
   </header>
   <main class="public-main" id="main">
     {{render .ContentTemplate .}}
   </main>
   <footer class="public-footer">
-    Plataforma de verificación · Centro de Datos Públicos e Innovación
+    Verification Platform · Center for Public Data and Innovation
   </footer>
 </body>
 </html>
