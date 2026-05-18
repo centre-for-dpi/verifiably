@@ -44,7 +44,7 @@ func (h *H) ShowAdminLogin(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	// Already an admin? Skip the form entirely.
 	if sess.IsAdmin {
-		h.redirect(w, r, "/admin/auth-providers")
+		h.redirect(w, r, h.adminLanding())
 		return
 	}
 	body := map[string]any{"Mode": h.adminModeOrDefault()}
@@ -80,7 +80,15 @@ func (h *H) AdminLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess.IsAdmin = true
-	h.redirect(w, r, "/admin/auth-providers")
+	h.redirect(w, r, h.adminLanding())
+}
+
+// adminLanding returns the post-login destination based on deployment mode.
+func (h *H) adminLanding() string {
+	if h.IsHub {
+		return "/admin"
+	}
+	return "/admin/auth-providers"
 }
 
 // AdminLogout clears the admin flag and redirects to the public landing.

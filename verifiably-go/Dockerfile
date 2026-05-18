@@ -7,6 +7,13 @@ WORKDIR /src
 # Go sources + module graph.
 COPY go.mod go.sum ./
 RUN go mod download
+
+# Injected by deploy.sh as the current git commit hash so the go build layer
+# is always invalidated when source changes, even when Docker's COPY cache
+# fingerprinting fails (e.g. Docker Desktop on Windows / WSL2).
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
+
 COPY cmd ./cmd
 COPY backend ./backend
 COPY internal ./internal

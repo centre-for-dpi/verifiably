@@ -42,9 +42,15 @@
     {{if and .Session .Session.IsAdmin}}
     <div style="display:inline-flex;align-items:center;gap:0.15rem;border:1px solid var(--line);border-radius:2px;padding:0.1rem 0.3rem">
       <span style="font-size:0.68rem;color:var(--ink-mute);padding:0 0.25rem;white-space:nowrap">Admin ✓</span>
+      {{if .IsHub}}
+      <a href="/admin" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Admin dashboard">Dashboard</a>
+      <a href="/admin/federation/members" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Federation members">Federation</a>
+      <a href="/admin/auth-providers" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="OIDC providers">Providers</a>
+      {{else}}
       <a href="/admin/auth-providers" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="OIDC providers">Providers</a>
       <a href="/admin/trust" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Trust registry">Trust</a>
       <a href="/admin/metrics" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Metrics &amp; observability">Metrics</a>
+      {{end}}
     </div>
     {{else}}
     <a href="/admin/login" class="nav-link-btn" title="Admin sign-in">Admin</a>

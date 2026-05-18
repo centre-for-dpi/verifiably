@@ -388,7 +388,9 @@ cmd_up() {
   # add swap before retrying:
   #   fallocate -l 4G /swapfile && chmod 600 /swapfile \
   #     && mkswap /swapfile && swapon /swapfile
-  docker build --progress=plain -t "$VERIFIABLY_IMAGE" "$SCRIPT_DIR"
+  docker build --progress=plain \
+    --build-arg GIT_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || date +%s)" \
+    -t "$VERIFIABLY_IMAGE" "$SCRIPT_DIR"
 
   bold "▶ Starting verifiably-go container"
   start_container "$scenario"
@@ -660,7 +662,9 @@ cmd_run() {
   # add swap before retrying:
   #   fallocate -l 4G /swapfile && chmod 600 /swapfile \
   #     && mkswap /swapfile && swapon /swapfile
-  docker build --progress=plain -t "$VERIFIABLY_IMAGE" "$SCRIPT_DIR"
+  docker build --progress=plain \
+    --build-arg GIT_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || date +%s)" \
+    -t "$VERIFIABLY_IMAGE" "$SCRIPT_DIR"
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
 }
@@ -873,7 +877,9 @@ cmd_up_hub() {
   fi
 
   bold "▶ Hub: building image ($hub_image)"
-  docker build --progress=plain -t "$hub_image" "$SCRIPT_DIR"
+  docker build --progress=plain \
+    --build-arg GIT_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || date +%s)" \
+    -t "$hub_image" "$SCRIPT_DIR"
 
   # Read VERIFIABLY_PUBLIC_DOMAIN from hub .env to decide whether to activate
   # the tls compose profile (which brings up Caddy with Let's Encrypt).
@@ -905,7 +911,7 @@ cmd_up_hub() {
   green "  Hub is up."
   if [[ -n "$hub_domain" ]]; then
     echo "    Hub:        https://${hub_domain}"
-    echo "    Admin:      https://${hub_domain}/admin/login"
+    echo "    Admin:      https://admin.${hub_domain}/admin/login"
     echo "    Grafana:    https://grafana.${hub_domain}  (admin / <GRAFANA_PASSWORD>)"
     echo "    Prometheus: http://localhost:${prom_port}  (loopback only)"
     yellow "  Caddy is acquiring Let's Encrypt certificates — first request may be slow."
@@ -935,7 +941,9 @@ cmd_run_hub() {
   fi
 
   bold "▶ Hub: rebuilding image ($hub_image)"
-  docker build --progress=plain -t "$hub_image" "$SCRIPT_DIR"
+  docker build --progress=plain \
+    --build-arg GIT_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || date +%s)" \
+    -t "$hub_image" "$SCRIPT_DIR"
 
   bold "▶ Hub: restarting verifiably-go container"
   hub_compose up -d --no-deps --force-recreate verifiably-go

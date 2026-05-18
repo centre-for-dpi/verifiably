@@ -65,6 +65,7 @@ services:
       VERIFIABLY_GRAFANA_URL: ${GRAFANA_EXTERNAL_URL:-http://localhost:3100}
       VERIFIABLY_PROMETHEUS_URL: http://prometheus:9090
       VERIFIABLY_LOG_JSON: "1"
+      LIBRETRANSLATE_URL: http://libretranslate:5000
     volumes:
       - ../../../config:/app/config:ro
       - hub-state:/app/state
@@ -137,6 +138,17 @@ services:
       timeout: 5s
       retries: 3
 
+  libretranslate:
+    image: libretranslate/libretranslate:v1.6.5
+    container_name: hub-libretranslate
+    restart: unless-stopped
+    environment:
+      LT_LOAD_ONLY: "en,es,fr"
+    volumes:
+      - lt-data:/home/libretranslate/.local
+    networks:
+      - hub
+
   # caddy — TLS reverse proxy for production deployments.
   # Activated only when VERIFIABLY_PUBLIC_DOMAIN is set (tls compose profile).
   # In localhost/dev mode this service does not start; direct port binds handle traffic.
@@ -183,6 +195,8 @@ volumes:
     name: hub-caddy-data
   caddy-config:
     name: hub-caddy-config
+  lt-data:
+    name: hub-lt-data
 
 networks:
   hub:

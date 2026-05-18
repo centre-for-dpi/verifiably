@@ -8,8 +8,14 @@
 	email {$LE_EMAIL}
 }
 
-# Public Hub — citizen-facing /verify portal + Trust Registry + API
+# Public Hub — citizen-facing verification portal + Trust Registry + API
 {$HUB_DOMAIN} {
+	reverse_proxy verifiably-go:8080
+}
+
+# Admin portal — federation management, trust registry CRUD, metrics.
+# Only /admin/* paths are served here; the app enforces this via Host header check.
+admin.{$HUB_DOMAIN} {
 	reverse_proxy verifiably-go:8080
 }
 

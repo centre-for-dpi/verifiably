@@ -34,6 +34,16 @@ type Translator interface {
 	Translate(ctx context.Context, text, target string) string
 }
 
+// MemberVerifierRegistrar wires a new federation member's verifier adapter
+// into the Hub's live Registry + SchemaCache without a restart.
+// Implemented in cmd/server/main.go; the handlers package stays import-free
+// of the concrete adapter/factory packages.
+type MemberVerifierRegistrar interface {
+	// RegisterMemberVerifier builds a "verifiably"-type adapter for the
+	// given member and registers it under did as the vendor key. Idempotent.
+	RegisterMemberVerifier(did, serviceEndpoint, apiKey string)
+}
+
 // H is the handler struct; holds deps injected from main.
 type H struct {
 	Adapter    backend.Adapter
@@ -147,6 +157,15 @@ type H struct {
 	// GrafanaURL is the Grafana base URL shown as a link on /admin/metrics.
 	// Example: "http://localhost:3100". Set via VERIFIABLY_GRAFANA_URL.
 	GrafanaURL string
+
+	// IsHub is true when the server is running in hub mode (VERIFIABLY_ROLES=hub).
+	// Controls which admin sections are shown in the nav and landing page.
+	IsHub bool
+
+	// MemberVerifierRegistrar wires a federation member's verifier adapter at
+	// runtime when the admin registers a new member. Set by main.go in hub mode;
+	// nil disables dynamic adapter registration (member takes effect on restart).
+	MemberVerifierRegistrar MemberVerifierRegistrar
 
 	// signingKeyMu guards lazy fetching of the walt.id issuer JWK.
 	// After a successful fetch signingKey is non-nil and the hot path
@@ -327,8 +346,11 @@ type PageData struct {
 	// topbar can hide the "Admin" link on deployments that disabled it
 	// entirely. Independent of any session state — the link goes to
 	// /admin/login when the visitor isn't already an admin, and to
-	// /admin/auth-providers when they are.
+	// /admin when they are.
 	AuthAdminAvailable bool
+	// IsHub is true when running in hub mode. Templates use this to render
+	// hub-specific navigation links (Federation, Trust, Providers, Metrics).
+	IsHub bool
 }
 
 // langFromRequest returns the current UI language code (default "en") from
@@ -371,6 +393,7 @@ func (h *H) pageData(sess *Session, body any) PageData {
 		Session:            sess,
 		Body:               body,
 		AuthAdminAvailable: h.AuthAdminMode != "off",
+		IsHub:              h.IsHub,
 	}
 }
 

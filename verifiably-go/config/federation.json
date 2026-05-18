@@ -21,6 +21,22 @@
         "https://verifiably.minerd.credenciales.ysalabs.work/status-list/bitstring/v1"
       ],
       "statusListPolicy": "fail-closed"
+    },
+	    {
+      "id": "issuer-b",
+      "name": "Ministerio de Trabajo",
+      "deploymentURL": "https://verifiably.mt.credenciales.ysalabs.work",
+      "did": "did:web:mt.credenciales.ysalabs.work",
+      "roles": ["issuer"],
+      "verifierBackendType": "verifiably",
+      "verifierConfig": {
+        "serviceEndpoint": "https://verifiably.mt.credenciales.ysalabs.work",
+        "apiKey": "118d46ef6c83416fee903d27abbd39b4cc8da67dc1cd81814e695bda8eb05632"
+      },
+      "statusListEndpoints": [
+        "https://verifiably.mt.credenciales.ysalabs.work/status-list/bitstring/v1"
+      ],
+      "statusListPolicy": "fail-closed"
     }
   ]
 }
