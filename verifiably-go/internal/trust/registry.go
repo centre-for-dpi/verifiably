@@ -62,6 +62,11 @@ type TrustedIssuer struct {
 	// "fail-open": treat as valid with a visible warning.
 	StatusListPolicy string `json:"status_list_policy,omitempty"`
 
+	// VerifierAPIKey is the Bearer token the Hub uses when calling this
+	// member's /api/v1/verify/request endpoint. Optional — leave empty if
+	// the member's verify API is open or not yet configured.
+	VerifierAPIKey string `json:"verifier_api_key,omitempty"`
+
 	AccreditedAt time.Time `json:"accredited_at"`
 	// ValidUntil is the expiry of the accreditation. Zero means no expiry.
 	ValidUntil time.Time `json:"valid_until,omitempty"`

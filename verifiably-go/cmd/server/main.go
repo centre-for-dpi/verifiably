@@ -303,9 +303,12 @@ func main() {
 	// ("dpg:<member-id>:<inner-state>"). The trust registry is seeded from
 	// federation.json only on the very first boot (when it contains no entries);
 	// subsequent runs use DB as the authoritative source.
+	// MemberVerifierRegistrar is wired after the schema cache is set up below.
+	var hubReg *registry.Registry
 	if activeRoles.Has(roles.Hub) {
 		if reg, ok := adapter.(*registry.Registry); ok {
 			bootstrapHub(shutCtx, reg, h)
+			hubReg = reg
 		} else {
 			log.Printf("hub: VERIFIABLY_ADAPTER=registry required for hub mode — federation bootstrap skipped")
 		}
@@ -335,16 +338,32 @@ func main() {
 		if fedPath == "" {
 			fedPath = "config/federation.json"
 		}
+		// Seed from federation.json first (legacy / first-boot config).
 		memberIDs := map[string]string{}
 		if cfg, err := federation.LoadConfig(fedPath); err == nil {
 			for _, m := range cfg.Members {
 				memberIDs[m.DID] = m.ID
 			}
 		}
+		// Also include trust registry members so members added via admin UI
+		// get correct SourceDeployment without a restart. DID is used as the
+		// adapter key for members not in federation.json.
+		if issuers, err := h.TrustRegistry.TrustedIssuers(shutCtx); err == nil {
+			for _, issuer := range issuers {
+				if _, exists := memberIDs[issuer.DID]; !exists {
+					memberIDs[issuer.DID] = issuer.DID
+				}
+			}
+		}
 		agg := schemacache.NewAggregator(5*time.Minute, memberIDs)
 		h.SchemaCache = agg
 		agg.Start(shutCtx, h.TrustRegistry)
 		log.Printf("schema cache: federation aggregator started (%d member IDs known)", len(memberIDs))
+
+		// Wire the live MemberVerifierRegistrar now that both reg and cache exist.
+		if hubReg != nil {
+			h.MemberVerifierRegistrar = &memberVerifierRegistrar{reg: hubReg, cache: agg}
+		}
 	}
 
 	// Async bulk issuance job queue. Worker count is configurable via
@@ -426,8 +445,12 @@ func main() {
 		_, _ = w.Write([]byte("ready"))
 	})
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	mux.HandleFunc("GET /{$}", h.Landing)
-	mux.HandleFunc("POST /role", h.PickRole)
+	if activeRoles.Has(roles.Hub) {
+		mux.HandleFunc("GET /{$}", h.ShowPublicVerify)
+	} else {
+		mux.HandleFunc("GET /{$}", h.Landing)
+		mux.HandleFunc("POST /role", h.PickRole)
+	}
 	mux.HandleFunc("GET /auth", h.Auth)
 	mux.HandleFunc("POST /auth", h.CompleteAuth)
 	mux.HandleFunc("POST /auth/start", h.StartAuth)
@@ -475,21 +498,31 @@ func main() {
 	}
 
 	// --- Trust registry (trust | hub) ---
-	// Public signed JWT at GET /trust-registry + JWKS at /.well-known/jwks.json
-	// + admin CRUD UI.
+	// Public signed JWT at GET /trust-registry + JWKS at /.well-known/jwks.json.
+	// Admin CRUD UI (/admin/trust) is only registered in non-hub modes — in hub
+	// mode federation members are managed through /admin/federation/members, which
+	// is a superset (includes service endpoint, health monitoring, API key lifecycle).
 	if activeRoles.Has(roles.Trust) {
 		mux.HandleFunc("GET /trust-registry", h.ServeTrustRegistry)
 		mux.HandleFunc("GET /.well-known/jwks.json", h.ServeJWKS)
-		mux.HandleFunc("GET /admin/trust", h.ShowTrustRegistry)
-		mux.HandleFunc("POST /admin/trust", h.AddTrustedIssuer)
-		mux.HandleFunc("DELETE /admin/trust/{did}", h.DeleteTrustedIssuer)
+		if !activeRoles.Has(roles.Hub) {
+			mux.HandleFunc("GET /admin/trust", h.ShowTrustRegistry)
+			mux.HandleFunc("POST /admin/trust", h.AddTrustedIssuer)
+			mux.HandleFunc("DELETE /admin/trust/{did}", h.DeleteTrustedIssuer)
+		}
 	}
 
-	// --- Admin shared (issuer | verifier) ---
-	if activeRoles.Has(roles.Issuer) || activeRoles.Has(roles.Verifier) {
+	// --- Admin shared (issuer | verifier | hub) ---
+	if activeRoles.Has(roles.Issuer) || activeRoles.Has(roles.Verifier) || activeRoles.Has(roles.Hub) {
 		mux.HandleFunc("GET /admin/auth-providers", h.ShowAuthProvidersAdmin)
 		mux.HandleFunc("POST /admin/auth-providers/{id}/delete", h.DeleteAuthProvider)
 		mux.HandleFunc("GET /admin/metrics", h.ShowAdminMetrics)
+	}
+
+	// --- Hub admin landing ---
+	if activeRoles.Has(roles.Hub) {
+		h.IsHub = true
+		mux.HandleFunc("GET /admin", h.ShowAdminHub)
 	}
 
 	// --- Issuer ---
@@ -586,8 +619,10 @@ func main() {
 	// Public citizen verification portal (/verify) + schema federation API
 	// (GET /schemas returns aggregated schemas from all members) + admin CRUD.
 	if activeRoles.Has(roles.Hub) {
-		// Public portal — no auth required. Rate-limited by IP via h.RateLimiter.
-		mux.HandleFunc("GET /verify", h.ShowPublicVerify)
+		// /verify redirects to / — root is now the public portal.
+		mux.HandleFunc("GET /verify", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/", http.StatusMovedPermanently)
+		})
 		mux.HandleFunc("POST /verify/build", h.BuildPublicVerifyTemplate)
 		mux.HandleFunc("POST /verify/request", h.PublicVerifyRequest)
 		mux.HandleFunc("GET /verify/result/{state}", h.PublicVerifyResult)
@@ -597,6 +632,8 @@ func main() {
 		// Admin federation member CRUD.
 		mux.HandleFunc("GET /admin/federation/members", h.ShowFederationMembers)
 		mux.HandleFunc("POST /admin/federation/members", h.RegisterFederationMember)
+		mux.HandleFunc("GET /admin/federation/members/{did}/edit", h.ShowEditFederationMember)
+		mux.HandleFunc("POST /admin/federation/members/{did}/edit", h.UpdateFederationMember)
 		mux.HandleFunc("POST /admin/federation/members/{did}/delete", h.DeleteFederationMember)
 		// Issuer API key lifecycle (Fase 7).
 		mux.HandleFunc("POST /admin/federation/members/{did}/api-key", h.IssueAPIKey)
@@ -608,7 +645,11 @@ func main() {
 	// Wrap the mux with tracing (outermost) then request-ID. Order matters:
 	// tracing middleware creates the root span for every request; the request-ID
 	// middleware runs inside it so the request-id attribute appears on the span.
-	srv := &http.Server{Addr: addr, Handler: tracing.Middleware(tracer)(withRequestID(mux))}
+	var rootHandler http.Handler = mux
+	if activeRoles.Has(roles.Hub) {
+		rootHandler = hubHostRouter(mux)
+	}
+	srv := &http.Server{Addr: addr, Handler: tracing.Middleware(tracer)(withRequestID(rootHandler))}
 
 	go func() {
 		log.Printf("verifiably-go listening on %s (debug markers: %v)", addr, debug)
@@ -745,6 +786,52 @@ type ctxKeyRequestID struct{}
 
 // withRequestID generates a unique X-Request-ID for every inbound request,
 // echoes it in the response header, and stores it in the context so handlers
+// hubHostRouter enforces host-based separation when the hub role is active.
+// Requests from admin.* are only allowed to reach /admin/* paths (plus infra
+// paths that the admin UI needs: /static/, /healthz, /readyz, /metrics, /lang,
+// /qr). Requests from the public domain are blocked from reaching /admin/*.
+// A bare / on the admin subdomain is redirected to /admin/login.
+func hubHostRouter(next http.Handler) http.Handler {
+	// infra paths always pass through on both domains.
+	infraPrefixes := []string{"/static/", "/healthz", "/readyz", "/metrics", "/lang", "/qr",
+		"/trust-registry", "/.well-known/", "/schemas", "/api/", "/inji-proxy", "/offers/",
+		"/status-list/", "/docs",
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if i := strings.LastIndex(host, ":"); i >= 0 {
+			host = host[:i]
+		}
+		isAdminHost := strings.HasPrefix(host, "admin.")
+		isAdminPath := r.URL.Path == "/admin" || strings.HasPrefix(r.URL.Path, "/admin/")
+
+		if isAdminHost {
+			// On the admin subdomain: only admin paths and infra paths are allowed.
+			if r.URL.Path == "/" {
+				http.Redirect(w, r, "/admin/login", http.StatusFound)
+				return
+			}
+			for _, p := range infraPrefixes {
+				if strings.HasPrefix(r.URL.Path, p) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			if !isAdminPath {
+				http.NotFound(w, r)
+				return
+			}
+		} else {
+			// On the public domain: block all admin paths.
+			if isAdminPath {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // can include it in log attributes. If the client already sends X-Request-ID
 // we propagate it unchanged (enables tracing across service boundaries).
 func withRequestID(next http.Handler) http.Handler {
@@ -764,35 +851,62 @@ func withRequestID(next http.Handler) http.Handler {
 // For each member with a VerifierBackendType, a verifier adapter is built and
 // registered so OID4VP state routing ("dpg:<member-id>:...") works correctly.
 // If the trust registry is empty on first boot, members are seeded from
-// federation.json; subsequent boots leave DB entries untouched.
+// federation.json; subsequent boots use DB as the authoritative source.
 func bootstrapHub(ctx context.Context, reg *registry.Registry, h *handlers.H) {
 	fedPath := os.Getenv("VERIFIABLY_FEDERATION_CONFIG")
 	if fedPath == "" {
 		fedPath = "config/federation.json"
 	}
+
+	// Track which DIDs are already covered by a federation.json verifier adapter
+	// so we don't double-register trust-registry members that also appear there.
+	fedDIDs := map[string]bool{}
+
 	cfg, err := federation.LoadConfig(fedPath)
 	if err != nil {
-		log.Printf("hub: federation config unavailable (%v) — starting with empty member set", err)
-		return
+		log.Printf("hub: federation config unavailable (%v) — will register verifiers from trust registry only", err)
+	} else {
+		// Build a DID→member mapping for the double-registration guard below.
+		didByID := map[string]string{} // member.ID → member.DID
+		for _, m := range cfg.Members {
+			if m.VerifierBackendType != "" {
+				didByID[m.ID] = m.DID
+			}
+		}
+		// Register a verifier adapter for each member that declares one.
+		for _, e := range cfg.ToBackendEntries() {
+			ad, err := factory.Build(e)
+			if err != nil {
+				log.Printf("hub: build verifier for member %q: %v", e.Vendor, err)
+				continue
+			}
+			if ad == nil {
+				log.Printf("hub: member %q type=%q not supported — skipping", e.Vendor, e.Type)
+				continue
+			}
+			reg.Register(e.Vendor, e.DPG, e.Roles, ad)
+			if did := didByID[e.Vendor]; did != "" {
+				fedDIDs[did] = true
+			}
+			log.Printf("hub: registered member %q as verifier (type=%s)", e.Vendor, e.Type)
+		}
 	}
 
-	// Register a verifier adapter for each member that declares one.
-	for _, e := range cfg.ToBackendEntries() {
-		ad, err := factory.Build(e)
-		if err != nil {
-			log.Printf("hub: build verifier for member %q: %v", e.Vendor, err)
-			continue
+	// Register verifiers for trust registry members not covered by federation.json.
+	// These are members added via the admin UI whose vendor key is their DID.
+	if h.TrustRegistry != nil {
+		if issuers, err := h.TrustRegistry.TrustedIssuers(ctx); err == nil {
+			for _, issuer := range issuers {
+				if issuer.ServiceEndpoint == "" || fedDIDs[issuer.DID] {
+					continue
+				}
+				registerMemberVerifier(reg, issuer.DID, issuer.ServiceEndpoint, issuer.VerifierAPIKey)
+			}
 		}
-		if ad == nil {
-			log.Printf("hub: member %q type=%q not supported — skipping", e.Vendor, e.Type)
-			continue
-		}
-		reg.Register(e.Vendor, e.DPG, e.Roles, ad)
-		log.Printf("hub: registered member %q as verifier (type=%s)", e.Vendor, e.Type)
 	}
 
 	// Seed trust registry from federation.json only when the DB is empty.
-	if h.TrustRegistry == nil {
+	if h.TrustRegistry == nil || cfg == nil {
 		return
 	}
 	existing, err := h.TrustRegistry.TrustedIssuers(ctx)
@@ -816,6 +930,49 @@ func bootstrapHub(ctx context.Context, reg *registry.Registry, h *handlers.H) {
 		}
 	}
 	log.Printf("hub: seeded trust registry with %d member(s) from %s", len(cfg.Members), fedPath)
+}
+
+// registerMemberVerifier builds a "verifiably"-type adapter for the given
+// member and registers it in reg under did as the vendor key. Idempotent —
+// re-registering an existing vendor key replaces the adapter.
+func registerMemberVerifier(reg *registry.Registry, did, serviceEndpoint, apiKey string) {
+	e := registry.BackendEntry{
+		Vendor: did,
+		Type:   "verifiably",
+		Roles:  []string{"verifier"},
+		DPG: vctypes.DPG{
+			Vendor:  did,
+			Version: "trust-registry-member",
+			Tag:     did,
+			Tagline: serviceEndpoint,
+		},
+	}
+	cfgJSON, _ := json.Marshal(map[string]string{
+		"serviceEndpoint": serviceEndpoint,
+		"apiKey":          apiKey,
+	})
+	e.Config = cfgJSON
+	ad, err := factory.Build(e)
+	if err != nil || ad == nil {
+		log.Printf("hub: build verifier for trust registry member %q: %v", did, err)
+		return
+	}
+	reg.Register(e.Vendor, e.DPG, e.Roles, ad)
+	log.Printf("hub: registered trust registry member %q as verifier", did)
+}
+
+// memberVerifierRegistrar implements handlers.MemberVerifierRegistrar.
+// It bridges the admin registration handler to the live Registry and SchemaCache.
+type memberVerifierRegistrar struct {
+	reg   *registry.Registry
+	cache *schemacache.Aggregator
+}
+
+func (r *memberVerifierRegistrar) RegisterMemberVerifier(did, serviceEndpoint, apiKey string) {
+	registerMemberVerifier(r.reg, did, serviceEndpoint, apiKey)
+	if r.cache != nil {
+		r.cache.RegisterMember(did, did)
+	}
 }
 
 // loadTrustSigningKey loads the ECDSA P-256 private key used to sign the

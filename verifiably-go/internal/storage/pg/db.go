@@ -106,7 +106,8 @@ CREATE TABLE IF NOT EXISTS trusted_issuers (
 ALTER TABLE trusted_issuers
     ADD COLUMN IF NOT EXISTS service_endpoint      TEXT   NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS status_list_endpoints TEXT[] NOT NULL DEFAULT '{}',
-    ADD COLUMN IF NOT EXISTS status_list_policy    TEXT   NOT NULL DEFAULT 'fail-closed';
+    ADD COLUMN IF NOT EXISTS status_list_policy    TEXT   NOT NULL DEFAULT 'fail-closed',
+    ADD COLUMN IF NOT EXISTS verifier_api_key      TEXT   NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS verification_events (
     id              TEXT        PRIMARY KEY,

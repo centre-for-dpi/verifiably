@@ -71,6 +71,15 @@ func (a *Aggregator) Start(ctx context.Context, reg trust.Registry) {
 	}()
 }
 
+// RegisterMember adds or updates the DID→adapterKey mapping at runtime.
+// Called when a federation member is registered via the admin UI so the
+// next schema refresh stamps the correct SourceDeployment without a restart.
+func (a *Aggregator) RegisterMember(did, adapterKey string) {
+	a.mu.Lock()
+	a.memberIDs[did] = adapterKey
+	a.mu.Unlock()
+}
+
 // Schemas returns the merged list of schemas from all cached issuers.
 // If an issuer hasn't been fetched yet (e.g. called before Start's first
 // poll), it simply won't appear in the results.
@@ -143,7 +152,9 @@ func (a *Aggregator) fetchIssuer(ctx context.Context, issuer trust.TrustedIssuer
 
 	// Hub overrides SourceIssuerDID and SourceDeployment — the issuer's
 	// self-reported values may not match what the Hub knows about this member.
+	a.mu.RLock()
 	memberID := a.memberIDs[issuer.DID]
+	a.mu.RUnlock()
 	for i := range schemas {
 		schemas[i].SourceIssuerDID = issuer.DID
 		schemas[i].SourceDeployment = memberID
