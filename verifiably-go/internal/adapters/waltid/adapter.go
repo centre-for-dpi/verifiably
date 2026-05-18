@@ -84,20 +84,30 @@ func (a *Adapter) IssuerSigningKey(ctx context.Context) ([]byte, string, error) 
 // onboarding + wallet login until the first call that needs them — so startup
 // stays fast and a missing/unreachable backend surfaces as a per-request error
 // rather than crashing the whole app.
+//
+// Only verifierBaseUrl is strictly required. When issuerBaseUrl or walletBaseUrl
+// are absent the corresponding role clients are nil — methods that use them will
+// return an error at call time. This allows hub nodes to register a verifier-only
+// adapter for each federation member using just the member's verifierBaseUrl.
 func New(cfg Config, vendor string) (*Adapter, error) {
-	if cfg.IssuerBaseURL == "" || cfg.VerifierBaseURL == "" || cfg.WalletBaseURL == "" {
-		return nil, fmt.Errorf("waltid: issuerBaseUrl, verifierBaseUrl, and walletBaseUrl are required")
+	if cfg.VerifierBaseURL == "" {
+		return nil, fmt.Errorf("waltid: verifierBaseUrl is required")
 	}
-	return &Adapter{
+	a := &Adapter{
 		cfg:       cfg,
 		Vendor:    vendor,
-		issuer:    httpx.New(cfg.IssuerBaseURL),
 		verifier:  httpx.New(cfg.VerifierBaseURL),
-		wallet:    httpx.New(cfg.WalletBaseURL),
 		issuerKey: cfg.IssuerKey,
 		issuerDID: cfg.IssuerDID,
 		sessions:  map[string]*walletSession{},
-	}, nil
+	}
+	if cfg.IssuerBaseURL != "" {
+		a.issuer = httpx.New(cfg.IssuerBaseURL)
+	}
+	if cfg.WalletBaseURL != "" {
+		a.wallet = httpx.New(cfg.WalletBaseURL)
+	}
+	return a, nil
 }
 
 // Compile-time check: Adapter satisfies backend.Adapter.
