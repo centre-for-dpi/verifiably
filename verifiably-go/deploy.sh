@@ -735,6 +735,166 @@ wait_port() {
   green "  port $port ready"
 }
 
+# ---------------------------------------------------------------- hub subcommands
+# The Hub is a separate compose project (deploy/compose/hub/) — it does NOT
+# share the DPG compose stack. These functions are the single entry point for
+# Hub lifecycle operations.
+
+HUB_COMPOSE_FILE="$SCRIPT_DIR/deploy/compose/hub/docker-compose.yml"
+HUB_ENV_FILE="$SCRIPT_DIR/deploy/compose/hub/.env"
+
+hub_compose() {
+  local env_args=()
+  [[ -f "$HUB_ENV_FILE" ]] && env_args=( --env-file "$HUB_ENV_FILE" )
+  docker compose -f "$HUB_COMPOSE_FILE" "${env_args[@]}" "$@"
+}
+
+# ensure_hub_signing_key generates an ECDSA P-256 PEM key at
+# config/trust-signing-key.pem when one doesn't exist yet. Idempotent.
+ensure_hub_signing_key() {
+  local key_path="$SCRIPT_DIR/config/trust-signing-key.pem"
+  if [[ -f "$key_path" ]]; then
+    green "  signing key: config/trust-signing-key.pem (existing)"
+    return 0
+  fi
+  require openssl
+  bold "  Generating ES256 signing key → config/trust-signing-key.pem"
+  openssl ecparam -name prime256v1 -genkey -noout -out /tmp/_hub_ec_raw.pem 2>/dev/null
+  openssl pkcs8 -topk8 -nocrypt -in /tmp/_hub_ec_raw.pem -out "$key_path" 2>/dev/null
+  rm -f /tmp/_hub_ec_raw.pem
+  green "  signing key: config/trust-signing-key.pem (generated)"
+}
+
+# ensure_hub_env copies .env.example → .env when missing, auto-generates
+# POSTGRES_PASSWORD + VERIFIABLY_SESSION_SECRET, and prompts for the
+# values an operator must set (public URL, admin password, grafana password).
+ensure_hub_env() {
+  if [[ -f "$HUB_ENV_FILE" ]]; then
+    green "  hub env: deploy/compose/hub/.env (existing)"
+    return 0
+  fi
+  bold "  Creating deploy/compose/hub/.env from template"
+  cp "$SCRIPT_DIR/deploy/compose/hub/.env.example" "$HUB_ENV_FILE"
+
+  # Inject the signing key PEM as a one-liner (newlines → literal \n).
+  local key_path="$SCRIPT_DIR/config/trust-signing-key.pem"
+  if [[ -f "$key_path" ]]; then
+    local key_inline
+    key_inline=$(awk 'NF {printf "%s\\n", $0}' "$key_path")
+    set_env_var "$HUB_ENV_FILE" "VERIFIABLY_TRUST_SIGNING_KEY" "$key_inline"
+  fi
+
+  # Auto-generate secrets.
+  local pg_pass session_secret
+  pg_pass=$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | base64 | tr -d '/+=\n')
+  session_secret=$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | base64 | tr -d '/+=\n')
+  set_env_var "$HUB_ENV_FILE" "POSTGRES_PASSWORD"          "$pg_pass"
+  set_env_var "$HUB_ENV_FILE" "VERIFIABLY_SESSION_SECRET"  "$session_secret"
+
+  # Prompt for operator-specific values.
+  local public_url admin_pass grafana_pass
+  printf "  Hub public URL [http://localhost:8080]: "
+  read -r public_url
+  public_url="${public_url:-http://localhost:8080}"
+  set_env_var "$HUB_ENV_FILE" "VERIFIABLY_PUBLIC_URL" "$public_url"
+
+  printf "  Admin password [admin]: "
+  read -r -s admin_pass; echo
+  admin_pass="${admin_pass:-admin}"
+  set_env_var "$HUB_ENV_FILE" "VERIFIABLY_ADMIN_PASSWORD" "$admin_pass"
+
+  printf "  Grafana password [admin]: "
+  read -r -s grafana_pass; echo
+  grafana_pass="${grafana_pass:-admin}"
+  set_env_var "$HUB_ENV_FILE" "GRAFANA_PASSWORD" "$grafana_pass"
+
+  green "  hub env: deploy/compose/hub/.env (created)"
+}
+
+# ensure_hub_targets runs the federation Prometheus target generator. Safe to
+# re-run at every 'up' — the output file is overwritten atomically by jq.
+ensure_hub_targets() {
+  local gen="$SCRIPT_DIR/deploy/compose/monitoring/generate-federation-prometheus.sh"
+  local targets="$SCRIPT_DIR/deploy/compose/hub/federation-targets.json"
+  local fed="$SCRIPT_DIR/config/federation.json"
+  if [[ ! -x "$gen" ]]; then
+    yellow "  skipping target gen (script not found: $gen)"
+    return 0
+  fi
+  if [[ ! -f "$fed" ]]; then
+    yellow "  skipping target gen (federation.json not found — using empty targets)"
+    printf '[]' > "$targets"
+    return 0
+  fi
+  bash "$gen" "$fed" "$targets" || yellow "  target generation warning — check output above"
+}
+
+cmd_up_hub() {
+  require docker
+
+  bold "▶ Hub: verifying prerequisites"
+  ensure_hub_signing_key
+  ensure_hub_env
+
+  bold "▶ Hub: generating Prometheus federation targets"
+  ensure_hub_targets
+
+  # Read VERIFIABLY_IMAGE from hub .env (or fall back to the default tag).
+  local hub_image="verifiably/verifiably-go:latest"
+  if [[ -f "$HUB_ENV_FILE" ]]; then
+    local _img
+    _img=$(grep -E '^VERIFIABLY_IMAGE=' "$HUB_ENV_FILE" | cut -d= -f2- | tr -d '"' || true)
+    [[ -n "$_img" ]] && hub_image="$_img"
+  fi
+
+  bold "▶ Hub: building image ($hub_image)"
+  docker build --progress=plain -t "$hub_image" "$SCRIPT_DIR"
+
+  bold "▶ Hub: starting stack (postgres + verifiably-go + prometheus + grafana)"
+  hub_compose up -d
+
+  # Read ports for the summary (fall back to defaults from .env.example).
+  local hub_port prom_port grafana_port
+  hub_port=$(grep -E '^HUB_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 8080)
+  prom_port=$(grep -E '^PROMETHEUS_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 9090)
+  grafana_port=$(grep -E '^GRAFANA_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 3100)
+  hub_port="${hub_port:-8080}"
+  prom_port="${prom_port:-9090}"
+  grafana_port="${grafana_port:-3100}"
+
+  echo
+  green "  Hub is up."
+  echo "    Hub:        http://localhost:${hub_port}"
+  echo "    Admin:      http://localhost:${hub_port}/admin/login"
+  echo "    Prometheus: http://localhost:${prom_port}"
+  echo "    Grafana:    http://localhost:${grafana_port}  (admin / <GRAFANA_PASSWORD>)"
+}
+
+cmd_down_hub() {
+  bold "▶ Hub: stopping stack"
+  hub_compose down
+  green "  Hub stopped."
+}
+
+cmd_run_hub() {
+  require docker
+  ensure_hub_env
+
+  local hub_image="verifiably/verifiably-go:latest"
+  if [[ -f "$HUB_ENV_FILE" ]]; then
+    local _img
+    _img=$(grep -E '^VERIFIABLY_IMAGE=' "$HUB_ENV_FILE" | cut -d= -f2- | tr -d '"' || true)
+    [[ -n "$_img" ]] && hub_image="$_img"
+  fi
+
+  bold "▶ Hub: rebuilding image ($hub_image)"
+  docker build --progress=plain -t "$hub_image" "$SCRIPT_DIR"
+
+  bold "▶ Hub: restarting verifiably-go container"
+  hub_compose up -d --no-deps --force-recreate verifiably-go
+  green "  verifiably-go (hub) restarted."
+}
+
 # ---------------------------------------------------------------- main
 
 usage() {
@@ -746,9 +906,13 @@ commands:
                                    Keycloak admin password, and CREDEBL email. Auto-runs
                                    on first 'up' if .env does not exist.
   up <all|waltid|inji|credebl>     start compose services + build & run verifiably-go container
-  down [all|waltid|inji|credebl]   stop them (default: all)
+  up hub                           start the Hub stack (Trust Registry + /verify + Prometheus + Grafana)
+                                   generates signing key + .env on first run; idempotent
+  down [all|waltid|inji|credebl]   stop DPG services (default: all)
+  down hub                         stop the Hub stack
   run <all|waltid|inji|credebl>    rebuild + restart only the verifiably-go container
                                    (use when the DPG stack is already up)
+  run hub                          rebuild verifiably-go image and restart the Hub container
   config <all|waltid|inji|credebl> print the backends.json that would be generated
   status                           summarise what's running
   reset                            wipe every waltid_* named volume — fixes keystore/DB
@@ -756,6 +920,9 @@ commands:
                                    asks for explicit 'RESET' confirmation.
 
 scenarios:
+  hub      central Hub — Trust Registry (JWT ES256) + /verify portal + Schema Registry +
+           Prometheus + Grafana. Separate compose project (deploy/compose/hub/).
+           Signing key + .env generated automatically on first run.
   all      every DPG + both IdPs + LibreTranslate
            (includes compose-managed CREDEBL unless CREDEBL_API_URL is set;
             secrets are auto-generated on first run)
@@ -767,21 +934,28 @@ scenarios:
            CREDEBL_PASSWORD, CREDEBL_CRYPTO_PRIVATE_KEY, CREDEBL_ORG_ID, CREDEBL_ISSUER_ID
            (but compose-managed CREDEBL is preferred for local dev)
 
-all scenarios include a containerised verifiably-go on port $VERIFIABLY_HOST_PORT,
+DPG scenarios include a containerised verifiably-go on port $VERIFIABLY_HOST_PORT,
 attached to the compose network (${COMPOSE_PROJECT}_default).
 EOF
 }
 
 main() {
   local cmd="${1:-}"
+  local scenario="${2:-}"
   case "$cmd" in
-    up)      shift; cmd_up "$@";;
-    down)    shift; cmd_down "$@";;
+    up)
+      shift
+      if [[ "${1:-}" == "hub" ]]; then cmd_up_hub; else cmd_up "$@"; fi;;
+    down)
+      shift
+      if [[ "${1:-}" == "hub" ]]; then cmd_down_hub; else cmd_down "$@"; fi;;
+    run)
+      shift
+      if [[ "${1:-}" == "hub" ]]; then cmd_run_hub; else cmd_run "$@"; fi;;
     reset)   cmd_reset;;
     setup)   cmd_setup;;
     status)  cmd_status;;
     config)  shift; cmd_config "$@";;
-    run)     shift; cmd_run "$@";;
     help|-h|--help|"") usage;;
     *)       red "unknown command: $cmd"; usage; exit 2;;
   esac
