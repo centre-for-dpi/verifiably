@@ -41,6 +41,49 @@ Docker Hub has the two first-party images the stack pulls:
 
 All other containers pull from their vendors' official Docker Hub repos.
 
+## Running unit tests
+
+Go is not required on the host — the test suite runs inside a Docker container:
+
+```bash
+cd verifiably-go
+
+# Run all unit tests (requires Docker):
+docker run --rm \
+  -v "$(pwd)":/workspace \
+  -w /workspace \
+  -e GOTOOLCHAIN=auto \
+  -e GOFLAGS="-mod=mod" \
+  golang:1.24 \
+  go test ./...
+```
+
+Expected output — every package should print `ok`:
+
+```
+ok  github.com/verifiably/verifiably-go/internal/roles        0.018s
+ok  github.com/verifiably/verifiably-go/internal/trust        0.024s
+ok  github.com/verifiably/verifiably-go/internal/metrics      0.013s
+ok  github.com/verifiably/verifiably-go/internal/didresolver  0.013s
+ok  github.com/verifiably/verifiably-go/internal/verification 0.013s
+ok  github.com/verifiably/verifiably-go/internal/federation   0.015s
+ok  github.com/verifiably/verifiably-go/internal/handlers     0.045s
+```
+
+To run a single package with verbose output:
+
+```bash
+docker run --rm \
+  -v "$(pwd)":/workspace \
+  -w /workspace \
+  -e GOTOOLCHAIN=auto \
+  -e GOFLAGS="-mod=mod" \
+  golang:1.24 \
+  go test -v ./internal/trust/...
+```
+
+If Go 1.25+ is in your `$PATH`, you can skip Docker and run `go test ./...` directly.
+
 ## Quickstart
 
 Clone, run the setup wizard, bring the stack up:
@@ -267,6 +310,212 @@ Usage is the same pattern: `./deploy.sh <up|run|down|status|config> <scenario>`.
 The `run` subcommand rebuilds and restarts **only** the verifiably-go
 container without touching compose — useful when the DPG stack is already
 up and you just changed verifiably-go's code or config.
+
+---
+
+## Federated Ecosystem (Hub mode)
+
+The `federated-issuance` branch extends verifiably-go into a multi-organisation
+ecosystem: N independent issuer instances plus a central **Hub** that runs the
+Trust Registry, Schema Registry, and a public verification portal for citizens.
+
+```
+┌──────────────────────── HUB (verify.cdpi.dev) ──────────────────────────┐
+│  Trust Registry  (/trust-registry, JWT ES256)                           │
+│  Schema Registry (/api/schemas — aggregated + cached from issuers)      │
+│  Public verify   (/verify — no login, citizen-facing)                   │
+│  Admin           (/admin/federation/members — CRUD, API key lifecycle)  │
+│  Monitoring      (Prometheus + Grafana — federation-wide scrape)        │
+└────────────┬──────────────────┬──────────────────┬───────────────────── ┘
+             │                  │                  │
+     Emisor A (walt.id)  Emisor B (CREDEBL)  Emisor C (Inji)
+     ROLES=issuer         ROLES=issuer        ROLES=issuer
+     did:web:a.gov        did:web:b.gov       did:web:c.gov
+```
+
+### Hub from scratch
+
+Follow these steps once on a fresh machine to get the Hub running end-to-end.
+
+**1. Check out the branch and enter the subtree:**
+
+```bash
+git clone https://github.com/centre-for-dpi/demo-daas-3-0.git
+cd demo-daas-3-0/verifiably-go
+git checkout federated-issuance   # branch with federation code
+```
+
+**2. Generate the ES256 signing key for the Trust Registry JWT:**
+
+```bash
+# Create the config directory if it doesn't exist
+mkdir -p config
+
+# Generate a PKCS8 PEM key (compatible with both openssl versions):
+openssl ecparam -name prime256v1 -genkey -noout -out /tmp/ec-raw.pem
+openssl pkcs8 -topk8 -nocrypt -in /tmp/ec-raw.pem -out config/trust-signing-key.pem
+rm /tmp/ec-raw.pem
+
+# Verify it looks right:
+head -2 config/trust-signing-key.pem
+# -----BEGIN PRIVATE KEY-----
+```
+
+If you leave `VERIFIABLY_TRUST_SIGNING_KEY` empty the Hub uses an ephemeral
+key — fine for local dev but the public key changes on every restart, breaking
+external JWT verification.
+
+**3. Create the `.env` file:**
+
+```bash
+cp deploy/compose/hub/.env.example deploy/compose/hub/.env
+```
+
+Open `deploy/compose/hub/.env` and set the required fields (marked `# *`):
+
+| Variable | Example / Notes |
+|---|---|
+| `POSTGRES_PASSWORD` | Any random string — e.g. `openssl rand -hex 16` |
+| `VERIFIABLY_PUBLIC_URL` | `http://localhost:8080` (dev) or `https://verify.cdpi.dev` (prod) |
+| `VERIFIABLY_SESSION_SECRET` | 32 random hex bytes — `openssl rand -hex 32` |
+| `VERIFIABLY_ADMIN_PASSWORD` | Your hub admin password |
+| `GRAFANA_PASSWORD` | Your Grafana admin password |
+| `VERIFIABLY_TRUST_SIGNING_KEY` | Leave blank to use the PEM file at `config/trust-signing-key.pem` (mounted read-only into the container). |
+
+**4. Configure the federation:**
+
+`config/federation.json` declares which issuer organisations belong to the
+ecosystem. The repo ships a single example member. Edit it to reflect your actual
+issuers:
+
+```json
+{
+  "ecosystem": {
+    "name": "CDPI Ecosystem",
+    "trustRegistryURL": "https://verify.cdpi.dev/trust-registry",
+    "hubURL": "https://verify.cdpi.dev"
+  },
+  "members": [
+    {
+      "id": "issuer-a",
+      "name": "Ministerio de Educación",
+      "did": "did:web:issuer-a.gov",
+      "service_endpoint": "https://issuer-a.gov",
+      "verifierBackendType": "walt_community",
+      "verifierConfig": { "verifierBaseUrl": "https://issuer-a.gov/verifier", "standardVersion": "draft13" },
+      "statusListEndpoints": ["https://issuer-a.gov/status-list/bitstring/v1"],
+      "statusListPolicy": "fail-closed"
+    }
+  ]
+}
+```
+
+For dev/local testing the `members` array can be empty — the Hub boots fine with
+no registered members.
+
+**5. Generate the Prometheus federation scrape targets:**
+
+```bash
+bash deploy/compose/monitoring/generate-federation-prometheus.sh \
+     config/federation.json \
+     deploy/compose/hub/federation-targets.json
+```
+
+This creates the `file_sd` targets file Prometheus needs to scrape each
+member's `/metrics` endpoint. Re-run this whenever you add or remove members,
+then trigger a live reload:
+
+```bash
+docker compose -f deploy/compose/hub/docker-compose.yml exec prometheus \
+  curl -sX POST http://localhost:9090/-/reload
+```
+
+**6. Build the verifiably-go image:**
+
+```bash
+docker build -t verifiably/verifiably-go:latest .
+```
+
+Or override `VERIFIABLY_IMAGE` in `.env` to point at a registry image and skip
+the local build.
+
+**7. Start the Hub stack:**
+
+```bash
+docker compose -f deploy/compose/hub/docker-compose.yml --env-file deploy/compose/hub/.env up -d
+```
+
+This brings up four containers:
+
+| Container | Port | What it is |
+|---|---|---|
+| `hub-postgres` | — (internal) | PostgreSQL 16 — Trust Registry, verification events, API keys |
+| `verifiably-go` | 8080 | Hub app (`VERIFIABLY_ROLES=hub`) |
+| `hub-prometheus` | 9090 | Prometheus with federation scrape + alert rules |
+| `hub-grafana` | 3100 | Grafana with the ecosystem overview dashboard |
+
+**8. Verify everything is healthy:**
+
+```bash
+# Hub health check
+curl -s http://localhost:8080/healthz
+# {"status":"ok"}
+
+# Trust Registry JWT
+curl -s http://localhost:8080/trust-registry | cut -c1-60
+
+# JWKS endpoint (public key for JWT verification)
+curl -s http://localhost:8080/.well-known/jwks.json | python3 -m json.tool
+
+# Prometheus targets
+curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep health
+
+# Grafana
+open http://localhost:3100   # login: admin / <GRAFANA_PASSWORD>
+```
+
+**9. (Optional) Register an issuer from the admin UI:**
+
+Browse to `http://localhost:8080/admin/login` → log in with `admin` /
+`<VERIFIABLY_ADMIN_PASSWORD>` → go to **Federation Members** → fill in the
+DID, service endpoint, and status list URLs → **Register**.
+
+From the same page you can generate an API key for each issuer so they can
+call `GET /api/ecosystem/issuers/{did}/stats` to pull their verification stats.
+
+**Stopping the Hub stack:**
+
+```bash
+docker compose -f deploy/compose/hub/docker-compose.yml down
+```
+
+**Full reset (destroys data volumes):**
+
+```bash
+docker compose -f deploy/compose/hub/docker-compose.yml down -v
+```
+
+### Running an issuer node
+
+An individual ministry runs verifiably-go with `VERIFIABLY_ROLES=issuer`
+pointing at their DPG backend. The existing `./deploy.sh up <scenario>` flow
+is unchanged — add `VERIFIABLY_ROLES=issuer` to the container environment
+to restrict it to issuer routes only. Issuer nodes do not need a PostgreSQL
+instance (the standard JSON-backed log works) unless you want verification
+events analytics.
+
+### Environment variables added by the federation branch
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VERIFIABLY_ROLES` | *(all roles)* | Comma/space-separated list: `issuer`, `holder`, `verifier`, `trust`, `schemas`, `hub`. `hub` implies `trust` + `schemas`. Omit for legacy all-roles mode. |
+| `VERIFIABLY_TRUST_SIGNING_KEY` | *(ephemeral)* | PEM (SEC1 or PKCS8) of the ECDSA P-256 private key used to sign Trust Registry JWTs. Ephemeral key on every restart if unset. |
+| `VERIFIABLY_FEDERATION_CONFIG` | `config/federation.json` | Path to the federation members JSON file. |
+| `VERIFIABLY_ISSUER_DID` | *(empty)* | `did:web:` of this deployment — embedded as `sourceIssuerDid` in `/api/schemas` responses so the Hub knows which issuer owns each schema. |
+| `VERIFIABLY_DATABASE_URL` | *(empty)* | PostgreSQL DSN. Required for Trust Registry persistence, verification events, and API keys. JSON-backed fallback if unset. |
+| `ISSUER_DID_DOMAIN` | *(empty)* | Inji-specific: domain for `did:web` — sets `CERTIFY_ISSUER_DID` in Inji's postgres init scripts. Must be set before first `docker compose up` (or after deleting Inji volumes). |
+
+---
 
 ### Credentials for demo flows
 
@@ -583,6 +832,16 @@ coming from DPG responses.
   — resolved security and reliability items (P0–P3) from the 2026-05-16
   review, plus the long-tail architectural backlog (Vault/SSM, mTLS, push
   revocation, VERIFIABLY_MODE).
+
+- **[verifiably-go/federated-emission.md](verifiably-go/federated-emission.md)**
+  — federation architecture plan: all 13 implementation phases (Fase 0–9 + 10),
+  architectural decisions, DID:web deployment automation, hub compose topology,
+  and the criteria used to verify each phase.
+
+- **[verifiably-go/deploy/compose/hub/docker-compose.yml](verifiably-go/deploy/compose/hub/docker-compose.yml)**
+  — Hub compose stack: verifiably-go (hub mode) + PostgreSQL + Prometheus + Grafana.
+  Copy `deploy/compose/hub/.env.example` to `.env` and fill in the required fields
+  before running `docker compose up`.
 
 ## License
 
