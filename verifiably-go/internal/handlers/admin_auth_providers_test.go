@@ -190,7 +190,7 @@ func TestAdminLogin_AcceptsCorrectCreds(t *testing.T) {
 
 // mustReqWithCookie threads the session cookie minted by `from` onto a
 // fresh request, so a follow-up handler call sees the same Session.
-func mustReqWithCookie(t *testing.T, _ *Store, from *httptest.ResponseRecorder) *http.Request {
+func mustReqWithCookie(t *testing.T, _ SessionStore, from *httptest.ResponseRecorder) *http.Request {
 	t.Helper()
 	r := httptest.NewRequest("GET", "/", nil)
 	for _, c := range from.Result().Cookies() {
