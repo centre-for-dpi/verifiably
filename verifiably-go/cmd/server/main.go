@@ -235,17 +235,6 @@ func main() {
 		log.Printf("issuer API key store: PostgreSQL backend active")
 	}
 
-	// Trust Registry health monitor (Fase 9) — probes each registered issuer's
-	// /healthz every 5 minutes and emits Prometheus gauges for alerting.
-	// Wired only when Hub role is active and a trust registry is configured.
-	// In non-hub deployments the monitor is nil (feature silently disabled).
-	if activeRoles.Has(roles.Hub) && h.TrustRegistry != nil {
-		hm := trust.NewMonitor()
-		h.TrustHealthMonitor = hm
-		hm.Start(shutCtx, h.TrustRegistry)
-		log.Printf("trust health monitor: started (expiry=hourly, endpoint=5min)")
-	}
-
 	// National trust registry — served as a signed JWT at GET /trust-registry.
 	// Uses PostgreSQL when pool is available; falls back to in-memory (dev/test).
 	// Signing: ES256 when VERIFIABLY_TRUST_SIGNING_KEY is set; HS256 (dev) otherwise.
@@ -292,6 +281,17 @@ func main() {
 	// VERIFIABLY_ROLES="" (default) → all roles active (backwards-compatible).
 	activeRoles := roles.FromEnv()
 	activeRoles.Log()
+
+	// Trust Registry health monitor (Fase 9) — probes each registered issuer's
+	// /healthz every 5 minutes and emits Prometheus gauges for alerting.
+	// Wired only when Hub role is active and a trust registry is configured.
+	// In non-hub deployments the monitor is nil (feature silently disabled).
+	if activeRoles.Has(roles.Hub) && h.TrustRegistry != nil {
+		hm := trust.NewMonitor()
+		h.TrustHealthMonitor = hm
+		hm.Start(shutCtx, h.TrustRegistry)
+		log.Printf("trust health monitor: started (expiry=hourly, endpoint=5min)")
+	}
 
 	// DID resolver — did:web with 10-minute document cache.
 	// Used by status list verification (Fase 10) and federation member validation (Fase 5).
