@@ -1,16 +1,19 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/internal/trust"
+	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -439,6 +442,33 @@ func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
 	}
 	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", completedSchemaLabel, "status", verifyStatus)
 	h.attachTrustStatus(r, &res)
+
+	// Write verification event — non-blocking; never delays the HTTP response.
+	if h.VerificationLog != nil {
+		evtStatus := "invalid"
+		if res.Valid {
+			evtStatus = "valid"
+		}
+		evt := verification.Event{
+			ID:           verification.NewID(),
+			IssuerDID:    res.Issuer,
+			SchemaID:     sess.CustomOID4VPSchemaID,
+			SchemaName:   completedSchemaLabel,
+			VerifierDPG:  sess.VerifierDpg,
+			DeploymentID: os.Getenv("VERIFIABLY_PUBLIC_URL"),
+			Status:       evtStatus,
+			TrustStatus:  res.TrustStatus,
+			VerifiedAt:   time.Now().UTC(),
+		}
+		go func(e verification.Event) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := h.VerificationLog.Append(ctx, e); err != nil {
+				slog.Warn("verification log: append failed", "err", err)
+			}
+		}(evt)
+	}
+
 	slog.Info("oid4vp verification completed",
 		"valid", res.Valid,
 		"method", res.Method,

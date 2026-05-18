@@ -13,9 +13,9 @@ import (
 // ── Public endpoint ───────────────────────────────────────────────────────────
 
 // ServeTrustRegistry handles GET /trust-registry.
-// Returns a compact HS256 JWT whose payload is the full trusted-issuer list.
-// Cache-Control is set to 1 h; the JWT exp claim is 24 h so downstream
-// caches have a safe refresh window.
+// Returns a signed JWT whose payload is the full trusted-issuer list.
+// Uses ES256 when TrustSigningKey is set (production); falls back to HS256
+// (dev / no key configured). Cache-Control 1 h; JWT exp 24 h.
 func (h *H) ServeTrustRegistry(w http.ResponseWriter, r *http.Request) {
 	if h.TrustRegistry == nil {
 		http.Error(w, "trust registry not configured", http.StatusServiceUnavailable)
@@ -31,7 +31,13 @@ func (h *H) ServeTrustRegistry(w http.ResponseWriter, r *http.Request) {
 	if issuerID == "" {
 		issuerID = "verifiably-go"
 	}
-	jwt, err := trust.BuildJWT(issuers, issuerID, h.TrustJWTSecret, 24*time.Hour)
+
+	var jwt string
+	if h.TrustSigningKey != nil {
+		jwt, err = trust.BuildJWTES256(issuers, issuerID, h.TrustSigningKey, 24*time.Hour)
+	} else {
+		jwt, err = trust.BuildJWT(issuers, issuerID, h.TrustJWTSecret, 24*time.Hour)
+	}
 	if err != nil {
 		slog.Error("trust registry: build JWT", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -40,6 +46,24 @@ func (h *H) ServeTrustRegistry(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/jwt")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	_, _ = w.Write([]byte(jwt))
+}
+
+// ServeJWKS handles GET /.well-known/jwks.json.
+// Returns the ES256 public key in JWK Set format so any verifier can validate
+// the /trust-registry JWT without a shared secret.
+// Returns 404 when no signing key is configured (should not happen in production).
+func (h *H) ServeJWKS(w http.ResponseWriter, r *http.Request) {
+	if h.TrustSigningKey == nil {
+		http.NotFound(w, r)
+		return
+	}
+	jwk := trust.PublicKeyToJWK(&h.TrustSigningKey.PublicKey)
+	jwks := map[string]any{
+		"keys": []any{jwk},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_ = json.NewEncoder(w).Encode(jwks)
 }
 
 // ── Admin handlers ────────────────────────────────────────────────────────────
