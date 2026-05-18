@@ -588,6 +588,7 @@ func main() {
 	if activeRoles.Has(roles.Hub) {
 		// Public portal — no auth required. Rate-limited by IP via h.RateLimiter.
 		mux.HandleFunc("GET /verify", h.ShowPublicVerify)
+		mux.HandleFunc("POST /verify/build", h.BuildPublicVerifyTemplate)
 		mux.HandleFunc("POST /verify/request", h.PublicVerifyRequest)
 		mux.HandleFunc("GET /verify/result/{state}", h.PublicVerifyResult)
 		// Federated schema registry — returns schemas aggregated from all members.

@@ -1,40 +1,162 @@
 {{define "content_public_verify"}}
 <div>
   <h1 class="page-title" style="margin-bottom:0.5rem">Verificá<br><em>tu documento</em>.</h1>
-  <p class="subtitle" style="margin-bottom:2rem">
-    Seleccioná el tipo de documento, escaneá el código QR con tu wallet
-    compatible y obtenés el resultado al instante.
+  <p class="subtitle" style="margin-bottom:1.5rem">
+    Seleccioná el tipo de documento, elegí los campos a compartir
+    y escaneá el código QR con tu wallet compatible.
   </p>
 
-  {{if .Body.Schemas}}
-  <p style="font-size:0.82rem;color:var(--ink-mute);margin:0 0 0.75rem">¿Qué querés verificar?</p>
-  <div class="schema-grid">
-    {{range .Body.Schemas}}
-    <button
-      class="schema-card"
-      type="button"
-      hx-post="/verify/request"
-      hx-target="#qr-area"
-      hx-swap="outerHTML"
-      hx-vals='{"schema_id": "{{.ID}}"}'
-      onclick="document.querySelectorAll('.schema-card').forEach(c=>c.classList.remove('selected'));this.classList.add('selected')">
-      <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.2rem">{{.Name}}</div>
-      {{if .Desc}}<div style="font-size:0.76rem;color:var(--ink-soft);line-height:1.3">{{.Desc}}</div>{{end}}
-      {{if .IssuerDisplayName}}<div class="pill" style="margin-top:0.5rem;font-size:0.7rem">{{.IssuerDisplayName}}</div>{{end}}
+  <form id="public-verify-form"
+        hx-post="/verify/request"
+        hx-target="#qr-area"
+        hx-swap="outerHTML">
+
+    <div class="field" style="margin-bottom:1rem">
+      <label style="font-size:0.8rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em">Divulgación de datos</label>
+      <div style="display:flex;gap:1.25rem;font-size:0.85rem;margin-top:0.35rem;flex-wrap:wrap">
+        <label style="display:inline-flex;align-items:center;gap:0.35rem;cursor:pointer">
+          <input type="radio" name="disclosure" value="selective" checked>
+          selectiva — solo los campos marcados
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:0.35rem;cursor:pointer">
+          <input type="radio" name="disclosure" value="full">
+          completa — toda la credencial
+        </label>
+      </div>
+    </div>
+
+    <div id="public-verify-body">
+      {{template "fragment_public_verify_body" .Body}}
+    </div>
+
+    <button class="btn" type="submit" style="margin-top:1rem">
+      Generar código QR →
     </button>
-    {{end}}
-  </div>
-  {{else}}
-  <p style="color:var(--ink-mute);font-style:italic;padding:1.5rem 0">
-    No hay tipos de documento disponibles en este momento.
-    Volvé más tarde o contactá al administrador del sistema.
-  </p>
-  {{end}}
+  </form>
 
   {{/* QR code + result — replaced by HTMX */}}
   <div id="qr-area"></div>
 </div>
 {{end}}
+
+
+{{define "fragment_public_verify_body"}}
+<input type="hidden" name="schema_id" value="{{.SchemaID}}">
+
+<div style="margin-bottom:0.75rem">
+  {{/* Format filter chips */}}
+  <div class="chip-row" style="margin-bottom:0.5rem">
+    {{range .Stds}}
+    <button type="button"
+            class="chip small {{if eq . $.Filter}}active{{end}}"
+            hx-post="/verify/build"
+            hx-vals='{"filter": "{{.}}"}'
+            hx-target="#public-verify-body"
+            hx-swap="innerHTML"
+            hx-include="closest form">{{.}}</button>
+    {{end}}
+  </div>
+
+  {{/* Search */}}
+  <input type="search"
+         name="q"
+         placeholder="Buscar credenciales…"
+         value="{{.Query}}"
+         autocomplete="off"
+         hx-post="/verify/build"
+         hx-trigger="input changed delay:250ms, search"
+         hx-target="#public-verify-body"
+         hx-swap="innerHTML"
+         hx-include="closest form"
+         style="width:100%;padding:0.5rem 0.7rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;font-size:0.85rem;box-sizing:border-box">
+</div>
+
+{{/* Schema card list */}}
+<div class="schema-list" style="max-height:340px;overflow-y:auto">
+  {{if not .Schemas}}
+  <div style="font-size:0.85rem;color:var(--ink-mute);padding:1rem 0;grid-column:1 / -1">
+    No hay credenciales disponibles en este momento.
+    Volvé más tarde o contactá al administrador del sistema.
+  </div>
+  {{end}}
+
+  {{range .Schemas}}
+  {{$cardSelected := false}}
+  {{if eq .ID $.SchemaID}}{{$cardSelected = true}}{{end}}
+  {{range .Variants}}{{if eq .ID $.SchemaID}}{{$cardSelected = true}}{{end}}{{end}}
+
+  <div class="schema-card {{if $cardSelected}}selected{{end}}"
+       data-name="{{.Name}}" data-std="{{.Std}}">
+    <h4 style="margin:0 0 0.25rem">{{.Name}}</h4>
+    {{if .IssuerDisplayName}}
+    <div style="font-size:0.75rem;color:var(--ink-soft);margin-bottom:0.25rem">
+      Emitido por <strong>{{.IssuerDisplayName}}</strong>
+    </div>
+    {{end}}
+    <div class="desc" style="font-size:0.78rem;margin-bottom:0.4rem">
+      {{len .FieldsSpec}} campo{{if ne (len .FieldsSpec) 1}}s{{end}} ·
+      {{if .Variants}}{{len .Variants}} formato{{if ne (len .Variants) 1}}s{{end}}{{else}}{{.Std}}{{end}}
+    </div>
+
+    {{if .Variants}}
+    <div class="chip-row" style="flex-wrap:wrap;gap:0.3rem">
+      {{range .Variants}}
+      {{if .CanPresent}}
+      <button type="button"
+              class="chip small {{if eq .ID $.SchemaID}}active{{end}}"
+              title="{{.Format}}"
+              hx-post="/verify/build"
+              hx-vals='{"schema_id": "{{.ID}}"}'
+              hx-target="#public-verify-body"
+              hx-swap="innerHTML"
+              hx-include="closest form">{{.Label}}</button>
+      {{end}}
+      {{end}}
+    </div>
+    {{else}}
+    <button type="button"
+            class="chip small {{if $cardSelected}}active{{end}}"
+            hx-post="/verify/build"
+            hx-vals='{"schema_id": "{{.ID}}"}'
+            hx-target="#public-verify-body"
+            hx-swap="innerHTML"
+            hx-include="closest form">{{.Std}}</button>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+
+{{/* Field picker — appears after a schema/format is selected */}}
+<div id="public-template-preview" style="margin-top:1rem">
+  {{if .Template}}
+  {{template "fragment_public_verify_preview" (dict
+    "Template" (deref .Template)
+    "SchemaID" .SchemaID
+    "Schema"   (indexSchemas .AllSchemas .SchemaID)
+    "Selected" (fieldSet .Template.Fields))}}
+  {{end}}
+</div>
+{{end}}
+
+
+{{define "fragment_public_verify_preview"}}
+<div class="caps" style="margin-bottom:0.4rem;font-size:0.7rem">Campos de <em>{{.Schema.Name}}</em></div>
+<div style="display:flex;flex-wrap:wrap;gap:0.5rem 1.25rem;font-size:0.85rem;padding:0.5rem 0">
+  {{range .Schema.FieldsSpec}}
+  <label style="display:inline-flex;align-items:center;gap:0.35rem;cursor:pointer">
+    <input type="checkbox" name="field_key" value="{{.Name}}"
+           {{if index $.Selected .Name}}checked{{end}}>
+    <span>{{replaceUnderscore .Name}}</span>
+  </label>
+  {{end}}
+</div>
+<div style="margin-top:0.75rem;padding:0.75rem 1rem;background:var(--bg);border-left:3px solid var(--ok,#16a34a);font-size:0.82rem;border-radius:0 4px 4px 0">
+  <strong>{{.Template.Title}}</strong> · <span class="mono">{{.Template.Format}}</span><br>
+  Solicitando: <span class="mono">{{range $i, $f := .Template.Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span><br>
+  Divulgación: <em>{{.Template.Disclosure}}</em>
+</div>
+{{end}}
+
 
 {{define "fragment_public_qr"}}
 <div id="qr-area" style="margin-top:1.5rem">
@@ -73,6 +195,7 @@
 </div>
 {{end}}
 
+
 {{define "fragment_public_result"}}
 {{if .Pending}}
 <div id="result-area"
@@ -95,7 +218,7 @@
   <div class="verify-badge ok" style="margin-top:0.75rem">
     <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.75rem">
       <span style="font-size:1.4rem">✅</span>
-      <strong style="font-size:1rem;color:var(--ok,#16a34a)">VERIFICADO POR CDPI</strong>
+      <strong style="font-size:1rem;color:var(--ok,#16a34a)">VERIFICADO</strong>
     </div>
     {{if .CredentialTitle}}
     <p style="margin:0.2rem 0;font-size:0.88rem"><strong>Tipo:</strong> {{.CredentialTitle}}</p>
@@ -154,7 +277,7 @@
     <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">{{.TrustReason}}</p>
     {{else if eq .TrustStatus "untrusted"}}
     <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">
-      El emisor no está acreditado en el registro de confianza de CDPI.
+      El emisor no está acreditado en el registro de confianza.
     </p>
     {{else}}
     <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">

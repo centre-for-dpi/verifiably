@@ -94,6 +94,13 @@ type Session struct {
 	VerifierSchemaFilter string
 	VerifierSchemaQuery  string
 
+	// Public verify portal state (hub mode). Separate from the verifier
+	// fields so the two flows never interfere on a node that runs both roles.
+	PublicVerifyFilter   string
+	PublicVerifyQuery    string
+	PublicVerifySchemaID string
+	PublicVerifyTemplate *vctypes.OID4VPTemplate
+
 	// LastWalletError is the most recent error from a wallet action
 	// (paste, scan, accept). Rendered as an inline banner on the wallet
 	// page so the user sees what failed instead of a silent toast.

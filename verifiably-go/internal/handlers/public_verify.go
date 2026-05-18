@@ -48,24 +48,159 @@ func publicPageTitle(page string) string {
 	return "Verificación"
 }
 
+// publicSchemas returns the schemas available for the public /verify portal.
+// In Hub mode reads from the federation schema cache; otherwise falls back to
+// the adapter's custom schemas (useful for single-node deployments).
+func (h *H) publicSchemas(ctx context.Context) []vctypes.Schema {
+	if h.SchemaCache != nil {
+		return h.SchemaCache.Schemas()
+	}
+	all, _ := h.Adapter.ListAllSchemas(ctx)
+	var out []vctypes.Schema
+	for _, s := range all {
+		if s.Custom {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// publicVerifyData builds the template body for the public verify page.
+// Mirrors verifierCustomData but uses the session's PublicVerify* fields
+// so the two flows never clobber each other's filter state.
+func publicVerifyData(sess *Session, allSchemas []vctypes.Schema) map[string]any {
+	schemas := verifierPresentableSchemas(allSchemas)
+
+	filtered := make([]vctypes.Schema, 0, len(schemas))
+	for _, s := range schemas {
+		if sess.PublicVerifyFilter != "all" && !schemaHasStd(s, sess.PublicVerifyFilter) {
+			continue
+		}
+		if sess.PublicVerifyFilter != "all" {
+			s = promoteVariantOfStd(s, sess.PublicVerifyFilter)
+		}
+		if q := strings.ToLower(sess.PublicVerifyQuery); q != "" {
+			hay := strings.ToLower(s.Name + " " + s.Desc + " " + s.Std)
+			if !strings.Contains(hay, q) {
+				continue
+			}
+		}
+		filtered = append(filtered, s)
+	}
+
+	stds := []string{"all"}
+	seen := map[string]bool{"all": true}
+	for _, s := range schemas {
+		if !seen[s.Std] {
+			seen[s.Std] = true
+			stds = append(stds, s.Std)
+		}
+		for _, v := range s.Variants {
+			if !seen[v.Std] {
+				seen[v.Std] = true
+				stds = append(stds, v.Std)
+			}
+		}
+	}
+
+	return map[string]any{
+		"Schemas":    filtered,
+		"AllSchemas": schemas,
+		"Stds":       stds,
+		"Filter":     sess.PublicVerifyFilter,
+		"Query":      sess.PublicVerifyQuery,
+		"SchemaID":   sess.PublicVerifySchemaID,
+		"Template":   sess.PublicVerifyTemplate,
+	}
+}
+
 // ShowPublicVerify handles GET /verify.
 // In Hub mode uses the federated SchemaCache (schemas from all trusted issuers).
 // In non-Hub mode falls back to the local adapter's custom schemas.
 func (h *H) ShowPublicVerify(w http.ResponseWriter, r *http.Request) {
-	var schemas []vctypes.Schema
-	if h.SchemaCache != nil {
-		schemas = h.SchemaCache.Schemas()
-	} else {
-		all, _ := h.Adapter.ListAllSchemas(r.Context())
-		for _, s := range all {
-			if s.Custom {
-				schemas = append(schemas, s)
+	sess := h.Sessions.MustGet(w, r)
+	if sess.PublicVerifyFilter == "" {
+		sess.PublicVerifyFilter = "all"
+	}
+	schemas := h.publicSchemas(r.Context())
+	body := publicVerifyData(sess, schemas)
+	h.renderPublicPage(w, r, "verify", body)
+}
+
+// BuildPublicVerifyTemplate handles POST /verify/build.
+// Re-renders the schema browser fragment when the user changes the format
+// filter, types in the search box, or clicks a schema's format chip.
+// Mirrors BuildVerifierTemplate but operates on the public portal's session
+// state and the federation schema cache instead of the local adapter.
+func (h *H) BuildPublicVerifyTemplate(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	if err := r.ParseForm(); err != nil {
+		h.errorToast(w, r, "Bad form: "+err.Error())
+		return
+	}
+
+	schemas := h.publicSchemas(r.Context())
+
+	if f := r.FormValue("filter"); f != "" {
+		sess.PublicVerifyFilter = f
+	}
+	if sess.PublicVerifyFilter == "" {
+		sess.PublicVerifyFilter = "all"
+	}
+	if _, hasQ := r.Form["q"]; hasQ {
+		sess.PublicVerifyQuery = r.FormValue("q")
+	}
+
+	schemaID := r.FormValue("schema_id")
+	if schemaID != "" {
+		sess.PublicVerifySchemaID = schemaID
+	}
+	schemaID = sess.PublicVerifySchemaID
+
+	var picked *vctypes.Schema
+	if schemaID != "" {
+		for i := range schemas {
+			if schemas[i].HasVariantID(schemaID) {
+				applied := schemas[i].ApplyVariant(schemaID)
+				picked = &applied
+				break
 			}
 		}
 	}
-	h.renderPublicPage(w, r, "verify", map[string]any{
-		"Schemas": schemas,
-	})
+
+	if picked != nil {
+		// Compute field selection: preserve user's checked boxes on
+		// filter/search re-renders; default to all fields on new schema pick.
+		var selected []string
+		if r.FormValue("schema_id") == "" {
+			// Filter/search re-render — keep existing checked fields.
+			if raw := r.Form["field_key"]; len(raw) > 0 {
+				valid := make(map[string]bool, len(picked.FieldsSpec))
+				for _, f := range picked.FieldsSpec {
+					valid[f.Name] = true
+				}
+				for _, f := range raw {
+					if valid[f] {
+						selected = append(selected, f)
+					}
+				}
+			}
+		}
+		if len(selected) == 0 {
+			for _, f := range picked.FieldsSpec {
+				selected = append(selected, f.Name)
+			}
+		}
+		sess.PublicVerifyTemplate = &vctypes.OID4VPTemplate{
+			Title:      picked.Name,
+			Fields:     selected,
+			Format:     picked.Std,
+			Disclosure: disclosureSummary(r.FormValue("disclosure"), selected),
+		}
+	}
+
+	body := publicVerifyData(sess, schemas)
+	h.renderFragment(w, r, "fragment_public_verify_body", body)
 }
 
 // PublicVerifyRequest handles POST /verify/request.
@@ -80,17 +215,14 @@ func (h *H) PublicVerifyRequest(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Solicitud inválida")
 		return
 	}
+
 	schemaID := strings.TrimSpace(r.FormValue("schema_id"))
 	if schemaID == "" {
-		h.errorToast(w, r, "Seleccioná un tipo de documento")
+		h.errorToast(w, r, "Seleccioná un tipo de documento primero")
 		return
 	}
 
-	schemas, err := h.Adapter.ListAllSchemas(r.Context())
-	if err != nil {
-		h.errorToast(w, r, "No se pudo cargar el catálogo de credenciales")
-		return
-	}
+	schemas := h.publicSchemas(r.Context())
 	var picked *vctypes.Schema
 	for i := range schemas {
 		if schemas[i].HasVariantID(schemaID) {
@@ -104,10 +236,50 @@ func (h *H) PublicVerifyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use SourceDeployment (set by the schema aggregator in Fase 3) to route
-	// the OID4VP request to the correct member's verifier adapter. Falls back
-	// to the first available verifier when SourceDeployment is absent or
-	// doesn't match any registered adapter (e.g. non-Hub deployments).
+	// Field list: use submitted checkboxes or default to all schema fields.
+	fields := r.Form["field_key"]
+	if len(fields) == 0 {
+		for _, f := range picked.FieldsSpec {
+			fields = append(fields, f.Name)
+		}
+	}
+	valid := make(map[string]bool, len(picked.FieldsSpec))
+	for _, f := range picked.FieldsSpec {
+		valid[f.Name] = true
+	}
+	cleaned := fields[:0]
+	for _, f := range fields {
+		if valid[f] {
+			cleaned = append(cleaned, f)
+		}
+	}
+	fields = cleaned
+
+	disclosure := r.FormValue("disclosure")
+	if disclosure == "" {
+		disclosure = "full"
+	}
+
+	// Credential type — same logic as assembleCustomTemplate.
+	credType := picked.BaseType()
+	vct := ""
+	if picked.Custom {
+		credType = picked.CustomTypeName()
+		if strings.HasPrefix(picked.Std, "sd_jwt_vc") {
+			vct = picked.CustomTypeName()
+		}
+	}
+
+	tpl := vctypes.OID4VPTemplate{
+		Title:          picked.Name,
+		Fields:         fields,
+		Format:         picked.Std,
+		Disclosure:     disclosureSummary(disclosure, fields),
+		CredentialType: credType,
+		Vct:            vct,
+	}
+
+	// Route by SourceDeployment to the correct member's verifier adapter.
 	verifierDpgs, err := h.Adapter.ListVerifierDpgs(r.Context())
 	if err != nil || len(verifierDpgs) == 0 {
 		h.errorToast(w, r, "No hay verificadores disponibles en este momento")
@@ -120,22 +292,6 @@ func (h *H) PublicVerifyRequest(w http.ResponseWriter, r *http.Request) {
 			dpgKey = k
 			break
 		}
-	}
-
-	credType := picked.BaseType()
-	if picked.Custom {
-		credType = picked.CustomTypeName()
-	}
-	var fields []string
-	for _, f := range picked.FieldsSpec {
-		fields = append(fields, f.Name)
-	}
-	tpl := vctypes.OID4VPTemplate{
-		Title:          picked.Name,
-		Fields:         fields,
-		Format:         picked.Std,
-		Disclosure:     "full credential shared",
-		CredentialType: credType,
 	}
 
 	res, err := h.Adapter.RequestPresentation(r.Context(), backend.PresentationRequest{
