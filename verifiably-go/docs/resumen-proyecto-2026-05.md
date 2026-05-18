@@ -1,221 +1,220 @@
-# Resumen del Proyecto — Ecosistema de Credenciales Verificables
-*verifiably-go · Presentación de estado · 18 de mayo de 2026*
+# Project Summary — Verifiable Credentials Ecosystem
+*verifiably-go · Status presentation · May 18, 2026*
 
 ---
 
-## Resumen ejecutivo
+## Executive Summary
 
-Se construyó una plataforma completa de emisión y verificación de credenciales
-verificables (W3C VC / OID4VC) orientada a ecosistemas de gobierno digital.
-La plataforma va desde una instancia standalone hasta un **ecosistema federado
-de N ministerios** con un Hub central que opera la infraestructura de confianza
-y el portal de verificación para ciudadanos — sin lock-in de vendor, sin wallet
-propietaria, con privacidad por diseño.
+We built a complete platform for issuing and verifying W3C Verifiable Credentials
+(OID4VC) targeting digital government ecosystems. The platform scales from a
+single standalone deployment to a **federated ecosystem of N ministries** with a
+central Hub operating the trust infrastructure and a citizen-facing verification
+portal — no vendor lock-in, no proprietary wallet, privacy by design.
 
-El proyecto se implementó en tres etapas sobre la rama `federated-issuance`
-(99 commits, ~7 000 líneas de código Go y ~3 000 de configuración/infraestructura).
+The project was delivered in three stages on the `federated-issuance` branch
+(99 commits, ~7,000 lines of Go code and ~3,000 lines of configuration/infrastructure).
 
 ---
 
-## 1. Punto de partida — baseline `main`
+## 1. Starting point — `main` baseline
 
-La base de código en `main` ya tenía:
+The `main` codebase already had:
 
-| Componente | Estado |
+| Component | Status |
 |---|---|
-| Adaptadores DPG | walt.id, Inji Certify, Inji Verify, Inji Web |
-| Interfaz unificada `backend.Adapter` | Completa — swap de vendor sin tocar la UI |
+| DPG adapters | walt.id, Inji Certify, Inji Verify, Inji Web |
+| Unified `backend.Adapter` interface | Complete — swap vendors without touching the UI |
 | OIDC sign-in | Keycloak + WSO2 IS |
-| Traducción | LibreTranslate (inglés / francés / español) |
-| Deploy | `deploy.sh` — wizard interactivo, subdominio TLS via Caddy |
+| Translation | LibreTranslate (English / French / Spanish) |
+| Deployment | `deploy.sh` — interactive wizard, TLS subdomains via Caddy |
 
-Lo que **no existía**: CREDEBL, Trust Registry, métricas, persistencia PG, API
-headless, ni ningún componente de federación.
+What **did not exist**: CREDEBL, Trust Registry, metrics, PostgreSQL persistence,
+headless API, or any federation component.
 
 ---
 
-## 2. Etapa 1 — Integración CREDEBL + Madurez del codebase (`add-credebl`)
+## 2. Stage 1 — CREDEBL Integration + Codebase Maturity (`add-credebl`)
 
 ### CREDEBL adapter
-- Emisión OID4VCI pre-auth + verificación OID4VP con DCQL
-- Bootstrap automático completo: realm Keycloak, platform-admin, DID, issuer,
-  credencial template — sin pasos manuales
-- 18 microservicios orquestados con un solo comando: `./deploy.sh up credebl`
+- OID4VCI pre-auth issuance + OID4VP verification with DCQL
+- Fully automated bootstrap: Keycloak realm, platform-admin, DID, issuer,
+  credential template — zero manual steps
+- 18 microservices orchestrated with a single command: `./deploy.sh up credebl`
 
-### Trust Registry (Opción A — JWT ES256)
-- `GET /trust-registry` → JWT firmado ES256 con lista de emisores confiables
-- `GET /.well-known/jwks.json` → clave pública para verificación externa
-- Almacenamiento: PostgreSQL (+ fallback in-memory para dev)
-- Upgrade path a OpenID Federation 1.0 sin cambios de interfaz
+### Trust Registry (Option A — JWT ES256)
+- `GET /trust-registry` → ES256-signed JWT with the list of trusted issuers
+- `GET /.well-known/jwks.json` → public key for external verification
+- Storage: PostgreSQL (+ in-memory fallback for dev)
+- Upgrade path to OpenID Federation 1.0 with no interface changes
 
-### Observabilidad y calidad
-- **Prometheus + Grafana**: counters de emisión/verificación, histogramas de
-  latencia por adaptador, 6 paneles de métricas en tiempo real
-- **OpenTelemetry stdlib-only**: trazas W3C traceparent propagadas a todos los
-  adaptadores; exportadores Slog (Loki) + OTLP JSON (Tempo/Jaeger)
-- **PostgreSQL backend**: sessions (AES-GCM cifradas), issuance log (hash chain
-  SHA-256 tamper-evident), status lists
-- **Redis**: sessions distribuidas para escala horizontal con sticky sessions L7
+### Observability and quality
+- **Prometheus + Grafana**: issuance/verification counters, per-adapter latency
+  histograms, 6 real-time metric panels
+- **stdlib-only OpenTelemetry**: W3C traceparent traces propagated to all adapters;
+  Slog (Loki) + OTLP JSON (Tempo/Jaeger) exporters
+- **PostgreSQL backend**: sessions (AES-GCM encrypted), issuance log (SHA-256
+  tamper-evident hash chain), status lists
+- **Redis**: distributed sessions for horizontal scaling with L7 sticky sessions
 
-### Seguridad y confiabilidad (revisión P0–P3)
-Se resolvieron **26 items** de seguridad, bugs y observabilidad clasificados en
-cuatro prioridades. Los críticos incluyen:
-- PII eliminado del log de emisión y del backend PostgreSQL
-- Credenciales CREDEBL movidas de `backends.json` a variables de entorno
-- Race conditions en sesiones, traductor global y `resolveTemplateID` corregidos
-- Rate limiting por API key (60 req/min) + por IP con whitelist de proxies
-- Modo de sesión seguro: cookie `Secure`, redirect URI validado, open redirect `/lang` cerrado
-- Hash chain tamper-evident en el issuance log
+### Security and reliability (P0–P3 review)
+**26 items** resolved across security, bugs, and observability, classified into
+four priority tiers. Critical items include:
+- PII removed from the issuance log and the PostgreSQL backend
+- CREDEBL credentials moved from `backends.json` to environment variables
+- Race conditions fixed in sessions, the global translator, and `resolveTemplateID`
+- Rate limiting per API key (60 req/min) + per IP with proxy allowlist
+- Secure session mode: `Secure` cookie flag, validated redirect URI, `/lang` open redirect closed
+- Tamper-evident hash chain in the issuance log
 
 ---
 
-## 3. Etapa 2 — Ecosistema Federado (`federated-issuance`)
+## 3. Stage 2 — Federated Ecosystem (`federated-issuance`)
 
-### Arquitectura del ecosistema
+### Ecosystem architecture
 
 ```
 ┌──────────────────────── HUB (verify.cdpi.dev) ──────────────────────────┐
-│  Trust Registry    — JWT ES256, JWKS público                            │
-│  Schema Registry   — agregado + cacheado de todos los emisores          │
-│  Portal /verify    — sin login, para ciudadanos                         │
-│  Admin             — CRUD de miembros, API keys, semáforo de salud      │
-│  Grafana           — dashboard de ecosistema completo                   │
+│  Trust Registry    — ES256 JWT, public JWKS                             │
+│  Schema Registry   — aggregated + cached from all issuers               │
+│  Portal /verify    — no login required, citizen-facing                  │
+│  Admin             — member CRUD, API keys, health dashboard             │
+│  Grafana           — full ecosystem dashboard                            │
 └───────────────┬───────────────────────────┬─────────────────────────────┘
                 │                           │
-        Ministerio de Educación      Ministerio de Trabajo
-        ROLES=issuer · DPG: walt.id  ROLES=issuer · DPG: CREDEBL
-        did:web:minerd.gob.do        did:web:mt.gob.do
+   Ministry of Education          Ministry of Labour
+   ROLES=issuer · DPG: walt.id    ROLES=issuer · DPG: CREDEBL
+   did:web:minerd.gob.do          did:web:mt.gob.do
 ```
 
-### Las 13 fases implementadas
+### 13 implemented phases
 
-| # | Fase | Descripción |
-|---|------|-------------|
+| # | Phase | Description |
+|---|-------|-------------|
 | 0 | Baseline | CREDEBL, Trust Registry, Prometheus/Grafana, PG/Redis |
-| 0.5 | did:web Inji | `ISSUER_DID_DOMAIN` activa did:web en todo el stack Inji automáticamente |
-| 1 | Roles | `VERIFIABLY_ROLES` — activación condicional de módulos por instancia |
-| 1.5 | DID Resolver + ES256 | Resolver `did:web` genérico con cache 10 min; migración JWT a ES256 |
-| 4 | Federation Config | `federation.json` como seed; DB como master; state prefix routing |
-| 5 | Trust Registry CRUD | Extensión con `ServiceEndpoint`, admin `/admin/federation/members` |
-| 2 | Portal Público | `/verify` ciudadano sin login — schema picker + QR + badge confianza |
-| 10 | Status List Cache | Cache de status lists con verificación ES256 y política fail-closed |
-| 3 | Schema Federation | Agregador con cache TTL 5 min — cero latencia extra en `/verify` |
-| 6 | Events Log | `verification_events` PostgreSQL — privacidad: sin PII del holder |
-| 7 | Analytics API | `GET /api/ecosystem/issuers/{did}/stats` — emisores acceden a sus stats |
-| 8 | Prometheus Federation | Hub agrega métricas de todos los miembros via file_sd hot-reload |
-| 9 | Trust Health Monitor | Gauges de días hasta expiración + endpoint up/down; 3 alertas Prometheus |
+| 0.5 | did:web Inji | `ISSUER_DID_DOMAIN` enables did:web across the entire Inji stack automatically |
+| 1 | Roles | `VERIFIABLY_ROLES` — conditional module activation per instance |
+| 1.5 | DID Resolver + ES256 | Generic `did:web` resolver with 10-min cache; JWT migration to ES256 |
+| 4 | Federation Config | `federation.json` as seed; DB as master; state-prefix routing |
+| 5 | Trust Registry CRUD | Extended with `ServiceEndpoint`; admin `/admin/federation/members` |
+| 2 | Public Portal | `/verify` for citizens — no login, schema picker + QR + trust badge |
+| 10 | Status List Cache | Status list cache with ES256 signature verification and fail-closed policy |
+| 3 | Schema Federation | Aggregator with 5-min TTL cache — zero added latency on `/verify` |
+| 6 | Events Log | `verification_events` in PostgreSQL — no holder PII stored |
+| 7 | Analytics API | `GET /api/ecosystem/issuers/{did}/stats` — issuers pull their own stats |
+| 8 | Prometheus Federation | Hub aggregates metrics from all members via file_sd hot-reload |
+| 9 | Trust Health Monitor | Days-until-expiry + endpoint up/down gauges; 3 Prometheus alert rules |
 
-### Componentes adicionales construidos en producción
+### Additional components built during production deployment
 
-Durante el deployment real con MINERD y MT se identificaron y resolvieron:
+Discovered and resolved while deploying with MINERD and MT:
 
-- **Adaptador `verifiably`**: permite que el Hub delegue verificación OID4VP a
-  otra instancia de verifiably-go via API key — sin exponer el backend DPG
-- **Template completo en `/api/v1/verify/request`**: el Hub puede enviar el
-  template OID4VP completo (campos, formato, disclosure) al emisor
-- **Hub admin landing page**: pantalla de entrada post-login para operadores del Hub
-- **fix: `VERIFIABLY_API_KEYS` en container** — passthrough correcto al contenedor Docker
-- **fix: `host.docker.internal` en Linux** — `credebl-oid4vci-rewriter` usaba el
-  bridge `172.17.0.1` que no alcanza al agente Credo en la red de compose;
-  `_credebl_configure_oid4vci_rewriter` detecta la IP real del contenedor
-- **fix: recuperación de wallet ya provisionada** — CREDEBL retorna 409 al re-provisionar;
-  el bootstrap ahora recupera el wallet existente en lugar de fallar
-- **i18n en portal público** — `renderPublicPage` ejecuta el mismo pipeline de
-  traducción que el portal admin
+- **`verifiably` adapter**: lets the Hub delegate OID4VP verification to another
+  verifiably-go instance via API key — without exposing the underlying DPG
+- **Full OID4VP template in `/api/v1/verify/request`**: the Hub can send the complete
+  template (fields, format, disclosure) to the issuer's verification endpoint
+- **Hub admin landing page**: post-login entry screen for Hub operators
+- **fix: `VERIFIABLY_API_KEYS` passthrough** — env var was not reaching the Docker container
+- **fix: `host.docker.internal` on Linux** — `credebl-oid4vci-rewriter` was resolving to
+  `172.17.0.1` (Docker bridge) which cannot reach the Credo agent on the compose network;
+  `_credebl_configure_oid4vci_rewriter` now detects the container's actual IP
+- **fix: already-provisioned wallet recovery** — CREDEBL returns 409 on re-provision;
+  bootstrap now recovers the existing wallet instead of failing
+- **i18n on the public portal** — `renderPublicPage` now runs the same translation
+  pipeline as the admin portal
 
 ---
 
-## 4. Estado actual en producción
+## 4. Current production status
 
-| Instancia | URL | DPG | Estado |
+| Instance | URL | DPG | Status |
 |---|---|---|---|
-| **Hub** | `verify.cdpi.dev` | — | ✅ operativo |
-| **MINERD** | `verifiably.minerd.credenciales.ysalabs.work` | walt.id | ✅ operativo |
-| **MT** | `verifiably.mt.credenciales.ysalabs.work` | CREDEBL | ✅ operativo |
+| **Hub** | `verify.cdpi.dev` | — | ✅ live |
+| **MINERD** | `verifiably.minerd.credenciales.ysalabs.work` | walt.id | ✅ live |
+| **MT** | `verifiably.mt.credenciales.ysalabs.work` | CREDEBL | ✅ live |
 
-**Flujo end-to-end verificado en producción:**
-1. Ciudadano visita `verify.cdpi.dev/verify`
-2. Selecciona un tipo de documento (schemas de MINERD o MT)
-3. Escanea el QR con una wallet OID4VC compatible
-4. La wallet obtiene el authorization request JWT desde el agente del emisor correspondiente
-5. Presenta la credencial
-6. El Hub muestra el badge: ✅ **Verificado** con emisor, nivel de confianza y estado del status list
+**End-to-end flow verified in production:**
+1. Citizen visits `verify.cdpi.dev/verify`
+2. Selects a document type (schemas from MINERD or MT)
+3. Scans the QR code with any OID4VC-compatible wallet
+4. Wallet fetches the authorization request JWT from the corresponding issuer's agent
+5. Citizen presents the credential
+6. Hub displays the badge: ✅ **Verified** — with issuer, trust level, and status list source
 
 ---
 
-## 5. Diseño de privacidad y confianza
+## 5. Privacy and trust design
 
-| Principio | Implementación |
+| Principle | Implementation |
 |---|---|
-| Sin PII del holder | `verification_events` nunca escribe datos del ciudadano |
-| Sin correlación de verificaciones | El Hub no puede saber si dos verificaciones son del mismo holder |
-| Status list privacidad | Bitstring / Token Status List — el emisor solo sabe que alguien fetcha la lista, no qué credencial |
-| Firma asimétrica | Trust Registry JWT firmado ES256; clave pública en `/.well-known/jwks.json` |
-| Sin vendor lock-in | Cualquier wallet OID4VC-compatible funciona (probado con Inji Web, wallets CREDEBL) |
+| No holder PII | `verification_events` never writes citizen data |
+| No verification correlation | The Hub cannot determine whether two verifications belong to the same holder |
+| Status list privacy | Bitstring / Token Status List — the issuer only knows someone fetched the list, not which credential was checked |
+| Asymmetric signing | Trust Registry JWT signed ES256; public key at `/.well-known/jwks.json` |
+| No vendor lock-in | Any OID4VC-compatible wallet works (tested with Inji Web and CREDEBL wallets) |
 
 ---
 
-## 6. Infraestructura del Hub
+## 6. Hub infrastructure
 
 ```yaml
 # docker-compose.yml — hub stack
 hub-postgres:     PostgreSQL 16 — Trust Registry, events, API keys
 verifiably-go:    Hub app (VERIFIABLY_ROLES=hub)
-hub-prometheus:   Scrape propio + federation scrape de emisores (file_sd)
-hub-grafana:      Dashboard ecosistema — emisiones, verificaciones, health
+hub-prometheus:   Self-scrape + federation scrape of all members (file_sd)
+hub-grafana:      Ecosystem dashboard — issuance, verification, health
 ```
 
-**Variables de entorno clave del Hub:**
+**Key Hub environment variables:**
 
-| Variable | Propósito |
+| Variable | Purpose |
 |---|---|
-| `VERIFIABLY_ROLES=hub` | Activa solo módulos de hub (trust + schemas + portal) |
-| `VERIFIABLY_TRUST_SIGNING_KEY` | Clave PEM ES256 para firmar el Trust Registry JWT |
-| `VERIFIABLY_DATABASE_URL` | PostgreSQL DSN — Trust Registry, eventos, API keys |
-| `VERIFIABLY_PUBLIC_URL` | URL pública del Hub (embed en events log) |
-| `VERIFIABLY_ADMIN_PASSWORD` | Contraseña del admin del Hub |
+| `VERIFIABLY_ROLES=hub` | Enables only hub modules (trust + schemas + portal) |
+| `VERIFIABLY_TRUST_SIGNING_KEY` | ES256 PEM private key for signing the Trust Registry JWT |
+| `VERIFIABLY_DATABASE_URL` | PostgreSQL DSN — Trust Registry, events, API keys |
+| `VERIFIABLY_PUBLIC_URL` | Hub public URL (embedded in the events log) |
+| `VERIFIABLY_ADMIN_PASSWORD` | Hub admin password |
 
 ---
 
-## 7. Alertas de monitoreo configuradas
+## 7. Configured monitoring alerts
 
-| Alerta | Condición | Severidad |
+| Alert | Condition | Severity |
 |---|---|---|
 | `IssuerAccreditationExpiringSoon` | `days_until_expiry < 30` | warning |
-| `IssuerEndpointDown` | endpoint `/healthz` caído > 10 min | critical |
-| `FederationAllMembersDown` | ningún miembro scrapeado | critical |
+| `IssuerEndpointDown` | `/healthz` endpoint down > 10 min | critical |
+| `FederationAllMembersDown` | no federation members scraped | critical |
 
 ---
 
-## 8. Pendientes (largo plazo)
+## 8. Open items (long-term)
 
-Todos los items críticos y de alta prioridad están completos. Lo que queda son
-mejoras de infraestructura de producción a largo plazo:
+All critical and high-priority items are complete. What remains are long-term
+production infrastructure improvements:
 
-| Item | Prioridad | Descripción |
+| Item | Priority | Description |
 |---|---|---|
-| Vault / AWS SSM | P3 | Reemplazar credenciales en env vars con secret manager |
-| mTLS backends | P3 | TLS mutuo entre verifiably-go y los DPGs |
-| Backup de volúmenes | P3 | Backup diario del volumen `verifiably-go-state` |
-| Push revocation | Backlog | Notificar al holder cuando su credencial es revocada |
-| Docker socket (CREDEBL) | Backlog | `agent-provisioning` necesita socket — riesgo de privilegios |
-| `VERIFIABLY_MODE=ui\|api` | Backlog | Separar la API REST del frontend HTMX |
-| `did:web` Walt.id automation | Post-Fase 5 | Falta env var en el compose de walt.id |
+| Vault / AWS SSM | P3 | Replace env-var credentials with a secret manager |
+| mTLS backends | P3 | Mutual TLS between verifiably-go and DPG backends |
+| Volume backup | P3 | Daily backup of the `verifiably-go-state` volume |
+| Push revocation | Backlog | Notify the holder when their credential is revoked |
+| Docker socket (CREDEBL) | Backlog | `agent-provisioning` requires the Docker socket — privilege risk |
+| `VERIFIABLY_MODE=ui\|api` | Backlog | Decouple the REST API from the HTMX frontend |
+| did:web Walt.id automation | Post-Phase 5 | Walt.id supports did:web but the compose env var is missing |
 
 ---
 
-## 9. Números del proyecto
+## 9. Project numbers
 
-| Métrica | Valor |
+| Metric | Value |
 |---|---|
-| Commits en `federated-issuance` | 99 |
-| Fases de federación implementadas | 13 / 13 (100%) |
-| Items de seguridad/bugs resueltos (TODO.md) | 26 / 31 (84%) — los 5 restantes son long-tail |
-| DPGs soportados | 5 (walt.id, CREDEBL, Inji Certify, Inji Verify, Inji Web) |
-| Instancias en producción | 3 (Hub + MINERD + MT) |
-| Dependencias externas añadidas | 0 (stdlib Go en toda la implementación) |
+| Commits in `federated-issuance` | 99 |
+| Federation phases delivered | 13 / 13 (100%) |
+| Security / bug items resolved (TODO.md) | 26 / 31 (84%) — 5 remaining are long-tail |
+| Supported DPGs | 5 (walt.id, CREDEBL, Inji Certify, Inji Verify, Inji Web) |
+| Production instances | 3 (Hub + MINERD + MT) |
+| New external dependencies added | 0 (pure Go stdlib throughout) |
 
 ---
 
-*Documento generado desde `TODO.md` + `federated-emission.md` + git log del branch `federated-issuance`.*
-*Próxima versión recomendada: post-onboarding de nuevos miembros del ecosistema.*
+*Generated from `TODO.md` + `federated-emission.md` + git log of the `federated-issuance` branch.*
+*Recommended next update: after onboarding new ecosystem members.*
