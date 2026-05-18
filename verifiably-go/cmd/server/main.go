@@ -825,6 +825,19 @@ func bootstrapHub(ctx context.Context, reg *registry.Registry, h *handlers.H) {
 func loadTrustSigningKey() (*ecdsa.PrivateKey, error) {
 	pemStr := os.Getenv("VERIFIABLY_TRUST_SIGNING_KEY")
 	if pemStr == "" {
+		// Fall back to the key file mounted at config/trust-signing-key.pem
+		// (/app/config/trust-signing-key.pem inside the Hub container).
+		// This avoids the multiline-value limitation of Docker Compose .env files.
+		if data, err := os.ReadFile("config/trust-signing-key.pem"); err == nil {
+			pemStr = string(data)
+		}
+	}
+	// Normalise literal \n sequences that may appear when the value was
+	// injected into an env file as a one-liner.
+	if strings.Contains(pemStr, `\n`) && !strings.Contains(pemStr, "\n") {
+		pemStr = strings.ReplaceAll(pemStr, `\n`, "\n")
+	}
+	if pemStr == "" {
 		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			return nil, fmt.Errorf("trust: generate ephemeral ES256 key: %w", err)

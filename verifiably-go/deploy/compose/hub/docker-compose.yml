@@ -47,7 +47,7 @@ services:
 
   verifiably-go:
     image: ${VERIFIABLY_IMAGE:-verifiably/verifiably-go:latest}
-    container_name: verifiably-go
+    container_name: hub-verifiably-go
     restart: unless-stopped
     environment:
       VERIFIABLY_ROLES: hub
@@ -70,11 +70,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
+    # No healthcheck: distroless/static image has no wget/curl/shell.
+    # Caddy uses service_started below and retries connections automatically.
     networks:
       - hub
 
@@ -159,7 +156,7 @@ services:
       - caddy-config:/config
     depends_on:
       verifiably-go:
-        condition: service_healthy
+        condition: service_started  # distroless has no healthcheck tools
       grafana:
         condition: service_healthy
     networks:

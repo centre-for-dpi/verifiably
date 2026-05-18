@@ -744,9 +744,23 @@ HUB_COMPOSE_FILE="$SCRIPT_DIR/deploy/compose/hub/docker-compose.yml"
 HUB_ENV_FILE="$SCRIPT_DIR/deploy/compose/hub/.env"
 
 hub_compose() {
-  local env_args=()
-  [[ -f "$HUB_ENV_FILE" ]] && env_args=( --env-file "$HUB_ENV_FILE" )
-  docker compose -f "$HUB_COMPOSE_FILE" "${env_args[@]}" "$@"
+  # Run from inside the hub compose directory. Export hub .env variables in the
+  # subshell BEFORE calling docker compose so they override any conflicting vars
+  # that common.sh exported from the DPG .env.example (e.g. VERIFIABLY_PUBLIC_DOMAIN
+  # exported as empty by the DPG setup takes precedence over the hub .env file value
+  # because shell env vars win over .env file lookups in Docker Compose v2).
+  local compose_dir
+  compose_dir="$(dirname "$HUB_COMPOSE_FILE")"
+  (
+    cd "$compose_dir"
+    if [[ -f .env ]]; then
+      set -o allexport
+      # shellcheck disable=SC1091
+      source .env
+      set +o allexport
+    fi
+    docker compose -f "$(basename "$HUB_COMPOSE_FILE")" "$@"
+  )
 }
 
 # ensure_hub_signing_key generates an ECDSA P-256 PEM key at
@@ -776,13 +790,9 @@ ensure_hub_env() {
   bold "  Creating deploy/compose/hub/.env from template"
   cp "$SCRIPT_DIR/deploy/compose/hub/.env.example" "$HUB_ENV_FILE"
 
-  # Inject the signing key PEM as a one-liner (newlines → literal \n).
-  local key_path="$SCRIPT_DIR/config/trust-signing-key.pem"
-  if [[ -f "$key_path" ]]; then
-    local key_inline
-    key_inline=$(awk 'NF {printf "%s\\n", $0}' "$key_path")
-    set_env_var "$HUB_ENV_FILE" "VERIFIABLY_TRUST_SIGNING_KEY" "$key_inline"
-  fi
+  # The signing key is loaded by the server directly from
+  # config/trust-signing-key.pem (mounted at /app/config/ in the container).
+  # No injection into .env needed — Docker Compose .env can't carry multiline PEM.
 
   # Auto-generate secrets.
   local pg_pass session_secret
@@ -883,7 +893,8 @@ cmd_up_hub() {
   # Read ports for the summary (fall back to defaults from .env.example).
   local hub_port prom_port grafana_port grafana_ext
   hub_port=$(grep -E '^HUB_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 8080)
-  prom_port=$(grep -E '^PROMETHEUS_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 9090)
+  # PROMETHEUS_PORT may include a bind address (e.g. 127.0.0.1:9090); extract just the port.
+  prom_port=$(grep -E '^PROMETHEUS_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 | cut -d: -f2 || echo 9090)
   grafana_port=$(grep -E '^GRAFANA_PORT=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2 || echo 3100)
   grafana_ext=$(grep -E '^GRAFANA_EXTERNAL_URL=' "$HUB_ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
   hub_port="${hub_port:-8080}"
