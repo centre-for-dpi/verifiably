@@ -303,9 +303,20 @@ scenario gates which DPG backends come up.
 | `all` | walt.id + Inji Certify + Inji Web + Inji Verify + CREDEBL | Keycloak + WSO2IS | ~12 GB |
 | `waltid` | walt.id Community Stack | Keycloak | ~2 GB |
 | `inji` | Inji Certify + Inji Web + Inji Verify | WSO2IS | ~5 GB |
-| `credebl` | CREDEBL (18 microservices) | Keycloak + WSO2IS | ~4 GB |
+| `credebl` | CREDEBL (18 microservices) | Keycloak | ~6 GB |
 
 Usage is the same pattern: `./deploy.sh <up|run|down|status|config> <scenario>`.
+
+To bring up only the CREDEBL stack (useful for dedicated issuer/verifier nodes):
+
+```bash
+./deploy.sh up credebl
+```
+
+First run pulls ~46 images and runs the full CREDEBL bootstrap (Keycloak realm,
+platform-admin account, DID, OID4VCI issuer, credential template). Expect
+8–15 minutes. Subsequent runs are idempotent — each bootstrap step checks
+whether the resource already exists and skips it.
 
 The `run` subcommand rebuilds and restarts **only** the verifiably-go
 container without touching compose — useful when the DPG stack is already
@@ -400,7 +411,8 @@ issuers:
       "id": "issuer-a",
       "name": "Ministerio de Educación",
       "did": "did:web:issuer-a.gov",
-      "service_endpoint": "https://issuer-a.gov",
+      "deploymentURL": "https://verifiably.issuer-a.gov",
+      "roles": ["issuer"],
       "verifierBackendType": "walt_community",
       "verifierConfig": { "verifierBaseUrl": "https://issuer-a.gov/verifier", "standardVersion": "draft13" },
       "statusListEndpoints": ["https://issuer-a.gov/status-list/bitstring/v1"],
@@ -410,11 +422,12 @@ issuers:
       "id": "issuer-b",
       "name": "Ministerio de Trabajo",
       "did": "did:web:issuer-b.gov",
-      "service_endpoint": "https://verifiably.issuer-b.gov",
+      "deploymentURL": "https://verifiably.issuer-b.gov",
+      "roles": ["issuer"],
       "verifierBackendType": "verifiably",
       "verifierConfig": {
         "serviceEndpoint": "https://verifiably.issuer-b.gov",
-        "apiKey": "<VERIFIABLY_API_KEYS secret for this member>"
+        "apiKey": "<hub key from issuer-b VERIFIABLY_API_KEYS>"
       },
       "statusListEndpoints": ["https://verifiably.issuer-b.gov/status-list/bitstring/v1"],
       "statusListPolicy": "fail-closed"
@@ -430,6 +443,27 @@ Supported `verifierBackendType` values:
 | `walt_community` | walt.id Community Stack verifier-api | `verifierBaseUrl`, `standardVersion` (`draft13` or `draft20`) |
 | `verifiably` | Another verifiably-go instance (OID4VP via API key) | `serviceEndpoint`, `apiKey` |
 | `credebl` | CREDEBL OID4VP endpoint | `orgId`, `apiUrl`, `email`, `password` |
+
+> **`deploymentURL`** is the base URL of the member's verifiably-go instance.
+> The Hub schema aggregator appends `/api/schemas` to this URL to fetch that
+> member's credential types for the public `/verify` portal. It must be
+> reachable from the Hub container.
+
+> **API key wiring (backend type `verifiably`):** the `apiKey` value in
+> `verifierConfig` must exactly match the key half (after the colon) of one
+> entry in the issuer node's `VERIFIABLY_API_KEYS` env var.
+> For example, if issuer-b runs with:
+> ```
+> VERIFIABLY_API_KEYS=hub:d0517ce8d93a907390cee0c9e7895e929d9a85fdffb30dd9d8920553fbc3e778
+> ```
+> then `federation.json` must have:
+> ```json
+> "apiKey": "d0517ce8d93a907390cee0c9e7895e929d9a85fdffb30dd9d8920553fbc3e778"
+> ```
+> A mismatch causes a silent `401` on the public `/verify` portal — the
+> "generate presentation" button appears to do nothing. After correcting the
+> key, restart the Hub so `bootstrapHub` re-registers the verifier adapter:
+> `docker restart hub-verifiably-go`.
 
 For dev/local testing the `members` array can be empty — the Hub boots fine with
 no registered members.
@@ -535,6 +569,41 @@ to restrict it to issuer routes only. Issuer nodes do not need a PostgreSQL
 instance (the standard JSON-backed log works) unless you want verification
 events analytics.
 
+**Required roles for Hub integration:**
+
+| Role | Why it is needed |
+|---|---|
+| `issuer` | Core issuance routes (OID4VCI, schema builder, bulk issuance). |
+| `verifier` | OID4VP presentation request endpoint — called by the Hub when a citizen scans a QR on the public portal. |
+| `schemas` | Exposes `GET /api/schemas` so the Hub's schema aggregator can pull this member's credential types. Without this role, the Hub's public `/verify` portal shows no schemas for the member. |
+
+Minimum recommended value for a node that participates in the federation:
+
+```
+VERIFIABLY_ROLES=issuer,verifier,schemas
+```
+
+**API key for Hub-to-node calls (backend type `verifiably`):**
+
+The Hub authenticates to the issuer node's verifier endpoint using the
+`apiKey` from `federation.json`. The issuer node validates incoming requests
+against its `VERIFIABLY_API_KEYS` env var (format: `name:hex-secret`, multiple
+entries comma-separated).
+
+On the issuer node, generate and set the key once:
+
+```bash
+# Generate a random key
+KEY=$(openssl rand -hex 32)
+echo "hub:$KEY"
+# → add  VERIFIABLY_API_KEYS=hub:<KEY>  to the node's environment
+```
+
+Then copy the `<KEY>` part into `federation.json` under
+`verifierConfig.apiKey` for that member. The `hub:` prefix is just a
+human-readable label — the Hub only sends the raw key in the
+`Authorization: Bearer` header.
+
 ### Environment variables added by the federation branch
 
 | Variable | Default | Purpose |
@@ -569,6 +638,35 @@ CREDEBL credentials are generated on first `./deploy.sh up credebl|all` and
 written to `.env`. Re-running `up` is idempotent — existing credentials are
 reused and CREDEBL's bootstrap steps are skipped if the platform-admin and
 issuer already exist.
+
+> **Back up `deploy/compose/credebl/config/credebl.env` before any destructive
+> operation.** This file holds the auto-generated secrets (Postgres password,
+> agent API key, JWT secret, wallet password, …). Docker volumes are keyed to
+> these values — if the file is lost while volumes are still intact, Postgres
+> will refuse connections with "password authentication failed" and the stack
+> will not start. Copy it somewhere safe; if you need to rebuild from scratch,
+> delete both the file and the volumes together (`./deploy.sh reset` followed by
+> `docker volume rm` for the `cdpi-credebl_*` volumes).
+
+**CREDEBL `did:web` (subdomain mode only)**
+
+When `VERIFIABLY_PUBLIC_DOMAIN` is set, the bootstrap automatically uses
+`did:web` for the CREDEBL agent — no extra configuration required. The DID is
+`did:web:credebl.<your-domain>` and the bootstrap writes the DID document to
+`deploy/compose/credebl/.agent-runtime/did/did.json`, served by the nginx
+sidecar at `/.well-known/did.json`.
+
+Verify after the first `deploy.sh up credebl`:
+
+```bash
+curl https://credebl.<your-domain>/.well-known/did.json
+# Expected: JSON with "id": "did:web:credebl.<your-domain>" and a verificationMethod
+```
+
+The DID is provisioned once and stored in Postgres. Re-running `deploy.sh up`
+will not change it. If you need to rotate the DID (e.g. key compromise), you
+must delete the CREDEBL volumes and re-provision from scratch — the `orgDid`
+field in `org_agents` is the source of truth.
 
 ### Bring your own OIDC provider
 
@@ -655,6 +753,37 @@ go away on `./deploy.sh reset`.
 OIDC discovery is required — your server must serve
 `/.well-known/openid-configuration`. Plain OAuth2, SAML, and LDAP need
 a different integration.
+
+### Updating a running deployment
+
+When new commits land on the branch, apply them without losing data:
+
+```bash
+cd /path/to/demo-daas-3-0
+git pull --ff-only
+cd verifiably-go
+./deploy.sh up credebl   # or 'all', 'waltid', etc. — same scenario as before
+```
+
+`deploy.sh up` is **idempotent**: it re-reads `credebl.env`, re-applies all
+runtime patches to the CREDEBL containers, and skips any bootstrap step whose
+resource already exists in Postgres. Docker volumes and Postgres data are
+untouched.
+
+After `git pull`, restart Caddy so it picks up the new `Caddyfile.public`
+(see the inode note in Troubleshooting below):
+
+```bash
+docker compose -f deploy/compose/stack/docker-compose.yml restart caddy-public
+```
+
+If you only changed verifiably-go's own code (not the DPG stack), use `run`
+instead of `up` — it rebuilds and restarts just the verifiably-go container
+without touching any DPG service:
+
+```bash
+./deploy.sh run credebl
+```
 
 ### Stopping
 
@@ -763,6 +892,45 @@ docker volume rm waltid_certify-db waltid_certify-pkcs12 waltid_certify-preauth-
 ./deploy.sh up <scenario>
 ```
 
+**Hub public `/verify` shows no schemas (schema list is empty)**
+
+The Hub aggregates credential schemas by calling `GET /api/schemas` on each
+member's `deploymentURL`. If a member's schema list is empty, check two things:
+
+1. **`schemas` role missing on the issuer node.** The issuer node must include
+   `schemas` in `VERIFIABLY_ROLES`. Without it, `/api/schemas` returns 404 and
+   the hub logs a warning like `schema cache: fetch failed` for that member.
+   Fix: add `schemas` to the node's `VERIFIABLY_ROLES` and restart it.
+
+2. **`deploymentURL` wrong or unreachable.** The Hub container must be able to
+   reach `<deploymentURL>/api/schemas`. Confirm with:
+   ```bash
+   curl -s <deploymentURL>/api/schemas | python3 -m json.tool | head -20
+   ```
+   If you get a 404 or connection error, fix `deploymentURL` in
+   `federation.json` and restart the Hub.
+
+After fixing either issue, the schema cache refreshes within 5 minutes (or
+restart the Hub to force an immediate refresh).
+
+**Hub `/verify` portal: "El servicio de verificación del emisor no está disponible" (silent — no QR appears)**
+
+This error fires when the Hub's `RequestPresentation` call to the member's
+verifier returns a non-200 status. Check the Hub logs for the exact cause:
+
+```bash
+docker logs hub-verifiably-go --tail 50 2>&1 | grep "RequestPresentation\|public verify"
+```
+
+Common causes:
+
+| Log message | Cause | Fix |
+|---|---|---|
+| `returned 401: {"error":"invalid or missing API key"}` | `apiKey` in `federation.json` doesn't match `VERIFIABLY_API_KEYS` on the issuer node | Update `federation.json` with the correct key (key half after the colon in `VERIFIABLY_API_KEYS`), then `docker restart hub-verifiably-go` |
+| `returned 502: ... "Agent details not found"` | CREDEBL agent on the member node is down or not provisioned | Restart CREDEBL on that node; if on Linux run `_credebl_configure_oid4vci_rewriter` after restart |
+| `returned 503` | Member's verifiably-go or DPG backend is down | Check the member node's container status |
+| `No verifiers available` | Member not registered in the Hub's verifier registry | Confirm the member entry exists in `federation.json` and the Hub was restarted after any change |
+
 **Hub: OID4VP authorization request returns 504 on Linux**
 
 Wallet scans a QR code from the public `/verify` portal, loads for a long
@@ -770,12 +938,18 @@ time, then reports "presentation request expired". Fetching the
 `request_uri` URL directly returns `504 Gateway Timeout`.
 
 Root cause: the `credebl-oid4vci-rewriter` nginx sidecar proxies wallet
-requests to the Credo agent via `host.docker.internal`, which resolves to
-`172.17.0.1` (Docker's default bridge) on Linux. The Credo Platform-admin
-container lives on the compose project network (`172.24.x.x`), so port 8023
-is unreachable from the bridge IP.
+requests to the Credo agent. On Linux, `host.docker.internal` resolves to
+`172.17.0.1` (Docker's default bridge), but the Credo Platform-admin container
+lives on the compose project network (`172.24.x.x`), so the port is unreachable
+from the bridge IP.
 
-Fix — run this after `deploy.sh up credebl` or after any Credo agent restart:
+`deploy.sh up credebl` fixes this automatically by detecting the container's
+actual Docker network IP and patching `nginx-oid4vci.conf`. The fix persists as
+long as the agent container keeps the same IP (i.e. across restarts of the
+stack, since Docker preserves container IPs within a named network).
+
+If you restart the Credo agent container **outside** of `deploy.sh` (e.g.
+`docker restart <agent-container>`) and it gets a new IP, re-run manually:
 
 ```bash
 cd /path/to/demo-daas-3-0/verifiably-go
@@ -785,13 +959,9 @@ source scripts/bootstrap-credebl.sh
 _credebl_configure_oid4vci_rewriter
 ```
 
-The function detects the container's actual Docker network IP, patches
-`nginx-oid4vci.conf`, and restarts the rewriter. It is idempotent — safe to
-re-run. This is called automatically during `deploy.sh up credebl` after
-platform-admin provisioning, but not on a plain container restart.
-
-This issue does not affect Docker Desktop (Mac/Windows) where
-`host.docker.internal` routes through the VM correctly.
+This is idempotent — safe to re-run at any time. This issue does not affect
+Docker Desktop (Mac/Windows) where `host.docker.internal` routes through the VM
+correctly.
 
 **CREDEBL bootstrap fails or "OID4VCI rewriter config failed" warning**
 
@@ -806,6 +976,31 @@ in the startup log, the nginx sidecar that rewrites CREDEBL credential offer
 URLs couldn't determine the Credo agent's dynamic admin port. This resolves
 automatically on the next `up` once CREDEBL's agent-provisioning service has
 written its port config.
+
+**Caddy still returns 404 for a route that exists in `Caddyfile.public` (after `git pull`)**
+
+When `git pull` updates `deploy/compose/stack/Caddyfile.public`, the running
+Caddy container does not see the change automatically. On Linux, `git pull`
+replaces the file atomically (rename into place), which changes the inode.
+Docker's bind mount was attached to the old inode — `caddy reload` reads the
+file through that stale mount and silently keeps the old config.
+
+Fix: restart the Caddy container so it re-opens the bind mount against the
+current inode:
+
+```bash
+docker compose -f deploy/compose/stack/docker-compose.yml restart caddy-public
+```
+
+Verify that the new route is live by grepping the config inside the container:
+
+```bash
+docker exec waltid-caddy-public-1 grep 'well-known' /etc/caddy/Caddyfile
+```
+
+This only affects deployments where Caddy was already running before the pull.
+A fresh `deploy.sh up` is not affected because Caddy starts against the current
+file from the beginning.
 
 **`./deploy.sh` calls `docker` and gets "permission denied"**
 
