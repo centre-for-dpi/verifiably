@@ -1,4 +1,4 @@
-# Project Summary — Verifiable Credentials Ecosystem
+# Project Summary — Verifiably
 *verifiably-go · Status presentation · May 18, 2026*
 
 ---
@@ -10,9 +10,6 @@ We built a complete platform for issuing and verifying W3C Verifiable Credential
 single standalone deployment to a **federated ecosystem of N ministries** with a
 central Hub operating the trust infrastructure and a citizen-facing verification
 portal — no vendor lock-in, no proprietary wallet, privacy by design.
-
-The project was delivered in three stages on the `federated-issuance` branch
-(99 commits, ~7,000 lines of Go code and ~3,000 lines of configuration/infrastructure).
 
 ---
 
@@ -41,7 +38,7 @@ headless API, or any federation component.
   credential template — zero manual steps
 - 18 microservices orchestrated with a single command: `./deploy.sh up credebl`
 
-### Trust Registry (Option A — JWT ES256)
+### Trust Registry (JWT ES256)
 - `GET /trust-registry` → ES256-signed JWT with the list of trusted issuers
 - `GET /.well-known/jwks.json` → public key for external verification
 - Storage: PostgreSQL (+ in-memory fallback for dev)
@@ -94,7 +91,7 @@ four priority tiers. Critical items include:
 
 ## 3. Stage 2 — Federated Ecosystem (`federated-issuance`)
 
-### Ecosystem architecture
+### Ecosystem architecture on running demo
 
 ```
 ┌────────────────────────────── HUB (credenciales.ysalabs.work) ─────────────────────────┐
@@ -232,9 +229,8 @@ production infrastructure improvements:
 
 | Metric | Value |
 |---|---|
-| Commits in `federated-issuance` | 99 |
 | Federation phases delivered | 13 / 13 (100%) |
 | Security / bug items resolved (TODO.md) | 26 / 31 (84%) — 5 remaining are long-tail |
-| Supported DPGs | 5 (walt.id, CREDEBL, Inji Certify, Inji Verify, Inji Web) |
-| Production instances | 3 (Hub + MINERD + MT) |
+| Supported DPGs | 5 (walt.id, CREDEBL, Inji Certify) |
+| Demo running instances | 3 (Hub + MINERD + MT) |
 | New external dependencies added | 0 (pure Go stdlib throughout) |
