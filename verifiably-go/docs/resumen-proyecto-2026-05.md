@@ -133,7 +133,7 @@ Discovered and resolved while deploying with MINERD and MT:
 | **MT** | `verifiably.mt.credenciales.ysalabs.work` | CREDEBL | ✅ live |
 
 **End-to-end flow verified in production:**
-1. Citizen visits `verify.cdpi.dev/verify`
+1. Citizen visits `verifiably.ysalabs.work`
 2. Selects a document type (schemas from MINERD or MT)
 3. Scans the QR code with any OID4VC-compatible wallet
 4. Wallet fetches the authorization request JWT from the corresponding issuer's agent
@@ -213,8 +213,3 @@ production infrastructure improvements:
 | Supported DPGs | 5 (walt.id, CREDEBL, Inji Certify, Inji Verify, Inji Web) |
 | Production instances | 3 (Hub + MINERD + MT) |
 | New external dependencies added | 0 (pure Go stdlib throughout) |
-
----
-
-*Generated from `TODO.md` + `federated-emission.md` + git log of the `federated-issuance` branch.*
-*Recommended next update: after onboarding new ecosystem members.*
