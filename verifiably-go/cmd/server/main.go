@@ -529,6 +529,17 @@ func main() {
 	h.ShowHolder = activeRoles.Has(roles.Holder)
 	h.ShowVerifier = activeRoles.Has(roles.Verifier)
 
+	// VERIFIABLY_LANDING_ROLES overrides which role cards appear on the landing
+	// page without affecting which API endpoints are active. Useful when a member
+	// node needs a backend role (e.g. verifier for hub OID4VP routing) but should
+	// not expose that role as a landing-page choice.
+	if landingRolesEnv := os.Getenv("VERIFIABLY_LANDING_ROLES"); landingRolesEnv != "" {
+		lr := roles.Parse(landingRolesEnv)
+		h.ShowIssuer = lr.Has(roles.Issuer)
+		h.ShowHolder = lr.Has(roles.Holder)
+		h.ShowVerifier = lr.Has(roles.Verifier)
+	}
+
 	// --- Issuer ---
 	if activeRoles.Has(roles.Issuer) {
 		mux.HandleFunc("GET /issuer/dpg", h.ShowIssuerDpgs)
