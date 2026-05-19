@@ -391,8 +391,8 @@ func disclosureSummary(mode string, fields []string) string {
 	return "full credential shared"
 }
 
-// SimulateResponse fetches the (simulated) verification result for the current OID4VP session.
-func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
+// FetchResponse polls the adapter for the current OID4VP session result.
+func (h *H) FetchResponse(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	if sess.CurrentOID4VPState == "" {
 		h.errorToast(w, r, "Generate a request first")

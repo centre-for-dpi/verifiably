@@ -53,18 +53,19 @@ fi
 TARGETS_JSON=$(jq -r '
   [
     .members[]
-    | select(.service_endpoint != null and .service_endpoint != "")
+    | (.deploymentURL // .service_endpoint) as $url
+    | select($url != null and $url != "")
     | {
         "targets": [
           (
-            .service_endpoint
+            $url
             | ltrimstr("https://")
             | ltrimstr("http://")
             | split("/")[0]
           )
         ],
         "labels": {
-          "__scheme__": (if .service_endpoint | startswith("https") then "https" else "http" end),
+          "__scheme__": (if $url | startswith("https") then "https" else "http" end),
           "issuer_did":  .did,
           "issuer_name": (.name // .id // .did)
         }

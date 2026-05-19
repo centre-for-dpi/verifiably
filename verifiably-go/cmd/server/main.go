@@ -612,7 +612,7 @@ func main() {
 		mux.HandleFunc("POST /verifier/dpg/toggle", h.ToggleVerifierDpg)
 		mux.HandleFunc("GET /verifier/verify", h.ShowVerify)
 		mux.HandleFunc("POST /verifier/verify/request", h.GenerateRequest)
-		mux.HandleFunc("POST /verifier/verify/response", h.SimulateResponse)
+		mux.HandleFunc("POST /verifier/verify/response", h.FetchResponse)
 		mux.HandleFunc("POST /verifier/verify/direct", h.VerifyDirect)
 		mux.HandleFunc("POST /verifier/verify/build", h.BuildVerifierTemplate)
 		// REST API — verification endpoints.
