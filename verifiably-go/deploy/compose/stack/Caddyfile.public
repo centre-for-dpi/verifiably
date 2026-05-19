@@ -73,6 +73,9 @@ credebl.verifiably.ysalabs.work {
 	handle /openid4vc/* {
 		reverse_proxy credebl-oid4vci-rewriter:80
 	}
+	handle /.well-known/did.json {
+		reverse_proxy credebl-oid4vci-rewriter:80
+	}
 	reverse_proxy credebl-api-gateway:5000
 }
 

@@ -350,9 +350,12 @@ NGINXEOF
   green "  wrote $base/nginx-oid4vci.conf (${_ip_http_url} → ${_public_base})"
 }
 
-# _credebl_export_did_document queries the Credo agent's admin API for the
-# did:web DID document and writes it to .agent-runtime/did/did.json where
-# nginx serves it as a static file at /.well-known/did.json.
+# _credebl_export_did_document fetches the did:web DID document from the Credo
+# tenant wallet and writes it to .agent-runtime/did/did.json where nginx serves
+# it as a static file at /.well-known/did.json.
+# Uses GET /dids with the tenant JWT (read from wallet — no external HTTP fetch)
+# to avoid the circular dependency of /dids/resolve which would call the very
+# endpoint we're trying to populate.
 # Only runs when AGENT_DID_DOMAIN is non-empty (did:web mode).
 # Idempotent — re-exports on every deploy so the cached file stays in sync.
 _credebl_export_did_document() {
@@ -363,31 +366,72 @@ _credebl_export_did_document() {
   mkdir -p "$did_dir"
   local did="did:web:${AGENT_DID_DOMAIN}"
 
-  local encoded_did
-  encoded_did=$(python3 -c \
-    "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" \
-    "$did" 2>/dev/null) || encoded_did="$did"
+  # Get root JWT from Credo admin API. No external HTTP call — avoids the
+  # circular dependency where /dids/resolve would fetch /.well-known/did.json.
+  local root_jwt
+  root_jwt="$(curl -sf --max-time 10 -X POST \
+    -H "Authorization: ${CREDEBL_AGENT_API_KEY:-}" \
+    "http://localhost:${admin_port}/agent/token" 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('token', d.get('access_token','')))" \
+    2>/dev/null || true)"
 
-  # Query Credo's DID resolution endpoint (admin port is bound on the host).
-  # The response is a DIDResolutionResult: { didDocument: {...}, ... }
-  local did_doc
-  did_doc=$(curl -sf --max-time 10 \
-    "http://localhost:${admin_port}/dids/resolve?did=${encoded_did}" 2>/dev/null \
-    | python3 -c "
+  if [[ -z "$root_jwt" ]]; then
+    yellow "  could not get Credo root JWT on port ${admin_port} — skipping did:web export"
+    return 0
+  fi
+
+  # Python snippet that extracts the did:web document from a GET /dids response.
+  local _extract_py
+  _extract_py="
 import json,sys
+target=sys.argv[1]
 try:
-    d = json.load(sys.stdin)
-    doc = d.get('didDocument') or d.get('document')
-    if not doc and isinstance(d, dict) and d.get('@context'):
-        doc = d
-    if doc:
-        print(json.dumps(doc, separators=(',',':')))
+    raw=json.load(sys.stdin)
+    dids=raw if isinstance(raw,list) else raw.get('dids',[])
+    for e in dids:
+        d=e.get('did') or e.get('id') or ''
+        doc=e.get('didDocument') or e.get('document') or {}
+        if d==target and doc:
+            print(json.dumps(doc,separators=(',',':')))
+            break
 except Exception:
     pass
-" 2>/dev/null) || true
+"
+
+  local did_doc
+
+  # Try tenant wallet first (preferred — direct wallet read, no external fetch).
+  local tenant_id
+  tenant_id="$(_credebl_pg2 -Atqc "
+    SELECT COALESCE(oa.\"tenantId\",'') FROM org_agents oa
+    JOIN organisation o ON o.id=oa.\"orgId\"
+    WHERE o.name='Platform-admin' LIMIT 1;" 2>/dev/null | tr -d '\r')" || tenant_id=""
+
+  if [[ -n "$tenant_id" ]]; then
+    local tenant_jwt
+    tenant_jwt="$(curl -sf --max-time 10 -X POST \
+      -H "Authorization: Bearer ${root_jwt}" \
+      "http://localhost:${admin_port}/multi-tenancy/get-token/${tenant_id}" 2>/dev/null \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('token', d.get('access_token','')))" \
+      2>/dev/null || true)"
+    if [[ -n "$tenant_jwt" ]]; then
+      did_doc="$(curl -sf --max-time 10 \
+        -H "Authorization: Bearer ${tenant_jwt}" \
+        "http://localhost:${admin_port}/dids" 2>/dev/null \
+        | python3 -c "$_extract_py" "$did" 2>/dev/null || true)"
+    fi
+  fi
+
+  # Fallback: root-level GET /dids (works when Credo returns all tenant DIDs to root).
+  if [[ -z "$did_doc" || "$did_doc" == "null" ]]; then
+    did_doc="$(curl -sf --max-time 10 \
+      -H "Authorization: Bearer ${root_jwt}" \
+      "http://localhost:${admin_port}/dids" 2>/dev/null \
+      | python3 -c "$_extract_py" "$did" 2>/dev/null || true)"
+  fi
 
   if [[ -z "$did_doc" || "$did_doc" == "null" ]]; then
-    yellow "  did:web document not yet resolvable from agent — will serve 404 until next deploy"
+    yellow "  did:web document not yet in wallet — will serve 404 until next deploy"
     return 0
   fi
 
@@ -1894,7 +1938,8 @@ _want_web = (_agent_did_method == 'did:web' and bool(_agent_did_domain))
 _needs_did = not org_did or (_want_web and org_did and not org_did.startswith('did:web:'))
 if _needs_did:
     if _want_web:
-        did_payload = {'seed': '', 'keyType': 'ed25519', 'method': 'web',
+        seed = os.urandom(16).hex()
+        did_payload = {'seed': seed, 'keyType': 'ed25519', 'method': 'web',
                        'ledger': '', 'privatekey': '', 'network': '', 'domain': _agent_did_domain,
                        'role': '', 'endorserDid': '', 'clientSocketId': '', 'isPrimaryDid': True}
     else:
