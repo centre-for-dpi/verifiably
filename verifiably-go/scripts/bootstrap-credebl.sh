@@ -17,6 +17,20 @@ ensure_credebl_env() {
   _credebl_public_url=$(url_for credebl "$VERIFIABLY_PUBLIC_HOST" "$CREDEBL_API_PORT")
   _credebl_minio_public_url=$(url_for credebl-minio "$VERIFIABLY_PUBLIC_HOST" "9002")
 
+  # did:web when a real domain is configured; blank (Indy default) otherwise.
+  # On re-runs the values are stable because they're derived from the same
+  # VERIFIABLY_PUBLIC_DOMAIN. Existing agents already provisioned with did:key
+  # are unaffected — ensure_credebl_platform_admin_shared_agent recovers the
+  # existing wallet and does not re-provision unless the wallet volume is deleted.
+  local _did_method="" _did_domain=""
+  if [[ -n "${VERIFIABLY_PUBLIC_DOMAIN:-}" ]]; then
+    local _credebl_did_host="${_credebl_public_url#https://}"
+    _credebl_did_host="${_credebl_did_host#http://}"
+    _credebl_did_host="${_credebl_did_host%%/*}"
+    _did_method="did:web"
+    _did_domain="${_credebl_did_host}"
+  fi
+
   local env_dir="$SCRIPT_DIR/deploy/compose/credebl/config"
   mkdir -p "$env_dir"
   local env_file="$env_dir/credebl.env"
@@ -178,6 +192,8 @@ SCHEMA_FILE_SERVER_TOKEN=${CREDEBL_SCHEMA_FILE_SERVER_TOKEN}
 JWT_TOKEN_SECRET=${CREDEBL_JWT_TOKEN_SECRET}
 ISSUER=Credebl
 CREDENTIAL_FORMAT=SD_JWT_VC
+AGENT_DID_METHOD=${_did_method}
+AGENT_DID_DOMAIN=${_did_domain}
 # Internal deploy.sh names — reloaded on re-runs so secrets are not regenerated
 CREDEBL_POSTGRES_PASSWORD=${CREDEBL_POSTGRES_PASSWORD}
 CREDEBL_MINIO_ROOT_PASSWORD=${CREDEBL_MINIO_ROOT_PASSWORD}
@@ -314,6 +330,17 @@ server {
         sub_filter '${_ip_http_url}' '${_public_base}';
     }
 
+    # did:web DID document — exported by _credebl_export_did_document after
+    # provisioning and served as a static file. Returns 404 until the file
+    # is written (e.g. first deploy before the agent is fully provisioned).
+    location = /.well-known/did.json {
+        root /etc/nginx/did;
+        try_files /did.json =404;
+        default_type application/json;
+        add_header Access-Control-Allow-Origin * always;
+        add_header Cache-Control "public, max-age=3600" always;
+    }
+
     # Block all other paths — return 404 rather than proxying agent internals.
     location / {
         return 404;
@@ -321,6 +348,51 @@ server {
 }
 NGINXEOF
   green "  wrote $base/nginx-oid4vci.conf (${_ip_http_url} → ${_public_base})"
+}
+
+# _credebl_export_did_document queries the Credo agent's admin API for the
+# did:web DID document and writes it to .agent-runtime/did/did.json where
+# nginx serves it as a static file at /.well-known/did.json.
+# Only runs when AGENT_DID_DOMAIN is non-empty (did:web mode).
+# Idempotent — re-exports on every deploy so the cached file stays in sync.
+_credebl_export_did_document() {
+  local base="$1" admin_port="$2"
+  [[ -z "${AGENT_DID_DOMAIN:-}" ]] && return 0
+
+  local did_dir="$base/did"
+  mkdir -p "$did_dir"
+  local did="did:web:${AGENT_DID_DOMAIN}"
+
+  local encoded_did
+  encoded_did=$(python3 -c \
+    "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" \
+    "$did" 2>/dev/null) || encoded_did="$did"
+
+  # Query Credo's DID resolution endpoint (admin port is bound on the host).
+  # The response is a DIDResolutionResult: { didDocument: {...}, ... }
+  local did_doc
+  did_doc=$(curl -sf --max-time 10 \
+    "http://localhost:${admin_port}/dids/resolve?did=${encoded_did}" 2>/dev/null \
+    | python3 -c "
+import json,sys
+try:
+    d = json.load(sys.stdin)
+    doc = d.get('didDocument') or d.get('document')
+    if not doc and isinstance(d, dict) and d.get('@context'):
+        doc = d
+    if doc:
+        print(json.dumps(doc, separators=(',',':')))
+except Exception:
+    pass
+" 2>/dev/null) || true
+
+  if [[ -z "$did_doc" || "$did_doc" == "null" ]]; then
+    yellow "  did:web document not yet resolvable from agent — will serve 404 until next deploy"
+    return 0
+  fi
+
+  echo "$did_doc" > "$did_dir/did.json"
+  green "  Cached did:web DID document → $did_dir/did.json"
 }
 
 # _credebl_configure_oid4vci_rewriter detects the actual admin port of the
@@ -380,6 +452,10 @@ _credebl_configure_oid4vci_rewriter() {
   else
     green "  nginx-oid4vci.conf already using ${desired_upstream}"
   fi
+
+  # Export the did:web DID document before (re)starting the rewriter so
+  # /.well-known/did.json is live as soon as the container comes up.
+  _credebl_export_did_document "$base" "$actual_port"
 
   # Start or restart the rewriter so it picks up the patched config.
   local _profile_args=()

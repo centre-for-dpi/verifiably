@@ -38,6 +38,8 @@ source "$SCRIPT_DIR/scripts/gen-backends.sh"
 source "$SCRIPT_DIR/scripts/start-container.sh"
 # shellcheck source=scripts/bootstrap-credebl.sh
 source "$SCRIPT_DIR/scripts/bootstrap-credebl.sh"
+# shellcheck source=scripts/bootstrap-waltid-did.sh
+source "$SCRIPT_DIR/scripts/bootstrap-waltid-did.sh"
 # shellcheck source=scripts/gen-caddy.sh
 source "$SCRIPT_DIR/scripts/gen-caddy.sh"
 
@@ -376,6 +378,15 @@ cmd_up() {
     # The first call (top of cmd_up) runs before provisioning, so issuerId=""
     # there. This second call writes the final correct value.
     backends_for "$scenario"
+  fi
+
+  # Set up did:web for the walt.id issuer when running in domain mode.
+  # Skipped for CREDEBL-only scenarios and for localhost / IP deployments.
+  if [[ -n "${VERIFIABLY_PUBLIC_DOMAIN:-}" ]] && \
+     [[ "$scenario" == "waltid" || "$scenario" == "all" ]]; then
+    bold "▶ Setting up Walt.id did:web"
+    bootstrap_waltid_did_web \
+      || red "  Walt.id did:web setup failed (proceeding — issuer will use did:key)"
   fi
 
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"

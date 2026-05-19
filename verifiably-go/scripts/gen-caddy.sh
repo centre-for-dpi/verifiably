@@ -261,6 +261,9 @@ EOF
         printf '\thandle /oid4vci/* {\n\t\treverse_proxy credebl-oid4vci-rewriter:80\n\t}\n'
         printf '\thandle /oid4vp/* {\n\t\treverse_proxy credebl-oid4vci-rewriter:80\n\t}\n'
         printf '\thandle /openid4vc/* {\n\t\treverse_proxy credebl-oid4vci-rewriter:80\n\t}\n'
+        # did:web DID document — served statically by the nginx sidecar from
+        # .agent-runtime/did/did.json (exported by _credebl_export_did_document).
+        printf '\thandle /.well-known/did.json {\n\t\treverse_proxy credebl-oid4vci-rewriter:80\n\t}\n'
       fi
       case "$proto" in
         https-skipverify)
