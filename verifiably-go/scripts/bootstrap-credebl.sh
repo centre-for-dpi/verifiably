@@ -1888,12 +1888,20 @@ def pg(sql):
     return out
 
 org_did = pg(f"SELECT COALESCE(\"orgDid\",'') FROM org_agents WHERE \"orgId\"='{org_id}' LIMIT 1;")
-if not org_did:
-    import os as _os
-    seed = _os.urandom(16).hex()
-    did_payload = {'seed': seed, 'keyType': 'ed25519', 'method': 'key',
-                   'ledger': '', 'privatekey': '', 'network': '', 'domain': '',
-                   'role': '', 'endorserDid': '', 'clientSocketId': '', 'isPrimaryDid': True}
+_agent_did_method = os.environ.get('AGENT_DID_METHOD', '')
+_agent_did_domain = os.environ.get('AGENT_DID_DOMAIN', '')
+_want_web = (_agent_did_method == 'did:web' and bool(_agent_did_domain))
+_needs_did = not org_did or (_want_web and org_did and not org_did.startswith('did:web:'))
+if _needs_did:
+    if _want_web:
+        did_payload = {'seed': '', 'keyType': 'ed25519', 'method': 'web',
+                       'ledger': '', 'privatekey': '', 'network': '', 'domain': _agent_did_domain,
+                       'role': '', 'endorserDid': '', 'clientSocketId': '', 'isPrimaryDid': True}
+    else:
+        seed = os.urandom(16).hex()
+        did_payload = {'seed': seed, 'keyType': 'ed25519', 'method': 'key',
+                       'ledger': '', 'privatekey': '', 'network': '', 'domain': '',
+                       'role': '', 'endorserDid': '', 'clientSocketId': '', 'isPrimaryDid': True}
     api_post(f'/v1/orgs/{org_id}/agents/did', did_payload)
     import time
     for _ in range(20):

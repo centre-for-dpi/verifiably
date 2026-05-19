@@ -374,6 +374,13 @@ cmd_up() {
     ensure_credebl_oid4vc_issuer \
       || red "  CREDEBL OID4VCI issuer setup failed (proceeding — re-run manually)"
 
+    # Re-export did:web DID document now that orgDid may have just been created.
+    # The first _credebl_configure_oid4vci_rewriter call (above) ran before the
+    # DID existed; this second call picks up the newly created did:web.
+    bold "▶ Exporting CREDEBL did:web DID document"
+    _credebl_configure_oid4vci_rewriter \
+      || true
+
     # Re-generate backends.json now that CREDEBL_ISSUER_ID is known.
     # The first call (top of cmd_up) runs before provisioning, so issuerId=""
     # there. This second call writes the final correct value.
