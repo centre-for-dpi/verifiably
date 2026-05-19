@@ -162,6 +162,13 @@ type H struct {
 	// Controls which admin sections are shown in the nav and landing page.
 	IsHub bool
 
+	// ShowIssuer / ShowHolder / ShowVerifier reflect which roles are active
+	// (parsed from VERIFIABLY_ROLES). Used to conditionally render role cards
+	// on the landing page. All three default to true when VERIFIABLY_ROLES is unset.
+	ShowIssuer  bool
+	ShowHolder  bool
+	ShowVerifier bool
+
 	// MemberVerifierRegistrar wires a federation member's verifier adapter at
 	// runtime when the admin registers a new member. Set by main.go in hub mode;
 	// nil disables dynamic adapter registration (member takes effect on restart).
@@ -351,6 +358,12 @@ type PageData struct {
 	// IsHub is true when running in hub mode. Templates use this to render
 	// hub-specific navigation links (Federation, Trust, Providers, Metrics).
 	IsHub bool
+
+	// ShowIssuer / ShowHolder / ShowVerifier mirror the active VERIFIABLY_ROLES
+	// so templates can hide role cards that are not enabled on this deployment.
+	ShowIssuer   bool
+	ShowHolder   bool
+	ShowVerifier bool
 }
 
 // langFromRequest returns the current UI language code (default "en") from
@@ -394,6 +407,9 @@ func (h *H) pageData(sess *Session, body any) PageData {
 		Body:               body,
 		AuthAdminAvailable: h.AuthAdminMode != "off",
 		IsHub:              h.IsHub,
+		ShowIssuer:         h.ShowIssuer,
+		ShowHolder:         h.ShowHolder,
+		ShowVerifier:       h.ShowVerifier,
 	}
 }
 

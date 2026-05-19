@@ -525,6 +525,10 @@ func main() {
 		mux.HandleFunc("GET /admin", h.ShowAdminHub)
 	}
 
+	h.ShowIssuer = activeRoles.Has(roles.Issuer)
+	h.ShowHolder = activeRoles.Has(roles.Holder)
+	h.ShowVerifier = activeRoles.Has(roles.Verifier)
+
 	// --- Issuer ---
 	if activeRoles.Has(roles.Issuer) {
 		mux.HandleFunc("GET /issuer/dpg", h.ShowIssuerDpgs)
