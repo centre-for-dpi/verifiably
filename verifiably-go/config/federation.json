@@ -15,7 +15,7 @@
       "verifierBackendType": "verifiably",
       "verifierConfig": {
         "serviceEndpoint": "https://verifiably.minerd.credenciales.ysalabs.work",
-        "apiKey": "cbec7d882296f1a02affc0148cbf8c7af13c6c112781169c60975305dd16fceb"
+        "apiKey": "d0517ce8d93a907390cee0c9e7895e929d9a85fdffb30dd9d8920553fbc3e778"
       },
       "statusListEndpoints": [
         "https://verifiably.minerd.credenciales.ysalabs.work/status-list/bitstring/v1"

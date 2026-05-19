@@ -90,3 +90,4 @@ verifiably-go/deploy/compose/credebl/.agent-runtime/
 verifiably-go/deploy/compose/stack/.env
 verifiably-go/config/trust-signing-key.pem
 verifiably-go/deploy/compose/hub/.env
+verifiably-go/config/federation.json
