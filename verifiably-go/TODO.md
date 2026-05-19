@@ -315,4 +315,58 @@
 
 ---
 
-*Last updated: 2026-05-16 | All complete: P0-original + P1 + P2 + all emergent items from 2026-05-16 review (13/13). Pending long-tail: Vault/SSM, mTLS, Docker backup, push revocation, Docker socket, VERIFIABLY_MODE.*
+---
+
+## P0 — Critical emergent (2026-05-19 security review)
+
+- [ ] **[SEC] Secretos reales commiteados en git**
+  `deploy/compose/credebl/config/credebl.env` y `deploy/compose/hub/.env` contienen credenciales de producción en el historial de git: passwords PostgreSQL/MinIO/Keycloak, JWT secrets, session secret, Agent API key, AWS keys, NextAuth secret, dominio y email del operador. Pasos: (1) rotar todos los valores afectados, (2) añadir ambos archivos a `.gitignore`, (3) reemplazarlos con archivos `.example` sin valores reales, (4) considerar `git filter-repo` para expurgar el historial si el repo es público.
+
+- [ ] **[SEC] Placeholder crypto key activo en producción**
+  `deploy/compose/credebl/config/credebl.env:97` — `CRYPTO_PRIVATE_KEY=cdpi-poc-crypto-key-change-me`. Esta passphrase se usa en `cryptoJSEncrypt()` (`internal/adapters/credebl/auth.go:65`) como clave AES para cifrar el password del admin antes de enviarlo a CREDEBL. Con este valor público cualquiera puede descifrar la credencial. Reemplazar por una cadena aleatoria de ≥32 chars en el `.env` real.
+
+- [ ] **[SEC] Trust registry con llave de firma efímera**
+  `deploy/compose/hub/.env:23` — `VERIFIABLY_TRUST_SIGNING_KEY=` vacío. Sin llave ES256 persistente, el Hub genera una llave efímera en cada arranque; los JWTs del trust registry invalidan en cada restart. Generar una clave P-256 con `openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt` y fijarla en el `.env` real.
+
+---
+
+## P1 — High priority emergent (2026-05-19)
+
+- [ ] **[SEC] SSRF via `webhook_url` sin validación**
+  `internal/handlers/verifier.go:176` — el valor del form `webhook_url` se pasa sin validar a `backend.PresentationRequest.WebhookURL` y desde ahí a walt.id, que hace un callback HTTP a esa URL. Un atacante puede apuntar a servicios internos Docker, cloud metadata endpoints (`169.254.169.254`), o el propio verifiably-go. Fix: validar que la URL sea HTTPS, que no resuelva a rangos privados/loopback (RFC 1918 + RFC 4193), y opcionalmente permitir solo dominios de una allowlist configurable con `VERIFIABLY_WEBHOOK_ALLOWED_HOSTS`.
+
+- [ ] **[BUG] Rate limiter: mapas `byKey`/`byIP` crecen sin límite**
+  `internal/handlers/ratelimit.go:54` — los mapas del `RateLimiter` nunca eliminan entradas antiguas. Un atacante que rote IPs o nombres de API key puede agotar la memoria del proceso en servidores de larga duración. Fix: lanzar una goroutine de limpieza periódica (cada 5 min) que elimine las entradas cuya última hit sea anterior al window de 60 s. Ver patrón de `cleanupLoop` ya usado en `internal/jobs/queue.go`.
+
+- [ ] **[SEC] PII en logs de producción (`holderCtx`)**
+  `internal/handlers/wallet.go:46` — `log.Printf` loguea `sess.ID`, `sess.UserSubject` (OIDC `sub`), `sess.UserEmail` y `sess.WalletUserKey` en cada carga de la wallet. Es un `log.Printf` de debugging que quedó en producción. Eliminar la línea completa; la sesión ya tiene ID de request en el contexto para correlación.
+
+---
+
+## P2 — Important emergent (2026-05-19)
+
+- [ ] **[SEC] `InsecureSkipVerify` configurable desde la UI sin restricción**
+  `internal/auth/oidc/oidc.go:99` — un admin puede registrar un provider OIDC con `insecureSkipVerify: true` desde `/auth/custom` o `/admin/auth-providers`. En producción esto abre MITM en el flujo de autenticación. Fix: bloquear el flag cuando `VERIFIABLY_ENV=production` (o cuando la URL pública usa HTTPS), o al menos añadir una advertencia visible en el formulario y requerir confirmación explícita.
+
+- [ ] **[SEC] Passwords admin y Grafana por defecto `admin`**
+  `deploy/compose/hub/.env:27` — `VERIFIABLY_ADMIN_PASSWORD=admin` y `GRAFANA_PASSWORD=admin`. Grafana está expuesta en el stack. Fix: exigir valor no-default en el setup wizard de `deploy.sh`; no arrancar si el password coincide con el default (al menos en modo producción).
+
+- [ ] **[DOC] Limitación upstream: KDF con MD5 en autenticación CREDEBL**
+  `internal/adapters/credebl/auth.go:122` — `evpBytesToKey` usa MD5 (OpenSSL/CryptoJS-compatible) para derivar la clave AES. Está dictado por la API de CREDEBL y no puede cambiarse del lado cliente. Documentar como limitación conocida en `docs/spec-versions.md` y abrir un issue en el tracker upstream de CREDEBL para migrar a PBKDF2/Argon2.
+
+---
+
+## P3 — Low / informational (2026-05-19)
+
+- [ ] **[SEC] `PasteOffer` acepta cualquier URL `https://` sin validar dominio**
+  `internal/handlers/wallet.go:166` — la validación solo comprueba que la URI empiece por `openid-credential-offer://` o `https://`, pero para `https://` no hay restricción de host. El adaptador luego hace fetch a esa URL, lo que permite SSRF hacia endpoints HTTPS internos. Aplicar la misma validación de IP/dominio que se propone para `webhook_url`.
+
+- [ ] **[SEC] Verificar cobertura CSRF en formularios `/admin/*`**
+  No se observa token CSRF explícito en los formularios POST de `/admin/trust`, `/admin/auth-providers`. Verificar si el middleware de sesiones implementa protección CSRF (SameSite=Strict en la cookie + token en el form). Si no está cubierto, añadir un campo `csrf_token` generado por sesión.
+
+- [ ] **[SEC] Verificar headers de seguridad HTTP**
+  No se observan `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` ni `Strict-Transport-Security` en los handlers Go. Confirmar si Caddy los inyecta en producción; si no, añadir un middleware `secureHeaders` en `cmd/server/main.go`.
+
+---
+
+*Last updated: 2026-05-19 | Security review pass 2026-05-19: 3 críticos, 3 altos, 3 medios, 3 bajos agregados. Pending long-tail: Vault/SSM, mTLS, Docker backup, push revocation, Docker socket, VERIFIABLY_MODE.*

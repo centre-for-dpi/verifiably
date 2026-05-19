@@ -293,6 +293,67 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /credentials/issue/bulk/async:
+    post:
+      operationId: issueCredentialBulkAsync
+      summary: Issue credentials asynchronously (job queue)
+      description: |
+        Submits a bulk issuance batch to the background job queue.
+        Returns HTTP 202 immediately with a `job_id` — workers process
+        rows in the background. Poll `GET /api/v1/bulk/{jobID}` for
+        status or stream progress via `GET /api/v1/bulk/{jobID}/events`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueBulkRequest"
+      responses:
+        "202":
+          description: Job accepted. Poll the returned URLs for progress.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, total, status_url, events_url]
+                properties:
+                  job_id:
+                    type: string
+                    example: job-a1b2c3d4
+                  total:
+                    type: integer
+                    example: 100
+                  status_url:
+                    type: string
+                    example: /api/v1/bulk/job-a1b2c3d4
+                  events_url:
+                    type: string
+                    example: /api/v1/bulk/job-a1b2c3d4/events
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Schema not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Too many rows (exceeds per-request limit).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /credentials/issue/bulk:
     post:
       operationId: issueCredentialBulk
@@ -507,6 +568,104 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /bulk/{jobID}:
+    get:
+      operationId: getBulkJobStatus
+      summary: Get async bulk job status
+      description: Returns the current state of a bulk issuance job submitted via `POST /credentials/issue/bulk/async`.
+      parameters:
+        - name: jobID
+          in: path
+          required: true
+          schema:
+            type: string
+          example: job-a1b2c3d4
+      responses:
+        "200":
+          description: Job status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, status, total, done, errors]
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, running, done, error]
+                  total:
+                    type: integer
+                  done:
+                    type: integer
+                  errors:
+                    type: integer
+                  error_msg:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /bulk/{jobID}/events:
+    get:
+      operationId: streamBulkJobEvents
+      summary: Stream async bulk job progress (SSE)
+      description: |
+        Opens a Server-Sent Events stream that pushes one event per polling
+        tick until the job reaches `done` or `error` status (or the client
+        disconnects). Each event carries the same payload as
+        `GET /bulk/{jobID}`.
+
+        If the job is already complete when the client connects, one
+        terminal event is sent immediately and the stream closes.
+
+        Event format:
+        ```
+        data: {"job_id":"...","status":"...","total":N,"done":M,"errors":K}
+        ```
+      parameters:
+        - name: jobID
+          in: path
+          required: true
+          schema:
+            type: string
+          example: job-a1b2c3d4
+      responses:
+        "200":
+          description: SSE stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /verify/request:
     post:
       operationId: createVerificationRequest
@@ -587,6 +746,87 @@ paths:
                 $ref: "#/components/schemas/Error"
         "502":
           description: Upstream verifier error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/ecosystem/issuers/{did}/stats:
+    servers:
+      - url: /
+        description: Hub instance (path not under /api/v1)
+    get:
+      operationId: getEcosystemIssuerStats
+      summary: Get issuer verification statistics (Hub only)
+      description: |
+        Returns a 30-day summary of verification events attributed to the
+        given issuer DID. Only available on Hub deployments
+        (`VERIFIABLY_ROLES=hub` + PostgreSQL).
+
+        The Bearer key must be scoped to the requested DID — a key issued
+        for DID A cannot query stats for DID B. Keys are generated from
+        the Hub admin UI under Federation Members → API key.
+      parameters:
+        - name: did
+          in: path
+          required: true
+          description: The issuer's DID (URL-encoded if it contains colons).
+          schema:
+            type: string
+          example: did:web:verifiably.minerd.credenciales.ysalabs.work
+      responses:
+        "200":
+          description: Verification statistics for the last 30 days.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [issuer_did, period_days, verified]
+                properties:
+                  issuer_did:
+                    type: string
+                    example: did:web:verifiably.minerd.credenciales.ysalabs.work
+                  period_days:
+                    type: integer
+                    example: 30
+                  verified:
+                    type: object
+                    required: [total, valid, invalid, by_schema]
+                    properties:
+                      total:
+                        type: integer
+                      valid:
+                        type: integer
+                      invalid:
+                        type: integer
+                      by_schema:
+                        type: array
+                        items:
+                          type: object
+                          required: [schema, total, valid, invalid]
+                          properties:
+                            schema:
+                              type: string
+                            total:
+                              type: integer
+                            valid:
+                              type: integer
+                            invalid:
+                              type: integer
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: API key does not belong to the requested DID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Ecosystem API not configured (missing DB or Hub role).
           content:
             application/json:
               schema:

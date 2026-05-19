@@ -47,6 +47,30 @@ headless API, or any federation component.
 - Storage: PostgreSQL (+ in-memory fallback for dev)
 - Upgrade path to OpenID Federation 1.0 with no interface changes
 
+### Headless REST API for system integration
+
+Machine-to-machine API over `Authorization: Bearer <key>` for external
+systems that need to issue or verify credentials without a browser session.
+Configured via `VERIFIABLY_API_KEYS` env var (`name1:key1,name2:key2`).
+Each key is owner-scoped — credentials issued by key A are never visible to
+key B. Rate limiting: 60 req/min per key. Interactive docs at `/api/docs`
+(Scalar UI) and raw spec at `/api/openapi.yaml`.
+
+| Endpoint | Role | Description |
+|---|---|---|
+| `POST /api/v1/credentials/issue` | `issuer` | Issue one credential — returns OID4VCI `offer_uri` |
+| `POST /api/v1/credentials/issue/bulk` | `issuer` | Issue N credentials synchronously |
+| `POST /api/v1/credentials/issue/bulk/async` | `issuer` | Submit async batch job — HTTP 202, returns `job_id` immediately |
+| `GET /api/v1/bulk/{jobID}` | `issuer` | Poll async job status |
+| `GET /api/v1/bulk/{jobID}/events` | `issuer` | SSE stream of job progress |
+| `GET /api/v1/credentials` | `issuer` | List credentials issued under this API key |
+| `GET /api/v1/credentials/{id}` | `issuer` | Get one issuance record |
+| `POST /api/v1/credentials/{id}/revoke` | `issuer` | Revoke (flips the status list bit) |
+| `POST /api/v1/credentials/{id}/reinstate` | `issuer` | Un-revoke a credential |
+| `POST /api/v1/verify/request` | `verifier` | Create an OID4VP presentation request |
+| `GET /api/v1/verify/result/{state}` | `verifier` | Poll for verification result |
+| `GET /api/ecosystem/issuers/{did}/stats` | Hub only | 30-day verification stats for an issuer |
+
 ### Observability and quality
 - **Prometheus + Grafana**: issuance/verification counters, per-adapter latency
   histograms, 6 real-time metric panels
@@ -73,17 +97,17 @@ four priority tiers. Critical items include:
 ### Ecosystem architecture
 
 ```
-┌──────────────────────── HUB (verify.cdpi.dev) ──────────────────────────┐
-│  Trust Registry    — ES256 JWT, public JWKS                             │
-│  Schema Registry   — aggregated + cached from all issuers               │
-│  Portal /verify    — no login required, citizen-facing                  │
-│  Admin             — member CRUD, API keys, health dashboard             │
-│  Grafana           — full ecosystem dashboard                            │
-└───────────────┬───────────────────────────┬─────────────────────────────┘
-                │                           │
-   Ministry of Education          Ministry of Labour
-   ROLES=issuer · DPG: walt.id    ROLES=issuer · DPG: CREDEBL
-   did:web:minerd.gob.do          did:web:mt.gob.do
+┌────────────────────────────── HUB (credenciales.ysalabs.work) ─────────────────────────┐
+│  Trust Registry    — ES256 JWT, public JWKS                                            │
+│  Schema Registry   — aggregated + cached from all issuers                              │
+│  Portal /verify    — no login required, citizen-facing                                 │
+│  Admin             — member CRUD, API keys, health dashboard                           │
+│  Grafana           — full ecosystem dashboard                                          │
+└───────────────┬─────────────────────────────────────────┬──────────────────────────────┘
+                │                                         │
+   Ministry of Education                        Ministry of Labour
+   ROLES=issuer · DPG: walt.id                  ROLES=issuer · DPG: CREDEBL
+   did:web:verifiably.minerd.ysalabs.work       did:web:verifiably.mt.ysalabs.work
 ```
 
 ### 13 implemented phases
@@ -124,16 +148,17 @@ Discovered and resolved while deploying with MINERD and MT:
 
 ---
 
-## 4. Current production status
+## 4. Current running demo status
 
 | Instance | URL | DPG | Status |
 |---|---|---|---|
-| **Hub** | `verify.cdpi.dev` | — | ✅ live |
+| **Hub** | `credenciales.ysalabs.work` | — | ✅ live |
+| **Hub Admin** | `admin.credenciales.ysalabs.work` | — | ✅ live |
 | **MINERD** | `verifiably.minerd.credenciales.ysalabs.work` | walt.id | ✅ live |
 | **MT** | `verifiably.mt.credenciales.ysalabs.work` | CREDEBL | ✅ live |
 
 **End-to-end flow verified in production:**
-1. Citizen visits `verifiably.ysalabs.work`
+1. Citizen visits `credenciales.ysalabs.work`
 2. Selects a document type (schemas from MINERD or MT)
 3. Scans the QR code with any OID4VC-compatible wallet
 4. Wallet fetches the authorization request JWT from the corresponding issuer's agent

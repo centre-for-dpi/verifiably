@@ -827,6 +827,145 @@ To start from a fully clean slate, remove the project volumes with
 [verifiably-go/docs/deploy.md](verifiably-go/docs/deploy.md#full-reset)
 for the exact list.
 
+## REST API
+
+verifiably-go exposes a machine-to-machine REST API for issuing, revoking,
+and verifying credentials programmatically — no browser session required.
+
+### Authentication
+
+Set the `VERIFIABLY_API_KEYS` environment variable before starting the
+container (`name1:key1,name2:key2`, multiple entries comma-separated).
+Each key is owner-scoped: credentials issued by key A are never visible to
+key B.
+
+```bash
+# Generate a key
+KEY=$(openssl rand -hex 32)
+# Add to your .env or docker-compose env:
+# VERIFIABLY_API_KEYS=myapp:$KEY
+```
+
+Pass the key in every request:
+
+```http
+Authorization: Bearer <key>
+```
+
+Rate limiting: 60 requests/minute per key. Requests that exceed the limit
+return HTTP 429 with `Retry-After: 60`.
+
+### Interactive docs
+
+When the app is running, browse to `/api/docs` for the Scalar interactive
+documentation (includes a "Try it" panel for every endpoint). The raw
+OpenAPI 3.0 spec is at `/api/openapi.yaml`.
+
+### Endpoint reference
+
+**Issuance** (requires `VERIFIABLY_ROLES=issuer`):
+
+| Endpoint | Description |
+|---|---|
+| `POST /api/v1/credentials/issue` | Issue one credential — returns the `offer_uri` the holder scans with their wallet |
+| `POST /api/v1/credentials/issue/bulk` | Issue N credentials synchronously — returns per-row outcomes in one response |
+| `POST /api/v1/credentials/issue/bulk/async` | Submit an async batch job (HTTP 202) — returns `job_id` immediately; workers process in the background |
+| `GET /api/v1/bulk/{jobID}` | Poll async job status (`pending` → `running` → `done` / `error`) |
+| `GET /api/v1/bulk/{jobID}/events` | Server-Sent Events stream of job progress — useful for real-time dashboards |
+| `GET /api/v1/credentials` | List credentials issued under this API key (supports `?q=`, `?state=`, `?std=`, `?format=` filters) |
+| `GET /api/v1/credentials/{id}` | Get one issuance record |
+| `POST /api/v1/credentials/{id}/revoke` | Revoke a credential (flips its status list bit; idempotent) |
+| `POST /api/v1/credentials/{id}/reinstate` | Un-revoke a credential |
+
+**Verification** (requires `VERIFIABLY_ROLES=verifier`):
+
+| Endpoint | Description |
+|---|---|
+| `POST /api/v1/verify/request` | Create an OID4VP presentation request — returns `request_uri` (deep link / QR content) and `state` token |
+| `GET /api/v1/verify/result/{state}` | Poll for verification result; returns `pending` until the holder responds, then `verified` or `failed` with disclosed fields |
+
+**Ecosystem analytics** (Hub only — `VERIFIABLY_ROLES=hub`):
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/ecosystem/issuers/{did}/stats` | 30-day verification statistics for an issuer; Bearer key must be scoped to that DID |
+
+### Quick example — issue one credential
+
+```bash
+BASE_URL=https://verifiably.example.gov
+API_KEY=your-key-here
+
+curl -s -X POST "$BASE_URL/api/v1/credentials/issue" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schema_id": "nationalId",
+    "subject_data": {
+      "given_name": "Jane",
+      "family_name": "Doe",
+      "nationalIdentifier": "123456789"
+    }
+  }' | jq .
+# {
+#   "credential_id": "vc-...",
+#   "offer_uri": "openid-credential-offer://...",
+#   "flow": "pre_auth"
+# }
+```
+
+### Quick example — async bulk issuance
+
+```bash
+# Submit the batch (HTTP 202 — returns immediately)
+JOB=$(curl -s -X POST "$BASE_URL/api/v1/credentials/issue/bulk/async" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schema_id": "nationalId",
+    "rows": [
+      {"given_name": "Alice", "family_name": "Smith"},
+      {"given_name": "Bob",   "family_name": "Jones"}
+    ]
+  }' | jq -r .job_id)
+
+# Poll status
+curl -s "$BASE_URL/api/v1/bulk/$JOB" \
+  -H "Authorization: Bearer $API_KEY" | jq .
+
+# Or stream progress via Server-Sent Events
+curl -s "$BASE_URL/api/v1/bulk/$JOB/events" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+### Quick example — OID4VP verification
+
+```bash
+# Create a presentation request
+STATE=$(curl -s -X POST "$BASE_URL/api/v1/verify/request" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"schema_id": "nationalId", "fields": ["given_name", "family_name"]}' \
+  | jq -r .state)
+
+REQUEST_URI=$(curl -s -X POST "$BASE_URL/api/v1/verify/request" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"schema_id": "nationalId", "fields": ["given_name", "family_name"]}' \
+  | jq -r .request_uri)
+
+# Display request_uri as a QR code for the holder to scan, then poll:
+until [ "$(curl -s "$BASE_URL/api/v1/verify/result/$STATE" \
+  -H "Authorization: Bearer $API_KEY" | jq -r .status)" != "pending" ]; do
+  sleep 1
+done
+
+curl -s "$BASE_URL/api/v1/verify/result/$STATE" \
+  -H "Authorization: Bearer $API_KEY" | jq .
+```
+
+---
+
 ## Troubleshooting
 
 Common things that trip up a first deploy:
