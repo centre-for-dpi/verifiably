@@ -1335,6 +1335,7 @@ apply_credebl_patches() {
 ensure_credebl_platform_admin_shared_agent() {
   local _db_pw="$CREDEBL_POSTGRES_PASSWORD"
   local _agent_key="$CREDEBL_AGENT_API_KEY"
+  local _rt="$SCRIPT_DIR/deploy/compose/credebl/.agent-runtime"
 
   _credebl_pg() {
     docker exec -i credebl-postgres env PGPASSWORD="$_db_pw" \
@@ -1401,7 +1402,39 @@ ensure_credebl_platform_admin_shared_agent() {
     # replace with 127.0.0.1 (port is published on all interfaces).
     token_url="${token_url//172.24.0.1/127.0.0.1}"
     token_url="${token_url//172.17.0.1/127.0.0.1}"
+    # Docker container names (e.g. <uuid>_Platform-admin) are not resolvable
+    # from the host — use 127.0.0.1 with the published admin port instead.
+    if [[ ! "$token_url" =~ [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+      local _admin_port="${token_url##*:}"
+      _admin_port="${_admin_port%%/*}"
+      token_url="http://127.0.0.1:${_admin_port}/agent/token"
+    fi
     curl -sf --max-time 8 -X POST -H "Authorization: $_agent_key" "$token_url" >/dev/null
+  }
+
+  # Patches CONTROLLER_ENDPOINT in endpoint files written by agent-provisioning.
+  # docker_start_agent.sh writes the VPS public IP into this field, but agent-service
+  # runs inside Docker and cannot reach the public IP via hairpin NAT (ETIMEDOUT).
+  # Using the container name instead works because both containers share the same
+  # Docker network (waltid_default) and Docker DNS resolves container names there.
+  _patch_credo_endpoint_files() {
+    local _ep_dir="${_rt}/endpoints"
+    [[ -d "$_ep_dir" ]] || return 0
+    local _f _ep _host _port _ctr
+    for _f in "$_ep_dir"/*_Platform-admin.json; do
+      [[ -f "$_f" ]] || continue
+      _ep="$(sed -n 's/.*"CONTROLLER_ENDPOINT"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_f" 2>/dev/null)"
+      [[ -z "$_ep" ]] && continue
+      _host="${_ep%:*}"
+      _port="${_ep##*:}"
+      # Only rewrite if using a public IP (not private range, not already a hostname)
+      if [[ "$_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+         && [[ ! "$_host" =~ ^(10\.|172\.|192\.168\.) ]]; then
+        _ctr="$(basename "$_f" .json)"
+        printf '{"CONTROLLER_ENDPOINT":"%s:%s"}\n' "$_ctr" "$_port" > "$_f"
+        echo "  [endpoint-patch] CONTROLLER_ENDPOINT: ${_host}:${_port} → ${_ctr}:${_port}"
+      fi
+    done
   }
 
   echo "  Waiting for platform-admin-bootstrap to complete..."
@@ -1476,7 +1509,6 @@ ensure_credebl_platform_admin_shared_agent() {
       DROP DATABASE IF EXISTS \"platformadminwallet\";" 2>/dev/null || true
     # Remove stale Credo containers AND their runtime files so agent-provisioning
     # does not re-use the old endpoint/port allocation on the next spinup attempt.
-    local _rt="$SCRIPT_DIR/deploy/compose/credebl/.agent-runtime"
     docker ps -a --format '{{.Names}}' 2>/dev/null | while IFS= read -r cname; do
       [[ "$cname" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_ ]] || continue
       docker rm -f "$cname" 2>/dev/null || true
@@ -1497,8 +1529,17 @@ ensure_credebl_platform_admin_shared_agent() {
     done
 
     docker restart credebl-agent-service >/dev/null
-    echo "  Waiting 130s for full provisioning cycle..."
-    sleep 130
+    # Poll every 2s during the 130s wait. As soon as agent-provisioning writes the
+    # endpoint file with the public IP, _patch_credo_endpoint_files rewrites it to
+    # use the container name so agent-service can reach the Credo admin API via the
+    # internal Docker network (hairpin NAT workaround).
+    echo "  Waiting 130s for provisioning (patching endpoint file for hairpin NAT)..."
+    local _wait_end
+    _wait_end=$(( $(date +%s) + 130 ))
+    while [[ $(date +%s) -lt $_wait_end ]]; do
+      _patch_credo_endpoint_files
+      sleep 2
+    done
 
     if _platform_admin_agent_ready; then
       _normalize_credo_endpoint
