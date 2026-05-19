@@ -1531,6 +1531,11 @@ ensure_credebl_platform_admin_shared_agent() {
     local _token_url="${_ep//172.24.0.1/127.0.0.1}"
     _token_url="${_token_url//172.17.0.1/127.0.0.1}"
     [[ "$_token_url" =~ ^https?:// ]] || _token_url="http://${_token_url}"
+    # Container names aren't resolvable from the host — use 127.0.0.1:<mapped-port>.
+    if [[ ! "${_token_url#http://}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+      local _rp; _rp="${_token_url##*:}"; _rp="${_rp%%/*}"
+      _token_url="http://127.0.0.1:${_rp}"
+    fi
     if curl -sf --max-time 8 -X POST -H "Authorization: $_agent_key" "${_token_url}/agent/token" >/dev/null 2>&1; then
       echo "  Credo responding at ${_ep} with status=1 — advancing to status=2 (wallet already provisioned)"
       local _shared_type_id
@@ -1655,6 +1660,14 @@ ensure_credebl_platform_admin_tenant() {
   # from the host — use 127.0.0.1 instead (port is published on all interfaces).
   local curl_endpoint="${endpoint//172.24.0.1/127.0.0.1}"
   curl_endpoint="${curl_endpoint//172.17.0.1/127.0.0.1}"
+  # On Linux VPS, container names are Docker-internal and not resolvable from the host
+  # (only Docker DNS inside containers can resolve them). Extract the published port
+  # and use 127.0.0.1 instead — the Credo admin port is always mapped 1:1 to the host.
+  local _after_scheme="${curl_endpoint#http://}"; _after_scheme="${_after_scheme#https://}"
+  if [[ ! "$_after_scheme" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+    local _cport="${_after_scheme##*:}"; _cport="${_cport%%/*}"
+    curl_endpoint="http://127.0.0.1:${_cport}"
+  fi
 
   # Get root JWT (retry up to 8 times — Credo may still be starting)
   local root_jwt attempt=1
