@@ -1200,6 +1200,60 @@ PYEOF
   MSYS_NO_PATHCONV=1 docker exec --user root credebl-agent-provisioning python3 /tmp/patch_port_range.py
 }
 
+# _credebl_patch_agent_spin_up_endpoint patches docker_start_agent.sh to write
+# the Docker container name into CONTROLLER_ENDPOINT (and use it for the health
+# check) instead of EXTERNAL_IP. On Linux VPS, EXTERNAL_IP is the public IP;
+# containers cannot reach the public IP via hairpin NAT, so agent-service gets
+# ETIMEDOUT when trying to call the Credo admin API. The container name resolves
+# via Docker DNS on waltid_default, which both agent-service and Credo share.
+_credebl_patch_agent_spin_up_endpoint() {
+  local guard="PATCH-INTERNAL-ENDPOINT"
+  local script_path="/app/agent-provisioning/AFJ/scripts/docker_start_agent.sh"
+
+  if docker exec credebl-agent-provisioning grep -q "$guard" "$script_path" 2>/dev/null; then
+    echo "already patched"
+    return 0
+  fi
+
+  local patcher
+  patcher="$(mktemp /tmp/patch_ep_XXXXXX.py)"
+  cat > "$patcher" << 'PYEOF'
+import sys
+
+path = "/app/agent-provisioning/AFJ/scripts/docker_start_agent.sh"
+with open(path) as f:
+    content = f.read()
+
+GUARD = "PATCH-INTERNAL-ENDPOINT"
+if GUARD in content:
+    print("already patched")
+    sys.exit(0)
+
+old_agenturl = 'AGENTURL="http://${EXTERNAL_IP}:${ADMIN_PORT}/agent"'
+new_agenturl = ('# ' + GUARD + ': container name resolves via Docker DNS; public IP blocked by hairpin NAT\n'
+                '        AGENTURL="http://${AGENCY}_${CONTAINER_NAME}:${ADMIN_PORT}/agent"')
+if old_agenturl not in content:
+    print("ERROR: AGENTURL anchor not found", file=sys.stderr)
+    sys.exit(1)
+
+old_ep = '"CONTROLLER_ENDPOINT":"${EXTERNAL_IP}:${ADMIN_PORT}"'
+new_ep  = '"CONTROLLER_ENDPOINT":"${AGENCY}_${CONTAINER_NAME}:${ADMIN_PORT}"'
+if old_ep not in content:
+    print("ERROR: CONTROLLER_ENDPOINT anchor not found", file=sys.stderr)
+    sys.exit(1)
+
+content = content.replace(old_agenturl, new_agenturl, 1)
+content = content.replace(old_ep, new_ep, 1)
+
+with open(path, "w") as f:
+    f.write(content)
+print("patched")
+PYEOF
+  docker cp "$patcher" credebl-agent-provisioning:/tmp/patch_ep.py
+  rm -f "$patcher"
+  docker exec --user root credebl-agent-provisioning python3 /tmp/patch_ep.py
+}
+
 # _credebl_patch_ledger_schema_jwt replaces the raw hex SCHEMA_FILE_SERVER_TOKEN
 # with a valid HS256 JWT signed with JWT_TOKEN_SECRET.
 # The schema file server (oak_middleware_jwt) validates Bearer tokens as JWTs —
@@ -1308,6 +1362,8 @@ apply_credebl_patches() {
   _credebl_patch_agent_spin_up_script
   echo -n "  [13/14] Agent-provisioning port range (AGENT_PORT_START/INBOUND_PORT_START): "
   _credebl_patch_agent_port_range
+  echo -n "  [13b/14] Agent-provisioning CONTROLLER_ENDPOINT (container name, hairpin NAT fix): "
+  _credebl_patch_agent_spin_up_endpoint
 
   # Credo patches — only if Credo is running
   echo -n "  [14/14] Credo CredentialEvents guard: "
