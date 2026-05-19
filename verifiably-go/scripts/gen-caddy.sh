@@ -265,6 +265,31 @@ EOF
         # .agent-runtime/did/did.json (exported by _credebl_export_did_document).
         printf '\thandle /.well-known/did.json {\n\t\treverse_proxy credebl-oid4vci-rewriter:80\n\t}\n'
       fi
+      # walt-issuer: serve the did:web DID document inline via Caddy respond
+      # when bootstrap_waltid_did_web has generated .agent-runtime/waltid/did.json.
+      # The JSON is embedded directly (backtick string — safe because DID docs
+      # never contain backticks). Falls through to issuer-api for all other paths.
+      if [[ "$name" == "walt-issuer" ]]; then
+        local _waltid_did_file="$SCRIPT_DIR/.agent-runtime/waltid/did.json"
+        if [[ -f "$_waltid_did_file" ]]; then
+          local _waltid_did_json
+          _waltid_did_json=$(python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        print(json.dumps(json.load(f)))
+except Exception:
+    pass
+" "$_waltid_did_file" 2>/dev/null) || true
+          if [[ -n "$_waltid_did_json" ]]; then
+            printf '\thandle /.well-known/did.json {\n'
+            printf '\t\theader Content-Type "application/json"\n'
+            printf '\t\theader Access-Control-Allow-Origin "*"\n'
+            printf '\t\trespond `%s` 200\n' "$_waltid_did_json"
+            printf '\t}\n'
+          fi
+        fi
+      fi
       case "$proto" in
         https-skipverify)
           printf '\treverse_proxy https://%s {\n\t\ttransport http {\n\t\t\ttls_insecure_skip_verify\n\t\t}\n\t}\n' "$upstream"
