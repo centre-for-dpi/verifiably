@@ -445,3 +445,187 @@
   Extend the JSON body to accept `"templates": [{schema_id, fields, disclosure}, …]` alongside
   the existing single-template fields. Backward compatible — single-template requests unchanged.
   `internal/handlers/api.go`
+
+---
+
+## Credential Discovery & Self-Service Issuance
+
+> Goal: a citizen opens cdpi-wallet, browses the federation credential catalog, and downloads any credential they're eligible for — no operator assistance needed ("descubrir y descargar").
+> Pre-auth Code and Auth Code delivery already work in the adapters. What's missing is the discovery layer: `/.well-known/openid-credential-issuer` per member and an aggregated catalog endpoint in the hub.
+> Designed in session 2026-05-20; see `federated-emission.md` for flow diagrams.
+
+### P0 — Adapter interface
+
+- [ ] **[ARCH] Add `GetIssuerMetadata` to `backend.Adapter`**
+  New method `GetIssuerMetadata(ctx context.Context) (IssuerMetadata, error)`.
+  `IssuerMetadata` holds `CredentialIssuerURL`, `AuthorizationEndpoint`, `TokenEndpoint`, `CredentialEndpoint`, `CredentialsSupported []CredentialSupportedEntry`.
+  `backend/adapter.go`
+
+### P1 — Member: OID4VCI well-known endpoint
+
+- [ ] **[FEAT] `GET /.well-known/openid-credential-issuer` per member**
+  New handler `ServeIssuerMetadata` calls the active adapter's `GetIssuerMetadata` and returns RFC 9458-compliant JSON. Registered under the `issuer` role.
+  `internal/handlers/oidc_metadata.go` (new) + `cmd/server/main.go`
+
+- [ ] **[FEAT] CREDEBL adapter: implement `GetIssuerMetadata`**
+  Proxy the CREDEBL `/.well-known/openid-credential-issuer` and overwrite `credential_endpoint` with the verifiably-go URL.
+  `internal/adapters/credebl/issuer.go`
+
+- [ ] **[FEAT] Walt.id adapter: implement `GetIssuerMetadata`**
+  Assemble from wallet-kit API and `ListSchemas()` for `credentials_supported`.
+  `internal/adapters/waltid/issuer.go`
+
+- [ ] **[FEAT] Inji Certify adapter: implement `GetIssuerMetadata`**
+  Forward from Certify's `/.well-known/openid-credential-issuer` with base URL rewriting (inji-preauth-proxy already handles the path; this wraps the result).
+  `internal/adapters/injicertify/issuer.go`
+
+### P1 — Hub: catalog aggregator
+
+- [ ] **[FEAT] Hub: `GET /api/v1/discovery/credentials` — unified credential catalog**
+  Iterates `federation.TrustedIssuers`, fetches each member's `/.well-known/openid-credential-issuer` (5 min TTL, reuse SchemaCache infra), returns:
+  `{ "issuers": [{ "did", "name", "service_endpoint", "credentials": [{id, name, format, claims_preview}] }] }`.
+  Public endpoint — no auth required. cdpi-wallet calls this once to populate the "Descubrir" screen.
+  `internal/handlers/discovery.go` (new) + `cmd/server/main.go`
+
+### P2 — Eligibility check
+
+- [ ] **[FEAT] Member: `POST /api/v1/credentials/eligible`**
+  Authenticated with Bearer OIDC token. Extracts `cedula`/`sub`, queries the adapter's registry, returns `{ "credentials": [{ "id", "available": bool }] }`. Enables "Disponible para ti" badges in the wallet UI.
+  New `CheckEligibility(ctx context.Context, sub string) ([]EligibleCredential, error)` in `backend.Adapter`.
+  `internal/handlers/api.go` + `backend/adapter.go`
+
+### P3 — Push notifications
+
+- [ ] **[FEAT] Push notification to wallet on credential-ready event**
+  When a credential completes asynchronously (bulk job, async auth-code callback), notify the holder.
+  Options: (a) wallet-registered webhook at issuance time, (b) OID4VCI `notification_endpoint` if the wallet declares it in its credential request.
+  `internal/jobs/queue.go` (hook in completion path) + `internal/adapters/notify/` (new stub package)
+
+---
+
+## National ID Subject Binding
+
+> Cryptographic binding of an issued VC to the correct citizen. Three assurance levels.
+> Nivel 1 (pre-auth code — channel possession) is already functional. Nivel 2 is the recommended near-term target. Nivel 3 depends on a root cédula VC existing in the ecosystem first.
+
+### P1 — Nivel 2: Auth Code Flow + OIDC claim mapping
+
+- [ ] **[FEAT] Credential endpoint: map OIDC token claims to registry subject**
+  In Auth Code Flow, the credential request carries a `proof` JWT plus an access token containing `cedula`/`national_id` claims from the organismo's IdP. The credential endpoint must:
+  (a) verify the token signature against the IdP's JWKS,
+  (b) extract the subject identifier,
+  (c) look it up in the organismo's registry,
+  (d) emit the VC with `credentialSubject.id` = citizen's DID,
+  (e) include a `cnf` key binding claim tied to the wallet's proof key so only that wallet can present it.
+  `internal/adapters/credebl/issuer.go` + `internal/adapters/waltid/issuer.go`
+
+- [ ] **[ARCH] Extend `IssueRequest` to carry holder key proof**
+  Add `HolderDID string` and `HolderKeyProof string` (the wallet's JWT proof from the OID4VCI credential request) to `backend.IssueRequest`. Adapters forward these to the DPG so the emitted VC includes `cnf`.
+  `backend/adapter.go`
+
+### P3 — Nivel 3: VC-in VC-out (future — bootstrap dependency)
+
+- [ ] **[FEAT] Issuance based on VP presentation (OID4VP within OID4VCI Auth Code)**
+  Citizen presents an existing cédula VC as identity proof during issuance. The issuer verifies the VP via OID4VP before emitting the new credential. Only viable once a root cédula VC exists in the ecosystem.
+  Design reference: `draft-ietf-oauth-identity-chaining` + OID4VCI `presentation_during_issuance` extension.
+  `internal/adapters/credebl/issuer.go` + `internal/handlers/issuance.go`
+
+---
+
+## PKI / HSM / KMS Integration
+
+> Extends the pluggable signer plan (`internal/signer/` abstraction) to cover not only trust registry JWT and status-list signing but also the credential issuer key for SD-JWT VC and X.509 chain anchoring.
+> Controlled by `VERIFIABLY_SIGNER_TYPE` env var. Full design in memory [[project-pluggable-signer]].
+
+### P1 — Signer abstraction (prerequisite for all below)
+
+- [ ] **[ARCH] Implement `internal/signer/` — `Provider` interface**
+  `Provider` wraps `crypto.Signer` + `Certificate() *x509.Certificate` (nil for non-PKI backends).
+  Backends: `pem` (current behavior, backward-compat), `pkcs11` (build tag), `x509chain` (national PKI), `remotekms` (HTTP/gRPC stub).
+  `internal/signer/provider.go` + `internal/signer/pem.go` (new package)
+
+- [ ] **[ARCH] Wire `signer.Provider` into trust registry JWT signing**
+  Replace direct key access in `internal/trust/jwt.go` with `signer.Global()`.
+  `internal/trust/jwt.go` + `cmd/server/main.go`
+
+- [ ] **[ARCH] Wire `signer.Provider` into status list JWS signing**
+  Replace direct key access in `internal/statuslist/jws.go` with `signer.Global()`.
+  `internal/statuslist/jws.go`
+
+### P2 — Credential issuer key for SD-JWT VC
+
+- [ ] **[FEAT] Expose issuer signing key via `signer.Provider` to adapters**
+  For locally-signed SD-JWT VC issuance (not delegated to a DPG), the adapter uses the configured `signer.Provider`. Extend `backend.IssueRequest` or the adapter factory to receive the provider.
+  `backend/adapter.go` + `internal/adapters/factory/factory.go`
+
+- [ ] **[FEAT] X.509 chain (`x5c`) in SD-JWT VC header + `GET /.well-known/ca-bundle.pem`**
+  When `signer.Provider.Certificate() != nil`, include the full X.509 chain as `x5c` in the JWT header of issued credentials. Publish the CA bundle at a public endpoint for verifier trust anchoring.
+  `internal/signer/x509chain.go` + `internal/handlers/` (new `ServeCABundle` handler) + `cmd/server/main.go`
+
+### P3 — Hardware key backends
+
+- [ ] **[FEAT] PKCS#11 backend (`internal/signer/pkcs11.go`)**
+  SafeNet / nCipher / SoftHSM2 via `miekg/pkcs11`. Gated by build tag `pkcs11` to keep the default binary stdlib-only.
+  `internal/signer/pkcs11.go`
+
+- [ ] **[FEAT] Remote KMS backend (`internal/signer/remotekms.go`)**
+  HTTP/gRPC stub — sign endpoint configurable per-country KMS API (e.g. eIDAS-compliant national KMS).
+  `internal/signer/remotekms.go`
+
+---
+
+## Delegated Access / Representation
+
+> Legal representation flows over VCs: guardian-of-minor and mandate/power-of-attorney.
+> Pattern A — Mandate VC: active delegation ("Person A authorizes Person B for scope X").
+> Pattern B — Guardianship VC: passive representation ("Person A is legal guardian of Person B").
+> Both verification policies build on the multi-credential presentation adapter work — see "Multi-Credential Presentation (OID4VP)" section for the prerequisite adapter changes.
+
+### P1 — Credential schemas
+
+- [ ] **[ARCH] Define `DelegationCredential` schema in the type registry**
+  Claims: `mandator` (DID or cédula hash), `mandatee` (DID), `scope` (array of permitted credential types or service codes), `notAfter` (ISO datetime), `legalBasis` (free text).
+  `config/custom-schemas.user.json`
+
+- [ ] **[ARCH] Define `GuardianshipCredential` schema**
+  Claims: `guardian` (DID), `ward` (DID or cédula hash), `relationship` (`parent`/`legal_guardian`/`curator`), `authority` (issuing entity, e.g. TSS / Poder Judicial), `notAfter`.
+  `config/custom-schemas.user.json`
+
+### P1 — Verification policies
+
+- [ ] **[FEAT] Verifier policy: combined presentation — identity VC + `DelegationCredential`**
+  After multi-credential extraction, validate:
+  (a) `mandatee` DID in the delegation VC matches the holder DID from the identity VC,
+  (b) `scope` covers the requested service code,
+  (c) `notAfter` is in the future.
+  `internal/verification/delegation.go` (new)
+
+- [ ] **[FEAT] Verifier policy: guardian acts on behalf of ward**
+  Validate: (a) `guardian` DID matches the presenter's holder DID, (b) the subject of the requested credential matches `ward`, (c) `notAfter` is in the future.
+  `internal/verification/delegation.go`
+
+### P2 — Hub trust registry recognition
+
+- [ ] **[FEAT] Register `DelegationCredential` and `GuardianshipCredential` in hub trust registry**
+  Add both types to the `recognized_schemas` list in the hub's `GET /trust-registry` JWT so all federation verifiers accept them.
+  `internal/trust/` + `config/`
+
+### P3 — Multi-hop delegation
+
+- [ ] **[ARCH] Chain-of-delegation validation (A→B→C)**
+  A mandatee can sub-delegate to a third party. Validate the full chain: each hop must have equal or narrower scope; cycles are rejected.
+  `internal/verification/delegation.go`
+
+---
+
+## INJI Stack End-to-End Deployment Test
+
+> Tracking item. The Inji adapter is implemented (`injicertify`, `injiverify`, `injiweb`) but a complete E2E deployment test covering all five components with per-schema configurations has not been finalized.
+
+- [ ] **[TEST] Finalize INJI stack E2E deployment test**
+  Complete a full deployment of Certify + eSignet + Mimoto + Inji Web + Inji Verify. Validate pre-auth code flow and authorization code flow for at least two schemas. Document per-schema configuration parameters.
+  `internal/adapters/injicertify/` + `internal/adapters/injiverify/` + `deploy/compose/`
+
+---
+
+*Last updated: 2026-05-20 | Feature roadmap added: Credential Discovery & Self-Service Issuance, National ID Subject Binding (3 levels), PKI/HSM/KMS Integration, Delegated Access/Representation, INJI E2E test tracking.*
