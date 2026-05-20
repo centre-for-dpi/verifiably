@@ -119,7 +119,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(credential_issued_total{job=\"verifiably-federation\", status=\"ok\", issuer_name=~\"$issuer\"}[$__range]))",
+          "expr": "round(sum(increase(credential_issued_total{job=\"verifiably-federation\", status=\"ok\", issuer_name=~\"$issuer\"}[$__range])))",
           "instant": true,
           "legendFormat": "issued"
         }
@@ -151,7 +151,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(verification_completed_total{job=\"verifiably-hub\"}[$__range]))",
+          "expr": "round(sum(increase(verification_completed_total{job=~\"verifiably-federation|verifiably-hub\"}[$__range])))",
           "instant": true,
           "legendFormat": "verified"
         }
@@ -183,7 +183,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * sum(increase(credential_verified_total{job=\"verifiably-hub\", status=\"valid\"}[$__range])) / sum(increase(credential_verified_total{job=\"verifiably-hub\"}[$__range]))",
+          "expr": "100 * sum(increase(verification_completed_total{job=~\"verifiably-federation|verifiably-hub\", status=\"ok\"}[$__range])) / sum(increase(verification_completed_total{job=~\"verifiably-federation|verifiably-hub\"}[$__range]))",
           "instant": true,
           "legendFormat": "valid %"
         }
@@ -270,7 +270,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (issuer_name) (rate(credential_verified_total{job=\"verifiably-hub\", issuer_name=~\"$issuer\"}[$interval]))",
+          "expr": "sum by (issuer_name) (rate(verification_completed_total{job=\"verifiably-federation\", issuer_name=~\"$issuer\"}[$interval]))",
           "legendFormat": "{{issuer_name}}"
         }
       ],
@@ -340,21 +340,21 @@
       "targets": [
         {
           "refId": "issued",
-          "expr": "sum by (issuer_name) (increase(credential_issued_total{job=\"verifiably-federation\", status=\"ok\"}[$__range]))",
+          "expr": "round(sum by (issuer_name) (increase(credential_issued_total{job=\"verifiably-federation\", status=\"ok\"}[$__range])))",
           "instant": true,
           "legendFormat": "{{issuer_name}}",
           "format": "table"
         },
         {
           "refId": "verified",
-          "expr": "sum by (issuer_name) (increase(credential_verified_total{job=\"verifiably-hub\"}[$__range]))",
+          "expr": "round(sum by (issuer_name) (increase(verification_completed_total{job=\"verifiably-federation\"}[$__range])))",
           "instant": true,
           "legendFormat": "{{issuer_name}}",
           "format": "table"
         },
         {
           "refId": "valid",
-          "expr": "sum by (issuer_name) (increase(credential_verified_total{job=\"verifiably-hub\", status=\"valid\"}[$__range]))",
+          "expr": "round(sum by (issuer_name) (increase(verification_completed_total{job=\"verifiably-federation\", status=\"ok\"}[$__range])))",
           "instant": true,
           "legendFormat": "{{issuer_name}}",
           "format": "table"

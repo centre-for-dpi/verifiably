@@ -370,3 +370,78 @@
 ---
 
 *Last updated: 2026-05-19 | Security review pass 2026-05-19: 3 críticos, 3 altos, 3 medios, 3 bajos agregados. Pending long-tail: Vault/SSM, mTLS, Docker backup, push revocation, Docker socket, VERIFIABLY_MODE.*
+
+---
+
+## Multi-Credential Presentation (OID4VP)
+
+> Goal: a verifier can request presentation of fields from two or more credentials in a single OID4VP flow, regardless of which federation member issued each credential.
+> The cdpi-wallet already supports multi-credential PEX and DCQL requests natively — all work is on the verifiably-go backend.
+
+### P0 — Type changes (prerequisite for everything below)
+
+- [ ] **[ARCH] Extend `PresentationRequest` to support multiple credential templates**
+  Add `Templates []vctypes.OID4VPTemplate` alongside the existing `Template *vctypes.OID4VPTemplate`.
+  When `Templates` is populated it takes precedence; otherwise `Template` is used as a single-element
+  slice so all existing call sites keep working without changes.
+  `backend/adapter.go:252`
+
+- [ ] **[ARCH] Extend `VerificationResult` to support multiple presented credentials**
+  Replace `DisclosedFields map[string]string` with `Credentials []PresentedCredential` where
+  `PresentedCredential` holds `{SchemaID, IssuerDID, IssuerName, Fields map[string]string}`.
+  Keep `DisclosedFields` as a computed alias (flatten all Fields) so existing call sites compile.
+  `backend/adapter.go:404`
+
+### P1 — Adapters
+
+- [ ] **[FEAT] CREDEBL adapter: build multi-credential DCQL query**
+  Iterate `req.Templates` and create one `dcqlCredential{ID: "vc-N", Format, Claims}` per template
+  instead of the current hardcoded single entry. `body.DCQL.Query.Credentials` becomes an N-element array.
+  `internal/adapters/credebl/verifier.go`
+
+- [ ] **[FEAT] Walt.id adapter: build multi-entry `request_credentials`**
+  Iterate `req.Templates` and append one entry to `RequestCredentials[]` per template.
+  `internal/adapters/waltid/verifier.go`
+
+- [ ] **[FEAT] Both adapters: extract multi-credential results from VP response**
+  Map disclosed fields grouped by credential ID (`vc-1`, `vc-2` …) and populate
+  `VerificationResult.Credentials[]` instead of merging everything into a single flat map.
+  `internal/adapters/credebl/verifier.go` + `internal/adapters/waltid/verifier.go`
+
+### P1 — Cross-issuer routing at the Hub
+
+- [ ] **[ARCH] Register a `hub-verifier` DPG in the hub backend config**
+  Add an entry in `config/hub-backends.json` of type `verifiably` or `walt_community` pointing to a
+  verifier capable of resolving any `did:web` (MINERD's walt.id can serve this role initially).
+  This DPG handles all multi-issuer presentation requests.
+  `config/hub-backends.json` + `cmd/server/main.go:bootstrapHub`
+
+- [ ] **[FEAT] Auto-select `hub-verifier` for cross-issuer requests**
+  In `GenerateRequest()`: if `len(templates) > 1` and the schemas belong to more than one federation
+  member, set `VerifierDpg = "hub-verifier"` instead of the individual member's verifier.
+  `internal/handlers/verifier.go:GenerateRequest`
+
+### P1 — Handler and UI
+
+- [ ] **[FEAT] Handler: parse array of credential templates from form submission**
+  Replace flat `schema_id` / `field_key` parsing with indexed `credentials[][schema_id]` and
+  `credentials[][field_key][]`. Refactor `assembleCustomTemplate` (singular) →
+  `assembleCustomTemplates` (plural) returning `[]OID4VPTemplate`.
+  `internal/handlers/verifier.go:197`
+
+- [ ] **[FEAT] UI: multi-credential selector in the verification request form**
+  In fragment `fragment_verifier_custom_body`: add an "+ Add credential" button and a repeatable
+  section per credential type (schema selector + field checkboxes). Form submits indexed arrays.
+  `templates/pages/verifier_verify.html:401`
+
+- [ ] **[FEAT] UI: multi-credential result display**
+  In fragment `fragment_verify_result`: iterate `Credentials[]` and render each credential in its
+  own card showing issuer, schema ID, and disclosed fields. Replace the current single flat block.
+  `templates/pages/verifier_verify.html:249`
+
+### P2 — Public API
+
+- [ ] **[FEAT] `POST /api/v1/verify/request` accepts multi-credential body**
+  Extend the JSON body to accept `"templates": [{schema_id, fields, disclosure}, …]` alongside
+  the existing single-template fields. Backward compatible — single-template requests unchanged.
+  `internal/handlers/api.go`

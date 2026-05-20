@@ -5,10 +5,8 @@
 #   2. Place your ECDSA P-256 PEM key at config/trust-signing-key.pem
 #      (or set VERIFIABLY_TRUST_SIGNING_KEY in .env).
 #   3. Configure config/federation.json with registered members.
-#   4. Generate federation Prometheus targets:
-#        ./deploy/compose/monitoring/generate-federation-prometheus.sh \
-#            config/federation.json \
-#            deploy/compose/hub/federation-targets.json
+#   4. Generate federation Prometheus targets from the DB:
+#        ./deploy/compose/monitoring/generate-federation-prometheus.sh
 #
 # Start (localhost / dev):
 #   ./deploy.sh up hub
