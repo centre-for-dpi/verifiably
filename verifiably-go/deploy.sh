@@ -702,7 +702,7 @@ wait_for_services() {
     all|waltid)    ports+=( 7001 7002 7003 );;
   esac
   case "$scenario" in
-    all|inji)      ports+=( 8082 8091 8094 );;
+    all|inji)      ports+=( 8082 8088 8091 8094 );;
   esac
   case "$scenario" in
     all|credebl)
