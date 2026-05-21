@@ -145,7 +145,12 @@ JSON
         "baseUrl": "${certify_preauth_url}",
         "internalBaseUrl": "http://inji-certify-preauth:8090",
         "publicBaseUrl": "${certify_preauth_url}",
-        "offerIssuerUrl": "http://inji-certify-preauth:8090"
+        "offerIssuerUrl": "http://inji-certify-preauth:8090",
+        "db": {
+          "dsn": "postgres://postgres:postgres@certify-preauth-postgres:5432/inji_certify?sslmode=disable",
+          "didUrl": "did:web:certify-preauth-nginx",
+          "scope": "mock_identity_vc_ldp"
+        }
       }
     }
 JSON

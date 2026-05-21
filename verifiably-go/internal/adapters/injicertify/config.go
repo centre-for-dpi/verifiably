@@ -59,6 +59,29 @@ type Config struct {
 	// backend returned; for ModeAuthCode it must match what the wallet will
 	// discover via /.well-known/openid-credential-issuer.
 	OfferIssuerURL string `json:"offerIssuerUrl"`
+
+	// DB holds optional PostgreSQL connection details used by SaveCustomSchema
+	// and DeleteCustomSchema to keep inji-certify's credential_config table in
+	// sync with schemas created in verifiably-go. Only meaningful for
+	// ModePreAuth; leave empty for ModeAuthCode.
+	DB DBConfig `json:"db,omitempty"`
+}
+
+// DBConfig holds the optional PostgreSQL connection used to register custom
+// credential configurations directly in inji-certify's database.
+type DBConfig struct {
+	// DSN is a libpq / pgx connection string, e.g.
+	// "postgres://postgres:postgres@certify-preauth-postgres:5432/inji_certify?sslmode=disable"
+	// When empty, SaveCustomSchema / DeleteCustomSchema are no-ops.
+	DSN string `json:"dsn"`
+
+	// DIDUrl is written into credential_config.did_url for newly-registered
+	// credential configurations, e.g. "did:web:certify-preauth-nginx".
+	DIDUrl string `json:"didUrl"`
+
+	// Scope is the OAuth scope inserted into credential_config.scope.
+	// Defaults to "mock_identity_vc_ldp" when empty.
+	Scope string `json:"scope,omitempty"`
 }
 
 // UnmarshalConfig extracts a Config from a raw json.RawMessage and fills sensible defaults.
