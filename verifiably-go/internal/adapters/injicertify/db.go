@@ -39,12 +39,20 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 		displayOrder = append(displayOrder, f.Name)
 	}
 
-	displayRaw, _ := json.Marshal([]map[string]any{{
+	displayEntry := map[string]any{
 		"name":             schema.Name,
 		"locale":           "en",
 		"background_color": "#12107c",
 		"text_color":       "#FFFFFF",
-	}})
+	}
+	if iss := strings.TrimSpace(schema.IssuerDisplayName); iss != "" {
+		desc := strings.TrimSpace(schema.Desc)
+		if desc == "" || desc == "—" {
+			desc = schema.Name
+		}
+		displayEntry["description"] = desc + " · Issued by " + iss
+	}
+	displayRaw, _ := json.Marshal([]map[string]any{displayEntry})
 
 	fieldDisplay := buildFieldDisplay(schema.FieldsSpec)
 	fieldDisplayRaw, _ := json.Marshal(fieldDisplay)

@@ -423,13 +423,20 @@ func (a *Adapter) createCredeblTemplate(ctx context.Context, schema vctypes.Sche
 			IsRequired:    f.Required,
 		})
 	}
+	schemaDesc := strings.TrimSpace(schema.Desc)
+	if schemaDesc == "" || schemaDesc == "—" {
+		schemaDesc = schema.Name
+	}
+	if iss := strings.TrimSpace(schema.IssuerDisplayName); iss != "" {
+		schemaDesc = schemaDesc + " · Issued by " + iss
+	}
 	schemaBody := schemaCreateRequest{
 		Type: "json",
 		SchemaPayload: schemaPayloadBody{
 			SchemaName:  schema.Name,
 			SchemaType:  "no_ledger",
 			Attributes:  sAttrs,
-			Description: schema.Name,
+			Description: schemaDesc,
 			OrgID:       a.cfg.OrgID,
 		},
 	}
