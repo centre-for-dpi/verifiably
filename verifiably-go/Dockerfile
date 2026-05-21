@@ -43,7 +43,6 @@ COPY docs ./docs-src/docs
 COPY deploy ./docs-src/deploy
 COPY testdata ./docs-src/testdata
 COPY INTEGRATION.md /app/docs-src/INTEGRATION.md
-COPY slim-plan.md   /app/docs-src/slim-plan.md
 
 ENV VERIFIABLY_ADDR=:8080 \
     VERIFIABLY_ADAPTER=mock \
