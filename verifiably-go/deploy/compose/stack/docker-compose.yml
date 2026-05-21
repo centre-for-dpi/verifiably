@@ -507,10 +507,13 @@ services:
     # nginx starts. The variable list ('$$ISSUER_DISPLAY_NAME') scopes
     # substitution to just that one variable so no other $-patterns in
     # the JSON are accidentally expanded.
+    # /config/server/ is read-only (Docker overlay of multiple :ro bind-mounts).
+    # Write the rendered JSON to /tmp/ and serve it via an exact-match location
+    # in nginx.conf; /config/server/ is still used for all other static files.
     command: >
       /bin/sh -c "envsubst '$$ISSUER_DISPLAY_NAME'
       < /etc/nginx/templates/mimoto-issuers-config.json.tmpl
-      > /config/server/mimoto-issuers-config.json
+      > /tmp/mimoto-issuers-config.json
       && exec nginx -g 'daemon off;'"
     environment:
       - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Agriculture Department}
