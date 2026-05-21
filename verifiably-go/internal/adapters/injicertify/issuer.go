@@ -87,12 +87,18 @@ func (a *Adapter) PrefillSubjectFields(_ context.Context, _ vctypes.Schema) (map
 
 // preAuthorizedDataRequest matches POST /v1/certify/pre-authorized-data.
 type preAuthorizedDataRequest struct {
-	CredentialConfigurationId string                 `json:"credential_configuration_id"`
+	CredentialConfigurationId string         `json:"credential_configuration_id"`
 	Claims                    map[string]any `json:"claims"`
 }
 
+type mosipError struct {
+	ErrorCode    string `json:"errorCode"`
+	ErrorMessage string `json:"errorMessage"`
+}
+
 type preAuthorizedDataResponse struct {
-	CredentialOfferURI string `json:"credential_offer_uri"`
+	CredentialOfferURI string       `json:"credential_offer_uri"`
+	Errors             []mosipError `json:"errors"`
 }
 
 // IssueToWallet generates a credential offer. The path diverges by mode:
@@ -119,6 +125,12 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		var resp preAuthorizedDataResponse
 		if err := a.client.DoJSON(ctx, http.MethodPost, "/v1/certify/pre-authorized-data", body, &resp, nil); err != nil {
 			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %w", err)
+		}
+		if len(resp.Errors) > 0 {
+			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %s", resp.Errors[0].ErrorCode)
+		}
+		if resp.CredentialOfferURI == "" {
+			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: empty credential_offer_uri in response")
 		}
 		// The inji-preauth-proxy sidecar (docker compose service
 		// inji-preauth-proxy, taking over the inji-certify-preauth network
