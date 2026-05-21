@@ -18,3 +18,7 @@ echo "certify-postgres init: issuer DID = ${DID}"
 sed "s|did:web:certify-nginx|${DID}|g" \
     /var/init-templates/certify_init.sql \
     | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"
+
+# Ensure the postgres password is stored as SCRAM-SHA-256 (not md5).
+psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+    -c "ALTER USER postgres WITH PASSWORD '${POSTGRES_PASSWORD}';"

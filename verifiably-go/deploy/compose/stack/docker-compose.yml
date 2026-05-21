@@ -349,7 +349,7 @@ services:
       - ./inji/certify/certify-csvdp-farmer.properties:/home/mosip/config/certify-csvdp-farmer.properties
       - ./inji/certify/farmer_identity_data.csv:/home/mosip/config/farmer_identity_data.csv
       - ./inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json
-      - certify-pkcs12:/home/mosip/CERTIFY_PKCS12
+      - certify-pkcs12:/home/inji/CERTIFY_PKCS12
     depends_on:
       certify-postgres:
         condition: service_healthy
@@ -455,15 +455,13 @@ services:
       # same public DID. inji_proxy merges both instances' keys in the DID doc.
       - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-preauth-nginx}
       # Critical difference from the primary inji-certify: the domain URL
-      # points at THIS container (its own hostname on the default network),
-      # and we do NOT override any of the mosip.certify.authn.* or
-      # mosip.certify.oauth.* properties. They inherit from the base
-      # certify-default.properties where they all default to
-      # ${mosip.certify.authorization.url} which in turn defaults to
-      # ${mosip.certify.domain.url} — so this instance validates the
-      # Bearer tokens it hands out against its OWN JWKS. That's what
-      # makes the Pre-Auth Code flow work end-to-end.
-      - mosip_certify_domain_url=http://inji-certify-preauth:8090
+      # must be the PUBLIC URL so that JwtProofValidator (Nimbus) accepts
+      # the wallet's proof JWT whose aud = credential_issuer (the public URL
+      # the wallet read from /.well-known/openid-credential-issuer).
+      # MOSIP_CERTIFY_AUTHN_JWK_SET_URI is overridden to the INTERNAL address
+      # so the backend can still fetch its own JWKS without hairpin NAT.
+      - mosip_certify_domain_url=${PREAUTH_PUBLIC_URL:-http://inji-certify-preauth:8090}
+      - MOSIP_CERTIFY_AUTHN_JWK_SET_URI=${PREAUTH_JWKS_URI:-http://inji-certify-preauth:8090/v1/certify/.well-known/jwks.json}
       # Point at the isolated postgres instance, not the primary
       # certify-postgres. Zero shared database state.
       - SPRING_DATASOURCE_URL=jdbc:postgresql://certify-preauth-postgres:5432/inji_certify
@@ -486,10 +484,9 @@ services:
       - ./inji/certify/farmer_identity_data.csv:/home/mosip/config/farmer_identity_data.csv:ro
       - ./inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json:ro
       # Isolated keystore volume — not shared with primary certify-pkcs12.
-      # Mounted at the default keystore directory Inji Certify expects
-      # (mosip.kernel.keymanager.hsm.config-path = CERTIFY_PKCS12/local.p12)
-      # so we don't need an env-var override.
-      - certify-preauth-pkcs12:/home/mosip/CERTIFY_PKCS12
+      # Mounted at the directory Inji Certify writes to (/home/inji, NOT
+      # /home/mosip — the image runs as the inji user, not mosip).
+      - certify-preauth-pkcs12:/home/inji/CERTIFY_PKCS12
     depends_on:
       certify-preauth-postgres:
         condition: service_healthy
