@@ -574,6 +574,10 @@ func main() {
 		mux.HandleFunc("POST /issuer/issue/bulk/db", h.BulkFromDB)
 		mux.HandleFunc("GET /issuer/issue/pdf/{id}", h.DownloadPDF)
 		mux.HandleFunc("POST /issuer/issue/preview-pdf", h.PreviewPDF)
+		// REST API — schema management endpoints.
+		mux.HandleFunc("POST /api/v1/schemas", h.APICreateSchema)
+		mux.HandleFunc("GET /api/v1/schemas", h.APIListSchemas)
+		mux.HandleFunc("DELETE /api/v1/schemas/{id}", h.APIDeleteSchema)
 		// REST API — issuance endpoints.
 		// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk/async", h.APIIssueBulkAsync)
@@ -620,8 +624,9 @@ func main() {
 		mux.HandleFunc("GET /api/v1/verify/result/{state}", h.APIVerifyResult)
 	}
 
-	// --- API docs (issuer | verifier) ---
+	// --- API catalog + docs (issuer | verifier) ---
 	if activeRoles.Has(roles.Issuer) || activeRoles.Has(roles.Verifier) {
+		mux.HandleFunc("GET /api/v1/catalog", h.APICatalog)
 		mux.HandleFunc("GET /api/docs", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/static/scalar.html", http.StatusFound)
 		})
