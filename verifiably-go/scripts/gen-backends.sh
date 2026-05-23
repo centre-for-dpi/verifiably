@@ -179,7 +179,7 @@ JSON
       "config": {
         "baseUrl": "${inji_verify_svc_url}",
         "internalBaseUrl": "http://inji-verify-service:8080",
-        "clientId": "verifiably-demo"
+        "clientId": "did:web:inji-verify.${VERIFIABLY_PUBLIC_HOST}:v1:verify"
       }
     }
 JSON

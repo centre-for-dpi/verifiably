@@ -596,6 +596,8 @@ services:
       - DATABASE_USERNAME=postgres
       - DATABASE_PASSWORD=postgres
       - INJI_VP_SUBMISSION_BASE_URL=https://inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}/v1/verify
+      - INJI_DID_VERIFY_URI=did:web:inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}:v1:verify
+      - INJI_DID_VERIFY_PUBLIC_KEY_URI=did:web:inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}:v1:verify#key-0
     volumes:
       - ./inji/certify-nginx/certs/nginx.crt:/tmp/certify-nginx.crt:ro
       # Pre-auth nginx serves did:web:certify-preauth-nginx; import its

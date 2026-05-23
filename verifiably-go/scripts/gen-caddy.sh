@@ -290,6 +290,30 @@ except Exception:
           fi
         fi
       fi
+      # inji-verify: serve the did:web DID document inline at the path the
+      # did:web method resolves to — /v1/verify/.well-known/did.json.
+      # The Ed25519 public key is the one bundled in mosipid/inji-verify-service:0.16.0
+      # (sample-keystore/test.p12, pass=mosip). Falls through to inji-verify-service
+      # for all other paths.
+      if [[ "$name" == "inji-verify" ]]; then
+        local _inji_did="did:web:${subdomain}:v1:verify"
+        local _inji_pub_key="z6MkkzruJN9axHYvD6xjym3FrMiPTGaZKuL9LFtt8bQMcEvC"
+        local _inji_did_doc
+        _inji_did_doc=$(python3 - <<PYEOF 2>/dev/null
+import json
+did = "${_inji_did}"
+key = "${_inji_pub_key}"
+print(json.dumps({"@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/suites/ed25519-2020/v1"], "id": did, "verificationMethod": [{"id": did + "#key-0", "type": "Ed25519VerificationKey2020", "controller": did, "publicKeyMultibase": key}], "authentication": [did + "#key-0"]}))
+PYEOF
+) || true
+        if [[ -n "$_inji_did_doc" ]]; then
+          printf '\thandle /v1/verify/.well-known/did.json {\n'
+          printf '\t\theader Content-Type "application/did+ld+json"\n'
+          printf '\t\theader Access-Control-Allow-Origin "*"\n'
+          printf '\t\trespond `%s` 200\n' "$_inji_did_doc"
+          printf '\t}\n'
+        fi
+      fi
       case "$proto" in
         https-skipverify)
           printf '\treverse_proxy https://%s {\n\t\ttransport http {\n\t\t\ttls_insecure_skip_verify\n\t\t}\n\t}\n' "$upstream"
