@@ -155,6 +155,12 @@ JSON
     }
 JSON
 )
+  local _inji_verify_did
+  _inji_verify_did=$(python3 -c "
+from urllib.parse import urlparse
+h = urlparse('${inji_verify_svc_url}').hostname or 'inji-verify.${VERIFIABLY_PUBLIC_HOST}'
+print('did:web:' + h + ':v1:verify')
+" 2>/dev/null) || _inji_verify_did="did:web:injiverify.dev.mosip.net:v1:verify"
   local inji_verify_stanza
   inji_verify_stanza=$(cat <<JSON
     {
@@ -179,7 +185,7 @@ JSON
       "config": {
         "baseUrl": "${inji_verify_svc_url}",
         "internalBaseUrl": "http://inji-verify-service:8080",
-        "clientId": "did:web:inji-verify.${VERIFIABLY_PUBLIC_HOST}:v1:verify"
+        "clientId": "${_inji_verify_did}"
       }
     }
 JSON
