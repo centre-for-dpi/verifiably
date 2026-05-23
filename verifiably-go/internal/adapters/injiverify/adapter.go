@@ -29,10 +29,14 @@ func New(cfg Config, vendor string) (*Adapter, error) {
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("injiverify: baseUrl required")
 	}
+	apiBase := cfg.BaseURL
+	if cfg.InternalBaseURL != "" {
+		apiBase = cfg.InternalBaseURL
+	}
 	return &Adapter{
 		cfg:    cfg,
 		Vendor: vendor,
-		client: httpx.New(cfg.BaseURL),
+		client: httpx.New(apiBase),
 	}, nil
 }
 
