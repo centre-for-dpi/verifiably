@@ -115,11 +115,19 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 	if err := a.client.DoJSON(ctx, http.MethodPost, "/v1/verify/vp-request", body, &resp, nil); err != nil {
 		return backend.PresentationRequestResult{}, err
 	}
+	// Inji Verify v0.16 does not return requestUri in the POST response.
+	// Build the OID4VP cross-device URI: the wallet fetches the signed JAR
+	// from GET /vp-request/{requestId} (application/oauth-authz-req+jwt).
+	requestURI := fmt.Sprintf(
+		"openid4vp://authorize?client_id=%s&request_uri=%s",
+		url.QueryEscape(a.cfg.ClientID),
+		url.QueryEscape(a.cfg.BaseURL+"/v1/verify/vp-request/"+resp.RequestID),
+	)
 	// The state field we hand back to the UI is a composite of request ID and
 	// transaction ID so FetchPresentationResult can poll both endpoints.
 	state := resp.TransactionID + "|" + resp.RequestID
 	return backend.PresentationRequestResult{
-		RequestURI: resp.RequestURI,
+		RequestURI: requestURI,
 		State:      state,
 		Template:   tpl,
 	}, nil
