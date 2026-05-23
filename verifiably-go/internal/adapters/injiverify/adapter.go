@@ -89,10 +89,18 @@ type vpRequestResponse struct {
 
 // RequestPresentation creates an OID4VP session via /v1/verify/vp-request and
 // returns the Wallet-facing request URI + correlation tokens.
+// Accepts either a named preset key (req.TemplateKey in oid4vpTemplates) or an
+// inline custom template (req.Template != nil / req.TemplateKey == "custom").
 func (a *Adapter) RequestPresentation(ctx context.Context, req backend.PresentationRequest) (backend.PresentationRequestResult, error) {
-	tpl, ok := oid4vpTemplates[req.TemplateKey]
-	if !ok {
-		return backend.PresentationRequestResult{}, fmt.Errorf("injiverify: unknown template key %q", req.TemplateKey)
+	var tpl vctypes.OID4VPTemplate
+	if req.Template != nil {
+		tpl = *req.Template
+	} else {
+		var ok bool
+		tpl, ok = oid4vpTemplates[req.TemplateKey]
+		if !ok {
+			return backend.PresentationRequestResult{}, fmt.Errorf("injiverify: unknown template key %q", req.TemplateKey)
+		}
 	}
 	body := vpRequestCreate{
 		ClientID:               a.cfg.ClientID,
@@ -128,6 +136,9 @@ type vcResultItem struct {
 // FetchPresentationResult polls /v1/verify/vp-result/{txid} until a terminal
 // state or timeout. Applies the INJIVER-1131 guard: if no VC result's claims
 // intersect the template's requested fields, Valid is forced to false.
+// When templateKey is "custom" (inline template path), the guard has no field
+// list to check against and passes through — the handler enriches Method/Format
+// from the session's CustomOID4VPTemplate.
 func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKey string) (backend.VerificationResult, error) {
 	tpl, _ := oid4vpTemplates[templateKey]
 	txid := ""

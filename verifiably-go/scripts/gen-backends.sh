@@ -164,17 +164,15 @@ JSON
       "dpg": {
         "Vendor": "Inji Verify",
         "Version": "v0.16.0",
-        "Tag": "Redirect",
-        "Tagline": "MOSIP verifier — operator runs presentation sessions through Inji Verify's own UI.",
-        "FlowPlain": "Click the card to open the real Inji Verify UI in a new tab, or use the in-process direct-verify endpoints (paste/upload a JSON-LD VC).",
+        "Tag": "API-based",
+        "Tagline": "MOSIP verifier — OID4VP presentation requests generated inline in Verifiably, plus direct paste/upload verification.",
+        "FlowPlain": "Verifiably generates the openid4vp:// request from your custom schema and shows a QR; the holder scans with any OID4VC wallet. Direct verification (paste/upload) also supported.",
         "Formats": ["w3c_vcdm_1", "w3c_vcdm_2", "sd_jwt_vc (IETF)"],
         "Caveats": "INJIVER-1131: v0.16.0 cross-device flow can accept a wrong VC as valid — adapter applies a field-match guard.",
-        "Redirect": true,
-        "UIURL": "${inji_verify_ui_url}",
         "Capabilities": [
-          {"Kind": "flow",       "Key": "direct_paste",  "Title": "Paste JSON-LD VC",         "Body": "POST /v1/verify/vc-verification returns SUCCESS/INVALID synchronously."},
-          {"Kind": "flow",       "Key": "direct_upload", "Title": "Upload a QR image",        "Body": "Server decodes the QR with gozxing, then verifies the payload."},
-          {"Kind": "flow",       "Key": "oid4vp",        "Title": "OID4VP via Inji Verify UI", "Body": "Full cross-device presentation flow lives in the Inji Verify SPA."},
+          {"Kind": "flow",       "Key": "oid4vp",        "Title": "OID4VP inline",             "Body": "Verifiably builds the Presentation Definition from your schema and calls Inji Verify's /v1/verify/vp-request. QR shown here."},
+          {"Kind": "flow",       "Key": "direct_paste",  "Title": "Paste JSON-LD VC",          "Body": "POST /v1/verify/vc-verification returns SUCCESS/INVALID synchronously."},
+          {"Kind": "flow",       "Key": "direct_upload", "Title": "Upload a QR image",         "Body": "Server decodes the QR with gozxing, then verifies the payload."},
           {"Kind": "limitation", "Key": "injiver_1131",  "Title": "INJIVER-1131 guard applied", "Body": "Adapter re-checks claims against requested fields."}
         ]
       },

@@ -834,3 +834,19 @@ tr:hover td { background: var(--bg-elev); }
 .htmx-request.htmx-indicator {
   display: inline-block;
 }
+
+/* Spinner injected by app.js into .btn buttons during an in-flight request */
+.btn-spinner {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.65s linear infinite;
+  margin-right: 0.35em;
+  vertical-align: -0.05em;
+}
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}

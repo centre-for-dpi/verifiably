@@ -63,6 +63,37 @@
     toast('Network error — check your connection');
   });
 
+  // ---- HTMX loading state — disable .btn buttons while a request is in flight ----
+  // Only applies to buttons that carry the .btn class so small UI controls
+  // (e.g. the × remove-field button) are left untouched.
+  const LOADING_SAVED = 'data-loading-html';
+
+  function findActionBtn(elt) {
+    if (elt.tagName === 'BUTTON' && elt.classList.contains('btn')) return elt;
+    if (elt.tagName === 'FORM') {
+      return elt.querySelector('button.btn[type="submit"], button.btn:not([type="button"]):not([type="reset"])');
+    }
+    return null;
+  }
+
+  document.body.addEventListener('htmx:beforeRequest', function (e) {
+    var btn = findActionBtn(e.detail.elt);
+    if (!btn || btn.hasAttribute(LOADING_SAVED)) return;
+    var label = btn.textContent.trim();
+    btn.setAttribute(LOADING_SAVED, btn.innerHTML);
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span>' + label;
+  });
+
+  document.body.addEventListener('htmx:afterRequest', function (e) {
+    var btn = findActionBtn(e.detail.elt);
+    if (!btn || !btn.hasAttribute(LOADING_SAVED)) return;
+    if (!document.body.contains(btn)) return; // swapped out of DOM — nothing to restore
+    btn.innerHTML = btn.getAttribute(LOADING_SAVED);
+    btn.removeAttribute(LOADING_SAVED);
+    btn.disabled = false;
+  });
+
   // ---- Multipart upload helper (verifier QR image upload) ----
   // HTMX 2.x multipart submission is finicky on <form>-level hx-post; we drive
   // the POST directly and swap the result into #verify-result ourselves.

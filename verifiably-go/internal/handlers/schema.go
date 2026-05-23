@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -341,6 +342,12 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Add at least one claim field")
 		return
 	}
+	for _, f := range data.Fields {
+		if f.Name != "" && !validFieldName(f.Name) {
+			h.errorToast(w, r, fmt.Sprintf("Nombre de campo inválido: %q — solo letras (a-z, A-Z), dígitos y guión bajo, sin caracteres especiales.", f.Name))
+			return
+		}
+	}
 	schema := currentBuilderSchema(sess, data)
 	if err := h.Adapter.SaveCustomSchema(issuerCtx(r, sess), schema); err != nil {
 		h.errorToast(w, r, err.Error())
@@ -456,6 +463,12 @@ func allBlank(fs []vctypes.FieldSpec) bool {
 		}
 	}
 	return true
+}
+
+var reValidFieldName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+func validFieldName(name string) bool {
+	return reValidFieldName.MatchString(name)
 }
 
 // buildJSONSchema returns a pretty-printed JSON Schema (draft 2020-12) for the given schema.
