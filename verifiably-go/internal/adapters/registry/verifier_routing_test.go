@@ -13,7 +13,7 @@ import (
 // stub is a minimal verifier adapter that records the state and templateKey it
 // receives, and echoes the vendor name in its returned State so tests can assert
 // that the correct adapter was called and that the registry strips/restores the
-// "dpg:<vendor>:" prefix correctly.
+// "dpg|<vendor>|" prefix correctly.
 type stubVerifier struct {
 	vendor      string
 	templates   map[string]vctypes.OID4VPTemplate
@@ -132,7 +132,7 @@ func TestMultiVerifierTemplateNamespacing(t *testing.T) {
 
 // TestMultiVerifierRequestRouting verifies that RequestPresentation:
 //   - strips the "vendor:" prefix before forwarding to the adapter, and
-//   - wraps the adapter's returned State with "dpg:<vendor>:<inner>" so
+//   - wraps the adapter's returned State with "dpg|<vendor>|<inner>" so
 //     FetchPresentationResult can route deterministically.
 func TestMultiVerifierRequestRouting(t *testing.T) {
 	reg, _, cred := newDualVerifierRegistry()
@@ -149,15 +149,15 @@ func TestMultiVerifierRequestRouting(t *testing.T) {
 	}
 
 	// State must be tagged for deterministic routing.
-	wantStatePrefix := "dpg:credebl:"
+	wantStatePrefix := "dpg|credebl|"
 	if !strings.HasPrefix(res.State, wantStatePrefix) {
 		t.Errorf("State = %q; want prefix %q", res.State, wantStatePrefix)
 	}
 
 	// The adapter should have been called with the bare key ("id"), not the
 	// namespaced one. We verify indirectly: the stub returns "inner-credebl"
-	// as its State, so the tagged state should be "dpg:credebl:inner-credebl".
-	want := "dpg:credebl:inner-" + cred.vendor
+	// as its State, so the tagged state should be "dpg|credebl|inner-credebl".
+	want := "dpg|credebl|inner-" + cred.vendor
 	if res.State != want {
 		t.Errorf("State = %q; want %q", res.State, want)
 	}
@@ -170,7 +170,7 @@ func TestMultiVerifierFetchRouting(t *testing.T) {
 	ctx := context.Background()
 
 	// Simulate a session originated from the credebl verifier.
-	taggedState := "dpg:credebl:session-abc"
+	taggedState := "dpg|credebl|session-abc"
 	result, err := reg.FetchPresentationResult(ctx, taggedState, "id")
 	if err != nil {
 		t.Fatalf("FetchPresentationResult(credebl): %v", err)
@@ -183,7 +183,7 @@ func TestMultiVerifierFetchRouting(t *testing.T) {
 	}
 
 	// Simulate a session originated from waltid.
-	taggedState = "dpg:waltid:session-xyz"
+	taggedState = "dpg|waltid|session-xyz"
 	result, err = reg.FetchPresentationResult(ctx, taggedState, "age")
 	if err != nil {
 		t.Fatalf("FetchPresentationResult(waltid): %v", err)

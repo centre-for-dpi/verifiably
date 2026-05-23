@@ -633,22 +633,22 @@ func (r *Registry) RequestPresentation(ctx context.Context, req backend.Presenta
 	if err != nil {
 		return res, err
 	}
-	// Tag the state with the vendor DPG using a scheme-prefix so
+	// Tag the state with the vendor DPG using a pipe-delimited prefix so
 	// FetchPresentationResult can route back to the same adapter without an
-	// interface change. Format: "dpg:<vendor>:<inner-state>". The inner state
-	// may itself contain colons, which is fine — strings.Cut on the first ":"
-	// after "dpg:" stops at the right boundary.
-	res.State = "dpg:" + req.VerifierDpg + ":" + res.State
+	// interface change. Format: "dpg|<vendor>|<inner-state>".
+	// Pipe is used instead of colon because vendor IDs are DIDs
+	// (e.g. did:web:...) which themselves contain colons.
+	res.State = "dpg|" + req.VerifierDpg + "|" + res.State
 	return res, nil
 }
 
 func (r *Registry) FetchPresentationResult(ctx context.Context, state, templateKey string) (backend.VerificationResult, error) {
 	// The state is tagged with the vendor DPG by RequestPresentation above.
-	// Format: "dpg:<vendor>:<inner-state>". Parse and route deterministically;
+	// Format: "dpg|<vendor>|<inner-state>". Parse and route deterministically;
 	// fall back to first-adapter for any untagged state (legacy sessions or
 	// single-vendor deployments that never went through this registry).
-	if after, ok := strings.CutPrefix(state, "dpg:"); ok {
-		vendor, inner, _ := strings.Cut(after, ":")
+	if after, ok := strings.CutPrefix(state, "dpg|"); ok {
+		vendor, inner, _ := strings.Cut(after, "|")
 		ad, err := r.verifierFor(vendor)
 		if err != nil {
 			return backend.VerificationResult{}, err
