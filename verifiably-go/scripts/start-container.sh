@@ -220,20 +220,48 @@ port_to_internal = {
     "5001": "credebl-api-gateway:5000",
 }
 
+# subdomain-slug → docker-internal hostname:port for subdomain-mode URLs
+# (https://slug.domain) that carry no explicit port number and are therefore
+# not matched by port_to_internal above. The slug is the first label of the
+# hostname (everything before the first dot).
+slug_to_internal = {
+    "inji-certify-preauth": "inji-certify-preauth:8090",
+    "inji-certify":         "certify-nginx:80",
+    "inji-verify":          "inji-verify-service:8080",
+    "inji-verify-ui":       "inji-verify-ui:8000",
+    "inji-web":             "injiweb-ui:3004",
+    "mimoto":               "injiweb-mimoto:8099",
+    "esignet":              "injiweb-oidc-ui:3000",
+    "walt-issuer":          "issuer-api:7002",
+    "walt-wallet":          "wallet-api:7001",
+    "walt-verifier":        "verifier-api:7003",
+    "credebl":              "credebl-api-gateway:5000",
+}
+
 import re
 URL_RE = re.compile(r"^(https?)://([^:/]+):(\d+)(.*)$")
+NOPORT_RE = re.compile(r"^(https?)://([^/:]+)(.*)$")
 
 def rewrite_url(url):
     if not isinstance(url, str):
         return url
     m = URL_RE.match(url)
-    if not m:
-        return url
-    scheme, host, port, rest = m.groups()
-    internal = port_to_internal.get(port)
-    if not internal:
-        return url
-    return f"http://{internal}{rest}"
+    if m:
+        scheme, host, port, rest = m.groups()
+        internal = port_to_internal.get(port)
+        if not internal:
+            return url
+        return f"http://{internal}{rest}"
+    # No explicit port — subdomain-mode URL (https://slug.domain/path).
+    # Match the first hostname label against slug_to_internal.
+    m = NOPORT_RE.match(url)
+    if m:
+        scheme, host, rest = m.groups()
+        slug = host.split(".")[0]
+        internal = slug_to_internal.get(slug)
+        if internal:
+            return f"http://{internal}{rest}"
+    return url
 
 def walk(obj):
     if isinstance(obj, dict):
