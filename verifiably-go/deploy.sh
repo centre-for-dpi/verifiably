@@ -901,12 +901,29 @@ cmd_up_hub() {
 
   # Read VERIFIABLY_PUBLIC_DOMAIN from hub .env to decide whether to activate
   # the tls compose profile (which brings up Caddy with Let's Encrypt).
+  #
+  # Reserved/test TLDs (RFC 2606 .test/.example/.invalid/.localhost + mDNS
+  # .local) cannot get a public certificate, so activating Caddy against
+  # them produces useless Let's Encrypt traffic. Skip the tls profile and
+  # warn rather than letting Caddy hammer the LE ACME endpoint.
   local hub_domain=""
   hub_domain=$(grep -E '^VERIFIABLY_PUBLIC_DOMAIN=' "$HUB_ENV_FILE" 2>/dev/null \
     | cut -d= -f2- | tr -d '"' || true)
+  local tls_eligible="no"
+  if [[ -n "$hub_domain" ]]; then
+    case "$hub_domain" in
+      *.test|*.example|*.invalid|*.localhost|*.local|localhost)
+        yellow "  VERIFIABLY_PUBLIC_DOMAIN='${hub_domain}' uses a reserved TLD — skipping TLS profile."
+        yellow "  Set a publicly-resolvable domain to enable Caddy + Let's Encrypt."
+        ;;
+      *)
+        tls_eligible="yes"
+        ;;
+    esac
+  fi
 
   local profile_args=()
-  if [[ -n "$hub_domain" ]]; then
+  if [[ "$tls_eligible" == "yes" ]]; then
     profile_args+=( --profile tls )
     bold "▶ Hub: starting stack with TLS (Caddy + Let's Encrypt) for ${hub_domain}"
   else
@@ -927,7 +944,7 @@ cmd_up_hub() {
 
   echo
   green "  Hub is up."
-  if [[ -n "$hub_domain" ]]; then
+  if [[ "$tls_eligible" == "yes" ]]; then
     echo "    Hub:        https://${hub_domain}"
     echo "    Admin:      https://admin.${hub_domain}/admin/login"
     echo "    Grafana:    https://grafana.${hub_domain}  (admin / <GRAFANA_PASSWORD>)"

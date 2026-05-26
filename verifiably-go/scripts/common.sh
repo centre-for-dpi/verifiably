@@ -239,12 +239,24 @@ bold()   { printf '\033[1m%s\033[0m\n' "$*"; }
 
 # set_env_var <file> <VAR> <value>
 # Upserts VAR=value in an existing .env file. Replaces existing line or
-# appends. Handles sed portably (no -i.bak needed on Linux/Git-Bash).
+# appends.
+#
+# Why awk + tmp file instead of sed -i: BSD sed (macOS) interprets the
+# argument after -i as the backup-file extension; the same `sed -i "expr"`
+# that's a no-op on GNU breaks the wizard with "command a expects \..."
+# on every Mac. awk works the same on both platforms and avoids any
+# in-place quoting traps.
 set_env_var() {
   local file="$1" var="$2" val="$3"
   [[ -f "$file" ]] || return 0
   if grep -q "^${var}=" "$file" 2>/dev/null; then
-    sed -i "s|^${var}=.*|${var}=${val}|" "$file"
+    local tmp
+    tmp=$(mktemp "${file}.XXXXXX")
+    awk -v var="$var" -v val="$val" '
+      BEGIN { prefix = var "=" }
+      index($0, prefix) == 1 { print prefix val; next }
+      { print }
+    ' "$file" > "$tmp" && mv "$tmp" "$file"
   else
     printf '\n%s=%s\n' "$var" "$val" >> "$file"
   fi

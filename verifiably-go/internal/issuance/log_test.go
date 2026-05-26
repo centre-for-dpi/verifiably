@@ -199,8 +199,8 @@ func TestHashChain_AppendSetsHash(t *testing.T) {
 	if b.PrevHash == "" {
 		t.Fatal("second entry must have non-empty PrevHash")
 	}
-	if b.PrevHash != chainHashOf(a) {
-		t.Errorf("second.PrevHash = %q\nwant chainHashOf(first) = %q", b.PrevHash, chainHashOf(a))
+	if b.PrevHash != ChainHashOf(a) {
+		t.Errorf("second.PrevHash = %q\nwant ChainHashOf(first) = %q", b.PrevHash, ChainHashOf(a))
 	}
 }
 

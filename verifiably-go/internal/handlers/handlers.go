@@ -1130,6 +1130,14 @@ func (h *H) PickVerifierDpg(w http.ResponseWriter, r *http.Request) {
 // the `toast` listener, so the user sees nothing. That was the silent-failure
 // symptom on Send presentation and Check for holder response.
 func (h *H) errorToast(w http.ResponseWriter, r *http.Request, msg string) {
+	h.errorToastStatus(w, r, http.StatusUnprocessableEntity, msg)
+}
+
+// errorToastStatus is errorToast with an explicit HTTP status for the
+// non-HTMX fallback. Use this for input validation / upstream errors that
+// shouldn't surface as 500 to scripts/curl callers; reserve plain
+// errorToast (now 422) for that operator-input default.
+func (h *H) errorToastStatus(w http.ResponseWriter, r *http.Request, status int, msg string) {
 	slog.Warn("handler error", "method", r.Method, "path", r.URL.Path, "msg", msg)
 	if isHTMX(r) {
 		payload, err := json.Marshal(map[string]string{"toast": msg})
@@ -1143,7 +1151,7 @@ func (h *H) errorToast(w http.ResponseWriter, r *http.Request, msg string) {
 		w.WriteHeader(200)
 		return
 	}
-	http.Error(w, msg, http.StatusInternalServerError)
+	http.Error(w, msg, status)
 }
 
 // --- Schema browser + builder (issuer only) ---

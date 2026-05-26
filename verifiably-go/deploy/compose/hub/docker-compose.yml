@@ -160,9 +160,13 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
+    # `${VAR:-}` not `${VAR:?...}` — required-var substitution is evaluated
+    # at compose parse time even for services in inactive profiles, so a `:?`
+    # here would fail `up hub` in dev mode where the tls profile is off.
+    # Real validation happens in deploy.sh before activating --profile tls.
     environment:
-      HUB_DOMAIN: ${VERIFIABLY_PUBLIC_DOMAIN:?set VERIFIABLY_PUBLIC_DOMAIN in .env for tls profile}
-      LE_EMAIL: ${VERIFIABLY_LE_EMAIL:?set VERIFIABLY_LE_EMAIL in .env for tls profile}
+      HUB_DOMAIN: ${VERIFIABLY_PUBLIC_DOMAIN:-}
+      LE_EMAIL: ${VERIFIABLY_LE_EMAIL:-}
     volumes:
       - ./Caddyfile.hub:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

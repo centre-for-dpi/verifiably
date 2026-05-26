@@ -66,7 +66,7 @@ func (stub) VerifyDirect(_ context.Context, _ backend.DirectVerifyRequest) (back
 // data races in the Registry's custom-schema slice operations.
 func TestRegistry_NoRaceOnCustomSchemas(t *testing.T) {
 	r := registry.New()
-	r.Register("stub", vctypes.DPG{Name: "stub"}, []string{"issuer"}, stub{})
+	r.Register("stub", vctypes.DPG{Vendor: "stub"}, []string{"issuer"}, stub{})
 
 	const workers = 100
 	var wg sync.WaitGroup

@@ -25,6 +25,7 @@ import (
 	"io/fs"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -811,6 +812,11 @@ type ctxKeyRequestID struct{}
 // paths that the admin UI needs: /static/, /healthz, /readyz, /metrics, /lang,
 // /qr). Requests from the public domain are blocked from reaching /admin/*.
 // A bare / on the admin subdomain is redirected to /admin/login.
+//
+// Loopback hosts (localhost, 127.*, [::1]) bypass the split entirely because
+// laptop dev typically can't resolve `admin.localhost` without /etc/hosts
+// edits, and the host-split exists for production deployment security — it
+// has no value on a host only the operator can reach.
 func hubHostRouter(next http.Handler) http.Handler {
 	// infra paths always pass through on both domains.
 	infraPrefixes := []string{"/static/", "/healthz", "/readyz", "/metrics", "/lang", "/qr",
@@ -821,6 +827,12 @@ func hubHostRouter(next http.Handler) http.Handler {
 		host := r.Host
 		if i := strings.LastIndex(host, ":"); i >= 0 {
 			host = host[:i]
+		}
+		// Bracketed IPv6 literal: strip the surrounding brackets.
+		host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+		if isLoopbackHost(host) {
+			next.ServeHTTP(w, r)
+			return
 		}
 		isAdminHost := strings.HasPrefix(host, "admin.")
 		isAdminPath := r.URL.Path == "/admin" || strings.HasPrefix(r.URL.Path, "/admin/")
@@ -850,6 +862,18 @@ func hubHostRouter(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isLoopbackHost returns true for hostnames that only the operator can reach.
+// host should already have the port and IPv6 brackets stripped.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" || host == "::1" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // can include it in log attributes. If the client already sends X-Request-ID

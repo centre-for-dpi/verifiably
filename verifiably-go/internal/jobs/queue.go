@@ -175,6 +175,10 @@ func (q *Queue) Status(ctx context.Context, id string) (Job, bool) {
 
 // Subscribe returns a channel that receives progress updates until the job
 // finishes or ctx is cancelled. The channel is closed when done.
+//
+// close(ch) runs under q.mu — must stay aligned with the lock held in
+// broadcast around the send — otherwise broadcast can send on a closed
+// channel and panic.
 func (q *Queue) Subscribe(ctx context.Context, id string) <-chan Progress {
 	ch := make(chan Progress, 16)
 	q.mu.Lock()
@@ -190,8 +194,8 @@ func (q *Queue) Subscribe(ctx context.Context, id string) <-chan Progress {
 				break
 			}
 		}
-		q.mu.Unlock()
 		close(ch)
+		q.mu.Unlock()
 	}()
 	return ch
 }
@@ -260,7 +264,7 @@ func (q *Queue) persistProgress(ctx context.Context, job *Job) {
 
 func (q *Queue) broadcast(job *Job) {
 	q.mu.Lock()
-	subs := append([]chan Progress(nil), q.subs[job.ID]...)
+	defer q.mu.Unlock()
 	p := Progress{
 		JobID:  job.ID,
 		Status: job.Status,
@@ -268,8 +272,11 @@ func (q *Queue) broadcast(job *Job) {
 		Done:   job.Done,
 		Errors: job.Errors,
 	}
-	q.mu.Unlock()
-	for _, ch := range subs {
+	// Send under the lock so an unsubscribing goroutine (which closes the
+	// channel under the same lock — see Subscribe) cannot close between
+	// our membership check and the send. `select default` keeps each send
+	// non-blocking, so a slow consumer cannot stall the worker.
+	for _, ch := range q.subs[job.ID] {
 		select {
 		case ch <- p:
 		default:
