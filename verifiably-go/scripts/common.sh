@@ -199,7 +199,17 @@ if [[ -n "$VERIFIABLY_KEYCLOAK_EXTERNAL_ISSUER_URL" ]]; then
 else
   IDP_KEYCLOAK=( keycloak )
 fi
-IDP_WSO2IS=( wso2is )
+# WSO2IS adds a second IdP card alongside Keycloak. It's optional — set
+# VERIFIABLY_SKIP_WSO2IS=1 (or =true) to drop it. The container needs ~1.2 GiB
+# of heap and ~1.5 GiB total, which is the difference between fitting inji
+# into a 4 GiB Docker Desktop allocation and OOM-killing on bring-up.
+# Set VERIFIABLY_KEYCLOAK_EXTERNAL_ISSUER_URL to also skip the Keycloak
+# container if you're pointing at an upstream realm.
+: "${VERIFIABLY_SKIP_WSO2IS:=}"
+case "$VERIFIABLY_SKIP_WSO2IS" in
+  1|true|TRUE|yes|YES) IDP_WSO2IS=() ;;
+  *) IDP_WSO2IS=( wso2is ) ;;
+esac
 TRANSLATOR_SERVICES=( libretranslate )
 INJI_CORE_SERVICES=(
   certify-postgres inji-certify

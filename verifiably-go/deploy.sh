@@ -99,6 +99,29 @@ cmd_up() {
     export KC_HOSTNAME_URL="http://${VERIFIABLY_PUBLIC_HOST}:${KEYCLOAK_PORT:-8180}"
   fi
 
+  # Early RAM sanity check: the inji + credebl scenarios + the always-on
+  # IdPs (Keycloak + WSO2IS when not skipped) routinely exceed a 4 GiB
+  # Docker Desktop allocation and OOM-kill containers mid-bring-up — fail
+  # loud here so the operator doesn't waste 10 minutes watching WSO2IS
+  # restart-loop. The minimum is a heuristic, not a hard wall; the operator
+  # can opt out by setting VERIFIABLY_SKIP_RAM_CHECK=1.
+  if [[ "${VERIFIABLY_SKIP_RAM_CHECK:-}" != "1" ]]; then
+    local _docker_mem_bytes
+    _docker_mem_bytes=$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0)
+    local _docker_mem_gib=$(( _docker_mem_bytes / 1024 / 1024 / 1024 ))
+    local _needed_gib=4
+    case "$scenario" in
+      all|credebl) _needed_gib=8 ;;
+      inji)        _needed_gib=6 ;;
+    esac
+    if (( _docker_mem_gib > 0 && _docker_mem_gib < _needed_gib )); then
+      yellow "  Docker Engine has ${_docker_mem_gib} GiB allocated; ${scenario} typically needs ${_needed_gib} GiB."
+      yellow "  Containers may OOM mid-bring-up. Bump RAM in Docker Desktop (Settings → Resources → Advanced)"
+      yellow "  or set VERIFIABLY_SKIP_WSO2IS=1 to drop the heaviest single service (~1.5 GiB)."
+      yellow "  Override this check with VERIFIABLY_SKIP_RAM_CHECK=1."
+    fi
+  fi
+
   bold "▶ Preparing config for scenario=$scenario"
   backends_for "$scenario"
   auth_providers_for "$scenario"
@@ -271,6 +294,40 @@ cmd_up() {
   bold "▶ Waiting for services to be reachable"
   wait_for_services "$scenario"
 
+  # Idempotent re-init of certify-postgres if its `inji_certify` database is
+  # missing. The postgres image only sources `/docker-entrypoint-initdb.d/*`
+  # on first startup of a fresh data volume — so if the very first attempt
+  # ever crashed mid-init (or someone manually dropped the DB), the next
+  # `up inji` would silently leave inji-certify in a CrashLoop with
+  # "FATAL: database \"inji_certify\" does not exist". Run init.sh ourselves
+  # against an already-running postgres in that case.
+  if [[ "$(scenario_services "$scenario" | grep -c '^certify-postgres$' || true)" -gt 0 ]]; then
+    if docker inspect certify-postgres --format '{{.State.Status}}' 2>/dev/null | grep -q running; then
+      if ! docker exec certify-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
+        yellow "  certify-postgres missing inji_certify DB — running init.sql"
+        DID="did:web:${ISSUER_DID_DOMAIN:-certify-nginx}"
+        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init.sql" \
+          | docker exec -i certify-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
+          && docker restart inji-certify >/dev/null 2>&1 \
+          && green "  certify-postgres seeded, inji-certify restarted" \
+          || red "  certify init failed — see 'docker exec certify-postgres psql ...'"
+      fi
+    fi
+  fi
+  if [[ "$(scenario_services "$scenario" | grep -c '^certify-preauth-postgres$' || true)" -gt 0 ]]; then
+    if docker inspect certify-preauth-postgres --format '{{.State.Status}}' 2>/dev/null | grep -q running; then
+      if ! docker exec certify-preauth-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
+        yellow "  certify-preauth-postgres missing inji_certify DB — running init-preauth.sql"
+        DID="did:web:${ISSUER_DID_DOMAIN:-certify-preauth-nginx}"
+        sed "s|did:web:certify-preauth-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-preauth.sql" \
+          | docker exec -i certify-preauth-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
+          && docker restart inji-certify-preauth-backend >/dev/null 2>&1 \
+          && green "  certify-preauth-postgres seeded, inji-certify-preauth-backend restarted" \
+          || red "  certify-preauth init failed — see 'docker exec certify-preauth-postgres psql ...'"
+      fi
+    fi
+  fi
+
   # Every scenario runs both IdPs, so the OIDC client registrations always
   # need to happen. Both bootstraps are idempotent — a second run reuses
   # the existing client and only patches drift (Keycloak: redirect_uris;
@@ -309,13 +366,20 @@ cmd_up() {
       || red "  Keycloak bootstrap failed (proceeding — you can re-run it manually)"
   fi
 
-  bold "▶ Bootstrapping WSO2IS OIDC client"
-  PUBLIC_HOST="$VERIFIABLY_PUBLIC_HOST" \
-    VERIFIABLY_HOST_PORT="$VERIFIABLY_HOST_PORT" \
-    VERIFIABLY_CALLBACK_URL="$_verifiably_callback" \
-    "$SCRIPT_DIR/scripts/bootstrap-wso2is.sh" || red "  WSO2IS bootstrap failed (proceeding — you can re-run it manually)"
-  # Re-generate auth-providers.json now that wso2is.env exists, so the
-  # provider list picks up the fresh client_secret.
+  # WSO2IS is opt-out — common.sh leaves IDP_WSO2IS empty when the operator
+  # sets VERIFIABLY_SKIP_WSO2IS=1 (typically to fit the inji stack inside a
+  # 4 GiB Docker Desktop allocation, since WSO2IS alone needs ~1.5 GiB).
+  if [[ ${#IDP_WSO2IS[@]} -eq 0 ]]; then
+    yellow "▶ Skipping WSO2IS bootstrap (VERIFIABLY_SKIP_WSO2IS=$VERIFIABLY_SKIP_WSO2IS)"
+  else
+    bold "▶ Bootstrapping WSO2IS OIDC client"
+    PUBLIC_HOST="$VERIFIABLY_PUBLIC_HOST" \
+      VERIFIABLY_HOST_PORT="$VERIFIABLY_HOST_PORT" \
+      VERIFIABLY_CALLBACK_URL="$_verifiably_callback" \
+      "$SCRIPT_DIR/scripts/bootstrap-wso2is.sh" || red "  WSO2IS bootstrap failed (proceeding — you can re-run it manually)"
+  fi
+  # Re-generate auth-providers.json now that wso2is.env exists (or doesn't,
+  # if we skipped), so the provider list reflects the current IdP set.
   auth_providers_for "$scenario"
 
   # Seed the injiweb stack: register the wallet-demo-client keystore with
@@ -696,8 +760,13 @@ wait_for_services() {
   local scenario="$1"
   # Both IdPs (Keycloak 8180, WSO2IS 9443) + the translator (5000) are
   # always in scope because every scenario includes them. DPG-specific
-  # ports gate on scenario.
-  local -a ports=( 8180 9443 5000 )
+  # ports gate on scenario. WSO2IS is dropped when IDP_WSO2IS is empty
+  # (VERIFIABLY_SKIP_WSO2IS=1) so we don't waste 60s waiting for a
+  # service that's intentionally not running.
+  local -a ports=( 8180 5000 )
+  if [[ ${#IDP_WSO2IS[@]} -gt 0 ]]; then
+    ports+=( 9443 )
+  fi
   case "$scenario" in
     all|waltid)    ports+=( 7001 7002 7003 );;
   esac
