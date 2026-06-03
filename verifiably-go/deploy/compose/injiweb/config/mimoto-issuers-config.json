@@ -17,15 +17,15 @@
         }
       ],
       "client_id": "wallet-demo-client",
-      "redirect_uri": "http://172.24.0.1:3004/redirect",
+      "redirect_uri": "https://inji-web.verifiably.ysalabs.work/redirect",
       "token_endpoint": "http://localhost:8099/v1/mimoto/get-token/Farmer",
-      "authorization_audience": "http://172.24.0.1:3005/v1/esignet/oauth/v2/token",
-      "proxy_token_endpoint": "http://172.24.0.1:3005/v1/esignet/oauth/v2/token",
+      "authorization_audience": "https://esignet.verifiably.ysalabs.work/v1/esignet/oauth/v2/token",
+      "proxy_token_endpoint": "https://esignet.verifiably.ysalabs.work/v1/esignet/oauth/v2/token",
       "client_alias": "wallet-demo-client",
       "qr_code_type": "EmbeddedVC",
-      "credential_issuer_host": "http://certify-nginx",
+      "credential_issuer_host": "http://certify-nginx/v1/certify",
       "enabled": "true",
-      "wellknown_endpoint": "http://certify-nginx/.well-known/openid-credential-issuer?client=mimoto"
+      "wellknown_endpoint": "http://certify-nginx/v1/certify/.well-known/openid-credential-issuer?client=mimoto"
     },
     {
       "issuer_id": "MockMdl",
@@ -44,15 +44,15 @@
         }
       ],
       "client_id": "wallet-demo-client",
-      "redirect_uri": "http://172.24.0.1:3004/redirect",
+      "redirect_uri": "https://inji-web.verifiably.ysalabs.work/redirect",
       "token_endpoint": "http://localhost:8099/v1/mimoto/get-token/MockMdl",
-      "authorization_audience": "http://172.24.0.1:3005/v1/esignet/oauth/v2/token",
-      "proxy_token_endpoint": "http://172.24.0.1:3005/v1/esignet/oauth/v2/token",
+      "authorization_audience": "https://esignet.verifiably.ysalabs.work/v1/esignet/oauth/v2/token",
+      "proxy_token_endpoint": "https://esignet.verifiably.ysalabs.work/v1/esignet/oauth/v2/token",
       "client_alias": "wallet-demo-client",
       "qr_code_type": "EmbeddedVC",
-      "credential_issuer_host": "http://certify-nginx",
+      "credential_issuer_host": "http://certify-nginx/v1/certify",
       "enabled": "true",
-      "wellknown_endpoint": "http://certify-nginx/.well-known/openid-credential-issuer?client=mimoto"
+      "wellknown_endpoint": "http://certify-nginx/v1/certify/.well-known/openid-credential-issuer?client=mimoto"
     }
   ]
 }

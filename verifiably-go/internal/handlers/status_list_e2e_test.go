@@ -274,8 +274,8 @@ func TestStatusListE2E(t *testing.T) {
 				OwnerKey:   testOwner,
 				HolderHint: "Test Holder",
 				StatusList: &issuance.StatusListEntry{
-					Type:   tc.store.Kind,
-					ListID: tc.store.ListID,
+					Type:   tc.store.GetKind(),
+					ListID: tc.store.GetListID(),
 					Index:  idx,
 				},
 			}); err != nil {

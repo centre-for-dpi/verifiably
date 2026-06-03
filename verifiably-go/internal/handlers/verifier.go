@@ -1,11 +1,19 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/metrics"
+	"github.com/verifiably/verifiably-go/internal/trust"
+	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -19,7 +27,11 @@ func (h *H) ShowVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dpgs, _ := h.Adapter.ListVerifierDpgs(r.Context())
-	schemas, _ := h.Adapter.ListAllSchemas(r.Context())
+	schemas, err := h.Adapter.ListAllSchemas(r.Context())
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
 	if sess.VerifierSchemaFilter == "" {
 		sess.VerifierSchemaFilter = "all"
 	}
@@ -163,11 +175,15 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		Policies:    policies,
 		WebhookURL:  strings.TrimSpace(r.FormValue("webhook_url")),
 	}
+	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(r.Context(), req)
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(verifyStart), "dpg", sess.VerifierDpg, "op", "verify")
 	if err != nil {
+		metrics.Inc("verification_requested_total", "dpg", sess.VerifierDpg, "schema", tpl.Title, "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
+	metrics.Inc("verification_requested_total", "dpg", sess.VerifierDpg, "schema", tpl.Title, "status", "ok")
 	sess.CurrentOID4VPLink = res.RequestURI
 	sess.CurrentOID4VPState = res.State
 	sess.CurrentOID4VPTemplate = "custom"
@@ -375,13 +391,14 @@ func disclosureSummary(mode string, fields []string) string {
 	return "full credential shared"
 }
 
-// SimulateResponse fetches the (simulated) verification result for the current OID4VP session.
-func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
+// FetchResponse polls the adapter for the current OID4VP session result.
+func (h *H) FetchResponse(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	if sess.CurrentOID4VPState == "" {
 		h.errorToast(w, r, "Generate a request first")
 		return
 	}
+	pollStart := time.Now()
 	res, err := h.Adapter.FetchPresentationResult(r.Context(), sess.CurrentOID4VPState, sess.CurrentOID4VPTemplate)
 	if err != nil {
 		h.errorToast(w, r, err.Error())
@@ -414,6 +431,52 @@ func (h *H) SimulateResponse(w http.ResponseWriter, r *http.Request) {
 		h.renderFragment(w, r, "fragment_verify_result", res)
 		return
 	}
+	verifyStatus := "ok"
+	if !res.Valid {
+		verifyStatus = "error"
+	}
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(pollStart), "dpg", sess.VerifierDpg, "op", "verify")
+	completedSchemaLabel := sess.CustomOID4VPSchemaID
+	if sess.CustomOID4VPTemplate != nil {
+		completedSchemaLabel = sess.CustomOID4VPTemplate.Title
+	}
+	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", completedSchemaLabel, "status", verifyStatus)
+	h.attachTrustStatus(r, &res)
+
+	// Write verification event — non-blocking; never delays the HTTP response.
+	if h.VerificationLog != nil {
+		evtStatus := "invalid"
+		if res.Valid {
+			evtStatus = "valid"
+		}
+		evt := verification.Event{
+			ID:           verification.NewID(),
+			IssuerDID:    res.Issuer,
+			SchemaID:     sess.CustomOID4VPSchemaID,
+			SchemaName:   completedSchemaLabel,
+			VerifierDPG:  sess.VerifierDpg,
+			DeploymentID: os.Getenv("VERIFIABLY_PUBLIC_URL"),
+			Status:       evtStatus,
+			TrustStatus:  res.TrustStatus,
+			VerifiedAt:   time.Now().UTC(),
+		}
+		go func(e verification.Event) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := h.VerificationLog.Append(ctx, e); err != nil {
+				slog.Warn("verification log: append failed", "err", err)
+			}
+		}(evt)
+	}
+
+	slog.Info("oid4vp verification completed",
+		"valid", res.Valid,
+		"method", res.Method,
+		"format", res.Format,
+		"dpg", sess.VerifierDpg,
+		"fields_count", len(res.DisclosedFields),
+		"duration_ms", time.Since(pollStart).Milliseconds(),
+	)
 	h.renderFragments(w, r, res, "fragment_verify_result", "fragment_verify_stop_polling")
 }
 
@@ -451,15 +514,46 @@ func (h *H) VerifyDirect(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Scanner did not return a credential payload")
 		return
 	}
+	directStart := time.Now()
 	res, err := h.Adapter.VerifyDirect(r.Context(), backend.DirectVerifyRequest{
 		VerifierDpg: sess.VerifierDpg, Method: method, CredentialData: credData,
 	})
+	metrics.ObserveDuration("adapter_duration_seconds", time.Since(directStart), "dpg", sess.VerifierDpg, "op", "verify")
 	if err != nil {
+		metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", "error")
 		h.errorToast(w, r, err.Error())
 		return
 	}
+	directStatus := "ok"
+	if !res.Valid {
+		directStatus = "error"
+	}
+	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", directStatus)
+	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
 	h.renderFragment(w, r, "fragment_verify_result", res)
+}
+
+// attachTrustStatus populates VerificationResult.TrustStatus / TrustReason
+// by checking the issuer DID against the configured trust registry.
+// No-op when TrustRegistry is nil or Issuer is empty.
+func (h *H) attachTrustStatus(r *http.Request, res *backend.VerificationResult) {
+	if h.TrustRegistry == nil || res.Issuer == "" {
+		return
+	}
+	err := h.TrustRegistry.IsTrusted(r.Context(), res.Issuer, res.CredentialTitle)
+	if err == nil {
+		res.TrustStatus = "trusted"
+		return
+	}
+	if errors.Is(err, trust.ErrUntrusted) {
+		res.TrustStatus = "untrusted"
+		res.TrustReason = err.Error()
+		return
+	}
+	// I/O error — mark unknown, log but don't block the result.
+	slog.Warn("trust registry lookup failed", "issuer", res.Issuer, "err", err)
+	res.TrustStatus = "unknown"
 }
 
 // attachIssuerDisplay populates VerificationResult.IssuerDisplay by looking

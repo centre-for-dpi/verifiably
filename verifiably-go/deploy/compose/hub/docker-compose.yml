@@ -1,0 +1,205 @@
+# Hub compose stack — verifiably-go (hub mode) + PostgreSQL + Prometheus + Grafana
+#
+# Prerequisites:
+#   1. Copy .env.example to .env and fill in the required variables.
+#   2. Place your ECDSA P-256 PEM key at config/trust-signing-key.pem
+#      (or set VERIFIABLY_TRUST_SIGNING_KEY in .env).
+#   3. Configure config/federation.json with registered members.
+#   4. Generate federation Prometheus targets from the DB:
+#        ./deploy/compose/monitoring/generate-federation-prometheus.sh
+#
+# Start (localhost / dev):
+#   ./deploy.sh up hub
+#   Hub:        http://localhost:8080
+#   Grafana:    http://localhost:3100  (admin / <GRAFANA_PASSWORD>)
+#   Prometheus: http://localhost:9090  (internal — firewall in production)
+#
+# Start (production TLS — set VERIFIABLY_PUBLIC_DOMAIN + VERIFIABLY_LE_EMAIL):
+#   ./deploy.sh up hub
+#   Hub:     https://<VERIFIABLY_PUBLIC_DOMAIN>
+#   Grafana: https://grafana.<VERIFIABLY_PUBLIC_DOMAIN>
+#   Caddy acquires Let's Encrypt certificates automatically.
+#   Firewall ports 8080, 3100, 9090 from public access; only 80 + 443 needed.
+#
+name: verifiably-hub
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: hub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-verifiably}
+      POSTGRES_USER: ${POSTGRES_USER:-verifiably}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-verifiably}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub
+
+  verifiably-go:
+    image: ${VERIFIABLY_IMAGE:-verifiably/verifiably-go:latest}
+    container_name: hub-verifiably-go
+    restart: unless-stopped
+    environment:
+      VERIFIABLY_ROLES: hub
+      VERIFIABLY_ADAPTER: registry
+      # Hub-specific backends file — no DPG adapters needed (Hub only routes
+      # trust registry and /verify; DPG backends live on member nodes).
+      VERIFIABLY_BACKENDS_FILE: /app/config/hub-backends.json
+      VERIFIABLY_DATABASE_URL: postgres://${POSTGRES_USER:-verifiably}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-verifiably}?sslmode=disable
+      VERIFIABLY_PUBLIC_URL: ${VERIFIABLY_PUBLIC_URL:?VERIFIABLY_PUBLIC_URL is required}
+      VERIFIABLY_SESSION_SECRET: ${VERIFIABLY_SESSION_SECRET:?VERIFIABLY_SESSION_SECRET is required}
+      VERIFIABLY_TRUST_SIGNING_KEY: ${VERIFIABLY_TRUST_SIGNING_KEY:-}
+      VERIFIABLY_FEDERATION_CONFIG: /app/config/federation.json
+      VERIFIABLY_API_KEYS: ${VERIFIABLY_API_KEYS:-}
+      VERIFIABLY_ADMIN_PASSWORD: ${VERIFIABLY_ADMIN_PASSWORD:-}
+      VERIFIABLY_GRAFANA_URL: ${GRAFANA_EXTERNAL_URL:-http://localhost:3100}
+      VERIFIABLY_PROMETHEUS_URL: http://prometheus:9090
+      VERIFIABLY_LOG_JSON: "1"
+      LIBRETRANSLATE_URL: http://libretranslate:5000
+    volumes:
+      - ../../../config:/app/config:ro
+      - hub-state:/app/state
+    ports:
+      - "${HUB_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No healthcheck: distroless/static image has no wget/curl/shell.
+    # Caddy uses service_started below and retries connections automatically.
+    networks:
+      - hub
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: hub-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --web.enable-lifecycle
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+    volumes:
+      # Hub-specific prometheus config (includes file_sd federation job)
+      - ../monitoring/prometheus-hub.yml:/etc/prometheus/prometheus.yml:ro
+      # Generated federation targets (update with generate-federation-prometheus.sh)
+      - ./federation-targets.json:/etc/prometheus/federation-targets.json:ro
+      - prometheus-data:/prometheus
+    # Port published for local/dev access. In production, firewall port 9090
+    # and query Prometheus only through Grafana (internal network).
+    ports:
+      - "${PROMETHEUS_PORT:-127.0.0.1:9090}:9090"
+    networks:
+      - hub
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: hub-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Open the ecosystem overview dashboard by default
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/verifiably-ecosystem-v1.json
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    # In TLS mode Grafana is accessed via Caddy at grafana.<domain>; the
+    # direct port bind is kept for dev/localhost convenience.
+    ports:
+      - "${GRAFANA_PORT:-3100}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - hub
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  libretranslate:
+    image: libretranslate/libretranslate:v1.6.5
+    container_name: hub-libretranslate
+    restart: unless-stopped
+    environment:
+      LT_LOAD_ONLY: "en,es,fr"
+    volumes:
+      - lt-data:/home/libretranslate/.local
+    networks:
+      - hub
+
+  # caddy — TLS reverse proxy for production deployments.
+  # Activated only when VERIFIABLY_PUBLIC_DOMAIN is set (tls compose profile).
+  # In localhost/dev mode this service does not start; direct port binds handle traffic.
+  caddy:
+    image: caddy:2.8
+    container_name: hub-caddy
+    restart: unless-stopped
+    profiles:
+      - tls
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    # `${VAR:-}` not `${VAR:?...}` — required-var substitution is evaluated
+    # at compose parse time even for services in inactive profiles, so a `:?`
+    # here would fail `up hub` in dev mode where the tls profile is off.
+    # Real validation happens in deploy.sh before activating --profile tls.
+    environment:
+      HUB_DOMAIN: ${VERIFIABLY_PUBLIC_DOMAIN:-}
+      LE_EMAIL: ${VERIFIABLY_LE_EMAIL:-}
+    volumes:
+      - ./Caddyfile.hub:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      verifiably-go:
+        condition: service_started  # distroless has no healthcheck tools
+      grafana:
+        condition: service_healthy
+    networks:
+      - hub
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres-data:
+    name: hub-postgres-data
+  hub-state:
+    name: hub-state
+  prometheus-data:
+    name: hub-prometheus-data
+  grafana-data:
+    name: hub-grafana-data
+  caddy-data:
+    name: hub-caddy-data
+  caddy-config:
+    name: hub-caddy-config
+  lt-data:
+    name: hub-lt-data
+
+networks:
+  hub:
+    name: verifiably-hub

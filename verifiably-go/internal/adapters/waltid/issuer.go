@@ -44,6 +44,9 @@ func (a *Adapter) ensureIssuerKey(ctx context.Context) error {
 	if len(a.issuerKey) > 0 && a.issuerDID != "" {
 		return nil
 	}
+	if a.issuer == nil {
+		return fmt.Errorf("waltid: issuer role not configured (issuerBaseUrl missing)")
+	}
 	body := onboardingRequest{
 		Key: onboardingKey{Backend: "jwk", KeyType: "secp256r1"},
 		DID: onboardingDID{Method: "jwk"},
@@ -97,6 +100,9 @@ type credentialDefinitionEntry struct {
 // can render a format chip-row and let the user pick a non-default format
 // without scrolling through duplicate cards.
 func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.Schema, error) {
+	if a.issuer == nil {
+		return nil, fmt.Errorf("waltid: issuer role not configured (issuerBaseUrl missing)")
+	}
 	var meta credentialIssuerMetadata
 	path := fmt.Sprintf("/%s/.well-known/openid-credential-issuer", a.cfg.StandardVersion)
 	if err := a.issuer.DoJSON(ctx, "GET", path, nil, &meta, nil); err != nil {
@@ -375,6 +381,9 @@ func (a *Adapter) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error) 
 // E2E tests actually round-trip. Returns a helpful error if the issuer
 // advertises no config for the requested Std at all.
 func (a *Adapter) borrowConfigIDFor(ctx context.Context, std string) (string, error) {
+	if a.issuer == nil {
+		return "", fmt.Errorf("waltid: issuer role not configured (issuerBaseUrl missing)")
+	}
 	var meta credentialIssuerMetadata
 	path := fmt.Sprintf("/%s/.well-known/openid-credential-issuer", a.cfg.StandardVersion)
 	if err := a.issuer.DoJSON(ctx, "GET", path, nil, &meta, nil); err != nil {
@@ -723,6 +732,9 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 // Best-effort — used only to diagnose issuance failures, so a fetch
 // error returns an empty list rather than failing the caller.
 func (a *Adapter) peekAdvertisedConfigIDs(ctx context.Context) []string {
+	if a.issuer == nil {
+		return nil
+	}
 	var meta credentialIssuerMetadata
 	path := fmt.Sprintf("/%s/.well-known/openid-credential-issuer", a.cfg.StandardVersion)
 	if err := a.issuer.DoJSON(ctx, "GET", path, nil, &meta, nil); err != nil {

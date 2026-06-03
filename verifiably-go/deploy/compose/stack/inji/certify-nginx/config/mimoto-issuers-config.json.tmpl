@@ -6,12 +6,12 @@
       "protocol": "OpenId4VCI",
       "display": [
         {
-          "name": "Agriculture Department",
+          "name": "${ISSUER_DISPLAY_NAME}",
           "logo": {
             "url": "https://mosip.github.io/inji-config/logos/agro-vertias-logo.png",
             "alt_text": "agri-logo"
           },
-          "title": "Agriculture Department",
+          "title": "${ISSUER_DISPLAY_NAME}",
           "description": "Download Farmers Credentials",
           "language": "en"
         }
@@ -33,12 +33,12 @@
       "protocol": "OpenId4VCI",
       "display": [
         {
-          "name": "Transport Department",
+          "name": "${ISSUER_DISPLAY_NAME}",
           "logo": {
             "url": "https://api.collab.mosip.net/inji/mosip-logo.png",
             "alt_text": "mosip-logo"
           },
-          "title": "Transport Department",
+          "title": "${ISSUER_DISPLAY_NAME}",
           "description": "Download Mobile Driving License",
           "language": "en"
         }
@@ -53,6 +53,6 @@
       "credential_issuer_host": "http://certify-nginx",
       "enabled": "true",
       "wellknown_endpoint": "http://certify-nginx/.well-known/openid-credential-issuer"
-    }    
+    }
   ]
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/issuance"
+	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -53,10 +54,10 @@ func (h *H) allocateStatusListBinding(schema vctypes.Schema) (*backend.StatusLis
 		return nil, fmt.Errorf("status list allocate: %w", err)
 	}
 	return &backend.StatusListBinding{
-		Type:       store.Kind,
-		ListID:     store.ListID,
+		Type:       store.GetKind(),
+		ListID:     store.GetListID(),
 		Index:      idx,
-		PublishURL: store.PublishURL,
+		PublishURL: store.GetPublishURL(),
 	}, nil
 }
 
@@ -269,18 +270,12 @@ func (h *H) RevokeIssuedCredential(w http.ResponseWriter, r *http.Request) {
 	h.renderFragment(w, r, "fragment_issued_credentials_row", rec)
 }
 
-func (h *H) storeForKind(kind string) interface {
-	Revoke(int) error
-} {
+func (h *H) storeForKind(kind string) statuslist.Backend {
 	switch kind {
 	case "bitstring":
-		if h.BitstringStore != nil {
-			return h.BitstringStore
-		}
+		return h.BitstringStore
 	case "token":
-		if h.TokenStore != nil {
-			return h.TokenStore
-		}
+		return h.TokenStore
 	}
 	return nil
 }

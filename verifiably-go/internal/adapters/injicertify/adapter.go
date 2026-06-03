@@ -122,10 +122,7 @@ func (a *Adapter) ListVerifierDpgs(_ context.Context) (map[string]vctypes.DPG, e
 	return nil, nil
 }
 
-// --- Schema persistence is registry-owned; no-op here.
-
-func (a *Adapter) SaveCustomSchema(_ context.Context, _ vctypes.Schema) error   { return nil }
-func (a *Adapter) DeleteCustomSchema(_ context.Context, _ string) error         { return nil }
+// SaveCustomSchema and DeleteCustomSchema are implemented in db.go.
 
 // --- Wallet / verifier methods: Inji Certify is issuer-only. Return
 // ErrNotApplicable so the registry routes holder/verifier calls elsewhere.

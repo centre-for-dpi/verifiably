@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: demo
+
+scrape_configs:
+  - job_name: verifiably-go
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['verifiably-go:8080']
+        labels:
+          instance: verifiably-go
+
+    # Uncomment if VERIFIABLY_API_KEYS is set on verifiably-go:
+    # authorization:
+    #   type: Bearer
+    #   credentials: <your-api-key>

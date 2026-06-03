@@ -22,12 +22,19 @@ import (
 
 // Config is the per-backend config blob the registry passes in.
 type Config struct {
-	// BaseURL is the Inji Verify service base, e.g. http://localhost:8082.
+	// BaseURL is the public Inji Verify URL, e.g. https://inji-verify.example.com.
+	// Used only to build the RequestURI returned to the wallet (it must be
+	// reachable by the holder's device).
 	BaseURL string `json:"baseUrl"`
 
+	// InternalBaseURL, when set, is used for all server-to-server API calls
+	// (vp-request, vp-result, vc-verification). Avoids hairpin-NAT timeouts
+	// in Docker deployments where the public hostname is not resolvable from
+	// inside the container network. Typical value: http://inji-verify-service:8080.
+	InternalBaseURL string `json:"internalBaseUrl,omitempty"`
+
 	// ClientID is the OID4VP client_id the adapter uses when creating
-	// vp-request sessions. For self-contained demos any non-empty string works;
-	// production deployments should set this to the actual RP identifier.
+	// vp-request sessions.
 	ClientID string `json:"clientId"`
 }
 

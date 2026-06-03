@@ -14,6 +14,7 @@
   {{end}}
 
   <div class="role-grid">
+    {{if $.ShowIssuer}}
     <form method="post" action="/role">
       <button type="submit" name="role" value="issuer" class="role-card">
         <span class="num">01</span>
@@ -22,6 +23,8 @@
         <span class="arrow">↗</span>
       </button>
     </form>
+    {{end}}
+    {{if $.ShowHolder}}
     <form method="post" action="/role">
       <button type="submit" name="role" value="holder" class="role-card">
         <span class="num">02</span>
@@ -30,6 +33,8 @@
         <span class="arrow">↗</span>
       </button>
     </form>
+    {{end}}
+    {{if $.ShowVerifier}}
     <form method="post" action="/role">
       <button type="submit" name="role" value="verifier" class="role-card">
         <span class="num">03</span>
@@ -38,6 +43,7 @@
         <span class="arrow">↗</span>
       </button>
     </form>
+    {{end}}
   </div>
 </section>
 {{end}}

@@ -10,10 +10,12 @@ import (
 	"strings"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/adapters/credebl"
 	"github.com/verifiably/verifiably-go/internal/adapters/injicertify"
 	"github.com/verifiably/verifiably-go/internal/adapters/injiverify"
 	"github.com/verifiably/verifiably-go/internal/adapters/injiweb"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
+	verifiablyapi "github.com/verifiably/verifiably-go/internal/adapters/verifiably"
 	"github.com/verifiably/verifiably-go/internal/adapters/waltid"
 )
 
@@ -21,6 +23,12 @@ import (
 // (nil, nil) so the caller can skip them with a log line.
 func Build(entry registry.BackendEntry) (backend.Adapter, error) {
 	switch entry.Type {
+	case "credebl":
+		cfg, err := credebl.UnmarshalConfig(entry.Config)
+		if err != nil {
+			return nil, fmt.Errorf("parse config: %w", err)
+		}
+		return credebl.New(cfg, entry.Vendor)
 	case "walt_community":
 		cfg, err := waltid.UnmarshalConfig(entry.Config)
 		if err != nil {
@@ -45,6 +53,12 @@ func Build(entry registry.BackendEntry) (backend.Adapter, error) {
 			return nil, fmt.Errorf("parse config: %w", err)
 		}
 		return injiweb.New(cfg, entry.Vendor)
+	case "verifiably":
+		cfg, err := verifiablyapi.UnmarshalConfig(entry.Config)
+		if err != nil {
+			return nil, fmt.Errorf("parse config: %w", err)
+		}
+		return verifiablyapi.New(cfg)
 	}
 	return nil, nil
 }

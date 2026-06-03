@@ -3,18 +3,28 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/auth"
+	"github.com/verifiably/verifiably-go/internal/didresolver"
 	"github.com/verifiably/verifiably-go/internal/issuance"
+	"github.com/verifiably/verifiably-go/internal/jobs"
+	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
+	"github.com/verifiably/verifiably-go/internal/statuslistcache"
+	"github.com/verifiably/verifiably-go/internal/trust"
+	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -24,10 +34,20 @@ type Translator interface {
 	Translate(ctx context.Context, text, target string) string
 }
 
+// MemberVerifierRegistrar wires a new federation member's verifier adapter
+// into the Hub's live Registry + SchemaCache without a restart.
+// Implemented in cmd/server/main.go; the handlers package stays import-free
+// of the concrete adapter/factory packages.
+type MemberVerifierRegistrar interface {
+	// RegisterMemberVerifier builds a "verifiably"-type adapter for the
+	// given member and registers it under did as the vendor key. Idempotent.
+	RegisterMemberVerifier(did, serviceEndpoint, apiKey string)
+}
+
 // H is the handler struct; holds deps injected from main.
 type H struct {
 	Adapter    backend.Adapter
-	Sessions   *Store
+	Sessions   SessionStore
 	Templates  *template.Template
 	AuthReg    *auth.Registry
 	Translator Translator
@@ -51,25 +71,116 @@ type H struct {
 	// (list page) and Revoke. Optional — when nil the list page returns 404
 	// and the issuance flow simply doesn't record (back-compat with tests
 	// + the mock adapter integration).
-	IssuanceLog *issuance.Log
+	IssuanceLog issuance.Backend
 
 	// BitstringStore is the W3C Bitstring Status List 2023 the verifiably-go
 	// instance hosts for VCDM 2.0 credentials it issues. Optional; nil
 	// disables W3C revocation end-to-end.
-	BitstringStore *statuslist.Store
+	BitstringStore statuslist.Backend
 
 	// TokenStore is the IETF Token Status List the instance hosts for
 	// SD-JWT VCs it issues. Optional; nil disables SD-JWT revocation.
-	TokenStore *statuslist.Store
+	TokenStore statuslist.Backend
 
-	// signingKeyOnce + signingKey lazily fetch the walt.id issuer JWK on
-	// the first /status-list/* request, then cache the parsed
-	// *statuslist.SigningKey for the lifetime of the process. Going through
-	// sync.Once means the first concurrent fetch waits for onboard +
-	// JWK parse, all later ones are lock-free.
-	signingKeyOnce sync.Once
-	signingKey     *statuslist.SigningKey
-	signingKeyErr  error
+	// APIKeys gates /api/v1/* endpoints. Populated from VERIFIABLY_API_KEYS
+	// ("name1:key1,name2:key2"). When nil or empty, all API routes return 503.
+	APIKeys APIKeyMap
+
+	// RateLimiter throttles POST /api/v1/credentials/issue and .../bulk.
+	// Built from VERIFIABLY_RATE_KEY_RPM (default 60/min) and
+	// VERIFIABLY_RATE_IP_RPM (default 20/min). nil disables rate limiting.
+	RateLimiter *RateLimiter
+
+	// BulkJobQueue is the async worker pool for bulk credential issuance.
+	// When non-nil, POST /api/v1/credentials/issue/bulk/async submits a job
+	// and returns 202 immediately; the client polls .../bulk/{id} or streams
+	// .../bulk/{id}/events for progress. nil falls back to the synchronous
+	// /api/v1/credentials/issue/bulk endpoint.
+	BulkJobQueue *jobs.Queue
+
+	// TrustRegistry is the national trust registry used to validate issuer
+	// DIDs during credential verification. When non-nil, every terminal
+	// OID4VP result and every VerifyDirect call checks the Issuer DID
+	// against the registry and populates VerificationResult.TrustStatus.
+	// nil disables trust-registry checks (all results show TrustStatus="").
+	// TrustJWTSecret is the HMAC key used to sign the /trust-registry JWT (HS256 dev path).
+	TrustRegistry   trust.Registry
+	TrustJWTSecret  []byte
+	TrustJWTIssuer  string
+	// TrustSigningKey is the ECDSA P-256 private key for ES256 JWT signing.
+	// When non-nil, GET /trust-registry uses ES256 and GET /.well-known/jwks.json
+	// exposes the matching public key. When nil, falls back to HS256 (dev only).
+	// Set from VERIFIABLY_TRUST_SIGNING_KEY (PEM); an ephemeral key is generated
+	// when the env var is absent so the endpoint always works.
+	TrustSigningKey *ecdsa.PrivateKey
+	// DIDResolver resolves did:web DIDs to their DID Documents.
+	// Used by status list verification (Fase 10) and federation validation (Fase 5).
+	// Wired at startup with a WebResolver (10-minute document cache).
+	DIDResolver didresolver.Resolver
+
+	// StatusListCache holds cached copies of trusted issuers' status list JWTs.
+	// Wired in Hub mode by cmd/server/main.go; nil disables the availability check
+	// on the public /verify portal (StatusListSource will be "" for all results).
+	StatusListCache statuslistcache.Cache
+
+	// SchemaCache aggregates schemas from all federation members (Hub mode).
+	// When non-nil, ShowPublicVerify uses the federated schema list and
+	// PublicVerifyRequest routes by SourceDeployment to the correct adapter.
+	// Wired at startup in hub mode by cmd/server/main.go.
+	SchemaCache *schemacache.Aggregator
+
+	// VerificationLog records completed verification events for ecosystem
+	// analytics (Fase 6). PostgreSQL-backed in Hub mode; nil disables logging
+	// so file-only deployments work without a DB. Events are written in a
+	// fire-and-forget goroutine — errors are logged but never block the response.
+	VerificationLog verification.Log
+
+	// TrustHealthMonitor probes registered issuers' /healthz endpoints every
+	// 5 minutes and emits trusted_issuer_endpoint_up / trusted_issuer_days_until_expiry
+	// Prometheus gauges (Fase 9). In-memory status is used to render the health
+	// semaphore in the admin federation page. nil disables health monitoring.
+	TrustHealthMonitor *trust.Monitor
+
+	// IssuerAPIKeyStore manages per-issuer API keys for the ecosystem
+	// analytics API (Fase 7). PostgreSQL-backed; nil when no DB is available
+	// (disables GET /api/ecosystem/issuers/{did}/stats and the key management
+	// UI in admin federation). Keys are stored as SHA-256 hashes; plaintext
+	// is shown once at generation time and never stored.
+	IssuerAPIKeyStore trust.APIKeyStore
+
+	// PrometheusURL is the base URL of the Prometheus server used to back
+	// the /admin/metrics UI with persistent historical data.
+	// Example: "http://prometheus:9090". Set via VERIFIABLY_PROMETHEUS_URL.
+	// When empty the admin metrics page falls back to in-process counters.
+	PrometheusURL string
+
+	// GrafanaURL is the Grafana base URL shown as a link on /admin/metrics.
+	// Example: "http://localhost:3100". Set via VERIFIABLY_GRAFANA_URL.
+	GrafanaURL string
+
+	// IsHub is true when the server is running in hub mode (VERIFIABLY_ROLES=hub).
+	// Controls which admin sections are shown in the nav and landing page.
+	IsHub bool
+
+	// ShowIssuer / ShowHolder / ShowVerifier reflect which roles are active
+	// (parsed from VERIFIABLY_ROLES). Used to conditionally render role cards
+	// on the landing page. All three default to true when VERIFIABLY_ROLES is unset.
+	ShowIssuer  bool
+	ShowHolder  bool
+	ShowVerifier bool
+
+	// MemberVerifierRegistrar wires a federation member's verifier adapter at
+	// runtime when the admin registers a new member. Set by main.go in hub mode;
+	// nil disables dynamic adapter registration (member takes effect on restart).
+	MemberVerifierRegistrar MemberVerifierRegistrar
+
+	// signingKeyMu guards lazy fetching of the walt.id issuer JWK.
+	// After a successful fetch signingKey is non-nil and the hot path
+	// takes only an RLock. Errors are NOT cached — each failed attempt
+	// retries on the next /status-list/* request so the feature self-heals
+	// when walt.id comes up after a slow compose-up.
+	signingKeyMu sync.RWMutex
+	signingKey   *statuslist.SigningKey
 }
 
 // isHTMX returns true if the request came from HTMX.
@@ -102,6 +213,18 @@ func externalHost(r *http.Request) string {
 	return r.Host
 }
 
+// publicBase returns the browser-facing origin used to build absolute URLs
+// such as OIDC redirect URIs. VERIFIABLY_PUBLIC_URL is the authoritative
+// source (set by deploy.sh to the actual public domain); this avoids trusting
+// X-Forwarded-Host from potentially untrusted clients. Falls back to
+// externalScheme + externalHost when the env var is unset (dev/bare-metal).
+func publicBase(r *http.Request) string {
+	if pub := strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/"); pub != "" {
+		return pub
+	}
+	return externalScheme(r) + "://" + externalHost(r)
+}
+
 func isHTMX(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
@@ -127,11 +250,6 @@ func (h *H) render(w http.ResponseWriter, r *http.Request, page string, data Pag
 	if data.Lang == "" {
 		data.Lang = h.langFor(r)
 	}
-	// Translator is looked up via package-level var because html/template's
-	// funcs are bound at parse time; the t() helper takes (text, lang) and
-	// does the lookup itself.
-	installTranslatorForRequest(r.Context(), h.Translator)
-
 	name := "layout"
 	if isHTMX(r) && r.Header.Get("HX-Target") == "main" {
 		name = data.ContentTemplate
@@ -155,46 +273,23 @@ func (h *H) render(w http.ResponseWriter, r *http.Request, page string, data Pag
 	_, _ = w.Write(translated)
 }
 
-// installTranslatorForRequest stores the per-request context + translator so
-// the package-level `t` helper can use them. Safe for the single-request
-// shape of our handlers (each render installs its own pair before executing).
-// For concurrent handler executions we lock so the assignment is atomic; the
-// duration between install and execute is a few microseconds so contention is
-// essentially nil.
-func installTranslatorForRequest(ctx context.Context, tr Translator) {
-	translatorMu.Lock()
-	activeTranslator = tr
-	activeContext = ctx
-	translatorMu.Unlock()
-}
-
-var (
-	translatorMu     sync.Mutex
-	activeTranslator Translator
-	activeContext    context.Context
-)
-
-// TranslateFunc is the stable parse-time template helper. Exposed via
-// main.go's funcMap; looks up translator + context from package state.
-func TranslateFunc(text, lang string) string {
-	translatorMu.Lock()
-	tr, ctx := activeTranslator, activeContext
-	translatorMu.Unlock()
-	if tr == nil || lang == "" || lang == "en" {
-		return text
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return tr.Translate(ctx, text, lang)
-}
-
-// The `t` and `lang` template funcs are bound at parse time — html/template
-// ignores Funcs() called after Parse, so the clone-per-request pattern is
-// broken for these. Instead we use a shared Translator and key each call on
-// the lang passed in as a template argument: `{{t "Hello" $.Lang}}`.
+// MakeTranslateFunc returns the `t` template helper bound to tr. Call once at
+// startup and register the result in the funcMap. Because tr is fixed after
+// startup (it is h.Translator, which is never replaced), the closure has no
+// mutable state — all package-level globals and the installTranslatorForRequest
+// pattern are gone, eliminating the race under concurrent requests.
 //
-// No per-request Clone is needed.
+// The context passed to tr.Translate is context.Background() because the `t`
+// function signature is fixed by html/template (it receives only the text and
+// lang arguments); request cancellation is handled at the translateHTML layer.
+func MakeTranslateFunc(tr Translator) func(string, string) string {
+	return func(text, lang string) string {
+		if tr == nil || lang == "" || lang == "en" {
+			return text
+		}
+		return tr.Translate(context.Background(), text, lang)
+	}
+}
 
 // renderFragment renders a named sub-template directly (for HTMX partial swaps).
 // Applies the same post-render translation pass as render() when a non-English
@@ -209,7 +304,6 @@ func (h *H) renderFragment(w http.ResponseWriter, r *http.Request, name string, 
 		}
 		return
 	}
-	installTranslatorForRequest(r.Context(), h.Translator)
 	var buf bytes.Buffer
 	if err := h.Templates.ExecuteTemplate(&buf, name, data); err != nil {
 		log.Printf("fragment error (%s): %v", name, err)
@@ -226,9 +320,6 @@ func (h *H) renderFragments(w http.ResponseWriter, r *http.Request, data any, na
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	lang := h.langFor(r)
 	translating := lang != "" && lang != "en" && h.Translator != nil
-	if translating {
-		installTranslatorForRequest(r.Context(), h.Translator)
-	}
 	for _, name := range names {
 		if !translating {
 			if err := h.Templates.ExecuteTemplate(w, name, data); err != nil {
@@ -262,8 +353,17 @@ type PageData struct {
 	// topbar can hide the "Admin" link on deployments that disabled it
 	// entirely. Independent of any session state — the link goes to
 	// /admin/login when the visitor isn't already an admin, and to
-	// /admin/auth-providers when they are.
+	// /admin when they are.
 	AuthAdminAvailable bool
+	// IsHub is true when running in hub mode. Templates use this to render
+	// hub-specific navigation links (Federation, Trust, Providers, Metrics).
+	IsHub bool
+
+	// ShowIssuer / ShowHolder / ShowVerifier mirror the active VERIFIABLY_ROLES
+	// so templates can hide role cards that are not enabled on this deployment.
+	ShowIssuer   bool
+	ShowHolder   bool
+	ShowVerifier bool
 }
 
 // langFromRequest returns the current UI language code (default "en") from
@@ -288,13 +388,16 @@ func (h *H) SetLang(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: false,
 		MaxAge:   365 * 24 * 3600,
 	})
-	// Redirect back to the referrer or the landing page so the new language
-	// takes effect on an immediate re-render.
-	ref := r.Referer()
-	if ref == "" {
-		ref = "/"
+	// Redirect back to the referrer's path-only component so the new language
+	// takes effect on an immediate re-render. We parse and discard the origin
+	// to prevent an open redirect: only the path (+ query + fragment) is used.
+	dest := "/"
+	if ref := r.Referer(); ref != "" {
+		if u, err := url.Parse(ref); err == nil && u.Path != "" {
+			dest = u.RequestURI() // path?query#fragment, no scheme/host
+		}
 	}
-	h.redirect(w, r, ref)
+	h.redirect(w, r, dest)
 }
 
 func (h *H) pageData(sess *Session, body any) PageData {
@@ -303,6 +406,10 @@ func (h *H) pageData(sess *Session, body any) PageData {
 		Session:            sess,
 		Body:               body,
 		AuthAdminAvailable: h.AuthAdminMode != "off",
+		IsHub:              h.IsHub,
+		ShowIssuer:         h.ShowIssuer,
+		ShowHolder:         h.ShowHolder,
+		ShowVerifier:       h.ShowVerifier,
 	}
 }
 
@@ -332,6 +439,10 @@ func titleFor(page string) string {
 		"docs_view":              "Docs",
 		"admin_login":            "Admin · Sign in",
 		"admin_auth_providers":   "Admin · OIDC providers",
+		"admin_trust":            "Admin · Trust registry",
+		"admin_metrics":          "Admin · Metrics",
+		"admin_federation":       "Admin · Federation",
+		"public_verify":          "Verificar",
 	}[page]
 }
 
@@ -355,6 +466,8 @@ func crumbFor(page string) string {
 		"docs_view":             "docs",
 		"admin_login":           "admin → sign in",
 		"admin_auth_providers":  "admin → auth providers",
+		"admin_trust":           "admin → trust registry",
+		"admin_metrics":         "admin → metrics",
 	}[page]
 }
 
@@ -661,7 +774,7 @@ func (h *H) StartAuth(w http.ResponseWriter, r *http.Request) {
 	sess.PendingProvider = p.ID()
 	sess.PendingState = state
 	sess.PendingPKCE = verifier
-	redirect := externalScheme(r) + "://" + externalHost(r) + "/auth/callback"
+	redirect := publicBase(r) + "/auth/callback"
 	url, err := p.AuthorizeURL(r.Context(), state, verifier, redirect)
 	if err != nil {
 		h.errorToast(w, r, err.Error())
@@ -689,7 +802,7 @@ func (h *H) AuthCallback(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Auth provider no longer configured")
 		return
 	}
-	redirect := externalScheme(r) + "://" + externalHost(r) + "/auth/callback"
+	redirect := publicBase(r) + "/auth/callback"
 	tok, err := p.Exchange(r.Context(), q.Get("code"), sess.PendingPKCE, redirect)
 	if err != nil {
 		h.errorToast(w, r, "Token exchange: "+err.Error())
@@ -1017,6 +1130,15 @@ func (h *H) PickVerifierDpg(w http.ResponseWriter, r *http.Request) {
 // the `toast` listener, so the user sees nothing. That was the silent-failure
 // symptom on Send presentation and Check for holder response.
 func (h *H) errorToast(w http.ResponseWriter, r *http.Request, msg string) {
+	h.errorToastStatus(w, r, http.StatusUnprocessableEntity, msg)
+}
+
+// errorToastStatus is errorToast with an explicit HTTP status for the
+// non-HTMX fallback. Use this for input validation / upstream errors that
+// shouldn't surface as 500 to scripts/curl callers; reserve plain
+// errorToast (now 422) for that operator-input default.
+func (h *H) errorToastStatus(w http.ResponseWriter, r *http.Request, status int, msg string) {
+	slog.Warn("handler error", "method", r.Method, "path", r.URL.Path, "msg", msg)
 	if isHTMX(r) {
 		payload, err := json.Marshal(map[string]string{"toast": msg})
 		if err != nil {
@@ -1029,7 +1151,7 @@ func (h *H) errorToast(w http.ResponseWriter, r *http.Request, msg string) {
 		w.WriteHeader(200)
 		return
 	}
-	http.Error(w, msg, http.StatusInternalServerError)
+	http.Error(w, msg, status)
 }
 
 // --- Schema browser + builder (issuer only) ---

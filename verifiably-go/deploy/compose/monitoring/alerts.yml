@@ -1,0 +1,52 @@
+groups:
+  - name: verifiably-trust-registry
+    rules:
+
+      # Fires when a federation member's trust registry accreditation is
+      # within 30 days of expiry. Gives the Hub admin time to renew before
+      # the credential type stops being trusted.
+      - alert: IssuerAccreditationExpiringSoon
+        expr: trusted_issuer_days_until_expiry < 30
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Issuer accreditation expiring soon ({{ $labels.name }})"
+          description: >
+            Federation member {{ $labels.name }} (DID: {{ $labels.did }}) has
+            {{ $value | printf "%.0f" }} days remaining on their trust registry
+            accreditation. Renew before it expires to avoid verification failures
+            for credentials issued by this member.
+
+      # Fires when a federation member's /healthz endpoint has been
+      # unreachable for 10 consecutive minutes.
+      - alert: IssuerEndpointDown
+        expr: trusted_issuer_endpoint_up == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Federation issuer endpoint unreachable ({{ $labels.name }})"
+          description: >
+            The /healthz endpoint for federation member {{ $labels.name }}
+            (DID: {{ $labels.did }}) has been unreachable for more than 10 minutes.
+            New credential issuances and schema refreshes from this member will fail
+            until the endpoint recovers.
+
+  - name: verifiably-hub
+    rules:
+
+      # Fires when no federation member metrics endpoints are reachable.
+      # This could indicate a misconfigured federation-targets.json or a
+      # network partition between the Hub and all member deployments.
+      - alert: FederationAllMembersDown
+        expr: count(up{job="verifiably-federation"} == 1) == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "All federation member endpoints unreachable"
+          description: >
+            No federation member /metrics endpoints are reachable. Check
+            federation-targets.json configuration and network connectivity.
+            Run generate-federation-prometheus.sh to rebuild the targets file.

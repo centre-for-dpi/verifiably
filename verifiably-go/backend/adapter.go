@@ -182,6 +182,7 @@ type IssueToWalletResult struct {
 	OfferID   string        // adapter-assigned id for tracing / retrieval
 	Flow      string        // echoes the flow actually used (may differ from request)
 	ExpiresIn time.Duration // how long until the offer becomes invalid
+	PIN       string        // pre-auth PIN the holder must enter in the wallet (empty when not required)
 }
 
 // IssueAsPDFResult describes a generated PDF credential.
@@ -413,4 +414,21 @@ type VerificationResult struct {
 	// IssuerDisplayName. Empty when no matching schema exists (e.g.
 	// credentials minted by a different deployment).
 	IssuerDisplay string
+
+	// TrustStatus is set by the verifier handler after a trust-registry
+	// lookup on the Issuer DID. Values: "trusted", "untrusted", "unknown"
+	// (registry configured but DID not found), or "" (no registry wired).
+	TrustStatus string
+	// TrustReason carries the explanation when TrustStatus is "untrusted",
+	// e.g. "accreditation expired on 2026-01-01".
+	TrustReason string
+
+	// StatusListSource is set by the Hub's public verify handler after checking
+	// the Hub's cached copy of the issuer's status list endpoint.
+	// "live" = endpoint confirmed reachable at verification time;
+	// "cached" = Hub used its stored copy (issuer endpoint was unreachable);
+	// "unknown" = no status list data available (no cache and fetch failed);
+	// "" = not checked (no status list cache wired, or no Hub role active).
+	StatusListSource   string
+	StatusListCachedAt *time.Time
 }

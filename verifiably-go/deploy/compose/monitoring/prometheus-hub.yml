@@ -1,0 +1,67 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    environment: hub
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+
+  # ── Hub's own verifiably-go instance ──────────────────────────────────────
+  - job_name: verifiably-hub
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['verifiably-go:8080']
+        labels:
+          component: hub
+    # Uncomment if VERIFIABLY_API_KEYS is set on the Hub:
+    # authorization:
+    #   type: Bearer
+    #   credentials: <hub-api-key>
+
+  # ── Federation members ─────────────────────────────────────────────────────
+  # One job per member so each can carry its own Bearer token.
+  # The credentials correspond to VERIFIABLY_API_KEYS on each member deployment.
+  # Add a new job block when onboarding additional members.
+
+  - job_name: verifiably-federation-minerd
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    metrics_path: /metrics
+    scheme: https
+    honor_labels: true
+    authorization:
+      type: Bearer
+      credentials: d0517ce8d93a907390cee0c9e7895e929d9a85fdffb30dd9d8920553fbc3e778
+    static_configs:
+      - targets: ['verifiably.minerd.credenciales.ysalabs.work']
+        labels:
+          issuer_did: "did:web:minerd.credenciales.ysalabs.work"
+          issuer_name: "Ministerio de Educacion (MINERD)"
+          component: member
+    relabel_configs:
+      - target_label: job
+        replacement: verifiably-federation
+
+  - job_name: verifiably-federation-mt
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    metrics_path: /metrics
+    scheme: https
+    honor_labels: true
+    authorization:
+      type: Bearer
+      credentials: 118d46ef6c83416fee903d27abbd39b4cc8da67dc1cd81814e695bda8eb05632
+    static_configs:
+      - targets: ['verifiably.mt.credenciales.ysalabs.work']
+        labels:
+          issuer_did: "did:web:mt.credenciales.ysalabs.work"
+          issuer_name: "Ministerio de Trabajo (MT)"
+          component: member
+    relabel_configs:
+      - target_label: job
+        replacement: verifiably-federation

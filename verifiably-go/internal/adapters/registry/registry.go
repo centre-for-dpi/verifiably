@@ -3,7 +3,9 @@ package registry
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -95,12 +97,18 @@ func (r *Registry) IssuerSigningKey(ctx context.Context) ([]byte, string, error)
 		IssuerSigningKey(ctx context.Context) ([]byte, string, error)
 	}
 	r.mu.RLock()
-	candidates := make([]backend.Adapter, 0, len(r.issuers))
-	for _, a := range r.issuers {
-		candidates = append(candidates, a)
+	vendors := make([]string, 0, len(r.issuers))
+	for v := range r.issuers {
+		vendors = append(vendors, v)
 	}
 	r.mu.RUnlock()
-	for _, a := range candidates {
+	// Sort vendors so the first signer-capable adapter is always the same
+	// across calls, regardless of Go map iteration order.
+	sort.Strings(vendors)
+	for _, v := range vendors {
+		r.mu.RLock()
+		a := r.issuers[v]
+		r.mu.RUnlock()
 		s, ok := a.(signer)
 		if !ok {
 			continue
@@ -329,7 +337,7 @@ func (r *Registry) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error)
 			// because Inji Certify is unhealthy (for example) blocks walt.id
 			// flows that have nothing to do with it. Callers that need
 			// per-DPG precision should use ListSchemas(ctx, vendor) directly.
-			log.Printf("registry: ListSchemas(%q) failed, skipping: %v", v, err)
+			slog.Warn("registry: ListSchemas failed, skipping", "vendor", v, "err", err)
 			continue
 		}
 		for _, s := range sch {
@@ -590,16 +598,20 @@ func (r *Registry) ListOID4VPTemplates(ctx context.Context) (map[string]vctypes.
 	r.mu.RUnlock()
 
 	out := map[string]vctypes.OID4VPTemplate{}
-	for _, ad := range ads {
+	for vendor, ad := range ads {
 		tpl, err := ad.ListOID4VPTemplates(ctx)
 		if err != nil {
 			continue
 		}
 		for k, v := range tpl {
-			if _, dup := out[k]; dup {
+			// Prefix with the vendor name so templates from different adapters
+			// (e.g. "waltid:age-verification" vs "credebl:age-verification")
+			// never silently overwrite each other in the merged map.
+			key := vendor + ":" + k
+			if _, dup := out[key]; dup {
 				continue
 			}
-			out[k] = v
+			out[key] = v
 		}
 	}
 	return out, nil
@@ -610,25 +622,54 @@ func (r *Registry) RequestPresentation(ctx context.Context, req backend.Presenta
 	if err != nil {
 		return backend.PresentationRequestResult{}, err
 	}
-	return ad.RequestPresentation(ctx, req)
+	// Strip the vendor prefix from TemplateKey when the caller passes back a
+	// key obtained from this registry's ListOID4VPTemplates — those keys are
+	// prefixed "vendor:original" to prevent cross-adapter collisions. The
+	// adapter only knows its own bare key ("original"), not the registry key.
+	if inner, ok := strings.CutPrefix(req.TemplateKey, req.VerifierDpg+":"); ok {
+		req.TemplateKey = inner
+	}
+	res, err := ad.RequestPresentation(ctx, req)
+	if err != nil {
+		return res, err
+	}
+	// Tag the state with the vendor DPG using a pipe-delimited prefix so
+	// FetchPresentationResult can route back to the same adapter without an
+	// interface change. Format: "dpg|<vendor>|<inner-state>".
+	// Pipe is used instead of colon because vendor IDs are DIDs
+	// (e.g. did:web:...) which themselves contain colons.
+	res.State = "dpg|" + req.VerifierDpg + "|" + res.State
+	return res, nil
 }
 
 func (r *Registry) FetchPresentationResult(ctx context.Context, state, templateKey string) (backend.VerificationResult, error) {
-	// Must route to the verifier adapter that issued the request. M1 routes to
-	// the single configured verifier; M4 updates the signature to carry
-	// VerifierDpg explicitly so state collisions across verifiers can't happen.
+	// The state is tagged with the vendor DPG by RequestPresentation above.
+	// Format: "dpg|<vendor>|<inner-state>". Parse and route deterministically;
+	// fall back to first-adapter for any untagged state (legacy sessions or
+	// single-vendor deployments that never went through this registry).
+	if after, ok := strings.CutPrefix(state, "dpg|"); ok {
+		vendor, inner, _ := strings.Cut(after, "|")
+		ad, err := r.verifierFor(vendor)
+		if err != nil {
+			return backend.VerificationResult{}, err
+		}
+		return ad.FetchPresentationResult(ctx, inner, templateKey)
+	}
+	// Legacy path: no tag — only safe for single-verifier deployments.
+	// With multiple verifiers, we cannot deterministically pick one; fail fast
+	// so the caller knows to re-initiate the verification flow.
 	r.mu.RLock()
 	ads := make([]backend.Adapter, 0, len(r.verifiers))
 	for _, ad := range r.verifiers {
 		ads = append(ads, ad)
 	}
 	r.mu.RUnlock()
-
 	if len(ads) == 0 {
 		return backend.VerificationResult{}, fmt.Errorf("%w: no verifier configured", backend.ErrUnknownDPG)
 	}
-	// First adapter wins; when multiple are configured, the state token's
-	// prefix will route deterministically (M4).
+	if len(ads) > 1 {
+		return backend.VerificationResult{}, fmt.Errorf("verification session predates multi-vendor routing; please re-initiate the verification flow")
+	}
 	return ads[0].FetchPresentationResult(ctx, state, templateKey)
 }
 

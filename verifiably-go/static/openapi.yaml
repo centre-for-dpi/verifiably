@@ -1,0 +1,833 @@
+openapi: 3.0.3
+info:
+  title: Verifiably API
+  version: 1.0.0
+  description: |
+    REST API for programmatic credential issuance, revocation, and OID4VP
+    verification requests. All endpoints require an API key configured via the
+    `VERIFIABLY_API_KEYS` environment variable (`name1:key1,name2:key2`).
+
+    Each key is isolated in the issuance log under its own owner scope, so
+    credentials issued by key A are never visible to key B.
+
+servers:
+  - url: /api/v1
+    description: Current instance
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: API key obtained from the operator (VERIFIABLY_API_KEYS).
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: invalid or missing API key
+
+    StatusListRef:
+      type: object
+      required: [type, list_id, index]
+      properties:
+        type:
+          type: string
+          enum: [bitstring, token]
+        list_id:
+          type: string
+          example: v1
+        index:
+          type: integer
+          example: 42
+
+    IssuedCredential:
+      type: object
+      required: [id, schema_id, schema_name, issuer_dpg, issued_at, status]
+      properties:
+        id:
+          type: string
+          example: vc-1715000000000-a1b2c3
+        schema_id:
+          type: string
+          example: nationalId
+        schema_name:
+          type: string
+          example: National ID
+        std:
+          type: string
+          example: "sd_jwt_vc (IETF)"
+        format:
+          type: string
+          example: dc+sd-jwt
+        issuer_dpg:
+          type: string
+          example: CREDEBL Community Stack
+        holder_hint:
+          type: string
+          example: Jane Doe
+        subject_fields:
+          type: object
+          additionalProperties:
+            type: string
+        offer_uri:
+          type: string
+          example: "openid-credential-offer://..."
+        issued_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, revoked]
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        status_list:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/StatusListRef"
+
+    IssueRequest:
+      type: object
+      required: [schema_id, subject_data]
+      properties:
+        schema_id:
+          type: string
+          example: nationalId
+        issuer_dpg:
+          type: string
+          example: CREDEBL Community Stack
+        subject_data:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            given_name: Jane
+            family_name: Doe
+            nationalIdentifier: "123456789"
+
+    IssueResult:
+      type: object
+      required: [credential_id, offer_uri, flow]
+      properties:
+        credential_id:
+          type: string
+          example: vc-1715000000000-a1b2c3
+        offer_uri:
+          type: string
+          example: "openid-credential-offer://..."
+        pin:
+          type: string
+          example: "1234"
+        flow:
+          type: string
+          example: pre_auth
+        status_list:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/StatusListRef"
+
+    IssueBulkRequest:
+      type: object
+      required: [schema_id, rows]
+      properties:
+        schema_id:
+          type: string
+          example: nationalId
+        issuer_dpg:
+          type: string
+          example: CREDEBL Community Stack
+        rows:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties:
+              type: string
+
+    BulkRowResult:
+      type: object
+      required: [row, status]
+      properties:
+        row:
+          type: integer
+          example: 1
+        credential_id:
+          type: string
+          example: vc-1715000000000-a1b2c3
+        offer_uri:
+          type: string
+          example: "openid-credential-offer://..."
+        pin:
+          type: string
+          example: "1234"
+        status:
+          type: string
+          enum: [issued, failed]
+        error:
+          type: string
+          example: "create-offer: upstream 500"
+
+    IssueBulkResult:
+      type: object
+      required: [accepted, rejected, rows]
+      properties:
+        accepted:
+          type: integer
+          example: 2
+        rejected:
+          type: integer
+          example: 0
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkRowResult"
+
+    VerifyRequest:
+      type: object
+      required: [schema_id]
+      properties:
+        schema_id:
+          type: string
+          example: nationalId
+        verifier_dpg:
+          type: string
+          example: CREDEBL Community Stack
+        fields:
+          type: array
+          items:
+            type: string
+          example: [given_name, family_name]
+
+    VerifyRequestResult:
+      type: object
+      required: [request_uri, state]
+      properties:
+        request_uri:
+          type: string
+          example: "openid4vp://authorize?..."
+        state:
+          type: string
+          example: 9f2e8b3c-1a4d-4e5f-8c7b-0d1e2f3a4b5c
+
+    VerifyResult:
+      type: object
+      required: [status, valid, pending]
+      properties:
+        status:
+          type: string
+          enum: [pending, verified, failed]
+        valid:
+          type: boolean
+        pending:
+          type: boolean
+        method:
+          type: string
+          example: "OID4VP · selective — SD-JWT VC"
+        format:
+          type: string
+          example: "sd_jwt_vc (IETF)"
+        issuer:
+          type: string
+          example: "(verified by CREDEBL)"
+        disclosed:
+          type: object
+          additionalProperties:
+            type: string
+        checked_at:
+          type: string
+          format: date-time
+
+security:
+  - BearerAuth: []
+
+paths:
+  /credentials/issue:
+    post:
+      operationId: issueCredential
+      summary: Issue a single credential
+      description: |
+        Creates a pre-authorized OID4VCI offer for one holder. Returns the
+        `offer_uri` the holder scans with their wallet. For CREDEBL-backed
+        deployments the response also contains a `pin` the holder enters
+        during the wallet claim flow.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueRequest"
+      responses:
+        "200":
+          description: Offer created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueResult"
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Schema not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Upstream issuer error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /credentials/issue/bulk/async:
+    post:
+      operationId: issueCredentialBulkAsync
+      summary: Issue credentials asynchronously (job queue)
+      description: |
+        Submits a bulk issuance batch to the background job queue.
+        Returns HTTP 202 immediately with a `job_id` — workers process
+        rows in the background. Poll `GET /api/v1/bulk/{jobID}` for
+        status or stream progress via `GET /api/v1/bulk/{jobID}/events`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueBulkRequest"
+      responses:
+        "202":
+          description: Job accepted. Poll the returned URLs for progress.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, total, status_url, events_url]
+                properties:
+                  job_id:
+                    type: string
+                    example: job-a1b2c3d4
+                  total:
+                    type: integer
+                    example: 100
+                  status_url:
+                    type: string
+                    example: /api/v1/bulk/job-a1b2c3d4
+                  events_url:
+                    type: string
+                    example: /api/v1/bulk/job-a1b2c3d4/events
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Schema not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Too many rows (exceeds per-request limit).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /credentials/issue/bulk:
+    post:
+      operationId: issueCredentialBulk
+      summary: Issue credentials in bulk
+      description: |
+        Issues one pre-authorized OID4VCI offer per row. Rows that fail
+        individually are recorded without aborting the batch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueBulkRequest"
+      responses:
+        "200":
+          description: Batch processed. Check rows[*].status for per-row outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueBulkResult"
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Schema not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /credentials:
+    get:
+      operationId: listCredentials
+      summary: List issued credentials
+      description: Returns all credentials issued under the authenticated API key, newest first.
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive substring search.
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: Filter by revocation state.
+          schema:
+            type: string
+            enum: [all, active, revoked]
+        - name: std
+          in: query
+          description: Filter by credential standard.
+          schema:
+            type: string
+        - name: format
+          in: query
+          description: Filter by wire format.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Credential list with summary counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, active, revoked, items]
+                properties:
+                  total:
+                    type: integer
+                  active:
+                    type: integer
+                  revoked:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/IssuedCredential"
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /credentials/{id}:
+    get:
+      operationId: getCredential
+      summary: Get one issuance record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: vc-1715000000000-a1b2c3
+      responses:
+        "200":
+          description: Credential record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuedCredential"
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Credential not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /credentials/{id}/revoke:
+    post:
+      operationId: revokeCredential
+      summary: Revoke a credential
+      description: |
+        Flips the credential's bit in the status list and stamps revoked_at.
+        Idempotent — revoking an already-revoked credential returns 200.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Credential is now revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                    example: revoked
+                  revoked_at:
+                    type: string
+                    format: date-time
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Credential not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Credential has no status list binding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /credentials/{id}/reinstate:
+    post:
+      operationId: reinstateCredential
+      summary: Reinstate (un-revoke) a credential
+      description: Clears the revocation bit and removes revoked_at.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Credential is now active.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                    example: active
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Credential not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Credential has no status list binding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /bulk/{jobID}:
+    get:
+      operationId: getBulkJobStatus
+      summary: Get async bulk job status
+      description: Returns the current state of a bulk issuance job submitted via `POST /credentials/issue/bulk/async`.
+      parameters:
+        - name: jobID
+          in: path
+          required: true
+          schema:
+            type: string
+          example: job-a1b2c3d4
+      responses:
+        "200":
+          description: Job status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, status, total, done, errors]
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, running, done, error]
+                  total:
+                    type: integer
+                  done:
+                    type: integer
+                  errors:
+                    type: integer
+                  error_msg:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /bulk/{jobID}/events:
+    get:
+      operationId: streamBulkJobEvents
+      summary: Stream async bulk job progress (SSE)
+      description: |
+        Opens a Server-Sent Events stream that pushes one event per polling
+        tick until the job reaches `done` or `error` status (or the client
+        disconnects). Each event carries the same payload as
+        `GET /bulk/{jobID}`.
+
+        If the job is already complete when the client connects, one
+        terminal event is sent immediately and the stream closes.
+
+        Event format:
+        ```
+        data: {"job_id":"...","status":"...","total":N,"done":M,"errors":K}
+        ```
+      parameters:
+        - name: jobID
+          in: path
+          required: true
+          schema:
+            type: string
+          example: job-a1b2c3d4
+      responses:
+        "200":
+          description: SSE stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /verify/request:
+    post:
+      operationId: createVerificationRequest
+      summary: Create an OID4VP verification request
+      description: |
+        Creates a presentation request session. Returns the request_uri the
+        holder scans and the state token used to poll for the result.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyRequest"
+      responses:
+        "200":
+          description: Verification session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyRequestResult"
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Schema not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Upstream verifier error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /verify/result/{state}:
+    get:
+      operationId: getVerificationResult
+      summary: Poll for a verification result
+      description: |
+        Returns "pending" while the holder hasn't responded. Poll once per
+        second until status is "verified" or "failed".
+      parameters:
+        - name: state
+          in: path
+          required: true
+          description: Session ID from POST /verify/request.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current session status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResult"
+        "400":
+          description: Missing state parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Upstream verifier error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/ecosystem/issuers/{did}/stats:
+    servers:
+      - url: /
+        description: Hub instance (path not under /api/v1)
+    get:
+      operationId: getEcosystemIssuerStats
+      summary: Get issuer verification statistics (Hub only)
+      description: |
+        Returns a 30-day summary of verification events attributed to the
+        given issuer DID. Only available on Hub deployments
+        (`VERIFIABLY_ROLES=hub` + PostgreSQL).
+
+        The Bearer key must be scoped to the requested DID — a key issued
+        for DID A cannot query stats for DID B. Keys are generated from
+        the Hub admin UI under Federation Members → API key.
+      parameters:
+        - name: did
+          in: path
+          required: true
+          description: The issuer's DID (URL-encoded if it contains colons).
+          schema:
+            type: string
+          example: did:web:verifiably.minerd.credenciales.ysalabs.work
+      responses:
+        "200":
+          description: Verification statistics for the last 30 days.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [issuer_did, period_days, verified]
+                properties:
+                  issuer_did:
+                    type: string
+                    example: did:web:verifiably.minerd.credenciales.ysalabs.work
+                  period_days:
+                    type: integer
+                    example: 30
+                  verified:
+                    type: object
+                    required: [total, valid, invalid, by_schema]
+                    properties:
+                      total:
+                        type: integer
+                      valid:
+                        type: integer
+                      invalid:
+                        type: integer
+                      by_schema:
+                        type: array
+                        items:
+                          type: object
+                          required: [schema, total, valid, invalid]
+                          properties:
+                            schema:
+                              type: string
+                            total:
+                              type: integer
+                            valid:
+                              type: integer
+                            invalid:
+                              type: integer
+        "401":
+          description: Invalid or missing API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: API key does not belong to the requested DID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Ecosystem API not configured (missing DB or Hub role).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

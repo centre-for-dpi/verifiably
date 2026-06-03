@@ -64,6 +64,9 @@ type walletRef struct {
 // switches credentials, not just OIDC sessions. Empty identity falls
 // back to the configured demo account for pre-auth / single-user mode.
 func (a *Adapter) ensureWalletSession(ctx context.Context) (*walletSession, error) {
+	if a.wallet == nil {
+		return nil, fmt.Errorf("waltid: wallet role not configured (walletBaseUrl missing)")
+	}
 	userKey := backend.HolderIdentityFromContext(ctx)
 	acc := a.accountForUser(userKey)
 	cacheKey := acc.Email

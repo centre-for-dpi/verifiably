@@ -9,7 +9,7 @@ name: waltid
 
 services:
   postgres:
-    image: postgres:16.4
+    image: postgres:16.4-alpine
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "pg_isready", "-q", "-U", "${POSTGRES_USER:-waltid}"]
@@ -25,6 +25,47 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
 
+  # verifiably-redis is the session store for multi-replica verifiably-go
+  # deployments. Enabled when VERIFIABLY_REDIS_URL points at it.
+  # Pair with Caddy lb_policy=cookie for full sticky-session L7 routing.
+  verifiably-redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
+    volumes:
+      - verifiably-redis-data:/data
+    ports:
+      - "${VERIFIABLY_REDIS_PORT:-6380}:6379"
+    command: >
+      redis-server
+      --save 60 1
+      --loglevel warning
+
+  # verifiably-pg is the dedicated PostgreSQL instance for verifiably-go's own
+  # persistence (sessions, issuance log, status lists). Separate from the
+  # waltid `postgres` instance so the two never share credentials or schema.
+  # Activated automatically when VERIFIABLY_DATABASE_URL points at it.
+  verifiably-pg:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-U", "${VERIFIABLY_PG_USER:-verifiably}"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
+    environment:
+      POSTGRES_DB: ${VERIFIABLY_PG_DB:-verifiably}
+      POSTGRES_USER: ${VERIFIABLY_PG_USER:-verifiably}
+      POSTGRES_PASSWORD: ${VERIFIABLY_PG_PASSWORD:-verifiably}
+    volumes:
+      - verifiably-pg-data:/var/lib/postgresql/data
+    ports:
+      - "${VERIFIABLY_PG_PORT:-5439}:5432"
+
   caddy:
     image: caddy:2.8
     restart: unless-stopped
@@ -32,7 +73,13 @@ services:
       WALLET_BACKEND_PORT: ${WALTID_WALLET_PORT:-7001}
       ISSUER_API_PORT: ${WALTID_ISSUER_PORT:-7002}
       VERIFIER_API_PORT: ${WALTID_VERIFIER_PORT:-7003}
+      CREDEBL_AGENT_API_PORT: ${CREDEBL_AGENT_API_PORT:-8001}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
+      # In subdomain mode caddy-public owns :80/:443; deploy.sh sets
+      # CADDY_HTTP_PORT=127.0.0.1:8079 so this binding doesn't conflict.
+      - "${CADDY_HTTP_PORT:-80}:80"
       - "${WALTID_WALLET_PORT:-7001}:${WALTID_WALLET_PORT:-7001}"
       - "${WALTID_ISSUER_PORT:-7002}:${WALTID_ISSUER_PORT:-7002}"
       - "${WALTID_VERIFIER_PORT:-7003}:${WALTID_VERIFIER_PORT:-7003}"
@@ -52,6 +99,9 @@ services:
     environment:
       VERIFIABLY_PUBLIC_DOMAIN: ${VERIFIABLY_PUBLIC_DOMAIN:-}
       VERIFIABLY_LE_EMAIL: ${VERIFIABLY_LE_EMAIL:-}
+      CREDEBL_AGENT_API_PORT: ${CREDEBL_AGENT_API_PORT:-8001}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "80:80"
       - "443:443"
@@ -137,6 +187,18 @@ services:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_HTTP_PORT: ${KEYCLOAK_PORT:-8180}
+      # Force a stable issuer URL regardless of how Keycloak is accessed
+      # (browser via public IP vs. containers via internal DNS). Without this,
+      # start-dev derives `iss` from the request URL, causing a mismatch when
+      # CREDEBL validates tokens via keycloak:8180 that were issued via the
+      # public IP.
+      KC_HOSTNAME_URL: ${KC_HOSTNAME_URL:-http://${VERIFIABLY_PUBLIC_HOST:-localhost}:${KEYCLOAK_PORT:-8180}}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_BACKCHANNEL: "true"
+      # Trust X-Forwarded-Proto from Caddy so Keycloak advertises https:// in
+      # the discovery doc and token iss when sitting behind a TLS-terminating
+      # reverse proxy.
+      KC_PROXY_HEADERS: xforwarded
     command: start-dev --http-port=${KEYCLOAK_PORT:-8180} --import-realm
     ports:
       - "${KEYCLOAK_PORT:-8180}:${KEYCLOAK_PORT:-8180}"
@@ -210,8 +272,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      # Passed to init.sh so did_url rows use the right DID.
+      # Empty = dev (did:web:certify-nginx). Set ISSUER_DID_DOMAIN in .env
+      # for production federation (did:web:{domain}).
+      ISSUER_DID_DOMAIN: ${ISSUER_DID_DOMAIN:-}
     volumes:
-      - ./inji/certify/init.sql:/docker-entrypoint-initdb.d/certify_init.sql
+      - ./inji/certify/init.sh:/docker-entrypoint-initdb.d/certify_init.sh
+      - ./inji/certify/init.sql:/var/init-templates/certify_init.sql:ro
       - certify-db:/var/lib/postgresql/data
     ports:
       - "5433:5432"
@@ -235,6 +302,10 @@ services:
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
       - enable_certify_artifactory=false
       - download_hsm_client=false
+      # Full DID URL embedded in issued credentials. Empty ISSUER_DID_DOMAIN
+      # falls back to Docker-internal did:web:certify-nginx (dev only).
+      - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-nginx}
+      - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Farmer Issuer}
       - mosip_certify_domain_url=http://certify-nginx:80
       # Route token validation through our local esignet instead of
       # inji-certify's default "I'm my own auth server" mode. The Farmer
@@ -279,7 +350,7 @@ services:
       - ./inji/certify/certify-csvdp-farmer.properties:/home/mosip/config/certify-csvdp-farmer.properties
       - ./inji/certify/farmer_identity_data.csv:/home/mosip/config/farmer_identity_data.csv
       - ./inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json
-      - certify-pkcs12:/home/mosip/CERTIFY_PKCS12
+      - certify-pkcs12:/home/inji/CERTIFY_PKCS12
     depends_on:
       certify-postgres:
         condition: service_healthy
@@ -327,11 +398,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      # init-preauth.sh uses ISSUER_DID_DOMAIN to compute the DID:
+      # empty = did:web:certify-preauth-nginx (dev); set = did:web:{domain}
+      # (same as primary in prod — inji_proxy merges both keys into one DID doc).
+      ISSUER_DID_DOMAIN: ${ISSUER_DID_DOMAIN:-}
     volumes:
-      # Use the pre-auth-specific init so credential_config rows advertise
-      # did:web:certify-preauth-nginx, not did:web:certify-nginx. That's
-      # what keeps the two instances from colliding on DID resolution.
-      - ./inji/certify/init-preauth.sql:/docker-entrypoint-initdb.d/certify_init.sql
+      - ./inji/certify/init-preauth.sh:/docker-entrypoint-initdb.d/certify_init.sh
+      - ./inji/certify/init-preauth.sql:/var/init-templates/certify_init.sql:ro
       - certify-preauth-db:/var/lib/postgresql/data
     ports:
       - "5436:5432"
@@ -379,16 +452,18 @@ services:
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
       - enable_certify_artifactory=false
       - download_hsm_client=false
+      # In production (ISSUER_DID_DOMAIN set), both primary and preauth use the
+      # same public DID. inji_proxy merges both instances' keys in the DID doc.
+      - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-preauth-nginx}
+      - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Farmer Issuer}
       # Critical difference from the primary inji-certify: the domain URL
-      # points at THIS container (its own hostname on the default network),
-      # and we do NOT override any of the mosip.certify.authn.* or
-      # mosip.certify.oauth.* properties. They inherit from the base
-      # certify-default.properties where they all default to
-      # ${mosip.certify.authorization.url} which in turn defaults to
-      # ${mosip.certify.domain.url} — so this instance validates the
-      # Bearer tokens it hands out against its OWN JWKS. That's what
-      # makes the Pre-Auth Code flow work end-to-end.
-      - mosip_certify_domain_url=http://inji-certify-preauth:8090
+      # must be the PUBLIC URL so that JwtProofValidator (Nimbus) accepts
+      # the wallet's proof JWT whose aud = credential_issuer (the public URL
+      # the wallet read from /.well-known/openid-credential-issuer).
+      # MOSIP_CERTIFY_AUTHN_JWK_SET_URI is overridden to the INTERNAL address
+      # so the backend can still fetch its own JWKS without hairpin NAT.
+      - mosip_certify_domain_url=${PREAUTH_PUBLIC_URL:-http://inji-certify-preauth:8090}
+      - MOSIP_CERTIFY_AUTHN_JWK_SET_URI=${PREAUTH_JWKS_URI:-http://inji-certify-preauth:8090/v1/certify/.well-known/jwks.json}
       # Point at the isolated postgres instance, not the primary
       # certify-postgres. Zero shared database state.
       - SPRING_DATASOURCE_URL=jdbc:postgresql://certify-preauth-postgres:5432/inji_certify
@@ -411,10 +486,9 @@ services:
       - ./inji/certify/farmer_identity_data.csv:/home/mosip/config/farmer_identity_data.csv:ro
       - ./inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json:ro
       # Isolated keystore volume — not shared with primary certify-pkcs12.
-      # Mounted at the default keystore directory Inji Certify expects
-      # (mosip.kernel.keymanager.hsm.config-path = CERTIFY_PKCS12/local.p12)
-      # so we don't need an env-var override.
-      - certify-preauth-pkcs12:/home/mosip/CERTIFY_PKCS12
+      # Mounted at the directory Inji Certify writes to (/home/inji, NOT
+      # /home/mosip — the image runs as the inji user, not mosip).
+      - certify-preauth-pkcs12:/home/inji/CERTIFY_PKCS12
     depends_on:
       certify-preauth-postgres:
         condition: service_healthy
@@ -429,6 +503,20 @@ services:
     image: nginx:1.27
     restart: unless-stopped
     container_name: certify-nginx
+    # envsubst renders mimoto-issuers-config.json from the template before
+    # nginx starts. The variable list ('$$ISSUER_DISPLAY_NAME') scopes
+    # substitution to just that one variable so no other $-patterns in
+    # the JSON are accidentally expanded.
+    # /config/server/ is read-only (Docker overlay of multiple :ro bind-mounts).
+    # Write the rendered JSON to /tmp/ and serve it via an exact-match location
+    # in nginx.conf; /config/server/ is still used for all other static files.
+    command: >
+      /bin/sh -c "envsubst '$$ISSUER_DISPLAY_NAME'
+      < /etc/nginx/templates/mimoto-issuers-config.json.tmpl
+      > /tmp/mimoto-issuers-config.json
+      && exec nginx -g 'daemon off;'"
+    environment:
+      - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Agriculture Department}
     ports:
       - "8091:80"
       - "8443:443"
@@ -439,7 +527,7 @@ services:
       - ./inji/certify-nginx/certs/nginx.crt:/etc/nginx/certs/nginx.crt:ro
       - ./inji/certify-nginx/certs/nginx.key:/etc/nginx/certs/nginx.key:ro
       - ./inji/certify-nginx/config/farmer-context.json:/config/server/farmer-context.json:ro
-      - ./inji/certify-nginx/config/mimoto-issuers-config.json:/config/server/mimoto-issuers-config.json:ro
+      - ./inji/certify-nginx/config/mimoto-issuers-config.json.tmpl:/etc/nginx/templates/mimoto-issuers-config.json.tmpl:ro
       - ./inji/certify-nginx/config/mimoto-trusted-verifiers.json:/config/server/mimoto-trusted-verifiers.json:ro
       - ./inji/certify-nginx/config/credential-template.html:/config/server/credential-template.html:ro
       - ./inji/certify-nginx/config/vp_request_config.json:/config/server/vp_request_config.json:ro
@@ -507,6 +595,9 @@ services:
       - DATABASE_SCHEMA=verify
       - DATABASE_USERNAME=postgres
       - DATABASE_PASSWORD=postgres
+      - INJI_VP_SUBMISSION_BASE_URL=https://inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}/v1/verify
+      - INJI_DID_VERIFY_URI=did:web:inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}:v1:verify
+      - INJI_DID_VERIFY_PUBLIC_KEY_URI=did:web:inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}:v1:verify#key-0
     volumes:
       - ./inji/certify-nginx/certs/nginx.crt:/tmp/certify-nginx.crt:ro
       # Pre-auth nginx serves did:web:certify-preauth-nginx; import its
@@ -553,7 +644,7 @@ services:
   # ==========================================================================
 
   citizens-postgres:
-    image: postgres:16
+    image: postgres:16.4-alpine
     restart: unless-stopped
     container_name: citizens-postgres
     environment:
@@ -659,7 +750,7 @@ services:
       - ../injiweb/config/esignet_init.sql:/docker-entrypoint-initdb.d/02-esignet_init.sql:ro
 
   injiweb-redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     restart: unless-stopped
     container_name: injiweb-redis
     profiles:
@@ -1002,6 +1093,8 @@ services:
       - ../injiweb/config/injiweb-ui-nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
+  verifiably-redis-data:
+  verifiably-pg-data:
   wallet-db:
   wallet-api-data:
   lt-data:

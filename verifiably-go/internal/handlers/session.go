@@ -1,9 +1,18 @@
 package handlers
 
 import (
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +35,7 @@ type Session struct {
 
 	// Onboarding selections — selected DPG per role
 	Role        string // "issuer" | "holder" | "verifier"
-	AuthOK      bool
+	AuthOK      bool   `json:"-"` // not persisted — cleared on restart so user must re-auth
 	IssuerDpg   string
 	HolderDpg   string
 	VerifierDpg string
@@ -85,19 +94,33 @@ type Session struct {
 	VerifierSchemaFilter string
 	VerifierSchemaQuery  string
 
+	// Public verify portal state (hub mode). Separate from the verifier
+	// fields so the two flows never interfere on a node that runs both roles.
+	PublicVerifyFilter   string
+	PublicVerifyQuery    string
+	PublicVerifySchemaID string
+	PublicVerifyTemplate *vctypes.OID4VPTemplate
+
 	// LastWalletError is the most recent error from a wallet action
 	// (paste, scan, accept). Rendered as an inline banner on the wallet
 	// page so the user sees what failed instead of a silent toast.
 	LastWalletError string
 
 	// Auth: OIDC round-trip state + tokens stored after callback.
+	// OIDC tokens and transient round-trip state are tagged json:"-" so they
+	// are never written to the encrypted session files on disk. They expire
+	// quickly and are re-acquired on the next login. AuthOK is also excluded
+	// (see its declaration above) so a restarted container doesn't present a
+	// stale "logged in" state — the user must re-authenticate.
+	// UserEmail, UserSubject, AuthProvider, and WalletUserKey ARE persisted so
+	// the upstream wallet partition key survives container restarts.
 	PendingProvider string
-	PendingState    string
-	PendingPKCE     string
+	PendingState    string `json:"-"`
+	PendingPKCE     string `json:"-"`
 	AuthProvider    string // id of the provider that completed auth
-	AccessToken     string
-	RefreshToken    string
-	IDToken         string
+	AccessToken     string `json:"-"`
+	RefreshToken    string `json:"-"`
+	IDToken         string `json:"-"`
 	UserEmail       string
 	// UserSubject is the OIDC `sub` claim — the stable per-user id the
 	// provider assigns. Used (combined with AuthProvider) as the
@@ -119,15 +142,174 @@ type Session struct {
 	NextExampleIdx int
 }
 
+// SessionStore is the interface satisfied by the file-backed *Store and the
+// PostgreSQL/Redis-backed backends. Wire the right one in main.go based on
+// VERIFIABLY_DATABASE_URL / VERIFIABLY_REDIS_URL.
+type SessionStore interface {
+	Get(r *http.Request) *Session
+	MustGet(w http.ResponseWriter, r *http.Request) *Session
+	StartFlusher(ctx context.Context)
+}
+
 // Store is a thread-safe session store keyed by cookie ID.
+//
+// Persistence: when dir != "" the store periodically flushes all sessions to
+// encrypted JSON files in dir (one file per session, AES-256-GCM). On the
+// next startup it replays them so sessions survive container restarts.
+// The flush interval is 5 seconds; a final flush runs on Stop().
+// When dir == "" the store is purely in-memory (original behaviour).
 type Store struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
+
+	dir string   // "" = in-memory only
+	key []byte   // 32-byte AES key; nil when dir == ""
 }
 
+// NewStore returns a purely in-memory session store (original behaviour).
 func NewStore() *Store {
 	return &Store{sessions: map[string]*Session{}}
 }
+
+// NewPersistentStore returns a session store that flushes to dir every 5 s.
+// secret is any string; it is SHA-256'd to derive the 32-byte AES key.
+// Existing sessions in dir are loaded immediately so they survive restarts.
+func NewPersistentStore(dir, secret string) *Store {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		log.Printf("session store: cannot create dir %q, falling back to in-memory: %v", dir, err)
+		return NewStore()
+	}
+	h := sha256.Sum256([]byte(secret))
+	s := &Store{
+		sessions: map[string]*Session{},
+		dir:      dir,
+		key:      h[:],
+	}
+	s.load()
+	return s
+}
+
+// StartFlusher starts the background goroutine that periodically flushes
+// sessions to disk. It stops when ctx is cancelled, performing a final flush.
+// Call this after NewPersistentStore; it is a no-op for in-memory stores.
+func (s *Store) StartFlusher(ctx context.Context) {
+	if s.dir == "" {
+		return
+	}
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				s.flush()
+			case <-ctx.Done():
+				s.flush()
+				return
+			}
+		}
+	}()
+}
+
+func (s *Store) load() {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return
+	}
+	loaded := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sess") {
+			continue
+		}
+		id := strings.TrimSuffix(e.Name(), ".sess")
+		data, err := os.ReadFile(filepath.Join(s.dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		plain, err := SessionDecrypt(s.key, data)
+		if err != nil {
+			continue
+		}
+		var sess Session
+		if err := json.Unmarshal(plain, &sess); err != nil {
+			continue
+		}
+		// Discard sessions that have gone stale (>24 h since cookie expiry).
+		// We use the file mtime as the last-active timestamp.
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > 24*time.Hour {
+			os.Remove(filepath.Join(s.dir, e.Name()))
+			continue
+		}
+		s.sessions[id] = &sess
+		loaded++
+	}
+	if loaded > 0 {
+		log.Printf("session store: loaded %d session(s) from %s", loaded, s.dir)
+	}
+}
+
+func (s *Store) flush() {
+	// Marshal all sessions while holding the lock so json.Marshal sees each
+	// session's fields in a consistent state relative to store mutations.
+	// Encryption and disk I/O happen after releasing the lock so we don't
+	// block request handlers for the duration of the writes.
+	s.mu.Lock()
+	type pending struct{ id string; data []byte }
+	items := make([]pending, 0, len(s.sessions))
+	for id, sess := range s.sessions {
+		data, err := json.Marshal(sess)
+		if err != nil {
+			continue
+		}
+		items = append(items, pending{id, data})
+	}
+	s.mu.Unlock()
+
+	for _, p := range items {
+		enc, err := SessionEncrypt(s.key, p.data)
+		if err != nil {
+			continue
+		}
+		_ = os.WriteFile(filepath.Join(s.dir, p.id+".sess"), enc, 0o600)
+	}
+}
+
+// SessionEncrypt encrypts plain with AES-256-GCM. Output: nonce || ciphertext.
+// Exported so the PG and Redis session backends can use the same scheme.
+func SessionEncrypt(key, plain []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	return gcm.Seal(nonce, nonce, plain, nil), nil
+}
+
+// SessionDecrypt reverses SessionEncrypt.
+// Exported so the PG and Redis session backends can use the same scheme.
+func SessionDecrypt(key, data []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	ns := gcm.NonceSize()
+	if len(data) < ns {
+		return nil, os.ErrInvalid
+	}
+	return gcm.Open(nil, data[:ns], data[ns:], nil)
+}
+
 
 func (s *Store) getOrCreate(r *http.Request, w http.ResponseWriter) *Session {
 	s.mu.Lock()
@@ -155,6 +337,7 @@ func (s *Store) getOrCreate(r *http.Request, w http.ResponseWriter) *Session {
 			Value:    id,
 			Path:     "/",
 			HttpOnly: true,
+			Secure:   externalScheme(r) == "https",
 			SameSite: http.SameSiteLaxMode,
 			Expires:  time.Now().Add(24 * time.Hour),
 		})

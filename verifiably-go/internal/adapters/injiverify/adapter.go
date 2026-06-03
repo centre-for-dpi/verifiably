@@ -29,10 +29,14 @@ func New(cfg Config, vendor string) (*Adapter, error) {
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("injiverify: baseUrl required")
 	}
+	apiBase := cfg.BaseURL
+	if cfg.InternalBaseURL != "" {
+		apiBase = cfg.InternalBaseURL
+	}
 	return &Adapter{
 		cfg:    cfg,
 		Vendor: vendor,
-		client: httpx.New(cfg.BaseURL),
+		client: httpx.New(apiBase),
 	}, nil
 }
 
@@ -89,10 +93,18 @@ type vpRequestResponse struct {
 
 // RequestPresentation creates an OID4VP session via /v1/verify/vp-request and
 // returns the Wallet-facing request URI + correlation tokens.
+// Accepts either a named preset key (req.TemplateKey in oid4vpTemplates) or an
+// inline custom template (req.Template != nil / req.TemplateKey == "custom").
 func (a *Adapter) RequestPresentation(ctx context.Context, req backend.PresentationRequest) (backend.PresentationRequestResult, error) {
-	tpl, ok := oid4vpTemplates[req.TemplateKey]
-	if !ok {
-		return backend.PresentationRequestResult{}, fmt.Errorf("injiverify: unknown template key %q", req.TemplateKey)
+	var tpl vctypes.OID4VPTemplate
+	if req.Template != nil {
+		tpl = *req.Template
+	} else {
+		var ok bool
+		tpl, ok = oid4vpTemplates[req.TemplateKey]
+		if !ok {
+			return backend.PresentationRequestResult{}, fmt.Errorf("injiverify: unknown template key %q", req.TemplateKey)
+		}
 	}
 	body := vpRequestCreate{
 		ClientID:               a.cfg.ClientID,
@@ -103,11 +115,19 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 	if err := a.client.DoJSON(ctx, http.MethodPost, "/v1/verify/vp-request", body, &resp, nil); err != nil {
 		return backend.PresentationRequestResult{}, err
 	}
+	// Inji Verify v0.16 does not return requestUri in the POST response.
+	// Build the OID4VP cross-device URI: the wallet fetches the signed JAR
+	// from GET /vp-request/{requestId} (application/oauth-authz-req+jwt).
+	requestURI := fmt.Sprintf(
+		"openid4vp://authorize?client_id=%s&request_uri=%s",
+		url.QueryEscape(a.cfg.ClientID),
+		url.QueryEscape(a.cfg.BaseURL+"/v1/verify/vp-request/"+resp.RequestID),
+	)
 	// The state field we hand back to the UI is a composite of request ID and
 	// transaction ID so FetchPresentationResult can poll both endpoints.
 	state := resp.TransactionID + "|" + resp.RequestID
 	return backend.PresentationRequestResult{
-		RequestURI: resp.RequestURI,
+		RequestURI: requestURI,
 		State:      state,
 		Template:   tpl,
 	}, nil
@@ -128,6 +148,9 @@ type vcResultItem struct {
 // FetchPresentationResult polls /v1/verify/vp-result/{txid} until a terminal
 // state or timeout. Applies the INJIVER-1131 guard: if no VC result's claims
 // intersect the template's requested fields, Valid is forced to false.
+// When templateKey is "custom" (inline template path), the guard has no field
+// list to check against and passes through — the handler enriches Method/Format
+// from the session's CustomOID4VPTemplate.
 func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKey string) (backend.VerificationResult, error) {
 	tpl, _ := oid4vpTemplates[templateKey]
 	txid := ""

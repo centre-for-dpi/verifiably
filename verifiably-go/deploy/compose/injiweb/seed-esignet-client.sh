@@ -127,8 +127,18 @@ echo "JWK: $JWK"
 # --- Step 3: fetch a CSRF token + POST the client ---
 # esignet returns {token, parameterName, headerName} at the top level,
 # not wrapped under a `response` key. Parse accordingly.
-CSRF_BODY=$(curl -fsS -c "$TMPDIR/cookies" "$ESIGNET_URL/v1/esignet/csrf/token" || true)
-CSRF_TOKEN=$(echo "$CSRF_BODY" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("token") or d.get("response",{}).get("token",""))' 2>/dev/null || echo "")
+#
+# eSignet (Spring Boot) keeps accepting TCP connections for ~30s while still
+# initialising its application context. Poll until the CSRF endpoint returns
+# a parseable JSON token rather than a connection reset or HTML error page.
+CSRF_TOKEN=""
+for _attempt in $(seq 1 30); do
+    CSRF_BODY=$(curl -fsS --max-time 5 -c "$TMPDIR/cookies" "$ESIGNET_URL/v1/esignet/csrf/token" 2>/dev/null || true)
+    CSRF_TOKEN=$(echo "$CSRF_BODY" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("token") or d.get("response",{}).get("token",""))' 2>/dev/null || echo "")
+    [[ -n "$CSRF_TOKEN" ]] && break
+    echo "  waiting for eSignet CSRF endpoint (attempt $_attempt/30)…" >&2
+    sleep 5
+done
 
 if [[ -z "$CSRF_TOKEN" ]]; then
     echo "warning: failed to get CSRF token from $ESIGNET_URL — is esignet running?" >&2

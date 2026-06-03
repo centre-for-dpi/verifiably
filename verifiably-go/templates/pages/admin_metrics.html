@@ -1,0 +1,274 @@
+{{define "content_admin_metrics"}}
+<section class="view active">
+  <div class="section-label">
+    <span class="num">99</span>
+    <span class="caps">{{t "Admin · Metrics" $.Lang}}</span>
+  </div>
+  <h1 class="page-title">{{t "Observability" $.Lang}}<br><em>{{t "& metrics" $.Lang}}</em>.</h1>
+
+  {{with .Body}}
+
+  {{/* ── Data source banner ──────────────────────────────────────────────── */}}
+  {{if eq .DataSource "prometheus"}}
+  <div style="display:flex;align-items:center;gap:0.75rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid #2a9;border-radius:4px;padding:0.7rem 1rem;margin-bottom:1.5rem;font-size:0.82rem">
+    <span class="pill ok" style="font-size:0.68rem;flex-shrink:0">Prometheus</span>
+    <span style="color:var(--ink-soft)">{{t "Historical data from Prometheus — survives container restarts." $.Lang}}</span>
+    {{if .GrafanaURL}}
+    <a href="{{.GrafanaURL}}" target="_blank" class="btn small" style="margin-left:auto;flex-shrink:0">{{t "Open Grafana ↗" $.Lang}}</a>
+    {{end}}
+  </div>
+  {{else if eq .DataSource "memory-fallback"}}
+  <div style="display:flex;align-items:center;gap:0.75rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid #e93;border-radius:4px;padding:0.7rem 1rem;margin-bottom:1.5rem;font-size:0.82rem">
+    <span class="pill err" style="font-size:0.68rem;flex-shrink:0">{{t "Prometheus unreachable" $.Lang}}</span>
+    <span style="color:var(--ink-soft)">{{t "Showing in-memory counters (since last restart). Check VERIFIABLY_PROMETHEUS_URL." $.Lang}}</span>
+  </div>
+  {{else}}
+  <div style="display:flex;align-items:center;gap:0.75rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:4px;padding:0.7rem 1rem;margin-bottom:1.5rem;font-size:0.82rem">
+    <span class="pill" style="font-size:0.68rem;flex-shrink:0">{{t "In-memory" $.Lang}}</span>
+    <span style="color:var(--ink-mute)">{{t "Counters reset on every restart. Set VERIFIABLY_PROMETHEUS_URL for persistent data." $.Lang}}</span>
+  </div>
+  {{end}}
+
+  <div class="btn-row" style="margin:0 0 2rem 0;gap:0.5rem">
+    <a href="/admin/metrics" class="btn small">{{t "↻ Refresh" $.Lang}}</a>
+    {{if .GrafanaURL}}<a href="{{.GrafanaURL}}" target="_blank" class="btn small ghost">Grafana ↗</a>{{end}}
+    <form method="post" action="/admin/logout" style="display:inline">
+      <button class="btn ghost small" type="submit">{{t "Sign out of admin" $.Lang}}</button>
+    </form>
+  </div>
+
+  {{/* ── Summary cards ────────────────────────────────────────────────────── */}}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1rem;margin-bottom:2rem">
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1rem;text-align:center">
+      <div style="font-size:2rem;font-weight:600;font-family:'Josefin Sans',sans-serif">{{.CredIssuedOK}}</div>
+      <div style="font-size:0.72rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em;margin-top:0.25rem">{{t "Credentials issued" $.Lang}}</div>
+      <div style="margin-top:0.4rem"><span class="pill ok" style="font-size:0.68rem">ok</span></div>
+    </div>
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1rem;text-align:center">
+      <div style="font-size:2rem;font-weight:600;font-family:'Josefin Sans',sans-serif;{{if gt .CredIssuedError 0}}color:#e53{{end}}">{{.CredIssuedError}}</div>
+      <div style="font-size:0.72rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em;margin-top:0.25rem">{{t "Issuance errors" $.Lang}}</div>
+      <div style="margin-top:0.4rem"><span class="pill err" style="font-size:0.68rem">error</span></div>
+    </div>
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1rem;text-align:center">
+      <div style="font-size:2rem;font-weight:600;font-family:'Josefin Sans',sans-serif">{{.VerifRequested}}</div>
+      <div style="font-size:0.72rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em;margin-top:0.25rem">{{t "Verifications requested" $.Lang}}</div>
+    </div>
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1rem;text-align:center">
+      <div style="font-size:2rem;font-weight:600;font-family:'Josefin Sans',sans-serif">{{.VerifCompleted}}</div>
+      <div style="font-size:0.72rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em;margin-top:0.25rem">{{t "Verifications completed" $.Lang}}</div>
+    </div>
+
+  </div>
+
+  {{/* ── Adapter latency ──────────────────────────────────────────────────── */}}
+  <h2 style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem;margin:0 0 0.75rem">
+    {{t "Adapter latency by operation" $.Lang}}
+  </h2>
+  <p style="font-size:0.8rem;color:var(--ink-mute);margin:0 0 0.75rem">
+    {{t "Measures the time the backend DPG takes to respond — user interaction time is not included." $.Lang}}
+  </p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:2rem">
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+      <div style="display:flex;align-items:baseline;gap:0.5rem;margin-bottom:0.25rem">
+        <span style="font-size:1.75rem;font-weight:600;font-family:'JetBrains Mono',monospace">{{.IssueLatency.AvgMS}}</span>
+        <span class="pill" style="font-size:0.68rem">issue</span>
+      </div>
+      <div style="font-size:0.75rem;color:var(--ink-mute);margin-bottom:0.4rem">{{t "avg · " $.Lang}}{{.IssueLatency.Calls}} {{t "calls" $.Lang}}</div>
+      <div style="font-size:0.75rem;color:var(--ink-soft);font-style:italic">{{.IssueLatency.Note}}</div>
+    </div>
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+      <div style="display:flex;align-items:baseline;gap:0.5rem;margin-bottom:0.25rem">
+        <span style="font-size:1.75rem;font-weight:600;font-family:'JetBrains Mono',monospace">{{.VerifyLatency.AvgMS}}</span>
+        <span class="pill" style="font-size:0.68rem">verify</span>
+      </div>
+      <div style="font-size:0.75rem;color:var(--ink-mute);margin-bottom:0.4rem">{{t "avg · " $.Lang}}{{.VerifyLatency.Calls}} {{t "calls" $.Lang}}</div>
+      <div style="font-size:0.75rem;color:var(--ink-soft);font-style:italic">{{.VerifyLatency.Note}}</div>
+    </div>
+
+  </div>
+
+  {{/* ── Per-DPG breakdown ────────────────────────────────────────────────── */}}
+  <h2 style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem;margin:0 0 0.75rem">
+    {{t "Breakdown by DPG" $.Lang}}
+  </h2>
+
+  {{if not .DPGRows}}
+  <p style="color:var(--ink-mute);font-style:italic;margin-bottom:2rem">
+    {{t "No activity yet. Issue or verify a credential to populate this table." $.Lang}}
+  </p>
+  {{else}}
+  <div style="overflow-x:auto;margin-bottom:2rem">
+    <table class="cred-table" style="width:100%">
+      <thead>
+        <tr>
+          <th style="text-align:left">DPG</th>
+          <th style="text-align:right">{{t "Issued OK" $.Lang}}</th>
+          <th style="text-align:right">{{t "Issued Error" $.Lang}}</th>
+          <th style="text-align:right">{{t "Verif. Req." $.Lang}}</th>
+          <th style="text-align:right">{{t "Verif. Done" $.Lang}}</th>
+          <th style="text-align:right">{{t "Issue avg" $.Lang}}</th>
+          <th style="text-align:right">{{t "Verify avg" $.Lang}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .DPGRows}}
+        <tr>
+          <td><span class="mono" style="font-size:0.85rem">{{.DPG}}</span></td>
+          <td style="text-align:right">
+            {{if gt .IssuedOK 0}}<span class="pill ok">{{.IssuedOK}}</span>{{else}}<span style="color:var(--ink-mute)">0</span>{{end}}
+          </td>
+          <td style="text-align:right">
+            {{if gt .IssuedError 0}}<span class="pill err">{{.IssuedError}}</span>{{else}}<span style="color:var(--ink-mute)">0</span>{{end}}
+          </td>
+          <td style="text-align:right">{{.VerifReq}}</td>
+          <td style="text-align:right">{{.VerifDone}}</td>
+          <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.82rem">{{.IssueAvgMS}}</td>
+          <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.82rem">{{.VerifyAvgMS}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+
+  {{/* ── Per-schema breakdown ─────────────────────────────────────────────── */}}
+  <h2 style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem;margin:0 0 0.75rem">
+    {{t "Breakdown by schema" $.Lang}}
+  </h2>
+
+  {{if not .SchemaRows}}
+  <p style="color:var(--ink-mute);font-style:italic;margin-bottom:2rem">
+    {{t "No activity yet." $.Lang}}
+  </p>
+  {{else}}
+  <div style="overflow-x:auto;margin-bottom:2rem">
+    <table class="cred-table" style="width:100%">
+      <thead>
+        <tr>
+          <th style="text-align:left">DPG</th>
+          <th style="text-align:left">{{t "Schema" $.Lang}}</th>
+          <th style="text-align:right">{{t "Issued OK" $.Lang}}</th>
+          <th style="text-align:right">{{t "Issued Error" $.Lang}}</th>
+          <th style="text-align:right">{{t "Error rate" $.Lang}}</th>
+          <th style="text-align:right">{{t "Verif. Req." $.Lang}}</th>
+          <th style="text-align:right">{{t "Verif. Done" $.Lang}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .SchemaRows}}
+        <tr>
+          <td><span class="mono" style="font-size:0.82rem;color:var(--ink-soft)">{{if .DPG}}{{.DPG}}{{else}}<span style="color:var(--ink-mute)">—</span>{{end}}</span></td>
+          <td>
+            {{if .Schema}}
+              <span class="pill" style="font-size:0.75rem">{{.Schema}}</span>
+            {{else}}
+              <span style="color:var(--ink-mute);font-style:italic;font-size:0.82rem">unset</span>
+            {{end}}
+          </td>
+          <td style="text-align:right">
+            {{if gt .IssuedOK 0}}<span class="pill ok">{{.IssuedOK}}</span>{{else}}<span style="color:var(--ink-mute)">0</span>{{end}}
+          </td>
+          <td style="text-align:right">
+            {{if gt .IssuedError 0}}<span class="pill err">{{.IssuedError}}</span>{{else}}<span style="color:var(--ink-mute)">0</span>{{end}}
+          </td>
+          <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.82rem;{{if gt .IssuedError 0}}color:#e53{{end}}">
+            {{.ErrorPct}}
+          </td>
+          <td style="text-align:right">{{.VerifReq}}</td>
+          <td style="text-align:right">{{.VerifDone}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+
+  {{/* ── Observability integrations ───────────────────────────────────────── */}}
+  <h2 style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem;margin:0 0 0.75rem">
+    {{t "Observability integrations" $.Lang}}
+  </h2>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;margin-bottom:2rem">
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+        <span class="pill ok" style="font-size:0.68rem">active</span>
+        <span style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:0.9rem">Prometheus scrape</span>
+      </div>
+      <p style="font-size:0.8rem;color:var(--ink-soft);margin:0 0 0.6rem">
+        {{t "Scrape endpoint:" $.Lang}}
+        <a href="/metrics" target="_blank" class="mono" style="font-size:0.78rem">/metrics</a>
+      </p>
+      <div style="background:var(--bg);border:1px solid var(--line);border-radius:2px;padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.72rem;word-break:break-all">
+        {{.MetricsURL}}
+      </div>
+    </div>
+
+    {{if .PrometheusURL}}
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+        {{if eq $.Body.DataSource "prometheus"}}<span class="pill ok" style="font-size:0.68rem">connected</span>{{else}}<span class="pill err" style="font-size:0.68rem">unreachable</span>{{end}}
+        <span style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:0.9rem">Prometheus</span>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--line);border-radius:2px;padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.72rem;word-break:break-all">
+        {{.PrometheusURL}}
+      </div>
+    </div>
+    {{end}}
+
+    {{if .GrafanaURL}}
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+        <span class="pill ok" style="font-size:0.68rem">configured</span>
+        <span style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:0.9rem">Grafana</span>
+      </div>
+      <a href="{{.GrafanaURL}}" target="_blank" class="btn small" style="margin-top:0.25rem">{{t "Open dashboard ↗" $.Lang}}</a>
+    </div>
+    {{end}}
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+        {{if .OTLPEndpoint}}<span class="pill ok" style="font-size:0.68rem">active</span>{{else}}<span class="pill" style="font-size:0.68rem">not configured</span>{{end}}
+        <span style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:0.9rem">OpenTelemetry</span>
+      </div>
+      {{if .OTLPEndpoint}}
+        <div style="background:var(--bg);border:1px solid var(--line);border-radius:2px;padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.72rem;word-break:break-all">{{.OTLPEndpoint}}</div>
+      {{else}}
+        <p style="font-size:0.8rem;color:var(--ink-soft);margin:0">
+          {{t "Set " $.Lang}}<span class="mono" style="font-size:0.76rem">VERIFIABLY_OTEL_ENDPOINT</span>{{t " to enable distributed tracing." $.Lang}}
+        </p>
+      {{end}}
+    </div>
+
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+        <span class="pill ok" style="font-size:0.68rem">active</span>
+        <span style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:0.9rem">Structured logs</span>
+      </div>
+      <p style="font-size:0.8rem;color:var(--ink-soft);margin:0">
+        {{t "JSON lines with trace_id + span_id for Loki correlation." $.Lang}}
+      </p>
+    </div>
+
+  </div>
+
+  {{if not .PrometheusURL}}
+  <div style="font-size:0.8rem;color:var(--ink-mute);background:var(--bg-elev);border-left:3px solid var(--line);padding:0.75rem 1rem;border-radius:0 4px 4px 0">
+    {{t "To connect Prometheus, add" $.Lang}}
+    <span class="mono" style="font-size:0.76rem">VERIFIABLY_PROMETHEUS_URL=http://prometheus:9090</span>
+    {{t "and optionally" $.Lang}}
+    <span class="mono" style="font-size:0.76rem">VERIFIABLY_GRAFANA_URL=http://localhost:3100</span>
+    {{t "to the container environment." $.Lang}}
+  </div>
+  {{end}}
+
+  {{end}}
+</section>
+{{end}}

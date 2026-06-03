@@ -1,0 +1,593 @@
+{
+  "title": "Verifiably — Credential Metrics",
+  "uid": "verifiably-metrics-v1",
+  "description": "Credential issuance and verification observability. Use the time picker and variable filters to slice by period, DPG, or schema.",
+  "tags": ["verifiably", "credentials", "vc"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "weekStart": "",
+  "fiscalYearStartMonth": 0,
+  "links": [],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+
+  "templating": {
+    "list": [
+      {
+        "name": "dpg",
+        "label": "DPG",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(credential_issued_total, dpg)",
+        "query": { "query": "label_values(credential_issued_total, dpg)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": {},
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "schema",
+        "label": "Schema",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(credential_issued_total{dpg=~\"$dpg\"}, schema)",
+        "query": { "query": "label_values(credential_issued_total{dpg=~\"$dpg\"}, schema)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {},
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "interval",
+        "label": "Rate window",
+        "type": "interval",
+        "query": "1m,5m,15m,30m,1h",
+        "current": { "text": "5m", "value": "5m" },
+        "hide": 0,
+        "auto": false
+      }
+    ]
+  },
+
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Credentials Issued",
+      "description": "Cumulative successful issuances since last restart. Use the time series panel below for trends.",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(credential_issued_total{status=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "issued"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "green", "mode": "fixed" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "noValue": "0"
+        }
+      }
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Issuance Errors",
+      "description": "Cumulative failed issuances since last restart.",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(credential_issued_total{status!=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "errors"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "red", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] },
+          "noValue": "0"
+        }
+      }
+    },
+
+    {
+      "id": 3,
+      "type": "gauge",
+      "title": "Issuance Error Rate",
+      "description": "Percentage of issuances that resulted in an error over the selected period.",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(credential_issued_total{status!=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"}) / sum(credential_issued_total{dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "error %"
+        }
+      ],
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "min": 0,
+          "max": 100,
+          "unit": "percent",
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 15 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Verifications Requested",
+      "description": "Cumulative OID4VP presentation requests since last restart.",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(verification_requested_total{dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "requested"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "blue", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "noValue": "0"
+        }
+      }
+    },
+
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Verifications Completed",
+      "description": "Cumulative verifications that reached a terminal state (valid or invalid) since last restart.",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(verification_completed_total{dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "completed"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "purple", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "noValue": "0"
+        }
+      }
+    },
+
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Avg Issue Latency",
+      "description": "Average time the backend DPG takes to issue a credential. Does not include user interaction time.",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * sum(adapter_duration_seconds_sum{op=\"issue\",dpg=~\"$dpg\"}) / sum(adapter_duration_seconds_count{op=\"issue\",dpg=~\"$dpg\"})",
+          "instant": true,
+          "legendFormat": "issue avg"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "—",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 500 },
+              { "color": "red", "value": 2000 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Issuance rate by DPG",
+      "description": "Credentials issued per second (rate over $interval window). Split by DPG adapter.",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (dpg) (rate(credential_issued_total{status=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"}[$interval]))",
+          "legendFormat": "{{dpg}} — ok"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (dpg) (rate(credential_issued_total{status!=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"}[$interval]))",
+          "legendFormat": "{{dpg}} — error"
+        }
+      ],
+      "options": {
+        "legend": { "calcs": ["sum", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "auto",
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } },
+              { "id": "custom.lineStyle", "value": { "dash": [4, 4], "fill": "dash" } }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Verification rate by DPG",
+      "description": "Verification requests and completions per second over $interval window.",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (dpg) (rate(verification_requested_total{dpg=~\"$dpg\",schema=~\"$schema\"}[$interval]))",
+          "legendFormat": "{{dpg}} — requested"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (dpg) (rate(verification_completed_total{status=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"}[$interval]))",
+          "legendFormat": "{{dpg}} — completed ok"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (dpg) (rate(verification_completed_total{status!=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"}[$interval]))",
+          "legendFormat": "{{dpg}} — completed error"
+        }
+      ],
+      "options": {
+        "legend": { "calcs": ["sum", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 8, "showPoints": "auto" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "C" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Adapter latency — issuance (ms)",
+      "description": "Average milliseconds the backend DPG takes to issue a credential. Pure backend latency — user time is not measured.",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * sum by (dpg) (rate(adapter_duration_seconds_sum{op=\"issue\",dpg=~\"$dpg\"}[$interval])) / sum by (dpg) (rate(adapter_duration_seconds_count{op=\"issue\",dpg=~\"$dpg\"}[$interval]))",
+          "legendFormat": "{{dpg}}"
+        }
+      ],
+      "options": {
+        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "auto" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 500 },
+              { "color": "red", "value": 2000 }
+            ]
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Adapter latency — verification calls (ms)",
+      "description": "Average ms per adapter call during verification (request creation + result polls). Each value is a single backend round-trip, not the total user flow.",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * sum by (dpg) (rate(adapter_duration_seconds_sum{op=\"verify\",dpg=~\"$dpg\"}[$interval])) / sum by (dpg) (rate(adapter_duration_seconds_count{op=\"verify\",dpg=~\"$dpg\"}[$interval]))",
+          "legendFormat": "{{dpg}}"
+        }
+      ],
+      "options": {
+        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "auto" },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Error rate % by schema",
+      "description": "Percentage of issuance attempts that failed, broken down by schema. Spikes here indicate misconfiguration or backend issues for a specific credential type.",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum by (dpg, schema) (rate(credential_issued_total{status!=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"}[$interval])) / sum by (dpg, schema) (rate(credential_issued_total{dpg=~\"$dpg\",schema=~\"$schema\"}[$interval]))",
+          "legendFormat": "{{dpg}} / {{schema}}"
+        }
+      ],
+      "options": {
+        "legend": { "calcs": ["max", "last"], "displayMode": "table", "placement": "right" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "auto" },
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 15 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Breakdown by DPG × Schema — selected period",
+      "description": "Totals for the selected time range. Use the DPG and Schema filters above to narrow down.",
+      "gridPos": { "x": 0, "y": 29, "w": 24, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (dpg, schema) (credential_issued_total{status=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "Issued OK",
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (dpg, schema) (credential_issued_total{status!=\"ok\",dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "Issued Error",
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (dpg, schema) (verification_requested_total{dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "Verif. Requested",
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "expr": "sum by (dpg, schema) (verification_completed_total{dpg=~\"$dpg\",schema=~\"$schema\"})",
+          "instant": true,
+          "legendFormat": "Verif. Completed",
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true },
+            "renameByName": {
+              "dpg": "DPG",
+              "schema": "Schema",
+              "Value #A": "Issued OK",
+              "Value #B": "Issued Error",
+              "Value #C": "Verif. Requested",
+              "Value #D": "Verif. Completed"
+            },
+            "indexByName": {
+              "dpg": 0,
+              "schema": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "Error Rate %",
+            "mode": "reduceRow",
+            "binary": {
+              "left": "Issued Error",
+              "right": "Issued OK",
+              "reducer": "sum",
+              "operation": "/"
+            }
+          }
+        }
+      ],
+      "options": {
+        "sortBy": [{ "displayName": "Issued OK", "desc": true }],
+        "footer": { "show": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Issued OK" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Issued Error" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "transparent", "value": null }, { "color": "red", "value": 1 }] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Error Rate %" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "transparent", "value": null }, { "color": "yellow", "value": 0.05 }, { "color": "red", "value": 0.15 }] } }
+            ]
+          }
+        ]
+      }
+    }
+
+  ]
+}

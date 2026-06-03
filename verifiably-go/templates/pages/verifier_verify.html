@@ -298,6 +298,19 @@
           {{if .IssuerDisplay}}<strong>{{.IssuerDisplay}}</strong><br>{{end}}
           <span class="mono">{{.Issuer}}</span>
         </dd>
+        {{if .TrustStatus}}
+        <dt>trust</dt>
+        <dd>
+          {{if eq .TrustStatus "trusted"}}
+            <span class="pill ok" title="Issuer is in the national trust registry">trusted ✓</span>
+          {{else if eq .TrustStatus "untrusted"}}
+            <span class="pill err" title="{{.TrustReason}}">not trusted</span>
+            {{if .TrustReason}}<span style="font-size:0.78rem;color:var(--ink-mute);display:block;margin-top:0.2rem">{{.TrustReason}}</span>{{end}}
+          {{else}}
+            <span class="pill" style="color:var(--ink-mute)" title="Registry lookup failed">unknown</span>
+          {{end}}
+        </dd>
+        {{end}}
         <dt>subject</dt> <dd><span class="mono">{{.Subject}}</span></dd>
         <dt>issued</dt>  <dd>{{.Issued}}</dd>
         {{if .PoliciesApplied}}

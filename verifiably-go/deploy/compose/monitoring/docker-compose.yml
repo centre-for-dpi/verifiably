@@ -1,0 +1,81 @@
+# Monitoring stack — Prometheus + Grafana
+#
+# Joins the existing waltid_default network so Prometheus can reach
+# verifiably-go at http://verifiably-go:8080/metrics without opening
+# an extra port.
+#
+# Start:
+#   docker compose -f deploy/compose/monitoring/docker-compose.yml up -d
+#
+# Stop:
+#   docker compose -f deploy/compose/monitoring/docker-compose.yml down
+#
+# Grafana:    http://localhost:3100   (admin / admin — change via GF_SECURITY_ADMIN_PASSWORD)
+# Prometheus: http://localhost:9090
+#
+# If VERIFIABLY_API_KEYS is set on verifiably-go, add bearer_token to
+# prometheus.yml (see the commented section in that file).
+name: monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --web.enable-lifecycle
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - waltid
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/verifiably.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3100}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - waltid
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  prometheus-data:
+    name: monitoring-prometheus-data
+  grafana-data:
+    name: monitoring-grafana-data
+
+networks:
+  waltid:
+    external: true
+    name: waltid_default

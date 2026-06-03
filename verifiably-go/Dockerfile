@@ -7,13 +7,23 @@ WORKDIR /src
 # Go sources + module graph.
 COPY go.mod go.sum ./
 RUN go mod download
+
+# Injected by deploy.sh as the current git commit hash so the go build layer
+# is always invalidated when source changes, even when Docker's COPY cache
+# fingerprinting fails (e.g. Docker Desktop on Windows / WSL2).
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
+
 COPY cmd ./cmd
 COPY backend ./backend
 COPY internal ./internal
 COPY vctypes ./vctypes
 
 # Static binary — no cgo, no dynamic libs, safe to drop into distroless.
+# -mod=mod lets Go resolve indirect deps that aren't yet listed in go.mod
+# using the module cache already populated by `go mod download`.
 RUN CGO_ENABLED=0 GOOS=linux go build \
+    -mod=mod \
     -trimpath -ldflags="-s -w" \
     -o /out/verifiably ./cmd/server
 
@@ -33,7 +43,6 @@ COPY docs ./docs-src/docs
 COPY deploy ./docs-src/deploy
 COPY testdata ./docs-src/testdata
 COPY INTEGRATION.md /app/docs-src/INTEGRATION.md
-COPY slim-plan.md   /app/docs-src/slim-plan.md
 
 ENV VERIFIABLY_ADDR=:8080 \
     VERIFIABLY_ADAPTER=mock \
