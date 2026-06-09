@@ -332,11 +332,11 @@
 
 ## P1 — High priority emergent (2026-05-19)
 
-- [ ] **[SEC] SSRF via `webhook_url` sin validación**
-  `internal/handlers/verifier.go:176` — el valor del form `webhook_url` se pasa sin validar a `backend.PresentationRequest.WebhookURL` y desde ahí a walt.id, que hace un callback HTTP a esa URL. Un atacante puede apuntar a servicios internos Docker, cloud metadata endpoints (`169.254.169.254`), o el propio verifiably-go. Fix: validar que la URL sea HTTPS, que no resuelva a rangos privados/loopback (RFC 1918 + RFC 4193), y opcionalmente permitir solo dominios de una allowlist configurable con `VERIFIABLY_WEBHOOK_ALLOWED_HOSTS`.
+- [x] **[SEC] SSRF via `webhook_url` sin validación** ✓ 2026-06-09
+  `internal/handlers/verifier.go` — `validateWebhookURL()` añadida: valida esquema `https`, resuelve el hostname y rechaza IPs en loopback (127/8, ::1), link-local/metadata (169.254/16, fe80::/10), privadas (RFC 1918), unique-local (fc00::/7), y espacios reservados (0/8, 100.64/10). Allowlist opcional vía `VERIFIABLY_WEBHOOK_ALLOWED_HOSTS`. Errores retornan toast al usuario sin propagar al backend.
 
-- [ ] **[BUG] Rate limiter: mapas `byKey`/`byIP` crecen sin límite**
-  `internal/handlers/ratelimit.go:54` — los mapas del `RateLimiter` nunca eliminan entradas antiguas. Un atacante que rote IPs o nombres de API key puede agotar la memoria del proceso en servidores de larga duración. Fix: lanzar una goroutine de limpieza periódica (cada 5 min) que elimine las entradas cuya última hit sea anterior al window de 60 s. Ver patrón de `cleanupLoop` ya usado en `internal/jobs/queue.go`.
+- [x] **[BUG] Rate limiter: mapas `byKey`/`byIP` crecen sin límite** ✓ 2026-06-09
+  `internal/handlers/ratelimit.go` — `cleanupLoop` + `cleanup` añadidos. Goroutine cada 5 min elimina entradas cuyo último hit precede el window de 60 s. `NewRateLimiter` ahora recibe `context.Context` (shutdown context del servidor) para detener la goroutine en SIGTERM. Lock ordering explícito: `rl.mu` y `entry.mu` nunca se sostienen simultáneamente (previene deadlock con llamadas concurrentes a `Allow`). Call site en `main.go` actualizado a `NewRateLimiter(shutCtx)`.
 
 - [x] **[SEC] PII en logs de producción (`holderCtx`)** ✓ 2026-06-09
   `internal/handlers/wallet.go` — `log.Printf` con `sess.ID`, `UserSubject`, `UserEmail`, `WalletUserKey` eliminado. Import `"log"` también eliminado (quedaba huérfano). `holderCtx` retorna directamente `backend.WithHolderIdentity`.

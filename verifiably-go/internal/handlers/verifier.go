@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -168,12 +170,17 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		// pass tampered credentials.
 		policies = []string{"signature", "expired", "not-before"}
 	}
+	webhookURL, err := validateWebhookURL(r.FormValue("webhook_url"))
+	if err != nil {
+		h.errorToast(w, r, err.Error())
+		return
+	}
 	req := backend.PresentationRequest{
 		VerifierDpg: sess.VerifierDpg,
 		TemplateKey: "custom",
 		Template:    &tpl,
 		Policies:    policies,
-		WebhookURL:  strings.TrimSpace(r.FormValue("webhook_url")),
+		WebhookURL:  webhookURL,
 	}
 	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(r.Context(), req)
@@ -560,6 +567,70 @@ func (h *H) attachTrustStatus(r *http.Request, res *backend.VerificationResult) 
 // up the schema whose Name matches the credential's title in the local
 // store and copying its IssuerDisplayName. Best-effort: silent on lookup
 // failure so transient catalog issues never block the verify result.
+// validateWebhookURL checks that raw is a safe HTTPS URL before it is
+// forwarded to a DPG backend as an OID4VP result callback. Empty input is
+// accepted (webhook is optional). Validation steps:
+//  1. Scheme must be https.
+//  2. If VERIFIABLY_WEBHOOK_ALLOWED_HOSTS is set (comma-separated hostnames),
+//     the URL's host must appear in that list.
+//  3. The hostname must resolve and none of its IPs may fall in private,
+//     loopback, link-local, or cloud-metadata ranges (SSRF prevention).
+func validateWebhookURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("webhook_url: invalid URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return "", fmt.Errorf("webhook_url: must use https (got %q)", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("webhook_url: missing host")
+	}
+	if allowed := os.Getenv("VERIFIABLY_WEBHOOK_ALLOWED_HOSTS"); allowed != "" {
+		found := false
+		for _, h := range strings.Split(allowed, ",") {
+			if strings.EqualFold(strings.TrimSpace(h), host) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("webhook_url: host %q not in VERIFIABLY_WEBHOOK_ALLOWED_HOSTS", host)
+		}
+	}
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		return "", fmt.Errorf("webhook_url: cannot resolve %q: %w", host, err)
+	}
+	// Ranges that must never receive an outbound callback.
+	blockedCIDRs := []string{
+		"127.0.0.0/8",    // loopback
+		"::1/128",        // IPv6 loopback
+		"169.254.0.0/16", // link-local / cloud metadata (AWS, GCP, Azure)
+		"fe80::/10",      // IPv6 link-local
+		"10.0.0.0/8",     // private
+		"172.16.0.0/12",  // private
+		"192.168.0.0/16", // private
+		"fc00::/7",       // IPv6 unique local
+		"0.0.0.0/8",      // this network
+		"100.64.0.0/10",  // shared address space (carrier-grade NAT)
+	}
+	for _, cidr := range blockedCIDRs {
+		_, network, _ := net.ParseCIDR(cidr)
+		for _, addr := range addrs {
+			if network.Contains(net.ParseIP(addr)) {
+				return "", fmt.Errorf("webhook_url: host %q resolves to a reserved address", host)
+			}
+		}
+	}
+	return raw, nil
+}
+
 func (h *H) attachIssuerDisplay(r *http.Request, res *backend.VerificationResult) {
 	if res == nil || res.IssuerDisplay != "" {
 		return
