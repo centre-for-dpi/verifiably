@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -43,8 +42,6 @@ func holderCtx(r *http.Request, sess *Session) context.Context {
 			sess.WalletUserKey = "session-" + sess.ID
 		}
 	}
-	log.Printf("holderCtx sess.ID=%s authProv=%q sub=%q email=%q → userKey=%q (frozen)",
-		sess.ID, sess.AuthProvider, sess.UserSubject, sess.UserEmail, sess.WalletUserKey)
 	return backend.WithHolderIdentity(ctx, sess.WalletUserKey)
 }
 

@@ -319,14 +319,14 @@
 
 ## P0 — Critical emergent (2026-05-19 security review)
 
-- [ ] **[SEC] Secretos reales commiteados en git**
-  `deploy/compose/credebl/config/credebl.env` y `deploy/compose/hub/.env` contienen credenciales de producción en el historial de git: passwords PostgreSQL/MinIO/Keycloak, JWT secrets, session secret, Agent API key, AWS keys, NextAuth secret, dominio y email del operador. Pasos: (1) rotar todos los valores afectados, (2) añadir ambos archivos a `.gitignore`, (3) reemplazarlos con archivos `.example` sin valores reales, (4) considerar `git filter-repo` para expurgar el historial si el repo es público.
+- [x] **[SEC] Secretos reales commiteados en git** ✓ 2026-06-09
+  Verificado: los archivos `deploy/compose/credebl/config/credebl.env` y `deploy/compose/hub/.env` NO están en el historial de git (`git ls-files` y `git log` devuelven vacío). Ambos están correctamente en `.gitignore` (líneas 89–92) y existen solo en disco local. No se requiere `git filter-repo`.
 
-- [ ] **[SEC] Placeholder crypto key activo en producción**
-  `deploy/compose/credebl/config/credebl.env:97` — `CRYPTO_PRIVATE_KEY=cdpi-poc-crypto-key-change-me`. Esta passphrase se usa en `cryptoJSEncrypt()` (`internal/adapters/credebl/auth.go:65`) como clave AES para cifrar el password del admin antes de enviarlo a CREDEBL. Con este valor público cualquiera puede descifrar la credencial. Reemplazar por una cadena aleatoria de ≥32 chars en el `.env` real.
+- [x] **[SEC] Placeholder crypto key activo en producción** ✓ 2026-06-09
+  `deploy/compose/credebl/config/credebl.env:97` — reemplazado con clave aleatoria de 37 chars generada con `Get-Random`. El valor `cdpi-poc-crypto-key-change-me` ya no está en disco.
 
-- [ ] **[SEC] Trust registry con llave de firma efímera**
-  `deploy/compose/hub/.env:23` — `VERIFIABLY_TRUST_SIGNING_KEY=` vacío. Sin llave ES256 persistente, el Hub genera una llave efímera en cada arranque; los JWTs del trust registry invalidan en cada restart. Generar una clave P-256 con `openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt` y fijarla en el `.env` real.
+- [x] **[SEC] Trust registry con llave de firma efímera** ✓ 2026-06-09
+  Clave P-256 PKCS8 generada con `openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt`. Guardada en `config/trust-signing-key.pem` (gitignoreado). El Hub la lee automáticamente vía el fallback `os.ReadFile("config/trust-signing-key.pem")` en `cmd/server/main.go:1033`. El volumen `../../../config:/app/config:ro` ya la monta en el contenedor.
 
 ---
 
@@ -338,8 +338,8 @@
 - [ ] **[BUG] Rate limiter: mapas `byKey`/`byIP` crecen sin límite**
   `internal/handlers/ratelimit.go:54` — los mapas del `RateLimiter` nunca eliminan entradas antiguas. Un atacante que rote IPs o nombres de API key puede agotar la memoria del proceso en servidores de larga duración. Fix: lanzar una goroutine de limpieza periódica (cada 5 min) que elimine las entradas cuya última hit sea anterior al window de 60 s. Ver patrón de `cleanupLoop` ya usado en `internal/jobs/queue.go`.
 
-- [ ] **[SEC] PII en logs de producción (`holderCtx`)**
-  `internal/handlers/wallet.go:46` — `log.Printf` loguea `sess.ID`, `sess.UserSubject` (OIDC `sub`), `sess.UserEmail` y `sess.WalletUserKey` en cada carga de la wallet. Es un `log.Printf` de debugging que quedó en producción. Eliminar la línea completa; la sesión ya tiene ID de request en el contexto para correlación.
+- [x] **[SEC] PII en logs de producción (`holderCtx`)** ✓ 2026-06-09
+  `internal/handlers/wallet.go` — `log.Printf` con `sess.ID`, `UserSubject`, `UserEmail`, `WalletUserKey` eliminado. Import `"log"` también eliminado (quedaba huérfano). `holderCtx` retorna directamente `backend.WithHolderIdentity`.
 
 ---
 
@@ -348,8 +348,8 @@
 - [ ] **[SEC] `InsecureSkipVerify` configurable desde la UI sin restricción**
   `internal/auth/oidc/oidc.go:99` — un admin puede registrar un provider OIDC con `insecureSkipVerify: true` desde `/auth/custom` o `/admin/auth-providers`. En producción esto abre MITM en el flujo de autenticación. Fix: bloquear el flag cuando `VERIFIABLY_ENV=production` (o cuando la URL pública usa HTTPS), o al menos añadir una advertencia visible en el formulario y requerir confirmación explícita.
 
-- [ ] **[SEC] Passwords admin y Grafana por defecto `admin`**
-  `deploy/compose/hub/.env:27` — `VERIFIABLY_ADMIN_PASSWORD=admin` y `GRAFANA_PASSWORD=admin`. Grafana está expuesta en el stack. Fix: exigir valor no-default en el setup wizard de `deploy.sh`; no arrancar si el password coincide con el default (al menos en modo producción).
+- [x] **[SEC] Passwords admin y Grafana por defecto `admin`** ✓ 2026-06-09
+  `deploy/compose/hub/.env` — `VERIFIABLY_ADMIN_PASSWORD` y `GRAFANA_PASSWORD` reemplazados con contraseñas aleatorias de 24 chars (alfanumérico mixto) generadas con `Get-Random`. Valores `admin` ya no están en disco.
 
 - [ ] **[DOC] Limitación upstream: KDF con MD5 en autenticación CREDEBL**
   `internal/adapters/credebl/auth.go:122` — `evpBytesToKey` usa MD5 (OpenSSL/CryptoJS-compatible) para derivar la clave AES. Está dictado por la API de CREDEBL y no puede cambiarse del lado cliente. Documentar como limitación conocida en `docs/spec-versions.md` y abrir un issue en el tracker upstream de CREDEBL para migrar a PBKDF2/Argon2.
