@@ -165,6 +165,11 @@ func (h *H) PasteOffer(w http.ResponseWriter, r *http.Request) {
 		h.renderFragment(w, r, "fragment_wallet_body", sess)
 		return
 	}
+	if err := validateOfferURL(raw); err != nil {
+		sess.LastWalletError = "Credential offer URL rejected: " + err.Error()
+		h.renderFragment(w, r, "fragment_wallet_body", sess)
+		return
+	}
 	cred, err := h.Adapter.ParseOffer(holderCtx(r, sess), raw)
 	if err != nil {
 		sess.LastWalletError = explainPasteError(err, sess.HolderDpg)

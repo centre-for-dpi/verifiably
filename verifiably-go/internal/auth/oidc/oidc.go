@@ -12,8 +12,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -93,10 +95,15 @@ func New(cfg Config) (*Provider, error) {
 	}
 	c := httpx.New("")
 	if cfg.InsecureSkipVerify {
+		if os.Getenv("VERIFIABLY_ENV") == "production" {
+			return nil, fmt.Errorf("oidc: InsecureSkipVerify is not allowed when VERIFIABLY_ENV=production")
+		}
+		slog.Warn("oidc: TLS certificate verification disabled — for demo/dev environments only",
+			"provider_id", cfg.ID, "issuer", cfg.IssuerURL)
 		c.HTTP = &http.Client{
 			Timeout: 30 * time.Second,
 			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
 			},
 		}
 	}

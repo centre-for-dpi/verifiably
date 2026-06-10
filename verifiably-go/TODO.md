@@ -345,8 +345,8 @@
 
 ## P2 — Important emergent (2026-05-19)
 
-- [ ] **[SEC] `InsecureSkipVerify` configurable desde la UI sin restricción**
-  `internal/auth/oidc/oidc.go:99` — un admin puede registrar un provider OIDC con `insecureSkipVerify: true` desde `/auth/custom` o `/admin/auth-providers`. En producción esto abre MITM en el flujo de autenticación. Fix: bloquear el flag cuando `VERIFIABLY_ENV=production` (o cuando la URL pública usa HTTPS), o al menos añadir una advertencia visible en el formulario y requerir confirmación explícita.
+- [x] **[SEC] `InsecureSkipVerify` configurable desde la UI sin restricción** ✓ 2026-06-09
+  `internal/auth/oidc/oidc.go` — guard añadido en `New()`: si `VERIFIABLY_ENV=production` el constructor devuelve error; en entornos no-producción emite `slog.Warn` visible en logs.
 
 - [x] **[SEC] Passwords admin y Grafana por defecto `admin`** ✓ 2026-06-09
   `deploy/compose/hub/.env` — `VERIFIABLY_ADMIN_PASSWORD` y `GRAFANA_PASSWORD` reemplazados con contraseñas aleatorias de 24 chars (alfanumérico mixto) generadas con `Get-Random`. Valores `admin` ya no están en disco.
@@ -358,14 +358,14 @@
 
 ## P3 — Low / informational (2026-05-19)
 
-- [ ] **[SEC] `PasteOffer` acepta cualquier URL `https://` sin validar dominio**
-  `internal/handlers/wallet.go:166` — la validación solo comprueba que la URI empiece por `openid-credential-offer://` o `https://`, pero para `https://` no hay restricción de host. El adaptador luego hace fetch a esa URL, lo que permite SSRF hacia endpoints HTTPS internos. Aplicar la misma validación de IP/dominio que se propone para `webhook_url`.
+- [x] **[SEC] `PasteOffer` acepta cualquier URL `https://` sin validar dominio** ✓ 2026-06-09
+  Lógica SSRF extraída a `internal/handlers/ssrf.go` (`ssrfBlockHost` + `validateOfferURL`). `PasteOffer` llama a `validateOfferURL(raw)` antes de `ParseOffer`; `openid-credential-offer://` pasa sin validación. `validateWebhookURL` en `verifier.go` refactorizado para reusar `ssrfBlockHost`.
 
 - [ ] **[SEC] Verificar cobertura CSRF en formularios `/admin/*`**
   No se observa token CSRF explícito en los formularios POST de `/admin/trust`, `/admin/auth-providers`. Verificar si el middleware de sesiones implementa protección CSRF (SameSite=Strict en la cookie + token en el form). Si no está cubierto, añadir un campo `csrf_token` generado por sesión.
 
-- [ ] **[SEC] Verificar headers de seguridad HTTP**
-  No se observan `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` ni `Strict-Transport-Security` en los handlers Go. Confirmar si Caddy los inyecta en producción; si no, añadir un middleware `secureHeaders` en `cmd/server/main.go`.
+- [x] **[SEC] Verificar headers de seguridad HTTP** ✓ 2026-06-09
+  Snippet `(security_headers)` añadido al Caddyfile (`deploy/compose/stack/Caddyfile`): `X-Content-Type-Options`, `X-Frame-Options DENY`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` (2 años), `-Server`. Aplicado a los tres reverse-proxy blocks. CSP pendiente de afinar al mapear dependencias de frontend.
 
 ---
 
