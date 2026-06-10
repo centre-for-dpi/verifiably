@@ -544,18 +544,30 @@
   httptest. This is the holder-data half of Nivel 2; the cnf/credentialSubject.id binding below
   is the remaining adapter half.
 
-- [ ] **[FEAT] Credential endpoint: map OIDC token claims to registry subject**
-  In Auth Code Flow, the credential request carries a `proof` JWT plus an access token containing `cedula`/`national_id` claims from the organismo's IdP. The credential endpoint must:
+- [x] **[ARCH] Extend `IssueRequest` to carry holder identity** ✓ 2026-06-09
+  `backend/adapter.go` — added `HolderDID` and `HolderKeyProof`. `HolderDID` is the
+  credential subject identifier; meaningful only in the holder-initiated flow (the operator
+  pre-auth flow leaves it empty — the operator is not the subject). `HolderKeyProof` is
+  forward-looking plumbing for the auth_code `cnf` binding.
+
+- [x] **[FEAT] walt.id adapter: bind credentialSubject.id / sub from HolderDID** ✓ 2026-06-09
+  `internal/adapters/waltid/issuer.go` — `buildCredentialData` sets `credentialSubject.id`
+  (VCDM) and `buildSDJWTCredentialData` sets top-level `sub` (SD-JWT VC) when `HolderDID` is
+  non-empty; empty leaves the credential byte-identical to before (zero regression). mdoc is
+  untouched (device-key binding via MSO). Handler honours an optional `holder_did` form value
+  (`internal/handlers/issuance.go`). CREDEBL deliberately does NOT inject into its flat template
+  payload — Aries binds the subject during the wallet exchange (documented in `credebl/issuer.go`).
+  Tests: `waltid/subject_binding_test.go` (4 cases).
+
+- [ ] **[FEAT] Credential endpoint: verify token + cnf key binding (auth_code activation)**
+  The remaining live half: in Auth Code Flow the credential request carries a `proof` JWT plus
+  an access token containing `cedula`/`national_id` claims from the organismo's IdP. The endpoint must:
   (a) verify the token signature against the IdP's JWKS,
   (b) extract the subject identifier,
   (c) look it up in the organismo's registry,
-  (d) emit the VC with `credentialSubject.id` = citizen's DID,
-  (e) include a `cnf` key binding claim tied to the wallet's proof key so only that wallet can present it.
-  `internal/adapters/credebl/issuer.go` + `internal/adapters/waltid/issuer.go`
-
-- [ ] **[ARCH] Extend `IssueRequest` to carry holder key proof**
-  Add `HolderDID string` and `HolderKeyProof string` (the wallet's JWT proof from the OID4VCI credential request) to `backend.IssueRequest`. Adapters forward these to the DPG so the emitted VC includes `cnf`.
-  `backend/adapter.go`
+  (d) populate `HolderDID` from it (the walt.id builder already emits `credentialSubject.id`),
+  (e) include a `cnf` key binding claim tied to the wallet's proof key (`HolderKeyProof`).
+  Depends on the self-service / auth_code flow existing. `internal/handlers/` + adapters.
 
 ### P3 — Nivel 3: VC-in VC-out (future — bootstrap dependency)
 

@@ -228,6 +228,14 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := backend.IssueRequest{IssuerDpg: sess.IssuerDpg, Schema: schema, SubjectData: subject}
+	// Holder-initiated flows (API caller / future self-service) bind the
+	// credential to the citizen's DID via credentialSubject.id. Honour it when
+	// supplied; the operator pre-auth path sends no holder_did and leaves it
+	// empty (the operator is not the subject). When self-service issuance lands
+	// this is where the holder's own session identity will populate it.
+	if did := strings.TrimSpace(r.FormValue("holder_did")); did != "" {
+		req.HolderDID = did
+	}
 
 	if sess.Dest == "wallet" {
 		// Allocate a status-list index BEFORE the issuance call so the

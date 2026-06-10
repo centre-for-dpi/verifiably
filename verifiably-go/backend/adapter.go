@@ -155,6 +155,26 @@ type IssueRequest struct {
 	SubjectData map[string]string
 	Flow        string // "pre_auth" or "auth_code"; empty = adapter default
 
+	// HolderDID identifies the credential subject — the DID (or other stable
+	// identifier) of the citizen the VC is being issued to. Adapters set it as
+	// `credentialSubject.id` (VCDM) / `sub` (SD-JWT VC) so a verifier can later
+	// confirm the holder presenting the credential is its subject.
+	//
+	// It is meaningful ONLY when the issuing session belongs to the holder
+	// themselves — i.e. the holder-initiated / auth_code flow (self-service).
+	// In the operator-initiated pre-auth flow the operator does NOT know the
+	// holder's DID, so this is left empty and the builders omit the subject id
+	// (unchanged behaviour). See docs/credential-delivery.md (identity-bound
+	// quadrant) and National ID Nivel 2 in TODO.md.
+	HolderDID string
+
+	// HolderKeyProof is the wallet's OID4VCI proof JWT (its public key) captured
+	// during an auth_code credential request. Reserved for the cryptographic
+	// `cnf` key binding once the auth_code flow is wired end-to-end; today the
+	// DPG performs that binding itself during the wallet's credential request,
+	// so this is forward-looking plumbing and not yet populated by the handler.
+	HolderKeyProof string
+
 	// StatusList enrolls the credential in a verifiably-go-hosted revocation
 	// list. The handler allocates an index from the appropriate Store before
 	// calling the adapter; the adapter is responsible for embedding the
