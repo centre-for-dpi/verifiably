@@ -302,6 +302,43 @@ func (r *Registry) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes
 	return append(vendorSchemas, custom...), nil
 }
 
+// GetIssuerMetadata aggregates the credential configurations advertised by
+// every issuer DPG into one member-level catalog. Like ListAllSchemas it skips
+// (rather than fails on) DPGs that error or don't issue — a verifier-only or
+// warming-up DPG shouldn't blank out the whole member's discovery response.
+// Configurations are de-duplicated by id+format across vendors. Endpoint URLs
+// are left empty for the HTTP handler to fill from the request's public base.
+func (r *Registry) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+	r.mu.RLock()
+	vendors := make([]string, 0, len(r.issuers))
+	for v := range r.issuers {
+		vendors = append(vendors, v)
+	}
+	r.mu.RUnlock()
+
+	var out backend.IssuerMetadata
+	seen := map[string]struct{}{}
+	for _, v := range vendors {
+		ad, _ := r.issuerFor(v)
+		if ad == nil {
+			continue
+		}
+		meta, err := ad.GetIssuerMetadata(ctx)
+		if err != nil {
+			continue
+		}
+		for _, c := range meta.CredentialsSupported {
+			key := c.ID + "|" + c.Format
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			out.CredentialsSupported = append(out.CredentialsSupported, c)
+		}
+	}
+	return out, nil
+}
+
 func (r *Registry) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error) {
 	owner := backend.IssuerIdentityFromContext(ctx)
 	r.mu.RLock()

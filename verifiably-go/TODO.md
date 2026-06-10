@@ -478,28 +478,29 @@
 
 ### P0 — Adapter interface
 
-- [ ] **[ARCH] Add `GetIssuerMetadata` to `backend.Adapter`**
-  New method `GetIssuerMetadata(ctx context.Context) (IssuerMetadata, error)`.
-  `IssuerMetadata` holds `CredentialIssuerURL`, `AuthorizationEndpoint`, `TokenEndpoint`, `CredentialEndpoint`, `CredentialsSupported []CredentialSupportedEntry`.
-  `backend/adapter.go`
+- [x] **[ARCH] Add `GetIssuerMetadata` to `backend.Adapter`** ✓ 2026-06-10
+  `backend/adapter.go` + `backend/issuer_metadata.go` (new) — `GetIssuerMetadata(ctx)
+  (IssuerMetadata, error)`. `IssuerMetadata` holds `CredentialIssuer`, `CredentialEndpoint`
+  (filled by the handler) and `CredentialsSupported []CredentialConfig`. Shared mapper
+  `CredentialConfigsFromSchemas` + `OID4VCIFormat(std)` keep the schema→config derivation in
+  one place. Tests: `backend/issuer_metadata_test.go`.
 
 ### P1 — Member: OID4VCI well-known endpoint
 
-- [ ] **[FEAT] `GET /.well-known/openid-credential-issuer` per member**
-  New handler `ServeIssuerMetadata` calls the active adapter's `GetIssuerMetadata` and returns RFC 9458-compliant JSON. Registered under the `issuer` role.
-  `internal/handlers/oidc_metadata.go` (new) + `cmd/server/main.go`
+- [x] **[FEAT] `GET /.well-known/openid-credential-issuer` per member** ✓ 2026-06-10
+  `internal/handlers/discovery.go` (new) — `ServeIssuerMetadata` calls the active adapter's
+  `GetIssuerMetadata`, fills absolute issuer/credential URLs from the request public base, serves
+  CORS JSON. ErrNotSupported → 404. Registered under the `issuer` role in `cmd/server/main.go`.
+  Tests: `internal/handlers/discovery_test.go` (success / 404 / OPTIONS).
 
-- [ ] **[FEAT] CREDEBL adapter: implement `GetIssuerMetadata`**
-  Proxy the CREDEBL `/.well-known/openid-credential-issuer` and overwrite `credential_endpoint` with the verifiably-go URL.
-  `internal/adapters/credebl/issuer.go`
-
-- [ ] **[FEAT] Walt.id adapter: implement `GetIssuerMetadata`**
-  Assemble from wallet-kit API and `ListSchemas()` for `credentials_supported`.
-  `internal/adapters/waltid/issuer.go`
-
-- [ ] **[FEAT] Inji Certify adapter: implement `GetIssuerMetadata`**
-  Forward from Certify's `/.well-known/openid-credential-issuer` with base URL rewriting (inji-preauth-proxy already handles the path; this wraps the result).
-  `internal/adapters/injicertify/issuer.go`
+- [x] **[FEAT] Adapters implement `GetIssuerMetadata`** ✓ 2026-06-10
+  Issuer adapters (walt.id, CREDEBL, Inji Certify, mock) assemble configs from their schema
+  catalog via the shared mapper. Verifier-only / stub adapters (verifiably, injiverify, injiweb)
+  return `ErrNotSupported`. The Registry aggregates configs across all issuer DPGs, de-duped by
+  id+format, skipping DPGs that error or don't issue (same resilience as `ListAllSchemas`).
+  NOTE: this assembles from our schema list rather than proxying each vendor's native well-known;
+  good enough for the discovery catalog. Proxying CREDEBL/Certify's own well-known verbatim is a
+  later refinement if a wallet needs vendor-specific fields we don't model.
 
 ### P1 — Hub: catalog aggregator
 

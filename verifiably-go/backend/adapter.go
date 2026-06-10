@@ -55,6 +55,15 @@ type Adapter interface {
 	// Used by lookup-by-id paths in the issuance flow.
 	ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error)
 
+	// GetIssuerMetadata returns this DPG's OpenID4VCI Credential Issuer
+	// Metadata for credential discovery — the credential configurations a
+	// wallet can browse and request. Issuer adapters assemble it from their
+	// schema list (backend.CredentialConfigsFromSchemas); verifier-only or
+	// stub DPGs return ErrNotSupported. Endpoint URLs are left empty for the
+	// HTTP handler to fill from the request's public base. See
+	// docs/credential-delivery.md (holder-initiated quadrant).
+	GetIssuerMetadata(ctx context.Context) (IssuerMetadata, error)
+
 	// SaveCustomSchema persists a user-built schema. Called from the schema
 	// builder's "Save" button. The schema's ID is already set by the caller.
 	SaveCustomSchema(ctx context.Context, schema vctypes.Schema) error

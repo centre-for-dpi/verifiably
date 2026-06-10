@@ -365,6 +365,17 @@ func formatRank(f string) int {
 
 // ListAllSchemas delegates to ListSchemas — the registry handles aggregation
 // across DPGs, so per-adapter "all" is just "mine".
+// GetIssuerMetadata assembles this issuer's OID4VCI credential configurations
+// from its full schema catalog. Endpoint URLs are left empty for the HTTP
+// handler to fill from the request's public base.
+func (a *Adapter) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+	schemas, err := a.ListAllSchemas(ctx)
+	if err != nil {
+		return backend.IssuerMetadata{}, err
+	}
+	return backend.IssuerMetadata{CredentialsSupported: backend.CredentialConfigsFromSchemas(schemas)}, nil
+}
+
 func (a *Adapter) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error) {
 	return a.ListSchemas(ctx, a.Vendor)
 }

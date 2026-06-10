@@ -498,6 +498,16 @@ func main() {
 		mux.HandleFunc("OPTIONS /api/schemas", h.ServePublicSchemas)
 	}
 
+	// --- Credential discovery (issuer) ---
+	// GET /.well-known/openid-credential-issuer advertises this member's
+	// OpenID4VCI credential configurations so wallets and the hub catalog
+	// aggregator can discover what it issues. Only registered when this
+	// deployment has the issuer role.
+	if activeRoles.Has(roles.Issuer) {
+		mux.HandleFunc("GET /.well-known/openid-credential-issuer", h.ServeIssuerMetadata)
+		mux.HandleFunc("OPTIONS /.well-known/openid-credential-issuer", h.ServeIssuerMetadata)
+	}
+
 	// --- Trust registry (trust | hub) ---
 	// Public signed JWT at GET /trust-registry + JWKS at /.well-known/jwks.json.
 	// Admin CRUD UI (/admin/trust) is only registered in non-hub modes — in hub

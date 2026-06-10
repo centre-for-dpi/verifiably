@@ -20,6 +20,9 @@ func (stub) ListHolderDpgs(_ context.Context) (map[string]vctypes.DPG, error)  {
 func (stub) ListVerifierDpgs(_ context.Context) (map[string]vctypes.DPG, error) { return nil, nil }
 func (stub) ListSchemas(_ context.Context, _ string) ([]vctypes.Schema, error)  { return nil, nil }
 func (stub) ListAllSchemas(_ context.Context) ([]vctypes.Schema, error)         { return nil, nil }
+func (stub) GetIssuerMetadata(_ context.Context) (backend.IssuerMetadata, error) {
+	return backend.IssuerMetadata{}, backend.ErrNotSupported
+}
 func (stub) SaveCustomSchema(_ context.Context, _ vctypes.Schema) error         { return nil }
 func (stub) DeleteCustomSchema(_ context.Context, _ string) error               { return nil }
 func (stub) PrefillSubjectFields(_ context.Context, _ vctypes.Schema) (map[string]string, error) {
