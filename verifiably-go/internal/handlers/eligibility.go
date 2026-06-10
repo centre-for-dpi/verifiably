@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -66,11 +67,26 @@ func (h *H) APICheckEligibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Claims map[string]string `json:"claims"`
+		// IDToken, when present, is the citizen's OIDC token. It is verified
+		// against the configured providers' JWKS and its claims OVERRIDE the
+		// raw Claims below — the verified, trustworthy path. Claims alone is the
+		// fallback for callers that have already verified the identity upstream.
+		IDToken string            `json:"id_token,omitempty"`
+		Claims  map[string]string `json:"claims,omitempty"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
+	}
+
+	claims := body.Claims
+	if body.IDToken != "" {
+		verified, err := h.verifyCitizenToken(r.Context(), body.IDToken)
+		if err != nil {
+			apiError(w, http.StatusUnauthorized, "id_token verification failed")
+			return
+		}
+		claims = verified
 	}
 
 	meta, err := h.Adapter.GetIssuerMetadata(apiCtx(r, keyName))
@@ -84,6 +100,24 @@ func (h *H) APICheckEligibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results := evaluateEligibility(meta.CredentialsSupported, body.Claims)
+	results := evaluateEligibility(meta.CredentialsSupported, claims)
 	apiJSON(w, http.StatusOK, map[string]any{"credentials": results})
+}
+
+// verifyCitizenToken verifies a citizen's OIDC token against the configured
+// identity providers, returning the verified claims from the first provider
+// that accepts it. The token's own `iss` binds it to exactly one provider, so
+// trying each in turn is safe — non-issuers reject it. Returns an error when no
+// provider can verify it (wrong issuer, bad signature, expired, or none
+// configured). The token is never logged.
+func (h *H) verifyCitizenToken(ctx context.Context, raw string) (map[string]string, error) {
+	if h.AuthReg == nil {
+		return nil, errors.New("no identity providers configured")
+	}
+	for _, p := range h.AuthReg.All() {
+		if claims, err := p.VerifyToken(ctx, raw); err == nil {
+			return claims, nil
+		}
+	}
+	return nil, errors.New("no configured provider could verify the token")
 }

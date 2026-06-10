@@ -575,15 +575,25 @@
   payload — Aries binds the subject during the wallet exchange (documented in `credebl/issuer.go`).
   Tests: `waltid/subject_binding_test.go` (4 cases).
 
-- [ ] **[FEAT] Credential endpoint: verify token + cnf key binding (auth_code activation)**
-  The remaining live half: in Auth Code Flow the credential request carries a `proof` JWT plus
-  an access token containing `cedula`/`national_id` claims from the organismo's IdP. The endpoint must:
-  (a) verify the token signature against the IdP's JWKS,
-  (b) extract the subject identifier,
-  (c) look it up in the organismo's registry,
-  (d) populate `HolderDID` from it (the walt.id builder already emits `credentialSubject.id`),
-  (e) include a `cnf` key binding claim tied to the wallet's proof key (`HolderKeyProof`).
-  Depends on the self-service / auth_code flow existing. `internal/handlers/` + adapters.
+- [x] **[FEAT] OIDC token verification against JWKS (auth_code activation, step a+b)** ✓ 2026-06-10
+  `internal/auth/oidc/jwks.go` (new) — `Provider.VerifyToken(ctx, raw)`: fetches the provider's
+  JWKS (cached 10 min, refetch on `kid` miss for rotation), selects key by `kid`, verifies the
+  JWT signature (RS256 + ES256 — RS256 is the Keycloak/WSO2 default), checks `iss` (against the
+  discovered/internal/public issuer forms) and `exp`, returns the string claims. Added to the
+  `auth.Provider` interface. Wired into eligibility: `POST /api/v1/credentials/eligible` now
+  accepts an `id_token` verified across configured providers, whose claims OVERRIDE any raw
+  `claims` in the body (`internal/handlers/eligibility.go`). Reuses stdlib crypto only (no JWT
+  lib), consistent with the trust-registry signer. Tests: `oidc/jwks_test.go` (RS256/ES256 valid,
+  tampered sig, expired, wrong issuer, wrong key) + `eligibility_test.go` (verified claims / 401).
+
+- [ ] **[FEAT] Self-service issuance flow + `cnf` (auth_code activation, step c+d)**
+  The remaining UI half: an authenticated citizen picks a credential they're eligible for and
+  issues it to themselves, with `HolderDID` populated from their verified token `sub` (the walt.id
+  builder already emits `credentialSubject.id`). The `cnf` key binding is performed by the DPG
+  (walt.id/CREDEBL) from the wallet's proof during the OID4VCI credential request — verifiably-go
+  is not in that exchange — so our part is populating `HolderDID`, not minting `cnf`. The "look it
+  up in the organismo's registry" step stays out until a real citizen-data source exists (see the
+  eligibility design note). `internal/handlers/` (new self-service handler + templates).
 
 ### P3 — Nivel 3: VC-in VC-out (future — bootstrap dependency)
 

@@ -1,15 +1,31 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/auth"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
+
+// fakeTokenProvider is an auth.Provider whose only exercised method is
+// VerifyToken; the eligibility token path never calls the others. Embedding
+// the nil interface keeps the fake to one method.
+type fakeTokenProvider struct {
+	auth.Provider
+	claims map[string]string
+	err    error
+}
+
+func (f fakeTokenProvider) VerifyToken(context.Context, string) (map[string]string, error) {
+	return f.claims, f.err
+}
 
 func TestEvaluateEligibility(t *testing.T) {
 	configs := []backend.CredentialConfig{
@@ -92,6 +108,51 @@ func TestAPICheckEligibility_Unauthorized(t *testing.T) {
 	h.APICheckEligibility(rr, req)
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rr.Code)
+	}
+}
+
+func TestAPICheckEligibility_VerifiedTokenClaimsUsed(t *testing.T) {
+	// The schema needs given_name. The body sends NO claims; only a verified
+	// id_token supplies given_name. Eligibility must therefore use the verified
+	// token claims, proving the token path is wired.
+	ad := &testAdapter{schemas: []vctypes.Schema{
+		{ID: "PersonCredential", Std: "w3c_vcdm_2",
+			FieldsSpec: []vctypes.FieldSpec{{Name: "given_name"}}},
+	}}
+	h := apiTestH(ad)
+	reg := auth.NewRegistry()
+	reg.Register(fakeTokenProvider{claims: map[string]string{"given_name": "Ana"}})
+	h.AuthReg = reg
+
+	rr := httptest.NewRecorder()
+	h.APICheckEligibility(rr, authPOST(t, "/api/v1/credentials/eligible", map[string]any{
+		"id_token": "header.payload.sig",
+	}))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Credentials []eligibilityResult `json:"credentials"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	if len(resp.Credentials) != 1 || !resp.Credentials[0].Available {
+		t.Errorf("credentials = %+v, want available via verified token", resp.Credentials)
+	}
+}
+
+func TestAPICheckEligibility_BadTokenRejected(t *testing.T) {
+	h := apiTestH(&testAdapter{})
+	reg := auth.NewRegistry()
+	reg.Register(fakeTokenProvider{err: errors.New("bad signature")})
+	h.AuthReg = reg
+
+	rr := httptest.NewRecorder()
+	h.APICheckEligibility(rr, authPOST(t, "/api/v1/credentials/eligible", map[string]any{
+		"id_token": "x.y.z",
+	}))
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (body=%s)", rr.Code, rr.Body.String())
 	}
 }
 

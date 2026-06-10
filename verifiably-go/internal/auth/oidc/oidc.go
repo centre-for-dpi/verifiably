@@ -6,6 +6,7 @@ package oidc
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -17,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/verifiably/verifiably-go/internal/auth"
@@ -67,6 +69,12 @@ type Provider struct {
 	cfg    Config
 	client *httpx.Client
 	meta   *discoveryMeta
+
+	// jwks caches the provider's parsed signing keys (kid → public key) for
+	// VerifyToken. Guarded by jwksMu; refreshed on TTL expiry or kid miss.
+	jwksMu sync.Mutex
+	jwks   map[string]crypto.PublicKey
+	jwksAt time.Time
 }
 
 type discoveryMeta struct {

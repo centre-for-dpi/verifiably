@@ -49,6 +49,13 @@ type Provider interface {
 	Refresh(ctx context.Context, refreshToken string) (Token, error)
 	// UserInfo fetches the profile for an access token.
 	UserInfo(ctx context.Context, accessToken string) (UserInfo, error)
+	// VerifyToken verifies a JWT issued by this provider against its published
+	// JWKS (signature, issuer, expiry) and returns the token's string-valued
+	// claims. Callers that don't know which provider issued a token can try
+	// each in turn and treat any error as "not this provider / invalid". This
+	// is the trust anchor for accepting a citizen's OIDC token from an external
+	// caller (e.g. self-service eligibility) instead of trusting raw claims.
+	VerifyToken(ctx context.Context, rawToken string) (map[string]string, error)
 }
 
 // Token is the bag of strings returned by a provider's token endpoint.
