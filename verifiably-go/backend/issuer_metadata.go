@@ -18,6 +18,18 @@ type IssuerMetadata struct {
 	CredentialsSupported []CredentialConfig `json:"credential_configurations_supported"`
 }
 
+// IssuerCatalogEntry is one issuer's slice of the federated credential catalog:
+// the member attribution (from the hub's trust registry) plus the credential
+// configurations that member advertises at its
+// /.well-known/openid-credential-issuer endpoint. The hub catalog aggregator
+// returns a list of these for a wallet's "Descubrir" screen.
+type IssuerCatalogEntry struct {
+	DID             string             `json:"did"`
+	Name            string             `json:"name,omitempty"`
+	ServiceEndpoint string             `json:"service_endpoint,omitempty"`
+	Credentials     []CredentialConfig `json:"credentials"`
+}
+
 // CredentialConfig describes one offerable credential configuration. It carries
 // both the OID4VCI format/type identifiers a wallet needs to request the
 // credential and the claim-name preview the hub catalog renders on its

@@ -504,11 +504,16 @@
 
 ### P1 — Hub: catalog aggregator
 
-- [ ] **[FEAT] Hub: `GET /api/v1/discovery/credentials` — unified credential catalog**
-  Iterates `federation.TrustedIssuers`, fetches each member's `/.well-known/openid-credential-issuer` (5 min TTL, reuse SchemaCache infra), returns:
-  `{ "issuers": [{ "did", "name", "service_endpoint", "credentials": [{id, name, format, claims_preview}] }] }`.
-  Public endpoint — no auth required. cdpi-wallet calls this once to populate the "Descubrir" screen.
-  `internal/handlers/discovery.go` (new) + `cmd/server/main.go`
+- [x] **[FEAT] Hub: `GET /api/v1/discovery/credentials` — unified credential catalog** ✓ 2026-06-10
+  `internal/credentialcache/` (new) — `Aggregator` mirrors `schemacache`: 5-min TTL background
+  poll over `TrustRegistry.TrustedIssuers`, fetches each member's
+  `/.well-known/openid-credential-issuer` (1 MiB cap, 5 s timeout), keeps the stale entry on
+  failure so discovery stays up. `Cache` interface keeps the handler testable. Output:
+  `{ "issuers": [{ did, name, service_endpoint, credentials: [...] }] }` with member attribution
+  from the hub's own registry (not the member's self-report). Handler `ServeCredentialCatalog`
+  (`internal/handlers/discovery.go`) serves CORS JSON, never `null`; wired under the hub role in
+  `cmd/server/main.go`. Tests: `credentialcache/aggregator_test.go` (map / 404-skip / stale-retain /
+  endpointless-skip) + `discovery_test.go` (success / nil-cache empty array).
 
 ### P2 — Eligibility check
 

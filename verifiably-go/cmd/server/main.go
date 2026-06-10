@@ -39,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/verifiably/verifiably-go/internal/adapters/factory"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
+	"github.com/verifiably/verifiably-go/internal/credentialcache"
 	"github.com/verifiably/verifiably-go/internal/didresolver"
 	"github.com/verifiably/verifiably-go/internal/federation"
 	"github.com/verifiably/verifiably-go/internal/handlers"
@@ -365,6 +366,15 @@ func main() {
 		if hubReg != nil {
 			h.MemberVerifierRegistrar = &memberVerifierRegistrar{reg: hubReg, cache: agg}
 		}
+
+		// Credential discovery catalog (Fase: holder-initiated delivery) —
+		// aggregates each member's /.well-known/openid-credential-issuer so the
+		// wallet's "Descubrir" screen loads from a hot cache. New members appear
+		// on the next refresh (same 5-min TTL as the schema cache).
+		ccache := credentialcache.NewAggregator(5 * time.Minute)
+		h.CredentialCache = ccache
+		ccache.Start(shutCtx, h.TrustRegistry)
+		log.Printf("credential cache: federation catalog aggregator started")
 	}
 
 	// Async bulk issuance job queue. Worker count is configurable via
@@ -660,6 +670,10 @@ func main() {
 		// Federated schema registry — returns schemas aggregated from all members.
 		mux.HandleFunc("GET /schemas", h.ServeHubSchemas)
 		mux.HandleFunc("OPTIONS /schemas", h.ServeHubSchemas)
+		// Federated credential catalog — aggregated OID4VCI catalogs from all
+		// members, for the wallet's "Descubrir" (discover & download) screen.
+		mux.HandleFunc("GET /api/v1/discovery/credentials", h.ServeCredentialCatalog)
+		mux.HandleFunc("OPTIONS /api/v1/discovery/credentials", h.ServeCredentialCatalog)
 		// Admin federation member CRUD.
 		mux.HandleFunc("GET /admin/federation/members", h.ShowFederationMembers)
 		mux.HandleFunc("POST /admin/federation/members", h.RegisterFederationMember)

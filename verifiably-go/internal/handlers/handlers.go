@@ -17,6 +17,7 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/auth"
+	"github.com/verifiably/verifiably-go/internal/credentialcache"
 	"github.com/verifiably/verifiably-go/internal/didresolver"
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
@@ -128,6 +129,12 @@ type H struct {
 	// PublicVerifyRequest routes by SourceDeployment to the correct adapter.
 	// Wired at startup in hub mode by cmd/server/main.go.
 	SchemaCache *schemacache.Aggregator
+
+	// CredentialCache aggregates each federation member's OpenID4VCI credential
+	// catalog (Hub mode), powering the wallet's "Descubrir" screen via
+	// GET /api/v1/discovery/credentials. nil disables that endpoint (it returns
+	// an empty catalog). Wired at startup in hub mode by cmd/server/main.go.
+	CredentialCache credentialcache.Cache
 
 	// VerificationLog records completed verification events for ecosystem
 	// analytics (Fase 6). PostgreSQL-backed in Hub mode; nil disables logging

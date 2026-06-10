@@ -53,3 +53,29 @@ func (h *H) ServeIssuerMetadata(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(meta)
 }
+
+// ServeCredentialCatalog handles GET /api/v1/discovery/credentials (Hub).
+//
+// It returns the federated credential catalog: one entry per trusted member,
+// each carrying the member's attribution and the credentials it advertises at
+// its /.well-known/openid-credential-issuer endpoint. This is what cdpi-wallet
+// calls once to populate its "Descubrir" screen. Served from the in-memory
+// cache (TTL refresh) so it never blocks on upstream members. Public + CORS,
+// like the other federation discovery endpoints.
+func (h *H) ServeCredentialCatalog(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	issuers := []backend.IssuerCatalogEntry{}
+	if h.CredentialCache != nil {
+		if c := h.CredentialCache.Catalog(); c != nil {
+			issuers = c
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"issuers": issuers})
+}
