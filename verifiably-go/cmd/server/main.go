@@ -609,6 +609,10 @@ func main() {
 		// Self-service discovery: which of this member's credentials a citizen
 		// can self-issue from their verified claims (National ID + Discovery).
 		mux.HandleFunc("POST /api/v1/credentials/eligible", h.APICheckEligibility)
+		// Self-service issuance: an authenticated citizen mints a pre-auth offer
+		// for a credential they're eligible for (id_token auth, HolderDID=sub).
+		mux.HandleFunc("POST /api/v1/credentials/self-issue", h.APISelfIssue)
+		mux.HandleFunc("OPTIONS /api/v1/credentials/self-issue", h.APISelfIssue)
 		mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
 		mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
 		mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)
