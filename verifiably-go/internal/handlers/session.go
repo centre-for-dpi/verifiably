@@ -128,6 +128,14 @@ type Session struct {
 	// into the same browser session don't collide on an email-less key.
 	UserSubject     string
 
+	// UserClaims holds the string-valued OIDC claims captured at login
+	// (given_name, family_name, birthdate, cedula, nationality, …). Used to
+	// prefill the issuance form when a citizen authenticates with their
+	// organismo's IdP — see docs/credential-delivery.md (identity-bound
+	// quadrant) and identityPrefill. Persisted so the prefill survives a
+	// container restart; cleared on logout alongside the other identity fields.
+	UserClaims map[string]string
+
 	// WalletUserKey is the frozen identity the upstream wallet is
 	// partitioned by. Computed once, on the first call to holderCtx, from
 	// the best-available identity at that moment (AuthProvider+Subject >

@@ -102,7 +102,7 @@ func (h *H) ShowIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	schema = h.resolveFields(schema)
-	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
+	vals := h.prefillValues(r, schema, sess)
 	dpgs, _ := h.Adapter.ListIssuerDpgs(r.Context())
 	dpg := dpgs[sess.IssuerDpg]
 	bulkSource := sess.BulkSource
@@ -131,6 +131,28 @@ func (h *H) ShowIssue(w http.ResponseWriter, r *http.Request) {
 		BulkSources:  bulkSources,
 	}
 	h.render(w, r, "issuer_issue", h.pageData(sess, data))
+}
+
+// prefillValues returns the issuance-form prefill for a schema: the adapter's
+// demo/example data with the authenticated citizen's verified OIDC claims
+// overlaid on top (identity wins for the fields it covers). Used by every
+// handler that renders the single-issue form so National ID prefill is
+// consistent across initial render, source switches and PDF preview. When no
+// one is authenticated (sess.UserClaims empty) this is exactly the old
+// adapter-only behaviour.
+func (h *H) prefillValues(r *http.Request, schema vctypes.Schema, sess *Session) map[string]string {
+	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
+	id := identityPrefill(schemaFieldsOfH(schema), sess.UserClaims)
+	if len(id) == 0 {
+		return vals
+	}
+	if vals == nil {
+		vals = map[string]string{}
+	}
+	for k, v := range id {
+		vals[k] = v
+	}
+	return vals
 }
 
 // sourcesFromCapabilities turns DPG.Capabilities (kind "data") into chip
@@ -277,7 +299,7 @@ func (h *H) SetSingleSource(w http.ResponseWriter, r *http.Request) {
 	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	schema = h.resolveFields(schema)
-	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
+	vals := h.prefillValues(r, schema, sess)
 	dpgs, _ := h.Adapter.ListIssuerDpgs(r.Context())
 	dpg := dpgs[sess.IssuerDpg]
 	data := issueData{
@@ -362,7 +384,7 @@ func (h *H) PreviewPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
-	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
+	vals := h.prefillValues(r, schema, sess)
 	res, err := h.Adapter.IssueAsPDF(r.Context(), backend.IssueRequest{
 		IssuerDpg: sess.IssuerDpg, Schema: schema, SubjectData: vals,
 	})

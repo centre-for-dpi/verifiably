@@ -819,6 +819,7 @@ func (h *H) AuthCallback(w http.ResponseWriter, r *http.Request) {
 	if ui, err := p.UserInfo(r.Context(), tok.AccessToken); err == nil {
 		sess.UserEmail = ui.Email
 		sess.UserSubject = ui.Subject
+		sess.UserClaims = ui.Claims
 	}
 	// The upstream wallet account the app talks to is partitioned per
 	// authenticated user (see waltid.ensureWalletSession + holderCtx).
@@ -847,6 +848,7 @@ func (h *H) Logout(w http.ResponseWriter, r *http.Request) {
 	sess.IDToken = ""
 	sess.UserEmail = ""
 	sess.UserSubject = ""
+	sess.UserClaims = nil
 	sess.PendingProvider = ""
 	sess.PendingState = ""
 	sess.PendingPKCE = ""

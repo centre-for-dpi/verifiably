@@ -263,16 +263,21 @@ func (p *Provider) UserInfo(ctx context.Context, accessToken string) (auth.UserI
 		m.UserinfoEndpoint, nil, &raw, nil); err != nil {
 		return auth.UserInfo{}, err
 	}
-	ui := auth.UserInfo{}
-	if s, ok := decodeString(raw, "sub"); ok {
-		ui.Subject = s
+	ui := auth.UserInfo{Claims: make(map[string]string, len(raw))}
+	// Capture every string-valued claim verbatim so National ID issuance can
+	// prefill arbitrary attributes (cedula, nationality, …). Numeric/boolean/
+	// object claims are skipped — issuance form fields are text.
+	for k := range raw {
+		if s, ok := decodeString(raw, k); ok {
+			ui.Claims[k] = s
+		}
 	}
-	if s, ok := decodeString(raw, "email"); ok {
-		ui.Email = s
-	}
-	if s, ok := decodeString(raw, "name"); ok {
-		ui.Name = s
-	}
+	ui.Subject = ui.Claims["sub"]
+	ui.Email = ui.Claims["email"]
+	ui.Name = ui.Claims["name"]
+	ui.GivenName = ui.Claims["given_name"]
+	ui.FamilyName = ui.Claims["family_name"]
+	ui.Birthdate = ui.Claims["birthdate"]
 	return ui, nil
 }
 

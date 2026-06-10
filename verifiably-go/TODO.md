@@ -287,6 +287,28 @@
   notification is required. Options: webhook to the wallet, or implement the OpenID4VC Notification
   endpoint (if the wallet supports it).
 
+- [ ] **[ARCH] Deferred issuance (OID4VCI `transaction_id`)**
+  For credentials that require human approval or back-office verification, issuance
+  cannot be instantaneous. OID4VCI defines the deferred flow: the credential endpoint
+  returns a `transaction_id`, and the wallet polls `/deferred_credential` until ready.
+  Required as soon as self-service issuance (Credential Discovery) is real.
+  See delivery mechanism #7 in `docs/credential-delivery.md`.
+  `internal/adapters/*/issuer.go` + new `/deferred_credential` handler.
+
+- [ ] **[ARCH] Holder notification channel (unify push-issuance + push-revocation)**
+  The channel that pushes a *revocation* to the holder is the same one that pushes an
+  *issuance/renewal* (e.g. an expiring licence renewed by the State with no holder action).
+  Design as a single holder notification channel, not two parallel webhooks. Supersedes
+  the separate "Push revocation" and Discovery "Push notification to wallet" items once built.
+  See delivery mechanisms #6 in `docs/credential-delivery.md`.
+  `internal/adapters/notify/` (new) — webhook + OID4VC `notification_endpoint` backends.
+
+- [ ] **[ARCH] Expose DIDComm proactive delivery (spike)**
+  CREDEBL is Aries underneath and already performs proactive credential delivery over
+  DIDComm; `verifiably-go` does not expose it. For federation with entities that already
+  speak Aries this may be nearly free. Spike to confirm before committing.
+  See delivery mechanism #8 in `docs/credential-delivery.md`.
+
 - [ ] **[ARCH] Resolve Docker socket risk in CREDEBL (upstream)**
   `agent-provisioning` requires `/var/run/docker.sock` to dynamically provision Credo containers.
   This gives effective root privileges on the host. Long-term solution:
@@ -452,7 +474,7 @@
 
 > Goal: a citizen opens cdpi-wallet, browses the federation credential catalog, and downloads any credential they're eligible for — no operator assistance needed ("descubrir y descargar").
 > Pre-auth Code and Auth Code delivery already work in the adapters. What's missing is the discovery layer: `/.well-known/openid-credential-issuer` per member and an aggregated catalog endpoint in the hub.
-> Designed in session 2026-05-20; see `federated-emission.md` for flow diagrams.
+> This is the holder-initiated, identity-bound quadrant — see `docs/credential-delivery.md` for the full delivery-mechanism model and sequencing rationale.
 
 ### P0 — Adapter interface
 
@@ -507,8 +529,20 @@
 
 > Cryptographic binding of an issued VC to the correct citizen. Three assurance levels.
 > Nivel 1 (pre-auth code — channel possession) is already functional. Nivel 2 is the recommended near-term target. Nivel 3 depends on a root cédula VC existing in the ecosystem first.
+> This is the foundation of the identity-bound quadrant — it lets any delivery mechanism become identity-bound. See `docs/credential-delivery.md`.
 
 ### P1 — Nivel 2: Auth Code Flow + OIDC claim mapping
+
+- [x] **[FEAT] Capture OIDC claims and prefill the issuance form** ✓ 2026-06-09
+  `auth.UserInfo` extended with `GivenName`, `FamilyName`, `Birthdate` and a `Claims`
+  catch-all (`internal/auth/providers.go`). `oidc.UserInfo` now decodes every string-valued
+  claim (`internal/auth/oidc/oidc.go`). `AuthCallback` stores them on `sess.UserClaims`
+  (persisted; cleared on logout). `identityPrefill` maps claims onto schema field names with
+  naming-style tolerance + EN/ES aliases (`internal/handlers/identity_prefill.go`); the issue
+  form, source-switch and PDF-preview handlers overlay it on adapter demo prefill via
+  `prefillValues`. Tests: `identity_prefill_test.go` (10 cases) + `oidc_test.go` UserInfo
+  httptest. This is the holder-data half of Nivel 2; the cnf/credentialSubject.id binding below
+  is the remaining adapter half.
 
 - [ ] **[FEAT] Credential endpoint: map OIDC token claims to registry subject**
   In Auth Code Flow, the credential request carries a `proof` JWT plus an access token containing `cedula`/`national_id` claims from the organismo's IdP. The credential endpoint must:
@@ -628,4 +662,5 @@
 
 ---
 
-*Last updated: 2026-05-20 | Feature roadmap added: Credential Discovery & Self-Service Issuance, National ID Subject Binding (3 levels), PKI/HSM/KMS Integration, Delegated Access/Representation, INJI E2E test tracking.*
+*Last updated: 2026-06-09 | Credential delivery mechanism model documented in `docs/credential-delivery.md` (8 mechanisms, 2-axis quadrant). Added to Architectural Backlog: deferred issuance, holder notification channel (unifies push-issuance + push-revocation), DIDComm proactive delivery spike.*
+*2026-05-20 | Feature roadmap added: Credential Discovery & Self-Service Issuance, National ID Subject Binding (3 levels), PKI/HSM/KMS Integration, Delegated Access/Representation, INJI E2E test tracking.*

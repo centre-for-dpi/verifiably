@@ -61,11 +61,28 @@ type Token struct {
 	Scope        string
 }
 
-// UserInfo is the minimal profile shape the UI needs.
+// UserInfo is the profile a provider returns for an access token.
+//
+// Subject/Email/Name are the minimal fields the UI has always needed. The
+// remaining standard OIDC claims plus the Claims catch-all support National ID
+// issuance: when a citizen authenticates with their organismo's IdP, the
+// issuance form can be pre-filled with their verified identity attributes
+// instead of an operator re-typing them. See docs/credential-delivery.md
+// (identity-bound quadrant).
 type UserInfo struct {
-	Subject string
-	Email   string
-	Name    string
+	Subject    string
+	Email      string
+	Name       string
+	GivenName  string
+	FamilyName string
+	// Birthdate is the OIDC `birthdate` claim (ISO 8601 / RFC 3339 full-date).
+	Birthdate string
+	// Claims holds every string-valued claim from the userinfo response, keyed
+	// by its raw OIDC claim name (e.g. "cedula", "national_id", "nationality").
+	// Lets the issuance form prefill arbitrary national-id attributes without
+	// this package needing to know each schema's field names. Never nil after
+	// a successful UserInfo call (may be empty).
+	Claims map[string]string
 }
 
 // ProviderConfig is the per-provider config shape read from backends.json
