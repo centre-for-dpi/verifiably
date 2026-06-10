@@ -1,6 +1,9 @@
 package oidc
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSwapAuthority(t *testing.T) {
 	tests := []struct {
@@ -44,6 +47,51 @@ func TestSwapAuthority(t *testing.T) {
 				t.Errorf("swapAuthority(%q, %q) = %q, want %q", tt.endpoint, tt.authority, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestInsecureSkipVerify_ProductionBlocked(t *testing.T) {
+	t.Setenv("VERIFIABLY_ENV", "production")
+	_, err := New(Config{
+		ID:                 "test-idp",
+		IssuerURL:          "https://idp.example.com",
+		ClientID:           "client",
+		InsecureSkipVerify: true,
+	})
+	if err == nil {
+		t.Fatal("expected error when InsecureSkipVerify=true in production, got nil")
+	}
+	if !strings.Contains(err.Error(), "not allowed") {
+		t.Errorf("error %q should mention 'not allowed'", err.Error())
+	}
+}
+
+func TestInsecureSkipVerify_AllowedOutsideProduction(t *testing.T) {
+	t.Setenv("VERIFIABLY_ENV", "development")
+	p, err := New(Config{
+		ID:                 "test-idp",
+		IssuerURL:          "https://idp.example.com",
+		ClientID:           "client",
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		t.Fatalf("expected no error outside production, got: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected non-nil provider")
+	}
+}
+
+func TestInsecureSkipVerify_FalseAlwaysAllowed(t *testing.T) {
+	t.Setenv("VERIFIABLY_ENV", "production")
+	_, err := New(Config{
+		ID:                 "test-idp",
+		IssuerURL:          "https://idp.example.com",
+		ClientID:           "client",
+		InsecureSkipVerify: false,
+	})
+	if err != nil {
+		t.Fatalf("InsecureSkipVerify=false should always succeed, got: %v", err)
 	}
 }
 
