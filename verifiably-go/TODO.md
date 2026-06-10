@@ -517,10 +517,20 @@
 
 ### P2 — Eligibility check
 
-- [ ] **[FEAT] Member: `POST /api/v1/credentials/eligible`**
-  Authenticated with Bearer OIDC token. Extracts `cedula`/`sub`, queries the adapter's registry, returns `{ "credentials": [{ "id", "available": bool }] }`. Enables "Disponible para ti" badges in the wallet UI.
-  New `CheckEligibility(ctx context.Context, sub string) ([]EligibleCredential, error)` in `backend.Adapter`.
-  `internal/handlers/api.go` + `backend/adapter.go`
+- [x] **[FEAT] Member: `POST /api/v1/credentials/eligible`** ✓ 2026-06-10
+  `internal/handlers/eligibility.go` (new) — `APICheckEligibility` + pure `evaluateEligibility`.
+  Returns `{ "credentials": [{ id, available, missing_claims }] }` for the wallet's
+  "Disponible para ti" badge. Auth: API key (Bearer), like the other /api/v1 endpoints; claims
+  body never logged (PII). Tests: `eligibility_test.go` (coverage / alias / unauth / non-issuing).
+
+  DESIGN DEVIATION from the original spec (no `CheckEligibility` adapter method, no registry
+  query): there is no citizen-data registry in the system to query, so eligibility is computed as
+  **claims-coverage** — a credential is `available` when the citizen's verified claims cover every
+  claim it carries, i.e. it can be self-issued from their National ID with no operator data entry.
+  This reuses `identityPrefill` verbatim, so eligibility and prefill stay in lockstep, and is
+  honest: issuer-gated credentials (diploma `degree`, licence `category`) correctly come back
+  `available=false` with the gaps listed. Registry-backed eligibility + per-citizen OIDC-token
+  verification (against the IdP JWKS) are the auth_code activation step — see National ID Nivel 2.
 
 ### P3 — Push notifications
 

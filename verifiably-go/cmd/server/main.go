@@ -606,6 +606,9 @@ func main() {
 		mux.HandleFunc("GET /api/v1/bulk/{jobID}", h.APIBulkJobStatus)
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
 		mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
+		// Self-service discovery: which of this member's credentials a citizen
+		// can self-issue from their verified claims (National ID + Discovery).
+		mux.HandleFunc("POST /api/v1/credentials/eligible", h.APICheckEligibility)
 		mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
 		mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
 		mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)
