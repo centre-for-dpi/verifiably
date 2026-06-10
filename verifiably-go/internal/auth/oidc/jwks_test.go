@@ -204,6 +204,66 @@ func TestVerifyToken_WrongIssuerRejected(t *testing.T) {
 	}
 }
 
+func TestVerifyToken_AudienceEnforcedWhenPresent(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	srv := idpServer(t, rsaJWKS("k1", &key.PublicKey))
+	defer srv.Close()
+	p := newProvider(t, srv.URL) // ClientID "client"
+
+	base := map[string]any{"iss": srv.URL, "sub": "u", "exp": time.Now().Add(time.Hour).Unix()}
+
+	// aud naming a different relying party → rejected.
+	wrong := signRS256(t, key, "k1", merge(base, map[string]any{"aud": "other-client"}))
+	if _, err := p.VerifyToken(context.Background(), wrong); err == nil {
+		t.Error("expected reject when aud excludes our client id")
+	}
+
+	// aud (string) naming our client → accepted.
+	right := signRS256(t, key, "k1", merge(base, map[string]any{"aud": "client"}))
+	if _, err := p.VerifyToken(context.Background(), right); err != nil {
+		t.Errorf("aud=client should be accepted: %v", err)
+	}
+
+	// aud (array) including our client → accepted.
+	arr := signRS256(t, key, "k1", merge(base, map[string]any{"aud": []string{"x", "client"}}))
+	if _, err := p.VerifyToken(context.Background(), arr); err != nil {
+		t.Errorf("aud array including client should be accepted: %v", err)
+	}
+
+	// No aud at all → accepted (issuer + signature already bind it).
+	none := signRS256(t, key, "k1", base)
+	if _, err := p.VerifyToken(context.Background(), none); err != nil {
+		t.Errorf("missing aud should be accepted: %v", err)
+	}
+}
+
+func TestVerifyToken_NotYetValidRejected(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	srv := idpServer(t, rsaJWKS("k1", &key.PublicKey))
+	defer srv.Close()
+	p := newProvider(t, srv.URL)
+
+	tok := signRS256(t, key, "k1", map[string]any{
+		"iss": srv.URL, "sub": "u",
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"nbf": time.Now().Add(10 * time.Minute).Unix(), // well beyond the 60s leeway
+	})
+	if _, err := p.VerifyToken(context.Background(), tok); err == nil {
+		t.Fatal("expected reject for not-yet-valid token (nbf in future)")
+	}
+}
+
+func merge(a, b map[string]any) map[string]any {
+	out := make(map[string]any, len(a)+len(b))
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
+}
+
 func TestVerifyToken_WrongKeyRejected(t *testing.T) {
 	signKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	otherKey, _ := rsa.GenerateKey(rand.Reader, 2048)

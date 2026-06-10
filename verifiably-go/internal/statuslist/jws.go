@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+
+	"github.com/verifiably/verifiably-go/internal/jose"
 )
 
 // SigningKey is the parsed P-256 private key used to sign every status
@@ -72,15 +74,15 @@ func ParseWaltidIssuerKey(raw []byte, iss string) (*SigningKey, error) {
 	if jwk.D == "" {
 		return nil, fmt.Errorf("statuslist: JWK missing private component d (need a private key)")
 	}
-	x, err := decodeBigInt(jwk.X)
+	x, err := jose.DecodeBase64URLBigInt(jwk.X)
 	if err != nil {
 		return nil, fmt.Errorf("statuslist: decode x: %w", err)
 	}
-	y, err := decodeBigInt(jwk.Y)
+	y, err := jose.DecodeBase64URLBigInt(jwk.Y)
 	if err != nil {
 		return nil, fmt.Errorf("statuslist: decode y: %w", err)
 	}
-	d, err := decodeBigInt(jwk.D)
+	d, err := jose.DecodeBase64URLBigInt(jwk.D)
 	if err != nil {
 		return nil, fmt.Errorf("statuslist: decode d: %w", err)
 	}
@@ -89,19 +91,6 @@ func ParseWaltidIssuerKey(raw []byte, iss string) (*SigningKey, error) {
 		D:         d,
 	}
 	return &SigningKey{priv: priv, kid: jwk.Kid, iss: iss}, nil
-}
-
-func decodeBigInt(s string) (*big.Int, error) {
-	b, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		// JWKs sometimes carry padding even though RFC 7515 says no.
-		// Fall back to standard base64 with padding before giving up.
-		b, err = base64.URLEncoding.DecodeString(s)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return new(big.Int).SetBytes(b), nil
 }
 
 // Issuer returns the iss claim string (walt.id-onboarded DID).

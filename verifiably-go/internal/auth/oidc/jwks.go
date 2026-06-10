@@ -10,10 +10,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/verifiably/verifiably-go/internal/jose"
 )
 
 // jwksTTL bounds how long parsed signing keys are cached before a refresh.
@@ -44,10 +45,19 @@ type jwk struct {
 // found, to pick up a just-rotated key). The map is keyed by kid; keys without
 // a kid are stored under "".
 func (p *Provider) publicKeys(ctx context.Context, forceRefresh bool) (map[string]crypto.PublicKey, error) {
-	p.jwksMu.Lock()
-	defer p.jwksMu.Unlock()
-	if !forceRefresh && p.jwks != nil && time.Since(p.jwksAt) < jwksTTL {
-		return p.jwks, nil
+	// Fast path: serve from cache without holding the lock across the network
+	// fetch below. Holding jwksMu during the HTTP call would serialize every
+	// concurrent token verification behind one (possibly slow/hanging) JWKS
+	// fetch. The cost is a rare thundering herd on a cold/expired cache — two
+	// concurrent fetches, both harmless — which is far cheaper than blocking.
+	if !forceRefresh {
+		p.jwksMu.Lock()
+		cached := p.jwks
+		fresh := p.jwks != nil && time.Since(p.jwksAt) < jwksTTL
+		p.jwksMu.Unlock()
+		if fresh {
+			return cached, nil
+		}
 	}
 	m, err := p.discover(ctx)
 	if err != nil {
@@ -71,8 +81,10 @@ func (p *Provider) publicKeys(ctx context.Context, forceRefresh bool) (map[strin
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("oidc: jwks for %q had no usable keys", p.cfg.ID)
 	}
+	p.jwksMu.Lock()
 	p.jwks = keys
 	p.jwksAt = time.Now()
+	p.jwksMu.Unlock()
 	return keys, nil
 }
 
@@ -81,18 +93,15 @@ func (p *Provider) publicKeys(ctx context.Context, forceRefresh bool) (map[strin
 func jwkToKey(j jwk) (crypto.PublicKey, error) {
 	switch j.Kty {
 	case "RSA":
-		n, err := b64uBigInt(j.N)
+		n, err := jose.DecodeBase64URLBigInt(j.N)
 		if err != nil {
 			return nil, err
 		}
-		eBytes, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(j.E, "="))
+		eBig, err := jose.DecodeBase64URLBigInt(j.E)
 		if err != nil {
 			return nil, err
 		}
-		e := 0
-		for _, b := range eBytes {
-			e = e<<8 | int(b)
-		}
+		e := int(eBig.Int64())
 		if e == 0 {
 			return nil, fmt.Errorf("rsa jwk: zero exponent")
 		}
@@ -101,11 +110,11 @@ func jwkToKey(j jwk) (crypto.PublicKey, error) {
 		if j.Crv != "P-256" {
 			return nil, fmt.Errorf("ec jwk: unsupported curve %q", j.Crv)
 		}
-		x, err := b64uBigInt(j.X)
+		x, err := jose.DecodeBase64URLBigInt(j.X)
 		if err != nil {
 			return nil, err
 		}
-		y, err := b64uBigInt(j.Y)
+		y, err := jose.DecodeBase64URLBigInt(j.Y)
 		if err != nil {
 			return nil, err
 		}
@@ -141,21 +150,29 @@ func (p *Provider) VerifyToken(ctx context.Context, raw string) (map[string]stri
 		return nil, fmt.Errorf("oidc: unsupported JWT alg %q (only RS256, ES256)", hdr.Alg)
 	}
 
+	var rawClaims map[string]json.RawMessage
+	if err := decodeSegment(parts[1], &rawClaims); err != nil {
+		return nil, fmt.Errorf("oidc: decode JWT claims: %w", err)
+	}
+	// Fast reject on issuer BEFORE any JWKS fetch or signature work. A caller
+	// iterating N providers (verifyCitizenToken) must not pay N network fetches
+	// for a token that only one provider's `iss` can match.
+	if err := p.checkIssuer(rawClaims); err != nil {
+		return nil, err
+	}
+
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
 		return nil, fmt.Errorf("oidc: decode JWT signature: %w", err)
 	}
 	signingInput := []byte(parts[0] + "." + parts[1])
-
 	if err := p.verifyWithJWKS(ctx, hdr.Kid, hdr.Alg, signingInput, sig); err != nil {
 		return nil, err
 	}
 
-	var rawClaims map[string]json.RawMessage
-	if err := decodeSegment(parts[1], &rawClaims); err != nil {
-		return nil, fmt.Errorf("oidc: decode JWT claims: %w", err)
-	}
-	if err := p.validateClaims(rawClaims); err != nil {
+	// Temporal + audience checks run AFTER signature verification — they only
+	// matter once we know the claims are authentic.
+	if err := p.checkTemporalAudience(rawClaims); err != nil {
 		return nil, err
 	}
 
@@ -199,36 +216,96 @@ func (p *Provider) verifyWithJWKS(ctx context.Context, kid, alg string, signingI
 	return fmt.Errorf("oidc: JWT signature verification failed")
 }
 
-// validateClaims checks issuer and expiry. The token's `iss` must match one of
-// this provider's known issuer forms (discovered, internal, or public) — that
-// is what binds the token to this provider despite the docker-internal vs
-// browser-facing URL split.
-func (p *Provider) validateClaims(claims map[string]json.RawMessage) error {
+// checkIssuer confirms the token's `iss` matches one of this provider's known
+// issuer forms (discovered, internal, or public) — that is what binds the token
+// to this provider despite the docker-internal vs browser-facing URL split.
+// Uses only config + already-discovered metadata (no forced network), so it is
+// safe to call before the JWKS fetch as a fast reject.
+func (p *Provider) checkIssuer(claims map[string]json.RawMessage) error {
 	iss, _ := decodeString(claims, "iss")
-	known := []string{}
+	known := []string{p.cfg.IssuerURL, p.cfg.PublicIssuerURL}
 	if p.meta != nil {
 		known = append(known, p.meta.Issuer)
 	}
-	known = append(known, p.cfg.IssuerURL, p.cfg.PublicIssuerURL)
-	matched := false
 	for _, k := range known {
 		if k != "" && strings.TrimRight(iss, "/") == strings.TrimRight(k, "/") {
-			matched = true
-			break
+			return nil
 		}
 	}
-	if !matched {
-		return fmt.Errorf("oidc: token iss %q does not match provider %q", iss, p.cfg.ID)
+	return fmt.Errorf("oidc: token iss %q does not match provider %q", iss, p.cfg.ID)
+}
+
+// nbfLeewaySeconds tolerates small clock skew between the IdP and this server
+// when checking `nbf` (not-before), avoiding spurious rejects of freshly-minted
+// tokens.
+const nbfLeewaySeconds = 60
+
+// checkTemporalAudience validates `exp`, `nbf` and `aud`. It runs only after the
+// signature is verified.
+//
+//   - exp: reject once expired (no leeway).
+//   - nbf: reject a token that becomes valid more than nbfLeewaySeconds in the
+//     future (clock-skew tolerant).
+//   - aud: when the token carries an audience AND this provider has a client id,
+//     require the client id to be among the audiences. This prevents accepting a
+//     token the IdP minted for a DIFFERENT relying party. Tokens without `aud`
+//     (common for some access tokens) are allowed — issuer + signature already
+//     bind them to this provider.
+func (p *Provider) checkTemporalAudience(claims map[string]json.RawMessage) error {
+	now := time.Now().Unix()
+	if exp, ok := decodeInt(claims, "exp"); ok && exp > 0 && now >= exp {
+		return fmt.Errorf("oidc: token expired")
 	}
-	if rawExp, ok := claims["exp"]; ok {
-		var exp int64
-		if err := json.Unmarshal(rawExp, &exp); err == nil && exp > 0 {
-			if time.Now().Unix() >= exp {
-				return fmt.Errorf("oidc: token expired")
+	if nbf, ok := decodeInt(claims, "nbf"); ok && nbf > 0 && now+nbfLeewaySeconds < nbf {
+		return fmt.Errorf("oidc: token not yet valid (nbf)")
+	}
+	if p.cfg.ClientID != "" {
+		if auds, ok := decodeAudiences(claims); ok && len(auds) > 0 {
+			found := false
+			for _, a := range auds {
+				if a == p.cfg.ClientID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("oidc: token aud does not include client %q", p.cfg.ClientID)
 			}
 		}
 	}
 	return nil
+}
+
+// decodeInt extracts a numeric claim as int64. JWT numeric date claims are
+// JSON numbers.
+func decodeInt(m map[string]json.RawMessage, key string) (int64, bool) {
+	raw, ok := m[key]
+	if !ok {
+		return 0, false
+	}
+	var n int64
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// decodeAudiences extracts the `aud` claim, which per RFC 7519 may be either a
+// single string or an array of strings.
+func decodeAudiences(m map[string]json.RawMessage) ([]string, bool) {
+	raw, ok := m["aud"]
+	if !ok {
+		return nil, false
+	}
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		return []string{single}, true
+	}
+	var many []string
+	if err := json.Unmarshal(raw, &many); err == nil {
+		return many, true
+	}
+	return nil, false
 }
 
 // verifySignature checks a JWS signature for RS256 or ES256 over signingInput.
@@ -246,16 +323,7 @@ func verifySignature(alg string, key crypto.PublicKey, signingInput, sig []byte)
 		if !ok {
 			return fmt.Errorf("ES256 needs an EC key")
 		}
-		// JWS ES256 signatures are raw R||S, 32 bytes each — not ASN.1.
-		if len(sig) != 64 {
-			return fmt.Errorf("ES256 signature must be 64 bytes, got %d", len(sig))
-		}
-		r := new(big.Int).SetBytes(sig[:32])
-		s := new(big.Int).SetBytes(sig[32:])
-		if !ecdsa.Verify(pub, h[:], r, s) {
-			return fmt.Errorf("ES256 verification failed")
-		}
-		return nil
+		return jose.VerifyES256(pub, signingInput, sig)
 	default:
 		return fmt.Errorf("unsupported alg %q", alg)
 	}
@@ -268,14 +336,4 @@ func decodeSegment(seg string, v any) error {
 		return err
 	}
 	return json.Unmarshal(b, v)
-}
-
-// b64uBigInt decodes a base64url (unpadded) big-endian integer, as used for
-// JWK RSA modulus and EC coordinates.
-func b64uBigInt(s string) (*big.Int, error) {
-	b, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(s, "="))
-	if err != nil {
-		return nil, err
-	}
-	return new(big.Int).SetBytes(b), nil
 }
