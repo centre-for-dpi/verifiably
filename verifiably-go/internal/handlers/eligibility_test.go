@@ -31,7 +31,7 @@ func TestEvaluateEligibility(t *testing.T) {
 	configs := []backend.CredentialConfig{
 		{ID: "PersonCredential", Claims: []string{"given_name", "family_name", "birthdate"}},
 		{ID: "Diploma", Claims: []string{"given_name", "degree", "gpa"}},
-		{ID: "Membership", Claims: nil}, // no claims → always available
+		{ID: "Membership", Claims: nil}, // no declared claims → "unknown", not available
 	}
 	claims := map[string]string{
 		"given_name":  "Ana",
@@ -43,7 +43,7 @@ func TestEvaluateEligibility(t *testing.T) {
 	want := []eligibilityResult{
 		{ID: "PersonCredential", Available: true},
 		{ID: "Diploma", Available: false, MissingClaims: []string{"degree", "gpa"}},
-		{ID: "Membership", Available: true},
+		{ID: "Membership", Available: false},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("evaluateEligibility = %+v, want %+v", got, want)

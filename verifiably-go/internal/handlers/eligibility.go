@@ -19,28 +19,32 @@ type eligibilityResult struct {
 // evaluateEligibility decides, per credential configuration, whether the
 // citizen's verified claims cover every claim the credential carries — i.e.
 // whether it can be self-issued from their identity with no operator data
-// entry. It reuses identityPrefill, so a claim counts as covered exactly when
-// National ID prefill would fill it (same snake/camel + EN/ES alias matching) —
-// the two features stay in lockstep by construction.
+// entry. It matches claims via resolveClaim, the same field↔claim logic
+// National ID prefill uses (snake/camel + EN/ES aliases), so the two features
+// stay in lockstep by construction. The citizen's claims are normalized ONCE
+// here, not per credential.
 //
-// A configuration with no declared claims is available (nothing to satisfy).
-// Credentials that need data the citizen's identity doesn't carry — a diploma's
-// "degree", a licence's "category" — come back available=false with the gaps
-// listed, which is the honest answer: those require an issuer's own data, not
-// the citizen's national ID.
+// A credential is `available` only when it declares at least one claim AND the
+// citizen covers all of them. A configuration with NO declared claims is
+// reported `available=false`: in the discovery catalog an empty claim list
+// means "claims unknown" (the metadata path serves cheap, unresolved field
+// previews), not "needs nothing". Marking those unavailable is the conservative,
+// honest direction — a "Disponible para ti" badge must not over-promise. The
+// same applies to credentials that genuinely need issuer-gated data the
+// citizen's identity can't supply (a diploma's "degree").
 func evaluateEligibility(configs []backend.CredentialConfig, claims map[string]string) []eligibilityResult {
+	byNorm := normalizeClaims(claims)
 	out := make([]eligibilityResult, 0, len(configs))
 	for _, c := range configs {
-		filled := identityPrefill(c.Claims, claims)
 		var missing []string
 		for _, name := range c.Claims {
-			if _, ok := filled[name]; !ok {
+			if _, ok := resolveClaim(name, byNorm); !ok {
 				missing = append(missing, name)
 			}
 		}
 		out = append(out, eligibilityResult{
 			ID:            c.ID,
-			Available:     len(missing) == 0,
+			Available:     len(c.Claims) > 0 && len(missing) == 0,
 			MissingClaims: missing,
 		})
 	}

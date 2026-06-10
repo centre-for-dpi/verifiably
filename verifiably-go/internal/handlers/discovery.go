@@ -1,12 +1,45 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 )
+
+// issuerMetaTTL bounds how long the public issuer-metadata response is memoized.
+// Short enough that a newly-saved schema appears quickly; long enough that a
+// burst of wallet discovery requests doesn't fan out to a per-vendor schema
+// fetch each time.
+const issuerMetaTTL = 60 * time.Second
+
+// cachedIssuerMetadata returns this member's OpenID4VCI metadata, memoized for
+// issuerMetaTTL. Only the public (unowned) view is cached — callers that need
+// an owner-scoped view must call h.Adapter.GetIssuerMetadata directly. Errors
+// are not cached (they're cheap and may be transient).
+func (h *H) cachedIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+	h.issuerMetaMu.Lock()
+	if h.issuerMetaOK && time.Since(h.issuerMetaAt) < issuerMetaTTL {
+		v := h.issuerMetaVal
+		h.issuerMetaMu.Unlock()
+		return v, nil
+	}
+	h.issuerMetaMu.Unlock()
+
+	meta, err := h.Adapter.GetIssuerMetadata(ctx)
+	if err != nil {
+		return backend.IssuerMetadata{}, err
+	}
+	h.issuerMetaMu.Lock()
+	h.issuerMetaVal = meta
+	h.issuerMetaAt = time.Now()
+	h.issuerMetaOK = true
+	h.issuerMetaMu.Unlock()
+	return meta, nil
+}
 
 // ServeIssuerMetadata handles GET /.well-known/openid-credential-issuer.
 //
@@ -27,7 +60,7 @@ func (h *H) ServeIssuerMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta, err := h.Adapter.GetIssuerMetadata(r.Context())
+	meta, err := h.cachedIssuerMetadata(r.Context())
 	if err != nil {
 		// A DPG that doesn't issue (verifier-only / stub) returns
 		// ErrNotSupported — surface that as 404 so a wallet treats this member

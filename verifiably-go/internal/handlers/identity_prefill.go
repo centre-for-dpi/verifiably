@@ -18,6 +18,24 @@ func identityPrefill(fields []string, claims map[string]string) map[string]strin
 	if len(fields) == 0 || len(claims) == 0 {
 		return nil
 	}
+	byNorm := normalizeClaims(claims)
+	out := map[string]string{}
+	for _, f := range fields {
+		if v, ok := resolveClaim(f, byNorm); ok {
+			out[f] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// normalizeClaims indexes a citizen's claims by their normalized key, dropping
+// empty values. Build it ONCE and reuse it across many field lookups — callers
+// matching a list of fields (eligibility over a catalog) must not rebuild it
+// per field/credential.
+func normalizeClaims(claims map[string]string) map[string]string {
 	byNorm := make(map[string]string, len(claims))
 	for k, v := range claims {
 		if v == "" {
@@ -25,24 +43,24 @@ func identityPrefill(fields []string, claims map[string]string) map[string]strin
 		}
 		byNorm[normIdentityKey(k)] = v
 	}
-	out := map[string]string{}
-	for _, f := range fields {
-		nf := normIdentityKey(f)
-		if v, ok := byNorm[nf]; ok {
-			out[f] = v
-			continue
-		}
-		for _, cand := range identityAliases[nf] {
-			if v, ok := byNorm[cand]; ok {
-				out[f] = v
-				break
-			}
+	return byNorm
+}
+
+// resolveClaim finds the value for a schema field name in a normalized claim
+// index, trying a direct normalized match first, then the alias table. This is
+// the single source of truth for field↔claim matching, shared by prefill and
+// eligibility so the two never drift.
+func resolveClaim(field string, byNorm map[string]string) (string, bool) {
+	nf := normIdentityKey(field)
+	if v, ok := byNorm[nf]; ok {
+		return v, true
+	}
+	for _, cand := range identityAliases[nf] {
+		if v, ok := byNorm[cand]; ok {
+			return v, true
 		}
 	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return "", false
 }
 
 // identityAliases maps a normalized schema-field key to the ordered list of

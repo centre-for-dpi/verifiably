@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/auth"
@@ -135,6 +136,16 @@ type H struct {
 	// GET /api/v1/discovery/credentials. nil disables that endpoint (it returns
 	// an empty catalog). Wired at startup in hub mode by cmd/server/main.go.
 	CredentialCache credentialcache.Cache
+
+	// issuerMeta* memoize this member's own OpenID4VCI metadata for the public
+	// GET /.well-known/openid-credential-issuer endpoint, so wallets hammering
+	// it don't trigger a fresh per-vendor schema fetch on every request. The
+	// cached value is the unowned/public view (no issuer identity in context);
+	// owner-scoped callers (eligibility) bypass it. See cachedIssuerMetadata.
+	issuerMetaMu  sync.Mutex
+	issuerMetaVal backend.IssuerMetadata
+	issuerMetaAt  time.Time
+	issuerMetaOK  bool
 
 	// VerificationLog records completed verification events for ecosystem
 	// analytics (Fase 6). PostgreSQL-backed in Hub mode; nil disables logging
