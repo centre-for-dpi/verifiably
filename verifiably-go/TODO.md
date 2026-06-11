@@ -586,14 +586,14 @@
   lib), consistent with the trust-registry signer. Tests: `oidc/jwks_test.go` (RS256/ES256 valid,
   tampered sig, expired, wrong issuer, wrong key) + `eligibility_test.go` (verified claims / 401).
 
-- [ ] **[FEAT] Self-service issuance flow + `cnf` (auth_code activation, step c+d)**
-  The remaining UI half: an authenticated citizen picks a credential they're eligible for and
-  issues it to themselves, with `HolderDID` populated from their verified token `sub` (the walt.id
-  builder already emits `credentialSubject.id`). The `cnf` key binding is performed by the DPG
+- [x] **[FEAT] Self-service issuance flow + `cnf` (auth_code activation, step c+d)** ✓ 2026-06-11
+  `POST /api/v1/credentials/self-issue` — an authenticated citizen presents their OIDC id_token;
+  verifiably-go verifies it (JWKS), re-checks eligibility via claims-coverage, sets `HolderDID`
+  from token `sub`, prefills subject data from verified claims only, and returns a pre-auth offer
+  URI the wallet hands to its OID4VCI receive flow. The `cnf` key binding is performed by the DPG
   (walt.id/CREDEBL) from the wallet's proof during the OID4VCI credential request — verifiably-go
-  is not in that exchange — so our part is populating `HolderDID`, not minting `cnf`. The "look it
-  up in the organismo's registry" step stays out until a real citizen-data source exists (see the
-  eligibility design note). `internal/handlers/` (new self-service handler + templates).
+  is not in that exchange. Tests cover success, bad/missing token, not-eligible, config-not-found.
+  `internal/handlers/self_issue.go` + `internal/handlers/self_issue_test.go`.
 
 ### P3 — Nivel 3: VC-in VC-out (future — bootstrap dependency)
 

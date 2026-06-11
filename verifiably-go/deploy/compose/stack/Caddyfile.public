@@ -4,10 +4,15 @@
 # instead — see docs/deploy.md § Per-subdomain deployment.
 
 {
-	email ysaias@cdpi.dev
+	email isaiasalvarez@gmail.com
 }
 
 walt-issuer.verifiably.ysalabs.work {
+	handle /.well-known/did.json {
+		header Content-Type "application/json"
+		header Access-Control-Allow-Origin "*"
+		respond `{"@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/suites/jws-2020/v1"], "id": "did:web:walt-issuer.verifiably.ysalabs.work", "verificationMethod": [{"id": "did:web:walt-issuer.verifiably.ysalabs.work#key-1", "type": "JsonWebKey2020", "controller": "did:web:walt-issuer.verifiably.ysalabs.work", "publicKeyJwk": {"kty": "EC", "crv": "P-256", "kid": "QhLpN-Wvio-wRDow3ZMuocNu2VhwnF8Q3T1U_NN12bg", "x": "vUn4XfHXuXrst6bXLeZKMJtQCgoqAWnT3-X1tyy7ax4", "y": "08hb-w2V41VTEQP9yyabHNnXg5hd7JCZGxg8Eva0950"}}], "assertionMethod": ["did:web:walt-issuer.verifiably.ysalabs.work#key-1"], "authentication": ["did:web:walt-issuer.verifiably.ysalabs.work#key-1"]}` 200
+	}
 	reverse_proxy issuer-api:7002
 }
 
@@ -28,6 +33,11 @@ inji-certify-preauth.verifiably.ysalabs.work {
 }
 
 inji-verify.verifiably.ysalabs.work {
+	handle /v1/verify/.well-known/did.json {
+		header Content-Type "application/did+ld+json"
+		header Access-Control-Allow-Origin "*"
+		respond `{"@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/suites/ed25519-2020/v1"], "id": "did:web:inji-verify.verifiably.ysalabs.work:v1:verify", "verificationMethod": [{"id": "did:web:inji-verify.verifiably.ysalabs.work:v1:verify#key-0", "type": "Ed25519VerificationKey2020", "controller": "did:web:inji-verify.verifiably.ysalabs.work:v1:verify", "publicKeyMultibase": "z6MkkzruJN9axHYvD6xjym3FrMiPTGaZKuL9LFtt8bQMcEvC"}], "authentication": ["did:web:inji-verify.verifiably.ysalabs.work:v1:verify#key-0"]}` 200
+	}
 	reverse_proxy inji-verify-service:8080
 }
 
