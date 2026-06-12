@@ -1058,6 +1058,39 @@ JSEOF
   docker exec --user root credebl-verification node //tmp/patch_verif_qr.js
 }
 
+# _credebl_patch_agent_service_wallet_provision patches agent-service to not
+# crash when walletProvision is called on a restart and the wallet already exists.
+# CREDEBL calls walletProvision unconditionally on every bootstrap(); if the
+# Credo wallet already exists the call throws "Your wallet is already been created"
+# which propagates out of bootstrap() and kills the process — causing a crash loop.
+# Fix: catch that specific error inside walletProvision and return instead of
+# re-throwing, so the service starts normally on subsequent restarts.
+_credebl_patch_agent_service_wallet_provision() {
+  local patch_script
+  patch_script="$(mktemp /tmp/patch_agent_wp_XXXXXX.js)"
+  cat > "$patch_script" << 'JSEOF'
+const fs = require('fs');
+const path = '/app/dist/apps/agent-service/main.js';
+let content = fs.readFileSync(path, 'utf8');
+const GUARD = 'PATCH13: wallet-already-exists skip re-throw';
+if (content.includes(GUARD)) { process.stdout.write('already patched\n'); process.exit(0); }
+
+// walletProvision (line ~4548) catches errors from provisionWallet, calls
+// handleErrorOnWalletProvision (which logs the "already been created" message),
+// then unconditionally re-throws — crashing the process on every restart.
+// Fix: inject an early-return before the throw when the error is "already exists".
+const target = 'this.handleErrorOnWalletProvision(agentSpinupDto, error, agentProcess);\n            throw new microservices_1.RpcException';
+if (!content.includes(target)) { process.stderr.write('ERROR: patch target not found in agent-service/main.js\n'); process.exit(1); }
+const replacement = 'this.handleErrorOnWalletProvision(agentSpinupDto, error, agentProcess);\n            if ((error && (error.message || error.error || String(error)).toLowerCase().includes(\'already\'))) { /* ' + GUARD + ' */ return { agentSpinupStatus: 2 }; }\n            throw new microservices_1.RpcException';
+content = content.replace(target, replacement);
+fs.writeFileSync(path, content);
+process.stdout.write('patched\n');
+JSEOF
+  docker cp "$patch_script" credebl-agent-service:/tmp/patch_agent_wp.js
+  rm -f "$patch_script"
+  docker exec --user root credebl-agent-service node //tmp/patch_agent_wp.js
+}
+
 _credebl_patch_agent_service_create_tenant() {
   local patch_script
   patch_script="$(mktemp /tmp/patch_agent_ct_XXXXXX.js)"
@@ -1400,6 +1433,8 @@ apply_credebl_patches() {
   _credebl_patch_agent_service_create_tenant
   echo -n "  [11/14] Agent-service normalizeUrlWithProtocol (http for Credo): "
   _credebl_patch_agent_service_normalize_url
+  echo -n "  [11b/14] Agent-service walletProvision (skip re-throw when wallet exists): "
+  _credebl_patch_agent_service_wallet_provision
   docker restart credebl-agent-service >/dev/null
 
   echo -n "  [12/14] Agent-provisioning docker_start_agent.sh (waltid_default network): "
