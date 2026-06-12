@@ -109,13 +109,15 @@ start_container() {
   # MSYS_NO_PATHCONV=1 prevents Git Bash from converting Unix paths like
   # /var/run/docker.sock to C:\Program Files\Git\var\run\docker.sock.
   # Docker Desktop on Windows handles MSYS-style paths (/c/Users/...) natively.
+  #
+  # No --health-cmd: the distroless/static image has no /bin/sh or wget, and
+  # 'docker run --health-cmd' always wraps the command in /bin/sh -c, so any
+  # probe fails with "stat /bin/sh: no such file or directory" and the
+  # container is reported unhealthy even though the app is fine. The app
+  # exposes /healthz on :8080 — probe it from the host or a sidecar instead.
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
-    --health-cmd="wget -qO- http://localhost:8080/healthz || exit 1" \
-    --health-interval=15s \
-    --health-timeout=5s \
-    --health-retries=3 \
     --network "${COMPOSE_PROJECT}_default" \
     --add-host=host.docker.internal:host-gateway \
     "${group_add_args[@]}" \
@@ -146,6 +148,7 @@ start_container() {
     ${VERIFIABLY_LANDING_ROLES:+-e VERIFIABLY_LANDING_ROLES="$VERIFIABLY_LANDING_ROLES"} \
     ${VERIFIABLY_SESSION_SECRET:+-e VERIFIABLY_SESSION_SECRET="$VERIFIABLY_SESSION_SECRET"} \
     ${VERIFIABLY_API_KEYS:+-e VERIFIABLY_API_KEYS="$VERIFIABLY_API_KEYS"} \
+    ${VERIFIABLY_WALTID_SCHEMA_ALLOWLIST:+-e VERIFIABLY_WALTID_SCHEMA_ALLOWLIST="$VERIFIABLY_WALTID_SCHEMA_ALLOWLIST"} \
     ${CREDEBL_EMAIL:+-e CREDEBL_EMAIL="$CREDEBL_EMAIL"} \
     ${CREDEBL_PASSWORD:+-e CREDEBL_PASSWORD="$CREDEBL_PASSWORD"} \
     ${CREDEBL_CRYPTO_PRIVATE_KEY:+-e CREDEBL_CRYPTO_PRIVATE_KEY="$CREDEBL_CRYPTO_PRIVATE_KEY"} \
