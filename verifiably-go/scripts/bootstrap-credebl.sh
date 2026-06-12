@@ -246,7 +246,7 @@ write_credebl_agent_runtime_env() {
   local _agent_http_url="$_ip_http_url"
   local _agent_ws_url="$_ip_ws_url"
   local _public_base=""
-  if [[ -n "$VERIFIABLY_PUBLIC_DOMAIN" ]]; then
+  if [[ -n "${VERIFIABLY_PUBLIC_DOMAIN:-}" ]]; then
     local _cslug
     _cslug=$(resolve_slug "credebl" 2>/dev/null || echo "credebl")
     if [[ -n "$_cslug" ]]; then
@@ -275,7 +275,7 @@ write_credebl_agent_runtime_env() {
   # In domain mode the agent communicates over HTTPS, so insecure URLs are not
   # required and should be disabled for security.
   local _allow_insecure="true"
-  [[ -n "$VERIFIABLY_PUBLIC_DOMAIN" ]] && _allow_insecure="false"
+  [[ -n "${VERIFIABLY_PUBLIC_DOMAIN:-}" ]] && _allow_insecure="false"
 
   cat > "$base/agent.env" <<EOF
 LEDGER_URL=${_ledger_url}
