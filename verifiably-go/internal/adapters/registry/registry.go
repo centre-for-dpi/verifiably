@@ -314,10 +314,26 @@ func (r *Registry) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadat
 	for v := range r.issuers {
 		vendors = append(vendors, v)
 	}
+	custom := make([]vctypes.Schema, 0, len(r.customSchemas))
+	for _, s := range r.customSchemas {
+		custom = append(custom, s)
+	}
 	r.mu.RUnlock()
 
 	var out backend.IssuerMetadata
 	seen := map[string]struct{}{}
+
+	// Custom schemas take precedence: add them first so vendor duplicates are
+	// dropped by the seen-key check below (not the other way around).
+	for _, c := range backend.CredentialConfigsFromSchemas(custom) {
+		key := c.ID + "|" + c.Format
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out.CredentialsSupported = append(out.CredentialsSupported, c)
+	}
+
 	for _, v := range vendors {
 		ad, _ := r.issuerFor(v)
 		if ad == nil {

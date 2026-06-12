@@ -99,3 +99,65 @@ func TestRegistry_NoRaceOnCustomSchemas(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// metaStub is a stub adapter that returns a fixed IssuerMetadata, used to
+// verify that GetIssuerMetadata correctly merges vendor configs.
+type metaStub struct {
+	stub
+	meta backend.IssuerMetadata
+}
+
+func (m metaStub) GetIssuerMetadata(_ context.Context) (backend.IssuerMetadata, error) {
+	return m.meta, nil
+}
+
+// TestRegistry_GetIssuerMetadata_IncludesCustomSchemas pins that custom schemas
+// added via SaveCustomSchema appear in the GetIssuerMetadata response, that
+// vendor configs are also included, and that a custom schema wins over a
+// vendor duplicate (same id+format).
+func TestRegistry_GetIssuerMetadata_IncludesCustomSchemas(t *testing.T) {
+	ctx := context.Background()
+	r := registry.New()
+
+	vendorConfig := backend.CredentialConfig{ID: "VendorCred", Format: "jwt_vc_json", Display: "Vendor Credential"}
+	sharedConfig := backend.CredentialConfig{ID: "SharedCred", Format: "vc+sd-jwt", Display: "Shared (vendor copy)"}
+	r.Register("vendor", vctypes.DPG{Vendor: "vendor"}, []string{"issuer"}, metaStub{
+		meta: backend.IssuerMetadata{
+			CredentialsSupported: []backend.CredentialConfig{vendorConfig, sharedConfig},
+		},
+	})
+
+	customOnly := vctypes.Schema{ID: "CustomOnlyCred", Name: "Custom Only", Std: "sd_jwt_vc", Custom: true, DPGs: []string{"vendor"}}
+	sharedCustom := vctypes.Schema{ID: "SharedCred", Name: "Shared (custom wins)", Std: "sd_jwt_vc", Custom: true, DPGs: []string{"vendor"}}
+
+	if err := r.SaveCustomSchema(ctx, customOnly); err != nil {
+		t.Fatalf("SaveCustomSchema customOnly: %v", err)
+	}
+	if err := r.SaveCustomSchema(ctx, sharedCustom); err != nil {
+		t.Fatalf("SaveCustomSchema sharedCustom: %v", err)
+	}
+
+	meta, err := r.GetIssuerMetadata(ctx)
+	if err != nil {
+		t.Fatalf("GetIssuerMetadata: %v", err)
+	}
+
+	byID := map[string]backend.CredentialConfig{}
+	for _, c := range meta.CredentialsSupported {
+		byID[c.ID] = c
+	}
+
+	if _, ok := byID["CustomOnlyCred"]; !ok {
+		t.Error("custom-only schema missing from GetIssuerMetadata")
+	}
+	if _, ok := byID["VendorCred"]; !ok {
+		t.Error("vendor-only config missing from GetIssuerMetadata")
+	}
+	shared, ok := byID["SharedCred"]
+	if !ok {
+		t.Fatal("shared id missing from GetIssuerMetadata")
+	}
+	if shared.Display != "Shared (custom wins)" {
+		t.Errorf("shared id: got display %q, want custom to win (\"Shared (custom wins)\")", shared.Display)
+	}
+}
