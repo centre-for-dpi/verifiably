@@ -240,17 +240,18 @@ func (p *Provider) checkIssuer(claims map[string]json.RawMessage) error {
 // tokens.
 const nbfLeewaySeconds = 60
 
-// checkTemporalAudience validates `exp`, `nbf` and `aud`. It runs only after the
-// signature is verified.
+// checkTemporalAudience validates `exp`, `nbf`, and `aud`. It runs only after
+// the signature is verified.
 //
 //   - exp: reject once expired (no leeway).
 //   - nbf: reject a token that becomes valid more than nbfLeewaySeconds in the
 //     future (clock-skew tolerant).
-//   - aud: when the token carries an audience AND this provider has a client id,
-//     require the client id to be among the audiences. This prevents accepting a
-//     token the IdP minted for a DIFFERENT relying party. Tokens without `aud`
-//     (common for some access tokens) are allowed — issuer + signature already
-//     bind them to this provider.
+//   - aud: when this provider has a ClientID AND the token carries an `aud`
+//     claim, the ClientID must appear in the audience. This rejects tokens minted
+//     by the same IdP for a different relying party (RFC 7519 §4.1.3, OIDC Core
+//     §3.1.3.7). Tokens without `aud` are allowed — issuer + signature bind them
+//     to this provider. For Keycloak access_tokens to pass this check, configure
+//     an "Audience" client-scope mapper that adds the clientId to `aud`.
 func (p *Provider) checkTemporalAudience(claims map[string]json.RawMessage) error {
 	now := time.Now().Unix()
 	if exp, ok := decodeInt(claims, "exp"); ok && exp > 0 && now >= exp {

@@ -212,7 +212,7 @@ func TestVerifyToken_AudienceEnforcedWhenPresent(t *testing.T) {
 
 	base := map[string]any{"iss": srv.URL, "sub": "u", "exp": time.Now().Add(time.Hour).Unix()}
 
-	// aud naming a different relying party → rejected.
+	// aud naming a different relying party → rejected (audience confusion attack).
 	wrong := signRS256(t, key, "k1", merge(base, map[string]any{"aud": "other-client"}))
 	if _, err := p.VerifyToken(context.Background(), wrong); err == nil {
 		t.Error("expected reject when aud excludes our client id")
@@ -224,8 +224,9 @@ func TestVerifyToken_AudienceEnforcedWhenPresent(t *testing.T) {
 		t.Errorf("aud=client should be accepted: %v", err)
 	}
 
-	// aud (array) including our client → accepted.
-	arr := signRS256(t, key, "k1", merge(base, map[string]any{"aud": []string{"x", "client"}}))
+	// aud (array) including our client alongside other audiences (e.g. Keycloak
+	// access_token after adding an Audience mapper: ["account","client"]) → accepted.
+	arr := signRS256(t, key, "k1", merge(base, map[string]any{"aud": []string{"account", "client"}}))
 	if _, err := p.VerifyToken(context.Background(), arr); err != nil {
 		t.Errorf("aud array including client should be accepted: %v", err)
 	}
