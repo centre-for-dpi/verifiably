@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,8 @@ type fakeTokenProvider struct {
 	claims map[string]string
 	err    error
 }
+
+func (fakeTokenProvider) ID() string { return "fake" }
 
 func (f fakeTokenProvider) VerifyToken(context.Context, string) (map[string]string, error) {
 	return f.claims, f.err
@@ -153,6 +156,58 @@ func TestAPICheckEligibility_BadTokenRejected(t *testing.T) {
 	}))
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401 (body=%s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPICheckEligibility_CitizenAccessToken(t *testing.T) {
+	// Citizen path: access_token in body, no API key. Should evaluate eligibility
+	// against the full (unscoped) catalog using the verified token claims.
+	ad := &testAdapter{schemas: []vctypes.Schema{
+		{ID: "PersonCredential", Std: "w3c_vcdm_2",
+			FieldsSpec: []vctypes.FieldSpec{{Name: "given_name"}}},
+	}}
+	h := apiTestH(ad)
+	reg := auth.NewRegistry()
+	reg.Register(fakeTokenProvider{claims: map[string]string{"given_name": "Ana"}})
+	h.AuthReg = reg
+
+	b, _ := json.Marshal(map[string]any{"access_token": "header.payload.sig"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/credentials/eligible", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	// Deliberately no Authorization header — citizen path.
+
+	rr := httptest.NewRecorder()
+	h.APICheckEligibility(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("citizen path: status = %d, want 200 (body=%s)", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Credentials []eligibilityResult `json:"credentials"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Credentials) != 1 || !resp.Credentials[0].Available {
+		t.Errorf("credentials = %+v, want PersonCredential available", resp.Credentials)
+	}
+}
+
+func TestAPICheckEligibility_CitizenBadTokenRejected(t *testing.T) {
+	h := apiTestH(&testAdapter{})
+	reg := auth.NewRegistry()
+	reg.Register(fakeTokenProvider{err: errors.New("bad signature")})
+	h.AuthReg = reg
+
+	b, _ := json.Marshal(map[string]any{"access_token": "x.y.z"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/credentials/eligible", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	h.APICheckEligibility(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("citizen bad token: status = %d, want 401", rr.Code)
 	}
 }
 

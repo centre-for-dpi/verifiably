@@ -98,6 +98,33 @@ func TestAPISelfIssue_Success(t *testing.T) {
 	}
 }
 
+// TestAPISelfIssue_AccessToken pins that the wallet can send an access_token
+// instead of an id_token — this is the preferred path since the wallet reliably
+// refreshes the access_token but Keycloak may not return a new id_token in
+// refresh responses.
+func TestAPISelfIssue_AccessToken(t *testing.T) {
+	h := selfIssueH(t, personSchemaAdapter(), map[string]string{
+		"sub": "citizen-456", "given_name": "Luis", "family_name": "García",
+	}, nil)
+
+	rr := httptest.NewRecorder()
+	h.APISelfIssue(rr, selfIssuePOST(t, map[string]any{
+		"access_token":                "h.p.s",
+		"credential_configuration_id": "PersonCredential",
+	}))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("access_token path: status = %d, want 200 (body=%s)", rr.Code, rr.Body.String())
+	}
+	var resp selfIssueResult
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OfferURI == "" {
+		t.Error("offer_uri should be present")
+	}
+}
+
 func TestAPISelfIssue_NoToken(t *testing.T) {
 	h := selfIssueH(t, personSchemaAdapter(), map[string]string{"sub": "x"}, nil)
 	rr := httptest.NewRecorder()

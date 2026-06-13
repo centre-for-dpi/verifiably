@@ -15,10 +15,13 @@ import (
 
 // selfIssueRequest is the body of POST /api/v1/credentials/self-issue.
 type selfIssueRequest struct {
-	// IDToken is the citizen's OIDC id_token. It is verified against the
-	// configured providers' JWKS and is the ONLY credential — there is no API
-	// key on this endpoint, the citizen's verified identity is the authZ.
-	IDToken string `json:"id_token"`
+	// IDToken is the citizen's OIDC id_token (legacy field — prefer AccessToken).
+	IDToken string `json:"id_token,omitempty"`
+	// AccessToken is the citizen's OIDC access_token. Preferred over IDToken
+	// because the wallet reliably refreshes the access_token on every
+	// refreshUser() call, whereas Keycloak may not return a new id_token in
+	// refresh responses. Both are verified against the same JWKS.
+	AccessToken string `json:"access_token,omitempty"`
 	// CredentialConfigurationID is the OID4VCI configuration the citizen picked
 	// from the discovery catalog (e.g. "BankId_jwt_vc_json" or a bare schema id).
 	CredentialConfigurationID string `json:"credential_configuration_id"`
@@ -67,8 +70,14 @@ func (h *H) APISelfIssue(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
 	}
-	if body.IDToken == "" {
-		apiError(w, http.StatusUnauthorized, "id_token required")
+	// Accept access_token (preferred, always fresh after refresh) or id_token
+	// (legacy — kept for backwards compatibility with older wallet builds).
+	citizenToken := body.AccessToken
+	if citizenToken == "" {
+		citizenToken = body.IDToken
+	}
+	if citizenToken == "" {
+		apiError(w, http.StatusUnauthorized, "access_token or id_token required")
 		return
 	}
 	if body.CredentialConfigurationID == "" {
@@ -76,9 +85,9 @@ func (h *H) APISelfIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := h.verifyCitizenToken(r.Context(), body.IDToken)
+	claims, err := h.verifyCitizenToken(r.Context(), citizenToken)
 	if err != nil {
-		apiError(w, http.StatusUnauthorized, "id_token verification failed")
+		apiError(w, http.StatusUnauthorized, "token verification failed")
 		return
 	}
 	holderDID := strings.TrimSpace(claims["sub"])
@@ -115,6 +124,10 @@ func (h *H) APISelfIssue(w http.ResponseWriter, r *http.Request) {
 		if len(elig) > 0 {
 			missing = elig[0].MissingClaims
 		}
+		slog.Warn("api: self-issue eligibility failed — token missing claims",
+			"config", body.CredentialConfigurationID,
+			"missing_claims", missing,
+		)
 		apiJSON(w, http.StatusForbidden, map[string]any{
 			"error":          "not eligible: your identity does not cover this credential's claims",
 			"missing_claims": missing,
