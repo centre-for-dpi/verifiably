@@ -302,55 +302,29 @@ func (r *Registry) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes
 	return append(vendorSchemas, custom...), nil
 }
 
-// GetIssuerMetadata aggregates the credential configurations advertised by
-// every issuer DPG into one member-level catalog. Like ListAllSchemas it skips
-// (rather than fails on) DPGs that error or don't issue — a verifier-only or
-// warming-up DPG shouldn't blank out the whole member's discovery response.
-// Configurations are de-duplicated by id+format across vendors. Endpoint URLs
-// are left empty for the HTTP handler to fill from the request's public base.
-func (r *Registry) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+// GetIssuerMetadata returns the credential configurations for schemas that were
+// created by an authenticated identity (OwnerKey with "keycloak|" prefix or
+// another provider prefix). Anonymous session schemas (OwnerKey "session-…")
+// are test/demo artifacts and must not appear in the public discovery catalog.
+// Schemas with an empty OwnerKey (created via admin/CLI) are always included.
+// Endpoint URLs are left empty for the HTTP handler to fill from the request's
+// public base.
+func (r *Registry) GetIssuerMetadata(_ context.Context) (backend.IssuerMetadata, error) {
 	r.mu.RLock()
-	vendors := make([]string, 0, len(r.issuers))
-	for v := range r.issuers {
-		vendors = append(vendors, v)
-	}
 	custom := make([]vctypes.Schema, 0, len(r.customSchemas))
 	for _, s := range r.customSchemas {
+		if strings.HasPrefix(s.OwnerKey, "session-") {
+			continue
+		}
 		custom = append(custom, s)
 	}
 	r.mu.RUnlock()
 
-	var out backend.IssuerMetadata
-	seen := map[string]struct{}{}
-
-	// Custom schemas take precedence: add them first so vendor duplicates are
-	// dropped by the seen-key check below (not the other way around).
-	for _, c := range backend.CredentialConfigsFromSchemas(custom) {
-		key := c.ID + "|" + c.Format
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
-		out.CredentialsSupported = append(out.CredentialsSupported, c)
+	out := backend.IssuerMetadata{
+		CredentialsSupported: backend.CredentialConfigsFromSchemas(custom),
 	}
-
-	for _, v := range vendors {
-		ad, _ := r.issuerFor(v)
-		if ad == nil {
-			continue
-		}
-		meta, err := ad.GetIssuerMetadata(ctx)
-		if err != nil {
-			continue
-		}
-		for _, c := range meta.CredentialsSupported {
-			key := c.ID + "|" + c.Format
-			if _, dup := seen[key]; dup {
-				continue
-			}
-			seen[key] = struct{}{}
-			out.CredentialsSupported = append(out.CredentialsSupported, c)
-		}
+	if out.CredentialsSupported == nil {
+		out.CredentialsSupported = []backend.CredentialConfig{}
 	}
 	return out, nil
 }

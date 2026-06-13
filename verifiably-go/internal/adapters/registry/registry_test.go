@@ -111,30 +111,32 @@ func (m metaStub) GetIssuerMetadata(_ context.Context) (backend.IssuerMetadata, 
 	return m.meta, nil
 }
 
-// TestRegistry_GetIssuerMetadata_IncludesCustomSchemas pins that custom schemas
-// added via SaveCustomSchema appear in the GetIssuerMetadata response, that
-// vendor configs are also included, and that a custom schema wins over a
-// vendor duplicate (same id+format).
-func TestRegistry_GetIssuerMetadata_IncludesCustomSchemas(t *testing.T) {
+// TestRegistry_GetIssuerMetadata_OnlyCustomSchemas pins several rules at once:
+//  1. Authenticated schemas (keycloak| owner) appear in discovery.
+//  2. Anonymous session schemas (session- owner) are excluded — they are
+//     test/demo artifacts and must not pollute the public catalog.
+//  3. Schemas with an empty OwnerKey (admin/CLI) are included.
+//  4. Vendor adapter entries (HOCON templates) never appear regardless.
+func TestRegistry_GetIssuerMetadata_OnlyCustomSchemas(t *testing.T) {
 	ctx := context.Background()
 	r := registry.New()
 
-	vendorConfig := backend.CredentialConfig{ID: "VendorCred", Format: "jwt_vc_json", Display: "Vendor Credential"}
-	sharedConfig := backend.CredentialConfig{ID: "SharedCred", Format: "vc+sd-jwt", Display: "Shared (vendor copy)"}
 	r.Register("vendor", vctypes.DPG{Vendor: "vendor"}, []string{"issuer"}, metaStub{
 		meta: backend.IssuerMetadata{
-			CredentialsSupported: []backend.CredentialConfig{vendorConfig, sharedConfig},
+			CredentialsSupported: []backend.CredentialConfig{
+				{ID: "VendorOnlyCred", Format: "jwt_vc_json", Display: "Vendor default — must be excluded"},
+			},
 		},
 	})
 
-	customOnly := vctypes.Schema{ID: "CustomOnlyCred", Name: "Custom Only", Std: "sd_jwt_vc", Custom: true, DPGs: []string{"vendor"}}
-	sharedCustom := vctypes.Schema{ID: "SharedCred", Name: "Shared (custom wins)", Std: "sd_jwt_vc", Custom: true, DPGs: []string{"vendor"}}
+	keycloakSchema := vctypes.Schema{ID: "ProdCred", Name: "Prod", Std: "sd_jwt_vc", Custom: true, OwnerKey: "keycloak|abc123", DPGs: []string{"vendor"}}
+	sessionSchema := vctypes.Schema{ID: "TestCred", Name: "Test", Std: "sd_jwt_vc", Custom: true, OwnerKey: "session-deadbeef", DPGs: []string{"vendor"}}
+	adminSchema := vctypes.Schema{ID: "AdminCred", Name: "Admin", Std: "sd_jwt_vc", Custom: true, OwnerKey: "", DPGs: []string{"vendor"}}
 
-	if err := r.SaveCustomSchema(ctx, customOnly); err != nil {
-		t.Fatalf("SaveCustomSchema customOnly: %v", err)
-	}
-	if err := r.SaveCustomSchema(ctx, sharedCustom); err != nil {
-		t.Fatalf("SaveCustomSchema sharedCustom: %v", err)
+	for _, s := range []vctypes.Schema{keycloakSchema, sessionSchema, adminSchema} {
+		if err := r.SaveCustomSchema(ctx, s); err != nil {
+			t.Fatalf("SaveCustomSchema %s: %v", s.ID, err)
+		}
 	}
 
 	meta, err := r.GetIssuerMetadata(ctx)
@@ -147,17 +149,19 @@ func TestRegistry_GetIssuerMetadata_IncludesCustomSchemas(t *testing.T) {
 		byID[c.ID] = c
 	}
 
-	if _, ok := byID["CustomOnlyCred"]; !ok {
-		t.Error("custom-only schema missing from GetIssuerMetadata")
+	if _, ok := byID["ProdCred"]; !ok {
+		t.Error("keycloak-owned schema must appear in discovery")
 	}
-	if _, ok := byID["VendorCred"]; !ok {
-		t.Error("vendor-only config missing from GetIssuerMetadata")
+	if _, ok := byID["AdminCred"]; !ok {
+		t.Error("admin/CLI schema (empty OwnerKey) must appear in discovery")
 	}
-	shared, ok := byID["SharedCred"]
-	if !ok {
-		t.Fatal("shared id missing from GetIssuerMetadata")
+	if _, ok := byID["TestCred"]; ok {
+		t.Error("session-owned schema must NOT appear in discovery")
 	}
-	if shared.Display != "Shared (custom wins)" {
-		t.Errorf("shared id: got display %q, want custom to win (\"Shared (custom wins)\")", shared.Display)
+	if _, ok := byID["VendorOnlyCred"]; ok {
+		t.Error("vendor adapter credential must NOT appear in discovery")
+	}
+	if got := len(meta.CredentialsSupported); got != 2 {
+		t.Errorf("CredentialsSupported len = %d, want 2 (keycloak + admin schemas only)", got)
 	}
 }
