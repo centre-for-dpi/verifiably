@@ -87,14 +87,23 @@ func (h *H) ServeIssuerMetadata(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(meta)
 }
 
-// ServeCredentialCatalog handles GET /api/v1/discovery/credentials (Hub).
+// ServeCredentialCatalog handles GET /api/v1/discovery/credentials.
 //
-// It returns the federated credential catalog: one entry per trusted member,
-// each carrying the member's attribution and the credentials it advertises at
-// its /.well-known/openid-credential-issuer endpoint. This is what cdpi-wallet
-// calls once to populate its "Descubrir" screen. Served from the in-memory
-// cache (TTL refresh) so it never blocks on upstream members. Public + CORS,
-// like the other federation discovery endpoints.
+// In hub mode (CredentialCache set): returns the pre-fetched federated catalog
+// — one entry per trusted member, populated by the background aggregator.
+//
+// In standalone issuer mode (CredentialCache nil): returns a single-entry
+// catalog for this member itself, derived from its own
+// /.well-known/openid-credential-issuer. This allows a wallet to use the same
+// endpoint for discovery regardless of whether the deployment is a federation
+// hub or a single issuer.
+//
+// Only credentials that carry a national-ID-equivalent claim are included:
+// these are the only ones a citizen can self-issue from their verified identity.
+// Credentials requiring issuer-gated data (e.g. a diploma's "degree") are
+// omitted here; the operator API path serves those separately.
+//
+// Public + CORS, like the other federation discovery endpoints.
 func (h *H) ServeCredentialCatalog(w http.ResponseWriter, r *http.Request) {
 	setCORSHeaders(w)
 	if r.Method == http.MethodOptions {
@@ -102,13 +111,65 @@ func (h *H) ServeCredentialCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	issuers := []backend.IssuerCatalogEntry{}
+	var issuers []backend.IssuerCatalogEntry
 	if h.CredentialCache != nil {
 		if c := h.CredentialCache.Catalog(); c != nil {
 			issuers = c
 		}
+	} else {
+		// Standalone issuer: serve only this member's own catalog.
+		meta, err := h.cachedIssuerMetadata(r.Context())
+		if err == nil && len(meta.CredentialsSupported) > 0 {
+			issuers = []backend.IssuerCatalogEntry{{
+				ServiceEndpoint: publicBase(r),
+				Credentials:     meta.CredentialsSupported,
+			}}
+		}
 	}
+	if issuers == nil {
+		issuers = []backend.IssuerCatalogEntry{}
+	}
+
+	issuers = filterCitizenBindingCredentials(issuers)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"issuers": issuers})
+}
+
+// filterCitizenBindingCredentials removes credentials that do not carry a
+// national-ID-equivalent claim, and removes issuers that have no remaining
+// credentials after filtering. This keeps the citizen discovery catalog honest:
+// every credential shown can actually be self-issued from a verified national
+// identity, so the wallet never shows an "Obtener" button that will always fail.
+func filterCitizenBindingCredentials(issuers []backend.IssuerCatalogEntry) []backend.IssuerCatalogEntry {
+	// Mock token with nationalid so resolveClaim can do alias-aware matching.
+	mockToken := map[string]string{"nationalid": "1"}
+	out := make([]backend.IssuerCatalogEntry, 0, len(issuers))
+	for _, iss := range issuers {
+		var creds []backend.CredentialConfig
+		for _, c := range iss.Credentials {
+			if credentialHasNationalIDClaim(c, mockToken) {
+				creds = append(creds, c)
+			}
+		}
+		if len(creds) > 0 {
+			iss.Credentials = creds
+			out = append(out, iss)
+		}
+	}
+	return out
+}
+
+// credentialHasNationalIDClaim reports whether any of the credential's declared
+// claim names resolves to a national-ID-equivalent value when matched against a
+// token that carries nationalid. Uses resolveClaim so the alias table in
+// identity_prefill.go (cedula, dni, documentnumber, …) is the single source of
+// truth — this check and the eligibility check never drift.
+func credentialHasNationalIDClaim(c backend.CredentialConfig, mockToken map[string]string) bool {
+	for _, name := range c.Claims {
+		if _, ok := resolveClaim(name, mockToken); ok {
+			return true
+		}
+	}
+	return false
 }

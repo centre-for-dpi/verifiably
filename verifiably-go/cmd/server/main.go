@@ -613,6 +613,14 @@ func main() {
 		// for a credential they're eligible for (id_token auth, HolderDID=sub).
 		mux.HandleFunc("POST /api/v1/credentials/self-issue", h.APISelfIssue)
 		mux.HandleFunc("OPTIONS /api/v1/credentials/self-issue", h.APISelfIssue)
+		// Credential discovery catalog — standalone issuer mode: returns this
+		// member's own catalog so the wallet's "Descubrir" tab works without a
+		// hub. Skipped when hub is also active to avoid duplicate registration
+		// (hub block registers the same routes with a CredentialCache wired in).
+		if !activeRoles.Has(roles.Hub) {
+			mux.HandleFunc("GET /api/v1/discovery/credentials", h.ServeCredentialCatalog)
+			mux.HandleFunc("OPTIONS /api/v1/discovery/credentials", h.ServeCredentialCatalog)
+		}
 		mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
 		mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
 		mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)

@@ -60,7 +60,9 @@ func TestServeCredentialCatalog_Success(t *testing.T) {
 	h := apiTestH(&testAdapter{})
 	h.CredentialCache = fakeCatalog{entries: []backend.IssuerCatalogEntry{
 		{DID: "did:a", Name: "Registro Civil", ServiceEndpoint: "https://a.gt",
-			Credentials: []backend.CredentialConfig{{ID: "PersonCredential", Format: "jwt_vc_json"}}},
+			Credentials: []backend.CredentialConfig{
+				{ID: "PersonCredential", Format: "jwt_vc_json", Claims: []string{"national_id", "given_name"}},
+			}},
 	}}
 
 	rr := httptest.NewRecorder()
@@ -94,6 +96,116 @@ func TestServeCredentialCatalog_NilCacheEmptyArray(t *testing.T) {
 	// Must serialize as {"issuers":[]}, never {"issuers":null}.
 	if got := rr.Body.String(); got != "{\"issuers\":[]}\n" {
 		t.Errorf("body = %q, want empty issuers array", got)
+	}
+}
+
+// TestServeCredentialCatalog_StandaloneIssuer pins that a non-hub deployment
+// (CredentialCache nil) still serves its own credential catalog so the wallet's
+// "Descubrir" tab works without a federation hub.
+func TestServeCredentialCatalog_StandaloneIssuer(t *testing.T) {
+	ad := &testAdapter{schemas: []vctypes.Schema{
+		{ID: "PersonCredential", Name: "Person", Std: "sd_jwt_vc",
+			FieldsSpec: []vctypes.FieldSpec{{Name: "national_id"}, {Name: "given_name"}, {Name: "family_name"}}},
+	}}
+	h := apiTestH(ad) // CredentialCache left nil → standalone mode
+
+	rr := httptest.NewRecorder()
+	h.ServeCredentialCatalog(rr, httptest.NewRequest(http.MethodGet, "/api/v1/discovery/credentials", nil))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Issuers []backend.IssuerCatalogEntry `json:"issuers"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v (body=%s)", err, rr.Body.String())
+	}
+	if len(resp.Issuers) != 1 {
+		t.Fatalf("issuers len = %d, want 1 (standalone should return self)", len(resp.Issuers))
+	}
+	entry := resp.Issuers[0]
+	if entry.ServiceEndpoint == "" {
+		t.Error("service_endpoint should be set to the request base URL")
+	}
+	if len(entry.Credentials) != 1 || entry.Credentials[0].ID != "PersonCredential" {
+		t.Errorf("credentials = %+v, want PersonCredential", entry.Credentials)
+	}
+}
+
+func TestServeCredentialCatalog_FiltersNonCitizenCredentials(t *testing.T) {
+	// Catalog has two credentials: one with nationalId (should pass), one
+	// without (should be filtered out). The issuer entry itself stays because
+	// it still has one eligible credential.
+	h := apiTestH(&testAdapter{})
+	h.CredentialCache = fakeCatalog{entries: []backend.IssuerCatalogEntry{
+		{DID: "did:a", Name: "RNPN", ServiceEndpoint: "https://a.gt",
+			Credentials: []backend.CredentialConfig{
+				{ID: "RuralId", Claims: []string{"NationalId", "FullName"}},
+				{ID: "Diploma", Claims: []string{"given_name", "degree"}},
+			}},
+	}}
+
+	rr := httptest.NewRecorder()
+	h.ServeCredentialCatalog(rr, httptest.NewRequest(http.MethodGet, "/api/v1/discovery/credentials", nil))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var resp struct {
+		Issuers []backend.IssuerCatalogEntry `json:"issuers"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	if len(resp.Issuers) != 1 {
+		t.Fatalf("issuers = %d, want 1", len(resp.Issuers))
+	}
+	creds := resp.Issuers[0].Credentials
+	if len(creds) != 1 || creds[0].ID != "RuralId" {
+		t.Errorf("credentials = %+v, want only RuralId", creds)
+	}
+}
+
+func TestServeCredentialCatalog_ExcludesIssuerWithNoEligibleCredentials(t *testing.T) {
+	// All credentials in this issuer lack a nationalId claim → issuer excluded.
+	h := apiTestH(&testAdapter{})
+	h.CredentialCache = fakeCatalog{entries: []backend.IssuerCatalogEntry{
+		{DID: "did:b", Name: "University", ServiceEndpoint: "https://b.gt",
+			Credentials: []backend.CredentialConfig{
+				{ID: "Diploma", Claims: []string{"given_name", "degree"}},
+			}},
+	}}
+
+	rr := httptest.NewRecorder()
+	h.ServeCredentialCatalog(rr, httptest.NewRequest(http.MethodGet, "/api/v1/discovery/credentials", nil))
+
+	var resp struct {
+		Issuers []backend.IssuerCatalogEntry `json:"issuers"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	if len(resp.Issuers) != 0 {
+		t.Errorf("issuers = %+v, want empty (no citizen-binding credentials)", resp.Issuers)
+	}
+}
+
+func TestServeCredentialCatalog_AliasedNationalIDClaims(t *testing.T) {
+	// "cedula" and "documentnumber" are aliases for nationalid — they must pass.
+	h := apiTestH(&testAdapter{})
+	h.CredentialCache = fakeCatalog{entries: []backend.IssuerCatalogEntry{
+		{DID: "did:c", Credentials: []backend.CredentialConfig{
+			{ID: "CedulaCredential", Claims: []string{"cedula", "nombre"}},
+			{ID: "DocCredential", Claims: []string{"documentnumber", "given_name"}},
+		}},
+	}}
+
+	rr := httptest.NewRecorder()
+	h.ServeCredentialCatalog(rr, httptest.NewRequest(http.MethodGet, "/api/v1/discovery/credentials", nil))
+
+	var resp struct {
+		Issuers []backend.IssuerCatalogEntry `json:"issuers"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	if len(resp.Issuers) != 1 || len(resp.Issuers[0].Credentials) != 2 {
+		t.Errorf("issuers = %+v, want 1 issuer with 2 credentials (cedula + documentnumber aliases)", resp.Issuers)
 	}
 }
 
