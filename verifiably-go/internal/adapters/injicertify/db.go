@@ -39,18 +39,23 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 		displayOrder = append(displayOrder, f.Name)
 	}
 
+	// NOTE: do NOT add a "description" key here. Although OID4VCI allows it in a
+	// `display` object, Inji Certify v0.14's credential_config display model
+	// can't deserialize a display entry containing `description` — it throws
+	// "IllegalArgumentException: ... cannot be transformed to Json object" while
+	// loading credential_configurations_supported, which poisons the ENTIRE
+	// config load and makes every pre-authorized-data issuance fail with
+	// `unknown_error` (not just the custom schema). Empirically isolated against
+	// inji-certify-preauth:0.14 on 2026-06-18: an otherwise-identical display
+	// WITH `description` fails, WITHOUT it issues fine. The issuer display name
+	// has nowhere to live in Certify's display model, so we drop it here — the
+	// walt.id adapter (catalog.go) still surfaces it via its own display block,
+	// where it is supported.
 	displayEntry := map[string]any{
 		"name":             schema.Name,
 		"locale":           "en",
 		"background_color": "#12107c",
 		"text_color":       "#FFFFFF",
-	}
-	if iss := strings.TrimSpace(schema.IssuerDisplayName); iss != "" {
-		desc := strings.TrimSpace(schema.Desc)
-		if desc == "" || desc == "—" {
-			desc = schema.Name
-		}
-		displayEntry["description"] = desc + " · Issued by " + iss
 	}
 	displayRaw, _ := json.Marshal([]map[string]any{displayEntry})
 
