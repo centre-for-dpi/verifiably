@@ -217,6 +217,15 @@ cmd_up() {
     # http://<PUBLIC_HOST>:3005/authorize which isn't externally reachable
     # in subdomain mode (only Caddy on 443).
     export ESIGNET_BASE_URL=$(url_for esignet "$VERIFIABLY_PUBLIC_HOST" "$ESIGNET_PUBLIC_PORT")
+    # PREAUTH_PUBLIC_URL drives the pre-auth Inji Certify backend's
+    # mosip_certify_domain_url. It MUST be the public subdomain so Certify
+    # (a) advertises public credential_issuer/credential_endpoint/
+    # authorization_servers natively, and (b) accepts an EXTERNAL wallet's
+    # proof JWT — whose `aud` equals the public credential_issuer. Left unset it
+    # defaults to the docker-internal host, and every external wallet's proof
+    # fails with "invalid_proof: Error encountered during proof jwt parsing"
+    # (the aud doesn't match). JWKS stays internal (cluster-local).
+    export PREAUTH_PUBLIC_URL=$(url_for inji-certify-preauth "$VERIFIABLY_PUBLIC_HOST" "${INJI_CERTIFY_PREAUTH_PORT:-8094}")
   fi
 
   # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE

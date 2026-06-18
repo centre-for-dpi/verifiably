@@ -89,16 +89,22 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	if err != nil {
 		return backend.IssueAsPDFResult{}, err
 	}
-	_ = issuerURL // reserved for aud-claim bookkeeping if we tighten later
-
 	// 3. Redeem the pre-auth code for an access token.
 	tok, err := a.redeemPreAuthCode(ctx, code)
 	if err != nil {
 		return backend.IssueAsPDFResult{}, err
 	}
 
-	// 4. Build a proof JWT and POST the credential request.
-	issuerIdentifier := strings.TrimRight(a.cfg.InternalBaseURL, "/")
+	// 4. Build a proof JWT and POST the credential request. The proof `aud` MUST
+	// equal Certify's credential_issuer (mosip_certify_domain_url). issuerURL is
+	// exactly that — the credential_issuer the offer advertised — so it's correct
+	// in BOTH modes: the docker-internal host in legacy host:port mode, and the
+	// public subdomain once PREAUTH_PUBLIC_URL is set. Previously hardcoded to
+	// InternalBaseURL, which broke the PDF path the moment the domain went public.
+	issuerIdentifier := strings.TrimRight(issuerURL, "/")
+	if issuerIdentifier == "" {
+		issuerIdentifier = strings.TrimRight(a.cfg.InternalBaseURL, "/")
+	}
 	if issuerIdentifier == "" {
 		issuerIdentifier = strings.TrimRight(a.cfg.BaseURL, "/")
 	}
