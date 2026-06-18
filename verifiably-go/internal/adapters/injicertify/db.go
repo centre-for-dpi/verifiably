@@ -136,18 +136,18 @@ ON CONFLICT (credential_config_key_id) DO UPDATE SET
 	sd_jwt_claims      = EXCLUDED.sd_jwt_claims,
 	upd_dtimes         = NOW()
 `,
-		schema.ID,   // $1
-		vcTemplate,  // $2
-		sdJwtVct,    // $3 *string → NULL or TEXT
-		context_,    // $4 *string → NULL or TEXT
-		credType,    // $5 *string → NULL or TEXT
-		credFormat,  // $6
-		a.cfg.DB.DIDUrl,  // $7
-		displayRaw,  // $8 JSONB
-		displayOrder, // $9 TEXT[]
-		scope,       // $10
-		credSubject, // $11 []byte → NULL or JSONB
-		sdJwtClaims, // $12 []byte → NULL or JSONB
+		schema.ID,       // $1
+		vcTemplate,      // $2
+		sdJwtVct,        // $3 *string → NULL or TEXT
+		context_,        // $4 *string → NULL or TEXT
+		credType,        // $5 *string → NULL or TEXT
+		credFormat,      // $6
+		a.cfg.DB.DIDUrl, // $7
+		displayRaw,      // $8 JSONB
+		displayOrder,    // $9 TEXT[]
+		scope,           // $10
+		credSubject,     // $11 []byte → NULL or JSONB
+		sdJwtClaims,     // $12 []byte → NULL or JSONB
 	)
 	if err != nil {
 		return fmt.Errorf("injicertify db: upsert credential_config %q: %w", schema.ID, err)
@@ -214,8 +214,35 @@ func buildVCTemplate(schema vctypes.Schema) string {
 		for _, f := range schema.FieldsSpec {
 			sub[f.Name] = "${" + f.Name + "}"
 		}
+		// Inline JSON-LD context for the custom type(s) and credentialSubject
+		// fields, mirroring the schema preview (handlers/schema.go): a @vocab
+		// base plus an explicit term→IRI mapping for every non-standard term
+		// the VC carries. Explicit mappings (not just @vocab) keep it valid
+		// under verifiers that run JSON-LD in safe mode.
+		const vocabBase = "https://vocab.verifiably.local/"
+		terms := map[string]any{"@vocab": vocabBase}
+		for _, t := range types {
+			if t != "VerifiableCredential" {
+				terms[t] = vocabBase + t
+			}
+		}
+		for _, f := range schema.FieldsSpec {
+			terms[f.Name] = vocabBase + f.Name
+		}
 		tmpl = map[string]any{
-			"@context":          []string{"https://www.w3.org/2018/credentials/v1"},
+			// credentials/v1 (core VC terms) + the Ed25519Signature2020 suite
+			// context + the inline custom-term context. Inji Certify signs the
+			// VC verbatim from this template and does NOT inject the suite
+			// context itself, so without it the issued proof's terms
+			// (Ed25519Signature2020 / proofValue / Ed25519VerificationKey2020)
+			// are undefined and a strict JSON-LD wallet fails to verify with
+			// "undefined is not a function". Empirically: the bare credentials/v1
+			// context issues HTTP 200 but the wallet can't hold the credential.
+			"@context": []any{
+				"https://www.w3.org/2018/credentials/v1",
+				"https://w3id.org/security/suites/ed25519-2020/v1",
+				terms,
+			},
 			"issuer":            "${_issuer}",
 			"type":              types,
 			"issuanceDate":      "${validFrom}",

@@ -398,9 +398,12 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      # init-preauth.sh uses ISSUER_DID_DOMAIN to compute the DID:
-      # empty = did:web:certify-preauth-nginx (dev); set = did:web:{domain}
-      # (same as primary in prod — inji_proxy merges both keys into one DID doc).
+      # init-preauth.sh computes the seed did_url from these. PREAUTH_DID_DOMAIN
+      # (set by deploy.sh in subdomain mode = this instance's own public host)
+      # takes precedence so the pre-auth instance gets a PUBLICLY-resolvable
+      # did:web that an external wallet can dereference; it falls back to the
+      # shared ISSUER_DID_DOMAIN, then to did:web:certify-preauth-nginx (dev).
+      PREAUTH_DID_DOMAIN: ${PREAUTH_DID_DOMAIN:-}
       ISSUER_DID_DOMAIN: ${ISSUER_DID_DOMAIN:-}
     volumes:
       - ./inji/certify/init-preauth.sh:/docker-entrypoint-initdb.d/certify_init.sh
@@ -452,9 +455,15 @@ services:
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
       - enable_certify_artifactory=false
       - download_hsm_client=false
-      # In production (ISSUER_DID_DOMAIN set), both primary and preauth use the
-      # same public DID. inji_proxy merges both instances' keys in the DID doc.
-      - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-preauth-nginx}
+      # Issuer DID baked into the did.json (id/controller) and into every VC's
+      # proof verificationMethod. PREAUTH_DID_DOMAIN (deploy.sh, subdomain mode)
+      # makes it a publicly-resolvable did:web at THIS instance's own subdomain,
+      # so an external wallet can dereference it to verify the proof. It is
+      # decoupled from the shared ISSUER_DID_DOMAIN on purpose: moving that var
+      # would also re-point the internal primary auth-code instance onto this
+      # subdomain's did.json (which carries only the pre-auth key) and break it.
+      # Falls back to ISSUER_DID_DOMAIN, then did:web:certify-preauth-nginx (dev).
+      - CERTIFY_ISSUER_DID=did:web:${PREAUTH_DID_DOMAIN:-${ISSUER_DID_DOMAIN:-certify-preauth-nginx}}
       - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Farmer Issuer}
       # Critical difference from the primary inji-certify: the domain URL
       # must be the PUBLIC URL so that JwtProofValidator (Nimbus) accepts

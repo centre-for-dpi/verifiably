@@ -250,6 +250,26 @@ func patchedDidDoc(doc map[string]any, extras []string) {
 		existing[kid] = struct{}{}
 	}
 	doc["verificationMethod"] = methods
+
+	// Normalise assertionMethod / authentication to reference the FULL
+	// verification-method ids (did#kid). Inji Certify's upstream did.json lists
+	// the BARE did (no #fragment) in these relationships, which a strict
+	// verifier (the @digitalbazaar suites walt.id-style wallets use) won't
+	// accept as authorising a proof whose verificationMethod is did#kid — so
+	// the proof check fails even though the key is present. Point both at every
+	// VM id instead. This issuer uses one key for both relationships.
+	vmIDs := make([]any, 0, len(methods))
+	for _, m := range methods {
+		if mm, _ := m.(map[string]any); mm != nil {
+			if id, _ := mm["id"].(string); id != "" {
+				vmIDs = append(vmIDs, id)
+			}
+		}
+	}
+	if len(vmIDs) > 0 {
+		doc["assertionMethod"] = vmIDs
+		doc["authentication"] = vmIDs
+	}
 }
 
 // Seed each observer from its own env-var. Primary gets INJI_PROXY_EXTRA_KIDS

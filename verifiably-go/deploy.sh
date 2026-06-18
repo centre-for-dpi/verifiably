@@ -226,6 +226,19 @@ cmd_up() {
     # fails with "invalid_proof: Error encountered during proof jwt parsing"
     # (the aud doesn't match). JWKS stays internal (cluster-local).
     export PREAUTH_PUBLIC_URL=$(url_for inji-certify-preauth "$VERIFIABLY_PUBLIC_HOST" "${INJI_CERTIFY_PREAUTH_PORT:-8094}")
+    # PREAUTH_DID_DOMAIN is the host portion of PREAUTH_PUBLIC_URL — it makes the
+    # pre-auth instance's issuer DID a PUBLICLY-resolvable did:web at its own
+    # subdomain (did:web:inji-certify-preauth.<domain>), instead of the
+    # docker-internal did:web:certify-preauth-nginx an external wallet can't
+    # resolve. did:web:<host> resolves to https://<host>/.well-known/did.json,
+    # which certify-preauth-nginx serves from the verifiably-go pre-auth proxy
+    # (the pre-auth backend's own key). This is DELIBERATELY decoupled from
+    # ISSUER_DID_DOMAIN (which both Certify instances share): re-pointing the
+    # shared var would also move the INTERNAL primary auth-code instance onto
+    # this subdomain's did.json — which only carries the pre-auth key — and
+    # break the primary's verification. Empty in legacy/port mode → every
+    # consumer below falls back to did:web:certify-preauth-nginx (unchanged).
+    export PREAUTH_DID_DOMAIN=$(printf '%s' "$PREAUTH_PUBLIC_URL" | sed -E 's#^https?://##; s#[:/].*$##')
   fi
 
   # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE
@@ -327,7 +340,7 @@ cmd_up() {
     if docker inspect certify-preauth-postgres --format '{{.State.Status}}' 2>/dev/null | grep -q running; then
       if ! docker exec certify-preauth-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-preauth-postgres missing inji_certify DB — running init-preauth.sql"
-        DID="did:web:${ISSUER_DID_DOMAIN:-certify-preauth-nginx}"
+        DID="did:web:${PREAUTH_DID_DOMAIN:-${ISSUER_DID_DOMAIN:-certify-preauth-nginx}}"
         sed "s|did:web:certify-preauth-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-preauth.sql" \
           | docker exec -i certify-preauth-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify-preauth-backend >/dev/null 2>&1 \
