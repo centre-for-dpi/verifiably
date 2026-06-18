@@ -102,6 +102,21 @@ services:
       CREDEBL_AGENT_API_PORT: ${CREDEBL_AGENT_API_PORT:-8001}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Hairpin NAT fix for COMPOSE-managed containers. An internal container that
+    # must reach a PUBLIC subdomain (e.g. wallet-api resolving an OID4VCI offer
+    # whose credential_offer_uri / credential_issuer is the public pre-auth host)
+    # otherwise routes to the box's own public IP:443 and times out
+    # (ConnectTimeoutException) — the box can't hairpin to itself. Aliasing the
+    # public FQDN onto caddy-public makes Docker's embedded DNS resolve it to
+    # caddy's internal IP, where TLS is terminated and the request is routed to
+    # the backend — exactly like an external client, but staying on the docker
+    # network. Mirrors the verifiably-go --add-host hairpin fix (start-container.sh)
+    # for services compose brings up. Add more public FQDNs here if other internal
+    # containers start calling them by their public name.
+    networks:
+      default:
+        aliases:
+          - "inji-certify-preauth.${VERIFIABLY_PUBLIC_DOMAIN}"
     ports:
       - "80:80"
       - "443:443"
