@@ -1220,6 +1220,67 @@ All user-facing text is translated on the fly when you switch language
 in the top bar — both the static template strings and dynamic text
 coming from DPG responses.
 
+## Credential delivery models
+
+A credential can reach its subject two fundamentally different ways. They are
+**not interchangeable** — different trust models, different consumers, different
+failure modes. Picking the wrong one is behind most "why won't this work in a
+wallet?" confusion.
+
+|          | Bearer / QR-on-PDF | Wallet / OID4VCI |
+| -------- | ------------------ | ---------------- |
+| **Binding**  | bound to a **server-held key the recipient never receives** → bearer (holding the QR = holding the credential) | bound to the **wallet's own key** (holder proves possession) |
+| **Consumer** | a **verifier** scans it (Inji Verify) | the **holder** holds + presents it (OID4VP) |
+| **Good for** | paper / offline / kiosk verification | digital wallet, selective disclosure, presentation |
+
+**Bearer / QR-on-PDF.** The Inji Certify pre-auth *"issue as PDF"* path mints
+the credential entirely server-side: verifiably-go generates a proof-signing
+key, builds a conformant OID4VCI proof, redeems the signed VC, and embeds it
+(PixelPass-encoded) as a QR on a printable A4 page. The credential is bound to
+that server-held key, which the subject **never receives** — so the subject
+cannot perform a holder-bound presentation. A verifier (Inji Verify) trusts it
+by checking the issuer's signature against its `did:web`, not by challenging the
+holder. Possession of the QR *is* the credential, exactly like a paper
+certificate. This is **not** a wallet onboarding mechanism: scanning the QR
+into an OID4VCI wallet does nothing, because the QR is a finished credential,
+not an `openid-credential-offer://`.
+
+**Wallet / OID4VCI.** The subject's wallet generates its own key, signs the
+OID4VCI proof-of-possession, and receives a credential bound to that key. Only
+the wallet can present it (OID4VP) because only it can prove possession of the
+bound key. This is the holder-bound model that enables selective disclosure and
+verifiable presentation — and the one whose cross-stack interop quirks are
+covered under Troubleshooting (walt.id's non-conformant proof + missing import,
+the mobile wallet's `ldp_vc` handling, SD-JWT as the most portable format).
+
+### A middle path: server-custodied keys (hosted wallet)
+
+The bearer model's server-held key does **not** have to be thrown away. If the
+operator *retained* that key in a (web) wallet **on the holder's behalf** — a
+**custodial / hosted wallet** — the credential becomes fully presentable: the
+custodian holds the binding key and builds the OID4VP presentation *for* the
+holder, who only logs in to a web wallet. This blends the two columns above —
+holder-bound crypto, but no device wallet to install. It is worth considering
+because:
+
+- **Zero-install onboarding** — the holder needs only a browser login, not a
+  mobile wallet that may mishandle the issuer's formats.
+- **The custodian signs *conformant* proofs and presentations** — it controls
+  key generation and the OID4VCI/OID4VP crypto, sidestepping the external-wallet
+  interop bugs (e.g. walt.id's `kid`+`jwk` proof rejection, or a wallet that
+  can't present `ldp_vc`).
+- **It is already how walt.id's `wallet-api` works** — it custodies keys
+  server-side (its `keys/{id}/load` even returns the private JWK), so a hosted
+  model is a natural extension of the existing holder service rather than a new
+  component.
+
+The trade-off is **custody**: a hosted wallet is *not* self-sovereign — the
+holder trusts the operator to hold their keys, and portability/recovery become
+the operator's responsibility. It is the classic custodial-vs-self-custody
+choice every wallet ecosystem makes; for workshops, onboarding demos, or
+low-assurance credentials the custodial convenience often wins, while
+high-assurance / long-lived credentials favour a self-custody device wallet.
+
 ## Where to look next
 
 - **[verifiably-go/docs/architecture.md](verifiably-go/docs/architecture.md)**
