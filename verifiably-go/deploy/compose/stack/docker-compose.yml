@@ -444,9 +444,15 @@ services:
   # touching Inji's config. See cmd/inji-preauth-proxy/main.go for the
   # intercept rules. Everything else is a transparent httputil reverse proxy.
   inji-preauth-proxy:
-    # Published image: https://hub.docker.com/r/adammwaniki/inji-preauth-poc
-    # Source: verifiably-go/cmd/inji-preauth-proxy (pinned version keeps
-    # fresh clones reproducible; :latest is also pushed for convenience).
+    # Source: verifiably-go/cmd/inji-preauth-proxy. BUILT FROM SOURCE so the
+    # in-repo fixes (e.g. stripping walt.id's request-injected `display` /
+    # empty `credential_definition` that Inji's CredentialRequest DTO rejects)
+    # are always present — the published adammwaniki/inji-preauth-poc:v0.1.0
+    # predates them. `docker compose up` builds this on a fresh box (the image
+    # tag is absent) and reuses it thereafter; `image:` just names the result.
+    # Re-publish the tag from this source to restore the pull-only model.
+    build:
+      context: ../../../cmd/inji-preauth-proxy
     image: adammwaniki/inji-preauth-poc:v0.1.0
     restart: unless-stopped
     container_name: inji-certify-preauth
