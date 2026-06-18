@@ -445,6 +445,15 @@ cmd_up() {
     _credebl_configure_oid4vci_rewriter \
       || true
 
+    # Re-attach the openid/profile/email login scopes to credebl-client. The
+    # pre-seed realm import set them, but CREDEBL's seed re-imports the realm
+    # and resets credebl-client to openid-only — which makes the Keycloak login
+    # tile fail with invalid_scope (verifiably-go requests openid+profile+email).
+    # Runs last so it isn't clobbered. Idempotent.
+    bold "▶ Re-attaching Keycloak login scopes (post-seed)"
+    ensure_credebl_keycloak_login_scopes \
+      || red "  Keycloak login-scope re-attach failed (login may hit invalid_scope — re-run manually)"
+
     # Re-generate backends.json now that CREDEBL_ISSUER_ID is known.
     # The first call (top of cmd_up) runs before provisioning, so issuerId=""
     # there. This second call writes the final correct value.
@@ -477,6 +486,7 @@ cmd_up() {
   bold "▶ Starting verifiably-go container"
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
+  verify_oidc_discovery
 }
 
 # repair_injiweb_client_redirect_uri ensures the wallet-demo-client row in
@@ -749,9 +759,75 @@ cmd_run() {
     -t "$VERIFIABLY_IMAGE" "$SCRIPT_DIR"
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
+  verify_oidc_discovery
 }
 
 # ---------------------------------------------------------------- helpers
+
+# verify_oidc_discovery — post-up smoke gate for the login flow. For every OIDC
+# provider in the generated config it drives verifiably-go's OWN /auth/start
+# from the host and checks two things that otherwise stay invisible (the deploy
+# exits 0 and only a browser click reveals them):
+#
+#   1. /auth/start produces an authorize redirect — proving the container's
+#      server-side OIDC discovery reached the IdP. Catches the subdomain
+#      hairpin-NAT regression (discover ...: context deadline exceeded).
+#   2. Following that authorize URL one hop does NOT bounce back to the callback
+#      with error=invalid_scope / invalid_client / unauthorized_client. Catches
+#      the Keycloak credebl-client scope regression (and similar IdP misconfig).
+#
+# Best-effort by default (red on failure, like the other bootstraps); set
+# VERIFIABLY_STRICT_VERIFY=1 to make a failure abort the deploy (use in CI).
+verify_oidc_discovery() {
+  local base="${VERIFIABLY_PUBLIC_URL%/}"
+  local cfg="$SCRIPT_DIR/config/auth-providers.system.json"
+  [[ -f "$cfg" ]] || { yellow "  discovery gate: no provider config — skip"; return 0; }
+  local ids
+  ids=$(python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+ps=d if isinstance(d,list) else d.get("providers",[])
+print("\n".join(p["id"] for p in ps if p.get("type")=="oidc"))' "$cfg" 2>/dev/null) || true
+  [[ -n "$ids" ]] || { yellow "  discovery gate: no OIDC providers — skip"; return 0; }
+
+  bold "▶ Verifying OIDC login (discovery + authorize)"
+  # Wait for the app to answer before probing (it was just (re)started).
+  local _t=0
+  while ! curl -sk --max-time 5 -o /dev/null "$base/" 2>/dev/null; do
+    _t=$((_t + 2)); [[ $_t -ge 30 ]] && break; sleep 2
+  done
+
+  local jar rc=0 id
+  jar="$(mktemp)"
+  for id in $ids; do
+    : > "$jar"
+    curl -sk -c "$jar" -b "$jar" --max-time 15 -o /dev/null "$base/" || true
+    curl -sk -c "$jar" -b "$jar" --max-time 15 -o /dev/null -X POST "$base/role" --data 'role=issuer' || true
+    local hdrs authz
+    hdrs=$(curl -sk -c "$jar" -b "$jar" --max-time 30 -D - -o /dev/null \
+      -H 'HX-Request: true' -X POST "$base/auth/start" --data "provider=$id" 2>/dev/null) || true
+    authz=$(printf '%s' "$hdrs" | grep -iE '^(location|hx-redirect):' | head -1 | sed -E 's/^[^:]+:[[:space:]]*//' | tr -d '\r') || true
+    if [[ -z "$authz" || "$authz" != *"://"* ]]; then
+      red "  discovery gate: '$id' — /auth/start did not redirect to the IdP (server-side discovery failed: hairpin NAT? cert? upstream down?)"
+      rc=1; continue
+    fi
+    local az_loc
+    az_loc=$(curl -sk --max-time 20 -D - -o /dev/null "$authz" 2>/dev/null | grep -iE '^location:' | head -1 | tr -d '\r') || true
+    if printf '%s' "$az_loc" | grep -qiE 'error=(invalid_scope|invalid_request|invalid_client|unauthorized_client|access_denied)'; then
+      red "  discovery gate: '$id' — authorize rejected the request (${az_loc#*error=}); scope/client misconfig at the IdP"
+      rc=1; continue
+    fi
+    green "  discovery gate: '$id' OK (discovery + authorize accepted)"
+  done
+  rm -f "$jar"
+  if [[ "$rc" -ne 0 ]]; then
+    if [[ "${VERIFIABLY_STRICT_VERIFY:-}" == "1" ]]; then
+      red "  discovery gate FAILED (VERIFIABLY_STRICT_VERIFY=1) — aborting deploy."
+      return 1
+    fi
+    yellow "  discovery gate found problems above — login may fail. (set VERIFIABLY_STRICT_VERIFY=1 to make this fatal)"
+  fi
+  return 0
+}
 
 # wait_for_services polls the TCP ports each scenario needs to be healthy
 # before verifiably-go starts. Bounded — we don't block forever if a service
