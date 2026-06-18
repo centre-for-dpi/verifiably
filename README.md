@@ -1281,6 +1281,39 @@ choice every wallet ecosystem makes; for workshops, onboarding demos, or
 low-assurance credentials the custodial convenience often wins, while
 high-assurance / long-lived credentials favour a self-custody device wallet.
 
+### Inji Certify pre-auth: which formats work where
+
+The pre-auth issuer mints two credential formats — **`ldp_vc`** (W3C JSON-LD,
+`Ed25519Signature2020`; both VCDM 1.1 and 2.0) and **`vc+sd-jwt`** (IETF SD-JWT
+VC, signed with an `x5c` certificate chain). It does **not** mint `mso_mdoc` on
+this path. Inji issues both as *valid* credentials — the limitations below are
+all **consumer-side**: how each wallet / verifier handles the format.
+
+| Format | OID4VCI → mobile (Credo) | OID4VCI → walt.id holder | OID4VP (present) | PDF (bearer QR) |
+| ------ | ------------------------ | ------------------------ | ---------------- | --------------- |
+| **`ldp_vc`** (W3C, Ed25519Signature2020) | ✗ wallet's Inji path is compact-JWT-only — a JSON-LD object crashes it | ✗ proof rejected (`kid`+`jwk`); v0.18.2 also can't store/present `ldp_vc` | ✗ walt.id VP path handles only compact-JWT | ✓ minted server-side, PixelPass QR, verified by Inji Verify |
+| **`vc+sd-jwt`** (IETF, `x5c`) | ✓ compact JWT — holds end-to-end | ✗ proof rejected (`kid`+`jwk`) at issuance | ⚠️ presentable by a Credo wallet to an `x5c`-aware verifier (Inji Verify); the walt.id verifier rejects it (*"Only DIDs are supported as issuer IDs"*) | ✗ PixelPass expects CBOR-able JSON-LD; a compact SD-JWT is storage-only, no usable QR |
+
+Why each limitation exists (all detailed in Troubleshooting):
+
+- **mobile `ldp_vc` crash** — the wallet flags `/v1/certify/` as a legacy
+  endpoint and runs a compact-JWT-only path; a JSON-LD object hits
+  `String.split` → "undefined is not a function".
+- **walt.id proof rejection** — `wallet-api` builds a proof header carrying both
+  `kid` and `jwk`; OID4VCI requires exactly one, so Inji returns
+  `proof_header_ambiguous_key`. (Format-agnostic — blocks both formats.)
+- **walt.id can't present `ldp_vc`** — its OID4VP path calls `.jsonPrimitive` on
+  the vpToken, which throws for a JSON-LD object (only compact-JWT works).
+- **SD-JWT verifier mismatch** — Inji signs SD-JWT under an `x5c` certificate,
+  but the walt.id verifier only resolves **DID** issuers for W3C credentials.
+- **SD-JWT has no PDF QR** — the PixelPass pipeline (CBOR → zlib → base45) is
+  built for structured JSON-LD; a compact SD-JWT string isn't a scannable
+  credential QR.
+
+**Net, today:** for a wallet use **`vc+sd-jwt` → a Credo-based mobile wallet**;
+for offline / paper use **`ldp_vc` → PDF + Inji Verify**. None of these are Inji
+issuance bugs — Inji emits standards-valid credentials in both formats.
+
 ## Where to look next
 
 - **[verifiably-go/docs/architecture.md](verifiably-go/docs/architecture.md)**
