@@ -34,6 +34,12 @@ backends_for() {
   else
     certify_preauth_did="did:web:certify-preauth-nginx"
   fi
+  # Credential-display logo for custom configs. Self-hosted by verifiably-go
+  # (static/credential-logo.svg) so it's neutral + has no external dependency.
+  # Must be non-null: Inji Certify always serialises display[].logo, and some
+  # wallet UIs crash ("undefined is not a function") on a null logo.
+  local certify_preauth_logo
+  certify_preauth_logo="$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")/static/credential-logo.svg"
   inji_verify_svc_url=$(url_for inji-verify "$VERIFIABLY_PUBLIC_HOST" "$INJI_VERIFY_SERVICE_PORT")
   inji_verify_ui_url=$(url_for inji-verify-ui "$VERIFIABLY_PUBLIC_HOST" "$INJI_VERIFY_UI_PORT")
   injiweb_url=$(url_for inji-web "$VERIFIABLY_PUBLIC_HOST" "$INJIWEB_UI_PUBLIC_PORT")
@@ -161,6 +167,7 @@ JSON
         "db": {
           "dsn": "postgres://postgres:postgres@certify-preauth-postgres:5432/inji_certify?sslmode=disable",
           "didUrl": "${certify_preauth_did}",
+          "logoUrl": "${certify_preauth_logo}",
           "scope": "mock_identity_vc_ldp"
         }
       }

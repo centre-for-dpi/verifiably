@@ -82,6 +82,14 @@ type DBConfig struct {
 	// Scope is the OAuth scope inserted into credential_config.scope.
 	// Defaults to "mock_identity_vc_ldp" when empty.
 	Scope string `json:"scope,omitempty"`
+
+	// LogoURL is the credential-display logo written into each custom
+	// credential_config's display[].logo.url. Inji Certify's display model
+	// always serialises a `logo` key (null when unset), and some wallet UIs
+	// crash ("undefined is not a function") rendering a credential whose
+	// logo is null. Setting a real URL keeps the display logo a non-null
+	// object. When empty, db.go falls back to a built-in default.
+	LogoURL string `json:"logoUrl,omitempty"`
 }
 
 // UnmarshalConfig extracts a Config from a raw json.RawMessage and fills sensible defaults.

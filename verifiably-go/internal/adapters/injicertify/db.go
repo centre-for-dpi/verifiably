@@ -12,6 +12,14 @@ import (
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
+// defaultCredentialLogoURL is the fallback display logo for a custom config
+// when injicertify Config.DB.LogoURL is unset. gen-backends.sh normally points
+// LogoURL at verifiably-go's own /static/credential-logo.svg (neutral, no
+// external dependency); this reachable default just guarantees the display
+// logo is never null (a null logo crashes some wallet UIs with "undefined is
+// not a function"). Override via the backends config `db.logoUrl`.
+const defaultCredentialLogoURL = "https://mosip.github.io/inji-config/logos/agro-vertias-logo.png"
+
 // credentialTypesSorted returns "VerifiableCredential" plus the schema's specific
 // type(s), ALPHABETICALLY sorted. Inji Certify v0.14 sorts a credential's type
 // array when building its credential_config lookup key but matches it RAW against
@@ -70,11 +78,26 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 	// has nowhere to live in Certify's display model, so we drop it here — the
 	// walt.id adapter (catalog.go) still surfaces it via its own display block,
 	// where it is supported.
+	// logo MUST be a non-null object. Inji Certify's display model always
+	// serialises a `logo` key in the wellknown — null when we don't set one —
+	// and some wallet UIs crash ("undefined is not a function") rendering a
+	// credential card whose logo is null. (The seeded farmer configs ship a
+	// logo object, which is why they hold while a bare custom config did not.)
+	// Use the configured LogoURL, else a built-in reachable default.
+	logoURL := a.cfg.DB.LogoURL
+	if logoURL == "" {
+		logoURL = defaultCredentialLogoURL
+	}
 	displayEntry := map[string]any{
 		"name":             schema.Name,
 		"locale":           "en",
 		"background_color": "#12107c",
 		"text_color":       "#FFFFFF",
+		"logo": map[string]any{
+			"url":      logoURL,
+			"alt_text": schema.Name + " Logo",
+		},
+		"background_image": map[string]any{"uri": logoURL},
 	}
 	displayRaw, _ := json.Marshal([]map[string]any{displayEntry})
 
