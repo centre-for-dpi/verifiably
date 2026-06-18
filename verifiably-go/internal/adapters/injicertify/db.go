@@ -114,7 +114,18 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 			vct = "https://verifiably.example.com/credentials/" + schema.ID
 		}
 		sdJwtVct = &vct
-		sdJwtClaims = fieldDisplayRaw
+		// Deliberately leave sd_jwt_claims NULL. It only feeds the OPTIONAL
+		// `claims` display block in the issuer metadata, but walt.id's OID4VCI
+		// parser (ClaimDescriptorNamespacedMapSerializer) treats `claims` as a
+		// 2-level mdoc-style namespaced map {namespace:{claim:descriptor}}. Our
+		// flat SD-JWT shape {claim:{display:[...]}} makes it read the claim name
+		// as a namespace and the `display` ARRAY as a descriptor object →
+		// "JsonArray is not a JsonObject", which aborts parsing the ENTIRE
+		// credential-issuer metadata (so NO credential is claimable in walt.id
+		// while any SD-JWT config carries `claims`). Issuance is unaffected —
+		// the disclosed claims come from vc_template + the data, not this
+		// display block; Credo-based wallets derive SD-JWT display from the
+		// credential payload, not metadata `claims`. (sdJwtClaims stays nil.)
 	default: // ldp_vc, jwt_vc_json
 		c := "https://www.w3.org/2018/credentials/v1"
 		context_ = &c
