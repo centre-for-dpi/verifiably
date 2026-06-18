@@ -4,64 +4,54 @@
 # instead — see docs/deploy.md § Per-subdomain deployment.
 
 {
-	email zumimzam@gmail.com
+	email ysaias@cdpi.dev
 }
 
-walt-issuer.in-labs.cdpi.dev {
-	handle /.well-known/did.json {
-		header Content-Type "application/json"
-		header Access-Control-Allow-Origin "*"
-		respond `{"@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/suites/jws-2020/v1"], "id": "did:web:walt-issuer.in-labs.cdpi.dev", "verificationMethod": [{"id": "did:web:walt-issuer.in-labs.cdpi.dev#key-1", "type": "JsonWebKey2020", "controller": "did:web:walt-issuer.in-labs.cdpi.dev", "publicKeyJwk": {"kty": "EC", "crv": "P-256", "kid": "SnvT6r2UZuzIrT3ThvlDsH2qQ_LyVnBOhkk0OOAFJ4U", "x": "r7LX7oQYmRT4J3boYxCIg-FSsZjXaZ9KZDebnDmQEcU", "y": "GxcuHm8ebaqXAz3-me0Ic6qFQwMN8DIdiCUEiQhb-cs"}}], "assertionMethod": ["did:web:walt-issuer.in-labs.cdpi.dev#key-1"], "authentication": ["did:web:walt-issuer.in-labs.cdpi.dev#key-1"]}` 200
-	}
+walt-issuer.verifiably.ysalabs.work {
 	reverse_proxy issuer-api:7002
 }
 
-walt-wallet.in-labs.cdpi.dev {
+walt-wallet.verifiably.ysalabs.work {
 	reverse_proxy wallet-api:7001
 }
 
-walt-verifier.in-labs.cdpi.dev {
+walt-verifier.verifiably.ysalabs.work {
 	reverse_proxy verifier-api:7003
 }
 
-inji-certify.in-labs.cdpi.dev {
+inji-certify.verifiably.ysalabs.work {
 	reverse_proxy certify-nginx:80
 }
 
-inji-certify-preauth.in-labs.cdpi.dev {
+inji-certify-preauth.verifiably.ysalabs.work {
 	reverse_proxy certify-preauth-nginx:80
 }
 
-inji-verify.in-labs.cdpi.dev {
-	handle /v1/verify/.well-known/did.json {
-		header Content-Type "application/did+ld+json"
-		header Access-Control-Allow-Origin "*"
-		respond `{"@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/suites/ed25519-2020/v1"], "id": "did:web:inji-verify.in-labs.cdpi.dev:v1:verify", "verificationMethod": [{"id": "did:web:inji-verify.in-labs.cdpi.dev:v1:verify#key-0", "type": "Ed25519VerificationKey2020", "controller": "did:web:inji-verify.in-labs.cdpi.dev:v1:verify", "publicKeyMultibase": "z6MkkzruJN9axHYvD6xjym3FrMiPTGaZKuL9LFtt8bQMcEvC"}], "authentication": ["did:web:inji-verify.in-labs.cdpi.dev:v1:verify#key-0"]}` 200
-	}
+inji-verify.verifiably.ysalabs.work {
 	reverse_proxy inji-verify-service:8080
 }
 
-inji-verify-ui.in-labs.cdpi.dev {
+inji-verify-ui.verifiably.ysalabs.work {
 	reverse_proxy inji-verify-ui:8000
 }
 
-inji-web.in-labs.cdpi.dev {
+inji-web.verifiably.ysalabs.work {
 	reverse_proxy injiweb-ui:3004
 }
 
-mimoto.in-labs.cdpi.dev {
+mimoto.verifiably.ysalabs.work {
 	reverse_proxy injiweb-mimoto:8099
 }
 
-esignet.in-labs.cdpi.dev {
+esignet.verifiably.ysalabs.work {
 	reverse_proxy injiweb-oidc-ui:3000
 }
 
-keycloak.in-labs.cdpi.dev {
+keycloak.verifiably.ysalabs.work {
 	reverse_proxy keycloak:8180
 }
 
-wso2.in-labs.cdpi.dev {
+wso2.verifiably.ysalabs.work {
 	reverse_proxy https://wso2is:9443 {
 		transport http {
 			tls_insecure_skip_verify
@@ -69,11 +59,11 @@ wso2.in-labs.cdpi.dev {
 	}
 }
 
-verifiably.in-labs.cdpi.dev {
+verifiably.ysalabs.work {
 	reverse_proxy verifiably-go:8080
 }
 
-credebl.in-labs.cdpi.dev {
+credebl.verifiably.ysalabs.work {
 	handle /oid4vci/* {
 		reverse_proxy credebl-oid4vci-rewriter:80
 	}
@@ -89,11 +79,11 @@ credebl.in-labs.cdpi.dev {
 	reverse_proxy credebl-api-gateway:5000
 }
 
-credebl-minio.in-labs.cdpi.dev {
+credebl-minio.verifiably.ysalabs.work {
 	reverse_proxy credebl-minio:9000
 }
 
-grafana.in-labs.cdpi.dev {
+grafana.verifiably.ysalabs.work {
 	reverse_proxy grafana:3000
 }
 
