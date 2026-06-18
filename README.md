@@ -1161,6 +1161,39 @@ Either stop the conflicting service or change the port in `.env` (e.g.
 `VERIFIABLY_HOST_PORT=8081`). Ports 80/443 are only needed if you bring
 up the Caddy TLS reverse proxy; skip it for localhost dev.
 
+**Inji pre-auth credential won't hold in the walt.id wallet (`invalid_proof`
+/ `proof_header_ambiguous_key`)** — use an external OID4VCI wallet with **SD-JWT**
+
+The bundled walt.id Community Stack wallet-api (**v0.18.2**) cannot receive an
+Inji Certify pre-authorized-code credential, for two reasons that both live
+inside the walt.id image and are not fixable on the issuer side:
+
+1. **Non-conformant proof.** walt.id's `useOfferRequest` builds the OID4VCI
+   proof JWT with a header carrying **both** a top-level `kid` *and* a `jwk`.
+   OID4VCI requires exactly one key reference, so Inji's `JwtProofValidator`
+   rejects it with `proof_header_ambiguous_key` → `400 invalid_proof`. (Proven:
+   a clean `jwk`-only proof issues `200`; adding a top-level `kid` flips it to
+   the same 400.)
+2. **No ldp_vc presentation.** Even if received, walt.id v0.18.2 can only
+   *present* compact-JWT formats (`jwt_vc_json`, `vc+sd-jwt`) — its VP path
+   throws on `ldp_vc` (JSON-LD).
+
+A holder-side adapter that exports a wallet-managed key (`keys/{id}/load`
+returns the private JWK), signs a conformant proof itself, redeems the
+credential, and stores it back is **also blocked**: wallet-api v0.18.2's
+`PUT /credentials` ("Store credential") returns `500 NotImplementedError`, so
+there is no way to inject an externally-fetched credential into the wallet.
+walt.id's only ingest path is its own (broken-proof) exchange.
+
+The **issuer side is fully conformant** — a clean, `jwk`-bound
+`openid4vci-proof+jwt` issues `200` through the entire public chain. So the
+working path is to scan/paste the offer into an **external OID4VCI wallet**
+(e.g. a Credo-based mobile wallet) and issue the schema as **SD-JWT
+(`sd_jwt_vc (IETF)`)**, which holds end-to-end. ldp_vc (W3C) holds in wallets
+with proper JSON-LD + Data Integrity support; SD-JWT is the most broadly
+compatible. Making the walt.id *holder* work would require a walt.id wallet-api
+version that emits a conformant proof (and implements credential import).
+
 ## What this app does
 
 Each of the three core roles has a dedicated flow:
