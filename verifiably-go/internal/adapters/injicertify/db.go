@@ -127,7 +127,7 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 		// display block; Credo-based wallets derive SD-JWT display from the
 		// credential payload, not metadata `claims`. (sdJwtClaims stays nil.)
 	default: // ldp_vc, jwt_vc_json
-		c := "https://www.w3.org/2018/credentials/v1"
+		c := vcdmContextURL(schema.Std)
 		context_ = &c
 		joined := strings.Join(credentialTypesSorted(schema), ",")
 		credType = &joined
@@ -222,6 +222,20 @@ func stdToCredentialFormat(std string) string {
 	}
 }
 
+// isVCDM2 reports whether the schema's declared standard is W3C VC Data Model
+// 2.0 (vs 1.1). VCDM 2.0 uses the credentials/v2 @context and the validFrom/
+// validUntil date fields instead of credentials/v1 + issuanceDate/expirationDate.
+func isVCDM2(std string) bool { return std == "w3c_vcdm_2" }
+
+// vcdmContextURL returns the base VC Data Model @context URL for the schema's
+// declared standard.
+func vcdmContextURL(std string) string {
+	if isVCDM2(std) {
+		return "https://www.w3.org/ns/credentials/v2"
+	}
+	return "https://www.w3.org/2018/credentials/v1"
+}
+
 // buildVCTemplate generates the base64-encoded VC template that inji-certify
 // uses to mint credentials. For SD-JWT the template is a flat JSON object with
 // ${fieldName} substitution markers. For ldp_vc / jwt_vc_json it is a JSON-LD
@@ -263,26 +277,39 @@ func buildVCTemplate(schema vctypes.Schema) string {
 		for _, f := range schema.FieldsSpec {
 			terms[f.Name] = vocabBase + f.Name
 		}
-		tmpl = map[string]any{
-			// credentials/v1 (core VC terms) + the Ed25519Signature2020 suite
+		m := map[string]any{
+			// VC Data Model base context (credentials/v1 for VCDM 1.1,
+			// credentials/v2 for VCDM 2.0) + the Ed25519Signature2020 suite
 			// context + the inline custom-term context. Inji Certify signs the
 			// VC verbatim from this template and does NOT inject the suite
 			// context itself, so without it the issued proof's terms
 			// (Ed25519Signature2020 / proofValue / Ed25519VerificationKey2020)
 			// are undefined and a strict JSON-LD wallet fails to verify with
-			// "undefined is not a function". Empirically: the bare credentials/v1
-			// context issues HTTP 200 but the wallet can't hold the credential.
+			// "undefined is not a function". Empirically: the bare base context
+			// issues HTTP 200 but the wallet can't hold the credential.
 			"@context": []any{
-				"https://www.w3.org/2018/credentials/v1",
+				vcdmContextURL(schema.Std),
 				"https://w3id.org/security/suites/ed25519-2020/v1",
 				terms,
 			},
 			"issuer":            "${_issuer}",
 			"type":              types,
-			"issuanceDate":      "${validFrom}",
-			"expirationDate":    "${validUntil}",
 			"credentialSubject": sub,
 		}
+		// VCDM 2.0 renamed the validity dates: validFrom/validUntil replace
+		// VCDM 1.1's issuanceDate/expirationDate. Emit the pair that matches
+		// the schema's declared data model so the issued credential is valid
+		// under its own @context (a v2 credential with issuanceDate, or a v1
+		// credential with validFrom, is malformed). Both source from the same
+		// ${validFrom}/${validUntil} substitution markers Inji fills.
+		if isVCDM2(schema.Std) {
+			m["validFrom"] = "${validFrom}"
+			m["validUntil"] = "${validUntil}"
+		} else {
+			m["issuanceDate"] = "${validFrom}"
+			m["expirationDate"] = "${validUntil}"
+		}
+		tmpl = m
 	}
 	b, _ := json.MarshalIndent(tmpl, "", "  ")
 	return base64.StdEncoding.EncodeToString(b)
