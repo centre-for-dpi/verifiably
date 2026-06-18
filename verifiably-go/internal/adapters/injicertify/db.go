@@ -5,11 +5,30 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
+
+// credentialTypesSorted returns "VerifiableCredential" plus the schema's specific
+// type(s), ALPHABETICALLY sorted. Inji Certify v0.14 sorts a credential's type
+// array when building its credential_config lookup key but matches it RAW against
+// the stored credential_type, so both the stored credential_type column and the VC
+// template's type[] must be pre-sorted — a "VerifiableCredential"-first order makes
+// issuance fail with "Credentialconfig not found" / ERROR_SIGNING_QR_DATA. (The
+// seeded configs store it sorted, which is why they work.)
+func credentialTypesSorted(schema vctypes.Schema) []string {
+	t := []string{"VerifiableCredential"}
+	if len(schema.AdditionalTypes) > 0 {
+		t = append(t, schema.AdditionalTypes...)
+	} else {
+		t = append(t, strings.ReplaceAll(schema.Name, " ", ""))
+	}
+	sort.Strings(t)
+	return t
+}
 
 // SaveCustomSchema registers a verifiably-go custom schema as a
 // credential_configuration row in inji-certify's PostgreSQL database.
@@ -76,13 +95,8 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 	default: // ldp_vc, jwt_vc_json
 		c := "https://www.w3.org/2018/credentials/v1"
 		context_ = &c
-		types := "VerifiableCredential"
-		if len(schema.AdditionalTypes) > 0 {
-			types += "," + strings.Join(schema.AdditionalTypes, ",")
-		} else {
-			types += "," + strings.ReplaceAll(schema.Name, " ", "")
-		}
-		credType = &types
+		joined := strings.Join(credentialTypesSorted(schema), ",")
+		credType = &joined
 		credSubject = fieldDisplayRaw
 	}
 
@@ -193,12 +207,9 @@ func buildVCTemplate(schema vctypes.Schema) string {
 		}
 		tmpl = m
 	default:
-		types := []string{"VerifiableCredential"}
-		if len(schema.AdditionalTypes) > 0 {
-			types = append(types, schema.AdditionalTypes...)
-		} else {
-			types = append(types, strings.ReplaceAll(schema.Name, " ", ""))
-		}
+		// Same sorted order as the credential_type column so the issued
+		// credential's type[] matches Certify's config-lookup key.
+		types := credentialTypesSorted(schema)
 		sub := map[string]any{"id": "${_holderId}"}
 		for _, f := range schema.FieldsSpec {
 			sub[f.Name] = "${" + f.Name + "}"
