@@ -187,9 +187,7 @@
     {{if .PDFResult.DownloadID}}
       <a class="btn" href="/issuer/issue/pdf/{{.PDFResult.DownloadID}}" download>Download your credential</a>
       <button class="btn ghost"
-              hx-post="/issuer/issue/preview-pdf"
-              hx-target="#modal-root"
-              hx-swap="innerHTML">Preview</button>
+              onclick="previewPdf('/issuer/issue/pdf/{{.PDFResult.DownloadID}}?inline=1')">Preview</button>
     {{else}}
       <button class="btn"
               hx-post="/issuer/issue/preview-pdf"
@@ -448,6 +446,27 @@
           '</div>';
         document.getElementById('modal-root').appendChild(modal);
         modal.querySelector('textarea').value = uri;
+      };
+
+      // previewPdf shows the ALREADY-issued PDF on screen (embedded inline)
+      // instead of re-issuing a fresh credential. url points at
+      // /issuer/issue/pdf/{id}?inline=1 so the browser renders it in the
+      // iframe rather than downloading it.
+      window.previewPdf = function (url) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-mask';
+        modal.onclick = e => { if (e.target === modal) modal.remove(); };
+        modal.innerHTML =
+          '<div class="modal" style="max-width:760px;width:94vw">' +
+            '<button class="close" onclick="this.closest(\'.modal-mask\').remove()">×</button>' +
+            '<h2 style="margin:0 0 0.75rem;font-family:\'Josefin Sans\',sans-serif;font-weight:500">Credential PDF preview</h2>' +
+            '<iframe src="' + url + '" title="Credential PDF preview" style="width:100%;height:72vh;border:1px solid var(--line);border-radius:4px;background:#fff"></iframe>' +
+            '<div class="btn-row" style="margin-top:0.75rem">' +
+              '<a class="btn ghost" href="' + url.replace(/\?inline=1$/, "") + '" download>Download</a>' +
+              '<button type="button" class="btn ghost" onclick="this.closest(\'.modal-mask\').remove()">Close</button>' +
+            '</div>' +
+          '</div>';
+        document.getElementById('modal-root').appendChild(modal);
       };
     })();
   </script>

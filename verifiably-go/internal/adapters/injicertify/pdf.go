@@ -510,7 +510,7 @@ func renderCredentialPDF(title, issuer, qrPayload string, fields map[string]stri
 	pdf.SetY(y + qrSize + 4)
 	pdf.SetFont("Helvetica", "I", 8)
 	pdf.SetTextColor(140, 140, 140)
-	pdf.CellFormat(0, 5, "Scan with Inji Verify (or any OID4VCI-compatible tool) to import this credential.", "", 1, "C", false, 0, "")
+	pdf.CellFormat(0, 5, "Scan the QR with Inji Verify to verify this credential.", "", 1, "C", false, 0, "")
 	pdf.Ln(4)
 
 	// Footer.
