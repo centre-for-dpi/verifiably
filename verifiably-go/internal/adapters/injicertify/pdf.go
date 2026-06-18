@@ -148,11 +148,39 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	_ = format // reserved for future per-format rendering branches
 	return backend.IssueAsPDFResult{
 		IssuerName:    a.Vendor,
-		IssuerDID:     "did:web:certify-nginx", // Inji Certify's configured DID; informational only
+		IssuerDID:     issuerDIDFromVC(vc, a.cfg.DB.DIDUrl), // the credential's ACTUAL signing DID
 		PayloadSizeKB: (len(vc) + 512) / 1024,
 		Fields:        req.SubjectData,
 		DownloadID:    id,
 	}, nil
+}
+
+// issuerDIDFromVC reads the issuer DID from the freshly-signed VC for the PDF's
+// (informational) issuer line, so it reflects the credential's REAL issuer
+// instead of a hardcoded guess. The pre-auth instance now signs under its own
+// public did:web (did:web:inji-certify-preauth.<domain>), not the primary
+// instance's did:web:certify-nginx. `issuer` may be a bare DID string or an
+// {id,...} object; fall back to the configured DB.DIDUrl, then a generic label.
+func issuerDIDFromVC(vc, fallback string) string {
+	var doc struct {
+		Issuer json.RawMessage `json:"issuer"`
+	}
+	if json.Unmarshal([]byte(vc), &doc) == nil && len(doc.Issuer) > 0 {
+		var s string
+		if json.Unmarshal(doc.Issuer, &s) == nil && s != "" {
+			return s
+		}
+		var obj struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(doc.Issuer, &obj) == nil && obj.ID != "" {
+			return obj.ID
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "Inji Certify (Pre-Auth)"
 }
 
 // extractOfferDataURL unwraps the openid-credential-offer:// envelope Inji
