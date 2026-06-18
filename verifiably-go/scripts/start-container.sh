@@ -106,6 +106,41 @@ start_container() {
     sh -c "mkdir -p /vol/sessions && chown -R 65532:65532 /vol && chmod 700 /vol" \
     >/dev/null 2>&1 || true
 
+  # ── Subdomain mode: route container-side calls through caddy-public ───────
+  # In subdomain mode every backend + IdP URL is a public https://<slug>.<domain>
+  # name that (via public DNS) resolves to the host's OWN public IP. Most
+  # VPS/cloud hosts don't hairpin traffic from the docker bridge back to their
+  # published :443, so verifiably-go's server-side OIDC discovery + adapter
+  # calls hang ("context deadline exceeded"). Fix: resolve caddy-public's IP on
+  # the compose network and pin every public FQDN to it via --add-host, so those
+  # requests go container→caddy-public directly — same SNI + Host header, so
+  # Caddy serves the right cert + proxies to the right upstream, and the
+  # discovered `issuer` still matches the public URL. The browser is unaffected
+  # (it uses real public DNS). No-op in legacy host:port mode.
+  local host_alias_args=()
+  if [[ -n "${VERIFIABLY_HOSTS_PATTERN:-}" && -n "${VERIFIABLY_PUBLIC_DOMAIN:-}" ]]; then
+    local _caddy_ip=""
+    _caddy_ip=$(docker inspect "${COMPOSE_PROJECT}-caddy-public-1" \
+      --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true)
+    if [[ -z "$_caddy_ip" ]]; then
+      local _cid
+      _cid=$(docker ps -q --filter "label=com.docker.compose.service=caddy-public" | head -1)
+      [[ -n "$_cid" ]] && _caddy_ip=$(docker inspect "$_cid" \
+        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true)
+    fi
+    if [[ -n "$_caddy_ip" ]]; then
+      # compute_host_aliases (common.sh) is the pure, unit-tested core of this
+      # fix; it prints one --add-host token per line for every public slug.
+      local _tok
+      while IFS= read -r _tok; do
+        [[ -n "$_tok" ]] && host_alias_args+=( "$_tok" )
+      done < <(compute_host_aliases "$VERIFIABLY_PUBLIC_DOMAIN" "$_caddy_ip")
+      green "  subdomain mode: pinned *.${VERIFIABLY_PUBLIC_DOMAIN} → caddy-public ($_caddy_ip) for container-side calls"
+    else
+      yellow "  subdomain mode: could not resolve caddy-public IP — server-side OIDC discovery may time out (hairpin NAT)"
+    fi
+  fi
+
   # MSYS_NO_PATHCONV=1 prevents Git Bash from converting Unix paths like
   # /var/run/docker.sock to C:\Program Files\Git\var\run\docker.sock.
   # Docker Desktop on Windows handles MSYS-style paths (/c/Users/...) natively.
@@ -118,6 +153,7 @@ start_container() {
     --health-retries=3 \
     --network "${COMPOSE_PROJECT}_default" \
     --add-host=host.docker.internal:host-gateway \
+    "${host_alias_args[@]}" \
     "${group_add_args[@]}" \
     -p "${VERIFIABLY_HOST_PORT}:8080" \
     -v "$SCRIPT_DIR/config/backends.docker.json:/app/config/backends.json:ro" \
