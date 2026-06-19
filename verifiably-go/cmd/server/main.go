@@ -479,6 +479,10 @@ func main() {
 	// forward straight to inji-certify:8090, patching the request body for wallets
 	// that omit credential_definition.@context.
 	mux.HandleFunc("POST /inji-proxy/issuance/credential", h.InjiProxyCredential)
+	// OID4VCI issuer metadata for the auth-code (primary) instance. certify-nginx
+	// proxies the wellknown here; pass-through to inji-certify so Mimoto/Inji Web
+	// can discover the credential. Host-agnostic (upstream from env/default).
+	mux.HandleFunc("GET /inji-proxy/.well-known/openid-credential-issuer", h.InjiProxyWellKnown)
 	// did:web resolution split PER INJI CERTIFY INSTANCE. Each instance has
 	// its own DID (did:web:certify-nginx for primary, did:web:certify-preauth-nginx
 	// for pre-auth) and its own handler that fetches ONLY that instance's

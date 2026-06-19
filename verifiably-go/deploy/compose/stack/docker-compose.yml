@@ -293,7 +293,7 @@ services:
       ISSUER_DID_DOMAIN: ${ISSUER_DID_DOMAIN:-}
     volumes:
       - ./inji/certify/init.sh:/docker-entrypoint-initdb.d/certify_init.sh
-      - ./inji/certify/init.sql:/var/init-templates/certify_init.sql:ro
+      - ./inji/certify/init-authcode.sql:/var/init-templates/certify_init-authcode.sql:ro
       - certify-db:/var/lib/postgresql/data
     ports:
       - "5433:5432"
@@ -312,7 +312,7 @@ services:
       - "8090:8090"
     environment:
       - container_user=mosip
-      - active_profile_env=default,csvdp-farmer
+      - active_profile_env=default,postgres-dataprovider
       - SPRING_CONFIG_NAME=certify
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
       - enable_certify_artifactory=false
@@ -363,6 +363,7 @@ services:
     volumes:
       - ./inji/certify/certify-default.properties:/home/mosip/config/certify-default.properties
       - ./inji/certify/certify-csvdp-farmer.properties:/home/mosip/config/certify-csvdp-farmer.properties
+      - ./inji/certify/certify-postgres-dataprovider.properties:/home/mosip/config/certify-postgres-dataprovider.properties
       - ./inji/certify/farmer_identity_data.csv:/home/mosip/config/farmer_identity_data.csv
       - ./inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json
       - certify-pkcs12:/home/inji/CERTIFY_PKCS12

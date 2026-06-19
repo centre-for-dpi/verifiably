@@ -328,7 +328,7 @@ cmd_up() {
       if ! docker exec certify-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-postgres missing inji_certify DB — running init.sql"
         DID="did:web:${ISSUER_DID_DOMAIN:-certify-nginx}"
-        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init.sql" \
+        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-authcode.sql" \
           | docker exec -i certify-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify >/dev/null 2>&1 \
           && green "  certify-postgres seeded, inji-certify restarted" \
