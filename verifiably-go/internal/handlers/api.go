@@ -9,6 +9,7 @@ package handlers
 //   POST   /api/v1/schemas                      create custom schema       (api_schemas.go)
 //   GET    /api/v1/schemas                      list custom schemas        (api_schemas.go)
 //   DELETE /api/v1/schemas/{id}                 delete custom schema       (api_schemas.go)
+//   POST   /api/v1/subjects                     provision vc_subject claims (api_subjects.go)
 //   POST   /api/v1/credentials/issue            issue single credential
 //   POST   /api/v1/credentials/issue/bulk       issue batch from JSON rows
 //   GET    /api/v1/credentials                  list issued (owner-scoped)

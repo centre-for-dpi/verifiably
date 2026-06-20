@@ -82,6 +82,12 @@ type H struct {
 	// SD-JWT VCs it issues. Optional; nil disables SD-JWT revocation.
 	TokenStore statuslist.Backend
 
+	// Subjects upserts dynamic claims into the Inji auth-code data-provider
+	// table (certify.vc_subject), keyed by the eSignet subject id. Powers
+	// POST /api/v1/subjects. Optional - nil when INJI_CERTIFY_DATABASE_URL is
+	// unset (the endpoint then returns 503).
+	Subjects SubjectProvisioner
+
 	// APIKeys gates /api/v1/* endpoints. Populated from VERIFIABLY_API_KEYS
 	// ("name1:key1,name2:key2"). When nil or empty, all API routes return 503.
 	APIKeys APIKeyMap

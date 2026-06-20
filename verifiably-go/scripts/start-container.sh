@@ -172,6 +172,7 @@ start_container() {
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
+    -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \

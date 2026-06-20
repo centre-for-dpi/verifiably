@@ -188,6 +188,19 @@ func main() {
 		}
 	}
 
+	// Inji auth-code data-provider source: certify.vc_subject lives in Inji
+	// Certify's inji_certify DB (a foreign DB), so open a raw pool - never run
+	// verifiably's migrations against it. Powers POST /api/v1/subjects (Flow A).
+	var subjectStore handlers.SubjectProvisioner
+	if dsn := os.Getenv("INJI_CERTIFY_DATABASE_URL"); dsn != "" {
+		if cp, err := pg.OpenRaw(shutCtx, dsn); err != nil {
+			log.Printf("subjects: failed to open INJI_CERTIFY_DATABASE_URL (%v) - /api/v1/subjects disabled", err)
+		} else {
+			log.Printf("subjects: vc_subject provisioning active (%s)", maskDSN(dsn))
+			subjectStore = pg.NewSubjectStore(cp)
+		}
+	}
+
 	// Session store: PostgreSQL when pool is available, otherwise the file-backed
 	// encrypted store (flushed every 5 s with a final flush on shutdown).
 	sessionStore := buildSessionStore(shutCtx, pgPool)
@@ -206,6 +219,7 @@ func main() {
 		Debug:         debug,
 		AuthStore:     authStore,
 		AuthAdminMode: adminMode,
+		Subjects:       subjectStore,
 		APIKeys:        handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
 		RateLimiter:    handlers.NewRateLimiter(),
 		PrometheusURL:  os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
@@ -583,6 +597,9 @@ func main() {
 		mux.HandleFunc("POST /api/v1/schemas", h.APICreateSchema)
 		mux.HandleFunc("GET /api/v1/schemas", h.APIListSchemas)
 		mux.HandleFunc("DELETE /api/v1/schemas/{id}", h.APIDeleteSchema)
+		// REST API - Inji auth-code subject provisioning (Flow A): upsert dynamic
+		// claims into certify.vc_subject keyed by the eSignet PSU-token.
+		mux.HandleFunc("POST /api/v1/subjects", h.APIProvisionSubject)
 		// REST API — issuance endpoints.
 		// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk/async", h.APIIssueBulkAsync)
