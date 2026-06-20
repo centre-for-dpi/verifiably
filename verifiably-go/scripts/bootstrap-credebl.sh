@@ -398,7 +398,7 @@ except Exception:
     pass
 "
 
-  local did_doc
+  local did_doc=""
 
   # Try tenant wallet first (preferred — direct wallet read, no external fetch).
   local tenant_id

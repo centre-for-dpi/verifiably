@@ -201,6 +201,17 @@ out_lines += [
     "# Claims are read from certify.vc_subject keyed by the eSignet token `sub` (:id).",
     "# One mapping per credential scope; the query string is taken verbatim.",
     "mosip.certify.data-provider-plugin.postgres.scope-query-mapping={'%s':'%s'}" % (SCOPE, query),
+    "",
+    "# --- eSignet token validation (subdomain, reachable via the caddy-public ---",
+    "# esignet alias). The upstream default derives authn.* from",
+    "# ${mosip.certify.authorization.url}, but the lowercase env var does NOT bind",
+    "# to that dotted property, so it falls back to the legacy host:port default and",
+    "# the JWK fetch hairpins/times out -> 'Full authentication is required'.",
+    "# Reference the env var by its exact name so Certify validates eSignet tokens",
+    "# against the correct public issuer + JWK set. Generic: derives from the env.",
+    "mosip.certify.authorization.url=${mosip_certify_authorization_url}",
+    "mosip.certify.authn.issuer-uri=${mosip_certify_authorization_url}",
+    "mosip.certify.authn.jwk-set-uri=${mosip_certify_authorization_url}/.well-known/jwks.json",
 ]
 open(os.path.join(CERTDIR, "certify-postgres-dataprovider.properties"),
      "w").write("\n".join(out_lines) + "\n")

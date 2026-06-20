@@ -521,7 +521,8 @@ cmd_up() {
 # row.
 repair_injiweb_client_redirect_uri() {
   local public_host="${PUBLIC_HOST:-172.24.0.1}"
-  local want="http://${public_host}:3004/redirect"
+  local want
+  want="$(url_for inji-web "${VERIFIABLY_PUBLIC_HOST:-$public_host}" "${INJIWEB_UI_PUBLIC_PORT:-3004}")/redirect"
   local current
   current=$(docker exec injiweb-postgres \
     psql -U postgres -d mosip_esignet -tAX \

@@ -117,6 +117,7 @@ services:
       default:
         aliases:
           - "inji-certify-preauth.${VERIFIABLY_PUBLIC_DOMAIN}"
+          - "esignet.${VERIFIABLY_PUBLIC_DOMAIN}"
     ports:
       - "80:80"
       - "443:443"
