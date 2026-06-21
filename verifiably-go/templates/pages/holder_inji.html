@@ -1,0 +1,55 @@
+{{define "content_holder_inji"}}
+<section class="view active">
+  <div class="section-label">
+    <span class="num">07</span>
+    <span class="caps">{{t "Holder · Claim via eSignet" $.Lang}}</span>
+  </div>
+  <h1 class="page-title">{{t "Claim your" $.Lang}}<br><em>{{t "credential" $.Lang}}</em>.</h1>
+  <p class="subtitle">
+    {{t "Sign in with eSignet to claim your verifiable credential — issued by Inji Certify from your registered claims, right here in verifiably. No external Inji Web redirect." $.Lang}}
+  </p>
+
+  {{if not $.Body.Enabled}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1rem 1.25rem;margin-bottom:1.5rem;color:var(--muted)">
+    {{t "In-app eSignet claim is not configured on this deployment (INJI_AUTHCODE_CLIENT_KEY_PEM / ESIGNET_BASE_URL)." $.Lang}}
+  </div>
+  {{end}}
+
+  {{if $.Body.Error}}
+  <div style="background:#3a1a1a;border:1px solid #a44;border-radius:4px;padding:0.85rem 1.25rem;margin-bottom:1.5rem;color:#f6caca">
+    {{$.Body.Error}}
+  </div>
+  {{end}}
+
+  {{if $.Body.VC}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem;margin-bottom:1.5rem">
+    <h3 style="margin:0 0 1rem;font-family:'Josefin Sans',sans-serif;font-weight:500">{{t "Credential claimed" $.Lang}} ✓</h3>
+    {{with $.Body.Subject}}
+    <table style="width:100%;border-collapse:collapse;font-size:0.88rem;margin-bottom:1rem">
+      {{range $k, $v := .}}
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:0.4rem 0.75rem 0.4rem 0;color:var(--muted);white-space:nowrap;vertical-align:top">{{$k}}</td>
+        <td style="padding:0.4rem 0;word-break:break-all" class="mono">{{$v}}</td>
+      </tr>
+      {{end}}
+    </table>
+    {{end}}
+    <details>
+      <summary style="cursor:pointer;color:var(--muted);font-size:0.85rem">{{t "Raw credential (JSON)" $.Lang}}</summary>
+      <pre class="mono" style="overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0.75rem;font-size:0.72rem;margin-top:0.5rem">{{$.Body.VC}}</pre>
+    </details>
+    <div style="margin-top:1rem;display:flex;gap:0.75rem">
+      <a class="btn ghost small" href="/holder/wallet/inji/start">{{t "Claim again" $.Lang}}</a>
+      <a class="btn ghost small" href="/holder/wallet">{{t "Back to wallet" $.Lang}}</a>
+    </div>
+  </div>
+  {{else if $.Body.Enabled}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.5rem">
+    <p class="subtitle" style="margin:0 0 1rem">
+      {{t "You'll be sent to eSignet to sign in with OTP, then returned here with your issued credential." $.Lang}}
+    </p>
+    <a class="btn" href="/holder/wallet/inji/start">{{t "Claim with eSignet →" $.Lang}}</a>
+  </div>
+  {{end}}
+</section>
+{{end}}

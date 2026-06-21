@@ -622,6 +622,10 @@ func main() {
 		mux.HandleFunc("POST /holder/dpg", h.PickHolderDpg)
 		mux.HandleFunc("POST /holder/dpg/toggle", h.ToggleHolderDpg)
 		mux.HandleFunc("GET /holder/wallet", h.ShowWallet)
+		// In-app Inji auth-code claim (no external inji-web redirect).
+		mux.HandleFunc("GET /holder/wallet/inji", h.ShowInjiClaim)
+		mux.HandleFunc("GET /holder/wallet/inji/start", h.StartInjiClaim)
+		mux.HandleFunc("GET /holder/wallet/inji/callback", h.InjiClaimCallback)
 		mux.HandleFunc("POST /holder/wallet/scan", h.ScanOffer)
 		mux.HandleFunc("POST /holder/wallet/paste", h.PasteOffer)
 		mux.HandleFunc("POST /holder/wallet/example", h.PrefillExample)

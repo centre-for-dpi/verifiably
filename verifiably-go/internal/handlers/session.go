@@ -106,6 +106,11 @@ type Session struct {
 	// page so the user sees what failed instead of a silent toast.
 	LastWalletError string
 
+	// InjiClaimedVC / InjiClaimError hold the in-app Inji auth-code claim result
+	// (/holder/wallet/inji). InjiClaimedVC is the issued VC as JSON.
+	InjiClaimedVC  string
+	InjiClaimError string `json:"-"`
+
 	// Auth: OIDC round-trip state + tokens stored after callback.
 	// OIDC tokens and transient round-trip state are tagged json:"-" so they
 	// are never written to the encrypted session files on disk. They expire

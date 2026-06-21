@@ -144,6 +144,15 @@ start_container() {
   # MSYS_NO_PATHCONV=1 prevents Git Bash from converting Unix paths like
   # /var/run/docker.sock to C:\Program Files\Git\var\run\docker.sock.
   # Docker Desktop on Windows handles MSYS-style paths (/c/Users/...) natively.
+  # In-app Inji auth-code wallet: extract the eSignet wallet-demo-client key
+  # (PKCS#8 PEM) from the deploy's oidckeystore.p12 and derive the eSignet URL
+  # per host, so a holder can claim inside verifiably (no inji-web redirect).
+  local _inji_p12="$SCRIPT_DIR/deploy/compose/injiweb/config/certs/oidckeystore.p12"
+  local _inji_key_pem=""
+  if [ -f "$_inji_p12" ] && command -v openssl >/dev/null 2>&1; then
+    _inji_key_pem=$(openssl pkcs12 -in "$_inji_p12" -nodes -nocerts -legacy -passin "pass:${INJIWEB_P12_PASSWORD:-xy4gh6swa2i}" 2>/dev/null | openssl pkcs8 -topk8 -nocrypt 2>/dev/null || true)
+  fi
+  local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
@@ -173,6 +182,11 @@ start_container() {
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
     -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
+    -e INJI_AUTHCODE_CLIENT_KEY_PEM="$_inji_key_pem" \
+    -e INJI_AUTHCODE_CLIENT_ID="${INJI_AUTHCODE_CLIENT_ID:-wallet-demo-client}" \
+    -e INJI_AUTHCODE_CLIENT_KID="${INJI_AUTHCODE_CLIENT_KID:-wallet-demo-client-kid}" \
+    -e INJI_AUTHCODE_SCOPE="${INJI_AUTHCODE_SCOPE:-mock_identity_vc_ldp}" \
+    -e ESIGNET_BASE_URL="$_inji_esignet_url" \
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \
