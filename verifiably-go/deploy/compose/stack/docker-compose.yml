@@ -918,6 +918,9 @@ services:
       #     bridge gateway (host) → docker port forward → same target
       # Same URL, works in both contexts, no /etc/hosts edits needed.
       MOSIP_ESIGNET_DOMAIN_URL: ${ESIGNET_BASE_URL:-http://${PUBLIC_HOST:-172.24.0.1}:${ESIGNET_PUBLIC_PORT:-3005}}
+      # Dynamic credential scopes: read from the mounted file so a restart
+      # re-reads them (verifiably appends a scope on schema creation).
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/home/mosip/config/
       # Persist esignet's kernel keymanager PKCS12 keystore into a named
       # volume instead of the container's writable layer. Without this
       # override, esignet uses the local profile default of
@@ -944,7 +947,8 @@ services:
       # which SpEL evaluates to a Java Set. A plain string
       # `mock_identity_vc_ldp` is parsed as a SpEL property reference
       # and fails with EL1008E.
-      MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES: "{'mock_identity_vc_ldp'}"
+      # MOVED to inji/esignet/credential-scopes.properties (file-based dynamic scopes):
+      # MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES: "{'mock_identity_vc_ldp','farmer_land_vc_ldp'}"
       # Audience must exactly match inji-certify's
       # mosip.certify.oauth.access-token.audience, which resolves to
       # `${mosip.certify.identifier}/v1/certify/issuance/credential`.
@@ -952,9 +956,11 @@ services:
       # expected aud is http://certify-nginx:80/v1/certify/issuance/credential
       # — explicit :80 port. Dropping it here causes certify's
       # JwtAudienceValidator to reject with "The aud claim is not valid".
-      MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING: "{'mock_identity_vc_ldp':'http://certify-nginx:80/v1/certify/issuance/credential'}"
+      # MOVED to inji/esignet/credential-scopes.properties (file-based dynamic scopes):
+      # MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING: "{'mock_identity_vc_ldp':'http://certify-nginx:80/v1/certify/issuance/credential','farmer_land_vc_ldp':'http://certify-nginx:80/v1/certify/issuance/credential'}"
     volumes:
       - injiweb-esignet-keystore:/home/mosip/keystore
+      - ./inji/esignet/credential-scopes.properties:/home/mosip/config/application-local.properties
 
   # esignet's browser-facing React UI. Serves /authorize, /consent, and
   # other login screens, plus a same-origin nginx proxy for /v1/esignet
