@@ -521,8 +521,15 @@ cmd_up() {
 # row.
 repair_injiweb_client_redirect_uri() {
   local public_host="${PUBLIC_HOST:-172.24.0.1}"
-  local want
-  want="$(url_for inji-web "${VERIFIABLY_PUBLIC_HOST:-$public_host}" "${INJIWEB_UI_PUBLIC_PORT:-3004}")/redirect"
+  # The wallet-demo-client must allow redirects for BOTH the external Inji Web
+  # wallet AND verifiably's own in-app holder claim flow. Both are derived from
+  # the deployment's public host so `deploy.sh up <scenario>` picks the right
+  # URIs per host (localhost / VPS / EC2 / custom domain) with no hardcoding.
+  local injiweb_redirect vfly_base
+  injiweb_redirect="$(url_for inji-web "${VERIFIABLY_PUBLIC_HOST:-$public_host}" "${INJIWEB_UI_PUBLIC_PORT:-3004}")/redirect"
+  vfly_base="${VERIFIABLY_PUBLIC_URL:-$(url_for verifiably "${VERIFIABLY_PUBLIC_HOST:-$public_host}" "${VERIFIABLY_PUBLIC_PORT:-8080}")}"
+  local wants="$injiweb_redirect ${vfly_base%/}/holder/wallet/inji/callback"
+
   local current
   current=$(docker exec injiweb-postgres \
     psql -U postgres -d mosip_esignet -tAX \
@@ -531,25 +538,23 @@ repair_injiweb_client_redirect_uri() {
     red "  wallet-demo-client not found in eSignet DB — seed script may have failed"
     return
   fi
-  if [[ "$current" == *"$want"* ]]; then
-    return   # already has our redirect URI
-  fi
-  # Add the PUBLIC_HOST URI alongside whatever is already there. Keeping the
-  # existing entries means old browser sessions don't break if a user has an
-  # in-flight redirect URL in their history.
+  # Merge any missing wanted URIs (idempotent). python exit 3 = nothing to add,
+  # so we skip the UPDATE + Redis cache flush.
   local merged
-  merged=$(python3 -c "
-import json, sys
-cur = json.loads('''$current''')
-want = '$want'
-if want not in cur:
-    cur.append(want)
+  merged=$(WANTS="$wants" CUR="$current" python3 -c '
+import json, os, sys
+cur = json.loads(os.environ["CUR"])
+n0 = len(cur)
+for w in os.environ["WANTS"].split():
+    if w and w not in cur:
+        cur.append(w)
 print(json.dumps(cur))
-")
+sys.exit(0 if len(cur) > n0 else 3)
+') || return 0
   docker exec injiweb-postgres psql -U postgres -d mosip_esignet -qc \
     "UPDATE client_detail SET redirect_uris='$merged' WHERE id='wallet-demo-client'" >/dev/null
   docker exec injiweb-redis redis-cli DEL 'clientdetails::wallet-demo-client' >/dev/null
-  green "  repaired wallet-demo-client redirect_uris (+$want)"
+  green "  repaired wallet-demo-client redirect_uris (now: $merged)"
 }
 
 cmd_setup() {

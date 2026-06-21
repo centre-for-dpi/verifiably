@@ -562,6 +562,9 @@ func main() {
 	// --- Issuer ---
 	if activeRoles.Has(roles.Issuer) {
 		mux.HandleFunc("GET /issuer/dpg", h.ShowIssuerDpgs)
+		// Inji auth-code: onboard a holder (create eSignet identity + provision claims).
+		mux.HandleFunc("GET /issuer/onboard", h.ShowOnboard)
+		mux.HandleFunc("POST /issuer/onboard", h.OnboardUser)
 		mux.HandleFunc("POST /issuer/dpg", h.PickIssuerDpg)
 		mux.HandleFunc("POST /issuer/dpg/toggle", h.ToggleIssuerDpg)
 		mux.HandleFunc("GET /issuer/schema", h.ShowSchemaBrowser)
