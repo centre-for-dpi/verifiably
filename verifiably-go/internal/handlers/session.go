@@ -111,6 +111,7 @@ type Session struct {
 	InjiClaimedVC  string
 	InjiClaimError string `json:"-"`
 	InjiClaimCred  string `json:"-"` // credential_config key being claimed
+	SchemaError    string `json:"-"` // issuer schema-creation flash error
 
 	// Auth: OIDC round-trip state + tokens stored after callback.
 	// OIDC tokens and transient round-trip state are tagged json:"-" so they

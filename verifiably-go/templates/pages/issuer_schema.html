@@ -1,182 +1,61 @@
 {{define "content_issuer_schema"}}
 <section class="view active">
-  <div class="section-label"><span class="num">04</span><span class="caps">{{t "Issuer · Schema" $.Lang}}</span></div>
-  <h1 class="page-title">Pick a schema, or<br><em>build one</em>.</h1>
-  <p class="subtitle">These are the credential types available from <span class="mono">{{.Session.IssuerDpg}}</span>. Click a card to preview its JSON Schema. Click <em>Use this schema</em> to select it for issuance.</p>
+  <div class="section-label">{{t "ISSUER · INJI CERTIFY · AUTH-CODE" $.Lang}}</div>
+  <h1 class="page-title">{{t "Create a" $.Lang}} <em>{{t "credential" $.Lang}}</em>.</h1>
+  <p class="subtitle">{{t "Define a schema. verifiably generates the Inji Certify config, the registry extraction view, the data-provider query and the eSignet scope, then restarts both services — the credential is claimable immediately." $.Lang}}</p>
 
-  {{/* Legend — explains the ⚠ badge that tags formats whose credentials
-       the backend's verifier can't filter for. Needed because the card
-       grid happily surfaces those formats (they issue + claim end-to-end
-       with walt.id); the warning is specifically about the round-trip
-       into /verifier/verify. */}}
-  <div class="format-legend">
-    <span class="chip small format-issue-only">⚠</span>
-    <span>Issue-only — walt.id's verifier can't filter for this format, so credentials issued here can't be presented end-to-end. Pick a non-⚠ format to keep the full issue → hold → present flow working.</span>
+  {{if not $.Body.Enabled}}
+  <div style="background:#3a2a00;border:1px solid #6b5200;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffd479">
+    {{t "Schema creation is not enabled — needs INJI_CERTIFY_DATABASE_URL and the scope-file mounts." $.Lang}}
   </div>
-
-  {{/* Transient catalog-fetch banner. Set when the vendor's well-known
-       endpoint is briefly unreachable — typically because walt.id's
-       issuer-api restarts after a SaveCustomSchema catalog write. The
-       page still renders custom schemas saved in the session so the
-       user has something to click while walt.id comes back up. */}}
-  {{if .Body.Notice}}
-  <div class="format-legend" style="border-color:var(--accent-warn,#c98a00);background:rgba(255,176,0,0.08)">
-    <span class="chip small">ℹ</span>
-    <span>{{.Body.Notice}}</span>
+  {{end}}
+  {{if $.Body.Error}}
+  <div style="background:#3a0d0d;border:1px solid #7a1f1f;border-radius:4px;padding:1rem;margin:1rem 0;color:#ff9a9a">{{$.Body.Error}}</div>
+  {{end}}
+  {{if $.Body.Created}}
+  <div style="background:#0d2e1a;border:1px solid #1f7a45;border-radius:4px;padding:1rem;margin:1rem 0;color:#9affc0">
+    {{t "Credential created and live:" $.Lang}} <strong>{{$.Body.Created}}</strong>. <a href="/holder/wallet/inji" style="color:#9affc0">{{t "Open the holder wallet →" $.Lang}}</a>
   </div>
   {{end}}
 
-  {{/* Cross-flow shortcut to the audit + revoke page, mirroring the
-       button that lives on /issuer/dpg. Sits above the search bar so
-       it's visible without scrolling past the schema grid. */}}
-  <div class="btn-row" style="margin-top:1rem;margin-bottom:1rem">
-    <a href="/issuer/credentials" class="btn ghost">View issued credentials →</a>
-  </div>
+  {{if $.Body.Enabled}}
+  <form method="POST" action="/issuer/schema/inji" style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.5rem;margin:1rem 0">
+    <label style="display:block;font-size:0.85rem;color:var(--muted);margin-bottom:0.3rem">{{t "Credential name" $.Lang}}</label>
+    <input name="display_name" required placeholder="e.g. Birth Certificate"
+           style="width:100%;padding:0.6rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);margin-bottom:1.25rem">
 
-  <div id="schema-browser">
-    {{template "fragment_schema_browser_body" .Body}}
-  </div>
+    <label style="display:block;font-size:0.85rem;color:var(--muted);margin-bottom:0.3rem">{{t "Fields" $.Lang}} <span style="opacity:.6">{{t "(field name = letters/digits/underscore; label is shown to the holder)" $.Lang}}</span></label>
+    <div id="fields">
+      <div class="field-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <input name="field_name"  placeholder="fieldName"  style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);font-family:monospace">
+        <input name="field_label" placeholder="Field label" style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
+      </div>
+      <div class="field-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <input name="field_name"  placeholder="fieldName"  style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);font-family:monospace">
+        <input name="field_label" placeholder="Field label" style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
+      </div>
+      <div class="field-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <input name="field_name"  placeholder="fieldName"  style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);font-family:monospace">
+        <input name="field_label" placeholder="Field label" style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
+      </div>
+    </div>
+    <button type="button" onclick="addField()" style="background:none;border:1px dashed var(--line);color:var(--muted);border-radius:4px;padding:0.4rem 0.8rem;cursor:pointer;margin-bottom:1.25rem">{{t "+ Add field" $.Lang}}</button>
+    <div><button type="submit" class="btn">{{t "Create credential" $.Lang}}</button></div>
+  </form>
+  <script>
+    function addField(){var d=document.getElementById('fields');var r=d.firstElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value='';});d.appendChild(r);}
+  </script>
+  {{end}}
 
-  <div class="btn-row" style="margin-top:2rem">
-    <a href="/issuer/schema/build" class="btn ghost">Build custom schema →</a>
-    <a href="/issuer/mode"
-       class="btn"
-       id="continue-btn"
-       style="{{if not .Body.SelectedID}}opacity:0.4;pointer-events:none{{end}}">
-       Continue →
-    </a>
-  </div>
-</section>
-{{end}}
-
-{{define "fragment_schema_browser_body"}}
-<div class="filter-bar">
-  <input
-    type="search"
-    name="q"
-    placeholder="Search schemas…"
-    value="{{.Query}}"
-    hx-get="/issuer/schema/search"
-    hx-trigger="input changed delay:250ms, search"
-    hx-target="#schema-list"
-    hx-swap="outerHTML">
-
-  <div class="chip-row">
-    {{range .Stds}}
-      <button type="button"
-              class="chip {{if eq . $.Filter}}active{{end}}"
-              hx-post="/issuer/schema/filter"
-              hx-vals='{"filter": "{{.}}"}'
-              hx-target="#schema-browser"
-              hx-swap="innerHTML">{{.}}</button>
+  {{if $.Body.Catalog}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem;margin-top:1rem">
+    <h3 style="margin:0 0 0.75rem;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem">{{t "Existing credentials" $.Lang}}</h3>
+    {{range $.Body.Catalog}}
+    <div style="padding:0.5rem 0;border-top:1px solid var(--line)">
+      <strong>{{.displayName}}</strong><br><span class="mono" style="font-size:0.72rem;color:var(--muted)">{{.key}} · {{.scope}}</span>
+    </div>
     {{end}}
   </div>
-</div>
-
-{{template "fragment_schema_list" .}}
-{{end}}
-
-{{/* fragment_schema_continue_oob updates the page-level Continue button
-     out-of-band. Rendered ONLY by handlers that change the selection —
-     never inlined in fragment_schema_browser_body to avoid duplicate ids. */}}
-{{define "fragment_schema_continue_oob"}}
-<a href="/issuer/mode"
-   class="btn"
-   id="continue-btn"
-   hx-swap-oob="true"
-   style="{{if not .SelectedID}}opacity:0.4;pointer-events:none{{end}}">
-   Continue →
-</a>
-{{end}}
-
-{{define "fragment_schema_list"}}
-<div class="schema-list" id="schema-list">
-  {{if not .Schemas}}
-    <div class="empty" style="grid-column: 1 / -1">
-      {{if .HasAnyCustom}}
-        <div class="display">No matches.</div>
-        Try clearing the filter or building a custom schema.
-      {{else}}
-        <div class="display">No custom schemas yet — build one to start issuing.</div>
-      {{end}}
-    </div>
   {{end}}
-
-  {{range .Schemas}}
-    {{/* A card is "selected" if sess.SchemaID matches the schema's own id
-         OR any of its variant ids — the grouped-by-name refactor means one
-         credential type is one card regardless of which format the user
-         picked from its chip row. */}}
-    {{$cardSelected := false}}
-    {{range .Variants}}{{if eq .ID $.SelectedID}}{{$cardSelected = true}}{{end}}{{end}}
-    {{if eq .ID $.SelectedID}}{{$cardSelected = true}}{{end}}
-
-    <div class="schema-card
-                {{if $cardSelected}}selected{{end}}
-                {{if eq .ID $.ExpandedID}}expanded{{end}}"
-         data-id="{{.ID}}"
-         data-name="{{.Name}}"
-         data-std="{{.Std}}">
-
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem">
-        <h4 style="flex:1">{{.Name}}</h4>
-        {{if .Custom}}<span class="pill ok" style="font-size:0.65rem">custom</span>{{end}}
-      </div>
-      <div class="desc">{{.Desc}}</div>
-
-      {{if .Variants}}
-        {{/* Format chip-row — one chip per variant. Clicking a chip selects
-             the schema AT that variant's configuration id, so downstream
-             handlers route to the right walt.id endpoint (jwt/sdjwt/mdoc).
-             Variants whose CanPresent flag is false get a "issue-only"
-             marker so the operator knows walt.id's verifier can't filter
-             for this format — the credential can be issued but never
-             presented end-to-end. */}}
-        <div class="chip-row" style="margin-top:0.6rem;flex-wrap:wrap;gap:0.35rem">
-          {{range .Variants}}
-            <button type="button"
-                    class="chip small {{if eq .ID $.SelectedID}}active{{end}}{{if not .CanPresent}} format-issue-only{{end}}"
-                    title="{{.Format}}{{if not .CanPresent}} — issue-only (walt.id verifier rejects this format; see legend above){{end}}"
-                    hx-post="/issuer/schema/select"
-                    hx-vals='{"id": "{{.ID}}"}'
-                    hx-target="#schema-browser"
-                    hx-swap="innerHTML">{{.Label}}{{if not .CanPresent}} <span class="warn-glyph">⚠</span>{{end}}</button>
-          {{end}}
-        </div>
-      {{else}}
-        <div class="std">{{.Std}}</div>
-      {{end}}
-
-      <div class="btn-row" style="margin-top:0.75rem">
-        <button class="btn small ghost"
-                hx-post="/issuer/schema/expand"
-                hx-vals='{"id": "{{.ID}}"}'
-                hx-target="#schema-list"
-                hx-swap="outerHTML">
-          {{if eq .ID $.ExpandedID}}Hide JSON{{else}}Show JSON{{end}}
-        </button>
-        <button class="btn small {{if $cardSelected}}ghost{{end}}"
-                hx-post="/issuer/schema/select"
-                hx-vals='{"id": "{{.ID}}"}'
-                hx-target="#schema-browser"
-                hx-swap="innerHTML">
-          {{if $cardSelected}}✓ Selected{{else}}Use this schema →{{end}}
-        </button>
-        {{if .Custom}}
-          <button class="btn small ghost"
-                  style="margin-left:auto;color:var(--err);border-color:var(--err)"
-                  hx-post="/issuer/schema/delete"
-                  hx-vals='{"id": "{{.ID}}"}'
-                  hx-target="#schema-browser"
-                  hx-swap="innerHTML"
-                  hx-confirm="Delete custom schema {{.Name}}?">Delete</button>
-        {{end}}
-      </div>
-
-      {{if eq .ID $.ExpandedID}}
-        <pre class="json-preview" style="margin-top:0.75rem">{{$.ExpandedJSON}}</pre>
-      {{end}}
-    </div>
-  {{end}}
-</div>
+</section>
 {{end}}

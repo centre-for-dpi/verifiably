@@ -471,6 +471,8 @@ func main() {
 	mux.HandleFunc("POST /auth/start", h.StartAuth)
 	mux.HandleFunc("POST /auth/custom", h.AddCustomProvider)
 	mux.HandleFunc("GET /auth/callback", h.AuthCallback)
+	mux.HandleFunc("GET /issuer/schema/inji", h.ShowCreateSchema)
+	mux.HandleFunc("POST /issuer/schema/inji", h.CreateSchema)
 	mux.HandleFunc("POST /auth/logout", h.Logout)
 	mux.HandleFunc("GET /admin/login", h.ShowAdminLogin)
 	mux.HandleFunc("POST /admin/login", h.AdminLogin)

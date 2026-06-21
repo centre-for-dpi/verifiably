@@ -153,6 +153,8 @@ start_container() {
     _inji_key_pem=$(openssl pkcs12 -in "$_inji_p12" -nodes -nocerts -legacy -passin "pass:${INJIWEB_P12_PASSWORD:-xy4gh6swa2i}" 2>/dev/null | openssl pkcs8 -topk8 -nocrypt 2>/dev/null || true)
   fi
   local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"
+  # verifiably-go (uid 65532) rewrites these two config files on issuer schema-creation
+  for _f in "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties" "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties"; do chown 65532:65532 "$_f" 2>/dev/null || true; done
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
@@ -171,6 +173,8 @@ start_container() {
     -v "$custom_schemas_path:/app/config/custom-schemas.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties:/etc/inji/certify-scope-query.properties" \
+    -v "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties:/etc/inji/esignet-scopes.properties" \
     -v "${VERIFIABLY_CONTAINER}-locales:/app/locales" \
     -v "${VERIFIABLY_CONTAINER}-state:/app/state" \
     -e VERIFIABLY_ADAPTER=registry \
@@ -182,6 +186,8 @@ start_container() {
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
     -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
+    -e INJI_CERTIFY_SCOPE_QUERY_FILE="/etc/inji/certify-scope-query.properties" \
+    -e INJI_ESIGNET_SCOPE_FILE="/etc/inji/esignet-scopes.properties" \
     -e INJI_AUTHCODE_CLIENT_KEY_PEM="$_inji_key_pem" \
     -e INJI_AUTHCODE_CLIENT_ID="${INJI_AUTHCODE_CLIENT_ID:-wallet-demo-client}" \
     -e INJI_AUTHCODE_CLIENT_KID="${INJI_AUTHCODE_CLIENT_KID:-wallet-demo-client-kid}" \

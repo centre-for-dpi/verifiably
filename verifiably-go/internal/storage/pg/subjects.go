@@ -119,3 +119,40 @@ func (s *SubjectStore) CredentialScope(ctx context.Context, key string) (string,
 	}
 	return scope, nil
 }
+
+// ApplyAuthcodeSchema creates a Flow B credential in one transaction: the
+// per-schema extraction VIEW + the credential_config row. The view DDL carries
+// sanitized field names (column identifiers); the credential_config values are
+// parameterized.
+func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
+	viewDDL, key, ctype, vcTemplateB64, display, credsub, scope string, displayOrder []string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("pg: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, viewDDL); err != nil {
+		return fmt.Errorf("pg: create view: %w", err)
+	}
+	const ins = `INSERT INTO certify.credential_config (
+		credential_config_key_id, config_id, status, vc_template, doctype, sd_jwt_vct,
+		context, credential_type, credential_format, did_url,
+		key_manager_app_id, key_manager_ref_id, signature_algo, signature_crypto_suite,
+		sd_claim, display, display_order, scope,
+		cryptographic_binding_methods_supported, credential_signing_alg_values_supported,
+		proof_types_supported, credential_subject, mso_mdoc_claims, plugin_configurations,
+		credential_status_purpose, qr_settings, qr_signature_algo, cr_dtimes, upd_dtimes
+	) VALUES (
+		$1, gen_random_uuid()::VARCHAR(255), 'active', $2, NULL, NULL,
+		'https://www.w3.org/2018/credentials/v1', $3, 'ldp_vc', 'did:web:certify-nginx',
+		'CERTIFY_VC_SIGN_ED25519', 'ED25519_SIGN', 'EdDSA', 'Ed25519Signature2020',
+		NULL, $4::JSONB, $5, $6,
+		ARRAY['did:jwk'], ARRAY['Ed25519Signature2020'],
+		'{"jwt": {"proof_signing_alg_values_supported": ["RS256", "ES256"]}}'::JSONB,
+		$7::JSONB, NULL, NULL, ARRAY['revocation'], NULL, NULL, NOW(), NULL
+	) ON CONFLICT (credential_config_key_id) DO NOTHING`
+	if _, err := tx.Exec(ctx, ins, key, vcTemplateB64, ctype, display, displayOrder, scope, credsub); err != nil {
+		return fmt.Errorf("pg: insert credential_config: %w", err)
+	}
+	return tx.Commit(ctx)
+}
