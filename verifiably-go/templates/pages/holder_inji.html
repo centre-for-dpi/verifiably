@@ -43,12 +43,20 @@
       <a class="btn ghost small" href="/holder/wallet">{{t "Back to wallet" $.Lang}}</a>
     </div>
   </div>
-  {{else if $.Body.Enabled}}
-  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.5rem">
-    <p class="subtitle" style="margin:0 0 1rem">
-      {{t "You'll be sent to eSignet to sign in with OTP, then returned here with your issued credential." $.Lang}}
-    </p>
-    <a class="btn" href="/holder/wallet/inji/start">{{t "Claim with eSignet →" $.Lang}}</a>
+  {{end}}
+
+  {{if $.Body.Enabled}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+    <h3 style="margin:0 0 0.5rem;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem">{{t "Available credentials" $.Lang}}</h3>
+    <p class="subtitle" style="margin:0 0 0.5rem;font-size:0.85rem">{{t "Sign in with eSignet to claim a credential — issued by Inji Certify from your registered claims, here in verifiably." $.Lang}}</p>
+    {{range $.Body.Catalog}}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0.75rem 0;border-top:1px solid var(--line)">
+      <div><strong>{{.displayName}}</strong><br><span class="mono" style="font-size:0.72rem;color:var(--muted)">{{.key}} · {{.scope}}</span></div>
+      <a class="btn small" href="/holder/wallet/inji/start?cred={{.key}}">{{t "Claim with eSignet →" $.Lang}}</a>
+    </div>
+    {{else}}
+    <p class="subtitle">{{t "No credentials available yet — an issuer needs to create one." $.Lang}}</p>
+    {{end}}
   </div>
   {{end}}
 </section>

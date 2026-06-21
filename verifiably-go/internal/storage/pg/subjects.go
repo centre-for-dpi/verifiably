@@ -2,6 +2,7 @@ package pg
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -78,4 +79,43 @@ func (s *SubjectStore) ProvisionSubject(ctx context.Context, subjectID string, c
 		return fmt.Errorf("pg: provision vc_subject: %w", err)
 	}
 	return nil
+}
+
+// ListCredentials returns the active credential_configs (the holder catalog) as
+// {key, scope, displayName} maps — what the holder can discover and claim.
+func (s *SubjectStore) ListCredentials(ctx context.Context) ([]map[string]string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT credential_config_key_id, scope, display FROM certify.credential_config WHERE status = 'active' ORDER BY credential_config_key_id`)
+	if err != nil {
+		return nil, fmt.Errorf("pg: list credentials: %w", err)
+	}
+	defer rows.Close()
+	var out []map[string]string
+	for rows.Next() {
+		var key, scope string
+		var display []byte
+		if err := rows.Scan(&key, &scope, &display); err != nil {
+			return nil, err
+		}
+		name := key
+		var disp []map[string]any
+		if json.Unmarshal(display, &disp) == nil && len(disp) > 0 {
+			if n, ok := disp[0]["name"].(string); ok && n != "" {
+				name = n
+			}
+		}
+		out = append(out, map[string]string{"key": key, "scope": scope, "displayName": name})
+	}
+	return out, rows.Err()
+}
+
+// CredentialScope returns the eSignet scope for a credential_config key.
+func (s *SubjectStore) CredentialScope(ctx context.Context, key string) (string, error) {
+	var scope string
+	err := s.pool.QueryRow(ctx,
+		`SELECT scope FROM certify.credential_config WHERE credential_config_key_id = $1`, key).Scan(&scope)
+	if err != nil {
+		return "", fmt.Errorf("pg: credential scope for %q: %w", key, err)
+	}
+	return scope, nil
 }

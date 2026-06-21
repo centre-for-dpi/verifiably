@@ -114,10 +114,20 @@ func (h *H) StartInjiClaim(w http.ResponseWriter, r *http.Request) {
 	sess.PendingState = state
 	sess.PendingPKCE = verifier
 	sess.PendingProvider = "inji-authcode"
+	// Which credential the holder picked from the catalog (?cred=<key>); look up
+	// its per-credential eSignet scope. Default to the base scope/credential.
+	cred := strings.TrimSpace(r.URL.Query().Get("cred"))
+	scope := injiAuthcodeScope()
+	if cred != "" && h.Subjects != nil {
+		if s, err := h.Subjects.CredentialScope(r.Context(), cred); err == nil && s != "" {
+			scope = s
+		}
+	}
+	sess.InjiClaimCred = cred
 	q := url.Values{}
 	q.Set("response_type", "code")
 	q.Set("client_id", injiAuthcodeClientID())
-	q.Set("scope", injiAuthcodeScope())
+	q.Set("scope", scope)
 	q.Set("redirect_uri", injiHolderCallbackURL())
 	q.Set("state", state)
 	q.Set("nonce", randB64(12))
@@ -144,7 +154,11 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 		fail("Missing code or state mismatch (CSRF). Try again from the wallet.")
 		return
 	}
-	vc, err := h.injiClaimCredential(r.Context(), code, sess.PendingPKCE)
+	credType := sess.InjiClaimCred
+	if credType == "" {
+		credType = "VerifiablePersonCredential"
+	}
+	vc, err := h.injiClaimCredential(r.Context(), code, sess.PendingPKCE, credType)
 	sess.PendingState, sess.PendingPKCE, sess.PendingProvider = "", "", ""
 	if err != nil {
 		fail("Claim failed: " + err.Error())
@@ -157,7 +171,7 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 
 // injiClaimCredential does token exchange (private_key_jwt) + holder proof +
 // credential request, returning the issued VC as a JSON string.
-func (h *H) injiClaimCredential(ctx context.Context, code, verifier string) (string, error) {
+func (h *H) injiClaimCredential(ctx context.Context, code, verifier, credType string) (string, error) {
 	key, err := injiAuthcodeClientKey()
 	if err != nil {
 		return "", err
@@ -214,7 +228,7 @@ func (h *H) injiClaimCredential(ctx context.Context, code, verifier string) (str
 			"format": "ldp_vc",
 			"credential_definition": map[string]any{
 				"@context": []string{"https://www.w3.org/2018/credentials/v1"},
-				"type":     []string{"VerifiableCredential", "VerifiablePersonCredential"},
+				"type":     []string{"VerifiableCredential", credType},
 			},
 			"proof": map[string]any{"proof_type": "jwt", "jwt": proof},
 		})
@@ -309,6 +323,11 @@ func (h *H) ShowInjiClaim(w http.ResponseWriter, r *http.Request) {
 	body := map[string]any{
 		"Enabled": injiAuthcodeEnabled() && esignetBase() != "",
 		"Error":   sess.InjiClaimError,
+	}
+	if h.Subjects != nil {
+		if creds, err := h.Subjects.ListCredentials(r.Context()); err == nil {
+			body["Catalog"] = creds
+		}
 	}
 	if sess.InjiClaimedVC != "" {
 		var pretty any

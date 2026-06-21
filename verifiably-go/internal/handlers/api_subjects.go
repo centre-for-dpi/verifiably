@@ -15,6 +15,10 @@ import (
 // *pg.SubjectStore; nil when INJI_CERTIFY_DATABASE_URL is unset.
 type SubjectProvisioner interface {
 	ProvisionSubject(ctx context.Context, subjectID string, claims map[string]string) error
+	// ListCredentials returns the discoverable credentials ({key, scope, displayName}).
+	ListCredentials(ctx context.Context) ([]map[string]string, error)
+	// CredentialScope returns the eSignet scope for a credential_config key.
+	CredentialScope(ctx context.Context, key string) (string, error)
 }
 
 type apiProvisionSubjectRequest struct {

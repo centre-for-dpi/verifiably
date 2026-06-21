@@ -110,6 +110,7 @@ type Session struct {
 	// (/holder/wallet/inji). InjiClaimedVC is the issued VC as JSON.
 	InjiClaimedVC  string
 	InjiClaimError string `json:"-"`
+	InjiClaimCred  string `json:"-"` // credential_config key being claimed
 
 	// Auth: OIDC round-trip state + tokens stored after callback.
 	// OIDC tokens and transient round-trip state are tagged json:"-" so they
