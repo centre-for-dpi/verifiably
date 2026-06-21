@@ -164,16 +164,20 @@ WHERE doctype IS NOT NULL and doctype <> '';
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS certify.vc_subject (
     individual_id   VARCHAR(64) PRIMARY KEY,
-    "fullName"        VARCHAR,
-    "givenName"       VARCHAR,
-    "familyName"      VARCHAR,
-    "gender"          VARCHAR,
-    "dateOfBirth"     VARCHAR,
-    "email"           VARCHAR,
-    "phoneNumber"     VARCHAR,
+    claims          JSONB,
     cr_dtimes       TIMESTAMP DEFAULT NOW(),
     upd_dtimes      TIMESTAMP
 );
+CREATE OR REPLACE VIEW certify.vc_subject_person AS
+SELECT individual_id,
+  claims->>'fullName' AS "fullName",
+  claims->>'givenName' AS "givenName",
+  claims->>'familyName' AS "familyName",
+  claims->>'gender' AS "gender",
+  claims->>'dateOfBirth' AS "dateOfBirth",
+  claims->>'email' AS "email",
+  claims->>'phoneNumber' AS "phoneNumber"
+FROM certify.vc_subject;
 
 
 -- ---------------------------------------------------------------------------
