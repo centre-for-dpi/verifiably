@@ -45,6 +45,11 @@ func injiAuthcodeEnabled() bool { return strings.TrimSpace(os.Getenv("INJI_AUTHC
 func injiAuthcodeClientID() string { return envOr("INJI_AUTHCODE_CLIENT_ID", "wallet-demo-client") }
 func injiAuthcodeKID() string      { return envOr("INJI_AUTHCODE_CLIENT_KID", "wallet-demo-client-kid") }
 func injiAuthcodeScope() string    { return envOr("INJI_AUTHCODE_SCOPE", "mock_identity_vc_ldp") }
+
+// injiAuthcodeACR steers eSignet to PIN login: acr "static-code" maps to the PIN
+// auth factor in eSignet's amr_acr_mapping (vs "generated-code" = OTP). The holder's
+// PIN is the one stored in the mock-identity by /holder/register. Override via env.
+func injiAuthcodeACR() string { return envOr("INJI_AUTHCODE_ACR", "mosip:idp:acr:static-code") }
 func esignetBase() string          { return strings.TrimRight(envOr("ESIGNET_BASE_URL", ""), "/") }
 
 func injiHolderCallbackURL() string {
@@ -134,6 +139,7 @@ func (h *H) StartInjiClaim(w http.ResponseWriter, r *http.Request) {
 	q.Set("code_challenge", pkceChallenge(verifier))
 	q.Set("code_challenge_method", "S256")
 	q.Set("ui_locales", "en")
+	q.Set("acr_values", injiAuthcodeACR()) // PIN login (static-code), not the mock OTP
 	http.Redirect(w, r, esignetBase()+"/authorize?"+q.Encode(), http.StatusFound)
 }
 
