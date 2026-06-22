@@ -2,7 +2,7 @@
 <section class="view active">
   <div class="section-label">{{t "ISSUER · PROVIDE SUBJECT DATA" $.Lang}}</div>
   <h1 class="page-title">{{t "Provide data for" $.Lang}} <em>{{if $.Body.DisplayName}}{{$.Body.DisplayName}}{{else}}{{t "a credential" $.Lang}}{{end}}</em>.</h1>
-  <p class="subtitle">{{t "Supply a holder's authoritative data for this credential, keyed by their Individual ID. The holder registers their own identity separately at" $.Lang}} <a href="/holder/register">/holder/register</a>.</p>
+  <p class="subtitle">{{t "Supply a holder's authoritative data for this credential, keyed by their Individual ID. The holder signs up with eSignet separately at" $.Lang}} <a href="/holder/register">/holder/register</a>.</p>
 
   {{if not $.Body.Enabled}}
   <div style="background:#3a2a00;border:1px solid #6b5200;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffd479">

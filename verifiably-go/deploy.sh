@@ -217,6 +217,7 @@ cmd_up() {
     # http://<PUBLIC_HOST>:3005/authorize which isn't externally reachable
     # in subdomain mode (only Caddy on 443).
     export ESIGNET_BASE_URL=$(url_for esignet "$VERIFIABLY_PUBLIC_HOST" "$ESIGNET_PUBLIC_PORT")
+    export ESIGNET_UI_SIGNUP_URL=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")/holder/register
     # Inji Verify public URL + did:web, derived PER-HOST (localhost OR subdomain)
     # so a fresh deploy on any host gets valid config -- not the subdomain-only
     # https://inji-verify.<empty>/... that broke localhost/EC2-without-domain mode.

@@ -1,8 +1,8 @@
 {{define "content_holder_register"}}
 <section class="view active">
-  <div class="section-label">{{t "HOLDER · REGISTER" $.Lang}}</div>
-  <h1 class="page-title">{{t "Register your" $.Lang}} <em>{{t "identity" $.Lang}}</em>.</h1>
-  <p class="subtitle">{{t "Create your eSignet identity so you can log in and claim credentials. You log in with a one-time code (demo OTP: 111111) — the PIN below is part of your identity record, not your login code." $.Lang}}</p>
+  <div class="section-label">{{t "SIGN UP WITH eSIGNET" $.Lang}}</div>
+  <h1 class="page-title">{{t "Sign up with" $.Lang}} <em>eSignet</em>.</h1>
+  <p class="subtitle">{{t "Create your eSignet identity so you can log in and claim credentials. You'll log in with your Individual ID and the PIN you set below." $.Lang}}</p>
 
   {{if not $.Body.Enabled}}
   <div style="background:#3a2a00;border:1px solid #6b5200;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffd479">
@@ -16,16 +16,16 @@
 
   {{if $.Body.Success}}
   <div style="background:#0d2e1a;border:1px solid #1f7a45;border-radius:4px;padding:1rem;margin:1rem 0;color:#9affc0">
-    <strong>{{$.Body.FullName}}</strong> — {{t "registered." $.Lang}} {{t "eSignet ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>.
-    {{t "Log in via eSignet with the demo OTP" $.Lang}} <span class="mono">111111</span> {{t "to claim your credentials." $.Lang}}
+    <strong>{{$.Body.FullName}}</strong> — {{t "signed up." $.Lang}} {{t "eSignet ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>.
+    {{t "Log in via eSignet with your Individual ID and PIN to claim your credentials." $.Lang}}
     <a href="/holder/wallet/inji">{{t "Go to the wallet →" $.Lang}}</a>
   </div>
   {{else}}
   <form method="post" action="/holder/register" style="display:grid;gap:0.75rem;max-width:520px">
     <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Individual ID *" $.Lang}}
       <input class="input" type="text" name="individual_id" placeholder="9876543210" maxlength="16" required></label>
-    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "PIN (identity record)" $.Lang}}
-      <input class="input" type="text" name="pin" placeholder="111111" maxlength="6" inputmode="numeric"></label>
+    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "PIN — you log in with this *" $.Lang}}
+      <input class="input" type="password" name="pin" placeholder="6 digits" maxlength="6" minlength="6" inputmode="numeric" required></label>
     <div style="display:flex;gap:0.75rem">
       <label style="flex:1;display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Given name *" $.Lang}}
         <input class="input" type="text" name="given_name" placeholder="Grace" required></label>
@@ -44,7 +44,7 @@
       <label style="flex:1;display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Phone *" $.Lang}}
         <input class="input" type="text" name="phone" placeholder="+15551234567" required></label>
     </div>
-    <button class="btn" type="submit">{{t "Register →" $.Lang}}</button>
+    <button class="btn" type="submit">{{t "Sign up →" $.Lang}}</button>
   </form>
   {{end}}
 </section>

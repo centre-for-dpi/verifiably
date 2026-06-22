@@ -901,6 +901,10 @@ services:
       SPRING_REDIS_PASSWORD: ""
       MOSIP_ESIGNET_MOCK_DOMAIN_URL: http://injiweb-mock-identity:8082
       MOSIP_ESIGNET_INTEGRATION_KEY_BINDER: MockKeyBindingWrapperService
+      # Repoint eSignet's "Sign Up with Unified Login" link at verifiably's holder
+      # self-registration (the MOSIP signup-service isn't deployed here). Per-host via
+      # ESIGNET_UI_SIGNUP_URL (exported by deploy.sh); default = localhost.
+      MOSIP_ESIGNET_UI_SIGNUP_CONFIG: "{'signup.banner': true, 'signup.url': '${ESIGNET_UI_SIGNUP_URL:-http://172.24.0.1:8080/holder/register}'}"
       # Rewrite every URL esignet advertises to point at the oidc-ui
       # nginx via an IP that resolves consistently from BOTH the
       # browser AND from inside the Mimoto container.
