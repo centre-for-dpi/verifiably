@@ -217,6 +217,15 @@ cmd_up() {
     # http://<PUBLIC_HOST>:3005/authorize which isn't externally reachable
     # in subdomain mode (only Caddy on 443).
     export ESIGNET_BASE_URL=$(url_for esignet "$VERIFIABLY_PUBLIC_HOST" "$ESIGNET_PUBLIC_PORT")
+    # Inji Verify public URL + did:web, derived PER-HOST (localhost OR subdomain)
+    # so a fresh deploy on any host gets valid config -- not the subdomain-only
+    # https://inji-verify.<empty>/... that broke localhost/EC2-without-domain mode.
+    _iv_url=$(url_for inji-verify "$VERIFIABLY_PUBLIC_HOST" "$INJI_VERIFY_SERVICE_PORT")
+    export INJI_VP_SUBMISSION_BASE_URL="${_iv_url}/v1/verify"
+    _iv_didhost="${_iv_url#*://}"        # host[:port]
+    _iv_didhost="${_iv_didhost/:/%3A}"   # host:port -> host%3Aport (no-op when no port)
+    export INJI_DID_VERIFY_URI="did:web:${_iv_didhost}:v1:verify"
+    export INJI_DID_VERIFY_PUBLIC_KEY_URI="${INJI_DID_VERIFY_URI}#key-0"
     # PREAUTH_PUBLIC_URL drives the pre-auth Inji Certify backend's
     # mosip_certify_domain_url. It MUST be the public subdomain so Certify
     # (a) advertises public credential_issuer/credential_endpoint/

@@ -627,9 +627,12 @@ services:
       - DATABASE_SCHEMA=verify
       - DATABASE_USERNAME=postgres
       - DATABASE_PASSWORD=postgres
-      - INJI_VP_SUBMISSION_BASE_URL=https://inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}/v1/verify
-      - INJI_DID_VERIFY_URI=did:web:inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}:v1:verify
-      - INJI_DID_VERIFY_PUBLIC_KEY_URI=did:web:inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}:v1:verify#key-0
+      # Derived per-host by deploy.sh (url_for inji-verify): subdomain mode ->
+      # https://inji-verify.<domain>/... + did:web:inji-verify.<domain>:...;
+      # localhost mode -> http://<host>:<port>/... + did:web:<host>%3A<port>:...
+      - INJI_VP_SUBMISSION_BASE_URL=${INJI_VP_SUBMISSION_BASE_URL}
+      - INJI_DID_VERIFY_URI=${INJI_DID_VERIFY_URI}
+      - INJI_DID_VERIFY_PUBLIC_KEY_URI=${INJI_DID_VERIFY_PUBLIC_KEY_URI}
     volumes:
       - ./inji/certify-nginx/certs/nginx.crt:/tmp/certify-nginx.crt:ro
       # Pre-auth nginx serves did:web:certify-preauth-nginx; import its
