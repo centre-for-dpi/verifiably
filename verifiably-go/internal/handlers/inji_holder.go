@@ -369,6 +369,21 @@ func (h *H) ShowInjiClaim(w http.ResponseWriter, r *http.Request) {
 				if cs, ok := m["credentialSubject"].(map[string]any); ok {
 					body["Subject"] = cs
 				}
+				// Card header = the specific credential type (not "VerifiableCredential").
+				if ts, ok := m["type"].([]any); ok {
+					for _, t := range ts {
+						if s, _ := t.(string); s != "" && s != "VerifiableCredential" {
+							body["ClaimedName"] = s
+							break
+						}
+					}
+				}
+				if iss, ok := m["issuer"].(string); ok {
+					body["Issuer"] = iss
+				}
+				if vu, ok := m["validUntil"].(string); ok {
+					body["ValidUntil"] = vu
+				}
 			}
 		} else {
 			body["VC"] = sess.InjiClaimedVC

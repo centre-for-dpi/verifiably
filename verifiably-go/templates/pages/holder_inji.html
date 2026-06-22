@@ -22,21 +22,28 @@
   {{end}}
 
   {{if $.Body.VC}}
-  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem;margin-bottom:1.5rem">
-    <h3 style="margin:0 0 1rem;font-family:'Josefin Sans',sans-serif;font-weight:500">{{t "Credential claimed" $.Lang}} ✓</h3>
+  <div style="background:linear-gradient(135deg,#13314f 0%,#0b1c30 100%);border:1px solid #21557e;border-radius:10px;padding:1.25rem 1.5rem;margin-bottom:1.5rem;box-shadow:0 4px 16px rgba(0,0,0,0.35)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:0.9rem">
+      <strong style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.15rem">{{if $.Body.ClaimedName}}{{$.Body.ClaimedName}}{{else}}{{t "Credential" $.Lang}}{{end}}</strong>
+      <span style="background:#13502e;color:#7dffb0;font-size:0.68rem;letter-spacing:0.04em;padding:0.22rem 0.55rem;border-radius:99px;white-space:nowrap">{{t "CLAIMED" $.Lang}} ✓</span>
+    </div>
     {{with $.Body.Subject}}
-    <table style="width:100%;border-collapse:collapse;font-size:0.88rem;margin-bottom:1rem">
+    <div style="display:grid;gap:0.35rem;margin-bottom:0.75rem">
       {{range $k, $v := .}}
-      <tr style="border-bottom:1px solid var(--line)">
-        <td style="padding:0.4rem 0.75rem 0.4rem 0;color:var(--muted);white-space:nowrap;vertical-align:top">{{$k}}</td>
-        <td style="padding:0.4rem 0;word-break:break-all" class="mono">{{$v}}</td>
-      </tr>
+      <div style="display:flex;gap:0.75rem;font-size:0.85rem;border-top:1px solid rgba(255,255,255,0.08);padding-top:0.38rem">
+        <span style="color:#9bb4cc;min-width:96px">{{$k}}</span>
+        <span class="mono" style="word-break:break-all">{{$v}}</span>
+      </div>
       {{end}}
-    </table>
+    </div>
     {{end}}
-    <details>
-      <summary style="cursor:pointer;color:var(--muted);font-size:0.85rem">{{t "Raw credential (JSON)" $.Lang}}</summary>
-      <pre class="mono" style="overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0.75rem;font-size:0.72rem;margin-top:0.5rem">{{$.Body.VC}}</pre>
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;font-size:0.72rem;color:#7e98b0">
+      {{if $.Body.Issuer}}<span>{{t "Issuer" $.Lang}}: <span class="mono">{{$.Body.Issuer}}</span></span>{{end}}
+      {{if $.Body.ValidUntil}}<span>{{t "Valid until" $.Lang}}: {{$.Body.ValidUntil}}</span>{{end}}
+    </div>
+    <details style="margin-top:0.85rem">
+      <summary style="cursor:pointer;color:#9bb4cc;font-size:0.8rem">{{t "Raw credential (JSON)" $.Lang}}</summary>
+      <pre class="mono" style="overflow:auto;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:0.7rem;font-size:0.7rem;margin-top:0.5rem">{{$.Body.VC}}</pre>
     </details>
     <div style="margin-top:1rem;display:flex;gap:0.75rem">
       <a class="btn ghost small" href="/holder/wallet/inji/start">{{t "Claim again" $.Lang}}</a>
