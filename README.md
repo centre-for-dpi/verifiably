@@ -11,8 +11,8 @@ Everything below refers to that subtree — run the commands from there.
 Supported DPGs out of the box:
 
 - **walt.id Community Stack** v0.18.2 — issuer / holder / verifier via walt.id's issuer-api, wallet-api, verifier-api
-- **Inji Certify** v0.14.0 — issuer, both OID4VCI pre-authorised code and authorization code flows
-- **Inji Web Wallet** v0.16.0 — holder via the MOSIP Inji Web SPA + Mimoto BFF
+- **Inji Certify** v0.14.0 — issuer, both OID4VCI pre-authorised code and authorization code flows. The auth-code flow has an **in-app multi-format schema builder** (create a credential live — W3C VCDM 1.1/2.0 as `ldp_vc` or IETF SD-JWT VC as `vc+sd-jwt` — which writes the Certify config + registry extraction view + eSignet scope and restarts the services in place)
+- **Inji Web Wallet** v0.16.0 — holder via the MOSIP Inji Web SPA + Mimoto BFF, **or** claim Inji Certify auth-code credentials **in-app via eSignet** (no external redirect)
 - **Inji Verify** v0.16.0 — verifier via Inji Verify's QR-upload and OID4VP endpoints
 - **CREDEBL** — issuer (OID4VCI pre-auth) + verifier (OID4VP) via CREDEBL's 18-service stack;
   bootstrapped automatically including Keycloak realm, platform-admin, DID, and credential template
@@ -32,7 +32,7 @@ Before the quickstart will succeed on a fresh machine:
 | **Ports free** on the host: 80, 443, 3001, 3004, 3005, 5432–5437, 7001–7003, 8080, 8090–8099, 8180, 8182, 9443 | Compose publishes each DPG on its canonical port. Check `sudo ss -ltn` before starting; `lsof -i :8080` to find who holds any conflict. |
 | **`envsubst`** (part of `gettext`) in your `$PATH` | `deploy.sh` renders `wso2-deployment.toml` from a template with it. Most Linux distros have it preinstalled; on macOS: `brew install gettext` + `brew link --force gettext`. |
 | **Go 1.25+** *(optional)* | Only needed if you want to run `verifiably-go` outside docker via `go run ./cmd/server`. `./deploy.sh up` builds its own container image. |
-| **`curl`, `jq`, `python3`** | `deploy.sh` and the bootstrap scripts (Keycloak, WSO2IS, CREDEBL) use them for seeding OIDC clients, rendering configs, and patching CREDEBL containers. |
+| **`curl`, `jq`, `python3`, `openssl`** | `deploy.sh` and the bootstrap scripts (Keycloak, WSO2IS, CREDEBL) use them for seeding OIDC clients, rendering configs, patching CREDEBL containers, and generating secrets + the hub signing key. |
 
 Docker Hub has the two first-party images the stack pulls:
 
@@ -1208,7 +1208,10 @@ so large CSVs don't block the UI.
 
 **Holder** — pick a wallet DPG → scan, paste, or select an example
 offer → review the pending offer → accept it into the wallet → present
-it to a verifier via QR, OID4VP link, or direct upload.
+it to a verifier via QR, OID4VP link, or direct upload. *(For the Inji
+auth-code path — the Inji Web Wallet DPG — the holder instead browses an
+in-app credential catalog, signs in with eSignet, and receives the VC
+right here in verifiably, with no external Inji Web redirect.)*
 
 **Verifier** — pick a verifier DPG → either request an OID4VP
 presentation from a template (signed request JWT + QR for cross-device)
