@@ -65,6 +65,11 @@ func (h *H) APISelfIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.RateLimiter != nil && !h.RateLimiter.Allow("self-issue", r) {
+		apiError(w, http.StatusTooManyRequests, "rate limit exceeded")
+		return
+	}
+
 	var body selfIssueRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())

@@ -243,33 +243,48 @@ const nbfLeewaySeconds = 60
 // checkTemporalAudience validates `exp`, `nbf`, and `aud`. It runs only after
 // the signature is verified.
 //
-//   - exp: reject once expired (no leeway).
+//   - exp: required and must be in the future. A token without exp is rejected.
 //   - nbf: reject a token that becomes valid more than nbfLeewaySeconds in the
 //     future (clock-skew tolerant).
-//   - aud: when this provider has a ClientID AND the token carries an `aud`
-//     claim, the ClientID must appear in the audience. This rejects tokens minted
-//     by the same IdP for a different relying party (RFC 7519 §4.1.3, OIDC Core
-//     §3.1.3.7). Tokens without `aud` are allowed — issuer + signature bind them
-//     to this provider. For Keycloak access_tokens to pass this check, configure
-//     an "Audience" client-scope mapper that adds the clientId to `aud`.
+//   - aud/azp: when ClientID is configured, fail closed — the token must contain
+//     ClientID in `aud` OR have `azp == ClientID`. This rejects tokens minted by
+//     the same IdP for a different relying party (RFC 7519 §4.1.3, OIDC Core
+//     §3.1.3.7). For Keycloak, configure an Audience mapper OR rely on the azp
+//     claim that Keycloak sets automatically on access_tokens.
 func (p *Provider) checkTemporalAudience(claims map[string]json.RawMessage) error {
 	now := time.Now().Unix()
-	if exp, ok := decodeInt(claims, "exp"); ok && exp > 0 && now >= exp {
+
+	// exp is required — a token without an expiry must be rejected at an
+	// unauthenticated issuance trust boundary.
+	exp, expOK := decodeInt(claims, "exp")
+	if !expOK || exp <= 0 {
+		return fmt.Errorf("oidc: token has no exp claim")
+	}
+	if now >= exp {
 		return fmt.Errorf("oidc: token expired")
 	}
+
 	if nbf, ok := decodeInt(claims, "nbf"); ok && nbf > 0 && now+nbfLeewaySeconds < nbf {
 		return fmt.Errorf("oidc: token not yet valid (nbf)")
 	}
+
+	// When ClientID is configured, fail closed: the token must prove it was
+	// minted for this client. Check aud first; fall back to azp (Keycloak
+	// access_tokens set azp to the client_id even when aud is absent).
 	if p.cfg.ClientID != "" {
-		if auds, ok := decodeAudiences(claims); ok && len(auds) > 0 {
-			found := false
+		auds, audOK := decodeAudiences(claims)
+		audFound := false
+		if audOK {
 			for _, a := range auds {
 				if a == p.cfg.ClientID {
-					found = true
+					audFound = true
 					break
 				}
 			}
-			if !found {
+		}
+		if !audFound {
+			azp, _ := decodeString(claims, "azp")
+			if azp != p.cfg.ClientID {
 				return fmt.Errorf("oidc: token aud does not include client %q", p.cfg.ClientID)
 			}
 		}

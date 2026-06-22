@@ -221,6 +221,18 @@ render_public_caddyfile() {
 	email ${VERIFIABLY_LE_EMAIL}
 }
 
+(security_headers) {
+	header {
+		X-Content-Type-Options  nosniff
+		X-Frame-Options         DENY
+		X-XSS-Protection        "1; mode=block"
+		Referrer-Policy         strict-origin-when-cross-origin
+		Permissions-Policy      "camera=(), microphone=(), geolocation=(), payment=()"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		-Server
+	}
+}
+
 EOF
     local entry name upstream proto slug subdomain
     for entry in "${entries[@]}"; do
@@ -247,6 +259,7 @@ EOF
         subdomain="${slug}.${VERIFIABLY_PUBLIC_DOMAIN}"
       fi
       printf '%s {\n' "$subdomain"
+      printf '\timport security_headers\n'
       # OID4VCI requests must bypass the CREDEBL API gateway (which returns
       # 404 for /oid4vci/*) and go directly to the Credo agent controller.
       # caddy-public reaches it via host.docker.internal because the agent

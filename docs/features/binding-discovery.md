@@ -56,11 +56,12 @@ Prior to this work:
 
 ```go
 func filterCitizenBindingCredentials(issuers []backend.IssuerCatalogEntry) []backend.IssuerCatalogEntry
-func credentialHasNationalIDClaim(c backend.CredentialConfig, mockToken map[string]string) bool
 ```
 
+(plus the package-level `mockCitizenIdentity` claim set)
+
 **What they do:**  
-Before encoding the catalog response, every credential is tested against a mock token `{"nationalid": "1"}` using `resolveClaim` (the same function the eligibility check uses). A credential passes if at least one of its declared `Claims` resolves to a national-ID-equivalent value. Credentials that require issuer-gated data (e.g., `"degree"`) are stripped. Issuers with no remaining credentials are removed entirely.
+Before encoding the catalog response, every credential is tested against `mockCitizenIdentity` — a synthetic claim set representing the maximum information a national-ID OIDC token can provide (covering every alias in `identityAliases`) — using `evaluateEligibility`, the **same** function the citizen eligibility and self-issue checks use. A credential passes only when **every** declared claim is coverable (`Available == true`, i.e. zero missing claims). A credential mixing identity claims with issuer-gated data — e.g. `[national_id, degree]` — is **stripped**, because `"degree"` is not coverable from any identity token and self-issue would 403 on it. (The earlier "passes if *any* claim resolves" logic over-admitted exactly these credentials, leaving dead "Obtener" buttons.) Issuers with no remaining credentials are removed entirely.
 
 **Alias matching:**  
 `resolveClaim` normalises claim names (strips non-alphanumeric, lowercases) and checks against `identityAliases` in `identity_prefill.go`. The following field names are treated as equivalent:

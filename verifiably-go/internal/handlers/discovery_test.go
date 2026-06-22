@@ -209,6 +209,37 @@ func TestServeCredentialCatalog_AliasedNationalIDClaims(t *testing.T) {
 	}
 }
 
+func TestServeCredentialCatalog_FiltersPartiallyGatedCredentials(t *testing.T) {
+	// A credential with [national_id, degree] must be filtered: "degree" is not
+	// coverable from any national-ID OIDC token, so the "Obtener" button would
+	// always lead to a 403 from self-issue. Only NatIdOnly (fully coverable) survives.
+	h := apiTestH(&testAdapter{})
+	h.CredentialCache = fakeCatalog{entries: []backend.IssuerCatalogEntry{
+		{DID: "did:a", Credentials: []backend.CredentialConfig{
+			{ID: "NatIdOnly", Claims: []string{"national_id", "given_name"}},
+			{ID: "Diploma", Claims: []string{"national_id", "degree"}},
+		}},
+	}}
+
+	rr := httptest.NewRecorder()
+	h.ServeCredentialCatalog(rr, httptest.NewRequest(http.MethodGet, "/api/v1/discovery/credentials", nil))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var resp struct {
+		Issuers []backend.IssuerCatalogEntry `json:"issuers"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	if len(resp.Issuers) != 1 {
+		t.Fatalf("issuers = %d, want 1", len(resp.Issuers))
+	}
+	creds := resp.Issuers[0].Credentials
+	if len(creds) != 1 || creds[0].ID != "NatIdOnly" {
+		t.Errorf("credentials = %+v, want only NatIdOnly (Diploma filtered: degree not identity-coverable)", creds)
+	}
+}
+
 func TestServeIssuerMetadata_OptionsCORS(t *testing.T) {
 	h := apiTestH(&testAdapter{})
 	rr := httptest.NewRecorder()

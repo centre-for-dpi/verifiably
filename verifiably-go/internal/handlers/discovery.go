@@ -136,19 +136,45 @@ func (h *H) ServeCredentialCatalog(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"issuers": issuers})
 }
 
-// filterCitizenBindingCredentials removes credentials that do not carry a
-// national-ID-equivalent claim, and removes issuers that have no remaining
-// credentials after filtering. This keeps the citizen discovery catalog honest:
-// every credential shown can actually be self-issued from a verified national
-// identity, so the wallet never shows an "Obtener" button that will always fail.
+// mockCitizenIdentity is a synthetic claim set representing the maximum
+// information a national-ID OIDC token can provide. It covers every alias
+// in the identityAliases table so filterCitizenBindingCredentials can determine
+// which credentials are fully self-issuable. Use natural OIDC claim names here;
+// normalizeClaims (called inside evaluateEligibility) will normalize the keys.
+var mockCitizenIdentity = map[string]string{
+	"national_id":  "1",
+	"given_name":   "x",
+	"family_name":  "x",
+	"name":         "x",
+	"email":        "x",
+	"birthdate":    "x",
+	"phone_number": "x",
+	"nationality":  "x",
+	"sub":          "x",
+}
+
+// filterCitizenBindingCredentials removes credentials that cannot be fully
+// self-issued from a verified national identity, and removes issuers that have
+// no remaining credentials after filtering. This keeps the citizen discovery
+// catalog honest: every credential shown can actually be obtained, so the wallet
+// never shows an "Obtener" button that will always 403 at self-issue time.
+//
+// A credential is kept only when evaluateEligibility reports Available=true
+// against the full mockCitizenIdentity — meaning EVERY claim the credential
+// declares is coverable by a national-ID OIDC token. A credential with a mix
+// like [national_id, degree] fails because "degree" is not in any identity
+// token, while [national_id, given_name, family_name] passes.
 func filterCitizenBindingCredentials(issuers []backend.IssuerCatalogEntry) []backend.IssuerCatalogEntry {
-	// Mock token with nationalid so resolveClaim can do alias-aware matching.
-	mockToken := map[string]string{"nationalid": "1"}
 	out := make([]backend.IssuerCatalogEntry, 0, len(issuers))
 	for _, iss := range issuers {
+		// Evaluate the issuer's full credential set in one call so the mock
+		// identity is normalized once — evaluateEligibility's documented
+		// contract — rather than rebuilt per credential. results[i] aligns with
+		// iss.Credentials[i] (evaluateEligibility preserves input order).
+		results := evaluateEligibility(iss.Credentials, mockCitizenIdentity)
 		var creds []backend.CredentialConfig
-		for _, c := range iss.Credentials {
-			if credentialHasNationalIDClaim(c, mockToken) {
+		for i, c := range iss.Credentials {
+			if results[i].Available {
 				creds = append(creds, c)
 			}
 		}
@@ -158,18 +184,4 @@ func filterCitizenBindingCredentials(issuers []backend.IssuerCatalogEntry) []bac
 		}
 	}
 	return out
-}
-
-// credentialHasNationalIDClaim reports whether any of the credential's declared
-// claim names resolves to a national-ID-equivalent value when matched against a
-// token that carries nationalid. Uses resolveClaim so the alias table in
-// identity_prefill.go (cedula, dni, documentnumber, …) is the single source of
-// truth — this check and the eligibility check never drift.
-func credentialHasNationalIDClaim(c backend.CredentialConfig, mockToken map[string]string) bool {
-	for _, name := range c.Claims {
-		if _, ok := resolveClaim(name, mockToken); ok {
-			return true
-		}
-	}
-	return false
 }

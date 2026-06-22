@@ -99,6 +99,10 @@ func (h *H) APICheckEligibility(w http.ResponseWriter, r *http.Request) {
 	}
 	if citizenTok != "" {
 		if _, hasKey := h.APIKeys.Authenticate(r); !hasKey {
+			if h.RateLimiter != nil && !h.RateLimiter.Allow("citizen-eligible", r) {
+				apiError(w, http.StatusTooManyRequests, "rate limit exceeded")
+				return
+			}
 			claims, err := h.verifyCitizenToken(r.Context(), citizenTok)
 			if err != nil {
 				apiError(w, http.StatusUnauthorized, "token verification failed")

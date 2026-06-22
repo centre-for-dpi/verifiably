@@ -104,6 +104,7 @@ func TestVerifyToken_RS256_Valid(t *testing.T) {
 
 	tok := signRS256(t, key, "k1", map[string]any{
 		"iss": srv.URL, "sub": "user-1", "given_name": "Ana",
+		"aud": "client",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 	claims, err := p.VerifyToken(context.Background(), tok)
@@ -123,6 +124,7 @@ func TestVerifyToken_ES256_Valid(t *testing.T) {
 
 	tok := signES256(t, key, "ec1", map[string]any{
 		"iss": srv.URL, "sub": "user-2",
+		"aud": "client",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 	claims, err := p.VerifyToken(context.Background(), tok)
@@ -212,7 +214,7 @@ func TestVerifyToken_AudienceEnforcedWhenPresent(t *testing.T) {
 
 	base := map[string]any{"iss": srv.URL, "sub": "u", "exp": time.Now().Add(time.Hour).Unix()}
 
-	// aud naming a different relying party → rejected (audience confusion attack).
+	// aud naming a different relying party, no azp → rejected (audience confusion attack).
 	wrong := signRS256(t, key, "k1", merge(base, map[string]any{"aud": "other-client"}))
 	if _, err := p.VerifyToken(context.Background(), wrong); err == nil {
 		t.Error("expected reject when aud excludes our client id")
@@ -231,10 +233,16 @@ func TestVerifyToken_AudienceEnforcedWhenPresent(t *testing.T) {
 		t.Errorf("aud array including client should be accepted: %v", err)
 	}
 
-	// No aud at all → accepted (issuer + signature already bind it).
+	// No aud, no azp, ClientID configured → rejected (fail closed).
 	none := signRS256(t, key, "k1", base)
-	if _, err := p.VerifyToken(context.Background(), none); err != nil {
-		t.Errorf("missing aud should be accepted: %v", err)
+	if _, err := p.VerifyToken(context.Background(), none); err == nil {
+		t.Error("expected reject when aud absent and no azp fallback (fail closed)")
+	}
+
+	// No aud but azp == ClientID (Keycloak access_token without Audience mapper) → accepted.
+	azpOnly := signRS256(t, key, "k1", merge(base, map[string]any{"azp": "client"}))
+	if _, err := p.VerifyToken(context.Background(), azpOnly); err != nil {
+		t.Errorf("azp=client without aud should be accepted as fallback: %v", err)
 	}
 }
 

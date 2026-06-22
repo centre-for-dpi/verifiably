@@ -7,7 +7,20 @@
 	email isaiasalvarez@gmail.com
 }
 
+(security_headers) {
+	header {
+		X-Content-Type-Options  nosniff
+		X-Frame-Options         DENY
+		X-XSS-Protection        "1; mode=block"
+		Referrer-Policy         strict-origin-when-cross-origin
+		Permissions-Policy      "camera=(), microphone=(), geolocation=(), payment=()"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		-Server
+	}
+}
+
 walt-issuer.verifiably.ysalabs.work {
+	import security_headers
 	handle /.well-known/did.json {
 		header Content-Type "application/json"
 		header Access-Control-Allow-Origin "*"
@@ -17,22 +30,27 @@ walt-issuer.verifiably.ysalabs.work {
 }
 
 walt-wallet.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy wallet-api:7001
 }
 
 walt-verifier.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy verifier-api:7003
 }
 
 inji-certify.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy certify-nginx:80
 }
 
 inji-certify-preauth.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy certify-preauth-nginx:80
 }
 
 inji-verify.verifiably.ysalabs.work {
+	import security_headers
 	handle /v1/verify/.well-known/did.json {
 		header Content-Type "application/did+ld+json"
 		header Access-Control-Allow-Origin "*"
@@ -42,26 +60,32 @@ inji-verify.verifiably.ysalabs.work {
 }
 
 inji-verify-ui.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy inji-verify-ui:8000
 }
 
 inji-web.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy injiweb-ui:3004
 }
 
 mimoto.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy injiweb-mimoto:8099
 }
 
 esignet.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy injiweb-oidc-ui:3000
 }
 
 keycloak.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy keycloak:8180
 }
 
 wso2.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy https://wso2is:9443 {
 		transport http {
 			tls_insecure_skip_verify
@@ -70,10 +94,12 @@ wso2.verifiably.ysalabs.work {
 }
 
 verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy verifiably-go:8080
 }
 
 credebl.verifiably.ysalabs.work {
+	import security_headers
 	handle /oid4vci/* {
 		reverse_proxy credebl-oid4vci-rewriter:80
 	}
@@ -90,10 +116,12 @@ credebl.verifiably.ysalabs.work {
 }
 
 credebl-minio.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy credebl-minio:9000
 }
 
 grafana.verifiably.ysalabs.work {
+	import security_headers
 	reverse_proxy grafana:3000
 }
 
