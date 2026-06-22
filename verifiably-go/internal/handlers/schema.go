@@ -349,6 +349,22 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	schema := currentBuilderSchema(sess, data)
+	// Inji auth-code DPGs apply via the Flow B path (multi-format credential_config
+	// + extraction view + scope-query + eSignet scope + restart certify/esignet)
+	// instead of the default adapter — the builder UI is shared, the save is not.
+	authcode := false
+	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil {
+		authcode = dpgs[sess.IssuerDpg].SchemaApply == "inji_authcode"
+	}
+	if authcode {
+		key, err := h.applyAuthcodeSchema(issuerCtx(r, sess), schema)
+		if err != nil {
+			h.errorToast(w, r, err.Error())
+			return
+		}
+		h.redirect(w, r, "/issuer/schema/inji?created="+key)
+		return
+	}
 	if err := h.Adapter.SaveCustomSchema(issuerCtx(r, sess), schema); err != nil {
 		h.errorToast(w, r, err.Error())
 		return

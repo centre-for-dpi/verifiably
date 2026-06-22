@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,9 +9,11 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/verifiably/verifiably-go/internal/adapters/injicertify"
+	"github.com/verifiably/verifiably-go/vctypes"
 )
 
 // Flow B issuer UI: create a credential schema on the fly. Generates all four
@@ -57,7 +58,8 @@ func (h *H) ShowCreateSchema(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "issuer_schema", h.pageData(sess, body))
 }
 
-// CreateSchema handles the form: generate + apply all Flow B artifacts, then restart.
+// CreateSchema handles the legacy /issuer/schema/inji form (W3C VCDM 2.0 only).
+// The rich multi-format flow goes through the shared builder (SaveSchema).
 func (h *H) CreateSchema(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	fail := func(msg string) { sess.SchemaError = msg; h.redirect(w, r, "/issuer/schema/inji") }
@@ -74,9 +76,8 @@ func (h *H) CreateSchema(w http.ResponseWriter, r *http.Request) {
 		fail("Credential name is required.")
 		return
 	}
-	names, labels := r.Form["field_name"], r.Form["field_label"]
-	var fields []schemaField
-	for i, n := range names {
+	var fields []vctypes.FieldSpec
+	for _, n := range r.Form["field_name"] {
 		n = strings.TrimSpace(n)
 		if n == "" {
 			continue
@@ -85,103 +86,95 @@ func (h *H) CreateSchema(w http.ResponseWriter, r *http.Request) {
 			fail("Field name '" + n + "' must start with a letter and contain only letters, digits, or underscores.")
 			return
 		}
-		label := n
-		if i < len(labels) && strings.TrimSpace(labels[i]) != "" {
-			label = strings.TrimSpace(labels[i])
-		}
-		fields = append(fields, schemaField{Name: n, Label: label})
+		fields = append(fields, vctypes.FieldSpec{Name: n, Datatype: "string"})
 	}
 	if len(fields) == 0 {
 		fail("Add at least one field.")
 		return
 	}
-
-	a := buildAuthcodeArtifacts(displayName, fields)
-
-	// 1. DB: extraction view + credential_config (one transaction)
-	if err := h.Subjects.ApplyAuthcodeSchema(r.Context(),
-		a.viewDDL, a.configKey, a.ctype, a.vcTemplateB64, a.display, a.credsub, a.scope, a.displayOrder); err != nil {
-		fail("DB apply failed: " + err.Error())
+	std := canonicalStd(r.FormValue("std"))
+	if std == "" {
+		std = "w3c_vcdm_2"
+	}
+	schema := vctypes.Schema{
+		ID:         "custom-" + nonAlnumRe.ReplaceAllString(strings.ToLower(displayName), ""),
+		Name:       displayName,
+		Std:        std,
+		FieldsSpec: fields,
+	}
+	key, err := h.applyAuthcodeSchema(r.Context(), schema)
+	if err != nil {
+		fail(err.Error())
 		return
 	}
-	// 2. Certify scope-query mapping (mounted file)
-	if err := appendBraceEntry(certifyScopeQueryFile(),
-		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", a.scope, a.scopeQuery); err != nil {
-		fail("Certify scope-query write failed: " + err.Error())
-		return
-	}
-	// 3. eSignet scope set + resource mapping (mounted file)
-	if err := appendBraceEntry(esignetScopeFile(),
-		"mosip.esignet.supported.credential.scopes", a.scope, "'"+a.scope+"'"); err != nil {
-		fail("eSignet scope write failed: " + err.Error())
-		return
-	}
-	if err := appendBraceEntry(esignetScopeFile(),
-		"mosip.esignet.credential.scope-resource-mapping", a.scope, "'"+a.scope+"':'"+certifyResourceURL+"'"); err != nil {
-		fail("eSignet resource-map write failed: " + err.Error())
-		return
-	}
-	// 4. restart certify + esignet so they re-read the files
-	for _, c := range []string{"inji-certify", "injiweb-esignet"} {
-		if err := dockerRestart(c); err != nil {
-			fail("restart " + c + " failed: " + err.Error())
-			return
-		}
-	}
-	h.redirect(w, r, "/issuer/schema/inji?created="+a.configKey)
+	h.redirect(w, r, "/issuer/schema/inji?created="+key)
 }
 
 type authcodeArtifacts struct {
-	configKey, ctype, scope             string
-	vcTemplateB64, display, credsub     string
-	displayOrder                        []string
-	viewDDL, scopeQuery                 string
+	configKey, scope            string
+	credFormat, vcTemplateB64   string
+	sdJwtVct, context, credType *string
+	display                     string
+	credsub                     *string
+	displayOrder                []string
+	viewDDL, scopeQuery         string
 }
 
-// buildAuthcodeArtifacts is the Go port of scripts/flow-b.py's generation.
-func buildAuthcodeArtifacts(displayName string, fields []schemaField) authcodeArtifacts {
-	// derive identifiers from the display name
-	camel := ""
-	for _, word := range strings.FieldsFunc(displayName, func(r rune) bool { return !isAlnum(r) }) {
-		camel += strings.ToUpper(word[:1]) + word[1:]
+// applyAuthcodeSchema generates + applies all Flow B artifacts for a schema (any
+// data model the builder offers) and restarts certify + esignet so they re-read
+// the files. Returns the credential_config key. Shared by the legacy form and
+// the rich builder.
+func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema) (string, error) {
+	a := buildAuthcodeArtifacts(schema)
+	if err := h.Subjects.ApplyAuthcodeSchema(ctx, a.viewDDL, a.configKey, a.vcTemplateB64,
+		a.credFormat, a.display, a.scope, a.displayOrder, a.sdJwtVct, a.context, a.credType, a.credsub); err != nil {
+		return "", fmt.Errorf("DB apply failed: %w", err)
 	}
-	if camel == "" {
-		camel = "Credential"
+	if err := appendBraceEntry(certifyScopeQueryFile(),
+		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", a.scope, a.scopeQuery); err != nil {
+		return "", fmt.Errorf("Certify scope-query write failed: %w", err)
 	}
-	configKey := camel
-	slug := nonAlnumRe.ReplaceAllString(strings.ToLower(configKey), "")
-	scope := slug + "_vc_ldp"
-	viewName := "vc_subject_" + slug
-	types := []string{"VerifiableCredential", configKey}
-	sorted := append([]string{}, types...)
-	sort.Strings(sorted) // Certify's config lookup keys on alpha-sorted types
-
-	// vc_template (@context = creds/v1 + ed25519 suite + per-field vocab terms)
-	terms := map[string]any{"@vocab": vocabBase}
-	for _, t := range types {
-		if t != "VerifiableCredential" {
-			terms[t] = vocabBase + t
+	if err := appendBraceEntry(esignetScopeFile(),
+		"mosip.esignet.supported.credential.scopes", a.scope, "'"+a.scope+"'"); err != nil {
+		return "", fmt.Errorf("eSignet scope write failed: %w", err)
+	}
+	if err := appendBraceEntry(esignetScopeFile(),
+		"mosip.esignet.credential.scope-resource-mapping", a.scope, "'"+a.scope+"':'"+certifyResourceURL+"'"); err != nil {
+		return "", fmt.Errorf("eSignet resource-map write failed: %w", err)
+	}
+	for _, c := range []string{"inji-certify", "injiweb-esignet"} {
+		if err := dockerRestart(c); err != nil {
+			return "", fmt.Errorf("restart %s failed: %w", c, err)
 		}
 	}
-	subj := map[string]any{"id": "${_holderId}"}
-	for _, f := range fields {
-		terms[f.Name] = vocabBase + f.Name
-		subj[f.Name] = "${" + f.Name + "}"
+	return a.configKey, nil
+}
+
+// buildAuthcodeArtifacts maps a builder schema (any Std) to the per-credential
+// auth-code artifacts, reusing injicertify's per-format credential_config logic
+// (ldp_vc for W3C VCDM 1.1/2.0, vc+sd-jwt for IETF SD-JWT VC).
+func buildAuthcodeArtifacts(schema vctypes.Schema) authcodeArtifacts {
+	cc := injicertify.BuildAuthcodeCredConfig(schema)
+
+	// The credential's specific type (= credential_config key, scope, view) must
+	// match injicertify.credentialTypesSorted: AdditionalTypes[0] or Name-no-spaces.
+	specific := strings.ReplaceAll(strings.TrimSpace(schema.Name), " ", "")
+	if len(schema.AdditionalTypes) > 0 && strings.TrimSpace(schema.AdditionalTypes[0]) != "" {
+		specific = strings.TrimSpace(schema.AdditionalTypes[0])
 	}
-	template := map[string]any{
-		"@context": []any{
-			"https://www.w3.org/2018/credentials/v1",
-			"https://w3id.org/security/suites/ed25519-2020/v1", terms,
-		},
-		"issuer": "${_issuer}", "type": types,
-		"issuanceDate": "${validFrom}", "expirationDate": "${validUntil}",
-		"credentialSubject": subj,
+	if specific == "" {
+		specific = "Credential"
 	}
-	tb, _ := json.MarshalIndent(template, "", "  ")
-	b64 := base64.StdEncoding.EncodeToString(tb)
+	configKey := specific
+	slug := nonAlnumRe.ReplaceAllString(strings.ToLower(configKey), "")
+	if slug == "" {
+		slug = "credential"
+	}
+	scope := slug + "_vc_ldp"
+	viewName := "vc_subject_" + slug
 
 	display, _ := json.Marshal([]any{map[string]any{
-		"name": displayName, "locale": "en",
+		"name": schema.Name, "locale": "en",
 		"logo":             map[string]any{"url": "https://verifiably.id/static/credential-logo.svg", "alt_text": "Verifiably"},
 		"background_color": "#0f172a", "text_color": "#FFFFFF",
 		"background_image": map[string]any{"uri": "https://verifiably.id/static/credential-logo.svg"},
@@ -189,13 +182,19 @@ func buildAuthcodeArtifacts(displayName string, fields []schemaField) authcodeAr
 
 	cs := map[string]any{}
 	var order, viewCols, queryCols []string
-	for _, f := range fields {
-		cs[f.Name] = map[string]any{"display": []any{map[string]any{"name": f.Label, "locale": "en"}}}
+	for _, f := range schema.FieldsSpec {
+		cs[f.Name] = map[string]any{"display": []any{map[string]any{"name": f.Name, "locale": "en"}}}
 		order = append(order, f.Name)
 		viewCols = append(viewCols, fmt.Sprintf("  claims->>'%s' AS \"%s\"", f.Name, f.Name))
 		queryCols = append(queryCols, fmt.Sprintf("\"%s\"", f.Name))
 	}
-	credsub, _ := json.Marshal(cs)
+	// credential_subject display only for the JSON-LD formats (mirrors injicertify).
+	var credsub *string
+	if cc.CredFormat == "ldp_vc" || cc.CredFormat == "jwt_vc_json" {
+		b, _ := json.Marshal(cs)
+		s := string(b)
+		credsub = &s
+	}
 
 	viewDDL := fmt.Sprintf("CREATE OR REPLACE VIEW certify.%s AS\nSELECT individual_id,\n%s\nFROM certify.vc_subject;",
 		viewName, strings.Join(viewCols, ",\n"))
@@ -203,8 +202,10 @@ func buildAuthcodeArtifacts(displayName string, fields []schemaField) authcodeAr
 		scope, strings.Join(queryCols, ", "), viewName)
 
 	return authcodeArtifacts{
-		configKey: configKey, ctype: strings.Join(sorted, ","), scope: scope,
-		vcTemplateB64: b64, display: string(display), credsub: string(credsub),
+		configKey: configKey, scope: scope,
+		credFormat: cc.CredFormat, vcTemplateB64: cc.VCTemplateB64,
+		sdJwtVct: cc.SDJwtVct, context: cc.Context, credType: cc.CredType,
+		display: string(display), credsub: credsub,
 		displayOrder: order, viewDDL: viewDDL, scopeQuery: scopeQuery,
 	}
 }

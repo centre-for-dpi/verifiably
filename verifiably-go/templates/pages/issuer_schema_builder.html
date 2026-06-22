@@ -82,9 +82,10 @@
       <option value="w3c_vcdm_2"      {{if eq $cur "w3c_vcdm_2"}}selected{{end}}>w3c_vcdm_2 — W3C VCDM 2.0 (JSON-LD)</option>
       <option value="w3c_vcdm_1"      {{if eq $cur "w3c_vcdm_1"}}selected{{end}}>w3c_vcdm_1 — W3C VCDM 1.1 (JSON-LD)</option>
       <option value="sd_jwt_vc"       {{if hasPrefix $cur "sd_jwt_vc"}}selected{{end}}>sd_jwt_vc — IETF SD-JWT VC (draft)</option>
-      <option value="jwt_vc"          {{if eq $cur "jwt_vc"}}selected{{end}}>jwt_vc — plain JWT-VC</option>
-      <option value="mso_mdoc"        {{if eq $cur "mso_mdoc"}}selected{{end}}>mso_mdoc — ISO 18013-5 mDL/mDoc</option>
+      <option value="jwt_vc"          {{if eq $cur "jwt_vc"}}selected{{end}}>jwt_vc — plain JWT-VC (Inji Certify: issued as ldp_vc)</option>
+      <option value="mso_mdoc"        {{if eq $cur "mso_mdoc"}}selected{{end}}>mso_mdoc — ISO 18013-5 mDL/mDoc (Inji Certify: mock-only at v0.14)</option>
     </select>
+    <p class="hint" style="font-size:0.75rem;color:var(--ink-mute);margin-top:0.35rem">Inji Certify auth-code issues <strong>W3C VCDM 1.1/2.0</strong> (ldp_vc) and <strong>IETF SD-JWT VC</strong> (vc+sd-jwt) natively. <strong>mso_mdoc</strong> is mock-only in Certify v0.14 — it'll configure but isn't a usefully-verifiable credential.</p>
   </div>
 
   <div>

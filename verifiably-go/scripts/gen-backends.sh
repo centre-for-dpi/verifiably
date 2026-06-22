@@ -109,7 +109,8 @@ JSON
         "DirectPDF": false,
         "Caveats": "Requires eSignet running; the holder needs a MOSIP identity to sign in.",
         "Redirect": false,
-        "InAppPath": "/issuer/schema/inji",
+        "InAppPath": "/issuer/schema/build",
+        "SchemaApply": "inji_authcode",
         "Capabilities": [
           {"Kind": "flow",       "Key": "create_schema",   "Title": "Create a schema, live",            "Body": "verifiably generates the Certify config, the registry extraction view and the eSignet scope, then restarts both services — the credential is claimable immediately."},
           {"Kind": "flow",       "Key": "auth_code",       "Title": "eSignet authorization code",       "Body": "The holder signs in with eSignet (OTP); the credential endpoint validates the IdP-signed token."},

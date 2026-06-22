@@ -25,9 +25,13 @@ type DPG struct {
 	// from backends.json; empty for non-redirect DPGs.
 	UIURL string
 	// InAppPath, when set, makes selecting this DPG navigate to an in-app flow
-	// (e.g. "/issuer/schema/inji" or "/holder/wallet/inji") instead of the
+	// (e.g. "/issuer/schema/build" or "/holder/wallet/inji") instead of the
 	// external redirect notice. Takes precedence over Redirect.
 	InAppPath string
+	// SchemaApply, when "inji_authcode", makes the shared schema builder's save
+	// apply via the Inji auth-code (Flow B) path instead of the default adapter
+	// (issuing every data model the builder offers as Inji Certify credentials).
+	SchemaApply string
 
 	// Issuer-specific capability flags
 	FlowPreAuth                 bool
