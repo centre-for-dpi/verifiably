@@ -11,10 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// AllowedSubjectClaims is the set of certify.vc_subject claim columns the API may
-// provision. It mirrors the FIELDS in scripts/gen-authcode-config.py (the
-// generator that DDLs the table). Claims outside this allow-list are ignored —
-// and, crucially, the list is what keeps the dynamic column SQL injection-safe.
+// AllowedSubjectClaims are the standard claims mirrored into typed certify.vc_subject
+// columns (which the vc_subject_person view reads). ALL provisioned claims — these and
+// any others — are also stored in the claims jsonb, so dynamically-created schemas can
+// read arbitrary fields. This list also keeps the typed-column SQL injection-safe
+// (column identifiers come only from here).
 var AllowedSubjectClaims = []string{
 	"fullName", "givenName", "familyName", "gender", "dateOfBirth", "email", "phoneNumber",
 }
@@ -51,11 +52,19 @@ func NewSubjectStore(pool *pgxpool.Pool) *SubjectStore { return &SubjectStore{po
 // certify.vc_subject (INSERT … ON CONFLICT (individual_id) DO UPDATE). Column
 // names come only from AllowedSubjectClaims and are quoted; values are bound.
 func (s *SubjectStore) ProvisionSubject(ctx context.Context, subjectID string, claims map[string]string) error {
-	cols := []string{"individual_id"}
-	args := []any{subjectID}
-	ph := []string{"$1"}
-	updates := []string{}
-	i := 2
+	// ALL claims go into the claims jsonb, so a dynamically-created schema's
+	// extraction view (vc_subject_<key>, which reads claims->>'field') can read
+	// arbitrary fields. The standard claims are also mirrored into their typed
+	// columns, which the original vc_subject_person view reads.
+	jsonClaims, err := json.Marshal(claims)
+	if err != nil {
+		return fmt.Errorf("pg: marshal claims: %w", err)
+	}
+	cols := []string{"individual_id", "claims"}
+	args := []any{subjectID, jsonClaims}
+	ph := []string{"$1", "$2::jsonb"}
+	updates := []string{"claims = certify.vc_subject.claims || EXCLUDED.claims"}
+	i := 3
 	for _, col := range AllowedSubjectClaims {
 		v, ok := claims[col]
 		if !ok {
@@ -69,12 +78,7 @@ func (s *SubjectStore) ProvisionSubject(ctx context.Context, subjectID string, c
 		i++
 	}
 	q := "INSERT INTO certify.vc_subject (" + strings.Join(cols, ", ") + ") VALUES (" +
-		strings.Join(ph, ", ") + ") ON CONFLICT (individual_id) DO "
-	if len(updates) == 0 {
-		q += "NOTHING"
-	} else {
-		q += "UPDATE SET " + strings.Join(updates, ", ")
-	}
+		strings.Join(ph, ", ") + ") ON CONFLICT (individual_id) DO UPDATE SET " + strings.Join(updates, ", ")
 	if _, err := s.pool.Exec(ctx, q, args...); err != nil {
 		return fmt.Errorf("pg: provision vc_subject: %w", err)
 	}
