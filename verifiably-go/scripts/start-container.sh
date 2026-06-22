@@ -183,6 +183,7 @@ start_container() {
     -e VERIFIABLY_ROLES="${VERIFIABLY_ROLES:-issuer,holder,verifier,trust,schemas}" \
     -e VERIFIABLY_STATE_DIR=/app/state \
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
+    -e VERIFIABLY_REGISTRIES="$VERIFIABLY_REGISTRIES" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
     -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \

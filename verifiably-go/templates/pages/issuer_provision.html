@@ -24,18 +24,18 @@
     <input type="hidden" name="cred" value="{{$.Body.Cred}}">
     <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Individual ID *" $.Lang}}
       <input class="input" type="text" name="individual_id" placeholder="9876543210" maxlength="16" required></label>
+    {{if $.Body.Registries}}
     <div style="display:flex;gap:0.5rem;align-items:flex-end;flex-wrap:wrap;background:var(--bg);border:1px dashed var(--line);border-radius:4px;padding:0.6rem 0.75rem">
       <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.8rem">{{t "Pre-fill from an authoritative registry" $.Lang}}
         <select id="reg-select" style="padding:0.4rem;background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
           <option value="">{{t "— select registry —" $.Lang}}</option>
-          <option value="dad">DAD · Cultivators (national ID)</option>
-          <option value="gn">Grama Niladhari · Address (national ID)</option>
-          <option value="business">Business · Permit (permit ID)</option>
+          {{range $.Body.Registries}}<option value="{{.ID}}">{{.Label}}</option>{{end}}
         </select></label>
       <button type="button" class="btn ghost small" onclick="prefillFromRegistry()">{{t "Fetch by ID" $.Lang}}</button>
       <span id="reg-status" class="subtitle" style="font-size:0.78rem"></span>
     </div>
     <pre id="reg-record" class="mono" style="display:none;font-size:0.72rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0.6rem;overflow:auto;max-height:160px;margin:0"></pre>
+    {{end}}
     {{range $.Body.Fields}}
     <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{.}}
       <input class="input" type="text" name="field_{{.}}" placeholder="{{.}}"></label>

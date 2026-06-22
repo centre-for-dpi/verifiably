@@ -141,6 +141,7 @@ func (h *H) ShowProvisionSubject(w http.ResponseWriter, r *http.Request) {
 // name (owner-scoped) + its claim fields.
 func (h *H) provisionBody(r *http.Request, sess *Session, cred string, extra map[string]any) map[string]any {
 	body := map[string]any{"Enabled": h.Subjects != nil, "Cred": cred}
+	body["Registries"] = registryProviders() // config-driven pre-fill sources (may be empty)
 	if h.Subjects != nil && cred != "" {
 		if mine, err := h.Subjects.ListMyCredentials(r.Context(), sessionOwnerKey(sess)); err == nil {
 			for _, c := range mine {
@@ -199,34 +200,53 @@ func (h *H) ProvisionSubjectForm(w http.ResponseWriter, r *http.Request) {
 	render(map[string]any{"Success": true, "IndividualID": id})
 }
 
-// registryEndpoint maps a federated-registry key to its base URL + lookup path.
-// The registries (FastAPI) are reachable on the shared docker network; each is
-// overridable per host via env.
-func registryEndpoint(reg string) (string, bool) {
-	switch reg {
-	case "dad":
-		return envOr("REGISTRY_DAD_URL", "http://dad-registry:8000") + "/cultivators/", true
-	case "gn":
-		return envOr("REGISTRY_GN_URL", "http://gn-registry:8000") + "/attestations/", true
-	case "business":
-		return envOr("REGISTRY_BUSINESS_URL", "http://business-registry:8000") + "/businesses/", true
+// registryProvider is one configurable authoritative-data source the provisioning
+// form can pre-fill from. Defined entirely by config (VERIFIABLY_REGISTRIES) so
+// verifiably carries no knowledge of any specific registry.
+type registryProvider struct {
+	ID    string `json:"id"`    // selector value, e.g. "dad"
+	Label string `json:"label"` // shown in the dropdown
+	URL   string `json:"url"`   // base URL, e.g. http://dad-registry:8000
+	Path  string `json:"path"`  // lookup path prefix the id is appended to, e.g. /cultivators/
+}
+
+// registryProviders parses VERIFIABLY_REGISTRIES (a JSON array of registryProvider).
+// Empty/unset/invalid -> no providers (the pre-fill UI hides). The specific registries
+// are deployment config, never product code.
+func registryProviders() []registryProvider {
+	raw := strings.TrimSpace(os.Getenv("VERIFIABLY_REGISTRIES"))
+	if raw == "" {
+		return nil
 	}
-	return "", false
+	var ps []registryProvider
+	if err := json.Unmarshal([]byte(raw), &ps); err != nil {
+		return nil
+	}
+	return ps
+}
+
+func registryProviderByID(id string) (registryProvider, bool) {
+	for _, p := range registryProviders() {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return registryProvider{}, false
 }
 
 // FetchRegistryRecord proxies a lookup against a federated registry (server-side,
 // internal network) so the provisioning form can pre-fill a holder's authoritative
 // data by id. Forwards the registry's JSON record (or its 404), 502 if unreachable.
 func (h *H) FetchRegistryRecord(w http.ResponseWriter, r *http.Request) {
-	base, ok := registryEndpoint(r.URL.Query().Get("registry"))
+	p, ok := registryProviderByID(r.URL.Query().Get("registry"))
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	if !ok || id == "" {
-		http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+		http.Error(w, `{"error":"unknown registry or missing id"}`, http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+url.PathEscape(id), nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"registry unreachable"}`, http.StatusBadGateway)
