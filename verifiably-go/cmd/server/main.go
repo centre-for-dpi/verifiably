@@ -567,6 +567,7 @@ func main() {
 		mux.HandleFunc("GET /issuer/dpg", h.ShowIssuerDpgs)
 		// Inji auth-code: onboard a holder (create eSignet identity + provision claims).
 		mux.HandleFunc("GET /issuer/schema/provision", h.ShowProvisionSubject)
+		mux.HandleFunc("GET /issuer/schema/provision/fetch", h.FetchRegistryRecord)
 		mux.HandleFunc("POST /issuer/schema/provision", h.ProvisionSubjectForm)
 		mux.HandleFunc("POST /issuer/dpg", h.PickIssuerDpg)
 		mux.HandleFunc("POST /issuer/dpg/toggle", h.ToggleIssuerDpg)

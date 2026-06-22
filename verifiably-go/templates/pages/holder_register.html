@@ -2,7 +2,7 @@
 <section class="view active">
   <div class="section-label">{{t "HOLDER · REGISTER" $.Lang}}</div>
   <h1 class="page-title">{{t "Register your" $.Lang}} <em>{{t "identity" $.Lang}}</em>.</h1>
-  <p class="subtitle">{{t "Create your eSignet identity so you can sign in and claim credentials. You sign in with a one-time code (demo OTP: 111111) — the PIN below is part of your identity record, not your login code." $.Lang}}</p>
+  <p class="subtitle">{{t "Create your eSignet identity so you can log in and claim credentials. You log in with a one-time code (demo OTP: 111111) — the PIN below is part of your identity record, not your login code." $.Lang}}</p>
 
   {{if not $.Body.Enabled}}
   <div style="background:#3a2a00;border:1px solid #6b5200;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffd479">
@@ -17,7 +17,7 @@
   {{if $.Body.Success}}
   <div style="background:#0d2e1a;border:1px solid #1f7a45;border-radius:4px;padding:1rem;margin:1rem 0;color:#9affc0">
     <strong>{{$.Body.FullName}}</strong> — {{t "registered." $.Lang}} {{t "eSignet ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>.
-    {{t "Sign in via eSignet with the demo OTP" $.Lang}} <span class="mono">111111</span> {{t "to claim your credentials." $.Lang}}
+    {{t "Log in via eSignet with the demo OTP" $.Lang}} <span class="mono">111111</span> {{t "to claim your credentials." $.Lang}}
     <a href="/holder/wallet/inji">{{t "Go to the wallet →" $.Lang}}</a>
   </div>
   {{else}}

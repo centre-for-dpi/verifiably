@@ -16,7 +16,7 @@
 
   {{if $.Body.Success}}
   <div style="background:#0d2e1a;border:1px solid #1f7a45;border-radius:4px;padding:1rem;margin:1rem 0;color:#9affc0">
-    {{t "Saved data for Individual ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>. {{t "The holder can sign in and claim it." $.Lang}}
+    {{t "Saved data for Individual ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>. {{t "The holder can log in and claim it." $.Lang}}
     <a href="/issuer/schema/mine">{{t "← Back to my credentials" $.Lang}}</a>
   </div>
   {{else if $.Body.Fields}}
@@ -24,12 +24,45 @@
     <input type="hidden" name="cred" value="{{$.Body.Cred}}">
     <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Individual ID *" $.Lang}}
       <input class="input" type="text" name="individual_id" placeholder="9876543210" maxlength="16" required></label>
+    <div style="display:flex;gap:0.5rem;align-items:flex-end;flex-wrap:wrap;background:var(--bg);border:1px dashed var(--line);border-radius:4px;padding:0.6rem 0.75rem">
+      <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.8rem">{{t "Pre-fill from an authoritative registry" $.Lang}}
+        <select id="reg-select" style="padding:0.4rem;background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
+          <option value="">{{t "— select registry —" $.Lang}}</option>
+          <option value="dad">DAD · Cultivators (national ID)</option>
+          <option value="gn">Grama Niladhari · Address (national ID)</option>
+          <option value="business">Business · Permit (permit ID)</option>
+        </select></label>
+      <button type="button" class="btn ghost small" onclick="prefillFromRegistry()">{{t "Fetch by ID" $.Lang}}</button>
+      <span id="reg-status" class="subtitle" style="font-size:0.78rem"></span>
+    </div>
+    <pre id="reg-record" class="mono" style="display:none;font-size:0.72rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0.6rem;overflow:auto;max-height:160px;margin:0"></pre>
     {{range $.Body.Fields}}
     <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{.}}
       <input class="input" type="text" name="field_{{.}}" placeholder="{{.}}"></label>
     {{end}}
     <button class="btn" type="submit">{{t "Save subject data →" $.Lang}}</button>
   </form>
+  <script>
+    function prefillFromRegistry(){
+      var reg=document.getElementById('reg-select').value;
+      var id=(document.querySelector('[name=individual_id]').value||'').trim();
+      var st=document.getElementById('reg-status');
+      if(!reg||!id){st.textContent='Pick a registry and enter an Individual ID first.';return;}
+      st.textContent='Looking up…';
+      fetch('/issuer/schema/provision/fetch?registry='+encodeURIComponent(reg)+'&id='+encodeURIComponent(id))
+        .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
+        .then(function(rec){
+          var pre=document.getElementById('reg-record'); pre.style.display='block'; pre.textContent=JSON.stringify(rec,null,2);
+          var n=0;
+          document.querySelectorAll('[name^="field_"]').forEach(function(inp){
+            var f=inp.name.slice(6);
+            if(rec[f]!=null&&rec[f]!==''){inp.value=rec[f];n++;}
+          });
+          st.textContent=n?('Pre-filled '+n+' matching field(s) — review, then save.'):'Fetched the record (no field-name matches; copy values manually).';
+        })
+        .catch(function(){document.getElementById('reg-record').style.display='none';st.textContent='Registry lookup failed (record not found or registry unavailable).';});
+    }
+  </script>
   {{else}}
   <p class="subtitle">{{t "Pick a credential from" $.Lang}} <a href="/issuer/schema/mine">{{t "your credentials" $.Lang}}</a> {{t "to provide its data." $.Lang}}</p>
   {{end}}

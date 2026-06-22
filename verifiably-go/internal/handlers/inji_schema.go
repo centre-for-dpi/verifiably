@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -196,6 +197,45 @@ func (h *H) ProvisionSubjectForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render(map[string]any{"Success": true, "IndividualID": id})
+}
+
+// registryEndpoint maps a federated-registry key to its base URL + lookup path.
+// The registries (FastAPI) are reachable on the shared docker network; each is
+// overridable per host via env.
+func registryEndpoint(reg string) (string, bool) {
+	switch reg {
+	case "dad":
+		return envOr("REGISTRY_DAD_URL", "http://dad-registry:8000") + "/cultivators/", true
+	case "gn":
+		return envOr("REGISTRY_GN_URL", "http://gn-registry:8000") + "/attestations/", true
+	case "business":
+		return envOr("REGISTRY_BUSINESS_URL", "http://business-registry:8000") + "/businesses/", true
+	}
+	return "", false
+}
+
+// FetchRegistryRecord proxies a lookup against a federated registry (server-side,
+// internal network) so the provisioning form can pre-fill a holder's authoritative
+// data by id. Forwards the registry's JSON record (or its 404), 502 if unreachable.
+func (h *H) FetchRegistryRecord(w http.ResponseWriter, r *http.Request) {
+	base, ok := registryEndpoint(r.URL.Query().Get("registry"))
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if !ok || id == "" {
+		http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+url.PathEscape(id), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, `{"error":"registry unreachable"}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 type authcodeArtifacts struct {

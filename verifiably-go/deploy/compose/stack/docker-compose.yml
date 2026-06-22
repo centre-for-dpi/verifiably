@@ -964,6 +964,7 @@ services:
     volumes:
       - injiweb-esignet-keystore:/home/mosip/keystore
       - ./inji/esignet/credential-scopes.properties:/home/mosip/config/application-local.properties
+      - ./inji/esignet/configure_start.sh:/home/mosip/configure_start.sh:ro
 
   # esignet's browser-facing React UI. Serves /authorize, /consent, and
   # other login screens, plus a same-origin nginx proxy for /v1/esignet
