@@ -81,6 +81,15 @@ func (h *H) ShowSchemaBrowser(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/issuer/dpg")
 		return
 	}
+	// Inji auth-code DPGs don't use the walt.id schema browser (the Inji adapter
+	// can't drive ListSchemas, so rendering it here 500s). Their schemas are
+	// created via the shared builder and listed owner-scoped, so send them to
+	// their own credentials page. This also makes the builder's "← Cancel"
+	// (which links to /issuer/schema) land somewhere sensible for that flow.
+	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil && dpgs[sess.IssuerDpg].SchemaApply == "inji_authcode" {
+		h.redirect(w, r, "/issuer/schema/mine")
+		return
+	}
 	data := h.schemaBrowserData(w, r, sess)
 	h.render(w, r, "issuer_schema", h.pageData(sess, data))
 }
