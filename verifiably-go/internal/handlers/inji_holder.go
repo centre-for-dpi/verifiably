@@ -158,7 +158,19 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 	if credType == "" {
 		credType = "VerifiablePersonCredential"
 	}
-	vc, err := h.injiClaimCredential(r.Context(), code, sess.PendingPKCE, credType)
+	// Look up the credential's format + @context + vct so the request matches its
+	// credential_config (ldp_vc with the v1/v2 context, or vc+sd-jwt with a vct).
+	format, vcContext, vct := "ldp_vc", "https://www.w3.org/2018/credentials/v1", ""
+	if sess.InjiClaimCred != "" && h.Subjects != nil {
+		if f, c, v, e := h.Subjects.CredentialClaimSpec(r.Context(), sess.InjiClaimCred); e == nil && f != "" {
+			format = f
+			if c != "" {
+				vcContext = c
+			}
+			vct = v
+		}
+	}
+	vc, err := h.injiClaimCredential(r.Context(), code, sess.PendingPKCE, credType, format, vcContext, vct)
 	sess.PendingState, sess.PendingPKCE, sess.PendingProvider = "", "", ""
 	if err != nil {
 		fail("Claim failed: " + err.Error())
@@ -171,7 +183,7 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 
 // injiClaimCredential does token exchange (private_key_jwt) + holder proof +
 // credential request, returning the issued VC as a JSON string.
-func (h *H) injiClaimCredential(ctx context.Context, code, verifier, credType string) (string, error) {
+func (h *H) injiClaimCredential(ctx context.Context, code, verifier, credType, format, vcContext, vct string) (string, error) {
 	key, err := injiAuthcodeClientKey()
 	if err != nil {
 		return "", err
@@ -224,14 +236,19 @@ func (h *H) injiClaimCredential(ctx context.Context, code, verifier, credType st
 		if e != nil {
 			return 0, nil, e
 		}
-		reqBody, _ := json.Marshal(map[string]any{
-			"format": "ldp_vc",
-			"credential_definition": map[string]any{
-				"@context": []string{"https://www.w3.org/2018/credentials/v1"},
+		reqMap := map[string]any{
+			"format": format,
+			"proof":  map[string]any{"proof_type": "jwt", "jwt": proof},
+		}
+		if format == "vc+sd-jwt" || format == "dc+sd-jwt" {
+			reqMap["vct"] = vct
+		} else {
+			reqMap["credential_definition"] = map[string]any{
+				"@context": []string{vcContext},
 				"type":     []string{"VerifiableCredential", credType},
-			},
-			"proof": map[string]any{"proof_type": "jwt", "jwt": proof},
-		})
+			}
+		}
+		reqBody, _ := json.Marshal(reqMap)
 		return postJSON(ctx, credEP, reqBody, "Bearer "+tok.AccessToken)
 	}
 	status, body, err := claim(tok.CNonce)

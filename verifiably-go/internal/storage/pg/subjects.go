@@ -124,6 +124,25 @@ func (s *SubjectStore) CredentialScope(ctx context.Context, key string) (string,
 	return scope, nil
 }
 
+// CredentialClaimSpec returns what the holder needs to request a credential in its
+// own format: the credential_format, the @context (ldp_vc) and the vct (sd-jwt).
+func (s *SubjectStore) CredentialClaimSpec(ctx context.Context, key string) (format, vcContext, vct string, err error) {
+	var ctxP, vctP *string
+	err = s.pool.QueryRow(ctx,
+		`SELECT credential_format, context, sd_jwt_vct FROM certify.credential_config WHERE credential_config_key_id = $1`,
+		key).Scan(&format, &ctxP, &vctP)
+	if err != nil {
+		return "", "", "", fmt.Errorf("pg: claim spec for %q: %w", key, err)
+	}
+	if ctxP != nil {
+		vcContext = *ctxP
+	}
+	if vctP != nil {
+		vct = *vctP
+	}
+	return format, vcContext, vct, nil
+}
+
 // ApplyAuthcodeSchema creates a Flow B credential in one transaction: the
 // per-schema extraction VIEW + the credential_config row. The view DDL carries
 // sanitized field names (column identifiers); the credential_config values are

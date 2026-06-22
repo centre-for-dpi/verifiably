@@ -19,6 +19,8 @@ type SubjectProvisioner interface {
 	ListCredentials(ctx context.Context) ([]map[string]string, error)
 	// CredentialScope returns the eSignet scope for a credential_config key.
 	CredentialScope(ctx context.Context, key string) (string, error)
+	// CredentialClaimSpec returns the format + @context + vct for claiming a credential.
+	CredentialClaimSpec(ctx context.Context, key string) (format, vcContext, vct string, err error)
 	// ApplyAuthcodeSchema creates a Flow B credential (extraction view +
 	// credential_config, any data model) in one transaction.
 	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string) error
