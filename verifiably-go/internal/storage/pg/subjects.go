@@ -149,7 +149,7 @@ func (s *SubjectStore) CredentialClaimSpec(ctx context.Context, key string) (for
 // parameterized.
 func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 	viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string,
-	sdJwtVct, vcContext, credType, credsub *string) error {
+	sdJwtVct, vcContext, credType, credsub *string, ownerKey string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("pg: begin: %w", err)
@@ -181,5 +181,53 @@ func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 		display, displayOrder, scope, credsub); err != nil {
 		return fmt.Errorf("pg: insert credential_config: %w", err)
 	}
+	// Record which issuer created this credential (verifiably-owned table) so the
+	// issuer's "my credentials" view can be owner-scoped.
+	if _, err := tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS certify.vc_credential_owner (
+		credential_config_key_id VARCHAR(255) PRIMARY KEY, owner_key TEXT NOT NULL, cr_dtimes TIMESTAMP DEFAULT NOW())`); err != nil {
+		return fmt.Errorf("pg: ensure owner table: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO certify.vc_credential_owner (credential_config_key_id, owner_key) VALUES ($1, $2)
+		 ON CONFLICT (credential_config_key_id) DO UPDATE SET owner_key = EXCLUDED.owner_key`,
+		key, ownerKey); err != nil {
+		return fmt.Errorf("pg: record owner: %w", err)
+	}
 	return tx.Commit(ctx)
+}
+
+// ListMyCredentials returns the active credentials created by the given owner
+// (issuer), as {key, scope, displayName, format} maps -- the owner-scoped catalog.
+func (s *SubjectStore) ListMyCredentials(ctx context.Context, ownerKey string) ([]map[string]string, error) {
+	if _, err := s.pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS certify.vc_credential_owner (
+		credential_config_key_id VARCHAR(255) PRIMARY KEY, owner_key TEXT NOT NULL, cr_dtimes TIMESTAMP DEFAULT NOW())`); err != nil {
+		return nil, fmt.Errorf("pg: ensure owner table: %w", err)
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT cc.credential_config_key_id, cc.scope, cc.display, cc.credential_format
+		 FROM certify.credential_config cc
+		 JOIN certify.vc_credential_owner o ON o.credential_config_key_id = cc.credential_config_key_id
+		 WHERE cc.status = 'active' AND o.owner_key = $1
+		 ORDER BY cc.credential_config_key_id`, ownerKey)
+	if err != nil {
+		return nil, fmt.Errorf("pg: list my credentials: %w", err)
+	}
+	defer rows.Close()
+	var out []map[string]string
+	for rows.Next() {
+		var key, scope, format string
+		var display []byte
+		if err := rows.Scan(&key, &scope, &display, &format); err != nil {
+			return nil, err
+		}
+		name := key
+		var disp []map[string]any
+		if json.Unmarshal(display, &disp) == nil && len(disp) > 0 {
+			if n, ok := disp[0]["name"].(string); ok && n != "" {
+				name = n
+			}
+		}
+		out = append(out, map[string]string{"key": key, "scope": scope, "displayName": name, "format": format})
+	}
+	return out, rows.Err()
 }

@@ -357,12 +357,12 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 		authcode = dpgs[sess.IssuerDpg].SchemaApply == "inji_authcode"
 	}
 	if authcode {
-		key, err := h.applyAuthcodeSchema(issuerCtx(r, sess), schema)
+		key, err := h.applyAuthcodeSchema(issuerCtx(r, sess), schema, sessionOwnerKey(sess))
 		if err != nil {
 			h.errorToast(w, r, err.Error())
 			return
 		}
-		h.redirect(w, r, "/issuer/schema/inji?created="+key)
+		h.redirect(w, r, "/issuer/schema/mine?created="+key)
 		return
 	}
 	if err := h.Adapter.SaveCustomSchema(issuerCtx(r, sess), schema); err != nil {

@@ -173,7 +173,15 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 	vc, err := h.injiClaimCredential(r.Context(), code, sess.PendingPKCE, credType, format, vcContext, vct)
 	sess.PendingState, sess.PendingPKCE, sess.PendingProvider = "", "", ""
 	if err != nil {
-		fail("Claim failed: " + err.Error())
+		msg := "Claim failed: " + err.Error()
+		// Certify returns ERROR_FETCHING_DATA_RECORD_FROM_TABLE when the holder's
+		// eSignet identity has no provisioned row for this credential's data.
+		if strings.Contains(err.Error(), "DATA_RECORD") || strings.Contains(err.Error(), "FETCHING_DATA") {
+			msg = "No claims are provisioned for your eSignet identity for this credential. " +
+				"An issuer must provision your data first — onboard a holder at /issuer/onboard " +
+				"(or POST /api/v1/subjects with your individualId), then sign in and claim again."
+		}
+		fail(msg)
 		return
 	}
 	sess.InjiClaimedVC = vc

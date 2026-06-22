@@ -23,7 +23,9 @@ type SubjectProvisioner interface {
 	CredentialClaimSpec(ctx context.Context, key string) (format, vcContext, vct string, err error)
 	// ApplyAuthcodeSchema creates a Flow B credential (extraction view +
 	// credential_config, any data model) in one transaction.
-	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string) error
+	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string, ownerKey string) error
+	// ListMyCredentials returns the active credentials created by the given owner (issuer).
+	ListMyCredentials(ctx context.Context, ownerKey string) ([]map[string]string, error)
 }
 
 type apiProvisionSubjectRequest struct {

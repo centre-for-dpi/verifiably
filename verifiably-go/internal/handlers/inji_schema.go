@@ -102,12 +102,28 @@ func (h *H) CreateSchema(w http.ResponseWriter, r *http.Request) {
 		Std:        std,
 		FieldsSpec: fields,
 	}
-	key, err := h.applyAuthcodeSchema(r.Context(), schema)
+	key, err := h.applyAuthcodeSchema(r.Context(), schema, sessionOwnerKey(sess))
 	if err != nil {
 		fail(err.Error())
 		return
 	}
-	h.redirect(w, r, "/issuer/schema/inji?created="+key)
+	h.redirect(w, r, "/issuer/schema/mine?created="+key)
+}
+
+// ShowIssuerCredentials renders the credentials THIS issuer created (owner-scoped),
+// as a card list -- the page the issuer lands on after creating a schema.
+func (h *H) ShowIssuerCredentials(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	body := map[string]any{
+		"Enabled": h.Subjects != nil,
+		"Created": r.URL.Query().Get("created"),
+	}
+	if h.Subjects != nil {
+		if creds, err := h.Subjects.ListMyCredentials(r.Context(), sessionOwnerKey(sess)); err == nil {
+			body["Mine"] = creds
+		}
+	}
+	h.render(w, r, "issuer_credentials", h.pageData(sess, body))
 }
 
 type authcodeArtifacts struct {
@@ -124,10 +140,10 @@ type authcodeArtifacts struct {
 // data model the builder offers) and restarts certify + esignet so they re-read
 // the files. Returns the credential_config key. Shared by the legacy form and
 // the rich builder.
-func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema) (string, error) {
+func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, ownerKey string) (string, error) {
 	a := buildAuthcodeArtifacts(schema)
 	if err := h.Subjects.ApplyAuthcodeSchema(ctx, a.viewDDL, a.configKey, a.vcTemplateB64,
-		a.credFormat, a.display, a.scope, a.displayOrder, a.sdJwtVct, a.context, a.credType, a.credsub); err != nil {
+		a.credFormat, a.display, a.scope, a.displayOrder, a.sdJwtVct, a.context, a.credType, a.credsub, ownerKey); err != nil {
 		return "", fmt.Errorf("DB apply failed: %w", err)
 	}
 	if err := appendBraceEntry(certifyScopeQueryFile(),
