@@ -231,3 +231,16 @@ func (s *SubjectStore) ListMyCredentials(ctx context.Context, ownerKey string) (
 	}
 	return out, rows.Err()
 }
+
+// CredentialFields returns the claim field names for a credential (its stored
+// display_order) -- used to render the per-credential provisioning form so the
+// issuer is asked for exactly the fields that credential issues.
+func (s *SubjectStore) CredentialFields(ctx context.Context, key string) ([]string, error) {
+	var order []string
+	if err := s.pool.QueryRow(ctx,
+		`SELECT display_order FROM certify.credential_config WHERE credential_config_key_id=$1`,
+		key).Scan(&order); err != nil {
+		return nil, fmt.Errorf("pg: credential fields: %w", err)
+	}
+	return order, nil
+}

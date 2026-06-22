@@ -1,0 +1,37 @@
+{{define "content_issuer_provision"}}
+<section class="view active">
+  <div class="section-label">{{t "ISSUER · PROVIDE SUBJECT DATA" $.Lang}}</div>
+  <h1 class="page-title">{{t "Provide data for" $.Lang}} <em>{{if $.Body.DisplayName}}{{$.Body.DisplayName}}{{else}}{{t "a credential" $.Lang}}{{end}}</em>.</h1>
+  <p class="subtitle">{{t "Supply a holder's authoritative data for this credential, keyed by their Individual ID. The holder registers their own identity separately at" $.Lang}} <a href="/holder/register">/holder/register</a>.</p>
+
+  {{if not $.Body.Enabled}}
+  <div style="background:#3a2a00;border:1px solid #6b5200;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffd479">
+    {{t "Subject provisioning is not enabled on this deployment." $.Lang}}
+  </div>
+  {{end}}
+
+  {{if $.Body.Error}}
+  <div style="background:#3a1a1a;border:1px solid #a44;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffb3b3">{{$.Body.Error}}</div>
+  {{end}}
+
+  {{if $.Body.Success}}
+  <div style="background:#0d2e1a;border:1px solid #1f7a45;border-radius:4px;padding:1rem;margin:1rem 0;color:#9affc0">
+    {{t "Saved data for Individual ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>. {{t "The holder can sign in and claim it." $.Lang}}
+    <a href="/issuer/schema/mine">{{t "← Back to my credentials" $.Lang}}</a>
+  </div>
+  {{else if $.Body.Fields}}
+  <form method="post" action="/issuer/schema/provision" style="display:grid;gap:0.75rem;max-width:520px">
+    <input type="hidden" name="cred" value="{{$.Body.Cred}}">
+    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Individual ID *" $.Lang}}
+      <input class="input" type="text" name="individual_id" placeholder="9876543210" maxlength="16" required></label>
+    {{range $.Body.Fields}}
+    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{.}}
+      <input class="input" type="text" name="field_{{.}}" placeholder="{{.}}"></label>
+    {{end}}
+    <button class="btn" type="submit">{{t "Save subject data →" $.Lang}}</button>
+  </form>
+  {{else}}
+  <p class="subtitle">{{t "Pick a credential from" $.Lang}} <a href="/issuer/schema/mine">{{t "your credentials" $.Lang}}</a> {{t "to provide its data." $.Lang}}</p>
+  {{end}}
+</section>
+{{end}}

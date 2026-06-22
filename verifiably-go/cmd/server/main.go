@@ -566,8 +566,8 @@ func main() {
 	if activeRoles.Has(roles.Issuer) {
 		mux.HandleFunc("GET /issuer/dpg", h.ShowIssuerDpgs)
 		// Inji auth-code: onboard a holder (create eSignet identity + provision claims).
-		mux.HandleFunc("GET /issuer/onboard", h.ShowOnboard)
-		mux.HandleFunc("POST /issuer/onboard", h.OnboardUser)
+		mux.HandleFunc("GET /issuer/schema/provision", h.ShowProvisionSubject)
+		mux.HandleFunc("POST /issuer/schema/provision", h.ProvisionSubjectForm)
 		mux.HandleFunc("POST /issuer/dpg", h.PickIssuerDpg)
 		mux.HandleFunc("POST /issuer/dpg/toggle", h.ToggleIssuerDpg)
 		mux.HandleFunc("GET /issuer/schema", h.ShowSchemaBrowser)
@@ -627,6 +627,8 @@ func main() {
 		mux.HandleFunc("GET /holder/wallet", h.ShowWallet)
 		// In-app Inji auth-code claim (no external inji-web redirect).
 		mux.HandleFunc("GET /holder/wallet/inji", h.ShowInjiClaim)
+		mux.HandleFunc("GET /holder/register", h.ShowHolderRegister)
+		mux.HandleFunc("POST /holder/register", h.RegisterHolder)
 		mux.HandleFunc("GET /holder/wallet/inji/start", h.StartInjiClaim)
 		mux.HandleFunc("GET /holder/wallet/inji/callback", h.InjiClaimCallback)
 		mux.HandleFunc("POST /holder/wallet/scan", h.ScanOffer)

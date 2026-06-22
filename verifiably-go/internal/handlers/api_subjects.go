@@ -26,6 +26,8 @@ type SubjectProvisioner interface {
 	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string, ownerKey string) error
 	// ListMyCredentials returns the active credentials created by the given owner (issuer).
 	ListMyCredentials(ctx context.Context, ownerKey string) ([]map[string]string, error)
+	// CredentialFields returns a credential's claim field names (for the provisioning form).
+	CredentialFields(ctx context.Context, key string) ([]string, error)
 }
 
 type apiProvisionSubjectRequest struct {

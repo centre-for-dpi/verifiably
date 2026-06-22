@@ -177,9 +177,9 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 		// Certify returns ERROR_FETCHING_DATA_RECORD_FROM_TABLE when the holder's
 		// eSignet identity has no provisioned row for this credential's data.
 		if strings.Contains(err.Error(), "DATA_RECORD") || strings.Contains(err.Error(), "FETCHING_DATA") {
-			msg = "No claims are provisioned for your eSignet identity for this credential. " +
-				"An issuer must provision your data first — onboard a holder at /issuer/onboard " +
-				"(or POST /api/v1/subjects with your individualId), then sign in and claim again."
+			msg = "No data is provisioned for your eSignet identity for this credential. " +
+				"Register your identity at /holder/register, and have the issuer provide this " +
+				"credential's data (Issuer → My credentials → Provide data), then claim again."
 		}
 		fail(msg)
 		return

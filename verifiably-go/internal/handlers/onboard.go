@@ -12,10 +12,11 @@ import (
 	"time"
 )
 
-// onboard.go — operator "onboard a holder" screen for the Inji auth-code flow.
-// One form creates the eSignet identity (so the holder can log in) AND upserts
-// their credential claims into certify.vc_subject (so Inji Certify issues their
-// VC). Self-service replacement for seed-mock-identity.sh + the manual SQL.
+// onboard.go — holder SELF-REGISTRATION for the Inji auth-code flow. The holder
+// creates their own eSignet identity (so they can sign in) and self-asserts their
+// basic claims into certify.vc_subject. Credential-SPECIFIC claims are provided
+// separately, per-credential, by the issuer (see ShowProvisionSubject). Identity
+// creation is an identity-authority concern, not an issuer one — hence /holder/register.
 
 // mockIdentityURL is the eSignet mock-identity-system base. Per-host via env;
 // defaults to the compose service so deploy.sh up <scenario> just works.
@@ -95,69 +96,69 @@ func createMockIdentity(ctx context.Context, id, pin, fullName, given, family, g
 	return nil
 }
 
-// ShowOnboard renders the operator onboarding/provisioning form.
-func (h *H) ShowOnboard(w http.ResponseWriter, r *http.Request) {
+// ShowHolderRegister renders the holder self-registration form.
+func (h *H) ShowHolderRegister(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
-	h.render(w, r, "issuer_onboard", h.pageData(sess, map[string]any{
-		"Enabled":       h.Subjects != nil,
-		"DefaultClient": defaultAuthCodeClientID(),
+	h.render(w, r, "holder_register", h.pageData(sess, map[string]any{
+		"Enabled": h.Subjects != nil,
 	}))
 }
 
-// OnboardUser creates the eSignet identity + provisions the credential claims.
-func (h *H) OnboardUser(w http.ResponseWriter, r *http.Request) {
+// RegisterHolder creates the holder's own eSignet identity AND upserts their
+// self-asserted basic claims into certify.vc_subject, keyed by the eSignet PSU-token.
+// Identity + the holder's own identity attributes only — credential-specific claims
+// are provided per-credential by the issuer (ProvisionSubjectForm). Derives full name
+// from given + family (no redundant separate full-name field).
+func (h *H) RegisterHolder(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	render := func(extra map[string]any) {
-		base := map[string]any{"Enabled": h.Subjects != nil, "DefaultClient": defaultAuthCodeClientID()}
+		base := map[string]any{"Enabled": h.Subjects != nil}
 		for k, v := range extra {
 			base[k] = v
 		}
-		h.render(w, r, "issuer_onboard", h.pageData(sess, base))
+		h.render(w, r, "holder_register", h.pageData(sess, base))
 	}
 	if h.Subjects == nil {
-		render(map[string]any{"Error": "Subject provisioning not enabled (INJI_CERTIFY_DATABASE_URL not set)"})
+		render(map[string]any{"Error": "Registration is not enabled on this deployment."})
 		return
 	}
 	_ = r.ParseForm()
 	id := strings.TrimSpace(r.FormValue("individual_id"))
-	full := strings.TrimSpace(r.FormValue("full_name"))
+	given := strings.TrimSpace(r.FormValue("given_name"))
+	family := strings.TrimSpace(r.FormValue("family_name"))
+	email := strings.TrimSpace(r.FormValue("email"))
+	phone := strings.TrimSpace(r.FormValue("phone"))
+	// email + phone are required by the eSignet mock-identity-system (it rejects an
+	// empty/invalid email); check here for a clear message instead of its raw error.
+	if id == "" || given == "" || family == "" || email == "" || phone == "" {
+		render(map[string]any{"Error": "Individual ID, given/family name, email and phone are required.", "Form": r.Form})
+		return
+	}
 	pin := strings.TrimSpace(r.FormValue("pin"))
 	if pin == "" {
 		pin = "111111"
 	}
-	clientID := strings.TrimSpace(r.FormValue("client_id"))
-	if clientID == "" {
-		clientID = defaultAuthCodeClientID()
-	}
-	if id == "" || full == "" {
-		render(map[string]any{"Error": "Individual ID and full name are required.", "Form": r.Form})
-		return
-	}
-	given := strings.TrimSpace(r.FormValue("given_name"))
-	family := strings.TrimSpace(r.FormValue("family_name"))
+	full := strings.TrimSpace(given + " " + family)
 	gender := strings.TrimSpace(r.FormValue("gender"))
 	dob := strings.TrimSpace(r.FormValue("date_of_birth")) // YYYY-MM-DD
-	email := strings.TrimSpace(r.FormValue("email"))
-	phone := strings.TrimSpace(r.FormValue("phone"))
 
 	// 1) eSignet identity (mock-identity wants YYYY/MM/DD)
 	if err := createMockIdentity(r.Context(), id, pin, full, given, family, gender, strings.ReplaceAll(dob, "-", "/"), email, phone); err != nil {
-		render(map[string]any{"Error": "Create eSignet identity: " + err.Error()})
+		render(map[string]any{"Error": "Create identity: " + err.Error(), "Form": r.Form})
 		return
 	}
-	// 2) credential claims keyed by the eSignet PSU-token
-	claims := map[string]string{"fullName": full}
-	for k, v := range map[string]string{"givenName": given, "familyName": family, "gender": gender, "dateOfBirth": dob, "email": email, "phoneNumber": phone} {
+	// 2) the holder's self-asserted basic claims, keyed by the eSignet PSU-token
+	// (same client id the in-app claim signs in with, so the row is found at claim time)
+	claims := map[string]string{"fullName": full, "givenName": given, "familyName": family}
+	for k, v := range map[string]string{"gender": gender, "dateOfBirth": dob, "email": email, "phoneNumber": phone} {
 		if v != "" {
 			claims[k] = v
 		}
 	}
-	subjectID := esignetSubjectID(id, clientID)
+	subjectID := esignetSubjectID(id, injiAuthcodeClientID())
 	if err := h.Subjects.ProvisionSubject(r.Context(), subjectID, claims); err != nil {
-		render(map[string]any{"Error": "Provision claims: " + err.Error()})
+		render(map[string]any{"Error": "Save basic claims: " + err.Error(), "Form": r.Form})
 		return
 	}
-	render(map[string]any{
-		"Success": true, "IndividualID": id, "PIN": pin, "FullName": full, "SubjectID": subjectID,
-	})
+	render(map[string]any{"Success": true, "IndividualID": id, "FullName": full})
 }

@@ -126,6 +126,78 @@ func (h *H) ShowIssuerCredentials(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "issuer_credentials", h.pageData(sess, body))
 }
 
+// ShowProvisionSubject renders the per-credential "provide subject data" form: the
+// issuer supplies a holder's AUTHORITATIVE claims for ONE credential they created.
+// (Holders create their own identity + basic claims via /holder/register; this writes
+// the credential-specific fields on top, keyed by the holder's eSignet PSU-token.)
+func (h *H) ShowProvisionSubject(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	cred := strings.TrimSpace(r.URL.Query().Get("cred"))
+	h.render(w, r, "issuer_provision", h.pageData(sess, h.provisionBody(r, sess, cred, nil)))
+}
+
+// provisionBody assembles the issuer_provision page data: the credential's display
+// name (owner-scoped) + its claim fields.
+func (h *H) provisionBody(r *http.Request, sess *Session, cred string, extra map[string]any) map[string]any {
+	body := map[string]any{"Enabled": h.Subjects != nil, "Cred": cred}
+	if h.Subjects != nil && cred != "" {
+		if mine, err := h.Subjects.ListMyCredentials(r.Context(), sessionOwnerKey(sess)); err == nil {
+			for _, c := range mine {
+				if c["key"] == cred {
+					body["DisplayName"] = c["displayName"]
+				}
+			}
+		}
+		if fields, err := h.Subjects.CredentialFields(r.Context(), cred); err == nil {
+			body["Fields"] = fields
+		}
+	}
+	for k, v := range extra {
+		body[k] = v
+	}
+	return body
+}
+
+// ProvisionSubjectForm writes a holder's claims for one credential into certify.vc_subject.
+func (h *H) ProvisionSubjectForm(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	cred := strings.TrimSpace(r.FormValue("cred"))
+	render := func(extra map[string]any) {
+		h.render(w, r, "issuer_provision", h.pageData(sess, h.provisionBody(r, sess, cred, extra)))
+	}
+	if h.Subjects == nil {
+		render(map[string]any{"Error": "Subject provisioning not enabled."})
+		return
+	}
+	id := strings.TrimSpace(r.FormValue("individual_id"))
+	if id == "" {
+		render(map[string]any{"Error": "Individual ID is required."})
+		return
+	}
+	fields, err := h.Subjects.CredentialFields(r.Context(), cred)
+	if err != nil || len(fields) == 0 {
+		render(map[string]any{"Error": "Unknown credential (no fields)."})
+		return
+	}
+	claims := map[string]string{}
+	for _, f := range fields {
+		if v := strings.TrimSpace(r.FormValue("field_" + f)); v != "" {
+			claims[f] = v
+		}
+	}
+	if len(claims) == 0 {
+		render(map[string]any{"Error": "Enter at least one field value."})
+		return
+	}
+	subjectID := esignetSubjectID(id, injiAuthcodeClientID())
+	if err := h.Subjects.ProvisionSubject(r.Context(), subjectID, claims); err != nil {
+		render(map[string]any{"Error": "Provision: " + err.Error()})
+		return
+	}
+	render(map[string]any{"Success": true, "IndividualID": id})
+}
+
 type authcodeArtifacts struct {
 	configKey, scope            string
 	credFormat, vcTemplateB64   string
