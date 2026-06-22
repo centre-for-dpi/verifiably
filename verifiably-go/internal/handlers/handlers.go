@@ -990,6 +990,10 @@ func (h *H) PickIssuerDpg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess.IssuerDpg = sess.ExpandedIssuerDpg
+	if dpg.InAppPath != "" {
+		h.redirect(w, r, dpg.InAppPath)
+		return
+	}
 	if dpg.Redirect {
 		h.render(w, r, "redirect_notice", h.pageData(sess, dpg))
 		return
@@ -1054,6 +1058,10 @@ func (h *H) PickHolderDpg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess.HolderDpg = sess.ExpandedHolderDpg
+	if dpg.InAppPath != "" {
+		h.redirect(w, r, dpg.InAppPath)
+		return
+	}
 	if dpg.Redirect {
 		h.render(w, r, "redirect_notice", h.pageData(sess, dpg))
 		return

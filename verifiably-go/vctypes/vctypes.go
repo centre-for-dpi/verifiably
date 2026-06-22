@@ -24,6 +24,10 @@ type DPG struct {
 	// address the redirect-notice page links to. Populated by the registry
 	// from backends.json; empty for non-redirect DPGs.
 	UIURL string
+	// InAppPath, when set, makes selecting this DPG navigate to an in-app flow
+	// (e.g. "/issuer/schema/inji" or "/holder/wallet/inji") instead of the
+	// external redirect notice. Takes precedence over Redirect.
+	InAppPath string
 
 	// Issuer-specific capability flags
 	FlowPreAuth                 bool
