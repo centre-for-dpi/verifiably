@@ -622,6 +622,7 @@ func main() {
 		mux.HandleFunc("GET /holder/wallet", h.ShowWallet)
 		// In-app Inji auth-code claim (no external inji-web redirect).
 		mux.HandleFunc("GET /holder/wallet/inji", h.ShowInjiClaim)
+		mux.HandleFunc("GET /holder/wallet/inji/credentials", h.ShowInjiHeld)
 		mux.HandleFunc("GET /holder/register", h.ShowHolderRegister)
 		mux.HandleFunc("POST /holder/register", h.RegisterHolder)
 		mux.HandleFunc("GET /holder/wallet/inji/start", h.StartInjiClaim)

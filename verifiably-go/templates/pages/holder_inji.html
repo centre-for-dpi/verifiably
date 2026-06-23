@@ -21,34 +21,9 @@
   </div>
   {{end}}
 
-  {{if $.Body.VC}}
-  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:1.25rem 1.5rem;margin-bottom:1.5rem">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:0.9rem">
-      <strong style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.15rem">{{if $.Body.ClaimedName}}{{$.Body.ClaimedName}}{{else}}{{t "Credential" $.Lang}}{{end}}</strong>
-      <span style="background:#0d2e1a;color:#9affc0;font-size:0.68rem;letter-spacing:0.04em;padding:0.22rem 0.55rem;border-radius:99px;white-space:nowrap">{{t "CLAIMED" $.Lang}} ✓</span>
-    </div>
-    {{with $.Body.Subject}}
-    <div style="display:grid;gap:0.35rem;margin-bottom:0.75rem">
-      {{range $k, $v := .}}
-      <div style="display:flex;gap:0.75rem;font-size:0.85rem;border-top:1px solid var(--line);padding-top:0.38rem">
-        <span style="color:var(--muted);min-width:96px">{{$k}}</span>
-        <span class="mono" style="word-break:break-all">{{$v}}</span>
-      </div>
-      {{end}}
-    </div>
-    {{end}}
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;font-size:0.72rem;color:var(--muted)">
-      {{if $.Body.Issuer}}<span>{{t "Issuer" $.Lang}}: <span class="mono">{{$.Body.Issuer}}</span></span>{{end}}
-      {{if $.Body.ValidUntil}}<span>{{t "Valid until" $.Lang}}: {{$.Body.ValidUntil}}</span>{{end}}
-    </div>
-    <details style="margin-top:0.85rem">
-      <summary style="cursor:pointer;color:var(--muted);font-size:0.8rem">{{t "Raw credential (JSON)" $.Lang}}</summary>
-      <pre class="mono" style="overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0.7rem;font-size:0.7rem;margin-top:0.5rem">{{$.Body.VC}}</pre>
-    </details>
-    <div style="margin-top:1rem;display:flex;gap:0.75rem">
-      <a class="btn ghost small" href="/holder/wallet/inji/start">{{t "Claim again" $.Lang}}</a>
-      <a class="btn ghost small" href="/holder/wallet/inji">{{t "Back to wallet" $.Lang}}</a>
-    </div>
+  {{if $.Body.HeldCount}}
+  <div style="margin-bottom:1.5rem">
+    <a class="btn ghost small" href="/holder/wallet/inji/credentials">{{t "Your credentials" $.Lang}} ({{$.Body.HeldCount}}) →</a>
   </div>
   {{end}}
 

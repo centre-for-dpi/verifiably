@@ -109,8 +109,9 @@ type Session struct {
 	// InjiClaimedVC / InjiClaimError hold the in-app Inji auth-code claim result
 	// (/holder/wallet/inji). InjiClaimedVC is the issued VC as JSON.
 	InjiClaimedVC  string
-	InjiClaimError string `json:"-"`
-	InjiClaimCred  string `json:"-"` // credential_config key being claimed
+	InjiClaimedVCs []string `json:"-"` // all VCs claimed this session; shown on the held page
+	InjiClaimError string   `json:"-"`
+	InjiClaimCred  string   `json:"-"` // credential_config key being claimed
 	SchemaError    string `json:"-"` // issuer schema-creation flash error
 
 	// Auth: OIDC round-trip state + tokens stored after callback.

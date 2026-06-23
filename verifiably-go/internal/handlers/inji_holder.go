@@ -183,16 +183,17 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 		// Certify returns ERROR_FETCHING_DATA_RECORD_FROM_TABLE when the holder's
 		// eSignet identity has no provisioned row for this credential's data.
 		if strings.Contains(err.Error(), "DATA_RECORD") || strings.Contains(err.Error(), "FETCHING_DATA") {
-			msg = "No data is provisioned for your eSignet identity for this credential. " +
-				"Register your identity at /holder/register, and have the issuer provide this " +
-				"credential's data (Issuer → My credentials → Provide data), then claim again."
+			msg = "No data was found for your eSignet identity for this credential. " +
+				"Sign up at /holder/register so verifiably can pull your details from an " +
+				"authoritative registry, then claim again."
 		}
 		fail(msg)
 		return
 	}
 	sess.InjiClaimedVC = vc
+	sess.InjiClaimedVCs = append([]string{vc}, sess.InjiClaimedVCs...) // newest first; shown on the held page
 	sess.InjiClaimError = ""
-	h.redirect(w, r, "/holder/wallet/inji")
+	h.redirect(w, r, "/holder/wallet/inji/credentials")
 }
 
 // injiClaimCredential does token exchange (private_key_jwt) + holder proof +
@@ -360,34 +361,52 @@ func (h *H) ShowInjiClaim(w http.ResponseWriter, r *http.Request) {
 			body["Catalog"] = creds
 		}
 	}
-	if sess.InjiClaimedVC != "" {
-		var pretty any
-		if json.Unmarshal([]byte(sess.InjiClaimedVC), &pretty) == nil {
-			b, _ := json.MarshalIndent(pretty, "", "  ")
-			body["VC"] = string(b)
-			if m, ok := pretty.(map[string]any); ok {
-				if cs, ok := m["credentialSubject"].(map[string]any); ok {
-					body["Subject"] = cs
-				}
-				// Card header = the specific credential type (not "VerifiableCredential").
-				if ts, ok := m["type"].([]any); ok {
-					for _, t := range ts {
-						if s, _ := t.(string); s != "" && s != "VerifiableCredential" {
-							body["ClaimedName"] = s
-							break
-						}
-					}
-				}
-				if iss, ok := m["issuer"].(string); ok {
-					body["Issuer"] = iss
-				}
-				if vu, ok := m["validUntil"].(string); ok {
-					body["ValidUntil"] = vu
-				}
+	body["HeldCount"] = len(sess.InjiClaimedVCs)
+	h.render(w, r, "holder_inji", h.pageData(sess, body))
+}
+
+// parseClaimedVC turns an issued VC (JSON string) into display fields for the held page:
+// the pretty-printed VC, the credentialSubject, the specific type, issuer and validUntil.
+func parseClaimedVC(vc string) map[string]any {
+	out := map[string]any{"VC": vc}
+	var pretty any
+	if json.Unmarshal([]byte(vc), &pretty) != nil {
+		return out
+	}
+	if b, err := json.MarshalIndent(pretty, "", "  "); err == nil {
+		out["VC"] = string(b)
+	}
+	m, ok := pretty.(map[string]any)
+	if !ok {
+		return out
+	}
+	if cs, ok := m["credentialSubject"].(map[string]any); ok {
+		out["Subject"] = cs
+	}
+	if ts, ok := m["type"].([]any); ok {
+		for _, t := range ts {
+			if s, _ := t.(string); s != "" && s != "VerifiableCredential" {
+				out["ClaimedName"] = s
+				break
 			}
-		} else {
-			body["VC"] = sess.InjiClaimedVC
 		}
 	}
-	h.render(w, r, "holder_inji", h.pageData(sess, body))
+	if iss, ok := m["issuer"].(string); ok {
+		out["Issuer"] = iss
+	}
+	if vu, ok := m["validUntil"].(string); ok {
+		out["ValidUntil"] = vu
+	}
+	return out
+}
+
+// ShowInjiHeld renders the holder's claimed credentials (this session), on a page
+// separate from the available-to-claim catalog at /holder/wallet/inji.
+func (h *H) ShowInjiHeld(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	held := make([]map[string]any, 0, len(sess.InjiClaimedVCs))
+	for _, vc := range sess.InjiClaimedVCs {
+		held = append(held, parseClaimedVC(vc))
+	}
+	h.render(w, r, "holder_inji_held", h.pageData(sess, map[string]any{"Held": held}))
 }

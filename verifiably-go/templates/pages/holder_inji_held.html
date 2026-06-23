@@ -1,0 +1,47 @@
+{{define "content_holder_inji_held"}}
+<section class="view active">
+  <div class="section-label">
+    <span class="num">08</span>
+    <span class="caps">{{t "Holder · Your credentials" $.Lang}}</span>
+  </div>
+  <h1 class="page-title">{{t "Your" $.Lang}} <em>{{t "credentials" $.Lang}}</em>.</h1>
+  <p class="subtitle">
+    {{t "Credentials you've claimed via eSignet in this session." $.Lang}}
+    <a href="/holder/wallet/inji">{{t "Claim more →" $.Lang}}</a>
+  </p>
+
+  {{if $.Body.Held}}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin-top:1.25rem">
+    {{range $.Body.Held}}
+    <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:1.25rem 1.5rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:0.9rem">
+        <strong style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.1rem">{{if .ClaimedName}}{{.ClaimedName}}{{else}}{{t "Credential" $.Lang}}{{end}}</strong>
+        <span style="background:#0d2e1a;color:#9affc0;font-size:0.68rem;letter-spacing:0.04em;padding:0.22rem 0.55rem;border-radius:99px;white-space:nowrap">{{t "CLAIMED" $.Lang}} ✓</span>
+      </div>
+      {{with .Subject}}
+      <div style="display:grid;gap:0.35rem;margin-bottom:0.75rem">
+        {{range $k, $v := .}}
+        <div style="display:flex;gap:0.75rem;font-size:0.85rem;border-top:1px solid var(--line);padding-top:0.38rem">
+          <span style="color:var(--muted);min-width:96px">{{$k}}</span>
+          <span class="mono" style="word-break:break-all">{{$v}}</span>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;font-size:0.72rem;color:var(--muted)">
+        {{if .Issuer}}<span>{{t "Issuer" $.Lang}}: <span class="mono">{{.Issuer}}</span></span>{{end}}
+        {{if .ValidUntil}}<span>{{t "Valid until" $.Lang}}: {{.ValidUntil}}</span>{{end}}
+      </div>
+      <details style="margin-top:0.85rem">
+        <summary style="cursor:pointer;color:var(--muted);font-size:0.8rem">{{t "Raw credential (JSON)" $.Lang}}</summary>
+        <pre class="mono" style="overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0.7rem;font-size:0.7rem;margin-top:0.5rem">{{.VC}}</pre>
+      </details>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="subtitle" style="margin-top:1.5rem">{{t "You haven't claimed any credentials yet." $.Lang}}
+    <a href="/holder/wallet/inji">{{t "Claim one →" $.Lang}}</a></p>
+  {{end}}
+</section>
+{{end}}
