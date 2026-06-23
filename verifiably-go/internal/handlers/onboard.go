@@ -13,10 +13,11 @@ import (
 )
 
 // onboard.go — holder SELF-REGISTRATION for the Inji auth-code flow. The holder
-// creates their own eSignet identity (so they can sign in) and self-asserts their
-// basic claims into certify.vc_subject. Credential-SPECIFIC claims are provided
-// separately, per-credential, by the issuer (see ShowProvisionSubject). Identity
-// creation is an identity-authority concern, not an issuer one — hence /holder/register.
+// creates their own eSignet identity (so they can sign in) and verifiably
+// AUTO-PROVISIONS their claims into certify.vc_subject by looking them up in the
+// configured authoritative registries (by Individual ID) — the issuer never types
+// a holder's data. Identity creation is an identity-authority concern, not an
+// issuer one — hence /holder/register.
 
 // mockIdentityURL is the eSignet mock-identity-system base. Per-host via env;
 // defaults to the compose service so deploy.sh up <scenario> just works.
@@ -104,11 +105,10 @@ func (h *H) ShowHolderRegister(w http.ResponseWriter, r *http.Request) {
 	}))
 }
 
-// RegisterHolder creates the holder's own eSignet identity AND upserts their
-// self-asserted basic claims into certify.vc_subject, keyed by the eSignet PSU-token.
-// Identity + the holder's own identity attributes only — credential-specific claims
-// are provided per-credential by the issuer (ProvisionSubjectForm). Derives full name
-// from given + family (no redundant separate full-name field).
+// RegisterHolder creates the holder's own eSignet identity AND auto-provisions their
+// claims into certify.vc_subject (keyed by the eSignet PSU-token) from the configured
+// authoritative registries, looked up by Individual ID. No manual entry — the issuer
+// never types a holder's data. Derives full name from given + family for the identity.
 func (h *H) RegisterHolder(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	render := func(extra map[string]any) {
@@ -147,18 +147,20 @@ func (h *H) RegisterHolder(w http.ResponseWriter, r *http.Request) {
 		render(map[string]any{"Error": "Create identity: " + err.Error(), "Form": r.Form})
 		return
 	}
-	// 2) the holder's self-asserted basic claims, keyed by the eSignet PSU-token
-	// (same client id the in-app claim signs in with, so the row is found at claim time)
-	claims := map[string]string{"fullName": full, "givenName": given, "familyName": family}
-	for k, v := range map[string]string{"gender": gender, "dateOfBirth": dob, "email": email, "phoneNumber": phone} {
-		if v != "" {
+	// 2) Auto-provision the holder's credential data from the configured authoritative
+	// registries (keyed by their Individual ID). No manual entry; the issuer never types.
+	claims := map[string]string{}
+	for _, p := range registryProviders() {
+		for k, v := range fetchRegistry(r.Context(), p, id) {
 			claims[k] = v
 		}
 	}
 	subjectID := esignetSubjectID(id, injiAuthcodeClientID())
-	if err := h.Subjects.ProvisionSubject(r.Context(), subjectID, claims); err != nil {
-		render(map[string]any{"Error": "Save basic claims: " + err.Error(), "Form": r.Form})
-		return
+	if len(claims) > 0 {
+		if err := h.Subjects.ProvisionSubject(r.Context(), subjectID, claims); err != nil {
+			render(map[string]any{"Error": "Save registry data: " + err.Error(), "Form": r.Form})
+			return
+		}
 	}
 	render(map[string]any{"Success": true, "IndividualID": id, "FullName": full})
 }

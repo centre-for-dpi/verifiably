@@ -127,79 +127,6 @@ func (h *H) ShowIssuerCredentials(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "issuer_credentials", h.pageData(sess, body))
 }
 
-// ShowProvisionSubject renders the per-credential "provide subject data" form: the
-// issuer supplies a holder's AUTHORITATIVE claims for ONE credential they created.
-// (Holders create their own identity + basic claims via /holder/register; this writes
-// the credential-specific fields on top, keyed by the holder's eSignet PSU-token.)
-func (h *H) ShowProvisionSubject(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-	cred := strings.TrimSpace(r.URL.Query().Get("cred"))
-	h.render(w, r, "issuer_provision", h.pageData(sess, h.provisionBody(r, sess, cred, nil)))
-}
-
-// provisionBody assembles the issuer_provision page data: the credential's display
-// name (owner-scoped) + its claim fields.
-func (h *H) provisionBody(r *http.Request, sess *Session, cred string, extra map[string]any) map[string]any {
-	body := map[string]any{"Enabled": h.Subjects != nil, "Cred": cred}
-	body["Registries"] = registryProviders() // config-driven pre-fill sources (may be empty)
-	if h.Subjects != nil && cred != "" {
-		if mine, err := h.Subjects.ListMyCredentials(r.Context(), sessionOwnerKey(sess)); err == nil {
-			for _, c := range mine {
-				if c["key"] == cred {
-					body["DisplayName"] = c["displayName"]
-				}
-			}
-		}
-		if fields, err := h.Subjects.CredentialFields(r.Context(), cred); err == nil {
-			body["Fields"] = fields
-		}
-	}
-	for k, v := range extra {
-		body[k] = v
-	}
-	return body
-}
-
-// ProvisionSubjectForm writes a holder's claims for one credential into certify.vc_subject.
-func (h *H) ProvisionSubjectForm(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-	_ = r.ParseForm()
-	cred := strings.TrimSpace(r.FormValue("cred"))
-	render := func(extra map[string]any) {
-		h.render(w, r, "issuer_provision", h.pageData(sess, h.provisionBody(r, sess, cred, extra)))
-	}
-	if h.Subjects == nil {
-		render(map[string]any{"Error": "Subject provisioning not enabled."})
-		return
-	}
-	id := strings.TrimSpace(r.FormValue("individual_id"))
-	if id == "" {
-		render(map[string]any{"Error": "Individual ID is required."})
-		return
-	}
-	fields, err := h.Subjects.CredentialFields(r.Context(), cred)
-	if err != nil || len(fields) == 0 {
-		render(map[string]any{"Error": "Unknown credential (no fields)."})
-		return
-	}
-	claims := map[string]string{}
-	for _, f := range fields {
-		if v := strings.TrimSpace(r.FormValue("field_" + f)); v != "" {
-			claims[f] = v
-		}
-	}
-	if len(claims) == 0 {
-		render(map[string]any{"Error": "Enter at least one field value."})
-		return
-	}
-	subjectID := esignetSubjectID(id, injiAuthcodeClientID())
-	if err := h.Subjects.ProvisionSubject(r.Context(), subjectID, claims); err != nil {
-		render(map[string]any{"Error": "Provision: " + err.Error()})
-		return
-	}
-	render(map[string]any{"Success": true, "IndividualID": id})
-}
-
 // registryProvider is one configurable authoritative-data source the provisioning
 // form can pre-fill from. Defined entirely by config (VERIFIABLY_REGISTRIES) so
 // verifiably carries no knowledge of any specific registry.
@@ -225,37 +152,32 @@ func registryProviders() []registryProvider {
 	return ps
 }
 
-func registryProviderByID(id string) (registryProvider, bool) {
-	for _, p := range registryProviders() {
-		if p.ID == id {
-			return p, true
-		}
-	}
-	return registryProvider{}, false
-}
-
-// FetchRegistryRecord proxies a lookup against a federated registry (server-side,
-// internal network) so the provisioning form can pre-fill a holder's authoritative
-// data by id. Forwards the registry's JSON record (or its 404), 502 if unreachable.
-func (h *H) FetchRegistryRecord(w http.ResponseWriter, r *http.Request) {
-	p, ok := registryProviderByID(r.URL.Query().Get("registry"))
-	id := strings.TrimSpace(r.URL.Query().Get("id"))
-	if !ok || id == "" {
-		http.Error(w, `{"error":"unknown registry or missing id"}`, http.StatusBadRequest)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+// fetchRegistry looks up one record from a registry by id, returning its fields as
+// string claims. Used to auto-provision a holder from authoritative registries.
+func fetchRegistry(ctx context.Context, p registryProvider, id string) map[string]string {
+	cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
+	req, _ := http.NewRequestWithContext(cctx, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		http.Error(w, `{"error":"registry unreachable"}`, http.StatusBadGateway)
-		return
+	if err != nil || resp == nil {
+		return nil
 	}
 	defer resp.Body.Close()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var rec map[string]any
+	if json.NewDecoder(resp.Body).Decode(&rec) != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for k, v := range rec {
+		if v == nil {
+			continue
+		}
+		out[k] = fmt.Sprintf("%v", v)
+	}
+	return out
 }
 
 type authcodeArtifacts struct {
