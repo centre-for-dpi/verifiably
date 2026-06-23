@@ -50,10 +50,10 @@ import (
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
 	"github.com/verifiably/verifiably-go/internal/storage/pg"
-	"github.com/verifiably/verifiably-go/internal/verification"
 	redisstore "github.com/verifiably/verifiably-go/internal/storage/redis"
 	"github.com/verifiably/verifiably-go/internal/tracing"
 	"github.com/verifiably/verifiably-go/internal/trust"
+	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -211,19 +211,20 @@ func main() {
 	authStore := buildAuthUserStore()
 	adminMode := authAdminMode()
 	h := &handlers.H{
-		Adapter:       adapter,
-		Sessions:      sessionStore,
-		Templates:     tmpl,
-		AuthReg:       authReg,
-		Translator:    translator,
-		Debug:         debug,
-		AuthStore:     authStore,
-		AuthAdminMode: adminMode,
-		Subjects:       subjectStore,
-		APIKeys:        handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
-		RateLimiter:    handlers.NewRateLimiter(),
-		PrometheusURL:  os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
-		GrafanaURL:     os.Getenv("VERIFIABLY_GRAFANA_URL"),
+		Adapter:          adapter,
+		Sessions:         sessionStore,
+		Templates:        tmpl,
+		AuthReg:          authReg,
+		Translator:       translator,
+		Debug:            debug,
+		AuthStore:        authStore,
+		AuthAdminMode:    adminMode,
+		Subjects:         subjectStore,
+		APIKeys:          handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
+		RateLimiter:      handlers.NewRateLimiter(),
+		PrometheusURL:    os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
+		GrafanaURL:       os.Getenv("VERIFIABLY_GRAFANA_URL"),
+		RegistryAdminURL: strings.TrimRight(os.Getenv("VERIFIABLY_REGISTRY_ADMIN_URL"), "/"),
 	}
 	// Issuance audit log + revocation status lists. Optional: when the
 	// state directory isn't writable we log and continue with the features

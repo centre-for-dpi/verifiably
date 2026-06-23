@@ -208,6 +208,7 @@ render_public_caddyfile() {
     "credebl|credebl-api-gateway:5000|http"
     "credebl-minio|credebl-minio:9000|http"
     "grafana|grafana:3000|http"
+    "registry-admin|registry-admin:8000|http"
   )
 
   {

@@ -738,6 +738,36 @@ services:
       retries: 3
 
   # ==========================================================================
+  # Registry Admin console — the registrar / data-population tier UI.
+  #
+  # Reads the credentials an issuer defined in verifiably (via verifiably-go's
+  # /api/registry-credentials) and lets an admin populate the authoritative
+  # Sunbird RC registry those credentials draw from (one entity per credential
+  # type, holder records keyed by the eSignet Individual ID, plus CSV import).
+  # It only drives the Sunbird RC HTTP API — it never edits verifiably or the
+  # Sunbird registry config. Source lives in deploy/registry-admin/ (built in
+  # repo so a fresh clone brings it up). Fronted publicly at
+  # registry-admin.<domain> by caddy-public (see gen-caddy.sh entries).
+  # ==========================================================================
+  registry-admin:
+    build:
+      context: ../../registry-admin
+    image: registry-admin:local
+    container_name: registry-admin
+    restart: unless-stopped
+    environment:
+      # verifiably-go's credential catalog (auth-code + custom creds), reached
+      # over the shared waltid_default docker network by container DNS.
+      VERIFIABLY_SCHEMAS_URL: ${REGISTRY_ADMIN_SCHEMAS_URL:-http://verifiably-go:8080/api/registry-credentials}
+      # Sunbird RC registry API. Defaults to the box's published port; override
+      # via REGISTRY_ADMIN_SUNBIRD_URL in .env for a different host.
+      SUNBIRD_URL: ${REGISTRY_ADMIN_SUNBIRD_URL:-http://156.67.105.185:18091}
+    ports:
+      # Host port kept for direct/legacy access; in subdomain mode the console
+      # is reached via https://registry-admin.<domain> through caddy-public.
+      - "${REGISTRY_ADMIN_HOST_PORT:-18095}:8000"
+
+  # ==========================================================================
   # Inji Web stack — MOSIP's browser-hosted wallet, opt-in via `--profile injiweb`.
   #
   # injiweb-ui (injistack/inji-web:0.16.0) serves the React UI on :3004 and

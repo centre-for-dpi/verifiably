@@ -143,6 +143,19 @@ compute_host_aliases() {
 
 : "${VERIFIABLY_PUBLIC_URL:=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")}"
 
+# Registry Admin console — the data-source tier UI (deploy/registry-admin/).
+# REGISTRY_ADMIN_HOST_PORT is the published host port; VERIFIABLY_REGISTRY_ADMIN_URL
+# is the browser-facing URL verifiably-go surfaces in its navbar ("Registry"
+# link). Resolved through url_for so it is per-host: subdomain mode ->
+# https://registry-admin.<domain> (fronted by caddy-public), legacy mode ->
+# http://<host>:<REGISTRY_ADMIN_HOST_PORT>. Computed here (not just in cmd_up)
+# so `deploy.sh run <scenario>` — which doesn't run cmd_up's URL-export block —
+# also passes it to the container via scripts/start-container.sh. Exported so
+# docker compose / sub-shells inherit it.
+: "${REGISTRY_ADMIN_HOST_PORT:=18095}"
+: "${VERIFIABLY_REGISTRY_ADMIN_URL:=$(url_for registry-admin "$VERIFIABLY_PUBLIC_HOST" "$REGISTRY_ADMIN_HOST_PORT")}"
+export REGISTRY_ADMIN_HOST_PORT VERIFIABLY_REGISTRY_ADMIN_URL
+
 : "${LIBRETRANSLATE_PORT:=5000}"
 : "${VERIFIABLY_IMAGE:=verifiably-go:local}"
 : "${VERIFIABLY_CONTAINER:=verifiably-go}"
@@ -242,6 +255,7 @@ INJI_CORE_SERVICES=(
   certify-nginx certify-preauth-nginx
   inji-verify-postgres inji-verify-service inji-verify-ui
   citizens-postgres vc-adapter
+  registry-admin
 )
 INJIWEB_SERVICES=(
   injiweb-postgres injiweb-redis
