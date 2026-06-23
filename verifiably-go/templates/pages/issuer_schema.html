@@ -18,34 +18,10 @@
   </div>
   {{end}}
 
-  {{if $.Body.Enabled}}
-  <form method="POST" action="/issuer/schema/inji" style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.5rem;margin:1rem 0">
-    <label style="display:block;font-size:0.85rem;color:var(--muted);margin-bottom:0.3rem">{{t "Credential name" $.Lang}}</label>
-    <input name="display_name" required placeholder="e.g. Birth Certificate"
-           style="width:100%;padding:0.6rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);margin-bottom:1.25rem">
-
-    <label style="display:block;font-size:0.85rem;color:var(--muted);margin-bottom:0.3rem">{{t "Fields" $.Lang}} <span style="opacity:.6">{{t "(field name = letters/digits/underscore; label is shown to the holder)" $.Lang}}</span></label>
-    <div id="fields">
-      <div class="field-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
-        <input name="field_name"  placeholder="fieldName"  style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);font-family:monospace">
-        <input name="field_label" placeholder="Field label" style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
-      </div>
-      <div class="field-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
-        <input name="field_name"  placeholder="fieldName"  style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);font-family:monospace">
-        <input name="field_label" placeholder="Field label" style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
-      </div>
-      <div class="field-row" style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
-        <input name="field_name"  placeholder="fieldName"  style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);font-family:monospace">
-        <input name="field_label" placeholder="Field label" style="flex:1;padding:0.5rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
-      </div>
-    </div>
-    <button type="button" onclick="addField()" style="background:none;border:1px dashed var(--line);color:var(--muted);border-radius:4px;padding:0.4rem 0.8rem;cursor:pointer;margin-bottom:1.25rem">{{t "+ Add field" $.Lang}}</button>
-    <div><button type="submit" class="btn">{{t "Create credential" $.Lang}}</button></div>
-  </form>
-  <script>
-    function addField(){var d=document.getElementById('fields');var r=d.firstElementChild.cloneNode(true);r.querySelectorAll('input').forEach(function(i){i.value='';});d.appendChild(r);}
-  </script>
-  {{end}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.5rem;margin:1rem 0">
+    <p class="subtitle" style="margin:0 0 1rem">{{t "Define a credential schema in the builder — choose fields, format and data source." $.Lang}}</p>
+    <a href="/issuer/schema/build" class="btn">{{t "Open the schema builder →" $.Lang}}</a>
+  </div>
 
   {{if $.Body.Catalog}}
   <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem;margin-top:1rem">
