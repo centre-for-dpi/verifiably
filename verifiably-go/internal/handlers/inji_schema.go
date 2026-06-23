@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -131,10 +132,15 @@ func (h *H) ShowIssuerCredentials(w http.ResponseWriter, r *http.Request) {
 // form can pre-fill from. Defined entirely by config (VERIFIABLY_REGISTRIES) so
 // verifiably carries no knowledge of any specific registry.
 type registryProvider struct {
-	ID    string `json:"id"`    // selector value, e.g. "dad"
-	Label string `json:"label"` // shown in the dropdown
-	URL   string `json:"url"`   // base URL, e.g. http://dad-registry:8000
-	Path  string `json:"path"`  // lookup path prefix the id is appended to, e.g. /cultivators/
+	ID    string `json:"id"`    // selector value, e.g. "sunbird"
+	Label string `json:"label"` // human label
+	URL   string `json:"url"`   // base URL, e.g. http://156.67.105.185:18091
+	Path  string `json:"path"`  // legacy GET-by-id mode: GET <url><path><id> -> flat JSON
+
+	// Sunbird RC search mode (preferred): when Entity is set, look the holder up via
+	// POST <url>/api/v1/<Entity>/search keyed by SearchField, instead of GET-by-id.
+	Entity      string `json:"entity"`      // Sunbird entity/schema name, e.g. "TestaCardV4"
+	SearchField string `json:"searchField"` // field matched against the id (default "individualId")
 }
 
 // registryProviders parses VERIFIABLY_REGISTRIES (a JSON array of registryProvider).
@@ -152,11 +158,15 @@ func registryProviders() []registryProvider {
 	return ps
 }
 
-// fetchRegistry looks up one record from a registry by id, returning its fields as
-// string claims. Used to auto-provision a holder from authoritative registries.
+// fetchRegistry looks up one record for a holder from an authoritative registry,
+// returning its fields as string claims. Two modes: Sunbird RC search (when p.Entity
+// is set) or a plain GET-by-id (legacy / generic registries).
 func fetchRegistry(ctx context.Context, p registryProvider, id string) map[string]string {
 	cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
+	if p.Entity != "" {
+		return fetchRegistrySunbird(cctx, p, id)
+	}
 	req, _ := http.NewRequestWithContext(cctx, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil || resp == nil {
@@ -170,9 +180,59 @@ func fetchRegistry(ctx context.Context, p registryProvider, id string) map[strin
 	if json.NewDecoder(resp.Body).Decode(&rec) != nil {
 		return nil
 	}
+	return flattenRecord(rec, false)
+}
+
+// fetchRegistrySunbird resolves a holder via a Sunbird RC registry's search API
+// (POST <url>/api/v1/<Entity>/search keyed by SearchField), returning the first hit's
+// fields. Sunbird wraps results as {"totalCount":n,"data":[{...}]} (some builds use
+// {"<Entity>":[...]}); both are handled. The os* metadata (osid/osOwner/_os*) is dropped.
+func fetchRegistrySunbird(ctx context.Context, p registryProvider, id string) map[string]string {
+	field := p.SearchField
+	if field == "" {
+		field = "individualId"
+	}
+	body, _ := json.Marshal(map[string]any{
+		"filters": map[string]any{field: map[string]any{"eq": id}},
+	})
+	endpoint := strings.TrimRight(p.URL, "/") + "/api/v1/" + p.Entity + "/search"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp == nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var raw map[string]any
+	if json.NewDecoder(resp.Body).Decode(&raw) != nil {
+		return nil
+	}
+	hits, _ := raw["data"].([]any)
+	if hits == nil {
+		hits, _ = raw[p.Entity].([]any)
+	}
+	if len(hits) == 0 {
+		return nil
+	}
+	rec, ok := hits[0].(map[string]any)
+	if !ok {
+		return nil
+	}
+	return flattenRecord(rec, true)
+}
+
+// flattenRecord stringifies a registry record into claims. When stripMeta is set
+// (Sunbird), the registry's own metadata keys (osid, osOwner, _os*) are dropped.
+func flattenRecord(rec map[string]any, stripMeta bool) map[string]string {
 	out := map[string]string{}
 	for k, v := range rec {
 		if v == nil {
+			continue
+		}
+		if stripMeta && (k == "osid" || k == "osOwner" || strings.HasPrefix(k, "_os")) {
 			continue
 		}
 		out[k] = fmt.Sprintf("%v", v)
