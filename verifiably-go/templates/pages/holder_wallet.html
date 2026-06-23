@@ -6,9 +6,23 @@
     Using <span class="mono">{{.Session.HolderDpg}}</span>. Receive a credential offer (scan a QR, paste a link, or tap an example), review it, and accept it into your wallet.
   </p>
 
+  {{if $.Body.InjiCatalog}}
+  <div style="margin:0 0 1.5rem">
+    <div class="caps" style="margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem"><span>{{t "Claim via eSignet (Inji auth-code)" $.Lang}}</span><span class="pill neutral">{{len $.Body.InjiCatalog}}</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.75rem">
+    {{range $.Body.InjiCatalog}}
+      <div style="padding:0.9rem 1rem;border:1px solid var(--line);border-radius:6px;background:var(--bg-elev)">
+        <strong>{{.displayName}}</strong><br><span class="mono" style="font-size:0.72rem;color:var(--muted)">{{.key}} · {{.scope}}</span>
+        <div style="margin-top:0.75rem"><a class="btn small" href="/holder/wallet/inji/start?cred={{.key}}">{{t "Claim with eSignet →" $.Lang}}</a></div>
+      </div>
+    {{end}}
+    </div>
+  </div>
+  {{else}}
   <div style="margin:0 0 1.25rem">
     <a class="btn small" href="/holder/wallet/inji">{{t "Claim via eSignet (Inji auth-code) →" $.Lang}}</a>
   </div>
+  {{end}}
 
   <div id="wallet-body">
     {{template "fragment_wallet_body" .Session}}

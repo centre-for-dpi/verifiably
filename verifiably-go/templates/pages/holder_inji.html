@@ -58,14 +58,15 @@
     <p class="subtitle" style="margin:0 0 0.75rem;font-size:0.85rem">{{t "Log in with eSignet to claim a credential — issued by Inji Certify from your registered claims, here in verifiably." $.Lang}}</p>
     <input id="inji-cred-search" type="search" oninput="filterInjiCreds()" placeholder="{{t "Search credentials…" $.Lang}}"
            style="width:100%;padding:0.5rem 0.6rem;margin-bottom:0.25rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.75rem;margin-top:0.75rem">
     {{range $.Body.Catalog}}
-    <div class="inji-cred-card" data-search="{{.displayName}} {{.key}} {{.scope}}" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0.75rem 0;border-top:1px solid var(--line)">
-      <div><strong>{{.displayName}}</strong><br><span class="mono" style="font-size:0.72rem;color:var(--muted)">{{.key}} · {{.scope}}</span></div>
-      <a class="btn small" href="/holder/wallet/inji/start?cred={{.key}}">{{t "Claim with eSignet →" $.Lang}}</a>
-    </div>
-    {{else}}
-    <p class="subtitle">{{t "No credentials available yet — an issuer needs to create one." $.Lang}}</p>
+      <div class="inji-cred-card" data-search="{{.displayName}} {{.key}} {{.scope}}" style="padding:0.9rem 1rem;border:1px solid var(--line);border-radius:6px;background:var(--bg)">
+        <strong>{{.displayName}}</strong><br><span class="mono" style="font-size:0.72rem;color:var(--muted)">{{.key}} · {{.scope}}</span>
+        <div style="margin-top:0.75rem"><a class="btn small" href="/holder/wallet/inji/start?cred={{.key}}">{{t "Claim with eSignet →" $.Lang}}</a></div>
+      </div>
     {{end}}
+    </div>
+    {{if not $.Body.Catalog}}<p class="subtitle">{{t "No credentials available yet — an issuer needs to create one." $.Lang}}</p>{{end}}
     <p id="inji-cred-none" class="subtitle" style="display:none;font-size:0.82rem;margin-top:0.75rem">{{t "No credentials match your search." $.Lang}}</p>
     <p class="subtitle" style="margin-top:0.75rem;font-size:0.78rem;color:var(--muted)">{{t "New here? Sign up with eSignet at" $.Lang}} <a href="/holder/register">/holder/register</a>. {{t "If a claim fails with a no-data-record error, your details weren't found in an authoritative registry at sign-up." $.Lang}}</p>
   </div>
