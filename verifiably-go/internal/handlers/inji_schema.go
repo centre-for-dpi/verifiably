@@ -55,6 +55,33 @@ func (h *H) ShowIssuerCredentials(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "issuer_credentials", h.pageData(sess, body))
 }
 
+// RegistryCredentials lists the active credentials from Certify's credential_config
+// (key, display name, scope, and the field names from display_order) as JSON. The
+// registry-admin console reads this to drive Sunbird entities + records: unlike
+// /api/schemas (verifiably's custom-schema store, which omits auth-code creds), this
+// covers the auth-code credentials the registry-auto path actually uses.
+func (h *H) RegistryCredentials(w http.ResponseWriter, r *http.Request) {
+	out := []map[string]any{}
+	if h.Subjects != nil {
+		if creds, err := h.Subjects.ListCredentials(r.Context()); err == nil {
+			for _, c := range creds {
+				fields, _ := h.Subjects.CredentialFields(r.Context(), c["key"])
+				if fields == nil {
+					fields = []string{}
+				}
+				out = append(out, map[string]any{
+					"key":         c["key"],
+					"displayName": c["displayName"],
+					"scope":       c["scope"],
+					"fields":      fields,
+				})
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
 // registryProvider is one configurable authoritative-data source the provisioning
 // form can pre-fill from. Defined entirely by config (VERIFIABLY_REGISTRIES) so
 // verifiably carries no knowledge of any specific registry.
