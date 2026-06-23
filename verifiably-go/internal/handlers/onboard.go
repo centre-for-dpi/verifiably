@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -149,8 +150,9 @@ func (h *H) RegisterHolder(w http.ResponseWriter, r *http.Request) {
 	}
 	// 2) Auto-provision the holder's credential data from the configured authoritative
 	// registries (keyed by their Individual ID). No manual entry; the issuer never types.
+	provs := registryProviders()
 	claims := map[string]string{}
-	for _, p := range registryProviders() {
+	for _, p := range provs {
 		for k, v := range fetchRegistry(r.Context(), p, id) {
 			claims[k] = v
 		}
@@ -162,5 +164,6 @@ func (h *H) RegisterHolder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	render(map[string]any{"Success": true, "IndividualID": id, "FullName": full})
+	log.Printf("registry-auto: holder %q provisioned %d claim(s) from %d registr(y/ies)", id, len(claims), len(provs))
+	render(map[string]any{"Success": true, "IndividualID": id, "FullName": full, "Provisioned": len(claims)})
 }
