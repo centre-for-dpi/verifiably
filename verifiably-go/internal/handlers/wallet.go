@@ -82,15 +82,7 @@ func (h *H) ShowWallet(w http.ResponseWriter, r *http.Request) {
 		h.attachIssuerDisplayToCreds(r.Context(), creds)
 		sess.WalletCreds = creds
 	}
-	// Also surface the auth-code (Inji Certify) credentials so the wallet lists them,
-	// not just walt.id-held creds. Same catalog the Inji claim page shows.
-	body := map[string]any{}
-	if h.Subjects != nil {
-		if cat, err := h.Subjects.ListCredentials(r.Context()); err == nil {
-			body["InjiCatalog"] = cat
-		}
-	}
-	h.render(w, r, "holder_wallet", h.pageData(sess, body))
+	h.render(w, r, "holder_wallet", h.pageData(sess, nil))
 }
 
 // attachIssuerDisplayToCreds populates Credential.IssuerDisplay by looking
