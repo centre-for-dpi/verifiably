@@ -95,6 +95,12 @@ type registryProvider struct {
 	// POST <url>/api/v1/<Entity>/search keyed by SearchField, instead of GET-by-id.
 	Entity      string `json:"entity"`      // Sunbird entity/schema name, e.g. "TestaCardV4"
 	SearchField string `json:"searchField"` // field matched against the id (default "individualId")
+
+	// Discover mode: when true, enumerate ALL registered Sunbird entities (via
+	// POST <url>/api/v1/Schema/search) and look the holder up in each by SearchField,
+	// merging the results -- so any entity the registrar console creates is auto-pulled
+	// with no per-entity config drift. Ignores Entity/Path.
+	Discover bool `json:"discover"`
 }
 
 // registryProviders parses VERIFIABLY_REGISTRIES (a JSON array of registryProvider).
@@ -116,8 +122,19 @@ func registryProviders() []registryProvider {
 // returning its fields as string claims. Two modes: Sunbird RC search (when p.Entity
 // is set) or a plain GET-by-id (legacy / generic registries).
 func fetchRegistry(ctx context.Context, p registryProvider, id string) map[string]string {
-	cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	cctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
+	if p.Discover {
+		out := map[string]string{}
+		for _, e := range sunbirdSchemas(cctx, p.URL) {
+			pe := p
+			pe.Entity = e
+			for k, v := range fetchRegistrySunbird(cctx, pe, id) {
+				out[k] = v
+			}
+		}
+		return out
+	}
 	if p.Entity != "" {
 		return fetchRegistrySunbird(cctx, p, id)
 	}
@@ -135,6 +152,37 @@ func fetchRegistry(ctx context.Context, p registryProvider, id string) map[strin
 		return nil
 	}
 	return flattenRecord(rec, false)
+}
+
+// sunbirdSchemas lists the registered Sunbird entity names (POST /api/v1/Schema/search
+// {"filters":{}} -> {"data":[{"name":...}]}), so a discover-mode provider auto-finds
+// every entity the registrar console created. Skips the built-in "Schema" + leftover probes.
+func sunbirdSchemas(ctx context.Context, baseURL string) []string {
+	body, _ := json.Marshal(map[string]any{"filters": map[string]any{}})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimRight(baseURL, "/")+"/api/v1/Schema/search", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp == nil || resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	defer resp.Body.Close()
+	var raw struct {
+		Data []struct {
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&raw) != nil {
+		return nil
+	}
+	var names []string
+	for _, s := range raw.Data {
+		if s.Name == "" || s.Name == "Schema" || s.Name == "ZzProbe" {
+			continue
+		}
+		names = append(names, s.Name)
+	}
+	return names
 }
 
 // fetchRegistrySunbird resolves a holder via a Sunbird RC registry's search API
