@@ -286,6 +286,23 @@ It declares one block per slug pointing at the right container + internal port �
 
 The matching `caddy-public` service is registered in `docker-compose.yml` behind the `subdomain` profile. `deploy.sh` automatically passes `--profile subdomain` to compose when `VERIFIABLY_HOSTS_PATTERN` is non-empty, so you don't run anything new — `./deploy.sh up <scenario>` brings Caddy up alongside the rest.
 
+##### Hairpin NAT (container → public subdomain)
+
+A container that calls a service by its **public** name (e.g. the walt.id `wallet-api`
+resolving an OID4VCI `credential_offer_uri` at `walt-issuer.<domain>`, or an OID4VP
+`request_uri` at `walt-verifier.<domain>`) would otherwise route to the box's own
+public IP `:443` and time out — most cloud hosts don't hairpin traffic from the docker
+bridge back to themselves. Two mechanisms keep those calls on the docker network:
+
+- **`verifiably-go`** is started with `--add-host <slug>.<domain> → caddy-public-ip`
+  for **every** public slug (`compute_host_aliases` in `scripts/start-container.sh`).
+- **compose-managed services** rely on **`caddy-public` network aliases** — the
+  `caddy-public` service answers to each public FQDN on the docker network
+  (`inji-certify-preauth`, `esignet`, `walt-issuer`, `walt-verifier`, `walt-wallet`),
+  so Docker's embedded DNS resolves them to Caddy's internal IP, where TLS terminates
+  and the request is proxied to the backend. Add more FQDNs to that `aliases:` list in
+  `docker-compose.yml` if a new internal container starts calling a public name.
+
 Set these in `.env`:
 
 ```bash

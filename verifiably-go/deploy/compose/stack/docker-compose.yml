@@ -118,6 +118,13 @@ services:
         aliases:
           - "inji-certify-preauth.${VERIFIABLY_PUBLIC_DOMAIN}"
           - "esignet.${VERIFIABLY_PUBLIC_DOMAIN}"
+          # walt.id: the wallet-api resolves an OID4VCI credential_offer_uri at
+          # walt-issuer (claim) and an OID4VP request_uri at walt-verifier
+          # (present) by their PUBLIC names; without these aliases it hits the
+          # box public IP and ConnectTimeouts (hairpin NAT).
+          - "walt-issuer.${VERIFIABLY_PUBLIC_DOMAIN}"
+          - "walt-verifier.${VERIFIABLY_PUBLIC_DOMAIN}"
+          - "walt-wallet.${VERIFIABLY_PUBLIC_DOMAIN}"
     ports:
       - "80:80"
       - "443:443"

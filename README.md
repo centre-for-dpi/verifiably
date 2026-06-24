@@ -1185,6 +1185,22 @@ credential, and stores it back is **also blocked**: wallet-api v0.18.2's
 there is no way to inject an externally-fetched credential into the wallet.
 walt.id's only ingest path is its own (broken-proof) exchange.
 
+**walt.id `ConnectTimeoutException` resolving an offer or presentation request**
+— hairpin NAT, fixed in the compose
+
+When a compose-managed container calls a walt.id service by its **public** name —
+the `wallet-api` fetching an OID4VCI `credential_offer_uri` at `walt-issuer.<domain>`
+(claim), or an OID4VP `request_uri` at `walt-verifier.<domain>` (present) — it would
+route to the box's own public IP `:443` and time out, because most hosts don't hairpin
+docker-bridge traffic back to themselves. The `caddy-public` service therefore carries
+docker network **aliases** for the walt subdomains (`walt-issuer`, `walt-verifier`,
+`walt-wallet`, alongside `esignet` / `inji-certify-preauth`), so Docker's embedded DNS
+resolves them to Caddy's internal IP — where TLS terminates and the request is proxied
+to the backend, staying on the docker network. verifiably-go itself is pinned the same
+way via `--add-host` (`scripts/start-container.sh`). If a new internal container starts
+calling a public name, add it to the `aliases:` list on `caddy-public` in
+`deploy/compose/stack/docker-compose.yml`.
+
 The **issuer side is fully conformant** — a clean, `jwk`-bound
 `openid4vci-proof+jwt` issues `200` through the entire public chain. So the
 working path is to scan/paste the offer into an **external OID4VCI wallet**
