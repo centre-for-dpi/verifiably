@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -52,34 +49,18 @@ func NewSubjectStore(pool *pgxpool.Pool) *SubjectStore { return &SubjectStore{po
 // certify.vc_subject (INSERT … ON CONFLICT (individual_id) DO UPDATE). Column
 // names come only from AllowedSubjectClaims and are quoted; values are bound.
 func (s *SubjectStore) ProvisionSubject(ctx context.Context, subjectID string, claims map[string]string) error {
-	// ALL claims go into the claims jsonb, so a dynamically-created schema's
-	// extraction view (vc_subject_<key>, which reads claims->>'field') can read
-	// arbitrary fields. The standard claims are also mirrored into their typed
-	// columns, which the original vc_subject_person view reads.
+	// All claims live in the claims jsonb; the per-credential extraction views
+	// (vc_subject_<key> and vc_subject_person) read claims->>'field'. certify.vc_subject
+	// is jsonb-only (see init-authcode.sql) — there are NO typed claim columns, so we
+	// must not try to write them (doing so 500s with "column ... does not exist").
 	jsonClaims, err := json.Marshal(claims)
 	if err != nil {
 		return fmt.Errorf("pg: marshal claims: %w", err)
 	}
-	cols := []string{"individual_id", "claims"}
-	args := []any{subjectID, jsonClaims}
-	ph := []string{"$1", "$2::jsonb"}
-	updates := []string{"claims = certify.vc_subject.claims || EXCLUDED.claims"}
-	i := 3
-	for _, col := range AllowedSubjectClaims {
-		v, ok := claims[col]
-		if !ok {
-			continue
-		}
-		qc := pgx.Identifier{col}.Sanitize()
-		cols = append(cols, qc)
-		args = append(args, v)
-		ph = append(ph, "$"+strconv.Itoa(i))
-		updates = append(updates, qc+"=EXCLUDED."+qc)
-		i++
-	}
-	q := "INSERT INTO certify.vc_subject (" + strings.Join(cols, ", ") + ") VALUES (" +
-		strings.Join(ph, ", ") + ") ON CONFLICT (individual_id) DO UPDATE SET " + strings.Join(updates, ", ")
-	if _, err := s.pool.Exec(ctx, q, args...); err != nil {
+	const q = `INSERT INTO certify.vc_subject (individual_id, claims) VALUES ($1, $2::jsonb)
+		ON CONFLICT (individual_id) DO UPDATE SET
+			claims = certify.vc_subject.claims || EXCLUDED.claims, upd_dtimes = now()`
+	if _, err := s.pool.Exec(ctx, q, subjectID, jsonClaims); err != nil {
 		return fmt.Errorf("pg: provision vc_subject: %w", err)
 	}
 	return nil
