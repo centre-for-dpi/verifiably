@@ -310,6 +310,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      # Fresh-volume initdb + the init scripts can outlast interval*retries (25s)
+      # during a busy `up all`, flipping the check to unhealthy mid-init so a
+      # dependent service's `depends_on: condition: service_healthy` aborts the
+      # first deploy (certify-postgres did this on every clean bring-up). A
+      # start_period keeps the container "starting" — failures don't count — until
+      # Postgres is genuinely ready, making `up all` succeed first try.
+      start_period: 90s
 
   inji-certify:
     image: injistack/inji-certify-with-plugins:0.14.0
@@ -440,6 +447,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      # Fresh-volume initdb + the init scripts can outlast interval*retries (25s)
+      # during a busy `up all`, flipping the check to unhealthy mid-init so a
+      # dependent service's `depends_on: condition: service_healthy` aborts the
+      # first deploy (certify-postgres did this on every clean bring-up). A
+      # start_period keeps the container "starting" — failures don't count — until
+      # Postgres is genuinely ready, making `up all` succeed first try.
+      start_period: 90s
 
   # inji-preauth-proxy is a thin reverse proxy that takes over the
   # `inji-certify-preauth` network identity. Strict OID4VCI wallets
@@ -616,6 +630,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      # Fresh-volume initdb + the init scripts can outlast interval*retries (25s)
+      # during a busy `up all`, flipping the check to unhealthy mid-init so a
+      # dependent service's `depends_on: condition: service_healthy` aborts the
+      # first deploy (certify-postgres did this on every clean bring-up). A
+      # start_period keeps the container "starting" — failures don't count — until
+      # Postgres is genuinely ready, making `up all` succeed first try.
+      start_period: 90s
     volumes:
       - inji-verify-db:/var/lib/postgresql/data
 
