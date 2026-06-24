@@ -501,6 +501,16 @@ cmd_up() {
       || red "  Walt.id did:web setup failed (proceeding — issuer will use did:key)"
   fi
 
+  # Sunbird RC registry-of-record — the Inji auth-code flow's authoritative
+  # claims source. Brought up for the all + inji scenarios so verifiably's
+  # RegisterHolder can pull a holder's record into certify.vc_subject, from
+  # which Inji Certify issues the credential over the authorization_code grant.
+  # Best-effort: a missing dir / failed bring-up never aborts the deploy (claims
+  # can still be provisioned via POST /api/v1/subjects).
+  case "$scenario" in
+    all|inji) up_sunbird_registry ;;
+  esac
+
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
   # operator can SEE which step is slow or stuck. Previously this was
@@ -519,6 +529,30 @@ cmd_up() {
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
   verify_oidc_discovery
+}
+
+# up_sunbird_registry brings up the Sunbird RC registry-of-record so the Inji
+# auth-code flow has an authoritative claims source: verifiably's RegisterHolder
+# looks a holder up in it (VERIFIABLY_REGISTRIES -> http://<host>:18091) and
+# caches the record into certify.vc_subject, from which Inji Certify issues the
+# credential over the authorization_code grant. The compose project lives in the
+# colombo-poc repo (separate from this verifiably fork); override its path with
+# VERIFIABLY_SUNBIRD_DIR. Only the registry core is started (es/db/kafka/registry
+# — not the Node v2 signing chain, which issuance does not need). Best-effort: a
+# missing dir or failed bring-up logs a warning and returns 0 so the deploy
+# continues (claims can still be provisioned via POST /api/v1/subjects).
+up_sunbird_registry() {
+  local dir="${VERIFIABLY_SUNBIRD_DIR:-$SCRIPT_DIR/../../colombo-poc/sunbird-rc}"
+  if [[ ! -d "$dir" ]]; then
+    yellow "  Sunbird RC dir not found ($dir) — skipping registry bring-up."
+    yellow "  Set VERIFIABLY_SUNBIRD_DIR, or provision holder claims via POST /api/v1/subjects."
+    return 0
+  fi
+  bold "▶ Bringing up Sunbird RC registry of record (Inji auth-code claims source)"
+  ( cd "$dir" && env -u POSTGRES_USER -u POSTGRES_PASSWORD -u POSTGRES_DB -u POSTGRES_PORT \
+      docker compose up -d es db zookeeper kafka redis registry ) \
+    && green "  Sunbird registry -> http://localhost:18091 (VERIFIABLY_REGISTRIES source)" \
+    || red "  Sunbird RC bring-up failed (proceeding; auth-code registry-pull will have no source)"
 }
 
 # repair_injiweb_client_redirect_uri ensures the wallet-demo-client row in
