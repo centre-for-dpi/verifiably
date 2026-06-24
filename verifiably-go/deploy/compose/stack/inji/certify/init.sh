@@ -15,9 +15,24 @@ DID="did:web:${ISSUER_DID_DOMAIN:-certify-nginx}"
 
 echo "certify-postgres init: issuer DID = ${DID}"
 
-sed "s|did:web:certify-nginx|${DID}|g" \
-    /var/init-templates/certify_init.sql \
-    | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"
+# The schema template is mounted under different names per scenario
+# (certify_init.sql for the base/pre-auth stacks, certify_init-authcode.sql for
+# the auth-code stack). Apply whichever is present. CRITICAL: never abort on a
+# missing template — with `set -e` an abort exits this script, which exits the
+# container; docker then restarts it and inji-certify's
+# `depends_on: condition: service_healthy` aborts the whole first `up all`.
+# If no template is mounted, deploy.sh's idempotent post-up fallback seeds it.
+TEMPLATE=""
+for _f in /var/init-templates/certify_init-authcode.sql /var/init-templates/certify_init.sql; do
+    [[ -f "$_f" ]] && { TEMPLATE="$_f"; break; }
+done
+if [[ -n "$TEMPLATE" ]]; then
+    echo "certify-postgres init: applying ${TEMPLATE}"
+    sed "s|did:web:certify-nginx|${DID}|g" "$TEMPLATE" \
+        | psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"
+else
+    echo "certify-postgres init: no schema template mounted — deferring to deploy.sh fallback"
+fi
 
 # Ensure the postgres password is stored as SCRAM-SHA-256 (not md5).
 psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
