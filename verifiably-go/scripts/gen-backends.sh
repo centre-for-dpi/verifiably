@@ -22,6 +22,24 @@ backends_for() {
   walt_verifier_url=$(url_for walt-verifier "$VERIFIABLY_PUBLIC_HOST" "$WALTID_VERIFIER_PORT")
   certify_url=$(url_for inji-certify "$VERIFIABLY_PUBLIC_HOST" "$CERTIFY_NGINX_PORT")
   certify_preauth_url=$(url_for inji-certify-preauth "$VERIFIABLY_PUBLIC_HOST" "$CERTIFY_PREAUTH_PORT")
+  # did_url written into new custom credential_config rows (db.go SaveCustomSchema).
+  # In subdomain mode (url_for returns https://<host>) use the instance's own
+  # public host so the issued VC's issuer/proof verificationMethod is a
+  # publicly-resolvable did:web — matching the backend's CERTIFY_ISSUER_DID and
+  # the seeded rows (deploy.sh PREAUTH_DID_DOMAIN / init-preauth.sh). In legacy
+  # port mode keep the docker-internal did:web:certify-preauth-nginx.
+  local certify_preauth_did
+  if [[ "$certify_preauth_url" =~ ^https:// ]]; then
+    certify_preauth_did="did:web:$(printf '%s' "$certify_preauth_url" | sed -E 's#^https?://##; s#[:/].*$##')"
+  else
+    certify_preauth_did="did:web:certify-preauth-nginx"
+  fi
+  # Credential-display logo for custom configs. Self-hosted by verifiably-go
+  # (static/credential-logo.svg) so it's neutral + has no external dependency.
+  # Must be non-null: Inji Certify always serialises display[].logo, and some
+  # wallet UIs crash ("undefined is not a function") on a null logo.
+  local certify_preauth_logo
+  certify_preauth_logo="$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")/static/credential-logo.svg"
   inji_verify_svc_url=$(url_for inji-verify "$VERIFIABLY_PUBLIC_HOST" "$INJI_VERIFY_SERVICE_PORT")
   inji_verify_ui_url=$(url_for inji-verify-ui "$VERIFIABLY_PUBLIC_HOST" "$INJI_VERIFY_UI_PORT")
   injiweb_url=$(url_for inji-web "$VERIFIABLY_PUBLIC_HOST" "$INJIWEB_UI_PUBLIC_PORT")
@@ -82,21 +100,22 @@ JSON
       "dpg": {
         "Vendor": "Inji Certify",
         "Version": "v0.14.0 · Auth-Code via eSignet",
-        "Tag": "MOSIP · Auth-Code",
-        "Tagline": "Holder logs into eSignet; Inji Certify validates tokens as a resource server.",
+        "Tag": "MOSIP · Auth-Code · In-app",
+        "Tagline": "Create a credential schema here; eSignet-verified holders claim it — no external redirect.",
         "FlowAuthCode": true,
         "FlowPresentationDuringIssue": true,
-        "FlowPlain": "OID4VCI draft 13 Authorization Code flow via eSignet.",
+        "FlowPlain": "OID4VCI Authorization Code flow via eSignet, driven from verifiably. Create a schema and it is claimable immediately; claims are sourced issuer-authoritatively from the registry.",
         "Formats": ["w3c_vcdm_2", "sd_jwt_vc (IETF)"],
         "DirectPDF": false,
-        "Caveats": "Holder wallet must be reachable by eSignet's redirect.",
-        "Redirect": true,
-        "UIURL": "${injiweb_url}",
+        "Caveats": "Requires eSignet running; the holder needs a MOSIP identity to sign in.",
+        "Redirect": false,
+        "InAppPath": "/issuer/schema/build",
+        "SchemaApply": "inji_authcode",
         "Capabilities": [
-          {"Kind": "flow",       "Key": "auth_code",       "Title": "Authorization Code flow",          "Body": "Wallet redirects holder to eSignet for login."},
-          {"Kind": "data",       "Key": "identity_lookup", "Title": "Claims from MOSIP Identity Plugin", "Body": "Fills claims via UIN lookup against mock-identity."},
-          {"Kind": "wallet",     "Key": "inji_web",        "Title": "Experience via Inji Web Wallet",    "Body": "Clicking the card opens Inji Web where the full eSignet auth-code flow plays out end-to-end."},
-          {"Kind": "token",      "Key": "idp_signed",      "Title": "Tokens signed by the IdP",          "Body": "Credential endpoint validates eSignet-signed tokens."},
+          {"Kind": "flow",       "Key": "create_schema",   "Title": "Create a schema, live",            "Body": "verifiably generates the Certify config, the registry extraction view and the eSignet scope, then restarts both services — the credential is claimable immediately."},
+          {"Kind": "flow",       "Key": "auth_code",       "Title": "eSignet authorization code",       "Body": "The holder signs in with eSignet (OTP); the credential endpoint validates the IdP-signed token."},
+          {"Kind": "data",       "Key": "issuer_auth",     "Title": "Issuer-authoritative claims",      "Body": "Claims are read from the registry data-provider, not entered by the holder."},
+          {"Kind": "wallet",     "Key": "in_app",          "Title": "Claimed in verifiably",            "Body": "The holder receives the VC here — no external Inji Web redirect."},
           {"Kind": "limitation", "Key": "needs_idp",       "Title": "Requires eSignet running",          "Body": "Fails closed if the IdP is unreachable."}
         ]
       },
@@ -148,7 +167,8 @@ JSON
         "offerIssuerUrl": "http://inji-certify-preauth:8090",
         "db": {
           "dsn": "postgres://postgres:postgres@certify-preauth-postgres:5432/inji_certify?sslmode=disable",
-          "didUrl": "did:web:certify-preauth-nginx",
+          "didUrl": "${certify_preauth_did}",
+          "logoUrl": "${certify_preauth_logo}",
           "scope": "mock_identity_vc_ldp"
         }
       }
@@ -199,17 +219,17 @@ JSON
       "dpg": {
         "Vendor": "Inji Web Wallet",
         "Version": "v0.16.0",
-        "Tag": "Redirect",
-        "Tagline": "MOSIP's browser-hosted wallet — credentials live inside the Inji Web SPA.",
-        "FlowPlain": "Holder logs into Inji Web via eSignet. No server-to-server read-back API at v0.16.0.",
+        "Tag": "In-app",
+        "Tagline": "Claim Inji Certify credentials via eSignet — in verifiably, no external redirect.",
+        "FlowPlain": "Browse the available credentials, sign in with eSignet, and receive the VC here in verifiably — no external Inji Web tab.",
         "Formats": ["w3c_vcdm_1", "w3c_vcdm_2"],
-        "Caveats": "Tested-compatible with Inji Certify v0.13.1 and Inji Verify v0.17.0 per the v0.16.0 matrix.",
-        "Redirect": true,
-        "UIURL": "${injiweb_url}",
+        "Caveats": "Requires eSignet running; you need a MOSIP identity to sign in.",
+        "Redirect": false,
+        "InAppPath": "/holder/wallet/inji",
         "Capabilities": [
-          {"Kind": "flow",       "Key": "browser_hosted", "Title": "Browser-hosted wallet",        "Body": "Credentials live inside the Inji Web SPA."},
-          {"Kind": "wallet",     "Key": "opens_tab",      "Title": "Opens in a new tab",            "Body": "Selecting this DPG hands off to the Inji Web app."},
-          {"Kind": "limitation", "Key": "no_readback",    "Title": "No third-party read-back API",  "Body": "No way for an external service to list credentials at v0.16.0."}
+          {"Kind": "flow",       "Key": "catalog",        "Title": "Credential catalog",            "Body": "Discover the credentials an issuer has published, right here."},
+          {"Kind": "flow",       "Key": "esignet",        "Title": "eSignet sign-in",               "Body": "Authenticate with eSignet (OTP) to claim a credential."},
+          {"Kind": "wallet",     "Key": "in_app",         "Title": "Claimed in verifiably",         "Body": "The VC is issued into this UI — no external Inji Web tab."}
         ]
       },
       "config": {

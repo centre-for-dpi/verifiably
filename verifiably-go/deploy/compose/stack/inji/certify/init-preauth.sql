@@ -299,7 +299,15 @@ INSERT INTO certify.credential_config (
     ARRAY['Ed25519Signature2020'],
     '{"jwt": {"proof_signing_alg_values_supported": ["RS256", "ES256"]}}'::JSONB,
     NULL,  -- credential_subject (ldp_vc only)
-    '{"fullName": {"display": [{"name": "Full Name", "locale": "en"}]}, "mobileNumber": {"display": [{"name": "Phone", "locale": "en"}]}, "dateOfBirth": {"display": [{"name": "Date of Birth", "locale": "en"}]}, "gender": {"display": [{"name": "Gender", "locale": "en"}]}, "state": {"display": [{"name": "State", "locale": "en"}]}, "district": {"display": [{"name": "District", "locale": "en"}]}, "villageOrTown": {"display": [{"name": "Village", "locale": "en"}]}, "postalCode": {"display": [{"name": "Postal Code", "locale": "en"}]}, "landArea": {"display": [{"name": "Land Area", "locale": "en"}]}, "landOwnershipType": {"display": [{"name": "Ownership", "locale": "en"}]}, "primaryCropType": {"display": [{"name": "Primary Crop", "locale": "en"}]}, "secondaryCropType": {"display": [{"name": "Secondary Crop", "locale": "en"}]}, "farmerID": {"display": [{"name": "Farmer ID", "locale": "en"}]}}'::JSONB,
+    NULL,  -- sd_jwt_claims: OMITTED. It only feeds the optional `claims` display
+           -- block in the issuer metadata, but walt.id's OID4VCI parser
+           -- (ClaimDescriptorNamespacedMapSerializer) treats `claims` as a
+           -- 2-level mdoc-style namespaced map and chokes on this flat SD-JWT
+           -- {claim:{display:[...]}} shape ("JsonArray is not a JsonObject"),
+           -- aborting the ENTIRE credential-issuer metadata parse so nothing is
+           -- claimable in walt.id. Issuance is unaffected (claims come from
+           -- vc_template + data). Matches db.go SaveCustomSchema, which also
+           -- leaves sd_jwt_claims NULL.
     NULL,  -- mso_mdoc_claims
     '[{"mosip.certify.mock.data-provider.csv.identifier-column": "id", "mosip.certify.mock.data-provider.csv.data-columns": "id,fullName,mobileNumber,dateOfBirth,gender,state,district,villageOrTown,postalCode,landArea,landOwnershipType,primaryCropType,secondaryCropType,face,farmerID", "mosip.certify.mock.data-provider.csv-registry-uri": "/home/mosip/config/farmer_identity_data.csv"}]'::JSONB,
     NULL,  -- credential_status_purpose

@@ -217,6 +217,38 @@ cmd_up() {
     # http://<PUBLIC_HOST>:3005/authorize which isn't externally reachable
     # in subdomain mode (only Caddy on 443).
     export ESIGNET_BASE_URL=$(url_for esignet "$VERIFIABLY_PUBLIC_HOST" "$ESIGNET_PUBLIC_PORT")
+    export ESIGNET_UI_SIGNUP_URL=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")/holder/register
+    # Inji Verify public URL + did:web, derived PER-HOST (localhost OR subdomain)
+    # so a fresh deploy on any host gets valid config -- not the subdomain-only
+    # https://inji-verify.<empty>/... that broke localhost/EC2-without-domain mode.
+    _iv_url=$(url_for inji-verify "$VERIFIABLY_PUBLIC_HOST" "$INJI_VERIFY_SERVICE_PORT")
+    export INJI_VP_SUBMISSION_BASE_URL="${_iv_url}/v1/verify"
+    _iv_didhost="${_iv_url#*://}"        # host[:port]
+    _iv_didhost="${_iv_didhost/:/%3A}"   # host:port -> host%3Aport (no-op when no port)
+    export INJI_DID_VERIFY_URI="did:web:${_iv_didhost}:v1:verify"
+    export INJI_DID_VERIFY_PUBLIC_KEY_URI="${INJI_DID_VERIFY_URI}#key-0"
+    # PREAUTH_PUBLIC_URL drives the pre-auth Inji Certify backend's
+    # mosip_certify_domain_url. It MUST be the public subdomain so Certify
+    # (a) advertises public credential_issuer/credential_endpoint/
+    # authorization_servers natively, and (b) accepts an EXTERNAL wallet's
+    # proof JWT — whose `aud` equals the public credential_issuer. Left unset it
+    # defaults to the docker-internal host, and every external wallet's proof
+    # fails with "invalid_proof: Error encountered during proof jwt parsing"
+    # (the aud doesn't match). JWKS stays internal (cluster-local).
+    export PREAUTH_PUBLIC_URL=$(url_for inji-certify-preauth "$VERIFIABLY_PUBLIC_HOST" "${INJI_CERTIFY_PREAUTH_PORT:-8094}")
+    # PREAUTH_DID_DOMAIN is the host portion of PREAUTH_PUBLIC_URL — it makes the
+    # pre-auth instance's issuer DID a PUBLICLY-resolvable did:web at its own
+    # subdomain (did:web:inji-certify-preauth.<domain>), instead of the
+    # docker-internal did:web:certify-preauth-nginx an external wallet can't
+    # resolve. did:web:<host> resolves to https://<host>/.well-known/did.json,
+    # which certify-preauth-nginx serves from the verifiably-go pre-auth proxy
+    # (the pre-auth backend's own key). This is DELIBERATELY decoupled from
+    # ISSUER_DID_DOMAIN (which both Certify instances share): re-pointing the
+    # shared var would also move the INTERNAL primary auth-code instance onto
+    # this subdomain's did.json — which only carries the pre-auth key — and
+    # break the primary's verification. Empty in legacy/port mode → every
+    # consumer below falls back to did:web:certify-preauth-nginx (unchanged).
+    export PREAUTH_DID_DOMAIN=$(printf '%s' "$PREAUTH_PUBLIC_URL" | sed -E 's#^https?://##; s#[:/].*$##')
   fi
 
   # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE
@@ -306,7 +338,7 @@ cmd_up() {
       if ! docker exec certify-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-postgres missing inji_certify DB — running init.sql"
         DID="did:web:${ISSUER_DID_DOMAIN:-certify-nginx}"
-        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init.sql" \
+        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-authcode.sql" \
           | docker exec -i certify-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify >/dev/null 2>&1 \
           && green "  certify-postgres seeded, inji-certify restarted" \
@@ -318,7 +350,7 @@ cmd_up() {
     if docker inspect certify-preauth-postgres --format '{{.State.Status}}' 2>/dev/null | grep -q running; then
       if ! docker exec certify-preauth-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-preauth-postgres missing inji_certify DB — running init-preauth.sql"
-        DID="did:web:${ISSUER_DID_DOMAIN:-certify-preauth-nginx}"
+        DID="did:web:${PREAUTH_DID_DOMAIN:-${ISSUER_DID_DOMAIN:-certify-preauth-nginx}}"
         sed "s|did:web:certify-preauth-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-preauth.sql" \
           | docker exec -i certify-preauth-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify-preauth-backend >/dev/null 2>&1 \
@@ -445,6 +477,15 @@ cmd_up() {
     _credebl_configure_oid4vci_rewriter \
       || true
 
+    # Re-attach the openid/profile/email login scopes to credebl-client. The
+    # pre-seed realm import set them, but CREDEBL's seed re-imports the realm
+    # and resets credebl-client to openid-only — which makes the Keycloak login
+    # tile fail with invalid_scope (verifiably-go requests openid+profile+email).
+    # Runs last so it isn't clobbered. Idempotent.
+    bold "▶ Re-attaching Keycloak login scopes (post-seed)"
+    ensure_credebl_keycloak_login_scopes \
+      || red "  Keycloak login-scope re-attach failed (login may hit invalid_scope — re-run manually)"
+
     # Re-generate backends.json now that CREDEBL_ISSUER_ID is known.
     # The first call (top of cmd_up) runs before provisioning, so issuerId=""
     # there. This second call writes the final correct value.
@@ -459,6 +500,16 @@ cmd_up() {
     bootstrap_waltid_did_web \
       || red "  Walt.id did:web setup failed (proceeding — issuer will use did:key)"
   fi
+
+  # Sunbird RC registry-of-record — the Inji auth-code flow's authoritative
+  # claims source. Brought up for the all + inji scenarios so verifiably's
+  # RegisterHolder can pull a holder's record into certify.vc_subject, from
+  # which Inji Certify issues the credential over the authorization_code grant.
+  # Best-effort: a missing dir / failed bring-up never aborts the deploy (claims
+  # can still be provisioned via POST /api/v1/subjects).
+  case "$scenario" in
+    all|inji) up_sunbird_registry ;;
+  esac
 
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
@@ -477,6 +528,31 @@ cmd_up() {
   bold "▶ Starting verifiably-go container"
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
+  verify_oidc_discovery
+}
+
+# up_sunbird_registry brings up the Sunbird RC registry-of-record so the Inji
+# auth-code flow has an authoritative claims source: verifiably's RegisterHolder
+# looks a holder up in it (VERIFIABLY_REGISTRIES -> http://<host>:18091) and
+# caches the record into certify.vc_subject, from which Inji Certify issues the
+# credential over the authorization_code grant. The compose project lives in the
+# colombo-poc repo (separate from this verifiably fork); override its path with
+# VERIFIABLY_SUNBIRD_DIR. Only the registry core is started (es/db/kafka/registry
+# — not the Node v2 signing chain, which issuance does not need). Best-effort: a
+# missing dir or failed bring-up logs a warning and returns 0 so the deploy
+# continues (claims can still be provisioned via POST /api/v1/subjects).
+up_sunbird_registry() {
+  local dir="${VERIFIABLY_SUNBIRD_DIR:-$SCRIPT_DIR/../../colombo-poc/sunbird-rc}"
+  if [[ ! -d "$dir" ]]; then
+    yellow "  Sunbird RC dir not found ($dir) — skipping registry bring-up."
+    yellow "  Set VERIFIABLY_SUNBIRD_DIR, or provision holder claims via POST /api/v1/subjects."
+    return 0
+  fi
+  bold "▶ Bringing up Sunbird RC registry of record (Inji auth-code claims source)"
+  ( cd "$dir" && env -u POSTGRES_USER -u POSTGRES_PASSWORD -u POSTGRES_DB -u POSTGRES_PORT \
+      docker compose up -d es db zookeeper kafka redis registry ) \
+    && green "  Sunbird registry -> http://localhost:18091 (VERIFIABLY_REGISTRIES source)" \
+    || red "  Sunbird RC bring-up failed (proceeding; auth-code registry-pull will have no source)"
 }
 
 # repair_injiweb_client_redirect_uri ensures the wallet-demo-client row in
@@ -489,7 +565,15 @@ cmd_up() {
 # row.
 repair_injiweb_client_redirect_uri() {
   local public_host="${PUBLIC_HOST:-172.24.0.1}"
-  local want="http://${public_host}:3004/redirect"
+  # The wallet-demo-client must allow redirects for BOTH the external Inji Web
+  # wallet AND verifiably's own in-app holder claim flow. Both are derived from
+  # the deployment's public host so `deploy.sh up <scenario>` picks the right
+  # URIs per host (localhost / VPS / EC2 / custom domain) with no hardcoding.
+  local injiweb_redirect vfly_base
+  injiweb_redirect="$(url_for inji-web "${VERIFIABLY_PUBLIC_HOST:-$public_host}" "${INJIWEB_UI_PUBLIC_PORT:-3004}")/redirect"
+  vfly_base="${VERIFIABLY_PUBLIC_URL:-$(url_for verifiably "${VERIFIABLY_PUBLIC_HOST:-$public_host}" "${VERIFIABLY_PUBLIC_PORT:-8080}")}"
+  local wants="$injiweb_redirect ${vfly_base%/}/holder/wallet/inji/callback"
+
   local current
   current=$(docker exec injiweb-postgres \
     psql -U postgres -d mosip_esignet -tAX \
@@ -498,25 +582,23 @@ repair_injiweb_client_redirect_uri() {
     red "  wallet-demo-client not found in eSignet DB — seed script may have failed"
     return
   fi
-  if [[ "$current" == *"$want"* ]]; then
-    return   # already has our redirect URI
-  fi
-  # Add the PUBLIC_HOST URI alongside whatever is already there. Keeping the
-  # existing entries means old browser sessions don't break if a user has an
-  # in-flight redirect URL in their history.
+  # Merge any missing wanted URIs (idempotent). python exit 3 = nothing to add,
+  # so we skip the UPDATE + Redis cache flush.
   local merged
-  merged=$(python3 -c "
-import json, sys
-cur = json.loads('''$current''')
-want = '$want'
-if want not in cur:
-    cur.append(want)
+  merged=$(WANTS="$wants" CUR="$current" python3 -c '
+import json, os, sys
+cur = json.loads(os.environ["CUR"])
+n0 = len(cur)
+for w in os.environ["WANTS"].split():
+    if w and w not in cur:
+        cur.append(w)
 print(json.dumps(cur))
-")
+sys.exit(0 if len(cur) > n0 else 3)
+') || return 0
   docker exec injiweb-postgres psql -U postgres -d mosip_esignet -qc \
     "UPDATE client_detail SET redirect_uris='$merged' WHERE id='wallet-demo-client'" >/dev/null
   docker exec injiweb-redis redis-cli DEL 'clientdetails::wallet-demo-client' >/dev/null
-  green "  repaired wallet-demo-client redirect_uris (+$want)"
+  green "  repaired wallet-demo-client redirect_uris (now: $merged)"
 }
 
 cmd_setup() {
@@ -749,9 +831,75 @@ cmd_run() {
     -t "$VERIFIABLY_IMAGE" "$SCRIPT_DIR"
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
+  verify_oidc_discovery
 }
 
 # ---------------------------------------------------------------- helpers
+
+# verify_oidc_discovery — post-up smoke gate for the login flow. For every OIDC
+# provider in the generated config it drives verifiably-go's OWN /auth/start
+# from the host and checks two things that otherwise stay invisible (the deploy
+# exits 0 and only a browser click reveals them):
+#
+#   1. /auth/start produces an authorize redirect — proving the container's
+#      server-side OIDC discovery reached the IdP. Catches the subdomain
+#      hairpin-NAT regression (discover ...: context deadline exceeded).
+#   2. Following that authorize URL one hop does NOT bounce back to the callback
+#      with error=invalid_scope / invalid_client / unauthorized_client. Catches
+#      the Keycloak credebl-client scope regression (and similar IdP misconfig).
+#
+# Best-effort by default (red on failure, like the other bootstraps); set
+# VERIFIABLY_STRICT_VERIFY=1 to make a failure abort the deploy (use in CI).
+verify_oidc_discovery() {
+  local base="${VERIFIABLY_PUBLIC_URL%/}"
+  local cfg="$SCRIPT_DIR/config/auth-providers.system.json"
+  [[ -f "$cfg" ]] || { yellow "  discovery gate: no provider config — skip"; return 0; }
+  local ids
+  ids=$(python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+ps=d if isinstance(d,list) else d.get("providers",[])
+print("\n".join(p["id"] for p in ps if p.get("type")=="oidc"))' "$cfg" 2>/dev/null) || true
+  [[ -n "$ids" ]] || { yellow "  discovery gate: no OIDC providers — skip"; return 0; }
+
+  bold "▶ Verifying OIDC login (discovery + authorize)"
+  # Wait for the app to answer before probing (it was just (re)started).
+  local _t=0
+  while ! curl -sk --max-time 5 -o /dev/null "$base/" 2>/dev/null; do
+    _t=$((_t + 2)); [[ $_t -ge 30 ]] && break; sleep 2
+  done
+
+  local jar rc=0 id
+  jar="$(mktemp)"
+  for id in $ids; do
+    : > "$jar"
+    curl -sk -c "$jar" -b "$jar" --max-time 15 -o /dev/null "$base/" || true
+    curl -sk -c "$jar" -b "$jar" --max-time 15 -o /dev/null -X POST "$base/role" --data 'role=issuer' || true
+    local hdrs authz
+    hdrs=$(curl -sk -c "$jar" -b "$jar" --max-time 30 -D - -o /dev/null \
+      -H 'HX-Request: true' -X POST "$base/auth/start" --data "provider=$id" 2>/dev/null) || true
+    authz=$(printf '%s' "$hdrs" | grep -iE '^(location|hx-redirect):' | head -1 | sed -E 's/^[^:]+:[[:space:]]*//' | tr -d '\r') || true
+    if [[ -z "$authz" || "$authz" != *"://"* ]]; then
+      red "  discovery gate: '$id' — /auth/start did not redirect to the IdP (server-side discovery failed: hairpin NAT? cert? upstream down?)"
+      rc=1; continue
+    fi
+    local az_loc
+    az_loc=$(curl -sk --max-time 20 -D - -o /dev/null "$authz" 2>/dev/null | grep -iE '^location:' | head -1 | tr -d '\r') || true
+    if printf '%s' "$az_loc" | grep -qiE 'error=(invalid_scope|invalid_request|invalid_client|unauthorized_client|access_denied)'; then
+      red "  discovery gate: '$id' — authorize rejected the request (${az_loc#*error=}); scope/client misconfig at the IdP"
+      rc=1; continue
+    fi
+    green "  discovery gate: '$id' OK (discovery + authorize accepted)"
+  done
+  rm -f "$jar"
+  if [[ "$rc" -ne 0 ]]; then
+    if [[ "${VERIFIABLY_STRICT_VERIFY:-}" == "1" ]]; then
+      red "  discovery gate FAILED (VERIFIABLY_STRICT_VERIFY=1) — aborting deploy."
+      return 1
+    fi
+    yellow "  discovery gate found problems above — login may fail. (set VERIFIABLY_STRICT_VERIFY=1 to make this fatal)"
+  fi
+  return 0
+}
 
 # wait_for_services polls the TCP ports each scenario needs to be healthy
 # before verifiably-go starts. Bounded — we don't block forever if a service

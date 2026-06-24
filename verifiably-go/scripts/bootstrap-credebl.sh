@@ -398,7 +398,7 @@ except Exception:
     pass
 "
 
-  local did_doc
+  local did_doc=""
 
   # Try tenant wallet first (preferred — direct wallet read, no external fetch).
   local tenant_id
@@ -2073,4 +2073,50 @@ PYEOF
 
   export CREDEBL_ISSUER_ID="$issuer_db_id"
   green "  CREDEBL OID4VCI issuer ready (issuerId=${issuer_db_id})"
+}
+
+# ensure_credebl_keycloak_login_scopes re-attaches the openid/profile/email
+# DEFAULT client scopes to credebl-client (+ adminClient) AFTER the CREDEBL
+# seed has run. bootstrap_credebl_keycloak_realm attaches them at pre-seed
+# time, but CREDEBL's seed container re-imports credebl-realm and resets
+# credebl-client's default scopes back to openid-only. verifiably-go's login
+# requests `scope=openid profile email`, so the missing profile/email surface
+# as Keycloak "invalid_scope" at the authorize step (WSO2 is unaffected — its
+# client grants those scopes). Running this LAST, post-seed, makes the
+# assignment stick. Idempotent: PUT default-client-scopes is a no-op when
+# already attached.
+ensure_credebl_keycloak_login_scopes() {
+  local kc_base="http://localhost:${KEYCLOAK_PORT}"
+  local _pass="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+  local _user="${KEYCLOAK_ADMIN_USER:-admin}"
+  local token
+  token=$(curl -sf --max-time 10 \
+    "$kc_base/realms/master/protocol/openid-connect/token" \
+    -d "client_id=admin-cli&username=${_user}&password=${_pass}&grant_type=password" \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null) || true
+  if [[ -z "$token" ]]; then
+    yellow "  could not get Keycloak admin token — skipping login-scope re-attach"
+    return 0
+  fi
+  local scopes_json
+  scopes_json=$(curl -sf --max-time 10 \
+    "$kc_base/admin/realms/credebl-realm/client-scopes" \
+    -H "Authorization: Bearer ${token}") || { yellow "  could not list client-scopes — skip"; return 0; }
+  local client_name client_id sid s
+  for client_name in credebl-client adminClient; do
+    client_id=$(curl -sf --max-time 10 \
+      "$kc_base/admin/realms/credebl-realm/clients?clientId=${client_name}" \
+      -H "Authorization: Bearer ${token}" \
+      | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' 2>/dev/null) || true
+    [[ -n "$client_id" ]] || continue
+    for s in openid profile email; do
+      sid=$(printf '%s' "$scopes_json" \
+        | python3 -c "import sys,json; m=[c['id'] for c in json.load(sys.stdin) if c['name']=='$s']; print(m[0] if m else '')" 2>/dev/null) || true
+      [[ -n "$sid" ]] || continue
+      curl -sf --max-time 10 -X PUT \
+        "$kc_base/admin/realms/credebl-realm/clients/${client_id}/default-client-scopes/${sid}" \
+        -H "Authorization: Bearer ${token}" >/dev/null 2>&1 || true
+    done
+  done
+  green "  re-attached openid/profile/email default scopes to credebl-client (post-seed)"
 }

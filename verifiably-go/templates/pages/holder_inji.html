@@ -1,0 +1,58 @@
+{{define "content_holder_inji"}}
+<section class="view active">
+  <div class="section-label">
+    <span class="num">07</span>
+    <span class="caps">{{t "Holder · Claim via eSignet" $.Lang}}</span>
+  </div>
+  <h1 class="page-title">{{t "Claim your" $.Lang}}<br><em>{{t "credential" $.Lang}}</em>.</h1>
+  <p class="subtitle">
+    {{t "Log in with eSignet to claim your verifiable credential — issued by Inji Certify from your registered claims, right here in verifiably. No external Inji Web redirect." $.Lang}}
+  </p>
+
+  {{if not $.Body.Enabled}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1rem 1.25rem;margin-bottom:1.5rem;color:var(--muted)">
+    {{t "In-app eSignet claim is not configured on this deployment (INJI_AUTHCODE_CLIENT_KEY_PEM / ESIGNET_BASE_URL)." $.Lang}}
+  </div>
+  {{end}}
+
+  {{if $.Body.Error}}
+  <div style="background:#3a1a1a;border:1px solid #a44;border-radius:4px;padding:0.85rem 1.25rem;margin-bottom:1.5rem;color:#f6caca">
+    {{$.Body.Error}}
+  </div>
+  {{end}}
+
+  {{if $.Body.HeldCount}}
+  <div style="margin-bottom:1.5rem">
+    <a class="btn ghost small" href="/holder/wallet/inji/credentials">{{t "Your credentials" $.Lang}} ({{$.Body.HeldCount}}) →</a>
+  </div>
+  {{end}}
+
+  {{if $.Body.Enabled}}
+  <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
+    <h3 style="margin:0 0 0.5rem;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem">{{t "Available credentials" $.Lang}}</h3>
+    <p class="subtitle" style="margin:0 0 0.75rem;font-size:0.85rem">{{t "Log in with eSignet to claim a credential — issued by Inji Certify from your registered claims, here in verifiably." $.Lang}}</p>
+    <input id="inji-cred-search" type="search" oninput="filterInjiCreds()" placeholder="{{t "Search credentials…" $.Lang}}"
+           style="width:100%;padding:0.5rem 0.6rem;margin-bottom:0.25rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.75rem;margin-top:0.75rem">
+    {{range $.Body.Catalog}}
+      <div class="inji-cred-card" data-search="{{.displayName}} {{.key}} {{.scope}}" style="padding:0.9rem 1rem;border:1px solid var(--line);border-radius:6px;background:var(--bg)">
+        <strong>{{.displayName}}</strong><br><span class="mono" style="font-size:0.72rem;color:var(--muted)">{{.key}} · {{.scope}}</span>
+        <div style="margin-top:0.75rem"><a class="btn small" href="/holder/wallet/inji/start?cred={{.key}}">{{t "Claim with eSignet →" $.Lang}}</a></div>
+      </div>
+    {{end}}
+    </div>
+    {{if not $.Body.Catalog}}<p class="subtitle">{{t "No credentials available yet — an issuer needs to create one." $.Lang}}</p>{{end}}
+    <p id="inji-cred-none" class="subtitle" style="display:none;font-size:0.82rem;margin-top:0.75rem">{{t "No credentials match your search." $.Lang}}</p>
+    <p class="subtitle" style="margin-top:0.75rem;font-size:0.78rem;color:var(--muted)">{{t "New here? Sign up with eSignet at" $.Lang}} <a href="/holder/register">/holder/register</a>. {{t "If a claim fails with a no-data-record error, your details weren't found in an authoritative registry at sign-up." $.Lang}}</p>
+  </div>
+  <script>
+    function filterInjiCreds(){
+      var q=(document.getElementById('inji-cred-search').value||'').toLowerCase().trim();
+      var shown=0, cards=document.querySelectorAll('.inji-cred-card');
+      cards.forEach(function(c){ var m=c.getAttribute('data-search').toLowerCase().indexOf(q)>=0; c.style.display=m?'':'none'; if(m)shown++; });
+      var none=document.getElementById('inji-cred-none'); if(none) none.style.display=(shown===0&&cards.length>0)?'':'none';
+    }
+  </script>
+  {{end}}
+</section>
+{{end}}

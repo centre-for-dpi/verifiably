@@ -116,7 +116,45 @@ url_for() {
   fi
   printf "http://%s:%s%s" "$host" "$port" "$suffix"
 }
+
+# VERIFIABLY_PUBLIC_SLUGS — the service subdomains verifiably-go talks to
+# server-side. Kept as an overridable space-separated list so compute_host_aliases
+# (and its unit test) stay in sync with the slugs gen-caddy.sh routes.
+: "${VERIFIABLY_PUBLIC_SLUGS:=verifiably keycloak wso2 credebl walt-issuer walt-wallet walt-verifier inji-certify inji-certify-preauth inji-verify inji-verify-ui inji-web mimoto esignet}"
+
+# compute_host_aliases <domain> <caddy_ip>
+# Prints `docker run --add-host` arguments — one token per line, so a caller can
+# read them straight into an array — pinning every public service subdomain to
+# the caddy-public container IP. This is the subdomain hairpin-NAT fix: it lets
+# verifiably-go reach the public https://<slug>.<domain> URLs from inside the
+# container, where they otherwise resolve to the host's own public IP and fail
+# to hairpin back to the published :443 (see scripts/start-container.sh).
+#
+# Prints NOTHING in legacy host:port mode (empty domain or empty ip). Pure — no
+# Docker, no network, no globals mutated — so it is unit-testable on its own
+# (scripts/ci/test-host-aliases.sh).
+compute_host_aliases() {
+  local domain="$1" ip="$2" slug
+  [[ -n "$domain" && -n "$ip" ]] || return 0
+  for slug in $VERIFIABLY_PUBLIC_SLUGS; do
+    printf -- '--add-host\n%s.%s:%s\n' "$slug" "$domain" "$ip"
+  done
+}
+
 : "${VERIFIABLY_PUBLIC_URL:=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")}"
+
+# Registry Admin console — the data-source tier UI (deploy/registry-admin/).
+# REGISTRY_ADMIN_HOST_PORT is the published host port; VERIFIABLY_REGISTRY_ADMIN_URL
+# is the browser-facing URL verifiably-go surfaces in its navbar ("Registry"
+# link). Resolved through url_for so it is per-host: subdomain mode ->
+# https://registry-admin.<domain> (fronted by caddy-public), legacy mode ->
+# http://<host>:<REGISTRY_ADMIN_HOST_PORT>. Computed here (not just in cmd_up)
+# so `deploy.sh run <scenario>` — which doesn't run cmd_up's URL-export block —
+# also passes it to the container via scripts/start-container.sh. Exported so
+# docker compose / sub-shells inherit it.
+: "${REGISTRY_ADMIN_HOST_PORT:=18095}"
+: "${VERIFIABLY_REGISTRY_ADMIN_URL:=$(url_for registry-admin "$VERIFIABLY_PUBLIC_HOST" "$REGISTRY_ADMIN_HOST_PORT")}"
+export REGISTRY_ADMIN_HOST_PORT VERIFIABLY_REGISTRY_ADMIN_URL
 
 : "${LIBRETRANSLATE_PORT:=5000}"
 : "${VERIFIABLY_IMAGE:=verifiably-go:local}"
@@ -217,6 +255,7 @@ INJI_CORE_SERVICES=(
   certify-nginx certify-preauth-nginx
   inji-verify-postgres inji-verify-service inji-verify-ui
   citizens-postgres vc-adapter
+  registry-admin
 )
 INJIWEB_SERVICES=(
   injiweb-postgres injiweb-redis

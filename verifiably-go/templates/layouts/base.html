@@ -24,6 +24,11 @@
   <div class="nav-right">
     <a href="/docs" hx-boost="true" hx-target="#main" hx-swap="innerHTML show:window:top"
        class="mono" style="font-size:0.78rem;color:var(--ink-soft);text-decoration:none;padding:0.25rem 0.5rem;border:1px solid var(--line);border-radius:2px;margin-right:0.5rem">Docs</a>
+    {{if .RegistryAdminURL}}
+    <a href="{{.RegistryAdminURL}}" target="_blank" rel="noopener"
+       class="mono" style="font-size:0.78rem;color:var(--ink-soft);text-decoration:none;padding:0.25rem 0.5rem;border:1px solid var(--line);border-radius:2px;margin-right:0.5rem"
+       title="Registry Admin — populate the Sunbird registry backing Inji credentials">Registry</a>
+    {{end}}
     <div class="nav-crumb mono">{{.Crumb}}</div>
     <form method="post" action="/lang" id="lang-form" style="display:inline-flex;align-items:center;gap:0.35rem">
       <select name="lang" onchange="this.form.submit()" aria-label="Language"

@@ -149,6 +149,45 @@ func (h *H) InjiProxyStatusList(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
+// InjiProxyWellKnown serves the OID4VCI issuer metadata for the auth-code
+// (primary) Inji Certify instance. certify-nginx proxies
+// GET /.well-known/openid-credential-issuer here (to host.docker.internal:8080/
+// inji-proxy/...); without this route Mimoto/Inji Web get a 404 on metadata
+// discovery and the card download fails before issuance even starts.
+//
+// Pass-through by design: the upstream is injiCertifyUpstream() (env
+// INJI_CERTIFY_UPSTREAM_URL, default the docker service name) and the metadata's
+// own URLs are emitted by Inji Certify from its config — so this is
+// host-agnostic and works unchanged on localhost or any deployed host. We don't
+// rewrite the body: the auth-code consumers (Mimoto, Credo) accept Certify's
+// native metadata, unlike the pre-auth/walt.id path which needs sanitising.
+func (h *H) InjiProxyWellKnown(w http.ResponseWriter, r *http.Request) {
+	upstream := injiCertifyUpstream() + "/v1/certify/.well-known/openid-credential-issuer"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upstream, nil)
+	if err != nil {
+		http.Error(w, "build upstream request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("inji-proxy: wellknown upstream error: %v", err)
+		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		log.Printf("inji-proxy: wellknown RESP %d body=%s", resp.StatusCode, truncateForLog(string(body), 400))
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "application/json"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(body)
+}
+
 // InjiProxyPrimaryDidJSON serves /.well-known/did.json for did:web:certify-nginx.
 // Fetches the PRIMARY (auth-code) Inji Certify instance's own did.json and
 // patches verificationMethod with every kid we've seen the primary sign
@@ -250,6 +289,26 @@ func patchedDidDoc(doc map[string]any, extras []string) {
 		existing[kid] = struct{}{}
 	}
 	doc["verificationMethod"] = methods
+
+	// Normalise assertionMethod / authentication to reference the FULL
+	// verification-method ids (did#kid). Inji Certify's upstream did.json lists
+	// the BARE did (no #fragment) in these relationships, which a strict
+	// verifier (the @digitalbazaar suites walt.id-style wallets use) won't
+	// accept as authorising a proof whose verificationMethod is did#kid — so
+	// the proof check fails even though the key is present. Point both at every
+	// VM id instead. This issuer uses one key for both relationships.
+	vmIDs := make([]any, 0, len(methods))
+	for _, m := range methods {
+		if mm, _ := m.(map[string]any); mm != nil {
+			if id, _ := mm["id"].(string); id != "" {
+				vmIDs = append(vmIDs, id)
+			}
+		}
+	}
+	if len(vmIDs) > 0 {
+		doc["assertionMethod"] = vmIDs
+		doc["authentication"] = vmIDs
+	}
 }
 
 // Seed each observer from its own env-var. Primary gets INJI_PROXY_EXTRA_KIDS

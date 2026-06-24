@@ -102,6 +102,29 @@ services:
       CREDEBL_AGENT_API_PORT: ${CREDEBL_AGENT_API_PORT:-8001}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Hairpin NAT fix for COMPOSE-managed containers. An internal container that
+    # must reach a PUBLIC subdomain (e.g. wallet-api resolving an OID4VCI offer
+    # whose credential_offer_uri / credential_issuer is the public pre-auth host)
+    # otherwise routes to the box's own public IP:443 and times out
+    # (ConnectTimeoutException) — the box can't hairpin to itself. Aliasing the
+    # public FQDN onto caddy-public makes Docker's embedded DNS resolve it to
+    # caddy's internal IP, where TLS is terminated and the request is routed to
+    # the backend — exactly like an external client, but staying on the docker
+    # network. Mirrors the verifiably-go --add-host hairpin fix (start-container.sh)
+    # for services compose brings up. Add more public FQDNs here if other internal
+    # containers start calling them by their public name.
+    networks:
+      default:
+        aliases:
+          - "inji-certify-preauth.${VERIFIABLY_PUBLIC_DOMAIN}"
+          - "esignet.${VERIFIABLY_PUBLIC_DOMAIN}"
+          # walt.id: the wallet-api resolves an OID4VCI credential_offer_uri at
+          # walt-issuer (claim) and an OID4VP request_uri at walt-verifier
+          # (present) by their PUBLIC names; without these aliases it hits the
+          # box public IP and ConnectTimeouts (hairpin NAT).
+          - "walt-issuer.${VERIFIABLY_PUBLIC_DOMAIN}"
+          - "walt-verifier.${VERIFIABLY_PUBLIC_DOMAIN}"
+          - "walt-wallet.${VERIFIABLY_PUBLIC_DOMAIN}"
     ports:
       - "80:80"
       - "443:443"
@@ -278,7 +301,7 @@ services:
       ISSUER_DID_DOMAIN: ${ISSUER_DID_DOMAIN:-}
     volumes:
       - ./inji/certify/init.sh:/docker-entrypoint-initdb.d/certify_init.sh
-      - ./inji/certify/init.sql:/var/init-templates/certify_init.sql:ro
+      - ./inji/certify/init-authcode.sql:/var/init-templates/certify_init-authcode.sql:ro
       - certify-db:/var/lib/postgresql/data
     ports:
       - "5433:5432"
@@ -287,6 +310,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      # Fresh-volume initdb + the init scripts can outlast interval*retries (25s)
+      # during a busy `up all`, flipping the check to unhealthy mid-init so a
+      # dependent service's `depends_on: condition: service_healthy` aborts the
+      # first deploy (certify-postgres did this on every clean bring-up). A
+      # start_period keeps the container "starting" — failures don't count — until
+      # Postgres is genuinely ready, making `up all` succeed first try.
+      start_period: 90s
 
   inji-certify:
     image: injistack/inji-certify-with-plugins:0.14.0
@@ -297,7 +327,7 @@ services:
       - "8090:8090"
     environment:
       - container_user=mosip
-      - active_profile_env=default,csvdp-farmer
+      - active_profile_env=default,postgres-dataprovider
       - SPRING_CONFIG_NAME=certify
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
       - enable_certify_artifactory=false
@@ -305,7 +335,7 @@ services:
       # Full DID URL embedded in issued credentials. Empty ISSUER_DID_DOMAIN
       # falls back to Docker-internal did:web:certify-nginx (dev only).
       - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-nginx}
-      - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Farmer Issuer}
+      - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-VC Infra Issuer}
       - mosip_certify_domain_url=http://certify-nginx:80
       # Route token validation through our local esignet instead of
       # inji-certify's default "I'm my own auth server" mode. The Farmer
@@ -348,6 +378,7 @@ services:
     volumes:
       - ./inji/certify/certify-default.properties:/home/mosip/config/certify-default.properties
       - ./inji/certify/certify-csvdp-farmer.properties:/home/mosip/config/certify-csvdp-farmer.properties
+      - ./inji/certify/certify-postgres-dataprovider.properties:/home/mosip/config/certify-postgres-dataprovider.properties
       - ./inji/certify/farmer_identity_data.csv:/home/mosip/config/farmer_identity_data.csv
       - ./inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json
       - certify-pkcs12:/home/inji/CERTIFY_PKCS12
@@ -398,9 +429,12 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      # init-preauth.sh uses ISSUER_DID_DOMAIN to compute the DID:
-      # empty = did:web:certify-preauth-nginx (dev); set = did:web:{domain}
-      # (same as primary in prod — inji_proxy merges both keys into one DID doc).
+      # init-preauth.sh computes the seed did_url from these. PREAUTH_DID_DOMAIN
+      # (set by deploy.sh in subdomain mode = this instance's own public host)
+      # takes precedence so the pre-auth instance gets a PUBLICLY-resolvable
+      # did:web that an external wallet can dereference; it falls back to the
+      # shared ISSUER_DID_DOMAIN, then to did:web:certify-preauth-nginx (dev).
+      PREAUTH_DID_DOMAIN: ${PREAUTH_DID_DOMAIN:-}
       ISSUER_DID_DOMAIN: ${ISSUER_DID_DOMAIN:-}
     volumes:
       - ./inji/certify/init-preauth.sh:/docker-entrypoint-initdb.d/certify_init.sh
@@ -413,6 +447,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      # Fresh-volume initdb + the init scripts can outlast interval*retries (25s)
+      # during a busy `up all`, flipping the check to unhealthy mid-init so a
+      # dependent service's `depends_on: condition: service_healthy` aborts the
+      # first deploy (certify-postgres did this on every clean bring-up). A
+      # start_period keeps the container "starting" — failures don't count — until
+      # Postgres is genuinely ready, making `up all` succeed first try.
+      start_period: 90s
 
   # inji-preauth-proxy is a thin reverse proxy that takes over the
   # `inji-certify-preauth` network identity. Strict OID4VCI wallets
@@ -426,9 +467,15 @@ services:
   # touching Inji's config. See cmd/inji-preauth-proxy/main.go for the
   # intercept rules. Everything else is a transparent httputil reverse proxy.
   inji-preauth-proxy:
-    # Published image: https://hub.docker.com/r/adammwaniki/inji-preauth-poc
-    # Source: verifiably-go/cmd/inji-preauth-proxy (pinned version keeps
-    # fresh clones reproducible; :latest is also pushed for convenience).
+    # Source: verifiably-go/cmd/inji-preauth-proxy. BUILT FROM SOURCE so the
+    # in-repo fixes (e.g. stripping walt.id's request-injected `display` /
+    # empty `credential_definition` that Inji's CredentialRequest DTO rejects)
+    # are always present — the published adammwaniki/inji-preauth-poc:v0.1.0
+    # predates them. `docker compose up` builds this on a fresh box (the image
+    # tag is absent) and reuses it thereafter; `image:` just names the result.
+    # Re-publish the tag from this source to restore the pull-only model.
+    build:
+      context: ../../../cmd/inji-preauth-proxy
     image: adammwaniki/inji-preauth-poc:v0.1.0
     restart: unless-stopped
     container_name: inji-certify-preauth
@@ -452,10 +499,16 @@ services:
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
       - enable_certify_artifactory=false
       - download_hsm_client=false
-      # In production (ISSUER_DID_DOMAIN set), both primary and preauth use the
-      # same public DID. inji_proxy merges both instances' keys in the DID doc.
-      - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-preauth-nginx}
-      - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Farmer Issuer}
+      # Issuer DID baked into the did.json (id/controller) and into every VC's
+      # proof verificationMethod. PREAUTH_DID_DOMAIN (deploy.sh, subdomain mode)
+      # makes it a publicly-resolvable did:web at THIS instance's own subdomain,
+      # so an external wallet can dereference it to verify the proof. It is
+      # decoupled from the shared ISSUER_DID_DOMAIN on purpose: moving that var
+      # would also re-point the internal primary auth-code instance onto this
+      # subdomain's did.json (which carries only the pre-auth key) and break it.
+      # Falls back to ISSUER_DID_DOMAIN, then did:web:certify-preauth-nginx (dev).
+      - CERTIFY_ISSUER_DID=did:web:${PREAUTH_DID_DOMAIN:-${ISSUER_DID_DOMAIN:-certify-preauth-nginx}}
+      - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-VC Infra Issuer}
       # Critical difference from the primary inji-certify: the domain URL
       # must be the PUBLIC URL so that JwtProofValidator (Nimbus) accepts
       # the wallet's proof JWT whose aud = credential_issuer (the public URL
@@ -577,6 +630,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      # Fresh-volume initdb + the init scripts can outlast interval*retries (25s)
+      # during a busy `up all`, flipping the check to unhealthy mid-init so a
+      # dependent service's `depends_on: condition: service_healthy` aborts the
+      # first deploy (certify-postgres did this on every clean bring-up). A
+      # start_period keeps the container "starting" — failures don't count — until
+      # Postgres is genuinely ready, making `up all` succeed first try.
+      start_period: 90s
     volumes:
       - inji-verify-db:/var/lib/postgresql/data
 
@@ -595,9 +655,12 @@ services:
       - DATABASE_SCHEMA=verify
       - DATABASE_USERNAME=postgres
       - DATABASE_PASSWORD=postgres
-      - INJI_VP_SUBMISSION_BASE_URL=https://inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}/v1/verify
-      - INJI_DID_VERIFY_URI=did:web:inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}:v1:verify
-      - INJI_DID_VERIFY_PUBLIC_KEY_URI=did:web:inji-verify.${VERIFIABLY_PUBLIC_DOMAIN}:v1:verify#key-0
+      # Derived per-host by deploy.sh (url_for inji-verify): subdomain mode ->
+      # https://inji-verify.<domain>/... + did:web:inji-verify.<domain>:...;
+      # localhost mode -> http://<host>:<port>/... + did:web:<host>%3A<port>:...
+      - INJI_VP_SUBMISSION_BASE_URL=${INJI_VP_SUBMISSION_BASE_URL}
+      - INJI_DID_VERIFY_URI=${INJI_DID_VERIFY_URI}
+      - INJI_DID_VERIFY_PUBLIC_KEY_URI=${INJI_DID_VERIFY_PUBLIC_KEY_URI}
     volumes:
       - ./inji/certify-nginx/certs/nginx.crt:/tmp/certify-nginx.crt:ro
       # Pre-auth nginx serves did:web:certify-preauth-nginx; import its
@@ -701,6 +764,36 @@ services:
       timeout: 3s
       start_period: 5s
       retries: 3
+
+  # ==========================================================================
+  # Registry Admin console — the registrar / data-population tier UI.
+  #
+  # Reads the credentials an issuer defined in verifiably (via verifiably-go's
+  # /api/registry-credentials) and lets an admin populate the authoritative
+  # Sunbird RC registry those credentials draw from (one entity per credential
+  # type, holder records keyed by the eSignet Individual ID, plus CSV import).
+  # It only drives the Sunbird RC HTTP API — it never edits verifiably or the
+  # Sunbird registry config. Source lives in deploy/registry-admin/ (built in
+  # repo so a fresh clone brings it up). Fronted publicly at
+  # registry-admin.<domain> by caddy-public (see gen-caddy.sh entries).
+  # ==========================================================================
+  registry-admin:
+    build:
+      context: ../../registry-admin
+    image: registry-admin:local
+    container_name: registry-admin
+    restart: unless-stopped
+    environment:
+      # verifiably-go's credential catalog (auth-code + custom creds), reached
+      # over the shared waltid_default docker network by container DNS.
+      VERIFIABLY_SCHEMAS_URL: ${REGISTRY_ADMIN_SCHEMAS_URL:-http://verifiably-go:8080/api/registry-credentials}
+      # Sunbird RC registry API. Defaults to the box's published port; override
+      # via REGISTRY_ADMIN_SUNBIRD_URL in .env for a different host.
+      SUNBIRD_URL: ${REGISTRY_ADMIN_SUNBIRD_URL:-http://156.67.105.185:18091}
+    ports:
+      # Host port kept for direct/legacy access; in subdomain mode the console
+      # is reached via https://registry-admin.<domain> through caddy-public.
+      - "${REGISTRY_ADMIN_HOST_PORT:-18095}:8000"
 
   # ==========================================================================
   # Inji Web stack — MOSIP's browser-hosted wallet, opt-in via `--profile injiweb`.
@@ -866,6 +959,10 @@ services:
       SPRING_REDIS_PASSWORD: ""
       MOSIP_ESIGNET_MOCK_DOMAIN_URL: http://injiweb-mock-identity:8082
       MOSIP_ESIGNET_INTEGRATION_KEY_BINDER: MockKeyBindingWrapperService
+      # Repoint eSignet's "Sign Up with Unified Login" link at verifiably's holder
+      # self-registration (the MOSIP signup-service isn't deployed here). Per-host via
+      # ESIGNET_UI_SIGNUP_URL (exported by deploy.sh); default = localhost.
+      MOSIP_ESIGNET_UI_SIGNUP_CONFIG: "{'signup.banner': true, 'signup.url': '${ESIGNET_UI_SIGNUP_URL:-http://172.24.0.1:8080/holder/register}'}"
       # Rewrite every URL esignet advertises to point at the oidc-ui
       # nginx via an IP that resolves consistently from BOTH the
       # browser AND from inside the Mimoto container.
@@ -886,6 +983,9 @@ services:
       #     bridge gateway (host) → docker port forward → same target
       # Same URL, works in both contexts, no /etc/hosts edits needed.
       MOSIP_ESIGNET_DOMAIN_URL: ${ESIGNET_BASE_URL:-http://${PUBLIC_HOST:-172.24.0.1}:${ESIGNET_PUBLIC_PORT:-3005}}
+      # Dynamic credential scopes: read from the mounted file so a restart
+      # re-reads them (verifiably appends a scope on schema creation).
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/home/mosip/config/
       # Persist esignet's kernel keymanager PKCS12 keystore into a named
       # volume instead of the container's writable layer. Without this
       # override, esignet uses the local profile default of
@@ -912,7 +1012,8 @@ services:
       # which SpEL evaluates to a Java Set. A plain string
       # `mock_identity_vc_ldp` is parsed as a SpEL property reference
       # and fails with EL1008E.
-      MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES: "{'mock_identity_vc_ldp'}"
+      # MOVED to inji/esignet/credential-scopes.properties (file-based dynamic scopes):
+      # MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES: "{'mock_identity_vc_ldp','farmer_land_vc_ldp'}"
       # Audience must exactly match inji-certify's
       # mosip.certify.oauth.access-token.audience, which resolves to
       # `${mosip.certify.identifier}/v1/certify/issuance/credential`.
@@ -920,9 +1021,12 @@ services:
       # expected aud is http://certify-nginx:80/v1/certify/issuance/credential
       # — explicit :80 port. Dropping it here causes certify's
       # JwtAudienceValidator to reject with "The aud claim is not valid".
-      MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING: "{'mock_identity_vc_ldp':'http://certify-nginx:80/v1/certify/issuance/credential'}"
+      # MOVED to inji/esignet/credential-scopes.properties (file-based dynamic scopes):
+      # MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING: "{'mock_identity_vc_ldp':'http://certify-nginx:80/v1/certify/issuance/credential','farmer_land_vc_ldp':'http://certify-nginx:80/v1/certify/issuance/credential'}"
     volumes:
       - injiweb-esignet-keystore:/home/mosip/keystore
+      - ./inji/esignet/credential-scopes.properties:/home/mosip/config/application-local.properties
+      - ./inji/esignet/configure_start.sh:/home/mosip/configure_start.sh:ro
 
   # esignet's browser-facing React UI. Serves /authorize, /consent, and
   # other login screens, plus a same-origin nginx proxy for /v1/esignet

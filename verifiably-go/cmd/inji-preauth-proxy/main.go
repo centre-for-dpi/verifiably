@@ -117,6 +117,15 @@ func serveCredentialRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Sanitise walt.id's quirks in the credential REQUEST before forwarding:
+	//   - a top-level `display` block (echoed from the offered config) →
+	//     Inji's CredentialRequest DTO isn't ignoreUnknown, so it 500s with
+	//     "Unrecognized field display".
+	//   - an empty `credential_definition: {}` on a vc+sd-jwt request → Inji
+	//     rejects it as an invalid_credential_request (SD-JWT keys off `vct`).
+	// Neither belongs in the request; alignCredentialDefinition below still
+	// rewrites a populated credential_definition for ldp_vc.
+	body = sanitizeCredentialRequest(body)
 	if patched, ok := alignCredentialDefinition(body); ok {
 		body = patched
 	}
@@ -363,6 +372,37 @@ func stripDidBindingMethods(meta map[string]any) {
 		}
 		cfg["cryptographic_binding_methods_supported"] = kept
 	}
+}
+
+// sanitizeCredentialRequest removes fields walt.id adds to a credential request
+// that Inji Certify rejects: a top-level `display` block (Inji's
+// CredentialRequest DTO isn't ignoreUnknown → 500 "Unrecognized field display")
+// and an EMPTY `credential_definition: {}` (Inji 400s a vc+sd-jwt request that
+// carries one — SD-JWT keys off `vct`). A populated credential_definition is
+// left intact for alignCredentialDefinition to rewrite. Returns the body
+// unchanged when it isn't a JSON object or has nothing to strip.
+func sanitizeCredentialRequest(body []byte) []byte {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return body
+	}
+	changed := false
+	if _, ok := parsed["display"]; ok {
+		delete(parsed, "display")
+		changed = true
+	}
+	if cd, ok := parsed["credential_definition"].(map[string]any); ok && len(cd) == 0 {
+		delete(parsed, "credential_definition")
+		changed = true
+	}
+	if !changed {
+		return body
+	}
+	out, err := json.Marshal(parsed)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 func stripDisplay(v any) {

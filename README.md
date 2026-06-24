@@ -11,8 +11,8 @@ Everything below refers to that subtree — run the commands from there.
 Supported DPGs out of the box:
 
 - **walt.id Community Stack** v0.18.2 — issuer / holder / verifier via walt.id's issuer-api, wallet-api, verifier-api
-- **Inji Certify** v0.14.0 — issuer, both OID4VCI pre-authorised code and authorization code flows
-- **Inji Web Wallet** v0.16.0 — holder via the MOSIP Inji Web SPA + Mimoto BFF
+- **Inji Certify** v0.14.0 — issuer, both OID4VCI pre-authorised code and authorization code flows. The auth-code flow has an **in-app multi-format schema builder** (create a credential live — W3C VCDM 1.1/2.0 as `ldp_vc` or IETF SD-JWT VC as `vc+sd-jwt` — which writes the Certify config + registry extraction view + eSignet scope and restarts the services in place)
+- **Inji Web Wallet** v0.16.0 — holder via the MOSIP Inji Web SPA + Mimoto BFF, **or** claim Inji Certify auth-code credentials **in-app via eSignet** (no external redirect)
 - **Inji Verify** v0.16.0 — verifier via Inji Verify's QR-upload and OID4VP endpoints
 - **CREDEBL** — issuer (OID4VCI pre-auth) + verifier (OID4VP) via CREDEBL's 18-service stack;
   bootstrapped automatically including Keycloak realm, platform-admin, DID, and credential template
@@ -32,7 +32,7 @@ Before the quickstart will succeed on a fresh machine:
 | **Ports free** on the host: 80, 443, 3001, 3004, 3005, 5432–5437, 7001–7003, 8080, 8090–8099, 8180, 8182, 9443 | Compose publishes each DPG on its canonical port. Check `sudo ss -ltn` before starting; `lsof -i :8080` to find who holds any conflict. |
 | **`envsubst`** (part of `gettext`) in your `$PATH` | `deploy.sh` renders `wso2-deployment.toml` from a template with it. Most Linux distros have it preinstalled; on macOS: `brew install gettext` + `brew link --force gettext`. |
 | **Go 1.25+** *(optional)* | Only needed if you want to run `verifiably-go` outside docker via `go run ./cmd/server`. `./deploy.sh up` builds its own container image. |
-| **`curl`, `jq`, `python3`** | `deploy.sh` and the bootstrap scripts (Keycloak, WSO2IS, CREDEBL) use them for seeding OIDC clients, rendering configs, and patching CREDEBL containers. |
+| **`curl`, `jq`, `python3`, `openssl`** | `deploy.sh` and the bootstrap scripts (Keycloak, WSO2IS, CREDEBL) use them for seeding OIDC clients, rendering configs, patching CREDEBL containers, and generating secrets + the hub signing key. |
 
 Docker Hub has the two first-party images the stack pulls:
 
@@ -1161,6 +1161,55 @@ Either stop the conflicting service or change the port in `.env` (e.g.
 `VERIFIABLY_HOST_PORT=8081`). Ports 80/443 are only needed if you bring
 up the Caddy TLS reverse proxy; skip it for localhost dev.
 
+**Inji pre-auth credential won't hold in the walt.id wallet (`invalid_proof`
+/ `proof_header_ambiguous_key`)** — use an external OID4VCI wallet with **SD-JWT**
+
+The bundled walt.id Community Stack wallet-api (**v0.18.2**) cannot receive an
+Inji Certify pre-authorized-code credential, for two reasons that both live
+inside the walt.id image and are not fixable on the issuer side:
+
+1. **Non-conformant proof.** walt.id's `useOfferRequest` builds the OID4VCI
+   proof JWT with a header carrying **both** a top-level `kid` *and* a `jwk`.
+   OID4VCI requires exactly one key reference, so Inji's `JwtProofValidator`
+   rejects it with `proof_header_ambiguous_key` → `400 invalid_proof`. (Proven:
+   a clean `jwk`-only proof issues `200`; adding a top-level `kid` flips it to
+   the same 400.)
+2. **No ldp_vc presentation.** Even if received, walt.id v0.18.2 can only
+   *present* compact-JWT formats (`jwt_vc_json`, `vc+sd-jwt`) — its VP path
+   throws on `ldp_vc` (JSON-LD).
+
+A holder-side adapter that exports a wallet-managed key (`keys/{id}/load`
+returns the private JWK), signs a conformant proof itself, redeems the
+credential, and stores it back is **also blocked**: wallet-api v0.18.2's
+`PUT /credentials` ("Store credential") returns `500 NotImplementedError`, so
+there is no way to inject an externally-fetched credential into the wallet.
+walt.id's only ingest path is its own (broken-proof) exchange.
+
+**walt.id `ConnectTimeoutException` resolving an offer or presentation request**
+— hairpin NAT, fixed in the compose
+
+When a compose-managed container calls a walt.id service by its **public** name —
+the `wallet-api` fetching an OID4VCI `credential_offer_uri` at `walt-issuer.<domain>`
+(claim), or an OID4VP `request_uri` at `walt-verifier.<domain>` (present) — it would
+route to the box's own public IP `:443` and time out, because most hosts don't hairpin
+docker-bridge traffic back to themselves. The `caddy-public` service therefore carries
+docker network **aliases** for the walt subdomains (`walt-issuer`, `walt-verifier`,
+`walt-wallet`, alongside `esignet` / `inji-certify-preauth`), so Docker's embedded DNS
+resolves them to Caddy's internal IP — where TLS terminates and the request is proxied
+to the backend, staying on the docker network. verifiably-go itself is pinned the same
+way via `--add-host` (`scripts/start-container.sh`). If a new internal container starts
+calling a public name, add it to the `aliases:` list on `caddy-public` in
+`deploy/compose/stack/docker-compose.yml`.
+
+The **issuer side is fully conformant** — a clean, `jwk`-bound
+`openid4vci-proof+jwt` issues `200` through the entire public chain. So the
+working path is to scan/paste the offer into an **external OID4VCI wallet**
+(e.g. a Credo-based mobile wallet) and issue the schema as **SD-JWT
+(`sd_jwt_vc (IETF)`)**, which holds end-to-end. ldp_vc (W3C) holds in wallets
+with proper JSON-LD + Data Integrity support; SD-JWT is the most broadly
+compatible. Making the walt.id *holder* work would require a walt.id wallet-api
+version that emits a conformant proof (and implements credential import).
+
 ## What this app does
 
 Each of the three core roles has a dedicated flow:
@@ -1175,7 +1224,10 @@ so large CSVs don't block the UI.
 
 **Holder** — pick a wallet DPG → scan, paste, or select an example
 offer → review the pending offer → accept it into the wallet → present
-it to a verifier via QR, OID4VP link, or direct upload.
+it to a verifier via QR, OID4VP link, or direct upload. *(For the Inji
+auth-code path — the Inji Web Wallet DPG — the holder instead browses an
+in-app credential catalog, signs in with eSignet, and receives the VC
+right here in verifiably, with no external Inji Web redirect.)*
 
 **Verifier** — pick a verifier DPG → either request an OID4VP
 presentation from a template (signed request JWT + QR for cross-device)
@@ -1186,6 +1238,100 @@ status, and the fields actually disclosed.
 All user-facing text is translated on the fly when you switch language
 in the top bar — both the static template strings and dynamic text
 coming from DPG responses.
+
+## Credential delivery models
+
+A credential can reach its subject two fundamentally different ways. They are
+**not interchangeable** — different trust models, different consumers, different
+failure modes. Picking the wrong one is behind most "why won't this work in a
+wallet?" confusion.
+
+|          | Bearer / QR-on-PDF | Wallet / OID4VCI |
+| -------- | ------------------ | ---------------- |
+| **Binding**  | bound to a **server-held key the recipient never receives** → bearer (holding the QR = holding the credential) | bound to the **wallet's own key** (holder proves possession) |
+| **Consumer** | a **verifier** scans it (Inji Verify) | the **holder** holds + presents it (OID4VP) |
+| **Good for** | paper / offline / kiosk verification | digital wallet, selective disclosure, presentation |
+
+**Bearer / QR-on-PDF.** The Inji Certify pre-auth *"issue as PDF"* path mints
+the credential entirely server-side: verifiably-go generates a proof-signing
+key, builds a conformant OID4VCI proof, redeems the signed VC, and embeds it
+(PixelPass-encoded) as a QR on a printable A4 page. The credential is bound to
+that server-held key, which the subject **never receives** — so the subject
+cannot perform a holder-bound presentation. A verifier (Inji Verify) trusts it
+by checking the issuer's signature against its `did:web`, not by challenging the
+holder. Possession of the QR *is* the credential, exactly like a paper
+certificate. This is **not** a wallet onboarding mechanism: scanning the QR
+into an OID4VCI wallet does nothing, because the QR is a finished credential,
+not an `openid-credential-offer://`.
+
+**Wallet / OID4VCI.** The subject's wallet generates its own key, signs the
+OID4VCI proof-of-possession, and receives a credential bound to that key. Only
+the wallet can present it (OID4VP) because only it can prove possession of the
+bound key. This is the holder-bound model that enables selective disclosure and
+verifiable presentation — and the one whose cross-stack interop quirks are
+covered under Troubleshooting (walt.id's non-conformant proof + missing import,
+the mobile wallet's `ldp_vc` handling, SD-JWT as the most portable format).
+
+### A middle path: server-custodied keys (hosted wallet)
+
+The bearer model's server-held key does **not** have to be thrown away. If the
+operator *retained* that key in a (web) wallet **on the holder's behalf** — a
+**custodial / hosted wallet** — the credential becomes fully presentable: the
+custodian holds the binding key and builds the OID4VP presentation *for* the
+holder, who only logs in to a web wallet. This blends the two columns above —
+holder-bound crypto, but no device wallet to install. It is worth considering
+because:
+
+- **Zero-install onboarding** — the holder needs only a browser login, not a
+  mobile wallet that may mishandle the issuer's formats.
+- **The custodian signs *conformant* proofs and presentations** — it controls
+  key generation and the OID4VCI/OID4VP crypto, sidestepping the external-wallet
+  interop bugs (e.g. walt.id's `kid`+`jwk` proof rejection, or a wallet that
+  can't present `ldp_vc`).
+- **It is already how walt.id's `wallet-api` works** — it custodies keys
+  server-side (its `keys/{id}/load` even returns the private JWK), so a hosted
+  model is a natural extension of the existing holder service rather than a new
+  component.
+
+The trade-off is **custody**: a hosted wallet is *not* self-sovereign — the
+holder trusts the operator to hold their keys, and portability/recovery become
+the operator's responsibility. It is the classic custodial-vs-self-custody
+choice every wallet ecosystem makes; for workshops, onboarding demos, or
+low-assurance credentials the custodial convenience often wins, while
+high-assurance / long-lived credentials favour a self-custody device wallet.
+
+### Inji Certify pre-auth: which formats work where
+
+The pre-auth issuer mints two credential formats — **`ldp_vc`** (W3C JSON-LD,
+`Ed25519Signature2020`; both VCDM 1.1 and 2.0) and **`vc+sd-jwt`** (IETF SD-JWT
+VC, signed with an `x5c` certificate chain). It does **not** mint `mso_mdoc` on
+this path. Inji issues both as *valid* credentials — the limitations below are
+all **consumer-side**: how each wallet / verifier handles the format.
+
+| Format | OID4VCI → mobile (Credo) | OID4VCI → walt.id holder | OID4VP (present) | PDF (bearer QR) |
+| ------ | ------------------------ | ------------------------ | ---------------- | --------------- |
+| **`ldp_vc`** (W3C, Ed25519Signature2020) | ✗ wallet's Inji path is compact-JWT-only — a JSON-LD object crashes it | ✗ proof rejected (`kid`+`jwk`); v0.18.2 also can't store/present `ldp_vc` | ✗ walt.id VP path handles only compact-JWT | ✓ minted server-side, PixelPass QR, verified by Inji Verify |
+| **`vc+sd-jwt`** (IETF, `x5c`) | ✓ compact JWT — holds end-to-end | ✗ proof rejected (`kid`+`jwk`) at issuance | ⚠️ presentable by a Credo wallet to an `x5c`-aware verifier (Inji Verify); the walt.id verifier rejects it (*"Only DIDs are supported as issuer IDs"*) | ✗ PixelPass expects CBOR-able JSON-LD; a compact SD-JWT is storage-only, no usable QR |
+
+Why each limitation exists (all detailed in Troubleshooting):
+
+- **mobile `ldp_vc` crash** — the wallet flags `/v1/certify/` as a legacy
+  endpoint and runs a compact-JWT-only path; a JSON-LD object hits
+  `String.split` → "undefined is not a function".
+- **walt.id proof rejection** — `wallet-api` builds a proof header carrying both
+  `kid` and `jwk`; OID4VCI requires exactly one, so Inji returns
+  `proof_header_ambiguous_key`. (Format-agnostic — blocks both formats.)
+- **walt.id can't present `ldp_vc`** — its OID4VP path calls `.jsonPrimitive` on
+  the vpToken, which throws for a JSON-LD object (only compact-JWT works).
+- **SD-JWT verifier mismatch** — Inji signs SD-JWT under an `x5c` certificate,
+  but the walt.id verifier only resolves **DID** issuers for W3C credentials.
+- **SD-JWT has no PDF QR** — the PixelPass pipeline (CBOR → zlib → base45) is
+  built for structured JSON-LD; a compact SD-JWT string isn't a scannable
+  credential QR.
+
+**Net, today:** for a wallet use **`vc+sd-jwt` → a Credo-based mobile wallet**;
+for offline / paper use **`ldp_vc` → PDF + Inji Verify**. None of these are Inji
+issuance bugs — Inji emits standards-valid credentials in both formats.
 
 ## Where to look next
 

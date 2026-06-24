@@ -31,8 +31,16 @@ func (h *H) DownloadPDF(w http.ResponseWriter, r *http.Request) {
 	for _, ad := range h.walkInjicertifyAdapters() {
 		if p, ok := any(ad).(pdfProvider); ok {
 			if b, ok := p.PDFBlob(id); ok {
+				// inline=1 lets the on-screen preview embed the PDF in an
+				// <iframe> (browsers render inline PDFs but download them under
+				// an attachment disposition). The download link omits the param
+				// so it still saves to disk.
+				disposition := "attachment"
+				if r.URL.Query().Get("inline") == "1" {
+					disposition = "inline"
+				}
 				w.Header().Set("Content-Type", "application/pdf")
-				w.Header().Set("Content-Disposition", "attachment; filename=\"credential-"+id+".pdf\"")
+				w.Header().Set("Content-Disposition", disposition+"; filename=\"credential-"+id+".pdf\"")
 				_, _ = w.Write(b)
 				return
 			}

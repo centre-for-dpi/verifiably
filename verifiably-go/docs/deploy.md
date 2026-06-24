@@ -12,6 +12,40 @@ CSVs, Mimoto bootstrap, oidc-ui nginx, seed scripts) lives there. The
 tree preserves the sibling `stack/` + `injiweb/` layout the compose file
 and seed scripts expect via relative paths.
 
+## Prerequisites
+
+- **Docker Engine 20.10+** with the **Compose v2** plugin (`docker compose`, not the
+  legacy `docker-compose`). The compose file is Compose-spec (`name:`, not `version:`).
+- **git**, **bash**, **curl**, **openssl** on PATH (openssl generates the hub signing
+  key + CREDEBL secrets; a missing openssl fails late with a mount error).
+- RAM: ~**8 GiB** for `all`, ~**6 GiB** for `inji`, ~**4 GiB** for `waltid`.
+- Ports: localhost/port mode exposes one port per service (e.g. 3001-3005, 7001-7003,
+  8082, 8091-8094, 5001); per-subdomain mode needs **80 + 443** open instead.
+
+## First deploy (any host)
+
+1. `git clone <repo> && cd verifiably-go`
+2. `cp .env.example .env`  (or `./deploy.sh setup` for an interactive wizard).
+3. Set **`VERIFIABLY_PUBLIC_HOST`** in `.env` — the one required knob, the address
+   browsers *and* sibling containers use to reach this host:
+   - localhost dev → `localhost`
+   - a VPS/EC2 reached by IP → that public IP
+   - a public domain (per-subdomain mode) → ALSO set `VERIFIABLY_HOSTS_PATTERN=https://%s.<domain>`,
+     `VERIFIABLY_PUBLIC_DOMAIN=<domain>`, `VERIFIABLY_LE_EMAIL=<email>`, and create
+     `*.<domain>` DNS A records pointing here (with 80/443 open for Let's Encrypt).
+4. `./deploy.sh up <all|waltid|inji|credebl>` — starts the scenario's DPG services and
+   bootstraps their OIDC clients + secrets (idempotent; safe to re-run).
+5. `./deploy.sh run <same scenario>` — builds + starts the verifiably-go container.
+6. Verify — see [Verifying a deploy](#verifying-a-deploy).
+
+**Generated / bootstrapped files — do NOT hand-edit** (regenerated on each `up`/`run`):
+`config/backends.json`, `config/auth-providers*.json`, `deploy/compose/stack/wso2-deployment.toml`,
+`deploy/compose/stack/Caddyfile.public`, `config/docker-compose.injiweb-fix.rendered.yml`.
+Secrets are auto-generated and persisted so re-runs are stable: `config/wso2is.env` (WSO2
+DCR), `deploy/compose/credebl/config/credebl.env` (CREDEBL), `config/trust-signing-key.pem`
+(hub). The demo IdP/TLS keystores under `deploy/compose/**/certs*/` are committed demo
+material — replace them for any non-demo use.
+
 ## Subcommands
 
 | Command                                    | Does                                                                  |
@@ -31,6 +65,8 @@ Typical first run: `./deploy.sh up all && ./deploy.sh run all`.
 | `all`    | walt.id (issuer/wallet/verifier) + Inji Certify + Inji Certify Preauth + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx | Keycloak + WSO2IS | Yes |
 | `waltid` | walt.id only                                                                  | Keycloak + WSO2IS  | Yes        |
 | `inji`   | Inji Certify + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx | Keycloak + WSO2IS  | Yes        |
+| `credebl`| CREDEBL platform (also bundled into `all`)                                     | Keycloak + WSO2IS  | Yes        |
+| `hub`    | Trust Registry + portal — a separate deployment (`deploy/compose/hub/`, its own `.env`) | n/a       | n/a        |
 
 `backends.json` is rendered per scenario so the UI never offers a DPG
 whose backend isn't running. **Auth providers are not scoped**: every
@@ -39,6 +75,18 @@ sign-in page always offers both. The scenario only decides which DPG
 cards the user can pick from after auth. The WSO2IS OIDC client is
 bootstrapped via `scripts/bootstrap-wso2is.sh` on every `deploy.sh up`,
 regardless of scenario.
+
+## Verifying a deploy
+
+- `./deploy.sh status` — every service the scenario needs, plus the `verifiably-go`
+  container, should be **Up**.
+- `deploy.sh up` runs a built-in OIDC discovery smoke gate per provider (you'll see
+  `discovery gate: '<idp>' OK` in the log). Set `VERIFIABLY_STRICT_VERIFY=1` to make a
+  failed gate abort the deploy instead of just warning.
+- Open `http://<host>:<port>` (localhost mode) or `https://<domain>` (subdomain mode),
+  pick a role, and confirm the `/auth` page shows the Keycloak + WSO2 (+ eSignet) tiles.
+- Logs: `docker compose -p waltid logs -f <service>` and `docker logs -f verifiably-go`.
+- Destructive reset (wipes volumes — DB + keystores): `./deploy.sh reset <scenario>`.
 
 ## Compose override pipeline
 
@@ -237,6 +285,23 @@ verifiably-go/deploy/compose/stack/Caddyfile.public
 It declares one block per slug pointing at the right container + internal port — including the WSO2-on-self-signed-HTTPS upstream and Inji Verify's quirky port-8000 SPA. Don't edit unless you want a different subdomain scheme; the `{$VERIFIABLY_PUBLIC_DOMAIN}` placeholder is filled in from `.env` at container start.
 
 The matching `caddy-public` service is registered in `docker-compose.yml` behind the `subdomain` profile. `deploy.sh` automatically passes `--profile subdomain` to compose when `VERIFIABLY_HOSTS_PATTERN` is non-empty, so you don't run anything new — `./deploy.sh up <scenario>` brings Caddy up alongside the rest.
+
+##### Hairpin NAT (container → public subdomain)
+
+A container that calls a service by its **public** name (e.g. the walt.id `wallet-api`
+resolving an OID4VCI `credential_offer_uri` at `walt-issuer.<domain>`, or an OID4VP
+`request_uri` at `walt-verifier.<domain>`) would otherwise route to the box's own
+public IP `:443` and time out — most cloud hosts don't hairpin traffic from the docker
+bridge back to themselves. Two mechanisms keep those calls on the docker network:
+
+- **`verifiably-go`** is started with `--add-host <slug>.<domain> → caddy-public-ip`
+  for **every** public slug (`compute_host_aliases` in `scripts/start-container.sh`).
+- **compose-managed services** rely on **`caddy-public` network aliases** — the
+  `caddy-public` service answers to each public FQDN on the docker network
+  (`inji-certify-preauth`, `esignet`, `walt-issuer`, `walt-verifier`, `walt-wallet`),
+  so Docker's embedded DNS resolves them to Caddy's internal IP, where TLS terminates
+  and the request is proxied to the backend. Add more FQDNs to that `aliases:` list in
+  `docker-compose.yml` if a new internal container starts calling a public name.
 
 Set these in `.env`:
 

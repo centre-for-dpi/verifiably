@@ -106,9 +106,55 @@ start_container() {
     sh -c "mkdir -p /vol/sessions && chown -R 65532:65532 /vol && chmod 700 /vol" \
     >/dev/null 2>&1 || true
 
+  # ── Subdomain mode: route container-side calls through caddy-public ───────
+  # In subdomain mode every backend + IdP URL is a public https://<slug>.<domain>
+  # name that (via public DNS) resolves to the host's OWN public IP. Most
+  # VPS/cloud hosts don't hairpin traffic from the docker bridge back to their
+  # published :443, so verifiably-go's server-side OIDC discovery + adapter
+  # calls hang ("context deadline exceeded"). Fix: resolve caddy-public's IP on
+  # the compose network and pin every public FQDN to it via --add-host, so those
+  # requests go container→caddy-public directly — same SNI + Host header, so
+  # Caddy serves the right cert + proxies to the right upstream, and the
+  # discovered `issuer` still matches the public URL. The browser is unaffected
+  # (it uses real public DNS). No-op in legacy host:port mode.
+  local host_alias_args=()
+  if [[ -n "${VERIFIABLY_HOSTS_PATTERN:-}" && -n "${VERIFIABLY_PUBLIC_DOMAIN:-}" ]]; then
+    local _caddy_ip=""
+    _caddy_ip=$(docker inspect "${COMPOSE_PROJECT}-caddy-public-1" \
+      --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true)
+    if [[ -z "$_caddy_ip" ]]; then
+      local _cid
+      _cid=$(docker ps -q --filter "label=com.docker.compose.service=caddy-public" | head -1)
+      [[ -n "$_cid" ]] && _caddy_ip=$(docker inspect "$_cid" \
+        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true)
+    fi
+    if [[ -n "$_caddy_ip" ]]; then
+      # compute_host_aliases (common.sh) is the pure, unit-tested core of this
+      # fix; it prints one --add-host token per line for every public slug.
+      local _tok
+      while IFS= read -r _tok; do
+        [[ -n "$_tok" ]] && host_alias_args+=( "$_tok" )
+      done < <(compute_host_aliases "$VERIFIABLY_PUBLIC_DOMAIN" "$_caddy_ip")
+      green "  subdomain mode: pinned *.${VERIFIABLY_PUBLIC_DOMAIN} → caddy-public ($_caddy_ip) for container-side calls"
+    else
+      yellow "  subdomain mode: could not resolve caddy-public IP — server-side OIDC discovery may time out (hairpin NAT)"
+    fi
+  fi
+
   # MSYS_NO_PATHCONV=1 prevents Git Bash from converting Unix paths like
   # /var/run/docker.sock to C:\Program Files\Git\var\run\docker.sock.
   # Docker Desktop on Windows handles MSYS-style paths (/c/Users/...) natively.
+  # In-app Inji auth-code wallet: extract the eSignet wallet-demo-client key
+  # (PKCS#8 PEM) from the deploy's oidckeystore.p12 and derive the eSignet URL
+  # per host, so a holder can claim inside verifiably (no inji-web redirect).
+  local _inji_p12="$SCRIPT_DIR/deploy/compose/injiweb/config/certs/oidckeystore.p12"
+  local _inji_key_pem=""
+  if [ -f "$_inji_p12" ] && command -v openssl >/dev/null 2>&1; then
+    _inji_key_pem=$(openssl pkcs12 -in "$_inji_p12" -nodes -nocerts -legacy -passin "pass:${INJIWEB_P12_PASSWORD:-xy4gh6swa2i}" 2>/dev/null | openssl pkcs8 -topk8 -nocrypt 2>/dev/null || true)
+  fi
+  local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"
+  # verifiably-go (uid 65532) rewrites these two config files on issuer schema-creation
+  for _f in "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties" "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties"; do chown 65532:65532 "$_f" 2>/dev/null || true; done
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
@@ -118,6 +164,7 @@ start_container() {
     --health-retries=3 \
     --network "${COMPOSE_PROJECT}_default" \
     --add-host=host.docker.internal:host-gateway \
+    "${host_alias_args[@]}" \
     "${group_add_args[@]}" \
     -p "${VERIFIABLY_HOST_PORT}:8080" \
     -v "$SCRIPT_DIR/config/backends.docker.json:/app/config/backends.json:ro" \
@@ -126,6 +173,8 @@ start_container() {
     -v "$custom_schemas_path:/app/config/custom-schemas.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties:/etc/inji/certify-scope-query.properties" \
+    -v "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties:/etc/inji/esignet-scopes.properties" \
     -v "${VERIFIABLY_CONTAINER}-locales:/app/locales" \
     -v "${VERIFIABLY_CONTAINER}-state:/app/state" \
     -e VERIFIABLY_ADAPTER=registry \
@@ -134,8 +183,18 @@ start_container() {
     -e VERIFIABLY_ROLES="${VERIFIABLY_ROLES:-issuer,holder,verifier,trust,schemas}" \
     -e VERIFIABLY_STATE_DIR=/app/state \
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
+    -e VERIFIABLY_REGISTRY_ADMIN_URL="${VERIFIABLY_REGISTRY_ADMIN_URL:-}" \
+    -e VERIFIABLY_REGISTRIES="${VERIFIABLY_REGISTRIES:-}" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
+    -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
+    -e INJI_CERTIFY_SCOPE_QUERY_FILE="/etc/inji/certify-scope-query.properties" \
+    -e INJI_ESIGNET_SCOPE_FILE="/etc/inji/esignet-scopes.properties" \
+    -e INJI_AUTHCODE_CLIENT_KEY_PEM="$_inji_key_pem" \
+    -e INJI_AUTHCODE_CLIENT_ID="${INJI_AUTHCODE_CLIENT_ID:-wallet-demo-client}" \
+    -e INJI_AUTHCODE_CLIENT_KID="${INJI_AUTHCODE_CLIENT_KID:-wallet-demo-client-kid}" \
+    -e INJI_AUTHCODE_SCOPE="${INJI_AUTHCODE_SCOPE:-mock_identity_vc_ldp}" \
+    -e ESIGNET_BASE_URL="$_inji_esignet_url" \
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \

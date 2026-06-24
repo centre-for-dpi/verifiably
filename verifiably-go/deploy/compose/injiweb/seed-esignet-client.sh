@@ -160,7 +160,7 @@ body = {
         "logoUri": "https://avatars.githubusercontent.com/u/69429477",
         "redirectUris": ["$REDIRECT_URI"],
         "userClaims": ["name", "email", "gender", "phone_number", "picture", "birthdate", "address"],
-        "authContextRefs": ["mosip:idp:acr:generated-code", "mosip:idp:acr:linked-wallet"],
+        "authContextRefs": ["mosip:idp:acr:generated-code", "mosip:idp:acr:linked-wallet", "mosip:idp:acr:static-code"],
         "grantTypes": ["authorization_code"],
         "clientAuthMethods": ["private_key_jwt"],
     },
@@ -182,6 +182,9 @@ echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
 if echo "$RESPONSE" | grep -q '"errorCode"'; then
     # Duplicate client is a soft failure — already seeded.
     if echo "$RESPONSE" | grep -q 'duplicate_client_id'; then
+        # Already registered (the create above carries static-code so FRESH deploys get
+        # PIN). Updating an existing client's acr is done out-of-band to avoid a PUT
+        # clobbering its redirect_uris.
         echo "OK: $CLIENT_ID already registered with esignet"
         exit 0
     fi

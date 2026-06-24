@@ -50,10 +50,10 @@ import (
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
 	"github.com/verifiably/verifiably-go/internal/storage/pg"
-	"github.com/verifiably/verifiably-go/internal/verification"
 	redisstore "github.com/verifiably/verifiably-go/internal/storage/redis"
 	"github.com/verifiably/verifiably-go/internal/tracing"
 	"github.com/verifiably/verifiably-go/internal/trust"
+	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -188,6 +188,19 @@ func main() {
 		}
 	}
 
+	// Inji auth-code data-provider source: certify.vc_subject lives in Inji
+	// Certify's inji_certify DB (a foreign DB), so open a raw pool - never run
+	// verifiably's migrations against it. Powers POST /api/v1/subjects (Flow A).
+	var subjectStore handlers.SubjectProvisioner
+	if dsn := os.Getenv("INJI_CERTIFY_DATABASE_URL"); dsn != "" {
+		if cp, err := pg.OpenRaw(shutCtx, dsn); err != nil {
+			log.Printf("subjects: failed to open INJI_CERTIFY_DATABASE_URL (%v) - /api/v1/subjects disabled", err)
+		} else {
+			log.Printf("subjects: vc_subject provisioning active (%s)", maskDSN(dsn))
+			subjectStore = pg.NewSubjectStore(cp)
+		}
+	}
+
 	// Session store: PostgreSQL when pool is available, otherwise the file-backed
 	// encrypted store (flushed every 5 s with a final flush on shutdown).
 	sessionStore := buildSessionStore(shutCtx, pgPool)
@@ -198,18 +211,20 @@ func main() {
 	authStore := buildAuthUserStore()
 	adminMode := authAdminMode()
 	h := &handlers.H{
-		Adapter:       adapter,
-		Sessions:      sessionStore,
-		Templates:     tmpl,
-		AuthReg:       authReg,
-		Translator:    translator,
-		Debug:         debug,
-		AuthStore:     authStore,
-		AuthAdminMode: adminMode,
-		APIKeys:        handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
-		RateLimiter:    handlers.NewRateLimiter(),
-		PrometheusURL:  os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
-		GrafanaURL:     os.Getenv("VERIFIABLY_GRAFANA_URL"),
+		Adapter:          adapter,
+		Sessions:         sessionStore,
+		Templates:        tmpl,
+		AuthReg:          authReg,
+		Translator:       translator,
+		Debug:            debug,
+		AuthStore:        authStore,
+		AuthAdminMode:    adminMode,
+		Subjects:         subjectStore,
+		APIKeys:          handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
+		RateLimiter:      handlers.NewRateLimiter(),
+		PrometheusURL:    os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
+		GrafanaURL:       os.Getenv("VERIFIABLY_GRAFANA_URL"),
+		RegistryAdminURL: strings.TrimRight(os.Getenv("VERIFIABLY_REGISTRY_ADMIN_URL"), "/"),
 	}
 	// Issuance audit log + revocation status lists. Optional: when the
 	// state directory isn't writable we log and continue with the features
@@ -457,6 +472,7 @@ func main() {
 	mux.HandleFunc("POST /auth/start", h.StartAuth)
 	mux.HandleFunc("POST /auth/custom", h.AddCustomProvider)
 	mux.HandleFunc("GET /auth/callback", h.AuthCallback)
+	mux.HandleFunc("GET /issuer/schema/mine", h.ShowIssuerCredentials)
 	mux.HandleFunc("POST /auth/logout", h.Logout)
 	mux.HandleFunc("GET /admin/login", h.ShowAdminLogin)
 	mux.HandleFunc("POST /admin/login", h.AdminLogin)
@@ -479,6 +495,10 @@ func main() {
 	// forward straight to inji-certify:8090, patching the request body for wallets
 	// that omit credential_definition.@context.
 	mux.HandleFunc("POST /inji-proxy/issuance/credential", h.InjiProxyCredential)
+	// OID4VCI issuer metadata for the auth-code (primary) instance. certify-nginx
+	// proxies the wellknown here; pass-through to inji-certify so Mimoto/Inji Web
+	// can discover the credential. Host-agnostic (upstream from env/default).
+	mux.HandleFunc("GET /inji-proxy/.well-known/openid-credential-issuer", h.InjiProxyWellKnown)
 	// did:web resolution split PER INJI CERTIFY INSTANCE. Each instance has
 	// its own DID (did:web:certify-nginx for primary, did:web:certify-preauth-nginx
 	// for pre-auth) and its own handler that fetches ONLY that instance's
@@ -579,6 +599,9 @@ func main() {
 		mux.HandleFunc("POST /api/v1/schemas", h.APICreateSchema)
 		mux.HandleFunc("GET /api/v1/schemas", h.APIListSchemas)
 		mux.HandleFunc("DELETE /api/v1/schemas/{id}", h.APIDeleteSchema)
+		// REST API - Inji auth-code subject provisioning (Flow A): upsert dynamic
+		// claims into certify.vc_subject keyed by the eSignet PSU-token.
+		mux.HandleFunc("POST /api/v1/subjects", h.APIProvisionSubject)
 		// REST API — issuance endpoints.
 		// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk/async", h.APIIssueBulkAsync)
@@ -598,6 +621,14 @@ func main() {
 		mux.HandleFunc("POST /holder/dpg", h.PickHolderDpg)
 		mux.HandleFunc("POST /holder/dpg/toggle", h.ToggleHolderDpg)
 		mux.HandleFunc("GET /holder/wallet", h.ShowWallet)
+		// In-app Inji auth-code claim (no external inji-web redirect).
+		mux.HandleFunc("GET /holder/wallet/inji", h.ShowInjiClaim)
+		mux.HandleFunc("GET /holder/wallet/inji/credentials", h.ShowInjiHeld)
+		mux.HandleFunc("GET /api/registry-credentials", h.RegistryCredentials)
+		mux.HandleFunc("GET /holder/register", h.ShowHolderRegister)
+		mux.HandleFunc("POST /holder/register", h.RegisterHolder)
+		mux.HandleFunc("GET /holder/wallet/inji/start", h.StartInjiClaim)
+		mux.HandleFunc("GET /holder/wallet/inji/callback", h.InjiClaimCallback)
 		mux.HandleFunc("POST /holder/wallet/scan", h.ScanOffer)
 		mux.HandleFunc("POST /holder/wallet/paste", h.PasteOffer)
 		mux.HandleFunc("POST /holder/wallet/example", h.PrefillExample)
