@@ -63,6 +63,25 @@
     <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
       Carries a delegation capability — the holder acts <span class="mono">onBehalfOf</span> a subject. Turning this on presets SD-JWT plus the capability fields (onBehalfOf, role, allowedAction, validUntil); a verifier then evaluates linkage, invocation, capability and revocation.
     </p>
+    {{if .Delegation}}
+    <div style="margin-top:0.75rem">
+      <label style="font-size:0.74rem;color:var(--ink-mute);display:block;margin-bottom:0.3rem;font-weight:600">Relationship scenario</label>
+      <select name="scenario"
+              hx-post="/issuer/schema/build/delegation"
+              hx-include="#builder-form-el"
+              hx-target="#builder-form"
+              hx-swap="innerHTML"
+              style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+        <option value="" {{if not .Scenario}}selected{{end}}>Custom — generic delegated access</option>
+        {{range .Scenarios}}
+        <option value="{{.Key}}" {{if eq $.Scenario .Key}}selected{{end}}>{{.Label}}</option>
+        {{end}}
+      </select>
+      <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.35rem 0 0">
+        Presets the name, type and capability fields for a real-world relationship — you can still edit everything below.
+      </p>
+    </div>
+    {{end}}
   </div>
 
   <div class="field">

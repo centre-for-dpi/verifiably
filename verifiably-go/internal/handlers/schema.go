@@ -284,8 +284,9 @@ func (h *H) ShowSchemaBuilder(w http.ResponseWriter, r *http.Request) {
 	}
 	// Default: two blank fields
 	data := builderData{
-		Fields: []vctypes.FieldSpec{{Datatype: "string", Required: true}, {Datatype: "string", Required: true}},
-		Std:    "w3c_vcdm_2",
+		Fields:    []vctypes.FieldSpec{{Datatype: "string", Required: true}, {Datatype: "string", Required: true}},
+		Std:       "w3c_vcdm_2",
+		Scenarios: delegationScenarios,
 	}
 	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
 	h.render(w, r, "issuer_schema_builder", h.pageData(sess, data))
@@ -299,7 +300,49 @@ type builderData struct {
 	Std               string
 	Fields            []vctypes.FieldSpec
 	PreviewJSON       string
-	Delegation        bool // delegated-access credential (carries a capability)
+	Delegation        bool   // delegated-access credential (carries a capability)
+	Scenario          string // selected delegation scenario key (poa/director/teacher/…)
+	Scenarios         []delegationScenario
+}
+
+// delegationScenario is a real-world delegated-access relationship preset so an
+// operator picks "Power of Attorney" or "Teacher" rather than hand-assembling the
+// abstract capability schema. It shapes the credential's identity + field set and
+// surfaces the suggested issue-time role/action values as inline guidance.
+type delegationScenario struct {
+	Key, Label, TypeName, Name, Desc string
+	Role, Actions                    string
+	ExtraFields                      []vctypes.FieldSpec
+}
+
+var delegationScenarios = []delegationScenario{
+	{Key: "poa", Label: "Lawyer — power of attorney for a person/entity", TypeName: "PowerOfAttorney",
+		Name: "Power of Attorney", Desc: "An attorney is authorised to act on behalf of a client.",
+		Role: "Attorney", Actions: "represent, sign, file",
+		ExtraFields: []vctypes.FieldSpec{{Name: "matterReference", Datatype: "string"}}},
+	{Key: "director", Label: "Director — acts for a business", TypeName: "DirectorAuthority",
+		Name: "Company Director Authority", Desc: "A director is authorised to bind and transact for a company.",
+		Role: "Director", Actions: "bind, sign, transact",
+		ExtraFields: []vctypes.FieldSpec{{Name: "companyRegistrationNumber", Datatype: "string"}}},
+	{Key: "teacher", Label: "Teacher — acts for a student", TypeName: "TeacherDelegation",
+		Name: "Teacher Delegation", Desc: "A teacher is authorised to manage records for a student.",
+		Role: "Teacher", Actions: "viewRecords, submitGrades",
+		ExtraFields: []vctypes.FieldSpec{{Name: "institution", Datatype: "string"}}},
+	{Key: "guardian", Label: "Parent / guardian — acts for a minor", TypeName: "GuardianConsent",
+		Name: "Parental / Guardian Consent", Desc: "A guardian is authorised to consent and collect on behalf of a minor.",
+		Role: "Guardian", Actions: "consent, collect, authorize"},
+	{Key: "healthcare", Label: "Healthcare proxy — acts for a patient", TypeName: "HealthcareProxy",
+		Name: "Healthcare Proxy", Desc: "A healthcare agent is authorised to consent to treatment for a patient.",
+		Role: "HealthcareAgent", Actions: "consent:treatment, access:records"},
+}
+
+func scenarioByKey(k string) (delegationScenario, bool) {
+	for _, s := range delegationScenarios {
+		if s.Key == k {
+			return s, true
+		}
+	}
+	return delegationScenario{}, false
 }
 
 // applyDelegationPreset configures the builder for a delegated-access credential:
@@ -308,6 +351,21 @@ type builderData struct {
 // allowedAction the verifier's evaluator keys off; role + validUntil for display/caveat).
 func applyDelegationPreset(d *builderData) {
 	d.Std = "sd_jwt_vc (IETF)"
+	base := []vctypes.FieldSpec{
+		{Name: "onBehalfOf", Datatype: "string", Required: true},
+		{Name: "role", Datatype: "string"},
+		{Name: "allowedAction", Datatype: "string", Required: true},
+		{Name: "validUntil", Datatype: "string"},
+	}
+	// A recognised scenario FORCES its identity + fields so switching scenarios
+	// updates the form; the generic preset GUARDS so a custom operator's edits survive.
+	if sc, ok := scenarioByKey(d.Scenario); ok {
+		d.ExtraType = sc.TypeName
+		d.Name = sc.Name
+		d.Desc = sc.Desc + " (suggested role: " + sc.Role + "; allowedAction: " + sc.Actions + ")"
+		d.Fields = append(base, sc.ExtraFields...)
+		return
+	}
 	if strings.TrimSpace(d.ExtraType) == "" {
 		d.ExtraType = "DelegatedAccessCredential"
 	}
@@ -317,12 +375,7 @@ func applyDelegationPreset(d *builderData) {
 	if strings.TrimSpace(d.Desc) == "" {
 		d.Desc = "Delegated-access capability — the holder acts onBehalfOf a subject"
 	}
-	d.Fields = []vctypes.FieldSpec{
-		{Name: "onBehalfOf", Datatype: "string", Required: true},
-		{Name: "role", Datatype: "string"},
-		{Name: "allowedAction", Datatype: "string", Required: true},
-		{Name: "validUntil", Datatype: "string"},
-	}
+	d.Fields = base
 }
 
 // BuildDelegationToggle re-renders the builder form when the delegated-access
@@ -465,6 +518,8 @@ func extractBuilderData(r *http.Request) builderData {
 		ExtraType:         r.FormValue("extra_type"),
 		Std:               canonicalStd(r.FormValue("std")),
 		Delegation:        r.FormValue("delegation") == "on",
+		Scenario:          r.FormValue("scenario"),
+		Scenarios:         delegationScenarios,
 	}
 	if d.Std == "" {
 		d.Std = "w3c_vcdm_2"
