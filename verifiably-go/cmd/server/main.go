@@ -613,6 +613,8 @@ func main() {
 		mux.HandleFunc("POST /api/v1/delegation/inji/setup", h.APIInjiDelegationSetup)
 		mux.HandleFunc("POST /api/v1/delegation/inji/revoke", h.APIInjiDelegationRevoke)
 		mux.HandleFunc("POST /api/v1/delegation/inji/preauth/issue", h.APIInjiPreAuthDelegationIssue)
+		mux.HandleFunc("POST /api/v1/delegation/inji/preauth/claim", h.APIInjiPreAuthDelegationClaim)
+		mux.HandleFunc("POST /api/v1/delegation/verify/sdjwt", h.APIVerifyDelegationSDJWT)
 		mux.HandleFunc("POST /api/v1/delegation/verify/request", h.APIDelegationVerifyRequest)
 		mux.HandleFunc("GET /api/v1/delegation/verify/result/{state}", h.APIDelegationVerifyResult)
 		mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)

@@ -1,10 +1,17 @@
 package handlers
 
 import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/vp"
@@ -407,4 +414,213 @@ func normalizeWalletCred(c vctypes.Credential) backend.NormalizedCredential {
 		Claims: c.Fields,
 		Raw:    raw,
 	}
+}
+
+// injiGetJSON GETs a URL and decodes JSON into out.
+func injiGetJSON(ctx context.Context, u string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// injiPreAuthClaim is a headless OID4VCI pre-authorized-code holder: it resolves
+// the credential offer, exchanges the pre-authorized_code for a token, signs a
+// CONFORMANT proof JWT (typ=openid4vci-proof+jwt with a `jwk` header and no
+// `kid` — the same shape verifiably's auth-code holder and the whitelabel
+// wallet's manual SD-JWT path use, which Certify accepts; unlike walt.id's
+// kid+jwk proof), and fetches the credential. Returns the compact SD-JWT. This
+// is the holder verifiably's own software provides for the inji PRE-AUTH flow,
+// so no external mobile wallet is required.
+func (h *H) injiPreAuthClaim(ctx context.Context, offerURI string) (string, error) {
+	ouri := strings.TrimSpace(offerURI)
+	if u, err := url.Parse(ouri); err == nil {
+		if c := u.Query().Get("credential_offer_uri"); c != "" {
+			ouri = c
+		}
+	}
+	var offer struct {
+		CredentialIssuer string   `json:"credential_issuer"`
+		ConfigIDs        []string `json:"credential_configuration_ids"`
+		Grants           map[string]struct {
+			PreAuthCode string `json:"pre-authorized_code"`
+		} `json:"grants"`
+	}
+	if err := injiGetJSON(ctx, ouri, &offer); err != nil {
+		return "", fmt.Errorf("resolve offer: %w", err)
+	}
+	if len(offer.ConfigIDs) == 0 {
+		return "", fmt.Errorf("offer has no credential_configuration_ids")
+	}
+	issuer := strings.TrimRight(offer.CredentialIssuer, "/")
+	configID := offer.ConfigIDs[0]
+	preAuth := offer.Grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"].PreAuthCode
+	if preAuth == "" {
+		return "", fmt.Errorf("offer has no pre-authorized_code")
+	}
+
+	var meta struct {
+		CredentialEndpoint string `json:"credential_endpoint"`
+		TokenEndpoint      string `json:"token_endpoint"`
+		Configs            map[string]struct {
+			Vct string `json:"vct"`
+		} `json:"credential_configurations_supported"`
+	}
+	if err := injiGetJSON(ctx, issuer+"/.well-known/openid-credential-issuer", &meta); err != nil {
+		return "", fmt.Errorf("issuer metadata: %w", err)
+	}
+	tokenEP := orDefault(meta.TokenEndpoint, issuer+"/v1/certify/oauth/token")
+	credEP := orDefault(meta.CredentialEndpoint, issuer+"/v1/certify/issuance/credential")
+	vct := meta.Configs[configID].Vct
+
+	form := url.Values{}
+	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:pre-authorized_code")
+	form.Set("pre-authorized_code", preAuth)
+	var tok struct {
+		AccessToken string `json:"access_token"`
+		CNonce      string `json:"c_nonce"`
+		Error       string `json:"error"`
+		ErrorDesc   string `json:"error_description"`
+	}
+	if err := postForm(ctx, tokenEP, form, &tok); err != nil {
+		return "", fmt.Errorf("pre-auth token: %w", err)
+	}
+	if tok.AccessToken == "" {
+		return "", fmt.Errorf("pre-auth token: %s %s", tok.Error, tok.ErrorDesc)
+	}
+
+	holderKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	xb, yb := make([]byte, 32), make([]byte, 32)
+	holderKey.X.FillBytes(xb)
+	holderKey.Y.FillBytes(yb)
+	jwk := map[string]any{"kty": "EC", "crv": "P-256", "x": b64u(xb), "y": b64u(yb), "alg": "ES256"}
+	claim := func(nonce string) (int, []byte, error) {
+		pc := map[string]any{"aud": issuer, "iat": time.Now().Unix()}
+		if nonce != "" {
+			pc["nonce"] = nonce
+		}
+		proof, e := signES256(holderKey, map[string]any{"alg": "ES256", "typ": "openid4vci-proof+jwt", "jwk": jwk}, pc)
+		if e != nil {
+			return 0, nil, e
+		}
+		reqMap := map[string]any{"format": "vc+sd-jwt", "proof": map[string]any{"proof_type": "jwt", "jwt": proof}}
+		if vct != "" {
+			reqMap["vct"] = vct
+		}
+		rb, _ := json.Marshal(reqMap)
+		return postJSON(ctx, credEP, rb, "Bearer "+tok.AccessToken)
+	}
+	status, body, err := claim(tok.CNonce)
+	if err != nil {
+		return "", err
+	}
+	if status >= 400 {
+		var e struct {
+			CNonce string `json:"c_nonce"`
+		}
+		_ = json.Unmarshal(body, &e)
+		if e.CNonce != "" {
+			status, body, err = claim(e.CNonce)
+			if err != nil {
+				return "", err
+			}
+		}
+		if status >= 400 {
+			return "", fmt.Errorf("credential endpoint %d: %s", status, truncateForLog(string(body), 200))
+		}
+	}
+	var wrap struct {
+		Credential json.RawMessage `json:"credential"`
+	}
+	if json.Unmarshal(body, &wrap) == nil && len(wrap.Credential) > 0 {
+		var s string
+		if json.Unmarshal(wrap.Credential, &s) == nil && s != "" {
+			return s, nil
+		}
+		return string(wrap.Credential), nil
+	}
+	return string(body), nil
+}
+
+// APIInjiPreAuthDelegationClaim claims one or more inji PRE-AUTH offers headlessly
+// (verifiably's own conformant-proof holder) and returns the raw credentials.
+//
+// POST /api/v1/delegation/inji/preauth/claim   {"offers": ["<uri>", ...]}
+func (h *H) APIInjiPreAuthDelegationClaim(w http.ResponseWriter, r *http.Request) {
+	keyName, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Offers []string `json:"offers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	ctx := apiCtx(r, keyName)
+	creds := make([]string, 0, len(req.Offers))
+	for i, o := range req.Offers {
+		vc, err := h.injiPreAuthClaim(ctx, o)
+		if err != nil {
+			apiError(w, http.StatusBadGateway, fmt.Sprintf("claim offer %d: %s", i, err.Error()))
+			return
+		}
+		creds = append(creds, vc)
+	}
+	apiJSON(w, http.StatusOK, map[string]any{"credentials": creds})
+}
+
+// APIVerifyDelegationSDJWT evaluates the delegated-access relation over a set of
+// raw credentials (compact SD-JWT or JSON-LD objects) supplied directly — the
+// verify side for holders that hand back their held creds (e.g. the headless
+// pre-auth claim). Same DPG-agnostic evaluator.
+//
+// POST /api/v1/delegation/verify/sdjwt   {"credentials": ["<sd-jwt>", ...]}
+func (h *H) APIVerifyDelegationSDJWT(w http.ResponseWriter, r *http.Request) {
+	_, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Credentials []string `json:"credentials"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	creds := make([]backend.NormalizedCredential, 0, len(req.Credentials))
+	for _, c := range req.Credentials {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+		if strings.Contains(c, "~") {
+			if nc, ok := vp.FromCompactSDJWT(c); ok {
+				creds = append(creds, nc)
+			}
+			continue
+		}
+		var obj map[string]any
+		if json.Unmarshal([]byte(c), &obj) == nil && len(obj) > 0 {
+			creds = append(creds, vp.FromVCObject(obj))
+		}
+	}
+	res := backend.VerificationResult{
+		Credentials:   creds,
+		HolderBinding: &backend.HolderBinding{Confirmed: true},
+		Valid:         len(creds) > 0,
+	}
+	h.attachDelegationVerdict(r, &res)
+	out := map[string]any{"credentialCount": len(creds), "valid": res.Valid}
+	if res.Delegation != nil {
+		out["delegation"] = res.Delegation
+	}
+	apiJSON(w, http.StatusOK, out)
 }
