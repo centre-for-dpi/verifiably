@@ -476,9 +476,11 @@ func (a *Adapter) PresentCredential(ctx context.Context, req backend.PresentCred
 		if ok {
 			if pdDescriptorCount(pd) > 1 {
 				// Multi-credential request (e.g. a delegated-access pair):
-				// present EVERY matched credential so each input-descriptor is
-				// satisfied, instead of a single best match.
-				selected = allMatchedIDs(matched)
+				// select ONE credential per input-descriptor, in descriptor
+				// order, so walt.id maps selectedCredentials[i]→descriptor[i].
+				// (Presenting every match over-selects when the wallet holds
+				// duplicates and trips walt.id's IndexOutOfBounds.)
+				selected = a.selectPerDescriptor(authCtx, sess.WalletID, pd)
 			} else {
 				credID = pickBestMatch(matched, req.CredentialID)
 			}
@@ -1104,21 +1106,44 @@ func pdDescriptorCount(pd map[string]any) int {
 	return len(ds)
 }
 
-// allMatchedIDs returns the deduped ids of every credential the wallet matched
-// against the PD — used to present a credential per input-descriptor for a
-// multi-credential (e.g. delegated-access) request.
-func allMatchedIDs(matched []map[string]json.RawMessage) []string {
-	out := make([]string, 0, len(matched))
+// selectPerDescriptor picks exactly one credential per input-descriptor, in
+// descriptor order, by matching each descriptor individually. This satisfies a
+// multi-credential PD (e.g. a delegated-access pair) without over-selecting when
+// the wallet holds duplicate credentials of the same type — walt.id maps
+// selectedCredentials[i] to input_descriptors[i] by position, so the count must
+// equal the descriptor count.
+func (a *Adapter) selectPerDescriptor(ctx context.Context, walletID string, pd map[string]any) []string {
+	descs, _ := pd["input_descriptors"].([]any)
+	var ids []string
 	seen := map[string]bool{}
-	for _, row := range matched {
-		var id string
-		_ = json.Unmarshal(row["id"], &id)
+	for _, d := range descs {
+		sub := map[string]any{"id": pd["id"], "input_descriptors": []any{d}}
+		if f, ok := pd["format"]; ok {
+			sub["format"] = f
+		}
+		matched, ok := a.matchPD(ctx, walletID, sub)
+		if !ok || len(matched) == 0 {
+			continue
+		}
+		// prefer a credential not already picked for an earlier descriptor
+		id := ""
+		for _, row := range matched {
+			var cand string
+			_ = json.Unmarshal(row["id"], &cand)
+			if cand != "" && !seen[cand] {
+				id = cand
+				break
+			}
+		}
+		if id == "" {
+			id = pickBestMatch(matched, "")
+		}
 		if id != "" && !seen[id] {
 			seen[id] = true
-			out = append(out, id)
+			ids = append(ids, id)
 		}
 	}
-	return out
+	return ids
 }
 
 // describePD extracts a human-readable (type, format) pair from a PD's

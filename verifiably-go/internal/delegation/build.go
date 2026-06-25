@@ -109,8 +109,12 @@ func BuildDelegationCredential(d DelegationCredentialSpec) map[string]any {
 	capability := map[string]any{
 		"type":                   "DelegationCapability",
 		"invocationTarget":       d.OnBehalfOf,
-		"delegate":               d.DelegateID,
 		"allowFurtherDelegation": d.AllowFurtherDelegation,
+	}
+	// delegate is the holder-bound credentialSubject.id; omit when unset so the
+	// evaluator defaults it to the (OID4VCI-bound) credential subject.
+	if d.DelegateID != "" {
+		capability["delegate"] = d.DelegateID
 	}
 	// controller = the root authority = the issuer. Omit when unset so the
 	// evaluator defaults it to the signed VC's issuer (DPG-injected DID).

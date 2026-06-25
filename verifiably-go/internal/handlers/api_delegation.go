@@ -78,10 +78,9 @@ func (h *H) APIDelegationIssue(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "subject.subjectRef required (the stable linkage anchor)")
 		return
 	}
-	if strings.TrimSpace(req.Delegation.DelegateID) == "" {
-		apiError(w, http.StatusBadRequest, "delegation.delegateId required (the delegate / holder)")
-		return
-	}
+	// delegateId is OPTIONAL: when omitted, credentialSubject.id is left unset so
+	// the DPG's OID4VCI binds it to the claiming holder (the delegate) at claim
+	// time — the holder-bound Type-I model. Set it only to pin a known delegate DID.
 	ctx := apiCtx(r, keyName)
 	issuerDpg := req.IssuerDpg
 	if issuerDpg == "" {

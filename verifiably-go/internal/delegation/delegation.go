@@ -117,21 +117,22 @@ func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder 
 	// binds the delegate as its subject; when the host surfaces holder binding,
 	// the presenter must match that delegate. We trust the host's signature/
 	// holder-binding verdict (I3) and only check identity equality here.
-	delegate := cap.Delegate
+	// The delegate is the holder-bound credential subject (ADR D3): OID4VCI
+	// rebinds credentialSubject.id to the presenting holder at claim time, so it
+	// is the authoritative delegate. The capability's `delegate` is the issuer's
+	// assertion of the same party and is accepted as an alternative match (it may
+	// legitimately differ from credentialSubject.id after wallet rebinding).
+	delegate := deleg.SubjectID
 	if delegate == "" {
-		delegate = deleg.SubjectID
+		delegate = cap.Delegate
 	}
 	if delegate == "" {
 		res.Reason = "delegation credential names no delegate"
 		return res
 	}
-	if cap.Delegate != "" && deleg.SubjectID != "" && !sameRef(cap.Delegate, deleg.SubjectID) {
-		res.Reason = fmt.Sprintf("invocation failed: capability delegate %q is not the delegation subject %q", cap.Delegate, deleg.SubjectID)
-		return res
-	}
 	if holder != nil && holder.Confirmed {
-		if hid := holderRef(holder); hid != "" && !sameRef(hid, delegate) {
-			res.Reason = fmt.Sprintf("invocation failed: presenter %q is not the delegate %q", hid, delegate)
+		if hid := holderRef(holder); hid != "" && !sameRef(hid, deleg.SubjectID) && !sameRef(hid, cap.Delegate) {
+			res.Reason = fmt.Sprintf("invocation failed: presenter %q is neither the delegation subject nor the named delegate", hid)
 			return res
 		}
 	}
@@ -196,17 +197,16 @@ func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder 
 	}
 	res.NotRevoked = true
 
-	// 5. Trust — the delegation issuer must be authorised (the authority). Trust
-	// enforcement is opt-in by configuration: when no checker is wired (no trust
-	// registry) it is not enforced, matching the platform's existing advisory
-	// posture. Revocation status (step 4) remains the hard fail-closed gate.
-	if opts.Trust != nil {
-		schema := primaryType(deleg.Types)
-		if err := opts.Trust(ctx, deleg.Issuer, schema); err != nil {
-			res.Reason = fmt.Sprintf("delegation issuer %q is not trusted: %v", deleg.Issuer, err)
-			return res
+	// 5. Trust — reported as a SIGNAL, not a hard gate on the delegation verdict,
+	// consistent with the platform's advisory trust handling (attachTrustStatus
+	// labels the result rather than blocking). The delegation is "authorised"
+	// when linkage + invocation + capability + status hold; issuer-trust is a
+	// separate dimension surfaced via Trusted (and the overall verify TrustStatus).
+	// Revocation status (step 4) remains the hard fail-closed gate.
+	if opts.Trust != nil && deleg.Issuer != "" {
+		if err := opts.Trust(ctx, deleg.Issuer, primaryType(deleg.Types)); err == nil {
+			res.Trusted = true
 		}
-		res.Trusted = true
 	}
 
 	res.Authorized = true

@@ -126,6 +126,19 @@ func TestEvaluate_HappyPath_SDJWT(t *testing.T) {
 	}
 }
 
+func TestEvaluate_UntrustedIssuerIsAdvisory(t *testing.T) {
+	creds := []backend.NormalizedCredential{identityCred(), delegationCredJSONLD()}
+	opts := baseOpts()
+	opts.Trust = trustNone
+	got := Evaluate(context.Background(), creds, parentHolder(), opts)
+	if !got.Authorized {
+		t.Fatalf("expected authorized (issuer-trust is advisory, not a hard gate), got %+v", got)
+	}
+	if got.Trusted {
+		t.Errorf("expected Trusted=false for an unregistered issuer, got %+v", got)
+	}
+}
+
 func TestEvaluate_Failures(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -145,9 +158,6 @@ func TestEvaluate_Failures(t *testing.T) {
 		{"revoked", func(_ []backend.NormalizedCredential, opts *Options, _ **backend.HolderBinding) {
 			opts.Status = revoked
 		}, "NotRevoked"},
-		{"untrusted", func(_ []backend.NormalizedCredential, opts *Options, _ **backend.HolderBinding) {
-			opts.Trust = trustNone
-		}, "Trusted"},
 		{"controller not issuer", func(creds []backend.NormalizedCredential, _ *Options, _ **backend.HolderBinding) {
 			creds[1].Raw["termsOfUse"].([]any)[0].(map[string]any)["controller"] = "did:web:attacker"
 		}, "Capability"},

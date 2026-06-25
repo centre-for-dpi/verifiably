@@ -45,10 +45,16 @@ func FromVCObject(vc map[string]any) backend.NormalizedCredential {
 	if subject == "" {
 		subject = str(vc, "sub")
 	}
+	// issuer: prefer vc.issuer; fall back to the JWT-level `iss` (VC-JWT /
+	// jwt_vc_json carries the issuer there, not inside the vc object).
+	issuer := IssuerID(inner["issuer"])
+	if issuer == "" {
+		issuer = str(vc, "iss")
+	}
 	return backend.NormalizedCredential{
 		Types:     AsStringSlice(inner["type"]),
 		SubjectID: subject,
-		Issuer:    IssuerID(inner["issuer"]),
+		Issuer:    issuer,
 		Format:    vcdmFormat(inner),
 		Claims:    claims,
 		Raw:       inner,
