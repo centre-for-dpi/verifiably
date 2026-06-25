@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/verifiably/verifiably-go/backend"
-	"github.com/verifiably/verifiably-go/internal/delegation"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -92,99 +91,25 @@ func (h *H) APIDelegationIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flow := orDefault(req.Flow, "pre_auth")
-	ctxURL := orDefault(req.ContextURL, delegationContextURL())
+	std := orDefault(req.Std, "w3c_vcdm_2")
 	subjType := orDefault(req.Subject.Type, "BirthCertificate")
 	delegType := orDefault(req.Delegation.Type, "DelegatedAccessCredential")
+	req.IssuerDpg, req.Std, req.Flow = issuerDpg, std, flow
 
-	std := orDefault(req.Std, "w3c_vcdm_2")
-	sdjwt := strings.Contains(std, "sd_jwt")
-
-	// 1. Register both credential types in the DPG catalog (idempotent reuse of
-	//    the existing custom-schema path).
-	subjSchema := delegationCredSchema(subjType, issuerDpg, []string{"subjectRef", "givenName"}, std)
-	delegSchema := delegationCredSchema(delegType, issuerDpg, []string{"onBehalfOf", "role", "delegation"}, std)
-	if err := h.Adapter.SaveCustomSchema(ctx, subjSchema); err != nil {
-		apiError(w, http.StatusBadGateway, "register subject schema: "+err.Error())
-		return
-	}
-	if err := h.Adapter.SaveCustomSchema(ctx, delegSchema); err != nil {
-		apiError(w, http.StatusBadGateway, "register delegation schema: "+err.Error())
-		return
-	}
-
-	subjSpec := delegation.SubjectCredentialSpec{
-		DataModel: std, ContextURL: ctxURL, Issuer: req.IssuerDID, SubjectDID: req.Subject.SubjectDID,
-		SubjectRef: req.Subject.SubjectRef, Type: subjType, Claims: req.Subject.Claims,
-		ValidFrom: req.Subject.ValidFrom, ValidUntil: req.Subject.ValidUntil,
-	}
-
-	// 2. Subject identity credential (no revocation slot). JSON-LD goes via the
-	//    CredentialData override; SD-JWT via flat SubjectData claims.
-	subjReq := backend.IssueRequest{IssuerDpg: issuerDpg, Schema: subjSchema, Flow: flow}
-	if sdjwt {
-		subjReq.SubjectData = delegation.SubjectClaims(subjSpec)
-	} else {
-		body, err := json.Marshal(delegation.BuildSubjectCredential(subjSpec))
-		if err != nil {
-			apiError(w, http.StatusInternalServerError, "build subject credential: "+err.Error())
-			return
-		}
-		subjReq.CredentialData = body
-	}
-	subjRes, err := h.Adapter.IssueToWallet(ctx, subjReq)
+	// Register both credential types (idempotent), then issue the pair via the
+	// shared core — the same path each bulk row uses (see APIDelegationIssueBulk).
+	subjSchema, delegSchema, err := h.registerDelegationSchemas(ctx, issuerDpg, subjType, delegType, std)
 	if err != nil {
-		apiError(w, http.StatusBadGateway, "issue subject credential: "+err.Error())
+		apiError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	subjID := h.apiRecordIssuance(keyName, subjSchema, issuerDpg, subjRes.OfferURI,
-		map[string]string{"subjectRef": req.Subject.SubjectRef}, nil)
-
-	// 3. Delegation credential — allocate a revocation slot, embed it, issue.
-	binding, err := h.allocateStatusListBinding(delegSchema)
+	out, err := h.issueDelegationPairCore(ctx, keyName, req, subjSchema, delegSchema)
 	if err != nil {
-		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
+		apiError(w, http.StatusBadGateway, err.Error())
 		return
-	}
-	delegSpec := delegation.DelegationCredentialSpec{
-		DataModel: std, ContextURL: ctxURL, Issuer: req.IssuerDID, DelegateID: req.Delegation.DelegateID,
-		OnBehalfOf: req.Subject.SubjectRef, Role: req.Delegation.Role,
-		AllowedAction: req.Delegation.AllowedAction, ValidFrom: req.Delegation.ValidFrom,
-		ValidUntil: req.Delegation.ValidUntil,
-	}
-	delegReq := backend.IssueRequest{IssuerDpg: issuerDpg, Schema: delegSchema, Flow: flow, StatusList: binding}
-	if sdjwt {
-		// SD-JWT: capability is the flat `delegation` claim; status is injected by
-		// the SD-JWT issuance path from StatusList (IETF Token Status List).
-		delegReq.SubjectData = delegation.DelegationClaims(delegSpec)
-	} else {
-		if binding != nil {
-			delegSpec.Status = &delegation.StatusEntry{PublishURL: binding.PublishURL, Index: binding.Index}
-		}
-		body, err := json.Marshal(delegation.BuildDelegationCredential(delegSpec))
-		if err != nil {
-			apiError(w, http.StatusInternalServerError, "build delegation credential: "+err.Error())
-			return
-		}
-		delegReq.CredentialData = body
-	}
-	delegRes, err := h.Adapter.IssueToWallet(ctx, delegReq)
-	if err != nil {
-		apiError(w, http.StatusBadGateway, "issue delegation credential: "+err.Error())
-		return
-	}
-	delegID := h.apiRecordIssuance(keyName, delegSchema, issuerDpg, delegRes.OfferURI,
-		map[string]string{"onBehalfOf": req.Subject.SubjectRef, "delegate": req.Delegation.DelegateID}, binding)
-
-	out := apiDelegationIssueResult{
-		Subject:    apiDelegationCredResult{CredentialID: subjID, Type: subjType, OfferURI: subjRes.OfferURI, PIN: subjRes.PIN},
-		Delegation: apiDelegationCredResult{CredentialID: delegID, Type: delegType, OfferURI: delegRes.OfferURI, PIN: delegRes.PIN},
-	}
-	if binding != nil {
-		out.StatusListCredential = binding.PublishURL
-		out.StatusListIndex = binding.Index
 	}
 	slog.Info("api: delegation pair issued",
-		"subject_id", subjID, "delegation_id", delegID, "dpg", issuerDpg, "api_key", keyName)
+		"subject_id", out.Subject.CredentialID, "delegation_id", out.Delegation.CredentialID, "dpg", issuerDpg, "api_key", keyName)
 	apiJSON(w, http.StatusCreated, out)
 }
 

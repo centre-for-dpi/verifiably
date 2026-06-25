@@ -611,6 +611,7 @@ func main() {
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
 		mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
 		mux.HandleFunc("POST /api/v1/delegation/issue", h.APIDelegationIssue)
+		mux.HandleFunc("POST /api/v1/delegation/issue/bulk", h.APIDelegationIssueBulk)
 		mux.HandleFunc("POST /api/v1/delegation/inji/setup", h.APIInjiDelegationSetup)
 		mux.HandleFunc("POST /api/v1/delegation/inji/revoke", h.APIInjiDelegationRevoke)
 		mux.HandleFunc("POST /api/v1/delegation/inji/preauth/issue", h.APIInjiPreAuthDelegationIssue)
