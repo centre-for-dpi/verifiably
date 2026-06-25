@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -75,7 +76,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		fields   []string
 	}{
 		{subjType, []string{"subjectRef", "givenName"}},
-		{delegType, []string{"onBehalfOf", "role", "allowedAction", "validUntil"}},
+		{delegType, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx"}},
 	} {
 		if existing[spec.typeName] {
 			continue
@@ -84,6 +85,14 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 			apiError(w, http.StatusBadGateway, "create config "+spec.typeName+": "+err.Error())
 			return
 		}
+	}
+
+	// Allocate a per-holder IETF Token Status List slot so the delegation is
+	// revocable (uniform revocation — the evaluator's 4th check).
+	binding, err := h.allocateStatusListBinding(injiAuthcodeSchema(delegType, nil))
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
+		return
 	}
 
 	// 3. Provision the holder's vc_subject (one row; each config's view reads its
@@ -104,21 +113,59 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	if req.ValidUntil != "" {
 		claims["validUntil"] = req.ValidUntil
 	}
+	if binding != nil {
+		// flat status claims (Certify's SD-JWT template cannot nest status.status_list)
+		claims["statusUri"] = binding.PublishURL
+		claims["statusIdx"] = strconv.Itoa(binding.Index)
+	}
 	subjectID := esignetSubjectID(req.IndividualID, injiAuthcodeClientID())
 	if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {
 		apiError(w, http.StatusBadGateway, "provision vc_subject: "+err.Error())
 		return
 	}
 
-	apiJSON(w, http.StatusCreated, map[string]any{
-		"individualId":        req.IndividualID,
-		"subjectCredential":   subjType,
+	out := map[string]any{
+		"individualId":         req.IndividualID,
+		"subjectCredential":    subjType,
 		"delegationCredential": delegType,
 		"claimURLs": map[string]string{
 			"subject":    "/holder/wallet/inji/start?cred=" + subjType,
 			"delegation": "/holder/wallet/inji/start?cred=" + delegType,
 		},
-	})
+	}
+	if binding != nil {
+		out["statusListIndex"] = binding.Index
+		out["statusListCredential"] = binding.PublishURL
+	}
+	apiJSON(w, http.StatusCreated, out)
+}
+
+// APIInjiDelegationRevoke flips the revocation bit for a delegation issued via
+// the inji auth-code flow (by its Token Status List index). The next
+// verify-delegation then denies (uniform revocation).
+//
+// POST /api/v1/delegation/inji/revoke   {"index": <n>}
+func (h *H) APIInjiDelegationRevoke(w http.ResponseWriter, r *http.Request) {
+	_, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Index int `json:"index"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if h.TokenStore == nil {
+		apiError(w, http.StatusServiceUnavailable, "no token status store")
+		return
+	}
+	if err := h.TokenStore.Revoke(req.Index); err != nil {
+		apiError(w, http.StatusBadGateway, "revoke: "+err.Error())
+		return
+	}
+	apiJSON(w, http.StatusOK, map[string]any{"revoked": req.Index})
 }
 
 // injiAuthcodeSchema builds a vctypes.Schema for an inji auth-code SD-JWT config.

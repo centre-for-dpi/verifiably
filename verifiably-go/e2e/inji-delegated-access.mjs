@@ -1,12 +1,14 @@
-// E2E: inji AUTH-CODE delegated access. Claim the subject + delegation creds via
-// the in-app eSignet OTP flow (one session), then evaluate the held pair.
+// E2E: inji AUTH-CODE delegated access, full loop. Setup (configs + mock-identity
+// + provision) → claim the subject + delegation creds via the in-app eSignet PIN
+// flow (one session) → evaluate the held pair (AUTHORIZED) → revoke → DENIED.
 import { chromium } from 'playwright';
 
 const BASE = process.env.BASE || 'https://verifiably.in-labs.cdpi.dev';
-const ID = process.env.INDIVIDUAL_ID || '9876543210';
+const KEY = process.env.API_KEY;
 const PIN = process.env.PIN || '123456';
+const ID = process.env.INDIVIDUAL_ID || String(Date.now()).slice(-10);
 const SUBJ = process.env.SUBJECT_CRED || 'BirthCertificate';
-const DELEG = process.env.DELEGATION_CRED || 'DelegatedAccessCredential';
+const DELEG = process.env.DELEGATION_CRED || 'DelegationCert';
 const log = (...a) => console.log('•', ...a);
 
 const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--ignore-certificate-errors'] });
@@ -14,13 +16,18 @@ const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
 const page = await ctx.newPage();
 const shot = (n) => page.screenshot({ path: `/out/inji-${n}.png`, fullPage: true }).catch(() => {});
 
+async function api(method, path, body) {
+  const res = await ctx.request.fetch(BASE + path, {
+    method, headers: { Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' },
+    data: body ? JSON.stringify(body) : undefined, timeout: 180000,
+  });
+  let json; const t = await res.text(); try { json = JSON.parse(t); } catch {}
+  return { status: res.status(), json, text: t };
+}
+
 async function claim(cred) {
   await page.goto(BASE + '/holder/wallet/inji/start?cred=' + cred, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForTimeout(4000);
-  // pick the OTP login method if the method tiles are shown
-  await page.evaluate(() => { const e = [...document.querySelectorAll('button,a,div,span,[role=button]')].find(x => x.offsetParent !== null && /login with otp/i.test(x.innerText || '') && !/sign ?up|inji/i.test(x.innerText || '') && (x.innerText || '').trim().length < 40); if (e) e.click(); });
-  await page.waitForTimeout(4000);
-  // PIN login: fill UIN/VID + PIN, click Login (skipped on eSignet SSO).
   const idIn = await page.$('input[type=text]:not([readonly]),input[type=tel],input[type=number]');
   if (idIn) {
     await idIn.fill(ID);
@@ -35,7 +42,6 @@ async function claim(cred) {
     }
     await page.waitForTimeout(4000);
   }
-  // consent if shown
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => /allow|consent|agree|authorize|proceed|accept/i.test(x.innerText || '') && !x.disabled && !/cancel|deny/i.test(x.innerText || '')); if (b) b.click(); });
   await page.waitForURL(/verifiably\.in-labs\.cdpi\.dev\/holder\/wallet\/inji/, { timeout: 45000 }).catch(() => {});
   await page.waitForTimeout(2500);
@@ -43,19 +49,43 @@ async function claim(cred) {
   log('claimed ' + cred + ' -> ' + page.url().replace(/[?#].*/, ''));
 }
 
+async function verifyDelegation() {
+  const r = await ctx.request.get(BASE + '/holder/wallet/inji/verify-delegation', { timeout: 30000 });
+  return r.json();
+}
+
 let code = 0;
 try {
+  // ---- 0. setup: configs + mock-identity + provision (+ a revocation slot) ----
+  const setup = await api('POST', '/api/v1/delegation/inji/setup', {
+    individualId: ID, pin: PIN, subjectRef: 'urn:person:inji-' + ID, delegationType: DELEG,
+    givenName: 'Maria', role: 'Mother', allowedAction: ['present', 'consent:disclose'], validUntil: '2033-03-10T00:00:00Z',
+  });
+  if (setup.status !== 201) { console.error('✗ setup', setup.status, setup.text); process.exit(1); }
+  const statusIdx = setup.json.statusListIndex;
+  log('setup ok; holder=' + ID + ' statusIdx=' + statusIdx);
+
+  // ---- 1. claim both via eSignet PIN (one session) ----
   await claim(SUBJ);
   await claim(DELEG);
 
-  // evaluate the held pair (same session)
-  const r = await ctx.request.get(BASE + '/holder/wallet/inji/verify-delegation', { timeout: 30000 });
-  const verdict = await r.json();
-  log('verdict ' + JSON.stringify(verdict));
-  const d = verdict.delegation || {};
-  if (verdict.credentialCount < 2) { console.error('✗ expected 2 claimed creds, got', verdict.credentialCount); code = 1; }
-  else if (d.Authorized === true) { console.log('✅ INJI AUTH-CODE DELEGATION AUTHORIZED (linkage=' + d.Linkage + ' invocation=' + d.Invocation + ' capability=' + d.Capability + ' notRevoked=' + d.NotRevoked + ')'); }
-  else { console.error('✗ NOT authorized:', JSON.stringify(d)); code = 1; }
+  // ---- 2. evaluate → AUTHORIZED ----
+  const v1 = await verifyDelegation();
+  log('verdict#1 ' + JSON.stringify(v1));
+  const d1 = v1.delegation || {};
+  if (v1.credentialCount < 2 || d1.Authorized !== true) { console.error('✗ expected AUTHORIZED with 2 creds'); code = 1; throw new Error('not authorized'); }
+  log('✓ AUTHORIZED (linkage=' + d1.Linkage + ' invocation=' + d1.Invocation + ' capability=' + d1.Capability + ' notRevoked=' + d1.NotRevoked + ')');
+
+  // ---- 3. revoke → DENIED ----
+  const rev = await api('POST', '/api/v1/delegation/inji/revoke', { index: statusIdx });
+  log('revoke → ' + rev.status + ' ' + (rev.text || '').slice(0, 60));
+  const v2 = await verifyDelegation();
+  log('verdict#2 ' + JSON.stringify(v2));
+  const d2 = v2.delegation || {};
+  if (d2.Authorized === true) { console.error('✗ expected DENIED after revoke'); code = 1; throw new Error('still authorized'); }
+  log('✓ DENIED after revoke (reason: ' + d2.Reason + ')');
+
+  console.log('\n✅ INJI AUTH-CODE DELEGATION E2E PASSED: setup → claim → AUTHORIZED → revoke → DENIED');
 } catch (e) {
   console.error('ERROR:', e.message); await shot('error'); code = 1;
 } finally {

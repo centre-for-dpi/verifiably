@@ -166,6 +166,12 @@ func statusRef(c backend.NormalizedCredential) (StatusRef, bool) {
 			}, true
 		}
 	}
+	// SD-JWT flat status claims (Inji: status.status_list cannot nest, so statusUri
+	// + statusIdx are top-level claims).
+	if uri := flatClaim(c, "statusUri"); uri != "" {
+		idx, _ := strconv.ParseInt(strings.TrimSpace(flatClaim(c, "statusIdx")), 10, 64)
+		return StatusRef{Type: "TokenStatusList", URI: uri, Index: idx, Purpose: "revocation", Issuer: c.Issuer}, true
+	}
 	return StatusRef{}, false
 }
 
