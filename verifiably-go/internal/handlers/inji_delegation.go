@@ -244,3 +244,167 @@ func normalizeClaimedInjiCreds(raws []string) []backend.NormalizedCredential {
 	}
 	return out
 }
+
+type apiInjiPreAuthIssueRequest struct {
+	SubjectType    string   `json:"subjectType,omitempty"`
+	DelegationType string   `json:"delegationType,omitempty"`
+	SubjectRef     string   `json:"subjectRef,omitempty"`
+	GivenName      string   `json:"givenName,omitempty"`
+	Role           string   `json:"role,omitempty"`
+	AllowedAction  []string `json:"allowedAction,omitempty"`
+	ValidUntil     string   `json:"validUntil,omitempty"`
+}
+
+// APIInjiPreAuthDelegationIssue issues a delegated-access pair via the inji
+// PRE-AUTH flow: it registers the two SD-JWT configs in the pre-auth Certify
+// instance and stages two pre-authorized credential offers (claims inline — no
+// vc_subject, no eSignet, no restart). The holder claims both offers into the
+// walt.id wallet, then verifies via /holder/wallet/verify-delegation.
+// Capability + status are FLAT claims (Certify cannot nest), exactly as the
+// auth-code flow.
+//
+// POST /api/v1/delegation/inji/preauth/issue
+func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request) {
+	keyName, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	var req apiInjiPreAuthIssueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	ctx := apiCtx(r, keyName)
+	const dpg = "Inji Certify · Pre-Auth"
+	subjType := orDefault(req.SubjectType, "BirthCertificate")
+	delegType := orDefault(req.DelegationType, "DelegationPre")
+	subjectRef := orDefault(req.SubjectRef, "urn:person:preauth")
+	given := orDefault(req.GivenName, "Maria")
+	actions := req.AllowedAction
+	if len(actions) == 0 {
+		actions = []string{"present"}
+	}
+
+	subjSchema := injiPreAuthSchema(subjType, dpg, []string{"subjectRef", "givenName"})
+	delegSchema := injiPreAuthSchema(delegType, dpg, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx"})
+	if err := h.Adapter.SaveCustomSchema(ctx, subjSchema); err != nil {
+		apiError(w, http.StatusBadGateway, "register subject schema: "+err.Error())
+		return
+	}
+	if err := h.Adapter.SaveCustomSchema(ctx, delegSchema); err != nil {
+		apiError(w, http.StatusBadGateway, "register delegation schema: "+err.Error())
+		return
+	}
+	binding, err := h.allocateStatusListBinding(delegSchema)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
+		return
+	}
+
+	subjRes, err := h.Adapter.IssueToWallet(ctx, backend.IssueRequest{
+		IssuerDpg: dpg, Schema: subjSchema, Flow: "pre_auth",
+		SubjectData: map[string]string{"subjectRef": subjectRef, "givenName": given},
+	})
+	if err != nil {
+		apiError(w, http.StatusBadGateway, "issue subject: "+err.Error())
+		return
+	}
+	delegClaims := map[string]string{
+		"onBehalfOf":    subjectRef,
+		"role":          orDefault(req.Role, "Mother"),
+		"allowedAction": strings.Join(actions, ","),
+	}
+	if req.ValidUntil != "" {
+		delegClaims["validUntil"] = req.ValidUntil
+	}
+	if binding != nil {
+		delegClaims["statusUri"] = binding.PublishURL
+		delegClaims["statusIdx"] = strconv.Itoa(binding.Index)
+	}
+	delegRes, err := h.Adapter.IssueToWallet(ctx, backend.IssueRequest{
+		IssuerDpg: dpg, Schema: delegSchema, Flow: "pre_auth", SubjectData: delegClaims,
+	})
+	if err != nil {
+		apiError(w, http.StatusBadGateway, "issue delegation: "+err.Error())
+		return
+	}
+
+	out := map[string]any{
+		"subject":    map[string]any{"offerUri": subjRes.OfferURI, "type": subjType},
+		"delegation": map[string]any{"offerUri": delegRes.OfferURI, "type": delegType},
+	}
+	if binding != nil {
+		out["statusListIndex"] = binding.Index
+		out["statusListCredential"] = binding.PublishURL
+	}
+	apiJSON(w, http.StatusCreated, out)
+}
+
+func injiPreAuthSchema(typeName, dpg string, fields []string) vctypes.Schema {
+	fs := make([]vctypes.FieldSpec, 0, len(fields))
+	for _, f := range fields {
+		fs = append(fs, vctypes.FieldSpec{Name: f, Datatype: "string"})
+	}
+	return vctypes.Schema{
+		ID:              "dapre-" + strings.ToLower(typeName),
+		Name:            typeName,
+		Desc:            "Delegated-access " + typeName,
+		Std:             "sd_jwt_vc (IETF)",
+		DPGs:            []string{dpg},
+		Custom:          true,
+		AdditionalTypes: []string{typeName},
+		FieldsSpec:      fs,
+	}
+}
+
+// VerifyWalletDelegation evaluates the delegated-access pair the holder is
+// HOLDING in their walt.id wallet (read via ListWalletCredentials), rather than
+// requiring an OID4VP presentation. This serves DPG/flow combinations whose
+// wallet cannot build a multi-credential VP (walt.id v0.18.2 throws on a
+// multi-cred SD-JWT / ldp_vc vp_token) — e.g. the inji PRE-AUTH pair claimed
+// into the walt.id wallet. Same DPG-agnostic evaluator, sourced from held creds.
+//
+// GET /holder/wallet/verify-delegation
+func (h *H) VerifyWalletDelegation(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	ctx := holderCtx(r, sess)
+	held, err := h.Adapter.ListWalletCredentials(ctx)
+	if err != nil {
+		apiError(w, http.StatusBadGateway, "list wallet credentials: "+err.Error())
+		return
+	}
+	creds := make([]backend.NormalizedCredential, 0, len(held))
+	for _, c := range held {
+		creds = append(creds, normalizeWalletCred(c))
+	}
+	res := backend.VerificationResult{
+		Credentials:   creds,
+		HolderBinding: &backend.HolderBinding{Confirmed: true},
+		Valid:         len(creds) > 0,
+	}
+	h.attachDelegationVerdict(r, &res)
+	out := map[string]any{"credentialCount": len(creds), "valid": res.Valid}
+	if res.Delegation != nil {
+		out["delegation"] = res.Delegation
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// normalizeWalletCred maps a held walt.id wallet credential into the evaluator's
+// view. For SD-JWT the wallet flattens top-level claims into Fields, so the flat
+// capability/status claims (onBehalfOf, allowedAction, validUntil, statusUri,
+// statusIdx, subjectRef) are all present.
+func normalizeWalletCred(c vctypes.Credential) backend.NormalizedCredential {
+	raw := make(map[string]any, len(c.Fields))
+	for k, v := range c.Fields {
+		raw[k] = v
+	}
+	return backend.NormalizedCredential{
+		Types:  []string{c.Type},
+		Issuer: c.Issuer,
+		Format: c.Format,
+		Claims: c.Fields,
+		Raw:    raw,
+	}
+}
