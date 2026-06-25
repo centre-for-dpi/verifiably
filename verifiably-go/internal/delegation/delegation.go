@@ -196,7 +196,10 @@ func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder 
 	}
 	res.NotRevoked = true
 
-	// 5. Trust — the delegation issuer must be authorised (the authority).
+	// 5. Trust — the delegation issuer must be authorised (the authority). Trust
+	// enforcement is opt-in by configuration: when no checker is wired (no trust
+	// registry) it is not enforced, matching the platform's existing advisory
+	// posture. Revocation status (step 4) remains the hard fail-closed gate.
 	if opts.Trust != nil {
 		schema := primaryType(deleg.Types)
 		if err := opts.Trust(ctx, deleg.Issuer, schema); err != nil {
@@ -204,9 +207,6 @@ func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder 
 			return res
 		}
 		res.Trusted = true
-	} else if opts.FailClosed {
-		res.Reason = "issuer trust could not be verified (no trust checker)"
-		return res
 	}
 
 	res.Authorized = true

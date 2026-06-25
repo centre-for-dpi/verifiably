@@ -442,6 +442,7 @@ func (h *H) FetchResponse(w http.ResponseWriter, r *http.Request) {
 	}
 	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", completedSchemaLabel, "status", verifyStatus)
 	h.attachTrustStatus(r, &res)
+	h.attachDelegationVerdict(r, &res)
 
 	// Write verification event — non-blocking; never delays the HTTP response.
 	if h.VerificationLog != nil {
@@ -531,6 +532,7 @@ func (h *H) VerifyDirect(w http.ResponseWriter, r *http.Request) {
 	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", directStatus)
 	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
+	h.attachDelegationVerdict(r, &res)
 	h.renderFragment(w, r, "fragment_verify_result", res)
 }
 

@@ -182,6 +182,7 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 		// matching one of the template's requested fields; otherwise demote.
 		valid = matchesTemplateFields(res.VCResults, tpl.Fields)
 	}
+	creds, holder := normalizeInjiCredentials(res.VCResults)
 	return backend.VerificationResult{
 		Valid:             valid,
 		Method:            fmt.Sprintf("OID4VP · %s", tpl.Disclosure),
@@ -191,6 +192,8 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 		Requested:         tpl.Fields,
 		Issued:            time.Now().UTC(),
 		CheckedRevocation: true,
+		Credentials:       creds,
+		HolderBinding:     holder,
 	}, nil
 }
 

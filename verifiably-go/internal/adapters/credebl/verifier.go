@@ -176,6 +176,7 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 			if len(fields) == 0 && resp.Data.AuthorizationResponsePayload.VpToken != "" {
 				fields = extractDisclosedFieldsFromVpToken(resp.Data.AuthorizationResponsePayload.VpToken)
 			}
+			creds, holder := normalizeCredeblCredentials(resp.Data.AuthorizationResponsePayload.VpToken)
 			return backend.VerificationResult{
 				Valid:             true,
 				Method:            "OID4VP · selective — SD-JWT VC",
@@ -185,6 +186,8 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 				Issued:            time.Now().UTC(),
 				CheckedRevocation: true,
 				DisclosedFields:   fields,
+				Credentials:       creds,
+				HolderBinding:     holder,
 			}, nil
 		case "Error":
 			return backend.VerificationResult{

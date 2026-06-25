@@ -359,6 +359,7 @@ func (h *H) PublicVerifyResult(w http.ResponseWriter, r *http.Request) {
 
 	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
+	h.attachDelegationVerdict(r, &res)
 
 	statusListSource := h.checkStatusListAvailability(r, res.Issuer)
 	if statusListSource == "" && res.CheckedRevocation {

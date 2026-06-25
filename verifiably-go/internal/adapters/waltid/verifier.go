@@ -356,6 +356,7 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 	}
 
 	fields, issuer, subject, issued, title := extractPresentedCredential(res.TokenResponse)
+	creds, holder := normalizePresentedCredentials(res.TokenResponse)
 	policies := extractAppliedPolicies(res.PolicyResults)
 	outcomes := extractPolicyOutcomes(res.PolicyResults)
 	if issuer == "" {
@@ -380,6 +381,8 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 		PolicyOutcomes:    outcomes,
 		DisclosedFields:   fields,
 		CredentialTitle:   title,
+		Credentials:       creds,
+		HolderBinding:     holder,
 	}, nil
 }
 
