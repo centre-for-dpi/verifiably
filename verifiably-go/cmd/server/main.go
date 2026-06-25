@@ -609,6 +609,7 @@ func main() {
 		mux.HandleFunc("GET /api/v1/bulk/{jobID}", h.APIBulkJobStatus)
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
 		mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
+		mux.HandleFunc("POST /api/v1/delegation/issue", h.APIDelegationIssue)
 		mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
 		mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
 		mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)

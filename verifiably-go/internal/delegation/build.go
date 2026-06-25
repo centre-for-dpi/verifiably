@@ -63,8 +63,13 @@ func BuildSubjectCredential(s SubjectCredentialSpec) map[string]any {
 	doc := map[string]any{
 		"@context":          contextArr(s.ContextURL),
 		"type":              []string{"VerifiableCredential", typ},
-		"issuer":            s.Issuer,
 		"credentialSubject": cs,
+	}
+	// Omit issuer when unset so the signing DPG injects its own signing DID
+	// (avoids an issuer↔signing-key mismatch). The evaluator reads the issuer
+	// back from the signed VC.
+	if s.Issuer != "" {
+		doc["issuer"] = s.Issuer
 	}
 	addValidity(doc, s.ValidFrom, s.ValidUntil)
 	if s.Status != nil {
@@ -103,10 +108,14 @@ func BuildDelegationCredential(d DelegationCredentialSpec) map[string]any {
 	}
 	capability := map[string]any{
 		"type":                   "DelegationCapability",
-		"controller":             d.Issuer,
 		"invocationTarget":       d.OnBehalfOf,
 		"delegate":               d.DelegateID,
 		"allowFurtherDelegation": d.AllowFurtherDelegation,
+	}
+	// controller = the root authority = the issuer. Omit when unset so the
+	// evaluator defaults it to the signed VC's issuer (DPG-injected DID).
+	if d.Issuer != "" {
+		capability["controller"] = d.Issuer
 	}
 	if len(d.AllowedAction) > 0 {
 		capability["allowedAction"] = d.AllowedAction
@@ -117,9 +126,11 @@ func BuildDelegationCredential(d DelegationCredentialSpec) map[string]any {
 	doc := map[string]any{
 		"@context":          contextArr(d.ContextURL),
 		"type":              []string{"VerifiableCredential", "DelegatedAccessCredential"},
-		"issuer":            d.Issuer,
 		"credentialSubject": cs,
 		"termsOfUse":        []any{capability},
+	}
+	if d.Issuer != "" {
+		doc["issuer"] = d.Issuer
 	}
 	addValidity(doc, d.ValidFrom, d.ValidUntil)
 	if d.Status != nil {
