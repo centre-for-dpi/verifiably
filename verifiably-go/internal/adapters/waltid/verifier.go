@@ -94,6 +94,36 @@ type verifyBody struct {
 // wins when both are set. Handlers use the inline path for custom
 // user-assembled requests; the keyed path covers the curated presets.
 func (a *Adapter) RequestPresentation(ctx context.Context, req backend.PresentationRequest) (backend.PresentationRequestResult, error) {
+	// Multi-credential request (e.g. a delegated-access pair): one
+	// input-descriptor per template, so the wallet must present all of them.
+	// Self-contained so the single-credential path below stays untouched.
+	if len(req.Templates) > 0 {
+		entries := make([]map[string]any, 0, len(req.Templates))
+		var primaryFormat string
+		for _, t := range req.Templates {
+			e, f := buildRequestEntry(t)
+			entries = append(entries, e)
+			if primaryFormat == "" {
+				primaryFormat = f
+			}
+		}
+		body := verifyBody{
+			RequestCredentials: entries,
+			VPPolicies:         buildVPPolicies(),
+			VCPolicies:         buildVCPolicies(req.Policies, req.WebhookURL, primaryFormat),
+		}
+		raw, err := a.verifier.DoRaw(ctx, "POST", "/openid4vc/verify", jsonReader(body), "application/json", nil)
+		if err != nil {
+			return backend.PresentationRequestResult{}, err
+		}
+		authorizeURL := strings.TrimSpace(string(raw))
+		return backend.PresentationRequestResult{
+			RequestURI: authorizeURL,
+			State:      extractVerifierState(authorizeURL),
+			Template:   req.Templates[0],
+		}, nil
+	}
+
 	var tpl vctypes.OID4VPTemplate
 	typeHint := credentialTypeForTemplate(req.TemplateKey)
 	if req.Template != nil {
@@ -183,6 +213,45 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 		State:      state,
 		Template:   tpl,
 	}, nil
+}
+
+// buildRequestEntry builds one walt.id request_credentials entry from a
+// template — the same logic the single-credential path uses inline, factored
+// out so a multi-credential request can build one entry per template. Returns
+// the entry and its wire format.
+func buildRequestEntry(tpl vctypes.OID4VPTemplate) (map[string]any, string) {
+	typeHint := tpl.CredentialType
+	if typeHint == "" {
+		typeHint = credentialTypeForCustomTemplate(tpl)
+	}
+	format := tpl.WireFormat
+	if format == "" {
+		format = credentialFormatForStd(tpl.Format)
+	}
+	selective := strings.Contains(strings.ToLower(tpl.Disclosure), "selective")
+	if len(tpl.Fields) > 0 {
+		entry := buildSelectiveInputDescriptor(format, typeHint, tpl)
+		if !selective {
+			if desc, ok := entry["input_descriptor"].(map[string]any); ok {
+				if cons, ok := desc["constraints"].(map[string]any); ok {
+					cons["limit_disclosure"] = "preferred"
+				}
+			}
+		}
+		return entry, format
+	}
+	entry := map[string]any{"format": format}
+	switch format {
+	case "vc+sd-jwt", "dc+sd-jwt":
+		if tpl.Vct != "" {
+			entry["vct"] = tpl.Vct
+		} else {
+			entry["vct"] = typeHint
+		}
+	default:
+		entry["type"] = typeHint
+	}
+	return entry, format
 }
 
 // buildSelectiveInputDescriptor returns a request_credentials entry with a

@@ -455,6 +455,7 @@ func (a *Adapter) PresentCredential(ctx context.Context, req backend.PresentCred
 	// hint about what to fix.
 	pd := a.fetchPresentationDefinition(authCtx, req.RequestURI)
 	credID := req.CredentialID
+	var selected []string
 	if pd != nil {
 		matched, ok := a.matchPD(authCtx, sess.WalletID, pd)
 		if ok && len(matched) == 0 {
@@ -473,22 +474,37 @@ func (a *Adapter) PresentCredential(ctx context.Context, req backend.PresentCred
 				wantType, wantFormat, diag)
 		}
 		if ok {
-			credID = pickBestMatch(matched, req.CredentialID)
+			if pdDescriptorCount(pd) > 1 {
+				// Multi-credential request (e.g. a delegated-access pair):
+				// present EVERY matched credential so each input-descriptor is
+				// satisfied, instead of a single best match.
+				selected = allMatchedIDs(matched)
+			} else {
+				credID = pickBestMatch(matched, req.CredentialID)
+			}
 		}
+	}
+	if len(selected) == 0 {
+		selected = []string{credID}
 	}
 
 	body := map[string]any{
 		"presentationRequest": req.RequestURI,
-		"selectedCredentials": []string{credID},
+		"selectedCredentials": selected,
 	}
-	// Selective-disclosure filtering: walt.id's VP builder otherwise
-	// returns ALL disclosures in the SD-JWT, which fails the verifier's
-	// limit_disclosure=required constraint. Read the held credential's
-	// raw disclosures + the PD's requested field paths and only pass
-	// through the ones that match.
+	// Selective-disclosure filtering per selected credential: walt.id's VP
+	// builder otherwise returns ALL disclosures in the SD-JWT, which fails the
+	// verifier's limit_disclosure=required constraint. No-op for jwt_vc_json /
+	// ldp_vc (no disclosures).
 	if pd != nil {
-		if disc := a.selectRequestedDisclosures(authCtx, sess.WalletID, credID, pd); len(disc) > 0 {
-			body["disclosures"] = map[string][]string{credID: disc}
+		disc := map[string][]string{}
+		for _, id := range selected {
+			if d := a.selectRequestedDisclosures(authCtx, sess.WalletID, id, pd); len(d) > 0 {
+				disc[id] = d
+			}
+		}
+		if len(disc) > 0 {
+			body["disclosures"] = disc
 		}
 	} else if len(req.DisclosedClaim) > 0 {
 		body["disclosures"] = map[string][]string{credID: req.DisclosedClaim}
@@ -1079,6 +1095,30 @@ func pickBestMatch(matched []map[string]json.RawMessage, fallback string) string
 	}
 	log.Printf("waltid: picked id=%s rank=%d from %d matches", bestID, best, len(matched))
 	return bestID
+}
+
+// pdDescriptorCount reports how many input-descriptors a presentation
+// definition has (i.e. how many credentials the verifier is asking for).
+func pdDescriptorCount(pd map[string]any) int {
+	ds, _ := pd["input_descriptors"].([]any)
+	return len(ds)
+}
+
+// allMatchedIDs returns the deduped ids of every credential the wallet matched
+// against the PD — used to present a credential per input-descriptor for a
+// multi-credential (e.g. delegated-access) request.
+func allMatchedIDs(matched []map[string]json.RawMessage) []string {
+	out := make([]string, 0, len(matched))
+	seen := map[string]bool{}
+	for _, row := range matched {
+		var id string
+		_ = json.Unmarshal(row["id"], &id)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // describePD extracts a human-readable (type, format) pair from a PD's

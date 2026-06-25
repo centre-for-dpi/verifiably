@@ -262,6 +262,12 @@ type PresentationRequest struct {
 	VerifierDpg string
 	TemplateKey string // adapter-defined; maps to the verifier's stored presentation templates
 	Template    *vctypes.OID4VPTemplate
+	// Templates, when non-empty, requests MULTIPLE credentials in one
+	// presentation (one input-descriptor per template) — e.g. a delegated-access
+	// pair (identity + delegation). Adapters that support it build N descriptors;
+	// when set it takes precedence over Template. Single-credential callers leave
+	// it nil and use Template.
+	Templates []vctypes.OID4VPTemplate
 	// Policies is the list of verification policies the operator selected
 	// (see walt.id's vc_policies / vp_policies). Recognized values:
 	// "signature" | "expired" | "not-before" | "webhook". Adapters that

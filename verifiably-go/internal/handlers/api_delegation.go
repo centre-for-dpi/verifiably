@@ -208,3 +208,99 @@ func orDefault(v, def string) string {
 	}
 	return def
 }
+
+type apiDelegationVerifyRequest struct {
+	VerifierDpg    string `json:"verifierDpg,omitempty"`
+	SubjectType    string `json:"subjectType,omitempty"`    // default BirthCertificate
+	DelegationType string `json:"delegationType,omitempty"` // default DelegatedAccessCredential
+	WireFormat     string `json:"wireFormat,omitempty"`     // default jwt_vc_json
+}
+
+// APIDelegationVerifyRequest creates an OID4VP request for the delegated-access
+// PAIR — one input-descriptor for the subject identity credential and one for
+// the delegation credential — so the holder's wallet presents both. The
+// evaluator then runs at result time.
+//
+// POST /api/v1/delegation/verify/request
+func (h *H) APIDelegationVerifyRequest(w http.ResponseWriter, r *http.Request) {
+	keyName, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	var req apiDelegationVerifyRequest
+	_ = json.NewDecoder(r.Body).Decode(&req) // body is optional
+	ctx := apiCtx(r, keyName)
+	verifierDpg := req.VerifierDpg
+	if verifierDpg == "" {
+		verifierDpg = h.firstVerifierDPG(ctx)
+	}
+	if verifierDpg == "" {
+		apiError(w, http.StatusServiceUnavailable, "no verifier DPG available")
+		return
+	}
+	subjType := orDefault(req.SubjectType, "BirthCertificate")
+	delegType := orDefault(req.DelegationType, "DelegatedAccessCredential")
+	wf := orDefault(req.WireFormat, "jwt_vc_json")
+	templates := []vctypes.OID4VPTemplate{
+		delegationVerifyTemplate(subjType, []string{"subjectRef"}, wf),
+		delegationVerifyTemplate(delegType, []string{"onBehalfOf"}, wf),
+	}
+	res, err := h.Adapter.RequestPresentation(ctx, backend.PresentationRequest{
+		VerifierDpg: verifierDpg,
+		Templates:   templates,
+		Policies:    []string{"signature", "expired", "not-before"},
+	})
+	if err != nil {
+		apiError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	apiJSON(w, http.StatusOK, map[string]any{
+		"requestUri": res.RequestURI,
+		"state":      res.State,
+		"requested":  []string{subjType, delegType},
+	})
+}
+
+// APIDelegationVerifyResult polls a delegation verify request and runs the
+// delegated-access evaluator over the presented pair.
+//
+// GET /api/v1/delegation/verify/result/{state}
+func (h *H) APIDelegationVerifyResult(w http.ResponseWriter, r *http.Request) {
+	_, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	state := r.PathValue("state")
+	if state == "" {
+		apiError(w, http.StatusBadRequest, "state required")
+		return
+	}
+	res, err := h.Adapter.FetchPresentationResult(r.Context(), state, "")
+	if err != nil {
+		apiError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	h.attachDelegationVerdict(r, &res)
+	out := map[string]any{
+		"pending":         res.Pending,
+		"valid":           res.Valid,
+		"method":          res.Method,
+		"credentialCount": len(res.Credentials),
+		"disclosed":       res.DisclosedFields,
+	}
+	if res.Delegation != nil {
+		out["delegation"] = res.Delegation
+	}
+	apiJSON(w, http.StatusOK, out)
+}
+
+func delegationVerifyTemplate(typeName string, fields []string, wireFormat string) vctypes.OID4VPTemplate {
+	return vctypes.OID4VPTemplate{
+		Title:          typeName,
+		CredentialType: typeName,
+		Format:         "w3c_vcdm_2",
+		WireFormat:     wireFormat,
+		Fields:         fields,
+		Disclosure:     "full",
+	}
+}
