@@ -19,7 +19,7 @@ import (
 // flow we don't model (mso_mdoc → MSO/IACA, legacy jwt_vc → out of scope).
 func statusListKindFor(std string) string {
 	switch std {
-	case "w3c_vcdm_2":
+	case "w3c_vcdm_2", "w3c_vcdm_1":
 		return "bitstring"
 	case "sd_jwt_vc (IETF)", "sd_jwt_vc":
 		return "token"

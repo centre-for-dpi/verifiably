@@ -49,8 +49,9 @@ func findIdentity(creds []backend.NormalizedCredential, delegIdx int, onBehalfOf
 // `delegation` claim or a JSON-LD `termsOfUse` entry of type DelegationCapability.
 // Returns ok=false when the credential carries no capability.
 func extractCapability(c backend.NormalizedCredential) (Capability, bool) {
-	// SD-JWT / JOSE: a top-level `delegation` object.
-	if d, ok := asMap(c.Raw["delegation"]); ok {
+	// SD-JWT / JOSE: a top-level `delegation` object — or a JSON-encoded string
+	// (selective disclosure stringifies object claims).
+	if d, ok := asMapOrJSON(c.Raw["delegation"]); ok {
 		cap := Capability{
 			Controller:             firstNonEmpty(mapStr(d, "controller"), c.Issuer),
 			OnBehalfOf:             firstNonEmpty(mapStr(d, "on_behalf_of"), mapStr(d, "onBehalfOf"), refID(c.Raw["credentialSubject"], "onBehalfOf")),
@@ -229,6 +230,22 @@ func typeContains(v any, want string) bool {
 func asMap(v any) (map[string]any, bool) {
 	m, ok := v.(map[string]any)
 	return m, ok
+}
+
+// asMapOrJSON returns v as a map whether it is already a map[string]any or a
+// JSON-encoded object string (SD-JWT selective disclosure renders object claims
+// as strings).
+func asMapOrJSON(v any) (map[string]any, bool) {
+	if m, ok := v.(map[string]any); ok {
+		return m, true
+	}
+	if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+		var m map[string]any
+		if json.Unmarshal([]byte(s), &m) == nil {
+			return m, true
+		}
+	}
+	return nil, false
 }
 
 func asSlice(v any) []any {

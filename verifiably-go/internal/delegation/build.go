@@ -1,19 +1,31 @@
 package delegation
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // This file is the issuance-side counterpart to the evaluator: it constructs the
-// two credentials of a delegated-access relation as W3C VCDM 2.0 JSON-LD bodies
-// (ADR §6) — a subject identity credential and an issuer-signed delegation
-// credential carrying the capability in termsOfUse. The bodies are handed to a
-// DPG issuer adapter to SIGN (the adapter never signs here — invariant I1). The
-// shapes are exactly what the evaluator (via internal/vp normalization) reads
-// back at verification, so issuance and verification share one contract.
+// two credentials of a delegated-access relation — a subject identity credential
+// and an issuer-signed delegation credential carrying the capability. The bodies
+// are handed to a DPG issuer adapter to SIGN (the adapter never signs here —
+// invariant I1). The shapes are exactly what the evaluator (via internal/vp
+// normalization) reads back at verification, so issuance and verification share
+// one contract.
+//
+// Two encodings are produced, selected by data-model tier:
+//   - JSON-LD (W3C VCDM 1.1 / 2.0): BuildSubjectCredential / BuildDelegationCredential —
+//     the capability lives in termsOfUse, status in credentialStatus (Bitstring).
+//   - SD-JWT VC: SubjectClaims / DelegationClaims — flat claims; the capability is
+//     the top-level `delegation` claim, status the IETF Token Status List entry.
 
-// ContextVCDM2 is the W3C VC Data Model 2.0 base context.
-const ContextVCDM2 = "https://www.w3.org/ns/credentials/v2"
+const (
+	// ContextVCDM2 / ContextVCDM1 are the W3C VC Data Model base contexts.
+	ContextVCDM2 = "https://www.w3.org/ns/credentials/v2"
+	ContextVCDM1 = "https://www.w3.org/2018/credentials/v1"
+)
 
-// StatusEntry is an allocated W3C Bitstring Status List 2023 revocation slot.
+// StatusEntry is an allocated revocation slot (W3C Bitstring or IETF Token list).
 type StatusEntry struct {
 	PublishURL string // absolute, verifier-dereferenceable status list URL
 	Index      int    // the allocated bit index
@@ -33,6 +45,7 @@ func (s *StatusEntry) bitstring() map[string]any {
 // certificate). The stable, non-pairwise SubjectRef is the linkage anchor the
 // delegation credential's onBehalfOf must match (ADR Q6).
 type SubjectCredentialSpec struct {
+	DataModel  string            // "w3c_vcdm_1" | "w3c_vcdm_2" (default v2)
 	ContextURL string            // hosted delegated-access @context URL (for subjectRef term)
 	Issuer     string            // issuer DID — the signer
 	SubjectDID string            // credentialSubject.id (optional; bearer when empty)
@@ -44,7 +57,7 @@ type SubjectCredentialSpec struct {
 	Status     *StatusEntry      // revocation slot (optional)
 }
 
-// BuildSubjectCredential constructs the VCDM 2.0 subject identity credential body.
+// BuildSubjectCredential constructs the JSON-LD subject identity credential body.
 func BuildSubjectCredential(s SubjectCredentialSpec) map[string]any {
 	cs := map[string]any{}
 	if s.SubjectDID != "" {
@@ -61,7 +74,7 @@ func BuildSubjectCredential(s SubjectCredentialSpec) map[string]any {
 		typ = "IdentityCredential"
 	}
 	doc := map[string]any{
-		"@context":          contextArr(s.ContextURL),
+		"@context":          contextArr(s.DataModel, s.ContextURL),
 		"type":              []string{"VerifiableCredential", typ},
 		"credentialSubject": cs,
 	}
@@ -71,7 +84,7 @@ func BuildSubjectCredential(s SubjectCredentialSpec) map[string]any {
 	if s.Issuer != "" {
 		doc["issuer"] = s.Issuer
 	}
-	addValidity(doc, s.ValidFrom, s.ValidUntil)
+	addValidity(doc, s.DataModel, s.ValidFrom, s.ValidUntil)
 	if s.Status != nil {
 		doc["credentialStatus"] = s.Status.bitstring()
 	}
@@ -83,6 +96,7 @@ func BuildSubjectCredential(s SubjectCredentialSpec) map[string]any {
 // invoker), acting onBehalfOf the subject. The capability is carried in
 // termsOfUse (ADR D2/D3/§6).
 type DelegationCredentialSpec struct {
+	DataModel              string
 	ContextURL             string
 	Issuer                 string   // root authority + signer; becomes the capability controller
 	DelegateID             string   // credentialSubject.id — the delegate (holder-bound)
@@ -95,7 +109,7 @@ type DelegationCredentialSpec struct {
 	Status                 *StatusEntry
 }
 
-// BuildDelegationCredential constructs the VCDM 2.0 DelegatedAccessCredential body.
+// BuildDelegationCredential constructs the JSON-LD DelegatedAccessCredential body.
 func BuildDelegationCredential(d DelegationCredentialSpec) map[string]any {
 	cs := map[string]any{
 		"onBehalfOf": map[string]any{"id": d.OnBehalfOf},
@@ -128,7 +142,7 @@ func BuildDelegationCredential(d DelegationCredentialSpec) map[string]any {
 		capability["caveat"] = []any{map[string]any{"type": "ValidWhile", "validUntil": d.ValidUntil}}
 	}
 	doc := map[string]any{
-		"@context":          contextArr(d.ContextURL),
+		"@context":          contextArr(d.DataModel, d.ContextURL),
 		"type":              []string{"VerifiableCredential", "DelegatedAccessCredential"},
 		"credentialSubject": cs,
 		"termsOfUse":        []any{capability},
@@ -136,26 +150,84 @@ func BuildDelegationCredential(d DelegationCredentialSpec) map[string]any {
 	if d.Issuer != "" {
 		doc["issuer"] = d.Issuer
 	}
-	addValidity(doc, d.ValidFrom, d.ValidUntil)
+	addValidity(doc, d.DataModel, d.ValidFrom, d.ValidUntil)
 	if d.Status != nil {
 		doc["credentialStatus"] = d.Status.bitstring()
 	}
 	return doc
 }
 
-func contextArr(ctxURL string) []string {
-	arr := []string{ContextVCDM2}
+// SubjectClaims returns the FLAT claim set for an SD-JWT subject identity
+// credential (no JSON-LD wrapping). The capability is absent; this is the
+// identity half. Values are strings (the SD-JWT issuance path is map-based).
+func SubjectClaims(s SubjectCredentialSpec) map[string]string {
+	out := map[string]string{}
+	if s.SubjectRef != "" {
+		out["subjectRef"] = s.SubjectRef
+	}
+	for k, v := range s.Claims {
+		out[k] = v
+	}
+	return out
+}
+
+// DelegationClaims returns the FLAT claim set for an SD-JWT delegation
+// credential: the capability is the top-level `delegation` claim (JSON-encoded,
+// per ADR §12.3), plus onBehalfOf/role for display. The evaluator parses the
+// `delegation` claim (object or JSON string). Status is injected separately by
+// the SD-JWT issuance path (IETF Token Status List).
+func DelegationClaims(d DelegationCredentialSpec) map[string]string {
+	deleg := map[string]any{
+		"on_behalf_of":             d.OnBehalfOf,
+		"allow_further_delegation": d.AllowFurtherDelegation,
+	}
+	if len(d.AllowedAction) > 0 {
+		deleg["allowed_action"] = d.AllowedAction
+	}
+	if d.ValidUntil != "" {
+		deleg["valid_until"] = d.ValidUntil
+	}
+	if d.DelegateID != "" {
+		deleg["delegate"] = d.DelegateID
+	}
+	if d.Issuer != "" {
+		deleg["controller"] = d.Issuer
+	}
+	b, _ := json.Marshal(deleg)
+	out := map[string]string{
+		"onBehalfOf": d.OnBehalfOf,
+		"delegation": string(b),
+	}
+	if d.Role != "" {
+		out["role"] = d.Role
+	}
+	return out
+}
+
+func baseContext(dataModel string) string {
+	if dataModel == "w3c_vcdm_1" {
+		return ContextVCDM1
+	}
+	return ContextVCDM2
+}
+
+func contextArr(dataModel, ctxURL string) []string {
+	arr := []string{baseContext(dataModel)}
 	if ctxURL != "" {
 		arr = append(arr, ctxURL)
 	}
 	return arr
 }
 
-func addValidity(doc map[string]any, from, until string) {
+func addValidity(doc map[string]any, dataModel, from, until string) {
+	fromKey, untilKey := "validFrom", "validUntil"
+	if dataModel == "w3c_vcdm_1" {
+		fromKey, untilKey = "issuanceDate", "expirationDate"
+	}
 	if from != "" {
-		doc["validFrom"] = from
+		doc[fromKey] = from
 	}
 	if until != "" {
-		doc["validUntil"] = until
+		doc[untilKey] = until
 	}
 }

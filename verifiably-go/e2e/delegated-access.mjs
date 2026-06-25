@@ -6,7 +6,9 @@ const HOLDER_UK = process.env.HOLDER_USERKEY || 'keycloak|ee330876-28c8-410f-8b4
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const BASE = process.env.BASE || 'https://verifiably.in-labs.cdpi.dev';
 const KEY = process.env.API_KEY;
-const DPG = 'Walt Community Stack';
+const DPG = process.env.DPG || 'Walt Community Stack';
+const STD = process.env.STD || 'w3c_vcdm_2';        // w3c_vcdm_2 | w3c_vcdm_1 | "sd_jwt_vc (IETF)"
+const WF = process.env.WIRE_FORMAT || 'jwt_vc_json'; // jwt_vc_json | vc+sd-jwt
 const NS = 'urn:person:child-e2e-' + Date.now();
 const log = (...a) => console.log('•', ...a);
 
@@ -54,8 +56,9 @@ async function cleanWallet(ctx) {
   const page = await ctx.newPage();
   try {
     // ---- 0. issue a fresh delegation pair (API) ----
+    log(`tier: std=${STD} wireFormat=${WF}`);
     const issue = await api(ctx, 'POST', '/api/v1/delegation/issue', {
-      issuerDpg: DPG,
+      issuerDpg: DPG, std: STD,
       subject: { type: 'BirthCertificate', subjectDid: 'did:example:child-e2e', subjectRef: NS, claims: { givenName: 'Maria' }, validUntil: '2033-03-10T00:00:00Z' },
       delegation: { type: 'DelegatedAccessCredential', role: 'Mother', allowedAction: ['present', 'consent:disclose'], validUntil: '2033-03-10T00:00:00Z' },
     });
@@ -103,7 +106,7 @@ async function cleanWallet(ctx) {
 
     // ---- helper: create verify request, present, poll verdict ----
     async function verifyOnce() {
-      const vr = await api(ctx, 'POST', '/api/v1/delegation/verify/request', { verifierDpg: DPG });
+      const vr = await api(ctx, 'POST', '/api/v1/delegation/verify/request', { verifierDpg: DPG, wireFormat: WF });
       if (vr.status !== 200) fail('verify/request ' + vr.status + ' ' + vr.text);
       const reqUri = vr.json.requestUri, state = vr.json.state;
       // credential_id must be non-empty to pass SubmitPresent's guard; the

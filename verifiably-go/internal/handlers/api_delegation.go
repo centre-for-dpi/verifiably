@@ -17,6 +17,7 @@ type apiDelegationIssueRequest struct {
 	IssuerDID  string `json:"issuerDid,omitempty"`  // optional; default = the DPG's signing DID
 	Flow       string `json:"flow,omitempty"`       // pre_auth (default) | auth_code
 	ContextURL string `json:"contextUrl,omitempty"` // default = <public>/static/contexts/delegated-access-v1.jsonld
+	Std        string `json:"std,omitempty"`        // w3c_vcdm_2 (default) | w3c_vcdm_1 | "sd_jwt_vc (IETF)"
 	Subject    struct {
 		Type       string            `json:"type,omitempty"` // default BirthCertificate
 		SubjectDID string            `json:"subjectDid,omitempty"`
@@ -95,11 +96,13 @@ func (h *H) APIDelegationIssue(w http.ResponseWriter, r *http.Request) {
 	subjType := orDefault(req.Subject.Type, "BirthCertificate")
 	delegType := orDefault(req.Delegation.Type, "DelegatedAccessCredential")
 
+	std := orDefault(req.Std, "w3c_vcdm_2")
+	sdjwt := strings.Contains(std, "sd_jwt")
+
 	// 1. Register both credential types in the DPG catalog (idempotent reuse of
-	//    the existing custom-schema path). Flat fields suffice — the catalog only
-	//    needs the type to exist; the nested body comes from the override below.
-	subjSchema := delegationCredSchema(subjType, issuerDpg, []string{"subjectRef", "givenName"})
-	delegSchema := delegationCredSchema(delegType, issuerDpg, []string{"onBehalfOf", "role"})
+	//    the existing custom-schema path).
+	subjSchema := delegationCredSchema(subjType, issuerDpg, []string{"subjectRef", "givenName"}, std)
+	delegSchema := delegationCredSchema(delegType, issuerDpg, []string{"onBehalfOf", "role", "delegation"}, std)
 	if err := h.Adapter.SaveCustomSchema(ctx, subjSchema); err != nil {
 		apiError(w, http.StatusBadGateway, "register subject schema: "+err.Error())
 		return
@@ -109,19 +112,26 @@ func (h *H) APIDelegationIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Subject identity credential (no revocation slot).
-	subjBody, err := json.Marshal(delegation.BuildSubjectCredential(delegation.SubjectCredentialSpec{
-		ContextURL: ctxURL, Issuer: req.IssuerDID, SubjectDID: req.Subject.SubjectDID,
+	subjSpec := delegation.SubjectCredentialSpec{
+		DataModel: std, ContextURL: ctxURL, Issuer: req.IssuerDID, SubjectDID: req.Subject.SubjectDID,
 		SubjectRef: req.Subject.SubjectRef, Type: subjType, Claims: req.Subject.Claims,
 		ValidFrom: req.Subject.ValidFrom, ValidUntil: req.Subject.ValidUntil,
-	}))
-	if err != nil {
-		apiError(w, http.StatusInternalServerError, "build subject credential: "+err.Error())
-		return
 	}
-	subjRes, err := h.Adapter.IssueToWallet(ctx, backend.IssueRequest{
-		IssuerDpg: issuerDpg, Schema: subjSchema, Flow: flow, CredentialData: subjBody,
-	})
+
+	// 2. Subject identity credential (no revocation slot). JSON-LD goes via the
+	//    CredentialData override; SD-JWT via flat SubjectData claims.
+	subjReq := backend.IssueRequest{IssuerDpg: issuerDpg, Schema: subjSchema, Flow: flow}
+	if sdjwt {
+		subjReq.SubjectData = delegation.SubjectClaims(subjSpec)
+	} else {
+		body, err := json.Marshal(delegation.BuildSubjectCredential(subjSpec))
+		if err != nil {
+			apiError(w, http.StatusInternalServerError, "build subject credential: "+err.Error())
+			return
+		}
+		subjReq.CredentialData = body
+	}
+	subjRes, err := h.Adapter.IssueToWallet(ctx, subjReq)
 	if err != nil {
 		apiError(w, http.StatusBadGateway, "issue subject credential: "+err.Error())
 		return
@@ -135,23 +145,29 @@ func (h *H) APIDelegationIssue(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
 		return
 	}
-	var status *delegation.StatusEntry
-	if binding != nil {
-		status = &delegation.StatusEntry{PublishURL: binding.PublishURL, Index: binding.Index}
-	}
-	delegBody, err := json.Marshal(delegation.BuildDelegationCredential(delegation.DelegationCredentialSpec{
-		ContextURL: ctxURL, Issuer: req.IssuerDID, DelegateID: req.Delegation.DelegateID,
+	delegSpec := delegation.DelegationCredentialSpec{
+		DataModel: std, ContextURL: ctxURL, Issuer: req.IssuerDID, DelegateID: req.Delegation.DelegateID,
 		OnBehalfOf: req.Subject.SubjectRef, Role: req.Delegation.Role,
 		AllowedAction: req.Delegation.AllowedAction, ValidFrom: req.Delegation.ValidFrom,
-		ValidUntil: req.Delegation.ValidUntil, Status: status,
-	}))
-	if err != nil {
-		apiError(w, http.StatusInternalServerError, "build delegation credential: "+err.Error())
-		return
+		ValidUntil: req.Delegation.ValidUntil,
 	}
-	delegRes, err := h.Adapter.IssueToWallet(ctx, backend.IssueRequest{
-		IssuerDpg: issuerDpg, Schema: delegSchema, Flow: flow, CredentialData: delegBody, StatusList: binding,
-	})
+	delegReq := backend.IssueRequest{IssuerDpg: issuerDpg, Schema: delegSchema, Flow: flow, StatusList: binding}
+	if sdjwt {
+		// SD-JWT: capability is the flat `delegation` claim; status is injected by
+		// the SD-JWT issuance path from StatusList (IETF Token Status List).
+		delegReq.SubjectData = delegation.DelegationClaims(delegSpec)
+	} else {
+		if binding != nil {
+			delegSpec.Status = &delegation.StatusEntry{PublishURL: binding.PublishURL, Index: binding.Index}
+		}
+		body, err := json.Marshal(delegation.BuildDelegationCredential(delegSpec))
+		if err != nil {
+			apiError(w, http.StatusInternalServerError, "build delegation credential: "+err.Error())
+			return
+		}
+		delegReq.CredentialData = body
+	}
+	delegRes, err := h.Adapter.IssueToWallet(ctx, delegReq)
 	if err != nil {
 		apiError(w, http.StatusBadGateway, "issue delegation credential: "+err.Error())
 		return
@@ -173,17 +189,25 @@ func (h *H) APIDelegationIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 // delegationCredSchema builds the custom-schema descriptor for one delegated-
-// access credential type. Std is fixed to w3c_vcdm_2 (T1).
-func delegationCredSchema(typeName, issuerDpg string, fields []string) vctypes.Schema {
+// access credential type at the given data-model tier (std). The ID is suffixed
+// per std so each data model gets its OWN catalog config (no cross-model collision).
+func delegationCredSchema(typeName, issuerDpg string, fields []string, std string) vctypes.Schema {
 	fs := make([]vctypes.FieldSpec, 0, len(fields))
 	for _, f := range fields {
 		fs = append(fs, vctypes.FieldSpec{Name: f, Datatype: "string"})
 	}
+	id := "da-" + strings.ToLower(typeName)
+	switch {
+	case strings.Contains(std, "sd_jwt"):
+		id += "-sdjwt"
+	case std == "w3c_vcdm_1":
+		id += "-v1"
+	}
 	return vctypes.Schema{
-		ID:              "da-" + strings.ToLower(typeName),
+		ID:              id,
 		Name:            typeName,
 		Desc:            "Delegated-access " + typeName,
-		Std:             "w3c_vcdm_2",
+		Std:             std,
 		DPGs:            []string{issuerDpg},
 		Custom:          true,
 		AdditionalTypes: []string{typeName},
@@ -240,9 +264,14 @@ func (h *H) APIDelegationVerifyRequest(w http.ResponseWriter, r *http.Request) {
 	subjType := orDefault(req.SubjectType, "BirthCertificate")
 	delegType := orDefault(req.DelegationType, "DelegatedAccessCredential")
 	wf := orDefault(req.WireFormat, "jwt_vc_json")
+	delegFields := []string{"onBehalfOf"}
+	if strings.Contains(wf, "sd-jwt") {
+		// the capability claim must be disclosed for the evaluator to read it
+		delegFields = []string{"onBehalfOf", "delegation"}
+	}
 	templates := []vctypes.OID4VPTemplate{
 		delegationVerifyTemplate(subjType, []string{"subjectRef"}, wf),
-		delegationVerifyTemplate(delegType, []string{"onBehalfOf"}, wf),
+		delegationVerifyTemplate(delegType, delegFields, wf),
 	}
 	res, err := h.Adapter.RequestPresentation(ctx, backend.PresentationRequest{
 		VerifierDpg: verifierDpg,
@@ -294,12 +323,21 @@ func (h *H) APIDelegationVerifyResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func delegationVerifyTemplate(typeName string, fields []string, wireFormat string) vctypes.OID4VPTemplate {
-	return vctypes.OID4VPTemplate{
+	tpl := vctypes.OID4VPTemplate{
 		Title:          typeName,
 		CredentialType: typeName,
-		Format:         "w3c_vcdm_2",
 		WireFormat:     wireFormat,
 		Fields:         fields,
 		Disclosure:     "full",
 	}
+	if strings.Contains(wireFormat, "sd-jwt") {
+		// SD-JWT: match by vct, selectively disclose the requested claims (which
+		// must include everything the evaluator reads — e.g. `delegation`).
+		tpl.Format = "sd_jwt_vc (IETF)"
+		tpl.Vct = typeName
+		tpl.Disclosure = "selective"
+	} else {
+		tpl.Format = "w3c_vcdm_2"
+	}
+	return tpl
 }
