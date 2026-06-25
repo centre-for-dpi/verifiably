@@ -697,9 +697,16 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		ir.CredentialData = cd
 		ir.SelectiveDisclosure = buildSelectiveDisclosureMap(req.SubjectData)
 	default:
-		cd, err := buildCredentialData(req.Schema, req.SubjectData, req.StatusList)
-		if err != nil {
-			return backend.IssueToWalletResult{}, err
+		// A caller may supply a complete JSON-LD body (e.g. a delegation
+		// credential with nested onBehalfOf + termsOfUse) that the flat
+		// SubjectData map cannot express; use it verbatim when present.
+		cd := req.CredentialData
+		if len(cd) == 0 {
+			built, err := buildCredentialData(req.Schema, req.SubjectData, req.StatusList)
+			if err != nil {
+				return backend.IssueToWalletResult{}, err
+			}
+			cd = built
 		}
 		ir.CredentialData = cd
 	}

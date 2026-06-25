@@ -18,6 +18,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -163,6 +164,14 @@ type IssueRequest struct {
 	// is unrevocable end-to-end and the issuance log marks the entry without
 	// a StatusListEntry pointer.
 	StatusList *StatusListBinding
+
+	// CredentialData, when non-empty, is used VERBATIM as the JSON-LD credential
+	// body instead of being built from the flat SubjectData map. This lets
+	// callers issue credentials whose shape SubjectData cannot express — e.g. a
+	// delegation credential with a nested credentialSubject.onBehalfOf and a
+	// termsOfUse capability (ADR §6). Honored only on the JSON-LD (ldp_vc /
+	// jwt_vc_json) issuance path; ignored for SD-JWT and mdoc.
+	CredentialData json.RawMessage
 }
 
 // StatusListBinding is the (which list, which bit, where to fetch) pointer
