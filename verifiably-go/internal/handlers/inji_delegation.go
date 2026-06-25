@@ -253,6 +253,7 @@ func normalizeClaimedInjiCreds(raws []string) []backend.NormalizedCredential {
 }
 
 type apiInjiPreAuthIssueRequest struct {
+	Dpg            string   `json:"dpg,omitempty"` // issuer DPG; default "Inji Certify · Pre-Auth" (also "CREDEBL")
 	SubjectType    string   `json:"subjectType,omitempty"`
 	DelegationType string   `json:"delegationType,omitempty"`
 	SubjectRef     string   `json:"subjectRef,omitempty"`
@@ -282,7 +283,7 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		return
 	}
 	ctx := apiCtx(r, keyName)
-	const dpg = "Inji Certify · Pre-Auth"
+	dpg := orDefault(req.Dpg, "Inji Certify · Pre-Auth")
 	subjType := orDefault(req.SubjectType, "BirthCertificate")
 	delegType := orDefault(req.DelegationType, "DelegationPre")
 	subjectRef := orDefault(req.SubjectRef, "urn:person:preauth")
@@ -294,11 +295,24 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 
 	subjSchema := injiPreAuthSchema(subjType, dpg, []string{"subjectRef", "givenName"})
 	delegSchema := injiPreAuthSchema(delegType, dpg, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx"})
-	if err := h.Adapter.SaveCustomSchema(ctx, subjSchema); err != nil {
+	// SaveCustomSchema is not idempotent on CREDEBL (409 when the template name
+	// already exists); tolerate that — IssueToWallet's resolveTemplateID then
+	// finds the existing template by name+vct.
+	saveTolerant := func(s vctypes.Schema) error {
+		if err := h.Adapter.SaveCustomSchema(ctx, s); err != nil {
+			e := strings.ToLower(err.Error())
+			if strings.Contains(e, "already exist") || strings.Contains(e, "409") || strings.Contains(e, "conflict") {
+				return nil
+			}
+			return err
+		}
+		return nil
+	}
+	if err := saveTolerant(subjSchema); err != nil {
 		apiError(w, http.StatusBadGateway, "register subject schema: "+err.Error())
 		return
 	}
-	if err := h.Adapter.SaveCustomSchema(ctx, delegSchema); err != nil {
+	if err := saveTolerant(delegSchema); err != nil {
 		apiError(w, http.StatusBadGateway, "register delegation schema: "+err.Error())
 		return
 	}
@@ -340,6 +354,11 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		"subject":    map[string]any{"offerUri": subjRes.OfferURI, "type": subjType},
 		"delegation": map[string]any{"offerUri": delegRes.OfferURI, "type": delegType},
 	}
+	// CREDEBL pre-auth offers carry a tx_code (PIN) the holder must echo at the
+	// token step; surface it so the claimer can complete the flow.
+	if pin := orDefault(subjRes.PIN, delegRes.PIN); pin != "" {
+		out["pin"] = pin
+	}
 	if binding != nil {
 		out["statusListIndex"] = binding.Index
 		out["statusListCredential"] = binding.PublishURL
@@ -352,8 +371,14 @@ func injiPreAuthSchema(typeName, dpg string, fields []string) vctypes.Schema {
 	for _, f := range fields {
 		fs = append(fs, vctypes.FieldSpec{Name: f, Datatype: "string"})
 	}
+	// CREDEBL's IssueToWallet only maps a schema to its template UUID when the ID
+	// is prefixed "custom-" (resolveTemplateID); inji keys its config off the raw ID.
+	id := "dapre-" + strings.ToLower(typeName)
+	if dpg == "CREDEBL" {
+		id = "custom-da-" + strings.ToLower(typeName)
+	}
 	return vctypes.Schema{
-		ID:              "dapre-" + strings.ToLower(typeName),
+		ID:              id,
 		Name:            typeName,
 		Desc:            "Delegated-access " + typeName,
 		Std:             "sd_jwt_vc (IETF)",
@@ -438,7 +463,7 @@ func injiGetJSON(ctx context.Context, u string, out any) error {
 // kid+jwk proof), and fetches the credential. Returns the compact SD-JWT. This
 // is the holder verifiably's own software provides for the inji PRE-AUTH flow,
 // so no external mobile wallet is required.
-func (h *H) injiPreAuthClaim(ctx context.Context, offerURI string) (string, error) {
+func (h *H) injiPreAuthClaim(ctx context.Context, offerURI, txCode string) (string, error) {
 	ouri := strings.TrimSpace(offerURI)
 	if u, err := url.Parse(ouri); err == nil {
 		if c := u.Query().Get("credential_offer_uri"); c != "" {
@@ -482,6 +507,9 @@ func (h *H) injiPreAuthClaim(ctx context.Context, offerURI string) (string, erro
 	form := url.Values{}
 	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:pre-authorized_code")
 	form.Set("pre-authorized_code", preAuth)
+	if txCode != "" {
+		form.Set("tx_code", txCode) // CREDEBL pre-auth requires the PIN as tx_code
+	}
 	var tok struct {
 		AccessToken string `json:"access_token"`
 		CNonce      string `json:"c_nonce"`
@@ -559,6 +587,7 @@ func (h *H) APIInjiPreAuthDelegationClaim(w http.ResponseWriter, r *http.Request
 	}
 	var req struct {
 		Offers []string `json:"offers"`
+		TxCode string   `json:"txCode,omitempty"` // PIN for pre-auth flows that require it (CREDEBL)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -567,7 +596,7 @@ func (h *H) APIInjiPreAuthDelegationClaim(w http.ResponseWriter, r *http.Request
 	ctx := apiCtx(r, keyName)
 	creds := make([]string, 0, len(req.Offers))
 	for i, o := range req.Offers {
-		vc, err := h.injiPreAuthClaim(ctx, o)
+		vc, err := h.injiPreAuthClaim(ctx, o, req.TxCode)
 		if err != nil {
 			apiError(w, http.StatusBadGateway, fmt.Sprintf("claim offer %d: %s", i, err.Error()))
 			return

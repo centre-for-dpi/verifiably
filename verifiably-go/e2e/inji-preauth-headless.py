@@ -6,6 +6,9 @@ import json, os, time, urllib.request, urllib.error
 
 BASE = os.environ.get("BASE", "https://verifiably.in-labs.cdpi.dev")
 KEY = os.environ["API_KEY"]
+DPG = os.environ.get("DPG", "Inji Certify · Pre-Auth")
+SUBJ_TYPE = os.environ.get("SUBJ_TYPE", "BirthCertificate")
+DELEG_TYPE = os.environ.get("DELEG_TYPE", "DelegationPre")
 NS = "urn:person:preauth-" + str(int(time.time()))
 
 def api(method, path, body):
@@ -23,14 +26,16 @@ def fail(m):
 
 # 1. issue the pre-auth pair
 st, iss = api("POST", "/api/v1/delegation/inji/preauth/issue",
-    {"subjectRef": NS, "givenName": "Maria", "role": "Mother",
+    {"dpg": DPG, "subjectType": SUBJ_TYPE, "delegationType": DELEG_TYPE,
+     "subjectRef": NS, "givenName": "Maria", "role": "Mother",
      "allowedAction": ["present", "consent:disclose"], "validUntil": "2033-03-10T00:00:00Z"})
 if st != 201: fail(f"issue {st} {iss}")
 o1, o2, idx = iss["subject"]["offerUri"], iss["delegation"]["offerUri"], iss["statusListIndex"]
-print(f"• issued pre-auth pair; statusIdx={idx}")
+pin = iss.get("pin", "")
+print(f"• issued pre-auth pair; statusIdx={idx}{' pin='+pin if pin else ''}")
 
 # 2. headless claim both offers (verifiably's conformant-proof holder)
-st, cl = api("POST", "/api/v1/delegation/inji/preauth/claim", {"offers": [o1, o2]})
+st, cl = api("POST", "/api/v1/delegation/inji/preauth/claim", {"offers": [o1, o2], "txCode": pin})
 if st != 200: fail(f"claim {st} {cl}")
 creds = cl["credentials"]
 print(f"• claimed {len(creds)} creds headlessly (sd-jwt lengths: {[len(c) for c in creds]})")
