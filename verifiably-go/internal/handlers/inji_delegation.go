@@ -7,7 +7,136 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/vp"
+	"github.com/verifiably/verifiably-go/vctypes"
 )
+
+type apiInjiDelegationSetupRequest struct {
+	IndividualID   string   `json:"individualId"`             // the eSignet mock-identity id (login UIN)
+	PIN            string   `json:"pin"`                      // the holder's eSignet PIN
+	SubjectType    string   `json:"subjectType,omitempty"`    // default BirthCertificate
+	DelegationType string   `json:"delegationType,omitempty"` // default DelegatedAccessCredential
+	SubjectRef     string   `json:"subjectRef,omitempty"`     // linkage anchor; default = individualId
+	GivenName      string   `json:"givenName,omitempty"`
+	Role           string   `json:"role,omitempty"`
+	AllowedAction  []string `json:"allowedAction,omitempty"`
+	ValidUntil     string   `json:"validUntil,omitempty"`
+}
+
+// APIInjiDelegationSetup prepares the inji AUTH-CODE delegation flow: it creates
+// the holder's eSignet mock-identity, ensures the two auth-code credential_configs
+// exist (subject + delegation, SD-JWT, with a flat `delegation` field), and
+// provisions the holder's vc_subject with the linkage anchor + the capability.
+// The holder then claims both via eSignet at /holder/wallet/inji and verifies at
+// /holder/wallet/inji/verify-delegation.
+//
+// NB: creating a config restarts inji-certify + eSignet (one-time; idempotent —
+// skipped when the config already exists).
+//
+// POST /api/v1/delegation/inji/setup
+func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
+	keyName, ok := h.requireAPIAuth(w, r)
+	if !ok {
+		return
+	}
+	var req apiInjiDelegationSetupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.IndividualID) == "" || strings.TrimSpace(req.PIN) == "" {
+		apiError(w, http.StatusBadRequest, "individualId and pin are required")
+		return
+	}
+	ctx := apiCtx(r, keyName)
+	subjType := orDefault(req.SubjectType, "BirthCertificate")
+	delegType := orDefault(req.DelegationType, "DelegatedAccessCredential")
+	subjectRef := orDefault(req.SubjectRef, req.IndividualID)
+	given := orDefault(req.GivenName, "Maria")
+
+	// 1. eSignet mock-identity (so the holder can PIN-login).
+	if err := createMockIdentity(ctx, req.IndividualID, req.PIN, given+" Holder", given, "Holder",
+		"Female", "2015/03/10", req.IndividualID+"@example.com", "+10000000000"); err != nil {
+		// already-exists is fine; surface other errors
+		if !strings.Contains(strings.ToLower(err.Error()), "exist") && !strings.Contains(err.Error(), "duplicate") {
+			apiError(w, http.StatusBadGateway, "create mock identity: "+err.Error())
+			return
+		}
+	}
+
+	// 2. Ensure the two auth-code configs exist (idempotent; create restarts certify+eSignet).
+	existing := map[string]bool{}
+	if creds, err := h.Subjects.ListCredentials(ctx); err == nil {
+		for _, c := range creds {
+			existing[c["key"]] = true
+		}
+	}
+	for _, spec := range []struct {
+		typeName string
+		fields   []string
+	}{
+		{subjType, []string{"subjectRef", "givenName"}},
+		{delegType, []string{"onBehalfOf", "role", "allowedAction", "validUntil"}},
+	} {
+		if existing[spec.typeName] {
+			continue
+		}
+		if _, err := h.applyAuthcodeSchema(ctx, injiAuthcodeSchema(spec.typeName, spec.fields), "api:"+keyName); err != nil {
+			apiError(w, http.StatusBadGateway, "create config "+spec.typeName+": "+err.Error())
+			return
+		}
+	}
+
+	// 3. Provision the holder's vc_subject (one row; each config's view reads its
+	//    fields). The capability is carried as FLAT claims — Certify's SD-JWT
+	//    template cannot nest a JSON object, so onBehalfOf + allowedAction (+
+	//    validUntil) are top-level claims the evaluator's flat path reads.
+	actions := req.AllowedAction
+	if len(actions) == 0 {
+		actions = []string{"present"}
+	}
+	claims := map[string]string{
+		"subjectRef":    subjectRef,
+		"givenName":     given,
+		"onBehalfOf":    subjectRef,
+		"role":          orDefault(req.Role, "Mother"),
+		"allowedAction": strings.Join(actions, ","),
+	}
+	if req.ValidUntil != "" {
+		claims["validUntil"] = req.ValidUntil
+	}
+	subjectID := esignetSubjectID(req.IndividualID, injiAuthcodeClientID())
+	if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {
+		apiError(w, http.StatusBadGateway, "provision vc_subject: "+err.Error())
+		return
+	}
+
+	apiJSON(w, http.StatusCreated, map[string]any{
+		"individualId":        req.IndividualID,
+		"subjectCredential":   subjType,
+		"delegationCredential": delegType,
+		"claimURLs": map[string]string{
+			"subject":    "/holder/wallet/inji/start?cred=" + subjType,
+			"delegation": "/holder/wallet/inji/start?cred=" + delegType,
+		},
+	})
+}
+
+// injiAuthcodeSchema builds a vctypes.Schema for an inji auth-code SD-JWT config.
+func injiAuthcodeSchema(typeName string, fields []string) vctypes.Schema {
+	fs := make([]vctypes.FieldSpec, 0, len(fields))
+	for _, f := range fields {
+		fs = append(fs, vctypes.FieldSpec{Name: f, Datatype: "string"})
+	}
+	return vctypes.Schema{
+		ID:              typeName,
+		Name:            typeName,
+		Desc:            "Delegated-access " + typeName,
+		Std:             "sd_jwt_vc (IETF)",
+		Custom:          true,
+		AdditionalTypes: []string{typeName},
+		FieldsSpec:      fs,
+	}
+}
 
 // VerifyInjiDelegation runs the delegated-access evaluator over the holder's
 // in-app Inji-claimed credentials (the eSignet auth-code flow). The in-app Inji

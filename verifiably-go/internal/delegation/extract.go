@@ -80,7 +80,49 @@ func extractCapability(c backend.NormalizedCredential) (Capability, bool) {
 		_, cap.HasChain = m["parentCapability"]
 		return cap, true
 	}
+	// SD-JWT flat claims (e.g. Inji Certify, whose flat credential template cannot
+	// carry a nested `delegation` object): the capability is expressed as top-level
+	// claims — onBehalfOf + allowedAction (+ validUntil). Recognised by allowedAction.
+	if aa := flatClaim(c, "allowedAction", "allowed_action"); aa != "" {
+		cap := Capability{
+			Controller:    c.Issuer,
+			OnBehalfOf:    firstNonEmpty(flatClaim(c, "onBehalfOf", "on_behalf_of"), refID(c.Raw["credentialSubject"], "onBehalfOf")),
+			Delegate:      c.SubjectID,
+			AllowedAction: splitActions(aa),
+			ValidUntil:    flatClaim(c, "validUntil", "valid_until"),
+		}
+		return cap, true
+	}
 	return Capability{}, false
+}
+
+// flatClaim reads a top-level string claim from the decoded payload or the
+// normalized claims map (SD-JWT flat claims may surface in either).
+func flatClaim(c backend.NormalizedCredential, keys ...string) string {
+	for _, k := range keys {
+		if v := mapStr(c.Raw, k); v != "" {
+			return v
+		}
+		if c.Claims != nil {
+			if v := c.Claims[k]; v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
+// splitActions splits a comma/space-separated action list (the flat-claim
+// encoding of allowedAction) into a slice.
+func splitActions(s string) []string {
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' })
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // subjectAnchor returns the stable, non-pairwise linkage anchor of an identity

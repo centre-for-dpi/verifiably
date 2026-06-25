@@ -126,11 +126,18 @@ func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder 
 	if delegate == "" {
 		delegate = cap.Delegate
 	}
-	if delegate == "" {
+	// A confirmed holder binding establishes the delegate even when the credential
+	// names none explicitly: in the holder-bound model the authorised delegate is
+	// whoever proved possession. Present-time flows (e.g. walt.id) surface the
+	// presenter key; the in-app pull model (e.g. Inji auth-code) proves possession
+	// at CLAIM time via the OID4VCI holder proof, so a confirmed-but-anonymous
+	// binding satisfies invocation. Only fail when no delegate is named AND the
+	// host did not confirm a holder.
+	if delegate == "" && (holder == nil || !holder.Confirmed) {
 		res.Reason = "delegation credential names no delegate"
 		return res
 	}
-	if holder != nil && holder.Confirmed {
+	if holder != nil && holder.Confirmed && delegate != "" {
 		if hid := holderRef(holder); hid != "" && !sameRef(hid, deleg.SubjectID) && !sameRef(hid, cap.Delegate) {
 			res.Reason = fmt.Sprintf("invocation failed: presenter %q is neither the delegation subject nor the named delegate", hid)
 			return res
