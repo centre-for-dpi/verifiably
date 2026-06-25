@@ -359,7 +359,7 @@ func (h *H) PublicVerifyResult(w http.ResponseWriter, r *http.Request) {
 
 	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
-	h.attachDelegationVerdict(r, &res)
+	h.attachDelegationVerdict(r, &res) // evaluate delegated-access when a delegation pair was presented
 
 	statusListSource := h.checkStatusListAvailability(r, res.Issuer)
 	if statusListSource == "" && res.CheckedRevocation {
@@ -413,6 +413,7 @@ func (h *H) PublicVerifyResult(w http.ResponseWriter, r *http.Request) {
 		"DisclosedFields":   res.DisclosedFields,
 		"StatusListSource":  statusListSource,
 		"VerifiedAt":        time.Now().UTC().Format("02/01/2006 15:04 UTC"),
+		"Delegation":        res.Delegation,
 	})
 }
 

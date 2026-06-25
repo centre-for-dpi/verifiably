@@ -576,6 +576,7 @@ func main() {
 		mux.HandleFunc("POST /issuer/schema/build/preview", h.SchemaPreview)
 		mux.HandleFunc("POST /issuer/schema/build/add-field", h.AddSchemaField)
 		mux.HandleFunc("POST /issuer/schema/build/remove-field", h.RemoveSchemaField)
+		mux.HandleFunc("POST /issuer/schema/build/delegation", h.BuildDelegationToggle)
 		mux.HandleFunc("POST /issuer/schema/build/save", h.SaveSchema)
 		mux.HandleFunc("GET /issuer/mode", h.ShowIssuanceMode)
 		mux.HandleFunc("POST /issuer/mode", h.SetIssuanceMode)

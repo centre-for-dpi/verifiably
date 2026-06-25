@@ -153,8 +153,9 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Bad form: "+err.Error())
 		return
 	}
+	delegation := r.FormValue("delegation") == "on"
 	tpl, err := h.assembleCustomTemplate(r, sess)
-	if err != nil {
+	if err != nil && !delegation {
 		h.errorToast(w, r, err.Error())
 		return
 	}
@@ -174,6 +175,16 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		Template:    &tpl,
 		Policies:    policies,
 		WebhookURL:  strings.TrimSpace(r.FormValue("webhook_url")),
+	}
+	if delegation {
+		// Request the delegated-access PAIR (subject identity + delegation) in one
+		// presentation, so the evaluator can check linkage/invocation/capability/
+		// revocation and the result renders the delegation-verdict card.
+		subj := delegationVerifyTemplate(orDefault(r.FormValue("subject_type"), "BirthCertificate"), []string{"subjectRef"}, "jwt_vc_json")
+		deleg := delegationVerifyTemplate(orDefault(r.FormValue("delegation_type"), "DelegatedAccessCredential"), []string{"onBehalfOf"}, "jwt_vc_json")
+		req.Template = nil
+		req.Templates = []vctypes.OID4VPTemplate{subj, deleg}
+		sess.CustomOID4VPTemplate = &deleg
 	}
 	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(r.Context(), req)
@@ -424,6 +435,7 @@ func (h *H) FetchResponse(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.attachIssuerDisplay(r, &res)
+	h.attachDelegationVerdict(r, &res) // evaluate delegated-access when a delegation pair was presented
 	// Terminal state → also emit the OOB button swap so the HTMX poller
 	// on #verify-poll-btn stops firing every 3s. Pending stays as a
 	// single-fragment response so polling continues.
@@ -442,7 +454,6 @@ func (h *H) FetchResponse(w http.ResponseWriter, r *http.Request) {
 	}
 	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", completedSchemaLabel, "status", verifyStatus)
 	h.attachTrustStatus(r, &res)
-	h.attachDelegationVerdict(r, &res)
 
 	// Write verification event — non-blocking; never delays the HTTP response.
 	if h.VerificationLog != nil {
@@ -532,7 +543,6 @@ func (h *H) VerifyDirect(w http.ResponseWriter, r *http.Request) {
 	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", directStatus)
 	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
-	h.attachDelegationVerdict(r, &res)
 	h.renderFragment(w, r, "fragment_verify_result", res)
 }
 

@@ -70,6 +70,16 @@
         </div>
       </div>
 
+      <div class="field" style="margin-bottom:1rem;border:1px solid var(--line);border-radius:4px;padding:0.7rem 0.9rem;background:var(--bg-soft,rgba(0,0,0,0.025))">
+        <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-weight:600;margin:0">
+          <input type="checkbox" name="delegation" value="on">
+          Verify as a delegated-access pair
+        </label>
+        <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
+          Requests the subject identity + delegation credentials together and evaluates linkage, invocation, capability and revocation — the outcome appears below as a delegated-access card.
+        </p>
+      </div>
+
       {{/* Card grid + filter + field picker. Swapped whole on card
            selection / filter / search by /verifier/verify/build so the
            active-chip highlighting and hidden schema_id stay coherent
@@ -395,6 +405,7 @@
     </div>
   </div>
 </div>
+{{template "_delegation_card" .}}
 {{end}}
 {{end}}
 

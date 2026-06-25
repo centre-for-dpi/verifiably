@@ -299,6 +299,45 @@ type builderData struct {
 	Std               string
 	Fields            []vctypes.FieldSpec
 	PreviewJSON       string
+	Delegation        bool // delegated-access credential (carries a capability)
+}
+
+// applyDelegationPreset configures the builder for a delegated-access credential:
+// SD-JWT so the capability is carried as flat, evaluator-readable top-level claims,
+// the DelegatedAccessCredential type, and the capability fields (onBehalfOf +
+// allowedAction the verifier's evaluator keys off; role + validUntil for display/caveat).
+func applyDelegationPreset(d *builderData) {
+	d.Std = "sd_jwt_vc (IETF)"
+	if strings.TrimSpace(d.ExtraType) == "" {
+		d.ExtraType = "DelegatedAccessCredential"
+	}
+	if strings.TrimSpace(d.Name) == "" {
+		d.Name = "Delegated Access Credential"
+	}
+	if strings.TrimSpace(d.Desc) == "" {
+		d.Desc = "Delegated-access capability — the holder acts onBehalfOf a subject"
+	}
+	d.Fields = []vctypes.FieldSpec{
+		{Name: "onBehalfOf", Datatype: "string", Required: true},
+		{Name: "role", Datatype: "string"},
+		{Name: "allowedAction", Datatype: "string", Required: true},
+		{Name: "validUntil", Datatype: "string"},
+	}
+}
+
+// BuildDelegationToggle re-renders the builder form when the delegated-access
+// toggle changes — applying the capability preset when it is turned on.
+//
+// POST /issuer/schema/build/delegation
+func (h *H) BuildDelegationToggle(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	data := extractBuilderData(r)
+	if data.Delegation {
+		applyDelegationPreset(&data)
+	}
+	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
+	h.renderFragment(w, r, "fragment_schema_builder_form", data)
 }
 
 // SchemaPreview is called on every keystroke in the builder — returns the updated JSON preview
@@ -425,6 +464,7 @@ func extractBuilderData(r *http.Request) builderData {
 		IssuerDisplayName: r.FormValue("issuer_display_name"),
 		ExtraType:         r.FormValue("extra_type"),
 		Std:               canonicalStd(r.FormValue("std")),
+		Delegation:        r.FormValue("delegation") == "on",
 	}
 	if d.Std == "" {
 		d.Std = "w3c_vcdm_2"

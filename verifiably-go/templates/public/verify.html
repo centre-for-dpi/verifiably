@@ -196,6 +196,24 @@
 {{end}}
 
 
+{{define "_delegation_card"}}
+{{with .Delegation}}{{if .Evaluated}}
+<div class="verify-badge {{if .Authorized}}ok{{else}}err{{end}}" style="margin-top:0.75rem">
+  <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem">
+    <span style="font-size:1.2rem">{{if .Authorized}}🔑{{else}}🚫{{end}}</span>
+    <strong style="font-size:0.92rem;color:{{if .Authorized}}var(--ok,#16a34a){{else}}var(--err,#dc2626){{end}}">DELEGATED ACCESS — {{if .Authorized}}AUTHORISED{{else}}DENIED{{end}}</strong>
+  </div>
+  <p style="margin:0 0 0.6rem;font-size:0.8rem;color:var(--ink-soft)">{{.Reason}}</p>
+  <table style="width:100%;font-size:0.78rem;border-collapse:collapse">
+    <tr><td style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap">Linkage</td><td>{{if .Linkage}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">delegation is about the presented subject</span></td></tr>
+    <tr><td style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap">Invocation</td><td>{{if .Invocation}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">presenter is the bound delegate</span></td></tr>
+    <tr><td style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap">Capability</td><td>{{if .Capability}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">action permitted, within validity</span></td></tr>
+    <tr><td style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap">Not revoked</td><td>{{if .NotRevoked}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">independent delegation status list</span></td></tr>
+  </table>
+</div>
+{{end}}{{end}}
+{{end}}
+
 {{define "fragment_public_result"}}
 {{if .Pending}}
 <div id="result-area"
@@ -262,6 +280,7 @@
     {{end}}
     {{if .VerifiedAt}}<p style="margin:0.75rem 0 0;font-size:0.75rem;color:var(--ink-mute)">Verified on {{.VerifiedAt}}</p>{{end}}
   </div>
+  {{template "_delegation_card" .}}
   <div style="margin-top:0.75rem">
     <a href="/verify" class="btn ghost small">Verify another document</a>
   </div>
@@ -285,6 +304,7 @@
     </p>
     {{end}}
   </div>
+  {{template "_delegation_card" .}}
   <div style="margin-top:0.75rem">
     <a href="/verify" class="btn ghost small">Try again</a>
   </div>
