@@ -350,14 +350,11 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Each CREDEBL pre-auth offer carries its OWN tx_code (PIN) the holder must
+	// echo at the token step; surface them per-offer.
 	out := map[string]any{
-		"subject":    map[string]any{"offerUri": subjRes.OfferURI, "type": subjType},
-		"delegation": map[string]any{"offerUri": delegRes.OfferURI, "type": delegType},
-	}
-	// CREDEBL pre-auth offers carry a tx_code (PIN) the holder must echo at the
-	// token step; surface it so the claimer can complete the flow.
-	if pin := orDefault(subjRes.PIN, delegRes.PIN); pin != "" {
-		out["pin"] = pin
+		"subject":    map[string]any{"offerUri": subjRes.OfferURI, "type": subjType, "pin": subjRes.PIN},
+		"delegation": map[string]any{"offerUri": delegRes.OfferURI, "type": delegType, "pin": delegRes.PIN},
 	}
 	if binding != nil {
 		out["statusListIndex"] = binding.Index
@@ -586,8 +583,9 @@ func (h *H) APIInjiPreAuthDelegationClaim(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req struct {
-		Offers []string `json:"offers"`
-		TxCode string   `json:"txCode,omitempty"` // PIN for pre-auth flows that require it (CREDEBL)
+		Offers  []string `json:"offers"`
+		TxCode  string   `json:"txCode,omitempty"`  // single PIN for all offers
+		TxCodes []string `json:"txCodes,omitempty"` // per-offer PINs (CREDEBL: each offer has its own)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -596,7 +594,11 @@ func (h *H) APIInjiPreAuthDelegationClaim(w http.ResponseWriter, r *http.Request
 	ctx := apiCtx(r, keyName)
 	creds := make([]string, 0, len(req.Offers))
 	for i, o := range req.Offers {
-		vc, err := h.injiPreAuthClaim(ctx, o, req.TxCode)
+		tc := req.TxCode
+		if i < len(req.TxCodes) && req.TxCodes[i] != "" {
+			tc = req.TxCodes[i]
+		}
+		vc, err := h.injiPreAuthClaim(ctx, o, tc)
 		if err != nil {
 			apiError(w, http.StatusBadGateway, fmt.Sprintf("claim offer %d: %s", i, err.Error()))
 			return

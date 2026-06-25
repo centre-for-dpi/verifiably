@@ -31,11 +31,11 @@ st, iss = api("POST", "/api/v1/delegation/inji/preauth/issue",
      "allowedAction": ["present", "consent:disclose"], "validUntil": "2033-03-10T00:00:00Z"})
 if st != 201: fail(f"issue {st} {iss}")
 o1, o2, idx = iss["subject"]["offerUri"], iss["delegation"]["offerUri"], iss["statusListIndex"]
-pin = iss.get("pin", "")
-print(f"• issued pre-auth pair; statusIdx={idx}{' pin='+pin if pin else ''}")
+p1, p2 = iss["subject"].get("pin", ""), iss["delegation"].get("pin", "")
+print(f"• issued pre-auth pair; statusIdx={idx}{' pins='+p1+'/'+p2 if p1 or p2 else ''}")
 
 # 2. headless claim both offers (verifiably's conformant-proof holder)
-st, cl = api("POST", "/api/v1/delegation/inji/preauth/claim", {"offers": [o1, o2], "txCode": pin})
+st, cl = api("POST", "/api/v1/delegation/inji/preauth/claim", {"offers": [o1, o2], "txCodes": [p1, p2]})
 if st != 200: fail(f"claim {st} {cl}")
 creds = cl["credentials"]
 print(f"• claimed {len(creds)} creds headlessly (sd-jwt lengths: {[len(c) for c in creds]})")
