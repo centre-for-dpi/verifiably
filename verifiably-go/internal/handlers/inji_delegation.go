@@ -21,6 +21,7 @@ import (
 type apiInjiDelegationSetupRequest struct {
 	IndividualID   string   `json:"individualId"`             // the eSignet mock-identity id (login UIN)
 	PIN            string   `json:"pin"`                      // the holder's eSignet PIN
+	Std            string   `json:"std,omitempty"`            // "sd_jwt_vc (IETF)" (default) | "w3c_vcdm_2" (ldp_vc)
 	SubjectType    string   `json:"subjectType,omitempty"`    // default BirthCertificate
 	DelegationType string   `json:"delegationType,omitempty"` // default DelegatedAccessCredential
 	SubjectRef     string   `json:"subjectRef,omitempty"`     // linkage anchor; default = individualId
@@ -56,6 +57,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := apiCtx(r, keyName)
+	std := orDefault(req.Std, "sd_jwt_vc (IETF)")
 	subjType := orDefault(req.SubjectType, "BirthCertificate")
 	delegType := orDefault(req.DelegationType, "DelegatedAccessCredential")
 	subjectRef := orDefault(req.SubjectRef, req.IndividualID)
@@ -83,12 +85,12 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		fields   []string
 	}{
 		{subjType, []string{"subjectRef", "givenName"}},
-		{delegType, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx"}},
+		{delegType, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx", "statusType"}},
 	} {
 		if existing[spec.typeName] {
 			continue
 		}
-		if _, err := h.applyAuthcodeSchema(ctx, injiAuthcodeSchema(spec.typeName, spec.fields), "api:"+keyName); err != nil {
+		if _, err := h.applyAuthcodeSchema(ctx, injiAuthcodeSchema(spec.typeName, std, spec.fields), "api:"+keyName); err != nil {
 			apiError(w, http.StatusBadGateway, "create config "+spec.typeName+": "+err.Error())
 			return
 		}
@@ -96,7 +98,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 
 	// Allocate a per-holder IETF Token Status List slot so the delegation is
 	// revocable (uniform revocation — the evaluator's 4th check).
-	binding, err := h.allocateStatusListBinding(injiAuthcodeSchema(delegType, nil))
+	binding, err := h.allocateStatusListBinding(injiAuthcodeSchema(delegType, std, nil))
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
 		return
@@ -124,6 +126,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		// flat status claims (Certify's SD-JWT template cannot nest status.status_list)
 		claims["statusUri"] = binding.PublishURL
 		claims["statusIdx"] = strconv.Itoa(binding.Index)
+		claims["statusType"] = binding.Type // "bitstring" (w3c) | "token" (sd-jwt)
 	}
 	subjectID := esignetSubjectID(req.IndividualID, injiAuthcodeClientID())
 	if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {
@@ -143,6 +146,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	if binding != nil {
 		out["statusListIndex"] = binding.Index
 		out["statusListCredential"] = binding.PublishURL
+		out["statusType"] = binding.Type
 	}
 	apiJSON(w, http.StatusCreated, out)
 }
@@ -158,34 +162,43 @@ func (h *H) APIInjiDelegationRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Index int `json:"index"`
+		Index int    `json:"index"`
+		Type  string `json:"type,omitempty"` // "bitstring" (W3C VCDM) | "token" (SD-JWT, default)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	if h.TokenStore == nil {
-		apiError(w, http.StatusServiceUnavailable, "no token status store")
+	store := h.TokenStore
+	if strings.Contains(strings.ToLower(req.Type), "bitstring") {
+		store = h.BitstringStore
+	}
+	if store == nil {
+		apiError(w, http.StatusServiceUnavailable, "no status store for type "+req.Type)
 		return
 	}
-	if err := h.TokenStore.Revoke(req.Index); err != nil {
+	if err := store.Revoke(req.Index); err != nil {
 		apiError(w, http.StatusBadGateway, "revoke: "+err.Error())
 		return
 	}
 	apiJSON(w, http.StatusOK, map[string]any{"revoked": req.Index})
 }
 
-// injiAuthcodeSchema builds a vctypes.Schema for an inji auth-code SD-JWT config.
-func injiAuthcodeSchema(typeName string, fields []string) vctypes.Schema {
+// injiAuthcodeSchema builds a vctypes.Schema for an inji auth-code config (SD-JWT
+// by default, or ldp_vc for w3c_vcdm_1/2).
+func injiAuthcodeSchema(typeName, std string, fields []string) vctypes.Schema {
 	fs := make([]vctypes.FieldSpec, 0, len(fields))
 	for _, f := range fields {
 		fs = append(fs, vctypes.FieldSpec{Name: f, Datatype: "string"})
+	}
+	if std == "" {
+		std = "sd_jwt_vc (IETF)"
 	}
 	return vctypes.Schema{
 		ID:              typeName,
 		Name:            typeName,
 		Desc:            "Delegated-access " + typeName,
-		Std:             "sd_jwt_vc (IETF)",
+		Std:             std,
 		Custom:          true,
 		AdditionalTypes: []string{typeName},
 		FieldsSpec:      fs,
@@ -254,6 +267,7 @@ func normalizeClaimedInjiCreds(raws []string) []backend.NormalizedCredential {
 
 type apiInjiPreAuthIssueRequest struct {
 	Dpg            string   `json:"dpg,omitempty"` // issuer DPG; default "Inji Certify · Pre-Auth" (also "CREDEBL")
+	Std            string   `json:"std,omitempty"` // "sd_jwt_vc (IETF)" (default) | "w3c_vcdm_2" (ldp_vc) | "w3c_vcdm_1"
 	SubjectType    string   `json:"subjectType,omitempty"`
 	DelegationType string   `json:"delegationType,omitempty"`
 	SubjectRef     string   `json:"subjectRef,omitempty"`
@@ -284,6 +298,7 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 	}
 	ctx := apiCtx(r, keyName)
 	dpg := orDefault(req.Dpg, "Inji Certify · Pre-Auth")
+	std := orDefault(req.Std, "sd_jwt_vc (IETF)")
 	subjType := orDefault(req.SubjectType, "BirthCertificate")
 	delegType := orDefault(req.DelegationType, "DelegationPre")
 	subjectRef := orDefault(req.SubjectRef, "urn:person:preauth")
@@ -293,8 +308,8 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		actions = []string{"present"}
 	}
 
-	subjSchema := injiPreAuthSchema(subjType, dpg, []string{"subjectRef", "givenName"})
-	delegSchema := injiPreAuthSchema(delegType, dpg, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx"})
+	subjSchema := injiPreAuthSchema(subjType, dpg, std, []string{"subjectRef", "givenName"})
+	delegSchema := injiPreAuthSchema(delegType, dpg, std, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx", "statusType"})
 	// SaveCustomSchema is not idempotent on CREDEBL (409 when the template name
 	// already exists); tolerate that — IssueToWallet's resolveTemplateID then
 	// finds the existing template by name+vct.
@@ -341,6 +356,7 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 	if binding != nil {
 		delegClaims["statusUri"] = binding.PublishURL
 		delegClaims["statusIdx"] = strconv.Itoa(binding.Index)
+		delegClaims["statusType"] = binding.Type // "bitstring" (w3c) | "token" (sd-jwt)
 	}
 	delegRes, err := h.Adapter.IssueToWallet(ctx, backend.IssueRequest{
 		IssuerDpg: dpg, Schema: delegSchema, Flow: "pre_auth", SubjectData: delegClaims,
@@ -359,14 +375,18 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 	if binding != nil {
 		out["statusListIndex"] = binding.Index
 		out["statusListCredential"] = binding.PublishURL
+		out["statusType"] = binding.Type
 	}
 	apiJSON(w, http.StatusCreated, out)
 }
 
-func injiPreAuthSchema(typeName, dpg string, fields []string) vctypes.Schema {
+func injiPreAuthSchema(typeName, dpg, std string, fields []string) vctypes.Schema {
 	fs := make([]vctypes.FieldSpec, 0, len(fields))
 	for _, f := range fields {
 		fs = append(fs, vctypes.FieldSpec{Name: f, Datatype: "string"})
+	}
+	if std == "" {
+		std = "sd_jwt_vc (IETF)"
 	}
 	// CREDEBL's IssueToWallet only maps a schema to its template UUID when the ID
 	// is prefixed "custom-" (resolveTemplateID); inji keys its config off the raw ID.
@@ -378,7 +398,7 @@ func injiPreAuthSchema(typeName, dpg string, fields []string) vctypes.Schema {
 		ID:              id,
 		Name:            typeName,
 		Desc:            "Delegated-access " + typeName,
-		Std:             "sd_jwt_vc (IETF)",
+		Std:             std,
 		DPGs:            []string{dpg},
 		Custom:          true,
 		AdditionalTypes: []string{typeName},
@@ -491,7 +511,9 @@ func (h *H) injiPreAuthClaim(ctx context.Context, offerURI, txCode string) (stri
 		CredentialEndpoint string `json:"credential_endpoint"`
 		TokenEndpoint      string `json:"token_endpoint"`
 		Configs            map[string]struct {
-			Vct string `json:"vct"`
+			Format               string          `json:"format"`
+			Vct                  string          `json:"vct"`
+			CredentialDefinition json.RawMessage `json:"credential_definition"`
 		} `json:"credential_configurations_supported"`
 	}
 	if err := injiGetJSON(ctx, issuer+"/.well-known/openid-credential-issuer", &meta); err != nil {
@@ -499,7 +521,8 @@ func (h *H) injiPreAuthClaim(ctx context.Context, offerURI, txCode string) (stri
 	}
 	tokenEP := orDefault(meta.TokenEndpoint, issuer+"/v1/certify/oauth/token")
 	credEP := orDefault(meta.CredentialEndpoint, issuer+"/v1/certify/issuance/credential")
-	vct := meta.Configs[configID].Vct
+	cfg := meta.Configs[configID]
+	format := orDefault(cfg.Format, "vc+sd-jwt")
 
 	form := url.Values{}
 	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:pre-authorized_code")
@@ -534,9 +557,17 @@ func (h *H) injiPreAuthClaim(ctx context.Context, offerURI, txCode string) (stri
 		if e != nil {
 			return 0, nil, e
 		}
-		reqMap := map[string]any{"format": "vc+sd-jwt", "proof": map[string]any{"proof_type": "jwt", "jwt": proof}}
-		if vct != "" {
-			reqMap["vct"] = vct
+		reqMap := map[string]any{"format": format, "proof": map[string]any{"proof_type": "jwt", "jwt": proof}}
+		switch {
+		case format == "vc+sd-jwt" || format == "dc+sd-jwt":
+			if cfg.Vct != "" {
+				reqMap["vct"] = cfg.Vct
+			}
+		case len(cfg.CredentialDefinition) > 0: // ldp_vc (W3C VCDM 1.1/2.0)
+			var cd map[string]any
+			if json.Unmarshal(cfg.CredentialDefinition, &cd) == nil {
+				reqMap["credential_definition"] = cd
+			}
 		}
 		rb, _ := json.Marshal(reqMap)
 		return postJSON(ctx, credEP, rb, "Bearer "+tok.AccessToken)

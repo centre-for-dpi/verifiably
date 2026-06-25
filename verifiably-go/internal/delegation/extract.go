@@ -146,6 +146,21 @@ func subjectAnchor(c backend.NormalizedCredential) string {
 // statusRef extracts a revocation pointer from a credential, supporting both the
 // JSON-LD BitstringStatusListEntry and the SD-JWT IETF Token Status List shapes.
 func statusRef(c backend.NormalizedCredential) (StatusRef, bool) {
+	// Verifiably-hosted FLAT status (statusUri + statusIdx top-level claims) is
+	// preferred when present: it is the delegation's OWN revocable, publicly
+	// dereferenceable status list. Checked FIRST because Inji's auth-code Certify
+	// also stamps a credentialStatus pointing at its INTERNAL status list
+	// (certify-nginx) that the verifier can't reach and we don't control.
+	if uri := flatClaim(c, "statusUri"); uri != "" {
+		idx, _ := strconv.ParseInt(strings.TrimSpace(flatClaim(c, "statusIdx")), 10, 64)
+		// statusType distinguishes the list kind so the checker decodes correctly:
+		// bitstring (W3C VCDM, ldp_vc) vs the IETF Token Status List (SD-JWT).
+		typ := "TokenStatusList"
+		if strings.Contains(strings.ToLower(flatClaim(c, "statusType")), "bitstring") {
+			typ = "BitstringStatusListEntry"
+		}
+		return StatusRef{Type: typ, URI: uri, Index: idx, Purpose: "revocation", Issuer: c.Issuer}, true
+	}
 	if cs, ok := asMap(c.Raw["credentialStatus"]); ok {
 		return StatusRef{
 			Type:    firstNonEmpty(mapStr(cs, "type"), "BitstringStatusListEntry"),
@@ -165,12 +180,6 @@ func statusRef(c backend.NormalizedCredential) (StatusRef, bool) {
 				Issuer:  c.Issuer,
 			}, true
 		}
-	}
-	// SD-JWT flat status claims (Inji: status.status_list cannot nest, so statusUri
-	// + statusIdx are top-level claims).
-	if uri := flatClaim(c, "statusUri"); uri != "" {
-		idx, _ := strconv.ParseInt(strings.TrimSpace(flatClaim(c, "statusIdx")), 10, 64)
-		return StatusRef{Type: "TokenStatusList", URI: uri, Index: idx, Purpose: "revocation", Issuer: c.Issuer}, true
 	}
 	return StatusRef{}, false
 }
