@@ -165,7 +165,7 @@ func (h *H) ShowIssuedCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := h.Sessions.MustGet(w, r)
 	data := h.issuedCredentialsBody(sess, r)
-	h.render(w, r, "issuer_credentials", h.pageData(sess, data))
+	h.render(w, r, "issuer_issued_log", h.pageData(sess, data))
 }
 
 // IssuedCredentialsSearch handles HTMX search/filter on the same data.
