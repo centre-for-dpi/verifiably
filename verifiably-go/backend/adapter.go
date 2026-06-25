@@ -431,4 +431,21 @@ type VerificationResult struct {
 	// "" = not checked (no status list cache wired, or no Hub role active).
 	StatusListSource   string
 	StatusListCachedAt *time.Time
+
+	// Credentials is a per-credential normalized view of the verified
+	// presentation, populated best-effort by the verifier adapters in addition
+	// to the flat single-valued fields above (which are kept for template
+	// back-compat). It carries every credential in the VP — not just the first —
+	// so cross-credential policies (e.g. delegated access) can attribute claims,
+	// issuers and status per credential. nil for single-credential/legacy paths.
+	Credentials []NormalizedCredential
+	// HolderBinding is the key the presenter proved control of, when the host
+	// surfaces it (VP holder DID, or the SD-JWT cnf thumbprint). nil when the
+	// host does not expose holder-binding detail.
+	HolderBinding *HolderBinding
+	// Delegation is the verdict of the delegated-access evaluator, set by the
+	// verifier handler after the host verdict. nil when delegation evaluation
+	// was not run; Evaluated=false when the presentation is not a delegation
+	// presentation. When Evaluated && !Authorized the handler downgrades Valid.
+	Delegation *DelegationResult
 }
