@@ -94,6 +94,15 @@ type Session struct {
 	VerifierSchemaFilter string
 	VerifierSchemaQuery  string
 
+	// Delegated-access pair mode on the verifier's custom-request section. When
+	// VerifierDelegation is on, the card grid is a two-step picker: the operator
+	// first picks the delegation credential (filtered to cards with an onBehalfOf
+	// field), then the identity credential it's about (the rest). The two picks
+	// drive the OID4VP pair request — no dropdown.
+	VerifierDelegation      bool
+	VerifierDelegSchemaID   string // step 1 pick: the delegation credential
+	VerifierSubjectSchemaID string // step 2 pick: the identity it's about
+
 	// Public verify portal state (hub mode). Separate from the verifier
 	// fields so the two flows never interfere on a node that runs both roles.
 	PublicVerifyFilter   string

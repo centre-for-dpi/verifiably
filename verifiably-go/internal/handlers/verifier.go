@@ -116,6 +116,19 @@ func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG
 		}
 		filtered = append(filtered, s)
 	}
+	// Delegated-access pair mode: filter the grid to the current step — step 1
+	// (no delegation picked yet) shows cards WITH an onBehalfOf field; step 2
+	// (delegation picked) shows the rest, the identity credentials.
+	if sess.VerifierDelegation {
+		wantOnBehalf := sess.VerifierDelegSchemaID == ""
+		step := filtered[:0]
+		for _, s := range filtered {
+			if schemaHasField(s, "onBehalfOf") == wantOnBehalf {
+				step = append(step, s)
+			}
+		}
+		filtered = step
+	}
 	stds := []string{"all"}
 	seen := map[string]bool{"all": true}
 	for _, s := range schemas {
@@ -137,9 +150,56 @@ func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG
 		"Stds":           stds,
 		"Filter":         sess.VerifierSchemaFilter,
 		"Query":          sess.VerifierSchemaQuery,
-		"CustomTemplate": sess.CustomOID4VPTemplate,
-		"CustomSchemaID": sess.CustomOID4VPSchemaID,
+		"CustomTemplate":  sess.CustomOID4VPTemplate,
+		"CustomSchemaID":  sess.CustomOID4VPSchemaID,
+		"Delegation":      sess.VerifierDelegation,
+		"DelegSchemaID":   sess.VerifierDelegSchemaID,
+		"SubjectSchemaID": sess.VerifierSubjectSchemaID,
+		"DelegName":       schemaNameByID(schemas, sess.VerifierDelegSchemaID),
+		"SubjectName":     schemaNameByID(schemas, sess.VerifierSubjectSchemaID),
 	}
+}
+
+// schemaHasField reports whether a schema declares a field of the given name —
+// used to tell delegation credentials (an onBehalfOf field) from identity ones.
+func schemaHasField(s vctypes.Schema, name string) bool {
+	for _, f := range s.FieldsSpec {
+		if f.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// schemaNameByID resolves a (variant) id back to its card name for display.
+func schemaNameByID(schemas []vctypes.Schema, id string) string {
+	if id == "" {
+		return ""
+	}
+	for _, s := range schemas {
+		if s.HasVariantID(id) {
+			return s.Name
+		}
+	}
+	return ""
+}
+
+// schemaStdByID resolves a (variant) id to its wire-format std (e.g. w3c_vcdm_2,
+// "sd_jwt_vc (IETF)") — used to decide which fields a delegation leg must request.
+func (h *H) schemaStdByID(ctx context.Context, id string) string {
+	if id == "" {
+		return ""
+	}
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, s := range schemas {
+		if s.HasVariantID(id) {
+			return s.ApplyVariant(id).Std
+		}
+	}
+	return ""
 }
 
 // GenerateRequest creates an OID4VP presentation request from the
@@ -187,22 +247,37 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		// DELEGATION; subject_schema_id is the identity. Falls back to the canonical
 		// BirthCertificate/DelegatedAccessCredential defaults when nothing is picked.
 		disc := orDefault(r.FormValue("disclosure"), "selective")
+		// The two-step card picker stores the pair on the session; fall back to the
+		// form (schema_id / subject_schema_id) then the canonical defaults. Request
+		// all fields of each so onBehalfOf (delegation) and subjectRef (identity)
+		// are disclosed for linkage.
+		delegID := orDefault(sess.VerifierDelegSchemaID, r.FormValue("schema_id"))
+		subjID := orDefault(sess.VerifierSubjectSchemaID, r.FormValue("subject_schema_id"))
 		var subj, deleg vctypes.OID4VPTemplate
-		if sid := r.FormValue("subject_schema_id"); sid != "" {
-			if subj, err = h.buildTemplateForSchema(r.Context(), sid, nil, disc); err != nil {
-				h.errorToast(w, r, "subject identity credential: "+err.Error())
-				return
+		if delegID != "" {
+			// A w3c delegation carries the capability in termsOfUse (always present,
+			// not a credentialSubject field), so request only onBehalfOf — requesting
+			// allowedAction/validUntil would make the PD filter look for fields that
+			// aren't in credentialSubject and never match. SD-JWT carries the
+			// capability as flat claims, so request them all (nil) to disclose them.
+			delegFields := []string{"onBehalfOf"}
+			if strings.Contains(h.schemaStdByID(r.Context(), delegID), "sd_jwt") {
+				delegFields = nil
 			}
-		} else {
-			subj = delegationVerifyTemplate(orDefault(r.FormValue("subject_type"), "BirthCertificate"), []string{"subjectRef"}, "jwt_vc_json")
-		}
-		if did := r.FormValue("schema_id"); did != "" {
-			if deleg, err = h.buildTemplateForSchema(r.Context(), did, r.Form["field_key"], disc); err != nil {
+			if deleg, err = h.buildTemplateForSchema(r.Context(), delegID, delegFields, disc); err != nil {
 				h.errorToast(w, r, "delegation credential: "+err.Error())
 				return
 			}
 		} else {
 			deleg = delegationVerifyTemplate(orDefault(r.FormValue("delegation_type"), "DelegatedAccessCredential"), []string{"onBehalfOf"}, "jwt_vc_json")
+		}
+		if subjID != "" {
+			if subj, err = h.buildTemplateForSchema(r.Context(), subjID, nil, disc); err != nil {
+				h.errorToast(w, r, "subject identity credential: "+err.Error())
+				return
+			}
+		} else {
+			subj = delegationVerifyTemplate(orDefault(r.FormValue("subject_type"), "BirthCertificate"), []string{"subjectRef"}, "jwt_vc_json")
 		}
 		req.Template = nil
 		req.Templates = []vctypes.OID4VPTemplate{subj, deleg}
@@ -361,6 +436,35 @@ func (h *H) BuildVerifierTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, hasQ := r.Form["q"]; hasQ {
 		sess.VerifierSchemaQuery = r.FormValue("q")
+	}
+
+	// Delegated-access PAIR mode: a two-step card picker. The toggle flips the
+	// mode (and resets the picks); then a card click fills the delegation pick
+	// (step 1, grid filtered to cards with an onBehalfOf field) and the next
+	// click fills the identity pick (step 2, the remaining cards). No dropdown,
+	// no field picker — verifierCustomData filters the grid by the current step.
+	if r.FormValue("delegation_toggle_fired") != "" {
+		sess.VerifierDelegation = r.FormValue("delegation") == "on"
+		sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID = "", ""
+	}
+	if sess.VerifierDelegation {
+		if r.FormValue("reset_deleg") != "" {
+			sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID = "", ""
+		}
+		if r.FormValue("reset_subject") != "" {
+			sess.VerifierSubjectSchemaID = ""
+		}
+		if sid := r.FormValue("schema_id"); sid != "" {
+			if sess.VerifierDelegSchemaID == "" {
+				sess.VerifierDelegSchemaID = sid
+			} else if sess.VerifierSubjectSchemaID == "" {
+				sess.VerifierSubjectSchemaID = sid
+			}
+		}
+		dpgs, _ := h.Adapter.ListVerifierDpgs(r.Context())
+		body := verifierCustomData(sess, schemas, dpgs[sess.VerifierDpg])
+		h.renderFragment(w, r, "fragment_verifier_custom_body", body)
+		return
 	}
 
 	// Schema selection. A non-empty schema_id on this POST means the user

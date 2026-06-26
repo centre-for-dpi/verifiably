@@ -72,24 +72,17 @@
 
       <div class="field" style="margin-bottom:1rem;border:1px solid var(--line);border-radius:4px;padding:0.7rem 0.9rem;background:var(--bg-soft,rgba(0,0,0,0.025))">
         <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-weight:600;margin:0">
-          <input type="checkbox" name="delegation" value="on">
+          <input type="checkbox" name="delegation" value="on" {{if .Body.Delegation}}checked{{end}}
+                 hx-post="/verifier/verify/build"
+                 hx-vals='{"delegation_toggle_fired":"1"}'
+                 hx-target="#verifier-custom-body"
+                 hx-swap="innerHTML"
+                 hx-include="closest form">
           Verify as a delegated-access pair
         </label>
         <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
-          Requests the subject identity + delegation credentials together and evaluates linkage, invocation, capability and revocation — the outcome appears below as a delegated-access card.
+          Requests the subject identity + delegation credentials together and evaluates linkage, invocation, capability and revocation — the outcome below is a delegated-access card. Ticking this turns the credential grid into a two-step picker: first the <strong>delegation</strong> credential (those with an <span class="mono">onBehalfOf</span> field), then the <strong>identity</strong> it is about.
         </p>
-        <div style="margin-top:0.7rem">
-          <label style="font-size:0.74rem;color:var(--ink-mute);display:block;margin-bottom:0.3rem;font-weight:600">Subject identity credential (the principal it's about)</label>
-          <select name="subject_schema_id" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
-            <option value="">Default — BirthCertificate</option>
-            {{range $.Body.Schemas}}
-            <option value="{{if .Variants}}{{(index .Variants 0).ID}}{{else}}{{.ID}}{{end}}">{{.Name}} · {{.Std}}</option>
-            {{end}}
-          </select>
-          <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.35rem 0 0">
-            When the box is ticked, the credential card you select above is the <strong>delegation</strong>; choose the <strong>identity</strong> it is paired with here. Linkage requires the identity's <span class="mono">subjectRef</span> to equal the delegation's <span class="mono">onBehalfOf</span>.
-          </p>
-        </div>
       </div>
 
       {{/* Card grid + filter + field picker. Swapped whole on card
@@ -427,6 +420,32 @@
      card's format chip. */}}
 <input type="hidden" name="schema_id" value="{{.CustomSchemaID}}">
 
+{{if .Delegation}}
+<div style="margin-bottom:0.75rem;padding:0.65rem 0.85rem;background:rgba(181,101,29,0.06);border:1px solid var(--line);border-radius:4px">
+  <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.45rem">Delegated-access pair · two-step picker</div>
+  <div style="display:flex;flex-direction:column;gap:0.35rem;font-size:0.8rem">
+    <div>
+      <span style="display:inline-block;width:1.3rem;height:1.3rem;line-height:1.3rem;text-align:center;border-radius:50%;background:{{if .DelegSchemaID}}var(--ok){{else}}#b5651d{{end}};color:#fff;font-size:0.7rem;margin-right:0.4rem">1</span>
+      <span style="color:var(--ink-mute)">Delegation:</span>
+      {{if .DelegSchemaID}}<strong>{{.DelegName}}</strong>
+        <button type="button" class="chip small" style="margin-left:0.4rem" hx-post="/verifier/verify/build" hx-vals='{"reset_deleg":"1"}' hx-target="#verifier-custom-body" hx-swap="innerHTML" hx-include="closest form">change</button>
+      {{else}}<em style="color:#b5651d">pick a credential with an <span class="mono">onBehalfOf</span> field below ↓</em>{{end}}
+    </div>
+    <div>
+      <span style="display:inline-block;width:1.3rem;height:1.3rem;line-height:1.3rem;text-align:center;border-radius:50%;background:{{if .SubjectSchemaID}}var(--ok){{else if .DelegSchemaID}}#b5651d{{else}}var(--line){{end}};color:#fff;font-size:0.7rem;margin-right:0.4rem">2</span>
+      <span style="color:var(--ink-mute)">Identity it's about:</span>
+      {{if .SubjectSchemaID}}<strong>{{.SubjectName}}</strong>
+        <button type="button" class="chip small" style="margin-left:0.4rem" hx-post="/verifier/verify/build" hx-vals='{"reset_subject":"1"}' hx-target="#verifier-custom-body" hx-swap="innerHTML" hx-include="closest form">change</button>
+      {{else if .DelegSchemaID}}<em style="color:#b5651d">now pick the identity credential below ↓</em>
+      {{else}}<span style="color:var(--ink-mute)">waiting…</span>{{end}}
+    </div>
+  </div>
+  {{if and .DelegSchemaID .SubjectSchemaID}}
+  <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--ok);font-weight:600">✓ Pair selected — hit <span class="mono">Generate request →</span> below.</div>
+  {{end}}
+</div>
+{{end}}
+
 <div style="margin-bottom:0.75rem">
   <div class="chip-row" style="margin-bottom:0.5rem">
     {{range .Stds}}
@@ -513,13 +532,15 @@
 </div>
 
 <div id="custom-template-preview" style="margin-top:1rem">
-  {{if .CustomTemplate}}
+  {{/* Per-field picker is for single-credential verify; the delegated-access
+       pair auto-requests onBehalfOf + the identity's fields, so it's hidden. */}}
+  {{if not $.Delegation}}{{if .CustomTemplate}}
     {{template "fragment_custom_oid4vp_preview" (dict
       "Template" (deref .CustomTemplate)
       "SchemaID" .CustomSchemaID
       "Schema"   (indexSchemas .AllSchemas .CustomSchemaID)
       "Selected" (fieldSet .CustomTemplate.Fields))}}
-  {{end}}
+  {{end}}{{end}}
 </div>
 {{end}}
 
