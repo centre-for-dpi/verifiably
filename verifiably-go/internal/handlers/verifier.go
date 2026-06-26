@@ -121,11 +121,22 @@ func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG
 	// (delegation picked) shows the rest, the identity credentials.
 	if sess.VerifierDelegation {
 		wantOnBehalf := sess.VerifierDelegSchemaID == ""
+		// Step 2 (identity) must match the delegation's WIRE FORMAT: walt.id v0.18.2
+		// rejects a presentation request that mixes formats ("Credentials formats
+		// must be distinct"). So only show identity cards in the same format.
+		delegWire := ""
+		if !wantOnBehalf {
+			delegWire = wireFormatOf(schemaStdByVariantID(schemas, sess.VerifierDelegSchemaID))
+		}
 		step := filtered[:0]
 		for _, s := range filtered {
-			if schemaHasField(s, "onBehalfOf") == wantOnBehalf {
-				step = append(step, s)
+			if schemaHasField(s, "onBehalfOf") != wantOnBehalf {
+				continue
 			}
+			if delegWire != "" && wireFormatOf(s.Std) != delegWire {
+				continue
+			}
+			step = append(step, s)
 		}
 		filtered = step
 	}
@@ -157,7 +168,35 @@ func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG
 		"SubjectSchemaID": sess.VerifierSubjectSchemaID,
 		"DelegName":       schemaNameByID(schemas, sess.VerifierDelegSchemaID),
 		"SubjectName":     schemaNameByID(schemas, sess.VerifierSubjectSchemaID),
+		"DelegFormat":     wireFormatOf(schemaStdByVariantID(schemas, sess.VerifierDelegSchemaID)),
 	}
+}
+
+// wireFormatOf maps a Std to the OID4VP wire format walt.id uses, so the two-step
+// picker can keep a delegated-access pair homogeneous (walt.id can't mix formats).
+func wireFormatOf(std string) string {
+	switch {
+	case strings.Contains(std, "sd_jwt"):
+		return "vc+sd-jwt"
+	case std == "mso_mdoc":
+		return "mso_mdoc"
+	default:
+		return "jwt_vc_json" // w3c_vcdm_1 / w3c_vcdm_2
+	}
+}
+
+// schemaStdByVariantID resolves a (variant) id to its Std using an already-loaded
+// schema slice (no extra ListAllSchemas call).
+func schemaStdByVariantID(schemas []vctypes.Schema, id string) string {
+	if id == "" {
+		return ""
+	}
+	for _, s := range schemas {
+		if s.HasVariantID(id) {
+			return s.ApplyVariant(id).Std
+		}
+	}
+	return ""
 }
 
 // schemaHasField reports whether a schema declares a field of the given name —

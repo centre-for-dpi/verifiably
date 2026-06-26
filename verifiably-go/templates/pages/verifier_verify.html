@@ -436,7 +436,7 @@
       <span style="color:var(--ink-mute)">Identity it's about:</span>
       {{if .SubjectSchemaID}}<strong>{{.SubjectName}}</strong>
         <button type="button" class="chip small" style="margin-left:0.4rem" hx-post="/verifier/verify/build" hx-vals='{"reset_subject":"1"}' hx-target="#verifier-custom-body" hx-swap="innerHTML" hx-include="closest form">change</button>
-      {{else if .DelegSchemaID}}<em style="color:#b5651d">now pick the identity credential below ↓</em>
+      {{else if .DelegSchemaID}}<em style="color:#b5651d">now pick the identity credential below ↓</em>{{if .DelegFormat}} <span class="mono" style="font-size:0.7rem;color:var(--ink-mute)">— {{.DelegFormat}} only (walt.id can't mix formats in one request)</span>{{end}}
       {{else}}<span style="color:var(--ink-mute)">waiting…</span>{{end}}
     </div>
   </div>
@@ -475,7 +475,7 @@
 <div class="schema-list" style="max-height:340px;overflow-y:auto">
   {{if not .Schemas}}
     <div class="empty" style="grid-column:1 / -1;font-size:0.85rem;color:var(--ink-mute)">
-      No credentials match the current filters.
+      {{if and .Delegation .DelegSchemaID}}No identity credential in <span class="mono">{{.DelegFormat}}</span> — walt.id can't mix formats in one request, so issue an identity in that format, or change the delegation (step 1) to a format you have an identity for.{{else if .Delegation}}No delegation credential (one with an <span class="mono">onBehalfOf</span> field) here.{{else}}No credentials match the current filters.{{end}}
     </div>
   {{end}}
 
