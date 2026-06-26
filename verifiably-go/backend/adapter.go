@@ -334,6 +334,22 @@ type PresentationPreview struct {
 	// for (e.g. "vc+sd-jwt"). Surfaced so the incompatibility banner can
 	// point at the exact format the operator would need to re-issue in.
 	RequestedFormat string
+	// RequestedCredentials is one entry PER input-descriptor in the verifier's
+	// presentation definition — so the holder sees EVERY credential being asked
+	// for (e.g. a delegated-access pair = identity + delegation), each as a card,
+	// rather than one credential's title with another's claims.
+	RequestedCredentials []RequestedCredential
+}
+
+// RequestedCredential describes one credential the verifier is asking for (one
+// PD input-descriptor): its type, format, requested claims, and whether the
+// holder's wallet has a match.
+type RequestedCredential struct {
+	TypeName   string   // credential type the verifier filters on (e.g. TestaCardV1)
+	Format     string   // jwt_vc_json, vc+sd-jwt, …
+	Disclosure string   // limit_disclosure hint (required / preferred / none)
+	Claims     []string // claim names requested
+	Held       bool     // the holder's wallet has a credential of this type
 }
 
 // PresentationField is one claim row on the consent page.

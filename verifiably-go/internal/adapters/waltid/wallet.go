@@ -644,6 +644,7 @@ func (a *Adapter) PreviewPresentation(ctx context.Context, req backend.PresentCr
 	}
 	preview.Disclosure, preview.Fields = describePDFields(pd, held)
 	preview.RequestedFormat = extractPDFormat(pd)
+	preview.RequestedCredentials = describePDCredentials(pd, creds)
 
 	// Diagnostic: dump the raw stored document JWT payload so we can confirm
 	// exactly where walt.id's matcher would resolve the PD's JSONPaths.
@@ -978,6 +979,74 @@ func describePDFields(pd map[string]any, held *vctypes.Credential) (string, []ba
 		})
 	}
 	return disclosure, out
+}
+
+// describePDCredentials returns one entry per PD input-descriptor — the full set
+// of credentials the verifier is asking for (e.g. a delegated-access pair), so the
+// holder reviews each as its own card instead of one title with another's claims.
+func describePDCredentials(pd map[string]any, creds []vctypes.Credential) []backend.RequestedCredential {
+	descriptors, _ := pd["input_descriptors"].([]any)
+	out := make([]backend.RequestedCredential, 0, len(descriptors))
+	for _, dRaw := range descriptors {
+		d, _ := dRaw.(map[string]any)
+		if d == nil {
+			continue
+		}
+		rc := backend.RequestedCredential{}
+		rc.TypeName, _ = d["id"].(string)
+		if m, ok := d["format"].(map[string]any); ok {
+			for k := range m {
+				rc.Format = k
+				break
+			}
+		}
+		if c, ok := d["constraints"].(map[string]any); ok {
+			rc.Disclosure, _ = c["limit_disclosure"].(string)
+			fields, _ := c["fields"].([]any)
+			for _, f := range fields {
+				fm, _ := f.(map[string]any)
+				if fm == nil {
+					continue
+				}
+				paths, _ := fm["path"].([]any)
+				if len(paths) == 0 {
+					continue
+				}
+				p, _ := paths[0].(string)
+				if name := claimNameFromPath(p); name != "" {
+					rc.Claims = append(rc.Claims, name)
+					continue
+				}
+				// a type-filter path ($.vc.type) — recover the type if id was blank
+				if rc.TypeName == "" {
+					if filt, ok := fm["filter"].(map[string]any); ok {
+						rc.TypeName, _ = filt["pattern"].(string)
+					}
+				}
+			}
+		}
+		for i := range creds {
+			if credentialIsType(creds[i], rc.TypeName) {
+				rc.Held = true
+				break
+			}
+		}
+		out = append(out, rc)
+	}
+	return out
+}
+
+// credentialIsType reports whether a held credential is of the given PD type,
+// matching on the de-spaced title (walt.id titles "Testa Card V1" vs PD type
+// "TestaCardV1").
+func credentialIsType(c vctypes.Credential, typeName string) bool {
+	if typeName == "" {
+		return false
+	}
+	norm := func(s string) string {
+		return strings.ToLower(strings.NewReplacer(" ", "", "_", "", "-", "").Replace(s))
+	}
+	return norm(c.Title) == norm(typeName)
 }
 
 // claimNameFromPath strips JSONPath prefixes to yield the plain claim name
