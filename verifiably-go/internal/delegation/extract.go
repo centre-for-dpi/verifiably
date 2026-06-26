@@ -143,12 +143,11 @@ func subjectAnchor(c backend.NormalizedCredential) string {
 	return c.SubjectID
 }
 
-// subjectIdentifiers returns every value by which the identity credential could be
-// named as a delegation's principal: its subjectRef, its subject DID, and each
-// disclosed credentialSubject value. A delegation's onBehalfOf may reference the
-// principal by ANY of these — issuers are guided (at issuance) to map onBehalfOf to
-// the holder's subjectRef or DID, and this lets that guidance hold whatever
-// identifier field they pick (id, holderId, nationalId, …) without a magic name.
+// subjectIdentifiers returns the UNIQUE identifiers by which the identity
+// credential may be named as a delegation's principal: its explicit subjectRef
+// (any source) and its subject DID. Deliberately NOT arbitrary disclosed values —
+// a name or role is not a safe linkage anchor. Issuers are guided (at issuance) to
+// map onBehalfOf to one of these unique identifiers.
 func subjectIdentifiers(c backend.NormalizedCredential) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -159,11 +158,12 @@ func subjectIdentifiers(c backend.NormalizedCredential) []string {
 			out = append(out, v)
 		}
 	}
-	add(subjectAnchor(c)) // subjectRef when present, else the DID
-	add(c.SubjectID)      // the subject DID
-	for _, v := range c.Claims {
-		add(v) // disclosed credentialSubject field values (flattened by vp.FromVCObject)
+	if cs, ok := asMap(c.Raw["credentialSubject"]); ok {
+		add(mapStr(cs, "subjectRef"))
 	}
+	add(mapStr(c.Raw, "subjectRef"))
+	add(c.Claims["subjectRef"])
+	add(c.SubjectID) // the subject DID
 	return out
 }
 
