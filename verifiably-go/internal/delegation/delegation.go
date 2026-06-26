@@ -110,7 +110,7 @@ func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder 
 	// (subjectIdentifies); the error lists what was available so the issuer can see
 	// exactly what to set onBehalfOf to.
 	if cap.OnBehalfOf == "" || !subjectIdentifies(identity, cap.OnBehalfOf) {
-		res.Reason = fmt.Sprintf("linkage failed: delegation onBehalfOf %q matches none of the identity credential's identifiers %v — at issuance, set onBehalfOf to the holder's subjectRef or DID",
+		res.Reason = fmt.Sprintf("linkage failed: delegation onBehalfOf %q matches none of the identity credential's identifiers %v — at issuance, set onBehalfOf to the holder's subjectRef, an identifier field, or DID",
 			cap.OnBehalfOf, subjectIdentifiers(identity))
 		return res
 	}

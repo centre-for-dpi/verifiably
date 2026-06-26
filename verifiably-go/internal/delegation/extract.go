@@ -144,10 +144,11 @@ func subjectAnchor(c backend.NormalizedCredential) string {
 }
 
 // subjectIdentifiers returns the UNIQUE identifiers by which the identity
-// credential may be named as a delegation's principal: its explicit subjectRef
-// (any source) and its subject DID. Deliberately NOT arbitrary disclosed values —
-// a name or role is not a safe linkage anchor. Issuers are guided (at issuance) to
-// map onBehalfOf to one of these unique identifiers.
+// credential may be named as a delegation's principal: its explicit subjectRef,
+// its subject DID, and the value of any IDENTIFIER-named field (testa_id,
+// national_id, uin, …). Deliberately NOT names or other attributes — a name is not
+// a safe linkage anchor. So onBehalfOf may map to the issuer's domain id field
+// without forcing a magic subjectRef name, while a name still won't match.
 func subjectIdentifiers(c backend.NormalizedCredential) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -164,7 +165,26 @@ func subjectIdentifiers(c backend.NormalizedCredential) []string {
 	add(mapStr(c.Raw, "subjectRef"))
 	add(c.Claims["subjectRef"])
 	add(c.SubjectID) // the subject DID
+	for k, v := range c.Claims {
+		if isIdentifierFieldName(k) {
+			add(v) // a unique identifier field (e.g. testa_id, nationalId), not a name
+		}
+	}
 	return out
+}
+
+// isIdentifierFieldName reports whether a credentialSubject field name denotes a
+// unique identifier (vs a name/attribute). Conservative: matches an explicit id
+// token or an "…id / …number / …ref" suffix, so testa_id, national_id, holderId,
+// uin, passportNumber qualify but last_name, role, givenName do not.
+func isIdentifierFieldName(name string) bool {
+	n := strings.ToLower(name)
+	n = strings.NewReplacer("_", "", "-", "", " ", "").Replace(n)
+	switch n {
+	case "subjectref", "id", "identifier", "uin", "nin", "did", "msisdn":
+		return true
+	}
+	return strings.HasSuffix(n, "id") || strings.HasSuffix(n, "number") || strings.HasSuffix(n, "ref")
 }
 
 // subjectIdentifies reports whether the delegation's onBehalfOf names this identity

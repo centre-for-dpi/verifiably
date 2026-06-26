@@ -76,6 +76,20 @@ func TestEvaluate_Linkage_PlainValueDenied(t *testing.T) {
 	}
 	got := Evaluate(context.Background(), creds, parentHolder(), baseOpts())
 	if got.Linkage || got.Authorized {
-		t.Fatalf("a plain name must not link (must be subjectRef or DID); got authorized=%v", got.Authorized)
+		t.Fatalf("a plain name must not link (must be subjectRef, DID, or an identifier field); got authorized=%v", got.Authorized)
+	}
+}
+
+// onBehalfOf == the value of an IDENTIFIER-named field (testa_id), with no
+// subjectRef field present → linked. (The Plain test above uses the NAME value,
+// which still must not link.)
+func TestEvaluate_Linkage_IdentifierFieldMatch(t *testing.T) {
+	creds := []backend.NormalizedCredential{
+		petCardSubject(map[string]string{"last_name": "Ndegwa", "testa_id": "33764103"}),
+		delegOnBehalfOf("33764103"),
+	}
+	got := Evaluate(context.Background(), creds, parentHolder(), baseOpts())
+	if !got.Linkage || !got.Authorized {
+		t.Fatalf("identifier-field (testa_id) match should authorize; reason: %s", got.Reason)
 	}
 }
