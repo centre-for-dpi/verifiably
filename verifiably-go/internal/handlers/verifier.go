@@ -180,8 +180,30 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		// Request the delegated-access PAIR (subject identity + delegation) in one
 		// presentation, so the evaluator can check linkage/invocation/capability/
 		// revocation and the result renders the delegation-verdict card.
-		subj := delegationVerifyTemplate(orDefault(r.FormValue("subject_type"), "BirthCertificate"), []string{"subjectRef"}, "jwt_vc_json")
-		deleg := delegationVerifyTemplate(orDefault(r.FormValue("delegation_type"), "DelegatedAccessCredential"), []string{"onBehalfOf"}, "jwt_vc_json")
+		//
+		// Both legs are built from the operator's PICKED schemas so the request
+		// matches whatever custom types the wallet holds (e.g. PetCard +
+		// PetAccessCredential) with the right format/vct. The selected card is the
+		// DELEGATION; subject_schema_id is the identity. Falls back to the canonical
+		// BirthCertificate/DelegatedAccessCredential defaults when nothing is picked.
+		disc := orDefault(r.FormValue("disclosure"), "selective")
+		var subj, deleg vctypes.OID4VPTemplate
+		if sid := r.FormValue("subject_schema_id"); sid != "" {
+			if subj, err = h.buildTemplateForSchema(r.Context(), sid, nil, disc); err != nil {
+				h.errorToast(w, r, "subject identity credential: "+err.Error())
+				return
+			}
+		} else {
+			subj = delegationVerifyTemplate(orDefault(r.FormValue("subject_type"), "BirthCertificate"), []string{"subjectRef"}, "jwt_vc_json")
+		}
+		if did := r.FormValue("schema_id"); did != "" {
+			if deleg, err = h.buildTemplateForSchema(r.Context(), did, r.Form["field_key"], disc); err != nil {
+				h.errorToast(w, r, "delegation credential: "+err.Error())
+				return
+			}
+		} else {
+			deleg = delegationVerifyTemplate(orDefault(r.FormValue("delegation_type"), "DelegatedAccessCredential"), []string{"onBehalfOf"}, "jwt_vc_json")
+		}
 		req.Template = nil
 		req.Templates = []vctypes.OID4VPTemplate{subj, deleg}
 		sess.CustomOID4VPTemplate = &deleg
@@ -206,11 +228,19 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 // fields to request (defaults to all schema fields if none are checked),
 // disclosure is "selective" or "full".
 func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4VPTemplate, error) {
-	schemaID := r.FormValue("schema_id")
+	return h.buildTemplateForSchema(r.Context(), r.FormValue("schema_id"), r.Form["field_key"], r.FormValue("disclosure"))
+}
+
+// buildTemplateForSchema constructs an OID4VP template for ONE schema with the
+// correct credential type, wire format, and vct. It is the shared core of the
+// single-type verify and of EACH leg of a delegated-access pair, so the pair
+// requests exactly what the wallet holds (custom types like "PetAccessCredential",
+// SD-JWT vct, w3c format) rather than a hardcoded guess. fields nil/empty → all.
+func (h *H) buildTemplateForSchema(ctx context.Context, schemaID string, fields []string, disclosure string) (vctypes.OID4VPTemplate, error) {
 	if schemaID == "" {
 		return vctypes.OID4VPTemplate{}, fmt.Errorf("pick a schema first")
 	}
-	schemas, err := h.Adapter.ListAllSchemas(r.Context())
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
 	if err != nil {
 		return vctypes.OID4VPTemplate{}, fmt.Errorf("could not load schemas: %w", err)
 	}
@@ -225,7 +255,6 @@ func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4
 	if picked == nil {
 		return vctypes.OID4VPTemplate{}, fmt.Errorf("unknown schema %q", schemaID)
 	}
-	fields := r.Form["field_key"]
 	if len(fields) == 0 {
 		// No boxes checked → request every field the schema declares.
 		for _, f := range picked.FieldsSpec {
@@ -245,7 +274,6 @@ func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4
 	}
 	fields = cleaned
 
-	disclosure := r.FormValue("disclosure")
 	if disclosure == "" {
 		disclosure = "full"
 	}

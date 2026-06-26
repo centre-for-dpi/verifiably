@@ -70,7 +70,7 @@ func (h *H) issueDelegationPairCore(ctx context.Context, keyName string, req api
 		return apiDelegationIssueResult{}, fmt.Errorf("status list: %w", err)
 	}
 	delegSpec := delegation.DelegationCredentialSpec{
-		DataModel: std, ContextURL: ctxURL, Issuer: req.IssuerDID, DelegateID: req.Delegation.DelegateID,
+		DataModel: std, ContextURL: ctxURL, Type: delegType, Issuer: req.IssuerDID, DelegateID: req.Delegation.DelegateID,
 		OnBehalfOf: req.Subject.SubjectRef, Role: req.Delegation.Role,
 		AllowedAction: req.Delegation.AllowedAction, ValidFrom: req.Delegation.ValidFrom,
 		ValidUntil: req.Delegation.ValidUntil,

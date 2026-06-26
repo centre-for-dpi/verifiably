@@ -98,6 +98,7 @@ func BuildSubjectCredential(s SubjectCredentialSpec) map[string]any {
 type DelegationCredentialSpec struct {
 	DataModel              string
 	ContextURL             string
+	Type                   string   // catalog/scenario type (e.g. "PowerOfAttorney"); added alongside DelegatedAccessCredential so a verifier can request either
 	Issuer                 string   // root authority + signer; becomes the capability controller
 	DelegateID             string   // credentialSubject.id — the delegate (holder-bound)
 	OnBehalfOf             string   // the subject's SubjectRef — the linkage anchor
@@ -141,9 +142,16 @@ func BuildDelegationCredential(d DelegationCredentialSpec) map[string]any {
 	if d.ValidUntil != "" {
 		capability["caveat"] = []any{map[string]any{"type": "ValidWhile", "validUntil": d.ValidUntil}}
 	}
+	// Always carry the canonical DelegatedAccessCredential marker (the evaluator's
+	// hook) AND, when distinct, the catalog/scenario type so a verifier can request
+	// the pair by either name (e.g. "PowerOfAttorney", "PetAccessCredential").
+	types := []string{"VerifiableCredential", "DelegatedAccessCredential"}
+	if d.Type != "" && d.Type != "DelegatedAccessCredential" {
+		types = append(types, d.Type)
+	}
 	doc := map[string]any{
 		"@context":          contextArr(d.DataModel, d.ContextURL),
-		"type":              []string{"VerifiableCredential", "DelegatedAccessCredential"},
+		"type":              types,
 		"credentialSubject": cs,
 		"termsOfUse":        []any{capability},
 	}

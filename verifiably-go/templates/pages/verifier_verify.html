@@ -78,6 +78,18 @@
         <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
           Requests the subject identity + delegation credentials together and evaluates linkage, invocation, capability and revocation — the outcome appears below as a delegated-access card.
         </p>
+        <div style="margin-top:0.7rem">
+          <label style="font-size:0.74rem;color:var(--ink-mute);display:block;margin-bottom:0.3rem;font-weight:600">Subject identity credential (the principal it's about)</label>
+          <select name="subject_schema_id" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+            <option value="">Default — BirthCertificate</option>
+            {{range $.Body.Schemas}}
+            <option value="{{if .Variants}}{{(index .Variants 0).ID}}{{else}}{{.ID}}{{end}}">{{.Name}} · {{.Std}}</option>
+            {{end}}
+          </select>
+          <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.35rem 0 0">
+            When the box is ticked, the credential card you select above is the <strong>delegation</strong>; choose the <strong>identity</strong> it is paired with here. Linkage requires the identity's <span class="mono">subjectRef</span> to equal the delegation's <span class="mono">onBehalfOf</span>.
+          </p>
+        </div>
       </div>
 
       {{/* Card grid + filter + field picker. Swapped whole on card
