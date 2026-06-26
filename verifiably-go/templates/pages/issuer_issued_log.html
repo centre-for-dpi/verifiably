@@ -109,7 +109,7 @@
     {{end}}
   </div>
   <div class="desc">
-    Holder: <strong>{{if .HolderHint}}{{.HolderHint}}{{else}}<em style="opacity:0.7">unnamed</em>{{end}}</strong><br>
+    {{if .HolderHint}}Holder: <strong>{{.HolderHint}}</strong><br>{{end}}
     Issued: {{.IssuedAt.Format "2006-01-02 15:04 MST"}}{{if .RevokedAt}} · Revoked: {{.RevokedAt.Format "2006-01-02 15:04 MST"}}{{end}}
   </div>
   {{if .SubjectFields}}
