@@ -242,6 +242,154 @@ components:
           type: string
           format: date-time
 
+    # ─── Delegated access ────────────────────────────────────────────────
+    DelegationIssueRequest:
+      type: object
+      required: [subject]
+      description: Issue a delegated-access PAIR — a subject identity credential and an issuer-signed delegation credential.
+      properties:
+        issuerDpg: { type: string, example: Walt Community Stack }
+        issuerDid: { type: string, description: "optional; defaults to the DPG's signing DID" }
+        flow: { type: string, enum: [pre_auth, auth_code], default: pre_auth }
+        std:
+          type: string
+          enum: ["w3c_vcdm_2", "w3c_vcdm_1", "sd_jwt_vc (IETF)"]
+          default: "w3c_vcdm_2"
+        contextUrl: { type: string }
+        subject:
+          type: object
+          required: [subjectRef]
+          properties:
+            type: { type: string, example: PetCard }
+            subjectRef: { type: string, description: "stable, unique linkage anchor", example: "urn:pet:bosco" }
+            subjectDid: { type: string }
+            claims: { type: object, additionalProperties: { type: string } }
+            validFrom: { type: string }
+            validUntil: { type: string }
+        delegation:
+          type: object
+          properties:
+            type: { type: string, example: PetAccessCredential }
+            delegateId: { type: string, description: "the delegate (holder); omit to bind at claim time" }
+            role: { type: string, example: Owner }
+            allowedAction:
+              type: array
+              items: { type: string }
+              example: ["present", "access"]
+            validFrom: { type: string }
+            validUntil: { type: string, example: "2033-03-10T00:00:00Z" }
+    DelegationCredRef:
+      type: object
+      properties:
+        credentialId: { type: string }
+        type: { type: string }
+        offerUri: { type: string }
+        pin: { type: string, description: "present for pre-auth flows requiring a tx_code" }
+    DelegationIssueResult:
+      type: object
+      properties:
+        subject: { $ref: "#/components/schemas/DelegationCredRef" }
+        delegation: { $ref: "#/components/schemas/DelegationCredRef" }
+        statusListCredential: { type: string }
+        statusListIndex: { type: integer }
+        statusType: { type: string, enum: [bitstring, token] }
+    DelegationBulkRequest:
+      type: object
+      required: [rows]
+      description: Fan delegated-access pair issuance out over many rows via the async job queue.
+      properties:
+        issuerDpg: { type: string }
+        issuerDid: { type: string }
+        flow: { type: string, enum: [pre_auth, auth_code] }
+        std: { type: string, enum: ["w3c_vcdm_2", "w3c_vcdm_1", "sd_jwt_vc (IETF)"] }
+        subjectType: { type: string }
+        delegationType: { type: string }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [subjectRef]
+            properties:
+              subjectRef: { type: string }
+              claims: { type: object, additionalProperties: { type: string } }
+              delegateId: { type: string }
+              role: { type: string }
+              allowedAction: { type: array, items: { type: string } }
+              validUntil: { type: string }
+    DelegationVerdict:
+      type: object
+      description: The four-check delegated-access verdict.
+      properties:
+        Evaluated: { type: boolean }
+        Authorized: { type: boolean }
+        Reason: { type: string }
+        Linkage: { type: boolean, description: "the delegation is about the presented subject" }
+        Invocation: { type: boolean, description: "the presenter is the bound delegate" }
+        Capability: { type: boolean, description: "action permitted, within validity, no chain" }
+        NotRevoked: { type: boolean, description: "neither credential is revoked" }
+        Trusted: { type: boolean }
+    DelegationVerifyResult:
+      type: object
+      properties:
+        valid: { type: boolean }
+        credentialCount: { type: integer }
+        delegation: { $ref: "#/components/schemas/DelegationVerdict" }
+    DelegationVerifyRequest:
+      type: object
+      description: Generate an OID4VP request for a delegated-access pair.
+      properties:
+        verifierDpg: { type: string }
+        wireFormat: { type: string, enum: [jwt_vc_json, "vc+sd-jwt"] }
+    DelegationVerifySDJWTRequest:
+      type: object
+      required: [credentials]
+      description: Evaluate raw, already-claimed credentials (compact SD-JWT or JSON-LD) without OID4VP.
+      properties:
+        credentials:
+          type: array
+          items: { type: string }
+    InjiDelegationSetupRequest:
+      type: object
+      required: [individualId, pin]
+      description: Provision an Inji Certify auth-code delegated-access pair (creates configs + a mock identity).
+      properties:
+        individualId: { type: string }
+        pin: { type: string }
+        std: { type: string, enum: ["sd_jwt_vc (IETF)", "w3c_vcdm_2"] }
+        subjectType: { type: string }
+        delegationType: { type: string }
+        subjectRef: { type: string }
+        givenName: { type: string }
+        role: { type: string }
+        allowedAction: { type: array, items: { type: string } }
+        validUntil: { type: string }
+    InjiPreAuthIssueRequest:
+      type: object
+      description: Stage two pre-authorized Inji (or CREDEBL) delegated-access offers.
+      properties:
+        dpg: { type: string, enum: ["Inji Certify · Pre-Auth", "CREDEBL"] }
+        std: { type: string, enum: ["sd_jwt_vc (IETF)", "w3c_vcdm_2"] }
+        subjectType: { type: string }
+        delegationType: { type: string }
+        subjectRef: { type: string }
+        givenName: { type: string }
+        role: { type: string }
+        allowedAction: { type: array, items: { type: string } }
+        validUntil: { type: string }
+    InjiPreAuthClaimRequest:
+      type: object
+      required: [offers]
+      description: Headless conformant-proof claim of staged pre-auth offers.
+      properties:
+        offers: { type: array, items: { type: string } }
+        txCodes: { type: array, items: { type: string }, description: "per-offer PINs, aligned to offers" }
+    InjiRevokeRequest:
+      type: object
+      required: [index]
+      properties:
+        index: { type: integer }
+        type: { type: string, enum: [bitstring, token], default: token }
+
 security:
   - BearerAuth: []
 
@@ -831,3 +979,216 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  # ─── Delegated access ──────────────────────────────────────────────────
+  /delegation/issue:
+    post:
+      operationId: issueDelegationPair
+      tags: [Delegated access]
+      summary: Issue a delegated-access pair
+      description: |
+        Registers the subject + delegation credential types (idempotent) and
+        issues both. Returns an offer + credentialId per leg plus the status-list
+        binding. Both legs must share one format for the holder to present them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DelegationIssueRequest" }
+      responses:
+        "201": { description: Pair issued., content: { application/json: { schema: { $ref: "#/components/schemas/DelegationIssueResult" } } } }
+        "400": { description: Bad request (e.g. missing subjectRef)., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: Upstream DPG error., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /delegation/issue/bulk:
+    post:
+      operationId: issueDelegationPairBulk
+      tags: [Delegated access]
+      summary: Bulk-issue delegated-access pairs (async)
+      description: |
+        Registers the two types ONCE, then fans a pair out per row via the async
+        job queue. Returns 202 + a jobId; poll `GET /bulk/{jobID}`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DelegationBulkRequest" }
+      responses:
+        "202":
+          description: Job accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: { type: string }
+                  total: { type: integer }
+                  statusUrl: { type: string }
+        "400": { description: Bad request., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /delegation/verify/request:
+    post:
+      operationId: requestDelegationPresentation
+      tags: [Delegated access]
+      summary: Generate an OID4VP request for a pair
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DelegationVerifyRequest" }
+      responses:
+        "200":
+          description: Request created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state: { type: string }
+                  requestUri: { type: string }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /delegation/verify/result/{state}:
+    get:
+      operationId: getDelegationResult
+      tags: [Delegated access]
+      summary: Fetch the delegation verdict for a presentation
+      parameters:
+        - { name: state, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The verdict., content: { application/json: { schema: { $ref: "#/components/schemas/DelegationVerifyResult" } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: Unknown state., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /delegation/verify/sdjwt:
+    post:
+      operationId: verifyDelegationSDJWT
+      tags: [Delegated access]
+      summary: Evaluate raw claimed credentials (headless)
+      description: Evaluate already-claimed compact SD-JWT / JSON-LD credentials without an OID4VP round-trip.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DelegationVerifySDJWTRequest" }
+      responses:
+        "200": { description: The verdict., content: { application/json: { schema: { $ref: "#/components/schemas/DelegationVerifyResult" } } } }
+        "400": { description: Bad request., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /delegation/inji/setup:
+    post:
+      operationId: setupInjiDelegation
+      tags: [Delegated access]
+      summary: Provision an Inji auth-code pair
+      description: Creates the two Inji Certify configs + a mock identity so a holder can PIN-login and claim the pair.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InjiDelegationSetupRequest" }
+      responses:
+        "201": { description: Provisioned (returns statusListIndex/Type)., content: { application/json: { schema: { type: object } } } }
+        "400": { description: Bad request., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: Upstream Certify/eSignet error., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /delegation/inji/preauth/issue:
+    post:
+      operationId: issueInjiPreAuthDelegation
+      tags: [Delegated access]
+      summary: Stage Inji/CREDEBL pre-auth offers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InjiPreAuthIssueRequest" }
+      responses:
+        "201": { description: Offers staged (offerUri + per-offer pin + statusListIndex)., content: { application/json: { schema: { type: object } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: Upstream error., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /delegation/inji/preauth/claim:
+    post:
+      operationId: claimInjiPreAuthDelegation
+      tags: [Delegated access]
+      summary: Headless conformant-proof claim of pre-auth offers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InjiPreAuthClaimRequest" }
+      responses:
+        "200":
+          description: Claimed credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  credentials: { type: array, items: { type: string } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: Upstream error., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /delegation/inji/revoke:
+    post:
+      operationId: revokeInjiDelegation
+      tags: [Delegated access]
+      summary: Revoke a delegation status index (type-aware)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InjiRevokeRequest" }
+      responses:
+        "200": { description: Revoked., content: { application/json: { schema: { type: object, properties: { revoked: { type: integer } } } } } }
+        "400": { description: Bad request., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: Revoke failed., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  # ─── Catalog & schemas ─────────────────────────────────────────────────
+  /catalog:
+    get:
+      operationId: getCatalog
+      tags: [Catalog]
+      summary: List the issuable credential catalog
+      description: The credential types this instance can issue, across configured DPGs, with their fields and formats.
+      responses:
+        "200": { description: Catalog., content: { application/json: { schema: { type: object } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /schemas:
+    get:
+      operationId: listSchemas
+      tags: [Catalog]
+      summary: List custom schemas (owner-scoped)
+      responses:
+        "200": { description: Schemas., content: { application/json: { schema: { type: array, items: { type: object } } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    post:
+      operationId: createSchema
+      tags: [Catalog]
+      summary: Create a custom credential schema
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "201": { description: Schema created., content: { application/json: { schema: { type: object } } } }
+        "400": { description: Bad request., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /schemas/{id}:
+    delete:
+      operationId: deleteSchema
+      tags: [Catalog]
+      summary: Delete a custom schema
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Deleted. }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: Schema not found., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /subjects:
+    post:
+      operationId: provisionSubject
+      tags: [Catalog]
+      summary: Provision subject data for a schema
+      description: Stores per-holder claim values (vc_subject) that an auth-code / dynamic issuance flow reads at claim time.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "200": { description: Provisioned. }
+        "400": { description: Bad request., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Invalid or missing API key., content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
