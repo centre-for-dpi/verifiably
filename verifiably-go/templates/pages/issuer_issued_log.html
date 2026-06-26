@@ -112,6 +112,13 @@
     Holder: <strong>{{if .HolderHint}}{{.HolderHint}}{{else}}<em style="opacity:0.7">unnamed</em>{{end}}</strong><br>
     Issued: {{.IssuedAt.Format "2006-01-02 15:04 MST"}}{{if .RevokedAt}} · Revoked: {{.RevokedAt.Format "2006-01-02 15:04 MST"}}{{end}}
   </div>
+  {{if .SubjectFields}}
+  <div style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.3rem 0.85rem;font-size:0.74rem">
+    {{range $k, $v := .SubjectFields}}
+      <span><span style="opacity:0.6">{{$k}}:</span> <strong>{{$v}}</strong></span>
+    {{end}}
+  </div>
+  {{end}}
   <div class="std" style="margin-top:0.4rem">
     {{.Std}} <span style="opacity:0.6">· {{.Format}}</span>
     {{if .StatusList}}

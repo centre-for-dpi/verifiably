@@ -67,11 +67,13 @@ type IssuedCredential struct {
 	// DIDs.
 	HolderHint string `json:"holderHint,omitempty"`
 
-	// SubjectFields is a verbatim copy of the issued claim set. Used for
-	// in-memory search and the list page's tooltip / details pane.
-	// Tagged json:"-" so PII is never written to the on-disk JSON log;
-	// it lives only in process memory and is cleared on container restart.
-	SubjectFields map[string]string `json:"-"`
+	// SubjectFields is a verbatim copy of the issued claim set — rendered on the
+	// list card and searched. Persisted (owner-scoped, the issuer's own data) so
+	// the details survive a restart; previously json:"-" (memory-only) which left
+	// every card blank after a redeploy. NOTE: this writes the subject claims to
+	// the on-disk JSON log — acceptable for a single-operator PoC; for a shared
+	// deployment, redact/encrypt or revert to json:"-".
+	SubjectFields map[string]string `json:"subjectFields,omitempty"`
 
 	// OfferURI is what the wallet scans. Recorded so the operator can
 	// re-share if the wallet hasn't claimed the offer yet.
