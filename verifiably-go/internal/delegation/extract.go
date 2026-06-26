@@ -143,6 +143,41 @@ func subjectAnchor(c backend.NormalizedCredential) string {
 	return c.SubjectID
 }
 
+// subjectIdentifiers returns every value by which the identity credential could be
+// named as a delegation's principal: its subjectRef, its subject DID, and each
+// disclosed credentialSubject value. A delegation's onBehalfOf may reference the
+// principal by ANY of these — issuers are guided (at issuance) to map onBehalfOf to
+// the holder's subjectRef or DID, and this lets that guidance hold whatever
+// identifier field they pick (id, holderId, nationalId, …) without a magic name.
+func subjectIdentifiers(c backend.NormalizedCredential) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(v string) {
+		v = strings.TrimSpace(v)
+		if v != "" && !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	add(subjectAnchor(c)) // subjectRef when present, else the DID
+	add(c.SubjectID)      // the subject DID
+	for _, v := range c.Claims {
+		add(v) // disclosed credentialSubject field values (flattened by vp.FromVCObject)
+	}
+	return out
+}
+
+// subjectIdentifies reports whether the delegation's onBehalfOf names this identity
+// credential — i.e. matches any of its identifiers (see subjectIdentifiers).
+func subjectIdentifies(c backend.NormalizedCredential, onBehalfOf string) bool {
+	for _, id := range subjectIdentifiers(c) {
+		if sameRef(id, onBehalfOf) {
+			return true
+		}
+	}
+	return false
+}
+
 // statusRef extracts a revocation pointer from a credential, supporting both the
 // JSON-LD BitstringStatusListEntry and the SD-JWT IETF Token Status List shapes.
 func statusRef(c backend.NormalizedCredential) (StatusRef, bool) {

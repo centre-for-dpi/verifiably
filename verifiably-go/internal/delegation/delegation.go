@@ -105,10 +105,13 @@ func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder 
 		return res
 	}
 
-	// 1. Linkage — the delegation must be about the presented subject.
-	anchor := subjectAnchor(identity)
-	if cap.OnBehalfOf == "" || anchor == "" || !sameRef(cap.OnBehalfOf, anchor) {
-		res.Reason = fmt.Sprintf("linkage failed: delegation onBehalfOf %q does not match subject %q", cap.OnBehalfOf, anchor)
+	// 1. Linkage — the delegation must be about the presented subject. onBehalfOf
+	// may name the principal by their subjectRef, DID, or any disclosed identifier
+	// (subjectIdentifies); the error lists what was available so the issuer can see
+	// exactly what to set onBehalfOf to.
+	if cap.OnBehalfOf == "" || !subjectIdentifies(identity, cap.OnBehalfOf) {
+		res.Reason = fmt.Sprintf("linkage failed: delegation onBehalfOf %q matches none of the identity credential's identifiers %v — at issuance, set onBehalfOf to the holder's subjectRef or DID",
+			cap.OnBehalfOf, subjectIdentifiers(identity))
 		return res
 	}
 	res.Linkage = true

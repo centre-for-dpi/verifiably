@@ -61,7 +61,7 @@
       Delegated-access credential
     </label>
     <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
-      Carries a delegation capability — the holder acts <span class="mono">onBehalfOf</span> a subject. Turning this on presets SD-JWT plus the capability fields (onBehalfOf, role, allowedAction, validUntil); a verifier then evaluates linkage, invocation, capability and revocation.
+      Carries a delegation capability — the holder acts <span class="mono">onBehalfOf</span> a subject. Turning this on presets SD-JWT plus the capability fields (onBehalfOf, role, allowedAction, validUntil); a verifier then evaluates linkage, invocation, capability and revocation. At issue time you'll set <span class="mono">onBehalfOf</span> to the holder's identity anchor (their <span class="mono">subjectRef</span>/ID/DID) so the verifier can link this to their identity credential.
     </p>
     {{if .Delegation}}
     <div style="margin-top:0.75rem">
