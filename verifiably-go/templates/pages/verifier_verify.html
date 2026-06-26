@@ -442,6 +442,11 @@
   </div>
   {{if and .DelegSchemaID .SubjectSchemaID}}
   <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--ok);font-weight:600">✓ Pair selected — hit <span class="mono">Generate request →</span> below.</div>
+  {{if eq .DelegFormat "vc+sd-jwt"}}
+  <div style="margin-top:0.4rem;font-size:0.74rem;color:#8a4b13;background:rgba(181,101,29,0.08);border-left:3px solid #b5651d;padding:0.4rem 0.6rem;border-radius:0 4px 4px 0">
+    ⚠ walt.id holder wallets (v0.18.2) can't present an <strong>SD-JWT pair</strong> in one request — the combined vpToken is a JSON array they can't serialize. For end-to-end verification, issue the pair as <strong>JWT · W3C (jwt_vc_json)</strong>. (The evaluation works either way; this is a wallet limit.)
+  </div>
+  {{end}}
   {{end}}
 </div>
 {{end}}

@@ -1340,8 +1340,17 @@ func friendlyPresentError(err error) error {
 	case strings.Contains(msg, "credential-status") && strings.Contains(msg, "Status validation failed"):
 		return &RevocationError{Detail: msg}
 	case strings.Contains(msg, "JsonArray") && strings.Contains(msg, "JsonPrimitive"):
+		// The vpToken is a JSON ARRAY — walt.id v0.18.2's wallet-api submit
+		// path expects a single compact token (JsonPrimitive). This is the
+		// MULTI-credential SD-JWT case (a delegated-access PAIR): combining
+		// two SD-JWT credentials into one VP makes the vpToken an array it
+		// can't handle. (Single ldp_vc / jwt_vc_json-ld make it a JsonObject —
+		// the case below.) Either way the fix is jwt_vc_json.
 		return fmt.Errorf(
-			"walt.id's wallet-api v0.18.2 can't build a verifiable presentation for this credential format — its VP submit path only handles compact-JWT formats (jwt_vc_json, vc+sd-jwt). For jwt_vc_json-ld and ldp_vc the vpToken is a JSON object and the wallet throws internally. Re-issue the credential in JWT · W3C (jwt_vc_json) or SD-JWT · VC (vc+sd-jwt) and retry")
+			"walt.id's wallet-api v0.18.2 can't present this as one verifiable presentation: combining MULTIPLE SD-JWT credentials (a delegated-access pair) makes the vpToken a JSON array it can't serialize. Issue BOTH credentials of the pair as JWT · W3C (jwt_vc_json) — a w3c pair presents end-to-end via the walt.id holder wallet. SD-JWT pairs are blocked by this upstream limit")
+	case strings.Contains(msg, "JsonObject") && strings.Contains(msg, "JsonPrimitive"):
+		return fmt.Errorf(
+			"walt.id's wallet-api v0.18.2 can't build a verifiable presentation for jwt_vc_json-ld / ldp_vc — the vpToken is a JSON object its submit path throws on. Re-issue the credential in JWT · W3C (jwt_vc_json) or SD-JWT · VC (vc+sd-jwt) and retry")
 	case strings.Contains(msg, "VCFormat does not contain"):
 		return fmt.Errorf(
 			"walt.id's verifier doesn't recognise this format (e.g. jwt_vc_json-ld is not in its Kotlin format enum). Re-issue the credential in a format the verifier supports — jwt_vc_json, ldp_vc, jwt_vc, or vc+sd-jwt all round-trip end-to-end")
