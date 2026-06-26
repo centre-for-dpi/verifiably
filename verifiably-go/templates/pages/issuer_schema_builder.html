@@ -61,7 +61,7 @@
       Delegated-access credential
     </label>
     <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
-      Carries a delegation capability — the holder acts <span class="mono">onBehalfOf</span> a subject. Turning this on presets SD-JWT plus the capability fields (onBehalfOf, role, allowedAction, validUntil); a verifier then evaluates linkage, invocation, capability and revocation. At issue time you'll set <span class="mono">onBehalfOf</span> to a <strong>unique</strong> identifier the holder's identity credential carries — its <span class="mono">subjectRef</span>, an identifier field (national ID, etc.), or DID — so the verifier can link the two.
+      Carries a delegation capability — the holder acts <span class="mono">onBehalfOf</span> a subject. Turning this on presets SD-JWT plus the capability fields (onBehalfOf, role, allowedAction, validUntil); a verifier then evaluates linkage, invocation, capability and revocation. At issue time you'll set <span class="mono">onBehalfOf</span> to a <strong>unique</strong> identifier the holder's identity credential carries — its <span class="mono">subjectRef</span>, an identifier field (national ID, etc.), or DID — so the verifier can link the two. <strong>Same format both sides:</strong> the holder's identity credential must be issued in the <em>same</em> format as this one (both SD-JWT, or both W3C) — a verifier can't combine formats in one delegated-access request.
     </p>
     {{if .Delegation}}
     <div style="margin-top:0.75rem">
