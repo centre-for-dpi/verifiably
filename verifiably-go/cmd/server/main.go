@@ -594,6 +594,7 @@ func main() {
 		mux.HandleFunc("POST /issuer/issue/bulk/source", h.BulkSource)
 		mux.HandleFunc("POST /issuer/issue/bulk/api", h.BulkFromAPI)
 		mux.HandleFunc("POST /issuer/issue/bulk/db", h.BulkFromDB)
+		mux.HandleFunc("POST /issuer/issue/bulk/registry", h.BulkFromRegistry)
 		mux.HandleFunc("GET /issuer/issue/pdf/{id}", h.DownloadPDF)
 		mux.HandleFunc("POST /issuer/issue/preview-pdf", h.PreviewPDF)
 		// REST API — schema management endpoints.

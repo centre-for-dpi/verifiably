@@ -242,6 +242,87 @@ func flattenRecord(rec map[string]any, stripMeta bool) map[string]string {
 	return out
 }
 
+// searchRegistryAll pulls EVERY record of one Sunbird entity (POST
+// /api/v1/<Entity>/search with empty filters) as provisioning rows — the bulk
+// counterpart of fetchRegistrySunbird (which fetches a single holder by id).
+// Each row is guaranteed to carry "individualId" (copied from the provider's
+// SearchField when the record names the identity differently) so the provision
+// sink can key certify.vc_subject.
+func searchRegistryAll(ctx context.Context, p registryProvider, entity string) []map[string]string {
+	body, _ := json.Marshal(map[string]any{"filters": map[string]any{}})
+	endpoint := strings.TrimRight(p.URL, "/") + "/api/v1/" + entity + "/search"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp == nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var raw map[string]any
+	if json.NewDecoder(resp.Body).Decode(&raw) != nil {
+		return nil
+	}
+	hits, _ := raw["data"].([]any)
+	if hits == nil {
+		hits, _ = raw[entity].([]any)
+	}
+	field := p.SearchField
+	if field == "" {
+		field = "individualId"
+	}
+	var out []map[string]string
+	for _, h := range hits {
+		rec, ok := h.(map[string]any)
+		if !ok {
+			continue
+		}
+		row := flattenRecord(rec, true)
+		if _, ok := row["individualId"]; !ok {
+			if v, ok := row[field]; ok && v != "" {
+				row["individualId"] = v
+			}
+		}
+		if len(row) > 0 {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// fetchRegistryRows pulls every record from the configured Sunbird RC registries
+// (VERIFIABLY_REGISTRIES) as provisioning rows. Discover providers enumerate all
+// entities; Entity providers pull that one entity; legacy GET-by-id providers are
+// skipped (they expose no list endpoint). Used by the Inji auth-code "registry"
+// bulk source — the registry-native way to bulk-provision certify.vc_subject.
+func fetchRegistryRows(ctx context.Context) ([]map[string]string, error) {
+	providers := registryProviders()
+	if len(providers) == 0 {
+		return nil, fmt.Errorf("no registries configured (VERIFIABLY_REGISTRIES unset)")
+	}
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var rows []map[string]string
+	for _, p := range providers {
+		switch {
+		case p.Discover:
+			for _, e := range sunbirdSchemas(cctx, p.URL) {
+				rows = append(rows, searchRegistryAll(cctx, p, e)...)
+			}
+		case p.Entity != "":
+			rows = append(rows, searchRegistryAll(cctx, p, p.Entity)...)
+		default:
+			// Legacy GET-by-id providers have no bulk list endpoint — skip.
+		}
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("registry search returned no records")
+	}
+	return rows, nil
+}
+
 type authcodeArtifacts struct {
 	configKey, scope            string
 	credFormat, vcTemplateB64   string

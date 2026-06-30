@@ -33,6 +33,19 @@ import (
 	"github.com/verifiably/verifiably-go/internal/metrics"
 )
 
+// isInjiAuthcode reports whether the named issuer DPG drives the Inji
+// auth-code (Flow B) path. For those DPGs the bulk sink provisions
+// certify.vc_subject (holders then self-claim via eSignet) instead of
+// issuing offers through Adapter.IssueBulk. Mirrors the SchemaApply check
+// used in ShowSchemaBrowser/SaveSchema.
+func (h *H) isInjiAuthcode(ctx context.Context, dpg string) bool {
+	dpgs, err := h.Adapter.ListIssuerDpgs(ctx)
+	if err != nil {
+		return false
+	}
+	return dpgs[dpg].SchemaApply == "inji_authcode"
+}
+
 // BulkSource swaps the active bulk-source chip and renders the corresponding
 // mini-form. Separate endpoint from /issuer/issue/csv so the chip row can
 // hx-post it without triggering a CSV upload.
@@ -40,7 +53,7 @@ func (h *H) BulkSource(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	source := strings.TrimSpace(r.FormValue("source"))
 	switch source {
-	case "csv", "api", "db":
+	case "csv", "api", "db", "registry":
 		// fall through
 	default:
 		h.errorToast(w, r, "unknown source: "+source)
@@ -118,10 +131,31 @@ func (h *H) BulkFromDB(w http.ResponseWriter, r *http.Request) {
 	h.runBulkIssue(w, r, sess, rows, "db")
 }
 
-// runBulkIssue is the common tail shared by BulkFromAPI + BulkFromDB (and
-// the existing CSV path, via dispatch in SimulateCSV). Calls the adapter
-// and renders the preview fragment with the result.
+// BulkFromRegistry pulls every record from the configured Sunbird RC registry
+// (VERIFIABLY_REGISTRIES) and feeds them through the bulk tail. No operator
+// input — the registry endpoints are deployment config. Only meaningful for
+// Inji auth-code, where runBulkIssue diverts to the vc_subject provision sink;
+// each record provisions one subject for holders to self-claim via eSignet.
+func (h *H) BulkFromRegistry(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	rows, err := fetchRegistryRows(r.Context())
+	if err != nil {
+		h.errorToast(w, r, "registry pull failed: "+err.Error())
+		return
+	}
+	h.runBulkIssue(w, r, sess, rows, "registry")
+}
+
+// runBulkIssue is the common tail shared by SimulateCSV + BulkFromAPI +
+// BulkFromDB (+ BulkFromRegistry). For most DPGs it calls the adapter and
+// renders the issue preview. Inji auth-code is holder-pull, so "bulk" means
+// provisioning the data-provider table (certify.vc_subject) rather than
+// minting offers — those DPGs divert to runBulkProvision.
 func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, rows []map[string]string, label string) {
+	if h.isInjiAuthcode(r.Context(), sess.IssuerDpg) {
+		h.runBulkProvision(w, r, sess, rows, label)
+		return
+	}
 	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
 	if err != nil {
 		h.errorToast(w, r, "backend unavailable: "+err.Error())
@@ -161,6 +195,114 @@ func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, 
 		"Errors":   res.Errors,
 		"RowsOut":  res.Rows,
 		"Label":    label,
+	})
+}
+
+// injiIdentityFields are the row columns tried, in order, to find the holder's
+// identity id — the value fed to esignetSubjectID (the vc_subject key) and the
+// individualId the holder later authenticates as via eSignet.
+var injiIdentityFields = []string{"individualId", "individual_id", "uin", "id"}
+
+// injiRowIdentity returns the first non-empty identity column in a bulk row.
+func injiRowIdentity(row map[string]string) string {
+	for _, k := range injiIdentityFields {
+		if v := strings.TrimSpace(row[k]); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// runBulkProvision is the Inji auth-code bulk sink. Each source row is upserted
+// into certify.vc_subject keyed by the eSignet PSU-token (esignetSubjectID),
+// so that — once the holder signs in via eSignet (auth-code) — Certify's
+// Postgres data-provider reads the row and issues the credential carrying these
+// claims. This is Model A: claims only. No eSignet identity is created here
+// (real eSignet owns identity); holders self-claim at /holder/wallet/inji.
+// Mirrors the per-row report shape of runBulkIssue so the UI table is familiar.
+func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Session, rows []map[string]string, label string) {
+	if h.Subjects == nil {
+		h.errorToast(w, r, "subject provisioning not enabled (INJI_CERTIFY_DATABASE_URL not set)")
+		return
+	}
+	ctx := r.Context()
+	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if err != nil {
+		h.errorToast(w, r, "backend unavailable: "+err.Error())
+		return
+	}
+	schema, _ := findSchemaByID(schemas, sess.SchemaID)
+	schema = h.resolveFields(schema)
+	fields := schemaFieldsOfH(schema)
+	clientID := defaultAuthCodeClientID()
+	scope, _ := h.Subjects.CredentialScope(ctx, sess.SchemaID)
+
+	out := make([]backend.BulkRowResult, 0, len(rows))
+	accepted, rejected := 0, 0
+	for i, row := range rows {
+		res := backend.BulkRowResult{Row: i + 1, Subject: row}
+		id := injiRowIdentity(row)
+		if id == "" {
+			res.Status, res.Label = "failed", "(no id)"
+			res.Error = "no identity column (expected one of: " + strings.Join(injiIdentityFields, ", ") + ")"
+			rejected++
+			out = append(out, res)
+			continue
+		}
+		res.Label = id
+		// Claims = the credential's declared fields present in the row, so the
+		// data-provider's extraction view (which reads claims->>'field' per
+		// schema field) stays aligned. If the schema fields can't be resolved,
+		// fall back to every non-empty column so provisioning still works.
+		claims := map[string]string{}
+		if len(fields) > 0 {
+			for _, f := range fields {
+				if v := strings.TrimSpace(row[f]); v != "" {
+					claims[f] = v
+				}
+			}
+		} else {
+			for k, v := range row {
+				if s := strings.TrimSpace(v); s != "" {
+					claims[k] = s
+				}
+			}
+		}
+		if len(claims) == 0 {
+			res.Status = "failed"
+			res.Error = "row has none of the credential's fields: " + strings.Join(fields, ", ")
+			rejected++
+			out = append(out, res)
+			continue
+		}
+		subjectID := esignetSubjectID(id, clientID)
+		if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {
+			res.Status = "failed"
+			res.Error = truncateForLogBulk(err.Error(), 200)
+			rejected++
+			out = append(out, res)
+			continue
+		}
+		res.Status = "provisioned"
+		accepted++
+		out = append(out, res)
+	}
+	if accepted > 0 {
+		metrics.IncN("subject_provisioned_total", int64(accepted), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "ok")
+	}
+	if rejected > 0 {
+		metrics.IncN("subject_provisioned_total", int64(rejected), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
+	}
+	h.renderFragment(w, r, "fragment_issue_provision_preview", map[string]any{
+		"Schema":      schema,
+		"Fields":      fields,
+		"Total":       len(rows),
+		"Provisioned": accepted,
+		"Failed":      rejected,
+		"RowsOut":     out,
+		"Label":       label,
+		"Scope":       scope,
+		"ClientID":    clientID,
 	})
 }
 

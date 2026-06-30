@@ -5,8 +5,8 @@
   <p class="subtitle">
     <span class="mono">{{.Body.IssuerDpg}}</span> ·
     <span class="mono">{{.Body.Schema.Std}}</span> ·
-    {{if eq .Body.Scale "single"}}one subject{{else}}CSV upload{{end}} ·
-    {{if eq .Body.Dest "wallet"}}delivered via OID4VCI{{else}}printable PDF with embedded QR{{end}}
+    {{if eq .Body.Scale "single"}}one subject{{else if .Body.Dpg.BulkOnly}}bulk provision{{else}}bulk issuance{{end}} ·
+    {{if .Body.Dpg.BulkOnly}}provision subjects → holders self-claim via eSignet{{else if eq .Body.Dest "wallet"}}delivered via OID4VCI{{else}}printable PDF with embedded QR{{end}}
   </p>
 
   {{if eq .Body.Scale "single"}}
@@ -290,6 +290,24 @@
       </div>
       <button class="btn" type="submit" style="align-self:flex-start">Run & issue →</button>
     </form>
+  {{else if eq .Source "registry"}}
+    {{/* Sunbird RC registry pull: no inputs — the registry endpoint(s) come
+         from VERIFIABLY_REGISTRIES. We search-all every configured entity and
+         provision each record into certify.vc_subject. */}}
+    <form id="bulk-form"
+          hx-post="/issuer/issue/bulk/registry"
+          hx-target="#csv-preview"
+          hx-swap="innerHTML"
+          style="display:flex;flex-direction:column;gap:0.75rem">
+      <div style="font-size:0.8rem;color:var(--ink-mute);background:var(--bg-elev);border:1px solid var(--line);border-radius:3px;padding:0.75rem 1rem">
+        Pulls every record from the configured <strong>Sunbird RC registry</strong>
+        and provisions each into <span class="mono">certify.vc_subject</span>,
+        keyed by <span class="mono">individualId</span>. Claims map to schema fields:
+        <span class="mono">{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>.
+        Holders then self-claim via eSignet — the issuer-authoritative source for this credential.
+      </div>
+      <button class="btn" type="submit" style="align-self:flex-start">Pull & provision →</button>
+    </form>
   {{else}}
     {{/* Default / csv: unchanged upload widget. */}}
     <form id="bulk-form"
@@ -487,6 +505,79 @@
         {{range .Errors}}<li>row {{.Row}}: {{.Reason}}</li>{{end}}
       </ul>
     </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "fragment_issue_provision_preview"}}
+{{/* Inji auth-code bulk sink result: rows were upserted into certify.vc_subject
+     (no wallet push). Holders self-claim via eSignet — so the table reports
+     provisioning status, not offer URIs, and a banner explains the next step. */}}
+<div style="margin-top:1.5rem">
+  <div class="caps" style="margin-bottom:0.5rem">
+    {{if .Label}}{{.Label}} — {{end}}{{.Total}} row{{if ne .Total 1}}s{{end}}
+    · <span class="mono" style="color:var(--ok)">{{.Provisioned}}</span> provisioned
+    {{if gt .Failed 0}}· <span class="mono" style="color:var(--err)">{{.Failed}}</span> failed{{end}}
+  </div>
+
+  {{if gt .Provisioned 0}}
+  <div style="margin-top:0.5rem;padding:0.75rem 1rem;background:color-mix(in srgb, var(--ok) 10%, transparent);border:1px solid color-mix(in srgb, var(--ok) 40%, transparent);border-radius:4px;font-size:0.8rem">
+    <strong>Subjects staged.</strong> Holders claim their credential at
+    <a href="/holder/wallet/inji" class="mono">/holder/wallet/inji</a>{{if .Scope}} (eSignet scope <span class="mono">{{.Scope}}</span>){{end}} —
+    each signs in with eSignet as their <span class="mono">individualId</span> and
+    Certify issues the credential from the staged claims. Nothing is pushed to a
+    wallet here; this is the issuer-authoritative, holder-pull model.
+  </div>
+  {{end}}
+
+  {{if .RowsOut}}
+  <div style="margin-top:0.75rem;overflow:auto;border:1px solid var(--line);border-radius:4px">
+    <table class="bulk-result-table" style="width:100%;border-collapse:collapse;font-size:0.82rem">
+      <thead>
+        <tr style="background:var(--bg-elev);border-bottom:1px solid var(--line)">
+          <th style="text-align:left;padding:0.5rem 0.75rem;width:3rem" class="caps">#</th>
+          <th style="text-align:left;padding:0.5rem 0.75rem" class="caps">Individual</th>
+          <th style="text-align:left;padding:0.5rem 0.75rem;width:8rem" class="caps">Status</th>
+          <th style="text-align:left;padding:0.5rem 0.75rem" class="caps">Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .RowsOut}}
+        <tr style="border-bottom:1px solid var(--line)">
+          <td class="mono" style="padding:0.5rem 0.75rem;color:var(--ink-mute)">{{.Row}}</td>
+          <td style="padding:0.5rem 0.75rem">
+            <div style="font-weight:500" class="mono">{{.Label}}</div>
+            {{if .Subject}}
+              <details style="margin-top:0.2rem;font-size:0.72rem;color:var(--ink-mute)">
+                <summary style="cursor:pointer">row data</summary>
+                <dl style="margin:0.3rem 0 0;display:grid;grid-template-columns:max-content 1fr;gap:0.15rem 0.6rem">
+                  {{range $k, $v := .Subject}}
+                    <dt class="mono" style="color:var(--ink-mute)">{{$k}}</dt>
+                    <dd class="mono" style="margin:0;color:var(--ink-soft)">{{$v}}</dd>
+                  {{end}}
+                </dl>
+              </details>
+            {{end}}
+          </td>
+          <td style="padding:0.5rem 0.75rem">
+            {{if eq .Status "provisioned"}}
+              <span class="chip" style="background:color-mix(in srgb, var(--ok) 15%, transparent);color:var(--ok);padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem">✓ provisioned</span>
+            {{else}}
+              <span class="chip" style="background:color-mix(in srgb, var(--err) 15%, transparent);color:var(--err);padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem">✗ failed</span>
+            {{end}}
+          </td>
+          <td style="padding:0.5rem 0.75rem">
+            {{if eq .Status "provisioned"}}
+              <span style="font-size:0.72rem;color:var(--ink-mute)">staged in <span class="mono">vc_subject</span></span>
+            {{else}}
+              <div style="font-size:0.72rem;color:var(--err);font-style:italic">{{.Error}}</div>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
   {{end}}
 </div>
 {{end}}
