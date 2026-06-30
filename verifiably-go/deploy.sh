@@ -249,6 +249,19 @@ cmd_up() {
     # break the primary's verification. Empty in legacy/port mode → every
     # consumer below falls back to did:web:certify-preauth-nginx (unchanged).
     export PREAUTH_DID_DOMAIN=$(printf '%s' "$PREAUTH_PUBLIC_URL" | sed -E 's#^https?://##; s#[:/].*$##')
+    # Auto-derive ISSUER_DID_DOMAIN from the DEDICATED auth-code DID subdomain
+    # (inji-certify-authcode.<domain>) when a host is configured and the operator
+    # hasn't pinned one — so the PRIMARY auth-code issuer DID is a publicly-
+    # resolvable did:web:inji-certify-authcode.<domain> (gen-caddy.sh serves its
+    # did.json there from the verifiably-go primary proxy), explicitly separate
+    # from the pre-auth instance's did:web:inji-certify-preauth.<domain>, instead
+    # of the docker-internal did:web:certify-nginx. ONLY the primary is affected:
+    # the pre-auth instance keeps PREAUTH_DID_DOMAIN (above), which takes
+    # precedence in its own CERTIFY_ISSUER_DID. Pin ISSUER_DID_DOMAIN in .env to
+    # override; on a host-less box it stays unset → did:web:certify-nginx.
+    if [[ -z "${ISSUER_DID_DOMAIN:-}" ]]; then
+      export ISSUER_DID_DOMAIN=$(printf '%s' "$(url_for inji-certify-authcode "$VERIFIABLY_PUBLIC_HOST" "${INJI_CERTIFY_PORT:-8090}")" | sed -E 's#^https?://##; s#[:/].*$##')
+    fi
   fi
 
   # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE

@@ -197,6 +197,7 @@ render_public_caddyfile() {
     "walt-verifier|verifier-api:7003|http"
     "inji-certify|certify-nginx:80|http"
     "inji-certify-preauth|certify-preauth-nginx:80|http"
+    "inji-certify-authcode|certify-nginx:80|http"
     "inji-verify|inji-verify-service:8080|http"
     "inji-verify-ui|inji-verify-ui:8000|http"
     "inji-web|injiweb-ui:3004|http"
@@ -314,6 +315,17 @@ PYEOF
           printf '\t\trespond `%s` 200\n' "$_inji_did_doc"
           printf '\t}\n'
         fi
+      fi
+      # inji-certify-authcode: the dedicated did:web host for the PRIMARY auth-code
+      # issuer (kept separate from inji-certify-preauth to avoid any ambiguity).
+      # did:web:inji-certify-authcode.<domain> resolves here; serve the patched
+      # certify did.json from the verifiably-go primary proxy (InjiProxyPrimaryDidJSON).
+      # Other paths fall through to certify-nginx (harmless — it's a DID host).
+      if [[ "$name" == "inji-certify-authcode" ]]; then
+        printf '\thandle /.well-known/did.json {\n'
+        printf '\t\trewrite * /inji-proxy/.well-known/did.json\n'
+        printf '\t\treverse_proxy verifiably-go:8080\n'
+        printf '\t}\n'
       fi
       case "$proto" in
         https-skipverify)

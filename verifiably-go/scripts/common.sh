@@ -120,7 +120,7 @@ url_for() {
 # VERIFIABLY_PUBLIC_SLUGS — the service subdomains verifiably-go talks to
 # server-side. Kept as an overridable space-separated list so compute_host_aliases
 # (and its unit test) stay in sync with the slugs gen-caddy.sh routes.
-: "${VERIFIABLY_PUBLIC_SLUGS:=verifiably keycloak wso2 credebl walt-issuer walt-wallet walt-verifier inji-certify inji-certify-preauth inji-verify inji-verify-ui inji-web mimoto esignet}"
+: "${VERIFIABLY_PUBLIC_SLUGS:=verifiably keycloak wso2 credebl walt-issuer walt-wallet walt-verifier inji-certify inji-certify-preauth inji-certify-authcode inji-verify inji-verify-ui inji-web mimoto esignet}"
 
 # compute_host_aliases <domain> <caddy_ip>
 # Prints `docker run --add-host` arguments — one token per line, so a caller can
