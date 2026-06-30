@@ -4,15 +4,11 @@
   <h1 class="page-title">Pick a schema, or<br><em>build one</em>.</h1>
   <p class="subtitle">These are the credential types available from <span class="mono">{{.Session.IssuerDpg}}</span>. Click a card to preview its JSON Schema. Click <em>Use this schema</em> to select it for issuance.</p>
 
-  {{/* Legend — explains the ⚠ badge that tags formats whose credentials
-       the backend's verifier can't filter for. Needed because the card
-       grid happily surfaces those formats (they issue + claim end-to-end
-       with walt.id); the warning is specifically about the round-trip
-       into /verifier/verify. */}}
-  <div class="format-legend">
-    <span class="chip small format-issue-only">⚠</span>
-    <span>Issue-only — walt.id's verifier can't filter for this format, so credentials issued here can't be presented end-to-end. Pick a non-⚠ format to keep the full issue → hold → present flow working.</span>
-  </div>
+  {{/* The issue-only (⚠) legend lives inside the schema list now (gated on
+       HasIssueOnlyFormat) so it appears only when a verifier-unfilterable
+       format is actually on screen — i.e. for walt.id's gap formats, and
+       not for DPGs (Inji auth-code, CREDEBL) whose cards have no such
+       variant. It swaps with the list on search/filter. */}}
 
   {{/* Transient catalog-fetch banner. Set when the vendor's well-known
        endpoint is briefly unreachable — typically because walt.id's
@@ -91,6 +87,17 @@
 
 {{define "fragment_schema_list"}}
 <div class="schema-list" id="schema-list">
+  {{/* Issue-only legend — explains the ⚠ badge on format chips. Rendered only
+       when a displayed card actually carries a verifier-unfilterable variant
+       (HasIssueOnlyFormat), which today is walt.id's gap formats only. Inside
+       #schema-list so it swaps with the cards on search/filter. */}}
+  {{if .HasIssueOnlyFormat}}
+  <div class="format-legend" style="grid-column:1 / -1">
+    <span class="chip small format-issue-only">⚠</span>
+    <span>Issue-only — walt.id's verifier can't filter for this format, so credentials issued here can't be presented end-to-end. Pick a non-⚠ format to keep the full issue → hold → present flow working.</span>
+  </div>
+  {{end}}
+
   {{if not .Schemas}}
     <div class="empty" style="grid-column: 1 / -1">
       {{if .HasAnyCustom}}

@@ -104,6 +104,12 @@ type schemaBrowserData struct {
 	// distinguish "no results because filter hides them" from "user has
 	// not built any custom schema yet" and pick the right empty-state copy.
 	HasAnyCustom bool
+	// HasIssueOnlyFormat is true when a displayed card carries a verifier-
+	// unfilterable (CanPresent==false) variant — i.e. a ⚠ "issue-only" format
+	// is selectable in the current view. Gates the issue-only legend so it
+	// shows only for walt.id (the only DPG that sets per-format CanPresent) and
+	// only when such a format is actually on screen.
+	HasIssueOnlyFormat bool
 	// Notice is a soft error banner the page renders inline, used when the
 	// vendor's catalog endpoint is briefly unreachable (e.g. walt.id is
 	// restarting after a custom-schema save). Custom schemas saved in the
@@ -255,16 +261,35 @@ func (h *H) schemaBrowserData(w http.ResponseWriter, r *http.Request, sess *Sess
 			}
 		}
 	}
+	// hasIssueOnly is true when a currently-displayed card carries a variant
+	// the verifier can't filter for (CanPresent==false) — i.e. a ⚠ format is
+	// actually selectable in this view. Only walt.id's catalog populates
+	// per-format CanPresent (other DPGs build no variants), so this naturally
+	// scopes the issue-only legend to walt.id and hides it when no ⚠ format
+	// is on screen.
+	hasIssueOnly := false
+	for _, s := range filtered {
+		for _, v := range s.Variants {
+			if !v.CanPresent {
+				hasIssueOnly = true
+				break
+			}
+		}
+		if hasIssueOnly {
+			break
+		}
+	}
 	return schemaBrowserData{
-		Schemas:      filtered,
-		Stds:         stds,
-		Filter:       sess.SchemaFilter,
-		Query:        sess.SchemaQuery,
-		ExpandedID:   sess.ExpandedSchemaID,
-		SelectedID:   sess.SchemaID,
-		ExpandedJSON: expandedJSON,
-		Notice:       notice,
-		HasAnyCustom: hasAnyCustom,
+		Schemas:            filtered,
+		Stds:               stds,
+		Filter:             sess.SchemaFilter,
+		Query:              sess.SchemaQuery,
+		ExpandedID:         sess.ExpandedSchemaID,
+		SelectedID:         sess.SchemaID,
+		ExpandedJSON:       expandedJSON,
+		Notice:             notice,
+		HasAnyCustom:       hasAnyCustom,
+		HasIssueOnlyFormat: hasIssueOnly,
 	}
 }
 
