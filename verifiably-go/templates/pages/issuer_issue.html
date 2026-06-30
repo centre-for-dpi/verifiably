@@ -289,6 +289,15 @@
     <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
       <input type="hidden" name="source" value="registry">
+      {{/* Contract callout — the registry is an EXTERNAL, read-only data source.
+           Issuers kept assuming Verifiably would auto-create an entity named after
+           the credential; it doesn't. Spell out the prerequisite up front. */}}
+      <div style="font-size:0.8rem;color:var(--ink-soft);background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:3px;padding:0.75rem 1rem;line-height:1.5">
+        <strong>Bring your own registry.</strong> Verifiably <strong>reads</strong> records from your Sunbird RC registry — it does not create entities or data, so set those up first.
+        Point <span class="mono">Entity</span> at one that <strong>already exists</strong> in your registry: it's pre-filled with this credential's type as a common convention, but change it to match yours — or click <strong>Discover entities</strong> to list what's actually there.
+        Column names <strong>don't</strong> have to match the credential — you'll map them in the next step.
+        <span class="mono">Search field</span> is the record column holding each holder's eSignet <span class="mono">individualId</span>.
+      </div>
       {{if .Registries}}
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Configured registry (optional)</span>
@@ -303,14 +312,24 @@
         <input type="url" name="reg_url" placeholder="https://registry.example  (or pick one above)" style="{{$inp}}">
       </label>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
-        <span class="caps">Entity / schema name</span>
-        <input type="text" name="reg_entity" value="{{.EntityDefault}}" placeholder="Sunbird entity (defaults to the credential type)" style="{{$inp}}">
+        <span class="caps">Entity / schema name <span style="text-transform:none;color:var(--ink-mute);font-weight:400">— must already exist in your registry</span></span>
+        <input type="text" name="reg_entity" value="{{.EntityDefault}}" placeholder="an entity name from your registry" style="{{$inp}}">
       </label>
+      {{/* Discover the entities the registry actually has, so the issuer picks a
+           real one instead of guessing. hx-include sends reg_url/reg_pick. */}}
+      <div style="display:flex;flex-direction:column;gap:0.4rem">
+        <button class="btn ghost" type="button" style="align-self:flex-start;font-size:0.78rem;padding:0.3rem 0.7rem"
+                hx-post="/issuer/issue/bulk/registry-entities"
+                hx-include="closest form"
+                hx-target="#reg-entities"
+                hx-swap="innerHTML">Discover entities</button>
+        <div id="reg-entities"></div>
+      </div>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Search field</span>
         <input type="text" name="reg_search" value="individualId" style="{{$inp}};max-width:14rem">
       </label>
-      <div style="font-size:0.75rem;color:var(--ink-mute)">Pulls every record of the entity from the Sunbird RC registry (<span class="mono">POST /api/v1/&lt;entity&gt;/search</span>); each record is one row to provision. You'll map its fields next.</div>
+      <div style="font-size:0.75rem;color:var(--ink-mute)">Pulls every record of the entity (<span class="mono">POST /api/v1/&lt;entity&gt;/search</span>); each record is one row to provision.</div>
       <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else}}
@@ -333,6 +352,24 @@
 <div style="margin-top:0.5rem;padding:0.75rem 1rem;background:color-mix(in srgb, var(--err) 8%, transparent);border:1px solid color-mix(in srgb, var(--err) 45%, transparent);border-left-width:3px;border-radius:4px;font-size:0.82rem;color:var(--ink)">
   <strong style="color:var(--err)">Couldn't load the data source.</strong> {{.Message}}
 </div>
+{{end}}
+
+{{/* fragment_registry_entities — the result of "Discover entities": the actual
+     entities the registry holds, as chips that fill the reg_entity input on
+     click. Rendered into #reg-entities. */}}
+{{define "fragment_registry_entities"}}
+{{if .NeedURL}}
+<div style="font-size:0.78rem;color:var(--ink-mute);font-style:italic">Enter a registry base URL (or pick a configured registry) first, then click Discover.</div>
+{{else if .Entities}}
+<div style="font-size:0.78rem;color:var(--ink-soft)">
+  <span class="caps" style="display:block;margin-bottom:0.35rem">Entities in this registry — click to use</span>
+  <div style="display:flex;flex-wrap:wrap;gap:0.35rem">
+    {{range .Entities}}<button type="button" class="chip small" onclick="this.closest('form').reg_entity.value='{{.}}'">{{.}}</button>{{end}}
+  </div>
+</div>
+{{else}}
+<div style="font-size:0.78rem;color:var(--err);font-style:italic">No entities found at {{.URL}} — check the URL is reachable and that schemas are registered (POST /api/v1/Schema).</div>
+{{end}}
 {{end}}
 
 {{/* fragment_issue_bulk_mapping — step 2: map each credential field to a source

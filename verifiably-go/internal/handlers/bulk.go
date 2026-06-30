@@ -187,6 +187,13 @@ func (h *H) BulkPreview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rows = searchRegistryAll(r.Context(), p, entity)
+		if len(rows) == 0 {
+			// Distinguish "registry unreachable / no entities" vs "wrong entity
+			// name" vs "entity is empty" — searchRegistryAll swallows the HTTP
+			// error, so re-query the schema list to give an actionable message.
+			h.bulkInlineError(w, r, registryEmptyMessage(r.Context(), p.URL, entity))
+			return
+		}
 		label = "registry:" + entity
 	default:
 		h.bulkInlineError(w, r, "Unknown source: "+source)
@@ -459,6 +466,54 @@ func buildRegistryProvider(r *http.Request, sess *Session) (registryProvider, st
 		entity = sess.SchemaID
 	}
 	return p, entity
+}
+
+// containsStr reports whether s contains v.
+func containsStr(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// registryEmptyMessage explains WHY a registry pull returned no rows by
+// re-querying the registry's entity list (sunbirdSchemas) — so the operator
+// learns whether the registry is unreachable, the entity name is wrong (and
+// what's actually available), or the entity simply has no records.
+func registryEmptyMessage(ctx context.Context, url, entity string) string {
+	avail := sunbirdSchemas(ctx, url)
+	switch {
+	case len(avail) == 0:
+		return "Couldn't reach the registry at " + url + ", or it has no registered entities — check the base URL."
+	case !containsStr(avail, entity):
+		return "This registry has no entity named '" + entity + "'. Available: " + strings.Join(avail, ", ") + ". Set the Entity to one of these (or use “Discover entities”)."
+	default:
+		return "Entity '" + entity + "' exists in the registry but has no records yet."
+	}
+}
+
+// BulkRegistryEntities lists the entities a Sunbird RC registry actually holds,
+// so the issuer can pick a real one instead of guessing. Resolves the base URL
+// from the form (reg_url, or a picked configured registry — via
+// buildRegistryProvider) and calls sunbirdSchemas. Rendered into #reg-entities
+// beneath the Entity input.
+func (h *H) BulkRegistryEntities(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	if err := r.ParseForm(); err != nil {
+		h.renderFragment(w, r, "fragment_registry_entities", map[string]any{"NeedURL": true})
+		return
+	}
+	p, _ := buildRegistryProvider(r, sess)
+	if p.URL == "" {
+		h.renderFragment(w, r, "fragment_registry_entities", map[string]any{"NeedURL": true})
+		return
+	}
+	h.renderFragment(w, r, "fragment_registry_entities", map[string]any{
+		"Entities": sunbirdSchemas(r.Context(), p.URL),
+		"URL":      p.URL,
+	})
 }
 
 // runBulkProvision is the Inji auth-code bulk sink. Each source row is upserted
