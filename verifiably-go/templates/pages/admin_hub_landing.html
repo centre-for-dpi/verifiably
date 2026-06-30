@@ -31,6 +31,19 @@
       </div>
     </a>
 
+    {{/* Identity registry — enrol the citizen identities holders activate against */}}
+    <a href="/registrar/identities" style="text-decoration:none">
+      <div class="card" style="padding:1.5rem;border:1px solid var(--line);border-radius:6px;background:var(--bg-elev);cursor:pointer;transition:border-color 0.15s"
+           onmouseover="this.style.borderColor='var(--accent,#6366f1)'"
+           onmouseout="this.style.borderColor='var(--line)'">
+        <div style="font-size:1.5rem;margin-bottom:0.75rem">🪪</div>
+        <div style="font-weight:600;font-size:0.9rem;margin-bottom:0.35rem">Identity registry</div>
+        <div style="font-size:0.78rem;color:var(--ink-mute);line-height:1.4">
+          Enrol citizen identities from any data source. Holders activate against these records — they cannot create themselves.
+        </div>
+      </div>
+    </a>
+
     {{/* Metrics — links directly to Grafana */}}
     {{if .Body.GrafanaURL}}
     <a href="{{.Body.GrafanaURL}}" target="_blank" rel="noopener" style="text-decoration:none">

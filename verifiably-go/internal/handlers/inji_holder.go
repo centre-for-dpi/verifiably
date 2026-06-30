@@ -184,8 +184,8 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 		// eSignet identity has no provisioned row for this credential's data.
 		if strings.Contains(err.Error(), "DATA_RECORD") || strings.Contains(err.Error(), "FETCHING_DATA") {
 			msg = "No data was found for your eSignet identity for this credential. " +
-				"Sign up at /holder/register so verifiably can pull your details from an " +
-				"authoritative registry, then claim again."
+				"Activate your identity at /holder/register (you must be enrolled in the " +
+				"identity registry by a registrar), then claim again."
 		}
 		fail(msg)
 		return

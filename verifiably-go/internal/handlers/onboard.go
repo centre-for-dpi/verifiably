@@ -13,12 +13,14 @@ import (
 	"time"
 )
 
-// onboard.go — holder SELF-REGISTRATION for the Inji auth-code flow. The holder
-// creates their own eSignet identity (so they can sign in) and verifiably
-// AUTO-PROVISIONS their claims into certify.vc_subject by looking them up in the
-// configured authoritative registries (by Individual ID) — the issuer never types
-// a holder's data. Identity creation is an identity-authority concern, not an
-// issuer one — hence /holder/register.
+// onboard.go — holder ACTIVATION for the Inji auth-code flow (the MOSIP/eSignet
+// model). The holder does NOT create their own identity: they must already be
+// enrolled in the authoritative identity registry by a registrar (see
+// identity.go). Activation verifies ownership via an emailed one-time code, then
+// materialises their eSignet identity from the REGISTRY demographics + a PIN they
+// set, and AUTO-PROVISIONS their credential claims into certify.vc_subject from
+// the configured credential registries (by Individual ID) — the issuer never
+// types a holder's data, and no one self-mints an identity here.
 
 // mockIdentityURL is the eSignet mock-identity-system base. Per-host via env;
 // defaults to the compose service so deploy.sh up <scenario> just works.
@@ -159,7 +161,7 @@ func (h *H) activateRequest(w http.ResponseWriter, r *http.Request, sess *Sessio
 	}
 	if len(rec) == 0 {
 		// The core gate: a holder cannot create themselves. Not enrolled → refused.
-		render(map[string]any{"Error": "This Individual ID is not enrolled in the identity registry. Contact your registrar to be enrolled before you can sign up."})
+		render(map[string]any{"Error": "This Individual ID is not enrolled in the identity registry. Contact your registrar to be enrolled before you can activate."})
 		return
 	}
 	email := strings.TrimSpace(rec["email"])
