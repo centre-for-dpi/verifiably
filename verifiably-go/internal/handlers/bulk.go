@@ -63,12 +63,15 @@ func (h *H) BulkSource(w http.ResponseWriter, r *http.Request) {
 	// source the DPG disclaims by crafting a POST directly (would just fail
 	// at issue time with a cryptic error; better to reject up-front).
 	dpgs, _ := h.Adapter.ListIssuerDpgs(r.Context())
-	if !bulkSourceAllowed(source, bulkSourcesFor(dpgs[sess.IssuerDpg])) {
+	dpg := dpgs[sess.IssuerDpg]
+	bulkSources := bulkSourcesFor(dpg)
+	if !bulkSourceAllowed(source, bulkSources) {
 		h.errorToast(w, r, "source '"+source+"' is not supported by the selected issuer DPG")
 		return
 	}
 	sess.BulkSource = source
-	// Re-render the bulk form area with the chosen source's mini-form.
+	// Re-render the whole #bulk-area (chip-row + mini-form) so the active chip
+	// highlight moves to the clicked source AND the form switches in one swap.
 	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
 	if err != nil {
 		h.errorToast(w, r, "backend unavailable: "+err.Error())
@@ -76,9 +79,11 @@ func (h *H) BulkSource(w http.ResponseWriter, r *http.Request) {
 	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	schema = h.resolveFields(schema)
-	h.renderFragment(w, r, "fragment_issue_bulk_form", map[string]any{
-		"Source": sess.BulkSource,
-		"Fields": schemaFieldsOfH(schema),
+	h.renderFragment(w, r, "fragment_issue_bulk_area", map[string]any{
+		"BulkSources": bulkSources,
+		"BulkSource":  sess.BulkSource,
+		"Fields":      schemaFieldsOfH(schema),
+		"Dpg":         dpg,
 	})
 }
 

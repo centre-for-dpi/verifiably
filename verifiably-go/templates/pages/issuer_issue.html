@@ -52,25 +52,14 @@
     {{/* ----- BULK — select a source, populate its mini-form, issue per row ----- */}}
     <div style="margin-top:2rem">
       <div class="caps" style="margin-bottom:0.75rem">Bulk data source</div>
-      <div class="chip-row">
-        {{range .Body.BulkSources}}
-        <button type="button"
-                class="chip {{if eq $.Body.BulkSource .Key}}active{{end}}"
-                hx-post="/issuer/issue/bulk/source"
-                hx-vals='{"source": "{{.Key}}"}'
-                hx-target="#bulk-form-wrap"
-                hx-swap="outerHTML"
-                title="{{.Hint}}">{{.Label}}</button>
-        {{end}}
+      {{/* Chip-row + mini-form live together in #bulk-area so clicking a chip
+           re-renders BOTH — the active highlight moves AND the form switches
+           in one swap (previously the chips targeted only the form, so the
+           highlight stayed on the old chip until a full page reload). */}}
+      <div id="bulk-area">
+        {{template "fragment_issue_bulk_area" (dict "BulkSources" .Body.BulkSources "BulkSource" .Body.BulkSource "Fields" .Body.Fields "Dpg" .Body.Dpg)}}
       </div>
-      {{if and .Body.Dpg (lt (len .Body.BulkSources) 3)}}
-      <div style="margin-top:0.5rem;font-size:0.72rem;color:var(--ink-mute);font-style:italic">
-        {{.Body.Dpg.Vendor}} only supports {{len .Body.BulkSources}} of the 3 bulk sources. The missing chip(s) reflect the vendor's documented data-provider capabilities, not a verifiably-go limitation.
-      </div>
-      {{end}}
     </div>
-
-    {{template "fragment_issue_bulk_form" (dict "Source" .Body.BulkSource "Fields" .Body.Fields)}}
 
     <div id="csv-preview"></div>
 
@@ -226,6 +215,30 @@
     document.getElementById('modal-root').appendChild(modal);
   };
 </script>
+{{end}}
+
+{{/* fragment_issue_bulk_area renders the source chip-row + the active source's
+     mini-form together. Rendered into #bulk-area on first paint and re-rendered
+     (innerHTML) on every chip click so the active highlight and the form stay in
+     sync without a page reload. Input: dict {BulkSources, BulkSource, Fields, Dpg}. */}}
+{{define "fragment_issue_bulk_area"}}
+<div class="chip-row">
+  {{range .BulkSources}}
+  <button type="button"
+          class="chip {{if eq $.BulkSource .Key}}active{{end}}"
+          hx-post="/issuer/issue/bulk/source"
+          hx-vals='{"source": "{{.Key}}"}'
+          hx-target="#bulk-area"
+          hx-swap="innerHTML"
+          title="{{.Hint}}">{{.Label}}</button>
+  {{end}}
+</div>
+{{if and .Dpg (lt (len .BulkSources) 3)}}
+<div style="margin-top:0.5rem;font-size:0.72rem;color:var(--ink-mute);font-style:italic">
+  {{.Dpg.Vendor}} only supports {{len .BulkSources}} of the 3 bulk sources. The missing chip(s) reflect the vendor's documented data-provider capabilities, not a verifiably-go limitation.
+</div>
+{{end}}
+{{template "fragment_issue_bulk_form" (dict "Source" .BulkSource "Fields" .Fields)}}
 {{end}}
 
 {{define "fragment_issue_bulk_form"}}
