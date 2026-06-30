@@ -6,10 +6,18 @@
   </div>
   <h1 class="page-title">{{t "Your" $.Lang}} <em>{{t "credentials" $.Lang}}</em>.</h1>
   <p class="subtitle">
-    {{t "Credentials you've claimed via eSignet in this session." $.Lang}}
+    {{t "Credentials you've claimed via eSignet — kept in your wallet across restarts." $.Lang}}
     <a href="/holder/wallet/inji">{{t "Claim more →" $.Lang}}</a>
   </p>
 
+  {{template "fragment_inji_held_list" .}}
+</section>
+{{end}}
+
+{{/* fragment_inji_held_list — the wallet card grid. Rendered both by the page and
+     by the delete handler (hx-swap outerHTML on #held-list). */}}
+{{define "fragment_inji_held_list"}}
+<div id="held-list">
   {{if $.Body.Held}}
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin-top:1.25rem">
     {{range $.Body.Held}}
@@ -36,6 +44,12 @@
         <summary style="cursor:pointer;color:var(--muted);font-size:0.8rem">{{t "Raw credential (JSON)" $.Lang}}</summary>
         <pre class="mono" style="overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0.7rem;font-size:0.7rem;margin-top:0.5rem">{{.VC}}</pre>
       </details>
+      <div style="margin-top:0.85rem;display:flex;justify-content:flex-end">
+        <button hx-post="/holder/wallet/inji/credentials/{{.ID}}/delete"
+                hx-target="#held-list" hx-swap="outerHTML"
+                hx-confirm="Remove this credential from your wallet?"
+                class="btn small" style="background:transparent;border:1px solid var(--err);color:var(--err);font-size:0.72rem;padding:0.25rem 0.7rem">{{t "Delete" $.Lang}}</button>
+      </div>
     </div>
     {{end}}
   </div>
@@ -43,5 +57,5 @@
   <p class="subtitle" style="margin-top:1.5rem">{{t "You haven't claimed any credentials yet." $.Lang}}
     <a href="/holder/wallet/inji">{{t "Claim one →" $.Lang}}</a></p>
   {{end}}
-</section>
+</div>
 {{end}}

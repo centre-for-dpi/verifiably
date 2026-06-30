@@ -367,8 +367,15 @@ func (h *H) ShowInjiClaim(w http.ResponseWriter, r *http.Request) {
 
 // parseClaimedVC turns an issued VC (JSON string) into display fields for the held page:
 // the pretty-printed VC, the credentialSubject, the specific type, issuer and validUntil.
+// vcID is a stable short id for a stored claimed-VC string (so deletion keys on
+// the credential, not its volatile newest-first index).
+func vcID(vc string) string {
+	sum := sha256.Sum256([]byte(vc))
+	return base64.RawURLEncoding.EncodeToString(sum[:9])
+}
+
 func parseClaimedVC(vc string) map[string]any {
-	out := map[string]any{"VC": vc}
+	out := map[string]any{"VC": vc, "ID": vcID(vc)}
 	var pretty any
 	if json.Unmarshal([]byte(vc), &pretty) != nil {
 		return out
@@ -400,13 +407,40 @@ func parseClaimedVC(vc string) map[string]any {
 	return out
 }
 
-// ShowInjiHeld renders the holder's claimed credentials (this session), on a page
-// separate from the available-to-claim catalog at /holder/wallet/inji.
-func (h *H) ShowInjiHeld(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
+// heldClaims parses the session's persisted claimed VCs into display maps.
+func heldClaims(sess *Session) []map[string]any {
 	held := make([]map[string]any, 0, len(sess.InjiClaimedVCs))
 	for _, vc := range sess.InjiClaimedVCs {
 		held = append(held, parseClaimedVC(vc))
 	}
-	h.render(w, r, "holder_inji_held", h.pageData(sess, map[string]any{"Held": held}))
+	return held
+}
+
+// ShowInjiHeld renders the holder's claimed credentials (persisted on the
+// session), on a page separate from the available-to-claim catalog at
+// /holder/wallet/inji.
+func (h *H) ShowInjiHeld(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	h.render(w, r, "holder_inji_held", h.pageData(sess, map[string]any{"Held": heldClaims(sess)}))
+}
+
+// DeleteInjiClaimed removes one credential from the in-app Inji wallet by its
+// stable id, then re-renders the held list. The removal persists on the next
+// session flush, so it stays gone across restarts.
+func (h *H) DeleteInjiClaimed(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	id := r.PathValue("id")
+	kept := make([]string, 0, len(sess.InjiClaimedVCs))
+	for _, vc := range sess.InjiClaimedVCs {
+		if vcID(vc) != id {
+			kept = append(kept, vc)
+		}
+	}
+	sess.InjiClaimedVCs = kept
+	if len(kept) > 0 {
+		sess.InjiClaimedVC = kept[0]
+	} else {
+		sess.InjiClaimedVC = ""
+	}
+	h.renderFragment(w, r, "fragment_inji_held_list", map[string]any{"Body": map[string]any{"Held": heldClaims(sess)}, "Lang": h.langFor(r)})
 }

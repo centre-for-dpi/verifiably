@@ -133,7 +133,11 @@ type Session struct {
 	// InjiClaimedVC / InjiClaimError hold the in-app Inji auth-code claim result
 	// (/holder/wallet/inji). InjiClaimedVC is the issued VC as JSON.
 	InjiClaimedVC  string
-	InjiClaimedVCs []string `json:"-"` // all VCs claimed this session; shown on the held page
+	// InjiClaimedVCs is the in-app Inji wallet's held credentials (newest-first).
+	// Deliberately NOT json:"-": it IS persisted via the session store so the
+	// wallet survives a restart (the store flushes every 5 s and reloads on boot).
+	// Deleting a credential removes it here and the next flush makes that durable.
+	InjiClaimedVCs []string
 	InjiClaimError string   `json:"-"`
 	InjiClaimCred  string   `json:"-"` // credential_config key being claimed
 	SchemaError    string `json:"-"` // issuer schema-creation flash error
