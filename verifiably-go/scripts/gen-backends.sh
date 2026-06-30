@@ -109,14 +109,19 @@ JSON
         "DirectPDF": false,
         "Caveats": "Requires eSignet running; the holder needs a MOSIP identity to sign in.",
         "Redirect": false,
-        "InAppPath": "/issuer/schema/build",
+        "InAppPath": "",
         "SchemaApply": "inji_authcode",
+        "BulkOnly": true,
         "Capabilities": [
-          {"Kind": "flow",       "Key": "create_schema",   "Title": "Create a schema, live",            "Body": "verifiably generates the Certify config, the registry extraction view and the eSignet scope, then restarts both services — the credential is claimable immediately."},
-          {"Kind": "flow",       "Key": "auth_code",       "Title": "eSignet authorization code",       "Body": "The holder signs in with eSignet (OTP); the credential endpoint validates the IdP-signed token."},
-          {"Kind": "data",       "Key": "issuer_auth",     "Title": "Issuer-authoritative claims",      "Body": "Claims are read from the registry data-provider, not entered by the holder."},
-          {"Kind": "wallet",     "Key": "in_app",          "Title": "Claimed in verifiably",            "Body": "The holder receives the VC here — no external Inji Web redirect."},
-          {"Kind": "limitation", "Key": "needs_idp",       "Title": "Requires eSignet running",          "Body": "Fails closed if the IdP is unreachable."}
+          {"Kind": "flow",        "Key": "create_schema",   "Title": "Create a schema, live",            "Body": "verifiably generates the Certify config, the registry extraction view and the eSignet scope, then restarts both services — the credential is claimable immediately."},
+          {"Kind": "flow",        "Key": "auth_code",       "Title": "eSignet authorization code",       "Body": "The holder signs in with eSignet (OTP); the credential endpoint validates the IdP-signed token."},
+          {"Kind": "data",        "Key": "issuer_auth",     "Title": "Issuer-authoritative claims",      "Body": "Claims are read from the registry data-provider, not entered by the holder."},
+          {"Kind": "wallet",      "Key": "in_app",          "Title": "Claimed in verifiably",            "Body": "The holder receives the VC here — no external Inji Web redirect."},
+          {"Kind": "bulk_source", "Key": "registry",        "Title": "Bulk from Sunbird RC registry",    "Body": "Pull every record from the configured Sunbird RC registry and provision each into certify.vc_subject — the registry-native source for this DPG."},
+          {"Kind": "bulk_source", "Key": "db",              "Title": "Bulk from PostgreSQL",             "Body": "Run a SELECT against a country-provided DB; each row provisions one subject into certify.vc_subject."},
+          {"Kind": "bulk_source", "Key": "csv",             "Title": "Bulk from CSV",                    "Body": "Upload a CSV; each row provisions one subject into certify.vc_subject."},
+          {"Kind": "bulk_source", "Key": "api",             "Title": "Bulk from secured API",            "Body": "GET a JSON array (X-Road/REST); each object provisions one subject into certify.vc_subject."},
+          {"Kind": "limitation",  "Key": "needs_idp",       "Title": "Requires eSignet running",          "Body": "Fails closed if the IdP is unreachable."}
         ]
       },
       "config": {

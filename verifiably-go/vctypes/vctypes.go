@@ -41,6 +41,12 @@ type DPG struct {
 	FormatsPlain                string // plain-language explanation of formats
 	DirectPDF                   bool
 	DirectPDFPlain              string
+	// BulkOnly, when true, marks a DPG whose only issuance model is
+	// bulk-provision-then-self-claim (e.g. Inji auth-code: the issuer loads
+	// many subjects into the data-provider table, holders then claim via
+	// eSignet). The Mode page greys the single-subject scale and
+	// ShowIssuanceMode/SetIssuanceMode force Scale="bulk".
+	BulkOnly bool
 
 	// Structured capability list. Renders on the DPG picker card and drives
 	// downstream screen branching via Kind/Key pairs (no string matches on
