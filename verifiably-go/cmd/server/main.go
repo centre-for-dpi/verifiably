@@ -39,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/verifiably/verifiably-go/internal/adapters/factory"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
+	"github.com/verifiably/verifiably-go/internal/credentialcache"
 	"github.com/verifiably/verifiably-go/internal/didresolver"
 	"github.com/verifiably/verifiably-go/internal/federation"
 	"github.com/verifiably/verifiably-go/internal/handlers"
@@ -207,7 +208,7 @@ func main() {
 		AuthStore:     authStore,
 		AuthAdminMode: adminMode,
 		APIKeys:        handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
-		RateLimiter:    handlers.NewRateLimiter(),
+		RateLimiter:    handlers.NewRateLimiter(shutCtx),
 		PrometheusURL:  os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
 		GrafanaURL:     os.Getenv("VERIFIABLY_GRAFANA_URL"),
 	}
@@ -365,6 +366,15 @@ func main() {
 		if hubReg != nil {
 			h.MemberVerifierRegistrar = &memberVerifierRegistrar{reg: hubReg, cache: agg}
 		}
+
+		// Credential discovery catalog (Fase: holder-initiated delivery) —
+		// aggregates each member's /.well-known/openid-credential-issuer so the
+		// wallet's "Descubrir" screen loads from a hot cache. New members appear
+		// on the next refresh (same 5-min TTL as the schema cache).
+		ccache := credentialcache.NewAggregator(5 * time.Minute)
+		h.CredentialCache = ccache
+		ccache.Start(shutCtx, h.TrustRegistry)
+		log.Printf("credential cache: federation catalog aggregator started")
 	}
 
 	// Async bulk issuance job queue. Worker count is configurable via
@@ -498,6 +508,16 @@ func main() {
 		mux.HandleFunc("OPTIONS /api/schemas", h.ServePublicSchemas)
 	}
 
+	// --- Credential discovery (issuer) ---
+	// GET /.well-known/openid-credential-issuer advertises this member's
+	// OpenID4VCI credential configurations so wallets and the hub catalog
+	// aggregator can discover what it issues. Only registered when this
+	// deployment has the issuer role.
+	if activeRoles.Has(roles.Issuer) {
+		mux.HandleFunc("GET /.well-known/openid-credential-issuer", h.ServeIssuerMetadata)
+		mux.HandleFunc("OPTIONS /.well-known/openid-credential-issuer", h.ServeIssuerMetadata)
+	}
+
 	// --- Trust registry (trust | hub) ---
 	// Public signed JWT at GET /trust-registry + JWKS at /.well-known/jwks.json.
 	// Admin CRUD UI (/admin/trust) is only registered in non-hub modes — in hub
@@ -586,6 +606,21 @@ func main() {
 		mux.HandleFunc("GET /api/v1/bulk/{jobID}", h.APIBulkJobStatus)
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
 		mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
+		// Self-service discovery: which of this member's credentials a citizen
+		// can self-issue from their verified claims (National ID + Discovery).
+		mux.HandleFunc("POST /api/v1/credentials/eligible", h.APICheckEligibility)
+		// Self-service issuance: an authenticated citizen mints a pre-auth offer
+		// for a credential they're eligible for (id_token auth, HolderDID=sub).
+		mux.HandleFunc("POST /api/v1/credentials/self-issue", h.APISelfIssue)
+		mux.HandleFunc("OPTIONS /api/v1/credentials/self-issue", h.APISelfIssue)
+		// Credential discovery catalog — standalone issuer mode: returns this
+		// member's own catalog so the wallet's "Descubrir" tab works without a
+		// hub. Skipped when hub is also active to avoid duplicate registration
+		// (hub block registers the same routes with a CredentialCache wired in).
+		if !activeRoles.Has(roles.Hub) {
+			mux.HandleFunc("GET /api/v1/discovery/credentials", h.ServeCredentialCatalog)
+			mux.HandleFunc("OPTIONS /api/v1/discovery/credentials", h.ServeCredentialCatalog)
+		}
 		mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
 		mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
 		mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)
@@ -650,6 +685,10 @@ func main() {
 		// Federated schema registry — returns schemas aggregated from all members.
 		mux.HandleFunc("GET /schemas", h.ServeHubSchemas)
 		mux.HandleFunc("OPTIONS /schemas", h.ServeHubSchemas)
+		// Federated credential catalog — aggregated OID4VCI catalogs from all
+		// members, for the wallet's "Descubrir" (discover & download) screen.
+		mux.HandleFunc("GET /api/v1/discovery/credentials", h.ServeCredentialCatalog)
+		mux.HandleFunc("OPTIONS /api/v1/discovery/credentials", h.ServeCredentialCatalog)
 		// Admin federation member CRUD.
 		mux.HandleFunc("GET /admin/federation/members", h.ShowFederationMembers)
 		mux.HandleFunc("POST /admin/federation/members", h.RegisterFederationMember)

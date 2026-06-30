@@ -287,6 +287,28 @@
   notification is required. Options: webhook to the wallet, or implement the OpenID4VC Notification
   endpoint (if the wallet supports it).
 
+- [ ] **[ARCH] Deferred issuance (OID4VCI `transaction_id`)**
+  For credentials that require human approval or back-office verification, issuance
+  cannot be instantaneous. OID4VCI defines the deferred flow: the credential endpoint
+  returns a `transaction_id`, and the wallet polls `/deferred_credential` until ready.
+  Required as soon as self-service issuance (Credential Discovery) is real.
+  See delivery mechanism #7 in `docs/credential-delivery.md`.
+  `internal/adapters/*/issuer.go` + new `/deferred_credential` handler.
+
+- [ ] **[ARCH] Holder notification channel (unify push-issuance + push-revocation)**
+  The channel that pushes a *revocation* to the holder is the same one that pushes an
+  *issuance/renewal* (e.g. an expiring licence renewed by the State with no holder action).
+  Design as a single holder notification channel, not two parallel webhooks. Supersedes
+  the separate "Push revocation" and Discovery "Push notification to wallet" items once built.
+  See delivery mechanisms #6 in `docs/credential-delivery.md`.
+  `internal/adapters/notify/` (new) — webhook + OID4VC `notification_endpoint` backends.
+
+- [ ] **[ARCH] Expose DIDComm proactive delivery (spike)**
+  CREDEBL is Aries underneath and already performs proactive credential delivery over
+  DIDComm; `verifiably-go` does not expose it. For federation with entities that already
+  speak Aries this may be nearly free. Spike to confirm before committing.
+  See delivery mechanism #8 in `docs/credential-delivery.md`.
+
 - [ ] **[ARCH] Resolve Docker socket risk in CREDEBL (upstream)**
   `agent-provisioning` requires `/var/run/docker.sock` to dynamically provision Credo containers.
   This gives effective root privileges on the host. Long-term solution:
@@ -319,37 +341,37 @@
 
 ## P0 — Critical emergent (2026-05-19 security review)
 
-- [ ] **[SEC] Secretos reales commiteados en git**
-  `deploy/compose/credebl/config/credebl.env` y `deploy/compose/hub/.env` contienen credenciales de producción en el historial de git: passwords PostgreSQL/MinIO/Keycloak, JWT secrets, session secret, Agent API key, AWS keys, NextAuth secret, dominio y email del operador. Pasos: (1) rotar todos los valores afectados, (2) añadir ambos archivos a `.gitignore`, (3) reemplazarlos con archivos `.example` sin valores reales, (4) considerar `git filter-repo` para expurgar el historial si el repo es público.
+- [x] **[SEC] Secretos reales commiteados en git** ✓ 2026-06-09
+  Verificado: los archivos `deploy/compose/credebl/config/credebl.env` y `deploy/compose/hub/.env` NO están en el historial de git (`git ls-files` y `git log` devuelven vacío). Ambos están correctamente en `.gitignore` (líneas 89–92) y existen solo en disco local. No se requiere `git filter-repo`.
 
-- [ ] **[SEC] Placeholder crypto key activo en producción**
-  `deploy/compose/credebl/config/credebl.env:97` — `CRYPTO_PRIVATE_KEY=cdpi-poc-crypto-key-change-me`. Esta passphrase se usa en `cryptoJSEncrypt()` (`internal/adapters/credebl/auth.go:65`) como clave AES para cifrar el password del admin antes de enviarlo a CREDEBL. Con este valor público cualquiera puede descifrar la credencial. Reemplazar por una cadena aleatoria de ≥32 chars en el `.env` real.
+- [x] **[SEC] Placeholder crypto key activo en producción** ✓ 2026-06-09
+  `deploy/compose/credebl/config/credebl.env:97` — reemplazado con clave aleatoria de 37 chars generada con `Get-Random`. El valor `cdpi-poc-crypto-key-change-me` ya no está en disco.
 
-- [ ] **[SEC] Trust registry con llave de firma efímera**
-  `deploy/compose/hub/.env:23` — `VERIFIABLY_TRUST_SIGNING_KEY=` vacío. Sin llave ES256 persistente, el Hub genera una llave efímera en cada arranque; los JWTs del trust registry invalidan en cada restart. Generar una clave P-256 con `openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt` y fijarla en el `.env` real.
+- [x] **[SEC] Trust registry con llave de firma efímera** ✓ 2026-06-09
+  Clave P-256 PKCS8 generada con `openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt`. Guardada en `config/trust-signing-key.pem` (gitignoreado). El Hub la lee automáticamente vía el fallback `os.ReadFile("config/trust-signing-key.pem")` en `cmd/server/main.go:1033`. El volumen `../../../config:/app/config:ro` ya la monta en el contenedor.
 
 ---
 
 ## P1 — High priority emergent (2026-05-19)
 
-- [ ] **[SEC] SSRF via `webhook_url` sin validación**
-  `internal/handlers/verifier.go:176` — el valor del form `webhook_url` se pasa sin validar a `backend.PresentationRequest.WebhookURL` y desde ahí a walt.id, que hace un callback HTTP a esa URL. Un atacante puede apuntar a servicios internos Docker, cloud metadata endpoints (`169.254.169.254`), o el propio verifiably-go. Fix: validar que la URL sea HTTPS, que no resuelva a rangos privados/loopback (RFC 1918 + RFC 4193), y opcionalmente permitir solo dominios de una allowlist configurable con `VERIFIABLY_WEBHOOK_ALLOWED_HOSTS`.
+- [x] **[SEC] SSRF via `webhook_url` sin validación** ✓ 2026-06-09
+  `internal/handlers/verifier.go` — `validateWebhookURL()` añadida: valida esquema `https`, resuelve el hostname y rechaza IPs en loopback (127/8, ::1), link-local/metadata (169.254/16, fe80::/10), privadas (RFC 1918), unique-local (fc00::/7), y espacios reservados (0/8, 100.64/10). Allowlist opcional vía `VERIFIABLY_WEBHOOK_ALLOWED_HOSTS`. Errores retornan toast al usuario sin propagar al backend.
 
-- [ ] **[BUG] Rate limiter: mapas `byKey`/`byIP` crecen sin límite**
-  `internal/handlers/ratelimit.go:54` — los mapas del `RateLimiter` nunca eliminan entradas antiguas. Un atacante que rote IPs o nombres de API key puede agotar la memoria del proceso en servidores de larga duración. Fix: lanzar una goroutine de limpieza periódica (cada 5 min) que elimine las entradas cuya última hit sea anterior al window de 60 s. Ver patrón de `cleanupLoop` ya usado en `internal/jobs/queue.go`.
+- [x] **[BUG] Rate limiter: mapas `byKey`/`byIP` crecen sin límite** ✓ 2026-06-09
+  `internal/handlers/ratelimit.go` — `cleanupLoop` + `cleanup` añadidos. Goroutine cada 5 min elimina entradas cuyo último hit precede el window de 60 s. `NewRateLimiter` ahora recibe `context.Context` (shutdown context del servidor) para detener la goroutine en SIGTERM. Lock ordering explícito: `rl.mu` y `entry.mu` nunca se sostienen simultáneamente (previene deadlock con llamadas concurrentes a `Allow`). Call site en `main.go` actualizado a `NewRateLimiter(shutCtx)`.
 
-- [ ] **[SEC] PII en logs de producción (`holderCtx`)**
-  `internal/handlers/wallet.go:46` — `log.Printf` loguea `sess.ID`, `sess.UserSubject` (OIDC `sub`), `sess.UserEmail` y `sess.WalletUserKey` en cada carga de la wallet. Es un `log.Printf` de debugging que quedó en producción. Eliminar la línea completa; la sesión ya tiene ID de request en el contexto para correlación.
+- [x] **[SEC] PII en logs de producción (`holderCtx`)** ✓ 2026-06-09
+  `internal/handlers/wallet.go` — `log.Printf` con `sess.ID`, `UserSubject`, `UserEmail`, `WalletUserKey` eliminado. Import `"log"` también eliminado (quedaba huérfano). `holderCtx` retorna directamente `backend.WithHolderIdentity`.
 
 ---
 
 ## P2 — Important emergent (2026-05-19)
 
-- [ ] **[SEC] `InsecureSkipVerify` configurable desde la UI sin restricción**
-  `internal/auth/oidc/oidc.go:99` — un admin puede registrar un provider OIDC con `insecureSkipVerify: true` desde `/auth/custom` o `/admin/auth-providers`. En producción esto abre MITM en el flujo de autenticación. Fix: bloquear el flag cuando `VERIFIABLY_ENV=production` (o cuando la URL pública usa HTTPS), o al menos añadir una advertencia visible en el formulario y requerir confirmación explícita.
+- [x] **[SEC] `InsecureSkipVerify` configurable desde la UI sin restricción** ✓ 2026-06-09
+  `internal/auth/oidc/oidc.go` — guard añadido en `New()`: si `VERIFIABLY_ENV=production` el constructor devuelve error; en entornos no-producción emite `slog.Warn` visible en logs.
 
-- [ ] **[SEC] Passwords admin y Grafana por defecto `admin`**
-  `deploy/compose/hub/.env:27` — `VERIFIABLY_ADMIN_PASSWORD=admin` y `GRAFANA_PASSWORD=admin`. Grafana está expuesta en el stack. Fix: exigir valor no-default en el setup wizard de `deploy.sh`; no arrancar si el password coincide con el default (al menos en modo producción).
+- [x] **[SEC] Passwords admin y Grafana por defecto `admin`** ✓ 2026-06-09
+  `deploy/compose/hub/.env` — `VERIFIABLY_ADMIN_PASSWORD` y `GRAFANA_PASSWORD` reemplazados con contraseñas aleatorias de 24 chars (alfanumérico mixto) generadas con `Get-Random`. Valores `admin` ya no están en disco.
 
 - [ ] **[DOC] Limitación upstream: KDF con MD5 en autenticación CREDEBL**
   `internal/adapters/credebl/auth.go:122` — `evpBytesToKey` usa MD5 (OpenSSL/CryptoJS-compatible) para derivar la clave AES. Está dictado por la API de CREDEBL y no puede cambiarse del lado cliente. Documentar como limitación conocida en `docs/spec-versions.md` y abrir un issue en el tracker upstream de CREDEBL para migrar a PBKDF2/Argon2.
@@ -358,14 +380,14 @@
 
 ## P3 — Low / informational (2026-05-19)
 
-- [ ] **[SEC] `PasteOffer` acepta cualquier URL `https://` sin validar dominio**
-  `internal/handlers/wallet.go:166` — la validación solo comprueba que la URI empiece por `openid-credential-offer://` o `https://`, pero para `https://` no hay restricción de host. El adaptador luego hace fetch a esa URL, lo que permite SSRF hacia endpoints HTTPS internos. Aplicar la misma validación de IP/dominio que se propone para `webhook_url`.
+- [x] **[SEC] `PasteOffer` acepta cualquier URL `https://` sin validar dominio** ✓ 2026-06-09
+  Lógica SSRF extraída a `internal/handlers/ssrf.go` (`ssrfBlockHost` + `validateOfferURL`). `PasteOffer` llama a `validateOfferURL(raw)` antes de `ParseOffer`; `openid-credential-offer://` pasa sin validación. `validateWebhookURL` en `verifier.go` refactorizado para reusar `ssrfBlockHost`.
 
 - [ ] **[SEC] Verificar cobertura CSRF en formularios `/admin/*`**
   No se observa token CSRF explícito en los formularios POST de `/admin/trust`, `/admin/auth-providers`. Verificar si el middleware de sesiones implementa protección CSRF (SameSite=Strict en la cookie + token en el form). Si no está cubierto, añadir un campo `csrf_token` generado por sesión.
 
-- [ ] **[SEC] Verificar headers de seguridad HTTP**
-  No se observan `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` ni `Strict-Transport-Security` en los handlers Go. Confirmar si Caddy los inyecta en producción; si no, añadir un middleware `secureHeaders` en `cmd/server/main.go`.
+- [x] **[SEC] Verificar headers de seguridad HTTP** ✓ 2026-06-09
+  Snippet `(security_headers)` añadido al Caddyfile (`deploy/compose/stack/Caddyfile`): `X-Content-Type-Options`, `X-Frame-Options DENY`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` (2 años), `-Server`. Aplicado a los tres reverse-proxy blocks. CSP pendiente de afinar al mapear dependencias de frontend.
 
 ---
 
@@ -452,47 +474,63 @@
 
 > Goal: a citizen opens cdpi-wallet, browses the federation credential catalog, and downloads any credential they're eligible for — no operator assistance needed ("descubrir y descargar").
 > Pre-auth Code and Auth Code delivery already work in the adapters. What's missing is the discovery layer: `/.well-known/openid-credential-issuer` per member and an aggregated catalog endpoint in the hub.
-> Designed in session 2026-05-20; see `federated-emission.md` for flow diagrams.
+> This is the holder-initiated, identity-bound quadrant — see `docs/credential-delivery.md` for the full delivery-mechanism model and sequencing rationale.
 
 ### P0 — Adapter interface
 
-- [ ] **[ARCH] Add `GetIssuerMetadata` to `backend.Adapter`**
-  New method `GetIssuerMetadata(ctx context.Context) (IssuerMetadata, error)`.
-  `IssuerMetadata` holds `CredentialIssuerURL`, `AuthorizationEndpoint`, `TokenEndpoint`, `CredentialEndpoint`, `CredentialsSupported []CredentialSupportedEntry`.
-  `backend/adapter.go`
+- [x] **[ARCH] Add `GetIssuerMetadata` to `backend.Adapter`** ✓ 2026-06-10
+  `backend/adapter.go` + `backend/issuer_metadata.go` (new) — `GetIssuerMetadata(ctx)
+  (IssuerMetadata, error)`. `IssuerMetadata` holds `CredentialIssuer`, `CredentialEndpoint`
+  (filled by the handler) and `CredentialsSupported []CredentialConfig`. Shared mapper
+  `CredentialConfigsFromSchemas` + `OID4VCIFormat(std)` keep the schema→config derivation in
+  one place. Tests: `backend/issuer_metadata_test.go`.
 
 ### P1 — Member: OID4VCI well-known endpoint
 
-- [ ] **[FEAT] `GET /.well-known/openid-credential-issuer` per member**
-  New handler `ServeIssuerMetadata` calls the active adapter's `GetIssuerMetadata` and returns RFC 9458-compliant JSON. Registered under the `issuer` role.
-  `internal/handlers/oidc_metadata.go` (new) + `cmd/server/main.go`
+- [x] **[FEAT] `GET /.well-known/openid-credential-issuer` per member** ✓ 2026-06-10
+  `internal/handlers/discovery.go` (new) — `ServeIssuerMetadata` calls the active adapter's
+  `GetIssuerMetadata`, fills absolute issuer/credential URLs from the request public base, serves
+  CORS JSON. ErrNotSupported → 404. Registered under the `issuer` role in `cmd/server/main.go`.
+  Tests: `internal/handlers/discovery_test.go` (success / 404 / OPTIONS).
 
-- [ ] **[FEAT] CREDEBL adapter: implement `GetIssuerMetadata`**
-  Proxy the CREDEBL `/.well-known/openid-credential-issuer` and overwrite `credential_endpoint` with the verifiably-go URL.
-  `internal/adapters/credebl/issuer.go`
-
-- [ ] **[FEAT] Walt.id adapter: implement `GetIssuerMetadata`**
-  Assemble from wallet-kit API and `ListSchemas()` for `credentials_supported`.
-  `internal/adapters/waltid/issuer.go`
-
-- [ ] **[FEAT] Inji Certify adapter: implement `GetIssuerMetadata`**
-  Forward from Certify's `/.well-known/openid-credential-issuer` with base URL rewriting (inji-preauth-proxy already handles the path; this wraps the result).
-  `internal/adapters/injicertify/issuer.go`
+- [x] **[FEAT] Adapters implement `GetIssuerMetadata`** ✓ 2026-06-10
+  Issuer adapters (walt.id, CREDEBL, Inji Certify, mock) assemble configs from their schema
+  catalog via the shared mapper. Verifier-only / stub adapters (verifiably, injiverify, injiweb)
+  return `ErrNotSupported`. The Registry aggregates configs across all issuer DPGs, de-duped by
+  id+format, skipping DPGs that error or don't issue (same resilience as `ListAllSchemas`).
+  NOTE: this assembles from our schema list rather than proxying each vendor's native well-known;
+  good enough for the discovery catalog. Proxying CREDEBL/Certify's own well-known verbatim is a
+  later refinement if a wallet needs vendor-specific fields we don't model.
 
 ### P1 — Hub: catalog aggregator
 
-- [ ] **[FEAT] Hub: `GET /api/v1/discovery/credentials` — unified credential catalog**
-  Iterates `federation.TrustedIssuers`, fetches each member's `/.well-known/openid-credential-issuer` (5 min TTL, reuse SchemaCache infra), returns:
-  `{ "issuers": [{ "did", "name", "service_endpoint", "credentials": [{id, name, format, claims_preview}] }] }`.
-  Public endpoint — no auth required. cdpi-wallet calls this once to populate the "Descubrir" screen.
-  `internal/handlers/discovery.go` (new) + `cmd/server/main.go`
+- [x] **[FEAT] Hub: `GET /api/v1/discovery/credentials` — unified credential catalog** ✓ 2026-06-10
+  `internal/credentialcache/` (new) — `Aggregator` mirrors `schemacache`: 5-min TTL background
+  poll over `TrustRegistry.TrustedIssuers`, fetches each member's
+  `/.well-known/openid-credential-issuer` (1 MiB cap, 5 s timeout), keeps the stale entry on
+  failure so discovery stays up. `Cache` interface keeps the handler testable. Output:
+  `{ "issuers": [{ did, name, service_endpoint, credentials: [...] }] }` with member attribution
+  from the hub's own registry (not the member's self-report). Handler `ServeCredentialCatalog`
+  (`internal/handlers/discovery.go`) serves CORS JSON, never `null`; wired under the hub role in
+  `cmd/server/main.go`. Tests: `credentialcache/aggregator_test.go` (map / 404-skip / stale-retain /
+  endpointless-skip) + `discovery_test.go` (success / nil-cache empty array).
 
 ### P2 — Eligibility check
 
-- [ ] **[FEAT] Member: `POST /api/v1/credentials/eligible`**
-  Authenticated with Bearer OIDC token. Extracts `cedula`/`sub`, queries the adapter's registry, returns `{ "credentials": [{ "id", "available": bool }] }`. Enables "Disponible para ti" badges in the wallet UI.
-  New `CheckEligibility(ctx context.Context, sub string) ([]EligibleCredential, error)` in `backend.Adapter`.
-  `internal/handlers/api.go` + `backend/adapter.go`
+- [x] **[FEAT] Member: `POST /api/v1/credentials/eligible`** ✓ 2026-06-10
+  `internal/handlers/eligibility.go` (new) — `APICheckEligibility` + pure `evaluateEligibility`.
+  Returns `{ "credentials": [{ id, available, missing_claims }] }` for the wallet's
+  "Disponible para ti" badge. Auth: API key (Bearer), like the other /api/v1 endpoints; claims
+  body never logged (PII). Tests: `eligibility_test.go` (coverage / alias / unauth / non-issuing).
+
+  DESIGN DEVIATION from the original spec (no `CheckEligibility` adapter method, no registry
+  query): there is no citizen-data registry in the system to query, so eligibility is computed as
+  **claims-coverage** — a credential is `available` when the citizen's verified claims cover every
+  claim it carries, i.e. it can be self-issued from their National ID with no operator data entry.
+  This reuses `identityPrefill` verbatim, so eligibility and prefill stay in lockstep, and is
+  honest: issuer-gated credentials (diploma `degree`, licence `category`) correctly come back
+  `available=false` with the gaps listed. Registry-backed eligibility + per-citizen OIDC-token
+  verification (against the IdP JWKS) are the auth_code activation step — see National ID Nivel 2.
 
 ### P3 — Push notifications
 
@@ -507,21 +545,55 @@
 
 > Cryptographic binding of an issued VC to the correct citizen. Three assurance levels.
 > Nivel 1 (pre-auth code — channel possession) is already functional. Nivel 2 is the recommended near-term target. Nivel 3 depends on a root cédula VC existing in the ecosystem first.
+> This is the foundation of the identity-bound quadrant — it lets any delivery mechanism become identity-bound. See `docs/credential-delivery.md`.
 
 ### P1 — Nivel 2: Auth Code Flow + OIDC claim mapping
 
-- [ ] **[FEAT] Credential endpoint: map OIDC token claims to registry subject**
-  In Auth Code Flow, the credential request carries a `proof` JWT plus an access token containing `cedula`/`national_id` claims from the organismo's IdP. The credential endpoint must:
-  (a) verify the token signature against the IdP's JWKS,
-  (b) extract the subject identifier,
-  (c) look it up in the organismo's registry,
-  (d) emit the VC with `credentialSubject.id` = citizen's DID,
-  (e) include a `cnf` key binding claim tied to the wallet's proof key so only that wallet can present it.
-  `internal/adapters/credebl/issuer.go` + `internal/adapters/waltid/issuer.go`
+- [x] **[FEAT] Capture OIDC claims and prefill the issuance form** ✓ 2026-06-09
+  `auth.UserInfo` extended with `GivenName`, `FamilyName`, `Birthdate` and a `Claims`
+  catch-all (`internal/auth/providers.go`). `oidc.UserInfo` now decodes every string-valued
+  claim (`internal/auth/oidc/oidc.go`). `AuthCallback` stores them on `sess.UserClaims`
+  (persisted; cleared on logout). `identityPrefill` maps claims onto schema field names with
+  naming-style tolerance + EN/ES aliases (`internal/handlers/identity_prefill.go`); the issue
+  form, source-switch and PDF-preview handlers overlay it on adapter demo prefill via
+  `prefillValues`. Tests: `identity_prefill_test.go` (10 cases) + `oidc_test.go` UserInfo
+  httptest. This is the holder-data half of Nivel 2; the cnf/credentialSubject.id binding below
+  is the remaining adapter half.
 
-- [ ] **[ARCH] Extend `IssueRequest` to carry holder key proof**
-  Add `HolderDID string` and `HolderKeyProof string` (the wallet's JWT proof from the OID4VCI credential request) to `backend.IssueRequest`. Adapters forward these to the DPG so the emitted VC includes `cnf`.
-  `backend/adapter.go`
+- [x] **[ARCH] Extend `IssueRequest` to carry holder identity** ✓ 2026-06-09
+  `backend/adapter.go` — added `HolderDID` and `HolderKeyProof`. `HolderDID` is the
+  credential subject identifier; meaningful only in the holder-initiated flow (the operator
+  pre-auth flow leaves it empty — the operator is not the subject). `HolderKeyProof` is
+  forward-looking plumbing for the auth_code `cnf` binding.
+
+- [x] **[FEAT] walt.id adapter: bind credentialSubject.id / sub from HolderDID** ✓ 2026-06-09
+  `internal/adapters/waltid/issuer.go` — `buildCredentialData` sets `credentialSubject.id`
+  (VCDM) and `buildSDJWTCredentialData` sets top-level `sub` (SD-JWT VC) when `HolderDID` is
+  non-empty; empty leaves the credential byte-identical to before (zero regression). mdoc is
+  untouched (device-key binding via MSO). Handler honours an optional `holder_did` form value
+  (`internal/handlers/issuance.go`). CREDEBL deliberately does NOT inject into its flat template
+  payload — Aries binds the subject during the wallet exchange (documented in `credebl/issuer.go`).
+  Tests: `waltid/subject_binding_test.go` (4 cases).
+
+- [x] **[FEAT] OIDC token verification against JWKS (auth_code activation, step a+b)** ✓ 2026-06-10
+  `internal/auth/oidc/jwks.go` (new) — `Provider.VerifyToken(ctx, raw)`: fetches the provider's
+  JWKS (cached 10 min, refetch on `kid` miss for rotation), selects key by `kid`, verifies the
+  JWT signature (RS256 + ES256 — RS256 is the Keycloak/WSO2 default), checks `iss` (against the
+  discovered/internal/public issuer forms) and `exp`, returns the string claims. Added to the
+  `auth.Provider` interface. Wired into eligibility: `POST /api/v1/credentials/eligible` now
+  accepts an `id_token` verified across configured providers, whose claims OVERRIDE any raw
+  `claims` in the body (`internal/handlers/eligibility.go`). Reuses stdlib crypto only (no JWT
+  lib), consistent with the trust-registry signer. Tests: `oidc/jwks_test.go` (RS256/ES256 valid,
+  tampered sig, expired, wrong issuer, wrong key) + `eligibility_test.go` (verified claims / 401).
+
+- [x] **[FEAT] Self-service issuance flow + `cnf` (auth_code activation, step c+d)** ✓ 2026-06-11
+  `POST /api/v1/credentials/self-issue` — an authenticated citizen presents their OIDC id_token;
+  verifiably-go verifies it (JWKS), re-checks eligibility via claims-coverage, sets `HolderDID`
+  from token `sub`, prefills subject data from verified claims only, and returns a pre-auth offer
+  URI the wallet hands to its OID4VCI receive flow. The `cnf` key binding is performed by the DPG
+  (walt.id/CREDEBL) from the wallet's proof during the OID4VCI credential request — verifiably-go
+  is not in that exchange. Tests cover success, bad/missing token, not-eligible, config-not-found.
+  `internal/handlers/self_issue.go` + `internal/handlers/self_issue_test.go`.
 
 ### P3 — Nivel 3: VC-in VC-out (future — bootstrap dependency)
 
@@ -628,4 +700,5 @@
 
 ---
 
-*Last updated: 2026-05-20 | Feature roadmap added: Credential Discovery & Self-Service Issuance, National ID Subject Binding (3 levels), PKI/HSM/KMS Integration, Delegated Access/Representation, INJI E2E test tracking.*
+*Last updated: 2026-06-09 | Credential delivery mechanism model documented in `docs/credential-delivery.md` (8 mechanisms, 2-axis quadrant). Added to Architectural Backlog: deferred issuance, holder notification channel (unifies push-issuance + push-revocation), DIDComm proactive delivery spike.*
+*2026-05-20 | Feature roadmap added: Credential Discovery & Self-Service Issuance, National ID Subject Binding (3 levels), PKI/HSM/KMS Integration, Delegated Access/Representation, INJI E2E test tracking.*

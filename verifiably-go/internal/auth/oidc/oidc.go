@@ -6,15 +6,19 @@ package oidc
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/verifiably/verifiably-go/internal/auth"
@@ -65,6 +69,12 @@ type Provider struct {
 	cfg    Config
 	client *httpx.Client
 	meta   *discoveryMeta
+
+	// jwks caches the provider's parsed signing keys (kid → public key) for
+	// VerifyToken. Guarded by jwksMu; refreshed on TTL expiry or kid miss.
+	jwksMu sync.Mutex
+	jwks   map[string]crypto.PublicKey
+	jwksAt time.Time
 }
 
 type discoveryMeta struct {
@@ -93,10 +103,15 @@ func New(cfg Config) (*Provider, error) {
 	}
 	c := httpx.New("")
 	if cfg.InsecureSkipVerify {
+		if os.Getenv("VERIFIABLY_ENV") == "production" {
+			return nil, fmt.Errorf("oidc: InsecureSkipVerify is not allowed when VERIFIABLY_ENV=production")
+		}
+		slog.Warn("oidc: TLS certificate verification disabled — for demo/dev environments only",
+			"provider_id", cfg.ID, "issuer", cfg.IssuerURL)
 		c.HTTP = &http.Client{
 			Timeout: 30 * time.Second,
 			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
 			},
 		}
 	}
@@ -256,16 +271,21 @@ func (p *Provider) UserInfo(ctx context.Context, accessToken string) (auth.UserI
 		m.UserinfoEndpoint, nil, &raw, nil); err != nil {
 		return auth.UserInfo{}, err
 	}
-	ui := auth.UserInfo{}
-	if s, ok := decodeString(raw, "sub"); ok {
-		ui.Subject = s
+	ui := auth.UserInfo{Claims: make(map[string]string, len(raw))}
+	// Capture every string-valued claim verbatim so National ID issuance can
+	// prefill arbitrary attributes (cedula, nationality, …). Numeric/boolean/
+	// object claims are skipped — issuance form fields are text.
+	for k := range raw {
+		if s, ok := decodeString(raw, k); ok {
+			ui.Claims[k] = s
+		}
 	}
-	if s, ok := decodeString(raw, "email"); ok {
-		ui.Email = s
-	}
-	if s, ok := decodeString(raw, "name"); ok {
-		ui.Name = s
-	}
+	ui.Subject = ui.Claims["sub"]
+	ui.Email = ui.Claims["email"]
+	ui.Name = ui.Claims["name"]
+	ui.GivenName = ui.Claims["given_name"]
+	ui.FamilyName = ui.Claims["family_name"]
+	ui.Birthdate = ui.Claims["birthdate"]
 	return ui, nil
 }
 

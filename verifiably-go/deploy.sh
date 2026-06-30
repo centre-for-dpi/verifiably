@@ -460,6 +460,15 @@ cmd_up() {
       || red "  Walt.id did:web setup failed (proceeding — issuer will use did:key)"
   fi
 
+  # In subdomain mode _verifiably_url is already resolved to the public HTTPS
+  # URL (e.g. https://vc.bootcamp.cdpi.dev). Override VERIFIABLY_PUBLIC_URL so
+  # start_container passes the correct URL to the container — without this the
+  # raw .env value (http://<host>:<port>) is used, which Keycloak then bakes
+  # into the redirect_uri and the callback fails.
+  if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
+    export VERIFIABLY_PUBLIC_URL="$_verifiably_url"
+  fi
+
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
   # operator can SEE which step is slow or stuck. Previously this was
@@ -734,6 +743,12 @@ cmd_run() {
   require docker
   backends_for "$scenario"
   auth_providers_for "$scenario"
+  # In subdomain mode resolve the correct public URL so the container receives
+  # https://<slug>.<domain> instead of the raw http://<host>:<port> from .env.
+  if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
+    export VERIFIABLY_PUBLIC_URL
+    VERIFIABLY_PUBLIC_URL=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")
+  fi
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
   # operator can SEE which step is slow or stuck. Previously this was

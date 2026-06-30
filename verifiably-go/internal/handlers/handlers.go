@@ -14,9 +14,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/auth"
+	"github.com/verifiably/verifiably-go/internal/credentialcache"
 	"github.com/verifiably/verifiably-go/internal/didresolver"
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
@@ -128,6 +130,22 @@ type H struct {
 	// PublicVerifyRequest routes by SourceDeployment to the correct adapter.
 	// Wired at startup in hub mode by cmd/server/main.go.
 	SchemaCache *schemacache.Aggregator
+
+	// CredentialCache aggregates each federation member's OpenID4VCI credential
+	// catalog (Hub mode), powering the wallet's "Descubrir" screen via
+	// GET /api/v1/discovery/credentials. nil disables that endpoint (it returns
+	// an empty catalog). Wired at startup in hub mode by cmd/server/main.go.
+	CredentialCache credentialcache.Cache
+
+	// issuerMeta* memoize this member's own OpenID4VCI metadata for the public
+	// GET /.well-known/openid-credential-issuer endpoint, so wallets hammering
+	// it don't trigger a fresh per-vendor schema fetch on every request. The
+	// cached value is the unowned/public view (no issuer identity in context);
+	// owner-scoped callers (eligibility) bypass it. See cachedIssuerMetadata.
+	issuerMetaMu  sync.Mutex
+	issuerMetaVal backend.IssuerMetadata
+	issuerMetaAt  time.Time
+	issuerMetaOK  bool
 
 	// VerificationLog records completed verification events for ecosystem
 	// analytics (Fase 6). PostgreSQL-backed in Hub mode; nil disables logging
@@ -819,6 +837,7 @@ func (h *H) AuthCallback(w http.ResponseWriter, r *http.Request) {
 	if ui, err := p.UserInfo(r.Context(), tok.AccessToken); err == nil {
 		sess.UserEmail = ui.Email
 		sess.UserSubject = ui.Subject
+		sess.UserClaims = ui.Claims
 	}
 	// The upstream wallet account the app talks to is partitioned per
 	// authenticated user (see waltid.ensureWalletSession + holderCtx).
@@ -847,6 +866,7 @@ func (h *H) Logout(w http.ResponseWriter, r *http.Request) {
 	sess.IDToken = ""
 	sess.UserEmail = ""
 	sess.UserSubject = ""
+	sess.UserClaims = nil
 	sess.PendingProvider = ""
 	sess.PendingState = ""
 	sess.PendingPKCE = ""

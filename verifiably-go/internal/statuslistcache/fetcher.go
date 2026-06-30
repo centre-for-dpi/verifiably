@@ -4,19 +4,18 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
-	"math/big"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/verifiably/verifiably-go/internal/didresolver"
+	"github.com/verifiably/verifiably-go/internal/jose"
 )
 
 // Fetcher implements Cache. It fetches status list JWTs from live endpoints,
@@ -170,33 +169,19 @@ func verifyES256JWT(parts []string, jwk map[string]any) error {
 	}
 	xStr, _ := jwk["x"].(string)
 	yStr, _ := jwk["y"].(string)
-	xBytes, err := base64.RawURLEncoding.DecodeString(xStr)
+	x, err := jose.DecodeBase64URLBigInt(xStr)
 	if err != nil {
 		return fmt.Errorf("decode x: %w", err)
 	}
-	yBytes, err := base64.RawURLEncoding.DecodeString(yStr)
+	y, err := jose.DecodeBase64URLBigInt(yStr)
 	if err != nil {
 		return fmt.Errorf("decode y: %w", err)
 	}
-	pub := ecdsa.PublicKey{
-		Curve: elliptic.P256(),
-		X:     new(big.Int).SetBytes(xBytes),
-		Y:     new(big.Int).SetBytes(yBytes),
-	}
-	// Signing input: base64url(header) + "." + base64url(payload)
-	h := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	pub := ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
 	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
 		return fmt.Errorf("decode signature: %w", err)
 	}
-	// ES256 signature is R||S, 32 bytes each for P-256.
-	if len(sigBytes) != 64 {
-		return fmt.Errorf("invalid ES256 signature length: %d (want 64)", len(sigBytes))
-	}
-	r := new(big.Int).SetBytes(sigBytes[:32])
-	s := new(big.Int).SetBytes(sigBytes[32:])
-	if !ecdsa.Verify(&pub, h[:], r, s) {
-		return fmt.Errorf("signature invalid")
-	}
-	return nil
+	// Signing input: base64url(header) + "." + base64url(payload).
+	return jose.VerifyES256(&pub, []byte(parts[0]+"."+parts[1]), sigBytes)
 }

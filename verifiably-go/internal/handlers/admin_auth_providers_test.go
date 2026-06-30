@@ -221,3 +221,6 @@ func (s stubProv) Refresh(_ context.Context, _ string) (auth.Token, error) {
 func (s stubProv) UserInfo(_ context.Context, _ string) (auth.UserInfo, error) {
 	return auth.UserInfo{}, nil
 }
+func (s stubProv) VerifyToken(_ context.Context, _ string) (map[string]string, error) {
+	return nil, nil
+}

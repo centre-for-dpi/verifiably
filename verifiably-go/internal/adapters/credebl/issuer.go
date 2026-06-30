@@ -113,6 +113,17 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 }
 
 // ListAllSchemas mirrors ListSchemas for interface completeness.
+// GetIssuerMetadata assembles this issuer's OID4VCI credential configurations
+// from its full schema catalog. Endpoint URLs are left empty for the HTTP
+// handler to fill from the request's public base.
+func (a *Adapter) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+	schemas, err := a.ListAllSchemas(ctx)
+	if err != nil {
+		return backend.IssuerMetadata{}, err
+	}
+	return backend.IssuerMetadata{CredentialsSupported: backend.CredentialConfigsFromSchemas(schemas)}, nil
+}
+
 func (a *Adapter) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error) {
 	return a.ListSchemas(ctx, a.Vendor)
 }
@@ -164,6 +175,14 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 	for k, v := range req.SubjectData {
 		payload[k] = v
 	}
+	// Subject binding note: unlike the walt.id adapter, we do NOT inject
+	// req.HolderDID as a `credentialSubject.id` here. CREDEBL is Aries-based and
+	// the create-offer payload must match the template's declared attributes
+	// exactly — an unexpected `id` key risks a template-validation rejection.
+	// In the pre-auth flow CREDEBL binds the subject to the holder's DID during
+	// the wallet's OID4VCI exchange. Honouring HolderDID for CREDEBL belongs to
+	// the future auth_code flow (see National ID Nivel 2 in TODO.md), where it
+	// maps to a create-offer holder parameter rather than a payload attribute.
 	body := offerCreateRequest{
 		AuthorizationType: "preAuthorizedCodeFlow",
 		PIN:               a.cfg.DefaultPIN,

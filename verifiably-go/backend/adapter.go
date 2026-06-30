@@ -55,6 +55,15 @@ type Adapter interface {
 	// Used by lookup-by-id paths in the issuance flow.
 	ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error)
 
+	// GetIssuerMetadata returns this DPG's OpenID4VCI Credential Issuer
+	// Metadata for credential discovery — the credential configurations a
+	// wallet can browse and request. Issuer adapters assemble it from their
+	// schema list (backend.CredentialConfigsFromSchemas); verifier-only or
+	// stub DPGs return ErrNotSupported. Endpoint URLs are left empty for the
+	// HTTP handler to fill from the request's public base. See
+	// docs/credential-delivery.md (holder-initiated quadrant).
+	GetIssuerMetadata(ctx context.Context) (IssuerMetadata, error)
+
 	// SaveCustomSchema persists a user-built schema. Called from the schema
 	// builder's "Save" button. The schema's ID is already set by the caller.
 	SaveCustomSchema(ctx context.Context, schema vctypes.Schema) error
@@ -154,6 +163,26 @@ type IssueRequest struct {
 	Schema      vctypes.Schema
 	SubjectData map[string]string
 	Flow        string // "pre_auth" or "auth_code"; empty = adapter default
+
+	// HolderDID identifies the credential subject — the DID (or other stable
+	// identifier) of the citizen the VC is being issued to. Adapters set it as
+	// `credentialSubject.id` (VCDM) / `sub` (SD-JWT VC) so a verifier can later
+	// confirm the holder presenting the credential is its subject.
+	//
+	// It is meaningful ONLY when the issuing session belongs to the holder
+	// themselves — i.e. the holder-initiated / auth_code flow (self-service).
+	// In the operator-initiated pre-auth flow the operator does NOT know the
+	// holder's DID, so this is left empty and the builders omit the subject id
+	// (unchanged behaviour). See docs/credential-delivery.md (identity-bound
+	// quadrant) and National ID Nivel 2 in TODO.md.
+	HolderDID string
+
+	// HolderKeyProof is the wallet's OID4VCI proof JWT (its public key) captured
+	// during an auth_code credential request. Reserved for the cryptographic
+	// `cnf` key binding once the auth_code flow is wired end-to-end; today the
+	// DPG performs that binding itself during the wallet's credential request,
+	// so this is forward-looking plumbing and not yet populated by the handler.
+	HolderKeyProof string
 
 	// StatusList enrolls the credential in a verifiably-go-hosted revocation
 	// list. The handler allocates an index from the appropriate Store before

@@ -54,6 +54,9 @@ func (s *stubVerifier) ListSchemas(context.Context, string) ([]vctypes.Schema, e
 func (s *stubVerifier) ListAllSchemas(context.Context) ([]vctypes.Schema, error) {
 	return nil, nil
 }
+func (s *stubVerifier) GetIssuerMetadata(context.Context) (backend.IssuerMetadata, error) {
+	return backend.IssuerMetadata{}, backend.ErrNotSupported
+}
 func (s *stubVerifier) SaveCustomSchema(context.Context, vctypes.Schema) error { return nil }
 func (s *stubVerifier) DeleteCustomSchema(context.Context, string) error       { return nil }
 func (s *stubVerifier) PrefillSubjectFields(context.Context, vctypes.Schema) (map[string]string, error) {

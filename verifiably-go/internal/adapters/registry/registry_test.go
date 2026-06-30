@@ -20,6 +20,9 @@ func (stub) ListHolderDpgs(_ context.Context) (map[string]vctypes.DPG, error)  {
 func (stub) ListVerifierDpgs(_ context.Context) (map[string]vctypes.DPG, error) { return nil, nil }
 func (stub) ListSchemas(_ context.Context, _ string) ([]vctypes.Schema, error)  { return nil, nil }
 func (stub) ListAllSchemas(_ context.Context) ([]vctypes.Schema, error)         { return nil, nil }
+func (stub) GetIssuerMetadata(_ context.Context) (backend.IssuerMetadata, error) {
+	return backend.IssuerMetadata{}, backend.ErrNotSupported
+}
 func (stub) SaveCustomSchema(_ context.Context, _ vctypes.Schema) error         { return nil }
 func (stub) DeleteCustomSchema(_ context.Context, _ string) error               { return nil }
 func (stub) PrefillSubjectFields(_ context.Context, _ vctypes.Schema) (map[string]string, error) {
@@ -95,4 +98,70 @@ func TestRegistry_NoRaceOnCustomSchemas(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// metaStub is a stub adapter that returns a fixed IssuerMetadata, used to
+// verify that GetIssuerMetadata correctly merges vendor configs.
+type metaStub struct {
+	stub
+	meta backend.IssuerMetadata
+}
+
+func (m metaStub) GetIssuerMetadata(_ context.Context) (backend.IssuerMetadata, error) {
+	return m.meta, nil
+}
+
+// TestRegistry_GetIssuerMetadata_OnlyCustomSchemas pins several rules at once:
+//  1. Authenticated schemas (keycloak| owner) appear in discovery.
+//  2. Anonymous session schemas (session- owner) are excluded — they are
+//     test/demo artifacts and must not pollute the public catalog.
+//  3. Schemas with an empty OwnerKey (admin/CLI) are included.
+//  4. Vendor adapter entries (HOCON templates) never appear regardless.
+func TestRegistry_GetIssuerMetadata_OnlyCustomSchemas(t *testing.T) {
+	ctx := context.Background()
+	r := registry.New()
+
+	r.Register("vendor", vctypes.DPG{Vendor: "vendor"}, []string{"issuer"}, metaStub{
+		meta: backend.IssuerMetadata{
+			CredentialsSupported: []backend.CredentialConfig{
+				{ID: "VendorOnlyCred", Format: "jwt_vc_json", Display: "Vendor default — must be excluded"},
+			},
+		},
+	})
+
+	keycloakSchema := vctypes.Schema{ID: "ProdCred", Name: "Prod", Std: "sd_jwt_vc", Custom: true, OwnerKey: "keycloak|abc123", DPGs: []string{"vendor"}}
+	sessionSchema := vctypes.Schema{ID: "TestCred", Name: "Test", Std: "sd_jwt_vc", Custom: true, OwnerKey: "session-deadbeef", DPGs: []string{"vendor"}}
+	adminSchema := vctypes.Schema{ID: "AdminCred", Name: "Admin", Std: "sd_jwt_vc", Custom: true, OwnerKey: "", DPGs: []string{"vendor"}}
+
+	for _, s := range []vctypes.Schema{keycloakSchema, sessionSchema, adminSchema} {
+		if err := r.SaveCustomSchema(ctx, s); err != nil {
+			t.Fatalf("SaveCustomSchema %s: %v", s.ID, err)
+		}
+	}
+
+	meta, err := r.GetIssuerMetadata(ctx)
+	if err != nil {
+		t.Fatalf("GetIssuerMetadata: %v", err)
+	}
+
+	byID := map[string]backend.CredentialConfig{}
+	for _, c := range meta.CredentialsSupported {
+		byID[c.ID] = c
+	}
+
+	if _, ok := byID["ProdCred"]; !ok {
+		t.Error("keycloak-owned schema must appear in discovery")
+	}
+	if _, ok := byID["AdminCred"]; !ok {
+		t.Error("admin/CLI schema (empty OwnerKey) must appear in discovery")
+	}
+	if _, ok := byID["TestCred"]; ok {
+		t.Error("session-owned schema must NOT appear in discovery")
+	}
+	if _, ok := byID["VendorOnlyCred"]; ok {
+		t.Error("vendor adapter credential must NOT appear in discovery")
+	}
+	if got := len(meta.CredentialsSupported); got != 2 {
+		t.Errorf("CredentialsSupported len = %d, want 2 (keycloak + admin schemas only)", got)
+	}
 }
