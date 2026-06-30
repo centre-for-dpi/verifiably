@@ -190,6 +190,7 @@ start_container() {
     -e SMTP_USER="${SMTP_USER:-}" \
     -e SMTP_PASSWORD="${SMTP_PASSWORD:-}" \
     -e SMTP_FROM="${SMTP_FROM:-}" \
+    -e SMTP_FROM_NAME="${SMTP_FROM_NAME:-}" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
     -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \

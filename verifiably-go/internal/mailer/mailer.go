@@ -13,13 +13,14 @@ import (
 
 // Mailer holds the resolved SMTP submission settings.
 type Mailer struct {
-	host, port, user, pass, from string
+	host, port, user, pass, from, fromName string
 }
 
 // FromEnv builds a Mailer from SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD/
-// SMTP_FROM. Returns nil when host/user/password are not all set, so the rest of
-// the app can detect "email not configured" with a simple nil check. SMTP_PORT
-// defaults to 587 (STARTTLS submission); SMTP_FROM defaults to SMTP_USER.
+// SMTP_FROM/SMTP_FROM_NAME. Returns nil when host/user/password are not all set,
+// so the rest of the app can detect "email not configured" with a simple nil
+// check. SMTP_PORT defaults to 587 (STARTTLS submission); SMTP_FROM defaults to
+// SMTP_USER; SMTP_FROM_NAME (the From display name) defaults to "Verifiably".
 func FromEnv() *Mailer {
 	host := strings.TrimSpace(os.Getenv("SMTP_HOST"))
 	user := strings.TrimSpace(os.Getenv("SMTP_USER"))
@@ -35,7 +36,11 @@ func FromEnv() *Mailer {
 	if from == "" {
 		from = user
 	}
-	return &Mailer{host: host, port: port, user: user, pass: pass, from: from}
+	fromName := strings.TrimSpace(os.Getenv("SMTP_FROM_NAME"))
+	if fromName == "" {
+		fromName = "Verifiably"
+	}
+	return &Mailer{host: host, port: port, user: user, pass: pass, from: from, fromName: fromName}
 }
 
 // Send delivers a plain-text message. smtp.SendMail negotiates STARTTLS when the
@@ -47,7 +52,13 @@ func (m *Mailer) Send(to, subject, body string) error {
 	}
 	addr := m.host + ":" + m.port
 	auth := smtp.PlainAuth("", m.user, m.pass, m.host)
-	msg := "From: " + m.from + "\r\n" +
+	// The From HEADER carries the display name ("Verifiably <addr>"); the SMTP
+	// envelope sender stays the bare address (m.from) below.
+	fromHeader := m.from
+	if m.fromName != "" {
+		fromHeader = m.fromName + " <" + m.from + ">"
+	}
+	msg := "From: " + fromHeader + "\r\n" +
 		"To: " + to + "\r\n" +
 		"Subject: " + subject + "\r\n" +
 		"MIME-Version: 1.0\r\n" +

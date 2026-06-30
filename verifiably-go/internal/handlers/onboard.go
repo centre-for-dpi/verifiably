@@ -174,10 +174,10 @@ func (h *H) activateRequest(w http.ResponseWriter, r *http.Request, sess *Sessio
 		return
 	}
 	token, code := h.OTPs.Issue(id, email)
-	body := "Your verification code is: " + code + "\n\n" +
-		"Enter it on the activation page to set your PIN and claim your credentials. " +
+	body := "Your eSignet verification code is: " + code + "\n\n" +
+		"Enter it on the activation page to verify your identity, set your PIN, and claim your credentials. " +
 		"It expires in 10 minutes.\n\nIf you didn't request this, you can ignore this email."
-	if err := h.Mailer.Send(email, "Your activation code", body); err != nil {
+	if err := h.Mailer.Send(email, "Your eSignet verification code", body); err != nil {
 		log.Printf("activation: send OTP to %s failed: %v", maskEmail(email), err)
 		render(map[string]any{"Error": "Couldn't send the verification email — please try again shortly."})
 		return
