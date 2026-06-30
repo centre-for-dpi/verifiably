@@ -202,6 +202,167 @@ def parse_osid(entity, txt):
 
 
 # ----------------------------------------------------------------------------
+# bulk population sources (API / database / another registry) — mirror the
+# Verifiably bulk picker: fetch rows, map columns -> entity fields, create each.
+# Stateless: the mapping/apply step RE-FETCHES from the source params (carried as
+# hidden inputs) rather than stashing rows.
+# ----------------------------------------------------------------------------
+def _stringify(v):
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, (dict, list)):
+        return json.dumps(v)
+    return str(v)
+
+
+def fetch_json_rows(url, auth="", limit=""):
+    """GET a JSON array (or {rows|data|items|results:[...]}) -> flat string rows."""
+    headers = {"Accept": "application/json"}
+    if auth:
+        headers["Authorization"] = auth
+    with httpx.Client(timeout=30, follow_redirects=True) as c:
+        r = c.get(url, headers=headers)
+        r.raise_for_status()
+        data = r.json()
+    items = data if isinstance(data, list) else None
+    if items is None and isinstance(data, dict):
+        for k in ("rows", "data", "items", "results"):
+            if isinstance(data.get(k), list):
+                items = data[k]
+                break
+    if items is None:
+        raise ValueError("response is not a JSON array or {rows|data|items|results}")
+    n = int(limit) if str(limit).strip().isdigit() else 0
+    rows = []
+    for i, it in enumerate(items):
+        if n and i >= n:
+            break
+        if isinstance(it, dict):
+            rows.append({k: _stringify(v) for k, v in it.items()})
+    return rows
+
+
+def query_db_rows(conn, query):
+    """Run a SELECT against a Postgres DSN -> flat string rows."""
+    if not query.strip().lower().startswith("select"):
+        raise ValueError("only SELECT queries are allowed")
+    import psycopg  # lazy import so the app still boots if the driver is missing
+    with psycopg.connect(conn, connect_timeout=10) as cx:
+        with cx.cursor() as cur:
+            cur.execute(query)
+            cols = [d.name for d in cur.description]
+            return [{c: _stringify(v) for c, v in zip(cols, row)} for row in cur.fetchall()]
+
+
+def _flatten_os(rec):
+    return {k: _stringify(v) for k, v in rec.items()
+            if not (k in ("osid", "osOwner") or k.startswith("_os"))}
+
+
+def fetch_registry_rows(url, entity):
+    """POST <url>/api/v1/<entity>/search {filters:{}} on ANOTHER Sunbird -> rows."""
+    u = url.rstrip("/")
+    with httpx.Client(timeout=30) as c:
+        r = c.post(u + "/api/v1/" + entity + "/search", json={"filters": {}})
+        r.raise_for_status()
+        data = r.json()
+    rows = data.get("data") if isinstance(data, dict) else data
+    if rows is None and isinstance(data, dict):
+        rows = data.get(entity, [])
+    return [_flatten_os(x) for x in (rows or []) if isinstance(x, dict)]
+
+
+def detect_columns(rows):
+    seen, s = [], set()
+    for r in rows:
+        for k in r.keys():
+            if k not in s:
+                s.add(k)
+                seen.append(k)
+    return seen
+
+
+def _apply_mapped_rows(entity, rows, mapping):
+    """create_record per row, projecting source columns onto entity fields via mapping
+    (which must map individualId). Same counting/dedup as the CSV import."""
+    okc = dup = fail = 0
+    errs = []
+    for r in rows:
+        body = {}
+        for field, col in mapping.items():
+            if col and col in r and str(r[col]).strip() != "":
+                body[field] = str(r[col]).strip()
+        if not body.get("individualId"):
+            fail += 1
+            continue
+        st, txt = create_record(entity, body)
+        if st in (200, 201):
+            okc += 1
+        elif is_duplicate(txt):
+            dup += 1
+        else:
+            fail += 1
+            if len(errs) < 3:
+                errs.append("http " + str(st) + ": " + txt[:80])
+        time.sleep(0.2)
+    detail = (" &middot; sample errors: " + esc("; ".join(errs))) if errs else ""
+    msg = ("Import complete: <b>" + str(okc) + "</b> created, <b>" + str(dup)
+           + "</b> duplicates, <b>" + str(fail) + "</b> failed." + detail)
+    cls = "ok" if fail == 0 else ("warn" if okc or dup else "err")
+    return msg, cls
+
+
+def _mapping_page(s, entity, action, rows, hidden):
+    """Render the column->field mapping step. `hidden` carries the source params so
+    the apply post re-fetches (no server-side row stash)."""
+    fields = ["individualId"] + s["fields"]
+    cols = detect_columns(rows)
+    hid = "".join("<input type='hidden' name='%s' value='%s'>" % (esc(k), esc(v))
+                  for k, v in hidden.items())
+    head = "".join("<th>" + esc(c) + "</th>" for c in cols)
+    sample_rows = ""
+    for r in rows[:3]:
+        sample_rows += "<tr>" + "".join("<td>" + esc(r.get(c, "")) + "</td>" for c in cols) + "</tr>"
+    sample = ("<table><thead><tr>" + head + "</tr></thead><tbody>" + sample_rows + "</tbody></table>")
+    maprows = ""
+    for f in fields:
+        opts = "<option value=''>— none —</option>"
+        for c in cols:
+            sel = " selected" if c == f else ""
+            opts += "<option value='%s'%s>%s</option>" % (esc(c), sel, esc(c))
+        req = "<span class='req'> *</span>" if f == "individualId" else ""
+        maprows += ("<div class='fld'><label>" + esc(f) + req + "</label>"
+                    "<input type='hidden' name='mfield' value='" + esc(f) + "'>"
+                    "<select name='mcol'>" + opts + "</select></div>")
+    return ("<p><a href='/credential/" + esc(entity) + "'>&larr; back</a></p>"
+            "<h2>" + esc(s["name"]) + " &mdash; map columns → fields</h2>"
+            "<p class='meta'><b>" + str(len(rows)) + "</b> row(s) fetched. Map each entity field to a "
+            "source column (defaults to an exact-name match). <code>individualId</code> is required.</p>"
+            + sample
+            + "<form class='box' method='post' action='" + esc(action) + "'>" + hid
+            + "<div class='grid'>" + maprows + "</div>"
+            "<div style='margin-top:.8rem'><button type='submit'>Import " + str(len(rows))
+            + " record(s)</button></div></form>")
+
+
+def _import_step(s, entity, action, rows, form, hidden):
+    """No mapping in the form -> render the mapping step; otherwise apply it."""
+    if "mfield" not in form:
+        return page(s["name"], _mapping_page(s, entity, action, rows, hidden))
+    mfields = form.getlist("mfield")
+    mcols = form.getlist("mcol")
+    mapping = {}
+    for i, f in enumerate(mfields):
+        c = mcols[i] if i < len(mcols) else ""
+        if f and c:
+            mapping[f] = c
+    msg, cls = _apply_mapped_rows(entity, rows, mapping)
+    return page(s["name"], credential_body(s, message=msg, msg_class=cls))
+
+
+# ----------------------------------------------------------------------------
 # HTML
 # ----------------------------------------------------------------------------
 CSS = """<style>
@@ -317,6 +478,24 @@ def credential_body(s, message="", msg_class="", ensure_note=""):
            "<input type='file' name='file' accept='.csv,text/csv' required> "
            "<button type='submit'>Import CSV</button></form>")
 
+    _inp = "style='width:100%;padding:.4rem;margin:.25rem 0;border:1px solid var(--line);border-radius:3px'"
+    api = ("<form class='box' method='post' action='/credential/" + esc(entity) + "/import-api'>"
+           "<b>From a JSON API</b> &mdash; GET returns an array (or {rows|data|items|results}); you map columns next."
+           "<input name='api_url' required placeholder='https://host/path/citizens' " + _inp + ">"
+           "<input name='api_auth' placeholder='Authorization header (optional)' " + _inp + ">"
+           "<input name='api_limit' type='number' min='0' value='0' placeholder='row limit (0 = all)' " + _inp + ">"
+           "<button type='submit'>Fetch &amp; map →</button></form>")
+    db = ("<form class='box' method='post' action='/credential/" + esc(entity) + "/import-db'>"
+          "<b>From a database</b> &mdash; a Postgres SELECT (read-only); you map columns next."
+          "<input name='db_conn' required placeholder='postgres://user:pass@host:5432/db?sslmode=disable' " + _inp + ">"
+          "<textarea name='db_query' required rows='3' placeholder='SELECT national_id, full_name, dob FROM citizens' " + _inp + "></textarea>"
+          "<button type='submit'>Fetch &amp; map →</button></form>")
+    reg = ("<form class='box' method='post' action='/credential/" + esc(entity) + "/import-registry'>"
+           "<b>From another Sunbird RC registry</b> &mdash; pulls every record of an entity; you map columns next."
+           "<input name='reg_url' required placeholder='https://other-registry:8081' " + _inp + ">"
+           "<input name='reg_entity' required placeholder='entity name' " + _inp + ">"
+           "<button type='submit'>Fetch &amp; map →</button></form>")
+
     # recent records
     recs = search_records(entity, {})
     cols = ["individualId"] + fields + ["osid"]
@@ -334,7 +513,8 @@ def credential_body(s, message="", msg_class="", ensure_note=""):
     return ("<h2>" + esc(s["name"]) + "</h2>"
             "<p class='meta'>Sunbird entity <code>" + esc(entity) + "</code> &middot; issuer "
             + esc(s["issuer"] or "—") + "</p>" + msg_html
-            + "<h2>Register a holder record</h2>" + form + imp + table)
+            + "<h2>Register a holder record</h2>" + form + imp
+            + "<h2>Bulk from a data source</h2>" + api + db + reg + table)
 
 
 # ----------------------------------------------------------------------------
@@ -447,3 +627,76 @@ async def credential_import(entity: str, file: UploadFile = File(...)):
            + "</b> duplicates, <b>" + str(fail) + "</b> failed." + detail)
     cls = "ok" if fail == 0 else ("warn" if okc or dup else "err")
     return page(s["name"], credential_body(s, message=msg, msg_class=cls))
+
+
+def _ready(entity):
+    """Resolve the schema + ensure the Sunbird entity is searchable; returns
+    (schema, error_html_or_None)."""
+    s = find_schema(entity)
+    if not s:
+        return None, page("Not found", "<div class='msg err'>Unknown entity <code>" + esc(entity) + "</code>.</div>")
+    ok, note = ensure_entity(entity, s["fields"])
+    if not ok:
+        return s, page(s["name"], credential_body(s, message="Entity not ready: " + esc(note), msg_class="err"))
+    return s, None
+
+
+@app.post("/credential/{entity}/import-api", response_class=HTMLResponse)
+async def import_api(entity: str, request: Request):
+    s, err = _ready(entity)
+    if err:
+        return HTMLResponse(err)
+    form = await request.form()
+    url = (form.get("api_url") or "").strip()
+    auth = (form.get("api_auth") or "").strip()
+    limit = (form.get("api_limit") or "").strip()
+    if not url:
+        return page(s["name"], credential_body(s, message="API URL is required.", msg_class="err"))
+    try:
+        rows = fetch_json_rows(url, auth, limit)
+    except Exception as e:  # noqa: BLE001
+        return page(s["name"], credential_body(s, message="API fetch failed: " + esc(e), msg_class="err"))
+    if not rows:
+        return page(s["name"], credential_body(s, message="No rows returned from the API.", msg_class="warn"))
+    return _import_step(s, entity, "/credential/" + entity + "/import-api", rows, form,
+                        {"api_url": url, "api_auth": auth, "api_limit": limit})
+
+
+@app.post("/credential/{entity}/import-db", response_class=HTMLResponse)
+async def import_db(entity: str, request: Request):
+    s, err = _ready(entity)
+    if err:
+        return HTMLResponse(err)
+    form = await request.form()
+    conn = (form.get("db_conn") or "").strip()
+    query = (form.get("db_query") or "").strip()
+    if not conn or not query:
+        return page(s["name"], credential_body(s, message="Connection string and SELECT query are both required.", msg_class="err"))
+    try:
+        rows = query_db_rows(conn, query)
+    except Exception as e:  # noqa: BLE001
+        return page(s["name"], credential_body(s, message="Database query failed: " + esc(e), msg_class="err"))
+    if not rows:
+        return page(s["name"], credential_body(s, message="Query returned no rows.", msg_class="warn"))
+    return _import_step(s, entity, "/credential/" + entity + "/import-db", rows, form,
+                        {"db_conn": conn, "db_query": query})
+
+
+@app.post("/credential/{entity}/import-registry", response_class=HTMLResponse)
+async def import_registry(entity: str, request: Request):
+    s, err = _ready(entity)
+    if err:
+        return HTMLResponse(err)
+    form = await request.form()
+    url = (form.get("reg_url") or "").strip()
+    ent = (form.get("reg_entity") or "").strip()
+    if not url or not ent:
+        return page(s["name"], credential_body(s, message="Registry URL and entity are both required.", msg_class="err"))
+    try:
+        rows = fetch_registry_rows(url, ent)
+    except Exception as e:  # noqa: BLE001
+        return page(s["name"], credential_body(s, message="Registry fetch failed: " + esc(e), msg_class="err"))
+    if not rows:
+        return page(s["name"], credential_body(s, message="No records found in that registry entity.", msg_class="warn"))
+    return _import_step(s, entity, "/credential/" + entity + "/import-registry", rows, form,
+                        {"reg_url": url, "reg_entity": ent})

@@ -1,5 +1,5 @@
 FROM python:3.11-slim
-RUN pip install --no-cache-dir fastapi "uvicorn[standard]" httpx python-multipart
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" httpx python-multipart "psycopg[binary]"
 WORKDIR /app
 COPY app.py .
 EXPOSE 8000
