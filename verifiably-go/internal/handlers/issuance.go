@@ -85,6 +85,15 @@ type issueData struct {
 	// bulk_source capabilities fall back to all three so existing backends
 	// aren't silently blocked.
 	BulkSources []sourceOption
+	// IsProvision is true for holder-pull DPGs (Inji auth-code) where bulk
+	// provisions certify.vc_subject — gates the holder-identity mapping row.
+	IsProvision bool
+	// Registries are the env-configured Sunbird RC registries (VERIFIABLY_REGISTRIES)
+	// offered as a dropdown on the registry source form.
+	Registries []registryProvider
+	// EntityDefault pre-fills the registry Entity input (= the credential key /
+	// Sunbird entity name).
+	EntityDefault string
 }
 
 // sourceOption is one chip on the issue form's "source" picker. Derived from
@@ -130,17 +139,20 @@ func (h *H) ShowIssue(w http.ResponseWriter, r *http.Request) {
 		sess.BulkSource = bulkSource
 	}
 	data := issueData{
-		Schema:       schema,
-		Scale:        sess.Scale,
-		Dest:         sess.Dest,
-		IssuerDpg:    sess.IssuerDpg,
-		Dpg:          dpg,
-		SingleSource: "manual",
-		BulkSource:   bulkSource,
-		FieldValues:  vals,
-		Fields:       schemaFieldsOfH(schema),
-		Sources:      sourcesFromCapabilities(dpg),
-		BulkSources:  bulkSources,
+		Schema:        schema,
+		Scale:         sess.Scale,
+		Dest:          sess.Dest,
+		IssuerDpg:     sess.IssuerDpg,
+		Dpg:           dpg,
+		SingleSource:  "manual",
+		BulkSource:    bulkSource,
+		FieldValues:   vals,
+		Fields:        schemaFieldsOfH(schema),
+		Sources:       sourcesFromCapabilities(dpg),
+		BulkSources:   bulkSources,
+		IsProvision:   h.isInjiAuthcode(r.Context(), sess.IssuerDpg),
+		Registries:    registryProviders(),
+		EntityDefault: sess.SchemaID,
 	}
 	h.render(w, r, "issuer_issue", h.pageData(sess, data))
 }
@@ -302,32 +314,6 @@ func (h *H) SetSingleSource(w http.ResponseWriter, r *http.Request) {
 		Sources:      sourcesFromCapabilities(dpg),
 	}
 	h.renderFragment(w, r, "fragment_issue_single_form", data)
-}
-
-// SimulateCSV parses an uploaded CSV, calls IssueBulk per row, and renders
-// the preview fragment with real per-row outcomes. The function name stays
-// SimulateCSV for route stability; the "simulate" nature is gone — this is
-// a live bulk-issue path.
-func (h *H) SimulateCSV(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		h.errorToast(w, r, "Upload a CSV first")
-		return
-	}
-	file, _, err := r.FormFile("csv_file")
-	if err != nil {
-		h.errorToast(w, r, "Upload a CSV file")
-		return
-	}
-	defer file.Close()
-	rows, _, parseErr := parseCSVRows(file)
-	if parseErr != nil {
-		h.errorToast(w, r, "Parse CSV: "+parseErr.Error())
-		return
-	}
-	// Route through the shared bulk tail so CSV / API / DB / registry all hit
-	// one branch point (issue-offers vs. provision-vc_subject for Inji auth-code).
-	h.runBulkIssue(w, r, sess, rows, "csv")
 }
 
 // PreviewPDF opens the PDF preview modal.

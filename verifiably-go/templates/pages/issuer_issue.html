@@ -57,11 +57,12 @@
            in one swap (previously the chips targeted only the form, so the
            highlight stayed on the old chip until a full page reload). */}}
       <div id="bulk-area">
-        {{template "fragment_issue_bulk_area" (dict "BulkSources" .Body.BulkSources "BulkSource" .Body.BulkSource "Fields" .Body.Fields "Dpg" .Body.Dpg)}}
+        {{template "fragment_issue_bulk_area" (dict "BulkSources" .Body.BulkSources "BulkSource" .Body.BulkSource "Fields" .Body.Fields "Dpg" .Body.Dpg "IsProvision" .Body.IsProvision "Registries" .Body.Registries "EntityDefault" .Body.EntityDefault)}}
       </div>
     </div>
 
-    <div id="csv-preview"></div>
+    {{/* #csv-preview (the mapping → result target) lives INSIDE #bulk-area so a
+         chip switch re-renders a fresh empty one — see fragment_issue_bulk_area. */}}
 
     <div class="btn-row" style="margin-top:2rem">
       <a href="/issuer/mode" class="btn ghost">← Back</a>
@@ -238,109 +239,155 @@
   {{.Dpg.Vendor}} only supports {{len .BulkSources}} of the 3 bulk sources. The missing chip(s) reflect the vendor's documented data-provider capabilities, not a verifiably-go limitation.
 </div>
 {{end}}
-{{template "fragment_issue_bulk_form" (dict "Source" .BulkSource "Fields" .Fields)}}
+{{template "fragment_issue_bulk_form" (dict "Source" .BulkSource "Fields" .Fields "IsProvision" .IsProvision "Registries" .Registries "EntityDefault" .EntityDefault)}}
+{{/* Step-2 target: BulkPreview renders the mapping here; BulkApply replaces it
+     with the result. Inside #bulk-area so a chip switch resets it to empty. */}}
+<div id="csv-preview" style="margin-top:1.25rem"></div>
 {{end}}
 
 {{define "fragment_issue_bulk_form"}}
+{{$inp := "font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px"}}
 <div id="bulk-form-wrap" style="margin-top:1rem">
+  {{/* Step 1 of 2: every source POSTs to /bulk/preview, which fetches the rows
+       and returns the column→field mapping screen (into #csv-preview). The
+       issuer doesn't need exact field names — they map columns next. */}}
   {{if eq .Source "api"}}
-    {{/* Secured-API pull: operator gives us a URL and optional auth header.
-         We GET as application/json and expect a bare array or an object with
-         one of {rows, data, items, results} holding the array. */}}
-    <form id="bulk-form"
-          hx-post="/issuer/issue/bulk/api"
-          hx-target="#csv-preview"
-          hx-swap="innerHTML"
+    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
+      <input type="hidden" name="source" value="api">
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">API URL</span>
-        <input type="url" name="api_url" required
-               placeholder="https://xroad.example/r1/EE/COM/12345/registry-service/v1/citizens"
-               style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <input type="url" name="api_url" required placeholder="https://xroad.example/r1/EE/COM/12345/registry-service/v1/citizens" style="{{$inp}}">
       </label>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Authorization header (optional)</span>
-        <input type="text" name="api_auth"
-               placeholder="Bearer eyJhbGc… · or · X-Road-User country/…"
-               style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <input type="text" name="api_auth" placeholder="Bearer eyJhbGc… · or · X-Road-User country/…" style="{{$inp}}">
       </label>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Row limit (optional; 0 = all)</span>
-        <input type="number" name="api_limit" min="0" value="0"
-               style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;max-width:8rem">
+        <input type="number" name="api_limit" min="0" value="0" style="{{$inp}};max-width:8rem">
       </label>
-      <div style="font-size:0.75rem;color:var(--ink-mute)">
-        Each JSON object becomes one credential. Keys map to schema columns:
-        <span class="mono">{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>.
-      </div>
-      <button class="btn" type="submit" style="align-self:flex-start">Fetch & issue →</button>
+      <div style="font-size:0.75rem;color:var(--ink-mute)">GET returns a JSON array (or <span class="mono">{rows|data|items|results}</span>); each object is one row. You'll map its keys to the credential fields next.</div>
+      <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else if eq .Source "db"}}
-    {{/* Database pull: operator provides a postgres DSN and a SELECT whose
-         column names match the schema field names. Read-only; non-SELECT
-         queries are rejected server-side. */}}
-    <form id="bulk-form"
-          hx-post="/issuer/issue/bulk/db"
-          hx-target="#csv-preview"
-          hx-swap="innerHTML"
+    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
+      <input type="hidden" name="source" value="db">
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Postgres connection string</span>
-        <input type="text" name="db_conn" required
-               placeholder="postgres://user:pass@host:5432/db?sslmode=disable"
-               style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <input type="text" name="db_conn" required placeholder="postgres://user:pass@host:5432/db?sslmode=disable" style="{{$inp}}">
       </label>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">SELECT query</span>
-        <textarea name="db_query" rows="4" required
-                  placeholder="SELECT holder, achievement, issuedOn FROM graduates WHERE cohort = '2024-Q3' LIMIT 500"
-                  style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;resize:vertical"></textarea>
+        <textarea name="db_query" rows="4" required placeholder="SELECT last_name, reg_id, dob FROM graduates WHERE cohort = '2024-Q3' LIMIT 500" style="{{$inp}};resize:vertical"></textarea>
       </label>
-      <div style="font-size:0.75rem;color:var(--ink-mute)">
-        Column names must match schema fields:
-        <span class="mono">{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>.
-        Only SELECT statements are allowed.
-      </div>
-      <button class="btn" type="submit" style="align-self:flex-start">Run & issue →</button>
+      <div style="font-size:0.75rem;color:var(--ink-mute)">Each result row becomes one credential; you'll map the SELECTed columns to the credential fields next. Only SELECT statements are allowed.</div>
+      <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else if eq .Source "registry"}}
-    {{/* Sunbird RC registry pull: no inputs — the registry endpoint(s) come
-         from VERIFIABLY_REGISTRIES. We search-all every configured entity and
-         provision each record into certify.vc_subject. */}}
-    <form id="bulk-form"
-          hx-post="/issuer/issue/bulk/registry"
-          hx-target="#csv-preview"
-          hx-swap="innerHTML"
+    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
-      <div style="font-size:0.8rem;color:var(--ink-mute);background:var(--bg-elev);border:1px solid var(--line);border-radius:3px;padding:0.75rem 1rem">
-        Pulls every record from the configured <strong>Sunbird RC registry</strong>
-        and provisions each into <span class="mono">certify.vc_subject</span>,
-        keyed by <span class="mono">individualId</span>. Claims map to schema fields:
-        <span class="mono">{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>.
-        Holders then self-claim via eSignet — the issuer-authoritative source for this credential.
-      </div>
-      <button class="btn" type="submit" style="align-self:flex-start">Pull & provision →</button>
+      <input type="hidden" name="source" value="registry">
+      {{if .Registries}}
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Configured registry (optional)</span>
+        <select name="reg_pick" onchange="(function(s){var u=s.selectedOptions[0].dataset.url||'';if(u){s.form.reg_url.value=u;}})(this)" style="{{$inp}}">
+          <option value="">— choose a configured registry —</option>
+          {{range .Registries}}<option value="{{.ID}}" data-url="{{.URL}}">{{.Label}}{{if .URL}} ({{.URL}}){{end}}</option>{{end}}
+        </select>
+      </label>
+      {{end}}
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Registry base URL</span>
+        <input type="url" name="reg_url" placeholder="https://registry.example  (or pick one above)" style="{{$inp}}">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Entity / schema name</span>
+        <input type="text" name="reg_entity" value="{{.EntityDefault}}" placeholder="Sunbird entity (defaults to the credential type)" style="{{$inp}}">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Search field</span>
+        <input type="text" name="reg_search" value="individualId" style="{{$inp}};max-width:14rem">
+      </label>
+      <div style="font-size:0.75rem;color:var(--ink-mute)">Pulls every record of the entity from the Sunbird RC registry (<span class="mono">POST /api/v1/&lt;entity&gt;/search</span>); each record is one row to provision. You'll map its fields next.</div>
+      <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else}}
-    {{/* Default / csv: unchanged upload widget. */}}
-    <form id="bulk-form"
-          hx-post="/issuer/issue/csv"
-          hx-target="#csv-preview"
-          hx-swap="innerHTML"
-          hx-encoding="multipart/form-data">
+    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+      <input type="hidden" name="source" value="csv">
       <div class="caps" style="margin-bottom:0.75rem">CSV upload</div>
       <div style="background:var(--bg-elev);border:2px dashed var(--line);padding:2.5rem 2rem;border-radius:2px">
-        <input type="file" name="csv_file" accept=".csv,text/csv" required
-               style="display:block;margin:0 auto 1rem;max-width:320px">
-        <div style="text-align:center;margin-bottom:1rem">
-          <button class="btn" type="submit">Upload & issue →</button>
-        </div>
-        <div style="font-size:0.75rem;color:var(--ink-mute);text-align:center">
-          Header row required. Expected columns: <span class="mono">{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>
-        </div>
+        <input type="file" name="csv_file" accept=".csv,text/csv" required style="display:block;margin:0 auto 1rem;max-width:320px">
+        <div style="text-align:center;margin-bottom:1rem"><button class="btn" type="submit">Preview &amp; map →</button></div>
+        <div style="font-size:0.75rem;color:var(--ink-mute);text-align:center">Header row required. You'll map the CSV's columns to the credential fields next — column names don't have to match.</div>
       </div>
     </form>
   {{end}}
+</div>
+{{end}}
+
+{{/* fragment_issue_bulk_error — a persistent inline banner for fetch/empty/
+     expired failures (rendered into #csv-preview instead of a transient toast). */}}
+{{define "fragment_issue_bulk_error"}}
+<div style="margin-top:0.5rem;padding:0.75rem 1rem;background:color-mix(in srgb, var(--err) 8%, transparent);border:1px solid color-mix(in srgb, var(--err) 45%, transparent);border-left-width:3px;border-radius:4px;font-size:0.82rem;color:var(--ink)">
+  <strong style="color:var(--err)">Couldn't load the data source.</strong> {{.Message}}
+</div>
+{{end}}
+
+{{/* fragment_issue_bulk_mapping — step 2: map each credential field to a source
+     column (default = exact-name match), with a sample preview. Submits to
+     /bulk/apply, which remaps the stashed rows and issues/provisions. The
+     hidden mfield is kept immediately before its mcol select so the server
+     reads them as aligned paired slices. */}}
+{{define "fragment_issue_bulk_mapping"}}
+{{$cols := .Columns}}
+<div style="margin-top:1rem">
+  <div class="caps" style="margin-bottom:0.5rem">
+    {{if .Label}}{{.Label}} — {{end}}{{.Total}} row{{if ne .Total 1}}s{{end}} · map columns → fields
+  </div>
+  {{if gt .Truncated 0}}
+  <div style="font-size:0.75rem;color:var(--ink-mute);font-style:italic;margin-bottom:0.5rem">Source returned {{.Truncated}} rows; previewing/applying the first {{.Total}}.</div>
+  {{end}}
+  <div style="font-size:0.8rem;color:var(--ink-mute);margin-bottom:0.75rem">Map each credential field to a column from your source. Unmapped fields are left empty; columns don't have to match field names.</div>
+
+  {{/* Sample preview — detected columns × first rows */}}
+  <div style="overflow:auto;border:1px solid var(--line);border-radius:4px;margin-bottom:1rem">
+    <table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+      <thead><tr style="background:var(--bg-elev);border-bottom:1px solid var(--line)">
+        {{range $cols}}<th class="caps mono" style="text-align:left;padding:0.4rem 0.6rem;white-space:nowrap">{{.}}</th>{{end}}
+      </tr></thead>
+      <tbody>
+        {{range .Sample}}{{$row := .}}<tr style="border-bottom:1px solid var(--line)">
+          {{range $cols}}<td class="mono" style="padding:0.4rem 0.6rem;color:var(--ink-soft);white-space:nowrap">{{index $row .}}</td>{{end}}
+        </tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <form hx-post="/issuer/issue/bulk/apply" hx-target="#csv-preview" hx-swap="innerHTML" style="display:flex;flex-direction:column;gap:0.6rem">
+    {{if .IsProvision}}
+    <div style="display:grid;grid-template-columns:14rem 1fr;gap:0.5rem;align-items:center">
+      <label style="font-weight:500">Holder identity <span class="mono" style="color:var(--ink-mute)">(individualId)</span></label>
+      <input type="hidden" name="mfield" value="individualId">
+      <select name="mcol" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.4rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <option value="">— none —</option>
+        {{range $cols}}<option value="{{.}}"{{if eq . $.IdentityDefault}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+    {{end}}
+    {{range .Fields}}{{$field := .}}
+    <div style="display:grid;grid-template-columns:14rem 1fr;gap:0.5rem;align-items:center">
+      <label>{{replaceUnderscore $field}}</label>
+      <input type="hidden" name="mfield" value="{{$field}}">
+      <select name="mcol" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.4rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <option value="">— none —</option>
+        {{range $cols}}<option value="{{.}}"{{if eq . (index $.Defaults $field)}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+    {{end}}
+    <button class="btn" type="submit" style="align-self:flex-start;margin-top:0.5rem">{{if .IsProvision}}Provision {{.Total}} subject{{if ne .Total 1}}s{{end}} →{{else}}Issue {{.Total}} credential{{if ne .Total 1}}s{{end}} →{{end}}</button>
+  </form>
 </div>
 {{end}}
 

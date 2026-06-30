@@ -25,12 +25,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/metrics"
+	"github.com/verifiably/verifiably-go/vctypes"
 )
 
 // isInjiAuthcode reports whether the named issuer DPG drives the Inji
@@ -70,6 +72,8 @@ func (h *H) BulkSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess.BulkSource = source
+	// Switching sources invalidates any stashed preview from the previous one.
+	sess.BulkRows, sess.BulkColumns, sess.BulkLabel = nil, nil, ""
 	// Re-render the whole #bulk-area (chip-row + mini-form) so the active chip
 	// highlight moves to the clicked source AND the form switches in one swap.
 	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
@@ -79,82 +83,200 @@ func (h *H) BulkSource(w http.ResponseWriter, r *http.Request) {
 	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	schema = h.resolveFields(schema)
-	h.renderFragment(w, r, "fragment_issue_bulk_area", map[string]any{
-		"BulkSources": bulkSources,
-		"BulkSource":  sess.BulkSource,
-		"Fields":      schemaFieldsOfH(schema),
-		"Dpg":         dpg,
+	h.renderFragment(w, r, "fragment_issue_bulk_area", h.bulkAreaData(r, sess, dpg, bulkSources, schemaFieldsOfH(schema)))
+}
+
+// bulkAreaData builds the context for fragment_issue_bulk_area, shared by
+// ShowIssue (first paint) and BulkSource (chip switch) so the registry form +
+// mapping affordances render identically in both. IsProvision gates the
+// holder-identity mapping row; Registries feeds the configured-registry
+// dropdown; EntityDefault pre-fills the registry Entity input.
+func (h *H) bulkAreaData(r *http.Request, sess *Session, dpg vctypes.DPG, bulkSources []sourceOption, fields []string) map[string]any {
+	return map[string]any{
+		"BulkSources":   bulkSources,
+		"BulkSource":    sess.BulkSource,
+		"Fields":        fields,
+		"Dpg":           dpg,
+		"IsProvision":   h.isInjiAuthcode(r.Context(), sess.IssuerDpg),
+		"Registries":    registryProviders(),
+		"EntityDefault": sess.SchemaID,
+	}
+}
+
+// bulkInlineError renders a persistent inline error into the preview target
+// (#csv-preview). Used instead of errorToast for bulk fetch/empty/expired
+// failures so the operator gets a lasting, in-context message (errorToast sets
+// HX-Reswap:none and writes no body, so it would leave the area unchanged).
+func (h *H) bulkInlineError(w http.ResponseWriter, r *http.Request, msg string) {
+	h.renderFragment(w, r, "fragment_issue_bulk_error", map[string]any{"Message": msg})
+}
+
+// BulkPreview is step 1 of the bulk flow: fetch rows from the chosen data
+// source, detect their columns, stash them in the session, and render the
+// column→field mapping UI. The source is determined by Content-Type (CSV posts
+// multipart; api/db/registry post urlencoded with a hidden "source" field) so
+// it's robust to a stale sess.BulkSource (e.g. after a container restart).
+func (h *H) BulkPreview(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	multipart := strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/")
+
+	var (
+		rows   []map[string]string
+		header []string
+		label  string
+		source string
+		err    error
+	)
+	if multipart {
+		source = "csv"
+		if err = r.ParseMultipartForm(32 << 20); err != nil {
+			h.bulkInlineError(w, r, "Upload a CSV first.")
+			return
+		}
+	} else {
+		if err = r.ParseForm(); err != nil {
+			h.bulkInlineError(w, r, "Bad form: "+err.Error())
+			return
+		}
+		source = strings.TrimSpace(r.FormValue("source"))
+	}
+
+	// Server-side whitelist: the source must be one this DPG declares.
+	dpgs, _ := h.Adapter.ListIssuerDpgs(r.Context())
+	dpg := dpgs[sess.IssuerDpg]
+	if !bulkSourceAllowed(source, bulkSourcesFor(dpg)) {
+		h.bulkInlineError(w, r, "Source '"+source+"' is not supported by the selected issuer DPG.")
+		return
+	}
+
+	switch source {
+	case "csv":
+		file, _, ferr := r.FormFile("csv_file")
+		if ferr != nil {
+			h.bulkInlineError(w, r, "Choose a CSV file to upload.")
+			return
+		}
+		defer file.Close()
+		rows, header, err = parseCSVRows(file)
+		label = "csv"
+	case "api":
+		url := strings.TrimSpace(r.FormValue("api_url"))
+		if url == "" {
+			h.bulkInlineError(w, r, "API URL is required.")
+			return
+		}
+		rows, err = fetchJSONRows(r.Context(), url, strings.TrimSpace(r.FormValue("api_auth")), strings.TrimSpace(r.FormValue("api_limit")))
+		label = "api:" + truncateHost(url)
+	case "db":
+		conn := strings.TrimSpace(r.FormValue("db_conn"))
+		query := strings.TrimSpace(r.FormValue("db_query"))
+		if conn == "" || query == "" {
+			h.bulkInlineError(w, r, "Connection string and SELECT query are both required.")
+			return
+		}
+		rows, err = queryDBRows(r.Context(), conn, query)
+		label = "db"
+	case "registry":
+		p, entity := buildRegistryProvider(r, sess)
+		if p.URL == "" {
+			h.bulkInlineError(w, r, "Registry base URL is required (or pick a configured registry).")
+			return
+		}
+		if entity == "" {
+			h.bulkInlineError(w, r, "Registry entity is required.")
+			return
+		}
+		rows = searchRegistryAll(r.Context(), p, entity)
+		label = "registry:" + entity
+	default:
+		h.bulkInlineError(w, r, "Unknown source: "+source)
+		return
+	}
+	if err != nil {
+		h.bulkInlineError(w, r, "Fetch failed: "+err.Error())
+		return
+	}
+	if len(rows) == 0 {
+		h.bulkInlineError(w, r, "No rows returned from the data source — check the connection details and that records exist.")
+		return
+	}
+
+	truncated := 0
+	if len(rows) > maxBulkPreviewRows {
+		truncated = len(rows)
+		rows = rows[:maxBulkPreviewRows]
+	}
+	columns := detectColumns(rows, header)
+
+	// Stash for the apply step (so CSV needn't be re-uploaded).
+	sess.BulkRows, sess.BulkColumns, sess.BulkLabel = rows, columns, label
+
+	schemas, lerr := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
+	if lerr != nil {
+		h.bulkInlineError(w, r, "Backend unavailable: "+lerr.Error())
+		return
+	}
+	schema, _ := findSchemaByID(schemas, sess.SchemaID)
+	schema = h.resolveFields(schema)
+	fields := schemaFieldsOfH(schema)
+
+	// Per-field default = the source column whose name matches the field exactly.
+	defaults := make(map[string]string, len(fields))
+	for _, f := range fields {
+		defaults[f] = defaultColumnFor(f, columns)
+	}
+
+	h.renderFragment(w, r, "fragment_issue_bulk_mapping", map[string]any{
+		"Label":           label,
+		"Total":           len(rows),
+		"Truncated":       truncated,
+		"Columns":         columns,
+		"Sample":          sampleRows(rows, 3),
+		"Fields":          fields,
+		"Defaults":        defaults,
+		"IsProvision":     h.isInjiAuthcode(r.Context(), sess.IssuerDpg),
+		"IdentityDefault": identityDefault(columns),
 	})
 }
 
-// BulkFromAPI GETs a JSON array from the operator-provided URL, optionally
-// sending an Authorization header, maps each object to a row, and issues
-// the credentials in bulk.
-func (h *H) BulkFromAPI(w http.ResponseWriter, r *http.Request) {
+// BulkApply is step 2: take the field→column mapping from the form, remap the
+// stashed rows onto the credential's field names, and run the shared issue/
+// provision tail (which renders the existing result preview).
+func (h *H) BulkApply(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	if err := r.ParseForm(); err != nil {
-		h.errorToast(w, r, "bad form: "+err.Error())
+		h.bulkInlineError(w, r, "Bad form: "+err.Error())
 		return
 	}
-	url := strings.TrimSpace(r.FormValue("api_url"))
-	if url == "" {
-		h.errorToast(w, r, "API URL required")
+	rows := sess.BulkRows
+	if len(rows) == 0 {
+		h.bulkInlineError(w, r, "Preview expired — click Preview &amp; map again.")
 		return
 	}
-	authHeader := strings.TrimSpace(r.FormValue("api_auth"))
-	limitStr := strings.TrimSpace(r.FormValue("api_limit"))
-
-	rows, err := fetchJSONRows(r.Context(), url, authHeader, limitStr)
-	if err != nil {
-		h.errorToast(w, r, "API fetch failed: "+err.Error())
-		return
+	// Paired slices: mfield[i] ↔ mcol[i] (kept adjacent in the form DOM).
+	mfields := r.Form["mfield"]
+	mcols := r.Form["mcol"]
+	mapping := make(map[string]string, len(mfields))
+	for i, f := range mfields {
+		col := ""
+		if i < len(mcols) {
+			col = strings.TrimSpace(mcols[i])
+		}
+		if f != "" && col != "" {
+			mapping[f] = col
+		}
 	}
-	h.runBulkIssue(w, r, sess, rows, "api:"+truncateHost(url))
+	newRows := remapRows(rows, mapping)
+	label := sess.BulkLabel
+	// Consume the stash.
+	sess.BulkRows, sess.BulkColumns, sess.BulkLabel = nil, nil, ""
+	h.runBulkIssue(w, r, sess, newRows, label)
 }
 
-// BulkFromDB opens a postgres connection, runs the provided SELECT, and
-// feeds each row to IssueBulk. Operator types the connection string + query
-// into the UI. For a demo we trust the operator; a real deployment would
-// parameterize the query and lock down which tables are readable.
-func (h *H) BulkFromDB(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-	if err := r.ParseForm(); err != nil {
-		h.errorToast(w, r, "bad form: "+err.Error())
-		return
-	}
-	conn := strings.TrimSpace(r.FormValue("db_conn"))
-	query := strings.TrimSpace(r.FormValue("db_query"))
-	if conn == "" || query == "" {
-		h.errorToast(w, r, "connection string and query both required")
-		return
-	}
-	rows, err := queryDBRows(r.Context(), conn, query)
-	if err != nil {
-		h.errorToast(w, r, "DB query failed: "+err.Error())
-		return
-	}
-	h.runBulkIssue(w, r, sess, rows, "db")
-}
-
-// BulkFromRegistry pulls every record from the configured Sunbird RC registry
-// (VERIFIABLY_REGISTRIES) and feeds them through the bulk tail. No operator
-// input — the registry endpoints are deployment config. Only meaningful for
-// Inji auth-code, where runBulkIssue diverts to the vc_subject provision sink;
-// each record provisions one subject for holders to self-claim via eSignet.
-func (h *H) BulkFromRegistry(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-	rows, err := fetchRegistryRows(r.Context())
-	if err != nil {
-		h.errorToast(w, r, "registry pull failed: "+err.Error())
-		return
-	}
-	h.runBulkIssue(w, r, sess, rows, "registry")
-}
-
-// runBulkIssue is the common tail shared by SimulateCSV + BulkFromAPI +
-// BulkFromDB (+ BulkFromRegistry). For most DPGs it calls the adapter and
-// renders the issue preview. Inji auth-code is holder-pull, so "bulk" means
-// provisioning the data-provider table (certify.vc_subject) rather than
+// runBulkIssue is the common tail reached from BulkApply once the operator has
+// mapped source columns onto the credential's fields. For most DPGs it calls the
+// adapter and renders the issue preview. Inji auth-code is holder-pull, so "bulk"
+// means provisioning the data-provider table (certify.vc_subject) rather than
 // minting offers — those DPGs divert to runBulkProvision.
 func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, rows []map[string]string, label string) {
 	if h.isInjiAuthcode(r.Context(), sess.IssuerDpg) {
@@ -216,6 +338,127 @@ func injiRowIdentity(row map[string]string) string {
 		}
 	}
 	return ""
+}
+
+// maxBulkPreviewRows caps how many fetched rows are stashed for the
+// preview→map→apply flow. Bounds the in-memory session footprint; the mapping
+// fragment surfaces a notice when a source returns more.
+const maxBulkPreviewRows = 10000
+
+// detectColumns returns the union of keys across rows in a deterministic order:
+// the preferred order first (a CSV header), filtered to keys that actually
+// occur, then any remaining keys sorted alphabetically. Dedups throughout.
+func detectColumns(rows []map[string]string, preferred []string) []string {
+	present := map[string]bool{}
+	for _, row := range rows {
+		for k := range row {
+			present[k] = true
+		}
+	}
+	out := make([]string, 0, len(present))
+	seen := map[string]bool{}
+	for _, k := range preferred {
+		if present[k] && !seen[k] {
+			out = append(out, k)
+			seen[k] = true
+		}
+	}
+	rest := make([]string, 0, len(present))
+	for k := range present {
+		if !seen[k] {
+			rest = append(rest, k)
+		}
+	}
+	sort.Strings(rest)
+	return append(out, rest...)
+}
+
+// defaultColumnFor returns the source column that maps to field by exact name
+// (so already-matching sources need no manual mapping), or "" if none matches.
+func defaultColumnFor(field string, columns []string) string {
+	for _, c := range columns {
+		if c == field {
+			return c
+		}
+	}
+	return ""
+}
+
+// identityDefault returns the first of the recognised identity columns present
+// in the detected source columns (used to pre-select the holder-identity map).
+func identityDefault(columns []string) string {
+	for _, id := range injiIdentityFields {
+		for _, c := range columns {
+			if c == id {
+				return c
+			}
+		}
+	}
+	return ""
+}
+
+// sampleRows returns the first n rows (for the mapping preview table).
+func sampleRows(rows []map[string]string, n int) []map[string]string {
+	if len(rows) < n {
+		return rows
+	}
+	return rows[:n]
+}
+
+// remapRows projects each source row onto the credential's fields via the
+// field→column mapping: newRow[field] = row[column] for every mapping whose
+// column is non-empty. Columns not mapped to any field are dropped; a field
+// with no column (or whose column is absent in a row) is simply omitted.
+func remapRows(rows []map[string]string, mapping map[string]string) []map[string]string {
+	out := make([]map[string]string, 0, len(rows))
+	for _, row := range rows {
+		nr := make(map[string]string, len(mapping))
+		for field, col := range mapping {
+			if col == "" {
+				continue
+			}
+			if v, ok := row[col]; ok {
+				nr[field] = v
+			}
+		}
+		out = append(out, nr)
+	}
+	return out
+}
+
+// buildRegistryProvider assembles a single registryProvider from the registry
+// mini-form: an optional configured-registry pick (reg_pick, by ID) supplies a
+// base, then any non-empty manual fields (reg_url/reg_entity/reg_search)
+// override it. Entity defaults to the credential key (sess.SchemaID — which is
+// the Sunbird entity name the registrar console uses); SearchField defaults to
+// "individualId". Returns the provider + the resolved entity to search.
+func buildRegistryProvider(r *http.Request, sess *Session) (registryProvider, string) {
+	var p registryProvider
+	if pick := strings.TrimSpace(r.FormValue("reg_pick")); pick != "" {
+		for _, rp := range registryProviders() {
+			if rp.ID == pick {
+				p = rp
+				break
+			}
+		}
+	}
+	if v := strings.TrimSpace(r.FormValue("reg_url")); v != "" {
+		p.URL = v
+	}
+	if v := strings.TrimSpace(r.FormValue("reg_entity")); v != "" {
+		p.Entity = v
+	}
+	if v := strings.TrimSpace(r.FormValue("reg_search")); v != "" {
+		p.SearchField = v
+	}
+	if p.SearchField == "" {
+		p.SearchField = "individualId"
+	}
+	entity := p.Entity
+	if entity == "" {
+		entity = sess.SchemaID
+	}
+	return p, entity
 }
 
 // runBulkProvision is the Inji auth-code bulk sink. Each source row is upserted

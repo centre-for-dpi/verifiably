@@ -58,6 +58,15 @@ type Session struct {
 	Scale            string          // "single" | "bulk"
 	Dest             string          // "wallet" | "pdf"
 	BulkSource       string          // "csv" | "api" | "db" — active bulk source
+	// Bulk preview→map→apply stash. Rows fetched from the chosen data source at
+	// the Preview step are held here so the Apply step can remap columns→fields
+	// without re-fetching (notably so an uploaded CSV needn't be re-chosen).
+	// json:"-" keeps potentially-large row data OUT of the encrypted on-disk
+	// session flush (in-memory only; lost on restart → Apply shows "preview
+	// expired", which is graceful).
+	BulkRows         []map[string]string `json:"-"`
+	BulkColumns      []string            `json:"-"` // detected source columns, stable order
+	BulkLabel        string              `json:"-"` // e.g. "csv" | "api:host" | "registry:Entity"
 	ExpandedSchemaID string          // currently expanded card
 	SchemaFilter     string          // "all" or one of the stds
 	SchemaQuery      string          // current search text
