@@ -1,8 +1,8 @@
 {{define "content_registrar_identities"}}
 <section class="view active">
   <div class="section-label">REGISTRAR · IDENTITY REGISTRY</div>
-  <h1 class="page-title">Enrol <em>citizen identities</em>.</h1>
-  <p class="subtitle">The authoritative identity registry — the demo stand-in for a national ID repository. Plug in your data source (CSV, secured API, database, or Sunbird RC), map its columns to the identity fields, and enrol citizens. Holders later <strong>activate</strong> against these records via eSignet; they cannot create themselves.</p>
+  <h1 class="page-title">Enroll <em>bulk identities</em>.</h1>
+  <p class="subtitle">An authoritative identity registry based on a core functional or foundational ID e.g. a national ID repository. Plug in your data source (CSV, secured API, database, or Sunbird RC), map its columns to the identity fields, and enroll citizens. Holders later <strong>activate</strong> against these records via eSignet; they cannot create themselves.</p>
 
   {{if .Body.Disabled}}
   <div style="background:#3a2a00;border:1px solid #6b5200;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffd479">{{.Body.Disabled}}</div>
@@ -177,7 +177,7 @@
       </select>
     </div>
     {{end}}
-    <button class="btn" type="submit" style="align-self:flex-start;margin-top:0.5rem">Enrol {{.Total}} identit{{if ne .Total 1}}ies{{else}}y{{end}} →</button>
+    <button class="btn" type="submit" style="align-self:flex-start;margin-top:0.5rem">Enroll {{.Total}} identit{{if ne .Total 1}}ies{{else}}y{{end}} →</button>
   </form>
 </div>
 {{end}}
