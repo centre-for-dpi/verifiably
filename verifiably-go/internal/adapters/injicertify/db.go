@@ -262,21 +262,25 @@ func buildVCTemplate(schema vctypes.Schema) string {
 		for _, f := range schema.FieldsSpec {
 			sub[f.Name] = "${" + f.Name + "}"
 		}
-		// Inline JSON-LD context for the custom type(s) and credentialSubject
-		// fields, mirroring the schema preview (handlers/schema.go): a @vocab
-		// base plus an explicit term→IRI mapping for every non-standard term
-		// the VC carries. Explicit mappings (not just @vocab) keep it valid
-		// under verifiers that run JSON-LD in safe mode.
+		// Inline JSON-LD context for the custom type(s) + credentialSubject
+		// fields: a single @vocab so any NON-STANDARD term (the custom type,
+		// the custom fields) expands to https://vocab.verifiably.local/<term>.
+		//
+		// We deliberately do NOT add explicit per-term entries (e.g.
+		// "name": "https://vocab.verifiably.local/name"). The base VCDM-2.0
+		// context (credentials/v2) is @protected and already defines common
+		// terms like `name`/`description`/`id`/`type`/`issuer`; an explicit
+		// entry that re-maps one of those is a PROTECTED_TERM_REDEFINITION,
+		// which makes inji-certify's JSON-LD canonicalization throw at signing
+		// time (ERROR_SIGNING_QR_DATA — "Error occurred during canonicalization")
+		// and blocks the claim. @vocab applies ONLY to terms the base context
+		// leaves undefined, so custom fields still resolve to the same vocab
+		// IRIs the old explicit entries produced, while a standard-named field
+		// keeps its protected base definition — valid under JSON-LD safe mode
+		// for ANY field name. (The `type` array below is unchanged, so
+		// Certify's config-lookup-by-type still matches.)
 		const vocabBase = "https://vocab.verifiably.local/"
 		terms := map[string]any{"@vocab": vocabBase}
-		for _, t := range types {
-			if t != "VerifiableCredential" {
-				terms[t] = vocabBase + t
-			}
-		}
-		for _, f := range schema.FieldsSpec {
-			terms[f.Name] = vocabBase + f.Name
-		}
 		m := map[string]any{
 			// VC Data Model base context (credentials/v1 for VCDM 1.1,
 			// credentials/v2 for VCDM 2.0) + the Ed25519Signature2020 suite
