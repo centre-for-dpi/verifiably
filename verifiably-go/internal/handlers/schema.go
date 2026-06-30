@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -81,15 +82,11 @@ func (h *H) ShowSchemaBrowser(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/issuer/dpg")
 		return
 	}
-	// Inji auth-code DPGs don't use the walt.id schema browser (the Inji adapter
-	// can't drive ListSchemas, so rendering it here 500s). Their schemas are
-	// created via the shared builder and listed owner-scoped, so send them to
-	// their own credentials page. This also makes the builder's "← Cancel"
-	// (which links to /issuer/schema) land somewhere sensible for that flow.
-	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil && dpgs[sess.IssuerDpg].SchemaApply == "inji_authcode" {
-		h.redirect(w, r, "/issuer/schema/mine")
-		return
-	}
+	// Inji auth-code DPGs now flow through the shared wizard like walt.id:
+	// schemaBrowserData sources their cards from the issuer's live
+	// credential_configs (owner-scoped) since the Inji adapter can't drive
+	// ListSchemas. (The owner-scoped /issuer/schema/mine view still exists as
+	// a secondary listing; it's just no longer on the wizard path.)
 	data := h.schemaBrowserData(w, r, sess)
 	h.render(w, r, "issuer_schema", h.pageData(sess, data))
 }
@@ -118,19 +115,78 @@ type schemaBrowserData struct {
 	Notice string
 }
 
+// injiFormatToStd maps a Certify credential_format to the Std label the schema
+// grid + filter chips use. Mirrors injicertify.formatToStd (unexported there);
+// kept tiny and local so handlers don't import the adapter package.
+func injiFormatToStd(format string) string {
+	switch format {
+	case "vc+sd-jwt", "dc+sd-jwt":
+		return "sd_jwt_vc (IETF)"
+	default: // ldp_vc, jwt_vc_json
+		return "w3c_vcdm_2"
+	}
+}
+
+// injiOwnerSchemas builds schema-grid cards from the issuer's live Inji
+// credential_configs (owner-scoped via SubjectStore.ListMyCredentials). The
+// Inji adapter can't drive ListSchemas, so the shared browser is fed from the
+// subject store instead; each credential maps to a Custom card so it survives
+// the customOnly filter and the shared search/filter/select/Continue flow
+// drives it exactly like a walt.id schema. FieldsSpec is populated from the
+// stored display_order so the card's "Show JSON" preview renders.
+func (h *H) injiOwnerSchemas(ctx context.Context, sess *Session) []vctypes.Schema {
+	creds, err := h.Subjects.ListMyCredentials(ctx, sessionOwnerKey(sess))
+	if err != nil {
+		return []vctypes.Schema{}
+	}
+	out := make([]vctypes.Schema, 0, len(creds))
+	for _, c := range creds {
+		name := c["displayName"]
+		if name == "" {
+			name = c["key"]
+		}
+		desc := "Live Inji Certify credential"
+		if c["scope"] != "" {
+			desc += " · scope " + c["scope"]
+		}
+		s := vctypes.Schema{
+			ID:     c["key"],
+			Name:   name,
+			Std:    injiFormatToStd(c["format"]),
+			Desc:   desc,
+			Custom: true,
+		}
+		if fields, ferr := h.Subjects.CredentialFields(ctx, c["key"]); ferr == nil {
+			for _, fn := range fields {
+				s.FieldsSpec = append(s.FieldsSpec, vctypes.FieldSpec{Name: fn, Datatype: "string"})
+			}
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 func (h *H) schemaBrowserData(w http.ResponseWriter, r *http.Request, sess *Session) schemaBrowserData {
 	ctx := issuerCtx(r, sess)
-	schemas, err := h.Adapter.ListSchemas(ctx, sess.IssuerDpg)
+	var schemas []vctypes.Schema
 	notice := ""
-	if err != nil {
-		// Registry.ListSchemas returns the custom-schema slice alongside the
-		// error so we can render gracefully. Show a banner instead of
-		// blowing up the response.
-		notice = transientCatalogNotice(err)
-		// Defensive: a stricter caller (no resilience layer) would return
-		// nil; treat that as an empty list so the template still renders.
-		if schemas == nil {
-			schemas = []vctypes.Schema{}
+	if h.isInjiAuthcode(ctx, sess.IssuerDpg) && h.Subjects != nil {
+		// Inji auth-code has no walt.id-style catalog; its "schemas" are the
+		// issuer's live credential_configs. Source the grid from SubjectStore.
+		schemas = h.injiOwnerSchemas(ctx, sess)
+	} else {
+		var err error
+		schemas, err = h.Adapter.ListSchemas(ctx, sess.IssuerDpg)
+		if err != nil {
+			// Registry.ListSchemas returns the custom-schema slice alongside the
+			// error so we can render gracefully. Show a banner instead of
+			// blowing up the response.
+			notice = transientCatalogNotice(err)
+			// Defensive: a stricter caller (no resilience layer) would return
+			// nil; treat that as an empty list so the template still renders.
+			if schemas == nil {
+				schemas = []vctypes.Schema{}
+			}
 		}
 	}
 	// Show only user-built schemas in the issuance flow. The walt.id catalog
@@ -463,7 +519,12 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 			h.errorToast(w, r, err.Error())
 			return
 		}
-		h.redirect(w, r, "/issuer/schema/mine?created="+key)
+		// Land back on the shared schema grid with the freshly-built credential
+		// pre-selected, so the issuer can Continue → Mode → bulk-provision —
+		// the same wizard tail walt.id uses.
+		sess.SchemaID = key
+		sess.ExpandedSchemaID = key
+		h.redirect(w, r, "/issuer/schema")
 		return
 	}
 	if err := h.Adapter.SaveCustomSchema(issuerCtx(r, sess), schema); err != nil {

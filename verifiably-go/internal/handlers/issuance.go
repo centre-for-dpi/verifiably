@@ -39,6 +39,13 @@ func (h *H) ShowIssuanceMode(w http.ResponseWriter, r *http.Request) {
 		sess.Dest = "wallet"
 		data.SelectedDest = "wallet"
 	}
+	// Bulk-only DPGs (e.g. Inji auth-code) have no single-subject issuance —
+	// the issuer provisions many subjects and holders self-claim. Force
+	// Scale=bulk so the greyed single card is never the active selection.
+	if data.Dpg.BulkOnly && sess.Scale != "bulk" {
+		sess.Scale = "bulk"
+		data.SelectedScale = "bulk"
+	}
 	h.render(w, r, "issuer_mode", h.pageData(sess, data))
 }
 
@@ -50,6 +57,11 @@ func (h *H) SetIssuanceMode(w http.ResponseWriter, r *http.Request) {
 	}
 	if dest := r.FormValue("dest"); dest != "" {
 		sess.Dest = dest
+	}
+	// Server-side guard: a bulk-only DPG can never be issued single-subject,
+	// even if a crafted POST submits scale=single (the card is greyed client-side).
+	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil && dpgs[sess.IssuerDpg].BulkOnly {
+		sess.Scale = "bulk"
 	}
 	h.redirect(w, r, "/issuer/issue")
 }
@@ -302,55 +314,20 @@ func (h *H) SimulateCSV(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Upload a CSV first")
 		return
 	}
-	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
-	if err != nil {
-		h.errorToast(w, r, "backend unavailable: "+err.Error())
-		return
-	}
-	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	file, _, err := r.FormFile("csv_file")
 	if err != nil {
 		h.errorToast(w, r, "Upload a CSV file")
 		return
 	}
 	defer file.Close()
-	rows, header, parseErr := parseCSVRows(file)
+	rows, _, parseErr := parseCSVRows(file)
 	if parseErr != nil {
 		h.errorToast(w, r, "Parse CSV: "+parseErr.Error())
 		return
 	}
-	bulkStart := time.Now()
-	res, err := h.Adapter.IssueBulk(r.Context(), backend.IssueBulkRequest{
-		IssuerDpg: sess.IssuerDpg,
-		Schema:    schema,
-		Rows:      rows,
-		RowCount:  len(rows),
-	})
-	metrics.ObserveDuration("adapter_duration_seconds", time.Since(bulkStart), "dpg", sess.IssuerDpg, "op", "issue")
-	if err != nil {
-		metrics.Inc("credential_issued_total", "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
-		h.errorToast(w, r, err.Error())
-		return
-	}
-	if res.Accepted > 0 {
-		metrics.IncN("credential_issued_total", int64(res.Accepted), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "ok")
-	}
-	if res.Rejected > 0 {
-		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
-	}
-	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
-	h.renderFragment(w, r, "fragment_issue_csv_preview", map[string]any{
-		"Schema":   schema,
-		"Fields":   schemaFieldsOfH(schema),
-		"Values":   vals,
-		"Header":   header,
-		"Total":    len(rows),
-		"Accepted": res.Accepted,
-		"Rejected": res.Rejected,
-		"Errors":   res.Errors,
-		"RowsOut":  res.Rows,
-		"Label":    "csv",
-	})
+	// Route through the shared bulk tail so CSV / API / DB / registry all hit
+	// one branch point (issue-offers vs. provision-vc_subject for Inji auth-code).
+	h.runBulkIssue(w, r, sess, rows, "csv")
 }
 
 // PreviewPDF opens the PDF preview modal.
@@ -400,7 +377,7 @@ func bulkSourcesFor(dpg vctypes.DPG) []sourceOption {
 		if c.Kind != "bulk_source" {
 			continue
 		}
-		if c.Key != "csv" && c.Key != "api" && c.Key != "db" {
+		if c.Key != "csv" && c.Key != "api" && c.Key != "db" && c.Key != "registry" {
 			continue
 		}
 		out = append(out, sourceOption{Key: c.Key, Label: c.Title, Hint: c.Body})

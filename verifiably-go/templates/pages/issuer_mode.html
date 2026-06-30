@@ -9,13 +9,17 @@
       <div class="caps" style="margin-bottom:1rem">Scale</div>
       <div class="split">
 
-        <label class="option-card" style="cursor:pointer">
+        <label class="option-card {{if .Body.Dpg.BulkOnly}}disabled{{end}}"
+               style="cursor:{{if .Body.Dpg.BulkOnly}}not-allowed{{else}}pointer{{end}}"
+               {{if .Body.Dpg.BulkOnly}}onclick="toast('{{.Body.Dpg.Vendor}} is bulk-to-wallet only — provision many subjects, then holders self-claim via eSignet.');return false"{{end}}>
           <input type="radio" name="scale" value="single" style="display:none"
-                 {{if eq .Body.SelectedScale "single"}}checked{{end}}>
+                 {{if eq .Body.SelectedScale "single"}}checked{{end}}
+                 {{if .Body.Dpg.BulkOnly}}disabled{{end}}>
           <span>
             <div class="caps">One credential</div>
             <h3>Single subject</h3>
             <p>Fill in the fields by hand or pull from an external source. Best for demonstrating flows or issuing one-offs.</p>
+            {{if .Body.Dpg.BulkOnly}}<div class="req"><span class="pill warn">not for {{.Body.Dpg.Vendor}}</span> — holder-pull model; provision in bulk instead.</div>{{end}}
           </span>
         </label>
 
