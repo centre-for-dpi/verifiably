@@ -1,12 +1,18 @@
 {{define "content_holder_register"}}
 <section class="view active">
   <div class="section-label">{{t "SIGN UP WITH eSIGNET" $.Lang}}</div>
-  <h1 class="page-title">{{t "Sign up with" $.Lang}} <em>eSignet</em>.</h1>
-  <p class="subtitle">{{t "Create your eSignet identity so you can log in and claim credentials. You'll log in with your Individual ID and the PIN you set below." $.Lang}}</p>
+  <h1 class="page-title">{{t "Activate your" $.Lang}} <em>eSignet</em> {{t "identity" $.Lang}}.</h1>
+  <p class="subtitle">{{t "You must already be enrolled in the identity registry by your registrar — we read your details from there; you only verify ownership and set a PIN. Sign in afterwards with your Individual ID and PIN to claim credentials." $.Lang}}</p>
 
   {{if not $.Body.Enabled}}
   <div style="background:#3a2a00;border:1px solid #6b5200;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffd479">
-    {{t "Registration is not enabled on this deployment." $.Lang}}
+    {{t "Activation is not enabled on this deployment." $.Lang}}
+  </div>
+  {{end}}
+
+  {{if and $.Body.Enabled (not $.Body.EmailEnabled)}}
+  <div style="background:#3a2a00;border:1px solid #6b5200;border-radius:4px;padding:1rem;margin:1rem 0;color:#ffd479">
+    {{t "Email delivery isn't configured, so ownership can't be verified. Set SMTP_* to enable activation." $.Lang}}
   </div>
   {{end}}
 
@@ -16,35 +22,37 @@
 
   {{if $.Body.Success}}
   <div style="background:#0d2e1a;border:1px solid #1f7a45;border-radius:4px;padding:1rem;margin:1rem 0;color:#9affc0">
-    <strong>{{$.Body.FullName}}</strong> — {{t "signed up." $.Lang}} {{t "eSignet ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>.
+    <strong>{{$.Body.FullName}}</strong> — {{t "activated." $.Lang}} {{t "eSignet ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>.
     {{t "Log in via eSignet with your Individual ID and PIN to claim your credentials." $.Lang}}
     <a href="/holder/wallet/inji">{{t "Go to the wallet →" $.Lang}}</a>
   </div>
-  {{else}}
+
+  {{else if eq $.Body.Step "verify"}}
+  {{/* Step 2: verify the emailed code + set a PIN. */}}
   <form method="post" action="/holder/register" style="display:grid;gap:0.75rem;max-width:520px">
-    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Individual ID *" $.Lang}}
-      <input class="input" type="text" name="individual_id" placeholder="9876543210" maxlength="16" required></label>
-    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "PIN — you log in with this *" $.Lang}}
+    <input type="hidden" name="step" value="verify">
+    <div style="font-size:0.88rem;color:var(--ink-soft)">
+      {{t "We emailed a verification code to" $.Lang}} <strong class="mono">{{$.Body.MaskedEmail}}</strong>
+      {{t "for Individual ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>. {{t "Enter it below and choose a PIN." $.Lang}}
+    </div>
+    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Verification code *" $.Lang}}
+      <input class="input" type="text" name="otp" placeholder="6 digits" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required autofocus></label>
+    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Set your PIN — you log in with this *" $.Lang}}
       <input class="input" type="password" name="pin" placeholder="6 digits" maxlength="6" minlength="6" inputmode="numeric" required></label>
-    <div style="display:flex;gap:0.75rem">
-      <label style="flex:1;display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Given name *" $.Lang}}
-        <input class="input" type="text" name="given_name" placeholder="Grace" required></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Family name *" $.Lang}}
-        <input class="input" type="text" name="family_name" placeholder="Hopper" required></label>
+    <div style="display:flex;gap:0.75rem;align-items:center">
+      <button class="btn" type="submit">{{t "Activate →" $.Lang}}</button>
+      <a href="/holder/register" style="font-size:0.82rem;color:var(--ink-mute)">{{t "Start over" $.Lang}}</a>
     </div>
-    <div style="display:flex;gap:0.75rem">
-      <label style="flex:1;display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Gender" $.Lang}}
-        <input class="input" type="text" name="gender" placeholder="Female"></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Date of birth" $.Lang}}
-        <input class="input" type="date" name="date_of_birth"></label>
-    </div>
-    <div style="display:flex;gap:0.75rem">
-      <label style="flex:1;display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Email *" $.Lang}}
-        <input class="input" type="email" name="email" placeholder="grace@example.org" required></label>
-      <label style="flex:1;display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Phone *" $.Lang}}
-        <input class="input" type="text" name="phone" placeholder="+15551234567" required></label>
-    </div>
-    <button class="btn" type="submit">{{t "Sign up →" $.Lang}}</button>
+  </form>
+
+  {{else}}
+  {{/* Step 1: identify yourself; we email a code to the address on file. */}}
+  <form method="post" action="/holder/register" style="display:grid;gap:0.75rem;max-width:520px">
+    <input type="hidden" name="step" value="request">
+    <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Individual ID *" $.Lang}}
+      <input class="input" type="text" name="individual_id" placeholder="9876543210" maxlength="16" required autofocus></label>
+    <div style="font-size:0.78rem;color:var(--ink-mute)">{{t "We'll email a one-time code to the address your registrar has on file to confirm it's you." $.Lang}}</div>
+    <button class="btn" type="submit"{{if not $.Body.EmailEnabled}} disabled{{end}}>{{t "Send verification code →" $.Lang}}</button>
   </form>
   {{end}}
 </section>

@@ -36,6 +36,12 @@ type fakeSubjects struct {
 	myCreds      []map[string]string
 	fieldsByKey  map[string][]string
 	scopeByKey   map[string]string
+
+	// Identity registry: GetIdentity reads `identities`; UpsertIdentity writes it
+	// and appends to `idUpserts` (reusing provCall: subjectID=individualId,
+	// claims=demographics) for assertions.
+	identities map[string]map[string]string
+	idUpserts  []provCall
 }
 
 func (f *fakeSubjects) ProvisionSubject(_ context.Context, subjectID string, claims map[string]string) error {
@@ -59,6 +65,17 @@ func (f *fakeSubjects) ListMyCredentials(_ context.Context, _ string) ([]map[str
 }
 func (f *fakeSubjects) CredentialFields(_ context.Context, key string) ([]string, error) {
 	return f.fieldsByKey[key], nil
+}
+func (f *fakeSubjects) UpsertIdentity(_ context.Context, individualID string, demographics map[string]string) error {
+	if f.identities == nil {
+		f.identities = map[string]map[string]string{}
+	}
+	f.identities[individualID] = demographics
+	f.idUpserts = append(f.idUpserts, provCall{subjectID: individualID, claims: demographics})
+	return nil
+}
+func (f *fakeSubjects) GetIdentity(_ context.Context, individualID string) (map[string]string, error) {
+	return f.identities[individualID], nil
 }
 
 // ─── registryProviders ────────────────────────────────────────────────────────

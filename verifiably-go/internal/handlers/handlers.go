@@ -85,8 +85,21 @@ type H struct {
 	// Subjects upserts dynamic claims into the Inji auth-code data-provider
 	// table (certify.vc_subject), keyed by the eSignet subject id. Powers
 	// POST /api/v1/subjects. Optional - nil when INJI_CERTIFY_DATABASE_URL is
-	// unset (the endpoint then returns 503).
+	// unset (the endpoint then returns 503). Also backs the authoritative
+	// identity registry (UpsertIdentity/GetIdentity) used by the registrar
+	// enrolment surface + holder activation.
 	Subjects SubjectProvisioner
+
+	// Mailer sends holder-activation email OTPs (the Mailer interface, satisfied
+	// by *mailer.Mailer). nil when email is unconfigured (SMTP_* unset) — the
+	// activation flow then refuses with a clear "email delivery isn't configured"
+	// message. main.go assigns it via a nil-guarded conversion so a nil concrete
+	// pointer doesn't become a non-nil interface.
+	Mailer Mailer
+
+	// OTPs holds pending holder-activation one-time codes (in-memory). Always
+	// non-nil (NewOTPStore), so the activation flow needn't nil-check it.
+	OTPs *OTPStore
 
 	// APIKeys gates /api/v1/* endpoints. Populated from VERIFIABLY_API_KEYS
 	// ("name1:key1,name2:key2"). When nil or empty, all API routes return 503.

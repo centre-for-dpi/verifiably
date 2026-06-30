@@ -58,6 +58,12 @@ type Session struct {
 	Scale            string          // "single" | "bulk"
 	Dest             string          // "wallet" | "pdf"
 	BulkSource       string          // "csv" | "api" | "db" — active bulk source
+	// IdentityBulkSource is the active source chip on the registrar's identity-
+	// enrolment page (/registrar/identities). Kept separate from BulkSource so a
+	// registrar's source choice doesn't clobber an issuer's, and vice-versa. The
+	// row stash (BulkRows/BulkColumns/BulkLabel) is shared — the apply ENDPOINT
+	// (issuer vs registrar) determines the sink, and the two flows are sequential.
+	IdentityBulkSource string
 	// Bulk preview→map→apply stash. Rows fetched from the chosen data source at
 	// the Preview step are held here so the Apply step can remap columns→fields
 	// without re-fetching (notably so an uploaded CSV needn't be re-chosen).
@@ -143,6 +149,10 @@ type Session struct {
 	PendingProvider string
 	PendingState    string `json:"-"`
 	PendingPKCE     string `json:"-"`
+	// ActivationToken keys the pending holder-activation OTP in the in-memory
+	// OTPStore (set at /holder/register step 1, consumed at step 2). json:"-" so
+	// it never hits disk; the OTP itself expires in minutes.
+	ActivationToken string `json:"-"`
 	AuthProvider    string // id of the provider that completed auth
 	AccessToken     string `json:"-"`
 	RefreshToken    string `json:"-"`

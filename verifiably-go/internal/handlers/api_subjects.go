@@ -28,6 +28,13 @@ type SubjectProvisioner interface {
 	ListMyCredentials(ctx context.Context, ownerKey string) ([]map[string]string, error)
 	// CredentialFields returns a credential's claim field names (for the provisioning form).
 	CredentialFields(ctx context.Context, key string) ([]string, error)
+	// UpsertIdentity enrolls a foundational citizen identity (demographics) in the
+	// authoritative identity registry, keyed by the RAW individualId. Used by the
+	// registrar bulk identity-load — the holder never writes here.
+	UpsertIdentity(ctx context.Context, individualID string, demographics map[string]string) error
+	// GetIdentity returns an enrolled identity's demographics, or (nil, nil) when
+	// the individualId is not enrolled. The gate the activation flow checks.
+	GetIdentity(ctx context.Context, individualID string) (map[string]string, error)
 }
 
 type apiProvisionSubjectRequest struct {

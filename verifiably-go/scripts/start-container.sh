@@ -185,6 +185,11 @@ start_container() {
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
     -e VERIFIABLY_REGISTRY_ADMIN_URL="${VERIFIABLY_REGISTRY_ADMIN_URL:-}" \
     -e VERIFIABLY_REGISTRIES="${VERIFIABLY_REGISTRIES:-}" \
+    -e SMTP_HOST="${SMTP_HOST:-}" \
+    -e SMTP_PORT="${SMTP_PORT:-}" \
+    -e SMTP_USER="${SMTP_USER:-}" \
+    -e SMTP_PASSWORD="${SMTP_PASSWORD:-}" \
+    -e SMTP_FROM="${SMTP_FROM:-}" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
     -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \

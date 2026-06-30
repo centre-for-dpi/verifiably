@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -224,4 +225,66 @@ func (s *SubjectStore) CredentialFields(ctx context.Context, key string) ([]stri
 		return nil, fmt.Errorf("pg: credential fields: %w", err)
 	}
 	return order, nil
+}
+
+// ensureIdentityRegistry creates the authoritative identity store if absent.
+// certify.identity_registry is the demo stand-in for MOSIP's ID Repository: the
+// foundational citizen identities a registrar enrolls, keyed by the RAW
+// individualId (NOT the PSU-token — the holder looks themselves up by their id
+// at activation time). Demographics live in a jsonb blob so the field set can
+// evolve without a migration.
+func (s *SubjectStore) ensureIdentityRegistry(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS certify.identity_registry (
+		individual_id VARCHAR(64) PRIMARY KEY,
+		demographics  JSONB NOT NULL,
+		cr_dtimes     TIMESTAMP DEFAULT NOW(),
+		upd_dtimes    TIMESTAMP)`)
+	if err != nil {
+		return fmt.Errorf("pg: ensure identity_registry: %w", err)
+	}
+	return nil
+}
+
+// UpsertIdentity enrolls (or refreshes) one citizen identity in the authoritative
+// identity registry, keyed by the raw individualId. Used by the registrar bulk
+// identity-load — NOT the holder. Demographics are merged so a re-load can add
+// fields without dropping existing ones.
+func (s *SubjectStore) UpsertIdentity(ctx context.Context, individualID string, demographics map[string]string) error {
+	if err := s.ensureIdentityRegistry(ctx); err != nil {
+		return err
+	}
+	blob, err := json.Marshal(demographics)
+	if err != nil {
+		return fmt.Errorf("pg: marshal demographics: %w", err)
+	}
+	const q = `INSERT INTO certify.identity_registry (individual_id, demographics) VALUES ($1, $2::jsonb)
+		ON CONFLICT (individual_id) DO UPDATE SET
+			demographics = certify.identity_registry.demographics || EXCLUDED.demographics, upd_dtimes = now()`
+	if _, err := s.pool.Exec(ctx, q, individualID, blob); err != nil {
+		return fmt.Errorf("pg: upsert identity: %w", err)
+	}
+	return nil
+}
+
+// GetIdentity returns the demographics for an enrolled individualId, or (nil,
+// nil) when no such identity exists (the holder is not enrolled). This is the
+// gate the activation flow checks before letting a holder set a PIN.
+func (s *SubjectStore) GetIdentity(ctx context.Context, individualID string) (map[string]string, error) {
+	if err := s.ensureIdentityRegistry(ctx); err != nil {
+		return nil, err
+	}
+	var blob []byte
+	err := s.pool.QueryRow(ctx,
+		`SELECT demographics FROM certify.identity_registry WHERE individual_id=$1`, individualID).Scan(&blob)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("pg: get identity: %w", err)
+	}
+	var demographics map[string]string
+	if err := json.Unmarshal(blob, &demographics); err != nil {
+		return nil, fmt.Errorf("pg: unmarshal demographics: %w", err)
+	}
+	return demographics, nil
 }

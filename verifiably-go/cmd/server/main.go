@@ -44,6 +44,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/handlers"
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
+	"github.com/verifiably/verifiably-go/internal/mailer"
 	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/internal/roles"
 	"github.com/verifiably/verifiably-go/internal/schemacache"
@@ -210,6 +211,15 @@ func main() {
 	wireAuthHelpers()
 	authStore := buildAuthUserStore()
 	adminMode := authAdminMode()
+	// Email for holder-activation OTPs. Nil-guard the conversion: a nil
+	// *mailer.Mailer assigned straight into the handlers.Mailer interface would
+	// be a non-nil interface holding a nil pointer (the classic Go gotcha), so
+	// "email configured?" must be checked on the concrete pointer here.
+	var activationMailer handlers.Mailer
+	if m := mailer.FromEnv(); m != nil {
+		activationMailer = m
+		log.Printf("activation: email OTP enabled (SMTP %s)", os.Getenv("SMTP_HOST"))
+	}
 	h := &handlers.H{
 		Adapter:          adapter,
 		Sessions:         sessionStore,
@@ -220,6 +230,8 @@ func main() {
 		AuthStore:        authStore,
 		AuthAdminMode:    adminMode,
 		Subjects:         subjectStore,
+		Mailer:           activationMailer,
+		OTPs:             handlers.NewOTPStore(),
 		APIKeys:          handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
 		RateLimiter:      handlers.NewRateLimiter(),
 		PrometheusURL:    os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
@@ -477,6 +489,14 @@ func main() {
 	mux.HandleFunc("GET /admin/login", h.ShowAdminLogin)
 	mux.HandleFunc("POST /admin/login", h.AdminLogin)
 	mux.HandleFunc("POST /admin/logout", h.AdminLogout)
+	// Registrar surface — bulk-enrol authoritative citizen identities into the
+	// identity registry (the ID-Repo stand-in). Admin-gated at the handler level
+	// (registrarOK), so registered unconditionally (independent of VERIFIABLY_ROLES).
+	mux.HandleFunc("GET /registrar/identities", h.ShowRegistrarIdentities)
+	mux.HandleFunc("POST /registrar/identities/source", h.IdentityBulkSource)
+	mux.HandleFunc("POST /registrar/identities/preview", h.IdentityBulkPreview)
+	mux.HandleFunc("POST /registrar/identities/apply", h.IdentityBulkApply)
+	mux.HandleFunc("POST /registrar/identities/registry-entities", h.IdentityRegistryEntities)
 	mux.HandleFunc("GET /lang", h.SetLang)
 	mux.HandleFunc("POST /lang", h.SetLang)
 	mux.HandleFunc("GET /qr", h.QRImage)
