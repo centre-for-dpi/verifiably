@@ -222,6 +222,19 @@ start_container() {
   sleep 1
   if docker ps --filter "name=^${VERIFIABLY_CONTAINER}$" --filter "status=running" -q | grep -q .; then
     green "  container $VERIFIABLY_CONTAINER running ($scenario)"
+    # verifiably-go was just (re)created with a FRESH IP. certify-nginx caches its
+    # `upstream injiproxy { server verifiably-go:8080; }` IP at config-load, so every
+    # inji-proxy route it serves — the well-known metadata the issuer schema list reads
+    # (→ "selected schema missing" on /issuer/issue), did.json, the credential endpoint —
+    # 502s against the stale IP until certify-nginx re-resolves. Reload it (graceful, no
+    # downtime) whenever it's up so a `deploy.sh run` doesn't silently break issuance.
+    if docker ps --filter "name=^certify-nginx$" --filter "status=running" -q | grep -q .; then
+      if docker exec certify-nginx nginx -s reload >/dev/null 2>&1; then
+        green "  reloaded certify-nginx (re-resolved injiproxy → verifiably-go)"
+      else
+        docker restart certify-nginx >/dev/null 2>&1 || true
+      fi
+    fi
   else
     red "  container failed to start — last logs:"
     docker logs "$VERIFIABLY_CONTAINER" 2>&1 | tail -n 25 >&2 || true
