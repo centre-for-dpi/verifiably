@@ -249,18 +249,26 @@ cmd_up() {
     # break the primary's verification. Empty in legacy/port mode → every
     # consumer below falls back to did:web:certify-preauth-nginx (unchanged).
     export PREAUTH_DID_DOMAIN=$(printf '%s' "$PREAUTH_PUBLIC_URL" | sed -E 's#^https?://##; s#[:/].*$##')
-    # Auto-derive ISSUER_DID_DOMAIN from the DEDICATED auth-code DID subdomain
-    # (inji-certify-authcode.<domain>) when a host is configured and the operator
-    # hasn't pinned one — so the PRIMARY auth-code issuer DID is a publicly-
-    # resolvable did:web:inji-certify-authcode.<domain> (gen-caddy.sh serves its
-    # did.json there from the verifiably-go primary proxy), explicitly separate
-    # from the pre-auth instance's did:web:inji-certify-preauth.<domain>, instead
-    # of the docker-internal did:web:certify-nginx. ONLY the primary is affected:
-    # the pre-auth instance keeps PREAUTH_DID_DOMAIN (above), which takes
-    # precedence in its own CERTIFY_ISSUER_DID. Pin ISSUER_DID_DOMAIN in .env to
-    # override; on a host-less box it stays unset → did:web:certify-nginx.
+    # AUTHCODE_PUBLIC_URL drives the PRIMARY auth-code inji-certify's
+    # mosip_certify_domain_url — the PUBLIC subdomain so the issued VC's
+    # credential_issuer AND its credentialStatus (revocation status-list) URL are
+    # publicly resolvable and verify externally / in Inji Verify's status check,
+    # instead of the docker-internal http://certify-nginx:80. This makes the
+    # auth-code path its OWN public issuer, symmetric with PREAUTH_PUBLIC_URL
+    # above. The eSignet-issued access-token `aud` is DELIBERATELY kept internal
+    # (certify-postgres-dataprovider.properties pins
+    # mosip.certify.oauth.access-token.audience) so eSignet's internal
+    # scope-resource-mapping still matches — only the VC-facing URLs go public.
+    # Empty in legacy/port mode → compose falls back to http://certify-nginx:80.
+    export AUTHCODE_PUBLIC_URL=$(url_for inji-certify-authcode "$VERIFIABLY_PUBLIC_HOST" "${INJI_CERTIFY_PORT:-8090}")
+    # ISSUER_DID_DOMAIN = host portion of AUTHCODE_PUBLIC_URL (the PRIMARY
+    # auth-code issuer DID = did:web:inji-certify-authcode.<domain>, gen-caddy.sh
+    # serves its did.json), unless the operator pinned one. Explicitly separate
+    # from the pre-auth instance's PREAUTH_DID_DOMAIN (above), which takes
+    # precedence in its own CERTIFY_ISSUER_DID. Host-less box → unset →
+    # did:web:certify-nginx.
     if [[ -z "${ISSUER_DID_DOMAIN:-}" ]]; then
-      export ISSUER_DID_DOMAIN=$(printf '%s' "$(url_for inji-certify-authcode "$VERIFIABLY_PUBLIC_HOST" "${INJI_CERTIFY_PORT:-8090}")" | sed -E 's#^https?://##; s#[:/].*$##')
+      export ISSUER_DID_DOMAIN=$(printf '%s' "$AUTHCODE_PUBLIC_URL" | sed -E 's#^https?://##; s#[:/].*$##')
     fi
   fi
 

@@ -343,7 +343,21 @@ services:
       # falls back to Docker-internal did:web:certify-nginx (dev only).
       - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-nginx}
       - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-VC Infra Issuer}
-      - mosip_certify_domain_url=http://certify-nginx:80
+      # PUBLIC issuer identity: drives credential_issuer AND the credentialStatus
+      # (revocation status-list) URL baked into issued VCs, so they resolve for
+      # external verifiers + Inji Verify's status check (the caddy
+      # inji-certify-authcode block reverse_proxies certify-nginx:80). Mirrors the
+      # pre-auth instance's public domain_url. deploy.sh derives AUTHCODE_PUBLIC_URL;
+      # host-less/legacy mode falls back to the docker-internal name.
+      - mosip_certify_domain_url=${AUTHCODE_PUBLIC_URL:-http://certify-nginx:80}
+      # Pin the `aud` certify's AccessTokenValidationFilter requires (its
+      # mosip.certify.authn.allowed-audiences) to the INTERNAL certify endpoint,
+      # decoupled from the now-PUBLIC domain_url. eSignet issues the auth-code access
+      # token with that internal aud (its scope-resource-mapping stays internal), so
+      # without this every claim 401s "invalid_token" once domain_url goes public.
+      # certify-default.properties reads ${AUTHCODE_ALLOWED_AUD:...}; only this
+      # (auth-code) instance sets it — pre-auth keeps the ${domain.url} default.
+      - AUTHCODE_ALLOWED_AUD=http://certify-nginx:80/v1/certify/issuance/credential
       # Route token validation through our local esignet instead of
       # inji-certify's default "I'm my own auth server" mode. The Farmer
       # credential flow originally used inji-certify's Pre-Authorized
