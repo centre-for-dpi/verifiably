@@ -59,7 +59,7 @@ func (f *fakeSubjects) CredentialScope(_ context.Context, key string) (string, e
 func (f *fakeSubjects) CredentialClaimSpec(_ context.Context, _ string) (string, string, string, error) {
 	return "", "", "", nil
 }
-func (f *fakeSubjects) ApplyAuthcodeSchema(_ context.Context, _, _, _, _, _, _ string, _ []string, _, _, _, _ *string, _ string) error {
+func (f *fakeSubjects) ApplyAuthcodeSchema(_ context.Context, _, _, _, _, _, _ string, _ []string, _, _, _, _ *string, _, _ string) error {
 	return nil
 }
 func (f *fakeSubjects) ListMyCredentials(_ context.Context, _ string) ([]map[string]string, error) {

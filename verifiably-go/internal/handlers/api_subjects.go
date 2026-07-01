@@ -22,8 +22,10 @@ type SubjectProvisioner interface {
 	// CredentialClaimSpec returns the format + @context + vct for claiming a credential.
 	CredentialClaimSpec(ctx context.Context, key string) (format, vcContext, vct string, err error)
 	// ApplyAuthcodeSchema creates a Flow B credential (extraction view +
-	// credential_config, any data model) in one transaction.
-	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string, ownerKey string) error
+	// credential_config, any data model) in one transaction. didURL is the issuer
+	// DID stored as the credential's did_url (certify stamps the signed VC's
+	// proof.verificationMethod from it; it must equal the issuer DID to verify).
+	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string, ownerKey, didURL string) error
 	// ListMyCredentials returns the active credentials created by the given owner (issuer).
 	ListMyCredentials(ctx context.Context, ownerKey string) ([]map[string]string, error)
 	// CredentialFields returns a credential's claim field names (for the provisioning form).

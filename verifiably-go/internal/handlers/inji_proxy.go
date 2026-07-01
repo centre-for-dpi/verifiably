@@ -246,6 +246,24 @@ func fetchDidJSON(ctx context.Context, url string) (map[string]any, int, error) 
 	return doc, resp.StatusCode, nil
 }
 
+// certifyIssuerDID returns the auth-code Inji Certify instance's issuer DID —
+// the `id` of its did.json, which mirrors CERTIFY_ISSUER_DID (the deploy host
+// DID, e.g. did:web:inji-certify-authcode.<domain>). New auth-code
+// credential_config rows store this as their did_url so the signed VC's
+// proof.verificationMethod matches the issuer AND resolves at the public host
+// (see ApplyAuthcodeSchema). Falls back to the docker-internal
+// did:web:certify-nginx (dev default) when the fetch fails — the same value the
+// column historically hardcoded.
+func certifyIssuerDID(ctx context.Context) string {
+	doc, status, err := fetchDidJSON(ctx, injiCertifyUpstream()+"/v1/certify/.well-known/did.json")
+	if err == nil && status == http.StatusOK {
+		if id, _ := doc["id"].(string); strings.TrimSpace(id) != "" {
+			return id
+		}
+	}
+	return "did:web:certify-nginx"
+}
+
 // patchedDidDoc mutates doc to add one verificationMethod per extra kid,
 // cloning the upstream method's key material. The original method stays in
 // place (some verifiers cache on first match). `extras` is allowed to include

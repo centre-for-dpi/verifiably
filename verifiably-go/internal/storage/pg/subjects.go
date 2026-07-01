@@ -129,10 +129,16 @@ func (s *SubjectStore) CredentialClaimSpec(ctx context.Context, key string) (for
 // ApplyAuthcodeSchema creates a Flow B credential in one transaction: the
 // per-schema extraction VIEW + the credential_config row. The view DDL carries
 // sanitized field names (column identifiers); the credential_config values are
-// parameterized.
+// parameterized. didURL is the issuer DID stored as the credential's did_url —
+// certify stamps the signed VC's proof.verificationMethod from it, so it MUST
+// equal the issuer DID (certify's CERTIFY_ISSUER_DID / did.json id) or the VC
+// won't verify. Empty falls back to the dev-only did:web:certify-nginx.
 func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 	viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string,
-	sdJwtVct, vcContext, credType, credsub *string, ownerKey string) error {
+	sdJwtVct, vcContext, credType, credsub *string, ownerKey, didURL string) error {
+	if strings.TrimSpace(didURL) == "" {
+		didURL = "did:web:certify-nginx"
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("pg: begin: %w", err)
@@ -153,7 +159,7 @@ func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 		credential_status_purpose, qr_settings, qr_signature_algo, cr_dtimes, upd_dtimes
 	) VALUES (
 		$1, gen_random_uuid()::VARCHAR(255), 'active', $2, NULL, $3,
-		$4, $5, $6, 'did:web:certify-nginx',
+		$4, $5, $6, $11,
 		'CERTIFY_VC_SIGN_ED25519', 'ED25519_SIGN', 'EdDSA', 'Ed25519Signature2020',
 		NULL, $7::JSONB, $8, $9,
 		ARRAY['did:jwk'], ARRAY['Ed25519Signature2020'],
@@ -161,7 +167,7 @@ func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 		$10::JSONB, NULL, NULL, ARRAY['revocation'], NULL, NULL, NOW(), NULL
 	) ON CONFLICT (credential_config_key_id) DO NOTHING`
 	if _, err := tx.Exec(ctx, ins, key, vcTemplateB64, sdJwtVct, vcContext, credType, credFormat,
-		display, displayOrder, scope, credsub); err != nil {
+		display, displayOrder, scope, credsub, didURL); err != nil {
 		return fmt.Errorf("pg: insert credential_config: %w", err)
 	}
 	// Record which issuer created this credential (verifiably-owned table) so the

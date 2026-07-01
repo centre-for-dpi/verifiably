@@ -339,8 +339,13 @@ type authcodeArtifacts struct {
 // the rich builder.
 func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, ownerKey string) (string, error) {
 	a := buildAuthcodeArtifacts(schema)
+	// did_url must equal certify's issuer DID (its did.json id / CERTIFY_ISSUER_DID),
+	// NOT the hardcoded docker-internal did:web:certify-nginx — otherwise the signed
+	// VC's proof.verificationMethod points at an unresolvable DID and every verifier
+	// (Inji Verify, etc.) rejects it. Read it live so it tracks the deploy host.
+	didURL := certifyIssuerDID(ctx)
 	if err := h.Subjects.ApplyAuthcodeSchema(ctx, a.viewDDL, a.configKey, a.vcTemplateB64,
-		a.credFormat, a.display, a.scope, a.displayOrder, a.sdJwtVct, a.context, a.credType, a.credsub, ownerKey); err != nil {
+		a.credFormat, a.display, a.scope, a.displayOrder, a.sdJwtVct, a.context, a.credType, a.credsub, ownerKey, didURL); err != nil {
 		return "", fmt.Errorf("DB apply failed: %w", err)
 	}
 	if err := appendBraceEntry(certifyScopeQueryFile(),
