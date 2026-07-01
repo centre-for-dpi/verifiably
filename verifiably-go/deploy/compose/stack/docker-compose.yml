@@ -117,6 +117,13 @@ services:
       default:
         aliases:
           - "inji-certify-preauth.${VERIFIABLY_PUBLIC_DOMAIN}"
+          # Auth-code Inji Certify's PUBLIC did:web host. inji-verify-service (and
+          # any server-side did:web resolver on this network) fetches the issuer
+          # DID document at https://inji-certify-authcode.<domain>/.well-known/did.json
+          # while verifying a wallet-claimed VC; without this alias it routes to the
+          # box public IP and times out (Connection timeout in DidWebPublicKeyResolver),
+          # so every auth-code VC verifies as INVALID.
+          - "inji-certify-authcode.${VERIFIABLY_PUBLIC_DOMAIN}"
           - "esignet.${VERIFIABLY_PUBLIC_DOMAIN}"
           # walt.id: the wallet-api resolves an OID4VCI credential_offer_uri at
           # walt-issuer (claim) and an OID4VP request_uri at walt-verifier
