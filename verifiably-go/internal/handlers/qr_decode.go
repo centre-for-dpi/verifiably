@@ -9,6 +9,8 @@ import (
 
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
+
+	"github.com/verifiably/verifiably-go/internal/adapters/injicertify"
 )
 
 // decodeUploadedQR reads a multipart-form file (field name "credential_image")
@@ -41,5 +43,14 @@ func decodeUploadedQR(r *http.Request) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode QR: %w", err)
 	}
-	return result.GetText(), nil
+	text := result.GetText()
+	// A MOSIP PixelPass QR (what the wallet's Download-PDF and Inji issuance emit)
+	// carries the VC as base45(zlib(cbor(json))), NOT the VC itself. Decode it so
+	// the verifier receives the actual credential (JSON-LD/JWT) and routes it to
+	// the right endpoint; fall back to the raw text for QRs that already hold a
+	// raw credential (a compact JWT, an OID4VP URL, etc.).
+	if vc, ok := injicertify.DecodePixelPassQR(text); ok {
+		return string(vc), nil
+	}
+	return text, nil
 }
