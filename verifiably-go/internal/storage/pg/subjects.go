@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -225,6 +226,41 @@ func (s *SubjectStore) CredentialFields(ctx context.Context, key string) ([]stri
 		return nil, fmt.Errorf("pg: credential fields: %w", err)
 	}
 	return order, nil
+}
+
+// DeleteCredential removes an issuer's auth-code credential: its credential_config
+// row (so it disappears from the owner-scoped catalog) + its owner record, in one
+// tx. The per-credential extraction view is left in place (harmless; a future
+// re-create CREATE-OR-REPLACEs it). Owner-checked: a non-owner caller (non-empty
+// ownerKey that doesn't match the recorded owner) is refused; an empty ownerKey
+// (admin) bypasses. NOTE: inji-certify caches credential_configs at startup, so a
+// deleted credential stays claimable until certify's next config reload.
+func (s *SubjectStore) DeleteCredential(ctx context.Context, key, ownerKey string) error {
+	if strings.TrimSpace(key) == "" {
+		return nil
+	}
+	if ownerKey != "" {
+		var owner string
+		if err := s.pool.QueryRow(ctx,
+			`SELECT owner_key FROM certify.vc_credential_owner WHERE credential_config_key_id=$1`,
+			key).Scan(&owner); err == nil && owner != "" && owner != ownerKey {
+			return fmt.Errorf("pg: credential %q not owned by caller", key)
+		}
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("pg: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM certify.credential_config WHERE credential_config_key_id=$1`, key); err != nil {
+		return fmt.Errorf("pg: delete credential_config %q: %w", key, err)
+	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM certify.vc_credential_owner WHERE credential_config_key_id=$1`, key); err != nil {
+		return fmt.Errorf("pg: delete owner %q: %w", key, err)
+	}
+	return tx.Commit(ctx)
 }
 
 // ensureIdentityRegistry creates the authoritative identity store if absent.

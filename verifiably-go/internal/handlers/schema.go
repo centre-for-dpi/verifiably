@@ -569,7 +569,16 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 func (h *H) DeleteSchema(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	id := r.FormValue("id")
+	// walt.id/credebl custom schemas are tracked in the registry adapter's
+	// in-memory list (DeleteCustomSchema dispatches to their DPG adapters).
 	_ = h.Adapter.DeleteCustomSchema(issuerCtx(r, sess), id)
+	// Inji auth-code credentials are DB-backed — the schema browser lists them via
+	// SubjectStore.ListMyCredentials, NOT the registry's in-memory schemas, so the
+	// adapter delete above is a no-op for them. Delete the credential_config
+	// directly so the card disappears from the owner-scoped browser.
+	if h.Subjects != nil {
+		_ = h.Subjects.DeleteCredential(issuerCtx(r, sess), id, sessionOwnerKey(sess))
+	}
 	if sess.SchemaID == id {
 		sess.SchemaID = ""
 	}

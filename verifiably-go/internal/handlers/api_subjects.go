@@ -35,6 +35,10 @@ type SubjectProvisioner interface {
 	// GetIdentity returns an enrolled identity's demographics, or (nil, nil) when
 	// the individualId is not enrolled. The gate the activation flow checks.
 	GetIdentity(ctx context.Context, individualID string) (map[string]string, error)
+	// DeleteCredential removes an auth-code credential (credential_config + owner
+	// row), owner-checked. Backs the issuer schema-browser Delete for DB-backed
+	// Inji credentials (the registry adapter only knows in-memory custom schemas).
+	DeleteCredential(ctx context.Context, key, ownerKey string) error
 }
 
 type apiProvisionSubjectRequest struct {

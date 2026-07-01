@@ -42,6 +42,8 @@ type fakeSubjects struct {
 	// claims=demographics) for assertions.
 	identities map[string]map[string]string
 	idUpserts  []provCall
+
+	deletedCreds []string // keys passed to DeleteCredential
 }
 
 func (f *fakeSubjects) ProvisionSubject(_ context.Context, subjectID string, claims map[string]string) error {
@@ -76,6 +78,10 @@ func (f *fakeSubjects) UpsertIdentity(_ context.Context, individualID string, de
 }
 func (f *fakeSubjects) GetIdentity(_ context.Context, individualID string) (map[string]string, error) {
 	return f.identities[individualID], nil
+}
+func (f *fakeSubjects) DeleteCredential(_ context.Context, key, _ string) error {
+	f.deletedCreds = append(f.deletedCreds, key)
+	return nil
 }
 
 // ─── registryProviders ────────────────────────────────────────────────────────
