@@ -44,7 +44,10 @@
         <summary style="cursor:pointer;color:var(--muted);font-size:0.8rem">{{t "Raw credential (JSON)" $.Lang}}</summary>
         <pre class="mono" style="overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0.7rem;font-size:0.7rem;margin-top:0.5rem">{{.VC}}</pre>
       </details>
-      <div style="margin-top:0.85rem;display:flex;justify-content:flex-end">
+      <div style="margin-top:0.85rem;display:flex;justify-content:flex-end;gap:0.5rem">
+        <a href="/holder/wallet/inji/credentials/{{.ID}}/pdf" download
+           class="btn small" style="background:transparent;border:1px solid var(--line);color:var(--fg);font-size:0.72rem;padding:0.25rem 0.7rem;text-decoration:none"
+           title="{{t "Download this credential as a QR-on-PDF (scannable by Inji Verify)" $.Lang}}">↓ {{t "Download PDF" $.Lang}}</a>
         <button hx-post="/holder/wallet/inji/credentials/{{.ID}}/delete"
                 hx-target="#held-list" hx-swap="outerHTML"
                 hx-confirm="Remove this credential from your wallet?"
