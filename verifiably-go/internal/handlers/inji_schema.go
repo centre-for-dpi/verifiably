@@ -360,12 +360,46 @@ func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, owne
 		"mosip.esignet.credential.scope-resource-mapping", a.scope, "'"+a.scope+"':'"+certifyResourceURL+"'"); err != nil {
 		return "", fmt.Errorf("eSignet resource-map write failed: %w", err)
 	}
+	// Index this schema's claim fields into certify.ledger.indexed_attributes at
+	// issuance, so the issuer's /issuer/credentials cards show + search the data
+	// fields for THIS (and every future) schema without a manual config edit. The
+	// JSONPath is evaluated against the credentialSubject, so the form is
+	// `indexed-mappings.<field>=$.<field>`. Idempotent — a field already covered by
+	// the committed static union (or a re-applied schema) isn't duplicated.
+	for _, f := range a.displayOrder {
+		if err := appendPropertyLine(certifyScopeQueryFile(),
+			"mosip.certify.indexed-mappings."+f, "$."+f); err != nil {
+			return "", fmt.Errorf("Certify indexed-mapping write failed: %w", err)
+		}
+	}
 	for _, c := range []string{"inji-certify", "injiweb-esignet"} {
 		if err := dockerRestart(c); err != nil {
 			return "", fmt.Errorf("restart %s failed: %w", c, err)
 		}
 	}
 	return a.configKey, nil
+}
+
+// appendPropertyLine appends `key=value` to a Java-properties file if a line for
+// that exact key isn't already present (idempotent). Used to register a schema's
+// per-field indexed-mappings on the certify config, alongside the scope-query
+// append. Comments and other keys are left untouched.
+func appendPropertyLine(path, key, value string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), key+"=") {
+			return nil // already present
+		}
+	}
+	body := string(b)
+	if len(body) > 0 && !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	body += key + "=" + value + "\n"
+	return os.WriteFile(path, []byte(body), 0644)
 }
 
 // buildAuthcodeArtifacts maps a builder schema (any Std) to the per-credential

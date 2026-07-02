@@ -54,6 +54,15 @@
     else if (msg && msg.value) toast(msg.value);
   });
 
+  // Server sends HX-Trigger {"schemasReady":true} when a just-provisioned Inji
+  // schema becomes claimable — refresh the schema card list so any certify-
+  // dependent state fills in (the toast fires separately and stays visible).
+  document.body.addEventListener('schemasReady', function () {
+    if (window.htmx && document.getElementById('schema-list')) {
+      window.htmx.ajax('GET', '/issuer/schema/search', '#schema-list');
+    }
+  });
+
   // Error surface — if an HTMX request fails, show a toast instead of a silent failure.
   document.body.addEventListener('htmx:responseError', function (evt) {
     const status = evt.detail && evt.detail.xhr && evt.detail.xhr.status;

@@ -22,6 +22,14 @@
   </div>
   {{end}}
 
+  {{/* Provisioning banner: shown right after an Inji auth-code schema is saved
+       (?provisioning=<key>). It polls /issuer/schema/ready until certify+eSignet
+       finish restarting and the schema is claimable, then removes itself and pops
+       a "ready" toast (see SchemaReady + static/js/app.js reloadSchemas). */}}
+  {{if .Body.Provisioning}}
+  {{template "fragment_provisioning_banner" .Body}}
+  {{end}}
+
   {{/* Cross-flow shortcut to the audit + revoke page, mirroring the
        button that lives on /issuer/dpg. Sits above the search bar so
        it's visible without scrolling past the schema grid. */}}
@@ -185,5 +193,20 @@
       {{end}}
     </div>
   {{end}}
+</div>
+{{end}}
+
+{{/* fragment_provisioning_banner — self-polling "provisioning → ready" banner.
+     Rendered by the grid on ?provisioning, and re-rendered by /issuer/schema/ready
+     while not-ready (each response keeps the every-3s poll alive). When ready, the
+     endpoint returns an empty body so this element (hx-swap:outerHTML) is removed. */}}
+{{define "fragment_provisioning_banner"}}
+<div id="provisioning-banner" class="format-legend"
+     style="border-color:var(--accent,#3b82f6);background:rgba(59,130,246,0.08);margin-bottom:1rem"
+     hx-get="/issuer/schema/ready?key={{.Provisioning}}&name={{.ProvName}}"
+     hx-trigger="load delay:2s, every 3s"
+     hx-swap="outerHTML">
+  <span class="chip small">⏳</span>
+  <span>Provisioning <strong>{{.ProvName}}</strong> — Inji Certify + eSignet are restarting; the schema will be ready to claim in a moment…</span>
 </div>
 {{end}}

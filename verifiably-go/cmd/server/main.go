@@ -587,6 +587,7 @@ func main() {
 		mux.HandleFunc("POST /issuer/dpg", h.PickIssuerDpg)
 		mux.HandleFunc("POST /issuer/dpg/toggle", h.ToggleIssuerDpg)
 		mux.HandleFunc("GET /issuer/schema", h.ShowSchemaBrowser)
+		mux.HandleFunc("GET /issuer/schema/ready", h.SchemaReady)
 		mux.HandleFunc("GET /issuer/schema/search", h.SchemaSearch)
 		mux.HandleFunc("POST /issuer/schema/filter", h.SetSchemaFilter)
 		mux.HandleFunc("POST /issuer/schema/expand", h.ToggleSchemaExpand)

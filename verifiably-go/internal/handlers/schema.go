@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -110,6 +111,12 @@ type schemaBrowserData struct {
 	// shows only for walt.id (the only DPG that sets per-format CanPresent) and
 	// only when such a format is actually on screen.
 	HasIssueOnlyFormat bool
+	// Provisioning is the credential_config key of a schema just saved via the
+	// Inji auth-code apply (from ?provisioning=). When set, the grid renders a
+	// self-dismissing banner that polls /issuer/schema/ready until certify+eSignet
+	// finish restarting and the schema is claimable. ProvName is its display name.
+	Provisioning string
+	ProvName     string
 	// Notice is a soft error banner the page renders inline, used when the
 	// vendor's catalog endpoint is briefly unreachable (e.g. walt.id is
 	// restarting after a custom-schema save). Custom schemas saved in the
@@ -290,6 +297,8 @@ func (h *H) schemaBrowserData(w http.ResponseWriter, r *http.Request, sess *Sess
 		Notice:             notice,
 		HasAnyCustom:       hasAnyCustom,
 		HasIssueOnlyFormat: hasIssueOnly,
+		Provisioning:       r.URL.Query().Get("provisioning"),
+		ProvName:           r.URL.Query().Get("pname"),
 	}
 }
 
@@ -546,10 +555,12 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 		}
 		// Land back on the shared schema grid with the freshly-built credential
 		// pre-selected, so the issuer can Continue → Mode → bulk-provision —
-		// the same wizard tail walt.id uses.
+		// the same wizard tail walt.id uses. The ?provisioning marker makes the
+		// grid show a self-dismissing banner that polls until certify+eSignet
+		// finish restarting and the schema is actually claimable (see SchemaReady).
 		sess.SchemaID = key
 		sess.ExpandedSchemaID = key
-		h.redirect(w, r, "/issuer/schema")
+		h.redirect(w, r, "/issuer/schema?provisioning="+url.QueryEscape(key)+"&pname="+url.QueryEscape(schema.Name))
 		return
 	}
 	if err := h.Adapter.SaveCustomSchema(issuerCtx(r, sess), schema); err != nil {
@@ -561,6 +572,67 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 		sess.SchemaID = schema.ID
 	}
 	h.redirect(w, r, "/issuer/schema")
+}
+
+// SchemaReady is polled by the provisioning banner after an Inji auth-code
+// schema is saved (GET /issuer/schema/ready?key=&name=). It reports whether the
+// schema is actually claimable yet — certify + eSignet restart on a schema save,
+// so there's a ~20–40s window where the credential exists in the DB but Certify
+// isn't advertising it. Not ready → re-render the banner (keeps the poll alive);
+// ready → an empty body (the outerHTML swap removes the banner) plus an HX-Trigger
+// that pops a "ready" toast and refreshes the grid.
+func (h *H) SchemaReady(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	key := strings.TrimSpace(r.URL.Query().Get("key"))
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		name = key
+	}
+	if h.schemaAvailable(r.Context(), key) {
+		payload, _ := json.Marshal(map[string]any{
+			"toast":        "✓ \"" + name + "\" is ready to use",
+			"schemasReady": true,
+		})
+		w.Header().Set("HX-Trigger", string(payload))
+		w.WriteHeader(http.StatusOK) // empty body → hx-swap:outerHTML removes the banner
+		return
+	}
+	h.renderFragment(w, r, "fragment_provisioning_banner", map[string]any{
+		"Provisioning": key, "ProvName": name, "Lang": h.langFor(r),
+	})
+	_ = sess
+}
+
+// schemaAvailable reports whether Certify is advertising the given credential
+// config key in its well-known issuer metadata — i.e. the schema is claimable.
+// During the certify restart the fetch fails fast (connection refused) → not
+// ready; once certify is back and has reloaded the config → ready.
+func (h *H) schemaAvailable(ctx context.Context, key string) bool {
+	if key == "" {
+		return false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		injiCertifyUpstream()+"/v1/certify/.well-known/openid-credential-issuer", nil)
+	if err != nil {
+		return false
+	}
+	cl := &http.Client{Timeout: 5 * time.Second}
+	resp, err := cl.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return false
+	}
+	defer resp.Body.Close()
+	var meta struct {
+		Configs map[string]json.RawMessage `json:"credential_configurations_supported"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&meta) != nil {
+		return false
+	}
+	_, ok := meta.Configs[key]
+	return ok
 }
 
 // DeleteSchema removes a custom schema from the session.
