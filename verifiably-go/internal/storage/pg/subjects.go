@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -217,6 +219,80 @@ func (s *SubjectStore) ListMyCredentials(ctx context.Context, ownerKey string) (
 			}
 		}
 		out = append(out, map[string]string{"key": key, "scope": scope, "displayName": name, "format": format})
+	}
+	return out, rows.Err()
+}
+
+// ListLedger returns the issued auth-code credentials whose credential type
+// (the first, non-VerifiableCredential component) is one of typeKeys — i.e. the
+// credentials issued from the credential_configs the caller owns. Each entry
+// carries the Certify credentialId, the status-list pointer (needed to revoke
+// via Certify's status API), the issuance time, and the current revoked state
+// (the latest credential_status_transaction intent — reflects an operator's
+// revoke/reinstate immediately, before Certify's async job flips the bitstring).
+//
+// This reads certify.ledger directly (verifiably owns INJI_CERTIFY_DATABASE_URL)
+// because Certify's /ledger-search API requires an exact (issuerId+credentialType)
+// per-credential lookup and rejects a "list all of this type" query. Returns
+// stringly-typed rows (keys: credentialId, credentialType, issuedAt,
+// statusListCredentialId, statusListIndex, revoked) to keep the handler
+// interface free of a pg-package type.
+func (s *SubjectStore) ListLedger(ctx context.Context, typeKeys []string) ([]map[string]string, error) {
+	if len(typeKeys) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT l.credential_id, l.credential_type, l.issuance_date, l.credential_status_details,
+		       COALESCE(t.status_value, false) AS revoked, t.cr_dtimes AS revoked_at
+		FROM certify.ledger l
+		LEFT JOIN LATERAL (
+		    SELECT status_value, cr_dtimes FROM certify.credential_status_transaction t
+		    WHERE t.credential_id = l.credential_id AND t.status_purpose = 'revocation'
+		    ORDER BY t.cr_dtimes DESC LIMIT 1
+		) t ON true
+		WHERE split_part(l.credential_type, ',', 1) = ANY($1::text[])
+		ORDER BY l.issuance_date DESC`, typeKeys)
+	if err != nil {
+		return nil, fmt.Errorf("pg: list ledger: %w", err)
+	}
+	defer rows.Close()
+	var out []map[string]string
+	for rows.Next() {
+		var credID, credType string
+		var issued time.Time
+		var statusDetails []byte
+		var revoked bool
+		var revokedAt *time.Time
+		if err := rows.Scan(&credID, &credType, &issued, &statusDetails, &revoked, &revokedAt); err != nil {
+			return nil, err
+		}
+		// credential_status_details is a jsonb array; take the revocation entry.
+		var details []struct {
+			StatusPurpose          string `json:"status_purpose"`
+			StatusListIndex        int64  `json:"status_list_index"`
+			StatusListCredentialID string `json:"status_list_credential_id"`
+		}
+		_ = json.Unmarshal(statusDetails, &details)
+		var slcID, slIdx string
+		for _, d := range details {
+			if d.StatusPurpose == "revocation" {
+				slcID = d.StatusListCredentialID
+				slIdx = strconv.FormatInt(d.StatusListIndex, 10)
+				break
+			}
+		}
+		row := map[string]string{
+			"credentialId":           credID,
+			"credentialType":         strings.SplitN(credType, ",", 2)[0],
+			"issuedAt":               issued.UTC().Format(time.RFC3339),
+			"statusListCredentialId": slcID,
+			"statusListIndex":        slIdx,
+			"revoked":                strconv.FormatBool(revoked),
+		}
+		if revoked && revokedAt != nil {
+			row["revokedAt"] = revokedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, row)
 	}
 	return out, rows.Err()
 }

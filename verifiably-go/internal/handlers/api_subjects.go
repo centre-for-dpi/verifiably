@@ -28,6 +28,12 @@ type SubjectProvisioner interface {
 	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string, ownerKey, didURL string) error
 	// ListMyCredentials returns the active credentials created by the given owner (issuer).
 	ListMyCredentials(ctx context.Context, ownerKey string) ([]map[string]string, error)
+	// ListLedger returns the issued auth-code credentials (from certify.ledger)
+	// whose credential type is one of typeKeys — used to render the issuer's
+	// issued-credentials page for the Inji auth-code track. Keys per row:
+	// credentialId, credentialType, issuedAt, statusListCredentialId,
+	// statusListIndex, revoked.
+	ListLedger(ctx context.Context, typeKeys []string) ([]map[string]string, error)
 	// CredentialFields returns a credential's claim field names (for the provisioning form).
 	CredentialFields(ctx context.Context, key string) ([]string, error)
 	// UpsertIdentity enrolls a foundational citizen identity (demographics) in the

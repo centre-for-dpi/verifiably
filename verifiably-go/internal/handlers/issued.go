@@ -280,8 +280,14 @@ func (h *H) storeForKind(kind string) statuslist.Backend {
 	return nil
 }
 
-func (h *H) issuedCredentialsBody(sess *Session, _ *http.Request) issuedCredentialsData {
+func (h *H) issuedCredentialsBody(sess *Session, r *http.Request) issuedCredentialsData {
 	owner := sessionOwnerKey(sess)
+	// Inji auth-code track: holders claim asynchronously via eSignet, so those
+	// credentials are never written to the verifiably IssuanceLog — read them
+	// from Certify's ledger instead. DPG-scoped: this shows ONLY auth-code creds.
+	if r != nil && h.isInjiAuthcode(r.Context(), sess.IssuerDpg) {
+		return h.injiIssuedCredentialsBody(sess, r, owner)
+	}
 	filter := issuance.Filter{
 		Query:    sess.IssuedQuery,
 		Std:      sess.IssuedStd,
@@ -289,17 +295,19 @@ func (h *H) issuedCredentialsBody(sess *Session, _ *http.Request) issuedCredenti
 		State:    sess.IssuedState,
 		OwnerKey: owner,
 	}
-	items := h.IssuanceLog.List(filter)
+	// Each DPG track owns its own credentials: scope the list to the currently
+	// selected issuer DPG so a walt.id view never shows CREDEBL/pre-auth entries
+	// even when the same issuer produced them.
+	items := filterIssuedByDpg(h.IssuanceLog.List(filter), sess.IssuerDpg)
 	// Stats has to be derived from the owner-scoped slice — the global
 	// Summary() across the file would leak counts of other issuers'
 	// credentials onto this issuer's banner ("X total / Y revoked"
 	// across the entire instance). Rebuild from items instead.
 	stats := issuance.Stats{ByStd: map[string]int{}, ByFormat: map[string]int{}}
 	// To compute the chip-row Stds/Formats we need the unfiltered slice
-	// scoped to this owner (so the chips show what they could see if they
-	// dropped the std/format filter, not just what the current filter
-	// returns).
-	all := h.IssuanceLog.List(issuance.Filter{OwnerKey: owner})
+	// scoped to this owner + DPG (so the chips show what they could see if they
+	// dropped the std/format filter, not just what the current filter returns).
+	all := filterIssuedByDpg(h.IssuanceLog.List(issuance.Filter{OwnerKey: owner}), sess.IssuerDpg)
 	for _, c := range all {
 		stats.Total++
 		if c.RevokedAt == nil {
@@ -325,4 +333,76 @@ func (h *H) issuedCredentialsBody(sess *Session, _ *http.Request) issuedCredenti
 		Stds:    stds,
 		Formats: formats,
 	}
+}
+
+// filterIssuedByDpg keeps only IssuanceLog entries issued on the given DPG
+// track. Empty dpg (no active issuer DPG) returns the slice unchanged
+// (admin / legacy view).
+func filterIssuedByDpg(in []issuance.IssuedCredential, dpg string) []issuance.IssuedCredential {
+	if dpg == "" {
+		return in
+	}
+	out := make([]issuance.IssuedCredential, 0, len(in))
+	for _, c := range in {
+		if c.IssuerDpg == dpg {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// injiIssuedCredentialsBody builds the issued-credentials view for the Inji
+// auth-code track from Certify's ledger (owner-scoped), applying the same
+// query/state filters the search box drives. Std/Format are fixed for this
+// track (w3c_vcdm_2 / ldp_vc).
+func (h *H) injiIssuedCredentialsBody(sess *Session, r *http.Request, owner string) issuedCredentialsData {
+	items, err := h.injiLedgerItems(r.Context(), owner, sess.IssuerDpg)
+	if err != nil {
+		items = nil
+	}
+	stats := issuance.Stats{ByStd: map[string]int{}, ByFormat: map[string]int{}}
+	for _, c := range items {
+		stats.Total++
+		if c.RevokedAt == nil {
+			stats.Active++
+		} else {
+			stats.Revoked++
+		}
+		stats.ByStd[c.Std]++
+		stats.ByFormat[c.Format]++
+	}
+	filter := issuance.Filter{Query: sess.IssuedQuery, State: sess.IssuedState, OwnerKey: owner}
+	q := strings.ToLower(strings.TrimSpace(filter.Query))
+	filtered := make([]issuance.IssuedCredential, 0, len(items))
+	for _, c := range items {
+		if filter.State == "active" && c.RevokedAt != nil {
+			continue
+		}
+		if filter.State == "revoked" && c.RevokedAt == nil {
+			continue
+		}
+		if q != "" && !injiMatchesQuery(c, q) {
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+	return issuedCredentialsData{
+		Items:   filtered,
+		Stats:   stats,
+		Filter:  filter,
+		Stds:    []string{"all", "w3c_vcdm_2"},
+		Formats: []string{"all", "ldp_vc"},
+	}
+}
+
+func injiMatchesQuery(c issuance.IssuedCredential, q string) bool {
+	if strings.Contains(strings.ToLower(c.SchemaName), q) {
+		return true
+	}
+	for _, v := range c.SubjectFields {
+		if strings.Contains(strings.ToLower(v), q) {
+			return true
+		}
+	}
+	return false
 }

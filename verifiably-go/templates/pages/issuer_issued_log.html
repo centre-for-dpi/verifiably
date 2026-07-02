@@ -102,6 +102,7 @@
      data-std="{{.Std}}">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem">
     <h4 style="flex:1">{{.SchemaName}}</h4>
+    {{if eq .Source "inji"}}<span class="pill" style="font-size:0.6rem;opacity:0.75">Inji auth-code</span>{{end}}
     {{if .RevokedAt}}
       <span class="pill" style="background:var(--err,#c0392b);color:#fff;font-size:0.65rem">revoked</span>
     {{else}}
@@ -128,7 +129,27 @@
     {{end}}
   </div>
   <div class="btn-row" style="margin-top:0.75rem">
-    {{if and (not .RevokedAt) .StatusList}}
+    {{if eq .Source "inji"}}
+      {{/* Inji auth-code: revoke/reinstate through Certify's status API. */}}
+      {{if .RevokedAt}}
+        <button class="btn small"
+                hx-post="/issuer/credentials/inji/{{.ID}}/reinstate"
+                hx-target="#row-{{.ID}}" hx-swap="outerHTML"
+                hx-confirm="Reinstate this credential? Verifiers will accept it again after the next status-list refresh.">
+          Reinstate
+        </button>
+      {{else if .StatusList}}
+        <button class="btn small"
+                style="color:var(--err);border-color:var(--err)"
+                hx-post="/issuer/credentials/inji/{{.ID}}/revoke"
+                hx-target="#row-{{.ID}}" hx-swap="outerHTML"
+                hx-confirm="Revoke this credential? Verifiers will start rejecting it after the next status-list refresh.">
+          Revoke
+        </button>
+      {{else}}
+        <button class="btn small ghost" disabled title="No status list bound to this credential.">Revoke unavailable</button>
+      {{end}}
+    {{else if and (not .RevokedAt) .StatusList}}
       <button class="btn small"
               style="color:var(--err);border-color:var(--err)"
               hx-post="/issuer/credentials/{{.ID}}/revoke"

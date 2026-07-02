@@ -96,6 +96,13 @@ type IssuedCredential struct {
 	// PrevHash is the SHA-256 hex hash of the preceding entry's immutable
 	// fields. Empty on the first entry. Use VerifyChain to check integrity.
 	PrevHash string `json:"prevHash,omitempty"`
+
+	// Source is a transient (never persisted) tag identifying where the entry
+	// came from, so the list template can route the Revoke/Reinstate buttons to
+	// the right endpoint. "" = the verifiably IssuanceLog (walt.id/credebl/
+	// pre-auth, revoked via the local status-list store); "inji" = built live
+	// from the Inji auth-code Certify ledger, revoked via Certify's status API.
+	Source string `json:"-"`
 }
 
 // StatusListEntry is the (which list, which bit) pointer the Revoke

@@ -34,6 +34,7 @@ type fakeSubjects struct {
 	listCreds    []map[string]string
 	listCredsErr error
 	myCreds      []map[string]string
+	ledger       []map[string]string
 	fieldsByKey  map[string][]string
 	scopeByKey   map[string]string
 
@@ -64,6 +65,9 @@ func (f *fakeSubjects) ApplyAuthcodeSchema(_ context.Context, _, _, _, _, _, _ s
 }
 func (f *fakeSubjects) ListMyCredentials(_ context.Context, _ string) ([]map[string]string, error) {
 	return f.myCreds, nil
+}
+func (f *fakeSubjects) ListLedger(_ context.Context, _ []string) ([]map[string]string, error) {
+	return f.ledger, nil
 }
 func (f *fakeSubjects) CredentialFields(_ context.Context, key string) ([]string, error) {
 	return f.fieldsByKey[key], nil

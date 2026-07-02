@@ -607,6 +607,10 @@ func main() {
 		mux.HandleFunc("GET /issuer/credentials", h.ShowIssuedCredentials)
 		mux.HandleFunc("GET /issuer/credentials/search", h.IssuedCredentialsSearch)
 		mux.HandleFunc("POST /issuer/credentials/{id}/revoke", h.RevokeIssuedCredential)
+		// Inji auth-code track: revoke/reinstate through Certify's status API
+		// (the {id} is the base64url of the Certify credentialId).
+		mux.HandleFunc("POST /issuer/credentials/inji/{id}/revoke", h.RevokeInjiCredential)
+		mux.HandleFunc("POST /issuer/credentials/inji/{id}/reinstate", h.ReinstateInjiCredential)
 		mux.HandleFunc("GET /issuer/issue", h.ShowIssue)
 		mux.HandleFunc("POST /issuer/issue", h.SubmitIssue)
 		mux.HandleFunc("POST /issuer/issue/source", h.SetSingleSource)

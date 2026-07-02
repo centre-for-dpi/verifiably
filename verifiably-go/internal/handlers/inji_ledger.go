@@ -1,0 +1,191 @@
+package handlers
+
+// inji_ledger.go — the issuer's issued-credentials view + revoke for the Inji
+// auth-code track. Auth-code credentials are claimed asynchronously by holders
+// via eSignet, so verifiably never runs recordIssuance for them (unlike walt.id/
+// credebl/pre-auth, which verifiably drives synchronously). Instead this reads
+// the authoritative record from Certify's own ledger (certify.ledger, via
+// SubjectStore.ListLedger, owner-scoped to the issuer's credential_configs) and
+// revokes through Certify's status API. The page stays DPG-scoped: an issuer on
+// the Inji auth-code track sees ONLY auth-code credentials — never merged with
+// another DPG's entries.
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/verifiably/verifiably-go/internal/issuance"
+)
+
+// injiLedgerItems builds the issued-credentials list for the Inji auth-code
+// track: the ledger entries for every credential_config this issuer owns, mapped
+// to the same display shape the list template renders for the other DPGs.
+func (h *H) injiLedgerItems(ctx context.Context, ownerKey, dpg string) ([]issuance.IssuedCredential, error) {
+	if h.Subjects == nil {
+		return nil, nil
+	}
+	owned, err := h.Subjects.ListMyCredentials(ctx, ownerKey)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(owned))
+	for _, c := range owned {
+		if k := c["key"]; k != "" {
+			keys = append(keys, k)
+		}
+	}
+	rows, err := h.Subjects.ListLedger(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]issuance.IssuedCredential, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ledgerRowToIssued(row, dpg, ownerKey))
+	}
+	return out, nil
+}
+
+// ledgerRowToIssued maps one certify.ledger row (as returned by
+// SubjectStore.ListLedger) into an issuance.IssuedCredential for the template.
+// The row ID is the base64url of the Certify credentialId (a URL with slashes),
+// so it survives a path segment on the revoke/reinstate routes.
+func ledgerRowToIssued(row map[string]string, dpg, ownerKey string) issuance.IssuedCredential {
+	idx, _ := strconv.Atoi(row["statusListIndex"])
+	issuedAt, _ := time.Parse(time.RFC3339, row["issuedAt"])
+	c := issuance.IssuedCredential{
+		ID:         base64.RawURLEncoding.EncodeToString([]byte(row["credentialId"])),
+		SchemaName: row["credentialType"],
+		Std:        "w3c_vcdm_2",
+		Format:     "ldp_vc",
+		IssuerDpg:  dpg,
+		OwnerKey:   ownerKey,
+		IssuedAt:   issuedAt,
+		Source:     "inji",
+		// Show the real credentialId + status pointer under "details".
+		SubjectFields: map[string]string{"credentialId": row["credentialId"]},
+		StatusList: &issuance.StatusListEntry{
+			Type:   "bitstring",
+			ListID: row["statusListCredentialId"],
+			Index:  idx,
+		},
+	}
+	if row["revoked"] == "true" {
+		t := issuedAt
+		if ra, err := time.Parse(time.RFC3339, row["revokedAt"]); err == nil {
+			t = ra
+		}
+		c.RevokedAt = &t
+	}
+	return c
+}
+
+// findLedgerRow returns the owner-scoped ledger row for a base64url-encoded row
+// ID, and the decoded Certify credentialId. ok is false when the credential
+// isn't among the caller's owned credentials (treated as not-found so a guess
+// can't probe another issuer's credentials).
+func (h *H) findLedgerRow(ctx context.Context, ownerKey, rowID string) (row map[string]string, credentialID string, ok bool) {
+	raw, err := base64.RawURLEncoding.DecodeString(rowID)
+	if err != nil {
+		return nil, "", false
+	}
+	credentialID = string(raw)
+	if h.Subjects == nil {
+		return nil, credentialID, false
+	}
+	owned, err := h.Subjects.ListMyCredentials(ctx, ownerKey)
+	if err != nil {
+		return nil, credentialID, false
+	}
+	keys := make([]string, 0, len(owned))
+	for _, c := range owned {
+		if k := c["key"]; k != "" {
+			keys = append(keys, k)
+		}
+	}
+	rows, err := h.Subjects.ListLedger(ctx, keys)
+	if err != nil {
+		return nil, credentialID, false
+	}
+	for _, r := range rows {
+		if r["credentialId"] == credentialID {
+			return r, credentialID, true
+		}
+	}
+	return nil, credentialID, false
+}
+
+// setInjiCredentialStatus flips a credential's revocation bit through Certify's
+// status API (POST /v1/certify/credentials/status). revoke=true revokes,
+// revoke=false reinstates. Certify queues the change and its async job re-signs
+// the bitstring status-list VC.
+func setInjiCredentialStatus(ctx context.Context, credentialID, statusListCredentialID string, index int, revoke bool) error {
+	body, _ := json.Marshal(map[string]any{
+		"credentialId": credentialID,
+		"status":       revoke,
+		"credentialStatus": map[string]any{
+			"type":                 "BitstringStatusListEntry",
+			"statusPurpose":        "revocation",
+			"statusListIndex":      index,
+			"statusListCredential": statusListCredentialID,
+		},
+	})
+	ep := injiCertifyUpstream() + "/v1/certify/credentials/status"
+	status, respBody, err := postJSON(ctx, ep, body, "")
+	if err != nil {
+		return err
+	}
+	if status >= 400 {
+		return fmt.Errorf("certify status %d: %s", status, truncateForLog(string(respBody), 200))
+	}
+	// A 2xx with an {"errors":[...]} envelope is still a failure in Certify's API.
+	var env struct {
+		Errors []struct {
+			ErrorMessage string `json:"errorMessage"`
+		} `json:"errors"`
+	}
+	if json.Unmarshal(respBody, &env) == nil && len(env.Errors) > 0 {
+		return fmt.Errorf("certify: %s", env.Errors[0].ErrorMessage)
+	}
+	return nil
+}
+
+// RevokeInjiCredential revokes an Inji auth-code credential (POST
+// /issuer/credentials/inji/{id}/revoke); ReinstateInjiCredential reinstates it.
+// Both are owner-checked and re-render the credential's row.
+func (h *H) RevokeInjiCredential(w http.ResponseWriter, r *http.Request) {
+	h.setInjiCredentialRevocation(w, r, true)
+}
+
+func (h *H) ReinstateInjiCredential(w http.ResponseWriter, r *http.Request) {
+	h.setInjiCredentialRevocation(w, r, false)
+}
+
+func (h *H) setInjiCredentialRevocation(w http.ResponseWriter, r *http.Request, revoke bool) {
+	sess := h.Sessions.MustGet(w, r)
+	owner := sessionOwnerKey(sess)
+	id := r.PathValue("id")
+	if id == "" {
+		id = r.FormValue("id")
+	}
+	row, credentialID, ok := h.findLedgerRow(r.Context(), owner, id)
+	if !ok {
+		http.Error(w, "credential not found", http.StatusNotFound)
+		return
+	}
+	idx, _ := strconv.Atoi(row["statusListIndex"])
+	if err := setInjiCredentialStatus(r.Context(), credentialID, row["statusListCredentialId"], idx, revoke); err != nil {
+		h.errorToast(w, r, "Status update: "+err.Error())
+		return
+	}
+	// Re-fetch so the row reflects the new state (ListLedger reads the latest
+	// status transaction we just inserted).
+	if fresh, _, ok := h.findLedgerRow(r.Context(), owner, id); ok {
+		row = fresh
+	}
+	h.renderFragment(w, r, "fragment_issued_credentials_row", ledgerRowToIssued(row, sess.IssuerDpg, owner))
+}
