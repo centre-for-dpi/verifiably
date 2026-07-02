@@ -1,0 +1,139 @@
+# Registries & data sources — implementation guide
+
+> **Adapter type:** none — registries are **data sources**, not `backend.Adapter` DPGs. verifiably
+> **reads** identities/claims from them via the bulk engine (`internal/handlers/bulk.go`) and writes
+> the results into the certify-internal registries.
+> **Roles it serves:** issuer bulk-provision (`vc_subject`) and registrar bulk-enrol
+> (`identity_registry`).
+
+In the MOSIP/eSignet model a citizen cannot self-mint an identity — identities originate from an
+**authoritative source** run by a separate entity. This guide covers those sources (Sunbird RC and
+the federated agency registries), how verifiably pulls from them, the registry-admin console, and
+the certify-internal registries they feed.
+
+---
+
+## 1. The model — verifiably reads, never owns
+
+verifiably is a **consumer** of external registries. It offers four pluggable connectors and two
+sinks:
+
+```
+ CSV file ─┐
+ secured API (X-Road / REST) ─┤   column→field     ┌─→ certify.vc_subject        (issuance claims)
+ PostgreSQL SELECT ───────────┤──  mapping  ──────→ │
+ Sunbird RC entity search ────┘                     └─→ certify.identity_registry (enrolled identities)
+```
+
+The **connectors** are the same for both flows (`internal/handlers/bulk.go`): `parseCSVRows`,
+`fetchJSONRows` (secured API), `queryDBRows` (Postgres SELECT), `searchRegistryAll` /
+`sunbirdSchemas` (Sunbird). The **sink** differs: issuer bulk-provision → `runBulkProvision` →
+`vc_subject`; registrar bulk-enrol → `runBulkIdentity` → `identity_registry`.
+
+---
+
+## 2. Sunbird RC — the registry of record ("the DPG")
+
+Sunbird RC is a standalone **registry + credentialing chain** (vault + identity + credential-schema
++ credential services) — the authoritative citizen registry the demo treats as the ID repository.
+
+- **Where it runs:** a **separate stack** (the workshop infra, not the verifiably-go compose),
+  reachable from verifiably at `http://156.67.105.185:18091` (its registry API) and publicly at
+  `sunbird-rc.in-labs.cdpi.dev`. Port remaps avoid the verifiably stack (registry 18091, DB 15432,
+  keycloak 18080, nginx 11080).
+- **How verifiably reaches it:** the `VERIFIABLY_REGISTRIES` env (a JSON array). Live value:
+  ```json
+  [{"id":"sunbird","label":"Sunbird RC (all entities, auto-discover)",
+    "url":"http://156.67.105.185:18091","discover":true,"searchField":"individualId"}]
+  ```
+  `discover:true` lets the registrar/issuer console list the entities the registry actually holds
+  (`sunbirdSchemas` → `GET /api/docs/swagger.json`-derived entity list); `searchField` is the
+  record column holding each holder's eSignet `individualId`.
+- **Read path:** `POST /api/v1/<entity>/search` returns every record of an entity; each record is one
+  row to provision/enrol. Columns are mapped to credential/identity fields in the console's
+  next step (they need not match names).
+
+Sunbird RC is documented in depth in the workshop infra runbook (`infra/REBUILD.md` §2); this guide
+covers only verifiably's **read** integration.
+
+---
+
+## 3. Federated agency registries (DAD / GN / Business)
+
+Three standalone FastAPI sources-of-truth — the "data exchange without VCs" path — each its own
+SQLite + OpenAPI/Swagger, published at `*.registry.in-labs.cdpi.dev` (e.g.
+`dad.registry.in-labs.cdpi.dev`). They live in `infra/registries/` in the workshop repo (seeded
+DAD 60 / GN 60 / Business 52 rows) and are consumed by verifiably's bulk engine the same way as any
+**secured API** source (`fetchJSONRows` against `…/<entity>/issuance`, a schema-shaped export).
+
+---
+
+## 4. The registry-admin console
+
+A separate container that lets a registrar populate a Sunbird RC entity from a simple UI (single
+record / CSV / API / DB / registry), mirroring the bulk picker.
+
+| | |
+|---|---|
+| Image / container | `registry-admin:local` / `registry-admin` |
+| Port | `${REGISTRY_ADMIN_HOST_PORT:-18095}:8000`, public at `registry-admin.<domain>` |
+| `SUNBIRD_URL` | `http://156.67.105.185:18091` (the registry it writes to) |
+| `VERIFIABLY_SCHEMAS_URL` | `http://verifiably-go:8080/api/registry-credentials` (reads the active Inji credential list to pre-fill entity names) |
+
+verifiably links to it via `VERIFIABLY_REGISTRY_ADMIN_URL=https://registry-admin.in-labs.cdpi.dev`.
+Source: `deploy/registry-admin/app.py` (FastAPI + httpx + psycopg).
+
+---
+
+## 5. The certify-internal registries (the sinks)
+
+Both live in the auth-code `inji_certify` DB (`certify` schema) — see
+[inji-certify-authcode.md](./inji-certify-authcode.md):
+
+| Table | Written by | Read by |
+|---|---|---|
+| `identity_registry` | registrar bulk-enrol (`runBulkIdentity` → `UpsertIdentity`) | `/holder/register` activation gate (`GetIdentity`) + `createMockIdentity`. Keyed by raw individualId. |
+| `vc_subject` | issuer bulk-provision + activation (`ProvisionSubject`) | Certify's Postgres data-provider (via `vc_subject_<slug>` views), keyed by the eSignet subject id. |
+
+**Demo Postgres source:** `citizens-postgres` (`postgres:16.4-alpine`, DB `citizens`, host port
+`5435`) is the sample database the "Bulk from PostgreSQL" connector demonstrates `queryDBRows`
+against.
+
+---
+
+## 6. Environment variables
+
+| Var | Where | Meaning |
+|---|---|---|
+| `VERIFIABLY_REGISTRIES` | `scripts/start-container.sh` | JSON array of configured registries (id/label/url/discover/searchField). Drives the registry dropdown + auto-discover. |
+| `VERIFIABLY_REGISTRY_ADMIN_URL` | `scripts/start-container.sh` | Link to the registry-admin console. |
+| `INJI_CERTIFY_DATABASE_URL` | `scripts/start-container.sh` | The `inji_certify` DSN — where both sinks live. |
+
+---
+
+## 7. APIs & handlers
+
+**verifiably surface:** registrar — `/registrar/identities`, `POST /registrar/identities/{source,preview,apply,registry-entities}`;
+issuer bulk-provision — the Inji bulk source picker on `/issuer/issue`; `POST /api/v1/subjects`
+(single-subject provision); `GET /api/registry-credentials` (active credential list for the console).
+**Connectors:** `internal/handlers/bulk.go` (`fetchJSONRows`, `queryDBRows`, `searchRegistryAll`,
+`sunbirdSchemas`, `runBulkProvision`), `internal/handlers/identity.go` (`runBulkIdentity`,
+identity source options), `internal/storage/pg/subjects.go` (`UpsertIdentity`, `GetIdentity`,
+`ProvisionSubject`).
+
+---
+
+## 8. Gotchas
+
+- **Sunbird RC + federated registries are external** — they are not brought up by
+  `deploy.sh up`; they live in the workshop infra. verifiably only needs `VERIFIABLY_REGISTRIES`
+  pointed at reachable URLs. If the registry dropdown is empty, check that env + the registry's
+  reachability from the verifiably-go container.
+- **`searchField` must be the individualId column.** The provisioned/enrolled row is keyed by it;
+  a wrong `searchField` yields identities eSignet can't match at claim time.
+- **Registry data ≠ credentials.** These registries hold source records; issuance/enrolment turns
+  them into `vc_subject`/`identity_registry` rows. Sunbird's own credentialing chain (native
+  PDF+QR) is a separate "registry-as-record" path verified via [Inji Verify](./inji-verify.md).
+
+See also: [inji-certify-authcode.md](./inji-certify-authcode.md) (the sinks + activation) ·
+[../deploy.md](../deploy.md) · [../architecture.md](../architecture.md).
