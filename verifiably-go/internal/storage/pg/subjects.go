@@ -243,6 +243,7 @@ func (s *SubjectStore) ListLedger(ctx context.Context, typeKeys []string) ([]map
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT l.credential_id, l.credential_type, l.issuance_date, l.credential_status_details,
+		       l.indexed_attributes,
 		       COALESCE(t.status_value, false) AS revoked, t.cr_dtimes AS revoked_at
 		FROM certify.ledger l
 		LEFT JOIN LATERAL (
@@ -260,10 +261,10 @@ func (s *SubjectStore) ListLedger(ctx context.Context, typeKeys []string) ([]map
 	for rows.Next() {
 		var credID, credType string
 		var issued time.Time
-		var statusDetails []byte
+		var statusDetails, indexedAttrs []byte
 		var revoked bool
 		var revokedAt *time.Time
-		if err := rows.Scan(&credID, &credType, &issued, &statusDetails, &revoked, &revokedAt); err != nil {
+		if err := rows.Scan(&credID, &credType, &issued, &statusDetails, &indexedAttrs, &revoked, &revokedAt); err != nil {
 			return nil, err
 		}
 		// credential_status_details is a jsonb array; take the revocation entry.
@@ -291,6 +292,13 @@ func (s *SubjectStore) ListLedger(ctx context.Context, typeKeys []string) ([]map
 		}
 		if revoked && revokedAt != nil {
 			row["revokedAt"] = revokedAt.UTC().Format(time.RFC3339)
+		}
+		// indexed_attributes carries the credential's claim fields (populated by
+		// certify's indexed-mappings at issuance) — pass the raw JSON so the handler
+		// can render + search them on the card. Certify may nest them under the
+		// mapping name ("credentialSubject"); the handler flattens either shape.
+		if len(indexedAttrs) > 0 && string(indexedAttrs) != "{}" {
+			row["claims"] = string(indexedAttrs)
 		}
 		out = append(out, row)
 	}

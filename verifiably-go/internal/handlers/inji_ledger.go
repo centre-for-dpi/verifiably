@@ -66,8 +66,9 @@ func ledgerRowToIssued(row map[string]string, dpg, ownerKey string) issuance.Iss
 		OwnerKey:   ownerKey,
 		IssuedAt:   issuedAt,
 		Source:     "inji",
-		// Show the real credentialId + status pointer under "details".
-		SubjectFields: map[string]string{"credentialId": row["credentialId"]},
+		// The credential's claim fields (from certify.ledger.indexed_attributes) +
+		// the credentialId, rendered + searched on the card like the other DPGs.
+		SubjectFields: ledgerClaims(row),
 		StatusList: &issuance.StatusListEntry{
 			Type:   "bitstring",
 			ListID: row["statusListCredentialId"],
@@ -82,6 +83,36 @@ func ledgerRowToIssued(row map[string]string, dpg, ownerKey string) issuance.Iss
 		c.RevokedAt = &t
 	}
 	return c
+}
+
+// ledgerClaims turns a ledger row's indexed_attributes JSON (row["claims"]) into
+// the displayable/searchable claim map for the card. Certify's indexed-mapping
+// (`credentialSubject=$.credentialSubject`) nests the claims under
+// "credentialSubject"; unwrap that if present, else use the object as-is. The
+// holder `id` (a long did:jwk) is dropped as noise. Always includes credentialId.
+func ledgerClaims(row map[string]string) map[string]string {
+	out := map[string]string{}
+	var top map[string]any
+	if raw := row["claims"]; raw != "" && json.Unmarshal([]byte(raw), &top) == nil {
+		claims := top
+		if sub, ok := top["credentialSubject"].(map[string]any); ok && len(top) == 1 {
+			claims = sub
+		}
+		for k, v := range claims {
+			if k == "id" || k == "@context" || k == "type" {
+				continue
+			}
+			switch v.(type) {
+			case map[string]any, []any:
+				continue // skip nested structures — keep the card scannable
+			}
+			out[k] = fmt.Sprintf("%v", v)
+		}
+	}
+	if cid := row["credentialId"]; cid != "" {
+		out["credentialId"] = cid
+	}
+	return out
 }
 
 // findLedgerRow returns the owner-scoped ledger row for a base64url-encoded row
