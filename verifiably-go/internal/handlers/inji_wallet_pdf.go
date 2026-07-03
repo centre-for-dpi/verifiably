@@ -55,17 +55,38 @@ func (h *H) DownloadInjiClaimedPDF(w http.ResponseWriter, r *http.Request) {
 		sort.Strings(order)
 	}
 
-	qrPayload, err := injicertify.EncodePixelPassQR([]byte(vc))
-	if err != nil {
-		http.Error(w, "encode qr: "+err.Error(), http.StatusInternalServerError)
-		return
+	// Best-effort QR: encode + render with a QR when the payload fits (ldp_vc).
+	// An SD-JWT VC carries an x5c chain that overflows even QR version 40, so
+	// fall back to a QR-less PDF (claims + full credential text + a holder note)
+	// rather than 500-ing (which the browser saves as "pdf.txt").
+	var pdfBytes []byte
+	if qrPayload, qErr := injicertify.EncodePixelPassQR([]byte(vc)); qErr == nil && qrPayloadFitsQR(qrPayload) {
+		if b, rErr := injicertify.RenderCredentialPDF(title, issuer, qrPayload, fields, order); rErr == nil {
+			pdfBytes = b
+		}
 	}
-	pdfBytes, err := injicertify.RenderCredentialPDF(title, issuer, qrPayload, fields, order)
-	if err != nil {
-		http.Error(w, "render pdf: "+err.Error(), http.StatusInternalServerError)
-		return
+	if pdfBytes == nil {
+		note := "This credential is an SD-JWT, which is too large to embed in a " +
+			"scannable QR code (a known limitation of the SD-JWT format). The full " +
+			"credential is printed below and remains in your wallet — present it " +
+			"digitally rather than by scanning this page."
+		credText, _ := parsed["VC"].(string)
+		if credText == "" {
+			credText = vc
+		}
+		b, err := injicertify.RenderCredentialPDFNoQR(title, issuer, note, fields, order, credText)
+		if err != nil {
+			http.Error(w, "render pdf: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		pdfBytes = b
 	}
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", `attachment; filename="credential-`+id+`.pdf"`)
 	_, _ = w.Write(pdfBytes)
 }
+
+// qrPayloadFitsQR reports whether a PixelPass payload is small enough to embed
+// in a QR. go-qrcode caps at QR version 40 (~1273 bytes for byte-mode at High
+// error correction); we use a conservative bound so the encode never fails.
+func qrPayloadFitsQR(payload string) bool { return len(payload) <= 1200 }

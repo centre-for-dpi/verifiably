@@ -29,3 +29,10 @@ func DecodePixelPassQR(s string) ([]byte, bool) {
 func RenderCredentialPDF(title, issuer, qrPayload string, fields map[string]string, order []string) ([]byte, error) {
 	return renderCredentialPDF(title, issuer, qrPayload, fields, order)
 }
+
+// RenderCredentialPDFNoQR is the QR-less sibling of RenderCredentialPDF, for
+// credentials too large to embed in a scannable QR (e.g. SD-JWT VCs). It prints
+// the claim rows, a holder-facing `note`, and the full `credentialText`.
+func RenderCredentialPDFNoQR(title, issuer, note string, fields map[string]string, order []string, credentialText string) ([]byte, error) {
+	return renderCredentialPDFNoQR(title, issuer, note, fields, order, credentialText)
+}
