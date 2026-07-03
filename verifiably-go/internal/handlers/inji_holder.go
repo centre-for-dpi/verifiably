@@ -287,12 +287,22 @@ func (h *H) injiClaimCredential(ctx context.Context, code, verifier, credType, f
 			return "", fmt.Errorf("credential endpoint %d: %s", status, truncateForLog(string(body), 200))
 		}
 	}
-	// Certify returns {"credential": {...VC...}} or the VC directly.
+	// Certify returns {"credential": {...VC...}} (ldp_vc, a JSON object) or
+	// {"credential": "eyJ…~"} (SD-JWT, a JSON *string*). For SD-JWT, unwrap the
+	// JSON string so we store the raw compact SD-JWT, not a quoted "eyJ…~"
+	// literal (which the wallet would render as a malformed blob).
 	var wrap struct {
 		Credential json.RawMessage `json:"credential"`
 	}
 	if json.Unmarshal(body, &wrap) == nil && len(wrap.Credential) > 0 {
-		return string(wrap.Credential), nil
+		raw := wrap.Credential
+		if raw[0] == '"' {
+			var s string
+			if json.Unmarshal(raw, &s) == nil {
+				return s, nil
+			}
+		}
+		return string(raw), nil
 	}
 	return string(body), nil
 }
@@ -378,6 +388,11 @@ func parseClaimedVC(vc string) map[string]any {
 	out := map[string]any{"VC": vc, "ID": vcID(vc)}
 	var pretty any
 	if json.Unmarshal([]byte(vc), &pretty) != nil {
+		// Not JSON — an SD-JWT VC is a compact "header.payload.sig~disclosure~…"
+		// string. Decode it so the wallet shows fields/issuer/name like ldp_vc.
+		if sd := parseSDJWTClaimedVC(vc); sd != nil {
+			return sd
+		}
 		return out
 	}
 	if b, err := json.MarshalIndent(pretty, "", "  "); err == nil {
@@ -404,6 +419,106 @@ func parseClaimedVC(vc string) map[string]any {
 	if vu, ok := m["validUntil"].(string); ok {
 		out["ValidUntil"] = vu
 	}
+	return out
+}
+
+// b64uDecode decodes base64url, tolerating padded and unpadded forms (JWT
+// segments and SD-JWT disclosures are unpadded, but be lenient).
+func b64uDecode(s string) ([]byte, error) {
+	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	return base64.URLEncoding.DecodeString(s)
+}
+
+// sdJWTPayload decodes the JWT payload (claims) of a compact SD-JWT VC
+// ("header.payload.sig~disclosure~…"). Returns nil if it doesn't parse as one.
+func sdJWTPayload(vc string) map[string]any {
+	jwt := vc
+	if i := strings.IndexByte(vc, '~'); i >= 0 {
+		jwt = vc[:i]
+	}
+	parts := strings.Split(jwt, ".")
+	if len(parts) < 2 {
+		return nil
+	}
+	pb, err := b64uDecode(parts[1])
+	if err != nil {
+		return nil
+	}
+	var m map[string]any
+	if json.Unmarshal(pb, &m) != nil {
+		return nil
+	}
+	return m
+}
+
+// sdJWTReserved are SD-JWT / JWT claims that aren't holder-facing subject fields.
+var sdJWTReserved = map[string]bool{
+	"iss": true, "sub": true, "aud": true, "exp": true, "nbf": true, "iat": true,
+	"jti": true, "cnf": true, "vct": true, "status": true, "id": true,
+	"_sd": true, "_sd_alg": true,
+}
+
+// parseSDJWTClaimedVC decodes a compact SD-JWT VC into the display map the held
+// page expects (Subject / Issuer / ClaimedName / ValidUntil / VC). Selective-
+// disclosure segments ("~<base64url([salt,name,value])>~…") are merged into
+// Subject so recipients see the disclosed claims too. Returns nil for non-SD-JWT.
+func parseSDJWTClaimedVC(vc string) map[string]any {
+	payload := sdJWTPayload(vc)
+	if payload == nil {
+		return nil
+	}
+	out := map[string]any{"ID": vcID(vc)}
+	subject := map[string]any{}
+	for k, v := range payload {
+		if sdJWTReserved[k] {
+			continue
+		}
+		subject[k] = v
+	}
+	// Merge any disclosed claims (3-element [salt, name, value] disclosures).
+	for _, d := range strings.Split(vc, "~")[1:] {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		db, err := b64uDecode(d)
+		if err != nil {
+			continue
+		}
+		var arr []any
+		if json.Unmarshal(db, &arr) != nil || len(arr) != 3 {
+			continue
+		}
+		if name, ok := arr[1].(string); ok {
+			subject[name] = arr[2]
+		}
+	}
+	if len(subject) > 0 {
+		out["Subject"] = subject
+	}
+	if iss, ok := payload["iss"].(string); ok {
+		out["Issuer"] = iss
+	}
+	if vct, ok := payload["vct"].(string); ok && vct != "" {
+		name := vct
+		if i := strings.LastIndexAny(vct, "/:#"); i >= 0 && i+1 < len(vct) {
+			name = vct[i+1:]
+		}
+		out["ClaimedName"] = name
+	}
+	if exp, ok := payload["exp"].(float64); ok {
+		out["ValidUntil"] = time.Unix(int64(exp), 0).UTC().Format(time.RFC3339)
+	}
+	out["Format"] = "vc+sd-jwt"
+	// Show the decoded payload (readable JSON) followed by the compact token, so
+	// the "Raw credential" block isn't an opaque eyJ… blob.
+	vcText := vc
+	if b, err := json.MarshalIndent(payload, "", "  "); err == nil {
+		vcText = string(b) + "\n\n——— compact SD-JWT ———\n" + vc
+	}
+	out["VC"] = vcText
 	return out
 }
 
