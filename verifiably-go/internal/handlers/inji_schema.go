@@ -338,7 +338,7 @@ type authcodeArtifacts struct {
 // the files. Returns the credential_config key. Shared by the legacy form and
 // the rich builder.
 func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, ownerKey string) (string, error) {
-	a := buildAuthcodeArtifacts(schema)
+	a := buildAuthcodeArtifacts(schema, h.tokenStatusURL())
 	// did_url must equal certify's issuer DID (its did.json id / CERTIFY_ISSUER_DID),
 	// NOT the hardcoded docker-internal did:web:certify-nginx — otherwise the signed
 	// VC's proof.verificationMethod points at an unresolvable DID and every verifier
@@ -405,25 +405,20 @@ func appendPropertyLine(path, key, value string) error {
 // buildAuthcodeArtifacts maps a builder schema (any Std) to the per-credential
 // auth-code artifacts, reusing injicertify's per-format credential_config logic
 // (ldp_vc for W3C VCDM 1.1/2.0, vc+sd-jwt for IETF SD-JWT VC).
-func buildAuthcodeArtifacts(schema vctypes.Schema) authcodeArtifacts {
-	cc := injicertify.BuildAuthcodeCredConfig(schema)
+func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authcodeArtifacts {
+	// Token-status wiring (SD-JWT revocation) is added only when a TokenStore is
+	// configured (tokenStatusURL != "") so the template markers always have a
+	// data-provider column to resolve against.
+	withTokenStatus := tokenStatusURL != ""
+	cc := injicertify.BuildAuthcodeCredConfig(schema, withTokenStatus)
 
-	// The credential's specific type (= credential_config key, scope, view) must
-	// match injicertify.credentialTypesSorted: AdditionalTypes[0] or Name-no-spaces.
-	specific := strings.ReplaceAll(strings.TrimSpace(schema.Name), " ", "")
-	if len(schema.AdditionalTypes) > 0 && strings.TrimSpace(schema.AdditionalTypes[0]) != "" {
-		specific = strings.TrimSpace(schema.AdditionalTypes[0])
-	}
-	if specific == "" {
-		specific = "Credential"
-	}
-	configKey := specific
-	slug := nonAlnumRe.ReplaceAllString(strings.ToLower(configKey), "")
-	if slug == "" {
-		slug = "credential"
-	}
-	scope := slug + "_vc_ldp"
+	configKey, slug := injiConfigKeySlug(schema)
+	// The scope suffix records the wire format so the catalog/wallet don't
+	// mislabel an SD-JWT credential as ldp. Nothing parses the suffix, so
+	// this only affects NEW schemas (existing ones keep their scope).
+	scope := slug + "_" + scopeSuffix(cc.CredFormat)
 	viewName := "vc_subject_" + slug
+	isSDJWT := cc.CredFormat == "vc+sd-jwt" || cc.CredFormat == "dc+sd-jwt"
 
 	display, _ := json.Marshal([]any{map[string]any{
 		"name": schema.Name, "locale": "en",
@@ -439,6 +434,16 @@ func buildAuthcodeArtifacts(schema vctypes.Schema) authcodeArtifacts {
 		order = append(order, f.Name)
 		viewCols = append(viewCols, fmt.Sprintf("  claims->>'%s' AS \"%s\"", f.Name, f.Name))
 		queryCols = append(queryCols, fmt.Sprintf("\"%s\"", f.Name))
+	}
+	// SD-JWT token-status columns: statusIdx per-holder (allocated at provision,
+	// coalesced to 0 so the unquoted ${statusIdx} template marker is always a
+	// valid JSON number), statusUri a constant (verifiably's token status list).
+	// This is what makes the certify-signed SD-JWT carry a revocable status ref.
+	if isSDJWT && withTokenStatus {
+		viewCols = append(viewCols,
+			fmt.Sprintf("  coalesce(claims->>'%s','0') AS \"statusIdx\"", injiStatusIdxKey(slug)),
+			fmt.Sprintf("  '%s' AS \"statusUri\"", tokenStatusURL))
+		queryCols = append(queryCols, "\"statusIdx\"", "\"statusUri\"")
 	}
 	// credential_subject display only for the JSON-LD formats (mirrors injicertify).
 	var credsub *string
@@ -464,6 +469,59 @@ func buildAuthcodeArtifacts(schema vctypes.Schema) authcodeArtifacts {
 
 func isAlnum(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
+
+// injiConfigKeySlug derives the credential_config key (the specific type) and
+// its lowercase alnum slug from a builder schema. The slug names the extraction
+// view (vc_subject_<slug>) and the per-type status claim key, so provision and
+// schema-create must agree on it — hence the single shared helper.
+func injiConfigKeySlug(schema vctypes.Schema) (configKey, slug string) {
+	// Must match injicertify.credentialTypesSorted: AdditionalTypes[0] or
+	// Name-no-spaces.
+	specific := strings.ReplaceAll(strings.TrimSpace(schema.Name), " ", "")
+	if len(schema.AdditionalTypes) > 0 && strings.TrimSpace(schema.AdditionalTypes[0]) != "" {
+		specific = strings.TrimSpace(schema.AdditionalTypes[0])
+	}
+	if specific == "" {
+		specific = "Credential"
+	}
+	configKey = specific
+	slug = nonAlnumRe.ReplaceAllString(strings.ToLower(configKey), "")
+	if slug == "" {
+		slug = "credential"
+	}
+	return configKey, slug
+}
+
+// injiStatusIdxKey is the per-credential-type key under which a subject's
+// allocated token-status index is stored in certify.vc_subject.claims. Keyed by
+// slug so one individual can hold two SD-JWT credentials without their status
+// indices colliding (vc_subject is one claims blob per individual).
+func injiStatusIdxKey(slug string) string { return "statusIdx_" + slug }
+
+// tokenStatusURL returns the absolute URL of verifiably's IETF token status
+// list, or "" when no TokenStore is configured — in which case the SD-JWT
+// status wiring is skipped entirely so auth-code claims still succeed.
+func (h *H) tokenStatusURL() string {
+	if h.TokenStore == nil {
+		return ""
+	}
+	return h.TokenStore.GetPublishURL()
+}
+
+// scopeSuffix maps a certify credential format to the scope suffix used in the
+// auth-code scope name. It exists so an SD-JWT credential's scope reads
+// "<slug>_vc_sd_jwt" rather than the historical hardcoded "_vc_ldp" (which made
+// the catalog/wallet mislabel SD-JWT credentials as ldp).
+func scopeSuffix(credFormat string) string {
+	switch credFormat {
+	case "vc+sd-jwt", "dc+sd-jwt":
+		return "vc_sd_jwt"
+	case "jwt_vc_json":
+		return "vc_jwt"
+	default: // ldp_vc and anything unrecognised
+		return "vc_ldp"
+	}
 }
 
 // appendBraceEntry inserts `entry` into the {...} value of the property line whose

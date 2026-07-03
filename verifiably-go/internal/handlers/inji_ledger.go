@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/internal/issuance"
+	"github.com/verifiably/verifiably-go/vctypes"
 )
 
 // injiLedgerItems builds the issued-credentials list for the Inji auth-code
@@ -115,6 +116,41 @@ func ledgerClaims(row map[string]string) map[string]string {
 	return out
 }
 
+// recordInjiSDJWTIssuance logs an auth-code SD-JWT credential in verifiably's
+// IssuanceLog at provision time. Certify never writes SD-JWT to its ledger, so
+// this is the ONLY record of these credentials — it's what lets
+// /issuer/credentials list them and revoke them through the token status list.
+// The token status Index is the per-holder slot allocated in runBulkProvision.
+func (h *H) recordInjiSDJWTIssuance(sess *Session, schema vctypes.Schema, holderID string, claims map[string]string, idx int) {
+	if h.IssuanceLog == nil {
+		return
+	}
+	listID := ""
+	if h.TokenStore != nil {
+		listID = h.TokenStore.GetListID()
+	}
+	rec := issuance.IssuedCredential{
+		ID:            newIssuanceID(),
+		SchemaID:      schema.ID,
+		SchemaName:    schema.Name,
+		Std:           schema.Std,
+		Format:        "vc+sd-jwt",
+		IssuerDpg:     sess.IssuerDpg,
+		OwnerKey:      sessionOwnerKey(sess),
+		HolderHint:    holderID,
+		SubjectFields: claims,
+		Source:        "inji",
+		StatusList: &issuance.StatusListEntry{
+			Type:   "token",
+			ListID: listID,
+			Index:  idx,
+		},
+	}
+	if _, err := h.IssuanceLog.Append(rec); err != nil {
+		fmt.Printf("issuance log: append inji sd-jwt %s: %v\n", rec.ID, err)
+	}
+}
+
 // findLedgerRow returns the owner-scoped ledger row for a base64url-encoded row
 // ID, and the decoded Certify credentialId. ok is false when the credential
 // isn't among the caller's owned credentials (treated as not-found so a guess
@@ -203,6 +239,20 @@ func (h *H) setInjiCredentialRevocation(w http.ResponseWriter, r *http.Request, 
 	if id == "" {
 		id = r.FormValue("id")
 	}
+	// SD-JWT auth-code credentials are recorded in verifiably's IssuanceLog with a
+	// token status binding (certify doesn't ledger SD-JWT). Dispatch those to the
+	// token status list; everything else is an ldp_vc certify.ledger row revoked
+	// through Certify's status API below.
+	if h.IssuanceLog != nil {
+		if rec, ok := h.IssuanceLog.Get(id); ok {
+			if rec.OwnerKey != owner {
+				http.Error(w, "credential not found", http.StatusNotFound)
+				return
+			}
+			h.setInjiTokenRevocation(w, r, rec, revoke)
+			return
+		}
+	}
 	row, credentialID, ok := h.findLedgerRow(r.Context(), owner, id)
 	if !ok {
 		http.Error(w, "credential not found", http.StatusNotFound)
@@ -219,4 +269,41 @@ func (h *H) setInjiCredentialRevocation(w http.ResponseWriter, r *http.Request, 
 		row = fresh
 	}
 	h.renderFragment(w, r, "fragment_issued_credentials_row", ledgerRowToIssued(row, sess.IssuerDpg, owner))
+}
+
+// setInjiTokenRevocation revokes/reinstates an auth-code SD-JWT credential via
+// verifiably's IETF token status list (the credential's SD-JWT carries a
+// status_list ref to it), then updates the IssuanceLog row and re-renders it.
+// The status-list adapter is reused unchanged — this only drives it.
+func (h *H) setInjiTokenRevocation(w http.ResponseWriter, r *http.Request, rec issuance.IssuedCredential, revoke bool) {
+	if rec.StatusList == nil || rec.StatusList.Type != "token" {
+		h.errorToast(w, r, "This credential has no token status binding and cannot be revoked through verifiably-go.")
+		return
+	}
+	store := h.storeForKind("token")
+	if store == nil {
+		h.errorToast(w, r, "Token status list not configured.")
+		return
+	}
+	var err error
+	if revoke {
+		err = store.Revoke(rec.StatusList.Index)
+	} else {
+		err = store.Reinstate(rec.StatusList.Index)
+	}
+	if err != nil {
+		h.errorToast(w, r, "Status update: "+err.Error())
+		return
+	}
+	var updated issuance.IssuedCredential
+	if revoke {
+		updated, err = h.IssuanceLog.MarkRevoked(rec.ID, rec.OwnerKey)
+	} else {
+		updated, err = h.IssuanceLog.MarkReinstate(rec.ID, rec.OwnerKey)
+	}
+	if err != nil {
+		h.errorToast(w, r, "Mark status: "+err.Error())
+		return
+	}
+	h.renderFragment(w, r, "fragment_issued_credentials_row", updated)
 }

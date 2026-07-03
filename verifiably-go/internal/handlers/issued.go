@@ -360,6 +360,17 @@ func (h *H) injiIssuedCredentialsBody(sess *Session, r *http.Request, owner stri
 	if err != nil {
 		items = nil
 	}
+	// SD-JWT auth-code credentials aren't in certify's ledger — they're recorded
+	// in verifiably's IssuanceLog at provision time (with a token status binding).
+	// Merge them in, scoped to this owner + DPG, so the issuer can review + revoke
+	// them alongside the ldp_vc ledger rows.
+	if h.IssuanceLog != nil {
+		for _, c := range h.IssuanceLog.List(issuance.Filter{OwnerKey: owner}) {
+			if c.IssuerDpg == sess.IssuerDpg && c.StatusList != nil && c.StatusList.Type == "token" {
+				items = append(items, c)
+			}
+		}
+	}
 	stats := issuance.Stats{ByStd: map[string]int{}, ByFormat: map[string]int{}}
 	for _, c := range items {
 		stats.Total++
@@ -371,7 +382,7 @@ func (h *H) injiIssuedCredentialsBody(sess *Session, r *http.Request, owner stri
 		stats.ByStd[c.Std]++
 		stats.ByFormat[c.Format]++
 	}
-	filter := issuance.Filter{Query: sess.IssuedQuery, State: sess.IssuedState, OwnerKey: owner}
+	filter := issuance.Filter{Query: sess.IssuedQuery, State: sess.IssuedState, Std: sess.IssuedStd, Format: sess.IssuedFormat, OwnerKey: owner}
 	q := strings.ToLower(strings.TrimSpace(filter.Query))
 	filtered := make([]issuance.IssuedCredential, 0, len(items))
 	for _, c := range items {
@@ -379,6 +390,12 @@ func (h *H) injiIssuedCredentialsBody(sess *Session, r *http.Request, owner stri
 			continue
 		}
 		if filter.State == "revoked" && c.RevokedAt == nil {
+			continue
+		}
+		if filter.Std != "" && c.Std != filter.Std {
+			continue
+		}
+		if filter.Format != "" && c.Format != filter.Format {
 			continue
 		}
 		if q != "" && !injiMatchesQuery(c, q) {
@@ -390,8 +407,8 @@ func (h *H) injiIssuedCredentialsBody(sess *Session, r *http.Request, owner stri
 		Items:   filtered,
 		Stats:   stats,
 		Filter:  filter,
-		Stds:    []string{"all", "w3c_vcdm_2"},
-		Formats: []string{"all", "ldp_vc"},
+		Stds:    []string{"all", "w3c_vcdm_2", "sd_jwt_vc (IETF)"},
+		Formats: []string{"all", "ldp_vc", "vc+sd-jwt"},
 	}
 }
 

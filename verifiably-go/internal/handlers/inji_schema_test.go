@@ -416,7 +416,7 @@ func TestBuildAuthcodeArtifacts_LDP(t *testing.T) {
 		AdditionalTypes: []string{"PersonCredential"},
 		FieldsSpec:      []vctypes.FieldSpec{{Name: "full_name"}, {Name: "dob"}},
 	}
-	a := buildAuthcodeArtifacts(schema)
+	a := buildAuthcodeArtifacts(schema, "")
 
 	if a.configKey != "PersonCredential" {
 		t.Errorf("configKey = %q, want PersonCredential", a.configKey)
@@ -454,12 +454,17 @@ func TestBuildAuthcodeArtifacts_SDJWT(t *testing.T) {
 		Std:        "sd_jwt_vc (IETF)",
 		FieldsSpec: []vctypes.FieldSpec{{Name: "hcid"}},
 	}
-	a := buildAuthcodeArtifacts(schema)
+	a := buildAuthcodeArtifacts(schema, "")
 	if a.configKey != "HealthCard" {
 		t.Errorf("configKey = %q, want HealthCard (name minus spaces)", a.configKey)
 	}
 	if a.credFormat != "vc+sd-jwt" {
 		t.Errorf("credFormat = %q, want vc+sd-jwt", a.credFormat)
+	}
+	// Scope must be format-aware (was hardcoded "_vc_ldp"), so the catalog/wallet
+	// don't mislabel this SD-JWT credential as ldp.
+	if a.scope != "healthcard_vc_sd_jwt" {
+		t.Errorf("scope = %q, want healthcard_vc_sd_jwt", a.scope)
 	}
 	if a.credsub != nil {
 		t.Error("sd-jwt must NOT carry a credentialSubject display (credsub nil)")
@@ -467,10 +472,35 @@ func TestBuildAuthcodeArtifacts_SDJWT(t *testing.T) {
 	if a.sdJwtVct == nil {
 		t.Error("sd-jwt must carry an sd_jwt_vct")
 	}
+	// Without a token status URL, no status columns are added.
+	if strings.Contains(a.scopeQuery, "statusIdx") {
+		t.Errorf("no token URL → no statusIdx column, got: %s", a.scopeQuery)
+	}
+}
+
+func TestBuildAuthcodeArtifacts_SDJWT_TokenStatus(t *testing.T) {
+	schema := vctypes.Schema{
+		Name:       "Health Card",
+		Std:        "sd_jwt_vc (IETF)",
+		FieldsSpec: []vctypes.FieldSpec{{Name: "hcid"}},
+	}
+	const url = "https://verifiably.example/status-list/token/v1"
+	a := buildAuthcodeArtifacts(schema, url)
+	// The extraction view exposes a coalesced statusIdx (so the unquoted template
+	// marker is always a valid number) and the constant statusUri.
+	if !strings.Contains(a.viewDDL, `coalesce(claims->>'statusIdx_healthcard','0') AS "statusIdx"`) {
+		t.Errorf("viewDDL missing coalesced statusIdx column:\n%s", a.viewDDL)
+	}
+	if !strings.Contains(a.viewDDL, `'`+url+`' AS "statusUri"`) {
+		t.Errorf("viewDDL missing constant statusUri column:\n%s", a.viewDDL)
+	}
+	if !strings.Contains(a.scopeQuery, `"statusIdx", "statusUri"`) {
+		t.Errorf("scopeQuery must select statusIdx + statusUri:\n%s", a.scopeQuery)
+	}
 }
 
 func TestBuildAuthcodeArtifacts_EmptyNameFallback(t *testing.T) {
-	a := buildAuthcodeArtifacts(vctypes.Schema{Std: "w3c_vcdm_1"})
+	a := buildAuthcodeArtifacts(vctypes.Schema{Std: "w3c_vcdm_1"}, "")
 	if a.configKey != "Credential" {
 		t.Errorf("configKey = %q, want Credential", a.configKey)
 	}

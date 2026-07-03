@@ -26,6 +26,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -540,6 +541,14 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 	clientID := defaultAuthCodeClientID()
 	scope, _ := h.Subjects.CredentialScope(ctx, sess.SchemaID)
 
+	// SD-JWT credentials get a per-holder IETF token-status index allocated here
+	// (certify doesn't ledger SD-JWT, so verifiably owns their revocation): the
+	// index is written into vc_subject as statusIdx_<slug> so certify's SD-JWT
+	// carries a `status` ref to verifiably's token list, and the issuance is
+	// recorded in the IssuanceLog so /issuer/credentials can list + revoke it.
+	isTokenSDJWT := statusListKindFor(schema.Std) == "token" && h.TokenStore != nil
+	_, slug := injiConfigKeySlug(schema)
+
 	out := make([]backend.BulkRowResult, 0, len(rows))
 	accepted, rejected := 0, 0
 	for i, row := range rows {
@@ -578,6 +587,19 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 			out = append(out, res)
 			continue
 		}
+		// Snapshot the display claims (schema fields only) before we inject the
+		// internal statusIdx key, and allocate the token-status index for SD-JWT.
+		displayClaims := make(map[string]string, len(claims))
+		for k, v := range claims {
+			displayClaims[k] = v
+		}
+		tokenIdx := -1
+		if isTokenSDJWT {
+			if idx, err := h.TokenStore.Allocate(); err == nil {
+				tokenIdx = idx
+				claims[injiStatusIdxKey(slug)] = strconv.Itoa(idx)
+			}
+		}
 		subjectID := esignetSubjectID(id, clientID)
 		if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {
 			res.Status = "failed"
@@ -585,6 +607,9 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 			rejected++
 			out = append(out, res)
 			continue
+		}
+		if isTokenSDJWT && tokenIdx >= 0 {
+			h.recordInjiSDJWTIssuance(sess, schema, id, displayClaims, tokenIdx)
 		}
 		res.Status = "provisioned"
 		accepted++

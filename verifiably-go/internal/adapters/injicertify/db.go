@@ -54,7 +54,7 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 	defer conn.Close(ctx)
 
 	credFormat := stdToCredentialFormat(schema.Std)
-	vcTemplate := buildVCTemplate(schema)
+	vcTemplate := buildVCTemplate(schema, false)
 
 	scope := a.cfg.DB.Scope
 	if scope == "" {
@@ -240,7 +240,13 @@ func vcdmContextURL(std string) string {
 // uses to mint credentials. For SD-JWT the template is a flat JSON object with
 // ${fieldName} substitution markers. For ldp_vc / jwt_vc_json it is a JSON-LD
 // credential skeleton.
-func buildVCTemplate(schema vctypes.Schema) string {
+// statusIdxPlaceholder is a valid-JSON stand-in for the unquoted `${statusIdx}`
+// template marker. json.Marshal can't emit a bare (unquoted) ${…} token, so we
+// marshal this quoted placeholder and swap it for the unquoted marker afterwards
+// — yielding `"idx": ${statusIdx}`, which certify renders to a JSON *number*.
+const statusIdxPlaceholder = "@@STATUS_IDX@@"
+
+func buildVCTemplate(schema vctypes.Schema, withTokenStatus bool) string {
 	credFormat := stdToCredentialFormat(schema.Std)
 	var tmpl any
 	switch credFormat {
@@ -252,6 +258,19 @@ func buildVCTemplate(schema vctypes.Schema) string {
 		m := map[string]any{"vct": vct}
 		for _, f := range schema.FieldsSpec {
 			m[f.Name] = "${" + f.Name + "}"
+		}
+		// IETF Token Status List reference — the idx/uri are filled per-holder by
+		// the Postgres data-provider (statusIdx from certify.vc_subject via the
+		// scope-query, uri a constant column in the extraction view). Only added
+		// for the auth-code path (withTokenStatus); the pre-auth path issues from
+		// staged claims with no data-provider, so the markers would go unresolved.
+		if withTokenStatus {
+			m["status"] = map[string]any{
+				"status_list": map[string]any{
+					"idx": statusIdxPlaceholder, // → unquoted ${statusIdx} (a number)
+					"uri": "${statusUri}",
+				},
+			}
 		}
 		tmpl = m
 	default:
@@ -316,7 +335,9 @@ func buildVCTemplate(schema vctypes.Schema) string {
 		tmpl = m
 	}
 	b, _ := json.MarshalIndent(tmpl, "", "  ")
-	return base64.StdEncoding.EncodeToString(b)
+	// Unquote the status idx marker so it renders as a JSON number, not a string.
+	out := strings.Replace(string(b), `"`+statusIdxPlaceholder+`"`, "${statusIdx}", 1)
+	return base64.StdEncoding.EncodeToString([]byte(out))
 }
 
 type displayItem struct {
