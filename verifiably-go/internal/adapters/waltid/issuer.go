@@ -472,6 +472,10 @@ func (a *Adapter) SaveCustomSchema(_ context.Context, schema vctypes.Schema) err
 	if err := restartContainer(service); err != nil {
 		return fmt.Errorf("restart %s: %w", service, err)
 	}
+	// State.Running flips true before issuer-api can serve OID4VCI, so wait for
+	// it to actually respond before returning — otherwise the first post-save
+	// issuance/verify flaps (B4). Best-effort: proceeds after the timeout.
+	waitForHTTPReady(a.cfg.IssuerBaseURL, 60*time.Second)
 	return nil
 }
 
@@ -523,7 +527,11 @@ func (a *Adapter) DeleteCustomSchema(_ context.Context, id string) error {
 	if service == "" {
 		service = "issuer-api"
 	}
-	return restartContainer(service)
+	if err := restartContainer(service); err != nil {
+		return err
+	}
+	waitForHTTPReady(a.cfg.IssuerBaseURL, 60*time.Second)
+	return nil
 }
 
 // parseTypeAndStdFromConfigID reverses the configID format. The wire-format

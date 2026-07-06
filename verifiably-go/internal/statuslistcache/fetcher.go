@@ -43,7 +43,7 @@ func NewFetcher(stateDir string, resolver didresolver.Resolver) *Fetcher {
 // JWT signature verification is attempted but failures only produce a warning
 // (except clear signature mismatches which return an error regardless of policy).
 func (f *Fetcher) Fetch(ctx context.Context, issuerDID, listURL string) (Result, error) {
-	rawJWT, err := f.fetchLive(ctx, listURL)
+	rawJWT, err := f.fetchLiveRetry(ctx, listURL)
 	if err == nil {
 		if verifyErr := f.verifyJWT(ctx, rawJWT, issuerDID); verifyErr != nil {
 			slog.Warn("status list: JWT verification warning", "url", listURL, "err", verifyErr)
@@ -79,6 +79,30 @@ func (f *Fetcher) Fetch(ctx context.Context, issuerDID, listURL string) (Result,
 		}, nil
 	}
 	return Result{Source: "unknown"}, fmt.Errorf("status list unavailable and no cache for %s: %w", listURL, err)
+}
+
+// fetchLiveRetry retries fetchLive a few times with a short backoff so a cold
+// endpoint — the status list just after issuance, or a cold hairpin route —
+// does not fail-closed on the first attempt (the "first verify fails, retry
+// succeeds" flakiness, B4). A fast failure (connection refused) retries almost
+// immediately; only a hanging endpoint pays the per-attempt timeout.
+func (f *Fetcher) fetchLiveRetry(ctx context.Context, listURL string) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(attempt) * 400 * time.Millisecond):
+			}
+		}
+		raw, err := f.fetchLive(ctx, listURL)
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+	}
+	return "", lastErr
 }
 
 // fetchLive GETs the status list URL with a 3-second timeout.
