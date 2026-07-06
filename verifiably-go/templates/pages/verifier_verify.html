@@ -144,12 +144,12 @@
       {{if $canUpload}}
       <div style="background:var(--bg-elev);border:1px solid var(--line);padding:1.5rem;border-radius:2px">
         <h4 style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.1rem;margin-bottom:0.25rem">Upload QR image</h4>
-        <p style="font-size:0.82rem;color:var(--ink-soft);margin-bottom:1rem">PNG or JPEG. Server extracts and verifies the embedded QR.</p>
+        <p style="font-size:0.82rem;color:var(--ink-soft);margin-bottom:1rem">PNG, JPEG, or PDF. Server extracts and verifies the embedded QR (incl. from a wallet/Inji credential PDF).</p>
         <form id="upload-qr-form" enctype="multipart/form-data"
               style="display:flex;flex-direction:column;gap:0.5rem"
               onsubmit="uploadQR(event)">
           <input type="hidden" name="method" value="upload">
-          <input type="file" name="credential_image" accept="image/png,image/jpeg,image/webp" required>
+          <input type="file" name="credential_image" accept="image/png,image/jpeg,image/webp,application/pdf" required>
           <button class="btn small" type="submit">Verify upload →</button>
         </form>
       </div>
