@@ -145,7 +145,7 @@ func (f *Fetcher) fetchLive(ctx context.Context, listURL string) (string, error)
 // Resolution and format failures produce warnings but do not block caching.
 // A detected signature mismatch returns an error.
 func (f *Fetcher) verifyJWT(ctx context.Context, rawJWT, issuerDID string) error {
-	if f.resolver == nil || rawJWT == "" {
+	if rawJWT == "" {
 		return nil
 	}
 	parts := strings.Split(rawJWT, ".")
@@ -163,6 +163,32 @@ func (f *Fetcher) verifyJWT(ctx context.Context, rawJWT, issuerDID string) error
 		}
 	}
 	if !strings.HasPrefix(issuerDID, "did:") {
+		return nil
+	}
+	// did:jwk embeds the public key directly, so no network resolution is needed.
+	// Skipping it (the resolver only handles did:web) left did:jwk-signed status
+	// lists — walt.id's — with their signatures UNVERIFIED, i.e. revocation
+	// trusted on faith (P2).
+	if strings.HasPrefix(issuerDID, "did:jwk:") {
+		jwk, err := decodeDIDJWK(issuerDID)
+		if err != nil {
+			slog.Warn("status list: invalid did:jwk issuer (skipping sig check)", "did", issuerDID, "err", err)
+			return nil
+		}
+		if verr := verifyES256JWT(parts, jwk); verr != nil {
+			// Only a genuine P-256 signature mismatch is fatal; an unsupported key
+			// type or malformed field means we can't check it here — skip rather
+			// than false-deny a legitimate credential.
+			if strings.Contains(verr.Error(), "signature invalid") {
+				return fmt.Errorf("status list did:jwk signature invalid: %w", verr)
+			}
+			slog.Warn("status list: did:jwk sig check skipped", "did", issuerDID, "err", verr)
+			return nil
+		}
+		return nil
+	}
+	// Other DID methods (did:web) require the resolver.
+	if f.resolver == nil {
 		return nil
 	}
 	doc, err := f.resolver.Resolve(ctx, issuerDID)
@@ -223,4 +249,25 @@ func verifyES256JWT(parts []string, jwk map[string]any) error {
 		return fmt.Errorf("signature invalid")
 	}
 	return nil
+}
+
+// decodeDIDJWK decodes a did:jwk identifier (did:jwk:<base64url(JWK JSON)>, an
+// optional #fragment ignored) into its JWK map. did:jwk carries the public key
+// inline, so verification needs no network resolution.
+func decodeDIDJWK(did string) (map[string]any, error) {
+	enc := strings.TrimPrefix(did, "did:jwk:")
+	if i := strings.IndexByte(enc, '#'); i >= 0 {
+		enc = enc[:i]
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(enc)
+	if err != nil {
+		if raw, err = base64.URLEncoding.DecodeString(enc); err != nil {
+			return nil, fmt.Errorf("did:jwk base64url: %w", err)
+		}
+	}
+	var jwk map[string]any
+	if err := json.Unmarshal(raw, &jwk); err != nil {
+		return nil, fmt.Errorf("did:jwk JWK JSON: %w", err)
+	}
+	return jwk, nil
 }
