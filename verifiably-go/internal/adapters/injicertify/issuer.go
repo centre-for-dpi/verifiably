@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -118,6 +119,23 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 
 	switch a.cfg.Mode {
 	case ModePreAuth:
+		// Embed the IETF Token Status List pointer for SD-JWT so the credential is
+		// revocable: the template (SaveCustomSchema) carries
+		// status.status_list.{idx:${statusIdx}, uri:${statusUri}} and certify
+		// substitutes both markers directly from these pre-authorized claims. The
+		// claim keys must be exactly statusIdx/statusUri (the bare marker names —
+		// pre-auth has no data-provider view, unlike the auth-code slug-scoped
+		// keys). Default to a benign 0/"" when no binding was allocated so the
+		// markers never render unresolved.
+		if stdToCredentialFormat(req.Schema.Std) == "vc+sd-jwt" {
+			if req.StatusList != nil {
+				claims["statusIdx"] = strconv.Itoa(req.StatusList.Index)
+				claims["statusUri"] = req.StatusList.PublishURL
+			} else {
+				claims["statusIdx"] = "0"
+				claims["statusUri"] = ""
+			}
+		}
 		body := preAuthorizedDataRequest{
 			CredentialConfigurationId: req.Schema.ID,
 			Claims:                    claims,

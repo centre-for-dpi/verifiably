@@ -54,7 +54,15 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 	defer conn.Close(ctx)
 
 	credFormat := stdToCredentialFormat(schema.Std)
-	vcTemplate := buildVCTemplate(schema, false)
+	// Pre-auth SD-JWT credentials must be revocable: embed the IETF Token Status
+	// List pointer (status.status_list.{idx:${statusIdx}, uri:${statusUri}}) in
+	// the template, like the auth-code path already does. Certify substitutes the
+	// two markers directly from the POSTed pre-authorized claims — IssueToWallet
+	// (ModePreAuth) stages statusIdx/statusUri from the allocated StatusList
+	// binding. Without this the status bit the issuer allocates is never
+	// referenced by the issued credential, so revoking it has no effect.
+	withTokenStatus := credFormat == "vc+sd-jwt"
+	vcTemplate := buildVCTemplate(schema, withTokenStatus)
 
 	scope := a.cfg.DB.Scope
 	if scope == "" {
