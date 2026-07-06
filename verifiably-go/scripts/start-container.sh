@@ -155,13 +155,12 @@ start_container() {
   local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"
   # verifiably-go (uid 65532) rewrites these two config files on issuer schema-creation
   for _f in "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties" "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties"; do chown 65532:65532 "$_f" 2>/dev/null || true; done
+  # Healthcheck is defined in the Dockerfile as an exec-form HEALTHCHECK that
+  # runs `verifiably -healthcheck` (the distroless image has no /bin/sh or wget,
+  # so the CLI --health-cmd form — always CMD-SHELL — can never succeed here).
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
-    --health-cmd="wget -qO- http://localhost:8080/healthz || exit 1" \
-    --health-interval=15s \
-    --health-timeout=5s \
-    --health-retries=3 \
     --network "${COMPOSE_PROJECT}_default" \
     --add-host=host.docker.internal:host-gateway \
     "${host_alias_args[@]}" \

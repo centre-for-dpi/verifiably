@@ -141,7 +141,41 @@ func maskDSN(dsn string) string {
 	return dsn
 }
 
+// runHealthcheck is the container health probe. The distroless runtime image
+// has no shell or wget, so `verifiably -healthcheck` (invoked by the Dockerfile
+// HEALTHCHECK) is the only in-container liveness probe: GET /healthz on the
+// local listen port, mapping 2xx→exit 0 and anything else→exit 1.
+func runHealthcheck() int {
+	addr := os.Getenv("VERIFIABLY_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		port = "8080"
+	}
+	client := &http.Client{Timeout: 4 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck:", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "healthcheck: /healthz returned %d\n", resp.StatusCode)
+	return 1
+}
+
 func main() {
+	// -healthcheck: shell-less container health probe (see runHealthcheck). The
+	// distroless runtime image has no /bin/sh or wget, so the Docker HEALTHCHECK
+	// execs the binary itself instead of a shell command.
+	if len(os.Args) > 1 && (os.Args[1] == "-healthcheck" || os.Args[1] == "--healthcheck" || os.Args[1] == "healthcheck") {
+		os.Exit(runHealthcheck())
+	}
+
 	// Structured JSON logs to stdout when running in a container (auto-detected
 	// via VERIFIABLY_LOG_JSON=1). Default keeps the dev-friendly text format
 	// for `go run`. Pipe to slog and route the legacy `log` package through
