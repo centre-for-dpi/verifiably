@@ -627,26 +627,40 @@ func extractPolicyOutcomes(raw json.RawMessage) []backend.PolicyOutcome {
 				// Walt.id surfaces failure as one of:
 				//   - is_success: false
 				//   - success:    false
-				//   - error/message: non-empty string
+				//   - error/errorMessage: non-empty string (message is informational only)
 				//   - exception (object) carrying message
+				// Determine pass/fail from EXPLICIT failure signals only. A bare
+				// `message` is informational on walt.id's SD-JWT *success* results,
+				// so it is a REASON carrier, never a failure signal by itself —
+				// treating it as one produced spurious "Failed policies" on valid
+				// SD-JWTs (B1). error/errorMessage/exception ARE failure signals.
+				failed := false
 				if v, ok := x["is_success"].(bool); ok && !v {
-					cur.passed = false
+					failed = true
 				}
 				if v, ok := x["success"].(bool); ok && !v {
-					cur.passed = false
+					failed = true
 				}
-				for _, k := range []string{"error", "message", "errorMessage"} {
+				for _, k := range []string{"error", "errorMessage"} {
 					if s, ok := x[k].(string); ok && s != "" {
-						cur.passed = false
+						failed = true
 						if cur.reason == "" {
 							cur.reason = s
 						}
 					}
 				}
 				if exc, ok := x["exception"].(map[string]any); ok {
-					cur.passed = false
+					failed = true
 					if s, ok := exc["message"].(string); ok && cur.reason == "" {
 						cur.reason = s
+					}
+				}
+				if failed {
+					cur.passed = false
+					if cur.reason == "" {
+						if s, ok := x["message"].(string); ok {
+							cur.reason = s
+						}
 					}
 				}
 				seen[name] = cur
