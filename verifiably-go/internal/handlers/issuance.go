@@ -183,6 +183,22 @@ func sourcesFromCapabilities(dpg vctypes.DPG) []sourceOption {
 // restart: in-memory sessions get wiped on restart, but an already-loaded
 // form still has the originally-selected DPG + schema in its hidden
 // fields and submits without a cryptic "unknown DPG: issuer \"\"" error.
+// normalizeIssuanceTime accepts an RFC3339 timestamp, an HTML datetime-local
+// value (2006-01-02T15:04[:05]), or a plain date (2006-01-02) and returns it as
+// RFC3339 UTC. Empty or unparseable input yields "".
+func normalizeIssuanceTime(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	}
+	return ""
+}
+
 func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	_ = r.ParseForm()
@@ -230,6 +246,11 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := backend.IssueRequest{IssuerDpg: sess.IssuerDpg, Schema: schema, SubjectData: subject}
+	// Optional issuance-time validity window. When set, the adapter pins the
+	// credential's validFrom/validUntil (W3C) or nbf/exp (SD-JWT) instead of the
+	// DPG default (walt.id defaults to ~2y); empty leaves the backend default.
+	req.ValidFrom = normalizeIssuanceTime(r.FormValue("valid_from"))
+	req.ValidUntil = normalizeIssuanceTime(r.FormValue("valid_until"))
 
 	if sess.Dest == "wallet" {
 		// Allocate a status-list index BEFORE the issuance call so the

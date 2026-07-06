@@ -172,6 +172,15 @@ type IssueRequest struct {
 	// termsOfUse capability (ADR §6). Honored only on the JSON-LD (ldp_vc /
 	// jwt_vc_json) issuance path; ignored for SD-JWT and mdoc.
 	CredentialData json.RawMessage
+
+	// ValidFrom / ValidUntil, when set (RFC3339), pin the credential's validity
+	// window at issuance instead of the DPG default (walt.id defaults to ~2y
+	// from now). The adapter writes them into the credential body — W3C
+	// validFrom/validUntil, SD-JWT nbf/exp — so verifiers and the temporal gate
+	// enforce them. Empty means "use the backend default". Ignored when
+	// CredentialData is supplied verbatim (the caller owns the body then).
+	ValidFrom  string
+	ValidUntil string
 }
 
 // StatusListBinding is the (which list, which bit, where to fetch) pointer

@@ -670,7 +670,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		// which become disclosures; a VCDM-wrapped body only makes
 		// "credentialSubject" itself disclosable, leaving the individual
 		// claims baked into the JWT.
-		cd, err := buildSDJWTCredentialData(req.SubjectData, req.StatusList)
+		cd, err := buildSDJWTCredentialData(req.SubjectData, req.StatusList, req.ValidFrom, req.ValidUntil)
 		if err != nil {
 			return backend.IssueToWalletResult{}, err
 		}
@@ -702,7 +702,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		// SubjectData map cannot express; use it verbatim when present.
 		cd := req.CredentialData
 		if len(cd) == 0 {
-			built, err := buildCredentialData(req.Schema, req.SubjectData, req.StatusList)
+			built, err := buildCredentialData(req.Schema, req.SubjectData, req.StatusList, req.ValidFrom, req.ValidUntil)
 			if err != nil {
 				return backend.IssueToWalletResult{}, err
 			}
@@ -922,10 +922,34 @@ func authenticationMethod(flow string) string {
 // nests under credentialSubject), SD-JWT VC puts each claim at the payload
 // root so walt.id's SDMap can mark individual claims as selectively
 // disclosable.
-func buildSDJWTCredentialData(subject map[string]string, sl *backend.StatusListBinding) (json.RawMessage, error) {
-	out := make(map[string]any, len(subject)+1)
+// parseValidityRFC3339 parses an RFC3339 timestamp; an empty or malformed value
+// yields (zero, false) so callers skip an absent validity bound.
+func parseValidityRFC3339(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+func buildSDJWTCredentialData(subject map[string]string, sl *backend.StatusListBinding, validFrom, validUntil string) (json.RawMessage, error) {
+	out := make(map[string]any, len(subject)+3)
 	for k, v := range subject {
 		out[k] = v
+	}
+	// Validity window as JWT NumericDate (seconds) — nbf/exp — so the verifier
+	// and the temporal gate enforce the credential's own window instead of
+	// walt.id's ~2y default. walt.id passes credentialData through into the
+	// SD-JWT, so these land as registered JWT claims.
+	if t, ok := parseValidityRFC3339(validFrom); ok {
+		out["nbf"] = t.Unix()
+	}
+	if t, ok := parseValidityRFC3339(validUntil); ok {
+		out["exp"] = t.Unix()
 	}
 	// IETF Token Status List binding: top-level `status.status_list.{idx,uri}`
 	// per draft-ietf-oauth-status-list. Walt.id passes the credentialData
@@ -994,7 +1018,7 @@ func buildMdocData(schema vctypes.Schema, subject map[string]string) (json.RawMe
 // buildCredentialData constructs a VCDM 2.0-shaped JSON object from the
 // operator's subject input. Types come from the schema id prefix
 // (the canonical type before the `_format` suffix).
-func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *backend.StatusListBinding) (json.RawMessage, error) {
+func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *backend.StatusListBinding, validFrom, validUntil string) (json.RawMessage, error) {
 	types := []string{"VerifiableCredential"}
 	if schema.Custom {
 		// Custom schemas may declare AdditionalTypes via the builder's
@@ -1024,6 +1048,15 @@ func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *b
 		},
 		"type":              types,
 		"credentialSubject": credSubject,
+	}
+	// Validity window: pin validFrom/validUntil when set so the verifier and the
+	// temporal gate enforce the credential's own window instead of walt.id's
+	// ~2y default.
+	if t, ok := parseValidityRFC3339(validFrom); ok {
+		doc["validFrom"] = t.UTC().Format(time.RFC3339)
+	}
+	if t, ok := parseValidityRFC3339(validUntil); ok {
+		doc["validUntil"] = t.UTC().Format(time.RFC3339)
 	}
 	// W3C Bitstring Status List 2023 entry. statusListIndex must be a
 	// STRING per the spec, even though it's numeric semantically — verifiers

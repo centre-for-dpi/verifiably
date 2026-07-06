@@ -107,6 +107,22 @@
           </div>
         {{end}}
       </div>
+      {{/* Optional validity window (B3). Empty = the DPG default (walt.id ~2y).
+           Pins validFrom/validUntil (W3C) or nbf/exp (SD-JWT) so the credential
+           isn't stuck at the backend's default window. */}}
+      <details style="margin-top:0.8rem">
+        <summary style="cursor:pointer;font-size:0.8rem;color:#555">Validity window (optional — defaults to the DPG's own window)</summary>
+        <div class="form-grid" style="margin-top:0.6rem">
+          <div class="field">
+            <label>Valid from</label>
+            <input type="datetime-local" name="valid_from">
+          </div>
+          <div class="field">
+            <label>Valid until</label>
+            <input type="datetime-local" name="valid_until">
+          </div>
+        </div>
+      </details>
 
     {{else if eq .SingleSource "api"}}
       <div class="field">
