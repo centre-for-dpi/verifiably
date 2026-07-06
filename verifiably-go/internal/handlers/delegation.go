@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/delegation"
@@ -27,6 +28,13 @@ func (h *H) attachDelegationVerdict(r *http.Request, res *backend.VerificationRe
 	if res == nil || len(res.Credentials) == 0 {
 		return
 	}
+	// Temporal-validity gate — applies to EVERY verify (delegation or not) that
+	// populates Credentials. No deployed DPG verifier reliably enforces
+	// validFrom/validUntil (or nbf/exp) across all formats, so without this an
+	// expired or not-yet-valid credential resolves as verified. Runs before the
+	// delegation evaluator so a stale-window credential is rejected regardless of
+	// whether the presentation is a delegation.
+	attachTemporalVerdict(res, time.Now())
 	var trustFn delegation.TrustChecker
 	if h.TrustRegistry != nil {
 		trustFn = h.TrustRegistry.IsTrusted
@@ -51,6 +59,43 @@ func (h *H) attachDelegationVerdict(r *http.Request, res *backend.VerificationRe
 		}
 		slog.Info("delegation denied", "reason", verdict.Reason)
 	}
+}
+
+// attachTemporalVerdict downgrades a verification when any presented credential
+// is outside its own validity window (validFrom/validUntil, issuanceDate/
+// expirationDate, or nbf/exp). An absent bound imposes no constraint. This is
+// the B7 correctness/security gate — a sibling of attachDelegationVerdict /
+// attachTrustStatus that owns temporal validity no adapter reliably enforces.
+func attachTemporalVerdict(res *backend.VerificationResult, now time.Time) {
+	for _, c := range res.Credentials {
+		notBefore, notAfter := c.TemporalBounds()
+		label := temporalCredLabel(c)
+		if !notBefore.IsZero() && now.Before(notBefore) {
+			temporalDowngrade(res, fmt.Sprintf("%s is not yet valid (validFrom %s)", label, notBefore.Format(time.RFC3339)))
+			return
+		}
+		if !notAfter.IsZero() && now.After(notAfter) {
+			temporalDowngrade(res, fmt.Sprintf("%s has expired (validUntil %s)", label, notAfter.Format(time.RFC3339)))
+			return
+		}
+	}
+}
+
+func temporalDowngrade(res *backend.VerificationResult, reason string) {
+	res.Valid = false
+	if res.Method != "" {
+		res.Method += " · " + reason
+	} else {
+		res.Method = reason
+	}
+	slog.Info("temporal policy failed", "reason", reason)
+}
+
+func temporalCredLabel(c backend.NormalizedCredential) string {
+	if len(c.Types) > 0 && strings.TrimSpace(c.Types[0]) != "" {
+		return c.Types[0]
+	}
+	return "credential"
 }
 
 // delegationStatusChecker returns a StatusChecker that resolves a credential's

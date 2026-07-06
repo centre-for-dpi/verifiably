@@ -149,6 +149,22 @@ func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder 
 	res.Invocation = true
 
 	// 3. Capability — root authority, validity window, permitted action, no chain.
+	// Credential temporal validity: the identity and delegation credentials must
+	// each be within their own validity window (validFrom/validUntil, nbf/exp).
+	// The host verifier does not reliably enforce this for every format, and the
+	// evaluate-over-held paths run no host verifier at all — so check it here so
+	// the delegation verdict stays consistent with the temporal gate.
+	for _, c := range []backend.NormalizedCredential{identity, deleg} {
+		notBefore, notAfter := c.TemporalBounds()
+		if !notBefore.IsZero() && opts.now().Before(notBefore) {
+			res.Reason = fmt.Sprintf("%s is not yet valid (validFrom %s)", primaryType(c.Types), notBefore.UTC().Format(time.RFC3339))
+			return res
+		}
+		if !notAfter.IsZero() && opts.now().After(notAfter) {
+			res.Reason = fmt.Sprintf("%s has expired (validUntil %s)", primaryType(c.Types), notAfter.UTC().Format(time.RFC3339))
+			return res
+		}
+	}
 	if cap.HasChain && !cap.AllowFurtherDelegation {
 		res.Reason = "re-delegation chain present but further delegation is not allowed (v1 rejects chains)"
 		return res

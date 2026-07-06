@@ -1,5 +1,7 @@
 package backend
 
+import "time"
+
 // This file defines a format-agnostic, per-credential view of a verified
 // presentation. The verifier adapters (inji-verify, walt.id, credebl) collapse
 // a verified VP into a single flat DisclosedFields map today, which is lossy:
@@ -48,4 +50,47 @@ type DelegationResult struct {
 	Capability bool   // controller==issuer, within validity, action permitted
 	NotRevoked bool   // neither credential is revoked (status checked)
 	Trusted    bool   // the delegation issuer is in the trust registry
+}
+
+// TemporalBounds returns the credential's own validity window, read from Raw in
+// a format-agnostic way: W3C VCDM 2.0 validFrom/validUntil, VCDM 1.1
+// issuanceDate/expirationDate (RFC3339 strings), and SD-JWT/JWT nbf/exp
+// (NumericDate seconds). A zero time.Time for either bound means it is absent
+// (no constraint on that side — a credential with no expiry is valid
+// indefinitely). Callers enforce "now within [notBefore, notAfter]".
+func (c NormalizedCredential) TemporalBounds() (notBefore, notAfter time.Time) {
+	notBefore = firstRawTime(c.Raw, "validFrom", "issuanceDate", "nbf")
+	notAfter = firstRawTime(c.Raw, "validUntil", "expirationDate", "exp")
+	return
+}
+
+// firstRawTime returns the first of keys present in raw that parses to a time —
+// an RFC3339 string (W3C dates) or a positive number of seconds since the epoch
+// (JWT NumericDate). Returns the zero time.Time when none is present/parseable.
+func firstRawTime(raw map[string]any, keys ...string) time.Time {
+	for _, k := range keys {
+		v, ok := raw[k]
+		if !ok {
+			continue
+		}
+		switch t := v.(type) {
+		case string:
+			if ts, err := time.Parse(time.RFC3339, t); err == nil {
+				return ts.UTC()
+			}
+		case float64:
+			if t > 0 {
+				return time.Unix(int64(t), 0).UTC()
+			}
+		case int64:
+			if t > 0 {
+				return time.Unix(t, 0).UTC()
+			}
+		case int:
+			if t > 0 {
+				return time.Unix(int64(t), 0).UTC()
+			}
+		}
+	}
+	return time.Time{}
 }
