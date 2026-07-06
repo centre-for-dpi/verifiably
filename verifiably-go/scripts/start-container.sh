@@ -340,16 +340,24 @@ def rewrite_url(url):
             return f"http://{internal}{rest}"
     return url
 
-def walk(obj):
+def walk(obj, skip_keys=frozenset()):
     if isinstance(obj, dict):
+        # An inji_verify backend's config.baseUrl is the WALLET-FACING OID4VP
+        # request_uri host — the external wallet fetches the signed JAR from
+        # {baseUrl}/v1/verify/vp-request/{id}, so it must stay PUBLIC (like
+        # UIURL), not be rewritten to the docker-internal host. Its
+        # internalBaseUrl carries the server-to-server URL and is still rewritten.
+        child_skip = skip_keys
+        if obj.get("type") == "inji_verify":
+            child_skip = skip_keys | {"baseUrl"}
         for k, v in list(obj.items()):
-            if k in internal_fields and isinstance(v, str):
+            if k in internal_fields and k not in skip_keys and isinstance(v, str):
                 obj[k] = rewrite_url(v)
             elif isinstance(v, (dict, list)):
-                walk(v)
+                walk(v, child_skip)
     elif isinstance(obj, list):
         for it in obj:
-            walk(it)
+            walk(it, skip_keys)
 
 with open(src) as f:
     data = json.load(f)
