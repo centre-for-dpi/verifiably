@@ -96,6 +96,12 @@ type vpRequestResponse struct {
 // Accepts either a named preset key (req.TemplateKey in oid4vpTemplates) or an
 // inline custom template (req.Template != nil / req.TemplateKey == "custom").
 func (a *Adapter) RequestPresentation(ctx context.Context, req backend.PresentationRequest) (backend.PresentationRequestResult, error) {
+	// Inji Verify presets request a single credential; a delegation PAIR
+	// (Templates>1) can't be honored here and would be silently dropped to one.
+	// Surface it instead (P2).
+	if len(req.Templates) > 1 {
+		return backend.PresentationRequestResult{}, fmt.Errorf("inji-verify cannot request a %d-credential (delegation pair) presentation; use the walt.id verifier for pairs, or the evaluate-over-held path", len(req.Templates))
+	}
 	var tpl vctypes.OID4VPTemplate
 	if req.Template != nil {
 		tpl = *req.Template
@@ -251,7 +257,9 @@ func (a *Adapter) verifyJSONLD(ctx context.Context, req backend.DirectVerifyRequ
 		Issuer:            extractIssuerFromJSONLD(cred),
 		Subject:           "(from credential)",
 		Issued:            time.Now().UTC(),
-		CheckedRevocation: true,
+		// Direct/offline verify: Inji Verify's response doesn't confirm a
+		// status-list check, so don't claim one ran (P2 honesty).
+		CheckedRevocation: false,
 	}, nil
 }
 
@@ -280,7 +288,8 @@ func (a *Adapter) verifyViaSubmission(ctx context.Context, req backend.DirectVer
 		Issuer:            "(from credential)",
 		Subject:           "(from credential)",
 		Issued:            time.Now().UTC(),
-		CheckedRevocation: true,
+		// Direct/offline verify: no confirmed status-list check (P2 honesty).
+		CheckedRevocation: false,
 	}, nil
 }
 
