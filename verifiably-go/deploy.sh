@@ -532,6 +532,14 @@ cmd_up() {
     all|inji) up_sunbird_registry ;;
   esac
 
+  # Inji Verify OID4VP online-sharing needs its `verify` schema in
+  # inji-verify-postgres. verify-service 0.16.0 runs ddl-auto=none and ships no
+  # migrations, so cross-device presentation 500s without it. Fresh volumes get
+  # it via the initdb.d mount; this idempotent apply covers existing volumes.
+  case "$scenario" in
+    all|inji) apply_inji_verify_schema ;;
+  esac
+
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
   # operator can SEE which step is slow or stuck. Previously this was
@@ -550,6 +558,36 @@ cmd_up() {
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
   verify_oidc_discovery
+}
+
+# apply_inji_verify_schema creates the Inji Verify OID4VP `verify` schema + the
+# four online-sharing tables (authorization_request_details, presentation_
+# definition, vp_submission, vc_submission) in inji-verify-postgres. The image
+# (mosipid/inji-verify-service:0.16.0) runs spring.jpa.hibernate.ddl-auto=none
+# and bundles NO Flyway/Liquibase migrations, so without this schema
+# POST /v1/verify/vp-request 500s ("relation authorization_request_details does
+# not exist") and cross-device presentation can't work. The DDL is committed at
+# deploy/compose/stack/inji/verify/init.sql (canonical mosip/inji-verify v0.16.0
+# db-init) and mounted into initdb.d for FRESH volumes; this apply covers
+# EXISTING volumes and is fully idempotent (CREATE ... IF NOT EXISTS), so it is
+# safe to run on every deploy.
+apply_inji_verify_schema() {
+  local sql="$SCRIPT_DIR/deploy/compose/stack/inji/verify/init.sql"
+  [[ -f "$sql" ]] || { red "  inji-verify init.sql missing ($sql) — skipping"; return 0; }
+  docker ps --format '{{.Names}}' | grep -qx inji-verify-postgres \
+    || { echo "  inji-verify-postgres not running — skipping schema apply"; return 0; }
+  bold "▶ Applying Inji Verify OID4VP schema (verify.*)"
+  local ready=
+  for _ in $(seq 1 30); do
+    if docker exec inji-verify-postgres pg_isready -U postgres -q 2>/dev/null; then ready=1; break; fi
+    sleep 2
+  done
+  [[ -n "$ready" ]] || { red "  inji-verify-postgres not ready — schema not applied"; return 0; }
+  if docker exec -i inji-verify-postgres psql -U postgres -d inji_verify -v ON_ERROR_STOP=1 -q < "$sql" >/dev/null 2>&1; then
+    green "  inji-verify verify schema ready (4 OID4VP tables)"
+  else
+    red "  inji-verify schema apply failed (retry: docker exec -i inji-verify-postgres psql -U postgres -d inji_verify < $sql)"
+  fi
 }
 
 # up_sunbird_registry brings up the Sunbird RC registry-of-record so the Inji

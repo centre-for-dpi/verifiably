@@ -112,10 +112,26 @@ works only because `caddy-public` aliases `inji-certify-authcode.<domain>` (see
 
 ## 6. Databases & APIs
 
-**Database `inji_verify`** (`verify` schema). Note: the `verify` schema is **not DDL-initialised**
-in this deployment — it has no tables. The **stateless** `vc-verification` path works without them;
-the stateful `vc-submission` path expects a `vc_submission` table that does not exist, so
-paste/upload of a JSON-LD VC (which routes to `vc-verification`) is the reliable path.
+**Database `inji_verify`** (`verify` schema). verify-service 0.16.0 runs
+`spring.jpa.hibernate.ddl-auto=none` and ships **no Flyway/Liquibase migrations**, so the
+`verify` schema must be created out-of-band. We provision it from the canonical
+mosip/inji-verify v0.16.0 DDL, committed at **`deploy/compose/stack/inji/verify/init.sql`**
+(schema `verify` + four tables: `authorization_request_details`, `presentation_definition`,
+`vp_submission`, `vc_submission`). It is **mounted into `inji-verify-postgres`'s
+`/docker-entrypoint-initdb.d`** (runs on a fresh volume) and **applied idempotently by
+`deploy.sh` (`apply_inji_verify_schema`, gated `all|inji`)** for existing volumes.
+Without it, the stateful `vc-submission` and **OID4VP `vp-request`/`vp-submission`** paths 500
+(`relation "authorization_request_details" does not exist`); only the stateless
+`vc-verification` (JSON-LD paste/upload) path works. With the schema present, cross-device
+OID4VP online-sharing (external wallet presents an SD-JWT → `vp-result` `SUCCESS`) works.
+
+Two more requirements for cross-device OID4VP to reach an external wallet:
+- The `inji_verify` backend's **`config.baseUrl` must stay PUBLIC** (it is the wallet-facing
+  `request_uri` host). `scripts/start-container.sh`'s docker-config rewriter preserves it
+  (`type == "inji_verify"` skips `baseUrl`); only `internalBaseUrl` is rewritten to the
+  docker-internal host.
+- The service entrypoint imports `certify-nginx.crt` + `certify-preauth-nginx.crt` into the JVM
+  `cacerts` so its did:web issuer resolver can fetch the Inji issuer's DID doc over TLS.
 
 **Upstream API (verifiably → service):** `POST /v1/verify/vc-verification`,
 `POST /v1/verify/vc-submission`, `GET /v1/verify/vp-result/{txid}`, `POST /v1/verify/vp-request`,

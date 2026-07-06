@@ -660,6 +660,12 @@ services:
       start_period: 90s
     volumes:
       - inji-verify-db:/var/lib/postgresql/data
+      # verify-service 0.16.0 ships ddl-auto=none + no migrations, so the
+      # OID4VP `verify` schema must be created out-of-band. This runs on a
+      # FRESH volume (initdb.d); existing volumes get it via deploy.sh's
+      # idempotent apply. Without it, POST /v1/verify/vp-request 500s
+      # ("relation authorization_request_details does not exist").
+      - ./inji/verify/init.sql:/docker-entrypoint-initdb.d/10-verify-schema.sql:ro
 
   inji-verify-service:
     image: mosipid/inji-verify-service:0.16.0
