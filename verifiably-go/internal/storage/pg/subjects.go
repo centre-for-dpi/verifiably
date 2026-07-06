@@ -167,7 +167,12 @@ func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 		ARRAY['did:jwk'], ARRAY['Ed25519Signature2020'],
 		'{"jwt": {"proof_signing_alg_values_supported": ["RS256", "ES256"]}}'::JSONB,
 		$10::JSONB, NULL, NULL, ARRAY['revocation'], NULL, NULL, NOW(), NULL
-	) ON CONFLICT (credential_config_key_id) DO NOTHING`
+	) ON CONFLICT (credential_config_key_id) DO UPDATE SET
+		status = 'active', vc_template = EXCLUDED.vc_template, sd_jwt_vct = EXCLUDED.sd_jwt_vct,
+		context = EXCLUDED.context, credential_type = EXCLUDED.credential_type,
+		credential_format = EXCLUDED.credential_format, did_url = EXCLUDED.did_url,
+		display = EXCLUDED.display, display_order = EXCLUDED.display_order, scope = EXCLUDED.scope,
+		credential_subject = EXCLUDED.credential_subject, upd_dtimes = NOW()`
 	if _, err := tx.Exec(ctx, ins, key, vcTemplateB64, sdJwtVct, vcContext, credType, credFormat,
 		display, displayOrder, scope, credsub, didURL); err != nil {
 		return fmt.Errorf("pg: insert credential_config: %w", err)
