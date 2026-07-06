@@ -79,14 +79,7 @@ func firstRawTime(raw map[string]any, keys ...string) time.Time {
 				return ts.UTC()
 			}
 		case float64:
-			if t > 0 {
-				return time.Unix(int64(t), 0).UTC()
-			}
-		case int64:
-			if t > 0 {
-				return time.Unix(t, 0).UTC()
-			}
-		case int:
+			// JSON numbers decode to float64; JWT NumericDate is seconds.
 			if t > 0 {
 				return time.Unix(int64(t), 0).UTC()
 			}

@@ -41,4 +41,12 @@ func TestTemporalBounds(t *testing.T) {
 	if !nb3.IsZero() || !na3.IsZero() {
 		t.Fatalf("expected zero bounds when no temporal fields present: nb=%v na=%v", nb3, na3)
 	}
+
+	// Present-but-unparseable (bad string, non-positive number) is treated as
+	// absent — no constraint rather than a spurious rejection.
+	bad := NormalizedCredential{Raw: map[string]any{"validUntil": "not-a-date", "exp": float64(0)}}
+	nb4, na4 := bad.TemporalBounds()
+	if !nb4.IsZero() || !na4.IsZero() {
+		t.Fatalf("unparseable bounds should be zero: nb=%v na=%v", nb4, na4)
+	}
 }
