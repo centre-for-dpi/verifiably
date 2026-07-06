@@ -85,7 +85,14 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	// nested status.status_list template claim), so listing them as schema fields
 	// would create DUPLICATE view columns and fail CREATE VIEW. For ldp_vc the
 	// flat statusUri/statusIdx/statusType fields ARE the status mechanism.
-	delegFields := []string{"onBehalfOf", "role", "allowedAction", "validUntil"}
+	// The capability expiry is carried as `valid_until` (underscore), NOT
+	// `validUntil`: Inji Certify reserves the `${validUntil}` substitution marker
+	// for the credential's own VCDM validity date (which it fills server-side with
+	// a ~2y default), so a `validUntil` claim field would be SHADOWED by that
+	// built-in and ignore req.ValidUntil (ERR-3). `valid_until` is not reserved →
+	// resolves from the data provider, and matches the SD-JWT flat convention the
+	// evaluator + TemporalBounds already read (internal/delegation/build.go).
+	delegFields := []string{"onBehalfOf", "role", "allowedAction", "valid_until"}
 	if statusListKindFor(std) != "token" {
 		delegFields = append(delegFields, "statusUri", "statusIdx", "statusType")
 	}
@@ -116,7 +123,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	// 3. Provision the holder's vc_subject (one row; each config's view reads its
 	//    fields). The capability is carried as FLAT claims — Certify's SD-JWT
 	//    template cannot nest a JSON object, so onBehalfOf + allowedAction (+
-	//    validUntil) are top-level claims the evaluator's flat path reads.
+	//    valid_until) are top-level claims the evaluator's flat path reads.
 	actions := req.AllowedAction
 	if len(actions) == 0 {
 		actions = []string{"present"}
@@ -129,7 +136,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		"allowedAction": strings.Join(actions, ","),
 	}
 	if req.ValidUntil != "" {
-		claims["validUntil"] = req.ValidUntil
+		claims["valid_until"] = req.ValidUntil
 	}
 	if binding != nil {
 		if binding.Type == "token" {
@@ -327,7 +334,10 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 	}
 
 	subjSchema := injiPreAuthSchema(subjType, dpg, std, []string{"subjectRef", "givenName"})
-	delegSchema := injiPreAuthSchema(delegType, dpg, std, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx", "statusType"})
+	// valid_until (not validUntil) — see ERR-3 note in APIInjiDelegationSetup:
+	// certify reserves ${validUntil} for the VCDM validity date, shadowing a
+	// claim of that name; valid_until resolves from the data provider instead.
+	delegSchema := injiPreAuthSchema(delegType, dpg, std, []string{"onBehalfOf", "role", "allowedAction", "valid_until", "statusUri", "statusIdx", "statusType"})
 	// SaveCustomSchema is not idempotent on CREDEBL (409 when the template name
 	// already exists); tolerate that — IssueToWallet's resolveTemplateID then
 	// finds the existing template by name+vct.
@@ -369,7 +379,7 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		"allowedAction": strings.Join(actions, ","),
 	}
 	if req.ValidUntil != "" {
-		delegClaims["validUntil"] = req.ValidUntil
+		delegClaims["valid_until"] = req.ValidUntil
 	}
 	if binding != nil {
 		delegClaims["statusUri"] = binding.PublishURL
@@ -460,7 +470,7 @@ func (h *H) VerifyWalletDelegation(w http.ResponseWriter, r *http.Request) {
 
 // normalizeWalletCred maps a held walt.id wallet credential into the evaluator's
 // view. For SD-JWT the wallet flattens top-level claims into Fields, so the flat
-// capability/status claims (onBehalfOf, allowedAction, validUntil, statusUri,
+// capability/status claims (onBehalfOf, allowedAction, valid_until, statusUri,
 // statusIdx, subjectRef) are all present.
 func normalizeWalletCred(c vctypes.Credential) backend.NormalizedCredential {
 	raw := make(map[string]any, len(c.Fields))
