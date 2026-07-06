@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -180,6 +181,20 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
+	}
+
+	// No submission landed within the poll window — the wallet hasn't posted
+	// yet (vp-result returns NO_VP_SUBMISSION until it does). Report PENDING,
+	// not invalid, so the UI/API keeps polling instead of showing a spurious
+	// "failed" the instant the request is created.
+	if res.VPResultStatus == "" {
+		return backend.VerificationResult{
+			Pending:   true,
+			Method:    fmt.Sprintf("OID4VP · %s", tpl.Disclosure),
+			Format:    tpl.Format,
+			Requested: tpl.Fields,
+			Issued:    time.Now().UTC(),
+		}, nil
 	}
 
 	valid := strings.EqualFold(res.VPResultStatus, "SUCCESS")
@@ -383,17 +398,21 @@ func looksLikeJSONLD(s string) bool {
 
 // presentationDefinitionFor builds a minimal PE definition from a template.
 func presentationDefinitionFor(tpl vctypes.OID4VPTemplate) map[string]any {
+	desc := map[string]any{
+		"id":     "vc-1",
+		"format": map[string]any{formatKey(tpl.Format): formatAlgClause(tpl.Format)},
+		"constraints": map[string]any{
+			"fields": fieldsClause(tpl),
+		},
+	}
+	// Name the descriptor so the wallet's consent screen labels the request by
+	// the requested credential (not a guessed/held one).
+	if tpl.Title != "" {
+		desc["name"] = tpl.Title
+	}
 	return map[string]any{
 		"id":                "pd-" + randomNonce(),
-		"input_descriptors": []map[string]any{
-			{
-				"id":     "vc-1",
-				"format": map[string]any{formatKey(tpl.Format): map[string]any{"alg": []string{"ES256", "EdDSA", "RS256"}}},
-				"constraints": map[string]any{
-					"fields": fieldsClause(tpl.Fields),
-				},
-			},
-		},
+		"input_descriptors": []map[string]any{desc},
 	}
 }
 
@@ -408,9 +427,45 @@ func formatKey(std string) string {
 	}
 }
 
-func fieldsClause(names []string) []map[string]any {
-	out := make([]map[string]any, 0, len(names))
-	for _, n := range names {
+// formatAlgClause returns the DIF Presentation Exchange format-algorithm object
+// for a given std. SD-JWT VC (vc+sd-jwt) MUST use sd-jwt_alg_values /
+// kb-jwt_alg_values (per the OID4VP SD-JWT VC profile); the JWT-style "alg" key
+// is not permitted under a vc+sd-jwt format entry, so a strict wallet PEX
+// validator (e.g. @sphereon/pex in credo-ts) rejects the whole definition with
+// "This is not a valid PresentationDefinition". Other formats (jwt_vc_json,
+// mso_mdoc) use "alg".
+func formatAlgClause(std string) map[string]any {
+	algs := []string{"ES256", "EdDSA", "RS256"}
+	if std == "sd_jwt_vc (IETF)" {
+		return map[string]any{
+			"sd-jwt_alg_values": algs,
+			"kb-jwt_alg_values": algs,
+		}
+	}
+	return map[string]any{"alg": algs}
+}
+
+func fieldsClause(tpl vctypes.OID4VPTemplate) []map[string]any {
+	out := make([]map[string]any, 0, len(tpl.Fields)+1)
+	// Pin the SD-JWT VC type with a vct filter so the wallet selects the EXACT
+	// credential to present instead of matching any held credential that
+	// happens to share these field names. Without it, a wallet holding another
+	// credential from the same schema family (e.g. an older "Police Clearance
+	// Certificate" with subjectRef/givenName) matches the wrong one and reports
+	// "No credential found for: vc-1". vct is a base-payload claim (never in a
+	// selective disclosure), so the filter always resolves.
+	//
+	// Use `pattern` (an anchored regex of the exact vct), NOT `const`: Inji
+	// Verify's FilterDTO models only {type, pattern} and silently DROPS `const`
+	// when it round-trips the definition into the signed request object, which
+	// would leave an empty `{type:string}` filter that matches everything.
+	if tpl.Vct != "" {
+		out = append(out, map[string]any{
+			"path":   []string{"$.vct"},
+			"filter": map[string]any{"type": "string", "pattern": "^" + regexp.QuoteMeta(tpl.Vct) + "$"},
+		})
+	}
+	for _, n := range tpl.Fields {
 		out = append(out, map[string]any{
 			"path": []string{"$." + n, "$.credentialSubject." + n},
 		})
