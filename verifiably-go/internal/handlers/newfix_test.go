@@ -90,3 +90,34 @@ func TestNormalizeIssuanceTime(t *testing.T) {
 		}
 	}
 }
+
+// B5: the two-step picker state machine — reset and a card click are mutually
+// exclusive, so a "change" chip (which hx-includes a stale schema_id) clears the
+// slot instead of re-selecting it; a step-2 click replaces the identity.
+func TestApplyDelegationPick(t *testing.T) {
+	d, s := applyDelegationPick("", "", "", "", "deleg-1")
+	if d != "deleg-1" || s != "" {
+		t.Fatalf("step1 pick: (%q,%q)", d, s)
+	}
+	d, s = applyDelegationPick("deleg-1", "", "", "", "id-1")
+	if d != "deleg-1" || s != "id-1" {
+		t.Fatalf("step2 pick: (%q,%q)", d, s)
+	}
+	d, s = applyDelegationPick("deleg-1", "id-1", "", "", "id-2")
+	if d != "deleg-1" || s != "id-2" {
+		t.Fatalf("step2 replace-on-click: (%q,%q)", d, s)
+	}
+	// The B5 bug: reset must win over the hx-included stale schema_id.
+	d, s = applyDelegationPick("deleg-1", "id-1", "1", "", "stale")
+	if d != "" || s != "" {
+		t.Fatalf("reset_deleg must clear BOTH ignoring stale schema_id: (%q,%q)", d, s)
+	}
+	d, s = applyDelegationPick("deleg-1", "id-1", "", "1", "stale")
+	if d != "deleg-1" || s != "" {
+		t.Fatalf("reset_subject must clear identity only: (%q,%q)", d, s)
+	}
+	d, s = applyDelegationPick("deleg-1", "id-1", "", "", "")
+	if d != "deleg-1" || s != "id-1" {
+		t.Fatalf("no action -> unchanged: (%q,%q)", d, s)
+	}
+}

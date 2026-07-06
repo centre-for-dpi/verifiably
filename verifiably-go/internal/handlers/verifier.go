@@ -449,6 +449,29 @@ func (h *H) buildTemplateForSchema(ctx context.Context, schemaID string, fields 
 // Any of these re-renders the whole fragment_verifier_custom_body so the
 // card list, active-chip highlighting, hidden schema_id input, and field
 // picker stay in sync without juggling multiple OOB swaps.
+// applyDelegationPick advances the two-step delegation picker from one form
+// action, returning the new (delegation, identity) schema ids. reset and a card
+// click are MUTUALLY EXCLUSIVE: a "change" chip posts reset_deleg/reset_subject
+// AND (via hx-include) the hidden schema_id, so treating them together — as the
+// old code did — let the reset fall through and immediately re-select the card it
+// just cleared (B5). A card click fills the CURRENT step: step 1 (no delegation
+// yet) sets the delegation; step 2 sets/replaces the identity, so clicking a
+// different identity card swaps it without needing the reset chip.
+func applyDelegationPick(delegID, subjectID, resetDeleg, resetSubject, schemaID string) (newDeleg, newSubject string) {
+	switch {
+	case resetDeleg != "":
+		return "", "" // change the delegation → back to step 1
+	case resetSubject != "":
+		return delegID, "" // change the identity → back to step 2
+	case schemaID != "":
+		if delegID == "" {
+			return schemaID, subjectID // step 1: pick the delegation
+		}
+		return delegID, schemaID // step 2: pick/replace the identity
+	}
+	return delegID, subjectID // filter/search re-render — no pick change
+}
+
 func (h *H) BuildVerifierTemplate(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	if sess.VerifierDpg == "" {
@@ -485,21 +508,15 @@ func (h *H) BuildVerifierTemplate(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("delegation_toggle_fired") != "" {
 		sess.VerifierDelegation = r.FormValue("delegation") == "on"
 		sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID = "", ""
+		// Don't carry a prior single-verify card pick into delegation mode — the
+		// hidden schema_id field (value=CustomSchemaID) is hx-included by the
+		// reset/filter chips, and a stale value would re-fill a just-cleared slot.
+		sess.CustomOID4VPSchemaID = ""
 	}
 	if sess.VerifierDelegation {
-		if r.FormValue("reset_deleg") != "" {
-			sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID = "", ""
-		}
-		if r.FormValue("reset_subject") != "" {
-			sess.VerifierSubjectSchemaID = ""
-		}
-		if sid := r.FormValue("schema_id"); sid != "" {
-			if sess.VerifierDelegSchemaID == "" {
-				sess.VerifierDelegSchemaID = sid
-			} else if sess.VerifierSubjectSchemaID == "" {
-				sess.VerifierSubjectSchemaID = sid
-			}
-		}
+		sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID = applyDelegationPick(
+			sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID,
+			r.FormValue("reset_deleg"), r.FormValue("reset_subject"), r.FormValue("schema_id"))
 		dpgs, _ := h.Adapter.ListVerifierDpgs(r.Context())
 		body := verifierCustomData(sess, schemas, dpgs[sess.VerifierDpg])
 		h.renderFragment(w, r, "fragment_verifier_custom_body", body)
