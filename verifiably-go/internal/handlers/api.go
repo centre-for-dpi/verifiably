@@ -640,8 +640,8 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 			Format:         schema.Std,
 			CredentialType: schema.Name,
 			Vct:            schema.Vct,
-			WireFormat:     "dc+sd-jwt",
-			Disclosure:     "selective — SD-JWT VC (dc+sd-jwt)",
+			WireFormat:     "vc+sd-jwt",
+			Disclosure:     "selective — SD-JWT VC (vc+sd-jwt)",
 		}
 	}
 	verifyStart := time.Now()
