@@ -80,12 +80,21 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 			existing[c["key"]] = true
 		}
 	}
+	// Status fields are format-dependent. For SD-JWT the token-status wiring in
+	// buildAuthcodeArtifacts auto-adds statusIdx/statusUri view columns (and a
+	// nested status.status_list template claim), so listing them as schema fields
+	// would create DUPLICATE view columns and fail CREATE VIEW. For ldp_vc the
+	// flat statusUri/statusIdx/statusType fields ARE the status mechanism.
+	delegFields := []string{"onBehalfOf", "role", "allowedAction", "validUntil"}
+	if statusListKindFor(std) != "token" {
+		delegFields = append(delegFields, "statusUri", "statusIdx", "statusType")
+	}
 	for _, spec := range []struct {
 		typeName string
 		fields   []string
 	}{
 		{subjType, []string{"subjectRef", "givenName"}},
-		{delegType, []string{"onBehalfOf", "role", "allowedAction", "validUntil", "statusUri", "statusIdx", "statusType"}},
+		{delegType, delegFields},
 	} {
 		if existing[spec.typeName] {
 			continue
@@ -123,10 +132,19 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		claims["validUntil"] = req.ValidUntil
 	}
 	if binding != nil {
-		// flat status claims (Certify's SD-JWT template cannot nest status.status_list)
-		claims["statusUri"] = binding.PublishURL
-		claims["statusIdx"] = strconv.Itoa(binding.Index)
-		claims["statusType"] = binding.Type // "bitstring" (w3c) | "token" (sd-jwt)
+		if binding.Type == "token" {
+			// SD-JWT: the token-status view column reads claims->>'statusIdx_<slug>'
+			// (injiStatusIdxKey) into the nested status.status_list template, so
+			// provision THAT key — not flat statusIdx — or revoke(binding.Index)
+			// won't deny. statusUri is a constant view column (no claim needed).
+			_, slug := injiConfigKeySlug(injiAuthcodeSchema(delegType, std, nil))
+			claims[injiStatusIdxKey(slug)] = strconv.Itoa(binding.Index)
+		} else {
+			// ldp_vc: flat status claims map to the flat view columns.
+			claims["statusUri"] = binding.PublishURL
+			claims["statusIdx"] = strconv.Itoa(binding.Index)
+			claims["statusType"] = binding.Type // "bitstring"
+		}
 	}
 	subjectID := esignetSubjectID(req.IndividualID, injiAuthcodeClientID())
 	if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {

@@ -430,6 +430,13 @@ func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authco
 	cs := map[string]any{}
 	var order, viewCols, queryCols []string
 	for _, f := range schema.FieldsSpec {
+		// For SD-JWT with token status, statusIdx/statusUri are auto-added as
+		// computed view columns below; a same-named schema field would produce a
+		// duplicate column and fail CREATE VIEW. Skip them — the token-status
+		// wiring is authoritative for SD-JWT (defensive against any caller/UI schema).
+		if isSDJWT && withTokenStatus && (f.Name == "statusIdx" || f.Name == "statusUri") {
+			continue
+		}
 		cs[f.Name] = map[string]any{"display": []any{map[string]any{"name": f.Name, "locale": "en"}}}
 		order = append(order, f.Name)
 		viewCols = append(viewCols, fmt.Sprintf("  claims->>'%s' AS \"%s\"", f.Name, f.Name))
