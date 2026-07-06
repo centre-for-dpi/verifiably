@@ -212,7 +212,12 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 		Subject:           "(resolved by verifier)",
 		Requested:         tpl.Fields,
 		Issued:            time.Now().UTC(),
-		CheckedRevocation: true,
+		// Inji Verify's vcverifier does NOT check status for VC_SD_JWT (it logs
+		// "Credential status checking not supported for this credential format"),
+		// so this path has NOT checked revocation. Report honestly; the handler's
+		// attachRevocationVerdict does the real status check and flips this true
+		// when it resolves the credential's status list.
+		CheckedRevocation: false,
 		Credentials:       creds,
 		HolderBinding:     holder,
 	}, nil

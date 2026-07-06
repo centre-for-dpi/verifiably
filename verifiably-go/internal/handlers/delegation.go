@@ -35,6 +35,13 @@ func (h *H) attachDelegationVerdict(r *http.Request, res *backend.VerificationRe
 	// delegation evaluator so a stale-window credential is rejected regardless of
 	// whether the presentation is a delegation.
 	attachTemporalVerdict(res, time.Now())
+	// Revocation gate — also applies to EVERY verify that populates Credentials.
+	// No deployed DPG verifier reliably enforces status-list revocation across
+	// formats (Inji Verify's vcverifier logs "Credential status checking not
+	// supported for this credential format [VC_SD_JWT]" and returns SUCCESS for a
+	// revoked SD-JWT), so verifiably — which owns/serves the status list —
+	// enforces it here.
+	h.attachRevocationVerdict(r.Context(), res)
 	var trustFn delegation.TrustChecker
 	if h.TrustRegistry != nil {
 		trustFn = h.TrustRegistry.IsTrusted
@@ -96,6 +103,55 @@ func temporalCredLabel(c backend.NormalizedCredential) string {
 		return c.Types[0]
 	}
 	return "credential"
+}
+
+// attachRevocationVerdict downgrades a verification when any presented credential
+// has been revoked on its issuer's published status list. It is the revocation
+// sibling of attachTemporalVerdict: no deployed DPG verifier reliably enforces
+// status-list revocation for every format (Inji Verify's vcverifier returns
+// SUCCESS for a revoked SD-JWT), and verifiably owns/serves the status list, so
+// it enforces it at this uniform seam for every verify path. Fail-closed: a
+// credential that carries a status reference the checker cannot resolve is denied
+// — an attacker must not launder a revoked credential through a verifier that
+// skips status checking. Only runs when a status-list cache is configured (Hub
+// mode); other deployments have nothing to check against, so it no-ops.
+func (h *H) attachRevocationVerdict(ctx context.Context, res *backend.VerificationResult) {
+	if res == nil || len(res.Credentials) == 0 || h.StatusListCache == nil {
+		return
+	}
+	check := h.delegationStatusChecker()
+	resolved := false
+	for _, c := range res.Credentials {
+		ref, ok := delegation.StatusRefOf(c)
+		if !ok {
+			continue // no status reference — nothing to enforce for this credential
+		}
+		revoked, err := check(ctx, ref)
+		if err != nil {
+			revocationDowngrade(res, "revocation status could not be checked ("+err.Error()+")")
+			return
+		}
+		resolved = true
+		if revoked {
+			revocationDowngrade(res, "a presented credential has been revoked")
+			return
+		}
+	}
+	// At least one status list was actually resolved, so the CheckedRevocation
+	// flag (which adapters set optimistically) is now truthful.
+	if resolved {
+		res.CheckedRevocation = true
+	}
+}
+
+func revocationDowngrade(res *backend.VerificationResult, reason string) {
+	res.Valid = false
+	if res.Method != "" {
+		res.Method += " · " + reason
+	} else {
+		res.Method = reason
+	}
+	slog.Info("revocation policy failed", "reason", reason)
 }
 
 // delegationStatusChecker returns a StatusChecker that resolves a credential's

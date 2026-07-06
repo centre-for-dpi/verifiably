@@ -682,6 +682,11 @@ func (h *H) APIVerifyResult(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	// Apply the handler-layer verification gates (temporal validity, revocation,
+	// delegation) that no DPG verifier reliably enforces — the SAME seam the UI
+	// (FetchResponse) and public (PublicVerifyResult) paths use. Without this the
+	// API verify path reports a revoked or expired credential as valid.
+	h.attachDelegationVerdict(r, &res)
 	status := "pending"
 	if !res.Pending {
 		if res.Valid {

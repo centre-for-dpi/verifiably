@@ -198,6 +198,14 @@ func subjectIdentifies(c backend.NormalizedCredential, onBehalfOf string) bool {
 	return false
 }
 
+// StatusRefOf exposes the credential status-reference extraction to callers
+// outside this package. The handler-layer revocation gate (attachRevocationVerdict)
+// reuses the exact same extraction the delegation evaluator uses, so a presented
+// credential's status pointer is read identically on both paths.
+func StatusRefOf(c backend.NormalizedCredential) (StatusRef, bool) {
+	return statusRef(c)
+}
+
 // statusRef extracts a revocation pointer from a credential, supporting both the
 // JSON-LD BitstringStatusListEntry and the SD-JWT IETF Token Status List shapes.
 func statusRef(c backend.NormalizedCredential) (StatusRef, bool) {
