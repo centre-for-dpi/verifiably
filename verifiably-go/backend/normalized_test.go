@@ -49,4 +49,29 @@ func TestTemporalBounds(t *testing.T) {
 	if !nb4.IsZero() || !na4.IsZero() {
 		t.Fatalf("unparseable bounds should be zero: nb=%v na=%v", nb4, na4)
 	}
+
+	// SD-JWT flat delegation underscore convention (internal/delegation/build.go
+	// writes valid_from/valid_until) — ERR-4. A regular SD-JWT credential using
+	// these keys must not slip past the temporal gate.
+	flat := NormalizedCredential{Raw: map[string]any{
+		"valid_from":  "2022-01-01T00:00:00Z",
+		"valid_until": "2020-01-01T00:00:00Z", // already expired
+	}}
+	nb5, na5 := flat.TemporalBounds()
+	if nb5.Year() != 2022 || na5.Year() != 2020 {
+		t.Fatalf("underscore flat bounds wrong: nb=%v na=%v", nb5, na5)
+	}
+
+	// The camelCase W3C keys take precedence when both are present (a certify
+	// inji credential carries the top-level validUntil AND may carry a flat
+	// valid_until capability claim — the credential's own window wins for the
+	// credential-temporal gate).
+	both := NormalizedCredential{Raw: map[string]any{
+		"validUntil":  "2030-01-01T00:00:00Z",
+		"valid_until": "2020-01-01T00:00:00Z",
+	}}
+	_, na6 := both.TemporalBounds()
+	if na6.Year() != 2030 {
+		t.Fatalf("expected camelCase validUntil to win: na=%v", na6)
+	}
 }

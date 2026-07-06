@@ -54,13 +54,15 @@ type DelegationResult struct {
 
 // TemporalBounds returns the credential's own validity window, read from Raw in
 // a format-agnostic way: W3C VCDM 2.0 validFrom/validUntil, VCDM 1.1
-// issuanceDate/expirationDate (RFC3339 strings), and SD-JWT/JWT nbf/exp
-// (NumericDate seconds). A zero time.Time for either bound means it is absent
+// issuanceDate/expirationDate (RFC3339 strings), SD-JWT/JWT nbf/exp
+// (NumericDate seconds), and the SD-JWT flat delegation underscore convention
+// valid_from/valid_until (see internal/delegation/build.go). A zero time.Time
+// for either bound means it is absent
 // (no constraint on that side — a credential with no expiry is valid
 // indefinitely). Callers enforce "now within [notBefore, notAfter]".
 func (c NormalizedCredential) TemporalBounds() (notBefore, notAfter time.Time) {
-	notBefore = firstRawTime(c.Raw, "validFrom", "issuanceDate", "nbf")
-	notAfter = firstRawTime(c.Raw, "validUntil", "expirationDate", "exp")
+	notBefore = firstRawTime(c.Raw, "validFrom", "issuanceDate", "nbf", "valid_from")
+	notAfter = firstRawTime(c.Raw, "validUntil", "expirationDate", "exp", "valid_until")
 	return
 }
 
