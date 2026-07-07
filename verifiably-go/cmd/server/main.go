@@ -635,10 +635,6 @@ func main() {
 		mux.HandleFunc("POST /issuer/schema/build/save", h.SaveSchema)
 		mux.HandleFunc("GET /issuer/mode", h.ShowIssuanceMode)
 		mux.HandleFunc("POST /issuer/mode", h.SetIssuanceMode)
-		// Delegated-access setup UI — a first-class surface over the same cores
-		// the JSON /api/v1/delegation endpoints use.
-		mux.HandleFunc("GET /issuer/delegation", h.ShowDelegationSetup)
-		mux.HandleFunc("POST /issuer/delegation", h.SubmitDelegationSetup)
 		// Public status-list endpoints — unauthenticated, used by verifiers to
 		// check revocation status of credentials this instance issued.
 		mux.HandleFunc("GET /status-list/bitstring/{id}", h.PublishBitstringStatusList)

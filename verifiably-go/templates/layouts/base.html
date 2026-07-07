@@ -66,9 +66,6 @@
     <a href="/admin/login" class="nav-link-btn" title="Admin sign-in">Admin</a>
     {{end}}
     {{end}}
-    {{if and .Session .Session.AuthOK (eq .Session.Role "issuer")}}
-    <a href="/issuer/delegation" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Issue a delegated-access pair">Delegation</a>
-    {{end}}
     {{if and .Session .Session.AuthProvider}}
     <form method="post" action="/auth/logout" style="display:inline">
       <button type="submit" class="theme-toggle" title="Sign out" aria-label="Sign out">
