@@ -119,39 +119,69 @@ func registryProviders() []registryProvider {
 }
 
 // fetchRegistry looks up one record for a holder from an authoritative registry,
-// returning its fields as string claims. Two modes: Sunbird RC search (when p.Entity
-// is set) or a plain GET-by-id (legacy / generic registries).
+// returning its fields as flat string claims (all entities merged). Kept for
+// callers/tests that don't need per-entity attribution; the activation
+// provisioner uses fetchRegistryByEntity so it can namespace each entity's claims
+// by its credential slug (see subjectClaimKey).
 func fetchRegistry(ctx context.Context, p registryProvider, id string) map[string]string {
+	merged := map[string]string{}
+	found := false
+	for _, rec := range fetchRegistryByEntity(ctx, p, id) {
+		for k, v := range rec {
+			merged[k] = v
+			found = true
+		}
+	}
+	if !found {
+		return nil
+	}
+	return merged
+}
+
+// fetchRegistryByEntity is fetchRegistry that PRESERVES the source entity for each
+// field batch, so the activation provisioner can write each entity's claims under
+// that credential's slug (subjectClaimKey) instead of flat-merging every entity
+// into one blob — the cross-schema contamination this fixes. Returns
+// entityName -> that entity's flattened record. Discover mode yields one entry per
+// registered Sunbird entity; single-Entity mode one entry; the legacy GET-by-id
+// path a single "" entry (no entity → the caller keeps it flat).
+func fetchRegistryByEntity(ctx context.Context, p registryProvider, id string) map[string]map[string]string {
 	cctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
+	out := map[string]map[string]string{}
 	if p.Discover {
-		out := map[string]string{}
 		for _, e := range sunbirdSchemas(cctx, p.URL) {
 			pe := p
 			pe.Entity = e
-			for k, v := range fetchRegistrySunbird(cctx, pe, id) {
-				out[k] = v
+			if rec := fetchRegistrySunbird(cctx, pe, id); len(rec) > 0 {
+				out[e] = rec
 			}
 		}
 		return out
 	}
 	if p.Entity != "" {
-		return fetchRegistrySunbird(cctx, p, id)
+		if rec := fetchRegistrySunbird(cctx, p, id); len(rec) > 0 {
+			out[p.Entity] = rec
+		}
+		return out
 	}
 	req, _ := http.NewRequestWithContext(cctx, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil || resp == nil {
-		return nil
+		return out
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil
+		return out
 	}
 	var rec map[string]any
 	if json.NewDecoder(resp.Body).Decode(&rec) != nil {
-		return nil
+		return out
 	}
-	return flattenRecord(rec, false)
+	if flat := flattenRecord(rec, false); len(flat) > 0 {
+		out[""] = flat
+	}
+	return out
 }
 
 // sunbirdSchemas lists the registered Sunbird entity names (POST /api/v1/Schema/search
@@ -428,7 +458,7 @@ func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authco
 	}})
 
 	cs := map[string]any{}
-	var order, viewCols, queryCols []string
+	var order, queryCols []string
 	for _, f := range schema.FieldsSpec {
 		// For SD-JWT with token status, statusIdx/statusUri are auto-added as
 		// computed view columns below; a same-named schema field would produce a
@@ -439,17 +469,9 @@ func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authco
 		}
 		cs[f.Name] = map[string]any{"display": []any{map[string]any{"name": f.Name, "locale": "en"}}}
 		order = append(order, f.Name)
-		viewCols = append(viewCols, fmt.Sprintf("  claims->>'%s' AS \"%s\"", f.Name, f.Name))
 		queryCols = append(queryCols, fmt.Sprintf("\"%s\"", f.Name))
 	}
-	// SD-JWT token-status columns: statusIdx per-holder (allocated at provision,
-	// coalesced to 0 so the unquoted ${statusIdx} template marker is always a
-	// valid JSON number), statusUri a constant (verifiably's token status list).
-	// This is what makes the certify-signed SD-JWT carry a revocable status ref.
 	if isSDJWT && withTokenStatus {
-		viewCols = append(viewCols,
-			fmt.Sprintf("  coalesce(claims->>'%s','0') AS \"statusIdx\"", injiStatusIdxKey(slug)),
-			fmt.Sprintf("  '%s' AS \"statusUri\"", tokenStatusURL))
 		queryCols = append(queryCols, "\"statusIdx\"", "\"statusUri\"")
 	}
 	// credential_subject display only for the JSON-LD formats (mirrors injicertify).
@@ -460,8 +482,9 @@ func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authco
 		credsub = &s
 	}
 
-	viewDDL := fmt.Sprintf("CREATE OR REPLACE VIEW certify.%s AS\nSELECT individual_id,\n%s\nFROM certify.vc_subject;",
-		viewName, strings.Join(viewCols, ",\n"))
+	// The view body is the SINGLE source of truth for the per-slug namespacing —
+	// shared with the migration reconcile so both agree exactly.
+	viewDDL := authcodeViewDDL(slug, order, isSDJWT && withTokenStatus, tokenStatusURL)
 	scopeQuery := fmt.Sprintf("'%s':'select %s from certify.%s where individual_id=:id'",
 		scope, strings.Join(queryCols, ", "), viewName)
 
@@ -505,6 +528,119 @@ func injiConfigKeySlug(schema vctypes.Schema) (configKey, slug string) {
 // slug so one individual can hold two SD-JWT credentials without their status
 // indices colliding (vc_subject is one claims blob per individual).
 func injiStatusIdxKey(slug string) string { return "statusIdx_" + slug }
+
+// subjectClaimKey is the per-credential-type key under which a subject's CLAIM
+// value for `field` is stored in certify.vc_subject.claims. certify.vc_subject
+// is ONE claims blob per individual (keyed only by the eSignet PSU-token), so
+// without a per-slug prefix two credential schemas that reuse a field name
+// (onBehalfOf, role, last_name, …) would overwrite each other in the shared blob
+// and issue the wrong data. Every writer of vc_subject and the generated
+// extraction view (buildAuthcodeArtifacts) MUST route through this one helper so
+// the written key and the read key always agree — the same guarantee
+// injiStatusIdxKey already gives the status index. Slugs are alnum-only
+// (injiConfigKeySlug), so the "." separator is unambiguous and is a valid JSONB
+// object key for the ->> operator.
+func subjectClaimKey(slug, field string) string { return slug + "." + field }
+
+// authcodeSchemasSafe returns the schema catalog for entity→slug resolution,
+// nil-guarding the adapter (which is absent in some test/headless setups) so
+// activation degrades to the naming-convention fallback instead of panicking.
+func (h *H) authcodeSchemasSafe(ctx context.Context) []vctypes.Schema {
+	if h.Adapter == nil {
+		return nil
+	}
+	s, _ := h.Adapter.ListAllSchemas(ctx)
+	return s
+}
+
+// slugForEntity resolves a Sunbird entity name to the credential slug its
+// extraction view uses, so activation can namespace that entity's claims to match
+// the view. Prefer an exact match against a known schema's configKey or display
+// Name (robust to an operator who named the entity differently from the type);
+// fall back to the naming convention lower-alnum(entity), which equals the
+// generated view slug when the entity is named for its credential type.
+func slugForEntity(schemas []vctypes.Schema, entity string) string {
+	for _, s := range schemas {
+		ck, sl := injiConfigKeySlug(s)
+		if ck == entity || strings.EqualFold(strings.TrimSpace(s.Name), entity) {
+			return sl
+		}
+	}
+	_, sl := injiConfigKeySlug(vctypes.Schema{AdditionalTypes: []string{entity}})
+	return sl
+}
+
+// authcodeViewDDL builds the CREATE OR REPLACE VIEW for a credential's per-slug
+// extraction view: one column per field reading the NAMESPACED claim key
+// (subjectClaimKey) aliased back to the plain field name — so the scope-query,
+// the ${field} template markers, and Certify stay unchanged, only the JSONB key
+// carries the slug prefix. For SD-JWT with token status it appends the per-holder
+// statusIdx (coalesced to 0 so the unquoted ${statusIdx} marker is a valid JSON
+// number) + the constant statusUri. This is the SINGLE definition of the view
+// shape, shared by schema-create (buildAuthcodeArtifacts) and the migration
+// reconcile so the read side never drifts from what writers namespaced.
+func authcodeViewDDL(slug string, fields []string, withTokenStatus bool, tokenStatusURL string) string {
+	var cols []string
+	for _, f := range fields {
+		if withTokenStatus && (f == "statusIdx" || f == "statusUri") {
+			continue
+		}
+		cols = append(cols, fmt.Sprintf("  claims->>'%s' AS \"%s\"", subjectClaimKey(slug, f), f))
+	}
+	if withTokenStatus {
+		cols = append(cols,
+			fmt.Sprintf("  coalesce(claims->>'%s','0') AS \"statusIdx\"", injiStatusIdxKey(slug)),
+			fmt.Sprintf("  '%s' AS \"statusUri\"", tokenStatusURL))
+	}
+	return fmt.Sprintf("CREATE OR REPLACE VIEW certify.vc_subject_%s AS\nSELECT individual_id,\n%s\nFROM certify.vc_subject;",
+		slug, strings.Join(cols, ",\n"))
+}
+
+// ReapplyAuthcodeViews regenerates every active auth-code extraction view into
+// the per-slug namespaced form (subjectClaimKey) — the one-off migration for
+// credentials created before namespacing. Rebuilds each view straight from its
+// credential_config (config key → slug, display_order → fields, credential_format
+// → SD-JWT), so it uses the authoritative slug and never depends on schema
+// reconstruction. Idempotent (CREATE OR REPLACE with unchanged columns). API-key
+// gated. POST /api/v1/admin/reapply-views.
+func (h *H) ReapplyAuthcodeViews(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireAPIAuth(w, r); !ok {
+		return
+	}
+	if h.Subjects == nil {
+		apiError(w, http.StatusServiceUnavailable, "subject provisioning not enabled (INJI_CERTIFY_DATABASE_URL not set)")
+		return
+	}
+	creds, err := h.Subjects.ListCredentials(r.Context())
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "list credentials: "+err.Error())
+		return
+	}
+	tsURL := h.tokenStatusURL()
+	reapplied := []string{}
+	failed := map[string]string{}
+	for _, c := range creds {
+		key := c["key"]
+		fields, err := h.Subjects.CredentialFields(r.Context(), key)
+		if err != nil {
+			failed[key] = "fields: " + err.Error()
+			continue
+		}
+		format, _, _, err := h.Subjects.CredentialClaimSpec(r.Context(), key)
+		if err != nil {
+			failed[key] = "spec: " + err.Error()
+			continue
+		}
+		_, slug := injiConfigKeySlug(vctypes.Schema{AdditionalTypes: []string{key}})
+		isSDJWT := format == "vc+sd-jwt" || format == "dc+sd-jwt"
+		if err := h.Subjects.ReplaceView(r.Context(), authcodeViewDDL(slug, fields, isSDJWT && tsURL != "", tsURL)); err != nil {
+			failed[key] = err.Error()
+			continue
+		}
+		reapplied = append(reapplied, key)
+	}
+	apiJSON(w, http.StatusOK, map[string]any{"reapplied": reapplied, "failed": failed})
+}
 
 // tokenStatusURL returns the absolute URL of verifiably's IETF token status
 // list, or "" when no TokenStore is configured — in which case the SD-JWT

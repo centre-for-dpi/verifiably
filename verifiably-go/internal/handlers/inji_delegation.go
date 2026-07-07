@@ -128,29 +128,36 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	if len(actions) == 0 {
 		actions = []string{"present"}
 	}
+	// This ONE row feeds TWO extraction views, so each field is namespaced by its
+	// OWN credential's slug (subjectClaimKey): the subject-identity fields under
+	// subjType's slug, the delegation-capability fields under delegType's —
+	// otherwise onBehalfOf/role/etc. would collide with any other schema that
+	// reuses those names in the shared vc_subject blob.
+	_, subjSlug := injiConfigKeySlug(injiAuthcodeSchema(subjType, std, nil))
+	_, delegSlug := injiConfigKeySlug(injiAuthcodeSchema(delegType, std, nil))
 	claims := map[string]string{
-		"subjectRef":    subjectRef,
-		"givenName":     given,
-		"onBehalfOf":    subjectRef,
-		"role":          orDefault(req.Role, "Mother"),
-		"allowedAction": strings.Join(actions, ","),
+		subjectClaimKey(subjSlug, "subjectRef"):     subjectRef,
+		subjectClaimKey(subjSlug, "givenName"):      given,
+		subjectClaimKey(delegSlug, "onBehalfOf"):    subjectRef,
+		subjectClaimKey(delegSlug, "role"):          orDefault(req.Role, "Mother"),
+		subjectClaimKey(delegSlug, "allowedAction"): strings.Join(actions, ","),
 	}
 	if req.ValidUntil != "" {
-		claims["valid_until"] = req.ValidUntil
+		claims[subjectClaimKey(delegSlug, "valid_until")] = req.ValidUntil
 	}
 	if binding != nil {
 		if binding.Type == "token" {
 			// SD-JWT: the token-status view column reads claims->>'statusIdx_<slug>'
-			// (injiStatusIdxKey) into the nested status.status_list template, so
-			// provision THAT key — not flat statusIdx — or revoke(binding.Index)
-			// won't deny. statusUri is a constant view column (no claim needed).
-			_, slug := injiConfigKeySlug(injiAuthcodeSchema(delegType, std, nil))
-			claims[injiStatusIdxKey(slug)] = strconv.Itoa(binding.Index)
+			// (injiStatusIdxKey — already per-slug) into the nested status.status_list
+			// template, so provision THAT key — not flat statusIdx — or
+			// revoke(binding.Index) won't deny. statusUri is a constant view column.
+			claims[injiStatusIdxKey(delegSlug)] = strconv.Itoa(binding.Index)
 		} else {
-			// ldp_vc: flat status claims map to the flat view columns.
-			claims["statusUri"] = binding.PublishURL
-			claims["statusIdx"] = strconv.Itoa(binding.Index)
-			claims["statusType"] = binding.Type // "bitstring"
+			// ldp_vc: statusUri/statusIdx/statusType are declared delegation FIELDS
+			// (delegFields), so they read from the namespaced view columns.
+			claims[subjectClaimKey(delegSlug, "statusUri")] = binding.PublishURL
+			claims[subjectClaimKey(delegSlug, "statusIdx")] = strconv.Itoa(binding.Index)
+			claims[subjectClaimKey(delegSlug, "statusType")] = binding.Type // "bitstring"
 		}
 	}
 	subjectID := esignetSubjectID(req.IndividualID, injiAuthcodeClientID())

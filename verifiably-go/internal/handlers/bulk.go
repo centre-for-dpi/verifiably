@@ -606,21 +606,26 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 			out = append(out, res)
 			continue
 		}
-		// Snapshot the display claims (schema fields only) before we inject the
-		// internal statusIdx key, and allocate the token-status index for SD-JWT.
+		// Snapshot the display claims (plain field names, for the issuance log +
+		// UI) before namespacing. The provisioning map keys every field as
+		// <slug>.field (subjectClaimKey) so two schemas that reuse a field name
+		// don't overwrite each other in the shared vc_subject blob; the per-slug
+		// extraction view reads exactly these keys.
 		displayClaims := make(map[string]string, len(claims))
+		provClaims := make(map[string]string, len(claims)+1)
 		for k, v := range claims {
 			displayClaims[k] = v
+			provClaims[subjectClaimKey(slug, k)] = v
 		}
 		tokenIdx := -1
 		if isTokenSDJWT {
 			if idx, err := h.TokenStore.Allocate(); err == nil {
 				tokenIdx = idx
-				claims[injiStatusIdxKey(slug)] = strconv.Itoa(idx)
+				provClaims[injiStatusIdxKey(slug)] = strconv.Itoa(idx)
 			}
 		}
 		subjectID := esignetSubjectID(id, clientID)
-		if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {
+		if err := h.Subjects.ProvisionSubject(ctx, subjectID, provClaims); err != nil {
 			res.Status = "failed"
 			res.Error = truncateForLogBulk(err.Error(), 200)
 			rejected++

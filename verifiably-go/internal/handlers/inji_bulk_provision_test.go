@@ -159,13 +159,16 @@ func TestRunBulkProvision_DispatchAndKeying(t *testing.T) {
 	if want := esignetSubjectID("9090", client); f.provCalls[0].subjectID != want {
 		t.Errorf("row0 subjectID = %q, want %q (esignetSubjectID keyed)", f.provCalls[0].subjectID, want)
 	}
-	if got, want := f.provCalls[0].claims, (map[string]string{"fullName": "Grace", "dob": "1906-12-09"}); !reflect.DeepEqual(got, want) {
+	// Claims are namespaced by the credential slug (subjectClaimKey) so schemas
+	// sharing field names don't collide in the shared vc_subject blob. Slug =
+	// lower-alnum(Name "Person") = "person".
+	if got, want := f.provCalls[0].claims, (map[string]string{"person.fullName": "Grace", "person.dob": "1906-12-09"}); !reflect.DeepEqual(got, want) {
 		t.Errorf("row0 claims = %v, want %v", got, want)
 	}
 	if want := esignetSubjectID("7777", client); f.provCalls[1].subjectID != want {
 		t.Errorf("row1 subjectID = %q, want %q", f.provCalls[1].subjectID, want)
 	}
-	if got, want := f.provCalls[1].claims, (map[string]string{"fullName": "Ada"}); !reflect.DeepEqual(got, want) {
+	if got, want := f.provCalls[1].claims, (map[string]string{"person.fullName": "Ada"}); !reflect.DeepEqual(got, want) {
 		t.Errorf("row1 claims = %v, want %v (only schema fields present in the row)", got, want)
 	}
 	if body := w.Body.String(); body != "2/4" {

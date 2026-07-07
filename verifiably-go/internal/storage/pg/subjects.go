@@ -70,6 +70,18 @@ func (s *SubjectStore) ProvisionSubject(ctx context.Context, subjectID string, c
 	return nil
 }
 
+// ReplaceView execs a CREATE OR REPLACE VIEW statement. Used by the one-off
+// migration that regenerates each certify.vc_subject_<slug> extraction view into
+// the per-slug namespaced form. CREATE OR REPLACE keeps the same column names +
+// order (the view aliases are unchanged, only the JSONB key read changes), so it
+// succeeds in place without a DROP.
+func (s *SubjectStore) ReplaceView(ctx context.Context, ddl string) error {
+	if _, err := s.pool.Exec(ctx, ddl); err != nil {
+		return fmt.Errorf("pg: replace view: %w", err)
+	}
+	return nil
+}
+
 // ListCredentials returns the active credential_configs (the holder catalog) as
 // {key, scope, displayName} maps — what the holder can discover and claim.
 func (s *SubjectStore) ListCredentials(ctx context.Context) ([]map[string]string, error) {

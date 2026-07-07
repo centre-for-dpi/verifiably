@@ -250,10 +250,24 @@ func (h *H) activateVerify(w http.ResponseWriter, r *http.Request, sess *Session
 	// identity registry supplies WHO they are; the credential registries supply
 	// their claim data.
 	provs := registryProviders()
+	// Namespace each Sunbird entity's fields under its OWN credential slug
+	// (subjectClaimKey) so two entities that reuse a field name (onBehalfOf, role,
+	// last_name, …) don't overwrite each other in the shared vc_subject blob — the
+	// cross-schema contamination fix. fetchRegistryByEntity keeps the entity
+	// boundary the old flat merge threw away; slugForEntity maps entity → view slug.
+	schemas := h.authcodeSchemasSafe(r.Context())
 	claims := map[string]string{}
 	for _, p := range provs {
-		for k, v := range fetchRegistry(r.Context(), p, verifiedID) {
-			claims[k] = v
+		for entity, rec := range fetchRegistryByEntity(r.Context(), p, verifiedID) {
+			for k, v := range rec {
+				if entity == "" {
+					// legacy GET-by-id path (no entity, unused in the Sunbird
+					// deployment): no slug to namespace under, keep flat.
+					claims[k] = v
+					continue
+				}
+				claims[subjectClaimKey(slugForEntity(schemas, entity), k)] = v
+			}
 		}
 	}
 	if len(claims) > 0 {

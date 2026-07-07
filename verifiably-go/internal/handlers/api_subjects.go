@@ -47,12 +47,22 @@ type SubjectProvisioner interface {
 	// row), owner-checked. Backs the issuer schema-browser Delete for DB-backed
 	// Inji credentials (the registry adapter only knows in-memory custom schemas).
 	DeleteCredential(ctx context.Context, key, ownerKey string) error
+	// ReplaceView execs a CREATE OR REPLACE VIEW statement — used by the one-off
+	// migration that regenerates existing extraction views into the per-slug
+	// namespaced form (subjectClaimKey).
+	ReplaceView(ctx context.Context, ddl string) error
 }
 
 type apiProvisionSubjectRequest struct {
 	IndividualID string            `json:"individualId"`
 	ClientID     string            `json:"clientId,omitempty"`
 	Claims       map[string]string `json:"claims,omitempty"`
+	// credentialConfigKey names the target credential type (its config key, e.g.
+	// "TestaDelegateV1") so the Claims are stored under that credential's slug
+	// (subjectClaimKey) — required for a CUSTOM credential's claims to be read by
+	// its per-slug extraction view. When empty, Claims are written flat (legacy;
+	// only the seeded flat `person` credential reads flat keys).
+	CredentialConfigKey string `json:"credentialConfigKey,omitempty"`
 	// Convenience: top-level claim fields are also accepted and merged into Claims.
 	FullName    string `json:"fullName,omitempty"`
 	GivenName   string `json:"givenName,omitempty"`
@@ -119,12 +129,22 @@ func (h *H) APIProvisionSubject(w http.ResponseWriter, r *http.Request) {
 	if clientID == "" {
 		clientID = defaultAuthCodeClientID()
 	}
+	// Namespace the custom Claims under the target credential's slug so they land
+	// in that credential's per-slug view (subjectClaimKey). Without a config key we
+	// can't know which view will read them, so they stay flat (legacy behaviour).
+	nsKey := func(k string) string { return k }
+	if ck := strings.TrimSpace(req.CredentialConfigKey); ck != "" {
+		slug := slugForEntity(nil, ck) // nil → derive slug from the key by convention
+		nsKey = func(k string) string { return subjectClaimKey(slug, k) }
+	}
 	claims := map[string]string{}
 	for k, v := range req.Claims {
 		if s := strings.TrimSpace(v); s != "" {
-			claims[k] = s
+			claims[nsKey(k)] = s
 		}
 	}
+	// Demographic convenience fields map to the seeded flat `person` credential —
+	// unique field names, no collision — so they are written flat, not namespaced.
 	for k, v := range map[string]string{
 		"fullName": req.FullName, "givenName": req.GivenName, "familyName": req.FamilyName,
 		"gender": req.Gender, "dateOfBirth": req.DateOfBirth, "email": req.Email, "phoneNumber": req.PhoneNumber,

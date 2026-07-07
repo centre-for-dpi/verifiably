@@ -214,8 +214,11 @@ func TestActivate_HappyPath(t *testing.T) {
 	if f.provCalls[0].subjectID != want {
 		t.Errorf("subjectID = %q, want %q (PSU-token)", f.provCalls[0].subjectID, want)
 	}
-	if c := f.provCalls[0].claims; c["fullName"] != "Grace Hopper" || c["dob"] != "1906" {
-		t.Errorf("claims = %v, want registry-sourced {fullName,dob}", c)
+	// Claims are namespaced by the source entity's credential slug (subjectClaimKey)
+	// so entities sharing a field name don't collide in the shared blob. Entity
+	// "TestEntity" → slug "testentity".
+	if c := f.provCalls[0].claims; c["testentity.fullName"] != "Grace Hopper" || c["testentity.dob"] != "1906" {
+		t.Errorf("claims = %v, want registry-sourced {testentity.fullName, testentity.dob}", c)
 	}
 	if !strings.Contains(rr2.Body.String(), "Grace Hopper") || !strings.Contains(rr2.Body.String(), "activated") {
 		t.Errorf("success page should confirm activation\nbody=%s", rr2.Body.String())

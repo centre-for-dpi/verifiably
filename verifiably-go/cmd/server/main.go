@@ -662,6 +662,10 @@ func main() {
 		// REST API - Inji auth-code subject provisioning (Flow A): upsert dynamic
 		// claims into certify.vc_subject keyed by the eSignet PSU-token.
 		mux.HandleFunc("POST /api/v1/subjects", h.APIProvisionSubject)
+		// One-off migration: regenerate every auth-code extraction view into the
+		// per-slug namespaced form (subjectClaimKey), for credentials created
+		// before claim namespacing. Idempotent, API-key gated.
+		mux.HandleFunc("POST /api/v1/admin/reapply-views", h.ReapplyAuthcodeViews)
 		// REST API — issuance endpoints.
 		// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk/async", h.APIIssueBulkAsync)

@@ -44,7 +44,8 @@ type fakeSubjects struct {
 	identities map[string]map[string]string
 	idUpserts  []provCall
 
-	deletedCreds []string // keys passed to DeleteCredential
+	deletedCreds  []string // keys passed to DeleteCredential
+	replacedViews []string // DDLs passed to ReplaceView
 }
 
 func (f *fakeSubjects) ProvisionSubject(_ context.Context, subjectID string, claims map[string]string) error {
@@ -85,6 +86,10 @@ func (f *fakeSubjects) GetIdentity(_ context.Context, individualID string) (map[
 }
 func (f *fakeSubjects) DeleteCredential(_ context.Context, key, _ string) error {
 	f.deletedCreds = append(f.deletedCreds, key)
+	return nil
+}
+func (f *fakeSubjects) ReplaceView(_ context.Context, ddl string) error {
+	f.replacedViews = append(f.replacedViews, ddl)
 	return nil
 }
 
@@ -436,8 +441,8 @@ func TestBuildAuthcodeArtifacts_LDP(t *testing.T) {
 	if !strings.Contains(a.viewDDL, "CREATE OR REPLACE VIEW certify.vc_subject_personcredential") {
 		t.Errorf("viewDDL missing view name: %s", a.viewDDL)
 	}
-	if !strings.Contains(a.viewDDL, `claims->>'full_name' AS "full_name"`) {
-		t.Errorf("viewDDL missing field column: %s", a.viewDDL)
+	if !strings.Contains(a.viewDDL, `claims->>'personcredential.full_name' AS "full_name"`) {
+		t.Errorf("viewDDL missing namespaced field column: %s", a.viewDDL)
 	}
 	wantSQ := `'personcredential_vc_ldp':'select "full_name", "dob" from certify.vc_subject_personcredential where individual_id=:id'`
 	if a.scopeQuery != wantSQ {
