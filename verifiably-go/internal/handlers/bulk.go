@@ -298,12 +298,23 @@ func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, 
 	}
 	schema, _ := findSchemaByID(schemas, sess.SchemaID)
 	schema = h.resolveFields(schema)
+	// Allocate one revocation binding per row so bulk-issued credentials are
+	// revocable like the single-issue path: the adapter embeds each into its
+	// row's credential, and each accepted row is recorded below so it appears on
+	// /issuer/credentials with a working Revoke button.
+	bindings := make([]*backend.StatusListBinding, len(rows))
+	for i := range rows {
+		if b, aErr := h.allocateStatusListBinding(schema); aErr == nil {
+			bindings[i] = b
+		}
+	}
 	bulkStart := time.Now()
 	res, err := h.Adapter.IssueBulk(r.Context(), backend.IssueBulkRequest{
-		IssuerDpg: sess.IssuerDpg,
-		Schema:    schema,
-		Rows:      rows,
-		RowCount:  len(rows),
+		IssuerDpg:   sess.IssuerDpg,
+		Schema:      schema,
+		Rows:        rows,
+		RowCount:    len(rows),
+		StatusLists: bindings,
 	})
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(bulkStart), "dpg", sess.IssuerDpg, "op", "issue")
 	if err != nil {
@@ -316,6 +327,14 @@ func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, 
 	}
 	if res.Rejected > 0 {
 		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
+	}
+	// Record each accepted row so it surfaces on /issuer/credentials with its
+	// revocation binding — the Revoke button then flips exactly the status bit
+	// the row's embedded pointer references.
+	for _, rr := range res.Rows {
+		if rr.Status == "issued" && rr.Row >= 1 && rr.Row-1 < len(bindings) {
+			h.recordIssuance(sess, schema, sess.IssuerDpg, rr.Subject, rr.OfferURI, bindings[rr.Row-1])
+		}
 	}
 	header := schemaFieldsOfH(schema)
 	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)

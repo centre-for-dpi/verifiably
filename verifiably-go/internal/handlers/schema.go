@@ -445,7 +445,11 @@ func applyDelegationPreset(d *builderData) {
 		{Name: "onBehalfOf", Datatype: "string", Required: true},
 		{Name: "role", Datatype: "string"},
 		{Name: "allowedAction", Datatype: "string", Required: true},
-		{Name: "validUntil", Datatype: "string"},
+		// valid_until (underscore), NOT validUntil: the delegation-capability
+		// expiry must dodge Certify's reserved ${validUntil} substitution marker
+		// (which certify fills with the credential's own ~2y validity default and
+		// would shadow the provisioned value). The evaluator reads valid_until.
+		{Name: "valid_until", Datatype: "string"},
 	}
 	// A recognised scenario FORCES its identity + fields so switching scenarios
 	// updates the form; the generic preset GUARDS so a custom operator's edits survive.

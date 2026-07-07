@@ -225,6 +225,11 @@ type IssueBulkRequest struct {
 	// for backward compatibility with templates that just want a total.
 	Rows     []map[string]string
 	RowCount int
+	// StatusLists, when set, carries one revocation binding per Row (aligned by
+	// index): the adapter embeds StatusLists[i] into row i's credential so bulk
+	// SD-JWTs are revocable exactly like the single-issue path. A nil element
+	// (or a short slice) means no binding for that row.
+	StatusLists []*StatusListBinding
 }
 
 // IssueBulkResult summarizes a bulk-issue operation.

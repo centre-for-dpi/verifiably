@@ -226,11 +226,18 @@ func (a *Adapter) IssueBulk(ctx context.Context, req backend.IssueBulkRequest) (
 	out.Rows = make([]backend.BulkRowResult, 0, len(req.Rows))
 	for i, row := range req.Rows {
 		label := rowLabelInji(row)
+		// Per-row revocation binding (aligned by index) so each bulk SD-JWT
+		// embeds its own status.status_list pointer, like the single path.
+		var binding *backend.StatusListBinding
+		if i < len(req.StatusLists) {
+			binding = req.StatusLists[i]
+		}
 		res, err := a.IssueToWallet(ctx, backend.IssueRequest{
 			IssuerDpg:   req.IssuerDpg,
 			Schema:      req.Schema,
 			SubjectData: row,
 			Flow:        string(a.cfg.Mode),
+			StatusList:  binding,
 		})
 		if err != nil {
 			out.Rejected++
