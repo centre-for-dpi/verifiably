@@ -229,9 +229,17 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	schema = h.resolveFields(schema)
 	// Gather subject data from form (falls back to prefill)
 	subject := map[string]string{}
-	for _, f := range schemaFieldsOfH(schema) {
-		v := strings.TrimSpace(r.FormValue("field_" + f))
-		subject[f] = v
+	for _, fs := range schema.FieldsSpec {
+		v := strings.TrimSpace(r.FormValue("field_" + fs.Name))
+		// Date/datetime fields (e.g. a delegation's valid_until capability
+		// expiry) are normalized to RFC3339 UTC so the claim is well-formed
+		// regardless of the browser's datetime-local wire format. Every other
+		// field is stored verbatim — this stays generic, keyed on the field's
+		// declared Format, not its name.
+		if fs.Format == "date" || fs.Format == "datetime" {
+			v = normalizeIssuanceTime(v)
+		}
+		subject[fs.Name] = v
 	}
 	// Validate: every Required field must be non-empty. Non-required fields
 	// may be left blank.

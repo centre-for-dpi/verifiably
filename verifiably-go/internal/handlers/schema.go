@@ -438,7 +438,7 @@ func scenarioByKey(k string) (delegationScenario, bool) {
 // applyDelegationPreset configures the builder for a delegated-access credential:
 // SD-JWT so the capability is carried as flat, evaluator-readable top-level claims,
 // the DelegatedAccessCredential type, and the capability fields (onBehalfOf +
-// allowedAction the verifier's evaluator keys off; role + validUntil for display/caveat).
+// allowedAction the verifier's evaluator keys off; role + valid_until for display/caveat).
 func applyDelegationPreset(d *builderData) {
 	d.Std = "sd_jwt_vc (IETF)"
 	base := []vctypes.FieldSpec{
@@ -449,7 +449,10 @@ func applyDelegationPreset(d *builderData) {
 		// expiry must dodge Certify's reserved ${validUntil} substitution marker
 		// (which certify fills with the credential's own ~2y validity default and
 		// would shadow the provisioned value). The evaluator reads valid_until.
-		{Name: "valid_until", Datatype: "string"},
+		// Format "datetime" makes the issue form render it as a datetime-local
+		// picker (RFC3339-normalized on submit) — the capability-expiry policy —
+		// while every other field stays a generic dynamic input.
+		{Name: "valid_until", Datatype: "string", Format: "datetime"},
 	}
 	// A recognised scenario FORCES its identity + fields so switching scenarios
 	// updates the form; the generic preset GUARDS so a custom operator's edits survive.

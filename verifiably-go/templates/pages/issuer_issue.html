@@ -93,7 +93,7 @@
           <div class="field">
             <label>{{replaceUnderscore .Name}}{{if .Required}} *{{end}}</label>
             <input
-              type="{{if eq .Format "date"}}date{{else if eq .Format "uri"}}url{{else if eq .Datatype "number"}}number{{else if eq .Datatype "integer"}}number{{else if eq .Datatype "boolean"}}checkbox{{else}}text{{end}}"
+              type="{{if eq .Format "date"}}date{{else if eq .Format "datetime"}}datetime-local{{else if eq .Format "uri"}}url{{else if eq .Datatype "number"}}number{{else if eq .Datatype "integer"}}number{{else if eq .Datatype "boolean"}}checkbox{{else}}text{{end}}"
               {{if eq .Datatype "integer"}}step="1"{{end}}
               name="field_{{.Name}}"
               value="{{index $.FieldValues .Name}}"
@@ -102,6 +102,11 @@
             {{if eq .Name "onBehalfOf"}}
             <p class="hint" style="font-size:0.72rem;color:#8a4b13;margin:0.4rem 0 0;background:rgba(181,101,29,0.08);border-left:3px solid #b5651d;padding:0.45rem 0.65rem;border-radius:0 4px 4px 0">
               🔗 <strong>Linkage anchor — must be a unique identifier.</strong> A verifier links this delegation to the holder's <em>identity</em> credential on this exact value. Set it to a unique identifier the identity credential carries — its <span class="mono">subjectRef</span>, an identifier field (e.g. national ID, <span class="mono">testa_id</span>), or the holder's <span class="mono">DID</span> — <em>not</em> a name or other shared attribute. That value must be disclosed when the pair is verified, or linkage fails. The identity credential must also be issued in the <strong>same format</strong> as this delegation (both SD-JWT or both W3C) — a verifier can't combine formats in one request.
+            </p>
+            {{end}}
+            {{if eq .Name "valid_until"}}
+            <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.4rem 0 0">
+              ⏳ <strong>Capability expiry</strong> — after this, the delegation is denied even if not revoked. This is the caveat on the <em>delegate's authority</em>, separate from the credential's own optional "Validity window" below.
             </p>
             {{end}}
           </div>
