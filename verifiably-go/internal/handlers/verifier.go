@@ -345,6 +345,15 @@ func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4
 	return h.buildTemplateForSchema(r.Context(), r.FormValue("schema_id"), r.Form["field_key"], r.FormValue("disclosure"))
 }
 
+// publicBaseEnv returns the deployment public origin (VERIFIABLY_PUBLIC_URL,
+// trimmed) for building a host-derived vct where no *http.Request is available.
+// It matches publicBase(r) when the env is set (always on a real deployment)
+// and the injicertify/waltid issuers' vct base, so the requested vct equals the
+// issued vct.
+func publicBaseEnv() string {
+	return strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/")
+}
+
 // buildTemplateForSchema constructs an OID4VP template for ONE schema with the
 // correct credential type, wire format, and vct. It is the shared core of the
 // single-type verify and of EACH leg of a delegated-access pair, so the pair
@@ -409,17 +418,16 @@ func (h *H) buildTemplateForSchema(ctx context.Context, schemaID string, fields 
 	wireFormat := ""
 	if picked.Custom {
 		credType = picked.CustomTypeName()
-		// For SD-JWT VC, the wallet matches the held credential's `vct`
-		// claim against the PD filter's `vct`. The walt.id adapter issues
-		// custom SD-JWT credentials with vct=CustomTypeName(), so the
-		// verifier must ask for that same string.
+		// For SD-JWT VC, the wallet matches the held credential's `vct` claim
+		// against the PD filter's `vct`. All DPG issuers now embed the
+		// host-derived vct (schema.CredentialVct = VERIFIABLY_PUBLIC_URL/
+		// credentials/<id>), so the verifier must request that SAME string —
+		// not the short CustomTypeName(), which only walt.id used and which
+		// mismatches an Inji-issued credential.
 		if strings.HasPrefix(picked.Std, "sd_jwt_vc") {
-			vct = picked.CustomTypeName()
+			vct = picked.CredentialVct(publicBaseEnv())
+			wireFormat = "vc+sd-jwt"
 		}
-		// wireFormat stays empty — adapter falls back to credentialFormatForStd
-		// which maps "sd_jwt_vc (IETF)" → "vc+sd-jwt". Custom schemas don't
-		// expose a per-variant wire-format chip yet so picking the default
-		// is the right behaviour.
 	} else {
 		for _, v := range picked.Variants {
 			if v.ID == picked.ID {

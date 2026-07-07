@@ -42,6 +42,9 @@ func TestBuildAuthcodeCredConfig(t *testing.T) {
 	})
 
 	t.Run("SD-JWT -> vc+sd-jwt with default vct, no context/type", func(t *testing.T) {
+		// The default vct is derived from the deployment host, not a hardcoded
+		// placeholder — issuance + verification both read VERIFIABLY_PUBLIC_URL.
+		t.Setenv("VERIFIABLY_PUBLIC_URL", "https://verify.example.test")
 		cc := BuildAuthcodeCredConfig(vctypes.Schema{
 			ID: "yid", Name: "Health", Std: "sd_jwt_vc (IETF)",
 			FieldsSpec: []vctypes.FieldSpec{{Name: "g"}},
@@ -49,8 +52,8 @@ func TestBuildAuthcodeCredConfig(t *testing.T) {
 		if cc.CredFormat != "vc+sd-jwt" {
 			t.Errorf("CredFormat = %q, want vc+sd-jwt", cc.CredFormat)
 		}
-		if cc.SDJwtVct == nil || *cc.SDJwtVct != "https://verifiably.example.com/credentials/yid" {
-			t.Errorf("SDJwtVct = %v, want default vct derived from id", cc.SDJwtVct)
+		if cc.SDJwtVct == nil || *cc.SDJwtVct != "https://verify.example.test/credentials/yid" {
+			t.Errorf("SDJwtVct = %v, want host-derived default vct", cc.SDJwtVct)
 		}
 		if cc.Context != nil || cc.CredType != nil {
 			t.Error("Context/CredType must be nil for sd-jwt")

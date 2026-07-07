@@ -698,7 +698,11 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		case req.Schema.Vct != "":
 			ir.Vct = req.Schema.Vct
 		case req.Schema.Custom:
-			ir.Vct = req.Schema.CustomTypeName()
+			// Host-derived vct (VERIFIABLY_PUBLIC_URL/credentials/<id>) so it
+			// matches exactly what the verifier requests via
+			// schema.CredentialVct(publicBase) and what the injicertify issuer
+			// embeds — all DPGs now agree on the same vct for custom SD-JWT.
+			ir.Vct = req.Schema.CredentialVct(strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/"))
 		default:
 			ir.Vct = req.Schema.ID
 		}

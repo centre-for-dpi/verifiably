@@ -255,6 +255,24 @@ func (s Schema) CustomTypeName() string {
 	return sanitizeTypeNameVC(s.Name)
 }
 
+// CredentialVct returns the SD-JWT VC `vct` value for this schema: the explicit
+// Schema.Vct when set, otherwise a stable identifier derived from the
+// deployment's public host — "<publicBaseURL>/credentials/<ID>". Issuance and
+// verification MUST call this with the SAME publicBaseURL (the deployment's
+// VERIFIABLY_PUBLIC_URL) so the issued credential's `vct` claim and the
+// verifier's presentation-definition filter agree. The host is never hardcoded;
+// when publicBaseURL is empty (dev) it falls back to localhost.
+func (s Schema) CredentialVct(publicBaseURL string) string {
+	if v := strings.TrimSpace(s.Vct); v != "" {
+		return v
+	}
+	base := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
+	if base == "" {
+		base = "http://localhost:8080"
+	}
+	return base + "/credentials/" + s.ID
+}
+
 // sanitizeTypeNameVC mirrors waltid.sanitizeTypeName — kept here so vctypes
 // stays vendor-agnostic. Title-cases letter runs and strips non-alphanumerics;
 // "" → "CustomCredential" so callers always get a valid identifier.

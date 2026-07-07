@@ -30,10 +30,7 @@ func BuildAuthcodeCredConfig(schema vctypes.Schema, withTokenStatus bool) Authco
 	out := AuthcodeCredConfig{CredFormat: credFormat, VCTemplateB64: buildVCTemplate(schema, withTokenStatus)}
 	switch credFormat {
 	case "vc+sd-jwt", "dc+sd-jwt":
-		vct := schema.Vct
-		if vct == "" {
-			vct = "https://verifiably.example.com/credentials/" + schema.ID
-		}
+		vct := schema.CredentialVct(verifiablyPublicBase())
 		out.SDJwtVct = &vct
 	default: // ldp_vc, jwt_vc_json
 		c := vcdmContextURL(schema.Std)

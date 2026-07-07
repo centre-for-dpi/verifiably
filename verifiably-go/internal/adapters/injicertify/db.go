@@ -5,12 +5,22 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
+
+// verifiablyPublicBase returns the verifiably platform's public origin
+// (VERIFIABLY_PUBLIC_URL) — the schema-authority host used to mint SD-JWT `vct`
+// identifiers so issuance and the verifier agree. This is deliberately NOT the
+// certify offer host (Config.PublicBaseURL): the vct is a verifiably-defined
+// type identifier, and the verifier requests it from the same env var.
+func verifiablyPublicBase() string {
+	return strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/")
+}
 
 // defaultCredentialLogoURL is the fallback display logo for a custom config
 // when injicertify Config.DB.LogoURL is unset. gen-backends.sh normally points
@@ -117,10 +127,7 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 
 	switch credFormat {
 	case "vc+sd-jwt", "dc+sd-jwt":
-		vct := schema.Vct
-		if vct == "" {
-			vct = "https://verifiably.example.com/credentials/" + schema.ID
-		}
+		vct := schema.CredentialVct(verifiablyPublicBase())
 		sdJwtVct = &vct
 		// Deliberately leave sd_jwt_claims NULL. It only feeds the OPTIONAL
 		// `claims` display block in the issuer metadata, but walt.id's OID4VCI
@@ -259,10 +266,7 @@ func buildVCTemplate(schema vctypes.Schema, withTokenStatus bool) string {
 	var tmpl any
 	switch credFormat {
 	case "vc+sd-jwt", "dc+sd-jwt":
-		vct := schema.Vct
-		if vct == "" {
-			vct = "https://verifiably.example.com/credentials/" + schema.ID
-		}
+		vct := schema.CredentialVct(verifiablyPublicBase())
 		m := map[string]any{"vct": vct}
 		for _, f := range schema.FieldsSpec {
 			m[f.Name] = "${" + f.Name + "}"

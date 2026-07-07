@@ -639,7 +639,7 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 			Fields:         fields,
 			Format:         schema.Std,
 			CredentialType: schema.Name,
-			Vct:            schema.Vct,
+			Vct:            schema.CredentialVct(publicBaseEnv()),
 			WireFormat:     "vc+sd-jwt",
 			Disclosure:     "selective — SD-JWT VC (vc+sd-jwt)",
 		}
