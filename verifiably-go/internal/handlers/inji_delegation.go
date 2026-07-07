@@ -52,11 +52,23 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	if strings.TrimSpace(req.IndividualID) == "" || strings.TrimSpace(req.PIN) == "" {
-		apiError(w, http.StatusBadRequest, "individualId and pin are required")
+	out, status, err := h.setupInjiDelegation(apiCtx(r, keyName), keyName, req)
+	if err != nil {
+		apiError(w, status, err.Error())
 		return
 	}
-	ctx := apiCtx(r, keyName)
+	apiJSON(w, status, out)
+}
+
+// setupInjiDelegation is the shared core of the auth-code delegated-access
+// setup, called by both the JSON API (APIInjiDelegationSetup) and the issuer UI
+// (SubmitDelegationSetup): mock-identity + the two auth-code configs + a
+// revocation slot + vc_subject provisioning. Returns the result map + an HTTP
+// status; err != nil means the status is the failure code.
+func (h *H) setupInjiDelegation(ctx context.Context, ownerKey string, req apiInjiDelegationSetupRequest) (map[string]any, int, error) {
+	if strings.TrimSpace(req.IndividualID) == "" || strings.TrimSpace(req.PIN) == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("individualId and pin are required")
+	}
 	std := orDefault(req.Std, "sd_jwt_vc (IETF)")
 	subjType := orDefault(req.SubjectType, "BirthCertificate")
 	delegType := orDefault(req.DelegationType, "DelegatedAccessCredential")
@@ -68,8 +80,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		"Female", "2015/03/10", req.IndividualID+"@example.com", "+10000000000"); err != nil {
 		// already-exists is fine; surface other errors
 		if !strings.Contains(strings.ToLower(err.Error()), "exist") && !strings.Contains(err.Error(), "duplicate") {
-			apiError(w, http.StatusBadGateway, "create mock identity: "+err.Error())
-			return
+			return nil, http.StatusBadGateway, fmt.Errorf("create mock identity: %w", err)
 		}
 	}
 
@@ -106,9 +117,8 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		if existing[spec.typeName] {
 			continue
 		}
-		if _, err := h.applyAuthcodeSchema(ctx, injiAuthcodeSchema(spec.typeName, std, spec.fields), "api:"+keyName); err != nil {
-			apiError(w, http.StatusBadGateway, "create config "+spec.typeName+": "+err.Error())
-			return
+		if _, err := h.applyAuthcodeSchema(ctx, injiAuthcodeSchema(spec.typeName, std, spec.fields), "api:"+ownerKey); err != nil {
+			return nil, http.StatusBadGateway, fmt.Errorf("create config %s: %w", spec.typeName, err)
 		}
 	}
 
@@ -116,8 +126,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	// revocable (uniform revocation — the evaluator's 4th check).
 	binding, err := h.allocateStatusListBinding(injiAuthcodeSchema(delegType, std, nil))
 	if err != nil {
-		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
-		return
+		return nil, http.StatusInternalServerError, fmt.Errorf("status list: %w", err)
 	}
 
 	// 3. Provision the holder's vc_subject (one row; each config's view reads its
@@ -155,8 +164,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	subjectID := esignetSubjectID(req.IndividualID, injiAuthcodeClientID())
 	if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {
-		apiError(w, http.StatusBadGateway, "provision vc_subject: "+err.Error())
-		return
+		return nil, http.StatusBadGateway, fmt.Errorf("provision vc_subject: %w", err)
 	}
 
 	out := map[string]any{
@@ -173,7 +181,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		out["statusListCredential"] = binding.PublishURL
 		out["statusType"] = binding.Type
 	}
-	apiJSON(w, http.StatusCreated, out)
+	return out, http.StatusCreated, nil
 }
 
 // APIInjiDelegationRevoke flips the revocation bit for a delegation issued via
@@ -321,7 +329,20 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	ctx := apiCtx(r, keyName)
+	out, status, err := h.issuePreAuthDelegationPair(apiCtx(r, keyName), req)
+	if err != nil {
+		apiError(w, status, err.Error())
+		return
+	}
+	apiJSON(w, status, out)
+}
+
+// issuePreAuthDelegationPair is the shared core of the pre-auth delegated-access
+// pair issuance, called by both the JSON API (APIInjiPreAuthDelegationIssue) and
+// the issuer UI (SubmitPreAuthDelegation). It registers the subject + delegation
+// SD-JWT configs and stages two pre-authorized offers. Returns the result map +
+// an HTTP status; err != nil means the status is the failure code.
+func (h *H) issuePreAuthDelegationPair(ctx context.Context, req apiInjiPreAuthIssueRequest) (map[string]any, int, error) {
 	dpg := orDefault(req.Dpg, "Inji Certify · Pre-Auth")
 	std := orDefault(req.Std, "sd_jwt_vc (IETF)")
 	subjType := orDefault(req.SubjectType, "BirthCertificate")
@@ -352,17 +373,14 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		return nil
 	}
 	if err := saveTolerant(subjSchema); err != nil {
-		apiError(w, http.StatusBadGateway, "register subject schema: "+err.Error())
-		return
+		return nil, http.StatusBadGateway, fmt.Errorf("register subject schema: %w", err)
 	}
 	if err := saveTolerant(delegSchema); err != nil {
-		apiError(w, http.StatusBadGateway, "register delegation schema: "+err.Error())
-		return
+		return nil, http.StatusBadGateway, fmt.Errorf("register delegation schema: %w", err)
 	}
 	binding, err := h.allocateStatusListBinding(delegSchema)
 	if err != nil {
-		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
-		return
+		return nil, http.StatusInternalServerError, fmt.Errorf("status list: %w", err)
 	}
 
 	subjRes, err := h.Adapter.IssueToWallet(ctx, backend.IssueRequest{
@@ -370,8 +388,7 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		SubjectData: map[string]string{"subjectRef": subjectRef, "givenName": given},
 	})
 	if err != nil {
-		apiError(w, http.StatusBadGateway, "issue subject: "+err.Error())
-		return
+		return nil, http.StatusBadGateway, fmt.Errorf("issue subject: %w", err)
 	}
 	delegClaims := map[string]string{
 		"onBehalfOf":    subjectRef,
@@ -390,8 +407,7 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		IssuerDpg: dpg, Schema: delegSchema, Flow: "pre_auth", SubjectData: delegClaims,
 	})
 	if err != nil {
-		apiError(w, http.StatusBadGateway, "issue delegation: "+err.Error())
-		return
+		return nil, http.StatusBadGateway, fmt.Errorf("issue delegation: %w", err)
 	}
 
 	// Each CREDEBL pre-auth offer carries its OWN tx_code (PIN) the holder must
@@ -405,7 +421,7 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		out["statusListCredential"] = binding.PublishURL
 		out["statusType"] = binding.Type
 	}
-	apiJSON(w, http.StatusCreated, out)
+	return out, http.StatusCreated, nil
 }
 
 func injiPreAuthSchema(typeName, dpg, std string, fields []string) vctypes.Schema {
@@ -713,4 +729,86 @@ func (h *H) APIVerifyDelegationSDJWT(w http.ResponseWriter, r *http.Request) {
 		out["delegation"] = res.Delegation
 	}
 	apiJSON(w, http.StatusOK, out)
+}
+
+// ── Delegated-access setup UI (issuer) ───────────────────────────────────────
+// A first-class UI over the SAME cores the JSON API uses (setupInjiDelegation /
+// issuePreAuthDelegationPair) so the operator can configure + issue a delegated
+// pair without curl. The flow (pre-auth pair vs auth-code provisioning) follows
+// the selected issuer DPG.
+
+// ShowDelegationSetup renders the delegated-access setup form. GET /issuer/delegation.
+func (h *H) ShowDelegationSetup(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	if !sess.AuthOK || sess.Role != "issuer" {
+		h.redirect(w, r, "/")
+		return
+	}
+	if sess.IssuerDpg == "" {
+		h.redirect(w, r, "/issuer/dpg")
+		return
+	}
+	flow := "pre_auth"
+	if h.isInjiAuthcode(r.Context(), sess.IssuerDpg) {
+		flow = "auth_code"
+	}
+	h.render(w, r, "issuer_delegation", h.pageData(sess, map[string]any{
+		"Session": sess,
+		"Flow":    flow,
+	}))
+}
+
+// SubmitDelegationSetup handles the delegated-access setup form (HTMX).
+// POST /issuer/delegation. Dispatches to the pre-auth pair issuance or the
+// auth-code setup based on the selected issuer DPG, reusing the JSON-API cores.
+func (h *H) SubmitDelegationSetup(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	if !sess.AuthOK || sess.Role != "issuer" {
+		h.errorToast(w, r, "sign in as an issuer first")
+		return
+	}
+	_ = r.ParseForm()
+	ctx := issuerCtx(r, sess)
+	actions := r.Form["allowed_action"]
+	validUntil := normalizeIssuanceTime(r.FormValue("valid_until"))
+	std := orDefault(r.FormValue("std"), "sd_jwt_vc (IETF)")
+
+	if h.isInjiAuthcode(ctx, sess.IssuerDpg) {
+		req := apiInjiDelegationSetupRequest{
+			IndividualID:   strings.TrimSpace(r.FormValue("individual_id")),
+			PIN:            strings.TrimSpace(r.FormValue("pin")),
+			Std:            std,
+			SubjectType:    strings.TrimSpace(r.FormValue("subject_type")),
+			DelegationType: strings.TrimSpace(r.FormValue("delegation_type")),
+			SubjectRef:     strings.TrimSpace(r.FormValue("subject_ref")),
+			GivenName:      strings.TrimSpace(r.FormValue("given_name")),
+			Role:           strings.TrimSpace(r.FormValue("role")),
+			AllowedAction:  actions,
+			ValidUntil:     validUntil,
+		}
+		out, _, err := h.setupInjiDelegation(ctx, sessionOwnerKey(sess), req)
+		if err != nil {
+			h.errorToast(w, r, err.Error())
+			return
+		}
+		h.renderFragment(w, r, "fragment_delegation_authcode_result", map[string]any{"Body": out, "Session": sess, "Lang": h.langFor(r)})
+		return
+	}
+	req := apiInjiPreAuthIssueRequest{
+		Dpg:            sess.IssuerDpg,
+		Std:            std,
+		SubjectType:    strings.TrimSpace(r.FormValue("subject_type")),
+		DelegationType: strings.TrimSpace(r.FormValue("delegation_type")),
+		SubjectRef:     strings.TrimSpace(r.FormValue("subject_ref")),
+		GivenName:      strings.TrimSpace(r.FormValue("given_name")),
+		Role:           strings.TrimSpace(r.FormValue("role")),
+		AllowedAction:  actions,
+		ValidUntil:     validUntil,
+	}
+	out, _, err := h.issuePreAuthDelegationPair(ctx, req)
+	if err != nil {
+		h.errorToast(w, r, err.Error())
+		return
+	}
+	h.renderFragment(w, r, "fragment_delegation_preauth_result", map[string]any{"Body": out, "Session": sess, "Lang": h.langFor(r)})
 }

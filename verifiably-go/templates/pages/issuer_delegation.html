@@ -1,0 +1,125 @@
+{{define "content_issuer_delegation"}}
+<section class="view active">
+  <div class="section-label"><span class="num">07</span><span class="caps">{{t "Issuer · Delegated access" $.Lang}}</span></div>
+  <h1 class="page-title">{{t "Issue a" $.Lang}} <em>{{t "delegated-access pair" $.Lang}}</em>.</h1>
+  <p class="subtitle">
+    <span class="mono">{{.Body.Session.IssuerDpg}}</span> ·
+    {{if eq .Body.Flow "auth_code"}}{{t "auth-code: provisions a holder who claims both credentials via eSignet" $.Lang}}{{else}}{{t "pre-auth: stages two credential offers the holder scans" $.Lang}}{{end}}
+  </p>
+
+  <form hx-post="/issuer/delegation" hx-target="#delegation-result" hx-swap="innerHTML"
+        style="display:grid;gap:1rem;max-width:640px;margin-top:1.25rem">
+    <input type="hidden" name="std" value="sd_jwt_vc (IETF)">
+
+    {{if eq .Body.Flow "auth_code"}}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <label style="display:grid;gap:0.3rem">
+        <span class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "Holder individual ID (UIN)" $.Lang}}</span>
+        <input name="individual_id" required placeholder="8123456701" class="mono"
+               style="padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+      </label>
+      <label style="display:grid;gap:0.3rem">
+        <span class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "eSignet PIN" $.Lang}}</span>
+        <input name="pin" required placeholder="123456" class="mono"
+               style="padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+      </label>
+    </div>
+    {{end}}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <label style="display:grid;gap:0.3rem">
+        <span class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "Subject credential type" $.Lang}}</span>
+        <input name="subject_type" placeholder="BirthCertificate"
+               style="padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+      </label>
+      <label style="display:grid;gap:0.3rem">
+        <span class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "Delegation credential type" $.Lang}}</span>
+        <input name="delegation_type" placeholder="DelegatedAccessCredential"
+               style="padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+      </label>
+    </div>
+
+    <label style="display:grid;gap:0.3rem">
+      <span class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "onBehalfOf / subjectRef (linkage anchor)" $.Lang}}</span>
+      <input name="subject_ref" placeholder="urn:person:8123456701" class="mono"
+             style="padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+      <span style="font-size:0.75rem;color:var(--ink-mute)">{{t "The identity the delegate acts for — must match the subject credential's holder anchor so linkage passes at verify time." $.Lang}}</span>
+    </label>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <label style="display:grid;gap:0.3rem">
+        <span class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "Given name" $.Lang}}</span>
+        <input name="given_name" placeholder="Maria"
+               style="padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+      </label>
+      <label style="display:grid;gap:0.3rem">
+        <span class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "Role" $.Lang}}</span>
+        <input name="role" placeholder="Mother"
+               style="padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+      </label>
+    </div>
+
+    <fieldset style="border:1px solid var(--line);border-radius:4px;padding:0.6rem 0.8rem">
+      <legend class="caps" style="font-size:0.72rem;color:var(--ink-mute);padding:0 0.3rem">{{t "Allowed actions" $.Lang}}</legend>
+      <label style="margin-right:1rem"><input type="checkbox" name="allowed_action" value="present" checked> present</label>
+      <label style="margin-right:1rem"><input type="checkbox" name="allowed_action" value="consent:disclose"> consent:disclose</label>
+      <label><input type="checkbox" name="allowed_action" value="pay"> pay</label>
+    </fieldset>
+
+    <label style="display:grid;gap:0.3rem">
+      <span class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "Delegation expiry (valid_until)" $.Lang}}</span>
+      <input type="datetime-local" name="valid_until"
+             style="padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+      <span style="font-size:0.75rem;color:var(--ink-mute)">{{t "The capability caveat — after this the delegation is denied even if not revoked. Carried as valid_until (not the credential's own validity)." $.Lang}}</span>
+    </label>
+
+    <div class="btn-row">
+      <button type="submit" class="btn">{{if eq .Body.Flow "auth_code"}}{{t "Set up delegation" $.Lang}}{{else}}{{t "Issue delegation pair" $.Lang}}{{end}}</button>
+    </div>
+  </form>
+
+  <div id="delegation-result"></div>
+</section>
+{{end}}
+
+{{define "fragment_delegation_preauth_result"}}
+<div class="cred-preview" style="margin-top:1.5rem">
+  <div class="caps">{{t "Delegated-access pair issued" $.Lang}}</div>
+  <p class="subtitle" style="margin-top:0.4rem">{{t "The holder scans BOTH offers into one wallet, then a verifier evaluates the pair." $.Lang}}
+    {{if .Body.statusListIndex}}<br><span style="font-size:0.78rem;color:var(--ink-mute)">{{t "Revocation index" $.Lang}}: <span class="mono">{{.Body.statusListIndex}}</span> — {{t "revoke from" $.Lang}} <a href="/issuer/credentials">/issuer/credentials</a></span>{{end}}</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.25rem;margin-top:1rem">
+    {{with .Body.subject}}
+    <div style="border:1px solid var(--line);border-radius:8px;padding:1rem">
+      <div class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "Subject credential" $.Lang}}: <span class="mono">{{.type}}</span></div>
+      <img src="/qr?text={{.offerUri | urlquery}}&size=260" alt="subject offer QR"
+           style="display:block;width:260px;height:260px;background:#fff;padding:0.5rem;border:1px solid var(--line);border-radius:2px;margin:0.6rem 0">
+      {{if .pin}}<div style="text-align:center">{{t "PIN" $.Lang}}: <span class="mono" style="font-size:1.2rem;font-weight:700">{{.pin}}</span></div>{{end}}
+      <button class="btn ghost small" onclick="copyText('{{.offerUri}}')">{{t "Copy link" $.Lang}}</button>
+    </div>
+    {{end}}
+    {{with .Body.delegation}}
+    <div style="border:1px solid var(--line);border-radius:8px;padding:1rem">
+      <div class="caps" style="font-size:0.72rem;color:var(--ink-mute)">{{t "Delegation credential" $.Lang}}: <span class="mono">{{.type}}</span></div>
+      <img src="/qr?text={{.offerUri | urlquery}}&size=260" alt="delegation offer QR"
+           style="display:block;width:260px;height:260px;background:#fff;padding:0.5rem;border:1px solid var(--line);border-radius:2px;margin:0.6rem 0">
+      {{if .pin}}<div style="text-align:center">{{t "PIN" $.Lang}}: <span class="mono" style="font-size:1.2rem;font-weight:700">{{.pin}}</span></div>{{end}}
+      <button class="btn ghost small" onclick="copyText('{{.offerUri}}')">{{t "Copy link" $.Lang}}</button>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "fragment_delegation_authcode_result"}}
+<div class="cred-preview" style="margin-top:1.5rem">
+  <div class="caps">{{t "Delegation provisioned" $.Lang}}</div>
+  <h3 style="margin:0.5rem 0;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.25rem">{{t "Holder" $.Lang}} <span class="mono">{{.Body.individualId}}</span> {{t "ready to claim" $.Lang}}</h3>
+  <p class="subtitle">{{t "The holder logs in with their eSignet PIN and claims both credentials, then a verifier evaluates the pair." $.Lang}}
+    {{if .Body.statusListIndex}}<br><span style="font-size:0.78rem;color:var(--ink-mute)">{{t "Revocation index" $.Lang}}: <span class="mono">{{.Body.statusListIndex}}</span></span>{{end}}</p>
+  <div class="btn-row" style="margin-top:0.75rem">
+    <a class="btn" href="{{.Body.claimURLs.subject}}">{{t "Claim" $.Lang}} {{.Body.subjectCredential}} →</a>
+    <a class="btn" href="{{.Body.claimURLs.delegation}}">{{t "Claim" $.Lang}} {{.Body.delegationCredential}} →</a>
+    <a class="btn ghost small" href="/issuer/credentials">{{t "View / revoke →" $.Lang}}</a>
+  </div>
+</div>
+{{end}}
