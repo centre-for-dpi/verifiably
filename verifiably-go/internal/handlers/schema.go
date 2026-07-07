@@ -391,6 +391,7 @@ type builderData struct {
 	Fields            []vctypes.FieldSpec
 	PreviewJSON       string
 	Delegation        bool   // delegated-access credential (carries a capability)
+	Expiry            bool   // opt-in: this credential expires (adds a valid_until datetime claim)
 	Scenario          string // selected delegation scenario key (poa/director/teacher/…)
 	Scenarios         []delegationScenario
 }
@@ -692,6 +693,7 @@ func extractBuilderData(r *http.Request) builderData {
 		ExtraType:         r.FormValue("extra_type"),
 		Std:               canonicalStd(r.FormValue("std")),
 		Delegation:        r.FormValue("delegation") == "on",
+		Expiry:            r.FormValue("expiry") == "on",
 		Scenario:          r.FormValue("scenario"),
 		Scenarios:         delegationScenarios,
 	}
@@ -747,7 +749,33 @@ func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
 			s.FieldsSpec = append(s.FieldsSpec, f)
 		}
 	}
+	// Opt-in expiry policy: append a valid_until datetime claim so the credential
+	// carries (and the temporal gate enforces) a validity window. DPG-agnostic —
+	// the flat valid_until claim lands top-level on SD-JWT and inside
+	// credentialSubject on W3C, both read by backend.TemporalBounds. This is the
+	// single funnel every builder path (preview/add/remove/delegation/save) goes
+	// through, so it doubles as the dedupe point: the delegation preset already
+	// places valid_until in the fields, so hasField skips the duplicate.
+	if d.Expiry && !hasField(s.FieldsSpec, "valid_until") {
+		s.FieldsSpec = append(s.FieldsSpec, vctypes.FieldSpec{
+			Name:     "valid_until",
+			Datatype: "string",
+			Format:   "datetime",
+		})
+	}
 	return s
+}
+
+// hasField reports whether fs already contains a field with the given name
+// (case-sensitive, trimmed) — used to keep the derived valid_until claim from
+// being appended twice when composed with the delegation preset.
+func hasField(fs []vctypes.FieldSpec, name string) bool {
+	for _, f := range fs {
+		if strings.TrimSpace(f.Name) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func allBlank(fs []vctypes.FieldSpec) bool {

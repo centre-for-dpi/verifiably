@@ -45,3 +45,52 @@ func TestApplyDelegationPreset_ValidUntilDatetime(t *testing.T) {
 		}
 	}
 }
+
+// exactlyOneField returns the named field and whether it appears EXACTLY once
+// (so a duplicate reads as "not cleanly present" and fails the dedupe assertion).
+func exactlyOneField(s vctypes.Schema, name string) (vctypes.FieldSpec, bool) {
+	var found vctypes.FieldSpec
+	n := 0
+	for _, f := range s.FieldsSpec {
+		if f.Name == name {
+			found = f
+			n++
+		}
+	}
+	return found, n == 1
+}
+
+// The opt-in expiry toggle derives a valid_until datetime claim onto ANY schema
+// (DPG-agnostic), stays OFF by default (no coupling), and never duplicates the
+// field the delegation preset already contributes.
+func TestCurrentBuilderSchema_ExpiryToggle(t *testing.T) {
+	sess := &Session{IssuerDpg: "walt.id"}
+	base := []vctypes.FieldSpec{{Name: "givenName", Datatype: "string"}}
+
+	// OFF by default → no valid_until field (a credential with no expiry is not
+	// coupled to one).
+	off := currentBuilderSchema(sess, builderData{Name: "Card", Fields: base})
+	if _, ok := exactlyOneField(off, "valid_until"); ok {
+		t.Error("expiry OFF must not add a valid_until field")
+	}
+
+	// ON → a single valid_until datetime claim is appended (the temporal gate
+	// reads this claim across SD-JWT top-level and W3C credentialSubject).
+	on := currentBuilderSchema(sess, builderData{Name: "Card", Fields: base, Expiry: true})
+	vu, ok := exactlyOneField(on, "valid_until")
+	if !ok {
+		t.Fatal("expiry ON must add exactly one valid_until field")
+	}
+	if vu.Datatype != "string" || vu.Format != "datetime" {
+		t.Errorf("valid_until = {%q,%q}, want {string,datetime}", vu.Datatype, vu.Format)
+	}
+
+	// Composed with delegation (whose preset already contributes valid_until):
+	// dedupe → still exactly one, no duplicate.
+	dg := &builderData{Name: "Deleg", Expiry: true}
+	applyDelegationPreset(dg)
+	composed := currentBuilderSchema(sess, *dg)
+	if _, ok := exactlyOneField(composed, "valid_until"); !ok {
+		t.Error("delegation + expiry must yield exactly one valid_until (dedupe), got 0 or >1")
+	}
+}

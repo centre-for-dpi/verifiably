@@ -74,4 +74,49 @@ func TestTemporalBounds(t *testing.T) {
 	if na6.Year() != 2030 {
 		t.Fatalf("expected camelCase validUntil to win: na=%v", na6)
 	}
+
+	// W3C/JSON-LD opt-in expiry policy: a normal credential carries the
+	// valid_from/valid_until claim inside credentialSubject (SD-JWT flattens it
+	// to the top level, handled above; JSON-LD does not). TemporalBounds must
+	// descend into credentialSubject as a fallback so the expiry is enforced.
+	w3cSubj := NormalizedCredential{Raw: map[string]any{
+		"credentialSubject": map[string]any{
+			"id":          "did:example:holder",
+			"valid_from":  "2021-01-01T00:00:00Z",
+			"valid_until": "2020-06-01T00:00:00Z", // already expired
+		},
+	}}
+	nb7, na7 := w3cSubj.TemporalBounds()
+	if nb7.Year() != 2021 || na7.Year() != 2020 {
+		t.Fatalf("W3C credentialSubject bounds wrong: nb=%v na=%v", nb7, na7)
+	}
+
+	// A subject's OWN date attribute must NOT be mistaken for the credential's
+	// validity window: credentialSubject.expirationDate/validUntil (camelCase,
+	// e.g. a passport's own expiry claim) is NOT read as the credential expiry.
+	// Only the underscore policy keys are honoured at the subject level.
+	subjOwnDate := NormalizedCredential{Raw: map[string]any{
+		"credentialSubject": map[string]any{
+			"id":             "did:example:holder",
+			"expirationDate": "2019-01-01T00:00:00Z",
+			"validUntil":     "2019-01-01T00:00:00Z",
+		},
+	}}
+	_, na8 := subjOwnDate.TemporalBounds()
+	if !na8.IsZero() {
+		t.Fatalf("subject's own camelCase date must not bound the credential: na=%v", na8)
+	}
+
+	// Top-level bounds still win over a credentialSubject fallback when both are
+	// present (the subject fallback only fires when the top-level lookup is zero).
+	mixed := NormalizedCredential{Raw: map[string]any{
+		"validUntil": "2030-01-01T00:00:00Z",
+		"credentialSubject": map[string]any{
+			"valid_until": "2020-01-01T00:00:00Z",
+		},
+	}}
+	_, na9 := mixed.TemporalBounds()
+	if na9.Year() != 2030 {
+		t.Fatalf("top-level validUntil must win over subject fallback: na=%v", na9)
+	}
 }

@@ -84,6 +84,16 @@
     {{end}}
   </div>
 
+  <div class="field" style="border:1px solid var(--line);border-radius:4px;padding:0.75rem 0.9rem;background:var(--bg-soft,rgba(0,0,0,0.025))">
+    <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-weight:600;margin:0">
+      <input type="checkbox" name="expiry" {{if .Expiry}}checked{{end}}>
+      This credential expires
+    </label>
+    <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
+      Adds an opt-in <span class="mono">valid_until</span> field so the credential carries an expiry that verifiers <strong>enforce</strong> — a presentation after that instant is denied as expired, on every DPG and in both SD-JWT and W3C. At issue time you'll pick a date &amp; time. Leave off for credentials that never expire (no coupling). Delegated-access credentials already include <span class="mono">valid_until</span>, so this won't add a duplicate.
+    </p>
+  </div>
+
   <div class="field">
     <label>Name</label>
     <input type="text" name="name" value="{{.Name}}" placeholder="e.g. Alumni Card" required>

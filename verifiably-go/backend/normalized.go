@@ -63,7 +63,30 @@ type DelegationResult struct {
 func (c NormalizedCredential) TemporalBounds() (notBefore, notAfter time.Time) {
 	notBefore = firstRawTime(c.Raw, "validFrom", "issuanceDate", "nbf", "valid_from")
 	notAfter = firstRawTime(c.Raw, "validUntil", "expirationDate", "exp", "valid_until")
+	// W3C/JSON-LD: a valid_from/valid_until expiry-POLICY claim lands inside
+	// credentialSubject (only SD-JWT flattens claims to the top level, where the
+	// lookups above already find it). Read it from there as a fallback so the
+	// opt-in expiry policy is enforced across formats + DPGs. Scoped to the
+	// underscore policy keys ONLY — never validUntil/expirationDate — so a
+	// subject's own date attribute (e.g. a passport expirationDate claim) is
+	// never mistaken for the credential's validity window.
+	if notBefore.IsZero() {
+		notBefore = subjectTime(c.Raw, "valid_from")
+	}
+	if notAfter.IsZero() {
+		notAfter = subjectTime(c.Raw, "valid_until")
+	}
 	return
+}
+
+// subjectTime reads a temporal key from the credential's credentialSubject
+// object (W3C JSON-LD shape), returning the zero time when absent/unparseable.
+func subjectTime(raw map[string]any, key string) time.Time {
+	cs, ok := raw["credentialSubject"].(map[string]any)
+	if !ok {
+		return time.Time{}
+	}
+	return firstRawTime(cs, key)
 }
 
 // firstRawTime returns the first of keys present in raw that parses to a time —
