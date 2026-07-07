@@ -112,6 +112,54 @@
           </div>
         {{end}}
       </div>
+      {{/* Timezone selector (Fix 5). A datetime-local / date input carries no
+           zone, so without this the entered wall-clock is pinned to UTC — a
+           UTC+offset operator's validFrom then lands hours in the future and the
+           verifier rejects it as "not yet valid". The value is minutes EAST of
+           UTC; app.js auto-selects the browser's detected zone on load (and
+           injects the exact option if it's not in the list). Governs every
+           date/time field on this form + the validity window below. */}}
+      <div class="field" data-tz-field style="margin-top:0.8rem">
+        <label>Timezone for date &amp; time fields</label>
+        <select name="tz_offset" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+          <option value="-720">UTC−12:00</option>
+          <option value="-660">UTC−11:00</option>
+          <option value="-600">UTC−10:00</option>
+          <option value="-540">UTC−09:00</option>
+          <option value="-480">UTC−08:00</option>
+          <option value="-420">UTC−07:00</option>
+          <option value="-360">UTC−06:00</option>
+          <option value="-300">UTC−05:00</option>
+          <option value="-240">UTC−04:00</option>
+          <option value="-180">UTC−03:00</option>
+          <option value="-120">UTC−02:00</option>
+          <option value="-60">UTC−01:00</option>
+          <option value="0" selected>UTC±00:00</option>
+          <option value="60">UTC+01:00</option>
+          <option value="120">UTC+02:00</option>
+          <option value="180">UTC+03:00</option>
+          <option value="210">UTC+03:30</option>
+          <option value="240">UTC+04:00</option>
+          <option value="270">UTC+04:30</option>
+          <option value="300">UTC+05:00</option>
+          <option value="330">UTC+05:30</option>
+          <option value="345">UTC+05:45</option>
+          <option value="360">UTC+06:00</option>
+          <option value="390">UTC+06:30</option>
+          <option value="420">UTC+07:00</option>
+          <option value="480">UTC+08:00</option>
+          <option value="540">UTC+09:00</option>
+          <option value="570">UTC+09:30</option>
+          <option value="600">UTC+10:00</option>
+          <option value="660">UTC+11:00</option>
+          <option value="720">UTC+12:00</option>
+          <option value="780">UTC+13:00</option>
+          <option value="840">UTC+14:00</option>
+        </select>
+        <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.4rem 0 0">
+          The times you enter above are interpreted in this zone, then stored as UTC. Defaults to your browser's timezone; the credential's validity is always compared in UTC by verifiers.
+        </p>
+      </div>
       {{/* Optional validity window (B3). Empty = the DPG default (walt.id ~2y).
            Pins validFrom/validUntil (W3C) or nbf/exp (SD-JWT) so the credential
            isn't stuck at the backend's default window. */}}

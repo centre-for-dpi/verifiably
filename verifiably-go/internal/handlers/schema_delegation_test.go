@@ -6,31 +6,33 @@ import (
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
-// The delegation preset must carry the capability expiry as `valid_until`
-// (underscore, dodging Certify's reserved ${validUntil}) AND type it as a
-// datetime policy field so the issue form renders a datetime-local picker,
+// The delegation preset carries the capability expiry as a DERIVED valid_until
+// field, not a manual row: it enables Expiry (the "This credential expires"
+// toggle) and leaves valid_until OUT of the editable field rows. The single
+// valid_until{string,datetime} then comes from currentBuilderSchema's funnel —
+// so the operator no longer sees a redundant, easily-mistyped valid_until row,
 // while every other capability field stays a generic (no-Format) input.
-func TestApplyDelegationPreset_ValidUntilDatetime(t *testing.T) {
+func TestApplyDelegationPreset_ValidUntilViaExpiry(t *testing.T) {
 	d := &builderData{}
 	applyDelegationPreset(d)
 
 	if d.Std != "sd_jwt_vc (IETF)" {
 		t.Errorf("Std = %q, want sd_jwt_vc (IETF)", d.Std)
 	}
+	if !d.Expiry {
+		t.Error("delegation preset must enable Expiry so valid_until is derived, not a manual row")
+	}
 	byName := map[string]vctypes.FieldSpec{}
 	for _, f := range d.Fields {
 		byName[f.Name] = f
 	}
 
-	vu, ok := byName["valid_until"]
-	if !ok {
-		t.Fatal("valid_until field missing from delegation preset")
-	}
-	if vu.Format != "datetime" {
-		t.Errorf("valid_until Format = %q, want %q", vu.Format, "datetime")
+	// valid_until must NOT be an editable field row (it is derived by the funnel).
+	if _, present := byName["valid_until"]; present {
+		t.Error("valid_until must not be a preset field row — it is derived via Expiry")
 	}
 	if _, stale := byName["validUntil"]; stale {
-		t.Error("stale camelCase validUntil field present — must be valid_until")
+		t.Error("stale camelCase validUntil field present — the expiry field is valid_until")
 	}
 
 	// The other capability fields stay generic dynamic inputs (no Format).
@@ -43,6 +45,18 @@ func TestApplyDelegationPreset_ValidUntilDatetime(t *testing.T) {
 		if f.Format != "" {
 			t.Errorf("%s should stay generic (no Format), got %q", n, f.Format)
 		}
+	}
+
+	// End-to-end through the funnel: the built schema carries exactly one
+	// valid_until{string,datetime} (the derived capability expiry).
+	sess := &Session{IssuerDpg: "Inji Certify · Pre-Auth"}
+	built := currentBuilderSchema(sess, *d)
+	vu, ok := exactlyOneField(built, "valid_until")
+	if !ok {
+		t.Fatal("built delegation schema must carry exactly one valid_until")
+	}
+	if vu.Datatype != "string" || vu.Format != "datetime" {
+		t.Errorf("derived valid_until = {%q,%q}, want {string,datetime}", vu.Datatype, vu.Format)
 	}
 }
 

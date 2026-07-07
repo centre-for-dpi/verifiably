@@ -3,6 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -186,13 +187,30 @@ func sourcesFromCapabilities(dpg vctypes.DPG) []sourceOption {
 // normalizeIssuanceTime accepts an RFC3339 timestamp, an HTML datetime-local
 // value (2006-01-02T15:04[:05]), or a plain date (2006-01-02) and returns it as
 // RFC3339 UTC. Empty or unparseable input yields "".
-func normalizeIssuanceTime(s string) string {
+func normalizeIssuanceTime(s string) string { return normalizeIssuanceTimeTZ(s, 0) }
+
+// normalizeIssuanceTimeTZ is normalizeIssuanceTime with an explicit input zone.
+// A bare HTML datetime-local / date value carries no offset, and Go's plain
+// time.Parse would assign UTC — pinning a user's local wall-clock (e.g. 17:36)
+// to 17:36Z. For a UTC+offset operator that pushes validFrom hours into the
+// future, tripping a verifier's not-before gate. offsetEastMin is the minutes
+// EAST of UTC the operator selected (e.g. +330 = UTC+05:30); the zone-less
+// layouts are interpreted in that fixed zone via ParseInLocation, THEN converted
+// to UTC. An RFC3339 input already carries its own zone and is honoured verbatim.
+// Empty or unparseable input yields "".
+func normalizeIssuanceTimeTZ(s string, offsetEastMin int) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""
 	}
-	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
-		if t, err := time.Parse(layout, s); err == nil {
+	// RFC3339 first — it is self-describing, so the selected zone must not
+	// override an explicit offset the caller already provided.
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	loc := time.FixedZone("user", offsetEastMin*60)
+	for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
+		if t, err := time.ParseInLocation(layout, s, loc); err == nil {
 			return t.UTC().Format(time.RFC3339)
 		}
 	}
@@ -227,6 +245,11 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	schema, _ := findSchemaByID(schemas, schemaID)
 	schema = h.resolveFields(schema)
+	// The operator's local UTC offset (minutes east, from the issue form's
+	// timezone selector). datetime-local/date inputs carry no zone, so this tells
+	// normalizeIssuanceTimeTZ which wall-clock the entered times are in — else
+	// they'd be pinned to UTC and a validFrom would land hours in the future.
+	tzOffset, _ := strconv.Atoi(r.FormValue("tz_offset"))
 	// Gather subject data from form (falls back to prefill)
 	subject := map[string]string{}
 	for _, fs := range schema.FieldsSpec {
@@ -237,7 +260,7 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		// field is stored verbatim — this stays generic, keyed on the field's
 		// declared Format, not its name.
 		if fs.Format == "date" || fs.Format == "datetime" {
-			v = normalizeIssuanceTime(v)
+			v = normalizeIssuanceTimeTZ(v, tzOffset)
 		}
 		subject[fs.Name] = v
 	}
@@ -257,8 +280,8 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	// Optional issuance-time validity window. When set, the adapter pins the
 	// credential's validFrom/validUntil (W3C) or nbf/exp (SD-JWT) instead of the
 	// DPG default (walt.id defaults to ~2y); empty leaves the backend default.
-	req.ValidFrom = normalizeIssuanceTime(r.FormValue("valid_from"))
-	req.ValidUntil = normalizeIssuanceTime(r.FormValue("valid_until"))
+	req.ValidFrom = normalizeIssuanceTimeTZ(r.FormValue("valid_from"), tzOffset)
+	req.ValidUntil = normalizeIssuanceTimeTZ(r.FormValue("valid_until"), tzOffset)
 
 	if sess.Dest == "wallet" {
 		// Allocate a status-list index BEFORE the issuance call so the

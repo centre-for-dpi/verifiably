@@ -442,18 +442,18 @@ func scenarioByKey(k string) (delegationScenario, bool) {
 // allowedAction the verifier's evaluator keys off; role + valid_until for display/caveat).
 func applyDelegationPreset(d *builderData) {
 	d.Std = "sd_jwt_vc (IETF)"
+	// The delegation capability expiry is `valid_until`, but it is NOT a manual
+	// field row here — it is derived by the "This credential expires" toggle
+	// (Expiry), which currentBuilderSchema appends once as a datetime field and
+	// dedupes. Enabling Expiry keeps the capability-expiry policy without the
+	// redundant, easily-mistyped string row the operator used to see. (valid_until
+	// underscore — not validUntil — still dodges Certify's reserved ${validUntil}
+	// marker; the evaluator reads valid_until.)
+	d.Expiry = true
 	base := []vctypes.FieldSpec{
 		{Name: "onBehalfOf", Datatype: "string", Required: true},
 		{Name: "role", Datatype: "string"},
 		{Name: "allowedAction", Datatype: "string", Required: true},
-		// valid_until (underscore), NOT validUntil: the delegation-capability
-		// expiry must dodge Certify's reserved ${validUntil} substitution marker
-		// (which certify fills with the credential's own ~2y validity default and
-		// would shadow the provisioned value). The evaluator reads valid_until.
-		// Format "datetime" makes the issue form render it as a datetime-local
-		// picker (RFC3339-normalized on submit) — the capability-expiry policy —
-		// while every other field stays a generic dynamic input.
-		{Name: "valid_until", Datatype: "string", Format: "datetime"},
 	}
 	// A recognised scenario FORCES its identity + fields so switching scenarios
 	// updates the form; the generic preset GUARDS so a custom operator's edits survive.

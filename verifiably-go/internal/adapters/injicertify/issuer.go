@@ -353,8 +353,21 @@ func fieldSpecFor(name string) vctypes.FieldSpec {
 	lower := strings.ToLower(name)
 	f := vctypes.FieldSpec{Name: name, Datatype: "string", Required: true}
 	switch {
-	case strings.Contains(lower, "date") || strings.HasSuffix(lower, "on") ||
-		strings.HasSuffix(lower, "at") || strings.HasSuffix(lower, "expiry"):
+	// Explicit datetime policy fields: the delegation/expiry valid_until | valid_from
+	// (underscore or camelCase) carry a full timestamp, so the issue form must render
+	// a datetime-local picker (and SubmitIssue normalizes them to RFC3339). Checked
+	// before the date heuristic so they are never demoted to a date-only input.
+	case lower == "valid_until" || lower == "validuntil" ||
+		lower == "valid_from" || lower == "validfrom":
+		f.Format = "datetime"
+	// Date fields. The past-tense "…On" / "…At" heuristic (issuedOn, updatedAt) must
+	// match the ORIGINAL camelCase / snake_case word boundary, NOT a lowercased tail —
+	// otherwise it wrongly swallows names that merely END in those letters
+	// (allowedActi·on, instituti·on, form·at, se·at), dating a plain string field that
+	// the RFC3339 normalization then empties.
+	case strings.Contains(lower, "date") || strings.HasSuffix(lower, "expiry") ||
+		strings.HasSuffix(name, "On") || strings.HasSuffix(name, "At") ||
+		strings.HasSuffix(lower, "_on") || strings.HasSuffix(lower, "_at"):
 		f.Format = "date"
 	case strings.Contains(lower, "email"):
 		f.Format = "email"

@@ -45,7 +45,39 @@ func (h *H) ShowVerify(w http.ResponseWriter, r *http.Request) {
 // `dc+sd-jwt` (rejected by VerifierService.getPresentationFormat). Showing
 // them in the verifier picker is a pure footgun — the user builds a request
 // they can never satisfy.
-func verifierPresentableSchemas(schemas []vctypes.Schema) []vctypes.Schema {
+//
+// verifierIssuerVendors maps a verifier vendor key to the issuer vendor key(s)
+// whose credentials it can verify — its OWN ecosystem. Most verifiers double as
+// their own issuer under one vendor key (walt.id, CREDEBL), so they map to
+// themselves; Inji Verify is the exception — it has no same-named issuer, and
+// its credentials are minted by the two Inji Certify issuers. An unknown key
+// maps to itself (a sane default for any 1:1 vendor added later).
+func verifierIssuerVendors(verifierDpg string) []string {
+	switch verifierDpg {
+	case "":
+		return nil // no DPG chosen yet → caller applies no scope
+	case "Inji Verify":
+		return []string{"Inji Certify · Pre-Auth", "Inji Certify · Auth-Code"}
+	default:
+		return []string{verifierDpg}
+	}
+}
+
+// dpgsIntersect reports whether any vendor key in a schema's DPGs slice is in
+// the allowed set.
+func dpgsIntersect(schemaDPGs, allowed []string) bool {
+	for _, d := range schemaDPGs {
+		for _, a := range allowed {
+			if d == a {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func verifierPresentableSchemas(schemas []vctypes.Schema, verifierDpg string) []vctypes.Schema {
+	vendors := verifierIssuerVendors(verifierDpg)
 	out := make([]vctypes.Schema, 0, len(schemas))
 	for _, s := range schemas {
 		// Mirror the issuer schema page: only show user-built schemas. The
@@ -54,6 +86,15 @@ func verifierPresentableSchemas(schemas []vctypes.Schema) []vctypes.Schema {
 		// asymmetry where operators can verify against credential types
 		// they were never able to issue.
 		if !s.Custom {
+			continue
+		}
+		// Scope the grid to the active verifier's OWN ecosystem: only show
+		// credential types issued under an issuer that this verifier can
+		// actually check (Inji Verify ↔ the two Inji Certify issuers; walt.id
+		// and CREDEBL each play both roles under one vendor key). A schema is
+		// stamped DPGs:[issuerDpg] at save, so an intersect with the verifier's
+		// issuer-vendor set is exact. Empty verifierDpg (none picked) → no scope.
+		if len(vendors) > 0 && !dpgsIntersect(s.DPGs, vendors) {
 			continue
 		}
 		if len(s.Variants) == 0 {
@@ -95,7 +136,7 @@ func verifierPresentableSchemas(schemas []vctypes.Schema) []vctypes.Schema {
 // card grid, filter chips, and preview all stay consistent when HTMX swaps
 // the custom-request body on card selection.
 func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG) map[string]any {
-	schemas = verifierPresentableSchemas(schemas)
+	schemas = verifierPresentableSchemas(schemas, sess.VerifierDpg)
 	// Filter by std: a card qualifies if ANY of its variants matches the
 	// active filter. When a non-"all" filter is active we also promote the
 	// matching variant to the card's default so selecting it picks a

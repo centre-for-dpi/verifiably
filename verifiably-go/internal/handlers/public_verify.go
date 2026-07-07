@@ -84,7 +84,10 @@ func (h *H) publicSchemas(ctx context.Context) []vctypes.Schema {
 // Mirrors verifierCustomData but uses the session's PublicVerify* fields
 // so the two flows never clobber each other's filter state.
 func publicVerifyData(sess *Session, allSchemas []vctypes.Schema) map[string]any {
-	schemas := verifierPresentableSchemas(allSchemas)
+	// The public verify landing is intentionally NOT scoped to a DPG — anyone can
+	// verify any credential handed to them — so pass "" for no DPG filter. Only
+	// the admin verifier flow (verifierCustomData) scopes to its ecosystem.
+	schemas := verifierPresentableSchemas(allSchemas, "")
 
 	filtered := make([]vctypes.Schema, 0, len(schemas))
 	for _, s := range schemas {
