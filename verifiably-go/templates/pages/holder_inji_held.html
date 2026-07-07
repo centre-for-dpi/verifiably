@@ -24,7 +24,13 @@
     <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:1.25rem 1.5rem">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:0.9rem">
         <strong style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.1rem">{{if .ClaimedName}}{{.ClaimedName}}{{else}}{{t "Credential" $.Lang}}{{end}}</strong>
+        {{if eq .RevStatus "revoked"}}
+        <span style="background:#2e0d0d;color:#ff9a9a;font-size:0.68rem;letter-spacing:0.04em;padding:0.22rem 0.55rem;border-radius:99px;white-space:nowrap">{{t "REVOKED" $.Lang}} ✕</span>
+        {{else if eq .RevStatus "active"}}
+        <span style="background:#0d2e1a;color:#9affc0;font-size:0.68rem;letter-spacing:0.04em;padding:0.22rem 0.55rem;border-radius:99px;white-space:nowrap">{{t "ACTIVE" $.Lang}} ✓</span>
+        {{else}}
         <span style="background:#0d2e1a;color:#9affc0;font-size:0.68rem;letter-spacing:0.04em;padding:0.22rem 0.55rem;border-radius:99px;white-space:nowrap">{{t "CLAIMED" $.Lang}} ✓</span>
+        {{end}}
       </div>
       {{with .Subject}}
       <div style="display:grid;gap:0.35rem;margin-bottom:0.75rem">

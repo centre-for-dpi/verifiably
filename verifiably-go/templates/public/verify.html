@@ -292,7 +292,9 @@
       <span style="font-size:1.4rem">❌</span>
       <strong style="font-size:1rem;color:var(--err,#dc2626)">NOT VERIFIED</strong>
     </div>
-    {{if .TrustReason}}
+    {{if .Reason}}
+    <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">{{.Reason}}</p>
+    {{else if .TrustReason}}
     <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">{{.TrustReason}}</p>
     {{else if eq .TrustStatus "untrusted"}}
     <p style="margin:0;font-size:0.85rem;color:var(--ink-soft)">

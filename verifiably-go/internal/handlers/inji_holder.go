@@ -32,6 +32,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/verifiably/verifiably-go/internal/delegation"
 )
 
 func envOr(key, def string) string {
@@ -531,12 +533,45 @@ func heldClaims(sess *Session) []map[string]any {
 	return held
 }
 
+// heldClaimsWithStatus is heldClaims augmented with each credential's LIVE
+// revocation status — "active", "revoked", or "" — resolved against the
+// issuer's published status list via the same signature-verifying cache the
+// verifier uses. So the holder sees when a held credential has been revoked,
+// not merely that it was claimed. "" means the credential carries no status
+// pointer, or the list is unresolvable (non-Hub / unreachable).
+func (h *H) heldClaimsWithStatus(ctx context.Context, sess *Session) []map[string]any {
+	out := make([]map[string]any, 0, len(sess.InjiClaimedVCs))
+	var check delegation.StatusChecker
+	if h.StatusListCache != nil {
+		check = h.delegationStatusChecker()
+	}
+	for _, vc := range sess.InjiClaimedVCs {
+		m := parseClaimedVC(vc)
+		m["RevStatus"] = ""
+		if check != nil {
+			if creds := normalizeClaimedInjiCreds([]string{vc}); len(creds) > 0 {
+				if ref, ok := delegation.StatusRefOf(creds[0]); ok {
+					if revoked, err := check(ctx, ref); err == nil {
+						if revoked {
+							m["RevStatus"] = "revoked"
+						} else {
+							m["RevStatus"] = "active"
+						}
+					}
+				}
+			}
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
 // ShowInjiHeld renders the holder's claimed credentials (persisted on the
 // session), on a page separate from the available-to-claim catalog at
 // /holder/wallet/inji.
 func (h *H) ShowInjiHeld(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
-	h.render(w, r, "holder_inji_held", h.pageData(sess, map[string]any{"Held": heldClaims(sess)}))
+	h.render(w, r, "holder_inji_held", h.pageData(sess, map[string]any{"Held": h.heldClaimsWithStatus(r.Context(), sess)}))
 }
 
 // DeleteInjiClaimed removes one credential from the in-app Inji wallet by its
@@ -557,5 +592,5 @@ func (h *H) DeleteInjiClaimed(w http.ResponseWriter, r *http.Request) {
 	} else {
 		sess.InjiClaimedVC = ""
 	}
-	h.renderFragment(w, r, "fragment_inji_held_list", map[string]any{"Body": map[string]any{"Held": heldClaims(sess)}, "Lang": h.langFor(r)})
+	h.renderFragment(w, r, "fragment_inji_held_list", map[string]any{"Body": map[string]any{"Held": h.heldClaimsWithStatus(r.Context(), sess)}, "Lang": h.langFor(r)})
 }

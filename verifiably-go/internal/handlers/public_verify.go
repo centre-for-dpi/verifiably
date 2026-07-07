@@ -398,8 +398,20 @@ func (h *H) PublicVerifyResult(w http.ResponseWriter, r *http.Request) {
 		}(evt)
 	}
 
+	// Surface the specific denial cause on the public page. The handler gates
+	// (temporal / revocation / delegation) append " · <reason>" to res.Method
+	// on failure (e.g. "OID4VP ·  · a presented credential has been revoked");
+	// extract that trailing segment so a public verifier sees WHY, not just a
+	// generic "could not be verified".
+	denialReason := ""
+	if !res.Valid {
+		if parts := strings.Split(res.Method, " · "); len(parts) >= 3 {
+			denialReason = strings.TrimSpace(parts[len(parts)-1])
+		}
+	}
 	h.renderFragment(w, r, "fragment_public_result", map[string]any{
 		"State":             state,
+		"Reason":            denialReason,
 		"Pending":           false,
 		"Error":             "",
 		"Valid":             res.Valid,
