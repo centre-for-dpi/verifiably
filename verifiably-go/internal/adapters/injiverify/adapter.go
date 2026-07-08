@@ -14,6 +14,7 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/httpx"
+	"github.com/verifiably/verifiably-go/internal/vp"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -256,6 +257,43 @@ type vcVerificationStatus struct {
 	VerificationStatus string `json:"verificationStatus"`
 }
 
+// normalizeDirectCredential decodes a directly-submitted credential — a JSON-LD
+// VC object, a compact SD-JWT (has `~`), or a compact VC-JWT — into the shared
+// NormalizedCredential shape plus a flat disclosed-claims map. This lets the
+// direct-verify path feed the SAME revocation/temporal gates (via the handler's
+// attachDelegationVerdict → StatusRefOf, which reads the credentialStatus /
+// status_list pointer off the credential) and surface the SAME claim values the
+// OID4VP path shows. Mirrors normalizeInjiCredentials. Returns (nil, nil) when
+// the payload can't be decoded (verification proceeds without the extra gates).
+func normalizeDirectCredential(cred string) ([]backend.NormalizedCredential, map[string]string) {
+	cred = strings.TrimSpace(cred)
+	var nc backend.NormalizedCredential
+	switch {
+	case strings.HasPrefix(cred, "{"):
+		var obj map[string]any
+		if json.Unmarshal([]byte(cred), &obj) != nil || len(obj) == 0 {
+			return nil, nil
+		}
+		nc = vp.FromVCObject(obj)
+	case strings.Contains(cred, "~"):
+		var ok bool
+		if nc, ok = vp.FromCompactSDJWT(cred); !ok {
+			return nil, nil
+		}
+	default:
+		p := vp.DecodeJWTPayload(cred)
+		if p == nil {
+			return nil, nil
+		}
+		nc = vp.FromVCObject(p)
+	}
+	fields := nc.Claims
+	if len(fields) == 0 {
+		fields = nil
+	}
+	return []backend.NormalizedCredential{nc}, fields
+}
+
 func (a *Adapter) verifyJSONLD(ctx context.Context, req backend.DirectVerifyRequest, cred string) (backend.VerificationResult, error) {
 	// vc-verification takes the raw VC string, not JSON-wrapped. Content-Type
 	// must carry the VC's format (application/ld+json for JSON-LD VCs).
@@ -270,6 +308,7 @@ func (a *Adapter) verifyJSONLD(ctx context.Context, req backend.DirectVerifyRequ
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return backend.VerificationResult{}, fmt.Errorf("parse verification status: %w", err)
 	}
+	creds, disclosed := normalizeDirectCredential(cred)
 	return backend.VerificationResult{
 		Valid:             strings.EqualFold(r.VerificationStatus, "SUCCESS"),
 		Method:            methodLabel(req.Method, "vc-verification"),
@@ -277,8 +316,13 @@ func (a *Adapter) verifyJSONLD(ctx context.Context, req backend.DirectVerifyRequ
 		Issuer:            extractIssuerFromJSONLD(cred),
 		Subject:           "(from credential)",
 		Issued:            time.Now().UTC(),
-		// Direct/offline verify: Inji Verify's response doesn't confirm a
-		// status-list check, so don't claim one ran (P2 honesty).
+		// Decode the credentialSubject claims (F12) and the normalized credential
+		// (F14) so the handler shows the values AND runs the revocation/temporal
+		// gates — Inji Verify's own /vc-verification is status-blind.
+		DisclosedFields: disclosed,
+		Credentials:     creds,
+		// CheckedRevocation stays false here; the handler's revocation gate flips
+		// it to true only once a status list is actually resolved (P2 honesty).
 		CheckedRevocation: false,
 	}, nil
 }
@@ -301,14 +345,24 @@ func (a *Adapter) verifyViaSubmission(ctx context.Context, req backend.DirectVer
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+	creds, disclosed := normalizeDirectCredential(cred)
+	issuer := "(from credential)"
+	if len(creds) > 0 && creds[0].Issuer != "" {
+		issuer = creds[0].Issuer
+	}
 	return backend.VerificationResult{
 		Valid:             strings.EqualFold(res.VPResultStatus, "SUCCESS"),
 		Method:            methodLabel(req.Method, "vc-submission"),
 		Format:            "sd_jwt_vc (IETF)",
-		Issuer:            "(from credential)",
+		Issuer:            issuer,
 		Subject:           "(from credential)",
 		Issued:            time.Now().UTC(),
-		// Direct/offline verify: no confirmed status-list check (P2 honesty).
+		// Decode disclosed claims (F12) + normalized credential (F14) so the
+		// handler shows the values and runs the revocation/temporal gates.
+		DisclosedFields: disclosed,
+		Credentials:     creds,
+		// Handler's revocation gate flips CheckedRevocation to true once a status
+		// list is resolved (P2 honesty).
 		CheckedRevocation: false,
 	}, nil
 }

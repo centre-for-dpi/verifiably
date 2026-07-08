@@ -45,14 +45,23 @@
       <div class="caps" style="margin-bottom:1rem">Destination</div>
       <div class="split">
 
-        <label class="option-card" style="cursor:pointer">
+        <label class="option-card {{if .Body.WalletDestBlocked}}disabled{{end}}"
+               style="cursor:{{if .Body.WalletDestBlocked}}not-allowed{{else}}pointer{{end}}"
+               {{if .Body.WalletDestBlocked}}onclick="toast('Inji Certify Pre-Auth issues W3C as JSON-LD (ldp_vc), which mobile wallets cannot accept over OID4VCI. Use QR-on-PDF for W3C.');return false"{{end}}>
           <input type="radio" name="dest" value="wallet" style="display:none"
-                 {{if eq .Body.SelectedDest "wallet"}}checked{{end}}>
+                 {{if eq .Body.SelectedDest "wallet"}}checked{{end}}
+                 {{if .Body.WalletDestBlocked}}disabled{{end}}>
           <span>
             <div class="caps">OID4VCI</div>
             <h3>To a wallet</h3>
             <p>Generate a credential offer. Holder scans a QR or follows a link to pull it into their wallet.</p>
-            <div class="req"><span class="pill ok">supported in {{.Body.Dpg.Version}}</span></div>
+            <div class="req">
+              {{if .Body.WalletDestBlocked}}
+                <span class="pill warn">not for W3C on Inji Pre-Auth</span> — W3C is issued as JSON-LD; use QR-on-PDF.
+              {{else}}
+                <span class="pill ok">supported in {{.Body.Dpg.Version}}</span>
+              {{end}}
+            </div>
           </span>
         </label>
 

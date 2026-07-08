@@ -13,9 +13,23 @@ import (
 )
 
 type modeData struct {
-	Dpg         vctypes.DPG
+	Dpg           vctypes.DPG
 	SelectedScale string
 	SelectedDest  string
+	// WalletDestBlocked greys out the "deliver to wallet" option when the
+	// current schema can't be delivered to a wallet (Inji Pre-Auth W3C — see
+	// injiPreAuthWalletUnsupported). QR-on-PDF stays available.
+	WalletDestBlocked bool
+}
+
+// injiPreAuthWalletUnsupported reports whether the DPG+format combination cannot
+// be delivered to a wallet over OID4VCI. Inji Certify Pre-Auth issues W3C as
+// ldp_vc (JSON-LD); the Credo-TS wallet stores every credential as a compact
+// SD-JWT record, so a JSON-LD object throws "undefined is not a function" on
+// accept (HEADLESS-PROVEN against centre-for-dpi/vcs-whitelabel-wallet). Only
+// QR-on-PDF works for Inji Pre-Auth W3C. SD-JWT and the other DPGs are fine.
+func injiPreAuthWalletUnsupported(issuerDpg, std string) bool {
+	return issuerDpg == "Inji Certify · Pre-Auth" && strings.HasPrefix(std, "w3c")
 }
 
 // ShowIssuanceMode renders the scale + destination choice screen.
@@ -47,6 +61,19 @@ func (h *H) ShowIssuanceMode(w http.ResponseWriter, r *http.Request) {
 		sess.Scale = "bulk"
 		data.SelectedScale = "bulk"
 	}
+	// Inji Pre-Auth W3C (ldp_vc) can't be delivered to a wallet — grey the wallet
+	// option and force QR-on-PDF (F11). Resolve the picked schema's format the
+	// same way ShowIssue does; skip silently if it can't be resolved.
+	if schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess)); err == nil {
+		if schema, ok := findSchemaByID(schemas, sess.SchemaID); ok &&
+			injiPreAuthWalletUnsupported(sess.IssuerDpg, schema.Std) {
+			data.WalletDestBlocked = true
+			if sess.Dest != "pdf" {
+				sess.Dest = "pdf"
+				data.SelectedDest = "pdf"
+			}
+		}
+	}
 	h.render(w, r, "issuer_mode", h.pageData(sess, data))
 }
 
@@ -63,6 +90,14 @@ func (h *H) SetIssuanceMode(w http.ResponseWriter, r *http.Request) {
 	// even if a crafted POST submits scale=single (the card is greyed client-side).
 	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil && dpgs[sess.IssuerDpg].BulkOnly {
 		sess.Scale = "bulk"
+	}
+	// Server-side guard: Inji Pre-Auth W3C can't be delivered to a wallet (F11) —
+	// force QR-on-PDF even if a crafted POST submits dest=wallet.
+	if schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess)); err == nil {
+		if schema, ok := findSchemaByID(schemas, sess.SchemaID); ok &&
+			injiPreAuthWalletUnsupported(sess.IssuerDpg, schema.Std) {
+			sess.Dest = "pdf"
+		}
 	}
 	h.redirect(w, r, "/issuer/issue")
 }
