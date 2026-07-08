@@ -57,6 +57,14 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 		}
 		fields := []vctypes.FieldSpec{}
 		for _, f := range cfg.Order {
+			// statusIdx/statusUri are internal token-status markers declared in the
+			// config's order so certify's pre-auth data-provider resolves the
+			// template ${statusIdx}/${statusUri} — but they are auto-supplied by the
+			// issuer (the allocated StatusList binding), never operator-entered, so
+			// keep them out of the issue form's claim fields.
+			if f == "statusIdx" || f == "statusUri" {
+				continue
+			}
 			fields = append(fields, fieldSpecFor(f))
 		}
 		if len(fields) == 0 {
@@ -122,11 +130,14 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		// Embed the IETF Token Status List pointer for SD-JWT so the credential is
 		// revocable: the template (SaveCustomSchema) carries
 		// status.status_list.{idx:${statusIdx}, uri:${statusUri}} and certify
-		// substitutes both markers directly from these pre-authorized claims. The
-		// claim keys must be exactly statusIdx/statusUri (the bare marker names —
-		// pre-auth has no data-provider view, unlike the auth-code slug-scoped
-		// keys). Default to a benign 0/"" when no binding was allocated so the
-		// markers never render unresolved.
+		// substitutes both markers from these pre-authorized claims — SaveCustomSchema
+		// DECLARES statusIdx/statusUri in display_order so the PreAuthDataProviderPlugin
+		// surfaces these POSTed values into the Velocity context (without that the
+		// markers stay unresolved and certify 400s on the unquoted `${statusIdx}`).
+		// Keys must be exactly statusIdx/statusUri (the bare marker names — pre-auth
+		// has no data-provider view, unlike the auth-code slug-scoped keys). Default
+		// to a benign 0/"" when no binding was allocated so the markers never render
+		// unresolved.
 		if stdToCredentialFormat(req.Schema.Std) == "vc+sd-jwt" {
 			if req.StatusList != nil {
 				claims["statusIdx"] = strconv.Itoa(req.StatusList.Index)

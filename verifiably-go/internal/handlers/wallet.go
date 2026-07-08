@@ -91,10 +91,17 @@ func (h *H) ShowWallet(w http.ResponseWriter, r *http.Request) {
 // 0.18.2 has no wellknown field that would let it round-trip back through
 // adapter.ListSchemas. Best-effort: silent on lookup failure so the wallet
 // still renders (with the bare DID as fallback).
-func (h *H) attachIssuerDisplayToCreds(ctx context.Context, creds []vctypes.Credential) {
+func (h *H) attachIssuerDisplayToCreds(_ context.Context, creds []vctypes.Credential) {
 	if len(creds) == 0 {
 		return
 	}
+	// Cosmetic issuer-name lookup that fans out over ALL issuers (incl. a
+	// possibly-slow CREDEBL /template GET). Use a DETACHED, bounded context — not
+	// the request context — so a slow vendor can neither stall the wallet render
+	// nor propagate a client disconnect into it (which surfaced as a broken-pipe
+	// 500 on /holder/wallet). It's already silent-on-error, so bounding is safe.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 	schemas, err := h.Adapter.ListAllSchemas(ctx)
 	if err != nil {
 		return

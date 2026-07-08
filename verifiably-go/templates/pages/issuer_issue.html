@@ -227,14 +227,14 @@
   </div>
   {{if .PIN}}
   <div style="margin-top:1rem; padding:0.75rem 1rem; background:var(--bg-alt); border:1px solid var(--line); border-radius:4px; text-align:center">
-    <div style="font-size:0.78rem; color:var(--ink-mute); margin-bottom:0.25rem">PIN requerido por el wallet</div>
+    <div style="font-size:0.78rem; color:var(--ink-mute); margin-bottom:0.25rem">PIN required by the wallet</div>
     <div style="font-family:'JetBrains Mono',monospace; font-size:1.8rem; font-weight:700; letter-spacing:0.2em">{{.PIN}}</div>
   </div>
   {{end}}
   <div class="btn-row">
     <button class="btn ghost small" onclick="copyText('{{.OfferURI}}')">Copy link</button>
     <a class="btn ghost small" href="/issuer/credentials">View issued credentials →</a>
-    <span style="font-size:0.78rem;color:var(--ink-mute);align-self:center">Flow: <span class="mono">{{.Flow}}</span> · expires in {{.ExpiresIn}}s</span>
+    <span style="font-size:0.78rem;color:var(--ink-mute);align-self:center">Flow: <span class="mono">{{.Flow}}</span>{{if .ExpiresIn}} · expires in {{.ExpiresIn}}{{end}}</span>
   </div>
 </div>
 {{end}}

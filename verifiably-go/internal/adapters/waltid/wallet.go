@@ -845,6 +845,16 @@ func incompatibilityMessage(pd map[string]any, held []vctypes.Credential, wantFo
 		}
 	}
 	if sameTitle != "" {
+		if haveFormats[wantFormat] {
+			// The wallet DOES hold this credential in the requested format, yet
+			// walt.id's wallet-api matcher returned no match — the known walt.id
+			// v0.18.2 limitation where its OID4VP matcher can't present an SD-JWT
+			// (vc+sd-jwt) credential. Tell the operator the honest cause instead of
+			// the misleading "not in <fmt> format" (the credential IS that format).
+			return fmt.Sprintf(
+				"your wallet holds %q in %s — the requested format — but walt.id v0.18.2's OID4VP matcher can't present it, a known SD-JWT limitation. Present it from an external/mobile OID4VCI wallet (e.g. Inji) instead.",
+				sameTitle, wantFormat)
+		}
 		fmts := make([]string, 0, len(haveFormats))
 		for f := range haveFormats {
 			if f != wantFormat {

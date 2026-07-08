@@ -360,10 +360,52 @@ NGINXEOF
 # Idempotent — re-exports on every deploy so the cached file stays in sync.
 _credebl_export_did_document() {
   local base="$1" admin_port="$2"
-  [[ -z "${AGENT_DID_DOMAIN:-}" ]] && return 0
 
   local did_dir="$base/did"
   mkdir -p "$did_dir"
+
+  # DB-first: the org's did:web document lives in CREDEBL's org_dids table and is
+  # the source of truth. Serve it directly. The agent admin-API path below needs
+  # AGENT_DID_DOMAIN set AND a live root/tenant JWT, and when either is missing the
+  # export is skipped and /.well-known/did.json serves 404 — so wallets can't
+  # resolve the CREDEBL issuer DID and SD-JWT validation fails with "notFound".
+  local db_did_doc
+  db_did_doc="$(docker exec -i credebl-postgres psql -U credebl -d credebl -Atqc \
+    "SELECT \"didDocument\"::text FROM org_dids WHERE did LIKE 'did:web:%' LIMIT 1;" 2>/dev/null \
+    | python3 -c "import sys,json
+# Emit the DID doc, converting any Ed25519VerificationKey2018/publicKeyBase58
+# verification method to Ed25519VerificationKey2020/publicKeyMultibase (same key,
+# different encoding). Credo/askar wallets reject the 2018 base58 form on did:web,
+# surfacing as 'unable to resolve did document'; the 2020 multibase form matches
+# the other DPGs' docs (walt-issuer, inji-verify) that resolve fine.
+AL='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+def b58dec(s):
+    n=0
+    for c in s: n=n*58+AL.index(c)
+    full=n.to_bytes((n.bit_length()+7)//8,'big') if n else b''
+    return b'\x00'*(len(s)-len(s.lstrip('1')))+full
+def b58enc(b):
+    n=int.from_bytes(b,'big'); o=''
+    while n>0: n,r=divmod(n,58); o=AL[r]+o
+    return '1'*(len(b)-len(b.lstrip(b'\x00')))+o
+raw=sys.stdin.read().strip()
+try:
+    doc=json.loads(raw)
+    for vm in doc.get('verificationMethod',[]):
+        if 'publicKeyBase58' in vm:
+            vm['type']='Ed25519VerificationKey2020'
+            vm['publicKeyMultibase']='z'+b58enc(b'\xed\x01'+b58dec(vm.pop('publicKeyBase58')))
+    doc['@context']=['https://www.w3.org/ns/did/v1','https://w3id.org/security/suites/ed25519-2020/v1']
+    print(json.dumps(doc,separators=(',',':')))
+except Exception: pass" 2>/dev/null || true)"
+  if [[ -n "$db_did_doc" && "$db_did_doc" != "null" ]]; then
+    echo "$db_did_doc" > "$did_dir/did.json"
+    green "  Cached did:web DID document (from org_dids) → $did_dir/did.json"
+    return 0
+  fi
+
+  # Agent admin-API fallback (original path) — requires AGENT_DID_DOMAIN.
+  [[ -z "${AGENT_DID_DOMAIN:-}" ]] && return 0
   local did="did:web:${AGENT_DID_DOMAIN}"
 
   # Get root JWT from Credo admin API. No external HTTP call — avoids the

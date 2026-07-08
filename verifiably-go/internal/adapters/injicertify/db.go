@@ -66,11 +66,13 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 	credFormat := stdToCredentialFormat(schema.Std)
 	// Pre-auth SD-JWT credentials must be revocable: embed the IETF Token Status
 	// List pointer (status.status_list.{idx:${statusIdx}, uri:${statusUri}}) in
-	// the template, like the auth-code path already does. Certify substitutes the
-	// two markers directly from the POSTed pre-authorized claims — IssueToWallet
-	// (ModePreAuth) stages statusIdx/statusUri from the allocated StatusList
-	// binding. Without this the status bit the issuer allocates is never
-	// referenced by the issued credential, so revoking it has no effect.
+	// the template. IssueToWallet(ModePreAuth) POSTs statusIdx/statusUri from the
+	// allocated StatusList binding, and — crucially — statusIdx/statusUri must be
+	// DECLARED in display_order below so certify's PreAuthDataProviderPlugin
+	// surfaces those POSTed values into the Velocity context. Without the
+	// declaration the template markers stay unresolved and certify 400s on the
+	// unquoted `"idx": ${statusIdx}` (json_processing_error). The auth-code path
+	// resolves the same markers from its vc_subject data-provider view instead.
 	withTokenStatus := credFormat == "vc+sd-jwt"
 	vcTemplate := buildVCTemplate(schema, withTokenStatus)
 
@@ -79,9 +81,14 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 		scope = "mock_identity_vc_ldp"
 	}
 
-	displayOrder := make([]string, 0, len(schema.FieldsSpec))
+	displayOrder := make([]string, 0, len(schema.FieldsSpec)+2)
 	for _, f := range schema.FieldsSpec {
 		displayOrder = append(displayOrder, f.Name)
+	}
+	if withTokenStatus {
+		// Declare the token-status markers so the pre-auth data-provider passes
+		// the POSTed statusIdx/statusUri into the template's Velocity context.
+		displayOrder = append(displayOrder, "statusIdx", "statusUri")
 	}
 
 	// NOTE: do NOT add a "description" key here. Although OID4VCI allows it in a
