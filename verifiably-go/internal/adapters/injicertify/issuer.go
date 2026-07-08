@@ -138,7 +138,12 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		// has no data-provider view, unlike the auth-code slug-scoped keys). Default
 		// to a benign 0/"" when no binding was allocated so the markers never render
 		// unresolved.
-		if stdToCredentialFormat(req.Schema.Std) == "vc+sd-jwt" {
+		// Applies to SD-JWT (IETF token status list) AND VCDM2 ldp_vc (W3C
+		// BitstringStatusListEntry credentialStatus, F14). For ldp_vc the allocated
+		// binding is a bitstring index/URL; the template's credentialStatus.type
+		// tells the verifier which decoder to use, so the SAME statusIdx/statusUri
+		// markers serve both formats.
+		if cf := stdToCredentialFormat(req.Schema.Std); cf == "vc+sd-jwt" || cf == "ldp_vc" {
 			if req.StatusList != nil {
 				claims["statusIdx"] = strconv.Itoa(req.StatusList.Index)
 				claims["statusUri"] = req.StatusList.PublishURL

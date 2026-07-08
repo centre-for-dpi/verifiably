@@ -439,7 +439,13 @@ func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authco
 	// Token-status wiring (SD-JWT revocation) is added only when a TokenStore is
 	// configured (tokenStatusURL != "") so the template markers always have a
 	// data-provider column to resolve against.
-	withTokenStatus := tokenStatusURL != ""
+	// Auth-code: only SD-JWT gets a status pointer. The pre-auth path also embeds
+	// a W3C credentialStatus for ldp_vc (F14), but the auth-code data-provider view
+	// resolves ${statusIdx}/${statusUri} against the TOKEN status list, so keep
+	// auth-code W3C statusless (a W3C BitstringStatusListEntry pointing at a token
+	// list would be wrong). buildVCTemplate adds the ldp_vc credentialStatus only
+	// when withTokenStatus is true, so gating it here keeps auth-code W3C unchanged.
+	withTokenStatus := tokenStatusURL != "" && strings.HasPrefix(schema.Std, "sd_jwt")
 	cc := injicertify.BuildAuthcodeCredConfig(schema, withTokenStatus)
 
 	configKey, slug := injiConfigKeySlug(schema)

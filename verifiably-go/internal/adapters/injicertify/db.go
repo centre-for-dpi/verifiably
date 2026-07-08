@@ -73,7 +73,11 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 	// declaration the template markers stay unresolved and certify 400s on the
 	// unquoted `"idx": ${statusIdx}` (json_processing_error). The auth-code path
 	// resolves the same markers from its vc_subject data-provider view instead.
-	withTokenStatus := credFormat == "vc+sd-jwt"
+	// SD-JWT gets an IETF token-status pointer; VCDM2 ldp_vc gets a W3C
+	// BitstringStatusListEntry credentialStatus (F14 — W3C revocation). Both are
+	// resolved from the same POSTed statusIdx/statusUri (declared in display_order
+	// below) on the pre-auth path.
+	withTokenStatus := credFormat == "vc+sd-jwt" || credFormat == "ldp_vc"
 	vcTemplate := buildVCTemplate(schema, withTokenStatus)
 
 	scope := a.cfg.DB.Scope
@@ -154,6 +158,23 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 		joined := strings.Join(credentialTypesSorted(schema), ",")
 		credType = &joined
 		credSubject = fieldDisplayRaw
+		if withTokenStatus {
+			// Register statusIdx/statusUri as ACCEPTED pre-auth claims (F14). Unlike
+			// SD-JWT (which validates against display_order), certify's ldp_vc
+			// pre-auth data provider validates POSTed claims against
+			// credential_subject — so the staged statusIdx/statusUri are rejected as
+			// `unknown_claims` unless declared here. They resolve the credentialStatus
+			// template markers and are NOT rendered as credentialSubject fields (the
+			// vc_template controls the subject shape — it lists only the real fields).
+			csMap := map[string]any{}
+			for k, v := range fieldDisplay {
+				csMap[k] = v
+			}
+			marker := map[string]any{"display": []map[string]any{{"name": "Status", "locale": "en"}}}
+			csMap["statusIdx"] = marker
+			csMap["statusUri"] = marker
+			credSubject, _ = json.Marshal(csMap)
+		}
 	}
 
 	_, err = conn.Exec(ctx, `
@@ -350,6 +371,25 @@ func buildVCTemplate(schema vctypes.Schema, withTokenStatus bool) string {
 		} else {
 			m["issuanceDate"] = "${validFrom}"
 			m["expirationDate"] = "${validUntil}"
+		}
+		// W3C revocation (F14): embed a BitstringStatusListEntry credentialStatus
+		// pointing at verifiably's PUBLIC bitstring list (${statusUri}), mirroring
+		// the SD-JWT status.status_list. Gated on withTokenStatus so ONLY the
+		// pre-auth caller adds it — auth-code W3C stays statusless to avoid Certify's
+		// unreachable internal list (statusRef prefers a flat/public pointer). VCDM2
+		// only: the credentials/v2 context defines the type + statusPurpose/
+		// statusListIndex/statusListCredential, so there's no PROTECTED_TERM
+		// redefinition at canonicalization (VCDM 1.1 would need explicit @context
+		// terms — left statusless for now). statusListIndex is a STRING here, so
+		// "${statusIdx}" stays quoted (unlike the SD-JWT numeric idx).
+		if withTokenStatus && isVCDM2(schema.Std) {
+			m["credentialStatus"] = map[string]any{
+				"id":                   "${statusUri}#${statusIdx}",
+				"type":                 "BitstringStatusListEntry",
+				"statusPurpose":        "revocation",
+				"statusListIndex":      "${statusIdx}",
+				"statusListCredential": "${statusUri}",
+			}
 		}
 		tmpl = m
 	}

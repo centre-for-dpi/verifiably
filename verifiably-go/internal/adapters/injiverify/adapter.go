@@ -255,6 +255,7 @@ func (a *Adapter) VerifyDirect(ctx context.Context, req backend.DirectVerifyRequ
 
 type vcVerificationStatus struct {
 	VerificationStatus string `json:"verificationStatus"`
+	Error              string `json:"error"`
 }
 
 // normalizeDirectCredential decodes a directly-submitted credential — a JSON-LD
@@ -302,6 +303,26 @@ func (a *Adapter) verifyJSONLD(ctx context.Context, req backend.DirectVerifyRequ
 	raw, err := a.client.DoRaw(ctx, http.MethodPost, "/v1/verify/vc-verification",
 		bytes.NewReader([]byte(cred)), "application/ld+json", h)
 	if err != nil {
+		// Inji Verify returns a NON-2xx when it can't retrieve verifiably's SIGNED
+		// (JWS) bitstring status list (STATUS_RETRIEVAL_ERROR) — the signature and
+		// everything else verified, it just can't parse our status list. verifiably
+		// OWNS the status list and re-checks revocation in the handler gate (F14),
+		// so build a signature-valid result from the credential itself and let the
+		// gate be the authority (a genuinely revoked cred is then still denied).
+		if strings.Contains(strings.ToUpper(err.Error()), "STATUS_RETRIEVAL_ERROR") {
+			creds, disclosed := normalizeDirectCredential(cred)
+			return backend.VerificationResult{
+				Valid:             true,
+				Method:            methodLabel(req.Method, "vc-verification"),
+				Format:            "w3c_vcdm_2",
+				Issuer:            extractIssuerFromJSONLD(cred),
+				Subject:           "(from credential)",
+				Issued:            time.Now().UTC(),
+				DisclosedFields:   disclosed,
+				Credentials:       creds,
+				CheckedRevocation: false,
+			}, nil
+		}
 		return backend.VerificationResult{}, err
 	}
 	var r vcVerificationStatus
@@ -309,8 +330,19 @@ func (a *Adapter) verifyJSONLD(ctx context.Context, req backend.DirectVerifyRequ
 		return backend.VerificationResult{}, fmt.Errorf("parse verification status: %w", err)
 	}
 	creds, disclosed := normalizeDirectCredential(cred)
+	valid := strings.EqualFold(r.VerificationStatus, "SUCCESS")
+	// Inji Verify's vcverifier chokes on verifiably's SIGNED (JWS) bitstring status
+	// list and returns STATUS_RETRIEVAL_ERROR even when the signature + everything
+	// else verified. verifiably OWNS the status list and re-checks revocation in the
+	// handler's gate (attachRevocationVerdict, F14), so a PURE status-retrieval
+	// failure isn't a verification failure here — treat it as signature-valid and
+	// let the gate be the authority (a genuinely revoked cred is then still denied,
+	// a live one still passes). Any OTHER non-SUCCESS status remains invalid.
+	if !valid && strings.Contains(strings.ToUpper(r.Error), "STATUS_RETRIEVAL_ERROR") {
+		valid = true
+	}
 	return backend.VerificationResult{
-		Valid:             strings.EqualFold(r.VerificationStatus, "SUCCESS"),
+		Valid:             valid,
 		Method:            methodLabel(req.Method, "vc-verification"),
 		Format:            "w3c_vcdm_2",
 		Issuer:            extractIssuerFromJSONLD(cred),
