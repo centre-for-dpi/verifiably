@@ -460,14 +460,24 @@ func fieldsClause(tpl vctypes.OID4VPTemplate) []map[string]any {
 	// "No credential found for: vc-1". vct is a base-payload claim (never in a
 	// selective disclosure), so the filter always resolves.
 	//
-	// Use `pattern` (an anchored regex of the exact vct), NOT `const`: Inji
-	// Verify's FilterDTO models only {type, pattern} and silently DROPS `const`
-	// when it round-trips the definition into the signed request object, which
-	// would leave an empty `{type:string}` filter that matches everything.
+	// Pin the vct with `pattern` (an anchored regex of the exact vct). We ALSO
+	// emit `const` because it's the SD-JWT VC-profile-recommended way to pin a
+	// vct and any wallet/verifier that consumes this PD directly can key its
+	// candidate pre-selection off it. NOTE (measured 2026-07-08): Inji Verify's
+	// FilterDTO models only {type, pattern} and STRIPS `const` when it serves
+	// the signed request object, so over the Inji path the wallet (Credo-TS)
+	// only ever sees `pattern` — that must stay present (const-only would leave
+	// an empty `{type:string}` that matches everything). A value satisfying
+	// const also satisfies the identical pattern, so they never conflict.
+	// vct is a base-payload claim (never selectively disclosed) so both resolve.
 	if tpl.Vct != "" {
 		out = append(out, map[string]any{
-			"path":   []string{"$.vct"},
-			"filter": map[string]any{"type": "string", "pattern": "^" + regexp.QuoteMeta(tpl.Vct) + "$"},
+			"path": []string{"$.vct"},
+			"filter": map[string]any{
+				"type":    "string",
+				"const":   tpl.Vct,
+				"pattern": "^" + regexp.QuoteMeta(tpl.Vct) + "$",
+			},
 		})
 	}
 	for _, n := range tpl.Fields {
