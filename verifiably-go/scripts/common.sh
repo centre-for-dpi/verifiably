@@ -320,7 +320,7 @@ validate_roles() {
       # for the Go app layer (e.g. .env.example's issuer,verifier,schemas)
       # doesn't get rejected at the bash layer.
       trust|schemas|hub) ;;
-      *) red "unknown role '$r'. Valid: issuer, verifier, holder"; return 1 ;;
+      *) red "unknown role '$r'. Valid: issuer, verifier, holder (container selection); trust, schemas, hub also accepted as no-ops for Go-app compatibility"; return 1 ;;
     esac
     [[ "$r" == "issuer" ]] && has_issuer=1
     [[ "$r" == "holder" ]] && has_holder=1
@@ -360,7 +360,7 @@ role_services() {
       inji:trust|inji:schemas|inji:hub) ;;
       credebl:trust|credebl:schemas|credebl:hub) ;;
       *)
-        red "unknown DPG:role '${dpg}:${r}' (valid roles: issuer, verifier, holder)"
+        red "unknown DPG:role '${dpg}:${r}' (valid roles: issuer, verifier, holder; trust, schemas, hub also accepted as no-ops)"
         return 1
         ;;
     esac
