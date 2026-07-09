@@ -39,6 +39,16 @@ func TestInjiSDJWTVct(t *testing.T) {
 	if got := injiSDJWTVct("not-a-jwt"); got != "" {
 		t.Errorf("malformed vct = %q, want empty", got)
 	}
+	// valid JWT shape but no vct claim in the payload
+	noVct := "aGRy." + base64.RawURLEncoding.EncodeToString([]byte(`{"iss":"x"}`)) + ".sig~"
+	if got := injiSDJWTVct(noVct); got != "" {
+		t.Errorf("no-vct payload = %q, want empty", got)
+	}
+	// non-JSON payload segment
+	badJSON := "aGRy." + base64.RawURLEncoding.EncodeToString([]byte("not json")) + ".sig~"
+	if got := injiSDJWTVct(badJSON); got != "" {
+		t.Errorf("non-json payload = %q, want empty", got)
+	}
 }
 
 func TestInjiSDJWTDisclosureFields(t *testing.T) {
@@ -51,6 +61,12 @@ func TestInjiSDJWTDisclosureFields(t *testing.T) {
 		if !want[f] {
 			t.Errorf("unexpected field %q", f)
 		}
+	}
+	// non-base64 and non-3-element disclosures are skipped; KB-JWT (2 dots) skipped
+	notArr := base64.RawURLEncoding.EncodeToString([]byte(`{"x":1}`))
+	mixed := "hdr.pl.sig~" + notArr + "~!!!notb64!!!~aaa.bbb.ccc~"
+	if got := injiSDJWTDisclosureFields(mixed); len(got) != 0 {
+		t.Errorf("expected 0 fields from non-disclosure parts, got %v", got)
 	}
 }
 
