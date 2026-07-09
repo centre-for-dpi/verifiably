@@ -141,3 +141,32 @@ func TestInjiBuildVPTokenEmpty(t *testing.T) {
 		t.Error("expected error on empty SD-JWT")
 	}
 }
+
+// TestInjiHeldWithKey covers the presentable-credential lookup shared by the
+// single present (F21) and the delegated pair (F22): an SD-JWT with a retained
+// holder key is presentable; a W3C credential, an unknown id, or an SD-JWT whose
+// key wasn't retained are not.
+func TestInjiHeldWithKey(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pemStr, _ := marshalECKeyPEM(key)
+	sd := sampleSDJWT(t)
+	sdID := vcID(sd)
+	w3c := `{"type":["VerifiableCredential"]}`
+	sess := &Session{
+		InjiClaimedVCs: []string{sd, w3c},
+		InjiHolderKeys: map[string]string{sdID: pemStr},
+	}
+	if c, k, ok := injiHeldWithKey(sess, sdID); !ok || c != sd || k == nil {
+		t.Fatalf("SD-JWT with key: ok=%v compactMatch=%v key=%v", ok, c == sd, k != nil)
+	}
+	if _, _, ok := injiHeldWithKey(sess, vcID(w3c)); ok {
+		t.Error("W3C credential must not be presentable")
+	}
+	if _, _, ok := injiHeldWithKey(sess, "unknown"); ok {
+		t.Error("unknown id must not be presentable")
+	}
+	noKey := &Session{InjiClaimedVCs: []string{sd}, InjiHolderKeys: map[string]string{}}
+	if _, _, ok := injiHeldWithKey(noKey, sdID); ok {
+		t.Error("SD-JWT without a retained key must not be presentable")
+	}
+}

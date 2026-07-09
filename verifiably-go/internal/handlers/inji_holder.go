@@ -587,12 +587,26 @@ func (h *H) heldClaimsWithStatus(ctx context.Context, sess *Session) []map[strin
 	return out
 }
 
+// injiHeldBody builds the held-credentials view model: the parsed credentials
+// plus HasPair (≥2 presentable SD-JWT credentials, so the delegated-pair present
+// control is offered). Shared by the page and the delete re-render.
+func (h *H) injiHeldBody(ctx context.Context, sess *Session) map[string]any {
+	held := h.heldClaimsWithStatus(ctx, sess)
+	presentable := 0
+	for _, m := range held {
+		if p, _ := m["Presentable"].(bool); p {
+			presentable++
+		}
+	}
+	return map[string]any{"Held": held, "HasPair": presentable >= 2}
+}
+
 // ShowInjiHeld renders the holder's claimed credentials (persisted on the
 // session), on a page separate from the available-to-claim catalog at
 // /holder/wallet/inji.
 func (h *H) ShowInjiHeld(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
-	h.render(w, r, "holder_inji_held", h.pageData(sess, map[string]any{"Held": h.heldClaimsWithStatus(r.Context(), sess)}))
+	h.render(w, r, "holder_inji_held", h.pageData(sess, h.injiHeldBody(r.Context(), sess)))
 }
 
 // DeleteInjiClaimed removes one credential from the in-app Inji wallet by its
@@ -614,5 +628,5 @@ func (h *H) DeleteInjiClaimed(w http.ResponseWriter, r *http.Request) {
 	} else {
 		sess.InjiClaimedVC = ""
 	}
-	h.renderFragment(w, r, "fragment_inji_held_list", map[string]any{"Body": map[string]any{"Held": h.heldClaimsWithStatus(r.Context(), sess)}, "Lang": h.langFor(r)})
+	h.renderFragment(w, r, "fragment_inji_held_list", map[string]any{"Body": h.injiHeldBody(r.Context(), sess), "Lang": h.langFor(r)})
 }

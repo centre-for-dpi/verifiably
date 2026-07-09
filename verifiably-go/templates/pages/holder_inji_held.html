@@ -19,6 +19,18 @@
 {{define "fragment_inji_held_list"}}
 <div id="held-list">
   {{if $.Body.Held}}
+  {{if $.Body.HasPair}}
+  <div style="margin:1.25rem 0 0;padding:0.9rem 1.1rem;background:var(--bg-elev);border:1px solid var(--line);border-radius:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+      <div style="font-size:0.85rem"><strong>{{t "Delegated access" $.Lang}}</strong>
+        <span style="color:var(--muted)">— {{t "present your subject + delegation credentials to Inji Verify as two separate VPs, then combine the outcome." $.Lang}}</span></div>
+      <button hx-post="/holder/wallet/inji/present-pair" hx-target="#pair-result" hx-swap="innerHTML" hx-indicator="#pair-spin"
+              class="btn small" style="background:var(--accent);border:1px solid var(--accent);color:#06110b;font-size:0.72rem;padding:0.3rem 0.85rem;white-space:nowrap">⇉ {{t "Present delegated pair" $.Lang}}</button>
+    </div>
+    <div id="pair-spin" class="htmx-indicator" style="margin-top:0.55rem;font-size:0.75rem;color:var(--muted)">{{t "Presenting each credential to Inji Verify…" $.Lang}}</div>
+    <div id="pair-result" style="margin-top:0.55rem"></div>
+  </div>
+  {{end}}
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin-top:1.25rem">
     {{range $.Body.Held}}
     <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:1.25rem 1.5rem">
@@ -106,5 +118,27 @@
 <div style="background:#2e0d0d;border:1px solid var(--err);border-radius:6px;padding:0.7rem 0.9rem;font-size:0.82rem;color:#ff9a9a">
   ✕ {{t "Inji Verify did not accept this presentation." $.Lang}}
 </div>
+{{end}}
+{{end}}
+
+{{/* fragment_inji_present_pair — the delegated-pair outcome: per-leg Inji Verify
+     results + the combined delegated-access card. */}}
+{{define "fragment_inji_present_pair"}}
+{{if $.Body.Error}}
+<div style="background:#2e0d0d;border:1px solid var(--err);border-radius:6px;padding:0.7rem 0.9rem;font-size:0.8rem;color:#ff9a9a">✕ {{$.Body.Error}}</div>
+{{else}}
+<div style="background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:0.7rem 0.9rem">
+  <div style="font-size:0.76rem;color:var(--muted);margin-bottom:0.4rem">{{t "Presented to Inji Verify as separate VPs" $.Lang}}:</div>
+  {{range $.Body.Legs}}
+  <div style="display:flex;gap:0.6rem;font-size:0.78rem;padding:0.18rem 0">
+    <span>{{if .OK}}<span style="color:#9affc0">✓</span>{{else}}<span style="color:#ff9a9a">✗</span>{{end}}</span>
+    <span class="mono" style="word-break:break-all;color:var(--muted)">{{.Vct}}</span>
+  </div>
+  {{end}}
+</div>
+{{template "_delegation_card" $.Body}}
+{{if and (not $.Body.Delegation) $.Body.AllValid}}
+<div style="margin-top:0.5rem;font-size:0.78rem;color:var(--muted)">{{t "Both credentials verified, but no delegation relationship was detected between them (no onBehalfOf linkage)." $.Lang}}</div>
+{{end}}
 {{end}}
 {{end}}

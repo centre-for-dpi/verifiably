@@ -222,32 +222,11 @@ func (h *H) injiDirectPost(ctx context.Context, jar injiJAR, vpToken string) err
 	return nil
 }
 
-// SubmitInjiPresent presents one held in-app Inji SD-JWT credential to Inji
-// Verify over OID4VP and renders the verdict fragment.
-func (h *H) SubmitInjiPresent(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-	id := r.PathValue("id")
-
-	var compact string
-	for _, vc := range sess.InjiClaimedVCs {
-		if vcID(vc) == id {
-			compact = vc
-			break
-		}
-	}
-	keyPEM := sess.InjiHolderKeys[id]
-	if compact == "" || keyPEM == "" || !strings.Contains(compact, "~") {
-		h.renderInjiPresentResult(w, r, id, nil,
-			"This credential can't be presented over OID4VP — it isn't an SD-JWT, or its holder key wasn't retained. Re-claim it, then present.")
-		return
-	}
-	key, err := parseECKeyPEM(keyPEM)
-	if err != nil {
-		h.renderInjiPresentResult(w, r, id, nil, "holder key: "+err.Error())
-		return
-	}
-
-	ctx := r.Context()
+// presentHeldToInjiVerify runs the OID4VP holder leg for one held SD-JWT: create
+// the request at Inji Verify (via the Inji Verify adapter), fetch the signed
+// request object, build the key-bound vp_token, direct-post it, and return the
+// polled verdict. Shared by the single present (F21) and the delegated pair (F22).
+func (h *H) presentHeldToInjiVerify(ctx context.Context, compact string, key *ecdsa.PrivateKey) (backend.VerificationResult, error) {
 	tpl := vctypes.OID4VPTemplate{
 		Title:      "In-app Inji credential",
 		Fields:     injiSDJWTDisclosureFields(compact),
@@ -260,29 +239,133 @@ func (h *H) SubmitInjiPresent(w http.ResponseWriter, r *http.Request) {
 		Template:    &tpl,
 	})
 	if err != nil {
-		h.renderInjiPresentResult(w, r, id, nil, "request presentation: "+err.Error())
-		return
+		return backend.VerificationResult{}, fmt.Errorf("request presentation: %w", err)
 	}
 	jar, err := h.fetchInjiVPRequest(ctx, res.RequestURI)
 	if err != nil {
-		h.renderInjiPresentResult(w, r, id, nil, "fetch request: "+err.Error())
-		return
+		return backend.VerificationResult{}, fmt.Errorf("fetch request: %w", err)
 	}
 	vpToken, err := injiBuildVPToken(compact, key, jar.Nonce, jar.Aud)
 	if err != nil {
-		h.renderInjiPresentResult(w, r, id, nil, "build vp_token: "+err.Error())
-		return
+		return backend.VerificationResult{}, fmt.Errorf("build vp_token: %w", err)
 	}
 	if err := h.injiDirectPost(ctx, jar, vpToken); err != nil {
-		h.renderInjiPresentResult(w, r, id, nil, err.Error())
-		return
+		return backend.VerificationResult{}, err
 	}
 	verdict, err := h.Adapter.FetchPresentationResult(ctx, res.State, "custom")
 	if err != nil {
-		h.renderInjiPresentResult(w, r, id, nil, "fetch result: "+err.Error())
+		return backend.VerificationResult{}, fmt.Errorf("fetch result: %w", err)
+	}
+	return verdict, nil
+}
+
+// injiHeldWithKey looks up a held in-app Inji SD-JWT by id together with its
+// retained holder key. ok is false when the id isn't an SD-JWT credential with a
+// retained key.
+func injiHeldWithKey(sess *Session, id string) (compact string, key *ecdsa.PrivateKey, ok bool) {
+	for _, vc := range sess.InjiClaimedVCs {
+		if vcID(vc) == id {
+			compact = vc
+			break
+		}
+	}
+	keyPEM := sess.InjiHolderKeys[id]
+	if compact == "" || keyPEM == "" || !strings.Contains(compact, "~") {
+		return "", nil, false
+	}
+	k, err := parseECKeyPEM(keyPEM)
+	if err != nil {
+		return "", nil, false
+	}
+	return compact, k, true
+}
+
+// SubmitInjiPresent presents one held in-app Inji SD-JWT credential to Inji
+// Verify over OID4VP and renders the verdict fragment.
+func (h *H) SubmitInjiPresent(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	id := r.PathValue("id")
+	compact, key, ok := injiHeldWithKey(sess, id)
+	if !ok {
+		h.renderInjiPresentResult(w, r, id, nil,
+			"This credential can't be presented over OID4VP — it isn't an SD-JWT, or its holder key wasn't retained. Re-claim it, then present.")
+		return
+	}
+	verdict, err := h.presentHeldToInjiVerify(r.Context(), compact, key)
+	if err != nil {
+		h.renderInjiPresentResult(w, r, id, nil, err.Error())
 		return
 	}
 	h.renderInjiPresentResult(w, r, id, &verdict, "")
+}
+
+// SubmitInjiPresentPair presents EVERY held presentable SD-JWT credential to
+// Inji Verify as its own single-credential OID4VP VP (the F21 leg, once per
+// credential), then combines the results: the held set is evaluated by the
+// DPG-agnostic delegation evaluator into ONE delegated-access verdict (linkage /
+// invocation / capability / revocation). This is the "two single VPs, combined"
+// delegated-pair route — Inji Verify can't honour a true multi-credential pair
+// request (injiverify/adapter.go), so verifiably presents each leg singly and
+// reasons over the pair itself.
+func (h *H) SubmitInjiPresentPair(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+
+	type held struct {
+		id, compact string
+		key         *ecdsa.PrivateKey
+	}
+	var creds []held
+	for _, vc := range sess.InjiClaimedVCs {
+		id := vcID(vc)
+		if c, k, ok := injiHeldWithKey(sess, id); ok {
+			creds = append(creds, held{id: id, compact: c, key: k})
+		}
+	}
+	if len(creds) < 2 {
+		h.renderInjiPresentPair(w, r, nil, nil,
+			"A delegated pair needs at least two SD-JWT credentials in your wallet — a subject identity and a delegation (a credential with an onBehalfOf field). Claim both, then try again.")
+		return
+	}
+
+	ctx := r.Context()
+	allValid := true
+	legs := make([]map[string]any, 0, len(creds))
+	compacts := make([]string, 0, len(creds))
+	for _, c := range creds {
+		verdict, err := h.presentHeldToInjiVerify(ctx, c.compact, c.key)
+		legOK := err == nil && verdict.Valid
+		if !legOK {
+			allValid = false
+		}
+		leg := map[string]any{"Vct": injiSDJWTVct(c.compact), "OK": legOK}
+		if err != nil {
+			leg["Err"] = err.Error()
+		}
+		legs = append(legs, leg)
+		compacts = append(compacts, c.compact)
+	}
+
+	// Combine: evaluate the presented set for delegated access. Each credential's
+	// authenticity was just checked by Inji Verify; attachDelegationVerdict adds
+	// the temporal + revocation gates and the delegation semantics.
+	res := backend.VerificationResult{
+		Credentials:   normalizeClaimedInjiCreds(compacts),
+		HolderBinding: &backend.HolderBinding{Confirmed: true},
+		Valid:         allValid && len(compacts) > 0,
+	}
+	h.attachDelegationVerdict(r, &res)
+	h.renderInjiPresentPair(w, r, legs, &res, "")
+}
+
+// renderInjiPresentPair renders the delegated-pair verdict fragment: the per-leg
+// Inji Verify outcomes plus the combined delegated-access card.
+func (h *H) renderInjiPresentPair(w http.ResponseWriter, r *http.Request, legs []map[string]any, res *backend.VerificationResult, errMsg string) {
+	data := map[string]any{"Legs": legs, "Error": errMsg}
+	if res != nil {
+		data["Delegation"] = res.Delegation
+		data["AllValid"] = res.Valid
+	}
+	h.renderFragment(w, r, "fragment_inji_present_pair", map[string]any{"Body": data, "Lang": h.langFor(r)})
 }
 
 // renderInjiPresentResult renders the OID4VP present verdict fragment.
