@@ -364,7 +364,15 @@ func envelope(t *testing.T, priv *ecdsa.PrivateKey) []byte {
 // the JWT body; anything else surfaces the error directly.
 func httpGet(t *testing.T, url string) string {
 	t.Helper()
-	resp, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	// The bitstring endpoint now defaults to JSON-LD (F16 full-interop); request
+	// the JOSE-secured (JWS) form explicitly, exactly like verifiably's own
+	// StatusListCache, so the JWS decoders in this test get what they expect.
+	req.Header.Set("Accept", "application/vc+jwt")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}

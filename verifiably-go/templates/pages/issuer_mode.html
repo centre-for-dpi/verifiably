@@ -65,18 +65,20 @@
           </span>
         </label>
 
-        <label class="option-card {{if not .Body.Dpg.DirectPDF}}disabled{{end}}"
-               style="cursor:{{if .Body.Dpg.DirectPDF}}pointer{{else}}not-allowed{{end}}"
-               {{if not .Body.Dpg.DirectPDF}}onclick="toast('{{.Body.Dpg.Vendor}} {{.Body.Dpg.Version}} has no documented QR-on-PDF issuance path.');return false"{{end}}>
+        <label class="option-card {{if or (not .Body.Dpg.DirectPDF) .Body.PdfDestBlocked}}disabled{{end}}"
+               style="cursor:{{if or (not .Body.Dpg.DirectPDF) .Body.PdfDestBlocked}}not-allowed{{else}}pointer{{end}}"
+               {{if .Body.PdfDestBlocked}}onclick="toast('Inji Certify Pre-Auth SD-JWT is delivered to a wallet over OID4VCI; QR-on-PDF is not supported for SD-JWT.');return false"{{else if not .Body.Dpg.DirectPDF}}onclick="toast('{{.Body.Dpg.Vendor}} {{.Body.Dpg.Version}} has no documented QR-on-PDF issuance path.');return false"{{end}}>
           <input type="radio" name="dest" value="pdf" style="display:none"
                  {{if eq .Body.SelectedDest "pdf"}}checked{{end}}
-                 {{if not .Body.Dpg.DirectPDF}}disabled{{end}}>
+                 {{if or (not .Body.Dpg.DirectPDF) .Body.PdfDestBlocked}}disabled{{end}}>
           <span>
             <div class="caps">QR on PDF</div>
             <h3>As a PDF</h3>
             <p>Embed the signed credential as a QR code on a printable PDF. Verifies offline from the paper.</p>
             <div class="req">
-              {{if .Body.Dpg.DirectPDF}}
+              {{if .Body.PdfDestBlocked}}
+                <span class="pill warn">not for SD-JWT on Inji Pre-Auth</span> — SD-JWT is delivered to a wallet via OID4VCI.
+              {{else if .Body.Dpg.DirectPDF}}
                 <span class="pill ok">supported in {{.Body.Dpg.Version}}</span> — QR Code Spec 1.1.0 embedding.
               {{else}}
                 <span class="pill warn">not in {{.Body.Dpg.Version}}</span> — no documented direct PDF path. Credential must be delivered to a wallet via OID4VCI.

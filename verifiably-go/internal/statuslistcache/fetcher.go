@@ -115,6 +115,11 @@ func (f *Fetcher) fetchLive(ctx context.Context, listURL string) (string, error)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
+	// Ask for the JOSE-secured (JWS) status list so we can verify its signature.
+	// The status-list endpoint now defaults to a JSON-LD VC (for external W3C
+	// verifiers like MOSIP Inji Verify that JSON.parse the response); we're a
+	// signature-verifying consumer, so we opt into the JWS form explicitly.
+	req.Header.Set("Accept", "application/vc+jwt")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("GET %s: %w", listURL, err)

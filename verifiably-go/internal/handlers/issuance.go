@@ -20,6 +20,10 @@ type modeData struct {
 	// current schema can't be delivered to a wallet (Inji Pre-Auth W3C — see
 	// injiPreAuthWalletUnsupported). QR-on-PDF stays available.
 	WalletDestBlocked bool
+	// PdfDestBlocked greys out the QR-on-PDF option when the current schema can't
+	// be issued as a PDF (Inji Pre-Auth SD-JWT — see injiPreAuthPdfUnsupported).
+	// Wallet stays available. Symmetric to WalletDestBlocked.
+	PdfDestBlocked bool
 }
 
 // injiPreAuthWalletUnsupported reports whether the DPG+format combination cannot
@@ -30,6 +34,14 @@ type modeData struct {
 // QR-on-PDF works for Inji Pre-Auth W3C. SD-JWT and the other DPGs are fine.
 func injiPreAuthWalletUnsupported(issuerDpg, std string) bool {
 	return issuerDpg == "Inji Certify · Pre-Auth" && strings.HasPrefix(std, "w3c")
+}
+
+// injiPreAuthPdfUnsupported reports whether the DPG+format combination cannot be
+// issued as a QR-on-PDF. Inji Certify Pre-Auth SD-JWT has no working PDF path
+// (only OID4VCI-to-wallet); the operator reported the PDF option produces nothing
+// usable. Symmetric to injiPreAuthWalletUnsupported: W3C→PDF-only, SD-JWT→wallet-only.
+func injiPreAuthPdfUnsupported(issuerDpg, std string) bool {
+	return issuerDpg == "Inji Certify · Pre-Auth" && strings.HasPrefix(std, "sd_jwt")
 }
 
 // ShowIssuanceMode renders the scale + destination choice screen.
@@ -65,12 +77,20 @@ func (h *H) ShowIssuanceMode(w http.ResponseWriter, r *http.Request) {
 	// option and force QR-on-PDF (F11). Resolve the picked schema's format the
 	// same way ShowIssue does; skip silently if it can't be resolved.
 	if schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess)); err == nil {
-		if schema, ok := findSchemaByID(schemas, sess.SchemaID); ok &&
-			injiPreAuthWalletUnsupported(sess.IssuerDpg, schema.Std) {
-			data.WalletDestBlocked = true
-			if sess.Dest != "pdf" {
-				sess.Dest = "pdf"
-				data.SelectedDest = "pdf"
+		if schema, ok := findSchemaByID(schemas, sess.SchemaID); ok {
+			switch {
+			case injiPreAuthWalletUnsupported(sess.IssuerDpg, schema.Std): // W3C → PDF only
+				data.WalletDestBlocked = true
+				if sess.Dest != "pdf" {
+					sess.Dest = "pdf"
+					data.SelectedDest = "pdf"
+				}
+			case injiPreAuthPdfUnsupported(sess.IssuerDpg, schema.Std): // SD-JWT → wallet only (F18)
+				data.PdfDestBlocked = true
+				if sess.Dest != "wallet" {
+					sess.Dest = "wallet"
+					data.SelectedDest = "wallet"
+				}
 			}
 		}
 	}
@@ -91,12 +111,17 @@ func (h *H) SetIssuanceMode(w http.ResponseWriter, r *http.Request) {
 	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil && dpgs[sess.IssuerDpg].BulkOnly {
 		sess.Scale = "bulk"
 	}
-	// Server-side guard: Inji Pre-Auth W3C can't be delivered to a wallet (F11) —
-	// force QR-on-PDF even if a crafted POST submits dest=wallet.
+	// Server-side guards mirroring the client-side greying: Inji Pre-Auth W3C can't
+	// go to a wallet (force PDF, F11); Inji Pre-Auth SD-JWT can't go to PDF (force
+	// wallet, F18) — even if a crafted POST submits the blocked dest.
 	if schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess)); err == nil {
-		if schema, ok := findSchemaByID(schemas, sess.SchemaID); ok &&
-			injiPreAuthWalletUnsupported(sess.IssuerDpg, schema.Std) {
-			sess.Dest = "pdf"
+		if schema, ok := findSchemaByID(schemas, sess.SchemaID); ok {
+			switch {
+			case injiPreAuthWalletUnsupported(sess.IssuerDpg, schema.Std):
+				sess.Dest = "pdf"
+			case injiPreAuthPdfUnsupported(sess.IssuerDpg, schema.Std):
+				sess.Dest = "wallet"
+			}
 		}
 	}
 	h.redirect(w, r, "/issuer/issue")
@@ -352,6 +377,18 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// PDF
+	// Allocate a status-list index BEFORE the PDF issuance, exactly like the wallet
+	// branch above (F16). The PDF path is the ONLY Inji W3C delivery since F11 greyed
+	// out wallet for W3C, and the adapter needs the binding to resolve the
+	// credentialStatus / status.status_list markers into a real, revocable pointer —
+	// without it certify renders the literal ${statusUri}/${statusIdx} and the
+	// credential fails verification everywhere.
+	binding, allocErr := h.allocateStatusListBinding(schema)
+	if allocErr != nil {
+		h.errorToast(w, r, allocErr.Error())
+		return
+	}
+	req.StatusList = binding
 	pdfStart := time.Now()
 	res, err := h.Adapter.IssueAsPDF(r.Context(), req)
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(pdfStart), "dpg", issuerDpg, "op", "issue")
@@ -367,6 +404,9 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		"dest", "pdf",
 		"duration_ms", time.Since(pdfStart).Milliseconds(),
 	)
+	// Record the issuance so the PDF credential shows in /issuer/credentials and is
+	// revocable via its allocated status-list index (F17). No offer URI for PDF.
+	h.recordIssuance(sess, schema, sess.IssuerDpg, subject, "", binding)
 	h.renderFragment(w, r, "fragment_issue_pdf_result", map[string]any{
 		"Schema":    schema,
 		"PDFResult": res,

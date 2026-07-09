@@ -35,6 +35,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,6 +71,22 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	}
 	if len(claims) == 0 {
 		claims["fullName"] = "Demo Holder"
+	}
+	// Stage the token-status markers so certify resolves the SD-JWT
+	// status.status_list / W3C credentialStatus template markers into a real,
+	// revocable pointer (F16). IssueToWallet does the same (issuer.go); the PDF
+	// path was missing it, so ${statusIdx}/${statusUri} rendered literally and
+	// the credential failed verification everywhere. Keys must be exactly
+	// statusIdx/statusUri (declared in the pre-auth credential_config so
+	// certify's PreAuthDataProviderPlugin surfaces them into the template).
+	if cf := stdToCredentialFormat(req.Schema.Std); cf == "vc+sd-jwt" || cf == "ldp_vc" {
+		if req.StatusList != nil {
+			claims["statusIdx"] = strconv.Itoa(req.StatusList.Index)
+			claims["statusUri"] = req.StatusList.PublishURL
+		} else {
+			claims["statusIdx"] = "0"
+			claims["statusUri"] = ""
+		}
 	}
 	staged := preAuthorizedDataRequest{
 		CredentialConfigurationId: req.Schema.ID,

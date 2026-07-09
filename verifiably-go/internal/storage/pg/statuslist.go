@@ -103,6 +103,10 @@ func (s *StatusListStore) PublishBitstringJWT(key *statuslist.SigningKey) (strin
 	return s.st.PublishBitstringJWT(key)
 }
 
+func (s *StatusListStore) PublishBitstringLD(key *statuslist.SigningKey) ([]byte, error) {
+	return s.st.PublishBitstringLD(key)
+}
+
 func (s *StatusListStore) PublishTokenStatusList(key *statuslist.SigningKey) (string, error) {
 	return s.st.PublishTokenStatusList(key)
 }

@@ -232,23 +232,7 @@ func (s *Store) PublishBitstringJWT(key *SigningKey) (string, error) {
 	// only prepend here, not in PublishTokenStatusList.
 	encoded = "u" + encoded
 	now := time.Now().UTC()
-	vc := map[string]any{
-		"@context": []string{
-			"https://www.w3.org/ns/credentials/v2",
-			"https://w3id.org/vc/status-list/2021/v1",
-		},
-		"id":   s.PublishURL,
-		"type": []string{"VerifiableCredential", "BitstringStatusListCredential"},
-		// Issuer is the DID; verifiers resolve it to fetch the JWK.
-		"issuer":       key.Issuer(),
-		"validFrom":    now.Format(time.RFC3339),
-		"credentialSubject": map[string]any{
-			"id":            s.PublishURL + "#list",
-			"type":          "BitstringStatusList",
-			"statusPurpose": "revocation",
-			"encodedList":   encoded,
-		},
-	}
+	vc := s.buildBitstringVC(key.Issuer(), encoded, now)
 	claims := map[string]any{
 		"iss": key.Issuer(),
 		"sub": s.PublishURL,
@@ -256,6 +240,51 @@ func (s *Store) PublishBitstringJWT(key *SigningKey) (string, error) {
 		"vc":  vc,
 	}
 	return key.SignJWT("vc+jwt", claims)
+}
+
+// buildBitstringVC assembles the W3C BitstringStatusListCredential body shared by
+// the JWS (PublishBitstringJWT) and JSON-LD (PublishBitstringLD) serializations.
+func (s *Store) buildBitstringVC(issuer, encoded string, now time.Time) map[string]any {
+	return map[string]any{
+		"@context": []string{
+			"https://www.w3.org/ns/credentials/v2",
+			"https://w3id.org/vc/status-list/2021/v1",
+		},
+		"id":   s.PublishURL,
+		"type": []string{"VerifiableCredential", "BitstringStatusListCredential"},
+		// Issuer is the DID; verifiers resolve it to fetch the JWK.
+		"issuer":    issuer,
+		"validFrom": now.Format(time.RFC3339),
+		"credentialSubject": map[string]any{
+			"id":            s.PublishURL + "#list",
+			"type":          "BitstringStatusList",
+			"statusPurpose": "revocation",
+			"encodedList":   encoded,
+		},
+	}
+}
+
+// PublishBitstringLD returns the BitstringStatusListCredential as a plain JSON-LD
+// object (application/vc+ld+json). MOSIP Inji Verify's status-list retrieval does
+// `JSON.parse` on the response and chokes on the JOSE-secured JWS form
+// ("Unrecognized token 'eyJhbGci'"); it needs the JSON-LD document so it can read
+// credentialSubject.encodedList (F16 full-interop). Served alongside the JWS via
+// content negotiation. NOTE: unsigned today — verifiably-side verification doesn't
+// need the proof (it owns the list), and Inji Verify reads encodedList without
+// verifying the status-list proof; an embedded Data-Integrity proof is a follow-up
+// if a stricter external verifier requires it.
+func (s *Store) PublishBitstringLD(key *SigningKey) ([]byte, error) {
+	if s.Kind != "bitstring" {
+		return nil, fmt.Errorf("statuslist: PublishBitstringLD called on kind=%q", s.Kind)
+	}
+	s.mu.RLock()
+	encoded, err := s.bits.EncodeGzipBase64URL()
+	s.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	vc := s.buildBitstringVC(key.Issuer(), "u"+encoded, time.Now().UTC())
+	return json.Marshal(vc)
 }
 
 // PublishTokenStatusList signs and returns the IETF Token Status List
@@ -333,6 +362,7 @@ type Backend interface {
 	GetListID() string
 	GetPublishURL() string
 	PublishBitstringJWT(key *SigningKey) (string, error)
+	PublishBitstringLD(key *SigningKey) ([]byte, error)
 	PublishTokenStatusList(key *SigningKey) (string, error)
 }
 
