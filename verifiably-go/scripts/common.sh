@@ -359,20 +359,14 @@ role_services() {
   printf '%s\n' "${_svc[@]}" | awk '!seen[$0]++'
 }
 
-# infra_services <role-string>
-# Returns IdP and translator services for the given role set.
-# WSO2IS is included only when VERIFIABLY_SKIP_WSO2IS=0|false OR when all 3 roles
-# are active (matching prior full-deployment behaviour).
+# infra_services
+# Returns IdP and translator services shared across roles. wso2is is
+# opt-out via VERIFIABLY_SKIP_WSO2IS regardless of role count — it's a
+# shared IdP, not tied to any specific role's presence — so we just
+# respect the already-computed IDP_WSO2IS array (see VERIFIABLY_SKIP_WSO2IS
+# case statement above) instead of re-deriving the skip decision here.
 infra_services() {
-  local role_str="$1"
-  printf '%s\n' "${IDP_KEYCLOAK[@]}" "${TRANSLATOR_SERVICES[@]}"
-  local role_count
-  role_count=$(tr ',' '\n' <<< "$role_str" | grep -c '[^[:space:]]' || true)
-  if [[ "$role_count" -ge 3 ]] || \
-     [[ "${VERIFIABLY_SKIP_WSO2IS:-}" == "0" ]] || \
-     [[ "${VERIFIABLY_SKIP_WSO2IS:-}" == "false" ]]; then
-    printf '%s\n' "${IDP_WSO2IS[@]}"
-  fi
+  printf '%s\n' "${IDP_KEYCLOAK[@]}" "${TRANSLATOR_SERVICES[@]}" "${IDP_WSO2IS[@]}"
 }
 
 # ------------------------------------------------------------------ helpers
@@ -450,22 +444,22 @@ scenario_services() {
     all)
       { role_services waltid "$_role"; role_services inji "$_role"; } \
         | awk '!seen[$0]++'
-      infra_services "$_role"
+      infra_services
       if [[ -z "$CREDEBL_API_URL" ]]; then
         role_services credebl "$_role"
       fi
       ;;
     waltid)
       role_services waltid "$_role"
-      infra_services "$_role"
+      infra_services
       ;;
     inji)
       role_services inji "$_role"
-      infra_services "$_role"
+      infra_services
       ;;
     credebl)
       role_services credebl "$_role"
-      infra_services "$_role"
+      infra_services
       ;;
     *)
       red "unknown scenario: $scenario (want: all | waltid | inji | credebl)"; return 1;;
