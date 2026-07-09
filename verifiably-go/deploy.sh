@@ -359,7 +359,15 @@ cmd_up() {
       if ! docker exec certify-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-postgres missing inji_certify DB — running init.sql"
         DID="did:web:${ISSUER_DID_DOMAIN:-certify-nginx}"
-        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-authcode.sql" \
+        # Derive the credential vct host from the deployment's public URL instead
+        # of the seed's example.com placeholder (no-hardcoded-hosts). The vct in
+        # sd_jwt_vct is what certify issues into the credential + advertises in
+        # the well-known, so it must match VERIFIABLY_PUBLIC_URL or verification
+        # fails (stale-host mismatch).
+        VCT_HOST="${VERIFIABLY_PUBLIC_URL%/}"
+        sed -e "s|did:web:certify-nginx|${DID}|g" \
+            -e "s|https://example.com/credentials|${VCT_HOST}/credentials|g" \
+            "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-authcode.sql" \
           | docker exec -i certify-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify >/dev/null 2>&1 \
           && green "  certify-postgres seeded, inji-certify restarted" \
@@ -372,7 +380,14 @@ cmd_up() {
       if ! docker exec certify-preauth-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-preauth-postgres missing inji_certify DB — running init-preauth.sql"
         DID="did:web:${PREAUTH_DID_DOMAIN:-${ISSUER_DID_DOMAIN:-certify-preauth-nginx}}"
-        sed "s|did:web:certify-preauth-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-preauth.sql" \
+        # Derive the credential vct host from the deployment's public URL (see the
+        # certify-postgres seed above) — the pre-auth seed's FarmerCredential
+        # carries a https://example.com sd_jwt_vct placeholder that must become
+        # the real host or the issued credential fails verification.
+        VCT_HOST="${VERIFIABLY_PUBLIC_URL%/}"
+        sed -e "s|did:web:certify-preauth-nginx|${DID}|g" \
+            -e "s|https://example.com/credentials|${VCT_HOST}/credentials|g" \
+            "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-preauth.sql" \
           | docker exec -i certify-preauth-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify-preauth-backend >/dev/null 2>&1 \
           && green "  certify-preauth-postgres seeded, inji-certify-preauth-backend restarted" \
