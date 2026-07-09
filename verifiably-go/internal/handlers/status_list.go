@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -69,12 +70,6 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown status list id", http.StatusNotFound)
 		return
 	}
-	key, err := h.resolveSigningKey(r.Context())
-	if err != nil {
-		log.Printf("status-list/bitstring: signing key unavailable: %v", err)
-		http.Error(w, "status list signing key unavailable", http.StatusServiceUnavailable)
-		return
-	}
 	// Content-negotiate (F16 full-interop). DEFAULT is now JSON-LD: MOSIP Inji
 	// Verify (and most W3C verifiers) fetch the statusListCredential with `*/*`
 	// and JSON.parse it — they choke on the JOSE JWS ("Unrecognized token
@@ -82,6 +77,12 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 	// Accept containing `jwt` (application/vc+jwt) — verifiably's own
 	// StatusListCache asks for that so it keeps verifying the list's signature.
 	if wantsJWSStatusList(r.Header.Get("Accept")) {
+		key, err := h.resolveSigningKey(r.Context())
+		if err != nil {
+			log.Printf("status-list/bitstring: signing key unavailable: %v", err)
+			http.Error(w, "status list signing key unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		jwt, err := h.BitstringStore.PublishBitstringJWT(key)
 		if err != nil {
 			log.Printf("status-list/bitstring: publish failed: %v", err)
@@ -94,9 +95,26 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(jwt))
 		return
 	}
-	ld, err := h.BitstringStore.PublishBitstringLD(key)
+	// Default: JSON-LD BitstringStatusListCredential with an Ed25519Signature2020
+	// Data-Integrity proof so external verifiers (MOSIP Inji Verify) accept it.
+	if h.StatusLDSigner == nil {
+		http.Error(w, "status list ld signer unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	vc, err := h.BitstringStore.BitstringStatusListVC(h.StatusLDSigner.DID())
 	if err != nil {
-		log.Printf("status-list/bitstring: LD publish failed: %v", err)
+		log.Printf("status-list/bitstring: build VC failed: %v", err)
+		http.Error(w, "status list unavailable", http.StatusInternalServerError)
+		return
+	}
+	signed, err := h.StatusLDSigner.Sign(vc)
+	if err != nil {
+		log.Printf("status-list/bitstring: LD sign failed: %v", err)
+		http.Error(w, "status list unavailable", http.StatusInternalServerError)
+		return
+	}
+	body, err := json.Marshal(signed)
+	if err != nil {
 		http.Error(w, "status list unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -104,7 +122,7 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 	// Status lists change rarely — cache for 60s (freshly-revoked visibility lags
 	// by at most one minute, well inside what verifiers expect).
 	w.Header().Set("Cache-Control", "public, max-age=60")
-	_, _ = w.Write(ld)
+	_, _ = w.Write(body)
 }
 
 // wantsJWSStatusList reports whether the caller explicitly asked for the

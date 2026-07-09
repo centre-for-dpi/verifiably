@@ -385,6 +385,13 @@ func main() {
 		}
 		slFetcher := statuslistcache.NewFetcher(slStateDir, h.DIDResolver)
 		h.StatusListCache = slFetcher
+		// Ed25519Signature2020 signer for the JSON-LD status list (F16 full-interop).
+		if ldSigner, err := statuslist.NewLDSigner(slStateDir); err != nil {
+			log.Printf("status list: LD signer unavailable (JSON-LD status list will 503): %v", err)
+		} else {
+			h.StatusLDSigner = ldSigner
+			log.Printf("status list: JSON-LD signer ready (issuer %s)", ldSigner.DID())
+		}
 		if activeRoles.Has(roles.Hub) && h.TrustRegistry != nil {
 			statuslistcache.NewPoller(slFetcher, h.TrustRegistry).Start(shutCtx)
 			log.Printf("status list cache: poller started (hub mode)")

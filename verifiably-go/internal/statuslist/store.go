@@ -246,9 +246,13 @@ func (s *Store) PublishBitstringJWT(key *SigningKey) (string, error) {
 // the JWS (PublishBitstringJWT) and JSON-LD (PublishBitstringLD) serializations.
 func (s *Store) buildBitstringVC(issuer, encoded string, now time.Time) map[string]any {
 	return map[string]any{
+		// credentials/v2 defines the BitstringStatusList 2023 terms
+		// (BitstringStatusListCredential/BitstringStatusList/encodedList/
+		// statusPurpose); ed25519-2020 defines the Ed25519Signature2020 proof
+		// terms so the JSON-LD form canonicalizes for the Data-Integrity proof.
 		"@context": []string{
 			"https://www.w3.org/ns/credentials/v2",
-			"https://w3id.org/vc/status-list/2021/v1",
+			"https://w3id.org/security/suites/ed25519-2020/v1",
 		},
 		"id":   s.PublishURL,
 		"type": []string{"VerifiableCredential", "BitstringStatusListCredential"},
@@ -264,18 +268,16 @@ func (s *Store) buildBitstringVC(issuer, encoded string, now time.Time) map[stri
 	}
 }
 
-// PublishBitstringLD returns the BitstringStatusListCredential as a plain JSON-LD
-// object (application/vc+ld+json). MOSIP Inji Verify's status-list retrieval does
-// `JSON.parse` on the response and chokes on the JOSE-secured JWS form
-// ("Unrecognized token 'eyJhbGci'"); it needs the JSON-LD document so it can read
-// credentialSubject.encodedList (F16 full-interop). Served alongside the JWS via
-// content negotiation. NOTE: unsigned today — verifiably-side verification doesn't
-// need the proof (it owns the list), and Inji Verify reads encodedList without
-// verifying the status-list proof; an embedded Data-Integrity proof is a follow-up
-// if a stricter external verifier requires it.
-func (s *Store) PublishBitstringLD(key *SigningKey) ([]byte, error) {
+// BitstringStatusListVC returns the UNSIGNED BitstringStatusListCredential as a
+// JSON-LD object with the given issuer DID. The handler signs it with an
+// Ed25519Signature2020 Data-Integrity proof (LDSigner) before serving it as
+// application/vc+ld+json — MOSIP Inji Verify JSON.parses the statusListCredential
+// and verifies its proof (it NPEs on an unsigned list), so the JSON-LD form must
+// be signed. Issuer is the LDSigner's did:key so the proof's verificationMethod
+// resolves without a network round-trip.
+func (s *Store) BitstringStatusListVC(issuer string) (map[string]any, error) {
 	if s.Kind != "bitstring" {
-		return nil, fmt.Errorf("statuslist: PublishBitstringLD called on kind=%q", s.Kind)
+		return nil, fmt.Errorf("statuslist: BitstringStatusListVC called on kind=%q", s.Kind)
 	}
 	s.mu.RLock()
 	encoded, err := s.bits.EncodeGzipBase64URL()
@@ -283,8 +285,7 @@ func (s *Store) PublishBitstringLD(key *SigningKey) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	vc := s.buildBitstringVC(key.Issuer(), "u"+encoded, time.Now().UTC())
-	return json.Marshal(vc)
+	return s.buildBitstringVC(issuer, "u"+encoded, time.Now().UTC()), nil
 }
 
 // PublishTokenStatusList signs and returns the IETF Token Status List
@@ -362,7 +363,7 @@ type Backend interface {
 	GetListID() string
 	GetPublishURL() string
 	PublishBitstringJWT(key *SigningKey) (string, error)
-	PublishBitstringLD(key *SigningKey) ([]byte, error)
+	BitstringStatusListVC(issuer string) (map[string]any, error)
 	PublishTokenStatusList(key *SigningKey) (string, error)
 }
 

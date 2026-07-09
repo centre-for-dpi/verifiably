@@ -77,6 +77,10 @@ type H struct {
 	// instance hosts for VCDM 2.0 credentials it issues. Optional; nil
 	// disables W3C revocation end-to-end.
 	BitstringStore statuslist.Backend
+	// StatusLDSigner signs the JSON-LD BitstringStatusListCredential with an
+	// Ed25519Signature2020 proof so external verifiers (MOSIP Inji Verify) accept
+	// it (F16 full-interop). Optional; nil serves only the JWS form.
+	StatusLDSigner *statuslist.LDSigner
 
 	// TokenStore is the IETF Token Status List the instance hosts for
 	// SD-JWT VCs it issues. Optional; nil disables SD-JWT revocation.
