@@ -181,9 +181,12 @@ export CREDEBL_COMPOSE_DIR
 # this script is the single source of truth for "what belongs to which
 # scenario" and can evolve without touching the shared compose.
 
-WALTID_SERVICES=(
-  postgres caddy issuer-api verifier-api wallet-api
-)
+# ── Walt ID — role-specific service arrays ───────────────────────────────────
+WALTID_ISSUER_SVCS=(postgres caddy issuer-api)
+WALTID_VERIFIER_SVCS=(postgres caddy verifier-api)
+WALTID_HOLDER_SVCS=(postgres caddy wallet-api)
+# Backward-compat aliases (not used internally — kept for external scripts)
+WALTID_SERVICES=(postgres caddy issuer-api verifier-api wallet-api)
 # When VERIFIABLY_KEYCLOAK_EXTERNAL_ISSUER_URL is set, the operator is
 # pointing verifiably-go at an external Keycloak (one they don't host
 # themselves — e.g. an upstream realm shared by another team). In that
@@ -218,13 +221,58 @@ INJI_CORE_SERVICES=(
   inji-verify-postgres inji-verify-service inji-verify-ui
   citizens-postgres vc-adapter
 )
+
+# ── Inji — role-specific service arrays ──────────────────────────────────────
+INJI_ISSUER_SVCS=(
+  certify-postgres inji-certify
+  certify-preauth-postgres inji-certify-preauth-backend inji-preauth-proxy
+  certify-nginx certify-preauth-nginx
+  citizens-postgres
+)
+INJI_VERIFIER_SVCS=(
+  inji-verify-postgres inji-verify-service inji-verify-ui
+  vc-adapter
+)
+# INJI holder = INJIWEB_SERVICES defined below
+
 INJIWEB_SERVICES=(
   injiweb-postgres injiweb-redis
   injiweb-mock-identity injiweb-esignet injiweb-oidc-ui
   injiweb-minio injiweb-datashare injiweb-mimoto injiweb-ui
 )
-# CREDEBL compose services — started when `./deploy.sh up credebl` is used
-# without an external CREDEBL_API_URL.
+
+# ── CREDEBL — role-specific service arrays ────────────────────────────────────
+# Infra: required for every CREDEBL role
+CREDEBL_INFRA_SVCS=(
+  credebl-postgres credebl-redis credebl-nats
+)
+# Shared: lightweight orchestration services needed by all roles
+CREDEBL_SHARED_SVCS=(
+  credebl-seed credebl-platform-admin-bootstrap
+  credebl-api-gateway credebl-user credebl-utility
+  credebl-agent-provisioning credebl-agent-service
+  credebl-ecosystem
+)
+# Issuer-specific: schema storage, notification, issuance pipeline
+CREDEBL_ISSUER_SVCS=(
+  credebl-minio credebl-minio-setup
+  credebl-mailpit
+  credebl-schema-file-server credebl-oob-redirector
+  credebl-connection credebl-issuance credebl-ledger
+  credebl-organization
+  credebl-oid4vc-issuance
+  credebl-oid4vci-rewriter
+)
+# Verifier-specific
+CREDEBL_VERIFIER_SVCS=(
+  credebl-connection credebl-verification
+  credebl-oid4vc-verification
+)
+# Holder-specific
+CREDEBL_HOLDER_SVCS=(
+  credebl-cloud-wallet
+)
+# Backward-compat alias (union of all roles)
 CREDEBL_SERVICES=(
   credebl-postgres credebl-redis credebl-nats
   credebl-minio credebl-minio-setup
@@ -239,6 +287,93 @@ CREDEBL_SERVICES=(
   credebl-oid4vc-verification credebl-ecosystem
   credebl-oid4vci-rewriter
 )
+
+# ── Role helpers ─────────────────────────────────────────────────────────────
+
+# resolve_role: returns the active role string.
+# Precedence: CLI_ROLE (set by deploy.sh --role flag)
+#           > VERIFIABLY_ROLES (from .env)
+#           > default "issuer,verifier,holder" (full deployment, backward-compat)
+resolve_role() {
+  printf '%s' "${CLI_ROLE:-${VERIFIABLY_ROLES:-issuer,verifier,holder}}"
+}
+
+# validate_roles <role-string>
+# Exits non-zero on unknown roles or empty string.
+# Warns (with interactive prompt) if 'holder' is requested without 'issuer'.
+validate_roles() {
+  local role_str="$1"
+  if [[ -z "${role_str// /}" ]]; then
+    red "VERIFIABLY_ROLES cannot be empty. Valid values: issuer, verifier, holder"
+    return 1
+  fi
+  local r
+  IFS=',' read -ra _roles <<< "$role_str"
+  local has_issuer=0 has_holder=0
+  for r in "${_roles[@]}"; do
+    r="${r// /}"
+    case "$r" in
+      issuer|verifier|holder) ;;
+      *) red "unknown role '$r'. Valid: issuer, verifier, holder"; return 1 ;;
+    esac
+    [[ "$r" == "issuer" ]] && has_issuer=1
+    [[ "$r" == "holder" ]] && has_holder=1
+  done
+  if [[ "$has_holder" == "1" && "$has_issuer" == "0" ]]; then
+    yellow "  Warning: deploying 'holder' without 'issuer' — wallet cannot receive new credentials."
+    if [[ -t 0 ]]; then
+      printf '  Continue? [y/N] '
+      local _ans; read -r _ans
+      [[ "$_ans" =~ ^[Yy]$ ]] || { red "Aborted."; return 1; }
+    fi
+  fi
+}
+
+# role_services <dpg> <role-string>
+# Prints service names (one per line) for the given DPG × role combination.
+# <role-string> may be comma-separated (e.g. "issuer,verifier").
+# Output is deduplicated preserving first-occurrence order.
+role_services() {
+  local dpg="$1" role_str="$2"
+  local -a _svc=()
+  local r
+  IFS=',' read -ra _roles <<< "$role_str"
+  for r in "${_roles[@]}"; do
+    r="${r// /}"
+    case "${dpg}:${r}" in
+      waltid:issuer)    _svc+=( "${WALTID_ISSUER_SVCS[@]}" ) ;;
+      waltid:verifier)  _svc+=( "${WALTID_VERIFIER_SVCS[@]}" ) ;;
+      waltid:holder)    _svc+=( "${WALTID_HOLDER_SVCS[@]}" ) ;;
+      inji:issuer)      _svc+=( "${INJI_ISSUER_SVCS[@]}" ) ;;
+      inji:verifier)    _svc+=( "${INJI_VERIFIER_SVCS[@]}" ) ;;
+      inji:holder)      _svc+=( "${INJIWEB_SERVICES[@]}" ) ;;
+      credebl:issuer)   _svc+=( "${CREDEBL_INFRA_SVCS[@]}" "${CREDEBL_SHARED_SVCS[@]}" "${CREDEBL_ISSUER_SVCS[@]}" ) ;;
+      credebl:verifier) _svc+=( "${CREDEBL_INFRA_SVCS[@]}" "${CREDEBL_SHARED_SVCS[@]}" "${CREDEBL_VERIFIER_SVCS[@]}" ) ;;
+      credebl:holder)   _svc+=( "${CREDEBL_INFRA_SVCS[@]}" "${CREDEBL_SHARED_SVCS[@]}" "${CREDEBL_HOLDER_SVCS[@]}" ) ;;
+      *)
+        red "unknown DPG:role '${dpg}:${r}' (valid roles: issuer, verifier, holder)"
+        return 1
+        ;;
+    esac
+  done
+  printf '%s\n' "${_svc[@]}" | awk '!seen[$0]++'
+}
+
+# infra_services <role-string>
+# Returns IdP and translator services for the given role set.
+# WSO2IS is included only when VERIFIABLY_SKIP_WSO2IS=0|false OR when all 3 roles
+# are active (matching prior full-deployment behaviour).
+infra_services() {
+  local role_str="$1"
+  printf '%s\n' "${IDP_KEYCLOAK[@]}" "${TRANSLATOR_SERVICES[@]}"
+  local role_count
+  role_count=$(tr ',' '\n' <<< "$role_str" | grep -c '[^[:space:]]' || true)
+  if [[ "$role_count" -ge 3 ]] || \
+     [[ "${VERIFIABLY_SKIP_WSO2IS:-}" == "0" ]] || \
+     [[ "${VERIFIABLY_SKIP_WSO2IS:-}" == "false" ]]; then
+    printf '%s\n' "${IDP_WSO2IS[@]}"
+  fi
+}
 
 # ------------------------------------------------------------------ helpers
 
@@ -309,42 +444,28 @@ compose() {
 
 scenario_services() {
   local scenario="$1"
-  # Both IdPs are included in every scenario so the auth page always offers
-  # BOTH Keycloak and WSO2IS regardless of which DPG stack the user is
-  # driving. The translator is always on for the same reason (i18n in the
-  # topbar).
+  local _role
+  _role=$(resolve_role)
   case "$scenario" in
     all)
-      printf '%s\n' \
-        "${WALTID_SERVICES[@]}" \
-        "${IDP_KEYCLOAK[@]}" "${IDP_WSO2IS[@]}" \
-        "${TRANSLATOR_SERVICES[@]}" \
-        "${INJI_CORE_SERVICES[@]}" \
-        "${INJIWEB_SERVICES[@]}"
-      # Include compose-managed CREDEBL unless an external URL is configured.
+      { role_services waltid "$_role"; role_services inji "$_role"; } \
+        | awk '!seen[$0]++'
+      infra_services "$_role"
       if [[ -z "$CREDEBL_API_URL" ]]; then
-        printf '%s\n' "${CREDEBL_SERVICES[@]}"
+        role_services credebl "$_role"
       fi
       ;;
     waltid)
-      printf '%s\n' \
-        "${WALTID_SERVICES[@]}" \
-        "${IDP_KEYCLOAK[@]}" "${IDP_WSO2IS[@]}" \
-        "${TRANSLATOR_SERVICES[@]}"
+      role_services waltid "$_role"
+      infra_services "$_role"
       ;;
     inji)
-      printf '%s\n' \
-        "${INJI_CORE_SERVICES[@]}" \
-        "${INJIWEB_SERVICES[@]}" \
-        "${IDP_KEYCLOAK[@]}" "${IDP_WSO2IS[@]}" \
-        "${TRANSLATOR_SERVICES[@]}"
+      role_services inji "$_role"
+      infra_services "$_role"
       ;;
     credebl)
-      # CREDEBL compose-managed: all CREDEBL services + shared IdP + translator.
-      printf '%s\n' \
-        "${CREDEBL_SERVICES[@]}" \
-        "${IDP_KEYCLOAK[@]}" "${IDP_WSO2IS[@]}" \
-        "${TRANSLATOR_SERVICES[@]}"
+      role_services credebl "$_role"
+      infra_services "$_role"
       ;;
     *)
       red "unknown scenario: $scenario (want: all | waltid | inji | credebl)"; return 1;;
