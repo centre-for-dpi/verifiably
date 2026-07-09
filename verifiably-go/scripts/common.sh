@@ -314,6 +314,12 @@ validate_roles() {
     r="${r// /}"
     case "$r" in
       issuer|verifier|holder) ;;
+      # trust/schemas/hub are valid roles for the Go app (see
+      # internal/roles/roles.go) but don't affect container selection here —
+      # accept them as no-ops so a VERIFIABLY_ROLES value that's legitimate
+      # for the Go app layer (e.g. .env.example's issuer,verifier,schemas)
+      # doesn't get rejected at the bash layer.
+      trust|schemas|hub) ;;
       *) red "unknown role '$r'. Valid: issuer, verifier, holder"; return 1 ;;
     esac
     [[ "$r" == "issuer" ]] && has_issuer=1
@@ -350,6 +356,9 @@ role_services() {
       credebl:issuer)   _svc+=( "${CREDEBL_INFRA_SVCS[@]}" "${CREDEBL_SHARED_SVCS[@]}" "${CREDEBL_ISSUER_SVCS[@]}" ) ;;
       credebl:verifier) _svc+=( "${CREDEBL_INFRA_SVCS[@]}" "${CREDEBL_SHARED_SVCS[@]}" "${CREDEBL_VERIFIER_SVCS[@]}" ) ;;
       credebl:holder)   _svc+=( "${CREDEBL_INFRA_SVCS[@]}" "${CREDEBL_SHARED_SVCS[@]}" "${CREDEBL_HOLDER_SVCS[@]}" ) ;;
+      waltid:trust|waltid:schemas|waltid:hub) ;;
+      inji:trust|inji:schemas|inji:hub) ;;
+      credebl:trust|credebl:schemas|credebl:hub) ;;
       *)
         red "unknown DPG:role '${dpg}:${r}' (valid roles: issuer, verifier, holder)"
         return 1

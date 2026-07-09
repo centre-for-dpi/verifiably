@@ -132,9 +132,13 @@ cmd_up() {
       all|credebl) _needed_gib=8 ;;
       inji)        _needed_gib=6 ;;
     esac
-    # Reduce estimate for single-role deployments
+    # Reduce estimate for single-role deployments. Only count
+    # container-affecting roles (issuer/verifier/holder) — trust/schemas/hub
+    # are valid Go-app roles (see internal/roles/roles.go) that pass through
+    # role_services() as no-ops and add zero containers, so they must not
+    # inflate the count used to scale the RAM estimate.
     local _role_count
-    _role_count=$(tr ',' '\n' <<< "$_active_role" | grep -c '[^[:space:]]' || true)
+    _role_count=$(tr ',' '\n' <<< "$_active_role" | tr -d ' ' | grep -Ec '^(issuer|verifier|holder)$' || true)
     if [[ "$_role_count" -lt 3 ]]; then
       _needed_gib=$(( _needed_gib * _role_count / 3 ))
       (( _needed_gib < 2 )) && _needed_gib=2
