@@ -178,7 +178,8 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 			vct = v
 		}
 	}
-	vc, err := h.injiClaimCredential(r.Context(), code, sess.PendingPKCE, credType, format, vcContext, vct)
+	var holderKeyPEM string
+	vc, err := h.injiClaimCredential(r.Context(), code, sess.PendingPKCE, credType, format, vcContext, vct, &holderKeyPEM)
 	sess.PendingState, sess.PendingPKCE, sess.PendingProvider = "", "", ""
 	if err != nil {
 		msg := "Claim failed: " + err.Error()
@@ -194,13 +195,24 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	sess.InjiClaimedVC = vc
 	sess.InjiClaimedVCs = append([]string{vc}, sess.InjiClaimedVCs...) // newest first; shown on the held page
+	// Retain the SD-JWT's holder binding key so the credential can later be
+	// presented over OID4VP to Inji Verify with a key-bound KB-JWT (F21).
+	if holderKeyPEM != "" && strings.Contains(vc, "~") {
+		if sess.InjiHolderKeys == nil {
+			sess.InjiHolderKeys = map[string]string{}
+		}
+		sess.InjiHolderKeys[vcID(vc)] = holderKeyPEM
+	}
 	sess.InjiClaimError = ""
 	h.redirect(w, r, "/holder/wallet/inji/credentials")
 }
 
 // injiClaimCredential does token exchange (private_key_jwt) + holder proof +
-// credential request, returning the issued VC as a JSON string.
-func (h *H) injiClaimCredential(ctx context.Context, code, verifier, credType, format, vcContext, vct string) (string, error) {
+// credential request, returning the issued VC as a JSON string. When keyOut is
+// non-nil it also receives the PEM of the ES256 holder key the credential's cnf
+// was bound to, so the caller can retain it for a later key-bound OID4VP
+// presentation (F21). keyOut is populated only on a successful claim.
+func (h *H) injiClaimCredential(ctx context.Context, code, verifier, credType, format, vcContext, vct string, keyOut *string) (string, error) {
 	key, err := injiAuthcodeClientKey()
 	if err != nil {
 		return "", err
@@ -237,6 +249,11 @@ func (h *H) injiClaimCredential(ctx context.Context, code, verifier, credType, f
 	issuer := injiCredentialIssuer(ctx)
 	credEP := injiCertifyUpstream() + "/v1/certify/issuance/credential"
 	holderKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if keyOut != nil {
+		if pemStr, e := marshalECKeyPEM(holderKey); e == nil {
+			*keyOut = pemStr
+		}
+	}
 	xb := make([]byte, 32)
 	yb := make([]byte, 32)
 	holderKey.X.FillBytes(xb)
@@ -548,6 +565,10 @@ func (h *H) heldClaimsWithStatus(ctx context.Context, sess *Session) []map[strin
 	for _, vc := range sess.InjiClaimedVCs {
 		m := parseClaimedVC(vc)
 		m["RevStatus"] = ""
+		// Presentable = an SD-JWT VC whose holder binding key we retained, so it
+		// can be presented over OID4VP to Inji Verify with a key-bound KB-JWT (F21).
+		_, haveKey := sess.InjiHolderKeys[vcID(vc)]
+		m["Presentable"] = haveKey && strings.Contains(vc, "~")
 		if check != nil {
 			if creds := normalizeClaimedInjiCreds([]string{vc}); len(creds) > 0 {
 				if ref, ok := delegation.StatusRefOf(creds[0]); ok {
@@ -587,6 +608,7 @@ func (h *H) DeleteInjiClaimed(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sess.InjiClaimedVCs = kept
+	delete(sess.InjiHolderKeys, id) // drop the retained holder key with the credential
 	if len(kept) > 0 {
 		sess.InjiClaimedVC = kept[0]
 	} else {

@@ -706,6 +706,7 @@ func main() {
 		mux.HandleFunc("GET /holder/wallet/inji/credentials", h.ShowInjiHeld)
 		mux.HandleFunc("GET /holder/wallet/inji/credentials/{id}/pdf", h.DownloadInjiClaimedPDF)
 		mux.HandleFunc("POST /holder/wallet/inji/credentials/{id}/delete", h.DeleteInjiClaimed)
+		mux.HandleFunc("POST /holder/wallet/inji/credentials/{id}/present", h.SubmitInjiPresent)
 		mux.HandleFunc("GET /holder/wallet/inji/verify-delegation", h.VerifyInjiDelegation)
 		mux.HandleFunc("GET /holder/wallet/verify-delegation", h.VerifyWalletDelegation)
 		mux.HandleFunc("GET /api/registry-credentials", h.RegistryCredentials)

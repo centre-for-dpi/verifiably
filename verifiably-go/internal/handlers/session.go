@@ -138,6 +138,12 @@ type Session struct {
 	// wallet survives a restart (the store flushes every 5 s and reloads on boot).
 	// Deleting a credential removes it here and the next flush makes that durable.
 	InjiClaimedVCs []string
+	// InjiHolderKeys maps a held credential's stable id (vcID) to the PEM of the
+	// ES256 holder key its cnf was bound to at claim time. Retained so the
+	// holder can build a key-bound KB-JWT when presenting the SD-JWT over OID4VP
+	// to Inji Verify (F21). Persisted (like InjiClaimedVCs) so present survives
+	// a restart; the key is a per-claim demo binding key, not a login secret.
+	InjiHolderKeys map[string]string
 	InjiClaimError string   `json:"-"`
 	InjiClaimCred  string   `json:"-"` // credential_config key being claimed
 	SchemaError    string `json:"-"` // issuer schema-creation flash error
