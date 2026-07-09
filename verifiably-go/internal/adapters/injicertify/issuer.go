@@ -77,6 +77,12 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			DPGs:       []string{issuerDpg},
 			Desc:       fmt.Sprintf("Live credential configuration served by %s.", issuerDpg),
 			FieldsSpec: fields,
+			// Pin the exact vct the issuer metadata advertises (SD-JWT VC only;
+			// empty for ldp_vc/W3C). The verifier's PD needs this so the wallet's
+			// matchesVct selects the held token by its vct claim; without it the
+			// present fails "No credential found for: vc-1" (F19). CredentialVct
+			// prefers this explicit Vct over host-derivation.
+			Vct: cfg.Vct,
 		})
 	}
 	return out, nil

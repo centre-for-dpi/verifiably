@@ -478,6 +478,21 @@ func (h *H) buildTemplateForSchema(ctx context.Context, schemaID string, fields 
 			}
 		}
 	}
+	// Inji-certify surfaces its schemas via ListSchemas WITHOUT Custom set and
+	// WITHOUT Variants (they live in certify.credential_config / the issuer
+	// metadata, not the walt.id registry), so neither branch above pins the
+	// SD-JWT vct. Derive it from the schema when it's still empty for an SD-JWT
+	// format — otherwise the PD carries no $.vct field and the wallet's
+	// matchesVct has nothing to match, reporting "No credential found for:
+	// vc-1" (F19). CredentialVct prefers the schema's explicit Vct (the exact
+	// vct advertised in the issuer metadata; see injicertify ListSchemas) and
+	// host-derives only as a fallback.
+	if vct == "" && strings.HasPrefix(picked.Std, "sd_jwt_vc") {
+		vct = picked.CredentialVct(publicBaseEnv())
+		if wireFormat == "" {
+			wireFormat = "vc+sd-jwt"
+		}
+	}
 	return vctypes.OID4VPTemplate{
 		Title:          picked.Name,
 		Fields:         fields,
