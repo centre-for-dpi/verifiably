@@ -214,6 +214,7 @@ case "$VERIFIABLY_SKIP_WSO2IS" in
   *) IDP_WSO2IS=( wso2is ) ;;
 esac
 TRANSLATOR_SERVICES=( libretranslate )
+# Backward-compat alias (not used internally — kept for external scripts)
 INJI_CORE_SERVICES=(
   certify-postgres inji-certify
   certify-preauth-postgres inji-certify-preauth-backend inji-preauth-proxy
