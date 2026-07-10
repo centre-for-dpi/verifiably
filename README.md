@@ -322,19 +322,87 @@ The `run` subcommand rebuilds and restarts **only** the verifiably-go
 container without touching compose — useful when the DPG stack is already
 up and you just changed verifiably-go's code or config.
 
+### Deploying only one role (`--role`)
+
+Every scenario (`waltid`, `inji`, `credebl`) can be filtered further down to
+just the containers a single role needs — useful for a dedicated
+issuance-only node, a standalone verifier, or a lightweight holder/wallet
+demo that doesn't need the whole DPG stack running:
+
+```bash
+./deploy.sh up waltid --role issuer     # only postgres, caddy, issuer-api (+ shared IdPs)
+./deploy.sh up waltid --role verifier   # only postgres, caddy, verifier-api
+./deploy.sh up waltid --role holder     # only postgres, caddy, wallet-api
+
+./deploy.sh up inji --role issuer       # Inji Certify (auth-code + pre-auth) + citizens DB
+./deploy.sh up inji --role verifier     # Inji Verify + vc-adapter only
+./deploy.sh up inji --role holder       # Inji Web SPA (injiweb-*, 9 containers) only
+
+./deploy.sh up credebl --role issuer    # issuance, ledger, oid4vc-issuance + shared infra
+./deploy.sh up credebl --role verifier  # verification, oid4vc-verification + shared infra
+./deploy.sh up credebl --role holder    # cloud-wallet + shared infra
+```
+
+Roles are comma-separable — `--role issuer,holder` brings up both issuer and
+holder services for that scenario, skipping only verifier. Omitting `--role`
+brings up every role for the scenario (the original, unfiltered behaviour —
+100% backward-compatible with existing deploys).
+
+`VERIFIABLY_ROLES` in `verifiably-go/.env` sets the default for every
+`deploy.sh up` invocation without needing the flag each time; `--role`
+overrides it for a single run:
+
+```bash
+# .env
+VERIFIABLY_ROLES=issuer   # this deployment only ever runs issuer nodes
+```
+
+```bash
+./deploy.sh up waltid                    # uses VERIFIABLY_ROLES from .env
+./deploy.sh up waltid --role verifier    # overrides .env for this one run
+```
+
+Requesting `holder` without `issuer` prints a warning (a wallet with nothing
+issuing to it can't receive new credentials) and asks for confirmation on an
+interactive terminal:
+
+```
+  Warning: deploying 'holder' without 'issuer' — wallet cannot receive new credentials.
+  Continue? [y/N]
+```
+
+**Note — two separate role systems share the `VERIFIABLY_ROLES` name.** The
+Go app itself (`internal/roles/`) reads `VERIFIABLY_ROLES` to gate its own
+HTTP routes and recognises a superset of 6 values: `issuer`, `holder`,
+`verifier`, `trust`, `schemas`, `hub` (see [Federated Ecosystem](#federated-ecosystem-hub-mode)
+below). The bash deploy layer described here reads the same variable but
+only 3 of those values (`issuer`/`verifier`/`holder`) affect which Docker
+containers start — `trust`/`schemas`/`hub` are accepted as no-ops so a value
+like `VERIFIABLY_ROLES=issuer,verifier,schemas` (valid for the Go app) doesn't
+get rejected by the bash layer.
+
+All 9 combinations (3 scenarios × 3 roles) are verified working in real
+Docker deploys — see [`verifiably-go/tests/test_roles.sh`](verifiably-go/tests/test_roles.sh)
+for the unit-level coverage of the role-filtering logic itself.
+
 ---
 
 ## Federated Ecosystem (Hub mode)
 
-The `federated-issuance` branch extends verifiably-go into a multi-organisation
-ecosystem: N independent issuer instances plus a central **Hub** that runs the
-Trust Registry, Schema Registry, and a public verification portal for citizens.
+verifiably-go supports a multi-organisation ecosystem: N independent issuer
+instances plus a central **Hub** that runs the Trust Registry, Schema
+Registry, its own independent Walt ID verifier (`hub-verifier-api`), and a
+public verification portal for citizens. This is part of `main` — no branch
+switch needed.
 
 ```
 ┌──────────────────────── HUB (verify.cdpi.dev) ──────────────────────────┐
 │  Trust Registry  (/trust-registry, JWT ES256)                           │
 │  Schema Registry (/api/schemas — aggregated + cached from issuers)      │
 │  Public verify   (/verify — no login, citizen-facing)                   │
+│  hub-verifier-api (/verifier-api/* — independent Walt ID verifier,      │
+│                     profile: verifier, doesn't depend on federated      │
+│                     nodes having a verifier of their own)               │
 │  Admin           (/admin/federation/members — CRUD, API key lifecycle)  │
 │  Monitoring      (Prometheus + Grafana — federation-wide scrape)        │
 └────────────┬──────────────────┬──────────────────┬───────────────────── ┘
@@ -348,12 +416,11 @@ Trust Registry, Schema Registry, and a public verification portal for citizens.
 
 Follow these steps once on a fresh machine to get the Hub running end-to-end.
 
-**1. Check out the branch and enter the subtree:**
+**1. Clone the repo and enter the subtree:**
 
 ```bash
 git clone https://github.com/centre-for-dpi/demo-daas-3-0.git
 cd demo-daas-3-0/verifiably-go
-git checkout federated-issuance   # branch with federation code
 ```
 
 **2. Generate the ES256 signing key for the Trust Registry JWT:**
@@ -500,7 +567,7 @@ the local build.
 docker compose -f deploy/compose/hub/docker-compose.yml --env-file deploy/compose/hub/.env up -d
 ```
 
-This brings up four containers:
+This brings up four containers by default:
 
 | Container | Port | What it is |
 |---|---|---|
@@ -508,6 +575,18 @@ This brings up four containers:
 | `verifiably-go` | 8080 | Hub app (`VERIFIABLY_ROLES=hub`) |
 | `hub-prometheus` | 9090 | Prometheus with federation scrape + alert rules |
 | `hub-grafana` | 3100 | Grafana with the ecosystem overview dashboard |
+
+Add `--profile verifier` to also bring up the Hub's own Walt ID verifier,
+so the Hub can verify credentials independently of whether a federated
+node has its own verifier active:
+
+```bash
+docker compose -f deploy/compose/hub/docker-compose.yml --env-file deploy/compose/hub/.env --profile verifier up -d
+```
+
+| Container (with `--profile verifier`) | Port | What it is |
+|---|---|---|
+| `hub-verifier-api` | 7053 | Walt ID verifier-api, exposed at `/verifier-api/*` behind Caddy (see below) |
 
 **8. Verify everything is healthy:**
 
@@ -525,6 +604,9 @@ curl -s http://localhost:8080/trust-registry | cut -c1-60
 
 # JWKS endpoint (public key for JWT verification)
 curl -s http://localhost:8080/.well-known/jwks.json | python3 -m json.tool
+
+# Hub's own verifier-api (only if started with --profile verifier)
+curl -s http://localhost:7053/openapi | grep -q verifier && echo "hub-verifier-api OK"
 
 # Prometheus targets
 curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep health
@@ -569,6 +651,11 @@ to restrict it to issuer routes only. Issuer nodes do not need a PostgreSQL
 instance (the standard JSON-backed log works) unless you want verification
 events analytics.
 
+To also skip starting the DPG's verifier/holder *containers* (not just the
+app's routes) on that node, combine this with `--role issuer` from
+[Deploying only one role](#deploying-only-one-role---role) above:
+`./deploy.sh up waltid --role issuer`.
+
 **Required roles for Hub integration:**
 
 | Role | Why it is needed |
@@ -604,7 +691,7 @@ Then copy the `<KEY>` part into `federation.json` under
 human-readable label — the Hub only sends the raw key in the
 `Authorization: Bearer` header.
 
-### Environment variables added by the federation branch
+### Environment variables for the federation / hub-mode features
 
 | Variable | Default | Purpose |
 |---|---|---|
