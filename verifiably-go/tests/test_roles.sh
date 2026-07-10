@@ -115,6 +115,25 @@ export VERIFIABLY_SKIP_WSO2IS=1
 IDP_WSO2IS=()
 
 # ============================================================================
+echo "--- scenario_needs_credebl / scenario_needs_injiweb ---"
+# Regression test: these functions used to pipe scenario_services directly
+# into `grep -q`, which can close the pipe as soon as it finds a match while
+# a later producer (role_services/infra_services run as separate sequential
+# commands, not one printf) is still writing — killing it with SIGPIPE. Under
+# `set -e` that made the whole function look like it failed, silently
+# flipping a real "yes" into "no". Reproduced only under `set -euo pipefail`
+# (already active at the top of this file) with a real .env/CLI_ROLE, not a
+# stubbed role string — run these via a real scenario to catch it.
+assert_eq "credebl scenario needs credebl (issuer role)" \
+  "$(CLI_ROLE=issuer scenario_needs_credebl credebl)" "yes"
+assert_eq "waltid scenario does not need credebl" \
+  "$(CLI_ROLE=issuer scenario_needs_credebl waltid)" "no"
+assert_eq "inji holder role needs injiweb" \
+  "$(CLI_ROLE=holder scenario_needs_injiweb inji)" "yes"
+assert_eq "inji issuer role does not need injiweb" \
+  "$(CLI_ROLE=issuer scenario_needs_injiweb inji)" "no"
+
+# ============================================================================
 echo ""
 echo "Results: ${_PASS} passed, ${_FAIL} failed"
 (( _FAIL == 0 )) && exit 0 || exit 1

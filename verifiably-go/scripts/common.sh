@@ -479,15 +479,29 @@ scenario_services() {
 # scenario_needs_injiweb prints "yes" if the scenario includes any injiweb-*
 # service — that decides whether we need to pass `--profile injiweb` to
 # docker compose.
+#
+# Captures scenario_services' output into a variable before grepping it,
+# rather than piping directly into `grep -q`: since scenario_services runs
+# role_services/infra_services as separate sequential commands (not one
+# printf), `grep -q` can find its match on an early line and close the pipe
+# while a later producer is still writing, killing it with SIGPIPE — which
+# `set -e` then treats as scenario_services itself having failed, masking a
+# real "yes" as "no".
 scenario_needs_injiweb() {
-  scenario_services "$1" | grep -q '^injiweb-' && echo yes || echo no
+  local _out
+  _out=$(scenario_services "$1")
+  grep -q '^injiweb-' <<< "$_out" && echo yes || echo no
 }
 
 # scenario_needs_credebl prints "yes" if the scenario includes any credebl-*
 # service — that decides whether we need to pass `--profile credebl` to
 # docker compose and run the CREDEBL bootstrap functions.
+# See scenario_needs_injiweb's comment for why this captures to a variable
+# instead of piping directly into `grep -q`.
 scenario_needs_credebl() {
-  scenario_services "$1" | grep -q '^credebl-' && echo yes || echo no
+  local _out
+  _out=$(scenario_services "$1")
+  grep -q '^credebl-' <<< "$_out" && echo yes || echo no
 }
 
 # backends_for writes a scenario-specific config/backends.json. The content
