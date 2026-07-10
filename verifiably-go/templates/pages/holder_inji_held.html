@@ -8,6 +8,8 @@
   <p class="subtitle">
     {{t "Credentials you've claimed via eSignet — kept in your wallet across restarts." $.Lang}}
     <a href="/holder/wallet/inji">{{t "Claim more →" $.Lang}}</a>
+    &nbsp;·&nbsp;
+    <a href="/holder/wallet/inji/present">{{t "Present a request →" $.Lang}}</a>
   </p>
 
   {{template "fragment_inji_held_list" .}}
@@ -67,8 +69,8 @@
         <button hx-post="/holder/wallet/inji/credentials/{{.ID}}/present"
                 hx-target="#present-result-{{.ID}}" hx-swap="innerHTML"
                 hx-indicator="#present-spin-{{.ID}}"
-                class="btn small" style="background:var(--accent);border:1px solid var(--accent);color:#06110b;font-size:0.72rem;padding:0.25rem 0.7rem"
-                title="{{t "Present this credential to Inji Verify over OID4VP" $.Lang}}">→ {{t "Present to Inji Verify" $.Lang}}</button>
+                class="btn small" style="background:transparent;border:1px solid var(--accent);color:var(--accent);font-size:0.72rem;padding:0.25rem 0.7rem"
+                title="{{t "Quick demo: verifiably plays both verifier + wallet in one round-trip. For the real consent flow, use 'Present a request'." $.Lang}}">⚡ {{t "Quick present (demo)" $.Lang}}</button>
         {{end}}
         <a href="/holder/wallet/inji/credentials/{{.ID}}/pdf" download
            class="btn small" style="background:transparent;border:1px solid var(--line);color:var(--fg);font-size:0.72rem;padding:0.25rem 0.7rem;text-decoration:none"

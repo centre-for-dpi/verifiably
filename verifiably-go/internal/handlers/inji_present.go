@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -133,6 +134,28 @@ type injiJAR struct {
 	State       string
 	PDID        string
 	DescID      string
+	// Consent/matching fields parsed from the presentation_definition's first
+	// input_descriptor (F24 — the holder-side consent flow needs them).
+	DescName        string   // input_descriptor.name — the verifier's label for the requested credential
+	Format          string   // requested format key ("vc+sd-jwt" / "ldp_vp" / "jwt_vc_json")
+	RequestedFields []string // claim names requested (from constraints.fields paths, excluding $.vct)
+	VctPattern      string   // the $.vct filter.pattern, when present (SD-JWT matching)
+}
+
+// injiFieldNameFromPaths returns the claim name from a PD field's JSONPath list
+// (e.g. ["$.last_name","$.credentialSubject.last_name"] -> "last_name",
+// ["$.vct"] -> "vct"): the last dotted segment of the first usable path.
+func injiFieldNameFromPaths(paths []string) string {
+	for _, p := range paths {
+		p = strings.TrimPrefix(p, "$.")
+		if i := strings.LastIndex(p, "."); i >= 0 {
+			p = p[i+1:]
+		}
+		if p != "" {
+			return p
+		}
+	}
+	return ""
 }
 
 // fetchInjiVPRequest dereferences the request_uri embedded in an openid4vp://
@@ -170,7 +193,17 @@ func (h *H) fetchInjiVPRequest(ctx context.Context, requestURI string) (injiJAR,
 		PresentationDefinition struct {
 			ID               string `json:"id"`
 			InputDescriptors []struct {
-				ID string `json:"id"`
+				ID          string                     `json:"id"`
+				Name        string                     `json:"name"`
+				Format      map[string]json.RawMessage `json:"format"`
+				Constraints struct {
+					Fields []struct {
+						Path   []string `json:"path"`
+						Filter struct {
+							Pattern string `json:"pattern"`
+						} `json:"filter"`
+					} `json:"fields"`
+				} `json:"constraints"`
 			} `json:"input_descriptors"`
 		} `json:"presentation_definition"`
 	}
@@ -185,7 +218,26 @@ func (h *H) fetchInjiVPRequest(ctx context.Context, requestURI string) (injiJAR,
 		PDID:        claims.PresentationDefinition.ID,
 	}
 	if len(claims.PresentationDefinition.InputDescriptors) > 0 {
-		jar.DescID = claims.PresentationDefinition.InputDescriptors[0].ID
+		d := claims.PresentationDefinition.InputDescriptors[0]
+		jar.DescID = d.ID
+		jar.DescName = d.Name
+		for k := range d.Format {
+			jar.Format = k // one format entry per descriptor
+		}
+		seen := map[string]bool{}
+		for _, f := range d.Constraints.Fields {
+			name := injiFieldNameFromPaths(f.Path)
+			if name == "vct" {
+				if f.Filter.Pattern != "" {
+					jar.VctPattern = f.Filter.Pattern
+				}
+				continue
+			}
+			if name != "" && !seen[name] {
+				seen[name] = true
+				jar.RequestedFields = append(jar.RequestedFields, name)
+			}
+		}
 	}
 	if jar.ResponseURI == "" || jar.Nonce == "" {
 		return jar, fmt.Errorf("request object missing nonce/response_uri")
@@ -306,6 +358,93 @@ func injiPresentLabel(held string) string {
 		return injiW3CTitle(held)
 	}
 	return injiSDJWTVct(held)
+}
+
+// injiHeldFieldValue returns a held credential's value for a claim name — from
+// credentialSubject for W3C, or from the matching SD-JWT disclosure. Empty when
+// the credential doesn't carry the claim.
+func injiHeldFieldValue(held, field string) string {
+	if injiIsW3C(held) {
+		var vc map[string]any
+		if json.Unmarshal([]byte(held), &vc) == nil {
+			if cs, ok := vc["credentialSubject"].(map[string]any); ok {
+				if v, ok := cs[field]; ok {
+					return fmt.Sprintf("%v", v)
+				}
+			}
+		}
+		return ""
+	}
+	for _, d := range strings.Split(held, "~")[1:] {
+		if d == "" || strings.Count(d, ".") == 2 {
+			continue
+		}
+		raw, err := base64.RawURLEncoding.DecodeString(d)
+		if err != nil {
+			continue
+		}
+		var arr []any
+		if json.Unmarshal(raw, &arr) == nil && len(arr) == 3 {
+			if name, _ := arr[1].(string); name == field {
+				return fmt.Sprintf("%v", arr[2])
+			}
+		}
+	}
+	return ""
+}
+
+// injiMatchHeld reports whether a held credential satisfies the verifier's
+// request: the format must line up (vc+sd-jwt↔SD-JWT, ldp_vp↔W3C) and, for
+// SD-JWT, the held vct must match the request's $.vct pattern. Returns a
+// human-readable reason when it doesn't (rendered on the consent card).
+func injiMatchHeld(jar injiJAR, held string) (bool, string) {
+	isW3C := injiIsW3C(held)
+	switch jar.Format {
+	case "vc+sd-jwt":
+		if isW3C {
+			return false, "the verifier is requesting an SD-JWT credential, but this one is W3C (ldp_vc)"
+		}
+	case "ldp_vp":
+		if !isW3C {
+			return false, "the verifier is requesting a W3C (ldp_vp) credential, but this one is an SD-JWT"
+		}
+	}
+	if !isW3C && jar.VctPattern != "" {
+		vct := injiSDJWTVct(held)
+		if ok, err := regexp.MatchString(jar.VctPattern, vct); err != nil || !ok {
+			return false, fmt.Sprintf("this credential's type does not match what the verifier asked for (%s)", vct)
+		}
+	}
+	return true, ""
+}
+
+// injiPresentPreview builds the consent-card model for presenting `held` against
+// the resolved request `jar` — the verifier, the credential, the requested
+// claims (with the values that would be shared), and whether they're compatible.
+func injiPresentPreview(jar injiJAR, credID, held string) backend.PresentationPreview {
+	title := jar.DescName
+	if title == "" {
+		title = injiPresentLabel(held)
+	}
+	compatible, reason := injiMatchHeld(jar, held)
+	fields := make([]backend.PresentationField, 0, len(jar.RequestedFields))
+	for _, name := range jar.RequestedFields {
+		fields = append(fields, backend.PresentationField{
+			Name:     name,
+			Value:    injiHeldFieldValue(held, name),
+			Required: true,
+		})
+	}
+	return backend.PresentationPreview{
+		VerifierClientID:   jar.Aud,
+		CredentialID:       credID,
+		CredentialTitle:    title,
+		Fields:             fields,
+		RequestedFormat:    jar.Format,
+		Compatible:         compatible,
+		IncompatibleReason: reason,
+		Disclosure:         "none", // the Inji present shares the whole credential
+	}
 }
 
 // presentHeldToInjiVerify runs the OID4VP holder leg for one held credential:
@@ -493,4 +632,148 @@ func (h *H) renderInjiPresentResult(w http.ResponseWriter, r *http.Request, id, 
 		data["Format"] = verdict.Format
 	}
 	h.renderFragment(w, r, "fragment_inji_present_result", map[string]any{"Body": data, "Lang": h.langFor(r)})
+}
+
+// ─── F24: real consent-based OID4VP present (respond to a verifier's request) ──
+
+// injiNormalizeRequestURI cleans a pasted OID4VP request: unescapes &amp; (if
+// copied from HTML) and wraps a bare request_uri (an https URL) in an
+// openid4vp:// envelope so fetchInjiVPRequest's query parse finds it.
+func injiNormalizeRequestURI(s string) string {
+	s = strings.ReplaceAll(strings.TrimSpace(s), "&amp;", "&")
+	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+		return "openid4vp://authorize?request_uri=" + url.QueryEscape(s)
+	}
+	return s
+}
+
+// injiCredTitle is a compact human title for the wallet picker: the type for
+// W3C, the vct's last path segment for SD-JWT.
+func injiCredTitle(vc string) string {
+	if injiIsW3C(vc) {
+		return injiW3CTitle(vc)
+	}
+	vct := injiSDJWTVct(vc)
+	if i := strings.LastIndex(vct, "/"); i >= 0 && i+1 < len(vct) {
+		return vct[i+1:]
+	}
+	return vct
+}
+
+// injiPresentableCredsForPicker returns the held presentable Inji credentials as
+// {ID, Title, Format} rows for the "Present a request" picker.
+func (h *H) injiPresentableCredsForPicker(sess *Session) []map[string]any {
+	out := []map[string]any{}
+	for _, vc := range sess.InjiClaimedVCs {
+		id := vcID(vc)
+		if _, _, ok := injiHeldPresentable(sess, id); !ok {
+			continue
+		}
+		format := "vc+sd-jwt"
+		if injiIsW3C(vc) {
+			format = "ldp_vp"
+		}
+		out = append(out, map[string]any{"ID": id, "Title": injiCredTitle(vc), "Format": format})
+	}
+	return out
+}
+
+// injiBuildVPTokenFor builds the vp_token for a held credential bound to the
+// request's nonce/aud, returning the token and its presentation_submission
+// format. SD-JWT → KB-JWT vp_token (vc+sd-jwt); W3C → unsigned ldp_vp.
+func injiBuildVPTokenFor(held string, key *ecdsa.PrivateKey, jar injiJAR) (string, string, error) {
+	if injiIsW3C(held) {
+		tok, err := injiBuildW3CVPToken(held)
+		return tok, "ldp_vp", err
+	}
+	tok, err := injiBuildVPToken(held, key, jar.Nonce, jar.Aud)
+	return tok, "vc+sd-jwt", err
+}
+
+// ShowInjiPresentRequest renders the "Present a request" entry screen: paste the
+// verifier's openid4vp:// request + pick a held credential. This is the real
+// OID4VP holder UX (the verifier generates the request elsewhere; the wallet
+// resolves it, shows consent, and submits) — as opposed to the one-click demo.
+func (h *H) ShowInjiPresentRequest(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	h.render(w, r, "holder_inji_present", h.pageData(sess, map[string]any{
+		"Credentials":           h.injiPresentableCredsForPicker(sess),
+		"PreselectCredentialID": r.URL.Query().Get("credential"),
+	}))
+}
+
+// ConfirmInjiPresentRequest resolves the verifier's request + the picked
+// credential and renders the consent card (what will be disclosed to whom).
+func (h *H) ConfirmInjiPresentRequest(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	credID := r.FormValue("credential_id")
+	reqURI := injiNormalizeRequestURI(r.FormValue("request_uri"))
+	if credID == "" || reqURI == "" {
+		h.errorToast(w, r, "Pick a credential and paste the verifier's request URI")
+		return
+	}
+	held, _, ok := injiHeldPresentable(sess, credID)
+	if !ok {
+		h.errorToast(w, r, "That credential can't be presented over OID4VP.")
+		return
+	}
+	jar, err := h.fetchInjiVPRequest(r.Context(), reqURI)
+	if err != nil {
+		h.errorToast(w, r, "Couldn't read the verifier's request: "+err.Error())
+		return
+	}
+	h.renderFragment(w, r, "fragment_inji_present_consent", map[string]any{
+		"Preview":    injiPresentPreview(jar, credID, held),
+		"RequestURI": reqURI,
+		"Lang":       h.langFor(r),
+	})
+}
+
+// SubmitInjiPresentRequest builds the presentation for the picked credential and
+// direct-posts it to the verifier's response_uri (the holder clicked Disclose).
+func (h *H) SubmitInjiPresentRequest(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	credID := r.FormValue("credential_id")
+	reqURI := injiNormalizeRequestURI(r.FormValue("request_uri"))
+	if credID == "" || reqURI == "" {
+		h.errorToast(w, r, "Pick a credential and paste the verifier's request URI")
+		return
+	}
+	held, key, ok := injiHeldPresentable(sess, credID)
+	if !ok {
+		h.errorToast(w, r, "That credential can't be presented over OID4VP.")
+		return
+	}
+	jar, err := h.fetchInjiVPRequest(r.Context(), reqURI)
+	if err != nil {
+		h.errorToast(w, r, "Couldn't read the verifier's request: "+err.Error())
+		return
+	}
+	if match, reason := injiMatchHeld(jar, held); !match {
+		h.errorToast(w, r, reason)
+		return
+	}
+	vpToken, descFormat, err := injiBuildVPTokenFor(held, key, jar)
+	if err != nil {
+		h.errorToast(w, r, "Build presentation: "+err.Error())
+		return
+	}
+	if err := h.injiDirectPost(r.Context(), jar, vpToken, descFormat); err != nil {
+		h.errorToast(w, r, "Submit presentation: "+err.Error())
+		return
+	}
+	title := jar.DescName
+	if title == "" {
+		title = injiCredTitle(held)
+	}
+	h.renderFragment(w, r, "fragment_inji_present_shared", map[string]any{
+		"Title":            title,
+		"VerifierClientID": jar.Aud,
+		"Lang":             h.langFor(r),
+	})
+}
+
+// DeclineInjiPresent cancels the consent interstitial.
+func (h *H) DeclineInjiPresent(w http.ResponseWriter, r *http.Request) {
+	h.renderFragment(w, r, "fragment_inji_present_declined", map[string]any{"Lang": h.langFor(r)})
 }
