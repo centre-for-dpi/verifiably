@@ -75,7 +75,7 @@ func TestInjiDirectPost(t *testing.T) {
 	defer srv.Close()
 
 	jar := injiJAR{ResponseURI: srv.URL, State: "req_9", PDID: "pd-9", DescID: "vc-1"}
-	if err := (&H{}).injiDirectPost(context.Background(), jar, "issuer~disc~kb"); err != nil {
+	if err := (&H{}).injiDirectPost(context.Background(), jar, "issuer~disc~kb", "vc+sd-jwt"); err != nil {
 		t.Fatal(err)
 	}
 	if gotForm.Get("vp_token") != "issuer~disc~kb" {
@@ -107,7 +107,7 @@ func TestInjiDirectPostError(t *testing.T) {
 		_, _ = w.Write([]byte("nope"))
 	}))
 	defer srv.Close()
-	err := (&H{}).injiDirectPost(context.Background(), injiJAR{ResponseURI: srv.URL}, "vp")
+	err := (&H{}).injiDirectPost(context.Background(), injiJAR{ResponseURI: srv.URL}, "vp", "ldp_vp")
 	if err == nil || !strings.Contains(err.Error(), "direct-post 400") {
 		t.Fatalf("expected direct-post 400 error, got %v", err)
 	}

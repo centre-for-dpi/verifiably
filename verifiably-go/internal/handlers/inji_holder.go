@@ -565,10 +565,11 @@ func (h *H) heldClaimsWithStatus(ctx context.Context, sess *Session) []map[strin
 	for _, vc := range sess.InjiClaimedVCs {
 		m := parseClaimedVC(vc)
 		m["RevStatus"] = ""
-		// Presentable = an SD-JWT VC whose holder binding key we retained, so it
-		// can be presented over OID4VP to Inji Verify with a key-bound KB-JWT (F21).
+		// Presentable = can be presented over OID4VP to Inji Verify: an SD-JWT
+		// whose holder binding key we retained (key-bound KB-JWT, F21), OR a W3C
+		// ldp_vc (wrapped in an unsigned ldp_vp — no key needed, F23).
 		_, haveKey := sess.InjiHolderKeys[vcID(vc)]
-		m["Presentable"] = haveKey && strings.Contains(vc, "~")
+		m["Presentable"] = (haveKey && strings.Contains(vc, "~")) || injiIsW3C(vc)
 		if check != nil {
 			if creds := normalizeClaimedInjiCreds([]string{vc}); len(creds) > 0 {
 				if ref, ok := delegation.StatusRefOf(creds[0]); ok {

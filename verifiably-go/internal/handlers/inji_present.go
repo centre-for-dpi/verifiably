@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -193,13 +194,15 @@ func (h *H) fetchInjiVPRequest(ctx context.Context, requestURI string) (injiJAR,
 }
 
 // injiDirectPost submits the vp_token to Inji Verify's response_uri
-// (response_mode=direct_post, application/x-www-form-urlencoded).
-func (h *H) injiDirectPost(ctx context.Context, jar injiJAR, vpToken string) error {
+// (response_mode=direct_post, application/x-www-form-urlencoded). descFormat is
+// the presentation_submission descriptor format — "vc+sd-jwt" for an SD-JWT
+// KB-JWT vp_token, "ldp_vp" for a JSON-LD VerifiablePresentation.
+func (h *H) injiDirectPost(ctx context.Context, jar injiJAR, vpToken, descFormat string) error {
 	submission := map[string]any{
 		"id":            "sub-" + randB64(8),
 		"definition_id": jar.PDID,
 		"descriptor_map": []map[string]any{
-			{"id": jar.DescID, "format": "vc+sd-jwt", "path": "$"},
+			{"id": jar.DescID, "format": descFormat, "path": "$"},
 		},
 	}
 	psub, _ := json.Marshal(submission)
@@ -222,17 +225,118 @@ func (h *H) injiDirectPost(ctx context.Context, jar injiJAR, vpToken string) err
 	return nil
 }
 
-// presentHeldToInjiVerify runs the OID4VP holder leg for one held SD-JWT: create
-// the request at Inji Verify (via the Inji Verify adapter), fetch the signed
-// request object, build the key-bound vp_token, direct-post it, and return the
-// polled verdict. Shared by the single present (F21) and the delegated pair (F22).
-func (h *H) presentHeldToInjiVerify(ctx context.Context, compact string, key *ecdsa.PrivateKey) (backend.VerificationResult, error) {
-	tpl := vctypes.OID4VPTemplate{
-		Title:      "In-app Inji credential",
-		Fields:     injiSDJWTDisclosureFields(compact),
-		Format:     "sd_jwt_vc (IETF)",
-		Vct:        injiSDJWTVct(compact),
-		WireFormat: "vc+sd-jwt",
+// injiIsW3C reports whether a held credential is a W3C JSON-LD object (ldp_vc)
+// rather than a compact SD-JWT (issuer-jwt~disclosure~…).
+func injiIsW3C(held string) bool { return strings.HasPrefix(strings.TrimSpace(held), "{") }
+
+// injiW3CTitle returns the credential's human type (the non-"VerifiableCredential"
+// entry of `type`), for the request template + the pair-leg label.
+func injiW3CTitle(held string) string {
+	var vc map[string]any
+	if json.Unmarshal([]byte(held), &vc) != nil {
+		return "In-app Inji credential"
+	}
+	switch t := vc["type"].(type) {
+	case []any:
+		for _, v := range t {
+			if s, _ := v.(string); s != "" && s != "VerifiableCredential" {
+				return s
+			}
+		}
+	case string:
+		if t != "" && t != "VerifiableCredential" {
+			return t
+		}
+	}
+	return "In-app Inji credential"
+}
+
+// injiW3CFields returns the credential's disclosed claim names (credentialSubject
+// keys except `id`), sorted for a deterministic request.
+func injiW3CFields(held string) []string {
+	var vc map[string]any
+	if json.Unmarshal([]byte(held), &vc) != nil {
+		return nil
+	}
+	cs, _ := vc["credentialSubject"].(map[string]any)
+	out := make([]string, 0, len(cs))
+	for k := range cs {
+		if k != "id" {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// injiBuildW3CVPToken wraps a held W3C ldp_vc in an UNSIGNED VerifiablePresentation
+// and returns it as a JSON string. Inji Verify accepts an ldp_vp without a
+// VP-level proof (proven empirically) — it verifies the wrapped credential's own
+// issuer Data-Integrity proof — so no holder key / VP signature is needed, and
+// existing ES256-bound Inji W3C credentials present as-is.
+func injiBuildW3CVPToken(held string) (string, error) {
+	var vc map[string]any
+	if err := json.Unmarshal([]byte(held), &vc); err != nil {
+		return "", fmt.Errorf("inji present: W3C credential is not JSON: %w", err)
+	}
+	vp := map[string]any{
+		"@context": []string{
+			"https://www.w3.org/ns/credentials/v2",
+			"https://w3id.org/security/suites/ed25519-2020/v1",
+		},
+		"type":                 []string{"VerifiablePresentation"},
+		"verifiableCredential": []any{vc},
+	}
+	if cs, ok := vc["credentialSubject"].(map[string]any); ok {
+		if holder, _ := cs["id"].(string); holder != "" {
+			vp["holder"] = holder
+		}
+	}
+	b, err := json.Marshal(vp)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// injiPresentLabel labels a held credential in the pair result: its vct (SD-JWT)
+// or its type (W3C).
+func injiPresentLabel(held string) string {
+	if injiIsW3C(held) {
+		return injiW3CTitle(held)
+	}
+	return injiSDJWTVct(held)
+}
+
+// presentHeldToInjiVerify runs the OID4VP holder leg for one held credential:
+// create the request at Inji Verify (via the Inji Verify adapter), fetch the
+// signed request object, build the vp_token, direct-post it, and return the
+// polled verdict. Branches on format — SD-JWT → a key-bound KB-JWT vp_token;
+// W3C ldp_vc → an unsigned ldp_vp. Shared by the single present (F21/F23) and
+// the delegated pair (F22/F23).
+func (h *H) presentHeldToInjiVerify(ctx context.Context, held string, key *ecdsa.PrivateKey) (backend.VerificationResult, error) {
+	var tpl vctypes.OID4VPTemplate
+	var descFormat string
+	buildToken := func(injiJAR) (string, error) { return "", fmt.Errorf("inji present: unsupported format") }
+	if injiIsW3C(held) {
+		tpl = vctypes.OID4VPTemplate{
+			Title:      injiW3CTitle(held),
+			Fields:     injiW3CFields(held),
+			Format:     "w3c_vcdm_2",
+			WireFormat: "ldp_vp",
+		}
+		descFormat = "ldp_vp"
+		buildToken = func(injiJAR) (string, error) { return injiBuildW3CVPToken(held) }
+	} else {
+		tpl = vctypes.OID4VPTemplate{
+			Title:      "In-app Inji credential",
+			Fields:     injiSDJWTDisclosureFields(held),
+			Format:     "sd_jwt_vc (IETF)",
+			Vct:        injiSDJWTVct(held),
+			WireFormat: "vc+sd-jwt",
+		}
+		descFormat = "vc+sd-jwt"
+		buildToken = func(jar injiJAR) (string, error) { return injiBuildVPToken(held, key, jar.Nonce, jar.Aud) }
 	}
 	res, err := h.Adapter.RequestPresentation(ctx, backend.PresentationRequest{
 		VerifierDpg: injiVerifyVendor,
@@ -245,11 +349,11 @@ func (h *H) presentHeldToInjiVerify(ctx context.Context, compact string, key *ec
 	if err != nil {
 		return backend.VerificationResult{}, fmt.Errorf("fetch request: %w", err)
 	}
-	vpToken, err := injiBuildVPToken(compact, key, jar.Nonce, jar.Aud)
+	vpToken, err := buildToken(jar)
 	if err != nil {
 		return backend.VerificationResult{}, fmt.Errorf("build vp_token: %w", err)
 	}
-	if err := h.injiDirectPost(ctx, jar, vpToken); err != nil {
+	if err := h.injiDirectPost(ctx, jar, vpToken, descFormat); err != nil {
 		return backend.VerificationResult{}, err
 	}
 	verdict, err := h.Adapter.FetchPresentationResult(ctx, res.State, "custom")
@@ -259,25 +363,31 @@ func (h *H) presentHeldToInjiVerify(ctx context.Context, compact string, key *ec
 	return verdict, nil
 }
 
-// injiHeldWithKey looks up a held in-app Inji SD-JWT by id together with its
-// retained holder key. ok is false when the id isn't an SD-JWT credential with a
-// retained key.
-func injiHeldWithKey(sess *Session, id string) (compact string, key *ecdsa.PrivateKey, ok bool) {
+// injiHeldPresentable looks up a held in-app Inji credential by id that can be
+// presented over OID4VP: an SD-JWT (with its retained holder key, for the KB-JWT)
+// or a W3C ldp_vc (no key — presented as an unsigned ldp_vp). key is nil for W3C.
+func injiHeldPresentable(sess *Session, id string) (held string, key *ecdsa.PrivateKey, ok bool) {
 	for _, vc := range sess.InjiClaimedVCs {
 		if vcID(vc) == id {
-			compact = vc
+			held = vc
 			break
 		}
 	}
+	if held == "" {
+		return "", nil, false
+	}
+	if injiIsW3C(held) {
+		return held, nil, true
+	}
 	keyPEM := sess.InjiHolderKeys[id]
-	if compact == "" || keyPEM == "" || !strings.Contains(compact, "~") {
+	if keyPEM == "" || !strings.Contains(held, "~") {
 		return "", nil, false
 	}
 	k, err := parseECKeyPEM(keyPEM)
 	if err != nil {
 		return "", nil, false
 	}
-	return compact, k, true
+	return held, k, true
 }
 
 // SubmitInjiPresent presents one held in-app Inji SD-JWT credential to Inji
@@ -285,18 +395,22 @@ func injiHeldWithKey(sess *Session, id string) (compact string, key *ecdsa.Priva
 func (h *H) SubmitInjiPresent(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	id := r.PathValue("id")
-	compact, key, ok := injiHeldWithKey(sess, id)
+	held, key, ok := injiHeldPresentable(sess, id)
 	if !ok {
-		h.renderInjiPresentResult(w, r, id, nil,
-			"This credential can't be presented over OID4VP — it isn't an SD-JWT, or its holder key wasn't retained. Re-claim it, then present.")
+		h.renderInjiPresentResult(w, r, id, "", nil,
+			"This credential can't be presented over OID4VP — it isn't a W3C credential, or it's an SD-JWT whose holder key wasn't retained (re-claim it, then present).")
 		return
 	}
-	verdict, err := h.presentHeldToInjiVerify(r.Context(), compact, key)
+	wire := "vc+sd-jwt"
+	if injiIsW3C(held) {
+		wire = "ldp_vp"
+	}
+	verdict, err := h.presentHeldToInjiVerify(r.Context(), held, key)
 	if err != nil {
-		h.renderInjiPresentResult(w, r, id, nil, err.Error())
+		h.renderInjiPresentResult(w, r, id, wire, nil, err.Error())
 		return
 	}
-	h.renderInjiPresentResult(w, r, id, &verdict, "")
+	h.renderInjiPresentResult(w, r, id, wire, &verdict, "")
 }
 
 // SubmitInjiPresentPair presents EVERY held presentable SD-JWT credential to
@@ -317,13 +431,13 @@ func (h *H) SubmitInjiPresentPair(w http.ResponseWriter, r *http.Request) {
 	var creds []held
 	for _, vc := range sess.InjiClaimedVCs {
 		id := vcID(vc)
-		if c, k, ok := injiHeldWithKey(sess, id); ok {
+		if c, k, ok := injiHeldPresentable(sess, id); ok {
 			creds = append(creds, held{id: id, compact: c, key: k})
 		}
 	}
 	if len(creds) < 2 {
 		h.renderInjiPresentPair(w, r, nil, nil,
-			"A delegated pair needs at least two SD-JWT credentials in your wallet — a subject identity and a delegation (a credential with an onBehalfOf field). Claim both, then try again.")
+			"A delegated pair needs at least two presentable credentials in your wallet — a subject identity and a delegation (a credential with an onBehalfOf field). Claim both, then try again.")
 		return
 	}
 
@@ -337,7 +451,7 @@ func (h *H) SubmitInjiPresentPair(w http.ResponseWriter, r *http.Request) {
 		if !legOK {
 			allValid = false
 		}
-		leg := map[string]any{"Vct": injiSDJWTVct(c.compact), "OK": legOK}
+		leg := map[string]any{"Vct": injiPresentLabel(c.compact), "OK": legOK}
 		if err != nil {
 			leg["Err"] = err.Error()
 		}
@@ -368,9 +482,10 @@ func (h *H) renderInjiPresentPair(w http.ResponseWriter, r *http.Request, legs [
 	h.renderFragment(w, r, "fragment_inji_present_pair", map[string]any{"Body": data, "Lang": h.langFor(r)})
 }
 
-// renderInjiPresentResult renders the OID4VP present verdict fragment.
-func (h *H) renderInjiPresentResult(w http.ResponseWriter, r *http.Request, id string, verdict *backend.VerificationResult, errMsg string) {
-	data := map[string]any{"ID": id, "Error": errMsg}
+// renderInjiPresentResult renders the OID4VP present verdict fragment. wire is
+// the presentation format ("vc+sd-jwt" or "ldp_vp") shown in the caption.
+func (h *H) renderInjiPresentResult(w http.ResponseWriter, r *http.Request, id, wire string, verdict *backend.VerificationResult, errMsg string) {
+	data := map[string]any{"ID": id, "Wire": wire, "Error": errMsg}
 	if verdict != nil {
 		data["Valid"] = verdict.Valid
 		data["Disclosed"] = verdict.DisclosedFields

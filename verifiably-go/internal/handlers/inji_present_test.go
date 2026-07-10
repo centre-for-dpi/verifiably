@@ -158,31 +158,94 @@ func TestInjiBuildVPTokenEmpty(t *testing.T) {
 	}
 }
 
-// TestInjiHeldWithKey covers the presentable-credential lookup shared by the
-// single present (F21) and the delegated pair (F22): an SD-JWT with a retained
-// holder key is presentable; a W3C credential, an unknown id, or an SD-JWT whose
-// key wasn't retained are not.
-func TestInjiHeldWithKey(t *testing.T) {
+// TestInjiHeldPresentable covers the presentable-credential lookup: an SD-JWT
+// with a retained holder key is presentable (key non-nil); a W3C ldp_vc is
+// presentable with NO key (unsigned ldp_vp, F23); an unknown id or an SD-JWT
+// whose key wasn't retained are not.
+func TestInjiHeldPresentable(t *testing.T) {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	pemStr, _ := marshalECKeyPEM(key)
 	sd := sampleSDJWT(t)
 	sdID := vcID(sd)
-	w3c := `{"type":["VerifiableCredential"]}`
+	w3c := `{"type":["TestaW3C","VerifiableCredential"],"credentialSubject":{"id":"did:jwk:x"}}`
 	sess := &Session{
 		InjiClaimedVCs: []string{sd, w3c},
 		InjiHolderKeys: map[string]string{sdID: pemStr},
 	}
-	if c, k, ok := injiHeldWithKey(sess, sdID); !ok || c != sd || k == nil {
+	if c, k, ok := injiHeldPresentable(sess, sdID); !ok || c != sd || k == nil {
 		t.Fatalf("SD-JWT with key: ok=%v compactMatch=%v key=%v", ok, c == sd, k != nil)
 	}
-	if _, _, ok := injiHeldWithKey(sess, vcID(w3c)); ok {
-		t.Error("W3C credential must not be presentable")
+	if c, k, ok := injiHeldPresentable(sess, vcID(w3c)); !ok || c != w3c || k != nil {
+		t.Errorf("W3C must be presentable with nil key: ok=%v match=%v keyNil=%v", ok, c == w3c, k == nil)
 	}
-	if _, _, ok := injiHeldWithKey(sess, "unknown"); ok {
+	if _, _, ok := injiHeldPresentable(sess, "unknown"); ok {
 		t.Error("unknown id must not be presentable")
 	}
 	noKey := &Session{InjiClaimedVCs: []string{sd}, InjiHolderKeys: map[string]string{}}
-	if _, _, ok := injiHeldWithKey(noKey, sdID); ok {
+	if _, _, ok := injiHeldPresentable(noKey, sdID); ok {
 		t.Error("SD-JWT without a retained key must not be presentable")
+	}
+}
+
+// TestInjiW3CHelpers covers the F23 W3C ldp_vp helpers: format detection, title/
+// field extraction, and the unsigned VerifiablePresentation wrapping.
+func TestInjiW3CHelpers(t *testing.T) {
+	vc := `{"@context":["https://www.w3.org/ns/credentials/v2"],"type":["TestaW3C","VerifiableCredential"],"issuer":"did:web:x","credentialSubject":{"id":"did:jwk:zzz","last_name":"Ochieng","testa_id":"42"}}`
+	sd := sampleSDJWT(t)
+
+	if !injiIsW3C(vc) || !injiIsW3C("  {\"a\":1}") {
+		t.Error("JSON objects (incl. leading space) should be W3C")
+	}
+	if injiIsW3C(sd) {
+		t.Error("compact SD-JWT should not be W3C")
+	}
+
+	if got := injiW3CTitle(vc); got != "TestaW3C" {
+		t.Errorf("title = %q", got)
+	}
+	if got := injiW3CTitle(`{"type":"VerifiableCredential"}`); got != "In-app Inji credential" {
+		t.Errorf("string-type fallback = %q", got)
+	}
+	if got := injiW3CTitle("not json"); got != "In-app Inji credential" {
+		t.Errorf("bad-json fallback = %q", got)
+	}
+
+	if f := injiW3CFields(vc); len(f) != 2 || f[0] != "last_name" || f[1] != "testa_id" {
+		t.Errorf("fields = %v, want sorted [last_name testa_id]", f)
+	}
+
+	if got := injiPresentLabel(vc); got != "TestaW3C" {
+		t.Errorf("W3C label = %q", got)
+	}
+	if got := injiPresentLabel(sd); got != injiSDJWTVct(sd) {
+		t.Errorf("SD-JWT label = %q, want the vct", got)
+	}
+
+	tok, err := injiBuildW3CVPToken(vc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vp map[string]any
+	if err := json.Unmarshal([]byte(tok), &vp); err != nil {
+		t.Fatal(err)
+	}
+	if ts, _ := vp["type"].([]any); len(ts) != 1 || ts[0] != "VerifiablePresentation" {
+		t.Errorf("vp type = %v", vp["type"])
+	}
+	if vp["holder"] != "did:jwk:zzz" {
+		t.Errorf("holder = %v", vp["holder"])
+	}
+	if ctx, _ := vp["@context"].([]any); len(ctx) < 1 || ctx[0] != "https://www.w3.org/ns/credentials/v2" {
+		t.Errorf("vp @context = %v", vp["@context"])
+	}
+	creds, _ := vp["verifiableCredential"].([]any)
+	if len(creds) != 1 {
+		t.Fatalf("wrapped credential count = %d", len(creds))
+	}
+	if inner, _ := creds[0].(map[string]any); inner["issuer"] != "did:web:x" {
+		t.Errorf("wrapped vc issuer = %v", creds[0])
+	}
+	if _, err := injiBuildW3CVPToken("not json"); err == nil {
+		t.Error("expected error wrapping non-JSON")
 	}
 }

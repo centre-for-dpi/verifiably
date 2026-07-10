@@ -508,11 +508,16 @@ func presentationDefinitionFor(tpl vctypes.OID4VPTemplate) map[string]any {
 }
 
 func formatKey(std string) string {
-	switch std {
-	case "sd_jwt_vc (IETF)":
+	switch {
+	case std == "sd_jwt_vc (IETF)":
 		return "vc+sd-jwt"
-	case "mso_mdoc":
+	case std == "mso_mdoc":
 		return "mso_mdoc"
+	case strings.HasPrefix(std, "w3c_vcdm"):
+		// Inji-issued W3C credentials are JSON-LD (ldp_vc); presenting them to
+		// Inji Verify is an ldp_vp (a JSON-LD VerifiablePresentation), NOT a
+		// JWT-encoded VC. Advertising jwt_vc_json here would mismatch the format.
+		return "ldp_vp"
 	default:
 		return "jwt_vc_json"
 	}
@@ -527,13 +532,24 @@ func formatKey(std string) string {
 // mso_mdoc) use "alg".
 func formatAlgClause(std string) map[string]any {
 	algs := []string{"ES256", "EdDSA", "RS256"}
-	if std == "sd_jwt_vc (IETF)" {
+	switch {
+	case std == "sd_jwt_vc (IETF)":
 		return map[string]any{
 			"sd-jwt_alg_values": algs,
 			"kb-jwt_alg_values": algs,
 		}
+	case strings.HasPrefix(std, "w3c_vcdm"):
+		// ldp_vp advertises the Data-Integrity proof suites the verifier accepts
+		// (Inji Verify: Ed25519Signature2018/2020, RsaSignature2018). The in-app
+		// holder presents an UNSIGNED VP — Inji Verify accepts an ldp_vp without a
+		// VP-level proof, verifying the wrapped credential's own issuer proof — so
+		// this list only satisfies the PEX format entry.
+		return map[string]any{
+			"proof_type": []string{"Ed25519Signature2020", "Ed25519Signature2018", "RsaSignature2018"},
+		}
+	default:
+		return map[string]any{"alg": algs}
 	}
-	return map[string]any{"alg": algs}
 }
 
 func fieldsClause(tpl vctypes.OID4VPTemplate) []map[string]any {

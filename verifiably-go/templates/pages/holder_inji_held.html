@@ -102,7 +102,7 @@
 {{else if $.Body.Valid}}
 <div style="background:#0d2e1a;border:1px solid #1f6b3f;border-radius:6px;padding:0.7rem 0.9rem;font-size:0.82rem;color:#9affc0">
   <strong>✓ {{t "Verified by Inji Verify" $.Lang}}</strong>
-  <div style="color:var(--muted);font-size:0.74rem;margin-top:0.25rem">{{t "Presented over OID4VP · vc+sd-jwt with a key-bound KB-JWT." $.Lang}}</div>
+  <div style="color:var(--muted);font-size:0.74rem;margin-top:0.25rem">{{if eq $.Body.Wire "ldp_vp"}}{{t "Presented over OID4VP · ldp_vp (JSON-LD Verifiable Presentation)." $.Lang}}{{else}}{{t "Presented over OID4VP · vc+sd-jwt with a key-bound KB-JWT." $.Lang}}{{end}}</div>
   {{with $.Body.Disclosed}}
   <div style="display:grid;gap:0.28rem;margin-top:0.5rem">
     {{range $k, $v := .}}
