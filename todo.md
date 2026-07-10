@@ -75,5 +75,73 @@ respecto al plan original, documentadas abajo).
 
 ---
 
+## Post-merge: pruebas reales de inji y credebl (2026-07-10)
+
+Tras el merge, se probaron en vivo los stacks `inji` y `credebl` (solo `waltid` se
+había probado antes del merge). Se encontraron y corrigieron 2 bugs reales; se
+documenta 1 hallazgo de diseño de CREDEBL sin arreglar (fuera de alcance del
+filtrado de roles).
+
+### Bug 1 — CRLF en scripts .sh/.sql rompía el init de Postgres (corregido)
+`deploy/compose/stack/inji/certify/init.sh` / `init-preauth.sh` (y otros 15
+scripts `.sh` + 7 `.sql` en todo el repo) tenían terminadores CRLF por
+`core.autocrlf=true` en Windows sin `.gitattributes` que forzara LF. Al montar
+esos scripts como `docker-entrypoint-initdb.d` dentro de un contenedor Linux,
+el shebang `#!/bin/bash\r` no es válido → `cannot execute: required file not
+found` → postgres nunca corría el init → `inji --role issuer` fallaba en seco.
+**Fix:** normalizados todos a LF + agregado `.gitattributes` (`*.sh`/`*.sql`/
+`Dockerfile`/`Caddyfile` → `eol=lf`) para que nunca vuelva a pasar en un
+checkout Windows. Commit: `1248c76`.
+
+### Bug 2 — SIGPIPE hacía que scenario_needs_credebl/injiweb devolvieran "no" (corregido)
+`scenario_needs_credebl()`/`scenario_needs_injiweb()` (añadidas en Task 2)
+canalizaban `scenario_services "$1" | grep -q '^credebl-'` directo. Como
+`scenario_services()` corre `role_services` + `infra_services` como comandos
+secuenciales (no un solo `printf`), `grep -q` puede cerrar el pipe apenas
+encuentra el primer match mientras el segundo comando sigue escribiendo —
+ese comando muere por SIGPIPE, y bajo `set -e` eso hace que toda la función
+parezca haber fallado, devolviendo "no" en vez de "yes". Efecto real: cualquier
+`deploy.sh up credebl --role <lo-que-sea>` fallaba con "CREDEBL not configured"
+aunque `role_services` calculaba bien los servicios `credebl-*`. **Fix:**
+capturar el output en variable antes de grepearlo, evitando el pipe. Agregados
+4 tests de regresión (reproducidos con TDD: fallan sin el fix, pasan con él).
+Commit: `273a4a8`. Tests: 40/40 pasando.
+
+### Hallazgo sin arreglar — CREDEBL tiene un `depends_on` que cruza roles
+`credebl-agent-provisioning` (servicio COMPARTIDO por todos los roles, incluido
+`issuer`) declara `depends_on: credebl-verification: condition: service_started`
+en `deploy/compose/credebl/docker-compose.yml:484-487`. Docker Compose resuelve
+dependencias transitivas aunque no estén en la lista explícita de `docker
+compose up -d <servicios>`, así que **`--role issuer` en CREDEBL igual levanta
+`credebl-verification`** — el filtrado de roles en bash (`role_services`) es
+correcto, pero esta dependencia cruzada en el compose file lo elude. Requiere
+tocar el compose file de CREDEBL (fuera del alcance de este plan) para
+resolverse — por ejemplo separando el healthcheck que agent-provisioning
+realmente necesita de una dependencia dura sobre todo el servicio de
+verification.
+
+### Resultado de las pruebas reales (2026-07-10)
+- `inji --role issuer`: ✅ funcionó end-to-end tras el fix de CRLF. Contenedores
+  esperados exactos (certify-*, citizens-postgres, keycloak, wso2is,
+  libretranslate) — sin `inji-verify-*`, sin `vc-adapter`, sin `injiweb-*`.
+  Healthchecks nativos de Docker: todos `healthy`.
+- `credebl --role issuer`: ⚠️ parcialmente exitoso. Todos los servicios
+  esperados de `issuer` arrancaron y quedaron `healthy`, PERO
+  `credebl-verification` también arrancó (ver hallazgo de `depends_on` arriba).
+  Además, en este entorno específico (`.env` con `VERIFIABLY_PUBLIC_HOST`
+  apuntando a un dominio público real, `verifiably.ysalabs.work`), el
+  provisioning del agente Aries no completó — `credebl-agent-service` intentó
+  conectar a una IP pública (`190.166.212.174:800X`) que rechazó la conexión;
+  esto es un problema de red/entorno del `.env` de producción usado para la
+  prueba, no del filtrado de roles. También se disparó un `unbound variable`
+  preexistente en `scripts/bootstrap-credebl.sh:426` (`local did_doc` sin
+  inicializar, leído bajo `set -u` cuando el bloque que lo asigna no corre) —
+  no bloqueante (la función tiene manejo defensivo), no arreglado en esta
+  sesión.
+
+---
+
 ## Fuera de scope (spec separado requerido)
 - Hub Phase 2: lógica de orquestación en `verifiably-go` para delegar verificación a nodos federados cuando tienen `verifier_url` activo
+- CREDEBL: separar el `depends_on: credebl-verification` de `credebl-agent-provisioning` para que el filtrado de roles no tenga fugas entre issuer/verifier
+- `scripts/bootstrap-credebl.sh:401` — inicializar `local did_doc=""` explícitamente para eliminar el riesgo de `unbound variable` bajo `set -u` cuando el camino de asignación no corre
