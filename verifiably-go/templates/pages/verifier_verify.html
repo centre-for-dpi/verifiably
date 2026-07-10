@@ -284,19 +284,34 @@
      (method / format / issuer / trust / policies) is tucked into a native
      <details> expander, the same click-to-expand pattern the holder wallet uses
      for "Raw credential (JSON)". No swivel, no hover-to-discover. */}}
-<div class="verify-result {{if .Valid}}valid{{else}}invalid{{end}}" style="margin-top:1.5rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid {{if .Valid}}var(--ok){{else}}var(--err){{end}};padding:1.5rem;border-radius:2px">
+{{/* F25: a delegated-access PAIR verified through an EXTERNAL verifier (Inji
+     Verify) is authoritative on the delegated-access decision — verifiably runs
+     linkage/invocation/capability/revocation itself. Inji Verify still marks the
+     delegation credential INVALID because it can't read verifiably's bitstring
+     status list (F16/F23), which would otherwise force a red "Credential invalid"
+     headline OVER a green AUTHORISED card. When the delegation is authorised we
+     lead with that verdict; the per-credential Inji view stays honest below. */}}
+{{$delegAuth := false}}{{with .Delegation}}{{if and .Evaluated .Authorized}}{{$delegAuth = true}}{{end}}{{end}}
+<div class="verify-result {{if or .Valid $delegAuth}}valid{{else}}invalid{{end}}" style="margin-top:1.5rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid {{if or .Valid $delegAuth}}var(--ok){{else}}var(--err){{end}};padding:1.5rem;border-radius:2px">
 
-  <div class="verify-banner {{if .Valid}}valid{{else}}invalid{{end}}">
-    <span class="icon">{{if .Valid}}✓{{else}}✕{{end}}</span>
+  <div class="verify-banner {{if or .Valid $delegAuth}}valid{{else}}invalid{{end}}">
+    <span class="icon">{{if or .Valid $delegAuth}}✓{{else}}✕{{end}}</span>
     <div>
-      <h3>{{if .Valid}}Credential valid{{else}}Credential invalid{{end}}</h3>
-      <p>
-        {{if .Valid}}
-          Signature verified, issuer trusted, within validity period.
-        {{else}}
-          One or more policies failed — the credential can't be trusted as-is.
-        {{end}}
-      </p>
+      {{if and $delegAuth (not .Valid)}}
+        <h3>Delegated access authorised</h3>
+        <p>
+          All delegated-access checks passed — see the card below. The external
+          verifier (Inji Verify) marks the delegation credential invalid on its
+          own because it can't read verifiably's bitstring status list;
+          verifiably's independent revocation gate confirms it is not revoked.
+        </p>
+      {{else if .Valid}}
+        <h3>Credential valid</h3>
+        <p>Signature verified, issuer trusted, within validity period.</p>
+      {{else}}
+        <h3>Credential invalid</h3>
+        <p>One or more policies failed — the credential can't be trusted as-is.</p>
+      {{end}}
     </div>
   </div>
 
@@ -325,10 +340,17 @@
   {{/* Invalid results: a one-line reason up front so the operator sees WHY
        without expanding; the full per-policy detail lives in the expander. */}}
   {{if .FailedPolicies}}
+  {{if and $delegAuth (not .Valid)}}
+  <div style="margin-top:0.9rem;padding:0.6rem 0.8rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-size:0.82rem;color:var(--ink-soft)">
+    <strong>External verifier flags</strong> (per-credential, superseded by the delegated-access decision above):
+    {{range $i, $p := .FailedPolicies}}{{if $i}}, {{end}}<span class="mono">{{.Name}}</span>{{end}}.
+  </div>
+  {{else}}
   <div style="margin-top:0.9rem;padding:0.6rem 0.8rem;border:1px solid var(--err);border-radius:6px;background:color-mix(in srgb, var(--err) 8%, transparent);font-size:0.85rem">
     <strong style="color:var(--err)">Failed:</strong>
     {{range $i, $p := .FailedPolicies}}{{if $i}}, {{end}}<span class="mono">{{.Name}}</span>{{end}}.
   </div>
+  {{end}}
   {{end}}
 
   {{/* Click-to-expand: the full verification metadata + per-policy detail. */}}

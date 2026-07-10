@@ -98,26 +98,29 @@ type vpRequestResponse struct {
 // Accepts either a named preset key (req.TemplateKey in oid4vpTemplates) or an
 // inline custom template (req.Template != nil / req.TemplateKey == "custom").
 func (a *Adapter) RequestPresentation(ctx context.Context, req backend.PresentationRequest) (backend.PresentationRequestResult, error) {
-	// Inji Verify presets request a single credential; a delegation PAIR
-	// (Templates>1) can't be honored here and would be silently dropped to one.
-	// Surface it instead (P2).
-	if len(req.Templates) > 1 {
-		return backend.PresentationRequestResult{}, fmt.Errorf("inji-verify cannot request a %d-credential (delegation pair) presentation; use the walt.id verifier for pairs, or the evaluate-over-held path", len(req.Templates))
-	}
-	var tpl vctypes.OID4VPTemplate
-	if req.Template != nil {
-		tpl = *req.Template
-	} else {
-		var ok bool
-		tpl, ok = oid4vpTemplates[req.TemplateKey]
+	// Resolve the requested credential(s). A delegated-access PAIR sets
+	// req.Templates = [subject, delegation]; Inji Verify 0.16 accepts a
+	// multi-input_descriptor presentation_definition and returns a per-credential
+	// vcResults array (PROVEN), so we build ONE request with N descriptors — a
+	// single QR any wallet scans, then FetchPresentationResult + the delegation
+	// evaluator combine the two into the delegated-access verdict.
+	var tpls []vctypes.OID4VPTemplate
+	switch {
+	case len(req.Templates) > 0:
+		tpls = req.Templates
+	case req.Template != nil:
+		tpls = []vctypes.OID4VPTemplate{*req.Template}
+	default:
+		tpl, ok := oid4vpTemplates[req.TemplateKey]
 		if !ok {
 			return backend.PresentationRequestResult{}, fmt.Errorf("injiverify: unknown template key %q", req.TemplateKey)
 		}
+		tpls = []vctypes.OID4VPTemplate{tpl}
 	}
 	body := vpRequestCreate{
 		ClientID:               a.cfg.ClientID,
 		Nonce:                  randomNonce(),
-		PresentationDefinition: presentationDefinitionFor(tpl),
+		PresentationDefinition: presentationDefinitionForN(tpls),
 	}
 	var resp vpRequestResponse
 	if err := a.client.DoJSON(ctx, http.MethodPost, "/v1/verify/vp-request", body, &resp, nil); err != nil {
@@ -137,7 +140,7 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 	return backend.PresentationRequestResult{
 		RequestURI: requestURI,
 		State:      state,
-		Template:   tpl,
+		Template:   tpls[0],
 	}, nil
 }
 
@@ -489,21 +492,35 @@ func looksLikeJSONLD(s string) bool {
 
 // presentationDefinitionFor builds a minimal PE definition from a template.
 func presentationDefinitionFor(tpl vctypes.OID4VPTemplate) map[string]any {
-	desc := map[string]any{
-		"id":     "vc-1",
-		"format": map[string]any{formatKey(tpl.Format): formatAlgClause(tpl.Format)},
-		"constraints": map[string]any{
-			"fields": fieldsClause(tpl),
-		},
-	}
-	// Name the descriptor so the wallet's consent screen labels the request by
-	// the requested credential (not a guessed/held one).
-	if tpl.Title != "" {
-		desc["name"] = tpl.Title
+	return presentationDefinitionForN([]vctypes.OID4VPTemplate{tpl})
+}
+
+// presentationDefinitionForN builds a presentation_definition with one
+// input_descriptor per template — a single descriptor for an ordinary request, N
+// for a delegated-access pair ([subject, delegation]). Inji Verify 0.16 honours a
+// multi-descriptor PD and returns a per-credential vcResults array, so the whole
+// pair rides one cross-device QR. Each descriptor gets a stable, unique id
+// (vc-1, vc-2, …) so the wallet's presentation_submission can map each leg.
+func presentationDefinitionForN(tpls []vctypes.OID4VPTemplate) map[string]any {
+	descs := make([]map[string]any, 0, len(tpls))
+	for i, tpl := range tpls {
+		desc := map[string]any{
+			"id":     fmt.Sprintf("vc-%d", i+1),
+			"format": map[string]any{formatKey(tpl.Format): formatAlgClause(tpl.Format)},
+			"constraints": map[string]any{
+				"fields": fieldsClause(tpl),
+			},
+		}
+		// Name the descriptor so the wallet's consent screen labels each
+		// requested credential (not a guessed/held one).
+		if tpl.Title != "" {
+			desc["name"] = tpl.Title
+		}
+		descs = append(descs, desc)
 	}
 	return map[string]any{
 		"id":                "pd-" + randomNonce(),
-		"input_descriptors": []map[string]any{desc},
+		"input_descriptors": descs,
 	}
 }
 

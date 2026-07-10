@@ -28,12 +28,25 @@ func normalizeInjiCredentials(items []vcResultItem) ([]backend.NormalizedCredent
 		}
 		var s string
 		if json.Unmarshal(it.VC, &s) == nil && s != "" {
-			if strings.Contains(s, "~") {
+			s = strings.TrimSpace(s)
+			switch {
+			case strings.Contains(s, "~"):
 				if nc, ok := vp.FromCompactSDJWT(s); ok {
 					creds = append(creds, nc)
 				}
-			} else if p := vp.DecodeJWTPayload(s); p != nil {
-				creds = append(creds, vp.FromVCObject(p))
+			case strings.HasPrefix(s, "{"):
+				// Inji Verify serialises a JSON-LD (ldp_vc) credential as a JSON
+				// STRING in vcResults[].vc — parse it so its credentialSubject
+				// claims (onBehalfOf/subjectRef/…) are recovered for the
+				// delegated-access evaluator, not just the signed envelope.
+				var inner map[string]any
+				if json.Unmarshal([]byte(s), &inner) == nil && len(inner) > 0 {
+					creds = append(creds, vp.FromVCObject(inner))
+				}
+			default:
+				if p := vp.DecodeJWTPayload(s); p != nil {
+					creds = append(creds, vp.FromVCObject(p))
+				}
 			}
 		}
 	}

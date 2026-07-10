@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
-	"github.com/verifiably/verifiably-go/vctypes"
 )
 
 // injiVerifyVendor is the backends.json vendor key for the Inji Verify adapter
@@ -447,61 +446,6 @@ func injiPresentPreview(jar injiJAR, credID, held string) backend.PresentationPr
 	}
 }
 
-// presentHeldToInjiVerify runs the OID4VP holder leg for one held credential:
-// create the request at Inji Verify (via the Inji Verify adapter), fetch the
-// signed request object, build the vp_token, direct-post it, and return the
-// polled verdict. Branches on format — SD-JWT → a key-bound KB-JWT vp_token;
-// W3C ldp_vc → an unsigned ldp_vp. Shared by the single present (F21/F23) and
-// the delegated pair (F22/F23).
-func (h *H) presentHeldToInjiVerify(ctx context.Context, held string, key *ecdsa.PrivateKey) (backend.VerificationResult, error) {
-	var tpl vctypes.OID4VPTemplate
-	var descFormat string
-	buildToken := func(injiJAR) (string, error) { return "", fmt.Errorf("inji present: unsupported format") }
-	if injiIsW3C(held) {
-		tpl = vctypes.OID4VPTemplate{
-			Title:      injiW3CTitle(held),
-			Fields:     injiW3CFields(held),
-			Format:     "w3c_vcdm_2",
-			WireFormat: "ldp_vp",
-		}
-		descFormat = "ldp_vp"
-		buildToken = func(injiJAR) (string, error) { return injiBuildW3CVPToken(held) }
-	} else {
-		tpl = vctypes.OID4VPTemplate{
-			Title:      "In-app Inji credential",
-			Fields:     injiSDJWTDisclosureFields(held),
-			Format:     "sd_jwt_vc (IETF)",
-			Vct:        injiSDJWTVct(held),
-			WireFormat: "vc+sd-jwt",
-		}
-		descFormat = "vc+sd-jwt"
-		buildToken = func(jar injiJAR) (string, error) { return injiBuildVPToken(held, key, jar.Nonce, jar.Aud) }
-	}
-	res, err := h.Adapter.RequestPresentation(ctx, backend.PresentationRequest{
-		VerifierDpg: injiVerifyVendor,
-		Template:    &tpl,
-	})
-	if err != nil {
-		return backend.VerificationResult{}, fmt.Errorf("request presentation: %w", err)
-	}
-	jar, err := h.fetchInjiVPRequest(ctx, res.RequestURI)
-	if err != nil {
-		return backend.VerificationResult{}, fmt.Errorf("fetch request: %w", err)
-	}
-	vpToken, err := buildToken(jar)
-	if err != nil {
-		return backend.VerificationResult{}, fmt.Errorf("build vp_token: %w", err)
-	}
-	if err := h.injiDirectPost(ctx, jar, vpToken, descFormat); err != nil {
-		return backend.VerificationResult{}, err
-	}
-	verdict, err := h.Adapter.FetchPresentationResult(ctx, res.State, "custom")
-	if err != nil {
-		return backend.VerificationResult{}, fmt.Errorf("fetch result: %w", err)
-	}
-	return verdict, nil
-}
-
 // injiHeldPresentable looks up a held in-app Inji credential by id that can be
 // presented over OID4VP: an SD-JWT (with its retained holder key, for the KB-JWT)
 // or a W3C ldp_vc (no key — presented as an unsigned ldp_vp). key is nil for W3C.
@@ -527,75 +471,6 @@ func injiHeldPresentable(sess *Session, id string) (held string, key *ecdsa.Priv
 		return "", nil, false
 	}
 	return held, k, true
-}
-
-// SubmitInjiPresentPair presents EVERY held presentable SD-JWT credential to
-// Inji Verify as its own single-credential OID4VP VP (the F21 leg, once per
-// credential), then combines the results: the held set is evaluated by the
-// DPG-agnostic delegation evaluator into ONE delegated-access verdict (linkage /
-// invocation / capability / revocation). This is the "two single VPs, combined"
-// delegated-pair route — Inji Verify can't honour a true multi-credential pair
-// request (injiverify/adapter.go), so verifiably presents each leg singly and
-// reasons over the pair itself.
-func (h *H) SubmitInjiPresentPair(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-
-	type held struct {
-		id, compact string
-		key         *ecdsa.PrivateKey
-	}
-	var creds []held
-	for _, vc := range sess.InjiClaimedVCs {
-		id := vcID(vc)
-		if c, k, ok := injiHeldPresentable(sess, id); ok {
-			creds = append(creds, held{id: id, compact: c, key: k})
-		}
-	}
-	if len(creds) < 2 {
-		h.renderInjiPresentPair(w, r, nil, nil,
-			"A delegated pair needs at least two presentable credentials in your wallet — a subject identity and a delegation (a credential with an onBehalfOf field). Claim both, then try again.")
-		return
-	}
-
-	ctx := r.Context()
-	allValid := true
-	legs := make([]map[string]any, 0, len(creds))
-	compacts := make([]string, 0, len(creds))
-	for _, c := range creds {
-		verdict, err := h.presentHeldToInjiVerify(ctx, c.compact, c.key)
-		legOK := err == nil && verdict.Valid
-		if !legOK {
-			allValid = false
-		}
-		leg := map[string]any{"Vct": injiPresentLabel(c.compact), "OK": legOK}
-		if err != nil {
-			leg["Err"] = err.Error()
-		}
-		legs = append(legs, leg)
-		compacts = append(compacts, c.compact)
-	}
-
-	// Combine: evaluate the presented set for delegated access. Each credential's
-	// authenticity was just checked by Inji Verify; attachDelegationVerdict adds
-	// the temporal + revocation gates and the delegation semantics.
-	res := backend.VerificationResult{
-		Credentials:   normalizeClaimedInjiCreds(compacts),
-		HolderBinding: &backend.HolderBinding{Confirmed: true},
-		Valid:         allValid && len(compacts) > 0,
-	}
-	h.attachDelegationVerdict(r, &res)
-	h.renderInjiPresentPair(w, r, legs, &res, "")
-}
-
-// renderInjiPresentPair renders the delegated-pair verdict fragment: the per-leg
-// Inji Verify outcomes plus the combined delegated-access card.
-func (h *H) renderInjiPresentPair(w http.ResponseWriter, r *http.Request, legs []map[string]any, res *backend.VerificationResult, errMsg string) {
-	data := map[string]any{"Legs": legs, "Error": errMsg}
-	if res != nil {
-		data["Delegation"] = res.Delegation
-		data["AllValid"] = res.Valid
-	}
-	h.renderFragment(w, r, "fragment_inji_present_pair", map[string]any{"Body": data, "Lang": h.langFor(r)})
 }
 
 // ─── F24: real consent-based OID4VP present (respond to a verifier's request) ──
