@@ -1,0 +1,9 @@
+# Force LF line endings for files executed inside Linux containers or by
+# bash directly. Without this, Windows checkouts with core.autocrlf=true
+# convert these to CRLF, which breaks the "#!/bin/bash" shebang when the
+# file is bind-mounted into a container (e.g. postgres docker-entrypoint-initdb.d
+# scripts) and fails with "cannot execute: required file not found".
+*.sh text eol=lf
+*.sql text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
