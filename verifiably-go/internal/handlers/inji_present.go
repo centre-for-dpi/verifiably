@@ -529,29 +529,6 @@ func injiHeldPresentable(sess *Session, id string) (held string, key *ecdsa.Priv
 	return held, k, true
 }
 
-// SubmitInjiPresent presents one held in-app Inji SD-JWT credential to Inji
-// Verify over OID4VP and renders the verdict fragment.
-func (h *H) SubmitInjiPresent(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-	id := r.PathValue("id")
-	held, key, ok := injiHeldPresentable(sess, id)
-	if !ok {
-		h.renderInjiPresentResult(w, r, id, "", nil,
-			"This credential can't be presented over OID4VP — it isn't a W3C credential, or it's an SD-JWT whose holder key wasn't retained (re-claim it, then present).")
-		return
-	}
-	wire := "vc+sd-jwt"
-	if injiIsW3C(held) {
-		wire = "ldp_vp"
-	}
-	verdict, err := h.presentHeldToInjiVerify(r.Context(), held, key)
-	if err != nil {
-		h.renderInjiPresentResult(w, r, id, wire, nil, err.Error())
-		return
-	}
-	h.renderInjiPresentResult(w, r, id, wire, &verdict, "")
-}
-
 // SubmitInjiPresentPair presents EVERY held presentable SD-JWT credential to
 // Inji Verify as its own single-credential OID4VP VP (the F21 leg, once per
 // credential), then combines the results: the held set is evaluated by the
@@ -619,19 +596,6 @@ func (h *H) renderInjiPresentPair(w http.ResponseWriter, r *http.Request, legs [
 		data["AllValid"] = res.Valid
 	}
 	h.renderFragment(w, r, "fragment_inji_present_pair", map[string]any{"Body": data, "Lang": h.langFor(r)})
-}
-
-// renderInjiPresentResult renders the OID4VP present verdict fragment. wire is
-// the presentation format ("vc+sd-jwt" or "ldp_vp") shown in the caption.
-func (h *H) renderInjiPresentResult(w http.ResponseWriter, r *http.Request, id, wire string, verdict *backend.VerificationResult, errMsg string) {
-	data := map[string]any{"ID": id, "Wire": wire, "Error": errMsg}
-	if verdict != nil {
-		data["Valid"] = verdict.Valid
-		data["Disclosed"] = verdict.DisclosedFields
-		data["Method"] = verdict.Method
-		data["Format"] = verdict.Format
-	}
-	h.renderFragment(w, r, "fragment_inji_present_result", map[string]any{"Body": data, "Lang": h.langFor(r)})
 }
 
 // ─── F24: real consent-based OID4VP present (respond to a verifier's request) ──

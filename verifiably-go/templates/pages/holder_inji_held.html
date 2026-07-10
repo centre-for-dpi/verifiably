@@ -66,11 +66,9 @@
       </details>
       <div style="margin-top:0.85rem;display:flex;justify-content:flex-end;gap:0.5rem">
         {{if .Presentable}}
-        <button hx-post="/holder/wallet/inji/credentials/{{.ID}}/present"
-                hx-target="#present-result-{{.ID}}" hx-swap="innerHTML"
-                hx-indicator="#present-spin-{{.ID}}"
-                class="btn small" style="background:transparent;border:1px solid var(--accent);color:var(--accent);font-size:0.72rem;padding:0.25rem 0.7rem"
-                title="{{t "Quick demo: verifiably plays both verifier + wallet in one round-trip. For the real consent flow, use 'Present a request'." $.Lang}}">⚡ {{t "Quick present (demo)" $.Lang}}</button>
+        <a href="/holder/wallet/inji/present?credential={{.ID}}"
+           class="btn small" style="background:transparent;border:1px solid var(--accent);color:var(--accent);font-size:0.72rem;padding:0.25rem 0.7rem;text-decoration:none"
+           title="{{t "Present this credential in response to a verifier's OID4VP request (with consent)" $.Lang}}">→ {{t "Present this" $.Lang}}</a>
         {{end}}
         <a href="/holder/wallet/inji/credentials/{{.ID}}/pdf" download
            class="btn small" style="background:transparent;border:1px solid var(--line);color:var(--fg);font-size:0.72rem;padding:0.25rem 0.7rem;text-decoration:none"
@@ -80,10 +78,6 @@
                 hx-confirm="Remove this credential from your wallet?"
                 class="btn small" style="background:transparent;border:1px solid var(--err);color:var(--err);font-size:0.72rem;padding:0.25rem 0.7rem">{{t "Delete" $.Lang}}</button>
       </div>
-      {{if .Presentable}}
-      <div id="present-spin-{{.ID}}" class="htmx-indicator" style="margin-top:0.6rem;font-size:0.75rem;color:var(--muted)">{{t "Presenting to Inji Verify…" $.Lang}}</div>
-      <div id="present-result-{{.ID}}" style="margin-top:0.6rem"></div>
-      {{end}}
     </div>
     {{end}}
   </div>
@@ -92,35 +86,6 @@
     <a href="/holder/wallet/inji">{{t "Claim one →" $.Lang}}</a></p>
   {{end}}
 </div>
-{{end}}
-
-{{/* fragment_inji_present_result — OID4VP present verdict, swapped into the
-     per-credential #present-result-<id> region by SubmitInjiPresent. */}}
-{{define "fragment_inji_present_result"}}
-{{if $.Body.Error}}
-<div style="background:#2e0d0d;border:1px solid var(--err);border-radius:6px;padding:0.7rem 0.9rem;font-size:0.8rem;color:#ff9a9a">
-  ✕ {{$.Body.Error}}
-</div>
-{{else if $.Body.Valid}}
-<div style="background:#0d2e1a;border:1px solid #1f6b3f;border-radius:6px;padding:0.7rem 0.9rem;font-size:0.82rem;color:#9affc0">
-  <strong>✓ {{t "Verified by Inji Verify" $.Lang}}</strong>
-  <div style="color:var(--muted);font-size:0.74rem;margin-top:0.25rem">{{if eq $.Body.Wire "ldp_vp"}}{{t "Presented over OID4VP · ldp_vp (JSON-LD Verifiable Presentation)." $.Lang}}{{else}}{{t "Presented over OID4VP · vc+sd-jwt with a key-bound KB-JWT." $.Lang}}{{end}}</div>
-  {{with $.Body.Disclosed}}
-  <div style="display:grid;gap:0.28rem;margin-top:0.5rem">
-    {{range $k, $v := .}}
-    <div style="display:flex;gap:0.6rem;font-size:0.78rem;border-top:1px solid #14432a;padding-top:0.28rem">
-      <span style="color:var(--muted);min-width:96px">{{$k}}</span>
-      <span class="mono" style="word-break:break-all;color:#c8f7d8">{{$v}}</span>
-    </div>
-    {{end}}
-  </div>
-  {{end}}
-</div>
-{{else}}
-<div style="background:#2e0d0d;border:1px solid var(--err);border-radius:6px;padding:0.7rem 0.9rem;font-size:0.82rem;color:#ff9a9a">
-  ✕ {{t "Inji Verify did not accept this presentation." $.Lang}}
-</div>
-{{end}}
 {{end}}
 
 {{/* fragment_inji_present_pair — the delegated-pair outcome: per-leg Inji Verify
