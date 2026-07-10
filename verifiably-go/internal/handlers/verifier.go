@@ -27,7 +27,7 @@ func (h *H) ShowVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dpgs, _ := h.Adapter.ListVerifierDpgs(r.Context())
-	schemas, err := h.Adapter.ListAllSchemas(r.Context())
+	schemas, err := h.verifierSchemas(r.Context(), sess.VerifierDpg)
 	if err != nil {
 		h.errorToast(w, r, "backend unavailable: "+err.Error())
 		return
@@ -57,7 +57,7 @@ func verifierIssuerVendors(verifierDpg string) []string {
 	case "":
 		return nil // no DPG chosen yet → caller applies no scope
 	case "Inji Verify":
-		return []string{"Inji Certify · Pre-Auth", "Inji Certify · Auth-Code"}
+		return []string{"Inji Certify · Pre-Auth", authcodeVendor}
 	default:
 		return []string{verifierDpg}
 	}
@@ -74,6 +74,81 @@ func dpgsIntersect(schemaDPGs, allowed []string) bool {
 		}
 	}
 	return false
+}
+
+// authcodeVendor is the issuer-vendor key for the Inji auth-code track (matches
+// verifierIssuerVendors + config/backends.docker.json).
+const authcodeVendor = "Inji Certify · Auth-Code"
+
+// verifierAuthcodeSchemas rebuilds the Inji auth-code credential types as
+// presentable schemas for the verifier grid. Auth-code schemas live in the
+// Certify DB (SubjectStore), NOT the registry's custom-schema list: the
+// auth-code issuance path (applyAuthcodeSchema) persists them there instead of
+// calling SaveCustomSchema, so ListAllSchemas surfaces them only as non-custom
+// .well-known entries that verifierPresentableSchemas drops. We reconstruct them
+// as Custom schemas stamped with the auth-code vendor DPG so a verifier can
+// request the same types the auth-code issuer mints. Global (all owners),
+// mirroring how pre-auth custom schemas are visible to every verifier. No-op
+// without a SubjectStore. Best-effort: a lookup error yields no auth-code
+// schemas rather than blocking the (pre-auth) grid.
+func (h *H) verifierAuthcodeSchemas(ctx context.Context) []vctypes.Schema {
+	if h.Subjects == nil {
+		return nil
+	}
+	creds, err := h.Subjects.ListCredentials(ctx)
+	if err != nil {
+		return nil
+	}
+	out := make([]vctypes.Schema, 0, len(creds))
+	for _, c := range creds {
+		key := c["key"]
+		if key == "" {
+			continue
+		}
+		name := c["displayName"]
+		if name == "" {
+			name = key
+		}
+		s := vctypes.Schema{
+			ID:     key,
+			Name:   name,
+			Desc:   "Live Inji Certify (auth-code) credential",
+			Custom: true,
+			DPGs:   []string{authcodeVendor},
+		}
+		// ListCredentials doesn't carry the wire format; CredentialClaimSpec does
+		// (format + vct). Fall back to W3C when it can't be resolved.
+		if format, _, vct, e := h.Subjects.CredentialClaimSpec(ctx, key); e == nil && format != "" {
+			s.Std = injiFormatToStd(format)
+			s.Vct = vct
+		}
+		if s.Std == "" {
+			s.Std = "w3c_vcdm_2"
+		}
+		if fields, ferr := h.Subjects.CredentialFields(ctx, key); ferr == nil {
+			for _, fn := range fields {
+				s.FieldsSpec = append(s.FieldsSpec, vctypes.FieldSpec{Name: fn, Datatype: "string"})
+			}
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// verifierSchemas is the schema list every verifier-flow site works against: the
+// adapter's ListAllSchemas plus, for a verifier whose issuer-vendor set includes
+// the auth-code vendor (i.e. the Inji Verify DPG), the auth-code schemas from the
+// Certify DB (which ListAllSchemas can't surface as Custom). Used by the grid
+// render AND the request-generation resolver so a selected auth-code schema
+// resolves instead of erroring "unknown schema". The ListAllSchemas error (and
+// its partial slice) is returned verbatim so callers keep their existing
+// resilience handling.
+func (h *H) verifierSchemas(ctx context.Context, verifierDpg string) ([]vctypes.Schema, error) {
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	if dpgsIntersect(verifierIssuerVendors(verifierDpg), []string{authcodeVendor}) {
+		schemas = append(schemas, h.verifierAuthcodeSchemas(ctx)...)
+	}
+	return schemas, err
 }
 
 func verifierPresentableSchemas(schemas []vctypes.Schema, verifierDpg string) []vctypes.Schema {
@@ -266,11 +341,12 @@ func schemaNameByID(schemas []vctypes.Schema, id string) string {
 
 // schemaStdByID resolves a (variant) id to its wire-format std (e.g. w3c_vcdm_2,
 // "sd_jwt_vc (IETF)") — used to decide which fields a delegation leg must request.
-func (h *H) schemaStdByID(ctx context.Context, id string) string {
+// verifierDpg lets an auth-code schema id resolve too (verifierSchemas).
+func (h *H) schemaStdByID(ctx context.Context, verifierDpg, id string) string {
 	if id == "" {
 		return ""
 	}
-	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	schemas, err := h.verifierSchemas(ctx, verifierDpg)
 	if err != nil {
 		return ""
 	}
@@ -341,10 +417,10 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 			// aren't in credentialSubject and never match. SD-JWT carries the
 			// capability as flat claims, so request them all (nil) to disclose them.
 			delegFields := []string{"onBehalfOf"}
-			if strings.Contains(h.schemaStdByID(r.Context(), delegID), "sd_jwt") {
+			if strings.Contains(h.schemaStdByID(r.Context(), sess.VerifierDpg, delegID), "sd_jwt") {
 				delegFields = nil
 			}
-			if deleg, err = h.buildTemplateForSchema(r.Context(), delegID, delegFields, disc); err != nil {
+			if deleg, err = h.buildTemplateForSchema(r.Context(), sess.VerifierDpg, delegID, delegFields, disc); err != nil {
 				h.errorToast(w, r, "delegation credential: "+err.Error())
 				return
 			}
@@ -352,7 +428,7 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 			deleg = delegationVerifyTemplate(orDefault(r.FormValue("delegation_type"), "DelegatedAccessCredential"), []string{"onBehalfOf"}, "jwt_vc_json")
 		}
 		if subjID != "" {
-			if subj, err = h.buildTemplateForSchema(r.Context(), subjID, nil, disc); err != nil {
+			if subj, err = h.buildTemplateForSchema(r.Context(), sess.VerifierDpg, subjID, nil, disc); err != nil {
 				h.errorToast(w, r, "subject identity credential: "+err.Error())
 				return
 			}
@@ -383,7 +459,7 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 // fields to request (defaults to all schema fields if none are checked),
 // disclosure is "selective" or "full".
 func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4VPTemplate, error) {
-	return h.buildTemplateForSchema(r.Context(), r.FormValue("schema_id"), r.Form["field_key"], r.FormValue("disclosure"))
+	return h.buildTemplateForSchema(r.Context(), sess.VerifierDpg, r.FormValue("schema_id"), r.Form["field_key"], r.FormValue("disclosure"))
 }
 
 // publicBaseEnv returns the deployment public origin (VERIFIABLY_PUBLIC_URL,
@@ -400,11 +476,11 @@ func publicBaseEnv() string {
 // single-type verify and of EACH leg of a delegated-access pair, so the pair
 // requests exactly what the wallet holds (custom types like "PetAccessCredential",
 // SD-JWT vct, w3c format) rather than a hardcoded guess. fields nil/empty → all.
-func (h *H) buildTemplateForSchema(ctx context.Context, schemaID string, fields []string, disclosure string) (vctypes.OID4VPTemplate, error) {
+func (h *H) buildTemplateForSchema(ctx context.Context, verifierDpg, schemaID string, fields []string, disclosure string) (vctypes.OID4VPTemplate, error) {
 	if schemaID == "" {
 		return vctypes.OID4VPTemplate{}, fmt.Errorf("pick a schema first")
 	}
-	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	schemas, err := h.verifierSchemas(ctx, verifierDpg)
 	if err != nil {
 		return vctypes.OID4VPTemplate{}, fmt.Errorf("could not load schemas: %w", err)
 	}
@@ -546,7 +622,7 @@ func (h *H) BuildVerifierTemplate(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Bad form: "+err.Error())
 		return
 	}
-	schemas, err := h.Adapter.ListAllSchemas(r.Context())
+	schemas, err := h.verifierSchemas(r.Context(), sess.VerifierDpg)
 	if err != nil {
 		h.errorToast(w, r, "Could not load schemas: "+err.Error())
 		return

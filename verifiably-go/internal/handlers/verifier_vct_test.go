@@ -76,7 +76,7 @@ func TestBuildTemplateForSchemaVctPin(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := apiTestH(&testAdapter{schemas: []vctypes.Schema{tc.schema}})
-			tpl, err := h.buildTemplateForSchema(context.Background(), tc.schema.ID, nil, "selective")
+			tpl, err := h.buildTemplateForSchema(context.Background(), "", tc.schema.ID, nil, "selective")
 			if err != nil {
 				t.Fatalf("buildTemplateForSchema: %v", err)
 			}

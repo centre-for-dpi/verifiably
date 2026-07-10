@@ -30,6 +30,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -193,6 +194,19 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 		fail(msg)
 		return
 	}
+	// Guard: Certify does NOT error when the Postgres data provider returns no
+	// value for a claim — its Velocity engine renders the undefined marker
+	// verbatim (e.g. "${last_name}"), so the claim "succeeds" with junk. Refuse to
+	// store such a credential; the holder's eSignet identity isn't provisioned for
+	// this credential type. (The DATA_RECORD branch above only fires when Certify
+	// finds NO row at all; a row missing individual columns slips past it.)
+	if hasUnsubstitutedTemplateMarkers(vc) {
+		fail("This credential came back with unfilled template fields (e.g. ${…}) — " +
+			"your eSignet identity has no data provisioned for this credential type. " +
+			"Enrol/activate at /holder/register (a registrar must enrol you in the " +
+			"identity registry), then claim again.")
+		return
+	}
 	sess.InjiClaimedVC = vc
 	sess.InjiClaimedVCs = append([]string{vc}, sess.InjiClaimedVCs...) // newest first; shown on the held page
 	// Retain the SD-JWT's holder binding key so the credential can later be
@@ -205,6 +219,31 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	sess.InjiClaimError = ""
 	h.redirect(w, r, "/holder/wallet/inji/credentials")
+}
+
+// unsubstitutedMarkerRe matches a leftover Velocity substitution marker like
+// ${last_name} or ${_holderId} — the shape Inji Certify emits verbatim when its
+// data provider returned no value for that claim.
+var unsubstitutedMarkerRe = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}`)
+
+// hasUnsubstitutedTemplateMarkers reports whether a freshly-claimed Inji
+// credential still contains unfilled ${var} template markers (the identity
+// wasn't provisioned for this credential type). For a W3C ldp_vc the markers sit
+// in the plaintext JSON. For a compact SD-JWT they live inside the base64url
+// disclosures (the raw compact string is base64url + dots and can't contain
+// '${'), so decode each '~'-separated disclosure and check its bytes; the issuer
+// JWT and any KB-JWT segments contain dots, so their base64url decode fails and
+// they're skipped.
+func hasUnsubstitutedTemplateMarkers(vc string) bool {
+	if strings.Contains(vc, "~") { // compact SD-JWT: <jwt>~<disclosure>~…[~<kb-jwt>]
+		for _, part := range strings.Split(vc, "~") {
+			if dec, err := base64.RawURLEncoding.DecodeString(part); err == nil && unsubstitutedMarkerRe.Match(dec) {
+				return true
+			}
+		}
+		return false
+	}
+	return unsubstitutedMarkerRe.MatchString(vc)
 }
 
 // injiClaimCredential does token exchange (private_key_jwt) + holder proof +

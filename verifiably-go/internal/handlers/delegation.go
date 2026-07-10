@@ -178,12 +178,13 @@ func (h *H) delegationStatusChecker() delegation.StatusChecker {
 	}
 }
 
-// statusBitRevoked extracts the revocation bit at ref.Index from a status-list
-// JWT, handling both the W3C Bitstring (vc.credentialSubject.encodedList, gzip,
+// statusBitRevoked extracts the revocation bit at ref.Index from a status-list,
+// handling both the W3C Bitstring (vc.credentialSubject.encodedList, gzip,
 // multibase 'u' prefix, MSB-first) and IETF Token Status List (status_list.lst,
-// zlib, LSB-first) encodings.
+// zlib, LSB-first) encodings, whether the list was served as a compact JWS or a
+// bare JSON-LD credential (see statusListClaims).
 func statusBitRevoked(rawJWT string, ref delegation.StatusRef) (bool, error) {
-	payload, err := jwtPayloadClaims(rawJWT)
+	payload, err := statusListClaims(rawJWT)
 	if err != nil {
 		return false, err
 	}
@@ -200,8 +201,15 @@ func statusBitRevoked(rawJWT string, ref delegation.StatusRef) (bool, error) {
 		}
 		return bs.Get(idx), nil
 	}
-	// W3C BitstringStatusListEntry.
+	// W3C BitstringStatusListEntry. The bitstring lives under vc.credentialSubject
+	// for a JWT-VC status list (our own JWS form), or directly under
+	// credentialSubject for a bare JSON-LD BitstringStatusListCredential (the form
+	// Inji's auth-code Certify serves). Fall back to the top level when there is
+	// no nested vc — mirrors vp.FromVCObject's inner-vc handling.
 	vc, _ := payload["vc"].(map[string]any)
+	if vc == nil {
+		vc = payload
+	}
 	cs, _ := vc["credentialSubject"].(map[string]any)
 	enc, _ := cs["encodedList"].(string)
 	if enc == "" {
@@ -213,6 +221,34 @@ func statusBitRevoked(rawJWT string, ref delegation.StatusRef) (bool, error) {
 		return false, err
 	}
 	return bs.Get(idx), nil
+}
+
+// statusListClaims returns the status-list document as a claims map, accepting
+// EITHER a compact JWS (JOSE-secured form — payload base64url-decoded + parsed)
+// OR a bare JSON-LD status-list credential served as application/json.
+//
+// Inji's auth-code Certify serves its BitstringStatusListCredential as a bare
+// JSON-LD VC and ignores our Accept: application/vc+jwt, so treating every
+// status list as a compact JWS made jwtPayloadClaims split the JSON on '.' and
+// base64url-decode a middle chunk into binary (the "invalid character ''"
+// failure). Handling the bare-JSON form lets verifiably read Certify's bitstring
+// and enforce real revocation instead of failing closed on a parse error.
+//
+// NOTE: for the bare JSON-LD form the credential's embedded proof is not
+// cryptographically verified here (the status-list cache's verifyJWT only covers
+// 3-part JWS); integrity rests on the TLS fetch from the issuer's own did:web
+// origin — the same gap that already applies to any non-JWS list. Future
+// hardening: verify the JSON-LD Ed25519Signature2020 proof.
+func statusListClaims(raw string) (map[string]any, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "{") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			return nil, fmt.Errorf("status-list JSON: %w", err)
+		}
+		return m, nil
+	}
+	return jwtPayloadClaims(raw)
 }
 
 // jwtPayloadClaims base64url-decodes and JSON-parses the payload of a compact
