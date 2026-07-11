@@ -208,7 +208,7 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 		valid = matchesTemplateFields(res.VCResults, tpl.Fields)
 	}
 	creds, holder := normalizeInjiCredentials(res.VCResults)
-	return backend.VerificationResult{
+	result := backend.VerificationResult{
 		Valid:             valid,
 		Method:            fmt.Sprintf("OID4VP · %s", tpl.Disclosure),
 		Format:            tpl.Format,
@@ -224,7 +224,41 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 		CheckedRevocation: false,
 		Credentials:       creds,
 		HolderBinding:     holder,
-	}, nil
+	}
+	// Single-credential presentation: surface the disclosed claim values so the
+	// result shows the STRUCTURED FIELDS (e.g. testa_id, last_name), not just the
+	// signed envelope. The claims were already parsed into creds[0].Claims from the
+	// presented VC's credentialSubject (normalizeInjiCredentials → vp.FromVCObject).
+	// A multi-credential / delegated pair instead renders per-credential cards
+	// (CredentialViews) in the handler, so leave DisclosedFields empty there.
+	if len(creds) == 1 {
+		result.DisclosedFields = disclosedForRequest(creds[0].Claims, tpl.Fields)
+	}
+	return result, nil
+}
+
+// disclosedForRequest picks the claim values to display for a single-credential
+// OID4VP verify. It returns claims filtered to the requested field names (matching
+// the "Requesting: …" line); when no fields were requested (full disclosure) or
+// none of the requested names match what the VC actually carries (e.g. a
+// namespacing mismatch), it returns all disclosed claims rather than nothing.
+func disclosedForRequest(claims map[string]string, fields []string) map[string]string {
+	if len(claims) == 0 {
+		return nil
+	}
+	if len(fields) == 0 {
+		return claims
+	}
+	out := make(map[string]string, len(fields))
+	for _, f := range fields {
+		if v, ok := claims[f]; ok {
+			out[f] = v
+		}
+	}
+	if len(out) == 0 {
+		return claims
+	}
+	return out
 }
 
 // vcSubmissionDto matches POST /v1/verify/vc-submission body shape.
