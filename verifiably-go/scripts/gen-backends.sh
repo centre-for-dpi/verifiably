@@ -230,7 +230,7 @@ JSON
         "Formats": ["w3c_vcdm_1", "w3c_vcdm_2"],
         "Caveats": "Requires eSignet running; you need a MOSIP identity to sign in.",
         "Redirect": false,
-        "InAppPath": "/holder/wallet/inji",
+        "InAppPath": "/holder/wallet/inji/credentials",
         "Capabilities": [
           {"Kind": "flow",       "Key": "catalog",        "Title": "Credential catalog",            "Body": "Discover the credentials an issuer has published, right here."},
           {"Kind": "flow",       "Key": "esignet",        "Title": "eSignet sign-in",               "Body": "Authenticate with eSignet (OTP) to claim a credential."},
