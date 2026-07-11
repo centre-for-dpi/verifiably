@@ -15,11 +15,16 @@
         style="margin-top:2rem;display:flex;flex-direction:column;gap:1rem">
     <div>
       <label class="caps" style="display:block;margin-bottom:0.5rem">{{t "1. Verifier's request" $.Lang}}</label>
-      <textarea name="request_uri" rows="3" class="mono" required
+      <textarea id="inji-present-request" name="request_uri" rows="3" class="mono" required
                 placeholder="openid4vp://authorize?client_id=…&request_uri=…"
                 style="width:100%;font-size:0.78rem;background:var(--bg);border:1px solid var(--line);padding:0.6rem;color:var(--ink);font-family:'JetBrains Mono',monospace;border-radius:2px;resize:vertical"></textarea>
+      <div style="margin-top:0.6rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <button class="btn small ghost" id="present-scan-btn" type="button" onclick="startPresentScan()">{{t "Scan QR with camera →" $.Lang}}</button>
+        <span id="present-scan-status" style="font-size:0.78rem;color:var(--muted)"></span>
+      </div>
+      <video id="present-scan-video" playsinline muted style="display:none;max-width:320px;margin-top:0.5rem;border:1px solid var(--line);border-radius:2px"></video>
       <p style="font-size:0.75rem;color:var(--muted);margin:0.35rem 0 0;font-style:italic">
-        {{t "Generate one at" $.Lang}} <a href="/verifier/verify">/verifier/verify</a> {{t "(DPG: Inji Verify), then copy the same-device link." $.Lang}}
+        {{t "Paste the link, or scan the verifier's QR. Generate one at" $.Lang}} <a href="/verifier/verify">/verifier/verify</a> {{t "(DPG: Inji Verify)." $.Lang}}
       </p>
     </div>
 
@@ -54,49 +59,53 @@
      leave the wallet, with Disclose / Decline. Mirrors fragment_present_consent
      but for Inji-held credentials + the Inji submit route. */}}
 {{define "fragment_inji_present_consent"}}
-{{$pv := .Preview}}
-<div class="present-consent {{if not $pv.Compatible}}incompatible{{end}}">
-  <div class="caps" style="margin-bottom:0.5rem">{{t "Review what's being shared" $.Lang}}</div>
-  <div class="present-consent-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem">
-    <div>
-      <h3 style="margin:0 0 0.25rem;font-family:'Josefin Sans',sans-serif;font-weight:500">{{if $pv.CredentialTitle}}{{$pv.CredentialTitle}}{{else}}Credential{{end}}</h3>
-      <div class="mono" style="font-size:0.78rem;color:var(--muted)">
-        {{t "requested by" $.Lang}} {{if $pv.VerifierClientID}}{{$pv.VerifierClientID}}{{else}}(verifier){{end}}
+<div class="present-consent {{if not .AllMatched}}incompatible{{end}}">
+  <div class="caps" style="margin-bottom:0.5rem">{{t "Review what's being shared" $.Lang}}{{if .Multi}} · {{len .Previews}} {{t "credentials" $.Lang}}{{end}}</div>
+
+  {{range $i, $pv := .Previews}}
+  <div style="{{if $i}}margin-top:1.1rem;padding-top:1.1rem;border-top:1px solid var(--line){{end}}">
+    <div class="present-consent-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem">
+      <div>
+        <h3 style="margin:0 0 0.25rem;font-family:'Josefin Sans',sans-serif;font-weight:500">{{if $pv.CredentialTitle}}{{$pv.CredentialTitle}}{{else}}Credential{{end}}</h3>
+        <div class="mono" style="font-size:0.78rem;color:var(--muted)">
+          {{t "requested by" $.Lang}} {{if $pv.VerifierClientID}}{{$pv.VerifierClientID}}{{else}}(verifier){{end}}
+        </div>
       </div>
+      <span class="pill err" style="font-size:0.62rem;white-space:nowrap">{{if $pv.RequestedFormat}}{{$pv.RequestedFormat}}{{end}} · {{t "full credential" $.Lang}}</span>
     </div>
-    <span class="pill err" style="font-size:0.62rem;white-space:nowrap">{{if $pv.RequestedFormat}}{{$pv.RequestedFormat}}{{end}} · {{t "full credential" $.Lang}}</span>
+
+    {{if not $pv.Compatible}}
+      <div class="present-consent-block" style="margin-top:0.85rem;padding:0.85rem 1rem;background:#2e0d0d;border:1px solid var(--err);border-radius:6px;color:#ff9a9a">
+        <div style="display:flex;align-items:center;gap:0.5rem"><span style="font-size:1.2rem">✕</span><strong>{{t "Can't present this credential" $.Lang}}</strong></div>
+        <p style="margin:0.5rem 0 0;font-size:0.85rem">{{$pv.IncompatibleReason}}</p>
+      </div>
+    {{end}}
+
+    {{if $pv.Fields}}
+      <div class="caps" style="font-size:0.65rem;margin:1rem 0 0.5rem">{{t "Claims the verifier is asking for" $.Lang}}</div>
+      <dl class="cred-rows">
+        {{range $pv.Fields}}
+          <dt>{{replaceUnderscore .Name}}</dt>
+          <dd>{{if .Value}}{{.Value}}{{else}}<em style="color:var(--muted)">({{t "not in this credential" $.Lang}})</em>{{end}}</dd>
+        {{end}}
+      </dl>
+    {{else if $pv.Compatible}}
+      <p style="font-size:0.85rem;color:var(--ink-soft);margin:1rem 0 0">{{t "The verifier didn't itemise claims — the whole credential would be shared." $.Lang}}</p>
+    {{end}}
   </div>
-
-  {{if not $pv.Compatible}}
-    <div class="present-consent-block" style="margin-top:0.85rem;padding:0.85rem 1rem;background:#2e0d0d;border:1px solid var(--err);border-radius:6px;color:#ff9a9a">
-      <div style="display:flex;align-items:center;gap:0.5rem"><span style="font-size:1.2rem">✕</span><strong>{{t "Can't present this credential" $.Lang}}</strong></div>
-      <p style="margin:0.5rem 0 0;font-size:0.85rem">{{$pv.IncompatibleReason}}</p>
-    </div>
   {{end}}
 
-  {{if $pv.Fields}}
-    <div class="caps" style="font-size:0.65rem;margin:1rem 0 0.5rem">{{t "Claims the verifier is asking for" $.Lang}}</div>
-    <dl class="cred-rows">
-      {{range $pv.Fields}}
-        <dt>{{replaceUnderscore .Name}}</dt>
-        <dd>{{if .Value}}{{.Value}}{{else}}<em style="color:var(--muted)">({{t "not in this credential" $.Lang}})</em>{{end}}</dd>
-      {{end}}
-    </dl>
-  {{else if $pv.Compatible}}
-    <p style="font-size:0.85rem;color:var(--ink-soft);margin:1rem 0 0">{{t "The verifier didn't itemise claims — the whole credential would be shared." $.Lang}}</p>
-  {{end}}
-
-  {{if $pv.Compatible}}
+  {{if .AllMatched}}
   <p style="font-size:0.78rem;color:var(--muted);margin-top:1rem;font-style:italic">{{t "Disclosing sends the whole credential to the verifier over OID4VP." $.Lang}}</p>
   {{end}}
 
   <div class="btn-row" style="margin-top:1.5rem">
     <form style="display:inline" hx-post="/holder/wallet/inji/present/decline" hx-target="#inji-present-result" hx-swap="innerHTML">
-      <button class="btn ghost" type="submit">{{if $pv.Compatible}}{{t "Decline" $.Lang}}{{else}}{{t "Go back" $.Lang}}{{end}}</button>
+      <button class="btn ghost" type="submit">{{if .AllMatched}}{{t "Decline" $.Lang}}{{else}}{{t "Go back" $.Lang}}{{end}}</button>
     </form>
-    {{if $pv.Compatible}}
+    {{if .AllMatched}}
       <form style="display:inline" hx-post="/holder/wallet/inji/present/submit" hx-target="#inji-present-result" hx-swap="innerHTML" hx-indicator="#inji-consent-busy" hx-disabled-elt="find button[type='submit']">
-        <input type="hidden" name="credential_id" value="{{$pv.CredentialID}}">
+        {{range .CredIDs}}<input type="hidden" name="credential_id" value="{{.}}">{{end}}
         <input type="hidden" name="request_uri" value="{{.RequestURI}}">
         <button class="btn" type="submit">{{t "Disclose →" $.Lang}}</button>
       </form>

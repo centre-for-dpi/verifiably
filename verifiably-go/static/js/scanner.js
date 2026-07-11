@@ -113,9 +113,21 @@
         // it try both polarities on the slow path.
         const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
         if (code && code.data) {
-          status.textContent = 'Got it. Verifying…';
           const text = code.data;
           stopActive();
+          // Fill-the-field mode: the decoded QR is dropped into a form field and
+          // the page's own flow takes over (no POST). Used by the present page,
+          // where the QR is an openid4vp:// request the holder still reviews.
+          if (opts.fillField) {
+            const target = document.getElementById(opts.fillField);
+            if (target) {
+              target.value = text;
+              target.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            status.textContent = 'Request loaded — review below.';
+            return;
+          }
+          status.textContent = 'Got it. Verifying…';
           postAndRender(opts.postURL, { ...opts.extraFields, [opts.payloadField || 'credential_data']: text }, opts.targetId)
             .catch((err) => { status.textContent = 'Verify failed: ' + err.message; });
           return;
@@ -149,6 +161,16 @@
       targetId: 'wallet-body',
       extraFields: {},
       payloadField: 'offer_uri',
+    });
+  };
+
+  // Holder present-request scan: the decoded QR IS the verifier's openid4vp://
+  // request. Fill the paste textarea (no POST) so the existing resolve/consent
+  // flow proceeds exactly as if the holder had pasted the link.
+  window.startPresentScan = function () {
+    scanInto({
+      ids: { btn: 'present-scan-btn', video: 'present-scan-video', status: 'present-scan-status' },
+      fillField: 'inji-present-request',
     });
   };
 })();
