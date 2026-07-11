@@ -6,36 +6,35 @@ import (
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
-// The delegation preset carries the capability expiry as a DERIVED valid_until
-// field, not a manual row: it enables Expiry (the "This credential expires"
-// toggle) and leaves valid_until OUT of the editable field rows. The single
-// valid_until{string,datetime} then comes from currentBuilderSchema's funnel —
-// so the operator no longer sees a redundant, easily-mistyped valid_until row,
-// while every other capability field stays a generic (no-Format) input.
-func TestApplyDelegationPreset_ValidUntilViaExpiry(t *testing.T) {
+// The delegation preset provides ONLY the capability fields (onBehalfOf/role/
+// allowedAction). It must NOT force expiry on: valid_until is opt-in via the
+// "This credential expires" toggle, so an issuer never gets a valid_until field
+// they didn't create — which, unprovisioned, renders as ${valid_until} and fails
+// the holder's claim.
+func TestApplyDelegationPreset_ExpiryOptIn(t *testing.T) {
 	d := &builderData{}
 	applyDelegationPreset(d)
 
 	if d.Std != "sd_jwt_vc (IETF)" {
 		t.Errorf("Std = %q, want sd_jwt_vc (IETF)", d.Std)
 	}
-	if !d.Expiry {
-		t.Error("delegation preset must enable Expiry so valid_until is derived, not a manual row")
+	if d.Expiry {
+		t.Error("delegation preset must NOT force Expiry — valid_until is opt-in only")
 	}
 	byName := map[string]vctypes.FieldSpec{}
 	for _, f := range d.Fields {
 		byName[f.Name] = f
 	}
 
-	// valid_until must NOT be an editable field row (it is derived by the funnel).
+	// valid_until must NOT be a preset field row.
 	if _, present := byName["valid_until"]; present {
-		t.Error("valid_until must not be a preset field row — it is derived via Expiry")
+		t.Error("valid_until must not be a preset field row")
 	}
 	if _, stale := byName["validUntil"]; stale {
 		t.Error("stale camelCase validUntil field present — the expiry field is valid_until")
 	}
 
-	// The other capability fields stay generic dynamic inputs (no Format).
+	// The capability fields stay generic dynamic inputs (no Format).
 	for _, n := range []string{"onBehalfOf", "role", "allowedAction"} {
 		f, ok := byName[n]
 		if !ok {
@@ -47,13 +46,22 @@ func TestApplyDelegationPreset_ValidUntilViaExpiry(t *testing.T) {
 		}
 	}
 
-	// End-to-end through the funnel: the built schema carries exactly one
-	// valid_until{string,datetime} (the derived capability expiry).
 	sess := &Session{IssuerDpg: "Inji Certify · Pre-Auth"}
+
+	// Without the expiry toggle, the built delegation schema carries NO valid_until
+	// — the issuer isn't surprised by a field they never created.
 	built := currentBuilderSchema(sess, *d)
-	vu, ok := exactlyOneField(built, "valid_until")
+	if _, present := exactlyOneField(built, "valid_until"); present {
+		t.Error("a delegation schema without the expiry toggle must NOT carry valid_until")
+	}
+
+	// Opting in (ticking "This credential expires") derives exactly one
+	// valid_until{string,datetime}.
+	d.Expiry = true
+	withExpiry := currentBuilderSchema(sess, *d)
+	vu, ok := exactlyOneField(withExpiry, "valid_until")
 	if !ok {
-		t.Fatal("built delegation schema must carry exactly one valid_until")
+		t.Fatal("delegation + expiry toggle must derive exactly one valid_until")
 	}
 	if vu.Datatype != "string" || vu.Format != "datetime" {
 		t.Errorf("derived valid_until = {%q,%q}, want {string,datetime}", vu.Datatype, vu.Format)

@@ -100,7 +100,14 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	// overrides the template's ${statusUri}/${statusIdx} with its own list, so the
 	// issued VC's credentialStatus points at CERTIFY's list (which Inji Verify and
 	// verifiably's own gate both read + revoke against). See statusStoreFor.
-	delegFields := []string{"onBehalfOf", "role", "allowedAction", "valid_until"}
+	// valid_until (expiry) is declared as a schema field ONLY when the caller
+	// supplies a value — otherwise the extraction view carries an unprovisioned
+	// valid_until column that Certify renders as ${valid_until} and the holder's
+	// wallet rejects at claim time. onBehalfOf/role/allowedAction are the capability.
+	delegFields := []string{"onBehalfOf", "role", "allowedAction"}
+	if req.ValidUntil != "" {
+		delegFields = append(delegFields, "valid_until")
+	}
 	for _, spec := range []struct {
 		typeName string
 		fields   []string
@@ -387,8 +394,15 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 	subjSchema := injiPreAuthSchema(subjType, dpg, std, []string{"subjectRef", "givenName"})
 	// valid_until (not validUntil) — see ERR-3 note in APIInjiDelegationSetup:
 	// certify reserves ${validUntil} for the VCDM validity date, shadowing a
-	// claim of that name; valid_until resolves from the data provider instead.
-	delegSchema := injiPreAuthSchema(delegType, dpg, std, []string{"onBehalfOf", "role", "allowedAction", "valid_until", "statusUri", "statusIdx", "statusType"})
+	// claim of that name; valid_until resolves from the data provider instead. It is
+	// declared ONLY when a value is supplied, so an expiry-less pair doesn't carry an
+	// unprovisioned ${valid_until} the holder's wallet would reject.
+	delegPreFields := []string{"onBehalfOf", "role", "allowedAction"}
+	if req.ValidUntil != "" {
+		delegPreFields = append(delegPreFields, "valid_until")
+	}
+	delegPreFields = append(delegPreFields, "statusUri", "statusIdx", "statusType")
+	delegSchema := injiPreAuthSchema(delegType, dpg, std, delegPreFields)
 	// SaveCustomSchema is not idempotent on CREDEBL (409 when the template name
 	// already exists); tolerate that — IssueToWallet's resolveTemplateID then
 	// finds the existing template by name+vct.

@@ -442,14 +442,14 @@ func scenarioByKey(k string) (delegationScenario, bool) {
 // allowedAction the verifier's evaluator keys off; role + valid_until for display/caveat).
 func applyDelegationPreset(d *builderData) {
 	d.Std = "sd_jwt_vc (IETF)"
-	// The delegation capability expiry is `valid_until`, but it is NOT a manual
-	// field row here — it is derived by the "This credential expires" toggle
-	// (Expiry), which currentBuilderSchema appends once as a datetime field and
-	// dedupes. Enabling Expiry keeps the capability-expiry policy without the
-	// redundant, easily-mistyped string row the operator used to see. (valid_until
-	// underscore — not validUntil — still dodges Certify's reserved ${validUntil}
-	// marker; the evaluator reads valid_until.)
-	d.Expiry = true
+	// Delegation expiry (`valid_until`) is OPT-IN — NOT a forced field. It is added
+	// only when the operator ticks "This credential expires" (Expiry), which
+	// currentBuilderSchema appends as a datetime field. The preset must not force it
+	// on: an issuer shouldn't discover a valid_until field they never created, which
+	// (unprovisioned) Certify renders as ${valid_until} and the holder's wallet then
+	// rejects at claim time. The capability fields below ARE the delegation's
+	// semantics (onBehalfOf/role/allowedAction); the evaluator reads valid_until only
+	// when it is present.
 	base := []vctypes.FieldSpec{
 		{Name: "onBehalfOf", Datatype: "string", Required: true},
 		{Name: "role", Datatype: "string"},
@@ -769,13 +769,14 @@ func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
 			s.FieldsSpec = append(s.FieldsSpec, f)
 		}
 	}
-	// Opt-in expiry policy: append a valid_until datetime claim so the credential
+	// Opt-in expiry policy: append a valid_until datetime claim ONLY when the
+	// operator ticked "This credential expires" (d.Expiry), so the credential
 	// carries (and the temporal gate enforces) a validity window. DPG-agnostic —
 	// the flat valid_until claim lands top-level on SD-JWT and inside
 	// credentialSubject on W3C, both read by backend.TemporalBounds. This is the
 	// single funnel every builder path (preview/add/remove/delegation/save) goes
-	// through, so it doubles as the dedupe point: the delegation preset already
-	// places valid_until in the fields, so hasField skips the duplicate.
+	// through; hasField dedupes if a schema is re-saved. Delegation schemas do NOT
+	// force expiry — valid_until only appears if the operator explicitly opts in.
 	if d.Expiry && !hasField(s.FieldsSpec, "valid_until") {
 		s.FieldsSpec = append(s.FieldsSpec, vctypes.FieldSpec{
 			Name:     "valid_until",

@@ -55,21 +55,29 @@ func (h *H) DownloadInjiClaimedPDF(w http.ResponseWriter, r *http.Request) {
 		sort.Strings(order)
 	}
 
-	// Best-effort QR: encode + render with a QR when the payload fits (ldp_vc).
-	// An SD-JWT VC carries an x5c chain that overflows even QR version 40, so
-	// fall back to a QR-less PDF (claims + full credential text + a holder note)
-	// rather than 500-ing (which the browser saves as "pdf.txt").
+	// Best-effort QR: PixelPass-encode the credential and render it with a QR,
+	// letting qr.Encode itself decide whether the payload fits QR version 40 — we
+	// fall back only when it genuinely overflows. A W3C ldp_vc typically fits; an
+	// SD-JWT VC carries an x5c chain that overflows even v40, so it falls back to a
+	// QR-less PDF (claims + full credential text + a holder note) rather than 500-ing.
 	var pdfBytes []byte
-	if qrPayload, qErr := injicertify.EncodePixelPassQR([]byte(vc)); qErr == nil && qrPayloadFitsQR(qrPayload) {
+	if qrPayload, qErr := injicertify.EncodePixelPassQR([]byte(vc)); qErr == nil {
 		if b, rErr := injicertify.RenderCredentialPDF(title, issuer, qrPayload, fields, order); rErr == nil {
 			pdfBytes = b
 		}
 	}
 	if pdfBytes == nil {
-		note := "This credential is an SD-JWT, which is too large to embed in a " +
-			"scannable QR code (a known limitation of the SD-JWT format). The full " +
-			"credential is printed below and remains in your wallet — present it " +
+		// Format-aware note: only an SD-JWT is inherently un-scannable. A W3C
+		// credential that lands here is merely large — never claim it is an SD-JWT.
+		note := "This credential is too large to embed in a scannable QR code. The " +
+			"full credential is printed below and remains in your wallet — present it " +
 			"digitally rather than by scanning this page."
+		if !injiIsW3C(vc) {
+			note = "This credential is an SD-JWT, which is too large to embed in a " +
+				"scannable QR code (a known limitation of the SD-JWT format). The full " +
+				"credential is printed below and remains in your wallet — present it " +
+				"digitally rather than by scanning this page."
+		}
 		credText, _ := parsed["VC"].(string)
 		if credText == "" {
 			credText = vc
@@ -85,8 +93,3 @@ func (h *H) DownloadInjiClaimedPDF(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="credential-`+id+`.pdf"`)
 	_, _ = w.Write(pdfBytes)
 }
-
-// qrPayloadFitsQR reports whether a PixelPass payload is small enough to embed
-// in a QR. go-qrcode caps at QR version 40 (~1273 bytes for byte-mode at High
-// error correction); we use a conservative bound so the encode never fails.
-func qrPayloadFitsQR(payload string) bool { return len(payload) <= 1200 }

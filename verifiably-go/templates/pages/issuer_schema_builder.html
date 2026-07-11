@@ -61,7 +61,7 @@
       Delegated-access credential
     </label>
     <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
-      Carries a delegation capability — the holder acts <span class="mono">onBehalfOf</span> a subject. Turning this on presets SD-JWT plus the capability fields (onBehalfOf, role, allowedAction, valid_until); a verifier then evaluates linkage, invocation, capability and revocation. At issue time you'll set <span class="mono">onBehalfOf</span> to a <strong>unique</strong> identifier the holder's identity credential carries — its <span class="mono">subjectRef</span>, an identifier field (national ID, etc.), or DID — so the verifier can link the two. <strong>Same format both sides:</strong> the holder's identity credential must be issued in the <em>same</em> format as this one (both SD-JWT, or both W3C) — a verifier can't combine formats in one delegated-access request.
+      Carries a delegation capability — the holder acts <span class="mono">onBehalfOf</span> a subject. Turning this on presets SD-JWT plus the capability fields (onBehalfOf, role, allowedAction); a verifier then evaluates linkage, invocation, capability and revocation. At issue time you'll set <span class="mono">onBehalfOf</span> to a <strong>unique</strong> identifier the holder's identity credential carries — its <span class="mono">subjectRef</span>, an identifier field (national ID, etc.), or DID — so the verifier can link the two. <strong>Same format both sides:</strong> the holder's identity credential must be issued in the <em>same</em> format as this one (both SD-JWT, or both W3C) — a verifier can't combine formats in one delegated-access request.
     </p>
     {{if .Delegation}}
     <div style="margin-top:0.75rem">
@@ -90,7 +90,7 @@
       This credential expires
     </label>
     <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
-      Adds an opt-in <span class="mono">valid_until</span> field so the credential carries an expiry that verifiers <strong>enforce</strong> — a presentation after that instant is denied as expired, on every DPG and in both SD-JWT and W3C. At issue time you'll pick a date &amp; time. Leave off for credentials that never expire (no coupling). Delegated-access credentials already include <span class="mono">valid_until</span>, so this won't add a duplicate.
+      Adds an opt-in <span class="mono">valid_until</span> field so the credential carries an expiry that verifiers <strong>enforce</strong> — a presentation after that instant is denied as expired, on every DPG and in both SD-JWT and W3C. At issue time you'll pick a date &amp; time. Leave off for credentials that never expire (no coupling) — this applies to delegated-access credentials too, whose expiry is opt-in here, not automatic.
     </p>
   </div>
 
