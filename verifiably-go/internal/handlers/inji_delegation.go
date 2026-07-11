@@ -194,8 +194,9 @@ func (h *H) APIInjiDelegationRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Index int    `json:"index"`
-		Type  string `json:"type,omitempty"` // "bitstring" (W3C VCDM) | "token" (SD-JWT, default)
+		Index     int    `json:"index"`
+		Type      string `json:"type,omitempty"`      // "bitstring" (W3C VCDM) | "token" (SD-JWT, default)
+		Reinstate bool   `json:"reinstate,omitempty"` // clear the bit instead of setting it
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -207,6 +208,14 @@ func (h *H) APIInjiDelegationRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	if store == nil {
 		apiError(w, http.StatusServiceUnavailable, "no status store for type "+req.Type)
+		return
+	}
+	if req.Reinstate {
+		if err := store.Reinstate(req.Index); err != nil {
+			apiError(w, http.StatusBadGateway, "reinstate: "+err.Error())
+			return
+		}
+		apiJSON(w, http.StatusOK, map[string]any{"reinstated": req.Index})
 		return
 	}
 	if err := store.Revoke(req.Index); err != nil {

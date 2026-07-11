@@ -155,6 +155,12 @@ start_container() {
   local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"
   # verifiably-go (uid 65532) rewrites these two config files on issuer schema-creation
   for _f in "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties" "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties"; do chown 65532:65532 "$_f" 2>/dev/null || true; done
+  # Public issuer DID for verifiably-go's certifyIssuerDID env fallback (used only
+  # when the did.json fetch transiently fails, so a credential is never pinned to
+  # the unverifiable did:web:certify-nginx). Prefer ISSUER_DID_DOMAIN; else read
+  # certify's own CERTIFY_ISSUER_DID (the ground truth) off the running container.
+  local _certify_issuer_did="${ISSUER_DID_DOMAIN:+did:web:$ISSUER_DID_DOMAIN}"
+  [[ -z "$_certify_issuer_did" ]] && _certify_issuer_did=$(docker inspect inji-certify --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -n 's/^CERTIFY_ISSUER_DID=//p' | head -1)
   # Healthcheck is defined in the Dockerfile as an exec-form HEALTHCHECK that
   # runs `verifiably -healthcheck` (the distroless image has no /bin/sh or wget,
   # so the CLI --health-cmd form — always CMD-SHELL — can never succeed here).
@@ -192,6 +198,7 @@ start_container() {
     -e SMTP_FROM_NAME="${SMTP_FROM_NAME:-}" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
+    ${_certify_issuer_did:+-e CERTIFY_ISSUER_DID="$_certify_issuer_did"} \
     -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
     -e INJI_CERTIFY_SCOPE_QUERY_FILE="/etc/inji/certify-scope-query.properties" \
     -e INJI_ESIGNET_SCOPE_FILE="/etc/inji/esignet-scopes.properties" \

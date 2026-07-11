@@ -300,27 +300,26 @@
      (method / format / issuer / trust / policies) is tucked into a native
      <details> expander, the same click-to-expand pattern the holder wallet uses
      for "Raw credential (JSON)". No swivel, no hover-to-discover. */}}
-{{/* F25: a delegated-access PAIR verified through an EXTERNAL verifier (Inji
-     Verify) is authoritative on the delegated-access decision — verifiably runs
-     linkage/invocation/capability/revocation itself. Inji Verify still marks the
-     delegation credential INVALID because it can't read verifiably's bitstring
-     status list (F16/F23), which would otherwise force a red "Credential invalid"
-     headline OVER a green AUTHORISED card. When the delegation is authorised we
-     lead with that verdict; the per-credential Inji view stays honest below. */}}
-{{$delegAuth := false}}{{$isDeleg := false}}{{with .Delegation}}{{if .Evaluated}}{{$isDeleg = true}}{{if .Authorized}}{{$delegAuth = true}}{{end}}{{end}}{{end}}
-<div class="verify-result {{if or .Valid $delegAuth}}valid{{else}}invalid{{end}}" style="margin-top:1.5rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid {{if or .Valid $delegAuth}}var(--ok){{else}}var(--err){{end}};padding:1.5rem;border-radius:2px">
+{{/* A delegated-access PAIR: the OVERALL verdict keys on the TRUE validity
+     (res.Valid) — which already folds in the external verifier's per-credential
+     verdict AND verifiably's own gates (temporal / linkage / invocation /
+     capability / revocation, via attachDelegationVerdict). verifiably's gates
+     only ADD strictness; they never override an external INVALID into a pass, so
+     a rejected/revoked credential is a genuine DENIED. The per-credential cards
+     below carry the specific claims + checks. */}}
+{{$isDeleg := false}}{{with .Delegation}}{{if .Evaluated}}{{$isDeleg = true}}{{end}}{{end}}
+<div class="verify-result {{if .Valid}}valid{{else}}invalid{{end}}" style="margin-top:1.5rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid {{if .Valid}}var(--ok){{else}}var(--err){{end}};padding:1.5rem;border-radius:2px">
 
-  <div class="verify-banner {{if or .Valid $delegAuth}}valid{{else}}invalid{{end}}">
-    <span class="icon">{{if or .Valid $delegAuth}}✓{{else}}✕{{end}}</span>
+  <div class="verify-banner {{if .Valid}}valid{{else}}invalid{{end}}">
+    <span class="icon">{{if .Valid}}✓{{else}}✕{{end}}</span>
     <div>
       {{if $isDeleg}}
-        {{/* Combined delegated-pair result: the OVERALL verdict is the
-             delegated-access decision; the per-credential cards below carry the
-             specific claims + checks. */}}
-        <h3>🔑 Delegated access — {{if .Delegation.Authorized}}authorised{{else}}denied{{end}}</h3>
+        <h3>🔑 Delegated access — {{if .Valid}}authorised{{else}}denied{{end}}</h3>
         <p>
-          {{if .Delegation.Reason}}{{.Delegation.Reason}}{{else}}All delegated-access checks passed.{{end}}
-          {{if and .Delegation.Authorized (not .Valid)}} The external verifier flags a credential on its own status list; verifiably's per-credential checks below are authoritative.{{end}}
+          {{if .Valid}}All delegated-access checks passed.
+          {{else if .Delegation.Reason}}{{.Delegation.Reason}}
+          {{else}}A presented credential was rejected — see the per-credential cards below.
+          {{end}}
         </p>
       {{else if .Valid}}
         <h3>Credential valid</h3>
@@ -397,17 +396,10 @@
   {{/* Invalid results: a one-line reason up front so the operator sees WHY
        without expanding; the full per-policy detail lives in the expander. */}}
   {{if .FailedPolicies}}
-  {{if and $delegAuth (not .Valid)}}
-  <div style="margin-top:0.9rem;padding:0.6rem 0.8rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-size:0.82rem;color:var(--ink-soft)">
-    <strong>External verifier flags</strong> (per-credential, superseded by the delegated-access decision above):
-    {{range $i, $p := .FailedPolicies}}{{if $i}}, {{end}}<span class="mono">{{.Name}}</span>{{end}}.
-  </div>
-  {{else}}
   <div style="margin-top:0.9rem;padding:0.6rem 0.8rem;border:1px solid var(--err);border-radius:6px;background:color-mix(in srgb, var(--err) 8%, transparent);font-size:0.85rem">
     <strong style="color:var(--err)">Failed:</strong>
     {{range $i, $p := .FailedPolicies}}{{if $i}}, {{end}}<span class="mono">{{.Name}}</span>{{end}}.
   </div>
-  {{end}}
   {{end}}
 
   {{/* Click-to-expand: the full verification metadata + per-policy detail. */}}

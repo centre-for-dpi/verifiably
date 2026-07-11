@@ -149,14 +149,13 @@ func credentialCardTitle(c backend.NormalizedCredential) string {
 }
 
 // hostVerifierCheck maps the external verifier's per-credential verdict to a card
-// check. INVALID is shown as a failed check with a note — Inji flags a credential
-// whose bitstring status list it can't read, which verifiably's own "Not revoked"
-// check (below) and the overall verdict then reconcile.
+// check — the host's plain signature/status outcome, no editorialising. verifiably
+// does NOT override it: an INVALID from the external verifier is a genuine failure.
 func hostVerifierCheck(status string) backend.CredCheck {
 	if strings.EqualFold(status, "SUCCESS") {
-		return backend.CredCheck{Label: "External verifier", Status: "pass", Note: "accepted by the external verifier"}
+		return backend.CredCheck{Label: "External verifier", Status: "pass", Note: "signature verified by the external verifier"}
 	}
-	return backend.CredCheck{Label: "External verifier", Status: "fail", Note: "flagged by the external verifier (often because it can't read verifiably's status list) — see Not revoked below and the overall verdict"}
+	return backend.CredCheck{Label: "External verifier", Status: "fail", Note: "rejected by the external verifier"}
 }
 
 // credTemporalCheck reports whether the credential is within its own validity
