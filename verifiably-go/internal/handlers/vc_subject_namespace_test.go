@@ -71,11 +71,16 @@ func TestAuthcodeViewDDL(t *testing.T) {
 		`claims->>'myslug.b' AS "b"`,
 		`coalesce(claims->>'statusIdx_myslug','0') AS "statusIdx"`,
 		`'https://ts' AS "statusUri"`,
-		`CREATE OR REPLACE VIEW certify.vc_subject_myslug`,
+		`DROP VIEW IF EXISTS certify.vc_subject_myslug`,
+		`CREATE VIEW certify.vc_subject_myslug`,
 	} {
 		if !strings.Contains(ddl, want) {
 			t.Errorf("authcodeViewDDL missing %q\ngot: %s", want, ddl)
 		}
+	}
+	// DROP+CREATE, never CREATE OR REPLACE (which 42P16s on a column-set change).
+	if strings.Contains(ddl, "CREATE OR REPLACE") {
+		t.Errorf("view DDL must not use CREATE OR REPLACE: %s", ddl)
 	}
 	if strings.Contains(ddl, `claims->>'myslug.statusIdx'`) {
 		t.Errorf("statusIdx field should be auto-added, not read as a namespaced claim: %s", ddl)

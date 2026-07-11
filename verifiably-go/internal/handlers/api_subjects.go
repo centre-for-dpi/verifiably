@@ -44,9 +44,11 @@ type SubjectProvisioner interface {
 	// the individualId is not enrolled. The gate the activation flow checks.
 	GetIdentity(ctx context.Context, individualID string) (map[string]string, error)
 	// DeleteCredential removes an auth-code credential (credential_config + owner
-	// row), owner-checked. Backs the issuer schema-browser Delete for DB-backed
-	// Inji credentials (the registry adapter only knows in-memory custom schemas).
-	DeleteCredential(ctx context.Context, key, ownerKey string) error
+	// row + its certify.vc_subject_<slug> extraction view), owner-checked. Backs the
+	// issuer schema-browser Delete for DB-backed Inji credentials (the registry
+	// adapter only knows in-memory custom schemas). slug is the injiConfigKeySlug-
+	// derived view name; "" skips the view drop.
+	DeleteCredential(ctx context.Context, key, ownerKey, slug string) error
 	// ReplaceView execs a CREATE OR REPLACE VIEW statement — used by the one-off
 	// migration that regenerates existing extraction views into the per-slug
 	// namespaced form (subjectClaimKey).

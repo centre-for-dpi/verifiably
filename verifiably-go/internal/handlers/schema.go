@@ -648,16 +648,36 @@ func (h *H) schemaAvailable(ctx context.Context, key string) bool {
 // pushes an OOB update for the page-level Continue button.
 func (h *H) DeleteSchema(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
+	ctx := issuerCtx(r, sess)
 	id := r.FormValue("id")
 	// walt.id/credebl custom schemas are tracked in the registry adapter's
 	// in-memory list (DeleteCustomSchema dispatches to their DPG adapters).
-	_ = h.Adapter.DeleteCustomSchema(issuerCtx(r, sess), id)
+	_ = h.Adapter.DeleteCustomSchema(ctx, id)
 	// Inji auth-code credentials are DB-backed — the schema browser lists them via
 	// SubjectStore.ListMyCredentials, NOT the registry's in-memory schemas, so the
-	// adapter delete above is a no-op for them. Delete the credential_config
-	// directly so the card disappears from the owner-scoped browser.
+	// adapter delete above is a no-op for them. Tear down ALL the artifacts
+	// applyAuthcodeSchema created so the delete is persistent: the credential_config
+	// + owner rows + the per-credential extraction view (DeleteCredential), the
+	// Certify scope-query mapping + the two eSignet scope registrations, then reload
+	// Certify — otherwise a same-named rebuild inherits a stale view/mapping (→ the
+	// 42P16 column-rename failure) and the deleted config lingers in Certify's cache.
 	if h.Subjects != nil {
-		_ = h.Subjects.DeleteCredential(issuerCtx(r, sess), id, sessionOwnerKey(sess))
+		_, slug := injiConfigKeySlug(vctypes.Schema{AdditionalTypes: []string{id}})
+		// Read the scope BEFORE deleting the config row. "" ⇒ not an auth-code
+		// credential (e.g. a walt.id/CREDEBL schema) ⇒ skip the Certify teardown +
+		// restart, so those deletes don't needlessly bounce inji-certify.
+		scope, _ := h.Subjects.CredentialScope(ctx, id)
+		if err := h.Subjects.DeleteCredential(ctx, id, sessionOwnerKey(sess), slug); err == nil && scope != "" {
+			_ = removeBraceEntry(certifyScopeQueryFile(),
+				"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", scope)
+			_ = removeBraceEntry(esignetScopeFile(),
+				"mosip.esignet.supported.credential.scopes", scope)
+			_ = removeBraceEntry(esignetScopeFile(),
+				"mosip.esignet.credential.scope-resource-mapping", scope)
+			for _, c := range []string{"inji-certify", "injiweb-esignet"} {
+				_ = dockerRestart(c)
+			}
+		}
 	}
 	if sess.SchemaID == id {
 		sess.SchemaID = ""

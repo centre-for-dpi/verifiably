@@ -70,11 +70,11 @@ func (s *SubjectStore) ProvisionSubject(ctx context.Context, subjectID string, c
 	return nil
 }
 
-// ReplaceView execs a CREATE OR REPLACE VIEW statement. Used by the one-off
+// ReplaceView execs the view DDL from authcodeViewDDL (a DROP VIEW IF EXISTS +
+// CREATE VIEW pair, run as one no-arg simple-protocol Exec). Used by the one-off
 // migration that regenerates each certify.vc_subject_<slug> extraction view into
-// the per-slug namespaced form. CREATE OR REPLACE keeps the same column names +
-// order (the view aliases are unchanged, only the JSONB key read changes), so it
-// succeeds in place without a DROP.
+// the per-slug namespaced form. DROP+CREATE (not CREATE OR REPLACE) so a view
+// whose column set changed is rebuilt cleanly rather than rejected with 42P16.
 func (s *SubjectStore) ReplaceView(ctx context.Context, ddl string) error {
 	if _, err := s.pool.Exec(ctx, ddl); err != nil {
 		return fmt.Errorf("pg: replace view: %w", err)
@@ -336,13 +336,16 @@ func (s *SubjectStore) CredentialFields(ctx context.Context, key string) ([]stri
 }
 
 // DeleteCredential removes an issuer's auth-code credential: its credential_config
-// row (so it disappears from the owner-scoped catalog) + its owner record, in one
-// tx. The per-credential extraction view is left in place (harmless; a future
-// re-create CREATE-OR-REPLACEs it). Owner-checked: a non-owner caller (non-empty
-// ownerKey that doesn't match the recorded owner) is refused; an empty ownerKey
-// (admin) bypasses. NOTE: inji-certify caches credential_configs at startup, so a
-// deleted credential stays claimable until certify's next config reload.
-func (s *SubjectStore) DeleteCredential(ctx context.Context, key, ownerKey string) error {
+// row (so it disappears from the owner-scoped catalog), its owner record, AND its
+// per-credential extraction view certify.vc_subject_<slug> — all in one tx, so the
+// teardown is symmetric with ApplyAuthcodeSchema's create. Dropping the view is
+// what makes delete persistent: a leftover view of the same slug blocks a later
+// rebuild whose columns differ (CREATE cannot rename view columns, SQLSTATE 42P16).
+// slug must be the injiConfigKeySlug-derived (lower + alphanumeric-only) name; ""
+// skips the view drop. Owner-checked: a non-owner caller (non-empty ownerKey that
+// doesn't match the recorded owner) is refused; an empty ownerKey (admin) bypasses.
+// (The caller reloads inji-certify so the deleted config also leaves its cache.)
+func (s *SubjectStore) DeleteCredential(ctx context.Context, key, ownerKey, slug string) error {
 	if strings.TrimSpace(key) == "" {
 		return nil
 	}
@@ -366,6 +369,14 @@ func (s *SubjectStore) DeleteCredential(ctx context.Context, key, ownerKey strin
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM certify.vc_credential_owner WHERE credential_config_key_id=$1`, key); err != nil {
 		return fmt.Errorf("pg: delete owner %q: %w", key, err)
+	}
+	// slug is sanitized to [a-z0-9] by injiConfigKeySlug, so it is safe to inline
+	// (view names cannot be parameterized). IF EXISTS tolerates an already-gone view.
+	if slug != "" {
+		if _, err := tx.Exec(ctx,
+			fmt.Sprintf(`DROP VIEW IF EXISTS certify.vc_subject_%s`, slug)); err != nil {
+			return fmt.Errorf("pg: drop view for %q: %w", key, err)
+		}
 	}
 	return tx.Commit(ctx)
 }

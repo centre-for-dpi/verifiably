@@ -44,8 +44,9 @@ type fakeSubjects struct {
 	identities map[string]map[string]string
 	idUpserts  []provCall
 
-	deletedCreds  []string // keys passed to DeleteCredential
-	replacedViews []string // DDLs passed to ReplaceView
+	deletedCreds     []string // keys passed to DeleteCredential
+	droppedViewSlugs []string // slugs passed to DeleteCredential (view teardown)
+	replacedViews    []string // DDLs passed to ReplaceView
 }
 
 func (f *fakeSubjects) ProvisionSubject(_ context.Context, subjectID string, claims map[string]string) error {
@@ -84,8 +85,9 @@ func (f *fakeSubjects) UpsertIdentity(_ context.Context, individualID string, de
 func (f *fakeSubjects) GetIdentity(_ context.Context, individualID string) (map[string]string, error) {
 	return f.identities[individualID], nil
 }
-func (f *fakeSubjects) DeleteCredential(_ context.Context, key, _ string) error {
+func (f *fakeSubjects) DeleteCredential(_ context.Context, key, _, slug string) error {
 	f.deletedCreds = append(f.deletedCreds, key)
+	f.droppedViewSlugs = append(f.droppedViewSlugs, slug)
 	return nil
 }
 func (f *fakeSubjects) ReplaceView(_ context.Context, ddl string) error {
@@ -438,8 +440,9 @@ func TestBuildAuthcodeArtifacts_LDP(t *testing.T) {
 	if !reflect.DeepEqual(a.displayOrder, []string{"full_name", "dob"}) {
 		t.Errorf("displayOrder = %v", a.displayOrder)
 	}
-	if !strings.Contains(a.viewDDL, "CREATE OR REPLACE VIEW certify.vc_subject_personcredential") {
-		t.Errorf("viewDDL missing view name: %s", a.viewDDL)
+	if !strings.Contains(a.viewDDL, "DROP VIEW IF EXISTS certify.vc_subject_personcredential") ||
+		!strings.Contains(a.viewDDL, "CREATE VIEW certify.vc_subject_personcredential") {
+		t.Errorf("viewDDL must DROP+CREATE the view (not CREATE OR REPLACE): %s", a.viewDDL)
 	}
 	if !strings.Contains(a.viewDDL, `claims->>'personcredential.full_name' AS "full_name"`) {
 		t.Errorf("viewDDL missing namespaced field column: %s", a.viewDDL)
@@ -598,5 +601,84 @@ func TestAppendBraceEntry(t *testing.T) {
 		if err := appendBraceEntry(filepath.Join(t.TempDir(), "nope"), "p", "k", "e"); err == nil {
 			t.Error("expected error for missing file")
 		}
+	})
+}
+
+// ─── removeBraceEntry ──────────────────────────────────────────────────────────
+
+func TestRemoveBraceEntry(t *testing.T) {
+	write := func(t *testing.T, content string) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "props.properties")
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	check := func(t *testing.T, p, want string) {
+		t.Helper()
+		b, _ := os.ReadFile(p)
+		if string(b) != want {
+			t.Errorf("got %q, want %q", b, want)
+		}
+	}
+
+	t.Run("removes a middle entry whose value contains commas", func(t *testing.T) {
+		p := write(t, `myprop={'a':'1','scope':'select "x", "y" from t where id=:id','b':'2'}`+"\n")
+		if err := removeBraceEntry(p, "myprop", "scope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'a':'1','b':'2'}\n")
+	})
+
+	t.Run("removes the sole entry -> empty braces", func(t *testing.T) {
+		p := write(t, "myprop={'scope':'q'}\n")
+		if err := removeBraceEntry(p, "myprop", "scope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={}\n")
+	})
+
+	t.Run("removes a bare-scope entry with no value", func(t *testing.T) {
+		p := write(t, "myprop={'scopeA','scopeB'}\n")
+		if err := removeBraceEntry(p, "myprop", "scopeA"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'scopeB'}\n")
+	})
+
+	t.Run("absent key is a no-op", func(t *testing.T) {
+		p := write(t, "myprop={'a':'1'}\n")
+		if err := removeBraceEntry(p, "myprop", "nope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'a':'1'}\n")
+	})
+
+	t.Run("absent property line is a no-op", func(t *testing.T) {
+		p := write(t, "other={'a':'1'}\n")
+		if err := removeBraceEntry(p, "myprop", "a"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "other={'a':'1'}\n")
+	})
+
+	t.Run("does not match a scope that is a prefix of another", func(t *testing.T) {
+		p := write(t, "myprop={'scope':'1','scope_v2':'2'}\n")
+		if err := removeBraceEntry(p, "myprop", "scope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'scope_v2':'2'}\n")
+	})
+
+	t.Run("round-trips with appendBraceEntry", func(t *testing.T) {
+		p := write(t, "myprop={'a':'1'}\n")
+		if err := appendBraceEntry(p, "myprop", "scope", `'scope':'select "x","y" from t'`); err != nil {
+			t.Fatal(err)
+		}
+		if err := removeBraceEntry(p, "myprop", "scope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'a':'1'}\n")
 	})
 }

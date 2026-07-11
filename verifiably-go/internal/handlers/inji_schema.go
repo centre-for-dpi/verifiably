@@ -379,6 +379,12 @@ func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, owne
 		a.credFormat, a.display, a.scope, a.displayOrder, a.sdJwtVct, a.context, a.credType, a.credsub, ownerKey, didURL); err != nil {
 		return "", fmt.Errorf("DB apply failed: %w", err)
 	}
+	// Replace (not skip) the scope-query mapping: its value is column-dependent, so
+	// a rebuild/edit that changed the field set must overwrite a stale entry —
+	// appendBraceEntry alone would keep the old columns (it dedups on the scope key).
+	// removeBraceEntry no-ops when absent, so first-time creates are unaffected.
+	_ = removeBraceEntry(certifyScopeQueryFile(),
+		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", a.scope)
 	if err := appendBraceEntry(certifyScopeQueryFile(),
 		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", a.scope, a.scopeQuery); err != nil {
 		return "", fmt.Errorf("Certify scope-query write failed: %w", err)
@@ -598,8 +604,14 @@ func authcodeViewDDL(slug string, fields []string, withStatus bool, statusURL st
 			fmt.Sprintf("  coalesce(claims->>'%s','0') AS \"statusIdx\"", injiStatusIdxKey(slug)),
 			fmt.Sprintf("  '%s' AS \"statusUri\"", statusURL))
 	}
-	return fmt.Sprintf("CREATE OR REPLACE VIEW certify.vc_subject_%s AS\nSELECT individual_id,\n%s\nFROM certify.vc_subject;",
-		slug, strings.Join(cols, ",\n"))
+	// DROP + CREATE (not CREATE OR REPLACE): Postgres refuses to rename/reorder an
+	// existing view's columns (SQLSTATE 42P16), so a rebuild or in-place field edit
+	// whose column set differs from a leftover view of the same slug would fail. The
+	// two statements run as one no-arg simple-protocol Exec (pgx) inside the caller's
+	// transaction (ApplyAuthcodeSchema) or a single pool.Exec (ReplaceView) — atomic,
+	// so readers never see the view absent.
+	return fmt.Sprintf("DROP VIEW IF EXISTS certify.vc_subject_%s;\nCREATE VIEW certify.vc_subject_%s AS\nSELECT individual_id,\n%s\nFROM certify.vc_subject;",
+		slug, slug, strings.Join(cols, ",\n"))
 }
 
 // ReapplyAuthcodeViews regenerates every active auth-code extraction view into
@@ -751,6 +763,67 @@ func appendBraceEntry(path, propKey, dupKey, entry string) error {
 		return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
 	}
 	return fmt.Errorf("property %s not found in %s", propKey, path)
+}
+
+// removeBraceEntry is the inverse of appendBraceEntry: it removes the entry keyed
+// by 'dupKey' from the { ... } map value on the line beginning with propKey. The
+// map is split into top-level entries while honouring single-quoted values, so a
+// SELECT column list like 'select "a","b" from t' (whose value contains commas)
+// is treated as ONE entry and not split apart. It is a no-op (returns nil) when
+// the property line or the entry is absent — safe to call before appendBraceEntry
+// (to replace a stale column-dependent mapping) or on delete (to purge a scope).
+func removeBraceEntry(path, propKey, dupKey string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(b), "\n")
+	for i, l := range lines {
+		t := strings.TrimSpace(l)
+		if strings.HasPrefix(t, "#") || !strings.HasPrefix(t, propKey) {
+			continue
+		}
+		openIdx := strings.Index(l, "{")
+		closeIdx := strings.LastIndex(l, "}")
+		if openIdx < 0 || closeIdx < 0 || closeIdx < openIdx {
+			return nil // not a brace-map line; nothing to remove
+		}
+		entries := splitTopLevelCommas(l[openIdx+1 : closeIdx])
+		kept := make([]string, 0, len(entries))
+		removed := false
+		for _, e := range entries {
+			if strings.HasPrefix(strings.TrimSpace(e), "'"+dupKey+"'") {
+				removed = true
+				continue
+			}
+			kept = append(kept, e)
+		}
+		if !removed {
+			return nil // entry not present — idempotent
+		}
+		lines[i] = l[:openIdx+1] + strings.Join(kept, ",") + l[closeIdx:]
+		return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
+	}
+	return nil // property line absent — idempotent
+}
+
+// splitTopLevelCommas splits s on commas that are NOT inside a single-quoted
+// segment, so a brace-map value such as 'select "a", "b" from t' stays intact.
+func splitTopLevelCommas(s string) []string {
+	var out []string
+	inQuote, start := false, 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\'':
+			inQuote = !inQuote
+		case ',':
+			if !inQuote {
+				out = append(out, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(out, s[start:])
 }
 
 // dockerRestart restarts a sibling container via the mounted docker socket.
