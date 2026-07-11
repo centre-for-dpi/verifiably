@@ -493,4 +493,10 @@ type VerificationResult struct {
 	// was not run; Evaluated=false when the presentation is not a delegation
 	// presentation. When Evaluated && !Authorized the handler downgrades Valid.
 	Delegation *DelegationResult
+	// CredentialViews is the per-credential card model for a COMBINED presentation
+	// (delegated pair or multi-credential VP): one entry per presented credential,
+	// each with its disclosed claims and the checks attributed to it. Built by the
+	// handler (buildDelegationCredentialViews) after the delegation verdict; empty
+	// for single-credential verifies, which keep the flat result card.
+	CredentialViews []CredentialView
 }

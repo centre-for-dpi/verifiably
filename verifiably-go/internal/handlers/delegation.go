@@ -53,19 +53,152 @@ func (h *H) attachDelegationVerdict(r *http.Request, res *backend.VerificationRe
 		FailClosed:      true, // revocation status is the hard gate (ADR D4/Q5)
 	}
 	verdict := delegation.Evaluate(r.Context(), res.Credentials, res.HolderBinding, opts)
-	if !verdict.Evaluated {
-		return // not a delegation presentation — leave the base verdict untouched
-	}
-	res.Delegation = &verdict
-	if !verdict.Authorized {
-		res.Valid = false
-		if res.Method != "" {
-			res.Method += " · delegation: " + verdict.Reason
-		} else {
-			res.Method = "delegation: " + verdict.Reason
+	if verdict.Evaluated {
+		res.Delegation = &verdict
+		if !verdict.Authorized {
+			res.Valid = false
+			if res.Method != "" {
+				res.Method += " · delegation: " + verdict.Reason
+			} else {
+				res.Method = "delegation: " + verdict.Reason
+			}
+			slog.Info("delegation denied", "reason", verdict.Reason)
 		}
-		slog.Info("delegation denied", "reason", verdict.Reason)
 	}
+	// Per-credential card model for a COMBINED presentation (delegated pair or
+	// multi-credential VP); no-op for a single-credential verify.
+	h.buildDelegationCredentialViews(r.Context(), res)
+}
+
+// buildDelegationCredentialViews assembles the per-credential card model shown
+// for a COMBINED presentation. Each view carries one credential's disclosed
+// claims plus the checks attributed to it: the external verifier's per-credential
+// verdict, the credential's own validity + revocation, and — for the delegation
+// and its subject — the delegation sub-checks (linkage on both, invocation +
+// capability on the delegation). It reuses the same primitives the gates use
+// (TemporalBounds, StatusRefOf, delegationStatusChecker) so the per-card outcomes
+// match the aggregate verdict. Empty for a single-credential verify (which keeps
+// the flat result card).
+func (h *H) buildDelegationCredentialViews(ctx context.Context, res *backend.VerificationResult) {
+	if res == nil || len(res.Credentials) == 0 {
+		return
+	}
+	del := res.Delegation
+	combined := len(res.Credentials) > 1 || (del != nil && del.Evaluated)
+	if !combined {
+		return
+	}
+	now := time.Now()
+	views := make([]backend.CredentialView, 0, len(res.Credentials))
+	for i, c := range res.Credentials {
+		v := backend.CredentialView{
+			Title:      credentialCardTitle(c),
+			Issuer:     c.Issuer,
+			Format:     c.Format,
+			HostStatus: c.HostStatus,
+			Claims:     c.Claims,
+		}
+		isDeleg, isSubj := false, false
+		if del != nil && del.Evaluated {
+			switch i {
+			case del.DelegationIndex:
+				v.Role, isDeleg = "delegation", true
+			case del.SubjectIndex:
+				v.Role, isSubj = "subject", true
+			}
+		}
+		// Per-credential checks. External verifier only when the host returned a
+		// per-credential verdict (Inji); walt.id/credebl report one VP-level verdict.
+		if c.HostStatus != "" {
+			v.Checks = append(v.Checks, hostVerifierCheck(c.HostStatus))
+		}
+		v.Checks = append(v.Checks, credTemporalCheck(c, now), h.credRevocationCheck(ctx, c))
+		// Attribute the delegation sub-checks to the credential each concerns.
+		if del != nil && del.Evaluated {
+			switch {
+			case isDeleg:
+				v.Checks = append(v.Checks,
+					delegCheck("Linkage", del.Linkage, "delegation is about the presented subject"),
+					delegCheck("Invocation", del.Invocation, "presenter is the bound delegate"),
+					delegCheck("Capability", del.Capability, "action permitted, within validity"),
+				)
+			case isSubj:
+				v.Checks = append(v.Checks, delegCheck("Linkage", del.Linkage, "is the subject this delegation names"))
+			}
+		}
+		views = append(views, v)
+	}
+	res.CredentialViews = views
+}
+
+// credentialCardTitle is a short human title for a presented-credential card: the
+// first meaningful type (skipping the generic "VerifiableCredential"), reduced to
+// its final path/fragment segment for URL vct values. Falls back to "Credential".
+func credentialCardTitle(c backend.NormalizedCredential) string {
+	for _, t := range c.Types {
+		t = strings.TrimSpace(t)
+		if t == "" || strings.EqualFold(t, "VerifiableCredential") {
+			continue
+		}
+		if i := strings.LastIndexAny(t, "/#"); i >= 0 && i+1 < len(t) {
+			t = t[i+1:]
+		}
+		return t
+	}
+	return "Credential"
+}
+
+// hostVerifierCheck maps the external verifier's per-credential verdict to a card
+// check. INVALID is shown as a failed check with a note — Inji flags a credential
+// whose bitstring status list it can't read, which verifiably's own "Not revoked"
+// check (below) and the overall verdict then reconcile.
+func hostVerifierCheck(status string) backend.CredCheck {
+	if strings.EqualFold(status, "SUCCESS") {
+		return backend.CredCheck{Label: "External verifier", Status: "pass", Note: "accepted by the external verifier"}
+	}
+	return backend.CredCheck{Label: "External verifier", Status: "fail", Note: "flagged by the external verifier (often because it can't read verifiably's status list) — see Not revoked below and the overall verdict"}
+}
+
+// credTemporalCheck reports whether the credential is within its own validity
+// window right now (the same computation attachTemporalVerdict makes globally).
+func credTemporalCheck(c backend.NormalizedCredential, now time.Time) backend.CredCheck {
+	nb, na := c.TemporalBounds()
+	if !nb.IsZero() && now.Before(nb) {
+		return backend.CredCheck{Label: "Within validity", Status: "fail", Note: "not yet valid (from " + nb.Format(time.RFC3339) + ")"}
+	}
+	if !na.IsZero() && now.After(na) {
+		return backend.CredCheck{Label: "Within validity", Status: "fail", Note: "expired (" + na.Format(time.RFC3339) + ")"}
+	}
+	return backend.CredCheck{Label: "Within validity", Status: "pass", Note: "within its validity window"}
+}
+
+// credRevocationCheck reports this credential's own revocation status against its
+// issuer's status list (na when it carries no status reference, or when no
+// status-list cache is configured).
+func (h *H) credRevocationCheck(ctx context.Context, c backend.NormalizedCredential) backend.CredCheck {
+	ref, ok := delegation.StatusRefOf(c)
+	if !ok {
+		return backend.CredCheck{Label: "Not revoked", Status: "na", Note: "carries no status list"}
+	}
+	if h.StatusListCache == nil {
+		return backend.CredCheck{Label: "Not revoked", Status: "na", Note: "status list not checked"}
+	}
+	revoked, err := h.delegationStatusChecker()(ctx, ref)
+	if err != nil {
+		return backend.CredCheck{Label: "Not revoked", Status: "na", Note: "status could not be checked: " + err.Error()}
+	}
+	if revoked {
+		return backend.CredCheck{Label: "Not revoked", Status: "fail", Note: "revoked on the issuer's status list"}
+	}
+	return backend.CredCheck{Label: "Not revoked", Status: "pass", Note: "not revoked on the issuer's status list"}
+}
+
+// delegCheck maps a delegation sub-check boolean to a card check.
+func delegCheck(label string, ok bool, note string) backend.CredCheck {
+	if ok {
+		return backend.CredCheck{Label: label, Status: "pass", Note: note}
+	}
+	return backend.CredCheck{Label: label, Status: "fail", Note: note}
 }
 
 // attachTemporalVerdict downgrades a verification when any presented credential

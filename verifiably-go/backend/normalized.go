@@ -24,6 +24,15 @@ type NormalizedCredential struct {
 	Format    string            // "w3c_vcdm_2", "jwt_vc_json", "vc+sd-jwt", ...
 	Claims    map[string]string // disclosed/visible claims, stringified (nested → JSON)
 	Raw       map[string]any    // the decoded credential object, for structured reads
+
+	// HostStatus is the host verifier's PER-CREDENTIAL verdict for this credential,
+	// when the host returns one (Inji Verify's vcResults[].verificationStatus,
+	// "SUCCESS"/"INVALID"). Empty when the host reports only a single VP-level
+	// verdict (walt.id/credebl). Surfaced so a combined-presentation result can
+	// show each credential's own host outcome — e.g. Inji flags a delegation
+	// credential INVALID on its bitstring status while verifiably's own gate
+	// clears it.
+	HostStatus string
 }
 
 // HolderBinding describes the key the presenter proved control of, when the host
@@ -50,6 +59,39 @@ type DelegationResult struct {
 	Capability bool   // controller==issuer, within validity, action permitted
 	NotRevoked bool   // neither credential is revoked (status checked)
 	Trusted    bool   // the delegation issuer is in the trust registry
+
+	// DelegationIndex / SubjectIndex are the positions in the presentation's
+	// Credentials slice of the delegation credential and the identity it is about,
+	// as identified by the evaluator (findDelegation / findIdentity). -1 when not
+	// resolved. Lets the UI attribute each check (linkage/invocation/capability)
+	// to the specific credential card it concerns.
+	DelegationIndex int
+	SubjectIndex    int
+}
+
+// CredCheck is one per-credential policy outcome shown on a credential card in a
+// combined-presentation result. Status is "pass", "fail", or "na" (the check
+// doesn't apply — e.g. a credential that carries no status reference).
+type CredCheck struct {
+	Label  string
+	Status string
+	Note   string
+}
+
+// CredentialView is the per-credential card shown for a combined (delegated-pair
+// or multi-credential) presentation: the credential's disclosed claims plus the
+// checks attributed to it. Built by the handler from a NormalizedCredential + the
+// DelegationResult; empty for single-credential verifies (which keep the flat
+// result card). Role is "subject", "delegation", or "" (a plain member of a
+// multi-credential presentation with no delegation relationship).
+type CredentialView struct {
+	Title      string
+	Role       string
+	Issuer     string
+	Format     string
+	HostStatus string
+	Claims     map[string]string
+	Checks     []CredCheck
 }
 
 // TemporalBounds returns the credential's own validity window, read from Raw in

@@ -392,6 +392,10 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		Policies:    policies,
 		WebhookURL:  strings.TrimSpace(r.FormValue("webhook_url")),
 	}
+	// requested is EVERY credential the verifier is asking for (one for a single
+	// verify, both legs for a delegated pair) so the request-output can show them
+	// all — the adapter only echoes back the first descriptor.
+	requested := []vctypes.OID4VPTemplate{tpl}
 	if delegation {
 		// Request the delegated-access PAIR (subject identity + delegation) in one
 		// presentation, so the evaluator can check linkage/invocation/capability/
@@ -438,6 +442,9 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		req.Template = nil
 		req.Templates = []vctypes.OID4VPTemplate{subj, deleg}
 		sess.CustomOID4VPTemplate = &deleg
+		// Show both requested credentials in the generated-request view: the
+		// identity (subject) first, then the delegation.
+		requested = []vctypes.OID4VPTemplate{subj, deleg}
 	}
 	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(r.Context(), req)
@@ -451,7 +458,16 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 	sess.CurrentOID4VPLink = res.RequestURI
 	sess.CurrentOID4VPState = res.State
 	sess.CurrentOID4VPTemplate = "custom"
-	h.renderFragment(w, r, "fragment_oid4vp_request_output", res)
+	h.renderFragment(w, r, "fragment_oid4vp_request_output", oid4vpRequestView{PresentationRequestResult: res, Requested: requested})
+}
+
+// oid4vpRequestView wraps the generated presentation-request result with the list
+// of REQUESTED credential templates (one for a single verify, two for a delegated
+// pair) so fragment_oid4vp_request_output can show every credential the verifier
+// asks for — the adapter only echoes back the first descriptor as .Template.
+type oid4vpRequestView struct {
+	backend.PresentationRequestResult
+	Requested []vctypes.OID4VPTemplate
 }
 
 // assembleCustomTemplate builds a OID4VPTemplate from the custom-request

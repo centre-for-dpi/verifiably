@@ -23,26 +23,26 @@ func findDelegation(creds []backend.NormalizedCredential) (int, Capability) {
 
 // findIdentity picks the subject identity credential to pair with the delegation.
 // It prefers a non-delegation credential whose subject anchor matches onBehalfOf;
-// otherwise the first non-delegation credential.
-func findIdentity(creds []backend.NormalizedCredential, delegIdx int, onBehalfOf string) (backend.NormalizedCredential, bool) {
-	var first *backend.NormalizedCredential
+// otherwise the first non-delegation credential. Returns its index in creds (-1
+// when none) so the caller can attribute the verdict to the specific credential.
+func findIdentity(creds []backend.NormalizedCredential, delegIdx int, onBehalfOf string) (int, backend.NormalizedCredential, bool) {
+	firstIdx := -1
 	for i := range creds {
 		if i == delegIdx {
 			continue
 		}
 		c := creds[i]
-		if first == nil {
-			cc := c
-			first = &cc
+		if firstIdx < 0 {
+			firstIdx = i
 		}
 		if onBehalfOf != "" && sameRef(subjectAnchor(c), onBehalfOf) {
-			return c, true
+			return i, c, true
 		}
 	}
-	if first != nil {
-		return *first, true
+	if firstIdx >= 0 {
+		return firstIdx, creds[firstIdx], true
 	}
-	return backend.NormalizedCredential{}, false
+	return -1, backend.NormalizedCredential{}, false
 }
 
 // extractCapability normalizes the delegation capability from either the SD-JWT

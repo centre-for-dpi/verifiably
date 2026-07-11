@@ -91,19 +91,20 @@ func (o Options) now() time.Time {
 func Evaluate(ctx context.Context, creds []backend.NormalizedCredential, holder *backend.HolderBinding, opts Options) backend.DelegationResult {
 	delegIdx, cap := findDelegation(creds)
 	if delegIdx < 0 {
-		return backend.DelegationResult{Evaluated: false}
+		return backend.DelegationResult{Evaluated: false, DelegationIndex: -1, SubjectIndex: -1}
 	}
 	deleg := creds[delegIdx]
-	res := backend.DelegationResult{Evaluated: true}
+	res := backend.DelegationResult{Evaluated: true, DelegationIndex: delegIdx, SubjectIndex: -1}
 
 	// Identity credential = the subject credential the delegation is about.
 	// Prefer one whose subject anchor matches onBehalfOf; otherwise the first
 	// non-delegation credential.
-	identity, okID := findIdentity(creds, delegIdx, cap.OnBehalfOf)
+	subjIdx, identity, okID := findIdentity(creds, delegIdx, cap.OnBehalfOf)
 	if !okID {
 		res.Reason = "no subject identity credential was presented alongside the delegation"
 		return res
 	}
+	res.SubjectIndex = subjIdx
 
 	// 1. Linkage — the delegation must be about the presented subject. onBehalfOf
 	// may name the principal by their subjectRef, DID, or any disclosed identifier

@@ -198,11 +198,27 @@
 
 {{define "fragment_oid4vp_request_output"}}
 <div class="cred-preview" style="margin-top:1.5rem">
-  <div class="caps">Presentation request · {{.Template.Title}}</div>
-  <div style="font-size:0.85rem;color:var(--ink-soft);margin:0.5rem 0 1rem">
-    Asking for: <span class="mono">{{range $i, $f := .Template.Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>
-    <br>Format: <span class="mono">{{.Template.Format}}{{if .Template.WireFormat}} · {{.Template.WireFormat}}{{end}}</span> · Disclosure: <span class="mono">{{.Template.Disclosure}}</span>
+  {{if gt (len .Requested) 1}}
+  {{/* Combined request: list EVERY requested credential (identity + delegation),
+       so the operator sees the full pair before the holder responds. */}}
+  <div class="caps">Presentation request · {{len .Requested}} credentials</div>
+  <div style="margin:0.5rem 0 1rem;display:flex;flex-direction:column;gap:0.5rem">
+    {{range $i, $t := .Requested}}
+    <div style="font-size:0.85rem;color:var(--ink-soft);padding:0.5rem 0.75rem;background:var(--bg);border:1px solid var(--line);border-radius:6px">
+      <strong style="color:var(--ink)">{{if eq $i 0}}Identity{{else}}Delegation{{end}} · {{$t.Title}}</strong><br>
+      Asking for: <span class="mono">{{range $j, $f := $t.Fields}}{{if $j}}, {{end}}{{$f}}{{end}}</span>
+      <br>Format: <span class="mono">{{$t.Format}}{{if $t.WireFormat}} · {{$t.WireFormat}}{{end}}</span> · Disclosure: <span class="mono">{{$t.Disclosure}}</span>
+    </div>
+    {{end}}
   </div>
+  {{else}}
+  {{$t := .Template}}{{if .Requested}}{{$t = index .Requested 0}}{{end}}
+  <div class="caps">Presentation request · {{$t.Title}}</div>
+  <div style="font-size:0.85rem;color:var(--ink-soft);margin:0.5rem 0 1rem">
+    Asking for: <span class="mono">{{range $i, $f := $t.Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>
+    <br>Format: <span class="mono">{{$t.Format}}{{if $t.WireFormat}} · {{$t.WireFormat}}{{end}}</span> · Disclosure: <span class="mono">{{$t.Disclosure}}</span>
+  </div>
+  {{end}}
 
   <div class="split">
     {{/* Cross-device: QR (real, served from /qr) */}}
@@ -291,19 +307,20 @@
      status list (F16/F23), which would otherwise force a red "Credential invalid"
      headline OVER a green AUTHORISED card. When the delegation is authorised we
      lead with that verdict; the per-credential Inji view stays honest below. */}}
-{{$delegAuth := false}}{{with .Delegation}}{{if and .Evaluated .Authorized}}{{$delegAuth = true}}{{end}}{{end}}
+{{$delegAuth := false}}{{$isDeleg := false}}{{with .Delegation}}{{if .Evaluated}}{{$isDeleg = true}}{{if .Authorized}}{{$delegAuth = true}}{{end}}{{end}}{{end}}
 <div class="verify-result {{if or .Valid $delegAuth}}valid{{else}}invalid{{end}}" style="margin-top:1.5rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid {{if or .Valid $delegAuth}}var(--ok){{else}}var(--err){{end}};padding:1.5rem;border-radius:2px">
 
   <div class="verify-banner {{if or .Valid $delegAuth}}valid{{else}}invalid{{end}}">
     <span class="icon">{{if or .Valid $delegAuth}}✓{{else}}✕{{end}}</span>
     <div>
-      {{if and $delegAuth (not .Valid)}}
-        <h3>Delegated access authorised</h3>
+      {{if $isDeleg}}
+        {{/* Combined delegated-pair result: the OVERALL verdict is the
+             delegated-access decision; the per-credential cards below carry the
+             specific claims + checks. */}}
+        <h3>🔑 Delegated access — {{if .Delegation.Authorized}}authorised{{else}}denied{{end}}</h3>
         <p>
-          All delegated-access checks passed — see the card below. The external
-          verifier (Inji Verify) marks the delegation credential invalid on its
-          own because it can't read verifiably's bitstring status list;
-          verifiably's independent revocation gate confirms it is not revoked.
+          {{if .Delegation.Reason}}{{.Delegation.Reason}}{{else}}All delegated-access checks passed.{{end}}
+          {{if and .Delegation.Authorized (not .Valid)}} The external verifier flags a credential on its own status list; verifiably's per-credential checks below are authoritative.{{end}}
         </p>
       {{else if .Valid}}
         <h3>Credential valid</h3>
@@ -315,7 +332,46 @@
     </div>
   </div>
 
-  {{/* Compact default: the disclosed claim values (what was actually shared). */}}
+  {{if .CredentialViews}}
+  {{/* Combined presentation: one card per PRESENTED credential — its disclosed
+       claims + the checks attributed to it (external verifier, validity,
+       revocation, and the delegation sub-checks). */}}
+  <div style="margin-top:0.9rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">
+    {{range .CredentialViews}}
+    <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:1.1rem 1.25rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.6rem;margin-bottom:0.6rem">
+        <strong style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.05rem">{{.Title}}</strong>
+        {{if eq .Role "delegation"}}<span class="pill" style="font-size:0.62rem;background:color-mix(in srgb, var(--accent) 18%, transparent);color:var(--accent)">delegation</span>
+        {{else if eq .Role "subject"}}<span class="pill" style="font-size:0.62rem;background:color-mix(in srgb, var(--ok) 18%, transparent);color:var(--ok)">identity</span>{{end}}
+      </div>
+      {{if .Claims}}
+      <dl class="cred-rows" style="margin:0">
+        {{range $k, $v := .Claims}}<dt>{{replaceUnderscore $k}}</dt><dd>{{$v}}</dd>{{end}}
+      </dl>
+      {{else}}
+      <p style="font-size:0.8rem;color:var(--ink-soft);margin:0">No claims disclosed for this credential.</p>
+      {{end}}
+      {{if .Checks}}
+      <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.3rem">
+        {{range .Checks}}
+        <div style="display:flex;gap:0.5rem;font-size:0.76rem;align-items:baseline">
+          {{if eq .Status "pass"}}<span class="pill ok" style="font-size:0.6rem;flex-shrink:0">pass ✓</span>
+          {{else if eq .Status "fail"}}<span class="pill err" style="font-size:0.6rem;flex-shrink:0">fail ✗</span>
+          {{else}}<span class="pill" style="font-size:0.6rem;flex-shrink:0;color:var(--ink-mute)">n/a</span>{{end}}
+          <span style="min-width:96px;flex-shrink:0">{{.Label}}</span>
+          <span style="color:var(--ink-mute)">{{.Note}}</span>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+      <div style="margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid var(--line);font-size:0.7rem;color:var(--ink-mute)">
+        {{if .Issuer}}issuer <span class="mono">{{.Issuer}}</span><br>{{end}}<span class="mono">{{.Format}}</span>{{if .HostStatus}} · external verifier: <span class="mono">{{.HostStatus}}</span>{{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  {{/* Compact default (single-credential verify): the disclosed claim values. */}}
   <div style="margin-top:0.25rem">
     <div class="caps" style="margin-bottom:0.4rem">Presented credential{{if .CredentialTitle}} · {{.CredentialTitle}}{{end}}</div>
     {{if .DisclosedFields}}
@@ -336,6 +392,7 @@
       <p style="margin:0.5rem 0 0;font-size:0.78rem;color:var(--ink-mute)">Requested: <span class="mono">{{range $i, $f := .Requested}}{{if $i}}, {{end}}{{$f}}{{end}}</span></p>
     {{end}}
   </div>
+  {{end}}
 
   {{/* Invalid results: a one-line reason up front so the operator sees WHY
        without expanding; the full per-policy detail lives in the expander. */}}
@@ -417,7 +474,10 @@
     {{end}}
   </details>
 </div>
-{{template "_delegation_card" .}}
+{{/* The flat delegation card is superseded by the per-credential cards (its four
+     checks are attributed to the cards above). Only render it when there are no
+     per-credential views (defensive — shouldn't happen for an evaluated pair). */}}
+{{if not .CredentialViews}}{{template "_delegation_card" .}}{{end}}
 {{end}}
 {{end}}
 
