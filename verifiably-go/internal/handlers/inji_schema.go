@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/internal/adapters/injicertify"
+	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -368,7 +369,7 @@ type authcodeArtifacts struct {
 // the files. Returns the credential_config key. Shared by the legacy form and
 // the rich builder.
 func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, ownerKey string) (string, error) {
-	a := buildAuthcodeArtifacts(schema, h.tokenStatusURL())
+	a := buildAuthcodeArtifacts(schema, h.statusURLFor(schema.Std))
 	// did_url must equal certify's issuer DID (its did.json id / CERTIFY_ISSUER_DID),
 	// NOT the hardcoded docker-internal did:web:certify-nginx — otherwise the signed
 	// VC's proof.verificationMethod points at an unresolvable DID and every verifier
@@ -435,18 +436,18 @@ func appendPropertyLine(path, key, value string) error {
 // buildAuthcodeArtifacts maps a builder schema (any Std) to the per-credential
 // auth-code artifacts, reusing injicertify's per-format credential_config logic
 // (ldp_vc for W3C VCDM 1.1/2.0, vc+sd-jwt for IETF SD-JWT VC).
-func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authcodeArtifacts {
-	// Token-status wiring (SD-JWT revocation) is added only when a TokenStore is
-	// configured (tokenStatusURL != "") so the template markers always have a
-	// data-provider column to resolve against.
-	// Auth-code: only SD-JWT gets a status pointer. The pre-auth path also embeds
-	// a W3C credentialStatus for ldp_vc (F14), but the auth-code data-provider view
-	// resolves ${statusIdx}/${statusUri} against the TOKEN status list, so keep
-	// auth-code W3C statusless (a W3C BitstringStatusListEntry pointing at a token
-	// list would be wrong). buildVCTemplate adds the ldp_vc credentialStatus only
-	// when withTokenStatus is true, so gating it here keeps auth-code W3C unchanged.
-	withTokenStatus := tokenStatusURL != "" && strings.HasPrefix(schema.Std, "sd_jwt")
-	cc := injicertify.BuildAuthcodeCredConfig(schema, withTokenStatus)
+func buildAuthcodeArtifacts(schema vctypes.Schema, statusURL string) authcodeArtifacts {
+	// Status wiring is added when a status list is configured for this format
+	// (statusURL != "" — the caller passes the TOKEN list for SD-JWT, the
+	// BITSTRING list for W3C ldp_vc). BOTH formats now get a per-holder status
+	// pointer resolved by the data provider: SD-JWT a `status.status_list`, W3C a
+	// standard `credentialStatus` BitstringStatusListEntry pointing at ${statusUri}
+	// (the bitstring list). The ${statusIdx}/${statusUri} markers resolve from the
+	// extraction view's computed columns (statusIdx per-holder, statusUri the
+	// constant list URL for this format), so the W3C block points at the CORRECT
+	// (bitstring) list — external verifiers (Inji Verify) can then read it too.
+	withStatus := statusURL != ""
+	cc := injicertify.BuildAuthcodeCredConfig(schema, withStatus)
 
 	configKey, slug := injiConfigKeySlug(schema)
 	// The scope suffix records the wire format so the catalog/wallet don't
@@ -454,7 +455,6 @@ func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authco
 	// this only affects NEW schemas (existing ones keep their scope).
 	scope := slug + "_" + scopeSuffix(cc.CredFormat)
 	viewName := "vc_subject_" + slug
-	isSDJWT := cc.CredFormat == "vc+sd-jwt" || cc.CredFormat == "dc+sd-jwt"
 
 	display, _ := json.Marshal([]any{map[string]any{
 		"name": schema.Name, "locale": "en",
@@ -466,18 +466,18 @@ func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authco
 	cs := map[string]any{}
 	var order, queryCols []string
 	for _, f := range schema.FieldsSpec {
-		// For SD-JWT with token status, statusIdx/statusUri are auto-added as
-		// computed view columns below; a same-named schema field would produce a
-		// duplicate column and fail CREATE VIEW. Skip them — the token-status
-		// wiring is authoritative for SD-JWT (defensive against any caller/UI schema).
-		if isSDJWT && withTokenStatus && (f.Name == "statusIdx" || f.Name == "statusUri") {
+		// statusIdx/statusUri are auto-added as computed view columns below (for
+		// both SD-JWT and W3C when withStatus); a same-named schema field would
+		// produce a duplicate column and fail CREATE VIEW. Skip them — the status
+		// wiring is authoritative (defensive against any caller/UI schema).
+		if withStatus && (f.Name == "statusIdx" || f.Name == "statusUri" || f.Name == "statusType") {
 			continue
 		}
 		cs[f.Name] = map[string]any{"display": []any{map[string]any{"name": f.Name, "locale": "en"}}}
 		order = append(order, f.Name)
 		queryCols = append(queryCols, fmt.Sprintf("\"%s\"", f.Name))
 	}
-	if isSDJWT && withTokenStatus {
+	if withStatus {
 		queryCols = append(queryCols, "\"statusIdx\"", "\"statusUri\"")
 	}
 	// credential_subject display only for the JSON-LD formats (mirrors injicertify).
@@ -490,7 +490,7 @@ func buildAuthcodeArtifacts(schema vctypes.Schema, tokenStatusURL string) authco
 
 	// The view body is the SINGLE source of truth for the per-slug namespacing —
 	// shared with the migration reconcile so both agree exactly.
-	viewDDL := authcodeViewDDL(slug, order, isSDJWT && withTokenStatus, tokenStatusURL)
+	viewDDL := authcodeViewDDL(slug, order, withStatus, statusURL)
 	scopeQuery := fmt.Sprintf("'%s':'select %s from certify.%s where individual_id=:id'",
 		scope, strings.Join(queryCols, ", "), viewName)
 
@@ -585,18 +585,18 @@ func slugForEntity(schemas []vctypes.Schema, entity string) string {
 // number) + the constant statusUri. This is the SINGLE definition of the view
 // shape, shared by schema-create (buildAuthcodeArtifacts) and the migration
 // reconcile so the read side never drifts from what writers namespaced.
-func authcodeViewDDL(slug string, fields []string, withTokenStatus bool, tokenStatusURL string) string {
+func authcodeViewDDL(slug string, fields []string, withStatus bool, statusURL string) string {
 	var cols []string
 	for _, f := range fields {
-		if withTokenStatus && (f == "statusIdx" || f == "statusUri") {
+		if withStatus && (f == "statusIdx" || f == "statusUri" || f == "statusType") {
 			continue
 		}
 		cols = append(cols, fmt.Sprintf("  claims->>'%s' AS \"%s\"", subjectClaimKey(slug, f), f))
 	}
-	if withTokenStatus {
+	if withStatus {
 		cols = append(cols,
 			fmt.Sprintf("  coalesce(claims->>'%s','0') AS \"statusIdx\"", injiStatusIdxKey(slug)),
-			fmt.Sprintf("  '%s' AS \"statusUri\"", tokenStatusURL))
+			fmt.Sprintf("  '%s' AS \"statusUri\"", statusURL))
 	}
 	return fmt.Sprintf("CREATE OR REPLACE VIEW certify.vc_subject_%s AS\nSELECT individual_id,\n%s\nFROM certify.vc_subject;",
 		slug, strings.Join(cols, ",\n"))
@@ -622,7 +622,6 @@ func (h *H) ReapplyAuthcodeViews(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "list credentials: "+err.Error())
 		return
 	}
-	tsURL := h.tokenStatusURL()
 	reapplied := []string{}
 	failed := map[string]string{}
 	for _, c := range creds {
@@ -638,8 +637,14 @@ func (h *H) ReapplyAuthcodeViews(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		_, slug := injiConfigKeySlug(vctypes.Schema{AdditionalTypes: []string{key}})
-		isSDJWT := format == "vc+sd-jwt" || format == "dc+sd-jwt"
-		if err := h.Subjects.ReplaceView(r.Context(), authcodeViewDDL(slug, fields, isSDJWT && tsURL != "", tsURL)); err != nil {
+		// Status URL by format: token list for SD-JWT, bitstring list for W3C ldp_vc.
+		statusURL := ""
+		if format == "vc+sd-jwt" || format == "dc+sd-jwt" {
+			statusURL = h.tokenStatusURL()
+		} else if format == "ldp_vc" {
+			statusURL = h.bitstringStatusURL()
+		}
+		if err := h.Subjects.ReplaceView(r.Context(), authcodeViewDDL(slug, fields, statusURL != "", statusURL)); err != nil {
 			failed[key] = err.Error()
 			continue
 		}
@@ -656,6 +661,50 @@ func (h *H) tokenStatusURL() string {
 		return ""
 	}
 	return h.TokenStore.GetPublishURL()
+}
+
+// bitstringStatusURL returns the absolute URL of verifiably's W3C bitstring status
+// list, or "" when no BitstringStore is configured. Sibling of tokenStatusURL for
+// the W3C (ldp_vc) auth-code path.
+func (h *H) bitstringStatusURL() string {
+	if h.BitstringStore == nil {
+		return ""
+	}
+	return h.BitstringStore.GetPublishURL()
+}
+
+// statusURLFor returns the status-list URL appropriate to a schema's format: the
+// IETF token list for SD-JWT, the W3C bitstring list for ldp_vc. "" (statusless)
+// when the matching store isn't configured or the format has no status kind.
+func (h *H) statusURLFor(std string) string {
+	switch statusListKindFor(std) {
+	case "token":
+		return h.tokenStatusURL()
+	case "bitstring":
+		return h.bitstringStatusURL()
+	}
+	return ""
+}
+
+// statusStoreFor returns the status-list store verifiably OWNS revocation for on
+// the auth-code (Certify) issuance path, keyed by a schema's format. Only SD-JWT
+// is verifiably-owned: Certify never writes SD-JWT to its ledger, so verifiably's
+// TokenStore (IETF token status list, embedded via the template's
+// status.status_list) is that credential's ONLY status list.
+//
+// W3C ldp_vc is Certify-NATIVE and returns nil: a credentialStatus block in the
+// vc_template makes Certify set credential_status_purpose={revocation} and manage
+// its OWN bitstring list — allocating a fresh index per issuance and overriding
+// the template's ${statusIdx}/${statusUri} with Certify's real list. The issued
+// VC points at Certify's list (which Inji Verify reads), so verifiably neither
+// allocates a parallel slot nor records the credential in its IssuanceLog;
+// revocation routes to Certify's status API (setInjiCredentialStatus, reached via
+// the certify.ledger revoke path). Returns nil when the store isn't configured.
+func (h *H) statusStoreFor(std string) statuslist.Backend {
+	if statusListKindFor(std) == "token" && h.TokenStore != nil {
+		return h.TokenStore
+	}
+	return nil
 }
 
 // scopeSuffix maps a certify credential format to the scope suffix used in the

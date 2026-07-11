@@ -372,11 +372,12 @@ func buildVCTemplate(schema vctypes.Schema, withTokenStatus bool) string {
 			m["issuanceDate"] = "${validFrom}"
 			m["expirationDate"] = "${validUntil}"
 		}
-		// W3C revocation (F14): embed a BitstringStatusListEntry credentialStatus
-		// pointing at verifiably's PUBLIC bitstring list (${statusUri}), mirroring
-		// the SD-JWT status.status_list. Gated on withTokenStatus so ONLY the
-		// pre-auth caller adds it — auth-code W3C stays statusless to avoid Certify's
-		// unreachable internal list (statusRef prefers a flat/public pointer). VCDM2
+		// W3C revocation: embed a BitstringStatusListEntry credentialStatus pointing
+		// at verifiably's PUBLIC bitstring list (${statusUri}), mirroring the SD-JWT
+		// status.status_list. Emitted for BOTH the pre-auth (F14) and the auth-code
+		// callers when a status list is configured — the auth-code data-provider view
+		// now resolves ${statusUri} to the BITSTRING list (statusURLFor) so the block
+		// points at the right list and external verifiers (Inji Verify) read it. VCDM2
 		// only: the credentials/v2 context defines the type + statusPurpose/
 		// statusListIndex/statusListCredential, so there's no PROTECTED_TERM
 		// redefinition at canonicalization (VCDM 1.1 would need explicit @context

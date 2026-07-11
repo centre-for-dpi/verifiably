@@ -92,10 +92,15 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	// built-in and ignore req.ValidUntil (ERR-3). `valid_until` is not reserved →
 	// resolves from the data provider, and matches the SD-JWT flat convention the
 	// evaluator + TemporalBounds already read (internal/delegation/build.go).
+	// No status FIELDS: both formats carry the status pointer via the template, not
+	// flat credentialSubject claims. SD-JWT embeds a status.status_list pointing at
+	// verifiably's TokenStore (verifiably-owned revocation). The W3C ldp_vc template
+	// carries a STANDARD credentialStatus block, which makes Certify take over W3C
+	// status NATIVELY — Certify allocates its own bitstring index per issuance and
+	// overrides the template's ${statusUri}/${statusIdx} with its own list, so the
+	// issued VC's credentialStatus points at CERTIFY's list (which Inji Verify and
+	// verifiably's own gate both read + revoke against). See statusStoreFor.
 	delegFields := []string{"onBehalfOf", "role", "allowedAction", "valid_until"}
-	if statusListKindFor(std) != "token" {
-		delegFields = append(delegFields, "statusUri", "statusIdx", "statusType")
-	}
 	for _, spec := range []struct {
 		typeName string
 		fields   []string
@@ -112,12 +117,21 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Allocate a per-holder IETF Token Status List slot so the delegation is
-	// revocable (uniform revocation — the evaluator's 4th check).
-	binding, err := h.allocateStatusListBinding(injiAuthcodeSchema(delegType, std, nil))
-	if err != nil {
-		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
-		return
+	// Allocate a per-holder IETF Token Status List slot for SD-JWT so the
+	// delegation is revocable via verifiably's TokenStore (uniform revocation —
+	// the evaluator's 4th check). W3C ldp_vc is Certify-NATIVE: the template's
+	// credentialStatus block makes Certify manage its own bitstring list (fresh
+	// index per claim), so verifiably allocates NOTHING here — revocation routes
+	// to Certify's status API (APIInjiDelegationRevoke's certify path), and the
+	// issued VC's credentialStatus (Certify's list) is what Inji + verifiably read.
+	var binding *backend.StatusListBinding
+	if statusListKindFor(std) == "token" {
+		b, err := h.allocateStatusListBinding(injiAuthcodeSchema(delegType, std, nil))
+		if err != nil {
+			apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
+			return
+		}
+		binding = b
 	}
 
 	// 3. Provision the holder's vc_subject (one row; each config's view reads its
@@ -146,19 +160,12 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 		claims[subjectClaimKey(delegSlug, "valid_until")] = req.ValidUntil
 	}
 	if binding != nil {
-		if binding.Type == "token" {
-			// SD-JWT: the token-status view column reads claims->>'statusIdx_<slug>'
-			// (injiStatusIdxKey — already per-slug) into the nested status.status_list
-			// template, so provision THAT key — not flat statusIdx — or
-			// revoke(binding.Index) won't deny. statusUri is a constant view column.
-			claims[injiStatusIdxKey(delegSlug)] = strconv.Itoa(binding.Index)
-		} else {
-			// ldp_vc: statusUri/statusIdx/statusType are declared delegation FIELDS
-			// (delegFields), so they read from the namespaced view columns.
-			claims[subjectClaimKey(delegSlug, "statusUri")] = binding.PublishURL
-			claims[subjectClaimKey(delegSlug, "statusIdx")] = strconv.Itoa(binding.Index)
-			claims[subjectClaimKey(delegSlug, "statusType")] = binding.Type // "bitstring"
-		}
+		// Both formats: the extraction view's computed statusIdx column reads
+		// claims->>'statusIdx_<slug>' (injiStatusIdxKey — per-slug) into the template
+		// (SD-JWT status.status_list.idx, W3C credentialStatus.statusListIndex), and
+		// its statusUri column is the constant list URL. So provision THAT one key —
+		// revoke(binding.Index) then flips exactly this holder's bit.
+		claims[injiStatusIdxKey(delegSlug)] = strconv.Itoa(binding.Index)
 	}
 	subjectID := esignetSubjectID(req.IndividualID, injiAuthcodeClientID())
 	if err := h.Subjects.ProvisionSubject(ctx, subjectID, claims); err != nil {
@@ -195,13 +202,41 @@ func (h *H) APIInjiDelegationRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Index     int    `json:"index"`
-		Type      string `json:"type,omitempty"`      // "bitstring" (W3C VCDM) | "token" (SD-JWT, default)
+		Type      string `json:"type,omitempty"`      // "bitstring" (pre-auth W3C) | "token" (SD-JWT, default) | "certify" (auth-code W3C)
 		Reinstate bool   `json:"reinstate,omitempty"` // clear the bit instead of setting it
+		// Auth-code W3C is Certify-native: revoke flips CERTIFY's bitstring list —
+		// the exact list the issued VC references and external verifiers (Inji)
+		// read — via Certify's status API, not a verifiably-owned list. The caller
+		// supplies the issued credential's own status pointer (from its
+		// credentialStatus block): the VC `id` + the list UUID + the index.
+		CertifyCredentialID string `json:"certifyCredentialId,omitempty"` // VC id == certify.ledger credential_id
+		StatusListID        string `json:"statusListId,omitempty"`        // Certify list UUID (credentialStatus.statusListCredential tail)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
+	// Certify-native path (auth-code W3C ldp_vc): route to Certify's status API so
+	// the SAME bitstring list the VC points at is flipped. Certify's async batch
+	// job re-signs the published status-list VC (~top of each minute), after which
+	// both Inji Verify and verifiably's own gate see the new state.
+	if req.CertifyCredentialID != "" || strings.EqualFold(req.Type, "certify") {
+		if req.CertifyCredentialID == "" || req.StatusListID == "" {
+			apiError(w, http.StatusBadRequest, "certify revoke needs certifyCredentialId + statusListId")
+			return
+		}
+		if err := setInjiCredentialStatus(r.Context(), req.CertifyCredentialID, req.StatusListID, req.Index, !req.Reinstate); err != nil {
+			apiError(w, http.StatusBadGateway, "certify status: "+err.Error())
+			return
+		}
+		key := "revoked"
+		if req.Reinstate {
+			key = "reinstated"
+		}
+		apiJSON(w, http.StatusOK, map[string]any{key: req.Index, "via": "certify"})
+		return
+	}
+	// verifiably-owned path: SD-JWT auth-code (TokenStore) + pre-auth W3C (BitstringStore).
 	store := h.TokenStore
 	if strings.Contains(strings.ToLower(req.Type), "bitstring") {
 		store = h.BitstringStore

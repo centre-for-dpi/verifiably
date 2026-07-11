@@ -107,11 +107,11 @@ func (h *H) buildDelegationCredentialViews(ctx context.Context, res *backend.Ver
 				v.Role, isSubj = "subject", true
 			}
 		}
-		// Per-credential checks. External verifier only when the host returned a
-		// per-credential verdict (Inji); walt.id/credebl report one VP-level verdict.
-		if c.HostStatus != "" {
-			v.Checks = append(v.Checks, hostVerifierCheck(c.HostStatus))
-		}
+		// Per-credential checks. The external verifier's per-credential verdict is
+		// NOT surfaced: now that auth-code W3C credentials carry a real
+		// credentialStatus block, the host and verifiably evaluate the SAME status,
+		// so a separate "External verifier" pill would be redundant with "Not
+		// revoked". Signature trust is folded into the overall res.Valid.
 		v.Checks = append(v.Checks, credTemporalCheck(c, now), h.credRevocationCheck(ctx, c))
 		// Attribute the delegation sub-checks to the credential each concerns.
 		if del != nil && del.Evaluated {
@@ -146,16 +146,6 @@ func credentialCardTitle(c backend.NormalizedCredential) string {
 		return t
 	}
 	return "Credential"
-}
-
-// hostVerifierCheck maps the external verifier's per-credential verdict to a card
-// check — the host's plain signature/status outcome, no editorialising. verifiably
-// does NOT override it: an INVALID from the external verifier is a genuine failure.
-func hostVerifierCheck(status string) backend.CredCheck {
-	if strings.EqualFold(status, "SUCCESS") {
-		return backend.CredCheck{Label: "External verifier", Status: "pass", Note: "signature verified by the external verifier"}
-	}
-	return backend.CredCheck{Label: "External verifier", Status: "fail", Note: "rejected by the external verifier"}
 }
 
 // credTemporalCheck reports whether the credential is within its own validity

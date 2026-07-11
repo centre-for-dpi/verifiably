@@ -560,12 +560,16 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 	clientID := defaultAuthCodeClientID()
 	scope, _ := h.Subjects.CredentialScope(ctx, sess.SchemaID)
 
-	// SD-JWT credentials get a per-holder IETF token-status index allocated here
-	// (certify doesn't ledger SD-JWT, so verifiably owns their revocation): the
-	// index is written into vc_subject as statusIdx_<slug> so certify's SD-JWT
-	// carries a `status` ref to verifiably's token list, and the issuance is
-	// recorded in the IssuanceLog so /issuer/credentials can list + revoke it.
-	isTokenSDJWT := statusListKindFor(schema.Std) == "token" && h.TokenStore != nil
+	// statusStoreFor returns a store ONLY for SD-JWT here: verifiably owns SD-JWT
+	// revocation via the IETF token list (Certify never ledgers SD-JWT), so the
+	// per-holder index is allocated + written into vc_subject as statusIdx_<slug>
+	// (resolving the template's status.status_list), and the issuance is recorded
+	// in the IssuanceLog so /issuer/credentials can list + revoke it. W3C ldp_vc is
+	// Certify-NATIVE (statusStoreFor returns nil): Certify manages its own bitstring
+	// list + ledgers the credential, so verifiably allocates nothing and the issuer
+	// revoke button routes to Certify's status API via the certify.ledger path.
+	statusKind := statusListKindFor(schema.Std)
+	statusStore := h.statusStoreFor(schema.Std)
 	_, slug := injiConfigKeySlug(schema)
 
 	out := make([]backend.BulkRowResult, 0, len(rows))
@@ -617,10 +621,10 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 			displayClaims[k] = v
 			provClaims[subjectClaimKey(slug, k)] = v
 		}
-		tokenIdx := -1
-		if isTokenSDJWT {
-			if idx, err := h.TokenStore.Allocate(); err == nil {
-				tokenIdx = idx
+		statusIdx := -1
+		if statusStore != nil {
+			if idx, err := statusStore.Allocate(); err == nil {
+				statusIdx = idx
 				provClaims[injiStatusIdxKey(slug)] = strconv.Itoa(idx)
 			}
 		}
@@ -632,8 +636,8 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 			out = append(out, res)
 			continue
 		}
-		if isTokenSDJWT && tokenIdx >= 0 {
-			h.recordInjiSDJWTIssuance(sess, schema, id, displayClaims, tokenIdx)
+		if statusStore != nil && statusIdx >= 0 {
+			h.recordInjiIssuance(sess, schema, id, displayClaims, statusIdx, statusKind)
 		}
 		res.Status = "provisioned"
 		accepted++

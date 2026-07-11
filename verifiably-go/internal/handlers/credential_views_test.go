@@ -78,10 +78,10 @@ func TestBuildDelegationCredentialViews(t *testing.T) {
 		t.Errorf("claims not carried: %v / %v", sv.Claims, dv.Claims)
 	}
 
-	// Subject card: external verifier pass, within validity pass, revocation n/a
-	// (no status ref), linkage pass; NO invocation/capability.
-	if got := checkStatus(sv, "External verifier"); got != "pass" {
-		t.Errorf("subject External verifier = %q, want pass", got)
+	// Subject card: no External-verifier pill (removed), within validity pass,
+	// revocation n/a (no status ref), linkage pass; NO invocation/capability.
+	if got := checkStatus(sv, "External verifier"); got != "<absent>" {
+		t.Errorf("External verifier pill should be removed, got %q", got)
 	}
 	if got := checkStatus(sv, "Within validity"); got != "pass" {
 		t.Errorf("subject Within validity = %q, want pass", got)
@@ -96,10 +96,10 @@ func TestBuildDelegationCredentialViews(t *testing.T) {
 		t.Errorf("subject should not carry Invocation, got %q", got)
 	}
 
-	// Delegation card: external verifier fail (INVALID), within validity pass,
+	// Delegation card: no External-verifier pill (removed), within validity pass,
 	// NOT revoked fail (bit 5 set), linkage/invocation/capability pass.
-	if got := checkStatus(dv, "External verifier"); got != "fail" {
-		t.Errorf("delegation External verifier = %q, want fail", got)
+	if got := checkStatus(dv, "External verifier"); got != "<absent>" {
+		t.Errorf("External verifier pill should be removed, got %q", got)
 	}
 	if got := checkStatus(dv, "Not revoked"); got != "fail" {
 		t.Errorf("delegation Not revoked = %q, want fail (index 5 revoked)", got)

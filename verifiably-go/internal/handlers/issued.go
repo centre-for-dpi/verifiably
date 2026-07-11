@@ -360,13 +360,15 @@ func (h *H) injiIssuedCredentialsBody(sess *Session, r *http.Request, owner stri
 	if err != nil {
 		items = nil
 	}
-	// SD-JWT auth-code credentials aren't in certify's ledger — they're recorded
-	// in verifiably's IssuanceLog at provision time (with a token status binding).
-	// Merge them in, scoped to this owner + DPG, so the issuer can review + revoke
-	// them alongside the ldp_vc ledger rows.
+	// Auth-code credentials verifiably owns revocation for aren't in certify's
+	// ledger — they're recorded in verifiably's IssuanceLog at provision time (with
+	// a token status binding for SD-JWT, a bitstring binding for W3C). Merge them
+	// in, scoped to this owner + DPG, so the issuer can review + revoke them
+	// alongside the certify.ledger rows.
 	if h.IssuanceLog != nil {
 		for _, c := range h.IssuanceLog.List(issuance.Filter{OwnerKey: owner}) {
-			if c.IssuerDpg == sess.IssuerDpg && c.StatusList != nil && c.StatusList.Type == "token" {
+			if c.IssuerDpg == sess.IssuerDpg && c.StatusList != nil &&
+				(c.StatusList.Type == "token" || c.StatusList.Type == "bitstring") {
 				items = append(items, c)
 			}
 		}

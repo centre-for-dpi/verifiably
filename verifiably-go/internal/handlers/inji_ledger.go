@@ -121,33 +121,37 @@ func ledgerClaims(row map[string]string) map[string]string {
 // this is the ONLY record of these credentials — it's what lets
 // /issuer/credentials list them and revoke them through the token status list.
 // The token status Index is the per-holder slot allocated in runBulkProvision.
-func (h *H) recordInjiSDJWTIssuance(sess *Session, schema vctypes.Schema, holderID string, claims map[string]string, idx int) {
+func (h *H) recordInjiIssuance(sess *Session, schema vctypes.Schema, holderID string, claims map[string]string, idx int, kind string) {
 	if h.IssuanceLog == nil {
 		return
 	}
 	listID := ""
-	if h.TokenStore != nil {
-		listID = h.TokenStore.GetListID()
+	if store := h.storeForKind(kind); store != nil {
+		listID = store.GetListID()
+	}
+	format := "vc+sd-jwt"
+	if kind == "bitstring" {
+		format = "ldp_vc"
 	}
 	rec := issuance.IssuedCredential{
 		ID:            newIssuanceID(),
 		SchemaID:      schema.ID,
 		SchemaName:    schema.Name,
 		Std:           schema.Std,
-		Format:        "vc+sd-jwt",
+		Format:        format,
 		IssuerDpg:     sess.IssuerDpg,
 		OwnerKey:      sessionOwnerKey(sess),
 		HolderHint:    holderID,
 		SubjectFields: claims,
 		Source:        "inji",
 		StatusList: &issuance.StatusListEntry{
-			Type:   "token",
+			Type:   kind,
 			ListID: listID,
 			Index:  idx,
 		},
 	}
 	if _, err := h.IssuanceLog.Append(rec); err != nil {
-		fmt.Printf("issuance log: append inji sd-jwt %s: %v\n", rec.ID, err)
+		fmt.Printf("issuance log: append inji %s %s: %v\n", kind, rec.ID, err)
 	}
 }
 
@@ -239,17 +243,17 @@ func (h *H) setInjiCredentialRevocation(w http.ResponseWriter, r *http.Request, 
 	if id == "" {
 		id = r.FormValue("id")
 	}
-	// SD-JWT auth-code credentials are recorded in verifiably's IssuanceLog with a
-	// token status binding (certify doesn't ledger SD-JWT). Dispatch those to the
-	// token status list; everything else is an ldp_vc certify.ledger row revoked
-	// through Certify's status API below.
+	// Auth-code credentials verifiably owns revocation for (SD-JWT token + W3C
+	// bitstring) are recorded in verifiably's IssuanceLog with a status binding.
+	// Dispatch those to their own status list; everything else is a certify.ledger
+	// row revoked through Certify's status API below.
 	if h.IssuanceLog != nil {
 		if rec, ok := h.IssuanceLog.Get(id); ok {
 			if rec.OwnerKey != owner {
 				http.Error(w, "credential not found", http.StatusNotFound)
 				return
 			}
-			h.setInjiTokenRevocation(w, r, rec, revoke)
+			h.setInjiStatusRevocation(w, r, rec, revoke)
 			return
 		}
 	}
@@ -271,18 +275,20 @@ func (h *H) setInjiCredentialRevocation(w http.ResponseWriter, r *http.Request, 
 	h.renderFragment(w, r, "fragment_issued_credentials_row", ledgerRowToIssued(row, sess.IssuerDpg, owner))
 }
 
-// setInjiTokenRevocation revokes/reinstates an auth-code SD-JWT credential via
+// setInjiStatusRevocation revokes/reinstates an auth-code credential verifiably
+// owns (SD-JWT token OR W3C bitstring) by flipping its bit in the matching store,
+// dispatched by rec.StatusList.Type. Formerly setInjiTokenRevocation (token-only) via
 // verifiably's IETF token status list (the credential's SD-JWT carries a
 // status_list ref to it), then updates the IssuanceLog row and re-renders it.
 // The status-list adapter is reused unchanged — this only drives it.
-func (h *H) setInjiTokenRevocation(w http.ResponseWriter, r *http.Request, rec issuance.IssuedCredential, revoke bool) {
-	if rec.StatusList == nil || rec.StatusList.Type != "token" {
-		h.errorToast(w, r, "This credential has no token status binding and cannot be revoked through verifiably-go.")
+func (h *H) setInjiStatusRevocation(w http.ResponseWriter, r *http.Request, rec issuance.IssuedCredential, revoke bool) {
+	if rec.StatusList == nil || rec.StatusList.Type == "" {
+		h.errorToast(w, r, "This credential has no status binding and cannot be revoked through verifiably-go.")
 		return
 	}
-	store := h.storeForKind("token")
+	store := h.storeForKind(rec.StatusList.Type)
 	if store == nil {
-		h.errorToast(w, r, "Token status list not configured.")
+		h.errorToast(w, r, "Status list "+rec.StatusList.Type+" not configured.")
 		return
 	}
 	var err error
