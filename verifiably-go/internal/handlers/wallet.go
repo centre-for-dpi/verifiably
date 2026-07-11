@@ -27,12 +27,19 @@ func holderCtx(r *http.Request, sess *Session) context.Context {
 	// fallback). Then try email, then the session-scoped fallback for
 	// unauthenticated demo mode. Each distinct key maps to its own
 	// wallet account upstream.
-	// Freeze the wallet key on first use so credentials claimed early in
-	// the session (before OIDC `sub` was populated) stay reachable after
-	// a later auth flow fills it in — otherwise holderCtx would flip
-	// userKey mid-session and a subsequent /holder/present would reach
-	// into a different walt.id wallet than the one the credential landed
-	// in. AuthCallback clears WalletUserKey so the next login derives fresh.
+	key := sessionWalletKey(sess)
+	log.Printf("holderCtx sess.ID=%s authProv=%q sub=%q email=%q → userKey=%q (frozen)",
+		sess.ID, sess.AuthProvider, sess.UserSubject, sess.UserEmail, key)
+	return backend.WithHolderIdentity(ctx, key)
+}
+
+// sessionWalletKey returns the stable per-user key the holder's wallets (walt.id
+// AND the in-app Inji web wallet) are partitioned by: the OIDC provider|sub, else
+// the email, else a session-scoped fallback. It is frozen on the session on first
+// use so a key populated later in the flow (e.g. after a delayed auth) doesn't
+// shift which wallet partition earlier claims landed in; AuthCallback clears
+// WalletUserKey so the next login re-derives it against the fresh identity.
+func sessionWalletKey(sess *Session) string {
 	if sess.WalletUserKey == "" {
 		switch {
 		case sess.AuthProvider != "" && sess.UserSubject != "":
@@ -43,9 +50,7 @@ func holderCtx(r *http.Request, sess *Session) context.Context {
 			sess.WalletUserKey = "session-" + sess.ID
 		}
 	}
-	log.Printf("holderCtx sess.ID=%s authProv=%q sub=%q email=%q → userKey=%q (frozen)",
-		sess.ID, sess.AuthProvider, sess.UserSubject, sess.UserEmail, sess.WalletUserKey)
-	return backend.WithHolderIdentity(ctx, sess.WalletUserKey)
+	return sess.WalletUserKey
 }
 
 // issuerCtx is the issuer-side mirror of holderCtx: it attaches the

@@ -23,6 +23,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
+	"github.com/verifiably/verifiably-go/internal/storage/injiwallet"
 	"github.com/verifiably/verifiably-go/internal/trust"
 	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -93,6 +94,12 @@ type H struct {
 	// identity registry (UpsertIdentity/GetIdentity) used by the registrar
 	// enrolment surface + holder activation.
 	Subjects SubjectProvisioner
+
+	// InjiWallet durably persists the credentials a holder claims through the
+	// in-app Inji web wallet, keyed by their OIDC login identity (provider|sub)
+	// so the wallet follows the user across sessions/restarts rather than being
+	// tied to the browser cookie. Optional — nil degrades to session-only storage.
+	InjiWallet *injiwallet.Store
 
 	// Mailer sends holder-activation email OTPs (the Mailer interface, satisfied
 	// by *mailer.Mailer). nil when email is unconfigured (SMTP_* unset) — the
@@ -865,6 +872,24 @@ func (h *H) AuthCallback(w http.ResponseWriter, r *http.Request) {
 	sess.WalletCreds = nil
 	sess.WalletPending = nil
 	sess.WalletUserKey = ""
+	// The in-app Inji web wallet is likewise partitioned per OIDC user. Drop the
+	// prior user's cookie-cached credentials and reload THIS user's durable set —
+	// so the wallet follows the login (durable across sessions/restarts) and never
+	// leaks one user's credentials to the next on a shared browser. sessionWalletKey
+	// re-freezes WalletUserKey to the just-authenticated provider|sub.
+	sess.InjiClaimedVCs = nil
+	sess.InjiHolderKeys = nil
+	if h.InjiWallet != nil {
+		for _, hc := range h.InjiWallet.List(sessionWalletKey(sess)) {
+			sess.InjiClaimedVCs = append(sess.InjiClaimedVCs, hc.VC)
+			if hc.HolderKey != "" {
+				if sess.InjiHolderKeys == nil {
+					sess.InjiHolderKeys = map[string]string{}
+				}
+				sess.InjiHolderKeys[hc.VCID] = hc.HolderKey
+			}
+		}
+	}
 	h.redirect(w, r, authNextFor(sess.Role))
 }
 
@@ -890,6 +915,10 @@ func (h *H) Logout(w http.ResponseWriter, r *http.Request) {
 	sess.WalletCreds = nil
 	sess.WalletPending = nil
 	sess.WalletUserKey = ""
+	// Clear the Inji web wallet's cookie cache too — its durable copy stays keyed
+	// by the user in InjiWallet and is re-hydrated on the next login.
+	sess.InjiClaimedVCs = nil
+	sess.InjiHolderKeys = nil
 	h.redirect(w, r, "/")
 }
 

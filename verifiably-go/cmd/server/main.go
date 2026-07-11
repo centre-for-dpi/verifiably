@@ -50,6 +50,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
+	"github.com/verifiably/verifiably-go/internal/storage/injiwallet"
 	"github.com/verifiably/verifiably-go/internal/storage/pg"
 	redisstore "github.com/verifiably/verifiably-go/internal/storage/redis"
 	"github.com/verifiably/verifiably-go/internal/tracing"
@@ -107,6 +108,16 @@ func wireIssuanceFile(h *handlers.H, publicURL string) error {
 		return fmt.Errorf("open issuance log: %w", err)
 	}
 	h.IssuanceLog = logger
+
+	// Durable, per-OIDC-user store of Inji web-wallet credentials, encrypted at
+	// rest with the same session-derived key. Keyed by provider|sub so a holder's
+	// claimed credentials follow their login across browsers/restarts.
+	_, walletKey := sessionSecretKey(stateDir)
+	injiWallet, err := injiwallet.NewStore(filepath.Join(stateDir, "inji-wallets.json"), walletKey)
+	if err != nil {
+		return fmt.Errorf("open inji wallet store: %w", err)
+	}
+	h.InjiWallet = injiWallet
 
 	bs, err := statuslist.NewStore("bitstring", "v1",
 		filepath.Join(stateDir, "status-list-bitstring-v1.json"),
@@ -843,6 +854,35 @@ func buildTracer(_ context.Context) *tracing.Tracer {
 	return t
 }
 
+// sessionSecretKey resolves the instance's session secret (VERIFIABLY_SESSION_SECRET,
+// else a persisted state/session.key it generates on first run) and returns both the
+// secret (the file PersistentStore takes it directly) and the derived AES-256 key
+// (the pg/redis session stores + the Inji web-wallet store encrypt with it). Both
+// are empty/nil only when no secret can be obtained (stores then fall back to
+// plaintext / in-memory). Idempotent — all callers read/create the same session.key.
+func sessionSecretKey(stateDir string) (string, []byte) {
+	secret := os.Getenv("VERIFIABLY_SESSION_SECRET")
+	if secret == "" {
+		keyPath := filepath.Join(stateDir, "session.key")
+		if data, err := os.ReadFile(keyPath); err == nil {
+			secret = strings.TrimSpace(string(data))
+		} else {
+			_ = os.MkdirAll(stateDir, 0o700)
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err == nil {
+				secret = hex.EncodeToString(b)
+				_ = os.WriteFile(keyPath, []byte(secret+"\n"), 0o600)
+				log.Printf("session store: generated new session key at %s", keyPath)
+			}
+		}
+	}
+	if secret == "" {
+		return "", nil
+	}
+	k := sha256.Sum256([]byte(secret))
+	return secret, k[:]
+}
+
 // buildSessionStore returns a persistent store backed by encrypted files in
 // VERIFIABLY_STATE_DIR/sessions/. The encryption key is taken from
 // VERIFIABLY_SESSION_SECRET; when that env var is absent the key is loaded
@@ -863,26 +903,8 @@ func buildSessionStore(_ context.Context, pool *pgxpool.Pool) handlers.SessionSt
 	if stateDir == "" {
 		stateDir = "state"
 	}
-	secret := os.Getenv("VERIFIABLY_SESSION_SECRET")
-	if secret == "" {
-		keyPath := filepath.Join(stateDir, "session.key")
-		if data, err := os.ReadFile(keyPath); err == nil {
-			secret = strings.TrimSpace(string(data))
-		} else {
-			_ = os.MkdirAll(stateDir, 0o700)
-			b := make([]byte, 32)
-			if _, err := rand.Read(b); err == nil {
-				secret = hex.EncodeToString(b)
-				_ = os.WriteFile(keyPath, []byte(secret+"\n"), 0o600)
-				log.Printf("session store: generated new session key at %s", keyPath)
-			}
-		}
-	}
-	var aesKey []byte
-	if secret != "" {
-		k := sha256.Sum256([]byte(secret))
-		aesKey = k[:]
-	} else {
+	secret, aesKey := sessionSecretKey(stateDir)
+	if aesKey == nil {
 		log.Printf("session store: WARNING — no session secret; sessions will be stored unencrypted")
 	}
 

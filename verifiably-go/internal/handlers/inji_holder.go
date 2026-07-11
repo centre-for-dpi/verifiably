@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/internal/delegation"
+	"github.com/verifiably/verifiably-go/internal/storage/injiwallet"
 )
 
 func envOr(key, def string) string {
@@ -216,6 +217,14 @@ func (h *H) InjiClaimCallback(w http.ResponseWriter, r *http.Request) {
 			sess.InjiHolderKeys = map[string]string{}
 		}
 		sess.InjiHolderKeys[vcID(vc)] = holderKeyPEM
+	}
+	// Durably persist the credential under the holder's OIDC identity so the wallet
+	// follows the logged-in user across sessions/restarts (the session cache alone
+	// is cookie-scoped). Best-effort; the session copy above still serves this view.
+	if h.InjiWallet != nil {
+		_ = h.InjiWallet.Add(sessionWalletKey(sess), injiwallet.HeldCred{
+			VCID: vcID(vc), VC: vc, HolderKey: holderKeyPEM, ClaimedAt: time.Now().UTC(),
+		})
 	}
 	sess.InjiClaimError = ""
 	h.redirect(w, r, "/holder/wallet/inji/credentials")
@@ -663,6 +672,9 @@ func (h *H) DeleteInjiClaimed(w http.ResponseWriter, r *http.Request) {
 	}
 	sess.InjiClaimedVCs = kept
 	delete(sess.InjiHolderKeys, id) // drop the retained holder key with the credential
+	if h.InjiWallet != nil {        // remove from the durable per-user wallet too
+		_ = h.InjiWallet.Delete(sessionWalletKey(sess), id)
+	}
 	if len(kept) > 0 {
 		sess.InjiClaimedVC = kept[0]
 	} else {
