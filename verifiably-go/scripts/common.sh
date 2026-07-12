@@ -165,7 +165,12 @@ export VERIFIABLY_SLUG_IDENTITY_REGISTRY VERIFIABLY_SLUG_REGISTRY_ADMIN
 # docker compose / sub-shells inherit it.
 : "${REGISTRY_ADMIN_HOST_PORT:=18095}"
 : "${VERIFIABLY_REGISTRY_ADMIN_URL:=$(url_for registry-admin "$VERIFIABLY_PUBLIC_HOST" "$REGISTRY_ADMIN_HOST_PORT")}"
-export REGISTRY_ADMIN_HOST_PORT VERIFIABLY_REGISTRY_ADMIN_URL
+# The Sunbird RC API endpoint the registry-admin console POSTs to (published on
+# the host at :18091). Derived from the deployment host so it is not hardcoded to
+# any one box; override REGISTRY_ADMIN_SUNBIRD_URL in .env for a different host.
+: "${SUNBIRD_RC_HOST_PORT:=18091}"
+: "${REGISTRY_ADMIN_SUNBIRD_URL:=http://${VERIFIABLY_PUBLIC_HOST:-localhost}:${SUNBIRD_RC_HOST_PORT}}"
+export REGISTRY_ADMIN_HOST_PORT VERIFIABLY_REGISTRY_ADMIN_URL REGISTRY_ADMIN_SUNBIRD_URL
 
 : "${LIBRETRANSLATE_PORT:=5000}"
 : "${VERIFIABLY_IMAGE:=verifiably-go:local}"

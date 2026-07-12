@@ -40,9 +40,13 @@
 # Restarts both services after rewriting because they only read these
 # files at boot.
 render_waltid_service_confs() {
-  if [[ -z "$VERIFIABLY_HOSTS_PATTERN" ]]; then
-    return 0
-  fi
+  # Render in BOTH modes (subdomain AND legacy host:port). url_for already
+  # resolves the right value per mode: subdomain -> https://walt-issuer.<domain>,
+  # legacy -> http://<host>:<port> (reached container-side via the compose
+  # extra_hosts localhost:host-gateway). Rendering in legacy too — rather than
+  # relying on walt.id's HOCON ${SERVICE_HOST} substitution — makes a fresh
+  # localhost deploy work deterministically; the committed files carry the
+  # portable ${SERVICE_HOST}:${..._API_PORT} template as a k8s/no-render fallback.
   local issuer_conf="$SCRIPT_DIR/deploy/k8s/config/issuer/issuer-service.conf"
   local verifier_conf="$SCRIPT_DIR/deploy/k8s/config/verifier/verifier-service.conf"
   local issuer_url verifier_url

@@ -12,7 +12,7 @@ it only drives the Sunbird RC HTTP API.
 
 Config (env):
   VERIFIABLY_SCHEMAS_URL  default http://verifiably-go:8080/api/schemas
-  SUNBIRD_URL             default http://156.67.105.185:18091
+  SUNBIRD_URL             default http://localhost:18091 (set via env / common.sh)
 """
 import os
 import io
@@ -29,7 +29,7 @@ from fastapi.responses import HTMLResponse
 
 VERIFIABLY_SCHEMAS_URL = os.environ.get(
     "VERIFIABLY_SCHEMAS_URL", "http://verifiably-go:8080/api/registry-credentials")
-SUNBIRD_URL = os.environ.get("SUNBIRD_URL", "http://156.67.105.185:18091").rstrip("/")
+SUNBIRD_URL = os.environ.get("SUNBIRD_URL", "http://localhost:18091").rstrip("/")
 
 app = FastAPI(title="Registries Admin Console", docs_url=None, redoc_url=None)
 

@@ -816,7 +816,7 @@ services:
       VERIFIABLY_SCHEMAS_URL: ${REGISTRY_ADMIN_SCHEMAS_URL:-http://verifiably-go:8080/api/registry-credentials}
       # Sunbird RC registry API. Defaults to the box's published port; override
       # via REGISTRY_ADMIN_SUNBIRD_URL in .env for a different host.
-      SUNBIRD_URL: ${REGISTRY_ADMIN_SUNBIRD_URL:-http://156.67.105.185:18091}
+      SUNBIRD_URL: ${REGISTRY_ADMIN_SUNBIRD_URL:-http://localhost:18091}
     ports:
       # Host port kept for direct/legacy access; in subdomain mode the console
       # is reached via https://registry-admin.<domain> through caddy-public.
