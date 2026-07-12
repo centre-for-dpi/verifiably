@@ -81,18 +81,32 @@ def find_schema(entity):
 # ----------------------------------------------------------------------------
 # Sunbird RC
 # ----------------------------------------------------------------------------
-def sb_post(path, body, timeout=30, tries=4):
-    """POST to Sunbird with retry/backoff (mirrors etl_citizens.py)."""
+def _sb(method, path, body=None, timeout=30, tries=4):
+    """HTTP to Sunbird with retry/backoff (mirrors etl_citizens.py). Handles
+    POST/PUT/DELETE — the record CRUD the Sunbird RC entity API exposes at
+    /api/v1/{Entity} (create/search) and /api/v1/{Entity}/{osid} (get/put/delete)."""
     last = "no-attempt"
     for a in range(tries):
         try:
             with httpx.Client(timeout=timeout) as c:
-                r = c.post(SUNBIRD_URL + path, json=body)
+                r = c.request(method, SUNBIRD_URL + path, json=body)
             return r.status_code, r.text
         except Exception as e:  # noqa: BLE001
             last = str(e)
             time.sleep(1.0 + a)
     return -1, "retries-exhausted: " + last
+
+
+def sb_post(path, body, timeout=30, tries=4):
+    return _sb("POST", path, body, timeout=timeout, tries=tries)
+
+
+def sb_put(path, body, timeout=30, tries=3):
+    return _sb("PUT", path, body, timeout=timeout, tries=tries)
+
+
+def sb_delete(path, timeout=30, tries=3):
+    return _sb("DELETE", path, None, timeout=timeout, tries=tries)
 
 
 def schema_json(entity, fields):
@@ -199,6 +213,29 @@ def parse_osid(entity, txt):
         return json.loads(txt).get("result", {}).get(entity, {}).get("osid", "")
     except Exception:  # noqa: BLE001
         return ""
+
+
+def get_record(entity, osid, timeout=15):
+    """Fetch a single record by osid (flat dict with individualId + fields +
+    osid), or None if it's gone / unreadable."""
+    st, txt = _sb("GET", f"/api/v1/{entity}/{osid}", None, timeout=timeout, tries=2)
+    if st == 200:
+        try:
+            return json.loads(txt)
+        except Exception:  # noqa: BLE001
+            return None
+    return None
+
+
+def update_record(entity, osid, body):
+    """PUT-replace a record. Send the full field set so cleared fields clear."""
+    return sb_put(f"/api/v1/{entity}/{osid}", body, timeout=30, tries=3)
+
+
+def delete_record(entity, osid):
+    """Soft-delete a record (Sunbird marks _osState=DELETED; it drops from search
+    and GET-by-osid 404s afterwards)."""
+    return sb_delete(f"/api/v1/{entity}/{osid}", timeout=30, tries=3)
 
 
 # ----------------------------------------------------------------------------
@@ -381,6 +418,9 @@ main{padding:1.3rem 1.5rem;max-width:1100px}
 .fieldlist code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:.06rem .35rem;font-size:.78rem;margin-right:.3rem}
 a.btn,button{padding:.5rem .9rem;border:0;border-radius:6px;background:var(--accent);color:#fff;cursor:pointer;font-size:.88rem;text-decoration:none;display:inline-block}
 button.ghost,a.btn.ghost{background:#ececec;color:#333}
+a.btn.sm,button.sm{padding:.28rem .6rem;font-size:.76rem;border-radius:5px}
+button.danger{background:#fdecea;color:var(--err)}
+td.actions{white-space:nowrap}td.actions form{margin:0}
 table{width:100%;border-collapse:collapse;font-size:.84rem;margin-top:.4rem}
 th,td{text-align:left;padding:.45rem .6rem;border-bottom:1px solid var(--line);white-space:nowrap}
 th{color:var(--mute);font-weight:600;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em}
@@ -496,18 +536,29 @@ def credential_body(s, message="", msg_class="", ensure_note=""):
            "<input name='reg_entity' required placeholder='entity name' " + _inp + ">"
            "<button type='submit'>Fetch &amp; map →</button></form>")
 
-    # recent records
+    # recent records — each editable / deletable via its Sunbird osid
     recs = search_records(entity, {})
     cols = ["individualId"] + fields + ["osid"]
-    head = "".join("<th>" + esc(c) + "</th>" for c in cols)
+    head = "".join("<th>" + esc(c) + "</th>" for c in cols) + "<th>Actions</th>"
     body_rows = ""
     for r in recs[-10:][::-1]:
-        body_rows += "<tr>" + "".join(
+        osid = r.get("osid", "")
+        cells = "".join(
             "<td" + (" class='key'" if c == "individualId" else "") + ">" + esc(r.get(c, "")) + "</td>"
-            for c in cols) + "</tr>"
+            for c in cols)
+        if osid:
+            base = "/credential/" + esc(entity) + "/" + esc(osid)
+            actions = ("<td class='actions'>"
+                       "<a class='btn sm' href='" + base + "/edit'>Edit</a> "
+                       "<form method='post' action='" + base + "/delete' style='display:inline' "
+                       "onsubmit=\"return confirm('Delete this record permanently?')\">"
+                       "<button class='sm danger' type='submit'>Delete</button></form></td>")
+        else:
+            actions = "<td class='meta'>—</td>"
+        body_rows += "<tr>" + cells + actions + "</tr>"
     if not body_rows:
-        body_rows = "<tr><td colspan='" + str(len(cols)) + "' class='meta'>No records yet.</td></tr>"
-    table = ("<h2>Recent records <span class='meta'>(" + str(len(recs)) + " total)</span></h2>"
+        body_rows = "<tr><td colspan='" + str(len(cols) + 1) + "' class='meta'>No records yet.</td></tr>"
+    table = ("<h2>Recent records <span class='meta'>(" + str(len(recs)) + " total; edit or delete any)</span></h2>"
              "<table><thead><tr>" + head + "</tr></thead><tbody>" + body_rows + "</tbody></table>")
 
     return ("<h2>" + esc(s["name"]) + "</h2>"
@@ -515,6 +566,30 @@ def credential_body(s, message="", msg_class="", ensure_note=""):
             + esc(s["issuer"] or "—") + "</p>" + msg_html
             + "<h2>Register a holder record</h2>" + form + imp
             + "<h2>Bulk from a data source</h2>" + api + db + reg + table)
+
+
+def edit_record_body(s, osid, record, message="", msg_class=""):
+    """Prefilled edit form for one record. individualId is the entity's unique
+    key (and the eSignet linkage), so it's shown read-only; the other fields are
+    editable. Submitting PUT-replaces the record with every field, so clearing a
+    field clears it."""
+    entity = s["entity"]
+    ind = record.get("individualId", "")
+    msg_html = ("<div class='msg " + msg_class + "'>" + message + "</div>") if message else ""
+    inputs = ("<div class='fld'><label>Individual ID <span class='meta'>(key — not editable)</span></label>"
+              "<input value='" + esc(ind) + "' disabled></div>")
+    for f in s["fields"]:
+        inputs += ("<div class='fld'><label>" + esc(f) + "</label>"
+                   "<input name='" + esc(f) + "' value='" + esc(record.get(f, "")) + "'></div>")
+    form = ("<form class='box' method='post' action='/credential/" + esc(entity) + "/" + esc(osid) + "/edit'>"
+            "<div class='grid'>" + inputs + "</div>"
+            "<div style='margin-top:.8rem'><button type='submit'>Save changes</button> "
+            "<a class='btn ghost' href='/credential/" + esc(entity) + "'>Cancel</a></div>"
+            "</form>")
+    return ("<h2>Edit record</h2>"
+            "<p class='meta'>Sunbird entity <code>" + esc(entity) + "</code> &middot; Individual ID <code>"
+            + esc(ind) + "</code> &middot; osid <code>" + esc(osid) + "</code></p>"
+            + msg_html + form)
 
 
 # ----------------------------------------------------------------------------
@@ -579,6 +654,70 @@ async def credential_post(entity: str, request: Request):
         cls = "warn"
     else:
         msg = "Create failed (http " + esc(st) + "): " + esc(txt[:300])
+        cls = "err"
+    return page(s["name"], credential_body(s, message=msg, msg_class=cls))
+
+
+@app.get("/credential/{entity}/{osid}/edit", response_class=HTMLResponse)
+def record_edit_get(entity: str, osid: str):
+    s = find_schema(entity)
+    if not s:
+        return HTMLResponse(page("Not found",
+            "<div class='msg err'>Unknown entity <code>" + esc(entity) + "</code>.</div>"),
+            status_code=404)
+    rec = get_record(entity, osid)
+    if not rec:
+        return HTMLResponse(page(s["name"],
+            credential_body(s, message="Record <code>" + esc(osid)
+                            + "</code> not found (deleted?).", msg_class="err")),
+            status_code=404)
+    return page(s["name"], edit_record_body(s, osid, rec))
+
+
+@app.post("/credential/{entity}/{osid}/edit", response_class=HTMLResponse)
+async def record_edit_post(entity: str, osid: str, request: Request):
+    s = find_schema(entity)
+    if not s:
+        return HTMLResponse(page("Not found",
+            "<div class='msg err'>Unknown entity <code>" + esc(entity) + "</code>.</div>"),
+            status_code=404)
+    rec = get_record(entity, osid)
+    if not rec:
+        return HTMLResponse(page(s["name"],
+            credential_body(s, message="Record <code>" + esc(osid)
+                            + "</code> not found (deleted?).", msg_class="err")),
+            status_code=404)
+    # individualId is the key — keep the stored value; take every field from the
+    # form (empty included) so a PUT-replace clears fields the admin cleared.
+    ind = (rec.get("individualId") or "").strip()
+    form = await request.form()
+    body = {"individualId": ind}
+    for f in s["fields"]:
+        body[f] = str(form.get(f) or "").strip()
+    st, txt = update_record(entity, osid, body)
+    if st in (200, 201):
+        msg = ("Saved changes to Individual ID <code>" + esc(ind) + "</code> (osid <code>"
+               + esc(osid) + "</code>).")
+        return page(s["name"], credential_body(s, message=msg, msg_class="ok"))
+    merged = dict(rec)
+    merged.update(body)
+    return HTMLResponse(page(s["name"], edit_record_body(s, osid, merged,
+        message="Update failed (http " + esc(st) + "): " + esc(txt[:300]), msg_class="err")))
+
+
+@app.post("/credential/{entity}/{osid}/delete", response_class=HTMLResponse)
+async def record_delete(entity: str, osid: str):
+    s = find_schema(entity)
+    if not s:
+        return HTMLResponse(page("Not found",
+            "<div class='msg err'>Unknown entity <code>" + esc(entity) + "</code>.</div>"),
+            status_code=404)
+    st, txt = delete_record(entity, osid)
+    if st in (200, 201):
+        msg = "Deleted record <code>" + esc(osid) + "</code>."
+        cls = "ok"
+    else:
+        msg = "Delete failed (http " + esc(st) + "): " + esc(txt[:300])
         cls = "err"
     return page(s["name"], credential_body(s, message=msg, msg_class=cls))
 
