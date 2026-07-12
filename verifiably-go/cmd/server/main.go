@@ -613,6 +613,10 @@ func main() {
 		mux.HandleFunc("GET /admin/auth-providers", h.ShowAuthProvidersAdmin)
 		mux.HandleFunc("POST /admin/auth-providers/{id}/delete", h.DeleteAuthProvider)
 		mux.HandleFunc("GET /admin/metrics", h.ShowAdminMetrics)
+		// eSignet auth-method config: toggle the login factors (PIN/OTP/Wallet)
+		// the auth-code flow offers, via the eSignet client registration.
+		mux.HandleFunc("GET /admin/esignet", h.ShowEsignetConfig)
+		mux.HandleFunc("POST /admin/esignet", h.SaveEsignetConfig)
 	}
 
 	// --- Hub admin landing ---
@@ -803,11 +807,12 @@ func main() {
 	if activeRoles.Has(roles.Hub) {
 		rootHandler = hubHostRouter(mux)
 	}
-	// Purpose-named registry subdomain: identity.registry.<domain> is the national
-	// ID registry surface, so its bare root lands on /registrar/identities. Applied
-	// regardless of the hub host-split (which is role-gated) — the rest of the app,
-	// including /admin/login, still serves normally on this host.
-	rootHandler = identityRegistryRootRedirect(rootHandler)
+	// Purpose-named subdomains: land each subdomain's bare root on its surface
+	// (identity.registry.<domain> → /registrar/identities, esignet-config.<domain>
+	// → /admin/esignet). Applied regardless of the hub host-split (which is
+	// role-gated) — the rest of the app, including /admin/login, still serves
+	// normally on these hosts.
+	rootHandler = purposeSubdomainRootRedirect(rootHandler)
 	srv := &http.Server{Addr: addr, Handler: tracing.Middleware(tracer)(withRequestID(rootHandler))}
 
 	go func() {
@@ -1013,15 +1018,21 @@ func hubHostRouter(next http.Handler) http.Handler {
 	})
 }
 
-// identityRegistryRootRedirect lands the bare root of the purpose-named
-// identity.registry.<domain> host on the national ID registry surface
-// (/registrar/identities). That subdomain is a deployment-facing rename of the
-// registrar identity view, so a visitor to its root should see the registry —
-// not verifiably's generic landing page. Everything else (admin login, static
-// assets, the registrar routes themselves) passes straight through, so the full
-// app — including /admin/login — still works on this host. Applied
-// unconditionally; unrelated hosts fall through untouched.
-func identityRegistryRootRedirect(next http.Handler) http.Handler {
+// purposeSubdomainRoots maps a purpose-named subdomain's host prefix to the
+// in-app surface its bare root should land on. Each is a deployment-facing name
+// for an existing surface, so a visitor to its root should see that surface, not
+// verifiably's generic landing page.
+var purposeSubdomainRoots = []struct{ prefix, target string }{
+	{"identity.registry.", "/registrar/identities"}, // national ID registry (data tier)
+	{"esignet-config.", "/admin/esignet"},           // eSignet login-method config
+}
+
+// purposeSubdomainRootRedirect redirects the bare root ("/") of each
+// purpose-named host (see purposeSubdomainRoots) to its surface. Everything else
+// (admin login, static assets, the target routes themselves) passes straight
+// through, so the full app — including /admin/login — still works on these hosts.
+// Applied unconditionally; unrelated hosts fall through untouched.
+func purposeSubdomainRootRedirect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			host := r.Host
@@ -1029,9 +1040,11 @@ func identityRegistryRootRedirect(next http.Handler) http.Handler {
 				host = host[:i]
 			}
 			host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
-			if strings.HasPrefix(host, "identity.registry.") {
-				http.Redirect(w, r, "/registrar/identities", http.StatusFound)
-				return
+			for _, s := range purposeSubdomainRoots {
+				if strings.HasPrefix(host, s.prefix) {
+					http.Redirect(w, r, s.target, http.StatusFound)
+					return
+				}
 			}
 		}
 		next.ServeHTTP(w, r)

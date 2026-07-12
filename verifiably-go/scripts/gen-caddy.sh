@@ -218,6 +218,10 @@ render_public_caddyfile() {
     # VERIFIABLY_SLUG_REGISTRY_ADMIN. Two-label names resolve via the
     # *.registry.<domain> wildcard the agency registries already use.
     "identity-registry|verifiably-go:8080|http"
+    # eSignet auth-method config surface (verifiably-owned; the app redirects its
+    # root to /admin/esignet). Distinct from esignet.<domain> = the eSignet
+    # product. Slug default esignet-config; override via VERIFIABLY_SLUG_ESIGNET_CONFIG.
+    "esignet-config|verifiably-go:8080|http"
   )
 
   {

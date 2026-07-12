@@ -143,7 +143,7 @@ func (h *H) StartInjiClaim(w http.ResponseWriter, r *http.Request) {
 	q.Set("code_challenge", pkceChallenge(verifier))
 	q.Set("code_challenge_method", "S256")
 	q.Set("ui_locales", "en")
-	q.Set("acr_values", injiAuthcodeACR()) // PIN login (static-code), not the mock OTP
+	q.Set("acr_values", h.injiAuthcodeACRValues()) // enabled login factors (admin-config'd via /admin/esignet; env fallback)
 	http.Redirect(w, r, esignetBase()+"/authorize?"+q.Encode(), http.StatusFound)
 }
 

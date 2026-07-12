@@ -44,6 +44,19 @@
       </div>
     </a>
 
+    {{/* eSignet login methods — toggle the auth-code flow's login factors */}}
+    <a href="/admin/esignet" style="text-decoration:none">
+      <div class="card" style="padding:1.5rem;border:1px solid var(--line);border-radius:6px;background:var(--bg-elev);cursor:pointer;transition:border-color 0.15s"
+           onmouseover="this.style.borderColor='var(--accent,#6366f1)'"
+           onmouseout="this.style.borderColor='var(--line)'">
+        <div style="font-size:1.5rem;margin-bottom:0.75rem">🔑</div>
+        <div style="font-weight:600;font-size:0.9rem;margin-bottom:0.35rem">eSignet login methods</div>
+        <div style="font-size:0.78rem;color:var(--ink-mute);line-height:1.4">
+          Choose the factors eSignet offers at sign-in — PIN, OTP, wallet. No restart.
+        </div>
+      </div>
+    </a>
+
     {{/* Metrics — links directly to Grafana */}}
     {{if .Body.GrafanaURL}}
     <a href="{{.Body.GrafanaURL}}" target="_blank" rel="noopener" style="text-decoration:none">
