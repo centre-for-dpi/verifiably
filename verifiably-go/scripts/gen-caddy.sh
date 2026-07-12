@@ -210,6 +210,14 @@ render_public_caddyfile() {
     "credebl-minio|credebl-minio:9000|http"
     "grafana|grafana:3000|http"
     "registry-admin|registry-admin:8000|http"
+    # Purpose-named registry subdomains (both proxy to verifiably-go; the app
+    # redirects identity.registry's root to /registrar/identities). Default
+    # slugs give the dotted forms identity.registry.<domain> / admin.registry
+    # .<domain> so a deployment reads them as "the identity registry" and "the
+    # registry admin console"; override via VERIFIABLY_SLUG_IDENTITY_REGISTRY /
+    # VERIFIABLY_SLUG_REGISTRY_ADMIN. Two-label names resolve via the
+    # *.registry.<domain> wildcard the agency registries already use.
+    "identity-registry|verifiably-go:8080|http"
   )
 
   {

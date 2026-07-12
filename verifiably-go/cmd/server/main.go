@@ -803,6 +803,11 @@ func main() {
 	if activeRoles.Has(roles.Hub) {
 		rootHandler = hubHostRouter(mux)
 	}
+	// Purpose-named registry subdomain: identity.registry.<domain> is the national
+	// ID registry surface, so its bare root lands on /registrar/identities. Applied
+	// regardless of the hub host-split (which is role-gated) — the rest of the app,
+	// including /admin/login, still serves normally on this host.
+	rootHandler = identityRegistryRootRedirect(rootHandler)
 	srv := &http.Server{Addr: addr, Handler: tracing.Middleware(tracer)(withRequestID(rootHandler))}
 
 	go func() {
@@ -1001,6 +1006,31 @@ func hubHostRouter(next http.Handler) http.Handler {
 			// On the public domain: block all admin paths.
 			if isAdminPath {
 				http.NotFound(w, r)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// identityRegistryRootRedirect lands the bare root of the purpose-named
+// identity.registry.<domain> host on the national ID registry surface
+// (/registrar/identities). That subdomain is a deployment-facing rename of the
+// registrar identity view, so a visitor to its root should see the registry —
+// not verifiably's generic landing page. Everything else (admin login, static
+// assets, the registrar routes themselves) passes straight through, so the full
+// app — including /admin/login — still works on this host. Applied
+// unconditionally; unrelated hosts fall through untouched.
+func identityRegistryRootRedirect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			host := r.Host
+			if i := strings.LastIndex(host, ":"); i >= 0 {
+				host = host[:i]
+			}
+			host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+			if strings.HasPrefix(host, "identity.registry.") {
+				http.Redirect(w, r, "/registrar/identities", http.StatusFound)
 				return
 			}
 		}

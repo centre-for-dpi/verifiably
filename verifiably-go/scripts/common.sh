@@ -143,6 +143,17 @@ compute_host_aliases() {
 
 : "${VERIFIABLY_PUBLIC_URL:=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")}"
 
+# Purpose-named registry subdomains. verifiably splits its registry surfaces by
+# purpose: the national ID registry (identity/eSignet-auth data) and the
+# credential-registry admin console. The defaults give the dotted forms
+# identity.registry.<domain> and admin.registry.<domain> so a fresh deployment
+# reads them by name; they resolve via the *.registry.<domain> wildcard the
+# agency registries already use. `=` (not `:=`) preserves the "empty = skip this
+# subdomain" escape hatch resolve_slug honours; set to another label to rename.
+: "${VERIFIABLY_SLUG_IDENTITY_REGISTRY=identity.registry}"
+: "${VERIFIABLY_SLUG_REGISTRY_ADMIN=admin.registry}"
+export VERIFIABLY_SLUG_IDENTITY_REGISTRY VERIFIABLY_SLUG_REGISTRY_ADMIN
+
 # Registry Admin console — the data-source tier UI (deploy/registry-admin/).
 # REGISTRY_ADMIN_HOST_PORT is the published host port; VERIFIABLY_REGISTRY_ADMIN_URL
 # is the browser-facing URL verifiably-go surfaces in its navbar ("Registry"
