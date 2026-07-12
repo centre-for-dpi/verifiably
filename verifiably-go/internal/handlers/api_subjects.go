@@ -43,6 +43,12 @@ type SubjectProvisioner interface {
 	// GetIdentity returns an enrolled identity's demographics, or (nil, nil) when
 	// the individualId is not enrolled. The gate the activation flow checks.
 	GetIdentity(ctx context.Context, individualID string) (map[string]string, error)
+	// ListIdentities returns all enrolled identities (each a demographics map with
+	// "individualId" set), newest-updated first — backs the registrar's view of the
+	// national ID registry (incl. the OTP email).
+	ListIdentities(ctx context.Context) ([]map[string]string, error)
+	// DeleteIdentity removes an enrolled identity from the registry.
+	DeleteIdentity(ctx context.Context, individualID string) error
 	// DeleteCredential removes an auth-code credential (credential_config + owner
 	// row + its certify.vc_subject_<slug> extraction view), owner-checked. Backs the
 	// issuer schema-browser Delete for DB-backed Inji credentials (the registry

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -96,7 +97,90 @@ func (h *H) ShowRegistrarIdentities(w http.ResponseWriter, r *http.Request) {
 	}
 	body := h.identityAreaData(sess)
 	body["Enabled"] = h.Subjects != nil
+	for k, v := range h.identityRecordsData(r.Context()) {
+		body[k] = v
+	}
 	h.render(w, r, "registrar_identities", h.pageData(sess, body))
+}
+
+// identityRecords returns the enrolled identities for the registry table (nil-safe).
+func (h *H) identityRecords(ctx context.Context) []map[string]string {
+	if h.Subjects == nil {
+		return nil
+	}
+	recs, err := h.Subjects.ListIdentities(ctx)
+	if err != nil {
+		return nil
+	}
+	return recs
+}
+
+// identityRecordsData builds the context for the enrolled-identities table +
+// fragment_registrar_records (the national ID registry view).
+func (h *H) identityRecordsData(ctx context.Context) map[string]any {
+	return map[string]any{
+		"Identities":     h.identityRecords(ctx),
+		"IdentityFields": identityFields,
+	}
+}
+
+// EditIdentity (GET) renders the prefilled edit form for one enrolled identity.
+func (h *H) EditIdentity(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	if !h.registrarOK(w, r, sess, true) {
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	rec, err := h.Subjects.GetIdentity(r.Context(), id)
+	if err != nil || rec == nil {
+		h.identityInlineError(w, r, "No enrolled identity for "+id)
+		return
+	}
+	rec["individualId"] = id
+	h.renderFragment(w, r, "fragment_registrar_edit", map[string]any{
+		"Fields": identityFields,
+		"Record": rec,
+	})
+}
+
+// SaveIdentity (POST) persists an edited identity — including the email the
+// activation OTP is sent to — via the merge-upsert, then re-renders the table.
+func (h *H) SaveIdentity(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	if !h.registrarOK(w, r, sess, true) {
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		h.identityInlineError(w, r, "missing individualId")
+		return
+	}
+	demographics := map[string]string{}
+	for _, f := range identityFields {
+		if f == "individualId" {
+			continue
+		}
+		demographics[f] = strings.TrimSpace(r.FormValue(f))
+	}
+	if err := h.Subjects.UpsertIdentity(r.Context(), id, demographics); err != nil {
+		h.identityInlineError(w, r, "Save failed: "+err.Error())
+		return
+	}
+	h.renderFragment(w, r, "fragment_registrar_records", h.identityRecordsData(r.Context()))
+}
+
+// DeleteIdentityRecord (POST) removes an enrolled identity, then re-renders the table.
+func (h *H) DeleteIdentityRecord(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	if !h.registrarOK(w, r, sess, true) {
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	if err := h.Subjects.DeleteIdentity(r.Context(), id); err != nil {
+		h.identityInlineError(w, r, "Delete failed: "+err.Error())
+		return
+	}
+	h.renderFragment(w, r, "fragment_registrar_records", h.identityRecordsData(r.Context()))
 }
 
 // IdentityBulkSource swaps the active source chip and re-renders #identity-area.

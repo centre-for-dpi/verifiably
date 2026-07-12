@@ -15,8 +15,73 @@
   <div id="identity-area">
     {{template "fragment_registrar_bulk_area" .Body}}
   </div>
+
+  {{if .Body.Enabled}}
+  <div id="identity-records" style="margin-top:2.5rem">
+    {{template "fragment_registrar_records" .Body}}
+  </div>
+  {{end}}
   {{end}}
 </section>
+{{end}}
+
+{{/* fragment_registrar_records — the national ID registry view: every enrolled
+     identity with its email (where the signup verification code is sent), each
+     Editable/Deletable. Re-rendered into #identity-records on save/delete. */}}
+{{define "fragment_registrar_records"}}
+<div class="section-label" style="margin-bottom:0.5rem">ENROLLED IDENTITIES · NATIONAL ID REGISTRY</div>
+{{if .Identities}}
+<p style="font-size:0.8rem;color:var(--muted);margin:0 0 0.75rem">{{len .Identities}} enrolled. Edit a record to change its details — the <strong>email</strong> is where a holder's signup verification code is sent (it governs the next activation's OTP).</p>
+<div style="overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+    <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+      <th style="padding:0.4rem 0.6rem">Individual ID</th>
+      <th style="padding:0.4rem 0.6rem">Name</th>
+      <th style="padding:0.4rem 0.6rem">Email</th>
+      <th style="padding:0.4rem 0.6rem">Phone</th>
+      <th style="padding:0.4rem 0.6rem"></th>
+    </tr></thead>
+    <tbody>
+    {{range .Identities}}
+      <tr style="border-bottom:1px solid var(--line)">
+        <td class="mono" style="padding:0.4rem 0.6rem">{{.individualId}}</td>
+        <td style="padding:0.4rem 0.6rem">{{if .fullName}}{{.fullName}}{{else}}{{.givenName}} {{.familyName}}{{end}}</td>
+        <td class="mono" style="padding:0.4rem 0.6rem">{{if .email}}{{.email}}{{else}}<em style="color:var(--muted)">(none)</em>{{end}}</td>
+        <td class="mono" style="padding:0.4rem 0.6rem">{{.phone}}</td>
+        <td style="padding:0.4rem 0.6rem;white-space:nowrap;text-align:right">
+          <button class="btn ghost small" type="button" hx-get="/registrar/identities/{{.individualId}}/edit" hx-target="#identity-edit" hx-swap="innerHTML">Edit</button>
+          <button class="btn ghost small" type="button" hx-post="/registrar/identities/{{.individualId}}/delete" hx-target="#identity-records" hx-swap="innerHTML" hx-confirm="Delete identity {{.individualId}}?">Delete</button>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<p style="font-size:0.85rem;color:var(--muted)">No identities enrolled yet. Use the enrolment above to load citizens from a data source.</p>
+{{end}}
+<div id="identity-edit" style="margin-top:1rem"></div>
+{{end}}
+
+{{/* fragment_registrar_edit — the per-identity edit form (incl. email). */}}
+{{define "fragment_registrar_edit"}}
+<div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:6px;padding:1rem;margin-top:0.5rem">
+  <div class="section-label" style="margin-bottom:0.6rem">EDIT IDENTITY · <span class="mono">{{.Record.individualId}}</span></div>
+  <form hx-post="/registrar/identities/{{.Record.individualId}}/edit" hx-target="#identity-records" hx-swap="innerHTML" style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem">
+    {{range .Fields}}
+      {{if ne . "individualId"}}
+      <label style="display:flex;flex-direction:column;font-size:0.72rem;color:var(--muted)">{{.}}
+        <input name="{{.}}" value="{{index $.Record .}}" style="margin-top:0.2rem;padding:0.45rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;font-size:0.85rem">
+      </label>
+      {{end}}
+    {{end}}
+    <div style="grid-column:1/-1;display:flex;gap:0.6rem;align-items:center;margin-top:0.4rem">
+      <button class="btn" type="submit">Save</button>
+      <button class="btn ghost" type="button" onclick="document.getElementById('identity-edit').innerHTML=''">Cancel</button>
+      <span style="font-size:0.72rem;color:var(--muted)">The email is where the signup verification code is sent.</span>
+    </div>
+  </form>
+</div>
 {{end}}
 
 {{define "fragment_registrar_bulk_area"}}

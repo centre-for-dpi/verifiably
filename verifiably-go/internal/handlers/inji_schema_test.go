@@ -85,6 +85,22 @@ func (f *fakeSubjects) UpsertIdentity(_ context.Context, individualID string, de
 func (f *fakeSubjects) GetIdentity(_ context.Context, individualID string) (map[string]string, error) {
 	return f.identities[individualID], nil
 }
+func (f *fakeSubjects) ListIdentities(_ context.Context) ([]map[string]string, error) {
+	out := []map[string]string{}
+	for id, demo := range f.identities {
+		row := map[string]string{}
+		for k, v := range demo {
+			row[k] = v
+		}
+		row["individualId"] = id
+		out = append(out, row)
+	}
+	return out, nil
+}
+func (f *fakeSubjects) DeleteIdentity(_ context.Context, individualID string) error {
+	delete(f.identities, individualID)
+	return nil
+}
 func (f *fakeSubjects) DeleteCredential(_ context.Context, key, _, slug string) error {
 	f.deletedCreds = append(f.deletedCreds, key)
 	f.droppedViewSlugs = append(f.droppedViewSlugs, slug)

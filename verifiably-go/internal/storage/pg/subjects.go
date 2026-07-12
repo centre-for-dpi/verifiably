@@ -442,3 +442,49 @@ func (s *SubjectStore) GetIdentity(ctx context.Context, individualID string) (ma
 	}
 	return demographics, nil
 }
+
+// ListIdentities returns every enrolled identity in the registry, newest-updated
+// first, each as a demographics map with "individualId" set to the row key — so
+// the registrar-admin surface can VIEW the national ID registry (incl. the email
+// the activation OTP is sent to). Returns an empty slice when none are enrolled.
+func (s *SubjectStore) ListIdentities(ctx context.Context) ([]map[string]string, error) {
+	if err := s.ensureIdentityRegistry(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT individual_id, demographics FROM certify.identity_registry
+		 ORDER BY upd_dtimes DESC NULLS LAST, cr_dtimes DESC NULLS LAST, individual_id`)
+	if err != nil {
+		return nil, fmt.Errorf("pg: list identities: %w", err)
+	}
+	defer rows.Close()
+	out := []map[string]string{}
+	for rows.Next() {
+		var id string
+		var blob []byte
+		if err := rows.Scan(&id, &blob); err != nil {
+			return nil, fmt.Errorf("pg: scan identity: %w", err)
+		}
+		demographics := map[string]string{}
+		_ = json.Unmarshal(blob, &demographics)
+		demographics["individualId"] = id
+		out = append(out, demographics)
+	}
+	return out, rows.Err()
+}
+
+// DeleteIdentity removes an enrolled identity from the registry. It does NOT touch
+// the eSignet mock-identity copy written at activation (that store is separate).
+func (s *SubjectStore) DeleteIdentity(ctx context.Context, individualID string) error {
+	if strings.TrimSpace(individualID) == "" {
+		return nil
+	}
+	if err := s.ensureIdentityRegistry(ctx); err != nil {
+		return err
+	}
+	if _, err := s.pool.Exec(ctx,
+		`DELETE FROM certify.identity_registry WHERE individual_id=$1`, individualID); err != nil {
+		return fmt.Errorf("pg: delete identity %q: %w", individualID, err)
+	}
+	return nil
+}
