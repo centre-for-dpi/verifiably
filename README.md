@@ -99,6 +99,9 @@ cd demo-daas-3-0/verifiably-go
                      # build & launch the verifiably-go container
 ```
 
+> Prefer `make`? `make setup` and `make up-all` do the same thing — see
+> [Make commands](#make-commands-optional-convenience-wrapper) below.
+
 First `up all` takes 15–30 minutes on a fast connection (CREDEBL pulls ~46 images
 and its bootstrap provisions a Keycloak realm, DID, issuer, and credential template).
 Subsequent runs are seconds. When it's done, point a browser at:
@@ -306,6 +309,31 @@ scenario gates which DPG backends come up.
 | `credebl` | CREDEBL (18 microservices) | Keycloak | ~6 GB |
 
 Usage is the same pattern: `./deploy.sh <up|run|down|status|config> <scenario>`.
+
+#### Make commands (optional convenience wrapper)
+
+Every deploy command can also be driven through the `Makefile`, which is a thin
+pass-through to `deploy.sh` — `deploy.sh` stays the single source of truth, so use
+whichever you prefer; they do exactly the same thing.
+
+| Make target | Runs |
+|---|---|
+| `make setup` | `./deploy.sh setup` (first-run `.env` wizard) |
+| `make up-all` | `./deploy.sh up all` |
+| `make waltid-up` / `make inji-up` / `make credebl-up` | `./deploy.sh up <dpg>` |
+| `make waltid-down` / `make inji-down` / `make credebl-down` / `make down-all` | `./deploy.sh down <dpg\|all>` |
+| `make reset` | `./deploy.sh reset` (tear down + wipe volumes) |
+| `make status` | `./deploy.sh status` |
+| `make nuke` | **total docker nuke** — wipes ALL containers/images/volumes/networks on the host (guarded by a confirm prompt) |
+
+Run `make help` for the full list. (`deploy.sh` deploys at DPG granularity today;
+per-role targets — `waltid-issuer-up`, `inji-authcode-up`, … — are a documented
+follow-on.)
+
+For a **from-scratch, repeatable rebuild** on a fresh VPS/EC2 or localhost — what the
+deploy regenerates vs what you must supply (secrets + DNS), and how to reproduce the
+demo data behind the screenshots — see
+[`docs/deploy-reproducibility.md`](verifiably-go/docs/deploy-reproducibility.md).
 
 To bring up only the CREDEBL stack (useful for dedicated issuer/verifier nodes):
 
