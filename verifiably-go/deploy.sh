@@ -48,8 +48,25 @@ source "$SCRIPT_DIR/scripts/gen-caddy.sh"
 
 cmd_up() {
   local scenario="${1:-}"
-  [[ -n "$scenario" ]] || { red "usage: deploy.sh up <all|waltid|inji|credebl>"; exit 2; }
-  scenario_services "$scenario" > /dev/null  # validate
+  shift || true
+  # Parse optional flags after the scenario argument
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --role)
+        [[ -n "${2:-}" ]] || { red "--role requires a value (e.g. --role issuer)"; exit 2; }
+        CLI_ROLE="$2"; export CLI_ROLE; shift 2 ;;
+      --role=*)
+        CLI_ROLE="${1#--role=}"; export CLI_ROLE; shift ;;
+      *)
+        red "unknown option: $1"; exit 2 ;;
+    esac
+  done
+  [[ -n "$scenario" ]] || {
+    red "usage: deploy.sh up <all|waltid|inji|credebl> [--role issuer[,verifier[,holder]]]"
+    exit 2
+  }
+  validate_roles "$(resolve_role)" || exit 1
+  scenario_services "$scenario" > /dev/null  # validate scenario
 
   require docker
 
@@ -110,10 +127,22 @@ cmd_up() {
     _docker_mem_bytes=$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0)
     local _docker_mem_gib=$(( _docker_mem_bytes / 1024 / 1024 / 1024 ))
     local _needed_gib=4
+    local _active_role; _active_role=$(resolve_role)
     case "$scenario" in
       all|credebl) _needed_gib=8 ;;
       inji)        _needed_gib=6 ;;
     esac
+    # Reduce estimate for single-role deployments. Only count
+    # container-affecting roles (issuer/verifier/holder) — trust/schemas/hub
+    # are valid Go-app roles (see internal/roles/roles.go) that pass through
+    # role_services() as no-ops and add zero containers, so they must not
+    # inflate the count used to scale the RAM estimate.
+    local _role_count
+    _role_count=$(tr ',' '\n' <<< "$_active_role" | tr -d ' ' | grep -Ec '^(issuer|verifier|holder)$' || true)
+    if [[ "$_role_count" -lt 3 ]]; then
+      _needed_gib=$(( _needed_gib * _role_count / 3 ))
+      (( _needed_gib < 2 )) && _needed_gib=2
+    fi
     if (( _docker_mem_gib > 0 && _docker_mem_gib < _needed_gib )); then
       yellow "  Docker Engine has ${_docker_mem_gib} GiB allocated; ${scenario} typically needs ${_needed_gib} GiB."
       yellow "  Containers may OOM mid-bring-up. Bump RAM in Docker Desktop (Settings → Resources → Advanced)"

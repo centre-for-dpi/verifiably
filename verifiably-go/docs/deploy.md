@@ -14,13 +14,13 @@ and seed scripts expect via relative paths.
 
 ## Subcommands
 
-| Command                                    | Does                                                                  |
-|--------------------------------------------|------------------------------------------------------------------------|
-| `./deploy.sh up <all\|waltid\|inji>`       | Brings up every DPG container the scenario needs + seeds clients     |
-| `./deploy.sh run <all\|waltid\|inji>`      | Builds + starts the verifiably-go container (run after `up`)          |
-| `./deploy.sh down <all\|waltid\|inji>`     | Stops the verifiably-go container and the scenario's DPG services    |
-| `./deploy.sh status`                       | Lists running compose services + verifiably-go container state       |
-| `./deploy.sh config <all\|waltid\|inji>`   | Regenerates `config/backends.json` + prints it (no container touched)|
+| Command                                             | Does                                                                  |
+|------------------------------------------------------|------------------------------------------------------------------------|
+| `./deploy.sh up <all\|waltid\|inji\|credebl> [--role <roles>]` | Brings up every DPG container the scenario (and role, if given) needs + seeds clients |
+| `./deploy.sh run <all\|waltid\|inji\|credebl>`      | Builds + starts the verifiably-go container (run after `up`)          |
+| `./deploy.sh down <all\|waltid\|inji\|credebl>`     | Stops the verifiably-go container and the scenario's DPG services    |
+| `./deploy.sh status`                                | Lists running compose services + verifiably-go container state       |
+| `./deploy.sh config <all\|waltid\|inji\|credebl>`   | Regenerates `config/backends.json` + prints it (no container touched)|
 
 Typical first run: `./deploy.sh up all && ./deploy.sh run all`.
 
@@ -28,9 +28,10 @@ Typical first run: `./deploy.sh up all && ./deploy.sh run all`.
 
 | Scenario | DPG services                                                                  | IdPs (always both) | Translator |
 |----------|-------------------------------------------------------------------------------|--------------------|------------|
-| `all`    | walt.id (issuer/wallet/verifier) + Inji Certify + Inji Certify Preauth + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx | Keycloak + WSO2IS | Yes |
+| `all`    | walt.id (issuer/wallet/verifier) + Inji Certify + Inji Certify Preauth + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx + CREDEBL | Keycloak + WSO2IS | Yes |
 | `waltid` | walt.id only                                                                  | Keycloak + WSO2IS  | Yes        |
 | `inji`   | Inji Certify + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx | Keycloak + WSO2IS  | Yes        |
+| `credebl`| CREDEBL (issuance, ledger, verification, cloud-wallet, agent + shared infra)  | Keycloak + WSO2IS  | Yes        |
 
 `backends.json` is rendered per scenario so the UI never offers a DPG
 whose backend isn't running. **Auth providers are not scoped**: every
@@ -39,6 +40,75 @@ sign-in page always offers both. The scenario only decides which DPG
 cards the user can pick from after auth. The WSO2IS OIDC client is
 bootstrapped via `scripts/bootstrap-wso2is.sh` on every `deploy.sh up`,
 regardless of scenario.
+
+## Role-filtered deploys (`--role`)
+
+Every scenario above brings up its **full** service set by default
+(issuer + verifier + holder containers). Add `--role <roles>` to start only
+the containers a subset of roles needs — useful for a dedicated
+issuance-only node, a standalone verifier, or a lightweight holder demo.
+
+```bash
+./deploy.sh up <scenario> --role issuer[,verifier][,holder]
+```
+
+Roles are resolved by `resolve_role()` in `scripts/common.sh` with this
+precedence: `--role` flag (`CLI_ROLE`) > `VERIFIABLY_ROLES` in `.env` >
+default `issuer,verifier,holder` (full deploy, 100% backward-compatible with
+deploys that never set either).
+
+The actual per-scenario × per-role service lists (`role_services()` in
+`scripts/common.sh`):
+
+| Scenario | `issuer` | `verifier` | `holder` |
+|---|---|---|---|
+| `waltid` | `postgres`, `caddy`, `issuer-api` | `postgres`, `caddy`, `verifier-api` | `postgres`, `caddy`, `wallet-api` |
+| `inji` | `certify-postgres`, `inji-certify`, `certify-preauth-postgres`, `inji-certify-preauth-backend`, `inji-preauth-proxy`, `certify-nginx`, `certify-preauth-nginx`, `citizens-postgres` | `inji-verify-postgres`, `inji-verify-service`, `inji-verify-ui`, `vc-adapter` | `injiweb-postgres`, `injiweb-redis`, `injiweb-mock-identity`, `injiweb-esignet`, `injiweb-oidc-ui`, `injiweb-minio`, `injiweb-datashare`, `injiweb-mimoto`, `injiweb-ui` |
+| `credebl` | `credebl-issuance`, `credebl-ledger`, `credebl-oid4vc-issuance`, `credebl-oid4vci-rewriter`, `credebl-minio`, `credebl-mailpit`, `credebl-schema-file-server`, `credebl-oob-redirector` + shared | `credebl-verification`, `credebl-oid4vc-verification` + shared | `credebl-cloud-wallet` + shared |
+
+"+ shared" for CREDEBL means the infra + platform services every role needs
+regardless (`credebl-postgres`, `credebl-redis`, `credebl-nats`,
+`credebl-seed`, `credebl-platform-admin-bootstrap`, `credebl-api-gateway`,
+`credebl-user`, `credebl-utility`, `credebl-agent-provisioning`,
+`credebl-agent-service`, `credebl-ecosystem`, `credebl-connection`). All 9
+combinations (3 scenarios × 3 roles) are verified working end-to-end in real
+Docker deploys.
+
+`wso2is` follows its own toggle independent of role — it's opt-out via
+`VERIFIABLY_SKIP_WSO2IS=1`/`true`, not gated by which roles are active
+(a shared IdP isn't tied to any one role's presence).
+
+Requesting `holder` without `issuer` prints a warning and asks for
+confirmation on an interactive terminal (a wallet with nothing issuing to
+it can't receive new credentials):
+
+```bash
+./deploy.sh up waltid --role holder
+#   Warning: deploying 'holder' without 'issuer' — wallet cannot receive new credentials.
+#   Continue? [y/N]
+```
+
+Set a persistent default in `.env` instead of passing `--role` every time:
+
+```bash
+# verifiably-go/.env
+VERIFIABLY_ROLES=issuer   # this deployment only ever runs issuer nodes
+```
+
+**Two role systems share the `VERIFIABLY_ROLES` name.** The Go app itself
+(`internal/roles/`) reads `VERIFIABLY_ROLES` to gate its own HTTP routes,
+recognising 6 values: `issuer`, `holder`, `verifier`, `trust`, `schemas`,
+`hub` (`hub` implies `trust`+`schemas`). The bash deploy layer described here
+reads the same variable but only 3 of those values affect which Docker
+containers start — `trust`/`schemas`/`hub` are accepted by
+`validate_roles()`/`role_services()` as no-ops (valid input, zero additional
+containers) so a value that's meaningful to the Go app (e.g.
+`VERIFIABLY_ROLES=issuer,verifier,schemas`, the shipped `.env.example`
+default) isn't rejected at the bash layer.
+
+Unit tests for the role-resolution/filtering logic live in
+[`verifiably-go/tests/test_roles.sh`](../tests/test_roles.sh) — run with
+`bash verifiably-go/tests/test_roles.sh`.
 
 ## Compose override pipeline
 
@@ -212,6 +282,37 @@ openssl pkey -in config/trust-signing-key.pem -noout -text | grep "Private-Key"
 ```
 
 The file `config/trust-signing-key.pem` is already git-ignored and already mounted as `/app/config/trust-signing-key.pem` inside the Hub container via the `../../../config:/app/config:ro` volume in `deploy/compose/hub/docker-compose.yml`. No `.env` change needed — the Hub reads it automatically when `VERIFIABLY_TRUST_SIGNING_KEY` is empty.
+
+### Hub — independent verifier (`hub-verifier-api`)
+
+The Hub can run its own Walt ID verifier so it can verify credentials
+without depending on federated nodes having a verifier of their own.
+It's opt-in via the `verifier` Docker Compose profile:
+
+```bash
+docker compose -f deploy/compose/hub/docker-compose.yml --env-file deploy/compose/hub/.env --profile verifier up -d
+```
+
+Config in `deploy/compose/hub/.env`:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VERIFIABLY_ROLES` | `verifier` | Hub's own Go-app role — the hub rarely needs to also issue or be a holder |
+| `HUB_VERIFIER_PORT` | `7053` | Host port for the Walt ID verifier-api container (bind to `127.0.0.1:7053` in production — no public exposure needed when behind Caddy) |
+| `HUB_VERIFIER_BASE_URL` | `http://localhost:7053` | Base URL the verifier-api advertises in `presentation_definition_uri`/`request_uri`. Must be browser-reachable — in TLS mode set to `https://<VERIFIABLY_PUBLIC_DOMAIN>/verifier-api` |
+| `WALTID_VERSION` | `0.18.2` | Image tag for `waltid/verifier-api` — pin to match the rest of your Walt ID deployment |
+
+Caddy exposes it at `/verifier-api/*` (via `handle_path`, which strips the
+prefix before proxying) — deliberately **not** `/verify*`, which is already
+routed to the Hub's own citizen-facing public verification portal served by
+`verifiably-go:8080` itself. Routing `/verify*` to the raw verifier container
+would silently break that portal.
+
+Verify it's up:
+
+```bash
+curl -s http://localhost:7053/openapi | grep -q verifier && echo "hub-verifier-api OK"
+```
 
 > **Do not commit this file.** It is private — possession equals the ability to sign arbitrary trust registry JWTs as your federation authority.
 
