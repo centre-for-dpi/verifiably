@@ -246,6 +246,16 @@ cmd_up() {
     # http://<PUBLIC_HOST>:3005/authorize which isn't externally reachable
     # in subdomain mode (only Caddy on 443).
     export ESIGNET_BASE_URL=$(url_for esignet "$VERIFIABLY_PUBLIC_HOST" "$ESIGNET_PUBLIC_PORT")
+    export ESIGNET_UI_SIGNUP_URL=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")/holder/register
+    # Inji Verify public URL + did:web, derived PER-HOST (localhost OR subdomain)
+    # so a fresh deploy on any host gets valid config -- not the subdomain-only
+    # https://inji-verify.<empty>/... that broke localhost/EC2-without-domain mode.
+    _iv_url=$(url_for inji-verify "$VERIFIABLY_PUBLIC_HOST" "$INJI_VERIFY_SERVICE_PORT")
+    export INJI_VP_SUBMISSION_BASE_URL="${_iv_url}/v1/verify"
+    _iv_didhost="${_iv_url#*://}"        # host[:port]
+    _iv_didhost="${_iv_didhost/:/%3A}"   # host:port -> host%3Aport (no-op when no port)
+    export INJI_DID_VERIFY_URI="did:web:${_iv_didhost}:v1:verify"
+    export INJI_DID_VERIFY_PUBLIC_KEY_URI="${INJI_DID_VERIFY_URI}#key-0"
     # PREAUTH_PUBLIC_URL drives the pre-auth Inji Certify backend's
     # mosip_certify_domain_url. It MUST be the public subdomain so Certify
     # (a) advertises public credential_issuer/credential_endpoint/
@@ -357,7 +367,7 @@ cmd_up() {
       if ! docker exec certify-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-postgres missing inji_certify DB — running init.sql"
         DID="did:web:${ISSUER_DID_DOMAIN:-certify-nginx}"
-        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init.sql" \
+        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-authcode.sql" \
           | docker exec -i certify-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify >/dev/null 2>&1 \
           && green "  certify-postgres seeded, inji-certify restarted" \
@@ -520,14 +530,15 @@ cmd_up() {
       || red "  Walt.id did:web setup failed (proceeding — issuer will use did:key)"
   fi
 
-  # In subdomain mode _verifiably_url is already resolved to the public HTTPS
-  # URL (e.g. https://vc.bootcamp.cdpi.dev). Override VERIFIABLY_PUBLIC_URL so
-  # start_container passes the correct URL to the container — without this the
-  # raw .env value (http://<host>:<port>) is used, which Keycloak then bakes
-  # into the redirect_uri and the callback fails.
-  if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
-    export VERIFIABLY_PUBLIC_URL="$_verifiably_url"
-  fi
+  # Sunbird RC registry-of-record — the Inji auth-code flow's authoritative
+  # claims source. Brought up for the all + inji scenarios so verifiably's
+  # RegisterHolder can pull a holder's record into certify.vc_subject, from
+  # which Inji Certify issues the credential over the authorization_code grant.
+  # Best-effort: a missing dir / failed bring-up never aborts the deploy (claims
+  # can still be provisioned via POST /api/v1/subjects).
+  case "$scenario" in
+    all|inji) up_sunbird_registry ;;
+  esac
 
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
@@ -549,6 +560,30 @@ cmd_up() {
   verify_oidc_discovery
 }
 
+# up_sunbird_registry brings up the Sunbird RC registry-of-record so the Inji
+# auth-code flow has an authoritative claims source: verifiably's RegisterHolder
+# looks a holder up in it (VERIFIABLY_REGISTRIES -> http://<host>:18091) and
+# caches the record into certify.vc_subject, from which Inji Certify issues the
+# credential over the authorization_code grant. The compose project lives in the
+# colombo-poc repo (separate from this verifiably fork); override its path with
+# VERIFIABLY_SUNBIRD_DIR. Only the registry core is started (es/db/kafka/registry
+# — not the Node v2 signing chain, which issuance does not need). Best-effort: a
+# missing dir or failed bring-up logs a warning and returns 0 so the deploy
+# continues (claims can still be provisioned via POST /api/v1/subjects).
+up_sunbird_registry() {
+  local dir="${VERIFIABLY_SUNBIRD_DIR:-$SCRIPT_DIR/../../colombo-poc/sunbird-rc}"
+  if [[ ! -d "$dir" ]]; then
+    yellow "  Sunbird RC dir not found ($dir) — skipping registry bring-up."
+    yellow "  Set VERIFIABLY_SUNBIRD_DIR, or provision holder claims via POST /api/v1/subjects."
+    return 0
+  fi
+  bold "▶ Bringing up Sunbird RC registry of record (Inji auth-code claims source)"
+  ( cd "$dir" && env -u POSTGRES_USER -u POSTGRES_PASSWORD -u POSTGRES_DB -u POSTGRES_PORT \
+      docker compose up -d es db zookeeper kafka redis registry ) \
+    && green "  Sunbird registry -> http://localhost:18091 (VERIFIABLY_REGISTRIES source)" \
+    || red "  Sunbird RC bring-up failed (proceeding; auth-code registry-pull will have no source)"
+}
+
 # repair_injiweb_client_redirect_uri ensures the wallet-demo-client row in
 # eSignet's postgres has a redirect_uris array containing
 # http://${PUBLIC_HOST}:3004/redirect. If it's missing, we rewrite the row and
@@ -559,7 +594,15 @@ cmd_up() {
 # row.
 repair_injiweb_client_redirect_uri() {
   local public_host="${PUBLIC_HOST:-172.24.0.1}"
-  local want="http://${public_host}:3004/redirect"
+  # The wallet-demo-client must allow redirects for BOTH the external Inji Web
+  # wallet AND verifiably's own in-app holder claim flow. Both are derived from
+  # the deployment's public host so `deploy.sh up <scenario>` picks the right
+  # URIs per host (localhost / VPS / EC2 / custom domain) with no hardcoding.
+  local injiweb_redirect vfly_base
+  injiweb_redirect="$(url_for inji-web "${VERIFIABLY_PUBLIC_HOST:-$public_host}" "${INJIWEB_UI_PUBLIC_PORT:-3004}")/redirect"
+  vfly_base="${VERIFIABLY_PUBLIC_URL:-$(url_for verifiably "${VERIFIABLY_PUBLIC_HOST:-$public_host}" "${VERIFIABLY_PUBLIC_PORT:-8080}")}"
+  local wants="$injiweb_redirect ${vfly_base%/}/holder/wallet/inji/callback"
+
   local current
   current=$(docker exec injiweb-postgres \
     psql -U postgres -d mosip_esignet -tAX \
@@ -568,25 +611,23 @@ repair_injiweb_client_redirect_uri() {
     red "  wallet-demo-client not found in eSignet DB — seed script may have failed"
     return
   fi
-  if [[ "$current" == *"$want"* ]]; then
-    return   # already has our redirect URI
-  fi
-  # Add the PUBLIC_HOST URI alongside whatever is already there. Keeping the
-  # existing entries means old browser sessions don't break if a user has an
-  # in-flight redirect URL in their history.
+  # Merge any missing wanted URIs (idempotent). python exit 3 = nothing to add,
+  # so we skip the UPDATE + Redis cache flush.
   local merged
-  merged=$(python3 -c "
-import json, sys
-cur = json.loads('''$current''')
-want = '$want'
-if want not in cur:
-    cur.append(want)
+  merged=$(WANTS="$wants" CUR="$current" python3 -c '
+import json, os, sys
+cur = json.loads(os.environ["CUR"])
+n0 = len(cur)
+for w in os.environ["WANTS"].split():
+    if w and w not in cur:
+        cur.append(w)
 print(json.dumps(cur))
-")
+sys.exit(0 if len(cur) > n0 else 3)
+') || return 0
   docker exec injiweb-postgres psql -U postgres -d mosip_esignet -qc \
     "UPDATE client_detail SET redirect_uris='$merged' WHERE id='wallet-demo-client'" >/dev/null
   docker exec injiweb-redis redis-cli DEL 'clientdetails::wallet-demo-client' >/dev/null
-  green "  repaired wallet-demo-client redirect_uris (+$want)"
+  green "  repaired wallet-demo-client redirect_uris (now: $merged)"
 }
 
 cmd_setup() {

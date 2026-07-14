@@ -6,6 +6,10 @@
     Using <span class="mono">{{.Session.HolderDpg}}</span>. Receive a credential offer (scan a QR, paste a link, or tap an example), review it, and accept it into your wallet.
   </p>
 
+  <div style="margin:0 0 1.25rem">
+    <a class="btn small" href="/holder/wallet/inji">{{t "Claim via eSignet (Inji auth-code) →" $.Lang}}</a>
+  </div>
+
   <div id="wallet-body">
     {{template "fragment_wallet_body" .Session}}
   </div>

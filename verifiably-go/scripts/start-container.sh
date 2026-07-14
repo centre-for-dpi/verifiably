@@ -144,12 +144,17 @@ start_container() {
   # MSYS_NO_PATHCONV=1 prevents Git Bash from converting Unix paths like
   # /var/run/docker.sock to C:\Program Files\Git\var\run\docker.sock.
   # Docker Desktop on Windows handles MSYS-style paths (/c/Users/...) natively.
-  #
-  # No --health-cmd: the distroless/static image has no /bin/sh or wget, and
-  # 'docker run --health-cmd' always wraps the command in /bin/sh -c, so any
-  # probe fails with "stat /bin/sh: no such file or directory" and the
-  # container is reported unhealthy even though the app is fine. The app
-  # exposes /healthz on :8080 — probe it from the host or a sidecar instead.
+  # In-app Inji auth-code wallet: extract the eSignet wallet-demo-client key
+  # (PKCS#8 PEM) from the deploy's oidckeystore.p12 and derive the eSignet URL
+  # per host, so a holder can claim inside verifiably (no inji-web redirect).
+  local _inji_p12="$SCRIPT_DIR/deploy/compose/injiweb/config/certs/oidckeystore.p12"
+  local _inji_key_pem=""
+  if [ -f "$_inji_p12" ] && command -v openssl >/dev/null 2>&1; then
+    _inji_key_pem=$(openssl pkcs12 -in "$_inji_p12" -nodes -nocerts -legacy -passin "pass:${INJIWEB_P12_PASSWORD:-xy4gh6swa2i}" 2>/dev/null | openssl pkcs8 -topk8 -nocrypt 2>/dev/null || true)
+  fi
+  local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"
+  # verifiably-go (uid 65532) rewrites these two config files on issuer schema-creation
+  for _f in "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties" "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties"; do chown 65532:65532 "$_f" 2>/dev/null || true; done
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
@@ -164,6 +169,8 @@ start_container() {
     -v "$custom_schemas_path:/app/config/custom-schemas.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties:/etc/inji/certify-scope-query.properties" \
+    -v "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties:/etc/inji/esignet-scopes.properties" \
     -v "${VERIFIABLY_CONTAINER}-locales:/app/locales" \
     -v "${VERIFIABLY_CONTAINER}-state:/app/state" \
     -e VERIFIABLY_ADAPTER=registry \
@@ -172,8 +179,18 @@ start_container() {
     -e VERIFIABLY_ROLES="${VERIFIABLY_ROLES:-issuer,holder,verifier,trust,schemas}" \
     -e VERIFIABLY_STATE_DIR=/app/state \
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
+    -e VERIFIABLY_REGISTRY_ADMIN_URL="${VERIFIABLY_REGISTRY_ADMIN_URL:-}" \
+    -e VERIFIABLY_REGISTRIES="${VERIFIABLY_REGISTRIES:-}" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
+    -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
+    -e INJI_CERTIFY_SCOPE_QUERY_FILE="/etc/inji/certify-scope-query.properties" \
+    -e INJI_ESIGNET_SCOPE_FILE="/etc/inji/esignet-scopes.properties" \
+    -e INJI_AUTHCODE_CLIENT_KEY_PEM="$_inji_key_pem" \
+    -e INJI_AUTHCODE_CLIENT_ID="${INJI_AUTHCODE_CLIENT_ID:-wallet-demo-client}" \
+    -e INJI_AUTHCODE_CLIENT_KID="${INJI_AUTHCODE_CLIENT_KID:-wallet-demo-client-kid}" \
+    -e INJI_AUTHCODE_SCOPE="${INJI_AUTHCODE_SCOPE:-mock_identity_vc_ldp}" \
+    -e ESIGNET_BASE_URL="$_inji_esignet_url" \
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \

@@ -12,6 +12,40 @@ CSVs, Mimoto bootstrap, oidc-ui nginx, seed scripts) lives there. The
 tree preserves the sibling `stack/` + `injiweb/` layout the compose file
 and seed scripts expect via relative paths.
 
+## Prerequisites
+
+- **Docker Engine 20.10+** with the **Compose v2** plugin (`docker compose`, not the
+  legacy `docker-compose`). The compose file is Compose-spec (`name:`, not `version:`).
+- **git**, **bash**, **curl**, **openssl** on PATH (openssl generates the hub signing
+  key + CREDEBL secrets; a missing openssl fails late with a mount error).
+- RAM: ~**8 GiB** for `all`, ~**6 GiB** for `inji`, ~**4 GiB** for `waltid`.
+- Ports: localhost/port mode exposes one port per service (e.g. 3001-3005, 7001-7003,
+  8082, 8091-8094, 5001); per-subdomain mode needs **80 + 443** open instead.
+
+## First deploy (any host)
+
+1. `git clone <repo> && cd verifiably-go`
+2. `cp .env.example .env`  (or `./deploy.sh setup` for an interactive wizard).
+3. Set **`VERIFIABLY_PUBLIC_HOST`** in `.env` — the one required knob, the address
+   browsers *and* sibling containers use to reach this host:
+   - localhost dev → `localhost`
+   - a VPS/EC2 reached by IP → that public IP
+   - a public domain (per-subdomain mode) → ALSO set `VERIFIABLY_HOSTS_PATTERN=https://%s.<domain>`,
+     `VERIFIABLY_PUBLIC_DOMAIN=<domain>`, `VERIFIABLY_LE_EMAIL=<email>`, and create
+     `*.<domain>` DNS A records pointing here (with 80/443 open for Let's Encrypt).
+4. `./deploy.sh up <all|waltid|inji|credebl>` — starts the scenario's DPG services and
+   bootstraps their OIDC clients + secrets (idempotent; safe to re-run).
+5. `./deploy.sh run <same scenario>` — builds + starts the verifiably-go container.
+6. Verify — see [Verifying a deploy](#verifying-a-deploy).
+
+**Generated / bootstrapped files — do NOT hand-edit** (regenerated on each `up`/`run`):
+`config/backends.json`, `config/auth-providers*.json`, `deploy/compose/stack/wso2-deployment.toml`,
+`deploy/compose/stack/Caddyfile.public`, `config/docker-compose.injiweb-fix.rendered.yml`.
+Secrets are auto-generated and persisted so re-runs are stable: `config/wso2is.env` (WSO2
+DCR), `deploy/compose/credebl/config/credebl.env` (CREDEBL), `config/trust-signing-key.pem`
+(hub). The demo IdP/TLS keystores under `deploy/compose/**/certs*/` are committed demo
+material — replace them for any non-demo use.
+
 ## Subcommands
 
 | Command                                             | Does                                                                  |
@@ -31,7 +65,8 @@ Typical first run: `./deploy.sh up all && ./deploy.sh run all`.
 | `all`    | walt.id (issuer/wallet/verifier) + Inji Certify + Inji Certify Preauth + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx + CREDEBL | Keycloak + WSO2IS | Yes |
 | `waltid` | walt.id only                                                                  | Keycloak + WSO2IS  | Yes        |
 | `inji`   | Inji Certify + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx | Keycloak + WSO2IS  | Yes        |
-| `credebl`| CREDEBL (issuance, ledger, verification, cloud-wallet, agent + shared infra)  | Keycloak + WSO2IS  | Yes        |
+| `credebl`| CREDEBL platform (also bundled into `all`)                                     | Keycloak + WSO2IS  | Yes        |
+| `hub`    | Trust Registry + portal — a separate deployment (`deploy/compose/hub/`, its own `.env`) | n/a       | n/a        |
 
 `backends.json` is rendered per scenario so the UI never offers a DPG
 whose backend isn't running. **Auth providers are not scoped**: every
@@ -41,74 +76,17 @@ cards the user can pick from after auth. The WSO2IS OIDC client is
 bootstrapped via `scripts/bootstrap-wso2is.sh` on every `deploy.sh up`,
 regardless of scenario.
 
-## Role-filtered deploys (`--role`)
+## Verifying a deploy
 
-Every scenario above brings up its **full** service set by default
-(issuer + verifier + holder containers). Add `--role <roles>` to start only
-the containers a subset of roles needs — useful for a dedicated
-issuance-only node, a standalone verifier, or a lightweight holder demo.
-
-```bash
-./deploy.sh up <scenario> --role issuer[,verifier][,holder]
-```
-
-Roles are resolved by `resolve_role()` in `scripts/common.sh` with this
-precedence: `--role` flag (`CLI_ROLE`) > `VERIFIABLY_ROLES` in `.env` >
-default `issuer,verifier,holder` (full deploy, 100% backward-compatible with
-deploys that never set either).
-
-The actual per-scenario × per-role service lists (`role_services()` in
-`scripts/common.sh`):
-
-| Scenario | `issuer` | `verifier` | `holder` |
-|---|---|---|---|
-| `waltid` | `postgres`, `caddy`, `issuer-api` | `postgres`, `caddy`, `verifier-api` | `postgres`, `caddy`, `wallet-api` |
-| `inji` | `certify-postgres`, `inji-certify`, `certify-preauth-postgres`, `inji-certify-preauth-backend`, `inji-preauth-proxy`, `certify-nginx`, `certify-preauth-nginx`, `citizens-postgres` | `inji-verify-postgres`, `inji-verify-service`, `inji-verify-ui`, `vc-adapter` | `injiweb-postgres`, `injiweb-redis`, `injiweb-mock-identity`, `injiweb-esignet`, `injiweb-oidc-ui`, `injiweb-minio`, `injiweb-datashare`, `injiweb-mimoto`, `injiweb-ui` |
-| `credebl` | `credebl-issuance`, `credebl-ledger`, `credebl-oid4vc-issuance`, `credebl-oid4vci-rewriter`, `credebl-minio`, `credebl-mailpit`, `credebl-schema-file-server`, `credebl-oob-redirector` + shared | `credebl-verification`, `credebl-oid4vc-verification` + shared | `credebl-cloud-wallet` + shared |
-
-"+ shared" for CREDEBL means the infra + platform services every role needs
-regardless (`credebl-postgres`, `credebl-redis`, `credebl-nats`,
-`credebl-seed`, `credebl-platform-admin-bootstrap`, `credebl-api-gateway`,
-`credebl-user`, `credebl-utility`, `credebl-agent-provisioning`,
-`credebl-agent-service`, `credebl-ecosystem`, `credebl-connection`). All 9
-combinations (3 scenarios × 3 roles) are verified working end-to-end in real
-Docker deploys.
-
-`wso2is` follows its own toggle independent of role — it's opt-out via
-`VERIFIABLY_SKIP_WSO2IS=1`/`true`, not gated by which roles are active
-(a shared IdP isn't tied to any one role's presence).
-
-Requesting `holder` without `issuer` prints a warning and asks for
-confirmation on an interactive terminal (a wallet with nothing issuing to
-it can't receive new credentials):
-
-```bash
-./deploy.sh up waltid --role holder
-#   Warning: deploying 'holder' without 'issuer' — wallet cannot receive new credentials.
-#   Continue? [y/N]
-```
-
-Set a persistent default in `.env` instead of passing `--role` every time:
-
-```bash
-# verifiably-go/.env
-VERIFIABLY_ROLES=issuer   # this deployment only ever runs issuer nodes
-```
-
-**Two role systems share the `VERIFIABLY_ROLES` name.** The Go app itself
-(`internal/roles/`) reads `VERIFIABLY_ROLES` to gate its own HTTP routes,
-recognising 6 values: `issuer`, `holder`, `verifier`, `trust`, `schemas`,
-`hub` (`hub` implies `trust`+`schemas`). The bash deploy layer described here
-reads the same variable but only 3 of those values affect which Docker
-containers start — `trust`/`schemas`/`hub` are accepted by
-`validate_roles()`/`role_services()` as no-ops (valid input, zero additional
-containers) so a value that's meaningful to the Go app (e.g.
-`VERIFIABLY_ROLES=issuer,verifier,schemas`, the shipped `.env.example`
-default) isn't rejected at the bash layer.
-
-Unit tests for the role-resolution/filtering logic live in
-[`verifiably-go/tests/test_roles.sh`](../tests/test_roles.sh) — run with
-`bash verifiably-go/tests/test_roles.sh`.
+- `./deploy.sh status` — every service the scenario needs, plus the `verifiably-go`
+  container, should be **Up**.
+- `deploy.sh up` runs a built-in OIDC discovery smoke gate per provider (you'll see
+  `discovery gate: '<idp>' OK` in the log). Set `VERIFIABLY_STRICT_VERIFY=1` to make a
+  failed gate abort the deploy instead of just warning.
+- Open `http://<host>:<port>` (localhost mode) or `https://<domain>` (subdomain mode),
+  pick a role, and confirm the `/auth` page shows the Keycloak + WSO2 (+ eSignet) tiles.
+- Logs: `docker compose -p waltid logs -f <service>` and `docker logs -f verifiably-go`.
+- Destructive reset (wipes volumes — DB + keystores): `./deploy.sh reset <scenario>`.
 
 ## Compose override pipeline
 
@@ -413,6 +391,23 @@ verifiably-go/deploy/compose/stack/Caddyfile.public
 It declares one block per slug pointing at the right container + internal port — including the WSO2-on-self-signed-HTTPS upstream and Inji Verify's quirky port-8000 SPA. Don't edit unless you want a different subdomain scheme; the `{$VERIFIABLY_PUBLIC_DOMAIN}` placeholder is filled in from `.env` at container start.
 
 The matching `caddy-public` service is registered in `docker-compose.yml` behind the `subdomain` profile. `deploy.sh` automatically passes `--profile subdomain` to compose when `VERIFIABLY_HOSTS_PATTERN` is non-empty, so you don't run anything new — `./deploy.sh up <scenario>` brings Caddy up alongside the rest.
+
+##### Hairpin NAT (container → public subdomain)
+
+A container that calls a service by its **public** name (e.g. the walt.id `wallet-api`
+resolving an OID4VCI `credential_offer_uri` at `walt-issuer.<domain>`, or an OID4VP
+`request_uri` at `walt-verifier.<domain>`) would otherwise route to the box's own
+public IP `:443` and time out — most cloud hosts don't hairpin traffic from the docker
+bridge back to themselves. Two mechanisms keep those calls on the docker network:
+
+- **`verifiably-go`** is started with `--add-host <slug>.<domain> → caddy-public-ip`
+  for **every** public slug (`compute_host_aliases` in `scripts/start-container.sh`).
+- **compose-managed services** rely on **`caddy-public` network aliases** — the
+  `caddy-public` service answers to each public FQDN on the docker network
+  (`inji-certify-preauth`, `esignet`, `walt-issuer`, `walt-verifier`, `walt-wallet`),
+  so Docker's embedded DNS resolves them to Caddy's internal IP, where TLS terminates
+  and the request is proxied to the backend. Add more FQDNs to that `aliases:` list in
+  `docker-compose.yml` if a new internal container starts calling a public name.
 
 Set these in `.env`:
 
