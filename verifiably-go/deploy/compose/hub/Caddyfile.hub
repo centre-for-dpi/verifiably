@@ -10,6 +10,13 @@
 
 # Public Hub — citizen-facing verification portal + Trust Registry + API
 {$HUB_DOMAIN} {
+	# /verifier-api/* exposes the hub's own Walt ID verifier-api directly
+	# (independent of federated nodes) for direct API integrations.
+	# NOTE: this is separate from /verify* (the citizen-facing public portal,
+	# served by verifiably-go itself — see federated-emission.md Fase 2).
+	handle_path /verifier-api/* {
+		reverse_proxy hub-verifier-api:7053
+	}
 	reverse_proxy verifiably-go:8080
 }
 

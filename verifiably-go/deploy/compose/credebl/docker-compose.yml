@@ -439,6 +439,13 @@ services:
           memory: 256M
 
   # ── Organization service ────────────────────────────────────────────────────
+  # NOTE: does NOT depend on credebl-issuance/credebl-ledger for startup.
+  # organization.service.ts's only touch of those services is an optional
+  # dashboard-stats endpoint (getOrganizationActivityCount) — not org
+  # creation/setup. CREDEBL's own upstream compose couples every service tier
+  # to everything defined before it as a "wait for it to exist" ordering
+  # chain, not a real call-graph dependency; keeping that chain here would
+  # force issuer-only services to start on a verifier/holder-only deploy.
   credebl-organization:
     image: ghcr.io/credebl/organization:latest
     container_name: credebl-organization
@@ -458,10 +465,6 @@ services:
         condition: service_started
       credebl-connection:
         condition: service_started
-      credebl-issuance:
-        condition: service_started
-      credebl-ledger:
-        condition: service_started
 
     deploy:
       resources:
@@ -469,6 +472,15 @@ services:
           memory: 384M
 
   # ── Verification service ────────────────────────────────────────────────────
+  # NOTE: does NOT depend on credebl-issuance/credebl-ledger/credebl-organization
+  # for startup. verification.service.ts's core proof-request/verify flow goes
+  # via NATS straight to agent-service, which calls the Credo/ACA-Py agent's
+  # own REST endpoint directly — the agent resolves schema/cred-def from the
+  # ledger itself, bypassing CREDEBL's `ledger` microservice entirely. The
+  # only place verification calls `ledger` is an already-error-handled
+  # schema-name enrichment in the proof-list view, not the core verify path.
+  # See credebl-organization's comment above for why we don't copy CREDEBL's
+  # upstream "wait for everything" depends_on chain here.
   credebl-verification:
     image: ghcr.io/credebl/verification:latest
     container_name: credebl-verification
@@ -489,12 +501,6 @@ services:
       credebl-user:
         condition: service_started
       credebl-connection:
-        condition: service_started
-      credebl-issuance:
-        condition: service_started
-      credebl-ledger:
-        condition: service_started
-      credebl-organization:
         condition: service_started
 
     deploy:
@@ -529,14 +535,17 @@ services:
       timeout: 5s
       retries: 15
       start_period: 90s
+    # NOTE: does not depend on credebl-verification. agent-provisioning spins
+    # up the Aries/ACA-Py agent process itself (see AFJ_AGENT_SPIN_UP above) —
+    # it has no functional need for the verification microservice to be
+    # running first, same "wait for everything defined before it" cascade
+    # pattern as credebl-organization/credebl-verification above.
     depends_on:
       credebl-nats:
         condition: service_healthy
       credebl-api-gateway:
         condition: service_healthy
       credebl-organization:
-        condition: service_started
-      credebl-verification:
         condition: service_started
 
     deploy:

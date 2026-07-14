@@ -48,13 +48,13 @@ material — replace them for any non-demo use.
 
 ## Subcommands
 
-| Command                                    | Does                                                                  |
-|--------------------------------------------|------------------------------------------------------------------------|
-| `./deploy.sh up <all\|waltid\|inji>`       | Brings up every DPG container the scenario needs + seeds clients     |
-| `./deploy.sh run <all\|waltid\|inji>`      | Builds + starts the verifiably-go container (run after `up`)          |
-| `./deploy.sh down <all\|waltid\|inji>`     | Stops the verifiably-go container and the scenario's DPG services    |
-| `./deploy.sh status`                       | Lists running compose services + verifiably-go container state       |
-| `./deploy.sh config <all\|waltid\|inji>`   | Regenerates `config/backends.json` + prints it (no container touched)|
+| Command                                             | Does                                                                  |
+|------------------------------------------------------|------------------------------------------------------------------------|
+| `./deploy.sh up <all\|waltid\|inji\|credebl> [--role <roles>]` | Brings up every DPG container the scenario (and role, if given) needs + seeds clients |
+| `./deploy.sh run <all\|waltid\|inji\|credebl>`      | Builds + starts the verifiably-go container (run after `up`)          |
+| `./deploy.sh down <all\|waltid\|inji\|credebl>`     | Stops the verifiably-go container and the scenario's DPG services    |
+| `./deploy.sh status`                                | Lists running compose services + verifiably-go container state       |
+| `./deploy.sh config <all\|waltid\|inji\|credebl>`   | Regenerates `config/backends.json` + prints it (no container touched)|
 
 Typical first run: `./deploy.sh up all && ./deploy.sh run all`.
 
@@ -62,7 +62,7 @@ Typical first run: `./deploy.sh up all && ./deploy.sh run all`.
 
 | Scenario | DPG services                                                                  | IdPs (always both) | Translator |
 |----------|-------------------------------------------------------------------------------|--------------------|------------|
-| `all`    | walt.id (issuer/wallet/verifier) + Inji Certify + Inji Certify Preauth + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx | Keycloak + WSO2IS | Yes |
+| `all`    | walt.id (issuer/wallet/verifier) + Inji Certify + Inji Certify Preauth + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx + CREDEBL | Keycloak + WSO2IS | Yes |
 | `waltid` | walt.id only                                                                  | Keycloak + WSO2IS  | Yes        |
 | `inji`   | Inji Certify + Inji Verify + Inji Web + Mimoto + eSignet + mock-identity + certify-nginx + certify-preauth-nginx | Keycloak + WSO2IS  | Yes        |
 | `credebl`| CREDEBL platform (also bundled into `all`)                                     | Keycloak + WSO2IS  | Yes        |
@@ -211,6 +211,112 @@ CREDEBL entry:
 Command-line override: set `VERIFIABLY_ENV_FILE=/path/to/other.env
 ./deploy.sh ...` to swap the entire file for one invocation (e.g. keep
 `.env` pinned to laptop, ship `.env.ec2` for a staging run).
+
+## Secrets to regenerate per deployment
+
+Every country deployment must generate its own secrets. Do not reuse values from another deployment or from this repo's example files. The commands below produce cryptographically random values.
+
+Run these once, before the first `./deploy.sh up hub`, and keep the results in a secure vault (Bitwarden, 1Password, AWS Secrets Manager, etc.).
+
+### Hub — `deploy/compose/hub/.env`
+
+```bash
+# 1. PostgreSQL password
+openssl rand -hex 32
+
+# 2. Session encryption key (AES-256-GCM)
+openssl rand -hex 32
+
+# 3. Admin panel password
+openssl rand -base64 18
+
+# 4. Grafana password
+openssl rand -base64 18
+```
+
+Paste each output into the corresponding field in `hub/.env`:
+
+| Field | Command above |
+|---|---|
+| `POSTGRES_PASSWORD` | #1 |
+| `VERIFIABLY_SESSION_SECRET` | #2 |
+| `VERIFIABLY_ADMIN_PASSWORD` | #3 |
+| `GRAFANA_PASSWORD` | #4 |
+
+### Hub — trust registry signing key
+
+The Hub signs its trust registry JWT with an ES256 P-256 private key. Without a persistent key the Hub generates an ephemeral one on every restart — all previously-issued trust tokens become invalid.
+
+Generate and save the key **once per deployment**:
+
+```bash
+# Generate a P-256 key in PKCS8 format (the format the Hub expects)
+openssl ecparam -name prime256v1 -genkey -noout -out /tmp/trust-key.pem
+openssl pkcs8 -topk8 -nocrypt -in /tmp/trust-key.pem -out config/trust-signing-key.pem
+rm /tmp/trust-key.pem
+
+# Verify it loaded correctly (optional smoke-test)
+openssl pkey -in config/trust-signing-key.pem -noout -text | grep "Private-Key"
+```
+
+The file `config/trust-signing-key.pem` is already git-ignored and already mounted as `/app/config/trust-signing-key.pem` inside the Hub container via the `../../../config:/app/config:ro` volume in `deploy/compose/hub/docker-compose.yml`. No `.env` change needed — the Hub reads it automatically when `VERIFIABLY_TRUST_SIGNING_KEY` is empty.
+
+### Hub — independent verifier (`hub-verifier-api`)
+
+The Hub can run its own Walt ID verifier so it can verify credentials
+without depending on federated nodes having a verifier of their own.
+It's opt-in via the `verifier` Docker Compose profile:
+
+```bash
+docker compose -f deploy/compose/hub/docker-compose.yml --env-file deploy/compose/hub/.env --profile verifier up -d
+```
+
+Config in `deploy/compose/hub/.env`:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VERIFIABLY_ROLES` | `verifier` | Hub's own Go-app role — the hub rarely needs to also issue or be a holder |
+| `HUB_VERIFIER_PORT` | `7053` | Host port for the Walt ID verifier-api container (bind to `127.0.0.1:7053` in production — no public exposure needed when behind Caddy) |
+| `HUB_VERIFIER_BASE_URL` | `http://localhost:7053` | Base URL the verifier-api advertises in `presentation_definition_uri`/`request_uri`. Must be browser-reachable — in TLS mode set to `https://<VERIFIABLY_PUBLIC_DOMAIN>/verifier-api` |
+| `WALTID_VERSION` | `0.18.2` | Image tag for `waltid/verifier-api` — pin to match the rest of your Walt ID deployment |
+
+Caddy exposes it at `/verifier-api/*` (via `handle_path`, which strips the
+prefix before proxying) — deliberately **not** `/verify*`, which is already
+routed to the Hub's own citizen-facing public verification portal served by
+`verifiably-go:8080` itself. Routing `/verify*` to the raw verifier container
+would silently break that portal.
+
+Verify it's up:
+
+```bash
+curl -s http://localhost:7053/openapi | grep -q verifier && echo "hub-verifier-api OK"
+```
+
+> **Do not commit this file.** It is private — possession equals the ability to sign arbitrary trust registry JWTs as your federation authority.
+
+### CREDEBL — `deploy/compose/credebl/config/credebl.env`
+
+Most CREDEBL secrets (PostgreSQL, MinIO, Keycloak, JWT, NextAuth) are auto-generated by `scripts/bootstrap-credebl.sh` on first run. One field is **not** auto-generated and must be changed manually:
+
+```bash
+# CRYPTO_PRIVATE_KEY — AES passphrase used by CREDEBL to encrypt
+# the platform admin wallet password before sending it to the Credo agent.
+# Must be ≥ 32 characters. Any random string works.
+openssl rand -hex 20
+```
+
+Set the output as `CRYPTO_PRIVATE_KEY=<value>` in `credebl.env` before running the CREDEBL bootstrap for the first time. Changing it after bootstrap requires re-encrypting the stored wallet password — change it before, not after.
+
+### Quick checklist before going live
+
+```
+[ ] hub/.env — POSTGRES_PASSWORD             (openssl rand -hex 32)
+[ ] hub/.env — VERIFIABLY_SESSION_SECRET     (openssl rand -hex 32)
+[ ] hub/.env — VERIFIABLY_ADMIN_PASSWORD     (openssl rand -base64 18)
+[ ] hub/.env — GRAFANA_PASSWORD              (openssl rand -base64 18)
+[ ] config/trust-signing-key.pem             (openssl ecparam + pkcs8, see above)
+[ ] credebl.env — CRYPTO_PRIVATE_KEY         (openssl rand -hex 20)
+```
 
 ## Migrating to a remote host (EC2, dev VM, LAN)
 

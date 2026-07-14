@@ -1,6 +1,8 @@
 # Federated Emission — Arquitectura y Progreso
 
-**Branch:** `federated-issuance`
+**Branch:** `federated-issuance` (ya mergeada a `main` — este documento es la
+bitácora histórica del desarrollo, no requiere checkout de rama para usar
+ninguna de las fases descritas abajo)
 **Último update:** 2026-05-17 (Fases 2 + 10 + 3 + 6 + 7 + 8 + 9 completadas)
 
 ---

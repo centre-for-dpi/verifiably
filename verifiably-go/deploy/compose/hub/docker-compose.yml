@@ -136,6 +136,22 @@ services:
       timeout: 5s
       retries: 3
 
+  hub-verifier-api:
+    image: waltid/verifier-api:${WALTID_VERSION:-0.18.2}
+    container_name: hub-verifier-api
+    restart: unless-stopped
+    profiles:
+      - verifier
+    environment:
+      VERIFIER_API_PORT: "7053"
+      HUB_VERIFIER_BASE_URL: ${HUB_VERIFIER_BASE_URL:-http://localhost:7053}
+    volumes:
+      - ./config/verifier:/waltid-verifier-api/config:ro
+    ports:
+      - "${HUB_VERIFIER_PORT:-127.0.0.1:7053}:7053"
+    networks:
+      - hub
+
   libretranslate:
     image: libretranslate/libretranslate:v1.6.5
     container_name: hub-libretranslate

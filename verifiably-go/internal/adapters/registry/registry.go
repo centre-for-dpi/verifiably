@@ -302,6 +302,33 @@ func (r *Registry) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes
 	return append(vendorSchemas, custom...), nil
 }
 
+// GetIssuerMetadata returns the credential configurations for schemas that were
+// created by an authenticated identity (OwnerKey with "keycloak|" prefix or
+// another provider prefix). Anonymous session schemas (OwnerKey "session-…")
+// are test/demo artifacts and must not appear in the public discovery catalog.
+// Schemas with an empty OwnerKey (created via admin/CLI) are always included.
+// Endpoint URLs are left empty for the HTTP handler to fill from the request's
+// public base.
+func (r *Registry) GetIssuerMetadata(_ context.Context) (backend.IssuerMetadata, error) {
+	r.mu.RLock()
+	custom := make([]vctypes.Schema, 0, len(r.customSchemas))
+	for _, s := range r.customSchemas {
+		if strings.HasPrefix(s.OwnerKey, "session-") {
+			continue
+		}
+		custom = append(custom, s)
+	}
+	r.mu.RUnlock()
+
+	out := backend.IssuerMetadata{
+		CredentialsSupported: backend.CredentialConfigsFromSchemas(custom),
+	}
+	if out.CredentialsSupported == nil {
+		out.CredentialsSupported = []backend.CredentialConfig{}
+	}
+	return out, nil
+}
+
 func (r *Registry) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error) {
 	owner := backend.IssuerIdentityFromContext(ctx)
 	r.mu.RLock()

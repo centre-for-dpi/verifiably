@@ -365,6 +365,17 @@ func formatRank(f string) int {
 
 // ListAllSchemas delegates to ListSchemas — the registry handles aggregation
 // across DPGs, so per-adapter "all" is just "mine".
+// GetIssuerMetadata assembles this issuer's OID4VCI credential configurations
+// from its full schema catalog. Endpoint URLs are left empty for the HTTP
+// handler to fill from the request's public base.
+func (a *Adapter) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+	schemas, err := a.ListAllSchemas(ctx)
+	if err != nil {
+		return backend.IssuerMetadata{}, err
+	}
+	return backend.IssuerMetadata{CredentialsSupported: backend.CredentialConfigsFromSchemas(schemas)}, nil
+}
+
 func (a *Adapter) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error) {
 	return a.ListSchemas(ctx, a.Vendor)
 }
@@ -670,7 +681,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		// which become disclosures; a VCDM-wrapped body only makes
 		// "credentialSubject" itself disclosable, leaving the individual
 		// claims baked into the JWT.
-		cd, err := buildSDJWTCredentialData(req.SubjectData, req.StatusList)
+		cd, err := buildSDJWTCredentialData(req.SubjectData, req.StatusList, req.HolderDID)
 		if err != nil {
 			return backend.IssueToWalletResult{}, err
 		}
@@ -697,7 +708,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		ir.CredentialData = cd
 		ir.SelectiveDisclosure = buildSelectiveDisclosureMap(req.SubjectData)
 	default:
-		cd, err := buildCredentialData(req.Schema, req.SubjectData, req.StatusList)
+		cd, err := buildCredentialData(req.Schema, req.SubjectData, req.StatusList, req.HolderDID)
 		if err != nil {
 			return backend.IssueToWalletResult{}, err
 		}
@@ -915,10 +926,20 @@ func authenticationMethod(flow string) string {
 // nests under credentialSubject), SD-JWT VC puts each claim at the payload
 // root so walt.id's SDMap can mark individual claims as selectively
 // disclosable.
-func buildSDJWTCredentialData(subject map[string]string, sl *backend.StatusListBinding) (json.RawMessage, error) {
-	out := make(map[string]any, len(subject)+1)
+func buildSDJWTCredentialData(subject map[string]string, sl *backend.StatusListBinding, holderDID string) (json.RawMessage, error) {
+	out := make(map[string]any, len(subject)+2)
 	for k, v := range subject {
 		out[k] = v
+	}
+	// SD-JWT VC subject binding: the `sub` claim names the credential subject.
+	// Set only in the holder-initiated flow (HolderDID non-empty); the
+	// cryptographic key binding (`cnf`) is added by walt.id from the wallet's
+	// proof during the credential request. Kept non-disclosable on purpose —
+	// buildSelectiveDisclosureMap only marks the operator-supplied subject
+	// fields as disclosable, so `sub` stays in the signed payload as a stable
+	// identifier the verifier can always rely on.
+	if holderDID != "" {
+		out["sub"] = holderDID
 	}
 	// IETF Token Status List binding: top-level `status.status_list.{idx,uri}`
 	// per draft-ietf-oauth-status-list. Walt.id passes the credentialData
@@ -987,7 +1008,7 @@ func buildMdocData(schema vctypes.Schema, subject map[string]string) (json.RawMe
 // buildCredentialData constructs a VCDM 2.0-shaped JSON object from the
 // operator's subject input. Types come from the schema id prefix
 // (the canonical type before the `_format` suffix).
-func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *backend.StatusListBinding) (json.RawMessage, error) {
+func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *backend.StatusListBinding, holderDID string) (json.RawMessage, error) {
 	types := []string{"VerifiableCredential"}
 	if schema.Custom {
 		// Custom schemas may declare AdditionalTypes via the builder's
@@ -1006,9 +1027,15 @@ func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *b
 		}
 		types = append(types, baseType)
 	}
-	credSubject := make(map[string]any, len(subject))
+	credSubject := make(map[string]any, len(subject)+1)
 	for k, v := range subject {
 		credSubject[k] = v
+	}
+	// VCDM 2.0 subject binding: credentialSubject.id names the holder. Set only
+	// in the holder-initiated flow (HolderDID non-empty); empty in the
+	// operator pre-auth flow, where the operator does not know the holder's DID.
+	if holderDID != "" {
+		credSubject["id"] = holderDID
 	}
 	doc := map[string]any{
 		"@context": []string{

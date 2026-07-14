@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -168,12 +169,17 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		// pass tampered credentials.
 		policies = []string{"signature", "expired", "not-before"}
 	}
+	webhookURL, err := validateWebhookURL(r.FormValue("webhook_url"))
+	if err != nil {
+		h.errorToast(w, r, err.Error())
+		return
+	}
 	req := backend.PresentationRequest{
 		VerifierDpg: sess.VerifierDpg,
 		TemplateKey: "custom",
 		Template:    &tpl,
 		Policies:    policies,
-		WebhookURL:  strings.TrimSpace(r.FormValue("webhook_url")),
+		WebhookURL:  webhookURL,
 	}
 	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(r.Context(), req)
@@ -560,6 +566,48 @@ func (h *H) attachTrustStatus(r *http.Request, res *backend.VerificationResult) 
 // up the schema whose Name matches the credential's title in the local
 // store and copying its IssuerDisplayName. Best-effort: silent on lookup
 // failure so transient catalog issues never block the verify result.
+// validateWebhookURL checks that raw is a safe HTTPS URL before it is
+// forwarded to a DPG backend as an OID4VP result callback. Empty input is
+// accepted (webhook is optional). Validation steps:
+//  1. Scheme must be https.
+//  2. If VERIFIABLY_WEBHOOK_ALLOWED_HOSTS is set (comma-separated hostnames),
+//     the URL's host must appear in that list.
+//  3. The hostname must resolve and none of its IPs may fall in private,
+//     loopback, link-local, or cloud-metadata ranges (SSRF prevention).
+func validateWebhookURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("webhook_url: invalid URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return "", fmt.Errorf("webhook_url: must use https (got %q)", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("webhook_url: missing host")
+	}
+	if allowed := os.Getenv("VERIFIABLY_WEBHOOK_ALLOWED_HOSTS"); allowed != "" {
+		found := false
+		for _, h := range strings.Split(allowed, ",") {
+			if strings.EqualFold(strings.TrimSpace(h), host) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("webhook_url: host %q not in VERIFIABLY_WEBHOOK_ALLOWED_HOSTS", host)
+		}
+	}
+	if err := ssrfBlockHost(host); err != nil {
+		return "", fmt.Errorf("webhook_url: %w", err)
+	}
+	return raw, nil
+}
+
 func (h *H) attachIssuerDisplay(r *http.Request, res *backend.VerificationResult) {
 	if res == nil || res.IssuerDisplay != "" {
 		return

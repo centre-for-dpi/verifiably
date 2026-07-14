@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"net/http"
@@ -65,7 +66,9 @@ type RateLimiter struct {
 // CIDR list, e.g. "10.0.0.0/8,172.16.0.0/12"). X-Forwarded-For is only
 // trusted when the request arrives from one of the trusted proxy CIDRs; if
 // the list is empty any XFF header is honoured (legacy behaviour).
-func NewRateLimiter() *RateLimiter {
+// ctx controls the background cleanup goroutine — pass the server shutdown
+// context so the goroutine exits cleanly on SIGTERM/SIGINT.
+func NewRateLimiter(ctx context.Context) *RateLimiter {
 	rl := &RateLimiter{
 		keyLimit: envInt("VERIFIABLY_RATE_KEY_RPM", defaultKeyRPM),
 		ipLimit:  envInt("VERIFIABLY_RATE_IP_RPM", defaultIPRPM),
@@ -87,7 +90,61 @@ func NewRateLimiter() *RateLimiter {
 			rl.trustedNets = append(rl.trustedNets, n)
 		}
 	}
+	go rl.cleanupLoop(ctx)
 	return rl
+}
+
+// cleanupLoop removes stale map entries every 5 minutes until ctx is done.
+func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rl.cleanup()
+		}
+	}
+}
+
+// cleanup removes byKey and byIP entries whose last hit is older than the
+// 1-minute sliding window, reclaiming memory from rotated IPs/keys.
+// Lock ordering: rl.mu and entry.mu are never held simultaneously to prevent
+// deadlocks with concurrent Allow calls.
+func (rl *RateLimiter) cleanup() {
+	cutoff := time.Now().Add(-time.Minute)
+
+	purge := func(m map[string]*rateEntry) {
+		// Phase 1: snapshot keys without blocking Allow.
+		rl.mu.Lock()
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		rl.mu.Unlock()
+
+		// Phase 2: check each entry independently (no rl.mu held).
+		for _, k := range keys {
+			rl.mu.Lock()
+			e, ok := m[k]
+			rl.mu.Unlock()
+			if !ok {
+				continue
+			}
+			e.mu.Lock()
+			idle := len(e.hits) == 0 || e.hits[len(e.hits)-1].Before(cutoff)
+			e.mu.Unlock()
+			if idle {
+				rl.mu.Lock()
+				delete(m, k)
+				rl.mu.Unlock()
+			}
+		}
+	}
+
+	purge(rl.byKey)
+	purge(rl.byIP)
 }
 
 func (rl *RateLimiter) entry(m map[string]*rateEntry, key string) *rateEntry {
