@@ -35,6 +35,12 @@ type testAdapter struct {
 func (m *testAdapter) ListAllSchemas(_ context.Context) ([]vctypes.Schema, error) {
 	return m.schemas, m.schemasErr
 }
+func (m *testAdapter) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+	if m.schemasErr != nil {
+		return backend.IssuerMetadata{}, m.schemasErr
+	}
+	return backend.IssuerMetadata{CredentialsSupported: backend.CredentialConfigsFromSchemas(m.schemas)}, nil
+}
 func (m *testAdapter) ListIssuerDpgs(_ context.Context) (map[string]vctypes.DPG, error) {
 	return map[string]vctypes.DPG{"dpg1": {}}, nil
 }

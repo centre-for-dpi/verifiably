@@ -48,6 +48,21 @@ help:
 	@echo "follow-on — deploy.sh currently deploys at DPG granularity. See"
 	@echo "docs/deploy-reproducibility.md."
 
+test:
+	docker run --rm \
+	    -v "$(shell pwd):/src" \
+	    -w /src \
+	    $(GO_IMAGE) \
+	    go test -count=1 ./...
+
+test-pkg:
+	@test -n "$(PKG)" || { echo "usage: make test-pkg PKG=./internal/handlers/"; exit 2; }
+	docker run --rm \
+	    -v "$(shell pwd):/src" \
+	    -w /src \
+	    $(GO_IMAGE) \
+	    go test -count=1 -v $(PKG)
+
 image:
 	docker build -t $(IMAGE_REF) -t $(IMAGE_NAME):local .
 	@echo "built $(IMAGE_REF)"

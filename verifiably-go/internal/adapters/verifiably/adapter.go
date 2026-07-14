@@ -71,6 +71,11 @@ func (a *Adapter) ListSchemas(_ context.Context, _ string) ([]vctypes.Schema, er
 func (a *Adapter) ListAllSchemas(_ context.Context) ([]vctypes.Schema, error) {
 	return nil, backend.ErrNotSupported
 }
+
+// GetIssuerMetadata is not supported — this DPG does not issue credentials.
+func (a *Adapter) GetIssuerMetadata(_ context.Context) (backend.IssuerMetadata, error) {
+	return backend.IssuerMetadata{}, backend.ErrNotSupported
+}
 func (a *Adapter) SaveCustomSchema(_ context.Context, _ vctypes.Schema) error {
 	return backend.ErrNotSupported
 }

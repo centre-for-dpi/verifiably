@@ -46,11 +46,25 @@ backends_for() {
   mimoto_url=$(url_for mimoto "$VERIFIABLY_PUBLIC_HOST" "$MIMOTO_PORT")
   esignet_url=$(url_for esignet "$VERIFIABLY_PUBLIC_HOST" "$ESIGNET_PUBLIC_PORT")
 
+  # Determine verifier URLs to advertise based on active roles.
+  # Empty = this node has no verifier; hub falls back to local verification (Phase 2).
+  local _active_role
+  _active_role=$(resolve_role)
+  local _walt_verifier_advertised=""
+  local _inji_verify_advertised=""
+  local _credebl_verify_advertised=""
+  if [[ "$_active_role" == *verifier* ]]; then
+    _walt_verifier_advertised="$walt_verifier_url"
+    _inji_verify_advertised="$inji_verify_svc_url"
+    _credebl_verify_advertised=$(url_for credebl-verifier "$VERIFIABLY_PUBLIC_HOST" "$CREDEBL_API_PORT" "/api/v1/verification")
+  fi
+
   # Individual DPG stanzas — kept inline as HEREDOCs so the script is
   # self-contained (no per-scenario template files to manage).
   local waltid_stanza
   waltid_stanza=$(cat <<JSON
     {
+      "verifier_url": "${_walt_verifier_advertised}",
       "vendor": "Walt Community Stack",
       "type": "walt_community",
       "roles": ["issuer", "holder", "verifier"],
@@ -189,6 +203,7 @@ print('did:web:' + h + ':v1:verify')
   local inji_verify_stanza
   inji_verify_stanza=$(cat <<JSON
     {
+      "verifier_url": "${_inji_verify_advertised}",
       "vendor": "Inji Verify",
       "type": "inji_verify",
       "roles": ["verifier"],
@@ -298,6 +313,7 @@ JSON
   if [[ -n "$_credebl_url" ]]; then
     credebl_stanza=$(cat <<JSON
     {
+      "verifier_url": "${_credebl_verify_advertised}",
       "vendor": "CREDEBL",
       "type": "credebl",
       "roles": ["issuer", "verifier"],

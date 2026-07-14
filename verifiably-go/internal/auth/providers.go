@@ -49,6 +49,13 @@ type Provider interface {
 	Refresh(ctx context.Context, refreshToken string) (Token, error)
 	// UserInfo fetches the profile for an access token.
 	UserInfo(ctx context.Context, accessToken string) (UserInfo, error)
+	// VerifyToken verifies a JWT issued by this provider against its published
+	// JWKS (signature, issuer, expiry) and returns the token's string-valued
+	// claims. Callers that don't know which provider issued a token can try
+	// each in turn and treat any error as "not this provider / invalid". This
+	// is the trust anchor for accepting a citizen's OIDC token from an external
+	// caller (e.g. self-service eligibility) instead of trusting raw claims.
+	VerifyToken(ctx context.Context, rawToken string) (map[string]string, error)
 }
 
 // Token is the bag of strings returned by a provider's token endpoint.
@@ -61,11 +68,28 @@ type Token struct {
 	Scope        string
 }
 
-// UserInfo is the minimal profile shape the UI needs.
+// UserInfo is the profile a provider returns for an access token.
+//
+// Subject/Email/Name are the minimal fields the UI has always needed. The
+// remaining standard OIDC claims plus the Claims catch-all support National ID
+// issuance: when a citizen authenticates with their organismo's IdP, the
+// issuance form can be pre-filled with their verified identity attributes
+// instead of an operator re-typing them. See docs/credential-delivery.md
+// (identity-bound quadrant).
 type UserInfo struct {
-	Subject string
-	Email   string
-	Name    string
+	Subject    string
+	Email      string
+	Name       string
+	GivenName  string
+	FamilyName string
+	// Birthdate is the OIDC `birthdate` claim (ISO 8601 / RFC 3339 full-date).
+	Birthdate string
+	// Claims holds every string-valued claim from the userinfo response, keyed
+	// by its raw OIDC claim name (e.g. "cedula", "national_id", "nationality").
+	// Lets the issuance form prefill arbitrary national-id attributes without
+	// this package needing to know each schema's field names. Never nil after
+	// a successful UserInfo call (may be empty).
+	Claims map[string]string
 }
 
 // ProviderConfig is the per-provider config shape read from backends.json

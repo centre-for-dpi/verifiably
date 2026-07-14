@@ -365,6 +365,17 @@ func formatRank(f string) int {
 
 // ListAllSchemas delegates to ListSchemas — the registry handles aggregation
 // across DPGs, so per-adapter "all" is just "mine".
+// GetIssuerMetadata assembles this issuer's OID4VCI credential configurations
+// from its full schema catalog. Endpoint URLs are left empty for the HTTP
+// handler to fill from the request's public base.
+func (a *Adapter) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+	schemas, err := a.ListAllSchemas(ctx)
+	if err != nil {
+		return backend.IssuerMetadata{}, err
+	}
+	return backend.IssuerMetadata{CredentialsSupported: backend.CredentialConfigsFromSchemas(schemas)}, nil
+}
+
 func (a *Adapter) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error) {
 	return a.ListSchemas(ctx, a.Vendor)
 }
@@ -1049,9 +1060,15 @@ func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *b
 		}
 		types = append(types, baseType)
 	}
-	credSubject := make(map[string]any, len(subject))
+	credSubject := make(map[string]any, len(subject)+1)
 	for k, v := range subject {
 		credSubject[k] = v
+	}
+	// VCDM 2.0 subject binding: credentialSubject.id names the holder. Set only
+	// in the holder-initiated flow (HolderDID non-empty); empty in the
+	// operator pre-auth flow, where the operator does not know the holder's DID.
+	if holderDID != "" {
+		credSubject["id"] = holderDID
 	}
 	doc := map[string]any{
 		"@context": []string{

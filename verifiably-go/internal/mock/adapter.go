@@ -84,6 +84,16 @@ func (a *MockAdapter) ListSchemas(_ context.Context, issuerDpg string) ([]vctype
 	return out, nil
 }
 
+// GetIssuerMetadata assembles credential configurations from the mock's
+// schema catalog so the discovery endpoint has demo data to serve.
+func (a *MockAdapter) GetIssuerMetadata(ctx context.Context) (backend.IssuerMetadata, error) {
+	schemas, err := a.ListAllSchemas(ctx)
+	if err != nil {
+		return backend.IssuerMetadata{}, err
+	}
+	return backend.IssuerMetadata{CredentialsSupported: backend.CredentialConfigsFromSchemas(schemas)}, nil
+}
+
 func (a *MockAdapter) ListAllSchemas(_ context.Context) ([]vctypes.Schema, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

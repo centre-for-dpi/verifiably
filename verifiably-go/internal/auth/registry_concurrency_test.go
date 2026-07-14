@@ -29,6 +29,9 @@ func (s stubProvider) Refresh(_ context.Context, _ string) (Token, error) {
 func (s stubProvider) UserInfo(_ context.Context, _ string) (UserInfo, error) {
 	return UserInfo{}, nil
 }
+func (s stubProvider) VerifyToken(_ context.Context, _ string) (map[string]string, error) {
+	return nil, nil
+}
 func (s stubProvider) ServeLogout(http.ResponseWriter, *http.Request) {}
 
 // TestRegistry_Remove covers the admin "delete provider" UX. Returns true
