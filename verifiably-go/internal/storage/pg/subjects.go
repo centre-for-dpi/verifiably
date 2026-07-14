@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -62,6 +66,18 @@ func (s *SubjectStore) ProvisionSubject(ctx context.Context, subjectID string, c
 			claims = certify.vc_subject.claims || EXCLUDED.claims, upd_dtimes = now()`
 	if _, err := s.pool.Exec(ctx, q, subjectID, jsonClaims); err != nil {
 		return fmt.Errorf("pg: provision vc_subject: %w", err)
+	}
+	return nil
+}
+
+// ReplaceView execs the view DDL from authcodeViewDDL (a DROP VIEW IF EXISTS +
+// CREATE VIEW pair, run as one no-arg simple-protocol Exec). Used by the one-off
+// migration that regenerates each certify.vc_subject_<slug> extraction view into
+// the per-slug namespaced form. DROP+CREATE (not CREATE OR REPLACE) so a view
+// whose column set changed is rebuilt cleanly rather than rejected with 42P16.
+func (s *SubjectStore) ReplaceView(ctx context.Context, ddl string) error {
+	if _, err := s.pool.Exec(ctx, ddl); err != nil {
+		return fmt.Errorf("pg: replace view: %w", err)
 	}
 	return nil
 }
@@ -127,10 +143,16 @@ func (s *SubjectStore) CredentialClaimSpec(ctx context.Context, key string) (for
 // ApplyAuthcodeSchema creates a Flow B credential in one transaction: the
 // per-schema extraction VIEW + the credential_config row. The view DDL carries
 // sanitized field names (column identifiers); the credential_config values are
-// parameterized.
+// parameterized. didURL is the issuer DID stored as the credential's did_url —
+// certify stamps the signed VC's proof.verificationMethod from it, so it MUST
+// equal the issuer DID (certify's CERTIFY_ISSUER_DID / did.json id) or the VC
+// won't verify. Empty falls back to the dev-only did:web:certify-nginx.
 func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 	viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string,
-	sdJwtVct, vcContext, credType, credsub *string, ownerKey string) error {
+	sdJwtVct, vcContext, credType, credsub *string, ownerKey, didURL string) error {
+	if strings.TrimSpace(didURL) == "" {
+		didURL = "did:web:certify-nginx"
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("pg: begin: %w", err)
@@ -151,15 +173,20 @@ func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 		credential_status_purpose, qr_settings, qr_signature_algo, cr_dtimes, upd_dtimes
 	) VALUES (
 		$1, gen_random_uuid()::VARCHAR(255), 'active', $2, NULL, $3,
-		$4, $5, $6, 'did:web:certify-nginx',
+		$4, $5, $6, $11,
 		'CERTIFY_VC_SIGN_ED25519', 'ED25519_SIGN', 'EdDSA', 'Ed25519Signature2020',
 		NULL, $7::JSONB, $8, $9,
 		ARRAY['did:jwk'], ARRAY['Ed25519Signature2020'],
 		'{"jwt": {"proof_signing_alg_values_supported": ["RS256", "ES256"]}}'::JSONB,
 		$10::JSONB, NULL, NULL, ARRAY['revocation'], NULL, NULL, NOW(), NULL
-	) ON CONFLICT (credential_config_key_id) DO NOTHING`
+	) ON CONFLICT (credential_config_key_id) DO UPDATE SET
+		status = 'active', vc_template = EXCLUDED.vc_template, sd_jwt_vct = EXCLUDED.sd_jwt_vct,
+		context = EXCLUDED.context, credential_type = EXCLUDED.credential_type,
+		credential_format = EXCLUDED.credential_format, did_url = EXCLUDED.did_url,
+		display = EXCLUDED.display, display_order = EXCLUDED.display_order, scope = EXCLUDED.scope,
+		credential_subject = EXCLUDED.credential_subject, upd_dtimes = NOW()`
 	if _, err := tx.Exec(ctx, ins, key, vcTemplateB64, sdJwtVct, vcContext, credType, credFormat,
-		display, displayOrder, scope, credsub); err != nil {
+		display, displayOrder, scope, credsub, didURL); err != nil {
 		return fmt.Errorf("pg: insert credential_config: %w", err)
 	}
 	// Record which issuer created this credential (verifiably-owned table) so the
@@ -213,6 +240,88 @@ func (s *SubjectStore) ListMyCredentials(ctx context.Context, ownerKey string) (
 	return out, rows.Err()
 }
 
+// ListLedger returns the issued auth-code credentials whose credential type
+// (the first, non-VerifiableCredential component) is one of typeKeys — i.e. the
+// credentials issued from the credential_configs the caller owns. Each entry
+// carries the Certify credentialId, the status-list pointer (needed to revoke
+// via Certify's status API), the issuance time, and the current revoked state
+// (the latest credential_status_transaction intent — reflects an operator's
+// revoke/reinstate immediately, before Certify's async job flips the bitstring).
+//
+// This reads certify.ledger directly (verifiably owns INJI_CERTIFY_DATABASE_URL)
+// because Certify's /ledger-search API requires an exact (issuerId+credentialType)
+// per-credential lookup and rejects a "list all of this type" query. Returns
+// stringly-typed rows (keys: credentialId, credentialType, issuedAt,
+// statusListCredentialId, statusListIndex, revoked) to keep the handler
+// interface free of a pg-package type.
+func (s *SubjectStore) ListLedger(ctx context.Context, typeKeys []string) ([]map[string]string, error) {
+	if len(typeKeys) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT l.credential_id, l.credential_type, l.issuance_date, l.credential_status_details,
+		       l.indexed_attributes,
+		       COALESCE(t.status_value, false) AS revoked, t.cr_dtimes AS revoked_at
+		FROM certify.ledger l
+		LEFT JOIN LATERAL (
+		    SELECT status_value, cr_dtimes FROM certify.credential_status_transaction t
+		    WHERE t.credential_id = l.credential_id AND t.status_purpose = 'revocation'
+		    ORDER BY t.cr_dtimes DESC LIMIT 1
+		) t ON true
+		WHERE split_part(l.credential_type, ',', 1) = ANY($1::text[])
+		ORDER BY l.issuance_date DESC`, typeKeys)
+	if err != nil {
+		return nil, fmt.Errorf("pg: list ledger: %w", err)
+	}
+	defer rows.Close()
+	var out []map[string]string
+	for rows.Next() {
+		var credID, credType string
+		var issued time.Time
+		var statusDetails, indexedAttrs []byte
+		var revoked bool
+		var revokedAt *time.Time
+		if err := rows.Scan(&credID, &credType, &issued, &statusDetails, &indexedAttrs, &revoked, &revokedAt); err != nil {
+			return nil, err
+		}
+		// credential_status_details is a jsonb array; take the revocation entry.
+		var details []struct {
+			StatusPurpose          string `json:"status_purpose"`
+			StatusListIndex        int64  `json:"status_list_index"`
+			StatusListCredentialID string `json:"status_list_credential_id"`
+		}
+		_ = json.Unmarshal(statusDetails, &details)
+		var slcID, slIdx string
+		for _, d := range details {
+			if d.StatusPurpose == "revocation" {
+				slcID = d.StatusListCredentialID
+				slIdx = strconv.FormatInt(d.StatusListIndex, 10)
+				break
+			}
+		}
+		row := map[string]string{
+			"credentialId":           credID,
+			"credentialType":         strings.SplitN(credType, ",", 2)[0],
+			"issuedAt":               issued.UTC().Format(time.RFC3339),
+			"statusListCredentialId": slcID,
+			"statusListIndex":        slIdx,
+			"revoked":                strconv.FormatBool(revoked),
+		}
+		if revoked && revokedAt != nil {
+			row["revokedAt"] = revokedAt.UTC().Format(time.RFC3339)
+		}
+		// indexed_attributes carries the credential's claim fields (populated by
+		// certify's indexed-mappings at issuance) — pass the raw JSON so the handler
+		// can render + search them on the card. Certify may nest them under the
+		// mapping name ("credentialSubject"); the handler flattens either shape.
+		if len(indexedAttrs) > 0 && string(indexedAttrs) != "{}" {
+			row["claims"] = string(indexedAttrs)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // CredentialFields returns the claim field names for a credential (its stored
 // display_order) -- used to render the per-credential provisioning form so the
 // issuer is asked for exactly the fields that credential issues.
@@ -224,4 +333,158 @@ func (s *SubjectStore) CredentialFields(ctx context.Context, key string) ([]stri
 		return nil, fmt.Errorf("pg: credential fields: %w", err)
 	}
 	return order, nil
+}
+
+// DeleteCredential removes an issuer's auth-code credential: its credential_config
+// row (so it disappears from the owner-scoped catalog), its owner record, AND its
+// per-credential extraction view certify.vc_subject_<slug> — all in one tx, so the
+// teardown is symmetric with ApplyAuthcodeSchema's create. Dropping the view is
+// what makes delete persistent: a leftover view of the same slug blocks a later
+// rebuild whose columns differ (CREATE cannot rename view columns, SQLSTATE 42P16).
+// slug must be the injiConfigKeySlug-derived (lower + alphanumeric-only) name; ""
+// skips the view drop. Owner-checked: a non-owner caller (non-empty ownerKey that
+// doesn't match the recorded owner) is refused; an empty ownerKey (admin) bypasses.
+// (The caller reloads inji-certify so the deleted config also leaves its cache.)
+func (s *SubjectStore) DeleteCredential(ctx context.Context, key, ownerKey, slug string) error {
+	if strings.TrimSpace(key) == "" {
+		return nil
+	}
+	if ownerKey != "" {
+		var owner string
+		if err := s.pool.QueryRow(ctx,
+			`SELECT owner_key FROM certify.vc_credential_owner WHERE credential_config_key_id=$1`,
+			key).Scan(&owner); err == nil && owner != "" && owner != ownerKey {
+			return fmt.Errorf("pg: credential %q not owned by caller", key)
+		}
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("pg: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM certify.credential_config WHERE credential_config_key_id=$1`, key); err != nil {
+		return fmt.Errorf("pg: delete credential_config %q: %w", key, err)
+	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM certify.vc_credential_owner WHERE credential_config_key_id=$1`, key); err != nil {
+		return fmt.Errorf("pg: delete owner %q: %w", key, err)
+	}
+	// slug is sanitized to [a-z0-9] by injiConfigKeySlug, so it is safe to inline
+	// (view names cannot be parameterized). IF EXISTS tolerates an already-gone view.
+	if slug != "" {
+		if _, err := tx.Exec(ctx,
+			fmt.Sprintf(`DROP VIEW IF EXISTS certify.vc_subject_%s`, slug)); err != nil {
+			return fmt.Errorf("pg: drop view for %q: %w", key, err)
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// ensureIdentityRegistry creates the authoritative identity store if absent.
+// certify.identity_registry is the demo stand-in for MOSIP's ID Repository: the
+// foundational citizen identities a registrar enrolls, keyed by the RAW
+// individualId (NOT the PSU-token — the holder looks themselves up by their id
+// at activation time). Demographics live in a jsonb blob so the field set can
+// evolve without a migration.
+func (s *SubjectStore) ensureIdentityRegistry(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS certify.identity_registry (
+		individual_id VARCHAR(64) PRIMARY KEY,
+		demographics  JSONB NOT NULL,
+		cr_dtimes     TIMESTAMP DEFAULT NOW(),
+		upd_dtimes    TIMESTAMP)`)
+	if err != nil {
+		return fmt.Errorf("pg: ensure identity_registry: %w", err)
+	}
+	return nil
+}
+
+// UpsertIdentity enrolls (or refreshes) one citizen identity in the authoritative
+// identity registry, keyed by the raw individualId. Used by the registrar bulk
+// identity-load — NOT the holder. Demographics are merged so a re-load can add
+// fields without dropping existing ones.
+func (s *SubjectStore) UpsertIdentity(ctx context.Context, individualID string, demographics map[string]string) error {
+	if err := s.ensureIdentityRegistry(ctx); err != nil {
+		return err
+	}
+	blob, err := json.Marshal(demographics)
+	if err != nil {
+		return fmt.Errorf("pg: marshal demographics: %w", err)
+	}
+	const q = `INSERT INTO certify.identity_registry (individual_id, demographics) VALUES ($1, $2::jsonb)
+		ON CONFLICT (individual_id) DO UPDATE SET
+			demographics = certify.identity_registry.demographics || EXCLUDED.demographics, upd_dtimes = now()`
+	if _, err := s.pool.Exec(ctx, q, individualID, blob); err != nil {
+		return fmt.Errorf("pg: upsert identity: %w", err)
+	}
+	return nil
+}
+
+// GetIdentity returns the demographics for an enrolled individualId, or (nil,
+// nil) when no such identity exists (the holder is not enrolled). This is the
+// gate the activation flow checks before letting a holder set a PIN.
+func (s *SubjectStore) GetIdentity(ctx context.Context, individualID string) (map[string]string, error) {
+	if err := s.ensureIdentityRegistry(ctx); err != nil {
+		return nil, err
+	}
+	var blob []byte
+	err := s.pool.QueryRow(ctx,
+		`SELECT demographics FROM certify.identity_registry WHERE individual_id=$1`, individualID).Scan(&blob)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("pg: get identity: %w", err)
+	}
+	var demographics map[string]string
+	if err := json.Unmarshal(blob, &demographics); err != nil {
+		return nil, fmt.Errorf("pg: unmarshal demographics: %w", err)
+	}
+	return demographics, nil
+}
+
+// ListIdentities returns every enrolled identity in the registry, newest-updated
+// first, each as a demographics map with "individualId" set to the row key — so
+// the registrar-admin surface can VIEW the national ID registry (incl. the email
+// the activation OTP is sent to). Returns an empty slice when none are enrolled.
+func (s *SubjectStore) ListIdentities(ctx context.Context) ([]map[string]string, error) {
+	if err := s.ensureIdentityRegistry(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT individual_id, demographics FROM certify.identity_registry
+		 ORDER BY upd_dtimes DESC NULLS LAST, cr_dtimes DESC NULLS LAST, individual_id`)
+	if err != nil {
+		return nil, fmt.Errorf("pg: list identities: %w", err)
+	}
+	defer rows.Close()
+	out := []map[string]string{}
+	for rows.Next() {
+		var id string
+		var blob []byte
+		if err := rows.Scan(&id, &blob); err != nil {
+			return nil, fmt.Errorf("pg: scan identity: %w", err)
+		}
+		demographics := map[string]string{}
+		_ = json.Unmarshal(blob, &demographics)
+		demographics["individualId"] = id
+		out = append(out, demographics)
+	}
+	return out, rows.Err()
+}
+
+// DeleteIdentity removes an enrolled identity from the registry. It does NOT touch
+// the eSignet mock-identity copy written at activation (that store is separate).
+func (s *SubjectStore) DeleteIdentity(ctx context.Context, individualID string) error {
+	if strings.TrimSpace(individualID) == "" {
+		return nil
+	}
+	if err := s.ensureIdentityRegistry(ctx); err != nil {
+		return err
+	}
+	if _, err := s.pool.Exec(ctx,
+		`DELETE FROM certify.identity_registry WHERE individual_id=$1`, individualID); err != nil {
+		return fmt.Errorf("pg: delete identity %q: %w", individualID, err)
+	}
+	return nil
 }

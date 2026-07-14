@@ -278,6 +278,27 @@ cmd_up() {
     # break the primary's verification. Empty in legacy/port mode → every
     # consumer below falls back to did:web:certify-preauth-nginx (unchanged).
     export PREAUTH_DID_DOMAIN=$(printf '%s' "$PREAUTH_PUBLIC_URL" | sed -E 's#^https?://##; s#[:/].*$##')
+    # AUTHCODE_PUBLIC_URL drives the PRIMARY auth-code inji-certify's
+    # mosip_certify_domain_url — the PUBLIC subdomain so the issued VC's
+    # credential_issuer AND its credentialStatus (revocation status-list) URL are
+    # publicly resolvable and verify externally / in Inji Verify's status check,
+    # instead of the docker-internal http://certify-nginx:80. This makes the
+    # auth-code path its OWN public issuer, symmetric with PREAUTH_PUBLIC_URL
+    # above. The eSignet-issued access-token `aud` is DELIBERATELY kept internal
+    # (certify-postgres-dataprovider.properties pins
+    # mosip.certify.oauth.access-token.audience) so eSignet's internal
+    # scope-resource-mapping still matches — only the VC-facing URLs go public.
+    # Empty in legacy/port mode → compose falls back to http://certify-nginx:80.
+    export AUTHCODE_PUBLIC_URL=$(url_for inji-certify-authcode "$VERIFIABLY_PUBLIC_HOST" "${INJI_CERTIFY_PORT:-8090}")
+    # ISSUER_DID_DOMAIN = host portion of AUTHCODE_PUBLIC_URL (the PRIMARY
+    # auth-code issuer DID = did:web:inji-certify-authcode.<domain>, gen-caddy.sh
+    # serves its did.json), unless the operator pinned one. Explicitly separate
+    # from the pre-auth instance's PREAUTH_DID_DOMAIN (above), which takes
+    # precedence in its own CERTIFY_ISSUER_DID. Host-less box → unset →
+    # did:web:certify-nginx.
+    if [[ -z "${ISSUER_DID_DOMAIN:-}" ]]; then
+      export ISSUER_DID_DOMAIN=$(printf '%s' "$AUTHCODE_PUBLIC_URL" | sed -E 's#^https?://##; s#[:/].*$##')
+    fi
   fi
 
   # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE
@@ -367,7 +388,15 @@ cmd_up() {
       if ! docker exec certify-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-postgres missing inji_certify DB — running init.sql"
         DID="did:web:${ISSUER_DID_DOMAIN:-certify-nginx}"
-        sed "s|did:web:certify-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-authcode.sql" \
+        # Derive the credential vct host from the deployment's public URL instead
+        # of the seed's example.com placeholder (no-hardcoded-hosts). The vct in
+        # sd_jwt_vct is what certify issues into the credential + advertises in
+        # the well-known, so it must match VERIFIABLY_PUBLIC_URL or verification
+        # fails (stale-host mismatch).
+        VCT_HOST="${VERIFIABLY_PUBLIC_URL%/}"
+        sed -e "s|did:web:certify-nginx|${DID}|g" \
+            -e "s|https://example.com/credentials|${VCT_HOST}/credentials|g" \
+            "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-authcode.sql" \
           | docker exec -i certify-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify >/dev/null 2>&1 \
           && green "  certify-postgres seeded, inji-certify restarted" \
@@ -380,7 +409,14 @@ cmd_up() {
       if ! docker exec certify-preauth-postgres psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='inji_certify'" 2>/dev/null | grep -q 1; then
         yellow "  certify-preauth-postgres missing inji_certify DB — running init-preauth.sql"
         DID="did:web:${PREAUTH_DID_DOMAIN:-${ISSUER_DID_DOMAIN:-certify-preauth-nginx}}"
-        sed "s|did:web:certify-preauth-nginx|${DID}|g" "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-preauth.sql" \
+        # Derive the credential vct host from the deployment's public URL (see the
+        # certify-postgres seed above) — the pre-auth seed's FarmerCredential
+        # carries a https://example.com sd_jwt_vct placeholder that must become
+        # the real host or the issued credential fails verification.
+        VCT_HOST="${VERIFIABLY_PUBLIC_URL%/}"
+        sed -e "s|did:web:certify-preauth-nginx|${DID}|g" \
+            -e "s|https://example.com/credentials|${VCT_HOST}/credentials|g" \
+            "$SCRIPT_DIR/deploy/compose/stack/inji/certify/init-preauth.sql" \
           | docker exec -i certify-preauth-postgres psql -U postgres -v ON_ERROR_STOP=1 >/dev/null \
           && docker restart inji-certify-preauth-backend >/dev/null 2>&1 \
           && green "  certify-preauth-postgres seeded, inji-certify-preauth-backend restarted" \
@@ -540,6 +576,14 @@ cmd_up() {
     all|inji) up_sunbird_registry ;;
   esac
 
+  # Inji Verify OID4VP online-sharing needs its `verify` schema in
+  # inji-verify-postgres. verify-service 0.16.0 runs ddl-auto=none and ships no
+  # migrations, so cross-device presentation 500s without it. Fresh volumes get
+  # it via the initdb.d mount; this idempotent apply covers existing volumes.
+  case "$scenario" in
+    all|inji) apply_inji_verify_schema ;;
+  esac
+
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
   # operator can SEE which step is slow or stuck. Previously this was
@@ -558,6 +602,36 @@ cmd_up() {
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
   verify_oidc_discovery
+}
+
+# apply_inji_verify_schema creates the Inji Verify OID4VP `verify` schema + the
+# four online-sharing tables (authorization_request_details, presentation_
+# definition, vp_submission, vc_submission) in inji-verify-postgres. The image
+# (mosipid/inji-verify-service:0.16.0) runs spring.jpa.hibernate.ddl-auto=none
+# and bundles NO Flyway/Liquibase migrations, so without this schema
+# POST /v1/verify/vp-request 500s ("relation authorization_request_details does
+# not exist") and cross-device presentation can't work. The DDL is committed at
+# deploy/compose/stack/inji/verify/init.sql (canonical mosip/inji-verify v0.16.0
+# db-init) and mounted into initdb.d for FRESH volumes; this apply covers
+# EXISTING volumes and is fully idempotent (CREATE ... IF NOT EXISTS), so it is
+# safe to run on every deploy.
+apply_inji_verify_schema() {
+  local sql="$SCRIPT_DIR/deploy/compose/stack/inji/verify/init.sql"
+  [[ -f "$sql" ]] || { red "  inji-verify init.sql missing ($sql) — skipping"; return 0; }
+  docker ps --format '{{.Names}}' | grep -qx inji-verify-postgres \
+    || { echo "  inji-verify-postgres not running — skipping schema apply"; return 0; }
+  bold "▶ Applying Inji Verify OID4VP schema (verify.*)"
+  local ready=
+  for _ in $(seq 1 30); do
+    if docker exec inji-verify-postgres pg_isready -U postgres -q 2>/dev/null; then ready=1; break; fi
+    sleep 2
+  done
+  [[ -n "$ready" ]] || { red "  inji-verify-postgres not ready — schema not applied"; return 0; }
+  if docker exec -i inji-verify-postgres psql -U postgres -d inji_verify -v ON_ERROR_STOP=1 -q < "$sql" >/dev/null 2>&1; then
+    green "  inji-verify verify schema ready (4 OID4VP tables)"
+  else
+    red "  inji-verify schema apply failed (retry: docker exec -i inji-verify-postgres psql -U postgres -d inji_verify < $sql)"
+  fi
 }
 
 # up_sunbird_registry brings up the Sunbird RC registry-of-record so the Inji

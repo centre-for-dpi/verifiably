@@ -155,6 +155,15 @@ start_container() {
   local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"
   # verifiably-go (uid 65532) rewrites these two config files on issuer schema-creation
   for _f in "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties" "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties"; do chown 65532:65532 "$_f" 2>/dev/null || true; done
+  # Public issuer DID for verifiably-go's certifyIssuerDID env fallback (used only
+  # when the did.json fetch transiently fails, so a credential is never pinned to
+  # the unverifiable did:web:certify-nginx). Prefer ISSUER_DID_DOMAIN; else read
+  # certify's own CERTIFY_ISSUER_DID (the ground truth) off the running container.
+  local _certify_issuer_did="${ISSUER_DID_DOMAIN:+did:web:$ISSUER_DID_DOMAIN}"
+  [[ -z "$_certify_issuer_did" ]] && _certify_issuer_did=$(docker inspect inji-certify --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -n 's/^CERTIFY_ISSUER_DID=//p' | head -1)
+  # Healthcheck is defined in the Dockerfile as an exec-form HEALTHCHECK that
+  # runs `verifiably -healthcheck` (the distroless image has no /bin/sh or wget,
+  # so the CLI --health-cmd form — always CMD-SHELL — can never succeed here).
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
@@ -181,8 +190,15 @@ start_container() {
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
     -e VERIFIABLY_REGISTRY_ADMIN_URL="${VERIFIABLY_REGISTRY_ADMIN_URL:-}" \
     -e VERIFIABLY_REGISTRIES="${VERIFIABLY_REGISTRIES:-}" \
+    -e SMTP_HOST="${SMTP_HOST:-}" \
+    -e SMTP_PORT="${SMTP_PORT:-}" \
+    -e SMTP_USER="${SMTP_USER:-}" \
+    -e SMTP_PASSWORD="${SMTP_PASSWORD:-}" \
+    -e SMTP_FROM="${SMTP_FROM:-}" \
+    -e SMTP_FROM_NAME="${SMTP_FROM_NAME:-}" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
+    ${_certify_issuer_did:+-e CERTIFY_ISSUER_DID="$_certify_issuer_did"} \
     -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
     -e INJI_CERTIFY_SCOPE_QUERY_FILE="/etc/inji/certify-scope-query.properties" \
     -e INJI_ESIGNET_SCOPE_FILE="/etc/inji/esignet-scopes.properties" \
@@ -213,6 +229,19 @@ start_container() {
   sleep 1
   if docker ps --filter "name=^${VERIFIABLY_CONTAINER}$" --filter "status=running" -q | grep -q .; then
     green "  container $VERIFIABLY_CONTAINER running ($scenario)"
+    # verifiably-go was just (re)created with a FRESH IP. certify-nginx caches its
+    # `upstream injiproxy { server verifiably-go:8080; }` IP at config-load, so every
+    # inji-proxy route it serves — the well-known metadata the issuer schema list reads
+    # (→ "selected schema missing" on /issuer/issue), did.json, the credential endpoint —
+    # 502s against the stale IP until certify-nginx re-resolves. Reload it (graceful, no
+    # downtime) whenever it's up so a `deploy.sh run` doesn't silently break issuance.
+    if docker ps --filter "name=^certify-nginx$" --filter "status=running" -q | grep -q .; then
+      if docker exec certify-nginx nginx -s reload >/dev/null 2>&1; then
+        green "  reloaded certify-nginx (re-resolved injiproxy → verifiably-go)"
+      else
+        docker restart certify-nginx >/dev/null 2>&1 || true
+      fi
+    fi
   else
     red "  container failed to start — last logs:"
     docker logs "$VERIFIABLY_CONTAINER" 2>&1 | tail -n 25 >&2 || true
@@ -319,16 +348,24 @@ def rewrite_url(url):
             return f"http://{internal}{rest}"
     return url
 
-def walk(obj):
+def walk(obj, skip_keys=frozenset()):
     if isinstance(obj, dict):
+        # An inji_verify backend's config.baseUrl is the WALLET-FACING OID4VP
+        # request_uri host — the external wallet fetches the signed JAR from
+        # {baseUrl}/v1/verify/vp-request/{id}, so it must stay PUBLIC (like
+        # UIURL), not be rewritten to the docker-internal host. Its
+        # internalBaseUrl carries the server-to-server URL and is still rewritten.
+        child_skip = skip_keys
+        if obj.get("type") == "inji_verify":
+            child_skip = skip_keys | {"baseUrl"}
         for k, v in list(obj.items()):
-            if k in internal_fields and isinstance(v, str):
+            if k in internal_fields and k not in skip_keys and isinstance(v, str):
                 obj[k] = rewrite_url(v)
             elif isinstance(v, (dict, list)):
-                walk(v)
+                walk(v, child_skip)
     elif isinstance(obj, list):
         for it in obj:
-            walk(it)
+            walk(it, skip_keys)
 
 with open(src) as f:
     data = json.load(f)

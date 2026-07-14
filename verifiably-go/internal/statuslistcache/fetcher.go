@@ -42,7 +42,7 @@ func NewFetcher(stateDir string, resolver didresolver.Resolver) *Fetcher {
 // JWT signature verification is attempted but failures only produce a warning
 // (except clear signature mismatches which return an error regardless of policy).
 func (f *Fetcher) Fetch(ctx context.Context, issuerDID, listURL string) (Result, error) {
-	rawJWT, err := f.fetchLive(ctx, listURL)
+	rawJWT, err := f.fetchLiveRetry(ctx, listURL)
 	if err == nil {
 		if verifyErr := f.verifyJWT(ctx, rawJWT, issuerDID); verifyErr != nil {
 			slog.Warn("status list: JWT verification warning", "url", listURL, "err", verifyErr)
@@ -80,6 +80,30 @@ func (f *Fetcher) Fetch(ctx context.Context, issuerDID, listURL string) (Result,
 	return Result{Source: "unknown"}, fmt.Errorf("status list unavailable and no cache for %s: %w", listURL, err)
 }
 
+// fetchLiveRetry retries fetchLive a few times with a short backoff so a cold
+// endpoint — the status list just after issuance, or a cold hairpin route —
+// does not fail-closed on the first attempt (the "first verify fails, retry
+// succeeds" flakiness, B4). A fast failure (connection refused) retries almost
+// immediately; only a hanging endpoint pays the per-attempt timeout.
+func (f *Fetcher) fetchLiveRetry(ctx context.Context, listURL string) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(attempt) * 400 * time.Millisecond):
+			}
+		}
+		raw, err := f.fetchLive(ctx, listURL)
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+	}
+	return "", lastErr
+}
+
 // fetchLive GETs the status list URL with a 3-second timeout.
 // It handles two response formats: a raw JWT string or a JSON object containing
 // the JWT under one of the common key names ("token", "jwt", "verifiableCredential").
@@ -90,6 +114,11 @@ func (f *Fetcher) fetchLive(ctx context.Context, listURL string) (string, error)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
+	// Ask for the JOSE-secured (JWS) status list so we can verify its signature.
+	// The status-list endpoint now defaults to a JSON-LD VC (for external W3C
+	// verifiers like MOSIP Inji Verify that JSON.parse the response); we're a
+	// signature-verifying consumer, so we opt into the JWS form explicitly.
+	req.Header.Set("Accept", "application/vc+jwt")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("GET %s: %w", listURL, err)
@@ -120,7 +149,7 @@ func (f *Fetcher) fetchLive(ctx context.Context, listURL string) (string, error)
 // Resolution and format failures produce warnings but do not block caching.
 // A detected signature mismatch returns an error.
 func (f *Fetcher) verifyJWT(ctx context.Context, rawJWT, issuerDID string) error {
-	if f.resolver == nil || rawJWT == "" {
+	if rawJWT == "" {
 		return nil
 	}
 	parts := strings.Split(rawJWT, ".")
@@ -138,6 +167,32 @@ func (f *Fetcher) verifyJWT(ctx context.Context, rawJWT, issuerDID string) error
 		}
 	}
 	if !strings.HasPrefix(issuerDID, "did:") {
+		return nil
+	}
+	// did:jwk embeds the public key directly, so no network resolution is needed.
+	// Skipping it (the resolver only handles did:web) left did:jwk-signed status
+	// lists — walt.id's — with their signatures UNVERIFIED, i.e. revocation
+	// trusted on faith (P2).
+	if strings.HasPrefix(issuerDID, "did:jwk:") {
+		jwk, err := decodeDIDJWK(issuerDID)
+		if err != nil {
+			slog.Warn("status list: invalid did:jwk issuer (skipping sig check)", "did", issuerDID, "err", err)
+			return nil
+		}
+		if verr := verifyES256JWT(parts, jwk); verr != nil {
+			// Only a genuine P-256 signature mismatch is fatal; an unsupported key
+			// type or malformed field means we can't check it here — skip rather
+			// than false-deny a legitimate credential.
+			if strings.Contains(verr.Error(), "signature invalid") {
+				return fmt.Errorf("status list did:jwk signature invalid: %w", verr)
+			}
+			slog.Warn("status list: did:jwk sig check skipped", "did", issuerDID, "err", verr)
+			return nil
+		}
+		return nil
+	}
+	// Other DID methods (did:web) require the resolver.
+	if f.resolver == nil {
 		return nil
 	}
 	doc, err := f.resolver.Resolve(ctx, issuerDID)
@@ -184,4 +239,25 @@ func verifyES256JWT(parts []string, jwk map[string]any) error {
 	}
 	// Signing input: base64url(header) + "." + base64url(payload).
 	return jose.VerifyES256(&pub, []byte(parts[0]+"."+parts[1]), sigBytes)
+}
+
+// decodeDIDJWK decodes a did:jwk identifier (did:jwk:<base64url(JWK JSON)>, an
+// optional #fragment ignored) into its JWK map. did:jwk carries the public key
+// inline, so verification needs no network resolution.
+func decodeDIDJWK(did string) (map[string]any, error) {
+	enc := strings.TrimPrefix(did, "did:jwk:")
+	if i := strings.IndexByte(enc, '#'); i >= 0 {
+		enc = enc[:i]
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(enc)
+	if err != nil {
+		if raw, err = base64.URLEncoding.DecodeString(enc); err != nil {
+			return nil, fmt.Errorf("did:jwk base64url: %w", err)
+		}
+	}
+	var jwk map[string]any
+	if err := json.Unmarshal(raw, &jwk); err != nil {
+		return nil, fmt.Errorf("did:jwk JWK JSON: %w", err)
+	}
+	return jwk, nil
 }

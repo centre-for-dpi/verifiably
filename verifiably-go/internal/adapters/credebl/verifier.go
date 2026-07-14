@@ -93,6 +93,12 @@ func (a *Adapter) ListOID4VPTemplates(ctx context.Context) (map[string]vctypes.O
 // DCQL-based presentation API. Returns the openid4vp:// authorization_request
 // URI the holder scans, plus the session ID used by FetchPresentationResult.
 func (a *Adapter) RequestPresentation(ctx context.Context, req backend.PresentationRequest) (backend.PresentationRequestResult, error) {
+	// credebl's DCQL builder here requests a single credential; a delegation PAIR
+	// (Templates>1) would be silently reduced to one, then fail linkage with a
+	// confusing "no subject credential". Surface it instead of dropping it (P2).
+	if len(req.Templates) > 1 {
+		return backend.PresentationRequestResult{}, fmt.Errorf("credebl verifier cannot request a %d-credential (delegation pair) presentation; use the walt.id verifier for pairs, or the evaluate-over-held path", len(req.Templates))
+	}
 	var tpl vctypes.OID4VPTemplate
 	if req.Template != nil {
 		tpl = *req.Template
@@ -176,6 +182,7 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 			if len(fields) == 0 && resp.Data.AuthorizationResponsePayload.VpToken != "" {
 				fields = extractDisclosedFieldsFromVpToken(resp.Data.AuthorizationResponsePayload.VpToken)
 			}
+			creds, holder := normalizeCredeblCredentials(resp.Data.AuthorizationResponsePayload.VpToken)
 			return backend.VerificationResult{
 				Valid:             true,
 				Method:            "OID4VP · selective — SD-JWT VC",
@@ -185,6 +192,8 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, _ string) 
 				Issued:            time.Now().UTC(),
 				CheckedRevocation: true,
 				DisclosedFields:   fields,
+				Credentials:       creds,
+				HolderBinding:     holder,
 			}, nil
 		case "Error":
 			return backend.VerificationResult{

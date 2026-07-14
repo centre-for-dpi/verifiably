@@ -41,6 +41,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/verifiably/verifiably-go/internal/injidid"
 )
@@ -244,6 +245,47 @@ func fetchDidJSON(ctx context.Context, url string) (map[string]any, int, error) 
 		return nil, resp.StatusCode, err
 	}
 	return doc, resp.StatusCode, nil
+}
+
+// certifyIssuerDID returns the auth-code Inji Certify instance's issuer DID —
+// the `id` of its did.json, which mirrors CERTIFY_ISSUER_DID (the deploy host
+// DID, e.g. did:web:inji-certify-authcode.<domain>). New auth-code
+// credential_config rows store this as their did_url so the signed VC's
+// proof.verificationMethod matches the issuer AND resolves at the public host
+// (see ApplyAuthcodeSchema). Falls back to the docker-internal
+// did:web:certify-nginx (dev default) when the fetch fails — the same value the
+// column historically hardcoded.
+func certifyIssuerDID(ctx context.Context) string {
+	// The did.json `id` is the source of truth (it matches the key certify
+	// actually signs with). Retry a few times: a transient miss here would poison
+	// the new credential_config's did_url with an UNVERIFIABLE value — the
+	// internal docker hostname never resolves at an external verifier, so every VC
+	// signed under it fails signature verification (exactly the certify-nginx bug
+	// this proxy exists to avoid). A single un-retried fetch previously left a
+	// delegation credential pinned to did:web:certify-nginx.
+	url := injiCertifyUpstream() + "/v1/certify/.well-known/did.json"
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+		}
+		doc, status, err := fetchDidJSON(ctx, url)
+		if err == nil && status == http.StatusOK {
+			if id, _ := doc["id"].(string); strings.TrimSpace(id) != "" {
+				return id
+			}
+		}
+	}
+	// Fetch failed: fall back to the deploy-provided public issuer DID (the same
+	// value certify gets from CERTIFY_ISSUER_DID) — NOT did:web:certify-nginx,
+	// which is unverifiable everywhere but inside the docker network.
+	if d := strings.TrimSpace(os.Getenv("CERTIFY_ISSUER_DID")); d != "" && d != "did:web:certify-nginx" {
+		log.Printf("certifyIssuerDID: did.json fetch failed; using CERTIFY_ISSUER_DID env fallback %q", d)
+		return d
+	}
+	// Pure-dev last resort (ISSUER_DID_DOMAIN unset): the internal hostname.
+	// Credentials issued now will NOT verify at any external verifier.
+	log.Printf("certifyIssuerDID: WARNING no resolvable issuer DID (did.json fetch failed, CERTIFY_ISSUER_DID unset); credentials issued now will not verify externally")
+	return "did:web:certify-nginx"
 }
 
 // patchedDidDoc mutates doc to add one verificationMethod per extra kid,

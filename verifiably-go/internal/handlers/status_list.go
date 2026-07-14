@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 )
@@ -68,27 +70,65 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown status list id", http.StatusNotFound)
 		return
 	}
-	key, err := h.resolveSigningKey(r.Context())
-	if err != nil {
-		log.Printf("status-list/bitstring: signing key unavailable: %v", err)
-		http.Error(w, "status list signing key unavailable", http.StatusServiceUnavailable)
+	// Content-negotiate (F16 full-interop). DEFAULT is now JSON-LD: MOSIP Inji
+	// Verify (and most W3C verifiers) fetch the statusListCredential with `*/*`
+	// and JSON.parse it — they choke on the JOSE JWS ("Unrecognized token
+	// 'eyJhbGci'"). Serve the signed JWS ONLY when explicitly requested via an
+	// Accept containing `jwt` (application/vc+jwt) — verifiably's own
+	// StatusListCache asks for that so it keeps verifying the list's signature.
+	if wantsJWSStatusList(r.Header.Get("Accept")) {
+		key, err := h.resolveSigningKey(r.Context())
+		if err != nil {
+			log.Printf("status-list/bitstring: signing key unavailable: %v", err)
+			http.Error(w, "status list signing key unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		jwt, err := h.BitstringStore.PublishBitstringJWT(key)
+		if err != nil {
+			log.Printf("status-list/bitstring: publish failed: %v", err)
+			http.Error(w, "status list unavailable", http.StatusInternalServerError)
+			return
+		}
+		// Per VCDM 2.0 + IANA registry, JOSE-secured VCs use application/vc+jwt.
+		w.Header().Set("Content-Type", "application/vc+jwt")
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		_, _ = w.Write([]byte(jwt))
 		return
 	}
-	jwt, err := h.BitstringStore.PublishBitstringJWT(key)
+	// Default: JSON-LD BitstringStatusListCredential with an Ed25519Signature2020
+	// Data-Integrity proof so external verifiers (MOSIP Inji Verify) accept it.
+	if h.StatusLDSigner == nil {
+		http.Error(w, "status list ld signer unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	vc, err := h.BitstringStore.BitstringStatusListVC(h.StatusLDSigner.DID())
 	if err != nil {
-		log.Printf("status-list/bitstring: publish failed: %v", err)
+		log.Printf("status-list/bitstring: build VC failed: %v", err)
 		http.Error(w, "status list unavailable", http.StatusInternalServerError)
 		return
 	}
-	// Per VCDM 2.0 + IANA media-type registry, JOSE-secured VCs use the
-	// `application/vc+jwt` media type. Verifiers that key off the
-	// Content-Type can dispatch to the JWT-VC parser without sniffing.
-	w.Header().Set("Content-Type", "application/vc+jwt")
-	// Status lists change rarely — let intermediaries cache for 60s. A
-	// freshly-revoked credential's status visibility lags by at most one
-	// minute, well inside what verifiers expect.
+	signed, err := h.StatusLDSigner.Sign(vc)
+	if err != nil {
+		log.Printf("status-list/bitstring: LD sign failed: %v", err)
+		http.Error(w, "status list unavailable", http.StatusInternalServerError)
+		return
+	}
+	body, err := json.Marshal(signed)
+	if err != nil {
+		http.Error(w, "status list unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/vc+ld+json")
+	// Status lists change rarely — cache for 60s (freshly-revoked visibility lags
+	// by at most one minute, well inside what verifiers expect).
 	w.Header().Set("Cache-Control", "public, max-age=60")
-	_, _ = w.Write([]byte(jwt))
+	_, _ = w.Write(body)
+}
+
+// wantsJWSStatusList reports whether the caller explicitly asked for the
+// JOSE-secured (application/vc+jwt) status list rather than the default JSON-LD.
+func wantsJWSStatusList(accept string) bool {
+	return strings.Contains(strings.ToLower(accept), "jwt")
 }
 
 // PublishTokenStatusList serves GET /status-list/token/{id} for SD-JWT

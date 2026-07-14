@@ -35,6 +35,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,6 +71,22 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	}
 	if len(claims) == 0 {
 		claims["fullName"] = "Demo Holder"
+	}
+	// Stage the token-status markers so certify resolves the SD-JWT
+	// status.status_list / W3C credentialStatus template markers into a real,
+	// revocable pointer (F16). IssueToWallet does the same (issuer.go); the PDF
+	// path was missing it, so ${statusIdx}/${statusUri} rendered literally and
+	// the credential failed verification everywhere. Keys must be exactly
+	// statusIdx/statusUri (declared in the pre-auth credential_config so
+	// certify's PreAuthDataProviderPlugin surfaces them into the template).
+	if cf := stdToCredentialFormat(req.Schema.Std); cf == "vc+sd-jwt" || cf == "ldp_vc" {
+		if req.StatusList != nil {
+			claims["statusIdx"] = strconv.Itoa(req.StatusList.Index)
+			claims["statusUri"] = req.StatusList.PublishURL
+		} else {
+			claims["statusIdx"] = "0"
+			claims["statusUri"] = ""
+		}
 	}
 	staged := preAuthorizedDataRequest{
 		CredentialConfigurationId: req.Schema.ID,
@@ -511,6 +528,80 @@ func renderCredentialPDF(title, issuer, qrPayload string, fields map[string]stri
 	pdf.SetFont("Helvetica", "I", 8)
 	pdf.SetTextColor(140, 140, 140)
 	pdf.CellFormat(0, 5, "Scan the QR with Inji Verify to verify this credential.", "", 1, "C", false, 0, "")
+	pdf.Ln(4)
+
+	// Footer.
+	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetTextColor(160, 160, 160)
+	pdf.CellFormat(0, 5, fmt.Sprintf("Issued %s via %s", time.Now().UTC().Format(time.RFC3339), issuer), "", 1, "C", false, 0, "")
+
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// renderCredentialPDFNoQR lays out the same one-page credential as
+// renderCredentialPDF (issuer line, title, claim rows) but WITHOUT a QR — used
+// when the credential is too large to embed in a scannable QR (SD-JWT VCs carry
+// an x5c chain that overflows even QR version 40). In place of the QR it prints
+// `note` (a holder-facing explanation) and the full credential text so the PDF
+// is still a complete, self-contained artifact. Never fails on payload size.
+func renderCredentialPDFNoQR(title, issuer, note string, fields map[string]string, order []string, credentialText string) ([]byte, error) {
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+
+	// Header: issuer name + title (identical to renderCredentialPDF).
+	pdf.SetFont("Helvetica", "", 10)
+	pdf.SetTextColor(120, 120, 120)
+	pdf.CellFormat(0, 6, issuer, "", 1, "C", false, 0, "")
+	pdf.SetFont("Helvetica", "B", 22)
+	pdf.SetTextColor(40, 40, 40)
+	pdf.CellFormat(0, 14, title, "", 1, "C", false, 0, "")
+	pdf.Ln(4)
+
+	pdf.SetDrawColor(200, 200, 200)
+	pdf.Line(30, pdf.GetY(), 180, pdf.GetY())
+	pdf.Ln(6)
+
+	// Claim rows.
+	pdf.SetFont("Helvetica", "", 11)
+	pdf.SetTextColor(70, 70, 70)
+	keys := order
+	if len(keys) == 0 {
+		for k := range fields {
+			keys = append(keys, k)
+		}
+	}
+	for _, k := range keys {
+		v := fields[k]
+		if v == "" {
+			continue
+		}
+		pdf.SetFont("Helvetica", "B", 10)
+		pdf.CellFormat(50, 7, humanizeKey(k)+":", "", 0, "L", false, 0, "")
+		pdf.SetFont("Helvetica", "", 11)
+		pdf.CellFormat(0, 7, v, "", 1, "L", false, 0, "")
+	}
+	pdf.Ln(4)
+
+	// Holder-facing note (why there's no QR).
+	if note != "" {
+		pdf.SetFont("Helvetica", "I", 9)
+		pdf.SetTextColor(150, 110, 0)
+		pdf.MultiCell(0, 5, note, "", "L", false)
+		pdf.Ln(2)
+	}
+
+	// The full credential text, monospaced and wrapped, so the PDF carries the
+	// verifiable credential even without a QR.
+	pdf.SetFont("Helvetica", "B", 9)
+	pdf.SetTextColor(70, 70, 70)
+	pdf.CellFormat(0, 6, "Credential", "", 1, "L", false, 0, "")
+	pdf.SetFont("Courier", "", 7)
+	pdf.SetTextColor(60, 60, 60)
+	pdf.MultiCell(0, 3.4, credentialText, "", "L", false)
 	pdf.Ln(4)
 
 	// Footer.

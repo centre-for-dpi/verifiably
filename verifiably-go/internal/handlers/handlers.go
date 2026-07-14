@@ -25,6 +25,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
+	"github.com/verifiably/verifiably-go/internal/storage/injiwallet"
 	"github.com/verifiably/verifiably-go/internal/trust"
 	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -79,6 +80,10 @@ type H struct {
 	// instance hosts for VCDM 2.0 credentials it issues. Optional; nil
 	// disables W3C revocation end-to-end.
 	BitstringStore statuslist.Backend
+	// StatusLDSigner signs the JSON-LD BitstringStatusListCredential with an
+	// Ed25519Signature2020 proof so external verifiers (MOSIP Inji Verify) accept
+	// it (F16 full-interop). Optional; nil serves only the JWS form.
+	StatusLDSigner *statuslist.LDSigner
 
 	// TokenStore is the IETF Token Status List the instance hosts for
 	// SD-JWT VCs it issues. Optional; nil disables SD-JWT revocation.
@@ -87,8 +92,27 @@ type H struct {
 	// Subjects upserts dynamic claims into the Inji auth-code data-provider
 	// table (certify.vc_subject), keyed by the eSignet subject id. Powers
 	// POST /api/v1/subjects. Optional - nil when INJI_CERTIFY_DATABASE_URL is
-	// unset (the endpoint then returns 503).
+	// unset (the endpoint then returns 503). Also backs the authoritative
+	// identity registry (UpsertIdentity/GetIdentity) used by the registrar
+	// enrolment surface + holder activation.
 	Subjects SubjectProvisioner
+
+	// InjiWallet durably persists the credentials a holder claims through the
+	// in-app Inji web wallet, keyed by their OIDC login identity (provider|sub)
+	// so the wallet follows the user across sessions/restarts rather than being
+	// tied to the browser cookie. Optional — nil degrades to session-only storage.
+	InjiWallet *injiwallet.Store
+
+	// Mailer sends holder-activation email OTPs (the Mailer interface, satisfied
+	// by *mailer.Mailer). nil when email is unconfigured (SMTP_* unset) — the
+	// activation flow then refuses with a clear "email delivery isn't configured"
+	// message. main.go assigns it via a nil-guarded conversion so a nil concrete
+	// pointer doesn't become a non-nil interface.
+	Mailer Mailer
+
+	// OTPs holds pending holder-activation one-time codes (in-memory). Always
+	// non-nil (NewOTPStore), so the activation flow needn't nil-check it.
+	OTPs *OTPStore
 
 	// APIKeys gates /api/v1/* endpoints. Populated from VERIFIABLY_API_KEYS
 	// ("name1:key1,name2:key2"). When nil or empty, all API routes return 503.
@@ -464,7 +488,8 @@ func titleFor(page string) string {
 		"issuer_schema_builder": "Issuer · Build schema",
 		"issuer_mode":           "Issuer · Mode",
 		"issuer_issue":          "Issuer · Issue",
-		"issuer_credentials":    "Issuer · Issued credentials",
+		"issuer_credentials":    "Issuer · My credentials",
+		"issuer_issued_log":     "Issuer · Issued credentials",
 		"holder_dpg":            "Holder · Wallet",
 		"holder_wallet":         "Wallet",
 		"holder_present":        "Present credential",
@@ -491,7 +516,8 @@ func crumbFor(page string) string {
 		"issuer_schema_builder": "issuer → schema → build",
 		"issuer_mode":           "issuer → mode",
 		"issuer_issue":          "issuer → issue",
-		"issuer_credentials":    "issuer → issued credentials",
+		"issuer_credentials":    "issuer → my credentials",
+		"issuer_issued_log":     "issuer → issued credentials",
 		"holder_dpg":            "holder → wallet",
 		"holder_wallet":         "holder → wallet",
 		"holder_present":        "holder → present",
@@ -865,6 +891,24 @@ func (h *H) AuthCallback(w http.ResponseWriter, r *http.Request) {
 	sess.WalletCreds = nil
 	sess.WalletPending = nil
 	sess.WalletUserKey = ""
+	// The in-app Inji web wallet is likewise partitioned per OIDC user. Drop the
+	// prior user's cookie-cached credentials and reload THIS user's durable set —
+	// so the wallet follows the login (durable across sessions/restarts) and never
+	// leaks one user's credentials to the next on a shared browser. sessionWalletKey
+	// re-freezes WalletUserKey to the just-authenticated provider|sub.
+	sess.InjiClaimedVCs = nil
+	sess.InjiHolderKeys = nil
+	if h.InjiWallet != nil {
+		for _, hc := range h.InjiWallet.List(sessionWalletKey(sess)) {
+			sess.InjiClaimedVCs = append(sess.InjiClaimedVCs, hc.VC)
+			if hc.HolderKey != "" {
+				if sess.InjiHolderKeys == nil {
+					sess.InjiHolderKeys = map[string]string{}
+				}
+				sess.InjiHolderKeys[hc.VCID] = hc.HolderKey
+			}
+		}
+	}
 	h.redirect(w, r, authNextFor(sess.Role))
 }
 
@@ -891,6 +935,10 @@ func (h *H) Logout(w http.ResponseWriter, r *http.Request) {
 	sess.WalletCreds = nil
 	sess.WalletPending = nil
 	sess.WalletUserKey = ""
+	// Clear the Inji web wallet's cookie cache too — its durable copy stays keyed
+	// by the user in InjiWallet and is re-hydrated on the next login.
+	sess.InjiClaimedVCs = nil
+	sess.InjiHolderKeys = nil
 	h.redirect(w, r, "/")
 }
 

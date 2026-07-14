@@ -54,4 +54,9 @@ EXPOSE 8080
 # /app/locales is writable via a volume mount in production so translation
 # cache persists across container recreates.
 VOLUME ["/app/locales"]
+# Shell-less health probe: distroless has no /bin/sh or wget, so exec the binary
+# itself (see cmd/server/main.go runHealthcheck). Must be exec form — the CLI
+# `docker run --health-cmd` only produces CMD-SHELL, which fails on this image.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["/app/verifiably", "-healthcheck"]
 ENTRYPOINT ["/app/verifiably"]

@@ -54,6 +54,15 @@
     else if (msg && msg.value) toast(msg.value);
   });
 
+  // Server sends HX-Trigger {"schemasReady":true} when a just-provisioned Inji
+  // schema becomes claimable — refresh the schema card list so any certify-
+  // dependent state fills in (the toast fires separately and stays visible).
+  document.body.addEventListener('schemasReady', function () {
+    if (window.htmx && document.getElementById('schema-list')) {
+      window.htmx.ajax('GET', '/issuer/schema/search', '#schema-list');
+    }
+  });
+
   // Error surface — if an HTMX request fails, show a toast instead of a silent failure.
   document.body.addEventListener('htmx:responseError', function (evt) {
     const status = evt.detail && evt.detail.xhr && evt.detail.xhr.status;
@@ -220,4 +229,29 @@
   }
   initWalletSearch();
   document.body.addEventListener('htmx:load', initWalletSearch);
+
+  // Timezone selector on the issue form (Fix 5): default the tz_offset select to
+  // the browser's actual zone so operators enter local wall-clock times that get
+  // stored as UTC correctly, instead of being silently pinned to UTC (which
+  // pushes validFrom into the future and trips the verifier's not-before gate).
+  // Value = minutes EAST of UTC; if the browser's exact offset isn't a listed
+  // option, inject and select it.
+  function initTzSelect() {
+    var sel = document.querySelector('select[name="tz_offset"]');
+    if (!sel || sel.dataset.tzInit) return;
+    sel.dataset.tzInit = '1';
+    var east = -new Date().getTimezoneOffset(); // minutes east of UTC
+    if (!sel.querySelector('option[value="' + east + '"]')) {
+      var opt = document.createElement('option');
+      opt.value = String(east);
+      var a = Math.abs(east);
+      var hh = ('0' + Math.floor(a / 60)).slice(-2);
+      var mm = ('0' + (a % 60)).slice(-2);
+      opt.textContent = 'UTC' + (east < 0 ? '-' : '+') + hh + ':' + mm + ' (detected)';
+      sel.insertBefore(opt, sel.firstChild);
+    }
+    sel.value = String(east);
+  }
+  initTzSelect();
+  document.body.addEventListener('htmx:load', initTzSelect);
 })();

@@ -5,8 +5,8 @@
   <p class="subtitle">
     <span class="mono">{{.Body.IssuerDpg}}</span> ·
     <span class="mono">{{.Body.Schema.Std}}</span> ·
-    {{if eq .Body.Scale "single"}}one subject{{else}}CSV upload{{end}} ·
-    {{if eq .Body.Dest "wallet"}}delivered via OID4VCI{{else}}printable PDF with embedded QR{{end}}
+    {{if eq .Body.Scale "single"}}one subject{{else if .Body.Dpg.BulkOnly}}bulk provision{{else}}bulk issuance{{end}} ·
+    {{if .Body.Dpg.BulkOnly}}provision subjects → holders self-claim via eSignet{{else if eq .Body.Dest "wallet"}}delivered via OID4VCI{{else}}printable PDF with embedded QR{{end}}
   </p>
 
   {{if eq .Body.Scale "single"}}
@@ -52,27 +52,17 @@
     {{/* ----- BULK — select a source, populate its mini-form, issue per row ----- */}}
     <div style="margin-top:2rem">
       <div class="caps" style="margin-bottom:0.75rem">Bulk data source</div>
-      <div class="chip-row">
-        {{range .Body.BulkSources}}
-        <button type="button"
-                class="chip {{if eq $.Body.BulkSource .Key}}active{{end}}"
-                hx-post="/issuer/issue/bulk/source"
-                hx-vals='{"source": "{{.Key}}"}'
-                hx-target="#bulk-form-wrap"
-                hx-swap="outerHTML"
-                title="{{.Hint}}">{{.Label}}</button>
-        {{end}}
+      {{/* Chip-row + mini-form live together in #bulk-area so clicking a chip
+           re-renders BOTH — the active highlight moves AND the form switches
+           in one swap (previously the chips targeted only the form, so the
+           highlight stayed on the old chip until a full page reload). */}}
+      <div id="bulk-area">
+        {{template "fragment_issue_bulk_area" (dict "BulkSources" .Body.BulkSources "BulkSource" .Body.BulkSource "Fields" .Body.Fields "Dpg" .Body.Dpg "IsProvision" .Body.IsProvision "Registries" .Body.Registries "EntityDefault" .Body.EntityDefault)}}
       </div>
-      {{if and .Body.Dpg (lt (len .Body.BulkSources) 3)}}
-      <div style="margin-top:0.5rem;font-size:0.72rem;color:var(--ink-mute);font-style:italic">
-        {{.Body.Dpg.Vendor}} only supports {{len .Body.BulkSources}} of the 3 bulk sources. The missing chip(s) reflect the vendor's documented data-provider capabilities, not a verifiably-go limitation.
-      </div>
-      {{end}}
     </div>
 
-    {{template "fragment_issue_bulk_form" (dict "Source" .Body.BulkSource "Fields" .Body.Fields)}}
-
-    <div id="csv-preview"></div>
+    {{/* #csv-preview (the mapping → result target) lives INSIDE #bulk-area so a
+         chip switch re-renders a fresh empty one — see fragment_issue_bulk_area. */}}
 
     <div class="btn-row" style="margin-top:2rem">
       <a href="/issuer/mode" class="btn ghost">← Back</a>
@@ -103,15 +93,89 @@
           <div class="field">
             <label>{{replaceUnderscore .Name}}{{if .Required}} *{{end}}</label>
             <input
-              type="{{if eq .Format "date"}}date{{else if eq .Format "uri"}}url{{else if eq .Datatype "number"}}number{{else if eq .Datatype "integer"}}number{{else if eq .Datatype "boolean"}}checkbox{{else}}text{{end}}"
+              type="{{if eq .Format "date"}}date{{else if eq .Format "datetime"}}datetime-local{{else if eq .Format "uri"}}url{{else if eq .Datatype "number"}}number{{else if eq .Datatype "integer"}}number{{else if eq .Datatype "boolean"}}checkbox{{else}}text{{end}}"
               {{if eq .Datatype "integer"}}step="1"{{end}}
               name="field_{{.Name}}"
               value="{{index $.FieldValues .Name}}"
               data-required="{{if .Required}}true{{else}}false{{end}}"
               placeholder="{{if eq .Format "date"}}YYYY-MM-DD{{else if eq .Format "uri"}}https://…{{end}}">
+            {{if eq .Name "onBehalfOf"}}
+            <p class="hint" style="font-size:0.72rem;color:#8a4b13;margin:0.4rem 0 0;background:rgba(181,101,29,0.08);border-left:3px solid #b5651d;padding:0.45rem 0.65rem;border-radius:0 4px 4px 0">
+              🔗 <strong>Linkage anchor — must be a unique identifier.</strong> A verifier links this delegation to the holder's <em>identity</em> credential on this exact value. Set it to a unique identifier the identity credential carries — its <span class="mono">subjectRef</span>, an identifier field (e.g. national ID, <span class="mono">testa_id</span>), or the holder's <span class="mono">DID</span> — <em>not</em> a name or other shared attribute. That value must be disclosed when the pair is verified, or linkage fails. The identity credential must also be issued in the <strong>same format</strong> as this delegation (both SD-JWT or both W3C) — a verifier can't combine formats in one request.
+            </p>
+            {{end}}
+            {{if eq .Name "valid_until"}}
+            <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.4rem 0 0">
+              ⏳ <strong>Capability expiry</strong> — after this, the delegation is denied even if not revoked. This is the caveat on the <em>delegate's authority</em>, separate from the credential's own optional "Validity window" below.
+            </p>
+            {{end}}
           </div>
         {{end}}
       </div>
+      {{/* Timezone selector (Fix 5). A datetime-local / date input carries no
+           zone, so without this the entered wall-clock is pinned to UTC — a
+           UTC+offset operator's validFrom then lands hours in the future and the
+           verifier rejects it as "not yet valid". The value is minutes EAST of
+           UTC; app.js auto-selects the browser's detected zone on load (and
+           injects the exact option if it's not in the list). Governs every
+           date/time field on this form + the validity window below. */}}
+      <div class="field" data-tz-field style="margin-top:0.8rem">
+        <label>Timezone for date &amp; time fields</label>
+        <select name="tz_offset" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+          <option value="-720">UTC−12:00</option>
+          <option value="-660">UTC−11:00</option>
+          <option value="-600">UTC−10:00</option>
+          <option value="-540">UTC−09:00</option>
+          <option value="-480">UTC−08:00</option>
+          <option value="-420">UTC−07:00</option>
+          <option value="-360">UTC−06:00</option>
+          <option value="-300">UTC−05:00</option>
+          <option value="-240">UTC−04:00</option>
+          <option value="-180">UTC−03:00</option>
+          <option value="-120">UTC−02:00</option>
+          <option value="-60">UTC−01:00</option>
+          <option value="0" selected>UTC±00:00</option>
+          <option value="60">UTC+01:00</option>
+          <option value="120">UTC+02:00</option>
+          <option value="180">UTC+03:00</option>
+          <option value="210">UTC+03:30</option>
+          <option value="240">UTC+04:00</option>
+          <option value="270">UTC+04:30</option>
+          <option value="300">UTC+05:00</option>
+          <option value="330">UTC+05:30</option>
+          <option value="345">UTC+05:45</option>
+          <option value="360">UTC+06:00</option>
+          <option value="390">UTC+06:30</option>
+          <option value="420">UTC+07:00</option>
+          <option value="480">UTC+08:00</option>
+          <option value="540">UTC+09:00</option>
+          <option value="570">UTC+09:30</option>
+          <option value="600">UTC+10:00</option>
+          <option value="660">UTC+11:00</option>
+          <option value="720">UTC+12:00</option>
+          <option value="780">UTC+13:00</option>
+          <option value="840">UTC+14:00</option>
+        </select>
+        <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.4rem 0 0">
+          The times you enter above are interpreted in this zone, then stored as UTC. Defaults to your browser's timezone; the credential's validity is always compared in UTC by verifiers.
+        </p>
+      </div>
+      {{/* Optional validity window (B3). Empty = the DPG default (walt.id ~2y).
+           Pins validFrom/validUntil (W3C) or nbf/exp (SD-JWT) so the credential
+           isn't stuck at the backend's default window. */}}
+      <details style="margin-top:0.8rem">
+        <summary style="cursor:pointer;font-size:0.8rem;color:#555">Validity window (optional — defaults to the DPG's own window)</summary>
+        <div class="form-grid" style="margin-top:0.6rem">
+          <div class="field">
+            <label>Valid from</label>
+            <input type="datetime-local" name="valid_from">
+          </div>
+          <div class="field">
+            <label>Valid until</label>
+            <input type="datetime-local" name="valid_until">
+          </div>
+        </div>
+      </details>
 
     {{else if eq .SingleSource "api"}}
       <div class="field">
@@ -163,14 +227,14 @@
   </div>
   {{if .PIN}}
   <div style="margin-top:1rem; padding:0.75rem 1rem; background:var(--bg-alt); border:1px solid var(--line); border-radius:4px; text-align:center">
-    <div style="font-size:0.78rem; color:var(--ink-mute); margin-bottom:0.25rem">PIN requerido por el wallet</div>
+    <div style="font-size:0.78rem; color:var(--ink-mute); margin-bottom:0.25rem">PIN required by the wallet</div>
     <div style="font-family:'JetBrains Mono',monospace; font-size:1.8rem; font-weight:700; letter-spacing:0.2em">{{.PIN}}</div>
   </div>
   {{end}}
   <div class="btn-row">
     <button class="btn ghost small" onclick="copyText('{{.OfferURI}}')">Copy link</button>
     <a class="btn ghost small" href="/issuer/credentials">View issued credentials →</a>
-    <span style="font-size:0.78rem;color:var(--ink-mute);align-self:center">Flow: <span class="mono">{{.Flow}}</span> · expires in {{.ExpiresIn}}s</span>
+    <span style="font-size:0.78rem;color:var(--ink-mute);align-self:center">Flow: <span class="mono">{{.Flow}}</span>{{if .ExpiresIn}} · expires in {{.ExpiresIn}}{{end}}</span>
   </div>
 </div>
 {{end}}
@@ -223,88 +287,213 @@
 </script>
 {{end}}
 
-{{define "fragment_issue_bulk_form"}}
-<div id="bulk-form-wrap" style="margin-top:1rem">
-  {{if eq .Source "api"}}
-    {{/* Secured-API pull: operator gives us a URL and optional auth header.
-         We GET as application/json and expect a bare array or an object with
-         one of {rows, data, items, results} holding the array. */}}
-    <form id="bulk-form"
-          hx-post="/issuer/issue/bulk/api"
-          hx-target="#csv-preview"
+{{/* fragment_issue_bulk_area renders the source chip-row + the active source's
+     mini-form together. Rendered into #bulk-area on first paint and re-rendered
+     (innerHTML) on every chip click so the active highlight and the form stay in
+     sync without a page reload. Input: dict {BulkSources, BulkSource, Fields, Dpg}. */}}
+{{define "fragment_issue_bulk_area"}}
+<div class="chip-row">
+  {{range .BulkSources}}
+  <button type="button"
+          class="chip {{if eq $.BulkSource .Key}}active{{end}}"
+          hx-post="/issuer/issue/bulk/source"
+          hx-vals='{"source": "{{.Key}}"}'
+          hx-target="#bulk-area"
           hx-swap="innerHTML"
+          title="{{.Hint}}">{{.Label}}</button>
+  {{end}}
+</div>
+{{if and .Dpg (lt (len .BulkSources) 3)}}
+<div style="margin-top:0.5rem;font-size:0.72rem;color:var(--ink-mute);font-style:italic">
+  {{.Dpg.Vendor}} only supports {{len .BulkSources}} of the 3 bulk sources. The missing chip(s) reflect the vendor's documented data-provider capabilities, not a verifiably-go limitation.
+</div>
+{{end}}
+{{template "fragment_issue_bulk_form" (dict "Source" .BulkSource "Fields" .Fields "IsProvision" .IsProvision "Registries" .Registries "EntityDefault" .EntityDefault)}}
+{{/* Step-2 target: BulkPreview renders the mapping here; BulkApply replaces it
+     with the result. Inside #bulk-area so a chip switch resets it to empty. */}}
+<div id="csv-preview" style="margin-top:1.25rem"></div>
+{{end}}
+
+{{define "fragment_issue_bulk_form"}}
+{{$inp := "font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px"}}
+<div id="bulk-form-wrap" style="margin-top:1rem">
+  {{/* Step 1 of 2: every source POSTs to /bulk/preview, which fetches the rows
+       and returns the column→field mapping screen (into #csv-preview). The
+       issuer doesn't need exact field names — they map columns next. */}}
+  {{if eq .Source "api"}}
+    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
+      <input type="hidden" name="source" value="api">
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">API URL</span>
-        <input type="url" name="api_url" required
-               placeholder="https://xroad.example/r1/EE/COM/12345/registry-service/v1/citizens"
-               style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <input type="url" name="api_url" required placeholder="https://xroad.example/r1/EE/COM/12345/registry-service/v1/citizens" style="{{$inp}}">
       </label>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Authorization header (optional)</span>
-        <input type="text" name="api_auth"
-               placeholder="Bearer eyJhbGc… · or · X-Road-User country/…"
-               style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <input type="text" name="api_auth" placeholder="Bearer eyJhbGc… · or · X-Road-User country/…" style="{{$inp}}">
       </label>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Row limit (optional; 0 = all)</span>
-        <input type="number" name="api_limit" min="0" value="0"
-               style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;max-width:8rem">
+        <input type="number" name="api_limit" min="0" value="0" style="{{$inp}};max-width:8rem">
       </label>
-      <div style="font-size:0.75rem;color:var(--ink-mute)">
-        Each JSON object becomes one credential. Keys map to schema columns:
-        <span class="mono">{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>.
-      </div>
-      <button class="btn" type="submit" style="align-self:flex-start">Fetch & issue →</button>
+      <div style="font-size:0.75rem;color:var(--ink-mute)">GET returns a JSON array (or <span class="mono">{rows|data|items|results}</span>); each object is one row. You'll map its keys to the credential fields next.</div>
+      <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else if eq .Source "db"}}
-    {{/* Database pull: operator provides a postgres DSN and a SELECT whose
-         column names match the schema field names. Read-only; non-SELECT
-         queries are rejected server-side. */}}
-    <form id="bulk-form"
-          hx-post="/issuer/issue/bulk/db"
-          hx-target="#csv-preview"
-          hx-swap="innerHTML"
+    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
+      <input type="hidden" name="source" value="db">
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Postgres connection string</span>
-        <input type="text" name="db_conn" required
-               placeholder="postgres://user:pass@host:5432/db?sslmode=disable"
-               style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <input type="text" name="db_conn" required placeholder="postgres://user:pass@host:5432/db?sslmode=disable" style="{{$inp}}">
       </label>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">SELECT query</span>
-        <textarea name="db_query" rows="4" required
-                  placeholder="SELECT holder, achievement, issuedOn FROM graduates WHERE cohort = '2024-Q3' LIMIT 500"
-                  style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;resize:vertical"></textarea>
+        <textarea name="db_query" rows="4" required placeholder="SELECT last_name, reg_id, dob FROM graduates WHERE cohort = '2024-Q3' LIMIT 500" style="{{$inp}};resize:vertical"></textarea>
       </label>
-      <div style="font-size:0.75rem;color:var(--ink-mute)">
-        Column names must match schema fields:
-        <span class="mono">{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>.
-        Only SELECT statements are allowed.
+      <div style="font-size:0.75rem;color:var(--ink-mute)">Each result row becomes one credential; you'll map the SELECTed columns to the credential fields next. Only SELECT statements are allowed.</div>
+      <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
+    </form>
+  {{else if eq .Source "registry"}}
+    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
+          style="display:flex;flex-direction:column;gap:0.75rem">
+      <input type="hidden" name="source" value="registry">
+      {{/* Contract callout — the registry is an EXTERNAL, read-only data source.
+           Issuers kept assuming Verifiably would auto-create an entity named after
+           the credential; it doesn't. Spell out the prerequisite up front. */}}
+      <div style="font-size:0.8rem;color:var(--ink-soft);background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:3px;padding:0.75rem 1rem;line-height:1.5">
+        <strong>Bring your own registry.</strong> Verifiably <strong>reads</strong> records from your Sunbird RC registry — it does not create entities or data, so set those up first.
+        Point <span class="mono">Entity</span> at one that <strong>already exists</strong> in your registry: it's pre-filled with this credential's type as a common convention, but change it to match yours — or click <strong>Discover entities</strong> to list what's actually there.
+        Column names <strong>don't</strong> have to match the credential — you'll map them in the next step.
+        <span class="mono">Search field</span> is the record column holding each holder's eSignet <span class="mono">individualId</span>.
       </div>
-      <button class="btn" type="submit" style="align-self:flex-start">Run & issue →</button>
+      {{if .Registries}}
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Configured registry (optional)</span>
+        <select name="reg_pick" onchange="(function(s){var u=s.selectedOptions[0].dataset.url||'';if(u){s.form.reg_url.value=u;}})(this)" style="{{$inp}}">
+          <option value="">— choose a configured registry —</option>
+          {{range .Registries}}<option value="{{.ID}}" data-url="{{.URL}}">{{.Label}}{{if .URL}} ({{.URL}}){{end}}</option>{{end}}
+        </select>
+      </label>
+      {{end}}
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Registry base URL</span>
+        <input type="url" name="reg_url" placeholder="https://registry.example  (or pick one above)" style="{{$inp}}">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Entity / schema name <span style="text-transform:none;color:var(--ink-mute);font-weight:400">— must already exist in your registry</span></span>
+        <input type="text" name="reg_entity" value="{{.EntityDefault}}" placeholder="an entity name from your registry" style="{{$inp}}">
+      </label>
+      {{/* Discover the entities the registry actually has, so the issuer picks a
+           real one instead of guessing. hx-include sends reg_url/reg_pick. */}}
+      <div style="display:flex;flex-direction:column;gap:0.4rem">
+        <button class="btn ghost" type="button" style="align-self:flex-start;font-size:0.78rem;padding:0.3rem 0.7rem"
+                hx-post="/issuer/issue/bulk/registry-entities"
+                hx-include="closest form"
+                hx-target="#reg-entities"
+                hx-swap="innerHTML">Discover entities</button>
+        <div id="reg-entities"></div>
+      </div>
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Search field</span>
+        <input type="text" name="reg_search" value="individualId" style="{{$inp}};max-width:14rem">
+      </label>
+      <div style="font-size:0.75rem;color:var(--ink-mute)">Pulls every record of the entity (<span class="mono">POST /api/v1/&lt;entity&gt;/search</span>); each record is one row to provision.</div>
+      <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else}}
-    {{/* Default / csv: unchanged upload widget. */}}
-    <form id="bulk-form"
-          hx-post="/issuer/issue/csv"
-          hx-target="#csv-preview"
-          hx-swap="innerHTML"
-          hx-encoding="multipart/form-data">
+    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+      <input type="hidden" name="source" value="csv">
       <div class="caps" style="margin-bottom:0.75rem">CSV upload</div>
       <div style="background:var(--bg-elev);border:2px dashed var(--line);padding:2.5rem 2rem;border-radius:2px">
-        <input type="file" name="csv_file" accept=".csv,text/csv" required
-               style="display:block;margin:0 auto 1rem;max-width:320px">
-        <div style="text-align:center;margin-bottom:1rem">
-          <button class="btn" type="submit">Upload & issue →</button>
-        </div>
-        <div style="font-size:0.75rem;color:var(--ink-mute);text-align:center">
-          Header row required. Expected columns: <span class="mono">{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>
-        </div>
+        <input type="file" name="csv_file" accept=".csv,text/csv" required style="display:block;margin:0 auto 1rem;max-width:320px">
+        <div style="text-align:center;margin-bottom:1rem"><button class="btn" type="submit">Preview &amp; map →</button></div>
+        <div style="font-size:0.75rem;color:var(--ink-mute);text-align:center">Header row required. You'll map the CSV's columns to the credential fields next — column names don't have to match.</div>
       </div>
     </form>
   {{end}}
+</div>
+{{end}}
+
+{{/* fragment_issue_bulk_error — a persistent inline banner for fetch/empty/
+     expired failures (rendered into #csv-preview instead of a transient toast). */}}
+{{define "fragment_issue_bulk_error"}}
+<div style="margin-top:0.5rem;padding:0.75rem 1rem;background:color-mix(in srgb, var(--err) 8%, transparent);border:1px solid color-mix(in srgb, var(--err) 45%, transparent);border-left-width:3px;border-radius:4px;font-size:0.82rem;color:var(--ink)">
+  <strong style="color:var(--err)">Couldn't load the data source.</strong> {{.Message}}
+</div>
+{{end}}
+
+{{/* fragment_registry_entities — the result of "Discover entities": the actual
+     entities the registry holds, as chips that fill the reg_entity input on
+     click. Rendered into #reg-entities. */}}
+{{define "fragment_registry_entities"}}
+{{if .NeedURL}}
+<div style="font-size:0.78rem;color:var(--ink-mute);font-style:italic">Enter a registry base URL (or pick a configured registry) first, then click Discover.</div>
+{{else if .Entities}}
+<div style="font-size:0.78rem;color:var(--ink-soft)">
+  <span class="caps" style="display:block;margin-bottom:0.35rem">Entities in this registry — click to use</span>
+  <div style="display:flex;flex-wrap:wrap;gap:0.35rem">
+    {{range .Entities}}<button type="button" class="chip small" onclick="this.closest('form').reg_entity.value='{{.}}'">{{.}}</button>{{end}}
+  </div>
+</div>
+{{else}}
+<div style="font-size:0.78rem;color:var(--err);font-style:italic">No entities found at {{.URL}} — check the URL is reachable and that schemas are registered (POST /api/v1/Schema).</div>
+{{end}}
+{{end}}
+
+{{/* fragment_issue_bulk_mapping — step 2: map each credential field to a source
+     column (default = exact-name match), with a sample preview. Submits to
+     /bulk/apply, which remaps the stashed rows and issues/provisions. The
+     hidden mfield is kept immediately before its mcol select so the server
+     reads them as aligned paired slices. */}}
+{{define "fragment_issue_bulk_mapping"}}
+{{$cols := .Columns}}
+<div style="margin-top:1rem">
+  <div class="caps" style="margin-bottom:0.5rem">
+    {{if .Label}}{{.Label}} — {{end}}{{.Total}} row{{if ne .Total 1}}s{{end}} · map columns → fields
+  </div>
+  {{if gt .Truncated 0}}
+  <div style="font-size:0.75rem;color:var(--ink-mute);font-style:italic;margin-bottom:0.5rem">Source returned {{.Truncated}} rows; previewing/applying the first {{.Total}}.</div>
+  {{end}}
+  <div style="font-size:0.8rem;color:var(--ink-mute);margin-bottom:0.75rem">Map each credential field to a column from your source. Unmapped fields are left empty; columns don't have to match field names.</div>
+
+  {{/* Sample preview — detected columns × first rows */}}
+  <div style="overflow:auto;border:1px solid var(--line);border-radius:4px;margin-bottom:1rem">
+    <table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+      <thead><tr style="background:var(--bg-elev);border-bottom:1px solid var(--line)">
+        {{range $cols}}<th class="caps mono" style="text-align:left;padding:0.4rem 0.6rem;white-space:nowrap">{{.}}</th>{{end}}
+      </tr></thead>
+      <tbody>
+        {{range .Sample}}{{$row := .}}<tr style="border-bottom:1px solid var(--line)">
+          {{range $cols}}<td class="mono" style="padding:0.4rem 0.6rem;color:var(--ink-soft);white-space:nowrap">{{index $row .}}</td>{{end}}
+        </tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <form hx-post="/issuer/issue/bulk/apply" hx-target="#csv-preview" hx-swap="innerHTML" style="display:flex;flex-direction:column;gap:0.6rem">
+    {{if .IsProvision}}
+    <div style="display:grid;grid-template-columns:14rem 1fr;gap:0.5rem;align-items:center">
+      <label style="font-weight:500">Holder identity <span class="mono" style="color:var(--ink-mute)">(individualId)</span></label>
+      <input type="hidden" name="mfield" value="individualId">
+      <select name="mcol" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.4rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <option value="">— none —</option>
+        {{range $cols}}<option value="{{.}}"{{if eq . $.IdentityDefault}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+    {{end}}
+    {{range .Fields}}{{$field := .}}
+    <div style="display:grid;grid-template-columns:14rem 1fr;gap:0.5rem;align-items:center">
+      <label>{{replaceUnderscore $field}}</label>
+      <input type="hidden" name="mfield" value="{{$field}}">
+      <select name="mcol" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.4rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <option value="">— none —</option>
+        {{range $cols}}<option value="{{.}}"{{if eq . (index $.Defaults $field)}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+    {{end}}
+    <button class="btn" type="submit" style="align-self:flex-start;margin-top:0.5rem">{{if .IsProvision}}Provision {{.Total}} subject{{if ne .Total 1}}s{{end}} →{{else}}Issue {{.Total}} credential{{if ne .Total 1}}s{{end}} →{{end}}</button>
+  </form>
 </div>
 {{end}}
 
@@ -482,6 +671,79 @@
         {{range .Errors}}<li>row {{.Row}}: {{.Reason}}</li>{{end}}
       </ul>
     </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "fragment_issue_provision_preview"}}
+{{/* Inji auth-code bulk sink result: rows were upserted into certify.vc_subject
+     (no wallet push). Holders self-claim via eSignet — so the table reports
+     provisioning status, not offer URIs, and a banner explains the next step. */}}
+<div style="margin-top:1.5rem">
+  <div class="caps" style="margin-bottom:0.5rem">
+    {{if .Label}}{{.Label}} — {{end}}{{.Total}} row{{if ne .Total 1}}s{{end}}
+    · <span class="mono" style="color:var(--ok)">{{.Provisioned}}</span> provisioned
+    {{if gt .Failed 0}}· <span class="mono" style="color:var(--err)">{{.Failed}}</span> failed{{end}}
+  </div>
+
+  {{if gt .Provisioned 0}}
+  <div style="margin-top:0.5rem;padding:0.75rem 1rem;background:color-mix(in srgb, var(--ok) 10%, transparent);border:1px solid color-mix(in srgb, var(--ok) 40%, transparent);border-radius:4px;font-size:0.8rem">
+    <strong>Subjects staged.</strong> Holders claim their credential at
+    <a href="/holder/wallet/inji" class="mono">/holder/wallet/inji</a>{{if .Scope}} (eSignet scope <span class="mono">{{.Scope}}</span>){{end}} —
+    each signs in with eSignet as their <span class="mono">individualId</span> and
+    Certify issues the credential from the staged claims. Nothing is pushed to a
+    wallet here; this is the issuer-authoritative, holder-pull model.
+  </div>
+  {{end}}
+
+  {{if .RowsOut}}
+  <div style="margin-top:0.75rem;overflow:auto;border:1px solid var(--line);border-radius:4px">
+    <table class="bulk-result-table" style="width:100%;border-collapse:collapse;font-size:0.82rem">
+      <thead>
+        <tr style="background:var(--bg-elev);border-bottom:1px solid var(--line)">
+          <th style="text-align:left;padding:0.5rem 0.75rem;width:3rem" class="caps">#</th>
+          <th style="text-align:left;padding:0.5rem 0.75rem" class="caps">Individual</th>
+          <th style="text-align:left;padding:0.5rem 0.75rem;width:8rem" class="caps">Status</th>
+          <th style="text-align:left;padding:0.5rem 0.75rem" class="caps">Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .RowsOut}}
+        <tr style="border-bottom:1px solid var(--line)">
+          <td class="mono" style="padding:0.5rem 0.75rem;color:var(--ink-mute)">{{.Row}}</td>
+          <td style="padding:0.5rem 0.75rem">
+            <div style="font-weight:500" class="mono">{{.Label}}</div>
+            {{if .Subject}}
+              <details style="margin-top:0.2rem;font-size:0.72rem;color:var(--ink-mute)">
+                <summary style="cursor:pointer">row data</summary>
+                <dl style="margin:0.3rem 0 0;display:grid;grid-template-columns:max-content 1fr;gap:0.15rem 0.6rem">
+                  {{range $k, $v := .Subject}}
+                    <dt class="mono" style="color:var(--ink-mute)">{{$k}}</dt>
+                    <dd class="mono" style="margin:0;color:var(--ink-soft)">{{$v}}</dd>
+                  {{end}}
+                </dl>
+              </details>
+            {{end}}
+          </td>
+          <td style="padding:0.5rem 0.75rem">
+            {{if eq .Status "provisioned"}}
+              <span class="chip" style="background:color-mix(in srgb, var(--ok) 15%, transparent);color:var(--ok);padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem">✓ provisioned</span>
+            {{else}}
+              <span class="chip" style="background:color-mix(in srgb, var(--err) 15%, transparent);color:var(--err);padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem">✗ failed</span>
+            {{end}}
+          </td>
+          <td style="padding:0.5rem 0.75rem">
+            {{if eq .Status "provisioned"}}
+              <span style="font-size:0.72rem;color:var(--ink-mute)">staged in <span class="mono">vc_subject</span></span>
+            {{else}}
+              <div style="font-size:0.72rem;color:var(--err);font-style:italic">{{.Error}}</div>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
   {{end}}
 </div>
 {{end}}

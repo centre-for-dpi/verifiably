@@ -12,6 +12,10 @@ CSVs, Mimoto bootstrap, oidc-ui nginx, seed scripts) lives there. The
 tree preserves the sibling `stack/` + `injiweb/` layout the compose file
 and seed scripts expect via relative paths.
 
+> **Per-DPG deploy detail** (each DPG's containers, env, Caddy, runtime configs,
+> databases) is in [`docs/dpg/`](dpg/README.md). This doc covers the shared
+> mechanics; the guides cover each DPG end-to-end.
+
 ## Prerequisites
 
 - **Docker Engine 20.10+** with the **Compose v2** plugin (`docker compose`, not the
@@ -154,6 +158,21 @@ After `docker compose up` completes, `cmd_up` runs:
   mock-identity containers that might be stuck in a restart loop from a
   previous run's entrypoint + writable-layer state pollution.
 
+- **certify-nginx reload** (`scripts/start-container.sh`, after verifiably-go
+  starts) — verifiably-go is recreated with a fresh IP on every `up`/`run`;
+  `certify-nginx` fronts the Inji auth-code well-known/credential routes through
+  the `injiproxy` upstream (`verifiably-go:8080`). The nginx conf uses a
+  `resolver` + variable upstream to re-resolve per request (≤30s), and
+  start-container.sh additionally `nginx -s reload`s certify-nginx so there is no
+  502 window. **Symptom if missing:** "selected schema missing" on `/issuer/issue`
+  right after building an Inji schema (the vendor's schemas get skipped on a 502).
+
+**Catalog reset.** `scripts/reset-authcode-catalog.sh [--yes]` wipes the Inji
+auth-code catalog back to empty (deletes `credential_config` + `vc_credential_owner`
+rows, drops the `vc_subject_*` extraction views, restores the scope `.properties`
+to their committed baseline, restarts `inji-certify` + `injiweb-esignet`) — for a
+fresh issuance test. Keeps `vc_subject` (base table) and `identity_registry`.
+
 ## Environment variables
 
 Every knob lives in a single file — `verifiably-go/.env` — which
@@ -197,6 +216,39 @@ The key ones:
 | `CREDEBL_SESSION_LIMIT`        | `500`         | Max concurrent Credo agent sessions (also controls `INMEMORY_LRU_CACHE_LIMIT`) |
 | `CREDEBL_NGINX_RATE_LIMIT`     | `10r/s`       | nginx rate-limit for `/oid4vci`, `/oid4vp`, `/openid4vc` paths             |
 | `CREDEBL_NGINX_RATE_BURST`     | `30`          | nginx burst allowance above `CREDEBL_NGINX_RATE_LIMIT` before HTTP 429     |
+
+### Inji auth-code: public issuer, activation, registries
+
+These drive the Inji auth-code path (see
+[dpg/inji-certify-authcode.md](dpg/inji-certify-authcode.md)). Most are **derived**
+by `deploy.sh cmd_up` in subdomain mode — pin them in `.env` only to override.
+
+| Variable | Default / source | Purpose |
+|---|---|---|
+| `AUTHCODE_PUBLIC_URL` | derived (`url_for inji-certify-authcode`) | Public `mosip_certify_domain_url` for the auth-code Certify → public `credential_issuer` + status-list URL. |
+| `ISSUER_DID_DOMAIN` | derived (host of `AUTHCODE_PUBLIC_URL`) | Auth-code issuer DID = `did:web:${ISSUER_DID_DOMAIN}`. Unset ⇒ `certify-nginx` (dev). |
+| `AUTHCODE_ALLOWED_AUD` | `http://certify-nginx:80/v1/certify/issuance/credential` | Pins certify's `authn.allowed-audiences` to the **internal** endpoint (eSignet issues the access token with the internal aud). **Without it every claim 401s once `domain_url` is public.** |
+| `PREAUTH_PUBLIC_URL` | derived (`url_for inji-certify-preauth`) | Public `domain_url` for the pre-auth instance. |
+| `PREAUTH_DID_DOMAIN` | derived (host of `PREAUTH_PUBLIC_URL`) | Pre-auth issuer DID, decoupled from `ISSUER_DID_DOMAIN`. |
+| `INJI_AUTHCODE_CLIENT_ID` | `wallet-demo-client` | OIDC client for the auth-code claim (also derives the PSU-token). |
+| `INJI_AUTHCODE_CLIENT_KID` | `wallet-demo-client-kid` | `kid` in the `client_assertion`. |
+| `INJI_AUTHCODE_SCOPE` | `mock_identity_vc_ldp` | Default credential scope. |
+| `ESIGNET_BASE_URL` | derived (`url_for esignet`) | eSignet authorize/token/JWKS base. **Must be set when recreating inji-certify** — else it falls back to a firewalled `:3005` and claiming hangs 133s (use `deploy.sh up`, not a bare recreate). |
+| `SMTP_HOST/PORT/USER/PASSWORD/FROM/FROM_NAME` | `.env` | Real email-OTP for registry-gated activation. `SMTP_PASSWORD` is a **secret** (e.g. a Gmail app password) — never commit it. |
+| `VERIFIABLY_REGISTRIES` | `.env` (JSON array) | Configured external registries (Sunbird RC + federated agency registries) the bulk engine reads from. See [dpg/registries.md](dpg/registries.md). |
+| `VERIFIABLY_REGISTRY_ADMIN_URL` | `.env` | Link to the registry-admin console. |
+
+`INJI_AUTHCODE_CLIENT_KEY_PEM` (the RSA key signing the `client_assertion`) is
+extracted from `oidckeystore.p12` by `scripts/start-container.sh` — a runtime
+secret, never in the repo.
+
+**Caddy hairpin aliases (required).** In subdomain mode, `caddy-public` must alias
+`inji-certify-authcode.<domain>`, `inji-certify-preauth.<domain>`, `esignet.<domain>`,
+and `walt-*.<domain>` on the compose network, so in-cluster containers (Inji Verify
+resolving an issuer did.json, certify reaching the eSignet JWKS, the wallet resolving
+an offer) route internally instead of hairpinning the box's blocked `:443`. Missing
+the `inji-certify-authcode` alias makes external verification of a claimed VC fail
+with `DidWebPublicKeyResolver: Connection timeout`.
 
 ### CREDEBL `backends.json` fields
 

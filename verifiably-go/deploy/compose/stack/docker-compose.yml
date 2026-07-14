@@ -117,6 +117,13 @@ services:
       default:
         aliases:
           - "inji-certify-preauth.${VERIFIABLY_PUBLIC_DOMAIN}"
+          # Auth-code Inji Certify's PUBLIC did:web host. inji-verify-service (and
+          # any server-side did:web resolver on this network) fetches the issuer
+          # DID document at https://inji-certify-authcode.<domain>/.well-known/did.json
+          # while verifying a wallet-claimed VC; without this alias it routes to the
+          # box public IP and times out (Connection timeout in DidWebPublicKeyResolver),
+          # so every auth-code VC verifies as INVALID.
+          - "inji-certify-authcode.${VERIFIABLY_PUBLIC_DOMAIN}"
           - "esignet.${VERIFIABLY_PUBLIC_DOMAIN}"
           # walt.id: the wallet-api resolves an OID4VCI credential_offer_uri at
           # walt-issuer (claim) and an OID4VP request_uri at walt-verifier
@@ -336,7 +343,21 @@ services:
       # falls back to Docker-internal did:web:certify-nginx (dev only).
       - CERTIFY_ISSUER_DID=did:web:${ISSUER_DID_DOMAIN:-certify-nginx}
       - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-VC Infra Issuer}
-      - mosip_certify_domain_url=http://certify-nginx:80
+      # PUBLIC issuer identity: drives credential_issuer AND the credentialStatus
+      # (revocation status-list) URL baked into issued VCs, so they resolve for
+      # external verifiers + Inji Verify's status check (the caddy
+      # inji-certify-authcode block reverse_proxies certify-nginx:80). Mirrors the
+      # pre-auth instance's public domain_url. deploy.sh derives AUTHCODE_PUBLIC_URL;
+      # host-less/legacy mode falls back to the docker-internal name.
+      - mosip_certify_domain_url=${AUTHCODE_PUBLIC_URL:-http://certify-nginx:80}
+      # Pin the `aud` certify's AccessTokenValidationFilter requires (its
+      # mosip.certify.authn.allowed-audiences) to the INTERNAL certify endpoint,
+      # decoupled from the now-PUBLIC domain_url. eSignet issues the auth-code access
+      # token with that internal aud (its scope-resource-mapping stays internal), so
+      # without this every claim 401s "invalid_token" once domain_url goes public.
+      # certify-default.properties reads ${AUTHCODE_ALLOWED_AUD:...}; only this
+      # (auth-code) instance sets it — pre-auth keeps the ${domain.url} default.
+      - AUTHCODE_ALLOWED_AUD=http://certify-nginx:80/v1/certify/issuance/credential
       # Route token validation through our local esignet instead of
       # inji-certify's default "I'm my own auth server" mode. The Farmer
       # credential flow originally used inji-certify's Pre-Authorized
@@ -639,6 +660,12 @@ services:
       start_period: 90s
     volumes:
       - inji-verify-db:/var/lib/postgresql/data
+      # verify-service 0.16.0 ships ddl-auto=none + no migrations, so the
+      # OID4VP `verify` schema must be created out-of-band. This runs on a
+      # FRESH volume (initdb.d); existing volumes get it via deploy.sh's
+      # idempotent apply. Without it, POST /v1/verify/vp-request 500s
+      # ("relation authorization_request_details does not exist").
+      - ./inji/verify/init.sql:/docker-entrypoint-initdb.d/10-verify-schema.sql:ro
 
   inji-verify-service:
     image: mosipid/inji-verify-service:0.16.0
@@ -789,7 +816,7 @@ services:
       VERIFIABLY_SCHEMAS_URL: ${REGISTRY_ADMIN_SCHEMAS_URL:-http://verifiably-go:8080/api/registry-credentials}
       # Sunbird RC registry API. Defaults to the box's published port; override
       # via REGISTRY_ADMIN_SUNBIRD_URL in .env for a different host.
-      SUNBIRD_URL: ${REGISTRY_ADMIN_SUNBIRD_URL:-http://156.67.105.185:18091}
+      SUNBIRD_URL: ${REGISTRY_ADMIN_SUNBIRD_URL:-http://localhost:18091}
     ports:
       # Host port kept for direct/legacy access; in subdomain mode the console
       # is reached via https://registry-admin.<domain> through caddy-public.

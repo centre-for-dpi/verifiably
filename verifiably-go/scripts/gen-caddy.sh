@@ -40,9 +40,13 @@
 # Restarts both services after rewriting because they only read these
 # files at boot.
 render_waltid_service_confs() {
-  if [[ -z "$VERIFIABLY_HOSTS_PATTERN" ]]; then
-    return 0
-  fi
+  # Render in BOTH modes (subdomain AND legacy host:port). url_for already
+  # resolves the right value per mode: subdomain -> https://walt-issuer.<domain>,
+  # legacy -> http://<host>:<port> (reached container-side via the compose
+  # extra_hosts localhost:host-gateway). Rendering in legacy too — rather than
+  # relying on walt.id's HOCON ${SERVICE_HOST} substitution — makes a fresh
+  # localhost deploy work deterministically; the committed files carry the
+  # portable ${SERVICE_HOST}:${..._API_PORT} template as a k8s/no-render fallback.
   local issuer_conf="$SCRIPT_DIR/deploy/k8s/config/issuer/issuer-service.conf"
   local verifier_conf="$SCRIPT_DIR/deploy/k8s/config/verifier/verifier-service.conf"
   local issuer_url verifier_url
@@ -197,6 +201,7 @@ render_public_caddyfile() {
     "walt-verifier|verifier-api:7003|http"
     "inji-certify|certify-nginx:80|http"
     "inji-certify-preauth|certify-preauth-nginx:80|http"
+    "inji-certify-authcode|certify-nginx:80|http"
     "inji-verify|inji-verify-service:8080|http"
     "inji-verify-ui|inji-verify-ui:8000|http"
     "inji-web|injiweb-ui:3004|http"
@@ -209,6 +214,18 @@ render_public_caddyfile() {
     "credebl-minio|credebl-minio:9000|http"
     "grafana|grafana:3000|http"
     "registry-admin|registry-admin:8000|http"
+    # Purpose-named registry subdomains (both proxy to verifiably-go; the app
+    # redirects identity.registry's root to /registrar/identities). Default
+    # slugs give the dotted forms identity.registry.<domain> / admin.registry
+    # .<domain> so a deployment reads them as "the identity registry" and "the
+    # registry admin console"; override via VERIFIABLY_SLUG_IDENTITY_REGISTRY /
+    # VERIFIABLY_SLUG_REGISTRY_ADMIN. Two-label names resolve via the
+    # *.registry.<domain> wildcard the agency registries already use.
+    "identity-registry|verifiably-go:8080|http"
+    # eSignet auth-method config surface (verifiably-owned; the app redirects its
+    # root to /admin/esignet). Distinct from esignet.<domain> = the eSignet
+    # product. Slug default esignet-config; override via VERIFIABLY_SLUG_ESIGNET_CONFIG.
+    "esignet-config|verifiably-go:8080|http"
   )
 
   {
@@ -327,6 +344,17 @@ PYEOF
           printf '\t\trespond `%s` 200\n' "$_inji_did_doc"
           printf '\t}\n'
         fi
+      fi
+      # inji-certify-authcode: the dedicated did:web host for the PRIMARY auth-code
+      # issuer (kept separate from inji-certify-preauth to avoid any ambiguity).
+      # did:web:inji-certify-authcode.<domain> resolves here; serve the patched
+      # certify did.json from the verifiably-go primary proxy (InjiProxyPrimaryDidJSON).
+      # Other paths fall through to certify-nginx (harmless — it's a DID host).
+      if [[ "$name" == "inji-certify-authcode" ]]; then
+        printf '\thandle /.well-known/did.json {\n'
+        printf '\t\trewrite * /inji-proxy/.well-known/did.json\n'
+        printf '\t\treverse_proxy verifiably-go:8080\n'
+        printf '\t}\n'
       fi
       case "$proto" in
         https-skipverify)

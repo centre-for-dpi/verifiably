@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -56,6 +57,14 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 		}
 		fields := []vctypes.FieldSpec{}
 		for _, f := range cfg.Order {
+			// statusIdx/statusUri are internal token-status markers declared in the
+			// config's order so certify's pre-auth data-provider resolves the
+			// template ${statusIdx}/${statusUri} — but they are auto-supplied by the
+			// issuer (the allocated StatusList binding), never operator-entered, so
+			// keep them out of the issue form's claim fields.
+			if f == "statusIdx" || f == "statusUri" {
+				continue
+			}
 			fields = append(fields, fieldSpecFor(f))
 		}
 		if len(fields) == 0 {
@@ -68,6 +77,12 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			DPGs:       []string{issuerDpg},
 			Desc:       fmt.Sprintf("Live credential configuration served by %s.", issuerDpg),
 			FieldsSpec: fields,
+			// Pin the exact vct the issuer metadata advertises (SD-JWT VC only;
+			// empty for ldp_vc/W3C). The verifier's PD needs this so the wallet's
+			// matchesVct selects the held token by its vct claim; without it the
+			// present fails "No credential found for: vc-1" (F19). CredentialVct
+			// prefers this explicit Vct over host-derivation.
+			Vct: cfg.Vct,
 		})
 	}
 	return out, nil
@@ -129,6 +144,31 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 
 	switch a.cfg.Mode {
 	case ModePreAuth:
+		// Embed the IETF Token Status List pointer for SD-JWT so the credential is
+		// revocable: the template (SaveCustomSchema) carries
+		// status.status_list.{idx:${statusIdx}, uri:${statusUri}} and certify
+		// substitutes both markers from these pre-authorized claims — SaveCustomSchema
+		// DECLARES statusIdx/statusUri in display_order so the PreAuthDataProviderPlugin
+		// surfaces these POSTed values into the Velocity context (without that the
+		// markers stay unresolved and certify 400s on the unquoted `${statusIdx}`).
+		// Keys must be exactly statusIdx/statusUri (the bare marker names — pre-auth
+		// has no data-provider view, unlike the auth-code slug-scoped keys). Default
+		// to a benign 0/"" when no binding was allocated so the markers never render
+		// unresolved.
+		// Applies to SD-JWT (IETF token status list) AND VCDM2 ldp_vc (W3C
+		// BitstringStatusListEntry credentialStatus, F14). For ldp_vc the allocated
+		// binding is a bitstring index/URL; the template's credentialStatus.type
+		// tells the verifier which decoder to use, so the SAME statusIdx/statusUri
+		// markers serve both formats.
+		if cf := stdToCredentialFormat(req.Schema.Std); cf == "vc+sd-jwt" || cf == "ldp_vc" {
+			if req.StatusList != nil {
+				claims["statusIdx"] = strconv.Itoa(req.StatusList.Index)
+				claims["statusUri"] = req.StatusList.PublishURL
+			} else {
+				claims["statusIdx"] = "0"
+				claims["statusUri"] = ""
+			}
+		}
 		body := preAuthorizedDataRequest{
 			CredentialConfigurationId: req.Schema.ID,
 			Claims:                    claims,
@@ -219,11 +259,18 @@ func (a *Adapter) IssueBulk(ctx context.Context, req backend.IssueBulkRequest) (
 	out.Rows = make([]backend.BulkRowResult, 0, len(req.Rows))
 	for i, row := range req.Rows {
 		label := rowLabelInji(row)
+		// Per-row revocation binding (aligned by index) so each bulk SD-JWT
+		// embeds its own status.status_list pointer, like the single path.
+		var binding *backend.StatusListBinding
+		if i < len(req.StatusLists) {
+			binding = req.StatusLists[i]
+		}
 		res, err := a.IssueToWallet(ctx, backend.IssueRequest{
 			IssuerDpg:   req.IssuerDpg,
 			Schema:      req.Schema,
 			SubjectData: row,
 			Flow:        string(a.cfg.Mode),
+			StatusList:  binding,
 		})
 		if err != nil {
 			out.Rejected++
@@ -339,8 +386,21 @@ func fieldSpecFor(name string) vctypes.FieldSpec {
 	lower := strings.ToLower(name)
 	f := vctypes.FieldSpec{Name: name, Datatype: "string", Required: true}
 	switch {
-	case strings.Contains(lower, "date") || strings.HasSuffix(lower, "on") ||
-		strings.HasSuffix(lower, "at") || strings.HasSuffix(lower, "expiry"):
+	// Explicit datetime policy fields: the delegation/expiry valid_until | valid_from
+	// (underscore or camelCase) carry a full timestamp, so the issue form must render
+	// a datetime-local picker (and SubmitIssue normalizes them to RFC3339). Checked
+	// before the date heuristic so they are never demoted to a date-only input.
+	case lower == "valid_until" || lower == "validuntil" ||
+		lower == "valid_from" || lower == "validfrom":
+		f.Format = "datetime"
+	// Date fields. The past-tense "…On" / "…At" heuristic (issuedOn, updatedAt) must
+	// match the ORIGINAL camelCase / snake_case word boundary, NOT a lowercased tail —
+	// otherwise it wrongly swallows names that merely END in those letters
+	// (allowedActi·on, instituti·on, form·at, se·at), dating a plain string field that
+	// the RFC3339 normalization then empties.
+	case strings.Contains(lower, "date") || strings.HasSuffix(lower, "expiry") ||
+		strings.HasSuffix(name, "On") || strings.HasSuffix(name, "At") ||
+		strings.HasSuffix(lower, "_on") || strings.HasSuffix(lower, "_at"):
 		f.Format = "date"
 	case strings.Contains(lower, "email"):
 		f.Format = "email"

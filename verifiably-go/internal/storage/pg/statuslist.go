@@ -103,6 +103,10 @@ func (s *StatusListStore) PublishBitstringJWT(key *statuslist.SigningKey) (strin
 	return s.st.PublishBitstringJWT(key)
 }
 
+func (s *StatusListStore) BitstringStatusListVC(issuer string) (map[string]any, error) {
+	return s.st.BitstringStatusListVC(issuer)
+}
+
 func (s *StatusListStore) PublishTokenStatusList(key *statuslist.SigningKey) (string, error) {
 	return s.st.PublishTokenStatusList(key)
 }

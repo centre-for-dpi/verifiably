@@ -11,7 +11,7 @@ import (
 // decodeTemplate base64-decodes buildVCTemplate's output into a map.
 func decodeTemplate(t *testing.T, schema vctypes.Schema) map[string]any {
 	t.Helper()
-	raw, err := base64.StdEncoding.DecodeString(buildVCTemplate(schema))
+	raw, err := base64.StdEncoding.DecodeString(buildVCTemplate(schema, false))
 	if err != nil {
 		t.Fatalf("decode template: %v", err)
 	}

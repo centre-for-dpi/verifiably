@@ -639,9 +639,9 @@ func (h *H) APIVerifyRequest(w http.ResponseWriter, r *http.Request) {
 			Fields:         fields,
 			Format:         schema.Std,
 			CredentialType: schema.Name,
-			Vct:            schema.Vct,
-			WireFormat:     "dc+sd-jwt",
-			Disclosure:     "selective — SD-JWT VC (dc+sd-jwt)",
+			Vct:            schema.CredentialVct(publicBaseEnv()),
+			WireFormat:     "vc+sd-jwt",
+			Disclosure:     "selective — SD-JWT VC (vc+sd-jwt)",
 		}
 	}
 	verifyStart := time.Now()
@@ -682,6 +682,11 @@ func (h *H) APIVerifyResult(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	// Apply the handler-layer verification gates (temporal validity, revocation,
+	// delegation) that no DPG verifier reliably enforces — the SAME seam the UI
+	// (FetchResponse) and public (PublicVerifyResult) paths use. Without this the
+	// API verify path reports a revoked or expired credential as valid.
+	h.attachDelegationVerdict(r, &res)
 	status := "pending"
 	if !res.Pending {
 		if res.Valid {

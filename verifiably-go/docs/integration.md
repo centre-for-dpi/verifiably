@@ -5,6 +5,9 @@ in `backend/adapter.go`. To point verifiably-go at a different DPG, you
 implement that interface and register your adapter in
 `cmd/server/adapter.go`. No handler code or template changes are needed.
 
+> For the concrete, per-DPG wiring (env, Caddy, configs, DBs) behind each adapter,
+> see the guides in [`docs/dpg/`](dpg/README.md).
+
 ## The Adapter contract
 
 ```go
@@ -85,10 +88,40 @@ you're writing a new one or porting to a different vendor.
 | `VerifyDirect` (W3C VCDM)      | `POST {VERIFIER}/openid4vc/verify/credential`                     | —                                                                    | —                                                                    | `POST {VERIFY}/v1/verify/vc-verification`                        |
 | `VerifyDirect` (SD-JWT VC)     | `POST {VERIFIER}/openid4vc/verify/credential` with `format: sd_jwt_vc` | —                                                                    | —                                                                    | `POST {VERIFY}/v1/verify/vc-submission` + `GET /vp-result/{id}` |
 
-Inji Web Wallet's "adapter" is a stub — the wallet itself is browser-hosted,
+Inji Web Wallet's "adapter" is a stub — the external wallet is browser-hosted,
 so verifiably-go hands off via a redirect link rather than calling an API.
 The stub reports capabilities so the holder DPG card renders correctly
 but every adapter method returns a "not supported" result or empty list.
+(The Inji **auth-code** holder wallet is different: it is served **in-app** by
+`internal/handlers/inji_holder.go`, not by an adapter — see
+[dpg/inji-certify-authcode.md](dpg/inji-certify-authcode.md).)
+
+## Beyond `backend.Adapter`: the auxiliary interfaces
+
+Two capabilities sit **outside** `backend.Adapter` because they are data-plane
+concerns, not DPG-abstraction concerns:
+
+- **`SubjectProvisioner`** (`internal/handlers/api_subjects.go`) — the contract for
+  the Inji auth-code data plane: `ProvisionSubject` (write `certify.vc_subject`),
+  `UpsertIdentity` / `GetIdentity` (`certify.identity_registry`),
+  `ApplyAuthcodeSchema` / `ListCredentials` / `DeleteCredential`
+  (`certify.credential_config`). Implemented by `internal/storage/pg`
+  (`*pg.SubjectStore`); `nil` when `INJI_CERTIFY_DATABASE_URL` is unset. Backs
+  `POST /api/v1/subjects`, the Inji schema builder, and the registry-gated
+  activation. `did_url` for a new credential is derived live from certify's
+  did.json id so the signed VC's `proof.verificationMethod` matches its issuer.
+
+- **The bulk engine** (`internal/handlers/bulk.go`) — four data-source connectors
+  (`parseCSVRows`, `fetchJSONRows`, `queryDBRows`, `searchRegistryAll`) feeding
+  either issuance (`vc_subject`) or registrar enrolment (`identity_registry`).
+  Not part of the adapter; shared by every DPG that provisions subjects. See
+  [dpg/registries.md](dpg/registries.md).
+
+**Delegated access** adds a parallel set of REST endpoints (issue/verify a
+subject-identity + delegation credential pair, evaluate linkage/invocation/
+capability/revocation) under `/api/v1/delegation/*`, backed by
+`internal/delegation`. It composes with any DPG's issuance; see
+[delegated-access.md](delegated-access.md).
 
 ## Auth token propagation
 

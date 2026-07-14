@@ -22,18 +22,55 @@ type SubjectProvisioner interface {
 	// CredentialClaimSpec returns the format + @context + vct for claiming a credential.
 	CredentialClaimSpec(ctx context.Context, key string) (format, vcContext, vct string, err error)
 	// ApplyAuthcodeSchema creates a Flow B credential (extraction view +
-	// credential_config, any data model) in one transaction.
-	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string, ownerKey string) error
+	// credential_config, any data model) in one transaction. didURL is the issuer
+	// DID stored as the credential's did_url (certify stamps the signed VC's
+	// proof.verificationMethod from it; it must equal the issuer DID to verify).
+	ApplyAuthcodeSchema(ctx context.Context, viewDDL, key, vcTemplateB64, credFormat, display, scope string, displayOrder []string, sdJwtVct, vcContext, credType, credsub *string, ownerKey, didURL string) error
 	// ListMyCredentials returns the active credentials created by the given owner (issuer).
 	ListMyCredentials(ctx context.Context, ownerKey string) ([]map[string]string, error)
+	// ListLedger returns the issued auth-code credentials (from certify.ledger)
+	// whose credential type is one of typeKeys — used to render the issuer's
+	// issued-credentials page for the Inji auth-code track. Keys per row:
+	// credentialId, credentialType, issuedAt, statusListCredentialId,
+	// statusListIndex, revoked.
+	ListLedger(ctx context.Context, typeKeys []string) ([]map[string]string, error)
 	// CredentialFields returns a credential's claim field names (for the provisioning form).
 	CredentialFields(ctx context.Context, key string) ([]string, error)
+	// UpsertIdentity enrolls a foundational citizen identity (demographics) in the
+	// authoritative identity registry, keyed by the RAW individualId. Used by the
+	// registrar bulk identity-load — the holder never writes here.
+	UpsertIdentity(ctx context.Context, individualID string, demographics map[string]string) error
+	// GetIdentity returns an enrolled identity's demographics, or (nil, nil) when
+	// the individualId is not enrolled. The gate the activation flow checks.
+	GetIdentity(ctx context.Context, individualID string) (map[string]string, error)
+	// ListIdentities returns all enrolled identities (each a demographics map with
+	// "individualId" set), newest-updated first — backs the registrar's view of the
+	// national ID registry (incl. the OTP email).
+	ListIdentities(ctx context.Context) ([]map[string]string, error)
+	// DeleteIdentity removes an enrolled identity from the registry.
+	DeleteIdentity(ctx context.Context, individualID string) error
+	// DeleteCredential removes an auth-code credential (credential_config + owner
+	// row + its certify.vc_subject_<slug> extraction view), owner-checked. Backs the
+	// issuer schema-browser Delete for DB-backed Inji credentials (the registry
+	// adapter only knows in-memory custom schemas). slug is the injiConfigKeySlug-
+	// derived view name; "" skips the view drop.
+	DeleteCredential(ctx context.Context, key, ownerKey, slug string) error
+	// ReplaceView execs a CREATE OR REPLACE VIEW statement — used by the one-off
+	// migration that regenerates existing extraction views into the per-slug
+	// namespaced form (subjectClaimKey).
+	ReplaceView(ctx context.Context, ddl string) error
 }
 
 type apiProvisionSubjectRequest struct {
 	IndividualID string            `json:"individualId"`
 	ClientID     string            `json:"clientId,omitempty"`
 	Claims       map[string]string `json:"claims,omitempty"`
+	// credentialConfigKey names the target credential type (its config key, e.g.
+	// "TestaDelegateV1") so the Claims are stored under that credential's slug
+	// (subjectClaimKey) — required for a CUSTOM credential's claims to be read by
+	// its per-slug extraction view. When empty, Claims are written flat (legacy;
+	// only the seeded flat `person` credential reads flat keys).
+	CredentialConfigKey string `json:"credentialConfigKey,omitempty"`
 	// Convenience: top-level claim fields are also accepted and merged into Claims.
 	FullName    string `json:"fullName,omitempty"`
 	GivenName   string `json:"givenName,omitempty"`
@@ -100,12 +137,22 @@ func (h *H) APIProvisionSubject(w http.ResponseWriter, r *http.Request) {
 	if clientID == "" {
 		clientID = defaultAuthCodeClientID()
 	}
+	// Namespace the custom Claims under the target credential's slug so they land
+	// in that credential's per-slug view (subjectClaimKey). Without a config key we
+	// can't know which view will read them, so they stay flat (legacy behaviour).
+	nsKey := func(k string) string { return k }
+	if ck := strings.TrimSpace(req.CredentialConfigKey); ck != "" {
+		slug := slugForEntity(nil, ck) // nil → derive slug from the key by convention
+		nsKey = func(k string) string { return subjectClaimKey(slug, k) }
+	}
 	claims := map[string]string{}
 	for k, v := range req.Claims {
 		if s := strings.TrimSpace(v); s != "" {
-			claims[k] = s
+			claims[nsKey(k)] = s
 		}
 	}
+	// Demographic convenience fields map to the seeded flat `person` credential —
+	// unique field names, no collision — so they are written flat, not namespaced.
 	for k, v := range map[string]string{
 		"fullName": req.FullName, "givenName": req.GivenName, "familyName": req.FamilyName,
 		"gender": req.Gender, "dateOfBirth": req.DateOfBirth, "email": req.Email, "phoneNumber": req.PhoneNumber,

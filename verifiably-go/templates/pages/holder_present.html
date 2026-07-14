@@ -74,7 +74,7 @@
   <div class="caps" style="margin-bottom:0.5rem">Review what's being shared</div>
   <div class="present-consent-head">
     <div>
-      <h3 style="margin:0 0 0.25rem;font-family:'Josefin Sans',sans-serif;font-weight:500">{{if $pv.CredentialTitle}}{{$pv.CredentialTitle}}{{else}}Credential{{end}}</h3>
+      <h3 style="margin:0 0 0.25rem;font-family:'Josefin Sans',sans-serif;font-weight:500">{{if $pv.RequestedCredentials}}The verifier is requesting {{len $pv.RequestedCredentials}} credential{{if gt (len $pv.RequestedCredentials) 1}}s{{end}}{{else if $pv.CredentialTitle}}{{$pv.CredentialTitle}}{{else}}Credential{{end}}</h3>
       <div class="mono" style="font-size:0.78rem;color:var(--ink-mute)">
         requested by {{if $pv.VerifierClientID}}{{$pv.VerifierClientID}}{{else}}(verifier){{end}}
       </div>
@@ -84,6 +84,30 @@
       {{if eq $pv.Disclosure "required"}}selective disclosure{{else if eq $pv.Disclosure "preferred"}}partial (format-dependent){{else}}full credential{{end}}
     </span>
   </div>
+
+  {{if $pv.RequestedCredentials}}
+  {{/* One card per PD input-descriptor — the holder sees EVERY credential being
+       asked for (e.g. a delegated-access pair), each with its own claims. */}}
+  <div style="display:flex;flex-direction:column;gap:0.55rem;margin-top:0.85rem">
+    {{range $pv.RequestedCredentials}}
+    <div class="schema-card" style="padding:0.7rem 0.9rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem">
+        <strong style="font-size:0.92rem">{{.TypeName}}</strong>
+        <span class="pill {{if .Held}}ok{{else}}err{{end}}" style="font-size:0.62rem">{{if .Held}}✓ in your wallet{{else}}not in your wallet{{end}}</span>
+      </div>
+      <div class="mono" style="font-size:0.72rem;color:var(--ink-mute);margin-top:0.2rem">{{.Format}}{{if .Disclosure}} · {{.Disclosure}} disclosure{{end}}</div>
+      {{if .Claims}}
+      <div style="margin-top:0.4rem;font-size:0.78rem">
+        <span style="color:var(--ink-mute)">claims requested:</span>
+        {{range $i, $c := .Claims}}{{if $i}}, {{end}}<span class="mono">{{replaceUnderscore $c}}</span>{{end}}
+      </div>
+      {{else}}
+      <div style="margin-top:0.4rem;font-size:0.78rem;color:var(--ink-mute)">whole credential (no per-claim filter)</div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
 
   {{if not $pv.Compatible}}
     {{/* Walt.id's matcher rejected this combination — block the submit
@@ -98,6 +122,9 @@
     </div>
   {{end}}
 
+  {{/* Single-credential value breakdown — shown only when the request ISN'T a
+       multi-credential one (the cards above already itemise each leg). */}}
+  {{if not $pv.RequestedCredentials}}
   {{if $pv.Fields}}
     <div class="caps" style="font-size:0.65rem;margin:1rem 0 0.5rem">Claims the verifier is asking for</div>
     <dl class="cred-rows">
@@ -110,6 +137,7 @@
     <p style="font-size:0.85rem;color:var(--ink-soft);margin:1rem 0 0">
       The verifier didn't itemise individual claims — the whole credential would be shared if you disclose.
     </p>
+  {{end}}
   {{end}}
 
   {{if $pv.Compatible}}

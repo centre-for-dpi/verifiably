@@ -22,15 +22,15 @@ type AuthcodeCredConfig struct {
 
 // BuildAuthcodeCredConfig maps a builder schema (Std + FieldsSpec) to the
 // format-specific credential_config columns, mirroring SaveCustomSchema's switch.
-func BuildAuthcodeCredConfig(schema vctypes.Schema) AuthcodeCredConfig {
+// withTokenStatus adds an IETF token-status-list `status` claim to the SD-JWT
+// template (idx/uri filled from the Postgres data-provider at issuance) so
+// auth-code SD-JWT credentials are revocable via verifiably's TokenStore.
+func BuildAuthcodeCredConfig(schema vctypes.Schema, withTokenStatus bool) AuthcodeCredConfig {
 	credFormat := stdToCredentialFormat(schema.Std)
-	out := AuthcodeCredConfig{CredFormat: credFormat, VCTemplateB64: buildVCTemplate(schema)}
+	out := AuthcodeCredConfig{CredFormat: credFormat, VCTemplateB64: buildVCTemplate(schema, withTokenStatus)}
 	switch credFormat {
 	case "vc+sd-jwt", "dc+sd-jwt":
-		vct := schema.Vct
-		if vct == "" {
-			vct = "https://verifiably.example.com/credentials/" + schema.ID
-		}
+		vct := schema.CredentialVct(verifiablyPublicBase())
 		out.SDJwtVct = &vct
 	default: // ldp_vc, jwt_vc_json
 		c := vcdmContextURL(schema.Std)

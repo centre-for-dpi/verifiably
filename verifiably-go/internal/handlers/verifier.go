@@ -28,7 +28,7 @@ func (h *H) ShowVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dpgs, _ := h.Adapter.ListVerifierDpgs(r.Context())
-	schemas, err := h.Adapter.ListAllSchemas(r.Context())
+	schemas, err := h.verifierSchemas(r.Context(), sess.VerifierDpg)
 	if err != nil {
 		h.errorToast(w, r, "backend unavailable: "+err.Error())
 		return
@@ -46,7 +46,114 @@ func (h *H) ShowVerify(w http.ResponseWriter, r *http.Request) {
 // `dc+sd-jwt` (rejected by VerifierService.getPresentationFormat). Showing
 // them in the verifier picker is a pure footgun — the user builds a request
 // they can never satisfy.
-func verifierPresentableSchemas(schemas []vctypes.Schema) []vctypes.Schema {
+//
+// verifierIssuerVendors maps a verifier vendor key to the issuer vendor key(s)
+// whose credentials it can verify — its OWN ecosystem. Most verifiers double as
+// their own issuer under one vendor key (walt.id, CREDEBL), so they map to
+// themselves; Inji Verify is the exception — it has no same-named issuer, and
+// its credentials are minted by the two Inji Certify issuers. An unknown key
+// maps to itself (a sane default for any 1:1 vendor added later).
+func verifierIssuerVendors(verifierDpg string) []string {
+	switch verifierDpg {
+	case "":
+		return nil // no DPG chosen yet → caller applies no scope
+	case "Inji Verify":
+		return []string{"Inji Certify · Pre-Auth", authcodeVendor}
+	default:
+		return []string{verifierDpg}
+	}
+}
+
+// dpgsIntersect reports whether any vendor key in a schema's DPGs slice is in
+// the allowed set.
+func dpgsIntersect(schemaDPGs, allowed []string) bool {
+	for _, d := range schemaDPGs {
+		for _, a := range allowed {
+			if d == a {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// authcodeVendor is the issuer-vendor key for the Inji auth-code track (matches
+// verifierIssuerVendors + config/backends.docker.json).
+const authcodeVendor = "Inji Certify · Auth-Code"
+
+// verifierAuthcodeSchemas rebuilds the Inji auth-code credential types as
+// presentable schemas for the verifier grid. Auth-code schemas live in the
+// Certify DB (SubjectStore), NOT the registry's custom-schema list: the
+// auth-code issuance path (applyAuthcodeSchema) persists them there instead of
+// calling SaveCustomSchema, so ListAllSchemas surfaces them only as non-custom
+// .well-known entries that verifierPresentableSchemas drops. We reconstruct them
+// as Custom schemas stamped with the auth-code vendor DPG so a verifier can
+// request the same types the auth-code issuer mints. Global (all owners),
+// mirroring how pre-auth custom schemas are visible to every verifier. No-op
+// without a SubjectStore. Best-effort: a lookup error yields no auth-code
+// schemas rather than blocking the (pre-auth) grid.
+func (h *H) verifierAuthcodeSchemas(ctx context.Context) []vctypes.Schema {
+	if h.Subjects == nil {
+		return nil
+	}
+	creds, err := h.Subjects.ListCredentials(ctx)
+	if err != nil {
+		return nil
+	}
+	out := make([]vctypes.Schema, 0, len(creds))
+	for _, c := range creds {
+		key := c["key"]
+		if key == "" {
+			continue
+		}
+		name := c["displayName"]
+		if name == "" {
+			name = key
+		}
+		s := vctypes.Schema{
+			ID:     key,
+			Name:   name,
+			Desc:   "Live Inji Certify (auth-code) credential",
+			Custom: true,
+			DPGs:   []string{authcodeVendor},
+		}
+		// ListCredentials doesn't carry the wire format; CredentialClaimSpec does
+		// (format + vct). Fall back to W3C when it can't be resolved.
+		if format, _, vct, e := h.Subjects.CredentialClaimSpec(ctx, key); e == nil && format != "" {
+			s.Std = injiFormatToStd(format)
+			s.Vct = vct
+		}
+		if s.Std == "" {
+			s.Std = "w3c_vcdm_2"
+		}
+		if fields, ferr := h.Subjects.CredentialFields(ctx, key); ferr == nil {
+			for _, fn := range fields {
+				s.FieldsSpec = append(s.FieldsSpec, vctypes.FieldSpec{Name: fn, Datatype: "string"})
+			}
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// verifierSchemas is the schema list every verifier-flow site works against: the
+// adapter's ListAllSchemas plus, for a verifier whose issuer-vendor set includes
+// the auth-code vendor (i.e. the Inji Verify DPG), the auth-code schemas from the
+// Certify DB (which ListAllSchemas can't surface as Custom). Used by the grid
+// render AND the request-generation resolver so a selected auth-code schema
+// resolves instead of erroring "unknown schema". The ListAllSchemas error (and
+// its partial slice) is returned verbatim so callers keep their existing
+// resilience handling.
+func (h *H) verifierSchemas(ctx context.Context, verifierDpg string) ([]vctypes.Schema, error) {
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	if dpgsIntersect(verifierIssuerVendors(verifierDpg), []string{authcodeVendor}) {
+		schemas = append(schemas, h.verifierAuthcodeSchemas(ctx)...)
+	}
+	return schemas, err
+}
+
+func verifierPresentableSchemas(schemas []vctypes.Schema, verifierDpg string) []vctypes.Schema {
+	vendors := verifierIssuerVendors(verifierDpg)
 	out := make([]vctypes.Schema, 0, len(schemas))
 	for _, s := range schemas {
 		// Mirror the issuer schema page: only show user-built schemas. The
@@ -55,6 +162,15 @@ func verifierPresentableSchemas(schemas []vctypes.Schema) []vctypes.Schema {
 		// asymmetry where operators can verify against credential types
 		// they were never able to issue.
 		if !s.Custom {
+			continue
+		}
+		// Scope the grid to the active verifier's OWN ecosystem: only show
+		// credential types issued under an issuer that this verifier can
+		// actually check (Inji Verify ↔ the two Inji Certify issuers; walt.id
+		// and CREDEBL each play both roles under one vendor key). A schema is
+		// stamped DPGs:[issuerDpg] at save, so an intersect with the verifier's
+		// issuer-vendor set is exact. Empty verifierDpg (none picked) → no scope.
+		if len(vendors) > 0 && !dpgsIntersect(s.DPGs, vendors) {
 			continue
 		}
 		if len(s.Variants) == 0 {
@@ -96,7 +212,7 @@ func verifierPresentableSchemas(schemas []vctypes.Schema) []vctypes.Schema {
 // card grid, filter chips, and preview all stay consistent when HTMX swaps
 // the custom-request body on card selection.
 func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG) map[string]any {
-	schemas = verifierPresentableSchemas(schemas)
+	schemas = verifierPresentableSchemas(schemas, sess.VerifierDpg)
 	// Filter by std: a card qualifies if ANY of its variants matches the
 	// active filter. When a non-"all" filter is active we also promote the
 	// matching variant to the card's default so selecting it picks a
@@ -116,6 +232,30 @@ func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG
 			}
 		}
 		filtered = append(filtered, s)
+	}
+	// Delegated-access pair mode: filter the grid to the current step — step 1
+	// (no delegation picked yet) shows cards WITH an onBehalfOf field; step 2
+	// (delegation picked) shows the rest, the identity credentials.
+	if sess.VerifierDelegation {
+		wantOnBehalf := sess.VerifierDelegSchemaID == ""
+		// Step 2 (identity) must match the delegation's WIRE FORMAT: walt.id v0.18.2
+		// rejects a presentation request that mixes formats ("Credentials formats
+		// must be distinct"). So only show identity cards in the same format.
+		delegWire := ""
+		if !wantOnBehalf {
+			delegWire = wireFormatOf(schemaStdByVariantID(schemas, sess.VerifierDelegSchemaID))
+		}
+		step := filtered[:0]
+		for _, s := range filtered {
+			if schemaHasField(s, "onBehalfOf") != wantOnBehalf {
+				continue
+			}
+			if delegWire != "" && wireFormatOf(s.Std) != delegWire {
+				continue
+			}
+			step = append(step, s)
+		}
+		filtered = step
 	}
 	stds := []string{"all"}
 	seen := map[string]bool{"all": true}
@@ -138,9 +278,85 @@ func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG
 		"Stds":           stds,
 		"Filter":         sess.VerifierSchemaFilter,
 		"Query":          sess.VerifierSchemaQuery,
-		"CustomTemplate": sess.CustomOID4VPTemplate,
-		"CustomSchemaID": sess.CustomOID4VPSchemaID,
+		"CustomTemplate":  sess.CustomOID4VPTemplate,
+		"CustomSchemaID":  sess.CustomOID4VPSchemaID,
+		"Delegation":      sess.VerifierDelegation,
+		"DelegSchemaID":   sess.VerifierDelegSchemaID,
+		"SubjectSchemaID": sess.VerifierSubjectSchemaID,
+		"DelegName":       schemaNameByID(schemas, sess.VerifierDelegSchemaID),
+		"SubjectName":     schemaNameByID(schemas, sess.VerifierSubjectSchemaID),
+		"DelegFormat":     wireFormatOf(schemaStdByVariantID(schemas, sess.VerifierDelegSchemaID)),
 	}
+}
+
+// wireFormatOf maps a Std to the OID4VP wire format walt.id uses, so the two-step
+// picker can keep a delegated-access pair homogeneous (walt.id can't mix formats).
+func wireFormatOf(std string) string {
+	switch {
+	case strings.Contains(std, "sd_jwt"):
+		return "vc+sd-jwt"
+	case std == "mso_mdoc":
+		return "mso_mdoc"
+	default:
+		return "jwt_vc_json" // w3c_vcdm_1 / w3c_vcdm_2
+	}
+}
+
+// schemaStdByVariantID resolves a (variant) id to its Std using an already-loaded
+// schema slice (no extra ListAllSchemas call).
+func schemaStdByVariantID(schemas []vctypes.Schema, id string) string {
+	if id == "" {
+		return ""
+	}
+	for _, s := range schemas {
+		if s.HasVariantID(id) {
+			return s.ApplyVariant(id).Std
+		}
+	}
+	return ""
+}
+
+// schemaHasField reports whether a schema declares a field of the given name —
+// used to tell delegation credentials (an onBehalfOf field) from identity ones.
+func schemaHasField(s vctypes.Schema, name string) bool {
+	for _, f := range s.FieldsSpec {
+		if f.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// schemaNameByID resolves a (variant) id back to its card name for display.
+func schemaNameByID(schemas []vctypes.Schema, id string) string {
+	if id == "" {
+		return ""
+	}
+	for _, s := range schemas {
+		if s.HasVariantID(id) {
+			return s.Name
+		}
+	}
+	return ""
+}
+
+// schemaStdByID resolves a (variant) id to its wire-format std (e.g. w3c_vcdm_2,
+// "sd_jwt_vc (IETF)") — used to decide which fields a delegation leg must request.
+// verifierDpg lets an auth-code schema id resolve too (verifierSchemas).
+func (h *H) schemaStdByID(ctx context.Context, verifierDpg, id string) string {
+	if id == "" {
+		return ""
+	}
+	schemas, err := h.verifierSchemas(ctx, verifierDpg)
+	if err != nil {
+		return ""
+	}
+	for _, s := range schemas {
+		if s.HasVariantID(id) {
+			return s.ApplyVariant(id).Std
+		}
+	}
+	return ""
 }
 
 // GenerateRequest creates an OID4VP presentation request from the
@@ -154,8 +370,9 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Bad form: "+err.Error())
 		return
 	}
+	delegation := r.FormValue("delegation") == "on"
 	tpl, err := h.assembleCustomTemplate(r, sess)
-	if err != nil {
+	if err != nil && !delegation {
 		h.errorToast(w, r, err.Error())
 		return
 	}
@@ -181,6 +398,60 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 		Policies:    policies,
 		WebhookURL:  webhookURL,
 	}
+	// requested is EVERY credential the verifier is asking for (one for a single
+	// verify, both legs for a delegated pair) so the request-output can show them
+	// all — the adapter only echoes back the first descriptor.
+	requested := []vctypes.OID4VPTemplate{tpl}
+	if delegation {
+		// Request the delegated-access PAIR (subject identity + delegation) in one
+		// presentation, so the evaluator can check linkage/invocation/capability/
+		// revocation and the result renders the delegation-verdict card.
+		//
+		// Both legs are built from the operator's PICKED schemas so the request
+		// matches whatever custom types the wallet holds (e.g. PetCard +
+		// PetAccessCredential) with the right format/vct. The selected card is the
+		// DELEGATION; subject_schema_id is the identity. Falls back to the canonical
+		// BirthCertificate/DelegatedAccessCredential defaults when nothing is picked.
+		disc := orDefault(r.FormValue("disclosure"), "selective")
+		// The two-step card picker stores the pair on the session; fall back to the
+		// form (schema_id / subject_schema_id) then the canonical defaults. Request
+		// all fields of each so onBehalfOf (delegation) and subjectRef (identity)
+		// are disclosed for linkage.
+		delegID := orDefault(sess.VerifierDelegSchemaID, r.FormValue("schema_id"))
+		subjID := orDefault(sess.VerifierSubjectSchemaID, r.FormValue("subject_schema_id"))
+		var subj, deleg vctypes.OID4VPTemplate
+		if delegID != "" {
+			// A w3c delegation carries the capability in termsOfUse (always present,
+			// not a credentialSubject field), so request only onBehalfOf — requesting
+			// allowedAction/validUntil would make the PD filter look for fields that
+			// aren't in credentialSubject and never match. SD-JWT carries the
+			// capability as flat claims, so request them all (nil) to disclose them.
+			delegFields := []string{"onBehalfOf"}
+			if strings.Contains(h.schemaStdByID(r.Context(), sess.VerifierDpg, delegID), "sd_jwt") {
+				delegFields = nil
+			}
+			if deleg, err = h.buildTemplateForSchema(r.Context(), sess.VerifierDpg, delegID, delegFields, disc); err != nil {
+				h.errorToast(w, r, "delegation credential: "+err.Error())
+				return
+			}
+		} else {
+			deleg = delegationVerifyTemplate(orDefault(r.FormValue("delegation_type"), "DelegatedAccessCredential"), []string{"onBehalfOf"}, "jwt_vc_json")
+		}
+		if subjID != "" {
+			if subj, err = h.buildTemplateForSchema(r.Context(), sess.VerifierDpg, subjID, nil, disc); err != nil {
+				h.errorToast(w, r, "subject identity credential: "+err.Error())
+				return
+			}
+		} else {
+			subj = delegationVerifyTemplate(orDefault(r.FormValue("subject_type"), "BirthCertificate"), []string{"subjectRef"}, "jwt_vc_json")
+		}
+		req.Template = nil
+		req.Templates = []vctypes.OID4VPTemplate{subj, deleg}
+		sess.CustomOID4VPTemplate = &deleg
+		// Show both requested credentials in the generated-request view: the
+		// identity (subject) first, then the delegation.
+		requested = []vctypes.OID4VPTemplate{subj, deleg}
+	}
 	verifyStart := time.Now()
 	res, err := h.Adapter.RequestPresentation(r.Context(), req)
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(verifyStart), "dpg", sess.VerifierDpg, "op", "verify")
@@ -193,7 +464,16 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 	sess.CurrentOID4VPLink = res.RequestURI
 	sess.CurrentOID4VPState = res.State
 	sess.CurrentOID4VPTemplate = "custom"
-	h.renderFragment(w, r, "fragment_oid4vp_request_output", res)
+	h.renderFragment(w, r, "fragment_oid4vp_request_output", oid4vpRequestView{PresentationRequestResult: res, Requested: requested})
+}
+
+// oid4vpRequestView wraps the generated presentation-request result with the list
+// of REQUESTED credential templates (one for a single verify, two for a delegated
+// pair) so fragment_oid4vp_request_output can show every credential the verifier
+// asks for — the adapter only echoes back the first descriptor as .Template.
+type oid4vpRequestView struct {
+	backend.PresentationRequestResult
+	Requested []vctypes.OID4VPTemplate
 }
 
 // assembleCustomTemplate builds a OID4VPTemplate from the custom-request
@@ -201,11 +481,28 @@ func (h *H) GenerateRequest(w http.ResponseWriter, r *http.Request) {
 // fields to request (defaults to all schema fields if none are checked),
 // disclosure is "selective" or "full".
 func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4VPTemplate, error) {
-	schemaID := r.FormValue("schema_id")
+	return h.buildTemplateForSchema(r.Context(), sess.VerifierDpg, r.FormValue("schema_id"), r.Form["field_key"], r.FormValue("disclosure"))
+}
+
+// publicBaseEnv returns the deployment public origin (VERIFIABLY_PUBLIC_URL,
+// trimmed) for building a host-derived vct where no *http.Request is available.
+// It matches publicBase(r) when the env is set (always on a real deployment)
+// and the injicertify/waltid issuers' vct base, so the requested vct equals the
+// issued vct.
+func publicBaseEnv() string {
+	return strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/")
+}
+
+// buildTemplateForSchema constructs an OID4VP template for ONE schema with the
+// correct credential type, wire format, and vct. It is the shared core of the
+// single-type verify and of EACH leg of a delegated-access pair, so the pair
+// requests exactly what the wallet holds (custom types like "PetAccessCredential",
+// SD-JWT vct, w3c format) rather than a hardcoded guess. fields nil/empty → all.
+func (h *H) buildTemplateForSchema(ctx context.Context, verifierDpg, schemaID string, fields []string, disclosure string) (vctypes.OID4VPTemplate, error) {
 	if schemaID == "" {
 		return vctypes.OID4VPTemplate{}, fmt.Errorf("pick a schema first")
 	}
-	schemas, err := h.Adapter.ListAllSchemas(r.Context())
+	schemas, err := h.verifierSchemas(ctx, verifierDpg)
 	if err != nil {
 		return vctypes.OID4VPTemplate{}, fmt.Errorf("could not load schemas: %w", err)
 	}
@@ -220,7 +517,6 @@ func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4
 	if picked == nil {
 		return vctypes.OID4VPTemplate{}, fmt.Errorf("unknown schema %q", schemaID)
 	}
-	fields := r.Form["field_key"]
 	if len(fields) == 0 {
 		// No boxes checked → request every field the schema declares.
 		for _, f := range picked.FieldsSpec {
@@ -240,7 +536,6 @@ func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4
 	}
 	fields = cleaned
 
-	disclosure := r.FormValue("disclosure")
 	if disclosure == "" {
 		disclosure = "full"
 	}
@@ -262,17 +557,16 @@ func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4
 	wireFormat := ""
 	if picked.Custom {
 		credType = picked.CustomTypeName()
-		// For SD-JWT VC, the wallet matches the held credential's `vct`
-		// claim against the PD filter's `vct`. The walt.id adapter issues
-		// custom SD-JWT credentials with vct=CustomTypeName(), so the
-		// verifier must ask for that same string.
+		// For SD-JWT VC, the wallet matches the held credential's `vct` claim
+		// against the PD filter's `vct`. All DPG issuers now embed the
+		// host-derived vct (schema.CredentialVct = VERIFIABLY_PUBLIC_URL/
+		// credentials/<id>), so the verifier must request that SAME string —
+		// not the short CustomTypeName(), which only walt.id used and which
+		// mismatches an Inji-issued credential.
 		if strings.HasPrefix(picked.Std, "sd_jwt_vc") {
-			vct = picked.CustomTypeName()
+			vct = picked.CredentialVct(publicBaseEnv())
+			wireFormat = "vc+sd-jwt"
 		}
-		// wireFormat stays empty — adapter falls back to credentialFormatForStd
-		// which maps "sd_jwt_vc (IETF)" → "vc+sd-jwt". Custom schemas don't
-		// expose a per-variant wire-format chip yet so picking the default
-		// is the right behaviour.
 	} else {
 		for _, v := range picked.Variants {
 			if v.ID == picked.ID {
@@ -280,6 +574,21 @@ func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4
 				wireFormat = v.Format
 				break
 			}
+		}
+	}
+	// Inji-certify surfaces its schemas via ListSchemas WITHOUT Custom set and
+	// WITHOUT Variants (they live in certify.credential_config / the issuer
+	// metadata, not the walt.id registry), so neither branch above pins the
+	// SD-JWT vct. Derive it from the schema when it's still empty for an SD-JWT
+	// format — otherwise the PD carries no $.vct field and the wallet's
+	// matchesVct has nothing to match, reporting "No credential found for:
+	// vc-1" (F19). CredentialVct prefers the schema's explicit Vct (the exact
+	// vct advertised in the issuer metadata; see injicertify ListSchemas) and
+	// host-derives only as a fallback.
+	if vct == "" && strings.HasPrefix(picked.Std, "sd_jwt_vc") {
+		vct = picked.CredentialVct(publicBaseEnv())
+		if wireFormat == "" {
+			wireFormat = "vc+sd-jwt"
 		}
 	}
 	return vctypes.OID4VPTemplate{
@@ -302,6 +611,29 @@ func (h *H) assembleCustomTemplate(r *http.Request, sess *Session) (vctypes.OID4
 // Any of these re-renders the whole fragment_verifier_custom_body so the
 // card list, active-chip highlighting, hidden schema_id input, and field
 // picker stay in sync without juggling multiple OOB swaps.
+// applyDelegationPick advances the two-step delegation picker from one form
+// action, returning the new (delegation, identity) schema ids. reset and a card
+// click are MUTUALLY EXCLUSIVE: a "change" chip posts reset_deleg/reset_subject
+// AND (via hx-include) the hidden schema_id, so treating them together — as the
+// old code did — let the reset fall through and immediately re-select the card it
+// just cleared (B5). A card click fills the CURRENT step: step 1 (no delegation
+// yet) sets the delegation; step 2 sets/replaces the identity, so clicking a
+// different identity card swaps it without needing the reset chip.
+func applyDelegationPick(delegID, subjectID, resetDeleg, resetSubject, schemaID string) (newDeleg, newSubject string) {
+	switch {
+	case resetDeleg != "":
+		return "", "" // change the delegation → back to step 1
+	case resetSubject != "":
+		return delegID, "" // change the identity → back to step 2
+	case schemaID != "":
+		if delegID == "" {
+			return schemaID, subjectID // step 1: pick the delegation
+		}
+		return delegID, schemaID // step 2: pick/replace the identity
+	}
+	return delegID, subjectID // filter/search re-render — no pick change
+}
+
 func (h *H) BuildVerifierTemplate(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	if sess.VerifierDpg == "" {
@@ -312,7 +644,7 @@ func (h *H) BuildVerifierTemplate(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Bad form: "+err.Error())
 		return
 	}
-	schemas, err := h.Adapter.ListAllSchemas(r.Context())
+	schemas, err := h.verifierSchemas(r.Context(), sess.VerifierDpg)
 	if err != nil {
 		h.errorToast(w, r, "Could not load schemas: "+err.Error())
 		return
@@ -328,6 +660,29 @@ func (h *H) BuildVerifierTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, hasQ := r.Form["q"]; hasQ {
 		sess.VerifierSchemaQuery = r.FormValue("q")
+	}
+
+	// Delegated-access PAIR mode: a two-step card picker. The toggle flips the
+	// mode (and resets the picks); then a card click fills the delegation pick
+	// (step 1, grid filtered to cards with an onBehalfOf field) and the next
+	// click fills the identity pick (step 2, the remaining cards). No dropdown,
+	// no field picker — verifierCustomData filters the grid by the current step.
+	if r.FormValue("delegation_toggle_fired") != "" {
+		sess.VerifierDelegation = r.FormValue("delegation") == "on"
+		sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID = "", ""
+		// Don't carry a prior single-verify card pick into delegation mode — the
+		// hidden schema_id field (value=CustomSchemaID) is hx-included by the
+		// reset/filter chips, and a stale value would re-fill a just-cleared slot.
+		sess.CustomOID4VPSchemaID = ""
+	}
+	if sess.VerifierDelegation {
+		sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID = applyDelegationPick(
+			sess.VerifierDelegSchemaID, sess.VerifierSubjectSchemaID,
+			r.FormValue("reset_deleg"), r.FormValue("reset_subject"), r.FormValue("schema_id"))
+		dpgs, _ := h.Adapter.ListVerifierDpgs(r.Context())
+		body := verifierCustomData(sess, schemas, dpgs[sess.VerifierDpg])
+		h.renderFragment(w, r, "fragment_verifier_custom_body", body)
+		return
 	}
 
 	// Schema selection. A non-empty schema_id on this POST means the user
@@ -430,6 +785,7 @@ func (h *H) FetchResponse(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.attachIssuerDisplay(r, &res)
+	h.attachDelegationVerdict(r, &res) // evaluate delegated-access when a delegation pair was presented
 	// Terminal state → also emit the OOB button swap so the HTMX poller
 	// on #verify-poll-btn stops firing every 3s. Pending stays as a
 	// single-fragment response so polling continues.
@@ -535,6 +891,15 @@ func (h *H) VerifyDirect(w http.ResponseWriter, r *http.Request) {
 		directStatus = "error"
 	}
 	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", directStatus)
+	// Run the temporal + revocation (+ delegation) gates like every other verify
+	// path. The direct path is the ONLY one that skipped them, so a revoked or
+	// expired credential re-verified from its PDF/QR still read "valid" (F14).
+	// The adapter now populates res.Credentials so StatusRefOf can read the
+	// credentialStatus / status_list pointer; a no-op when it couldn't decode one.
+	h.attachDelegationVerdict(r, &res)
+	if !res.Valid {
+		directStatus = "error"
+	}
 	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
 	h.renderFragment(w, r, "fragment_verify_result", res)

@@ -43,7 +43,7 @@
     </div>
     {{if not $.Body.Catalog}}<p class="subtitle">{{t "No credentials available yet — an issuer needs to create one." $.Lang}}</p>{{end}}
     <p id="inji-cred-none" class="subtitle" style="display:none;font-size:0.82rem;margin-top:0.75rem">{{t "No credentials match your search." $.Lang}}</p>
-    <p class="subtitle" style="margin-top:0.75rem;font-size:0.78rem;color:var(--muted)">{{t "New here? Sign up with eSignet at" $.Lang}} <a href="/holder/register">/holder/register</a>. {{t "If a claim fails with a no-data-record error, your details weren't found in an authoritative registry at sign-up." $.Lang}}</p>
+    <p class="subtitle" style="margin-top:0.75rem;font-size:0.78rem;color:var(--muted)">{{t "Not activated yet? You must be enrolled in the identity registry by a registrar, then" $.Lang}} <a href="/holder/register">{{t "activate your identity" $.Lang}}</a>. {{t "If a claim fails with a no-data-record error, your credential details weren't found in an authoritative registry." $.Lang}}</p>
   </div>
   <script>
     function filterInjiCreds(){

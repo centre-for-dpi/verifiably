@@ -1,0 +1,38 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@protected": true,
+    "id": "@id",
+    "type": "@type",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "da": "https://verifiably.dev/ns/delegated-access#",
+
+    "DelegatedAccessCredential": "da:DelegatedAccessCredential",
+
+    "onBehalfOf": { "@id": "da:onBehalfOf", "@type": "@id" },
+    "subjectRef": { "@id": "da:subjectRef", "@type": "xsd:string" },
+    "role": { "@id": "da:role", "@type": "xsd:string" },
+
+    "DelegationCapability": {
+      "@id": "da:DelegationCapability",
+      "@context": {
+        "@protected": true,
+        "controller": { "@id": "da:controller", "@type": "@id" },
+        "invocationTarget": { "@id": "da:invocationTarget", "@type": "@id" },
+        "delegate": { "@id": "da:delegate", "@type": "@id" },
+        "allowedAction": { "@id": "da:allowedAction", "@container": "@set" },
+        "allowFurtherDelegation": { "@id": "da:allowFurtherDelegation", "@type": "xsd:boolean" },
+        "parentCapability": { "@id": "da:parentCapability", "@type": "@id" },
+        "caveat": {
+          "@id": "da:caveat",
+          "@container": "@set",
+          "@context": {
+            "@protected": true,
+            "ValidWhile": "da:ValidWhile",
+            "validUntil": { "@id": "da:validUntil", "@type": "xsd:dateTime" }
+          }
+        }
+      }
+    }
+  }
+}

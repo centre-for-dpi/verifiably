@@ -34,8 +34,19 @@ type fakeSubjects struct {
 	listCreds    []map[string]string
 	listCredsErr error
 	myCreds      []map[string]string
+	ledger       []map[string]string
 	fieldsByKey  map[string][]string
 	scopeByKey   map[string]string
+
+	// Identity registry: GetIdentity reads `identities`; UpsertIdentity writes it
+	// and appends to `idUpserts` (reusing provCall: subjectID=individualId,
+	// claims=demographics) for assertions.
+	identities map[string]map[string]string
+	idUpserts  []provCall
+
+	deletedCreds     []string // keys passed to DeleteCredential
+	droppedViewSlugs []string // slugs passed to DeleteCredential (view teardown)
+	replacedViews    []string // DDLs passed to ReplaceView
 }
 
 func (f *fakeSubjects) ProvisionSubject(_ context.Context, subjectID string, claims map[string]string) error {
@@ -51,14 +62,53 @@ func (f *fakeSubjects) CredentialScope(_ context.Context, key string) (string, e
 func (f *fakeSubjects) CredentialClaimSpec(_ context.Context, _ string) (string, string, string, error) {
 	return "", "", "", nil
 }
-func (f *fakeSubjects) ApplyAuthcodeSchema(_ context.Context, _, _, _, _, _, _ string, _ []string, _, _, _, _ *string, _ string) error {
+func (f *fakeSubjects) ApplyAuthcodeSchema(_ context.Context, _, _, _, _, _, _ string, _ []string, _, _, _, _ *string, _, _ string) error {
 	return nil
 }
 func (f *fakeSubjects) ListMyCredentials(_ context.Context, _ string) ([]map[string]string, error) {
 	return f.myCreds, nil
 }
+func (f *fakeSubjects) ListLedger(_ context.Context, _ []string) ([]map[string]string, error) {
+	return f.ledger, nil
+}
 func (f *fakeSubjects) CredentialFields(_ context.Context, key string) ([]string, error) {
 	return f.fieldsByKey[key], nil
+}
+func (f *fakeSubjects) UpsertIdentity(_ context.Context, individualID string, demographics map[string]string) error {
+	if f.identities == nil {
+		f.identities = map[string]map[string]string{}
+	}
+	f.identities[individualID] = demographics
+	f.idUpserts = append(f.idUpserts, provCall{subjectID: individualID, claims: demographics})
+	return nil
+}
+func (f *fakeSubjects) GetIdentity(_ context.Context, individualID string) (map[string]string, error) {
+	return f.identities[individualID], nil
+}
+func (f *fakeSubjects) ListIdentities(_ context.Context) ([]map[string]string, error) {
+	out := []map[string]string{}
+	for id, demo := range f.identities {
+		row := map[string]string{}
+		for k, v := range demo {
+			row[k] = v
+		}
+		row["individualId"] = id
+		out = append(out, row)
+	}
+	return out, nil
+}
+func (f *fakeSubjects) DeleteIdentity(_ context.Context, individualID string) error {
+	delete(f.identities, individualID)
+	return nil
+}
+func (f *fakeSubjects) DeleteCredential(_ context.Context, key, _, slug string) error {
+	f.deletedCreds = append(f.deletedCreds, key)
+	f.droppedViewSlugs = append(f.droppedViewSlugs, slug)
+	return nil
+}
+func (f *fakeSubjects) ReplaceView(_ context.Context, ddl string) error {
+	f.replacedViews = append(f.replacedViews, ddl)
+	return nil
 }
 
 // ─── registryProviders ────────────────────────────────────────────────────────
@@ -389,7 +439,7 @@ func TestBuildAuthcodeArtifacts_LDP(t *testing.T) {
 		AdditionalTypes: []string{"PersonCredential"},
 		FieldsSpec:      []vctypes.FieldSpec{{Name: "full_name"}, {Name: "dob"}},
 	}
-	a := buildAuthcodeArtifacts(schema)
+	a := buildAuthcodeArtifacts(schema, "")
 
 	if a.configKey != "PersonCredential" {
 		t.Errorf("configKey = %q, want PersonCredential", a.configKey)
@@ -406,11 +456,12 @@ func TestBuildAuthcodeArtifacts_LDP(t *testing.T) {
 	if !reflect.DeepEqual(a.displayOrder, []string{"full_name", "dob"}) {
 		t.Errorf("displayOrder = %v", a.displayOrder)
 	}
-	if !strings.Contains(a.viewDDL, "CREATE OR REPLACE VIEW certify.vc_subject_personcredential") {
-		t.Errorf("viewDDL missing view name: %s", a.viewDDL)
+	if !strings.Contains(a.viewDDL, "DROP VIEW IF EXISTS certify.vc_subject_personcredential") ||
+		!strings.Contains(a.viewDDL, "CREATE VIEW certify.vc_subject_personcredential") {
+		t.Errorf("viewDDL must DROP+CREATE the view (not CREATE OR REPLACE): %s", a.viewDDL)
 	}
-	if !strings.Contains(a.viewDDL, `claims->>'full_name' AS "full_name"`) {
-		t.Errorf("viewDDL missing field column: %s", a.viewDDL)
+	if !strings.Contains(a.viewDDL, `claims->>'personcredential.full_name' AS "full_name"`) {
+		t.Errorf("viewDDL missing namespaced field column: %s", a.viewDDL)
 	}
 	wantSQ := `'personcredential_vc_ldp':'select "full_name", "dob" from certify.vc_subject_personcredential where individual_id=:id'`
 	if a.scopeQuery != wantSQ {
@@ -427,12 +478,17 @@ func TestBuildAuthcodeArtifacts_SDJWT(t *testing.T) {
 		Std:        "sd_jwt_vc (IETF)",
 		FieldsSpec: []vctypes.FieldSpec{{Name: "hcid"}},
 	}
-	a := buildAuthcodeArtifacts(schema)
+	a := buildAuthcodeArtifacts(schema, "")
 	if a.configKey != "HealthCard" {
 		t.Errorf("configKey = %q, want HealthCard (name minus spaces)", a.configKey)
 	}
 	if a.credFormat != "vc+sd-jwt" {
 		t.Errorf("credFormat = %q, want vc+sd-jwt", a.credFormat)
+	}
+	// Scope must be format-aware (was hardcoded "_vc_ldp"), so the catalog/wallet
+	// don't mislabel this SD-JWT credential as ldp.
+	if a.scope != "healthcard_vc_sd_jwt" {
+		t.Errorf("scope = %q, want healthcard_vc_sd_jwt", a.scope)
 	}
 	if a.credsub != nil {
 		t.Error("sd-jwt must NOT carry a credentialSubject display (credsub nil)")
@@ -440,10 +496,35 @@ func TestBuildAuthcodeArtifacts_SDJWT(t *testing.T) {
 	if a.sdJwtVct == nil {
 		t.Error("sd-jwt must carry an sd_jwt_vct")
 	}
+	// Without a token status URL, no status columns are added.
+	if strings.Contains(a.scopeQuery, "statusIdx") {
+		t.Errorf("no token URL → no statusIdx column, got: %s", a.scopeQuery)
+	}
+}
+
+func TestBuildAuthcodeArtifacts_SDJWT_TokenStatus(t *testing.T) {
+	schema := vctypes.Schema{
+		Name:       "Health Card",
+		Std:        "sd_jwt_vc (IETF)",
+		FieldsSpec: []vctypes.FieldSpec{{Name: "hcid"}},
+	}
+	const url = "https://verifiably.example/status-list/token/v1"
+	a := buildAuthcodeArtifacts(schema, url)
+	// The extraction view exposes a coalesced statusIdx (so the unquoted template
+	// marker is always a valid number) and the constant statusUri.
+	if !strings.Contains(a.viewDDL, `coalesce(claims->>'statusIdx_healthcard','0') AS "statusIdx"`) {
+		t.Errorf("viewDDL missing coalesced statusIdx column:\n%s", a.viewDDL)
+	}
+	if !strings.Contains(a.viewDDL, `'`+url+`' AS "statusUri"`) {
+		t.Errorf("viewDDL missing constant statusUri column:\n%s", a.viewDDL)
+	}
+	if !strings.Contains(a.scopeQuery, `"statusIdx", "statusUri"`) {
+		t.Errorf("scopeQuery must select statusIdx + statusUri:\n%s", a.scopeQuery)
+	}
 }
 
 func TestBuildAuthcodeArtifacts_EmptyNameFallback(t *testing.T) {
-	a := buildAuthcodeArtifacts(vctypes.Schema{Std: "w3c_vcdm_1"})
+	a := buildAuthcodeArtifacts(vctypes.Schema{Std: "w3c_vcdm_1"}, "")
 	if a.configKey != "Credential" {
 		t.Errorf("configKey = %q, want Credential", a.configKey)
 	}
@@ -536,5 +617,84 @@ func TestAppendBraceEntry(t *testing.T) {
 		if err := appendBraceEntry(filepath.Join(t.TempDir(), "nope"), "p", "k", "e"); err == nil {
 			t.Error("expected error for missing file")
 		}
+	})
+}
+
+// ─── removeBraceEntry ──────────────────────────────────────────────────────────
+
+func TestRemoveBraceEntry(t *testing.T) {
+	write := func(t *testing.T, content string) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "props.properties")
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	check := func(t *testing.T, p, want string) {
+		t.Helper()
+		b, _ := os.ReadFile(p)
+		if string(b) != want {
+			t.Errorf("got %q, want %q", b, want)
+		}
+	}
+
+	t.Run("removes a middle entry whose value contains commas", func(t *testing.T) {
+		p := write(t, `myprop={'a':'1','scope':'select "x", "y" from t where id=:id','b':'2'}`+"\n")
+		if err := removeBraceEntry(p, "myprop", "scope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'a':'1','b':'2'}\n")
+	})
+
+	t.Run("removes the sole entry -> empty braces", func(t *testing.T) {
+		p := write(t, "myprop={'scope':'q'}\n")
+		if err := removeBraceEntry(p, "myprop", "scope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={}\n")
+	})
+
+	t.Run("removes a bare-scope entry with no value", func(t *testing.T) {
+		p := write(t, "myprop={'scopeA','scopeB'}\n")
+		if err := removeBraceEntry(p, "myprop", "scopeA"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'scopeB'}\n")
+	})
+
+	t.Run("absent key is a no-op", func(t *testing.T) {
+		p := write(t, "myprop={'a':'1'}\n")
+		if err := removeBraceEntry(p, "myprop", "nope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'a':'1'}\n")
+	})
+
+	t.Run("absent property line is a no-op", func(t *testing.T) {
+		p := write(t, "other={'a':'1'}\n")
+		if err := removeBraceEntry(p, "myprop", "a"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "other={'a':'1'}\n")
+	})
+
+	t.Run("does not match a scope that is a prefix of another", func(t *testing.T) {
+		p := write(t, "myprop={'scope':'1','scope_v2':'2'}\n")
+		if err := removeBraceEntry(p, "myprop", "scope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'scope_v2':'2'}\n")
+	})
+
+	t.Run("round-trips with appendBraceEntry", func(t *testing.T) {
+		p := write(t, "myprop={'a':'1'}\n")
+		if err := appendBraceEntry(p, "myprop", "scope", `'scope':'select "x","y" from t'`); err != nil {
+			t.Fatal(err)
+		}
+		if err := removeBraceEntry(p, "myprop", "scope"); err != nil {
+			t.Fatal(err)
+		}
+		check(t, p, "myprop={'a':'1'}\n")
 	})
 }

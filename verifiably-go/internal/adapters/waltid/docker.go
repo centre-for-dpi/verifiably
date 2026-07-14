@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -96,6 +97,35 @@ func restartContainer(serviceName string) error {
 		}
 	}
 	return nil
+}
+
+// waitForHTTPReady polls baseURL's OID4VCI metadata endpoint until the app
+// responds (any HTTP status) or the timeout elapses, returning whether it became
+// ready. A container's State.Running flips true as soon as the process starts —
+// well before walt.id's issuer-api can serve — so restartContainer alone leaves
+// the first post-restart OID4VCI/verify call to flap ("fails first, retry
+// works", B4). Callers wait on this after restartContainer. Best-effort: returns
+// false on timeout and the caller proceeds regardless.
+func waitForHTTPReady(baseURL string, timeout time.Duration) bool {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" {
+		return false
+	}
+	probe := baseURL + "/.well-known/openid-credential-issuer"
+	client := &http.Client{Timeout: 3 * time.Second}
+	deadline := time.Now().Add(timeout)
+	for {
+		resp, err := client.Get(probe)
+		if err == nil {
+			resp.Body.Close()
+			return true
+		}
+		if time.Now().After(deadline) {
+			slog.Warn("waltid: issuer-api not ready before timeout", "url", baseURL, "err", err)
+			return false
+		}
+		time.Sleep(1 * time.Second)
+	}
 }
 
 // isContainerRunning probes a container's State.Running flag. False on any

@@ -648,46 +648,12 @@ tr:hover td { background: var(--bg-elev); }
 .verify-banner h3 { font-family: 'Josefin Sans', sans-serif; font-size: 1.4rem; font-weight: 500; }
 .verify-banner p  { font-size: 0.85rem; color: var(--ink-mute); }
 
-/* Flip-card result: front shows the verdict + policies; hovering flips to
-   the back which lists the holder's disclosed claim values. The border
-   goes green (ok) or red (err) depending on overall validity so the card
-   communicates its state before the user even hovers. */
-.verify-flip {
-  margin-top: 1.5rem;
-  perspective: 1600px;
-}
-.verify-flip-inner {
-  position: relative;
-  transform-style: preserve-3d;
-  transition: transform 0.55s cubic-bezier(0.6, 0.1, 0.25, 1);
-  min-height: 260px;
-}
-.verify-flip:hover .verify-flip-inner,
-.verify-flip:focus-within .verify-flip-inner {
-  transform: rotateY(180deg);
-}
-.verify-flip-face {
-  background: var(--bg-elev);
-  border: 1px solid var(--line);
-  border-left-width: 3px;
-  border-radius: 2px;
-  padding: 2rem;
-  position: absolute;
-  inset: 0;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  overflow: auto;
-}
-.verify-flip.valid   .verify-flip-face { border-left-color: var(--ok); }
-.verify-flip.invalid .verify-flip-face { border-left-color: var(--err); }
-.verify-flip-back { transform: rotateY(180deg); }
-.verify-flip-hint {
-  margin-top: 1rem;
-  font-size: 0.75rem;
-  color: var(--ink-mute);
-  font-style: italic;
-  text-align: right;
-}
+/* Verification result card. The old hover-flip (.verify-flip*) was replaced by a
+   compact card + a native <details> "Verification details" expander (styles set
+   inline in fragment_verify_result), so no 3-D flip rules remain. The card's
+   left border goes green (ok) / red (err) with the verdict. */
+.verify-result summary { list-style: revert; }
+.verify-result summary:hover { color: var(--ink); }
 
 /* Holder-side consent interstitial shown before an OID4VP submit. Mirrors
    walt.id's web wallet Disclose/Decline card so the operator can review

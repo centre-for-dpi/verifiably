@@ -24,6 +24,9 @@
   <div class="nav-right">
     <a href="/docs" hx-boost="true" hx-target="#main" hx-swap="innerHTML show:window:top"
        class="mono" style="font-size:0.78rem;color:var(--ink-soft);text-decoration:none;padding:0.25rem 0.5rem;border:1px solid var(--line);border-radius:2px;margin-right:0.5rem">Docs</a>
+    <a href="/api/docs" target="_blank" rel="noopener"
+       class="mono" style="font-size:0.78rem;color:var(--ink-soft);text-decoration:none;padding:0.25rem 0.5rem;border:1px solid var(--line);border-radius:2px;margin-right:0.5rem"
+       title="REST API reference (OpenAPI / Swagger)">API</a>
     {{if .RegistryAdminURL}}
     <a href="{{.RegistryAdminURL}}" target="_blank" rel="noopener"
        class="mono" style="font-size:0.78rem;color:var(--ink-soft);text-decoration:none;padding:0.25rem 0.5rem;border:1px solid var(--line);border-radius:2px;margin-right:0.5rem"
@@ -51,8 +54,12 @@
       <a href="/admin" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Admin dashboard">Dashboard</a>
       <a href="/admin/federation/members" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Federation members">Federation</a>
       <a href="/admin/auth-providers" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="OIDC providers">Providers</a>
+      <a href="/registrar/identities" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Identity registry — enrol citizen identities holders activate against">Identities</a>
+      <a href="/admin/esignet" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="eSignet login methods (PIN/OTP/Wallet)">eSignet</a>
       {{else}}
       <a href="/admin/auth-providers" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="OIDC providers">Providers</a>
+      <a href="/registrar/identities" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Identity registry — enrol citizen identities holders activate against">Identities</a>
+      <a href="/admin/esignet" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="eSignet login methods (PIN/OTP/Wallet)">eSignet</a>
       <a href="/admin/trust" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Trust registry">Trust</a>
       <a href="/admin/metrics" class="nav-link-btn" style="font-size:0.72rem;padding:0.2rem 0.4rem" title="Metrics &amp; observability">Metrics</a>
       {{end}}

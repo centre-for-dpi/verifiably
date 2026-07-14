@@ -58,6 +58,21 @@ type Session struct {
 	Scale            string          // "single" | "bulk"
 	Dest             string          // "wallet" | "pdf"
 	BulkSource       string          // "csv" | "api" | "db" — active bulk source
+	// IdentityBulkSource is the active source chip on the registrar's identity-
+	// enrolment page (/registrar/identities). Kept separate from BulkSource so a
+	// registrar's source choice doesn't clobber an issuer's, and vice-versa. The
+	// row stash (BulkRows/BulkColumns/BulkLabel) is shared — the apply ENDPOINT
+	// (issuer vs registrar) determines the sink, and the two flows are sequential.
+	IdentityBulkSource string
+	// Bulk preview→map→apply stash. Rows fetched from the chosen data source at
+	// the Preview step are held here so the Apply step can remap columns→fields
+	// without re-fetching (notably so an uploaded CSV needn't be re-chosen).
+	// json:"-" keeps potentially-large row data OUT of the encrypted on-disk
+	// session flush (in-memory only; lost on restart → Apply shows "preview
+	// expired", which is graceful).
+	BulkRows         []map[string]string `json:"-"`
+	BulkColumns      []string            `json:"-"` // detected source columns, stable order
+	BulkLabel        string              `json:"-"` // e.g. "csv" | "api:host" | "registry:Entity"
 	ExpandedSchemaID string          // currently expanded card
 	SchemaFilter     string          // "all" or one of the stds
 	SchemaQuery      string          // current search text
@@ -94,6 +109,15 @@ type Session struct {
 	VerifierSchemaFilter string
 	VerifierSchemaQuery  string
 
+	// Delegated-access pair mode on the verifier's custom-request section. When
+	// VerifierDelegation is on, the card grid is a two-step picker: the operator
+	// first picks the delegation credential (filtered to cards with an onBehalfOf
+	// field), then the identity credential it's about (the rest). The two picks
+	// drive the OID4VP pair request — no dropdown.
+	VerifierDelegation      bool
+	VerifierDelegSchemaID   string // step 1 pick: the delegation credential
+	VerifierSubjectSchemaID string // step 2 pick: the identity it's about
+
 	// Public verify portal state (hub mode). Separate from the verifier
 	// fields so the two flows never interfere on a node that runs both roles.
 	PublicVerifyFilter   string
@@ -109,7 +133,17 @@ type Session struct {
 	// InjiClaimedVC / InjiClaimError hold the in-app Inji auth-code claim result
 	// (/holder/wallet/inji). InjiClaimedVC is the issued VC as JSON.
 	InjiClaimedVC  string
-	InjiClaimedVCs []string `json:"-"` // all VCs claimed this session; shown on the held page
+	// InjiClaimedVCs is the in-app Inji wallet's held credentials (newest-first).
+	// Deliberately NOT json:"-": it IS persisted via the session store so the
+	// wallet survives a restart (the store flushes every 5 s and reloads on boot).
+	// Deleting a credential removes it here and the next flush makes that durable.
+	InjiClaimedVCs []string
+	// InjiHolderKeys maps a held credential's stable id (vcID) to the PEM of the
+	// ES256 holder key its cnf was bound to at claim time. Retained so the
+	// holder can build a key-bound KB-JWT when presenting the SD-JWT over OID4VP
+	// to Inji Verify (F21). Persisted (like InjiClaimedVCs) so present survives
+	// a restart; the key is a per-claim demo binding key, not a login secret.
+	InjiHolderKeys map[string]string
 	InjiClaimError string   `json:"-"`
 	InjiClaimCred  string   `json:"-"` // credential_config key being claimed
 	SchemaError    string `json:"-"` // issuer schema-creation flash error
@@ -125,6 +159,10 @@ type Session struct {
 	PendingProvider string
 	PendingState    string `json:"-"`
 	PendingPKCE     string `json:"-"`
+	// ActivationToken keys the pending holder-activation OTP in the in-memory
+	// OTPStore (set at /holder/register step 1, consumed at step 2). json:"-" so
+	// it never hits disk; the OTP itself expires in minutes.
+	ActivationToken string `json:"-"`
 	AuthProvider    string // id of the provider that completed auth
 	AccessToken     string `json:"-"`
 	RefreshToken    string `json:"-"`

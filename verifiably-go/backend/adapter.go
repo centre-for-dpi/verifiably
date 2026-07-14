@@ -18,6 +18,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -192,6 +193,23 @@ type IssueRequest struct {
 	// is unrevocable end-to-end and the issuance log marks the entry without
 	// a StatusListEntry pointer.
 	StatusList *StatusListBinding
+
+	// CredentialData, when non-empty, is used VERBATIM as the JSON-LD credential
+	// body instead of being built from the flat SubjectData map. This lets
+	// callers issue credentials whose shape SubjectData cannot express — e.g. a
+	// delegation credential with a nested credentialSubject.onBehalfOf and a
+	// termsOfUse capability (ADR §6). Honored only on the JSON-LD (ldp_vc /
+	// jwt_vc_json) issuance path; ignored for SD-JWT and mdoc.
+	CredentialData json.RawMessage
+
+	// ValidFrom / ValidUntil, when set (RFC3339), pin the credential's validity
+	// window at issuance instead of the DPG default (walt.id defaults to ~2y
+	// from now). The adapter writes them into the credential body — W3C
+	// validFrom/validUntil, SD-JWT nbf/exp — so verifiers and the temporal gate
+	// enforce them. Empty means "use the backend default". Ignored when
+	// CredentialData is supplied verbatim (the caller owns the body then).
+	ValidFrom  string
+	ValidUntil string
 }
 
 // StatusListBinding is the (which list, which bit, where to fetch) pointer
@@ -236,6 +254,11 @@ type IssueBulkRequest struct {
 	// for backward compatibility with templates that just want a total.
 	Rows     []map[string]string
 	RowCount int
+	// StatusLists, when set, carries one revocation binding per Row (aligned by
+	// index): the adapter embeds StatusLists[i] into row i's credential so bulk
+	// SD-JWTs are revocable exactly like the single-issue path. A nil element
+	// (or a short slice) means no binding for that row.
+	StatusLists []*StatusListBinding
 }
 
 // IssueBulkResult summarizes a bulk-issue operation.
@@ -282,6 +305,12 @@ type PresentationRequest struct {
 	VerifierDpg string
 	TemplateKey string // adapter-defined; maps to the verifier's stored presentation templates
 	Template    *vctypes.OID4VPTemplate
+	// Templates, when non-empty, requests MULTIPLE credentials in one
+	// presentation (one input-descriptor per template) — e.g. a delegated-access
+	// pair (identity + delegation). Adapters that support it build N descriptors;
+	// when set it takes precedence over Template. Single-credential callers leave
+	// it nil and use Template.
+	Templates []vctypes.OID4VPTemplate
 	// Policies is the list of verification policies the operator selected
 	// (see walt.id's vc_policies / vp_policies). Recognized values:
 	// "signature" | "expired" | "not-before" | "webhook". Adapters that
@@ -348,6 +377,22 @@ type PresentationPreview struct {
 	// for (e.g. "vc+sd-jwt"). Surfaced so the incompatibility banner can
 	// point at the exact format the operator would need to re-issue in.
 	RequestedFormat string
+	// RequestedCredentials is one entry PER input-descriptor in the verifier's
+	// presentation definition — so the holder sees EVERY credential being asked
+	// for (e.g. a delegated-access pair = identity + delegation), each as a card,
+	// rather than one credential's title with another's claims.
+	RequestedCredentials []RequestedCredential
+}
+
+// RequestedCredential describes one credential the verifier is asking for (one
+// PD input-descriptor): its type, format, requested claims, and whether the
+// holder's wallet has a match.
+type RequestedCredential struct {
+	TypeName   string   // credential type the verifier filters on (e.g. TestaCardV1)
+	Format     string   // jwt_vc_json, vc+sd-jwt, …
+	Disclosure string   // limit_disclosure hint (required / preferred / none)
+	Claims     []string // claim names requested
+	Held       bool     // the holder's wallet has a credential of this type
 }
 
 // PresentationField is one claim row on the consent page.
@@ -460,4 +505,27 @@ type VerificationResult struct {
 	// "" = not checked (no status list cache wired, or no Hub role active).
 	StatusListSource   string
 	StatusListCachedAt *time.Time
+
+	// Credentials is a per-credential normalized view of the verified
+	// presentation, populated best-effort by the verifier adapters in addition
+	// to the flat single-valued fields above (which are kept for template
+	// back-compat). It carries every credential in the VP — not just the first —
+	// so cross-credential policies (e.g. delegated access) can attribute claims,
+	// issuers and status per credential. nil for single-credential/legacy paths.
+	Credentials []NormalizedCredential
+	// HolderBinding is the key the presenter proved control of, when the host
+	// surfaces it (VP holder DID, or the SD-JWT cnf thumbprint). nil when the
+	// host does not expose holder-binding detail.
+	HolderBinding *HolderBinding
+	// Delegation is the verdict of the delegated-access evaluator, set by the
+	// verifier handler after the host verdict. nil when delegation evaluation
+	// was not run; Evaluated=false when the presentation is not a delegation
+	// presentation. When Evaluated && !Authorized the handler downgrades Valid.
+	Delegation *DelegationResult
+	// CredentialViews is the per-credential card model for a COMBINED presentation
+	// (delegated pair or multi-credential VP): one entry per presented credential,
+	// each with its disclosed claims and the checks attributed to it. Built by the
+	// handler (buildDelegationCredentialViews) after the delegation verdict; empty
+	// for single-credential verifies, which keep the flat result card.
+	CredentialViews []CredentialView
 }

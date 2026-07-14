@@ -455,6 +455,7 @@ func (a *Adapter) PresentCredential(ctx context.Context, req backend.PresentCred
 	// hint about what to fix.
 	pd := a.fetchPresentationDefinition(authCtx, req.RequestURI)
 	credID := req.CredentialID
+	var selected []string
 	if pd != nil {
 		matched, ok := a.matchPD(authCtx, sess.WalletID, pd)
 		if ok && len(matched) == 0 {
@@ -473,22 +474,39 @@ func (a *Adapter) PresentCredential(ctx context.Context, req backend.PresentCred
 				wantType, wantFormat, diag)
 		}
 		if ok {
-			credID = pickBestMatch(matched, req.CredentialID)
+			if pdDescriptorCount(pd) > 1 {
+				// Multi-credential request (e.g. a delegated-access pair):
+				// select ONE credential per input-descriptor, in descriptor
+				// order, so walt.id maps selectedCredentials[i]→descriptor[i].
+				// (Presenting every match over-selects when the wallet holds
+				// duplicates and trips walt.id's IndexOutOfBounds.)
+				selected = a.selectPerDescriptor(authCtx, sess.WalletID, pd)
+			} else {
+				credID = pickBestMatch(matched, req.CredentialID)
+			}
 		}
+	}
+	if len(selected) == 0 {
+		selected = []string{credID}
 	}
 
 	body := map[string]any{
 		"presentationRequest": req.RequestURI,
-		"selectedCredentials": []string{credID},
+		"selectedCredentials": selected,
 	}
-	// Selective-disclosure filtering: walt.id's VP builder otherwise
-	// returns ALL disclosures in the SD-JWT, which fails the verifier's
-	// limit_disclosure=required constraint. Read the held credential's
-	// raw disclosures + the PD's requested field paths and only pass
-	// through the ones that match.
+	// Selective-disclosure filtering per selected credential: walt.id's VP
+	// builder otherwise returns ALL disclosures in the SD-JWT, which fails the
+	// verifier's limit_disclosure=required constraint. No-op for jwt_vc_json /
+	// ldp_vc (no disclosures).
 	if pd != nil {
-		if disc := a.selectRequestedDisclosures(authCtx, sess.WalletID, credID, pd); len(disc) > 0 {
-			body["disclosures"] = map[string][]string{credID: disc}
+		disc := map[string][]string{}
+		for _, id := range selected {
+			if d := a.selectRequestedDisclosures(authCtx, sess.WalletID, id, pd); len(d) > 0 {
+				disc[id] = d
+			}
+		}
+		if len(disc) > 0 {
+			body["disclosures"] = disc
 		}
 	} else if len(req.DisclosedClaim) > 0 {
 		body["disclosures"] = map[string][]string{credID: req.DisclosedClaim}
@@ -626,6 +644,7 @@ func (a *Adapter) PreviewPresentation(ctx context.Context, req backend.PresentCr
 	}
 	preview.Disclosure, preview.Fields = describePDFields(pd, held)
 	preview.RequestedFormat = extractPDFormat(pd)
+	preview.RequestedCredentials = describePDCredentials(pd, creds)
 
 	// Diagnostic: dump the raw stored document JWT payload so we can confirm
 	// exactly where walt.id's matcher would resolve the PD's JSONPaths.
@@ -826,6 +845,16 @@ func incompatibilityMessage(pd map[string]any, held []vctypes.Credential, wantFo
 		}
 	}
 	if sameTitle != "" {
+		if haveFormats[wantFormat] {
+			// The wallet DOES hold this credential in the requested format, yet
+			// walt.id's wallet-api matcher returned no match — the known walt.id
+			// v0.18.2 limitation where its OID4VP matcher can't present an SD-JWT
+			// (vc+sd-jwt) credential. Tell the operator the honest cause instead of
+			// the misleading "not in <fmt> format" (the credential IS that format).
+			return fmt.Sprintf(
+				"your wallet holds %q in %s — the requested format — but walt.id v0.18.2's OID4VP matcher can't present it, a known SD-JWT limitation. Present it from an external/mobile OID4VCI wallet (e.g. Inji) instead.",
+				sameTitle, wantFormat)
+		}
 		fmts := make([]string, 0, len(haveFormats))
 		for f := range haveFormats {
 			if f != wantFormat {
@@ -962,6 +991,74 @@ func describePDFields(pd map[string]any, held *vctypes.Credential) (string, []ba
 	return disclosure, out
 }
 
+// describePDCredentials returns one entry per PD input-descriptor — the full set
+// of credentials the verifier is asking for (e.g. a delegated-access pair), so the
+// holder reviews each as its own card instead of one title with another's claims.
+func describePDCredentials(pd map[string]any, creds []vctypes.Credential) []backend.RequestedCredential {
+	descriptors, _ := pd["input_descriptors"].([]any)
+	out := make([]backend.RequestedCredential, 0, len(descriptors))
+	for _, dRaw := range descriptors {
+		d, _ := dRaw.(map[string]any)
+		if d == nil {
+			continue
+		}
+		rc := backend.RequestedCredential{}
+		rc.TypeName, _ = d["id"].(string)
+		if m, ok := d["format"].(map[string]any); ok {
+			for k := range m {
+				rc.Format = k
+				break
+			}
+		}
+		if c, ok := d["constraints"].(map[string]any); ok {
+			rc.Disclosure, _ = c["limit_disclosure"].(string)
+			fields, _ := c["fields"].([]any)
+			for _, f := range fields {
+				fm, _ := f.(map[string]any)
+				if fm == nil {
+					continue
+				}
+				paths, _ := fm["path"].([]any)
+				if len(paths) == 0 {
+					continue
+				}
+				p, _ := paths[0].(string)
+				if name := claimNameFromPath(p); name != "" {
+					rc.Claims = append(rc.Claims, name)
+					continue
+				}
+				// a type-filter path ($.vc.type) — recover the type if id was blank
+				if rc.TypeName == "" {
+					if filt, ok := fm["filter"].(map[string]any); ok {
+						rc.TypeName, _ = filt["pattern"].(string)
+					}
+				}
+			}
+		}
+		for i := range creds {
+			if credentialIsType(creds[i], rc.TypeName) {
+				rc.Held = true
+				break
+			}
+		}
+		out = append(out, rc)
+	}
+	return out
+}
+
+// credentialIsType reports whether a held credential is of the given PD type,
+// matching on the de-spaced title (walt.id titles "Testa Card V1" vs PD type
+// "TestaCardV1").
+func credentialIsType(c vctypes.Credential, typeName string) bool {
+	if typeName == "" {
+		return false
+	}
+	norm := func(s string) string {
+		return strings.ToLower(strings.NewReplacer(" ", "", "_", "", "-", "").Replace(s))
+	}
+	return norm(c.Title) == norm(typeName)
+}
+
 // claimNameFromPath strips JSONPath prefixes to yield the plain claim name
 // the UI should render. Drops the vct/type filter paths (those describe
 // credential identity, not claims to share).
@@ -1079,6 +1176,53 @@ func pickBestMatch(matched []map[string]json.RawMessage, fallback string) string
 	}
 	log.Printf("waltid: picked id=%s rank=%d from %d matches", bestID, best, len(matched))
 	return bestID
+}
+
+// pdDescriptorCount reports how many input-descriptors a presentation
+// definition has (i.e. how many credentials the verifier is asking for).
+func pdDescriptorCount(pd map[string]any) int {
+	ds, _ := pd["input_descriptors"].([]any)
+	return len(ds)
+}
+
+// selectPerDescriptor picks exactly one credential per input-descriptor, in
+// descriptor order, by matching each descriptor individually. This satisfies a
+// multi-credential PD (e.g. a delegated-access pair) without over-selecting when
+// the wallet holds duplicate credentials of the same type — walt.id maps
+// selectedCredentials[i] to input_descriptors[i] by position, so the count must
+// equal the descriptor count.
+func (a *Adapter) selectPerDescriptor(ctx context.Context, walletID string, pd map[string]any) []string {
+	descs, _ := pd["input_descriptors"].([]any)
+	var ids []string
+	seen := map[string]bool{}
+	for _, d := range descs {
+		sub := map[string]any{"id": pd["id"], "input_descriptors": []any{d}}
+		if f, ok := pd["format"]; ok {
+			sub["format"] = f
+		}
+		matched, ok := a.matchPD(ctx, walletID, sub)
+		if !ok || len(matched) == 0 {
+			continue
+		}
+		// prefer a credential not already picked for an earlier descriptor
+		id := ""
+		for _, row := range matched {
+			var cand string
+			_ = json.Unmarshal(row["id"], &cand)
+			if cand != "" && !seen[cand] {
+				id = cand
+				break
+			}
+		}
+		if id == "" {
+			id = pickBestMatch(matched, "")
+		}
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // describePD extracts a human-readable (type, format) pair from a PD's
@@ -1206,8 +1350,17 @@ func friendlyPresentError(err error) error {
 	case strings.Contains(msg, "credential-status") && strings.Contains(msg, "Status validation failed"):
 		return &RevocationError{Detail: msg}
 	case strings.Contains(msg, "JsonArray") && strings.Contains(msg, "JsonPrimitive"):
+		// The vpToken is a JSON ARRAY — walt.id v0.18.2's wallet-api submit
+		// path expects a single compact token (JsonPrimitive). This is the
+		// MULTI-credential SD-JWT case (a delegated-access PAIR): combining
+		// two SD-JWT credentials into one VP makes the vpToken an array it
+		// can't handle. (Single ldp_vc / jwt_vc_json-ld make it a JsonObject —
+		// the case below.) Either way the fix is jwt_vc_json.
 		return fmt.Errorf(
-			"walt.id's wallet-api v0.18.2 can't build a verifiable presentation for this credential format — its VP submit path only handles compact-JWT formats (jwt_vc_json, vc+sd-jwt). For jwt_vc_json-ld and ldp_vc the vpToken is a JSON object and the wallet throws internally. Re-issue the credential in JWT · W3C (jwt_vc_json) or SD-JWT · VC (vc+sd-jwt) and retry")
+			"walt.id's wallet-api v0.18.2 can't present this as one verifiable presentation: combining MULTIPLE SD-JWT credentials (a delegated-access pair) makes the vpToken a JSON array it can't serialize. Issue BOTH credentials of the pair as JWT · W3C (jwt_vc_json) — a w3c pair presents end-to-end via the walt.id holder wallet. SD-JWT pairs are blocked by this upstream limit")
+	case strings.Contains(msg, "JsonObject") && strings.Contains(msg, "JsonPrimitive"):
+		return fmt.Errorf(
+			"walt.id's wallet-api v0.18.2 can't build a verifiable presentation for jwt_vc_json-ld / ldp_vc — the vpToken is a JSON object its submit path throws on. Re-issue the credential in JWT · W3C (jwt_vc_json) or SD-JWT · VC (vc+sd-jwt) and retry")
 	case strings.Contains(msg, "VCFormat does not contain"):
 		return fmt.Errorf(
 			"walt.id's verifier doesn't recognise this format (e.g. jwt_vc_json-ld is not in its Kotlin format enum). Re-issue the credential in a format the verifier supports — jwt_vc_json, ldp_vc, jwt_vc, or vc+sd-jwt all round-trip end-to-end")

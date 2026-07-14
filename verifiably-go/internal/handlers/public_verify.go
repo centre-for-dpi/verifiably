@@ -84,7 +84,10 @@ func (h *H) publicSchemas(ctx context.Context) []vctypes.Schema {
 // Mirrors verifierCustomData but uses the session's PublicVerify* fields
 // so the two flows never clobber each other's filter state.
 func publicVerifyData(sess *Session, allSchemas []vctypes.Schema) map[string]any {
-	schemas := verifierPresentableSchemas(allSchemas)
+	// The public verify landing is intentionally NOT scoped to a DPG — anyone can
+	// verify any credential handed to them — so pass "" for no DPG filter. Only
+	// the admin verifier flow (verifierCustomData) scopes to its ecosystem.
+	schemas := verifierPresentableSchemas(allSchemas, "")
 
 	filtered := make([]vctypes.Schema, 0, len(schemas))
 	for _, s := range schemas {
@@ -359,6 +362,7 @@ func (h *H) PublicVerifyResult(w http.ResponseWriter, r *http.Request) {
 
 	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
+	h.attachDelegationVerdict(r, &res) // evaluate delegated-access when a delegation pair was presented
 
 	statusListSource := h.checkStatusListAvailability(r, res.Issuer)
 	if statusListSource == "" && res.CheckedRevocation {
@@ -397,8 +401,20 @@ func (h *H) PublicVerifyResult(w http.ResponseWriter, r *http.Request) {
 		}(evt)
 	}
 
+	// Surface the specific denial cause on the public page. The handler gates
+	// (temporal / revocation / delegation) append " · <reason>" to res.Method
+	// on failure (e.g. "OID4VP ·  · a presented credential has been revoked");
+	// extract that trailing segment so a public verifier sees WHY, not just a
+	// generic "could not be verified".
+	denialReason := ""
+	if !res.Valid {
+		if parts := strings.Split(res.Method, " · "); len(parts) >= 3 {
+			denialReason = strings.TrimSpace(parts[len(parts)-1])
+		}
+	}
 	h.renderFragment(w, r, "fragment_public_result", map[string]any{
 		"State":             state,
+		"Reason":            denialReason,
 		"Pending":           false,
 		"Error":             "",
 		"Valid":             res.Valid,
@@ -412,6 +428,7 @@ func (h *H) PublicVerifyResult(w http.ResponseWriter, r *http.Request) {
 		"DisclosedFields":   res.DisclosedFields,
 		"StatusListSource":  statusListSource,
 		"VerifiedAt":        time.Now().UTC().Format("02/01/2006 15:04 UTC"),
+		"Delegation":        res.Delegation,
 	})
 }
 
