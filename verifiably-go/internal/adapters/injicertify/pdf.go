@@ -89,16 +89,22 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	if err != nil {
 		return backend.IssueAsPDFResult{}, err
 	}
-	_ = issuerURL // reserved for aud-claim bookkeeping if we tighten later
-
 	// 3. Redeem the pre-auth code for an access token.
 	tok, err := a.redeemPreAuthCode(ctx, code)
 	if err != nil {
 		return backend.IssueAsPDFResult{}, err
 	}
 
-	// 4. Build a proof JWT and POST the credential request.
-	issuerIdentifier := strings.TrimRight(a.cfg.InternalBaseURL, "/")
+	// 4. Build a proof JWT and POST the credential request. The proof `aud` MUST
+	// equal Certify's credential_issuer (mosip_certify_domain_url). issuerURL is
+	// exactly that — the credential_issuer the offer advertised — so it's correct
+	// in BOTH modes: the docker-internal host in legacy host:port mode, and the
+	// public subdomain once PREAUTH_PUBLIC_URL is set. Previously hardcoded to
+	// InternalBaseURL, which broke the PDF path the moment the domain went public.
+	issuerIdentifier := strings.TrimRight(issuerURL, "/")
+	if issuerIdentifier == "" {
+		issuerIdentifier = strings.TrimRight(a.cfg.InternalBaseURL, "/")
+	}
 	if issuerIdentifier == "" {
 		issuerIdentifier = strings.TrimRight(a.cfg.BaseURL, "/")
 	}
@@ -142,11 +148,39 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	_ = format // reserved for future per-format rendering branches
 	return backend.IssueAsPDFResult{
 		IssuerName:    a.Vendor,
-		IssuerDID:     "did:web:certify-nginx", // Inji Certify's configured DID; informational only
+		IssuerDID:     issuerDIDFromVC(vc, a.cfg.DB.DIDUrl), // the credential's ACTUAL signing DID
 		PayloadSizeKB: (len(vc) + 512) / 1024,
 		Fields:        req.SubjectData,
 		DownloadID:    id,
 	}, nil
+}
+
+// issuerDIDFromVC reads the issuer DID from the freshly-signed VC for the PDF's
+// (informational) issuer line, so it reflects the credential's REAL issuer
+// instead of a hardcoded guess. The pre-auth instance now signs under its own
+// public did:web (did:web:inji-certify-preauth.<domain>), not the primary
+// instance's did:web:certify-nginx. `issuer` may be a bare DID string or an
+// {id,...} object; fall back to the configured DB.DIDUrl, then a generic label.
+func issuerDIDFromVC(vc, fallback string) string {
+	var doc struct {
+		Issuer json.RawMessage `json:"issuer"`
+	}
+	if json.Unmarshal([]byte(vc), &doc) == nil && len(doc.Issuer) > 0 {
+		var s string
+		if json.Unmarshal(doc.Issuer, &s) == nil && s != "" {
+			return s
+		}
+		var obj struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(doc.Issuer, &obj) == nil && obj.ID != "" {
+			return obj.ID
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "Inji Certify (Pre-Auth)"
 }
 
 // extractOfferDataURL unwraps the openid-credential-offer:// envelope Inji
@@ -476,7 +510,7 @@ func renderCredentialPDF(title, issuer, qrPayload string, fields map[string]stri
 	pdf.SetY(y + qrSize + 4)
 	pdf.SetFont("Helvetica", "I", 8)
 	pdf.SetTextColor(140, 140, 140)
-	pdf.CellFormat(0, 5, "Scan with Inji Verify (or any OID4VCI-compatible tool) to import this credential.", "", 1, "C", false, 0, "")
+	pdf.CellFormat(0, 5, "Scan the QR with Inji Verify to verify this credential.", "", 1, "C", false, 0, "")
 	pdf.Ln(4)
 
 	// Footer.
