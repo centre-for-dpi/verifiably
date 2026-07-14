@@ -116,6 +116,31 @@ url_for() {
   fi
   printf "http://%s:%s%s" "$host" "$port" "$suffix"
 }
+
+# VERIFIABLY_PUBLIC_SLUGS — the service subdomains verifiably-go talks to
+# server-side. Kept as an overridable space-separated list so compute_host_aliases
+# (and its unit test) stay in sync with the slugs gen-caddy.sh routes.
+: "${VERIFIABLY_PUBLIC_SLUGS:=verifiably keycloak wso2 credebl walt-issuer walt-wallet walt-verifier inji-certify inji-certify-preauth inji-verify inji-verify-ui inji-web mimoto esignet}"
+
+# compute_host_aliases <domain> <caddy_ip>
+# Prints `docker run --add-host` arguments — one token per line, so a caller can
+# read them straight into an array — pinning every public service subdomain to
+# the caddy-public container IP. This is the subdomain hairpin-NAT fix: it lets
+# verifiably-go reach the public https://<slug>.<domain> URLs from inside the
+# container, where they otherwise resolve to the host's own public IP and fail
+# to hairpin back to the published :443 (see scripts/start-container.sh).
+#
+# Prints NOTHING in legacy host:port mode (empty domain or empty ip). Pure — no
+# Docker, no network, no globals mutated — so it is unit-testable on its own
+# (scripts/ci/test-host-aliases.sh).
+compute_host_aliases() {
+  local domain="$1" ip="$2" slug
+  [[ -n "$domain" && -n "$ip" ]] || return 0
+  for slug in $VERIFIABLY_PUBLIC_SLUGS; do
+    printf -- '--add-host\n%s.%s:%s\n' "$slug" "$domain" "$ip"
+  done
+}
+
 : "${VERIFIABLY_PUBLIC_URL:=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")}"
 
 : "${LIBRETRANSLATE_PORT:=5000}"
