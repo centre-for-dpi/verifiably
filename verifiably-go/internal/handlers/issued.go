@@ -34,21 +34,23 @@ func statusListKindFor(std string) string {
 // immediately, and we don't want the index to drift past the last
 // successful issuance just because walt.id 5xx'd.
 //
+// issuerDpg selects that DPG's own list, so revoking a credential from one
+// issuer can't flip a bit in another's list. An unknown or empty DPG falls
+// back to the default list rather than dropping revocability.
+//
 // Returns (nil, nil, nil) when the schema's Std doesn't support a status
 // list OR when the corresponding Store isn't configured. Issuance proceeds
 // without a binding in that case.
-func (h *H) allocateStatusListBinding(schema vctypes.Schema) (*backend.StatusListBinding, error) {
+func (h *H) allocateStatusListBinding(issuerDpg string, schema vctypes.Schema) (*backend.StatusListBinding, error) {
 	kind := statusListKindFor(schema.Std)
 	if kind == "" {
 		return nil, nil
 	}
-	var store = h.BitstringStore
-	if kind == "token" {
-		store = h.TokenStore
-	}
-	if store == nil {
+	entry := h.statusListFor(issuerDpg, kind)
+	if entry == nil || entry.Store == nil {
 		return nil, nil
 	}
+	store := entry.Store
 	idx, err := store.Allocate()
 	if err != nil {
 		return nil, fmt.Errorf("status list allocate: %w", err)
@@ -251,7 +253,7 @@ func (h *H) RevokeIssuedCredential(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "This credential has no status list binding (e.g. mdoc) and cannot be revoked through verifiably-go.")
 		return
 	}
-	store := h.storeForKind(rec.StatusList.Type)
+	store := h.storeForBinding(rec.StatusList.Type, rec.StatusList.ListID)
 	if store == nil {
 		h.errorToast(w, r, "Status list "+rec.StatusList.Type+" not configured.")
 		return
@@ -270,12 +272,32 @@ func (h *H) RevokeIssuedCredential(w http.ResponseWriter, r *http.Request) {
 	h.renderFragment(w, r, "fragment_issued_credentials_row", rec)
 }
 
+// storeForBinding resolves the exact list a credential was issued against.
+//
+// Resolve by list id, NOT by kind: with per-DPG lists, kind alone is
+// ambiguous, and revoking would flip a bit in whichever list happened to
+// be the default — marking an unrelated credential revoked while leaving
+// the real one valid. The id is recorded in the binding at issuance, so
+// it always names the right list.
+func (h *H) storeForBinding(kind, listID string) statuslist.Backend {
+	if kind == "" {
+		return nil
+	}
+	if listID != "" {
+		if e := h.StatusLists.ByID(kind, listID); e != nil {
+			return e.Store
+		}
+	}
+	// Records written before per-DPG lists carry no usable id — fall back to
+	// the default list for the kind, which is where they were allocated.
+	return h.storeForKind(kind)
+}
+
+// storeForKind returns the default list for a kind. Prefer storeForBinding
+// wherever a binding is available.
 func (h *H) storeForKind(kind string) statuslist.Backend {
-	switch kind {
-	case "bitstring":
-		return h.BitstringStore
-	case "token":
-		return h.TokenStore
+	if e := h.statusListFor("", kind); e != nil {
+		return e.Store
 	}
 	return nil
 }

@@ -1,72 +1,59 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
-
-	"github.com/verifiably/verifiably-go/internal/statuslist"
 )
 
-// signingKeyAdapter is the optional capability the walt.id adapter exposes
-// for status-list signing. Other adapters (mock, inji-certify, inji-web)
-// don't implement it; the handler falls back to a clear error in that case
-// rather than panicking.
-type signingKeyAdapter interface {
-	IssuerSigningKey(ctx context.Context) (raw []byte, did string, err error)
+// statusListByID resolves the list a publish request names, together with
+// the key that signs it.
+//
+// Signing used to reach into the adapter for walt.id's onboarded issuer
+// key, which meant any deployment without a walt.id issuer registered —
+// an Inji-only stack, say — 503'd every status-list fetch, and with it
+// every revocation check. Each list now carries its own self-managed
+// signer, so hosting a list and being able to sign it are the same fact.
+func (h *H) statusListByID(kind, id string) *StatusListEntry {
+	if id == "" {
+		return nil
+	}
+	if e := h.StatusLists.ByID(kind, id); e != nil {
+		return e
+	}
+	return nil
 }
 
-// resolveSigningKey lazily fetches and parses the walt.id issuer JWK.
-// The key is cached after a successful fetch (it doesn't rotate in normal
-// operation). If the fetch fails (walt.id unreachable at boot), the error
-// is NOT cached — the next request retries so the feature recovers once
-// walt.id comes up, without needing a container restart.
-func (h *H) resolveSigningKey(ctx context.Context) (*statuslist.SigningKey, error) {
-	h.signingKeyMu.RLock()
-	key := h.signingKey
-	h.signingKeyMu.RUnlock()
-	if key != nil {
-		return key, nil
+// statusListFor resolves the list an issuer DPG allocates from, falling
+// back to the default list when that DPG has none of its own.
+func (h *H) statusListFor(dpg, kind string) *StatusListEntry {
+	if e := h.StatusLists.For(dpg, kind); e != nil {
+		return e
 	}
-
-	// Key not yet cached — try to fetch it. Only one goroutine at a time
-	// to avoid hammering walt.id with concurrent onboard calls.
-	h.signingKeyMu.Lock()
-	defer h.signingKeyMu.Unlock()
-	if h.signingKey != nil {
-		return h.signingKey, nil // another goroutine beat us
+	// Last resort for callers that set BitstringStore/TokenStore directly
+	// without building a StatusListSet. Allocation doesn't need a signer,
+	// so a store-only entry is enough here; publishing resolves through
+	// StatusLists and would still 404.
+	switch kind {
+	case "bitstring":
+		if h.BitstringStore != nil {
+			return &StatusListEntry{Store: h.BitstringStore, Kind: kind}
+		}
+	case "token":
+		if h.TokenStore != nil {
+			return &StatusListEntry{Store: h.TokenStore, Kind: kind}
+		}
 	}
-
-	sa, ok := h.Adapter.(signingKeyAdapter)
-	if !ok {
-		return nil, fmt.Errorf("status-list: adapter %T doesn't expose IssuerSigningKey", h.Adapter)
-	}
-	raw, did, err := sa.IssuerSigningKey(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("status-list: fetch issuer key: %w", err)
-	}
-	parsed, err := statuslist.ParseWaltidIssuerKey(raw, did)
-	if err != nil {
-		return nil, fmt.Errorf("status-list: parse issuer key: %w", err)
-	}
-	h.signingKey = parsed
-	return h.signingKey, nil
+	return nil
 }
 
 // PublishBitstringStatusList serves GET /status-list/bitstring/{id}. The
-// id segment must match the configured BitstringStore.ListID — we only
-// host one list at a time today, but pinning the ID in the URL lets us
-// add second-list support later without changing the route shape.
+// id segment selects one of the per-DPG lists (or the legacy "v1" list);
+// each is signed by its own DPG's key.
 func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
-	if h.BitstringStore == nil {
-		http.Error(w, "bitstring status list not configured", http.StatusNotFound)
-		return
-	}
-	id := r.PathValue("id")
-	if id == "" || id != h.BitstringStore.GetListID() {
+	entry := h.statusListByID("bitstring", r.PathValue("id"))
+	if entry == nil {
 		http.Error(w, "unknown status list id", http.StatusNotFound)
 		return
 	}
@@ -77,13 +64,13 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 	// Accept containing `jwt` (application/vc+jwt) — verifiably's own
 	// StatusListCache asks for that so it keeps verifying the list's signature.
 	if wantsJWSStatusList(r.Header.Get("Accept")) {
-		key, err := h.resolveSigningKey(r.Context())
-		if err != nil {
-			log.Printf("status-list/bitstring: signing key unavailable: %v", err)
+		key := entry.Signer
+		if key == nil {
+			log.Printf("status-list/bitstring: no signer for list %q", entry.Store.GetListID())
 			http.Error(w, "status list signing key unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		jwt, err := h.BitstringStore.PublishBitstringJWT(key)
+		jwt, err := entry.Store.PublishBitstringJWT(key)
 		if err != nil {
 			log.Printf("status-list/bitstring: publish failed: %v", err)
 			http.Error(w, "status list unavailable", http.StatusInternalServerError)
@@ -101,7 +88,7 @@ func (h *H) PublishBitstringStatusList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "status list ld signer unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	vc, err := h.BitstringStore.BitstringStatusListVC(h.StatusLDSigner.DID())
+	vc, err := entry.Store.BitstringStatusListVC(h.StatusLDSigner.DID())
 	if err != nil {
 		log.Printf("status-list/bitstring: build VC failed: %v", err)
 		http.Error(w, "status list unavailable", http.StatusInternalServerError)
@@ -136,22 +123,18 @@ func wantsJWSStatusList(accept string) bool {
 // Status List JWT (status_list claim) with media type
 // application/statuslist+jwt (draft-ietf-oauth-status-list §6).
 func (h *H) PublishTokenStatusList(w http.ResponseWriter, r *http.Request) {
-	if h.TokenStore == nil {
-		http.Error(w, "token status list not configured", http.StatusNotFound)
-		return
-	}
-	id := r.PathValue("id")
-	if id == "" || id != h.TokenStore.GetListID() {
+	entry := h.statusListByID("token", r.PathValue("id"))
+	if entry == nil {
 		http.Error(w, "unknown status list id", http.StatusNotFound)
 		return
 	}
-	key, err := h.resolveSigningKey(r.Context())
-	if err != nil {
-		log.Printf("status-list/token: signing key unavailable: %v", err)
+	key := entry.Signer
+	if key == nil {
+		log.Printf("status-list/token: no signer for list %q", entry.Store.GetListID())
 		http.Error(w, "status list signing key unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	jwt, err := h.TokenStore.PublishTokenStatusList(key)
+	jwt, err := entry.Store.PublishTokenStatusList(key)
 	if err != nil {
 		log.Printf("status-list/token: publish failed: %v", err)
 		http.Error(w, "status list unavailable", http.StatusInternalServerError)

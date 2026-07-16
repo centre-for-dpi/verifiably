@@ -1,11 +1,6 @@
 package handlers
 
 import (
-	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"html/template"
 	"io"
@@ -45,41 +40,14 @@ func loadTestTemplates(t *testing.T) *template.Template {
 	return tmpl
 }
 
-// fakeSigningAdapter is the minimum implementation of the
-// signingKeyAdapter interface used by the status-list HTTP path. The
-// other backend.Adapter methods aren't reached on this code path, so we
-// only need to satisfy IssuerSigningKey + provide a stable key for two
-// successive publish calls (so a verifier-style consumer can compare the
-// state of the bit before vs after a Revoke).
-type fakeSigningAdapter struct {
-	priv *ecdsa.PrivateKey
-}
-
-// IssuerSigningKey emits the JWK envelope walt.id would produce on
-// /onboard/issuer. The status-list code path goes through
-// statuslist.ParseWaltidIssuerKey, which accepts both the {"type":"jwk",
-// "jwk":{...}} envelope and a bare JWK; we use the envelope shape because
-// that's what production walt.id v0.18.2 returns.
-func (f fakeSigningAdapter) IssuerSigningKey(_ context.Context) ([]byte, string, error) {
-	jwk := map[string]string{
-		"kty": "EC",
-		"crv": "P-256",
-		"x":   base64.RawURLEncoding.EncodeToString(f.priv.X.Bytes()),
-		"y":   base64.RawURLEncoding.EncodeToString(f.priv.Y.Bytes()),
-		"d":   base64.RawURLEncoding.EncodeToString(f.priv.D.Bytes()),
-		"kid": "e2e-test-key",
-	}
-	jwkB, _ := json.Marshal(jwk)
-	env, _ := json.Marshal(map[string]any{"type": "jwk", "jwk": json.RawMessage(jwkB)})
-	return env, "did:test:e2e-issuer", nil
-}
-
 // To satisfy the embedded backend.Adapter interface for compile, but the
 // HTTP routes we exercise here never reach these methods. The struct
 // embeds a nil interface; any unintended method call would panic with a
 // clear nil-pointer trace.
+//
+// Note there is no signing-key method here: status lists sign with their
+// own self-managed key, never with one fetched from the adapter.
 type fakeAdapter struct {
-	fakeSigningAdapter
 	backend.Adapter
 }
 
@@ -154,10 +122,6 @@ func decodeTokenJWT(t *testing.T, key *statuslist.SigningKey, jwt string, size i
 // signing key resolution, public HTTP routes, revocation HTTP route).
 func TestStatusListE2E(t *testing.T) {
 	dir := t.TempDir()
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("genkey: %v", err)
-	}
 	logger, err := issuance.NewLog(filepath.Join(dir, "issued.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -175,13 +139,25 @@ func TestStatusListE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Each hosted list carries its own self-managed signer; nothing is
+	// fetched from the adapter. Both legacy lists share id "v1" and so
+	// share one key, which is what the production wiring does too.
+	signer, err := statuslist.NewSelfSignedKey(dir, "v1")
+	if err != nil {
+		t.Fatalf("NewSelfSignedKey: %v", err)
+	}
+	set := NewStatusListSet()
+	set.Register(&StatusListEntry{Store: bs, Signer: signer, Kind: "bitstring"})
+	set.Register(&StatusListEntry{Store: tk, Signer: signer, Kind: "token"})
+
 	h := &H{
-		Adapter:        fakeAdapter{fakeSigningAdapter: fakeSigningAdapter{priv: priv}},
+		Adapter:        fakeAdapter{},
 		Sessions:       NewStore(),
 		Templates:      loadTestTemplates(t),
 		IssuanceLog:    logger,
 		BitstringStore: bs,
 		TokenStore:     tk,
+		StatusLists:    set,
 	}
 
 	// Mount the routes the test exercises. We only need a subset here —
@@ -210,12 +186,9 @@ func TestStatusListE2E(t *testing.T) {
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
 
-	// Pre-resolve the parsed signing key once so the assertions below can
-	// verify the JWT signatures.
-	key, err := statuslist.ParseWaltidIssuerKey(envelope(t, priv), "did:test:e2e-issuer")
-	if err != nil {
-		t.Fatalf("ParseWaltidIssuerKey: %v", err)
-	}
+	// The assertions below verify each published JWT against the same key
+	// that signed it — the list's own self-managed signer.
+	key := signer
 
 	cases := []struct {
 		name     string
@@ -341,23 +314,6 @@ func TestStatusListE2E(t *testing.T) {
 			}
 		})
 	}
-}
-
-// envelope serializes priv as a walt.id-style JWK envelope, mirroring
-// what fakeSigningAdapter.IssuerSigningKey returns. We need a separate
-// helper because the test's verification path also has to parse the
-// envelope, and copying the bytes between two functions would risk drift.
-func envelope(t *testing.T, priv *ecdsa.PrivateKey) []byte {
-	t.Helper()
-	jwk := map[string]string{
-		"kty": "EC", "crv": "P-256", "kid": "e2e-test-key",
-		"x": base64.RawURLEncoding.EncodeToString(priv.X.Bytes()),
-		"y": base64.RawURLEncoding.EncodeToString(priv.Y.Bytes()),
-		"d": base64.RawURLEncoding.EncodeToString(priv.D.Bytes()),
-	}
-	jwkB, _ := json.Marshal(jwk)
-	env, _ := json.Marshal(map[string]any{"type": "jwk", "jwk": json.RawMessage(jwkB)})
-	return env
 }
 
 // httpGet does a 200-or-fail GET. Status-list endpoints return 200 with

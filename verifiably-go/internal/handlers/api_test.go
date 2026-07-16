@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -301,10 +302,12 @@ func TestAPIVerifyRequest_AdapterError(t *testing.T) {
 
 // ─── PublishBitstringStatusList ───────────────────────────────────────────────
 
-// TestPublishBitstringStatusList_NoSigningKey verifies that when the adapter
-// does not implement signingKeyAdapter the endpoint returns 503 rather than
-// panicking or emitting an empty body.
-func TestPublishBitstringStatusList_NoSigningKey(t *testing.T) {
+// A hosted list signs with its own self-managed key, so an adapter that
+// exposes no issuer key is no longer a reason to fail. This used to 503:
+// signing reached into the adapter for walt.id's onboarded key, so every
+// deployment without a walt.id issuer (an Inji-only stack) lost revocation
+// entirely. Publishing must now succeed and be verifiable.
+func TestPublishBitstringStatusList_SelfSignedWithoutAdapterKey(t *testing.T) {
 	dir := t.TempDir()
 	store, err := statuslist.NewStore("bitstring", "v1",
 		filepath.Join(dir, "bs.json"),
@@ -312,18 +315,56 @@ func TestPublishBitstringStatusList_NoSigningKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// testAdapter does NOT implement IssuerSigningKey — resolveSigningKey must
-	// return an error, not panic.
-	h := &H{
-		Adapter:        &testAdapter{},
-		BitstringStore: store,
+	signer, err := statuslist.NewSelfSignedKey(dir, "v1")
+	if err != nil {
+		t.Fatal(err)
 	}
+	set := NewStatusListSet()
+	set.Register(&StatusListEntry{Store: store, Signer: signer, Kind: "bitstring"})
+	// testAdapter deliberately exposes no IssuerSigningKey.
+	h := &H{Adapter: &testAdapter{}, BitstringStore: store, StatusLists: set}
+
 	req := httptest.NewRequest(http.MethodGet, "/status-list/bitstring/v1", nil)
 	req.SetPathValue("id", "v1")
+	req.Header.Set("Accept", "application/vc+jwt")
 	rr := httptest.NewRecorder()
 	h.PublishBitstringStatusList(rr, req)
 
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status: got %d, want 503 (body=%s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body=%s)", rr.Code, rr.Body.String())
+	}
+	if ct := rr.Header().Get("Content-Type"); ct != "application/vc+jwt" {
+		t.Fatalf("content-type: got %q, want application/vc+jwt", ct)
+	}
+	if parts := strings.Split(rr.Body.String(), "."); len(parts) != 3 {
+		t.Fatalf("body must be a compact JWS, got %d parts", len(parts))
+	}
+}
+
+// An id that names no hosted list must 404 rather than fall through to some
+// other DPG's list.
+func TestPublishBitstringStatusList_UnknownID(t *testing.T) {
+	dir := t.TempDir()
+	store, err := statuslist.NewStore("bitstring", "v1",
+		filepath.Join(dir, "bs.json"),
+		"https://issuer.test/status-list/bitstring/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := statuslist.NewSelfSignedKey(dir, "v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := NewStatusListSet()
+	set.Register(&StatusListEntry{Store: store, Signer: signer, Kind: "bitstring"})
+	h := &H{Adapter: &testAdapter{}, BitstringStore: store, StatusLists: set}
+
+	req := httptest.NewRequest(http.MethodGet, "/status-list/bitstring/nope", nil)
+	req.SetPathValue("id", "nope")
+	rr := httptest.NewRecorder()
+	h.PublishBitstringStatusList(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404", rr.Code)
 	}
 }

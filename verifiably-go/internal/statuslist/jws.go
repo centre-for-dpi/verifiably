@@ -2,98 +2,35 @@ package statuslist
 
 import (
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/big"
-
-	"github.com/verifiably/verifiably-go/internal/jose"
 )
 
-// SigningKey is the parsed P-256 private key used to sign every status
-// list this package emits. We pull the raw JWK out of walt.id's issuer-key
-// envelope at adapter init time and convert it to a *ecdsa.PrivateKey
-// once, so the per-request sign path stays cheap (no JSON parse / no
-// big-int decode on every status list fetch).
+// SigningKey is the P-256 private key used to sign every status list this
+// package emits. Parsed to an *ecdsa.PrivateKey once at wiring time so the
+// per-request sign path stays cheap (no JSON parse / no big-int decode on
+// every status list fetch).
+//
+// Build one with NewSelfSignedKey: each issuer DPG signs its own lists with
+// its own key. There is deliberately no way to sign a list with a key
+// fetched from an issuer adapter — that coupling meant any deployment
+// without a walt.id issuer registered could not sign at all.
 type SigningKey struct {
 	priv *ecdsa.PrivateKey
-	// kid is what we put in the JWS header. Walt.id's onboarded JWKs don't
-	// always carry one; if the inner JWK has no `kid`, we leave it empty
-	// (verifiers fall back to `iss` + the JWK at iss/.well-known/jwks).
+	// kid is what we put in the JWS header. Left empty for self-managed
+	// keys: verifiers key off `iss` (a did:jwk, which carries the public
+	// key inline) and ignore kid.
 	kid string
-	// iss is what we put in JWT payloads (`iss` claim) and as the issuer
-	// part of status list URLs the verifier will dereference. Typically
-	// the walt.id-onboarded DID.
+	// iss is what we put in JWT payloads (`iss` claim) and is how the
+	// verifier resolves the key to check the signature.
 	iss string
 }
 
-// ParseWaltidIssuerKey accepts walt.id's `issuerKey` envelope (the
-// json.RawMessage we cached on the adapter at onboard time) and pulls out
-// the inner JWK for local signing. Walt.id's envelope shape:
-//
-//	{ "type": "jwk", "jwk": {"kty":"EC","crv":"P-256","x":...,"y":...,"d":...} }
-//
-// Older / alternative builds put the JWK fields at the envelope level,
-// so we accept both shapes.
-func ParseWaltidIssuerKey(raw []byte, iss string) (*SigningKey, error) {
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("statuslist: issuer key empty")
-	}
-	var env struct {
-		Type string          `json:"type"`
-		JWK  json.RawMessage `json:"jwk"`
-	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("statuslist: parse issuer key envelope: %w", err)
-	}
-	jwkBytes := env.JWK
-	if len(jwkBytes) == 0 {
-		// Some walt.id versions put JWK fields at the envelope level.
-		jwkBytes = raw
-	}
-	var jwk struct {
-		Kty string `json:"kty"`
-		Crv string `json:"crv"`
-		X   string `json:"x"`
-		Y   string `json:"y"`
-		D   string `json:"d"`
-		Kid string `json:"kid,omitempty"`
-	}
-	if err := json.Unmarshal(jwkBytes, &jwk); err != nil {
-		return nil, fmt.Errorf("statuslist: parse JWK: %w", err)
-	}
-	if jwk.Kty != "EC" {
-		return nil, fmt.Errorf("statuslist: kty=%q not supported (need EC)", jwk.Kty)
-	}
-	if jwk.Crv != "P-256" {
-		return nil, fmt.Errorf("statuslist: crv=%q not supported (need P-256)", jwk.Crv)
-	}
-	if jwk.D == "" {
-		return nil, fmt.Errorf("statuslist: JWK missing private component d (need a private key)")
-	}
-	x, err := jose.DecodeBase64URLBigInt(jwk.X)
-	if err != nil {
-		return nil, fmt.Errorf("statuslist: decode x: %w", err)
-	}
-	y, err := jose.DecodeBase64URLBigInt(jwk.Y)
-	if err != nil {
-		return nil, fmt.Errorf("statuslist: decode y: %w", err)
-	}
-	d, err := jose.DecodeBase64URLBigInt(jwk.D)
-	if err != nil {
-		return nil, fmt.Errorf("statuslist: decode d: %w", err)
-	}
-	priv := &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y},
-		D:         d,
-	}
-	return &SigningKey{priv: priv, kid: jwk.Kid, iss: iss}, nil
-}
-
-// Issuer returns the iss claim string (walt.id-onboarded DID).
+// Issuer returns the iss claim string (the list's did:jwk).
 func (k *SigningKey) Issuer() string { return k.iss }
 
 // signES256 produces a compact-serialization JWS over the given header +

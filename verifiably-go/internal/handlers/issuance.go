@@ -373,7 +373,7 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		// burned — for now we accept the small drift; an Unallocate path
 		// would need transactional semantics across Store + walt.id which
 		// isn't worth the complexity for a demo.
-		binding, allocErr := h.allocateStatusListBinding(schema)
+		binding, allocErr := h.allocateStatusListBinding(issuerDpg, schema)
 		if allocErr != nil {
 			h.errorToast(w, r, allocErr.Error())
 			return
@@ -405,7 +405,7 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	// credentialStatus / status.status_list markers into a real, revocable pointer —
 	// without it certify renders the literal ${statusUri}/${statusIdx} and the
 	// credential fails verification everywhere.
-	binding, allocErr := h.allocateStatusListBinding(schema)
+	binding, allocErr := h.allocateStatusListBinding(issuerDpg, schema)
 	if allocErr != nil {
 		h.errorToast(w, r, allocErr.Error())
 		return

@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -291,36 +290,13 @@ func TestPublishTokenStatusList(t *testing.T) {
 	}
 }
 
-// TestParseWaltidIssuerKey covers the two envelope shapes we accept.
-func TestParseWaltidIssuerKey(t *testing.T) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+// A self-managed key must round-trip sign/verify — the same path every
+// published status list takes.
+func TestSelfSignedKeySignVerifyRoundTrip(t *testing.T) {
+	k, err := NewSelfSignedKey(t.TempDir(), "roundtrip")
 	if err != nil {
 		t.Fatal(err)
 	}
-	jwkInner := map[string]string{
-		"kty": "EC", "crv": "P-256", "kid": "k1",
-		"x": base64.RawURLEncoding.EncodeToString(priv.X.Bytes()),
-		"y": base64.RawURLEncoding.EncodeToString(priv.Y.Bytes()),
-		"d": base64.RawURLEncoding.EncodeToString(priv.D.Bytes()),
-	}
-	innerJSON, _ := json.Marshal(jwkInner)
-
-	// Envelope shape: {"type":"jwk","jwk":{...}}
-	envelope, _ := json.Marshal(map[string]any{"type": "jwk", "jwk": json.RawMessage(innerJSON)})
-	k, err := ParseWaltidIssuerKey(envelope, "did:test:1")
-	if err != nil {
-		t.Fatalf("envelope parse: %v", err)
-	}
-	if k.kid != "k1" {
-		t.Fatalf("kid: got %q want k1", k.kid)
-	}
-
-	// Bare JWK (older walt.id builds).
-	if _, err := ParseWaltidIssuerKey(innerJSON, "did:test:1"); err != nil {
-		t.Fatalf("bare jwk parse: %v", err)
-	}
-
-	// Round-trip sign/verify with the parsed key.
 	tok, err := k.SignJWT("JWT", map[string]any{"hello": "world"})
 	if err != nil {
 		t.Fatal(err)

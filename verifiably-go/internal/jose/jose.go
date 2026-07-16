@@ -8,9 +8,16 @@ import (
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math/big"
 )
+
+// ErrSignatureInvalid reports that a signature was checked against the key and
+// did not match — as opposed to could-not-be-checked (unsupported key type,
+// malformed field). Callers that fail open on "can't check" must still fail
+// closed on this; match it with errors.Is, never on the message text.
+var ErrSignatureInvalid = errors.New("jose: ES256 signature verification failed")
 
 // DecodeBase64URLBigInt decodes a base64url big-endian integer as used for JWK
 // RSA modulus/exponent and EC coordinates. Per RFC 7515 the encoding is
@@ -39,7 +46,7 @@ func VerifyES256(pub *ecdsa.PublicKey, signingInput, sig []byte) error {
 	r := new(big.Int).SetBytes(sig[:32])
 	s := new(big.Int).SetBytes(sig[32:])
 	if !ecdsa.Verify(pub, h[:], r, s) {
-		return fmt.Errorf("jose: ES256 signature verification failed")
+		return ErrSignatureInvalid
 	}
 	return nil
 }

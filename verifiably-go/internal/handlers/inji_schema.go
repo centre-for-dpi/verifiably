@@ -369,7 +369,7 @@ type authcodeArtifacts struct {
 // the files. Returns the credential_config key. Shared by the legacy form and
 // the rich builder.
 func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, ownerKey string) (string, error) {
-	a := buildAuthcodeArtifacts(schema, h.statusURLFor(schema.Std))
+	a := buildAuthcodeArtifacts(schema, h.statusURLFor(authcodeVendor, schema.Std))
 	// did_url must equal certify's issuer DID (its did.json id / CERTIFY_ISSUER_DID),
 	// NOT the hardcoded docker-internal did:web:certify-nginx — otherwise the signed
 	// VC's proof.verificationMethod points at an unresolvable DID and every verifier
@@ -652,9 +652,9 @@ func (h *H) ReapplyAuthcodeViews(w http.ResponseWriter, r *http.Request) {
 		// Status URL by format: token list for SD-JWT, bitstring list for W3C ldp_vc.
 		statusURL := ""
 		if format == "vc+sd-jwt" || format == "dc+sd-jwt" {
-			statusURL = h.tokenStatusURL()
+			statusURL = h.tokenStatusURL(authcodeVendor)
 		} else if format == "ldp_vc" {
-			statusURL = h.bitstringStatusURL()
+			statusURL = h.bitstringStatusURL(authcodeVendor)
 		}
 		if err := h.Subjects.ReplaceView(r.Context(), authcodeViewDDL(slug, fields, statusURL != "", statusURL)); err != nil {
 			failed[key] = err.Error()
@@ -665,35 +665,40 @@ func (h *H) ReapplyAuthcodeViews(w http.ResponseWriter, r *http.Request) {
 	apiJSON(w, http.StatusOK, map[string]any{"reapplied": reapplied, "failed": failed})
 }
 
-// tokenStatusURL returns the absolute URL of verifiably's IETF token status
-// list, or "" when no TokenStore is configured — in which case the SD-JWT
-// status wiring is skipped entirely so auth-code claims still succeed.
-func (h *H) tokenStatusURL() string {
-	if h.TokenStore == nil {
-		return ""
-	}
-	return h.TokenStore.GetPublishURL()
+// tokenStatusURL returns the absolute URL of the issuer DPG's IETF token
+// status list, or "" when it has none — in which case the SD-JWT status
+// wiring is skipped entirely so auth-code claims still succeed.
+func (h *H) tokenStatusURL(dpg string) string {
+	return h.statusPublishURL(dpg, "token")
 }
 
-// bitstringStatusURL returns the absolute URL of verifiably's W3C bitstring status
-// list, or "" when no BitstringStore is configured. Sibling of tokenStatusURL for
-// the W3C (ldp_vc) auth-code path.
-func (h *H) bitstringStatusURL() string {
-	if h.BitstringStore == nil {
+// bitstringStatusURL is the sibling of tokenStatusURL for the W3C (ldp_vc)
+// auth-code path.
+func (h *H) bitstringStatusURL(dpg string) string {
+	return h.statusPublishURL(dpg, "bitstring")
+}
+
+func (h *H) statusPublishURL(dpg, kind string) string {
+	e := h.statusListFor(dpg, kind)
+	if e == nil || e.Store == nil {
 		return ""
 	}
-	return h.BitstringStore.GetPublishURL()
+	return e.Store.GetPublishURL()
 }
 
 // statusURLFor returns the status-list URL appropriate to a schema's format: the
 // IETF token list for SD-JWT, the W3C bitstring list for ldp_vc. "" (statusless)
 // when the matching store isn't configured or the format has no status kind.
-func (h *H) statusURLFor(std string) string {
+//
+// dpg selects that issuer's own list. This URL is baked into a Certify
+// credential config once per schema, so it must name the list the same
+// DPG will later allocate from.
+func (h *H) statusURLFor(dpg, std string) string {
 	switch statusListKindFor(std) {
 	case "token":
-		return h.tokenStatusURL()
+		return h.tokenStatusURL(dpg)
 	case "bitstring":
-		return h.bitstringStatusURL()
+		return h.bitstringStatusURL(dpg)
 	}
 	return ""
 }
@@ -712,9 +717,12 @@ func (h *H) statusURLFor(std string) string {
 // allocates a parallel slot nor records the credential in its IssuanceLog;
 // revocation routes to Certify's status API (setInjiCredentialStatus, reached via
 // the certify.ledger revoke path). Returns nil when the store isn't configured.
-func (h *H) statusStoreFor(std string) statuslist.Backend {
-	if statusListKindFor(std) == "token" && h.TokenStore != nil {
-		return h.TokenStore
+func (h *H) statusStoreFor(dpg, std string) statuslist.Backend {
+	if statusListKindFor(std) != "token" {
+		return nil
+	}
+	if e := h.statusListFor(dpg, "token"); e != nil {
+		return e.Store
 	}
 	return nil
 }

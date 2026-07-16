@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -80,43 +79,6 @@ func (r *Registry) AttachSchemaStore(store *SchemaStore) error {
 		r.customSchemas = append(r.customSchemas, s)
 	}
 	return nil
-}
-
-// IssuerSigningKey delegates to the first registered issuer adapter that
-// exposes one. The status-list HTTP path needs to sign the published
-// list with the same key the walt.id issuer signs credentials with;
-// when verifiably-go runs in `registry` mode the handler reaches it
-// through the Registry, so we proxy here. Today only the walt.id
-// adapter implements this — Inji Certify and the mock adapter return
-// nothing — so the first one we find is the right one.
-//
-// Registry doesn't statically depend on the walt.id package (would
-// flip the dependency direction); we use a duck-typed interface check
-// against backend.Adapter at runtime.
-func (r *Registry) IssuerSigningKey(ctx context.Context) ([]byte, string, error) {
-	type signer interface {
-		IssuerSigningKey(ctx context.Context) ([]byte, string, error)
-	}
-	r.mu.RLock()
-	vendors := make([]string, 0, len(r.issuers))
-	for v := range r.issuers {
-		vendors = append(vendors, v)
-	}
-	r.mu.RUnlock()
-	// Sort vendors so the first signer-capable adapter is always the same
-	// across calls, regardless of Go map iteration order.
-	sort.Strings(vendors)
-	for _, v := range vendors {
-		r.mu.RLock()
-		a := r.issuers[v]
-		r.mu.RUnlock()
-		s, ok := a.(signer)
-		if !ok {
-			continue
-		}
-		return s.IssuerSigningKey(ctx)
-	}
-	return nil, "", fmt.Errorf("registry: no registered issuer adapter exposes IssuerSigningKey")
 }
 
 // AllAdapters returns every distinct adapter registered across all roles.

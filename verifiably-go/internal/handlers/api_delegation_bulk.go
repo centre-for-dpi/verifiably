@@ -65,7 +65,7 @@ func (h *H) issueDelegationPairCore(ctx context.Context, keyName string, req api
 		map[string]string{"subjectRef": req.Subject.SubjectRef}, nil)
 
 	// 2. Delegation credential — allocate a revocation slot, embed it, issue.
-	binding, err := h.allocateStatusListBinding(delegSchema)
+	binding, err := h.allocateStatusListBinding(issuerDpg, delegSchema)
 	if err != nil {
 		return apiDelegationIssueResult{}, fmt.Errorf("status list: %w", err)
 	}

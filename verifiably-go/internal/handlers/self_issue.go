@@ -149,7 +149,7 @@ func (h *H) APISelfIssue(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusServiceUnavailable, "no issuer DPG available")
 		return
 	}
-	binding, err := h.allocateStatusListBinding(schema)
+	binding, err := h.allocateStatusListBinding(issuerDpg, schema)
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
 		return
