@@ -48,23 +48,25 @@ func TestApplyDelegationPreset_ExpiryOptIn(t *testing.T) {
 
 	sess := &Session{IssuerDpg: "Inji Certify · Pre-Auth"}
 
-	// Without the expiry toggle, the built delegation schema carries NO valid_until
-	// — the issuer isn't surprised by a field they never created.
+	// Delegation does not force expiry: without the toggle the schema declares
+	// no validity window, and its credentials never expire.
 	built := currentBuilderSchema(sess, *d)
-	if _, present := exactlyOneField(built, "valid_until"); present {
-		t.Error("a delegation schema without the expiry toggle must NOT carry valid_until")
+	if built.ExpiresWithWindow() {
+		t.Error("a delegation schema without the expiry toggle must not declare a validity window")
 	}
 
-	// Opting in (ticking "This credential expires") derives exactly one
-	// valid_until{string,datetime}.
+	// Opting in marks the SCHEMA as expiring; the issuer sets the actual window
+	// per-issuance.
 	d.Expiry = true
 	withExpiry := currentBuilderSchema(sess, *d)
-	vu, ok := exactlyOneField(withExpiry, "valid_until")
-	if !ok {
-		t.Fatal("delegation + expiry toggle must derive exactly one valid_until")
+	if !withExpiry.ExpiresWithWindow() {
+		t.Fatal("delegation + expiry toggle must declare a validity window")
 	}
-	if vu.Datatype != "string" || vu.Format != "datetime" {
-		t.Errorf("derived valid_until = {%q,%q}, want {string,datetime}", vu.Datatype, vu.Format)
+	// The window is envelope metadata (SD-JWT nbf/exp), NOT a subject claim: a
+	// claim is selectively disclosable, so a holder could withhold their own
+	// expiry and escape the temporal gate.
+	if _, present := exactlyOneField(withExpiry, "valid_until"); present {
+		t.Error("expiry must not be a subject claim — it belongs in the credential envelope")
 	}
 }
 
@@ -82,37 +84,54 @@ func exactlyOneField(s vctypes.Schema, name string) (vctypes.FieldSpec, bool) {
 	return found, n == 1
 }
 
-// The opt-in expiry toggle derives a valid_until datetime claim onto ANY schema
-// (DPG-agnostic), stays OFF by default (no coupling), and never duplicates the
-// field the delegation preset already contributes.
+// The opt-in expiry toggle marks a schema as carrying a validity window,
+// DPG-agnostically, and stays OFF by default (no coupling).
 func TestCurrentBuilderSchema_ExpiryToggle(t *testing.T) {
 	sess := &Session{IssuerDpg: "walt.id"}
 	base := []vctypes.FieldSpec{{Name: "givenName", Datatype: "string"}}
 
-	// OFF by default → no valid_until field (a credential with no expiry is not
-	// coupled to one).
+	// OFF by default → the credential never expires, and says so.
 	off := currentBuilderSchema(sess, builderData{Name: "Card", Fields: base})
-	if _, ok := exactlyOneField(off, "valid_until"); ok {
-		t.Error("expiry OFF must not add a valid_until field")
+	if off.ExpiresWithWindow() {
+		t.Error("expiry OFF must not declare a validity window")
 	}
 
-	// ON → a single valid_until datetime claim is appended (the temporal gate
-	// reads this claim across SD-JWT top-level and W3C credentialSubject).
+	// ON → the schema declares a window; the issuer supplies the dates at issue
+	// time and each adapter writes them into its format's native slot.
 	on := currentBuilderSchema(sess, builderData{Name: "Card", Fields: base, Expiry: true})
-	vu, ok := exactlyOneField(on, "valid_until")
-	if !ok {
-		t.Fatal("expiry ON must add exactly one valid_until field")
+	if !on.ExpiresWithWindow() {
+		t.Fatal("expiry ON must declare a validity window")
 	}
-	if vu.Datatype != "string" || vu.Format != "datetime" {
-		t.Errorf("valid_until = {%q,%q}, want {string,datetime}", vu.Datatype, vu.Format)
+	// Envelope, not claims — see TestApplyDelegationPreset_ExpiryOptIn.
+	if _, present := exactlyOneField(on, "valid_until"); present {
+		t.Error("expiry must not be added as a subject claim")
 	}
 
-	// Composed with delegation (whose preset already contributes valid_until):
-	// dedupe → still exactly one, no duplicate.
+	// Composed with the delegation preset: still just the flag, no claim.
 	dg := &builderData{Name: "Deleg", Expiry: true}
 	applyDelegationPreset(dg)
 	composed := currentBuilderSchema(sess, *dg)
-	if _, ok := exactlyOneField(composed, "valid_until"); !ok {
-		t.Error("delegation + expiry must yield exactly one valid_until (dedupe), got 0 or >1")
+	if !composed.ExpiresWithWindow() {
+		t.Error("delegation + expiry must declare a validity window")
+	}
+}
+
+// Schemas built before the envelope window existed opted in with a valid_until
+// datetime CLAIM. Those must keep working — an operator's saved schema cannot
+// silently stop expiring because we changed where the window lives.
+func TestExpiresWithWindow_HonoursLegacyValidUntilClaim(t *testing.T) {
+	legacy := vctypes.Schema{
+		Name: "Legacy Card",
+		FieldsSpec: []vctypes.FieldSpec{
+			{Name: "givenName", Datatype: "string"},
+			{Name: "valid_until", Datatype: "string", Format: "datetime"},
+		},
+	}
+	if !legacy.ExpiresWithWindow() {
+		t.Error("a schema with a legacy valid_until claim must still declare a window")
+	}
+	plain := vctypes.Schema{Name: "Plain", FieldsSpec: []vctypes.FieldSpec{{Name: "givenName"}}}
+	if plain.ExpiresWithWindow() {
+		t.Error("a schema with neither the flag nor valid_until must not declare a window")
 	}
 }

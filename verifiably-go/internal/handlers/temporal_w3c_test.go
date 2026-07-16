@@ -40,7 +40,7 @@ func TestW3CExpiryEnforcedEndToEnd(t *testing.T) {
 	pipeline := func(validUntil string, now time.Time) *backend.VerificationResult {
 		cred := vp.FromVCObject(vc(validUntil))
 		res := &backend.VerificationResult{Valid: true, Method: "w3c_vcdm_2", Credentials: []backend.NormalizedCredential{cred}}
-		attachTemporalVerdict(res, now)
+		attachTemporalVerdict(res, now, nil)
 		return res
 	}
 
@@ -69,7 +69,7 @@ func TestW3CExpiryEnforcedEndToEnd(t *testing.T) {
 		"credentialSubject": map[string]any{"id": "did:example:holder", "givenName": "Maria"},
 	})
 	res := &backend.VerificationResult{Valid: true, Credentials: []backend.NormalizedCredential{none}}
-	attachTemporalVerdict(res, now)
+	attachTemporalVerdict(res, now, nil)
 	if !res.Valid {
 		t.Errorf("credential with no expiry must be unconstrained, got denied: %q", res.Method)
 	}

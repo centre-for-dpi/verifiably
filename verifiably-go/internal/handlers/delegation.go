@@ -13,6 +13,7 @@ import (
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/delegation"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
+	"github.com/verifiably/verifiably-go/vctypes"
 )
 
 // attachDelegationVerdict runs the delegated-access evaluator over the
@@ -34,7 +35,12 @@ func (h *H) attachDelegationVerdict(r *http.Request, res *backend.VerificationRe
 	// expired or not-yet-valid credential resolves as verified. Runs before the
 	// delegation evaluator so a stale-window credential is rejected regardless of
 	// whether the presentation is a delegation.
-	attachTemporalVerdict(res, time.Now())
+	// Resolve the schemas ONCE for every surface that names a presented
+	// credential (the temporal prose here, the per-credential cards below).
+	// Nil-guarded: h.Adapter is nil in unit tests, and an unresolved name just
+	// falls back to the wire type.
+	schemas := h.presentedSchemasSafe(r.Context())
+	attachTemporalVerdict(res, time.Now(), schemas)
 	// Revocation gate — also applies to EVERY verify that populates Credentials.
 	// No deployed DPG verifier reliably enforces status-list revocation across
 	// formats (Inji Verify's vcverifier logs "Credential status checking not
@@ -67,7 +73,22 @@ func (h *H) attachDelegationVerdict(r *http.Request, res *backend.VerificationRe
 	}
 	// Per-credential card model for a COMBINED presentation (delegated pair or
 	// multi-credential VP); no-op for a single-credential verify.
-	h.buildDelegationCredentialViews(r.Context(), res)
+	h.buildDelegationCredentialViews(r.Context(), res, schemas)
+}
+
+// presentedSchemasSafe returns every schema this deployment hosts, for
+// resolving a presented credential's wire type back to its issuer-given name.
+// Returns nil (never panics) when no adapter is wired or the vendor can't be
+// reached — callers fall back to the wire type.
+func (h *H) presentedSchemasSafe(ctx context.Context) []vctypes.Schema {
+	if h.Adapter == nil {
+		return nil
+	}
+	schemas, err := h.Adapter.ListAllSchemas(ctx)
+	if err != nil {
+		return nil
+	}
+	return schemas
 }
 
 // buildDelegationCredentialViews assembles the per-credential card model shown
@@ -79,7 +100,7 @@ func (h *H) attachDelegationVerdict(r *http.Request, res *backend.VerificationRe
 // (TemporalBounds, StatusRefOf, delegationStatusChecker) so the per-card outcomes
 // match the aggregate verdict. Empty for a single-credential verify (which keeps
 // the flat result card).
-func (h *H) buildDelegationCredentialViews(ctx context.Context, res *backend.VerificationResult) {
+func (h *H) buildDelegationCredentialViews(ctx context.Context, res *backend.VerificationResult, schemas []vctypes.Schema) {
 	if res == nil || len(res.Credentials) == 0 {
 		return
 	}
@@ -92,7 +113,7 @@ func (h *H) buildDelegationCredentialViews(ctx context.Context, res *backend.Ver
 	views := make([]backend.CredentialView, 0, len(res.Credentials))
 	for i, c := range res.Credentials {
 		v := backend.CredentialView{
-			Title:      credentialCardTitle(c),
+			Title:      credentialCardTitle(schemas, c),
 			Issuer:     c.Issuer,
 			Format:     c.Format,
 			HostStatus: c.HostStatus,
@@ -131,10 +152,19 @@ func (h *H) buildDelegationCredentialViews(ctx context.Context, res *backend.Ver
 	res.CredentialViews = views
 }
 
-// credentialCardTitle is a short human title for a presented-credential card: the
-// first meaningful type (skipping the generic "VerifiableCredential"), reduced to
-// its final path/fragment segment for URL vct values. Falls back to "Credential".
-func credentialCardTitle(c backend.NormalizedCredential) string {
+// credentialCardTitle is a human title for a presented-credential card: the
+// issuer's name for the schema ("Testa Card V2") when we host it.
+//
+// Falls back to the first meaningful type reduced to its final path segment —
+// which for an SD-JWT vct is the bare schema id ("custom-dk05t158qnou"). That
+// fallback used to be the ONLY behaviour, so every delegated card showed a slug
+// while the picker beside it showed the real name. It still applies to
+// credentials we have no schema for (issued by another deployment), where the
+// slug is the most we know.
+func credentialCardTitle(schemas []vctypes.Schema, c backend.NormalizedCredential) string {
+	if n := schemaNameForCredential(schemas, c); n != "" {
+		return n
+	}
 	for _, t := range c.Types {
 		t = strings.TrimSpace(t)
 		if t == "" || strings.EqualFold(t, "VerifiableCredential") {
@@ -150,6 +180,14 @@ func credentialCardTitle(c backend.NormalizedCredential) string {
 
 // credTemporalCheck reports whether the credential is within its own validity
 // window right now (the same computation attachTemporalVerdict makes globally).
+//
+// A credential with no window is a PASS: not expiring is a legitimate property,
+// not a failure, and most credentials here have no window. But it must not
+// claim to be "within its validity window" — there is no window to be within,
+// and saying so is indistinguishable from a window that was actually checked.
+// That wording hid a real bug: every Inji Certify credential was issued without
+// a window (its adapter dropped the operator's dates), so expired credentials
+// verified green under a note asserting they'd been checked.
 func credTemporalCheck(c backend.NormalizedCredential, now time.Time) backend.CredCheck {
 	nb, na := c.TemporalBounds()
 	if !nb.IsZero() && now.Before(nb) {
@@ -157,6 +195,9 @@ func credTemporalCheck(c backend.NormalizedCredential, now time.Time) backend.Cr
 	}
 	if !na.IsZero() && now.After(na) {
 		return backend.CredCheck{Label: "Within validity", Status: "fail", Note: "expired (" + na.Format(time.RFC3339) + ")"}
+	}
+	if nb.IsZero() && na.IsZero() {
+		return backend.CredCheck{Label: "Within validity", Status: "pass", Note: "no expiry — this credential does not expire"}
 	}
 	return backend.CredCheck{Label: "Within validity", Status: "pass", Note: "within its validity window"}
 }
@@ -195,10 +236,10 @@ func delegCheck(label string, ok bool, note string) backend.CredCheck {
 // expirationDate, or nbf/exp). An absent bound imposes no constraint. This is
 // the B7 correctness/security gate — a sibling of attachDelegationVerdict /
 // attachTrustStatus that owns temporal validity no adapter reliably enforces.
-func attachTemporalVerdict(res *backend.VerificationResult, now time.Time) {
+func attachTemporalVerdict(res *backend.VerificationResult, now time.Time, schemas []vctypes.Schema) {
 	for _, c := range res.Credentials {
 		notBefore, notAfter := c.TemporalBounds()
-		label := temporalCredLabel(c)
+		label := temporalCredLabel(schemas, c)
 		if !notBefore.IsZero() && now.Before(notBefore) {
 			temporalDowngrade(res, fmt.Sprintf("%s is not yet valid (validFrom %s)", label, notBefore.Format(time.RFC3339)))
 			return
@@ -220,9 +261,17 @@ func temporalDowngrade(res *backend.VerificationResult, reason string) {
 	slog.Info("temporal policy failed", "reason", reason)
 }
 
-func temporalCredLabel(c backend.NormalizedCredential) string {
-	if len(c.Types) > 0 && strings.TrimSpace(c.Types[0]) != "" {
-		return c.Types[0]
+// temporalCredLabel names the credential in the user-facing "<x> has expired"
+// prose. Reuses the card resolver so the message reads "Testa Card V2 has
+// expired".
+//
+// It used to return c.Types[0] verbatim, which is worse than the card slug in
+// both directions: on SD-JWT that is the whole vct URL, and on W3C it is the
+// generic "VerifiableCredential" — useless for a delegated pair, where it can't
+// say WHICH credential expired.
+func temporalCredLabel(schemas []vctypes.Schema, c backend.NormalizedCredential) string {
+	if n := credentialCardTitle(schemas, c); n != "" && n != "Credential" {
+		return n
 	}
 	return "credential"
 }

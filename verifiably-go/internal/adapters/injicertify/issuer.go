@@ -169,6 +169,19 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 				claims["statusUri"] = ""
 			}
 		}
+		// Resolve the validity-window markers the template carries. Until this
+		// existed the operator's window was collected by the issue form, put on
+		// the request, and then silently dropped here — only the walt.id adapter
+		// ever read req.ValidFrom/ValidUntil — so EVERY Inji Certify credential
+		// was issued without a window and an expired one verified as valid.
+		//
+		// Gated on the same flag buildVCTemplate uses: POSTing a marker the
+		// template never declared would be rejected as an unknown claim.
+		if req.Schema.ExpiresWithWindow() {
+			for k, v := range validityClaims(stdToCredentialFormat(req.Schema.Std), req.ValidFrom, req.ValidUntil) {
+				claims[k] = v
+			}
+		}
 		body := preAuthorizedDataRequest{
 			CredentialConfigurationId: req.Schema.ID,
 			Claims:                    claims,

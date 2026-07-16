@@ -105,6 +105,22 @@ type Schema struct {
 	AdditionalTypes []string
 	FieldsSpec      []FieldSpec
 
+	// Expires marks a schema whose credentials carry a validity window, set
+	// per-issuance from the issue form's ValidFrom/ValidUntil.
+	//
+	// It is a SCHEMA-level flag because the window lives in the credential's
+	// envelope (SD-JWT nbf/exp, W3C validFrom/validUntil), and the envelope is
+	// a per-schema template: Inji Certify renders a static vc_template, so an
+	// unconditional `"nbf": ${validFromEpoch}` marker renders as `"nbf": ,` —
+	// invalid JSON — for any issuance without a window. The template must
+	// therefore only carry the temporal claims when the schema declares that
+	// its credentials expire at all. Leave false for credentials that never
+	// expire; they are legitimately valid forever and verify green.
+	//
+	// Use Schema.ExpiresWithWindow() to read this — it also honours the legacy
+	// opt-in valid_until claim field.
+	Expires bool
+
 	// SourceIssuerDID identifies the issuer DID that defined this schema.
 	// Set by the Hub's schema aggregator on federated schemas so the public
 	// /verify portal can perform trust checks against the correct issuer.
@@ -253,6 +269,28 @@ func (s Schema) CustomTypeName() string {
 		}
 	}
 	return sanitizeTypeNameVC(s.Name)
+}
+
+// ExpiresWithWindow reports whether this schema's credentials carry a validity
+// window, so the issuer must collect one and the credential's envelope must
+// carry the temporal claims.
+//
+// Also true for schemas built before the envelope window existed, which opted
+// in via a `valid_until` datetime CLAIM field. That older shape is kept working
+// but is not where a validity window belongs: as a claim it is selectively
+// disclosable (a holder can withhold it and escape the temporal gate) and it
+// sits in the subject's namespace, where it can collide with the subject's own
+// date attributes — hence the narrow guard in backend.TemporalBounds.
+func (s Schema) ExpiresWithWindow() bool {
+	if s.Expires {
+		return true
+	}
+	for _, f := range s.FieldsSpec {
+		if strings.EqualFold(strings.TrimSpace(f.Name), "valid_until") {
+			return true
+		}
+	}
+	return false
 }
 
 // CredentialVct returns the SD-JWT VC `vct` value for this schema: the explicit

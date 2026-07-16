@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -94,6 +96,14 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 		// the POSTed statusIdx/statusUri into the template's Velocity context.
 		displayOrder = append(displayOrder, "statusIdx", "statusUri")
 	}
+	// Same for the validity-window markers: undeclared markers stay unresolved,
+	// and certify 400s on the unquoted `"nbf": ${validFromEpoch}`. SD-JWT takes
+	// epoch seconds (nbf/exp); ldp_vc takes RFC3339 (validFrom/validUntil) — the
+	// vc_template for each asks for the right shape. Declared only when the
+	// schema expires, matching the markers buildVCTemplate emits.
+	if schema.ExpiresWithWindow() {
+		displayOrder = append(displayOrder, validityMarkerNames(credFormat)...)
+	}
 
 	// NOTE: do NOT add a "description" key here. Although OID4VCI allows it in a
 	// `display` object, Inji Certify v0.14's credential_config display model
@@ -173,6 +183,19 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 			marker := map[string]any{"display": []map[string]any{{"name": "Status", "locale": "en"}}}
 			csMap["statusIdx"] = marker
 			csMap["statusUri"] = marker
+			// The validity markers need the same declaration, and for the same
+			// reason: ldp_vc's pre-auth data provider validates POSTed claims
+			// against credential_subject, so an undeclared validFrom/validUntil
+			// is rejected as unknown_claims. They resolve the template's
+			// top-level validFrom/validUntil (credential metadata) and are NOT
+			// rendered as credentialSubject fields — the vc_template controls
+			// the subject shape and lists only the real fields.
+			if schema.ExpiresWithWindow() {
+				validityMarker := map[string]any{"display": []map[string]any{{"name": "Validity", "locale": "en"}}}
+				for _, n := range validityMarkerNames(credFormat) {
+					csMap[n] = validityMarker
+				}
+			}
 			credSubject, _ = json.Marshal(csMap)
 		}
 	}
@@ -289,6 +312,63 @@ func vcdmContextURL(std string) string {
 // — yielding `"idx": ${statusIdx}`, which certify renders to a JSON *number*.
 const statusIdxPlaceholder = "@@STATUS_IDX@@"
 
+// nbf/exp are JWT NumericDate — JSON *numbers* — so their markers must render
+// unquoted, exactly like ${statusIdx}. Same placeholder trick, same reason:
+// json.Marshal can't emit a bare ${…} token.
+const (
+	validFromEpochPlaceholder  = "@@VALID_FROM_EPOCH@@"
+	validUntilEpochPlaceholder = "@@VALID_UNTIL_EPOCH@@"
+)
+
+// validityMarkerNames returns the template markers a format's validity window
+// resolves from. The names differ because the shapes differ: SD-JWT's nbf/exp
+// are epoch seconds, W3C's validFrom/validUntil are RFC3339 strings.
+//
+// Single source of truth for both sides of the contract — SaveCustomSchema
+// DECLARES these (so certify's data provider surfaces them) and IssueToWallet
+// POSTS them. If the two ever disagree the markers render unresolved and
+// certify rejects the issuance, so they must be derived from one place.
+func validityMarkerNames(credFormat string) []string {
+	switch credFormat {
+	case "vc+sd-jwt", "dc+sd-jwt":
+		return []string{"validFromEpoch", "validUntilEpoch"}
+	case "ldp_vc", "jwt_vc_json":
+		return []string{"validFrom", "validUntil"}
+	}
+	return nil
+}
+
+// validityClaims renders an RFC3339 validity window into the claim values that
+// resolve this format's template markers. Empty/unparseable bounds yield ""
+// so the marker renders empty rather than leaking a literal ${…} into the
+// credential — an absent bound simply imposes no constraint, which is correct
+// for a credential that genuinely never expires.
+//
+// The marker names come from validityMarkerNames so the POSTed keys and the
+// DECLARED keys are the same by construction.
+func validityClaims(credFormat, validFrom, validUntil string) map[string]string {
+	names := validityMarkerNames(credFormat)
+	if len(names) != 2 {
+		return nil
+	}
+	out := map[string]string{names[0]: "", names[1]: ""}
+	epoch := credFormat == "vc+sd-jwt" || credFormat == "dc+sd-jwt"
+	for i, raw := range []string{validFrom, validUntil} {
+		t, err := time.Parse(time.RFC3339, strings.TrimSpace(raw))
+		if err != nil {
+			continue
+		}
+		if epoch {
+			// JWT NumericDate: seconds since the epoch, rendered unquoted into
+			// nbf/exp by the template's placeholder swap.
+			out[names[i]] = strconv.FormatInt(t.Unix(), 10)
+			continue
+		}
+		out[names[i]] = t.UTC().Format(time.RFC3339)
+	}
+	return out
+}
+
 func buildVCTemplate(schema vctypes.Schema, withTokenStatus bool) string {
 	credFormat := stdToCredentialFormat(schema.Std)
 	var tmpl any
@@ -298,6 +378,25 @@ func buildVCTemplate(schema vctypes.Schema, withTokenStatus bool) string {
 		m := map[string]any{"vct": vct}
 		for _, f := range schema.FieldsSpec {
 			m[f.Name] = "${" + f.Name + "}"
+		}
+		// Validity window as the registered JWT claims nbf/exp, mirroring what
+		// the walt.id adapter already emits (buildSDJWTCredentialData). This is
+		// where a validity window BELONGS for SD-JWT VC: registered claims live
+		// in the plain JWT payload, so — unlike a `valid_until` data claim — a
+		// holder cannot withhold the expiry under selective disclosure and
+		// escape the temporal gate. backend.TemporalBounds already reads both.
+		//
+		// Without these the credential carries no window at all and every
+		// verification of an expired credential passes: an absent bound imposes
+		// no constraint.
+		//
+		// ONLY for schemas that declare an expiry. The markers are unquoted
+		// (NumericDate is a JSON number), so an issuance with no window would
+		// render `"nbf": ,` — invalid JSON, which certify rejects outright.
+		// Non-expiring schemas simply carry no temporal claims.
+		if schema.ExpiresWithWindow() {
+			m["nbf"] = validFromEpochPlaceholder
+			m["exp"] = validUntilEpochPlaceholder
 		}
 		// IETF Token Status List reference — the idx/uri are filled per-holder by
 		// the Postgres data-provider (statusIdx from certify.vc_subject via the
@@ -395,8 +494,11 @@ func buildVCTemplate(schema vctypes.Schema, withTokenStatus bool) string {
 		tmpl = m
 	}
 	b, _ := json.MarshalIndent(tmpl, "", "  ")
-	// Unquote the status idx marker so it renders as a JSON number, not a string.
+	// Unquote the numeric markers so they render as JSON numbers, not strings.
+	// statusIdx is an index; nbf/exp are JWT NumericDate — all three are numbers.
 	out := strings.Replace(string(b), `"`+statusIdxPlaceholder+`"`, "${statusIdx}", 1)
+	out = strings.Replace(out, `"`+validFromEpochPlaceholder+`"`, "${validFromEpoch}", 1)
+	out = strings.Replace(out, `"`+validUntilEpochPlaceholder+`"`, "${validUntilEpoch}", 1)
 	return base64.StdEncoding.EncodeToString([]byte(out))
 }
 
