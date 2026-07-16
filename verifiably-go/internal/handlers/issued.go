@@ -14,6 +14,42 @@ import (
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
+// resolveIssuanceWindow validates and completes the validity window for one
+// issuance, returning the RFC3339 bounds to put on the IssueRequest.
+//
+// A schema that declares no expiry gets no window: passing dates for it would
+// be silently dropped (the adapters only write temporal claims into a template
+// that declares them), so reject that rather than pretend it worked.
+//
+// A schema that DOES declare an expiry must be given one, every time. That is
+// forced, not a preference: Inji Certify renders a static per-schema template,
+// and an expiring schema's SD-JWT template carries the unquoted
+// `"exp": ${validUntilEpoch}` — NumericDate is a JSON number — so a blank value
+// renders `"exp": ,` and certify rejects the whole issuance with
+// json_processing_error. Catching it here gives the operator a real message
+// instead of a vendor 400.
+//
+// validFrom is optional and defaults to now: "valid from the moment it was
+// issued" is always a sensible reading, and it keeps a half-filled window from
+// producing an empty marker.
+func resolveIssuanceWindow(schema vctypes.Schema, validFrom, validUntil string, now time.Time) (string, string, error) {
+	validFrom, validUntil = strings.TrimSpace(validFrom), strings.TrimSpace(validUntil)
+	if !schema.ExpiresWithWindow() {
+		if validFrom != "" || validUntil != "" {
+			return "", "", fmt.Errorf("%q does not declare an expiry, so a validity window can't be set on it — "+
+				"tick \"This credential expires\" on the schema first", schema.Name)
+		}
+		return "", "", nil
+	}
+	if validUntil == "" {
+		return "", "", fmt.Errorf("%q expires, so it needs a \"Valid until\" — pick the instant after which verifiers deny it", schema.Name)
+	}
+	if validFrom == "" {
+		validFrom = now.UTC().Format(time.RFC3339)
+	}
+	return validFrom, validUntil, nil
+}
+
 // statusListKindFor maps a Schema.Std to the status list kind verifiably-go
 // hosts for that taxonomy. Returns "" for credentials whose revocation
 // flow we don't model (mso_mdoc → MSO/IACA, legacy jwt_vc → out of scope).

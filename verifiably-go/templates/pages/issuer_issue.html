@@ -160,22 +160,33 @@
           The times you enter above are interpreted in this zone, then stored as UTC. Defaults to your browser's timezone; the credential's validity is always compared in UTC by verifiers.
         </p>
       </div>
-      {{/* Optional validity window (B3). Empty = the DPG default (walt.id ~2y).
-           Pins validFrom/validUntil (W3C) or nbf/exp (SD-JWT) so the credential
-           isn't stuck at the backend's default window. */}}
-      <details style="margin-top:0.8rem">
-        <summary style="cursor:pointer;font-size:0.8rem;color:#555">Validity window (optional — defaults to the DPG's own window)</summary>
+      {{/* Validity window (B3). Pins validFrom/validUntil (W3C) or nbf/exp
+           (SD-JWT) — the credential's own envelope, which every verifier reads.
+           Shown ONLY for a schema that ticked "This credential expires": the
+           adapters write the window into a template that only carries the
+           temporal markers for such a schema, so on any other schema these
+           dates would be silently ignored.
+           Required, not optional: an expiring schema's SD-JWT template carries
+           the unquoted `"exp": ${validUntilEpoch}`, so a blank value renders
+           invalid JSON and certify rejects the issuance. Blank "Valid from"
+           defaults to the issuance instant. */}}
+      {{if .Schema.ExpiresWithWindow}}
+      <details style="margin-top:0.8rem" open>
+        <summary style="cursor:pointer;font-size:0.8rem;color:#555">Validity window — this credential expires</summary>
         <div class="form-grid" style="margin-top:0.6rem">
           <div class="field">
             <label>Valid from</label>
             <input type="datetime-local" name="valid_from">
+            <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.3rem 0 0">Leave empty to start from the moment of issuance.</p>
           </div>
           <div class="field">
-            <label>Valid until</label>
-            <input type="datetime-local" name="valid_until">
+            <label>Valid until *</label>
+            <input type="datetime-local" name="valid_until" required>
+            <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.3rem 0 0">After this instant a verifier denies the credential as expired.</p>
           </div>
         </div>
       </details>
+      {{end}}
 
     {{else if eq .SingleSource "api"}}
       <div class="field">

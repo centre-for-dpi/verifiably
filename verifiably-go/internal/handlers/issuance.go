@@ -359,11 +359,20 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := backend.IssueRequest{IssuerDpg: sess.IssuerDpg, Schema: schema, SubjectData: subject}
-	// Optional issuance-time validity window. When set, the adapter pins the
-	// credential's validFrom/validUntil (W3C) or nbf/exp (SD-JWT) instead of the
-	// DPG default (walt.id defaults to ~2y); empty leaves the backend default.
-	req.ValidFrom = normalizeIssuanceTimeTZ(r.FormValue("valid_from"), tzOffset)
-	req.ValidUntil = normalizeIssuanceTimeTZ(r.FormValue("valid_until"), tzOffset)
+	// Issuance-time validity window. The adapter pins it into the credential's
+	// own envelope — validFrom/validUntil (W3C) or nbf/exp (SD-JWT) — which is
+	// what every verifier's temporal gate reads.
+	validFrom, validUntil, verr := resolveIssuanceWindow(
+		schema,
+		normalizeIssuanceTimeTZ(r.FormValue("valid_from"), tzOffset),
+		normalizeIssuanceTimeTZ(r.FormValue("valid_until"), tzOffset),
+		time.Now(),
+	)
+	if verr != nil {
+		h.errorToast(w, r, verr.Error())
+		return
+	}
+	req.ValidFrom, req.ValidUntil = validFrom, validUntil
 
 	if sess.Dest == "wallet" {
 		// Allocate a status-list index BEFORE the issuance call so the

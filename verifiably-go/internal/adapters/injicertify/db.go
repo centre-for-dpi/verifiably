@@ -338,6 +338,38 @@ func validityMarkerNames(credFormat string) []string {
 	return nil
 }
 
+// isInternalMarker reports whether a credential_config `order` entry is an
+// internal template marker rather than a claim the operator types.
+//
+// display_order does double duty: it declares which POSTed claims certify's
+// pre-auth data provider will surface into the Velocity context, AND it is what
+// ListSchemas turns into the issue form's fields. Markers must be declared (or
+// the template renders unresolved) but must never reach the form — they are
+// supplied by verifiably: the status pointer from the allocated StatusList
+// binding, the validity window from the issue form's own datetime pickers.
+//
+// Miss this and the markers appear as bare required text boxes the operator
+// cannot fill ("validFromEpoch *"), which is exactly what happened.
+func isInternalMarker(name string) bool {
+	switch name {
+	case "statusIdx", "statusUri":
+		return true
+	}
+	for _, n := range allValidityMarkerNames() {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// allValidityMarkerNames is every validity marker across formats. Derived from
+// validityMarkerNames so a marker cannot be added to a template without also
+// being filtered out of the issue form.
+func allValidityMarkerNames() []string {
+	return append(validityMarkerNames("vc+sd-jwt"), validityMarkerNames("ldp_vc")...)
+}
+
 // validityClaims renders an RFC3339 validity window into the claim values that
 // resolve this format's template markers. Empty/unparseable bounds yield ""
 // so the marker renders empty rather than leaking a literal ${…} into the

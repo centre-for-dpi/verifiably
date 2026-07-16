@@ -202,6 +202,12 @@ type apiIssueRequest struct {
 	SchemaID    string            `json:"schema_id"`
 	IssuerDpg   string            `json:"issuer_dpg,omitempty"`
 	SubjectData map[string]string `json:"subject_data"`
+	// ValidFrom / ValidUntil (RFC3339) pin the credential's own validity
+	// window. Required for a schema that ticked "This credential expires"
+	// (valid_from defaults to the issuance instant); rejected for one that
+	// didn't, where they would be silently dropped. See resolveIssuanceWindow.
+	ValidFrom  string `json:"valid_from,omitempty"`
+	ValidUntil string `json:"valid_until,omitempty"`
 }
 
 type apiIssueResult struct {
@@ -257,6 +263,11 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusServiceUnavailable, "no issuer DPG available")
 		return
 	}
+	validFrom, validUntil, verr := resolveIssuanceWindow(schema, req.ValidFrom, req.ValidUntil, time.Now())
+	if verr != nil {
+		apiError(w, http.StatusBadRequest, verr.Error())
+		return
+	}
 	binding, err := h.allocateStatusListBinding(req.IssuerDpg, schema)
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
@@ -269,6 +280,8 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 		SubjectData: req.SubjectData,
 		Flow:        "pre_auth",
 		StatusList:  binding,
+		ValidFrom:   validFrom,
+		ValidUntil:  validUntil,
 	})
 	issueDur := time.Since(issueStart)
 	metrics.ObserveDuration("adapter_duration_seconds", issueDur, "dpg", req.IssuerDpg, "op", "issue")

@@ -57,12 +57,15 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 		}
 		fields := []vctypes.FieldSpec{}
 		for _, f := range cfg.Order {
-			// statusIdx/statusUri are internal token-status markers declared in the
-			// config's order so certify's pre-auth data-provider resolves the
-			// template ${statusIdx}/${statusUri} — but they are auto-supplied by the
-			// issuer (the allocated StatusList binding), never operator-entered, so
-			// keep them out of the issue form's claim fields.
-			if f == "statusIdx" || f == "statusUri" {
+			// Internal template markers (the token-status pointer, the validity
+			// window) are declared in the config's order so certify's pre-auth
+			// data-provider resolves them into the Velocity context — but they are
+			// auto-supplied by the issuer, never operator-entered, so keep them out
+			// of the issue form's claim fields. The validity window comes from the
+			// form's own "Validity window" datetime pickers; surfacing its raw
+			// markers renders them as unfillable text boxes ("validFromEpoch *")
+			// beside the real control.
+			if isInternalMarker(f) {
 				continue
 			}
 			fields = append(fields, fieldSpecFor(f))
