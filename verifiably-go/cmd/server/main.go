@@ -279,7 +279,7 @@ func main() {
 		Mailer:           activationMailer,
 		OTPs:             handlers.NewOTPStore(),
 		APIKeys:          handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
-		RateLimiter:      handlers.NewRateLimiter(),
+		RateLimiter:      handlers.NewRateLimiter(shutCtx),
 		PrometheusURL:    os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
 		GrafanaURL:       os.Getenv("VERIFIABLY_GRAFANA_URL"),
 		RegistryAdminURL: strings.TrimRight(os.Getenv("VERIFIABLY_REGISTRY_ADMIN_URL"), "/"),

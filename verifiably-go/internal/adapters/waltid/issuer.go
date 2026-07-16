@@ -1060,15 +1060,9 @@ func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *b
 		}
 		types = append(types, baseType)
 	}
-	credSubject := make(map[string]any, len(subject)+1)
+	credSubject := make(map[string]any, len(subject))
 	for k, v := range subject {
 		credSubject[k] = v
-	}
-	// VCDM 2.0 subject binding: credentialSubject.id names the holder. Set only
-	// in the holder-initiated flow (HolderDID non-empty); empty in the
-	// operator pre-auth flow, where the operator does not know the holder's DID.
-	if holderDID != "" {
-		credSubject["id"] = holderDID
 	}
 	doc := map[string]any{
 		"@context": []string{
