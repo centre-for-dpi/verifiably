@@ -340,6 +340,54 @@ func schemaNameByID(schemas []vctypes.Schema, id string) string {
 	return ""
 }
 
+// schemaNameForCredential resolves a PRESENTED credential's wire type back to
+// the issuer's name for it ("Testa Card V2"), or "" when we host no matching
+// schema (a credential from another deployment).
+//
+// The single-credential path never needs this: it remembers the name from the
+// request it built (buildTemplateForSchema pins Title: picked.Name, which rides
+// the session to res.CredentialTitle). A combined/delegated presentation has
+// one name per credential and no such carry-through, so it must resolve each
+// from the credential itself — which is why those cards showed the bare vct
+// slug while every other surface showed the real name.
+//
+// Matches the same identifiers issuance emits: the SD-JWT vct (built by
+// Schema.CredentialVct, so compare against exactly that), a variant's explicit
+// vct, the W3C custom type name, and finally the vct's tail — which IS the
+// schema ID, and is base-independent, so it still resolves if the deployment's
+// public URL changed after issuance.
+func schemaNameForCredential(schemas []vctypes.Schema, c backend.NormalizedCredential) string {
+	if len(schemas) == 0 {
+		return ""
+	}
+	base := publicBaseEnv()
+	for _, t := range c.Types {
+		t = strings.TrimSpace(t)
+		if t == "" || strings.EqualFold(t, "VerifiableCredential") {
+			continue
+		}
+		for _, s := range schemas {
+			if s.CredentialVct(base) == t || strings.EqualFold(s.CustomTypeName(), t) {
+				return s.Name
+			}
+			for _, v := range s.Variants {
+				if strings.TrimSpace(v.Vct) == t {
+					return s.Name
+				}
+			}
+		}
+		if i := strings.LastIndexAny(t, "/#"); i >= 0 && i+1 < len(t) {
+			if n := schemaNameByID(schemas, t[i+1:]); n != "" {
+				return n
+			}
+		}
+		if n := schemaNameByID(schemas, t); n != "" {
+			return n
+		}
+	}
+	return ""
+}
+
 // schemaStdByID resolves a (variant) id to its wire-format std (e.g. w3c_vcdm_2,
 // "sd_jwt_vc (IETF)") — used to decide which fields a delegation leg must request.
 // verifierDpg lets an auth-code schema id resolve too (verifierSchemas).

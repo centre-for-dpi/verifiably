@@ -133,6 +133,22 @@ func (a *Adapter) PrefillSubjectFields(_ context.Context, _ vctypes.Schema) (map
 	return map[string]string{}, nil
 }
 
+// errIfValidityUnsupported rejects an issuance that asks for a validity window
+// CREDEBL cannot express, rather than issuing a credential that silently never
+// expires.
+//
+// Remove this the moment CREDEBL's create-offer grows a validity slot (or its
+// templates declare validity attributes we may set): carry the window then, the
+// way the walt.id and Inji Certify adapters do.
+func errIfValidityUnsupported(req backend.IssueRequest) error {
+	if strings.TrimSpace(req.ValidFrom) == "" && strings.TrimSpace(req.ValidUntil) == "" &&
+		!req.Schema.ExpiresWithWindow() {
+		return nil
+	}
+	return fmt.Errorf("credebl: cannot issue %q with a validity window — CREDEBL's create-offer has no validity field, "+
+		"so the credential would never expire; issue it without an expiry or use a DPG that supports one", req.Schema.Name)
+}
+
 // offerCreateRequest matches POST /v1/orgs/{orgId}/oid4vc/{issuerId}/create-offer.
 type offerCreateRequest struct {
 	AuthorizationType string            `json:"authorizationType"`
@@ -170,6 +186,22 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 			return backend.IssueToWalletResult{}, fmt.Errorf("resolve template: %w", err)
 		}
 		templateID = resolved
+	}
+	// A validity window we cannot carry must FAIL, not be dropped.
+	//
+	// CREDEBL's create-offer takes only authorizationType/pin/credentials
+	// [{templateId,payload}] — there is no validity slot, and payload is
+	// validated against the template's declared attributes, so injecting
+	// nbf/exp/validUntil risks a template-validation rejection rather than an
+	// expiring credential.
+	//
+	// Silently ignoring the window is what caused the bug this guard exists to
+	// prevent: the issue form collected an expiry, the adapter dropped it, and
+	// the credential verified as valid forever — indistinguishable from one
+	// that was checked. An operator who asks for an expiry must get either an
+	// expiring credential or an error, never a false success.
+	if err := errIfValidityUnsupported(req); err != nil {
+		return backend.IssueToWalletResult{}, err
 	}
 	payload := make(map[string]any, len(req.SubjectData))
 	for k, v := range req.SubjectData {

@@ -304,7 +304,7 @@ func (h *H) runBulkIssue(w http.ResponseWriter, r *http.Request, sess *Session, 
 	// /issuer/credentials with a working Revoke button.
 	bindings := make([]*backend.StatusListBinding, len(rows))
 	for i := range rows {
-		if b, aErr := h.allocateStatusListBinding(schema); aErr == nil {
+		if b, aErr := h.allocateStatusListBinding(sess.IssuerDpg, schema); aErr == nil {
 			bindings[i] = b
 		}
 	}
@@ -569,7 +569,7 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 	// list + ledgers the credential, so verifiably allocates nothing and the issuer
 	// revoke button routes to Certify's status API via the certify.ledger path.
 	statusKind := statusListKindFor(schema.Std)
-	statusStore := h.statusStoreFor(schema.Std)
+	statusStore := h.statusStoreFor(sess.IssuerDpg, schema.Std)
 	_, slug := injiConfigKeySlug(schema)
 
 	out := make([]backend.BulkRowResult, 0, len(rows))

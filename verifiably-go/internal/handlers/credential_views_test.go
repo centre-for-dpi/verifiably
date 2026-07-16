@@ -64,7 +64,7 @@ func TestBuildDelegationCredentialViews(t *testing.T) {
 		},
 	}
 	h := &H{StatusListCache: fakeStatusCache{raw: revokedList}}
-	h.buildDelegationCredentialViews(context.Background(), res)
+	h.buildDelegationCredentialViews(context.Background(), res, nil)
 
 	if len(res.CredentialViews) != 2 {
 		t.Fatalf("CredentialViews = %d, want 2", len(res.CredentialViews))
@@ -117,7 +117,7 @@ func TestBuildDelegationCredentialViews_SingleNoViews(t *testing.T) {
 		Credentials: []backend.NormalizedCredential{{Types: []string{"BirthCertificate"}}},
 	}
 	h := &H{}
-	h.buildDelegationCredentialViews(context.Background(), res)
+	h.buildDelegationCredentialViews(context.Background(), res, nil)
 	if res.CredentialViews != nil {
 		t.Fatalf("single-credential verify should yield no views, got %v", res.CredentialViews)
 	}

@@ -70,10 +70,95 @@ func wireIssuanceAndStatusLists(ctx context.Context, h *handlers.H, pool *pgxpoo
 	if publicURL == "" {
 		publicURL = "http://localhost:8080"
 	}
-	if pool != nil {
-		return wireIssuancePG(ctx, h, pool, publicURL)
+	// Needed in both modes: even PG-backed lists keep their signing key on
+	// the state volume, since it's private key material and not list state.
+	stateDir := os.Getenv("VERIFIABLY_STATE_DIR")
+	if stateDir == "" {
+		stateDir = "state"
 	}
-	return wireIssuanceFile(h, publicURL)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir state dir: %w", err)
+	}
+	var err error
+	if pool != nil {
+		err = wireIssuancePG(ctx, h, pool, publicURL)
+	} else {
+		err = wireIssuanceFile(h, publicURL, stateDir)
+	}
+	if err != nil {
+		return err
+	}
+	return wireStatusListSet(ctx, h, pool, publicURL, stateDir)
+}
+
+// wireStatusListSet gives every registered issuer DPG its own bitstring +
+// token list, each signed by its own self-managed key. The legacy "v1"
+// lists are registered as the defaults: credentials issued before per-DPG
+// lists existed point their credentialStatus at /status-list/{kind}/v1 and
+// that URL has to keep resolving.
+//
+// Every list gets a signer here, and that is the point: signing used to
+// mean type-asserting the issuer adapter for a walt.id-only method, so an
+// Inji-only deployment hosted lists it could not sign and 503'd every
+// fetch. Hosting a list and being able to sign it are now the same step.
+func wireStatusListSet(ctx context.Context, h *handlers.H, pool *pgxpool.Pool, publicURL, stateDir string) error {
+	set := handlers.NewStatusListSet()
+
+	// Defaults / legacy — also what mock deployments and tests allocate from.
+	for kind, store := range map[string]statuslist.Backend{
+		"bitstring": h.BitstringStore,
+		"token":     h.TokenStore,
+	} {
+		if store == nil {
+			continue
+		}
+		signer, err := statuslist.NewSelfSignedKey(stateDir, store.GetListID())
+		if err != nil {
+			return fmt.Errorf("status list signer %q: %w", store.GetListID(), err)
+		}
+		set.Register(&handlers.StatusListEntry{Store: store, Signer: signer, Kind: kind})
+	}
+
+	if h.Adapter == nil {
+		h.StatusLists = set
+		return nil
+	}
+	// Listing issuer DPGs is part of backend.Adapter, so every adapter can
+	// answer. An adapter that errors or has none keeps the defaults rather
+	// than losing revocation wholesale.
+	dpgs, err := h.Adapter.ListIssuerDpgs(ctx)
+	if err != nil {
+		log.Printf("status list: per-DPG lists skipped — list issuer DPGs: %v", err)
+		h.StatusLists = set
+		return nil
+	}
+	for vendor := range dpgs {
+		for _, kind := range []string{"bitstring", "token"} {
+			id := handlers.StatusListID(vendor, kind)
+			store, err := newStatusListStore(pool, kind, id, stateDir, publicURL)
+			if err != nil {
+				return fmt.Errorf("status list %q: %w", id, err)
+			}
+			signer, err := statuslist.NewSelfSignedKey(stateDir, id)
+			if err != nil {
+				return fmt.Errorf("status list signer %q: %w", id, err)
+			}
+			set.Register(&handlers.StatusListEntry{Store: store, Signer: signer, DPG: vendor, Kind: kind})
+			log.Printf("status list: %q hosts %s (issuer %s)", vendor, store.GetPublishURL(), signer.Issuer())
+		}
+	}
+	h.StatusLists = set
+	return nil
+}
+
+// newStatusListStore opens one list, PG-backed or file-backed to match the
+// rest of the deployment.
+func newStatusListStore(pool *pgxpool.Pool, kind, id, stateDir, publicURL string) (statuslist.Backend, error) {
+	url := publicURL + "/status-list/" + kind + "/" + id
+	if pool != nil {
+		return pg.NewStatusListStore(pool, kind, id, url)
+	}
+	return statuslist.NewStore(kind, id, filepath.Join(stateDir, "status-list-"+id+".json"), url)
 }
 
 // wireIssuancePG wires PostgreSQL-backed stores.
@@ -96,14 +181,7 @@ func wireIssuancePG(_ context.Context, h *handlers.H, pool *pgxpool.Pool, public
 }
 
 // wireIssuanceFile wires the original file-backed stores.
-func wireIssuanceFile(h *handlers.H, publicURL string) error {
-	stateDir := os.Getenv("VERIFIABLY_STATE_DIR")
-	if stateDir == "" {
-		stateDir = "state"
-	}
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir state dir: %w", err)
-	}
+func wireIssuanceFile(h *handlers.H, publicURL, stateDir string) error {
 	logger, err := issuance.NewLog(filepath.Join(stateDir, "issued-credentials.json"))
 	if err != nil {
 		return fmt.Errorf("open issuance log: %w", err)

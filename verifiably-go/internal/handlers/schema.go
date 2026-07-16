@@ -769,21 +769,22 @@ func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
 			s.FieldsSpec = append(s.FieldsSpec, f)
 		}
 	}
-	// Opt-in expiry policy: append a valid_until datetime claim ONLY when the
-	// operator ticked "This credential expires" (d.Expiry), so the credential
-	// carries (and the temporal gate enforces) a validity window. DPG-agnostic —
-	// the flat valid_until claim lands top-level on SD-JWT and inside
-	// credentialSubject on W3C, both read by backend.TemporalBounds. This is the
-	// single funnel every builder path (preview/add/remove/delegation/save) goes
-	// through; hasField dedupes if a schema is re-saved. Delegation schemas do NOT
-	// force expiry — valid_until only appears if the operator explicitly opts in.
-	if d.Expiry && !hasField(s.FieldsSpec, "valid_until") {
-		s.FieldsSpec = append(s.FieldsSpec, vctypes.FieldSpec{
-			Name:     "valid_until",
-			Datatype: "string",
-			Format:   "datetime",
-		})
-	}
+	// Opt-in expiry: "This credential expires" (d.Expiry) marks the SCHEMA as
+	// carrying a validity window, which the issuer then sets per-issuance.
+	//
+	// This sets a flag rather than appending a valid_until CLAIM (which is what
+	// it used to do). A validity window is credential metadata, not a subject
+	// attribute, so it belongs in the envelope — SD-JWT's registered nbf/exp,
+	// W3C's top-level validFrom/validUntil — which every format already defines
+	// and backend.TemporalBounds already reads. Two things follow: a holder
+	// cannot withhold the expiry under selective disclosure (registered claims
+	// are never selectively disclosable), and the window can't collide with a
+	// subject's own date attributes. Schemas built the old way keep working —
+	// ExpiresWithWindow() also honours a legacy valid_until field.
+	//
+	// Delegation schemas do NOT force expiry; it only appears if the operator
+	// explicitly opts in.
+	s.Expires = d.Expiry
 	return s
 }
 

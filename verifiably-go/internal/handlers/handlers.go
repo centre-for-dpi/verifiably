@@ -89,6 +89,14 @@ type H struct {
 	// SD-JWT VCs it issues. Optional; nil disables SD-JWT revocation.
 	TokenStore statuslist.Backend
 
+	// StatusLists indexes every status list this process hosts, per issuer
+	// DPG, each with its own self-managed signing key. BitstringStore and
+	// TokenStore above are the default/legacy ("v1") lists and are also
+	// registered here; StatusLists is what the publish, allocate and
+	// URL-embedding paths resolve through. Optional; nil falls back to the
+	// two fields above.
+	StatusLists *StatusListSet
+
 	// Subjects upserts dynamic claims into the Inji auth-code data-provider
 	// table (certify.vc_subject), keyed by the eSignet subject id. Powers
 	// POST /api/v1/subjects. Optional - nil when INJI_CERTIFY_DATABASE_URL is
@@ -228,14 +236,6 @@ type H struct {
 	// runtime when the admin registers a new member. Set by main.go in hub mode;
 	// nil disables dynamic adapter registration (member takes effect on restart).
 	MemberVerifierRegistrar MemberVerifierRegistrar
-
-	// signingKeyMu guards lazy fetching of the walt.id issuer JWK.
-	// After a successful fetch signingKey is non-nil and the hot path
-	// takes only an RLock. Errors are NOT cached — each failed attempt
-	// retries on the next /status-list/* request so the feature self-heals
-	// when walt.id comes up after a slow compose-up.
-	signingKeyMu sync.RWMutex
-	signingKey   *statuslist.SigningKey
 }
 
 // isHTMX returns true if the request came from HTMX.

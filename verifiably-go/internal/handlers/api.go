@@ -202,6 +202,12 @@ type apiIssueRequest struct {
 	SchemaID    string            `json:"schema_id"`
 	IssuerDpg   string            `json:"issuer_dpg,omitempty"`
 	SubjectData map[string]string `json:"subject_data"`
+	// ValidFrom / ValidUntil (RFC3339) pin the credential's own validity
+	// window. Required for a schema that ticked "This credential expires"
+	// (valid_from defaults to the issuance instant); rejected for one that
+	// didn't, where they would be silently dropped. See resolveIssuanceWindow.
+	ValidFrom  string `json:"valid_from,omitempty"`
+	ValidUntil string `json:"valid_until,omitempty"`
 }
 
 type apiIssueResult struct {
@@ -257,7 +263,12 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusServiceUnavailable, "no issuer DPG available")
 		return
 	}
-	binding, err := h.allocateStatusListBinding(schema)
+	validFrom, validUntil, verr := resolveIssuanceWindow(schema, req.ValidFrom, req.ValidUntil, time.Now())
+	if verr != nil {
+		apiError(w, http.StatusBadRequest, verr.Error())
+		return
+	}
+	binding, err := h.allocateStatusListBinding(req.IssuerDpg, schema)
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
 		return
@@ -269,6 +280,8 @@ func (h *H) APIIssue(w http.ResponseWriter, r *http.Request) {
 		SubjectData: req.SubjectData,
 		Flow:        "pre_auth",
 		StatusList:  binding,
+		ValidFrom:   validFrom,
+		ValidUntil:  validUntil,
 	})
 	issueDur := time.Since(issueStart)
 	metrics.ObserveDuration("adapter_duration_seconds", issueDur, "dpg", req.IssuerDpg, "op", "issue")
@@ -375,7 +388,7 @@ func (h *H) APIIssueBulk(w http.ResponseWriter, r *http.Request) {
 	defer bulkCancel()
 	out := apiIssueBulkResult{Rows: make([]apiBulkRowOut, 0, len(req.Rows))}
 	for i, row := range req.Rows {
-		binding, berr := h.allocateStatusListBinding(schema)
+		binding, berr := h.allocateStatusListBinding(req.IssuerDpg, schema)
 		if berr != nil {
 			out.Rejected++
 			out.Rows = append(out.Rows, apiBulkRowOut{Row: i + 1, Status: "failed", Error: berr.Error()})
@@ -496,7 +509,7 @@ func (h *H) APIRevoke(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusUnprocessableEntity, "credential has no status list binding and cannot be revoked")
 		return
 	}
-	store := h.storeForKind(rec.StatusList.Type)
+	store := h.storeForBinding(rec.StatusList.Type, rec.StatusList.ListID)
 	if store == nil {
 		apiError(w, http.StatusServiceUnavailable, "status list store not configured")
 		return
@@ -540,7 +553,7 @@ func (h *H) APIReinstate(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusUnprocessableEntity, "credential has no status list binding")
 		return
 	}
-	store := h.reinstateStoreForKind(rec.StatusList.Type)
+	store := h.reinstateStoreForBinding(rec.StatusList.Type, rec.StatusList.ListID)
 	if store == nil {
 		apiError(w, http.StatusServiceUnavailable, "status list store not configured")
 		return
@@ -562,14 +575,10 @@ func (h *H) APIReinstate(w http.ResponseWriter, r *http.Request) {
 }
 
 // reinstateStoreForKind returns the store for the given kind.
-func (h *H) reinstateStoreForKind(kind string) statuslist.Backend {
-	switch kind {
-	case "bitstring":
-		return h.BitstringStore
-	case "token":
-		return h.TokenStore
-	}
-	return nil
+// reinstateStoreForBinding resolves the list to un-revoke in — the same
+// one the credential was issued against. See storeForBinding.
+func (h *H) reinstateStoreForBinding(kind, listID string) statuslist.Backend {
+	return h.storeForBinding(kind, listID)
 }
 
 // ── Verify request ────────────────────────────────────────────────────────────
@@ -770,7 +779,7 @@ func (h *H) APIIssueBulkAsync(w http.ResponseWriter, r *http.Request) {
 	issuerDpg := req.IssuerDpg
 	schemaSnap := schema
 	workFn := func(rowCtx context.Context, row map[string]string) error {
-		binding, berr := h.allocateStatusListBinding(schemaSnap)
+		binding, berr := h.allocateStatusListBinding(issuerDpg, schemaSnap)
 		if berr != nil {
 			return berr
 		}

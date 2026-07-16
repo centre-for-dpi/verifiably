@@ -14,6 +14,42 @@ import (
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
+// resolveIssuanceWindow validates and completes the validity window for one
+// issuance, returning the RFC3339 bounds to put on the IssueRequest.
+//
+// A schema that declares no expiry gets no window: passing dates for it would
+// be silently dropped (the adapters only write temporal claims into a template
+// that declares them), so reject that rather than pretend it worked.
+//
+// A schema that DOES declare an expiry must be given one, every time. That is
+// forced, not a preference: Inji Certify renders a static per-schema template,
+// and an expiring schema's SD-JWT template carries the unquoted
+// `"exp": ${validUntilEpoch}` — NumericDate is a JSON number — so a blank value
+// renders `"exp": ,` and certify rejects the whole issuance with
+// json_processing_error. Catching it here gives the operator a real message
+// instead of a vendor 400.
+//
+// validFrom is optional and defaults to now: "valid from the moment it was
+// issued" is always a sensible reading, and it keeps a half-filled window from
+// producing an empty marker.
+func resolveIssuanceWindow(schema vctypes.Schema, validFrom, validUntil string, now time.Time) (string, string, error) {
+	validFrom, validUntil = strings.TrimSpace(validFrom), strings.TrimSpace(validUntil)
+	if !schema.ExpiresWithWindow() {
+		if validFrom != "" || validUntil != "" {
+			return "", "", fmt.Errorf("%q does not declare an expiry, so a validity window can't be set on it — "+
+				"tick \"This credential expires\" on the schema first", schema.Name)
+		}
+		return "", "", nil
+	}
+	if validUntil == "" {
+		return "", "", fmt.Errorf("%q expires, so it needs a \"Valid until\" — pick the instant after which verifiers deny it", schema.Name)
+	}
+	if validFrom == "" {
+		validFrom = now.UTC().Format(time.RFC3339)
+	}
+	return validFrom, validUntil, nil
+}
+
 // statusListKindFor maps a Schema.Std to the status list kind verifiably-go
 // hosts for that taxonomy. Returns "" for credentials whose revocation
 // flow we don't model (mso_mdoc → MSO/IACA, legacy jwt_vc → out of scope).
@@ -34,21 +70,23 @@ func statusListKindFor(std string) string {
 // immediately, and we don't want the index to drift past the last
 // successful issuance just because walt.id 5xx'd.
 //
+// issuerDpg selects that DPG's own list, so revoking a credential from one
+// issuer can't flip a bit in another's list. An unknown or empty DPG falls
+// back to the default list rather than dropping revocability.
+//
 // Returns (nil, nil, nil) when the schema's Std doesn't support a status
 // list OR when the corresponding Store isn't configured. Issuance proceeds
 // without a binding in that case.
-func (h *H) allocateStatusListBinding(schema vctypes.Schema) (*backend.StatusListBinding, error) {
+func (h *H) allocateStatusListBinding(issuerDpg string, schema vctypes.Schema) (*backend.StatusListBinding, error) {
 	kind := statusListKindFor(schema.Std)
 	if kind == "" {
 		return nil, nil
 	}
-	var store = h.BitstringStore
-	if kind == "token" {
-		store = h.TokenStore
-	}
-	if store == nil {
+	entry := h.statusListFor(issuerDpg, kind)
+	if entry == nil || entry.Store == nil {
 		return nil, nil
 	}
+	store := entry.Store
 	idx, err := store.Allocate()
 	if err != nil {
 		return nil, fmt.Errorf("status list allocate: %w", err)
@@ -251,7 +289,7 @@ func (h *H) RevokeIssuedCredential(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "This credential has no status list binding (e.g. mdoc) and cannot be revoked through verifiably-go.")
 		return
 	}
-	store := h.storeForKind(rec.StatusList.Type)
+	store := h.storeForBinding(rec.StatusList.Type, rec.StatusList.ListID)
 	if store == nil {
 		h.errorToast(w, r, "Status list "+rec.StatusList.Type+" not configured.")
 		return
@@ -270,12 +308,32 @@ func (h *H) RevokeIssuedCredential(w http.ResponseWriter, r *http.Request) {
 	h.renderFragment(w, r, "fragment_issued_credentials_row", rec)
 }
 
+// storeForBinding resolves the exact list a credential was issued against.
+//
+// Resolve by list id, NOT by kind: with per-DPG lists, kind alone is
+// ambiguous, and revoking would flip a bit in whichever list happened to
+// be the default — marking an unrelated credential revoked while leaving
+// the real one valid. The id is recorded in the binding at issuance, so
+// it always names the right list.
+func (h *H) storeForBinding(kind, listID string) statuslist.Backend {
+	if kind == "" {
+		return nil
+	}
+	if listID != "" {
+		if e := h.StatusLists.ByID(kind, listID); e != nil {
+			return e.Store
+		}
+	}
+	// Records written before per-DPG lists carry no usable id — fall back to
+	// the default list for the kind, which is where they were allocated.
+	return h.storeForKind(kind)
+}
+
+// storeForKind returns the default list for a kind. Prefer storeForBinding
+// wherever a binding is available.
 func (h *H) storeForKind(kind string) statuslist.Backend {
-	switch kind {
-	case "bitstring":
-		return h.BitstringStore
-	case "token":
-		return h.TokenStore
+	if e := h.statusListFor("", kind); e != nil {
+		return e.Store
 	}
 	return nil
 }

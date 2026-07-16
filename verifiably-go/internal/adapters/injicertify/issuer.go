@@ -56,13 +56,27 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			name = humanise(id)
 		}
 		fields := []vctypes.FieldSpec{}
+		// A declared validity marker IS the record that this schema expires.
+		// Schema.Expires lives only in verifiably's store and no vendor
+		// advertises it, so rebuilding a Schema here without it silently
+		// disagrees with the template SaveCustomSchema already wrote: the
+		// template asks for ${validUntilEpoch} while issuance, reading this
+		// rebuilt schema, declines to POST one — certify then rejects the
+		// unresolved marker and the schema cannot be issued at all.
+		expires := false
 		for _, f := range cfg.Order {
-			// statusIdx/statusUri are internal token-status markers declared in the
-			// config's order so certify's pre-auth data-provider resolves the
-			// template ${statusIdx}/${statusUri} — but they are auto-supplied by the
-			// issuer (the allocated StatusList binding), never operator-entered, so
-			// keep them out of the issue form's claim fields.
-			if f == "statusIdx" || f == "statusUri" {
+			if isValidityMarker(f) {
+				expires = true
+			}
+			// Internal template markers (the token-status pointer, the validity
+			// window) are declared in the config's order so certify's pre-auth
+			// data-provider resolves them into the Velocity context — but they are
+			// auto-supplied by the issuer, never operator-entered, so keep them out
+			// of the issue form's claim fields. The validity window comes from the
+			// form's own "Validity window" datetime pickers; surfacing its raw
+			// markers renders them as unfillable text boxes ("validFromEpoch *")
+			// beside the real control.
+			if isInternalMarker(f) {
 				continue
 			}
 			fields = append(fields, fieldSpecFor(f))
@@ -77,6 +91,11 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			DPGs:       []string{issuerDpg},
 			Desc:       fmt.Sprintf("Live credential configuration served by %s.", issuerDpg),
 			FieldsSpec: fields,
+			// Recovered from the declared markers above, so the rebuilt schema
+			// agrees with the template certify already holds: the issue form
+			// offers a Validity window, and issuance POSTs the values the
+			// template's ${validFromEpoch}/${validUntilEpoch} require.
+			Expires: expires,
 			// Pin the exact vct the issuer metadata advertises (SD-JWT VC only;
 			// empty for ldp_vc/W3C). The verifier's PD needs this so the wallet's
 			// matchesVct selects the held token by its vct claim; without it the
@@ -167,6 +186,19 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 			} else {
 				claims["statusIdx"] = "0"
 				claims["statusUri"] = ""
+			}
+		}
+		// Resolve the validity-window markers the template carries. Until this
+		// existed the operator's window was collected by the issue form, put on
+		// the request, and then silently dropped here — only the walt.id adapter
+		// ever read req.ValidFrom/ValidUntil — so EVERY Inji Certify credential
+		// was issued without a window and an expired one verified as valid.
+		//
+		// Gated on the same flag buildVCTemplate uses: POSTing a marker the
+		// template never declared would be rejected as an unknown claim.
+		if req.Schema.ExpiresWithWindow() {
+			for k, v := range validityClaims(stdToCredentialFormat(req.Schema.Std), req.ValidFrom, req.ValidUntil) {
+				claims[k] = v
 			}
 		}
 		body := preAuthorizedDataRequest{
