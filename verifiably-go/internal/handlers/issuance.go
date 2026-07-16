@@ -3,6 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,9 +13,35 @@ import (
 )
 
 type modeData struct {
-	Dpg         vctypes.DPG
+	Dpg           vctypes.DPG
 	SelectedScale string
 	SelectedDest  string
+	// WalletDestBlocked greys out the "deliver to wallet" option when the
+	// current schema can't be delivered to a wallet (Inji Pre-Auth W3C — see
+	// injiPreAuthWalletUnsupported). QR-on-PDF stays available.
+	WalletDestBlocked bool
+	// PdfDestBlocked greys out the QR-on-PDF option when the current schema can't
+	// be issued as a PDF (Inji Pre-Auth SD-JWT — see injiPreAuthPdfUnsupported).
+	// Wallet stays available. Symmetric to WalletDestBlocked.
+	PdfDestBlocked bool
+}
+
+// injiPreAuthWalletUnsupported reports whether the DPG+format combination cannot
+// be delivered to a wallet over OID4VCI. Inji Certify Pre-Auth issues W3C as
+// ldp_vc (JSON-LD); the Credo-TS wallet stores every credential as a compact
+// SD-JWT record, so a JSON-LD object throws "undefined is not a function" on
+// accept (HEADLESS-PROVEN against centre-for-dpi/vcs-whitelabel-wallet). Only
+// QR-on-PDF works for Inji Pre-Auth W3C. SD-JWT and the other DPGs are fine.
+func injiPreAuthWalletUnsupported(issuerDpg, std string) bool {
+	return issuerDpg == "Inji Certify · Pre-Auth" && strings.HasPrefix(std, "w3c")
+}
+
+// injiPreAuthPdfUnsupported reports whether the DPG+format combination cannot be
+// issued as a QR-on-PDF. Inji Certify Pre-Auth SD-JWT has no working PDF path
+// (only OID4VCI-to-wallet); the operator reported the PDF option produces nothing
+// usable. Symmetric to injiPreAuthWalletUnsupported: W3C→PDF-only, SD-JWT→wallet-only.
+func injiPreAuthPdfUnsupported(issuerDpg, std string) bool {
+	return issuerDpg == "Inji Certify · Pre-Auth" && strings.HasPrefix(std, "sd_jwt")
 }
 
 // ShowIssuanceMode renders the scale + destination choice screen.
@@ -39,6 +66,34 @@ func (h *H) ShowIssuanceMode(w http.ResponseWriter, r *http.Request) {
 		sess.Dest = "wallet"
 		data.SelectedDest = "wallet"
 	}
+	// Bulk-only DPGs (e.g. Inji auth-code) have no single-subject issuance —
+	// the issuer provisions many subjects and holders self-claim. Force
+	// Scale=bulk so the greyed single card is never the active selection.
+	if data.Dpg.BulkOnly && sess.Scale != "bulk" {
+		sess.Scale = "bulk"
+		data.SelectedScale = "bulk"
+	}
+	// Inji Pre-Auth W3C (ldp_vc) can't be delivered to a wallet — grey the wallet
+	// option and force QR-on-PDF (F11). Resolve the picked schema's format the
+	// same way ShowIssue does; skip silently if it can't be resolved.
+	if schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess)); err == nil {
+		if schema, ok := findSchemaByID(schemas, sess.SchemaID); ok {
+			switch {
+			case injiPreAuthWalletUnsupported(sess.IssuerDpg, schema.Std): // W3C → PDF only
+				data.WalletDestBlocked = true
+				if sess.Dest != "pdf" {
+					sess.Dest = "pdf"
+					data.SelectedDest = "pdf"
+				}
+			case injiPreAuthPdfUnsupported(sess.IssuerDpg, schema.Std): // SD-JWT → wallet only (F18)
+				data.PdfDestBlocked = true
+				if sess.Dest != "wallet" {
+					sess.Dest = "wallet"
+					data.SelectedDest = "wallet"
+				}
+			}
+		}
+	}
 	h.render(w, r, "issuer_mode", h.pageData(sess, data))
 }
 
@@ -50,6 +105,24 @@ func (h *H) SetIssuanceMode(w http.ResponseWriter, r *http.Request) {
 	}
 	if dest := r.FormValue("dest"); dest != "" {
 		sess.Dest = dest
+	}
+	// Server-side guard: a bulk-only DPG can never be issued single-subject,
+	// even if a crafted POST submits scale=single (the card is greyed client-side).
+	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil && dpgs[sess.IssuerDpg].BulkOnly {
+		sess.Scale = "bulk"
+	}
+	// Server-side guards mirroring the client-side greying: Inji Pre-Auth W3C can't
+	// go to a wallet (force PDF, F11); Inji Pre-Auth SD-JWT can't go to PDF (force
+	// wallet, F18) — even if a crafted POST submits the blocked dest.
+	if schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess)); err == nil {
+		if schema, ok := findSchemaByID(schemas, sess.SchemaID); ok {
+			switch {
+			case injiPreAuthWalletUnsupported(sess.IssuerDpg, schema.Std):
+				sess.Dest = "pdf"
+			case injiPreAuthPdfUnsupported(sess.IssuerDpg, schema.Std):
+				sess.Dest = "wallet"
+			}
+		}
 	}
 	h.redirect(w, r, "/issuer/issue")
 }
@@ -73,6 +146,15 @@ type issueData struct {
 	// bulk_source capabilities fall back to all three so existing backends
 	// aren't silently blocked.
 	BulkSources []sourceOption
+	// IsProvision is true for holder-pull DPGs (Inji auth-code) where bulk
+	// provisions certify.vc_subject — gates the holder-identity mapping row.
+	IsProvision bool
+	// Registries are the env-configured Sunbird RC registries (VERIFIABLY_REGISTRIES)
+	// offered as a dropdown on the registry source form.
+	Registries []registryProvider
+	// EntityDefault pre-fills the registry Entity input (= the credential key /
+	// Sunbird entity name).
+	EntityDefault string
 }
 
 // sourceOption is one chip on the issue form's "source" picker. Derived from
@@ -118,17 +200,20 @@ func (h *H) ShowIssue(w http.ResponseWriter, r *http.Request) {
 		sess.BulkSource = bulkSource
 	}
 	data := issueData{
-		Schema:       schema,
-		Scale:        sess.Scale,
-		Dest:         sess.Dest,
-		IssuerDpg:    sess.IssuerDpg,
-		Dpg:          dpg,
-		SingleSource: "manual",
-		BulkSource:   bulkSource,
-		FieldValues:  vals,
-		Fields:       schemaFieldsOfH(schema),
-		Sources:      sourcesFromCapabilities(dpg),
-		BulkSources:  bulkSources,
+		Schema:        schema,
+		Scale:         sess.Scale,
+		Dest:          sess.Dest,
+		IssuerDpg:     sess.IssuerDpg,
+		Dpg:           dpg,
+		SingleSource:  "manual",
+		BulkSource:    bulkSource,
+		FieldValues:   vals,
+		Fields:        schemaFieldsOfH(schema),
+		Sources:       sourcesFromCapabilities(dpg),
+		BulkSources:   bulkSources,
+		IsProvision:   h.isInjiAuthcode(r.Context(), sess.IssuerDpg),
+		Registries:    registryProviders(),
+		EntityDefault: sess.SchemaID,
 	}
 	h.render(w, r, "issuer_issue", h.pageData(sess, data))
 }
@@ -181,6 +266,39 @@ func sourcesFromCapabilities(dpg vctypes.DPG) []sourceOption {
 // restart: in-memory sessions get wiped on restart, but an already-loaded
 // form still has the originally-selected DPG + schema in its hidden
 // fields and submits without a cryptic "unknown DPG: issuer \"\"" error.
+// normalizeIssuanceTime accepts an RFC3339 timestamp, an HTML datetime-local
+// value (2006-01-02T15:04[:05]), or a plain date (2006-01-02) and returns it as
+// RFC3339 UTC. Empty or unparseable input yields "".
+func normalizeIssuanceTime(s string) string { return normalizeIssuanceTimeTZ(s, 0) }
+
+// normalizeIssuanceTimeTZ is normalizeIssuanceTime with an explicit input zone.
+// A bare HTML datetime-local / date value carries no offset, and Go's plain
+// time.Parse would assign UTC — pinning a user's local wall-clock (e.g. 17:36)
+// to 17:36Z. For a UTC+offset operator that pushes validFrom hours into the
+// future, tripping a verifier's not-before gate. offsetEastMin is the minutes
+// EAST of UTC the operator selected (e.g. +330 = UTC+05:30); the zone-less
+// layouts are interpreted in that fixed zone via ParseInLocation, THEN converted
+// to UTC. An RFC3339 input already carries its own zone and is honoured verbatim.
+// Empty or unparseable input yields "".
+func normalizeIssuanceTimeTZ(s string, offsetEastMin int) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	// RFC3339 first — it is self-describing, so the selected zone must not
+	// override an explicit offset the caller already provided.
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	loc := time.FixedZone("user", offsetEastMin*60)
+	for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
+		if t, err := time.ParseInLocation(layout, s, loc); err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	}
+	return ""
+}
+
 func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	_ = r.ParseForm()
@@ -209,11 +327,24 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	schema, _ := findSchemaByID(schemas, schemaID)
 	schema = h.resolveFields(schema)
+	// The operator's local UTC offset (minutes east, from the issue form's
+	// timezone selector). datetime-local/date inputs carry no zone, so this tells
+	// normalizeIssuanceTimeTZ which wall-clock the entered times are in — else
+	// they'd be pinned to UTC and a validFrom would land hours in the future.
+	tzOffset, _ := strconv.Atoi(r.FormValue("tz_offset"))
 	// Gather subject data from form (falls back to prefill)
 	subject := map[string]string{}
-	for _, f := range schemaFieldsOfH(schema) {
-		v := strings.TrimSpace(r.FormValue("field_" + f))
-		subject[f] = v
+	for _, fs := range schema.FieldsSpec {
+		v := strings.TrimSpace(r.FormValue("field_" + fs.Name))
+		// Date/datetime fields (e.g. a delegation's valid_until capability
+		// expiry) are normalized to RFC3339 UTC so the claim is well-formed
+		// regardless of the browser's datetime-local wire format. Every other
+		// field is stored verbatim — this stays generic, keyed on the field's
+		// declared Format, not its name.
+		if fs.Format == "date" || fs.Format == "datetime" {
+			v = normalizeIssuanceTimeTZ(v, tzOffset)
+		}
+		subject[fs.Name] = v
 	}
 	// Validate: every Required field must be non-empty. Non-required fields
 	// may be left blank.
@@ -228,14 +359,11 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := backend.IssueRequest{IssuerDpg: sess.IssuerDpg, Schema: schema, SubjectData: subject}
-	// Holder-initiated flows (API caller / future self-service) bind the
-	// credential to the citizen's DID via credentialSubject.id. Honour it when
-	// supplied; the operator pre-auth path sends no holder_did and leaves it
-	// empty (the operator is not the subject). When self-service issuance lands
-	// this is where the holder's own session identity will populate it.
-	if did := strings.TrimSpace(r.FormValue("holder_did")); did != "" {
-		req.HolderDID = did
-	}
+	// Optional issuance-time validity window. When set, the adapter pins the
+	// credential's validFrom/validUntil (W3C) or nbf/exp (SD-JWT) instead of the
+	// DPG default (walt.id defaults to ~2y); empty leaves the backend default.
+	req.ValidFrom = normalizeIssuanceTimeTZ(r.FormValue("valid_from"), tzOffset)
+	req.ValidUntil = normalizeIssuanceTimeTZ(r.FormValue("valid_until"), tzOffset)
 
 	if sess.Dest == "wallet" {
 		// Allocate a status-list index BEFORE the issuance call so the
@@ -271,6 +399,18 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// PDF
+	// Allocate a status-list index BEFORE the PDF issuance, exactly like the wallet
+	// branch above (F16). The PDF path is the ONLY Inji W3C delivery since F11 greyed
+	// out wallet for W3C, and the adapter needs the binding to resolve the
+	// credentialStatus / status.status_list markers into a real, revocable pointer —
+	// without it certify renders the literal ${statusUri}/${statusIdx} and the
+	// credential fails verification everywhere.
+	binding, allocErr := h.allocateStatusListBinding(schema)
+	if allocErr != nil {
+		h.errorToast(w, r, allocErr.Error())
+		return
+	}
+	req.StatusList = binding
 	pdfStart := time.Now()
 	res, err := h.Adapter.IssueAsPDF(r.Context(), req)
 	metrics.ObserveDuration("adapter_duration_seconds", time.Since(pdfStart), "dpg", issuerDpg, "op", "issue")
@@ -286,6 +426,9 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		"dest", "pdf",
 		"duration_ms", time.Since(pdfStart).Milliseconds(),
 	)
+	// Record the issuance so the PDF credential shows in /issuer/credentials and is
+	// revocable via its allocated status-list index (F17). No offer URI for PDF.
+	h.recordIssuance(sess, schema, sess.IssuerDpg, subject, "", binding)
 	h.renderFragment(w, r, "fragment_issue_pdf_result", map[string]any{
 		"Schema":    schema,
 		"PDFResult": res,
@@ -320,67 +463,6 @@ func (h *H) SetSingleSource(w http.ResponseWriter, r *http.Request) {
 		Sources:      sourcesFromCapabilities(dpg),
 	}
 	h.renderFragment(w, r, "fragment_issue_single_form", data)
-}
-
-// SimulateCSV parses an uploaded CSV, calls IssueBulk per row, and renders
-// the preview fragment with real per-row outcomes. The function name stays
-// SimulateCSV for route stability; the "simulate" nature is gone — this is
-// a live bulk-issue path.
-func (h *H) SimulateCSV(w http.ResponseWriter, r *http.Request) {
-	sess := h.Sessions.MustGet(w, r)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		h.errorToast(w, r, "Upload a CSV first")
-		return
-	}
-	schemas, err := h.Adapter.ListAllSchemas(issuerCtx(r, sess))
-	if err != nil {
-		h.errorToast(w, r, "backend unavailable: "+err.Error())
-		return
-	}
-	schema, _ := findSchemaByID(schemas, sess.SchemaID)
-	file, _, err := r.FormFile("csv_file")
-	if err != nil {
-		h.errorToast(w, r, "Upload a CSV file")
-		return
-	}
-	defer file.Close()
-	rows, header, parseErr := parseCSVRows(file)
-	if parseErr != nil {
-		h.errorToast(w, r, "Parse CSV: "+parseErr.Error())
-		return
-	}
-	bulkStart := time.Now()
-	res, err := h.Adapter.IssueBulk(r.Context(), backend.IssueBulkRequest{
-		IssuerDpg: sess.IssuerDpg,
-		Schema:    schema,
-		Rows:      rows,
-		RowCount:  len(rows),
-	})
-	metrics.ObserveDuration("adapter_duration_seconds", time.Since(bulkStart), "dpg", sess.IssuerDpg, "op", "issue")
-	if err != nil {
-		metrics.Inc("credential_issued_total", "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
-		h.errorToast(w, r, err.Error())
-		return
-	}
-	if res.Accepted > 0 {
-		metrics.IncN("credential_issued_total", int64(res.Accepted), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "ok")
-	}
-	if res.Rejected > 0 {
-		metrics.IncN("credential_issued_total", int64(res.Rejected), "dpg", sess.IssuerDpg, "schema", schema.Name, "status", "error")
-	}
-	vals, _ := h.Adapter.PrefillSubjectFields(r.Context(), schema)
-	h.renderFragment(w, r, "fragment_issue_csv_preview", map[string]any{
-		"Schema":   schema,
-		"Fields":   schemaFieldsOfH(schema),
-		"Values":   vals,
-		"Header":   header,
-		"Total":    len(rows),
-		"Accepted": res.Accepted,
-		"Rejected": res.Rejected,
-		"Errors":   res.Errors,
-		"RowsOut":  res.Rows,
-		"Label":    "csv",
-	})
 }
 
 // PreviewPDF opens the PDF preview modal.
@@ -430,7 +512,7 @@ func bulkSourcesFor(dpg vctypes.DPG) []sourceOption {
 		if c.Kind != "bulk_source" {
 			continue
 		}
-		if c.Key != "csv" && c.Key != "api" && c.Key != "db" {
+		if c.Key != "csv" && c.Key != "api" && c.Key != "db" && c.Key != "registry" {
 			continue
 		}
 		out = append(out, sourceOption{Key: c.Key, Label: c.Title, Hint: c.Body})

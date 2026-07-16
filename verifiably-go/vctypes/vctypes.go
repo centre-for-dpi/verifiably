@@ -24,6 +24,14 @@ type DPG struct {
 	// address the redirect-notice page links to. Populated by the registry
 	// from backends.json; empty for non-redirect DPGs.
 	UIURL string
+	// InAppPath, when set, makes selecting this DPG navigate to an in-app flow
+	// (e.g. "/issuer/schema/build" or "/holder/wallet/inji") instead of the
+	// external redirect notice. Takes precedence over Redirect.
+	InAppPath string
+	// SchemaApply, when "inji_authcode", makes the shared schema builder's save
+	// apply via the Inji auth-code (Flow B) path instead of the default adapter
+	// (issuing every data model the builder offers as Inji Certify credentials).
+	SchemaApply string
 
 	// Issuer-specific capability flags
 	FlowPreAuth                 bool
@@ -33,6 +41,12 @@ type DPG struct {
 	FormatsPlain                string // plain-language explanation of formats
 	DirectPDF                   bool
 	DirectPDFPlain              string
+	// BulkOnly, when true, marks a DPG whose only issuance model is
+	// bulk-provision-then-self-claim (e.g. Inji auth-code: the issuer loads
+	// many subjects into the data-provider table, holders then claim via
+	// eSignet). The Mode page greys the single-subject scale and
+	// ShowIssuanceMode/SetIssuanceMode force Scale="bulk".
+	BulkOnly bool
 
 	// Structured capability list. Renders on the DPG picker card and drives
 	// downstream screen branching via Kind/Key pairs (no string matches on
@@ -239,6 +253,24 @@ func (s Schema) CustomTypeName() string {
 		}
 	}
 	return sanitizeTypeNameVC(s.Name)
+}
+
+// CredentialVct returns the SD-JWT VC `vct` value for this schema: the explicit
+// Schema.Vct when set, otherwise a stable identifier derived from the
+// deployment's public host — "<publicBaseURL>/credentials/<ID>". Issuance and
+// verification MUST call this with the SAME publicBaseURL (the deployment's
+// VERIFIABLY_PUBLIC_URL) so the issued credential's `vct` claim and the
+// verifier's presentation-definition filter agree. The host is never hardcoded;
+// when publicBaseURL is empty (dev) it falls back to localhost.
+func (s Schema) CredentialVct(publicBaseURL string) string {
+	if v := strings.TrimSpace(s.Vct); v != "" {
+		return v
+	}
+	base := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
+	if base == "" {
+		base = "http://localhost:8080"
+	}
+	return base + "/credentials/" + s.ID
 }
 
 // sanitizeTypeNameVC mirrors waltid.sanitizeTypeName — kept here so vctypes

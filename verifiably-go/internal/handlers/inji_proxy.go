@@ -41,6 +41,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/verifiably/verifiably-go/internal/injidid"
 )
@@ -149,6 +150,45 @@ func (h *H) InjiProxyStatusList(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
+// InjiProxyWellKnown serves the OID4VCI issuer metadata for the auth-code
+// (primary) Inji Certify instance. certify-nginx proxies
+// GET /.well-known/openid-credential-issuer here (to host.docker.internal:8080/
+// inji-proxy/...); without this route Mimoto/Inji Web get a 404 on metadata
+// discovery and the card download fails before issuance even starts.
+//
+// Pass-through by design: the upstream is injiCertifyUpstream() (env
+// INJI_CERTIFY_UPSTREAM_URL, default the docker service name) and the metadata's
+// own URLs are emitted by Inji Certify from its config — so this is
+// host-agnostic and works unchanged on localhost or any deployed host. We don't
+// rewrite the body: the auth-code consumers (Mimoto, Credo) accept Certify's
+// native metadata, unlike the pre-auth/walt.id path which needs sanitising.
+func (h *H) InjiProxyWellKnown(w http.ResponseWriter, r *http.Request) {
+	upstream := injiCertifyUpstream() + "/v1/certify/.well-known/openid-credential-issuer"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upstream, nil)
+	if err != nil {
+		http.Error(w, "build upstream request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("inji-proxy: wellknown upstream error: %v", err)
+		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		log.Printf("inji-proxy: wellknown RESP %d body=%s", resp.StatusCode, truncateForLog(string(body), 400))
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "application/json"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(body)
+}
+
 // InjiProxyPrimaryDidJSON serves /.well-known/did.json for did:web:certify-nginx.
 // Fetches the PRIMARY (auth-code) Inji Certify instance's own did.json and
 // patches verificationMethod with every kid we've seen the primary sign
@@ -207,6 +247,47 @@ func fetchDidJSON(ctx context.Context, url string) (map[string]any, int, error) 
 	return doc, resp.StatusCode, nil
 }
 
+// certifyIssuerDID returns the auth-code Inji Certify instance's issuer DID —
+// the `id` of its did.json, which mirrors CERTIFY_ISSUER_DID (the deploy host
+// DID, e.g. did:web:inji-certify-authcode.<domain>). New auth-code
+// credential_config rows store this as their did_url so the signed VC's
+// proof.verificationMethod matches the issuer AND resolves at the public host
+// (see ApplyAuthcodeSchema). Falls back to the docker-internal
+// did:web:certify-nginx (dev default) when the fetch fails — the same value the
+// column historically hardcoded.
+func certifyIssuerDID(ctx context.Context) string {
+	// The did.json `id` is the source of truth (it matches the key certify
+	// actually signs with). Retry a few times: a transient miss here would poison
+	// the new credential_config's did_url with an UNVERIFIABLE value — the
+	// internal docker hostname never resolves at an external verifier, so every VC
+	// signed under it fails signature verification (exactly the certify-nginx bug
+	// this proxy exists to avoid). A single un-retried fetch previously left a
+	// delegation credential pinned to did:web:certify-nginx.
+	url := injiCertifyUpstream() + "/v1/certify/.well-known/did.json"
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+		}
+		doc, status, err := fetchDidJSON(ctx, url)
+		if err == nil && status == http.StatusOK {
+			if id, _ := doc["id"].(string); strings.TrimSpace(id) != "" {
+				return id
+			}
+		}
+	}
+	// Fetch failed: fall back to the deploy-provided public issuer DID (the same
+	// value certify gets from CERTIFY_ISSUER_DID) — NOT did:web:certify-nginx,
+	// which is unverifiable everywhere but inside the docker network.
+	if d := strings.TrimSpace(os.Getenv("CERTIFY_ISSUER_DID")); d != "" && d != "did:web:certify-nginx" {
+		log.Printf("certifyIssuerDID: did.json fetch failed; using CERTIFY_ISSUER_DID env fallback %q", d)
+		return d
+	}
+	// Pure-dev last resort (ISSUER_DID_DOMAIN unset): the internal hostname.
+	// Credentials issued now will NOT verify at any external verifier.
+	log.Printf("certifyIssuerDID: WARNING no resolvable issuer DID (did.json fetch failed, CERTIFY_ISSUER_DID unset); credentials issued now will not verify externally")
+	return "did:web:certify-nginx"
+}
+
 // patchedDidDoc mutates doc to add one verificationMethod per extra kid,
 // cloning the upstream method's key material. The original method stays in
 // place (some verifiers cache on first match). `extras` is allowed to include
@@ -250,6 +331,26 @@ func patchedDidDoc(doc map[string]any, extras []string) {
 		existing[kid] = struct{}{}
 	}
 	doc["verificationMethod"] = methods
+
+	// Normalise assertionMethod / authentication to reference the FULL
+	// verification-method ids (did#kid). Inji Certify's upstream did.json lists
+	// the BARE did (no #fragment) in these relationships, which a strict
+	// verifier (the @digitalbazaar suites walt.id-style wallets use) won't
+	// accept as authorising a proof whose verificationMethod is did#kid — so
+	// the proof check fails even though the key is present. Point both at every
+	// VM id instead. This issuer uses one key for both relationships.
+	vmIDs := make([]any, 0, len(methods))
+	for _, m := range methods {
+		if mm, _ := m.(map[string]any); mm != nil {
+			if id, _ := mm["id"].(string); id != "" {
+				vmIDs = append(vmIDs, id)
+			}
+		}
+	}
+	if len(vmIDs) > 0 {
+		doc["assertionMethod"] = vmIDs
+		doc["authentication"] = vmIDs
+	}
 }
 
 // Seed each observer from its own env-var. Primary gets INJI_PROXY_EXTRA_KIDS

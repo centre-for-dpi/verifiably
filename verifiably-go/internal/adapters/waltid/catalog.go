@@ -237,20 +237,27 @@ func buildLinkedDataEntry(configID, typeName, wireFormat string, schema vctypes.
 // the verifier handler) must use the same string for the round-trip
 // to work.
 //
-// We pin the vct to the bare type name (e.g. "FarmerCredential") rather
-// than a URL with HOCON substitution. Reasons:
-//   - The URL form (http://${SERVICE_HOST}:${ISSUER_API_PORT}/<typeName>)
-//     resolves at walt.id boot time, which means walt.id and the wallet
-//     see the resolved string but verifiably-go's verifier handler can't
-//     reconstruct it without knowing the resolved env vars. Bare typeName
-//     sidesteps that — every layer can compute it from Schema.CustomTypeName.
-//   - SD-JWT VC's vct field is spec'd as "any URI or unique identifier";
-//     a bare type name is a valid identifier and walt.id accepts it.
-//   - The pre-Phase-2 mismatch (catalog vct = URL, issued vct = Schema.ID,
-//     verifier vct = Schema.ID) was the root cause of "your wallet has no
-//     credential matching this request" reported on 2026-04-29.
+// We pin the vct to the host-derived URL schema.CredentialVct(publicBase) =
+// VERIFIABLY_PUBLIC_URL/credentials/<schema.ID> — the SAME string the Inji
+// issuers embed and the verifier handler requests (verifier.go's
+// picked.CredentialVct). It is a FIXED value verifiably computes from its own
+// VERIFIABLY_PUBLIC_URL (NOT a HOCON ${...} that resolves at walt.id boot),
+// so every layer reconstructs it identically:
+//   - catalog vct here (walt.id signs the SD-JWT's vct from this config),
+//   - ir.Vct in IssueToWallet (case req.Schema.Vct != "" reads it back via
+//     ApplyVariant), and
+//   - tpl.Vct in the verifier handler (CredentialVct, whether it reads the
+//     catalog Vct or recomputes it — both now yield the same URL).
+// The earlier bare-type-name form (e.g. "FarmerCredential") pre-dated the
+// host-derived convention; once the verifier moved to CredentialVct the bare
+// name stranded walt.id SD-JWTs — the wallet held vct="FarmerCredential" while
+// the verifier requested the URL, so Credo reported "No credential found" (F8).
 func buildSDJWTEntry(configID, typeName, wireFormat string, schema vctypes.Schema) string {
 	display, desc := displayPair(typeName, schema)
+	// Host-derived vct — matches schema.CredentialVct in the verifier and the
+	// Inji issuers. Empty VERIFIABLY_PUBLIC_URL falls back to localhost:8080
+	// inside CredentialVct (dev only); prod always has it set.
+	vct := schema.CredentialVct(strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/"))
 	// walt.id 0.18.2's CredentialSupported deserializer accepts `display`
 	// regardless of format — verified empirically (catalog round-trip
 	// against waltid/issuer-api:0.18.2): adding a display block to a
@@ -272,7 +279,7 @@ func buildSDJWTEntry(configID, typeName, wireFormat string, schema vctypes.Schem
                 text_color = "#000000"
             }
         ]
-    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc))
+    }`, configID, wireFormat, vct, hoconEscape(display), hoconEscape(desc))
 }
 
 // buildMDocEntry covers mso_mdoc — the ISO 18013-5 mobile document format.

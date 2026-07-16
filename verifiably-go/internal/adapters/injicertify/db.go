@@ -5,11 +5,48 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
+
+// verifiablyPublicBase returns the verifiably platform's public origin
+// (VERIFIABLY_PUBLIC_URL) — the schema-authority host used to mint SD-JWT `vct`
+// identifiers so issuance and the verifier agree. This is deliberately NOT the
+// certify offer host (Config.PublicBaseURL): the vct is a verifiably-defined
+// type identifier, and the verifier requests it from the same env var.
+func verifiablyPublicBase() string {
+	return strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/")
+}
+
+// defaultCredentialLogoURL is the fallback display logo for a custom config
+// when injicertify Config.DB.LogoURL is unset. gen-backends.sh normally points
+// LogoURL at verifiably-go's own /static/credential-logo.svg (neutral, no
+// external dependency); this reachable default just guarantees the display
+// logo is never null (a null logo crashes some wallet UIs with "undefined is
+// not a function"). Override via the backends config `db.logoUrl`.
+const defaultCredentialLogoURL = "https://mosip.github.io/inji-config/logos/agro-vertias-logo.png"
+
+// credentialTypesSorted returns "VerifiableCredential" plus the schema's specific
+// type(s), ALPHABETICALLY sorted. Inji Certify v0.14 sorts a credential's type
+// array when building its credential_config lookup key but matches it RAW against
+// the stored credential_type, so both the stored credential_type column and the VC
+// template's type[] must be pre-sorted — a "VerifiableCredential"-first order makes
+// issuance fail with "Credentialconfig not found" / ERROR_SIGNING_QR_DATA. (The
+// seeded configs store it sorted, which is why they work.)
+func credentialTypesSorted(schema vctypes.Schema) []string {
+	t := []string{"VerifiableCredential"}
+	if len(schema.AdditionalTypes) > 0 {
+		t = append(t, schema.AdditionalTypes...)
+	} else {
+		t = append(t, strings.ReplaceAll(schema.Name, " ", ""))
+	}
+	sort.Strings(t)
+	return t
+}
 
 // SaveCustomSchema registers a verifiably-go custom schema as a
 // credential_configuration row in inji-certify's PostgreSQL database.
@@ -27,30 +64,69 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 	defer conn.Close(ctx)
 
 	credFormat := stdToCredentialFormat(schema.Std)
-	vcTemplate := buildVCTemplate(schema)
+	// Pre-auth SD-JWT credentials must be revocable: embed the IETF Token Status
+	// List pointer (status.status_list.{idx:${statusIdx}, uri:${statusUri}}) in
+	// the template. IssueToWallet(ModePreAuth) POSTs statusIdx/statusUri from the
+	// allocated StatusList binding, and — crucially — statusIdx/statusUri must be
+	// DECLARED in display_order below so certify's PreAuthDataProviderPlugin
+	// surfaces those POSTed values into the Velocity context. Without the
+	// declaration the template markers stay unresolved and certify 400s on the
+	// unquoted `"idx": ${statusIdx}` (json_processing_error). The auth-code path
+	// resolves the same markers from its vc_subject data-provider view instead.
+	// SD-JWT gets an IETF token-status pointer; VCDM2 ldp_vc gets a W3C
+	// BitstringStatusListEntry credentialStatus (F14 — W3C revocation). Both are
+	// resolved from the same POSTed statusIdx/statusUri (declared in display_order
+	// below) on the pre-auth path.
+	withTokenStatus := credFormat == "vc+sd-jwt" || credFormat == "ldp_vc"
+	vcTemplate := buildVCTemplate(schema, withTokenStatus)
 
 	scope := a.cfg.DB.Scope
 	if scope == "" {
 		scope = "mock_identity_vc_ldp"
 	}
 
-	displayOrder := make([]string, 0, len(schema.FieldsSpec))
+	displayOrder := make([]string, 0, len(schema.FieldsSpec)+2)
 	for _, f := range schema.FieldsSpec {
 		displayOrder = append(displayOrder, f.Name)
 	}
+	if withTokenStatus {
+		// Declare the token-status markers so the pre-auth data-provider passes
+		// the POSTed statusIdx/statusUri into the template's Velocity context.
+		displayOrder = append(displayOrder, "statusIdx", "statusUri")
+	}
 
+	// NOTE: do NOT add a "description" key here. Although OID4VCI allows it in a
+	// `display` object, Inji Certify v0.14's credential_config display model
+	// can't deserialize a display entry containing `description` — it throws
+	// "IllegalArgumentException: ... cannot be transformed to Json object" while
+	// loading credential_configurations_supported, which poisons the ENTIRE
+	// config load and makes every pre-authorized-data issuance fail with
+	// `unknown_error` (not just the custom schema). Empirically isolated against
+	// inji-certify-preauth:0.14 on 2026-06-18: an otherwise-identical display
+	// WITH `description` fails, WITHOUT it issues fine. The issuer display name
+	// has nowhere to live in Certify's display model, so we drop it here — the
+	// walt.id adapter (catalog.go) still surfaces it via its own display block,
+	// where it is supported.
+	// logo MUST be a non-null object. Inji Certify's display model always
+	// serialises a `logo` key in the wellknown — null when we don't set one —
+	// and some wallet UIs crash ("undefined is not a function") rendering a
+	// credential card whose logo is null. (The seeded farmer configs ship a
+	// logo object, which is why they hold while a bare custom config did not.)
+	// Use the configured LogoURL, else a built-in reachable default.
+	logoURL := a.cfg.DB.LogoURL
+	if logoURL == "" {
+		logoURL = defaultCredentialLogoURL
+	}
 	displayEntry := map[string]any{
 		"name":             schema.Name,
 		"locale":           "en",
 		"background_color": "#12107c",
 		"text_color":       "#FFFFFF",
-	}
-	if iss := strings.TrimSpace(schema.IssuerDisplayName); iss != "" {
-		desc := strings.TrimSpace(schema.Desc)
-		if desc == "" || desc == "—" {
-			desc = schema.Name
-		}
-		displayEntry["description"] = desc + " · Issued by " + iss
+		"logo": map[string]any{
+			"url":      logoURL,
+			"alt_text": schema.Name + " Logo",
+		},
+		"background_image": map[string]any{"uri": logoURL},
 	}
 	displayRaw, _ := json.Marshal([]map[string]any{displayEntry})
 
@@ -62,23 +138,43 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 
 	switch credFormat {
 	case "vc+sd-jwt", "dc+sd-jwt":
-		vct := schema.Vct
-		if vct == "" {
-			vct = "https://verifiably.example.com/credentials/" + schema.ID
-		}
+		vct := schema.CredentialVct(verifiablyPublicBase())
 		sdJwtVct = &vct
-		sdJwtClaims = fieldDisplayRaw
+		// Deliberately leave sd_jwt_claims NULL. It only feeds the OPTIONAL
+		// `claims` display block in the issuer metadata, but walt.id's OID4VCI
+		// parser (ClaimDescriptorNamespacedMapSerializer) treats `claims` as a
+		// 2-level mdoc-style namespaced map {namespace:{claim:descriptor}}. Our
+		// flat SD-JWT shape {claim:{display:[...]}} makes it read the claim name
+		// as a namespace and the `display` ARRAY as a descriptor object →
+		// "JsonArray is not a JsonObject", which aborts parsing the ENTIRE
+		// credential-issuer metadata (so NO credential is claimable in walt.id
+		// while any SD-JWT config carries `claims`). Issuance is unaffected —
+		// the disclosed claims come from vc_template + the data, not this
+		// display block; Credo-based wallets derive SD-JWT display from the
+		// credential payload, not metadata `claims`. (sdJwtClaims stays nil.)
 	default: // ldp_vc, jwt_vc_json
-		c := "https://www.w3.org/2018/credentials/v1"
+		c := vcdmContextURL(schema.Std)
 		context_ = &c
-		types := "VerifiableCredential"
-		if len(schema.AdditionalTypes) > 0 {
-			types += "," + strings.Join(schema.AdditionalTypes, ",")
-		} else {
-			types += "," + strings.ReplaceAll(schema.Name, " ", "")
-		}
-		credType = &types
+		joined := strings.Join(credentialTypesSorted(schema), ",")
+		credType = &joined
 		credSubject = fieldDisplayRaw
+		if withTokenStatus {
+			// Register statusIdx/statusUri as ACCEPTED pre-auth claims (F14). Unlike
+			// SD-JWT (which validates against display_order), certify's ldp_vc
+			// pre-auth data provider validates POSTed claims against
+			// credential_subject — so the staged statusIdx/statusUri are rejected as
+			// `unknown_claims` unless declared here. They resolve the credentialStatus
+			// template markers and are NOT rendered as credentialSubject fields (the
+			// vc_template controls the subject shape — it lists only the real fields).
+			csMap := map[string]any{}
+			for k, v := range fieldDisplay {
+				csMap[k] = v
+			}
+			marker := map[string]any{"display": []map[string]any{{"name": "Status", "locale": "en"}}}
+			csMap["statusIdx"] = marker
+			csMap["statusUri"] = marker
+			credSubject, _ = json.Marshal(csMap)
+		}
 	}
 
 	_, err = conn.Exec(ctx, `
@@ -117,18 +213,18 @@ ON CONFLICT (credential_config_key_id) DO UPDATE SET
 	sd_jwt_claims      = EXCLUDED.sd_jwt_claims,
 	upd_dtimes         = NOW()
 `,
-		schema.ID,   // $1
-		vcTemplate,  // $2
-		sdJwtVct,    // $3 *string → NULL or TEXT
-		context_,    // $4 *string → NULL or TEXT
-		credType,    // $5 *string → NULL or TEXT
-		credFormat,  // $6
-		a.cfg.DB.DIDUrl,  // $7
-		displayRaw,  // $8 JSONB
-		displayOrder, // $9 TEXT[]
-		scope,       // $10
-		credSubject, // $11 []byte → NULL or JSONB
-		sdJwtClaims, // $12 []byte → NULL or JSONB
+		schema.ID,       // $1
+		vcTemplate,      // $2
+		sdJwtVct,        // $3 *string → NULL or TEXT
+		context_,        // $4 *string → NULL or TEXT
+		credType,        // $5 *string → NULL or TEXT
+		credFormat,      // $6
+		a.cfg.DB.DIDUrl, // $7
+		displayRaw,      // $8 JSONB
+		displayOrder,    // $9 TEXT[]
+		scope,           // $10
+		credSubject,     // $11 []byte → NULL or JSONB
+		sdJwtClaims,     // $12 []byte → NULL or JSONB
 	)
 	if err != nil {
 		return fmt.Errorf("injicertify db: upsert credential_config %q: %w", schema.ID, err)
@@ -169,46 +265,139 @@ func stdToCredentialFormat(std string) string {
 	}
 }
 
+// isVCDM2 reports whether the schema's declared standard is W3C VC Data Model
+// 2.0 (vs 1.1). VCDM 2.0 uses the credentials/v2 @context and the validFrom/
+// validUntil date fields instead of credentials/v1 + issuanceDate/expirationDate.
+func isVCDM2(std string) bool { return std == "w3c_vcdm_2" }
+
+// vcdmContextURL returns the base VC Data Model @context URL for the schema's
+// declared standard.
+func vcdmContextURL(std string) string {
+	if isVCDM2(std) {
+		return "https://www.w3.org/ns/credentials/v2"
+	}
+	return "https://www.w3.org/2018/credentials/v1"
+}
+
 // buildVCTemplate generates the base64-encoded VC template that inji-certify
 // uses to mint credentials. For SD-JWT the template is a flat JSON object with
 // ${fieldName} substitution markers. For ldp_vc / jwt_vc_json it is a JSON-LD
 // credential skeleton.
-func buildVCTemplate(schema vctypes.Schema) string {
+// statusIdxPlaceholder is a valid-JSON stand-in for the unquoted `${statusIdx}`
+// template marker. json.Marshal can't emit a bare (unquoted) ${…} token, so we
+// marshal this quoted placeholder and swap it for the unquoted marker afterwards
+// — yielding `"idx": ${statusIdx}`, which certify renders to a JSON *number*.
+const statusIdxPlaceholder = "@@STATUS_IDX@@"
+
+func buildVCTemplate(schema vctypes.Schema, withTokenStatus bool) string {
 	credFormat := stdToCredentialFormat(schema.Std)
 	var tmpl any
 	switch credFormat {
 	case "vc+sd-jwt", "dc+sd-jwt":
-		vct := schema.Vct
-		if vct == "" {
-			vct = "https://verifiably.example.com/credentials/" + schema.ID
-		}
+		vct := schema.CredentialVct(verifiablyPublicBase())
 		m := map[string]any{"vct": vct}
 		for _, f := range schema.FieldsSpec {
 			m[f.Name] = "${" + f.Name + "}"
 		}
+		// IETF Token Status List reference — the idx/uri are filled per-holder by
+		// the Postgres data-provider (statusIdx from certify.vc_subject via the
+		// scope-query, uri a constant column in the extraction view). Only added
+		// for the auth-code path (withTokenStatus); the pre-auth path issues from
+		// staged claims with no data-provider, so the markers would go unresolved.
+		if withTokenStatus {
+			m["status"] = map[string]any{
+				"status_list": map[string]any{
+					"idx": statusIdxPlaceholder, // → unquoted ${statusIdx} (a number)
+					"uri": "${statusUri}",
+				},
+			}
+		}
 		tmpl = m
 	default:
-		types := []string{"VerifiableCredential"}
-		if len(schema.AdditionalTypes) > 0 {
-			types = append(types, schema.AdditionalTypes...)
-		} else {
-			types = append(types, strings.ReplaceAll(schema.Name, " ", ""))
-		}
+		// Same sorted order as the credential_type column so the issued
+		// credential's type[] matches Certify's config-lookup key.
+		types := credentialTypesSorted(schema)
 		sub := map[string]any{"id": "${_holderId}"}
 		for _, f := range schema.FieldsSpec {
 			sub[f.Name] = "${" + f.Name + "}"
 		}
-		tmpl = map[string]any{
-			"@context":          []string{"https://www.w3.org/2018/credentials/v1"},
+		// Inline JSON-LD context for the custom type(s) + credentialSubject
+		// fields: a single @vocab so any NON-STANDARD term (the custom type,
+		// the custom fields) expands to https://vocab.verifiably.local/<term>.
+		//
+		// We deliberately do NOT add explicit per-term entries (e.g.
+		// "name": "https://vocab.verifiably.local/name"). The base VCDM-2.0
+		// context (credentials/v2) is @protected and already defines common
+		// terms like `name`/`description`/`id`/`type`/`issuer`; an explicit
+		// entry that re-maps one of those is a PROTECTED_TERM_REDEFINITION,
+		// which makes inji-certify's JSON-LD canonicalization throw at signing
+		// time (ERROR_SIGNING_QR_DATA — "Error occurred during canonicalization")
+		// and blocks the claim. @vocab applies ONLY to terms the base context
+		// leaves undefined, so custom fields still resolve to the same vocab
+		// IRIs the old explicit entries produced, while a standard-named field
+		// keeps its protected base definition — valid under JSON-LD safe mode
+		// for ANY field name. (The `type` array below is unchanged, so
+		// Certify's config-lookup-by-type still matches.)
+		const vocabBase = "https://vocab.verifiably.local/"
+		terms := map[string]any{"@vocab": vocabBase}
+		m := map[string]any{
+			// VC Data Model base context (credentials/v1 for VCDM 1.1,
+			// credentials/v2 for VCDM 2.0) + the Ed25519Signature2020 suite
+			// context + the inline custom-term context. Inji Certify signs the
+			// VC verbatim from this template and does NOT inject the suite
+			// context itself, so without it the issued proof's terms
+			// (Ed25519Signature2020 / proofValue / Ed25519VerificationKey2020)
+			// are undefined and a strict JSON-LD wallet fails to verify with
+			// "undefined is not a function". Empirically: the bare base context
+			// issues HTTP 200 but the wallet can't hold the credential.
+			"@context": []any{
+				vcdmContextURL(schema.Std),
+				"https://w3id.org/security/suites/ed25519-2020/v1",
+				terms,
+			},
 			"issuer":            "${_issuer}",
 			"type":              types,
-			"issuanceDate":      "${validFrom}",
-			"expirationDate":    "${validUntil}",
 			"credentialSubject": sub,
 		}
+		// VCDM 2.0 renamed the validity dates: validFrom/validUntil replace
+		// VCDM 1.1's issuanceDate/expirationDate. Emit the pair that matches
+		// the schema's declared data model so the issued credential is valid
+		// under its own @context (a v2 credential with issuanceDate, or a v1
+		// credential with validFrom, is malformed). Both source from the same
+		// ${validFrom}/${validUntil} substitution markers Inji fills.
+		if isVCDM2(schema.Std) {
+			m["validFrom"] = "${validFrom}"
+			m["validUntil"] = "${validUntil}"
+		} else {
+			m["issuanceDate"] = "${validFrom}"
+			m["expirationDate"] = "${validUntil}"
+		}
+		// W3C revocation: embed a BitstringStatusListEntry credentialStatus pointing
+		// at verifiably's PUBLIC bitstring list (${statusUri}), mirroring the SD-JWT
+		// status.status_list. Emitted for BOTH the pre-auth (F14) and the auth-code
+		// callers when a status list is configured — the auth-code data-provider view
+		// now resolves ${statusUri} to the BITSTRING list (statusURLFor) so the block
+		// points at the right list and external verifiers (Inji Verify) read it. VCDM2
+		// only: the credentials/v2 context defines the type + statusPurpose/
+		// statusListIndex/statusListCredential, so there's no PROTECTED_TERM
+		// redefinition at canonicalization (VCDM 1.1 would need explicit @context
+		// terms — left statusless for now). statusListIndex is a STRING here, so
+		// "${statusIdx}" stays quoted (unlike the SD-JWT numeric idx).
+		if withTokenStatus && isVCDM2(schema.Std) {
+			m["credentialStatus"] = map[string]any{
+				"id":                   "${statusUri}#${statusIdx}",
+				"type":                 "BitstringStatusListEntry",
+				"statusPurpose":        "revocation",
+				"statusListIndex":      "${statusIdx}",
+				"statusListCredential": "${statusUri}",
+			}
+		}
+		tmpl = m
 	}
 	b, _ := json.MarshalIndent(tmpl, "", "  ")
-	return base64.StdEncoding.EncodeToString(b)
+	// Unquote the status idx marker so it renders as a JSON number, not a string.
+	out := strings.Replace(string(b), `"`+statusIdxPlaceholder+`"`, "${statusIdx}", 1)
+	return base64.StdEncoding.EncodeToString([]byte(out))
 }
 
 type displayItem struct {

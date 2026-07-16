@@ -106,20 +106,70 @@ start_container() {
     sh -c "mkdir -p /vol/sessions && chown -R 65532:65532 /vol && chmod 700 /vol" \
     >/dev/null 2>&1 || true
 
+  # ── Subdomain mode: route container-side calls through caddy-public ───────
+  # In subdomain mode every backend + IdP URL is a public https://<slug>.<domain>
+  # name that (via public DNS) resolves to the host's OWN public IP. Most
+  # VPS/cloud hosts don't hairpin traffic from the docker bridge back to their
+  # published :443, so verifiably-go's server-side OIDC discovery + adapter
+  # calls hang ("context deadline exceeded"). Fix: resolve caddy-public's IP on
+  # the compose network and pin every public FQDN to it via --add-host, so those
+  # requests go container→caddy-public directly — same SNI + Host header, so
+  # Caddy serves the right cert + proxies to the right upstream, and the
+  # discovered `issuer` still matches the public URL. The browser is unaffected
+  # (it uses real public DNS). No-op in legacy host:port mode.
+  local host_alias_args=()
+  if [[ -n "${VERIFIABLY_HOSTS_PATTERN:-}" && -n "${VERIFIABLY_PUBLIC_DOMAIN:-}" ]]; then
+    local _caddy_ip=""
+    _caddy_ip=$(docker inspect "${COMPOSE_PROJECT}-caddy-public-1" \
+      --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true)
+    if [[ -z "$_caddy_ip" ]]; then
+      local _cid
+      _cid=$(docker ps -q --filter "label=com.docker.compose.service=caddy-public" | head -1)
+      [[ -n "$_cid" ]] && _caddy_ip=$(docker inspect "$_cid" \
+        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null || true)
+    fi
+    if [[ -n "$_caddy_ip" ]]; then
+      # compute_host_aliases (common.sh) is the pure, unit-tested core of this
+      # fix; it prints one --add-host token per line for every public slug.
+      local _tok
+      while IFS= read -r _tok; do
+        [[ -n "$_tok" ]] && host_alias_args+=( "$_tok" )
+      done < <(compute_host_aliases "$VERIFIABLY_PUBLIC_DOMAIN" "$_caddy_ip")
+      green "  subdomain mode: pinned *.${VERIFIABLY_PUBLIC_DOMAIN} → caddy-public ($_caddy_ip) for container-side calls"
+    else
+      yellow "  subdomain mode: could not resolve caddy-public IP — server-side OIDC discovery may time out (hairpin NAT)"
+    fi
+  fi
+
   # MSYS_NO_PATHCONV=1 prevents Git Bash from converting Unix paths like
   # /var/run/docker.sock to C:\Program Files\Git\var\run\docker.sock.
   # Docker Desktop on Windows handles MSYS-style paths (/c/Users/...) natively.
-  #
-  # No --health-cmd: the distroless/static image has no /bin/sh or wget, and
-  # 'docker run --health-cmd' always wraps the command in /bin/sh -c, so any
-  # probe fails with "stat /bin/sh: no such file or directory" and the
-  # container is reported unhealthy even though the app is fine. The app
-  # exposes /healthz on :8080 — probe it from the host or a sidecar instead.
+  # In-app Inji auth-code wallet: extract the eSignet wallet-demo-client key
+  # (PKCS#8 PEM) from the deploy's oidckeystore.p12 and derive the eSignet URL
+  # per host, so a holder can claim inside verifiably (no inji-web redirect).
+  local _inji_p12="$SCRIPT_DIR/deploy/compose/injiweb/config/certs/oidckeystore.p12"
+  local _inji_key_pem=""
+  if [ -f "$_inji_p12" ] && command -v openssl >/dev/null 2>&1; then
+    _inji_key_pem=$(openssl pkcs12 -in "$_inji_p12" -nodes -nocerts -legacy -passin "pass:${INJIWEB_P12_PASSWORD:-xy4gh6swa2i}" 2>/dev/null | openssl pkcs8 -topk8 -nocrypt 2>/dev/null || true)
+  fi
+  local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"
+  # verifiably-go (uid 65532) rewrites these two config files on issuer schema-creation
+  for _f in "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties" "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties"; do chown 65532:65532 "$_f" 2>/dev/null || true; done
+  # Public issuer DID for verifiably-go's certifyIssuerDID env fallback (used only
+  # when the did.json fetch transiently fails, so a credential is never pinned to
+  # the unverifiable did:web:certify-nginx). Prefer ISSUER_DID_DOMAIN; else read
+  # certify's own CERTIFY_ISSUER_DID (the ground truth) off the running container.
+  local _certify_issuer_did="${ISSUER_DID_DOMAIN:+did:web:$ISSUER_DID_DOMAIN}"
+  [[ -z "$_certify_issuer_did" ]] && _certify_issuer_did=$(docker inspect inji-certify --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -n 's/^CERTIFY_ISSUER_DID=//p' | head -1)
+  # Healthcheck is defined in the Dockerfile as an exec-form HEALTHCHECK that
+  # runs `verifiably -healthcheck` (the distroless image has no /bin/sh or wget,
+  # so the CLI --health-cmd form — always CMD-SHELL — can never succeed here).
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
     --network "${COMPOSE_PROJECT}_default" \
     --add-host=host.docker.internal:host-gateway \
+    "${host_alias_args[@]}" \
     "${group_add_args[@]}" \
     -p "${VERIFIABLY_HOST_PORT}:8080" \
     -v "$SCRIPT_DIR/config/backends.docker.json:/app/config/backends.json:ro" \
@@ -128,6 +178,8 @@ start_container() {
     -v "$custom_schemas_path:/app/config/custom-schemas.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties:/etc/inji/certify-scope-query.properties" \
+    -v "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties:/etc/inji/esignet-scopes.properties" \
     -v "${VERIFIABLY_CONTAINER}-locales:/app/locales" \
     -v "${VERIFIABLY_CONTAINER}-state:/app/state" \
     -e VERIFIABLY_ADAPTER=registry \
@@ -136,8 +188,25 @@ start_container() {
     -e VERIFIABLY_ROLES="${VERIFIABLY_ROLES:-issuer,holder,verifier,trust,schemas}" \
     -e VERIFIABLY_STATE_DIR=/app/state \
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
+    -e VERIFIABLY_REGISTRY_ADMIN_URL="${VERIFIABLY_REGISTRY_ADMIN_URL:-}" \
+    -e VERIFIABLY_REGISTRIES="${VERIFIABLY_REGISTRIES:-}" \
+    -e SMTP_HOST="${SMTP_HOST:-}" \
+    -e SMTP_PORT="${SMTP_PORT:-}" \
+    -e SMTP_USER="${SMTP_USER:-}" \
+    -e SMTP_PASSWORD="${SMTP_PASSWORD:-}" \
+    -e SMTP_FROM="${SMTP_FROM:-}" \
+    -e SMTP_FROM_NAME="${SMTP_FROM_NAME:-}" \
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
+    ${_certify_issuer_did:+-e CERTIFY_ISSUER_DID="$_certify_issuer_did"} \
+    -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
+    -e INJI_CERTIFY_SCOPE_QUERY_FILE="/etc/inji/certify-scope-query.properties" \
+    -e INJI_ESIGNET_SCOPE_FILE="/etc/inji/esignet-scopes.properties" \
+    -e INJI_AUTHCODE_CLIENT_KEY_PEM="$_inji_key_pem" \
+    -e INJI_AUTHCODE_CLIENT_ID="${INJI_AUTHCODE_CLIENT_ID:-wallet-demo-client}" \
+    -e INJI_AUTHCODE_CLIENT_KID="${INJI_AUTHCODE_CLIENT_KID:-wallet-demo-client-kid}" \
+    -e INJI_AUTHCODE_SCOPE="${INJI_AUTHCODE_SCOPE:-mock_identity_vc_ldp}" \
+    -e ESIGNET_BASE_URL="$_inji_esignet_url" \
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \
@@ -160,6 +229,19 @@ start_container() {
   sleep 1
   if docker ps --filter "name=^${VERIFIABLY_CONTAINER}$" --filter "status=running" -q | grep -q .; then
     green "  container $VERIFIABLY_CONTAINER running ($scenario)"
+    # verifiably-go was just (re)created with a FRESH IP. certify-nginx caches its
+    # `upstream injiproxy { server verifiably-go:8080; }` IP at config-load, so every
+    # inji-proxy route it serves — the well-known metadata the issuer schema list reads
+    # (→ "selected schema missing" on /issuer/issue), did.json, the credential endpoint —
+    # 502s against the stale IP until certify-nginx re-resolves. Reload it (graceful, no
+    # downtime) whenever it's up so a `deploy.sh run` doesn't silently break issuance.
+    if docker ps --filter "name=^certify-nginx$" --filter "status=running" -q | grep -q .; then
+      if docker exec certify-nginx nginx -s reload >/dev/null 2>&1; then
+        green "  reloaded certify-nginx (re-resolved injiproxy → verifiably-go)"
+      else
+        docker restart certify-nginx >/dev/null 2>&1 || true
+      fi
+    fi
   else
     red "  container failed to start — last logs:"
     docker logs "$VERIFIABLY_CONTAINER" 2>&1 | tail -n 25 >&2 || true
@@ -266,16 +348,24 @@ def rewrite_url(url):
             return f"http://{internal}{rest}"
     return url
 
-def walk(obj):
+def walk(obj, skip_keys=frozenset()):
     if isinstance(obj, dict):
+        # An inji_verify backend's config.baseUrl is the WALLET-FACING OID4VP
+        # request_uri host — the external wallet fetches the signed JAR from
+        # {baseUrl}/v1/verify/vp-request/{id}, so it must stay PUBLIC (like
+        # UIURL), not be rewritten to the docker-internal host. Its
+        # internalBaseUrl carries the server-to-server URL and is still rewritten.
+        child_skip = skip_keys
+        if obj.get("type") == "inji_verify":
+            child_skip = skip_keys | {"baseUrl"}
         for k, v in list(obj.items()):
-            if k in internal_fields and isinstance(v, str):
+            if k in internal_fields and k not in skip_keys and isinstance(v, str):
                 obj[k] = rewrite_url(v)
             elif isinstance(v, (dict, list)):
-                walk(v)
+                walk(v, child_skip)
     elif isinstance(obj, list):
         for it in obj:
-            walk(it)
+            walk(it, skip_keys)
 
 with open(src) as f:
     data = json.load(f)

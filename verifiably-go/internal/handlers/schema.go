@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -81,6 +83,11 @@ func (h *H) ShowSchemaBrowser(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/issuer/dpg")
 		return
 	}
+	// Inji auth-code DPGs now flow through the shared wizard like walt.id:
+	// schemaBrowserData sources their cards from the issuer's live
+	// credential_configs (owner-scoped) since the Inji adapter can't drive
+	// ListSchemas. (The owner-scoped /issuer/schema/mine view still exists as
+	// a secondary listing; it's just no longer on the wizard path.)
 	data := h.schemaBrowserData(w, r, sess)
 	h.render(w, r, "issuer_schema", h.pageData(sess, data))
 }
@@ -98,6 +105,18 @@ type schemaBrowserData struct {
 	// distinguish "no results because filter hides them" from "user has
 	// not built any custom schema yet" and pick the right empty-state copy.
 	HasAnyCustom bool
+	// HasIssueOnlyFormat is true when a displayed card carries a verifier-
+	// unfilterable (CanPresent==false) variant — i.e. a ⚠ "issue-only" format
+	// is selectable in the current view. Gates the issue-only legend so it
+	// shows only for walt.id (the only DPG that sets per-format CanPresent) and
+	// only when such a format is actually on screen.
+	HasIssueOnlyFormat bool
+	// Provisioning is the credential_config key of a schema just saved via the
+	// Inji auth-code apply (from ?provisioning=). When set, the grid renders a
+	// self-dismissing banner that polls /issuer/schema/ready until certify+eSignet
+	// finish restarting and the schema is claimable. ProvName is its display name.
+	Provisioning string
+	ProvName     string
 	// Notice is a soft error banner the page renders inline, used when the
 	// vendor's catalog endpoint is briefly unreachable (e.g. walt.id is
 	// restarting after a custom-schema save). Custom schemas saved in the
@@ -109,19 +128,78 @@ type schemaBrowserData struct {
 	Notice string
 }
 
+// injiFormatToStd maps a Certify credential_format to the Std label the schema
+// grid + filter chips use. Mirrors injicertify.formatToStd (unexported there);
+// kept tiny and local so handlers don't import the adapter package.
+func injiFormatToStd(format string) string {
+	switch format {
+	case "vc+sd-jwt", "dc+sd-jwt":
+		return "sd_jwt_vc (IETF)"
+	default: // ldp_vc, jwt_vc_json
+		return "w3c_vcdm_2"
+	}
+}
+
+// injiOwnerSchemas builds schema-grid cards from the issuer's live Inji
+// credential_configs (owner-scoped via SubjectStore.ListMyCredentials). The
+// Inji adapter can't drive ListSchemas, so the shared browser is fed from the
+// subject store instead; each credential maps to a Custom card so it survives
+// the customOnly filter and the shared search/filter/select/Continue flow
+// drives it exactly like a walt.id schema. FieldsSpec is populated from the
+// stored display_order so the card's "Show JSON" preview renders.
+func (h *H) injiOwnerSchemas(ctx context.Context, sess *Session) []vctypes.Schema {
+	creds, err := h.Subjects.ListMyCredentials(ctx, sessionOwnerKey(sess))
+	if err != nil {
+		return []vctypes.Schema{}
+	}
+	out := make([]vctypes.Schema, 0, len(creds))
+	for _, c := range creds {
+		name := c["displayName"]
+		if name == "" {
+			name = c["key"]
+		}
+		desc := "Live Inji Certify credential"
+		if c["scope"] != "" {
+			desc += " · scope " + c["scope"]
+		}
+		s := vctypes.Schema{
+			ID:     c["key"],
+			Name:   name,
+			Std:    injiFormatToStd(c["format"]),
+			Desc:   desc,
+			Custom: true,
+		}
+		if fields, ferr := h.Subjects.CredentialFields(ctx, c["key"]); ferr == nil {
+			for _, fn := range fields {
+				s.FieldsSpec = append(s.FieldsSpec, vctypes.FieldSpec{Name: fn, Datatype: "string"})
+			}
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 func (h *H) schemaBrowserData(w http.ResponseWriter, r *http.Request, sess *Session) schemaBrowserData {
 	ctx := issuerCtx(r, sess)
-	schemas, err := h.Adapter.ListSchemas(ctx, sess.IssuerDpg)
+	var schemas []vctypes.Schema
 	notice := ""
-	if err != nil {
-		// Registry.ListSchemas returns the custom-schema slice alongside the
-		// error so we can render gracefully. Show a banner instead of
-		// blowing up the response.
-		notice = transientCatalogNotice(err)
-		// Defensive: a stricter caller (no resilience layer) would return
-		// nil; treat that as an empty list so the template still renders.
-		if schemas == nil {
-			schemas = []vctypes.Schema{}
+	if h.isInjiAuthcode(ctx, sess.IssuerDpg) && h.Subjects != nil {
+		// Inji auth-code has no walt.id-style catalog; its "schemas" are the
+		// issuer's live credential_configs. Source the grid from SubjectStore.
+		schemas = h.injiOwnerSchemas(ctx, sess)
+	} else {
+		var err error
+		schemas, err = h.Adapter.ListSchemas(ctx, sess.IssuerDpg)
+		if err != nil {
+			// Registry.ListSchemas returns the custom-schema slice alongside the
+			// error so we can render gracefully. Show a banner instead of
+			// blowing up the response.
+			notice = transientCatalogNotice(err)
+			// Defensive: a stricter caller (no resilience layer) would return
+			// nil; treat that as an empty list so the template still renders.
+			if schemas == nil {
+				schemas = []vctypes.Schema{}
+			}
 		}
 	}
 	// Show only user-built schemas in the issuance flow. The walt.id catalog
@@ -190,16 +268,37 @@ func (h *H) schemaBrowserData(w http.ResponseWriter, r *http.Request, sess *Sess
 			}
 		}
 	}
+	// hasIssueOnly is true when a currently-displayed card carries a variant
+	// the verifier can't filter for (CanPresent==false) — i.e. a ⚠ format is
+	// actually selectable in this view. Only walt.id's catalog populates
+	// per-format CanPresent (other DPGs build no variants), so this naturally
+	// scopes the issue-only legend to walt.id and hides it when no ⚠ format
+	// is on screen.
+	hasIssueOnly := false
+	for _, s := range filtered {
+		for _, v := range s.Variants {
+			if !v.CanPresent {
+				hasIssueOnly = true
+				break
+			}
+		}
+		if hasIssueOnly {
+			break
+		}
+	}
 	return schemaBrowserData{
-		Schemas:      filtered,
-		Stds:         stds,
-		Filter:       sess.SchemaFilter,
-		Query:        sess.SchemaQuery,
-		ExpandedID:   sess.ExpandedSchemaID,
-		SelectedID:   sess.SchemaID,
-		ExpandedJSON: expandedJSON,
-		Notice:       notice,
-		HasAnyCustom: hasAnyCustom,
+		Schemas:            filtered,
+		Stds:               stds,
+		Filter:             sess.SchemaFilter,
+		Query:              sess.SchemaQuery,
+		ExpandedID:         sess.ExpandedSchemaID,
+		SelectedID:         sess.SchemaID,
+		ExpandedJSON:       expandedJSON,
+		Notice:             notice,
+		HasAnyCustom:       hasAnyCustom,
+		HasIssueOnlyFormat: hasIssueOnly,
+		Provisioning:       r.URL.Query().Get("provisioning"),
+		ProvName:           r.URL.Query().Get("pname"),
 	}
 }
 
@@ -275,8 +374,9 @@ func (h *H) ShowSchemaBuilder(w http.ResponseWriter, r *http.Request) {
 	}
 	// Default: two blank fields
 	data := builderData{
-		Fields: []vctypes.FieldSpec{{Datatype: "string", Required: true}, {Datatype: "string", Required: true}},
-		Std:    "w3c_vcdm_2",
+		Fields:    []vctypes.FieldSpec{{Datatype: "string", Required: true}, {Datatype: "string", Required: true}},
+		Std:       "w3c_vcdm_2",
+		Scenarios: delegationScenarios,
 	}
 	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
 	h.render(w, r, "issuer_schema_builder", h.pageData(sess, data))
@@ -290,6 +390,105 @@ type builderData struct {
 	Std               string
 	Fields            []vctypes.FieldSpec
 	PreviewJSON       string
+	Delegation        bool   // delegated-access credential (carries a capability)
+	Expiry            bool   // opt-in: this credential expires (adds a valid_until datetime claim)
+	Scenario          string // selected delegation scenario key (poa/director/teacher/…)
+	Scenarios         []delegationScenario
+}
+
+// delegationScenario is a real-world delegated-access relationship preset so an
+// operator picks "Power of Attorney" or "Teacher" rather than hand-assembling the
+// abstract capability schema. It shapes the credential's identity + field set and
+// surfaces the suggested issue-time role/action values as inline guidance.
+type delegationScenario struct {
+	Key, Label, TypeName, Name, Desc string
+	Role, Actions                    string
+	ExtraFields                      []vctypes.FieldSpec
+}
+
+var delegationScenarios = []delegationScenario{
+	{Key: "poa", Label: "Lawyer — power of attorney for a person/entity", TypeName: "PowerOfAttorney",
+		Name: "Power of Attorney", Desc: "An attorney is authorised to act on behalf of a client.",
+		Role: "Attorney", Actions: "represent, sign, file",
+		ExtraFields: []vctypes.FieldSpec{{Name: "matterReference", Datatype: "string"}}},
+	{Key: "director", Label: "Director — acts for a business", TypeName: "DirectorAuthority",
+		Name: "Company Director Authority", Desc: "A director is authorised to bind and transact for a company.",
+		Role: "Director", Actions: "bind, sign, transact",
+		ExtraFields: []vctypes.FieldSpec{{Name: "companyRegistrationNumber", Datatype: "string"}}},
+	{Key: "teacher", Label: "Teacher — acts for a student", TypeName: "TeacherDelegation",
+		Name: "Teacher Delegation", Desc: "A teacher is authorised to manage records for a student.",
+		Role: "Teacher", Actions: "viewRecords, submitGrades",
+		ExtraFields: []vctypes.FieldSpec{{Name: "institution", Datatype: "string"}}},
+	{Key: "guardian", Label: "Parent / guardian — acts for a minor", TypeName: "GuardianConsent",
+		Name: "Parental / Guardian Consent", Desc: "A guardian is authorised to consent and collect on behalf of a minor.",
+		Role: "Guardian", Actions: "consent, collect, authorize"},
+	{Key: "healthcare", Label: "Healthcare proxy — acts for a patient", TypeName: "HealthcareProxy",
+		Name: "Healthcare Proxy", Desc: "A healthcare agent is authorised to consent to treatment for a patient.",
+		Role: "HealthcareAgent", Actions: "consent:treatment, access:records"},
+}
+
+func scenarioByKey(k string) (delegationScenario, bool) {
+	for _, s := range delegationScenarios {
+		if s.Key == k {
+			return s, true
+		}
+	}
+	return delegationScenario{}, false
+}
+
+// applyDelegationPreset configures the builder for a delegated-access credential:
+// SD-JWT so the capability is carried as flat, evaluator-readable top-level claims,
+// the DelegatedAccessCredential type, and the capability fields (onBehalfOf +
+// allowedAction the verifier's evaluator keys off; role + valid_until for display/caveat).
+func applyDelegationPreset(d *builderData) {
+	d.Std = "sd_jwt_vc (IETF)"
+	// Delegation expiry (`valid_until`) is OPT-IN — NOT a forced field. It is added
+	// only when the operator ticks "This credential expires" (Expiry), which
+	// currentBuilderSchema appends as a datetime field. The preset must not force it
+	// on: an issuer shouldn't discover a valid_until field they never created, which
+	// (unprovisioned) Certify renders as ${valid_until} and the holder's wallet then
+	// rejects at claim time. The capability fields below ARE the delegation's
+	// semantics (onBehalfOf/role/allowedAction); the evaluator reads valid_until only
+	// when it is present.
+	base := []vctypes.FieldSpec{
+		{Name: "onBehalfOf", Datatype: "string", Required: true},
+		{Name: "role", Datatype: "string"},
+		{Name: "allowedAction", Datatype: "string", Required: true},
+	}
+	// A recognised scenario FORCES its identity + fields so switching scenarios
+	// updates the form; the generic preset GUARDS so a custom operator's edits survive.
+	if sc, ok := scenarioByKey(d.Scenario); ok {
+		d.ExtraType = sc.TypeName
+		d.Name = sc.Name
+		d.Desc = sc.Desc + " (suggested role: " + sc.Role + "; allowedAction: " + sc.Actions + ")"
+		d.Fields = append(base, sc.ExtraFields...)
+		return
+	}
+	if strings.TrimSpace(d.ExtraType) == "" {
+		d.ExtraType = "DelegatedAccessCredential"
+	}
+	if strings.TrimSpace(d.Name) == "" {
+		d.Name = "Delegated Access Credential"
+	}
+	if strings.TrimSpace(d.Desc) == "" {
+		d.Desc = "Delegated-access capability — the holder acts onBehalfOf a subject"
+	}
+	d.Fields = base
+}
+
+// BuildDelegationToggle re-renders the builder form when the delegated-access
+// toggle changes — applying the capability preset when it is turned on.
+//
+// POST /issuer/schema/build/delegation
+func (h *H) BuildDelegationToggle(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	data := extractBuilderData(r)
+	if data.Delegation {
+		applyDelegationPreset(&data)
+	}
+	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
+	h.renderFragment(w, r, "fragment_schema_builder_form", data)
 }
 
 // SchemaPreview is called on every keystroke in the builder — returns the updated JSON preview
@@ -349,6 +548,29 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	schema := currentBuilderSchema(sess, data)
+	// Inji auth-code DPGs apply via the Flow B path (multi-format credential_config
+	// + extraction view + scope-query + eSignet scope + restart certify/esignet)
+	// instead of the default adapter — the builder UI is shared, the save is not.
+	authcode := false
+	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil {
+		authcode = dpgs[sess.IssuerDpg].SchemaApply == "inji_authcode"
+	}
+	if authcode {
+		key, err := h.applyAuthcodeSchema(issuerCtx(r, sess), schema, sessionOwnerKey(sess))
+		if err != nil {
+			h.errorToast(w, r, err.Error())
+			return
+		}
+		// Land back on the shared schema grid with the freshly-built credential
+		// pre-selected, so the issuer can Continue → Mode → bulk-provision —
+		// the same wizard tail walt.id uses. The ?provisioning marker makes the
+		// grid show a self-dismissing banner that polls until certify+eSignet
+		// finish restarting and the schema is actually claimable (see SchemaReady).
+		sess.SchemaID = key
+		sess.ExpandedSchemaID = key
+		h.redirect(w, r, "/issuer/schema?provisioning="+url.QueryEscape(key)+"&pname="+url.QueryEscape(schema.Name))
+		return
+	}
 	if err := h.Adapter.SaveCustomSchema(issuerCtx(r, sess), schema); err != nil {
 		h.errorToast(w, r, err.Error())
 		return
@@ -360,13 +582,103 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 	h.redirect(w, r, "/issuer/schema")
 }
 
+// SchemaReady is polled by the provisioning banner after an Inji auth-code
+// schema is saved (GET /issuer/schema/ready?key=&name=). It reports whether the
+// schema is actually claimable yet — certify + eSignet restart on a schema save,
+// so there's a ~20–40s window where the credential exists in the DB but Certify
+// isn't advertising it. Not ready → re-render the banner (keeps the poll alive);
+// ready → an empty body (the outerHTML swap removes the banner) plus an HX-Trigger
+// that pops a "ready" toast and refreshes the grid.
+func (h *H) SchemaReady(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	key := strings.TrimSpace(r.URL.Query().Get("key"))
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		name = key
+	}
+	if h.schemaAvailable(r.Context(), key) {
+		payload, _ := json.Marshal(map[string]any{
+			"toast":        "✓ \"" + name + "\" is ready to use",
+			"schemasReady": true,
+		})
+		w.Header().Set("HX-Trigger", string(payload))
+		w.WriteHeader(http.StatusOK) // empty body → hx-swap:outerHTML removes the banner
+		return
+	}
+	h.renderFragment(w, r, "fragment_provisioning_banner", map[string]any{
+		"Provisioning": key, "ProvName": name, "Lang": h.langFor(r),
+	})
+	_ = sess
+}
+
+// schemaAvailable reports whether Certify is advertising the given credential
+// config key in its well-known issuer metadata — i.e. the schema is claimable.
+// During the certify restart the fetch fails fast (connection refused) → not
+// ready; once certify is back and has reloaded the config → ready.
+func (h *H) schemaAvailable(ctx context.Context, key string) bool {
+	if key == "" {
+		return false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		injiCertifyUpstream()+"/v1/certify/.well-known/openid-credential-issuer", nil)
+	if err != nil {
+		return false
+	}
+	cl := &http.Client{Timeout: 5 * time.Second}
+	resp, err := cl.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return false
+	}
+	defer resp.Body.Close()
+	var meta struct {
+		Configs map[string]json.RawMessage `json:"credential_configurations_supported"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&meta) != nil {
+		return false
+	}
+	_, ok := meta.Configs[key]
+	return ok
+}
+
 // DeleteSchema removes a custom schema from the session.
 // Deleting the currently-selected schema clears the selection, so this also
 // pushes an OOB update for the page-level Continue button.
 func (h *H) DeleteSchema(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
+	ctx := issuerCtx(r, sess)
 	id := r.FormValue("id")
-	_ = h.Adapter.DeleteCustomSchema(issuerCtx(r, sess), id)
+	// walt.id/credebl custom schemas are tracked in the registry adapter's
+	// in-memory list (DeleteCustomSchema dispatches to their DPG adapters).
+	_ = h.Adapter.DeleteCustomSchema(ctx, id)
+	// Inji auth-code credentials are DB-backed — the schema browser lists them via
+	// SubjectStore.ListMyCredentials, NOT the registry's in-memory schemas, so the
+	// adapter delete above is a no-op for them. Tear down ALL the artifacts
+	// applyAuthcodeSchema created so the delete is persistent: the credential_config
+	// + owner rows + the per-credential extraction view (DeleteCredential), the
+	// Certify scope-query mapping + the two eSignet scope registrations, then reload
+	// Certify — otherwise a same-named rebuild inherits a stale view/mapping (→ the
+	// 42P16 column-rename failure) and the deleted config lingers in Certify's cache.
+	if h.Subjects != nil {
+		_, slug := injiConfigKeySlug(vctypes.Schema{AdditionalTypes: []string{id}})
+		// Read the scope BEFORE deleting the config row. "" ⇒ not an auth-code
+		// credential (e.g. a walt.id/CREDEBL schema) ⇒ skip the Certify teardown +
+		// restart, so those deletes don't needlessly bounce inji-certify.
+		scope, _ := h.Subjects.CredentialScope(ctx, id)
+		if err := h.Subjects.DeleteCredential(ctx, id, sessionOwnerKey(sess), slug); err == nil && scope != "" {
+			_ = removeBraceEntry(certifyScopeQueryFile(),
+				"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", scope)
+			_ = removeBraceEntry(esignetScopeFile(),
+				"mosip.esignet.supported.credential.scopes", scope)
+			_ = removeBraceEntry(esignetScopeFile(),
+				"mosip.esignet.credential.scope-resource-mapping", scope)
+			for _, c := range []string{"inji-certify", "injiweb-esignet"} {
+				_ = dockerRestart(c)
+			}
+		}
+	}
 	if sess.SchemaID == id {
 		sess.SchemaID = ""
 	}
@@ -400,6 +712,10 @@ func extractBuilderData(r *http.Request) builderData {
 		IssuerDisplayName: r.FormValue("issuer_display_name"),
 		ExtraType:         r.FormValue("extra_type"),
 		Std:               canonicalStd(r.FormValue("std")),
+		Delegation:        r.FormValue("delegation") == "on",
+		Expiry:            r.FormValue("expiry") == "on",
+		Scenario:          r.FormValue("scenario"),
+		Scenarios:         delegationScenarios,
 	}
 	if d.Std == "" {
 		d.Std = "w3c_vcdm_2"
@@ -453,7 +769,34 @@ func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
 			s.FieldsSpec = append(s.FieldsSpec, f)
 		}
 	}
+	// Opt-in expiry policy: append a valid_until datetime claim ONLY when the
+	// operator ticked "This credential expires" (d.Expiry), so the credential
+	// carries (and the temporal gate enforces) a validity window. DPG-agnostic —
+	// the flat valid_until claim lands top-level on SD-JWT and inside
+	// credentialSubject on W3C, both read by backend.TemporalBounds. This is the
+	// single funnel every builder path (preview/add/remove/delegation/save) goes
+	// through; hasField dedupes if a schema is re-saved. Delegation schemas do NOT
+	// force expiry — valid_until only appears if the operator explicitly opts in.
+	if d.Expiry && !hasField(s.FieldsSpec, "valid_until") {
+		s.FieldsSpec = append(s.FieldsSpec, vctypes.FieldSpec{
+			Name:     "valid_until",
+			Datatype: "string",
+			Format:   "datetime",
+		})
+	}
 	return s
+}
+
+// hasField reports whether fs already contains a field with the given name
+// (case-sensitive, trimmed) — used to keep the derived valid_until claim from
+// being appended twice when composed with the delegation preset.
+func hasField(fs []vctypes.FieldSpec, name string) bool {
+	for _, f := range fs {
+		if strings.TrimSpace(f.Name) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func allBlank(fs []vctypes.FieldSpec) bool {

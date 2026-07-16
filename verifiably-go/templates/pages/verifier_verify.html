@@ -70,6 +70,21 @@
         </div>
       </div>
 
+      <div class="field" style="margin-bottom:1rem;border:1px solid var(--line);border-radius:4px;padding:0.7rem 0.9rem;background:var(--bg-soft,rgba(0,0,0,0.025))">
+        <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-weight:600;margin:0">
+          <input type="checkbox" name="delegation" value="on" {{if .Body.Delegation}}checked{{end}}
+                 hx-post="/verifier/verify/build"
+                 hx-vals='{"delegation_toggle_fired":"1"}'
+                 hx-target="#verifier-custom-body"
+                 hx-swap="innerHTML"
+                 hx-include="closest form">
+          Verify as a delegated-access pair
+        </label>
+        <p class="hint" style="font-size:0.74rem;color:var(--ink-mute);margin:0.4rem 0 0">
+          Requests the subject identity + delegation credentials together and evaluates linkage, invocation, capability and revocation — the outcome below is a delegated-access card. Ticking this turns the credential grid into a two-step picker: first the <strong>delegation</strong> credential (those with an <span class="mono">onBehalfOf</span> field), then the <strong>identity</strong> it is about.
+        </p>
+      </div>
+
       {{/* Card grid + filter + field picker. Swapped whole on card
            selection / filter / search by /verifier/verify/build so the
            active-chip highlighting and hidden schema_id stay coherent
@@ -129,12 +144,12 @@
       {{if $canUpload}}
       <div style="background:var(--bg-elev);border:1px solid var(--line);padding:1.5rem;border-radius:2px">
         <h4 style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.1rem;margin-bottom:0.25rem">Upload QR image</h4>
-        <p style="font-size:0.82rem;color:var(--ink-soft);margin-bottom:1rem">PNG or JPEG. Server extracts and verifies the embedded QR.</p>
+        <p style="font-size:0.82rem;color:var(--ink-soft);margin-bottom:1rem">PNG, JPEG, or PDF. Server extracts and verifies the embedded QR (incl. from a wallet/Inji credential PDF).</p>
         <form id="upload-qr-form" enctype="multipart/form-data"
               style="display:flex;flex-direction:column;gap:0.5rem"
               onsubmit="uploadQR(event)">
           <input type="hidden" name="method" value="upload">
-          <input type="file" name="credential_image" accept="image/png,image/jpeg,image/webp" required>
+          <input type="file" name="credential_image" accept="image/png,image/jpeg,image/webp,application/pdf" required>
           <button class="btn small" type="submit">Verify upload →</button>
         </form>
       </div>
@@ -183,11 +198,27 @@
 
 {{define "fragment_oid4vp_request_output"}}
 <div class="cred-preview" style="margin-top:1.5rem">
-  <div class="caps">Presentation request · {{.Template.Title}}</div>
-  <div style="font-size:0.85rem;color:var(--ink-soft);margin:0.5rem 0 1rem">
-    Asking for: <span class="mono">{{range $i, $f := .Template.Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>
-    <br>Format: <span class="mono">{{.Template.Format}}{{if .Template.WireFormat}} · {{.Template.WireFormat}}{{end}}</span> · Disclosure: <span class="mono">{{.Template.Disclosure}}</span>
+  {{if gt (len .Requested) 1}}
+  {{/* Combined request: list EVERY requested credential (identity + delegation),
+       so the operator sees the full pair before the holder responds. */}}
+  <div class="caps">Presentation request · {{len .Requested}} credentials</div>
+  <div style="margin:0.5rem 0 1rem;display:flex;flex-direction:column;gap:0.5rem">
+    {{range $i, $t := .Requested}}
+    <div style="font-size:0.85rem;color:var(--ink-soft);padding:0.5rem 0.75rem;background:var(--bg);border:1px solid var(--line);border-radius:6px">
+      <strong style="color:var(--ink)">{{if eq $i 0}}Identity{{else}}Delegation{{end}} · {{$t.Title}}</strong><br>
+      Asking for: <span class="mono">{{range $j, $f := $t.Fields}}{{if $j}}, {{end}}{{$f}}{{end}}</span>
+      <br>Format: <span class="mono">{{$t.Format}}{{if $t.WireFormat}} · {{$t.WireFormat}}{{end}}</span> · Disclosure: <span class="mono">{{$t.Disclosure}}</span>
+    </div>
+    {{end}}
   </div>
+  {{else}}
+  {{$t := .Template}}{{if .Requested}}{{$t = index .Requested 0}}{{end}}
+  <div class="caps">Presentation request · {{$t.Title}}</div>
+  <div style="font-size:0.85rem;color:var(--ink-soft);margin:0.5rem 0 1rem">
+    Asking for: <span class="mono">{{range $i, $f := $t.Fields}}{{if $i}}, {{end}}{{$f}}{{end}}</span>
+    <br>Format: <span class="mono">{{$t.Format}}{{if $t.WireFormat}} · {{$t.WireFormat}}{{end}}</span> · Disclosure: <span class="mono">{{$t.Disclosure}}</span>
+  </div>
+  {{end}}
 
   <div class="split">
     {{/* Cross-device: QR (real, served from /qr) */}}
@@ -263,138 +294,182 @@
   </div>
 </div>
 {{else}}
-{{/* Flip card: front shows the verification verdict (green when valid, red
-     when invalid) plus which policies ran. Hovering flips to the back,
-     which lists the holder's actual disclosed claim values — equivalent
-     to walt.id's "Presented Credentials" panel. If the adapter couldn't
-     extract fields (unknown VP format), the back just repeats the verdict. */}}
-{{/* min-height bumped from the default verify-flip so the back panel's
-     Presented Credentials list (claims + revocation reason when present)
-     fits without the panels overlapping. The flip card is absolute-
-     positioned on each face so the inner faces sit one over the other —
-     the parent's height has to accommodate the taller of the two. */}}
-<div class="verify-flip {{if .Valid}}valid{{else}}invalid{{end}}" style="margin-top:1.5rem;min-height:480px">
-  <div class="verify-flip-inner">
+{{/* Compact result card (replaces the old hover-flip). The verdict + the claim
+     values the holder actually disclosed are shown by default — that's what the
+     operator requested and needs at a glance. The full verification metadata
+     (method / format / issuer / trust / policies) is tucked into a native
+     <details> expander, the same click-to-expand pattern the holder wallet uses
+     for "Raw credential (JSON)". No swivel, no hover-to-discover. */}}
+{{/* A delegated-access PAIR: the OVERALL verdict keys on the TRUE validity
+     (res.Valid) — which already folds in the external verifier's per-credential
+     verdict AND verifiably's own gates (temporal / linkage / invocation /
+     capability / revocation, via attachDelegationVerdict). verifiably's gates
+     only ADD strictness; they never override an external INVALID into a pass, so
+     a rejected/revoked credential is a genuine DENIED. The per-credential cards
+     below carry the specific claims + checks. */}}
+{{$isDeleg := false}}{{with .Delegation}}{{if .Evaluated}}{{$isDeleg = true}}{{end}}{{end}}
+<div class="verify-result {{if .Valid}}valid{{else}}invalid{{end}}" style="margin-top:1.5rem;background:var(--bg-elev);border:1px solid var(--line);border-left:3px solid {{if .Valid}}var(--ok){{else}}var(--err){{end}};padding:1.5rem;border-radius:2px">
 
-    <div class="verify-flip-face verify-flip-front">
-      <div class="verify-banner {{if .Valid}}valid{{else}}invalid{{end}}">
-        <span class="icon">{{if .Valid}}✓{{else}}✕{{end}}</span>
-        <div>
-          <h3>{{if .Valid}}Credential valid{{else}}Credential invalid{{end}}</h3>
-          <p>
-            {{if .Valid}}
-              Signature verified, issuer trusted, within validity period.
-            {{else}}
-              One or more policies failed — the credential can't be trusted as-is.
-            {{end}}
-          </p>
-        </div>
-      </div>
-
-      <dl class="cred-rows">
-        <dt>method</dt>  <dd>{{.Method}}</dd>
-        <dt>format</dt>  <dd><span class="mono">{{.Format}}</span></dd>
-        <dt>issuer</dt>  <dd>
-          {{if .IssuerDisplay}}<strong>{{.IssuerDisplay}}</strong><br>{{end}}
-          <span class="mono">{{.Issuer}}</span>
-        </dd>
-        {{if .TrustStatus}}
-        <dt>trust</dt>
-        <dd>
-          {{if eq .TrustStatus "trusted"}}
-            <span class="pill ok" title="Issuer is in the national trust registry">trusted ✓</span>
-          {{else if eq .TrustStatus "untrusted"}}
-            <span class="pill err" title="{{.TrustReason}}">not trusted</span>
-            {{if .TrustReason}}<span style="font-size:0.78rem;color:var(--ink-mute);display:block;margin-top:0.2rem">{{.TrustReason}}</span>{{end}}
-          {{else}}
-            <span class="pill" style="color:var(--ink-mute)" title="Registry lookup failed">unknown</span>
+  <div class="verify-banner {{if .Valid}}valid{{else}}invalid{{end}}">
+    <span class="icon">{{if .Valid}}✓{{else}}✕{{end}}</span>
+    <div>
+      {{if $isDeleg}}
+        <h3>🔑 Delegated access — {{if .Valid}}authorised{{else}}denied{{end}}</h3>
+        <p>
+          {{if .Valid}}All delegated-access checks passed.
+          {{else if .Delegation.Reason}}{{.Delegation.Reason}}
+          {{else}}A presented credential was rejected — see the per-credential cards below.
           {{end}}
-        </dd>
-        {{end}}
-        <dt>subject</dt> <dd><span class="mono">{{.Subject}}</span></dd>
-        <dt>issued</dt>  <dd>{{.Issued}}</dd>
-        {{if .PoliciesApplied}}
-          {{/* Color each policy chip by its individual outcome when we
-               have per-policy detail, instead of painting them all green
-               or all red based on the overall verdict. A failed policy
-               in an otherwise-valid result (rare but possible) still
-               shows up red so the operator can tell which check broke. */}}
-          <dt>policies</dt>
-          <dd>
-            {{$outcomes := .PolicyOutcomes}}
-            {{range $i, $p := .PoliciesApplied}}
-              {{if $i}} · {{end}}
-              {{$ok := $.Valid}}
-              {{range $outcomes}}{{if eq .Name $p}}{{$ok = .Passed}}{{end}}{{end}}
-              <span class="pill {{if $ok}}ok{{else}}err{{end}}">{{$p}}</span>
-            {{end}}
-          </dd>
-        {{end}}
-        {{if .Requested}}
-          <dt>fields received</dt>
-          <dd><span class="mono">{{range $i, $f := .Requested}}{{if $i}}, {{end}}{{$f}}{{end}}</span></dd>
-        {{end}}
-      </dl>
-
-      {{/* When at least one policy failed, surface every failure with its
-           verifier-supplied reason so the operator can act on the
-           specific cause (revocation vs expired vs signature mismatch).
-           credential-status is special-cased with a friendlier headline
-           because that's the policy that fires on a revocation, and the
-           operator's view is "this credential was revoked" rather than
-           "Status validation failed: expected 0, but got 1". */}}
-      {{$failed := .FailedPolicies}}
-      {{if $failed}}
-      <div style="margin-top:0.75rem;padding:0.75rem 0.9rem;border:1px solid var(--err);border-radius:6px;background:color-mix(in srgb, var(--err) 8%, transparent)">
-        <div class="caps" style="color:var(--err);margin-bottom:0.4rem">Failed policies</div>
-        {{range $failed}}
-          <div style="margin-bottom:0.5rem;font-size:0.88rem">
-            <strong>{{.Name}}</strong>
-            {{if eq .Name "credential-status"}}
-              — credential has been revoked by the issuer.
-              {{if .Reason}}<div style="margin-top:0.2rem;font-size:0.78rem;color:var(--ink-mute)">walt.id: {{.Reason}}</div>{{end}}
-            {{else}}
-              {{if .Reason}}<div style="margin-top:0.2rem;font-size:0.85rem;color:var(--ink-soft)">{{.Reason}}</div>{{end}}
-            {{end}}
-          </div>
-        {{end}}
-      </div>
-      {{end}}
-
-      <p class="verify-flip-hint">hover to see the disclosed fields</p>
-    </div>
-
-    <div class="verify-flip-face verify-flip-back">
-      <div class="caps" style="margin-bottom:0.4rem">Presented Credentials</div>
-      {{if .CredentialTitle}}
-        <h3 style="margin:0 0 0.75rem;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.3rem">{{.CredentialTitle}}</h3>
-      {{end}}
-      {{if .DisclosedFields}}
-        <dl class="cred-rows">
-          {{range $k, $v := .DisclosedFields}}
-            <dt>{{replaceUnderscore $k}}</dt>
-            <dd>{{$v}}</dd>
-          {{end}}
-        </dl>
-      {{else}}
-        <p style="font-size:0.85rem;color:var(--ink-soft);margin:0">
-          No structured claim values were disclosed — the wallet returned
-          only the signed envelope. This is normal for full-disclosure
-          requests against W3C VC-JWT credentials without per-claim
-          selective disclosure.
         </p>
-      {{end}}
-      {{/* Mirror the front's failed-policies block on the back so the
-           operator doesn't lose context after flipping the card. */}}
-      {{if .FailedPolicies}}
-      <div style="margin-top:1rem;padding:0.6rem 0.8rem;border:1px solid var(--err);border-radius:6px;background:color-mix(in srgb, var(--err) 8%, transparent);font-size:0.82rem">
-        <strong style="color:var(--err)">Verification failed:</strong>
-        {{range $i, $p := .FailedPolicies}}{{if $i}}, {{end}}<span class="mono">{{.Name}}</span>{{end}}.
-      </div>
+      {{else if .Valid}}
+        <h3>Credential valid</h3>
+        <p>Signature verified, issuer trusted, within validity period.</p>
+      {{else}}
+        <h3>Credential invalid</h3>
+        <p>One or more policies failed — the credential can't be trusted as-is.</p>
       {{end}}
     </div>
   </div>
+
+  {{if .CredentialViews}}
+  {{/* Combined presentation: one card per PRESENTED credential — its disclosed
+       claims + the checks attributed to it (external verifier, validity,
+       revocation, and the delegation sub-checks). */}}
+  <div style="margin-top:0.9rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">
+    {{range .CredentialViews}}
+    <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:1.1rem 1.25rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.6rem;margin-bottom:0.6rem">
+        <strong style="font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1.05rem">{{.Title}}</strong>
+        {{if eq .Role "delegation"}}<span class="pill" style="font-size:0.62rem;background:color-mix(in srgb, var(--accent) 18%, transparent);color:var(--accent)">delegation</span>
+        {{else if eq .Role "subject"}}<span class="pill" style="font-size:0.62rem;background:color-mix(in srgb, var(--ok) 18%, transparent);color:var(--ok)">identity</span>{{end}}
+      </div>
+      {{if .Claims}}
+      <dl class="cred-rows" style="margin:0">
+        {{range $k, $v := .Claims}}<dt>{{replaceUnderscore $k}}</dt><dd>{{$v}}</dd>{{end}}
+      </dl>
+      {{else}}
+      <p style="font-size:0.8rem;color:var(--ink-soft);margin:0">No claims disclosed for this credential.</p>
+      {{end}}
+      {{if .Checks}}
+      <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.3rem">
+        {{range .Checks}}
+        <div style="display:flex;gap:0.5rem;font-size:0.76rem;align-items:baseline">
+          {{if eq .Status "pass"}}<span class="pill ok" style="font-size:0.6rem;flex-shrink:0">pass ✓</span>
+          {{else if eq .Status "fail"}}<span class="pill err" style="font-size:0.6rem;flex-shrink:0">fail ✗</span>
+          {{else}}<span class="pill" style="font-size:0.6rem;flex-shrink:0;color:var(--ink-mute)">n/a</span>{{end}}
+          <span style="min-width:96px;flex-shrink:0">{{.Label}}</span>
+          <span style="color:var(--ink-mute)">{{.Note}}</span>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+      <div style="margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid var(--line);font-size:0.7rem;color:var(--ink-mute)">
+        {{if .Issuer}}issuer <span class="mono">{{.Issuer}}</span><br>{{end}}<span class="mono">{{.Format}}</span>
+      </div>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  {{/* Compact default (single-credential verify): the disclosed claim values. */}}
+  <div style="margin-top:0.25rem">
+    <div class="caps" style="margin-bottom:0.4rem">Presented credential{{if .CredentialTitle}} · {{.CredentialTitle}}{{end}}</div>
+    {{if .DisclosedFields}}
+      <dl class="cred-rows">
+        {{range $k, $v := .DisclosedFields}}
+          <dt>{{replaceUnderscore $k}}</dt>
+          <dd>{{$v}}</dd>
+        {{end}}
+      </dl>
+    {{else}}
+      <p style="font-size:0.85rem;color:var(--ink-soft);margin:0">
+        No structured claim values were disclosed — the wallet returned only the
+        signed envelope. This is normal for full-disclosure requests against W3C
+        VC-JWT credentials without per-claim selective disclosure.
+      </p>
+    {{end}}
+    {{if .Requested}}
+      <p style="margin:0.5rem 0 0;font-size:0.78rem;color:var(--ink-mute)">Requested: <span class="mono">{{range $i, $f := .Requested}}{{if $i}}, {{end}}{{$f}}{{end}}</span></p>
+    {{end}}
+  </div>
+  {{end}}
+
+  {{/* Invalid results: a one-line reason up front so the operator sees WHY
+       without expanding; the full per-policy detail lives in the expander. */}}
+  {{if .FailedPolicies}}
+  <div style="margin-top:0.9rem;padding:0.6rem 0.8rem;border:1px solid var(--err);border-radius:6px;background:color-mix(in srgb, var(--err) 8%, transparent);font-size:0.85rem">
+    <strong style="color:var(--err)">Failed:</strong>
+    {{range $i, $p := .FailedPolicies}}{{if $i}}, {{end}}<span class="mono">{{.Name}}</span>{{end}}.
+  </div>
+  {{end}}
+
+  {{/* Click-to-expand: the full verification metadata + per-policy detail. */}}
+  <details style="margin-top:0.9rem">
+    <summary style="cursor:pointer;font-size:0.82rem;color:var(--ink-soft)">Verification details</summary>
+    <dl class="cred-rows" style="margin-top:0.6rem">
+      <dt>method</dt>  <dd>{{.Method}}</dd>
+      <dt>format</dt>  <dd><span class="mono">{{.Format}}</span></dd>
+      <dt>issuer</dt>  <dd>
+        {{if .IssuerDisplay}}<strong>{{.IssuerDisplay}}</strong><br>{{end}}
+        <span class="mono">{{.Issuer}}</span>
+      </dd>
+      {{if .TrustStatus}}
+      <dt>trust</dt>
+      <dd>
+        {{if eq .TrustStatus "trusted"}}
+          <span class="pill ok" title="Issuer is in the national trust registry">trusted ✓</span>
+        {{else if eq .TrustStatus "untrusted"}}
+          <span class="pill err" title="{{.TrustReason}}">not trusted</span>
+          {{if .TrustReason}}<span style="font-size:0.78rem;color:var(--ink-mute);display:block;margin-top:0.2rem">{{.TrustReason}}</span>{{end}}
+        {{else}}
+          <span class="pill" style="color:var(--ink-mute)" title="Registry lookup failed">unknown</span>
+        {{end}}
+      </dd>
+      {{end}}
+      <dt>subject</dt> <dd><span class="mono">{{.Subject}}</span></dd>
+      <dt>issued</dt>  <dd>{{.Issued}}</dd>
+      {{if .PoliciesApplied}}
+        {{/* Color each policy chip by its individual outcome when we have
+             per-policy detail, so a failed policy in an otherwise-valid result
+             still shows red and the operator can tell which check broke. */}}
+        <dt>policies</dt>
+        <dd>
+          {{$outcomes := .PolicyOutcomes}}
+          {{range $i, $p := .PoliciesApplied}}
+            {{if $i}} · {{end}}
+            {{$ok := $.Valid}}
+            {{range $outcomes}}{{if eq .Name $p}}{{$ok = .Passed}}{{end}}{{end}}
+            <span class="pill {{if $ok}}ok{{else}}err{{end}}">{{$p}}</span>
+          {{end}}
+        </dd>
+      {{end}}
+    </dl>
+
+    {{/* Every failure with its verifier-supplied reason so the operator can act
+         on the specific cause. credential-status gets a friendlier revocation
+         headline than "Status validation failed: expected 0, but got 1". */}}
+    {{$failed := .FailedPolicies}}
+    {{if $failed}}
+    <div style="margin-top:0.75rem;padding:0.75rem 0.9rem;border:1px solid var(--err);border-radius:6px;background:color-mix(in srgb, var(--err) 8%, transparent)">
+      <div class="caps" style="color:var(--err);margin-bottom:0.4rem">Failed policies</div>
+      {{range $failed}}
+        <div style="margin-bottom:0.5rem;font-size:0.88rem">
+          <strong>{{.Name}}</strong>
+          {{if eq .Name "credential-status"}}
+            — credential has been revoked by the issuer.
+            {{if .Reason}}<div style="margin-top:0.2rem;font-size:0.78rem;color:var(--ink-mute)">walt.id: {{.Reason}}</div>{{end}}
+          {{else}}
+            {{if .Reason}}<div style="margin-top:0.2rem;font-size:0.85rem;color:var(--ink-soft)">{{.Reason}}</div>{{end}}
+          {{end}}
+        </div>
+      {{end}}
+    </div>
+    {{end}}
+  </details>
 </div>
+{{/* The flat delegation card is superseded by the per-credential cards (its four
+     checks are attributed to the cards above). Only render it when there are no
+     per-credential views (defensive — shouldn't happen for an evaluated pair). */}}
+{{if not .CredentialViews}}{{template "_delegation_card" .}}{{end}}
 {{end}}
 {{end}}
 
@@ -403,6 +478,37 @@
      right configuration id on Generate. Empty until the user clicks a
      card's format chip. */}}
 <input type="hidden" name="schema_id" value="{{.CustomSchemaID}}">
+
+{{if .Delegation}}
+<div style="margin-bottom:0.75rem;padding:0.65rem 0.85rem;background:rgba(181,101,29,0.06);border:1px solid var(--line);border-radius:4px">
+  <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.45rem">Delegated-access pair · two-step picker</div>
+  <div style="display:flex;flex-direction:column;gap:0.35rem;font-size:0.8rem">
+    <div>
+      <span style="display:inline-block;width:1.3rem;height:1.3rem;line-height:1.3rem;text-align:center;border-radius:50%;background:{{if .DelegSchemaID}}var(--ok){{else}}#b5651d{{end}};color:#fff;font-size:0.7rem;margin-right:0.4rem">1</span>
+      <span style="color:var(--ink-mute)">Delegation:</span>
+      {{if .DelegSchemaID}}<strong>{{.DelegName}}</strong>
+        <button type="button" class="chip small" style="margin-left:0.4rem" hx-post="/verifier/verify/build" hx-vals='{"reset_deleg":"1"}' hx-target="#verifier-custom-body" hx-swap="innerHTML" hx-include="closest form">change</button>
+      {{else}}<em style="color:#b5651d">pick a credential with an <span class="mono">onBehalfOf</span> field below ↓</em>{{end}}
+    </div>
+    <div>
+      <span style="display:inline-block;width:1.3rem;height:1.3rem;line-height:1.3rem;text-align:center;border-radius:50%;background:{{if .SubjectSchemaID}}var(--ok){{else if .DelegSchemaID}}#b5651d{{else}}var(--line){{end}};color:#fff;font-size:0.7rem;margin-right:0.4rem">2</span>
+      <span style="color:var(--ink-mute)">Identity it's about:</span>
+      {{if .SubjectSchemaID}}<strong>{{.SubjectName}}</strong>
+        <button type="button" class="chip small" style="margin-left:0.4rem" hx-post="/verifier/verify/build" hx-vals='{"reset_subject":"1"}' hx-target="#verifier-custom-body" hx-swap="innerHTML" hx-include="closest form">change</button>
+      {{else if .DelegSchemaID}}<em style="color:#b5651d">now pick the identity credential below ↓</em>{{if .DelegFormat}} <span class="mono" style="font-size:0.7rem;color:var(--ink-mute)">— {{.DelegFormat}} only (walt.id can't mix formats in one request)</span>{{end}}
+      {{else}}<span style="color:var(--ink-mute)">waiting…</span>{{end}}
+    </div>
+  </div>
+  {{if and .DelegSchemaID .SubjectSchemaID}}
+  <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--ok);font-weight:600">✓ Pair selected — hit <span class="mono">Generate request →</span> below.</div>
+  {{if eq .DelegFormat "vc+sd-jwt"}}
+  <div style="margin-top:0.4rem;font-size:0.74rem;color:#8a4b13;background:rgba(181,101,29,0.08);border-left:3px solid #b5651d;padding:0.4rem 0.6rem;border-radius:0 4px 4px 0">
+    ⚠ walt.id holder wallets (v0.18.2) can't present an <strong>SD-JWT pair</strong> in one request — the combined vpToken is a JSON array they can't serialize. For end-to-end verification, issue the pair as <strong>JWT · W3C (jwt_vc_json)</strong>. (The evaluation works either way; this is a wallet limit.)
+  </div>
+  {{end}}
+  {{end}}
+</div>
+{{end}}
 
 <div style="margin-bottom:0.75rem">
   <div class="chip-row" style="margin-bottom:0.5rem">
@@ -433,7 +539,7 @@
 <div class="schema-list" style="max-height:340px;overflow-y:auto">
   {{if not .Schemas}}
     <div class="empty" style="grid-column:1 / -1;font-size:0.85rem;color:var(--ink-mute)">
-      No credentials match the current filters.
+      {{if and .Delegation .DelegSchemaID}}No identity credential in <span class="mono">{{.DelegFormat}}</span> — walt.id can't mix formats in one request, so issue an identity in that format, or change the delegation (step 1) to a format you have an identity for.{{else if .Delegation}}No delegation credential (one with an <span class="mono">onBehalfOf</span> field) here.{{else}}No credentials match the current filters.{{end}}
     </div>
   {{end}}
 
@@ -490,13 +596,15 @@
 </div>
 
 <div id="custom-template-preview" style="margin-top:1rem">
-  {{if .CustomTemplate}}
+  {{/* Per-field picker is for single-credential verify; the delegated-access
+       pair auto-requests onBehalfOf + the identity's fields, so it's hidden. */}}
+  {{if not $.Delegation}}{{if .CustomTemplate}}
     {{template "fragment_custom_oid4vp_preview" (dict
       "Template" (deref .CustomTemplate)
       "SchemaID" .CustomSchemaID
       "Schema"   (indexSchemas .AllSchemas .CustomSchemaID)
       "Selected" (fieldSet .CustomTemplate.Fields))}}
-  {{end}}
+  {{end}}{{end}}
 </div>
 {{end}}
 

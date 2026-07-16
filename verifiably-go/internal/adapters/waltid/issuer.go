@@ -483,6 +483,10 @@ func (a *Adapter) SaveCustomSchema(_ context.Context, schema vctypes.Schema) err
 	if err := restartContainer(service); err != nil {
 		return fmt.Errorf("restart %s: %w", service, err)
 	}
+	// State.Running flips true before issuer-api can serve OID4VCI, so wait for
+	// it to actually respond before returning — otherwise the first post-save
+	// issuance/verify flaps (B4). Best-effort: proceeds after the timeout.
+	waitForHTTPReady(a.cfg.IssuerBaseURL, 60*time.Second)
 	return nil
 }
 
@@ -534,7 +538,11 @@ func (a *Adapter) DeleteCustomSchema(_ context.Context, id string) error {
 	if service == "" {
 		service = "issuer-api"
 	}
-	return restartContainer(service)
+	if err := restartContainer(service); err != nil {
+		return err
+	}
+	waitForHTTPReady(a.cfg.IssuerBaseURL, 60*time.Second)
+	return nil
 }
 
 // parseTypeAndStdFromConfigID reverses the configID format. The wire-format
@@ -681,7 +689,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		// which become disclosures; a VCDM-wrapped body only makes
 		// "credentialSubject" itself disclosable, leaving the individual
 		// claims baked into the JWT.
-		cd, err := buildSDJWTCredentialData(req.SubjectData, req.StatusList, req.HolderDID)
+		cd, err := buildSDJWTCredentialData(req.SubjectData, req.StatusList, req.ValidFrom, req.ValidUntil)
 		if err != nil {
 			return backend.IssueToWalletResult{}, err
 		}
@@ -701,16 +709,27 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		case req.Schema.Vct != "":
 			ir.Vct = req.Schema.Vct
 		case req.Schema.Custom:
-			ir.Vct = req.Schema.CustomTypeName()
+			// Host-derived vct (VERIFIABLY_PUBLIC_URL/credentials/<id>) so it
+			// matches exactly what the verifier requests via
+			// schema.CredentialVct(publicBase) and what the injicertify issuer
+			// embeds — all DPGs now agree on the same vct for custom SD-JWT.
+			ir.Vct = req.Schema.CredentialVct(strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/"))
 		default:
 			ir.Vct = req.Schema.ID
 		}
 		ir.CredentialData = cd
 		ir.SelectiveDisclosure = buildSelectiveDisclosureMap(req.SubjectData)
 	default:
-		cd, err := buildCredentialData(req.Schema, req.SubjectData, req.StatusList, req.HolderDID)
-		if err != nil {
-			return backend.IssueToWalletResult{}, err
+		// A caller may supply a complete JSON-LD body (e.g. a delegation
+		// credential with nested onBehalfOf + termsOfUse) that the flat
+		// SubjectData map cannot express; use it verbatim when present.
+		cd := req.CredentialData
+		if len(cd) == 0 {
+			built, err := buildCredentialData(req.Schema, req.SubjectData, req.StatusList, req.ValidFrom, req.ValidUntil)
+			if err != nil {
+				return backend.IssueToWalletResult{}, err
+			}
+			cd = built
 		}
 		ir.CredentialData = cd
 	}
@@ -926,20 +945,34 @@ func authenticationMethod(flow string) string {
 // nests under credentialSubject), SD-JWT VC puts each claim at the payload
 // root so walt.id's SDMap can mark individual claims as selectively
 // disclosable.
-func buildSDJWTCredentialData(subject map[string]string, sl *backend.StatusListBinding, holderDID string) (json.RawMessage, error) {
-	out := make(map[string]any, len(subject)+2)
+// parseValidityRFC3339 parses an RFC3339 timestamp; an empty or malformed value
+// yields (zero, false) so callers skip an absent validity bound.
+func parseValidityRFC3339(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+func buildSDJWTCredentialData(subject map[string]string, sl *backend.StatusListBinding, validFrom, validUntil string) (json.RawMessage, error) {
+	out := make(map[string]any, len(subject)+3)
 	for k, v := range subject {
 		out[k] = v
 	}
-	// SD-JWT VC subject binding: the `sub` claim names the credential subject.
-	// Set only in the holder-initiated flow (HolderDID non-empty); the
-	// cryptographic key binding (`cnf`) is added by walt.id from the wallet's
-	// proof during the credential request. Kept non-disclosable on purpose —
-	// buildSelectiveDisclosureMap only marks the operator-supplied subject
-	// fields as disclosable, so `sub` stays in the signed payload as a stable
-	// identifier the verifier can always rely on.
-	if holderDID != "" {
-		out["sub"] = holderDID
+	// Validity window as JWT NumericDate (seconds) — nbf/exp — so the verifier
+	// and the temporal gate enforce the credential's own window instead of
+	// walt.id's ~2y default. walt.id passes credentialData through into the
+	// SD-JWT, so these land as registered JWT claims.
+	if t, ok := parseValidityRFC3339(validFrom); ok {
+		out["nbf"] = t.Unix()
+	}
+	if t, ok := parseValidityRFC3339(validUntil); ok {
+		out["exp"] = t.Unix()
 	}
 	// IETF Token Status List binding: top-level `status.status_list.{idx,uri}`
 	// per draft-ietf-oauth-status-list. Walt.id passes the credentialData
@@ -1008,7 +1041,7 @@ func buildMdocData(schema vctypes.Schema, subject map[string]string) (json.RawMe
 // buildCredentialData constructs a VCDM 2.0-shaped JSON object from the
 // operator's subject input. Types come from the schema id prefix
 // (the canonical type before the `_format` suffix).
-func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *backend.StatusListBinding, holderDID string) (json.RawMessage, error) {
+func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *backend.StatusListBinding, validFrom, validUntil string) (json.RawMessage, error) {
 	types := []string{"VerifiableCredential"}
 	if schema.Custom {
 		// Custom schemas may declare AdditionalTypes via the builder's
@@ -1027,15 +1060,9 @@ func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *b
 		}
 		types = append(types, baseType)
 	}
-	credSubject := make(map[string]any, len(subject)+1)
+	credSubject := make(map[string]any, len(subject))
 	for k, v := range subject {
 		credSubject[k] = v
-	}
-	// VCDM 2.0 subject binding: credentialSubject.id names the holder. Set only
-	// in the holder-initiated flow (HolderDID non-empty); empty in the
-	// operator pre-auth flow, where the operator does not know the holder's DID.
-	if holderDID != "" {
-		credSubject["id"] = holderDID
 	}
 	doc := map[string]any{
 		"@context": []string{
@@ -1044,6 +1071,15 @@ func buildCredentialData(schema vctypes.Schema, subject map[string]string, sl *b
 		},
 		"type":              types,
 		"credentialSubject": credSubject,
+	}
+	// Validity window: pin validFrom/validUntil when set so the verifier and the
+	// temporal gate enforce the credential's own window instead of walt.id's
+	// ~2y default.
+	if t, ok := parseValidityRFC3339(validFrom); ok {
+		doc["validFrom"] = t.UTC().Format(time.RFC3339)
+	}
+	if t, ok := parseValidityRFC3339(validUntil); ok {
+		doc["validUntil"] = t.UTC().Format(time.RFC3339)
 	}
 	// W3C Bitstring Status List 2023 entry. statusListIndex must be a
 	// STRING per the spec, even though it's numeric semantically — verifiers

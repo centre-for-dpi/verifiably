@@ -86,6 +86,9 @@ func TestAppendCredentialType_w3cFansOutAcrossFormats(t *testing.T) {
 
 func TestAppendCredentialType_sdJWT(t *testing.T) {
 	path := writeSeed(t)
+	// buildSDJWTEntry derives the vct from VERIFIABLY_PUBLIC_URL — pin it so the
+	// assertion is deterministic (host-derived vct, matching the verifier).
+	t.Setenv("VERIFIABLY_PUBLIC_URL", "https://verify.test")
 	primary, all, changed, err := appendCredentialType(path, vctypes.Schema{
 		ID: "custom-sd1", Name: "Health Card", Std: "sd_jwt_vc (IETF)", Custom: true,
 	})
@@ -102,7 +105,7 @@ func TestAppendCredentialType_sdJWT(t *testing.T) {
 	for _, frag := range []string{
 		`"HealthCard_vc+sd-jwt" = {`,
 		`format = "vc+sd-jwt"`,
-		`vct = "HealthCard"`, // bare type name — see buildSDJWTEntry rationale
+		`vct = "https://verify.test/credentials/custom-sd1"`, // host-derived — matches verifier CredentialVct
 		`cryptographic_binding_methods_supported = ["jwk"]`,
 	} {
 		if !strings.Contains(string(got), frag) {

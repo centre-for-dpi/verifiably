@@ -1,0 +1,50 @@
+{{define "content_admin_esignet"}}
+<div>
+  <p class="subtitle" style="margin-bottom:0.25rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em;font-size:0.72rem">eSignet · Authentication</p>
+  <h1 class="page-title" style="margin-bottom:0.35rem">Login <em>methods</em>.</h1>
+  <p class="subtitle" style="margin-bottom:1.5rem;color:var(--ink-mute);max-width:52rem">
+    Choose which factors eSignet offers when a holder signs in to claim a credential. The selection is written to
+    the eSignet OIDC client <span class="mono">{{.Body.ClientID}}</span> and to what verifiably requests — it takes
+    effect on the next login with <strong>no restart</strong>. Each deployment configures its own methods here.
+  </p>
+
+  {{if .Body.Notice}}
+  <div style="margin-bottom:1.25rem;padding:0.7rem 0.9rem;border:1px solid var(--line);border-radius:6px;background:var(--bg-elev);font-size:0.85rem">
+    {{.Body.Notice}}
+  </div>
+  {{end}}
+
+  {{if .Body.ReadError}}
+  <div style="margin-bottom:1.25rem;padding:0.7rem 0.9rem;border:1px solid #d97706;border-radius:6px;background:rgba(217,119,6,0.08);font-size:0.82rem;color:var(--ink)">
+    ⚠ Could not read the current eSignet configuration: <span class="mono">{{.Body.ReadError}}</span><br>
+    <span style="color:var(--ink-mute)">The toggles below show the defaults. Saving still attempts to write. Check that the eSignet Postgres/Redis containers are running and reachable via the docker socket.</span>
+  </div>
+  {{end}}
+
+  <form method="post" action="/admin/esignet">
+    <div style="display:flex;flex-direction:column;gap:0.6rem;max-width:46rem">
+      {{range .Body.Factors}}
+      <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.9rem 1rem;border:1px solid var(--line);border-radius:6px;background:var(--bg-elev);cursor:{{if .Backed}}pointer{{else}}not-allowed{{end}};opacity:{{if .Backed}}1{{else}}0.55{{end}}">
+        <input type="checkbox" name="acr" value="{{.ACR}}" style="margin-top:0.2rem;width:1.05rem;height:1.05rem;flex:none"
+               {{if .Enabled}}checked{{end}} {{if not .Backed}}disabled{{end}}>
+        <span style="flex:1">
+          <span style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+            <strong style="font-size:0.92rem">{{.Name}}</strong>
+            <span class="mono" style="font-size:0.68rem;color:var(--ink-mute)">{{.AMR}}</span>
+            {{if .Enabled}}<span style="font-size:0.66rem;color:#16a34a;border:1px solid #16a34a;border-radius:10px;padding:0.02rem 0.4rem">enabled</span>{{end}}
+            {{if not .Backed}}<span style="font-size:0.66rem;color:var(--ink-mute);border:1px solid var(--line);border-radius:10px;padding:0.02rem 0.4rem">not wired in this deployment</span>{{end}}
+          </span>
+          <span style="display:block;font-size:0.78rem;color:var(--ink-mute);margin-top:0.2rem">{{.Desc}}</span>
+          <span class="mono" style="display:block;font-size:0.66rem;color:var(--ink-mute);margin-top:0.15rem">{{.ACR}}</span>
+        </span>
+      </label>
+      {{end}}
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;align-items:center;gap:1rem">
+      <button type="submit" class="btn" style="padding:0.5rem 1.4rem">Save login methods</button>
+      <span style="font-size:0.76rem;color:var(--ink-mute)">Factors marked “not wired” need an eSignet plugin — enable them only after wiring the backend, then widen <span class="mono">ESIGNET_BACKED_ACRS</span>.</span>
+    </div>
+  </form>
+</div>
+{{end}}

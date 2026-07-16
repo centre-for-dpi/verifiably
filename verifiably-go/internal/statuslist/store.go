@@ -232,23 +232,7 @@ func (s *Store) PublishBitstringJWT(key *SigningKey) (string, error) {
 	// only prepend here, not in PublishTokenStatusList.
 	encoded = "u" + encoded
 	now := time.Now().UTC()
-	vc := map[string]any{
-		"@context": []string{
-			"https://www.w3.org/ns/credentials/v2",
-			"https://w3id.org/vc/status-list/2021/v1",
-		},
-		"id":   s.PublishURL,
-		"type": []string{"VerifiableCredential", "BitstringStatusListCredential"},
-		// Issuer is the DID; verifiers resolve it to fetch the JWK.
-		"issuer":       key.Issuer(),
-		"validFrom":    now.Format(time.RFC3339),
-		"credentialSubject": map[string]any{
-			"id":            s.PublishURL + "#list",
-			"type":          "BitstringStatusList",
-			"statusPurpose": "revocation",
-			"encodedList":   encoded,
-		},
-	}
+	vc := s.buildBitstringVC(key.Issuer(), encoded, now)
 	claims := map[string]any{
 		"iss": key.Issuer(),
 		"sub": s.PublishURL,
@@ -256,6 +240,52 @@ func (s *Store) PublishBitstringJWT(key *SigningKey) (string, error) {
 		"vc":  vc,
 	}
 	return key.SignJWT("vc+jwt", claims)
+}
+
+// buildBitstringVC assembles the W3C BitstringStatusListCredential body shared by
+// the JWS (PublishBitstringJWT) and JSON-LD (PublishBitstringLD) serializations.
+func (s *Store) buildBitstringVC(issuer, encoded string, now time.Time) map[string]any {
+	return map[string]any{
+		// credentials/v2 defines the BitstringStatusList 2023 terms
+		// (BitstringStatusListCredential/BitstringStatusList/encodedList/
+		// statusPurpose); ed25519-2020 defines the Ed25519Signature2020 proof
+		// terms so the JSON-LD form canonicalizes for the Data-Integrity proof.
+		"@context": []string{
+			"https://www.w3.org/ns/credentials/v2",
+			"https://w3id.org/security/suites/ed25519-2020/v1",
+		},
+		"id":   s.PublishURL,
+		"type": []string{"VerifiableCredential", "BitstringStatusListCredential"},
+		// Issuer is the DID; verifiers resolve it to fetch the JWK.
+		"issuer":    issuer,
+		"validFrom": now.Format(time.RFC3339),
+		"credentialSubject": map[string]any{
+			"id":            s.PublishURL + "#list",
+			"type":          "BitstringStatusList",
+			"statusPurpose": "revocation",
+			"encodedList":   encoded,
+		},
+	}
+}
+
+// BitstringStatusListVC returns the UNSIGNED BitstringStatusListCredential as a
+// JSON-LD object with the given issuer DID. The handler signs it with an
+// Ed25519Signature2020 Data-Integrity proof (LDSigner) before serving it as
+// application/vc+ld+json — MOSIP Inji Verify JSON.parses the statusListCredential
+// and verifies its proof (it NPEs on an unsigned list), so the JSON-LD form must
+// be signed. Issuer is the LDSigner's did:key so the proof's verificationMethod
+// resolves without a network round-trip.
+func (s *Store) BitstringStatusListVC(issuer string) (map[string]any, error) {
+	if s.Kind != "bitstring" {
+		return nil, fmt.Errorf("statuslist: BitstringStatusListVC called on kind=%q", s.Kind)
+	}
+	s.mu.RLock()
+	encoded, err := s.bits.EncodeGzipBase64URL()
+	s.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	return s.buildBitstringVC(issuer, "u"+encoded, time.Now().UTC()), nil
 }
 
 // PublishTokenStatusList signs and returns the IETF Token Status List
@@ -333,6 +363,7 @@ type Backend interface {
 	GetListID() string
 	GetPublishURL() string
 	PublishBitstringJWT(key *SigningKey) (string, error)
+	BitstringStatusListVC(issuer string) (map[string]any, error)
 	PublishTokenStatusList(key *SigningKey) (string, error)
 }
 

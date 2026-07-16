@@ -25,9 +25,20 @@ import (
 	"compress/zlib"
 	"encoding/json"
 	"fmt"
+	"io"
+	"reflect"
+	"strings"
 
 	"github.com/fxamacker/cbor/v2"
 )
+
+// pixelPassDecMode decodes CBOR maps into map[string]interface{} (recursively)
+// rather than fxamacker's default map[interface{}]interface{}, which
+// encoding/json can't marshal. PixelPass payloads originate from JSON, so every
+// map key is a string.
+var pixelPassDecMode, _ = cbor.DecOptions{
+	DefaultMapType: reflect.TypeOf(map[string]interface{}(nil)),
+}.DecMode()
 
 // base45Alphabet per RFC 9285 §4: 0..9, A..Z, then ten specific symbols.
 const base45Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
@@ -91,4 +102,83 @@ func base45Encode(src []byte) string {
 		out = append(out, base45Alphabet[a], base45Alphabet[b])
 	}
 	return string(out)
+}
+
+// decodePixelPass reverses encodePixelPass: base45 → zlib-inflate → CBOR-decode
+// → JSON. Returns the credential JSON bytes. Errors when the input isn't a
+// well-formed PixelPass payload (bad base45, not zlib-deflated, or not CBOR),
+// so a caller can fall back to treating the input as a raw credential.
+func decodePixelPass(s string) ([]byte, error) {
+	raw, err := base45Decode(strings.TrimSpace(s))
+	if err != nil {
+		return nil, err
+	}
+	// zlib CMF byte is 0x78 for the window sizes zlib uses — a cheap guard that
+	// rejects most non-PixelPass QR text (raw JWT/JSON) before we try to inflate.
+	if len(raw) < 2 || raw[0] != 0x78 {
+		return nil, fmt.Errorf("not zlib-deflated")
+	}
+	zr, err := zlib.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("zlib reader: %w", err)
+	}
+	defer zr.Close()
+	inflated, err := io.ReadAll(zr)
+	if err != nil {
+		return nil, fmt.Errorf("zlib inflate: %w", err)
+	}
+	// PixelPass CBOR-encodes JSON input; decode CBOR → value → JSON. If it isn't
+	// CBOR, the encoder's raw-bytes fallback was used — the inflated bytes are
+	// already the original payload.
+	var v any
+	if err := pixelPassDecMode.Unmarshal(inflated, &v); err != nil {
+		return inflated, nil
+	}
+	js, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("marshal decoded: %w", err)
+	}
+	return js, nil
+}
+
+// base45Decode reverses base45Encode per RFC 9285: every 3 chars → 2 bytes, a
+// trailing 2 chars → 1 byte. Errors on characters outside the alphabet or a
+// group whose value exceeds the byte range.
+func base45Decode(s string) ([]byte, error) {
+	val := func(c byte) (int, bool) {
+		i := strings.IndexByte(base45Alphabet, c)
+		return i, i >= 0
+	}
+	out := make([]byte, 0, (len(s)/3)*2+1)
+	i := 0
+	for ; i+2 < len(s); i += 3 {
+		a, ok1 := val(s[i])
+		b, ok2 := val(s[i+1])
+		c, ok3 := val(s[i+2])
+		if !ok1 || !ok2 || !ok3 {
+			return nil, fmt.Errorf("invalid base45 char")
+		}
+		n := a + b*45 + c*45*45
+		if n > 0xFFFF {
+			return nil, fmt.Errorf("base45 group overflow")
+		}
+		out = append(out, byte(n>>8), byte(n&0xFF))
+	}
+	switch len(s) - i {
+	case 0:
+	case 2:
+		a, ok1 := val(s[i])
+		b, ok2 := val(s[i+1])
+		if !ok1 || !ok2 {
+			return nil, fmt.Errorf("invalid base45 char")
+		}
+		n := a + b*45
+		if n > 0xFF {
+			return nil, fmt.Errorf("base45 tail overflow")
+		}
+		out = append(out, byte(n))
+	default:
+		return nil, fmt.Errorf("invalid base45 length")
+	}
+	return out, nil
 }

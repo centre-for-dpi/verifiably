@@ -1,17 +1,21 @@
 #!/bin/bash
 # init-preauth.sh — certify-preauth-postgres initializer.
 #
-# When ISSUER_DID_DOMAIN is set (production/federation), both the primary and
-# pre-auth Certify instances use the SAME public DID (did:web:{domain}) because
-# they represent the same issuing organization. The inji_proxy handler in
-# verifiably-go merges both instances' keys into a single DID Document at
-# /.well-known/did.json, so verifiers see one DID with multiple verification
-# methods — no kid collision. In dev (no domain set), the preauth instance
-# retains its own did:web:certify-preauth-nginx to keep the two Docker-internal
-# DID Documents independent.
+# The seeded credential_config.did_url rows carry the pre-auth instance's issuer
+# DID. PREAUTH_DID_DOMAIN (set by deploy.sh in subdomain mode = this instance's
+# OWN public host) takes precedence so did_url is a PUBLICLY-resolvable did:web
+# an external wallet can dereference (https://<host>/.well-known/did.json, served
+# by certify-preauth-nginx from the pre-auth backend's key). This is decoupled
+# from the shared ISSUER_DID_DOMAIN on purpose — moving that var would also point
+# the internal primary auth-code instance at this subdomain's did.json (pre-auth
+# key only) and break it. Falls back to ISSUER_DID_DOMAIN, then to the
+# docker-internal did:web:certify-preauth-nginx (dev). Keep this DID consistent
+# with the backend's CERTIFY_ISSUER_DID so issued VCs and the did.json agree.
 set -euo pipefail
 
-if [ -n "${ISSUER_DID_DOMAIN:-}" ]; then
+if [ -n "${PREAUTH_DID_DOMAIN:-}" ]; then
+    DID="did:web:${PREAUTH_DID_DOMAIN}"
+elif [ -n "${ISSUER_DID_DOMAIN:-}" ]; then
     DID="did:web:${ISSUER_DID_DOMAIN}"
 else
     DID="did:web:certify-preauth-nginx"

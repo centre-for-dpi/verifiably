@@ -6,19 +6,32 @@ its own compatibility table. `cross-stack` scenarios (walt.id issues, Inji
 verifies, etc.) work on a case-by-case basis; known breakage is called
 out below with the workaround the verifiably-go inji-proxy applies.
 
+> **Per-DPG implementation guides** (containers, env, Caddy, configs, DBs, APIs,
+> gotchas) live in [`docs/dpg/`](dpg/README.md). This matrix is the compatibility
+> view; the guides are the how-it-runs view.
+>
+> **Inji Certify runs as two independent instances** — Auth-Code
+> ([guide](dpg/inji-certify-authcode.md)) and Pre-Auth
+> ([guide](dpg/inji-certify-preauth.md)) — with separate containers, DBs, DIDs,
+> and public hosts. Both are now **public issuers** (public `credential_issuer` +
+> status-list URLs). The auth-code holder wallet is served **in-app** (QR-on-PDF
+> download included), not via the external Inji Web SPA.
+
 ## Versions
 
 | Component                 | Version  | Source                                                                 |
 |---------------------------|----------|------------------------------------------------------------------------|
-| walt.id Community Stack   | v0.18.2  | `docker.io/waltid/issuer-api`, `wallet-api`, `verifier-api`            |
-| Inji Certify              | v0.14.0  | `docker.io/mosipid/inji-certify:0.14.0`                                 |
-| Inji Certify Preauth      | v0.14.0  | Same image, different config for pre-auth flow                         |
-| Inji Web (Mimoto + SPA)   | v0.16.0  | `mosipid/inji-web-ui:0.16.0`, `mosipid/mimoto:0.16.0`                  |
+| walt.id Community Stack   | v0.18.2  | `waltid/issuer-api:0.18.2`, `wallet-api:0.18.2`, `verifier-api:0.18.2` |
+| Inji Certify (both)       | v0.14.0  | `injistack/inji-certify-with-plugins:0.14.0`                           |
+| Inji Web (Mimoto + SPA)   | v0.16.0 / v0.21.0 | `injistack/inji-web:0.16.0`, `injistack/mimoto:0.21.0`         |
 | Inji Verify (UI + service)| v0.16.0  | `mosipid/inji-verify-ui:0.16.0`, `mosipid/inji-verify-service:0.16.0`  |
-| eSignet + mock-identity   | v1.5.x   | `mosipid/esignet`, `mosipid/mock-identity-system`                      |
-| Keycloak                  | 25.x     | `quay.io/keycloak/keycloak`                                            |
-| WSO2 Identity Server      | 7.0.0    | `docker.wso2.com/wso2is`                                                |
-| LibreTranslate            | latest   | `libretranslate/libretranslate`                                         |
+| eSignet + OIDC-UI         | v1.5.1   | `mosipid/esignet-with-plugins:1.5.1`, `mosipid/oidc-ui:1.5.1`          |
+| mock-identity-system      | v0.10.1  | `mosipid/mock-identity-system:0.10.1`                                  |
+| CREDEBL                   | v2.x     | `ghcr.io/credebl/*:latest` (unpinned; Credo-TS agent)                 |
+| Keycloak                  | 25.0     | `quay.io/keycloak/keycloak:25.0`                                       |
+| WSO2 Identity Server      | 7.0.0    | `wso2/wso2is:7.0.0`                                                     |
+| LibreTranslate            | v1.6.5   | `libretranslate/libretranslate:v1.6.5`                                 |
+| Sunbird RC (data source)  | RC v2.0.1| external stack; consumed via `VERIFIABLY_REGISTRIES` — [guide](dpg/registries.md) |
 
 ## walt.id Community Stack v0.18.2
 
@@ -67,6 +80,11 @@ out below with the workaround the verifiably-go inji-proxy applies.
   (`https://www.w3.org/ns/credentials/v2`).
 
 ## Inji Certify v0.14.0
+
+> Runs as two instances: **Auth-Code** (eSignet + in-app wallet + QR-on-PDF —
+> [dpg/inji-certify-authcode.md](dpg/inji-certify-authcode.md)) and **Pre-Auth**
+> (direct-to-PDF — [dpg/inji-certify-preauth.md](dpg/inji-certify-preauth.md)).
+> Both sign public did:web credentials with public status-list URLs.
 
 **What works**
 

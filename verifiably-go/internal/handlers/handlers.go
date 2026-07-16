@@ -25,6 +25,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
+	"github.com/verifiably/verifiably-go/internal/storage/injiwallet"
 	"github.com/verifiably/verifiably-go/internal/trust"
 	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -79,10 +80,39 @@ type H struct {
 	// instance hosts for VCDM 2.0 credentials it issues. Optional; nil
 	// disables W3C revocation end-to-end.
 	BitstringStore statuslist.Backend
+	// StatusLDSigner signs the JSON-LD BitstringStatusListCredential with an
+	// Ed25519Signature2020 proof so external verifiers (MOSIP Inji Verify) accept
+	// it (F16 full-interop). Optional; nil serves only the JWS form.
+	StatusLDSigner *statuslist.LDSigner
 
 	// TokenStore is the IETF Token Status List the instance hosts for
 	// SD-JWT VCs it issues. Optional; nil disables SD-JWT revocation.
 	TokenStore statuslist.Backend
+
+	// Subjects upserts dynamic claims into the Inji auth-code data-provider
+	// table (certify.vc_subject), keyed by the eSignet subject id. Powers
+	// POST /api/v1/subjects. Optional - nil when INJI_CERTIFY_DATABASE_URL is
+	// unset (the endpoint then returns 503). Also backs the authoritative
+	// identity registry (UpsertIdentity/GetIdentity) used by the registrar
+	// enrolment surface + holder activation.
+	Subjects SubjectProvisioner
+
+	// InjiWallet durably persists the credentials a holder claims through the
+	// in-app Inji web wallet, keyed by their OIDC login identity (provider|sub)
+	// so the wallet follows the user across sessions/restarts rather than being
+	// tied to the browser cookie. Optional — nil degrades to session-only storage.
+	InjiWallet *injiwallet.Store
+
+	// Mailer sends holder-activation email OTPs (the Mailer interface, satisfied
+	// by *mailer.Mailer). nil when email is unconfigured (SMTP_* unset) — the
+	// activation flow then refuses with a clear "email delivery isn't configured"
+	// message. main.go assigns it via a nil-guarded conversion so a nil concrete
+	// pointer doesn't become a non-nil interface.
+	Mailer Mailer
+
+	// OTPs holds pending holder-activation one-time codes (in-memory). Always
+	// non-nil (NewOTPStore), so the activation flow needn't nil-check it.
+	OTPs *OTPStore
 
 	// APIKeys gates /api/v1/* endpoints. Populated from VERIFIABLY_API_KEYS
 	// ("name1:key1,name2:key2"). When nil or empty, all API routes return 503.
@@ -106,9 +136,9 @@ type H struct {
 	// against the registry and populates VerificationResult.TrustStatus.
 	// nil disables trust-registry checks (all results show TrustStatus="").
 	// TrustJWTSecret is the HMAC key used to sign the /trust-registry JWT (HS256 dev path).
-	TrustRegistry   trust.Registry
-	TrustJWTSecret  []byte
-	TrustJWTIssuer  string
+	TrustRegistry  trust.Registry
+	TrustJWTSecret []byte
+	TrustJWTIssuer string
 	// TrustSigningKey is the ECDSA P-256 private key for ES256 JWT signing.
 	// When non-nil, GET /trust-registry uses ES256 and GET /.well-known/jwks.json
 	// exposes the matching public key. When nil, falls back to HS256 (dev only).
@@ -176,6 +206,13 @@ type H struct {
 	// Example: "http://localhost:3100". Set via VERIFIABLY_GRAFANA_URL.
 	GrafanaURL string
 
+	// RegistryAdminURL is the browser-facing URL of the Registry Admin console
+	// (the data-source / registrar tier that populates the Sunbird RC registry
+	// backing Inji credentials). Set via VERIFIABLY_REGISTRY_ADMIN_URL by
+	// deploy.sh (per-host: https://registry-admin.<domain> in subdomain mode).
+	// When empty, the navbar "Registry" link is hidden.
+	RegistryAdminURL string
+
 	// IsHub is true when the server is running in hub mode (VERIFIABLY_ROLES=hub).
 	// Controls which admin sections are shown in the nav and landing page.
 	IsHub bool
@@ -183,8 +220,8 @@ type H struct {
 	// ShowIssuer / ShowHolder / ShowVerifier reflect which roles are active
 	// (parsed from VERIFIABLY_ROLES). Used to conditionally render role cards
 	// on the landing page. All three default to true when VERIFIABLY_ROLES is unset.
-	ShowIssuer  bool
-	ShowHolder  bool
+	ShowIssuer   bool
+	ShowHolder   bool
 	ShowVerifier bool
 
 	// MemberVerifierRegistrar wires a federation member's verifier adapter at
@@ -364,7 +401,7 @@ type PageData struct {
 	ContentTemplate string
 	Debug           bool
 	Session         *Session
-	Body            any // page-specific sub-data
+	Body            any    // page-specific sub-data
 	FlashToast      string // one-shot toast message via HX-Trigger header alternative
 	Lang            string // current UI language code from the verifiably_lang cookie
 	// AuthAdminAvailable is true when H.AuthAdminMode != "off" so the
@@ -376,6 +413,10 @@ type PageData struct {
 	// IsHub is true when running in hub mode. Templates use this to render
 	// hub-specific navigation links (Federation, Trust, Providers, Metrics).
 	IsHub bool
+
+	// RegistryAdminURL is the public URL of the Registry Admin console, surfaced
+	// as the navbar "Registry" link when non-empty (see H.RegistryAdminURL).
+	RegistryAdminURL string
 
 	// ShowIssuer / ShowHolder / ShowVerifier mirror the active VERIFIABLY_ROLES
 	// so templates can hide role cards that are not enabled on this deployment.
@@ -425,6 +466,7 @@ func (h *H) pageData(sess *Session, body any) PageData {
 		Body:               body,
 		AuthAdminAvailable: h.AuthAdminMode != "off",
 		IsHub:              h.IsHub,
+		RegistryAdminURL:   h.RegistryAdminURL,
 		ShowIssuer:         h.ShowIssuer,
 		ShowHolder:         h.ShowHolder,
 		ShowVerifier:       h.ShowVerifier,
@@ -439,28 +481,29 @@ func (h *H) langFor(r *http.Request) string {
 
 func titleFor(page string) string {
 	return map[string]string{
-		"landing":                "",
-		"auth":                   "Sign in",
-		"issuer_dpg":             "Issuer · DPG",
-		"issuer_schema":          "Issuer · Schema",
-		"issuer_schema_builder":  "Issuer · Build schema",
-		"issuer_mode":            "Issuer · Mode",
-		"issuer_issue":           "Issuer · Issue",
-		"issuer_credentials":     "Issuer · Issued credentials",
-		"holder_dpg":             "Holder · Wallet",
-		"holder_wallet":          "Wallet",
-		"holder_present":         "Present credential",
-		"verifier_dpg":           "Verifier · Engine",
-		"verifier_verify":        "Verify",
-		"redirect_notice":        "Redirect",
-		"docs_index":             "Docs",
-		"docs_view":              "Docs",
-		"admin_login":            "Admin · Sign in",
-		"admin_auth_providers":   "Admin · OIDC providers",
-		"admin_trust":            "Admin · Trust registry",
-		"admin_metrics":          "Admin · Metrics",
-		"admin_federation":       "Admin · Federation",
-		"public_verify":          "Verificar",
+		"landing":               "",
+		"auth":                  "Sign in",
+		"issuer_dpg":            "Issuer · DPG",
+		"issuer_schema":         "Issuer · Schema",
+		"issuer_schema_builder": "Issuer · Build schema",
+		"issuer_mode":           "Issuer · Mode",
+		"issuer_issue":          "Issuer · Issue",
+		"issuer_credentials":    "Issuer · My credentials",
+		"issuer_issued_log":     "Issuer · Issued credentials",
+		"holder_dpg":            "Holder · Wallet",
+		"holder_wallet":         "Wallet",
+		"holder_present":        "Present credential",
+		"verifier_dpg":          "Verifier · Engine",
+		"verifier_verify":       "Verify",
+		"redirect_notice":       "Redirect",
+		"docs_index":            "Docs",
+		"docs_view":             "Docs",
+		"admin_login":           "Admin · Sign in",
+		"admin_auth_providers":  "Admin · OIDC providers",
+		"admin_trust":           "Admin · Trust registry",
+		"admin_metrics":         "Admin · Metrics",
+		"admin_federation":      "Admin · Federation",
+		"public_verify":         "Verificar",
 	}[page]
 }
 
@@ -473,7 +516,8 @@ func crumbFor(page string) string {
 		"issuer_schema_builder": "issuer → schema → build",
 		"issuer_mode":           "issuer → mode",
 		"issuer_issue":          "issuer → issue",
-		"issuer_credentials":    "issuer → issued credentials",
+		"issuer_credentials":    "issuer → my credentials",
+		"issuer_issued_log":     "issuer → issued credentials",
 		"holder_dpg":            "holder → wallet",
 		"holder_wallet":         "holder → wallet",
 		"holder_present":        "holder → present",
@@ -847,6 +891,24 @@ func (h *H) AuthCallback(w http.ResponseWriter, r *http.Request) {
 	sess.WalletCreds = nil
 	sess.WalletPending = nil
 	sess.WalletUserKey = ""
+	// The in-app Inji web wallet is likewise partitioned per OIDC user. Drop the
+	// prior user's cookie-cached credentials and reload THIS user's durable set —
+	// so the wallet follows the login (durable across sessions/restarts) and never
+	// leaks one user's credentials to the next on a shared browser. sessionWalletKey
+	// re-freezes WalletUserKey to the just-authenticated provider|sub.
+	sess.InjiClaimedVCs = nil
+	sess.InjiHolderKeys = nil
+	if h.InjiWallet != nil {
+		for _, hc := range h.InjiWallet.List(sessionWalletKey(sess)) {
+			sess.InjiClaimedVCs = append(sess.InjiClaimedVCs, hc.VC)
+			if hc.HolderKey != "" {
+				if sess.InjiHolderKeys == nil {
+					sess.InjiHolderKeys = map[string]string{}
+				}
+				sess.InjiHolderKeys[hc.VCID] = hc.HolderKey
+			}
+		}
+	}
 	h.redirect(w, r, authNextFor(sess.Role))
 }
 
@@ -873,6 +935,10 @@ func (h *H) Logout(w http.ResponseWriter, r *http.Request) {
 	sess.WalletCreds = nil
 	sess.WalletPending = nil
 	sess.WalletUserKey = ""
+	// Clear the Inji web wallet's cookie cache too — its durable copy stays keyed
+	// by the user in InjiWallet and is re-hydrated on the next login.
+	sess.InjiClaimedVCs = nil
+	sess.InjiHolderKeys = nil
 	h.redirect(w, r, "/")
 }
 
@@ -1004,6 +1070,10 @@ func (h *H) PickIssuerDpg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess.IssuerDpg = sess.ExpandedIssuerDpg
+	if dpg.InAppPath != "" {
+		h.redirect(w, r, dpg.InAppPath)
+		return
+	}
 	if dpg.Redirect {
 		h.render(w, r, "redirect_notice", h.pageData(sess, dpg))
 		return
@@ -1068,6 +1138,10 @@ func (h *H) PickHolderDpg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess.HolderDpg = sess.ExpandedHolderDpg
+	if dpg.InAppPath != "" {
+		h.redirect(w, r, dpg.InAppPath)
+		return
+	}
 	if dpg.Redirect {
 		h.render(w, r, "redirect_notice", h.pageData(sess, dpg))
 		return

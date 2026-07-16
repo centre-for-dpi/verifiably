@@ -35,6 +35,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,6 +72,22 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	if len(claims) == 0 {
 		claims["fullName"] = "Demo Holder"
 	}
+	// Stage the token-status markers so certify resolves the SD-JWT
+	// status.status_list / W3C credentialStatus template markers into a real,
+	// revocable pointer (F16). IssueToWallet does the same (issuer.go); the PDF
+	// path was missing it, so ${statusIdx}/${statusUri} rendered literally and
+	// the credential failed verification everywhere. Keys must be exactly
+	// statusIdx/statusUri (declared in the pre-auth credential_config so
+	// certify's PreAuthDataProviderPlugin surfaces them into the template).
+	if cf := stdToCredentialFormat(req.Schema.Std); cf == "vc+sd-jwt" || cf == "ldp_vc" {
+		if req.StatusList != nil {
+			claims["statusIdx"] = strconv.Itoa(req.StatusList.Index)
+			claims["statusUri"] = req.StatusList.PublishURL
+		} else {
+			claims["statusIdx"] = "0"
+			claims["statusUri"] = ""
+		}
+	}
 	staged := preAuthorizedDataRequest{
 		CredentialConfigurationId: req.Schema.ID,
 		Claims:                    claims,
@@ -89,16 +106,22 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	if err != nil {
 		return backend.IssueAsPDFResult{}, err
 	}
-	_ = issuerURL // reserved for aud-claim bookkeeping if we tighten later
-
 	// 3. Redeem the pre-auth code for an access token.
 	tok, err := a.redeemPreAuthCode(ctx, code)
 	if err != nil {
 		return backend.IssueAsPDFResult{}, err
 	}
 
-	// 4. Build a proof JWT and POST the credential request.
-	issuerIdentifier := strings.TrimRight(a.cfg.InternalBaseURL, "/")
+	// 4. Build a proof JWT and POST the credential request. The proof `aud` MUST
+	// equal Certify's credential_issuer (mosip_certify_domain_url). issuerURL is
+	// exactly that — the credential_issuer the offer advertised — so it's correct
+	// in BOTH modes: the docker-internal host in legacy host:port mode, and the
+	// public subdomain once PREAUTH_PUBLIC_URL is set. Previously hardcoded to
+	// InternalBaseURL, which broke the PDF path the moment the domain went public.
+	issuerIdentifier := strings.TrimRight(issuerURL, "/")
+	if issuerIdentifier == "" {
+		issuerIdentifier = strings.TrimRight(a.cfg.InternalBaseURL, "/")
+	}
 	if issuerIdentifier == "" {
 		issuerIdentifier = strings.TrimRight(a.cfg.BaseURL, "/")
 	}
@@ -142,11 +165,39 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 	_ = format // reserved for future per-format rendering branches
 	return backend.IssueAsPDFResult{
 		IssuerName:    a.Vendor,
-		IssuerDID:     "did:web:certify-nginx", // Inji Certify's configured DID; informational only
+		IssuerDID:     issuerDIDFromVC(vc, a.cfg.DB.DIDUrl), // the credential's ACTUAL signing DID
 		PayloadSizeKB: (len(vc) + 512) / 1024,
 		Fields:        req.SubjectData,
 		DownloadID:    id,
 	}, nil
+}
+
+// issuerDIDFromVC reads the issuer DID from the freshly-signed VC for the PDF's
+// (informational) issuer line, so it reflects the credential's REAL issuer
+// instead of a hardcoded guess. The pre-auth instance now signs under its own
+// public did:web (did:web:inji-certify-preauth.<domain>), not the primary
+// instance's did:web:certify-nginx. `issuer` may be a bare DID string or an
+// {id,...} object; fall back to the configured DB.DIDUrl, then a generic label.
+func issuerDIDFromVC(vc, fallback string) string {
+	var doc struct {
+		Issuer json.RawMessage `json:"issuer"`
+	}
+	if json.Unmarshal([]byte(vc), &doc) == nil && len(doc.Issuer) > 0 {
+		var s string
+		if json.Unmarshal(doc.Issuer, &s) == nil && s != "" {
+			return s
+		}
+		var obj struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(doc.Issuer, &obj) == nil && obj.ID != "" {
+			return obj.ID
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "Inji Certify (Pre-Auth)"
 }
 
 // extractOfferDataURL unwraps the openid-credential-offer:// envelope Inji
@@ -476,7 +527,81 @@ func renderCredentialPDF(title, issuer, qrPayload string, fields map[string]stri
 	pdf.SetY(y + qrSize + 4)
 	pdf.SetFont("Helvetica", "I", 8)
 	pdf.SetTextColor(140, 140, 140)
-	pdf.CellFormat(0, 5, "Scan with Inji Verify (or any OID4VCI-compatible tool) to import this credential.", "", 1, "C", false, 0, "")
+	pdf.CellFormat(0, 5, "Scan the QR with Inji Verify to verify this credential.", "", 1, "C", false, 0, "")
+	pdf.Ln(4)
+
+	// Footer.
+	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetTextColor(160, 160, 160)
+	pdf.CellFormat(0, 5, fmt.Sprintf("Issued %s via %s", time.Now().UTC().Format(time.RFC3339), issuer), "", 1, "C", false, 0, "")
+
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// renderCredentialPDFNoQR lays out the same one-page credential as
+// renderCredentialPDF (issuer line, title, claim rows) but WITHOUT a QR — used
+// when the credential is too large to embed in a scannable QR (SD-JWT VCs carry
+// an x5c chain that overflows even QR version 40). In place of the QR it prints
+// `note` (a holder-facing explanation) and the full credential text so the PDF
+// is still a complete, self-contained artifact. Never fails on payload size.
+func renderCredentialPDFNoQR(title, issuer, note string, fields map[string]string, order []string, credentialText string) ([]byte, error) {
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+
+	// Header: issuer name + title (identical to renderCredentialPDF).
+	pdf.SetFont("Helvetica", "", 10)
+	pdf.SetTextColor(120, 120, 120)
+	pdf.CellFormat(0, 6, issuer, "", 1, "C", false, 0, "")
+	pdf.SetFont("Helvetica", "B", 22)
+	pdf.SetTextColor(40, 40, 40)
+	pdf.CellFormat(0, 14, title, "", 1, "C", false, 0, "")
+	pdf.Ln(4)
+
+	pdf.SetDrawColor(200, 200, 200)
+	pdf.Line(30, pdf.GetY(), 180, pdf.GetY())
+	pdf.Ln(6)
+
+	// Claim rows.
+	pdf.SetFont("Helvetica", "", 11)
+	pdf.SetTextColor(70, 70, 70)
+	keys := order
+	if len(keys) == 0 {
+		for k := range fields {
+			keys = append(keys, k)
+		}
+	}
+	for _, k := range keys {
+		v := fields[k]
+		if v == "" {
+			continue
+		}
+		pdf.SetFont("Helvetica", "B", 10)
+		pdf.CellFormat(50, 7, humanizeKey(k)+":", "", 0, "L", false, 0, "")
+		pdf.SetFont("Helvetica", "", 11)
+		pdf.CellFormat(0, 7, v, "", 1, "L", false, 0, "")
+	}
+	pdf.Ln(4)
+
+	// Holder-facing note (why there's no QR).
+	if note != "" {
+		pdf.SetFont("Helvetica", "I", 9)
+		pdf.SetTextColor(150, 110, 0)
+		pdf.MultiCell(0, 5, note, "", "L", false)
+		pdf.Ln(2)
+	}
+
+	// The full credential text, monospaced and wrapped, so the PDF carries the
+	// verifiable credential even without a QR.
+	pdf.SetFont("Helvetica", "B", 9)
+	pdf.SetTextColor(70, 70, 70)
+	pdf.CellFormat(0, 6, "Credential", "", 1, "L", false, 0, "")
+	pdf.SetFont("Courier", "", 7)
+	pdf.SetTextColor(60, 60, 60)
+	pdf.MultiCell(0, 3.4, credentialText, "", "L", false)
 	pdf.Ln(4)
 
 	// Footer.

@@ -116,7 +116,61 @@ url_for() {
   fi
   printf "http://%s:%s%s" "$host" "$port" "$suffix"
 }
+
+# VERIFIABLY_PUBLIC_SLUGS — the service subdomains verifiably-go talks to
+# server-side. Kept as an overridable space-separated list so compute_host_aliases
+# (and its unit test) stay in sync with the slugs gen-caddy.sh routes.
+: "${VERIFIABLY_PUBLIC_SLUGS:=verifiably keycloak wso2 credebl walt-issuer walt-wallet walt-verifier inji-certify inji-certify-preauth inji-certify-authcode inji-verify inji-verify-ui inji-web mimoto esignet}"
+
+# compute_host_aliases <domain> <caddy_ip>
+# Prints `docker run --add-host` arguments — one token per line, so a caller can
+# read them straight into an array — pinning every public service subdomain to
+# the caddy-public container IP. This is the subdomain hairpin-NAT fix: it lets
+# verifiably-go reach the public https://<slug>.<domain> URLs from inside the
+# container, where they otherwise resolve to the host's own public IP and fail
+# to hairpin back to the published :443 (see scripts/start-container.sh).
+#
+# Prints NOTHING in legacy host:port mode (empty domain or empty ip). Pure — no
+# Docker, no network, no globals mutated — so it is unit-testable on its own
+# (scripts/ci/test-host-aliases.sh).
+compute_host_aliases() {
+  local domain="$1" ip="$2" slug
+  [[ -n "$domain" && -n "$ip" ]] || return 0
+  for slug in $VERIFIABLY_PUBLIC_SLUGS; do
+    printf -- '--add-host\n%s.%s:%s\n' "$slug" "$domain" "$ip"
+  done
+}
+
 : "${VERIFIABLY_PUBLIC_URL:=$(url_for verifiably "$VERIFIABLY_PUBLIC_HOST" "$VERIFIABLY_HOST_PORT")}"
+
+# Purpose-named registry subdomains. verifiably splits its registry surfaces by
+# purpose: the national ID registry (identity/eSignet-auth data) and the
+# credential-registry admin console. The defaults give the dotted forms
+# identity.registry.<domain> and admin.registry.<domain> so a fresh deployment
+# reads them by name; they resolve via the *.registry.<domain> wildcard the
+# agency registries already use. `=` (not `:=`) preserves the "empty = skip this
+# subdomain" escape hatch resolve_slug honours; set to another label to rename.
+: "${VERIFIABLY_SLUG_IDENTITY_REGISTRY=identity.registry}"
+: "${VERIFIABLY_SLUG_REGISTRY_ADMIN=admin.registry}"
+export VERIFIABLY_SLUG_IDENTITY_REGISTRY VERIFIABLY_SLUG_REGISTRY_ADMIN
+
+# Registry Admin console — the data-source tier UI (deploy/registry-admin/).
+# REGISTRY_ADMIN_HOST_PORT is the published host port; VERIFIABLY_REGISTRY_ADMIN_URL
+# is the browser-facing URL verifiably-go surfaces in its navbar ("Registry"
+# link). Resolved through url_for so it is per-host: subdomain mode ->
+# https://registry-admin.<domain> (fronted by caddy-public), legacy mode ->
+# http://<host>:<REGISTRY_ADMIN_HOST_PORT>. Computed here (not just in cmd_up)
+# so `deploy.sh run <scenario>` — which doesn't run cmd_up's URL-export block —
+# also passes it to the container via scripts/start-container.sh. Exported so
+# docker compose / sub-shells inherit it.
+: "${REGISTRY_ADMIN_HOST_PORT:=18095}"
+: "${VERIFIABLY_REGISTRY_ADMIN_URL:=$(url_for registry-admin "$VERIFIABLY_PUBLIC_HOST" "$REGISTRY_ADMIN_HOST_PORT")}"
+# The Sunbird RC API endpoint the registry-admin console POSTs to (published on
+# the host at :18091). Derived from the deployment host so it is not hardcoded to
+# any one box; override REGISTRY_ADMIN_SUNBIRD_URL in .env for a different host.
+: "${SUNBIRD_RC_HOST_PORT:=18091}"
+: "${REGISTRY_ADMIN_SUNBIRD_URL:=http://${VERIFIABLY_PUBLIC_HOST:-localhost}:${SUNBIRD_RC_HOST_PORT}}"
+export REGISTRY_ADMIN_HOST_PORT VERIFIABLY_REGISTRY_ADMIN_URL REGISTRY_ADMIN_SUNBIRD_URL
 
 : "${LIBRETRANSLATE_PORT:=5000}"
 : "${VERIFIABLY_IMAGE:=verifiably-go:local}"
@@ -221,6 +275,7 @@ INJI_CORE_SERVICES=(
   certify-nginx certify-preauth-nginx
   inji-verify-postgres inji-verify-service inji-verify-ui
   citizens-postgres vc-adapter
+  registry-admin
 )
 
 # ── Inji — role-specific service arrays ──────────────────────────────────────

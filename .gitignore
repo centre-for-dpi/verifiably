@@ -97,3 +97,8 @@ verifiably-go/deploy/compose/credebl/.agent-runtime/agent-config/dfffc22c-e706-4
 verifiably-go/deploy/compose/credebl/.agent-runtime/nginx-oid4vci.conf
 verifiably-go/deploy/compose/credebl/.agent-runtime/agent.env
 verifiably-go/config/trust-signing-key.pem
+# walt.id / Credo agent runtime state at the verifiably-go root (generated, secrets)
+verifiably-go/.agent-runtime/
+
+# Delegated-access build plan — local working doc, not committed.
+verifiably-go/docs/delegated-access/build-plan.md

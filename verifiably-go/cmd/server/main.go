@@ -45,16 +45,18 @@ import (
 	"github.com/verifiably/verifiably-go/internal/handlers"
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
+	"github.com/verifiably/verifiably-go/internal/mailer"
 	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/internal/roles"
 	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
+	"github.com/verifiably/verifiably-go/internal/storage/injiwallet"
 	"github.com/verifiably/verifiably-go/internal/storage/pg"
-	"github.com/verifiably/verifiably-go/internal/verification"
 	redisstore "github.com/verifiably/verifiably-go/internal/storage/redis"
 	"github.com/verifiably/verifiably-go/internal/tracing"
 	"github.com/verifiably/verifiably-go/internal/trust"
+	"github.com/verifiably/verifiably-go/internal/verification"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -108,6 +110,16 @@ func wireIssuanceFile(h *handlers.H, publicURL string) error {
 	}
 	h.IssuanceLog = logger
 
+	// Durable, per-OIDC-user store of Inji web-wallet credentials, encrypted at
+	// rest with the same session-derived key. Keyed by provider|sub so a holder's
+	// claimed credentials follow their login across browsers/restarts.
+	_, walletKey := sessionSecretKey(stateDir)
+	injiWallet, err := injiwallet.NewStore(filepath.Join(stateDir, "inji-wallets.json"), walletKey)
+	if err != nil {
+		return fmt.Errorf("open inji wallet store: %w", err)
+	}
+	h.InjiWallet = injiWallet
+
 	bs, err := statuslist.NewStore("bitstring", "v1",
 		filepath.Join(stateDir, "status-list-bitstring-v1.json"),
 		publicURL+"/status-list/bitstring/v1")
@@ -141,7 +153,41 @@ func maskDSN(dsn string) string {
 	return dsn
 }
 
+// runHealthcheck is the container health probe. The distroless runtime image
+// has no shell or wget, so `verifiably -healthcheck` (invoked by the Dockerfile
+// HEALTHCHECK) is the only in-container liveness probe: GET /healthz on the
+// local listen port, mapping 2xx→exit 0 and anything else→exit 1.
+func runHealthcheck() int {
+	addr := os.Getenv("VERIFIABLY_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		port = "8080"
+	}
+	client := &http.Client{Timeout: 4 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck:", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "healthcheck: /healthz returned %d\n", resp.StatusCode)
+	return 1
+}
+
 func main() {
+	// -healthcheck: shell-less container health probe (see runHealthcheck). The
+	// distroless runtime image has no /bin/sh or wget, so the Docker HEALTHCHECK
+	// execs the binary itself instead of a shell command.
+	if len(os.Args) > 1 && (os.Args[1] == "-healthcheck" || os.Args[1] == "--healthcheck" || os.Args[1] == "healthcheck") {
+		os.Exit(runHealthcheck())
+	}
+
 	// Structured JSON logs to stdout when running in a container (auto-detected
 	// via VERIFIABLY_LOG_JSON=1). Default keeps the dev-friendly text format
 	// for `go run`. Pipe to slog and route the legacy `log` package through
@@ -189,6 +235,19 @@ func main() {
 		}
 	}
 
+	// Inji auth-code data-provider source: certify.vc_subject lives in Inji
+	// Certify's inji_certify DB (a foreign DB), so open a raw pool - never run
+	// verifiably's migrations against it. Powers POST /api/v1/subjects (Flow A).
+	var subjectStore handlers.SubjectProvisioner
+	if dsn := os.Getenv("INJI_CERTIFY_DATABASE_URL"); dsn != "" {
+		if cp, err := pg.OpenRaw(shutCtx, dsn); err != nil {
+			log.Printf("subjects: failed to open INJI_CERTIFY_DATABASE_URL (%v) - /api/v1/subjects disabled", err)
+		} else {
+			log.Printf("subjects: vc_subject provisioning active (%s)", maskDSN(dsn))
+			subjectStore = pg.NewSubjectStore(cp)
+		}
+	}
+
 	// Session store: PostgreSQL when pool is available, otherwise the file-backed
 	// encrypted store (flushed every 5 s with a final flush on shutdown).
 	sessionStore := buildSessionStore(shutCtx, pgPool)
@@ -198,19 +257,32 @@ func main() {
 	wireAuthHelpers()
 	authStore := buildAuthUserStore()
 	adminMode := authAdminMode()
+	// Email for holder-activation OTPs. Nil-guard the conversion: a nil
+	// *mailer.Mailer assigned straight into the handlers.Mailer interface would
+	// be a non-nil interface holding a nil pointer (the classic Go gotcha), so
+	// "email configured?" must be checked on the concrete pointer here.
+	var activationMailer handlers.Mailer
+	if m := mailer.FromEnv(); m != nil {
+		activationMailer = m
+		log.Printf("activation: email OTP enabled (SMTP %s)", os.Getenv("SMTP_HOST"))
+	}
 	h := &handlers.H{
-		Adapter:       adapter,
-		Sessions:      sessionStore,
-		Templates:     tmpl,
-		AuthReg:       authReg,
-		Translator:    translator,
-		Debug:         debug,
-		AuthStore:     authStore,
-		AuthAdminMode: adminMode,
-		APIKeys:        handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
-		RateLimiter:    handlers.NewRateLimiter(shutCtx),
-		PrometheusURL:  os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
-		GrafanaURL:     os.Getenv("VERIFIABLY_GRAFANA_URL"),
+		Adapter:          adapter,
+		Sessions:         sessionStore,
+		Templates:        tmpl,
+		AuthReg:          authReg,
+		Translator:       translator,
+		Debug:            debug,
+		AuthStore:        authStore,
+		AuthAdminMode:    adminMode,
+		Subjects:         subjectStore,
+		Mailer:           activationMailer,
+		OTPs:             handlers.NewOTPStore(),
+		APIKeys:          handlers.ParseAPIKeys(os.Getenv("VERIFIABLY_API_KEYS")),
+		RateLimiter:      handlers.NewRateLimiter(shutCtx),
+		PrometheusURL:    os.Getenv("VERIFIABLY_PROMETHEUS_URL"),
+		GrafanaURL:       os.Getenv("VERIFIABLY_GRAFANA_URL"),
+		RegistryAdminURL: strings.TrimRight(os.Getenv("VERIFIABLY_REGISTRY_ADMIN_URL"), "/"),
 	}
 	// Issuance audit log + revocation status lists. Optional: when the
 	// state directory isn't writable we log and continue with the features
@@ -325,6 +397,13 @@ func main() {
 		}
 		slFetcher := statuslistcache.NewFetcher(slStateDir, h.DIDResolver)
 		h.StatusListCache = slFetcher
+		// Ed25519Signature2020 signer for the JSON-LD status list (F16 full-interop).
+		if ldSigner, err := statuslist.NewLDSigner(slStateDir); err != nil {
+			log.Printf("status list: LD signer unavailable (JSON-LD status list will 503): %v", err)
+		} else {
+			h.StatusLDSigner = ldSigner
+			log.Printf("status list: JSON-LD signer ready (issuer %s)", ldSigner.DID())
+		}
 		if activeRoles.Has(roles.Hub) && h.TrustRegistry != nil {
 			statuslistcache.NewPoller(slFetcher, h.TrustRegistry).Start(shutCtx)
 			log.Printf("status list cache: poller started (hub mode)")
@@ -467,10 +546,22 @@ func main() {
 	mux.HandleFunc("POST /auth/start", h.StartAuth)
 	mux.HandleFunc("POST /auth/custom", h.AddCustomProvider)
 	mux.HandleFunc("GET /auth/callback", h.AuthCallback)
+	mux.HandleFunc("GET /issuer/schema/mine", h.ShowIssuerCredentials)
 	mux.HandleFunc("POST /auth/logout", h.Logout)
 	mux.HandleFunc("GET /admin/login", h.ShowAdminLogin)
 	mux.HandleFunc("POST /admin/login", h.AdminLogin)
 	mux.HandleFunc("POST /admin/logout", h.AdminLogout)
+	// Registrar surface — bulk-enrol authoritative citizen identities into the
+	// identity registry (the ID-Repo stand-in). Admin-gated at the handler level
+	// (registrarOK), so registered unconditionally (independent of VERIFIABLY_ROLES).
+	mux.HandleFunc("GET /registrar/identities", h.ShowRegistrarIdentities)
+	mux.HandleFunc("POST /registrar/identities/source", h.IdentityBulkSource)
+	mux.HandleFunc("POST /registrar/identities/preview", h.IdentityBulkPreview)
+	mux.HandleFunc("POST /registrar/identities/apply", h.IdentityBulkApply)
+	mux.HandleFunc("POST /registrar/identities/registry-entities", h.IdentityRegistryEntities)
+	mux.HandleFunc("GET /registrar/identities/{id}/edit", h.EditIdentity)
+	mux.HandleFunc("POST /registrar/identities/{id}/edit", h.SaveIdentity)
+	mux.HandleFunc("POST /registrar/identities/{id}/delete", h.DeleteIdentityRecord)
 	mux.HandleFunc("GET /lang", h.SetLang)
 	mux.HandleFunc("POST /lang", h.SetLang)
 	mux.HandleFunc("GET /qr", h.QRImage)
@@ -489,6 +580,10 @@ func main() {
 	// forward straight to inji-certify:8090, patching the request body for wallets
 	// that omit credential_definition.@context.
 	mux.HandleFunc("POST /inji-proxy/issuance/credential", h.InjiProxyCredential)
+	// OID4VCI issuer metadata for the auth-code (primary) instance. certify-nginx
+	// proxies the wellknown here; pass-through to inji-certify so Mimoto/Inji Web
+	// can discover the credential. Host-agnostic (upstream from env/default).
+	mux.HandleFunc("GET /inji-proxy/.well-known/openid-credential-issuer", h.InjiProxyWellKnown)
 	// did:web resolution split PER INJI CERTIFY INSTANCE. Each instance has
 	// its own DID (did:web:certify-nginx for primary, did:web:certify-preauth-nginx
 	// for pre-auth) and its own handler that fetches ONLY that instance's
@@ -538,6 +633,10 @@ func main() {
 		mux.HandleFunc("GET /admin/auth-providers", h.ShowAuthProvidersAdmin)
 		mux.HandleFunc("POST /admin/auth-providers/{id}/delete", h.DeleteAuthProvider)
 		mux.HandleFunc("GET /admin/metrics", h.ShowAdminMetrics)
+		// eSignet auth-method config: toggle the login factors (PIN/OTP/Wallet)
+		// the auth-code flow offers, via the eSignet client registration.
+		mux.HandleFunc("GET /admin/esignet", h.ShowEsignetConfig)
+		mux.HandleFunc("POST /admin/esignet", h.SaveEsignetConfig)
 	}
 
 	// --- Hub admin landing ---
@@ -567,6 +666,7 @@ func main() {
 		mux.HandleFunc("POST /issuer/dpg", h.PickIssuerDpg)
 		mux.HandleFunc("POST /issuer/dpg/toggle", h.ToggleIssuerDpg)
 		mux.HandleFunc("GET /issuer/schema", h.ShowSchemaBrowser)
+		mux.HandleFunc("GET /issuer/schema/ready", h.SchemaReady)
 		mux.HandleFunc("GET /issuer/schema/search", h.SchemaSearch)
 		mux.HandleFunc("POST /issuer/schema/filter", h.SetSchemaFilter)
 		mux.HandleFunc("POST /issuer/schema/expand", h.ToggleSchemaExpand)
@@ -576,6 +676,7 @@ func main() {
 		mux.HandleFunc("POST /issuer/schema/build/preview", h.SchemaPreview)
 		mux.HandleFunc("POST /issuer/schema/build/add-field", h.AddSchemaField)
 		mux.HandleFunc("POST /issuer/schema/build/remove-field", h.RemoveSchemaField)
+		mux.HandleFunc("POST /issuer/schema/build/delegation", h.BuildDelegationToggle)
 		mux.HandleFunc("POST /issuer/schema/build/save", h.SaveSchema)
 		mux.HandleFunc("GET /issuer/mode", h.ShowIssuanceMode)
 		mux.HandleFunc("POST /issuer/mode", h.SetIssuanceMode)
@@ -586,19 +687,30 @@ func main() {
 		mux.HandleFunc("GET /issuer/credentials", h.ShowIssuedCredentials)
 		mux.HandleFunc("GET /issuer/credentials/search", h.IssuedCredentialsSearch)
 		mux.HandleFunc("POST /issuer/credentials/{id}/revoke", h.RevokeIssuedCredential)
+		// Inji auth-code track: revoke/reinstate through Certify's status API
+		// (the {id} is the base64url of the Certify credentialId).
+		mux.HandleFunc("POST /issuer/credentials/inji/{id}/revoke", h.RevokeInjiCredential)
+		mux.HandleFunc("POST /issuer/credentials/inji/{id}/reinstate", h.ReinstateInjiCredential)
 		mux.HandleFunc("GET /issuer/issue", h.ShowIssue)
 		mux.HandleFunc("POST /issuer/issue", h.SubmitIssue)
 		mux.HandleFunc("POST /issuer/issue/source", h.SetSingleSource)
-		mux.HandleFunc("POST /issuer/issue/csv", h.SimulateCSV)
 		mux.HandleFunc("POST /issuer/issue/bulk/source", h.BulkSource)
-		mux.HandleFunc("POST /issuer/issue/bulk/api", h.BulkFromAPI)
-		mux.HandleFunc("POST /issuer/issue/bulk/db", h.BulkFromDB)
+		mux.HandleFunc("POST /issuer/issue/bulk/preview", h.BulkPreview)
+		mux.HandleFunc("POST /issuer/issue/bulk/apply", h.BulkApply)
+		mux.HandleFunc("POST /issuer/issue/bulk/registry-entities", h.BulkRegistryEntities)
 		mux.HandleFunc("GET /issuer/issue/pdf/{id}", h.DownloadPDF)
 		mux.HandleFunc("POST /issuer/issue/preview-pdf", h.PreviewPDF)
 		// REST API — schema management endpoints.
 		mux.HandleFunc("POST /api/v1/schemas", h.APICreateSchema)
 		mux.HandleFunc("GET /api/v1/schemas", h.APIListSchemas)
 		mux.HandleFunc("DELETE /api/v1/schemas/{id}", h.APIDeleteSchema)
+		// REST API - Inji auth-code subject provisioning (Flow A): upsert dynamic
+		// claims into certify.vc_subject keyed by the eSignet PSU-token.
+		mux.HandleFunc("POST /api/v1/subjects", h.APIProvisionSubject)
+		// One-off migration: regenerate every auth-code extraction view into the
+		// per-slug namespaced form (subjectClaimKey), for credentials created
+		// before claim namespacing. Idempotent, API-key gated.
+		mux.HandleFunc("POST /api/v1/admin/reapply-views", h.ReapplyAuthcodeViews)
 		// REST API — issuance endpoints.
 		// Auth: Authorization: Bearer <key> (VERIFIABLY_API_KEYS env var).
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk/async", h.APIIssueBulkAsync)
@@ -606,21 +718,15 @@ func main() {
 		mux.HandleFunc("GET /api/v1/bulk/{jobID}", h.APIBulkJobStatus)
 		mux.HandleFunc("POST /api/v1/credentials/issue/bulk", h.APIIssueBulk)
 		mux.HandleFunc("POST /api/v1/credentials/issue", h.APIIssue)
-		// Self-service discovery: which of this member's credentials a citizen
-		// can self-issue from their verified claims (National ID + Discovery).
-		mux.HandleFunc("POST /api/v1/credentials/eligible", h.APICheckEligibility)
-		// Self-service issuance: an authenticated citizen mints a pre-auth offer
-		// for a credential they're eligible for (id_token auth, HolderDID=sub).
-		mux.HandleFunc("POST /api/v1/credentials/self-issue", h.APISelfIssue)
-		mux.HandleFunc("OPTIONS /api/v1/credentials/self-issue", h.APISelfIssue)
-		// Credential discovery catalog — standalone issuer mode: returns this
-		// member's own catalog so the wallet's "Descubrir" tab works without a
-		// hub. Skipped when hub is also active to avoid duplicate registration
-		// (hub block registers the same routes with a CredentialCache wired in).
-		if !activeRoles.Has(roles.Hub) {
-			mux.HandleFunc("GET /api/v1/discovery/credentials", h.ServeCredentialCatalog)
-			mux.HandleFunc("OPTIONS /api/v1/discovery/credentials", h.ServeCredentialCatalog)
-		}
+		mux.HandleFunc("POST /api/v1/delegation/issue", h.APIDelegationIssue)
+		mux.HandleFunc("POST /api/v1/delegation/issue/bulk", h.APIDelegationIssueBulk)
+		mux.HandleFunc("POST /api/v1/delegation/inji/setup", h.APIInjiDelegationSetup)
+		mux.HandleFunc("POST /api/v1/delegation/inji/revoke", h.APIInjiDelegationRevoke)
+		mux.HandleFunc("POST /api/v1/delegation/inji/preauth/issue", h.APIInjiPreAuthDelegationIssue)
+		mux.HandleFunc("POST /api/v1/delegation/inji/preauth/claim", h.APIInjiPreAuthDelegationClaim)
+		mux.HandleFunc("POST /api/v1/delegation/verify/sdjwt", h.APIVerifyDelegationSDJWT)
+		mux.HandleFunc("POST /api/v1/delegation/verify/request", h.APIDelegationVerifyRequest)
+		mux.HandleFunc("GET /api/v1/delegation/verify/result/{state}", h.APIDelegationVerifyResult)
 		mux.HandleFunc("GET /api/v1/credentials", h.APIListCredentials)
 		mux.HandleFunc("GET /api/v1/credentials/{id}", h.APIGetCredential)
 		mux.HandleFunc("POST /api/v1/credentials/{id}/revoke", h.APIRevoke)
@@ -633,6 +739,22 @@ func main() {
 		mux.HandleFunc("POST /holder/dpg", h.PickHolderDpg)
 		mux.HandleFunc("POST /holder/dpg/toggle", h.ToggleHolderDpg)
 		mux.HandleFunc("GET /holder/wallet", h.ShowWallet)
+		// In-app Inji auth-code claim (no external inji-web redirect).
+		mux.HandleFunc("GET /holder/wallet/inji", h.ShowInjiClaim)
+		mux.HandleFunc("GET /holder/wallet/inji/credentials", h.ShowInjiHeld)
+		mux.HandleFunc("GET /holder/wallet/inji/credentials/{id}/pdf", h.DownloadInjiClaimedPDF)
+		mux.HandleFunc("POST /holder/wallet/inji/credentials/{id}/delete", h.DeleteInjiClaimed)
+		mux.HandleFunc("GET /holder/wallet/inji/present", h.ShowInjiPresentRequest)
+		mux.HandleFunc("POST /holder/wallet/inji/present/confirm", h.ConfirmInjiPresentRequest)
+		mux.HandleFunc("POST /holder/wallet/inji/present/submit", h.SubmitInjiPresentRequest)
+		mux.HandleFunc("POST /holder/wallet/inji/present/decline", h.DeclineInjiPresent)
+		mux.HandleFunc("GET /holder/wallet/inji/verify-delegation", h.VerifyInjiDelegation)
+		mux.HandleFunc("GET /holder/wallet/verify-delegation", h.VerifyWalletDelegation)
+		mux.HandleFunc("GET /api/registry-credentials", h.RegistryCredentials)
+		mux.HandleFunc("GET /holder/register", h.ShowHolderRegister)
+		mux.HandleFunc("POST /holder/register", h.RegisterHolder)
+		mux.HandleFunc("GET /holder/wallet/inji/start", h.StartInjiClaim)
+		mux.HandleFunc("GET /holder/wallet/inji/callback", h.InjiClaimCallback)
 		mux.HandleFunc("POST /holder/wallet/scan", h.ScanOffer)
 		mux.HandleFunc("POST /holder/wallet/paste", h.PasteOffer)
 		mux.HandleFunc("POST /holder/wallet/example", h.PrefillExample)
@@ -709,6 +831,12 @@ func main() {
 	if activeRoles.Has(roles.Hub) {
 		rootHandler = hubHostRouter(mux)
 	}
+	// Purpose-named subdomains: land each subdomain's bare root on its surface
+	// (identity.registry.<domain> → /registrar/identities, esignet-config.<domain>
+	// → /admin/esignet). Applied regardless of the hub host-split (which is
+	// role-gated) — the rest of the app, including /admin/login, still serves
+	// normally on these hosts.
+	rootHandler = purposeSubdomainRootRedirect(rootHandler)
 	srv := &http.Server{Addr: addr, Handler: tracing.Middleware(tracer)(withRequestID(rootHandler))}
 
 	go func() {
@@ -763,6 +891,35 @@ func buildTracer(_ context.Context) *tracing.Tracer {
 	return t
 }
 
+// sessionSecretKey resolves the instance's session secret (VERIFIABLY_SESSION_SECRET,
+// else a persisted state/session.key it generates on first run) and returns both the
+// secret (the file PersistentStore takes it directly) and the derived AES-256 key
+// (the pg/redis session stores + the Inji web-wallet store encrypt with it). Both
+// are empty/nil only when no secret can be obtained (stores then fall back to
+// plaintext / in-memory). Idempotent — all callers read/create the same session.key.
+func sessionSecretKey(stateDir string) (string, []byte) {
+	secret := os.Getenv("VERIFIABLY_SESSION_SECRET")
+	if secret == "" {
+		keyPath := filepath.Join(stateDir, "session.key")
+		if data, err := os.ReadFile(keyPath); err == nil {
+			secret = strings.TrimSpace(string(data))
+		} else {
+			_ = os.MkdirAll(stateDir, 0o700)
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err == nil {
+				secret = hex.EncodeToString(b)
+				_ = os.WriteFile(keyPath, []byte(secret+"\n"), 0o600)
+				log.Printf("session store: generated new session key at %s", keyPath)
+			}
+		}
+	}
+	if secret == "" {
+		return "", nil
+	}
+	k := sha256.Sum256([]byte(secret))
+	return secret, k[:]
+}
+
 // buildSessionStore returns a persistent store backed by encrypted files in
 // VERIFIABLY_STATE_DIR/sessions/. The encryption key is taken from
 // VERIFIABLY_SESSION_SECRET; when that env var is absent the key is loaded
@@ -783,26 +940,8 @@ func buildSessionStore(_ context.Context, pool *pgxpool.Pool) handlers.SessionSt
 	if stateDir == "" {
 		stateDir = "state"
 	}
-	secret := os.Getenv("VERIFIABLY_SESSION_SECRET")
-	if secret == "" {
-		keyPath := filepath.Join(stateDir, "session.key")
-		if data, err := os.ReadFile(keyPath); err == nil {
-			secret = strings.TrimSpace(string(data))
-		} else {
-			_ = os.MkdirAll(stateDir, 0o700)
-			b := make([]byte, 32)
-			if _, err := rand.Read(b); err == nil {
-				secret = hex.EncodeToString(b)
-				_ = os.WriteFile(keyPath, []byte(secret+"\n"), 0o600)
-				log.Printf("session store: generated new session key at %s", keyPath)
-			}
-		}
-	}
-	var aesKey []byte
-	if secret != "" {
-		k := sha256.Sum256([]byte(secret))
-		aesKey = k[:]
-	} else {
+	secret, aesKey := sessionSecretKey(stateDir)
+	if aesKey == nil {
 		log.Printf("session store: WARNING — no session secret; sessions will be stored unencrypted")
 	}
 
@@ -897,6 +1036,39 @@ func hubHostRouter(next http.Handler) http.Handler {
 			if isAdminPath {
 				http.NotFound(w, r)
 				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// purposeSubdomainRoots maps a purpose-named subdomain's host prefix to the
+// in-app surface its bare root should land on. Each is a deployment-facing name
+// for an existing surface, so a visitor to its root should see that surface, not
+// verifiably's generic landing page.
+var purposeSubdomainRoots = []struct{ prefix, target string }{
+	{"identity.registry.", "/registrar/identities"}, // national ID registry (data tier)
+	{"esignet-config.", "/admin/esignet"},           // eSignet login-method config
+}
+
+// purposeSubdomainRootRedirect redirects the bare root ("/") of each
+// purpose-named host (see purposeSubdomainRoots) to its surface. Everything else
+// (admin login, static assets, the target routes themselves) passes straight
+// through, so the full app — including /admin/login — still works on these hosts.
+// Applied unconditionally; unrelated hosts fall through untouched.
+func purposeSubdomainRootRedirect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			host := r.Host
+			if i := strings.LastIndex(host, ":"); i >= 0 {
+				host = host[:i]
+			}
+			host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+			for _, s := range purposeSubdomainRoots {
+				if strings.HasPrefix(host, s.prefix) {
+					http.Redirect(w, r, s.target, http.StatusFound)
+					return
+				}
 			}
 		}
 		next.ServeHTTP(w, r)

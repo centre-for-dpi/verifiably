@@ -2,64 +2,51 @@ package handlers
 
 import (
 	"bytes"
-	"mime/multipart"
-	"net/http/httptest"
 	"testing"
 
-	qr "github.com/skip2/go-qrcode"
+	"github.com/jung-kurt/gofpdf"
+	"github.com/makiuchi-d/gozxing"
+	zxqr "github.com/makiuchi-d/gozxing/qrcode"
+	qrgen "github.com/skip2/go-qrcode"
 )
 
-// Exercises the real QR encode/decode path used by the upload verifier flow.
-// Generates a PNG QR with a known payload in-memory, posts it to a recording
-// request, runs decodeUploadedQR, and asserts the payload round-trips.
-func TestDecodeUploadedQR_RoundTrip(t *testing.T) {
-	payload := "openid-credential-offer://?credential_offer_uri=http://example.com/offer/abc"
-	png, err := qr.Encode(payload, qr.Medium, 256)
+// B6: a QR embedded in a PDF (as the wallet/Inji credential PDF does) is
+// extracted and decodable — the verifier can now accept PDF uploads.
+func TestExtractPDFImages_QRRoundtrip(t *testing.T) {
+	png, err := qrgen.Encode("HELLO-PDF-QR", qrgen.Medium, 256)
 	if err != nil {
-		t.Fatalf("encode qr: %v", err)
+		t.Fatal(err)
+	}
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+	pdf.RegisterImageOptionsReader("qr", gofpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(png))
+	pdf.ImageOptions("qr", 20, 20, 60, 60, false, gofpdf.ImageOptions{ImageType: "PNG"}, 0, "")
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		t.Fatal(err)
 	}
 
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	fw, err := mw.CreateFormFile("credential_image", "qr.png")
+	imgs, err := extractPDFImages(buf.Bytes())
 	if err != nil {
-		t.Fatalf("create form file: %v", err)
+		t.Fatalf("extractPDFImages: %v", err)
 	}
-	if _, err := fw.Write(png); err != nil {
-		t.Fatalf("write png: %v", err)
-	}
-	_ = mw.Close()
-
-	req := httptest.NewRequest("POST", "/verifier/verify/direct", &body)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	if err := req.ParseMultipartForm(8 << 20); err != nil {
-		t.Fatalf("parse multipart: %v", err)
+	if len(imgs) == 0 {
+		t.Fatal("expected at least one embedded image")
 	}
 
-	decoded, err := decodeUploadedQR(req)
-	if err != nil {
-		t.Fatalf("decodeUploadedQR: %v", err)
+	found := false
+	for _, img := range imgs {
+		bmp, err := gozxing.NewBinaryBitmapFromImage(img)
+		if err != nil {
+			continue
+		}
+		res, err := zxqr.NewQRCodeReader().Decode(bmp, nil)
+		if err == nil && res.GetText() == "HELLO-PDF-QR" {
+			found = true
+			break
+		}
 	}
-	if decoded != payload {
-		t.Fatalf("payload mismatch:\n want: %s\n got:  %s", payload, decoded)
-	}
-}
-
-// Uploading a file that isn't a decodable image should return an error
-// rather than crash or return an empty payload.
-func TestDecodeUploadedQR_NotAnImage(t *testing.T) {
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	fw, _ := mw.CreateFormFile("credential_image", "garbage.png")
-	fw.Write([]byte("not actually an image"))
-	_ = mw.Close()
-
-	req := httptest.NewRequest("POST", "/verifier/verify/direct", &body)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	_ = req.ParseMultipartForm(1 << 20)
-
-	_, err := decodeUploadedQR(req)
-	if err == nil {
-		t.Fatal("expected error for garbage upload, got nil")
+	if !found {
+		t.Fatal("QR text did not round-trip through PDF embed -> extract -> decode")
 	}
 }

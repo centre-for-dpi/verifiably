@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -356,7 +357,13 @@ func (r *Registry) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error)
 	var out []vctypes.Schema
 	for _, v := range vendors {
 		ad, _ := r.issuerFor(v)
-		sch, err := ad.ListSchemas(ctx, v)
+		// Per-vendor timeout so one unhealthy/slow issuer (e.g. a blocking CREDEBL
+		// /template GET) can't stall the whole aggregation or pull a client
+		// cancellation into every caller of ListAllSchemas (holder wallet, verifier
+		// grid, issue screen, bulk).
+		vctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		sch, err := ad.ListSchemas(vctx, v)
+		cancel()
 		if err != nil {
 			// Log and continue rather than fail-fast: a fresh stack often
 			// has one DPG still warming up when the operator reaches the

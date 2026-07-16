@@ -22,9 +22,11 @@ import (
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 )
 
-// loadTestTemplates parses templates/pages/issuer_credentials.html so
-// RevokeIssuedCredential's fragment swap can render the row in this test.
-// Keeps a tiny FuncMap shim with just the helpers that template touches
+// loadTestTemplates parses templates/pages/issuer_issued_log.html so
+// RevokeIssuedCredential's fragment swap (fragment_issued_credentials_row) can
+// render the row in this test. The issued-log fragments live in that file since
+// the My Credentials / issued-log split (issuer_credentials.html is now the
+// former). Keeps a tiny FuncMap shim with just the helpers that template touches
 // (`list`, `t`); the production funcMap in cmd/server/main.go has a much
 // larger surface but those helpers aren't reached on this code path.
 func loadTestTemplates(t *testing.T) *template.Template {
@@ -33,9 +35,9 @@ func loadTestTemplates(t *testing.T) *template.Template {
 		"list": func(args ...any) []any { return args },
 		"t":    func(s string, _ ...any) string { return s },
 	})
-	files, err := filepath.Glob("../../templates/pages/issuer_credentials.html")
+	files, err := filepath.Glob("../../templates/pages/issuer_issued_log.html")
 	if err != nil || len(files) == 0 {
-		t.Fatalf("locate issuer_credentials.html: err=%v files=%v", err, files)
+		t.Fatalf("locate issuer_issued_log.html: err=%v files=%v", err, files)
 	}
 	if _, err := tmpl.ParseFiles(files...); err != nil {
 		t.Fatalf("parse template: %v", err)
@@ -362,7 +364,15 @@ func envelope(t *testing.T, priv *ecdsa.PrivateKey) []byte {
 // the JWT body; anything else surfaces the error directly.
 func httpGet(t *testing.T, url string) string {
 	t.Helper()
-	resp, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	// The bitstring endpoint now defaults to JSON-LD (F16 full-interop); request
+	// the JOSE-secured (JWS) form explicitly, exactly like verifiably's own
+	// StatusListCache, so the JWS decoders in this test get what they expect.
+	req.Header.Set("Accept", "application/vc+jwt")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}

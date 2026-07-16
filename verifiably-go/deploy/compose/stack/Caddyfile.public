@@ -49,6 +49,14 @@ inji-certify-preauth.verifiably.ysalabs.work {
 	reverse_proxy certify-preauth-nginx:80
 }
 
+inji-certify-authcode.in-labs.cdpi.dev {
+	handle /.well-known/did.json {
+		rewrite * /inji-proxy/.well-known/did.json
+		reverse_proxy verifiably-go:8080
+	}
+	reverse_proxy certify-nginx:80
+}
+
 inji-verify.verifiably.ysalabs.work {
 	import security_headers
 	handle /v1/verify/.well-known/did.json {
@@ -125,3 +133,6 @@ grafana.verifiably.ysalabs.work {
 	reverse_proxy grafana:3000
 }
 
+registry-admin.in-labs.cdpi.dev {
+	reverse_proxy registry-admin:8000
+}
