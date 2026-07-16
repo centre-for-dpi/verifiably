@@ -91,19 +91,16 @@ func wireIssuanceAndStatusLists(ctx context.Context, h *handlers.H, pool *pgxpoo
 	return wireStatusListSet(ctx, h, pool, publicURL, stateDir)
 }
 
-// issuerDpgLister is the slice of the registry the status-list wiring
-// needs. Duck-typed rather than importing the registry package so mock and
-// single-adapter deployments (which don't implement it) keep working —
-// they fall back to the default lists.
-type issuerDpgLister interface {
-	ListIssuerDpgs(ctx context.Context) (map[string]vctypes.DPG, error)
-}
-
 // wireStatusListSet gives every registered issuer DPG its own bitstring +
 // token list, each signed by its own self-managed key. The legacy "v1"
 // lists are registered as the defaults: credentials issued before per-DPG
 // lists existed point their credentialStatus at /status-list/{kind}/v1 and
 // that URL has to keep resolving.
+//
+// Every list gets a signer here, and that is the point: signing used to
+// mean type-asserting the issuer adapter for a walt.id-only method, so an
+// Inji-only deployment hosted lists it could not sign and 503'd every
+// fetch. Hosting a list and being able to sign it are now the same step.
 func wireStatusListSet(ctx context.Context, h *handlers.H, pool *pgxpool.Pool, publicURL, stateDir string) error {
 	set := handlers.NewStatusListSet()
 
@@ -122,14 +119,15 @@ func wireStatusListSet(ctx context.Context, h *handlers.H, pool *pgxpool.Pool, p
 		set.Register(&handlers.StatusListEntry{Store: store, Signer: signer, Kind: kind})
 	}
 
-	lister, ok := h.Adapter.(issuerDpgLister)
-	if !ok {
+	if h.Adapter == nil {
 		h.StatusLists = set
 		return nil
 	}
-	dpgs, err := lister.ListIssuerDpgs(ctx)
+	// Listing issuer DPGs is part of backend.Adapter, so every adapter can
+	// answer. An adapter that errors or has none keeps the defaults rather
+	// than losing revocation wholesale.
+	dpgs, err := h.Adapter.ListIssuerDpgs(ctx)
 	if err != nil {
-		// Non-fatal: keep the defaults rather than losing revocation wholesale.
 		log.Printf("status list: per-DPG lists skipped — list issuer DPGs: %v", err)
 		h.StatusLists = set
 		return nil
