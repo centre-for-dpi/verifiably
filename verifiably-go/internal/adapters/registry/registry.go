@@ -262,7 +262,44 @@ func (r *Registry) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes
 			vendorSchemas = filtered
 		}
 	}
-	return append(vendorSchemas, custom...), nil
+	return append(applyOwnedMetadata(vendorSchemas, custom), custom...), nil
+}
+
+// applyOwnedMetadata copies verifiably-owned schema metadata onto the vendor's
+// entry for the same ID.
+//
+// Both entries for a custom schema end up in the returned list — the vendor
+// re-advertises what we registered with it — and findSchemaByID takes the FIRST
+// match, i.e. the vendor's. But a vendor only knows what it stores: Expires is
+// our own concept, so a rebuilt vendor entry always reports false and shadows
+// the truth in our store. That silently un-expires a credential: the issue form
+// hides the Validity window, and issuance refuses to POST the window the
+// template already demands, so certify rejects the unresolved marker.
+//
+// ENRICH, never replace. The vendor entry is authoritative for what the vendor
+// owns — above all the pinned Vct, which the verifier's presentation definition
+// matches the held token against — so swapping in the custom schema wholesale
+// would break presentation.
+func applyOwnedMetadata(vendorSchemas, custom []vctypes.Schema) []vctypes.Schema {
+	if len(vendorSchemas) == 0 || len(custom) == 0 {
+		return vendorSchemas
+	}
+	expires := make(map[string]bool, len(custom))
+	for _, c := range custom {
+		if !c.ExpiresWithWindow() {
+			continue
+		}
+		expires[c.ID] = true
+		for _, v := range c.Variants {
+			expires[v.ID] = true
+		}
+	}
+	for i := range vendorSchemas {
+		if expires[vendorSchemas[i].ID] {
+			vendorSchemas[i].Expires = true
+		}
+	}
+	return vendorSchemas
 }
 
 // GetIssuerMetadata returns the credential configurations for schemas that were
@@ -347,7 +384,10 @@ func (r *Registry) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error)
 			out = append(out, s)
 		}
 	}
-	out = append(out, custom...)
+	// Same shadowing as ListSchemas: the vendor's rebuilt entry lands first and
+	// findSchemaByID takes it, so carry our own metadata across. This is the
+	// list the issue screen resolves its schema from.
+	out = append(applyOwnedMetadata(out, custom), custom...)
 	return out, nil
 }
 

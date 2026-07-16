@@ -355,6 +355,21 @@ func isInternalMarker(name string) bool {
 	case "statusIdx", "statusUri":
 		return true
 	}
+	return isValidityMarker(name)
+}
+
+// isValidityMarker reports whether a config `order` entry is one of the
+// validity-window markers.
+//
+// Doubles as the round-trip signal for Schema.Expires. Expires is verifiably's
+// own concept — no vendor advertises it — and ListSchemas rebuilds a Schema
+// from certify's wellknown, so without reading it back here the flag is lost
+// the moment a schema round-trips: the template (written while Expires was
+// true) asks for ${validUntilEpoch}, while issuance (reading the rebuilt
+// schema, Expires false) declines to POST it, and certify rejects the
+// unresolved marker. SaveCustomSchema declares these markers precisely when the
+// schema expires, so their presence IS the flag.
+func isValidityMarker(name string) bool {
 	for _, n := range allValidityMarkerNames() {
 		if n == name {
 			return true

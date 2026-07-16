@@ -56,7 +56,18 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			name = humanise(id)
 		}
 		fields := []vctypes.FieldSpec{}
+		// A declared validity marker IS the record that this schema expires.
+		// Schema.Expires lives only in verifiably's store and no vendor
+		// advertises it, so rebuilding a Schema here without it silently
+		// disagrees with the template SaveCustomSchema already wrote: the
+		// template asks for ${validUntilEpoch} while issuance, reading this
+		// rebuilt schema, declines to POST one — certify then rejects the
+		// unresolved marker and the schema cannot be issued at all.
+		expires := false
 		for _, f := range cfg.Order {
+			if isValidityMarker(f) {
+				expires = true
+			}
 			// Internal template markers (the token-status pointer, the validity
 			// window) are declared in the config's order so certify's pre-auth
 			// data-provider resolves them into the Velocity context — but they are
@@ -80,6 +91,11 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			DPGs:       []string{issuerDpg},
 			Desc:       fmt.Sprintf("Live credential configuration served by %s.", issuerDpg),
 			FieldsSpec: fields,
+			// Recovered from the declared markers above, so the rebuilt schema
+			// agrees with the template certify already holds: the issue form
+			// offers a Validity window, and issuance POSTs the values the
+			// template's ${validFromEpoch}/${validUntilEpoch} require.
+			Expires: expires,
 			// Pin the exact vct the issuer metadata advertises (SD-JWT VC only;
 			// empty for ldp_vc/W3C). The verifier's PD needs this so the wallet's
 			// matchesVct selects the held token by its vct claim; without it the
