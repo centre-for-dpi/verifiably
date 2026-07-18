@@ -1,135 +1,137 @@
-# Federated Emission — Arquitectura y Progreso
+# Federated Emission — Architecture and Progress
 
-**Branch:** `federated-issuance` (ya mergeada a `main` — este documento es la
-bitácora histórica del desarrollo, no requiere checkout de rama para usar
-ninguna de las fases descritas abajo)
-**Último update:** 2026-05-17 (Fases 2 + 10 + 3 + 6 + 7 + 8 + 9 completadas)
-
----
-
-## Objetivo
-
-Extender verifiably-go para soportar un ecosistema federado de emisores de
-credenciales verificables con:
-
-- N instancias independientes de verifiably-go (una por organización emisora)
-- Un Hub central (CDPI) con Trust Registry, Schema Registry y portal de
-  verificación público (sin login)
-- Cada instancia corre solo los módulos que necesita (`VERIFIABLY_ROLES`)
-- Cualquier wallet OID4VC-compatible puede presentar credenciales de cualquier emisor
-- Trust framework unificado bajo autoridad central con upgrade path a OpenID Federation 1.0
+**Branch:** `federated-issuance` (already merged into `main` — this document is
+the historical development log, no branch checkout is required to use any of
+the phases described below)
+**Last update:** 2026-05-17 (Phases 2 + 10 + 3 + 6 + 7 + 8 + 9 completed)
 
 ---
 
-## Estado real del codebase en `federated-issuance` (base: `add-credebl`)
+## Goal
 
-> Branch creado desde `add-credebl`, que incluye CREDEBL adapter, Trust Registry,
-> métricas Prometheus, Grafana y admin_metrics. Esta sección refleja la realidad
-> verificada leyendo los archivos directamente.
+Extend verifiably-go to support a federated ecosystem of verifiable
+credential issuers with:
 
-### Lo que SÍ existe
+- N independent verifiably-go instances (one per issuing organization)
+- A central Hub (CDPI) with a Trust Registry, Schema Registry, and a public
+  verification portal (no login)
+- Each instance runs only the modules it needs (`VERIFIABLY_ROLES`)
+- Any OID4VC-compatible wallet can present credentials from any issuer
+- A unified trust framework under a central authority with an upgrade path
+  to OpenID Federation 1.0
 
-| Componente | Ubicación | Notas |
+---
+
+## Actual state of the codebase on `federated-issuance` (base: `add-credebl`)
+
+> Branch created from `add-credebl`, which includes the CREDEBL adapter,
+> Trust Registry, Prometheus metrics, Grafana, and admin_metrics. This
+> section reflects the reality verified by reading the files directly.
+
+### What already exists
+
+| Component | Location | Notes |
 |-----------|-----------|-------|
-| Adapter interface | `backend/adapter.go` | Interfaz completa con todos los métodos |
-| Registry (fan-out) | `internal/adapters/registry/registry.go` | Multi-adapter, `Register()`, fan-out correcto |
-| BackendEntry/Config | `internal/adapters/registry/config.go` | Lee `backends.json` |
-| SchemaStore | `internal/adapters/registry/schema_store.go` | Persistencia JSON de schemas custom |
+| Adapter interface | `backend/adapter.go` | Full interface with all methods |
+| Registry (fan-out) | `internal/adapters/registry/registry.go` | Multi-adapter, `Register()`, correct fan-out |
+| BackendEntry/Config | `internal/adapters/registry/config.go` | Reads `backends.json` |
+| SchemaStore | `internal/adapters/registry/schema_store.go` | JSON persistence for custom schemas |
 | Factory | `internal/adapters/factory/factory.go` | Builds: waltid, credebl, injicertify, injiverify, injiweb |
 | Walt.id adapter | `internal/adapters/waltid/` | Issuer + holder + verifier |
 | **CREDEBL adapter** | `internal/adapters/credebl/` | Issuer + verifier (OID4VP + DCQL) |
 | Inji Certify adapter | `internal/adapters/injicertify/` | Issuer (auth-code + pre-auth) |
 | Inji Verify adapter | `internal/adapters/injiverify/` | Verifier only |
 | Inji Web adapter | `internal/adapters/injiweb/` | Holder only |
-| LibreTranslate | `internal/adapters/libretranslate/` | Traducción |
+| LibreTranslate | `internal/adapters/libretranslate/` | Translation |
 | Auth OIDC | `internal/auth/` | Providers, registry, user store |
-| **Trust Registry** | `internal/trust/` | `registry.go` (interfaz) + `store.go` (pg + mem) + `jwt.go` |
-| **Trust handler** | `internal/handlers/trust.go` | `GET /trust-registry` JWT público |
-| **Métricas Prometheus** | `internal/metrics/metrics.go` | Counters + histograms |
+| **Trust Registry** | `internal/trust/` | `registry.go` (interface) + `store.go` (pg + mem) + `jwt.go` |
+| **Trust handler** | `internal/handlers/trust.go` | Public `GET /trust-registry` JWT |
+| **Prometheus metrics** | `internal/metrics/metrics.go` | Counters + histograms |
 | **Admin metrics UI** | `internal/handlers/admin_metrics.go` | `/admin/metrics` |
-| **API REST** | `internal/handlers/api.go` | Endpoints headless de emisión |
+| **REST API** | `internal/handlers/api.go` | Headless issuance endpoints |
 | **PostgreSQL storage** | `internal/storage/pg/` | Sessions, issued_credentials, trusted_issuers |
-| **Redis storage** | `internal/storage/redis/` | Sessions cache opcional |
-| **Rate limiter** | `internal/handlers/ratelimit.go` | Por API key (60/min) + por IP (20/min, `VERIFIABLY_RATE_IP_RPM`) |
-| Handlers | `internal/handlers/` | Todos los handlers actuales |
-| Issuance log | `internal/issuance/log.go` | JSON-backed + pg, con `OwnerKey` scoping |
+| **Redis storage** | `internal/storage/redis/` | Optional session cache |
+| **Rate limiter** | `internal/handlers/ratelimit.go` | Per API key (60/min) + per IP (20/min, `VERIFIABLY_RATE_IP_RPM`) |
+| Handlers | `internal/handlers/` | All current handlers |
+| Issuance log | `internal/issuance/log.go` | JSON-backed + pg, with `OwnerKey` scoping |
 | Status list stores | `internal/statuslist/` | Bitstring (W3C) + Token (IETF) |
 | Domain types | `vctypes/vctypes.go` | Schema, DPG, Credential, OID4VPTemplate |
-| Main / router | `cmd/server/main.go` | Todas las rutas registradas flat, sin condicionales |
-| DID proxy (Inji) | `internal/handlers/inji_proxy.go` | Proxy específico para DID docs de Inji — NO es resolver genérico |
-| Config | `config/backends.json` | Config actual de adapters |
-| **Grafana dashboard** | `deploy/compose/monitoring/grafana/` | Dashboard de métricas existente |
-| **Prometheus config** | `deploy/compose/monitoring/prometheus.yml` | Scrape de la instancia local |
-| **did:web deploy automation (Inji)** | `deploy/compose/stack/inji/certify/init.sh` | `ISSUER_DID_DOMAIN` → `did:web:{domain}` automático en init postgres |
-| **did:web deploy automation (preauth)** | `deploy/compose/stack/inji/certify/init-preauth.sh` | Mismo DID que primary en prod; `inji_proxy` fusiona claves |
-| **`ISSUER_DID_DOMAIN` en .env** | `deploy/compose/stack/.env.example` | Variable única para activar did:web en todo el stack Inji |
+| Main / router | `cmd/server/main.go` | All routes registered flat, no conditionals |
+| DID proxy (Inji) | `internal/handlers/inji_proxy.go` | Inji-specific DID doc proxy — NOT a generic resolver |
+| Config | `config/backends.json` | Current adapter config |
+| **Grafana dashboard** | `deploy/compose/monitoring/grafana/` | Existing metrics dashboard |
+| **Prometheus config** | `deploy/compose/monitoring/prometheus.yml` | Local instance scrape |
+| **did:web deploy automation (Inji)** | `deploy/compose/stack/inji/certify/init.sh` | `ISSUER_DID_DOMAIN` → automatic `did:web:{domain}` on postgres init |
+| **did:web deploy automation (preauth)** | `deploy/compose/stack/inji/certify/init-preauth.sh` | Same DID as primary in prod; `inji_proxy` merges keys |
+| **`ISSUER_DID_DOMAIN` in .env** | `deploy/compose/stack/.env.example` | Single variable to enable did:web across the whole Inji stack |
 
-### Lo que NO existe (hay que construir)
+### What does NOT exist yet (needs to be built)
 
-| Componente | Fase | Notas |
+| Component | Phase | Notes |
 |-----------|------|-------|
-| `internal/didresolver/` | Fase 1.5 | Resolver `did:web` genérico — el proxy Inji no sirve aquí |
-| ES256 signing key + JWKS endpoint | Fase 1.5 | Upgrade de HS256 a ES256 en Trust Registry JWT |
-| `VERIFIABLY_ROLES` routing | Fase 1 | Activación condicional de módulos |
-| Portal público `/verify` | Fase 2 | Sin login, para ciudadanos |
-| `/api/schemas` público | Fase 3 | CORS + cache TTL, con SourceIssuerDID |
-| Schema aggregation cache | Fase 3 | Cache in-memory TTL 5-10 min; sin esto N+1 HTTP en cada `/verify` |
-| `config/federation.json` | Fase 4 | Seed inicial del Hub — DB es master |
-| State prefix routing en Registry | Fase 4 | TODO pendiente en `FetchPresentationResult` — bloquea Fase 2 |
-| Admin CRUD de emisores | Fase 5 | `/admin/federation/members` |
-| `ServiceEndpoint` en TrustedIssuer | Fase 5 | Extensión del struct existente |
-| ALTER TABLE `trusted_issuers` | Fase 5 | Nuevas columnas vía `ADD COLUMN IF NOT EXISTS` en `runMigrations()` |
-| `verification_events` log | Fase 6 | PostgreSQL desde día 1 (no JSON — Hub es punto de agregación) |
-| Issuer Analytics API | Fase 7 | `/api/ecosystem/issuers/{did}/stats` |
-| API key lifecycle definido | Fase 7 | One-time display, hashed in DB, rotación via admin UI |
-| Prometheus Federation | Fase 8 | Hub agrega métricas de emisores registrados |
-| Trust Registry Health monitoring | Fase 9 | Gauges expiración + endpoint health |
-| Status List Cache | Fase 10 | Cache con verificación de firma JWT — debe ir con Fase 2 |
-| CREDEBL did:web automation | Post-Fase 5 | CREDEBL usa Aries agent con Indy ledger; did:web requiere re-provisioning manual del agente (pasos documentados en `credebl.env`) |
-| Walt.id did:web compose config | Post-Fase 5 | Walt.id soporta did:web pero no hay env var en compose actual; pendiente |
+| `internal/didresolver/` | Phase 1.5 | Generic `did:web` resolver — the Inji proxy doesn't serve this purpose |
+| ES256 signing key + JWKS endpoint | Phase 1.5 | Upgrade from HS256 to ES256 in Trust Registry JWT |
+| `VERIFIABLY_ROLES` routing | Phase 1 | Conditional module activation |
+| Public `/verify` portal | Phase 2 | No login, for citizens |
+| Public `/api/schemas` | Phase 3 | CORS + cache TTL, with SourceIssuerDID |
+| Schema aggregation cache | Phase 3 | In-memory cache, 5-10 min TTL; without this, N+1 HTTP requests on every `/verify` |
+| `config/federation.json` | Phase 4 | Initial Hub seed — DB is master |
+| State prefix routing in Registry | Phase 4 | Pending TODO in `FetchPresentationResult` — blocks Phase 2 |
+| Issuer admin CRUD | Phase 5 | `/admin/federation/members` |
+| `ServiceEndpoint` in TrustedIssuer | Phase 5 | Extension of the existing struct |
+| ALTER TABLE `trusted_issuers` | Phase 5 | New columns via `ADD COLUMN IF NOT EXISTS` in `runMigrations()` |
+| `verification_events` log | Phase 6 | PostgreSQL from day 1 (not JSON — Hub is the aggregation point) |
+| Issuer Analytics API | Phase 7 | `/api/ecosystem/issuers/{did}/stats` |
+| Defined API key lifecycle | Phase 7 | One-time display, hashed in DB, rotation via admin UI |
+| Prometheus Federation | Phase 8 | Hub aggregates metrics from registered issuers |
+| Trust Registry Health monitoring | Phase 9 | Expiry gauges + endpoint health |
+| Status List Cache | Phase 10 | Cache with JWT signature verification — must ship with Phase 2 |
+| CREDEBL did:web automation | Post-Phase 5 | CREDEBL uses an Aries agent on an Indy ledger; did:web requires manual agent re-provisioning (steps documented in `credebl.env`) |
+| Walt.id did:web compose config | Post-Phase 5 | Walt.id supports did:web but there's no env var in the current compose; pending |
 
 ---
 
-## Decisiones arquitectónicas (fijas, no debatir)
+## Architectural decisions (fixed, not up for debate)
 
-| Decisión | Elección |
+| Decision | Choice |
 |----------|----------|
-| Modelo de despliegue | Instancias separadas de verifiably-go por emisor |
-| Gobernanza del trust | Autoridad central única (CDPI) — JWT firmado |
-| Algoritmo de firma del Trust Registry JWT | ES256 (ECDSA P-256) — HS256 es solo baseline de dev |
-| Fuente de verdad de miembros | DB (`trusted_issuers`) es master; `federation.json` = seed inicial y exportación |
-| Upgrade path del trust | OpenID Federation 1.0 — interfaz `trust.Registry` no cambia |
-| Portal de verificación | Público, sin login (`/verify` en el Hub) |
-| Wallets objetivo | Cualquier wallet OID4VC-compatible (sin lock-in) |
-| DID method requerido | `did:web` con dominio propio — requisito de acreditación |
-| Política de status list | Configurable por schema: `fail-open` o `fail-closed` |
-| Schema federation | Activada automáticamente al registrar un emisor (via ServiceEndpoint) |
-| Backend del events log | PostgreSQL desde día 1 (JSON-backed no escala para Hub) |
-| Backwards compat | Sin `VERIFIABLY_ROLES` → comportamiento idéntico al actual |
-| `did:web` es requisito de acreditación, no de runtime | Deployments sin `ISSUER_DID_DOMAIN` funcionan con `did:web` Docker-interno (dev) o `did:key`; solo se exige `did:web` público para entrar al Hub |
-| Variable única para federation-ready Inji | `ISSUER_DID_DOMAIN=dominio.gov` activa `did:web` en toda la stack Inji automáticamente (postgres init + Spring Boot); no requiere otros cambios |
-| DID primario y preauth comparten dominio en prod | En producción ambas instancias Inji usan `did:web:{ISSUER_DID_DOMAIN}`; `inji_proxy` fusiona sus claves en un solo DID Document — sin colisión de kids |
-| Re-init de volumen requerido al cambiar dominio | Los scripts `init.sh` corren solo en la primera inicialización del volumen PostgreSQL; cambiar `ISSUER_DID_DOMAIN` en un deploy existente requiere `docker volume rm certify-db certify-preauth-db` |
-| CREDEBL did:web no automatizado | CREDEBL usa Aries agent con ledger Indy/Sovrin; did:web requiere re-provisioning manual documentado en `credebl.env` — no bloquea las demás fases |
+| Deployment model | Separate verifiably-go instances per issuer |
+| Trust governance | Single central authority (CDPI) — signed JWT |
+| Trust Registry JWT signing algorithm | ES256 (ECDSA P-256) — HS256 is dev baseline only |
+| Source of truth for members | DB (`trusted_issuers`) is master; `federation.json` = initial seed and export |
+| Trust upgrade path | OpenID Federation 1.0 — `trust.Registry` interface doesn't change |
+| Verification portal | Public, no login (`/verify` on the Hub) |
+| Target wallets | Any OID4VC-compatible wallet (no lock-in) |
+| Required DID method | `did:web` with own domain — accreditation requirement |
+| Status list policy | Configurable per schema: `fail-open` or `fail-closed` |
+| Schema federation | Activated automatically when an issuer registers (via ServiceEndpoint) |
+| Events log backend | PostgreSQL from day 1 (JSON-backed doesn't scale for the Hub) |
+| Backwards compat | Without `VERIFIABLY_ROLES` → identical to current behavior |
+| `did:web` is an accreditation requirement, not a runtime one | Deployments without `ISSUER_DID_DOMAIN` work with Docker-internal `did:web` (dev) or `did:key`; public `did:web` is only required to join the Hub |
+| Single variable for federation-ready Inji | `ISSUER_DID_DOMAIN=domain.gov` enables `did:web` across the whole Inji stack automatically (postgres init + Spring Boot); no other changes needed |
+| Primary and preauth DIDs share a domain in prod | In production both Inji instances use `did:web:{ISSUER_DID_DOMAIN}`; `inji_proxy` merges their keys into a single DID Document — no kid collision |
+| Volume re-init required when changing domain | The `init.sh` scripts only run on the first PostgreSQL volume initialization; changing `ISSUER_DID_DOMAIN` on an existing deploy requires `docker volume rm certify-db certify-preauth-db` |
+| CREDEBL did:web not automated | CREDEBL uses an Aries agent on an Indy/Sovrin ledger; did:web requires manual re-provisioning documented in `credebl.env` — doesn't block the other phases |
 
 ---
 
-## Prerequisitos del Hub (verify.cdpi.dev)
+## Hub prerequisites (verify.cdpi.dev)
 
-Antes de operar en modo `hub`, el host debe tener:
+Before operating in `hub` mode, the host must have:
 
-1. `did:web:verify.cdpi.dev` resolvible en `https://verify.cdpi.dev/.well-known/did.json`
-2. Par de claves ECDSA P-256 para firmar el Trust Registry JWT (ES256), configurado en
-   `VERIFIABLY_TRUST_SIGNING_KEY` (PEM de clave privada)
-3. `GET /.well-known/jwks.json` — expone la clave pública; verifiers externos la usan para
-   validar el JWT sin secreto compartido
+1. `did:web:verify.cdpi.dev` resolvable at `https://verify.cdpi.dev/.well-known/did.json`
+2. An ECDSA P-256 key pair to sign the Trust Registry JWT (ES256), configured
+   in `VERIFIABLY_TRUST_SIGNING_KEY` (private key PEM)
+3. `GET /.well-known/jwks.json` — exposes the public key; external verifiers
+   use it to validate the JWT without a shared secret
 
-Sin estos tres requisitos los verifiers externos no pueden validar el Trust Registry JWT
-y el upgrade path a OpenID Federation 1.0 no es posible.
+Without these three requirements, external verifiers cannot validate the
+Trust Registry JWT and the upgrade path to OpenID Federation 1.0 is not
+possible.
 
 ---
 
-## Extensión al modelo TrustedIssuer
+## Extension to the TrustedIssuer model
 
 ```go
 // internal/trust/registry.go
@@ -137,8 +139,8 @@ type TrustedIssuer struct {
     DID                 string
     DisplayName         string
     Schemas             []string
-    ServiceEndpoint     string    // URL base: "https://issuer-a.gov"
-    StatusListEndpoints []string  // URLs públicos de sus status lists
+    ServiceEndpoint     string    // base URL: "https://issuer-a.gov"
+    StatusListEndpoints []string  // public URLs of its status lists
     StatusListPolicy    string    // "fail-open" | "fail-closed" (default: "fail-closed")
     AccreditedAt        time.Time
     ValidUntil          time.Time
@@ -147,7 +149,7 @@ type TrustedIssuer struct {
 
 ---
 
-## Diagrama de arquitectura
+## Architecture diagram
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -156,18 +158,18 @@ type TrustedIssuer struct {
 │                                                          │
 │  ┌─────────────────┐  ┌──────────────┐  ┌────────────┐  │
 │  │  Trust Registry │  │Schema Registry│  │  /verify   │  │
-│  │  /trust-registry│  │  /schemas    │  │  (público) │  │
-│  │  JWT ES256      │  │  (federado)  │  │  sin login │  │
+│  │  /trust-registry│  │  /schemas    │  │  (public)  │  │
+│  │  JWT ES256      │  │  (federated) │  │  no login  │  │
 │  └─────────────────┘  └──────────────┘  └────────────┘  │
 │                                                          │
-│  /.well-known/jwks.json → clave pública ES256            │
-│  Admin: /admin/federation/members (CRUD emisores)        │
-│  federation.json → seed inicial; DB es master            │
+│  /.well-known/jwks.json → ES256 public key                │
+│  Admin: /admin/federation/members (issuer CRUD)          │
+│  federation.json → initial seed; DB is master             │
 └──────────────────────────────────────────────────────────┘
         │                    │                    │
         ▼                    ▼                    ▼
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  Emisor A    │    │  Emisor B    │    │  Emisor C    │
+│  Issuer A    │    │  Issuer B    │    │  Issuer C    │
 │  ROLES=issuer│    │ ROLES=issuer │    │ ROLES=issuer │
 │  DPG: walt.id│    │ DPG: CREDEBL │    │  DPG: Inji   │
 │  did:web:a…  │    │ did:web:b…   │    │  did:web:c…  │
@@ -180,393 +182,701 @@ type TrustedIssuer struct {
 
 ---
 
-## Flujo de verificación en el Hub
+## Verification flow on the Hub
 
 ```
-Ciudadano visita /verify
+Citizen visits /verify
     │
-    ├── Selecciona schema (agregado cacheado de todos los emisores, TTL 5 min)
+    ├── Selects a schema (aggregated cache from all issuers, 5 min TTL)
     │
-    ├── Hub genera OID4VP request via adapter del emisor correspondiente
-    │        (verifier adapter configurado en federation.json / DB)
-    │        (state prefix identifica el adapter de vuelta en FetchPresentationResult)
+    ├── Hub generates an OID4VP request via the matching issuer's adapter
+    │        (verifier adapter configured in federation.json / DB)
+    │        (state prefix identifies the adapter back in FetchPresentationResult)
     │
-    ├── Ciudadano presenta con su wallet OID4VC
+    ├── Citizen presents with their OID4VC wallet
     │
-    ├── Hub recibe presentación → FetchPresentationResult() (routed by state prefix)
+    ├── Hub receives the presentation → FetchPresentationResult() (routed by state prefix)
     │
-    ├── Status list check (Fase 10 — requerido para que Fase 2 sea completa):
-    │     → fetch live desde issuer.gov/status-list/...  (timeout 3s)
-    │     → verificar firma JWT contra did:web del emisor (DID resolver genérico)
-    │     → fallback a cache (Redis/JSON)
-    │     → policy: fail-closed o fail-open si no hay cache
+    ├── Status list check (Phase 10 — required for Phase 2 to be complete):
+    │     → live fetch from issuer.gov/status-list/...  (3s timeout)
+    │     → verify JWT signature against the issuer's did:web (generic DID resolver)
+    │     → fallback to cache (Redis/JSON)
+    │     → policy: fail-closed or fail-open if no cache available
     │
     ├── Trust Registry check: IsTrusted(issuerDID, schemaID)
     │
-    └── Resultado: badge "Verificado por CDPI" si TrustStatus == "trusted"
+    └── Result: "Verified by CDPI" badge if TrustStatus == "trusted"
 ```
 
 ---
 
-## Flujo de status list en ecosistema federado
+## Status list flow in a federated ecosystem
 
 ```
-Credencial emitida por Emisor A contiene:
+Credential issued by Issuer A contains:
   "status": {
     "status_list": {
-      "uri": "https://issuer-a.gov/status-list/token/v1",  ← URL embebida
+      "uri": "https://issuer-a.gov/status-list/token/v1",  ← embedded URL
       "idx": 42
     }
   }
 
-Hub verifica:
-  1. DPG adapter fetcha el URL del status list (embebido en la credencial)
-  2. Verifica firma JWT del status list contra did:web:issuer-a.gov
+Hub verifies:
+  1. DPG adapter fetches the status list URL (embedded in the credential)
+  2. Verifies the status list's JWT signature against did:web:issuer-a.gov
      → internal/didresolver: GET https://issuer-a.gov/.well-known/did.json
-     → cache DIDDocument 10 min para evitar resolver en cada verificación
-  3. Lee bit en índice 42
-  4. Si falla → usa cache del Hub → si no hay cache → aplica policy
+     → caches the DIDDocument for 10 min to avoid resolving on every check
+  3. Reads the bit at index 42
+  4. On failure → uses the Hub's cache → if no cache → applies the policy
 
-Privacidad: W3C Bitstring / IETF Token Status List son listas de miles
-de posiciones → Emisor A solo sabe que alguien fetcha la lista,
-no qué credencial específica se verificó.
+Privacy: W3C Bitstring / IETF Token Status List are lists with thousands
+of positions → Issuer A only learns that someone fetched the list,
+not which specific credential was checked.
 ```
 
 ---
 
-## Métricas por actor
+## Metrics per actor
 
-### Emisor A — su `/admin/metrics`
-- Credenciales emitidas (por schema, por fecha) — ya existe en log
-- Credenciales activas / revocadas — ya existe en log
-- Verificaciones de sus credenciales (por schema) → datos del Hub vía
+### Issuer A — its own `/admin/metrics`
+- Credentials issued (by schema, by date) — already exists in the log
+- Active / revoked credentials — already exists in the log
+- Verifications of its credentials (by schema) → data from the Hub via
   `GET /api/ecosystem/issuers/{did}/stats`
 
 ### Hub / CDPI — `/admin/ecosystem`
-- Total ecosistema: emitidas, verificadas, emisores activos
-- Por emisor: emitidas, verificadas, error rate, estado de acreditación
-- Trust Registry health: semáforo por emisor (días hasta expiración)
-- Status list availability: uptime de status lists
+- Ecosystem totals: issued, verified, active issuers
+- Per issuer: issued, verified, error rate, accreditation status
+- Trust Registry health: per-issuer traffic light (days until expiry)
+- Status list availability: status list uptime
 
 ---
 
-## Requisitos de acreditación para emisores
+## Accreditation requirements for issuers
 
-Al registrarse en el Hub, cada emisor DEBE tener:
+To register with the Hub, each issuer MUST have:
 
-1. `did:web:{domain}` — resolvible en `https://{domain}/.well-known/did.json`
-   - **Para stacks Inji:** setear `ISSUER_DID_DOMAIN={domain}` en `.env` antes del
-     primer `docker compose up` (o borrar volúmenes y reiniciar si ya existe el stack)
-   - **Para CREDEBL:** requiere re-provisioning manual del agente (ver `credebl.env`)
-   - **Para Walt.id:** pendiente de automatización en compose
-2. Status lists públicas en `{serviceEndpoint}/status-list/{type}/v1`
-   - Sin auth requerida
-   - JWTs firmados con la clave del DID declarado
-3. `GET {serviceEndpoint}/api/schemas` — schemas sin auth, con CORS
-4. `GET {serviceEndpoint}/healthz` — retorna HTTP 200
-5. `VERIFIABLY_ROLES=issuer` (o roles que incluyan `issuer`)
-
----
-
-## Fases de implementación
-
-### ✅ Fase 0 — Baseline (existente desde `add-credebl`)
-
-CREDEBL adapter, Trust Registry (JWT + pg + mem), métricas Prometheus,
-admin_metrics UI, Grafana dashboard, PostgreSQL/Redis storage, API REST headless.
-Sin cambios requeridos — es la base de partida.
+1. `did:web:{domain}` — resolvable at `https://{domain}/.well-known/did.json`
+   - **For Inji stacks:** set `ISSUER_DID_DOMAIN={domain}` in `.env` before
+     the first `docker compose up` (or wipe volumes and restart if the stack
+     already exists)
+   - **For CREDEBL:** requires manual agent re-provisioning (see `credebl.env`)
+   - **For Walt.id:** pending compose automation
+2. Public status lists at `{serviceEndpoint}/status-list/{type}/v1`
+   - No auth required
+   - JWTs signed with the declared DID's key
+3. `GET {serviceEndpoint}/api/schemas` — schemas without auth, with CORS
+4. `GET {serviceEndpoint}/healthz` — returns HTTP 200
+5. `VERIFIABLY_ROLES=issuer` (or roles that include `issuer`)
 
 ---
 
-### ✅ Fase 0.5 — DID:web Deployment Automation (Inji Certify)
+## Runbook — Onboarding a New Issuer to the Hub
 
-**Objetivo:** Permitir que cualquier deployment de Inji Certify use `did:web` público
-para ser elegible al Hub's Trust Registry, con una sola variable de entorno.
+This section is the operational, step-by-step counterpart to the
+"Accreditation requirements" checklist above. Use it whenever a real DPG
+deployment (Inji, walt.id, or CREDEBL) needs to be accredited into a running
+Hub. Unlike the phase log below (implementation history), this runbook
+reflects the current, verified behavior of the code — update it if a phase
+changes any of the mechanics described here.
 
-**Decisiones de diseño tomadas:**
-- `did:web` es requisito de **acreditación** (Hub membership), no de runtime
-- Sin `ISSUER_DID_DOMAIN`: el stack sigue funcionando con `did:web:certify-nginx`
-  (Docker-interno, dev only) — zero regression
-- Con `ISSUER_DID_DOMAIN=issuer.gov`: ambas instancias Inji (primary + preauth) usan
-  `did:web:issuer.gov`; `inji_proxy` ya fusiona sus claves en el DID Document
-- Los init scripts solo corren en la primera inicialización del volumen — cambiar de
-  dominio requiere `docker volume rm certify-db certify-preauth-db`
+### Mental model
 
-**Archivos creados/modificados:**
-- [x] `deploy/compose/stack/inji/certify/init.sh` — inicializa certify-postgres con DID correcto
-- [x] `deploy/compose/stack/inji/certify/init-preauth.sh` — ídem para preauth; lógica bash para dominio compartido en prod vs. hostnames separados en dev
-- [x] `deploy/compose/stack/.env.example` — `ISSUER_DID_DOMAIN=` con documentación completa
-- [x] `deploy/compose/stack/inji/certify/certify-csvdp-farmer.properties` — `${CERTIFY_ISSUER_DID:did:web:certify-nginx}` (Spring Boot resolves from env)
-- [x] `deploy/compose/stack/inji/certify/certify-csvdp-farmer-preauth.properties` — ídem con fallback `did:web:certify-preauth-nginx`
-- [x] `deploy/compose/stack/docker-compose.yml` — 4 servicios actualizados: volumes + `CERTIFY_ISSUER_DID` env var en inji-certify y inji-certify-preauth-backend
-- [x] `deploy/compose/credebl/config/credebl.env` — pasos documentados para did:web manual (CREDEBL requiere re-provisioning de agente Aries)
+The Hub is **pull-based, not push-based**: the Hub calls the member (never
+the reverse) to request a presentation, and it polls the member's public
+endpoints to build the schema cache and Prometheus metrics. There is no
+`VERIFIABLY_HUB_URL` or auto-registration handshake — onboarding is an
+out-of-band exchange of URLs/keys followed by a manual `POST` (via the admin
+UI or API) on the Hub side.
 
-**Pendiente (no bloquea otras fases):**
-- Walt.id did:web en compose (soportado por el DPG, falta env var en compose)
-- CREDEBL did:web automation (requiere refactor del agent provisioning)
+The runtime source of truth is the `trusted_issuers` Postgres table on the
+Hub, not `config/federation.json` — that file only seeds the table on the
+very first boot when the table is empty (see Phase 4 below). Treat it as a
+backup/export format, not something the Hub re-reads on every restart.
+
+Two identifiers must not be confused:
+- **DID** (`did:web:...`) — identifies who signs the credentials. Must
+  resolve at `https://{domain}/.well-known/did.json`.
+- **`service_endpoint`** — the base URL of that member's own `verifiably-go`
+  instance (its API: `/healthz`, `/api/schemas`, `/status-list/...`,
+  `/api/v1/verify/*`). This is a completely separate field from the DID —
+  the `verifiably` adapter (`internal/adapters/verifiably/adapter.go`) never
+  derives a URL from the DID, so the DID's domain and the service endpoint's
+  domain do not need to match.
+
+### Step 1 — Prepare the member (issuer side)
+
+1. Confirm `VERIFIABLY_ROLES` includes both `issuer` and `schemas` (add
+   `verifier` too if the member also verifies locally):
+   ```bash
+   grep VERIFIABLY_ROLES .env
+   # VERIFIABLY_ROLES=issuer,verifier,schemas
+   ```
+   Without `schemas`, `GET /api/schemas` 404s (the route is only registered
+   under `activeRoles.Has(roles.Schemas)` — see Phase 3) even though the rest
+   of the member works fine. `hub` is not needed here — that role is for the
+   Hub instance itself, and implies `trust`+`schemas` only for that node.
+
+2. Set `VERIFIABLY_API_KEYS=hub:<random-hex>` in the member's `.env`. This
+   key is what the Hub will use as Bearer auth when it calls the member's
+   `/api/v1/verify/*` (adapter `verifiably`) and `/metrics` (Prometheus
+   federation scrape).
+
+3. Enable a public `did:web` for the member — **mechanics differ per DPG**,
+   see the per-DPG subsections below.
+
+4. Apply any `.env` change with a full rebuild+recreate, not a bare restart:
+   ```bash
+   ./deploy.sh run <inji|waltid|credebl>
+   ```
+   `docker restart` reuses the container's frozen environment from its
+   original `docker create` — it will NOT pick up new/changed variables in
+   `.env`. Only `deploy.sh run` (which rebuilds the image and recreates the
+   container) re-reads `.env`.
+
+5. Verify the four public endpoints the Hub will require at registration
+   time:
+   ```bash
+   curl -sk -o /dev/null -w "%{http_code}\n" https://<did-domain>/.well-known/did.json
+   curl -sk -o /dev/null -w "%{http_code}\n" https://<service-endpoint>/healthz
+   curl -sk -o /dev/null -w "%{http_code}\n" https://<service-endpoint>/api/schemas
+   curl -sk -o /dev/null -w "%{http_code}\n" https://<service-endpoint>/status-list/bitstring/<id>
+   ```
+   All four must return `200`. `/healthz` is a **hard** registration
+   requirement — `RegisterFederationMember` aborts with an error if it
+   doesn't respond (see Phase 5).
+
+6. Hand the Hub operator, out of band: the member's `did:web:...`, its
+   `service_endpoint` URL, and one `VERIFIABLY_API_KEYS` value (the key part,
+   not the name) to use as `verifier_api_key`.
+
+### Step 1a — Inji Certify specifics
+
+`ISSUER_DID_DOMAIN` is the single variable that enables `did:web` across the
+whole Inji stack — it does **not** generate new keys, it only changes the
+identifier Inji Certify uses to reference the Ed25519 keys it already
+manages.
+
+```bash
+# in the Inji stack's .env (e.g. deploy/compose/stack/.env)
+ISSUER_DID_DOMAIN=inji-certify-authcode.<public-domain>
+```
+
+- If the stack already ran once with this unset, the DID was already seeded
+  into Postgres by `init.sh`/`init-preauth.sh` (they only run on first volume
+  init). Changing the domain later requires:
+  ```bash
+  ./deploy.sh down inji
+  docker volume rm certify-db certify-preauth-db
+  ./deploy.sh up inji && ./deploy.sh run inji
+  ```
+- Primary (auth-code) and pre-auth typically use **different** subdomains
+  (e.g. `inji-certify-authcode.<domain>` vs `inji-certify-preauth.<domain>`)
+  — each is seeded independently by its own init script and each gets its
+  own `did:web`.
+- Prefer the domain where Caddy already terminates the auth-code/pre-auth
+  subdomain that the `verifiably-go` proxy patches (see next point) over the
+  root `service_endpoint` domain — they represent different things (signer
+  vs. API), and re-using the `verifiably.<domain>` root for the DID would
+  require adding a custom `/.well-known/did.json` handler there, which isn't
+  wired by default.
+- Critical: confirm nginx routes `did.json` through the Go proxy, which
+  patches a `kid` mismatch (Inji Certify v0.14.0 publishes one `kid` in its
+  DID document but signs credentials with a different one derived from the
+  same key — see `internal/handlers/inji_proxy.go`):
+  ```bash
+  docker exec certify-nginx cat /etc/nginx/conf.d/default.conf | grep -A6 "well-known/did.json"
+  ```
+  Expect `proxy_pass http://injiproxy/inji-proxy/.well-known/did.json;` (or
+  `.../inji-proxy-preauth/...` for the pre-auth flow). If instead you see a
+  direct `proxy_pass` to the Certify backend, the `kid` patch is missing and
+  verification may fail against strict verifiers.
+- Verify end to end:
+  ```bash
+  curl -fsSL https://inji-certify-authcode.<domain>/.well-known/did.json | python3 -m json.tool
+  ```
+
+### Step 1b — walt.id specifics
+
+walt.id's issuer-api supports `did:web` natively, but there is currently no
+wired `.env` variable for it in this repo's compose (unlike Inji's
+`ISSUER_DID_DOMAIN`). Treat this as manual/pending automation:
+- Confirm the walt.id issuer image's own `did:web` configuration (its own
+  key management, outside this repo's compose wiring).
+- The Caddy public config (`scripts/gen-caddy.sh`) already knows how to
+  serve a static DID document inline for the `walt-issuer` slug (see the
+  `walt-issuer.<domain>` block in a generated `Caddyfile.public` — it
+  responds to `/.well-known/did.json` with a hand-built DID document using
+  `scripts/bootstrap-waltid-did.sh`-generated keys). If walt.id is the DPG
+  in play, use that script to generate the key pair and let Caddy serve the
+  resulting document, rather than trying to get walt.id itself to serve it.
+
+### Step 1c — CREDEBL specifics
+
+CREDEBL runs on an Aries agent backed by an Indy/Sovrin ledger, and does
+**not** automate `did:web` today. Enabling it requires manually
+re-provisioning the Aries agent to use `did:web` instead of `did:indy`/
+`did:sov` — steps are documented inline in
+`deploy/compose/credebl/config/credebl.env`. This is a manual, one-time
+operation per CREDEBL deployment; it isn't triggered by any single env var
+the way Inji's is.
+
+### Step 2 — Register the member on the Hub
+
+7. Log into `https://<hub-domain>/admin/login`.
+
+8. Go to `/admin/federation/members` and submit the form (or `POST` the
+   same fields as JSON) with:
+   - `did` — must start with `did:web:` (hard requirement, enforced in
+     `RegisterFederationMember`; anything else, including `did:key`, is
+     rejected before it ever reaches the DID resolver)
+   - `display_name`
+   - `service_endpoint` — the member's own `verifiably-go` root URL
+   - `verifier_api_key` — the key handed over in step 6
+   - `schemas` (optional, CSV) — empty means wildcard (accept all)
+   - `status_list_endpoints` (optional, CSV)
+   - `status_list_policy` — `fail-closed` (default, recommended) or
+     `fail-open`
+   - `valid_until` (optional, `YYYY-MM-DD`)
+
+9. On save, the Hub validates the `did:web:` prefix, performs a blocking
+   `GET {service_endpoint}/healthz` (hard fail if it doesn't return 200),
+   and best-effort resolves the DID document (failure here is a
+   warning only, so dev/staging members without a fully public DID doc can
+   still be registered). If everything passes, the `verifiably` adapter for
+   this member is wired **live** — no Hub restart needed.
+
+10. Optionally issue an analytics API key for the member:
+    `POST /admin/federation/members/{did}/api-key`. The plaintext is shown
+    once — hand it back to the member so they can query their own stats at
+    `GET /api/ecosystem/issuers/{did}/stats`.
+
+11. Regenerate the Prometheus federation scrape config so Grafana picks up
+    the new member:
+    ```bash
+    ./deploy/compose/monitoring/generate-federation-prometheus.sh
+    ```
+    This reads directly from `trusted_issuers`, rewrites
+    `prometheus-hub.yml` with one `job_name` per member (each with its own
+    Bearer token), and reloads Prometheus via `--web.enable-lifecycle`
+    without a restart. Re-run it any time a member is added, edited, or
+    removed via the admin UI — it is not automatic on its own.
+
+12. (Backup) If you want this registration to survive a from-scratch DB
+    rebuild, mirror the same entry into `config/federation.json` manually —
+    the Hub does not re-read that file once `trusted_issuers` has rows.
+
+### Verification checklist
+
+```bash
+# DID resolves publicly
+curl -fsSL https://<did-domain>/.well-known/did.json
+
+# Member appears healthy from the Hub's perspective
+curl -fsSL https://<hub-domain>/admin/federation/members   # (requires admin session)
+
+# Prometheus picked up the new scrape target
+curl -s https://<hub-domain-internal>:9090/api/v1/targets | grep <member-did>
+```
 
 ---
 
-### ✅ Fase 1 — Deployment Roles
+## Implementation phases
 
-**Objetivo:** Activar/desactivar módulos por instancia con `VERIFIABLY_ROLES`.
+### ✅ Phase 0 — Baseline (existing since `add-credebl`)
 
-**Archivos creados/modificados:**
-- [x] `internal/roles/roles.go` — nuevo package: `Set` type, `Parse()`, `FromEnv()`, `Has()`, `Log()`
-- [x] `cmd/server/main.go` — importa `roles`, llama `roles.FromEnv()` + `activeRoles.Log()` al inicio; rutas reorganizadas en bloques etiquetados con guards `activeRoles.Has(...)`
-- [x] Lógica de routing condicional implementada:
+CREDEBL adapter, Trust Registry (JWT + pg + mem), Prometheus metrics,
+admin_metrics UI, Grafana dashboard, PostgreSQL/Redis storage, headless
+REST API. No changes required — this is the starting point.
+
+---
+
+### ✅ Phase 0.5 — DID:web Deployment Automation (Inji Certify)
+
+**Goal:** Let any Inji Certify deployment use a public `did:web` to be
+eligible for the Hub's Trust Registry, with a single environment variable.
+
+**Design decisions made:**
+- `did:web` is an **accreditation** requirement (Hub membership), not a
+  runtime one
+- Without `ISSUER_DID_DOMAIN`: the stack keeps working with
+  `did:web:certify-nginx` (Docker-internal, dev only) — zero regression
+- With `ISSUER_DID_DOMAIN=issuer.gov`: both Inji instances (primary +
+  preauth) use `did:web:issuer.gov`; `inji_proxy` already merges their keys
+  into the DID Document
+- The init scripts only run on the very first volume initialization —
+  changing domains requires `docker volume rm certify-db certify-preauth-db`
+
+**Files created/modified:**
+- [x] `deploy/compose/stack/inji/certify/init.sh` — initializes
+  certify-postgres with the correct DID
+- [x] `deploy/compose/stack/inji/certify/init-preauth.sh` — same for
+  preauth; bash logic for shared domain in prod vs. separate hostnames in dev
+- [x] `deploy/compose/stack/.env.example` — `ISSUER_DID_DOMAIN=` with full
+  documentation
+- [x] `deploy/compose/stack/inji/certify/certify-csvdp-farmer.properties` —
+  `${CERTIFY_ISSUER_DID:did:web:certify-nginx}` (Spring Boot resolves from env)
+- [x] `deploy/compose/stack/inji/certify/certify-csvdp-farmer-preauth.properties`
+  — same, with `did:web:certify-preauth-nginx` fallback
+- [x] `deploy/compose/stack/docker-compose.yml` — 4 services updated:
+  volumes + `CERTIFY_ISSUER_DID` env var on inji-certify and
+  inji-certify-preauth-backend
+- [x] `deploy/compose/credebl/config/credebl.env` — documented steps for
+  manual did:web (CREDEBL requires Aries agent re-provisioning)
+
+**Pending (doesn't block other phases):**
+- Walt.id did:web in compose (supported by the DPG, missing env var in compose)
+- CREDEBL did:web automation (requires agent provisioning refactor)
+
+---
+
+### ✅ Phase 1 — Deployment Roles
+
+**Goal:** Enable/disable modules per instance with `VERIFIABLY_ROLES`.
+
+**Files created/modified:**
+- [x] `internal/roles/roles.go` — new package: `Set` type, `Parse()`,
+  `FromEnv()`, `Has()`, `Log()`
+- [x] `cmd/server/main.go` — imports `roles`, calls `roles.FromEnv()` +
+  `activeRoles.Log()` at startup; routes reorganized into labeled blocks
+  guarded by `activeRoles.Has(...)`
+- [x] Conditional routing logic implemented:
   - `issuer`: `/issuer/*`, `/status-list/*`, `/api/v1/credentials/*`, `/api/v1/bulk/*`
   - `holder`: `/holder/*`
   - `verifier`: `/verifier/*`, `/api/v1/verify/*`
-  - `trust`: `GET /trust-registry`, `/admin/trust/*` (hub implica trust automáticamente)
-  - `schemas`: placeholder — rutas se añaden en Fase 3
-  - `hub`: `/verify/*` placeholder — rutas se añaden en Fase 2; `hub` implica `trust` + `schemas` en `Parse()`
-- [x] Log en startup: `slog.Info("roles activos", "roles", activeRoles.names())`
-- [x] Rutas core (healthz, auth, static, lang, docs) siempre activas — zero regression
+  - `trust`: `GET /trust-registry`, `/admin/trust/*` (hub implies trust automatically)
+  - `schemas`: placeholder — routes added in Phase 3
+  - `hub`: `/verify/*` placeholder — routes added in Phase 2; `hub` implies
+    `trust` + `schemas` in `Parse()`
+- [x] Startup log: `slog.Info("roles activos", "roles", activeRoles.names())`
+- [x] Core routes (healthz, auth, static, lang, docs) always active — zero regression
 
-**Decisiones de diseño:**
-- `nil` Set = todos los roles activos (env var ausente → comportamiento idéntico al actual)
-- `hub` implica `trust` y `schemas` en `Parse()` — no hay que setearlos por separado
-- Admin shared (`/admin/auth-providers`, `/admin/metrics`) gateado por `issuer || verifier`
-- Inji proxy routes siempre registradas (backward compat — no hay adapter check)
+**Design decisions:**
+- `nil` Set = all roles active (env var absent → identical to current behavior)
+- `hub` implies `trust` and `schemas` in `Parse()` — no need to set them separately
+- Shared admin (`/admin/auth-providers`, `/admin/metrics`) gated by `issuer || verifier`
+- Inji proxy routes always registered (backward compat — no adapter check)
 
-**Criterio de éxito verificado:**
-- `VERIFIABLY_ROLES=issuer` → solo rutas de issuance activas
-- `VERIFIABLY_ROLES=hub` → solo `/trust-registry` (+ `/verify/*` en Fase 2)
-- Sin variable → todo activo (regression-free)
-
----
-
-### ✅ Fase 1.5 — DID Resolver + Trust Registry Key Upgrade
-
-**Objetivo:** Habilitar verificación de firmas de `did:web` arbitrarios y migrar
-el Trust Registry JWT a ES256 con JWKS endpoint público.
-
-**Archivos creados/modificados:**
-- [x] `internal/didresolver/resolver.go` — interfaz `Resolver`, tipos `DIDDocument`, `VerificationMethod`
-- [x] `internal/didresolver/web.go` — `WebResolver`: parsea `did:web:{domain}[:{path}]`, GET HTTPS, cache in-memory TTL 10 min, thread-safe con sync.Mutex
-- [x] `internal/trust/jwt.go` — añadidos `BuildJWTES256` (ECDSA P-256, R||S padding 32 bytes), `PublicKeyToJWK`; `BuildJWT` (HS256) se mantiene para dev/fallback
-- [x] `internal/handlers/trust.go` — `ServeTrustRegistry` usa ES256 cuando `TrustSigningKey != nil`, HS256 en fallback; añadido `ServeJWKS` → `GET /.well-known/jwks.json`
-- [x] `internal/handlers/handlers.go` — H struct: `TrustSigningKey *ecdsa.PrivateKey`, `DIDResolver didresolver.Resolver`
-- [x] `cmd/server/main.go` — `loadTrustSigningKey()`: carga PEM (SEC1 o PKCS8), genera efímera si ausente con warning; `trustAlg()` para logging; `h.DIDResolver = didresolver.NewWebResolver()`; registro de `GET /.well-known/jwks.json` en bloque trust
-
-**Decisiones de diseño:**
-- Sin `VERIFIABLY_TRUST_SIGNING_KEY` → clave efímera ES256 generada al inicio (dev safe, public key cambia en restart)
-- `did:web:example.com` → `https://example.com/.well-known/did.json`; `did:web:example.com:path:to` → `https://example.com/path/to/did.json`
-- `FillBytes` para el padding R||S del JWT ES256 (P-256 = 32 bytes por componente)
-- PKCS8 fallback en `loadTrustSigningKey` para claves generadas con `openssl genpkey`
-
-**Criterio de éxito:**
-- `GET /.well-known/jwks.json` retorna JWK set `{kty:EC, crv:P-256, alg:ES256}`
-- Trust Registry JWT usa ES256 verificable sin secreto compartido
-- `Resolve("did:web:issuer-a.gov")` retorna DIDDocument con `VerificationMethods`
-- Segunda llamada al mismo DID no hace HTTP (cache hit)
+**Verified success criteria:**
+- `VERIFIABLY_ROLES=issuer` → only issuance routes active
+- `VERIFIABLY_ROLES=hub` → only `/trust-registry` (+ `/verify/*` in Phase 2)
+- No variable → everything active (regression-free)
 
 ---
 
-### ✅ Fase 2 — Hub: Portal de Verificación Público
+### ✅ Phase 1.5 — DID Resolver + Trust Registry Key Upgrade
 
-**Objetivo:** Portal `/verify` sin login para ciudadanos.
+**Goal:** Enable signature verification for arbitrary `did:web` identifiers
+and migrate the Trust Registry JWT to ES256 with a public JWKS endpoint.
 
-**Archivos creados/modificados:**
-- [x] `internal/handlers/public_verify.go` — handlers sin auth:
-  - `GET /verify` → `ShowPublicVerify` — lista schemas custom del adapter
-  - `POST /verify/request` → `PublicVerifyRequest` — genera OID4VP; rate-limit IP via `"public-verify"` key; retorna `fragment_public_qr` con QR + polling setup
-  - `GET /verify/result/{state}` → `PublicVerifyResult` — poll HTMX every 3s; adjunta `TrustStatus` + `StatusListSource`; retorna `fragment_public_result`
-  - `checkStatusListAvailability()` helper: consulta TrustRegistry + StatusListCache para determinar Source
-  - `renderPublicPage()` helper: usa `layout_public` sin nav de auth
-- [x] `templates/public/layout_public.html` — layout mínimo: header CDPI + main + footer sin nav de roles
-- [x] `templates/public/verify.html` — `content_public_verify` (schema picker grid) + `fragment_public_qr` (QR + polling bootstrap) + `fragment_public_result` (badge ✅/❌ con TrustStatus, StatusListSource, DisclosedFields)
-- [x] `internal/handlers/handlers.go` — H struct: añadido `StatusListCache statuslistcache.Cache`
-- [x] `backend/adapter.go` — `VerificationResult` extendido con `StatusListSource string` y `StatusListCachedAt *time.Time`
-- [x] `cmd/server/main.go` — rutas `/verify`, `/verify/request`, `/verify/result/{state}` bajo `activeRoles.Has(roles.Hub)`
+**Files created/modified:**
+- [x] `internal/didresolver/resolver.go` — `Resolver` interface,
+  `DIDDocument`, `VerificationMethod` types
+- [x] `internal/didresolver/web.go` — `WebResolver`: parses
+  `did:web:{domain}[:{path}]`, HTTPS GET, in-memory cache with 10 min TTL,
+  thread-safe with sync.Mutex
+- [x] `internal/trust/jwt.go` — added `BuildJWTES256` (ECDSA P-256, R||S
+  32-byte padding), `PublicKeyToJWK`; `BuildJWT` (HS256) kept for dev/fallback
+- [x] `internal/handlers/trust.go` — `ServeTrustRegistry` uses ES256 when
+  `TrustSigningKey != nil`, HS256 as fallback; added `ServeJWKS` →
+  `GET /.well-known/jwks.json`
+- [x] `internal/handlers/handlers.go` — H struct:
+  `TrustSigningKey *ecdsa.PrivateKey`, `DIDResolver didresolver.Resolver`
+- [x] `cmd/server/main.go` — `loadTrustSigningKey()`: loads PEM (SEC1 or
+  PKCS8), generates an ephemeral key with a warning if absent; `trustAlg()`
+  for logging; `h.DIDResolver = didresolver.NewWebResolver()`; registers
+  `GET /.well-known/jwks.json` in the trust block
 
-**Decisiones de diseño:**
-- Polling HTMX every 3s (mismo patrón que el verifier de operador) — SSE es mejora futura
-- `resolveFields()` no invocada en portal público (pre-filling de defaults no necesario para VP request)
-- DPG selector: primer verifier DPG disponible (Fase 3 añade `SourceIssuerDID` para routing por schema→emisor)
-- IP rate limit usa `"public-verify"` como key bucket (60 req/min global + 20/min por IP)
-- `StatusListSource` fallback: si el cache no tiene datos pero `res.CheckedRevocation=true`, se reporta "live" (el adapter lo chequeó)
+**Design decisions:**
+- Without `VERIFIABLY_TRUST_SIGNING_KEY` → an ephemeral ES256 key is
+  generated at startup (dev safe, public key changes on restart)
+- `did:web:example.com` → `https://example.com/.well-known/did.json`;
+  `did:web:example.com:path:to` → `https://example.com/path/to/did.json`
+- `FillBytes` for R||S padding in the ES256 JWT (P-256 = 32 bytes per component)
+- PKCS8 fallback in `loadTrustSigningKey` for keys generated with
+  `openssl genpkey`
 
-**Criterio de éxito:**
-- Ciudadano visita `/verify`, selecciona schema, escanea QR, ve badge CDPI
-- Badge muestra TrustStatus, emisor, StatusListSource
-- Resultado muestra `StatusListSource: "live" | "cached" | "unknown"` al ciudadano
+**Success criteria:**
+- `GET /.well-known/jwks.json` returns a JWK set `{kty:EC, crv:P-256, alg:ES256}`
+- Trust Registry JWT uses ES256, verifiable without a shared secret
+- `Resolve("did:web:issuer-a.gov")` returns a DIDDocument with `VerificationMethods`
+- A second call to the same DID doesn't make an HTTP request (cache hit)
 
 ---
 
-### ✅ Fase 3 — Schema Federation
+### ✅ Phase 2 — Hub: Public Verification Portal
 
-**Objetivo:** Cada emisor expone schemas públicamente; Hub los agrega con caché.
+**Goal:** No-login `/verify` portal for citizens.
 
-> **Nota:** Sin caché, cada load de `/verify` en el Hub hace N HTTP requests
-> a los issuers (uno por miembro del ecosistema). Caída de un issuer bloquea
-> la carga. El caché es parte integrante de esta fase, no un opcional.
+**Files created/modified:**
+- [x] `internal/handlers/public_verify.go` — auth-free handlers:
+  - `GET /verify` → `ShowPublicVerify` — lists the adapter's custom schemas
+  - `POST /verify/request` → `PublicVerifyRequest` — generates an OID4VP
+    request; IP rate-limited via the `"public-verify"` key; returns
+    `fragment_public_qr` with the QR + polling setup
+  - `GET /verify/result/{state}` → `PublicVerifyResult` — HTMX polling every
+    3s; attaches `TrustStatus` + `StatusListSource`; returns
+    `fragment_public_result`
+  - `checkStatusListAvailability()` helper: queries TrustRegistry +
+    StatusListCache to determine the Source
+  - `renderPublicPage()` helper: uses `layout_public` without the auth nav
+- [x] `templates/public/layout_public.html` — minimal layout: CDPI header +
+  main + footer, no role-based nav
+- [x] `templates/public/verify.html` — `content_public_verify` (schema
+  picker grid) + `fragment_public_qr` (QR + polling bootstrap) +
+  `fragment_public_result` (✅/❌ badge with TrustStatus, StatusListSource,
+  DisclosedFields)
+- [x] `internal/handlers/handlers.go` — H struct: added
+  `StatusListCache statuslistcache.Cache`
+- [x] `backend/adapter.go` — `VerificationResult` extended with
+  `StatusListSource string` and `StatusListCachedAt *time.Time`
+- [x] `cmd/server/main.go` — routes `/verify`, `/verify/request`,
+  `/verify/result/{state}` under `activeRoles.Has(roles.Hub)`
 
-**Archivos creados/modificados:**
-- [x] `vctypes/vctypes.go` — añadido a `Schema`:
+**Design decisions:**
+- HTMX polling every 3s (same pattern as the operator verifier) — SSE is a
+  future improvement
+- `resolveFields()` not invoked in the public portal (default pre-filling is
+  not needed for a VP request)
+- DPG selector: first available verifier DPG (Phase 3 adds
+  `SourceIssuerDID` for schema→issuer routing)
+- IP rate limit uses `"public-verify"` as the bucket key (60 req/min global
+  + 20/min per IP)
+- `StatusListSource` fallback: if the cache has no data but
+  `res.CheckedRevocation=true`, it's reported as "live" (the adapter checked it)
+
+**Success criteria:**
+- A citizen visits `/verify`, picks a schema, scans the QR, sees the CDPI
+  badge
+- The badge shows TrustStatus, issuer, StatusListSource
+- The result shows `StatusListSource: "live" | "cached" | "unknown"` to the citizen
+
+---
+
+### ✅ Phase 3 — Schema Federation
+
+**Goal:** Each issuer publicly exposes its schemas; the Hub aggregates them
+with caching.
+
+> **Note:** Without caching, every `/verify` page load on the Hub makes N
+> HTTP requests to the issuers (one per ecosystem member). A single issuer
+> going down blocks the load. The cache is an integral part of this phase,
+> not optional.
+
+**Files created/modified:**
+- [x] `vctypes/vctypes.go` — added to `Schema`:
   ```go
   SourceIssuerDID  string `json:"sourceIssuerDid,omitempty"`
   SourceDeployment string `json:"sourceDeployment,omitempty"`
   ```
-- [x] `internal/schemacache/aggregator.go` — nuevo package:
-  - `Aggregator` struct: in-memory `map[string]issuerEntry` por DID + `memberIDs` (DID→adapterKey)
+- [x] `internal/schemacache/aggregator.go` — new package:
+  - `Aggregator` struct: in-memory `map[string]issuerEntry` keyed by DID +
+    `memberIDs` (DID→adapterKey)
   - `NewAggregator(ttl time.Duration, memberIDs map[string]string) *Aggregator`
-  - `Start(ctx, trust.Registry)`: goroutine — poll inmediato al inicio + ticker cada TTL
-  - `Schemas() []vctypes.Schema`: retorna merge de todas las entradas cacheadas (lectura rápida)
-  - `refresh()`: itera `TrustedIssuers()`, llama `fetchIssuer()` por cada issuer con `ServiceEndpoint`
-  - `fetchIssuer()`: GET `{ServiceEndpoint}/api/schemas` (timeout 5s, cap 1 MiB); en fallo preserva cache; override `SourceIssuerDID` + `SourceDeployment` con valores conocidos por el Hub
-- [x] `internal/handlers/public_schemas.go` — nuevo:
-  - `ServePublicSchemas`: `GET /api/schemas` — CORS, retorna schemas custom con `SourceIssuerDID` desde `VERIFIABLY_ISSUER_DID` y `SourceDeployment` desde `VERIFIABLY_PUBLIC_URL`
-  - `ServeHubSchemas`: `GET /schemas` — CORS, retorna `h.SchemaCache.Schemas()` (Hub mode)
-  - `setCORSHeaders()`: helper para `Access-Control-Allow-Origin: *`
-- [x] `internal/handlers/handlers.go` — H struct: añadido `SchemaCache *schemacache.Aggregator`
+  - `Start(ctx, trust.Registry)`: goroutine — immediate poll at startup +
+    ticker every TTL
+  - `Schemas() []vctypes.Schema`: returns a merge of all cached entries
+    (fast read)
+  - `refresh()`: iterates `TrustedIssuers()`, calls `fetchIssuer()` for each
+    issuer with a `ServiceEndpoint`
+  - `fetchIssuer()`: GET `{ServiceEndpoint}/api/schemas` (5s timeout, 1 MiB
+    cap); preserves cache on failure; overrides `SourceIssuerDID` +
+    `SourceDeployment` with values known to the Hub
+- [x] `internal/handlers/public_schemas.go` — new:
+  - `ServePublicSchemas`: `GET /api/schemas` — CORS, returns custom schemas
+    with `SourceIssuerDID` from `VERIFIABLY_ISSUER_DID` and
+    `SourceDeployment` from `VERIFIABLY_PUBLIC_URL`
+  - `ServeHubSchemas`: `GET /schemas` — CORS, returns
+    `h.SchemaCache.Schemas()` (Hub mode)
+  - `setCORSHeaders()`: helper for `Access-Control-Allow-Origin: *`
+- [x] `internal/handlers/handlers.go` — H struct: added
+  `SchemaCache *schemacache.Aggregator`
 - [x] `internal/handlers/public_verify.go`:
-  - `ShowPublicVerify`: usa `h.SchemaCache.Schemas()` cuando disponible; fallback a adapter local
-  - `PublicVerifyRequest`: usa `picked.SourceDeployment` como `dpgKey` para routing correcto; fallback a primer verifier si no matchea
+  - `ShowPublicVerify`: uses `h.SchemaCache.Schemas()` when available;
+    falls back to the local adapter
+  - `PublicVerifyRequest`: uses `picked.SourceDeployment` as `dpgKey` for
+    correct routing; falls back to the first verifier if there's no match
 - [x] `cmd/server/main.go`:
-  - Importa `schemacache`
-  - Bajo `activeRoles.Has(roles.Schemas)`: `GET /api/schemas` + `OPTIONS /api/schemas`
-  - Bajo `activeRoles.Has(roles.Hub)`: wiring del aggregator (lee `federation.json` para DID→memberID map), `agg.Start(shutCtx, h.TrustRegistry)`, `GET /schemas` + `OPTIONS /schemas`
+  - Imports `schemacache`
+  - Under `activeRoles.Has(roles.Schemas)`: `GET /api/schemas` +
+    `OPTIONS /api/schemas`
+  - Under `activeRoles.Has(roles.Hub)`: wires up the aggregator (reads
+    `federation.json` for the DID→memberID map), `agg.Start(shutCtx,
+    h.TrustRegistry)`, `GET /schemas` + `OPTIONS /schemas`
 
-**Decisiones de diseño:**
-- TTL 5 min: balanceo entre frescura y carga en issuers; refresh en background para zero-latency en reads
-- Hub overrides `SourceIssuerDID` + `SourceDeployment` desde su propio trust registry — no confía en los valores que el issuer auto-reporta
-- `SourceDeployment` = `member.ID` de `federation.json` = clave del adapter en el Registry → routing directo sin joins extra
-- `OPTIONS` registrado explícitamente (Go 1.22 mux matchea por método)
-- `nil` schemas → `[]vctypes.Schema{}` (JSON array vacío, nunca `null`)
+**Design decisions:**
+- 5 min TTL: balances freshness against load on issuers; background refresh
+  for zero-latency reads
+- The Hub overrides `SourceIssuerDID` + `SourceDeployment` from its own
+  trust registry — it doesn't trust the values the issuer self-reports
+- `SourceDeployment` = `member.ID` from `federation.json` = the adapter's
+  key in the Registry → direct routing without extra joins
+- `OPTIONS` registered explicitly (Go 1.22 mux matches by method)
+- `nil` schemas → `[]vctypes.Schema{}` (empty JSON array, never `null`)
 
-**Criterio de éxito:**
-- Emisor A en `https://issuer-a.gov/api/schemas` retorna sus schemas
-- Hub en `/schemas` retorna schemas de todos los emisores registrados
-- Segunda carga de `/verify` (dentro de TTL) no hace HTTP a issuers
-- Si Emisor B cae, Hub sigue mostrando sus schemas desde caché
-
----
-
-### ✅ Fase 4 — Federation Config
-
-**Objetivo:** Hub mantiene `config/federation.json` como seed inicial y construye
-el Registry dinámicamente desde DB al startup.
-
-**Nota:** El state prefix routing de `FetchPresentationResult` ya estaba
-implementado en `registry.go` (formato `"dpg:<vendor>:<inner-state>"`). No requirió
-cambios — la fase confirmó que el bloqueante estaba resuelto.
-
-**Archivos creados/modificados:**
-- [x] `internal/federation/config.go` — nuevo package: `Config`, `EcosystemInfo`, `Member`
-- [x] `config/federation.json` — archivo de ejemplo con un miembro (`issuer-a` → `did:web:issuer-a.gov`)
-- [x] `internal/federation/loader.go` — `LoadConfig(path string)` + `(*Config).ToBackendEntries()`
-  que convierte miembros en `registry.BackendEntry` (verifier-only, vendor=member.ID)
-- [x] `cmd/server/main.go` — `bootstrapHub()` function + llamada en `main()` bajo
-  `activeRoles.Has(roles.Hub)`:
-  1. Carga `config/federation.json` (o `VERIFIABLY_FEDERATION_CONFIG`)
-  2. Registra adaptador verifier por cada miembro con `VerifierBackendType`
-  3. Siembra trust registry desde `federation.json` solo si DB está vacía
-
-**Decisiones de diseño:**
-- `federation.json` seed es idempotente: si DB ya tiene entradas, no re-siembra
-- Miembros sin `verifierBackendType` son skipped en `ToBackendEntries()` — solo participan como issuers
-- `VERIFIABLY_FEDERATION_CONFIG` env var permite override del path
-- `bootstrapHub` no-op silencioso si `federation.json` no existe — zero regression en deployments sin hub
-
-**Criterio de éxito:**
-- Hub con members en federation.json → Registry tiene verifier adapters por member
-- `FetchPresentationResult` enruta correctamente por state prefix (ya funcionaba)
-- Trust registry se siembra automáticamente en primera boot con hub vacío
+**Success criteria:**
+- Issuer A at `https://issuer-a.gov/api/schemas` returns its schemas
+- The Hub's `/schemas` returns schemas from all registered issuers
+- A second `/verify` load (within the TTL) makes no HTTP calls to issuers
+- If Issuer B goes down, the Hub keeps showing its schemas from cache
 
 ---
 
-### ✅ Fase 5 — Extensión del Trust Registry + Issuer Registration CRUD
+### ✅ Phase 4 — Federation Config
 
-**Objetivo:** Extender el Trust Registry existente con `ServiceEndpoint` y
-construir el CRUD admin de emisores en Hub.
+**Goal:** The Hub keeps `config/federation.json` as an initial seed and
+builds the Registry dynamically from the DB at startup.
 
-> Trust Registry ya existe en `internal/trust/` con interfaz completa
-> (`IsTrusted`, `TrustedIssuers`, `Add`, `Remove`), store PostgreSQL + memStore,
-> y endpoint `GET /trust-registry` JWT. Solo necesita ser extendido.
+**Note:** State prefix routing for `FetchPresentationResult` was already
+implemented in `registry.go` (format `"dpg:<vendor>:<inner-state>"`). No
+changes were required — the phase confirmed the blocker was already resolved.
 
-**Archivos creados/modificados:**
-- [x] `internal/trust/registry.go` — `TrustedIssuer` extendido con `ServiceEndpoint`, `StatusListEndpoints`, `StatusListPolicy`
-- [x] `internal/trust/store.go` — `pgStore.Add()` y `pgStore.refresh()` actualizados para los 3 nuevos campos
-- [x] `internal/storage/pg/db.go` — `runMigrations()` añade:
+**Files created/modified:**
+- [x] `internal/federation/config.go` — new package: `Config`,
+  `EcosystemInfo`, `Member`
+- [x] `config/federation.json` — example file with one member (`issuer-a` →
+  `did:web:issuer-a.gov`)
+- [x] `internal/federation/loader.go` — `LoadConfig(path string)` +
+  `(*Config).ToBackendEntries()`, which converts members into
+  `registry.BackendEntry` (verifier-only, vendor=member.ID)
+- [x] `cmd/server/main.go` — `bootstrapHub()` function + call in `main()`
+  under `activeRoles.Has(roles.Hub)`:
+  1. Loads `config/federation.json` (or `VERIFIABLY_FEDERATION_CONFIG`)
+  2. Registers a verifier adapter for each member with `VerifierBackendType`
+  3. Seeds the trust registry from `federation.json` only if the DB is empty
+
+**Design decisions:**
+- The `federation.json` seed is idempotent: if the DB already has entries,
+  it doesn't re-seed
+- Members without `verifierBackendType` are skipped in
+  `ToBackendEntries()` — they only participate as issuers
+- The `VERIFIABLY_FEDERATION_CONFIG` env var allows overriding the path
+- `bootstrapHub` is a silent no-op if `federation.json` doesn't exist —
+  zero regression on deployments without a hub
+
+**Success criteria:**
+- A Hub with members in federation.json → the Registry has a verifier
+  adapter per member
+- `FetchPresentationResult` correctly routes by state prefix (already worked)
+- The trust registry auto-seeds on the first boot of an empty hub
+
+---
+
+### ✅ Phase 5 — Trust Registry Extension + Issuer Registration CRUD
+
+**Goal:** Extend the existing Trust Registry with `ServiceEndpoint` and
+build the Hub's issuer admin CRUD.
+
+> The Trust Registry already exists in `internal/trust/` with a complete
+> interface (`IsTrusted`, `TrustedIssuers`, `Add`, `Remove`), PostgreSQL +
+> memStore backends, and the `GET /trust-registry` JWT endpoint. It only
+> needs to be extended.
+
+**Files created/modified:**
+- [x] `internal/trust/registry.go` — `TrustedIssuer` extended with
+  `ServiceEndpoint`, `StatusListEndpoints`, `StatusListPolicy`
+- [x] `internal/trust/store.go` — `pgStore.Add()` and `pgStore.refresh()`
+  updated for the 3 new fields
+- [x] `internal/storage/pg/db.go` — `runMigrations()` adds:
   ```sql
   ALTER TABLE trusted_issuers
     ADD COLUMN IF NOT EXISTS service_endpoint      TEXT   NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS status_list_endpoints TEXT[] NOT NULL DEFAULT '{}',
     ADD COLUMN IF NOT EXISTS status_list_policy    TEXT   NOT NULL DEFAULT 'fail-closed';
   ```
-- [x] `internal/trust/jwt.go` — no requirió cambios: `BuildJWTES256` marshala el slice `[]TrustedIssuer` completo vía JSON; los nuevos campos aparecen automáticamente en el payload
-- [x] `internal/handlers/admin_federation.go` — nuevo:
+- [x] `internal/trust/jwt.go` — no changes needed: `BuildJWTES256`
+  marshals the full `[]TrustedIssuer` slice via JSON; the new fields appear
+  automatically in the payload
+- [x] `internal/handlers/admin_federation.go` — new:
   - `GET /admin/federation/members` → `ShowFederationMembers`
-  - `POST /admin/federation/members` → `RegisterFederationMember` (JSON o form)
+  - `POST /admin/federation/members` → `RegisterFederationMember` (JSON or form)
   - `POST /admin/federation/members/{did}/delete` → `DeleteFederationMember`
-  - Validaciones: DID debe ser `did:web:*`; healthz check si `service_endpoint` presente; DID resolution con warn-only (no bloquea)
-  - HTMX: re-renderiza `fragment_federation_list` en lugar de redirigir
-- [x] `templates/pages/admin_federation.html` — tabla con form inline + `fragment_federation_list`
-- [x] `cmd/server/main.go` — rutas bajo `activeRoles.Has(roles.Hub)`
+  - Validations: DID must be `did:web:*`; healthz check if
+    `service_endpoint` is present; DID resolution is warn-only (non-blocking)
+  - HTMX: re-renders `fragment_federation_list` instead of redirecting
+- [x] `templates/pages/admin_federation.html` — table with inline form +
+  `fragment_federation_list`
+- [x] `cmd/server/main.go` — routes under `activeRoles.Has(roles.Hub)`
 
-**Decisiones de diseño:**
-- `trust.Registry` existente se reusa como backend — sin nueva tabla
-- DID resolution al registrar es warn-only (dev environments no tienen DID doc público)
-- Healthz check es hard-fail solo si `service_endpoint` está presente
-- `jwt.go` no necesitó cambios — los nuevos campos fluyen por JSON marshaling automático
-- Formulario en la misma página (no página separada) — HTMX swap reemplaza la lista
+**Design decisions:**
+- The existing `trust.Registry` is reused as the backend — no new table
+- DID resolution at registration time is warn-only (dev environments don't
+  have a public DID doc)
+- The healthz check is a hard failure only if `service_endpoint` is present
+- `jwt.go` needed no changes — the new fields flow through automatic JSON
+  marshaling
+- The form lives on the same page (not a separate one) — an HTMX swap
+  replaces the list
 
-**Criterio de éxito:**
-- `GET /trust-registry` retorna JWT ES256 con `service_endpoint`, `status_list_endpoints`, `status_list_policy` por emisor
-- Admin puede agregar/ver/eliminar emisores desde `/admin/federation/members`
-- Migración idempotente: `ADD COLUMN IF NOT EXISTS` no rompe DB existente
+**Success criteria:**
+- `GET /trust-registry` returns an ES256 JWT with `service_endpoint`,
+  `status_list_endpoints`, `status_list_policy` per issuer
+- The admin can add/view/delete issuers from `/admin/federation/members`
+- Idempotent migration: `ADD COLUMN IF NOT EXISTS` doesn't break an
+  existing DB
 
 ---
 
-### ✅ Fase 6 — Verification Events Log
+### ✅ Phase 6 — Verification Events Log
 
-**Objetivo:** Persistir cada verificación completada para analytics.
+**Goal:** Persist every completed verification for analytics.
 
-> **PostgreSQL desde día 1.** El Hub es el punto de agregación del ecosistema completo.
-> El patrón JSON-backed de `issuance/log.go` funciona bien para un solo emisor,
-> pero en el Hub todos los eventos de todos los schemas e issuers convergen aquí.
-> JSON con mutex es un bottleneck bajo carga concurrente y no soporta queries
-> eficientes para `/api/ecosystem/issuers/{did}/stats`. El patrón `pg/` ya existe.
+> **PostgreSQL from day 1.** The Hub is the aggregation point for the whole
+> ecosystem. The JSON-backed pattern from `issuance/log.go` works fine for a
+> single issuer, but on the Hub every event from every schema and issuer
+> converges here. JSON with a mutex is a bottleneck under concurrent load
+> and doesn't support efficient queries for
+> `/api/ecosystem/issuers/{did}/stats`. The `pg/` pattern already exists.
 
-**Archivos creados/modificados:**
-- [x] `internal/verification/events.go` — nuevo package: `Event` struct, `Log` interface, `NewID()`
-- [x] `internal/verification/pg_log.go` — PostgreSQL-backed: `NewPGLog(pool)`, `Append()` (ON CONFLICT DO NOTHING), `QueryByIssuer()` (uses ve_issuer_did_idx)
-- [x] `internal/storage/pg/db.go` — DDL añadido a `runMigrations()`:
+**Files created/modified:**
+- [x] `internal/verification/events.go` — new package: `Event` struct,
+  `Log` interface, `NewID()`
+- [x] `internal/verification/pg_log.go` — PostgreSQL-backed: `NewPGLog(pool)`,
+  `Append()` (ON CONFLICT DO NOTHING), `QueryByIssuer()` (uses
+  ve_issuer_did_idx)
+- [x] `internal/storage/pg/db.go` — DDL added to `runMigrations()`:
   ```sql
   CREATE TABLE IF NOT EXISTS verification_events (...)
   CREATE INDEX IF NOT EXISTS ve_issuer_did_idx ON verification_events (issuer_did, verified_at DESC);
   ```
 - [x] `internal/handlers/handlers.go` — H struct: `VerificationLog verification.Log`
-- [x] `internal/handlers/public_verify.go` — `PublicVerifyResult`: goroutine fire-and-forget tras resultado terminal; emite `Event{IssuerDID, SchemaName, Status, TrustStatus, StatusListSrc}`
-- [x] `internal/handlers/verifier.go` — `SimulateResponse`: goroutine fire-and-forget; emite `Event{IssuerDID, SchemaID, SchemaName, VerifierDPG, Status, TrustStatus}`
-- [x] `cmd/server/main.go` — `verification.NewPGLog(pgPool)` wired cuando `pgPool != nil`; nil en deployments sin DB (feature deshabilitada silenciosamente)
+- [x] `internal/handlers/public_verify.go` — `PublicVerifyResult`:
+  fire-and-forget goroutine after a terminal result; emits
+  `Event{IssuerDID, SchemaName, Status, TrustStatus, StatusListSrc}`
+- [x] `internal/handlers/verifier.go` — `SimulateResponse`: fire-and-forget
+  goroutine; emits `Event{IssuerDID, SchemaID, SchemaName, VerifierDPG,
+  Status, TrustStatus}`
+- [x] `cmd/server/main.go` — `verification.NewPGLog(pgPool)` wired when
+  `pgPool != nil`; nil on deployments without a DB (feature silently disabled)
 
-**Decisiones de diseño:**
-- PostgreSQL-only: no hay implementación JSON-backed — `h.VerificationLog = nil` en deployments sin DB, feature disabled con zero regression
-- Fire-and-forget goroutine con `context.WithTimeout(5s)` por evento — la respuesta HTTP nunca espera al DB
-- `ON CONFLICT (id) DO NOTHING` en Append: idempotente si el goroutine reintenta
-- Sin PII: `Event` no tiene campo de holder; `DisclosedFields` jamás se escribe
-- `DeploymentID = VERIFIABLY_PUBLIC_URL` para correlación entre instancias
+**Design decisions:**
+- PostgreSQL-only: there's no JSON-backed implementation —
+  `h.VerificationLog = nil` on deployments without a DB, feature disabled
+  with zero regression
+- Fire-and-forget goroutine with a `context.WithTimeout(5s)` per event — the
+  HTTP response never waits on the DB
+- `ON CONFLICT (id) DO NOTHING` in Append: idempotent if the goroutine retries
+- No PII: `Event` has no holder field; `DisclosedFields` is never written
+- `DeploymentID = VERIFIABLY_PUBLIC_URL` for cross-instance correlation
 
-**Criterio de éxito:**
-- Cada verificación completada genera un registro en PostgreSQL
-- Sin PII del holder en ningún registro
-- `QueryByIssuer` retorna resultados en <100ms con índice
+**Success criteria:**
+- Every completed verification produces a PostgreSQL record
+- No holder PII in any record
+- `QueryByIssuer` returns results in <100ms with the index
 
 ---
 
-### ✅ Fase 7 — Issuer Analytics API
+### ✅ Phase 7 — Issuer Analytics API
 
-**Objetivo:** Cada emisor puede ver estadísticas de sus credenciales verificadas.
+**Goal:** Each issuer can see stats on its verified credentials.
 
-**Archivos creados/modificados:**
-- [x] `internal/trust/apikeys.go` — nuevo package:
+**Files created/modified:**
+- [x] `internal/trust/apikeys.go` — new package:
   - `APIKeyStore` interface: `Issue`, `Validate`, `Revoke`, `HasKey`
-  - `pgAPIKeyStore`: UPSERT en Issue (rotación atómica), SHA-256 en Validate, DELETE en Revoke
+  - `pgAPIKeyStore`: UPSERT on Issue (atomic rotation), SHA-256 on
+    Validate, DELETE on Revoke
   - `NewPGAPIKeyStore(pool)` + `ErrInvalidAPIKey` sentinel error
-- [x] `internal/storage/pg/db.go` — DDL añadido a `runMigrations()`:
+- [x] `internal/storage/pg/db.go` — DDL added to `runMigrations()`:
   ```sql
   CREATE TABLE IF NOT EXISTS issuer_api_keys (
       did        TEXT        PRIMARY KEY,
@@ -574,256 +884,340 @@ construir el CRUD admin de emisores en Hub.
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   ```
-- [x] `internal/handlers/ecosystem_api.go` — nuevo handler:
-  - `GET /api/ecosystem/issuers/{did}/stats` con `Authorization: Bearer`
-  - Valida key → DID; verifica que DID coincide con `{did}` en el path (401/403)
-  - Agrega `verification_events` de los últimos 30 días: total/valid/invalid/bySchema
-  - JSON response: `{issuer_did, period_days, verified:{total,valid,invalid,by_schema}}`
+- [x] `internal/handlers/ecosystem_api.go` — new handler:
+  - `GET /api/ecosystem/issuers/{did}/stats` with `Authorization: Bearer`
+  - Validates the key → DID; checks the DID matches `{did}` in the path
+    (401/403)
+  - Aggregates `verification_events` from the last 30 days:
+    total/valid/invalid/bySchema
+  - JSON response: `{issuer_did, period_days,
+    verified:{total,valid,invalid,by_schema}}`
 - [x] `internal/handlers/handlers.go` — H struct: `IssuerAPIKeyStore trust.APIKeyStore`
 - [x] `internal/handlers/admin_federation.go`:
-  - `IssueAPIKey`: `POST /admin/federation/members/{did}/api-key` — genera key, renderiza `fragment_api_key_display` con plaintext visible una sola vez
-  - `RevokeAPIKey`: `POST /admin/federation/members/{did}/api-key/revoke` — revoca, re-renderiza member list
-  - `memberKeyMap()`: helper que construye `map[DID]bool` para el template
-  - `ShowFederationMembers`, `RegisterFederationMember`, `DeleteFederationMember` — actualizados para pasar `MemberKeys` y `HasAPIKeyStore`
+  - `IssueAPIKey`: `POST /admin/federation/members/{did}/api-key` —
+    generates a key, renders `fragment_api_key_display` with the plaintext
+    visible once
+  - `RevokeAPIKey`: `POST /admin/federation/members/{did}/api-key/revoke` —
+    revokes it, re-renders the member list
+  - `memberKeyMap()`: helper that builds a `map[DID]bool` for the template
+  - `ShowFederationMembers`, `RegisterFederationMember`,
+    `DeleteFederationMember` — updated to pass `MemberKeys` and
+    `HasAPIKeyStore`
 - [x] `templates/pages/admin_federation.html`:
-  - `#api-key-display` slot vacío, se llena vía HTMX con `fragment_api_key_display`
-  - `fragment_api_key_display`: muestra token, botón copiar al portapapeles; slot vacío cuando no hay key
-  - `fragment_federation_list`: columna "API key" con `active/none` pill + botones Generate/Rotate/Revoke (solo cuando `HasAPIKeyStore`)
+  - Empty `#api-key-display` slot, filled via HTMX with
+    `fragment_api_key_display`
+  - `fragment_api_key_display`: shows the token, a copy-to-clipboard
+    button; empty slot when there's no key
+  - `fragment_federation_list`: "API key" column with an `active/none` pill
+    + Generate/Rotate/Revoke buttons (only when `HasAPIKeyStore`)
 - [x] `cmd/server/main.go`:
-  - `trust.NewPGAPIKeyStore(pgPool)` wired cuando `pgPool != nil`
-  - Rutas bajo Hub: `POST .../api-key`, `POST .../api-key/revoke`, `GET /api/ecosystem/issuers/{did}/stats`
+  - `trust.NewPGAPIKeyStore(pgPool)` wired when `pgPool != nil`
+  - Routes under Hub: `POST .../api-key`, `POST .../api-key/revoke`,
+    `GET /api/ecosystem/issuers/{did}/stats`
 
-**Decisiones de diseño:**
-- One-time display: plaintext nunca almacenado; SHA-256 del token en DB; UPSERT en Issue (rotación invalida anterior atómicamente)
-- `HasKey` para el template: N SELECT EXISTS por miembro en ShowFederationMembers (aceptable: pocas decenas de miembros)
-- Verificaciones solo (no emisiones): el Hub no emite credenciales — la analytics API expone únicamente datos del `verification_events` del Hub
-- `ErrInvalidAPIKey` sentinel: caller distingue "bad key" de I/O error sin inspeccionar strings
+**Design decisions:**
+- One-time display: plaintext is never stored; SHA-256 of the token in the
+  DB; UPSERT on Issue (rotation atomically invalidates the previous one)
+- `HasKey` for the template: N SELECT EXISTS per member in
+  ShowFederationMembers (acceptable: a few dozen members)
+- Verifications only (no issuance): the Hub doesn't issue credentials — the
+  analytics API only exposes data from the Hub's `verification_events`
+- `ErrInvalidAPIKey` sentinel: the caller distinguishes "bad key" from an
+  I/O error without inspecting strings
 
-**Criterio de éxito:**
-- Emisor A llama `/api/ecosystem/issuers/{did}/stats` con su API key → breakdown de verificaciones por schema en 30 días
-- Clave inválida → 401; clave de otro DID → 403
-- Admin genera clave desde `/admin/federation/members` → se muestra una sola vez con botón "Copy"
-- Admin revoca clave → lista se actualiza en tiempo real, "none" pill
+**Success criteria:**
+- Issuer A calls `/api/ecosystem/issuers/{did}/stats` with its API key →
+  breakdown of verifications by schema over 30 days
+- Invalid key → 401; another DID's key → 403
+- The admin generates a key from `/admin/federation/members` → it's shown
+  once with a "Copy" button
+- The admin revokes a key → the list updates live, "none" pill
 
 ---
 
-### ✅ Fase 8 — Prometheus Federation en el Hub
+### ✅ Phase 8 — Prometheus Federation on the Hub
 
-**Objetivo:** Hub agrega métricas de todos los emisores.
+**Goal:** The Hub aggregates metrics from all issuers.
 
-**Archivos creados:**
-- [x] `deploy/compose/monitoring/prometheus-hub.yml` — config Prometheus específica del Hub:
-  - Job `verifiably-hub`: scrape del propio Hub en `/metrics` (15s)
-  - Job `verifiably-federation`: usa `file_sd_configs` apuntando a `federation-targets.json` (hot-reload automático cada 5 min)
-  - Preserva labels `issuer_did` e `issuer_name` de los targets
-- [x] `deploy/compose/monitoring/generate-federation-prometheus.sh` — script bash + jq:
-  - Lee `config/federation.json` (o path por argumento)
-  - Genera `federation-targets.json` en formato Prometheus file_sd con `__scheme__`, `issuer_did`, `issuer_name`
-  - Filtra miembros sin `service_endpoint`
-  - Escribe a archivo (default: `deploy/compose/monitoring/federation-targets.json`) o stdout (`-`)
-  - Output: mensaje de recarga para el operador
+**Files created:**
+- [x] `deploy/compose/monitoring/prometheus-hub.yml` — Hub-specific
+  Prometheus config:
+  - `verifiably-hub` job: scrapes the Hub's own `/metrics` (15s)
+  - `verifiably-federation` job: one `job_name` block per member, generated
+    directly from `trusted_issuers` (see the updated script below)
+  - Preserves the `issuer_did` and `issuer_name` labels from the targets
+- [x] `deploy/compose/monitoring/generate-federation-prometheus.sh` — bash
+  script:
+  - Queries the Hub's `trusted_issuers` table directly (via
+    `docker compose exec postgres psql`) — the DB is the single source of
+    truth; members managed through the admin UI at
+    `/admin/federation/members` are picked up the next time this script runs
+  - Rewrites `prometheus-hub.yml` in place from
+    `prometheus-hub.template.yml`, adding one scrape job per member (each
+    with its own Bearer token)
+  - Reloads Prometheus via `--web.enable-lifecycle` without a restart
 - [x] `deploy/compose/monitoring/grafana/dashboards/verifiably-ecosystem-v1.json`:
-  - **Row Ecosystem Totals**: 5 stat panels — Active Issuers, Issued (24h), Verified at Hub, Valid Rate, Unreachable Issuers
-  - **Row Verification Trends**: 2 time series — Verification Rate by Issuer + Issuance Rate by Member
-  - **Row Per-Issuer Breakdown**: tabla con issued/verified/valid/status por emisor (transformaciones merge + organize)
-  - **Row Trust Registry Health**: bar gauge days-until-expiry (con umbrales 30/90 días), 2 stat panels, tabla de salud — todos esperando métricas de Fase 9
-  - Variables de template: `$issuer` (multi-select desde label_values) + `$interval`
-- [x] `deploy/compose/hub/docker-compose.yml` — stack Hub independiente:
-  - Servicios: postgres, verifiably-go (ROLES=hub), prometheus (usa prometheus-hub.yml), grafana
-  - Prometheus monta `federation-targets.json` como `:ro` (actualizable sin restart por file_sd)
+  - **Ecosystem Totals row**: 5 stat panels — Active Issuers, Issued (24h),
+    Verified at Hub, Valid Rate, Unreachable Issuers
+  - **Verification Trends row**: 2 time series — Verification Rate by
+    Issuer + Issuance Rate by Member
+  - **Per-Issuer Breakdown row**: table with issued/verified/valid/status
+    per issuer (merge + organize transformations)
+  - **Trust Registry Health row**: days-until-expiry bar gauge (30/90 day
+    thresholds), 2 stat panels, health table — all waiting on Phase 9 metrics
+  - Template variables: `$issuer` (multi-select from label_values) +
+    `$interval`
+- [x] `deploy/compose/hub/docker-compose.yml` — standalone Hub stack:
+  - Services: postgres, verifiably-go (ROLES=hub), prometheus (uses
+    prometheus-hub.yml), grafana
   - Grafana: home dashboard = ecosystem overview
-- [x] `deploy/compose/hub/federation-targets.json` — array vacío inicial (Prometheus no falla en primera boot)
-- [x] `deploy/compose/hub/.env.example` — variables requeridas documentadas
+- [x] `deploy/compose/hub/.env.example` — required variables documented
 
-**Decisiones de diseño:**
-- file_sd en lugar de static_configs: Prometheus hot-reload automático al detectar cambio en el archivo JSON — no requiere restart del container
-- El generate script solo escribe el targets file (no regenera todo el prometheus.yml) — la config base es estable
-- `honor_labels: true` en el job federation: preserva labels del issuer sin colisión con labels del Hub
-- El dashboard incluye paneles de Fase 9 (Trust Registry Health) como placeholders — no muestran datos hasta que Fase 9 emita los gauges
-- `$__range` para totales de período seleccionado; `$interval` para rates
+**Design decisions:**
+- The generate script queries the DB directly and rewrites the full
+  scrape-jobs section — the DB is the single source of truth, so there's no
+  separate targets file to keep in sync
+- `honor_labels: true` on the federation job: preserves the issuer's labels
+  without colliding with the Hub's own labels
+- The dashboard includes Phase 9 panels (Trust Registry Health) as
+  placeholders — they show no data until Phase 9 emits the gauges
+- `$__range` for totals over the selected period; `$interval` for rates
 
-**Workflow operacional:**
+**Operational workflow:**
 ```bash
-# 1. Editar/actualizar members en el Hub admin o federation.json
-# 2. Regenerar targets:
-./deploy/compose/monitoring/generate-federation-prometheus.sh \
-    config/federation.json \
-    deploy/compose/hub/federation-targets.json
-# 3. Prometheus hot-reloads automáticamente (sin restart necesario)
-# 4. Verificar targets en http://localhost:9090/targets
+# 1. Add/edit/remove members via the Hub admin UI
+#    (or config/federation.json for the initial seed)
+# 2. Regenerate the Prometheus federation scrape config:
+./deploy/compose/monitoring/generate-federation-prometheus.sh
+# 3. Prometheus reloads automatically (--web.enable-lifecycle, no restart needed)
+# 4. Verify targets at http://localhost:9090/targets
 ```
 
-**Criterio de éxito:**
-- `GET http://localhost:9090/targets` muestra todos los miembros del federation
-- Grafana en `http://localhost:3100` abre el Ecosystem Overview dashboard por defecto
-- Paneles de issuance (scraped de issuers) y verificación (Hub) muestran datos reales
-- Paneles de Trust Registry Health muestran "no data" hasta Fase 9
+**Success criteria:**
+- `GET http://localhost:9090/targets` shows every federation member
+- Grafana at `http://localhost:3100` opens the Ecosystem Overview dashboard
+  by default
+- Issuance panels (scraped from issuers) and verification panels (Hub) show
+  real data
+- Trust Registry Health panels show "no data" until Phase 9
 
 ---
 
-### ✅ Fase 9 — Trust Registry Health Monitoring
+### ✅ Phase 9 — Trust Registry Health Monitoring
 
-**Objetivo:** Detectar proactivamente emisores con acreditación por vencer o caídos.
+**Goal:** Proactively detect issuers whose accreditation is expiring or
+that are down.
 
-**Archivos creados/modificados:**
-- [x] `internal/metrics/metrics.go` — extendido con tipo gauge:
+**Files created/modified:**
+- [x] `internal/metrics/metrics.go` — extended with a gauge type:
   - `gge` struct: `{name, ls string, val atomic.Int64}`
-  - `gauges map[string]*gge` en `registry`; inicializado en `newRegistry()`
-  - `SetGauge(name string, v int64, labels ...string)`: upsert bajo lock
-  - `DeleteGauge(name string, labels ...string)`: elimina entrada bajo lock (stale cleanup)
-  - `snapshot()` actualizado a 3 valores de retorno `([]*ctr, []*histo, []*gge)`
-  - `writeTo()` emite gauges con `# TYPE xxx gauge` header, ordenados por name+ls
-  - Funciones package-level `SetGauge` / `DeleteGauge` añadidas
-- [x] `internal/trust/health.go` — nuevo package:
-  - `EndpointStatus{Up, Checked bool, At time.Time}` — estado en memoria sin DB
-  - `Monitor` struct: `status map[string]EndpointStatus`, `knownDIDs map[string]struct{}`, `http.Client` (5s timeout)
-  - `NewMonitor()`: inicializa con client de 5s
-  - `Start(ctx, Registry)`: lanza 2 goroutines — `runExpiry()` + `runEndpoint()`
-  - `runExpiry()`: ticker hourly → `emitExpiry()` — gauge `trusted_issuer_days_until_expiry{did,name}`; limpia gauges de DIDs eliminados via `knownDIDs` diff
-  - `runEndpoint()`: ticker 5 min → `probeEndpoints()` — GET `{ServiceEndpoint}/healthz`, gauge `trusted_issuer_endpoint_up{did,name}` (1/0), actualiza `status` map
-  - `EndpointStatus(did string)`: lectura thread-safe del status en memoria
-- [x] `deploy/compose/monitoring/alerts.yml` — 3 reglas de alerta:
-  - `IssuerAccreditationExpiringSoon`: `trusted_issuer_days_until_expiry < 30`, severity: warning, for: 0m
-  - `IssuerEndpointDown`: `trusted_issuer_endpoint_up == 0`, severity: critical, for: 10m
-  - `FederationAllMembersDown`: `count(up{job="verifiably-federation"} == 1) == 0`, severity: critical, for: 15m
-- [x] `deploy/compose/monitoring/prometheus-hub.yml` — `rule_files` descomentado:
+  - `gauges map[string]*gge` on `registry`; initialized in `newRegistry()`
+  - `SetGauge(name string, v int64, labels ...string)`: upsert under lock
+  - `DeleteGauge(name string, labels ...string)`: removes an entry under
+    lock (stale cleanup)
+  - `snapshot()` updated to a 3-value return `([]*ctr, []*histo, []*gge)`
+  - `writeTo()` emits gauges with a `# TYPE xxx gauge` header, sorted by
+    name+ls
+  - Package-level `SetGauge` / `DeleteGauge` functions added
+- [x] `internal/trust/health.go` — new package:
+  - `EndpointStatus{Up, Checked bool, At time.Time}` — in-memory state, no DB
+  - `Monitor` struct: `status map[string]EndpointStatus`, `knownDIDs
+    map[string]struct{}`, `http.Client` (5s timeout)
+  - `NewMonitor()`: initializes with a 5s client
+  - `Start(ctx, Registry)`: launches 2 goroutines — `runExpiry()` +
+    `runEndpoint()`
+  - `runExpiry()`: hourly ticker → `emitExpiry()` — gauge
+    `trusted_issuer_days_until_expiry{did,name}`; cleans up gauges for
+    removed DIDs via a `knownDIDs` diff
+  - `runEndpoint()`: 5 min ticker → `probeEndpoints()` — GET
+    `{ServiceEndpoint}/healthz`, gauge
+    `trusted_issuer_endpoint_up{did,name}` (1/0), updates the `status` map
+  - `EndpointStatus(did string)`: thread-safe read of the in-memory status
+- [x] `deploy/compose/monitoring/alerts.yml` — 3 alert rules:
+  - `IssuerAccreditationExpiringSoon`:
+    `trusted_issuer_days_until_expiry < 30`, severity: warning, for: 0m
+  - `IssuerEndpointDown`: `trusted_issuer_endpoint_up == 0`, severity:
+    critical, for: 10m
+  - `FederationAllMembersDown`:
+    `count(up{job="verifiably-federation"} == 1) == 0`, severity:
+    critical, for: 15m
+- [x] `deploy/compose/monitoring/prometheus-hub.yml` — `rule_files` uncommented:
   ```yaml
   rule_files:
     - /etc/prometheus/alerts.yml
   ```
 - [x] `internal/handlers/handlers.go` — H struct: `TrustHealthMonitor *trust.Monitor`
 - [x] `internal/handlers/admin_federation.go`:
-  - `memberHealthMap(members)`: construye `map[DID]trust.EndpointStatus` desde `TrustHealthMonitor`
-  - Todos los renders de fragmentos actualizados para incluir `MemberHealth`
-- [x] `templates/pages/admin_federation.html` — columna "Health" con semáforo dot:
-  - Gris: `not $health.Checked` (aún no sondeado)
-  - Rojo: endpoint down (`not $health.Up`) O expirado O `< 30 días`
-  - Amarillo: 30–90 días
-  - Verde: `>= 90 días` o sin expiración
-  - Usa `daysUntil` template function (sentinel 99999 para no-expiry → siempre verde)
+  - `memberHealthMap(members)`: builds a `map[DID]trust.EndpointStatus`
+    from `TrustHealthMonitor`
+  - Every fragment render updated to include `MemberHealth`
+- [x] `templates/pages/admin_federation.html` — "Health" column with a
+  traffic-light dot:
+  - Gray: `not $health.Checked` (not probed yet)
+  - Red: endpoint down (`not $health.Up`) OR expired OR `< 30 days`
+  - Yellow: 30–90 days
+  - Green: `>= 90 days` or no expiration
+  - Uses the `daysUntil` template function (sentinel 99999 for no-expiry →
+    always green)
 - [x] `cmd/server/main.go`:
-  - Monitor wired bajo `activeRoles.Has(roles.Hub) && h.TrustRegistry != nil`
-  - `daysUntil` añadido a `funcMap`: retorna `int(time.Until(t).Hours()/24)`; `t.IsZero()` → `99999`
+  - Monitor wired under `activeRoles.Has(roles.Hub) && h.TrustRegistry != nil`
+  - `daysUntil` added to `funcMap`: returns
+    `int(time.Until(t).Hours()/24)`; `t.IsZero()` → `99999`
 
-**Decisiones de diseño:**
-- Gauges en memoria con `atomic.Int64`: sin dependencias externas, thread-safe, compatible con el metrics.go stdlib-only existente
-- `knownDIDs` para stale gauge cleanup: cuando se elimina un emisor del trust registry, su gauge desaparece del `/metrics` en la próxima ronda del ticker (sin restart)
-- `EndpointStatus` en memoria (no DB): es estado efímero — no necesita persistencia; se recalcula en cada probe cycle; sirve solo para renderizar el semáforo en el admin UI
-- Sentinel `99999` en `daysUntil` para `ValidUntil.IsZero()`: el template usa comparaciones numéricas directas (`lt $days 30`, `lt $days 90`) sin branch especial para "sin expiración"
+**Design decisions:**
+- In-memory gauges with `atomic.Int64`: no external dependencies,
+  thread-safe, compatible with the existing stdlib-only metrics.go
+- `knownDIDs` for stale gauge cleanup: when an issuer is removed from the
+  trust registry, its gauge disappears from `/metrics` on the next ticker
+  round (no restart)
+- `EndpointStatus` in memory (no DB): it's ephemeral state — doesn't need
+  persistence; recalculated on every probe cycle; only serves to render the
+  traffic light in the admin UI
+- `99999` sentinel in `daysUntil` for `ValidUntil.IsZero()`: the template
+  uses direct numeric comparisons (`lt $days 30`, `lt $days 90`) with no
+  special branch for "no expiration"
 
-**Criterio de éxito:**
-- `GET /metrics` expone `trusted_issuer_days_until_expiry` y `trusted_issuer_endpoint_up` por emisor
-- Alerta `IssuerAccreditationExpiringSoon` se dispara cuando emisor tiene <30 días
-- Alerta `IssuerEndpointDown` se dispara tras 10 min de endpoint caído
-- Panel admin `/admin/federation/members` muestra semáforo de salud por emisor en tiempo real
-- Eliminar un emisor limpia su gauge en el próximo ciclo del ticker (no persiste en `/metrics`)
+**Success criteria:**
+- `GET /metrics` exposes `trusted_issuer_days_until_expiry` and
+  `trusted_issuer_endpoint_up` per issuer
+- The `IssuerAccreditationExpiringSoon` alert fires when an issuer has <30 days left
+- The `IssuerEndpointDown` alert fires after 10 min of the endpoint being down
+- The `/admin/federation/members` admin panel shows a live per-issuer
+  health traffic light
+- Removing an issuer clears its gauge on the next ticker cycle (doesn't
+  persist in `/metrics`)
 
 ---
 
-### ✅ Fase 10 — Status List Cache con Verificación de Firma
+### ✅ Phase 10 — Status List Cache with Signature Verification
 
-**Objetivo:** Hub mantiene copias cacheadas de status lists para disponibilidad e integridad.
+**Goal:** The Hub keeps cached copies of status lists for availability and integrity.
 
-**Archivos creados:**
+**Files created:**
 - [x] `internal/statuslistcache/cache.go` — `Cache` interface + `Result{RawJWT, Source, CachedAt, ExpiresAt}`
-- [x] `internal/statuslistcache/json_cache.go` — `jsonStore`: in-memory map + disk (`state/status-list-cache/{sha256(url)[:16]}.json`); thread-safe con `sync.RWMutex`
+- [x] `internal/statuslistcache/json_cache.go` — `jsonStore`: in-memory map
+  + disk (`state/status-list-cache/{sha256(url)[:16]}.json`); thread-safe
+  with `sync.RWMutex`
 - [x] `internal/statuslistcache/fetcher.go` — `Fetcher` implements `Cache`:
-  1. `fetchLive()`: GET con timeout 3s; soporta JWT crudo y JSON con `token`/`jwt`/`verifiableCredential`
-  2. `verifyJWT()`: extrae `iss` del payload → DID resolve → ES256 verify contra `publicKeyJWK` del DID doc; fallo de resolución es warn-only; mismatch de firma retorna error
-  3. `verifyES256JWT()`: stdlib pura (ecdsa, elliptic, sha256, big.Int) — sin dependencias externas
-  4. Fallback a `jsonStore.load()` si fetch falla; `Source: "unknown"` si tampoco hay cache
-  5. TTL default: 6 horas por entrada
-- [x] `internal/statuslistcache/poller.go` — `Poller`: goroutine; poll inmediato al `Start()` + ticker cada hora; itera `TrustedIssuers()` + `StatusListEndpoints`
-- [x] `backend/adapter.go` — `VerificationResult` extendido con `StatusListSource string`, `StatusListCachedAt *time.Time`
-- [x] `cmd/server/main.go` — `statuslistcache.NewFetcher()` wired in all roles; `NewPoller().Start()` solo en Hub mode
+  1. `fetchLive()`: GET with a 3s timeout; supports raw JWT and JSON with
+     `token`/`jwt`/`verifiableCredential`
+  2. `verifyJWT()`: extracts `iss` from the payload → resolves the DID →
+     ES256-verifies against the DID doc's `publicKeyJWK`; resolution
+     failure is warn-only; a signature mismatch returns an error
+  3. `verifyES256JWT()`: pure stdlib (ecdsa, elliptic, sha256, big.Int) — no
+     external dependencies
+  4. Falls back to `jsonStore.load()` if the fetch fails; `Source:
+     "unknown"` if there's no cache either
+  5. Default TTL: 6 hours per entry
+- [x] `internal/statuslistcache/poller.go` — `Poller`: goroutine; immediate
+  poll on `Start()` + hourly ticker; iterates `TrustedIssuers()` +
+  `StatusListEndpoints`
+- [x] `backend/adapter.go` — `VerificationResult` extended with
+  `StatusListSource string`, `StatusListCachedAt *time.Time`
+- [x] `cmd/server/main.go` — `statuslistcache.NewFetcher()` wired in all
+  roles; `NewPoller().Start()` only in Hub mode
 
-**Decisiones de diseño:**
-- TTL 6 horas: balanceo entre frescura y disponibilidad (emisor down < 6h → cache válido)
-- Verificación ES256 pura stdlib: sin `golang.org/x/crypto` ni `lestrrat-go/jwx`; la curva es P-256 (el algoritmo del Trust Registry JWT propio)
-- JWK como `map[string]any` (tipo que usa el DIDDocument del resolver existente)
-- Fail-closed por DID resolution: si el resolver falla, no se bloquea la caché (warn-only) — evita que un DID temporalmente irresolvible haga unavailable el endpoint
+**Design decisions:**
+- 6 hour TTL: balances freshness against availability (an issuer down for
+  < 6h → cache still valid)
+- Pure stdlib ES256 verification: no `golang.org/x/crypto` or
+  `lestrrat-go/jwx`; the curve is P-256 (the same algorithm as the Hub's own
+  Trust Registry JWT)
+- JWK as `map[string]any` (the type used by the existing resolver's
+  DIDDocument)
+- Fail-closed on DID resolution: if the resolver fails, the cache isn't
+  blocked (warn-only) — this prevents a temporarily unresolvable DID from
+  making the endpoint unavailable
 
-**Criterio de éxito:**
-- Si Emisor A cae, el Hub usa cache y muestra `StatusListSource: "cached"`
-- Status list con firma inválida ES256 → `Source: "unknown"` + error retornado
-- Poller warms cache al startup y cada hora
-
----
-
-## Restricciones de diseño (no negociables)
-
-1. **Backwards-compatible 100%**: sin `VERIFIABLY_ROLES` → comportamiento actual idéntico
-2. **Interfaz `trust.Registry` estable**: `IsTrusted`, `TrustedIssuers`, `Add`, `Remove`
-   no cambian una vez creados (upgrade path a OpenID Federation sin cambios de interfaz)
-3. **Adapters existentes sin modificar**: cambios solo en capa de servidor y nuevos packages
-4. **Sin nuevas dependencias externas** salvo justificación explícita
-5. **Sin PII en tablas de analytics**: `verification_events` nunca almacena datos del holder
-6. **Sin correlación de verificaciones**: no almacenar campos que permitan identificar
-   que dos verificaciones corresponden al mismo holder
-7. **Firma asimétrica obligatoria en producción**: HS256 es solo para dev/test local;
-   producción requiere `VERIFIABLY_TRUST_SIGNING_KEY` configurada
-
----
-
-## Secuencia de implementación recomendada
-
-```
-Fase 1 (Roles) → Fase 1.5 (DID Resolver + ES256) → Fase 4 (Federation Config)
-      ↓
-Fase 5 (Trust Registry + CRUD)
-      ↓
-Fase 2 (Hub Portal Público) + Fase 10 (Status List Cache)  ← van juntas
-      ↓
-Fase 3 (Schema Federation con caché)
-      ↓
-Fase 6 (Verification Events Log — PostgreSQL)
-      ↓
-Fase 7 (Issuer Analytics API) → Fase 8 (Prometheus Federation)
-      ↓
-Fase 9 (Trust Registry Health)
-```
-
-Las fases 1, 1.5, 4, 5 son el núcleo de la federación.
-Las fases 2 + 10 son el portal público (siempre juntas).
-Las fases 6–9 son el plano de observabilidad.
+**Success criteria:**
+- If Issuer A goes down, the Hub uses the cache and shows
+  `StatusListSource: "cached"`
+- A status list with an invalid ES256 signature → `Source: "unknown"` +
+  error returned
+- The poller warms the cache at startup and every hour
 
 ---
 
-## Archivos clave de referencia
+## Design constraints (non-negotiable)
+
+1. **100% backwards-compatible**: without `VERIFIABLY_ROLES` → identical to
+   current behavior
+2. **Stable `trust.Registry` interface**: `IsTrusted`, `TrustedIssuers`,
+   `Add`, `Remove` don't change once created (upgrade path to OpenID
+   Federation without interface changes)
+3. **Existing adapters left unmodified**: changes only in the server layer
+   and new packages
+4. **No new external dependencies** without explicit justification
+5. **No PII in analytics tables**: `verification_events` never stores
+   holder data
+6. **No verification correlation**: don't store fields that would let two
+   verifications be linked to the same holder
+7. **Asymmetric signing mandatory in production**: HS256 is for dev/local
+   testing only; production requires `VERIFIABLY_TRUST_SIGNING_KEY` to be
+   configured
+
+---
+
+## Recommended implementation sequence
 
 ```
-backend/adapter.go                           ← interfaz principal + VerificationResult
+Phase 1 (Roles) → Phase 1.5 (DID Resolver + ES256) → Phase 4 (Federation Config)
+      ↓
+Phase 5 (Trust Registry + CRUD)
+      ↓
+Phase 2 (Hub Public Portal) + Phase 10 (Status List Cache)  ← ship together
+      ↓
+Phase 3 (Schema Federation with cache)
+      ↓
+Phase 6 (Verification Events Log — PostgreSQL)
+      ↓
+Phase 7 (Issuer Analytics API) → Phase 8 (Prometheus Federation)
+      ↓
+Phase 9 (Trust Registry Health)
+```
+
+Phases 1, 1.5, 4, 5 are the core of federation.
+Phases 2 + 10 are the public portal (always together).
+Phases 6–9 are the observability plane.
+
+---
+
+## Key reference files
+
+```
+backend/adapter.go                           ← main interface + VerificationResult
 internal/adapters/registry/registry.go       ← fan-out, Register(), AllAdapters()
 internal/adapters/registry/config.go         ← BackendEntry, LoadConfig()
-internal/adapters/factory/factory.go         ← construye adapters desde config
-internal/handlers/handlers.go                ← struct H, render(), pageData()
-internal/handlers/verifier.go                ← flujo de verificación actual
+internal/adapters/factory/factory.go         ← builds adapters from config
+internal/handlers/handlers.go                ← H struct, render(), pageData()
+internal/handlers/verifier.go                ← current verification flow
 internal/handlers/trust.go                   ← GET /trust-registry handler
-internal/handlers/ratelimit.go               ← rate limiter (IP + API key, ya implementado)
-internal/trust/registry.go                   ← interfaz + TrustedIssuer
-internal/trust/jwt.go                        ← BuildJWT (HS256 → ES256 en Fase 1.5)
-internal/issuance/log.go                     ← patrón del audit log (seguir para events)
-internal/statuslist/store.go                 ← patrón del status list store
-internal/storage/pg/db.go                    ← runMigrations() — aquí van los ALTER TABLE
-cmd/server/main.go                           ← startup, wiring, registro de rutas
-config/backends.json                         ← formato de config de adapters
-vctypes/vctypes.go                           ← tipos de dominio
+internal/handlers/ratelimit.go               ← rate limiter (IP + API key, already implemented)
+internal/trust/registry.go                   ← interface + TrustedIssuer
+internal/trust/jwt.go                        ← BuildJWT (HS256 → ES256 in Phase 1.5)
+internal/issuance/log.go                     ← audit log pattern (follow for events)
+internal/statuslist/store.go                 ← status list store pattern
+internal/storage/pg/db.go                    ← runMigrations() — ALTER TABLEs go here
+cmd/server/main.go                           ← startup, wiring, route registration
+config/backends.json                         ← adapter config format
+vctypes/vctypes.go                           ← domain types
 ```
 
 ---
 
-## Progreso general
+## Overall progress
 
-- [x] Fase 0 — Baseline (add-credebl)
-- [x] Fase 0.5 — DID:web Deployment Automation (Inji Certify)
-- [x] Fase 1 — Deployment Roles (`VERIFIABLY_ROLES`)
-- [x] Fase 1.5 — DID Resolver + Trust Registry Key Upgrade (ES256 + JWKS)
-- [x] Fase 4 — Federation Config (`federation.json` + hub bootstrap + state prefix routing confirmado)
-- [x] Fase 5 — Trust Registry Extension + Federation Member CRUD Admin
-- [x] Fase 2 — Hub Portal Público (`/verify` ciudadano + HTMX polling)
-- [x] Fase 10 — Status List Cache (fetcher + JSON store + poller + ES256 verify)
-- [x] Fase 3 — Schema Federation
-- [x] Fase 6 — Verification Events Log
-- [x] Fase 7 — Issuer Analytics API
-- [x] Fase 8 — Prometheus Federation
-- [x] Fase 9 — Trust Registry Health Monitoring
+- [x] Phase 0 — Baseline (add-credebl)
+- [x] Phase 0.5 — DID:web Deployment Automation (Inji Certify)
+- [x] Phase 1 — Deployment Roles (`VERIFIABLY_ROLES`)
+- [x] Phase 1.5 — DID Resolver + Trust Registry Key Upgrade (ES256 + JWKS)
+- [x] Phase 4 — Federation Config (`federation.json` + hub bootstrap + state
+  prefix routing confirmed)
+- [x] Phase 5 — Trust Registry Extension + Federation Member CRUD Admin
+- [x] Phase 2 — Hub Public Portal (citizen `/verify` + HTMX polling)
+- [x] Phase 10 — Status List Cache (fetcher + JSON store + poller + ES256 verify)
+- [x] Phase 3 — Schema Federation
+- [x] Phase 6 — Verification Events Log
+- [x] Phase 7 — Issuer Analytics API
+- [x] Phase 8 — Prometheus Federation
+- [x] Phase 9 — Trust Registry Health Monitoring
