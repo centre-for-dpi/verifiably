@@ -41,6 +41,13 @@ verifiably-go/config/custom-schemas.user.json
 verifiably-go/deploy/compose/stack/wso2-deployment.toml
 verifiably-go/config/docker-compose.injiweb-fix.rendered.yml
 verifiably-go/config/wso2is.env
+# Rendered by scripts/gen-caddy.sh from VERIFIABLY_HOSTS_PATTERN; contains
+# the operator's own domain, differs per deployment.
+verifiably-go/deploy/compose/stack/Caddyfile.public
+# Rewritten in place by generate-federation-prometheus.sh from
+# prometheus-hub.template.yml + the trusted_issuers table; contains
+# per-member Bearer tokens, differs per Hub deployment.
+verifiably-go/deploy/compose/monitoring/prometheus-hub.yml
 verifiably-go/locales/
 verifiably-go/walletbag.json
 verifiably-go/cookies.txt

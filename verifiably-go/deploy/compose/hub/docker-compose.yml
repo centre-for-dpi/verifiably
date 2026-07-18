@@ -5,8 +5,10 @@
 #   2. Place your ECDSA P-256 PEM key at config/trust-signing-key.pem
 #      (or set VERIFIABLY_TRUST_SIGNING_KEY in .env).
 #   3. Configure config/federation.json with registered members.
-#   4. Generate federation Prometheus targets from the DB:
+#   4. Generate the Prometheus federation scrape jobs from the DB:
 #        ./deploy/compose/monitoring/generate-federation-prometheus.sh
+#      Re-run this after adding/editing/removing a member in
+#      /admin/federation/members so Grafana picks up the change.
 #
 # Start (localhost / dev):
 #   ./deploy.sh up hub
@@ -89,10 +91,9 @@ services:
       - --web.console.libraries=/usr/share/prometheus/console_libraries
       - --web.console.templates=/usr/share/prometheus/consoles
     volumes:
-      # Hub-specific prometheus config (includes file_sd federation job)
+      # Generated from prometheus-hub.template.yml + trusted_issuers by
+      # generate-federation-prometheus.sh — do not edit member jobs by hand.
       - ../monitoring/prometheus-hub.yml:/etc/prometheus/prometheus.yml:ro
-      # Generated federation targets (update with generate-federation-prometheus.sh)
-      - ./federation-targets.json:/etc/prometheus/federation-targets.json:ro
       - prometheus-data:/prometheus
     # Port published for local/dev access. In production, firewall port 9090
     # and query Prometheus only through Grafana (internal network).
