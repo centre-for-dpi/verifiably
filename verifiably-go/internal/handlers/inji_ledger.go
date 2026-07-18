@@ -125,9 +125,11 @@ func (h *H) recordInjiIssuance(sess *Session, schema vctypes.Schema, holderID st
 	if h.IssuanceLog == nil {
 		return
 	}
+	// Record the id of THIS DPG's list, so the later revoke resolves back to
+	// the same list the index was allocated in.
 	listID := ""
-	if store := h.storeForKind(kind); store != nil {
-		listID = store.GetListID()
+	if e := h.statusListFor(sess.IssuerDpg, kind); e != nil && e.Store != nil {
+		listID = e.Store.GetListID()
 	}
 	format := "vc+sd-jwt"
 	if kind == "bitstring" {
@@ -286,7 +288,7 @@ func (h *H) setInjiStatusRevocation(w http.ResponseWriter, r *http.Request, rec 
 		h.errorToast(w, r, "This credential has no status binding and cannot be revoked through verifiably-go.")
 		return
 	}
-	store := h.storeForKind(rec.StatusList.Type)
+	store := h.storeForBinding(rec.StatusList.Type, rec.StatusList.ListID)
 	if store == nil {
 		h.errorToast(w, r, "Status list "+rec.StatusList.Type+" not configured.")
 		return

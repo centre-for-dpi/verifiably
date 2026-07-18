@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/vp"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
@@ -133,7 +134,7 @@ func (h *H) APIInjiDelegationSetup(w http.ResponseWriter, r *http.Request) {
 	// issued VC's credentialStatus (Certify's list) is what Inji + verifiably read.
 	var binding *backend.StatusListBinding
 	if statusListKindFor(std) == "token" {
-		b, err := h.allocateStatusListBinding(injiAuthcodeSchema(delegType, std, nil))
+		b, err := h.allocateStatusListBinding(authcodeVendor, injiAuthcodeSchema(delegType, std, nil))
 		if err != nil {
 			apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
 			return
@@ -211,6 +212,11 @@ func (h *H) APIInjiDelegationRevoke(w http.ResponseWriter, r *http.Request) {
 		Index     int    `json:"index"`
 		Type      string `json:"type,omitempty"`      // "bitstring" (pre-auth W3C) | "token" (SD-JWT, default) | "certify" (auth-code W3C)
 		Reinstate bool   `json:"reinstate,omitempty"` // clear the bit instead of setting it
+		// Dpg names the issuer DPG whose list holds this index. Each issuer
+		// DPG has its own list, so without it we'd flip the bit in the
+		// default list and mark the wrong credential revoked. Optional: empty
+		// means the default list (pre-per-DPG callers).
+		Dpg string `json:"dpg,omitempty"`
 		// Auth-code W3C is Certify-native: revoke flips CERTIFY's bitstring list —
 		// the exact list the issued VC references and external verifiers (Inji)
 		// read — via Certify's status API, not a verifiably-owned list. The caller
@@ -243,10 +249,15 @@ func (h *H) APIInjiDelegationRevoke(w http.ResponseWriter, r *http.Request) {
 		apiJSON(w, http.StatusOK, map[string]any{key: req.Index, "via": "certify"})
 		return
 	}
-	// verifiably-owned path: SD-JWT auth-code (TokenStore) + pre-auth W3C (BitstringStore).
-	store := h.TokenStore
+	// verifiably-owned path: SD-JWT auth-code (token list) + pre-auth W3C
+	// (bitstring list), resolved against the named DPG's own lists.
+	kind := "token"
 	if strings.Contains(strings.ToLower(req.Type), "bitstring") {
-		store = h.BitstringStore
+		kind = "bitstring"
+	}
+	var store statuslist.Backend
+	if e := h.statusListFor(req.Dpg, kind); e != nil {
+		store = e.Store
 	}
 	if store == nil {
 		apiError(w, http.StatusServiceUnavailable, "no status store for type "+req.Type)
@@ -424,7 +435,7 @@ func (h *H) APIInjiPreAuthDelegationIssue(w http.ResponseWriter, r *http.Request
 		apiError(w, http.StatusBadGateway, "register delegation schema: "+err.Error())
 		return
 	}
-	binding, err := h.allocateStatusListBinding(delegSchema)
+	binding, err := h.allocateStatusListBinding(dpg, delegSchema)
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "status list: "+err.Error())
 		return

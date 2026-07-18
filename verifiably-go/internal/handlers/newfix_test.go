@@ -37,27 +37,27 @@ func TestAttachTemporalVerdict(t *testing.T) {
 
 	expired := &backend.VerificationResult{Valid: true, Credentials: []backend.NormalizedCredential{
 		cred(map[string]any{"validUntil": "2020-01-01T00:00:00Z"})}}
-	attachTemporalVerdict(expired, now)
+	attachTemporalVerdict(expired, now, nil)
 	if expired.Valid || !strings.Contains(expired.Method, "expired") {
 		t.Fatalf("expired must downgrade Valid with reason; got valid=%v method=%q", expired.Valid, expired.Method)
 	}
 
 	notYet := &backend.VerificationResult{Valid: true, Credentials: []backend.NormalizedCredential{
 		cred(map[string]any{"validFrom": "2030-01-01T00:00:00Z"})}}
-	attachTemporalVerdict(notYet, now)
+	attachTemporalVerdict(notYet, now, nil)
 	if notYet.Valid || !strings.Contains(notYet.Method, "not yet valid") {
 		t.Fatalf("not-yet-valid must downgrade Valid; got valid=%v method=%q", notYet.Valid, notYet.Method)
 	}
 
 	within := &backend.VerificationResult{Valid: true, Credentials: []backend.NormalizedCredential{
 		cred(map[string]any{"validFrom": "2020-01-01T00:00:00Z", "validUntil": "2030-01-01T00:00:00Z"})}}
-	attachTemporalVerdict(within, now)
+	attachTemporalVerdict(within, now, nil)
 	if !within.Valid {
 		t.Fatalf("within-window must stay Valid; method=%q", within.Method)
 	}
 
 	none := &backend.VerificationResult{Valid: true, Credentials: []backend.NormalizedCredential{cred(map[string]any{})}}
-	attachTemporalVerdict(none, now)
+	attachTemporalVerdict(none, now, nil)
 	if !none.Valid {
 		t.Fatal("no temporal bounds must stay Valid (no constraint)")
 	}
@@ -66,7 +66,7 @@ func TestAttachTemporalVerdict(t *testing.T) {
 	// Types uses the generic "credential" label.
 	withMethod := &backend.VerificationResult{Valid: true, Method: "OID4VP", Credentials: []backend.NormalizedCredential{
 		{Raw: map[string]any{"validUntil": "2020-01-01T00:00:00Z"}}}}
-	attachTemporalVerdict(withMethod, now)
+	attachTemporalVerdict(withMethod, now, nil)
 	if withMethod.Valid || !strings.Contains(withMethod.Method, "OID4VP · ") || !strings.Contains(withMethod.Method, "credential has expired") {
 		t.Fatalf("expected appended reason with generic label; got valid=%v method=%q", withMethod.Valid, withMethod.Method)
 	}

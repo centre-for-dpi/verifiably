@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -183,7 +184,7 @@ func (f *Fetcher) verifyJWT(ctx context.Context, rawJWT, issuerDID string) error
 			// Only a genuine P-256 signature mismatch is fatal; an unsupported key
 			// type or malformed field means we can't check it here — skip rather
 			// than false-deny a legitimate credential.
-			if strings.Contains(verr.Error(), "signature invalid") {
+			if errors.Is(verr, jose.ErrSignatureInvalid) {
 				return fmt.Errorf("status list did:jwk signature invalid: %w", verr)
 			}
 			slog.Warn("status list: did:jwk sig check skipped", "did", issuerDID, "err", verr)

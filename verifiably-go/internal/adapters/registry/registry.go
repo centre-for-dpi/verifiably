@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -80,43 +79,6 @@ func (r *Registry) AttachSchemaStore(store *SchemaStore) error {
 		r.customSchemas = append(r.customSchemas, s)
 	}
 	return nil
-}
-
-// IssuerSigningKey delegates to the first registered issuer adapter that
-// exposes one. The status-list HTTP path needs to sign the published
-// list with the same key the walt.id issuer signs credentials with;
-// when verifiably-go runs in `registry` mode the handler reaches it
-// through the Registry, so we proxy here. Today only the walt.id
-// adapter implements this — Inji Certify and the mock adapter return
-// nothing — so the first one we find is the right one.
-//
-// Registry doesn't statically depend on the walt.id package (would
-// flip the dependency direction); we use a duck-typed interface check
-// against backend.Adapter at runtime.
-func (r *Registry) IssuerSigningKey(ctx context.Context) ([]byte, string, error) {
-	type signer interface {
-		IssuerSigningKey(ctx context.Context) ([]byte, string, error)
-	}
-	r.mu.RLock()
-	vendors := make([]string, 0, len(r.issuers))
-	for v := range r.issuers {
-		vendors = append(vendors, v)
-	}
-	r.mu.RUnlock()
-	// Sort vendors so the first signer-capable adapter is always the same
-	// across calls, regardless of Go map iteration order.
-	sort.Strings(vendors)
-	for _, v := range vendors {
-		r.mu.RLock()
-		a := r.issuers[v]
-		r.mu.RUnlock()
-		s, ok := a.(signer)
-		if !ok {
-			continue
-		}
-		return s.IssuerSigningKey(ctx)
-	}
-	return nil, "", fmt.Errorf("registry: no registered issuer adapter exposes IssuerSigningKey")
 }
 
 // AllAdapters returns every distinct adapter registered across all roles.
@@ -300,7 +262,44 @@ func (r *Registry) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes
 			vendorSchemas = filtered
 		}
 	}
-	return append(vendorSchemas, custom...), nil
+	return append(applyOwnedMetadata(vendorSchemas, custom), custom...), nil
+}
+
+// applyOwnedMetadata copies verifiably-owned schema metadata onto the vendor's
+// entry for the same ID.
+//
+// Both entries for a custom schema end up in the returned list — the vendor
+// re-advertises what we registered with it — and findSchemaByID takes the FIRST
+// match, i.e. the vendor's. But a vendor only knows what it stores: Expires is
+// our own concept, so a rebuilt vendor entry always reports false and shadows
+// the truth in our store. That silently un-expires a credential: the issue form
+// hides the Validity window, and issuance refuses to POST the window the
+// template already demands, so certify rejects the unresolved marker.
+//
+// ENRICH, never replace. The vendor entry is authoritative for what the vendor
+// owns — above all the pinned Vct, which the verifier's presentation definition
+// matches the held token against — so swapping in the custom schema wholesale
+// would break presentation.
+func applyOwnedMetadata(vendorSchemas, custom []vctypes.Schema) []vctypes.Schema {
+	if len(vendorSchemas) == 0 || len(custom) == 0 {
+		return vendorSchemas
+	}
+	expires := make(map[string]bool, len(custom))
+	for _, c := range custom {
+		if !c.ExpiresWithWindow() {
+			continue
+		}
+		expires[c.ID] = true
+		for _, v := range c.Variants {
+			expires[v.ID] = true
+		}
+	}
+	for i := range vendorSchemas {
+		if expires[vendorSchemas[i].ID] {
+			vendorSchemas[i].Expires = true
+		}
+	}
+	return vendorSchemas
 }
 
 // GetIssuerMetadata returns the credential configurations for schemas that were
@@ -385,7 +384,10 @@ func (r *Registry) ListAllSchemas(ctx context.Context) ([]vctypes.Schema, error)
 			out = append(out, s)
 		}
 	}
-	out = append(out, custom...)
+	// Same shadowing as ListSchemas: the vendor's rebuilt entry lands first and
+	// findSchemaByID takes it, so carry our own metadata across. This is the
+	// list the issue screen resolves its schema from.
+	out = append(applyOwnedMetadata(out, custom), custom...)
 	return out, nil
 }
 
