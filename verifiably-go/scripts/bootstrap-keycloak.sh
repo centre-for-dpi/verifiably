@@ -29,7 +29,7 @@
 #   KEYCLOAK_REALM            vcplatform
 #   KEYCLOAK_CLIENT_ID        vcplatform
 #   KEYCLOAK_ADMIN_USER       admin
-#   KEYCLOAK_ADMIN_PASS       admin
+#   KEYCLOAK_ADMIN_PASSWORD   admin
 #   PUBLIC_HOST               (no default — script aborts if unset and
 #                              VERIFIABLY_PUBLIC_HOST also unset)
 #   VERIFIABLY_HOST_PORT      8080
@@ -44,7 +44,7 @@ set -euo pipefail
 : "${KEYCLOAK_REALM:=vcplatform}"
 : "${KEYCLOAK_CLIENT_ID:=vcplatform}"
 : "${KEYCLOAK_ADMIN_USER:=admin}"
-: "${KEYCLOAK_ADMIN_PASS:=admin}"
+: "${KEYCLOAK_ADMIN_PASSWORD:=admin}"
 : "${VERIFIABLY_HOST_PORT:=8080}"
 : "${PUBLIC_HOST:=${VERIFIABLY_PUBLIC_HOST:-}}"
 # VERIFIABLY_CALLBACK_URL is the browser-facing /auth/callback URL the
@@ -89,7 +89,7 @@ for i in $(seq 1 60); do
   TOKEN=$(curl -sS -X POST \
     "$KEYCLOAK_BASE/realms/master/protocol/openid-connect/token" \
     -H 'Content-Type: application/x-www-form-urlencoded' \
-    -d "grant_type=password&client_id=admin-cli&username=$KEYCLOAK_ADMIN_USER&password=$KEYCLOAK_ADMIN_PASS" \
+    -d "grant_type=password&client_id=admin-cli&username=$KEYCLOAK_ADMIN_USER&password=$KEYCLOAK_ADMIN_PASSWORD" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null || echo "")
   [[ -n "$TOKEN" ]] && break
   sleep 2
