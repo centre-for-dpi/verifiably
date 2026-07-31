@@ -195,8 +195,11 @@ services:
         condition: service_healthy
     networks:
       - hub
+    # 127.0.0.1, not localhost: BusyBox wget resolves localhost's ::1 entry
+    # first and Caddy's admin API only binds the IPv4 loopback, so
+    # "localhost" reports false unhealthy even when the API is up.
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
       interval: 15s
       timeout: 5s
       retries: 3
