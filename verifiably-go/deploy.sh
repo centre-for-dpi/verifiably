@@ -1156,14 +1156,26 @@ ensure_hub_env() {
   public_url="${public_url:-http://localhost:8080}"
   set_env_var "$HUB_ENV_FILE" "VERIFIABLY_PUBLIC_URL" "$public_url"
 
-  printf "  Admin password [admin]: "
+  # Leaving these blank used to silently default to "admin" — a real,
+  # guessable password that shipped to production deploys with nobody
+  # noticing. Generate a random one instead and print it once so the
+  # operator can record it; cmd/server/main.go's guardWeakSecrets() also
+  # refuses to boot with "admin" when VERIFIABLY_ENV=production, so this
+  # keeps the wizard from producing a config that fails at startup.
+  printf "  Admin password [leave blank to generate]: "
   read -r -s admin_pass; echo
-  admin_pass="${admin_pass:-admin}"
+  if [[ -z "$admin_pass" ]]; then
+    admin_pass=$(openssl rand -base64 18 2>/dev/null || head -c 18 /dev/urandom | base64 | tr -d '/+=\n')
+    yellow "  generated admin password: $admin_pass (save this — it is not shown again)"
+  fi
   set_env_var "$HUB_ENV_FILE" "VERIFIABLY_ADMIN_PASSWORD" "$admin_pass"
 
-  printf "  Grafana password [admin]: "
+  printf "  Grafana password [leave blank to generate]: "
   read -r -s grafana_pass; echo
-  grafana_pass="${grafana_pass:-admin}"
+  if [[ -z "$grafana_pass" ]]; then
+    grafana_pass=$(openssl rand -base64 18 2>/dev/null || head -c 18 /dev/urandom | base64 | tr -d '/+=\n')
+    yellow "  generated grafana password: $grafana_pass (save this — it is not shown again)"
+  fi
   set_env_var "$HUB_ENV_FILE" "GRAFANA_PASSWORD" "$grafana_pass"
 
   # Optional: production TLS via Caddy (tls compose profile).

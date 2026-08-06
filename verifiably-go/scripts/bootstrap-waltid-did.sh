@@ -141,8 +141,14 @@ bootstrap_waltid_did_web() {
 
   mkdir -p "$runtime_dir"
 
-  # Idempotency: if we already provisioned a did:web key, reuse it.
-  local existing_did=""
+  # Idempotency: if we already provisioned a did:web key FOR THE CURRENT
+  # DOMAIN, reuse it. A DID persisted under a different domain (because
+  # VERIFIABLY_PUBLIC_DOMAIN / ISSUER_DID_DOMAIN changed since the last
+  # deploy) is stale: did:web resolution is domain-bound, so serving the
+  # old DID at the new host — or vice versa — never resolves. Archive the
+  # stale state and fall through to re-provisioning instead of silently
+  # keeping an orphaned DID.
+  local existing_did="" existing_domain=""
   if [[ -f "$issuer_file" ]]; then
     existing_did=$(python3 -c "
 import json, sys
@@ -153,9 +159,11 @@ try:
 except Exception:
     pass
 " "$issuer_file" 2>/dev/null) || true
+    existing_domain="${existing_did#did:web:}"
+    existing_domain="${existing_domain%%:*}"
   fi
 
-  if [[ "$existing_did" == "did:web:"* ]]; then
+  if [[ "$existing_did" == "did:web:"* && "$existing_domain" == "$issuer_domain" ]]; then
     green "  Walt.id did:web already provisioned: $existing_did"
     _waltid_inject_backends_json "$issuer_file"
     if [[ -n "$VERIFIABLY_HOSTS_PATTERN" && -f "$did_file" ]]; then
@@ -163,6 +171,15 @@ except Exception:
       _waltid_reload_caddy_public
     fi
     return 0
+  fi
+
+  if [[ "$existing_did" == "did:web:"* ]]; then
+    yellow "  Walt.id did:web domain changed ($existing_domain -> $issuer_domain) — archiving stale DID and re-provisioning"
+    yellow "  WARNING: this rotates the issuer signing key. Credentials already issued under $existing_did will no longer verify."
+    local archive_ts
+    archive_ts=$(date +%Y%m%d%H%M%S)
+    mv "$issuer_file" "${issuer_file}.bak-${archive_ts}" 2>/dev/null || true
+    [[ -f "$did_file" ]] && mv "$did_file" "${did_file}.bak-${archive_ts}" 2>/dev/null || true
   fi
 
   # Call /onboard/issuer with did:web configuration.

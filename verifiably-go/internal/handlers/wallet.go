@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -27,10 +26,7 @@ func holderCtx(r *http.Request, sess *Session) context.Context {
 	// fallback). Then try email, then the session-scoped fallback for
 	// unauthenticated demo mode. Each distinct key maps to its own
 	// wallet account upstream.
-	key := sessionWalletKey(sess)
-	log.Printf("holderCtx sess.ID=%s authProv=%q sub=%q email=%q → userKey=%q (frozen)",
-		sess.ID, sess.AuthProvider, sess.UserSubject, sess.UserEmail, key)
-	return backend.WithHolderIdentity(ctx, key)
+	return backend.WithHolderIdentity(ctx, sessionWalletKey(sess))
 }
 
 // sessionWalletKey returns the stable per-user key the holder's wallets (walt.id
