@@ -92,8 +92,13 @@ cmd_up() {
   # and KC_HOSTNAME_URL on keycloak). When the host changed, recreate those
   # containers so they pick up the new URLs before any client tries to use them.
   local _running_host=""
+  # {{println .}}, not {{.}}\n — a Go template emits "\n" literally, which put
+  # every env var on one line, so grep matched the whole block and _running_host
+  # became SERVICE_HOST's value plus every later variable. It never compared
+  # equal to VERIFIABLY_PUBLIC_HOST, so the "host changed" branch below fired on
+  # every single run and needlessly recreated four containers.
   _running_host=$(docker inspect waltid-issuer-api-1 \
-    --format '{{range .Config.Env}}{{.}}\n{{end}}' 2>/dev/null \
+    --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
     | grep '^SERVICE_HOST=' | cut -d= -f2- || true)
   if [[ -n "$_running_host" && "$_running_host" != "$VERIFIABLY_PUBLIC_HOST" ]]; then
     yellow "  VERIFIABLY_PUBLIC_HOST changed: ${_running_host} → ${VERIFIABLY_PUBLIC_HOST}"
@@ -527,11 +532,16 @@ cmd_up() {
     ensure_credebl_platform_admin_shared_agent \
       || red "  CREDEBL shared agent provisioning failed (proceeding — re-run manually)"
 
-    # Credo container only exists after provisioning — apply patches now
+    # Credo container only exists after provisioning — apply patches now.
+    # Guarded like every other step in this block: when provisioning above
+    # failed we printed "proceeding", and under `set -e` an unguarded non-zero
+    # here aborted the whole deploy two lines later instead.
     echo -n "  Patching Credo CredentialEvents: "
-    _credebl_patch_credo_credential_events
+    _credebl_patch_credo_credential_events \
+      || red "  Credo CredentialEvents patch skipped (no Credo container)"
     echo -n "  Patching Credo ProofEvents: "
-    _credebl_patch_credo_proof_events
+    _credebl_patch_credo_proof_events \
+      || red "  Credo ProofEvents patch skipped (no Credo container)"
 
     bold "▶ Configuring CREDEBL OID4VCI nginx rewriter"
     _credebl_configure_oid4vci_rewriter \
@@ -866,6 +876,14 @@ cmd_down() {
   if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
     profile_args+=( --profile credebl )
   fi
+  # Mirror cmd_up: in subdomain mode caddy-public fronts every service on
+  # 80/443, but it is profile-gated and absent from scenario_services, so a
+  # plain `down` left it running and still holding ports 80/443. `stop` only —
+  # its volumes carry the Let's Encrypt certificates and must survive.
+  if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
+    profile_args+=( --profile subdomain )
+    services+=( caddy-public )
+  fi
   compose "${profile_args[@]}" stop "${services[@]}"
 }
 
@@ -878,7 +896,7 @@ cmd_reset() {
   echo "    waltid_inji-verify-db                                (Inji Verify)"
   echo "    waltid_injiweb-db + friends                          (Inji Web / Mimoto / eSignet / mock-identity)"
   echo "    waltid_postgres + waltid_citizens-data               (walt.id + bulk-issuance citizens)"
-  echo "    waltid_locales / waltid_lt-data / waltid_caddy-data  (translator + TLS state)"
+  echo "    waltid_locales / waltid_lt-data                      (translator)"
   echo "    waltid_credebl_postgres_data / _redis_data / _nats_data / _minio_data (CREDEBL)"
   echo
   echo "  Use this when a keystore regenerated but its aliases are still"
@@ -891,15 +909,36 @@ cmd_reset() {
   fi
   stop_container
   compose --profile injiweb --profile credebl down -v 2>&1 | tail -10
+  # The Credo agent container is created by agent-provisioning via `docker run`,
+  # not by compose, so nothing above removes it. Leaving it behind while wiping
+  # the CREDEBL database strands org_agents at agentSpinUpStatus=2 pointing at a
+  # container that no longer exists, and the next up hangs six retries deep in
+  # "Provisioning CREDEBL platform-admin shared agent".
+  local agents
+  agents="$(docker ps -aq --filter 'name=_Platform-admin$' 2>/dev/null || true)"
+  if [[ -n "$agents" ]]; then
+    echo "  removing Credo agent containers"
+    # shellcheck disable=SC2086
+    docker rm -f $agents >/dev/null 2>&1 || true
+  fi
   # Belt-and-braces: remove any stragglers not claimed by docker compose
   # (different project name / previous owner). Silent on not-found.
+  #
+  # Caddy is deliberately excluded. caddy-public-data holds the ACME account key
+  # and every issued certificate; Let's Encrypt rate-limits issuance per domain
+  # (and duplicate certs harder still), so wiping it to rebuild a database can
+  # leave the deployment unable to serve TLS for the rest of the week. Its
+  # container also still holds those volumes here — the subdomain profile is not
+  # torn down above — so removing them failed and, under `pipefail`, aborted the
+  # whole reset before it could report success.
   local vols
-  vols="$(docker volume ls --format '{{.Name}}' | grep -E '^waltid_' || true)"
+  vols="$(docker volume ls --format '{{.Name}}' | grep -E '^waltid_' | grep -v caddy || true)"
   if [[ -n "$vols" ]]; then
     echo "  removing stragglers: $vols"
     # shellcheck disable=SC2086
-    docker volume rm $vols 2>&1 | sed 's/^/  /'
+    docker volume rm $vols 2>&1 | sed 's/^/  /' || true
   fi
+  yellow "  kept Caddy TLS volumes (Let's Encrypt rate limits) — remove by hand if truly needed."
   green "  reset complete. Next up will start clean."
 }
 
