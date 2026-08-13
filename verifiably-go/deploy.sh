@@ -151,6 +151,17 @@ cmd_up() {
     fi
   fi
 
+  # CREDEBL secrets must exist BEFORE backends_for renders config/backends.json:
+  # gen-backends.sh refuses to emit the compose-managed CREDEBL stanza while
+  # CREDEBL_PASSWORD / CREDEBL_CRYPTO_PRIVATE_KEY are empty rather than fall back
+  # to a guessable default. ensure_credebl_env is idempotent — it reloads the
+  # previously generated credebl.env and only fills in what is missing — so the
+  # later pre-flight block still has everything it needs.
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    bold "▶ Preparing CREDEBL environment"
+    ensure_credebl_env
+  fi
+
   bold "▶ Preparing config for scenario=$scenario"
   backends_for "$scenario"
   auth_providers_for "$scenario"
@@ -301,12 +312,11 @@ cmd_up() {
     fi
   fi
 
-  # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE
-  # docker compose up so the generated config/credebl.env file exists when
-  # compose reads it for the CREDEBL service definitions.
+  # CREDEBL pre-flight: write the agent runtime env BEFORE docker compose up so
+  # the generated config/credebl.env file exists when compose reads it for the
+  # CREDEBL service definitions. The secrets themselves were already generated
+  # by ensure_credebl_env above, ahead of config rendering.
   if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
-    bold "▶ Preparing CREDEBL environment"
-    ensure_credebl_env
     write_credebl_agent_runtime_env
     # The CREDEBL seed script creates the platform-admin user in Keycloak's
     # credebl-realm. If that realm doesn't exist yet the seed exits 1 and

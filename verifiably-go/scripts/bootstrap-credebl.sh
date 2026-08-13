@@ -61,6 +61,13 @@ ensure_credebl_env() {
   [[ -z "$CREDEBL_KEYCLOAK_CLIENT_SECRET" ]]   && CREDEBL_KEYCLOAK_CLIENT_SECRET=$(openssl rand -hex 16)
   [[ -z "$CREDEBL_SCHEMA_FILE_SERVER_TOKEN" ]] && CREDEBL_SCHEMA_FILE_SERVER_TOKEN=$(openssl rand -hex 32)
   [[ -z "$CREDEBL_CRYPTO_PRIVATE_KEY" ]]       && CREDEBL_CRYPTO_PRIVATE_KEY=$(openssl rand -hex 32)
+  # CREDEBL_PASSWORD is the platform admin's own login, not a service secret:
+  # bootstrap-platform-admin.sh sets it on the Keycloak user and the verifiably-go
+  # adapter signs in with it (encrypted using CREDEBL_CRYPTO_PRIVATE_KEY). The
+  # "@1Aa" suffix guarantees the upper/lower/digit/symbol mix CREDEBL's own
+  # password validation expects; the characters are deliberately ones that need
+  # no escaping in a compose env_file, in jq, or in the reload loop above.
+  [[ -z "$CREDEBL_PASSWORD" ]]                 && CREDEBL_PASSWORD="$(openssl rand -hex 12)@1Aa"
   # schema-file-server needs CRYPTO_PRIVATE_KEY as base64 of the raw key.
   # Export so the compose environment: block can substitute it via ${VAR}.
   export CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY
@@ -97,7 +104,7 @@ ADMIN_KEYCLOAK_ID=adminClient
 ADMIN_KEYCLOAK_SECRET=${CREDEBL_KEYCLOAK_CLIENT_SECRET}
 PLATFORM_ADMIN_OLD_CLIENT_ID=
 SUPPORTED_SSO_CLIENTS=CREDEBL
-PLATFORM_ADMIN_INITIAL_PASSWORD=changeme
+PLATFORM_ADMIN_INITIAL_PASSWORD=${CREDEBL_PASSWORD}
 KEYCLOAK_PUBLIC_URL=http://${VERIFIABLY_PUBLIC_HOST}:${KEYCLOAK_PORT}
 KEYCLOAK_HOST=${CREDEBL_KEYCLOAK_HOST}
 MINIO_ROOT_USER=minioadmin
@@ -207,6 +214,8 @@ CREDEBL_PLATFORM_WALLET_PASSWORD=${CREDEBL_PLATFORM_WALLET_PASSWORD}
 CREDEBL_NEXTAUTH_SECRET=${CREDEBL_NEXTAUTH_SECRET}
 CREDEBL_KEYCLOAK_CLIENT_SECRET=${CREDEBL_KEYCLOAK_CLIENT_SECRET}
 CREDEBL_SCHEMA_FILE_SERVER_TOKEN=${CREDEBL_SCHEMA_FILE_SERVER_TOKEN}
+CREDEBL_CRYPTO_PRIVATE_KEY=${CREDEBL_CRYPTO_PRIVATE_KEY}
+CREDEBL_PASSWORD=${CREDEBL_PASSWORD}
 EOF
   green "  wrote $env_file"
 }
@@ -1965,11 +1974,16 @@ org_id   = sys.argv[1]
 api      = sys.argv[2]
 email    = sys.argv[3]
 kc_port  = sys.argv[4]
+password = sys.argv[5]
 
-# Encrypt password via CryptoJS in agent-service container
+# Encrypt password via CryptoJS in agent-service container. The plaintext is
+# handed to node through the exec environment rather than interpolated into the
+# -e snippet, so any character in a generated password is safe (no shell here —
+# subprocess takes an argv list — and no JS string escaping to get wrong).
 enc_pass = subprocess.check_output(
-    ['docker', 'exec', '-i', 'credebl-agent-service', 'node', '-e',
-     "const C=require('crypto-js');process.stdout.write(C.AES.encrypt(JSON.stringify('changeme'),process.env.CRYPTO_PRIVATE_KEY).toString())"],
+    ['docker', 'exec', '-i', '-e', 'PLATFORM_ADMIN_PW=' + password,
+     'credebl-agent-service', 'node', '-e',
+     "const C=require('crypto-js');process.stdout.write(C.AES.encrypt(JSON.stringify(process.env.PLATFORM_ADMIN_PW),process.env.CRYPTO_PRIVATE_KEY).toString())"],
     stderr=subprocess.DEVNULL).decode().strip()
 
 # Sign in
@@ -2123,7 +2137,7 @@ print(f'ISSUER_ID:{issuer_id}', flush=True)
 PYEOF
 
   local py_out
-  py_out="$(CREDEBL_POSTGRES_PASSWORD="$_db_pw" python3 "$tmp_py" "$_org_id" "$_api" "$_email" "$_kc_port" 2>&1)"
+  py_out="$(CREDEBL_POSTGRES_PASSWORD="$_db_pw" python3 "$tmp_py" "$_org_id" "$_api" "$_email" "$_kc_port" "$CREDEBL_PASSWORD" 2>&1)"
   local py_exit=$?
   rm -f "$tmp_py"
 
