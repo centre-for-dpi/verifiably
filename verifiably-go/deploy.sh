@@ -351,6 +351,30 @@ cmd_up() {
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     profile_args+=( --profile subdomain )
   fi
+  # A stopped container pins the network ID it was created with, not its name.
+  # When that network has since been removed — `deploy.sh reset` deletes
+  # waltid_default, and a bare `docker compose down` does the same — the
+  # container can never start again and Compose aborts the whole up with
+  # "failed to set up container networking: network <id> not found". Drop those
+  # containers so Compose recreates them cleanly. Restricted to non-running
+  # containers of this project, and `docker rm` leaves named volumes alone, so
+  # Caddy's certificates and every database volume are untouched.
+  for _c in $(docker ps -aq \
+                --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" \
+                --filter status=exited --filter status=created --filter status=dead \
+              2>/dev/null || true); do
+    for _nid in $(docker inspect "$_c" \
+        --format '{{range .NetworkSettings.Networks}}{{println .NetworkID}}{{end}}' \
+        2>/dev/null || true); do
+      if [[ -n "$_nid" ]] && ! docker network inspect "$_nid" >/dev/null 2>&1; then
+        yellow "  removing $(docker inspect "$_c" --format '{{.Name}}' 2>/dev/null | sed 's#^/##') — pinned to a deleted network"
+        docker rm -f "$_c" >/dev/null 2>&1 || true
+        break
+      fi
+    done
+  done
+  unset _c _nid
+
   # If the project network exists but was created manually (no compose labels),
   # Compose will refuse to use it. Remove it so Compose can recreate it with
   # the correct labels. Safe: only removes when zero containers are attached.
@@ -909,6 +933,15 @@ cmd_reset() {
   fi
   stop_container
   compose --profile injiweb --profile credebl down -v 2>&1 | tail -10
+  # caddy-public is deliberately outside the `down -v` above so its ACME volumes
+  # survive, but `down` still deletes the waltid_default network underneath it.
+  # A stopped container pins the network *ID* it was created with, so leaving it
+  # here strands it on a network that no longer exists: it can never start again
+  # and the next `up` dies with an opaque "network <id> not found". Remove the
+  # container. `compose rm` removes stopped service containers only and never
+  # touches named volumes, so the certificates are unaffected and the next `up`
+  # recreates the container against the same volumes.
+  compose --profile subdomain rm -sf caddy-public >/dev/null 2>&1 || true
   # The Credo agent container is created by agent-provisioning via `docker run`,
   # not by compose, so nothing above removes it. Leaving it behind while wiping
   # the CREDEBL database strands org_agents at agentSpinUpStatus=2 pointing at a
