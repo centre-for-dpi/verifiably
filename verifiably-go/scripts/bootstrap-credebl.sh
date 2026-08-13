@@ -63,11 +63,13 @@ ensure_credebl_env() {
   [[ -z "$CREDEBL_CRYPTO_PRIVATE_KEY" ]]       && CREDEBL_CRYPTO_PRIVATE_KEY=$(openssl rand -hex 32)
   # CREDEBL_PASSWORD is the platform admin's own login, not a service secret:
   # bootstrap-platform-admin.sh sets it on the Keycloak user and the verifiably-go
-  # adapter signs in with it (encrypted using CREDEBL_CRYPTO_PRIVATE_KEY). The
-  # "@1Aa" suffix guarantees the upper/lower/digit/symbol mix CREDEBL's own
-  # password validation expects; the characters are deliberately ones that need
-  # no escaping in a compose env_file, in jq, or in the reload loop above.
-  [[ -z "$CREDEBL_PASSWORD" ]]                 && CREDEBL_PASSWORD="$(openssl rand -hex 12)@1Aa"
+  # adapter signs in with it (encrypted using CREDEBL_CRYPTO_PRIVATE_KEY). Unlike
+  # every secret above it is typed by a human, so it defaults to "admin" to keep
+  # quick PoC deployments intuitive rather than sending the operator to grep it
+  # out of credebl.env. Set CREDEBL_PASSWORD in .env before the first deploy to
+  # choose your own — on a public domain this is a reachable admin login and
+  # should not be left at the default.
+  [[ -z "$CREDEBL_PASSWORD" ]]                 && CREDEBL_PASSWORD="admin"
   # schema-file-server needs CRYPTO_PRIVATE_KEY as base64 of the raw key.
   # Export so the compose environment: block can substitute it via ${VAR}.
   export CREDEBL_SCHEMA_FILE_SERVER_CRYPTO_KEY
