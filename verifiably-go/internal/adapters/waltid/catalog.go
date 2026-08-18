@@ -284,7 +284,9 @@ func buildSDJWTEntry(configID, typeName, wireFormat string, schema vctypes.Schem
 
 // buildMDocEntry covers mso_mdoc — the ISO 18013-5 mobile document format.
 // Mdoc is keyed by `doctype` (not type or vct), and binds via cose_key
-// (CWT proofs, ES256 only — that's what walt.id's mdoc signer emits). The
+// (jwt proofs, ES256 only — that's what walt.id's mdoc signer emits). cwt
+// was removed from OID4VCI 1.0 final (openid/OpenID4VCI#369); no real
+// holder (including Credo-TS, which this project uses) generates it. The
 // doctype namespacing convention is an inverted-DNS string; if the operator
 // pinned an AdditionalType we use that verbatim, else we fall back to the
 // sanitized type name so the doctype is at least stable across restarts.
@@ -308,7 +310,7 @@ func buildMDocEntry(configID, typeName string, schema vctypes.Schema) string {
         format = "mso_mdoc"
         cryptographic_binding_methods_supported = ["cose_key"]
         credential_signing_alg_values_supported = ["ES256"]
-        proof_types_supported = { cwt = { proof_signing_alg_values_supported = ["ES256"] } }
+        proof_types_supported = { jwt = { proof_signing_alg_values_supported = ["ES256"] } }
         doctype = "%s"
         display = [
             {
