@@ -1212,6 +1212,28 @@ func displayNameFor(id string, cfg credentialConfigurationEntry) string {
 	if len(cfg.Display) > 0 && strings.TrimSpace(cfg.Display[0].Name) != "" {
 		return strings.TrimSpace(cfg.Display[0].Name)
 	}
+	// 1.5. mso_mdoc config ids don't follow the `<TypeName>_<format>`
+	// convention the rest of walt.id's catalog uses — they're keyed by
+	// doctype verbatim (see buildMDocEntry's doc comment), e.g.
+	// "org.iso.18013.5.1.mDL", with no "_mso_mdoc" suffix to strip. Step 2
+	// below only recognizes an underscore-joined `_<format>` suffix, so it
+	// never fires here, and step 3's humaniser then mangles the dotted
+	// string character-by-character (confirmed live: produced the
+	// unreadable "org.iso.18013.5.1.m DL" for this exact id — a stray
+	// space inserted mid-acronym). This also means the schema silently
+	// falls outside schemaAllowlistDefault's curated names, since nothing
+	// there matches the mangled output. Namespace convention mirrors
+	// buildMdocData: strip the doctype's last dot-segment.
+	if cfg.Format == "mso_mdoc" {
+		doctype := strings.TrimSpace(cfg.DocType)
+		if doctype == "" {
+			doctype = id
+		}
+		if i := strings.LastIndex(doctype, "."); i > 0 {
+			return doctype[i+1:]
+		}
+		return doctype
+	}
 	// 2. Strip the known format suffix from the id. walt.id's config ids
 	//    all end with `_<format>`, but the type itself can contain
 	//    underscores (see `identity_credential_vc+sd-jwt`), so splitting
