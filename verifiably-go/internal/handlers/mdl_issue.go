@@ -14,6 +14,19 @@ import (
 // requesting a nonce.
 const mdlNonceTTL = 5 * time.Minute
 
+// mdlCredentialValidity bounds how long an issued credential's ValidityInfo
+// claims to be valid for. It must not exceed the DSC's own validity window
+// (internal/mdl.serverDSCValidity, currently 457 days — the ISO/IEC 18013-5
+// Annex B maximum), or the mdoc would outlive the very certificate chain a
+// verifier needs to check its IssuerAuth signature: a wallet holding the
+// credential past that point would see verifiers reject it as
+// "certificate has expired" even though ValidityInfo still claims it's
+// valid. This POC signer also regenerates a fresh IACA/DSC on every process
+// restart (see serversigner.go), so in practice a credential is only ever
+// verifiable within a single server run — this constant just avoids
+// additionally overclaiming a validity period the signer can't back.
+const mdlCredentialValidity = 457 * 24 * time.Hour
+
 // mdlAudience returns the audience the proof-of-possession JWT must target
 // for this request: this server's own public base URL plus the endpoint
 // path, exactly what the wallet's requestMdl.ts already sends as the second
@@ -176,7 +189,7 @@ func mdlLicenceFromClaims(claims map[string]string, holderSub string) mdl.Licenc
 		GivenName:            firstNonEmpty(claims["given_name"], holderSub),
 		BirthDate:            now.AddDate(-30, 0, 0), // POC placeholder: not derived from a real IdP claim
 		IssueDate:            now,
-		ExpiryDate:           now.AddDate(5, 0, 0),
+		ExpiryDate:           now.Add(mdlCredentialValidity),
 		IssuingCountry:       "DO",
 		IssuingAuthority:     "INTRANT",
 		DocumentNumber:       holderSub,
