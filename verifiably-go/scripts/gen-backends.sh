@@ -288,8 +288,15 @@ JSON
     _credebl_crypto_key=""
     # Export so the docker run -e flags below can pick them up.
     CREDEBL_EMAIL="${CREDEBL_EMAIL:-${CREDEBL_ADMIN_EMAIL}}"
-    CREDEBL_PASSWORD="${CREDEBL_PASSWORD:-changeme}"
-    CREDEBL_CRYPTO_PRIVATE_KEY="${CREDEBL_CRYPTO_PRIVATE_KEY:-cdpi-poc-crypto-key-change-me}"
+    # No trivial fallback here on purpose — CREDEBL_PASSWORD and
+    # CREDEBL_CRYPTO_PRIVATE_KEY are auto-generated once by ensure_credebl_env
+    # (scripts/bootstrap-credebl.sh) and persisted to credebl.env. If this
+    # script runs before that (unexpected order), fail loudly instead of
+    # silently shipping a guessable secret.
+    if [[ -z "${CREDEBL_PASSWORD:-}" || -z "${CREDEBL_CRYPTO_PRIVATE_KEY:-}" ]]; then
+      echo "gen-backends: CREDEBL_PASSWORD/CREDEBL_CRYPTO_PRIVATE_KEY not set — run ensure_credebl_env first" >&2
+      exit 1
+    fi
     # Auto-detect org UUID from compose-managed postgres (set after provisioning)
     _credebl_org_id="${CREDEBL_ORG_ID:-}"
     if [[ -z "$_credebl_org_id" ]] && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^credebl-postgres$'; then

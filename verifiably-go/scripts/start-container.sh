@@ -159,8 +159,15 @@ start_container() {
   # when the did.json fetch transiently fails, so a credential is never pinned to
   # the unverifiable did:web:certify-nginx). Prefer ISSUER_DID_DOMAIN; else read
   # certify's own CERTIFY_ISSUER_DID (the ground truth) off the running container.
+  # `docker inspect` on a container that doesn't exist (e.g. the waltid-only
+  # scenario, which never brings up inji-certify) exits non-zero — under this
+  # script's `set -euo pipefail`, that silently killed the whole deploy right
+  # here with no error message, before verifiably-go's own container ever
+  # started. `|| true` matches the same guard already used two lines above
+  # for the openssl extraction, which has the identical "this DPG may not be
+  # part of the running scenario" shape.
   local _certify_issuer_did="${ISSUER_DID_DOMAIN:+did:web:$ISSUER_DID_DOMAIN}"
-  [[ -z "$_certify_issuer_did" ]] && _certify_issuer_did=$(docker inspect inji-certify --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -n 's/^CERTIFY_ISSUER_DID=//p' | head -1)
+  [[ -z "$_certify_issuer_did" ]] && _certify_issuer_did=$(docker inspect inji-certify --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -n 's/^CERTIFY_ISSUER_DID=//p' | head -1 || true)
   # Healthcheck is defined in the Dockerfile as an exec-form HEALTHCHECK that
   # runs `verifiably -healthcheck` (the distroless image has no /bin/sh or wget,
   # so the CLI --health-cmd form — always CMD-SHELL — can never succeed here).

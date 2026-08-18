@@ -105,14 +105,24 @@ cmd_up() {
 
   # Export compose env vars that differ between IP mode and subdomain mode.
   # These are read by docker-compose via shell environment substitution.
+  #
+  # CADDY_HTTP_PORT: an operator running a second scenario alongside an
+  # already-running deployment on the same host (e.g. this deploy.sh's own
+  # `hub` compose project owning host :80) needs to override the port this
+  # scenario's Caddy binds to. Respect a value already set — via .env or the
+  # calling shell — before falling back to the mode-appropriate default;
+  # previously this unconditionally exported "80" in non-domain (IP) mode,
+  # silently clobbering an operator's .env override and colliding with
+  # whatever else already held :80. Deploys that never set CADDY_HTTP_PORT
+  # keep today's exact behavior (default "80" in IP mode).
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     # caddy-public owns :80/:443; bind main Caddy's :80 to localhost only
     # so the two services don't collide on the host port.
-    export CADDY_HTTP_PORT="127.0.0.1:8079"
+    export CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-127.0.0.1:8079}"
     export KC_HOSTNAME_URL
     KC_HOSTNAME_URL=$(url_for keycloak "$VERIFIABLY_PUBLIC_HOST" "${KEYCLOAK_PORT:-8180}")
   else
-    export CADDY_HTTP_PORT="80"
+    export CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
     export KC_HOSTNAME_URL="http://${VERIFIABLY_PUBLIC_HOST}:${KEYCLOAK_PORT:-8180}"
   fi
 
@@ -1156,14 +1166,26 @@ ensure_hub_env() {
   public_url="${public_url:-http://localhost:8080}"
   set_env_var "$HUB_ENV_FILE" "VERIFIABLY_PUBLIC_URL" "$public_url"
 
-  printf "  Admin password [admin]: "
+  # Leaving these blank used to silently default to "admin" — a real,
+  # guessable password that shipped to production deploys with nobody
+  # noticing. Generate a random one instead and print it once so the
+  # operator can record it; cmd/server/main.go's guardWeakSecrets() also
+  # refuses to boot with "admin" when VERIFIABLY_ENV=production, so this
+  # keeps the wizard from producing a config that fails at startup.
+  printf "  Admin password [leave blank to generate]: "
   read -r -s admin_pass; echo
-  admin_pass="${admin_pass:-admin}"
+  if [[ -z "$admin_pass" ]]; then
+    admin_pass=$(openssl rand -base64 18 2>/dev/null || head -c 18 /dev/urandom | base64 | tr -d '/+=\n')
+    yellow "  generated admin password: $admin_pass (save this — it is not shown again)"
+  fi
   set_env_var "$HUB_ENV_FILE" "VERIFIABLY_ADMIN_PASSWORD" "$admin_pass"
 
-  printf "  Grafana password [admin]: "
+  printf "  Grafana password [leave blank to generate]: "
   read -r -s grafana_pass; echo
-  grafana_pass="${grafana_pass:-admin}"
+  if [[ -z "$grafana_pass" ]]; then
+    grafana_pass=$(openssl rand -base64 18 2>/dev/null || head -c 18 /dev/urandom | base64 | tr -d '/+=\n')
+    yellow "  generated grafana password: $grafana_pass (save this — it is not shown again)"
+  fi
   set_env_var "$HUB_ENV_FILE" "GRAFANA_PASSWORD" "$grafana_pass"
 
   # Optional: production TLS via Caddy (tls compose profile).

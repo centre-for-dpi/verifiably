@@ -195,7 +195,7 @@ export REGISTRY_ADMIN_HOST_PORT VERIFIABLY_REGISTRY_ADMIN_URL REGISTRY_ADMIN_SUN
 : "${CREDEBL_NEXTAUTH_SECRET:=}"
 : "${CREDEBL_KEYCLOAK_CLIENT_SECRET:=}"
 : "${CREDEBL_SCHEMA_FILE_SERVER_TOKEN:=}"
-: "${CREDEBL_CRYPTO_PRIVATE_KEY:=cdpi-poc-crypto-key-change-me}"
+: "${CREDEBL_CRYPTO_PRIVATE_KEY:=}"       # auto-generated in ensure_credebl_env if empty
 : "${CREDEBL_ADMIN_EMAIL:=admin@cdpi.dev}"
 : "${CREDEBL_KEYCLOAK_HOST:=${VERIFIABLY_PUBLIC_HOST}}"    # bare hostname of shared Keycloak (for extra_hosts)
 : "${CREDEBL_COMPOSE_DIR:=$SCRIPT_DIR/deploy/compose/credebl}"

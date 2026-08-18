@@ -231,6 +231,43 @@ func maskDSN(dsn string) string {
 	return dsn
 }
 
+// weakSecretValues are the literal defaults/placeholders this project ships in
+// .env.example files and bash fallbacks (deploy/compose/hub/.env.example,
+// scripts/common.sh's CREDEBL_CRYPTO_PRIVATE_KEY default). None of them reach
+// this process's environment directly except the two checked below — the
+// others (GRAFANA_PASSWORD, CREDEBL_CRYPTO_PRIVATE_KEY) are consumed by
+// Docker Compose / bash scripts, not by verifiably-go itself, and must be
+// guarded there instead.
+var weakSecretValues = map[string]bool{
+	"":                              true,
+	"admin":                         true,
+	"change-me-in-production":       true,
+	"cdpi-poc-crypto-key-change-me": true,
+}
+
+// guardWeakSecrets refuses to start when VERIFIABLY_ENV=production and a
+// security-sensitive env var still carries a known placeholder/default value.
+// Mirrors the InsecureSkipVerify guard in internal/auth/oidc/oidc.go: outside
+// production these are only a slog.Warn so local/dev/demo deploys keep
+// working with zero configuration.
+func guardWeakSecrets() {
+	prod := os.Getenv("VERIFIABLY_ENV") == "production"
+	checks := []struct{ name, value string }{
+		{"VERIFIABLY_ADMIN_PASSWORD", os.Getenv("VERIFIABLY_ADMIN_PASSWORD")},
+		{"VERIFIABLY_SESSION_SECRET", os.Getenv("VERIFIABLY_SESSION_SECRET")},
+	}
+	for _, c := range checks {
+		if !weakSecretValues[c.value] {
+			continue
+		}
+		if prod {
+			log.Fatalf("%s is unset or a known placeholder value — refusing to start with VERIFIABLY_ENV=production. Set a real secret (e.g. openssl rand -hex 32).", c.name)
+		}
+		slog.Warn("weak or default secret in non-production environment — do not deploy like this",
+			"var", c.name)
+	}
+}
+
 // runHealthcheck is the container health probe. The distroless runtime image
 // has no shell or wget, so `verifiably -healthcheck` (invoked by the Dockerfile
 // HEALTHCHECK) is the only in-container liveness probe: GET /healthz on the
@@ -276,6 +313,8 @@ func main() {
 		log.SetFlags(0)
 		log.SetOutput(slogWriter{})
 	}
+
+	guardWeakSecrets()
 
 	addr := os.Getenv("VERIFIABLY_ADDR")
 	if addr == "" {
@@ -689,6 +728,16 @@ func main() {
 	if activeRoles.Has(roles.Issuer) {
 		mux.HandleFunc("GET /.well-known/openid-credential-issuer", h.ServeIssuerMetadata)
 		mux.HandleFunc("OPTIONS /.well-known/openid-credential-issuer", h.ServeIssuerMetadata)
+
+		// Self-service discovery: which of this member's credentials a citizen
+		// can self-issue from their verified claims (National ID + Discovery).
+		mux.HandleFunc("POST /api/v1/credentials/eligible", h.APICheckEligibility)
+		mux.HandleFunc("OPTIONS /api/v1/credentials/eligible", h.APICheckEligibility)
+		// Self-service issuance: an authenticated citizen mints a pre-auth offer
+		// for a credential they're eligible for (id_token/access_token auth,
+		// HolderDID=sub).
+		mux.HandleFunc("POST /api/v1/credentials/self-issue", h.APISelfIssue)
+		mux.HandleFunc("OPTIONS /api/v1/credentials/self-issue", h.APISelfIssue)
 	}
 
 	// --- Trust registry (trust | hub) ---
