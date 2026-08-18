@@ -1,9 +1,30 @@
 # mDL issuance smoke test — run when a walt.id container is available
 
 Companion to `2026-08-18-mdl-issuer-walletid-not-standalone.md` follow-up 3.
-This wasn't run in the agent session (no live walt.id container available
-there) — everything below is prepared from reading the real code, ready to
-execute the moment you have the stack up.
+
+**UPDATE — actually run, end to end, on `cdpi-vps` (`deploy.sh up waltid`
+alongside the existing `hub` deployment, both isolated by port/project-name
+overrides).** `POST /api/v1/credentials/issue` with
+`schema_id=org.iso.18013.5.1.mDL` returned a real `credential_id` +
+`offer_uri`, and the resolved offer genuinely advertised
+`credential_configuration_ids: ["org.iso.18013.5.1.mDL"]`. Three real bugs
+were found and fixed in the process — none were anticipated by this doc's
+original (code-reading-only) predictions below, so read the corrections
+inline rather than trusting the speculative text where it conflicts:
+
+1. `deploy.sh` unconditionally overwrote `CADDY_HTTP_PORT`/silently died on
+   `docker inspect` of a container the scenario never starts — both fixed
+   (`8d6d621`, `963f003`), unrelated to walt.id/mdl code itself.
+2. `displayNameFor` mangled the mdoc entry's doctype-keyed config id into an
+   unreadable name (`"org.iso.18013.5.1.m DL"`) — fixed (`911f2fe`).
+3. **The actual blocker, and the one this doc got wrong (see Step 2's
+   correction below): `schemaAllowlistDefault` never included mDL at all** —
+   an earlier stale comment claimed "five credentials" but the array only
+   ever had four. Fixed (`1b2a8d0`). Fix #2 was real and worth keeping, but
+   didn't fix the 404 by itself — #3 did.
+
+The steps below are left as originally drafted (pre-execution) for the
+sections that still hold; corrections are called out where reality diverged.
 
 ## What this proves
 
@@ -125,28 +146,39 @@ capture it verbatim. The two most likely failure shapes, per the code read:
   (`internal/adapters/waltid/issuer.go:1025-1038`, `{"org.iso.18013.5.1": {...6 fields...}}`)
   is what walt.id v0.18.2's mdoc issuer actually expects, or whether the real
   wire shape differs from what the doc comment assumed.
-- A schema-not-found 404, two possible causes — check both:
-  1. **The allowlist genuinely can cause this, despite its own doc comment
-     implying otherwise.** `applySchemaAllowlist` (`issuer.go:225-236`) is
-     called *inside* `ListSchemas`, and `APIIssue` calls `ListAllSchemas` →
-     `ListSchemas` with no bypass — so a schema filtered out by
-     `VERIFIABLY_WALTID_SCHEMA_ALLOWLIST` is genuinely absent from what
-     `findSchemaByID` searches, not just hidden from a UI grid (the
-     function's own comment, "the issuer can still target a hidden schema by
-     id via direct API," describes walt.id's underlying config being
-     untouched — a different layer — not a bypass of this filter). The
-     default allowlist (`schemaAllowlistDefault`, `issuer.go:203-209`) does
-     include `"Iso18013 Drivers License Credential"`, so this shouldn't bite
-     on a default config — but if `VERIFIABLY_WALTID_SCHEMA_ALLOWLIST` is set
-     in your deployment and doesn't include it, that's the fix: add it, or
-     set the var to `*`.
-  2. `findSchemaByID` matches on `Schema.ID`/variant `ID` verbatim, not
-     display name — confirm the exact key you read from `.well-known` in
-     Step 2's prerequisite command matches what `ListSchemas`'s grouping
-     logic actually assigns as `Schema.ID` for this entry (re-read
-     `internal/adapters/waltid/issuer.go`'s `ListSchemas` if these diverge).
+- A schema-not-found 404 — **this is exactly what happened live, and this
+  doc's original text about it was wrong.** It claimed "the default
+  allowlist... does include `Iso18013 Drivers License Credential`" — false;
+  `schemaAllowlistDefault` (`issuer.go:210-216`) only ever had four entries
+  (Bank Id, Educational ID, Tax Receipt, University Degree), confirmed via
+  `git blame` back to the original author. `applySchemaAllowlist` genuinely
+  does filter `APIIssue`'s search space (that part of the original text was
+  correct — it's called inside `ListSchemas`, which `ListAllSchemas` calls
+  with no bypass), so an unlisted schema is truly unreachable by
+  `schema_id`, not just hidden from a UI grid. Proven by isolation: with the
+  default allowlist active, `BankId_jwt_vc_json` issued fine while
+  `Iso18013DriversLicenseCredential_jwt_vc_json` (a completely different
+  variant from the mdoc entry, ruling out the displayNameFor bug as the
+  cause) also 404'd. **Fixed in `1b2a8d0`** by adding
+  `"Iso18013 Drivers License Credential"` as a fifth default entry. If your
+  deployment sets `VERIFIABLY_WALTID_SCHEMA_ALLOWLIST` explicitly (overriding
+  the default array entirely), you still need to add it there yourself, or
+  set the var to `*`.
 
 ## Step 3: confirm the wallet can receive it
+
+**Not yet run** — Steps 1-2 above (server-side issuance) were confirmed live
+on `cdpi-vps`; this step needs a real `cdpi-wallet` client, which wasn't
+exercised this session. Also worth noting explicitly: the offer's
+`credential_issuer` resolved to `http://161.97.152.40:7002/draft13` (the
+walt.id host), NOT `verifiably-go`'s own base
+(`http://161.97.152.40:8081`) — this is precisely the issuer-host/aud gap
+already documented in `cdpi-wallet`'s `receive.tsx` (commit `0053481`).
+That gap doesn't block this step (the wallet talks to whatever
+`credential_issuer` says, not to `verifiably-go`), but confirms the
+documented concern was accurately characterized: two different hosts serve
+two different roles in this flow (walt.id issues, verifiably-go orchestrates
+via the operator API), by design, not by accident.
 
 Take `offer_uri` from Step 2 and run it through `cdpi-wallet`'s normal
 receive flow (`app/receive.tsx`'s existing `resolveOID4VCI` — no mDL-specific
