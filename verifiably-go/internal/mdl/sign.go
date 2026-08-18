@@ -19,6 +19,12 @@ const headerLabelX5Chain = int64(33)
 //
 // These are easy to violate accidentally when shortening MSO lifetimes to
 // approximate revocation: validUntil may not outlive the licence itself.
+//
+// Callers MUST invoke this before BuildMSO. It is not called from BuildMSO or
+// SignMSO because issueDate and expiryDate come from the issue_date and
+// expiry_date data elements, which live in the element set rather than the
+// MSO; only the issuance path holds both. Skipping it produces an MSO that
+// this package will sign happily and a conforming verifier may reject.
 func ValidateValidityInfo(v ValidityInfo, issueDate, expiryDate time.Time) error {
 	validFrom := time.Time(v.ValidFrom)
 	validUntil := time.Time(v.ValidUntil)
