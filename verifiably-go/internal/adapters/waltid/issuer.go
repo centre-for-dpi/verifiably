@@ -200,18 +200,26 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 	return out, nil
 }
 
-// schemaAllowlistDefault is the five-credential demo set we surface in the
+// schemaAllowlistDefault is the curated demo set we surface in the
 // walt.id issuance flow by default — chosen to reduce decision fatigue on
 // the schema-picker card grid (walt.id ships ~30 credential configurations
 // out-of-the-box, most of which are noise for a demo). To override at
 // deploy time, set VERIFIABLY_WALTID_SCHEMA_ALLOWLIST to a comma-separated
 // list of display-names. Set it to "*" to disable filtering and see every
 // schema walt.id advertises.
+//
+// "Iso18013 Drivers License Credential" (the mDL/mdoc entry) added
+// deliberately — found missing while running the mDL smoke test on
+// cdpi-vps: an earlier stale doc comment here claimed a "five-credential"
+// set, but the array only ever had these original four, so mDL 404'd from
+// every discovery path (APIIssue's schema_id lookup included) regardless
+// of the displayNameFor fix that made its display name resolvable at all.
 var schemaAllowlistDefault = []string{
 	"Bank Id",
 	"Educational ID",
 	"Tax Receipt",
 	"University Degree",
+	"Iso18013 Drivers License Credential",
 }
 
 // applySchemaAllowlist filters the walt.id ListSchemas output to the
