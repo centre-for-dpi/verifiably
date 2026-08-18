@@ -1,6 +1,50 @@
 package waltid
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/verifiably/verifiably-go/vctypes"
+)
+
+// TestSchemaAllowlistDefault_IncludesMdl is a regression test for a live
+// finding on cdpi-vps: schemaAllowlistDefault's doc comment claimed a
+// "five-credential demo set" but the array only ever had four entries, none
+// of them mDL — so org.iso.18013.5.1.mDL (and every jwt/ldp/sd-jwt variant
+// sharing its "Iso18013 Drivers License Credential" display-name bucket)
+// 404'd from every discovery path, including APIIssue's schema_id lookup,
+// with the default allowlist active. This is independent of the
+// displayNameFor fix above — that fix makes the mdoc entry's name
+// resolvable at all; this test is what actually keeps it visible.
+func TestSchemaAllowlistDefault_IncludesMdl(t *testing.T) {
+	found := false
+	for _, name := range schemaAllowlistDefault {
+		if name == "Iso18013 Drivers License Credential" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("schemaAllowlistDefault = %v, missing \"Iso18013 Drivers License Credential\" — mDL would 404 from APIIssue with the default allowlist active", schemaAllowlistDefault)
+	}
+}
+
+// TestApplySchemaAllowlist_MdlSurvivesDefaultFilter confirms the schema
+// actually survives applySchemaAllowlist's case-insensitive match against
+// the default list — not just that the name string is present in the
+// array, but that the filtering function genuinely keeps it.
+func TestApplySchemaAllowlist_MdlSurvivesDefaultFilter(t *testing.T) {
+	// Pin to the true default regardless of the ambient environment —
+	// schemaAllowlistFromEnv reads this var directly via os.Getenv.
+	t.Setenv("VERIFIABLY_WALTID_SCHEMA_ALLOWLIST", "")
+	in := []vctypes.Schema{
+		{ID: "org.iso.18013.5.1.mDL", Name: "Iso18013 Drivers License Credential"},
+		{ID: "SomeOtherCredential_jwt_vc_json", Name: "Some Other Credential"},
+	}
+	out := applySchemaAllowlist(in)
+	if len(out) != 1 || out[0].ID != "org.iso.18013.5.1.mDL" {
+		t.Fatalf("applySchemaAllowlist(default) = %+v, want only the mDL schema to survive", out)
+	}
+}
 
 // TestDisplayNameFor_MsoMdocDoctypeID reproduces a bug found live on
 // cdpi-vps: displayNameFor("org.iso.18013.5.1.mDL", ...) produced the
