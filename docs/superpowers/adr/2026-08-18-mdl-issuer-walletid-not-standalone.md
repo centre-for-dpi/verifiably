@@ -165,10 +165,28 @@ scoped separately:
    — the holder's key binds later, at OID4VCI pre-auth redemption, not at
    issuance. mDL follows the identical pattern as the diploma/vaccination-
    record schemas already issued this way.
-2. Confirm `cdpi-wallet`'s *existing* `oid4vci/storeCredential.ts`
-   dispatch-by-format path routes an `mso_mdoc` credential response to
-   `storeMdoc.ts` (Task 6, kept) rather than treating it as SD-JWT/W3C — this
-   is a small, targeted change to existing dispatch logic, not a new module.
+2. ~~Confirm `cdpi-wallet`'s *existing* `oid4vci/storeCredential.ts`
+   dispatch-by-format path routes an `mso_mdoc` credential response
+   correctly.~~ **Done — fixed, not `storeMdoc.ts` after all.**
+   `storeOid4VciCredential`'s Credo-managed dispatch had no branch for
+   `MdocRecord` at all — every mdoc response fell through to the "unknown
+   record type" warning. Fixed in `cdpi-wallet` `main` commit `bfe87e3`: a
+   new branch calling `agent.mdoc.store({record})` directly, mirroring the
+   existing `W3cCredentialRecord`/`W3cV2CredentialRecord` branches — not
+   `storeMdoc.ts` (Task 6, kept on `feat/mdl-holder`), which parses a raw
+   base64url string from scratch; Credo's `holder.requestCredentials` has
+   *already* parsed the response into a ready-to-persist `MdocRecord` by
+   this point, with `credentialInstances[0].kmsKeyId` already resolved from
+   whatever `credentialBindingResolver` returned.
+   Also resolved, empirically, in Credo's real source (not just typings) —
+   `node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:582-587`:
+   `supportsJwk: issuerSupportedBindingMethods?.includes("jwk") || supportsCoseKey`.
+   Credo itself treats a `cose_key`-only issuer (like the mDL catalog entry,
+   `cryptographic_binding_methods_supported = ["cose_key"]`) as JWK-capable
+   internally — `credentialBinding.ts`'s existing `jwk`/`did` resolver needed
+   no changes for mdoc at all. `storeCredential.ts` has no dedicated test
+   file at all yet (none of its four dispatch branches are covered) —
+   adding one was out of scope for this fix.
 3. Run an actual issuance smoke test against a live walt.id container once
    one is available, to confirm the `/openid4vc/mdoc/issue` path genuinely
    round-trips a valid mdoc — this ADR's confidence is architectural (real
