@@ -138,17 +138,38 @@ retired:
 This ADR records the decision; it does not implement it. Follow-up work,
 scoped separately:
 
-1. Confirm the real `org.iso.18013.5.1.mDL` catalog entry's field list
-   (`credential-issuer-metadata.baseline.conf`) maps cleanly through
-   `identityPrefill`/eligibility against whatever OIDC claims the deployed
-   IdP actually provides — the mock schema's fields (`licence_no`,
-   `categories`, `expiry`) were illustrative, not verified against a real
-   IdP's claim set.
+1. ~~Confirm the real `org.iso.18013.5.1.mDL` catalog entry's field list maps
+   cleanly through `identityPrefill`/eligibility.~~ **Done — reframed, not a
+   code fix.** Traced end to end: `fieldsForCredentialType` already has a
+   correct, curated field list for `Iso18013DriversLicenseCredential`
+   (`family_name`, `given_name`, `birth_date`, `document_number`,
+   `driving_privileges`, `expiry_date` —
+   `internal/adapters/waltid/issuer.go:1157-1161`), and the template-fetch
+   path (`ResolveSchemaFields`) can't clobber it since it only overwrites
+   `FieldsSpec` `if len(fields) > 0` (`issuer.go:428-430`) and an ISO doctype
+   string won't resolve against `credentials.walt.id`'s JSON-LD VC template
+   server. But `evaluateEligibility` (`internal/handlers/eligibility.go:37-53`)
+   requires every declared field to resolve to an OIDC claim, and
+   `driving_privileges`/`expiry_date` have no entry in `identityAliases`
+   (`identity_prefill.go:71-96`) because they aren't identity claims — a DMV
+   grants vehicle categories and a validity window, an IdP doesn't assert
+   them. This is **not a bug**: it's the same "issuer-gated data" case the
+   code already names for a diploma's `degree`
+   (`eligibility.go:35-36`, `self_issue.go:47-48`) — self-issue is correctly
+   *not* the right path for mDL. **Decision: mDL issues via the existing
+   operator flow** (`POST /api/v1/credentials/issue`, `internal/handlers/api.go:228`
+   — API-key auth, free-form `subject_data`, no eligibility gate, same
+   `IssueToWallet` call `self_issue.go` uses). Confirmed this already
+   supports it with zero code changes: `HolderDID` is deliberately empty in
+   this path for every operator-issued credential today (`backend/adapter.go:172-177`)
+   — the holder's key binds later, at OID4VCI pre-auth redemption, not at
+   issuance. mDL follows the identical pattern as the diploma/vaccination-
+   record schemas already issued this way.
 2. Confirm `cdpi-wallet`'s *existing* `oid4vci/storeCredential.ts`
    dispatch-by-format path routes an `mso_mdoc` credential response to
    `storeMdoc.ts` (Task 6, kept) rather than treating it as SD-JWT/W3C — this
    is a small, targeted change to existing dispatch logic, not a new module.
-3. Run an actual self-issue smoke test against a live walt.id container once
+3. Run an actual issuance smoke test against a live walt.id container once
    one is available, to confirm the `/openid4vc/mdoc/issue` path genuinely
    round-trips a valid mdoc — this ADR's confidence is architectural (real
    code paths traced end to end) but not yet empirically confirmed against a
