@@ -74,6 +74,40 @@ Lo que **no** cubre: `DeviceSigned` / device auth (no hay wallet todavía) y
 las listas de estado/revocación (el MSO no lleva `status`, así que
 `disableStatusValidation` evita un fetch de red que no aplica).
 
+`verifyCertificateChain` es una implementación del harness, no un validador
+X.509 completo: comprueba enlace de firmas, ventanas de validez, anclaje y que
+el ancla sea CA, pero **no** name constraints, path length ni key usage.
+
+## Caducidad de los vectores
+
+Los certificados de los vectores caducan de verdad: Annex B limita un DSC a
+457 días y `internal/mdl/pki` lo impone. El generador usa ese máximo (y da 3
+años a la IACA, porque `GenerateDSC` rechaza un DSC que sobreviva a su
+emisor). No se puede evitar la caducidad — sólo hacerla visible a tiempo:
+
+- `TestVectorsHaveUsefulRemainingLife` (Go, corre en CI normal) falla cuando
+  quedan menos de 60 días.
+- El harness comprueba lo mismo (`DSC has at least 60 days of validity left`).
+
+Cuando fallen, regenerar los vectores y actualizar los tres repos en el mismo
+cambio.
+
+### Verificar en una fecha simulada
+
+`MDL_VERIFY_NOW` fija el reloj de verificación, para comprobar que los
+vectores siguen siendo válidos en el futuro y no sólo hoy:
+
+```bash
+MDL_VERIFY_NOW=2027-11-01T00:00:00Z npm run verify
+```
+
+Sólo puede endurecer el resultado, nunca relajarlo: `now` alimenta las
+comprobaciones de validez del certificado y del MSO. Pasada la caducidad del
+DSC el harness falla con las dos aserciones esperadas ("Issuer certificate
+must be valid" y "Unable to determine a trusted issuance chain"), que es
+exactamente el error confuso que esta política evita que aparezca por sorpresa
+aguas abajo.
+
 ### Cómo saber que el harness no miente
 
 Se probó con mutantes: un bit cambiado en la firma, y `family_name` alterado

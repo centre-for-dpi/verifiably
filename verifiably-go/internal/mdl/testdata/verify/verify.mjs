@@ -29,6 +29,23 @@ const EXPECTED_ELEMENTS = 12;
 // be satisfied by whatever the mdoc happens to claim.
 const EXPIRY_DATE = new Date('2032-01-10T00:00:00Z');
 
+// Verification clock. Defaults to wall-clock; MDL_VERIFY_NOW pins it so the
+// vectors can be checked at a simulated future date. That matters because the
+// certificates in the vectors legitimately expire (Annex B caps a DSC at 457
+// days), and we want to know that they are good for the road ahead rather
+// than merely good today.
+//
+// Note this is a *stricter* setting, never a looser one: `now` feeds the
+// certificate-validity and MSO-validity checks, so pinning it to a future
+// date can only cause failures, not mask them.
+const nowOverride = process.env.MDL_VERIFY_NOW;
+const NOW = nowOverride ? new Date(nowOverride) : new Date();
+if (Number.isNaN(NOW.getTime())) {
+  console.error(`MDL_VERIFY_NOW is not a valid date: ${nowOverride}`);
+  process.exit(2);
+}
+if (nowOverride) console.log(`(verifying at simulated time ${NOW.toISOString()})\n`);
+
 const mdocBytes = new Uint8Array(readFileSync(join(vectors, 'mdl_full.cbor')));
 const iacaPem = readFileSync(join(vectors, 'iaca.pem'), 'utf8');
 const dscPem = readFileSync(join(vectors, 'dsc.pem'), 'utf8');
@@ -141,7 +158,7 @@ const ctx = {
      * X509Certificate.verify(publicKey) checks the signature; checkValidity
      * is applied against `now`.
      */
-    verifyCertificateChain: ({ trustedCertificates, x5chain, now = new Date() }) => {
+    verifyCertificateChain: ({ trustedCertificates, x5chain, now = NOW }) => {
       if (!x5chain || x5chain.length === 0) {
         throw new Error('harness: empty x5chain');
       }
@@ -162,12 +179,18 @@ const ctx = {
       }
 
       // Anchor the top of the presented chain in a trusted certificate.
+      //
+      // A self-anchored chain (the top certificate IS the trust anchor) is
+      // only legitimate when that certificate is a CA. Without the `ca`
+      // check, a single-certificate x5chain carrying just the DSC, anchored
+      // to the DSC itself, would be accepted — a leaf trusting itself.
       const top = chain[chain.length - 1];
-      const anchor = anchors.find(
-        (a) => a.raw.equals(top.raw) || top.verify(a.publicKey),
-      );
+      const anchor = anchors.find((a) => {
+        if (a.raw.equals(top.raw)) return a.ca;
+        return top.verify(a.publicKey) && a.ca;
+      });
       if (!anchor) {
-        throw new Error('harness: chain does not terminate in a trusted certificate');
+        throw new Error('harness: chain does not terminate in a trusted CA certificate');
       }
       if (now < new Date(anchor.validFrom) || now > new Date(anchor.validTo)) {
         throw new Error('harness: trust anchor is not valid at verification time');
@@ -222,6 +245,7 @@ const assessments = [];
 try {
   const result = await issuerSigned.verify(
     {
+      now: NOW,
       trustedCertificates: [{ issuance: [derOf(iacaCert)] }],
       // No status list in the MSO; skip the network fetch it would imply.
       disableStatusValidation: true,
@@ -269,6 +293,7 @@ try {
   const bogus = [];
   await issuerSigned.verify(
     {
+      now: NOW,
       // The DSC is a leaf, not a CA — anchoring to it must not validate.
       trustedCertificates: [{ issuance: [derOf(dscCert)] }],
       disableStatusValidation: true,
@@ -330,7 +355,20 @@ check(
   mso.deviceKeyInfo?.deviceKey ? `curve ${mso.deviceKeyInfo.deviceKey.curve}` : 'absent',
 );
 
-// 6. Proof-of-concept material must be labelled as such.
+// 6. The vectors are fixtures in two other repos. Annex B caps a DSC at 457
+//    days, so they do expire; warn while there is still time to regenerate
+//    rather than letting a downstream repo hit an inscrutable chain error.
+//    Skipped when the clock is simulated, where "remaining life" is moot.
+if (!nowOverride) {
+  const daysLeft = Math.floor((new Date(dscCert.validTo) - NOW) / 86400000);
+  check(
+    'DSC has at least 60 days of validity left',
+    daysLeft >= 60,
+    `${daysLeft} days (regenerate the vectors when this fails)`,
+  );
+}
+
+// 7. Proof-of-concept material must be labelled as such.
 check('IACA is marked POC', iacaCert.subject.includes('POC-DO-NOT-TRUST'), iacaCert.subject.replace(/\n/g, ', '));
 check('DSC is marked POC', dscCert.subject.includes('POC-DO-NOT-TRUST'), dscCert.subject.replace(/\n/g, ', '));
 
