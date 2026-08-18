@@ -14,6 +14,10 @@ import (
 // headerLabelX5Chain is the COSE header that carries the certificate chain.
 const headerLabelX5Chain = int64(33)
 
+// coseSign1TagByte is the CBOR encoding of tag 18 (COSE_Sign1_Tagged): major
+// type 6, value 18 — a single byte, 0xd2.
+const coseSign1TagByte = byte(0xd2)
+
 // ValidateValidityInfo enforces the normative constraints the standard puts
 // on the MSO's temporal window relative to the credential's own dates.
 //
@@ -115,7 +119,33 @@ func SignMSO(ctx context.Context, s signer.Signer, mso *MobileSecurityObject) (c
 	if err != nil {
 		return nil, fmt.Errorf("mdl: marshal IssuerAuth: %w", err)
 	}
-	return out, nil
+	return untagSign1(out)
+}
+
+// untagSign1 strips the CBOR tag 18 that go-cose always emits.
+//
+// go-cose's MarshalCBOR produces COSE_Sign1_Tagged (RFC 9052 §2: the tag
+// identifies a standalone COSE message). ISO/IEC 18013-5 clause 9.1.2.4
+// defines IssuerAuth as a bare COSE_Sign1 — the surrounding IssuerSigned map
+// already identifies it, so the tag is not carried. Emitting the tagged form
+// produces an mdoc that @owf/mdoc (and therefore Credo) refuses to decode:
+// its IssuerSigned schema expects the 4-element array directly.
+//
+// This is a wire-format fix, not a cosmetic one; the signature is unaffected
+// because Sig_structure never covers the tag.
+func untagSign1(data []byte) ([]byte, error) {
+	if len(data) == 0 || data[0] != coseSign1TagByte {
+		return nil, fmt.Errorf("mdl: expected a tagged COSE_Sign1 from go-cose, got % x", firstBytes(data))
+	}
+	return data[1:], nil
+}
+
+// firstBytes returns a short prefix for error messages.
+func firstBytes(data []byte) []byte {
+	if len(data) > 4 {
+		return data[:4]
+	}
+	return data
 }
 
 // signWithSigner computes the COSE Sig_structure and hands it to the Signer.

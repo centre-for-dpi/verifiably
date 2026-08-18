@@ -100,8 +100,21 @@ func TestSignMSOProducesVerifiableCOSESign1WithX5Chain(t *testing.T) {
 		t.Fatalf("sign MSO: %v", err)
 	}
 
+	// ISO/IEC 18013-5 defines IssuerAuth as an untagged COSE_Sign1: the
+	// enclosing IssuerSigned map already identifies it, so the tag-18
+	// COSE_Sign1_Tagged wrapper must not be present. Emitting it produced an
+	// mdoc that @owf/mdoc refused to decode.
+	if len(issuerAuth) == 0 || issuerAuth[0] == 0xd2 {
+		t.Fatalf("IssuerAuth must be an untagged COSE_Sign1, got a tag-18 wrapper: % x", issuerAuth[:min(4, len(issuerAuth))])
+	}
+	if issuerAuth[0] != 0x84 {
+		t.Fatalf("IssuerAuth must be a 4-element array, got first byte %#x", issuerAuth[0])
+	}
+
+	// go-cose only unmarshals the tagged form, so re-attach the tag to reuse
+	// its parser and signature verification.
 	var msg cose.Sign1Message
-	if err := msg.UnmarshalCBOR(issuerAuth); err != nil {
+	if err := msg.UnmarshalCBOR(append([]byte{0xd2}, issuerAuth...)); err != nil {
 		t.Fatalf("IssuerAuth must be a COSE_Sign1: %v", err)
 	}
 
