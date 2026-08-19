@@ -167,39 +167,58 @@ capture it verbatim. The two most likely failure shapes, per the code read:
 
 ## Step 3: confirm the wallet can receive it
 
-**Not yet run** — Steps 1-2 above (server-side issuance) were confirmed live
-on `cdpi-vps`; this step needs a real `cdpi-wallet` client, which wasn't
-exercised this session. Also worth noting explicitly: the offer's
-`credential_issuer` resolved to `http://161.97.152.40:7002/draft13` (the
-walt.id host), NOT `verifiably-go`'s own base
-(`http://161.97.152.40:8081`) — this is precisely the issuer-host/aud gap
-already documented in `cdpi-wallet`'s `receive.tsx` (commit `0053481`).
-That gap doesn't block this step (the wallet talks to whatever
-`credential_issuer` says, not to `verifiably-go`), but confirms the
-documented concern was accurately characterized: two different hosts serve
-two different roles in this flow (walt.id issues, verifiably-go orchestrates
-via the operator API), by design, not by accident.
+**UPDATE — actually run, end to end, on a real Android device (local release
+APK, `adb install`), against `https://verifiably.mtc.credenciales.ysalabs.work`
+on `cdpi-vps`.** This section's original prediction (Credo's native
+`requestCredentials`/`credentialBindingResolver` path, `stored MdocRecord`)
+was wrong about *which code path the offer takes* — read the correction
+below rather than the predictions that follow it.
 
-Take `offer_uri` from Step 2 and run it through `cdpi-wallet`'s normal
-receive flow (`app/receive.tsx`'s existing `resolveOID4VCI` — no mDL-specific
-code path needed anymore, per this session's `storeCredential.ts` fix,
-`main` commit `bfe87e3`). Confirm in the wallet's logs:
+`isLegacyEndpoint()` in `cdpi-wallet`'s `requestCredentials.ts` matches any
+issuer URL containing `/draft13` — which this offer's `credential_issuer`
+does (`https://walt-issuer.mtc.credenciales.ysalabs.work/draft13`, confirming
+the issuer-host/aud gap this doc already called out: walt.id issues,
+verifiably-go orchestrates, two different hosts by design). That routes
+`mso_mdoc` through the wallet's own hand-rolled manual-POST path, entirely
+bypassing Credo's `holder.requestCredentials()`/`credentialBindingResolver`
+— so none of this section's original log-line predictions ever fire for
+this deployment. Three real bugs were found and fixed in that legacy path
+(`cdpi-wallet` `main` commit `516b72d`), each surfacing as a different error
+on successive attempts with fresh offers:
 
-- `[oid4vci] requestCredentials returned: 1 immediate, 0 deferred` (Credo
-  accepted the `mso_mdoc` config and didn't bounce it as unsupported)
-- `[oid4vci] stored MdocRecord id: ...` (the new dispatch branch fired, not
-  the `unknown record type, not stored` warning)
+1. `proofOptionsFromConfig()` didn't recognize `cose_key` (mdoc's binding
+   method) as JWK-equivalent, so the proof JWT was `did:key`-bound instead
+   of carrying an embedded `jwk` header — walt.id's mdoc issuer only reads
+   the latter. → `"No holder key could be extracted from proof"` (400).
+2. The legacy POST body omitted `doctype`; walt.id's
+   `findMatchingIssuanceRequest` (`CIProvider.kt`) matches the issuance
+   session to the request by `docType` alone for `mso_mdoc`, no fallback.
+   → `"No matching issuance request found for this session: <id>"` (400),
+   despite the session and proof both being valid.
+3. The credential response (raw base64url IssuerSigned CBOR) was routed
+   through the same manual-JWT path as `jwt_vc_json`/`vc+sd-jwt` and stored
+   as `SdJwtVcRecord` — decoding CBOR as a JWT threw `"Invalid JWT as
+   input"`. Fixed with a dedicated `ManualMdocResult` path
+   (`Mdoc.fromBase64Url` → `MdocRecord.fromMdoc`).
 
-Then confirm the stored record is queryable and carries a `kmsKeyId`:
+Confirmed in the wallet's logcat, in order across the three fixes:
+`[oid4vci] stored manual-mdoc id: <uuid>, docType: org.iso.18013.5.1.mDL` —
+**not** `stored MdocRecord id: ...` as originally predicted; that log line
+belongs to the Credo-native dispatch branch in `storeCredential.ts`, which
+this deployment's offers never reach.
 
-```ts
-// in a dev console / temporary debug screen
-const records = await agent.mdoc.getAll();
-console.log(records.map(r => ({ id: r.id, keyId: r.credentialInstances[0]?.kmsKeyId })));
-```
+A fourth, protocol-unrelated gap surfaced once storage was fixed:
+`credentials/index.tsx` never called `agent.mdoc.getAll()`, so the stored
+mdoc was invisible in the wallet's credential list despite being correctly
+persisted. Fixed in the same commit (`fromMdocRecord()` in `credential.ts`,
+wired into the list's load/delete alongside the sdJwtVc/w3cCredentials/
+w3cV2Credentials branches already there).
 
-Expected: one record, `keyId` non-empty (confirms Credo's own binding
-resolver — not `storeMdoc.ts`, which isn't in this path — set it correctly).
+Visually confirmed on-device: the credential list shows an "Iso18013
+Drivers License Credential" card ("VÁLIDA"), and its detail sheet renders
+all six subject claims correctly (birth date, document number, driving
+privileges, expiry date, given name — family name has a known, separate
+UTF-8 mangling cosmetic bug on accented characters, not yet fixed).
 
 ## What this smoke test does NOT cover
 
@@ -210,3 +229,8 @@ resolver — not `storeMdoc.ts`, which isn't in this path — set it correctly).
   something this repo's code determines. If a conformant external mdoc
   verifier can validate the credential, that's the real confirmation; this
   smoke test only proves the transport/storage plumbing works.
+- The UTF-8 mangling bug on accented claim characters (e.g. "Pérez" →
+  "P�rez") noted in Step 3 above — cosmetic, not yet root-caused. Likely
+  somewhere in `Mdoc`'s CBOR string decoding (`@credo-ts/core`) or in how
+  `fromMdocRecord` reads `issuerSignedNamespaces`, not in anything this
+  session's fixes touched — worth a separate, focused investigation.
