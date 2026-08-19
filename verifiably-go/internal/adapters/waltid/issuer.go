@@ -1156,6 +1156,11 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 	date := func(name string) vctypes.FieldSpec {
 		return vctypes.FieldSpec{Name: name, Datatype: "string", Format: "date", Required: true}
 	}
+	// opt is the not-required counterpart of str/date; pass format "date" for
+	// date fields, "" otherwise.
+	opt := func(name, format string) vctypes.FieldSpec {
+		return vctypes.FieldSpec{Name: name, Datatype: "string", Format: format, Required: false}
+	}
 	switch base {
 	case "UniversityDegree", "UniversityDegreeCredential":
 		return []vctypes.FieldSpec{str("holder"), str("degree"), str("classification"), date("conferred")}
@@ -1164,9 +1169,33 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 	case "KycChecksCredential", "KycCredential", "KycDataCredential":
 		return []vctypes.FieldSpec{str("holder"), str("kycComplete"), str("amlScreeningPassed"), date("checkedOn")}
 	case "Iso18013DriversLicenseCredential":
+		// The six required fields are the mandatory ISO/IEC 18013-5 data
+		// elements. The optional ones below are also standard 18013-5
+		// elements that real readers ask for — the Multipaz reader's
+		// "identification" request asks for birth_place, and its age
+		// attestations ask for age_over_18 / age_over_21. Issuing without
+		// them made those requests fail with "field does not exist", which
+		// looks like a wallet bug but is just a credential missing data.
+		//
+		// Nothing filters subject_data against this list on the way to
+		// walt.id — buildMdocData copies whatever it is given — so these
+		// were always issuable via the API. Verified by decoding a signed
+		// mdoc: all sixteen elements below came back in the CBOR. This list
+		// only drives the operator UI, which is why they need to be here to
+		// be offered at all.
+		//
+		// age_over_NN are ISO's age attestations: booleans the issuer
+		// asserts, so a verifier can check "over 18" without learning the
+		// birth date. They are typed as strings because subject_data is a
+		// map[string]string end to end.
 		return []vctypes.FieldSpec{
 			str("family_name"), str("given_name"), date("birth_date"),
 			str("document_number"), str("driving_privileges"), date("expiry_date"),
+			opt("issue_date", "date"), opt("issuing_country", ""),
+			opt("issuing_authority", ""), opt("birth_place", ""),
+			opt("resident_address", ""), opt("nationality", ""),
+			opt("age_over_18", ""), opt("age_over_21", ""),
+			opt("age_in_years", ""), opt("un_distinguishing_sign", ""),
 		}
 	case "OpenBadgeCredential":
 		return []vctypes.FieldSpec{str("holder"), str("achievement"), date("issuedOn")}
