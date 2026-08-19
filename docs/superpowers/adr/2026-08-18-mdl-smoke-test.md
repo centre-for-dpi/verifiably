@@ -216,9 +216,28 @@ w3cV2Credentials branches already there).
 
 Visually confirmed on-device: the credential list shows an "Iso18013
 Drivers License Credential" card ("VÁLIDA"), and its detail sheet renders
-all six subject claims correctly (birth date, document number, driving
-privileges, expiry date, given name — family name has a known, separate
-UTF-8 mangling cosmetic bug on accented characters, not yet fixed).
+all six subject claims correctly, including accented characters ("Family
+Name: Pérez") — see the investigation note below on an accented-character
+mangling that appeared during testing and was fully root-caused as a test-
+harness artifact, not a bug in any of this project's code.
+
+**Investigation note — a "Pérez" → "P�rez" mangling appeared during initial
+testing, traced conclusively to the test harness, not the codebase.** Root
+cause, confirmed byte-for-byte via `tcpdump` between `verifiably-go` and
+`issuer-api` plus a CBOR decode of the raw mdoc bytes: manual `curl -d
+'...Pérez...'` invocations from a Windows Git Bash shell sent "é" as a
+single non-UTF-8 byte (`0xE9`, consistent with the active ANSI codepage)
+instead of its correct 2-byte UTF-8 encoding (`C3 A9`) — confirmed by the
+request's `Content-Length` matching the cp1252-encoded length, not the
+UTF-8 one. That single invalid byte then passed through `verifiably-go`
+→ walt.id → CBOR encoding → `@animo-id/mdoc`'s decoder unchanged at each
+hop (every hop correctly treats an invalid UTF-8 byte as U+FFFD replacement
+character) — so the visible mangling was a faithful reproduction of a
+corrupted *input*, not a decoding bug anywhere in the pipeline. Reissuing
+via a `curl --data-binary @file.json` payload written with explicit
+`encoding='utf-8'` produced correct `C3 A9` bytes at every hop (verified
+in the `issuer-api` capture) and rendered as "Pérez" correctly in the
+wallet. No code changed as a result of this investigation — nothing to fix.
 
 ## What this smoke test does NOT cover
 
@@ -229,8 +248,3 @@ UTF-8 mangling cosmetic bug on accented characters, not yet fixed).
   something this repo's code determines. If a conformant external mdoc
   verifier can validate the credential, that's the real confirmation; this
   smoke test only proves the transport/storage plumbing works.
-- The UTF-8 mangling bug on accented claim characters (e.g. "Pérez" →
-  "P�rez") noted in Step 3 above — cosmetic, not yet root-caused. Likely
-  somewhere in `Mdoc`'s CBOR string decoding (`@credo-ts/core`) or in how
-  `fromMdocRecord` reads `issuerSignedNamespaces`, not in anything this
-  session's fixes touched — worth a separate, focused investigation.
