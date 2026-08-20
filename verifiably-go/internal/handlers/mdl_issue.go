@@ -182,6 +182,25 @@ func (h *H) mdlIssueStepTwo(r *http.Request, w http.ResponseWriter, proofReq mdl
 // ValidUntil (encoded as TDate, which keeps the full timestamp) — risking
 // validUntil exceeding expiry_date by up to 24h, which violates the
 // normative constraint in spec §C.7.1.
+// mdlPlaceholderPortraitJPEG stands in for a real photo when no portrait
+// claim is supplied. It is the minimal structurally-valid JPEG this POC's
+// mdl.Elements() accepts (SOI + an APP0 JFIF segment + EOI) — enough to
+// satisfy the Table 3 mandatory-element check and round-trip through a real
+// reader, but it is not anyone's photo.
+//
+// This is a placeholder, not a solution: no data source in this codebase
+// today supplies a real applicant portrait (confirmed against
+// citizens-postgres's schema and every existing claims-prefill path —
+// docs/superpowers/adr/2026-08-20-mdl-production-path-analysis.md, "Where
+// would a real applicant's data — especially the photo — actually come
+// from?"). Wiring a real source is separate work; this exists so the
+// endpoint doesn't hard-fail for every caller until that lands.
+var mdlPlaceholderPortraitJPEG = []byte{
+	0xFF, 0xD8, // SOI
+	0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, // APP0
+	0xFF, 0xD9, // EOI
+}
+
 func mdlLicenceFromClaims(claims map[string]string, holderSub string) mdl.LicenceData {
 	now := time.Now().UTC().Truncate(24 * time.Hour)
 	return mdl.LicenceData{
@@ -194,10 +213,28 @@ func mdlLicenceFromClaims(claims map[string]string, holderSub string) mdl.Licenc
 		IssuingAuthority:     "INTRANT",
 		DocumentNumber:       holderSub,
 		UNDistinguishingSign: "DOM",
+		Portrait:             mdlPortraitFromClaim(claims["portrait"]),
 		DrivingPrivileges: []mdl.DrivingPrivilege{
 			{VehicleCategoryCode: "B"},
 		},
 	}
+}
+
+// mdlPortraitFromClaim decodes a base64-encoded JPEG from the "portrait"
+// claim, when a caller supplies one. Falls back to the placeholder when the
+// claim is absent or fails to decode — mdl.Elements() still validates
+// whatever comes out of this function, so a malformed claim surfaces as the
+// same "portrait must be JPEG bytes" error a caller would get by omitting
+// it, rather than silently issuing with a swallowed decode failure.
+func mdlPortraitFromClaim(b64 string) []byte {
+	if b64 == "" {
+		return mdlPlaceholderPortraitJPEG
+	}
+	decoded, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return mdlPlaceholderPortraitJPEG
+	}
+	return decoded
 }
 
 func firstNonEmpty(vals ...string) string {

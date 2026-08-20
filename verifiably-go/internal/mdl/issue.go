@@ -1,6 +1,7 @@
 package mdl
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/base64"
@@ -19,7 +20,12 @@ var testDeviceKeyJSON []byte
 //
 // It deliberately does not reuse the walt.id adapter's map[string]string
 // shape: driving_privileges is a nested CBOR array that a flat string map
-// cannot express.
+// cannot express, and Portrait is raw JPEG bytes that a string map cannot
+// carry without a base64/type-hinting layer walt.id's legacy issuer-api
+// never implements (docs/superpowers/adr/2026-08-20-mdl-cbor-type-limits.md).
+// Portrait lands here instead as a plain Go []byte, which the CBOR encoder
+// (github.com/fxamacker/cbor/v2) already encodes as a genuine byte string —
+// confirmed empirically, not assumed: see TestIssuePortraitEncodesAsRealByteString.
 type LicenceData struct {
 	FamilyName           string
 	GivenName            string
@@ -30,8 +36,25 @@ type LicenceData struct {
 	IssuingAuthority     string
 	DocumentNumber       string
 	UNDistinguishingSign string
-	DrivingPrivileges    []DrivingPrivilege
+	// Portrait is the mandatory JPEG photo (ISO/IEC 18013-5 Table 3, element
+	// #9). Required as of C.7.5 — Elements returns an error if it's absent
+	// or doesn't start with the JPEG SOI marker. JPEG2000 is also permitted
+	// by the standard but deliberately not accepted here: real-world mDL
+	// issuers overwhelmingly use JPEG, and JPEG2000 has two different valid
+	// magic-byte forms (raw codestream vs. JP2 box) that would double the
+	// validation surface for a format this issuer has never been asked to
+	// produce. Revisit if a real request needs it.
+	Portrait          []byte
+	DrivingPrivileges []DrivingPrivilege
 }
+
+// jpegSOI is the JPEG Start-Of-Image marker every valid JPEG file begins
+// with (ISO/IEC 10918-1). Checking just these two bytes is intentionally
+// cheap — Elements is not an image-format validator, it only needs to catch
+// the failure mode this session actually hit against a different code path:
+// non-image bytes silently reaching the signer and producing a credential a
+// reader can decode structurally but not render.
+var jpegSOI = []byte{0xFF, 0xD8}
 
 // Elements renders the licence as the element map the encoder expects.
 //
@@ -49,6 +72,12 @@ func (d LicenceData) Elements(validFrom time.Time) (map[string]any, error) {
 	if len(d.DrivingPrivileges) == 0 {
 		return nil, fmt.Errorf("mdl: at least one driving privilege is required")
 	}
+	if len(d.Portrait) == 0 {
+		return nil, fmt.Errorf("mdl: portrait is required — Table 3 mandatory element #9; a credential without it is not a conformant mDL")
+	}
+	if !bytes.HasPrefix(d.Portrait, jpegSOI) {
+		return nil, fmt.Errorf("mdl: portrait must be JPEG bytes (expected SOI marker %x, got %x)", jpegSOI, d.Portrait[:min(2, len(d.Portrait))])
+	}
 
 	birth := FullDate(d.BirthDate)
 	return map[string]any{
@@ -60,6 +89,7 @@ func (d LicenceData) Elements(validFrom time.Time) (map[string]any, error) {
 		"issuing_country":        d.IssuingCountry,
 		"issuing_authority":      d.IssuingAuthority,
 		"document_number":        d.DocumentNumber,
+		"portrait":               d.Portrait,
 		"un_distinguishing_sign": d.UNDistinguishingSign,
 		"driving_privileges":     d.DrivingPrivileges,
 		"age_over_18":            ageAtLeast(d.BirthDate, validFrom, 18),

@@ -23,7 +23,11 @@ const vectors = join(here, '..', 'vectors');
 
 const DOCTYPE = 'org.iso.18013.5.1.mDL';
 const NAMESPACE = 'org.iso.18013.5.1';
-const EXPECTED_ELEMENTS = 12;
+// 13 as of C.7.5: the 11 Table 3 mandatory elements (including portrait,
+// added this phase) plus the two optional age attestations. Was 12 with
+// portrait deliberately absent through C.7.1/C.7.2 — bump this again only if
+// the emitted dataset changes, not on every vector regeneration.
+const EXPECTED_ELEMENTS = 13;
 // The licence in sampleLicence() expires on this date; the MSO may not
 // outlive it. Hard-coded rather than read from the mdoc so the check cannot
 // be satisfied by whatever the mdoc happens to claim.

@@ -57,22 +57,23 @@ func TestTDateEncodesWithTag0(t *testing.T) {
 }
 
 func TestMandatoryElementsListMatchesSpec(t *testing.T) {
-	// 10 of the 11 mandatory elements (portrait is deferred) plus two age
-	// attestations. See §C.7.2 of the spec.
-	if got := len(DatasetElements); got != 12 {
-		t.Fatalf("expected 12 dataset elements, got %d", got)
+	// All 11 Table 3 mandatory elements, including portrait as of C.7.5
+	// (docs/superpowers/plans/2026-08-17-mdl-issuer-go.md), plus the two
+	// optional age attestations = 13. Before C.7.5 this asserted 12 with
+	// portrait explicitly absent — that assertion was C.7.1/C.7.2's
+	// acceptance criterion for THAT phase, not a permanent constraint; C.7.5
+	// deliberately supersedes it.
+	if got := len(DatasetElements); got != 13 {
+		t.Fatalf("expected 13 dataset elements, got %d", got)
 	}
 	for _, name := range []string{
 		"family_name", "given_name", "birth_date", "issue_date", "expiry_date",
-		"issuing_country", "issuing_authority", "document_number",
+		"issuing_country", "issuing_authority", "document_number", "portrait",
 		"driving_privileges", "un_distinguishing_sign",
 		"age_over_18", "age_over_21",
 	} {
 		if !containsElement(DatasetElements, name) {
 			t.Errorf("dataset must contain %q", name)
 		}
-	}
-	if containsElement(DatasetElements, "portrait") {
-		t.Error("portrait is deferred to C.7.5 and must not be in the dataset yet")
 	}
 }
