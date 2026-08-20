@@ -1,8 +1,19 @@
-# walt.id encodes every mdoc string as CBOR text, so `portrait` can't be issued
+# walt.id's legacy `issuer-api` encodes every mdoc string as CBOR text, so `portrait` can't be issued
 
-Status: **confirmed limitation of walt.id v0.18.2**, no workaround through
-its issuer API. Found during the first real reader test (Multipaz reader on
-Android against the wallet on iPhone).
+Status: **confirmed limitation of walt.id's legacy `issuer-api`** (v0.18.2
+through `main`), no workaround through that specific service. Found during
+the first real reader test (Multipaz reader on Android against the wallet on
+iPhone).
+
+**UPDATE — resolved via a different walt.id service, not by patching this
+one.** Everything below was true of `issuer-api`/`issuer-api2`'s claim in
+this doc ("not wired to the issuer-api either") turned out to be wrong for
+`issuer-api2` specifically — it *is* wired there, just not documented
+anywhere public. Full writeup, including the certificate debugging that
+followed once portrait/dates were fixed: `2026-08-20-mdl-issuer-api2-portrait-fix.md`.
+Read that doc for the resolution; this one still accurately documents why
+the legacy `issuer-api` (what `verifiably-go`'s `internal/adapters/waltid/issuer.go`
+actually calls today) cannot do it.
 
 ## What happens
 
@@ -71,7 +82,14 @@ only by the library's own tests — nothing under `waltid-services/` uses them.
 walt.id's newer `waltid-mdoc-credentials2` does it right —
 `@ByteString @SerialName("portrait") val portrait: ByteArray?`, commented
 "ByteArray properties like portrait will be automatically encoded as bstr" —
-but that module is not wired to the issuer-api either.
+and, contrary to what this doc originally concluded, IS wired up: to a
+separate service, `issuer-api2` (`waltid/issuer-api2` on Docker Hub, not the
+`waltid/issuer-api` this repo's adapter calls), via a per-namespace
+`JsonElementToCborMappingConfig` and a `StringToCborTypeConversion` enum
+(`base64StringToByteString`, `stringToFullDate`, etc.). See
+`2026-08-20-mdl-issuer-api2-portrait-fix.md` for the full trace and a working
+example. This doc's remaining sections are still accurate for the legacy
+`issuer-api` this repo currently calls.
 
 ## Upgrading does not fix it
 
