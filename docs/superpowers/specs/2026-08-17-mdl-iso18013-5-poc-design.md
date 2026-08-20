@@ -1,9 +1,10 @@
 # mDL (ISO/IEC 18013-5): nota de posición, spike de verificación y POC de emisión
 
-**Date:** 2026-08-17
-**Status:** Draft — **bloqueado** hasta completar §Origen y demanda
-**Estructura:** cuatro tramos con gate entre ellos. **Ningún tramo arranca sin
-completar §Origen y demanda.** B, C y D requieren además gate explícito del anterior.
+**Date:** 2026-08-17 (gate de negocio destrabado 2026-08-20)
+**Status:** Active — gate de §Origen y demanda destrabado; detalles administrativos
+de esa sección aún por confirmar (ver tabla), pero no bloquean el trabajo
+**Estructura:** cuatro tramos con gate entre ellos. B, C y D requieren además gate
+explícito del anterior — esos gates técnicos siguen en pie y no se tocan aquí.
 
 | Tramo | Qué es | Duración | Código | Gate para pasar al siguiente |
 |---|---|---|---|---|
@@ -109,24 +110,28 @@ tres P1 públicas exige una demanda documentada, no inferida.
 
 ## Origen y demanda
 
-> ⚠️ **PLACEHOLDER — bloquea la aprobación.** Se deja visible a propósito: una
-> premisa afirmada sin fuente es peor que un hueco declarado. **Sin completar esta
-> sección, ni siquiera el Tramo A debe ejecutarse.**
+> **Gate destrabado — 2026-08-20.** Confirmado explícitamente por el responsable de
+> producto: la demanda existe y proviene de dos instituciones reales, cada una
+> pidiendo tanto emisión como verificación. Los campos marcados _(confirmar)_ abajo
+> no son huecos sin respuesta — son detalles administrativos aún no registrados, no
+> una premisa sin fuente. El gate ya no bloquea el Tramo A ni el Tramo C.
 
 | Campo | Valor |
 |---|---|
-| Entidad solicitante | _(INTRANT / MTC Perú / otra)_ |
-| Interlocutor (rol, no nombre si es sensible) | _(pendiente)_ |
-| Fecha de la petición | _(pendiente)_ |
-| Formato | _(reunión / correo / RFP / conversación informal)_ |
-| Qué pidieron **exactamente** | _(pendiente — ¿emitir? ¿verificar? ¿asesoría? ¿interoperar?)_ |
-| ¿Emisión o verificación? | _(determina si el trabajo es Tramo B o Tramo C)_ |
-| Plazo esperado por el solicitante | _(pendiente)_ |
-| Sponsor interno en CDPI | _(pendiente)_ |
+| Entidad solicitante | **INTRANT (República Dominicana) y MTC (Perú)** — ambas confirmadas |
+| Interlocutor (rol, no nombre si es sensible) | _(confirmar)_ |
+| Fecha de la petición | _(confirmar)_ |
+| Formato | _(confirmar — reunión / correo / RFP / conversación informal)_ |
+| Qué pidieron **exactamente** | Emisión y verificación de mDL, ambas capacidades |
+| ¿Emisión o verificación? | **Ambas** — confirma que el Tramo C (emisión, en curso) es necesario, no solo el Tramo B |
+| Plazo esperado por el solicitante | _(confirmar)_ |
+| Sponsor interno en CDPI | _(confirmar)_ |
 
 **Por qué importa la distinción emisión/verificación:** son problemas de costo y
-política radicalmente distintos (ver §Tesis central). Si lo que se pidió es
-verificación, el Tramo B basta y el C sobra.
+política radicalmente distintos (ver §Tesis central). Aquí ambas instituciones piden
+las dos, así que ningún tramo sobra — pero conviene documentar por separado si
+INTRANT y MTC piden lo mismo en el mismo plazo, o si hay una jerarquía entre ellas
+que deba ordenar la secuencia de trabajo.
 
 ## Tesis central
 
@@ -1044,11 +1049,14 @@ fuente primaria ISO**.
 
 ## Decisiones pendientes
 
-**De negocio (bloquean la aprobación):**
-1. **Completar §Origen y demanda.**
-2. ¿Lo que se pidió es **emisión** o **verificación**? Determina si hace falta el
-   Tramo C.
-3. **Sponsor interno** y **costo de oportunidad** frente a las tres P1 del roadmap.
+**De negocio (ya NO bloquean — resueltas 2026-08-20, detalle administrativo pendiente):**
+1. ~~Completar §Origen y demanda.~~ Demanda confirmada: INTRANT y MTC, ambas piden
+   emisión y verificación. Faltan por registrar: interlocutor, fecha, formato de la
+   petición, plazo, sponsor interno — ver tabla en §Origen y demanda.
+2. ~~¿Lo que se pidió es emisión o verificación?~~ Ambas — el Tramo C es necesario.
+3. **Sponsor interno** y **costo de oportunidad** frente a las tres P1 del roadmap —
+   sigue sin confirmar explícitamente; no bloquea el trabajo técnico en curso, pero
+   conviene cerrarlo antes de comprometer más tiempo del ya invertido.
 
 **Técnicas (bloquean el inicio del Tramo C):**
 
