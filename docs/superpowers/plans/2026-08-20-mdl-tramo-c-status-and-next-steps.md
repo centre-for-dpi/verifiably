@@ -37,11 +37,14 @@ nunca se documentaron como el entregable que el plan exige, y **el criterio de l
 dos fabricantes distintos no está confirmado** — no hay registro de haber probado en
 un segundo teléfono Android de fabricante distinto.
 
-**Lo que el criterio de aceptación pedía y no se verificó:** captura BLE con sniffer
-confirmando ausencia de PII en claro (§S-2, criterio de éxito #3 del spec). La
-session encryption vive dentro de `expo-mdoc-data-transfer` (correcto
-arquitectónicamente — la librería EUDI la implementa), pero nunca se capturó tráfico
-real para confirmarlo.
+**✅ Verificado — 2026-08-20**, vía HCI snoop log de Android en vez de sniffer nRF
+(el spec ya listaba ambos métodos como equivalentes). Captura real de una
+presentación completa con portrait: cero PII del mDL en texto plano en 88.9KB /
+1010 registros HCI; los únicos fragmentos legibles son el framing no-sensible de
+`SessionEstablishment` (`eReaderKey`, que va sin cifrar por diseño). Detalle
+completo en `docs/mdl-s2-btsnoop-analysis.md`, incluyendo qué no queda probado por
+este método (correctitud interna del KDF/IV, solo la propiedad observable de que
+un eavesdropper no aprende nada del contenido).
 
 ## C.7.1 — Issuer mdoc en Go
 
@@ -229,12 +232,18 @@ protegido por CI en vez de viviendo sin PR desde hace días.
 
 ### 3. Completar el informe de Fase 0 con los criterios que faltan
 
-`docs/mdl-fase0-report.md` nunca se escribió. Antes de escribirlo, faltan dos
-verificaciones reales, no solo redactar lo ya hecho:
+`docs/mdl-fase0-report.md` nunca se escribió. Antes de escribirlo, falta una
+verificación real, no solo redactar lo ya hecho:
 - **Segundo teléfono Android de fabricante distinto** — el plan es explícito en
-  que un solo fabricante no cumple el criterio de aceptación.
-- **Captura BLE con sniffer** confirmando ausencia de PII en claro — mismo gap en
-  C.7.0 y C.7.3, una sola verificación lo resuelve para ambos.
+  que un solo fabricante no cumple el criterio de aceptación. Sigue pendiente
+  deliberadamente: la configuración probada usa Android solo como reader (nunca
+  como holder en BLE peripheral mode, que es donde la inconsistencia entre
+  fabricantes históricamente aparece), así que el riesgo que el criterio
+  buscaba mitigar no se ejerció — ver la nota de estado en el spec, §C.7.0.
+- ~~Captura BLE con sniffer confirmando ausencia de PII en claro~~ — **hecho
+  2026-08-20** vía HCI snoop log de Android (el spec ya listaba esa vía como
+  equivalente al sniffer nRF). Cero PII en 88.9KB de captura real con portrait.
+  Detalle: `docs/mdl-s2-btsnoop-analysis.md`.
 
 ### 4. Decidir el alcance real de C.7.3b antes de invertir en él
 

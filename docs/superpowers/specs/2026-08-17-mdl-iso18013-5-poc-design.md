@@ -359,6 +359,19 @@ por dirección son el anti-replay intra-sesión.
 
 **Verificación:** captura BLE sin PII en claro (nRF Sniffer / HCI snoop log).
 
+> **Verificado — 2026-08-20**, vía HCI snoop log (sin sniffer nRF disponible).
+> Captura completa (1010 registros HCI, 88.9KB) de una presentación real con
+> portrait, extraída con `adb bugreport` (el log vive en una ruta protegida en
+> Android 10 que no admite `adb pull` directo). Búsqueda exhaustiva de cadenas de
+> texto plano en toda la captura: **cero coincidencias** de cualquier dato del mDL
+> (nombre, fecha de nacimiento, país, `portrait`, etc.). Los únicos fragmentos
+> legibles son `eReaderKey` y las claves `data`/`status` del framing de
+> `SessionEstablishment`/`SessionData` — que **van sin cifrar por diseño**, no una
+> fuga. El resto de la captura no muestra estructura CBOR reconocible, consistente
+> con cifrado AES-256-GCM. Detalle completo, incluyendo qué NO queda probado por
+> este método (correctitud interna del KDF/IV, no solo ausencia observable de PII):
+> `docs/mdl-s2-btsnoop-analysis.md`.
+
 ### S-3. Divulgación selectiva y consentimiento
 
 - El holder **filtra** el `DeviceResponse` a lo pedido en el `DeviceRequest`.
