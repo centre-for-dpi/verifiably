@@ -578,6 +578,32 @@ aquí**: si el holder no puede advertir, cambiar el reader no resuelve nada.
 Huawei son conocidos como inconsistentes); `BLUETOOTH_ADVERTISE` (API 31+); dev client
 de Expo; JDK + Android Studio; **sniffer BLE** (nRF) para la evidencia de §S-2.
 
+> **Estado real — 2026-08-20.** El spike ejecutado usó **1 Android (reader,
+> Multipaz) + 1 iPhone (holder, `cdpi-wallet`)** — no dos Android — porque solo había
+> un Android disponible en ese momento. Los criterios de aceptación 1-3 se cumplieron
+> con esa combinación (engagement, chunking con portrait real de ~40KB — más grande
+> que el sintético de 20KB que este criterio pedía, así que ese caso está cubierto de
+> sobra —, presentación completa en segundos).
+>
+> **Esto NO satisface el criterio original tal como está escrito, y se deja así a
+> propósito, no diluido.** La razón del requisito de dos fabricantes es
+> específicamente el holder en **BLE peripheral server mode** — el modo
+> históricamente inconsistente entre Android OEMs (Motorola/Huawei) — y en la
+> configuración probada, **Android nunca actúa como holder**, solo como reader
+> (central/scanning, mucho más uniforme entre fabricantes). El riesgo que el
+> criterio de dos fabricantes intentaba mitigar simplemente no se ejerció en esta
+> combinación.
+>
+> **Sigue pendiente**, y vuelve a ser relevante en dos escenarios concretos: (a) si
+> alguna vez se necesita que Android sea holder (hoy no es el caso: `cdpi-wallet` en
+> Android nunca se probó en BLE peripheral mode, con o sin un segundo fabricante), o
+> (b) el reader del Tramo D (§D.5), que si es multiplataforma y ahí Android vuelve a
+> ser holder-adyacente en el sentido de que el SDK debe funcionar de forma uniforme
+> entre OEMs. No bloquea el trabajo actual de C.7.1-C.7.5 (que no toca BLE en
+> Android-holder), pero si se llega a C.7.3b o al Tramo D sin haberlo resuelto,
+> retomarlo antes de asumir que el holder Android funciona igual en todos los
+> fabricantes.
+
 ### C.7.1 Issuer mdoc en Go (~2 sem)
 
 **Entregables:** `internal/mdl/encode.go` (`IssuerSignedItem`, `valueDigests` SHA-256,
