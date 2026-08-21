@@ -349,6 +349,17 @@ type FieldSpec struct {
 	Datatype string // "string" | "number" | "integer" | "boolean"
 	Format   string // optional: "date" | "uri" | ...
 	Required bool
+
+	// Labels maps a locale code to this field's human-readable name, e.g.
+	// {"en": "Family Name", "es-DO": "Apellidos"}. Locale codes are free-form
+	// strings, deliberately not validated against a fixed list — OID4VCI
+	// leaves the vocabulary open, and a deployment may need a language no
+	// predefined list would carry.
+	//
+	// "en" is the base language: Label() falls back to it for any locale not
+	// present. Empty Labels is valid and means "derive from Name", which is
+	// what wallets do today anyway.
+	Labels map[string]string
 }
 
 // Credential is the wallet/verifier-side view of an issued credential.
@@ -412,3 +423,34 @@ type IssuerIdentity struct {
 // Duration-safe helpers for adapters that work with time.Duration naturally.
 // ExpiresIn on IssueToWalletResult is a time.Duration; helper converts to seconds.
 func SecondsFromDuration(d time.Duration) int { return int(d / time.Second) }
+
+// DeriveLabel turns a snake_case identifier into a human-readable label:
+// family_name -> "Family Name". This mirrors what wallets already do when an
+// issuer publishes no display metadata, so a field with no Labels renders
+// identically to today rather than blank.
+func DeriveLabel(identifier string) string {
+	if identifier == "" {
+		return ""
+	}
+	parts := strings.Split(identifier, "_")
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(p[:1]) + p[1:]
+	}
+	return strings.Join(parts, " ")
+}
+
+// Label resolves this field's display name for a locale, in order: exact
+// match, then English (the base language), then derived from the identifier.
+// It never returns empty for a field with a Name.
+func (f FieldSpec) Label(locale string) string {
+	if v, ok := f.Labels[locale]; ok && v != "" {
+		return v
+	}
+	if v, ok := f.Labels["en"]; ok && v != "" {
+		return v
+	}
+	return DeriveLabel(f.Name)
+}
