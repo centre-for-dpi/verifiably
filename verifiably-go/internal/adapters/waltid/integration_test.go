@@ -5,7 +5,7 @@ package waltid
 //
 //   WALTID_INTEGRATION=1 go test -count=1 -v -run Integration ./internal/adapters/waltid/...
 //
-// Tests use waltid/issuer-api:0.18.2 directly (the image we ship) so any
+// Tests use waltid/issuer-api:0.23.1 directly (the image we ship) so any
 // breaking change in walt.id's HOCON parser surfaces in CI rather than
 // during a /issuer/schema/build save in production.
 
@@ -47,7 +47,7 @@ func runDocker(t *testing.T, timeout time.Duration, args ...string) (string, err
 }
 
 // TestIntegration_WaltidParsesAppendedCatalog is the high-value test: it
-// proves walt.id 0.18.2's HOCON parser ACCEPTS an entry produced by
+// proves walt.id 0.23.1's HOCON parser ACCEPTS an entry produced by
 // appendCredentialType. Unit tests can only verify substrings; only the
 // real parser can confirm the entry is structurally valid HOCON walt.id
 // will deserialise into CredentialTypeConfig.
@@ -55,7 +55,7 @@ func runDocker(t *testing.T, timeout time.Duration, args ...string) (string, err
 // Strategy:
 //  1. Copy the seeded baseline catalog to a temp dir.
 //  2. Call appendCredentialType for a custom schema.
-//  3. Boot waltid/issuer-api:0.18.2 with the temp dir mounted in.
+//  3. Boot waltid/issuer-api:0.23.1 with the temp dir mounted in.
 //  4. Poll /draft13/.well-known/openid-credential-issuer for our configID.
 //
 // If walt.id reaches "Application started" AND advertises our configIDs,
@@ -187,7 +187,7 @@ func runIntegrationCatalogTest(t *testing.T, schema vctypes.Schema) {
 		"-e", "ISSUER_API_PORT=7002",
 		"-e", "SERVICE_HOST=localhost",
 		"-v", configDir+":/waltid-issuer-api/config:ro",
-		"waltid/issuer-api:0.18.2",
+		"waltid/issuer-api:0.23.1",
 	)
 	if err != nil {
 		t.Fatalf("docker run: %v\n%s", err, out)
