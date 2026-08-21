@@ -88,11 +88,29 @@ No es viable hoy, por tres razones verificadas en el ADR de análisis:
    legacy no cruza-verifica. `issuer-api2` exige que cada `profileId`
    resuelva a un perfil pre-aprovisionado, con **dos** escrituras HOCON
    coordinadas que deben referenciarse 1:1 o el servicio lanza excepción.
-2. **Retroceso en persistencia.** El legacy usa Postgres. `issuer-api2` solo
-   soporta memoria o Redis, y si el feature flag de persistencia no está
-   habilitado, la config de Redis **se ignora en silencio**.
+2. **Persistencia con una trampa silenciosa.** `issuer-api2` solo soporta
+   memoria o Redis, y si el feature flag de persistencia no está habilitado,
+   la config de Redis **se ignora en silencio** y corre en memoria igual —
+   perdiendo ofertas y códigos pre-autorizados en vuelo en cada reinicio.
+
+   *Corrección respecto al ADR de análisis:* ese documento contrasta esto
+   con "el legacy usa Postgres", pero verificado contra
+   `deploy/compose/stack/docker-compose.yml`, el `issuer-api` legacy **no
+   declara dependencia de Postgres ni variables de conexión** — solo
+   `depends_on: caddy`. El Postgres del stack lo consumen `wallet-api` e
+   Inji. Así que en persistencia de sesiones de emisión el legacy no es
+   claramente superior; el problema real de `issuer-api2` es el modo de
+   falla silencioso, no una regresión frente a lo que hay hoy.
 3. **Peor aislamiento de fallas.** `listProfiles()` valida todos los perfiles
    en cada llamada: uno malformado rompe el catálogo entero.
+
+Con la corrección de (2), la razón decisiva es **(1)**: perder los esquemas
+custom del operador es una pérdida de capacidad de producto, no una
+molestia operativa. (2) y (3) son agravantes, no el argumento principal. Si
+alguien revisa esto y considera que los esquemas custom `mso_mdoc` no
+importan para su despliegue, la conclusión del paralelo merece
+reevaluarse — pero para este sistema, donde `SaveCustomSchema` es una ruta
+central y probada, se sostiene.
 
 Paralelo es además la ruta de migración segura: si walt.id cierra esas
 brechas más adelante, se mueven los demás formatos cuando mDL ya lleve
@@ -142,11 +160,29 @@ con múltiples `locale`. El mecanismo existe; nadie lo está usando.
 ### Cuatro tramos con dependencia estricta
 
 **Tramo 1 — Upgrade walt.id v0.18.2 → v0.23.1.** Prerequisito duro:
-`issuer-api2` no existe como módulo antes de v0.21.0. Toca 15 lugares con la
-versión fijada (compose de `hub` y `stack`, `.env.example`, seis archivos de
-Helm, el umbrella chart, `ec2-bootstrap.sh`, dos menciones en scripts) más
-`internal/adapters/waltid/integration_test.go`, que hardcodea la imagen
-`0.18.2`. No toca código de adaptador.
+`issuer-api2` no existe como módulo antes de v0.21.0 (confirmado contra los
+tags publicados de la imagen).
+
+**Fijaciones ejecutables a cambiar — 16, verificadas por grep:**
+`deploy/cloud/ec2-bootstrap.sh` (3: issuer, verifier, wallet);
+`deploy/compose/hub/.env.example` (`WALTID_VERSION`);
+`deploy/compose/hub/docker-compose.yml` (1);
+`deploy/compose/stack/docker-compose.yml` (3);
+`deploy/k8s/helm/charts/walt-{issuer,verifier,wallet}/{Chart,values}.yaml`
+(6); `deploy/k8s/helm/umbrella/waltid/Chart.yaml` (1);
+`scripts/gen-backends.sh:73` (1 — el string de versión que el operador ve en
+la tarjeta del DPG, fácil de pasar por alto).
+Más `internal/adapters/waltid/integration_test.go`, que hardcodea la imagen
+en dos lugares.
+
+**No toca código de adaptador ejecutable**, pero sí deja desactualizados
+~80 comentarios de documentación que citan v0.18.2 como la versión contra la
+cual se verificó el comportamiento (`config.go`, `issuer.go`, `verifier.go`,
+`wallet.go`, `catalog.go`, `vctypes.go`, varios handlers,
+`bootstrap-waltid-did.sh`). No son bugs, pero quedan engañosos: afirman
+"verificado contra el código fuente de v0.18.2" sobre un sistema que ya
+corre otra versión. El plan debe decidir si se actualizan en este PR o se
+anota como deuda — no dejarlo al azar.
 
 **Tramo 2 — `issuer-api2` como servicio versionado.** Nuevo servicio en el
 compose del stack y su equivalente Helm, imagen `waltid/issuer-api2:0.23.1`,
@@ -271,9 +307,18 @@ fallo de DPG.
 
 ## Pruebas
 
-**Tramo 1** — `integration_test.go` ya levanta un contenedor efímero de
-walt.id y emite de verdad; bumpear la imagen prueba el upgrade completo. Es
-la red de seguridad más valiosa que ya existe.
+**Tramo 1** — `integration_test.go` levanta un contenedor efímero de walt.id
+y emite de verdad, así que bumpear la imagen ahí prueba el upgrade de forma
+real. **Pero hoy no corre solo:** está detrás de
+`t.Skip("set WALTID_INTEGRATION=1 ...")`, y `WALTID_INTEGRATION` no se
+activa en ningún workflow ni script del repo (verificado por grep). Es una
+red de seguridad **potencial**, no efectiva.
+
+El plan debe resolver esto explícitamente, y hay una decisión real que
+tomar: activarlo en CI (necesita Docker en el runner, y alarga el pipeline)
+o mantenerlo manual y documentar que correrlo es parte obligatoria del
+procedimiento de upgrade. Lo que no es aceptable es bumpear la versión
+asumiendo que el test protege el cambio cuando nadie lo ejecuta.
 
 **Tramo 2** — que el servicio arranque, que los perfiles validen, y una
 verificación explícita de que la persistencia quedó como se pretende y no
@@ -330,9 +375,13 @@ sesión previa.
 2. **Dos servicios walt.id que mantener.** Mitigado porque no son dos rutas
    de código propias sino dos contenedores del mismo proveedor, y porque el
    adaptador ya bifurcaba por formato. Pero es superficie operativa real.
-3. **El soporte de display por claim en CREDEBL no está verificado.** El
-   diseño asume degradación silenciosa si no lo soporta; falta confirmarlo
-   contra su código.
+3. **CREDEBL casi con seguridad no soporta display por claim.** Su adaptador
+   solo expone un `DisplayName` a nivel de credencial
+   (`credebl/issuer.go:377`), sin nada equivalente por claim ni noción de
+   `locale` (verificado por grep). No invalida el diseño —la degradación
+   silenciosa está contemplada— pero conviene asumir desde ya que CREDEBL
+   queda fuera del beneficio, en vez de planificar como si fuera a
+   soportarlo.
 4. **`profileId` pre-aprovisionado implica despliegue para agregar un
    docType.** Añadir mVRC más adelante no será solo código: requiere
    versionar su perfil y desplegarlo.
