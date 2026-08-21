@@ -31,6 +31,13 @@ del sistema (elegir DPG → crear/elegir esquema → llenar datos → emitir),
 sin romper el patrón arquitectónico del proyecto ni las credenciales que
 hoy se emiten bien.
 
+**Dos mejoras transversales que el upgrade habilita**, y que este diseño
+aprovecha porque sería absurdo hacer el upgrade sin ellas: etiquetas de
+campo multi-idioma y nombre del emisor en la oferta. Ambas afectan a
+**todos** los formatos que el sistema emite, no solo a mdoc — hoy toda
+credencial declara `locale = "en-US"` y muestra la URL del emisor en vez de
+su nombre.
+
 ## Principio que gobierna el diseño
 
 `verifiably-go` **media**; los DPGs **emiten**. Cada adaptador
@@ -254,6 +261,46 @@ el mecanismo sirve a todos los formatos y a todos los DPGs que lo soporten.
   Inji lo soportan; CREDEBL está por verificar. Un DPG sin soporte
   simplemente no las recibe y sigue como hoy: degradación silenciosa.
 
+### Nombre del emisor en la oferta — `issuerDisplay`
+
+**El problema:** al descargar una credencial, el ciudadano ve la URL del
+emisor (`https://walt-issuer.mtc.credenciales.ysalabs.work/draft13`) en vez
+del nombre de la autoridad. OID4VCI define un `display` a nivel de emisor en
+el wellknown para exactamente esto, pero v0.18.2 no lo soporta — el código
+ya lo rodea componiendo `Schema.IssuerDisplayName` dentro de la descripción
+de la credencial, y su propio comentario en `vctypes.go:87-102` documenta
+que esa es "la única superficie que propaga entre formatos".
+
+**Verificado empíricamente en v0.23.1:** su
+`credential-issuer-metadata.conf` trae un bloque `issuerDisplay`
+(comentado por defecto) con `name`, `locale`, `description` y `logo`. Se
+configuró en un contenedor real y el wellknown lo publicó correctamente a
+nivel raíz, con dos locales simultáneos:
+
+```json
+"display": [
+  { "name": "INTRANT", "locale": "en",
+    "logo": { "url": "https://…/intrant-logo.png" },
+    "description": "Instituto Nacional de Tránsito y Transporte Terrestre" },
+  { "name": "INTRANT", "locale": "es-DO",
+    "description": "Instituto Nacional de Tránsito y Transporte Terrestre" }
+]
+```
+
+**Decisión: por instancia de despliegue, no por esquema.** walt.id admite un
+solo `issuerDisplay` por servicio, así que modelarlo por esquema exigiría
+elegir cuál gana. Un despliegue sirve a una autoridad; si hiciera falta
+multi-autoridad, se resuelve con instancias separadas — que es como walt.id
+mismo lo modela.
+
+Encaja con el mecanismo de etiquetas multi-idioma: mismo patrón de `locale`
+con códigos libres, mismo criterio de inglés como base.
+
+`Schema.IssuerDisplayName` **se conserva sin cambios**: sigue sirviendo al
+panel del verificador y a la composición en la descripción, que es lo único
+que funciona para wallets externas que no lean el `display` de nivel raíz.
+No se sustituye una superficie por otra; se agrega la que faltaba.
+
 ### UI del constructor de esquemas
 
 Al elegir formato `mso_mdoc`, aparece un selector de docType (mDL /
@@ -332,6 +379,12 @@ lo que impide que vuelva el riesgo de emitir con datos de otra persona.
 **Etiquetas** — que un `Schema` con etiquetas en varios idiomas produzca
 metadata OID4VCI con un `display` por locale, y que un `Schema` sin
 etiquetas produzca las derivadas del identificador (sin regresión).
+
+**Nombre del emisor** — que el wellknown publique el `display` de nivel raíz
+cuando está configurado, y que su ausencia no rompa nada (el sistema hoy
+funciona sin él). Como es config de walt.id y no código Go, la prueba real
+es levantar el servicio y consultar el wellknown — igual que se verificó
+durante el diseño.
 
 **Extremo a extremo** — emitir un mDL y un Photo ID contra el servicio real
 y verificar los tipos CBOR con `internal/mdl/testdata/verify/verify.mjs`, el
