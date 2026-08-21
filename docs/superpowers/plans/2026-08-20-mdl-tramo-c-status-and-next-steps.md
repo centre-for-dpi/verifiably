@@ -114,8 +114,8 @@ certificados de hoy.
 
 ## C.7.3b — Registro en Android Credential Manager
 
-**⚠️ Implementado y compila; verificación en dispositivo bloqueada por hardware,
-no por código.**
+**❌ Bloqueado — no por hardware (esa hipótesis quedó descartada), sino por
+una causa raíz sin identificar tras investigación exhaustiva.**
 
 Implementado sobre `@animo-id/expo-digital-credentials-api` (paquete publicado,
 v0.4.0) en vez de un módulo nativo propio — decisión tomada explícitamente en
@@ -129,25 +129,70 @@ Credenciales (`app/(tabs)/credentials/index.tsx`) sólo en `Platform.OS ===
 overlay del sistema; `DigitalCredentialsRequestOverlay.tsx` con **sólo
 "Denegar" cableado** — "Aprobar" (firmar y devolver el vp_token) queda fuera
 de alcance a propósito, porque requiere el trabajo de ISO 18013-7/OpenID4VP
-que el spec ya excluye (decisión #9). Commit `389705a`, pusheado a `main`.
+que el spec ya excluye (decisión #9). Commit `389705a` (implementación
+original), `7da12df` (fixes de esta sesión), ambos en `main` de cdpi-wallet.
 
-`./gradlew :app:assembleDebug` → `BUILD SUCCESSFUL` (confirmado en sesión
-previa, tras resolver un problema de toolchain NDK/CMake en Windows no
-relacionado con este código). APK instalado hoy vía `adb install` en el único
-dispositivo Android disponible.
+**El bloqueo de hardware de la sesión anterior (Android 10 en el único
+equipo disponible) quedó descartado — 2026-08-21.** El backport
+`androidx.credentials.registry:registry-provider-play-services` sí funciona
+en Android 10/API 29 vía Google Play Services (confirmado: el picker nativo
+de Android se abre correctamente, y **CMWallet** — la wallet de referencia
+de `github.com/digitalcredentialsdev/CMWallet`, side-instalada en el mismo
+equipo para esta investigación — aparece y completa presentaciones
+exitosas contra el mismo `dcql_query`, mismo Chrome 151, mismo dispositivo).
+El límite real no era la versión de Android; era una configuración de
+prueba anterior (debug build sin Metro corriendo) que nunca cargó el JS
+real de la app.
 
-**Bloqueo real, no de código — 2026-08-20:** el dispositivo disponible es un
-Galaxy S9+ (`SM_G965U`) en **Android 10 / API 29**. El Credential Manager
-Registry (`androidx.credentials.registry`) que este código usa requiere
-**Android 14+ / API 34** como mínimo. No se pudo verificar en dispositivo real
-que cdpi-wallet aparezca en el selector del sistema al llamar
-`navigator.credentials.get()` desde Chrome — el SO del único equipo disponible
-no soporta la API en absoluto, independientemente de si el código está bien
-escrito. Página de prueba lista (`navigator.credentials.get()` con
-`dcql_query` sobre `org.iso.18013.5.1.mDL`), pendiente de un equipo con
-Android 14+ para ejecutarla. Este es el mismo patrón que el criterio de "dos
-fabricantes Android" de C.7.0: una limitación de hardware disponible, no
-diluida ni marcada como resuelta hasta que se pruebe en el equipo correcto.
+**Investigación exhaustiva de por qué cdpi-wallet nunca aparece en el
+picker, con evidencia directa en cada paso, sin resolver la causa raíz:**
+
+Tres bugs reales confirmados y corregidos (commit `7da12df` en
+cdpi-wallet), ninguno resolvió el problema por sí solo:
+1. `encodeCredentials.js` nunca escribía `supported_protocols` en el JSON
+   registrado — confirmado vía decompilación del struct Rust real del
+   matcher (`Registry.supported_protocols: Vec<String>` con
+   `#[nserde(default)]`): ausente → lista vacía → el loop de matching del
+   matcher corre cero iteraciones, sin error. Parcheado.
+2. El registro nativo llamaba dos veces con el mismo `id` bajo dos `type`
+   distintos (uno legacy `"com.credman.IdentityCredential"`, otro el
+   estándar `DigitalCredential.TYPE_DIGITAL_CREDENTIAL` — confirmado
+   byte-idéntico al que `DigitalCredentialRegistry` fija internamente vía
+   decompilación del `.aar`). CMWallet solo registra una vez. Parcheado,
+   eliminada la llamada legacy.
+3. El paquete fija `androidx.credentials.registry:*:1.0.0-alpha01` —
+   `supportedProtocols` en la propia API de registro recién se agregó en
+   `alpha05` (confirmado contra el índice de Google Maven y el historial de
+   releases). Forzado a `alpha05` vía nuevo plugin
+   `plugins/withCredentialsRegistryVersion.js`.
+
+Con los tres fixes aplicados, **el picker sigue sin mostrar cdpi-wallet**
+(confirmado repetidas veces, con capturas de pantalla). Se probó además,
+como control definitivo: un registro nativo Kotlin directo usando las
+clases oficiales `MdocEntry`/`OpenId4VpRegistry`
+(`androidx.credentials.registry.digitalcredentials.*`) — el mismo patrón
+exacto que usa CMWallet, evitando por completo el encoding manual del
+paquete de terceros. **Tampoco aparece.** Se probó igualar `targetSdkVersion`
+a un valor cercano al de CMWallet (33 vs 36 nuestro, 28 el de CMWallet — no
+se pudo bajar a 28 exacto porque el lint de Google Play lo bloquea en
+release builds). **Tampoco cambió el resultado.**
+
+Comparación de manifests/firmas instalados (`adb shell dumpsys package`):
+estructuralmente equivalentes en los intent-filters de `GET_CREDENTIAL`
+(mismas acciones, misma categoría). Diferencia real no explicada: CMWallet
+tiene el flag `DEBUGGABLE` (es un `app-debug.apk` real), cdpi-wallet es
+`app-release.apk` — no se investigó si esto importa.
+
+**Conclusión de la sesión:** cada hipótesis verificable por lectura de
+código/bytecode fue confirmada y corregida donde aplicaba, pero ninguna
+explica el síntoma completo. La causa raíz sigue sin identificar. Candidato
+más probable para la próxima sesión: inspeccionar el `bugreport` completo
+de Android (no solo `logcat`, que no expone nada del lado de Play
+Services/GMS para este flujo) para ver si GMS descarta el registro de
+`org.cdpi.wallet` por algún criterio no visible por las vías ya agotadas
+(firma release vs. debug, algún allowlist interno, estado de sesiones
+previas de prueba con distintos matchers/`id`s acumulado del lado del
+sistema).
 
 ## C.7.4 — Reader de la POC
 
@@ -277,18 +322,22 @@ verificación real, no solo redactar lo ya hecho:
   equivalente al sniffer nRF). Cero PII en 88.9KB de captura real con portrait.
   Detalle: `docs/mdl-s2-btsnoop-analysis.md`.
 
-### 4. C.7.3b — hecho en código, pendiente de hardware para verificar
+### 4. C.7.3b — bloqueo de causa desconocida, no de hardware ni de código conocido
 
-**Actualizado 2026-08-20 — ya no es un paso futuro, es un bloqueo activo.**
-El registro se implementó (ver estado arriba) sin esperar la decisión del
-paso 1, usando `MdocRecord.issuerSignedNamespaces` tal como esté poblado por
-cualquiera de los dos caminos — el código de registro es agnóstico al emisor,
-así que no había que esperar. Lo que falta no es desarrollo: es un **Android
-14+ real** para instalar el APK ya compilado y confirmar que cdpi-wallet
-aparece en el picker del sistema al pedir el mDL desde Chrome. El único equipo
-probado hoy (Galaxy S9+, Android 10) no puede ejercer la API en absoluto.
-Siguiente acción concreta: conseguir/pedir prestado un equipo Android 14+
-(no depende de fabricante específico, a diferencia del criterio de C.7.0).
+**Actualizado 2026-08-21 — el bloqueo de hardware se descartó, pero apareció
+uno más profundo sin resolver.** El Galaxy S9+ (Android 10) sí puede ejercer
+la API vía el backport de Play Services — confirmado con una wallet de
+referencia (CMWallet) funcionando correctamente en el mismo equipo, misma
+sesión. cdpi-wallet, en cambio, nunca aparece en el picker pese a que su
+registro es válido por toda medida verificable (dos matchers WASM distintos
+lo procesan sin error de formato) y pese a que se probó con un registro
+nativo Kotlin directo, código por código idéntico al de CMWallet. Detalle
+completo de las tres correcciones reales encontradas y de todo lo descartado
+en la sección de estado de arriba. Siguiente acción concreta: capturar un
+`adb bugreport` completo (no solo `logcat`) durante un intento fallido, para
+buscar del lado de Google Play Services alguna señal de por qué descarta el
+registro de `org.cdpi.wallet` específicamente — nadie ha mirado ese nivel
+todavía.
 
 ### 5. La demo formal (C.7.7) al final, no antes
 
