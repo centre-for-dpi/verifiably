@@ -720,14 +720,26 @@ func extractBuilderData(r *http.Request) builderData {
 	if d.Std == "" {
 		d.Std = "w3c_vcdm_2"
 	}
+	// r.FormValue above already parses the request body into r.Form; this
+	// call just makes that explicit before we hand r.Form to the helper.
+	_ = r.ParseForm()
+	d.Fields = parseFieldSpecsFromForm(r.Form)
+	return d
+}
+
+// parseFieldSpecsFromForm reads the indexed field rows (field_name_0,
+// field_datatype_0, field_required_0, ...) the schema builder submits.
+// Takes url.Values rather than *http.Request so it can be tested directly.
+func parseFieldSpecsFromForm(form url.Values) []vctypes.FieldSpec {
+	var out []vctypes.FieldSpec
 	// Field rows come as field_name_0, field_datatype_0, field_required_0, ...
 	for i := 0; i < 50; i++ {
-		name := r.FormValue(fmt.Sprintf("field_name_%d", i))
-		dt := r.FormValue(fmt.Sprintf("field_datatype_%d", i))
-		if dt == "" && name == "" && r.Form[fmt.Sprintf("field_name_%d", i)] == nil {
+		name := form.Get(fmt.Sprintf("field_name_%d", i))
+		dt := form.Get(fmt.Sprintf("field_datatype_%d", i))
+		if dt == "" && name == "" && form[fmt.Sprintf("field_name_%d", i)] == nil {
 			break
 		}
-		req := r.FormValue(fmt.Sprintf("field_required_%d", i)) == "on"
+		req := form.Get(fmt.Sprintf("field_required_%d", i)) == "on"
 		if dt == "" {
 			dt = "string"
 		}
@@ -737,9 +749,9 @@ func extractBuilderData(r *http.Request) builderData {
 			f.Datatype = parts[0]
 			f.Format = parts[1]
 		}
-		d.Fields = append(d.Fields, f)
+		out = append(out, f)
 	}
-	return d
+	return out
 }
 
 func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
