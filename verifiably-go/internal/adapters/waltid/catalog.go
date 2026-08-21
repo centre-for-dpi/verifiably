@@ -191,7 +191,7 @@ func buildJWTVCJsonEntry(configID, typeName, wireFormat string, schema vctypes.S
                 text_color = "#000000"
             }
         ]
-    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc))
+%s    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec))
 }
 
 // buildLinkedDataEntry covers both jwt_vc_json-ld (JSON-LD payload, JWT
@@ -226,7 +226,7 @@ func buildLinkedDataEntry(configID, typeName, wireFormat string, schema vctypes.
                 text_color = "#000000"
             }
         ]
-    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc))
+%s    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec))
 }
 
 // buildSDJWTEntry covers vc+sd-jwt (the older media type) and dc+sd-jwt
@@ -279,7 +279,7 @@ func buildSDJWTEntry(configID, typeName, wireFormat string, schema vctypes.Schem
                 text_color = "#000000"
             }
         ]
-    }`, configID, wireFormat, vct, hoconEscape(display), hoconEscape(desc))
+%s    }`, configID, wireFormat, vct, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec))
 }
 
 // buildMDocEntry covers mso_mdoc — the ISO 18013-5 mobile document format.
@@ -323,7 +323,7 @@ func buildMDocEntry(configID, typeName string, schema vctypes.Schema) string {
                 text_color = "#000000"
             }
         ]
-    }`, configID, hoconEscape(doctype), hoconEscape(display), hoconEscape(desc))
+%s    }`, configID, hoconEscape(doctype), hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec))
 }
 
 // displayPair derives the human-readable name + description from the
@@ -349,6 +349,61 @@ func displayPair(typeName string, schema vctypes.Schema) (display, desc string) 
 		desc = desc + " · Issued by " + iss
 	}
 	return display, desc
+}
+
+// buildClaimsBlock renders the OID4VCI `claims` metadata for a schema's
+// fields, with one display entry per configured locale.
+//
+// This is the mechanism that lets a wallet show "Apellidos" to a
+// Spanish-speaking holder instead of the raw identifier. Without it, wallets
+// derive a label from the identifier themselves — which is why cdpi-wallet
+// shows "Family Name" today regardless of the holder's language.
+//
+// Returns "" for a schema with no declared fields (stock catalog entries):
+// an empty claims block is not valid HOCON here, and omitting it preserves
+// exactly today's behaviour for those schemas.
+func buildClaimsBlock(fields []vctypes.FieldSpec) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("        claims = [\n")
+	for _, f := range fields {
+		if f.Name == "" {
+			continue
+		}
+		b.WriteString("            {\n")
+		fmt.Fprintf(&b, "                path = [\"%s\"]\n", hoconEscape(f.Name))
+		b.WriteString("                display = [\n")
+
+		locales := claimLocales(f)
+		for _, loc := range locales {
+			fmt.Fprintf(&b,
+				"                    { name = \"%s\", locale = \"%s\" }\n",
+				hoconEscape(f.Label(loc)), hoconEscape(loc))
+		}
+		b.WriteString("                ]\n")
+		b.WriteString("            }\n")
+	}
+	b.WriteString("        ]\n")
+	return b.String()
+}
+
+// claimLocales returns the locales to emit for a field, English first and the
+// rest sorted so catalog output is deterministic (the file is diffed and
+// written on every schema save). English is always emitted first regardless
+// of whether the field declares an "en" label, because Label("en") falls
+// back to the derived name — there is always something to show.
+func claimLocales(f vctypes.FieldSpec) []string {
+	out := make([]string, 0, len(f.Labels)+1)
+	for loc := range f.Labels {
+		if loc == "en" {
+			continue
+		}
+		out = append(out, loc)
+	}
+	sort.Strings(out)
+	return append([]string{"en"}, out...)
 }
 
 // hoconEscape prepares a free-text string for inclusion in a HOCON quoted
