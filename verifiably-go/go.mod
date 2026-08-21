@@ -10,6 +10,7 @@ require (
 	github.com/pdfcpu/pdfcpu v0.13.0
 	github.com/piprate/json-gold v0.8.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	github.com/veraison/go-cose v1.3.0
 	github.com/yuin/goldmark v1.7.8
 	golang.org/x/net v0.54.0
 )

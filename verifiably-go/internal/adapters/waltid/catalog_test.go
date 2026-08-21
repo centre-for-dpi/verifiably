@@ -336,3 +336,16 @@ func sortedCopy(in []string) []string {
 	return out
 }
 
+func TestSchemaAllowlistIncludesISOmDL(t *testing.T) {
+	// Commit 6449f96 dropped mDL from the demo grid because its mso_mdoc
+	// envelope was hard to round-trip through MOSIP / Inji Verify. The mDL
+	// work verifies through its own path, so the entry comes back.
+	want := "Iso18013 Drivers License Credential"
+	for _, s := range schemaAllowlistDefault {
+		if s == want {
+			return
+		}
+	}
+	t.Fatalf("expected %q in schemaAllowlistDefault, got %v", want, schemaAllowlistDefault)
+}
+

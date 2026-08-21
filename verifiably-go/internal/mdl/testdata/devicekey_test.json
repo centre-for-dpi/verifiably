@@ -1,0 +1,7 @@
+{
+  "_comment": "Test-only COSE_Key (EC2/P-256) standing in for a holder device key. Generated for development; the corresponding private key is intentionally not stored. Real issuance takes the device key from the holder's proof of possession.",
+  "kty": 2,
+  "crv": 1,
+  "x": "hLQgs3TDDIkGlvsFEEHUCLLtqjHDLBGqTSSKMzWWZBk=",
+  "y": "IhTvS1V0YKu1qP7wRRj0hVYFCCPqQVXKMR7YQvLmXvw="
+}
