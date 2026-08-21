@@ -70,7 +70,7 @@ backends_for() {
       "roles": ["issuer", "holder", "verifier"],
       "dpg": {
         "Vendor": "Walt Community Stack",
-        "Version": "v0.18.2",
+        "Version": "v0.23.1",
         "Tag": "API-based",
         "Tagline": "Open-source, API-driven credentialing stack.",
         "FlowPreAuth": true,
@@ -79,7 +79,7 @@ backends_for() {
         "Formats": ["w3c_vcdm_2", "sd_jwt_vc (IETF)", "mso_mdoc"],
         "FormatsPlain": "W3C VCDM 2.0 signed as JWT, SD-JWT VC (IETF), and ISO 18013-5 mdoc.",
         "DirectPDF": false,
-        "DirectPDFPlain": "No documented QR-on-PDF export at v0.18.2.",
+        "DirectPDFPlain": "No documented QR-on-PDF export at v0.23.1.",
         "Caveats": "OID4VP v1.0 support in the wallet/demo apps is still rolling out.",
         "Capabilities": [
           {"Kind": "flow",        "Key": "pre_auth",      "Title": "Pre-authorized code flow", "Body": "Issuer stages the offer; wallet redeems at the token endpoint."},

@@ -142,7 +142,7 @@ services:
       - caddy-public-config:/config
 
   issuer-api:
-    image: waltid/issuer-api:0.18.2
+    image: waltid/issuer-api:0.23.1
     restart: unless-stopped
     depends_on:
       - caddy
@@ -156,7 +156,7 @@ services:
       - ../../k8s/config/issuer:/waltid-issuer-api/config:ro
 
   verifier-api:
-    image: waltid/verifier-api:0.18.2
+    image: waltid/verifier-api:0.23.1
     restart: unless-stopped
     depends_on:
       - caddy
@@ -167,7 +167,7 @@ services:
       - ../../k8s/config/verifier:/waltid-verifier-api/config:ro
 
   wallet-api:
-    image: waltid/wallet-api:0.18.2
+    image: waltid/wallet-api:0.23.1
     restart: unless-stopped
     depends_on:
       postgres:

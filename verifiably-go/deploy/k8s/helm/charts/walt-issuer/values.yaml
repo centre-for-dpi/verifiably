@@ -2,7 +2,7 @@
 issuer:
   image:
     repository: waltid/issuer-api
-    tag: "0.18.2"
+    tag: "0.23.1"
     pullPolicy: IfNotPresent
   service:
     port: 7002
