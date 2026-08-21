@@ -279,11 +279,16 @@ resolvió.
 
 ### 1. ~~Decidir cuál de los dos caminos a portrait es el definitivo~~ — decidido 2026-08-21
 
-**Resuelto.** El emisor nativo Go (`internal/mdl/`, rama `feat/mdl-issuer`) es
-el camino de producción. `issuer-api2` de walt.id deja de perseguirse como
-backend de producción para mDL — decisión completa, razonamiento y próximos
-pasos concretos en `2026-08-21-mdl-portrait-path-decision.md`. No repetido
-aquí; ese documento es ahora la fuente para este punto.
+**Resuelto — `issuer-api2` de walt.id sigue siendo el emisor de producción.**
+Una primera versión de esta decisión eligió el emisor nativo Go
+(`internal/mdl/`); se revirtió el mismo día al verificar que rompía el
+principio arquitectónico central del proyecto — `verifiably` media, los DPGs
+emiten — porque `internal/mdl.Issue()` firma dentro del mismo proceso Go, sin
+ningún DPG externo real de por medio. Razonamiento completo, incluida la
+corrección, en `2026-08-21-mdl-portrait-path-decision.md`. El trabajo
+pendiente real es resolver los bloqueadores de seguridad de `issuer-api2`
+(API sin autenticar, claves de ejemplo públicas) — ver Parte 2 de
+`2026-08-20-mdl-production-path-analysis.md`.
 
 ### 2. Cerrar C.7.1 formalmente
 
