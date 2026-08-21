@@ -154,7 +154,7 @@
 {{end}}
 
 {{define "_field_row"}}
-<div style="display:grid;grid-template-columns:1fr 160px 72px 36px;gap:0.5rem;align-items:center">
+<div style="display:grid;grid-template-columns:1fr 1fr 160px 72px 36px;gap:0.5rem;align-items:center">
   <input type="text"
          name="field_name_{{.Idx}}"
          value="{{.Field.Name}}"
@@ -162,6 +162,16 @@
          pattern="[a-zA-Z_][a-zA-Z0-9_]*"
          title="Solo letras (a-z, A-Z), dígitos y guión bajo. No se permiten caracteres especiales (ñ, tildes, espacios)."
          style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.7rem;font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--ink);border-radius:2px">
+
+  {{/* Label is free text — the identifier above must stay interoperable
+       (it travels into the signed credential), but what the holder reads
+       does not. Blank derives from the identifier, matching what wallets
+       already do. */}}
+  <input type="text"
+         name="field_label_{{.Idx}}"
+         value="{{index .Field.Labels "en"}}"
+         placeholder="Label (English)"
+         style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.7rem;font-size:0.82rem;color:var(--ink);border-radius:2px">
 
   <select name="field_datatype_{{.Idx}}"
           style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.6rem;font-family:inherit;font-size:0.82rem;color:var(--ink);border-radius:2px">
@@ -189,6 +199,24 @@
           hx-target="#builder-form"
           hx-swap="innerHTML"
           style="background:none;border:1px solid var(--line);color:var(--ink-mute);width:32px;height:32px;border-radius:2px;cursor:pointer">×</button>
+
+  {{range $loc, $val := .Field.Labels}}
+    {{if ne $loc "en"}}
+      <div style="grid-column:1/-1;display:grid;grid-template-columns:120px 1fr;gap:0.5rem;padding-left:1rem">
+        <input type="text" value="{{$loc}}" readonly
+               style="background:var(--bg-mute);border:1px solid var(--line);padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--ink-mute);border-radius:2px">
+        <input type="text" name="field_label_{{$.Idx}}_{{$loc}}" value="{{$val}}"
+               style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-size:0.78rem;color:var(--ink);border-radius:2px">
+      </div>
+    {{end}}
+  {{end}}
+  <div style="grid-column:1/-1;display:grid;grid-template-columns:120px 1fr;gap:0.5rem;padding-left:1rem">
+    <input type="text" name="new_locale_{{.Idx}}" placeholder="es-DO"
+           title="Any BCP-47 code — es-DO, ht, qu. Not restricted to a fixed list."
+           style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--ink);border-radius:2px">
+    <input type="text" name="new_label_{{.Idx}}" placeholder="Label in that language"
+           style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-size:0.78rem;color:var(--ink);border-radius:2px">
+  </div>
 </div>
 {{end}}
 

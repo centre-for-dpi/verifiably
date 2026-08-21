@@ -749,6 +749,40 @@ func parseFieldSpecsFromForm(form url.Values) []vctypes.FieldSpec {
 			f.Datatype = parts[0]
 			f.Format = parts[1]
 		}
+
+		// Labels: field_label_N is English (the base language);
+		// field_label_N_<locale> adds others. Locale codes are free-form —
+		// whatever the operator typed — so we discover them by prefix scan
+		// rather than checking against a fixed list.
+		labels := map[string]string{}
+		if en := strings.TrimSpace(form.Get(fmt.Sprintf("field_label_%d", i))); en != "" {
+			labels["en"] = en
+		}
+		prefix := fmt.Sprintf("field_label_%d_", i)
+		for key, vals := range form {
+			if !strings.HasPrefix(key, prefix) || len(vals) == 0 {
+				continue
+			}
+			loc := strings.TrimPrefix(key, prefix)
+			if v := strings.TrimSpace(vals[0]); loc != "" && v != "" {
+				labels[loc] = v
+			}
+		}
+		if len(labels) > 0 {
+			f.Labels = labels
+		}
+
+		// A newly typed locale/label pair, from the empty row the template
+		// always renders. Both must be non-empty to count.
+		newLoc := strings.TrimSpace(form.Get(fmt.Sprintf("new_locale_%d", i)))
+		newLabel := strings.TrimSpace(form.Get(fmt.Sprintf("new_label_%d", i)))
+		if newLoc != "" && newLabel != "" {
+			if f.Labels == nil {
+				f.Labels = map[string]string{}
+			}
+			f.Labels[newLoc] = newLabel
+		}
+
 		out = append(out, f)
 	}
 	return out
