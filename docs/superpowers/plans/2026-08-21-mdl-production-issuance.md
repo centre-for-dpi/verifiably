@@ -2212,7 +2212,51 @@ grep -rn "0\.18\.2" --include="*.go" . | grep -v node_modules | wc -l
 
 - [ ] **Step 2: Add the entry to TODO.md**
 
+Four items, all deferred deliberately during execution. Record all of them.
+
 ```markdown
+## walt.id integration test cannot run under Docker-in-Docker
+
+`TestIntegration_WaltidParsesAppendedCatalog` mounts a `t.TempDir()` path
+into a `docker run` aimed at the host daemon. When the test itself runs
+inside a container (necessary on a machine with no host Go toolchain), that
+path does not exist on the host, so Docker silently mounts an **empty**
+directory and walt.id dies with
+`IllegalArgumentException: No loaded configuration: "issuer-service"`.
+
+Proven during the 0.23.1 upgrade by mounting a deliberately empty directory
+into the same image and reproducing the error verbatim. Nothing is wrong
+with the image or the repo's config — the config simply never arrives.
+
+The test also polls `http://localhost:hostPort` after publishing to the
+host, which fails from inside a container for a second, independent reason.
+
+Fix options: give the test a shared Docker network and address the container
+by name, or copy the fixture to a host-visible path, or install Go on the
+host. Until then the test is manual-only and cannot gate an upgrade.
+
+**Consequence for the 0.23.1 upgrade (commits `0293227`..`f1050a3`):** the
+task's designated Step 3 verification never ran green. The upgrade rests
+instead on the full unit suite passing and on the design-phase spike, which
+issued real credentials against a live 0.23.1 across all four code paths
+(`jwt_vc_json` with and without `credentialStatus`, `vc+sd-jwt`,
+`mso_mdoc`). Recorded here because `git log` alone does not show it.
+
+## DirectPDFPlain capability claim unverified for 0.23.1
+
+`scripts/gen-backends.sh:82` now reads "No documented QR-on-PDF export at
+v0.23.1." The version was updated with the other pins, but nobody confirmed
+0.23.x did not add QR-on-PDF export. It is a negative claim, so it stays
+true unless the feature landed between 0.19 and 0.23 — worth a check against
+the release notes when someone is in there anyway.
+
+## docs/ still cites walt.id 0.18.2
+
+`docs/dpg/walt-id.md` and `docs/dpg-matrix.md` describe the same
+operator-facing DPG capabilities that `gen-backends.sh` renders, and still
+say 0.18.2. Outside the upgrade's file glob (`.md` was not in scope), so
+deliberately untouched — but now inconsistent with the `.sh` strings.
+
 ## walt.id 0.18.2 references in Go comments
 
 The 2026-08-21 upgrade to 0.23.1 changed every executable pin but left the
