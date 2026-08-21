@@ -191,7 +191,7 @@ func buildJWTVCJsonEntry(configID, typeName, wireFormat string, schema vctypes.S
                 text_color = "#000000"
             }
         ]
-%s    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec))
+%s    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec, ""))
 }
 
 // buildLinkedDataEntry covers both jwt_vc_json-ld (JSON-LD payload, JWT
@@ -226,7 +226,7 @@ func buildLinkedDataEntry(configID, typeName, wireFormat string, schema vctypes.
                 text_color = "#000000"
             }
         ]
-%s    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec))
+%s    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec, ""))
 }
 
 // buildSDJWTEntry covers vc+sd-jwt (the older media type) and dc+sd-jwt
@@ -279,7 +279,7 @@ func buildSDJWTEntry(configID, typeName, wireFormat string, schema vctypes.Schem
                 text_color = "#000000"
             }
         ]
-%s    }`, configID, wireFormat, vct, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec))
+%s    }`, configID, wireFormat, vct, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec, ""))
 }
 
 // buildMDocEntry covers mso_mdoc — the ISO 18013-5 mobile document format.
@@ -308,6 +308,19 @@ func buildMDocEntry(configID, typeName string, schema vctypes.Schema) string {
 		doctype = typeName
 	}
 	display, desc := displayPair(typeName, schema)
+	// mdoc claims are namespace-keyed (see buildSelectiveInputDescriptor in
+	// verifier.go and walt.id's own shipped issuer2 metadata), so the claims
+	// block's path needs the base namespace, not just the field name.
+	//
+	// Prefer docTypeProfiles: it carries the correct namespace per known
+	// docType, including Photo ID, where mdocNamespaceFor's dot-stripping
+	// heuristic gives the wrong answer (org.iso.23220.photoid.1 strips to
+	// org.iso.23220.photoid; the real namespace is org.iso.23220.1). Do not
+	// "simplify" this to mdocNamespaceFor alone — that regresses Photo ID.
+	namespace := mdocNamespaceFor(doctype)
+	if p, ok := profileIDForDocType(doctype); ok {
+		namespace = p.baseNamespace
+	}
 	return fmt.Sprintf(`    "%s" = {
         format = "mso_mdoc"
         cryptographic_binding_methods_supported = ["cose_key"]
@@ -323,7 +336,7 @@ func buildMDocEntry(configID, typeName string, schema vctypes.Schema) string {
                 text_color = "#000000"
             }
         ]
-%s    }`, configID, hoconEscape(doctype), hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec))
+%s    }`, configID, hoconEscape(doctype), hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec, namespace))
 }
 
 // displayPair derives the human-readable name + description from the
@@ -359,10 +372,20 @@ func displayPair(typeName string, schema vctypes.Schema) (display, desc string) 
 // derive a label from the identifier themselves — which is why cdpi-wallet
 // shows "Family Name" today regardless of the holder's language.
 //
+// namespace controls the shape of each claim's `path`:
+//   - "" (W3C VC-JWT, LinkedData, SD-JWT): claims are flat, so path is the
+//     single-element ["<field>"].
+//   - non-empty (mso_mdoc): mdoc claims are namespace-keyed — see
+//     verifier.go's buildSelectiveInputDescriptor and walt.id's own shipped
+//     metadata (deploy/k8s/config/issuer2/credential-issuer-metadata.conf),
+//     both of which use the two-element ["<namespace>", "<field>"] form. A
+//     wallet resolving mdoc claim metadata by namespace-qualified path will
+//     not match a single-element entry.
+//
 // Returns "" for a schema with no declared fields (stock catalog entries):
 // an empty claims block is not valid HOCON here, and omitting it preserves
 // exactly today's behaviour for those schemas.
-func buildClaimsBlock(fields []vctypes.FieldSpec) string {
+func buildClaimsBlock(fields []vctypes.FieldSpec, namespace string) string {
 	if len(fields) == 0 {
 		return ""
 	}
@@ -373,7 +396,11 @@ func buildClaimsBlock(fields []vctypes.FieldSpec) string {
 			continue
 		}
 		b.WriteString("            {\n")
-		fmt.Fprintf(&b, "                path = [\"%s\"]\n", hoconEscape(f.Name))
+		if namespace != "" {
+			fmt.Fprintf(&b, "                path = [\"%s\", \"%s\"]\n", hoconEscape(namespace), hoconEscape(f.Name))
+		} else {
+			fmt.Fprintf(&b, "                path = [\"%s\"]\n", hoconEscape(f.Name))
+		}
 		b.WriteString("                display = [\n")
 
 		locales := claimLocales(f)
@@ -408,11 +435,23 @@ func claimLocales(f vctypes.FieldSpec) []string {
 
 // hoconEscape prepares a free-text string for inclusion in a HOCON quoted
 // string literal: backslashes first (so we don't double-escape the ones we
-// add), then double quotes. HOCON otherwise treats `"` inside a quoted
-// string as the terminator and silently truncates.
+// add), then double quotes, then the control characters a quoted string
+// cannot contain literally (newline, carriage return, tab). HOCON otherwise
+// treats `"` inside a quoted string as the terminator and silently
+// truncates, and a raw newline/CR/tab breaks the file across lines or
+// columns.
+//
+// This escaping must stay strictly additive: well-formed input (no
+// backslash, quote, or control character) must render byte-for-byte as
+// before. Callers include locale codes, which became free-form operator
+// text once this task added per-locale claim display — do not trim or
+// reject here, only escape.
 func hoconEscape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+	s = strings.ReplaceAll(s, "\t", `\t`)
 	return s
 }
 
