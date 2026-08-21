@@ -226,9 +226,34 @@ declarando:
 
 - El identificador del docType
 - Sus namespaces, marcando cuál es el base
-- Por cada campo: identificador, namespace, obligatoriedad, **tipo CBOR**
-  (`full-date`, `bytes`, texto), y etiqueta en inglés
+- Por cada campo: identificador, namespace, obligatoriedad, **conversión
+  CBOR**, y etiqueta en inglés
 - El `profileId` correspondiente en `issuer-api2`
+
+**Forma real del mapeo CBOR** (leída del `issuer2-profiles.conf` que trae la
+imagen `waltid/issuer-api2:0.23.1`, no inferida): el bloque se llama
+`mDocNameSpacesDataMappingConfig`, y por namespace lleva un
+`entriesConfigMap` donde cada campo declara `type` y `conversionType`:
+
+```hocon
+"birth_date" = { "type" = "string", "conversionType" = "stringToFullDate" }
+"portrait"   = { "type" = "string", "conversionType" = "base64StringToByteString" }
+"driving_privileges" = {
+  "type" = "array"
+  "arrayConfig" = [ { "type" = "object", "entriesConfigMap" = { ... } } ]
+}
+```
+
+Nota que `driving_privileges` requiere `arrayConfig` con una entrada por
+elemento del array — el perfil de muestra declara dos porque su dato de
+ejemplo trae dos categorías de vehículo. Esa estructura hay que entenderla
+al vaciar el perfil a plantilla.
+
+**Perfiles ya disponibles en la imagen:** `isoMdl` (línea 389),
+`isoPhotoId` (632), y además `isoMdlAamva` (522), `eudiPidMdoc`,
+`euAgeVerificationMdoc`, `idAustriaMdoc`, `googleIdCardMdoc`. Los dos que
+este diseño usa existen de fábrica; no hay que escribirlos desde cero, solo
+vaciar sus datos de muestra.
 
 Fuente única de tres cosas hoy dispersas: qué precarga la UI, qué
 `mDocNameSpacesDataMappingConfig` lleva el perfil, y qué valida el adaptador
