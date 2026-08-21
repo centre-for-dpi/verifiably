@@ -2242,6 +2242,33 @@ issued real credentials against a live 0.23.1 across all four code paths
 (`jwt_vc_json` with and without `credentialStatus`, `vc+sd-jwt`,
 `mso_mdoc`). Recorded here because `git log` alone does not show it.
 
+## Dead code left behind by the mdoc routing change
+
+Task 3 hoisted the `mso_mdoc` dispatch to the top of `IssueToWallet`, out of
+the shared format switch. That orphaned the legacy mdoc body-builder:
+
+- `buildMdocData` (`internal/adapters/waltid/issuer.go:1039`) — zero callers
+  in production code, zero tests
+- `mdocNamespaceFor` (`issuer2.go`) — called only by `buildMdocData`
+- `coerceMdocValue` and the mdoc bool/date element tables it uses — reachable
+  only through `buildMdocData`
+
+Two reasons to remove them rather than leave them:
+
+1. `mdocNamespaceFor` derives a namespace by stripping the docType's last
+   dot-segment. That is correct for mDL but **wrong for Photo ID**
+   (`org.iso.23220.photoid.1` → `org.iso.23220.photoid`, where the real base
+   namespace is `org.iso.23220.1`). Harmless while unreachable; a trap if
+   someone wires it up again.
+2. The comment at `issuer2.go:74` says `mdocNamespaceFor` "remains here only
+   for buildMdocData's legacy path, which only ever sees mDL." That path now
+   sees nothing, so the comment misleads.
+
+Deferred deliberately: the deletion is a real cleanup diff deserving its own
+review, and Task 8's end-to-end verification had not run when this was found
+— removing a fallback before proving the new path works end to end would be
+the wrong order. Do this after Task 8 passes.
+
 ## DirectPDFPlain capability claim unverified for 0.23.1
 
 `scripts/gen-backends.sh:82` now reads "No documented QR-on-PDF export at
