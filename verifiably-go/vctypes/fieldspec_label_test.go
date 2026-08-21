@@ -1,6 +1,9 @@
 package vctypes
 
-import "testing"
+import (
+	"testing"
+	"unicode/utf8"
+)
 
 func TestDeriveLabel(t *testing.T) {
 	tests := []struct{ in, want string }{
@@ -10,11 +13,25 @@ func TestDeriveLabel(t *testing.T) {
 		{"portrait", "Portrait"},
 		{"un_distinguishing_sign", "Un Distinguishing Sign"},
 		{"", ""},
+		{"_foo", "Foo"},
+		{"foo_", "Foo"},
+		{"foo__bar", "Foo Bar"},
+		{"_", ""},
+		{"ñandu_test", "Ñandu Test"},
 	}
 	for _, tt := range tests {
 		if got := DeriveLabel(tt.in); got != tt.want {
 			t.Errorf("DeriveLabel(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+func TestDeriveLabelValidUTF8(t *testing.T) {
+	// A byte-slicing implementation corrupts multi-byte runes. Regardless of
+	// the exact rendering, the output must always be valid UTF-8.
+	got := DeriveLabel("日本語_test")
+	if !utf8.ValidString(got) {
+		t.Errorf("DeriveLabel(%q) = %q is not valid UTF-8", "日本語_test", got)
 	}
 }
 

@@ -7,6 +7,8 @@ package vctypes
 import (
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // DPG describes a Digital Public Good's capabilities.
@@ -432,14 +434,15 @@ func DeriveLabel(identifier string) string {
 	if identifier == "" {
 		return ""
 	}
-	parts := strings.Split(identifier, "_")
-	for i, p := range parts {
+	var words []string
+	for _, p := range strings.Split(identifier, "_") {
 		if p == "" {
 			continue
 		}
-		parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		r, size := utf8.DecodeRuneInString(p)
+		words = append(words, string(unicode.ToUpper(r))+p[size:])
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(words, " ")
 }
 
 // Label resolves this field's display name for a locale, in order: exact
