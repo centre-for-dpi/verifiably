@@ -277,27 +277,13 @@ sigue abierta.
 Esto es una secuencia, no una lista de opciones — cada paso asume que el anterior se
 resolvió.
 
-### 1. Decidir cuál de los dos caminos a portrait es el definitivo
+### 1. ~~Decidir cuál de los dos caminos a portrait es el definitivo~~ — decidido 2026-08-21
 
-No es una pregunta técnica nueva — ya está analizada en
-`2026-08-20-mdl-production-path-analysis.md` (Partes 2 y 3 de ese ADR). Lo que
-falta es la decisión explícita, porque hoy el repo tiene ambos caminos avanzando
-sin que ninguno esté descartado:
-
-- **Terminar `internal/mdl/`**: añadir `portrait` al struct, exponerlo en
-  `mdl_issue.go`, volver a correr Fase 0 con el payload real de ~20KB (el criterio
-  de C.7.0 ya lo anticipaba con un payload sintético — falta con el real). Esto
-  mantiene todo dentro de un solo emisor propio, sin depender de un segundo
-  servicio de terceros con los bloqueadores de seguridad ya documentados.
-- **Formalizar `issuer-api2`** como backend de producción: resolver los dos
-  bloqueadores de seguridad (gateway de autenticación, rotar las claves de
-  ejemplo), y construir el adaptador Go correspondiente detrás de la interfaz
-  `backend.Adapter` — como se discutió en la conversación previa a este documento.
-
-Estos dos caminos no son mutuamente excluyentes técnicamente (el `Adapter` los
-soporta a ambos), pero **mantener los dos en paralelo indefinidamente es el peor
-resultado**: duplica la superficie de PKI, de trust anchors en el wallet, y de
-código a mantener, sin que ninguno llegue a producción.
+**Resuelto.** El emisor nativo Go (`internal/mdl/`, rama `feat/mdl-issuer`) es
+el camino de producción. `issuer-api2` de walt.id deja de perseguirse como
+backend de producción para mDL — decisión completa, razonamiento y próximos
+pasos concretos en `2026-08-21-mdl-portrait-path-decision.md`. No repetido
+aquí; ese documento es ahora la fuente para este punto.
 
 ### 2. Cerrar C.7.1 formalmente
 
