@@ -114,8 +114,40 @@ certificados de hoy.
 
 ## C.7.3b — Registro en Android Credential Manager
 
-**❌ No empezado.** Cero referencias a `androidx.credentials`, ningún módulo
-`modules/credential-manager/`, confirmado por búsqueda exhaustiva en `cdpi-wallet`.
+**⚠️ Implementado y compila; verificación en dispositivo bloqueada por hardware,
+no por código.**
+
+Implementado sobre `@animo-id/expo-digital-credentials-api` (paquete publicado,
+v0.4.0) en vez de un módulo nativo propio — decisión tomada explícitamente en
+sesión, no un cambio de alcance silencioso. Confirmado en el repo:
+`registerMdlDigitalCredentials()`/`toCredentialItem()`
+(`src/agent/mdl/registerDigitalCredentials.ts`), llamado desde la pantalla de
+Credenciales (`app/(tabs)/credentials/index.tsx`) sólo en `Platform.OS ===
+'android'`; entry point custom (`index.js`) con
+`registerGetCredentialComponent`; guard en `app/_layout.tsx`
+(`isGetCredentialActivity()`) para no montar la app completa detrás del
+overlay del sistema; `DigitalCredentialsRequestOverlay.tsx` con **sólo
+"Denegar" cableado** — "Aprobar" (firmar y devolver el vp_token) queda fuera
+de alcance a propósito, porque requiere el trabajo de ISO 18013-7/OpenID4VP
+que el spec ya excluye (decisión #9). Commit `389705a`, pusheado a `main`.
+
+`./gradlew :app:assembleDebug` → `BUILD SUCCESSFUL` (confirmado en sesión
+previa, tras resolver un problema de toolchain NDK/CMake en Windows no
+relacionado con este código). APK instalado hoy vía `adb install` en el único
+dispositivo Android disponible.
+
+**Bloqueo real, no de código — 2026-08-20:** el dispositivo disponible es un
+Galaxy S9+ (`SM_G965U`) en **Android 10 / API 29**. El Credential Manager
+Registry (`androidx.credentials.registry`) que este código usa requiere
+**Android 14+ / API 34** como mínimo. No se pudo verificar en dispositivo real
+que cdpi-wallet aparezca en el selector del sistema al llamar
+`navigator.credentials.get()` desde Chrome — el SO del único equipo disponible
+no soporta la API en absoluto, independientemente de si el código está bien
+escrito. Página de prueba lista (`navigator.credentials.get()` con
+`dcql_query` sobre `org.iso.18013.5.1.mDL`), pendiente de un equipo con
+Android 14+ para ejecutarla. Este es el mismo patrón que el criterio de "dos
+fabricantes Android" de C.7.0: una limitación de hardware disponible, no
+diluida ni marcada como resuelta hasta que se pruebe en el equipo correcto.
 
 ## C.7.4 — Reader de la POC
 
@@ -245,14 +277,18 @@ verificación real, no solo redactar lo ya hecho:
   equivalente al sniffer nRF). Cero PII en 88.9KB de captura real con portrait.
   Detalle: `docs/mdl-s2-btsnoop-analysis.md`.
 
-### 4. Decidir el alcance real de C.7.3b antes de invertir en él
+### 4. C.7.3b — hecho en código, pendiente de hardware para verificar
 
-Registro en Android Credential Manager es "barato y de alto retorno" según el
-plan (~1 semana, API pública sin allowlist) — pero es la única fase de C.7 que
-depende exclusivamente de tiempo de desarrollo nuevo, sin ningún bloqueador externo
-como walt.id o hardware. Candidato natural para siguiente sprint una vez el paso 1
-esté decidido, porque el módulo debe registrar el mdoc del emisor que finalmente
-se elija.
+**Actualizado 2026-08-20 — ya no es un paso futuro, es un bloqueo activo.**
+El registro se implementó (ver estado arriba) sin esperar la decisión del
+paso 1, usando `MdocRecord.issuerSignedNamespaces` tal como esté poblado por
+cualquiera de los dos caminos — el código de registro es agnóstico al emisor,
+así que no había que esperar. Lo que falta no es desarrollo: es un **Android
+14+ real** para instalar el APK ya compilado y confirmar que cdpi-wallet
+aparece en el picker del sistema al pedir el mDL desde Chrome. El único equipo
+probado hoy (Galaxy S9+, Android 10) no puede ejercer la API en absoluto.
+Siguiente acción concreta: conseguir/pedir prestado un equipo Android 14+
+(no depende de fabricante específico, a diferencia del criterio de C.7.0).
 
 ### 5. La demo formal (C.7.7) al final, no antes
 
