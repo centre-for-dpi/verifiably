@@ -105,14 +105,24 @@ cmd_up() {
 
   # Export compose env vars that differ between IP mode and subdomain mode.
   # These are read by docker-compose via shell environment substitution.
+  #
+  # CADDY_HTTP_PORT: an operator running a second scenario alongside an
+  # already-running deployment on the same host (e.g. this deploy.sh's own
+  # `hub` compose project owning host :80) needs to override the port this
+  # scenario's Caddy binds to. Respect a value already set — via .env or the
+  # calling shell — before falling back to the mode-appropriate default;
+  # previously this unconditionally exported "80" in non-domain (IP) mode,
+  # silently clobbering an operator's .env override and colliding with
+  # whatever else already held :80. Deploys that never set CADDY_HTTP_PORT
+  # keep today's exact behavior (default "80" in IP mode).
   if [[ -n "$VERIFIABLY_HOSTS_PATTERN" ]]; then
     # caddy-public owns :80/:443; bind main Caddy's :80 to localhost only
     # so the two services don't collide on the host port.
-    export CADDY_HTTP_PORT="127.0.0.1:8079"
+    export CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-127.0.0.1:8079}"
     export KC_HOSTNAME_URL
     KC_HOSTNAME_URL=$(url_for keycloak "$VERIFIABLY_PUBLIC_HOST" "${KEYCLOAK_PORT:-8180}")
   else
-    export CADDY_HTTP_PORT="80"
+    export CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
     export KC_HOSTNAME_URL="http://${VERIFIABLY_PUBLIC_HOST}:${KEYCLOAK_PORT:-8180}"
   fi
 

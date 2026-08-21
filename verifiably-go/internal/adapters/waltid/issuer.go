@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1041,10 +1042,63 @@ func buildMdocData(schema vctypes.Schema, subject map[string]string) (json.RawMe
 	}
 	claims := make(map[string]any, len(subject))
 	for k, v := range subject {
-		claims[k] = v
+		claims[k] = coerceMdocValue(k, v)
 	}
 	doc := map[string]any{namespace: claims}
 	return json.Marshal(doc)
+}
+
+// mdocBoolElements are the ISO/IEC 18013-5 data elements defined as booleans.
+// The age attestations are the whole point of an mDL over a scanned licence:
+// a verifier learns "over 18" without learning the birth date.
+var mdocBoolElements = map[string]bool{
+	"age_over_13": true, "age_over_16": true, "age_over_18": true,
+	"age_over_21": true, "age_over_25": true, "age_over_60": true,
+	"age_over_62": true, "age_over_65": true, "age_over_68": true,
+}
+
+// mdocIntElements are the ISO/IEC 18013-5 data elements defined as integers.
+var mdocIntElements = map[string]bool{
+	"age_in_years":   true,
+	"age_birth_year": true,
+}
+
+// coerceMdocValue converts an operator-supplied string into the CBOR type
+// ISO/IEC 18013-5 defines for that data element.
+//
+// SubjectData is map[string]string end to end (it comes from an HTML form),
+// so without this everything reaches walt.id as a JSON string and gets
+// encoded as a CBOR text string. A conformant reader looking for the boolean
+// `true` in age_over_18 finds the string "true" and reports the element as
+// missing — which is exactly what the Multipaz reader did: it rejected
+// age_over_18 and age_over_21 even though both were present in the signed
+// mdoc. Found by decoding the CBOR: `age_over_18  str  'true'`.
+//
+// Unknown elements pass through as strings, which is correct — every other
+// mDL element ISO defines is a text string (or a bytestring for portrait,
+// which this does not attempt to handle: binary data can't come through a
+// map[string]string anyway).
+func coerceMdocValue(name, value string) any {
+	if mdocBoolElements[name] {
+		// Accept the spellings an operator form or API caller might send.
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "true", "yes", "1":
+			return true
+		case "false", "no", "0", "":
+			return false
+		}
+		// Anything else is a caller mistake; leaving it as a string keeps the
+		// bad value visible in the credential instead of silently asserting
+		// false about someone's age.
+		return value
+	}
+	if mdocIntElements[name] {
+		if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
+			return n
+		}
+		return value
+	}
+	return value
 }
 
 // buildCredentialData constructs a VCDM 2.0-shaped JSON object from the
@@ -1157,6 +1211,11 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 	date := func(name string) vctypes.FieldSpec {
 		return vctypes.FieldSpec{Name: name, Datatype: "string", Format: "date", Required: true}
 	}
+	// opt is the not-required counterpart of str/date; pass format "date" for
+	// date fields, "" otherwise.
+	opt := func(name, format string) vctypes.FieldSpec {
+		return vctypes.FieldSpec{Name: name, Datatype: "string", Format: format, Required: false}
+	}
 	switch base {
 	case "UniversityDegree", "UniversityDegreeCredential":
 		return []vctypes.FieldSpec{str("holder"), str("degree"), str("classification"), date("conferred")}
@@ -1165,9 +1224,33 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 	case "KycChecksCredential", "KycCredential", "KycDataCredential":
 		return []vctypes.FieldSpec{str("holder"), str("kycComplete"), str("amlScreeningPassed"), date("checkedOn")}
 	case "Iso18013DriversLicenseCredential":
+		// The six required fields are the mandatory ISO/IEC 18013-5 data
+		// elements. The optional ones below are also standard 18013-5
+		// elements that real readers ask for — the Multipaz reader's
+		// "identification" request asks for birth_place, and its age
+		// attestations ask for age_over_18 / age_over_21. Issuing without
+		// them made those requests fail with "field does not exist", which
+		// looks like a wallet bug but is just a credential missing data.
+		//
+		// Nothing filters subject_data against this list on the way to
+		// walt.id — buildMdocData copies whatever it is given — so these
+		// were always issuable via the API. Verified by decoding a signed
+		// mdoc: all sixteen elements below came back in the CBOR. This list
+		// only drives the operator UI, which is why they need to be here to
+		// be offered at all.
+		//
+		// age_over_NN are ISO's age attestations: booleans the issuer
+		// asserts, so a verifier can check "over 18" without learning the
+		// birth date. They are typed as strings because subject_data is a
+		// map[string]string end to end.
 		return []vctypes.FieldSpec{
 			str("family_name"), str("given_name"), date("birth_date"),
 			str("document_number"), str("driving_privileges"), date("expiry_date"),
+			opt("issue_date", "date"), opt("issuing_country", ""),
+			opt("issuing_authority", ""), opt("birth_place", ""),
+			opt("resident_address", ""), opt("nationality", ""),
+			opt("age_over_18", ""), opt("age_over_21", ""),
+			opt("age_in_years", ""), opt("un_distinguishing_sign", ""),
 		}
 	case "OpenBadgeCredential":
 		return []vctypes.FieldSpec{str("holder"), str("achievement"), date("issuedOn")}

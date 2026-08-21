@@ -1,9 +1,10 @@
 # mDL (ISO/IEC 18013-5): nota de posición, spike de verificación y POC de emisión
 
-**Date:** 2026-08-17
-**Status:** Draft — **bloqueado** hasta completar §Origen y demanda
-**Estructura:** cuatro tramos con gate entre ellos. **Ningún tramo arranca sin
-completar §Origen y demanda.** B, C y D requieren además gate explícito del anterior.
+**Date:** 2026-08-17 (gate de negocio destrabado 2026-08-20)
+**Status:** Active — gate de §Origen y demanda destrabado; detalles administrativos
+de esa sección aún por confirmar (ver tabla), pero no bloquean el trabajo
+**Estructura:** cuatro tramos con gate entre ellos. B, C y D requieren además gate
+explícito del anterior — esos gates técnicos siguen en pie y no se tocan aquí.
 
 | Tramo | Qué es | Duración | Código | Gate para pasar al siguiente |
 |---|---|---|---|---|
@@ -109,24 +110,28 @@ tres P1 públicas exige una demanda documentada, no inferida.
 
 ## Origen y demanda
 
-> ⚠️ **PLACEHOLDER — bloquea la aprobación.** Se deja visible a propósito: una
-> premisa afirmada sin fuente es peor que un hueco declarado. **Sin completar esta
-> sección, ni siquiera el Tramo A debe ejecutarse.**
+> **Gate destrabado — 2026-08-20.** Confirmado explícitamente por el responsable de
+> producto: la demanda existe y proviene de dos instituciones reales, cada una
+> pidiendo tanto emisión como verificación. Los campos marcados _(confirmar)_ abajo
+> no son huecos sin respuesta — son detalles administrativos aún no registrados, no
+> una premisa sin fuente. El gate ya no bloquea el Tramo A ni el Tramo C.
 
 | Campo | Valor |
 |---|---|
-| Entidad solicitante | _(INTRANT / MTC Perú / otra)_ |
-| Interlocutor (rol, no nombre si es sensible) | _(pendiente)_ |
-| Fecha de la petición | _(pendiente)_ |
-| Formato | _(reunión / correo / RFP / conversación informal)_ |
-| Qué pidieron **exactamente** | _(pendiente — ¿emitir? ¿verificar? ¿asesoría? ¿interoperar?)_ |
-| ¿Emisión o verificación? | _(determina si el trabajo es Tramo B o Tramo C)_ |
-| Plazo esperado por el solicitante | _(pendiente)_ |
-| Sponsor interno en CDPI | _(pendiente)_ |
+| Entidad solicitante | **INTRANT (República Dominicana) y MTC (Perú)** — ambas confirmadas |
+| Interlocutor (rol, no nombre si es sensible) | _(confirmar)_ |
+| Fecha de la petición | _(confirmar)_ |
+| Formato | _(confirmar — reunión / correo / RFP / conversación informal)_ |
+| Qué pidieron **exactamente** | Emisión y verificación de mDL, ambas capacidades |
+| ¿Emisión o verificación? | **Ambas** — confirma que el Tramo C (emisión, en curso) es necesario, no solo el Tramo B |
+| Plazo esperado por el solicitante | _(confirmar)_ |
+| Sponsor interno en CDPI | _(confirmar)_ |
 
 **Por qué importa la distinción emisión/verificación:** son problemas de costo y
-política radicalmente distintos (ver §Tesis central). Si lo que se pidió es
-verificación, el Tramo B basta y el C sobra.
+política radicalmente distintos (ver §Tesis central). Aquí ambas instituciones piden
+las dos, así que ningún tramo sobra — pero conviene documentar por separado si
+INTRANT y MTC piden lo mismo en el mismo plazo, o si hay una jerarquía entre ellas
+que deba ordenar la secuencia de trabajo.
 
 ## Tesis central
 
@@ -359,6 +364,19 @@ por dirección son el anti-replay intra-sesión.
 > solo si `DeviceMac` deja de estar fuera de alcance.
 
 **Verificación:** captura BLE sin PII en claro (nRF Sniffer / HCI snoop log).
+
+> **Verificado — 2026-08-20**, vía HCI snoop log (sin sniffer nRF disponible).
+> Captura completa (1010 registros HCI, 88.9KB) de una presentación real con
+> portrait, extraída con `adb bugreport` (el log vive en una ruta protegida en
+> Android 10 que no admite `adb pull` directo). Búsqueda exhaustiva de cadenas de
+> texto plano en toda la captura: **cero coincidencias** de cualquier dato del mDL
+> (nombre, fecha de nacimiento, país, `portrait`, etc.). Los únicos fragmentos
+> legibles son `eReaderKey` y las claves `data`/`status` del framing de
+> `SessionEstablishment`/`SessionData` — que **van sin cifrar por diseño**, no una
+> fuga. El resto de la captura no muestra estructura CBOR reconocible, consistente
+> con cifrado AES-256-GCM. Detalle completo, incluyendo qué NO queda probado por
+> este método (correctitud interna del KDF/IV, no solo ausencia observable de PII):
+> `docs/mdl-s2-btsnoop-analysis.md`.
 
 ### S-3. Divulgación selectiva y consentimiento
 
@@ -609,6 +627,32 @@ del proyecto (cuenta de Apple Developer y credenciales ya configuradas — confi
 que existen, dado que ya se generó un `.ipa` instalable); `BLUETOOTH_ADVERTISE`
 (API 31+) en Android; dev client de Expo; JDK + Android Studio; **sniffer BLE** (nRF)
 para la evidencia de §S-2.
+
+> **Estado real — 2026-08-20.** El spike ejecutado usó **1 Android (reader,
+> Multipaz) + 1 iPhone (holder, `cdpi-wallet`)** — no dos Android — porque solo había
+> un Android disponible en ese momento. Los criterios de aceptación 1-3 se cumplieron
+> con esa combinación (engagement, chunking con portrait real de ~40KB — más grande
+> que el sintético de 20KB que este criterio pedía, así que ese caso está cubierto de
+> sobra —, presentación completa en segundos).
+>
+> **Esto NO satisface el criterio original tal como está escrito, y se deja así a
+> propósito, no diluido.** La razón del requisito de dos fabricantes es
+> específicamente el holder en **BLE peripheral server mode** — el modo
+> históricamente inconsistente entre Android OEMs (Motorola/Huawei) — y en la
+> configuración probada, **Android nunca actúa como holder**, solo como reader
+> (central/scanning, mucho más uniforme entre fabricantes). El riesgo que el
+> criterio de dos fabricantes intentaba mitigar simplemente no se ejerció en esta
+> combinación.
+>
+> **Sigue pendiente**, y vuelve a ser relevante en dos escenarios concretos: (a) si
+> alguna vez se necesita que Android sea holder (hoy no es el caso: `cdpi-wallet` en
+> Android nunca se probó en BLE peripheral mode, con o sin un segundo fabricante), o
+> (b) el reader del Tramo D (§D.5), que si es multiplataforma y ahí Android vuelve a
+> ser holder-adyacente en el sentido de que el SDK debe funcionar de forma uniforme
+> entre OEMs. No bloquea el trabajo actual de C.7.1-C.7.5 (que no toca BLE en
+> Android-holder), pero si se llega a C.7.3b o al Tramo D sin haberlo resuelto,
+> retomarlo antes de asumir que el holder Android funciona igual en todos los
+> fabricantes.
 
 ### C.7.1 Issuer mdoc en Go (~2 sem)
 
@@ -1085,11 +1129,14 @@ fuente primaria ISO**.
 
 ## Decisiones pendientes
 
-**De negocio (bloquean la aprobación):**
-1. **Completar §Origen y demanda.**
-2. ¿Lo que se pidió es **emisión** o **verificación**? Determina si hace falta el
-   Tramo C.
-3. **Sponsor interno** y **costo de oportunidad** frente a las tres P1 del roadmap.
+**De negocio (ya NO bloquean — resueltas 2026-08-20, detalle administrativo pendiente):**
+1. ~~Completar §Origen y demanda.~~ Demanda confirmada: INTRANT y MTC, ambas piden
+   emisión y verificación. Faltan por registrar: interlocutor, fecha, formato de la
+   petición, plazo, sponsor interno — ver tabla en §Origen y demanda.
+2. ~~¿Lo que se pidió es emisión o verificación?~~ Ambas — el Tramo C es necesario.
+3. **Sponsor interno** y **costo de oportunidad** frente a las tres P1 del roadmap —
+   sigue sin confirmar explícitamente; no bloquea el trabajo técnico en curso, pero
+   conviene cerrarlo antes de comprometer más tiempo del ya invertido.
 
 **Técnicas (bloquean el inicio del Tramo C):**
 
