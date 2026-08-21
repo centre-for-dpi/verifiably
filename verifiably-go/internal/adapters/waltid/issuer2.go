@@ -24,7 +24,7 @@ import (
 // docType uses. The namespace is carried explicitly rather than derived by
 // stripping the docType's last dot-segment: that derivation holds for mDL
 // (org.iso.18013.5.1.mDL -> org.iso.18013.5.1) but NOT for Photo ID
-// (org.iso.23220.photoID.1 strips to org.iso.23220.photoID, while the real
+// (org.iso.23220.photoid.1 strips to org.iso.23220.photoid, while the real
 // base namespace is org.iso.23220.1). Getting this wrong produces a
 // structurally valid credential with a wrong namespace — silently
 // non-conformant.
@@ -38,9 +38,17 @@ type mdocProfile struct {
 // deploy/k8s/config/issuer2/issuer2-profiles.conf appear here: issuer-api2
 // rejects a profileId it cannot resolve, so an unlisted docType must fail
 // early with a clear message rather than at issuance time.
+//
+// Keys must match issuer2-profiles.conf's credentialConfigurationId EXACTLY,
+// including case — this is an exact-match allowlist, not a
+// case-insensitive lookup. mDL and Photo ID disagree on the casing of their
+// last segment (mDL vs photoid) because the underlying ISO standards
+// themselves disagree, not because of any inconsistency in our code. Do not
+// "tidy" these into matching case; that would break resolution for whichever
+// one you changed.
 var docTypeProfiles = map[string]mdocProfile{
 	"org.iso.18013.5.1.mDL":   {"isoMdl", "org.iso.18013.5.1"},
-	"org.iso.23220.photoID.1": {"isoPhotoId", "org.iso.23220.1"},
+	"org.iso.23220.photoid.1": {"isoPhotoId", "org.iso.23220.1"},
 }
 
 // profileIDForDocType resolves an ISO docType to its issuer-api2 profile.

@@ -1,10 +1,14 @@
 package waltid
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -16,7 +20,11 @@ func TestProfileIDForDocType(t *testing.T) {
 		wantOK        bool
 	}{
 		{"org.iso.18013.5.1.mDL", "isoMdl", "org.iso.18013.5.1", true},
-		{"org.iso.23220.photoID.1", "isoPhotoId", "org.iso.23220.1", true},
+		{"org.iso.23220.photoid.1", "isoPhotoId", "org.iso.23220.1", true},
+		// Wrong case must NOT resolve: docTypeProfiles is an exact-match
+		// allowlist against issuer2-profiles.conf's credentialConfigurationId,
+		// which spells this docType lowercase ("photoid", not "photoID").
+		{"org.iso.23220.photoID.1", "", "", false},
 		{"org.iso.7367.1.mVRC", "", "", false},
 		{"", "", "", false},
 	}
@@ -84,6 +92,70 @@ func TestMdocNamespaceFor(t *testing.T) {
 		if got := mdocNamespaceFor(tt.in); got != tt.want {
 			t.Errorf("mdocNamespaceFor(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+// TestIssueToWallet_MdocDoesNotRequireLegacyIssuer proves the mso_mdoc
+// dispatch happens before ensureIssuerKey and the legacy configID
+// resolution, not inside the shared format switch below them. Before this
+// fix, IssueToWallet called ensureIssuerKey unconditionally at the top of
+// the function; with IssuerBaseURL empty (a.issuer == nil) that fails with
+// "waltid: issuer role not configured (issuerBaseUrl missing)" — pointing
+// whoever's debugging at the legacy service when the actual dependency for
+// mso_mdoc is issuer-api2. An mdoc-only deployment (real: Task 2's
+// issuer-api2 is meant to run without the legacy issuer-api at all) would
+// hit that misleading error on every issuance despite being configured
+// correctly for the format it's actually using.
+//
+// This test leaves IssuerBaseURL empty and Issuer2BaseURL pointed at a fake
+// issuer-api2 server that returns a real offer. If the old ordering were
+// still in place, this would fail with the legacy "issuer role not
+// configured" error before ever reaching issuer-api2's handler; with the
+// fix, issuance succeeds using only the issuer2 client.
+func TestIssueToWallet_MdocDoesNotRequireLegacyIssuer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/issuer2/credential-offers" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(issuer2OfferResponse{
+			OfferID:         "offer-1",
+			CredentialOffer: "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fexample.org%2Foffer",
+		})
+	}))
+	defer srv.Close()
+
+	a, err := New(Config{
+		// IssuerBaseURL deliberately empty: a.issuer stays nil. If the
+		// mso_mdoc path still depended on ensureIssuerKey/a.issuer, this
+		// would fail with the legacy "issuer role not configured" error
+		// instead of reaching issuer-api2.
+		VerifierBaseURL: "http://verifier.invalid",
+		Issuer2BaseURL:  srv.URL,
+	}, "Walt Community Stack")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	res, err := a.IssueToWallet(context.Background(), backend.IssueRequest{
+		Schema: vctypes.Schema{
+			ID:   "org.iso.18013.5.1.mDL",
+			Std:  "mso_mdoc",
+			Name: "Driver's Licence",
+		},
+		SubjectData: map[string]string{"family_name": "Perez"},
+		Flow:        "pre_auth",
+	})
+	if err != nil {
+		t.Fatalf("IssueToWallet: %v (want success via issuer-api2, not a legacy-issuer error)", err)
+	}
+	if res.OfferID != "offer-1" {
+		t.Errorf("OfferID = %q, want offer-1", res.OfferID)
+	}
+	if !strings.HasPrefix(res.OfferURI, "openid-credential-offer://") {
+		t.Errorf("OfferURI = %q, want an openid-credential-offer:// URI", res.OfferURI)
 	}
 }
 

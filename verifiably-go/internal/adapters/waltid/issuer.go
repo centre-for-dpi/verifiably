@@ -618,6 +618,26 @@ type issuanceRequest struct {
 // IssueToWallet issues a credential to the holder via OID4VCI. Walt.id returns
 // the offer URI as a plain-text response body.
 func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (backend.IssueToWalletResult, error) {
+	if req.Schema.Std == "mso_mdoc" {
+		// mdoc goes to issuer-api2, NOT the legacy issuer-api the rest of
+		// this function targets. This dispatch MUST happen before
+		// ensureIssuerKey and the legacy configID resolution below: both
+		// depend on a.issuer (legacy issuerBaseUrl), which an mdoc-only
+		// deployment need not configure at all. Gating on them first would
+		// fail with "issuer role not configured (issuerBaseUrl missing)" —
+		// true of the legacy service, irrelevant to mso_mdoc, and pointing
+		// whoever's debugging at the wrong dependency.
+		//
+		// The legacy service also cannot type CBOR at any version
+		// (mDocNameSpacesDataMappingConfig is absent through 0.23.1), so it
+		// would emit birth_date as text instead of tag 1004 and portrait as
+		// text instead of a byte string — a credential no conformant reader
+		// accepts. issuer-api2 also takes a different request shape
+		// (profileId + runtimeOverrides, not credentialConfigurationId +
+		// mdocData) AND returns JSON where the legacy returns bare text, so
+		// this returns directly rather than joining the shared POST below.
+		return a.issueMdocViaIssuer2(ctx, req)
+	}
 	if err := a.ensureIssuerKey(ctx); err != nil {
 		return backend.IssueToWalletResult{}, err
 	}
@@ -677,18 +697,6 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		StandardVersion:           strings.ToUpper(a.cfg.StandardVersion),
 	}
 	switch req.Schema.Std {
-	case "mso_mdoc":
-		// mdoc goes to issuer-api2, NOT the legacy issuer-api this function
-		// otherwise targets. The legacy service cannot type CBOR at any
-		// version (mDocNameSpacesDataMappingConfig is absent through 0.23.1),
-		// so it would emit birth_date as text instead of tag 1004 and
-		// portrait as text instead of a byte string — a credential no
-		// conformant reader accepts.
-		//
-		// This returns directly rather than falling through to the shared
-		// POST below, because issuer-api2 takes a different request shape
-		// AND returns JSON where the legacy returns bare text.
-		return a.issueMdocViaIssuer2(ctx, req)
 	case "sd_jwt_vc (IETF)", "sd_jwt_vc":
 		// SD-JWT VC issuance expects credentialData with TOP-LEVEL claim
 		// keys (no VCDM @context / type / credentialSubject wrapping).
