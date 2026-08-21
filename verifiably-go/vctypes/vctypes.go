@@ -447,7 +447,16 @@ func DeriveLabel(identifier string) string {
 
 // Label resolves this field's display name for a locale, in order: exact
 // match, then English (the base language), then derived from the identifier.
-// It never returns empty for a field with a Name.
+// A label whose value is empty counts as absent, so a blank entry never wins
+// over the fallback.
+//
+// It returns non-empty for any field whose Name contains at least one
+// non-underscore character. The sole exception is a degenerate all-underscore
+// Name ("_", "__"), which has nothing to derive a label from — such an
+// identifier is rejected by the schema builder's input pattern
+// ([a-zA-Z_][a-zA-Z0-9_]*) only in part, so callers rendering wholly
+// untrusted field names should treat an empty return as "show the raw
+// identifier".
 func (f FieldSpec) Label(locale string) string {
 	if v, ok := f.Labels[locale]; ok && v != "" {
 		return v
