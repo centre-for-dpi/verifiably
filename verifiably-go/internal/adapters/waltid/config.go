@@ -23,7 +23,12 @@ import (
 // backends.json. All URLs are required; the credentials block is optional
 // (if absent, the adapter registers a fresh demo account on first use).
 type Config struct {
-	IssuerBaseURL   string   `json:"issuerBaseUrl"`
+	IssuerBaseURL string `json:"issuerBaseUrl"`
+	// Issuer2BaseURL points at the walt.id issuer-api2 service, used ONLY for
+	// mso_mdoc. Empty disables mdoc issuance with a clear error rather than
+	// silently falling back to the legacy issuer-api, which cannot type CBOR
+	// and would emit a credential no conformant reader accepts.
+	Issuer2BaseURL  string   `json:"issuer2BaseUrl"`
 	VerifierBaseURL string   `json:"verifierBaseUrl"`
 	WalletBaseURL   string   `json:"walletBaseUrl"`
 	StandardVersion string   `json:"standardVersion"` // "draft13" (default) or "draft11"

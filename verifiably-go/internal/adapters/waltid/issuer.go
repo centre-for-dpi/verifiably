@@ -678,20 +678,17 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 	}
 	switch req.Schema.Std {
 	case "mso_mdoc":
-		// mdoc bodies are namespace-keyed: {"<namespace>":{"<field>":"<value>"}}.
-		// walt.id's Kotlin IssuanceRequest rejects the VCDM 2.0 shape with a
-		// JsonConvertException. Namespace is derived from the doctype by
-		// stripping the last dot-segment (e.g. org.iso.18013.5.1.mDL →
-		// org.iso.18013.5.1).
-		// mdoc revocation flows through MSO/IACA, not bitstring/token status
-		// lists, so we don't inject a StatusListBinding here even when one is
-		// passed (the handler shouldn't allocate for mso_mdoc; this is a
-		// belt-and-braces no-op).
-		mdocData, err := buildMdocData(req.Schema, req.SubjectData)
-		if err != nil {
-			return backend.IssueToWalletResult{}, err
-		}
-		ir.MdocData = mdocData
+		// mdoc goes to issuer-api2, NOT the legacy issuer-api this function
+		// otherwise targets. The legacy service cannot type CBOR at any
+		// version (mDocNameSpacesDataMappingConfig is absent through 0.23.1),
+		// so it would emit birth_date as text instead of tag 1004 and
+		// portrait as text instead of a byte string — a credential no
+		// conformant reader accepts.
+		//
+		// This returns directly rather than falling through to the shared
+		// POST below, because issuer-api2 takes a different request shape
+		// AND returns JSON where the legacy returns bare text.
+		return a.issueMdocViaIssuer2(ctx, req)
 	case "sd_jwt_vc (IETF)", "sd_jwt_vc":
 		// SD-JWT VC issuance expects credentialData with TOP-LEVEL claim
 		// keys (no VCDM @context / type / credentialSubject wrapping).
@@ -1032,14 +1029,8 @@ func buildSelectiveDisclosureMap(subject map[string]string) json.RawMessage {
 // "org.iso.18013.5.1.mDL" → "org.iso.18013.5.1". Every subject field lands
 // under that namespace; walt.id copies them into the mdoc's data elements.
 func buildMdocData(schema vctypes.Schema, subject map[string]string) (json.RawMessage, error) {
-	doctype := schema.BaseType()
-	if doctype == "" {
-		doctype = schema.ID
-	}
-	namespace := doctype
-	if i := strings.LastIndex(doctype, "."); i > 0 {
-		namespace = doctype[:i]
-	}
+	doctype := mdocDocTypeFor(schema)
+	namespace := mdocNamespaceFor(doctype)
 	claims := make(map[string]any, len(subject))
 	for k, v := range subject {
 		claims[k] = coerceMdocValue(k, v)

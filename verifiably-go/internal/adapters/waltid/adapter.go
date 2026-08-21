@@ -29,6 +29,7 @@ type Adapter struct {
 	Vendor string
 
 	issuer   *httpx.Client
+	issuer2  *httpx.Client
 	verifier *httpx.Client
 	wallet   *httpx.Client
 
@@ -79,6 +80,9 @@ func New(cfg Config, vendor string) (*Adapter, error) {
 	}
 	if cfg.IssuerBaseURL != "" {
 		a.issuer = httpx.New(cfg.IssuerBaseURL)
+	}
+	if cfg.Issuer2BaseURL != "" {
+		a.issuer2 = httpx.New(cfg.Issuer2BaseURL)
 	}
 	if cfg.WalletBaseURL != "" {
 		a.wallet = httpx.New(cfg.WalletBaseURL)

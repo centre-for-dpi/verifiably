@@ -93,6 +93,7 @@ backends_for() {
       },
       "config": {
         "issuerBaseUrl": "${walt_issuer_url}",
+        "issuer2BaseUrl": "http://issuer-api2:7002",
         "verifierBaseUrl": "${walt_verifier_url}",
         "walletBaseUrl": "${walt_wallet_url}",
         "standardVersion": "draft13",
