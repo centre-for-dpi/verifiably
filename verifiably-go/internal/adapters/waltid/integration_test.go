@@ -137,7 +137,7 @@ func runIntegrationCatalogTest(t *testing.T, schema vctypes.Schema) {
 	if err != nil {
 		t.Fatalf("locate repo root: %v", err)
 	}
-	baselinePath := filepath.Join(repoRoot, "deploy/compose/stack/issuer-api/config/credential-issuer-metadata.conf")
+	baselinePath := filepath.Join(repoRoot, "deploy/k8s/config/issuer/credential-issuer-metadata.baseline.conf")
 	baseline, err := os.ReadFile(baselinePath)
 	if err != nil {
 		t.Fatalf("read baseline %s: %v", baselinePath, err)
