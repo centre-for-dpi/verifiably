@@ -155,6 +155,36 @@ services:
       # (Phase 1.2). HOCON env-var substitutions resolve at walt.id startup.
       - ../../k8s/config/issuer:/waltid-issuer-api/config:ro
 
+  # issuer-api2 runs ALONGSIDE issuer-api, not instead of it. Only mso_mdoc
+  # routes here — it is the sole walt.id service that can type CBOR (via
+  # mDocNameSpacesDataMappingConfig), which mdoc requires. Every other format
+  # stays on the legacy issuer-api, which keeps operator-defined custom
+  # schemas working (issuer-api2 demands pre-provisioned profiles).
+  #
+  # Deliberately NO ports: — issuer-api2 ships no authentication knob, so
+  # POST /issuer2/credential-offers would let anyone reachable mint a signed
+  # credential with arbitrary subject data, and GET /issuer2/sessions returns
+  # issuerKey private material. Network isolation IS the mitigation.
+  issuer-api2:
+    image: waltid/issuer-api2:0.23.1
+    restart: unless-stopped
+    depends_on:
+      - caddy
+    environment:
+      SERVICE_HOST: ${VERIFIABLY_PUBLIC_HOST:-localhost}
+      ISSUER_API_PORT: 7002
+      VERIFIABLY_ISSUER2_KEY: ${VERIFIABLY_ISSUER2_KEY:?issuer-api2 requires an EC P-256 issuer key}
+      # issuer-service.conf embeds two more published walt.id example private
+      # keys beyond defaultIssuerKey (CI-token signing and credential
+      # encryption) — same treatment: required at boot, no silent fallback.
+      VERIFIABLY_ISSUER2_CI_TOKEN_KEY: ${VERIFIABLY_ISSUER2_CI_TOKEN_KEY:?issuer-api2 requires a ciTokenKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
+      VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY: ${VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY:?issuer-api2 requires a credentialEncryptionKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
+      # Optional: only read if authentication-service.conf's inert keycloak
+      # config is ever activated. Left unset in normal operation.
+      VERIFIABLY_ISSUER2_OIDC_CLIENT_SECRET: ${VERIFIABLY_ISSUER2_OIDC_CLIENT_SECRET:-}
+    volumes:
+      - ../../k8s/config/issuer2:/waltid-issuer-api2/config:ro
+
   verifier-api:
     image: waltid/verifier-api:0.23.1
     restart: unless-stopped
