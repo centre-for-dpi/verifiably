@@ -9,9 +9,23 @@ import (
 func TestMandatoryFieldsMDL(t *testing.T) {
 	fields := MandatoryFields("org.iso.18013.5.1.mDL")
 
-	// ISO/IEC 18013-5 Table 3 defines exactly 11 mandatory elements.
-	if len(fields) != 11 {
-		t.Fatalf("mDL: got %d mandatory fields, want 11", len(fields))
+	// ISO/IEC 18013-5 Table 3 defines exactly 11 mandatory elements. We offer
+	// one more — portrait_capture_date — because walt.id's isoMdl profile
+	// ships it as "" under a stringToFullDate mapping and deep-merges our data
+	// over the profile, so a field we never offer keeps that blank and fails
+	// issuance on the citizen's phone. The ISO count is asserted separately so
+	// this stays honest about which requirement is whose.
+	if len(fields) != 12 {
+		t.Fatalf("mDL: got %d fields, want 12 (11 ISO-mandatory + portrait_capture_date)", len(fields))
+	}
+	isoMandatory := 0
+	for _, f := range fields {
+		if f.Name != "portrait_capture_date" {
+			isoMandatory++
+		}
+	}
+	if isoMandatory != 11 {
+		t.Errorf("ISO-mandatory count = %d, want 11", isoMandatory)
 	}
 
 	byName := map[string]bool{}
@@ -38,9 +52,23 @@ func TestMandatoryFieldsMDL(t *testing.T) {
 func TestMandatoryFieldsPhotoID(t *testing.T) {
 	fields := MandatoryFields("org.iso.23220.photoid.1")
 
-	// ISO/IEC 23220 defines 9 mandatory elements in org.iso.23220.1.
-	if len(fields) != 9 {
-		t.Fatalf("photoID: got %d mandatory fields, want 9", len(fields))
+	// ISO/IEC 23220 defines 9 mandatory elements in org.iso.23220.1. We offer
+	// one more — portrait_capture_date — because walt.id's isoPhotoId profile
+	// ships it as "" under a stringToFullDate mapping and deep-merges our data
+	// over the profile, so a field we never offer keeps that blank and fails
+	// issuance on the citizen's phone. The ISO count is asserted separately
+	// below so this stays honest about which is which.
+	if len(fields) != 10 {
+		t.Fatalf("photoID: got %d fields, want 10 (9 ISO-mandatory + portrait_capture_date)", len(fields))
+	}
+	isoMandatory := 0
+	for _, f := range fields {
+		if f.Name != "portrait_capture_date" {
+			isoMandatory++
+		}
+	}
+	if isoMandatory != 9 {
+		t.Errorf("ISO-mandatory count = %d, want 9", isoMandatory)
 	}
 	byName := map[string]bool{}
 	for _, f := range fields {
@@ -76,12 +104,27 @@ func TestKnownDocTypes(t *testing.T) {
 
 // The mandatory list here and internal/mdl's emitted dataset describe the
 // same standard. If one gains an element the other must too, so pin them.
+//
+// vendorProfileOnly holds fields this list carries that ISO does NOT make
+// mandatory, and which internal/mdl therefore has no reason to emit. They are
+// here because walt.id's issuer profile ships them as "" under a date
+// mapping, and issuer-api2 deep-merges our data over that profile — so a
+// field the builder never offers keeps the blank and kills issuance at wallet
+// redemption. Offering them is a walt.id requirement, not an ISO one, so
+// widening internal/mdl (the independent CONFORMANCE verifier, whose emitted
+// set is pinned by its own vectors) to match would be the wrong direction.
 func TestMDLMandatorySubsetOfIssuerDataset(t *testing.T) {
+	vendorProfileOnly := map[string]bool{
+		"portrait_capture_date": true,
+	}
 	issued := map[string]bool{}
 	for _, e := range mdl.DatasetElements {
 		issued[e] = true
 	}
 	for _, f := range MandatoryFields("org.iso.18013.5.1.mDL") {
+		if vendorProfileOnly[f.Name] {
+			continue
+		}
 		if !issued[f.Name] {
 			t.Errorf("%q is mandatory but internal/mdl does not emit it", f.Name)
 		}

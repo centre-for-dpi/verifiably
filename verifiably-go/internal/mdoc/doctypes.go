@@ -61,6 +61,16 @@ const FormatImage = "image"
 // stays "string" because it is what every non-mdoc consumer of FieldsSpec
 // (catalog claim blocks, INJI's display order, CREDEBL's attributes) reads;
 // Format is the discriminator the mdoc path keys off.
+// dateField is a required element whose ISO value is a full-date. Format
+// "date" is what routes it to a date picker in the issue form AND what
+// buildIssuer2Offer keys on to guarantee it is never sent blank — walt.id's
+// profile maps these with stringToFullDate, which cannot parse "".
+func dateField(name, label string) vctypes.FieldSpec {
+	f := req(name, label)
+	f.Format = "date"
+	return f
+}
+
 func structured(name, label, format string) vctypes.FieldSpec {
 	f := req(name, label)
 	f.Format = format
@@ -72,13 +82,20 @@ func structured(name, label, format string) vctypes.FieldSpec {
 var mdlMandatory = []vctypes.FieldSpec{
 	req("family_name", "Family Name"),
 	req("given_name", "Given Name"),
-	req("birth_date", "Date of Birth"),
-	req("issue_date", "Date of Issue"),
-	req("expiry_date", "Date of Expiry"),
+	dateField("birth_date", "Date of Birth"),
+	dateField("issue_date", "Date of Issue"),
+	dateField("expiry_date", "Date of Expiry"),
 	req("issuing_country", "Issuing Country"),
 	req("issuing_authority", "Issuing Authority"),
 	req("document_number", "Document Number"),
 	structured("portrait", "Portrait", FormatImage),
+	// portrait_capture_date is OPTIONAL in ISO but MANDATORY here: the isoMdl
+	// profile ships it as "" under a stringToFullDate mapping, and issuer-api2
+	// deep-merges our data over the profile — so a field the builder never
+	// offers keeps that blank and kills issuance at wallet redemption with
+	// "DateTimeParseException: Text '' could not be parsed". Offering it is
+	// what lets the operator (or buildIssuer2Offer's fallback) supply a value.
+	dateField("portrait_capture_date", "Portrait Capture Date"),
 	structured("driving_privileges", "Driving Privileges", FormatDrivingPrivileges),
 	req("un_distinguishing_sign", "UN Distinguishing Sign"),
 }
@@ -90,10 +107,13 @@ var mdlMandatory = []vctypes.FieldSpec{
 var photoIDMandatory = []vctypes.FieldSpec{
 	req("family_name", "Family Name"),
 	req("given_name", "Given Name"),
-	req("birth_date", "Date of Birth"),
+	dateField("birth_date", "Date of Birth"),
 	structured("portrait", "Portrait", FormatImage),
-	req("issue_date", "Date of Issue"),
-	req("expiry_date", "Date of Expiry"),
+	// Same reason as mDL's: the isoPhotoId profile also ships
+	// portrait_capture_date as "" under a date mapping.
+	dateField("portrait_capture_date", "Portrait Capture Date"),
+	dateField("issue_date", "Date of Issue"),
+	dateField("expiry_date", "Date of Expiry"),
 	req("issuing_authority_unicode", "Issuing Authority"),
 	req("issuing_country", "Issuing Country"),
 	{

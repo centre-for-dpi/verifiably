@@ -39,21 +39,16 @@
 
     <div class="btn-row">
       <a href="/issuer/mode" class="btn ghost">← Back</a>
-      {{/* hx-encoding makes htmx post this as multipart/form-data rather than
-           urlencoded, which is the only way a file input's BYTES travel — an
-           urlencoded post sends just the filename. It is set unconditionally
-           rather than only for schemas with an image field: htmx builds the
-           body from a FormData either way, so a form with no file input
-           produces the same field values in both encodings, and SubmitIssue's
-           ParseMultipartForm falls back to ParseForm for urlencoded posts.
-           One code path is worth more here than a conditional that could
-           silently pick the wrong encoding. */}}
-      <button class="btn"
-              hx-post="/issuer/issue"
-              hx-include="#single-form-el"
-              hx-encoding="multipart/form-data"
-              hx-target="#issue-result"
-              hx-swap="innerHTML">Issue credential →</button>
+      {{/* type=submit + form= submits #single-form-el, which carries the
+           hx-post and hx-encoding. The button sits in a different template
+           block from the form; the form attribute associates them by id
+           regardless of document order.
+
+           This button used to carry hx-post + hx-include itself. That posted
+           a file input's VALUE — the filename — with no bytes behind it, so
+           the portrait arrived as an empty part. Only submitting the form
+           lets the browser assemble the real multipart body. */}}
+      <button class="btn" type="submit" form="single-form-el">Issue credential →</button>
     </div>
 
     <div id="issue-result"></div>
@@ -83,7 +78,19 @@
 
 {{define "fragment_issue_single_form"}}
 <div id="single-form-wrap">
-  <form id="single-form-el" style="margin-top:1.5rem">
+  {{/* The htmx attributes live on the FORM, not on the submit button.
+       A button outside the form using hx-include collects each input's
+       VALUE — and a file input's value is just the filename, never the
+       bytes. That posted `filename="Portrait4.jpg"` with an empty body,
+       so the portrait arrived blank. Posting the form itself lets the
+       browser build the multipart body, which is the only way the file
+       content travels. */}}
+  <form id="single-form-el"
+        hx-post="/issuer/issue"
+        hx-encoding="multipart/form-data"
+        hx-target="#issue-result"
+        hx-swap="innerHTML"
+        style="margin-top:1.5rem">
     {{/* Hidden inputs snapshot the issuer DPG + schema id at page-render
          time. SubmitIssue prefers these over session state so a
          container restart between page-load and submit doesn't blow up
