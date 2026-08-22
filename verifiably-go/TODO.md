@@ -821,15 +821,69 @@ directory relative to the script itself. Any documentation, runbook, or
 comment that tells someone to run `node verify.mjs <path>` is wrong — there
 is no argument parsing in the script at all.
 
-### F4 — the adapter's `map[string]string` subject data cannot express `driving_privileges`
+### F4 — structured mdoc fields (`driving_privileges`, `portrait`) — **FIXED**
 
-`internal/mdl/cbortypes.go`'s `DrivingPrivilege` documents this directly:
-`driving_privileges` is an array of structured objects (vehicle category
-code plus optional issue/expiry dates per category), and the walt.id adapter
-carries all subject data as `map[string]string` end to end because it comes
-from an HTML form. There is no representation for a nested array of objects
-in that shape, so `driving_privileges` cannot be populated through the
-current issuance path.
+**Status: fixed.** Was: `driving_privileges` is an ISO 18013-5 array of
+structured objects (vehicle category code plus optional issue/expiry dates
+per category), but the walt.id adapter carried all subject data as
+`map[string]string` end to end because it comes from an HTML form. The field
+was declared a plain string, so the issue form rendered a text box; an
+operator typed `1` and the wallet failed on accept with
+
+```
+"error": "invalid_credential_request",
+"error_description": "Expected to execute conversion from json array, but input |"1"| is not a json array"
+```
+
+The offer was created fine (HTTP 201) — the failure landed later, when the
+wallet redeemed it, which is why it looked like a wallet bug.
+
+**What the fix does.** `backend.IssueRequest` gained `StructuredData
+map[string]json.RawMessage` as a SIBLING of `SubjectData`, which stays
+`map[string]string` for flat fields. `SubjectData` was deliberately NOT
+widened to `map[string]any`: `credebl`, `injicertify` and the legacy
+`waltid` JSON-LD path all iterate it directly into their payloads, so
+widening it would have made a structured claim appear as a stringified blob
+in a W3C credential with no compile error to catch it. `CredentialData` was
+considered and rejected — it replaces the WHOLE credential body, the wrong
+granularity when one field is structured and twenty stay flat on the same
+form. `issuer2RuntimeOverrides.CredentialData` widened to
+`map[string]map[string]any` so the array marshals verbatim; flat fields
+still marshal as JSON strings.
+
+`portrait` had the same root cause and shipped in the same change: it was a
+text box the operator would have had to paste base64 into, and now renders a
+file picker capped at 512 KB with JPEG/PNG sniffing. walt.id's profile maps
+it with `conversionType = "base64StringToByteString"`, so we hand over plain
+base64 and it does the CBOR conversion — the mediator boundary is unchanged
+and `internal/mdl` remains a verifier, never an emitter. The issue form now
+posts `multipart/form-data`; `SubmitIssue` falls back to `ParseForm` on
+`ErrNotMultipart` so API callers posting urlencoded keep working.
+
+Both are selected by `FieldSpec.Format` (`mdoc.FormatDrivingPrivileges`,
+`mdoc.FormatImage`), not by field name, matching how date/uri/number inputs
+are already chosen — so the sibling ISO byte-string elements
+(`signature_usual_mark`, Photo ID's `portrait`) need no new rule.
+
+**Verified end to end against the real `waltid/issuer-api2:0.23.1` image**,
+not only in unit tests. Booting it needs the config directory with
+`issuer-service.conf`'s `__RENDERED_BY_DEPLOY_*` placeholders filled in
+(deploy.sh does this; the committed file cannot boot as-is) plus the three
+`VERIFIABLY_ISSUER2_KEY_{X,Y,D}` coordinates. Driving a full OID4VCI
+redemption (offer → token → credential, with a real ES256
+`openid4vci-proof+jwt`) reproduced the operator's error verbatim for the
+`"1"` shape, returned HTTP 200 for the array shape, and decoding the signed
+mdoc's CBOR confirmed `driving_privileges` as a genuine array of 2 objects
+with tag-1004 full-dates, and `portrait` as a CBOR byte string carrying the
+PNG magic number.
+
+**What remains.** The `arrayConfig` fixed length (below) is still a
+vendor-profile constraint we work around by padding rather than something we
+can express properly — `mdoc.DrivingPrivilegesArrayConfigSize` and the
+profile's `arrayConfig` list must be changed together, and an operator
+cannot issue more than 2 distinct categories until the profile grows. F2's
+Photo ID `portrait` byte-string mapping gap is unaffected by this change and
+still open.
 
 Two error strings surfaced repeatedly while investigating this and cost
 several attempts each to diagnose — recording them verbatim so the next
@@ -841,6 +895,14 @@ person can search and find this entry instead of re-deriving the cause:
   entries (see `issuer2-profiles.conf`'s `isoMdl` profile). It is not a
   schema-shape error; it is a length mismatch against a fixed-size array
   config.
+
+  Confirmed against the real image while fixing this: the count is **EXACT**,
+  not a floor and not a ceiling. Sending a 1-entry array reproduces this
+  error just as an empty one does; only exactly 2 succeeds. That is why
+  `mdoc.PadDrivingPrivileges` exists — an operator holding a single category
+  must still submit 2 entries, so the pad repeats the last real entry rather
+  than inventing a category the holder does not hold or sending a blank one
+  (a blank pad hits the DateTimeParseException below).
 - **`java.time.format.DateTimeParseException: Text '' could not be parsed at
   index 0`** — means a mandatory date field was left unset (empty string).
   Task 2 emptied the profile's sample data (`credentialData`) deliberately,
