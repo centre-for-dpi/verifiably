@@ -502,6 +502,45 @@ func (h *H) BuildDelegationToggle(w http.ResponseWriter, r *http.Request) {
 	h.renderFragment(w, r, "fragment_schema_builder_form", data)
 }
 
+// BuildStdChange re-renders the builder form when the Format (`std`) selector
+// changes.
+//
+// The <select name="std"> used to carry no htmx attributes of its own, so
+// changing it only fired the FORM's hx-trigger, which posts to
+// /issuer/schema/build/preview and swaps #json-preview — the JSON panel, not
+// the form. The docType block is behind {{if eq .Std "mso_mdoc"}}, so picking
+// "ISO mDL" left the docType selector invisible and the standard's mandatory
+// fields never loaded. (Deleting a field appeared to "fix" it only because
+// RemoveSchemaField re-renders the whole form.) This is the sibling of
+// BuildDelegationToggle / BuildDocTypeChange: re-render
+// fragment_schema_builder_form with fresh builder data.
+//
+// Field preservation on a format switch — what happens to rows the operator
+// already typed:
+//   - Switching TO mso_mdoc: the docType defaults to the first entry in
+//     mdoc.KnownDocTypes() (nothing is selected yet, and the <select> renders
+//     with the first option pre-selected, so the data and the markup must
+//     agree — otherwise the form shows mDL while the builder holds ""), which
+//     preloads that docType's mandatory fields. extractBuilderData's merge
+//     already APPENDS every submitted non-mandatory row after the mandatory
+//     set, so the operator's own fields are kept, not discarded; only rows
+//     that collide by name with a mandatory element are replaced by the
+//     canonical (locked, Required) version.
+//   - Switching AWAY from mso_mdoc: fields are left exactly as submitted. The
+//     previously-preloaded ISO rows stay as ordinary editable fields rather
+//     than vanishing — silently deleting eleven rows an operator may have
+//     since edited would lose work, and they can remove any they don't want
+//     with the existing × button.
+//
+// POST /issuer/schema/build/std
+func (h *H) BuildStdChange(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	data := extractBuilderData(r)
+	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
+	h.renderFragment(w, r, "fragment_schema_builder_form", data)
+}
+
 // BuildDocTypeChange re-renders the builder form when the mdoc docType
 // selector changes. Unlike the plain preview endpoint (which only swaps
 // #json-preview), this must refresh the field rows themselves: picking a
@@ -754,6 +793,19 @@ func extractBuilderData(r *http.Request) builderData {
 	}
 	if d.Std == "" {
 		d.Std = "w3c_vcdm_2"
+	}
+	// mso_mdoc without a docType is not a renderable state: the docType
+	// <select> has no empty option, so a browser renders it with the FIRST
+	// option pre-selected. If the builder data held "" the markup would show
+	// mDL while the server believed nothing was picked, and the mandatory
+	// fields would never preload — exactly the symptom the format selector
+	// showed before it re-rendered the form at all. Defaulting here keeps the
+	// two in agreement for every entry point (format switch, add-field,
+	// preview, save) rather than only the one that noticed.
+	if d.Std == "mso_mdoc" && strings.TrimSpace(d.DocType) == "" {
+		if known := d.KnownDocTypes; len(known) > 0 {
+			d.DocType = known[0].DocType
+		}
 	}
 	// r.FormValue above already parses the request body into r.Form; this
 	// call just makes that explicit before we hand r.Form to the helper.

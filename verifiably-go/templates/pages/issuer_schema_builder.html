@@ -120,7 +120,18 @@
 
   <div class="field">
     <label>Format</label>
-    <select name="std">
+    {{/* The format governs which OTHER controls exist — the docType selector
+         below is behind {{if eq .Std "mso_mdoc"}} — so changing it has to
+         re-render the FORM, not just the JSON preview. Without these
+         attributes only the form's own hx-trigger fired, which targets
+         #json-preview, and picking "ISO mDL" never revealed the docType
+         selector or loaded the standard's mandatory fields. Same pattern as
+         the docType select and the delegation checkbox. */}}
+    <select name="std"
+            hx-post="/issuer/schema/build/std"
+            hx-include="#builder-form-el"
+            hx-target="#builder-form"
+            hx-swap="innerHTML">
       {{$cur := .Std}}
       <option value="w3c_vcdm_2"      {{if eq $cur "w3c_vcdm_2"}}selected{{end}}>w3c_vcdm_2 — W3C VCDM 2.0 (JSON-LD)</option>
       <option value="w3c_vcdm_1"      {{if eq $cur "w3c_vcdm_1"}}selected{{end}}>w3c_vcdm_1 — W3C VCDM 1.1 (JSON-LD)</option>
