@@ -25,11 +25,63 @@ func TestBuildClaimsBlockEmitsPerLocaleDisplay(t *testing.T) {
 		`name = "Apellidos"`,
 		`locale = "es-DO"`,
 		"document_number",
-		`name = "Document Number"`, // derived, not blank
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("claims block missing %q:\n%s", want, got)
 		}
+	}
+	// document_number declares no labels at all, so it gets an EMPTY display
+	// list — not a synthesised English entry carrying the derived identifier.
+	// claimLocales used to emit "en" unconditionally; a wallet then received
+	// "Document Number" as though the issuer had authored it. With the schema
+	// builder's base language now operator-chosen, that synthesis is wrong:
+	// absent metadata means "wallet, derive it yourself", which is exactly
+	// what wallets do and what the field's contract says.
+	if strings.Contains(got, `name = "Document Number"`) {
+		t.Errorf("field with no labels must not get a synthesised English display entry:\n%s", got)
+	}
+}
+
+// TestBuildClaimsBlockOmitsEnglishWhenNotDeclared is the Commit 3 guard on
+// claimLocales: the schema builder's first language row is freely editable,
+// so a deployment issuing only in Spanish declares {"es-DO": ...} and no
+// English. Synthesising an "en" entry there publishes a phantom English label
+// carrying the DERIVED identifier — a translation the issuer never authored,
+// which a wallet would then prefer over the Spanish for any en-* holder.
+func TestBuildClaimsBlockOmitsEnglishWhenNotDeclared(t *testing.T) {
+	got := buildClaimsBlock([]vctypes.FieldSpec{
+		{Name: "family_name", Labels: map[string]string{"es-DO": "Apellidos"}},
+	}, "")
+
+	if !strings.Contains(got, `{ name = "Apellidos", locale = "es-DO" }`) {
+		t.Errorf("expected the declared Spanish display entry, got:\n%s", got)
+	}
+	if strings.Contains(got, `locale = "en"`) {
+		t.Errorf("Spanish-only field must not emit an English display entry:\n%s", got)
+	}
+	if strings.Contains(got, `name = "Family Name"`) {
+		t.Errorf("derived English label leaked into a Spanish-only field:\n%s", got)
+	}
+}
+
+// English keeps its FRONT position when the field DOES declare it — it is
+// still the data model's base language (vctypes.FieldSpec.Label falls back to
+// "en" for any locale it cannot resolve), even though the form no longer
+// forces the operator to supply it.
+func TestBuildClaimsBlockKeepsEnglishFirstWhenDeclared(t *testing.T) {
+	got := buildClaimsBlock([]vctypes.FieldSpec{
+		{Name: "family_name", Labels: map[string]string{
+			"ht": "Siyati", "en": "Family Name", "es-DO": "Apellidos",
+		}},
+	}, "")
+	en := strings.Index(got, `locale = "en"`)
+	esDO := strings.Index(got, `locale = "es-DO"`)
+	ht := strings.Index(got, `locale = "ht"`)
+	if en < 0 || esDO < 0 || ht < 0 {
+		t.Fatalf("expected all three locales, got:\n%s", got)
+	}
+	if !(en < esDO && esDO < ht) {
+		t.Errorf("expected en first then the rest sorted (en=%d es-DO=%d ht=%d):\n%s", en, esDO, ht, got)
 	}
 }
 

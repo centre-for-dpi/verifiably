@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -405,7 +406,23 @@ type builderData struct {
 	// builder render so the template can draw the dropdown regardless of
 	// which handler produced this builderData.
 	KnownDocTypes []mdoc.DocTypeInfo
+	// BlankLangRows[fieldIdx] is how many EMPTY language rows that field
+	// should render below its filled ones.
+	//
+	// A language row with a blank locale or a blank label deliberately
+	// produces no FieldSpec.Labels entry (absent means "derive from the
+	// identifier" downstream), so such a row cannot survive a round trip
+	// through the map alone — the operator would click "Add language", the
+	// form would re-render, and the new row would have vanished. This
+	// carries the count separately so a just-added, not-yet-filled row
+	// persists across the re-renders the builder does on every keystroke.
+	BlankLangRows map[int]int
 }
+
+// blankRowsFor reports how many empty language rows field i should render.
+// A nil map (any handler that didn't populate it) yields zero, so every
+// non-builder caller renders only the rows the labels map produces.
+func (d builderData) blankRowsFor(i int) int { return d.BlankLangRows[i] }
 
 // delegationScenario is a real-world delegated-access relationship preset so an
 // operator picks "Power of Attorney" or "Teacher" rather than hand-assembling the
@@ -578,6 +595,32 @@ func (h *H) AddSchemaField(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	data := extractBuilderData(r)
 	data.Fields = append(data.Fields, vctypes.FieldSpec{Datatype: "string"})
+	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
+	h.renderFragment(w, r, "fragment_schema_builder_form", data)
+}
+
+// AddFieldLanguage appends one empty language row to a single field and
+// re-renders the builder form — the same htmx round-trip pattern as
+// AddSchemaField / RemoveSchemaField / BuildDelegationToggle.
+//
+// It has to be a server round-trip rather than a bit of client-side DOM
+// cloning because the row's input NAMES are index-derived
+// (field_lang_N_J / field_label_N_J); the server is what knows what J the
+// next row gets, and re-rendering the whole form keeps every other row's
+// indices consistent with it.
+//
+// POST /issuer/schema/build/add-language  (idx = the field's row index)
+func (h *H) AddFieldLanguage(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	data := extractBuilderData(r)
+	idx, err := strconv.Atoi(r.FormValue("idx"))
+	if err == nil && idx >= 0 && idx < len(data.Fields) {
+		if data.BlankLangRows == nil {
+			data.BlankLangRows = map[int]int{}
+		}
+		data.BlankLangRows[idx]++
+	}
 	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
 	h.renderFragment(w, r, "fragment_schema_builder_form", data)
 }
@@ -811,6 +854,7 @@ func extractBuilderData(r *http.Request) builderData {
 	// call just makes that explicit before we hand r.Form to the helper.
 	_ = r.ParseForm()
 	d.Fields = parseFieldSpecsFromForm(r.Form)
+	d.BlankLangRows = blankLangRowsFromForm(r.Form, d.Fields)
 
 	// For mdoc, the standard's mandatory elements are preloaded and locked:
 	// the docType defines them, so an operator cannot omit or rename one and
@@ -893,49 +937,22 @@ func parseFieldSpecsFromForm(form url.Values) []vctypes.FieldSpec {
 			f.Format = parts[1]
 		}
 
-		// Labels: field_label_N is English (the base language);
-		// field_label_N_<locale> adds others. Locale codes are free-form —
-		// whatever the operator typed — so we discover them by prefix scan
-		// rather than checking against a fixed list.
-		labels := map[string]string{}
-		if en := strings.TrimSpace(form.Get(fmt.Sprintf("field_label_%d", i))); en != "" {
-			labels["en"] = en
-		}
-		prefix := fmt.Sprintf("field_label_%d_", i)
-		for key, vals := range form {
-			if !strings.HasPrefix(key, prefix) || len(vals) == 0 {
-				continue
-			}
-			loc := strings.TrimPrefix(key, prefix)
-			// "en" only ever arrives via field_label_N (the base-language
-			// input above), never via the field_label_N_<locale> suffix the
-			// template only renders for non-English locales. Skip it here so
-			// a hand-crafted field_label_N_en can never silently clobber the
-			// base label parsed above.
-			if loc == "en" {
-				continue
-			}
-			if !validLocaleCode(loc) {
-				continue
-			}
-			if v := strings.TrimSpace(vals[0]); v != "" {
-				labels[loc] = v
-			}
-		}
-		if len(labels) > 0 {
+		// Labels arrive as PARALLEL indexed inputs: field_lang_N_J carries the
+		// locale code and field_label_N_J the text, for J = 0, 1, 2, ... Row J=0
+		// is the field's first language row, pre-filled with "en" but freely
+		// editable — a deployment issuing only in Spanish sets it to "es" and
+		// carries no English at all.
+		//
+		// The locale is a VALUE, never part of a field name. The previous
+		// scheme encoded it in the name (field_label_N_<locale>), which forced
+		// a separate "new locale" row and let a locale containing a space
+		// truncate the HTML attribute — the browser then resubmitted a
+		// different, shorter key and the label silently landed under the wrong
+		// locale. With the index-based scheme no operator text reaches an
+		// attribute name, so an arbitrary number of languages round-trips
+		// cleanly whatever the operator types.
+		if labels := parseFieldLabels(form, i); len(labels) > 0 {
 			f.Labels = labels
-		}
-
-		// A newly typed locale/label pair, from the empty row the template
-		// always renders. Both must be non-empty to count, and the locale
-		// must pass the same validity check as the prefix-scanned ones above.
-		newLoc := strings.TrimSpace(form.Get(fmt.Sprintf("new_locale_%d", i)))
-		newLabel := strings.TrimSpace(form.Get(fmt.Sprintf("new_label_%d", i)))
-		if newLoc != "" && newLabel != "" && validLocaleCode(newLoc) {
-			if f.Labels == nil {
-				f.Labels = map[string]string{}
-			}
-			f.Labels[newLoc] = newLabel
 		}
 
 		out = append(out, f)
@@ -943,36 +960,203 @@ func parseFieldSpecsFromForm(form url.Values) []vctypes.FieldSpec {
 	return out
 }
 
+// LangRow is one language row of a field's label editor: a freely-editable
+// locale code beside the label text in that language. The template renders
+// these as parallel indexed inputs (field_lang_N_J / field_label_N_J), so the
+// operator's locale text never becomes part of an HTML attribute NAME.
+type LangRow struct {
+	Lang  string
+	Label string
+}
+
+// FieldLangRows turns a field's Labels map into the ordered rows the builder
+// renders, and is exposed to templates as `fieldLangRows`.
+//
+// Ordering rules, in order of application:
+//
+//  1. "en" first when the field HAS an English label. This is not a claim
+//     that English is privileged — it is the only stable anchor available.
+//     mdoc.MandatoryFields ships curated English labels ("Family Name",
+//     "UN Distinguishing Sign") and vctypes.FieldSpec.Label falls back to
+//     "en" for any locale it cannot resolve, so surfacing it first keeps the
+//     curated text in the row the operator sees without hunting.
+//  2. Every other locale sorted, so the form is deterministic across
+//     re-renders. A map has no order of its own, and the builder re-renders
+//     on every keystroke — unsorted rows would visibly reshuffle as the
+//     operator types.
+//  3. A field with NO labels at all still gets one row, pre-filled with "en"
+//     and an empty label. The first language row is freely editable, not
+//     locked to English: a deployment issuing only in Spanish overwrites it
+//     with "es" and carries no English at all. "en" is a starting value, not
+//     a constraint.
+func FieldLangRows(f vctypes.FieldSpec) []LangRow {
+	if len(f.Labels) == 0 {
+		return []LangRow{{Lang: "en"}}
+	}
+	rest := make([]string, 0, len(f.Labels))
+	for loc := range f.Labels {
+		if loc == "en" {
+			continue
+		}
+		rest = append(rest, loc)
+	}
+	sort.Strings(rest)
+	out := make([]LangRow, 0, len(f.Labels))
+	if en, ok := f.Labels["en"]; ok {
+		out = append(out, LangRow{Lang: "en", Label: en})
+	}
+	for _, loc := range rest {
+		out = append(out, LangRow{Lang: loc, Label: f.Labels[loc]})
+	}
+	return out
+}
+
+// IntRange returns []int{from, from+1, ..., from+n-1}, and is exposed to
+// templates as `intRange` so a block can repeat n times while still knowing
+// each repetition's ABSOLUTE index — something text/template cannot express
+// on its own. The schema builder numbers its not-yet-filled language rows
+// with it, continuing from the filled ones; those numbers ARE the input names
+// (field_lang_N_J), so a restart at 0 would collide with an existing row and
+// silently overwrite its label.
+//
+// n is `any` rather than `int` because the template feeds it `index` into a
+// map[int]int, which yields an untyped nil for an absent key — and for a nil
+// map, which is every caller that renders a field row without a blank count.
+// text/template will not coerce that to an int, so a plain int parameter
+// would turn an ordinary "this field has no pending language rows" into a
+// render error. Anything that isn't a positive int count yields no rows.
+func IntRange(from int, n any) []int {
+	count, ok := n.(int)
+	if !ok || count <= 0 {
+		return nil
+	}
+	out := make([]int, count)
+	for i := range out {
+		out[i] = from + i
+	}
+	return out
+}
+
+// maxLangRowsPerField bounds the language-row scan for one field. Language
+// rows are added one at a time through a server round-trip, so this is a
+// sanity ceiling on a crafted post rather than a product limit the operator
+// can reach by clicking.
+const maxLangRowsPerField = 50
+
+// parseFieldLabels reads field i's parallel language rows — field_lang_i_J
+// (locale code) alongside field_label_i_J (the text) — into a locale-keyed
+// map.
+//
+// Both halves are trimmed. A blank label leaves NO map entry regardless of
+// what locale sits beside it: absent means "derive from the identifier"
+// downstream (vctypes.FieldSpec.Label), and an empty-string entry would be a
+// different, worse thing — a present key whose value renders as nothing. A
+// blank locale is skipped for the same reason, and an invalid locale code is
+// dropped here (firstInvalidLocaleCode is the path that reports it to the
+// operator, since this function has no request/response to surface an error
+// through).
+//
+// Later rows win on a duplicate locale, which is the only sane reading of
+// two rows claiming the same language.
+//
+// Returns a nil map when nothing usable was submitted, so the caller can
+// leave FieldSpec.Labels nil rather than assigning an empty map.
+func parseFieldLabels(form url.Values, i int) map[string]string {
+	var labels map[string]string
+	for j := 0; j < maxLangRowsPerField; j++ {
+		langKey := fmt.Sprintf("field_lang_%d_%d", i, j)
+		labelKey := fmt.Sprintf("field_label_%d_%d", i, j)
+		// Stop at the first row the form doesn't carry at all. Both halves are
+		// always rendered together, so an absent lang key means no more rows.
+		if _, ok := form[langKey]; !ok {
+			if _, ok := form[labelKey]; !ok {
+				break
+			}
+		}
+		loc := strings.TrimSpace(form.Get(langKey))
+		label := strings.TrimSpace(form.Get(labelKey))
+		if loc == "" || label == "" || !validLocaleCode(loc) {
+			continue
+		}
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		labels[loc] = label
+	}
+	return labels
+}
+
+// blankLangRowsFromForm counts, per field, how many language rows the form
+// submitted that produced NO label entry — i.e. rows the operator has added
+// but not yet filled in (or filled in only half of).
+//
+// Without this the builder would eat its own "Add language" click: the new
+// row is empty, an empty row makes no map entry by design, and the very next
+// keystroke re-renders the form from the map — so the row the operator just
+// asked for would disappear before they could type in it.
+//
+// Only rows the form actually carried are counted, so a handler that never
+// saw a language row (or a caller passing a synthetic form) gets zero rather
+// than phantom rows.
+func blankLangRowsFromForm(form url.Values, fields []vctypes.FieldSpec) map[int]int {
+	out := map[int]int{}
+	for i := range fields {
+		submitted, kept := 0, 0
+		for j := 0; j < maxLangRowsPerField; j++ {
+			langKey := fmt.Sprintf("field_lang_%d_%d", i, j)
+			labelKey := fmt.Sprintf("field_label_%d_%d", i, j)
+			_, hasLang := form[langKey]
+			_, hasLabel := form[labelKey]
+			if !hasLang && !hasLabel {
+				break
+			}
+			submitted++
+			loc := strings.TrimSpace(form.Get(langKey))
+			label := strings.TrimSpace(form.Get(labelKey))
+			if loc != "" && label != "" && validLocaleCode(loc) {
+				kept++
+			}
+		}
+		// FieldLangRows renders one implicit row for a field with no labels
+		// at all, so only count beyond that to avoid drawing it twice.
+		blank := submitted - kept
+		if kept == 0 && blank > 0 {
+			blank--
+		}
+		if blank > 0 {
+			out[i] = blank
+		}
+	}
+	return out
+}
+
 // firstInvalidLocaleCode re-scans the raw submitted form for a locale code
-// (from either field_label_N_<locale> or new_locale_N) that fails
-// validLocaleCode, returning it so SaveSchema can tell the operator why
-// their label silently didn't make it into the saved schema.
-// parseFieldSpecsFromForm itself just drops invalid codes rather than
-// erroring, since it has no path back to the request/response to surface
-// one — this is that path. Returns "" when every locale code submitted is
-// valid (including when none were submitted at all).
+// that fails validLocaleCode, returning it so SaveSchema can tell the
+// operator why their label silently didn't make it into the saved schema.
+// parseFieldLabels itself just drops invalid codes rather than erroring,
+// since it has no path back to the request/response to surface one — this is
+// that path. Returns "" when every locale code submitted is valid (including
+// when none were submitted at all).
+//
+// A malformed code alongside a BLANK label is not reported: that pair
+// produces no map entry either way, so there is nothing the operator lost.
 func firstInvalidLocaleCode(form url.Values) string {
 	for i := 0; i < 50; i++ {
-		prefix := fmt.Sprintf("field_label_%d_", i)
-		for key, vals := range form {
-			if !strings.HasPrefix(key, prefix) || len(vals) == 0 {
-				continue
+		for j := 0; j < maxLangRowsPerField; j++ {
+			langKey := fmt.Sprintf("field_lang_%d_%d", i, j)
+			labelKey := fmt.Sprintf("field_label_%d_%d", i, j)
+			if _, ok := form[langKey]; !ok {
+				if _, ok := form[labelKey]; !ok {
+					break
+				}
 			}
-			loc := strings.TrimPrefix(key, prefix)
-			if loc == "en" {
+			loc := strings.TrimSpace(form.Get(langKey))
+			if loc == "" || strings.TrimSpace(form.Get(labelKey)) == "" {
 				continue
-			}
-			if strings.TrimSpace(vals[0]) == "" {
-				continue // blank value alongside a malformed key isn't worth reporting
 			}
 			if !validLocaleCode(loc) {
 				return loc
 			}
-		}
-		newLoc := strings.TrimSpace(form.Get(fmt.Sprintf("new_locale_%d", i)))
-		newLabel := strings.TrimSpace(form.Get(fmt.Sprintf("new_label_%d", i)))
-		if newLoc != "" && newLabel != "" && !validLocaleCode(newLoc) {
-			return newLoc
 		}
 	}
 	return ""

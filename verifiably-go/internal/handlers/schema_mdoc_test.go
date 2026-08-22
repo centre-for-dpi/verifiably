@@ -35,7 +35,8 @@ func TestExtractBuilderDataRestoresCraftedMandatoryField(t *testing.T) {
 	// it and drops Required.
 	form.Set("field_name_0", "renamed_by_attacker")
 	form.Set("field_datatype_0", "string")
-	form.Set("field_label_0", "Family Name")
+	form.Set("field_lang_0_0", "en")
+	form.Set("field_label_0_0", "Family Name")
 	// field_required_0 deliberately omitted (unchecked checkbox)
 
 	req := httptest.NewRequest(http.MethodPost, "/issuer/schema/build/doctype", strings.NewReader(form.Encode()))

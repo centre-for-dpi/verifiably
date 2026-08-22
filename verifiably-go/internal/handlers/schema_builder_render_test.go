@@ -46,6 +46,12 @@ func loadSchemaBuilderTemplate(t *testing.T) *template.Template {
 			}
 			return out
 		},
+		// The real production funcMap binds fieldLangRows to the very same
+		// handlers.FieldLangRows this package exports, so the ordering these
+		// tests assert on is the ordering the server renders — not a
+		// test-local reimplementation that could drift from it.
+		"fieldLangRows": FieldLangRows,
+		"intRange":      IntRange,
 	})
 	files, err := filepath.Glob("../../templates/pages/issuer_schema_builder.html")
 	if err != nil || len(files) == 0 {
@@ -58,8 +64,9 @@ func loadSchemaBuilderTemplate(t *testing.T) *template.Template {
 }
 
 // TestFieldRowRendersLabels renders _field_row with a FieldSpec carrying
-// en/es-DO/ht labels and checks the label column, the per-locale rows, and
-// the add-a-locale row all appear with escaped, correctly-keyed field names.
+// en/es-DO/ht labels and checks that each language appears as a PAIR of
+// parallel indexed inputs — the locale as a VALUE (field_lang_N_J) beside its
+// text (field_label_N_J), never as part of a field NAME.
 func TestFieldRowRendersLabels(t *testing.T) {
 	tmpl := loadSchemaBuilderTemplate(t)
 	field := vctypes.FieldSpec{
@@ -76,26 +83,38 @@ func TestFieldRowRendersLabels(t *testing.T) {
 		t.Fatalf("render _field_row: %v", err)
 	}
 	out := buf.String()
+	// FieldLangRows orders these en-first then sorted, so the row indices are
+	// deterministic: 0=en, 1=es-DO, 2=ht.
 	for _, want := range []string{
-		`name="field_label_0"`,
-		`value="Family Name"`,
-		`name="field_label_0_es-DO"`,
-		`value="Apellidos"`,
-		`name="field_label_0_ht"`,
-		`value="Siyati"`,
-		`name="new_locale_0"`,
-		`name="new_label_0"`,
+		`name="field_lang_0_0"`, `value="en"`,
+		`name="field_label_0_0"`, `value="Family Name"`,
+		`name="field_lang_0_1"`, `value="es-DO"`,
+		`name="field_label_0_1"`, `value="Apellidos"`,
+		`name="field_lang_0_2"`, `value="ht"`,
+		`name="field_label_0_2"`, `value="Siyati"`,
+		`/issuer/schema/build/add-language`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered output missing %q\nfull output:\n%s", want, out)
+		}
+	}
+	// The retired scheme must be gone: no locale text in an attribute name,
+	// and no separate "new locale" row.
+	for _, gone := range []string{
+		`name="field_label_0_es-DO"`,
+		`name="new_locale_0"`,
+		`name="new_label_0"`,
+	} {
+		if strings.Contains(out, gone) {
+			t.Errorf("rendered output still carries the retired %q\nfull output:\n%s", gone, out)
 		}
 	}
 }
 
 // TestFieldRowRendersWithNilLabels confirms a FieldSpec with no Labels at
 // all (the common case — most fields never get a translated label) renders
-// without panicking on the nil-map index and without leaking another
-// field's label into the empty one.
+// without panicking on the nil map, gets ONE language row pre-filled with
+// "en" and an empty label, and does not leak another field's label into it.
 func TestFieldRowRendersWithNilLabels(t *testing.T) {
 	tmpl := loadSchemaBuilderTemplate(t)
 	field := vctypes.FieldSpec{Name: "document_number", Datatype: "string"}
@@ -104,10 +123,21 @@ func TestFieldRowRendersWithNilLabels(t *testing.T) {
 		t.Fatalf("render _field_row with nil Labels: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, `name="field_label_1"`) {
-		t.Errorf("expected the empty-label input for a field with no labels, got:\n%s", out)
+	for _, want := range []string{
+		`name="field_lang_1_0"`,
+		`name="field_label_1_0"`,
+		`value="en"`, // pre-filled, and editable — no readonly on this input
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q for a field with no labels, got:\n%s", want, out)
+		}
 	}
 	if strings.Contains(out, `value="Family Name"`) {
 		t.Errorf("field with no labels leaked another field's label:\n%s", out)
+	}
+	// There must be exactly one language row — not zero, and not a second
+	// empty one drawn on top of the implicit one.
+	if strings.Contains(out, `name="field_lang_1_1"`) {
+		t.Errorf("a field with no labels should render exactly one language row:\n%s", out)
 	}
 }

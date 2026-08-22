@@ -117,17 +117,19 @@ func TestMandatoryLabelOverlayKeepsCuratedEnglish(t *testing.T) {
 	form.Set("std", "mso_mdoc")
 	form.Set("doctype", "org.iso.18013.5.1.mDL")
 	// The operator supplies ONLY a Spanish label for un_distinguishing_sign.
-	// field_label_0 (English) is deliberately left blank — this is the exact
-	// shape the template posts back when the operator types into the Spanish
-	// box and never touches the English one.
+	// The English language row's label is deliberately left blank — this is
+	// the exact shape the template posts back when the operator types into a
+	// Spanish row and never touches the English one.
 	//
 	// Row index 0 matters: parseFieldSpecsFromForm scans rows contiguously and
 	// breaks at the first absent field_name_N, so a row posted at a higher
 	// index with no rows beneath it is never parsed at all.
 	form.Set("field_name_0", "un_distinguishing_sign")
 	form.Set("field_datatype_0", "string")
-	form.Set("field_label_0", "")
-	form.Set("field_label_0_es", "Signo Distintivo de la ONU")
+	form.Set("field_lang_0_0", "en")
+	form.Set("field_label_0_0", "")
+	form.Set("field_lang_0_1", "es")
+	form.Set("field_label_0_1", "Signo Distintivo de la ONU")
 
 	req := httptest.NewRequest(http.MethodPost, "/issuer/schema/build/doctype", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -162,7 +164,8 @@ func TestMandatoryLabelOverlayOperatorEnglishWins(t *testing.T) {
 	form.Set("doctype", "org.iso.18013.5.1.mDL")
 	form.Set("field_name_0", "family_name")
 	form.Set("field_datatype_0", "string")
-	form.Set("field_label_0", "Surname")
+	form.Set("field_lang_0_0", "en")
+	form.Set("field_label_0_0", "Surname")
 
 	req := httptest.NewRequest(http.MethodPost, "/issuer/schema/build/doctype", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -193,7 +196,8 @@ func TestMandatoryLabelOverlayDoesNotLeakAcrossRequests(t *testing.T) {
 		form.Set("field_name_0", "family_name")
 		form.Set("field_datatype_0", "string")
 		if esLabel != "" {
-			form.Set("field_label_0_es", esLabel)
+			form.Set("field_lang_0_0", "es")
+			form.Set("field_label_0_0", esLabel)
 		}
 		req := httptest.NewRequest(http.MethodPost, "/issuer/schema/build/doctype", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

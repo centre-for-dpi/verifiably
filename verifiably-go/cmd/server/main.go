@@ -812,6 +812,7 @@ func main() {
 		mux.HandleFunc("POST /issuer/schema/build/preview", h.SchemaPreview)
 		mux.HandleFunc("POST /issuer/schema/build/add-field", h.AddSchemaField)
 		mux.HandleFunc("POST /issuer/schema/build/remove-field", h.RemoveSchemaField)
+		mux.HandleFunc("POST /issuer/schema/build/add-language", h.AddFieldLanguage)
 		mux.HandleFunc("POST /issuer/schema/build/delegation", h.BuildDelegationToggle)
 		mux.HandleFunc("POST /issuer/schema/build/std", h.BuildStdChange)
 		mux.HandleFunc("POST /issuer/schema/build/doctype", h.BuildDocTypeChange)
@@ -1573,6 +1574,30 @@ func funcMap(tr handlers.Translator) template.FuncMap {
 		// remove one and still have a conformant credential). Returns an
 		// empty map for non-mdoc formats or an unrecognised/unset docType, so
 		// the lookup is always safe.
+		// fieldLangRows turns a field's Labels map into the ordered
+		// locale/label rows the schema builder renders. Ordering (English
+		// first when present, then sorted) lives in Go rather than the
+		// template because a Go map has no order and the builder re-renders
+		// on every keystroke — unsorted rows would visibly reshuffle as the
+		// operator types. See handlers.FieldLangRows.
+		"fieldLangRows": handlers.FieldLangRows,
+
+		// intRange returns []int{from, from+1, ..., from+n-1} so a template
+		// can repeat a block n times while still knowing each repetition's
+		// absolute index, which text/template otherwise has no way to
+		// express. The schema builder uses it to number its not-yet-filled
+		// language rows CONTINUING from the filled ones — those numbers are
+		// the input names (field_lang_N_J), so a restart at 0 would collide
+		// with an existing row and silently overwrite its label.
+		//
+		// n is `any` rather than `int` because it is fed by `index` into a
+		// map[int]int, which yields an untyped nil for an absent key (and for
+		// a nil map — every caller that renders a field row without a blank
+		// count). text/template will not coerce that to an int, so a plain
+		// int parameter turns a perfectly ordinary "this field has no pending
+		// language rows" into a render error.
+		"intRange": handlers.IntRange,
+
 		"mdocMandatoryNames": func(std, docType string) map[string]bool {
 			out := map[string]bool{}
 			if std != "mso_mdoc" {

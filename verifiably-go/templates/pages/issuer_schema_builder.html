@@ -169,8 +169,9 @@
 
     <div id="field-rows" style="display:flex;flex-direction:column;gap:0.5rem">
       {{$mandatoryNames := mdocMandatoryNames .Std .DocType}}
+      {{$blank := .BlankLangRows}}
       {{range $i, $f := .Fields}}
-        {{template "_field_row" (dict "Idx" $i "Field" $f "Locked" (index $mandatoryNames $f.Name))}}
+        {{template "_field_row" (dict "Idx" $i "Field" $f "Locked" (index $mandatoryNames $f.Name) "Blank" (index $blank $i))}}
       {{end}}
     </div>
 
@@ -188,7 +189,28 @@
 {{end}}
 
 {{define "_field_row"}}
-<div style="display:grid;grid-template-columns:1fr 1fr 160px 72px 36px;gap:0.5rem;align-items:center">
+{{/*
+  One claim field. The top line carries the identifier, the datatype and the
+  required flag; beneath it sit the field's LANGUAGE ROWS — one display text
+  plus the language it is written in, repeatable N times via "+ Add language".
+
+  The language is a VALUE the operator sets, not an assumption. The first row
+  is pre-filled with "en" but is freely editable: a deployment issuing only in
+  Spanish overwrites it with "es" and carries no English at all.
+
+  Naming: field_lang_<row>_<n> / field_label_<row>_<n> are PARALLEL indexed
+  inputs, so the locale text never lands in an HTML attribute NAME. The old
+  scheme (field_label_<row>_<locale>) put it there, which is what forced the
+  awkward separate "new locale" row and let a locale containing a space
+  truncate the attribute — the browser then resubmitted a shorter key and the
+  label silently landed under the wrong locale.
+
+  Locale codes stay an OPEN vocabulary — free text, no dropdown, no allowlist.
+  The pattern below only excludes characters, matching validLocaleCode's
+  ^[A-Za-z0-9-]{1,35}$ on the server.
+*/}}
+<div style="display:flex;flex-direction:column;gap:0.4rem;border:1px solid var(--line);border-radius:3px;padding:0.55rem 0.6rem;background:var(--bg-sunk)">
+<div style="display:grid;grid-template-columns:1fr 160px 72px 36px;gap:0.5rem;align-items:center">
   {{if .Locked}}
   <input type="text"
          name="field_name_{{.Idx}}"
@@ -205,16 +227,6 @@
          title="Solo letras (a-z, A-Z), dígitos y guión bajo. No se permiten caracteres especiales (ñ, tildes, espacios)."
          style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.7rem;font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--ink);border-radius:2px">
   {{end}}
-
-  {{/* Label is free text — the identifier above must stay interoperable
-       (it travels into the signed credential), but what the holder reads
-       does not. Blank derives from the identifier, matching what wallets
-       already do. */}}
-  <input type="text"
-         name="field_label_{{.Idx}}"
-         value="{{index .Field.Labels "en"}}"
-         placeholder="Label (English)"
-         style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.7rem;font-size:0.82rem;color:var(--ink);border-radius:2px">
 
   <select name="field_datatype_{{.Idx}}"
           style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.6rem;font-family:inherit;font-size:0.82rem;color:var(--ink);border-radius:2px">
@@ -242,25 +254,61 @@
           hx-target="#builder-form"
           hx-swap="innerHTML"
           style="background:none;border:1px solid var(--line);color:var(--ink-mute);width:32px;height:32px;border-radius:2px;cursor:pointer">×</button>
+</div>
 
-  {{range $loc, $val := .Field.Labels}}
-    {{if ne $loc "en"}}
-      <div style="grid-column:1/-1;display:grid;grid-template-columns:120px 1fr;gap:0.5rem;padding-left:1rem">
-        <input type="text" value="{{$loc}}" readonly
-               style="background:var(--bg-sunk);border:1px solid var(--line);padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--ink-mute);border-radius:2px">
-        <input type="text" name="field_label_{{$.Idx}}_{{$loc}}" value="{{$val}}"
-               style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-size:0.78rem;color:var(--ink);border-radius:2px">
-      </div>
-    {{end}}
-  {{end}}
-  <div style="grid-column:1/-1;display:grid;grid-template-columns:120px 1fr;gap:0.5rem;padding-left:1rem">
-    <input type="text" name="new_locale_{{.Idx}}" placeholder="es-DO"
+{{/* Language rows: display text + the language it is written in. Repeat as
+     many as the operator adds. fieldLangRows orders them (English first when
+     the field has one — mdoc.MandatoryFields ships curated English labels
+     that must stay visible and editable — then the rest sorted, so the form
+     doesn't reshuffle on every keystroke re-render). */}}
+{{$idx := .Idx}}
+{{$rows := fieldLangRows .Field}}
+{{$n := len $rows}}
+<div style="display:flex;flex-direction:column;gap:0.3rem;padding-left:0.15rem">
+  {{range $j, $row := $rows}}
+  <div style="display:grid;grid-template-columns:1fr 120px;gap:0.5rem">
+    <input type="text"
+           name="field_label_{{$idx}}_{{$j}}"
+           value="{{$row.Label}}"
+           placeholder="Display text — what the holder's wallet shows"
+           style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-size:0.8rem;color:var(--ink);border-radius:2px">
+    <input type="text"
+           name="field_lang_{{$idx}}_{{$j}}"
+           value="{{$row.Lang}}"
+           placeholder="en"
            pattern="[A-Za-z0-9-]{1,35}"
-           title="Any BCP-47-style code — es-DO, ht, qu. Letters, digits, and hyphens only; no spaces."
-           style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--ink);border-radius:2px">
-    <input type="text" name="new_label_{{.Idx}}" placeholder="Label in that language"
-           style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-size:0.78rem;color:var(--ink);border-radius:2px">
+           title="Any BCP-47-style code — en, es-DO, ht, qu. Letters, digits, and hyphens only; no spaces."
+           style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--ink);border-radius:2px">
   </div>
+  {{end}}
+  {{/* Rows the operator has added but not yet filled in. They carry no
+       label, so they produce no Labels entry and cannot survive a round trip
+       through the map alone — BlankLangRows carries the count instead. */}}
+  {{range $k := intRange $n .Blank}}
+  <div style="display:grid;grid-template-columns:1fr 120px;gap:0.5rem">
+    <input type="text"
+           name="field_label_{{$idx}}_{{$k}}"
+           value=""
+           placeholder="Display text in another language"
+           style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-size:0.8rem;color:var(--ink);border-radius:2px">
+    <input type="text"
+           name="field_lang_{{$idx}}_{{$k}}"
+           value=""
+           placeholder="es-DO"
+           pattern="[A-Za-z0-9-]{1,35}"
+           title="Any BCP-47-style code — en, es-DO, ht, qu. Letters, digits, and hyphens only; no spaces."
+           style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--ink);border-radius:2px">
+  </div>
+  {{end}}
+  <button type="button"
+          class="btn ghost small"
+          style="align-self:flex-start;font-size:0.72rem;padding:0.2rem 0.55rem"
+          hx-post="/issuer/schema/build/add-language"
+          hx-vals='{"idx": "{{.Idx}}"}'
+          hx-include="#builder-form-el"
+          hx-target="#builder-form"
+          hx-swap="innerHTML">+ Add language</button>
+</div>
 </div>
 {{end}}
 

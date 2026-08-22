@@ -416,13 +416,30 @@ func buildClaimsBlock(fields []vctypes.FieldSpec, namespace string) string {
 	return b.String()
 }
 
-// claimLocales returns the locales to emit for a field, English first and the
-// rest sorted so catalog output is deterministic (the file is diffed and
-// written on every schema save). English is always emitted first regardless
-// of whether the field declares an "en" label, because Label("en") falls
-// back to the derived name — there is always something to show.
+// claimLocales returns the locales to emit for a field: the ones it actually
+// declares, English first when present and the rest sorted so catalog output
+// is deterministic (the file is diffed and written on every schema save).
+//
+// English is NO LONGER synthesised for a field that doesn't declare it. It
+// used to be, on the reasoning that Label("en") falls back to the derived
+// name so there is always something to show — but the schema builder's base
+// language is now a value the operator sets rather than a hardcoded "en". A
+// deployment issuing only in Spanish declares {"es": "Apellidos"} and no
+// English at all; synthesising an "en" entry there published a phantom
+// English label carrying the DERIVED identifier ("Family Name" from
+// family_name), which is not a translation the issuer ever authored and which
+// a wallet would prefer over the Spanish for any en-* holder.
+//
+// English keeps its position at the FRONT when the field does declare it:
+// vctypes.FieldSpec.Label still falls back to "en" for an unresolvable
+// locale, so it remains the base language of the data model even though it is
+// no longer mandatory in the form.
+//
+// A field with no labels at all yields no locales, and buildClaimsBlock then
+// emits an empty display list — the wallet derives a label from the
+// identifier itself, exactly as it did before any of this metadata existed.
 func claimLocales(f vctypes.FieldSpec) []string {
-	out := make([]string, 0, len(f.Labels)+1)
+	out := make([]string, 0, len(f.Labels))
 	for loc := range f.Labels {
 		if loc == "en" {
 			continue
@@ -430,7 +447,10 @@ func claimLocales(f vctypes.FieldSpec) []string {
 		out = append(out, loc)
 	}
 	sort.Strings(out)
-	return append([]string{"en"}, out...)
+	if _, ok := f.Labels["en"]; ok {
+		return append([]string{"en"}, out...)
+	}
+	return out
 }
 
 // hoconEscape prepares a free-text string for inclusion in a HOCON quoted
