@@ -188,10 +188,20 @@ services:
     environment:
       - SERVICE_HOST=${VERIFIABLY_PUBLIC_HOST:-localhost}
       - ISSUER_API_PORT=7002
-      - VERIFIABLY_ISSUER2_KEY=${VERIFIABLY_ISSUER2_KEY:?issuer-api2 requires an EC P-256 issuer key}
+      # The issuer JWK is passed as three SEPARATE coordinates, not one JSON
+      # blob. issuer2-profiles.conf needs defaultIssuerKey.jwk to be a HOCON
+      # object, and a substituted env var is always a string — the blob form
+      # booted fine but made every credential request fail with
+      # `500 "Invalid JSON object"`. See the comment above defaultIssuerKey.
+      - VERIFIABLY_ISSUER2_KEY_X=${VERIFIABLY_ISSUER2_KEY_X:?issuer-api2 requires the EC P-256 issuer key x coordinate (base64url)}
+      - VERIFIABLY_ISSUER2_KEY_Y=${VERIFIABLY_ISSUER2_KEY_Y:?issuer-api2 requires the EC P-256 issuer key y coordinate (base64url)}
+      - VERIFIABLY_ISSUER2_KEY_D=${VERIFIABLY_ISSUER2_KEY_D:?issuer-api2 requires the EC P-256 issuer key d private scalar (base64url)}
       # issuer-service.conf embeds two more published walt.id example private
       # keys beyond defaultIssuerKey (CI-token signing and credential
       # encryption) — same treatment: required at boot, no silent fallback.
+      # These two DO take a one-line JSON string (walt.id ships them as
+      # triple-quoted strings), unlike the issuer key above — see the
+      # comment in issuer-service.conf.
       - VERIFIABLY_ISSUER2_CI_TOKEN_KEY=${VERIFIABLY_ISSUER2_CI_TOKEN_KEY:?issuer-api2 requires a ciTokenKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
       - VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY=${VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY:?issuer-api2 requires a credentialEncryptionKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
       # Optional: only read if authentication-service.conf's inert keycloak

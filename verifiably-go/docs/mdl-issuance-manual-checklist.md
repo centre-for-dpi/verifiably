@@ -13,54 +13,95 @@ walt.id upgrade.
 | Verifier used | `internal/mdl/testdata/verify` — `@owf/mdoc` 0.7.0 + `@owf/cose`, on `node:crypto` |
 | Performed by | automated agent session (no browser, no phone — see Steps 2/6/7) |
 
-Read the **Findings** section before trusting any green mark below. Two real
-defects were found, and neither is fixed in the tree.
+Read the **Findings** section before trusting any green mark below. Three real
+defects were found. **F1 is fixed**; F2 and F3 remain open and are on the debt
+list.
 
 ---
 
 ## Findings (read first)
 
-### F1 — BLOCKER: `issuerKey.jwk` is substituted as a *string*, not an object
+### F1 — FIXED: `issuerKey.jwk` was substituted as a *string*, not an object
 
-`deploy/k8s/config/issuer2/issuer2-profiles.conf:12` reads:
+**Was** `deploy/k8s/config/issuer2/issuer2-profiles.conf`:
 
 ```hocon
 defaultIssuerKey = {
   type = "jwk"
-  jwk = ${VERIFIABLY_ISSUER2_KEY}
+  jwk = ${VERIFIABLY_ISSUER2_KEY}      # <-- substitutes as a STRING
 }
 ```
 
-HOCON substitutes an environment variable as a **string**. walt.id needs a
-nested JSON *object* here. `GET /issuer2/profiles` shows the result:
+HOCON substitutes an environment variable as a **string** and never re-parses
+it as JSON. walt.id needs a nested *object* here — the shipped original was a
+nested HOCON object. `GET /issuer2/profiles` showed the damage:
 
 ```json
 "issuerKey": { "type": "jwk", "jwk": "{\"kty\":\"EC\",\"crv\":\"P-256\",...}" }
 ```
 
 Note `jwk` is a quoted, escaped string. Consequence: **every mdoc issuance
-fails** at the credential endpoint with
+failed** at the credential endpoint with
 
 ```
 HTTP 500 {"error":"server_error","error_description":"Invalid JSON object"}
 ```
 
-thrown from `com.nimbusds.jose.util.JSONObjectUtils.parseJSONObject`. This is
-*not* visible at boot — the service starts cleanly, `/issuer2/profiles`
-returns 200, and the wellknown is correct. It only appears when a wallet
-actually asks for a credential.
+thrown from `com.nimbusds.jose.util.JSONObjectUtils.parseJSONObject`.
 
-Task 2's report anticipated the mirror-image problem for the *other* two keys
-(`ciTokenKey` / `credentialEncryptionKey` must be the full
-`{"type":"jwk","jwk":{...}}` wrapper, unquoted) and got those right. This
-third one, the bare-JWK nested-object case, was not caught because Task 2's
-verification stopped at boot + `/issuer2/profiles`, and neither surfaces it.
+The dangerous part: this was **invisible to a boot check**. The service
+started cleanly, `/issuer2/profiles` returned 200 with the key present, and
+the wellknown was correct. It only appeared when a wallet actually asked for
+a credential. Task 2's verification stopped at exactly those two signals.
+*Booting a service is not exercising it.*
 
-To get any credential at all for this checklist, the JWK was inlined as a
-literal HOCON object in a **scratch copy** of the config. That proved the
-diagnosis: `jwk` then decodes as an object and issuance succeeds. **The repo
-is unmodified** — fixing this is not in Task 8's scope, but nothing can be
-issued until it is.
+**The fix.** The JWK is now supplied field by field, so each substitution is
+a plain string in a position that wants a string, and `jwk` itself is a real
+HOCON object:
+
+```hocon
+defaultIssuerKey = {
+  type = "jwk"
+  jwk = {
+    kty = "EC"
+    crv = "P-256"
+    x = ${VERIFIABLY_ISSUER2_KEY_X}
+    y = ${VERIFIABLY_ISSUER2_KEY_Y}
+    d = ${VERIFIABLY_ISSUER2_KEY_D}
+  }
+}
+```
+
+`VERIFIABLY_ISSUER2_KEY` is replaced by `VERIFIABLY_ISSUER2_KEY_X` / `_Y` /
+`_D` in `docker-compose.yml` and `.env.example`. Bare `${VAR}` (not `${?VAR}`)
+is kept, so a missing key still stops the boot — verified: removing
+`VERIFIABLY_ISSUER2_KEY_D` makes `docker compose config` exit 1 with
+`required variable VERIFIABLY_ISSUER2_KEY_D is missing a value`.
+
+**Verified by issuing, not by booting.** With the fixed config,
+`/issuer2/profiles` reports `issuerKey.jwk` as an object with
+`['crv','d','kty','x','y']`, and a full OID4VCI pre-authorized-code exchange
+against the unmodified repo config produced a real **7191-byte mDL** — the
+same request that previously returned `500 "Invalid JSON object"`. Decoded:
+
+```
+PASS  IssuerSigned decodes under @owf/mdoc schemas
+PASS  docType is org.iso.18013.5.1.mDL
+PASS  birth_date is CBOR tag 1004 (full-date), not a text string
+PASS  portrait is a CBOR byte string — 70 bytes
+CBOR tag 1004 (full-date) occurrences: 8, each followed by 0x6a
+```
+
+**Do not revert this to the single-variable blob form.** The reasoning is
+recorded in the config comment above `defaultIssuerKey`.
+
+Note the contrast, now corrected in `issuer-service.conf`'s comment:
+`ciTokenKey` and `credentialEncryptionKey` genuinely DO take a JSON *string*
+(walt.id ships them as triple-quoted strings), so the single-variable
+substitution is correct for those two and must not be "harmonised" with the
+issuer key. The old comment claimed HOCON "parses the substituted JSON text
+as an object" — that is false, and it is precisely the belief that produced
+this bug one file over. The code was right for the wrong reason.
 
 ### F2 — Photo ID emits `portrait` as a text string, not a byte string
 
@@ -107,9 +148,10 @@ meant to be routine, `verify.mjs` should be given an optional path argument.
 ### Step 1 — Bring the stack up — DONE (reduced scope)
 
 The brief says `docker compose up -d` for the whole stack. That is **53
-services**, and three compose `${VAR:?}` guards hard-block `up` with no
-`.env` present: `VERIFIABLY_ISSUER2_KEY`,
-`VERIFIABLY_ISSUER2_CI_TOKEN_KEY`, `VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY`.
+services**, and compose `${VAR:?}` guards hard-block `up` with no `.env`
+present: `VERIFIABLY_ISSUER2_KEY_X` / `_Y` / `_D` (three separate guards
+after the F1 fix), `VERIFIABLY_ISSUER2_CI_TOKEN_KEY`, and
+`VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY`.
 
 Three disposable EC P-256 JWKs were generated into a scratch env file
 (never committed) and only the services issuance needs were started:
@@ -201,8 +243,9 @@ field, not a defect in the CBOR encoding.
 
 **x5chain caveat — the signature check above is only meaningful because the
 certificate was replaced.** As shipped, `issuer2-profiles.conf` pairs the
-operator's `VERIFIABLY_ISSUER2_KEY` with walt.id's **published example
-certificate**, whose embedded public key is a different keypair. Task 2
+operator's key (`VERIFIABLY_ISSUER2_KEY_X`/`_Y`/`_D`) with walt.id's
+**published example certificate**, whose embedded public key is a different
+keypair. Task 2
 flagged this as a hard gate. Every mdoc issued in that configuration is
 COSE-signed with one key while advertising another in its x5chain, and fails
 signature verification at any conformant reader. To make Step 4 a real test,
@@ -314,10 +357,17 @@ same as a real reader accepting the credential.
 | 6 Photo ID | PASS except `portrait` (F2, upstream defect) |
 | 7 Real reader | **NOT PERFORMED** — no Android device |
 | 8 This document | DONE |
+| F1 fix re-verified | PASS — 7191-byte mDL issued from the fixed repo config |
 
-**Two defects found, neither fixed in the tree:** F1 blocks all issuance;
-F2 makes every Photo ID portrait non-conformant. Both have a confirmed
-one-line remedy, each validated in a scratch config.
+**F1 — the issuance-blocking `issuerKey.jwk` string/object defect — is FIXED**
+in this branch and re-verified by issuing a real credential, not by booting.
+
+**F2 remains open:** walt.id's Photo ID profile omits the `portrait`
+byte-string mapping, so every Photo ID portrait is emitted as text. The
+four-line remedy is confirmed working but is routed to the debt list, not
+applied here. F3 (`verify.mjs` takes no path argument) and F4 (the Go
+adapter's `map[string]string` cannot express `driving_privileges`) are also
+open and on that list.
 
 ---
 
@@ -332,9 +382,11 @@ All of it — every step here is manual. In particular:
 3. **Steps 4 and 5 re-run against freshly issued credentials.** walt.id
    changing a `conversionType` default, or re-adding sample data to a
    shipped profile, would be invisible to every unit test in this repo.
-4. **Re-check F1 and F2.** If either was fixed in the tree, confirm the
-   upgrade did not reintroduce it; if upstream fixed F2, drop the local
-   patch rather than carrying it forever.
+4. **Re-check F1 and F2.** F1 is fixed here — confirm the upgrade did not
+   reintroduce the blob form, and remember that only an *issuance* detects
+   it, never a boot. F2 is still open: if upstream added the `portrait`
+   mapping to the Photo ID profile, take theirs; if not, it still needs
+   fixing.
 5. **Re-check the wellknown paths.** `/draft13/...` and
    `/.well-known/openid-credential-issuer/openid4vci` are walt.id's
    choices and have already moved once.
