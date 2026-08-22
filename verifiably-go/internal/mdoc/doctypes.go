@@ -38,6 +38,35 @@ func req(name, label string) vctypes.FieldSpec {
 	}
 }
 
+// FormatDrivingPrivileges marks a field whose ISO value is an ARRAY OF
+// OBJECTS, not a scalar: each entry carries a vehicle_category_code plus an
+// optional issue_date / expiry_date (ISO/IEC 18013-5 §7.2.4). It is the one
+// mDL element that map[string]string subject data cannot express, which is
+// why it needs its own Format rather than another string field.
+//
+// Keying on Format rather than on the literal name "driving_privileges" is
+// deliberate and matches how every other special input in the issue form is
+// selected (date, uri, number). A name check would work today but would have
+// to be extended by hand for the equivalent element in any other docType.
+const FormatDrivingPrivileges = "driving_privileges"
+
+// FormatImage marks a field whose ISO value is IMAGE BYTES — `portrait`,
+// `signature_usual_mark`, and Photo ID's own portrait. The operator picks a
+// file; the handler base64-encodes it and walt.id's profile mapping
+// (conversionType = "base64StringToByteString") performs the CBOR
+// byte-string conversion. We never encode CBOR ourselves.
+const FormatImage = "image"
+
+// structured returns a required field carrying a non-scalar Format. Datatype
+// stays "string" because it is what every non-mdoc consumer of FieldsSpec
+// (catalog claim blocks, INJI's display order, CREDEBL's attributes) reads;
+// Format is the discriminator the mdoc path keys off.
+func structured(name, label, format string) vctypes.FieldSpec {
+	f := req(name, label)
+	f.Format = format
+	return f
+}
+
 // mdlMandatory is ISO/IEC 18013-5 Table 3's mandatory set — the same 11
 // elements internal/mdl/doctype.go emits, kept in step with it.
 var mdlMandatory = []vctypes.FieldSpec{
@@ -49,8 +78,8 @@ var mdlMandatory = []vctypes.FieldSpec{
 	req("issuing_country", "Issuing Country"),
 	req("issuing_authority", "Issuing Authority"),
 	req("document_number", "Document Number"),
-	req("portrait", "Portrait"),
-	req("driving_privileges", "Driving Privileges"),
+	structured("portrait", "Portrait", FormatImage),
+	structured("driving_privileges", "Driving Privileges", FormatDrivingPrivileges),
 	req("un_distinguishing_sign", "UN Distinguishing Sign"),
 }
 
@@ -62,7 +91,7 @@ var photoIDMandatory = []vctypes.FieldSpec{
 	req("family_name", "Family Name"),
 	req("given_name", "Given Name"),
 	req("birth_date", "Date of Birth"),
-	req("portrait", "Portrait"),
+	structured("portrait", "Portrait", FormatImage),
 	req("issue_date", "Date of Issue"),
 	req("expiry_date", "Date of Expiry"),
 	req("issuing_authority_unicode", "Issuing Authority"),

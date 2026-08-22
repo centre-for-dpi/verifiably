@@ -120,8 +120,16 @@ type issuer2OfferRequest struct {
 
 type issuer2RuntimeOverrides struct {
 	// CredentialData is namespace-keyed, exactly like the legacy mdocData:
-	// {"<namespace>": {"<field>": "<value>"}}.
-	CredentialData map[string]map[string]string `json:"credentialData,omitempty"`
+	// {"<namespace>": {"<field>": <value>}}.
+	//
+	// The inner value type is `any`, not `string`, because ISO 18013-5's
+	// `driving_privileges` is an array of objects. It was map[string]string,
+	// so the operator's form value reached walt.id as the JSON string "1" and
+	// issuance failed at wallet-redemption time with "Expected to execute
+	// conversion from json array, but input |\"1\"| is not a json array"
+	// (TODO.md F4). Flat fields still marshal as JSON strings exactly as
+	// before — only the structured ones differ.
+	CredentialData map[string]map[string]any `json:"credentialData,omitempty"`
 }
 
 // issuer2OfferResponse is the 201 body. The legacy issuer-api returns the
@@ -145,7 +153,10 @@ const issuer2OfferTTL = 300
 // deploy/k8s/config/issuer2/issuer2-profiles.conf) — walt.id's shipped default
 // is a fictional Austrian person, and inheriting it silently would issue a
 // real credential carrying someone else's data.
-func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string) (issuer2OfferRequest, error) {
+// structured carries the non-scalar claims (see backend.IssueRequest.
+// StructuredData) that cannot ride in the flat subject map. A nil or empty
+// map keeps the previous behaviour exactly.
+func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string, structured map[string]json.RawMessage) (issuer2OfferRequest, error) {
 	docType := mdocDocTypeFor(schema)
 	profile, ok := profileIDForDocType(docType)
 	if !ok {
@@ -154,12 +165,30 @@ func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string) (issuer
 			docType)
 	}
 
-	data := make(map[string]string, len(subject))
+	data := make(map[string]any, len(subject)+len(structured))
 	for k, v := range subject {
 		if v == "" {
 			continue // omit rather than assert a blank
 		}
 		data[k] = v
+	}
+	// Structured claims override any flat entry of the same name. The issue
+	// form never posts both, but an API caller could, and the structured value
+	// is the one the profile's arrayConfig can actually convert.
+	for k, raw := range structured {
+		if len(raw) == 0 {
+			continue
+		}
+		// json.RawMessage marshals verbatim, so the array reaches issuer-api2
+		// as a real JSON array rather than a quoted string. Validate here
+		// rather than trusting the caller: a malformed value would otherwise
+		// surface as an opaque walt.id error at wallet-redemption time, long
+		// after the operator has left the form.
+		if !json.Valid(raw) {
+			return issuer2OfferRequest{}, fmt.Errorf(
+				"waltid: structured claim %q is not valid JSON", k)
+		}
+		data[k] = raw
 	}
 
 	req := issuer2OfferRequest{
@@ -169,7 +198,7 @@ func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string) (issuer
 	}
 	if len(data) > 0 {
 		req.RuntimeOverrides = &issuer2RuntimeOverrides{
-			CredentialData: map[string]map[string]string{profile.baseNamespace: data},
+			CredentialData: map[string]map[string]any{profile.baseNamespace: data},
 		}
 	}
 	return req, nil
@@ -184,7 +213,7 @@ func (a *Adapter) issueMdocViaIssuer2(ctx context.Context, req backend.IssueRequ
 			"waltid: mso_mdoc requires issuer-api2 but issuer2BaseUrl is not configured — the legacy issuer-api cannot type CBOR and would emit a non-conformant credential")
 	}
 
-	offerReq, err := buildIssuer2Offer(req.Schema, req.SubjectData)
+	offerReq, err := buildIssuer2Offer(req.Schema, req.SubjectData, req.StructuredData)
 	if err != nil {
 		return backend.IssueToWalletResult{}, err
 	}

@@ -39,9 +39,19 @@
 
     <div class="btn-row">
       <a href="/issuer/mode" class="btn ghost">← Back</a>
+      {{/* hx-encoding makes htmx post this as multipart/form-data rather than
+           urlencoded, which is the only way a file input's BYTES travel — an
+           urlencoded post sends just the filename. It is set unconditionally
+           rather than only for schemas with an image field: htmx builds the
+           body from a FormData either way, so a form with no file input
+           produces the same field values in both encodings, and SubmitIssue's
+           ParseMultipartForm falls back to ParseForm for urlencoded posts.
+           One code path is worth more here than a conditional that could
+           silently pick the wrong encoding. */}}
       <button class="btn"
               hx-post="/issuer/issue"
               hx-include="#single-form-el"
+              hx-encoding="multipart/form-data"
               hx-target="#issue-result"
               hx-swap="innerHTML">Issue credential →</button>
     </div>
@@ -118,6 +128,62 @@
                 data-required="{{if .Required}}true{{else}}false{{end}}">
               <span style="font-size:0.82rem;color:var(--ink-mute)">Yes</span>
             </label>
+            {{else if eq .Format "driving_privileges"}}
+            {{/* ISO 18013-5 driving_privileges is an ARRAY OF OBJECTS, not a
+                 scalar. Rendering it as a text box is what produced the live
+                 failure recorded as TODO.md F4: the operator typed "1" and
+                 walt.id rejected the offer at wallet-redemption time with
+                 "Expected to execute conversion from json array, but input
+                 |\"1\"| is not a json array".
+
+                 Each row posts dp_<field>_<i>; SubmitIssue reads them via
+                 drivingPrivilegeRows and hands the result to
+                 mdoc.EncodeDrivingPrivileges, which pads the list to the
+                 fixed size walt.id's arrayConfig demands. Rows left entirely
+                 blank are dropped, so the spare rows below cost nothing. */}}
+            <div style="display:flex;flex-direction:column;gap:0.5rem">
+              {{range $i := $.DrivingPrivilegeRows}}
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;align-items:end;padding:0.55rem;background:var(--bg-sunk);border:1px solid var(--line);border-radius:4px">
+                <div>
+                  <label style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Category{{if eq $i 0}} *{{end}}</label>
+                  <input type="text" name="dp_vehicle_category_code_{{$i}}"
+                         value="{{index $.DrivingPrivilegeValues (printf "vehicle_category_code_%d" $i)}}"
+                         placeholder="A, B, C1…" style="width:100%">
+                </div>
+                <div>
+                  <label style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Issued</label>
+                  <input type="date" name="dp_issue_date_{{$i}}"
+                         value="{{index $.DrivingPrivilegeValues (printf "issue_date_%d" $i)}}"
+                         placeholder="YYYY-MM-DD" style="width:100%">
+                </div>
+                <div>
+                  <label style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Expires</label>
+                  <input type="date" name="dp_expiry_date_{{$i}}"
+                         value="{{index $.DrivingPrivilegeValues (printf "expiry_date_%d" $i)}}"
+                         placeholder="YYYY-MM-DD" style="width:100%">
+                </div>
+              </div>
+              {{end}}
+            </div>
+            <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.4rem 0 0">
+              One row per vehicle category the holder is licensed for. Leave unused rows blank — they are dropped. Fill at least the first category.
+            </p>
+            {{else if eq .Format "image"}}
+            {{/* Image elements (portrait, signature_usual_mark) are CBOR byte
+                 strings. walt.id's profile maps them with conversionType
+                 "base64StringToByteString", so we hand over base64 and it does
+                 the CBOR conversion — we never encode CBOR ourselves.
+
+                 The file input needs the form to post multipart/form-data;
+                 the hx-post button carries hx-encoding for exactly that. The
+                 hidden companion input round-trips an already-uploaded value
+                 across a re-render, so a validation error elsewhere on the
+                 form does not silently discard the operator's photo. */}}
+            <input type="file" name="field_{{.Name}}__file" accept="image/jpeg,image/png" style="width:100%">
+            <input type="hidden" name="field_{{.Name}}" value="{{index $.FieldValues .Name}}">
+            <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.4rem 0 0">
+              JPEG or PNG, up to {{$.MaxImageUploadKB}} KB.{{if index $.FieldValues .Name}} <strong>An image is already attached</strong> — choosing a file replaces it.{{end}}
+            </p>
             {{else}}
             <input
               type="{{if eq .Format "date"}}date{{else if eq .Format "datetime"}}datetime-local{{else if eq .Format "uri"}}url{{else if eq .Datatype "number"}}number{{else if eq .Datatype "integer"}}number{{else}}text{{end}}"

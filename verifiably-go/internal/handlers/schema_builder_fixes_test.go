@@ -263,7 +263,7 @@ func TestRequiredBooleanPassesValidationInBothStates(t *testing.T) {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 			subject := gatherSubjectForTest(req, schema)
-			if missing := missingRequiredFields(schema, subject); len(missing) > 0 {
+			if missing := missingRequiredFields(schema, subject, nil); len(missing) > 0 {
 				t.Errorf("required boolean rejected as missing in the %s state: %v (subject=%v)",
 					tc.name, missing, subject)
 			}
@@ -275,7 +275,7 @@ func TestRequiredBooleanPassesValidationInBothStates(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/issuer/issue",
 		strings.NewReader(url.Values{"field_age_over_18": {"false"}}.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	missing := missingRequiredFields(schema, gatherSubjectForTest(req, schema))
+	missing := missingRequiredFields(schema, gatherSubjectForTest(req, schema), nil)
 	if len(missing) != 1 || missing[0] != "family_name" {
 		t.Errorf("missing = %v, want exactly [family_name] — the boolean exemption must not weaken other fields", missing)
 	}

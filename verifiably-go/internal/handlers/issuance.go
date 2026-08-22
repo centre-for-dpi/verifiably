@@ -1,6 +1,10 @@
 package handlers
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -8,6 +12,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
@@ -137,7 +142,16 @@ type issueData struct {
 	BulkSource   string // "csv" | "api" | "db" — active chip on the bulk form
 	FieldValues  map[string]string
 	Fields       []string
-	Sources      []sourceOption
+	// DrivingPrivilegeRows is simply [0..n) — Go templates cannot count, so
+	// the row indices for the driving_privileges repeater are precomputed.
+	DrivingPrivilegeRows []int
+	// DrivingPrivilegeValues round-trips the repeater's inputs across a
+	// re-render, keyed "<field>_<index>" (e.g. "vehicle_category_code_0").
+	DrivingPrivilegeValues map[string]string
+	// MaxImageUploadKB is shown in the file input's hint so the limit the
+	// server enforces and the limit the operator is told are the same number.
+	MaxImageUploadKB int
+	Sources          []sourceOption
 	// BulkSources lists which bulk-source chips the UI should render, in
 	// render order. Derived from the DPG's Kind="bulk_source" capabilities —
 	// walt.id declares csv+api+db, Inji Certify Pre-Auth declares csv+db
@@ -215,6 +229,7 @@ func (h *H) ShowIssue(w http.ResponseWriter, r *http.Request) {
 		Registries:    registryProviders(),
 		EntityDefault: sess.SchemaID,
 	}
+	applyStructuredFieldDefaults(&data, r)
 	h.render(w, r, "issuer_issue", h.pageData(sess, data))
 }
 
@@ -308,6 +323,153 @@ func normalizeIssuanceTimeTZ(s string, offsetEastMin int) string {
 // read the field as an ordinary string.
 func isBooleanField(fs vctypes.FieldSpec) bool { return fs.Datatype == "boolean" }
 
+// isStructuredField reports whether a claim's value is NOT a scalar and so
+// cannot travel in the flat map[string]string subject data. Like
+// isBooleanField, this is the ONE predicate the structured path routes
+// through — the form's rendering, SubmitIssue's value gathering, and the
+// required-field check all key off it, so they cannot disagree about which
+// fields are structured.
+func isStructuredField(fs vctypes.FieldSpec) bool {
+	return fs.Format == mdoc.FormatDrivingPrivileges
+}
+
+// maxDrivingPrivilegeRows caps how many repeater rows the form renders and
+// the handler reads. It is deliberately larger than
+// mdoc.DrivingPrivilegesArrayConfigSize: the operator may fill fewer rows
+// than the profile's fixed array length (padding handles that), and rendering
+// exactly two would make the cap look like a standards limit rather than the
+// vendor-profile limit it is.
+const maxDrivingPrivilegeRows = 4
+
+// drivingPrivilegeRows reads the repeater inputs the issue form posts —
+// dp_<field>_<index> — and returns the entries the operator actually filled.
+// Rows left blank are dropped by EncodeDrivingPrivileges, so the form can
+// render spare rows without forcing the operator to use them.
+//
+// Dates are normalized through the same tz-aware helper as every other date
+// field, then cut back to the "YYYY-MM-DD" full-date form walt.id's
+// `stringToFullDate` conversion expects — an RFC3339 timestamp fails that
+// conversion.
+func drivingPrivilegeRows(r *http.Request, tzOffset int) []mdoc.DrivingPrivilege {
+	var out []mdoc.DrivingPrivilege
+	for i := 0; i < maxDrivingPrivilegeRows; i++ {
+		suffix := "_" + strconv.Itoa(i)
+		code := strings.TrimSpace(r.FormValue("dp_vehicle_category_code" + suffix))
+		issue := fullDateOnly(normalizeIssuanceTimeTZ(r.FormValue("dp_issue_date"+suffix), tzOffset))
+		expiry := fullDateOnly(normalizeIssuanceTimeTZ(r.FormValue("dp_expiry_date"+suffix), tzOffset))
+		if code == "" && issue == "" && expiry == "" {
+			continue
+		}
+		out = append(out, mdoc.DrivingPrivilege{
+			VehicleCategoryCode: code,
+			IssueDate:           issue,
+			ExpiryDate:          expiry,
+		})
+	}
+	return out
+}
+
+// fullDateOnly trims an RFC3339 timestamp back to its date part. walt.id's
+// `stringToFullDate` conversion parses a bare "YYYY-MM-DD"; handing it a full
+// timestamp fails with a DateTimeParseException at signing time.
+func fullDateOnly(s string) string {
+	if i := strings.IndexByte(s, 'T'); i > 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// applyStructuredFieldDefaults fills the template inputs the structured and
+// image field renderers need. Called from BOTH render sites (the full page
+// and the source-switch fragment) because they share one template: populating
+// only the page would make the repeater render zero rows after a source
+// switch, silently removing the operator's only way to enter the field.
+//
+// The repeater's values are echoed back from the request so a submit rejected
+// for an unrelated reason (a missing required field elsewhere) re-renders with
+// the rows the operator already filled, like every other input on the form.
+func applyStructuredFieldDefaults(data *issueData, r *http.Request) {
+	data.MaxImageUploadKB = maxImageUploadBytes >> 10
+	rows := make([]int, 0, maxDrivingPrivilegeRows)
+	for i := 0; i < maxDrivingPrivilegeRows; i++ {
+		rows = append(rows, i)
+	}
+	data.DrivingPrivilegeRows = rows
+
+	vals := make(map[string]string, maxDrivingPrivilegeRows*3)
+	for i := 0; i < maxDrivingPrivilegeRows; i++ {
+		suffix := "_" + strconv.Itoa(i)
+		for _, f := range []string{"vehicle_category_code", "issue_date", "expiry_date"} {
+			vals[f+suffix] = strings.TrimSpace(r.FormValue("dp_" + f + suffix))
+		}
+	}
+	data.DrivingPrivilegeValues = vals
+}
+
+// isImageField reports whether a claim's value is image BYTES, uploaded as a
+// file and sent onward as base64. Same single-predicate discipline as
+// isBooleanField / isStructuredField.
+func isImageField(fs vctypes.FieldSpec) bool { return fs.Format == mdoc.FormatImage }
+
+// maxImageUploadBytes caps an uploaded image. An ISO portrait is a few KB —
+// the standard expects a small face image, not a camera original — but a
+// browser will happily post a 12 MB photo, which would be embedded in the
+// mdoc and blow past what a QR-delivered credential can carry.
+//
+// Enforced against the DECODED file size, before base64 expansion, so the
+// number in the operator-facing message means what it says.
+const maxImageUploadBytes = 512 << 10 // 512 KB
+
+// maxIssueFormMemory bounds what ParseMultipartForm buffers in RAM before
+// spilling to a temp file. Comfortably above maxImageUploadBytes so a
+// legitimate upload never touches disk.
+const maxIssueFormMemory = 2 << 20 // 2 MB
+
+// imageFieldValue resolves an image claim to base64, preferring a freshly
+// uploaded file and falling back to the hidden companion input that
+// round-trips an earlier upload across a re-render.
+//
+// It returns base64 of the raw file bytes — NOT a data: URI. walt.id's
+// profile maps the field with conversionType "base64StringToByteString" and
+// decodes exactly what we send; a "data:image/jpeg;base64," prefix would be
+// decoded as part of the payload and corrupt the byte string.
+//
+// The content type is sniffed from the bytes rather than trusted from the
+// multipart header, which a client controls freely.
+func imageFieldValue(r *http.Request, name string) (string, error) {
+	file, hdr, err := r.FormFile("field_" + name + "__file")
+	if err != nil {
+		// No new upload — keep whatever the hidden input carried.
+		return strings.TrimSpace(r.FormValue("field_" + name)), nil
+	}
+	defer file.Close()
+
+	if hdr.Size > maxImageUploadBytes {
+		return "", fmt.Errorf("%s image is %d KB — the limit is %d KB; use a smaller photo",
+			strings.ReplaceAll(name, "_", " "), hdr.Size>>10, maxImageUploadBytes>>10)
+	}
+	// LimitReader guards the case where Size is absent or lies: it is taken
+	// from the multipart header, not measured.
+	raw, err := io.ReadAll(io.LimitReader(file, maxImageUploadBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("could not read the uploaded %s: %v", strings.ReplaceAll(name, "_", " "), err)
+	}
+	if len(raw) == 0 {
+		return strings.TrimSpace(r.FormValue("field_" + name)), nil
+	}
+	if len(raw) > maxImageUploadBytes {
+		return "", fmt.Errorf("%s image exceeds the %d KB limit; use a smaller photo",
+			strings.ReplaceAll(name, "_", " "), maxImageUploadBytes>>10)
+	}
+	switch ct := http.DetectContentType(raw); ct {
+	case "image/jpeg", "image/png":
+	default:
+		return "", fmt.Errorf("%s must be a JPEG or PNG image (got %s)",
+			strings.ReplaceAll(name, "_", " "), ct)
+	}
+	return base64.StdEncoding.EncodeToString(raw), nil
+}
+
 // boolFieldValue resolves a boolean claim field to exactly "true" or "false".
 //
 // An HTML checkbox submits NOTHING when unticked, and the bare string "on"
@@ -353,10 +515,19 @@ func boolFieldValue(r *http.Request, name string) string {
 //
 // Split out of SubmitIssue so the rule is testable directly, without standing
 // up a session, an adapter and a full issuance round trip.
-func missingRequiredFields(schema vctypes.Schema, subject map[string]string) []string {
+// A structured field is satisfied by a non-empty entry in `structured`, not
+// by anything in `subject` — it is never written there. Checking it against
+// `subject` would report a correctly-filled driving_privileges as missing.
+func missingRequiredFields(schema vctypes.Schema, subject map[string]string, structured map[string]json.RawMessage) []string {
 	var missing []string
 	for _, spec := range schema.FieldsSpec {
 		if isBooleanField(spec) {
+			continue
+		}
+		if isStructuredField(spec) {
+			if spec.Required && len(structured[spec.Name]) == 0 {
+				missing = append(missing, spec.Name)
+			}
 			continue
 		}
 		if spec.Required && subject[spec.Name] == "" {
@@ -368,7 +539,18 @@ func missingRequiredFields(schema vctypes.Schema, subject map[string]string) []s
 
 func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
-	_ = r.ParseForm()
+	// The issue form posts multipart/form-data so image fields can carry file
+	// BYTES (an urlencoded post sends only the filename). ParseMultipartForm
+	// populates r.Form with the non-file values too, so every r.FormValue
+	// below reads identically to the urlencoded case.
+	//
+	// It returns ErrNotMultipart for a urlencoded body — which is what an API
+	// caller or an older cached page still sends — so fall back rather than
+	// failing. Without this fallback the encoding change would break every
+	// non-browser caller of this endpoint.
+	if err := r.ParseMultipartForm(maxIssueFormMemory); err != nil {
+		_ = r.ParseForm()
+	}
 
 	issuerDpg := r.FormValue("issuer_dpg")
 	if issuerDpg == "" {
@@ -401,11 +583,38 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	tzOffset, _ := strconv.Atoi(r.FormValue("tz_offset"))
 	// Gather subject data from form (falls back to prefill)
 	subject := map[string]string{}
+	structured := map[string]json.RawMessage{}
 	for _, fs := range schema.FieldsSpec {
 		if isBooleanField(fs) {
 			// Booleans come from a hidden "false" + a checkbox carrying
 			// "true", never a single input — see boolFieldValue.
 			subject[fs.Name] = boolFieldValue(r, fs.Name)
+			continue
+		}
+		if isImageField(fs) {
+			// Image bytes arrive as a file upload and travel onward as
+			// base64 — a plain string, so this one DOES belong in `subject`.
+			b64, imgErr := imageFieldValue(r, fs.Name)
+			if imgErr != nil {
+				h.errorToast(w, r, imgErr.Error())
+				return
+			}
+			subject[fs.Name] = b64
+			continue
+		}
+		if isStructuredField(fs) {
+			// Structured claims never enter `subject`: it is map[string]string
+			// and stringifying an array here is exactly the bug this path
+			// exists to fix (TODO.md F4). They travel in StructuredData, which
+			// only the mdoc adapter reads.
+			raw, encErr := mdoc.EncodeDrivingPrivileges(drivingPrivilegeRows(r, tzOffset))
+			if encErr != nil {
+				h.errorToast(w, r, encErr.Error())
+				return
+			}
+			if len(raw) > 0 {
+				structured[fs.Name] = raw
+			}
 			continue
 		}
 		v := strings.TrimSpace(r.FormValue("field_" + fs.Name))
@@ -419,12 +628,17 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		subject[fs.Name] = v
 	}
-	missing := missingRequiredFields(schema, subject)
+	missing := missingRequiredFields(schema, subject, structured)
 	if len(missing) > 0 {
 		h.errorToast(w, r, "Fill in required fields: "+strings.Join(missing, ", "))
 		return
 	}
-	req := backend.IssueRequest{IssuerDpg: sess.IssuerDpg, Schema: schema, SubjectData: subject}
+	req := backend.IssueRequest{
+		IssuerDpg:      sess.IssuerDpg,
+		Schema:         schema,
+		SubjectData:    subject,
+		StructuredData: structured,
+	}
 	// Issuance-time validity window. The adapter pins it into the credential's
 	// own envelope — validFrom/validUntil (W3C) or nbf/exp (SD-JWT) — which is
 	// what every verifier's temporal gate reads.
@@ -537,6 +751,7 @@ func (h *H) SetSingleSource(w http.ResponseWriter, r *http.Request) {
 		Fields:       schemaFieldsOfH(schema),
 		Sources:      sourcesFromCapabilities(dpg),
 	}
+	applyStructuredFieldDefaults(&data, r)
 	h.renderFragment(w, r, "fragment_issue_single_form", data)
 }
 

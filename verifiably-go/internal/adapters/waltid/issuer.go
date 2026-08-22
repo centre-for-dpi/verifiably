@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -1173,12 +1174,24 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 		// map[string]string end to end.
 		return []vctypes.FieldSpec{
 			str("family_name"), str("given_name"), date("birth_date"),
-			str("document_number"), str("driving_privileges"), date("expiry_date"),
+			str("document_number"),
+			// driving_privileges is an ARRAY OF OBJECTS in ISO 18013-5, not a
+			// string. Declaring it str() rendered a text box, so an operator
+			// typed "1" and walt.id's profile mapping rejected the offer at
+			// redemption with "Expected to execute conversion from json array,
+			// but input |\"1\"| is not a json array" (TODO.md F4). The Format
+			// routes it to the repeater input and the structured issuance path.
+			{Name: "driving_privileges", Datatype: "string", Format: mdoc.FormatDrivingPrivileges, Required: true},
+			date("expiry_date"),
 			opt("issue_date", "date"), opt("issuing_country", ""),
 			opt("issuing_authority", ""), opt("birth_place", ""),
 			opt("resident_address", ""), opt("nationality", ""),
 			opt("age_over_18", ""), opt("age_over_21", ""),
 			opt("age_in_years", ""), opt("un_distinguishing_sign", ""),
+			// portrait is image bytes. walt.id's profile maps it with
+			// conversionType "base64StringToByteString", so the operator picks
+			// a file and the handler hands over base64 — we never encode CBOR.
+			{Name: "portrait", Datatype: "string", Format: mdoc.FormatImage, Required: false},
 		}
 	case "OpenBadgeCredential":
 		return []vctypes.FieldSpec{str("holder"), str("achievement"), date("issuedOn")}

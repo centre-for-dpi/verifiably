@@ -3,6 +3,7 @@ package waltid
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -126,7 +127,7 @@ func TestBuildIssuer2OfferOmitsUnsetFields(t *testing.T) {
 		"given_name":  "Ana",
 	}
 
-	req, err := buildIssuer2Offer(schema, subject)
+	req, err := buildIssuer2Offer(schema, subject, nil)
 	if err != nil {
 		t.Fatalf("buildIssuer2Offer: %v", err)
 	}
@@ -297,5 +298,135 @@ func TestMdocDocTypeForSavedBuilderSchema(t *testing.T) {
 				t.Errorf("docType %q does not resolve to an issuer-api2 profile", got)
 			}
 		})
+	}
+}
+
+// TestIssuer2OfferCarriesDrivingPrivilegesAsJSONArray asserts on the ACTUAL
+// HTTP body that reaches issuer-api2, captured from a live handler rather
+// than from the in-memory struct.
+//
+// This is the adapter-level half of the F4 regression. The wire body is what
+// walt.id parses, and the failure was a type error in exactly that body:
+// `"driving_privileges": "1"` instead of `"driving_privileges": [ {...} ]`.
+// The check unmarshals and asserts the Go type, because a stringified array
+// contains every substring a Contains() assertion would look for.
+func TestIssuer2OfferCarriesDrivingPrivilegesAsJSONArray(t *testing.T) {
+	var captured []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(issuer2OfferResponse{
+			OfferID:         "offer-dp",
+			CredentialOffer: "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fexample.org%2Foffer",
+		})
+	}))
+	defer srv.Close()
+
+	a, err := New(Config{VerifierBaseURL: "http://verifier.invalid", Issuer2BaseURL: srv.URL}, "Walt Community Stack")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	privileges, err := mdoc.EncodeDrivingPrivileges([]mdoc.DrivingPrivilege{
+		{VehicleCategoryCode: "B", IssueDate: "2021-06-01", ExpiryDate: "2031-06-01"},
+		{VehicleCategoryCode: "C1", IssueDate: "2022-09-15", ExpiryDate: "2032-09-15"},
+	})
+	if err != nil {
+		t.Fatalf("EncodeDrivingPrivileges: %v", err)
+	}
+
+	if _, err := a.IssueToWallet(context.Background(), backend.IssueRequest{
+		Schema: vctypes.Schema{ID: "org.iso.18013.5.1.mDL", Std: "mso_mdoc", Name: "Driver's Licence"},
+		SubjectData: map[string]string{
+			"family_name":     "Perez",
+			"given_name":      "Ana",
+			"document_number": "DL-99887",
+		},
+		StructuredData: map[string]json.RawMessage{"driving_privileges": privileges},
+	}); err != nil {
+		t.Fatalf("IssueToWallet: %v", err)
+	}
+
+	var body struct {
+		RuntimeOverrides struct {
+			CredentialData map[string]map[string]any `json:"credentialData"`
+		} `json:"runtimeOverrides"`
+	}
+	if err := json.Unmarshal(captured, &body); err != nil {
+		t.Fatalf("parse captured request: %v (body=%s)", err, captured)
+	}
+	ns := body.RuntimeOverrides.CredentialData["org.iso.18013.5.1"]
+	if ns == nil {
+		t.Fatalf("no org.iso.18013.5.1 namespace in the request: %s", captured)
+	}
+
+	arr, isArray := ns["driving_privileges"].([]any)
+	if !isArray {
+		t.Fatalf("driving_privileges reached walt.id as %T, want []any.\n"+
+			"This is F4: walt.id rejects it at wallet redemption with "+
+			"\"Expected to execute conversion from json array, but input |...| is not a json array\".\n"+
+			"wire body: %s", ns["driving_privileges"], captured)
+	}
+	if len(arr) != mdoc.DrivingPrivilegesArrayConfigSize {
+		t.Errorf("driving_privileges length = %d, want %d (walt.id's arrayConfig is exact-length)",
+			len(arr), mdoc.DrivingPrivilegesArrayConfigSize)
+	}
+
+	// Flat fields must be untouched by the map[string]any widening: they are
+	// still plain JSON strings, exactly as before.
+	if s, ok := ns["family_name"].(string); !ok || s != "Perez" {
+		t.Errorf("family_name = %v (%T), want the string \"Perez\" — "+
+			"widening the value type must not have changed how flat fields marshal",
+			ns["family_name"], ns["family_name"])
+	}
+}
+
+// A portrait must reach walt.id as a plain base64 STRING: its profile entry
+// declares conversionType "base64StringToByteString" and does the CBOR
+// byte-string conversion itself. Sending anything else (bytes, an object)
+// would break that conversion — and encoding CBOR ourselves would cross the
+// mediator boundary.
+func TestIssuer2OfferCarriesPortraitAsBase64String(t *testing.T) {
+	var captured []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(issuer2OfferResponse{
+			OfferID:         "offer-p",
+			CredentialOffer: "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fexample.org%2Foffer",
+		})
+	}))
+	defer srv.Close()
+
+	a, err := New(Config{VerifierBaseURL: "http://verifier.invalid", Issuer2BaseURL: srv.URL}, "Walt Community Stack")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	const portrait = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="
+	if _, err := a.IssueToWallet(context.Background(), backend.IssueRequest{
+		Schema:      vctypes.Schema{ID: "org.iso.18013.5.1.mDL", Std: "mso_mdoc", Name: "Driver's Licence"},
+		SubjectData: map[string]string{"portrait": portrait},
+	}); err != nil {
+		t.Fatalf("IssueToWallet: %v", err)
+	}
+
+	var body struct {
+		RuntimeOverrides struct {
+			CredentialData map[string]map[string]any `json:"credentialData"`
+		} `json:"runtimeOverrides"`
+	}
+	if err := json.Unmarshal(captured, &body); err != nil {
+		t.Fatalf("parse captured request: %v (body=%s)", err, captured)
+	}
+	got, ok := body.RuntimeOverrides.CredentialData["org.iso.18013.5.1"]["portrait"].(string)
+	if !ok {
+		t.Fatalf("portrait is not a JSON string: %s", captured)
+	}
+	if got != portrait {
+		t.Errorf("portrait was altered in transit:\ngot  %.40s…\nwant %.40s…", got, portrait)
+	}
+	if strings.HasPrefix(got, "data:") {
+		t.Errorf("portrait carries a data: URI prefix — base64StringToByteString would decode it as image data")
 	}
 }
