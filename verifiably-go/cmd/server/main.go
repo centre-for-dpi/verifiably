@@ -46,12 +46,10 @@ import (
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
 	"github.com/verifiably/verifiably-go/internal/mailer"
-	"github.com/verifiably/verifiably-go/internal/mdl"
 	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/internal/roles"
 	"github.com/verifiably/verifiably-go/internal/schemacache"
-	"github.com/verifiably/verifiably-go/internal/signer"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
 	"github.com/verifiably/verifiably-go/internal/storage/injiwallet"
@@ -476,15 +474,6 @@ func main() {
 	activeRoles := roles.FromEnv()
 	activeRoles.Log()
 
-	// mDL (ISO/IEC 18013-5) issuance: nonce store is cheap so it's always
-	// constructed, but the signer (two P-256 keys + two certs, generated on
-	// every process start) is gated behind the Issuer role via
-	// mustNewMdlSigner — a verifier-only deployment never pays for key
-	// generation it will never use, and a signer failure just disables the
-	// endpoint (503) rather than crashing the process.
-	h.MdlNonces = handlers.NewNonceStore(5 * time.Minute)
-	h.MdlSigner = mustNewMdlSigner(activeRoles)
-
 	// Trust Registry health monitor (Fase 9) — probes each registered issuer's
 	// /healthz every 5 minutes and emits Prometheus gauges for alerting.
 	// Wired only when Hub role is active and a trust registry is configured.
@@ -750,15 +739,14 @@ func main() {
 		// HolderDID=sub).
 		mux.HandleFunc("POST /api/v1/credentials/self-issue", h.APISelfIssue)
 		mux.HandleFunc("OPTIONS /api/v1/credentials/self-issue", h.APISelfIssue)
-		// mDL (ISO/IEC 18013-5) proof-of-possession issuance: two-step
-		// OID4VCI flow (nonce, then proof) over the same route. Registered
-		// only under the Issuer role so a verifier-only deployment never
-		// exposes mDL issuance. h.MdlSigner/h.MdlNonces are wired just below
-		// activeRoles.Has(roles.Issuer)-gated too (mustNewMdlSigner), so the
-		// handler stays 503 on any deployment without this role even if this
-		// route registration were ever hoisted out by mistake.
-		mux.HandleFunc("POST /api/v1/credentials/mdl/issue", h.APIMdlIssue)
-		mux.HandleFunc("OPTIONS /api/v1/credentials/mdl/issue", h.APIMdlIssue)
+		// NOTE: there is deliberately no mDL issuance endpoint here.
+		// issuer-api2 is the production mDL/Photo ID emitter, reached through
+		// the waltid adapter like every other credential type. verifiably-go
+		// is a mediator: the DPG signs, we translate and audit. An in-process
+		// signer would make this service the issuer for one credential type,
+		// which is the role the mediator architecture exists to avoid. See
+		// ce3e899. internal/mdl/ is retained as an independent ISO conformance
+		// verifier, not as an embedded signer.
 	}
 
 	// --- Trust registry (trust | hub) ---
@@ -1433,25 +1421,6 @@ func trustAlg(key *ecdsa.PrivateKey) string {
 		return "ES256"
 	}
 	return "HS256"
-}
-
-// mustNewMdlSigner builds the process-lifetime mDL signer, but only when this
-// deployment has the Issuer role: mdl.NewServerSigner generates two fresh
-// P-256 keys and two certificates on every call, so a verifier-only
-// deployment must never pay that cost for an endpoint it doesn't expose.
-// A generation failure (e.g. crypto/rand unavailable) is logged and
-// disables the endpoint (h.MdlSigner stays nil -> 503) rather than crashing
-// the process.
-func mustNewMdlSigner(activeRoles roles.Set) signer.Signer {
-	if !activeRoles.Has(roles.Issuer) {
-		return nil // no issuer role -> never pay for key generation, endpoint stays disabled
-	}
-	s, err := mdl.NewServerSigner()
-	if err != nil {
-		slog.Error("mdl: failed to initialize server signer, mDL issuance disabled", "err", err)
-		return nil // H.MdlSigner nil -> the endpoint returns 503, doesn't crash the process
-	}
-	return s
 }
 
 // loadTemplates walks templates/ and parses every *.html file into a single tree

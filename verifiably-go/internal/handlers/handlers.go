@@ -23,7 +23,6 @@ import (
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
 	"github.com/verifiably/verifiably-go/internal/schemacache"
-	"github.com/verifiably/verifiably-go/internal/signer"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
 	"github.com/verifiably/verifiably-go/internal/storage/injiwallet"
@@ -237,16 +236,6 @@ type H struct {
 	// runtime when the admin registers a new member. Set by main.go in hub mode;
 	// nil disables dynamic adapter registration (member takes effect on restart).
 	MemberVerifierRegistrar MemberVerifierRegistrar
-
-	// MdlNonces issues and consumes the single-use c_nonce values for the
-	// mDL proof-of-possession flow (POST /api/v1/credentials/mdl/issue).
-	// nil disables the endpoint (it returns 503).
-	MdlNonces *NonceStore
-
-	// MdlSigner signs mDL credentials issued through
-	// POST /api/v1/credentials/mdl/issue. A process-lifetime software signer
-	// today (mdl.NewServerSigner); nil disables the endpoint.
-	MdlSigner signer.Signer
 }
 
 // isHTMX returns true if the request came from HTMX.
