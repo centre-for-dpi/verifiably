@@ -607,6 +607,19 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 			// and stringifying an array here is exactly the bug this path
 			// exists to fix (TODO.md F4). They travel in StructuredData, which
 			// only the mdoc adapter reads.
+			// Tell the operator when they filled more categories than the
+			// vendor profile can carry, instead of silently dropping the
+			// extras. EncodeDrivingPrivileges truncates as a backstop, and a
+			// truncation nobody is told about is exactly the class of quiet
+			// data loss this whole change set exists to remove: the operator
+			// would see a successful issuance and a credential missing a
+			// category they entered.
+			if filled := drivingPrivilegeRows(r, tzOffset); len(filled) > mdoc.DrivingPrivilegesArrayConfigSize {
+				h.errorToast(w, r, fmt.Sprintf(
+					"Solo se pueden emitir %d categorías de conducción por credencial (ingresaste %d). El perfil de walt.id declara un arreglo de tamaño fijo — quita las categorías sobrantes.",
+					mdoc.DrivingPrivilegesArrayConfigSize, len(filled)))
+				return
+			}
 			raw, encErr := mdoc.EncodeDrivingPrivileges(drivingPrivilegeRows(r, tzOffset))
 			if encErr != nil {
 				h.errorToast(w, r, encErr.Error())
