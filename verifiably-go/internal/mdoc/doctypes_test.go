@@ -87,3 +87,37 @@ func TestMDLMandatorySubsetOfIssuerDataset(t *testing.T) {
 		}
 	}
 }
+
+// MandatoryFields must hand back a DEEP copy. A plain copy() duplicates the
+// slice but leaves every FieldSpec.Labels aliasing the package-level
+// mdlMandatory/photoIDMandatory maps, so a caller writing a label would
+// poison the package defaults for the entire process — one operator's label
+// leaking into every later request. The schema builder DOES write into these
+// maps (it overlays the operator's labels onto the curated ones), so this is
+// a live hazard, not a theoretical one.
+func TestMandatoryFieldsLabelsAreNotAliased(t *testing.T) {
+	for _, docType := range []string{"org.iso.18013.5.1.mDL", "org.iso.23220.photoid.1"} {
+		first := MandatoryFields(docType)
+		if len(first) == 0 {
+			t.Fatalf("%s: no mandatory fields", docType)
+		}
+		originalEN := first[0].Labels["en"]
+		if originalEN == "" {
+			t.Fatalf("%s: first field has no English label to test with", docType)
+		}
+
+		// Mutate the first result exactly as the schema builder does.
+		first[0].Labels["en"] = "MUTATED BY CALLER"
+		first[0].Labels["es"] = "Apellido"
+
+		second := MandatoryFields(docType)
+		if got := second[0].Labels["en"]; got != originalEN {
+			t.Errorf("%s: mutating the first result's Labels changed the second: en = %q, want %q "+
+				"(MandatoryFields is aliasing the package-level Labels map)", docType, got, originalEN)
+		}
+		if _, leaked := second[0].Labels["es"]; leaked {
+			t.Errorf("%s: a locale written into the first result leaked into the second — "+
+				"package-level state was mutated", docType)
+		}
+	}
+}

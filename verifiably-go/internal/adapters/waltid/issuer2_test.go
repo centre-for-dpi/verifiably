@@ -54,6 +54,60 @@ func TestKnownDocTypesResolveInProfiles(t *testing.T) {
 	}
 }
 
+// TestBuilderSavedMdocSchemaResolvesProfile is the issuance-side half of the
+// C1 guard. TestKnownDocTypesResolveInProfiles above checks the CATALOG
+// (mdoc.KnownDocTypes) against the profile table, but that says nothing about
+// whether the docType actually survives the schema builder's save — and for a
+// while it did not: currentBuilderSchema dropped it, so every builder-made
+// mdoc schema reached issuance carrying its generated "custom-<nano>" ID and
+// failed with `no issuer-api2 profile for docType "custom-..."`. That made
+// TestKnownDocTypesResolveInProfiles false assurance: green while the real
+// path was broken.
+//
+// This test reconstructs the schema shape the builder now saves — the docType
+// in AdditionalTypes[0], and the catalog's "<docType>_mso_mdoc" configID as
+// the ID — and runs it through the same mdocDocTypeFor + profileIDForDocType
+// pair that buildIssuer2Offer uses.
+//
+// The regression guard is the "custom-..." sub-case: it pins that the broken
+// shape genuinely does NOT resolve, so this test cannot silently pass if the
+// docType is dropped again.
+func TestBuilderSavedMdocSchemaResolvesProfile(t *testing.T) {
+	for _, d := range mdoc.KnownDocTypes() {
+		schema := vctypes.Schema{
+			// What appendCredentialType/customSchemaTypeName produce from
+			// AdditionalTypes[0] for an mso_mdoc schema.
+			ID:              d.DocType + "_mso_mdoc",
+			Std:             "mso_mdoc",
+			Name:            d.Name,
+			Custom:          true,
+			AdditionalTypes: []string{d.DocType},
+		}
+		docType := mdocDocTypeFor(schema)
+		if docType != d.DocType {
+			t.Errorf("mdocDocTypeFor(builder-saved %s) = %q, want %q", d.Name, docType, d.DocType)
+			continue
+		}
+		if _, ok := profileIDForDocType(docType); !ok {
+			t.Errorf("a builder-saved schema for %q does not resolve to an issuer-api2 profile — "+
+				"the operator's docType is not reaching issuance", d.DocType)
+		}
+	}
+
+	// The pre-fix shape must NOT resolve. Without this, the assertions above
+	// could pass against broken code that happened to route some other way.
+	broken := vctypes.Schema{
+		ID:              "custom-dkv4qjt53fua",
+		Std:             "mso_mdoc",
+		Name:            "Licencia",
+		Custom:          true,
+		AdditionalTypes: []string{},
+	}
+	if _, ok := profileIDForDocType(mdocDocTypeFor(broken)); ok {
+		t.Error("a schema that dropped its docType resolved to a profile — the C1 guard above proves nothing")
+	}
+}
+
 // A field the caller omits must NOT appear in the request at all. issuer-api2
 // merges runtimeOverrides recursively over the profile, so any key we send
 // wins but any key we omit keeps the profile's value. The versioned profile

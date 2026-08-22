@@ -768,8 +768,25 @@ func extractBuilderData(r *http.Request) builderData {
 		var merged []vctypes.FieldSpec
 		for _, m := range mandatory {
 			if submitted, ok := findFieldByName(d.Fields, m.Name); ok {
-				// Keep the operator's labels; the identifier is fixed.
-				m.Labels = submitted.Labels
+				// Overlay the operator's labels ONTO the curated ones, per
+				// locale — never replace the map wholesale. mdoc.MandatoryFields
+				// ships curated English ("UN Distinguishing Sign"), and the
+				// template re-posts every row on each re-render, so a submitted
+				// row essentially always exists. Replacing the map meant the
+				// curated "en" died the moment the operator touched anything,
+				// leaving the catalog to fall through to DeriveLabel and degrade
+				// it to "Un Distinguishing Sign" in the holder's wallet. Worse,
+				// an operator who filled in only a Spanish label lost English —
+				// the base-language fallback for every other locale.
+				//
+				// Safe to mutate m.Labels in place: MandatoryFields returns a
+				// deep copy, so this touches no package-level state.
+				if m.Labels == nil {
+					m.Labels = map[string]string{}
+				}
+				for loc, label := range submitted.Labels {
+					m.Labels[loc] = label
+				}
 			}
 			merged = append(merged, m)
 		}
@@ -930,6 +947,26 @@ func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
 	}
 	if strings.TrimSpace(d.ExtraType) != "" {
 		s.AdditionalTypes = []string{strings.TrimSpace(d.ExtraType)}
+	}
+	// For mdoc, the operator's selected docType IS the credential type, and it
+	// must reach the saved schema. AdditionalTypes[0] is what
+	// customSchemaTypeName returns, which becomes the catalog configID
+	// "<docType>_mso_mdoc"; BaseType() strips that suffix back to the docType,
+	// and buildIssuer2Offer (via mdocDocTypeFor) resolves the issuer-api2
+	// profile from it. Without this the schema kept its generated
+	// "custom-<nano>" ID as the base type, so every builder-made mdoc schema
+	// failed at issuance with `no issuer-api2 profile for docType "custom-..."`,
+	// and buildMDocEntry fell through to typeName and emitted a garbage
+	// namespace in the claim paths.
+	//
+	// The docType deliberately WINS over ExtraType here rather than appending:
+	// ExtraType is a free-text box, while the docType is a validated selection
+	// from mdoc.KnownDocTypes() that is pinned against the profile table
+	// (TestKnownDocTypesResolveInProfiles). Letting free text either precede it
+	// or sit alongside it would put an unvalidated string where BaseType()
+	// looks, reintroducing exactly the unresolvable-profile failure above.
+	if d.Std == "mso_mdoc" && strings.TrimSpace(d.DocType) != "" {
+		s.AdditionalTypes = []string{strings.TrimSpace(d.DocType)}
 	}
 	for _, f := range d.Fields {
 		if strings.TrimSpace(f.Name) != "" {

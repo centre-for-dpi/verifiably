@@ -90,8 +90,17 @@ var mandatoryByDocType = map[string][]vctypes.FieldSpec{
 }
 
 // MandatoryFields returns the elements the standard requires for a docType.
-// Returns nil for an unknown docType. The caller must copy before mutating —
-// the returned slice backs a package-level var.
+// Returns nil for an unknown docType.
+//
+// The result is a DEEP copy: the slice and every FieldSpec's Labels map are
+// freshly allocated, so the caller may mutate what it gets back without
+// touching package state. A plain copy() here would duplicate the slice but
+// leave every returned FieldSpec.Labels aliasing the same map as
+// mdlMandatory/photoIDMandatory — process-wide package-level vars. Callers
+// DO write into these maps (the schema builder overlays the operator's
+// labels onto the curated ones), so aliasing would let one request's
+// Spanish label leak into every later request's defaults for the lifetime of
+// the process.
 func MandatoryFields(docType string) []vctypes.FieldSpec {
 	src, ok := mandatoryByDocType[docType]
 	if !ok {
@@ -99,5 +108,15 @@ func MandatoryFields(docType string) []vctypes.FieldSpec {
 	}
 	out := make([]vctypes.FieldSpec, len(src))
 	copy(out, src)
+	for i := range out {
+		if out[i].Labels == nil {
+			continue
+		}
+		labels := make(map[string]string, len(out[i].Labels))
+		for k, v := range out[i].Labels {
+			labels[k] = v
+		}
+		out[i].Labels = labels
+	}
 	return out
 }
