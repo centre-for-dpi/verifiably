@@ -220,7 +220,6 @@ var schemaAllowlistDefault = []string{
 	"Iso18013 Drivers License Credential",
 	"Tax Receipt",
 	"University Degree",
-	"Iso18013 Drivers License Credential",
 }
 
 // applySchemaAllowlist filters the walt.id ListSchemas output to the
