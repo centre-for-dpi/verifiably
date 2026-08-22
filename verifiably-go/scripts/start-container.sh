@@ -38,10 +38,23 @@ start_container() {
   # under the user's home; world-write doesn't expose anything new. Also
   # mounts /var/run/docker.sock as group-readable so isContainerRunning
   # / restartContainer work without root inside the container.
+  #
+  # issuer2's config dir gets the same treatment for the same reason. It is
+  # mounted read-only into issuer-api2 itself (that service only reads it), but
+  # verifiably-go needs it writable: an mdoc schema's name reaches the wallet by
+  # editing the display block of its docType's PRE-PROVISIONED configuration —
+  # issuer-api2 has no per-schema catalog to append to the way issuer-api does.
+  # Without this the edit fails with EACCES, which degrades to a logged warning
+  # (the save still succeeds) and the wallet keeps showing the previous name.
   local catalog_dir="$SCRIPT_DIR/deploy/k8s/config/issuer"
   if [[ -d "$catalog_dir" ]]; then
     chmod 0777 "$catalog_dir" 2>/dev/null || true
     chmod 0666 "$catalog_dir"/*.conf 2>/dev/null || true
+  fi
+  local issuer2_dir="$SCRIPT_DIR/deploy/k8s/config/issuer2"
+  if [[ -d "$issuer2_dir" ]]; then
+    chmod 0777 "$issuer2_dir" 2>/dev/null || true
+    chmod 0666 "$issuer2_dir"/*.conf 2>/dev/null || true
   fi
   # Resolve the docker group's GID at deploy time so --group-add works on
   # any host (Debian/Ubuntu typically use 999 or 984; macOS Docker Desktop
@@ -184,6 +197,7 @@ start_container() {
     -v "$user_providers_path:/app/config/auth-providers.user.json" \
     -v "$custom_schemas_path:/app/config/custom-schemas.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
+    -v "$SCRIPT_DIR/deploy/k8s/config/issuer2:/app/issuer-api2-config" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties:/etc/inji/certify-scope-query.properties" \
     -v "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties:/etc/inji/esignet-scopes.properties" \
@@ -217,6 +231,8 @@ start_container() {
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \
+    -e WALTID_ISSUER2_METADATA_PATH=/app/issuer-api2-config/credential-issuer-metadata.conf \
+    -e WALTID_ISSUER2_SERVICE=issuer-api2 \
     -e VERIFIABLY_AUTH_PROVIDERS_FILE=/app/config/auth-providers.system.json \
     -e VERIFIABLY_AUTH_ADMIN="${VERIFIABLY_AUTH_ADMIN:-rw}" \
     -e VERIFIABLY_ADMIN_USER="${VERIFIABLY_ADMIN_USER:-}" \

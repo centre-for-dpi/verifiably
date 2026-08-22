@@ -50,6 +50,22 @@ type Config struct {
 	// after appending to the HOCON catalog so walt.id reloads its
 	// credential_configurations_supported map.
 	IssuerServiceName string `json:"issuerServiceName"`
+	// Issuer2MetadataPath points at issuer-api2's own
+	// credential-issuer-metadata.conf as visible from the verifiably-go process
+	// (e.g. /app/issuer2-config/credential-issuer-metadata.conf). Unlike
+	// CatalogPath this file is never APPENDED to — issuer-api2's configurations
+	// are pre-provisioned per ISO docType — it is edited in place so a custom
+	// mdoc schema's own name reaches the wallet instead of the raw docType.
+	// When empty, mdoc saves skip the edit entirely and the wellknown keeps
+	// whatever the mounted file already says, so a deployment that doesn't
+	// mount issuer2's config behaves exactly as it did before this existed.
+	Issuer2MetadataPath string `json:"issuer2MetadataPath"`
+	// Issuer2ServiceName is the Compose service name of the walt.id issuer-api2
+	// container (default "issuer-api2"). Restarted after an Issuer2MetadataPath
+	// edit so issuer-api2 republishes its wellknown — and only then: mdoc
+	// issuance itself runs through this service, so an unchanged file must not
+	// cost a restart.
+	Issuer2ServiceName string `json:"issuer2ServiceName"`
 }
 
 // Account holds credentials for the demo wallet user this adapter logs in as.
@@ -67,6 +83,11 @@ type Account struct {
 // Empty values mean "feature disabled" — SaveCustomSchema/DeleteCustomSchema
 // no-op rather than erroring, which keeps dev setups (no docker socket,
 // no mounted catalog) working.
+//
+// Issuer2MetadataPath / Issuer2ServiceName follow the identical pattern
+// (WALTID_ISSUER2_METADATA_PATH, WALTID_ISSUER2_SERVICE). Empty
+// Issuer2MetadataPath likewise means "feature disabled": the mdoc display-name
+// edit is skipped and the save proceeds.
 func UnmarshalConfig(raw json.RawMessage) (Config, error) {
 	var c Config
 	if len(raw) > 0 {
@@ -82,6 +103,12 @@ func UnmarshalConfig(raw json.RawMessage) (Config, error) {
 	}
 	if c.IssuerServiceName == "" {
 		c.IssuerServiceName = os.Getenv("WALTID_ISSUER_SERVICE")
+	}
+	if c.Issuer2MetadataPath == "" {
+		c.Issuer2MetadataPath = os.Getenv("WALTID_ISSUER2_METADATA_PATH")
+	}
+	if c.Issuer2ServiceName == "" {
+		c.Issuer2ServiceName = os.Getenv("WALTID_ISSUER2_SERVICE")
 	}
 	return c, nil
 }
