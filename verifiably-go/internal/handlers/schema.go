@@ -547,6 +547,10 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if bad := firstInvalidLocaleCode(r.Form); bad != "" {
+		h.errorToast(w, r, fmt.Sprintf("Código de idioma inválido: %q — solo letras (a-z, A-Z), dígitos y guión, sin espacios ni caracteres especiales.", bad))
+		return
+	}
 	schema := currentBuilderSchema(sess, data)
 	// Inji auth-code DPGs apply via the Flow B path (multi-format credential_config
 	// + extraction view + scope-query + eSignet scope + restart certify/esignet)
@@ -764,7 +768,18 @@ func parseFieldSpecsFromForm(form url.Values) []vctypes.FieldSpec {
 				continue
 			}
 			loc := strings.TrimPrefix(key, prefix)
-			if v := strings.TrimSpace(vals[0]); loc != "" && v != "" {
+			// "en" only ever arrives via field_label_N (the base-language
+			// input above), never via the field_label_N_<locale> suffix the
+			// template only renders for non-English locales. Skip it here so
+			// a hand-crafted field_label_N_en can never silently clobber the
+			// base label parsed above.
+			if loc == "en" {
+				continue
+			}
+			if !validLocaleCode(loc) {
+				continue
+			}
+			if v := strings.TrimSpace(vals[0]); v != "" {
 				labels[loc] = v
 			}
 		}
@@ -773,10 +788,11 @@ func parseFieldSpecsFromForm(form url.Values) []vctypes.FieldSpec {
 		}
 
 		// A newly typed locale/label pair, from the empty row the template
-		// always renders. Both must be non-empty to count.
+		// always renders. Both must be non-empty to count, and the locale
+		// must pass the same validity check as the prefix-scanned ones above.
 		newLoc := strings.TrimSpace(form.Get(fmt.Sprintf("new_locale_%d", i)))
 		newLabel := strings.TrimSpace(form.Get(fmt.Sprintf("new_label_%d", i)))
-		if newLoc != "" && newLabel != "" {
+		if newLoc != "" && newLabel != "" && validLocaleCode(newLoc) {
 			if f.Labels == nil {
 				f.Labels = map[string]string{}
 			}
@@ -786,6 +802,41 @@ func parseFieldSpecsFromForm(form url.Values) []vctypes.FieldSpec {
 		out = append(out, f)
 	}
 	return out
+}
+
+// firstInvalidLocaleCode re-scans the raw submitted form for a locale code
+// (from either field_label_N_<locale> or new_locale_N) that fails
+// validLocaleCode, returning it so SaveSchema can tell the operator why
+// their label silently didn't make it into the saved schema.
+// parseFieldSpecsFromForm itself just drops invalid codes rather than
+// erroring, since it has no path back to the request/response to surface
+// one — this is that path. Returns "" when every locale code submitted is
+// valid (including when none were submitted at all).
+func firstInvalidLocaleCode(form url.Values) string {
+	for i := 0; i < 50; i++ {
+		prefix := fmt.Sprintf("field_label_%d_", i)
+		for key, vals := range form {
+			if !strings.HasPrefix(key, prefix) || len(vals) == 0 {
+				continue
+			}
+			loc := strings.TrimPrefix(key, prefix)
+			if loc == "en" {
+				continue
+			}
+			if strings.TrimSpace(vals[0]) == "" {
+				continue // blank value alongside a malformed key isn't worth reporting
+			}
+			if !validLocaleCode(loc) {
+				return loc
+			}
+		}
+		newLoc := strings.TrimSpace(form.Get(fmt.Sprintf("new_locale_%d", i)))
+		newLabel := strings.TrimSpace(form.Get(fmt.Sprintf("new_label_%d", i)))
+		if newLoc != "" && newLabel != "" && !validLocaleCode(newLoc) {
+			return newLoc
+		}
+	}
+	return ""
 }
 
 func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
@@ -859,6 +910,24 @@ var reValidFieldName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 func validFieldName(name string) bool {
 	return reValidFieldName.MatchString(name)
+}
+
+// reValidLocaleCode is deliberately permissive — locale codes are free-form
+// operator text, not a fixed BCP-47 dropdown, so any deployment can serve a
+// language no predefined list would carry. What it excludes is not language
+// choice but characters that corrupt the round trip: the locale becomes both
+// an HTML form field *name* (in field_label_N_<locale>) and a map key, so
+// whitespace/newlines truncate the attribute early — the browser then
+// resubmits a different, shorter key, silently landing the label under the
+// wrong locale and overwriting whatever was there. No markup or quote
+// characters are allowed either, for the same reason (they'd break the
+// attribute rather than XSS — html/template already escapes those safely,
+// but a truncated attribute name still corrupts data before escaping ever
+// sees it).
+var reValidLocaleCode = regexp.MustCompile(`^[A-Za-z0-9-]{1,35}$`)
+
+func validLocaleCode(loc string) bool {
+	return reValidLocaleCode.MatchString(loc)
 }
 
 // buildJSONSchema returns a pretty-printed JSON Schema (draft 2020-12) for the given schema.

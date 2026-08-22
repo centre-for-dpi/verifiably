@@ -204,7 +204,7 @@
     {{if ne $loc "en"}}
       <div style="grid-column:1/-1;display:grid;grid-template-columns:120px 1fr;gap:0.5rem;padding-left:1rem">
         <input type="text" value="{{$loc}}" readonly
-               style="background:var(--bg-mute);border:1px solid var(--line);padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--ink-mute);border-radius:2px">
+               style="background:var(--bg-sunk);border:1px solid var(--line);padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--ink-mute);border-radius:2px">
         <input type="text" name="field_label_{{$.Idx}}_{{$loc}}" value="{{$val}}"
                style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-size:0.78rem;color:var(--ink);border-radius:2px">
       </div>
@@ -212,7 +212,8 @@
   {{end}}
   <div style="grid-column:1/-1;display:grid;grid-template-columns:120px 1fr;gap:0.5rem;padding-left:1rem">
     <input type="text" name="new_locale_{{.Idx}}" placeholder="es-DO"
-           title="Any BCP-47 code — es-DO, ht, qu. Not restricted to a fixed list."
+           pattern="[A-Za-z0-9-]{1,35}"
+           title="Any BCP-47-style code — es-DO, ht, qu. Letters, digits, and hyphens only; no spaces."
            style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--ink);border-radius:2px">
     <input type="text" name="new_label_{{.Idx}}" placeholder="Label in that language"
            style="background:var(--bg);border:1px solid var(--line);padding:0.4rem 0.6rem;font-size:0.78rem;color:var(--ink);border-radius:2px">
