@@ -700,5 +700,159 @@
 
 ---
 
+## ISO mDL / Photo ID issuance — deferred documentation debt
+
+> Follow-up from the mDL production-issuance plan (2026-08-21). Four items deliberately deferred during execution, plus findings from Task 8's end-to-end verification that the plan's earlier tasks predate.
+
+### walt.id integration test cannot run under Docker-in-Docker
+
+`TestIntegration_WaltidParsesAppendedCatalog` mounts a `t.TempDir()` path
+into a `docker run` aimed at the host daemon. When the test itself runs
+inside a container (necessary on a machine with no host Go toolchain), that
+path does not exist on the host, so Docker silently mounts an **empty**
+directory and walt.id dies with
+`IllegalArgumentException: No loaded configuration: "issuer-service"`.
+
+Proven during the 0.23.1 upgrade by mounting a deliberately empty directory
+into the same image and reproducing the error verbatim. Nothing is wrong
+with the image or the repo's config — the config simply never arrives.
+
+The test also polls `http://localhost:hostPort` after publishing to the
+host, which fails from inside a container for a second, independent reason.
+
+Fix options: give the test a shared Docker network and address the container
+by name, or copy the fixture to a host-visible path, or install Go on the
+host. Until then the test is manual-only and cannot gate an upgrade.
+
+**Consequence for the 0.23.1 upgrade (commits `0293227`..`f1050a3`):** the
+task's designated Step 3 verification never ran green. The upgrade rests
+instead on the full unit suite passing and on the design-phase spike, which
+issued real credentials against a live 0.23.1 across all four code paths
+(`jwt_vc_json` with and without `credentialStatus`, `vc+sd-jwt`,
+`mso_mdoc`). Recorded here because `git log` alone does not show it.
+
+### DirectPDFPlain capability claim unverified for 0.23.1
+
+`scripts/gen-backends.sh:82` reads "No documented QR-on-PDF export at
+v0.23.1." The version was updated with the other pins, but nobody confirmed
+0.23.x did not add QR-on-PDF export. It is a negative claim, so it stays
+true unless the feature landed between 0.19 and 0.23 — worth a check against
+the release notes when someone is in there anyway.
+
+### docs/ still cites walt.id 0.18.2
+
+`docs/dpg/walt-id.md` and `docs/dpg-matrix.md` describe the same
+operator-facing DPG capabilities that `gen-backends.sh` renders, and still
+say 0.18.2. Outside the upgrade's file glob (`.md` was not in scope), so
+deliberately untouched — but now inconsistent with the `.sh` strings.
+
+### walt.id 0.18.2 references in Go comments
+
+The 2026-08-21 upgrade to 0.23.1 changed every executable pin but left the
+documentation comments that cite v0.18.2 as the version whose source was
+read to verify a behaviour (`config.go`, `issuer.go`, `verifier.go`,
+`wallet.go`, `catalog.go`, `vctypes.go`, several handlers).
+
+Not bugs — the documented behaviour was re-verified at 0.23.1 by the
+integration test and the design spike. But they now claim to describe a
+version the system no longer runs, which will mislead the next reader.
+
+Deliberately deferred so the upgrade diff stayed reviewable. Worth a
+mechanical follow-up pass.
+
+### Dead mdoc body-builder removed; the lesson it encoded is recorded here
+
+Task 3 hoisted the `mso_mdoc` dispatch to the top of `IssueToWallet`, out of
+the shared format switch, which orphaned the legacy mdoc body-builder.
+`buildMdocData` (`internal/adapters/waltid/issuer.go`), `coerceMdocValue`,
+and the `mdocBoolElements`/`mdocIntElements` tables it used have now been
+deleted — zero callers, zero tests, confirmed by grep before removal.
+
+`mdocNamespaceFor` looked like it belonged to the same dead span but is
+**not** dead: `internal/adapters/waltid/catalog.go` calls it as the fallback
+namespace for any docType absent from `docTypeProfiles`. It was kept, and
+its doc comment (`issuer2.go`) rewritten to describe its real caller instead
+of the deleted one.
+
+`coerceMdocValue`'s doc comment recorded something expensive to learn, worth
+keeping even though the code is gone: a conformant reader (Multipaz)
+rejected `age_over_18` and `age_over_21` because the boolean values arrived
+as the CBOR text string `"true"` instead of an actual boolean — found only
+by decoding the signed mdoc and seeing `age_over_18  str  'true'` in the
+CBOR. The cause was that `SubjectData` is `map[string]string` end to end (it
+comes from an HTML form), so without an explicit type-coercion step every
+element reaches the issuer as a JSON string and gets encoded as a CBOR text
+string, and a spec-conformant reader looking for a boolean finds a string
+and reports the element missing entirely rather than merely wrong.
+
+That code path is gone — issuer-api2 now handles CBOR typing declaratively
+through `mDocNameSpacesDataMappingConfig` profile mappings
+(`deploy/k8s/config/issuer2/issuer2-profiles.conf`) instead of a Go
+type-coercion function. But the lesson is not dead: **if those profile
+mappings are ever misconfigured for a boolean or integer element, this is
+the exact symptom that will reappear** — the credential issues successfully,
+looks structurally fine, and a conformant reader silently reports the
+element as absent. Decoding the signed mdoc's CBOR is the fastest way to
+confirm it, faster than suspecting the issuer or the wallet first.
+
+### F2 — walt.id's Photo ID profile omits the `portrait` byte-string mapping
+
+`deploy/k8s/config/issuer2/issuer2-profiles.conf`'s `isoMdl` profile maps
+`portrait` to `conversionType = "base64StringToByteString"` under
+`mDocNameSpacesDataMappingConfig`. The `isoPhotoId` profile's equivalent
+block (namespace `org.iso.23220.1`) has no `portrait` entry at all — only
+`birth_date`, `issue_date`, `expiry_date`, and `portrait_capture_date` are
+mapped. Confirmed by reading both profiles side by side.
+
+Effect: Photo ID portraits are emitted as CBOR text instead of a byte
+string — the same class of conformance defect `coerceMdocValue` existed to
+avoid for booleans, but here it's upstream's vendor profile, not our code.
+
+A four-line fix (adding the missing `portrait` entry, mirroring `isoMdl`)
+was validated but deliberately **not** applied — patching a vendor-shipped
+profile is its own decision (fork vs. upstream report vs. local override)
+and deserves its own review, not a rider on this plan.
+
+### F3 — `verify.mjs` is hardcoded to the Go test vectors, not a general tool
+
+`internal/mdl/testdata/verify/verify.mjs` takes no path argument. It reads
+`mdl_full.cbor`, `iaca.pem`, and `dsc.pem` from a fixed `../vectors`
+directory relative to the script itself. Any documentation, runbook, or
+comment that tells someone to run `node verify.mjs <path>` is wrong — there
+is no argument parsing in the script at all.
+
+### F4 — the adapter's `map[string]string` subject data cannot express `driving_privileges`
+
+`internal/mdl/cbortypes.go`'s `DrivingPrivilege` documents this directly:
+`driving_privileges` is an array of structured objects (vehicle category
+code plus optional issue/expiry dates per category), and the walt.id adapter
+carries all subject data as `map[string]string` end to end because it comes
+from an HTML form. There is no representation for a nested array of objects
+in that shape, so `driving_privileges` cannot be populated through the
+current issuance path.
+
+Two error strings surfaced repeatedly while investigating this and cost
+several attempts each to diagnose — recording them verbatim so the next
+person can search and find this entry instead of re-deriving the cause:
+
+- **`Json array sizes (input & config) are not equal`** — misleading on its
+  face. It means the profile ships `driving_privileges = []` (empty) while
+  its `arrayConfig` in `mDocNameSpacesDataMappingConfig` demands exactly 2
+  entries (see `issuer2-profiles.conf`'s `isoMdl` profile). It is not a
+  schema-shape error; it is a length mismatch against a fixed-size array
+  config.
+- **`java.time.format.DateTimeParseException: Text '' could not be parsed at
+  index 0`** — means a mandatory date field was left unset (empty string).
+  Task 2 emptied the profile's sample data (`credentialData`) deliberately,
+  and `runtimeOverrides` **merges** onto the profile rather than replacing
+  it wholesale — so any date field you do not explicitly send in the
+  request stays `""` from the profile and fails issuance at signing time,
+  not at request-validation time. `portrait_capture_date` is the one nobody
+  expects to need, since it is not a field anyone thinks of as "a date" when
+  filling in mDL data.
+
+---
+
 *Last updated: 2026-06-09 | Credential delivery mechanism model documented in `docs/credential-delivery.md` (8 mechanisms, 2-axis quadrant). Added to Architectural Backlog: deferred issuance, holder notification channel (unifies push-issuance + push-revocation), DIDComm proactive delivery spike.*
 *2026-05-20 | Feature roadmap added: Credential Discovery & Self-Service Issuance, National ID Subject Binding (3 levels), PKI/HSM/KMS Integration, Delegated Access/Representation, INJI E2E test tracking.*
+*2026-08-21 | ISO mDL / Photo ID issuance: recorded deferred documentation debt (stale 0.18.2 references, unverified DirectPDFPlain claim for 0.23.1) and Task 8 end-to-end findings (walt.id Photo ID profile missing portrait byte-string mapping, verify.mjs has no path argument, map[string]string subject data cannot carry driving_privileges). Removed the dead mdoc body-builder orphaned by Task 3's routing change; kept mdocNamespaceFor, which catalog.go still calls.*
