@@ -92,13 +92,41 @@
         {{range .Schema.FieldsSpec}}
           <div class="field">
             <label>{{replaceUnderscore .Name}}{{if .Required}} *{{end}}</label>
+            {{if eq .Datatype "boolean"}}
+            {{/* A boolean needs BOTH states to submit a real value. A bare
+                 checkbox submits nothing at all when unticked, and the string
+                 "on" (not "true") when ticked — so `age_over_18` arrived as ""
+                 and SubmitIssue's required-field check rejected it even though
+                 the operator had ticked the box.
+
+                 The hidden "false" immediately BEFORE the checkbox is the
+                 standard fix: the browser submits fields in document order and
+                 SubmitIssue reads r.FormValue, which returns the first value,
+                 so the pair must be read last-wins. It is not — FormValue takes
+                 the FIRST — hence the checkbox carries its own name suffix and
+                 the server merges the pair explicitly (see boolFieldValue in
+                 issuance.go). Unticked ⇒ "false"; ticked ⇒ "true"; never "" and
+                 never "on". ISO 18013-5 wants a CBOR boolean and walt.id's
+                 profile mapping keys off "true"/"false" exactly. */}}
+            <input type="hidden" name="field_{{.Name}}" value="false">
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:400;margin:0">
+              <input
+                type="checkbox"
+                name="field_{{.Name}}__checked"
+                value="true"
+                {{if eq (index $.FieldValues .Name) "true"}}checked{{end}}
+                data-required="{{if .Required}}true{{else}}false{{end}}">
+              <span style="font-size:0.82rem;color:var(--ink-mute)">Yes</span>
+            </label>
+            {{else}}
             <input
-              type="{{if eq .Format "date"}}date{{else if eq .Format "datetime"}}datetime-local{{else if eq .Format "uri"}}url{{else if eq .Datatype "number"}}number{{else if eq .Datatype "integer"}}number{{else if eq .Datatype "boolean"}}checkbox{{else}}text{{end}}"
+              type="{{if eq .Format "date"}}date{{else if eq .Format "datetime"}}datetime-local{{else if eq .Format "uri"}}url{{else if eq .Datatype "number"}}number{{else if eq .Datatype "integer"}}number{{else}}text{{end}}"
               {{if eq .Datatype "integer"}}step="1"{{end}}
               name="field_{{.Name}}"
               value="{{index $.FieldValues .Name}}"
               data-required="{{if .Required}}true{{else}}false{{end}}"
               placeholder="{{if eq .Format "date"}}YYYY-MM-DD{{else if eq .Format "uri"}}https://…{{end}}">
+            {{end}}
             {{if eq .Name "onBehalfOf"}}
             <p class="hint" style="font-size:0.72rem;color:#8a4b13;margin:0.4rem 0 0;background:rgba(181,101,29,0.08);border-left:3px solid #b5651d;padding:0.45rem 0.65rem;border-radius:0 4px 4px 0">
               🔗 <strong>Linkage anchor — must be a unique identifier.</strong> A verifier links this delegation to the holder's <em>identity</em> credential on this exact value. Set it to a unique identifier the identity credential carries — its <span class="mono">subjectRef</span>, an identifier field (e.g. national ID, <span class="mono">testa_id</span>), or the holder's <span class="mono">DID</span> — <em>not</em> a name or other shared attribute. That value must be disclosed when the pair is verified, or linkage fails. The identity credential must also be issued in the <strong>same format</strong> as this delegation (both SD-JWT or both W3C) — a verifier can't combine formats in one request.

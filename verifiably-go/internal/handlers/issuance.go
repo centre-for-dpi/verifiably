@@ -299,6 +299,39 @@ func normalizeIssuanceTimeTZ(s string, offsetEastMin int) string {
 	return ""
 }
 
+// boolFieldValue resolves a boolean claim field to exactly "true" or "false".
+//
+// An HTML checkbox submits NOTHING when unticked, and the bare string "on"
+// (not "true") when ticked. Both are wrong here: the empty case made
+// r.FormValue("field_age_over_18") return "" so the required-field check
+// rejected a box the operator had actually ticked, and "on" is not what ISO
+// 18013-5 (a CBOR boolean) or walt.id's profile mapping (which keys off the
+// literals "true"/"false") expects downstream.
+//
+// The issue form therefore renders a hidden `field_<name>` carrying "false"
+// followed by a checkbox `field_<name>__checked` carrying "true". The two
+// names are deliberately DISTINCT rather than relying on last-value-wins:
+// r.FormValue returns the FIRST value for a repeated key, so a same-named
+// pair in document order would always read "false". Reading them separately
+// makes the precedence explicit and independent of field ordering.
+//
+// A checked box wins. Anything else is "false" — including a hand-crafted
+// post that omits the hidden input entirely, which keeps the result a valid
+// boolean literal rather than an empty string.
+func boolFieldValue(r *http.Request, name string) string {
+	if v := strings.TrimSpace(r.FormValue("field_" + name + "__checked")); v != "" && v != "false" {
+		return "true"
+	}
+	// Honour an explicit "true" posted directly on the base name too, so an
+	// API/bulk caller that sends field_<name>=true (no companion checkbox)
+	// still works — the bulk path builds its rows from mapped source columns,
+	// not from this form.
+	if strings.EqualFold(strings.TrimSpace(r.FormValue("field_"+name)), "true") {
+		return "true"
+	}
+	return "false"
+}
+
 func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	_ = r.ParseForm()
@@ -335,6 +368,12 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	// Gather subject data from form (falls back to prefill)
 	subject := map[string]string{}
 	for _, fs := range schema.FieldsSpec {
+		if fs.Datatype == "boolean" {
+			// Booleans come from a hidden "false" + a checkbox carrying
+			// "true", never a single input — see boolFieldValue.
+			subject[fs.Name] = boolFieldValue(r, fs.Name)
+			continue
+		}
 		v := strings.TrimSpace(r.FormValue("field_" + fs.Name))
 		// Date/datetime fields (e.g. a delegation's valid_until capability
 		// expiry) are normalized to RFC3339 UTC so the claim is well-formed
@@ -348,8 +387,17 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	// Validate: every Required field must be non-empty. Non-required fields
 	// may be left blank.
+	//
+	// Booleans are exempt from the emptiness test: boolFieldValue always
+	// yields "true" or "false", and an UNTICKED required boolean is a
+	// legitimate answer, not a missing one — `age_over_18=false` is
+	// meaningful data about the holder. Treating "false" as unfilled would
+	// make a required boolean unsatisfiable in one of its two valid states.
 	var missing []string
 	for _, spec := range schema.FieldsSpec {
+		if spec.Datatype == "boolean" {
+			continue
+		}
 		if spec.Required && subject[spec.Name] == "" {
 			missing = append(missing, spec.Name)
 		}
