@@ -430,3 +430,68 @@ func TestIssuer2OfferCarriesPortraitAsBase64String(t *testing.T) {
 		t.Errorf("portrait carries a data: URI prefix — base64StringToByteString would decode it as image data")
 	}
 }
+
+// TestBlankDatesNeverReachWaltid reproduces the failure an operator hit twice
+// on a live deployment: leaving an optional date blank made issuance die on
+// the citizen's PHONE, long after the offer had returned HTTP 201, with
+//
+//	java.time.format.DateTimeParseException: Text '' could not be parsed
+//
+// The cause is not our blank — it is that omitting the field lets issuer-api2's
+// deep merge keep the PROFILE's empty string, which its stringToFullDate
+// mapping then cannot parse. Confirmed against a live issuer-api2: the same
+// payload with issue_date omitted returns 400 at redemption, and with it
+// present returns 200.
+func TestBlankDatesNeverReachWaltid(t *testing.T) {
+	schema := vctypes.Schema{
+		ID:              "custom-x",
+		Std:             "mso_mdoc",
+		Custom:          true,
+		AdditionalTypes: []string{"org.iso.18013.5.1.mDL"},
+		FieldsSpec: []vctypes.FieldSpec{
+			{Name: "family_name", Datatype: "string"},
+			{Name: "birth_date", Datatype: "string", Format: "date"},
+			{Name: "issue_date", Datatype: "string", Format: "date"},
+			{Name: "portrait_capture_date", Datatype: "string", Format: "date"},
+		},
+	}
+	// The operator filled the name and birth date, left the other two blank.
+	subject := map[string]string{
+		"family_name": "Alvarez",
+		"birth_date":  "1990-05-14",
+		"issue_date":  "",
+	}
+
+	req, err := buildIssuer2Offer(schema, subject, nil)
+	if err != nil {
+		t.Fatalf("buildIssuer2Offer: %v", err)
+	}
+	data := req.RuntimeOverrides.CredentialData["org.iso.18013.5.1"]
+
+	for _, f := range schema.FieldsSpec {
+		if f.Format != "date" {
+			continue
+		}
+		v, present := data[f.Name]
+		if !present {
+			t.Errorf("%s omitted — the profile's blank survives the merge and kills "+
+				"issuance at wallet redemption", f.Name)
+			continue
+		}
+		s, _ := v.(string)
+		if strings.TrimSpace(s) == "" {
+			t.Errorf("%s sent as %q — an empty date is what walt.id cannot parse", f.Name, s)
+		}
+	}
+
+	// The operator's own value must never be overwritten by a fallback.
+	if got := data["birth_date"]; got != "1990-05-14" {
+		t.Errorf("birth_date = %v, want the operator's value 1990-05-14", got)
+	}
+	// portrait_capture_date derives from issue_date rather than inventing a
+	// date unrelated to the credential.
+	if data["portrait_capture_date"] != data["issue_date"] {
+		t.Errorf("portrait_capture_date = %v, want it to match issue_date %v",
+			data["portrait_capture_date"], data["issue_date"])
+	}
+}

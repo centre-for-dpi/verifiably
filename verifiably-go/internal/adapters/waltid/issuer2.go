@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/vctypes"
@@ -172,6 +173,30 @@ func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string, structu
 		}
 		data[k] = v
 	}
+	// Omitting a blank is right for text, but FATAL for a date. issuer-api2
+	// deep-merges runtimeOverrides over the profile, and our profile ships
+	// every sample value emptied (walt.id's defaults are a fictional Austrian
+	// person). So a date we omit keeps the profile's "" — and its
+	// stringToFullDate conversion cannot parse an empty string. The offer
+	// still returns 201; issuance dies on the citizen's phone with
+	//
+	//	java.time.format.DateTimeParseException: Text '' could not be parsed
+	//
+	// Reproduced against a live issuer-api2 by omitting issue_date. Sending a
+	// real value for every date the profile maps is the only way to keep the
+	// profile's blank from reaching the converter, so an unfilled optional
+	// date falls back to a defined one rather than being left out.
+	for _, f := range schema.FieldsSpec {
+		if f.Format != "date" {
+			continue
+		}
+		if s, ok := data[f.Name].(string); ok && strings.TrimSpace(s) != "" {
+			continue
+		}
+		if fb := mdocDateFallback(f.Name, subject); fb != "" {
+			data[f.Name] = fb
+		}
+	}
 	// Structured claims override any flat entry of the same name. The issue
 	// form never posts both, but an API caller could, and the structured value
 	// is the one the profile's arrayConfig can actually convert.
@@ -242,4 +267,38 @@ func (a *Adapter) issueMdocViaIssuer2(ctx context.Context, req backend.IssueRequ
 		OfferID:  resp.OfferID,
 		Flow:     req.Flow,
 	}, nil
+}
+
+// mdocDateFallback supplies a defensible value for a date the operator left
+// blank, so the profile's unparseable "" never reaches walt.id's converter.
+//
+// This is deliberately NOT "today" for everything. A date in an mdoc is an
+// assertion about the holder, and inventing one is worse than a failed
+// issuance: nobody audits a credential that looks fine. So each fallback is
+// chosen to be either tautologically true or a restatement of a value the
+// operator did supply:
+//
+//   - issue_date: today. The credential IS being issued now, so this is true
+//     by construction.
+//   - portrait_capture_date: the issue date when present, else today. ISO
+//     treats it as metadata about the image, and claiming the portrait was
+//     captured no later than issuance is the conservative reading.
+//
+// Any other date-mapped field returns "" — the caller then leaves it out and
+// issuance fails loudly at redemption. That is intentional: a field we cannot
+// derive honestly must not be silently filled, and a hard failure is the
+// signal to add it to the form (see TestEveryProfileDateFieldIsReachableFromTheForm).
+func mdocDateFallback(name string, subject map[string]string) string {
+	today := time.Now().UTC().Format("2006-01-02")
+	switch name {
+	case "issue_date":
+		return today
+	case "portrait_capture_date":
+		if v := strings.TrimSpace(subject["issue_date"]); v != "" {
+			return v
+		}
+		return today
+	default:
+		return ""
+	}
 }
