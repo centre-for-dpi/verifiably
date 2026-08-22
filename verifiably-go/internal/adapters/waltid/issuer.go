@@ -1192,6 +1192,18 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 			// conversionType "base64StringToByteString", so the operator picks
 			// a file and the handler hands over base64 — we never encode CBOR.
 			{Name: "portrait", Datatype: "string", Format: mdoc.FormatImage, Required: false},
+			// portrait_capture_date must be offered even though ISO lists it
+			// optional. The isoMdl profile ships it as "" and issuer-api2
+			// deep-MERGES runtimeOverrides over the profile rather than
+			// replacing it, so a field we never send keeps the profile's empty
+			// string — which its date mapping then fails to parse, killing the
+			// issuance at wallet-redemption time with
+			//   java.time.format.DateTimeParseException: Text '' could not be
+			//   parsed at index 0
+			// The offer still returns 201, so this only surfaces on the
+			// citizen's phone. Every profile date field must therefore be
+			// reachable from the form; see TODO.md F4.
+			opt("portrait_capture_date", "date"),
 		}
 	case "OpenBadgeCredential":
 		return []vctypes.FieldSpec{str("holder"), str("achievement"), date("issuedOn")}
