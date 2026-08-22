@@ -47,6 +47,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/jobs"
 	"github.com/verifiably/verifiably-go/internal/mailer"
 	"github.com/verifiably/verifiably-go/internal/mdl"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/internal/roles"
 	"github.com/verifiably/verifiably-go/internal/schemacache"
@@ -824,6 +825,7 @@ func main() {
 		mux.HandleFunc("POST /issuer/schema/build/add-field", h.AddSchemaField)
 		mux.HandleFunc("POST /issuer/schema/build/remove-field", h.RemoveSchemaField)
 		mux.HandleFunc("POST /issuer/schema/build/delegation", h.BuildDelegationToggle)
+		mux.HandleFunc("POST /issuer/schema/build/doctype", h.BuildDocTypeChange)
 		mux.HandleFunc("POST /issuer/schema/build/save", h.SaveSchema)
 		mux.HandleFunc("GET /issuer/mode", h.ShowIssuanceMode)
 		mux.HandleFunc("POST /issuer/mode", h.SetIssuanceMode)
@@ -1590,6 +1592,24 @@ func funcMap(tr handlers.Translator) template.FuncMap {
 			out := make(map[string]bool, len(xs))
 			for _, x := range xs {
 				out[x] = true
+			}
+			return out
+		},
+
+		// mdocMandatoryNames returns a lookup map of the docType's mandatory
+		// field identifiers, for {{index $mandatoryNames .Field.Name}} in the
+		// schema builder — used to render those rows' identifier input as
+		// readonly (the standard defines them; an operator may not rename or
+		// remove one and still have a conformant credential). Returns an
+		// empty map for non-mdoc formats or an unrecognised/unset docType, so
+		// the lookup is always safe.
+		"mdocMandatoryNames": func(std, docType string) map[string]bool {
+			out := map[string]bool{}
+			if std != "mso_mdoc" {
+				return out
+			}
+			for _, f := range mdoc.MandatoryFields(docType) {
+				out[f.Name] = true
 			}
 			return out
 		},

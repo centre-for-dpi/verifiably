@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -33,6 +34,22 @@ func TestProfileIDForDocType(t *testing.T) {
 		if got.profileID != tt.wantProfileID || got.baseNamespace != tt.wantNamespace || ok != tt.wantOK {
 			t.Errorf("profileIDForDocType(%q) = (%+v, %v), want (profileID=%q, namespace=%q, %v)",
 				tt.docType, got, ok, tt.wantProfileID, tt.wantNamespace, tt.wantOK)
+		}
+	}
+}
+
+// TestKnownDocTypesResolveInProfiles pins the mdoc catalog (what the operator
+// sees in the schema builder) against docTypeProfiles (what issuer-api2 can
+// actually resolve). This is the guard that would have caught the
+// photoID/photoid casing mismatch automatically: every docType offered in
+// the builder MUST resolve to a profile here, or an operator can build and
+// save a schema that fails at issuance time — a failure that surfaces late
+// and looks like an infrastructure fault rather than a UI bug.
+func TestKnownDocTypesResolveInProfiles(t *testing.T) {
+	for _, d := range mdoc.KnownDocTypes() {
+		if _, ok := profileIDForDocType(d.DocType); !ok {
+			t.Errorf("mdoc.KnownDocTypes() offers docType %q but docTypeProfiles has no entry for it — "+
+				"an operator could build and save this schema, then have issuance fail", d.DocType)
 		}
 	}
 }

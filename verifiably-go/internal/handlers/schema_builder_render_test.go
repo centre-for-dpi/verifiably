@@ -7,18 +7,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
 // loadSchemaBuilderTemplate parses templates/pages/issuer_schema_builder.html
 // with the minimal FuncMap its directives touch across the whole file
-// (`t`, `list`, `hasPrefix`, and `dict` — the last needed by
-// {{template "_field_row" (dict "Idx" $i "Field" $f)}}). ParseFiles parses
-// every {{define}} block in the file, not just the one under test, so all
-// of them need to resolve even though only _field_row gets executed below.
-// Mirrors the loadPageTemplate/loadTestTemplates pattern used elsewhere in
-// this package (inji_holder_test.go, status_list_e2e_test.go) rather than
-// reconstructing the full production funcMap from cmd/server/main.go.
+// (`t`, `list`, `hasPrefix`, `dict` — needed by
+// {{template "_field_row" (dict "Idx" $i "Field" $f)}} — and
+// `mdocMandatoryNames`, needed by the doctype-aware Locked lookup in the
+// same range). ParseFiles parses every {{define}} block in the file, not
+// just the one under test, so all of them need to resolve even though only
+// _field_row gets executed below. Mirrors the loadPageTemplate/
+// loadTestTemplates pattern used elsewhere in this package
+// (inji_holder_test.go, status_list_e2e_test.go) rather than reconstructing
+// the full production funcMap from cmd/server/main.go.
 func loadSchemaBuilderTemplate(t *testing.T) *template.Template {
 	t.Helper()
 	tmpl := template.New("").Funcs(template.FuncMap{
@@ -32,6 +35,16 @@ func loadSchemaBuilderTemplate(t *testing.T) *template.Template {
 				m[k] = pairs[i+1]
 			}
 			return m, nil
+		},
+		"mdocMandatoryNames": func(std, docType string) map[string]bool {
+			out := map[string]bool{}
+			if std != "mso_mdoc" {
+				return out
+			}
+			for _, f := range mdoc.MandatoryFields(docType) {
+				out[f.Name] = true
+			}
+			return out
 		},
 	})
 	files, err := filepath.Glob("../../templates/pages/issuer_schema_builder.html")

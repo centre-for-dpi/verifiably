@@ -131,12 +131,35 @@
     <p class="hint" style="font-size:0.75rem;color:var(--ink-mute);margin-top:0.35rem">Inji Certify auth-code issues <strong>W3C VCDM 1.1/2.0</strong> (ldp_vc) and <strong>IETF SD-JWT VC</strong> (vc+sd-jwt) natively. <strong>mso_mdoc</strong> is mock-only in Certify v0.14 — it'll configure but isn't a usefully-verifiable credential.</p>
   </div>
 
+  {{if eq .Std "mso_mdoc"}}
+  <div class="field">
+    <label>Document type
+      <span style="font-size:0.7rem;color:var(--ink-mute);font-weight:400;margin-left:0.25rem">(which ISO document travels inside the mdoc container)</span>
+    </label>
+    <select name="doctype"
+            hx-post="/issuer/schema/build/doctype"
+            hx-include="#builder-form-el"
+            hx-target="#builder-form"
+            hx-swap="innerHTML">
+      {{$cur := .DocType}}
+      {{range .KnownDocTypes}}
+        <option value="{{.DocType}}" {{if eq $cur .DocType}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+    <p class="hint" style="font-size:0.75rem;color:var(--ink-mute);margin-top:0.35rem">
+      The standard's mandatory fields are added automatically and cannot be removed.
+      Add your own fields below — they go in your own namespace, not the ISO one.
+    </p>
+  </div>
+  {{end}}
+
   <div>
     <div class="caps" style="margin-bottom:0.5rem">Claim fields</div>
 
     <div id="field-rows" style="display:flex;flex-direction:column;gap:0.5rem">
+      {{$mandatoryNames := mdocMandatoryNames .Std .DocType}}
       {{range $i, $f := .Fields}}
-        {{template "_field_row" (dict "Idx" $i "Field" $f)}}
+        {{template "_field_row" (dict "Idx" $i "Field" $f "Locked" (index $mandatoryNames $f.Name))}}
       {{end}}
     </div>
 
@@ -155,6 +178,14 @@
 
 {{define "_field_row"}}
 <div style="display:grid;grid-template-columns:1fr 1fr 160px 72px 36px;gap:0.5rem;align-items:center">
+  {{if .Locked}}
+  <input type="text"
+         name="field_name_{{.Idx}}"
+         value="{{.Field.Name}}"
+         readonly
+         title="The ISO standard defines this identifier — it cannot be renamed without breaking conformance."
+         style="background:var(--bg-sunk);border:1px solid var(--line);padding:0.55rem 0.7rem;font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--ink-mute);border-radius:2px">
+  {{else}}
   <input type="text"
          name="field_name_{{.Idx}}"
          value="{{.Field.Name}}"
@@ -162,6 +193,7 @@
          pattern="[a-zA-Z_][a-zA-Z0-9_]*"
          title="Solo letras (a-z, A-Z), dígitos y guión bajo. No se permiten caracteres especiales (ñ, tildes, espacios)."
          style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.7rem;font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--ink);border-radius:2px">
+  {{end}}
 
   {{/* Label is free text — the identifier above must stay interoperable
        (it travels into the signed credential), but what the holder reads

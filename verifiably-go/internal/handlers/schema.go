@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -374,9 +375,10 @@ func (h *H) ShowSchemaBuilder(w http.ResponseWriter, r *http.Request) {
 	}
 	// Default: two blank fields
 	data := builderData{
-		Fields:    []vctypes.FieldSpec{{Datatype: "string", Required: true}, {Datatype: "string", Required: true}},
-		Std:       "w3c_vcdm_2",
-		Scenarios: delegationScenarios,
+		Fields:        []vctypes.FieldSpec{{Datatype: "string", Required: true}, {Datatype: "string", Required: true}},
+		Std:           "w3c_vcdm_2",
+		Scenarios:     delegationScenarios,
+		KnownDocTypes: mdoc.KnownDocTypes(),
 	}
 	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
 	h.render(w, r, "issuer_schema_builder", h.pageData(sess, data))
@@ -394,6 +396,15 @@ type builderData struct {
 	Expiry            bool   // opt-in: this credential expires (adds a valid_until datetime claim)
 	Scenario          string // selected delegation scenario key (poa/director/teacher/…)
 	Scenarios         []delegationScenario
+	// DocType is the selected ISO docType when Std == "mso_mdoc" — e.g.
+	// "org.iso.18013.5.1.mDL". Empty when no docType has been picked yet
+	// (or the format isn't mso_mdoc). Drives which mandatory fields get
+	// preloaded and locked; see mdoc.MandatoryFields.
+	DocType string
+	// KnownDocTypes lists the selector's options. Populated on every
+	// builder render so the template can draw the dropdown regardless of
+	// which handler produced this builderData.
+	KnownDocTypes []mdoc.DocTypeInfo
 }
 
 // delegationScenario is a real-world delegated-access relationship preset so an
@@ -487,6 +498,24 @@ func (h *H) BuildDelegationToggle(w http.ResponseWriter, r *http.Request) {
 	if data.Delegation {
 		applyDelegationPreset(&data)
 	}
+	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
+	h.renderFragment(w, r, "fragment_schema_builder_form", data)
+}
+
+// BuildDocTypeChange re-renders the builder form when the mdoc docType
+// selector changes. Unlike the plain preview endpoint (which only swaps
+// #json-preview), this must refresh the field rows themselves: picking a
+// docType preloads and locks that standard's mandatory fields (done inside
+// extractBuilderData), and those rows have to actually appear for the lock
+// to be visible — an operator can't tell a field is mandatory from the JSON
+// preview alone. Mirrors BuildDelegationToggle/AddSchemaField/
+// RemoveSchemaField, which re-render the same fragment for the same reason.
+//
+// POST /issuer/schema/build/doctype
+func (h *H) BuildDocTypeChange(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	data := extractBuilderData(r)
 	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
 	h.renderFragment(w, r, "fragment_schema_builder_form", data)
 }
@@ -720,6 +749,8 @@ func extractBuilderData(r *http.Request) builderData {
 		Expiry:            r.FormValue("expiry") == "on",
 		Scenario:          r.FormValue("scenario"),
 		Scenarios:         delegationScenarios,
+		DocType:           r.FormValue("doctype"),
+		KnownDocTypes:     mdoc.KnownDocTypes(),
 	}
 	if d.Std == "" {
 		d.Std = "w3c_vcdm_2"
@@ -728,7 +759,46 @@ func extractBuilderData(r *http.Request) builderData {
 	// call just makes that explicit before we hand r.Form to the helper.
 	_ = r.ParseForm()
 	d.Fields = parseFieldSpecsFromForm(r.Form)
+
+	// For mdoc, the standard's mandatory elements are preloaded and locked:
+	// the docType defines them, so an operator cannot omit or rename one and
+	// still have a conformant credential. Their labels stay editable.
+	if d.Std == "mso_mdoc" && d.DocType != "" {
+		mandatory := mdoc.MandatoryFields(d.DocType)
+		var merged []vctypes.FieldSpec
+		for _, m := range mandatory {
+			if submitted, ok := findFieldByName(d.Fields, m.Name); ok {
+				// Keep the operator's labels; the identifier is fixed.
+				m.Labels = submitted.Labels
+			}
+			merged = append(merged, m)
+		}
+		for _, f := range d.Fields {
+			if !isMandatoryName(mandatory, f.Name) {
+				merged = append(merged, f)
+			}
+		}
+		d.Fields = merged
+	}
 	return d
+}
+
+func findFieldByName(fields []vctypes.FieldSpec, name string) (vctypes.FieldSpec, bool) {
+	for _, f := range fields {
+		if f.Name == name {
+			return f, true
+		}
+	}
+	return vctypes.FieldSpec{}, false
+}
+
+func isMandatoryName(mandatory []vctypes.FieldSpec, name string) bool {
+	for _, m := range mandatory {
+		if m.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // parseFieldSpecsFromForm reads the indexed field rows (field_name_0,
