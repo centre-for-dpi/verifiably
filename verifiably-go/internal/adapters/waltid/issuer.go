@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1031,75 +1030,6 @@ func buildSelectiveDisclosureMap(subject map[string]string) json.RawMessage {
 	return b
 }
 
-// buildMdocData constructs the namespace-keyed body walt.id's mdoc issuer
-// expects. Namespace is derived from the credential's doctype (the Schema's
-// base type) by stripping the last dot-segment — mdoc spec convention, so
-// "org.iso.18013.5.1.mDL" → "org.iso.18013.5.1". Every subject field lands
-// under that namespace; walt.id copies them into the mdoc's data elements.
-func buildMdocData(schema vctypes.Schema, subject map[string]string) (json.RawMessage, error) {
-	doctype := mdocDocTypeFor(schema)
-	namespace := mdocNamespaceFor(doctype)
-	claims := make(map[string]any, len(subject))
-	for k, v := range subject {
-		claims[k] = coerceMdocValue(k, v)
-	}
-	doc := map[string]any{namespace: claims}
-	return json.Marshal(doc)
-}
-
-// mdocBoolElements are the ISO/IEC 18013-5 data elements defined as booleans.
-// The age attestations are the whole point of an mDL over a scanned licence:
-// a verifier learns "over 18" without learning the birth date.
-var mdocBoolElements = map[string]bool{
-	"age_over_13": true, "age_over_16": true, "age_over_18": true,
-	"age_over_21": true, "age_over_25": true, "age_over_60": true,
-	"age_over_62": true, "age_over_65": true, "age_over_68": true,
-}
-
-// mdocIntElements are the ISO/IEC 18013-5 data elements defined as integers.
-var mdocIntElements = map[string]bool{
-	"age_in_years":   true,
-	"age_birth_year": true,
-}
-
-// coerceMdocValue converts an operator-supplied string into the CBOR type
-// ISO/IEC 18013-5 defines for that data element.
-//
-// SubjectData is map[string]string end to end (it comes from an HTML form),
-// so without this everything reaches walt.id as a JSON string and gets
-// encoded as a CBOR text string. A conformant reader looking for the boolean
-// `true` in age_over_18 finds the string "true" and reports the element as
-// missing — which is exactly what the Multipaz reader did: it rejected
-// age_over_18 and age_over_21 even though both were present in the signed
-// mdoc. Found by decoding the CBOR: `age_over_18  str  'true'`.
-//
-// Unknown elements pass through as strings, which is correct — every other
-// mDL element ISO defines is a text string (or a bytestring for portrait,
-// which this does not attempt to handle: binary data can't come through a
-// map[string]string anyway).
-func coerceMdocValue(name, value string) any {
-	if mdocBoolElements[name] {
-		// Accept the spellings an operator form or API caller might send.
-		switch strings.ToLower(strings.TrimSpace(value)) {
-		case "true", "yes", "1":
-			return true
-		case "false", "no", "0", "":
-			return false
-		}
-		// Anything else is a caller mistake; leaving it as a string keeps the
-		// bad value visible in the credential instead of silently asserting
-		// false about someone's age.
-		return value
-	}
-	if mdocIntElements[name] {
-		if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
-			return n
-		}
-		return value
-	}
-	return value
-}
-
 // buildCredentialData constructs a VCDM 2.0-shaped JSON object from the
 // operator's subject input. Types come from the schema id prefix
 // (the canonical type before the `_format` suffix).
@@ -1232,8 +1162,8 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 		// looks like a wallet bug but is just a credential missing data.
 		//
 		// Nothing filters subject_data against this list on the way to
-		// walt.id — buildMdocData copies whatever it is given — so these
-		// were always issuable via the API. Verified by decoding a signed
+		// walt.id — the mdoc issuance path copies whatever it is given — so
+		// these were always issuable via the API. Verified by decoding a signed
 		// mdoc: all sixteen elements below came back in the CBOR. This list
 		// only drives the operator UI, which is why they need to be here to
 		// be offered at all.
@@ -1314,7 +1244,7 @@ func displayNameFor(id string, cfg credentialConfigurationEntry) string {
 	// space inserted mid-acronym). This also means the schema silently
 	// falls outside schemaAllowlistDefault's curated names, since nothing
 	// there matches the mangled output. Namespace convention mirrors
-	// buildMdocData: strip the doctype's last dot-segment.
+	// mdocNamespaceFor: strip the doctype's last dot-segment.
 	if cfg.Format == "mso_mdoc" {
 		doctype := strings.TrimSpace(cfg.DocType)
 		if doctype == "" {

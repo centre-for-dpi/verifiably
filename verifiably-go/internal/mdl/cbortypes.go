@@ -52,8 +52,9 @@ func (d TDate) MarshalCBOR() ([]byte, error) {
 // DrivingPrivilege is one entry of the driving_privileges array.
 //
 // This is why the existing walt.id issuance path cannot carry the dataset:
-// buildMdocData takes map[string]string, and this element is a nested array
-// of structures.
+// the adapter's SubjectData is map[string]string end to end, and this
+// element is a nested array of structures. See TODO.md for the concrete
+// failure modes this produces.
 type DrivingPrivilege struct {
 	VehicleCategoryCode string    `cbor:"vehicle_category_code"`
 	IssueDate           *FullDate `cbor:"issue_date,omitempty"`

@@ -69,11 +69,20 @@ func mdocDocTypeFor(schema vctypes.Schema) string {
 // mdocNamespaceFor derives the namespace from a docType by stripping the last
 // dot-segment: org.iso.18013.5.1.mDL -> org.iso.18013.5.1.
 //
-// This heuristic does NOT hold for every docType (org.iso.23220.photoID.1's
-// real base namespace is org.iso.23220.1, not org.iso.23220.photoID) — it
-// remains here only for buildMdocData's legacy path, which only ever sees
-// mDL. buildIssuer2Offer takes its namespace from docTypeProfiles instead,
-// where it is pinned explicitly per docType.
+// This heuristic does NOT hold for every docType: org.iso.23220.photoid.1
+// strips to org.iso.23220.photoid, but Photo ID's real base namespace is
+// org.iso.23220.1. It is correct for mDL only by coincidence of that
+// docType's shape.
+//
+// buildIssuer2Offer does not call this directly — it takes the namespace
+// from docTypeProfiles, where it is pinned explicitly per docType and so
+// cannot be wrong in this way. The one remaining caller is
+// catalog.go's namespace resolution, which falls back to this function only
+// for a docType absent from docTypeProfiles (i.e. one with no provisioned
+// issuer-api2 profile yet). That is exactly why the fallback exists and
+// exactly why it must not become the primary path: extending it to cover
+// Photo ID would reintroduce the wrong-namespace bug docTypeProfiles was
+// built to avoid.
 func mdocNamespaceFor(docType string) string {
 	if i := strings.LastIndex(docType, "."); i > 0 {
 		return docType[:i]
