@@ -299,6 +299,15 @@ func normalizeIssuanceTimeTZ(s string, offsetEastMin int) string {
 	return ""
 }
 
+// isBooleanField reports whether a claim field is a boolean, and is the ONE
+// predicate the whole boolean path routes through — the issue form's
+// two-input rendering, SubmitIssue's value gathering, and the required-field
+// exemption all key off it. Keeping it in one place means the three can never
+// disagree about what counts as a boolean, which is the shape of bug this
+// area already produced once: the form rendered a checkbox while the server
+// read the field as an ordinary string.
+func isBooleanField(fs vctypes.FieldSpec) bool { return fs.Datatype == "boolean" }
+
 // boolFieldValue resolves a boolean claim field to exactly "true" or "false".
 //
 // An HTML checkbox submits NOTHING when unticked, and the bare string "on"
@@ -330,6 +339,31 @@ func boolFieldValue(r *http.Request, name string) string {
 		return "true"
 	}
 	return "false"
+}
+
+// missingRequiredFields returns the names of every Required field the subject
+// left empty. Non-required fields may be left blank.
+//
+// Booleans are exempt from the emptiness test. boolFieldValue always yields
+// "true" or "false", and an UNTICKED required boolean is a legitimate answer
+// rather than a missing one — `age_over_18=false` is meaningful data about
+// the holder, not an unanswered question. Treating "false" as unfilled would
+// make a required boolean unsatisfiable in one of its two valid states, which
+// is exactly the live-deployment failure this exemption fixes.
+//
+// Split out of SubmitIssue so the rule is testable directly, without standing
+// up a session, an adapter and a full issuance round trip.
+func missingRequiredFields(schema vctypes.Schema, subject map[string]string) []string {
+	var missing []string
+	for _, spec := range schema.FieldsSpec {
+		if isBooleanField(spec) {
+			continue
+		}
+		if spec.Required && subject[spec.Name] == "" {
+			missing = append(missing, spec.Name)
+		}
+	}
+	return missing
 }
 
 func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
@@ -368,7 +402,7 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 	// Gather subject data from form (falls back to prefill)
 	subject := map[string]string{}
 	for _, fs := range schema.FieldsSpec {
-		if fs.Datatype == "boolean" {
+		if isBooleanField(fs) {
 			// Booleans come from a hidden "false" + a checkbox carrying
 			// "true", never a single input — see boolFieldValue.
 			subject[fs.Name] = boolFieldValue(r, fs.Name)
@@ -385,23 +419,7 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		subject[fs.Name] = v
 	}
-	// Validate: every Required field must be non-empty. Non-required fields
-	// may be left blank.
-	//
-	// Booleans are exempt from the emptiness test: boolFieldValue always
-	// yields "true" or "false", and an UNTICKED required boolean is a
-	// legitimate answer, not a missing one — `age_over_18=false` is
-	// meaningful data about the holder. Treating "false" as unfilled would
-	// make a required boolean unsatisfiable in one of its two valid states.
-	var missing []string
-	for _, spec := range schema.FieldsSpec {
-		if spec.Datatype == "boolean" {
-			continue
-		}
-		if spec.Required && subject[spec.Name] == "" {
-			missing = append(missing, spec.Name)
-		}
-	}
+	missing := missingRequiredFields(schema, subject)
 	if len(missing) > 0 {
 		h.errorToast(w, r, "Fill in required fields: "+strings.Join(missing, ", "))
 		return
