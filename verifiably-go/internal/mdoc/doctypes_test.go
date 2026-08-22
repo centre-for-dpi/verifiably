@@ -15,12 +15,16 @@ func TestMandatoryFieldsMDL(t *testing.T) {
 	// over the profile, so a field we never offer keeps that blank and fails
 	// issuance on the citizen's phone. The ISO count is asserted separately so
 	// this stays honest about which requirement is whose.
-	if len(fields) != 12 {
-		t.Fatalf("mDL: got %d fields, want 12 (11 ISO-mandatory + portrait_capture_date)", len(fields))
+	if len(fields) != 13 {
+		t.Fatalf("mDL: got %d fields, want 13 (11 ISO-mandatory + 2 vendor-profile)", len(fields))
+	}
+	vendorProfileOnly := map[string]bool{
+		"portrait_capture_date": true,
+		"issuing_jurisdiction":  true,
 	}
 	isoMandatory := 0
 	for _, f := range fields {
-		if f.Name != "portrait_capture_date" {
+		if !vendorProfileOnly[f.Name] {
 			isoMandatory++
 		}
 	}
@@ -58,12 +62,16 @@ func TestMandatoryFieldsPhotoID(t *testing.T) {
 	// over the profile, so a field we never offer keeps that blank and fails
 	// issuance on the citizen's phone. The ISO count is asserted separately
 	// below so this stays honest about which is which.
-	if len(fields) != 10 {
-		t.Fatalf("photoID: got %d fields, want 10 (9 ISO-mandatory + portrait_capture_date)", len(fields))
+	if len(fields) != 11 {
+		t.Fatalf("photoID: got %d fields, want 11 (9 ISO-mandatory + 2 vendor-profile)", len(fields))
+	}
+	vendorProfileOnly := map[string]bool{
+		"portrait_capture_date": true,
+		"issuing_jurisdiction":  true,
 	}
 	isoMandatory := 0
 	for _, f := range fields {
-		if f.Name != "portrait_capture_date" {
+		if !vendorProfileOnly[f.Name] {
 			isoMandatory++
 		}
 	}
@@ -116,6 +124,7 @@ func TestKnownDocTypes(t *testing.T) {
 func TestMDLMandatorySubsetOfIssuerDataset(t *testing.T) {
 	vendorProfileOnly := map[string]bool{
 		"portrait_capture_date": true,
+		"issuing_jurisdiction":  true,
 	}
 	issued := map[string]bool{}
 	for _, e := range mdl.DatasetElements {

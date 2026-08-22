@@ -86,6 +86,16 @@ var mdlMandatory = []vctypes.FieldSpec{
 	dateField("issue_date", "Date of Issue"),
 	dateField("expiry_date", "Date of Expiry"),
 	req("issuing_country", "Issuing Country"),
+	// issuing_jurisdiction is OPTIONAL in ISO but required in practice here.
+	// @animo-id/mdoc (the verifier inside cdpi-wallet) cross-checks exactly two
+	// data elements against the signing certificate's Subject DN:
+	// issuing_country must equal countryName (C), and issuing_jurisdiction must
+	// equal stateOrProvinceName (ST). A blank value fails that check outright:
+	//   The 'issuing_jurisdiction' () must match the 'stateOrProvinceName'
+	//   (DO-01) in the subject field within the issuer certificate
+	// The field was absent from this list, so the operator had no way to supply
+	// it and the wallet rejected every credential on accept.
+	req("issuing_jurisdiction", "Issuing Jurisdiction"),
 	req("issuing_authority", "Issuing Authority"),
 	req("document_number", "Document Number"),
 	structured("portrait", "Portrait", FormatImage),
@@ -116,6 +126,16 @@ var photoIDMandatory = []vctypes.FieldSpec{
 	dateField("expiry_date", "Date of Expiry"),
 	req("issuing_authority_unicode", "Issuing Authority"),
 	req("issuing_country", "Issuing Country"),
+	// issuing_jurisdiction is OPTIONAL in ISO but required in practice here.
+	// @animo-id/mdoc (the verifier inside cdpi-wallet) cross-checks exactly two
+	// data elements against the signing certificate's Subject DN:
+	// issuing_country must equal countryName (C), and issuing_jurisdiction must
+	// equal stateOrProvinceName (ST). A blank value fails that check outright:
+	//   The 'issuing_jurisdiction' () must match the 'stateOrProvinceName'
+	//   (DO-01) in the subject field within the issuer certificate
+	// The field was absent from this list, so the operator had no way to supply
+	// it and the wallet rejected every credential on accept.
+	req("issuing_jurisdiction", "Issuing Jurisdiction"),
 	{
 		Name:     "age_over_18",
 		Datatype: "boolean",
