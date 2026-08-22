@@ -55,6 +55,34 @@ render_waltid_service_confs() {
   printf 'baseUrl = "%s"\n' "$issuer_url"   > "$issuer_conf"
   printf 'baseUrl = "%s"\n' "$verifier_url" > "$verifier_conf"
   green "  rendered walt.id service confs (issuer=$issuer_url, verifier=$verifier_url)"
+
+  # issuer-api2 needs the same treatment for the same reason, but its conf
+  # carries far more than baseUrl (env-substituted keys, clientAuthentication
+  # config), so this rewrites the single line in place rather than truncating
+  # the file the way the two above do.
+  #
+  # Without this the mdoc credential offer a citizen scans points at the
+  # compose-internal host, which no phone can resolve. issuer-api2 publishes
+  # no ports; Caddy proxies only its /openid4vci/* and /.well-known/* paths
+  # (see the walt-issuer2 entry below) so the unauthenticated /issuer2/*
+  # management API stays off the public internet.
+  local issuer2_conf="$SCRIPT_DIR/deploy/k8s/config/issuer2/issuer-service.conf"
+  if [[ -f "$issuer2_conf" ]]; then
+    local issuer2_url
+    issuer2_url=$(url_for walt-issuer2 "$VERIFIABLY_PUBLIC_HOST" "$WALTID_ISSUER_PORT")
+    # Match the committed template line or a previously rendered literal.
+    python3 - "$issuer2_conf" "$issuer2_url" <<'PYEOF'
+import re, sys
+path, url = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+new, n = re.subn(r'(?m)^baseUrl\s*=\s*".*"$', 'baseUrl = "%s"' % url, text, count=1)
+if n:
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(new)
+PYEOF
+    green "  rendered issuer-api2 baseUrl ($issuer2_url)"
+  fi
 }
 
 # seed_credential_issuer_catalog seeds the runtime credential-issuer-metadata.conf
@@ -197,6 +225,13 @@ render_public_caddyfile() {
   # presents a self-signed cert internally.
   local -a entries=(
     "walt-issuer|issuer-api:7002|http"
+    # walt-issuer2: mso_mdoc (mDL / Photo ID) issuance. Needs a public origin
+    # because issuer-api2 stamps its own baseUrl into the credential offer the
+    # citizen's wallet resolves — an offer pointing at the compose-internal
+    # host is unreachable from a phone. Only the OID4VCI protocol paths are
+    # proxied; see the handle rules below, which deliberately do NOT expose
+    # /issuer2/* (unauthenticated management API).
+    "walt-issuer2|issuer-api2:7002|http"
     "walt-wallet|wallet-api:7001|http"
     "walt-verifier|verifier-api:7003|http"
     "inji-certify|certify-nginx:80|http"
@@ -355,6 +390,26 @@ PYEOF
         printf '\t\trewrite * /inji-proxy/.well-known/did.json\n'
         printf '\t\treverse_proxy verifiably-go:8080\n'
         printf '\t}\n'
+      fi
+      # walt-issuer2: expose ONLY the OID4VCI protocol surface a wallet needs.
+      #
+      # issuer-api2 ships no authentication knob whatsoever. /issuer2/* lets
+      # anyone who can reach it mint a signed credential with arbitrary subject
+      # data (POST /issuer2/credential-offers) and read issuerKey private
+      # material (GET /issuer2/sessions). Network isolation is the mitigation,
+      # which is why the compose service publishes no ports — but the wallet
+      # still needs a public origin, because issuer-api2 stamps its own baseUrl
+      # into the offer the citizen scans.
+      #
+      # So: allowlist the protocol paths, and return 404 for everything else.
+      # verifiably-go keeps reaching /issuer2/* over the compose network, where
+      # it was always reachable. Do NOT replace this with a bare reverse_proxy.
+      if [[ "$name" == "walt-issuer2" ]]; then
+        printf '\thandle /openid4vci/* {\n\t\treverse_proxy %s\n\t}\n' "$upstream"
+        printf '\thandle /.well-known/* {\n\t\treverse_proxy %s\n\t}\n' "$upstream"
+        printf '\thandle {\n\t\trespond 404\n\t}\n'
+        printf '}\n\n'
+        continue
       fi
       case "$proto" in
         https-skipverify)

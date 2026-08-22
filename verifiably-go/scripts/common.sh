@@ -236,11 +236,17 @@ export CREDEBL_COMPOSE_DIR
 # scenario" and can evolve without touching the shared compose.
 
 # ── Walt ID — role-specific service arrays ───────────────────────────────────
-WALTID_ISSUER_SVCS=(postgres caddy issuer-api)
+# issuer-api2 runs ALONGSIDE issuer-api, not instead of it: mso_mdoc issuance
+# routes to issuer-api2 (it is the only one that can type CBOR), while every
+# other format stays on issuer-api. An issuer deployment therefore needs both,
+# or mDL/Photo ID issuance fails with "no issuer-api2 profile for docType".
+# It publishes no ports by design — verifiably-go reaches it over the compose
+# network, and its unauthenticated management API must never be exposed.
+WALTID_ISSUER_SVCS=(postgres caddy issuer-api issuer-api2)
 WALTID_VERIFIER_SVCS=(postgres caddy verifier-api)
 WALTID_HOLDER_SVCS=(postgres caddy wallet-api)
 # Backward-compat aliases (not used internally — kept for external scripts)
-WALTID_SERVICES=(postgres caddy issuer-api verifier-api wallet-api)
+WALTID_SERVICES=(postgres caddy issuer-api issuer-api2 verifier-api wallet-api)
 # When VERIFIABLY_KEYCLOAK_EXTERNAL_ISSUER_URL is set, the operator is
 # pointing verifiably-go at an external Keycloak (one they don't host
 # themselves — e.g. an upstream realm shared by another team). In that
