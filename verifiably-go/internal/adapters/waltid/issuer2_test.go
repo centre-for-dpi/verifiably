@@ -247,3 +247,55 @@ func TestIssuer2OfferResponseParsing(t *testing.T) {
 		t.Errorf("CredentialOffer = %q, want an openid-credential-offer:// URI", resp.CredentialOffer)
 	}
 }
+
+// TestMdocDocTypeForSavedBuilderSchema reproduces a real deployment failure:
+// issuing a builder-made mDL died with
+//
+//	no issuer-api2 profile for docType "custom-dkv6iyntczt6"
+//
+// SaveCustomSchema persists a custom schema under its generated "custom-<nano>"
+// ID, so BaseType() — which derives from Schema.ID — yields that ID, not the
+// docType. The operator's selection only survives in AdditionalTypes, so that
+// is what mdocDocTypeFor must consult first.
+func TestMdocDocTypeForSavedBuilderSchema(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		schema     vctypes.Schema
+	}{
+		{
+			name: "saved builder mDL keeps its generated ID",
+			want: "org.iso.18013.5.1.mDL",
+			schema: vctypes.Schema{
+				ID:              "custom-dkv6iyntczt6",
+				Std:             "mso_mdoc",
+				Custom:          true,
+				AdditionalTypes: []string{"org.iso.18013.5.1.mDL"},
+			},
+		},
+		{
+			name: "saved builder Photo ID",
+			want: "org.iso.23220.photoid.1",
+			schema: vctypes.Schema{
+				ID:              "custom-abc123",
+				Std:             "mso_mdoc",
+				Custom:          true,
+				AdditionalTypes: []string{"org.iso.23220.photoid.1"},
+			},
+		},
+		{
+			name:   "stock catalog entry still resolves via BaseType",
+			want:   "org.iso.18013.5.1.mDL",
+			schema: vctypes.Schema{ID: "org.iso.18013.5.1.mDL_mso_mdoc", Std: "mso_mdoc"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mdocDocTypeFor(tc.schema)
+			if got != tc.want {
+				t.Errorf("mdocDocTypeFor() = %q, want %q", got, tc.want)
+			}
+			if _, ok := profileIDForDocType(got); !ok {
+				t.Errorf("docType %q does not resolve to an issuer-api2 profile", got)
+			}
+		})
+	}
+}

@@ -82,6 +82,34 @@ if n:
         f.write(new)
 PYEOF
     green "  rendered issuer-api2 baseUrl ($issuer2_url)"
+
+    # ciTokenKey / credentialEncryptionKey cannot be env-substituted at all:
+    # bare ${VAR} arrives as a HOCON object where Hoplite wants a JSON string,
+    # and """${VAR}""" is not substituted (HOCON leaves triple-quoted text
+    # literal). Both crash the boot. So render the real JSON in here, the way
+    # walt.id ships it. The committed file carries placeholders; this rewrite
+    # is what a running deployment actually reads.
+    local _missing=""
+    [[ -z "${VERIFIABLY_ISSUER2_CI_TOKEN_KEY:-}" ]] && _missing="VERIFIABLY_ISSUER2_CI_TOKEN_KEY"
+    [[ -z "${VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY:-}" ]] && _missing="$_missing VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY"
+    if [[ -n "$_missing" ]]; then
+      red "  issuer-api2 will NOT boot — missing:$_missing"
+      red "  Generate EC P-256 JWKs wrapped as {\"type\":\"jwk\",\"jwk\":{...}} and set them in .env"
+    else
+      python3 - "$issuer2_conf" "$VERIFIABLY_ISSUER2_CI_TOKEN_KEY" "$VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY" <<'PYEOF'
+import re, sys
+path, ci, enc = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+text = re.sub(r'(?m)^ciTokenKey\s*=.*$',
+              'ciTokenKey = """%s"""' % ci, text, count=1)
+text = re.sub(r'(?m)^credentialEncryptionKey\s*=.*$',
+              'credentialEncryptionKey = """%s"""' % enc, text, count=1)
+with open(path, "w", encoding="utf-8", newline="") as f:
+    f.write(text)
+PYEOF
+      green "  rendered issuer-api2 ciTokenKey + credentialEncryptionKey"
+    fi
   fi
 }
 

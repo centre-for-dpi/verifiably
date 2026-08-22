@@ -57,9 +57,27 @@ func profileIDForDocType(docType string) (mdocProfile, bool) {
 	return p, ok
 }
 
-// mdocDocTypeFor resolves a schema's ISO docType. BaseType() carries it for
-// stock catalog entries; custom schemas fall back to the ID.
+// mdocDocTypeFor resolves a schema's ISO docType.
+//
+// AdditionalTypes[0] comes first: for a builder-made mdoc schema that is the
+// operator's selected docType, and it is the ONLY place that survives the
+// save. SaveCustomSchema persists a custom schema under its generated
+// "custom-<nano>" ID, so BaseType() — which derives from Schema.ID by
+// stripping a wire-format suffix — hands back that generated ID rather than
+// the docType. Resolving from it failed on a real deployment with
+//
+//	no issuer-api2 profile for docType "custom-dkv6iyntczt6"
+//
+// while the docType sat correctly in AdditionalTypes the whole time.
+//
+// BaseType() remains the fallback for stock catalog entries, whose IDs are
+// "<docType>_<wireFormat>" and carry no AdditionalTypes.
 func mdocDocTypeFor(schema vctypes.Schema) string {
+	if len(schema.AdditionalTypes) > 0 {
+		if dt := strings.TrimSpace(schema.AdditionalTypes[0]); dt != "" {
+			return dt
+		}
+	}
 	if dt := schema.BaseType(); dt != "" {
 		return dt
 	}
