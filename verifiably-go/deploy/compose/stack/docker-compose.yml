@@ -146,9 +146,21 @@ services:
     restart: unless-stopped
     depends_on:
       - caddy
+    # List form, not the `KEY: ${VAR:-}` map form used elsewhere in this file:
+    # compose's map form always materializes the key in the container, even
+    # as "" when the host var is unset, which defeats HOCON's ${?VAR} --
+    # Typesafe Config only omits a key when the env var is absent from the
+    # process environment, not when it's present-and-empty. The bare-name
+    # list entries below (VERIFIABLY_ISSUER_DISPLAY_NAME /
+    # VERIFIABLY_ISSUER_DESCRIPTION, no `=value`) are the form that actually
+    # passes the host var through only when set, and omits it from the
+    # container otherwise. YAML doesn't allow mixing list and map entries in
+    # one `environment:` block, so the whole block moved to list form.
     environment:
-      SERVICE_HOST: ${VERIFIABLY_PUBLIC_HOST:-localhost}
-      ISSUER_API_PORT: ${WALTID_ISSUER_PORT:-7002}
+      - SERVICE_HOST=${VERIFIABLY_PUBLIC_HOST:-localhost}
+      - ISSUER_API_PORT=${WALTID_ISSUER_PORT:-7002}
+      - VERIFIABLY_ISSUER_DISPLAY_NAME
+      - VERIFIABLY_ISSUER_DESCRIPTION
     volumes:
       # Walt.id config files live under deploy/k8s/config/issuer/ so the
       # same files back both the compose stack and the Helm chart's ConfigMap
@@ -170,18 +182,23 @@ services:
     restart: unless-stopped
     depends_on:
       - caddy
+    # List form -- see the comment on issuer-api's environment: block above
+    # for why VERIFIABLY_ISSUER_DISPLAY_NAME / VERIFIABLY_ISSUER_DESCRIPTION
+    # must be bare names rather than `KEY: ${VAR:-}`.
     environment:
-      SERVICE_HOST: ${VERIFIABLY_PUBLIC_HOST:-localhost}
-      ISSUER_API_PORT: 7002
-      VERIFIABLY_ISSUER2_KEY: ${VERIFIABLY_ISSUER2_KEY:?issuer-api2 requires an EC P-256 issuer key}
+      - SERVICE_HOST=${VERIFIABLY_PUBLIC_HOST:-localhost}
+      - ISSUER_API_PORT=7002
+      - VERIFIABLY_ISSUER2_KEY=${VERIFIABLY_ISSUER2_KEY:?issuer-api2 requires an EC P-256 issuer key}
       # issuer-service.conf embeds two more published walt.id example private
       # keys beyond defaultIssuerKey (CI-token signing and credential
       # encryption) — same treatment: required at boot, no silent fallback.
-      VERIFIABLY_ISSUER2_CI_TOKEN_KEY: ${VERIFIABLY_ISSUER2_CI_TOKEN_KEY:?issuer-api2 requires a ciTokenKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
-      VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY: ${VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY:?issuer-api2 requires a credentialEncryptionKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
+      - VERIFIABLY_ISSUER2_CI_TOKEN_KEY=${VERIFIABLY_ISSUER2_CI_TOKEN_KEY:?issuer-api2 requires a ciTokenKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
+      - VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY=${VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY:?issuer-api2 requires a credentialEncryptionKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
       # Optional: only read if authentication-service.conf's inert keycloak
       # config is ever activated. Left unset in normal operation.
-      VERIFIABLY_ISSUER2_OIDC_CLIENT_SECRET: ${VERIFIABLY_ISSUER2_OIDC_CLIENT_SECRET:-}
+      - VERIFIABLY_ISSUER2_OIDC_CLIENT_SECRET=${VERIFIABLY_ISSUER2_OIDC_CLIENT_SECRET:-}
+      - VERIFIABLY_ISSUER_DISPLAY_NAME
+      - VERIFIABLY_ISSUER_DESCRIPTION
     volumes:
       - ../../k8s/config/issuer2:/waltid-issuer-api2/config:ro
 
