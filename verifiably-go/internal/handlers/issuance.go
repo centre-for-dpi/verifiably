@@ -638,6 +638,21 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 		// declared Format, not its name.
 		if fs.Format == "date" || fs.Format == "datetime" {
 			v = normalizeIssuanceTimeTZ(v, tzOffset)
+			// ISO 18013-5 dates are CBOR full-date (tag 1004): YYYY-MM-DD with
+			// NO time component. normalizeIssuanceTimeTZ returns full RFC3339,
+			// which is right for W3C validFrom/SD-JWT nbf but not here — it
+			// made walt.id reject a real issuance at wallet redemption with
+			//
+			//	DateTimeParseException: Text '1984-08-18T04:00:00Z' could not be
+			//	parsed, unparsed text found at index 10
+			//
+			// Index 10 is exactly where the date ends and "T04:00:00Z" begins.
+			// The driving-privilege dates already did this (see
+			// drivingPrivilegeRows); the flat date fields did not, which is the
+			// inconsistency that let it through.
+			if fs.Format == "date" && schema.Std == "mso_mdoc" {
+				v = fullDateOnly(v)
+			}
 		}
 		subject[fs.Name] = v
 	}

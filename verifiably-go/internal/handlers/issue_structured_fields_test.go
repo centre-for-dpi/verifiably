@@ -456,3 +456,40 @@ func TestDrivingPrivilegesOverCapWarnsOperator(t *testing.T) {
 		}
 	}
 }
+
+// TestMdocDatesAreFullDateNotRFC3339 reproduces a live failure: the operator's
+// birth_date reached walt.id as "1984-08-18T04:00:00Z" and issuance died at
+// wallet redemption with
+//
+//	DateTimeParseException: Text '1984-08-18T04:00:00Z' could not be parsed,
+//	unparsed text found at index 10
+//
+// Index 10 is where the date ends and the time begins. ISO 18013-5 dates are
+// CBOR full-date (tag 1004) — no time component. normalizeIssuanceTimeTZ
+// returns full RFC3339, which is correct for W3C validFrom and SD-JWT nbf but
+// wrong for mdoc, so mdoc dates must be trimmed. The driving-privilege dates
+// already were; the flat ones were not.
+func TestMdocDatesAreFullDateNotRFC3339(t *testing.T) {
+	for _, tc := range []struct {
+		name, std, in, want string
+	}{
+		{"mdoc trims the time", "mso_mdoc", "1984-08-18", "1984-08-18"},
+		{"w3c keeps full RFC3339", "w3c_vcdm_2", "1984-08-18", "1984-08-18T04:00:00Z"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// -240 = UTC-4, the offset the operator's browser reported.
+			normalized := normalizeIssuanceTimeTZ(tc.in, -240)
+			got := normalized
+			if tc.std == "mso_mdoc" {
+				got = fullDateOnly(normalized)
+			}
+			if got != tc.want {
+				t.Errorf("%s: got %q, want %q", tc.std, got, tc.want)
+			}
+			if tc.std == "mso_mdoc" && strings.Contains(got, "T") {
+				t.Errorf("mdoc date %q still carries a time component — walt.id "+
+					"rejects it at index 10", got)
+			}
+		})
+	}
+}
