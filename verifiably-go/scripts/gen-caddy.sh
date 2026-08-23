@@ -175,7 +175,11 @@ provision_issuer2_certificates() {
     # No Go toolchain is assumed on the deploy host — deploy.sh already
     # requires docker, so build and run the generator in the official image.
     # The module cache is not persisted; this is a once-per-deployment cost.
-    if ! docker run --rm \
+    # MSYS_NO_PATHCONV=1: Git Bash on Windows rewrites POSIX-looking paths in
+    # docker arguments into Windows form, turning -w /src into
+    # 'C:/Program Files/Git/src' and failing the run. Unset and ignored on
+    # Linux/macOS, so this is safe everywhere.
+    if ! MSYS_NO_PATHCONV=1 docker run --rm \
         -v "$SCRIPT_DIR":/src -w /src \
         -e GOFLAGS=-mod=mod \
         golang:1.25-alpine \
