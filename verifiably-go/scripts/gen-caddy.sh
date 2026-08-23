@@ -113,6 +113,174 @@ PYEOF
   fi
 }
 
+# provision_issuer2_certificates generates the mdoc issuance certificate chain
+# on first deploy and renders the DSC into issuer2-profiles.conf's x5chain.
+#
+# WHY THIS EXISTS
+# The committed issuer2-profiles.conf carries walt.id's PUBLISHED EXAMPLE
+# certificate. Its public key is not the operator's signing key, and ISO
+# 18013-5 gives a verifier no source for the signing key other than the
+# x5chain leaf. So a clean deploy comes up, issues credentials, returns 200 on
+# everything, and produces mdocs that every conformant wallet rejects — a real
+# wallet reports only "No trusted certificate was found while validating the
+# X.509 chain". Nothing in walt.id logs a complaint. This function is what
+# closes that gap without a human remembering to.
+#
+# KEY/CERTIFICATE BINDING
+# cmd/mdl-pki-gen generates the DSC key and certifies THAT key, then emits both
+# the certificate and the matching VERIFIABLY_ISSUER2_KEY_X/_Y/_D coordinates.
+# They cannot drift apart, because one command produces both from one key. That
+# mismatch is the exact failure that has already reached a live deployment.
+#
+# IDEMPOTENCE
+# Both halves are no-clobber, the same posture as seed_credential_issuer_catalog:
+#   - mdl-pki-gen returns early if dsc.pem exists, so a redeploy never
+#     regenerates. Regenerating would start signing with a key that credentials
+#     already in citizens' wallets do not carry in their x5chain.
+#   - the x5chain is only rewritten while the committed walt.id example
+#     certificate is still in place, so an operator who pasted in their own real
+#     chain keeps it.
+# An operator supplying real material just drops dsc.pem/iaca.pem into the certs
+# directory (and sets the three key vars) before the first deploy; generation
+# then skips entirely.
+#
+# The generated material is proof-of-concept: every subject carries
+# O=POC-DO-NOT-TRUST so it cannot be mistaken for a real PKI.
+#
+# Subject C/ST are configurable because @animo-id/mdoc cross-checks the mdoc's
+# issuing_country against countryName and issuing_jurisdiction against
+# stateOrProvinceName. A mismatch is a rejection at accept time, and not every
+# deployment is Dominican.
+provision_issuer2_certificates() {
+  local certs_dir="$SCRIPT_DIR/deploy/k8s/config/issuer2/certs"
+  local profiles="$SCRIPT_DIR/deploy/k8s/config/issuer2/issuer2-profiles.conf"
+  local dsc="$certs_dir/dsc.pem"
+  local iaca="$certs_dir/iaca.pem"
+  local key_env="$certs_dir/issuer2.env"
+
+  if [[ ! -f "$profiles" ]]; then
+    red "  WARN: $profiles missing — issuer2 certificate provisioning skipped"
+    return 0
+  fi
+
+  local country="${VERIFIABLY_ISSUER2_CERT_COUNTRY:-DO}"
+  local province="${VERIFIABLY_ISSUER2_CERT_PROVINCE:-DO-01}"
+  local authority="${VERIFIABLY_ISSUER2_CERT_AUTHORITY:-VERIFIABLY POC}"
+
+  # Generate only when there is no DSC yet. mdl-pki-gen re-checks this itself;
+  # testing here too keeps the docker run off the path of every redeploy.
+  if [[ ! -f "$dsc" ]]; then
+    mkdir -p "$certs_dir"
+    bold "  Generating mdoc issuance certificates (first deploy)"
+    # No Go toolchain is assumed on the deploy host — deploy.sh already
+    # requires docker, so build and run the generator in the official image.
+    # The module cache is not persisted; this is a once-per-deployment cost.
+    if ! docker run --rm \
+        -v "$SCRIPT_DIR":/src -w /src \
+        -e GOFLAGS=-mod=mod \
+        golang:1.25-alpine \
+        go run ./cmd/mdl-pki-gen \
+          -out "/src/deploy/k8s/config/issuer2/certs" \
+          -country "$country" -province "$province" -authority "$authority"; then
+      red "  issuer2 certificate generation FAILED — the deployment will issue"
+      red "  mdocs carrying walt.id's example certificate, which no wallet accepts."
+      return 1
+    fi
+  fi
+
+  [[ -f "$dsc" ]] || { red "  WARN: $dsc missing after generation — skipping x5chain render"; return 0; }
+
+  # Load the generated coordinates into the environment compose passes through,
+  # and persist them to .env so a later `up` (which does not re-run generation)
+  # still has them. Never overwrite values an operator set themselves.
+  if [[ -f "$key_env" ]]; then
+    local _line _var _val
+    while IFS= read -r _line; do
+      [[ "$_line" == VERIFIABLY_ISSUER2_KEY_* ]] || continue
+      _var="${_line%%=*}"
+      _val="${_line#*=}"
+      if [[ -z "${!_var:-}" ]]; then
+        export "$_var=$_val"
+        [[ -n "${VERIFIABLY_ENV_FILE:-}" ]] && set_env_var "$VERIFIABLY_ENV_FILE" "$_var" "$_val"
+      fi
+    done < "$key_env"
+    green "  issuer2 signing key loaded from $key_env"
+  fi
+
+  # Render the DSC (and its IACA) into defaultIssuerX5chain, but only while the
+  # committed walt.id example certificate is still there. Once this file carries
+  # a real chain — ours or the operator's — leave it alone.
+  python3 - "$profiles" "$dsc" "$iaca" <<'PYEOF'
+import re, sys
+
+profiles_path, dsc_path, iaca_path = sys.argv[1], sys.argv[2], sys.argv[3]
+
+with open(profiles_path, encoding="utf-8") as f:
+    text = f.read()
+
+# walt.id's published example certificate, identified by the CN baked into it.
+# Matching on this rather than on "is there any cert" is what makes the render
+# no-clobber: an operator-supplied chain does not contain it.
+WALTID_EXAMPLE = "MIIBeTCCAR8CFHrWgrGl5KdefSvRQhR"
+if WALTID_EXAMPLE not in text:
+    print("  x5chain already carries a non-example certificate — left as is")
+    raise SystemExit(0)
+
+def pem_body(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read().strip()
+
+certs = [pem_body(dsc_path)]
+try:
+    certs.append(pem_body(iaca_path))
+except OSError:
+    pass  # DSC alone is a valid x5chain; the IACA is the trust anchor.
+
+# HOCON triple-quoted strings, one per certificate, leaf first.
+block = "defaultIssuerX5chain = [\n" + ",\n".join(
+    '  """%s"""' % c for c in certs
+) + "\n]\n"
+
+new, n = re.subn(
+    r'(?ms)^defaultIssuerX5chain = \[.*?^\]\n',
+    lambda m: block,
+    text,
+    count=1,
+)
+if not n:
+    raise SystemExit("  ERROR: could not locate defaultIssuerX5chain block")
+
+with open(profiles_path, "w", encoding="utf-8", newline="") as f:
+    f.write(new)
+print("  rendered issuer2 x5chain (%d certificate(s), leaf first)" % len(certs))
+PYEOF
+
+  # The IACA is the trust anchor an operator imports into a wallet, so say
+  # where it is rather than leaving them to find it.
+  if [[ -f "$iaca" ]]; then
+    green "  IACA trust anchor for wallet import: $iaca"
+  fi
+}
+
+# announce_issuer2_trust_anchor tells the operator where the IACA is, at the
+# END of a deploy where it is still on screen.
+#
+# An mdoc is only trustworthy to a wallet that recognises its trust anchor. Our
+# IACA is self-signed and in no wallet's default store, so unless the operator
+# imports this file, every credential this deployment issues is refused — and
+# the wallet's message ("No trusted certificate was found") points at the
+# certificate, not at the missing import. Printing the path is what turns that
+# into a two-minute fix instead of a debugging session.
+announce_issuer2_trust_anchor() {
+  local iaca="$SCRIPT_DIR/deploy/k8s/config/issuer2/certs/iaca.pem"
+  [[ -f "$iaca" ]] || return 0
+  bold "▶ mdoc trust anchor"
+  echo "    Import this IACA into your wallet to accept mdocs from this deployment:"
+  echo "      $iaca"
+  echo "    Generated demo PKI (O=POC-DO-NOT-TRUST). The DSC expires in at most"
+  echo "    457 days (ISO/IEC 18013-5 Annex B); re-issue credentials after that."
+}
+
 # seed_credential_issuer_catalog seeds the runtime credential-issuer-metadata.conf
 # from the committed *.baseline.conf when the runtime file doesn't yet exist.
 # Idempotent — `cp -n` (no-clobber) means a second run is a no-op even if the

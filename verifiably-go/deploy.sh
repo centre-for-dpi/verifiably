@@ -213,6 +213,15 @@ cmd_up() {
     render_public_caddyfile
   fi
 
+  # mdoc issuance certificates. Runs BEFORE render_waltid_service_confs
+  # because it exports VERIFIABLY_ISSUER2_KEY_X/_Y/_D on first deploy, and
+  # the issuer2 conf render (and compose itself) needs them set.
+  #
+  # Without this a clean deploy issues mdocs carrying walt.id's published
+  # example certificate — accepted by nothing, and reported as an error by
+  # nothing on our side.
+  provision_issuer2_certificates
+
   # walt.id issuer-api + verifier-api baseUrls — must match the host
   # the wallet sees, otherwise every OID4VP request bakes localhost into
   # client_id / presentation_definition_uri and the wallet 500s.
@@ -612,6 +621,7 @@ cmd_up() {
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
   verify_oidc_discovery
+  announce_issuer2_trust_anchor
 }
 
 # apply_inji_verify_schema creates the Inji Verify OID4VP `verify` schema + the
