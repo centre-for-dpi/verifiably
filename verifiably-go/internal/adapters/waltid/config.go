@@ -50,9 +50,13 @@ type Config struct {
 	// after appending to the HOCON catalog so walt.id reloads its
 	// credential_configurations_supported map.
 	IssuerServiceName string `json:"issuerServiceName"`
-	// Issuer2MetadataPath points at issuer-api2's own
+	// Issuer2MetadataPath points at issuer-api2's own RUNTIME
 	// credential-issuer-metadata.conf as visible from the verifiably-go process
-	// (e.g. /app/issuer2-config/credential-issuer-metadata.conf). Unlike
+	// (e.g. /app/issuer2-config/credential-issuer-metadata.conf) — never the
+	// committed *.baseline.conf beside it, which is only the seed
+	// seed_issuer2_configs copies from on first deploy. Editing the baseline
+	// would put the operator's display name in git and lose it on the next
+	// checkout, which is the bug the split exists to prevent. Unlike
 	// CatalogPath this file is never APPENDED to — issuer-api2's configurations
 	// are pre-provisioned per ISO docType — it is edited in place so a custom
 	// mdoc schema's own name reaches the wallet instead of the raw docType.

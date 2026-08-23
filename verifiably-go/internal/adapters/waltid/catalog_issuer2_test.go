@@ -17,8 +17,12 @@ import (
 func copyShippedIssuer2Metadata(t *testing.T) string {
 	t.Helper()
 	// internal/adapters/waltid -> repo root is three levels up.
+	// The committed baseline: the runtime credential-issuer-metadata.conf beside
+	// it is gitignored and only exists after a deploy, so reading that one would
+	// make this test fail in a fresh clone and in CI. The baseline is the exact
+	// content a deployment is seeded with, which is what this test needs.
 	src := filepath.Join("..", "..", "..", "deploy", "k8s", "config", "issuer2",
-		"credential-issuer-metadata.conf")
+		"credential-issuer-metadata.baseline.conf")
 	data, err := os.ReadFile(src)
 	if err != nil {
 		t.Fatalf("read shipped issuer2 metadata: %v", err)

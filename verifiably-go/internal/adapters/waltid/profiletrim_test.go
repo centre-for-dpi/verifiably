@@ -10,7 +10,10 @@ import (
 
 // profilesConfPath locates the deployed issuer-api2 profile from this package.
 func profilesConfPath() string {
-	return filepath.Join("..", "..", "..", "deploy", "k8s", "config", "issuer2", "issuer2-profiles.conf")
+	// The committed baseline, not the gitignored runtime file, which only exists
+	// after a deploy — reading that one would make these guards silently skip in
+	// a fresh clone and in CI.
+	return filepath.Join("..", "..", "..", "deploy", "k8s", "config", "issuer2", "issuer2-profiles.baseline.conf")
 }
 
 // readProfilesConf loads the profile, skipping the test when the deploy tree is

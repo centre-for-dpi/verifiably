@@ -36,7 +36,7 @@ type mdocProfile struct {
 
 // docTypeProfiles maps an ISO docType onto the issuer-api2 profile that
 // issues it. Only docTypes with a profile versioned in
-// deploy/k8s/config/issuer2/issuer2-profiles.conf appear here: issuer-api2
+// deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf appear here: issuer-api2
 // rejects a profileId it cannot resolve, so an unlisted docType must fail
 // early with a clear message rather than at issuance time.
 //
@@ -151,7 +151,7 @@ const issuer2OfferTTL = 300
 // load-bearing: issuer-api2 deep-merges runtimeOverrides over the profile, so
 // an omitted field keeps whatever the profile holds. Our versioned profile has
 // its sample data emptied for exactly this reason (see
-// deploy/k8s/config/issuer2/issuer2-profiles.conf) — walt.id's shipped default
+// deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf) — walt.id's shipped default
 // is a fictional Austrian person, and inheriting it silently would issue a
 // real credential carrying someone else's data.
 // structured carries the non-scalar claims (see backend.IssueRequest.

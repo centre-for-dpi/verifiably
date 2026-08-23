@@ -89,6 +89,20 @@ verifiably-go/deploy/k8s/terraform/bootstrap/local-kind/.tfstate/
 # and we DO NOT want git to revert that on the next pull/checkout.
 verifiably-go/deploy/k8s/config/issuer/credential-issuer-metadata.conf
 
+# Walt.id issuer-api2 runtime configs. The committed *.baseline.conf files are
+# the seeds; deploy.sh cp -n's them to the runtime paths below via
+# seed_issuer2_configs on first `up`.
+# - issuer2-profiles.conf carries this deployment's real DSC/IACA x5chain,
+#   rendered in by provision_issuer2_certificates. Tracked, it would revert to
+#   walt.id's example certificate on the next pull and every mdoc issued after
+#   that would be refused by every wallet.
+# - credential-issuer-metadata.conf carries the operator's own mdoc schema
+#   display name, written by internal/adapters/waltid/catalog_issuer2.go
+#   (setIssuer2Display) on each custom-schema save.
+# We DO NOT want git to revert either on the next pull/checkout.
+verifiably-go/deploy/k8s/config/issuer2/issuer2-profiles.conf
+verifiably-go/deploy/k8s/config/issuer2/credential-issuer-metadata.conf
+
 # mdoc issuance PKI (runtime). Generated on first deploy by
 # provision_issuer2_certificates -> cmd/mdl-pki-gen. Contains the DSC and IACA
 # private keys and the issuer signing key coordinates, so it must never reach

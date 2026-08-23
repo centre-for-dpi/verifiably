@@ -371,6 +371,88 @@ open and on that list.
 
 ---
 
+## One-time migration — existing deployments, baseline/runtime config split
+
+**Applies to:** any deployment created before issuer-api2's two configs were
+split into tracked `*.baseline.conf` seeds plus gitignored runtime files.
+**A fresh clone needs none of this** — `deploy.sh` seeds both files itself.
+
+### Why it is needed
+
+`deploy/k8s/config/issuer2/issuer2-profiles.conf` and
+`credential-issuer-metadata.conf` used to be tracked in git while holding
+generated and operator-authored content: the deployment's real DSC/IACA
+x5chain (rendered in by `provision_issuer2_certificates`) and the operator's
+custom mdoc schema display name (written by `setIssuer2Display`). Every
+`git pull` / `checkout` / `stash pop` reverted both. The tracked files are now
+`*.baseline.conf` seeds and the runtime files are gitignored.
+
+### What happens if you just pull
+
+**The pull refuses and aborts** — it does not destroy anything:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+	verifiably-go/deploy/k8s/config/issuer2/credential-issuer-metadata.conf
+	verifiably-go/deploy/k8s/config/issuer2/issuer2-profiles.conf
+Aborting
+```
+
+Git blocks it because the rename deletes files you have locally modified. Your
+certificates and schema name are still on disk at this point. Do **not** run
+`git checkout --` or `git stash` on these two files to "clear" the block —
+that is precisely what discards the DSC inside every mdoc already issued.
+
+### The migration (run from the repo root, on the deployment host)
+
+```bash
+cd deploy/k8s/config/issuer2
+
+# 1. Copy the two runtime files somewhere outside the repo.
+cp issuer2-profiles.conf           ~/issuer2-profiles.conf.save
+cp credential-issuer-metadata.conf ~/credential-issuer-metadata.conf.save
+
+# 2. Return the tracked copies to their committed state so the pull is clean.
+cd -
+git checkout -- deploy/k8s/config/issuer2/
+
+# 3. Pull. The rename now applies without conflict.
+git pull
+
+# 4. Put the real files back under the (now gitignored) runtime names.
+cp ~/issuer2-profiles.conf.save \
+   deploy/k8s/config/issuer2/issuer2-profiles.conf
+cp ~/credential-issuer-metadata.conf.save \
+   deploy/k8s/config/issuer2/credential-issuer-metadata.conf
+```
+
+### Verify before redeploying
+
+```bash
+# Both runtime files must now be ignored (each prints a .gitignore line):
+git check-ignore -v \
+  deploy/k8s/config/issuer2/issuer2-profiles.conf \
+  deploy/k8s/config/issuer2/credential-issuer-metadata.conf
+
+# Your real certificate must still be in place — this must NOT match:
+grep -c MIIBeTCCAR8CFHrWgrGl5KdefSvRQhR \
+  deploy/k8s/config/issuer2/issuer2-profiles.conf   # expect 0
+
+git status --short   # expect clean
+```
+
+`MIIBeTCCAR8...` is walt.id's published example certificate. If that grep
+returns non-zero, the real x5chain was lost — restore it from
+`~/issuer2-profiles.conf.save` before deploying, because credentials issued
+with the example certificate are refused by every wallet and nothing in the
+logs says so.
+
+The next `deploy.sh` is then a no-op for both files: `seed_issuer2_configs`
+uses `cp -n`, so it only creates a runtime file that does not already exist.
+Keep the `~/*.save` copies until you have issued and verified one credential.
+
+---
+
 ## What must be repeated on the next walt.id upgrade
 
 All of it — every step here is manual. In particular:

@@ -153,6 +153,10 @@ PYEOF
 # deployment is Dominican.
 provision_issuer2_certificates() {
   local certs_dir="$SCRIPT_DIR/deploy/k8s/config/issuer2/certs"
+  # The RUNTIME profiles file (gitignored), not the tracked *.baseline.conf.
+  # seed_issuer2_configs has already cp -n'd it into place. Rendering the
+  # x5chain into the baseline would put this deployment's real certificate in
+  # git and lose it again on the next checkout.
   local profiles="$SCRIPT_DIR/deploy/k8s/config/issuer2/issuer2-profiles.conf"
   local dsc="$certs_dir/dsc.pem"
   local iaca="$certs_dir/iaca.pem"
@@ -313,6 +317,54 @@ seed_credential_issuer_catalog() {
   fi
   cp "$baseline" "$runtime"
   green "  seeded $runtime from baseline"
+}
+
+# seed_issuer2_configs is seed_credential_issuer_catalog's counterpart for
+# issuer-api2. Same split, same reason, two files instead of one:
+#
+#   issuer2-profiles.conf           <- provision_issuer2_certificates renders
+#                                      the deployment's real DSC/IACA x5chain
+#                                      into defaultIssuerX5chain at deploy time.
+#   credential-issuer-metadata.conf <- setIssuer2Display (catalog_issuer2.go)
+#                                      rewrites a docType's display block every
+#                                      time an operator saves a custom mdoc
+#                                      schema under their own name.
+#
+# Both were tracked in git while carrying that generated/operator content, so a
+# `git pull`, `git checkout` or `git stash pop` silently reverted them — putting
+# walt.id's PUBLISHED EXAMPLE certificate back into the x5chain (every mdoc
+# issued after that is refused by every wallet, with no error on our side) and
+# throwing away the operator's schema display name. Neither loss announces
+# itself. Tracking the *.baseline.conf seeds instead, and gitignoring the
+# runtime files, is what makes the generated state survive git operations.
+#
+# `cp -n` (no-clobber) is load-bearing, not defensive: an operator upgrading an
+# existing deployment already has real certificates and a saved display name
+# sitting at the runtime paths, and seeding must never overwrite them. A second
+# run is a no-op for the same reason.
+#
+# Ordering: deploy.sh calls this BEFORE provision_issuer2_certificates, which
+# reads and rewrites the runtime issuer2-profiles.conf and would otherwise find
+# nothing there on a fresh clone.
+#
+# To adopt upstream baseline changes after a deployment has been seeded, the
+# operator merges them into the runtime file by hand. Diffs are intentional state.
+seed_issuer2_configs() {
+  local dir="$SCRIPT_DIR/deploy/k8s/config/issuer2"
+  local name
+  for name in issuer2-profiles credential-issuer-metadata; do
+    local baseline="$dir/$name.baseline.conf"
+    local runtime="$dir/$name.conf"
+    if [[ ! -f "$baseline" ]]; then
+      red "  WARN: $baseline missing — issuer2 $name seed skipped"
+      continue
+    fi
+    if [[ -f "$runtime" ]]; then
+      continue
+    fi
+    cp "$baseline" "$runtime"
+    green "  seeded $runtime from baseline"
+  done
 }
 
 render_wso2_deployment_toml() {

@@ -213,6 +213,14 @@ cmd_up() {
     render_public_caddyfile
   fi
 
+  # issuer-api2's runtime configs. Must run BEFORE
+  # provision_issuer2_certificates, which renders this deployment's real
+  # x5chain into the runtime issuer2-profiles.conf and would find no file to
+  # render into on a fresh clone. Seeded from committed baselines with cp -n,
+  # so an existing deployment's certificates and saved schema display name are
+  # never overwritten. Both runtime paths are gitignored.
+  seed_issuer2_configs
+
   # mdoc issuance certificates. Runs BEFORE render_waltid_service_confs
   # because it exports VERIFIABLY_ISSUER2_KEY_X/_Y/_D on first deploy, and
   # the issuer2 conf render (and compose itself) needs them set.

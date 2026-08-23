@@ -24,7 +24,11 @@ import (
 // absent from the mDL field spec, and therefore never fillable. Any field the
 // profile maps as a date must be offerable from the issue form.
 func TestEveryProfileDateFieldIsReachableFromTheForm(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "deploy", "k8s", "config", "issuer2", "issuer2-profiles.conf")
+	// The committed baseline, not the runtime issuer2-profiles.conf: the runtime
+	// file is gitignored and only exists after a deploy, so reading it would make
+	// this guard silently t.Skip in a fresh clone and in CI. The date mappings
+	// this test checks live in the baseline and are copied verbatim by the seed.
+	path := filepath.Join("..", "..", "..", "deploy", "k8s", "config", "issuer2", "issuer2-profiles.baseline.conf")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Skipf("profile not readable (%v) — this guard needs the deploy config", err)

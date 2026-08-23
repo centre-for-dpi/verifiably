@@ -75,7 +75,7 @@ func (a *Adapter) syncIssuer2DisplayName(schema vctypes.Schema) {
 // appendCredentialType), and displayPair drops schema.Name straight into that
 // entry's display[].name. issuer-api2 works the other way round — its
 // configurations are PRE-PROVISIONED (one per ISO docType, pinned against
-// deploy/k8s/config/issuer2/issuer2-profiles.conf), and issuer2.go writes no
+// deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf), and issuer2.go writes no
 // metadata at all. So an mdoc schema had no channel by which its name could
 // reach the wellknown, and the wallet fell back to the configuration id
 // (`org.iso.18013.5.1.mDL` on the citizen's accept screen). This function is

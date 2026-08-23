@@ -111,7 +111,7 @@ func TestBuildClaimsBlockFlatPathForW3C(t *testing.T) {
 // TestBuildClaimsBlockNamespacedPathForMDoc pins the two-element
 // ["<namespace>", "<field>"] path shape mdoc claims require — confirmed
 // against walt.id's own shipped metadata
-// (deploy/k8s/config/issuer2/credential-issuer-metadata.conf) and against
+// (deploy/k8s/config/issuer2/credential-issuer-metadata.baseline.conf) and against
 // verifier.go's buildSelectiveInputDescriptor, which resolves mdoc claims
 // the same namespace-qualified way.
 func TestBuildClaimsBlockNamespacedPathForMDoc(t *testing.T) {
