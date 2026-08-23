@@ -153,6 +153,16 @@ type H struct {
 	// Set from VERIFIABLY_TRUST_SIGNING_KEY (PEM); an ephemeral key is generated
 	// when the env var is absent so the endpoint always works.
 	TrustSigningKey *ecdsa.PrivateKey
+
+	// MdocCertsDir is the directory holding this deployment's generated mdoc
+	// PKI (deploy/k8s/config/issuer2/certs, mounted into the container at
+	// /app/issuer-api2-config/certs). GET /trust/mdoc-anchors reads iaca.pem
+	// from here per request so a redeploy that regenerates the root is visible
+	// without restarting this process. Empty disables the endpoint with a 503.
+	// Set from VERIFIABLY_MDOC_CERTS_DIR. See internal/handlers/mdoc_anchors.go
+	// for why only the IACA is ever served from this directory — dsc.pem and
+	// issuer2.env (DSC private key) live in it too.
+	MdocCertsDir string
 	// DIDResolver resolves did:web DIDs to their DID Documents.
 	// Used by status list verification (Fase 10) and federation validation (Fase 5).
 	// Wired at startup with a WebResolver (10-minute document cache).

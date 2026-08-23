@@ -147,6 +147,19 @@ PYEOF
 # The generated material is proof-of-concept: every subject carries
 # O=POC-DO-NOT-TRUST so it cannot be mistaken for a real PKI.
 #
+# HOW WALLETS LEARN THIS ANCHOR (and what replaces it)
+# The IACA generated here is published at GET /trust/mdoc-anchors
+# (internal/handlers/mdoc_anchors.go), so a wallet fetches the CURRENT anchor
+# over HTTPS instead of shipping it compiled in — which is what used to break
+# every time this function generated a new root on a fresh host.
+#
+# That endpoint has the issuer certifying its own trust anchor, which is only
+# acceptable for a POC: a compromised issuer could mint a root and vouch for
+# it. Production replaces it with the Hub's VICAL — a list of legitimate
+# issuers signed by an authority DISTINCT from any single issuer, so
+# self-certification is impossible. See internal/handlers/mdoc_anchors.go for
+# the migration path through internal/trust/registry.go's TrustedIssuer.
+#
 # Subject C/ST are configurable because @animo-id/mdoc cross-checks the mdoc's
 # issuing_country against countryName and issuing_jurisdiction against
 # stateOrProvinceName. A mismatch is a rejection at accept time, and not every

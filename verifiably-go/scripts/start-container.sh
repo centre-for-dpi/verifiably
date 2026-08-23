@@ -233,6 +233,7 @@ start_container() {
     -e WALTID_ISSUER_SERVICE=issuer-api \
     -e WALTID_ISSUER2_METADATA_PATH=/app/issuer-api2-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER2_SERVICE=issuer-api2 \
+    -e VERIFIABLY_MDOC_CERTS_DIR=/app/issuer-api2-config/certs \
     -e VERIFIABLY_AUTH_PROVIDERS_FILE=/app/config/auth-providers.system.json \
     -e VERIFIABLY_AUTH_ADMIN="${VERIFIABLY_AUTH_ADMIN:-rw}" \
     -e VERIFIABLY_ADMIN_USER="${VERIFIABLY_ADMIN_USER:-}" \
