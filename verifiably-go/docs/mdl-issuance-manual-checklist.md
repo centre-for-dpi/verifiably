@@ -453,6 +453,88 @@ Keep the `~/*.save` copies until you have issued and verified one credential.
 
 ---
 
+## Dynamic wallet trust anchors (2026-08-23) — closes the recompile-per-deploy gap
+
+**Applies to:** any deployment created before `GET /trust/mdoc-anchors`
+existed. A fresh clone/deploy plus a wallet build from current `main` needs
+none of this — it works out of the box.
+
+Before this, a wallet only trusted a certificate **compiled into the app**
+(`src/agent/setup.ts::MDOC_TRUSTED_CERTIFICATES` in `cdpi-wallet`). Since
+`provision_issuer2_certificates` generates a brand-new IACA whenever
+`dsc.pem` doesn't already exist, every from-scratch redeploy silently broke
+every wallet build until it was recompiled with the new certificate —
+`"No trusted certificate was found"` at accept time, with nothing in the
+server logs pointing at the cause (the offer and credential endpoints both
+return 200; only the wallet's local signature check fails).
+
+**Fixed** by `verifiably-go` publishing its current IACA over HTTP
+(`GET /trust/mdoc-anchors`, `internal/handlers/mdoc_anchors.go`) and the
+wallet fetching it dynamically per `credential_issuer`
+(`src/agent/mdocTrustAnchors.ts`), unioned with the compiled-in fallback so
+already-issued credentials keep verifying. Full design rationale and the
+documented VICAL production path:
+`docs/superpowers/adr/2026-08-23-mdl-trust-anchor-distribution.md`.
+
+### The routing gap this surfaced, and how to recognize it again
+
+The endpoint lives on the `verifiably-go` container. The wallet fetches it
+from the **`walt-issuer2` origin** — the `credential_issuer` it resolved
+the offer from, a *different* container/subdomain. The first deploy of this
+feature exposed the endpoint on `verifiably-go`'s own domain only;
+`walt-issuer2`'s Caddy block still allowlisted just `/openid4vci/*` and
+`/.well-known/*` (deliberately narrow — `issuer-api2` has no auth on its
+management API), so the wallet's fetch 404'd there while curl against
+`verifiably-go` directly returned 200 the whole time.
+
+**Symptom:** wallet reports "No trusted certificate was found" even though
+the dynamic-anchor mechanism is confirmed built, tested, and deployed.
+
+**Diagnosis** (reproduce before assuming it's this):
+
+```bash
+# 1. What origin does the wallet actually fetch from?
+curl -s "https://<walt-issuer2 subdomain>/.well-known/openid-credential-issuer/openid4vci" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['credential_issuer'])"
+# => https://<walt-issuer2 subdomain>/openid4vci
+
+# 2. Does the anchor endpoint answer AT THAT EXACT ORIGIN?
+curl -s -o /dev/null -w "%{http_code}\n" "https://<walt-issuer2 subdomain>/trust/mdoc-anchors"
+# 200 = fine, look elsewhere. 404 = this routing gap.
+
+# 3. Sanity: same path on verifiably-go's own domain, for comparison.
+curl -s -o /dev/null -w "%{http_code}\n" "https://<verifiably subdomain>/trust/mdoc-anchors"
+```
+
+**Fixed in `scripts/gen-caddy.sh`** (commit `2afe956`): the `walt-issuer2`
+Caddy block now has a third allowlisted rule,
+`handle /trust/mdoc-anchors { reverse_proxy verifiably-go:8080 }`, ahead of
+the catch-all 404 — the only new path opened, allowlist otherwise
+unchanged. If you see this symptom on a deployment whose `gen-caddy.sh`
+predates that commit, `git pull` and re-run `./deploy.sh up waltid`
+(regenerates and Caddy needs a reload — `docker exec <public caddy
+container> caddy reload --config /etc/caddy/Caddyfile` if the container
+name differs from what `deploy.sh` already reloads).
+
+### Verified working end to end (2026-08-23)
+
+Confirmed live against `mtc.credenciales.ysalabs.work`, not just unit
+tests: a from-scratch-equivalent redeploy regenerated the IACA
+(`CN=VERIFIABLY POC IACA`, freshly issued that day) — different from the
+`CN=INTRANT POC IACA` compiled into the wallet's static fallback. After
+the Caddy fix:
+
+- `walt-issuer2` origin's `/trust/mdoc-anchors` → 200, serving the new cert.
+- `verifiably-go`'s own domain → still 200 (unaffected by the fix).
+- `walt-issuer2` origin's `/issuer2/sessions` (unauthenticated management
+  API) → still 404 (allowlist not weakened).
+
+**Still needs a human:** an on-device accept of a credential signed by
+this rotated IACA, with the wallet build unchanged (no recompile), to
+confirm the dynamic mechanism closes the loop for a real reader — the curl
+checks above prove the plumbing, not the on-device Credo verification
+path.
+
 ## What must be repeated on the next walt.id upgrade
 
 All of it — every step here is manual. In particular:

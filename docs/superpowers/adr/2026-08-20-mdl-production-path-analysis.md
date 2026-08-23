@@ -493,6 +493,15 @@ none of them have it.
 
 ### How would a wallet ever come to trust a *real* verifiably-issued IACA?
 
+> **Resolved 2026-08-23** — see
+> `2026-08-23-mdl-trust-anchor-distribution.md`. `verifiably-go` now
+> publishes `GET /trust/mdoc-anchors` (POC, unsigned, single-issuer) and
+> the wallet fetches it dynamically per `credential_issuer`. The
+> production replacement — the Hub's `GET /trust-registry` extended with
+> an X.509 field, i.e. a VICAL-shaped list signed by an authority distinct
+> from any single issuer — is documented there as the migration path, not
+> yet built.
+
 **Nothing in verifiably-go publishes X.509/IACA material today.** The
 existing trust-publication surface (`GET /trust-registry`,
 `GET /.well-known/jwks.json`) is entirely DID-shaped —

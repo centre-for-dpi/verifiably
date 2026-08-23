@@ -264,6 +264,134 @@ Command-line override: set `VERIFIABLY_ENV_FILE=/path/to/other.env
 ./deploy.sh ...` to swap the entire file for one invocation (e.g. keep
 `.env` pinned to laptop, ship `.env.ec2` for a staging run).
 
+## mDL / mdoc issuance (`issuer-api2`)
+
+ISO/IEC 18013-5 mdoc credentials (mDL, Photo ID) are issued through a
+second, separate walt.id instance — `issuer-api2` — because the legacy
+`issuer-api` cannot type-map CBOR correctly for mdoc (see
+`docs/superpowers/adr/2026-08-20-mdl-cbor-type-limits.md`). This section is
+what an operator running `./deploy.sh up waltid` needs to know that isn't
+covered by the general walt.id wiring above.
+
+### What a fresh deploy does for you, automatically
+
+`scripts/gen-caddy.sh`'s `provision_issuer2_certificates()` runs on every
+`up` and is idempotent (`mdl-pki-gen: dsc.pem already exists — keeping it`
+on the second and later runs):
+
+- Generates a self-signed **IACA root** (CA:TRUE) and a **Document Signer
+  (DSC)** cert it issues, both P-256, EKU `1.0.18013.5.1.2` (the mDL DS
+  OID), DSC validity capped at 457 days (ISO/IEC 18013-5 Annex B). Written
+  to `deploy/k8s/config/issuer2/certs/{iaca,dsc}.pem`.
+- Wires the DSC's key coordinates into `issuer2-profiles.conf`'s
+  `defaultIssuerKey`/`defaultIssuerX5chain` — **but only while the
+  committed baseline's example certificate is still in place**, so an
+  operator's own real cert (see below) is never silently overwritten by a
+  redeploy.
+- Publishes the IACA over HTTP for wallets to fetch dynamically — see
+  "Wallet trust anchors" below. **This never happens automatically for
+  `dsc.pem`** — that file carries private-key-bearing material and is
+  never served by anything, by design.
+- Seeds `issuer2-profiles.conf` and `credential-issuer-metadata.conf` from
+  their tracked `*.baseline.conf` counterparts (`cp -n`, no-clobber — see
+  "Baseline/runtime config split" below).
+
+The DN says what it is: `O=POC-DO-NOT-TRUST`. This is demo PKI, not a
+production certificate authority. Real certificate provisioning is a
+separate concern tracked in
+`docs/superpowers/specs/2026-07-23-issuer-key-rotation-design.md`.
+
+### Wallet trust anchors — POC endpoint now, VICAL is the production path
+
+A wallet verifying an mdoc's signature needs to trust the IACA above. Since
+every fresh deploy (or any deploy that starts without an existing
+`dsc.pem`) generates a **new** IACA, a wallet that only trusts a
+hardcoded/compiled-in certificate breaks on every such redeploy with
+`"No trusted certificate was found"`.
+
+`verifiably-go` solves this for the POC by publishing the current IACA
+over HTTP:
+
+```
+GET https://<walt-issuer2 subdomain>/trust/mdoc-anchors
+```
+
+returning `{ "anchors": ["-----BEGIN CERTIFICATE-----..."], "poc": true }`.
+A companion wallet (see `cdpi-wallet`'s `src/agent/mdocTrustAnchors.ts`)
+fetches this from the exact origin it resolved the credential offer's
+`credential_issuer` from, unions it with a compiled-in fallback so
+previously issued credentials keep verifying after a rotation, and falls
+back to stale-cache-or-static on any fetch error.
+
+**This endpoint is deliberately unsigned**, and that is documented as a
+POC ceiling, not an oversight: an issuer signing its own anchor response
+adds no security an attacker forging the response couldn't also forge the
+signature over. See the header comment in
+`internal/handlers/mdoc_anchors.go` and
+`docs/superpowers/adr/2026-08-23-mdl-trust-anchor-distribution.md` for the
+full reasoning.
+
+**The documented production replacement is a VICAL-shaped list signed by
+the Hub** — an authority distinct from any single issuer, so a compromised
+issuer cannot self-certify. This extends the Hub's existing
+`internal/trust/registry.go` `TrustedIssuer` model (today DID-only) with an
+X.509 field, served from the Hub's already-signed `GET /trust-registry`.
+Not implemented yet; tracked in the ADR above.
+
+**Caddy routing note (subdomain mode only):** the endpoint lives on the
+`verifiably-go` container, but the wallet fetches it from the
+`walt-issuer2` origin (the `credential_issuer` it resolved the offer from —
+a different container). `scripts/gen-caddy.sh`'s `walt-issuer2` block
+allowlists only `/openid4vci/*`, `/.well-known/*`, and
+`/trust/mdoc-anchors`, returning 404 for everything else — deliberately
+narrow, because `issuer-api2` ships zero authentication on its own
+management API (`POST /issuer2/credential-offers` mints arbitrary signed
+credentials; `GET /issuer2/sessions` leaks issuer private key material).
+If a wallet reports "No trusted certificate was found" after this endpoint
+was confirmed working, check first whether it 200s **from the
+`walt-issuer2` origin specifically** — a 404 there with a 200 on
+`verifiably-go`'s own domain is exactly this routing gap, not a code bug.
+
+### Baseline/runtime config split — survives `git pull`
+
+`deploy/k8s/config/issuer2/issuer2-profiles.conf` and
+`credential-issuer-metadata.conf` hold generated (DSC/IACA x5chain) and
+operator-authored (custom mdoc schema display names) content, so they are
+**gitignored runtime files**, seeded on first deploy from tracked
+`issuer2-profiles.baseline.conf` / `credential-issuer-metadata.baseline.conf`
+via `cp -n` (no-clobber — a fresh clone gets the seed; an existing
+deployment's real cert and schema names are never touched by a later
+`git pull`). See
+`docs/mdl-issuance-manual-checklist.md`'s "One-time migration" section if
+you are updating a deployment created before this split existed.
+
+### `.env` quoting for the issuer2 JSON key variables
+
+`VERIFIABLY_ISSUER2_CI_TOKEN_KEY` and `VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY`
+hold JSON values. **Wrap them in single quotes in `.env`:**
+
+```bash
+VERIFIABLY_ISSUER2_CI_TOKEN_KEY='{"type":"jwk","jwk":{"kty":"EC",...}}'
+```
+
+`deploy.sh`/`common.sh` load `.env` via `set -o allexport; source .env`.
+Sourced this way, bash **silently strips the double quotes from an
+unquoted value on export** — `VAR={"a":"b"}` (no shell quoting) becomes
+`{a:b}` once exported, which then fails walt.id's HOCON/Hoplite decode with
+a misleading `Expected quotation mark '"', but had 't' instead` error that
+looks unrelated to quoting at all. Reproduce it yourself if in doubt:
+
+```bash
+echo 'X={"a":"b"}' > e1.env; bash -c 'set -o allexport; source e1.env; echo $X'   # => {a:b}  (broken)
+echo "X='{\"a\":\"b\"}'" > e2.env; bash -c "set -o allexport; source e2.env; echo \$X"  # => {"a":"b"}  (correct)
+```
+
+If you fix `.env` after hitting this, fixing the file alone is not
+enough — the already-rendered `issuer-service.conf` on disk still has the
+broken value baked in. Re-run `./deploy.sh up waltid` (which re-renders the
+`.conf` from `.env` and recreates the container) rather than `docker
+restart`, which does not reread `--env-file` at all.
+
 ## Secrets to regenerate per deployment
 
 Every country deployment must generate its own secrets. Do not reuse values from another deployment or from this repo's example files. The commands below produce cryptographically random values.

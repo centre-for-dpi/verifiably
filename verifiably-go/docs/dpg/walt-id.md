@@ -218,5 +218,10 @@ ConnectTimeout; saving a custom schema restarts issuer-api and the schema become
 - **Demo crypto keys.** `WALLET_ENCRYPTION_KEY` / `WALLET_SIGN_KEY` default to upstream demo
   values — rotate for anything real.
 
+> **Looking for mdoc/mDL (ISO 18013-5) issuance?** That's a separate walt.id
+> instance, `issuer-api2`, not covered by this guide — see
+> [deploy.md's "mDL / mdoc issuance (issuer-api2)"](../deploy.md#mdl-mdoc-issuance-issuer-api2)
+> section for its certs, trust-anchor endpoint, and config split.
+
 See also: [architecture.md](../architecture.md) · [deploy.md](../deploy.md) ·
 [dpg-matrix.md](../dpg-matrix.md) · [integration.md](../integration.md).
