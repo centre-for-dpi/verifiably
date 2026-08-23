@@ -669,9 +669,25 @@ PYEOF
       # So: allowlist the protocol paths, and return 404 for everything else.
       # verifiably-go keeps reaching /issuer2/* over the compose network, where
       # it was always reachable. Do NOT replace this with a bare reverse_proxy.
+      #
+      # /trust/mdoc-anchors is the one exception, and it does NOT proxy to
+      # issuer-api2 at all — it proxies to verifiably-go, a different
+      # container. The wallet resolves the OID4VCI credential_issuer field
+      # (this walt-issuer2 origin) and fetches {origin}/trust/mdoc-anchors
+      # from it (src/agent/mdocTrustAnchors.ts), but the endpoint itself lives
+      # on verifiably-go (internal/handlers/mdoc_anchors.go), because that is
+      # the process that reads deploy/k8s/config/issuer2/certs/iaca.pem.
+      # Without this handle, the wallet's fetch 404s here — the anchor never
+      # loads, Credo falls back to the compiled-in static certificate, and a
+      # regenerated root (every deploy.sh run) reproduces "No trusted
+      # certificate was found" even though the dynamic-anchor code is working
+      # correctly on both ends. Proven live: this endpoint returned 404 at
+      # this origin before this handle was added, while the same path 200'd
+      # at verifiably's own domain the whole time.
       if [[ "$name" == "walt-issuer2" ]]; then
         printf '\thandle /openid4vci/* {\n\t\treverse_proxy %s\n\t}\n' "$upstream"
         printf '\thandle /.well-known/* {\n\t\treverse_proxy %s\n\t}\n' "$upstream"
+        printf '\thandle /trust/mdoc-anchors {\n\t\treverse_proxy verifiably-go:8080\n\t}\n'
         printf '\thandle {\n\t\trespond 404\n\t}\n'
         printf '}\n\n'
         continue
