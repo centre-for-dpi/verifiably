@@ -11,6 +11,7 @@ Everything below refers to that subtree — run the commands from there.
 Supported DPGs out of the box:
 
 - **walt.id Community Stack** v0.18.2 — issuer / holder / verifier via walt.id's issuer-api, wallet-api, verifier-api
+- **walt.id `issuer-api2`** — a second, separate walt.id instance dedicated to **ISO/IEC 18013-5 mdoc** issuance (mDL, Photo ID). Generates its own IACA/DSC PKI on first deploy and publishes the current trust anchor over HTTP so companion mdoc wallets (e.g. `cdpi-wallet`) can verify without a compiled-in certificate. See [deploy.md's mDL / mdoc issuance section](verifiably-go/docs/deploy.md#mdl-mdoc-issuance-issuer-api2)
 - **Inji Certify** v0.14.0 — issuer, both OID4VCI pre-authorised code and authorization code flows. The auth-code flow has an **in-app multi-format schema builder** (create a credential live — W3C VCDM 1.1/2.0 as `ldp_vc` or IETF SD-JWT VC as `vc+sd-jwt` — which writes the Certify config + registry extraction view + eSignet scope and restarts the services in place)
 - **Inji Web Wallet** v0.16.0 — holder via the MOSIP Inji Web SPA + Mimoto BFF, **or** claim Inji Certify auth-code credentials **in-app via eSignet** (no external redirect)
 - **Inji Verify** v0.16.0 — verifier via Inji Verify's QR-upload and OID4VP endpoints
@@ -1325,6 +1326,32 @@ with proper JSON-LD + Data Integrity support; SD-JWT is the most broadly
 compatible. Making the walt.id *holder* work would require a walt.id wallet-api
 version that emits a conformant proof (and implements credential import).
 
+**mdoc wallet reports "No trusted certificate was found" (issuer-api2 / mDL)**
+
+Every fresh `./deploy.sh up waltid` that doesn't find an existing `dsc.pem`
+generates a **new** IACA root for `issuer-api2`. A companion wallet that
+relies only on a compiled-in certificate breaks against a redeployed
+instance until it's rebuilt with the new cert. First, confirm whether the
+wallet's dynamic trust-anchor fetch is even reaching the server:
+
+```bash
+# What origin does the wallet actually resolve the offer from?
+curl -s "https://<walt-issuer2 subdomain>/.well-known/openid-credential-issuer/openid4vci" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['credential_issuer'])"
+
+# Does the trust-anchor endpoint answer AT THAT EXACT ORIGIN?
+curl -s -o /dev/null -w "%{http_code}\n" "https://<walt-issuer2 subdomain>/trust/mdoc-anchors"
+```
+
+A 200 on `verifiably-go`'s own domain but a 404 on the `walt-issuer2`
+origin above is a **Caddy routing gap**, not a code or certificate bug —
+`walt-issuer2`'s Caddy block must allowlist `/trust/mdoc-anchors` (already
+fixed in current `main`/`feat/mdl`; if you're on an older checkout,
+`git pull` and re-run `./deploy.sh up waltid`). If both curls return 200,
+the wallet's trust anchor fetch is working and the failure is elsewhere —
+see `docs/mdl-issuance-manual-checklist.md`'s "Dynamic wallet trust
+anchors" section for the full diagnosis flow.
+
 ## What this app does
 
 Each of the three core roles has a dedicated flow:
@@ -1448,6 +1475,38 @@ Why each limitation exists (all detailed in Troubleshooting):
 for offline / paper use **`ldp_vc` → PDF + Inji Verify**. None of these are Inji
 issuance bugs — Inji emits standards-valid credentials in both formats.
 
+## mDL / mdoc (ISO/IEC 18013-5)
+
+Mobile driving licences and similar physical-ID-style credentials use a
+different credential model from everything above: `mso_mdoc` is a CBOR
+container, COSE_Sign1-signed, verified against an **X.509 certificate
+chain** rather than a DID. Neither the legacy `issuer-api` nor Inji Certify
+can issue it correctly (the legacy issuer's CBOR type-mapping is wrong for
+several ISO-mandatory fields — see
+`docs/superpowers/adr/2026-08-20-mdl-cbor-type-limits.md`), so mdoc issuance
+runs through a **second, dedicated walt.id instance, `issuer-api2`**.
+
+Two things make this credential type operationally different from the rest
+of this app, both covered in depth in
+[deploy.md's dedicated section](verifiably-go/docs/deploy.md#mdl-mdoc-issuance-issuer-api2):
+
+1. **A fresh deploy generates its own PKI.** `./deploy.sh up waltid` (or
+   `all`) creates a self-signed IACA root + Document Signer certificate on
+   first run — no manual certificate provisioning needed to get a working
+   demo. It says what it is in its own DN (`O=POC-DO-NOT-TRUST`); it is not
+   a production certificate authority.
+2. **Wallets need to learn that certificate without being recompiled.**
+   `verifiably-go` publishes the deployment's current IACA at
+   `GET /trust/mdoc-anchors`, and a companion wallet (see `cdpi-wallet`)
+   fetches it dynamically, keyed to the OID4VCI `credential_issuer` it
+   resolved the offer from. This is explicitly a **POC mechanism** — the
+   endpoint is unsigned, so its trust ceiling is "the issuer's own claim
+   over TLS." The documented production replacement is a **VICAL-shaped
+   list signed by the Hub** (an authority distinct from any single issuer),
+   extending the Hub's existing `TrustedIssuer` trust-registry model — see
+   `docs/superpowers/adr/2026-08-23-mdl-trust-anchor-distribution.md` for
+   the full design and migration path.
+
 ## Where to look next
 
 - **[verifiably-go/docs/architecture.md](verifiably-go/docs/architecture.md)**
@@ -1483,6 +1542,18 @@ issuance bugs — Inji emits standards-valid credentials in both formats.
   — copy-paste recipes for the bulk-issuance feature (CSV fixtures,
   SELECT queries against the seeded `citizens` postgres, and a dockerized
   "ministry registry" scenario to exercise the Secured-API bulk source).
+
+- **[verifiably-go/docs/mdl-issuance-manual-checklist.md](verifiably-go/docs/mdl-issuance-manual-checklist.md)**
+  — mDL/mdoc (ISO 18013-5) verification checklist: what was checked by
+  actually issuing and decoding a credential (vs. just booting the
+  service), the dynamic wallet trust-anchor mechanism and its Caddy
+  routing requirement, and the baseline/runtime config migration for
+  existing deployments.
+
+- **[docs/superpowers/adr/2026-08-23-mdl-trust-anchor-distribution.md](docs/superpowers/adr/2026-08-23-mdl-trust-anchor-distribution.md)**
+  — why the mdoc trust-anchor endpoint is a deliberately unsigned POC
+  mechanism, and the documented production replacement: a VICAL-shaped
+  list signed by the Hub instead of by any single issuer.
 
 - **[verifiably-go/TODO.md](verifiably-go/TODO.md)**
   — resolved security and reliability items (P0–P3) from the 2026-05-16
