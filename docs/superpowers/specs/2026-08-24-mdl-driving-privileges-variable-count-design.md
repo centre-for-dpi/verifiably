@@ -60,10 +60,18 @@ cambia de 2 a 4).
 ### Por qué 0 categorías es un error, no un caso soportado
 
 `driving_privileges` es un elemento **obligatorio** de ISO 18013-5 Table 3
-para el docType mDL. El formulario ya marca la primera fila con asterisco
-como requerida. Aceptar 0 categorías violaría el propio estándar y
+para el docType mDL. Aceptar 0 categorías violaría el propio estándar y
 reintroduciría el problema que este cambio existe para eliminar: datos que
 no representan la realidad del titular.
+
+El formulario marca la primera fila con un asterisco (`templates/pages/
+issuer_issue.html:155`), pero es **puramente visual** — verificado que el
+`<input>` correspondiente (línea 156) no lleva el atributo HTML
+`required`, así que un navegador no bloquea el envío con 0 filas
+llenadas. Esto significa que el mensaje de error explícito propuesto más
+abajo (en `internal/handlers/issuance.go`) es la **única** defensa real
+contra 0 categorías, no una capa adicional sobre una validación de
+cliente ya existente.
 
 ### Por qué no ampliar un solo `arrayConfig` a un techo mayor
 
@@ -91,12 +99,38 @@ no fue lo que el usuario pidió explorar en esta sesión.
 - El bloque `isoMdl` actual se convierte en 4 bloques: `isoMdl_1cat`,
   `isoMdl_2cat`, `isoMdl_3cat`, `isoMdl_4cat`. Cada uno es una copia
   completa del `isoMdl` actual (mismo `credentialData`, mismo
-  `idTokenClaimsMapping`, mismo `x5Chain`), difiriendo únicamente en el
-  número de bloques dentro de `driving_privileges.arrayConfig`.
+  `idTokenClaimsMapping`), difiriendo únicamente en el número de bloques
+  dentro de `driving_privileges.arrayConfig`.
+- **Crítico para la seguridad de la firma — verificado, no opcional:**
+  cada uno de los 4 bloques nuevos debe conservar
+  `issuerKey = ${defaultIssuerKey}` y `x5Chain = ${defaultIssuerX5chain}`
+  exactamente como **referencias por sustitución HOCON** (idénticas al
+  `isoMdl` actual), nunca como el valor resuelto pegado literalmente en
+  cada bloque. `defaultIssuerKey` (línea 36) y `defaultIssuerX5chain`
+  (línea 94) son variables definidas UNA SOLA VEZ a nivel de archivo, y
+  `scripts/gen-caddy.sh`'s `provision_issuer2_certificates` las
+  reescribe con un regex de `count=1` — solo toca esa única definición
+  top-level, nunca busca dentro de los bloques de perfil. Si el
+  certificado/clave real se pegara como valor literal en 3 de los 4
+  perfiles nuevos (en vez de la referencia `${...}`), esos 3 perfiles
+  seguirían anunciando el certificado de ejemplo de walt.id (el propio
+  "HARD GATE" de seguridad al inicio del archivo) mientras firman con la
+  clave real — exactamente la discrepancia clave/certificado que ese
+  HARD GATE existe para prevenir, y de forma silenciosa: la oferta
+  seguiría devolviendo 201, la credencial se emitiría, y solo un
+  conformant reader la rechazaría. Confirmado contra el archivo real que
+  ambas variables son top-level y compartidas — clonar el bloque
+  `isoMdl {...}` completo preservando sus dos líneas `${...}` intactas
+  es automáticamente seguro; escribir el bloque a mano sin copiar esas
+  dos líneas literalmente no lo es.
 - Todos los 4 perfiles declaran
   `credentialConfigurationId = "org.iso.18013.5.1.mDL"` — idéntico al
   valor que el `isoMdl` original ya usaba, así que el catálogo/wellknown
   (`credential-issuer-metadata.baseline.conf`) **no necesita cambios**.
+  Confirmado empíricamente con los 4 perfiles cargados simultáneamente en
+  un `issuer-api2` real: el wellknown sigue publicando una sola entrada
+  `org.iso.18013.5.1.mDL` (no 4 duplicadas), sin ninguna advertencia de
+  conflicto en el boot.
 - `isoPhotoId` no se toca — no tiene `driving_privileges`.
 
 ### `internal/adapters/waltid/issuer2.go`
@@ -119,6 +153,29 @@ no fue lo que el usuario pidió explorar en esta sesión.
   `EncodeDrivingPrivileges`) para contar `len(...)` antes de elegir el
   perfil. Si la clave está ausente o el array es de longitud 0, es un
   error explícito (ver más abajo el mensaje exacto).
+- La clave literal `"driving_privileges"` es segura de buscar así,
+  hardcodeada, porque el nombre de este campo NO es editable por el
+  operador: `internal/handlers/schema.go`'s manejador de guardado de
+  schema (línea ~859-861) dice explícitamente *"the standard's mandatory
+  elements are preloaded and locked: the docType defines them, so an
+  operator cannot omit or rename one"* — la fusión de campos usa siempre
+  `m.Name` (el nombre curado de `mdoc.MandatoryFields`), nunca el nombre
+  que el operador haya escrito en esa fila del formulario. Confirmado
+  contra el código real, no asumido — sin esa garantía, buscar la clave
+  literal habría sido frágil ante un schema custom que renombrara el
+  campo.
+- **Otros dos consumidores de `profileIDForDocType`/`docTypeProfiles`,
+  verificados seguros y sin cambios:**
+  - `internal/adapters/waltid/catalog.go:321` (`buildMDocEntry`) solo lee
+    `p.baseNamespace` del resultado — nunca `p.profileID` — así que
+    mantener la entrada `docTypeProfiles["org.iso.18013.5.1.mDL"]` como
+    allowlist (con `baseNamespace` intacto) es suficiente para este
+    sitio, sin cambios.
+  - `internal/adapters/waltid/catalog_issuer2.go:37`
+    (`syncIssuer2DisplayName`) solo usa el booleano `ok` de retorno
+    ("¿existe algún perfil mdoc para este docType?") para decidir si
+    sincronizar el nombre de display — nunca lee `.profileID` — así que
+    tampoco requiere cambios.
 
 ### `internal/mdoc/drivingprivileges.go`
 
@@ -170,26 +227,76 @@ no fue lo que el usuario pidió explorar en esta sesión.
   perfil respectivamente, suman 44 — más las 4 de Photo ID sin cambios =
   48 en total.
 - **`internal/adapters/waltid/issuer2_test.go`**:
-  - `TestBuildIssuer2OfferOmitsUnsetFields` fija
-    `req.ProfileID != "isoMdl"` — se actualiza a la nueva expectativa (el
-    test no manda `driving_privileges`, así que debe verificar el nuevo
-    comportamiento de error-por-0-categorías en lugar de asumir éxito con
-    un profileId fijo).
+  - `TestBuildIssuer2OfferOmitsUnsetFields` llama
+    `buildIssuer2Offer(schema, subject, nil)` — con `structured = nil`,
+    el nuevo diseño lo trata como **0 categorías reales**, así que este
+    test completo fallaría en su `t.Fatalf` de línea 132 bajo la nueva
+    regla, no solo en su aserción de `req.ProfileID != "isoMdl"` como se
+    pensó en una versión anterior de este spec. Reemplazar tal cual
+    perdería la cobertura original (que `nationality`/`issuing_country`/
+    `birth_date`, no enviados, nunca aparecen en el payload). **Dividir
+    en dos tests:**
+    1. El test original, renombrado si se quiere, pero ahora enviando
+       también un `structured` mínimo con 1 categoría válida de
+       `driving_privileges` (vía `mdoc.EncodeDrivingPrivileges`), para
+       que siga ejerciendo la omisión de los demás campos sin chocar con
+       la nueva regla. Su aserción de `ProfileID` cambia a
+       `"isoMdl_1cat"`.
+    2. Un test nuevo, `TestBuildIssuer2OfferRejectsZeroDrivingPrivileges`
+       (o nombre equivalente), que llama `buildIssuer2Offer` con
+       `structured = nil` (o con `driving_privileges` vacío) y confirma
+       que devuelve un error no-nil con el mensaje esperado — la
+       cobertura que el caso de 0 categorías necesita, ahora explícita
+       en vez de accidental.
   - `TestIssuer2OfferCarriesDrivingPrivilegesAsJSONArray` fija
     `len(arr) != mdoc.DrivingPrivilegesArrayConfigSize` (2) — se cambia a
     comparar contra el número real de entradas que el test mismo envía (2
-    en ese test, pero ahora por ser lo que se pidió, no por padding).
+    en ese test, pero ahora por ser lo que se pidió, no por padding), y su
+    aserción de `ProfileID` (si la tuviera tras el cambio) debe esperar
+    `"isoMdl_2cat"`.
   - `TestProfileIDForDocType`/`TestKnownDocTypesResolveInProfiles`/
     `TestBuilderSavedMdocSchemaResolvesProfile`: se revisan contra el
     nuevo comportamiento de `docTypeProfiles` para mDL (allowlist, no
     profileID directo).
+- **`internal/handlers/issue_structured_fields_test.go`** (archivo
+  completo, omitido en una versión anterior de este spec — tiene 4
+  sitios que referencian `mdoc.DrivingPrivilegesArrayConfigSize`):
+  - `TestSubmitIssueSendsDrivingPrivilegesAsRealJSONArray` (línea 88):
+    envía 2 filas reales y afirma `len(arr) != ...ArrayConfigSize` (2) —
+    se actualiza a `DrivingPrivilegesMaxCategories` solo como referencia
+    de constante; la aserción de longitud sigue siendo 2 porque el test
+    sigue enviando 2 filas reales (ahora por ser lo pedido, no por
+    padding).
+  - `TestSubmitIssueSingleDrivingPrivilegeIsPadded` (línea 146): **este
+    test prueba directamente el comportamiento que se elimina** — su
+    propio nombre lo dice. Se renombra (p. ej.
+    `TestSubmitIssueSingleDrivingPrivilegeIsNotPadded`) y su aserción
+    central (línea 159: `len(arr) != mdoc.DrivingPrivilegesArrayConfigSize`,
+    esperando 2) se invierte a `len(arr) != 1` — una fila real llenada
+    debe producir exactamente 1 entrada, nunca 2.
+  - `TestDrivingPrivilegesOverCapWarnsOperator` (línea 419) manda 3
+    categorías contra un cap de 2 y afirma truncamiento a 2 — se
+    actualiza a mandar 5 categorías contra el nuevo cap de 4
+    (`DrivingPrivilegesMaxCategories`), conservando la misma lógica de
+    "el backstop trunca, pero `SubmitIssue` ya rechaza antes de llegar
+    aquí en el flujo real".
 - **`internal/mdoc/drivingprivileges_test.go`**:
   - `TestEncodeDrivingPrivilegesPadsToArrayConfigSize` se elimina —ya no
     hay padding que probar — y se reemplaza por un test que confirma
     explícitamente que 1, 2, 3 y 4 categorías reales producen exactamente
     esa cantidad de salida, nunca más.
   - `TestEncodeDrivingPrivilegesTruncatesOverlongInput` se mantiene,
-    actualizando la constante referenciada.
+    actualizando la constante referenciada y, si se quiere ejercitar el
+    nuevo techo real, el número de entradas de entrada
+    (`DrivingPrivilegesMaxCategories+3` en vez de un literal viejo).
+- **`internal/adapters/waltid/profiledates_test.go`**
+  (`TestEveryProfileDateFieldIsReachableFromTheForm`) — **verificado
+  seguro, sin cambios necesarios.** Su regex dedupea por nombre de campo
+  vía un mapa `seen` (línea 51-54), así que 4 bloques de perfil
+  repitiendo los mismos nombres de campo (`birth_date`, `issue_date`,
+  etc.) no rompen el conteo — cada nombre se verifica una sola vez sin
+  importar cuántas veces aparezca en el archivo. Confirmado leyendo el
+  cuerpo del test, no asumido.
 
 ## Verificación planeada
 
@@ -204,6 +311,16 @@ no fue lo que el usuario pidió explorar en esta sesión.
   exactamente el número de entradas reales, sin ninguna duplicada.
 - Confirmar que Photo ID sigue emitiendo sin cambios (no debe verse
   afectado por esta modificación en absoluto).
+- **Verificación de seguridad específica**: tras clonar los 4 bloques,
+  `grep -c 'x5Chain = \${defaultIssuerX5chain}'` y
+  `grep -c 'issuerKey = \${defaultIssuerKey}'` contra el
+  `issuer2-profiles.baseline.conf` resultante deben devolver 4 cada uno
+  (uno por perfil de mDL) — no un valor literal de certificado/clave
+  incrustado en ninguno de los 4 bloques. Ejecutar
+  `provision_issuer2_certificates` contra el archivo nuevo en un
+  contenedor de prueba (mismo patrón usado en esta sesión) y confirmar
+  con `GET /issuer2/profiles` que los 4 perfiles reportan el MISMO
+  `x5Chain` resuelto — no solo que booteen sin error.
 
 ## Ver también
 
