@@ -3,6 +3,7 @@ package waltid
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -116,6 +117,10 @@ func TestBuilderSavedMdocSchemaResolvesProfile(t *testing.T) {
 // but if we were to send a key with a zero value we would be asserting that
 // blank on purpose, and if we send nothing the profile decides. This test
 // pins the boundary: only what the operator actually filled in gets sent.
+//
+// Sends one real driving_privileges entry (not zero) so this test exercises
+// field omission without colliding with the separate 0-categories rejection
+// covered by TestBuildIssuer2OfferRejectsZeroDrivingPrivileges.
 func TestBuildIssuer2OfferOmitsUnsetFields(t *testing.T) {
 	schema := vctypes.Schema{
 		ID:   "org.iso.18013.5.1.mDL",
@@ -126,8 +131,15 @@ func TestBuildIssuer2OfferOmitsUnsetFields(t *testing.T) {
 		"family_name": "Perez",
 		"given_name":  "Ana",
 	}
+	privileges, err := mdoc.EncodeDrivingPrivileges([]mdoc.DrivingPrivilege{
+		{VehicleCategoryCode: "B", IssueDate: "2021-06-01", ExpiryDate: "2031-06-01"},
+	})
+	if err != nil {
+		t.Fatalf("EncodeDrivingPrivileges: %v", err)
+	}
+	structured := map[string]json.RawMessage{"driving_privileges": privileges}
 
-	req, err := buildIssuer2Offer(schema, subject, nil)
+	req, err := buildIssuer2Offer(schema, subject, structured)
 	if err != nil {
 		t.Fatalf("buildIssuer2Offer: %v", err)
 	}
@@ -146,8 +158,8 @@ func TestBuildIssuer2OfferOmitsUnsetFields(t *testing.T) {
 			t.Errorf("unsupplied field %q leaked into request — it would inherit the profile's sample value: %s", absent, body)
 		}
 	}
-	if req.ProfileID != "isoMdl" {
-		t.Errorf("ProfileID = %q, want isoMdl", req.ProfileID)
+	if req.ProfileID != "isoMdl_1cat" {
+		t.Errorf("ProfileID = %q, want isoMdl_1cat", req.ProfileID)
 	}
 	if req.AuthMethod != "PRE_AUTHORIZED" {
 		t.Errorf("AuthMethod = %q, want PRE_AUTHORIZED", req.AuthMethod)
@@ -211,14 +223,22 @@ func TestIssueToWallet_MdocDoesNotRequireLegacyIssuer(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
+	privileges, err := mdoc.EncodeDrivingPrivileges([]mdoc.DrivingPrivilege{
+		{VehicleCategoryCode: "B", IssueDate: "2021-06-01", ExpiryDate: "2031-06-01"},
+	})
+	if err != nil {
+		t.Fatalf("EncodeDrivingPrivileges: %v", err)
+	}
+
 	res, err := a.IssueToWallet(context.Background(), backend.IssueRequest{
 		Schema: vctypes.Schema{
 			ID:   "org.iso.18013.5.1.mDL",
 			Std:  "mso_mdoc",
 			Name: "Driver's Licence",
 		},
-		SubjectData: map[string]string{"family_name": "Perez"},
-		Flow:        "pre_auth",
+		SubjectData:    map[string]string{"family_name": "Perez"},
+		StructuredData: map[string]json.RawMessage{"driving_privileges": privileges},
+		Flow:           "pre_auth",
 	})
 	if err != nil {
 		t.Fatalf("IssueToWallet: %v (want success via issuer-api2, not a legacy-issuer error)", err)
@@ -301,6 +321,94 @@ func TestMdocDocTypeForSavedBuilderSchema(t *testing.T) {
 	}
 }
 
+func TestMdlProfileForCategoryCount(t *testing.T) {
+	tests := []struct {
+		n             int
+		wantProfileID string
+		wantOK        bool
+	}{
+		{0, "", false},
+		{1, "isoMdl_1cat", true},
+		{2, "isoMdl_2cat", true},
+		{3, "isoMdl_3cat", true},
+		{4, "isoMdl_4cat", true},
+		{5, "", false},
+		{-1, "", false},
+	}
+	for _, tt := range tests {
+		got, ok := mdlProfileForCategoryCount(tt.n)
+		if got.profileID != tt.wantProfileID || ok != tt.wantOK {
+			t.Errorf("mdlProfileForCategoryCount(%d) = (%+v, %v), want (profileID=%q, %v)",
+				tt.n, got, ok, tt.wantProfileID, tt.wantOK)
+		}
+		if ok && got.baseNamespace != "org.iso.18013.5.1" {
+			t.Errorf("mdlProfileForCategoryCount(%d).baseNamespace = %q, want org.iso.18013.5.1", tt.n, got.baseNamespace)
+		}
+	}
+}
+
+// TestBuildIssuer2OfferSelectsProfileByCategoryCount is the integration
+// point between mdlProfileForCategoryCount and buildIssuer2Offer: the
+// caller passes real driving_privileges via StructuredData, and the
+// resulting ProfileID must match that exact count — never a fixed
+// "isoMdl", and never padded to a different count.
+func TestBuildIssuer2OfferSelectsProfileByCategoryCount(t *testing.T) {
+	schema := vctypes.Schema{ID: "org.iso.18013.5.1.mDL", Std: "mso_mdoc", Name: "Driver's Licence"}
+	subject := map[string]string{"family_name": "Perez", "given_name": "Ana"}
+
+	for n := 1; n <= mdoc.DrivingPrivilegesMaxCategories; n++ {
+		privileges := make([]mdoc.DrivingPrivilege, n)
+		for i := range privileges {
+			privileges[i] = mdoc.DrivingPrivilege{VehicleCategoryCode: "B", IssueDate: "2021-06-01", ExpiryDate: "2031-06-01"}
+		}
+		raw, err := mdoc.EncodeDrivingPrivileges(privileges)
+		if err != nil {
+			t.Fatalf("n=%d: EncodeDrivingPrivileges: %v", n, err)
+		}
+		structured := map[string]json.RawMessage{"driving_privileges": raw}
+
+		req, err := buildIssuer2Offer(schema, subject, structured)
+		if err != nil {
+			t.Fatalf("n=%d: buildIssuer2Offer: %v", n, err)
+		}
+		wantProfileID := fmt.Sprintf("isoMdl_%dcat", n)
+		if req.ProfileID != wantProfileID {
+			t.Errorf("n=%d: ProfileID = %q, want %q", n, req.ProfileID, wantProfileID)
+		}
+
+		ns := req.RuntimeOverrides.CredentialData["org.iso.18013.5.1"]
+		arr, ok := ns["driving_privileges"].([]any)
+		if !ok {
+			t.Fatalf("n=%d: driving_privileges is %T, want []any", n, ns["driving_privileges"])
+		}
+		if len(arr) != n {
+			t.Errorf("n=%d: driving_privileges has %d entries, want exactly %d — no padding", n, len(arr), n)
+		}
+	}
+}
+
+// TestBuildIssuer2OfferRejectsZeroDrivingPrivileges is the negative case:
+// driving_privileges is a MANDATORY ISO 18013-5 Table 3 element for mDL,
+// so 0 real categories must be a hard error, never silently accepted or
+// defaulted to some profile.
+func TestBuildIssuer2OfferRejectsZeroDrivingPrivileges(t *testing.T) {
+	schema := vctypes.Schema{ID: "org.iso.18013.5.1.mDL", Std: "mso_mdoc", Name: "Driver's Licence"}
+	subject := map[string]string{"family_name": "Perez", "given_name": "Ana"}
+
+	if _, err := buildIssuer2Offer(schema, subject, nil); err == nil {
+		t.Error("buildIssuer2Offer with no driving_privileges at all returned no error, want a rejection")
+	}
+
+	empty, err := mdoc.EncodeDrivingPrivileges(nil)
+	if err != nil {
+		t.Fatalf("EncodeDrivingPrivileges(nil): %v", err)
+	}
+	if empty != nil {
+		t.Fatalf("EncodeDrivingPrivileges(nil) = %s, want nil", empty)
+	}
+	// empty is nil, so this reproduces the "field never sent" case, same as above.
+}
+
 // TestIssuer2OfferCarriesDrivingPrivilegesAsJSONArray asserts on the ACTUAL
 // HTTP body that reaches issuer-api2, captured from a live handler rather
 // than from the in-memory struct.
@@ -367,9 +475,9 @@ func TestIssuer2OfferCarriesDrivingPrivilegesAsJSONArray(t *testing.T) {
 			"\"Expected to execute conversion from json array, but input |...| is not a json array\".\n"+
 			"wire body: %s", ns["driving_privileges"], captured)
 	}
-	if len(arr) != mdoc.DrivingPrivilegesArrayConfigSize {
-		t.Errorf("driving_privileges length = %d, want %d (walt.id's arrayConfig is exact-length)",
-			len(arr), mdoc.DrivingPrivilegesArrayConfigSize)
+	if len(arr) != 2 {
+		t.Errorf("driving_privileges length = %d, want 2 (the real count this test submitted, no padding)",
+			len(arr))
 	}
 
 	// Flat fields must be untouched by the map[string]any widening: they are
@@ -403,10 +511,18 @@ func TestIssuer2OfferCarriesPortraitAsBase64String(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
+	privileges, err := mdoc.EncodeDrivingPrivileges([]mdoc.DrivingPrivilege{
+		{VehicleCategoryCode: "B", IssueDate: "2021-06-01", ExpiryDate: "2031-06-01"},
+	})
+	if err != nil {
+		t.Fatalf("EncodeDrivingPrivileges: %v", err)
+	}
+
 	const portrait = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="
 	if _, err := a.IssueToWallet(context.Background(), backend.IssueRequest{
-		Schema:      vctypes.Schema{ID: "org.iso.18013.5.1.mDL", Std: "mso_mdoc", Name: "Driver's Licence"},
-		SubjectData: map[string]string{"portrait": portrait},
+		Schema:         vctypes.Schema{ID: "org.iso.18013.5.1.mDL", Std: "mso_mdoc", Name: "Driver's Licence"},
+		SubjectData:    map[string]string{"portrait": portrait},
+		StructuredData: map[string]json.RawMessage{"driving_privileges": privileges},
 	}); err != nil {
 		t.Fatalf("IssueToWallet: %v", err)
 	}
@@ -461,8 +577,15 @@ func TestBlankDatesNeverReachWaltid(t *testing.T) {
 		"birth_date":  "1990-05-14",
 		"issue_date":  "",
 	}
+	privileges, err := mdoc.EncodeDrivingPrivileges([]mdoc.DrivingPrivilege{
+		{VehicleCategoryCode: "B", IssueDate: "2021-06-01", ExpiryDate: "2031-06-01"},
+	})
+	if err != nil {
+		t.Fatalf("EncodeDrivingPrivileges: %v", err)
+	}
+	structured := map[string]json.RawMessage{"driving_privileges": privileges}
 
-	req, err := buildIssuer2Offer(schema, subject, nil)
+	req, err := buildIssuer2Offer(schema, subject, structured)
 	if err != nil {
 		t.Fatalf("buildIssuer2Offer: %v", err)
 	}

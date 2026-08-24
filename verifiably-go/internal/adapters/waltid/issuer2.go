@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -56,6 +57,41 @@ var docTypeProfiles = map[string]mdocProfile{
 func profileIDForDocType(docType string) (mdocProfile, bool) {
 	p, ok := docTypeProfiles[docType]
 	return p, ok
+}
+
+// mdlProfileForCategoryCount resolves the issuer-api2 profile for an mDL
+// carrying exactly n real driving_privileges entries.
+//
+// walt.id's arrayConfig requires an EXACT length match — confirmed
+// empirically against a real issuer-api2:0.23.1 with arrayConfig sizes of
+// 2, 3, and 6: in every case, only that exact declared size succeeds, any
+// other length (including a smaller one) fails with
+// "Json array sizes (input & config) are not equal". There is no
+// variable-length mechanism in walt.id's config model to fall back to.
+//
+// So instead of one isoMdl profile padded to a fixed size,
+// issuer2-profiles.baseline.conf declares one profile PER real category
+// count — isoMdl_1cat through isoMdl_4cat — all sharing the same
+// credentialConfigurationId ("org.iso.18013.5.1.mDL") and the same
+// issuerKey/x5Chain (by HOCON substitution reference, not literal
+// duplication). Confirmed empirically that two profiles sharing one
+// credentialConfigurationId do not collide: profileId is fixed
+// server-side at offer-creation time (POST /issuer2/credential-offers),
+// before the wallet ever resolves anything, so the wallet never needs to
+// disambiguate between them.
+//
+// n <= 0 or n > mdoc.DrivingPrivilegesMaxCategories returns (mdocProfile{}, false):
+// 0 real categories is refused because driving_privileges is a MANDATORY
+// ISO 18013-5 Table 3 element for mDL, and more than the ceiling has no
+// profile provisioned for it.
+func mdlProfileForCategoryCount(n int) (mdocProfile, bool) {
+	if n <= 0 || n > mdoc.DrivingPrivilegesMaxCategories {
+		return mdocProfile{}, false
+	}
+	return mdocProfile{
+		profileID:     fmt.Sprintf("isoMdl_%dcat", n),
+		baseNamespace: "org.iso.18013.5.1",
+	}, true
 }
 
 // mdocDocTypeFor resolves a schema's ISO docType.
@@ -156,14 +192,48 @@ const issuer2OfferTTL = 300
 // real credential carrying someone else's data.
 // structured carries the non-scalar claims (see backend.IssueRequest.
 // StructuredData) that cannot ride in the flat subject map. A nil or empty
-// map keeps the previous behaviour exactly.
+// map keeps the previous behaviour exactly, EXCEPT for mDL: an mDL with no
+// driving_privileges is now a hard error (see below), because the field is
+// ISO 18013-5 Table 3 MANDATORY and there is no longer a padding path to
+// silently paper over its absence.
 func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string, structured map[string]json.RawMessage) (issuer2OfferRequest, error) {
 	docType := mdocDocTypeFor(schema)
-	profile, ok := profileIDForDocType(docType)
-	if !ok {
-		return issuer2OfferRequest{}, fmt.Errorf(
-			"waltid: no issuer-api2 profile for docType %q — only pre-provisioned docTypes can be issued (see deploy/k8s/config/issuer2/issuer2-profiles.conf)",
-			docType)
+
+	var profile mdocProfile
+	if docType == "org.iso.18013.5.1.mDL" {
+		// mDL selects its profile by the REAL number of driving_privileges
+		// entries the operator supplied — see mdlProfileForCategoryCount's
+		// doc comment for why: walt.id's arrayConfig requires an exact
+		// length match, confirmed empirically, so one profile per real
+		// category count replaces the old fixed-size-plus-padding approach.
+		n := 0
+		if raw, ok := structured["driving_privileges"]; ok && len(raw) > 0 {
+			var arr []json.RawMessage
+			if err := json.Unmarshal(raw, &arr); err != nil {
+				return issuer2OfferRequest{}, fmt.Errorf(
+					"waltid: driving_privileges is not a JSON array: %w", err)
+			}
+			n = len(arr)
+		}
+		p, ok := mdlProfileForCategoryCount(n)
+		if !ok {
+			if n == 0 {
+				return issuer2OfferRequest{}, fmt.Errorf(
+					"waltid: driving_privileges es obligatorio en ISO 18013-5 — ingresa al menos una categoría de conducción antes de emitir")
+			}
+			return issuer2OfferRequest{}, fmt.Errorf(
+				"waltid: no se pueden emitir %d categorías de conducción en una sola credencial — el máximo es %d",
+				n, mdoc.DrivingPrivilegesMaxCategories)
+		}
+		profile = p
+	} else {
+		p, ok := profileIDForDocType(docType)
+		if !ok {
+			return issuer2OfferRequest{}, fmt.Errorf(
+				"waltid: no issuer-api2 profile for docType %q — only pre-provisioned docTypes can be issued (see deploy/k8s/config/issuer2/issuer2-profiles.conf)",
+				docType)
+		}
+		profile = p
 	}
 
 	data := make(map[string]any, len(subject)+len(structured))
@@ -204,16 +274,21 @@ func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string, structu
 		if len(raw) == 0 {
 			continue
 		}
-		// json.RawMessage marshals verbatim, so the array reaches issuer-api2
-		// as a real JSON array rather than a quoted string. Validate here
-		// rather than trusting the caller: a malformed value would otherwise
-		// surface as an opaque walt.id error at wallet-redemption time, long
-		// after the operator has left the form.
-		if !json.Valid(raw) {
+		// Decoding into `any` (rather than keeping the json.RawMessage bytes)
+		// makes the in-memory request already hold the same shape the wire
+		// body will carry — a real []any for an array claim like
+		// driving_privileges, not a quoted string — so callers inspecting
+		// req.RuntimeOverrides directly (as tests do) see the same type the
+		// HTTP body serialises to. json.RawMessage's own MarshalJSON would
+		// have produced an equivalent wire body, but only after a marshal
+		// round-trip; decoding here keeps both paths consistent without
+		// relying on that implicit behaviour.
+		var v any
+		if err := json.Unmarshal(raw, &v); err != nil {
 			return issuer2OfferRequest{}, fmt.Errorf(
-				"waltid: structured claim %q is not valid JSON", k)
+				"waltid: structured claim %q is not valid JSON: %w", k, err)
 		}
-		data[k] = raw
+		data[k] = v
 	}
 
 	req := issuer2OfferRequest{
