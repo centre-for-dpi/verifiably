@@ -1,6 +1,6 @@
 # walt.id Community Stack — implementation guide
 
-> **Version:** walt.id Community Stack **v0.18.2** (issuer-api, verifier-api, wallet-api).
+> **Version:** walt.id Community Stack **v0.23.1** (issuer-api, verifier-api, wallet-api).
 > **Adapter type:** `walt_community` → `internal/adapters/waltid`.
 > **Roles:** issuer · holder · verifier (the only DPG that ships a full built-in wallet).
 
@@ -15,9 +15,9 @@ walt.id is an open-source, API-driven credentialing stack. Three standalone HTTP
 
 | Service | Image | Internal port | Role |
 |---|---|---|---|
-| `issuer-api` | `waltid/issuer-api:0.18.2` | 7002 | Onboards signing keys/DIDs, mints OID4VCI offers, hosts issuer metadata. |
-| `verifier-api` | `waltid/verifier-api:0.18.2` | 7003 | Runs OID4VP sessions, evaluates presentations. |
-| `wallet-api` | `waltid/wallet-api:0.18.2` | 7001 | A hosted holder wallet: accounts, key/DID management, claim + present. |
+| `issuer-api` | `waltid/issuer-api:0.23.1` | 7002 | Onboards signing keys/DIDs, mints OID4VCI offers, hosts issuer metadata. |
+| `verifier-api` | `waltid/verifier-api:0.23.1` | 7003 | Runs OID4VP sessions, evaluates presentations. |
+| `wallet-api` | `waltid/wallet-api:0.23.1` | 7001 | A hosted holder wallet: accounts, key/DID management, claim + present. |
 
 Backing store: one shared PostgreSQL (`postgres:16.4-alpine`, DB `waltid`). An in-cluster
 `caddy:2.8` fronts the three APIs in localhost mode; in subdomain mode the shared `caddy-public`
@@ -40,7 +40,7 @@ verifiably-go does **not** reimplement walt.id; it drives the three APIs through
   (register/login → list wallets → `exchange/{resolveCredentialOffer,useOfferRequest,usePresentationRequest}`
   → list credentials).
 - **Verifier.** Builds a Presentation Exchange request via verifier-api and polls the session.
-  (v0.18.2 has no direct-credential-verify endpoint, so `VerifyDirect()` returns
+  (v0.23.1 has no direct-credential-verify endpoint, so `VerifyDirect()` returns
   `backend.ErrNotSupported` for this DPG — use Inji Verify for paste/scan verification.)
 - **Schema registry.** Custom schemas built in verifiably's UI are persisted into walt.id's
   **HOCON catalog** (`credential-issuer-metadata.conf`) and verifiably **restarts issuer-api** so
@@ -77,9 +77,9 @@ All in `deploy/compose/stack/docker-compose.yml`, default profile (no `--profile
 ```
 postgres        postgres:16.4-alpine   ${POSTGRES_PORT:-5432}:5432   DB/user/pass = waltid
 caddy           caddy:2.8              ${CADDY_HTTP_PORT:-80}:80     localhost-mode API fronting
-issuer-api      waltid/issuer-api:0.18.2     7002   mount ../../k8s/config/issuer  (ro)
-verifier-api    waltid/verifier-api:0.18.2   7003   mount ../../k8s/config/verifier (ro)
-wallet-api      waltid/wallet-api:0.18.2     7001   mount ../../k8s/config/wallet   (ro) + wallet-api-data vol
+issuer-api      waltid/issuer-api:0.23.1     7002   mount ../../k8s/config/issuer  (ro)
+verifier-api    waltid/verifier-api:0.23.1   7003   mount ../../k8s/config/verifier (ro)
+wallet-api      waltid/wallet-api:0.23.1     7001   mount ../../k8s/config/wallet   (ro) + wallet-api-data vol
 ```
 
 `wallet-api` `depends_on` postgres (healthy) + caddy. Service array `WALTID_SERVICES` in
@@ -213,7 +213,7 @@ ConnectTimeout; saving a custom schema restarts issuer-api and the schema become
 - **Wallet OIDC login timeouts / disabled.** OIDC is intentionally off (`logins.conf`); the
   `WALLET_OIDC_*` env exist only so `oidc.conf` parses. Re-enabling requires real values + adding
   `oidc` back to the enabled methods.
-- **`VerifyDirect` unsupported.** walt.id v0.18.2 exposes no paste/scan verify endpoint; the
+- **`VerifyDirect` unsupported.** walt.id v0.23.1 exposes no paste/scan verify endpoint; the
   adapter returns `backend.ErrNotSupported`. Route direct verification through Inji Verify.
 - **Demo crypto keys.** `WALLET_ENCRYPTION_KEY` / `WALLET_SIGN_KEY` default to upstream demo
   values — rotate for anything real.

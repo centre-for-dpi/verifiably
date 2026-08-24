@@ -458,7 +458,7 @@ Config in `deploy/compose/hub/.env`:
 | `VERIFIABLY_ROLES` | `verifier` | Hub's own Go-app role — the hub rarely needs to also issue or be a holder |
 | `HUB_VERIFIER_PORT` | `7053` | Host port for the Walt ID verifier-api container (bind to `127.0.0.1:7053` in production — no public exposure needed when behind Caddy) |
 | `HUB_VERIFIER_BASE_URL` | `http://localhost:7053` | Base URL the verifier-api advertises in `presentation_definition_uri`/`request_uri`. Must be browser-reachable — in TLS mode set to `https://<VERIFIABLY_PUBLIC_DOMAIN>/verifier-api` |
-| `WALTID_VERSION` | `0.18.2` | Image tag for `waltid/verifier-api` — pin to match the rest of your Walt ID deployment |
+| `WALTID_VERSION` | `0.23.1` | Image tag for `waltid/verifier-api` — pin to match the rest of your Walt ID deployment (confirmed against `deploy/compose/hub/docker-compose.yml`'s actual default) |
 
 Caddy exposes it at `/verifier-api/*` (via `handle_path`, which strips the
 prefix before proxying) — deliberately **not** `/verify*`, which is already

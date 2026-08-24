@@ -10,8 +10,8 @@ Everything below refers to that subtree — run the commands from there.
 
 Supported DPGs out of the box:
 
-- **walt.id Community Stack** v0.18.2 — issuer / holder / verifier via walt.id's issuer-api, wallet-api, verifier-api
-- **walt.id `issuer-api2`** — a second, separate walt.id instance dedicated to **ISO/IEC 18013-5 mdoc** issuance (mDL, Photo ID). Generates its own IACA/DSC PKI on first deploy and publishes the current trust anchor over HTTP so companion mdoc wallets (e.g. `cdpi-wallet`) can verify without a compiled-in certificate. See [deploy.md's mDL / mdoc issuance section](verifiably-go/docs/deploy.md#mdl-mdoc-issuance-issuer-api2)
+- **walt.id Community Stack** v0.23.1 — issuer / holder / verifier via walt.id's issuer-api, wallet-api, verifier-api
+- **walt.id `issuer-api2`** — a second, separate walt.id instance dedicated to **ISO/IEC 18013-5 mdoc** issuance (mDL, Photo ID). Generates its own IACA/DSC PKI on first deploy and publishes the current trust anchor over HTTP so companion mdoc wallets (e.g. `cdpi-whitelabel-wallet`) can verify without a compiled-in certificate. See [deploy.md's mDL / mdoc issuance section](verifiably-go/docs/deploy.md#mdl-mdoc-issuance-issuer-api2)
 - **Inji Certify** v0.14.0 — issuer, both OID4VCI pre-authorised code and authorization code flows. The auth-code flow has an **in-app multi-format schema builder** (create a credential live — W3C VCDM 1.1/2.0 as `ldp_vc` or IETF SD-JWT VC as `vc+sd-jwt` — which writes the Certify config + registry extraction view + eSignet scope and restarts the services in place)
 - **Inji Web Wallet** v0.16.0 — holder via the MOSIP Inji Web SPA + Mimoto BFF, **or** claim Inji Certify auth-code credentials **in-app via eSignet** (no external redirect)
 - **Inji Verify** v0.16.0 — verifier via Inji Verify's QR-upload and OID4VP endpoints
@@ -1277,29 +1277,36 @@ Either stop the conflicting service or change the port in `.env` (e.g.
 `VERIFIABLY_HOST_PORT=8081`). Ports 80/443 are only needed if you bring
 up the Caddy TLS reverse proxy; skip it for localhost dev.
 
-**Inji pre-auth credential won't hold in the walt.id wallet (`invalid_proof`
-/ `proof_header_ambiguous_key`)** — use an external OID4VCI wallet with **SD-JWT**
+**Inji pre-auth credential won't hold in the walt.id wallet as `ldp_vc`** — use an external OID4VCI wallet with **SD-JWT**
 
-The bundled walt.id Community Stack wallet-api (**v0.18.2**) cannot receive an
-Inji Certify pre-authorized-code credential, for two reasons that both live
-inside the walt.id image and are not fixable on the issuer side:
+The bundled walt.id Community Stack wallet-api (**v0.23.1**) cannot receive
+an Inji Certify pre-authorized-code credential issued as `ldp_vc` (W3C
+JSON-LD). Re-verified live against real `waltid/issuer-api:0.23.1` +
+`waltid/wallet-api:0.23.1` containers (not inferred from an older version):
 
-1. **Non-conformant proof.** walt.id's `useOfferRequest` builds the OID4VCI
-   proof JWT with a header carrying **both** a top-level `kid` *and* a `jwk`.
-   OID4VCI requires exactly one key reference, so Inji's `JwtProofValidator`
-   rejects it with `proof_header_ambiguous_key` → `400 invalid_proof`. (Proven:
-   a clean `jwk`-only proof issues `200`; adding a top-level `kid` flips it to
-   the same 400.)
-2. **No ldp_vc presentation.** Even if received, walt.id v0.18.2 can only
-   *present* compact-JWT formats (`jwt_vc_json`, `vc+sd-jwt`) — its VP path
-   throws on `ldp_vc` (JSON-LD).
+1. **`issuer-api` doesn't offer `ldp_vc` at all at 0.23.1.** Its wellknown
+   (`/draft13/.well-known/openid-credential-issuer`) advertises only
+   `jwt_vc`, `jwt_vc_json`, `vc+sd-jwt`, `dc+sd-jwt`, `mso_mdoc` — never
+   `ldp_vc`. Forcing an `ldp_vc` credential configuration ID directly
+   against `/openid4vc/jwt/issue` returns `400
+   {"id":"IllegalArgumentException","message":"Invalid Credential
+   Configuration Id"}`.
+2. **wallet-api's `POST .../credentials/import` rejects raw JSON-LD.** It
+   requires a genuine compact JWT; a raw `ldp_vc` JSON-LD document returns
+   `400 "Invalid JWT: Invalid JWS header: Invalid JSON object"`.
+3. **wallet-api's `PUT .../credentials` ("Store credential") returns `500
+   NotImplementedError`,** confirmed live at 0.23.1 — so there is no way to
+   inject an externally-fetched `ldp_vc` credential into the wallet by any
+   path.
 
-A holder-side adapter that exports a wallet-managed key (`keys/{id}/load`
-returns the private JWK), signs a conformant proof itself, redeems the
-credential, and stores it back is **also blocked**: wallet-api v0.18.2's
-`PUT /credentials` ("Store credential") returns `500 NotImplementedError`, so
-there is no way to inject an externally-fetched credential into the wallet.
-walt.id's only ingest path is its own (broken-proof) exchange.
+(An earlier version of this note, written against walt.id v0.18.2, blamed
+this on the OID4VCI proof JWT carrying both a top-level `kid` and a `jwk` —
+re-tested live at 0.23.1 via a real pre-authorized-code exchange with a
+packet capture of the actual proof JWT on the wire: the header now carries
+only `kid`/`typ`/`alg`, never a `jwk` alongside `kid`, and the exchange
+succeeds end-to-end for `did:jwk`/`did:key`-bound credentials. That specific
+proof-shape bug is gone at 0.23.1; the `ldp_vc` ingestion gap above is not
+the same bug and remains.)
 
 **walt.id `ConnectTimeoutException` resolving an offer or presentation request**
 — hairpin NAT, fixed in the compose
@@ -1323,8 +1330,11 @@ working path is to scan/paste the offer into an **external OID4VCI wallet**
 (e.g. a Credo-based mobile wallet) and issue the schema as **SD-JWT
 (`sd_jwt_vc (IETF)`)**, which holds end-to-end. ldp_vc (W3C) holds in wallets
 with proper JSON-LD + Data Integrity support; SD-JWT is the most broadly
-compatible. Making the walt.id *holder* work would require a walt.id wallet-api
-version that emits a conformant proof (and implements credential import).
+compatible. Making the walt.id *holder* work for `ldp_vc` would require a
+walt.id `issuer-api` version that can issue `ldp_vc` credential
+configurations at all, and a `wallet-api` version that implements credential
+import (`PUT .../credentials`) — the OID4VCI proof itself is not the
+blocker at 0.23.1.
 
 **mdoc wallet reports "No trusted certificate was found" (issuer-api2 / mDL)**
 
@@ -1450,26 +1460,42 @@ VC, signed with an `x5c` certificate chain). It does **not** mint `mso_mdoc` on
 this path. Inji issues both as *valid* credentials — the limitations below are
 all **consumer-side**: how each wallet / verifier handles the format.
 
-| Format | OID4VCI → mobile (Credo) | OID4VCI → walt.id holder | OID4VP (present) | PDF (bearer QR) |
+| Format | OID4VCI → mobile (Credo) | OID4VCI → walt.id holder (v0.23.1) | OID4VP (present) | PDF (bearer QR) |
 | ------ | ------------------------ | ------------------------ | ---------------- | --------------- |
-| **`ldp_vc`** (W3C, Ed25519Signature2020) | ✗ wallet's Inji path is compact-JWT-only — a JSON-LD object crashes it | ✗ proof rejected (`kid`+`jwk`); v0.18.2 also can't store/present `ldp_vc` | ✗ walt.id VP path handles only compact-JWT | ✓ minted server-side, PixelPass QR, verified by Inji Verify |
-| **`vc+sd-jwt`** (IETF, `x5c`) | ✓ compact JWT — holds end-to-end | ✗ proof rejected (`kid`+`jwk`) at issuance | ⚠️ presentable by a Credo wallet to an `x5c`-aware verifier (Inji Verify); the walt.id verifier rejects it (*"Only DIDs are supported as issuer IDs"*) | ✗ PixelPass expects CBOR-able JSON-LD; a compact SD-JWT is storage-only, no usable QR |
+| **`ldp_vc`** (W3C, Ed25519Signature2020) | ✗ wallet's Inji path is compact-JWT-only — a JSON-LD object crashes it | ✗ no ingestion path exists at all (see below) | ✗ walt.id's `issuer-api` cannot even issue `ldp_vc` at 0.23.1 (`400 Invalid Credential Configuration Id`), so this never reaches presentation | ✓ minted server-side, PixelPass QR, verified by Inji Verify |
+| **`vc+sd-jwt`** (IETF, `x5c`) | ✓ compact JWT — holds end-to-end | ⚠️ not independently re-tested against Inji Certify's specific `vc+sd-jwt` issuance at 0.23.1 (see note below) | ⚠️ presentable by a Credo wallet to an `x5c`-aware verifier (Inji Verify); walt.id's own verifier's DID-vs-x5c issuer resolution was not re-tested at 0.23.1 (no local x5c-signed SD-JWT fixture to test with) | ✗ PixelPass expects CBOR-able JSON-LD; a compact SD-JWT is storage-only, no usable QR |
 
-Why each limitation exists (all detailed in Troubleshooting):
+Why each limitation exists (all re-verified live against real
+`waltid/issuer-api:0.23.1` / `wallet-api:0.23.1` / `verifier-api:0.23.1`
+containers, not inferred from the older v0.18.2 findings that used to be
+cited here — full detail in Troubleshooting above):
 
 - **mobile `ldp_vc` crash** — the wallet flags `/v1/certify/` as a legacy
   endpoint and runs a compact-JWT-only path; a JSON-LD object hits
-  `String.split` → "undefined is not a function".
-- **walt.id proof rejection** — `wallet-api` builds a proof header carrying both
-  `kid` and `jwk`; OID4VCI requires exactly one, so Inji returns
-  `proof_header_ambiguous_key`. (Format-agnostic — blocks both formats.)
-- **walt.id can't present `ldp_vc`** — its OID4VP path calls `.jsonPrimitive` on
-  the vpToken, which throws for a JSON-LD object (only compact-JWT works).
-- **SD-JWT verifier mismatch** — Inji signs SD-JWT under an `x5c` certificate,
-  but the walt.id verifier only resolves **DID** issuers for W3C credentials.
+  `String.split` → "undefined is not a function". (Not walt.id-related;
+  unaffected by the walt.id version.)
+- **walt.id `ldp_vc` ingestion is unreachable, not proof-rejected.**
+  Re-tested at 0.23.1 and found **not** to be the previously-documented
+  `kid`+`jwk` ambiguous-proof rejection — a real pre-authorized-code
+  exchange's proof JWT (captured on the wire) carries only `kid`/`typ`/`alg`
+  at 0.23.1, and issuance succeeds. The actual blocker is upstream of the
+  proof entirely: `issuer-api` doesn't offer an `ldp_vc` credential
+  configuration to request in the first place, its JSON-LD import path
+  rejects non-JWT bodies, and `PUT .../credentials` ("Store credential")
+  still returns `500 NotImplementedError`.
+- **walt.id can't present `ldp_vc`** — moot at 0.23.1: since no `ldp_vc`
+  credential can enter a wallet-api wallet by any path (above), the
+  presentation-building code that would reject a JsonArray/JsonObject
+  vpToken is never reached. Not independently re-tested in isolation.
+- **SD-JWT verifier mismatch** — the original claim ("Inji signs SD-JWT
+  under an `x5c` certificate, but the walt.id verifier only resolves DID
+  issuers") could not be re-tested at 0.23.1: no `x5c`-signed SD-JWT VC
+  fixture exists in this repo to test against, and fabricating one for
+  this check would not be genuine evidence. Left as unverified rather than
+  asserted.
 - **SD-JWT has no PDF QR** — the PixelPass pipeline (CBOR → zlib → base45) is
   built for structured JSON-LD; a compact SD-JWT string isn't a scannable
-  credential QR.
+  credential QR. (Not walt.id-related.)
 
 **Net, today:** for a wallet use **`vc+sd-jwt` → a Credo-based mobile wallet**;
 for offline / paper use **`ldp_vc` → PDF + Inji Verify**. None of these are Inji
@@ -1497,7 +1523,7 @@ of this app, both covered in depth in
    a production certificate authority.
 2. **Wallets need to learn that certificate without being recompiled.**
    `verifiably-go` publishes the deployment's current IACA at
-   `GET /trust/mdoc-anchors`, and a companion wallet (see `cdpi-wallet`)
+   `GET /trust/mdoc-anchors`, and a companion wallet (see `cdpi-whitelabel-wallet`)
    fetches it dynamically, keyed to the OID4VCI `credential_issuer` it
    resolved the offer from. This is explicitly a **POC mechanism** — the
    endpoint is unsigned, so its trust ceiling is "the issuer's own claim
