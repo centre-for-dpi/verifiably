@@ -121,10 +121,9 @@ func TestSubmitIssueSendsDrivingPrivilegesAsRealJSONArray(t *testing.T) {
 			"\"Expected to execute conversion from json array, but input |...| is not a json array\".\n"+
 			"wire body: %s", probe.DrivingPrivileges, body)
 	}
-	if len(arr) != mdoc.DrivingPrivilegesArrayConfigSize {
-		t.Fatalf("driving_privileges has %d entries, want %d — walt.id's arrayConfig is exact-length "+
-			"and answers \"Json array sizes (input & config) are not equal\" otherwise",
-			len(arr), mdoc.DrivingPrivilegesArrayConfigSize)
+	if len(arr) != 2 {
+		t.Fatalf("driving_privileges has %d entries, want 2 — this test filled exactly 2 rows, no padding or truncation should apply",
+			len(arr))
 	}
 
 	first, _ := arr[0].(map[string]any)
@@ -141,9 +140,13 @@ func TestSubmitIssueSendsDrivingPrivilegesAsRealJSONArray(t *testing.T) {
 	}
 }
 
-// A single filled row must still issue. This is the case the operator hits
-// most often, and the one the fixed-size arrayConfig makes non-obvious.
-func TestSubmitIssueSingleDrivingPrivilegeIsPadded(t *testing.T) {
+// A single filled row must still issue, and must NOT be padded — it is
+// exactly this padding (duplicating the holder's one real category to
+// satisfy a fixed-size arrayConfig) that this whole change removes. See
+// mdlProfileForCategoryCount in internal/adapters/waltid/issuer2.go: a
+// single real category now selects the isoMdl_1cat profile, whose
+// arrayConfig has exactly one slot.
+func TestSubmitIssueSingleDrivingPrivilegeIsNotPadded(t *testing.T) {
 	schema := mdlSchemaForTest()
 	r := multipartRequest(t, map[string]string{
 		"dp_vehicle_category_code_0": "A",
@@ -156,14 +159,11 @@ func TestSubmitIssueSingleDrivingPrivilegeIsPadded(t *testing.T) {
 	if err := json.Unmarshal(structured["driving_privileges"], &arr); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(arr) != mdoc.DrivingPrivilegesArrayConfigSize {
-		t.Fatalf("one filled row produced %d entries, want %d", len(arr), mdoc.DrivingPrivilegesArrayConfigSize)
+	if len(arr) != 1 {
+		t.Fatalf("one filled row produced %d entries, want exactly 1 — no padding", len(arr))
 	}
-	for i, e := range arr {
-		if e["issue_date"] == "" || e["issue_date"] == nil {
-			t.Errorf("entry %d has no issue_date — a blank pad fails stringToFullDate "+
-				"with \"Text '' could not be parsed at index 0\"", i)
-		}
+	if arr[0]["issue_date"] == "" || arr[0]["issue_date"] == nil {
+		t.Errorf("the single entry has no issue_date — stringToFullDate fails on \"\"")
 	}
 }
 
@@ -418,7 +418,7 @@ func renderIssueFormWithStructured(t *testing.T, schema vctypes.Schema, vals map
 // quiet-data-loss class this whole change set exists to remove.
 func TestDrivingPrivilegesOverCapWarnsOperator(t *testing.T) {
 	form := url.Values{}
-	for i, code := range []string{"A", "B", "C"} {
+	for i, code := range []string{"A", "B", "C", "D", "E"} {
 		form.Set(fmt.Sprintf("dp_vehicle_category_code_%d", i), code)
 		form.Set(fmt.Sprintf("dp_issue_date_%d", i), "2020-01-01")
 		form.Set(fmt.Sprintf("dp_expiry_date_%d", i), "2030-01-01")
@@ -428,12 +428,12 @@ func TestDrivingPrivilegesOverCapWarnsOperator(t *testing.T) {
 	_ = req.ParseForm()
 
 	filled := drivingPrivilegeRows(req, 0)
-	if len(filled) != 3 {
-		t.Fatalf("drivingPrivilegeRows read %d entries, want 3", len(filled))
+	if len(filled) != 5 {
+		t.Fatalf("drivingPrivilegeRows read %d entries, want 5", len(filled))
 	}
-	if len(filled) <= mdoc.DrivingPrivilegesArrayConfigSize {
-		t.Fatalf("test premise broken: 3 entries should exceed the cap of %d",
-			mdoc.DrivingPrivilegesArrayConfigSize)
+	if len(filled) <= mdoc.DrivingPrivilegesMaxCategories {
+		t.Fatalf("test premise broken: 5 entries should exceed the cap of %d",
+			mdoc.DrivingPrivilegesMaxCategories)
 	}
 
 	// The encoder truncates as a backstop — that silent drop is precisely what
@@ -447,14 +447,47 @@ func TestDrivingPrivilegesOverCapWarnsOperator(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(got) != mdoc.DrivingPrivilegesArrayConfigSize {
-		t.Errorf("encoded %d entries, want %d", len(got), mdoc.DrivingPrivilegesArrayConfigSize)
+	if len(got) != mdoc.DrivingPrivilegesMaxCategories {
+		t.Errorf("encoded %d entries, want %d", len(got), mdoc.DrivingPrivilegesMaxCategories)
 	}
 	for _, p := range got {
-		if p.VehicleCategoryCode == "C" {
-			t.Error("third category survived encoding — the cap is not what this test assumes")
+		if p.VehicleCategoryCode == "E" {
+			t.Error("fifth category survived encoding — the cap is not what this test assumes")
 		}
 	}
+}
+
+// TestDrivingPrivilegesZeroRowsWarnsOperator is the handler-level half of
+// the 0-categories rejection: driving_privileges is ISO 18013-5 Table 3
+// MANDATORY for mDL, and the issue form's asterisk on the first row is
+// purely visual (no `required` HTML attribute) — so SubmitIssue itself
+// must be the real defense against a submission with every row left blank.
+func TestDrivingPrivilegesZeroRowsWarnsOperator(t *testing.T) {
+	form := url.Values{} // no dp_vehicle_category_code_0 at all
+	req := httptest.NewRequest(http.MethodPost, "/issuer/issue", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_ = req.ParseForm()
+
+	filled := drivingPrivilegeRows(req, 0)
+	if len(filled) != 0 {
+		t.Fatalf("drivingPrivilegeRows read %d entries, want 0 for this test's premise", len(filled))
+	}
+
+	raw, err := mdoc.EncodeDrivingPrivileges(filled)
+	if err != nil {
+		t.Fatalf("EncodeDrivingPrivileges: %v", err)
+	}
+	if raw != nil {
+		t.Fatalf("EncodeDrivingPrivileges(0 rows) = %s, want nil", raw)
+	}
+	// This confirms the PREMISE (0 rows encode to nil, same as before);
+	// the actual rejection this test guards is exercised through
+	// SubmitIssue's own logic in issuance.go, which must reject nil/empty
+	// driving_privileges for docType org.iso.18013.5.1.mDL specifically —
+	// verified via TestBuildIssuer2OfferRejectsZeroDrivingPrivileges
+	// (internal/adapters/waltid/issuer2_test.go), since SubmitIssue's own
+	// HTTP-level test harness in this package does not construct a full
+	// backend.Adapter round trip.
 }
 
 // TestMdocDatesAreFullDateNotRFC3339 reproduces a live failure: the operator's
