@@ -50,43 +50,32 @@ func TestEncodeDrivingPrivilegesIsARealJSONArray(t *testing.T) {
 	}
 }
 
-// TestEncodeDrivingPrivilegesPadsToArrayConfigSize covers the second error
-// string recorded in TODO.md F4. walt.id's arrayConfig is an EXACT-length
-// list, so an operator holding a single category must still produce
-// DrivingPrivilegesArrayConfigSize entries or issuance fails with
-// "Json array sizes (input & config) are not equal".
-func TestEncodeDrivingPrivilegesPadsToArrayConfigSize(t *testing.T) {
-	raw, err := EncodeDrivingPrivileges([]DrivingPrivilege{
-		{VehicleCategoryCode: "A", IssueDate: "2019-03-01", ExpiryDate: "2029-03-01"},
-	})
-	if err != nil {
-		t.Fatalf("EncodeDrivingPrivileges: %v", err)
-	}
-	var arr []DrivingPrivilege
-	if err := json.Unmarshal(raw, &arr); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(arr) != DrivingPrivilegesArrayConfigSize {
-		t.Fatalf("len = %d, want %d — walt.id rejects any other length with "+
-			"\"Json array sizes (input & config) are not equal\"",
-			len(arr), DrivingPrivilegesArrayConfigSize)
-	}
-	// The pad must carry PARSEABLE dates. A blank pad would send "" through
-	// the profile's stringToFullDate conversion, which fails at signing time
-	// with "Text '' could not be parsed at index 0" — the other F4 error.
-	for i, p := range arr {
-		if p.VehicleCategoryCode == "" {
-			t.Errorf("entry %d has a blank category code — a padded entry must repeat a real one", i)
+// TestEncodeDrivingPrivilegesNeverPads is the replacement for the old
+// padding behavior: walt.id now has one profile per real category count
+// (isoMdl_1cat..isoMdl_4cat), so the encoder must emit exactly what the
+// operator supplied — 1, 2, 3, or 4 entries — never more.
+func TestEncodeDrivingPrivilegesNeverPads(t *testing.T) {
+	for n := 1; n <= DrivingPrivilegesMaxCategories; n++ {
+		in := make([]DrivingPrivilege, n)
+		for i := range in {
+			in[i] = DrivingPrivilege{VehicleCategoryCode: "B", IssueDate: "2019-03-01", ExpiryDate: "2029-03-01"}
 		}
-		if p.IssueDate == "" || p.ExpiryDate == "" {
-			t.Errorf("entry %d has a blank date (%q/%q) — stringToFullDate fails on \"\"",
-				i, p.IssueDate, p.ExpiryDate)
+		raw, err := EncodeDrivingPrivileges(in)
+		if err != nil {
+			t.Fatalf("n=%d: EncodeDrivingPrivileges: %v", n, err)
+		}
+		var arr []DrivingPrivilege
+		if err := json.Unmarshal(raw, &arr); err != nil {
+			t.Fatalf("n=%d: unmarshal: %v", n, err)
+		}
+		if len(arr) != n {
+			t.Errorf("n=%d: encoded %d entries, want exactly %d — no padding should ever occur", n, len(arr), n)
 		}
 	}
 }
 
 func TestEncodeDrivingPrivilegesTruncatesOverlongInput(t *testing.T) {
-	in := make([]DrivingPrivilege, DrivingPrivilegesArrayConfigSize+3)
+	in := make([]DrivingPrivilege, DrivingPrivilegesMaxCategories+3)
 	for i := range in {
 		in[i] = DrivingPrivilege{VehicleCategoryCode: "B", IssueDate: "2020-01-01", ExpiryDate: "2030-01-01"}
 	}
@@ -98,8 +87,8 @@ func TestEncodeDrivingPrivilegesTruncatesOverlongInput(t *testing.T) {
 	if err := json.Unmarshal(raw, &arr); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(arr) != DrivingPrivilegesArrayConfigSize {
-		t.Errorf("len = %d, want %d", len(arr), DrivingPrivilegesArrayConfigSize)
+	if len(arr) != DrivingPrivilegesMaxCategories {
+		t.Errorf("len = %d, want %d", len(arr), DrivingPrivilegesMaxCategories)
 	}
 }
 
