@@ -394,7 +394,22 @@ cmd_up() {
   # are still serving with the old baseUrl baked into ApplicationConfig.
   # Restart them so the new conf is picked up. Idempotent — same baseUrl
   # → same restarted-with-same-state outcome.
-  for svc in issuer-api verifier-api; do
+  #
+  # issuer-api2 needs the same treatment for a different reason: it loads
+  # its whole profile catalog (issuer2-profiles.conf) into memory once at
+  # boot and never re-reads it. seed_issuer2_configs above only writes that
+  # runtime file if it does not already exist — the documented way to make
+  # an existing deployment pick up a NEW baseline (e.g. an added profile)
+  # is to delete the runtime conf and let this `up` reseed it — but a plain
+  # `compose up -d` leaves an already-running issuer-api2 container
+  # untouched, so the reseeded file sits on disk unread until something
+  # restarts the container. Reproduced live: deleting issuer2-profiles.conf
+  # and reseeding 4 new mDL profiles from an updated baseline left
+  # GET /issuer2/profiles still reporting only the old profile set until
+  # `docker restart` was run by hand. Restarting it on every `up`, same as
+  # issuer-api/verifier-api, closes that gap — idempotent for the common
+  # case where nothing changed.
+  for svc in issuer-api verifier-api issuer-api2; do
     if compose ps --services 2>/dev/null | grep -qx "$svc"; then
       compose restart "$svc" >/dev/null 2>&1 || true
     fi
