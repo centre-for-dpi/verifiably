@@ -877,32 +877,45 @@ mdoc's CBOR confirmed `driving_privileges` as a genuine array of 2 objects
 with tag-1004 full-dates, and `portrait` as a CBOR byte string carrying the
 PNG magic number.
 
-**What remains.** The `arrayConfig` fixed length (below) is still a
-vendor-profile constraint we work around by padding rather than something we
-can express properly — `mdoc.DrivingPrivilegesArrayConfigSize` and the
-profile's `arrayConfig` list must be changed together, and an operator
-cannot issue more than 2 distinct categories until the profile grows. F2's
-Photo ID `portrait` byte-string mapping gap is unaffected by this change and
-still open.
+**What remained (now resolved).** The padding workaround originally described
+here is gone. `mdoc.DrivingPrivilegesArrayConfigSize` and `mdoc.PadDrivingPrivileges`
+no longer exist. walt.id's `arrayConfig` still requires an EXACT length
+match (that empirical finding still holds — confirmed for sizes 2, 3, and 6),
+but instead of padding to one fixed size, `deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf`
+now declares **one profile per real category count**: `isoMdl_1cat` through
+`isoMdl_4cat`, all sharing the same `credentialConfigurationId`
+(`org.iso.18013.5.1.mDL`). `internal/adapters/waltid/issuer2.go`'s
+`mdlProfileForCategoryCount` selects the profile matching the operator's
+REAL entry count — `n` real categories always produces exactly `n` entries
+on the wire, never padded and never truncated for `1 <= n <= 4`.
 
-Two error strings surfaced repeatedly while investigating this and cost
-several attempts each to diagnose — recording them verbatim so the next
-person can search and find this entry instead of re-deriving the cause:
+An operator can now issue 1, 2, 3, or 4 distinct categories on one
+credential — the old "cannot issue more than 2" ceiling is gone, replaced by
+a ceiling of `mdoc.DrivingPrivilegesMaxCategories` (4), matching the number
+of provisioned profiles. 0 categories is now a hard error rather than an
+empty/padded array: `driving_privileges` is ISO/IEC 18013-5 Table 3
+MANDATORY, so `SubmitIssue` (`internal/handlers/issuance.go`) rejects an
+all-blank submission before it ever reaches the adapter, and
+`buildIssuer2Offer` rejects it again as a backstop if some other caller
+reaches the adapter directly. More than 4 filled rows is rejected by
+`SubmitIssue` rather than silently truncated by `mdoc.EncodeDrivingPrivileges`'s
+truncating backstop. F2's Photo ID `portrait` byte-string mapping gap is
+unaffected by this change and still open.
+
+Two error strings surfaced repeatedly while investigating the original F4
+failure and cost several attempts each to diagnose — recording them
+verbatim so the next person can search and find this entry instead of
+re-deriving the cause (the padding-specific explanation that used to follow
+the first one is obsolete now that no profile is padded; the length-mismatch
+mechanics themselves are still accurate and worth keeping):
 
 - **`Json array sizes (input & config) are not equal`** — misleading on its
-  face. It means the profile ships `driving_privileges = []` (empty) while
-  its `arrayConfig` in `mDocNameSpacesDataMappingConfig` demands exactly 2
-  entries (see `issuer2-profiles.conf`'s `isoMdl` profile). It is not a
-  schema-shape error; it is a length mismatch against a fixed-size array
-  config.
-
-  Confirmed against the real image while fixing this: the count is **EXACT**,
-  not a floor and not a ceiling. Sending a 1-entry array reproduces this
-  error just as an empty one does; only exactly 2 succeeds. That is why
-  `mdoc.PadDrivingPrivileges` exists — an operator holding a single category
-  must still submit 2 entries, so the pad repeats the last real entry rather
-  than inventing a category the holder does not hold or sending a blank one
-  (a blank pad hits the DateTimeParseException below).
+  face. It means the submitted `driving_privileges` array's length does not
+  match the exact length its profile's `arrayConfig` in
+  `mDocNameSpacesDataMappingConfig` declares (see `issuer2-profiles.baseline.conf`'s
+  `isoMdl_1cat`..`isoMdl_4cat` profiles). It is not a schema-shape error; it
+  is a length mismatch against a fixed-size array config — which is exactly
+  why one profile per real count now exists instead of one padded profile.
 - **`java.time.format.DateTimeParseException: Text '' could not be parsed at
   index 0`** — means a mandatory date field was left unset (empty string).
   Task 2 emptied the profile's sample data (`credentialData`) deliberately,
