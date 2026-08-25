@@ -27,39 +27,47 @@ func readProfilesConf(t *testing.T) string {
 	return string(raw)
 }
 
-// expectedConversionMappings is the exact set of CBOR conversion mappings the
-// profile must carry, as (field, conversionType) pairs counted with
-// multiplicity. They live in mDocNameSpacesDataMappingConfig.entriesConfigMap
-// blocks, NOT in credentialData.
+// expectedConversionMappings is the exact set of CBOR conversion mappings
+// each profile must carry, as (field, conversionType) pairs counted with
+// multiplicity within ONE profile block. isoMdl_1cat..isoMdl_4cat share
+// the same fixed set (6 entries) plus 2 per driving_privileges arrayConfig
+// entry (which varies 1..4 across the four profiles) — expectedMdlMappingsForProfile
+// builds that per-profile list so the test does not hand-maintain a
+// hardcoded total that silently drifts if a profile's category count
+// changes.
 //
-// This is spelled out rather than counted because the trim these mappings sit
-// next to is the thing most likely to delete them. entriesConfigMap entries are
-// indented to the same depth as credentialData's sample fields and look
-// interchangeable in a diff; two separate hand-trim attempts on the live VPS
-// deleted from the wrong block (192 field lines instead of 144) and had to be
-// restored from backup.
-//
-// Losing a mapping is silent. The field still gets emitted, just with the wrong
-// CBOR type — a full-date becomes a text string, a portrait becomes base64 text
-// instead of a byte string — and nothing in walt.id logs a complaint. The
-// credential issues, the wallet stores it, and the reader rejects or
-// misrenders it. A count alone would not catch a mapping that survived with
-// its conversionType silently changed, so the pairs are asserted, not tallied.
-var expectedConversionMappings = []struct{ field, conversion string }{
-	// isoMdl / org.iso.18013.5.1
+// The split point is NOT after all 6 fixed entries: in the actual HOCON,
+// entriesConfigMap declares birth_date/issue_date/expiry_date/portrait first,
+// then the driving_privileges arrayConfig entries, then
+// portrait_capture_date/signature_usual_mark last — so the per-profile list
+// interleaves the variable-count arrayConfig pairs between the two fixed
+// halves rather than appending them after all six.
+var expectedMdlMappingsHead = []struct{ field, conversion string }{
 	{"birth_date", "stringToFullDate"},
 	{"issue_date", "stringToFullDate"},
 	{"expiry_date", "stringToFullDate"},
 	{"portrait", "base64StringToByteString"},
-	// driving_privileges is an array of two positional objects, each carrying
-	// its own pair of date conversions.
-	{"issue_date", "stringToFullDate"},
-	{"expiry_date", "stringToFullDate"},
-	{"issue_date", "stringToFullDate"},
-	{"expiry_date", "stringToFullDate"},
+}
+
+var expectedMdlMappingsTail = []struct{ field, conversion string }{
 	{"portrait_capture_date", "stringToFullDate"},
 	{"signature_usual_mark", "base64StringToByteString"},
-	// isoPhotoId / org.iso.23220.1
+}
+
+func expectedMdlMappingsForProfile(categoryCount int) []struct{ field, conversion string } {
+	out := append([]struct{ field, conversion string }{}, expectedMdlMappingsHead...)
+	for i := 0; i < categoryCount; i++ {
+		out = append(out,
+			struct{ field, conversion string }{"issue_date", "stringToFullDate"},
+			struct{ field, conversion string }{"expiry_date", "stringToFullDate"},
+		)
+	}
+	out = append(out, expectedMdlMappingsTail...)
+	return out
+}
+
+// expectedPhotoIdMappings — isoPhotoId, unchanged by this task.
+var expectedPhotoIdMappings = []struct{ field, conversion string }{
 	{"birth_date", "stringToFullDate"},
 	{"issue_date", "stringToFullDate"},
 	{"expiry_date", "stringToFullDate"},
@@ -67,23 +75,27 @@ var expectedConversionMappings = []struct{ field, conversion string }{
 }
 
 // TestTrimmedProfileKeepsEveryConversionMapping is the guard that matters most
-// around the credentialData trim. See expectedConversionMappings for why a
-// pairwise assertion beats a field count.
+// around the credentialData trim. See expectedMdlMappingsForProfile for why a
+// pairwise assertion beats a field count, and why it is computed per profile
+// rather than hand-maintained as one flat total.
 func TestTrimmedProfileKeepsEveryConversionMapping(t *testing.T) {
 	raw := readProfilesConf(t)
 
-	// [^{}]*? keeps the match inside a single leaf mapping block, and the
-	// conversion name must allow digits — base64StringToByteString has some.
+	var want []string
+	for n := 1; n <= 4; n++ {
+		for _, m := range expectedMdlMappingsForProfile(n) {
+			want = append(want, m.field+"="+m.conversion)
+		}
+	}
+	for _, m := range expectedPhotoIdMappings {
+		want = append(want, m.field+"="+m.conversion)
+	}
+
 	re := regexp.MustCompile(`"([a-z0-9_]+)"\s*=\s*\{[^{}]*?"conversionType"\s*=\s*"([A-Za-z0-9]+)"`)
 	matches := re.FindAllStringSubmatch(raw, -1)
-
 	got := make([]string, 0, len(matches))
 	for _, m := range matches {
 		got = append(got, m[1]+"="+m[2])
-	}
-	want := make([]string, 0, len(expectedConversionMappings))
-	for _, m := range expectedConversionMappings {
-		want = append(want, m.field+"="+m.conversion)
 	}
 
 	if len(got) != len(want) {
@@ -97,10 +109,8 @@ func TestTrimmedProfileKeepsEveryConversionMapping(t *testing.T) {
 		}
 	}
 
-	// A bare occurrence count guards the same blocks against a mapping that the
-	// structural regex above stops matching (e.g. reordered keys).
-	if n := strings.Count(raw, "conversionType"); n != len(expectedConversionMappings) {
-		t.Errorf("profile has %d conversionType occurrences, want %d", n, len(expectedConversionMappings))
+	if n := strings.Count(raw, "conversionType"); n != len(want) {
+		t.Errorf("profile has %d conversionType occurrences, want %d", n, len(want))
 	}
 }
 
@@ -113,41 +123,45 @@ var mdlKeepList = []string{
 	"issuing_jurisdiction", "age_over_18", "age_over_21",
 }
 
-// TestCredentialDataCarriesOnlyTheKeptFields pins the trim itself.
-//
-// issuer-api2 deep-MERGES the runtimeOverrides we POST over the profile's
-// credentialData instead of replacing it, so every sample field left in the
-// profile and not sent at issue time is emitted into the mdoc as a BLANK
-// element. An operator who defined 15 fields saw a credential carrying 46,
-// most of them empty. Restoring walt.id's full ~45-field sample set would
-// bring that straight back, which is why this is asserted and not just
-// commented.
+// TestCredentialDataCarriesOnlyTheKeptFields pins the trim itself, across
+// all 4 mDL profiles independently — each isoMdl_Ncat block repeats the
+// same credentialData shape, and each is an equally real risk of an
+// accidental trim, so each is checked on its own rather than trusting
+// that checking one implies the other three are fine.
 func TestCredentialDataCarriesOnlyTheKeptFields(t *testing.T) {
 	raw := readProfilesConf(t)
-
-	block := namespaceBlock(t, raw, `"org.iso.18013.5.1" = {`)
-	got := fieldNamesIn(block)
 
 	want := map[string]bool{}
 	for _, f := range mdlKeepList {
 		want[f] = true
 	}
 
-	for _, f := range got {
-		if !want[f] {
-			t.Errorf("credentialData still declares %q — issuer-api2 deep-merges the "+
-				"profile under our overrides, so this is emitted as a blank element in "+
-				"every mdoc we issue", f)
+	// The header must anchor on credentialData specifically: each isoMdl_Ncat
+	// block also has an unrelated "org.iso.18013.5.1" header under
+	// mDocNameSpacesDataMappingConfig.entriesConfigMap (the conversion-mapping
+	// block asserted by TestTrimmedProfileKeepsEveryConversionMapping), and a
+	// bare header match would double-count 8 blocks instead of the 4
+	// credentialData ones this test actually pins.
+	blocks := allNamespaceBlocks(t, raw, "credentialData = {\n      \"org.iso.18013.5.1\" = {")
+	if len(blocks) != 4 {
+		t.Fatalf("found %d \"org.iso.18013.5.1\" credentialData blocks, want 4 (one per isoMdl_Ncat profile)", len(blocks))
+	}
+
+	for i, block := range blocks {
+		got := fieldNamesIn(block)
+		seen := map[string]bool{}
+		for _, f := range got {
+			seen[f] = true
+			if !want[f] {
+				t.Errorf("profile block %d: credentialData still declares %q — issuer-api2 deep-merges the "+
+					"profile under our overrides, so this is emitted as a blank element in every mdoc we issue", i, f)
+			}
 		}
-	}
-	seen := map[string]bool{}
-	for _, f := range got {
-		seen[f] = true
-	}
-	for _, f := range mdlKeepList {
-		if !seen[f] {
-			t.Errorf("credentialData is missing %q — a field absent from the profile "+
-				"cannot be populated by a runtime override", f)
+		for _, f := range mdlKeepList {
+			if !seen[f] {
+				t.Errorf("profile block %d: credentialData is missing %q — a field absent from the profile "+
+					"cannot be populated by a runtime override", i, f)
+			}
 		}
 	}
 }
@@ -176,6 +190,49 @@ func namespaceBlock(t *testing.T, raw, header string) string {
 	}
 	t.Fatalf("unbalanced braces after %q", header)
 	return ""
+}
+
+// allNamespaceBlocks returns the text between EVERY occurrence of `header`
+// and its matching close brace — unlike namespaceBlock, which only finds
+// the first. Needed once a HOCON file legitimately repeats the same
+// namespace header across multiple profile blocks (isoMdl_1cat..isoMdl_4cat
+// each declare their own "org.iso.18013.5.1" = { ... } credentialData).
+func allNamespaceBlocks(t *testing.T, raw, header string) []string {
+	t.Helper()
+	var blocks []string
+	rest := raw
+	for {
+		idx := strings.Index(rest, header)
+		if idx < 0 {
+			break
+		}
+		body := rest[idx+len(header):]
+		depth := 1
+		end := -1
+		for i, r := range body {
+			switch r {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					end = i
+				}
+			}
+			if end >= 0 {
+				break
+			}
+		}
+		if end < 0 {
+			t.Fatalf("unbalanced braces after %q", header)
+		}
+		blocks = append(blocks, body[:end])
+		rest = body[end:]
+	}
+	if len(blocks) == 0 {
+		t.Fatalf("namespace header %q not found — the profile shape changed", header)
+	}
+	return blocks
 }
 
 // fieldNamesIn extracts the direct `"name" = value` keys of a block.
