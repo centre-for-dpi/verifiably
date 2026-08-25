@@ -22,7 +22,13 @@ func TestProfileIDForDocType(t *testing.T) {
 		wantNamespace string
 		wantOK        bool
 	}{
-		{"org.iso.18013.5.1.mDL", "isoMdl", "org.iso.18013.5.1", true},
+		// mDL's profileID is deliberately "": docTypeProfiles' mDL entry is
+		// allowlist membership + namespace only. "isoMdl" no longer exists in
+		// the HOCON — real issuance dispatches through
+		// mdlProfileForCategoryCount (isoMdl_1cat..isoMdl_4cat), never through
+		// this map's profileID for mDL. Pinning "" here catches a future
+		// caller that assumes this profileID is postable.
+		{"org.iso.18013.5.1.mDL", "", "org.iso.18013.5.1", true},
 		{"org.iso.23220.photoid.1", "isoPhotoId", "org.iso.23220.1", true},
 		// Wrong case must NOT resolve: docTypeProfiles is an exact-match
 		// allowlist against issuer2-profiles.conf's credentialConfigurationId,

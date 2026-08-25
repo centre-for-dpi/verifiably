@@ -48,8 +48,17 @@ type mdocProfile struct {
 // themselves disagree, not because of any inconsistency in our code. Do not
 // "tidy" these into matching case; that would break resolution for whichever
 // one you changed.
+//
+// mDL's entry is ALLOWLIST MEMBERSHIP + NAMESPACE ONLY — its profileID is
+// deliberately "", not a real profile. mDL has no single profile to name
+// here: buildIssuer2Offer selects isoMdl_1cat..isoMdl_4cat by the real
+// driving_privileges count via mdlProfileForCategoryCount, and "isoMdl"
+// itself no longer exists in the HOCON (it was split into those four). A
+// caller that ignores mdlProfileForCategoryCount and dispatches on this
+// map's mDL profileID directly must fail loudly on the empty string rather
+// than silently POSTing a deleted profile name to walt.id.
 var docTypeProfiles = map[string]mdocProfile{
-	"org.iso.18013.5.1.mDL":   {"isoMdl", "org.iso.18013.5.1"},
+	"org.iso.18013.5.1.mDL":   {"", "org.iso.18013.5.1"},
 	"org.iso.23220.photoid.1": {"isoPhotoId", "org.iso.23220.1"},
 }
 
