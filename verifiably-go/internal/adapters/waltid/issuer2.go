@@ -289,9 +289,15 @@ func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string, structu
 		// driving_privileges, not a quoted string — so callers inspecting
 		// req.RuntimeOverrides directly (as tests do) see the same type the
 		// HTTP body serialises to. json.RawMessage's own MarshalJSON would
-		// have produced an equivalent wire body, but only after a marshal
-		// round-trip; decoding here keeps both paths consistent without
-		// relying on that implicit behaviour.
+		// have produced a semantically/structurally equivalent wire body —
+		// same keys, same values, same array order — but NOT necessarily
+		// byte-identical: decoding to `any` yields map[string]any, which
+		// encoding/json marshals with keys sorted alphabetically, so object
+		// key order can differ from a raw passthrough. Nothing downstream
+		// relies on byte-stability of this JSON (walt.id's entriesConfigMap
+		// is name-keyed, not positional), so that difference is harmless —
+		// decoding here keeps both paths consistent without relying on
+		// json.RawMessage's implicit passthrough behaviour.
 		var v any
 		if err := json.Unmarshal(raw, &v); err != nil {
 			return issuer2OfferRequest{}, fmt.Errorf(
