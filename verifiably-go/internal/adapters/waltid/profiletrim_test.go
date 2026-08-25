@@ -27,14 +27,15 @@ func readProfilesConf(t *testing.T) string {
 	return string(raw)
 }
 
-// expectedConversionMappings is the exact set of CBOR conversion mappings
-// each profile must carry, as (field, conversionType) pairs counted with
-// multiplicity within ONE profile block. isoMdl_1cat..isoMdl_4cat share
-// the same fixed set (6 entries) plus 2 per driving_privileges arrayConfig
-// entry (which varies 1..4 across the four profiles) — expectedMdlMappingsForProfile
-// builds that per-profile list so the test does not hand-maintain a
-// hardcoded total that silently drifts if a profile's category count
-// changes.
+// expectedMdlMappingsHead and expectedMdlMappingsTail together with
+// expectedMdlMappingsForProfile below describe the exact set of CBOR
+// conversion mappings each profile must carry, as (field, conversionType)
+// pairs counted with multiplicity within ONE profile block. isoMdl_1cat..
+// isoMdl_4cat share the same fixed set (6 entries) plus 2 per
+// driving_privileges arrayConfig entry (which varies 1..4 across the four
+// profiles) — expectedMdlMappingsForProfile builds that per-profile list so
+// the test does not hand-maintain a hardcoded total that silently drifts if
+// a profile's category count changes.
 //
 // The split point is NOT after all 6 fixed entries: in the actual HOCON,
 // entriesConfigMap declares birth_date/issue_date/expiry_date/portrait first,
