@@ -334,15 +334,15 @@ func isStructuredField(fs vctypes.FieldSpec) bool {
 }
 
 // maxDrivingPrivilegeRows caps how many repeater rows the form renders and
-// drivingPrivilegeRows reads. It is deliberately one more than
-// mdoc.DrivingPrivilegesMaxCategories: if the two were equal,
-// drivingPrivilegeRows could never return more entries than the cap, and
-// SubmitIssue's over-cap rejection below would be dead code reachable only
-// by a caller that bypasses the form (e.g. a direct POST). Keeping this one
-// row ahead of the cap is what makes that guard exercisable at all, exactly
-// as it already was historically (4 rendered rows against the old cap of
-// 2).
-const maxDrivingPrivilegeRows = mdoc.DrivingPrivilegesMaxCategories + 1
+// the handler reads. It equals mdoc.DrivingPrivilegesMaxCategories: rendering
+// exactly this many rows keeps the cap visible as the real vendor-profile
+// limit rather than making it look like a standards limit or an arbitrary UI
+// choice. SubmitIssue's own over-cap rejection guards the case where a
+// caller reaches the handler with more filled entries than this by some
+// route other than the rendered form (e.g. a direct POST) — see the test
+// that exercises it, which builds that slice directly rather than through
+// this constant.
+const maxDrivingPrivilegeRows = 4
 
 // drivingPrivilegeRows reads the repeater inputs the issue form posts —
 // dp_<field>_<index> — and returns the entries the operator actually filled.
