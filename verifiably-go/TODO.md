@@ -739,26 +739,52 @@ v0.23.1." The version was updated with the other pins, but nobody confirmed
 true unless the feature landed between 0.19 and 0.23 — worth a check against
 the release notes when someone is in there anyway.
 
-### docs/ still cites walt.id 0.18.2
+### docs/ still cites walt.id 0.18.2 — **partially closed 2026-08-24**
 
-`docs/dpg/walt-id.md` and `docs/dpg-matrix.md` describe the same
-operator-facing DPG capabilities that `gen-backends.sh` renders, and still
-say 0.18.2. Outside the upgrade's file glob (`.md` was not in scope), so
-deliberately untouched — but now inconsistent with the `.sh` strings.
+`README.md`, `docs/deploy.md`, and `docs/dpg/walt-id.md` are now corrected
+to 0.23.1 — and NOT by mechanical find-replace: each specific behavior
+claim tied to the old version (proof-header shape, direct-verify endpoint,
+`ldp_vc` presentation, JARM support) was re-tested against real
+`waltid/{issuer,verifier,wallet}-api:0.23.1` containers (full OID4VCI/OID4VP
+flows, a packet-captured proof JWT, complete OpenAPI route enumeration) —
+see commits `5806bd2`, `a193df5`. Two concrete findings from that pass:
+the `kid`+`jwk` ambiguous-proof bug is gone at 0.23.1 (a real captured
+proof carries only `kid`), and JARM (`direct_post.jwt`) is now genuinely
+supported by walt.id but never requested by this repo's own adapter
+(`verifyBody` in `internal/adapters/waltid/verifier.go` has no
+`response_mode` field) — recorded as a new, scoped P1 item in
+`docs/haip-conformance.md`'s closure plan.
 
-### walt.id 0.18.2 references in Go comments
+**Still open:** `docs/dpg-matrix.md` (3 more "0.18.2" hits) was not part of
+that pass and still needs the same live-verification treatment, not a
+mechanical version swap — it makes claims (e.g. "OID4VP v1.0 is still
+landing in walt.id's wallet/demo apps through v0.18.2") that the 0.23.1
+testing this session ran didn't confirm one way or the other.
+
+### walt.id 0.18.2 references in Go comments — **still open**
 
 The 2026-08-21 upgrade to 0.23.1 changed every executable pin but left the
 documentation comments that cite v0.18.2 as the version whose source was
-read to verify a behaviour (`config.go`, `issuer.go`, `verifier.go`,
-`wallet.go`, `catalog.go`, `vctypes.go`, several handlers).
+read to verify a behaviour. Confirmed still present by grep (2026-08-24):
+`config.go` (3), `catalog.go` (5), `catalog_test.go` (2), `issuer.go` (5),
+`verifier.go` (4), `wallet.go` (7), `vctypes/vctypes.go` (2),
+`internal/mock/data.go` (6), plus one each in
+`internal/handlers/{inji_delegation,verifier,wallet}.go`.
 
-Not bugs — the documented behaviour was re-verified at 0.23.1 by the
-integration test and the design spike. But they now claim to describe a
-version the system no longer runs, which will mislead the next reader.
+Not all "not bugs" anymore — the 2026-08-24 empirical pass (see above)
+found at least one of these comments describes behavior that has actually
+changed (the `kid`+`jwk` proof-ambiguity note in `wallet.go`'s
+`friendlyPresentError`, superseded by this session's packet-capture
+evidence that the proof no longer carries a `jwk` alongside `kid`). The
+others are unverified either way, not confirmed still-true — this pass
+only checked the prose docs and `haip-conformance.md`'s Gap 1, not the Go
+comments themselves.
 
 Deliberately deferred so the upgrade diff stayed reviewable. Worth a
-mechanical follow-up pass.
+follow-up pass that empirically re-verifies each comment's claim against a
+real 0.23.1 container (as this session's docs pass did), not a mechanical
+version-string swap that would just repeat the mistake of asserting an
+unverified behavior.
 
 ### Dead mdoc body-builder removed; the lesson it encoded is recorded here
 
