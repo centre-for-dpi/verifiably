@@ -364,7 +364,7 @@ func displayPair(typeName string, schema vctypes.Schema) (display, desc string) 
 	return display, desc
 }
 
-// buildClaimsBlock renders the OID4VCI `claims` metadata for a schema's
+// buildClaimsBlock renders the OID4VCI claims metadata for a schema's
 // fields, with one display entry per configured locale.
 //
 // This is the mechanism that lets a wallet show "Apellidos" to a
@@ -372,22 +372,41 @@ func displayPair(typeName string, schema vctypes.Schema) (display, desc string) 
 // derive a label from the identifier themselves — which is why cdpi-wallet
 // shows "Family Name" today regardless of the holder's language.
 //
-// namespace controls the shape of each claim's `path`:
-//   - "" (W3C VC-JWT, LinkedData, SD-JWT): claims are flat, so path is the
-//     single-element ["<field>"].
-//   - non-empty (mso_mdoc): mdoc claims are namespace-keyed — see
-//     verifier.go's buildSelectiveInputDescriptor and walt.id's own shipped
-//     metadata (deploy/k8s/config/issuer2/credential-issuer-metadata.conf),
-//     both of which use the two-element ["<namespace>", "<field>"] form. A
-//     wallet resolving mdoc claim metadata by namespace-qualified path will
-//     not match a single-element entry.
+// namespace picks BOTH which walt.id field is emitted and its shape — the
+// two destination services model claim metadata with unrelated Kotlin
+// types, confirmed by decompiling each service's own jar:
+//   - "" (W3C VC-JWT, LinkedData, SD-JWT — all served by the LEGACY
+//     issuer-api, package id.walt.oid4vc.data): emits `credentialSubject`,
+//     a flat Map<String, ClaimDescriptor> keyed by field name.
+//     CredentialSupported.claims exists on this type too, but it is
+//     Map<String, Map<String, ClaimDescriptor>> — namespace-keyed, always
+//     two levels deep — and ClaimDescriptor has no `path` field at all. A
+//     flat format has no second-level key to give it, so `claims` is not
+//     usable here.
+//   - non-empty (mso_mdoc — served by issuer-api2, package
+//     id.walt.openid4vci.metadata.issuer): emits `claims` as an array of
+//     {path, display} entries, path being the two-element
+//     ["<namespace>", "<field>"] form — see verifier.go's
+//     buildSelectiveInputDescriptor and walt.id's own shipped metadata
+//     (deploy/k8s/config/issuer2/credential-issuer-metadata.conf).
+//
+// Emitting the mdoc array shape for a flat format crash-loops the legacy
+// issuer-api container before its web server binds: CIProvider.<init> throws
+// JsonDecodingException ("Expected JsonObject, but had JsonArray … at path:
+// $.claims") while parsing the first non-mdoc entry, which is why
+// credential-issuer-metadata.conf never listens on its port at all. See the
+// 2026-08-24 incident: POST /onboard/issuer failed with connection refused
+// because issuer-api never came up.
 //
 // Returns "" for a schema with no declared fields (stock catalog entries):
-// an empty claims block is not valid HOCON here, and omitting it preserves
-// exactly today's behaviour for those schemas.
+// an empty block is not valid HOCON here, and omitting it preserves exactly
+// today's behaviour for those schemas.
 func buildClaimsBlock(fields []vctypes.FieldSpec, namespace string) string {
 	if len(fields) == 0 {
 		return ""
+	}
+	if namespace == "" {
+		return buildCredentialSubjectBlock(fields)
 	}
 	var b strings.Builder
 	b.WriteString("        claims = [\n")
@@ -396,11 +415,7 @@ func buildClaimsBlock(fields []vctypes.FieldSpec, namespace string) string {
 			continue
 		}
 		b.WriteString("            {\n")
-		if namespace != "" {
-			fmt.Fprintf(&b, "                path = [\"%s\", \"%s\"]\n", hoconEscape(namespace), hoconEscape(f.Name))
-		} else {
-			fmt.Fprintf(&b, "                path = [\"%s\"]\n", hoconEscape(f.Name))
-		}
+		fmt.Fprintf(&b, "                path = [\"%s\", \"%s\"]\n", hoconEscape(namespace), hoconEscape(f.Name))
 		b.WriteString("                display = [\n")
 
 		locales := claimLocales(f)
@@ -413,6 +428,35 @@ func buildClaimsBlock(fields []vctypes.FieldSpec, namespace string) string {
 		b.WriteString("            }\n")
 	}
 	b.WriteString("        ]\n")
+	return b.String()
+}
+
+// buildCredentialSubjectBlock renders the legacy issuer-api's flat claim
+// metadata field — CredentialSupported.credentialSubject, a
+// Map<String, ClaimDescriptor> keyed by field name — for the non-mdoc
+// formats (W3C VC-JWT, LinkedData, SD-JWT). See buildClaimsBlock's doc
+// comment for why this field, not `claims`, is what legacy issuer-api
+// expects.
+func buildCredentialSubjectBlock(fields []vctypes.FieldSpec) string {
+	var b strings.Builder
+	b.WriteString("        credentialSubject = {\n")
+	for _, f := range fields {
+		if f.Name == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "            %s = {\n", hoconEscape(f.Name))
+		b.WriteString("                display = [\n")
+
+		locales := claimLocales(f)
+		for _, loc := range locales {
+			fmt.Fprintf(&b,
+				"                    { name = \"%s\", locale = \"%s\" }\n",
+				hoconEscape(f.Label(loc)), hoconEscape(loc))
+		}
+		b.WriteString("                ]\n")
+		b.WriteString("            }\n")
+	}
+	b.WriteString("        }\n")
 	return b.String()
 }
 

@@ -94,17 +94,45 @@ func TestBuildClaimsBlockEmptyForNoFields(t *testing.T) {
 	}
 }
 
-// TestBuildClaimsBlockFlatPathForW3C pins that a blank namespace (used by
-// every non-mdoc builder) produces a single-element path. This matters as
-// much as the mdoc namespacing fix below: it proves the fix did not
-// namespace every format's claims, only mdoc's.
-func TestBuildClaimsBlockFlatPathForW3C(t *testing.T) {
+// TestBuildClaimsBlockFlatObjectForW3C pins that a blank namespace (used by
+// every non-mdoc builder: buildJWTVCJsonEntry, buildLinkedDataEntry,
+// buildSDJWTEntry) emits a `credentialSubject` HOCON OBJECT keyed by field
+// name, NOT a `claims` array of {path, display} entries.
+//
+// The legacy issuer-api (walt.id 0.23.1, package id.walt.oid4vc.data)'s
+// CredentialSupported declares TWO separate, differently-shaped fields —
+// confirmed by decompiling waltid-openid4vc-jvm-0.23.1.jar:
+//   - credentialSubject: Map<String, ClaimDescriptor>       (flat, one level)
+//   - claims:            Map<String, Map<String, ClaimDescriptor>> (namespaced)
+//
+// There is no `path` field on ClaimDescriptor at all, and `claims` is ALWAYS
+// two levels deep (ClaimDescriptorNamespacedMapSerializer, the only
+// serializer wired to it) — a flat format has no second-level key to supply.
+// issuer-api2's shipped baseline uses `claims = [ {path=...} ]` because it
+// runs the unrelated id.walt.openid4vci.metadata.issuer package (draft 13
+// style, buildMDocEntry's target only); that shape does not exist in legacy
+// issuer-api's model at all.
+//
+// Emitting `claims` as an array here — walt.id's own shipped legacy config
+// never contains this field for flat formats — throws
+// JsonDecodingException: Expected JsonObject, but had JsonArray … at path:
+// $.claims during CIProvider.<init>, which crash-loops the entire issuer-api
+// container before its web server binds. See the 2026-08-24 incident: POST
+// /onboard/issuer failed with connection refused because issuer-api never
+// came up.
+func TestBuildClaimsBlockFlatObjectForW3C(t *testing.T) {
 	got := buildClaimsBlock([]vctypes.FieldSpec{{Name: "family_name"}}, "")
-	if !strings.Contains(got, `path = ["family_name"]`) {
-		t.Errorf("expected flat single-element path for non-mdoc formats, got:\n%s", got)
+	if !strings.Contains(got, `credentialSubject = {`) {
+		t.Errorf("expected a credentialSubject HOCON object, got:\n%s", got)
 	}
-	if strings.Contains(got, `path = ["org`) {
-		t.Errorf("non-mdoc claims block unexpectedly namespaced:\n%s", got)
+	if strings.Contains(got, "claims") {
+		t.Errorf("flat (non-mdoc) claims block must use credentialSubject, not claims at all, got:\n%s", got)
+	}
+	if strings.Contains(got, `path`) {
+		t.Errorf("non-mdoc claims block must not contain a path key (ClaimDescriptor has none), got:\n%s", got)
+	}
+	if !strings.Contains(got, `family_name = {`) {
+		t.Errorf("expected the field name as the object key, got:\n%s", got)
 	}
 }
 
