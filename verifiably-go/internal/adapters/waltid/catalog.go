@@ -37,8 +37,34 @@ var catalogMu sync.Mutex
 //   changed  — true if at least one entry was newly written; false on a re-save
 //              of an already-registered schema (idempotent)
 //
+// mso_mdoc is deliberately excluded: it never reaches this catalog at all.
+// IssueToWallet dispatches Std=="mso_mdoc" straight to issueMdocViaIssuer2
+// before it ever consults the legacy issuer-api this function edits — the
+// legacy service cannot type CBOR at any version (see IssueToWallet's doc
+// comment), so an mdoc offer through it is unusable even when it parses.
+// mdoc's real catalog lives in issuer-api2, pre-provisioned per docType and
+// kept in sync by syncIssuer2DisplayName instead.
+//
+// Writing an mdoc entry here anyway is worse than dead weight: buildMDocEntry
+// can only populate CredentialSupported.claims, which the legacy issuer-api's
+// decoder requires as a two-level namespace-keyed map
+// (ClaimDescriptorNamespacedMapSerializer) — buildMDocEntry instead emits the
+// {path, display} array shape issuer-api2's unrelated package expects. That
+// mismatch throws JsonDecodingException on $.claims during CIProvider.<init>
+// and crash-loops the legacy issuer-api before its web server ever binds,
+// taking every OTHER format's issuance down with it. See the 2026-08-24 and
+// 2026-08-25 incidents — POST /onboard/issuer and POST
+// /openid4vc/sdjwt/issue both failed with connection refused / DNS
+// "server misbehaving" because an mdoc save (this path) or a non-mdoc save
+// (buildClaimsBlock, fixed separately — see
+// TestBuildClaimsBlockFlatObjectForW3C) had written that shape.
+//
 // Concurrent callers serialise via catalogMu.
 func appendCredentialType(catalogPath string, schema vctypes.Schema) (primary string, all []string, changed bool, err error) {
+	if schema.Std == "mso_mdoc" {
+		return "", nil, false, nil
+	}
+
 	catalogMu.Lock()
 	defer catalogMu.Unlock()
 

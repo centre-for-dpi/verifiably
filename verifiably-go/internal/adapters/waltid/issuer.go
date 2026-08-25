@@ -483,10 +483,11 @@ func (a *Adapter) SaveCustomSchema(_ context.Context, schema vctypes.Schema) err
 	}
 	a.mu.Unlock()
 	// An mdoc schema issues through issuer-api2, whose configurations are
-	// pre-provisioned per docType and so cannot carry the schema's name the way
-	// the entry appendCredentialType just wrote does. Push the name into that
-	// service's own metadata instead. Best-effort by construction — see
-	// syncIssuer2DisplayName.
+	// pre-provisioned per docType — appendCredentialType is a deliberate
+	// no-op for Std=="mso_mdoc" (see its doc comment) and never touches the
+	// legacy catalog above, so there is no per-schema entry here to carry a
+	// name. Push the name into issuer-api2's own metadata instead.
+	// Best-effort by construction — see syncIssuer2DisplayName.
 	a.syncIssuer2DisplayName(schema)
 	if !changed {
 		return nil
