@@ -372,6 +372,37 @@ func drivingPrivilegeRows(r *http.Request, tzOffset int) []mdoc.DrivingPrivilege
 	return out
 }
 
+// validateDrivingPrivilegesCount enforces the two count-based guards
+// SubmitIssue applies to a driving_privileges submission, before it ever
+// reaches mdoc.EncodeDrivingPrivileges or the adapter:
+//
+//   - 0 filled rows is rejected: driving_privileges is a MANDATORY ISO/IEC
+//     18013-5 Table 3 element for mDL, and the issue form's asterisk on the
+//     first row is purely visual (no `required` HTML attribute), so this is
+//     the only real defense against a submission with every row left blank.
+//   - more than mdoc.DrivingPrivilegesMaxCategories filled rows is rejected,
+//     rather than silently truncated. EncodeDrivingPrivileges truncates as a
+//     backstop, and an un-warned truncation is exactly the class of quiet
+//     data loss this whole change set exists to remove: the operator would
+//     see a successful issuance and a credential missing a category they
+//     entered.
+//
+// Extracted out of SubmitIssue so both guards are reachable from a test
+// without standing up a session, an adapter and a full issuance round trip —
+// mirroring why missingRequiredFields above is its own function.
+func validateDrivingPrivilegesCount(filled []mdoc.DrivingPrivilege) error {
+	if len(filled) > mdoc.DrivingPrivilegesMaxCategories {
+		return fmt.Errorf(
+			"Solo se pueden emitir %d categorías de conducción por credencial (ingresaste %d). Quita las categorías sobrantes.",
+			mdoc.DrivingPrivilegesMaxCategories, len(filled))
+	}
+	if len(filled) == 0 {
+		return fmt.Errorf(
+			"driving_privileges es obligatorio en ISO 18013-5 — ingresa al menos una categoría de conducción antes de emitir.")
+	}
+	return nil
+}
+
 // fullDateOnly trims an RFC3339 timestamp back to its date part. walt.id's
 // `stringToFullDate` conversion parses a bare "YYYY-MM-DD"; handing it a full
 // timestamp fails with a DateTimeParseException at signing time.
@@ -611,31 +642,15 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 			// exists to fix (TODO.md F4). They travel in StructuredData, which
 			// only the mdoc adapter reads.
 			filled := drivingPrivilegeRows(r, tzOffset)
-			// Tell the operator when they filled more categories than the
-			// deployment can carry, instead of silently dropping the extras.
-			// EncodeDrivingPrivileges truncates as a backstop, and a
-			// truncation nobody is told about is exactly the class of quiet
-			// data loss this whole change set exists to remove: the operator
-			// would see a successful issuance and a credential missing a
-			// category they entered.
-			if len(filled) > mdoc.DrivingPrivilegesMaxCategories {
-				h.errorToast(w, r, fmt.Sprintf(
-					"Solo se pueden emitir %d categorías de conducción por credencial (ingresaste %d). Quita las categorías sobrantes.",
-					mdoc.DrivingPrivilegesMaxCategories, len(filled)))
-				return
-			}
-			// driving_privileges is a MANDATORY ISO/IEC 18013-5 Table 3
-			// element for mDL. The issue form's asterisk on the first row
-			// (templates/pages/issuer_issue.html) is purely visual — the
-			// input carries no `required` attribute — so this is the only
-			// real defense against a submission with every row left blank.
-			// Without this check, buildIssuer2Offer's own rejection
-			// (internal/adapters/waltid/issuer2.go) would still catch it,
-			// but only after the round trip to the adapter, with a less
-			// specific error message.
-			if len(filled) == 0 {
-				h.errorToast(w, r,
-					"driving_privileges es obligatorio en ISO 18013-5 — ingresa al menos una categoría de conducción antes de emitir.")
+			// Both count-based guards (0 rows / over-cap) live in
+			// validateDrivingPrivilegesCount so they are reachable from a
+			// test without a full issuance round trip — see its doc
+			// comment. Without this check, buildIssuer2Offer's own
+			// rejection (internal/adapters/waltid/issuer2.go) would still
+			// catch both cases, but only after the round trip to the
+			// adapter, with a less specific error message.
+			if err := validateDrivingPrivilegesCount(filled); err != nil {
+				h.errorToast(w, r, err.Error())
 				return
 			}
 			raw, encErr := mdoc.EncodeDrivingPrivileges(filled)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"image"
 	"image/color"
@@ -486,6 +487,58 @@ func TestDrivingPrivilegesZeroRowsWarnsOperator(t *testing.T) {
 	// (internal/adapters/waltid/issuer2_test.go), since SubmitIssue's own
 	// HTTP-level test harness in this package does not construct a full
 	// backend.Adapter round trip.
+}
+
+// TestValidateDrivingPrivilegesCount exercises validateDrivingPrivilegesCount
+// directly — the same function SubmitIssue calls for its 0-categories and
+// over-cap guards (see issuance.go). Before this test, neither guard had an
+// executing test: TestDrivingPrivilegesOverCapWarnsOperator and
+// TestDrivingPrivilegesZeroRowsWarnsOperator above only pin the PREMISES
+// those guards rely on (EncodeDrivingPrivileges' truncating backstop,
+// drivingPrivilegeRows reading 0 entries) — neither one calls the guard
+// itself, and no test in this package calls SubmitIssue end-to-end (it needs
+// a session + a full backend.Adapter round trip this package's harness does
+// not construct). Extracting the guard into its own function makes it
+// reachable from a test without any of that machinery: this test would fail
+// if either branch were deleted from validateDrivingPrivilegesCount, which is
+// also the function SubmitIssue itself calls, so the coverage is real rather
+// than a copy that could silently diverge.
+func TestValidateDrivingPrivilegesCount(t *testing.T) {
+	mkRows := func(n int) []mdoc.DrivingPrivilege {
+		rows := make([]mdoc.DrivingPrivilege, n)
+		for i := range rows {
+			rows[i] = mdoc.DrivingPrivilege{VehicleCategoryCode: "B", IssueDate: "2020-01-01", ExpiryDate: "2030-01-01"}
+		}
+		return rows
+	}
+
+	t.Run("zero rows is rejected with the mandatory-field message", func(t *testing.T) {
+		err := validateDrivingPrivilegesCount(nil)
+		if err == nil {
+			t.Fatal("validateDrivingPrivilegesCount(nil) = nil, want a rejection — driving_privileges is ISO 18013-5 Table 3 MANDATORY")
+		}
+		if !strings.Contains(err.Error(), "driving_privileges es obligatorio en ISO 18013-5") {
+			t.Errorf("error = %q, want it to contain the operator-facing Spanish mandatory-field message", err.Error())
+		}
+	})
+
+	t.Run("over-cap rows is rejected with the too-many-categories message", func(t *testing.T) {
+		err := validateDrivingPrivilegesCount(mkRows(mdoc.DrivingPrivilegesMaxCategories + 1))
+		if err == nil {
+			t.Fatal("validateDrivingPrivilegesCount(over cap) = nil, want a rejection — EncodeDrivingPrivileges would otherwise silently truncate")
+		}
+		if !strings.Contains(err.Error(), "Solo se pueden emitir") {
+			t.Errorf("error = %q, want it to contain the operator-facing Spanish over-cap message", err.Error())
+		}
+	})
+
+	for n := 1; n <= mdoc.DrivingPrivilegesMaxCategories; n++ {
+		t.Run(fmt.Sprintf("%d rows within the cap is accepted", n), func(t *testing.T) {
+			if err := validateDrivingPrivilegesCount(mkRows(n)); err != nil {
+				t.Errorf("validateDrivingPrivilegesCount(%d rows) = %v, want no error", n, err)
+			}
+		})
+	}
 }
 
 // TestMdocDatesAreFullDateNotRFC3339 reproduces a live failure: the operator's
