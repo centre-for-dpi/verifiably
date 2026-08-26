@@ -173,3 +173,16 @@ func TestMandatoryFieldsLabelsAreNotAliased(t *testing.T) {
 		}
 	}
 }
+
+func TestMdocSignatureAlgoIsES256(t *testing.T) {
+	// ISO/IEC 18013-5 mandates ES256 (ECDSA P-256/SHA-256) for the MSO's
+	// COSE_Sign1 — confirmed empirically against a real issuer-api2 (walt.id)
+	// AND a real Inji Certify v0.14.0 in the 2026-08-25 validation spike:
+	// both produce a valid COSE_Sign1 with header {1: -7} (ES256's IANA
+	// COSE algorithm identifier). This constant is the one place that fact
+	// lives, so a future doctype/profile never hardcodes a different
+	// algorithm by accident.
+	if MdocSignatureAlgo != "ES256" {
+		t.Errorf("MdocSignatureAlgo = %q, want %q", MdocSignatureAlgo, "ES256")
+	}
+}

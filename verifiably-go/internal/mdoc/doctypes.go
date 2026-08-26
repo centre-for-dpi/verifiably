@@ -57,6 +57,14 @@ const FormatDrivingPrivileges = "driving_privileges"
 // byte-string conversion. We never encode CBOR ourselves.
 const FormatImage = "image"
 
+// MdocSignatureAlgo is the COSE signature algorithm every mdoc issued by
+// this deployment uses: ES256 (ECDSA P-256/SHA-256). Confirmed empirically
+// (header {1: -7}, IANA COSE algorithm -7 = ES256) against both walt.id
+// issuer-api2 and Inji Certify v0.14.0 — the single source of truth so a
+// new mdoc profile/schema config never hardcodes a different algorithm by
+// accident (e.g. injicertify's Ed25519 default for its other formats).
+const MdocSignatureAlgo = "ES256"
+
 // structured returns a required field carrying a non-scalar Format. Datatype
 // stays "string" because it is what every non-mdoc consumer of FieldsSpec
 // (catalog claim blocks, INJI's display order, CREDEBL's attributes) reads;
