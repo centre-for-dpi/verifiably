@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -156,6 +157,49 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 	for k, v := range req.SubjectData {
 		claims[k] = v
 	}
+
+	// mso_mdoc's driving_privileges is an array of objects — it cannot ride
+	// in SubjectData (map[string]string). It lives in StructuredData, same
+	// convention as waltid/issuer2.go's buildIssuer2Offer. Reading it here,
+	// and rejecting 0/>4 categories BEFORE ever calling Inji, replicates
+	// the same defense-in-depth waltid's buildIssuer2Offer already has: the
+	// handler's own guard (validateDrivingPrivilegesCount) can be bypassed
+	// by a direct POST /api/v1/credentials/issue call, so this
+	// adapter-level check is the one that must never be skipped.
+	//
+	// Gated on a.cfg.Mode == ModePreAuth explicitly, not just on the
+	// schema's Std: IssueToWallet is shared by BOTH Pre-Auth and Auth-Code,
+	// and Auth-Code's offer construction (below) never reads claims at
+	// all — an mdoc schema reaching an Auth-Code-mode adapter (only
+	// possible via a hand-built API call; the UI never produces this
+	// combination) must fall through to that unmodified path, not be
+	// rejected by an mdoc-specific guard that has no meaning for a mode
+	// this plan explicitly does not support for mdoc.
+	if a.cfg.Mode == ModePreAuth && stdToCredentialFormat(req.Schema.Std) == "mso_mdoc" {
+		n := 0
+		if raw, ok := req.StructuredData["driving_privileges"]; ok && len(raw) > 0 {
+			var arr []json.RawMessage
+			if err := json.Unmarshal(raw, &arr); err != nil {
+				return backend.IssueToWalletResult{}, fmt.Errorf("inji: driving_privileges no es un array JSON válido: %w", err)
+			}
+			n = len(arr)
+			var privileges []any
+			if err := json.Unmarshal(raw, &privileges); err != nil {
+				return backend.IssueToWalletResult{}, fmt.Errorf("inji: driving_privileges no es JSON válido: %w", err)
+			}
+			claims["driving_privileges"] = privileges
+		}
+		if n == 0 {
+			return backend.IssueToWalletResult{}, fmt.Errorf(
+				"inji: driving_privileges es obligatorio en ISO 18013-5 — ingresa al menos una categoría de conducción antes de emitir")
+		}
+		if n > mdoc.DrivingPrivilegesMaxCategories {
+			return backend.IssueToWalletResult{}, fmt.Errorf(
+				"inji: no se pueden emitir %d categorías de conducción en una sola credencial — el máximo es %d",
+				n, mdoc.DrivingPrivilegesMaxCategories)
+		}
+	}
+
 	if len(claims) == 0 {
 		// Inji Certify rejects empty claims; fill one sensible default.
 		claims["fullName"] = "Demo Holder"
