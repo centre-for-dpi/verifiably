@@ -712,7 +712,11 @@ func (h *H) SchemaReady(w http.ResponseWriter, r *http.Request) {
 		name = key
 	}
 	if h.schemaAvailable(r.Context(), key) {
-		payload, _ := json.Marshal(map[string]any{
+		// asciiSafeJSON, not json.Marshal directly: this payload rides in the
+		// HX-Trigger response HEADER, and both the ✓ literal and an
+		// operator-typed schema `name` with accents would come back to the
+		// browser as mojibake otherwise — see asciiSafeJSON's doc comment.
+		payload, _ := asciiSafeJSON(map[string]any{
 			"toast":        "✓ \"" + name + "\" is ready to use",
 			"schemasReady": true,
 		})

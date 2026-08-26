@@ -1244,7 +1244,7 @@ func (h *H) errorToast(w http.ResponseWriter, r *http.Request, msg string) {
 func (h *H) errorToastStatus(w http.ResponseWriter, r *http.Request, status int, msg string) {
 	slog.Warn("handler error", "method", r.Method, "path", r.URL.Path, "msg", msg)
 	if isHTMX(r) {
-		payload, err := json.Marshal(map[string]string{"toast": msg})
+		payload, err := asciiSafeJSON(map[string]string{"toast": msg})
 		if err != nil {
 			// json.Marshal of a simple map[string]string doesn't realistically
 			// fail, but fall back to a plain event so something still fires.
@@ -1256,6 +1256,44 @@ func (h *H) errorToastStatus(w http.ResponseWriter, r *http.Request, status int,
 		return
 	}
 	http.Error(w, msg, status)
+}
+
+// asciiSafeJSON marshals v to JSON and re-escapes every non-ASCII rune as a
+// \uXXXX sequence before returning it.
+//
+// This exists because errorToastStatus puts its JSON payload directly into
+// the HX-Trigger response HEADER, not the body. Browsers expose response
+// headers to JavaScript (XMLHttpRequest.getResponseHeader, which htmx uses
+// internally) decoded as ISO-8859-1/Latin-1 — a fixed behavior of the Fetch/
+// XHR platform, not a bug in htmx or in this server. Any raw UTF-8 multibyte
+// sequence (an accented vowel, an em dash) put straight into a header value
+// comes back to the browser corrupted into mojibake ("categoría" ->
+// "categorÃ­a"), even though the bytes verifiably-go wrote were correct
+// UTF-8 the whole time — confirmed by inspecting the header bytes directly
+// with json.Marshal alone, which is plain UTF-8 and looks fine at the wire
+// level; the corruption happens only when the browser's header-reading API
+// re-interprets those bytes.
+//
+// \uXXXX escapes are pure ASCII, so they survive the header round-trip
+// unchanged, and JSON.parse (which htmx calls on this exact payload)
+// decodes \uXXXX back into the real Unicode character node-for-node — no
+// client-side change needed. This only matters for HX-Trigger and other
+// header-carried payloads; JSON in a normal response BODY is already
+// correct as plain UTF-8 and must not be run through this.
+func asciiSafeJSON(v any) ([]byte, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 0, len(raw))
+	for _, r := range string(raw) {
+		if r > 127 {
+			out = append(out, []byte(fmt.Sprintf(`\u%04x`, r))...)
+		} else {
+			out = append(out, byte(r))
+		}
+	}
+	return out, nil
 }
 
 // --- Schema browser + builder (issuer only) ---
