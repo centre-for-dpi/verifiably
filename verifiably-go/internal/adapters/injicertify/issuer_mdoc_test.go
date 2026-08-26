@@ -15,7 +15,13 @@ import (
 // TestIssueToWalletMdocCarriesDrivingPrivilegesFromStructuredData pins that
 // IssueToWallet reads driving_privileges from StructuredData (not just
 // SubjectData) for mso_mdoc schemas in ModePreAuth, and that every count from
-// 1 to the ceiling reaches the POSTed claims intact.
+// 1 to the ceiling reaches the POSTed claims intact — NESTED under the ISO
+// namespace, not flat. Confirmed live against a real Inji Certify v0.14.0:
+// flat claims made PreAuthorizedCodeService.validateClaimsWithMandatory
+// reject every single field as "unknown_claims" at once, because
+// config.getClaims() for mso_mdoc returns credential_config.mso_mdoc_claims
+// verbatim — a map with exactly one top-level key, the namespace — so a flat
+// posted claim can never match it.
 func TestIssueToWalletMdocCarriesDrivingPrivilegesFromStructuredData(t *testing.T) {
 	for n := 1; n <= mdoc.DrivingPrivilegesMaxCategories; n++ {
 		var gotClaims map[string]any
@@ -52,12 +58,22 @@ func TestIssueToWalletMdocCarriesDrivingPrivilegesFromStructuredData(t *testing.
 			t.Fatalf("n=%d: IssueToWallet: %v", n, err)
 		}
 
-		dp, ok := gotClaims["driving_privileges"].([]any)
+		ns, ok := gotClaims["org.iso.18013.5.1"].(map[string]any)
 		if !ok {
-			t.Fatalf("n=%d: claims[driving_privileges] is %T, want []any — StructuredData was not read", n, gotClaims["driving_privileges"])
+			t.Fatalf("n=%d: claims[\"org.iso.18013.5.1\"] is %T, want map[string]any — claims must be nested under the ISO namespace for mso_mdoc, not flat (Inji Certify rejects flat mso_mdoc claims as unknown_claims)", n, gotClaims["org.iso.18013.5.1"])
+		}
+		if _, flatLeak := gotClaims["driving_privileges"]; flatLeak {
+			t.Errorf("n=%d: claims[\"driving_privileges\"] present at the TOP level too — must appear ONLY inside the namespace, never flat", n)
+		}
+		dp, ok := ns["driving_privileges"].([]any)
+		if !ok {
+			t.Fatalf("n=%d: claims[\"org.iso.18013.5.1\"][\"driving_privileges\"] is %T, want []any — StructuredData was not read", n, ns["driving_privileges"])
 		}
 		if len(dp) != n {
 			t.Errorf("n=%d: driving_privileges has %d entries, want exactly %d", n, len(dp), n)
+		}
+		if familyName, _ := ns["family_name"].(string); familyName != "Perez" {
+			t.Errorf("n=%d: claims[\"org.iso.18013.5.1\"][\"family_name\"] = %q, want %q — SubjectData fields must be nested too, not just driving_privileges", n, familyName, "Perez")
 		}
 	}
 }

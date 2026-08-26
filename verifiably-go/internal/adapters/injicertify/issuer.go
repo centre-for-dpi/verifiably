@@ -276,9 +276,33 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 				claims[k] = v
 			}
 		}
+		// mso_mdoc claims must be POSTed NESTED under the ISO namespace
+		// (e.g. {"org.iso.18013.5.1": {family_name: ..., ...}}), not flat —
+		// confirmed against Inji Certify v0.14.0's real source
+		// (PreAuthorizedCodeService.validateClaims/validateClaimsWithMandatory):
+		// for mso_mdoc/vc+sd-jwt it validates providedClaims.keySet() against
+		// config.getClaims().keySet(), and getClaims() for mso_mdoc returns
+		// credential_config.mso_mdoc_claims AS-IS
+		// (CredentialConfigurationServiceImpl.java:379, setClaims(new
+		// HashMap<>(getMsoMdocClaims()))) — which SaveCustomSchema wrote with
+		// exactly one top-level key, the namespace. Posting flat claims makes
+		// EVERY key mismatch that single expected key, failing closed with
+		// unknown_claims for every field at once — reproduced live against
+		// this deployment's real credential_config row. SD-JWT/ldp_vc are
+		// unaffected: they only ever reach here with flat, unnested claims
+		// (statusIdx/statusUri/validity markers, all top-level by design),
+		// and the same source shows getSdJwtClaims() is used verbatim for
+		// SD-JWT's own top-level validation — so nesting must apply to
+		// mso_mdoc alone, not become the default for every format sharing
+		// this switch branch.
+		postClaims := claims
+		if stdToCredentialFormat(req.Schema.Std) == "mso_mdoc" {
+			ns := mdocNamespaceForDocType(mdocDocTypeForSchema(req.Schema))
+			postClaims = map[string]any{ns: claims}
+		}
 		body := preAuthorizedDataRequest{
 			CredentialConfigurationId: req.Schema.ID,
-			Claims:                    claims,
+			Claims:                    postClaims,
 		}
 		var resp preAuthorizedDataResponse
 		if err := a.client.DoJSON(ctx, http.MethodPost, "/v1/certify/pre-authorized-data", body, &resp, nil); err != nil {
