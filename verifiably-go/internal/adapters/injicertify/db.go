@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -66,6 +67,15 @@ func (a *Adapter) SaveCustomSchema(ctx context.Context, schema vctypes.Schema) e
 	defer conn.Close(ctx)
 
 	credFormat := stdToCredentialFormat(schema.Std)
+
+	// mdoc's columns (doctype, mso_mdoc_claims, EC signing config) are entirely
+	// disjoint from the SD-JWT/ldp_vc columns the rest of this function builds
+	// (sd_jwt_vct, context, credential_type, Ed25519 signing config), so it gets
+	// its own INSERT rather than threading NULLs through the shared one below.
+	if credFormat == "mso_mdoc" {
+		return a.saveMdocSchema(ctx, conn, schema)
+	}
+
 	// Pre-auth SD-JWT credentials must be revocable: embed the IETF Token Status
 	// List pointer (status.status_list.{idx:${statusIdx}, uri:${statusUri}}) in
 	// the template. IssueToWallet(ModePreAuth) POSTs statusIdx/statusUri from the
@@ -277,12 +287,197 @@ func (a *Adapter) DeleteCustomSchema(ctx context.Context, id string) error {
 	return nil
 }
 
+// mdocDocTypeForSchema resolves the ISO docType from a schema the same way
+// waltid/issuer2.go's mdocDocTypeFor does: AdditionalTypes[0] first (what
+// the schema builder writes for a custom mdoc schema — see
+// handlers/schema.go's SaveSchema), falling back to BaseType(), falling
+// back to the raw ID. schema.ID is a generated "custom-<nano>" string for
+// every custom schema and is NEVER the docType directly.
+func mdocDocTypeForSchema(schema vctypes.Schema) string {
+	if len(schema.AdditionalTypes) > 0 {
+		if dt := strings.TrimSpace(schema.AdditionalTypes[0]); dt != "" {
+			return dt
+		}
+	}
+	if dt := schema.BaseType(); dt != "" {
+		return dt
+	}
+	return schema.ID
+}
+
+// mdocNamespaceForDocType derives the ISO namespace from a docType by
+// stripping the last dot-segment — same heuristic as waltid's
+// mdocNamespaceFor, valid for org.iso.18013.5.1.mDL (mDL is the only
+// docType this task provisions; Photo ID is out of scope).
+func mdocNamespaceForDocType(docType string) string {
+	if i := strings.LastIndex(docType, "."); i > 0 {
+		return docType[:i]
+	}
+	return docType
+}
+
+// mdocVCTemplate builds the base64-encoded Velocity template Inji Certify
+// needs to render an mso_mdoc credential. Unlike buildVCTemplate's other
+// branches, this is NOT optional/NULL — confirmed against a real Inji
+// Certify v0.14.0 in the 2026-08-25 validation spike (see
+// C:\tmp\spike\run\mdl_config.json's vcTemplate field, the only artifact
+// from that spike that captured a template Inji actually accepted and
+// issued a valid mdoc from).
+//
+// Each nameSpaces item is marshaled individually (compact, one line) rather
+// than via a single json.MarshalIndent over the whole document: MarshalIndent
+// recursively indents every nested object onto its own line, which does not
+// match the one-object-per-line shape the real spike template uses (and
+// which Inji Certify was actually validated against) — e.g.
+// `{"digestID": 0, "elementIdentifier": "family_name", "elementValue": "${family_name}"}`
+// on a single line, not one field per line.
+func mdocVCTemplate(doctype string, fields []vctypes.FieldSpec) string {
+	itemLines := make([]string, 0, len(fields))
+	for digestID, f := range fields {
+		elementValue := `"${` + f.Name + `}"`
+		if f.Format == mdoc.FormatDrivingPrivileges {
+			elementValue = "${" + f.Name + "}"
+		}
+		itemLines = append(itemLines, fmt.Sprintf(
+			`      {"digestID": %d, "elementIdentifier": %q, "elementValue": %s}`,
+			digestID, f.Name, elementValue,
+		))
+	}
+	namespace := mdocNamespaceForDocType(doctype)
+	out := "{\n" +
+		"  \"nameSpaces\": {\n" +
+		"    " + strconv.Quote(namespace) + ": [\n" +
+		strings.Join(itemLines, ",\n") + "\n" +
+		"    ]\n" +
+		"  },\n" +
+		"  \"docType\": \"${_doctype}\",\n" +
+		"  \"validityInfo\": {\"validFrom\": \"${_validFrom}\", \"validUntil\": \"${_validUntil}\"}\n" +
+		"}"
+	return base64.StdEncoding.EncodeToString([]byte(out))
+}
+
+// mdocCredentialConfigValues builds every mso_mdoc-specific value
+// SaveCustomSchema's mdoc branch needs. Extracted so it is testable without
+// a live Postgres connection.
+func mdocCredentialConfigValues(schema vctypes.Schema) (doctype, vcTemplate string, claims []byte, signatureAlgo, keyManagerAppID, keyManagerRefID, cryptoSuite string) {
+	doctype = mdocDocTypeForSchema(schema)
+	vcTemplate = mdocVCTemplate(doctype, schema.FieldsSpec)
+
+	nsClaims := map[string]any{}
+	for _, f := range schema.FieldsSpec {
+		nsClaims[f.Name] = map[string]any{
+			"display": []map[string]any{{"name": fieldLabel(f.Name), "locale": "en"}},
+		}
+	}
+	claimsMap := map[string]any{mdocNamespaceForDocType(doctype): nsClaims}
+	claims, _ = json.Marshal(claimsMap)
+
+	// Values captured verbatim from C:\tmp\spike\run\mdl_config.json — the
+	// exact configuration Inji Certify v0.14.0 accepted and issued a real,
+	// cryptographically valid mdoc from. Do not approximate these.
+	return doctype, vcTemplate, claims, mdoc.MdocSignatureAlgo, "CERTIFY_VC_SIGN_EC_R1", "EC_SECP256R1_SIGN", "EcdsaSecp256r1Signature2019"
+}
+
+// saveMdocSchema is SaveCustomSchema's mso_mdoc branch — a separate INSERT
+// because mdoc's columns (doctype, mso_mdoc_claims, EC signing config) are
+// entirely disjoint from the shared INSERT's SD-JWT/ldp_vc-specific
+// columns (sd_jwt_vct, context, credential_type, Ed25519 signing config),
+// which stay NULL/irrelevant for mdoc.
+func (a *Adapter) saveMdocSchema(ctx context.Context, conn *pgx.Conn, schema vctypes.Schema) error {
+	doctype, vcTemplate, claims, signatureAlgo, keyManagerAppID, keyManagerRefID, cryptoSuite := mdocCredentialConfigValues(schema)
+
+	displayOrder := make([]string, 0, len(schema.FieldsSpec))
+	for _, f := range schema.FieldsSpec {
+		displayOrder = append(displayOrder, f.Name)
+	}
+
+	logoURL := a.cfg.DB.LogoURL
+	if logoURL == "" {
+		logoURL = defaultCredentialLogoURL
+	}
+	displayEntry := map[string]any{
+		"name":             schema.Name,
+		"locale":           "en",
+		"background_color": "#12107c",
+		"text_color":       "#FFFFFF",
+		"logo": map[string]any{
+			"url":      logoURL,
+			"alt_text": schema.Name + " Logo",
+		},
+		"background_image": map[string]any{"uri": logoURL},
+	}
+	displayRaw, _ := json.Marshal([]map[string]any{displayEntry})
+
+	scope := a.cfg.DB.Scope
+	if scope == "" {
+		scope = "mock_identity_vc_ldp"
+	}
+
+	_, err := conn.Exec(ctx, `
+INSERT INTO certify.credential_config (
+	credential_config_key_id, config_id, status, vc_template,
+	doctype, sd_jwt_vct, context, credential_type, credential_format,
+	did_url, key_manager_app_id, key_manager_ref_id,
+	signature_algo, signature_crypto_suite, sd_claim,
+	display, display_order, scope,
+	cryptographic_binding_methods_supported,
+	credential_signing_alg_values_supported,
+	proof_types_supported,
+	credential_subject, sd_jwt_claims, mso_mdoc_claims,
+	plugin_configurations, cr_dtimes, upd_dtimes
+) VALUES (
+	$1, $1, 'active', $2,
+	$3, NULL, NULL, NULL, $4,
+	$5, $6, $7,
+	$8, $9, NULL,
+	$10, $11, $12,
+	ARRAY['cose_key'],
+	ARRAY['ES256'],
+	'{"jwt":{"proof_signing_alg_values_supported":["ES256"]}}'::JSONB,
+	NULL, NULL, $13,
+	NULL, NOW(), NULL
+)
+ON CONFLICT (credential_config_key_id) DO UPDATE SET
+	vc_template              = EXCLUDED.vc_template,
+	doctype                  = EXCLUDED.doctype,
+	credential_format        = EXCLUDED.credential_format,
+	key_manager_app_id       = EXCLUDED.key_manager_app_id,
+	key_manager_ref_id       = EXCLUDED.key_manager_ref_id,
+	signature_algo           = EXCLUDED.signature_algo,
+	signature_crypto_suite   = EXCLUDED.signature_crypto_suite,
+	display                  = EXCLUDED.display,
+	display_order            = EXCLUDED.display_order,
+	mso_mdoc_claims          = EXCLUDED.mso_mdoc_claims,
+	upd_dtimes               = NOW()
+`,
+		schema.ID,       // $1
+		vcTemplate,      // $2
+		doctype,         // $3
+		"mso_mdoc",      // $4
+		a.cfg.DB.DIDUrl, // $5
+		keyManagerAppID, // $6
+		keyManagerRefID, // $7
+		signatureAlgo,   // $8
+		cryptoSuite,     // $9
+		displayRaw,      // $10 JSONB
+		displayOrder,    // $11 TEXT[]
+		scope,           // $12
+		claims,          // $13 JSONB
+	)
+	if err != nil {
+		return fmt.Errorf("injicertify db: upsert mdoc credential_config %q: %w", schema.ID, err)
+	}
+	return nil
+}
+
 // stdToCredentialFormat maps verifiably-go's Std string to inji-certify's
 // credential_format column value.
 func stdToCredentialFormat(std string) string {
 	switch std {
 	case "sd_jwt_vc (IETF)":
 		return "vc+sd-jwt"
+	case "mso_mdoc":
+		return "mso_mdoc"
 	default:
 		return "ldp_vc"
 	}
