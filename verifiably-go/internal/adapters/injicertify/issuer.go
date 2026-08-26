@@ -31,6 +31,14 @@ type credentialConfigurationEntry struct {
 	Order          []string                     `json:"order,omitempty"`
 	CredentialDef  *credentialDefinitionEntry   `json:"credential_definition,omitempty"`
 	Vct            string                       `json:"vct,omitempty"`
+	// Doctype is the ISO docType Inji Certify advertises for an mso_mdoc
+	// config (e.g. "org.iso.18013.5.1.mDL") — confirmed present in a real
+	// wellknown response from a schema SaveCustomSchema wrote. ListSchemas
+	// needs this to rebuild each field's real Format (driving_privileges'
+	// repeater UI, portrait's file upload) via mdoc.MandatoryFields, instead
+	// of falling through fieldSpecFor's generic name-based heuristics, which
+	// have no case for either — see fieldSpecFor's doc comment.
+	Doctype string `json:"doctype,omitempty"`
 }
 
 type credentialDefinitionEntry struct {
@@ -57,6 +65,25 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			name = humanise(id)
 		}
 		fields := []vctypes.FieldSpec{}
+		// mso_mdoc fields need their REAL Format (driving_privileges'
+		// structured repeater, portrait's file upload) — mdoc.MandatoryFields
+		// is the single source of truth for that mapping (the same one
+		// mdoc.KnownDocTypes/the schema builder itself uses), keyed by field
+		// name. Built once per config, outside the per-field loop below.
+		// Without this, fieldSpecFor's generic name-based heuristics run
+		// instead (they have no case for either field), so driving_privileges
+		// silently renders as a plain textbox and its value never reaches
+		// backend.IssueRequest.StructuredData — reproduced live: an operator
+		// filled the field, submitted, and the adapter's own "driving_privileges
+		// es obligatorio" guard fired anyway, because the value had gone into
+		// SubjectData as a scalar string instead.
+		var mdocFields map[string]vctypes.FieldSpec
+		if cfg.Format == "mso_mdoc" && cfg.Doctype != "" {
+			mdocFields = make(map[string]vctypes.FieldSpec)
+			for _, mf := range mdoc.MandatoryFields(cfg.Doctype) {
+				mdocFields[mf.Name] = mf
+			}
+		}
 		// A declared validity marker IS the record that this schema expires.
 		// Schema.Expires lives only in verifiably's store and no vendor
 		// advertises it, so rebuilding a Schema here without it silently
@@ -78,6 +105,10 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			// markers renders them as unfillable text boxes ("validFromEpoch *")
 			// beside the real control.
 			if isInternalMarker(f) {
+				continue
+			}
+			if mf, ok := mdocFields[f]; ok {
+				fields = append(fields, mf)
 				continue
 			}
 			fields = append(fields, fieldSpecFor(f))
