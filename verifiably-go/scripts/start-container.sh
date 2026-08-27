@@ -220,7 +220,7 @@ start_container() {
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
     ${_certify_issuer_did:+-e CERTIFY_ISSUER_DID="$_certify_issuer_did"} \
-    -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
+    -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:${CERTIFY_PG_PASSWORD:-postgres}@certify-postgres:5432/inji_certify?sslmode=disable}" \
     -e INJI_CERTIFY_SCOPE_QUERY_FILE="/etc/inji/certify-scope-query.properties" \
     -e INJI_ESIGNET_SCOPE_FILE="/etc/inji/esignet-scopes.properties" \
     -e INJI_AUTHCODE_CLIENT_KEY_PEM="$_inji_key_pem" \

@@ -34,6 +34,12 @@ backends_for() {
   else
     certify_preauth_did="did:web:certify-preauth-nginx"
   fi
+  # certify-preauth-postgres's actual password — CERTIFY_PREAUTH_PG_PASSWORD
+  # in .env (2026-08-26 credential rotation; see docker-compose.yml's own
+  # env var of the same name for the container side). Falls back to the
+  # historical "postgres" default so an unrotated/local deployment's
+  # generated DSN keeps matching that container's actual password.
+  local certify_preauth_db_password="${CERTIFY_PREAUTH_PG_PASSWORD:-postgres}"
   # Credential-display logo for custom configs. Self-hosted by verifiably-go
   # (static/credential-logo.svg) so it's neutral + has no external dependency.
   # Must be non-null: Inji Certify always serialises display[].logo, and some
@@ -186,7 +192,7 @@ JSON
         "publicBaseUrl": "${certify_preauth_url}",
         "offerIssuerUrl": "http://inji-certify-preauth:8090",
         "db": {
-          "dsn": "postgres://postgres:postgres@certify-preauth-postgres:5432/inji_certify?sslmode=disable",
+          "dsn": "postgres://postgres:${certify_preauth_db_password}@certify-preauth-postgres:5432/inji_certify?sslmode=disable",
           "didUrl": "${certify_preauth_did}",
           "logoUrl": "${certify_preauth_logo}",
           "scope": "mock_identity_vc_ldp"
