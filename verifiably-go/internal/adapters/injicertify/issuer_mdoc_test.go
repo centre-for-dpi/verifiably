@@ -65,9 +65,22 @@ func TestIssueToWalletMdocCarriesDrivingPrivilegesFromStructuredData(t *testing.
 		if _, flatLeak := gotClaims["driving_privileges"]; flatLeak {
 			t.Errorf("n=%d: claims[\"driving_privileges\"] present at the TOP level too — must appear ONLY inside the namespace, never flat", n)
 		}
-		dp, ok := ns["driving_privileges"].([]any)
+		// Posted as a raw JSON STRING, not a decoded array — confirmed live
+		// against Inji Certify v0.14.0 that posting a real array makes
+		// Velocity substitute Java's List.toString() (unquoted, "="-separated)
+		// for the template's unquoted ${driving_privileges} marker, which
+		// fails org.json's own re-parse. Sending the already-serialized JSON
+		// string instead — the same "cast array to text" trick the working
+		// spike's PostgresDataProviderPlugin query used — makes Velocity
+		// substitute valid JSON verbatim. See issuer.go's comment at this
+		// same assignment for the full trace.
+		dpRaw, ok := ns["driving_privileges"].(string)
 		if !ok {
-			t.Fatalf("n=%d: claims[\"org.iso.18013.5.1\"][\"driving_privileges\"] is %T, want []any — StructuredData was not read", n, ns["driving_privileges"])
+			t.Fatalf("n=%d: claims[\"org.iso.18013.5.1\"][\"driving_privileges\"] is %T, want string (a pre-serialized JSON array) — StructuredData was not read, or was decoded instead of kept as a raw string", n, ns["driving_privileges"])
+		}
+		var dp []any
+		if err := json.Unmarshal([]byte(dpRaw), &dp); err != nil {
+			t.Fatalf("n=%d: driving_privileges string is not valid JSON: %v (got: %s)", n, err, dpRaw)
 		}
 		if len(dp) != n {
 			t.Errorf("n=%d: driving_privileges has %d entries, want exactly %d", n, len(dp), n)

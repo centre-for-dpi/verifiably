@@ -62,8 +62,20 @@ func TestMdocCredentialConfigValues(t *testing.T) {
 	if !strings.Contains(string(decoded), `"docType": "${_doctype}"`) {
 		t.Errorf("vc_template missing docType marker, got: %s", decoded)
 	}
-	if !strings.Contains(string(decoded), `"driving_privileges", "elementValue": ${driving_privileges}`) {
-		t.Errorf("vc_template's driving_privileges marker must be UNQUOTED (it's a JSON array, not a string), got: %s", decoded)
+	// Bracket-notation nested access, NOT bare ${field} — confirmed live
+	// against Inji Certify v0.14.0 that bare markers never resolve once
+	// claims are nested under the ISO namespace (Velocity's rootContext
+	// only resolves bare markers against top-level context keys). See this
+	// function's doc comment for the full empirical trace.
+	if !strings.Contains(string(decoded), `"family_name", "elementValue": "${rootContext['org.iso.18013.5.1'].family_name}"`) {
+		t.Errorf("vc_template's family_name marker must use bracket-notation nested access (quoted, it's a string), got: %s", decoded)
+	}
+	// driving_privileges' marker must be UNQUOTED (it's a JSON array, not a
+	// string) — confirmed live that the quoted form forces Velocity's
+	// substitution through Java's List/Map toString(), producing malformed
+	// non-JSON text instead of a real array.
+	if !strings.Contains(string(decoded), `"driving_privileges", "elementValue": ${rootContext['org.iso.18013.5.1'].driving_privileges}`) {
+		t.Errorf("vc_template's driving_privileges marker must be UNQUOTED bracket-notation nested access, got: %s", decoded)
 	}
 
 	var claimsMap map[string]any

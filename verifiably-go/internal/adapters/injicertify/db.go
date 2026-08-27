@@ -329,21 +329,57 @@ func mdocNamespaceForDocType(docType string) string {
 // recursively indents every nested object onto its own line, which does not
 // match the one-object-per-line shape the real spike template uses (and
 // which Inji Certify was actually validated against) — e.g.
-// `{"digestID": 0, "elementIdentifier": "family_name", "elementValue": "${family_name}"}`
+// `{"digestID": 0, "elementIdentifier": "family_name", "elementValue": "${rootContext['org.iso.18013.5.1'].family_name}"}`
 // on a single line, not one field per line.
+//
+// Field markers use Velocity's bracket-notation nested access
+// (${rootContext['<namespace>'].<field>}), NOT the bare ${field} form.
+// Confirmed empirically during Task 6 end-to-end verification: our claims
+// are POSTed nested under the ISO namespace (required — see issuer.go's
+// mso_mdoc claims-nesting comment), and Velocity's rootContext only
+// resolves bare ${field} markers against TOP-LEVEL context keys. Against a
+// namespace-nested claims map, every bare marker silently fails to
+// resolve — a decoded test credential showed elementValue literally as the
+// string "${family_name}", not the posted value — which Inji Certify then
+// fails to sign as valid JSON/CBOR (ERROR_SIGNING_QR_DATA). Switching to
+// ${rootContext['<namespace>'].field} resolves correctly; verified by
+// decoding a real issued credential and confirming the CBOR elementValue
+// matched the posted value exactly.
+//
+// driving_privileges needs its own variant: it must decode to a real CBOR
+// array of maps, not a string. Two things had to be true together, each
+// confirmed by a separate empirical test:
+//   - The template marker must be UNQUOTED
+//     (${rootContext[...].driving_privileges}, no surrounding "...") — the
+//     quoted form (matching every scalar field) forces Velocity's
+//     substitution through Java's List/Map toString(), producing a
+//     malformed, unusable string like
+//     "[{issue_date=2015-03-01, vehicle_category_code=A, ...}]" instead of
+//     real JSON. The unquoted form lets Velocity substitute the value's
+//     own serialized text directly into the JSON structure.
+//   - The posted claim value must already be a pre-serialized JSON STRING
+//     (via json.Marshal), not a decoded array (see issuer.go) — posting a
+//     real array with the unquoted marker made Velocity emit invalid
+//     Java-syntax (unquoted, "="-separated) text that breaks JSON parsing
+//     entirely (ERROR_SIGNING_QR_DATA again). Only pre-serialized-string +
+//     unquoted-marker together decode to a real, correctly-typed CBOR
+//     array — confirmed by decoding a real issued test credential and
+//     finding driving_privileges as an actual CBOR array of maps with
+//     proper full-date-tagged issue_date/expiry_date, not a string.
 func mdocVCTemplate(doctype string, fields []vctypes.FieldSpec) string {
+	namespace := mdocNamespaceForDocType(doctype)
 	itemLines := make([]string, 0, len(fields))
 	for digestID, f := range fields {
-		elementValue := `"${` + f.Name + `}"`
+		accessor := fmt.Sprintf(`rootContext['%s'].%s`, namespace, f.Name)
+		elementValue := "\"${" + accessor + "}\""
 		if f.Format == mdoc.FormatDrivingPrivileges {
-			elementValue = "${" + f.Name + "}"
+			elementValue = "${" + accessor + "}"
 		}
 		itemLines = append(itemLines, fmt.Sprintf(
 			`      {"digestID": %d, "elementIdentifier": %q, "elementValue": %s}`,
 			digestID, f.Name, elementValue,
 		))
 	}
-	namespace := mdocNamespaceForDocType(doctype)
 	out := "{\n" +
 		"  \"nameSpaces\": {\n" +
 		"    " + strconv.Quote(namespace) + ": [\n" +

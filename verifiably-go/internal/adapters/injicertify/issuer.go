@@ -214,11 +214,31 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 				return backend.IssueToWalletResult{}, fmt.Errorf("inji: driving_privileges no es un array JSON válido: %w", err)
 			}
 			n = len(arr)
-			var privileges []any
-			if err := json.Unmarshal(raw, &privileges); err != nil {
-				return backend.IssueToWalletResult{}, fmt.Errorf("inji: driving_privileges no es JSON válido: %w", err)
-			}
-			claims["driving_privileges"] = privileges
+			// Posted as the RAW JSON STRING, not a decoded []any — confirmed
+			// live against Inji Certify v0.14.0 that posting a real array
+			// makes CredentialUtils.toJsonMap wrap it as a JSONArray, whose
+			// Java toString() Velocity then substitutes for the UNQUOTED
+			// ${rootContext['<ns>'].driving_privileges} template marker
+			// (see db.go's mdocVCTemplate) — producing Java-map syntax
+			// (key=value, unquoted keys) instead of JSON, which fails
+			// org.json's own re-parse with "Expected a ',' or '}'". Traced
+			// this to the exact difference between our deployment and the
+			// spike that DID work: the spike's PostgresDataProviderPlugin
+			// query explicitly cast the array to text
+			// (CAST(j->'driving_privileges' AS text)), so Velocity received
+			// an already-valid JSON STRING to substitute verbatim, never a
+			// Java List/JSONArray it would stringify itself. Doing the same
+			// cast ourselves — sending the compact JSON string as the claim
+			// value instead of the decoded array — reproduces that working
+			// path without touching Inji's own code, at the cost of Inji's
+			// own claim validation seeing a String here rather than an
+			// array (harmless: validateClaimsWithMandatory only checks key
+			// presence, never value type). Confirmed end-to-end by decoding
+			// a real issued test credential: with this string PLUS the
+			// unquoted bracket-notation marker, driving_privileges decodes
+			// to a real CBOR array of maps with correctly full-date-tagged
+			// issue_date/expiry_date — not a string, not Java toString().
+			claims["driving_privileges"] = string(raw)
 		}
 		if n == 0 {
 			return backend.IssueToWalletResult{}, fmt.Errorf(
