@@ -23,7 +23,7 @@ services:
     volumes:
       - wallet-db:/var/lib/postgresql
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
   # verifiably-redis is the session store for multi-replica verifiably-go
   # deployments. Enabled when VERIFIABLY_REDIS_URL points at it.
@@ -64,7 +64,7 @@ services:
     volumes:
       - verifiably-pg-data:/var/lib/postgresql/data
     ports:
-      - "${VERIFIABLY_PG_PORT:-5439}:5432"
+      - "127.0.0.1:${VERIFIABLY_PG_PORT:-5439}:5432"
 
   caddy:
     image: caddy:2.8
@@ -358,7 +358,7 @@ services:
     container_name: certify-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${CERTIFY_PG_PASSWORD:-postgres}
       # Passed to init.sh so did_url rows use the right DID.
       # Empty = dev (did:web:certify-nginx). Set ISSUER_DID_DOMAIN in .env
       # for production federation (did:web:{domain}).
@@ -368,7 +368,7 @@ services:
       - ./inji/certify/init-authcode.sql:/var/init-templates/certify_init-authcode.sql:ro
       - certify-db:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -391,6 +391,11 @@ services:
       - "8090:8090"
     environment:
       - container_user=mosip
+      # CERTIFY_PG_PASSWORD resolves ${CERTIFY_PG_PASSWORD:postgres} in
+      # certify-default.properties's spring.datasource.password — must be
+      # passed through explicitly, Spring only sees vars set on ITS OWN
+      # container environment, not the host/.env one.
+      - CERTIFY_PG_PASSWORD=${CERTIFY_PG_PASSWORD:-postgres}
       - active_profile_env=default,postgres-dataprovider
       - SPRING_CONFIG_NAME=certify
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
@@ -506,7 +511,7 @@ services:
     container_name: certify-preauth-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${CERTIFY_PREAUTH_PG_PASSWORD:-postgres}
       # init-preauth.sh computes the seed did_url from these. PREAUTH_DID_DOMAIN
       # (set by deploy.sh in subdomain mode = this instance's own public host)
       # takes precedence so the pre-auth instance gets a PUBLICLY-resolvable
@@ -519,7 +524,7 @@ services:
       - ./inji/certify/init-preauth.sql:/var/init-templates/certify_init.sql:ro
       - certify-preauth-db:/var/lib/postgresql/data
     ports:
-      - "5436:5432"
+      - "127.0.0.1:5436:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -599,7 +604,7 @@ services:
       # certify-postgres. Zero shared database state.
       - SPRING_DATASOURCE_URL=jdbc:postgresql://certify-preauth-postgres:5432/inji_certify
       - SPRING_DATASOURCE_USERNAME=postgres
-      - SPRING_DATASOURCE_PASSWORD=postgres
+      - SPRING_DATASOURCE_PASSWORD=${CERTIFY_PREAUTH_PG_PASSWORD:-postgres}
     volumes:
       # Shared READ-ONLY config files — identical between the two instances
       # because the credential types and their claim mappings don't depend
@@ -699,10 +704,10 @@ services:
     container_name: inji-verify-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${INJI_VERIFY_PG_PASSWORD:-postgres}
       POSTGRES_DB: inji_verify
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -738,7 +743,7 @@ services:
       - DATABASE_NAME=inji_verify
       - DATABASE_SCHEMA=verify
       - DATABASE_USERNAME=postgres
-      - DATABASE_PASSWORD=postgres
+      - DATABASE_PASSWORD=${INJI_VERIFY_PG_PASSWORD:-postgres}
       # Derived per-host by deploy.sh (url_for inji-verify): subdomain mode ->
       # https://inji-verify.<domain>/... + did:web:inji-verify.<domain>:...;
       # localhost mode -> http://<host>:<port>/... + did:web:<host>%3A<port>:...
@@ -796,10 +801,10 @@ services:
     container_name: citizens-postgres
     environment:
       POSTGRES_USER: citizens
-      POSTGRES_PASSWORD: citizens
+      POSTGRES_PASSWORD: ${CITIZENS_PG_PASSWORD:-citizens}
       POSTGRES_DB: citizens
     ports:
-      - "5435:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - ./citizens-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - citizens-data:/var/lib/postgresql/data
