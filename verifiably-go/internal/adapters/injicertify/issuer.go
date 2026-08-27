@@ -116,13 +116,33 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 		if len(fields) == 0 {
 			fields = append(fields, vctypes.FieldSpec{Name: "holder", Datatype: "string", Required: true})
 		}
+		// mso_mdoc's real docType MUST travel with the rebuilt schema —
+		// IssueToWallet's mdocDocTypeForSchema(req.Schema) reads
+		// AdditionalTypes[0] first and falls back to schema.ID (a
+		// "custom-<nano>" string) only when it's empty. Leaving this unset
+		// here made mdocNamespaceForDocType derive the claims-nesting
+		// namespace from schema.ID itself, so IssueToWallet posted claims
+		// nested under the schema's OWN ID instead of the real ISO
+		// namespace — reproduced live end-to-end: a real operator-created
+		// mDL issued through this exact rebuilt-from-wellknown path failed
+		// with "Unknown claims provided: [custom-<nano-id>]", Inji Certify
+		// correctly rejecting a claims map keyed by a value that means
+		// nothing to it. mdocDocTypeForSchema/mdocNamespaceForDocType
+		// (db.go) are the same helpers SaveCustomSchema already uses to
+		// derive this from a freshly-submitted form's schema, so a schema
+		// round-tripped through ListSchemas must agree.
+		var additionalTypes []string
+		if cfg.Format == "mso_mdoc" && cfg.Doctype != "" {
+			additionalTypes = []string{cfg.Doctype}
+		}
 		out = append(out, vctypes.Schema{
-			ID:         id,
-			Name:       name,
-			Std:        std,
-			DPGs:       []string{issuerDpg},
-			Desc:       fmt.Sprintf("Live credential configuration served by %s.", issuerDpg),
-			FieldsSpec: fields,
+			ID:              id,
+			Name:            name,
+			Std:             std,
+			DPGs:            []string{issuerDpg},
+			Desc:            fmt.Sprintf("Live credential configuration served by %s.", issuerDpg),
+			FieldsSpec:      fields,
+			AdditionalTypes: additionalTypes,
 			// Recovered from the declared markers above, so the rebuilt schema
 			// agrees with the template certify already holds: the issue form
 			// offers a Validity window, and issuance POSTs the values the
