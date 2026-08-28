@@ -184,6 +184,17 @@ start_container() {
   # Healthcheck is defined in the Dockerfile as an exec-form HEALTHCHECK that
   # runs `verifiably -healthcheck` (the distroless image has no /bin/sh or wget,
   # so the CLI --health-cmd form — always CMD-SHELL — can never succeed here).
+  # Go 1.23+ rejects an X.509 certificate whose serial number is negative
+  # (crypto/x509 hardened to follow RFC 5280 §4.1.2.2 strictly) — GET
+  # /trust/mdoc-anchors 500'd with "x509: negative serial number" the moment
+  # provision_inji_root_anchors's extracted Inji Certify ROOTs (deploy.sh)
+  # were added to the anchors directory: both self-signed roots Inji
+  # Certify's mock-HSM path generates carry a negative serial (confirmed
+  # with `openssl x509 -noout -serial` on both the auth-code and pre-auth
+  # instances' extracted roots — a generator quirk on Inji's side, not
+  # something this deployment produces or controls). x509negativeserial=1
+  # restores the pre-1.23 lenient parse; scoped to this one GODEBUG key
+  # rather than disabling other x509 hardening.
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
@@ -206,6 +217,7 @@ start_container() {
     -e VERIFIABLY_ADAPTER=registry \
     -e VERIFIABLY_ADDR=:8080 \
     -e VERIFIABLY_LOG_JSON=1 \
+    -e GODEBUG=x509negativeserial=1 \
     -e VERIFIABLY_ROLES="${VERIFIABLY_ROLES:-issuer,holder,verifier,trust,schemas}" \
     -e VERIFIABLY_STATE_DIR=/app/state \
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \

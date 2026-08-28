@@ -126,6 +126,97 @@ func TestServeMdocAnchors_ReturnsGeneratedCert(t *testing.T) {
 	}
 }
 
+// writeInjiRoot writes a root cert under one of Inji Certify's allowlisted
+// filenames (see mdocAnchorFilenames's doc comment) into dir.
+func writeInjiRoot(t *testing.T, dir, filename, cn string) []byte {
+	t.Helper()
+	pemBytes := newTestIACA(t, cn)
+	if err := os.WriteFile(filepath.Join(dir, filename), pemBytes, 0o600); err != nil {
+		t.Fatalf("write %s: %v", filename, err)
+	}
+	return pemBytes
+}
+
+// TestServeMdocAnchors_IncludesInjiRoots pins the fix for a real bug found
+// during Task 6 end-to-end verification: a real mDL, fully issued and
+// correctly signed by Inji Certify, still failed wallet-side trust
+// verification because this endpoint served only walt.id's iaca.pem — Inji
+// Certify signs with its OWN independent self-signed root, generated inside
+// its local mock-HSM keystore, which this endpoint never saw at all. Both
+// Inji roots (auth-code and pre-auth — two independent instances, two
+// independent keystores) must be included alongside iaca.pem whenever
+// deploy.sh's provision_inji_root_anchors has extracted them.
+func TestServeMdocAnchors_IncludesInjiRoots(t *testing.T) {
+	anchorCache.reset()
+	t.Cleanup(anchorCache.reset)
+
+	dir := t.TempDir()
+	writeIACA(t, dir, "TEST WALT.ID IACA")
+	writeInjiRoot(t, dir, "inji-authcode-root.pem", "TEST INJI AUTHCODE ROOT")
+	writeInjiRoot(t, dir, "inji-preauth-root.pem", "TEST INJI PREAUTH ROOT")
+
+	h := &H{MdocCertsDir: dir}
+	rec := doAnchorsRequest(t, h)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%q)", rec.Code, rec.Body.String())
+	}
+	got := decodeAnchors(t, rec)
+	if len(got.Anchors) != 3 {
+		t.Fatalf("len(anchors) = %d, want 3 (iaca.pem + both Inji roots), got: %v", len(got.Anchors), got.Anchors)
+	}
+
+	wantCNs := map[string]bool{
+		"TEST WALT.ID IACA":       false,
+		"TEST INJI AUTHCODE ROOT": false,
+		"TEST INJI PREAUTH ROOT":  false,
+	}
+	for _, anchor := range got.Anchors {
+		block, _ := pem.Decode([]byte(anchor))
+		if block == nil {
+			t.Fatalf("served anchor is not valid PEM: %q", anchor)
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			t.Fatalf("served anchor does not parse: %v", err)
+		}
+		if _, ok := wantCNs[cert.Subject.CommonName]; !ok {
+			t.Errorf("unexpected anchor CN %q in response", cert.Subject.CommonName)
+			continue
+		}
+		wantCNs[cert.Subject.CommonName] = true
+	}
+	for cn, seen := range wantCNs {
+		if !seen {
+			t.Errorf("expected anchor CN %q was not present in the response", cn)
+		}
+	}
+}
+
+// TestServeMdocAnchors_OnlyInjiRootPresent covers a deployment where only
+// the pre-auth Inji instance is running (e.g. `deploy.sh up inji` without
+// the auth-code scenario ever having generated its own root, or a fresh
+// deploy where provision_inji_root_anchors has only reached one instance
+// so far) — walt.id's iaca.pem absent entirely, not just empty.
+func TestServeMdocAnchors_OnlyInjiRootPresent(t *testing.T) {
+	anchorCache.reset()
+	t.Cleanup(anchorCache.reset)
+
+	dir := t.TempDir()
+	writeInjiRoot(t, dir, "inji-preauth-root.pem", "TEST INJI PREAUTH ROOT")
+
+	h := &H{MdocCertsDir: dir}
+	rec := doAnchorsRequest(t, h)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%q)", rec.Code, rec.Body.String())
+	}
+	got := decodeAnchors(t, rec)
+	if len(got.Anchors) != 1 {
+		t.Fatalf("len(anchors) = %d, want 1 (only the pre-auth root)", len(got.Anchors))
+	}
+}
+
 // TestServeMdocAnchors_MissingFile covers the documented 404: issuer2 configured
 // but no certificate generated yet. Must not panic and must not be an empty 200,
 // which a wallet would cache as "this issuer has no anchors".

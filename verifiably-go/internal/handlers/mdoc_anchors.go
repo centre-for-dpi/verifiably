@@ -84,7 +84,18 @@ import (
 // Document Signer, not an anchor — serving it would invite a wallet to trust a
 // leaf as a root. issuer2.env in that directory holds the DSC PRIVATE key, so a
 // pattern match over the directory is a key-disclosure bug waiting to happen.
-var mdocAnchorFilenames = []string{"iaca.pem"}
+//
+// inji-authcode-root.pem / inji-preauth-root.pem: each Inji Certify instance
+// generates its OWN self-signed root in its local mock-HSM keystore, entirely
+// independent of walt.id's iaca.pem — confirmed live by diffing both extracted
+// roots byte-for-byte and finding them different, and by a real mDL, fully
+// issued and correctly signed by Inji Certify, still failing wallet-side trust
+// verification while this endpoint served only iaca.pem. deploy.sh's
+// provision_inji_root_anchors extracts both from CERTIFY_PKCS12/local.p12 (via
+// openssl) into this same certs directory; a fresh deployment or one that
+// hasn't brought up the inji scenario simply has neither file, which
+// readMdocAnchors below already treats as "not configured", not an error.
+var mdocAnchorFilenames = []string{"iaca.pem", "inji-authcode-root.pem", "inji-preauth-root.pem"}
 
 // mdocAnchorTTL bounds how long a parsed anchor set is reused before the file is
 // re-read. Short by design: a redeploy that regenerates the IACA must become

@@ -626,6 +626,17 @@ cmd_up() {
     all|inji) apply_inji_verify_schema ;;
   esac
 
+  # Each Inji Certify instance's own self-signed mock-HSM ROOT must be
+  # extracted before GET /trust/mdoc-anchors can serve it — see
+  # provision_inji_root_anchors's own header comment for the full trace.
+  # Runs after the instances are up (their local.p12 is generated on first
+  # boot, not before) and before verifiably-go's own image build below, so a
+  # fresh deploy's very first /trust/mdoc-anchors response already includes
+  # both roots.
+  case "$scenario" in
+    all|inji) provision_inji_root_anchors ;;
+  esac
+
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
   # operator can SEE which step is slow or stuck. Previously this was
@@ -675,6 +686,102 @@ apply_inji_verify_schema() {
   else
     red "  inji-verify schema apply failed (retry: docker exec -i inji-verify-postgres psql -U postgres -d inji_verify < $sql)"
   fi
+}
+
+# provision_inji_root_anchors extracts each Inji Certify instance's own
+# self-signed ROOT certificate from its local HSM keystore (CERTIFY_PKCS12/
+# local.p12) into a plain .pem file GET /trust/mdoc-anchors can serve, so a
+# wallet verifying an Inji-issued mdoc has somewhere to fetch that anchor
+# from instead of only seeing walt.id's own IACA (iaca.pem, provisioned by
+# provision_issuer2_certificates above).
+#
+# WHY THIS EXISTS
+# Inji Certify's mock/dev signing path (mosip.kernel.keymanager, no external
+# HSM configured — download_hsm_client=false) generates its OWN root and
+# leaf certificate chain the first time each instance boots, entirely inside
+# its local.p12 keystore. That root has nothing to do with walt.id's IACA —
+# two independent PKIs exist in this one deployment, one per mdoc issuer.
+# Reproduced live: a real mDL fully issued and correctly signed by Inji
+# Certify still failed on-device with "No trusted certificate was found
+# while validating the X.509 chain" even AFTER GET /trust/mdoc-anchors was
+# routed through both Inji nginx instances (see those files' own comments) —
+# the wallet successfully fetched an anchor, just the wrong one (walt.id's).
+#
+# TWO INDEPENDENT ROOTS, NOT ONE
+# inji-certify (auth-code) and inji-certify-preauth each run their own HSM
+# keystore on their own isolated volume (certify-pkcs12 /
+# certify-preauth-pkcs12) — confirmed live by diffing both extracted roots
+# byte-for-byte and finding them different. Both must be provisioned.
+#
+# IDEMPOTENCE
+# No-clobber, the same posture as provision_issuer2_certificates: skips a
+# root whose target .pem file already exists, so a redeploy never
+# regenerates one a wallet may already be caching (ANCHOR_TTL_MS in
+# mdocTrustAnchors.ts is short — 5 minutes — but there is no reason to force
+# a refetch on every redeploy when the underlying keystore hasn't changed).
+# Delete the .pem file manually (or run `deploy.sh reset`, which wipes the
+# named volumes and therefore the keystores) to force regeneration.
+#
+# openssl is used instead of a Go/library-based PKCS12 parse because it is
+# already a dependency of this script's TLS cert generation elsewhere, and
+# a one-shot extraction at deploy time doesn't justify adding a PKCS12
+# library to verifiably-go itself.
+provision_inji_root_anchors() {
+  local certs_dir="$SCRIPT_DIR/deploy/k8s/config/issuer2/certs"
+  mkdir -p "$certs_dir"
+
+  local instance container_name volume_name out_file
+  for instance in authcode preauth; do
+    case "$instance" in
+      authcode) container_name="inji-certify"; out_file="$certs_dir/inji-authcode-root.pem" ;;
+      preauth)  container_name="inji-certify-preauth-backend"; out_file="$certs_dir/inji-preauth-root.pem" ;;
+    esac
+
+    if [[ -f "$out_file" ]]; then
+      continue  # already provisioned — see IDEMPOTENCE above
+    fi
+    if ! docker ps --format '{{.Names}}' | grep -qx "$container_name"; then
+      continue  # this instance isn't part of the running scenario
+    fi
+
+    local p12
+    p12="$(mktemp)"
+    if ! docker cp "$container_name:/home/inji/CERTIFY_PKCS12/local.p12" "$p12" >/dev/null 2>&1; then
+      yellow "  $instance: local.p12 not found in $container_name yet — skipping (retry on next deploy)"
+      rm -f "$p12"
+      continue
+    fi
+
+    # local.p12's password is mosip.kernel.keymanager.hsm.keystore-pass in
+    # certify-default.properties — "local" for every deployment (a dev/mock
+    # HSM password, not a real secret; the same value ships in that
+    # committed properties file).
+    #
+    # openssl pkcs12 -info lists every bag with its own "subject=.../issuer=
+    # ..." header immediately before its PEM block; the ROOT is the one bag
+    # whose subject and issuer are IDENTICAL (self-signed). awk walks the
+    # output tracking the two most recent subject/issuer lines and prints
+    # the PEM block that follows the pair where they match.
+    local root_pem
+    root_pem="$(docker run --rm -v "$p12:/local.p12:ro" alpine:3.20 sh -c '
+      apk add -q --no-cache openssl >/dev/null 2>&1
+      openssl pkcs12 -in /local.p12 -passin pass:local -nokeys -nomacver 2>/dev/null
+    ' | awk '
+      /^subject=/ { subj=$0; next }
+      /^issuer=/  { iss=$0; match_root=(subj == "subject=" substr(iss, index(iss,"=")+1)); next }
+      /^-----BEGIN CERTIFICATE-----/ { if (match_root) { capture=1 } }
+      capture { print }
+      /^-----END CERTIFICATE-----/ { if (capture) { exit } }
+    ')"
+    rm -f "$p12"
+
+    if [[ -z "$root_pem" ]]; then
+      red "  $instance: could not extract a self-signed ROOT from local.p12 — mdoc trust verification will fail for this instance's credentials"
+      continue
+    fi
+    printf '%s\n' "$root_pem" > "$out_file"
+    green "  $instance: extracted ROOT anchor -> $(basename "$out_file")"
+  done
 }
 
 # up_sunbird_registry brings up the Sunbird RC registry-of-record so the Inji
