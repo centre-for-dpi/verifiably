@@ -23,7 +23,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -161,13 +160,23 @@ func (h *H) BulkPreview(w http.ResponseWriter, r *http.Request) {
 		rows, header, err = parseCSVRows(file)
 		label = "csv"
 	case "api":
-		url := strings.TrimSpace(r.FormValue("api_url"))
-		if url == "" {
+		// GET JSON array (legacy form: no api_mode) or a Sunbird RC entity
+		// search; configured registries + OAuth2/TLS options in bulk_api.go.
+		s, serr := buildAPISource(r, sess)
+		if serr != nil {
+			h.bulkInlineError(w, r, serr.Error())
+			return
+		}
+		if s.URL == "" {
 			h.bulkInlineError(w, r, "API URL is required.")
 			return
 		}
-		rows, err = fetchJSONRows(r.Context(), url, strings.TrimSpace(r.FormValue("api_auth")), strings.TrimSpace(r.FormValue("api_limit")))
-		label = "api:" + truncateHost(url)
+		rows, err = fetchAPIRows(r.Context(), s)
+		if s.Mode == "sunbird" {
+			label = "api:" + s.Entity
+		} else {
+			label = "api:" + truncateHost(s.URL)
+		}
 	case "db":
 		conn := strings.TrimSpace(r.FormValue("db_conn"))
 		query := strings.TrimSpace(r.FormValue("db_query"))
@@ -192,7 +201,7 @@ func (h *H) BulkPreview(w http.ResponseWriter, r *http.Request) {
 			// Distinguish "registry unreachable / no entities" vs "wrong entity
 			// name" vs "entity is empty" — searchRegistryAll swallows the HTTP
 			// error, so re-query the schema list to give an actionable message.
-			h.bulkInlineError(w, r, registryEmptyMessage(r.Context(), p.URL, entity))
+			h.bulkInlineError(w, r, registryEmptyMessage(r.Context(), p, entity))
 			return
 		}
 		label = "registry:" + entity
@@ -499,14 +508,15 @@ func containsStr(s []string, v string) bool {
 }
 
 // registryEmptyMessage explains WHY a registry pull returned no rows by
-// re-querying the registry's entity list (sunbirdSchemas) — so the operator
-// learns whether the registry is unreachable, the entity name is wrong (and
-// what's actually available), or the entity simply has no records.
-func registryEmptyMessage(ctx context.Context, url, entity string) string {
-	avail := sunbirdSchemas(ctx, url)
+// re-querying the registry's entity list (discoverEntities: Schema/search,
+// then Swagger) — so the operator learns whether the registry is unreachable,
+// the entity name is wrong (and what's actually available), or the entity
+// simply has no records. Takes the provider so auth/TLS settings apply.
+func registryEmptyMessage(ctx context.Context, p registryProvider, entity string) string {
+	avail, _ := discoverEntities(ctx, p)
 	switch {
 	case len(avail) == 0:
-		return "Couldn't reach the registry at " + url + ", or it has no registered entities — check the base URL."
+		return "Couldn't reach the registry at " + p.URL + ", or it has no registered entities (POST /api/v1/Schema/search) and no Swagger (/api/docs/swagger.json) — check the base URL."
 	case !containsStr(avail, entity):
 		return "This registry has no entity named '" + entity + "'. Available: " + strings.Join(avail, ", ") + ". Set the Entity to one of these (or use “Discover entities”)."
 	default:
@@ -517,8 +527,9 @@ func registryEmptyMessage(ctx context.Context, url, entity string) string {
 // BulkRegistryEntities lists the entities a Sunbird RC registry actually holds,
 // so the issuer can pick a real one instead of guessing. Resolves the base URL
 // from the form (reg_url, or a picked configured registry — via
-// buildRegistryProvider) and calls sunbirdSchemas. Rendered into #reg-entities
-// beneath the Entity input.
+// buildRegistryProvider) and calls discoverEntities (Schema/search, then the
+// registry's Swagger). Rendered into #reg-entities beneath the Entity input;
+// the chips fill reg_entity.
 func (h *H) BulkRegistryEntities(w http.ResponseWriter, r *http.Request) {
 	sess := h.Sessions.MustGet(w, r)
 	if err := r.ParseForm(); err != nil {
@@ -530,9 +541,12 @@ func (h *H) BulkRegistryEntities(w http.ResponseWriter, r *http.Request) {
 		h.renderFragment(w, r, "fragment_registry_entities", map[string]any{"NeedURL": true})
 		return
 	}
+	names, via := discoverEntities(r.Context(), p)
 	h.renderFragment(w, r, "fragment_registry_entities", map[string]any{
-		"Entities": sunbirdSchemas(r.Context(), p.URL),
+		"Entities": names,
 		"URL":      p.URL,
+		"Via":      via,
+		"Target":   "reg_entity",
 	})
 }
 
@@ -660,76 +674,6 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 		"Scope":       scope,
 		"ClientID":    clientID,
 	})
-}
-
-// fetchJSONRows retrieves a JSON array from url and decodes each element as
-// a flat object whose string values become a row. Nested objects are
-// serialized back to JSON strings for operator inspection; numeric values
-// are stringified via fmt.Sprint. A row limit of 0 means "all rows".
-func fetchJSONRows(ctx context.Context, url, authHeader, limitStr string) ([]map[string]string, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	if authHeader != "" {
-		req.Header.Set("Authorization", authHeader)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateForLogBulk(string(body), 200))
-	}
-	var raw any
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, fmt.Errorf("decode JSON: %w", err)
-	}
-	// Accept either a bare array or {"rows": [...]} / {"data": [...]}.
-	items, ok := raw.([]any)
-	if !ok {
-		if obj, isObj := raw.(map[string]any); isObj {
-			for _, key := range []string{"rows", "data", "items", "results"} {
-				if v, has := obj[key]; has {
-					if arr, isArr := v.([]any); isArr {
-						items = arr
-						ok = true
-						break
-					}
-				}
-			}
-		}
-	}
-	if !ok {
-		return nil, fmt.Errorf("response is not a JSON array or {rows|data|items|results:[...]}")
-	}
-	limit := 0
-	if limitStr != "" {
-		_, _ = fmt.Sscan(limitStr, &limit)
-	}
-	rows := make([]map[string]string, 0, len(items))
-	for i, item := range items {
-		if limit > 0 && i >= limit {
-			break
-		}
-		obj, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		row := make(map[string]string, len(obj))
-		for k, v := range obj {
-			row[k] = stringifyAny(v)
-		}
-		rows = append(rows, row)
-	}
-	if len(rows) == 0 {
-		return nil, fmt.Errorf("no rows in response (array had %d items, none were objects)", len(items))
-	}
-	return rows, nil
 }
 
 // queryDBRows opens a pgx connection, runs the SELECT, and coerces every

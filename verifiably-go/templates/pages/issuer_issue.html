@@ -332,24 +332,105 @@
        and returns the column→field mapping screen (into #csv-preview). The
        issuer doesn't need exact field names — they map columns next. */}}
   {{if eq .Source "api"}}
+    {{/* Two request styles share the chip: GET a JSON array (the classic secured
+         API) or a Sunbird RC entity search — registry access is just API access.
+         A configured registry (VERIFIABLY_REGISTRIES) can pre-fill the form; its
+         token secret stays server-side (only url/entity/search ride in the
+         option's data-attributes). The tiny script toggles the [data-mode] blocks. */}}
     <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
       <input type="hidden" name="source" value="api">
+      <div style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Request style</span>
+        <div style="display:flex;gap:1.25rem;flex-wrap:wrap;font-size:0.82rem">
+          <label style="display:flex;align-items:center;gap:0.4rem"><input type="radio" name="api_mode" value="get" checked onchange="apiModeSync(this.form)"> GET JSON array</label>
+          <label style="display:flex;align-items:center;gap:0.4rem"><input type="radio" name="api_mode" value="sunbird" onchange="apiModeSync(this.form)"> Sunbird RC search</label>
+        </div>
+      </div>
+      {{if .Registries}}
+      <label style="display:flex;flex-direction:column;gap:0.25rem">
+        <span class="caps">Configured registry (optional)</span>
+        <select name="api_pick" onchange="apiPickSync(this)" style="{{$inp}}">
+          <option value="">— choose a configured registry —</option>
+          {{range .Registries}}<option value="{{.ID}}" data-url="{{.URL}}" data-entity="{{.Entity}}" data-search="{{.SearchField}}">{{.Label}}{{if .URL}} ({{.URL}}){{end}}</option>{{end}}
+        </select>
+      </label>
+      {{end}}
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">API URL</span>
-        <input type="url" name="api_url" required placeholder="https://xroad.example/r1/EE/COM/12345/registry-service/v1/citizens" style="{{$inp}}">
+        <input type="url" name="api_url" required placeholder="https://xroad.example/r1/EE/COM/12345/registry-service/v1/citizens  ·  or a registry base URL" style="{{$inp}}">
       </label>
-      <label style="display:flex;flex-direction:column;gap:0.25rem">
-        <span class="caps">Authorization header (optional)</span>
-        <input type="text" name="api_auth" placeholder="Bearer eyJhbGc… · or · X-Road-User country/…" style="{{$inp}}">
-      </label>
+      <div data-mode="sunbird" style="display:none;flex-direction:column;gap:0.75rem">
+        <label style="display:flex;flex-direction:column;gap:0.25rem">
+          <span class="caps">Entity / schema name <span style="text-transform:none;color:var(--ink-mute);font-weight:400">— must already exist in the registry</span></span>
+          <input type="text" name="api_entity" value="{{.EntityDefault}}" placeholder="an entity name from the registry" style="{{$inp}}">
+        </label>
+        <div style="display:flex;flex-direction:column;gap:0.4rem">
+          <button class="btn ghost" type="button" style="align-self:flex-start;font-size:0.78rem;padding:0.3rem 0.7rem"
+                  hx-post="/issuer/issue/bulk/api-entities"
+                  hx-include="closest form"
+                  hx-target="#api-entities"
+                  hx-swap="innerHTML">Discover entities</button>
+          <div id="api-entities"></div>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:0.25rem">
+          <span class="caps">Search field</span>
+          <input type="text" name="api_search" value="individualId" style="{{$inp}};max-width:14rem">
+        </label>
+      </div>
+      <details style="font-size:0.82rem">
+        <summary class="caps" style="cursor:pointer">Authentication (optional)</summary>
+        <div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.75rem">
+          <label style="display:flex;flex-direction:column;gap:0.25rem">
+            <span class="caps">Authorization header</span>
+            <input type="text" name="api_auth" placeholder="Bearer eyJhbGc… · or · X-Road-User country/…" style="{{$inp}}">
+          </label>
+          <div style="font-size:0.75rem;color:var(--ink-mute)">Or an OAuth2 <span class="mono">client_credentials</span> grant — the fetched token replaces the header above.</div>
+          <label style="display:flex;flex-direction:column;gap:0.25rem">
+            <span class="caps">Token URL</span>
+            <input type="url" name="api_token_url" placeholder="https://idp.example/oauth2/token" style="{{$inp}}">
+          </label>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+            <label style="display:flex;flex-direction:column;gap:0.25rem;flex:1;min-width:12rem">
+              <span class="caps">Client ID</span>
+              <input type="text" name="api_client_id" autocomplete="off" style="{{$inp}}">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:0.25rem;flex:1;min-width:12rem">
+              <span class="caps">Client secret</span>
+              <input type="password" name="api_client_secret" autocomplete="new-password" style="{{$inp}}">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:0.25rem;flex:1;min-width:8rem">
+              <span class="caps">Scope</span>
+              <input type="text" name="api_scope" style="{{$inp}}">
+            </label>
+          </div>
+          <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem">
+            <input type="checkbox" name="api_insecure" value="1"> Skip TLS certificate verification <span style="color:var(--ink-mute)">(demo hosts only; refused in production)</span>
+          </label>
+        </div>
+      </details>
       <label style="display:flex;flex-direction:column;gap:0.25rem">
         <span class="caps">Row limit (optional; 0 = all)</span>
         <input type="number" name="api_limit" min="0" value="0" style="{{$inp}};max-width:8rem">
       </label>
-      <div style="font-size:0.75rem;color:var(--ink-mute)">GET returns a JSON array (or <span class="mono">{rows|data|items|results}</span>); each object is one row. You'll map its keys to the credential fields next.</div>
+      <div data-mode="get" style="font-size:0.75rem;color:var(--ink-mute)">GET returns a JSON array (or <span class="mono">{rows|data|items|results}</span>); each object is one row. You'll map its keys to the credential fields next.</div>
+      <div data-mode="sunbird" style="display:none;font-size:0.75rem;color:var(--ink-mute)">Pulls every record of the entity from a Sunbird RC registry (<span class="mono">POST /api/v1/&lt;entity&gt;/search</span>); each record is one row. <span class="mono">Search field</span> is the column copied into <span class="mono">individualId</span> when the record lacks one. Column names don't have to match — you'll map them next.</div>
       <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
+    <script>
+      function apiModeSync(f){
+        var m=(f.querySelector('[name=api_mode]:checked')||{}).value||'get';
+        f.querySelectorAll('[data-mode]').forEach(function(d){d.style.display=d.dataset.mode===m?'':'none';});
+      }
+      function apiPickSync(s){
+        var o=s.selectedOptions[0]||{dataset:{}},f=s.form,d=o.dataset;
+        if(d.url){f.api_url.value=d.url;}
+        if(d.entity){f.api_entity.value=d.entity;f.querySelector('[name=api_mode][value=sunbird]').checked=true;}
+        if(d.search){f.api_search.value=d.search;}
+        apiModeSync(f);
+      }
+      apiModeSync(document.getElementById('bulk-form'));
+    </script>
   {{else if eq .Source "db"}}
     <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
@@ -435,20 +516,22 @@
 {{end}}
 
 {{/* fragment_registry_entities — the result of "Discover entities": the actual
-     entities the registry holds, as chips that fill the reg_entity input on
-     click. Rendered into #reg-entities. */}}
+     entities the registry holds, as chips that fill the Target input (default
+     reg_entity; the api chip passes api_entity) on click. Rendered into
+     #reg-entities / #api-entities. Via is "schema" or "swagger". */}}
 {{define "fragment_registry_entities"}}
+{{$target := or .Target "reg_entity"}}
 {{if .NeedURL}}
 <div style="font-size:0.78rem;color:var(--ink-mute);font-style:italic">Enter a registry base URL (or pick a configured registry) first, then click Discover.</div>
 {{else if .Entities}}
 <div style="font-size:0.78rem;color:var(--ink-soft)">
-  <span class="caps" style="display:block;margin-bottom:0.35rem">Entities in this registry — click to use</span>
+  <span class="caps" style="display:block;margin-bottom:0.35rem">Entities in this registry — click to use{{if eq .Via "swagger"}} <span style="text-transform:none;font-weight:400;color:var(--ink-mute)">(listed from Swagger)</span>{{end}}</span>
   <div style="display:flex;flex-wrap:wrap;gap:0.35rem">
-    {{range .Entities}}<button type="button" class="chip small" onclick="this.closest('form').reg_entity.value='{{.}}'">{{.}}</button>{{end}}
+    {{range .Entities}}<button type="button" class="chip small" onclick="this.closest('form').elements['{{$target}}'].value='{{.}}'">{{.}}</button>{{end}}
   </div>
 </div>
 {{else}}
-<div style="font-size:0.78rem;color:var(--err);font-style:italic">No entities found at {{.URL}} — check the URL is reachable and that schemas are registered (POST /api/v1/Schema).</div>
+<div style="font-size:0.78rem;color:var(--err);font-style:italic">No entities found at {{.URL}} — check the URL is reachable and that schemas are registered (<span class="mono">POST /api/v1/Schema/search</span>) or exposed in the registry's Swagger (<span class="mono">/api/docs/swagger.json</span>).</div>
 {{end}}
 {{end}}
 

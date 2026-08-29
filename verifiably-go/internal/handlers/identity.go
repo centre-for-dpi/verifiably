@@ -273,7 +273,7 @@ func (h *H) IdentityBulkPreview(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = searchRegistryAll(r.Context(), p, entity)
 		if len(rows) == 0 {
-			h.identityInlineError(w, r, registryEmptyMessage(r.Context(), p.URL, entity))
+			h.identityInlineError(w, r, registryEmptyMessage(r.Context(), p, entity))
 			return
 		}
 		label = "registry:" + entity
@@ -366,7 +366,7 @@ func (h *H) IdentityRegistryEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderFragment(w, r, "fragment_registrar_entities", map[string]any{
-		"Entities": sunbirdSchemas(r.Context(), p.URL),
+		"Entities": sunbirdSchemas(r.Context(), p),
 		"URL":      p.URL,
 	})
 }

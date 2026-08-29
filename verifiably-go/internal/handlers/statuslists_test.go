@@ -184,3 +184,49 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+func TestStatusListSet_NilGuards(t *testing.T) {
+	var nilSet *StatusListSet
+	nilSet.Register(&StatusListEntry{}) // must not panic
+	if nilSet.ByID("bitstring", "v1") != nil || nilSet.Entries() != nil {
+		t.Error("nil set should resolve nothing")
+	}
+	s := NewStatusListSet()
+	s.Register(nil)
+	s.Register(&StatusListEntry{Kind: "bitstring"}) // nil Store ignored
+	if len(s.Entries()) != 0 {
+		t.Errorf("entries after ignored registers = %d, want 0", len(s.Entries()))
+	}
+	if s.ByID("bitstring", "") != nil {
+		t.Error("empty id should resolve nil")
+	}
+}
+
+func TestStatusListSet_EntriesListsEveryRegisteredList(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStatusListSet()
+	s.Register(&StatusListEntry{Store: mkList(t, dir, "bitstring", "v1"), Kind: "bitstring"})
+	s.Register(&StatusListEntry{Store: mkList(t, dir, "token", "v1"), Kind: "token"})
+	s.Register(&StatusListEntry{Store: mkList(t, dir, "bitstring", "walt-id-bitstring"), DPG: "walt.id", Kind: "bitstring"})
+	got := map[string]bool{}
+	for _, e := range s.Entries() {
+		got[indexKey(e.Kind, e.Store.GetListID())] = true
+	}
+	for _, want := range []string{"bitstring/v1", "token/v1", "bitstring/walt-id-bitstring"} {
+		if !got[want] {
+			t.Errorf("Entries missing %s (got %v)", want, got)
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("Entries len = %d, want 3", len(got))
+	}
+}
+
+func TestStatusListID_EmptyVendorFallsBackToKind(t *testing.T) {
+	if got := StatusListID("", "token"); got != "token" {
+		t.Errorf("StatusListID(\"\") = %q, want token", got)
+	}
+	if got := StatusListID("···", "bitstring"); got != "bitstring" {
+		t.Errorf("all-separator vendor = %q, want bitstring", got)
+	}
+}
