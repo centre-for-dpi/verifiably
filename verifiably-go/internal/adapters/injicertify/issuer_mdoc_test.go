@@ -128,6 +128,71 @@ func TestIssueToWalletMdocRejectsOverCapDrivingPrivileges(t *testing.T) {
 	}
 }
 
+// TestIssueToWalletPhotoIDDoesNotRequireDrivingPrivileges reproduces a real
+// bug found live: issuing a Photo ID credential (org.iso.23220.photoid.1 —
+// a legitimate mso_mdoc docType, per mdoc.KnownDocTypes) in ModePreAuth,
+// with StructuredData carrying NO driving_privileges at all — correct,
+// since ISO/IEC 23220-1's Photo ID has no such element — was unconditionally
+// rejected with "driving_privileges es obligatorio en ISO 18013-5", the
+// exact same error a genuinely-invalid mDL submission gets. The guard above
+// checked only Std=="mso_mdoc" (the shared CONTAINER format for every ISO
+// docType this system issues), not which docType was actually being issued,
+// so it fired for a docType the standard never asked this element of.
+func TestIssueToWalletPhotoIDDoesNotRequireDrivingPrivileges(t *testing.T) {
+	var gotClaims map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body preAuthorizedDataRequest
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotClaims = body.Claims
+		_ = json.NewEncoder(w).Encode(preAuthorizedDataResponse{
+			CredentialOfferURI: "openid-credential-offer://?credential_offer=%7B%7D",
+		})
+	}))
+	defer srv.Close()
+
+	a, err := New(Config{Mode: ModePreAuth, BaseURL: srv.URL, PublicBaseURL: srv.URL}, "Inji Certify · Pre-Auth")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	req := backend.IssueRequest{
+		Schema:      vctypes.Schema{ID: "custom-photoid", Std: "mso_mdoc", AdditionalTypes: []string{mdoc.PhotoIDDocType}},
+		SubjectData: map[string]string{"family_name": "Perez"},
+		// StructuredData sin driving_privileges — correcto para Photo ID,
+		// que no tiene ese elemento en absoluto.
+	}
+	if _, err := a.IssueToWallet(context.Background(), req); err != nil {
+		t.Fatalf("IssueToWallet for Photo ID should not require driving_privileges, got error: %v", err)
+	}
+	ns, ok := gotClaims["org.iso.23220.photoid"].(map[string]any)
+	if !ok {
+		t.Fatalf("claims[%q] is %T, want map[string]any", "org.iso.23220.photoid", gotClaims["org.iso.23220.photoid"])
+	}
+	if _, present := ns["driving_privileges"]; present {
+		t.Errorf("driving_privileges present in Photo ID claims — must never appear for this docType")
+	}
+}
+
+// TestIssueToWalletMDLStillRequiresDrivingPrivileges is the inverse safety
+// check for the same fix: mDL's own guard must still fire when
+// driving_privileges is missing. The fix narrows the guard from "any
+// mso_mdoc schema" to "mso_mdoc AND docType==mDL specifically" — it must
+// not accidentally narrow it out of existence for mDL itself.
+func TestIssueToWalletMDLStillRequiresDrivingPrivileges(t *testing.T) {
+	a, err := New(Config{Mode: ModePreAuth, BaseURL: "http://unused-if-guard-works", PublicBaseURL: "http://unused"}, "Inji Certify · Pre-Auth")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	req := backend.IssueRequest{
+		Schema:      vctypes.Schema{ID: "custom-abc", Std: "mso_mdoc", AdditionalTypes: []string{mdoc.MDLDocType}},
+		SubjectData: map[string]string{"family_name": "Perez"},
+		// StructuredData sin driving_privileges en absoluto — mDL debe seguir
+		// rechazando esto.
+	}
+	if _, err := a.IssueToWallet(context.Background(), req); err == nil {
+		t.Error("IssueToWallet for mDL with no driving_privileges returned no error, want a rejection — the fix must not have weakened mDL's own guard")
+	}
+}
+
 func mustMarshalNPrivileges(n int) json.RawMessage {
 	out := make([]map[string]string, n)
 	for i := range out {

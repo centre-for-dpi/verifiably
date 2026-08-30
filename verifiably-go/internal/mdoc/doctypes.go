@@ -21,11 +21,22 @@ type DocTypeInfo struct {
 	Name    string
 }
 
+// MDLDocType and PhotoIDDocType are the two ISO docType wire strings this
+// deployment knows how to issue as mso_mdoc — the single source of truth so
+// a call site that needs to single out "is this specifically an mDL" (e.g.
+// injicertify's driving_privileges guard, which is an mDL-only element, NOT
+// something every mso_mdoc docType requires) never hand-writes the literal
+// and risks drifting from KnownDocTypes/mandatoryByDocType below.
+const (
+	MDLDocType     = "org.iso.18013.5.1.mDL"
+	PhotoIDDocType = "org.iso.23220.photoid.1"
+)
+
 // KnownDocTypes lists the docTypes the operator may choose, in display order.
 func KnownDocTypes() []DocTypeInfo {
 	return []DocTypeInfo{
-		{DocType: "org.iso.18013.5.1.mDL", Name: "Mobile Driving Licence (ISO 18013-5)"},
-		{DocType: "org.iso.23220.photoid.1", Name: "Photo ID (ISO 23220)"},
+		{DocType: MDLDocType, Name: "Mobile Driving Licence (ISO 18013-5)"},
+		{DocType: PhotoIDDocType, Name: "Photo ID (ISO 23220)"},
 	}
 }
 
@@ -184,8 +195,8 @@ var photoIDMandatory = []vctypes.FieldSpec{
 // back to camelCase; that would silently reintroduce a docType the builder
 // offers but issuer-api2 rejects at issuance time.
 var mandatoryByDocType = map[string][]vctypes.FieldSpec{
-	"org.iso.18013.5.1.mDL":   mdlMandatory,
-	"org.iso.23220.photoid.1": photoIDMandatory,
+	MDLDocType:     mdlMandatory,
+	PhotoIDDocType: photoIDMandatory,
 }
 
 // MandatoryFields returns the elements the standard requires for a docType.

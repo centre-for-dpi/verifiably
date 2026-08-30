@@ -226,7 +226,20 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 	// combination) must fall through to that unmodified path, not be
 	// rejected by an mdoc-specific guard that has no meaning for a mode
 	// this plan explicitly does not support for mdoc.
-	if a.cfg.Mode == ModePreAuth && stdToCredentialFormat(req.Schema.Std) == "mso_mdoc" {
+	//
+	// ALSO gated on the schema's real docType being mDL specifically, not
+	// on Std=="mso_mdoc" alone: mso_mdoc is the CONTAINER format shared by
+	// every ISO docType this system issues (mDL AND Photo ID,
+	// org.iso.23220.photoid.1 — see mdoc.KnownDocTypes), but
+	// driving_privileges is an mDL-only ISO/IEC 18013-5 Table 3 element —
+	// ISO/IEC 23220-1's Photo ID has no such element at all. Before this
+	// gate, issuing a Photo ID (a legitimate mso_mdoc docType with zero
+	// driving-privilege rows, by design) was unconditionally rejected with
+	// this exact "es obligatorio" message — reproduced live: a freshly
+	// created Photo ID schema, confirmed to have NO driving_privileges in
+	// its own credential_config.display_order, still failed here because
+	// this check never looked at which docType was actually being issued.
+	if a.cfg.Mode == ModePreAuth && stdToCredentialFormat(req.Schema.Std) == "mso_mdoc" && mdocDocTypeForSchema(req.Schema) == mdoc.MDLDocType {
 		n := 0
 		if raw, ok := req.StructuredData["driving_privileges"]; ok && len(raw) > 0 {
 			var arr []json.RawMessage
