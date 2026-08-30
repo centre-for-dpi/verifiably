@@ -55,6 +55,28 @@ const FormatDrivingPrivileges = "driving_privileges"
 // file; the handler base64-encodes it and walt.id's profile mapping
 // (conversionType = "base64StringToByteString") performs the CBOR
 // byte-string conversion. We never encode CBOR ourselves.
+//
+// KNOWN LIMITATION — Inji Certify v0.14.0 has no equivalent conversion at
+// all: unlike walt.id, it never turns this base64 string into a real CBOR
+// byte string (bstr per ISO/IEC 18013-5). Confirmed by disassembling its
+// shipped io.mosip.certify.utils.MDocProcessor.class (javap -p -c):
+// preprocessForCBOR (the single dispatch point deciding how each templated
+// value is encoded) has exactly four branches — byte[] (passed through
+// unchanged), String (checked ONLY against isDateOnlyString, for the
+// full-date/tag-1004 special case — anything else stays a String), Map,
+// and List. There is no fifth branch for base64/image detection, and
+// convertToDataItem's own String case unconditionally wraps every String
+// in a CBOR UnicodeString (tstr) — so any value that reaches Inji as a
+// JSON string, however it looks, becomes tstr, never bstr. No template
+// marker, field-naming convention, or Velocity trick changes this; the
+// gap is in Inji Certify's own Java code, not in what this template can
+// send it. Confirmed live: Inji Certify emitted `portrait` as a 300KB+
+// base64 STRING claim in the final mdoc — cdpi-wallet was patched to
+// tolerate this (recognizing a base64-string bstr claim value as bytes,
+// alongside the ISO-conformant Uint8Array walt.id already produces) rather
+// than reject the credential outright, but that wallet-side tolerance is
+// a mitigation, not a fix — the correct fix is Inji Certify emitting a
+// real bstr, which requires a code change upstream (MOSIP), not here.
 const FormatImage = "image"
 
 // MdocSignatureAlgo is the COSE signature algorithm every mdoc issued by
