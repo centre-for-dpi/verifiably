@@ -891,9 +891,27 @@ func extractBuilderData(r *http.Request) builderData {
 			merged = append(merged, m)
 		}
 		for _, f := range d.Fields {
-			if !isMandatoryName(mandatory, f.Name) {
-				merged = append(merged, f)
+			if isMandatoryName(mandatory, f.Name) {
+				continue
 			}
+			// A field mandatory for SOME OTHER known docType (e.g.
+			// driving_privileges, submitted while mDL was selected) but not
+			// this one is a residual row from before the operator switched
+			// docType — the builder form re-submits every currently-rendered
+			// row on each change, so it survives in d.Fields even though
+			// nothing chose it for THIS docType. Drop it rather than keep it
+			// as a "custom" field: keeping it silently smuggled mDL's
+			// driving_privileges into a saved Photo ID config, whose
+			// display_order then made Inji Certify demand it at issuance
+			// time — reproduced live, confirmed directly against Inji
+			// Certify's credential_config table. See
+			// mdoc.IsMandatoryForAnyDocType's doc comment for the full
+			// reasoning distinguishing this from a genuine operator-typed
+			// extra field.
+			if mdoc.IsMandatoryForAnyDocType(f.Name) {
+				continue
+			}
+			merged = append(merged, f)
 		}
 		d.Fields = merged
 	}

@@ -219,3 +219,35 @@ func MandatoryFields(docType string) []vctypes.FieldSpec {
 	}
 	return out
 }
+
+// IsMandatoryForAnyDocType reports whether name is a mandatory element of
+// SOME known mdoc docType — not necessarily the one currently selected.
+//
+// Exists so the schema builder can tell apart two different reasons a
+// submitted field row isn't in the CURRENT docType's mandatory set:
+//   - it's a residual row left over from a docType the operator just
+//     switched AWAY from (e.g. driving_privileges, still present in the
+//     POST body after switching mDL -> Photo ID, because the builder form
+//     re-submits every currently-rendered row on each change) — this must
+//     be DROPPED, not kept as a custom field;
+//   - it's a field the operator genuinely typed into an "extra field" row
+//     of their own — this must be KEPT.
+//
+// Reproduced live: switching the docType selector from mDL to Photo ID and
+// saving produced a Photo ID credential_config whose display_order still
+// listed driving_privileges (confirmed directly in Inji Certify's
+// credential_config table) — an ISO/IEC 23220-1 Photo ID has no such
+// element, so the wallet-facing issue form (validateDrivingPrivilegesCount,
+// internal/handlers/issuance.go) then refused to issue with "es
+// obligatorio en ISO 18013-5", even though nothing about issuing a Photo ID
+// should ever have surfaced that guard.
+func IsMandatoryForAnyDocType(name string) bool {
+	for _, fields := range mandatoryByDocType {
+		for _, f := range fields {
+			if f.Name == name {
+				return true
+			}
+		}
+	}
+	return false
+}
