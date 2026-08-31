@@ -44,6 +44,8 @@ jobs:
         run: go test ./...
       - name: host-aliases unit tests
         run: bash scripts/ci/test-host-aliases.sh
+      - name: credebl env-pipeline unit tests
+        run: bash scripts/ci/test-credebl-env.sh
       - name: coverage gate (internal/handlers)
         run: sh scripts/ci/test-coverage-gate.sh && sh scripts/ci/coverage-gate.sh
       # Report-only: the guard also flags the legitimately vendor-specific Inji/
