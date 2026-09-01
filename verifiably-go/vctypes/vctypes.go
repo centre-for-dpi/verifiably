@@ -7,6 +7,8 @@ package vctypes
 import (
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // DPG describes a Digital Public Good's capabilities.
@@ -349,6 +351,17 @@ type FieldSpec struct {
 	Datatype string // "string" | "number" | "integer" | "boolean"
 	Format   string // optional: "date" | "uri" | ...
 	Required bool
+
+	// Labels maps a locale code to this field's human-readable name, e.g.
+	// {"en": "Family Name", "es-DO": "Apellidos"}. Locale codes are free-form
+	// strings, deliberately not validated against a fixed list — OID4VCI
+	// leaves the vocabulary open, and a deployment may need a language no
+	// predefined list would carry.
+	//
+	// "en" is the base language: Label() falls back to it for any locale not
+	// present. Empty Labels is valid and means "derive from Name", which is
+	// what wallets do today anyway.
+	Labels map[string]string
 }
 
 // Credential is the wallet/verifier-side view of an issued credential.
@@ -412,3 +425,44 @@ type IssuerIdentity struct {
 // Duration-safe helpers for adapters that work with time.Duration naturally.
 // ExpiresIn on IssueToWalletResult is a time.Duration; helper converts to seconds.
 func SecondsFromDuration(d time.Duration) int { return int(d / time.Second) }
+
+// DeriveLabel turns a snake_case identifier into a human-readable label:
+// family_name -> "Family Name". This mirrors what wallets already do when an
+// issuer publishes no display metadata, so a field with no Labels renders
+// identically to today rather than blank.
+func DeriveLabel(identifier string) string {
+	if identifier == "" {
+		return ""
+	}
+	var words []string
+	for _, p := range strings.Split(identifier, "_") {
+		if p == "" {
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(p)
+		words = append(words, string(unicode.ToUpper(r))+p[size:])
+	}
+	return strings.Join(words, " ")
+}
+
+// Label resolves this field's display name for a locale, in order: exact
+// match, then English (the base language), then derived from the identifier.
+// A label whose value is empty counts as absent, so a blank entry never wins
+// over the fallback.
+//
+// It returns non-empty for any field whose Name contains at least one
+// non-underscore character. The sole exception is a degenerate all-underscore
+// Name ("_", "__"), which has nothing to derive a label from — such an
+// identifier is rejected by the schema builder's input pattern
+// ([a-zA-Z_][a-zA-Z0-9_]*) only in part, so callers rendering wholly
+// untrusted field names should treat an empty return as "show the raw
+// identifier".
+func (f FieldSpec) Label(locale string) string {
+	if v, ok := f.Labels[locale]; ok && v != "" {
+		return v
+	}
+	if v, ok := f.Labels["en"]; ok && v != "" {
+		return v
+	}
+	return DeriveLabel(f.Name)
+}

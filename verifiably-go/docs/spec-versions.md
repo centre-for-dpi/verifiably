@@ -1,6 +1,6 @@
 # Spec versions implemented by each adapter
 
-> Last updated: 2026-05-16.  
+> Last updated: 2026-09-01 (walt.id + Inji Certify rows only, during an mDL/mdoc audit pass — see `dpg-matrix.md` for the fuller version history; CREDEBL/Inji Web rows below are unverified since 2026-05-16).  
 > **Purpose:** reference for deciding whether an upstream change can break wire-format compatibility.  
 > Update this table on every CREDEBL / walt.id / Inji version bump.
 
@@ -12,9 +12,9 @@
 |---|---|---|---|---|---|
 | CREDEBL | v1.x (Credo-TS 0.5.x) | OID4VCI | Issuer | OpenID for Verifiable Credential Issuance draft-13 (pre-authorized code flow only) | `dc+sd-jwt` / `vc+sd-jwt` (SD-JWT VC) |
 | CREDEBL | v1.x (Credo-TS 0.5.x) | OID4VP | Verifier | OpenID for Verifiable Presentations draft-20 (cross-device; DCQL query) | `dc+sd-jwt` / `vc+sd-jwt` |
-| walt.id | Community Stack v0.18.2 | OID4VCI | Issuer | OpenID for Verifiable Credential Issuance draft-13 (pre-authorized + authorization code) | `jwt_vc_json`, `vc+sd-jwt`, `mso_mdoc` |
+| walt.id | Community Stack v0.18.2 (`issuer-api`/`wallet-api`/`verifier-api`) + `issuer-api2` v0.23.1 (mso_mdoc only — see `dpg-matrix.md`) | OID4VCI | Issuer | OpenID for Verifiable Credential Issuance draft-13 (pre-authorized + authorization code) | `jwt_vc_json`, `vc+sd-jwt`, `mso_mdoc` |
 | walt.id | Community Stack v0.18.2 | OID4VP | Verifier | OpenID for Verifiable Presentations draft-18 (Presentation Exchange 2.0 path) | `jwt_vc_json`, `vc+sd-jwt` |
-| Inji Certify | v0.14.0 | OID4VCI | Issuer | OpenID for Verifiable Credential Issuance draft-13 (pre-authorized + authorization code) | `ldp_vc` (Ed25519Signature2020), `vc+sd-jwt` |
+| Inji Certify | v0.14.0 | OID4VCI | Issuer | OpenID for Verifiable Credential Issuance draft-13 (pre-authorized + authorization code) | `ldp_vc` (Ed25519Signature2020), `vc+sd-jwt`, `mso_mdoc` (Pre-Auth only, since 2026-08-25) |
 | Inji Verify | v0.16.0 | OID4VP | Verifier | OpenID for Verifiable Presentations draft-20 (cross-device QR) | `ldp_vc`, `vc+sd-jwt` |
 | Inji Web | v0.16.0 | OID4VCI (holder) | Wallet | OpenID for Verifiable Credential Issuance draft-13 (authorization code, Mimoto-mediated) | `ldp_vc`, `vc+sd-jwt` |
 
@@ -29,7 +29,7 @@
 | `jwt_vc_json` | W3C VCDM 1.1 + JWT | Primary format for walt.id → walt.id round-trips. |
 | `jwt_vc_json-ld` | W3C VCDM 1.1 + JWT-LD | Walt.id can issue; no tested wallet claim/present pipeline. |
 | `ldp_vc` | W3C VCDM 1.1 / 2.0 + Data Integrity | Ed25519Signature2020; Inji Certify. LDP verify broken in Mimoto v0.16.0 (vc-verifier canonicalization bug). |
-| `mso_mdoc` | ISO 18013-5 | Walt.id can issue; Inji Certify is mock-only at v0.14.0. No verifier adapter in this stack. |
+| `mso_mdoc` | ISO 18013-5 | Both walt.id (`issuer-api2`) and Inji Certify (Pre-Auth, since 2026-08-25) issue real mso_mdoc — neither is mock-only. No verifier adapter in this stack. |
 
 ---
 
@@ -73,7 +73,7 @@
 ## walt.id adapter
 
 **Source files:** `internal/adapters/waltid/`  
-**Backend version:** Community Stack v0.18.2 (`issuer-api`, `wallet-api`, `verifier-api`, `web-portal`)
+**Backend version:** Community Stack v0.18.2 (`issuer-api`, `wallet-api`, `verifier-api`, `web-portal`) for `jwt_vc_json`/`vc+sd-jwt`. A second, separate service, `issuer-api2` v0.23.1, handles `mso_mdoc` (mDL/Photo ID) exclusively — it is the only walt.id issuer that type-maps CBOR correctly. Runs alongside, does not replace, the legacy `issuer-api`. See `dpg-matrix.md`'s "walt.id — mDL/mdoc (`issuer-api2`)" section and `docs/deploy.md#mdl-mdoc-issuance-issuer-api2` for the full detail this table intentionally doesn't duplicate.
 
 ### OID4VCI — Issuer
 
@@ -110,15 +110,15 @@
 
 | Item | Value |
 |---|---|
-| Flows | Pre-authorized code (demo/staging) + authorization code (production via eSignet) |
-| Credential formats | `ldp_vc` (Ed25519Signature2020, W3C VCDM 2.0), `vc+sd-jwt` |
-| Signing | Ed25519; keys managed by MOSIP keymanagerservice |
+| Flows | Pre-authorized code (demo/staging + mso_mdoc production) + authorization code (production via eSignet, `ldp_vc`/`vc+sd-jwt` only) |
+| Credential formats | `ldp_vc` (Ed25519Signature2020, W3C VCDM 2.0), `vc+sd-jwt`, `mso_mdoc` (Pre-Auth only, mDL/Photo ID) |
+| Signing | Ed25519 for `ldp_vc`/`vc+sd-jwt`; mock-HSM PKCS12 for `mso_mdoc` (separate key material per instance — see `docs/dpg/inji-certify-preauth.md`) |
 | Spec draft | OID4VCI draft-13 |
 
 **Known compatibility gaps:**  
 - `ldp_vc` verify round-trip broken in Inji Web v0.16.0 (Mimoto ships vc-verifier with URDNA2015 canonicalization bug; see [dpg-matrix.md § Inji Web](dpg-matrix.md#inji-web-wallet-v0160)).  
-- `mso_mdoc` is mock-only at v0.14.0.  
-- Tested matrix per MOSIP: Inji Certify v0.14.0 ↔ Inji Web v0.17.0 (we run v0.16.0).
+- `mso_mdoc` (Pre-Auth) does NOT bstr-encode `portrait` correctly — a real, still-open Inji Certify defect (own `MDocProcessor` bytecode), not a mock limitation. See `docs/dpg/inji-certify-preauth.md`'s "mso_mdoc issuance" section and `d222c33`.  
+- Tested matrix per MOSIP: Inji Certify v0.14.0 ↔ Inji Web v0.17.0 (we run v0.16.0). This line does not apply to `mso_mdoc` — that path never goes through Inji Web.
 
 ---
 

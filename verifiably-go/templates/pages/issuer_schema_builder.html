@@ -120,23 +120,58 @@
 
   <div class="field">
     <label>Format</label>
-    <select name="std">
+    {{/* The format governs which OTHER controls exist — the docType selector
+         below is behind {{if eq .Std "mso_mdoc"}} — so changing it has to
+         re-render the FORM, not just the JSON preview. Without these
+         attributes only the form's own hx-trigger fired, which targets
+         #json-preview, and picking "ISO mDL" never revealed the docType
+         selector or loaded the standard's mandatory fields. Same pattern as
+         the docType select and the delegation checkbox. */}}
+    <select name="std"
+            hx-post="/issuer/schema/build/std"
+            hx-include="#builder-form-el"
+            hx-target="#builder-form"
+            hx-swap="innerHTML">
       {{$cur := .Std}}
       <option value="w3c_vcdm_2"      {{if eq $cur "w3c_vcdm_2"}}selected{{end}}>w3c_vcdm_2 — W3C VCDM 2.0 (JSON-LD)</option>
       <option value="w3c_vcdm_1"      {{if eq $cur "w3c_vcdm_1"}}selected{{end}}>w3c_vcdm_1 — W3C VCDM 1.1 (JSON-LD)</option>
       <option value="sd_jwt_vc"       {{if hasPrefix $cur "sd_jwt_vc"}}selected{{end}}>sd_jwt_vc — IETF SD-JWT VC (draft)</option>
       <option value="jwt_vc"          {{if eq $cur "jwt_vc"}}selected{{end}}>jwt_vc — plain JWT-VC (Inji Certify: issued as ldp_vc)</option>
-      <option value="mso_mdoc"        {{if eq $cur "mso_mdoc"}}selected{{end}}>mso_mdoc — ISO 18013-5 mDL/mDoc (Inji Certify: mock-only at v0.14)</option>
+      <option value="mso_mdoc"        {{if eq $cur "mso_mdoc"}}selected{{end}}>mso_mdoc — ISO 18013-5 mDL/mDoc</option>
     </select>
-    <p class="hint" style="font-size:0.75rem;color:var(--ink-mute);margin-top:0.35rem">Inji Certify auth-code issues <strong>W3C VCDM 1.1/2.0</strong> (ldp_vc) and <strong>IETF SD-JWT VC</strong> (vc+sd-jwt) natively. <strong>mso_mdoc</strong> is mock-only in Certify v0.14 — it'll configure but isn't a usefully-verifiable credential.</p>
+    <p class="hint" style="font-size:0.75rem;color:var(--ink-mute);margin-top:0.35rem">Inji Certify auth-code issues <strong>W3C VCDM 1.1/2.0</strong> (ldp_vc) and <strong>IETF SD-JWT VC</strong> (vc+sd-jwt) natively. <strong>mso_mdoc</strong> requires a pre-provisioned profile by your platform operator in the chosen DPG — confirm with your operator if the current DPG supports it before saving. Note: when issuing via Inji Pre-Auth, the <span class="mono">portrait</span> field does not fully conform to ISO 18013-5's byte-string format (a known Inji Certify v0.14.0 limitation) — the rest of the document remains compliant.</p>
   </div>
+
+  {{if eq .Std "mso_mdoc"}}
+  <div class="field">
+    <label>Document type
+      <span style="font-size:0.7rem;color:var(--ink-mute);font-weight:400;margin-left:0.25rem">(which ISO document travels inside the mdoc container)</span>
+    </label>
+    <select name="doctype"
+            hx-post="/issuer/schema/build/doctype"
+            hx-include="#builder-form-el"
+            hx-target="#builder-form"
+            hx-swap="innerHTML">
+      {{$cur := .DocType}}
+      {{range .KnownDocTypes}}
+        <option value="{{.DocType}}" {{if eq $cur .DocType}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+    <p class="hint" style="font-size:0.75rem;color:var(--ink-mute);margin-top:0.35rem">
+      The standard's mandatory fields are added automatically and cannot be removed.
+      Add your own fields below — they go in your own namespace, not the ISO one.
+    </p>
+  </div>
+  {{end}}
 
   <div>
     <div class="caps" style="margin-bottom:0.5rem">Claim fields</div>
 
     <div id="field-rows" style="display:flex;flex-direction:column;gap:0.5rem">
+      {{$mandatoryNames := mdocMandatoryNames .Std .DocType}}
+      {{$blank := .BlankLangRows}}
       {{range $i, $f := .Fields}}
-        {{template "_field_row" (dict "Idx" $i "Field" $f)}}
+        {{template "_field_row" (dict "Idx" $i "Field" $f "Locked" (index $mandatoryNames $f.Name) "Blank" (index $blank $i))}}
       {{end}}
     </div>
 
@@ -154,7 +189,36 @@
 {{end}}
 
 {{define "_field_row"}}
+{{/*
+  One claim field. The top line carries the identifier, the datatype and the
+  required flag; beneath it sit the field's LANGUAGE ROWS — one display text
+  plus the language it is written in, repeatable N times via "+ Add language".
+
+  The language is a VALUE the operator sets, not an assumption. The first row
+  is pre-filled with "en" but is freely editable: a deployment issuing only in
+  Spanish overwrites it with "es" and carries no English at all.
+
+  Naming: field_lang_<row>_<n> / field_label_<row>_<n> are PARALLEL indexed
+  inputs, so the locale text never lands in an HTML attribute NAME. The old
+  scheme (field_label_<row>_<locale>) put it there, which is what forced the
+  awkward separate "new locale" row and let a locale containing a space
+  truncate the attribute — the browser then resubmitted a shorter key and the
+  label silently landed under the wrong locale.
+
+  Locale codes stay an OPEN vocabulary — free text, no dropdown, no allowlist.
+  The pattern below only excludes characters, matching validLocaleCode's
+  ^[A-Za-z0-9-]{1,35}$ on the server.
+*/}}
+<div style="display:flex;flex-direction:column;gap:0.4rem;border:1px solid var(--line);border-radius:3px;padding:0.55rem 0.6rem;background:var(--bg-sunk)">
 <div style="display:grid;grid-template-columns:1fr 160px 72px 36px;gap:0.5rem;align-items:center">
+  {{if .Locked}}
+  <input type="text"
+         name="field_name_{{.Idx}}"
+         value="{{.Field.Name}}"
+         readonly
+         title="The ISO standard defines this identifier — it cannot be renamed without breaking conformance."
+         style="background:var(--bg-sunk);border:1px solid var(--line);padding:0.55rem 0.7rem;font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--ink-mute);border-radius:2px">
+  {{else}}
   <input type="text"
          name="field_name_{{.Idx}}"
          value="{{.Field.Name}}"
@@ -162,6 +226,7 @@
          pattern="[a-zA-Z_][a-zA-Z0-9_]*"
          title="Solo letras (a-z, A-Z), dígitos y guión bajo. No se permiten caracteres especiales (ñ, tildes, espacios)."
          style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.7rem;font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--ink);border-radius:2px">
+  {{end}}
 
   <select name="field_datatype_{{.Idx}}"
           style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.6rem;font-family:inherit;font-size:0.82rem;color:var(--ink);border-radius:2px">
@@ -189,6 +254,61 @@
           hx-target="#builder-form"
           hx-swap="innerHTML"
           style="background:none;border:1px solid var(--line);color:var(--ink-mute);width:32px;height:32px;border-radius:2px;cursor:pointer">×</button>
+</div>
+
+{{/* Language rows: display text + the language it is written in. Repeat as
+     many as the operator adds. fieldLangRows orders them (English first when
+     the field has one — mdoc.MandatoryFields ships curated English labels
+     that must stay visible and editable — then the rest sorted, so the form
+     doesn't reshuffle on every keystroke re-render). */}}
+{{$idx := .Idx}}
+{{$rows := fieldLangRows .Field}}
+{{$n := len $rows}}
+<div style="display:flex;flex-direction:column;gap:0.3rem;padding-left:0.15rem">
+  {{range $j, $row := $rows}}
+  <div style="display:grid;grid-template-columns:1fr 120px;gap:0.5rem">
+    <input type="text"
+           name="field_label_{{$idx}}_{{$j}}"
+           value="{{$row.Label}}"
+           placeholder="Display text — what the holder's wallet shows"
+           style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-size:0.8rem;color:var(--ink);border-radius:2px">
+    <input type="text"
+           name="field_lang_{{$idx}}_{{$j}}"
+           value="{{$row.Lang}}"
+           placeholder="en"
+           pattern="[A-Za-z0-9-]{1,35}"
+           title="Any BCP-47-style code — en, es-DO, ht, qu. Letters, digits, and hyphens only; no spaces."
+           style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--ink);border-radius:2px">
+  </div>
+  {{end}}
+  {{/* Rows the operator has added but not yet filled in. They carry no
+       label, so they produce no Labels entry and cannot survive a round trip
+       through the map alone — BlankLangRows carries the count instead. */}}
+  {{range $k := intRange $n .Blank}}
+  <div style="display:grid;grid-template-columns:1fr 120px;gap:0.5rem">
+    <input type="text"
+           name="field_label_{{$idx}}_{{$k}}"
+           value=""
+           placeholder="Display text in another language"
+           style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-size:0.8rem;color:var(--ink);border-radius:2px">
+    <input type="text"
+           name="field_lang_{{$idx}}_{{$k}}"
+           value=""
+           placeholder="es-DO"
+           pattern="[A-Za-z0-9-]{1,35}"
+           title="Any BCP-47-style code — en, es-DO, ht, qu. Letters, digits, and hyphens only; no spaces."
+           style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--ink);border-radius:2px">
+  </div>
+  {{end}}
+  <button type="button"
+          class="btn ghost small"
+          style="align-self:flex-start;font-size:0.72rem;padding:0.2rem 0.55rem"
+          hx-post="/issuer/schema/build/add-language"
+          hx-vals='{"idx": "{{.Idx}}"}'
+          hx-include="#builder-form-el"
+          hx-target="#builder-form"
+          hx-swap="innerHTML">+ Add language</button>
+</div>
 </div>
 {{end}}
 

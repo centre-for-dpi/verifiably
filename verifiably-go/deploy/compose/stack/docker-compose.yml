@@ -23,7 +23,7 @@ services:
     volumes:
       - wallet-db:/var/lib/postgresql
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
   # verifiably-redis is the session store for multi-replica verifiably-go
   # deployments. Enabled when VERIFIABLY_REDIS_URL points at it.
@@ -64,7 +64,7 @@ services:
     volumes:
       - verifiably-pg-data:/var/lib/postgresql/data
     ports:
-      - "${VERIFIABLY_PG_PORT:-5439}:5432"
+      - "127.0.0.1:${VERIFIABLY_PG_PORT:-5439}:5432"
 
   caddy:
     image: caddy:2.8
@@ -142,21 +142,78 @@ services:
       - caddy-public-config:/config
 
   issuer-api:
-    image: waltid/issuer-api:0.18.2
+    image: waltid/issuer-api:0.23.1
     restart: unless-stopped
     depends_on:
       - caddy
+    # List form, not the `KEY: ${VAR:-}` map form used elsewhere in this file:
+    # compose's map form always materializes the key in the container, even
+    # as "" when the host var is unset, which defeats HOCON's ${?VAR} --
+    # Typesafe Config only omits a key when the env var is absent from the
+    # process environment, not when it's present-and-empty. The bare-name
+    # list entries below (VERIFIABLY_ISSUER_DISPLAY_NAME /
+    # VERIFIABLY_ISSUER_DESCRIPTION, no `=value`) are the form that actually
+    # passes the host var through only when set, and omits it from the
+    # container otherwise. YAML doesn't allow mixing list and map entries in
+    # one `environment:` block, so the whole block moved to list form.
     environment:
-      SERVICE_HOST: ${VERIFIABLY_PUBLIC_HOST:-localhost}
-      ISSUER_API_PORT: ${WALTID_ISSUER_PORT:-7002}
+      - SERVICE_HOST=${VERIFIABLY_PUBLIC_HOST:-localhost}
+      - ISSUER_API_PORT=${WALTID_ISSUER_PORT:-7002}
+      - VERIFIABLY_ISSUER_DISPLAY_NAME
+      - VERIFIABLY_ISSUER_DESCRIPTION
     volumes:
       # Walt.id config files live under deploy/k8s/config/issuer/ so the
       # same files back both the compose stack and the Helm chart's ConfigMap
       # (Phase 1.2). HOCON env-var substitutions resolve at walt.id startup.
       - ../../k8s/config/issuer:/waltid-issuer-api/config:ro
 
+  # issuer-api2 runs ALONGSIDE issuer-api, not instead of it. Only mso_mdoc
+  # routes here — it is the sole walt.id service that can type CBOR (via
+  # mDocNameSpacesDataMappingConfig), which mdoc requires. Every other format
+  # stays on the legacy issuer-api, which keeps operator-defined custom
+  # schemas working (issuer-api2 demands pre-provisioned profiles).
+  #
+  # Deliberately NO ports: — issuer-api2 ships no authentication knob, so
+  # POST /issuer2/credential-offers would let anyone reachable mint a signed
+  # credential with arbitrary subject data, and GET /issuer2/sessions returns
+  # issuerKey private material. Network isolation IS the mitigation.
+  issuer-api2:
+    image: waltid/issuer-api2:0.23.1
+    restart: unless-stopped
+    depends_on:
+      - caddy
+    # List form -- see the comment on issuer-api's environment: block above
+    # for why VERIFIABLY_ISSUER_DISPLAY_NAME / VERIFIABLY_ISSUER_DESCRIPTION
+    # must be bare names rather than `KEY: ${VAR:-}`.
+    environment:
+      - SERVICE_HOST=${VERIFIABLY_PUBLIC_HOST:-localhost}
+      - ISSUER_API_PORT=7002
+      # The issuer JWK is passed as three SEPARATE coordinates, not one JSON
+      # blob. issuer2-profiles.conf needs defaultIssuerKey.jwk to be a HOCON
+      # object, and a substituted env var is always a string — the blob form
+      # booted fine but made every credential request fail with
+      # `500 "Invalid JSON object"`. See the comment above defaultIssuerKey.
+      - VERIFIABLY_ISSUER2_KEY_X=${VERIFIABLY_ISSUER2_KEY_X:?issuer-api2 requires the EC P-256 issuer key x coordinate (base64url)}
+      - VERIFIABLY_ISSUER2_KEY_Y=${VERIFIABLY_ISSUER2_KEY_Y:?issuer-api2 requires the EC P-256 issuer key y coordinate (base64url)}
+      - VERIFIABLY_ISSUER2_KEY_D=${VERIFIABLY_ISSUER2_KEY_D:?issuer-api2 requires the EC P-256 issuer key d private scalar (base64url)}
+      # issuer-service.conf embeds two more published walt.id example private
+      # keys beyond defaultIssuerKey (CI-token signing and credential
+      # encryption) — same treatment: required at boot, no silent fallback.
+      # These two DO take a one-line JSON string (walt.id ships them as
+      # triple-quoted strings), unlike the issuer key above — see the
+      # comment in issuer-service.conf.
+      - VERIFIABLY_ISSUER2_CI_TOKEN_KEY=${VERIFIABLY_ISSUER2_CI_TOKEN_KEY:?issuer-api2 requires a ciTokenKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
+      - VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY=${VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY:?issuer-api2 requires a credentialEncryptionKey - full {"type":"jwk","jwk":{...EC P-256...}} object, one line}
+      # Optional: only read if authentication-service.conf's inert keycloak
+      # config is ever activated. Left unset in normal operation.
+      - VERIFIABLY_ISSUER2_OIDC_CLIENT_SECRET=${VERIFIABLY_ISSUER2_OIDC_CLIENT_SECRET:-}
+      - VERIFIABLY_ISSUER_DISPLAY_NAME
+      - VERIFIABLY_ISSUER_DESCRIPTION
+    volumes:
+      - ../../k8s/config/issuer2:/waltid-issuer-api2/config:ro
+
   verifier-api:
-    image: waltid/verifier-api:0.18.2
+    image: waltid/verifier-api:0.23.1
     restart: unless-stopped
     depends_on:
       - caddy
@@ -167,7 +224,7 @@ services:
       - ../../k8s/config/verifier:/waltid-verifier-api/config:ro
 
   wallet-api:
-    image: waltid/wallet-api:0.18.2
+    image: waltid/wallet-api:0.23.1
     restart: unless-stopped
     depends_on:
       postgres:
@@ -301,7 +358,7 @@ services:
     container_name: certify-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${CERTIFY_PG_PASSWORD:-postgres}
       # Passed to init.sh so did_url rows use the right DID.
       # Empty = dev (did:web:certify-nginx). Set ISSUER_DID_DOMAIN in .env
       # for production federation (did:web:{domain}).
@@ -311,7 +368,7 @@ services:
       - ./inji/certify/init-authcode.sql:/var/init-templates/certify_init-authcode.sql:ro
       - certify-db:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -331,9 +388,23 @@ services:
     container_name: inji-certify
     user: root
     ports:
-      - "8090:8090"
+      # 127.0.0.1-bound like every Postgres in this file: the port an
+      # operator actually reaches this on in production is Caddy's public
+      # port, routed over the Docker network to certify-nginx (see
+      # scripts/gen-caddy.sh's "inji-certify-authcode|certify-nginx:80|http"
+      # route and url_for's subdomain-mode branch, which never uses this
+      # host port at all). This one exists for direct-to-container access in
+      # legacy/dev mode; publishing it to every interface let a network
+      # attacker reach Inji Certify — and its unauthenticated Actuator —
+      # straight through, bypassing certify-nginx entirely.
+      - "127.0.0.1:8090:8090"
     environment:
       - container_user=mosip
+      # CERTIFY_PG_PASSWORD resolves ${CERTIFY_PG_PASSWORD:postgres} in
+      # certify-default.properties's spring.datasource.password — must be
+      # passed through explicitly, Spring only sees vars set on ITS OWN
+      # container environment, not the host/.env one.
+      - CERTIFY_PG_PASSWORD=${CERTIFY_PG_PASSWORD:-postgres}
       - active_profile_env=default,postgres-dataprovider
       - SPRING_CONFIG_NAME=certify
       - SPRING_CONFIG_LOCATION=/home/mosip/config/
@@ -449,7 +520,7 @@ services:
     container_name: certify-preauth-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${CERTIFY_PREAUTH_PG_PASSWORD:-postgres}
       # init-preauth.sh computes the seed did_url from these. PREAUTH_DID_DOMAIN
       # (set by deploy.sh in subdomain mode = this instance's own public host)
       # takes precedence so the pre-auth instance gets a PUBLICLY-resolvable
@@ -462,7 +533,7 @@ services:
       - ./inji/certify/init-preauth.sql:/var/init-templates/certify_init.sql:ro
       - certify-preauth-db:/var/lib/postgresql/data
     ports:
-      - "5436:5432"
+      - "127.0.0.1:5436:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -501,7 +572,8 @@ services:
     restart: unless-stopped
     container_name: inji-certify-preauth
     ports:
-      - "8094:8090"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8094:8090"
     environment:
       - UPSTREAM_URL=http://inji-certify-preauth-backend:8090
       - LISTEN_ADDR=:8090
@@ -542,7 +614,7 @@ services:
       # certify-postgres. Zero shared database state.
       - SPRING_DATASOURCE_URL=jdbc:postgresql://certify-preauth-postgres:5432/inji_certify
       - SPRING_DATASOURCE_USERNAME=postgres
-      - SPRING_DATASOURCE_PASSWORD=postgres
+      - SPRING_DATASOURCE_PASSWORD=${CERTIFY_PREAUTH_PG_PASSWORD:-postgres}
     volumes:
       # Shared READ-ONLY config files — identical between the two instances
       # because the credential types and their claim mappings don't depend
@@ -592,8 +664,12 @@ services:
     environment:
       - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Agriculture Department}
     ports:
-      - "8091:80"
-      - "8443:443"
+      # 127.0.0.1-bound — production traffic reaches this over the Docker
+      # network via Caddy (scripts/gen-caddy.sh routes
+      # inji-certify-authcode -> certify-nginx:80 internally); these host
+      # ports exist for direct legacy/dev access only.
+      - "127.0.0.1:8091:80"
+      - "127.0.0.1:8443:443"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -621,8 +697,9 @@ services:
     restart: unless-stopped
     container_name: certify-preauth-nginx
     ports:
-      - "8095:80"
-      - "8445:443"
+      # 127.0.0.1-bound — same reasoning as certify-nginx above.
+      - "127.0.0.1:8095:80"
+      - "127.0.0.1:8445:443"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -642,10 +719,10 @@ services:
     container_name: inji-verify-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${INJI_VERIFY_PG_PASSWORD:-postgres}
       POSTGRES_DB: inji_verify
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -673,7 +750,8 @@ services:
     container_name: inji-verify-service
     user: root
     ports:
-      - "8082:8080"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8082:8080"
     environment:
       - active_profile_env=default
       - DATABASE_HOST=inji-verify-postgres
@@ -681,7 +759,7 @@ services:
       - DATABASE_NAME=inji_verify
       - DATABASE_SCHEMA=verify
       - DATABASE_USERNAME=postgres
-      - DATABASE_PASSWORD=postgres
+      - DATABASE_PASSWORD=${INJI_VERIFY_PG_PASSWORD:-postgres}
       # Derived per-host by deploy.sh (url_for inji-verify): subdomain mode ->
       # https://inji-verify.<domain>/... + did:web:inji-verify.<domain>:...;
       # localhost mode -> http://<host>:<port>/... + did:web:<host>%3A<port>:...
@@ -717,7 +795,10 @@ services:
     restart: unless-stopped
     container_name: inji-verify-ui
     ports:
-      - "3001:8000"
+      # 127.0.0.1-bound — same reasoning as inji-certify above: production
+      # traffic reaches this via Caddy/nginx over the Docker network, not
+      # this host port.
+      - "127.0.0.1:3001:8000"
     environment:
       - DEFAULT_TITLE=Inji Verify
       - DEFAULT_LANG=en
@@ -739,10 +820,10 @@ services:
     container_name: citizens-postgres
     environment:
       POSTGRES_USER: citizens
-      POSTGRES_PASSWORD: citizens
+      POSTGRES_PASSWORD: ${CITIZENS_PG_PASSWORD:-citizens}
       POSTGRES_DB: citizens
     ports:
-      - "5435:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - ./citizens-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - citizens-data:/var/lib/postgresql/data
@@ -777,7 +858,10 @@ services:
     restart: unless-stopped
     container_name: vc-adapter
     ports:
-      - "8085:8085"
+      # 127.0.0.1-bound — this is a standalone demo/showcase service, not on
+      # verifiably-go's own request path (see the comment above); no reason
+      # for it to be reachable from outside this host either.
+      - "127.0.0.1:8085:8085"
     environment:
       ADAPTER_PORT: "8085"
       BACKENDS_CONFIG: /app/backends.json
@@ -862,7 +946,7 @@ services:
       # as `postgres` here and let the scripts create mimoto/esignetuser/
       # mosip_mockidentity roles internally.
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${INJIWEB_PG_PASSWORD:-postgres}
       POSTGRES_DB: postgres
     volumes:
       - injiweb-db:/var/lib/postgresql/data
@@ -892,7 +976,8 @@ services:
       injiweb-postgres:
         condition: service_healthy
     ports:
-      - "8083:8082"     # 8082 is already taken by inji-verify-service
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8083:8082"     # 8082 is already taken by inji-verify-service
     # Skip the upstream configure_start.sh — its `if profile != "local"`
     # check matches `default,local` literally and runs an unzip+install
     # branch that renames `client/` to `hsm-client/` on first boot, then
@@ -928,7 +1013,7 @@ services:
       # so using the superuser is the simplest way to make the service
       # start without patching the init SQL.
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${INJIWEB_PG_PASSWORD:-postgres}
       # Persist mock-identity's kernel keymanager PKCS12 keystore on a
       # named volume instead of the container's writable layer. The
       # default config-path is /home/mosip/mock_local.p12 — but
@@ -965,7 +1050,8 @@ services:
       injiweb-mock-identity:
         condition: service_started
     ports:
-      - "8088:8088"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8088:8088"
     environment:
       container_user: mosip
       active_profile_env: default,local
@@ -979,7 +1065,7 @@ services:
       # superuser and never provisions a dedicated esignetuser role —
       # match that reality instead of guessing a password.
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${INJIWEB_PG_PASSWORD:-postgres}
       SPRING_CACHE_TYPE: redis
       SPRING_REDIS_HOST: injiweb-redis
       SPRING_REDIS_PORT: "6379"
@@ -1104,7 +1190,8 @@ services:
     depends_on:
       - injiweb-minio
     ports:
-      - "8097:8097"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8097:8097"
     environment:
       container_user: mosip
       active_profile_env: inji-default,standalone
@@ -1138,7 +1225,8 @@ services:
       injiweb-esignet:
         condition: service_started
     ports:
-      - "8099:8099"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8099:8099"
     environment:
       container_user: mosip
       active_profile_env: default
@@ -1151,7 +1239,7 @@ services:
       # Upstream config expects POSTGRES_USER / POSTGRES_PASSWORD env vars
       # which the Spring config files then reference via placeholders.
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${INJIWEB_PG_PASSWORD:-postgres}
       oidc_p12_password: ${INJIWEB_P12_PASSWORD:-xy4gh6swa2i}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-dummy-client-id}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-dummy-client-secret}

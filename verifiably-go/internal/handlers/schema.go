@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -374,9 +376,10 @@ func (h *H) ShowSchemaBuilder(w http.ResponseWriter, r *http.Request) {
 	}
 	// Default: two blank fields
 	data := builderData{
-		Fields:    []vctypes.FieldSpec{{Datatype: "string", Required: true}, {Datatype: "string", Required: true}},
-		Std:       "w3c_vcdm_2",
-		Scenarios: delegationScenarios,
+		Fields:        []vctypes.FieldSpec{{Datatype: "string", Required: true}, {Datatype: "string", Required: true}},
+		Std:           "w3c_vcdm_2",
+		Scenarios:     delegationScenarios,
+		KnownDocTypes: mdoc.KnownDocTypes(),
 	}
 	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
 	h.render(w, r, "issuer_schema_builder", h.pageData(sess, data))
@@ -394,7 +397,32 @@ type builderData struct {
 	Expiry            bool   // opt-in: this credential expires (adds a valid_until datetime claim)
 	Scenario          string // selected delegation scenario key (poa/director/teacher/…)
 	Scenarios         []delegationScenario
+	// DocType is the selected ISO docType when Std == "mso_mdoc" — e.g.
+	// "org.iso.18013.5.1.mDL". Empty when no docType has been picked yet
+	// (or the format isn't mso_mdoc). Drives which mandatory fields get
+	// preloaded and locked; see mdoc.MandatoryFields.
+	DocType string
+	// KnownDocTypes lists the selector's options. Populated on every
+	// builder render so the template can draw the dropdown regardless of
+	// which handler produced this builderData.
+	KnownDocTypes []mdoc.DocTypeInfo
+	// BlankLangRows[fieldIdx] is how many EMPTY language rows that field
+	// should render below its filled ones.
+	//
+	// A language row with a blank locale or a blank label deliberately
+	// produces no FieldSpec.Labels entry (absent means "derive from the
+	// identifier" downstream), so such a row cannot survive a round trip
+	// through the map alone — the operator would click "Add language", the
+	// form would re-render, and the new row would have vanished. This
+	// carries the count separately so a just-added, not-yet-filled row
+	// persists across the re-renders the builder does on every keystroke.
+	BlankLangRows map[int]int
 }
+
+// blankRowsFor reports how many empty language rows field i should render.
+// A nil map (any handler that didn't populate it) yields zero, so every
+// non-builder caller renders only the rows the labels map produces.
+func (d builderData) blankRowsFor(i int) int { return d.BlankLangRows[i] }
 
 // delegationScenario is a real-world delegated-access relationship preset so an
 // operator picks "Power of Attorney" or "Teacher" rather than hand-assembling the
@@ -491,6 +519,63 @@ func (h *H) BuildDelegationToggle(w http.ResponseWriter, r *http.Request) {
 	h.renderFragment(w, r, "fragment_schema_builder_form", data)
 }
 
+// BuildStdChange re-renders the builder form when the Format (`std`) selector
+// changes.
+//
+// The <select name="std"> used to carry no htmx attributes of its own, so
+// changing it only fired the FORM's hx-trigger, which posts to
+// /issuer/schema/build/preview and swaps #json-preview — the JSON panel, not
+// the form. The docType block is behind {{if eq .Std "mso_mdoc"}}, so picking
+// "ISO mDL" left the docType selector invisible and the standard's mandatory
+// fields never loaded. (Deleting a field appeared to "fix" it only because
+// RemoveSchemaField re-renders the whole form.) This is the sibling of
+// BuildDelegationToggle / BuildDocTypeChange: re-render
+// fragment_schema_builder_form with fresh builder data.
+//
+// Field preservation on a format switch — what happens to rows the operator
+// already typed:
+//   - Switching TO mso_mdoc: the docType defaults to the first entry in
+//     mdoc.KnownDocTypes() (nothing is selected yet, and the <select> renders
+//     with the first option pre-selected, so the data and the markup must
+//     agree — otherwise the form shows mDL while the builder holds ""), which
+//     preloads that docType's mandatory fields. extractBuilderData's merge
+//     already APPENDS every submitted non-mandatory row after the mandatory
+//     set, so the operator's own fields are kept, not discarded; only rows
+//     that collide by name with a mandatory element are replaced by the
+//     canonical (locked, Required) version.
+//   - Switching AWAY from mso_mdoc: fields are left exactly as submitted. The
+//     previously-preloaded ISO rows stay as ordinary editable fields rather
+//     than vanishing — silently deleting eleven rows an operator may have
+//     since edited would lose work, and they can remove any they don't want
+//     with the existing × button.
+//
+// POST /issuer/schema/build/std
+func (h *H) BuildStdChange(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	data := extractBuilderData(r)
+	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
+	h.renderFragment(w, r, "fragment_schema_builder_form", data)
+}
+
+// BuildDocTypeChange re-renders the builder form when the mdoc docType
+// selector changes. Unlike the plain preview endpoint (which only swaps
+// #json-preview), this must refresh the field rows themselves: picking a
+// docType preloads and locks that standard's mandatory fields (done inside
+// extractBuilderData), and those rows have to actually appear for the lock
+// to be visible — an operator can't tell a field is mandatory from the JSON
+// preview alone. Mirrors BuildDelegationToggle/AddSchemaField/
+// RemoveSchemaField, which re-render the same fragment for the same reason.
+//
+// POST /issuer/schema/build/doctype
+func (h *H) BuildDocTypeChange(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	data := extractBuilderData(r)
+	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
+	h.renderFragment(w, r, "fragment_schema_builder_form", data)
+}
+
 // SchemaPreview is called on every keystroke in the builder — returns the updated JSON preview
 // and re-renders the field rows if the fields array changed (add/remove).
 func (h *H) SchemaPreview(w http.ResponseWriter, r *http.Request) {
@@ -510,6 +595,32 @@ func (h *H) AddSchemaField(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	data := extractBuilderData(r)
 	data.Fields = append(data.Fields, vctypes.FieldSpec{Datatype: "string"})
+	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
+	h.renderFragment(w, r, "fragment_schema_builder_form", data)
+}
+
+// AddFieldLanguage appends one empty language row to a single field and
+// re-renders the builder form — the same htmx round-trip pattern as
+// AddSchemaField / RemoveSchemaField / BuildDelegationToggle.
+//
+// It has to be a server round-trip rather than a bit of client-side DOM
+// cloning because the row's input NAMES are index-derived
+// (field_lang_N_J / field_label_N_J); the server is what knows what J the
+// next row gets, and re-rendering the whole form keeps every other row's
+// indices consistent with it.
+//
+// POST /issuer/schema/build/add-language  (idx = the field's row index)
+func (h *H) AddFieldLanguage(w http.ResponseWriter, r *http.Request) {
+	sess := h.Sessions.MustGet(w, r)
+	_ = r.ParseForm()
+	data := extractBuilderData(r)
+	idx, err := strconv.Atoi(r.FormValue("idx"))
+	if err == nil && idx >= 0 && idx < len(data.Fields) {
+		if data.BlankLangRows == nil {
+			data.BlankLangRows = map[int]int{}
+		}
+		data.BlankLangRows[idx]++
+	}
 	data.PreviewJSON = buildJSONSchema(currentBuilderSchema(sess, data))
 	h.renderFragment(w, r, "fragment_schema_builder_form", data)
 }
@@ -547,13 +658,61 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if bad := firstInvalidLocaleCode(r.Form); bad != "" {
+		h.errorToast(w, r, fmt.Sprintf("Código de idioma inválido: %q — solo letras (a-z, A-Z), dígitos y guión, sin espacios ni caracteres especiales.", bad))
+		return
+	}
 	schema := currentBuilderSchema(sess, data)
+	if schema.Std == "mso_mdoc" {
+		// The docType (schema.AdditionalTypes[0], set by currentBuilderSchema
+		// from d.DocType) is what BOTH mso_mdoc adapters — waltid/issuer2.go's
+		// mdocDocTypeFor and injicertify/db.go's mdocDocTypeForSchema — resolve
+		// the ISO namespace and, for walt.id, the issuer-api2 profile from. The
+		// normal builder UI only ever offers mdoc.KnownDocTypes() in its
+		// <select>, so this was never reachable by clicking through the form —
+		// but nothing on the server enforced that same restriction, only
+		// strings.TrimSpace. A POST built by hand with an arbitrary docType
+		// would reach injicertify's mdocVCTemplate, which interpolates the
+		// resolved namespace into a Velocity template via fmt.Sprintf with no
+		// escaping (unlike field names, which validFieldName already restricts
+		// to [a-zA-Z_][a-zA-Z0-9_]* before this point). Validate here, once, at
+		// the point both mso_mdoc save paths (Auth-Code rejection above,
+		// SaveCustomSchema below) share.
+		validDocType := false
+		for _, dt := range mdoc.KnownDocTypes() {
+			if dt.DocType == strings.TrimSpace(schema.AdditionalTypes[0]) {
+				validDocType = true
+				break
+			}
+		}
+		if len(schema.AdditionalTypes) == 0 || !validDocType {
+			h.errorToast(w, r, "docType de mdoc inválido — selecciona uno de la lista.")
+			return
+		}
+	}
 	// Inji auth-code DPGs apply via the Flow B path (multi-format credential_config
 	// + extraction view + scope-query + eSignet scope + restart certify/esignet)
 	// instead of the default adapter — the builder UI is shared, the save is not.
 	authcode := false
 	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil {
 		authcode = dpgs[sess.IssuerDpg].SchemaApply == "inji_authcode"
+	}
+	if authcode && schema.Std == "mso_mdoc" {
+		// mso_mdoc is not wired for the Auth-Code path: applyAuthcodeSchema's
+		// artifacts (VCDM/SD-JWT template, JSON-LD context, credType) have no
+		// mdoc equivalent, and injicertify.Adapter.IssueToWallet's
+		// driving_privileges guard is gated on ModePreAuth specifically —
+		// confirmed by reading schema.go's routing (this exact check) and
+		// issuer.go's guard side by side: nothing upstream of that guard ever
+		// filtered Std=="mso_mdoc" out of the Auth-Code save path, so the
+		// builder UI — not just a hand-built API call — could produce a
+		// schema (and, downstream, a live credential_config) issuing mDoc
+		// credentials with zero validation of ISO/IEC 18013-5 Table 3
+		// mandatory elements (driving_privileges included). Reject here,
+		// at the single entry point both paths share, instead of trying to
+		// replicate mso_mdoc's guards inside applyAuthcodeSchema.
+		h.errorToast(w, r, "mso_mdoc no está soportado en modo Auth-Code — usa un DPG Pre-Auth (walt.id issuer-api2 o Inji Certify Pre-Auth) para emitir mDL/Photo ID.")
+		return
 	}
 	if authcode {
 		key, err := h.applyAuthcodeSchema(issuerCtx(r, sess), schema, sessionOwnerKey(sess))
@@ -597,7 +756,11 @@ func (h *H) SchemaReady(w http.ResponseWriter, r *http.Request) {
 		name = key
 	}
 	if h.schemaAvailable(r.Context(), key) {
-		payload, _ := json.Marshal(map[string]any{
+		// asciiSafeJSON, not json.Marshal directly: this payload rides in the
+		// HX-Trigger response HEADER, and both the ✓ literal and an
+		// operator-typed schema `name` with accents would come back to the
+		// browser as mojibake otherwise — see asciiSafeJSON's doc comment.
+		payload, _ := asciiSafeJSON(map[string]any{
 			"toast":        "✓ \"" + name + "\" is ready to use",
 			"schemasReady": true,
 		})
@@ -716,18 +879,120 @@ func extractBuilderData(r *http.Request) builderData {
 		Expiry:            r.FormValue("expiry") == "on",
 		Scenario:          r.FormValue("scenario"),
 		Scenarios:         delegationScenarios,
+		DocType:           r.FormValue("doctype"),
+		KnownDocTypes:     mdoc.KnownDocTypes(),
 	}
 	if d.Std == "" {
 		d.Std = "w3c_vcdm_2"
 	}
+	// mso_mdoc without a docType is not a renderable state: the docType
+	// <select> has no empty option, so a browser renders it with the FIRST
+	// option pre-selected. If the builder data held "" the markup would show
+	// mDL while the server believed nothing was picked, and the mandatory
+	// fields would never preload — exactly the symptom the format selector
+	// showed before it re-rendered the form at all. Defaulting here keeps the
+	// two in agreement for every entry point (format switch, add-field,
+	// preview, save) rather than only the one that noticed.
+	if d.Std == "mso_mdoc" && strings.TrimSpace(d.DocType) == "" {
+		if known := d.KnownDocTypes; len(known) > 0 {
+			d.DocType = known[0].DocType
+		}
+	}
+	// r.FormValue above already parses the request body into r.Form; this
+	// call just makes that explicit before we hand r.Form to the helper.
+	_ = r.ParseForm()
+	d.Fields = parseFieldSpecsFromForm(r.Form)
+	d.BlankLangRows = blankLangRowsFromForm(r.Form, d.Fields)
+
+	// For mdoc, the standard's mandatory elements are preloaded and locked:
+	// the docType defines them, so an operator cannot omit or rename one and
+	// still have a conformant credential. Their labels stay editable.
+	if d.Std == "mso_mdoc" && d.DocType != "" {
+		mandatory := mdoc.MandatoryFields(d.DocType)
+		var merged []vctypes.FieldSpec
+		for _, m := range mandatory {
+			if submitted, ok := findFieldByName(d.Fields, m.Name); ok {
+				// Overlay the operator's labels ONTO the curated ones, per
+				// locale — never replace the map wholesale. mdoc.MandatoryFields
+				// ships curated English ("UN Distinguishing Sign"), and the
+				// template re-posts every row on each re-render, so a submitted
+				// row essentially always exists. Replacing the map meant the
+				// curated "en" died the moment the operator touched anything,
+				// leaving the catalog to fall through to DeriveLabel and degrade
+				// it to "Un Distinguishing Sign" in the holder's wallet. Worse,
+				// an operator who filled in only a Spanish label lost English —
+				// the base-language fallback for every other locale.
+				//
+				// Safe to mutate m.Labels in place: MandatoryFields returns a
+				// deep copy, so this touches no package-level state.
+				if m.Labels == nil {
+					m.Labels = map[string]string{}
+				}
+				for loc, label := range submitted.Labels {
+					m.Labels[loc] = label
+				}
+			}
+			merged = append(merged, m)
+		}
+		for _, f := range d.Fields {
+			if isMandatoryName(mandatory, f.Name) {
+				continue
+			}
+			// A field mandatory for SOME OTHER known docType (e.g.
+			// driving_privileges, submitted while mDL was selected) but not
+			// this one is a residual row from before the operator switched
+			// docType — the builder form re-submits every currently-rendered
+			// row on each change, so it survives in d.Fields even though
+			// nothing chose it for THIS docType. Drop it rather than keep it
+			// as a "custom" field: keeping it silently smuggled mDL's
+			// driving_privileges into a saved Photo ID config, whose
+			// display_order then made Inji Certify demand it at issuance
+			// time — reproduced live, confirmed directly against Inji
+			// Certify's credential_config table. See
+			// mdoc.IsMandatoryForAnyDocType's doc comment for the full
+			// reasoning distinguishing this from a genuine operator-typed
+			// extra field.
+			if mdoc.IsMandatoryForAnyDocType(f.Name) {
+				continue
+			}
+			merged = append(merged, f)
+		}
+		d.Fields = merged
+	}
+	return d
+}
+
+func findFieldByName(fields []vctypes.FieldSpec, name string) (vctypes.FieldSpec, bool) {
+	for _, f := range fields {
+		if f.Name == name {
+			return f, true
+		}
+	}
+	return vctypes.FieldSpec{}, false
+}
+
+func isMandatoryName(mandatory []vctypes.FieldSpec, name string) bool {
+	for _, m := range mandatory {
+		if m.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// parseFieldSpecsFromForm reads the indexed field rows (field_name_0,
+// field_datatype_0, field_required_0, ...) the schema builder submits.
+// Takes url.Values rather than *http.Request so it can be tested directly.
+func parseFieldSpecsFromForm(form url.Values) []vctypes.FieldSpec {
+	var out []vctypes.FieldSpec
 	// Field rows come as field_name_0, field_datatype_0, field_required_0, ...
 	for i := 0; i < 50; i++ {
-		name := r.FormValue(fmt.Sprintf("field_name_%d", i))
-		dt := r.FormValue(fmt.Sprintf("field_datatype_%d", i))
-		if dt == "" && name == "" && r.Form[fmt.Sprintf("field_name_%d", i)] == nil {
+		name := form.Get(fmt.Sprintf("field_name_%d", i))
+		dt := form.Get(fmt.Sprintf("field_datatype_%d", i))
+		if dt == "" && name == "" && form[fmt.Sprintf("field_name_%d", i)] == nil {
 			break
 		}
-		req := r.FormValue(fmt.Sprintf("field_required_%d", i)) == "on"
+		req := form.Get(fmt.Sprintf("field_required_%d", i)) == "on"
 		if dt == "" {
 			dt = "string"
 		}
@@ -737,9 +1002,230 @@ func extractBuilderData(r *http.Request) builderData {
 			f.Datatype = parts[0]
 			f.Format = parts[1]
 		}
-		d.Fields = append(d.Fields, f)
+
+		// Labels arrive as PARALLEL indexed inputs: field_lang_N_J carries the
+		// locale code and field_label_N_J the text, for J = 0, 1, 2, ... Row J=0
+		// is the field's first language row, pre-filled with "en" but freely
+		// editable — a deployment issuing only in Spanish sets it to "es" and
+		// carries no English at all.
+		//
+		// The locale is a VALUE, never part of a field name. The previous
+		// scheme encoded it in the name (field_label_N_<locale>), which forced
+		// a separate "new locale" row and let a locale containing a space
+		// truncate the HTML attribute — the browser then resubmitted a
+		// different, shorter key and the label silently landed under the wrong
+		// locale. With the index-based scheme no operator text reaches an
+		// attribute name, so an arbitrary number of languages round-trips
+		// cleanly whatever the operator types.
+		if labels := parseFieldLabels(form, i); len(labels) > 0 {
+			f.Labels = labels
+		}
+
+		out = append(out, f)
 	}
-	return d
+	return out
+}
+
+// LangRow is one language row of a field's label editor: a freely-editable
+// locale code beside the label text in that language. The template renders
+// these as parallel indexed inputs (field_lang_N_J / field_label_N_J), so the
+// operator's locale text never becomes part of an HTML attribute NAME.
+type LangRow struct {
+	Lang  string
+	Label string
+}
+
+// FieldLangRows turns a field's Labels map into the ordered rows the builder
+// renders, and is exposed to templates as `fieldLangRows`.
+//
+// Ordering rules, in order of application:
+//
+//  1. "en" first when the field HAS an English label. This is not a claim
+//     that English is privileged — it is the only stable anchor available.
+//     mdoc.MandatoryFields ships curated English labels ("Family Name",
+//     "UN Distinguishing Sign") and vctypes.FieldSpec.Label falls back to
+//     "en" for any locale it cannot resolve, so surfacing it first keeps the
+//     curated text in the row the operator sees without hunting.
+//  2. Every other locale sorted, so the form is deterministic across
+//     re-renders. A map has no order of its own, and the builder re-renders
+//     on every keystroke — unsorted rows would visibly reshuffle as the
+//     operator types.
+//  3. A field with NO labels at all still gets one row, pre-filled with "en"
+//     and an empty label. The first language row is freely editable, not
+//     locked to English: a deployment issuing only in Spanish overwrites it
+//     with "es" and carries no English at all. "en" is a starting value, not
+//     a constraint.
+func FieldLangRows(f vctypes.FieldSpec) []LangRow {
+	if len(f.Labels) == 0 {
+		return []LangRow{{Lang: "en"}}
+	}
+	rest := make([]string, 0, len(f.Labels))
+	for loc := range f.Labels {
+		if loc == "en" {
+			continue
+		}
+		rest = append(rest, loc)
+	}
+	sort.Strings(rest)
+	out := make([]LangRow, 0, len(f.Labels))
+	if en, ok := f.Labels["en"]; ok {
+		out = append(out, LangRow{Lang: "en", Label: en})
+	}
+	for _, loc := range rest {
+		out = append(out, LangRow{Lang: loc, Label: f.Labels[loc]})
+	}
+	return out
+}
+
+// IntRange returns []int{from, from+1, ..., from+n-1}, and is exposed to
+// templates as `intRange` so a block can repeat n times while still knowing
+// each repetition's ABSOLUTE index — something text/template cannot express
+// on its own. The schema builder numbers its not-yet-filled language rows
+// with it, continuing from the filled ones; those numbers ARE the input names
+// (field_lang_N_J), so a restart at 0 would collide with an existing row and
+// silently overwrite its label.
+//
+// n is `any` rather than `int` because the template feeds it `index` into a
+// map[int]int, which yields an untyped nil for an absent key — and for a nil
+// map, which is every caller that renders a field row without a blank count.
+// text/template will not coerce that to an int, so a plain int parameter
+// would turn an ordinary "this field has no pending language rows" into a
+// render error. Anything that isn't a positive int count yields no rows.
+func IntRange(from int, n any) []int {
+	count, ok := n.(int)
+	if !ok || count <= 0 {
+		return nil
+	}
+	out := make([]int, count)
+	for i := range out {
+		out[i] = from + i
+	}
+	return out
+}
+
+// maxLangRowsPerField bounds the language-row scan for one field. Language
+// rows are added one at a time through a server round-trip, so this is a
+// sanity ceiling on a crafted post rather than a product limit the operator
+// can reach by clicking.
+const maxLangRowsPerField = 50
+
+// parseFieldLabels reads field i's parallel language rows — field_lang_i_J
+// (locale code) alongside field_label_i_J (the text) — into a locale-keyed
+// map.
+//
+// Both halves are trimmed. A blank label leaves NO map entry regardless of
+// what locale sits beside it: absent means "derive from the identifier"
+// downstream (vctypes.FieldSpec.Label), and an empty-string entry would be a
+// different, worse thing — a present key whose value renders as nothing. A
+// blank locale is skipped for the same reason, and an invalid locale code is
+// dropped here (firstInvalidLocaleCode is the path that reports it to the
+// operator, since this function has no request/response to surface an error
+// through).
+//
+// Later rows win on a duplicate locale, which is the only sane reading of
+// two rows claiming the same language.
+//
+// Returns a nil map when nothing usable was submitted, so the caller can
+// leave FieldSpec.Labels nil rather than assigning an empty map.
+func parseFieldLabels(form url.Values, i int) map[string]string {
+	var labels map[string]string
+	for j := 0; j < maxLangRowsPerField; j++ {
+		langKey := fmt.Sprintf("field_lang_%d_%d", i, j)
+		labelKey := fmt.Sprintf("field_label_%d_%d", i, j)
+		// Stop at the first row the form doesn't carry at all. Both halves are
+		// always rendered together, so an absent lang key means no more rows.
+		if _, ok := form[langKey]; !ok {
+			if _, ok := form[labelKey]; !ok {
+				break
+			}
+		}
+		loc := strings.TrimSpace(form.Get(langKey))
+		label := strings.TrimSpace(form.Get(labelKey))
+		if loc == "" || label == "" || !validLocaleCode(loc) {
+			continue
+		}
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		labels[loc] = label
+	}
+	return labels
+}
+
+// blankLangRowsFromForm counts, per field, how many language rows the form
+// submitted that produced NO label entry — i.e. rows the operator has added
+// but not yet filled in (or filled in only half of).
+//
+// Without this the builder would eat its own "Add language" click: the new
+// row is empty, an empty row makes no map entry by design, and the very next
+// keystroke re-renders the form from the map — so the row the operator just
+// asked for would disappear before they could type in it.
+//
+// Only rows the form actually carried are counted, so a handler that never
+// saw a language row (or a caller passing a synthetic form) gets zero rather
+// than phantom rows.
+func blankLangRowsFromForm(form url.Values, fields []vctypes.FieldSpec) map[int]int {
+	out := map[int]int{}
+	for i := range fields {
+		submitted, kept := 0, 0
+		for j := 0; j < maxLangRowsPerField; j++ {
+			langKey := fmt.Sprintf("field_lang_%d_%d", i, j)
+			labelKey := fmt.Sprintf("field_label_%d_%d", i, j)
+			_, hasLang := form[langKey]
+			_, hasLabel := form[labelKey]
+			if !hasLang && !hasLabel {
+				break
+			}
+			submitted++
+			loc := strings.TrimSpace(form.Get(langKey))
+			label := strings.TrimSpace(form.Get(labelKey))
+			if loc != "" && label != "" && validLocaleCode(loc) {
+				kept++
+			}
+		}
+		// FieldLangRows renders one implicit row for a field with no labels
+		// at all, so only count beyond that to avoid drawing it twice.
+		blank := submitted - kept
+		if kept == 0 && blank > 0 {
+			blank--
+		}
+		if blank > 0 {
+			out[i] = blank
+		}
+	}
+	return out
+}
+
+// firstInvalidLocaleCode re-scans the raw submitted form for a locale code
+// that fails validLocaleCode, returning it so SaveSchema can tell the
+// operator why their label silently didn't make it into the saved schema.
+// parseFieldLabels itself just drops invalid codes rather than erroring,
+// since it has no path back to the request/response to surface one — this is
+// that path. Returns "" when every locale code submitted is valid (including
+// when none were submitted at all).
+//
+// A malformed code alongside a BLANK label is not reported: that pair
+// produces no map entry either way, so there is nothing the operator lost.
+func firstInvalidLocaleCode(form url.Values) string {
+	for i := 0; i < 50; i++ {
+		for j := 0; j < maxLangRowsPerField; j++ {
+			langKey := fmt.Sprintf("field_lang_%d_%d", i, j)
+			labelKey := fmt.Sprintf("field_label_%d_%d", i, j)
+			if _, ok := form[langKey]; !ok {
+				if _, ok := form[labelKey]; !ok {
+					break
+				}
+			}
+			loc := strings.TrimSpace(form.Get(langKey))
+			if loc == "" || strings.TrimSpace(form.Get(labelKey)) == "" {
+				continue
+			}
+			if !validLocaleCode(loc) {
+				return loc
+			}
+		}
+	}
+	return ""
 }
 
 func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
@@ -763,6 +1249,26 @@ func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
 	}
 	if strings.TrimSpace(d.ExtraType) != "" {
 		s.AdditionalTypes = []string{strings.TrimSpace(d.ExtraType)}
+	}
+	// For mdoc, the operator's selected docType IS the credential type, and it
+	// must reach the saved schema. AdditionalTypes[0] is what
+	// customSchemaTypeName returns, which becomes the catalog configID
+	// "<docType>_mso_mdoc"; BaseType() strips that suffix back to the docType,
+	// and buildIssuer2Offer (via mdocDocTypeFor) resolves the issuer-api2
+	// profile from it. Without this the schema kept its generated
+	// "custom-<nano>" ID as the base type, so every builder-made mdoc schema
+	// failed at issuance with `no issuer-api2 profile for docType "custom-..."`,
+	// and buildMDocEntry fell through to typeName and emitted a garbage
+	// namespace in the claim paths.
+	//
+	// The docType deliberately WINS over ExtraType here rather than appending:
+	// ExtraType is a free-text box, while the docType is a validated selection
+	// from mdoc.KnownDocTypes() that is pinned against the profile table
+	// (TestKnownDocTypesResolveInProfiles). Letting free text either precede it
+	// or sit alongside it would put an unvalidated string where BaseType()
+	// looks, reintroducing exactly the unresolvable-profile failure above.
+	if d.Std == "mso_mdoc" && strings.TrimSpace(d.DocType) != "" {
+		s.AdditionalTypes = []string{strings.TrimSpace(d.DocType)}
 	}
 	for _, f := range d.Fields {
 		if strings.TrimSpace(f.Name) != "" {
@@ -813,6 +1319,24 @@ var reValidFieldName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 func validFieldName(name string) bool {
 	return reValidFieldName.MatchString(name)
+}
+
+// reValidLocaleCode is deliberately permissive — locale codes are free-form
+// operator text, not a fixed BCP-47 dropdown, so any deployment can serve a
+// language no predefined list would carry. What it excludes is not language
+// choice but characters that corrupt the round trip: the locale becomes both
+// an HTML form field *name* (in field_label_N_<locale>) and a map key, so
+// whitespace/newlines truncate the attribute early — the browser then
+// resubmits a different, shorter key, silently landing the label under the
+// wrong locale and overwriting whatever was there. No markup or quote
+// characters are allowed either, for the same reason (they'd break the
+// attribute rather than XSS — html/template already escapes those safely,
+// but a truncated attribute name still corrupts data before escaping ever
+// sees it).
+var reValidLocaleCode = regexp.MustCompile(`^[A-Za-z0-9-]{1,35}$`)
+
+func validLocaleCode(loc string) bool {
+	return reValidLocaleCode.MatchString(loc)
 }
 
 // buildJSONSchema returns a pretty-printed JSON Schema (draft 2020-12) for the given schema.

@@ -34,6 +34,12 @@ backends_for() {
   else
     certify_preauth_did="did:web:certify-preauth-nginx"
   fi
+  # certify-preauth-postgres's actual password — CERTIFY_PREAUTH_PG_PASSWORD
+  # in .env (2026-08-26 credential rotation; see docker-compose.yml's own
+  # env var of the same name for the container side). Falls back to the
+  # historical "postgres" default so an unrotated/local deployment's
+  # generated DSN keeps matching that container's actual password.
+  local certify_preauth_db_password="${CERTIFY_PREAUTH_PG_PASSWORD:-postgres}"
   # Credential-display logo for custom configs. Self-hosted by verifiably-go
   # (static/credential-logo.svg) so it's neutral + has no external dependency.
   # Must be non-null: Inji Certify always serialises display[].logo, and some
@@ -70,7 +76,7 @@ backends_for() {
       "roles": ["issuer", "holder", "verifier"],
       "dpg": {
         "Vendor": "Walt Community Stack",
-        "Version": "v0.18.2",
+        "Version": "v0.23.1",
         "Tag": "API-based",
         "Tagline": "Open-source, API-driven credentialing stack.",
         "FlowPreAuth": true,
@@ -79,7 +85,7 @@ backends_for() {
         "Formats": ["w3c_vcdm_2", "sd_jwt_vc (IETF)", "mso_mdoc"],
         "FormatsPlain": "W3C VCDM 2.0 signed as JWT, SD-JWT VC (IETF), and ISO 18013-5 mdoc.",
         "DirectPDF": false,
-        "DirectPDFPlain": "No documented QR-on-PDF export at v0.18.2.",
+        "DirectPDFPlain": "No documented QR-on-PDF export at v0.23.1.",
         "Caveats": "OID4VP v1.0 support in the wallet/demo apps is still rolling out.",
         "Capabilities": [
           {"Kind": "flow",        "Key": "pre_auth",      "Title": "Pre-authorized code flow", "Body": "Issuer stages the offer; wallet redeems at the token endpoint."},
@@ -93,6 +99,7 @@ backends_for() {
       },
       "config": {
         "issuerBaseUrl": "${walt_issuer_url}",
+        "issuer2BaseUrl": "http://issuer-api2:7002",
         "verifierBaseUrl": "${walt_verifier_url}",
         "walletBaseUrl": "${walt_wallet_url}",
         "standardVersion": "draft13",
@@ -185,7 +192,7 @@ JSON
         "publicBaseUrl": "${certify_preauth_url}",
         "offerIssuerUrl": "http://inji-certify-preauth:8090",
         "db": {
-          "dsn": "postgres://postgres:postgres@certify-preauth-postgres:5432/inji_certify?sslmode=disable",
+          "dsn": "postgres://postgres:${certify_preauth_db_password}@certify-preauth-postgres:5432/inji_certify?sslmode=disable",
           "didUrl": "${certify_preauth_did}",
           "logoUrl": "${certify_preauth_logo}",
           "scope": "mock_identity_vc_ldp"

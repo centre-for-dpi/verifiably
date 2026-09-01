@@ -37,8 +37,34 @@ var catalogMu sync.Mutex
 //   changed  — true if at least one entry was newly written; false on a re-save
 //              of an already-registered schema (idempotent)
 //
+// mso_mdoc is deliberately excluded: it never reaches this catalog at all.
+// IssueToWallet dispatches Std=="mso_mdoc" straight to issueMdocViaIssuer2
+// before it ever consults the legacy issuer-api this function edits — the
+// legacy service cannot type CBOR at any version (see IssueToWallet's doc
+// comment), so an mdoc offer through it is unusable even when it parses.
+// mdoc's real catalog lives in issuer-api2, pre-provisioned per docType and
+// kept in sync by syncIssuer2DisplayName instead.
+//
+// Writing an mdoc entry here anyway is worse than dead weight: buildMDocEntry
+// can only populate CredentialSupported.claims, which the legacy issuer-api's
+// decoder requires as a two-level namespace-keyed map
+// (ClaimDescriptorNamespacedMapSerializer) — buildMDocEntry instead emits the
+// {path, display} array shape issuer-api2's unrelated package expects. That
+// mismatch throws JsonDecodingException on $.claims during CIProvider.<init>
+// and crash-loops the legacy issuer-api before its web server ever binds,
+// taking every OTHER format's issuance down with it. See the 2026-08-24 and
+// 2026-08-25 incidents — POST /onboard/issuer and POST
+// /openid4vc/sdjwt/issue both failed with connection refused / DNS
+// "server misbehaving" because an mdoc save (this path) or a non-mdoc save
+// (buildClaimsBlock, fixed separately — see
+// TestBuildClaimsBlockFlatObjectForW3C) had written that shape.
+//
 // Concurrent callers serialise via catalogMu.
 func appendCredentialType(catalogPath string, schema vctypes.Schema) (primary string, all []string, changed bool, err error) {
+	if schema.Std == "mso_mdoc" {
+		return "", nil, false, nil
+	}
+
 	catalogMu.Lock()
 	defer catalogMu.Unlock()
 
@@ -191,7 +217,7 @@ func buildJWTVCJsonEntry(configID, typeName, wireFormat string, schema vctypes.S
                 text_color = "#000000"
             }
         ]
-    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc))
+%s    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec, ""))
 }
 
 // buildLinkedDataEntry covers both jwt_vc_json-ld (JSON-LD payload, JWT
@@ -226,7 +252,7 @@ func buildLinkedDataEntry(configID, typeName, wireFormat string, schema vctypes.
                 text_color = "#000000"
             }
         ]
-    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc))
+%s    }`, configID, wireFormat, typeName, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec, ""))
 }
 
 // buildSDJWTEntry covers vc+sd-jwt (the older media type) and dc+sd-jwt
@@ -279,19 +305,19 @@ func buildSDJWTEntry(configID, typeName, wireFormat string, schema vctypes.Schem
                 text_color = "#000000"
             }
         ]
-    }`, configID, wireFormat, vct, hoconEscape(display), hoconEscape(desc))
+%s    }`, configID, wireFormat, vct, hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec, ""))
 }
 
 // buildMDocEntry covers mso_mdoc — the ISO 18013-5 mobile document format.
 // Mdoc is keyed by `doctype` (not type or vct), and binds via cose_key
-// (jwt proofs, ES256 only — that's what walt.id's mdoc signer emits; cwt was
-// removed from OID4VCI 1.0 final, PR openid/OpenID4VCI#369 — see the sibling
-// fix in this file's other mso_mdoc entry builder, commit 1ac0c7d, which
-// this one was missed by since it's a separate code path for custom
-// schemas). The doctype namespacing convention is an inverted-DNS string; if
-// the operator pinned an AdditionalType we use that verbatim, else we fall
-// back to the sanitized type name so the doctype is at least stable across
-// restarts.
+// (jwt proofs, ES256 only — that's what walt.id's mdoc signer emits). cwt was
+// removed from OID4VCI 1.0 final (openid/OpenID4VCI#369) and no real holder
+// generates it, including Credo-TS, which this project uses. See the sibling
+// fix in this file's other mso_mdoc entry builder, commit 1ac0c7d — this one
+// was missed by it, being a separate code path for custom schemas. The
+// doctype namespacing convention is an inverted-DNS string; if the operator
+// pinned an AdditionalType we use that verbatim, else we fall back to the
+// sanitized type name so the doctype is at least stable across restarts.
 //
 // `display` is emitted alongside the format-specific fields for the same
 // reason as buildSDJWTEntry: walt.id's CredentialSupported deserializer
@@ -308,6 +334,19 @@ func buildMDocEntry(configID, typeName string, schema vctypes.Schema) string {
 		doctype = typeName
 	}
 	display, desc := displayPair(typeName, schema)
+	// mdoc claims are namespace-keyed (see buildSelectiveInputDescriptor in
+	// verifier.go and walt.id's own shipped issuer2 metadata), so the claims
+	// block's path needs the base namespace, not just the field name.
+	//
+	// Prefer docTypeProfiles: it carries the correct namespace per known
+	// docType, including Photo ID, where mdocNamespaceFor's dot-stripping
+	// heuristic gives the wrong answer (org.iso.23220.photoid.1 strips to
+	// org.iso.23220.photoid; the real namespace is org.iso.23220.1). Do not
+	// "simplify" this to mdocNamespaceFor alone — that regresses Photo ID.
+	namespace := mdocNamespaceFor(doctype)
+	if p, ok := profileIDForDocType(doctype); ok {
+		namespace = p.baseNamespace
+	}
 	return fmt.Sprintf(`    "%s" = {
         format = "mso_mdoc"
         cryptographic_binding_methods_supported = ["cose_key"]
@@ -323,7 +362,7 @@ func buildMDocEntry(configID, typeName string, schema vctypes.Schema) string {
                 text_color = "#000000"
             }
         ]
-    }`, configID, hoconEscape(doctype), hoconEscape(display), hoconEscape(desc))
+%s    }`, configID, hoconEscape(doctype), hoconEscape(display), hoconEscape(desc), buildClaimsBlock(schema.FieldsSpec, namespace))
 }
 
 // displayPair derives the human-readable name + description from the
@@ -351,13 +390,158 @@ func displayPair(typeName string, schema vctypes.Schema) (display, desc string) 
 	return display, desc
 }
 
+// buildClaimsBlock renders the OID4VCI claims metadata for a schema's
+// fields, with one display entry per configured locale.
+//
+// This is the mechanism that lets a wallet show "Apellidos" to a
+// Spanish-speaking holder instead of the raw identifier. Without it, wallets
+// derive a label from the identifier themselves — which is why cdpi-wallet
+// shows "Family Name" today regardless of the holder's language.
+//
+// namespace picks BOTH which walt.id field is emitted and its shape — the
+// two destination services model claim metadata with unrelated Kotlin
+// types, confirmed by decompiling each service's own jar:
+//   - "" (W3C VC-JWT, LinkedData, SD-JWT — all served by the LEGACY
+//     issuer-api, package id.walt.oid4vc.data): emits `credentialSubject`,
+//     a flat Map<String, ClaimDescriptor> keyed by field name.
+//     CredentialSupported.claims exists on this type too, but it is
+//     Map<String, Map<String, ClaimDescriptor>> — namespace-keyed, always
+//     two levels deep — and ClaimDescriptor has no `path` field at all. A
+//     flat format has no second-level key to give it, so `claims` is not
+//     usable here.
+//   - non-empty (mso_mdoc — served by issuer-api2, package
+//     id.walt.openid4vci.metadata.issuer): emits `claims` as an array of
+//     {path, display} entries, path being the two-element
+//     ["<namespace>", "<field>"] form — see verifier.go's
+//     buildSelectiveInputDescriptor and walt.id's own shipped metadata
+//     (deploy/k8s/config/issuer2/credential-issuer-metadata.conf).
+//
+// Emitting the mdoc array shape for a flat format crash-loops the legacy
+// issuer-api container before its web server binds: CIProvider.<init> throws
+// JsonDecodingException ("Expected JsonObject, but had JsonArray … at path:
+// $.claims") while parsing the first non-mdoc entry, which is why
+// credential-issuer-metadata.conf never listens on its port at all. See the
+// 2026-08-24 incident: POST /onboard/issuer failed with connection refused
+// because issuer-api never came up.
+//
+// Returns "" for a schema with no declared fields (stock catalog entries):
+// an empty block is not valid HOCON here, and omitting it preserves exactly
+// today's behaviour for those schemas.
+func buildClaimsBlock(fields []vctypes.FieldSpec, namespace string) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	if namespace == "" {
+		return buildCredentialSubjectBlock(fields)
+	}
+	var b strings.Builder
+	b.WriteString("        claims = [\n")
+	for _, f := range fields {
+		if f.Name == "" {
+			continue
+		}
+		b.WriteString("            {\n")
+		fmt.Fprintf(&b, "                path = [\"%s\", \"%s\"]\n", hoconEscape(namespace), hoconEscape(f.Name))
+		b.WriteString("                display = [\n")
+
+		locales := claimLocales(f)
+		for _, loc := range locales {
+			fmt.Fprintf(&b,
+				"                    { name = \"%s\", locale = \"%s\" }\n",
+				hoconEscape(f.Label(loc)), hoconEscape(loc))
+		}
+		b.WriteString("                ]\n")
+		b.WriteString("            }\n")
+	}
+	b.WriteString("        ]\n")
+	return b.String()
+}
+
+// buildCredentialSubjectBlock renders the legacy issuer-api's flat claim
+// metadata field — CredentialSupported.credentialSubject, a
+// Map<String, ClaimDescriptor> keyed by field name — for the non-mdoc
+// formats (W3C VC-JWT, LinkedData, SD-JWT). See buildClaimsBlock's doc
+// comment for why this field, not `claims`, is what legacy issuer-api
+// expects.
+func buildCredentialSubjectBlock(fields []vctypes.FieldSpec) string {
+	var b strings.Builder
+	b.WriteString("        credentialSubject = {\n")
+	for _, f := range fields {
+		if f.Name == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "            %s = {\n", hoconEscape(f.Name))
+		b.WriteString("                display = [\n")
+
+		locales := claimLocales(f)
+		for _, loc := range locales {
+			fmt.Fprintf(&b,
+				"                    { name = \"%s\", locale = \"%s\" }\n",
+				hoconEscape(f.Label(loc)), hoconEscape(loc))
+		}
+		b.WriteString("                ]\n")
+		b.WriteString("            }\n")
+	}
+	b.WriteString("        }\n")
+	return b.String()
+}
+
+// claimLocales returns the locales to emit for a field: the ones it actually
+// declares, English first when present and the rest sorted so catalog output
+// is deterministic (the file is diffed and written on every schema save).
+//
+// English is NO LONGER synthesised for a field that doesn't declare it. It
+// used to be, on the reasoning that Label("en") falls back to the derived
+// name so there is always something to show — but the schema builder's base
+// language is now a value the operator sets rather than a hardcoded "en". A
+// deployment issuing only in Spanish declares {"es": "Apellidos"} and no
+// English at all; synthesising an "en" entry there published a phantom
+// English label carrying the DERIVED identifier ("Family Name" from
+// family_name), which is not a translation the issuer ever authored and which
+// a wallet would prefer over the Spanish for any en-* holder.
+//
+// English keeps its position at the FRONT when the field does declare it:
+// vctypes.FieldSpec.Label still falls back to "en" for an unresolvable
+// locale, so it remains the base language of the data model even though it is
+// no longer mandatory in the form.
+//
+// A field with no labels at all yields no locales, and buildClaimsBlock then
+// emits an empty display list — the wallet derives a label from the
+// identifier itself, exactly as it did before any of this metadata existed.
+func claimLocales(f vctypes.FieldSpec) []string {
+	out := make([]string, 0, len(f.Labels))
+	for loc := range f.Labels {
+		if loc == "en" {
+			continue
+		}
+		out = append(out, loc)
+	}
+	sort.Strings(out)
+	if _, ok := f.Labels["en"]; ok {
+		return append([]string{"en"}, out...)
+	}
+	return out
+}
+
 // hoconEscape prepares a free-text string for inclusion in a HOCON quoted
 // string literal: backslashes first (so we don't double-escape the ones we
-// add), then double quotes. HOCON otherwise treats `"` inside a quoted
-// string as the terminator and silently truncates.
+// add), then double quotes, then the control characters a quoted string
+// cannot contain literally (newline, carriage return, tab). HOCON otherwise
+// treats `"` inside a quoted string as the terminator and silently
+// truncates, and a raw newline/CR/tab breaks the file across lines or
+// columns.
+//
+// This escaping must stay strictly additive: well-formed input (no
+// backslash, quote, or control character) must render byte-for-byte as
+// before. Callers include locale codes, which became free-form operator
+// text once this task added per-locale claim display — do not trim or
+// reject here, only escape.
 func hoconEscape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+	s = strings.ReplaceAll(s, "\t", `\t`)
 	return s
 }
 

@@ -1,9 +1,10 @@
 # mDL (ISO/IEC 18013-5): nota de posición, spike de verificación y POC de emisión
 
-**Date:** 2026-08-17
-**Status:** Draft — **bloqueado** hasta completar §Origen y demanda
-**Estructura:** cuatro tramos con gate entre ellos. **Ningún tramo arranca sin
-completar §Origen y demanda.** B, C y D requieren además gate explícito del anterior.
+**Date:** 2026-08-17 (gate de negocio destrabado 2026-08-20)
+**Status:** Active — gate de §Origen y demanda destrabado; detalles administrativos
+de esa sección aún por confirmar (ver tabla), pero no bloquean el trabajo
+**Estructura:** cuatro tramos con gate entre ellos. B, C y D requieren además gate
+explícito del anterior — esos gates técnicos siguen en pie y no se tocan aquí.
 
 | Tramo | Qué es | Duración | Código | Gate para pasar al siguiente |
 |---|---|---|---|---|
@@ -109,24 +110,28 @@ tres P1 públicas exige una demanda documentada, no inferida.
 
 ## Origen y demanda
 
-> ⚠️ **PLACEHOLDER — bloquea la aprobación.** Se deja visible a propósito: una
-> premisa afirmada sin fuente es peor que un hueco declarado. **Sin completar esta
-> sección, ni siquiera el Tramo A debe ejecutarse.**
+> **Gate destrabado — 2026-08-20.** Confirmado explícitamente por el responsable de
+> producto: la demanda existe y proviene de dos instituciones reales, cada una
+> pidiendo tanto emisión como verificación. Los campos marcados _(confirmar)_ abajo
+> no son huecos sin respuesta — son detalles administrativos aún no registrados, no
+> una premisa sin fuente. El gate ya no bloquea el Tramo A ni el Tramo C.
 
 | Campo | Valor |
 |---|---|
-| Entidad solicitante | _(INTRANT / MTC Perú / otra)_ |
-| Interlocutor (rol, no nombre si es sensible) | _(pendiente)_ |
-| Fecha de la petición | _(pendiente)_ |
-| Formato | _(reunión / correo / RFP / conversación informal)_ |
-| Qué pidieron **exactamente** | _(pendiente — ¿emitir? ¿verificar? ¿asesoría? ¿interoperar?)_ |
-| ¿Emisión o verificación? | _(determina si el trabajo es Tramo B o Tramo C)_ |
-| Plazo esperado por el solicitante | _(pendiente)_ |
-| Sponsor interno en CDPI | _(pendiente)_ |
+| Entidad solicitante | **INTRANT (República Dominicana) y MTC (Perú)** — ambas confirmadas |
+| Interlocutor (rol, no nombre si es sensible) | _(confirmar)_ |
+| Fecha de la petición | _(confirmar)_ |
+| Formato | _(confirmar — reunión / correo / RFP / conversación informal)_ |
+| Qué pidieron **exactamente** | Emisión y verificación de mDL, ambas capacidades |
+| ¿Emisión o verificación? | **Ambas** — confirma que el Tramo C (emisión, en curso) es necesario, no solo el Tramo B |
+| Plazo esperado por el solicitante | _(confirmar)_ |
+| Sponsor interno en CDPI | _(confirmar)_ |
 
 **Por qué importa la distinción emisión/verificación:** son problemas de costo y
-política radicalmente distintos (ver §Tesis central). Si lo que se pidió es
-verificación, el Tramo B basta y el C sobra.
+política radicalmente distintos (ver §Tesis central). Aquí ambas instituciones piden
+las dos, así que ningún tramo sobra — pero conviene documentar por separado si
+INTRANT y MTC piden lo mismo en el mismo plazo, o si hay una jerarquía entre ellas
+que deba ordenar la secuencia de trabajo.
 
 ## Tesis central
 
@@ -288,8 +293,14 @@ Referencias **por símbolo**, verificadas contra el árbol actual.
   **`veraison/go-cose` NO está** — dependencia nueva.
 - `docs/dpg/walt-id.md` documenta `VerifyDirect unsupported`.
 - `cdpi-wallet`: Credo-TS 0.6.3, OID4VCI/OID4VP, SD-JWT VC. Nada de mdoc/CBOR/BLE.
-- **`cdpi-wallet` no tiene directorio `ios/`** — solo `android/` prebuildeado,
-  `eas.json` solo `buildType: apk`. **El Tramo C es Android-only.**
+- **`cdpi-wallet` no tiene directorio `ios/` local** — solo `android/` prebuildeado,
+  `eas.json` solo `buildType: apk`. **Sí existe un pipeline EAS Build en la nube que
+  produce un `.ipa` instalable** (confirmado: el usuario tiene un build actual —
+  sin el módulo mdoc — corriendo en un iPhone). Esto **no** es lo mismo que tener la
+  carpeta `ios/` generada localmente: nadie ha hecho `expo prebuild --platform ios`
+  en esta máquina, y el primer intento de hacerlo (o de generar un build EAS con el
+  paquete BLE incluido) hoy no está probado. **Revisado el alcance de Fase 0
+  (§C.7.0) para cubrir ambas plataformas desde el inicio**, en vez de diferir iOS.
 
 > **Conflicto de secuenciación a resolver antes de empezar:** §C.8 propone
 > `internal/signer/`, pero la abstracción de signer es **P1 en el roadmap oficial**
@@ -353,6 +364,19 @@ por dirección son el anti-replay intra-sesión.
 > solo si `DeviceMac` deja de estar fuera de alcance.
 
 **Verificación:** captura BLE sin PII en claro (nRF Sniffer / HCI snoop log).
+
+> **Verificado — 2026-08-20**, vía HCI snoop log (sin sniffer nRF disponible).
+> Captura completa (1010 registros HCI, 88.9KB) de una presentación real con
+> portrait, extraída con `adb bugreport` (el log vive en una ruta protegida en
+> Android 10 que no admite `adb pull` directo). Búsqueda exhaustiva de cadenas de
+> texto plano en toda la captura: **cero coincidencias** de cualquier dato del mDL
+> (nombre, fecha de nacimiento, país, `portrait`, etc.). Los únicos fragmentos
+> legibles son `eReaderKey` y las claves `data`/`status` del framing de
+> `SessionEstablishment`/`SessionData` — que **van sin cifrar por diseño**, no una
+> fuga. El resto de la captura no muestra estructura CBOR reconocible, consistente
+> con cifrado AES-256-GCM. Detalle completo, incluyendo qué NO queda probado por
+> este método (correctitud interna del KDF/IV, no solo ausencia observable de PII):
+> `docs/mdl-s2-btsnoop-analysis.md`.
 
 ### S-3. Divulgación selectiva y consentimiento
 
@@ -539,39 +563,96 @@ independiente del flujo de proximidad**. Con un equipo de una sola persona, cont
 
 **No existe un escenario de 5 semanas.**
 
-### C.7.0 Fase 0 — Spike bloqueante (~1 semana)
+### C.7.0 Fase 0 — Spike bloqueante (~1-1,5 semana)
 
 **Ninguna otra tarea empieza hasta que cierre.**
 
+> **Alcance revisado:** el hardware disponible al momento de ejecutar este spike es
+> **un Android físico + un iPhone con un `.ipa` instalable vía EAS Build** (no dos
+> Android). Se amplía la matriz de pruebas para cubrir ambas plataformas desde el
+> inicio, en vez de diferir iOS como "Fuera de alcance". Esto es estrictamente más
+> información que el plan original: si Android↔Android hubiera sido la única
+> combinación probada, la limitación real de iOS (ver Matriz, abajo) se habría
+> descubierto recién en el Tramo D.
+
 **Entregables:**
-1. Reader de Multipaz corriendo en Android físico — **provee el "reader de prueba"**
-   que Fase 0 necesita (resuelve la dependencia circular).
-2. `expo-mdoc-data-transfer` integrado en un build de `cdpi-wallet` capaz de advertir
-   en BLE peripheral server mode.
-3. **Informe del nivel de seguridad de claves** de askar 0.6.0 en RN por teléfono
-   (StrongBox / TEE / software) — entrada obligatoria de §S-4.
+1. Reader de Multipaz corriendo en el Android físico — **provee el "reader de
+   prueba"** que Fase 0 necesita (resuelve la dependencia circular).
+2. `expo-mdoc-data-transfer` integrado en `cdpi-wallet`, con **dos builds nuevos**:
+   uno local Android (`npx expo run:android`) y uno vía EAS para iOS — el mismo
+   pipeline que ya produjo el `.ipa` actual, ahora con el paquete BLE incluido.
+3. **Informe del nivel de seguridad de claves** de askar 0.6.0 en RN, por plataforma
+   (StrongBox/TEE en Android; Secure Enclave en iOS, o software si el wrapper no lo
+   expone) — entrada obligatoria de §S-4.
 4. **Prueba de MTU/chunking con payload sintético** del tamaño de un `portrait`. Se
    adelanta aquí a propósito: es el riesgo más difícil de rescatar y no puede
    descubrirse al final del presupuesto.
 
-**Aceptación (binaria), en los dos teléfonos Android probados:**
-1. El holder advierte y completa un device engagement con el reader.
+**Matriz de pruebas (binaria por celda):**
+
+| Combinación | Qué prueba | Riesgo conocido |
+|---|---|---|
+| Android (holder) ↔ Android (reader) | Interoperabilidad BLE "normal" entre dos stacks Android | Peripheral irregular por fabricante — Motorola/Huawei conocidos como inconsistentes |
+| iPhone (holder) ↔ Android (reader) | La combinación que un despliegue real usaría con más frecuencia (ciudadano con iPhone, agente con lector Android) | **iOS en segundo plano oculta el UUID del servicio a lectores no-Apple** (overflow area). En foreground esta limitación no aplica — y la demo (§C.7.7) siempre corre en foreground, así que la celda es válida como prueba de foreground únicamente |
+
+**No se prueba** Android(holder)↔iPhone(reader) ni iPhone↔iPhone: el reader de
+Multipaz usado como contraparte no tiene build iOS lista, y no es la combinación que
+un despliegue real prioriza. Queda para el Tramo D si hace falta.
+
+**Aceptación (binaria), en ambas filas de la matriz:**
+1. El holder advierte y completa un device engagement con el reader, **con el holder
+   en foreground**.
 2. **Chunking:** un payload sintético de **~20 KB** (tamaño realista de un `portrait`
    JPEG) se transmite completo y sin corrupción.
 3. **Rendimiento:** la transacción completa —desde el escaneo del QR hasta el
    resultado— tarda **menos de 5 segundos** con ese payload.
 
-Si algo falla en uno solo de los dos teléfonos, **Fase 0 no pasa**: se documenta el
-fabricante y se decide con esa evidencia.
+Si una fila falla, **Fase 0 no pasa para esa combinación**: se documenta y se decide
+con esa evidencia. Una fila que pasa desbloquea el resto del plan para esa
+plataforma; una fila que falla no bloquea la otra si ya pasó.
 
-**Plan B si falla el holder BLE:** pivotar el transporte del *holder* — (a) usar
-Multipaz en el holder vía módulo nativo (lo que reabriría la decisión del reader), o
-(b) recortar a solo-verificación, que es el Tramo B. **Un reader CLI no es plan B
-aquí**: si el holder no puede advertir, cambiar el reader no resuelve nada.
+**Plan B si falla el holder BLE en Android:** pivotar el transporte del *holder* —
+(a) usar Multipaz en el holder vía módulo nativo (lo que reabriría la decisión del
+reader), o (b) recortar a solo-verificación, que es el Tramo B. **Un reader CLI no es
+plan B aquí**: si el holder no puede advertir, cambiar el reader no resuelve nada.
 
-**Dependencias previas:** 2 Android físicos de fabricantes distintos (Motorola y
-Huawei son conocidos como inconsistentes); `BLUETOOTH_ADVERTISE` (API 31+); dev client
-de Expo; JDK + Android Studio; **sniffer BLE** (nRF) para la evidencia de §S-2.
+**Plan B si falla la fila de iOS:** no es bloqueante para el resto del plan. Se
+documenta la limitación, el Tramo C continúa **Android-only** como preveía la versión
+anterior de este spec, y la ampliación a iOS se reintenta en el Tramo D con más
+presupuesto (módulo nativo dedicado en vez del paquete `expo-mdoc-data-transfer`, que
+nunca prometió soporte iOS de primera clase).
+
+**Dependencias previas:** 1 Android físico + 1 iPhone con acceso al pipeline EAS Build
+del proyecto (cuenta de Apple Developer y credenciales ya configuradas — confirmado
+que existen, dado que ya se generó un `.ipa` instalable); `BLUETOOTH_ADVERTISE`
+(API 31+) en Android; dev client de Expo; JDK + Android Studio; **sniffer BLE** (nRF)
+para la evidencia de §S-2.
+
+> **Estado real — 2026-08-20.** El spike ejecutado usó **1 Android (reader,
+> Multipaz) + 1 iPhone (holder, `cdpi-wallet`)** — no dos Android — porque solo había
+> un Android disponible en ese momento. Los criterios de aceptación 1-3 se cumplieron
+> con esa combinación (engagement, chunking con portrait real de ~40KB — más grande
+> que el sintético de 20KB que este criterio pedía, así que ese caso está cubierto de
+> sobra —, presentación completa en segundos).
+>
+> **Esto NO satisface el criterio original tal como está escrito, y se deja así a
+> propósito, no diluido.** La razón del requisito de dos fabricantes es
+> específicamente el holder en **BLE peripheral server mode** — el modo
+> históricamente inconsistente entre Android OEMs (Motorola/Huawei) — y en la
+> configuración probada, **Android nunca actúa como holder**, solo como reader
+> (central/scanning, mucho más uniforme entre fabricantes). El riesgo que el
+> criterio de dos fabricantes intentaba mitigar simplemente no se ejerció en esta
+> combinación.
+>
+> **Sigue pendiente**, y vuelve a ser relevante en dos escenarios concretos: (a) si
+> alguna vez se necesita que Android sea holder (hoy no es el caso: `cdpi-wallet` en
+> Android nunca se probó en BLE peripheral mode, con o sin un segundo fabricante), o
+> (b) el reader del Tramo D (§D.5), que si es multiplataforma y ahí Android vuelve a
+> ser holder-adyacente en el sentido de que el SDK debe funcionar de forma uniforme
+> entre OEMs. No bloquea el trabajo actual de C.7.1-C.7.5 (que no toca BLE en
+> Android-holder), pero si se llega a C.7.3b o al Tramo D sin haberlo resuelto,
+> retomarlo antes de asumir que el holder Android funciona igual en todos los
+> fabricantes.
 
 ### C.7.1 Issuer mdoc en Go (~2 sem)
 
@@ -750,7 +831,10 @@ guion de §C.2 si hay audiencia externa.
    (criterio de éxito #6).
 
 **Limitación:** con el holder en background en iOS los service UUIDs pasan al
-*overflow area* y un reader Android no lo ve. Irrelevante aquí (Android-only).
+*overflow area* y un reader Android no lo ve. La demo corre siempre en
+**foreground**, así que esta limitación no bloquea la demo en sí — pero si Fase 0
+(§C.7.0) valida la fila iOS↔Android, la demo puede ejecutarse con holder en iPhone o
+en Android indistintamente; si esa fila no pasa, la demo es Android-only.
 
 ## C.8 PKI
 
@@ -788,13 +872,14 @@ type Signer interface {
 | **Relay attack no mitigable** por el estándar | **Alto** (residual) | Mitigación operativa; declarado |
 | **Colisión con el P1 de signer** del roadmap | Medio-alto | Decidir antes de empezar (§C.3) |
 | Wallet responde a cualquier reader (sin `ReaderAuth`) | Medio-alto | Consentimiento del holder; `ReaderAuth` en trabajo futuro |
-| Android peripheral irregular por fabricante | Medio-alto | Fase 0 en 2 fabricantes; detectar vía `BluetoothLeAdvertiser` |
+| Android peripheral irregular por fabricante | Medio-alto | Fase 0 valida al menos un fabricante; detectar vía `BluetoothLeAdvertiser`; ampliar cobertura de fabricantes es trabajo de seguimiento |
+| **iOS en background oculta el servicio BLE a lectores no-Apple** | Medio-alto | Fase 0 prueba solo en foreground (coincide con el modelo de la demo); background queda como limitación conocida, no resuelta |
 | **Validación del DSC ausente en el upstream** | Medio | Irrelevante en la POC (certs recién emitidos); ítem del Tramo D |
 | Reloj del reader manipulable | Medio | Declarado; producción exige fuente de tiempo confiable |
 | `veraison/go-cose` sin mantenimiento (9 meses) | Medio | Aislar tras `Signer`; **descalificante para producción** |
 | Multipaz pre-1.0 (0.96.0 en el reader de contraste, upstream 0.100.0), 1.0 previsto fin 2026/inicio 2027 | Medio | Pinear exacto; el Tramo D depende de su estabilización |
 | `proof_types_supported.cwt` puede no estar soportado | Medio | Verificar contra walt.id antes de codificar |
-| Hardware: 2 Android + sniffer BLE | Medio | Resolver antes de Fase 0 |
+| Hardware: 1 Android + 1 iPhone (con acceso al pipeline EAS Build) + sniffer BLE | Medio | Confirmado disponible antes de Fase 0 |
 | Reactivar `iso_mdl` reintroduce lo de `6449f96` | Bajo | El round-trip problemático era contra MOSIP/Inji |
 | Certificación OIDF no es gratuita | Bajo | Tests gratis; certificar ~$700/$3.500. No está en alcance |
 
@@ -1044,11 +1129,14 @@ fuente primaria ISO**.
 
 ## Decisiones pendientes
 
-**De negocio (bloquean la aprobación):**
-1. **Completar §Origen y demanda.**
-2. ¿Lo que se pidió es **emisión** o **verificación**? Determina si hace falta el
-   Tramo C.
-3. **Sponsor interno** y **costo de oportunidad** frente a las tres P1 del roadmap.
+**De negocio (ya NO bloquean — resueltas 2026-08-20, detalle administrativo pendiente):**
+1. ~~Completar §Origen y demanda.~~ Demanda confirmada: INTRANT y MTC, ambas piden
+   emisión y verificación. Faltan por registrar: interlocutor, fecha, formato de la
+   petición, plazo, sponsor interno — ver tabla en §Origen y demanda.
+2. ~~¿Lo que se pidió es emisión o verificación?~~ Ambas — el Tramo C es necesario.
+3. **Sponsor interno** y **costo de oportunidad** frente a las tres P1 del roadmap —
+   sigue sin confirmar explícitamente; no bloquea el trabajo técnico en curso, pero
+   conviene cerrarlo antes de comprometer más tiempo del ya invertido.
 
 **Técnicas (bloquean el inicio del Tramo C):**
 
@@ -1056,7 +1144,7 @@ fuente primaria ISO**.
 |---|---|---|---|---|
 | 4 | `proof_types_supported.cwt` vs `jwt` — verificar contra la versión de walt.id en uso | C.7.1 (endpoint de proof) | _(pendiente)_ | _(pendiente)_ |
 | 5 | **Colisión con el P1 de signer** (§C.3): ¿`internal/signer/` como P1 propio que el Tramo C consume, o algo local? | C.7.1 (primera línea de `sign.go`) | _(pendiente)_ | _(pendiente)_ |
-| 6 | Qué dos teléfonos Android concretos (fabricantes distintos) | C.7.0 | _(pendiente)_ | _(pendiente)_ |
+| 6 | Confirmar acceso reproducible al Android y al pipeline EAS Build/iPhone antes de arrancar C.7.0 (ya usado una vez para el `.ipa` actual) | C.7.0 | _(pendiente)_ | _(pendiente)_ |
 
 La #5 es la más urgente: sin dueño se resolverá tarde, y §C.3 la declara *"a resolver
 antes de empezar"*.

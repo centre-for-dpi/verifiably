@@ -3,5 +3,5 @@ name: walt-issuer
 description: Walt.id OID4VCI issuer (waltid/issuer-api).
 type: application
 version: 0.1.0
-appVersion: "0.18.2"
+appVersion: "0.23.1"
 # TODO(Phase 4.1): templates/, full values.yaml schema per docs/k8s/values-schema.md

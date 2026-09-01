@@ -264,6 +264,176 @@ Command-line override: set `VERIFIABLY_ENV_FILE=/path/to/other.env
 ./deploy.sh ...` to swap the entire file for one invocation (e.g. keep
 `.env` pinned to laptop, ship `.env.ec2` for a staging run).
 
+## mDL / mdoc issuance (`issuer-api2`)
+
+ISO/IEC 18013-5 mdoc credentials (mDL, Photo ID) are issued through a
+second, separate walt.id instance — `issuer-api2` — because the legacy
+`issuer-api` cannot type-map CBOR correctly for mdoc (see
+`docs/superpowers/adr/2026-08-20-mdl-cbor-type-limits.md`). This section is
+what an operator running `./deploy.sh up waltid` needs to know that isn't
+covered by the general walt.id wiring above.
+
+### What a fresh deploy does for you, automatically
+
+`scripts/gen-caddy.sh`'s `provision_issuer2_certificates()` runs on every
+`up` and is idempotent (`mdl-pki-gen: dsc.pem already exists — keeping it`
+on the second and later runs):
+
+- Generates a self-signed **IACA root** (CA:TRUE) and a **Document Signer
+  (DSC)** cert it issues, both P-256, EKU `1.0.18013.5.1.2` (the mDL DS
+  OID), DSC validity capped at 457 days (ISO/IEC 18013-5 Annex B). Written
+  to `deploy/k8s/config/issuer2/certs/{iaca,dsc}.pem`.
+- Wires the DSC's key coordinates into `issuer2-profiles.conf`'s
+  `defaultIssuerKey`/`defaultIssuerX5chain` — **but only while the
+  committed baseline's example certificate is still in place**, so an
+  operator's own real cert (see below) is never silently overwritten by a
+  redeploy.
+- Publishes the IACA over HTTP for wallets to fetch dynamically — see
+  "Wallet trust anchors" below. **This never happens automatically for
+  `dsc.pem`** — that file carries private-key-bearing material and is
+  never served by anything, by design.
+- Seeds `issuer2-profiles.conf` and `credential-issuer-metadata.conf` from
+  their tracked `*.baseline.conf` counterparts (`cp -n`, no-clobber — see
+  "Baseline/runtime config split" below).
+
+The DN says what it is: `O=POC-DO-NOT-TRUST`. This is demo PKI, not a
+production certificate authority. Real certificate provisioning is a
+separate concern tracked in
+`docs/superpowers/specs/2026-07-23-issuer-key-rotation-design.md`.
+
+### Wallet trust anchors — POC endpoint now, VICAL is the production path
+
+A wallet verifying an mdoc's signature needs to trust the IACA above. Since
+every fresh deploy (or any deploy that starts without an existing
+`dsc.pem`) generates a **new** IACA, a wallet that only trusts a
+hardcoded/compiled-in certificate breaks on every such redeploy with
+`"No trusted certificate was found"`.
+
+`verifiably-go` solves this for the POC by publishing the current IACA
+over HTTP:
+
+```
+GET https://<walt-issuer2 subdomain>/trust/mdoc-anchors
+```
+
+returning `{ "anchors": ["-----BEGIN CERTIFICATE-----..."], "poc": true }`.
+A companion wallet (see `cdpi-wallet`'s `src/agent/mdocTrustAnchors.ts`)
+fetches this from the exact origin it resolved the credential offer's
+`credential_issuer` from, unions it with a compiled-in fallback so
+previously issued credentials keep verifying after a rotation, and falls
+back to stale-cache-or-static on any fetch error.
+
+**This endpoint is deliberately unsigned**, and that is documented as a
+POC ceiling, not an oversight: an issuer signing its own anchor response
+adds no security an attacker forging the response couldn't also forge the
+signature over. See the header comment in
+`internal/handlers/mdoc_anchors.go` and
+`docs/superpowers/adr/2026-08-23-mdl-trust-anchor-distribution.md` for the
+full reasoning.
+
+**The documented production replacement is a VICAL-shaped list signed by
+the Hub** — an authority distinct from any single issuer, so a compromised
+issuer cannot self-certify. This extends the Hub's existing
+`internal/trust/registry.go` `TrustedIssuer` model (today DID-only) with an
+X.509 field, served from the Hub's already-signed `GET /trust-registry`.
+Not implemented yet; tracked in the ADR above and in `TODO.md`.
+
+**What rotation actually does to already-claimed wallets, and how to
+recover from DSC expiry or a corrupted `issuer2-profiles.conf`:** see
+[`mdl-incident-runbook.md`](mdl-incident-runbook.md) — the operational
+companion to this section.
+
+**Caddy routing note (subdomain mode only):** the endpoint lives on the
+`verifiably-go` container, but the wallet fetches it from the
+`walt-issuer2` origin (the `credential_issuer` it resolved the offer from —
+a different container). `scripts/gen-caddy.sh`'s `walt-issuer2` block
+allowlists only `/openid4vci/*`, `/.well-known/*`, and
+`/trust/mdoc-anchors`, returning 404 for everything else — deliberately
+narrow, because `issuer-api2` ships zero authentication on its own
+management API (`POST /issuer2/credential-offers` mints arbitrary signed
+credentials; `GET /issuer2/sessions` leaks issuer private key material).
+If a wallet reports "No trusted certificate was found" after this endpoint
+was confirmed working, check first whether it 200s **from the
+`walt-issuer2` origin specifically** — a 404 there with a 200 on
+`verifiably-go`'s own domain is exactly this routing gap, not a code bug.
+
+### Baseline/runtime config split — survives `git pull`
+
+`deploy/k8s/config/issuer2/issuer2-profiles.conf` and
+`credential-issuer-metadata.conf` hold generated (DSC/IACA x5chain) and
+operator-authored (custom mdoc schema display names) content, so they are
+**gitignored runtime files**, seeded on first deploy from tracked
+`issuer2-profiles.baseline.conf` / `credential-issuer-metadata.baseline.conf`
+via `cp -n` (no-clobber — a fresh clone gets the seed; an existing
+deployment's real cert and schema names are never touched by a later
+`git pull`). See
+`docs/mdl-issuance-manual-checklist.md`'s "One-time migration" section if
+you are updating a deployment created before this split existed.
+
+## mDL / mdoc issuance via Inji Certify Pre-Auth (second emitter)
+
+Since 2026-08-25, mso_mdoc (mDL and Photo ID) is issued by **two independent
+production emitters** — `issuer-api2` above, and Inji Certify's Pre-Auth
+instance (`./deploy.sh up inji`). Neither replaces the other; an operator
+picks per schema by which DPG is active when the custom schema is created
+(same schema builder, Std = `mso_mdoc`, no separate UI). See
+[`dpg/inji-certify-preauth.md`](dpg/inji-certify-preauth.md)'s "mso_mdoc (mDL
+/ Photo ID) issuance" section for the operational detail — namespace
+resolution, the `driving_privileges` guard, and the one known upstream
+limitation (Inji Certify does not bstr-encode `portrait` correctly).
+
+**Baseline/runtime split, same reasoning as issuer2 above, different
+files:** `deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties`
+and `deploy/compose/stack/inji/esignet/credential-scopes.properties` carry
+operator-appended scope mappings (one per custom Auth-Code schema saved,
+written by `applyAuthcodeSchema`) — gitignored runtime files, seeded from
+`*.baseline.properties` siblings by `seed_inji_authcode_configs`
+(`scripts/gen-caddy.sh`), same `cp -n` no-clobber pattern.
+
+**Trust anchors:** Inji Certify's mock-HSM roots are extracted automatically
+by `provision_inji_root_anchors` (`deploy.sh`) and served alongside
+walt.id's IACA from the same `GET /trust/mdoc-anchors` endpoint described
+above — no separate mechanism, no manual step. Two roots exist (Auth-Code
+and Pre-Auth instances sign independently), both served.
+
+### `.env` quoting for the issuer2 JSON key variables
+
+`VERIFIABLY_ISSUER2_CI_TOKEN_KEY` and `VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY`
+are **generated automatically on first deploy** — `provision_issuer2_certificates`
+(`scripts/gen-caddy.sh`) has `cmd/mdl-pki-gen` write them to
+`deploy/k8s/config/issuer2/certs/issuer2-aux.env` and persists them into `.env`
+via `set_env_var`, the same mechanism `VERIFIABLY_ISSUER2_KEY_X/_Y/_D` already
+use. A fresh clone needs no manual step for either variable; `docker-compose.yml`'s
+hard `${VAR:?...}` guard on both is satisfied without operator intervention.
+
+Set either one yourself only if you need a specific value (e.g. importing a
+key from an existing deployment) — generation is skipped once
+`issuer2-aux.env` already exists, so a value you set survives every later `up`.
+They hold JSON values. **If you do set one by hand, wrap it in single quotes
+in `.env`:**
+
+```bash
+VERIFIABLY_ISSUER2_CI_TOKEN_KEY='{"type":"jwk","jwk":{"kty":"EC",...}}'
+```
+
+`deploy.sh`/`common.sh` load `.env` via `set -o allexport; source .env`.
+Sourced this way, bash **silently strips the double quotes from an
+unquoted value on export** — `VAR={"a":"b"}` (no shell quoting) becomes
+`{a:b}` once exported, which then fails walt.id's HOCON/Hoplite decode with
+a misleading `Expected quotation mark '"', but had 't' instead` error that
+looks unrelated to quoting at all. Reproduce it yourself if in doubt:
+
+```bash
+echo 'X={"a":"b"}' > e1.env; bash -c 'set -o allexport; source e1.env; echo $X'   # => {a:b}  (broken)
+echo "X='{\"a\":\"b\"}'" > e2.env; bash -c "set -o allexport; source e2.env; echo \$X"  # => {"a":"b"}  (correct)
+```
+
+If you fix `.env` after hitting this, fixing the file alone is not
+enough — the already-rendered `issuer-service.conf` on disk still has the
+broken value baked in. Re-run `./deploy.sh up waltid` (which re-renders the
+`.conf` from `.env` and recreates the container) rather than `docker
+restart`, which does not reread `--env-file` at all.
+
 ## Secrets to regenerate per deployment
 
 Every country deployment must generate its own secrets. Do not reuse values from another deployment or from this repo's example files. The commands below produce cryptographically random values.
@@ -330,7 +500,7 @@ Config in `deploy/compose/hub/.env`:
 | `VERIFIABLY_ROLES` | `verifier` | Hub's own Go-app role — the hub rarely needs to also issue or be a holder |
 | `HUB_VERIFIER_PORT` | `7053` | Host port for the Walt ID verifier-api container (bind to `127.0.0.1:7053` in production — no public exposure needed when behind Caddy) |
 | `HUB_VERIFIER_BASE_URL` | `http://localhost:7053` | Base URL the verifier-api advertises in `presentation_definition_uri`/`request_uri`. Must be browser-reachable — in TLS mode set to `https://<VERIFIABLY_PUBLIC_DOMAIN>/verifier-api` |
-| `WALTID_VERSION` | `0.18.2` | Image tag for `waltid/verifier-api` — pin to match the rest of your Walt ID deployment |
+| `WALTID_VERSION` | `0.23.1` | Image tag for `waltid/verifier-api` — pin to match the rest of your Walt ID deployment (confirmed against `deploy/compose/hub/docker-compose.yml`'s actual default) |
 
 Caddy exposes it at `/verifier-api/*` (via `handle_path`, which strips the
 prefix before proxying) — deliberately **not** `/verify*`, which is already
@@ -345,6 +515,50 @@ curl -s http://localhost:7053/openapi | grep -q verifier && echo "hub-verifier-a
 ```
 
 > **Do not commit this file.** It is private — possession equals the ability to sign arbitrary trust registry JWTs as your federation authority.
+
+### DPG stack — Postgres passwords
+
+`deploy/compose/stack/docker-compose.yml`'s seven DPG-stack Postgres
+containers (walt.id issuer-api, `issuer-api2`, both Inji Certify instances,
+Inji Verify, the bulk-issuance citizens DB, and injiweb) each fall back to a
+weak, well-known literal when unset — `POSTGRES_PASSWORD` (`waltid`),
+`VERIFIABLY_PG_PASSWORD` (`verifiably`), `CERTIFY_PG_PASSWORD`,
+`CERTIFY_PREAUTH_PG_PASSWORD`, `INJI_VERIFY_PG_PASSWORD`,
+`INJIWEB_PG_PASSWORD` (`postgres`), `CITIZENS_PG_PASSWORD` (`citizens`).
+Every one of these Postgres containers is `127.0.0.1`-bound in
+`docker-compose.yml` (never reachable from outside this host), but a
+2026-08-26 incident found all of them reachable from the public internet
+anyway under active brute-force with these exact defaults still in place —
+so treat the binding as one layer, not the only one.
+
+**On a fresh deployment, this is automatic:** `./deploy.sh setup` (run
+implicitly by `up` the first time, before any `.env` exists) generates a
+random 32-hex value for each of the seven and writes it into the `.env` it
+produces. Safe there specifically because the wizard only ever runs before
+any of these Postgres volumes exist — the generated value is the *first*
+password each volume gets, nothing to conflict with.
+
+**On an existing deployment upgrading in**, `./deploy.sh up` prints a
+one-time `NOTE` listing any of the seven still on the shipped default; it
+does **not** rotate them for you. Changing a value in `.env` only takes
+effect for a fresh volume — an already-initialized Postgres data volume
+keeps its existing password until you also run
+`ALTER USER <user> PASSWORD '<new>';` inside the running container. To
+rotate deliberately:
+
+```bash
+# 1. Generate a value
+openssl rand -hex 16
+
+# 2. Apply it to the already-running container (repeat per Postgres service)
+docker exec -it certify-postgres psql -U postgres -c "ALTER USER postgres PASSWORD '<new>';"
+
+# 3. THEN set it in .env, and re-run `./deploy.sh up` so the consuming
+#    service (inji-certify, mimoto, ...) picks up the matching value
+```
+
+Doing step 3 before step 2 breaks the deployment: the consuming container
+authenticates with a password Postgres was never told about.
 
 ### CREDEBL — `deploy/compose/credebl/config/credebl.env`
 
@@ -473,7 +687,7 @@ If `VERIFIABLY_LE_EMAIL` is left empty Caddy falls back to an internal CA — fi
 
 #### 3. Firewall
 
-Caddy needs ports 80 + 443 reachable from the public internet. Per-service container ports stay internal — they're not bound to the host in subdomain mode.
+Caddy needs ports 80 + 443 reachable from the public internet. Every other service's `ports:` mapping in `docker-compose.yml` is `127.0.0.1`-bound (not "internal" in the sense of no host binding at all — they ARE published to the host, just to loopback only), so they're reachable for local debugging (`curl localhost:8090/...` on the host itself) but never from outside it regardless of scenario or mode. Production traffic to any of them goes through Caddy/nginx over the Docker network, never through these host ports — see each `deploy/compose/stack/inji/*/nginx.conf`'s `resolver`+`proxy_pass` pattern for how.
 
 **Ubuntu/Debian (UFW)**:
 

@@ -159,6 +159,13 @@ for per-request DNS. `location = /v1/certify/issuance/credential` and
 
 ## 7. Runtime configs
 
+`certify-postgres-dataprovider.properties` and `credential-scopes.properties` (below) are
+gitignored runtime files, seeded once from their committed `*.baseline.properties` siblings by
+`seed_inji_authcode_configs` (`scripts/gen-caddy.sh`, called from `deploy.sh`'s `cmd_up`) on
+first `up` — same split as walt.id's `issuer2-profiles.conf`/`.baseline.conf`. This is what lets
+`applyAuthcodeSchema` append operator-saved scope mappings directly into these files without a
+later `git pull`/`checkout`/`stash pop` silently reverting them back to the fresh-install baseline.
+
 `deploy/compose/stack/inji/certify/`:
 - **`certify-default.properties`** (shared with pre-auth). Key line:
   `mosip.certify.authn.allowed-audiences={ '${AUTHCODE_ALLOWED_AUD:${mosip.certify.domain.url}${server.servlet.path}/issuance/credential}' }`
@@ -203,7 +210,7 @@ for per-request DNS. `location = /v1/certify/issuance/credential` and
 ## 9. Deploy + verify
 
 ```bash
-ssh colombo 'cd /root/verifiably/verifiably-go && ./deploy.sh up inji'   # cmd_up: derives AUTHCODE_PUBLIC_URL etc.
+ssh <your-deploy-host> 'cd /path/to/verifiably-go && ./deploy.sh up inji'   # cmd_up: derives AUTHCODE_PUBLIC_URL etc.
 ```
 
 Use `up` (not `run`) when changing certify env/DID/domain — `up` derives the full env and recreates

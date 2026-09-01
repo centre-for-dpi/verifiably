@@ -55,6 +55,278 @@ render_waltid_service_confs() {
   printf 'baseUrl = "%s"\n' "$issuer_url"   > "$issuer_conf"
   printf 'baseUrl = "%s"\n' "$verifier_url" > "$verifier_conf"
   green "  rendered walt.id service confs (issuer=$issuer_url, verifier=$verifier_url)"
+
+  # issuer-api2 needs the same treatment for the same reason, but its conf
+  # carries far more than baseUrl (env-substituted keys, clientAuthentication
+  # config), so this rewrites the single line in place rather than truncating
+  # the file the way the two above do.
+  #
+  # Without this the mdoc credential offer a citizen scans points at the
+  # compose-internal host, which no phone can resolve. issuer-api2 publishes
+  # no ports; Caddy proxies only its /openid4vci/* and /.well-known/* paths
+  # (see the walt-issuer2 entry below) so the unauthenticated /issuer2/*
+  # management API stays off the public internet.
+  local issuer2_conf="$SCRIPT_DIR/deploy/k8s/config/issuer2/issuer-service.conf"
+  if [[ -f "$issuer2_conf" ]]; then
+    local issuer2_url
+    issuer2_url=$(url_for walt-issuer2 "$VERIFIABLY_PUBLIC_HOST" "$WALTID_ISSUER_PORT")
+    # Match the committed template line or a previously rendered literal.
+    python3 - "$issuer2_conf" "$issuer2_url" <<'PYEOF'
+import re, sys
+path, url = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+new, n = re.subn(r'(?m)^baseUrl\s*=\s*".*"$', 'baseUrl = "%s"' % url, text, count=1)
+if n:
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(new)
+PYEOF
+    green "  rendered issuer-api2 baseUrl ($issuer2_url)"
+
+    # ciTokenKey / credentialEncryptionKey cannot be env-substituted at all:
+    # bare ${VAR} arrives as a HOCON object where Hoplite wants a JSON string,
+    # and """${VAR}""" is not substituted (HOCON leaves triple-quoted text
+    # literal). Both crash the boot. So render the real JSON in here, the way
+    # walt.id ships it. The committed file carries placeholders; this rewrite
+    # is what a running deployment actually reads.
+    local _missing=""
+    [[ -z "${VERIFIABLY_ISSUER2_CI_TOKEN_KEY:-}" ]] && _missing="VERIFIABLY_ISSUER2_CI_TOKEN_KEY"
+    [[ -z "${VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY:-}" ]] && _missing="$_missing VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY"
+    if [[ -n "$_missing" ]]; then
+      red "  issuer-api2 will NOT boot — missing:$_missing"
+      red "  Generate EC P-256 JWKs wrapped as {\"type\":\"jwk\",\"jwk\":{...}} and set them in .env"
+    else
+      python3 - "$issuer2_conf" "$VERIFIABLY_ISSUER2_CI_TOKEN_KEY" "$VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY" <<'PYEOF'
+import re, sys
+path, ci, enc = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+text = re.sub(r'(?m)^ciTokenKey\s*=.*$',
+              'ciTokenKey = """%s"""' % ci, text, count=1)
+text = re.sub(r'(?m)^credentialEncryptionKey\s*=.*$',
+              'credentialEncryptionKey = """%s"""' % enc, text, count=1)
+with open(path, "w", encoding="utf-8", newline="") as f:
+    f.write(text)
+PYEOF
+      green "  rendered issuer-api2 ciTokenKey + credentialEncryptionKey"
+    fi
+  fi
+}
+
+# provision_issuer2_certificates generates the mdoc issuance certificate chain
+# on first deploy and renders the DSC into issuer2-profiles.conf's x5chain.
+#
+# WHY THIS EXISTS
+# The committed issuer2-profiles.conf carries walt.id's PUBLISHED EXAMPLE
+# certificate. Its public key is not the operator's signing key, and ISO
+# 18013-5 gives a verifier no source for the signing key other than the
+# x5chain leaf. So a clean deploy comes up, issues credentials, returns 200 on
+# everything, and produces mdocs that every conformant wallet rejects — a real
+# wallet reports only "No trusted certificate was found while validating the
+# X.509 chain". Nothing in walt.id logs a complaint. This function is what
+# closes that gap without a human remembering to.
+#
+# KEY/CERTIFICATE BINDING
+# cmd/mdl-pki-gen generates the DSC key and certifies THAT key, then emits both
+# the certificate and the matching VERIFIABLY_ISSUER2_KEY_X/_Y/_D coordinates.
+# They cannot drift apart, because one command produces both from one key. That
+# mismatch is the exact failure that has already reached a live deployment.
+#
+# IDEMPOTENCE
+# Both halves are no-clobber, the same posture as seed_credential_issuer_catalog:
+#   - mdl-pki-gen returns early if dsc.pem exists, so a redeploy never
+#     regenerates. Regenerating would start signing with a key that credentials
+#     already in citizens' wallets do not carry in their x5chain.
+#   - the x5chain is only rewritten while the committed walt.id example
+#     certificate is still in place, so an operator who pasted in their own real
+#     chain keeps it.
+# An operator supplying real material just drops dsc.pem/iaca.pem into the certs
+# directory (and sets the three key vars) before the first deploy; generation
+# then skips entirely.
+#
+# The generated material is proof-of-concept: every subject carries
+# O=POC-DO-NOT-TRUST so it cannot be mistaken for a real PKI.
+#
+# HOW WALLETS LEARN THIS ANCHOR (and what replaces it)
+# The IACA generated here is published at GET /trust/mdoc-anchors
+# (internal/handlers/mdoc_anchors.go), so a wallet fetches the CURRENT anchor
+# over HTTPS instead of shipping it compiled in — which is what used to break
+# every time this function generated a new root on a fresh host.
+#
+# That endpoint has the issuer certifying its own trust anchor, which is only
+# acceptable for a POC: a compromised issuer could mint a root and vouch for
+# it. Production replaces it with the Hub's VICAL — a list of legitimate
+# issuers signed by an authority DISTINCT from any single issuer, so
+# self-certification is impossible. See internal/handlers/mdoc_anchors.go for
+# the migration path through internal/trust/registry.go's TrustedIssuer.
+#
+# Subject C/ST are configurable because @animo-id/mdoc cross-checks the mdoc's
+# issuing_country against countryName and issuing_jurisdiction against
+# stateOrProvinceName. A mismatch is a rejection at accept time, and not every
+# deployment is Dominican.
+provision_issuer2_certificates() {
+  local certs_dir="$SCRIPT_DIR/deploy/k8s/config/issuer2/certs"
+  # The RUNTIME profiles file (gitignored), not the tracked *.baseline.conf.
+  # seed_issuer2_configs has already cp -n'd it into place. Rendering the
+  # x5chain into the baseline would put this deployment's real certificate in
+  # git and lose it again on the next checkout.
+  local profiles="$SCRIPT_DIR/deploy/k8s/config/issuer2/issuer2-profiles.conf"
+  local dsc="$certs_dir/dsc.pem"
+  local iaca="$certs_dir/iaca.pem"
+  local key_env="$certs_dir/issuer2.env"
+  local aux_env="$certs_dir/issuer2-aux.env"
+
+  if [[ ! -f "$profiles" ]]; then
+    red "  WARN: $profiles missing — issuer2 certificate provisioning skipped"
+    return 0
+  fi
+
+  local country="${VERIFIABLY_ISSUER2_CERT_COUNTRY:-DO}"
+  local province="${VERIFIABLY_ISSUER2_CERT_PROVINCE:-DO-01}"
+  local authority="${VERIFIABLY_ISSUER2_CERT_AUTHORITY:-VERIFIABLY POC}"
+
+  # Run the generator when either the DSC or the aux service keys are
+  # missing. mdl-pki-gen re-checks both gates itself (independently — see
+  # ensureAuxKeys in cmd/mdl-pki-gen/main.go), so this is only about keeping
+  # the docker run off the path of a normal redeploy where both already
+  # exist; the OR here is what makes an operator migrating in from before
+  # issuer2-aux.env existed actually get it generated, instead of the DSC
+  # gate alone permanently short-circuiting this whole block.
+  if [[ ! -f "$dsc" || ! -f "$aux_env" ]]; then
+    mkdir -p "$certs_dir"
+    bold "  Generating mdoc issuance certificates (first deploy)"
+    # No Go toolchain is assumed on the deploy host — deploy.sh already
+    # requires docker, so build and run the generator in the official image.
+    # The module cache is not persisted; this is a once-per-deployment cost.
+    # MSYS_NO_PATHCONV=1: Git Bash on Windows rewrites POSIX-looking paths in
+    # docker arguments into Windows form, turning -w /src into
+    # 'C:/Program Files/Git/src' and failing the run. Unset and ignored on
+    # Linux/macOS, so this is safe everywhere.
+    if ! MSYS_NO_PATHCONV=1 docker run --rm \
+        -v "$SCRIPT_DIR":/src -w /src \
+        -e GOFLAGS=-mod=mod \
+        golang:1.25-alpine \
+        go run ./cmd/mdl-pki-gen \
+          -out "/src/deploy/k8s/config/issuer2/certs" \
+          -country "$country" -province "$province" -authority "$authority"; then
+      red "  issuer2 certificate generation FAILED — the deployment will issue"
+      red "  mdocs carrying walt.id's example certificate, which no wallet accepts."
+      return 1
+    fi
+  fi
+
+  [[ -f "$dsc" ]] || { red "  WARN: $dsc missing after generation — skipping x5chain render"; return 0; }
+
+  # Load the generated coordinates into the environment compose passes through,
+  # and persist them to .env so a later `up` (which does not re-run generation)
+  # still has them. Never overwrite values an operator set themselves.
+  if [[ -f "$key_env" ]]; then
+    local _line _var _val
+    while IFS= read -r _line; do
+      [[ "$_line" == VERIFIABLY_ISSUER2_KEY_* ]] || continue
+      _var="${_line%%=*}"
+      _val="${_line#*=}"
+      if [[ -z "${!_var:-}" ]]; then
+        export "$_var=$_val"
+        [[ -n "${VERIFIABLY_ENV_FILE:-}" ]] && set_env_var "$VERIFIABLY_ENV_FILE" "$_var" "$_val"
+      fi
+    done < "$key_env"
+    green "  issuer2 signing key loaded from $key_env"
+  fi
+
+  # Same load-and-persist for the two aux service keys issuer-api2's
+  # docker-compose `:?` guard requires before it will start at all
+  # (VERIFIABLY_ISSUER2_CI_TOKEN_KEY, VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY).
+  # Each line is `VAR={"type":"jwk",...}` — the value itself contains `=`
+  # inside the JWK's base64url fields is never the case (base64url has no
+  # '='), but IFS= read with `_val="${_line#*=}"` (first '=' only, same as
+  # the loop above) is what makes this safe regardless.
+  if [[ -f "$aux_env" ]]; then
+    local _line _var _val
+    while IFS= read -r _line; do
+      [[ "$_line" == VERIFIABLY_ISSUER2_CI_TOKEN_KEY=* || "$_line" == VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY=* ]] || continue
+      _var="${_line%%=*}"
+      _val="${_line#*=}"
+      if [[ -z "${!_var:-}" ]]; then
+        export "$_var=$_val"
+        [[ -n "${VERIFIABLY_ENV_FILE:-}" ]] && set_env_var "$VERIFIABLY_ENV_FILE" "$_var" "$_val"
+      fi
+    done < "$aux_env"
+    green "  issuer2 service keys (ciTokenKey, credentialEncryptionKey) loaded from $aux_env"
+  fi
+
+  # Render the DSC (and its IACA) into defaultIssuerX5chain, but only while the
+  # committed walt.id example certificate is still there. Once this file carries
+  # a real chain — ours or the operator's — leave it alone.
+  python3 - "$profiles" "$dsc" "$iaca" <<'PYEOF'
+import re, sys
+
+profiles_path, dsc_path, iaca_path = sys.argv[1], sys.argv[2], sys.argv[3]
+
+with open(profiles_path, encoding="utf-8") as f:
+    text = f.read()
+
+# walt.id's published example certificate, identified by the CN baked into it.
+# Matching on this rather than on "is there any cert" is what makes the render
+# no-clobber: an operator-supplied chain does not contain it.
+WALTID_EXAMPLE = "MIIBeTCCAR8CFHrWgrGl5KdefSvRQhR"
+if WALTID_EXAMPLE not in text:
+    print("  x5chain already carries a non-example certificate — left as is")
+    raise SystemExit(0)
+
+def pem_body(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read().strip()
+
+certs = [pem_body(dsc_path)]
+try:
+    certs.append(pem_body(iaca_path))
+except OSError:
+    pass  # DSC alone is a valid x5chain; the IACA is the trust anchor.
+
+# HOCON triple-quoted strings, one per certificate, leaf first.
+block = "defaultIssuerX5chain = [\n" + ",\n".join(
+    '  """%s"""' % c for c in certs
+) + "\n]\n"
+
+new, n = re.subn(
+    r'(?ms)^defaultIssuerX5chain = \[.*?^\]\n',
+    lambda m: block,
+    text,
+    count=1,
+)
+if not n:
+    raise SystemExit("  ERROR: could not locate defaultIssuerX5chain block")
+
+with open(profiles_path, "w", encoding="utf-8", newline="") as f:
+    f.write(new)
+print("  rendered issuer2 x5chain (%d certificate(s), leaf first)" % len(certs))
+PYEOF
+
+  # The IACA is the trust anchor an operator imports into a wallet, so say
+  # where it is rather than leaving them to find it.
+  if [[ -f "$iaca" ]]; then
+    green "  IACA trust anchor for wallet import: $iaca"
+  fi
+}
+
+# announce_issuer2_trust_anchor tells the operator where the IACA is, at the
+# END of a deploy where it is still on screen.
+#
+# An mdoc is only trustworthy to a wallet that recognises its trust anchor. Our
+# IACA is self-signed and in no wallet's default store, so unless the operator
+# imports this file, every credential this deployment issues is refused — and
+# the wallet's message ("No trusted certificate was found") points at the
+# certificate, not at the missing import. Printing the path is what turns that
+# into a two-minute fix instead of a debugging session.
+announce_issuer2_trust_anchor() {
+  local iaca="$SCRIPT_DIR/deploy/k8s/config/issuer2/certs/iaca.pem"
+  [[ -f "$iaca" ]] || return 0
+  bold "▶ mdoc trust anchor"
+  echo "    Import this IACA into your wallet to accept mdocs from this deployment:"
+  echo "      $iaca"
+  echo "    Generated demo PKI (O=POC-DO-NOT-TRUST). The DSC expires in at most"
+  echo "    457 days (ISO/IEC 18013-5 Annex B); re-issue credentials after that."
 }
 
 # seed_credential_issuer_catalog seeds the runtime credential-issuer-metadata.conf
@@ -85,6 +357,104 @@ seed_credential_issuer_catalog() {
   fi
   cp "$baseline" "$runtime"
   green "  seeded $runtime from baseline"
+}
+
+# seed_issuer2_configs is seed_credential_issuer_catalog's counterpart for
+# issuer-api2. Same split, same reason, two files instead of one:
+#
+#   issuer2-profiles.conf           <- provision_issuer2_certificates renders
+#                                      the deployment's real DSC/IACA x5chain
+#                                      into defaultIssuerX5chain at deploy time.
+#   credential-issuer-metadata.conf <- setIssuer2Display (catalog_issuer2.go)
+#                                      rewrites a docType's display block every
+#                                      time an operator saves a custom mdoc
+#                                      schema under their own name.
+#
+# Both were tracked in git while carrying that generated/operator content, so a
+# `git pull`, `git checkout` or `git stash pop` silently reverted them — putting
+# walt.id's PUBLISHED EXAMPLE certificate back into the x5chain (every mdoc
+# issued after that is refused by every wallet, with no error on our side) and
+# throwing away the operator's schema display name. Neither loss announces
+# itself. Tracking the *.baseline.conf seeds instead, and gitignoring the
+# runtime files, is what makes the generated state survive git operations.
+#
+# `cp -n` (no-clobber) is load-bearing, not defensive: an operator upgrading an
+# existing deployment already has real certificates and a saved display name
+# sitting at the runtime paths, and seeding must never overwrite them. A second
+# run is a no-op for the same reason.
+#
+# Ordering: deploy.sh calls this BEFORE provision_issuer2_certificates, which
+# reads and rewrites the runtime issuer2-profiles.conf and would otherwise find
+# nothing there on a fresh clone.
+#
+# To adopt upstream baseline changes after a deployment has been seeded, the
+# operator merges them into the runtime file by hand. Diffs are intentional state.
+seed_issuer2_configs() {
+  local dir="$SCRIPT_DIR/deploy/k8s/config/issuer2"
+  local name
+  for name in issuer2-profiles credential-issuer-metadata; do
+    local baseline="$dir/$name.baseline.conf"
+    local runtime="$dir/$name.conf"
+    if [[ ! -f "$baseline" ]]; then
+      red "  WARN: $baseline missing — issuer2 $name seed skipped"
+      continue
+    fi
+    if [[ -f "$runtime" ]]; then
+      continue
+    fi
+    cp "$baseline" "$runtime"
+    green "  seeded $runtime from baseline"
+  done
+}
+
+# seed_inji_authcode_configs is seed_issuer2_configs's counterpart for Inji
+# Certify's Auth-Code path. Same split, same reason, two files instead of two
+# (one per MOSIP service that reads operator-added scopes):
+#
+#   certify-postgres-dataprovider.properties <- applyAuthcodeSchema
+#                                                (internal/handlers/inji_schema.go)
+#                                                appends one scope-query-mapping
+#                                                brace-entry per saved schema.
+#   credential-scopes.properties              <- same handler appends the
+#                                                matching eSignet scope +
+#                                                scope-resource-mapping pair.
+#
+# Both used to be tracked in git while carrying that operator-appended state, so
+# a `git pull`, `git checkout` or `git stash pop` on a deployed host silently
+# reverted every custom Auth-Code credential_config's scope mapping back to the
+# seed's base-only shape — breaking already-issued Auth-Code schemas with no
+# error on either side. Tracking the *.baseline.properties seeds instead, and
+# gitignoring the runtime files, is what makes the appended state survive git
+# operations (mirrors seed_issuer2_configs above, written for the identical
+# walt.id bug).
+#
+# `cp -n`-equivalent (skip if runtime exists) is load-bearing, not defensive:
+# an operator upgrading an existing deployment already has real operator-added
+# scopes sitting at the runtime paths, and seeding must never overwrite them.
+#
+# Ordering: deploy.sh calls this before start-container.sh bind-mounts the
+# runtime paths into verifiably-go — a fresh clone must have both runtime files
+# in place before the container that reads (and later rewrites) them starts.
+#
+# To adopt upstream baseline changes after a deployment has been seeded, the
+# operator merges them into the runtime file by hand. Diffs are intentional state.
+seed_inji_authcode_configs() {
+  local certify_dir="$SCRIPT_DIR/deploy/compose/stack/inji/certify"
+  local esignet_dir="$SCRIPT_DIR/deploy/compose/stack/inji/esignet"
+  local baseline runtime
+  for pair in "$certify_dir/certify-postgres-dataprovider" "$esignet_dir/credential-scopes"; do
+    baseline="$pair.baseline.properties"
+    runtime="$pair.properties"
+    if [[ ! -f "$baseline" ]]; then
+      red "  WARN: $baseline missing — Inji auth-code config seed skipped"
+      continue
+    fi
+    if [[ -f "$runtime" ]]; then
+      continue
+    fi
+    cp "$baseline" "$runtime"
+    green "  seeded $runtime from baseline"
+  done
 }
 
 render_wso2_deployment_toml() {
@@ -197,6 +567,13 @@ render_public_caddyfile() {
   # presents a self-signed cert internally.
   local -a entries=(
     "walt-issuer|issuer-api:7002|http"
+    # walt-issuer2: mso_mdoc (mDL / Photo ID) issuance. Needs a public origin
+    # because issuer-api2 stamps its own baseUrl into the credential offer the
+    # citizen's wallet resolves — an offer pointing at the compose-internal
+    # host is unreachable from a phone. Only the OID4VCI protocol paths are
+    # proxied; see the handle rules below, which deliberately do NOT expose
+    # /issuer2/* (unauthenticated management API).
+    "walt-issuer2|issuer-api2:7002|http"
     "walt-wallet|wallet-api:7001|http"
     "walt-verifier|verifier-api:7003|http"
     "inji-certify|certify-nginx:80|http"
@@ -355,6 +732,42 @@ PYEOF
         printf '\t\trewrite * /inji-proxy/.well-known/did.json\n'
         printf '\t\treverse_proxy verifiably-go:8080\n'
         printf '\t}\n'
+      fi
+      # walt-issuer2: expose ONLY the OID4VCI protocol surface a wallet needs.
+      #
+      # issuer-api2 ships no authentication knob whatsoever. /issuer2/* lets
+      # anyone who can reach it mint a signed credential with arbitrary subject
+      # data (POST /issuer2/credential-offers) and read issuerKey private
+      # material (GET /issuer2/sessions). Network isolation is the mitigation,
+      # which is why the compose service publishes no ports — but the wallet
+      # still needs a public origin, because issuer-api2 stamps its own baseUrl
+      # into the offer the citizen scans.
+      #
+      # So: allowlist the protocol paths, and return 404 for everything else.
+      # verifiably-go keeps reaching /issuer2/* over the compose network, where
+      # it was always reachable. Do NOT replace this with a bare reverse_proxy.
+      #
+      # /trust/mdoc-anchors is the one exception, and it does NOT proxy to
+      # issuer-api2 at all — it proxies to verifiably-go, a different
+      # container. The wallet resolves the OID4VCI credential_issuer field
+      # (this walt-issuer2 origin) and fetches {origin}/trust/mdoc-anchors
+      # from it (src/agent/mdocTrustAnchors.ts), but the endpoint itself lives
+      # on verifiably-go (internal/handlers/mdoc_anchors.go), because that is
+      # the process that reads deploy/k8s/config/issuer2/certs/iaca.pem.
+      # Without this handle, the wallet's fetch 404s here — the anchor never
+      # loads, Credo falls back to the compiled-in static certificate, and a
+      # regenerated root (every deploy.sh run) reproduces "No trusted
+      # certificate was found" even though the dynamic-anchor code is working
+      # correctly on both ends. Proven live: this endpoint returned 404 at
+      # this origin before this handle was added, while the same path 200'd
+      # at verifiably's own domain the whole time.
+      if [[ "$name" == "walt-issuer2" ]]; then
+        printf '\thandle /openid4vci/* {\n\t\treverse_proxy %s\n\t}\n' "$upstream"
+        printf '\thandle /.well-known/* {\n\t\treverse_proxy %s\n\t}\n' "$upstream"
+        printf '\thandle /trust/mdoc-anchors {\n\t\treverse_proxy verifiably-go:8080\n\t}\n'
+        printf '\thandle {\n\t\trespond 404\n\t}\n'
+        printf '}\n\n'
+        continue
       fi
       case "$proto" in
         https-skipverify)

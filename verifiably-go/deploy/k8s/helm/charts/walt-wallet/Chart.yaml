@@ -3,4 +3,4 @@ name: walt-wallet
 description: Walt.id wallet (waltid/wallet-api). Stateful — backed by CloudNativePG.
 type: application
 version: 0.1.0
-appVersion: "0.18.2"
+appVersion: "0.23.1"

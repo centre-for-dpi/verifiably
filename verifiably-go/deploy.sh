@@ -87,6 +87,43 @@ cmd_up() {
     set +o allexport
   fi
 
+  # DPG-stack Postgres passwords: an operator upgrading from before
+  # ensure_dpg_stack_pg_passwords existed already has a .env file, so the
+  # first-time-setup wizard above never ran for them and none of these
+  # variables were generated for their deployment.
+  #
+  # Deliberately NOT auto-generated here the way cmd_setup does it for a
+  # fresh deploy: cmd_setup's wizard only ever runs before any Postgres
+  # volume exists, so a freshly generated password is the FIRST password
+  # that volume ever gets. Here, on every later `up`, the Postgres volumes
+  # already exist with whatever password they were initialized under
+  # (docker-compose.yml's weak fallback, most likely) — generating a NEW
+  # value and exporting it would make every consuming container (issuer-api,
+  # mimoto, esignet, ...) authenticate with a password Postgres was never
+  # told about, breaking a previously-working deployment on this exact `up`.
+  # Postgres does not re-read POSTGRES_PASSWORD on an already-initialized
+  # volume; only `ALTER USER ... PASSWORD ...` run inside the container
+  # changes it (see .env.example's identical warning for the four Inji/
+  # citizens passwords already parametrized). So: warn once per missing
+  # variable and let the operator rotate it deliberately (generate a value,
+  # ALTER USER, then set it in .env) rather than silently doing it here.
+  if [[ -f "$_env_file" ]]; then
+    local _pg_var_check _pg_missing=()
+    for _pg_var_check in POSTGRES_PASSWORD VERIFIABLY_PG_PASSWORD CERTIFY_PG_PASSWORD \
+      CERTIFY_PREAUTH_PG_PASSWORD INJI_VERIFY_PG_PASSWORD CITIZENS_PG_PASSWORD INJIWEB_PG_PASSWORD; do
+      # Same comparison ensure_dpg_stack_pg_passwords uses (see its own
+      # comment on _dpg_pg_default_password): common.sh's .env.example
+      # fallback means these are never actually EMPTY by the time cmd_up
+      # runs, only still equal to the shipped weak default.
+      [[ -z "${!_pg_var_check:-}" || "${!_pg_var_check}" == "$(_dpg_pg_default_password "$_pg_var_check")" ]] && _pg_missing+=("$_pg_var_check")
+    done
+    if [[ ${#_pg_missing[@]} -gt 0 ]]; then
+      yellow "  NOTE: ${#_pg_missing[@]} DPG-stack Postgres password(s) not set in .env, still on docker-compose.yml's weak default: ${_pg_missing[*]}"
+      yellow "  Not auto-generating: these Postgres volumes may already be initialized under the current default."
+      yellow "  To rotate: generate a value, run ALTER USER ... PASSWORD '<new>'; inside the running container, THEN set it in .env."
+    fi
+  fi
+
   # Detect VERIFIABLY_PUBLIC_HOST change vs. what is baked into running
   # containers (SERVICE_HOST env var on issuer-api / verifier-api / wallet-api,
   # and KC_HOSTNAME_URL on keycloak). When the host changed, recreate those
@@ -213,6 +250,23 @@ cmd_up() {
     render_public_caddyfile
   fi
 
+  # issuer-api2's runtime configs. Must run BEFORE
+  # provision_issuer2_certificates, which renders this deployment's real
+  # x5chain into the runtime issuer2-profiles.conf and would find no file to
+  # render into on a fresh clone. Seeded from committed baselines with cp -n,
+  # so an existing deployment's certificates and saved schema display name are
+  # never overwritten. Both runtime paths are gitignored.
+  seed_issuer2_configs
+
+  # mdoc issuance certificates. Runs BEFORE render_waltid_service_confs
+  # because it exports VERIFIABLY_ISSUER2_KEY_X/_Y/_D on first deploy, and
+  # the issuer2 conf render (and compose itself) needs them set.
+  #
+  # Without this a clean deploy issues mdocs carrying walt.id's published
+  # example certificate — accepted by nothing, and reported as an error by
+  # nothing on our side.
+  provision_issuer2_certificates
+
   # walt.id issuer-api + verifier-api baseUrls — must match the host
   # the wallet sees, otherwise every OID4VP request bakes localhost into
   # client_id / presentation_definition_uri and the wallet 500s.
@@ -223,6 +277,13 @@ cmd_up() {
   # (appended by internal/adapters/waltid/issuer.go via SaveCustomSchema)
   # survive every git pull/checkout. The runtime path is gitignored.
   seed_credential_issuer_catalog
+
+  # Inji Certify Auth-Code's runtime configs — same split, same reason, for
+  # the two properties files applyAuthcodeSchema (internal/handlers/inji_schema.go)
+  # appends operator-saved scope mappings into. Must run BEFORE
+  # start-container.sh, which bind-mounts these runtime paths into
+  # verifiably-go; a fresh clone has neither file until this seeds them.
+  seed_inji_authcode_configs
 
   # WSO2's accountrecoveryendpoint signup-success page is patched at
   # container start with a meta-refresh redirect; the URL it points at
@@ -377,7 +438,22 @@ cmd_up() {
   # are still serving with the old baseUrl baked into ApplicationConfig.
   # Restart them so the new conf is picked up. Idempotent — same baseUrl
   # → same restarted-with-same-state outcome.
-  for svc in issuer-api verifier-api; do
+  #
+  # issuer-api2 needs the same treatment for a different reason: it loads
+  # its whole profile catalog (issuer2-profiles.conf) into memory once at
+  # boot and never re-reads it. seed_issuer2_configs above only writes that
+  # runtime file if it does not already exist — the documented way to make
+  # an existing deployment pick up a NEW baseline (e.g. an added profile)
+  # is to delete the runtime conf and let this `up` reseed it — but a plain
+  # `compose up -d` leaves an already-running issuer-api2 container
+  # untouched, so the reseeded file sits on disk unread until something
+  # restarts the container. Reproduced live: deleting issuer2-profiles.conf
+  # and reseeding 4 new mDL profiles from an updated baseline left
+  # GET /issuer2/profiles still reporting only the old profile set until
+  # `docker restart` was run by hand. Restarting it on every `up`, same as
+  # issuer-api/verifier-api, closes that gap — idempotent for the common
+  # case where nothing changed.
+  for svc in issuer-api verifier-api issuer-api2; do
     if compose ps --services 2>/dev/null | grep -qx "$svc"; then
       compose restart "$svc" >/dev/null 2>&1 || true
     fi
@@ -594,6 +670,17 @@ cmd_up() {
     all|inji) apply_inji_verify_schema ;;
   esac
 
+  # Each Inji Certify instance's own self-signed mock-HSM ROOT must be
+  # extracted before GET /trust/mdoc-anchors can serve it — see
+  # provision_inji_root_anchors's own header comment for the full trace.
+  # Runs after the instances are up (their local.p12 is generated on first
+  # boot, not before) and before verifiably-go's own image build below, so a
+  # fresh deploy's very first /trust/mdoc-anchors response already includes
+  # both roots.
+  case "$scenario" in
+    all|inji) provision_inji_root_anchors ;;
+  esac
+
   bold "▶ Building verifiably-go image ($VERIFIABLY_IMAGE)"
   # --progress=plain streams every step's output to the terminal so the
   # operator can SEE which step is slow or stuck. Previously this was
@@ -612,6 +699,7 @@ cmd_up() {
   start_container "$scenario"
   echo "    point your browser at $VERIFIABLY_PUBLIC_URL"
   verify_oidc_discovery
+  announce_issuer2_trust_anchor
 }
 
 # apply_inji_verify_schema creates the Inji Verify OID4VP `verify` schema + the
@@ -642,6 +730,102 @@ apply_inji_verify_schema() {
   else
     red "  inji-verify schema apply failed (retry: docker exec -i inji-verify-postgres psql -U postgres -d inji_verify < $sql)"
   fi
+}
+
+# provision_inji_root_anchors extracts each Inji Certify instance's own
+# self-signed ROOT certificate from its local HSM keystore (CERTIFY_PKCS12/
+# local.p12) into a plain .pem file GET /trust/mdoc-anchors can serve, so a
+# wallet verifying an Inji-issued mdoc has somewhere to fetch that anchor
+# from instead of only seeing walt.id's own IACA (iaca.pem, provisioned by
+# provision_issuer2_certificates above).
+#
+# WHY THIS EXISTS
+# Inji Certify's mock/dev signing path (mosip.kernel.keymanager, no external
+# HSM configured — download_hsm_client=false) generates its OWN root and
+# leaf certificate chain the first time each instance boots, entirely inside
+# its local.p12 keystore. That root has nothing to do with walt.id's IACA —
+# two independent PKIs exist in this one deployment, one per mdoc issuer.
+# Reproduced live: a real mDL fully issued and correctly signed by Inji
+# Certify still failed on-device with "No trusted certificate was found
+# while validating the X.509 chain" even AFTER GET /trust/mdoc-anchors was
+# routed through both Inji nginx instances (see those files' own comments) —
+# the wallet successfully fetched an anchor, just the wrong one (walt.id's).
+#
+# TWO INDEPENDENT ROOTS, NOT ONE
+# inji-certify (auth-code) and inji-certify-preauth each run their own HSM
+# keystore on their own isolated volume (certify-pkcs12 /
+# certify-preauth-pkcs12) — confirmed live by diffing both extracted roots
+# byte-for-byte and finding them different. Both must be provisioned.
+#
+# IDEMPOTENCE
+# No-clobber, the same posture as provision_issuer2_certificates: skips a
+# root whose target .pem file already exists, so a redeploy never
+# regenerates one a wallet may already be caching (ANCHOR_TTL_MS in
+# mdocTrustAnchors.ts is short — 5 minutes — but there is no reason to force
+# a refetch on every redeploy when the underlying keystore hasn't changed).
+# Delete the .pem file manually (or run `deploy.sh reset`, which wipes the
+# named volumes and therefore the keystores) to force regeneration.
+#
+# openssl is used instead of a Go/library-based PKCS12 parse because it is
+# already a dependency of this script's TLS cert generation elsewhere, and
+# a one-shot extraction at deploy time doesn't justify adding a PKCS12
+# library to verifiably-go itself.
+provision_inji_root_anchors() {
+  local certs_dir="$SCRIPT_DIR/deploy/k8s/config/issuer2/certs"
+  mkdir -p "$certs_dir"
+
+  local instance container_name volume_name out_file
+  for instance in authcode preauth; do
+    case "$instance" in
+      authcode) container_name="inji-certify"; out_file="$certs_dir/inji-authcode-root.pem" ;;
+      preauth)  container_name="inji-certify-preauth-backend"; out_file="$certs_dir/inji-preauth-root.pem" ;;
+    esac
+
+    if [[ -f "$out_file" ]]; then
+      continue  # already provisioned — see IDEMPOTENCE above
+    fi
+    if ! docker ps --format '{{.Names}}' | grep -qx "$container_name"; then
+      continue  # this instance isn't part of the running scenario
+    fi
+
+    local p12
+    p12="$(mktemp)"
+    if ! docker cp "$container_name:/home/inji/CERTIFY_PKCS12/local.p12" "$p12" >/dev/null 2>&1; then
+      yellow "  $instance: local.p12 not found in $container_name yet — skipping (retry on next deploy)"
+      rm -f "$p12"
+      continue
+    fi
+
+    # local.p12's password is mosip.kernel.keymanager.hsm.keystore-pass in
+    # certify-default.properties — "local" for every deployment (a dev/mock
+    # HSM password, not a real secret; the same value ships in that
+    # committed properties file).
+    #
+    # openssl pkcs12 -info lists every bag with its own "subject=.../issuer=
+    # ..." header immediately before its PEM block; the ROOT is the one bag
+    # whose subject and issuer are IDENTICAL (self-signed). awk walks the
+    # output tracking the two most recent subject/issuer lines and prints
+    # the PEM block that follows the pair where they match.
+    local root_pem
+    root_pem="$(docker run --rm -v "$p12:/local.p12:ro" alpine:3.20 sh -c '
+      apk add -q --no-cache openssl >/dev/null 2>&1
+      openssl pkcs12 -in /local.p12 -passin pass:local -nokeys -nomacver 2>/dev/null
+    ' | awk '
+      /^subject=/ { subj=$0; next }
+      /^issuer=/  { iss=$0; match_root=(subj == "subject=" substr(iss, index(iss,"=")+1)); next }
+      /^-----BEGIN CERTIFICATE-----/ { if (match_root) { capture=1 } }
+      capture { print }
+      /^-----END CERTIFICATE-----/ { if (capture) { exit } }
+    ')"
+    rm -f "$p12"
+
+    if [[ -z "$root_pem" ]]; then
+      red "  $instance: could not extract a self-signed ROOT from local.p12 — mdoc trust verification will fail for this instance's credentials"
+      continue
+    fi
+    printf '%s\n' "$root_pem" > "$out_file"
+    green "  $instance: extracted ROOT anchor -> $(basename "$out_file")"
+  done
 }
 
 # up_sunbird_registry brings up the Sunbird RC registry-of-record so the Inji
@@ -800,6 +984,21 @@ cmd_setup() {
   read -r _credebl_email
   _credebl_email="${_credebl_email:-$_default_credebl_email}"
 
+  # ── DPG stack Postgres passwords ─────────────────────────────────────────
+  # See ensure_dpg_stack_pg_passwords (scripts/common.sh) for why these are
+  # generated rather than left to docker-compose.yml's weak fallback
+  # literals. Safe specifically HERE because this wizard only ever runs
+  # before any Postgres volume exists (cmd_up's own gate: only when no .env
+  # is present) — a freshly generated password is the FIRST password each
+  # volume gets, nothing to mismatch against. The one edge case this does
+  # NOT cover: an operator who deletes .env but keeps the Docker volumes
+  # from a prior deploy — re-running this wizard would then generate
+  # passwords that don't match those already-initialized volumes. Keep
+  # `docker volume ls` / a backup of .env in mind before deleting it on a
+  # host with real data.
+  local _pg_generated=()
+  ensure_dpg_stack_pg_passwords _pg_generated
+
   # ── Write .env ────────────────────────────────────────────────────────────
   echo
   bold "  Writing ${env_file}"
@@ -819,7 +1018,19 @@ cmd_setup() {
     printf 'KEYCLOAK_ADMIN_USER=admin\n'
     printf 'KEYCLOAK_ADMIN_PASSWORD=%s\n\n' "$_kc_pass"
 
-    printf 'CREDEBL_ADMIN_EMAIL=%s\n' "$_credebl_email"
+    printf 'CREDEBL_ADMIN_EMAIL=%s\n\n' "$_credebl_email"
+
+    if [[ ${#_pg_generated[@]} -gt 0 ]]; then
+      printf '# DPG-stack Postgres passwords, generated on %s.\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      printf '# Every one of these Postgres containers is 127.0.0.1-bound (see\n'
+      printf '# deploy/compose/stack/docker-compose.yml) — this is defense in depth\n'
+      printf '# against another process on the same host, not the primary mitigation.\n'
+      local _pg_var
+      for _pg_var in "${_pg_generated[@]}"; do
+        printf '%s=%s\n' "$_pg_var" "${!_pg_var}"
+      done
+      printf '\n'
+    fi
   } > "$env_file"
 
   # ── Sync deploy/compose/stack/.env ────────────────────────────────────────

@@ -700,5 +700,382 @@
 
 ---
 
+## ISO mDL / Photo ID issuance — deferred documentation debt
+
+> Follow-up from the mDL production-issuance plan (2026-08-21). Four items deliberately deferred during execution, plus findings from Task 8's end-to-end verification that the plan's earlier tasks predate.
+
+### walt.id integration test cannot run under Docker-in-Docker
+
+`TestIntegration_WaltidParsesAppendedCatalog` mounts a `t.TempDir()` path
+into a `docker run` aimed at the host daemon. When the test itself runs
+inside a container (necessary on a machine with no host Go toolchain), that
+path does not exist on the host, so Docker silently mounts an **empty**
+directory and walt.id dies with
+`IllegalArgumentException: No loaded configuration: "issuer-service"`.
+
+Proven during the 0.23.1 upgrade by mounting a deliberately empty directory
+into the same image and reproducing the error verbatim. Nothing is wrong
+with the image or the repo's config — the config simply never arrives.
+
+The test also polls `http://localhost:hostPort` after publishing to the
+host, which fails from inside a container for a second, independent reason.
+
+Fix options: give the test a shared Docker network and address the container
+by name, or copy the fixture to a host-visible path, or install Go on the
+host. Until then the test is manual-only and cannot gate an upgrade.
+
+**Consequence for the 0.23.1 upgrade (commits `0293227`..`f1050a3`):** the
+task's designated Step 3 verification never ran green. The upgrade rests
+instead on the full unit suite passing and on the design-phase spike, which
+issued real credentials against a live 0.23.1 across all four code paths
+(`jwt_vc_json` with and without `credentialStatus`, `vc+sd-jwt`,
+`mso_mdoc`). Recorded here because `git log` alone does not show it.
+
+### DirectPDFPlain capability claim unverified for 0.23.1
+
+`scripts/gen-backends.sh:82` reads "No documented QR-on-PDF export at
+v0.23.1." The version was updated with the other pins, but nobody confirmed
+0.23.x did not add QR-on-PDF export. It is a negative claim, so it stays
+true unless the feature landed between 0.19 and 0.23 — worth a check against
+the release notes when someone is in there anyway.
+
+### docs/ still cites walt.id 0.18.2 — **partially closed 2026-08-24**
+
+`README.md`, `docs/deploy.md`, and `docs/dpg/walt-id.md` are now corrected
+to 0.23.1 — and NOT by mechanical find-replace: each specific behavior
+claim tied to the old version (proof-header shape, direct-verify endpoint,
+`ldp_vc` presentation, JARM support) was re-tested against real
+`waltid/{issuer,verifier,wallet}-api:0.23.1` containers (full OID4VCI/OID4VP
+flows, a packet-captured proof JWT, complete OpenAPI route enumeration) —
+see commits `5806bd2`, `a193df5`. Two concrete findings from that pass:
+the `kid`+`jwk` ambiguous-proof bug is gone at 0.23.1 (a real captured
+proof carries only `kid`), and JARM (`direct_post.jwt`) is now genuinely
+supported by walt.id but never requested by this repo's own adapter
+(`verifyBody` in `internal/adapters/waltid/verifier.go` has no
+`response_mode` field) — recorded as a new, scoped P1 item in
+`docs/haip-conformance.md`'s closure plan.
+
+**Still open:** `docs/dpg-matrix.md` (3 more "0.18.2" hits) was not part of
+that pass and still needs the same live-verification treatment, not a
+mechanical version swap — it makes claims (e.g. "OID4VP v1.0 is still
+landing in walt.id's wallet/demo apps through v0.18.2") that the 0.23.1
+testing this session ran didn't confirm one way or the other.
+
+### walt.id 0.18.2 references in Go comments — **still open**
+
+The 2026-08-21 upgrade to 0.23.1 changed every executable pin but left the
+documentation comments that cite v0.18.2 as the version whose source was
+read to verify a behaviour. Confirmed still present by grep (2026-08-24):
+`config.go` (3), `catalog.go` (5), `catalog_test.go` (2), `issuer.go` (5),
+`verifier.go` (4), `wallet.go` (7), `vctypes/vctypes.go` (2),
+`internal/mock/data.go` (6), plus one each in
+`internal/handlers/{inji_delegation,verifier,wallet}.go`.
+
+Not all "not bugs" anymore — the 2026-08-24 empirical pass (see above)
+found at least one of these comments describes behavior that has actually
+changed (the `kid`+`jwk` proof-ambiguity note in `wallet.go`'s
+`friendlyPresentError`, superseded by this session's packet-capture
+evidence that the proof no longer carries a `jwk` alongside `kid`). The
+others are unverified either way, not confirmed still-true — this pass
+only checked the prose docs and `haip-conformance.md`'s Gap 1, not the Go
+comments themselves.
+
+Deliberately deferred so the upgrade diff stayed reviewable. Worth a
+follow-up pass that empirically re-verifies each comment's claim against a
+real 0.23.1 container (as this session's docs pass did), not a mechanical
+version-string swap that would just repeat the mistake of asserting an
+unverified behavior.
+
+### Dead mdoc body-builder removed; the lesson it encoded is recorded here
+
+Task 3 hoisted the `mso_mdoc` dispatch to the top of `IssueToWallet`, out of
+the shared format switch, which orphaned the legacy mdoc body-builder.
+`buildMdocData` (`internal/adapters/waltid/issuer.go`), `coerceMdocValue`,
+and the `mdocBoolElements`/`mdocIntElements` tables it used have now been
+deleted — zero callers, zero tests, confirmed by grep before removal.
+
+`mdocNamespaceFor` looked like it belonged to the same dead span but is
+**not** dead: `internal/adapters/waltid/catalog.go` calls it as the fallback
+namespace for any docType absent from `docTypeProfiles`. It was kept, and
+its doc comment (`issuer2.go`) rewritten to describe its real caller instead
+of the deleted one.
+
+`coerceMdocValue`'s doc comment recorded something expensive to learn, worth
+keeping even though the code is gone: a conformant reader (Multipaz)
+rejected `age_over_18` and `age_over_21` because the boolean values arrived
+as the CBOR text string `"true"` instead of an actual boolean — found only
+by decoding the signed mdoc and seeing `age_over_18  str  'true'` in the
+CBOR. The cause was that `SubjectData` is `map[string]string` end to end (it
+comes from an HTML form), so without an explicit type-coercion step every
+element reaches the issuer as a JSON string and gets encoded as a CBOR text
+string, and a spec-conformant reader looking for a boolean finds a string
+and reports the element missing entirely rather than merely wrong.
+
+That code path is gone — issuer-api2 now handles CBOR typing declaratively
+through `mDocNameSpacesDataMappingConfig` profile mappings
+(`deploy/k8s/config/issuer2/issuer2-profiles.conf`) instead of a Go
+type-coercion function. But the lesson is not dead: **if those profile
+mappings are ever misconfigured for a boolean or integer element, this is
+the exact symptom that will reappear** — the credential issues successfully,
+looks structurally fine, and a conformant reader silently reports the
+element as absent. Decoding the signed mdoc's CBOR is the fastest way to
+confirm it, faster than suspecting the issuer or the wallet first.
+
+### F2 — walt.id's Photo ID profile omits the `portrait` byte-string mapping — **fixed 2026-09-01**
+
+`deploy/k8s/config/issuer2/issuer2-profiles.conf`'s `isoMdl` profile maps
+`portrait` to `conversionType = "base64StringToByteString"` under
+`mDocNameSpacesDataMappingConfig`. The `isoPhotoId` profile's equivalent
+block (namespace `org.iso.23220.1`) has no `portrait` entry at all — only
+`birth_date`, `issue_date`, `expiry_date`, and `portrait_capture_date` are
+mapped. Confirmed by reading both profiles side by side.
+
+Effect: Photo ID portraits are emitted as CBOR text instead of a byte
+string — the same class of conformance defect `coerceMdocValue` existed to
+avoid for booleans, but here it's upstream's vendor profile, not our code.
+
+**Fixed:** the missing `portrait` entry was added to `isoPhotoId`'s
+`entriesConfigMap` in `deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf`,
+mirroring `isoMdl`'s identical entry exactly (same `conversionType`). This
+had been deliberately deferred pending "its own review" — the review
+concluded there was nothing to weigh: `credentialData` already carried a
+`"portrait" = null` placeholder for this namespace (the trim step had
+correctly kept the key), only the type-conversion mapping was missing, and
+mirroring the mDL profiles' own mapping is not a fork/vendor-override
+decision, just closing a gap the vendor profile itself left inconsistent
+between its two mdoc docTypes. `profiletrim_test.go`'s
+`expectedPhotoIdMappings` — a dedicated regression guard that had been
+pinning the field's ABSENCE as correct — updated accordingly; full module
+build/vet/test green (31 packages).
+
+### VICAL-style trust anchor distribution — production replacement for the POC endpoint, not yet started
+
+`GET /trust/mdoc-anchors` (`internal/handlers/mdoc_anchors.go`) is a
+deliberate, documented POC: it serves the current IACA(s) unsigned, because
+an issuer signing its own anchor response adds no security an attacker
+forging the response couldn't also forge the signature over. The documented
+production replacement — a VICAL-shaped list signed by the Hub, extending
+`internal/trust/registry.go`'s `TrustedIssuer` model with an X.509 field,
+served from the Hub's already-signed `GET /trust-registry` — has 4 concrete
+technical steps written out in
+`docs/superpowers/adr/2026-08-23-mdl-trust-anchor-distribution.md`, but no
+owner, no target date, and (until this entry) no line in this tracker. It
+was a real gap: the ADR is honest about "nothing here is implemented", but
+that honesty lived only in the ADR, not in the place anyone scanning active
+work would look. Add here rather than let it stay ADR-only.
+
+### Injicertify's guard against mso_mdoc reaching Auth-Code — fixed 2026-08-31, was silently reachable via the schema builder UI
+
+`internal/handlers/schema.go`'s `SaveSchema` now rejects `Std == "mso_mdoc"`
+when the active DPG applies via the Auth-Code path, before either save
+route runs. Before this fix, nothing upstream of
+`injicertify.Adapter.IssueToWallet`'s own `driving_privileges` guard (which
+is gated on `ModePreAuth` specifically) filtered mso_mdoc out of the
+Auth-Code save path — and, contrary to that guard's own code comment
+("only possible via a hand-built API call; the UI never produces this
+combination"), the schema builder's normal `<select>` DID produce it: an
+operator could pick `mso_mdoc` while an Auth-Code DPG was active and save a
+`credential_config` with zero ISO/IEC 18013-5 Table 3 validation. Recorded
+here because the incorrect comment shipped for six days (2026-08-25 to
+2026-08-31) before a dedicated audit caught the gap between what the
+comment claimed and what `schema.go`'s actual routing did.
+
+### Photo ID namespace resolution — fixed 2026-08-31, was reintroduced in injicertify after being fixed once already in waltid
+
+`internal/adapters/injicertify/db.go`'s `mdocNamespaceForDocType`
+independently reimplemented waltid/issuer2.go's dot-stripping heuristic —
+correct for `org.iso.18013.5.1.mDL` by coincidence of that docType's shape,
+wrong for `org.iso.23220.photoid.1` (real namespace `org.iso.23220.1`, not
+the dot-stripped `org.iso.23220.photoid`) — without the `docTypeProfiles`
+fallback that already protects the waltid path from this exact bug. Fixed
+by promoting the namespace table to `internal/mdoc.NamespaceForDocType`, a
+single shared source both adapters now resolve through. Recorded here
+because the bug was silent: a Photo ID schema created through Inji Certify
+would sign and issue cleanly, non-conformant only in a way no test caught
+until this fix's own regression test (`TestIssueToWalletPhotoIDDoesNotRequireDrivingPrivileges`,
+which had been asserting the WRONG namespace as correct since it was
+written) started failing against the corrected code.
+
+### Security/robustness batch — fixed 2026-08-31 (full-stack audit follow-up)
+
+Six smaller findings from the 2026-08-31 audit, all fixed and covered by
+new tests in the same pass:
+
+- **Inji Certify + injiweb services published on `0.0.0.0`** instead of
+  `127.0.0.1` in `deploy/compose/stack/docker-compose.yml` (11 services:
+  `inji-certify`, `inji-certify-preauth`, `certify-nginx`,
+  `certify-preauth-nginx`, `inji-verify-service`, `inji-verify-ui`,
+  `vc-adapter`, `injiweb-mock-identity`, `injiweb-esignet`,
+  `injiweb-datashare`, `injiweb-mimoto`) — inconsistent with every Postgres
+  container in the same file, which already bound to loopback only. None
+  of production traffic depends on these host ports (Caddy/nginx route
+  over the Docker network); now bound to `127.0.0.1` like Postgres.
+- **Spring Boot Actuator wide open** on Inji Certify
+  (`management.endpoints.web.exposure.include=*` +
+  `management.endpoint.env.show-values=ALWAYS`), reachable unauthenticated
+  through certify-nginx's public `/v1/certify/` proxy — `GET
+  /v1/certify/actuator/env` returned `CERTIFY_PG_PASSWORD` in plaintext.
+  Restricted to `health,info` (the only endpoint anything in this
+  deployment — the docker-compose healthcheck — actually consumes).
+- **DPG-stack Postgres passwords never auto-generated** — `POSTGRES_PASSWORD`
+  etc. fell back to weak literals (`waltid`/`postgres`/`citizens`) with no
+  generator, unlike Hub/CREDEBL's own `ensure_*_env` pattern. Now generated
+  automatically by `./deploy.sh setup` on a fresh deploy (safe there
+  specifically: no Postgres volume exists yet); an existing deployment gets
+  a one-time NOTE instead of a silent rotation (rotating live would break
+  auth against an already-initialized volume without a matching `ALTER
+  USER`).
+- **MOSIP's `ErrorMessage` silently dropped** — `injicertify/issuer.go` only
+  ever surfaced the short `ErrorCode` from a `/v1/certify/pre-authorized-data`
+  error response, unlike `waltid/issuer2.go`'s deliberate policy of
+  surfacing the service's own wording verbatim. Now included when present.
+- **`driving_privileges` validated by count only, not per-entry shape** —
+  `injicertify/issuer.go` checked array length but forwarded each entry's
+  raw JSON to Inji Certify's Velocity template unvalidated. Now decoded
+  with `DisallowUnknownFields` against `mdoc.DrivingPrivilege` and each
+  entry's `vehicle_category_code` checked non-blank.
+- **mdoc `docType` not validated against the known-docType allowlist**
+  before reaching Inji Certify's Velocity template interpolation (unlike
+  claim field names, already strictly regex-validated). A hand-built POST
+  could carry an arbitrary docType string into `mdocVCTemplate`'s
+  unescaped `fmt.Sprintf` interpolation. Now validated against
+  `mdoc.KnownDocTypes()` in `SaveSchema`, the single entry point both
+  mso_mdoc save paths share.
+
+### Inji Certify Auth-Code baseline/runtime config split — fixed 2026-08-31, was tracked in git since the Auth-Code path was built
+
+`certify-postgres-dataprovider.properties` and `credential-scopes.properties`
+(both under `deploy/compose/stack/inji/`) carry operator-appended scope
+mappings — one per custom Auth-Code schema saved, written in place by
+`applyAuthcodeSchema` — but stayed tracked in git the whole time the
+Auth-Code path existed, unlike walt.id's `issuer2-profiles.conf`/
+`credential-issuer-metadata.conf`, which got the same baseline/runtime
+split back in the 2026-08-21 production-issuance work specifically to
+prevent this bug class. A `git pull`/`checkout`/`reset --hard` on a
+deployed host would silently revert every operator-added scope mapping,
+breaking already-issued Auth-Code credential configs with no visible
+error. `scripts/reset-authcode-catalog.sh` had already grown ad-hoc
+`git show HEAD:` tooling to cope with the resulting contamination — a
+symptom of the missing split, not a fix for it. Now split the same way:
+`*.baseline.properties` tracked seeds, gitignored runtime files, seeded by
+`seed_inji_authcode_configs` (`scripts/gen-caddy.sh`).
+
+### F3 — `verify.mjs` is hardcoded to the Go test vectors, not a general tool
+
+`internal/mdl/testdata/verify/verify.mjs` takes no path argument. It reads
+`mdl_full.cbor`, `iaca.pem`, and `dsc.pem` from a fixed `../vectors`
+directory relative to the script itself. Any documentation, runbook, or
+comment that tells someone to run `node verify.mjs <path>` is wrong — there
+is no argument parsing in the script at all.
+
+### F4 — structured mdoc fields (`driving_privileges`, `portrait`) — **FIXED**
+
+**Status: fixed.** Was: `driving_privileges` is an ISO 18013-5 array of
+structured objects (vehicle category code plus optional issue/expiry dates
+per category), but the walt.id adapter carried all subject data as
+`map[string]string` end to end because it comes from an HTML form. The field
+was declared a plain string, so the issue form rendered a text box; an
+operator typed `1` and the wallet failed on accept with
+
+```
+"error": "invalid_credential_request",
+"error_description": "Expected to execute conversion from json array, but input |"1"| is not a json array"
+```
+
+The offer was created fine (HTTP 201) — the failure landed later, when the
+wallet redeemed it, which is why it looked like a wallet bug.
+
+**What the fix does.** `backend.IssueRequest` gained `StructuredData
+map[string]json.RawMessage` as a SIBLING of `SubjectData`, which stays
+`map[string]string` for flat fields. `SubjectData` was deliberately NOT
+widened to `map[string]any`: `credebl`, `injicertify` and the legacy
+`waltid` JSON-LD path all iterate it directly into their payloads, so
+widening it would have made a structured claim appear as a stringified blob
+in a W3C credential with no compile error to catch it. `CredentialData` was
+considered and rejected — it replaces the WHOLE credential body, the wrong
+granularity when one field is structured and twenty stay flat on the same
+form. `issuer2RuntimeOverrides.CredentialData` widened to
+`map[string]map[string]any` so the array marshals verbatim; flat fields
+still marshal as JSON strings.
+
+`portrait` had the same root cause and shipped in the same change: it was a
+text box the operator would have had to paste base64 into, and now renders a
+file picker capped at 512 KB with JPEG/PNG sniffing. walt.id's profile maps
+it with `conversionType = "base64StringToByteString"`, so we hand over plain
+base64 and it does the CBOR conversion — the mediator boundary is unchanged
+and `internal/mdl` remains a verifier, never an emitter. The issue form now
+posts `multipart/form-data`; `SubmitIssue` falls back to `ParseForm` on
+`ErrNotMultipart` so API callers posting urlencoded keep working.
+
+Both are selected by `FieldSpec.Format` (`mdoc.FormatDrivingPrivileges`,
+`mdoc.FormatImage`), not by field name, matching how date/uri/number inputs
+are already chosen — so the sibling ISO byte-string elements
+(`signature_usual_mark`, Photo ID's `portrait`) need no new rule.
+
+**Verified end to end against the real `waltid/issuer-api2:0.23.1` image**,
+not only in unit tests. Booting it needs the config directory with
+`issuer-service.conf`'s `__RENDERED_BY_DEPLOY_*` placeholders filled in
+(deploy.sh does this; the committed file cannot boot as-is) plus the three
+`VERIFIABLY_ISSUER2_KEY_{X,Y,D}` coordinates. Driving a full OID4VCI
+redemption (offer → token → credential, with a real ES256
+`openid4vci-proof+jwt`) reproduced the operator's error verbatim for the
+`"1"` shape, returned HTTP 200 for the array shape, and decoding the signed
+mdoc's CBOR confirmed `driving_privileges` as a genuine array of 2 objects
+with tag-1004 full-dates, and `portrait` as a CBOR byte string carrying the
+PNG magic number.
+
+**What remained (now resolved).** The padding workaround originally described
+here is gone. `mdoc.DrivingPrivilegesArrayConfigSize` and `mdoc.PadDrivingPrivileges`
+no longer exist. walt.id's `arrayConfig` still requires an EXACT length
+match (that empirical finding still holds — confirmed for sizes 2, 3, and 6),
+but instead of padding to one fixed size, `deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf`
+now declares **one profile per real category count**: `isoMdl_1cat` through
+`isoMdl_4cat`, all sharing the same `credentialConfigurationId`
+(`org.iso.18013.5.1.mDL`). `internal/adapters/waltid/issuer2.go`'s
+`mdlProfileForCategoryCount` selects the profile matching the operator's
+REAL entry count — `n` real categories always produces exactly `n` entries
+on the wire, never padded and never truncated for `1 <= n <= 4`.
+
+An operator can now issue 1, 2, 3, or 4 distinct categories on one
+credential — the old "cannot issue more than 2" ceiling is gone, replaced by
+a ceiling of `mdoc.DrivingPrivilegesMaxCategories` (4), matching the number
+of provisioned profiles. 0 categories is now a hard error rather than an
+empty/padded array: `driving_privileges` is ISO/IEC 18013-5 Table 3
+MANDATORY, so `SubmitIssue` (`internal/handlers/issuance.go`) rejects an
+all-blank submission before it ever reaches the adapter, and
+`buildIssuer2Offer` rejects it again as a backstop if some other caller
+reaches the adapter directly. More than 4 filled rows is rejected by
+`SubmitIssue` rather than silently truncated by `mdoc.EncodeDrivingPrivileges`'s
+truncating backstop. F2's Photo ID `portrait` byte-string mapping gap was
+unaffected by this change (a separate profile field, unrelated to
+driving_privileges) — since fixed 2026-09-01, see F2's own entry above.
+
+Two error strings surfaced repeatedly while investigating the original F4
+failure and cost several attempts each to diagnose — recording them
+verbatim so the next person can search and find this entry instead of
+re-deriving the cause (the padding-specific explanation that used to follow
+the first one is obsolete now that no profile is padded; the length-mismatch
+mechanics themselves are still accurate and worth keeping):
+
+- **`Json array sizes (input & config) are not equal`** — misleading on its
+  face. It means the submitted `driving_privileges` array's length does not
+  match the exact length its profile's `arrayConfig` in
+  `mDocNameSpacesDataMappingConfig` declares (see `issuer2-profiles.baseline.conf`'s
+  `isoMdl_1cat`..`isoMdl_4cat` profiles). It is not a schema-shape error; it
+  is a length mismatch against a fixed-size array config — which is exactly
+  why one profile per real count now exists instead of one padded profile.
+- **`java.time.format.DateTimeParseException: Text '' could not be parsed at
+  index 0`** — means a mandatory date field was left unset (empty string).
+  Task 2 emptied the profile's sample data (`credentialData`) deliberately,
+  and `runtimeOverrides` **merges** onto the profile rather than replacing
+  it wholesale — so any date field you do not explicitly send in the
+  request stays `""` from the profile and fails issuance at signing time,
+  not at request-validation time. `portrait_capture_date` is the one nobody
+  expects to need, since it is not a field anyone thinks of as "a date" when
+  filling in mDL data.
+
+---
+
 *Last updated: 2026-06-09 | Credential delivery mechanism model documented in `docs/credential-delivery.md` (8 mechanisms, 2-axis quadrant). Added to Architectural Backlog: deferred issuance, holder notification channel (unifies push-issuance + push-revocation), DIDComm proactive delivery spike.*
 *2026-05-20 | Feature roadmap added: Credential Discovery & Self-Service Issuance, National ID Subject Binding (3 levels), PKI/HSM/KMS Integration, Delegated Access/Representation, INJI E2E test tracking.*
+*2026-08-21 | ISO mDL / Photo ID issuance: recorded deferred documentation debt (stale 0.18.2 references, unverified DirectPDFPlain claim for 0.23.1) and Task 8 end-to-end findings (walt.id Photo ID profile missing portrait byte-string mapping, verify.mjs has no path argument, map[string]string subject data cannot carry driving_privileges). Removed the dead mdoc body-builder orphaned by Task 3's routing change; kept mdocNamespaceFor, which catalog.go still calls.*

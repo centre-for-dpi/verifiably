@@ -1,8 +1,11 @@
 # OID4VC High Assurance Interoperability Profile (HAIP) — Conformance Audit
 
 **Spec:** [openid.net/specs/openid4vc-high-assurance-interoperability-profile-sd-jwt-vc-1_0.html](https://openid.net/specs/openid4vc-high-assurance-interoperability-profile-sd-jwt-vc-1_0.html)  
-**Audited:** 2026-05-16  
-**Scope:** verifiably-go as orchestrator (not issuer/verifier DPG); walt.id 0.18.2 as primary DPG.
+**Audited:** 2026-05-16 (original audit, against walt.id 0.18.2)  
+**Gap 1 re-audited:** 2026-08-24 (see note below) — the other findings below have
+**not** been re-audited and may also be stale; only Gap 1 was checked.  
+**Scope:** verifiably-go as orchestrator (not issuer/verifier DPG); walt.id
+0.23.1 is the version actually deployed today (`deploy/compose/stack/docker-compose.yml`).
 
 ---
 
@@ -48,7 +51,7 @@
 | Requirement | Status | Notes |
 |-------------|--------|-------|
 | `vp_token` returned via `response_mode=direct_post` | ✅ | verified in `internal/adapters/waltid/verifier.go` |
-| `response_mode=direct_post.jwt` (HAIP REQUIRED) | ❌ | **Gap**: HAIP mandates JARM-encrypted response; walt.id 0.18.2 supports `direct_post` only |
+| `response_mode=direct_post.jwt` (HAIP REQUIRED) | ❌ | **Gap moved, not closed** (re-verified 2026-08-24): walt.id `verifier-api:0.23.1` genuinely implements JARM — a live `POST /openid4vc/verify` with `responseMode: direct_post.jwt` returns a real encrypted request (`client_metadata.jwks.keys[0]` EC P-256 `use:enc`/`alg:ECDH-ES`, `authorization_encrypted_response_enc:"A256GCM"`), confirmed via a real container, not source reading. But `internal/adapters/waltid/verifier.go`'s `verifyBody` struct has no `response_mode`/`responseMode` field at all (grepped — zero matches) and never sends one, so **verifiably-go doesn't request it even though the backend can now serve it**. The gap is in this repo's adapter code, not in walt.id. |
 | `client_id_scheme=x509_san_dns` (HAIP REQUIRED) | ❌ | **Gap**: walt.id uses `redirect_uri` as `client_id`; x509 cert not provisioned |
 | `client_id_scheme=did` | ✅ | current default in walt.id |
 | Presentation exchange (DIF PE) | ✅ | `presentation_definition` wired via OID4VP template |
@@ -85,14 +88,32 @@
 
 ### ❌ Gap 1: `response_mode=direct_post.jwt` (JARM)
 **Requirement:** HAIP §5.5 — response MUST be JWT-encrypted to the verifier's public key.  
-**Current state:** `direct_post` (plain JSON body, no encryption).  
+**Current state (re-verified 2026-08-24 against a real `waltid/verifier-api:0.23.1`
+container):** the walt.id upstream support this gap used to be blocked on **now
+exists** — `POST /openid4vc/verify` with `responseMode: direct_post.jwt` returns
+a genuinely JARM-encrypted authorization request (real `jwks.keys`, ECDH-ES /
+A256GCM). But `verifiably-go` itself never asks for it:
+`internal/adapters/waltid/verifier.go`'s `verifyBody` struct has no
+`response_mode` field, so every request this repo sends still gets plain
+`direct_post`. The gap moved from "walt.id doesn't support this" to "this
+repo's adapter doesn't request it."  
 **Risk:** Credential claims in transit are visible to redirect intermediaries.  
 **Fix path:**
-1. Upgrade walt.id to a version that supports JARM (check release notes for `direct_post.jwt`).
-2. Provision the verifier's encryption key (ECDH-ES+A256KW) and register it in the verifier metadata.
-3. verifiably-go passes the `response_mode` parameter through to `RequestPresentation` — no code change needed once walt.id supports it.
+1. Add a `ResponseMode string \`json:"responseMode,omitempty"\`` (or the exact
+   casing walt.id's `VerifierApi.kt` expects — confirm against a live call
+   before shipping, don't assume the casing matches the OID4VP spec's
+   snake_case) field to `verifyBody` in `internal/adapters/waltid/verifier.go`,
+   set to `"direct_post.jwt"`.
+2. Provision the verifier's encryption key and confirm it's the one walt.id
+   echoes back in `client_metadata.jwks` (it was auto-generated in the
+   container tested here — confirm whether that's stable across restarts or
+   needs explicit provisioning for a real deployment).
+3. Update the OID4VP consumer side (any wallet this ecosystem talks to) to
+   decrypt a JARM response — this is no longer walt.id-blocked, so it's the
+   next real blocker once the adapter change above ships.
 
-**Effort:** M — depends on walt.id upstream support.
+**Effort:** S–M — no longer blocked on walt.id; is now a real, scoped adapter
+change plus wallet-side decrypt support.
 
 ### ❌ Gap 2: `client_id_scheme=x509_san_dns`
 **Requirement:** HAIP §4.3 — verifiers in high-assurance flows MUST authenticate with an X.509 certificate whose SAN DNS matches the client_id.  
@@ -134,8 +155,8 @@
 
 | Priority | Item | Version target |
 |----------|------|---------------|
-| P1 | Upgrade walt.id to a release with `direct_post.jwt` support | Next walt.id release after 0.18.2 |
-| P1 | Configure `client_id_scheme=x509_san_dns` in verifier-api | Same release cycle |
+| P1 | Add `response_mode: direct_post.jwt` to `verifyBody` in the walt.id adapter — walt.id 0.23.1 already supports JARM, verifiably-go just isn't asking for it (re-verified 2026-08-24) | verifiably-go sprint, no walt.id upgrade needed |
+| P1 | Configure `client_id_scheme=x509_san_dns` in verifier-api — **not re-audited against 0.23.1**, may also have changed | Same release cycle |
 | P2 | Add `ClientIDScheme` field to `OID4VPTemplate` and thread it through `RequestPresentation` | verifiably-go sprint |
 | P3 | Research wallet attestation registry for target wallets (EUDI, inji) | Architecture spike |
 | P3 | Add `kb-jwt` signature verification in verifier adapter | After trust anchor decision |

@@ -2,7 +2,7 @@
 # bootstrap-waltid-did.sh — provisions a did:web DID for the walt.id issuer-api
 # when operating in domain/subdomain mode (VERIFIABLY_PUBLIC_DOMAIN set).
 #
-# Walt.id 0.18.2 architecture: DID management is stateless — /onboard/issuer
+# Walt.id 0.23.1 architecture: DID management is stateless — /onboard/issuer
 # generates a keypair + DID inline and returns them in the response body.
 # We persist the result to .agent-runtime/waltid/issuer.json so subsequent
 # deploys reuse the same identity without re-provisioning.
@@ -11,7 +11,7 @@
 [[ "${_VERIFIABLY_COMMON_LOADED:-}" == "1" ]] || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/common.sh"
 
 # _waltid_issuer_ready returns 0 when the issuer-api is accepting requests.
-# Uses /livez — the standard health-check endpoint in walt.id 0.18.2.
+# Uses /livez — the standard health-check endpoint in walt.id 0.23.1.
 # Earlier versions may lack /livez; fall back to / (which returns 302 → swagger,
 # a non-error response that curl -sf treats as success).
 _waltid_issuer_ready() {
@@ -183,7 +183,7 @@ except Exception:
   fi
 
   # Call /onboard/issuer with did:web configuration.
-  # Walt.id 0.18.2 accepts {"key":{...}, "did":{"method":"web","config":{"domain":"..."}}}
+  # Walt.id 0.23.1 accepts {"key":{...}, "did":{"method":"web","config":{"domain":"..."}}}
   green "  Provisioning walt.id did:web: $did"
   local onboard_out
   onboard_out=$(curl -sf --max-time 30 -X POST \
@@ -225,7 +225,7 @@ import json, sys
 try:
     d = json.load(sys.stdin)
     ik = d.get('issuerKey', {})
-    # 0.18.2 shape: {\"type\":\"jwk\",\"jwk\":{...}}
+    # 0.23.1 shape: {\"type\":\"jwk\",\"jwk\":{...}}
     if isinstance(ik, dict):
         jwk = ik.get('jwk') or ik
         print(json.dumps(jwk))

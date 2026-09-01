@@ -46,6 +46,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
 	"github.com/verifiably/verifiably-go/internal/mailer"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/internal/metrics"
 	"github.com/verifiably/verifiably-go/internal/roles"
 	"github.com/verifiably/verifiably-go/internal/schemacache"
@@ -467,6 +468,24 @@ func main() {
 			pgPool != nil, h.TrustJWTIssuer, trustAlg(h.TrustSigningKey))
 	}
 
+	// mdoc trust anchors (GET /trust/mdoc-anchors). Wired independently of the
+	// trust-registry block above: this serves THIS issuer's own generated IACA,
+	// so it follows the Issuer role, not Trust.
+	//
+	// Default matches scripts/start-container.sh's bind of
+	// deploy/k8s/config/issuer2 -> /app/issuer-api2-config, so a standard deploy
+	// needs no extra configuration. Left empty (endpoint 503s) only when a
+	// deployment mounts the certs elsewhere and does not say where.
+	h.MdocCertsDir = strings.TrimSpace(os.Getenv("VERIFIABLY_MDOC_CERTS_DIR"))
+	if h.MdocCertsDir == "" {
+		if _, err := os.Stat("/app/issuer-api2-config/certs"); err == nil {
+			h.MdocCertsDir = "/app/issuer-api2-config/certs"
+		}
+	}
+	if h.MdocCertsDir != "" {
+		log.Printf("mdoc trust anchors: serving /trust/mdoc-anchors from %s", h.MdocCertsDir)
+	}
+
 	// Parse deployment roles. Done here (not at route-registration time) so the hub
 	// bootstrap and status-list cache wiring below can use it too.
 	// VERIFIABLY_ROLES="" (default) → all roles active (backwards-compatible).
@@ -729,6 +748,20 @@ func main() {
 		mux.HandleFunc("GET /.well-known/openid-credential-issuer", h.ServeIssuerMetadata)
 		mux.HandleFunc("OPTIONS /.well-known/openid-credential-issuer", h.ServeIssuerMetadata)
 
+		// Public, unauthenticated: the mdoc IACA this deployment currently signs
+		// under, so a wallet can learn the anchor instead of shipping it
+		// compiled in and breaking on the next deploy.
+		//
+		// Registered under the ISSUER role, not Trust, deliberately: it
+		// publishes THIS issuer's self-generated anchor, and the wallet fetches
+		// it from the same origin it just resolved the credential offer from.
+		// /trust-registry under the Trust role is the opposite thing — a list
+		// signed for OTHER parties to relay. POC: production replaces this with
+		// the Hub's VICAL list, signed by an authority distinct from any single
+		// issuer. See internal/handlers/mdoc_anchors.go.
+		mux.HandleFunc("GET /trust/mdoc-anchors", h.ServeMdocAnchors)
+		mux.HandleFunc("OPTIONS /trust/mdoc-anchors", h.ServeMdocAnchors)
+
 		// Self-service discovery: which of this member's credentials a citizen
 		// can self-issue from their verified claims (National ID + Discovery).
 		mux.HandleFunc("POST /api/v1/credentials/eligible", h.APICheckEligibility)
@@ -738,6 +771,14 @@ func main() {
 		// HolderDID=sub).
 		mux.HandleFunc("POST /api/v1/credentials/self-issue", h.APISelfIssue)
 		mux.HandleFunc("OPTIONS /api/v1/credentials/self-issue", h.APISelfIssue)
+		// NOTE: there is deliberately no mDL issuance endpoint here.
+		// issuer-api2 is the production mDL/Photo ID emitter, reached through
+		// the waltid adapter like every other credential type. verifiably-go
+		// is a mediator: the DPG signs, we translate and audit. An in-process
+		// signer would make this service the issuer for one credential type,
+		// which is the role the mediator architecture exists to avoid. See
+		// ce3e899. internal/mdl/ is retained as an independent ISO conformance
+		// verifier, not as an embedded signer.
 	}
 
 	// --- Trust registry (trust | hub) ---
@@ -803,7 +844,10 @@ func main() {
 		mux.HandleFunc("POST /issuer/schema/build/preview", h.SchemaPreview)
 		mux.HandleFunc("POST /issuer/schema/build/add-field", h.AddSchemaField)
 		mux.HandleFunc("POST /issuer/schema/build/remove-field", h.RemoveSchemaField)
+		mux.HandleFunc("POST /issuer/schema/build/add-language", h.AddFieldLanguage)
 		mux.HandleFunc("POST /issuer/schema/build/delegation", h.BuildDelegationToggle)
+		mux.HandleFunc("POST /issuer/schema/build/std", h.BuildStdChange)
+		mux.HandleFunc("POST /issuer/schema/build/doctype", h.BuildDocTypeChange)
 		mux.HandleFunc("POST /issuer/schema/build/save", h.SaveSchema)
 		mux.HandleFunc("GET /issuer/mode", h.ShowIssuanceMode)
 		mux.HandleFunc("POST /issuer/mode", h.SetIssuanceMode)
@@ -1551,6 +1595,48 @@ func funcMap(tr handlers.Translator) template.FuncMap {
 			out := make(map[string]bool, len(xs))
 			for _, x := range xs {
 				out[x] = true
+			}
+			return out
+		},
+
+		// mdocMandatoryNames returns a lookup map of the docType's mandatory
+		// field identifiers, for {{index $mandatoryNames .Field.Name}} in the
+		// schema builder — used to render those rows' identifier input as
+		// readonly (the standard defines them; an operator may not rename or
+		// remove one and still have a conformant credential). Returns an
+		// empty map for non-mdoc formats or an unrecognised/unset docType, so
+		// the lookup is always safe.
+		// fieldLangRows turns a field's Labels map into the ordered
+		// locale/label rows the schema builder renders. Ordering (English
+		// first when present, then sorted) lives in Go rather than the
+		// template because a Go map has no order and the builder re-renders
+		// on every keystroke — unsorted rows would visibly reshuffle as the
+		// operator types. See handlers.FieldLangRows.
+		"fieldLangRows": handlers.FieldLangRows,
+
+		// intRange returns []int{from, from+1, ..., from+n-1} so a template
+		// can repeat a block n times while still knowing each repetition's
+		// absolute index, which text/template otherwise has no way to
+		// express. The schema builder uses it to number its not-yet-filled
+		// language rows CONTINUING from the filled ones — those numbers are
+		// the input names (field_lang_N_J), so a restart at 0 would collide
+		// with an existing row and silently overwrite its label.
+		//
+		// n is `any` rather than `int` because it is fed by `index` into a
+		// map[int]int, which yields an untyped nil for an absent key (and for
+		// a nil map — every caller that renders a field row without a blank
+		// count). text/template will not coerce that to an int, so a plain
+		// int parameter turns a perfectly ordinary "this field has no pending
+		// language rows" into a render error.
+		"intRange": handlers.IntRange,
+
+		"mdocMandatoryNames": func(std, docType string) map[string]bool {
+			out := map[string]bool{}
+			if std != "mso_mdoc" {
+				return out
+			}
+			for _, f := range mdoc.MandatoryFields(docType) {
+				out[f.Name] = true
 			}
 			return out
 		},

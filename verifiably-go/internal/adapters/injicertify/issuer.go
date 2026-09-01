@@ -1,6 +1,7 @@
 package injicertify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -30,6 +32,14 @@ type credentialConfigurationEntry struct {
 	Order          []string                     `json:"order,omitempty"`
 	CredentialDef  *credentialDefinitionEntry   `json:"credential_definition,omitempty"`
 	Vct            string                       `json:"vct,omitempty"`
+	// Doctype is the ISO docType Inji Certify advertises for an mso_mdoc
+	// config (e.g. "org.iso.18013.5.1.mDL") — confirmed present in a real
+	// wellknown response from a schema SaveCustomSchema wrote. ListSchemas
+	// needs this to rebuild each field's real Format (driving_privileges'
+	// repeater UI, portrait's file upload) via mdoc.MandatoryFields, instead
+	// of falling through fieldSpecFor's generic name-based heuristics, which
+	// have no case for either — see fieldSpecFor's doc comment.
+	Doctype string `json:"doctype,omitempty"`
 }
 
 type credentialDefinitionEntry struct {
@@ -56,6 +66,25 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			name = humanise(id)
 		}
 		fields := []vctypes.FieldSpec{}
+		// mso_mdoc fields need their REAL Format (driving_privileges'
+		// structured repeater, portrait's file upload) — mdoc.MandatoryFields
+		// is the single source of truth for that mapping (the same one
+		// mdoc.KnownDocTypes/the schema builder itself uses), keyed by field
+		// name. Built once per config, outside the per-field loop below.
+		// Without this, fieldSpecFor's generic name-based heuristics run
+		// instead (they have no case for either field), so driving_privileges
+		// silently renders as a plain textbox and its value never reaches
+		// backend.IssueRequest.StructuredData — reproduced live: an operator
+		// filled the field, submitted, and the adapter's own "driving_privileges
+		// es obligatorio" guard fired anyway, because the value had gone into
+		// SubjectData as a scalar string instead.
+		var mdocFields map[string]vctypes.FieldSpec
+		if cfg.Format == "mso_mdoc" && cfg.Doctype != "" {
+			mdocFields = make(map[string]vctypes.FieldSpec)
+			for _, mf := range mdoc.MandatoryFields(cfg.Doctype) {
+				mdocFields[mf.Name] = mf
+			}
+		}
 		// A declared validity marker IS the record that this schema expires.
 		// Schema.Expires lives only in verifiably's store and no vendor
 		// advertises it, so rebuilding a Schema here without it silently
@@ -79,18 +108,42 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 			if isInternalMarker(f) {
 				continue
 			}
+			if mf, ok := mdocFields[f]; ok {
+				fields = append(fields, mf)
+				continue
+			}
 			fields = append(fields, fieldSpecFor(f))
 		}
 		if len(fields) == 0 {
 			fields = append(fields, vctypes.FieldSpec{Name: "holder", Datatype: "string", Required: true})
 		}
+		// mso_mdoc's real docType MUST travel with the rebuilt schema —
+		// IssueToWallet's mdocDocTypeForSchema(req.Schema) reads
+		// AdditionalTypes[0] first and falls back to schema.ID (a
+		// "custom-<nano>" string) only when it's empty. Leaving this unset
+		// here made mdocNamespaceForDocType derive the claims-nesting
+		// namespace from schema.ID itself, so IssueToWallet posted claims
+		// nested under the schema's OWN ID instead of the real ISO
+		// namespace — reproduced live end-to-end: a real operator-created
+		// mDL issued through this exact rebuilt-from-wellknown path failed
+		// with "Unknown claims provided: [custom-<nano-id>]", Inji Certify
+		// correctly rejecting a claims map keyed by a value that means
+		// nothing to it. mdocDocTypeForSchema/mdocNamespaceForDocType
+		// (db.go) are the same helpers SaveCustomSchema already uses to
+		// derive this from a freshly-submitted form's schema, so a schema
+		// round-tripped through ListSchemas must agree.
+		var additionalTypes []string
+		if cfg.Format == "mso_mdoc" && cfg.Doctype != "" {
+			additionalTypes = []string{cfg.Doctype}
+		}
 		out = append(out, vctypes.Schema{
-			ID:         id,
-			Name:       name,
-			Std:        std,
-			DPGs:       []string{issuerDpg},
-			Desc:       fmt.Sprintf("Live credential configuration served by %s.", issuerDpg),
-			FieldsSpec: fields,
+			ID:              id,
+			Name:            name,
+			Std:             std,
+			DPGs:            []string{issuerDpg},
+			Desc:            fmt.Sprintf("Live credential configuration served by %s.", issuerDpg),
+			FieldsSpec:      fields,
+			AdditionalTypes: additionalTypes,
 			// Recovered from the declared markers above, so the rebuilt schema
 			// agrees with the template certify already holds: the issue form
 			// offers a Validity window, and issuance POSTs the values the
@@ -156,6 +209,106 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 	for k, v := range req.SubjectData {
 		claims[k] = v
 	}
+
+	// mso_mdoc's driving_privileges is an array of objects — it cannot ride
+	// in SubjectData (map[string]string). It lives in StructuredData, same
+	// convention as waltid/issuer2.go's buildIssuer2Offer. Reading it here,
+	// and rejecting 0/>4 categories BEFORE ever calling Inji, replicates
+	// the same defense-in-depth waltid's buildIssuer2Offer already has: the
+	// handler's own guard (validateDrivingPrivilegesCount) can be bypassed
+	// by a direct POST /api/v1/credentials/issue call, so this
+	// adapter-level check is the one that must never be skipped.
+	//
+	// Gated on a.cfg.Mode == ModePreAuth explicitly, not just on the
+	// schema's Std: IssueToWallet is shared by BOTH Pre-Auth and Auth-Code,
+	// and Auth-Code's offer construction (below) never reads claims at
+	// all — an mdoc schema reaching an Auth-Code-mode adapter (only
+	// possible via a hand-built API call; the UI never produces this
+	// combination) must fall through to that unmodified path, not be
+	// rejected by an mdoc-specific guard that has no meaning for a mode
+	// this plan explicitly does not support for mdoc.
+	//
+	// ALSO gated on the schema's real docType being mDL specifically, not
+	// on Std=="mso_mdoc" alone: mso_mdoc is the CONTAINER format shared by
+	// every ISO docType this system issues (mDL AND Photo ID,
+	// org.iso.23220.photoid.1 — see mdoc.KnownDocTypes), but
+	// driving_privileges is an mDL-only ISO/IEC 18013-5 Table 3 element —
+	// ISO/IEC 23220-1's Photo ID has no such element at all. Before this
+	// gate, issuing a Photo ID (a legitimate mso_mdoc docType with zero
+	// driving-privilege rows, by design) was unconditionally rejected with
+	// this exact "es obligatorio" message — reproduced live: a freshly
+	// created Photo ID schema, confirmed to have NO driving_privileges in
+	// its own credential_config.display_order, still failed here because
+	// this check never looked at which docType was actually being issued.
+	if a.cfg.Mode == ModePreAuth && stdToCredentialFormat(req.Schema.Std) == "mso_mdoc" && mdocDocTypeForSchema(req.Schema) == mdoc.MDLDocType {
+		n := 0
+		if raw, ok := req.StructuredData["driving_privileges"]; ok && len(raw) > 0 {
+			var arr []json.RawMessage
+			if err := json.Unmarshal(raw, &arr); err != nil {
+				return backend.IssueToWalletResult{}, fmt.Errorf("inji: driving_privileges no es un array JSON válido: %w", err)
+			}
+			n = len(arr)
+			// Validate each entry's SHAPE, not just the array's count. The
+			// handler-level guard (validateDrivingPrivilegesCount) that
+			// normally fills this array from the issue form can be bypassed
+			// by a direct POST /api/v1/credentials/issue — the same reason
+			// the count check below exists — and raw below is forwarded to
+			// Inji Certify's Velocity template VERBATIM as a string (see the
+			// comment on that variable), so an entry with unexpected keys or
+			// malformed values would ride straight through un-caught. Decode
+			// with DisallowUnknownFields so an entry outside
+			// mdoc.DrivingPrivilege's three known keys is rejected here,
+			// server-side, rather than reaching Inji Certify's template
+			// substitution as opaque extra content.
+			dec := json.NewDecoder(bytes.NewReader(raw))
+			dec.DisallowUnknownFields()
+			var typed []mdoc.DrivingPrivilege
+			if err := dec.Decode(&typed); err != nil {
+				return backend.IssueToWalletResult{}, fmt.Errorf("inji: driving_privileges tiene una entrada inválida: %w", err)
+			}
+			for i, p := range typed {
+				if strings.TrimSpace(p.VehicleCategoryCode) == "" {
+					return backend.IssueToWalletResult{}, fmt.Errorf(
+						"inji: driving_privileges[%d] no tiene vehicle_category_code", i)
+				}
+			}
+			// Posted as the RAW JSON STRING, not a decoded []any — confirmed
+			// live against Inji Certify v0.14.0 that posting a real array
+			// makes CredentialUtils.toJsonMap wrap it as a JSONArray, whose
+			// Java toString() Velocity then substitutes for the UNQUOTED
+			// ${rootContext['<ns>'].driving_privileges} template marker
+			// (see db.go's mdocVCTemplate) — producing Java-map syntax
+			// (key=value, unquoted keys) instead of JSON, which fails
+			// org.json's own re-parse with "Expected a ',' or '}'". Traced
+			// this to the exact difference between our deployment and the
+			// spike that DID work: the spike's PostgresDataProviderPlugin
+			// query explicitly cast the array to text
+			// (CAST(j->'driving_privileges' AS text)), so Velocity received
+			// an already-valid JSON STRING to substitute verbatim, never a
+			// Java List/JSONArray it would stringify itself. Doing the same
+			// cast ourselves — sending the compact JSON string as the claim
+			// value instead of the decoded array — reproduces that working
+			// path without touching Inji's own code, at the cost of Inji's
+			// own claim validation seeing a String here rather than an
+			// array (harmless: validateClaimsWithMandatory only checks key
+			// presence, never value type). Confirmed end-to-end by decoding
+			// a real issued test credential: with this string PLUS the
+			// unquoted bracket-notation marker, driving_privileges decodes
+			// to a real CBOR array of maps with correctly full-date-tagged
+			// issue_date/expiry_date — not a string, not Java toString().
+			claims["driving_privileges"] = string(raw)
+		}
+		if n == 0 {
+			return backend.IssueToWalletResult{}, fmt.Errorf(
+				"inji: driving_privileges es obligatorio en ISO 18013-5 — ingresa al menos una categoría de conducción antes de emitir")
+		}
+		if n > mdoc.DrivingPrivilegesMaxCategories {
+			return backend.IssueToWalletResult{}, fmt.Errorf(
+				"inji: no se pueden emitir %d categorías de conducción en una sola credencial — el máximo es %d",
+				n, mdoc.DrivingPrivilegesMaxCategories)
+		}
+	}
+
 	if len(claims) == 0 {
 		// Inji Certify rejects empty claims; fill one sensible default.
 		claims["fullName"] = "Demo Holder"
@@ -201,16 +354,52 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 				claims[k] = v
 			}
 		}
+		// mso_mdoc claims must be POSTed NESTED under the ISO namespace
+		// (e.g. {"org.iso.18013.5.1": {family_name: ..., ...}}), not flat —
+		// confirmed against Inji Certify v0.14.0's real source
+		// (PreAuthorizedCodeService.validateClaims/validateClaimsWithMandatory):
+		// for mso_mdoc/vc+sd-jwt it validates providedClaims.keySet() against
+		// config.getClaims().keySet(), and getClaims() for mso_mdoc returns
+		// credential_config.mso_mdoc_claims AS-IS
+		// (CredentialConfigurationServiceImpl.java:379, setClaims(new
+		// HashMap<>(getMsoMdocClaims()))) — which SaveCustomSchema wrote with
+		// exactly one top-level key, the namespace. Posting flat claims makes
+		// EVERY key mismatch that single expected key, failing closed with
+		// unknown_claims for every field at once — reproduced live against
+		// this deployment's real credential_config row. SD-JWT/ldp_vc are
+		// unaffected: they only ever reach here with flat, unnested claims
+		// (statusIdx/statusUri/validity markers, all top-level by design),
+		// and the same source shows getSdJwtClaims() is used verbatim for
+		// SD-JWT's own top-level validation — so nesting must apply to
+		// mso_mdoc alone, not become the default for every format sharing
+		// this switch branch.
+		postClaims := claims
+		if stdToCredentialFormat(req.Schema.Std) == "mso_mdoc" {
+			ns := mdocNamespaceForDocType(mdocDocTypeForSchema(req.Schema))
+			postClaims = map[string]any{ns: claims}
+		}
 		body := preAuthorizedDataRequest{
 			CredentialConfigurationId: req.Schema.ID,
-			Claims:                    claims,
+			Claims:                    postClaims,
 		}
 		var resp preAuthorizedDataResponse
 		if err := a.client.DoJSON(ctx, http.MethodPost, "/v1/certify/pre-authorized-data", body, &resp, nil); err != nil {
 			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %w", err)
 		}
 		if len(resp.Errors) > 0 {
-			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %s", resp.Errors[0].ErrorCode)
+			// Surface MOSIP's own ErrorMessage alongside the short
+			// ErrorCode — same posture waltid/issuer2.go already takes for
+			// issuer-api2's errors ("the service's wording is more useful
+			// to whoever debugs this than anything we could substitute").
+			// ErrorCode alone (e.g. "ERROR_SIGNING_QR_DATA") gives no clue
+			// what actually failed; ErrorMessage is the human-readable text
+			// MOSIP sends in the same response and was being silently
+			// dropped.
+			e := resp.Errors[0]
+			if e.ErrorMessage != "" {
+				return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %s: %s", e.ErrorCode, e.ErrorMessage)
+			}
+			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %s", e.ErrorCode)
 		}
 		if resp.CredentialOfferURI == "" {
 			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: empty credential_offer_uri in response")

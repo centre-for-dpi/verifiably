@@ -190,9 +190,9 @@ fi
 log "[9/9] pre-pull umbrella workload images into k3s containerd"
 PREPULL_IMAGES=(
   # walt.id services
-  docker.io/waltid/issuer-api:0.18.2
-  docker.io/waltid/verifier-api:0.18.2
-  docker.io/waltid/wallet-api:0.18.2
+  docker.io/waltid/issuer-api:0.23.1
+  docker.io/waltid/verifier-api:0.23.1
+  docker.io/waltid/wallet-api:0.23.1
   # IdPs
   docker.io/bitnami/keycloak:25.0.6-debian-12-r0
   docker.io/wso2/wso2is:7.0.0

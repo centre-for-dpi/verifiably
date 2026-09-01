@@ -38,10 +38,23 @@ start_container() {
   # under the user's home; world-write doesn't expose anything new. Also
   # mounts /var/run/docker.sock as group-readable so isContainerRunning
   # / restartContainer work without root inside the container.
+  #
+  # issuer2's config dir gets the same treatment for the same reason. It is
+  # mounted read-only into issuer-api2 itself (that service only reads it), but
+  # verifiably-go needs it writable: an mdoc schema's name reaches the wallet by
+  # editing the display block of its docType's PRE-PROVISIONED configuration —
+  # issuer-api2 has no per-schema catalog to append to the way issuer-api does.
+  # Without this the edit fails with EACCES, which degrades to a logged warning
+  # (the save still succeeds) and the wallet keeps showing the previous name.
   local catalog_dir="$SCRIPT_DIR/deploy/k8s/config/issuer"
   if [[ -d "$catalog_dir" ]]; then
     chmod 0777 "$catalog_dir" 2>/dev/null || true
     chmod 0666 "$catalog_dir"/*.conf 2>/dev/null || true
+  fi
+  local issuer2_dir="$SCRIPT_DIR/deploy/k8s/config/issuer2"
+  if [[ -d "$issuer2_dir" ]]; then
+    chmod 0777 "$issuer2_dir" 2>/dev/null || true
+    chmod 0666 "$issuer2_dir"/*.conf 2>/dev/null || true
   fi
   # Resolve the docker group's GID at deploy time so --group-add works on
   # any host (Debian/Ubuntu typically use 999 or 984; macOS Docker Desktop
@@ -171,6 +184,17 @@ start_container() {
   # Healthcheck is defined in the Dockerfile as an exec-form HEALTHCHECK that
   # runs `verifiably -healthcheck` (the distroless image has no /bin/sh or wget,
   # so the CLI --health-cmd form — always CMD-SHELL — can never succeed here).
+  # Go 1.23+ rejects an X.509 certificate whose serial number is negative
+  # (crypto/x509 hardened to follow RFC 5280 §4.1.2.2 strictly) — GET
+  # /trust/mdoc-anchors 500'd with "x509: negative serial number" the moment
+  # provision_inji_root_anchors's extracted Inji Certify ROOTs (deploy.sh)
+  # were added to the anchors directory: both self-signed roots Inji
+  # Certify's mock-HSM path generates carry a negative serial (confirmed
+  # with `openssl x509 -noout -serial` on both the auth-code and pre-auth
+  # instances' extracted roots — a generator quirk on Inji's side, not
+  # something this deployment produces or controls). x509negativeserial=1
+  # restores the pre-1.23 lenient parse; scoped to this one GODEBUG key
+  # rather than disabling other x509 hardening.
   MSYS_NO_PATHCONV=1 docker run -d \
     --name "$VERIFIABLY_CONTAINER" \
     --restart unless-stopped \
@@ -184,6 +208,7 @@ start_container() {
     -v "$user_providers_path:/app/config/auth-providers.user.json" \
     -v "$custom_schemas_path:/app/config/custom-schemas.user.json" \
     -v "$SCRIPT_DIR/deploy/k8s/config/issuer:/app/issuer-api-config" \
+    -v "$SCRIPT_DIR/deploy/k8s/config/issuer2:/app/issuer-api2-config" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$SCRIPT_DIR/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties:/etc/inji/certify-scope-query.properties" \
     -v "$SCRIPT_DIR/deploy/compose/stack/inji/esignet/credential-scopes.properties:/etc/inji/esignet-scopes.properties" \
@@ -192,6 +217,7 @@ start_container() {
     -e VERIFIABLY_ADAPTER=registry \
     -e VERIFIABLY_ADDR=:8080 \
     -e VERIFIABLY_LOG_JSON=1 \
+    -e GODEBUG=x509negativeserial=1 \
     -e VERIFIABLY_ROLES="${VERIFIABLY_ROLES:-issuer,holder,verifier,trust,schemas}" \
     -e VERIFIABLY_STATE_DIR=/app/state \
     -e VERIFIABLY_PUBLIC_URL="$VERIFIABLY_PUBLIC_URL" \
@@ -206,7 +232,7 @@ start_container() {
     -e LIBRETRANSLATE_URL="http://libretranslate:5000" \
     -e INJI_CERTIFY_UPSTREAM_URL="http://inji-certify:8090" \
     ${_certify_issuer_did:+-e CERTIFY_ISSUER_DID="$_certify_issuer_did"} \
-    -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:postgres@certify-postgres:5432/inji_certify?sslmode=disable}" \
+    -e INJI_CERTIFY_DATABASE_URL="${INJI_CERTIFY_DATABASE_URL:-postgres://postgres:${CERTIFY_PG_PASSWORD:-postgres}@certify-postgres:5432/inji_certify?sslmode=disable}" \
     -e INJI_CERTIFY_SCOPE_QUERY_FILE="/etc/inji/certify-scope-query.properties" \
     -e INJI_ESIGNET_SCOPE_FILE="/etc/inji/esignet-scopes.properties" \
     -e INJI_AUTHCODE_CLIENT_KEY_PEM="$_inji_key_pem" \
@@ -217,6 +243,9 @@ start_container() {
     -e INJI_PROXY_EXTRA_KIDS="${VERIFIABLY_INJI_EXTRA_KIDS:-}" \
     -e WALTID_CATALOG_PATH=/app/issuer-api-config/credential-issuer-metadata.conf \
     -e WALTID_ISSUER_SERVICE=issuer-api \
+    -e WALTID_ISSUER2_METADATA_PATH=/app/issuer-api2-config/credential-issuer-metadata.conf \
+    -e WALTID_ISSUER2_SERVICE=issuer-api2 \
+    -e VERIFIABLY_MDOC_CERTS_DIR=/app/issuer-api2-config/certs \
     -e VERIFIABLY_AUTH_PROVIDERS_FILE=/app/config/auth-providers.system.json \
     -e VERIFIABLY_AUTH_ADMIN="${VERIFIABLY_AUTH_ADMIN:-rw}" \
     -e VERIFIABLY_ADMIN_USER="${VERIFIABLY_ADMIN_USER:-}" \

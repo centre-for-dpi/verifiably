@@ -1,0 +1,9 @@
+# Dependencies of the independent mdoc verification harness. Go ignores
+# testdata/ when building, so these only affect repo size.
+internal/mdl/testdata/verify/node_modules/
+
+# package-lock.json is deliberately NOT ignored: the harness is the executable
+# contract shared with cdpi-wallet and the reader app, and "verifies against
+# @owf/mdoc" only means something if it is the same @owf/mdoc everywhere. A
+# floating ^0.7.0 could pull a minor that changes verification behaviour and
+# turn a real interop failure into a silent pass — or the reverse.

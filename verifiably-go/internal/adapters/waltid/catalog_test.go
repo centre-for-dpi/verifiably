@@ -114,29 +114,56 @@ func TestAppendCredentialType_sdJWT(t *testing.T) {
 	}
 }
 
-func TestAppendCredentialType_mDoc(t *testing.T) {
+// TestAppendCredentialType_mDocIsANoOp pins that appendCredentialType writes
+// NOTHING to the legacy issuer-api's catalog for mso_mdoc schemas.
+//
+// mdoc issuance never reaches the legacy issuer-api at all — IssueToWallet
+// dispatches Std=="mso_mdoc" straight to issueMdocViaIssuer2 before it ever
+// touches this catalog (see issuer.go's IssueToWallet: legacy issuer-api
+// "cannot type CBOR at any version... would emit birth_date as text instead
+// of tag 1004", so an mdoc offer through it is unusable even if the entry
+// parsed). mdoc's real catalog lives in issuer-api2, pre-provisioned per
+// docType and kept in sync by syncIssuer2DisplayName instead.
+//
+// A legacy-catalog mdoc entry is therefore dead weight that only a wallet
+// misconfiguration could ever reach — and it actively crash-loops issuer-api
+// at boot, because CredentialSupported.claims (the only field buildMDocEntry
+// can target) requires a two-level namespaced map and buildMDocEntry writes
+// the id.walt.openid4vci-style {path, display} array instead, which legacy
+// issuer-api's decoder rejects (see the 2026-08-24 and 2026-08-25 incidents:
+// POST /onboard/issuer and POST /openid4vc/sdjwt/issue both connection-
+// refused because a JsonDecodingException on $.claims killed the process
+// before its web server bound). See TestBuildClaimsBlockFlatObjectForW3C in
+// catalog_labels_test.go for the fix that made non-mdoc entries no longer
+// use that shape — mdoc's fix is to never reach the legacy catalog at all.
+func TestAppendCredentialType_mDocIsANoOp(t *testing.T) {
 	path := writeSeed(t)
-	primary, _, changed, err := appendCredentialType(path, vctypes.Schema{
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read seed: %v", err)
+	}
+	primary, all, changed, err := appendCredentialType(path, vctypes.Schema{
 		ID: "custom-md1", Name: "Drivers License", Std: "mso_mdoc", Custom: true,
 		AdditionalTypes: []string{"org.iso.18013.5.1.mDL"},
 	})
-	if err != nil || !changed {
-		t.Fatalf("append: changed=%v err=%v", changed, err)
+	if err != nil {
+		t.Fatalf("append: %v", err)
 	}
-	// AdditionalTypes pins both the catalog TypeName AND the doctype.
-	if primary != "org.iso.18013.5.1.mDL_mso_mdoc" {
-		t.Errorf("primary = %q, want org.iso.18013.5.1.mDL_mso_mdoc", primary)
+	if changed {
+		t.Errorf("changed = true, want false — mdoc must not touch the legacy catalog")
 	}
-	got, _ := os.ReadFile(path)
-	for _, frag := range []string{
-		`format = "mso_mdoc"`,
-		`doctype = "org.iso.18013.5.1.mDL"`,
-		`cryptographic_binding_methods_supported = ["cose_key"]`,
-		`proof_types_supported = { jwt = { proof_signing_alg_values_supported = ["ES256"] } }`,
-	} {
-		if !strings.Contains(string(got), frag) {
-			t.Errorf("missing fragment %q\n%s", frag, got)
-		}
+	if primary != "" {
+		t.Errorf("primary = %q, want empty — mdoc has no legacy configID", primary)
+	}
+	if all != nil {
+		t.Errorf("all = %v, want nil — mdoc registers nothing in the legacy catalog", all)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("catalog file was modified for an mso_mdoc schema:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }
 
@@ -175,19 +202,13 @@ func TestAppendCredentialType_displayBlocksAllFormats(t *testing.T) {
 			wantName:     "Pharma Credential",
 			wantDesc:     "Issued by Ministry of Health",
 		},
-		{
-			name: "mdoc (mso_mdoc)",
-			schema: vctypes.Schema{
-				ID: "custom-md", Name: "Drivers License",
-				Desc: "Issued by Department of Transport", Std: "mso_mdoc", Custom: true,
-				AdditionalTypes: []string{"org.example.dl"},
-			},
-			wantConfigID: "org.example.dl_mso_mdoc",
-			// displayPair prefers schema.Name verbatim (with space)
-			// over the sanitized typeName for human-friendly rendering.
-			wantName: "Drivers License",
-			wantDesc: "Issued by Department of Transport",
-		},
+		// No mso_mdoc case here: appendCredentialType is a no-op for mdoc
+		// schemas (TestAppendCredentialType_mDocIsANoOp) — it never writes to
+		// the legacy catalog this test inspects. buildMDocEntry's own display
+		// block is covered directly by
+		// TestBuildMDocEntry_ClaimsUseCorrectNamespacePerDocType in
+		// catalog_labels_test.go, and mdoc's real (issuer-api2) display name
+		// is covered by TestSetIssuer2Display_* in catalog_issuer2_test.go.
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -334,5 +355,18 @@ func sortedCopy(in []string) []string {
 		}
 	}
 	return out
+}
+
+func TestSchemaAllowlistIncludesISOmDL(t *testing.T) {
+	// Commit 6449f96 dropped mDL from the demo grid because its mso_mdoc
+	// envelope was hard to round-trip through MOSIP / Inji Verify. The mDL
+	// work verifies through its own path, so the entry comes back.
+	want := "Iso18013 Drivers License Credential"
+	for _, s := range schemaAllowlistDefault {
+		if s == want {
+			return
+		}
+	}
+	t.Fatalf("expected %q in schemaAllowlistDefault, got %v", want, schemaAllowlistDefault)
 }
 
