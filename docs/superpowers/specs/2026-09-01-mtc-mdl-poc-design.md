@@ -9,9 +9,16 @@ el código ya implementado en este repo (`internal/adapters/injicertify/db.go`,
 `issuer.go`), no solo el spec `2026-08-25-inji-mdoc-issuer-design.md` que lo precedió. El
 **entregable final** (documento guía + entorno de pruebas reproducible) es para el equipo
 del MTC/IUGO, sobre **su propio despliegue** de Inji Certify/Mimoto/Inji Verify/InjiWallet
-— no se despliega código de este repo contra la infraestructura del MTC; sí se escriben
-archivos de documentación dentro de este repo (ruta exacta a fijar por el plan, p. ej.
-`docs/mtc-mdl-poc/`).
+— no se despliega código de este repo contra la infraestructura del MTC. Por decisión
+explícita del usuario, el entregable tampoco se escribe dentro de este repo: vive en un
+**repositorio git nuevo e independiente**, `mtc-mdl-poc`
+(`c:\Users\yalva\source\repos\mtc-mdl-poc`), sin remoto ni historial compartido con
+`verifiably` — solo referencias de texto en la guía a los archivos de este repo que sirvieron
+de fuente (rutas citadas como `verifiably-go/internal/adapters/injicertify/db.go`, nunca
+como una dependencia real). Este spec permanece en `verifiably` porque documenta una
+decisión de diseño de este proyecto (qué se reutiliza y por qué); **el plan de
+implementación y todo el entregable viven exclusivamente en `mtc-mdl-poc`**
+(`mtc-mdl-poc/docs/implementation-plan.md`) — no hay una copia de ese plan en este repo.
 
 ---
 
