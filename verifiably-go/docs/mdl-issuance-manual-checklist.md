@@ -14,8 +14,15 @@ walt.id upgrade.
 | Performed by | automated agent session (no browser, no phone — see Steps 2/6/7) |
 
 Read the **Findings** section before trusting any green mark below. Three real
-defects were found. **F1 is fixed**; F2 and F3 remain open and are on the debt
+defects were found. **F1 and F2 are fixed** (F2 on 2026-09-01 — see its
+own section below for what changed); F3 remains open and is on the debt
 list.
+
+**This document is a verification log, not an incident runbook.** If you are
+here because something is actually broken in a running deployment (DSC
+expired, `issuer2-profiles.conf` corrupted, unsure what a rotation does to
+already-claimed wallets), go to
+[`mdl-incident-runbook.md`](mdl-incident-runbook.md) instead.
 
 ---
 
@@ -128,6 +135,17 @@ Adding the same four-line mapping the mDL profile already has fixes it
 completely (tested in a scratch copy — `portrait is a CBOR byte string —
 70 bytes`, all 8 checks pass). Not applied to the repo: out of scope here.
 
+> **Update (2026-09-01): F2 is fixed.** The four-line mapping described
+> above is now in `issuer2-profiles.baseline.conf`'s `isoPhotoId` block —
+> confirmed the deferral reason ("out of scope", pending "its own review")
+> resolved to nothing blocking: `credentialData` already carried the
+> `portrait` key as a `null` placeholder, so this was purely the missing
+> `entriesConfigMap` entry, not a data-shape decision. Every "F2" mark
+> further down this document (Step 6's table, the migration checklist)
+> describes the PRE-FIX state as observed on 2026-08-21 — kept as the
+> historical record, not something to re-verify against a current
+> deployment.
+
 ### F3 — `verify.mjs` does not take a file argument
 
 The brief's Step 4 says `node verify.mjs <path-to-issued-mdoc>`. It does not
@@ -156,6 +174,19 @@ after the F1 fix), `VERIFIABLY_ISSUER2_CI_TOKEN_KEY`, and
 Three disposable EC P-256 JWKs were generated into a scratch env file
 (never committed) and only the services issuance needs were started:
 `issuer-api`, `issuer-api2`, `caddy`.
+
+> **Update (2026-08-31): the scratch-file step above is no longer
+> needed.** `provision_issuer2_certificates` (`scripts/gen-caddy.sh`) now
+> generates `VERIFIABLY_ISSUER2_CI_TOKEN_KEY` and
+> `VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY` automatically on first deploy —
+> same mechanism `VERIFIABLY_ISSUER2_KEY_X/_Y/_D` already used — and
+> persists them into `.env` via `scripts/common.sh`'s `set_env_var` (fixed
+> the same day to quote JSON values correctly, closing the exact
+> single-quoting trap `docs/deploy.md`'s "`.env` quoting for the issuer2
+> JSON key variables" section warns about). A from-scratch `./deploy.sh up`
+> needs no manual key generation for any of the five issuer2 JWK
+> variables. See `cmd/mdl-pki-gen/main_test.go`'s
+> `TestAuxKeys*` tests for the guarantees this now carries.
 
 Both issuers reached `Web server ready!` — issuer-api2 in 3773 ms.
 `verifiably-go` was **not** started; it is not on the mdoc issuance path
@@ -291,6 +322,19 @@ dates must be supplied for issuance to succeed at all. Also,
 `Json array sizes (input & config) are not equal` — the mapping config
 declares a fixed 2-element array.
 
+> **Update (2026-08-31): the "exactly 2" constraint above is no longer
+> true.** The 2026-08-24 driving-privileges-variable-count work replaced
+> the single fixed-2-element `isoMdl` profile with four profiles —
+> `isoMdl_1cat` through `isoMdl_4cat`, `deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf`
+> — selected server-side by the REAL category count
+> (`internal/adapters/waltid/issuer2.go`'s `mdlProfileForCategoryCount`).
+> `driving_privileges` now accepts 1 to `mdoc.DrivingPrivilegesMaxCategories`
+> (4) entries, exact match to whichever profile that count selects — no
+> padding, and 0 categories is an explicit rejection (mandatory ISO/IEC
+> 18013-5 Table 3 element), not a silent default. This paragraph is kept
+> as a historical record of what Step 5 actually observed at the time; do
+> not follow its "exactly 2" claim for a current deployment.
+
 ### Step 6 — Repeat for Photo ID — PASS with a real defect (F2)
 
 Issued through the same API path, docType `org.iso.23220.photoid.1`
@@ -362,12 +406,13 @@ same as a real reader accepting the credential.
 **F1 — the issuance-blocking `issuerKey.jwk` string/object defect — is FIXED**
 in this branch and re-verified by issuing a real credential, not by booting.
 
-**F2 remains open:** walt.id's Photo ID profile omits the `portrait`
-byte-string mapping, so every Photo ID portrait is emitted as text. The
-four-line remedy is confirmed working but is routed to the debt list, not
-applied here. F3 (`verify.mjs` takes no path argument) and F4 (the Go
-adapter's `map[string]string` cannot express `driving_privileges`) are also
-open and on that list.
+**F2 — fixed 2026-09-01** (was open at the time this checklist was written:
+walt.id's Photo ID profile omitted the `portrait` byte-string mapping, so
+every Photo ID portrait was emitted as text). See the update note on F2's
+own section above. F3 (`verify.mjs` takes no path argument) is still open
+and on the debt list. F4 (the Go adapter's `map[string]string` cannot
+express `driving_privileges`) was fixed separately, well before this
+update — see `TODO.md`.
 
 ---
 
@@ -546,15 +591,38 @@ All of it — every step here is manual. In particular:
 3. **Steps 4 and 5 re-run against freshly issued credentials.** walt.id
    changing a `conversionType` default, or re-adding sample data to a
    shipped profile, would be invisible to every unit test in this repo.
-4. **Re-check F1 and F2.** F1 is fixed here — confirm the upgrade did not
-   reintroduce the blob form, and remember that only an *issuance* detects
-   it, never a boot. F2 is still open: if upstream added the `portrait`
-   mapping to the Photo ID profile, take theirs; if not, it still needs
-   fixing.
+4. **Re-check F1 and F2.** Both are fixed in this repo's own profile files —
+   confirm an upgrade does not silently revert either. For F1, confirm the
+   upgrade did not reintroduce the `issuerKey.jwk` blob form, and remember
+   that only an *issuance* detects it, never a boot. For F2, if upstream's
+   NEW default `isoPhotoId` profile now ships its own `portrait` mapping,
+   diff it against this repo's local fix before merging — a straight
+   overwrite of `issuer2-profiles.baseline.conf` from a fresh upstream
+   image would silently drop the local fix if upstream's shape differs
+   even slightly (field order, conversionType casing) from what
+   `profiletrim_test.go`'s `expectedPhotoIdMappings` expects.
 5. **Re-check the wellknown paths.** `/draft13/...` and
    `/.well-known/openid-credential-issuer/openid4vci` are walt.id's
    choices and have already moved once.
 6. **Re-check the credential request shape** — the encrypted-JWE
-   requirement, the 2-element `driving_privileges` array, and the
-   `stringToFullDate` behaviour on empty strings are all undocumented
-   walt.id behaviours found by trial here.
+   requirement, the `driving_privileges` array (variable 1–4 entries as of
+   2026-08-24, see the update note on Step 5 above — no longer fixed at 2),
+   and the `stringToFullDate` behaviour on empty strings are all
+   undocumented walt.id behaviours found by trial here.
+
+## Inji Certify Pre-Auth — mDL / Photo ID (second emitter, added 2026-08-25)
+
+This checklist predates Inji Certify's mso_mdoc integration by four days and
+was never extended to cover it — everything above is walt.id/issuer-api2
+only. The equivalent operational detail for the Inji Certify path (how an
+operator reaches it, the namespace-resolution mechanism, the
+`driving_privileges` guard, and the one still-open upstream limitation —
+`portrait` not bstr-encoded) now lives in
+[`dpg/inji-certify-preauth.md`](dpg/inji-certify-preauth.md)'s "mso_mdoc
+(mDL / Photo ID) issuance" section, kept there rather than duplicated here
+so the two don't drift out of sync the way this checklist's own
+`driving_privileges` note above did. A verification pass through the F1–F7
+steps above, repeated against the Inji Certify path specifically (a human
+issuing through the browser UI with a Pre-Auth Inji DPG selected, and
+independent verification of the resulting mdoc), has not yet been logged
+anywhere — that remains open work, not something this update closes.

@@ -388,7 +388,16 @@ services:
     container_name: inji-certify
     user: root
     ports:
-      - "8090:8090"
+      # 127.0.0.1-bound like every Postgres in this file: the port an
+      # operator actually reaches this on in production is Caddy's public
+      # port, routed over the Docker network to certify-nginx (see
+      # scripts/gen-caddy.sh's "inji-certify-authcode|certify-nginx:80|http"
+      # route and url_for's subdomain-mode branch, which never uses this
+      # host port at all). This one exists for direct-to-container access in
+      # legacy/dev mode; publishing it to every interface let a network
+      # attacker reach Inji Certify — and its unauthenticated Actuator —
+      # straight through, bypassing certify-nginx entirely.
+      - "127.0.0.1:8090:8090"
     environment:
       - container_user=mosip
       # CERTIFY_PG_PASSWORD resolves ${CERTIFY_PG_PASSWORD:postgres} in
@@ -563,7 +572,8 @@ services:
     restart: unless-stopped
     container_name: inji-certify-preauth
     ports:
-      - "8094:8090"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8094:8090"
     environment:
       - UPSTREAM_URL=http://inji-certify-preauth-backend:8090
       - LISTEN_ADDR=:8090
@@ -654,8 +664,12 @@ services:
     environment:
       - ISSUER_DISPLAY_NAME=${ISSUER_DISPLAY_NAME:-Agriculture Department}
     ports:
-      - "8091:80"
-      - "8443:443"
+      # 127.0.0.1-bound — production traffic reaches this over the Docker
+      # network via Caddy (scripts/gen-caddy.sh routes
+      # inji-certify-authcode -> certify-nginx:80 internally); these host
+      # ports exist for direct legacy/dev access only.
+      - "127.0.0.1:8091:80"
+      - "127.0.0.1:8443:443"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -683,8 +697,9 @@ services:
     restart: unless-stopped
     container_name: certify-preauth-nginx
     ports:
-      - "8095:80"
-      - "8445:443"
+      # 127.0.0.1-bound — same reasoning as certify-nginx above.
+      - "127.0.0.1:8095:80"
+      - "127.0.0.1:8445:443"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -735,7 +750,8 @@ services:
     container_name: inji-verify-service
     user: root
     ports:
-      - "8082:8080"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8082:8080"
     environment:
       - active_profile_env=default
       - DATABASE_HOST=inji-verify-postgres
@@ -779,7 +795,10 @@ services:
     restart: unless-stopped
     container_name: inji-verify-ui
     ports:
-      - "3001:8000"
+      # 127.0.0.1-bound — same reasoning as inji-certify above: production
+      # traffic reaches this via Caddy/nginx over the Docker network, not
+      # this host port.
+      - "127.0.0.1:3001:8000"
     environment:
       - DEFAULT_TITLE=Inji Verify
       - DEFAULT_LANG=en
@@ -839,7 +858,10 @@ services:
     restart: unless-stopped
     container_name: vc-adapter
     ports:
-      - "8085:8085"
+      # 127.0.0.1-bound — this is a standalone demo/showcase service, not on
+      # verifiably-go's own request path (see the comment above); no reason
+      # for it to be reachable from outside this host either.
+      - "127.0.0.1:8085:8085"
     environment:
       ADAPTER_PORT: "8085"
       BACKENDS_CONFIG: /app/backends.json
@@ -924,7 +946,7 @@ services:
       # as `postgres` here and let the scripts create mimoto/esignetuser/
       # mosip_mockidentity roles internally.
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${INJIWEB_PG_PASSWORD:-postgres}
       POSTGRES_DB: postgres
     volumes:
       - injiweb-db:/var/lib/postgresql/data
@@ -954,7 +976,8 @@ services:
       injiweb-postgres:
         condition: service_healthy
     ports:
-      - "8083:8082"     # 8082 is already taken by inji-verify-service
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8083:8082"     # 8082 is already taken by inji-verify-service
     # Skip the upstream configure_start.sh — its `if profile != "local"`
     # check matches `default,local` literally and runs an unzip+install
     # branch that renames `client/` to `hsm-client/` on first boot, then
@@ -990,7 +1013,7 @@ services:
       # so using the superuser is the simplest way to make the service
       # start without patching the init SQL.
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${INJIWEB_PG_PASSWORD:-postgres}
       # Persist mock-identity's kernel keymanager PKCS12 keystore on a
       # named volume instead of the container's writable layer. The
       # default config-path is /home/mosip/mock_local.p12 — but
@@ -1027,7 +1050,8 @@ services:
       injiweb-mock-identity:
         condition: service_started
     ports:
-      - "8088:8088"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8088:8088"
     environment:
       container_user: mosip
       active_profile_env: default,local
@@ -1041,7 +1065,7 @@ services:
       # superuser and never provisions a dedicated esignetuser role —
       # match that reality instead of guessing a password.
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${INJIWEB_PG_PASSWORD:-postgres}
       SPRING_CACHE_TYPE: redis
       SPRING_REDIS_HOST: injiweb-redis
       SPRING_REDIS_PORT: "6379"
@@ -1166,7 +1190,8 @@ services:
     depends_on:
       - injiweb-minio
     ports:
-      - "8097:8097"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8097:8097"
     environment:
       container_user: mosip
       active_profile_env: inji-default,standalone
@@ -1200,7 +1225,8 @@ services:
       injiweb-esignet:
         condition: service_started
     ports:
-      - "8099:8099"
+      # 127.0.0.1-bound — same reasoning as inji-certify above.
+      - "127.0.0.1:8099:8099"
     environment:
       container_user: mosip
       active_profile_env: default
@@ -1213,7 +1239,7 @@ services:
       # Upstream config expects POSTGRES_USER / POSTGRES_PASSWORD env vars
       # which the Spring config files then reference via placeholders.
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${INJIWEB_PG_PASSWORD:-postgres}
       oidc_p12_password: ${INJIWEB_P12_PASSWORD:-xy4gh6swa2i}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-dummy-client-id}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-dummy-client-secret}

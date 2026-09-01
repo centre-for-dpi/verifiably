@@ -174,6 +174,7 @@ provision_issuer2_certificates() {
   local dsc="$certs_dir/dsc.pem"
   local iaca="$certs_dir/iaca.pem"
   local key_env="$certs_dir/issuer2.env"
+  local aux_env="$certs_dir/issuer2-aux.env"
 
   if [[ ! -f "$profiles" ]]; then
     red "  WARN: $profiles missing — issuer2 certificate provisioning skipped"
@@ -184,9 +185,14 @@ provision_issuer2_certificates() {
   local province="${VERIFIABLY_ISSUER2_CERT_PROVINCE:-DO-01}"
   local authority="${VERIFIABLY_ISSUER2_CERT_AUTHORITY:-VERIFIABLY POC}"
 
-  # Generate only when there is no DSC yet. mdl-pki-gen re-checks this itself;
-  # testing here too keeps the docker run off the path of every redeploy.
-  if [[ ! -f "$dsc" ]]; then
+  # Run the generator when either the DSC or the aux service keys are
+  # missing. mdl-pki-gen re-checks both gates itself (independently — see
+  # ensureAuxKeys in cmd/mdl-pki-gen/main.go), so this is only about keeping
+  # the docker run off the path of a normal redeploy where both already
+  # exist; the OR here is what makes an operator migrating in from before
+  # issuer2-aux.env existed actually get it generated, instead of the DSC
+  # gate alone permanently short-circuiting this whole block.
+  if [[ ! -f "$dsc" || ! -f "$aux_env" ]]; then
     mkdir -p "$certs_dir"
     bold "  Generating mdoc issuance certificates (first deploy)"
     # No Go toolchain is assumed on the deploy host — deploy.sh already
@@ -226,6 +232,27 @@ provision_issuer2_certificates() {
       fi
     done < "$key_env"
     green "  issuer2 signing key loaded from $key_env"
+  fi
+
+  # Same load-and-persist for the two aux service keys issuer-api2's
+  # docker-compose `:?` guard requires before it will start at all
+  # (VERIFIABLY_ISSUER2_CI_TOKEN_KEY, VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY).
+  # Each line is `VAR={"type":"jwk",...}` — the value itself contains `=`
+  # inside the JWK's base64url fields is never the case (base64url has no
+  # '='), but IFS= read with `_val="${_line#*=}"` (first '=' only, same as
+  # the loop above) is what makes this safe regardless.
+  if [[ -f "$aux_env" ]]; then
+    local _line _var _val
+    while IFS= read -r _line; do
+      [[ "$_line" == VERIFIABLY_ISSUER2_CI_TOKEN_KEY=* || "$_line" == VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY=* ]] || continue
+      _var="${_line%%=*}"
+      _val="${_line#*=}"
+      if [[ -z "${!_var:-}" ]]; then
+        export "$_var=$_val"
+        [[ -n "${VERIFIABLY_ENV_FILE:-}" ]] && set_env_var "$VERIFIABLY_ENV_FILE" "$_var" "$_val"
+      fi
+    done < "$aux_env"
+    green "  issuer2 service keys (ciTokenKey, credentialEncryptionKey) loaded from $aux_env"
   fi
 
   # Render the DSC (and its IACA) into defaultIssuerX5chain, but only while the
@@ -370,6 +397,56 @@ seed_issuer2_configs() {
     local runtime="$dir/$name.conf"
     if [[ ! -f "$baseline" ]]; then
       red "  WARN: $baseline missing — issuer2 $name seed skipped"
+      continue
+    fi
+    if [[ -f "$runtime" ]]; then
+      continue
+    fi
+    cp "$baseline" "$runtime"
+    green "  seeded $runtime from baseline"
+  done
+}
+
+# seed_inji_authcode_configs is seed_issuer2_configs's counterpart for Inji
+# Certify's Auth-Code path. Same split, same reason, two files instead of two
+# (one per MOSIP service that reads operator-added scopes):
+#
+#   certify-postgres-dataprovider.properties <- applyAuthcodeSchema
+#                                                (internal/handlers/inji_schema.go)
+#                                                appends one scope-query-mapping
+#                                                brace-entry per saved schema.
+#   credential-scopes.properties              <- same handler appends the
+#                                                matching eSignet scope +
+#                                                scope-resource-mapping pair.
+#
+# Both used to be tracked in git while carrying that operator-appended state, so
+# a `git pull`, `git checkout` or `git stash pop` on a deployed host silently
+# reverted every custom Auth-Code credential_config's scope mapping back to the
+# seed's base-only shape — breaking already-issued Auth-Code schemas with no
+# error on either side. Tracking the *.baseline.properties seeds instead, and
+# gitignoring the runtime files, is what makes the appended state survive git
+# operations (mirrors seed_issuer2_configs above, written for the identical
+# walt.id bug).
+#
+# `cp -n`-equivalent (skip if runtime exists) is load-bearing, not defensive:
+# an operator upgrading an existing deployment already has real operator-added
+# scopes sitting at the runtime paths, and seeding must never overwrite them.
+#
+# Ordering: deploy.sh calls this before start-container.sh bind-mounts the
+# runtime paths into verifiably-go — a fresh clone must have both runtime files
+# in place before the container that reads (and later rewrites) them starts.
+#
+# To adopt upstream baseline changes after a deployment has been seeded, the
+# operator merges them into the runtime file by hand. Diffs are intentional state.
+seed_inji_authcode_configs() {
+  local certify_dir="$SCRIPT_DIR/deploy/compose/stack/inji/certify"
+  local esignet_dir="$SCRIPT_DIR/deploy/compose/stack/inji/esignet"
+  local baseline runtime
+  for pair in "$certify_dir/certify-postgres-dataprovider" "$esignet_dir/credential-scopes"; do
+    baseline="$pair.baseline.properties"
+    runtime="$pair.properties"
+    if [[ ! -f "$baseline" ]]; then
+      red "  WARN: $baseline missing — Inji auth-code config seed skipped"
       continue
     fi
     if [[ -f "$runtime" ]]; then

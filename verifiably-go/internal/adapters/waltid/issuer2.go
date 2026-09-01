@@ -57,9 +57,28 @@ type mdocProfile struct {
 // caller that ignores mdlProfileForCategoryCount and dispatches on this
 // map's mDL profileID directly must fail loudly on the empty string rather
 // than silently POSTing a deleted profile name to walt.id.
+//
+// baseNamespace comes from mdoc.NamespaceForDocType — the allowlist shared
+// with internal/adapters/injicertify/db.go's mdocNamespaceForDocType — rather
+// than a literal here, so the two adapters cannot drift onto different
+// namespaces for the same docType the way injicertify's independent
+// dot-stripping reimplementation once silently did for Photo ID.
 var docTypeProfiles = map[string]mdocProfile{
-	"org.iso.18013.5.1.mDL":   {"", "org.iso.18013.5.1"},
-	"org.iso.23220.photoid.1": {"isoPhotoId", "org.iso.23220.1"},
+	mdoc.MDLDocType:     {profileID: "", baseNamespace: mustNamespace(mdoc.MDLDocType)},
+	mdoc.PhotoIDDocType: {profileID: "isoPhotoId", baseNamespace: mustNamespace(mdoc.PhotoIDDocType)},
+}
+
+// mustNamespace resolves a docType's namespace from the package-level
+// allowlist docTypeProfiles is built from. Panics on an unknown docType —
+// acceptable here because this only ever runs at package-init time over the
+// two docType constants above, never over request data; a mismatch would be
+// a programming error caught at process startup, not a runtime condition.
+func mustNamespace(docType string) string {
+	ns, ok := mdoc.NamespaceForDocType(docType)
+	if !ok {
+		panic("waltid: mdoc.NamespaceForDocType has no entry for " + docType)
+	}
+	return ns
 }
 
 // profileIDForDocType resolves an ISO docType to its issuer-api2 profile.

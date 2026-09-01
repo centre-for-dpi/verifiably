@@ -1,5 +1,17 @@
 # Issuer mDL (ISO/IEC 18013-5) en Go — Implementation Plan
 
+> **Superseded (2026-08-21):** este plan fue ejecutado completamente y
+> luego revertido como camino de emisión de PRODUCCIÓN el mismo día que se
+> completó (`d9c15cf` → `ce3e899`) — firmar en el proceso Go rompía la
+> regla "verifiably media, los DPG emiten". El código que este plan produjo
+> (`internal/mdl/`) sigue existiendo y sigue siendo valioso, pero solo como
+> **verificador de conformidad independiente**, nunca como el servicio que
+> firma el mDL de un ciudadano real. Ver
+> `docs/superpowers/adr/2026-08-21-mdl-portrait-path-decision.md` para la
+> decisión final y su razonamiento. Un operador desplegando este sistema no
+> necesita ejecutar nada de este plan — `issuer-api2` (walt.id) es el
+> emisor de producción, ver `docs/deploy.md#mdl-mdoc-issuance-issuer-api2`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Construir en `verifiably-go` un emisor de credenciales mDL conformes a ISO/IEC 18013-5 que produzca `IssuerSigned`/`MobileSecurityObject` firmados y verificables por un verificador independiente.

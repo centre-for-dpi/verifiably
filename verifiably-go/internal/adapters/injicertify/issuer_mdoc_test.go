@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -163,9 +164,14 @@ func TestIssueToWalletPhotoIDDoesNotRequireDrivingPrivileges(t *testing.T) {
 	if _, err := a.IssueToWallet(context.Background(), req); err != nil {
 		t.Fatalf("IssueToWallet for Photo ID should not require driving_privileges, got error: %v", err)
 	}
-	ns, ok := gotClaims["org.iso.23220.photoid"].(map[string]any)
+	// org.iso.23220.1, NOT org.iso.23220.photoid: Photo ID's real ISO base
+	// namespace, resolved via mdoc.NamespaceForDocType — the dot-stripping
+	// heuristic this test used to assert on (before that helper existed)
+	// gives the wrong namespace for this exact docType. See
+	// mdoc.NamespaceForDocType's own comment for why.
+	ns, ok := gotClaims["org.iso.23220.1"].(map[string]any)
 	if !ok {
-		t.Fatalf("claims[%q] is %T, want map[string]any", "org.iso.23220.photoid", gotClaims["org.iso.23220.photoid"])
+		t.Fatalf("claims[%q] is %T, want map[string]any", "org.iso.23220.1", gotClaims["org.iso.23220.1"])
 	}
 	if _, present := ns["driving_privileges"]; present {
 		t.Errorf("driving_privileges present in Photo ID claims — must never appear for this docType")
@@ -226,5 +232,142 @@ func TestIssueToWalletMdocGuardDoesNotApplyToAuthCode(t *testing.T) {
 	}
 	if res.Flow != "auth_code" {
 		t.Errorf("Flow = %q, want %q", res.Flow, "auth_code")
+	}
+}
+
+// TestIssueToWalletSurfacesMosipErrorMessage pins that a
+// /v1/certify/pre-authorized-data error response's human-readable
+// ErrorMessage reaches the operator alongside the short ErrorCode, not
+// silently dropped. Mirrors waltid/issuer2.go's posture of surfacing the
+// service's own wording verbatim for debugging.
+func TestIssueToWalletSurfacesMosipErrorMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(preAuthorizedDataResponse{
+			Errors: []mosipError{{
+				ErrorCode:    "ERROR_SIGNING_QR_DATA",
+				ErrorMessage: "Error occurred while signing QR code data",
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	a, err := New(Config{Mode: ModePreAuth, BaseURL: srv.URL, PublicBaseURL: srv.URL}, "Inji Certify · Pre-Auth")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	req := backend.IssueRequest{
+		Schema:      vctypes.Schema{ID: "custom-abc", Std: "vc+sd-jwt"},
+		SubjectData: map[string]string{"family_name": "Perez"},
+	}
+	_, err = a.IssueToWallet(context.Background(), req)
+	if err == nil {
+		t.Fatal("IssueToWallet with a MOSIP error response returned no error")
+	}
+	if !strings.Contains(err.Error(), "ERROR_SIGNING_QR_DATA") {
+		t.Errorf("error %q does not contain the ErrorCode", err.Error())
+	}
+	if !strings.Contains(err.Error(), "Error occurred while signing QR code data") {
+		t.Errorf("error %q does not contain MOSIP's ErrorMessage — this was silently dropped before the fix, "+
+			"leaving only the opaque ErrorCode for whoever debugs an issuance failure", err.Error())
+	}
+}
+
+// TestIssueToWalletHandlesMosipErrorWithoutMessage covers the ErrorMessage
+// field being absent/empty — the error must still surface the ErrorCode
+// alone, not produce a malformed "code: " suffix.
+func TestIssueToWalletHandlesMosipErrorWithoutMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(preAuthorizedDataResponse{
+			Errors: []mosipError{{ErrorCode: "UNKNOWN_ERROR"}},
+		})
+	}))
+	defer srv.Close()
+
+	a, err := New(Config{Mode: ModePreAuth, BaseURL: srv.URL, PublicBaseURL: srv.URL}, "Inji Certify · Pre-Auth")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	req := backend.IssueRequest{
+		Schema:      vctypes.Schema{ID: "custom-abc", Std: "vc+sd-jwt"},
+		SubjectData: map[string]string{"family_name": "Perez"},
+	}
+	_, err = a.IssueToWallet(context.Background(), req)
+	if err == nil {
+		t.Fatal("IssueToWallet with a MOSIP error response returned no error")
+	}
+	if !strings.Contains(err.Error(), "UNKNOWN_ERROR") {
+		t.Errorf("error %q does not contain the ErrorCode", err.Error())
+	}
+	if strings.HasSuffix(strings.TrimSpace(err.Error()), ":") {
+		t.Errorf("error %q has a trailing ': ' from an empty ErrorMessage", err.Error())
+	}
+}
+
+// TestIssueToWalletRejectsDrivingPrivilegesWithUnknownField pins the
+// per-entry shape validation added alongside the count check: an entry
+// carrying a key outside mdoc.DrivingPrivilege's three known fields must be
+// rejected here — server-side — rather than reaching Inji Certify's Velocity
+// template substitution as opaque, unvalidated content. Reachable the same
+// way the count check is: a direct POST bypassing the issue form's own
+// validateDrivingPrivilegesCount.
+func TestIssueToWalletRejectsDrivingPrivilegesWithUnknownField(t *testing.T) {
+	a, err := New(Config{Mode: ModePreAuth, BaseURL: "http://unused-if-guard-works", PublicBaseURL: "http://unused"}, "Inji Certify · Pre-Auth")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	raw := json.RawMessage(`[{"vehicle_category_code":"B","not_a_real_field":"injected"}]`)
+	req := backend.IssueRequest{
+		Schema:         vctypes.Schema{ID: "custom-abc", Std: "mso_mdoc", AdditionalTypes: []string{mdoc.MDLDocType}},
+		SubjectData:    map[string]string{"family_name": "Perez"},
+		StructuredData: map[string]json.RawMessage{"driving_privileges": raw},
+	}
+	if _, err := a.IssueToWallet(context.Background(), req); err == nil {
+		t.Error("IssueToWallet with an unknown-field driving_privileges entry returned no error, want a rejection")
+	}
+}
+
+// TestIssueToWalletRejectsDrivingPrivilegesWithBlankCategoryCode covers an
+// entry that decodes fine but carries no vehicle_category_code — the one
+// field ISO/IEC 18013-5 actually requires per entry.
+func TestIssueToWalletRejectsDrivingPrivilegesWithBlankCategoryCode(t *testing.T) {
+	a, err := New(Config{Mode: ModePreAuth, BaseURL: "http://unused-if-guard-works", PublicBaseURL: "http://unused"}, "Inji Certify · Pre-Auth")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	raw := json.RawMessage(`[{"vehicle_category_code":"  "}]`)
+	req := backend.IssueRequest{
+		Schema:         vctypes.Schema{ID: "custom-abc", Std: "mso_mdoc", AdditionalTypes: []string{mdoc.MDLDocType}},
+		SubjectData:    map[string]string{"family_name": "Perez"},
+		StructuredData: map[string]json.RawMessage{"driving_privileges": raw},
+	}
+	if _, err := a.IssueToWallet(context.Background(), req); err == nil {
+		t.Error("IssueToWallet with a blank vehicle_category_code returned no error, want a rejection")
+	}
+}
+
+// TestIssueToWalletAcceptsDrivingPrivilegesWithoutOptionalDates confirms the
+// shape validation does not over-tighten: issue_date/expiry_date stay
+// optional (mdoc.DrivingPrivilege's own omitempty), only
+// vehicle_category_code and the absence of unknown fields are enforced.
+func TestIssueToWalletAcceptsDrivingPrivilegesWithoutOptionalDates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(preAuthorizedDataResponse{
+			CredentialOfferURI: "openid-credential-offer://?credential_offer=%7B%7D",
+		})
+	}))
+	defer srv.Close()
+
+	a, err := New(Config{Mode: ModePreAuth, BaseURL: srv.URL, PublicBaseURL: srv.URL}, "Inji Certify · Pre-Auth")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	raw := json.RawMessage(`[{"vehicle_category_code":"B"}]`)
+	req := backend.IssueRequest{
+		Schema:         vctypes.Schema{ID: "custom-abc", Std: "mso_mdoc", AdditionalTypes: []string{mdoc.MDLDocType}},
+		SubjectData:    map[string]string{"family_name": "Perez"},
+		StructuredData: map[string]json.RawMessage{"driving_privileges": raw},
+	}
+	if _, err := a.IssueToWallet(context.Background(), req); err != nil {
+		t.Errorf("IssueToWallet with only vehicle_category_code set should succeed, got: %v", err)
 	}
 }

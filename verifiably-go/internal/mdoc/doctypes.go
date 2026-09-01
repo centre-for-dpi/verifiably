@@ -199,6 +199,44 @@ var mandatoryByDocType = map[string][]vctypes.FieldSpec{
 	PhotoIDDocType: photoIDMandatory,
 }
 
+// baseNamespaceByDocType is the single source of truth for a docType's real
+// ISO namespace — the value every mso_mdoc-issuing adapter must nest that
+// docType's claims under.
+//
+// This does NOT reduce to "strip the docType's last dot-segment": that
+// heuristic gives org.iso.18013.5.1 for mDL (correct, by coincidence of that
+// docType's shape) but org.iso.23220.photoid for Photo ID, whose real base
+// namespace is org.iso.23220.1 — NOT derivable from PhotoIDDocType by string
+// manipulation. Getting this wrong produces a structurally valid credential
+// nested under the wrong namespace: it signs and issues cleanly, and is
+// silently non-conformant to ISO/IEC 23220-1.
+//
+// Originally lived only as internal/adapters/waltid/issuer2.go's
+// docTypeProfiles (walt.id's profile-routing table, which also carries a
+// walt.id-specific profileID per docType and stays there for that reason).
+// Promoted here because internal/adapters/injicertify/db.go independently
+// reimplemented the same "strip the last dot-segment" heuristic — WITHOUT
+// docTypeProfiles' fallback — for the identical purpose, silently
+// reintroducing the exact Photo ID namespace bug docTypeProfiles exists to
+// prevent, the moment an Inji Certify Photo ID schema is created (mdoc.PhotoIDDocType
+// is part of the shared KnownDocTypes() catalog, so nothing stopped an
+// operator from doing this). Both adapters now resolve through
+// NamespaceForDocType instead of keeping their own copy.
+var baseNamespaceByDocType = map[string]string{
+	MDLDocType:     "org.iso.18013.5.1",
+	PhotoIDDocType: "org.iso.23220.1",
+}
+
+// NamespaceForDocType resolves a docType's real ISO namespace via the
+// allowlist above. ok is false for a docType with no provisioned profile —
+// callers must fail loudly on that rather than falling back to a
+// dot-stripping heuristic that is wrong for Photo ID (see
+// baseNamespaceByDocType's comment).
+func NamespaceForDocType(docType string) (string, bool) {
+	ns, ok := baseNamespaceByDocType[docType]
+	return ns, ok
+}
+
 // MandatoryFields returns the elements the standard requires for a docType.
 // Returns nil for an unknown docType.
 //

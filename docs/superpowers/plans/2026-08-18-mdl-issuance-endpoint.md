@@ -1,5 +1,14 @@
 # Endpoint de emisión mDL (proof-of-possession) — Implementation Plan
 
+> **Obsoleted (2026-08-21):** este plan asume que `internal/mdl/` firma
+> credenciales de producción en el proceso Go — arquitectura descartada el
+> 2026-08-21 en favor de `issuer-api2` (walt.id) como emisor. Ver
+> `docs/superpowers/adr/2026-08-21-mdl-portrait-path-decision.md`. El
+> endpoint de dos pasos que este plan describe nunca llegó a producción; el
+> flujo real de proof-of-possession/deviceKey para `issuer-api2` es distinto
+> y no está documentado en este archivo. No usar este plan como referencia
+> operativa.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Añadir a `verifiably-go` el endpoint OID4VCI de dos pasos que recibe la

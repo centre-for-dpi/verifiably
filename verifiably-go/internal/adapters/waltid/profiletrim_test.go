@@ -67,11 +67,20 @@ func expectedMdlMappingsForProfile(categoryCount int) []struct{ field, conversio
 	return out
 }
 
-// expectedPhotoIdMappings — isoPhotoId, unchanged by this task.
+// expectedPhotoIdMappings — isoPhotoId. Carries `portrait` as of the F2 fix
+// (2026-08-31, TODO.md): the profile was missing this exact entry relative
+// to the mDL profiles it is otherwise structurally identical to, so
+// portrait serialized as CBOR text instead of a byte string for every
+// Photo ID this deployment issued — non-conformant to ISO/IEC 23220-1,
+// silently, the same way the retired coerceMdocValue's own history
+// describes for booleans. Order matches the real entriesConfigMap in
+// issuer2-profiles.baseline.conf: portrait sits between expiry_date and
+// portrait_capture_date, mirroring the mDL profiles' own ordering.
 var expectedPhotoIdMappings = []struct{ field, conversion string }{
 	{"birth_date", "stringToFullDate"},
 	{"issue_date", "stringToFullDate"},
 	{"expiry_date", "stringToFullDate"},
+	{"portrait", "base64StringToByteString"},
 	{"portrait_capture_date", "stringToFullDate"},
 }
 

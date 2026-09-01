@@ -87,6 +87,43 @@ cmd_up() {
     set +o allexport
   fi
 
+  # DPG-stack Postgres passwords: an operator upgrading from before
+  # ensure_dpg_stack_pg_passwords existed already has a .env file, so the
+  # first-time-setup wizard above never ran for them and none of these
+  # variables were generated for their deployment.
+  #
+  # Deliberately NOT auto-generated here the way cmd_setup does it for a
+  # fresh deploy: cmd_setup's wizard only ever runs before any Postgres
+  # volume exists, so a freshly generated password is the FIRST password
+  # that volume ever gets. Here, on every later `up`, the Postgres volumes
+  # already exist with whatever password they were initialized under
+  # (docker-compose.yml's weak fallback, most likely) — generating a NEW
+  # value and exporting it would make every consuming container (issuer-api,
+  # mimoto, esignet, ...) authenticate with a password Postgres was never
+  # told about, breaking a previously-working deployment on this exact `up`.
+  # Postgres does not re-read POSTGRES_PASSWORD on an already-initialized
+  # volume; only `ALTER USER ... PASSWORD ...` run inside the container
+  # changes it (see .env.example's identical warning for the four Inji/
+  # citizens passwords already parametrized). So: warn once per missing
+  # variable and let the operator rotate it deliberately (generate a value,
+  # ALTER USER, then set it in .env) rather than silently doing it here.
+  if [[ -f "$_env_file" ]]; then
+    local _pg_var_check _pg_missing=()
+    for _pg_var_check in POSTGRES_PASSWORD VERIFIABLY_PG_PASSWORD CERTIFY_PG_PASSWORD \
+      CERTIFY_PREAUTH_PG_PASSWORD INJI_VERIFY_PG_PASSWORD CITIZENS_PG_PASSWORD INJIWEB_PG_PASSWORD; do
+      # Same comparison ensure_dpg_stack_pg_passwords uses (see its own
+      # comment on _dpg_pg_default_password): common.sh's .env.example
+      # fallback means these are never actually EMPTY by the time cmd_up
+      # runs, only still equal to the shipped weak default.
+      [[ -z "${!_pg_var_check:-}" || "${!_pg_var_check}" == "$(_dpg_pg_default_password "$_pg_var_check")" ]] && _pg_missing+=("$_pg_var_check")
+    done
+    if [[ ${#_pg_missing[@]} -gt 0 ]]; then
+      yellow "  NOTE: ${#_pg_missing[@]} DPG-stack Postgres password(s) not set in .env, still on docker-compose.yml's weak default: ${_pg_missing[*]}"
+      yellow "  Not auto-generating: these Postgres volumes may already be initialized under the current default."
+      yellow "  To rotate: generate a value, run ALTER USER ... PASSWORD '<new>'; inside the running container, THEN set it in .env."
+    fi
+  fi
+
   # Detect VERIFIABLY_PUBLIC_HOST change vs. what is baked into running
   # containers (SERVICE_HOST env var on issuer-api / verifier-api / wallet-api,
   # and KC_HOSTNAME_URL on keycloak). When the host changed, recreate those
@@ -240,6 +277,13 @@ cmd_up() {
   # (appended by internal/adapters/waltid/issuer.go via SaveCustomSchema)
   # survive every git pull/checkout. The runtime path is gitignored.
   seed_credential_issuer_catalog
+
+  # Inji Certify Auth-Code's runtime configs — same split, same reason, for
+  # the two properties files applyAuthcodeSchema (internal/handlers/inji_schema.go)
+  # appends operator-saved scope mappings into. Must run BEFORE
+  # start-container.sh, which bind-mounts these runtime paths into
+  # verifiably-go; a fresh clone has neither file until this seeds them.
+  seed_inji_authcode_configs
 
   # WSO2's accountrecoveryendpoint signup-success page is patched at
   # container start with a meta-refresh redirect; the URL it points at
@@ -940,6 +984,21 @@ cmd_setup() {
   read -r _credebl_email
   _credebl_email="${_credebl_email:-$_default_credebl_email}"
 
+  # ── DPG stack Postgres passwords ─────────────────────────────────────────
+  # See ensure_dpg_stack_pg_passwords (scripts/common.sh) for why these are
+  # generated rather than left to docker-compose.yml's weak fallback
+  # literals. Safe specifically HERE because this wizard only ever runs
+  # before any Postgres volume exists (cmd_up's own gate: only when no .env
+  # is present) — a freshly generated password is the FIRST password each
+  # volume gets, nothing to mismatch against. The one edge case this does
+  # NOT cover: an operator who deletes .env but keeps the Docker volumes
+  # from a prior deploy — re-running this wizard would then generate
+  # passwords that don't match those already-initialized volumes. Keep
+  # `docker volume ls` / a backup of .env in mind before deleting it on a
+  # host with real data.
+  local _pg_generated=()
+  ensure_dpg_stack_pg_passwords _pg_generated
+
   # ── Write .env ────────────────────────────────────────────────────────────
   echo
   bold "  Writing ${env_file}"
@@ -959,7 +1018,19 @@ cmd_setup() {
     printf 'KEYCLOAK_ADMIN_USER=admin\n'
     printf 'KEYCLOAK_ADMIN_PASSWORD=%s\n\n' "$_kc_pass"
 
-    printf 'CREDEBL_ADMIN_EMAIL=%s\n' "$_credebl_email"
+    printf 'CREDEBL_ADMIN_EMAIL=%s\n\n' "$_credebl_email"
+
+    if [[ ${#_pg_generated[@]} -gt 0 ]]; then
+      printf '# DPG-stack Postgres passwords, generated on %s.\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      printf '# Every one of these Postgres containers is 127.0.0.1-bound (see\n'
+      printf '# deploy/compose/stack/docker-compose.yml) — this is defense in depth\n'
+      printf '# against another process on the same host, not the primary mitigation.\n'
+      local _pg_var
+      for _pg_var in "${_pg_generated[@]}"; do
+        printf '%s=%s\n' "$_pg_var" "${!_pg_var}"
+      done
+      printf '\n'
+    fi
   } > "$env_file"
 
   # ── Sync deploy/compose/stack/.env ────────────────────────────────────────

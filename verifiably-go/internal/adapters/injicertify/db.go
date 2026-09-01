@@ -305,11 +305,24 @@ func mdocDocTypeForSchema(schema vctypes.Schema) string {
 	return schema.ID
 }
 
-// mdocNamespaceForDocType derives the ISO namespace from a docType by
-// stripping the last dot-segment — same heuristic as waltid's
-// mdocNamespaceFor, valid for org.iso.18013.5.1.mDL (mDL is the only
-// docType this task provisions; Photo ID is out of scope).
+// mdocNamespaceForDocType derives the ISO namespace from a docType via
+// mdoc.NamespaceForDocType, the allowlist shared with waltid/issuer2.go's
+// docTypeProfiles — NOT a dot-stripping heuristic. That heuristic gives the
+// right answer for org.iso.18013.5.1.mDL by coincidence of its shape, but the
+// wrong one for org.iso.23220.photoid.1 (whose real base namespace is
+// org.iso.23220.1, not org.iso.23220.photoid) — this function used to
+// reimplement that exact heuristic locally, silently producing a wrong
+// namespace the moment an operator created an Inji Certify Photo ID schema.
+// See mdoc.NamespaceForDocType's own comment for the full history.
+//
+// The dot-stripping fallback below only fires for a docType absent from the
+// shared allowlist — i.e. one with no provisioned mso_mdoc profile at all —
+// matching waltid/issuer2.go's mdocNamespaceFor posture: never the primary
+// path, only a last resort for an as-yet-unprovisioned docType.
 func mdocNamespaceForDocType(docType string) string {
+	if ns, ok := mdoc.NamespaceForDocType(docType); ok {
+		return ns
+	}
 	if i := strings.LastIndex(docType, "."); i > 0 {
 		return docType[:i]
 	}

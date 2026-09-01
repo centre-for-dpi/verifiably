@@ -3,6 +3,17 @@
 **Fecha:** 2026-08-21
 **Estado:** Diseño aprobado en conversación, pendiente de revisión antes de escribir el plan de implementación.
 
+> **Nota (2026-08-31): el mecanismo de `driving_privileges` descrito abajo
+> quedó superado 3 días después de este spec.** La sección sobre
+> `arrayConfig`/`entriesConfigMap` de más abajo describe correctamente el
+> mecanismo HOCON de walt.id, pero el perfil `isoMdl` único (2 entradas de
+> ejemplo) que ese fragmento asume fue reemplazado el 2026-08-24 por cuatro
+> perfiles — `isoMdl_1cat`..`isoMdl_4cat` — seleccionados server-side según
+> el conteo REAL de categorías (1-4, no fijo en 2). Ver
+> `docs/superpowers/specs/2026-08-24-mdl-driving-privileges-variable-count-design.md`
+> para el diseño vigente. El resto de este documento (docTypes, etiquetas
+> multi-idioma, estructura general de `issuer2-profiles.conf`) sigue vigente.
+
 **Dependencia de rama:** este diseño referencia `internal/mdl/doctype.go`
 (modelado de los 11 elementos de la Tabla 3) y
 `internal/mdl/testdata/verify/verify.mjs` (verificador Node.js

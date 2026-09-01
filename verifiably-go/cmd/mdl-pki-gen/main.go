@@ -4,10 +4,18 @@
 //
 // It writes four things into -out:
 //
-//	iaca.pem      the trust anchor an operator imports into a wallet
-//	dsc.pem       the x5chain leaf
-//	dsc-key.pem   the DSC private key, PKCS#8
-//	issuer2.env   VERIFIABLY_ISSUER2_KEY_X/_Y/_D for the issuer config
+//	iaca.pem          the trust anchor an operator imports into a wallet
+//	dsc.pem           the x5chain leaf
+//	dsc-key.pem       the DSC private key, PKCS#8
+//	issuer2.env       VERIFIABLY_ISSUER2_KEY_X/_Y/_D for the issuer config
+//	issuer2-aux.env   VERIFIABLY_ISSUER2_CI_TOKEN_KEY /
+//	                  VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY — issuer-api2's
+//	                  two internal service keys, unrelated to the DSC/IACA
+//	                  chain but required by a hard docker-compose guard before
+//	                  issuer-api2 will start at all. Generated and gated
+//	                  independently of the chain below (see ensureAuxKeys) so
+//	                  a deployment migrating in from before these existed
+//	                  still gets them on its next `up`.
 //
 // The single thing this command exists to guarantee is that the key in
 // issuer2.env and the public key inside dsc.pem are the same key. ISO 18013-5
@@ -32,6 +40,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -56,6 +65,7 @@ const (
 	dscCertFile  = "dsc.pem"
 	dscKeyFile   = "dsc-key.pem"
 	envFile      = "issuer2.env"
+	auxEnvFile   = "issuer2-aux.env"
 )
 
 func main() {
@@ -81,15 +91,26 @@ func fatal(err error) {
 	os.Exit(1)
 }
 
-// run generates the chain unless material is already present.
+// run generates the chain unless material is already present, then ensures
+// the two auxiliary service keys issuer-api2 needs to boot at all exist.
 //
-// Idempotence is keyed on the DSC certificate: if it exists, this is a
-// redeploy and regenerating would invalidate every credential already issued
-// under the old key. Same posture as seed_credential_issuer_catalog's cp -n.
+// Idempotence for the chain is keyed on the DSC certificate: if it exists,
+// this is a redeploy and regenerating would invalidate every credential
+// already issued under the old key. Same posture as
+// seed_credential_issuer_catalog's cp -n. The auxiliary keys are gated
+// independently (auxEnvFile's own existence) so a deployment that already has
+// a DSC from before these were added still gets them generated on its next
+// `up`, instead of staying permanently stuck on the hard docker-compose
+// `:?` guard that requires them.
 func run(outDir, country, province, authority string) error {
 	if err := os.MkdirAll(outDir, 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", outDir, err)
 	}
+
+	if err := ensureAuxKeys(outDir); err != nil {
+		return err
+	}
+
 	dscPath := filepath.Join(outDir, dscCertFile)
 	if _, err := os.Stat(dscPath); err == nil {
 		fmt.Printf("mdl-pki-gen: %s already exists — keeping it\n", dscPath)
@@ -221,4 +242,94 @@ func writeEnv(path string, key *ecdsa.PrivateKey) error {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
+}
+
+// ensureAuxKeys generates issuer-api2's two service-signing/-encryption keys
+// on first run and writes them to auxEnvFile — VERIFIABLY_ISSUER2_CI_TOKEN_KEY
+// and VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY, both required by a hard `:?`
+// guard in docker-compose.yml before issuer-api2 will even start.
+//
+// Unlike the DSC signing key (writeEnv), these are NOT bound to anything a
+// wallet or verifier ever inspects — issuer-api2 uses them purely internally
+// (signing its own CI token, encrypting credential response payloads), so
+// there is no cross-check requiring them to stay stable in the way the
+// DSC/wallet trust relationship does. Skipping generation once auxEnvFile
+// exists is still the right default (an operator who set these by hand in
+// .env must not be silently overridden), matching the DSC gate's posture.
+//
+// Shape: each value is the FULL {"type":"jwk","jwk":{...}} wrapper object
+// serialized to one JSON line — a HOCON string, not a bare JWK — see the
+// shape comment on VERIFIABLY_ISSUER2_CI_TOKEN_KEY in
+// deploy/compose/stack/.env.example for why. deploy.sh's set_env_var already
+// quotes values it writes into .env, so the single-quoting that file's
+// comment warns an operator to do by hand is not needed on this path.
+func ensureAuxKeys(outDir string) error {
+	path := filepath.Join(outDir, auxEnvFile)
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+
+	ciTokenKey, err := jwkWrapper()
+	if err != nil {
+		return fmt.Errorf("generate ciTokenKey: %w", err)
+	}
+	credEncKey, err := jwkWrapper()
+	if err != nil {
+		return fmt.Errorf("generate credentialEncryptionKey: %w", err)
+	}
+
+	body := fmt.Sprintf(""+
+		"VERIFIABLY_ISSUER2_CI_TOKEN_KEY=%s\n"+
+		"VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY=%s\n",
+		ciTokenKey, credEncKey)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	fmt.Printf("mdl-pki-gen: generated %s (issuer-api2 service keys)\n", path)
+	return nil
+}
+
+// jwkWrapper generates one fresh EC P-256 key and serializes it as the
+// {"type":"jwk","jwk":{...}} wrapper object issuer-api2's ciTokenKey and
+// credentialEncryptionKey fields both expect, on one line, keys in a fixed
+// order so the output is deterministic given the same key (not that anything
+// currently depends on that, but it costs nothing and helps diffing).
+func jwkWrapper() (string, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return "", err
+	}
+	const coordLen = 32
+	x := make([]byte, coordLen)
+	y := make([]byte, coordLen)
+	d := make([]byte, coordLen)
+	key.X.FillBytes(x)
+	key.Y.FillBytes(y)
+	key.D.FillBytes(d)
+	b64 := base64.RawURLEncoding.EncodeToString
+
+	type jwk struct {
+		Kty string `json:"kty"`
+		Crv string `json:"crv"`
+		X   string `json:"x"`
+		Y   string `json:"y"`
+		D   string `json:"d"`
+	}
+	type wrapper struct {
+		Type string `json:"type"`
+		JWK  jwk    `json:"jwk"`
+	}
+	out, err := json.Marshal(wrapper{
+		Type: "jwk",
+		JWK: jwk{
+			Kty: "EC", Crv: "P-256",
+			X: b64(x), Y: b64(y), D: b64(d),
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

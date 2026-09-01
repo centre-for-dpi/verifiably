@@ -1,5 +1,30 @@
 # What it would actually take to issue real mDLs from `verifiably` — walt.id version, adapters, wallet trust, and the two competing unmerged branches
 
+> **Resolved (2026-08-21 for the emitter choice, 2026-08-31 for the three
+> hard blockers below):**
+> - **Emitter choice** — the "which of the three paths absorbs the others"
+>   question this analysis leaves open in its comparison table was decided
+>   the next day: `issuer-api2` won, `internal/mdl/` stays
+>   conformance-verifier-only. See
+>   `2026-08-21-mdl-portrait-path-decision.md` (same pattern as the
+>   trust-anchor resolution note already below).
+> - **The three hard blockers** in "Hard blockers found in the shipped
+>   configuration" — unauthenticated `/issuer2/*` management API, private
+>   key leakage via `GET /issuer2/sessions`, and published example private
+>   keys in the default config — are mitigated in the current deployment,
+>   confirmed by direct inspection of `deploy/compose/stack/docker-compose.yml`
+>   and `deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf`: (1)+(2)
+>   `issuer-api2` publishes NO `ports:` at all (Docker network isolation is
+>   the auth mitigation the "operational/architectural" framing below
+>   anticipated — not a gateway/mTLS layer, but equivalent in effect for
+>   this deployment topology); (3) `defaultIssuerKey`/`defaultIssuerX5chain`
+>   in every walt.id mdoc profile are HOCON substitution references
+>   (`${defaultIssuerKey}`), never the pasted-literal example key this
+>   section warns against — confirmed in a dedicated security audit pass
+>   (2026-08-31) that read every profile line by line. Item 4 (no rate
+>   limiting/CORS) remains genuinely open, tracked as a documented POC
+>   limitation, not a silent gap.
+
 Status: **analysis only, no implementation started.** Written to answer four
 questions together, because they interact: (1) what does upgrading walt.id's
 legacy `issuer-api` cost, (2) is `issuer-api2` viable as a real backend, (3)

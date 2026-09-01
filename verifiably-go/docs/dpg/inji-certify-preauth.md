@@ -145,7 +145,49 @@ plus the delegated-access pre-auth APIs `/api/v1/delegation/inji/preauth/{issue,
 
 ---
 
-## 9. Deploy + verify
+## 9. mso_mdoc (mDL / Photo ID) issuance
+
+Since 2026-08-25, this instance also issues **mso_mdoc** (ISO/IEC 18013-5 mDL and
+ISO/IEC 23220-1 Photo ID) — a second, independent production emitter alongside
+walt.id/issuer-api2 (see [`../deploy.md`](../deploy.md#mdl-mdoc-issuance-issuer-api2)
+for that path). Same "verifiably mediates, the DPG issues" rule applies: Inji
+Certify holds the signing key and produces the CBOR/COSE structure; verifiably-go
+only builds the request and translates shapes.
+
+**How an operator gets here:** create a custom schema in the issuer builder with
+Std = `mso_mdoc` while the active DPG is this Pre-Auth instance — no separate UI
+path, the same builder used for every other format. `saveMdocSchema`
+(`internal/adapters/injicertify/db.go`) writes a real `credential_config` row;
+`driving_privileges` is validated for docType count (1–4 categories, mDL only —
+`internal/adapters/injicertify/issuer.go`, gated on `ModePreAuth` AND the
+resolved docType being `mdoc.MDLDocType` specifically, so Photo ID — which has no
+`driving_privileges` element — is never wrongly rejected).
+
+**What makes this different from the SD-JWT/LDP paths above:** claims must be
+nested under the docType's real ISO namespace before the Velocity template
+substitutes them (`org.iso.18013.5.1` for mDL, `org.iso.23220.1` for Photo ID —
+resolved via `mdoc.NamespaceForDocType`, the same allowlist walt.id/issuer2.go
+uses, NOT derived by string-stripping the docType), and `driving_privileges`
+rides as a raw, unquoted JSON array marker in the template so Velocity's
+`toJsonMap` produces a real CBOR array rather than a quoted string.
+
+**Known limitation (upstream, not fixable here):** Inji Certify's own mdoc
+conversion does not bstr-encode `portrait` correctly — it stays a text string
+where ISO 18013-5 requires a CBOR byte string. This is a defect in Inji
+Certify's `MDocProcessor` bytecode itself, confirmed against the shipped image
+(not something any config in this repo controls); mitigated on the reader side
+in `cdpi-wallet`, not here.
+
+**Trust anchor:** this instance's mock-HSM signs with a self-signed root
+distinct from both walt.id's IACA and the Auth-Code instance's own root —
+`GET /trust/mdoc-anchors` (proxied per-instance the same way `.well-known/did.json`
+is, see §5) serves all of them so a wallet resolving from any of this
+deployment's mso_mdoc origins gets the right anchor. Extracted automatically on
+deploy by `provision_inji_root_anchors` (`deploy.sh`) — no manual step.
+
+---
+
+## 10. Deploy + verify
 
 ```bash
 ssh colombo 'cd /root/verifiably/verifiably-go && ./deploy.sh up inji'   # brings up both certify instances
@@ -157,7 +199,7 @@ QR and upload to [Inji Verify](./inji-verify.md) → SUCCESS.
 
 ---
 
-## 10. Gotchas
+## 11. Gotchas
 
 - **Keep it separate from auth-code.** Distinct DB (`certify-preauth-postgres`), DID
   (`did:web:inji-certify-preauth.<domain>`), and did.json (only the pre-auth key). Never point

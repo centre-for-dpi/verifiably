@@ -821,7 +821,7 @@ looks structurally fine, and a conformant reader silently reports the
 element as absent. Decoding the signed mdoc's CBOR is the fastest way to
 confirm it, faster than suspecting the issuer or the wallet first.
 
-### F2 — walt.id's Photo ID profile omits the `portrait` byte-string mapping
+### F2 — walt.id's Photo ID profile omits the `portrait` byte-string mapping — **fixed 2026-09-01**
 
 `deploy/k8s/config/issuer2/issuer2-profiles.conf`'s `isoMdl` profile maps
 `portrait` to `conversionType = "base64StringToByteString"` under
@@ -834,10 +834,131 @@ Effect: Photo ID portraits are emitted as CBOR text instead of a byte
 string — the same class of conformance defect `coerceMdocValue` existed to
 avoid for booleans, but here it's upstream's vendor profile, not our code.
 
-A four-line fix (adding the missing `portrait` entry, mirroring `isoMdl`)
-was validated but deliberately **not** applied — patching a vendor-shipped
-profile is its own decision (fork vs. upstream report vs. local override)
-and deserves its own review, not a rider on this plan.
+**Fixed:** the missing `portrait` entry was added to `isoPhotoId`'s
+`entriesConfigMap` in `deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf`,
+mirroring `isoMdl`'s identical entry exactly (same `conversionType`). This
+had been deliberately deferred pending "its own review" — the review
+concluded there was nothing to weigh: `credentialData` already carried a
+`"portrait" = null` placeholder for this namespace (the trim step had
+correctly kept the key), only the type-conversion mapping was missing, and
+mirroring the mDL profiles' own mapping is not a fork/vendor-override
+decision, just closing a gap the vendor profile itself left inconsistent
+between its two mdoc docTypes. `profiletrim_test.go`'s
+`expectedPhotoIdMappings` — a dedicated regression guard that had been
+pinning the field's ABSENCE as correct — updated accordingly; full module
+build/vet/test green (31 packages).
+
+### VICAL-style trust anchor distribution — production replacement for the POC endpoint, not yet started
+
+`GET /trust/mdoc-anchors` (`internal/handlers/mdoc_anchors.go`) is a
+deliberate, documented POC: it serves the current IACA(s) unsigned, because
+an issuer signing its own anchor response adds no security an attacker
+forging the response couldn't also forge the signature over. The documented
+production replacement — a VICAL-shaped list signed by the Hub, extending
+`internal/trust/registry.go`'s `TrustedIssuer` model with an X.509 field,
+served from the Hub's already-signed `GET /trust-registry` — has 4 concrete
+technical steps written out in
+`docs/superpowers/adr/2026-08-23-mdl-trust-anchor-distribution.md`, but no
+owner, no target date, and (until this entry) no line in this tracker. It
+was a real gap: the ADR is honest about "nothing here is implemented", but
+that honesty lived only in the ADR, not in the place anyone scanning active
+work would look. Add here rather than let it stay ADR-only.
+
+### Injicertify's guard against mso_mdoc reaching Auth-Code — fixed 2026-08-31, was silently reachable via the schema builder UI
+
+`internal/handlers/schema.go`'s `SaveSchema` now rejects `Std == "mso_mdoc"`
+when the active DPG applies via the Auth-Code path, before either save
+route runs. Before this fix, nothing upstream of
+`injicertify.Adapter.IssueToWallet`'s own `driving_privileges` guard (which
+is gated on `ModePreAuth` specifically) filtered mso_mdoc out of the
+Auth-Code save path — and, contrary to that guard's own code comment
+("only possible via a hand-built API call; the UI never produces this
+combination"), the schema builder's normal `<select>` DID produce it: an
+operator could pick `mso_mdoc` while an Auth-Code DPG was active and save a
+`credential_config` with zero ISO/IEC 18013-5 Table 3 validation. Recorded
+here because the incorrect comment shipped for six days (2026-08-25 to
+2026-08-31) before a dedicated audit caught the gap between what the
+comment claimed and what `schema.go`'s actual routing did.
+
+### Photo ID namespace resolution — fixed 2026-08-31, was reintroduced in injicertify after being fixed once already in waltid
+
+`internal/adapters/injicertify/db.go`'s `mdocNamespaceForDocType`
+independently reimplemented waltid/issuer2.go's dot-stripping heuristic —
+correct for `org.iso.18013.5.1.mDL` by coincidence of that docType's shape,
+wrong for `org.iso.23220.photoid.1` (real namespace `org.iso.23220.1`, not
+the dot-stripped `org.iso.23220.photoid`) — without the `docTypeProfiles`
+fallback that already protects the waltid path from this exact bug. Fixed
+by promoting the namespace table to `internal/mdoc.NamespaceForDocType`, a
+single shared source both adapters now resolve through. Recorded here
+because the bug was silent: a Photo ID schema created through Inji Certify
+would sign and issue cleanly, non-conformant only in a way no test caught
+until this fix's own regression test (`TestIssueToWalletPhotoIDDoesNotRequireDrivingPrivileges`,
+which had been asserting the WRONG namespace as correct since it was
+written) started failing against the corrected code.
+
+### Security/robustness batch — fixed 2026-08-31 (full-stack audit follow-up)
+
+Six smaller findings from the 2026-08-31 audit, all fixed and covered by
+new tests in the same pass:
+
+- **Inji Certify + injiweb services published on `0.0.0.0`** instead of
+  `127.0.0.1` in `deploy/compose/stack/docker-compose.yml` (11 services:
+  `inji-certify`, `inji-certify-preauth`, `certify-nginx`,
+  `certify-preauth-nginx`, `inji-verify-service`, `inji-verify-ui`,
+  `vc-adapter`, `injiweb-mock-identity`, `injiweb-esignet`,
+  `injiweb-datashare`, `injiweb-mimoto`) — inconsistent with every Postgres
+  container in the same file, which already bound to loopback only. None
+  of production traffic depends on these host ports (Caddy/nginx route
+  over the Docker network); now bound to `127.0.0.1` like Postgres.
+- **Spring Boot Actuator wide open** on Inji Certify
+  (`management.endpoints.web.exposure.include=*` +
+  `management.endpoint.env.show-values=ALWAYS`), reachable unauthenticated
+  through certify-nginx's public `/v1/certify/` proxy — `GET
+  /v1/certify/actuator/env` returned `CERTIFY_PG_PASSWORD` in plaintext.
+  Restricted to `health,info` (the only endpoint anything in this
+  deployment — the docker-compose healthcheck — actually consumes).
+- **DPG-stack Postgres passwords never auto-generated** — `POSTGRES_PASSWORD`
+  etc. fell back to weak literals (`waltid`/`postgres`/`citizens`) with no
+  generator, unlike Hub/CREDEBL's own `ensure_*_env` pattern. Now generated
+  automatically by `./deploy.sh setup` on a fresh deploy (safe there
+  specifically: no Postgres volume exists yet); an existing deployment gets
+  a one-time NOTE instead of a silent rotation (rotating live would break
+  auth against an already-initialized volume without a matching `ALTER
+  USER`).
+- **MOSIP's `ErrorMessage` silently dropped** — `injicertify/issuer.go` only
+  ever surfaced the short `ErrorCode` from a `/v1/certify/pre-authorized-data`
+  error response, unlike `waltid/issuer2.go`'s deliberate policy of
+  surfacing the service's own wording verbatim. Now included when present.
+- **`driving_privileges` validated by count only, not per-entry shape** —
+  `injicertify/issuer.go` checked array length but forwarded each entry's
+  raw JSON to Inji Certify's Velocity template unvalidated. Now decoded
+  with `DisallowUnknownFields` against `mdoc.DrivingPrivilege` and each
+  entry's `vehicle_category_code` checked non-blank.
+- **mdoc `docType` not validated against the known-docType allowlist**
+  before reaching Inji Certify's Velocity template interpolation (unlike
+  claim field names, already strictly regex-validated). A hand-built POST
+  could carry an arbitrary docType string into `mdocVCTemplate`'s
+  unescaped `fmt.Sprintf` interpolation. Now validated against
+  `mdoc.KnownDocTypes()` in `SaveSchema`, the single entry point both
+  mso_mdoc save paths share.
+
+### Inji Certify Auth-Code baseline/runtime config split — fixed 2026-08-31, was tracked in git since the Auth-Code path was built
+
+`certify-postgres-dataprovider.properties` and `credential-scopes.properties`
+(both under `deploy/compose/stack/inji/`) carry operator-appended scope
+mappings — one per custom Auth-Code schema saved, written in place by
+`applyAuthcodeSchema` — but stayed tracked in git the whole time the
+Auth-Code path existed, unlike walt.id's `issuer2-profiles.conf`/
+`credential-issuer-metadata.conf`, which got the same baseline/runtime
+split back in the 2026-08-21 production-issuance work specifically to
+prevent this bug class. A `git pull`/`checkout`/`reset --hard` on a
+deployed host would silently revert every operator-added scope mapping,
+breaking already-issued Auth-Code credential configs with no visible
+error. `scripts/reset-authcode-catalog.sh` had already grown ad-hoc
+`git show HEAD:` tooling to cope with the resulting contamination — a
+symptom of the missing split, not a fix for it. Now split the same way:
+`*.baseline.properties` tracked seeds, gitignored runtime files, seeded by
+`seed_inji_authcode_configs` (`scripts/gen-caddy.sh`).
 
 ### F3 — `verify.mjs` is hardcoded to the Go test vectors, not a general tool
 
@@ -925,8 +1046,9 @@ all-blank submission before it ever reaches the adapter, and
 `buildIssuer2Offer` rejects it again as a backstop if some other caller
 reaches the adapter directly. More than 4 filled rows is rejected by
 `SubmitIssue` rather than silently truncated by `mdoc.EncodeDrivingPrivileges`'s
-truncating backstop. F2's Photo ID `portrait` byte-string mapping gap is
-unaffected by this change and still open.
+truncating backstop. F2's Photo ID `portrait` byte-string mapping gap was
+unaffected by this change (a separate profile field, unrelated to
+driving_privileges) — since fixed 2026-09-01, see F2's own entry above.
 
 Two error strings surfaced repeatedly while investigating the original F4
 failure and cost several attempts each to diagnose — recording them

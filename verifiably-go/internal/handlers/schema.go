@@ -663,12 +663,56 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	schema := currentBuilderSchema(sess, data)
+	if schema.Std == "mso_mdoc" {
+		// The docType (schema.AdditionalTypes[0], set by currentBuilderSchema
+		// from d.DocType) is what BOTH mso_mdoc adapters — waltid/issuer2.go's
+		// mdocDocTypeFor and injicertify/db.go's mdocDocTypeForSchema — resolve
+		// the ISO namespace and, for walt.id, the issuer-api2 profile from. The
+		// normal builder UI only ever offers mdoc.KnownDocTypes() in its
+		// <select>, so this was never reachable by clicking through the form —
+		// but nothing on the server enforced that same restriction, only
+		// strings.TrimSpace. A POST built by hand with an arbitrary docType
+		// would reach injicertify's mdocVCTemplate, which interpolates the
+		// resolved namespace into a Velocity template via fmt.Sprintf with no
+		// escaping (unlike field names, which validFieldName already restricts
+		// to [a-zA-Z_][a-zA-Z0-9_]* before this point). Validate here, once, at
+		// the point both mso_mdoc save paths (Auth-Code rejection above,
+		// SaveCustomSchema below) share.
+		validDocType := false
+		for _, dt := range mdoc.KnownDocTypes() {
+			if dt.DocType == strings.TrimSpace(schema.AdditionalTypes[0]) {
+				validDocType = true
+				break
+			}
+		}
+		if len(schema.AdditionalTypes) == 0 || !validDocType {
+			h.errorToast(w, r, "docType de mdoc inválido — selecciona uno de la lista.")
+			return
+		}
+	}
 	// Inji auth-code DPGs apply via the Flow B path (multi-format credential_config
 	// + extraction view + scope-query + eSignet scope + restart certify/esignet)
 	// instead of the default adapter — the builder UI is shared, the save is not.
 	authcode := false
 	if dpgs, err := h.Adapter.ListIssuerDpgs(r.Context()); err == nil {
 		authcode = dpgs[sess.IssuerDpg].SchemaApply == "inji_authcode"
+	}
+	if authcode && schema.Std == "mso_mdoc" {
+		// mso_mdoc is not wired for the Auth-Code path: applyAuthcodeSchema's
+		// artifacts (VCDM/SD-JWT template, JSON-LD context, credType) have no
+		// mdoc equivalent, and injicertify.Adapter.IssueToWallet's
+		// driving_privileges guard is gated on ModePreAuth specifically —
+		// confirmed by reading schema.go's routing (this exact check) and
+		// issuer.go's guard side by side: nothing upstream of that guard ever
+		// filtered Std=="mso_mdoc" out of the Auth-Code save path, so the
+		// builder UI — not just a hand-built API call — could produce a
+		// schema (and, downstream, a live credential_config) issuing mDoc
+		// credentials with zero validation of ISO/IEC 18013-5 Table 3
+		// mandatory elements (driving_privileges included). Reject here,
+		// at the single entry point both paths share, instead of trying to
+		// replicate mso_mdoc's guards inside applyAuthcodeSchema.
+		h.errorToast(w, r, "mso_mdoc no está soportado en modo Auth-Code — usa un DPG Pre-Auth (walt.id issuer-api2 o Inji Certify Pre-Auth) para emitir mDL/Photo ID.")
+		return
 	}
 	if authcode {
 		key, err := h.applyAuthcodeSchema(issuerCtx(r, sess), schema, sessionOwnerKey(sess))

@@ -456,9 +456,26 @@ bold()   { printf '\033[1m%s\033[0m\n' "$*"; }
 # that's a no-op on GNU breaks the wizard with "command a expects \..."
 # on every Mac. awk works the same on both platforms and avoids any
 # in-place quoting traps.
+#
+# Values containing a double quote, single quote, space, `$`, or backtick are
+# wrapped in single quotes (any embedded single quote escaped '\'' style)
+# before writing. deploy.sh (and hub_compose) load .env files with
+# `set -o allexport; source FILE`, which is real bash parsing, not simple
+# KEY=VALUE reading — an unquoted JSON value like
+# {"type":"jwk","jwk":{"kty":"EC",...}} has its double quotes stripped by
+# that source, silently corrupting the JSON (proven end to end: this exact
+# failure mode is documented against VERIFIABLY_ISSUER2_CI_TOKEN_KEY in
+# deploy/compose/stack/.env.example). Quoting here, once, at the point every
+# caller upserts through, makes it correct for all of them instead of relying
+# on every caller remembering to quote plain-looking values by hand.
 set_env_var() {
   local file="$1" var="$2" val="$3"
   [[ -f "$file" ]] || return 0
+  case "$val" in
+    *[\"\'\ \$\`]*)
+      val="'$(printf '%s' "$val" | sed "s/'/'\\\\''/g")'"
+      ;;
+  esac
   if grep -q "^${var}=" "$file" 2>/dev/null; then
     local tmp
     tmp=$(mktemp "${file}.XXXXXX")
@@ -470,6 +487,64 @@ set_env_var() {
   else
     printf '\n%s=%s\n' "$var" "$val" >> "$file"
   fi
+}
+
+# _dpg_pg_default_password <var-name> — the literal weak default docker-compose.yml
+# (via .env.example, or common.sh's own `: "${VERIFIABLY_PG_PASSWORD:=verifiably}"`)
+# falls back to for one of the seven DPG-stack Postgres password variables.
+# Kept as ONE lookup both ensure_dpg_stack_pg_passwords and cmd_up's
+# migration-notice check compare against, so the two can never drift onto
+# different ideas of "still on the default".
+_dpg_pg_default_password() {
+  case "$1" in
+    POSTGRES_PASSWORD) echo waltid ;;
+    VERIFIABLY_PG_PASSWORD) echo verifiably ;;
+    CERTIFY_PG_PASSWORD | CERTIFY_PREAUTH_PG_PASSWORD | INJI_VERIFY_PG_PASSWORD | INJIWEB_PG_PASSWORD) echo postgres ;;
+    CITIZENS_PG_PASSWORD) echo citizens ;;
+  esac
+}
+
+# ensure_dpg_stack_pg_passwords <out-array-name>
+#
+# docker-compose.yml's DPG-stack Postgres containers (walt.id issuer-api,
+# issuer-api2, both Inji Certify instances, Inji Verify, the bulk-issuance
+# citizens DB, and injiweb) fall back to a weak literal
+# (waltid/verifiably/postgres/citizens) whenever these seven variables are
+# unset. Every one of those containers is 127.0.0.1-bound (never reachable
+# from outside the host — see docker-compose.yml), so this is defense in
+# depth, not the primary mitigation: it removes a guessable credential any
+# OTHER process on the same host, or a future misconfigured `ports:`, would
+# otherwise find, mirroring ensure_hub_env's pattern for the Hub's own
+# Postgres.
+#
+# ONLY SAFE TO CALL before any DPG Postgres volume exists (cmd_setup's own
+# call site: the first-time wizard, gated on no .env present). A variable
+# counts as "not really set" — and gets a fresh value generated — both when
+# it is empty AND when it still holds the exact default literal
+# _dpg_pg_default_password names for it. The second case matters because
+# common.sh's own startup (see its top) sources .env.example as a fallback
+# whenever no real .env exists yet, which means POSTGRES_PASSWORD etc. are
+# NEVER actually empty by the time this runs — they already carry
+# .env.example's weak defaults, and a bare `-z` check would treat that as
+# "operator already configured this" and generate nothing, silently
+# defeating the whole point. Do NOT call this from cmd_up or any path that
+# runs against an existing deployment — see cmd_up's own DPG-stack Postgres
+# section for why that path only WARNS instead.
+#
+# Appends the names it DID generate onto the array named by
+# <out-array-name>, via nameref, so the caller can persist them.
+ensure_dpg_stack_pg_passwords() {
+  local -n _edsp_out="$1"
+  local _var
+  for _var in POSTGRES_PASSWORD VERIFIABLY_PG_PASSWORD CERTIFY_PG_PASSWORD \
+    CERTIFY_PREAUTH_PG_PASSWORD INJI_VERIFY_PG_PASSWORD CITIZENS_PG_PASSWORD INJIWEB_PG_PASSWORD; do
+    if [[ -z "${!_var:-}" || "${!_var}" == "$(_dpg_pg_default_password "$_var")" ]]; then
+      local _val
+      _val=$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | base64 | tr -d '/+=\n')
+      export "$_var=$_val"
+      _edsp_out+=("$_var")
+    fi
+  done
 }
 
 require() {

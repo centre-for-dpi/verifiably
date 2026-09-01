@@ -336,7 +336,12 @@ the Hub** — an authority distinct from any single issuer, so a compromised
 issuer cannot self-certify. This extends the Hub's existing
 `internal/trust/registry.go` `TrustedIssuer` model (today DID-only) with an
 X.509 field, served from the Hub's already-signed `GET /trust-registry`.
-Not implemented yet; tracked in the ADR above.
+Not implemented yet; tracked in the ADR above and in `TODO.md`.
+
+**What rotation actually does to already-claimed wallets, and how to
+recover from DSC expiry or a corrupted `issuer2-profiles.conf`:** see
+[`mdl-incident-runbook.md`](mdl-incident-runbook.md) — the operational
+companion to this section.
 
 **Caddy routing note (subdomain mode only):** the endpoint lives on the
 `verifiably-go` container, but the wallet fetches it from the
@@ -365,10 +370,47 @@ deployment's real cert and schema names are never touched by a later
 `docs/mdl-issuance-manual-checklist.md`'s "One-time migration" section if
 you are updating a deployment created before this split existed.
 
+## mDL / mdoc issuance via Inji Certify Pre-Auth (second emitter)
+
+Since 2026-08-25, mso_mdoc (mDL and Photo ID) is issued by **two independent
+production emitters** — `issuer-api2` above, and Inji Certify's Pre-Auth
+instance (`./deploy.sh up inji`). Neither replaces the other; an operator
+picks per schema by which DPG is active when the custom schema is created
+(same schema builder, Std = `mso_mdoc`, no separate UI). See
+[`dpg/inji-certify-preauth.md`](dpg/inji-certify-preauth.md)'s "mso_mdoc (mDL
+/ Photo ID) issuance" section for the operational detail — namespace
+resolution, the `driving_privileges` guard, and the one known upstream
+limitation (Inji Certify does not bstr-encode `portrait` correctly).
+
+**Baseline/runtime split, same reasoning as issuer2 above, different
+files:** `deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties`
+and `deploy/compose/stack/inji/esignet/credential-scopes.properties` carry
+operator-appended scope mappings (one per custom Auth-Code schema saved,
+written by `applyAuthcodeSchema`) — gitignored runtime files, seeded from
+`*.baseline.properties` siblings by `seed_inji_authcode_configs`
+(`scripts/gen-caddy.sh`), same `cp -n` no-clobber pattern.
+
+**Trust anchors:** Inji Certify's mock-HSM roots are extracted automatically
+by `provision_inji_root_anchors` (`deploy.sh`) and served alongside
+walt.id's IACA from the same `GET /trust/mdoc-anchors` endpoint described
+above — no separate mechanism, no manual step. Two roots exist (Auth-Code
+and Pre-Auth instances sign independently), both served.
+
 ### `.env` quoting for the issuer2 JSON key variables
 
 `VERIFIABLY_ISSUER2_CI_TOKEN_KEY` and `VERIFIABLY_ISSUER2_CRED_ENCRYPTION_KEY`
-hold JSON values. **Wrap them in single quotes in `.env`:**
+are **generated automatically on first deploy** — `provision_issuer2_certificates`
+(`scripts/gen-caddy.sh`) has `cmd/mdl-pki-gen` write them to
+`deploy/k8s/config/issuer2/certs/issuer2-aux.env` and persists them into `.env`
+via `set_env_var`, the same mechanism `VERIFIABLY_ISSUER2_KEY_X/_Y/_D` already
+use. A fresh clone needs no manual step for either variable; `docker-compose.yml`'s
+hard `${VAR:?...}` guard on both is satisfied without operator intervention.
+
+Set either one yourself only if you need a specific value (e.g. importing a
+key from an existing deployment) — generation is skipped once
+`issuer2-aux.env` already exists, so a value you set survives every later `up`.
+They hold JSON values. **If you do set one by hand, wrap it in single quotes
+in `.env`:**
 
 ```bash
 VERIFIABLY_ISSUER2_CI_TOKEN_KEY='{"type":"jwk","jwk":{"kty":"EC",...}}'
@@ -473,6 +515,50 @@ curl -s http://localhost:7053/openapi | grep -q verifier && echo "hub-verifier-a
 ```
 
 > **Do not commit this file.** It is private — possession equals the ability to sign arbitrary trust registry JWTs as your federation authority.
+
+### DPG stack — Postgres passwords
+
+`deploy/compose/stack/docker-compose.yml`'s seven DPG-stack Postgres
+containers (walt.id issuer-api, `issuer-api2`, both Inji Certify instances,
+Inji Verify, the bulk-issuance citizens DB, and injiweb) each fall back to a
+weak, well-known literal when unset — `POSTGRES_PASSWORD` (`waltid`),
+`VERIFIABLY_PG_PASSWORD` (`verifiably`), `CERTIFY_PG_PASSWORD`,
+`CERTIFY_PREAUTH_PG_PASSWORD`, `INJI_VERIFY_PG_PASSWORD`,
+`INJIWEB_PG_PASSWORD` (`postgres`), `CITIZENS_PG_PASSWORD` (`citizens`).
+Every one of these Postgres containers is `127.0.0.1`-bound in
+`docker-compose.yml` (never reachable from outside this host), but a
+2026-08-26 incident found all of them reachable from the public internet
+anyway under active brute-force with these exact defaults still in place —
+so treat the binding as one layer, not the only one.
+
+**On a fresh deployment, this is automatic:** `./deploy.sh setup` (run
+implicitly by `up` the first time, before any `.env` exists) generates a
+random 32-hex value for each of the seven and writes it into the `.env` it
+produces. Safe there specifically because the wizard only ever runs before
+any of these Postgres volumes exist — the generated value is the *first*
+password each volume gets, nothing to conflict with.
+
+**On an existing deployment upgrading in**, `./deploy.sh up` prints a
+one-time `NOTE` listing any of the seven still on the shipped default; it
+does **not** rotate them for you. Changing a value in `.env` only takes
+effect for a fresh volume — an already-initialized Postgres data volume
+keeps its existing password until you also run
+`ALTER USER <user> PASSWORD '<new>';` inside the running container. To
+rotate deliberately:
+
+```bash
+# 1. Generate a value
+openssl rand -hex 16
+
+# 2. Apply it to the already-running container (repeat per Postgres service)
+docker exec -it certify-postgres psql -U postgres -c "ALTER USER postgres PASSWORD '<new>';"
+
+# 3. THEN set it in .env, and re-run `./deploy.sh up` so the consuming
+#    service (inji-certify, mimoto, ...) picks up the matching value
+```
+
+Doing step 3 before step 2 breaks the deployment: the consuming container
+authenticates with a password Postgres was never told about.
 
 ### CREDEBL — `deploy/compose/credebl/config/credebl.env`
 
@@ -601,7 +687,7 @@ If `VERIFIABLY_LE_EMAIL` is left empty Caddy falls back to an internal CA — fi
 
 #### 3. Firewall
 
-Caddy needs ports 80 + 443 reachable from the public internet. Per-service container ports stay internal — they're not bound to the host in subdomain mode.
+Caddy needs ports 80 + 443 reachable from the public internet. Every other service's `ports:` mapping in `docker-compose.yml` is `127.0.0.1`-bound (not "internal" in the sense of no host binding at all — they ARE published to the host, just to loopback only), so they're reachable for local debugging (`curl localhost:8090/...` on the host itself) but never from outside it regardless of scenario or mode. Production traffic to any of them goes through Caddy/nginx over the Docker network, never through these host ports — see each `deploy/compose/stack/inji/*/nginx.conf`'s `resolver`+`proxy_pass` pattern for how.
 
 **Ubuntu/Debian (UFW)**:
 

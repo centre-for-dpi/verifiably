@@ -1,6 +1,7 @@
 package injicertify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -247,6 +248,30 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 				return backend.IssueToWalletResult{}, fmt.Errorf("inji: driving_privileges no es un array JSON válido: %w", err)
 			}
 			n = len(arr)
+			// Validate each entry's SHAPE, not just the array's count. The
+			// handler-level guard (validateDrivingPrivilegesCount) that
+			// normally fills this array from the issue form can be bypassed
+			// by a direct POST /api/v1/credentials/issue — the same reason
+			// the count check below exists — and raw below is forwarded to
+			// Inji Certify's Velocity template VERBATIM as a string (see the
+			// comment on that variable), so an entry with unexpected keys or
+			// malformed values would ride straight through un-caught. Decode
+			// with DisallowUnknownFields so an entry outside
+			// mdoc.DrivingPrivilege's three known keys is rejected here,
+			// server-side, rather than reaching Inji Certify's template
+			// substitution as opaque extra content.
+			dec := json.NewDecoder(bytes.NewReader(raw))
+			dec.DisallowUnknownFields()
+			var typed []mdoc.DrivingPrivilege
+			if err := dec.Decode(&typed); err != nil {
+				return backend.IssueToWalletResult{}, fmt.Errorf("inji: driving_privileges tiene una entrada inválida: %w", err)
+			}
+			for i, p := range typed {
+				if strings.TrimSpace(p.VehicleCategoryCode) == "" {
+					return backend.IssueToWalletResult{}, fmt.Errorf(
+						"inji: driving_privileges[%d] no tiene vehicle_category_code", i)
+				}
+			}
 			// Posted as the RAW JSON STRING, not a decoded []any — confirmed
 			// live against Inji Certify v0.14.0 that posting a real array
 			// makes CredentialUtils.toJsonMap wrap it as a JSONArray, whose
@@ -362,7 +387,19 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %w", err)
 		}
 		if len(resp.Errors) > 0 {
-			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %s", resp.Errors[0].ErrorCode)
+			// Surface MOSIP's own ErrorMessage alongside the short
+			// ErrorCode — same posture waltid/issuer2.go already takes for
+			// issuer-api2's errors ("the service's wording is more useful
+			// to whoever debugs this than anything we could substitute").
+			// ErrorCode alone (e.g. "ERROR_SIGNING_QR_DATA") gives no clue
+			// what actually failed; ErrorMessage is the human-readable text
+			// MOSIP sends in the same response and was being silently
+			// dropped.
+			e := resp.Errors[0]
+			if e.ErrorMessage != "" {
+				return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %s: %s", e.ErrorCode, e.ErrorMessage)
+			}
+			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: %s", e.ErrorCode)
 		}
 		if resp.CredentialOfferURI == "" {
 			return backend.IssueToWalletResult{}, fmt.Errorf("pre-authorized-data: empty credential_offer_uri in response")
