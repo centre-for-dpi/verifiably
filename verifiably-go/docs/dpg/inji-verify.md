@@ -146,7 +146,7 @@ Two more requirements for cross-device OID4VP to reach an external wallet:
 ## 7. Deploy + verify
 
 ```bash
-ssh colombo 'cd /root/verifiably/verifiably-go && ./deploy.sh up inji'
+ssh <your-deploy-host> 'cd /path/to/verifiably-go && ./deploy.sh up inji'
 ```
 
 **Smoke (proven live):** upload a wallet QR-on-PDF's QR to `inji-verify-ui.<domain>` (or POST it to

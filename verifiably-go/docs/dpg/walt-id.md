@@ -191,7 +191,7 @@ never import it directly.
 ## 9. Deploy + verify
 
 ```bash
-ssh colombo 'cd /root/verifiably/verifiably-go && ./deploy.sh up waltid'   # or: up all
+ssh <your-deploy-host> 'cd /path/to/verifiably-go && ./deploy.sh up waltid'   # or: up all
 ```
 
 `deploy.sh` brings up `WALTID_SERVICES` + the IdPs + translator, then runs

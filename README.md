@@ -11,7 +11,7 @@ Everything below refers to that subtree — run the commands from there.
 Supported DPGs out of the box:
 
 - **walt.id Community Stack** v0.23.1 — issuer / holder / verifier via walt.id's issuer-api, wallet-api, verifier-api
-- **walt.id `issuer-api2`** — a second, separate walt.id instance dedicated to **ISO/IEC 18013-5 mdoc** issuance (mDL, Photo ID). Generates its own IACA/DSC PKI on first deploy and publishes the current trust anchor over HTTP so companion mdoc wallets (e.g. `cdpi-whitelabel-wallet`) can verify without a compiled-in certificate. See [deploy.md's mDL / mdoc issuance section](verifiably-go/docs/deploy.md#mdl-mdoc-issuance-issuer-api2)
+- **walt.id `issuer-api2`** — a second, separate walt.id instance dedicated to **ISO/IEC 18013-5 mdoc** issuance (mDL, Photo ID). Generates its own IACA/DSC PKI on first deploy and publishes the current trust anchor over HTTP so companion mdoc wallets (e.g. `cdpi-wallet`) can verify without a compiled-in certificate. See [deploy.md's mDL / mdoc issuance section](verifiably-go/docs/deploy.md#mdl-mdoc-issuance-issuer-api2)
 - **Inji Certify** v0.14.0 — issuer, both OID4VCI pre-authorised code and authorization code flows. The auth-code flow has an **in-app multi-format schema builder** (create a credential live — W3C VCDM 1.1/2.0 as `ldp_vc` or IETF SD-JWT VC as `vc+sd-jwt` — which writes the Certify config + registry extraction view + eSignet scope and restarts the services in place)
 - **Inji Web Wallet** v0.16.0 — holder via the MOSIP Inji Web SPA + Mimoto BFF, **or** claim Inji Certify auth-code credentials **in-app via eSignet** (no external redirect)
 - **Inji Verify** v0.16.0 — verifier via Inji Verify's QR-upload and OID4VP endpoints
@@ -1523,7 +1523,7 @@ of this app, both covered in depth in
    a production certificate authority.
 2. **Wallets need to learn that certificate without being recompiled.**
    `verifiably-go` publishes the deployment's current IACA at
-   `GET /trust/mdoc-anchors`, and a companion wallet (see `cdpi-whitelabel-wallet`)
+   `GET /trust/mdoc-anchors`, and a companion wallet (see `cdpi-wallet`)
    fetches it dynamically, keyed to the OID4VCI `credential_issuer` it
    resolved the offer from. This is explicitly a **POC mechanism** — the
    endpoint is unsigned, so its trust ceiling is "the issuer's own claim

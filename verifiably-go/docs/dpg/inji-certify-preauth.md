@@ -190,7 +190,7 @@ deploy by `provision_inji_root_anchors` (`deploy.sh`) — no manual step.
 ## 10. Deploy + verify
 
 ```bash
-ssh colombo 'cd /root/verifiably/verifiably-go && ./deploy.sh up inji'   # brings up both certify instances
+ssh <your-deploy-host> 'cd /path/to/verifiably-go && ./deploy.sh up inji'   # brings up both certify instances
 ```
 
 `inji-preauth-proxy` is built from source on first `up` (image `adammwaniki/inji-preauth-poc:v0.1.0`).

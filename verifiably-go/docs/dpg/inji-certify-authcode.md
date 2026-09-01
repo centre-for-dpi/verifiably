@@ -210,7 +210,7 @@ later `git pull`/`checkout`/`stash pop` silently reverting them back to the fres
 ## 9. Deploy + verify
 
 ```bash
-ssh colombo 'cd /root/verifiably/verifiably-go && ./deploy.sh up inji'   # cmd_up: derives AUTHCODE_PUBLIC_URL etc.
+ssh <your-deploy-host> 'cd /path/to/verifiably-go && ./deploy.sh up inji'   # cmd_up: derives AUTHCODE_PUBLIC_URL etc.
 ```
 
 Use `up` (not `run`) when changing certify env/DID/domain — `up` derives the full env and recreates

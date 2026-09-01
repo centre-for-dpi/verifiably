@@ -496,6 +496,89 @@ The next `deploy.sh` is then a no-op for both files: `seed_issuer2_configs`
 uses `cp -n`, so it only creates a runtime file that does not already exist.
 Keep the `~/*.save` copies until you have issued and verified one credential.
 
+## One-time migration — existing Inji Certify Auth-Code deployments, baseline/runtime config split
+
+**Applies to:** any deployment where the Inji Certify Auth-Code stack
+(`./deploy.sh up inji`) was first brought up **before 2026-08-31** —
+`seed_inji_authcode_configs`, and the `*.baseline.properties` split it
+seeds from, landed on that date (commit `39a9e56`). Before that date, the
+runtime files below were plain tracked files.
+**A fresh clone (or a deployment first brought up on or after 2026-08-31)
+needs none of this** — `deploy.sh` seeds both files itself.
+
+Same bug class as the `issuer2-profiles.conf` migration above, same fix
+shape, different files — `deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties`
+and `deploy/compose/stack/inji/esignet/credential-scopes.properties` used to
+be tracked in git while `applyAuthcodeSchema`
+(`internal/handlers/inji_schema.go`) appended one scope-query-mapping /
+eSignet-scope entry per operator-saved Auth-Code schema directly into them.
+Every `git pull` reverted those entries back to the tracked baseline,
+silently breaking every custom Auth-Code credential issued since. See
+`TODO.md`'s "Inji Certify Auth-Code baseline/runtime config split" entry
+for the full history.
+
+### What happens if you just pull
+
+Same refusal shape as above — git aborts rather than destroying anything:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+	verifiably-go/deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties
+	verifiably-go/deploy/compose/stack/inji/esignet/credential-scopes.properties
+Aborting
+```
+
+Do **not** run `git checkout --` or `git stash` on these two files to clear
+the block — that discards every custom Auth-Code schema's scope mapping,
+which is not recoverable from git once dropped (it only ever existed as
+runtime state, appended by the app, never committed).
+
+### The migration (run from the repo root, on the deployment host)
+
+```bash
+# 1. Copy the two runtime files somewhere outside the repo.
+cp deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties \
+   ~/certify-postgres-dataprovider.properties.save
+cp deploy/compose/stack/inji/esignet/credential-scopes.properties \
+   ~/credential-scopes.properties.save
+
+# 2. Return the tracked copies to their committed state so the pull is clean.
+git checkout -- \
+  deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties \
+  deploy/compose/stack/inji/esignet/credential-scopes.properties
+
+# 3. Pull. The rename now applies without conflict.
+git pull
+
+# 4. Put the real files back under the (now gitignored) runtime names.
+cp ~/certify-postgres-dataprovider.properties.save \
+   deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties
+cp ~/credential-scopes.properties.save \
+   deploy/compose/stack/inji/esignet/credential-scopes.properties
+```
+
+### Verify before redeploying
+
+```bash
+# Both runtime files must now be ignored (each prints a .gitignore line):
+git check-ignore -v \
+  deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties \
+  deploy/compose/stack/inji/esignet/credential-scopes.properties
+
+# Your operator-added scope mappings must still be in place — this should
+# print more than just "mock_identity_vc_ldp" if you have created any
+# custom Auth-Code schemas:
+grep scope-query-mapping \
+  deploy/compose/stack/inji/certify/certify-postgres-dataprovider.properties
+
+git status --short   # expect clean
+```
+
+The next `deploy.sh` is then a no-op for both files:
+`seed_inji_authcode_configs` uses the same no-clobber seeding as
+`seed_issuer2_configs`. Keep the `~/*.save` copies until you have confirmed
+every existing Auth-Code credential still claims correctly.
+
 ---
 
 ## Dynamic wallet trust anchors (2026-08-23) — closes the recompile-per-deploy gap
