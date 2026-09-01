@@ -138,6 +138,53 @@ exists under the split).
 
 ---
 
+## 2a. A profile fix landed in `*.baseline.conf` but an existing deployment doesn't have it
+
+**Symptom:** you pulled a fix to `issuer2-profiles.baseline.conf` (e.g. a
+missing CBOR field mapping for a docType), redeployed, and the fix isn't
+live — the running catalog (`GET /issuer2/profiles` from inside the
+`issuer-api2` container, or `docker exec waltid-issuer-api2-1 wget -qO- http://localhost:<ISSUER_API_PORT>/issuer2/profiles`)
+still shows the old shape.
+
+**Why this happens, and why it's correct:** `seed_issuer2_configs` seeds the
+runtime `issuer2-profiles.conf` from the baseline with `cp -n` —
+**no-clobber, on purpose**. An existing deployment already has its real
+x5chain and any operator customizations rendered into that runtime file;
+overwriting it on every `up` would be the exact bug the baseline/runtime
+split exists to prevent (see this file's own header comment). A baseline
+fix that lands after a deployment's first `up` never reaches that
+deployment's runtime file automatically — confirmed directly: a live fix to
+`isoPhotoId`'s `portrait` mapping was deployed via `./deploy.sh up waltid`,
+`GET /issuer2/profiles` still showed the pre-fix shape immediately after,
+and only reflected the fix after the runtime file was hand-patched with the
+same change and `issuer-api2` was restarted.
+
+**Procedure:**
+
+1. Confirm the baseline actually changed: `git log -p -- deploy/k8s/config/issuer2/issuer2-profiles.baseline.conf`
+   to see the exact diff you need to replicate.
+2. Apply the equivalent change to the runtime file
+   (`deploy/k8s/config/issuer2/issuer2-profiles.conf`) by hand — same edit,
+   same location within the relevant profile block. Do NOT `cp` the whole
+   baseline over the runtime file; that would revert the deployment's real
+   x5chain back to walt.id's example certificate (see §2 above for why that
+   is a hard outage, not a cosmetic issue).
+3. Restart just `issuer-api2` (not a full `deploy.sh up`, which will
+   pointlessly rebuild and restart everything else) to make it re-read the
+   config: `docker restart <issuer-api2 container name>`.
+4. Verify: fetch `/issuer2/profiles` again (from inside the container, or
+   via its Docker network IP — it publishes no host port by design) and
+   confirm the fixed field is present.
+
+This same reasoning applies to `credential-issuer-metadata.conf` and to
+Inji Certify's `certify-postgres-dataprovider.properties`/
+`credential-scopes.properties` (§ baseline/runtime split in
+`docs/deploy.md`) — any `*.baseline.*` fix needs the identical manual merge
+into its already-seeded runtime sibling on a deployment that predates the
+fix.
+
+---
+
 ## 3. What happens to wallets on IACA rotation (planned or forced)
 
 The trust anchor mechanism (`GET /trust/mdoc-anchors`,
