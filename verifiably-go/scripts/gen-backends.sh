@@ -87,7 +87,7 @@ backends_for() {
           {"Kind": "token",       "Key": "issuer_signed", "Title": "Issuer-signed tokens",     "Body": "Tokens signed by this issuer's own keys."},
           {"Kind": "mode",        "Key": "wallet",        "Title": "Wallet delivery",          "Body": "Offer URI scanned or pasted into any OID4VCI wallet."},
           {"Kind": "bulk_source", "Key": "csv",           "Title": "Bulk from CSV",            "Body": "Operator uploads a CSV; each row issues one credential."},
-          {"Kind": "bulk_source", "Key": "api",           "Title": "Bulk from secured API",    "Body": "Adapter GETs a JSON array from an external service."},
+          {"Kind": "bulk_source", "Key": "api",           "Title": "Bulk from secured API",    "Body": "GET a JSON array from a secured API, or pull a Sunbird RC registry entity — each object is one row."},
           {"Kind": "bulk_source", "Key": "db",            "Title": "Bulk from PostgreSQL",     "Body": "Adapter runs a SELECT against an operator-supplied DSN."}
         ]
       },

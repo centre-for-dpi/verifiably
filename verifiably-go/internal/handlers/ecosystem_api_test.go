@@ -17,6 +17,11 @@ import (
 
 type mockAPIKeyStore struct {
 	keys map[string]string // token → did
+	// Admin-federation knobs; zero values keep the original behaviour.
+	issueErr  error
+	revokeErr error
+	hasKeys   map[string]bool // did → HasKey answer
+	revoked   []string
 }
 
 func newMockAPIKeyStore(pairs ...string) *mockAPIKeyStore {
@@ -28,6 +33,9 @@ func newMockAPIKeyStore(pairs ...string) *mockAPIKeyStore {
 }
 
 func (s *mockAPIKeyStore) Issue(_ context.Context, did string) (string, error) {
+	if s.issueErr != nil {
+		return "", s.issueErr
+	}
 	return "token-for-" + did, nil
 }
 func (s *mockAPIKeyStore) Validate(_ context.Context, key string) (string, error) {
@@ -37,9 +45,15 @@ func (s *mockAPIKeyStore) Validate(_ context.Context, key string) (string, error
 	}
 	return did, nil
 }
-func (s *mockAPIKeyStore) Revoke(_ context.Context, _ string) error { return nil }
-func (s *mockAPIKeyStore) HasKey(_ context.Context, _ string) (bool, error) {
-	return false, nil
+func (s *mockAPIKeyStore) Revoke(_ context.Context, did string) error {
+	if s.revokeErr != nil {
+		return s.revokeErr
+	}
+	s.revoked = append(s.revoked, did)
+	return nil
+}
+func (s *mockAPIKeyStore) HasKey(_ context.Context, did string) (bool, error) {
+	return s.hasKeys[did], nil
 }
 
 // ── mock verification.Log ─────────────────────────────────────────────────────
@@ -277,5 +291,39 @@ func TestGetEcosystemIssuerStats_QueryError(t *testing.T) {
 	h.GetEcosystemIssuerStats(rr, bearerRequest(t, "did:web:a.gov", "tok"))
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rr.Code)
+	}
+}
+
+// TestGetEcosystemIssuerStats_BySchemaSortedDesc pins the insertion sort:
+// by_schema is ordered by total descending regardless of map iteration
+// order. Five schemas with distinct totals are queried repeatedly so every
+// swap path of the sort is exercised while the assertion stays exact.
+func TestGetEcosystemIssuerStats_BySchemaSortedDesc(t *testing.T) {
+	var events []verification.Event
+	for i, name := range []string{"Alpha", "Bravo", "Charlie", "Delta", "Echo"} {
+		for n := 0; n <= i; n++ {
+			events = append(events, verification.Event{IssuerDID: "did:web:issuer.example", SchemaName: name, Status: "valid"})
+		}
+	}
+	h := ecosystemH(newMockAPIKeyStore("tok", "did:web:issuer.example"), &mockVerificationLog{events: events})
+
+	for i := 0; i < 40; i++ {
+		rr := httptest.NewRecorder()
+		h.GetEcosystemIssuerStats(rr, bearerRequest(t, "did:web:issuer.example", "tok"))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		var out ecosystemIssuerStats
+		if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		if len(out.Verified.BySchema) != 5 {
+			t.Fatalf("by_schema len = %d, want 5", len(out.Verified.BySchema))
+		}
+		for j, want := range []string{"Echo", "Delta", "Charlie", "Bravo", "Alpha"} {
+			if got := out.Verified.BySchema[j]; got.Schema != want || got.Total != 5-j {
+				t.Fatalf("iteration %d: by_schema[%d] = %+v, want %s/%d", i, j, got, want, 5-j)
+			}
+		}
 	}
 }
