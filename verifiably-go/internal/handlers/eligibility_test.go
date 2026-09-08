@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -230,5 +231,72 @@ func TestAPICheckEligibility_NonIssuingMemberEmpty(t *testing.T) {
 	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
 	if len(resp.Credentials) != 0 {
 		t.Errorf("credentials = %+v, want empty", resp.Credentials)
+	}
+}
+
+func TestAPICheckEligibility_OptionsAndBadJSON(t *testing.T) {
+	h := apiTestH(&testAdapter{})
+	rr := httptest.NewRecorder()
+	h.APICheckEligibility(rr, httptest.NewRequest(http.MethodOptions, "/api/v1/credentials/eligible", nil))
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("OPTIONS status = %d, want 204", rr.Code)
+	}
+
+	rr = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/credentials/eligible", strings.NewReader("{not json"))
+	h.APICheckEligibility(rr, req)
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "invalid JSON body") {
+		t.Fatalf("bad JSON: status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+// eligibilityDenyAll is a RateLimiter with zero allowance on both axes.
+func eligibilityDenyAll() *RateLimiter {
+	return &RateLimiter{byKey: map[string]*rateEntry{}, byIP: map[string]*rateEntry{}}
+}
+
+func TestAPICheckEligibility_CitizenRateLimited(t *testing.T) {
+	h := selfIssueH(t, &testAdapter{}, map[string]string{"sub": "x"}, nil)
+	h.RateLimiter = eligibilityDenyAll()
+	rr := httptest.NewRecorder()
+	h.APICheckEligibility(rr, selfIssuePOST(t, map[string]string{"access_token": "tok"}))
+	if rr.Code != http.StatusTooManyRequests || !strings.Contains(rr.Body.String(), "rate limit exceeded") {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPICheckEligibility_CitizenMetadataErrors(t *testing.T) {
+	t.Run("non-issuing member returns empty list", func(t *testing.T) {
+		h := selfIssueH(t, &testAdapter{schemasErr: backend.ErrNotSupported}, map[string]string{"sub": "x"}, nil)
+		rr := httptest.NewRecorder()
+		h.APICheckEligibility(rr, selfIssuePOST(t, map[string]string{"id_token": "tok"}))
+		if rr.Code != http.StatusOK || strings.TrimSpace(rr.Body.String()) != `{"credentials":[]}` {
+			t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+		}
+	})
+	t.Run("upstream failure is 502", func(t *testing.T) {
+		h := selfIssueH(t, &testAdapter{schemasErr: errors.New("vendor down")}, map[string]string{"sub": "x"}, nil)
+		rr := httptest.NewRecorder()
+		h.APICheckEligibility(rr, selfIssuePOST(t, map[string]string{"id_token": "tok"}))
+		if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "issuer metadata unavailable: vendor down") {
+			t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+		}
+	})
+}
+
+func TestAPICheckEligibility_OperatorMetadataError502(t *testing.T) {
+	h := apiTestH(&testAdapter{schemasErr: errors.New("vendor down")})
+	rr := httptest.NewRecorder()
+	h.APICheckEligibility(rr, authPOST(t, "/api/v1/credentials/eligible", map[string]any{"claims": map[string]string{"sub": "x"}}))
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "issuer metadata unavailable: vendor down") {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestVerifyCitizenToken_NoProvidersConfigured(t *testing.T) {
+	h := &H{}
+	_, err := h.verifyCitizenToken(context.Background(), "tok")
+	if err == nil || err.Error() != "no identity providers configured" {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -105,7 +105,7 @@ against.
 
 | Var | Where | Meaning |
 |---|---|---|
-| `VERIFIABLY_REGISTRIES` | `scripts/start-container.sh` | JSON array of configured registries (id/label/url/discover/searchField). Drives the registry dropdown + auto-discover. |
+| `VERIFIABLY_REGISTRIES` | `scripts/start-container.sh` | JSON array of configured registries (`id/label/url/path/entity/searchField/discover` + optional `tokenUrl/clientId/clientSecret/scope` for an OAuth2 client_credentials grant and `insecureSkipVerify` for demo hosts — see `.env.example`). Drives the registry dropdown, the "Bulk from API" picker and auto-discover. |
 | `VERIFIABLY_REGISTRY_ADMIN_URL` | `scripts/start-container.sh` | Link to the registry-admin console. |
 | `INJI_CERTIFY_DATABASE_URL` | `scripts/start-container.sh` | The `inji_certify` DSN — where both sinks live. |
 
@@ -116,8 +116,10 @@ against.
 **verifiably surface:** registrar — `/registrar/identities`, `POST /registrar/identities/{source,preview,apply,registry-entities}`;
 issuer bulk-provision — the Inji bulk source picker on `/issuer/issue`; `POST /api/v1/subjects`
 (single-subject provision); `GET /api/registry-credentials` (active credential list for the console).
-**Connectors:** `internal/handlers/bulk.go` (`fetchJSONRows`, `queryDBRows`, `searchRegistryAll`,
-`sunbirdSchemas`, `runBulkProvision`), `internal/handlers/identity.go` (`runBulkIdentity`,
+**Connectors:** `internal/handlers/bulk.go` (`queryDBRows`, `searchRegistryAll`, `sunbirdSchemas`,
+`discoverEntities`, `runBulkProvision`), `internal/handlers/bulk_api.go` (`fetchGETRows`, `fetchSunbirdRows`,
+`fetchJSONRows`, `BulkAPIEntities`), `internal/handlers/inji_schema.go` (`registryClient`, `registryAuthHeader`,
+`swaggerEntities`), `internal/handlers/identity.go` (`runBulkIdentity`,
 identity source options), `internal/storage/pg/subjects.go` (`UpsertIdentity`, `GetIdentity`,
 `ProvisionSubject`).
 
@@ -137,3 +139,44 @@ identity source options), `internal/storage/pg/subjects.go` (`UpsertIdentity`, `
 
 See also: [inji-certify-authcode.md](./inji-certify-authcode.md) (the sinks + activation) ·
 [../deploy.md](../deploy.md) · [../architecture.md](../architecture.md).
+
+---
+
+## 9. Using a registry through "Bulk from API" (any DPG)
+
+The `registry` chip is Inji-only (it feeds `vc_subject`). Every other DPG — walt.id in particular —
+reaches a Sunbird RC registry through the **Bulk from secured API** chip, because registry access
+is just API access. The api mini-form (`templates/pages/issuer_issue.html`, handler
+`BulkPreview` → `bulk_api.go`) has:
+
+| Field | Meaning |
+|---|---|
+| Request style `api_mode` | `get` (default — GET a JSON array, unchanged legacy behaviour) or `sunbird` (`POST <url>/api/v1/<entity>/search {"filters":{}}`) |
+| Configured registry `api_pick` | one `VERIFIABLY_REGISTRIES` entry; pre-fills URL, entity, search field, and — **server-side only** — the token settings and TLS flag |
+| `api_url` | base URL (sunbird) or full URL (get) |
+| `api_entity` + **Discover entities** | entity to pull; discovery tries `POST /api/v1/Schema/search`, then the registry's Swagger/OpenAPI `paths` (`/api/docs/swagger.json`, `/swagger.json`) — "listed from Swagger" when the Schema entity is locked down |
+| `api_search` | record column copied into `individualId` when the record lacks one (default `individualId`) |
+| Authentication | a static `Authorization` header (`api_auth`) **or** an OAuth2 client_credentials grant (`api_token_url`, `api_client_id`, `api_client_secret`, `api_scope`) — the fetched token overrides the header |
+| `api_insecure` | skip TLS verification (demo hosts with expired certs); refused when `VERIFIABLY_ENV=production` |
+| `api_limit` | row cap (0 = all) |
+
+**Entity precedence:** a picked registry's configured entity wins over the form's schema-ID prefill;
+a name you type yourself wins over both. Rows are flattened (Sunbird `osid`/`osOwner`/`_os*` metadata
+dropped), then mapped column→field exactly like CSV/DB rows and issued through the DPG's normal
+bulk sink (`Adapter.IssueBulk` for walt.id).
+
+**Failure messages:** `Fetch failed: HTTP 404: Schema 'X' not found` (Sunbird's own `params.errmsg`
+is surfaced), `Fetch failed: entity 'X' has no records`, `Entity is required for Sunbird RC search.`
+A failed token grant is logged and the request proceeds unauthenticated, so the registry's 401 is
+what you see.
+
+**Example deployment configuration** (a staging registry behind an OAuth2 client_credentials
+IdP whose certificate is self-signed — *illustrative only; nothing in the code knows any registry*):
+
+```
+VERIFIABLY_REGISTRIES='[{"id":"national-registry","label":"National Population Registry (staging)","url":"https://registry.example.org","entity":"Person","searchField":"individualId","tokenUrl":"https://idp.example.org/oauth2/token","clientId":"<client id>","clientSecret":"<client secret>","insecureSkipVerify":true}]'
+```
+
+In the UI: issuer → walt.id → schema → Bulk → **Bulk from secured API** → request style *Sunbird RC
+search* → pick the registry (entity becomes `Person`) → *Discover entities* → *Preview & map*
+→ map columns → *Issue N credentials*.

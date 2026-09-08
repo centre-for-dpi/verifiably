@@ -14,12 +14,14 @@ GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 IMAGE_TAG ?= $(GIT_SHA)
 IMAGE_REF := $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 IMAGE_LATEST := $(REGISTRY)/$(IMAGE_NAME):latest
+# Go image for the containerised test/cover targets (matches CI + Dockerfile).
+GO_IMAGE ?= golang:1.25-alpine
 
 .PHONY: image image-push image-scan image-tag-latest \
         k8s-up k8s-down k8s-status k8s-logs \
         setup up-all down-all reset nuke status \
         waltid-up waltid-down inji-up inji-down credebl-up credebl-down \
-        help
+        test test-pkg cover-gate help
 
 help:
 	@echo "Image / k8s:"
@@ -44,6 +46,11 @@ help:
 	@echo "  nuke             TOTAL docker nuke (ALL projects' containers/images/volumes)"
 	@echo "  status           Show running services"
 	@echo ""
+	@echo "Tests (run inside $$GO_IMAGE):"
+	@echo "  test             go test -count=1 ./..."
+	@echo "  test-pkg PKG=x   go test -count=1 -v PKG"
+	@echo "  cover-gate       per-function 100% coverage gate for internal/handlers"
+	@echo ""
 	@echo "Per-role targets (waltid-issuer-up, inji-authcode-up, ...) are a documented"
 	@echo "follow-on — deploy.sh currently deploys at DPG granularity. See"
 	@echo "docs/deploy-reproducibility.md."
@@ -62,6 +69,15 @@ test-pkg:
 	    -w /src \
 	    $(GO_IMAGE) \
 	    go test -count=1 -v $(PKG)
+
+# Per-function statement-coverage gate (scripts/ci/coverage-gate.sh is POSIX
+# sh, so it runs in alpine without installing bash).
+cover-gate:
+	docker run --rm \
+	    -v "$(shell pwd):/src" \
+	    -w /src \
+	    $(GO_IMAGE) \
+	    sh scripts/ci/coverage-gate.sh
 
 image:
 	docker build -t $(IMAGE_REF) -t $(IMAGE_NAME):local .

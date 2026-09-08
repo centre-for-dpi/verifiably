@@ -251,6 +251,23 @@ render_public_caddyfile() {
 	}
 }
 
+# Same set minus X-Frame-Options, for hosts that must be embeddable in an
+# iframe. Keycloak sets X-Frame-Options/CSP itself and intentionally leaves
+# them off login-status-iframe.html and 3p-cookies/step1.html, which
+# keycloak-js (admin console + any SPA) embeds; a proxy-level DENY makes the
+# admin console fail after 10 s ("Timeout when waiting for 3rd party check
+# iframe message", shown as somethingWentWrong).
+(security_headers_frameable) {
+	header {
+		X-Content-Type-Options  nosniff
+		X-XSS-Protection        "1; mode=block"
+		Referrer-Policy         strict-origin-when-cross-origin
+		Permissions-Policy      "camera=(), microphone=(), geolocation=(), payment=()"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		-Server
+	}
+}
+
 EOF
     local entry name upstream proto slug subdomain
     for entry in "${entries[@]}"; do
@@ -277,7 +294,13 @@ EOF
         subdomain="${slug}.${VERIFIABLY_PUBLIC_DOMAIN}"
       fi
       printf '%s {\n' "$subdomain"
-      printf '\timport security_headers\n'
+      if [[ "$name" == "keycloak" ]]; then
+        # See the (security_headers_frameable) snippet above: Keycloak manages
+        # its own framing headers and its iframe endpoints must stay embeddable.
+        printf '\timport security_headers_frameable\n'
+      else
+        printf '\timport security_headers\n'
+      fi
       # OID4VCI requests must bypass the CREDEBL API gateway (which returns
       # 404 for /oid4vci/*) and go directly to the Credo agent controller.
       # caddy-public reaches it via host.docker.internal because the agent

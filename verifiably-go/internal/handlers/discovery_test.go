@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/verifiably/verifiably-go/backend"
@@ -250,5 +253,86 @@ func TestServeIssuerMetadata_OptionsCORS(t *testing.T) {
 	}
 	if rr.Header().Get("Access-Control-Allow-Origin") != "*" {
 		t.Error("CORS origin header missing on preflight")
+	}
+}
+
+// discoveryMetaAdapter returns a canned IssuerMetadata / error and counts calls
+// so the memoisation in cachedIssuerMetadata can be asserted.
+type discoveryMetaAdapter struct {
+	backend.Adapter
+	meta  backend.IssuerMetadata
+	err   error
+	calls int
+}
+
+func (a *discoveryMetaAdapter) GetIssuerMetadata(context.Context) (backend.IssuerMetadata, error) {
+	a.calls++
+	return a.meta, a.err
+}
+
+func TestCachedIssuerMetadata_MemoisesAndSkipsErrors(t *testing.T) {
+	ad := &discoveryMetaAdapter{err: errors.New("upstream down")}
+	h := &H{Adapter: ad}
+	if _, err := h.cachedIssuerMetadata(context.Background()); err == nil {
+		t.Fatal("want error")
+	}
+	if _, err := h.cachedIssuerMetadata(context.Background()); err == nil {
+		t.Fatal("errors are not cached: second call should hit the adapter and fail again")
+	}
+	if ad.calls != 2 {
+		t.Errorf("adapter calls = %d, want 2 (errors not memoised)", ad.calls)
+	}
+
+	ad.err = nil
+	ad.meta = backend.IssuerMetadata{CredentialsSupported: []backend.CredentialConfig{{ID: "Person"}}}
+	m1, err := h.cachedIssuerMetadata(context.Background())
+	if err != nil || len(m1.CredentialsSupported) != 1 {
+		t.Fatalf("m1 = %+v err = %v", m1, err)
+	}
+	ad.meta = backend.IssuerMetadata{} // change upstream; cache must still serve m1
+	m2, _ := h.cachedIssuerMetadata(context.Background())
+	if len(m2.CredentialsSupported) != 1 || m2.CredentialsSupported[0].ID != "Person" {
+		t.Errorf("second call should be served from cache, got %+v", m2)
+	}
+	if ad.calls != 3 {
+		t.Errorf("adapter calls = %d, want 3", ad.calls)
+	}
+}
+
+func TestServeIssuerMetadata_UpstreamError502(t *testing.T) {
+	h := &H{Adapter: &discoveryMetaAdapter{err: errors.New("vendor timeout")}}
+	rr := httptest.NewRecorder()
+	h.ServeIssuerMetadata(rr, httptest.NewRequest(http.MethodGet, "/.well-known/openid-credential-issuer", nil))
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "issuer metadata unavailable: vendor timeout") {
+		t.Fatalf("status = %d body = %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestServeIssuerMetadata_DefaultsNilCredentialListToEmptyArray(t *testing.T) {
+	h := &H{Adapter: &discoveryMetaAdapter{meta: backend.IssuerMetadata{CredentialEndpoint: "https://issuer.example/credential"}}}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "https://issuer.example/.well-known/openid-credential-issuer", nil)
+	h.ServeIssuerMetadata(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if cs, ok := out["credential_configurations_supported"].([]any); !ok || len(cs) != 0 {
+		t.Errorf("credentials_supported = %v (%T), want empty array", out["credential_configurations_supported"], out["credential_configurations_supported"])
+	}
+	if out["credential_endpoint"] != "https://issuer.example/credential" {
+		t.Errorf("explicit credential_endpoint should be kept, got %v", out["credential_endpoint"])
+	}
+}
+
+func TestServeCredentialCatalog_OptionsPreflight(t *testing.T) {
+	h := &H{}
+	rr := httptest.NewRecorder()
+	h.ServeCredentialCatalog(rr, httptest.NewRequest(http.MethodOptions, "/api/v1/discovery/credentials", nil))
+	if rr.Code != http.StatusNoContent || rr.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("status = %d headers = %v", rr.Code, rr.Header())
 	}
 }

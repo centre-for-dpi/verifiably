@@ -161,6 +161,17 @@ cmd_up() {
     fi
   fi
 
+  # CREDEBL secrets must exist BEFORE backends_for renders config/backends.json:
+  # gen-backends.sh refuses to emit the compose-managed CREDEBL stanza while
+  # CREDEBL_PASSWORD / CREDEBL_CRYPTO_PRIVATE_KEY are empty rather than fall back
+  # to a guessable default. ensure_credebl_env is idempotent — it reloads the
+  # previously generated credebl.env and only fills in what is missing — so the
+  # later pre-flight block still has everything it needs.
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    bold "▶ Preparing CREDEBL environment"
+    ensure_credebl_env
+  fi
+
   bold "▶ Preparing config for scenario=$scenario"
   backends_for "$scenario"
   auth_providers_for "$scenario"
@@ -311,13 +322,25 @@ cmd_up() {
     fi
   fi
 
-  # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE
-  # docker compose up so the generated config/credebl.env file exists when
-  # compose reads it for the CREDEBL service definitions.
+  # CREDEBL pre-flight: write the agent runtime env BEFORE docker compose up so
+  # the generated config/credebl.env file exists when compose reads it for the
+  # CREDEBL service definitions. The secrets themselves were already generated
+  # by ensure_credebl_env above, ahead of config rendering.
   if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
-    bold "▶ Preparing CREDEBL environment"
-    ensure_credebl_env
     write_credebl_agent_runtime_env
+    # Restart a Credo shared-agent container that a prior `down` stopped:
+    # org_agents records this container's name as the agent endpoint with
+    # agentSpinUpStatus=2, and the provisioning wait later in this run can only
+    # succeed if the container is answering — it cannot re-provision an
+    # existing wallet, so a stopped (or worse, removed) agent strands the row
+    # and burns every retry.
+    local _stopped_agents
+    _stopped_agents="$(docker ps -aq --filter 'name=_Platform-admin$' --filter status=exited 2>/dev/null || true)"
+    if [[ -n "$_stopped_agents" ]]; then
+      echo "  restarting stopped Credo agent container(s)"
+      # shellcheck disable=SC2086
+      docker start $_stopped_agents >/dev/null 2>&1 || true
+    fi
     # The CREDEBL seed script creates the platform-admin user in Keycloak's
     # credebl-realm. If that realm doesn't exist yet the seed exits 1 and
     # every service that depends on it also fails. Fix: start Keycloak before
@@ -867,6 +890,23 @@ cmd_down() {
     profile_args+=( --profile credebl )
   fi
   compose "${profile_args[@]}" stop "${services[@]}"
+
+  # The Credo shared agent is created by agent-provisioning via `docker run`,
+  # not by compose, so the stop above never touches it and it kept listening on
+  # its published ports after a down. Stop it — stop, NOT rm: org_agents records
+  # agentSpinUpStatus=2 with this container's name as the endpoint, and removing
+  # the container while that row survives deadlocks the next up's provisioning
+  # wait (it polls a container that no longer exists and cannot re-provision an
+  # existing wallet). cmd_up restarts a stopped agent before waiting.
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    local _agents
+    _agents="$(docker ps -q --filter 'name=_Platform-admin$' 2>/dev/null || true)"
+    if [[ -n "$_agents" ]]; then
+      echo "  stopping Credo agent container(s)"
+      # shellcheck disable=SC2086
+      docker stop $_agents >/dev/null 2>&1 || true
+    fi
+  fi
 }
 
 cmd_reset() {
@@ -918,6 +958,12 @@ cmd_status() {
 cmd_config() {
   local scenario="${1:-}"
   [[ -n "$scenario" ]] || { red "usage: deploy.sh config <all|waltid|inji|credebl>"; exit 2; }
+  # Same ordering constraint as cmd_up: backends_for hard-exits while the
+  # CREDEBL secrets are unset, and only ensure_credebl_env (idempotent) loads
+  # or generates them.
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    ensure_credebl_env
+  fi
   backends_for "$scenario"
   echo "---"
   cat "$SCRIPT_DIR/config/backends.json"
@@ -927,6 +973,13 @@ cmd_run() {
   local scenario="${1:-}"
   [[ -n "$scenario" ]] || { red "usage: deploy.sh run <all|waltid|inji|credebl>"; exit 2; }
   require docker
+  # Same ordering constraint as cmd_up: backends_for hard-exits while the
+  # CREDEBL secrets are unset, and only ensure_credebl_env (idempotent) loads
+  # or generates them.
+  if [[ "$(scenario_needs_credebl "$scenario")" == "yes" ]]; then
+    bold "▶ Preparing CREDEBL environment"
+    ensure_credebl_env
+  fi
   backends_for "$scenario"
   auth_providers_for "$scenario"
   # In subdomain mode resolve the correct public URL so the container receives

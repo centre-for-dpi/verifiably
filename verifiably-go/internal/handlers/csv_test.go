@@ -45,3 +45,43 @@ func TestParseCSVRows_EmptyInput(t *testing.T) {
 		t.Fatal("expected error on empty CSV, got nil")
 	}
 }
+
+// Leading blank rows are skipped before the header is taken.
+func TestParseCSVRows_SkipsLeadingEmptyRows(t *testing.T) {
+	rows, header, err := parseCSVRows(strings.NewReader(",,\n\nname,age\nAda,36\n"))
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(header) != 2 || header[0] != "name" || header[1] != "age" {
+		t.Errorf("header = %v, want [name age]", header)
+	}
+	if len(rows) != 1 || rows[0]["name"] != "Ada" || rows[0]["age"] != "36" {
+		t.Errorf("rows = %v", rows)
+	}
+}
+
+// A malformed header record (bare quote inside a field) surfaces the csv
+// reader's error rather than being swallowed.
+func TestParseCSVRows_HeaderParseError(t *testing.T) {
+	_, _, err := parseCSVRows(strings.NewReader("na\"me,age\nAda,36\n"))
+	if err == nil {
+		t.Fatal("want error for malformed header")
+	}
+	if !strings.Contains(err.Error(), "bare \" in non-quoted-field") {
+		t.Errorf("err = %v, want bare-quote parse error", err)
+	}
+}
+
+// A malformed data record after a valid header also errors (no partial rows).
+func TestParseCSVRows_DataParseError(t *testing.T) {
+	rows, _, err := parseCSVRows(strings.NewReader("name,age\nAd\"a,36\n"))
+	if err == nil {
+		t.Fatal("want error for malformed data row")
+	}
+	if rows != nil {
+		t.Errorf("rows = %v, want nil on error", rows)
+	}
+	if !strings.Contains(err.Error(), "line 2") {
+		t.Errorf("err = %v, want line 2 reference", err)
+	}
+}

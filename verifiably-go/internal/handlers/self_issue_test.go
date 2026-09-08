@@ -2,14 +2,17 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/auth"
+	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -194,5 +197,115 @@ func TestAPISelfIssue_ConfigNotFound(t *testing.T) {
 	}))
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 (body=%s)", rr.Code, rr.Body.String())
+	}
+}
+
+// selfIssueAdapter extends testAdapter with a configurable issuer-DPG list so
+// the "no issuer DPG" branch is reachable.
+type selfIssueAdapter struct {
+	*testAdapter
+	dpgs map[string]vctypes.DPG
+}
+
+func (a *selfIssueAdapter) ListIssuerDpgs(context.Context) (map[string]vctypes.DPG, error) {
+	return a.dpgs, nil
+}
+
+// selfIssueFullList is a status-list backend whose Allocate always fails.
+type selfIssueFullList struct {
+	statuslist.Backend
+}
+
+func (selfIssueFullList) Allocate() (int, error) { return 0, errors.New("list full") }
+func (selfIssueFullList) GetListID() string      { return "v1" }
+
+func TestAPISelfIssue_OptionsAndRateLimit(t *testing.T) {
+	h := selfIssueH(t, personSchemaAdapter(), map[string]string{"sub": "did:example:1"}, nil)
+	rr := httptest.NewRecorder()
+	h.APISelfIssue(rr, httptest.NewRequest(http.MethodOptions, "/api/v1/credentials/self-issue", nil))
+	if rr.Code != http.StatusNoContent || rr.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("OPTIONS status = %d", rr.Code)
+	}
+
+	h.RateLimiter = &RateLimiter{byKey: map[string]*rateEntry{}, byIP: map[string]*rateEntry{}}
+	rr = httptest.NewRecorder()
+	h.APISelfIssue(rr, selfIssuePOST(t, map[string]string{"id_token": "tok", "credential_configuration_id": "PersonCredential"}))
+	if rr.Code != http.StatusTooManyRequests || !strings.Contains(rr.Body.String(), "rate limit exceeded") {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPISelfIssue_BadRequests(t *testing.T) {
+	h := selfIssueH(t, personSchemaAdapter(), map[string]string{"sub": "did:example:1"}, nil)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/credentials/self-issue", strings.NewReader("{oops"))
+	h.APISelfIssue(rr, req)
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "invalid JSON body") {
+		t.Fatalf("bad JSON: status = %d body = %s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	h.APISelfIssue(rr, selfIssuePOST(t, map[string]string{"id_token": "tok"}))
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "credential_configuration_id required") {
+		t.Fatalf("missing config: status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPISelfIssue_SchemaListErrors(t *testing.T) {
+	body := map[string]string{"id_token": "tok", "credential_configuration_id": "PersonCredential"}
+	claims := map[string]string{"sub": "did:example:1"}
+
+	h := selfIssueH(t, &testAdapter{schemasErr: backend.ErrNotSupported}, claims, nil)
+	rr := httptest.NewRecorder()
+	h.APISelfIssue(rr, selfIssuePOST(t, body))
+	if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), "this member does not issue credentials") {
+		t.Fatalf("not supported: status = %d body = %s", rr.Code, rr.Body.String())
+	}
+
+	h = selfIssueH(t, &testAdapter{schemasErr: errors.New("vendor down")}, claims, nil)
+	rr = httptest.NewRecorder()
+	h.APISelfIssue(rr, selfIssuePOST(t, body))
+	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), "backend unavailable: vendor down") {
+		t.Fatalf("other error: status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func selfIssueEligibleClaims() map[string]string {
+	return map[string]string{"sub": "did:example:1", "given_name": "Ada", "family_name": "Lovelace"}
+}
+
+func TestAPISelfIssue_NoIssuerDPG(t *testing.T) {
+	ad := &selfIssueAdapter{testAdapter: personSchemaAdapter(), dpgs: map[string]vctypes.DPG{}}
+	h := selfIssueH(t, ad, selfIssueEligibleClaims(), nil)
+	rr := httptest.NewRecorder()
+	h.APISelfIssue(rr, selfIssuePOST(t, map[string]string{"id_token": "tok", "credential_configuration_id": "PersonCredential"}))
+	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), "no issuer DPG available") {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPISelfIssue_StatusListAllocateError(t *testing.T) {
+	ad := personSchemaAdapter()
+	ad.schemas[0].Std = "w3c_vcdm_2" // → bitstring list
+	h := selfIssueH(t, ad, selfIssueEligibleClaims(), nil)
+	set := NewStatusListSet()
+	set.Register(&StatusListEntry{Store: selfIssueFullList{}, Kind: "bitstring"})
+	h.StatusLists = set
+	rr := httptest.NewRecorder()
+	h.APISelfIssue(rr, selfIssuePOST(t, map[string]string{"id_token": "tok", "credential_configuration_id": "PersonCredential"}))
+	if rr.Code != http.StatusInternalServerError || !strings.Contains(rr.Body.String(), "status list: status list allocate: list full") {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPISelfIssue_IssueError502(t *testing.T) {
+	ad := personSchemaAdapter()
+	ad.issueErr = errors.New("wallet offer failed")
+	h := selfIssueH(t, ad, selfIssueEligibleClaims(), nil)
+	rr := httptest.NewRecorder()
+	h.APISelfIssue(rr, selfIssuePOST(t, map[string]string{"id_token": "tok", "credential_configuration_id": "PersonCredential"}))
+	if rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "wallet offer failed") {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
 	}
 }

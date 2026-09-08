@@ -115,3 +115,46 @@ func TestValidateWebhookURL(t *testing.T) {
 		})
 	}
 }
+
+// An empty host name fails the lookup synchronously (net returns "no such
+// host" without consulting a resolver), exercising the lookup-error branch.
+func TestSsrfBlockHost_LookupError(t *testing.T) {
+	err := ssrfBlockHost("")
+	if err == nil {
+		t.Fatal("want error for unresolvable host")
+	}
+	if !strings.Contains(err.Error(), `cannot resolve ""`) {
+		t.Errorf("err = %v, want cannot-resolve wrapper", err)
+	}
+}
+
+// A public IP literal resolves to itself and is not in any reserved range.
+func TestSsrfBlockHost_PublicAllowed(t *testing.T) {
+	for _, host := range []string{"8.8.8.8", "203.0.113.7"} {
+		if err := ssrfBlockHost(host); err != nil {
+			t.Errorf("ssrfBlockHost(%q) = %v, want nil", host, err)
+		}
+	}
+}
+
+func TestValidateOfferURL_ParseAndHostErrors(t *testing.T) {
+	cases := []struct{ name, raw, want string }{
+		{"unparseable https URL", "https://exa mple.com/offer", "invalid URL"},
+		{"https with no host", "https:///offer", "missing host"},
+		{"public https allowed", "https://203.0.113.7/offer", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateOfferURL(tc.raw)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("err = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+}

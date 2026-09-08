@@ -3,15 +3,19 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/verifiably/verifiably-go/internal/adapters/injicertify"
@@ -102,6 +106,123 @@ type registryProvider struct {
 	// merging the results -- so any entity the registrar console creates is auto-pulled
 	// with no per-entity config drift. Ignores Entity/Path.
 	Discover bool `json:"discover"`
+
+	// Optional OAuth2 client_credentials grant (any IdP: WSO2, Keycloak, …).
+	// When TokenURL is set every registry call carries "Authorization: Bearer
+	// <access_token>" fetched from TokenURL (cached, refreshed before expiry).
+	TokenURL     string `json:"tokenUrl,omitempty"`
+	ClientID     string `json:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+
+	// InsecureSkipVerify disables TLS verification for this registry (and its
+	// token endpoint). Demo/dev only — refused with a warning when
+	// VERIFIABLY_ENV=production (mirrors internal/auth/oidc).
+	InsecureSkipVerify bool `json:"insecureSkipVerify"`
+}
+
+// registryHTTPClient is the shared client for every registry/API call: a 30 s
+// safety timeout on top of the callers' context deadlines.
+var registryHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// registryInsecureClient is registryHTTPClient with TLS verification off — only
+// ever handed out by registryClient for a provider that opted in.
+var registryInsecureClient = &http.Client{
+	Timeout:   30 * time.Second,
+	Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // operator opt-in, refused in production
+}
+
+// registryClient picks the HTTP client for a provider: the verifying client
+// unless InsecureSkipVerify is set, which is refused (with a warning) when
+// VERIFIABLY_ENV=production.
+func registryClient(p registryProvider) *http.Client {
+	if !p.InsecureSkipVerify {
+		return registryHTTPClient
+	}
+	if os.Getenv("VERIFIABLY_ENV") == "production" {
+		slog.Warn("registry: insecureSkipVerify refused in production", "registry", p.ID, "url", p.URL)
+		return registryHTTPClient
+	}
+	return registryInsecureClient
+}
+
+// registryToken is one cached client_credentials grant.
+type registryToken struct {
+	header string
+	expiry time.Time
+}
+
+// registryTokens caches access tokens per TokenURL|ClientID so a bulk pull
+// does not hit the IdP on every registry call.
+var registryTokens = struct {
+	sync.Mutex
+	m map[string]registryToken
+}{m: map[string]registryToken{}}
+
+// registryAuthHeader returns the "Bearer <token>" Authorization value for a
+// provider with a TokenURL (OAuth2 client_credentials, form-encoded), or "" when
+// the provider has none. Tokens are cached and refreshed when fewer than 60 s
+// remain; expires_in absent/0 defaults to 5 minutes. Any failure degrades to ""
+// (logged) so the caller proceeds unauthenticated and surfaces the registry's
+// own 401 instead of a token error.
+func registryAuthHeader(ctx context.Context, p registryProvider) string {
+	if p.TokenURL == "" {
+		return ""
+	}
+	key := p.TokenURL + "|" + p.ClientID
+	registryTokens.Lock()
+	cached, ok := registryTokens.m[key]
+	registryTokens.Unlock()
+	if ok && time.Until(cached.expiry) > 60*time.Second {
+		return cached.header
+	}
+	form := url.Values{"grant_type": {"client_credentials"}, "client_id": {p.ClientID}, "client_secret": {p.ClientSecret}}
+	if p.Scope != "" {
+		form.Set("scope", p.Scope)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.TokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		slog.Warn("registry: token request", "tokenUrl", p.TokenURL, "err", err)
+		return ""
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	resp, err := registryClient(p).Do(req)
+	if err != nil {
+		slog.Warn("registry: token fetch", "tokenUrl", p.TokenURL, "err", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	var tok struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&tok) != nil || tok.AccessToken == "" {
+		slog.Warn("registry: token endpoint rejected the client_credentials grant", "tokenUrl", p.TokenURL, "status", resp.StatusCode)
+		return ""
+	}
+	if tok.ExpiresIn <= 0 {
+		tok.ExpiresIn = 300
+	}
+	entry := registryToken{header: "Bearer " + tok.AccessToken, expiry: time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second)}
+	registryTokens.Lock()
+	registryTokens.m[key] = entry
+	registryTokens.Unlock()
+	return entry.header
+}
+
+// newRegistryRequest builds a request against a registry with the provider's
+// Authorization (client_credentials token) when it has one. Callers add their
+// own Content-Type/Accept and send it through registryClient(p).
+func newRegistryRequest(ctx context.Context, p registryProvider, method, endpoint string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	if auth := registryAuthHeader(ctx, p); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	return req, nil
 }
 
 // registryProviders parses VERIFIABLY_REGISTRIES (a JSON array of registryProvider).
@@ -151,7 +272,7 @@ func fetchRegistryByEntity(ctx context.Context, p registryProvider, id string) m
 	defer cancel()
 	out := map[string]map[string]string{}
 	if p.Discover {
-		for _, e := range sunbirdSchemas(cctx, p.URL) {
+		for _, e := range sunbirdSchemas(cctx, p) {
 			pe := p
 			pe.Entity = e
 			if rec := fetchRegistrySunbird(cctx, pe, id); len(rec) > 0 {
@@ -166,8 +287,11 @@ func fetchRegistryByEntity(ctx context.Context, p registryProvider, id string) m
 		}
 		return out
 	}
-	req, _ := http.NewRequestWithContext(cctx, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
-	resp, err := http.DefaultClient.Do(req)
+	req, err := newRegistryRequest(cctx, p, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
+	if err != nil {
+		return out
+	}
+	resp, err := registryClient(p).Do(req)
 	if err != nil || resp == nil {
 		return out
 	}
@@ -185,15 +309,19 @@ func fetchRegistryByEntity(ctx context.Context, p registryProvider, id string) m
 	return out
 }
 
-// sunbirdSchemas lists the registered Sunbird entity names (POST /api/v1/Schema/search
+// sunbirdSchemas lists the registered Sunbird entity names (POST <p.URL>/api/v1/Schema/search
 // {"filters":{}} -> {"data":[{"name":...}]}), so a discover-mode provider auto-finds
 // every entity the registrar console created. Skips the built-in "Schema" + leftover probes.
-func sunbirdSchemas(ctx context.Context, baseURL string) []string {
+// Uses the provider's client (TLS policy) and token, like every other registry call.
+func sunbirdSchemas(ctx context.Context, p registryProvider) []string {
 	body, _ := json.Marshal(map[string]any{"filters": map[string]any{}})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimRight(baseURL, "/")+"/api/v1/Schema/search", bytes.NewReader(body))
+	req, err := newRegistryRequest(ctx, p, http.MethodPost,
+		strings.TrimRight(p.URL, "/")+"/api/v1/Schema/search", bytes.NewReader(body))
+	if err != nil {
+		return nil
+	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := registryClient(p).Do(req)
 	if err != nil || resp == nil || resp.StatusCode != http.StatusOK {
 		return nil
 	}
@@ -216,6 +344,66 @@ func sunbirdSchemas(ctx context.Context, baseURL string) []string {
 	return names
 }
 
+// swaggerEntityPath matches the collection path Sunbird RC (and any OpenAPI
+// registry with the same layout) exposes per entity: /api/v1/<Entity>.
+var swaggerEntityPath = regexp.MustCompile(`^/api/v1/([A-Za-z][A-Za-z0-9_]*)$`)
+
+// swaggerEntities lists the entities a registry documents in its OpenAPI spec
+// — the fallback when POST /api/v1/Schema/search is not exposed (some
+// deployments lock the Schema entity down). GET <url>/api/docs/swagger.json,
+// then <url>/swagger.json; Swagger 2 and OpenAPI 3 both carry `paths`, and an
+// entity is any path matching /api/v1/<Name> exactly. Unique, sorted, minus
+// the built-in Schema and the ZzProbe leftover. nil when nothing is found.
+func swaggerEntities(ctx context.Context, p registryProvider) []string {
+	base := strings.TrimRight(p.URL, "/")
+	var paths map[string]any
+	for _, suffix := range []string{"/api/docs/swagger.json", "/swagger.json"} {
+		req, err := newRegistryRequest(ctx, p, http.MethodGet, base+suffix, nil)
+		if err != nil {
+			return nil
+		}
+		req.Header.Set("Accept", "application/json")
+		resp, err := registryClient(p).Do(req)
+		if err != nil {
+			continue // transport failure on this candidate: try the next one
+		}
+		var doc struct {
+			Paths map[string]any `json:"paths"`
+		}
+		ok := resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&doc) == nil
+		resp.Body.Close()
+		if ok {
+			paths = doc.Paths
+			break
+		}
+	}
+	seen := map[string]bool{}
+	var names []string
+	for path := range paths {
+		m := swaggerEntityPath.FindStringSubmatch(path)
+		if m == nil || m[1] == "Schema" || m[1] == "ZzProbe" || seen[m[1]] {
+			continue
+		}
+		seen[m[1]] = true
+		names = append(names, m[1])
+	}
+	sort.Strings(names)
+	return names
+}
+
+// discoverEntities returns the registry's entity names and how they were
+// found: "schema" (POST /api/v1/Schema/search), "swagger" (OpenAPI paths) or
+// "" when neither yields anything.
+func discoverEntities(ctx context.Context, p registryProvider) (names []string, via string) {
+	if names = sunbirdSchemas(ctx, p); len(names) > 0 {
+		return names, "schema"
+	}
+	if names = swaggerEntities(ctx, p); len(names) > 0 {
+		return names, "swagger"
+	}
+	return nil, ""
+}
+
 // fetchRegistrySunbird resolves a holder via a Sunbird RC registry's search API
 // (POST <url>/api/v1/<Entity>/search keyed by SearchField), returning the first hit's
 // fields. Sunbird wraps results as {"totalCount":n,"data":[{...}]} (some builds use
@@ -229,9 +417,12 @@ func fetchRegistrySunbird(ctx context.Context, p registryProvider, id string) ma
 		"filters": map[string]any{field: map[string]any{"eq": id}},
 	})
 	endpoint := strings.TrimRight(p.URL, "/") + "/api/v1/" + p.Entity + "/search"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := newRegistryRequest(ctx, p, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil
+	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := registryClient(p).Do(req)
 	if err != nil || resp == nil {
 		return nil
 	}
@@ -282,9 +473,12 @@ func flattenRecord(rec map[string]any, stripMeta bool) map[string]string {
 func searchRegistryAll(ctx context.Context, p registryProvider, entity string) []map[string]string {
 	body, _ := json.Marshal(map[string]any{"filters": map[string]any{}})
 	endpoint := strings.TrimRight(p.URL, "/") + "/api/v1/" + entity + "/search"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := newRegistryRequest(ctx, p, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil
+	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := registryClient(p).Do(req)
 	if err != nil || resp == nil {
 		return nil
 	}
@@ -339,7 +533,7 @@ func fetchRegistryRows(ctx context.Context) ([]map[string]string, error) {
 	for _, p := range providers {
 		switch {
 		case p.Discover:
-			for _, e := range sunbirdSchemas(cctx, p.URL) {
+			for _, e := range sunbirdSchemas(cctx, p) {
 				rows = append(rows, searchRegistryAll(cctx, p, e)...)
 			}
 		case p.Entity != "":

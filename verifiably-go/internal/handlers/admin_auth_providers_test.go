@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/verifiably/verifiably-go/internal/auth"
@@ -34,7 +35,7 @@ func TestAdminAuthProviders_OffMode404s(t *testing.T) {
 // in this helper, so it's tested separately at the page-render level.
 func TestAddFormVisible_DrivenByMode(t *testing.T) {
 	cases := map[string]bool{
-		"":    true,  // unset → defaults to rw
+		"":    true, // unset → defaults to rw
 		"rw":  true,
 		"ro":  false,
 		"off": false,
@@ -223,4 +224,127 @@ func (s stubProv) UserInfo(_ context.Context, _ string) (auth.UserInfo, error) {
 }
 func (s stubProv) VerifyToken(_ context.Context, _ string) (map[string]string, error) {
 	return nil, nil
+}
+
+func adminAuthProvidersReq(t *testing.T, h *H, method, path string) *http.Request {
+	t.Helper()
+	cookies := seedSession(t, h, func(s *Session) { s.IsAdmin = true })
+	req := httptest.NewRequest(method, path, nil)
+	req.AddCookie(cookies[0])
+	return req
+}
+
+func TestShowAuthProvidersAdmin_RendersProvidersAndStorePath(t *testing.T) {
+	reg := auth.NewRegistry()
+	reg.Register(stubProv{id: "corp-idp", source: auth.SourceUser})
+	reg.Register(stubProv{id: "sys-idp", source: auth.SourceSystem})
+	store := auth.NewUserStore(filepath.Join(t.TempDir(), "user.json"))
+	h := &H{
+		Sessions:      NewStore(),
+		AuthReg:       reg,
+		AuthStore:     store,
+		AuthAdminMode: "ro",
+		Templates:     loadPageTemplates(t, "admin_auth_providers"),
+	}
+	req := adminAuthProvidersReq(t, h, "GET", "/admin/auth-providers")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "main")
+	rec := httptest.NewRecorder()
+	h.ShowAuthProvidersAdmin(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"corp-idp", "sys-idp", store.Path(), "/admin/auth-providers/corp-idp/delete", "Read-only mode"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q", want)
+		}
+	}
+
+	// No registry / no store: renders the empty state without a path hint.
+	h2 := &H{Sessions: NewStore(), AuthAdminMode: "rw", Templates: h.Templates}
+	req = adminAuthProvidersReq(t, h2, "GET", "/admin/auth-providers")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "main")
+	rec = httptest.NewRecorder()
+	h2.ShowAuthProvidersAdmin(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "No providers configured.") {
+		t.Errorf("empty state: status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "persist to") {
+		t.Error("store path hint should be absent without an AuthStore")
+	}
+}
+
+func TestAuthStorePath(t *testing.T) {
+	if got := (&H{}).authStorePath(); got != "" {
+		t.Errorf("nil store path = %q, want empty", got)
+	}
+	p := filepath.Join(t.TempDir(), "user.json")
+	if got := (&H{AuthStore: auth.NewUserStore(p)}).authStorePath(); got != p {
+		t.Errorf("path = %q, want %q", got, p)
+	}
+}
+
+func TestDeleteAuthProvider_Guards(t *testing.T) {
+	t.Run("off mode 404s", func(t *testing.T) {
+		h := &H{Sessions: NewStore(), AuthAdminMode: "off"}
+		rec := httptest.NewRecorder()
+		h.DeleteAuthProvider(rec, httptest.NewRequest("POST", "/admin/auth-providers/x/delete", nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+	})
+	t.Run("anonymous redirects to login", func(t *testing.T) {
+		h := &H{Sessions: NewStore(), AuthAdminMode: "rw"}
+		rec := httptest.NewRecorder()
+		h.DeleteAuthProvider(rec, httptest.NewRequest("POST", "/admin/auth-providers/x/delete", nil))
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/login" {
+			t.Fatalf("status = %d Location = %q", rec.Code, rec.Header().Get("Location"))
+		}
+	})
+	t.Run("missing id is 400", func(t *testing.T) {
+		h := &H{Sessions: NewStore(), AuthAdminMode: "rw"}
+		req := adminAuthProvidersReq(t, h, "POST", "/admin/auth-providers//delete")
+		req.SetPathValue("id", "  ")
+		rec := httptest.NewRecorder()
+		h.DeleteAuthProvider(rec, req)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "missing id") {
+			t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("no registry wired still redirects", func(t *testing.T) {
+		h := &H{Sessions: NewStore(), AuthAdminMode: "rw"}
+		req := adminAuthProvidersReq(t, h, "POST", "/admin/auth-providers/x/delete")
+		req.SetPathValue("id", "x")
+		rec := httptest.NewRecorder()
+		h.DeleteAuthProvider(rec, req)
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/auth-providers" {
+			t.Fatalf("status = %d Location = %q", rec.Code, rec.Header().Get("Location"))
+		}
+	})
+}
+
+// A user-source row whose persisted file cannot be read surfaces the store
+// error as a toast and leaves the registry untouched.
+func TestDeleteAuthProvider_StoreErrorToast(t *testing.T) {
+	reg := auth.NewRegistry()
+	reg.Register(stubProv{id: "corp-idp", source: auth.SourceUser})
+	// Point the store at a directory: os.ReadFile fails with a non-ENOENT error.
+	store := auth.NewUserStore(t.TempDir())
+	h := &H{Sessions: NewStore(), AuthReg: reg, AuthStore: store, AuthAdminMode: "rw"}
+	req := adminAuthProvidersReq(t, h, "POST", "/admin/auth-providers/corp-idp/delete")
+	req.SetPathValue("id", "corp-idp")
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	h.DeleteAuthProvider(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if trig := rec.Header().Get("HX-Trigger"); !strings.Contains(trig, "Could not remove provider: read ") {
+		t.Errorf("HX-Trigger = %q, want store error toast", trig)
+	}
+	if reg.Lookup("corp-idp") == nil {
+		t.Error("registry row must survive a failed store removal")
+	}
 }

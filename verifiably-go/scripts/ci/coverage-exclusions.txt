@@ -1,0 +1,46 @@
+# coverage-exclusions.txt — functions in internal/handlers exempt from the
+# 100% statement-coverage gate (scripts/ci/coverage-gate.sh).
+#
+# Format: <file.go> <funcName>  # why: which external system the uncoverable
+#         statements need (docker socket, live database, wall-clock sleep …)
+# The gate FAILS if an entry names a function that no longer exists.
+
+# ── External systems (plan §4.3 reason classes: docker socket / live DB / wall-clock sleep) ──
+esignet_config.go dockerExecCapture      # lines 117-158: everything after the first exec-create POST succeeds (exec-start, stream demux, exit-code inspect) needs a live docker daemon on the hard-coded unix:///var/run/docker.sock
+esignet_config.go readESignetClientACRs  # lines 199-207: empty-result / JSON-parse / return only reachable after a successful docker exec
+esignet_config.go writeESignetClientACRs # lines 214-216 (json.Marshal of []string cannot fail) and 225-229 (redis flush + return only after a successful psql exec via docker)
+esignet_config.go injiAuthcodeACRValues  # lines 270-271: cache-fill branch after a successful registration read through dockerExecCapture
+esignet_config.go esignetConfigData      # lines 321-325: enabled-map fill after a successful registration read through dockerExecCapture
+esignet_config.go SaveEsignetConfig      # lines 393-396: cache update + success render only after a successful docker-backed write
+inji_schema.go dockerRestart             # lines 839-841 (dial error when /var/run/docker.sock is absent) + 852 (success return): needs a live docker daemon and the named container
+inji_schema.go applyAuthcodeSchema       # lines 412-417: restart loop + success return call dockerRestart("inji-certify"/"injiweb-esignet") on the REAL socket; errors are returned (not swallowed) — tests must never reach these lines (a draft test restarted real containers)
+schema.go SaveSchema                     # lines 569-572: Inji auth-code success tail (select the new key + ?provisioning redirect) runs only after applyAuthcodeSchema returned nil, i.e. after dockerRestart("inji-certify"/"injiweb-esignet") succeeded on the REAL socket; tests stop at the ApplyAuthcodeSchema error (fakeSubjects.applyErr) so no restart is ever attempted
+schema.go DeleteSchema                   # lines 670-679: scope-file teardown (removeBraceEntry on the deployment's certify/esignet property files) + dockerRestart loop run only when CredentialScope != "" AND DeleteCredential succeeds; tests keep scope "" so the real docker socket and the host files are never touched
+session.go StartFlusher                  # lines 258-259: `case <-t.C: s.flush()` behind a hard-coded 5 s time.NewTicker with no injectable interval; the ctx-cancel final-flush path is covered
+inji_proxy.go init                       # lines 366-368: observers seeded from INJI_PROXY_EXTRA_KIDS / INJI_PROXY_PREAUTH_EXTRA_KIDS read at package init, before any t.Setenv can run
+
+# ── Dead defensive branches (provably unreachable without a production change; not a §4.3 class — flagged for review) ──
+inji_present.go injiBuildW3CVPTokenMulti # lines 422-424: json.Marshal error on a map built only from json.Unmarshal output + string slices — cannot fail
+inji_present.go injiMultiPreview         # lines 628-630: `!pv.Compatible` after Found=true; injiAutoMatch sets Found only when injiDescriptorFits, whose first check is the same injiMatchDescriptor that sets Compatible
+inji_proxy.go injectCredentialContext    # lines 392-394: json.Marshal error on a value json.Unmarshal itself produced — cannot fail
+i18n_postprocess.go translateHTML        # lines 27-29 (html.Parse error: input is a bytes.Reader) and 32-34 (html.Render error: sink is a bytes.Buffer) — neither can fail
+session.go flush                         # lines 315-316: json.Marshal(sess) error; Session and its embedded vctypes have no any/float/chan/func fields
+session.go SessionEncrypt                # lines 339-341 (cipher.NewGCM cannot fail for an AES block) and 343-345 (crypto/rand.Read never returns an error in Go >= 1.24)
+session.go SessionDecrypt                # lines 357-359: cipher.NewGCM cannot fail for an AES block
+docs.go SetDocsRoot                      # lines 56-58: scanDocs never returns a non-nil error (its WalkDir callback only returns nil/SkipDir)
+docs.go scanDocs                         # lines 87-89 (filepath.Rel cannot fail for a path WalkDir produced under root) and 102-104 (WalkDir returns nil because the callback swallows every error)
+docs.go DocsView                         # lines 256-259: goldmark Convert into a strings.Builder cannot fail
+ratelimit.go cleanupLoop                 # lines 105-106: `case <-ticker.C: rl.cleanup()` behind a fixed 5-minute time.NewTicker with no injectable interval (wall-clock class); cleanup() itself is 100% via direct calls
+inji_wallet_pdf.go DownloadInjiClaimedPDF # lines 82-84 (credText=="" fallback: parseClaimedVC always sets "VC") and 86-89 (RenderCredentialPDFNoQR error: gofpdf Output only fails after an earlier recorded error; core fonts, no assets)
+qr_decode.go decodeUploadedQR            # lines 64-66 (gozxing.NewBinaryBitmapFromImage only errors on a nil binarizer, which NewHybridBinarizer never returns), 82-84 (lastErr==nil needs zero frames; both paths guarantee >=1 frame)
+qr_decode.go extractPDFImages            # lines 102-103: io.ReadAll on pdfcpu's in-memory image reader cannot fail
+status_list.go PublishBitstringStatusList # lines 104-107: json.Marshal(signed) error; LDSigner.Sign already marshalled the same values in canonicalize() and would have failed first
+api_delegation_bulk.go issueDelegationPairCore # lines 55-57 and 86-88: json.Marshal of BuildSubjectCredential/BuildDelegationCredential output (string/bool/[]string/map values only) cannot fail
+admin_metrics.go aggregateMetrics        # lines 310-312: the `fmtAvg` closure is assigned to `_` and never invoked (dead code); only a production edit could reach it
+wallet.go isRevocationError              # line 398: `return false` after `err.(isRev)` — the assertion targets interface{ Error() string }, which every non-nil error satisfies, so it cannot fail
+bulk.go queryDBRows                      # lines 692-724: everything after pgx.Connect succeeds (Query, FieldDescriptions, row scan, rows.Err, empty-result error) needs a live Postgres; the SELECT guard and the connect failure (DSN postgres://u:p@127.0.0.1:1/db?connect_timeout=1) ARE covered
+inji_holder.go injiClaimCredential       # lines 318-320: `if e != nil` after signES256 on the P-256 holder key injiClaimCredential itself generates with ecdsa.GenerateKey(rand.Reader) — ecdsa.Sign cannot fail for a freshly generated key and the key is not injectable
+inji_delegation.go injiPreAuthClaim      # lines 661-663: same pattern — signES256 over a P-256 key generated inside injiPreAuthClaim; ecdsa.Sign cannot fail and there is no injection point
+handlers.go errorToastStatus             # lines 1238-1242: json.Marshal error fallback for map[string]string{"toast": msg} — string values always marshal (invalid UTF-8 is coerced to U+FFFD), so the branch is dead
+api.go APIBulkJobEvents                  # lines 899-900: `if err != nil { continue }` after json.Marshal(jobs.Progress) — a struct of string/int fields only; Marshal cannot fail
+bulk.go BulkPreview                      # lines 208-210: `default:` arm of the source switch is dead — bulkSourceAllowed/bulkSourcesFor admit only csv/api/db/registry, each of which has its own case
