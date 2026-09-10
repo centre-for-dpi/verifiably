@@ -591,15 +591,6 @@ func parseSDJWTClaimedVC(vc string) map[string]any {
 	return out
 }
 
-// heldClaims parses the session's persisted claimed VCs into display maps.
-func heldClaims(sess *Session) []map[string]any {
-	held := make([]map[string]any, 0, len(sess.InjiClaimedVCs))
-	for _, vc := range sess.InjiClaimedVCs {
-		held = append(held, parseClaimedVC(vc))
-	}
-	return held
-}
-
 // heldClaimsWithStatus is heldClaims augmented with each credential's LIVE
 // revocation status — "active", "revoked", or "" — resolved against the
 // issuer's published status list via the same signature-verifying cache the

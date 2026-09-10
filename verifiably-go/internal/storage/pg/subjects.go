@@ -3,6 +3,7 @@ package pg
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -157,7 +158,7 @@ func (s *SubjectStore) ApplyAuthcodeSchema(ctx context.Context,
 	if err != nil {
 		return fmt.Errorf("pg: begin: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, viewDDL); err != nil {
 		return fmt.Errorf("pg: create view: %w", err)
 	}
@@ -361,7 +362,7 @@ func (s *SubjectStore) DeleteCredential(ctx context.Context, key, ownerKey, slug
 	if err != nil {
 		return fmt.Errorf("pg: begin: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM certify.credential_config WHERE credential_config_key_id=$1`, key); err != nil {
 		return fmt.Errorf("pg: delete credential_config %q: %w", key, err)
@@ -431,7 +432,7 @@ func (s *SubjectStore) GetIdentity(ctx context.Context, individualID string) (ma
 	err := s.pool.QueryRow(ctx,
 		`SELECT demographics FROM certify.identity_registry WHERE individual_id=$1`, individualID).Scan(&blob)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("pg: get identity: %w", err)

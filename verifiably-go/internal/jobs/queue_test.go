@@ -143,9 +143,9 @@ func TestContextCancelCleansUpSubscriber(t *testing.T) {
 	// Channel must be closed (no leak).
 	select {
 	case _, open := <-ch:
-		if open {
-			// Drain any progress that arrived before cancel.
-		}
+		// `open == true` just means progress arrived before cancel; either way
+		// the channel must not stay open, which the timeout arm below asserts.
+		_ = open
 	case <-time.After(500 * time.Millisecond):
 		t.Error("subscriber channel not closed after context cancel")
 	}

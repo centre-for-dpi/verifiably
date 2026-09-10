@@ -545,7 +545,7 @@ func (r *Registry) ListWalletCredentials(ctx context.Context) ([]vctypes.Credent
 	ad, err := r.currentHolder(ctx)
 	if err != nil {
 		// No holders configured yet — empty list beats a crash.
-		return []vctypes.Credential{}, nil
+		return []vctypes.Credential{}, nil //nolint:nilerr // no holder DPG configured yet is a valid empty wallet, not an error the UI should surface.
 	}
 	return ad.ListWalletCredentials(ctx)
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/verifiably/verifiably-go/internal/handlers"
 	"github.com/verifiably/verifiably-go/vctypes"
 )

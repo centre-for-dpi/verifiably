@@ -111,7 +111,7 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, body any, out 
 		return &StatusError{Method: method, URL: u, Status: resp.StatusCode, Body: string(b)}
 	}
 	if out == nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 	dec := json.NewDecoder(resp.Body)
@@ -156,7 +156,7 @@ func (c *Client) DoForm(ctx context.Context, method, path string, form url.Value
 		return &StatusError{Method: method, URL: u, Status: resp.StatusCode, Body: string(b)}
 	}
 	if out == nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 	dec := json.NewDecoder(resp.Body)

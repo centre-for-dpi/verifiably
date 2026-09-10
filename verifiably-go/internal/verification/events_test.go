@@ -60,7 +60,7 @@ func TestNewID_Unique(t *testing.T) {
 func TestNewID_HexChars(t *testing.T) {
 	id := NewID()
 	for i, c := range id {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("NewID contains non-hex char %q at position %d", c, i)
 		}
 	}

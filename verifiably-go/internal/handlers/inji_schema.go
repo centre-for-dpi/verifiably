@@ -32,10 +32,7 @@ const (
 	certifyResourceURL = "http://certify-nginx:80/v1/certify/issuance/credential"
 )
 
-var fieldNameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 var nonAlnumRe = regexp.MustCompile(`[^a-z0-9]`)
-
-type schemaField struct{ Name, Label string }
 
 func esignetScopeFile() string      { return os.Getenv("INJI_ESIGNET_SCOPE_FILE") }
 func certifyScopeQueryFile() string { return os.Getenv("INJI_CERTIFY_SCOPE_QUERY_FILE") }
@@ -387,7 +384,7 @@ func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, owne
 		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", a.scope)
 	if err := appendBraceEntry(certifyScopeQueryFile(),
 		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", a.scope, a.scopeQuery); err != nil {
-		return "", fmt.Errorf("Certify scope-query write failed: %w", err)
+		return "", fmt.Errorf("certify scope-query write failed: %w", err)
 	}
 	if err := appendBraceEntry(esignetScopeFile(),
 		"mosip.esignet.supported.credential.scopes", a.scope, "'"+a.scope+"'"); err != nil {
@@ -406,7 +403,7 @@ func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, owne
 	for _, f := range a.displayOrder {
 		if err := appendPropertyLine(certifyScopeQueryFile(),
 			"mosip.certify.indexed-mappings."+f, "$."+f); err != nil {
-			return "", fmt.Errorf("Certify indexed-mapping write failed: %w", err)
+			return "", fmt.Errorf("certify indexed-mapping write failed: %w", err)
 		}
 	}
 	for _, c := range []string{"inji-certify", "injiweb-esignet"} {
@@ -651,9 +648,10 @@ func (h *H) ReapplyAuthcodeViews(w http.ResponseWriter, r *http.Request) {
 		_, slug := injiConfigKeySlug(vctypes.Schema{AdditionalTypes: []string{key}})
 		// Status URL by format: token list for SD-JWT, bitstring list for W3C ldp_vc.
 		statusURL := ""
-		if format == "vc+sd-jwt" || format == "dc+sd-jwt" {
+		switch format {
+		case "vc+sd-jwt", "dc+sd-jwt":
 			statusURL = h.tokenStatusURL(authcodeVendor)
-		} else if format == "ldp_vc" {
+		case "ldp_vc":
 			statusURL = h.bitstringStatusURL(authcodeVendor)
 		}
 		if err := h.Subjects.ReplaceView(r.Context(), authcodeViewDDL(slug, fields, statusURL != "", statusURL)); err != nil {

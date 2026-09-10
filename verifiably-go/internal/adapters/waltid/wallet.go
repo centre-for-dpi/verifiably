@@ -250,7 +250,7 @@ func (a *Adapter) ParseOffer(ctx context.Context, offerURI string) (vctypes.Cred
 		// paste failed (e.g. unknown issuer, unparseable offer, signature
 		// mismatch). Still wraps ErrOfferUnresolvable so handlers can branch
 		// on typed error if needed.
-		return vctypes.Credential{}, fmt.Errorf("%w: %v", backend.ErrOfferUnresolvable, err)
+		return vctypes.Credential{}, fmt.Errorf("%w: %w", backend.ErrOfferUnresolvable, err)
 	}
 
 	// Parse what we can out of the returned offer JSON to surface meaningful
@@ -396,7 +396,7 @@ func (a *Adapter) ClaimCredential(ctx context.Context, cred vctypes.Credential) 
 	// credential's id, so we can't look up by primary key.
 	held, err := a.ListWalletCredentials(ctx)
 	if err != nil || len(held) == 0 {
-		return cred, nil
+		return cred, nil //nolint:nilerr // best-effort id back-fill; the claim already succeeded, so a failed wallet re-list must not fail the claim.
 	}
 	configID := cred.Fields["config_id"]
 	var match *vctypes.Credential
@@ -1268,24 +1268,9 @@ func friendlyClaimError(err error, _ string) error {
 	// "{issuer}/.well-known/openid-credential-issuer" path, gets 404,
 	// returns no offered credentials, and 400s on our claim call.
 	if strings.Contains(msg, "Resolved an empty list of offered credentials") {
-		return fmt.Errorf("walt.id's wallet couldn't resolve this offer: it fetched the issuer's .well-known metadata but got no matching credential configurations. This usually means the offer's `credential_issuer` URL doesn't point at the directory that serves the metadata (a known Inji Certify quirk — Inji Certify advertises http://…:8090 as the issuer but its well-known lives under /v1/certify/issuance/). Use Inji Web Wallet for Inji Certify offers, or ask the issuer admin to fix the credential_issuer URL.")
+		return errors.New("walt.id's wallet couldn't resolve this offer: it fetched the issuer's .well-known metadata but got no matching credential configurations; this usually means the offer's `credential_issuer` URL doesn't point at the directory that serves the metadata (a known Inji Certify quirk — Inji Certify advertises http://…:8090 as the issuer but its well-known lives under /v1/certify/issuance/) — use Inji Web Wallet for Inji Certify offers, or ask the issuer admin to fix the credential_issuer URL")
 	}
 	return fmt.Errorf("wallet claim failed: %s", truncateClaim(msg, 200))
-}
-
-// formatFromConfigID extracts the walt.id format key from a configuration
-// id like "AlpsTourReservation_jwt_vc_json-ld" → "jwt_vc_json-ld". Returns
-// "" when none of the known suffixes match (e.g. when configID is empty).
-func formatFromConfigID(configID string) string {
-	for _, suf := range []string{
-		"jwt_vc_json-ld", "jwt_vc_json", "vc+sd-jwt", "dc+sd-jwt",
-		"mso_mdoc", "ldp_vc", "jwt_vc",
-	} {
-		if strings.HasSuffix(configID, "_"+suf) {
-			return suf
-		}
-	}
-	return ""
 }
 
 func truncateClaim(s string, n int) string {

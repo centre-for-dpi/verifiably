@@ -3,12 +3,14 @@ package pg
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/verifiably/verifiably-go/internal/issuance"
 )
 
@@ -47,7 +49,7 @@ func (l *IssuanceLog) Append(c issuance.IssuedCredential) (issuance.IssuedCreden
 	var issuedAt time.Time
 	err := row.Scan(&last.ID, &last.SchemaID, &last.IssuerDpg,
 		&last.OwnerKey, &issuedAt, &last.PrevHash)
-	if err != nil && err != pgx.ErrNoRows {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return c, fmt.Errorf("issuance pg: fetch last: %w", err)
 	}
 	if err == nil {
@@ -142,6 +144,7 @@ func (l *IssuanceLog) List(f issuance.Filter) []issuance.IssuedCredential {
 			" AND (schema_name ILIKE $%d OR holder_hint ILIKE $%d)",
 			i, i)
 		args = append(args, "%"+f.Query+"%")
+		//nolint:ineffassign,staticcheck // keep the $n counter correct for any filter appended below
 		i++
 	}
 	q += " ORDER BY issued_at DESC, seq DESC"
@@ -206,7 +209,7 @@ func (l *IssuanceLog) MarkRevoked(id, ownerKey string) (issuance.IssuedCredentia
 	q += ` RETURNING id`
 	var retID string
 	err := l.pool.QueryRow(ctx, q, args...).Scan(&retID)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return issuance.IssuedCredential{}, fmt.Errorf("issuance pg: %q not found or not owned by %q", id, ownerKey)
 	}
 	if err != nil {
@@ -229,7 +232,7 @@ func (l *IssuanceLog) MarkReinstate(id, ownerKey string) (issuance.IssuedCredent
 	q += ` RETURNING id`
 	var retID string
 	err := l.pool.QueryRow(ctx, q, args...).Scan(&retID)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return issuance.IssuedCredential{}, fmt.Errorf("issuance pg: %q not found or not owned by %q", id, ownerKey)
 	}
 	if err != nil {

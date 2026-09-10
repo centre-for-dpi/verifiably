@@ -34,10 +34,6 @@ import (
 	"github.com/verifiably/verifiably-go/backend"
 )
 
-// injiVerifyVendor is the backends.json vendor key for the Inji Verify adapter
-// (matches the "Inji Verify" special-case already used in verifier.go).
-const injiVerifyVendor = "Inji Verify"
-
 // marshalECKeyPEM / parseECKeyPEM serialise the retained holder key.
 func marshalECKeyPEM(key *ecdsa.PrivateKey) (string, error) {
 	der, err := x509.MarshalECPrivateKey(key)

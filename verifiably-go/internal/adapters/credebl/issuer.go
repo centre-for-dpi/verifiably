@@ -283,7 +283,7 @@ func (a *Adapter) IssueBulk(ctx context.Context, req backend.IssueBulkRequest) (
 func (a *Adapter) BootstrapOffers(ctx context.Context) ([]string, error) {
 	schemas, err := a.ListSchemas(ctx, a.Vendor)
 	if err != nil || len(schemas) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilerr // BootstrapOffers is best-effort demo seeding; a backend that can't list schemas must not block startup.
 	}
 	seed := make(map[string]string, len(schemas[0].FieldsSpec))
 	for _, f := range schemas[0].FieldsSpec {
@@ -296,7 +296,7 @@ func (a *Adapter) BootstrapOffers(ctx context.Context) ([]string, error) {
 		Flow:        "pre_auth",
 	})
 	if err != nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // BootstrapOffers is best-effort demo seeding; a failed speculative issuance must not block startup.
 	}
 	return []string{res.OfferURI}, nil
 }
@@ -431,14 +431,18 @@ func (a *Adapter) DeleteCustomSchema(_ context.Context, id string) error {
 // at most one CREDEBL template-creation request races per key, eliminating
 // duplicate templates from parallel bulk-issuance requests.
 func (a *Adapter) resolveTemplateID(ctx context.Context, schema vctypes.Schema) (string, error) {
-	if v, ok := a.customTemplates.Load(schema.ID); ok {
-		return v.(string), nil
+	if s, ok := a.customTemplates.Load(schema.ID); ok {
+		if id, ok := s.(string); ok {
+			return id, nil
+		}
 	}
 	return a.templateSF.Do(schema.ID, func() (string, error) {
 		// Re-check cache after acquiring the singleflight slot: another
 		// goroutine may have populated it while we were waiting.
-		if v, ok := a.customTemplates.Load(schema.ID); ok {
-			return v.(string), nil
+		if s, ok := a.customTemplates.Load(schema.ID); ok {
+			if id, ok := s.(string); ok {
+				return id, nil
+			}
 		}
 		// Fetch template list and match by name + vct (restart recovery).
 		// Also check vct: a template created before the vct-fix (where vct was a

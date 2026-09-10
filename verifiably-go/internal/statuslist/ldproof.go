@@ -104,7 +104,10 @@ func NewLDSigner(stateDir string) (*LDSigner, error) {
 	if err != nil {
 		return nil, err
 	}
-	pub := priv.Public().(ed25519.PublicKey)
+	pub, ok := priv.Public().(ed25519.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("statuslist: signing key is %T, not ed25519.PublicKey", priv.Public())
+	}
 	// did:key for Ed25519: multicodec 0xed01 prefix + raw public key, base58btc,
 	// multibase "z". The verificationMethod repeats the multibase as the fragment.
 	mb := "z" + base58Encode(append([]byte{0xed, 0x01}, pub...))

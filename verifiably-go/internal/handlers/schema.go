@@ -788,18 +788,6 @@ func currentBuilderSchema(sess *Session, d builderData) vctypes.Schema {
 	return s
 }
 
-// hasField reports whether fs already contains a field with the given name
-// (case-sensitive, trimmed) — used to keep the derived valid_until claim from
-// being appended twice when composed with the delegation preset.
-func hasField(fs []vctypes.FieldSpec, name string) bool {
-	for _, f := range fs {
-		if strings.TrimSpace(f.Name) == name {
-			return true
-		}
-	}
-	return false
-}
-
 func allBlank(fs []vctypes.FieldSpec) bool {
 	for _, f := range fs {
 		if strings.TrimSpace(f.Name) != "" {
@@ -900,9 +888,7 @@ func buildJSONSchema(s vctypes.Schema) string {
 			kv{"iss", orderedMap{{"type", "string"}, {"description", "Issuer identifier"}}},
 			kv{"iat", orderedMap{{"type", "integer"}}},
 		)
-		for _, p := range props {
-			properties = append(properties, p)
-		}
+		properties = append(properties, props...)
 	} else if s.Std == "jwt_vc" {
 		properties = append(properties,
 			kv{"type", orderedMap{{"type", "array"}, {"const", types}}},

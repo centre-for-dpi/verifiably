@@ -67,7 +67,7 @@ type verifierPresentationResponse struct {
 func (a *Adapter) ListOID4VPTemplates(ctx context.Context) (map[string]vctypes.OID4VPTemplate, error) {
 	schemas, err := a.ListSchemas(ctx, a.Vendor)
 	if err != nil {
-		return map[string]vctypes.OID4VPTemplate{}, nil
+		return map[string]vctypes.OID4VPTemplate{}, nil //nolint:nilerr // templates are derived from schemas; an unreachable backend yields an empty dropdown, not a 500.
 	}
 	out := make(map[string]vctypes.OID4VPTemplate, len(schemas))
 	for _, s := range schemas {

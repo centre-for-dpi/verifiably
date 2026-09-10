@@ -124,7 +124,7 @@ func TestIssueToWallet_UsesRegisteredConfigID(t *testing.T) {
 	if !strings.HasPrefix(res.OfferURI, "openid-credential-offer://") {
 		t.Errorf("offer URI not propagated: %q", res.OfferURI)
 	}
-	got := fake.lastBody(t).CredentialConfigurationId
+	got := fake.lastBody(t).CredentialConfigurationID
 	if got != "MyCustomCred_jwt_vc_json" {
 		t.Errorf("configID sent to walt.id = %q, want MyCustomCred_jwt_vc_json", got)
 	}
@@ -168,7 +168,7 @@ func TestIssueToWallet_DeterministicReconstructionAfterRestart(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("IssueToWallet: %v", err)
 	}
-	got := fake.lastBody(t).CredentialConfigurationId
+	got := fake.lastBody(t).CredentialConfigurationID
 	if got != "FarmerCredential_vc+sd-jwt" {
 		t.Errorf("configID = %q, want FarmerCredential_vc+sd-jwt (deterministic reconstruction)", got)
 	}
@@ -209,7 +209,7 @@ func TestIssueToWallet_FallsBackToBorrowForUnknownStd(t *testing.T) {
 	// jwt_vc maps to ["jwt_vc_json"] — deterministic reconstruction
 	// produces "BorrowMe_jwt_vc_json" (matches what SaveCustomSchema
 	// would write to the catalog).
-	got := fake.lastBody(t).CredentialConfigurationId
+	got := fake.lastBody(t).CredentialConfigurationID
 	if got != "BorrowMe_jwt_vc_json" {
 		t.Errorf("configID = %q, want BorrowMe_jwt_vc_json (deterministic)", got)
 	}

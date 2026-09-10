@@ -597,7 +597,7 @@ func (a *Adapter) PrefillSubjectFields(_ context.Context, _ vctypes.Schema) (map
 // walt.id ignores unknown fields.
 type issuanceRequest struct {
 	IssuerKey                 json.RawMessage `json:"issuerKey"`
-	CredentialConfigurationId string          `json:"credentialConfigurationId"`
+	CredentialConfigurationID string          `json:"credentialConfigurationId"`
 	CredentialData            json.RawMessage `json:"credentialData,omitempty"`
 	Vct                       string          `json:"vct,omitempty"`
 	MdocData                  json.RawMessage `json:"mdocData,omitempty"`
@@ -669,7 +669,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 
 	ir := issuanceRequest{
 		IssuerKey:                 a.issuerKey,
-		CredentialConfigurationId: configID,
+		CredentialConfigurationID: configID,
 		IssuerDid:                 a.issuerDID,
 		AuthenticationMethod:      authenticationMethod(req.Flow),
 		StandardVersion:           strings.ToUpper(a.cfg.StandardVersion),
@@ -870,7 +870,7 @@ func rowLabel(row map[string]string) string {
 func (a *Adapter) BootstrapOffers(ctx context.Context) ([]string, error) {
 	schemas, err := a.ListSchemas(ctx, a.Vendor)
 	if err != nil || len(schemas) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilerr // BootstrapOffers is best-effort demo seeding; a backend that can't list schemas must not block startup.
 	}
 	// Prefer UniversityDegree for consistency, else first in list.
 	pick := schemas[0]
@@ -889,7 +889,7 @@ func (a *Adapter) BootstrapOffers(ctx context.Context) ([]string, error) {
 		Flow: "pre_auth",
 	})
 	if err != nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // BootstrapOffers is best-effort demo seeding; a failed speculative issuance must not block startup.
 	}
 	return []string{res.OfferURI}, nil
 }
@@ -1316,34 +1316,6 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
-}
-
-// baseTypeFromConfig picks the credential's canonical type name — the one
-// walt.id's credentials.walt.id/api/vc/<Name> template server keys off. Prefers
-// credential_definition.type[last] (the specific type after "VerifiableCredential"),
-// falls back to vct (sd-jwt), falls back to stripping the _format suffix.
-func baseTypeFromConfig(id string, cfg credentialConfigurationEntry) string {
-	if cfg.CredentialDefinition != nil {
-		for i := len(cfg.CredentialDefinition.Type) - 1; i >= 0; i-- {
-			t := cfg.CredentialDefinition.Type[i]
-			if t != "" && t != "VerifiableCredential" {
-				return t
-			}
-		}
-	}
-	if cfg.Vct != "" {
-		parts := strings.Split(cfg.Vct, "/")
-		if p := parts[len(parts)-1]; p != "" {
-			return p
-		}
-	}
-	base := id
-	for _, suf := range knownWaltidFormatSuffixes {
-		if strings.HasSuffix(base, suf) {
-			return strings.TrimSuffix(base, suf)
-		}
-	}
-	return base
 }
 
 // templateCache caches results from credentials.walt.id/api/vc/<Name> to avoid
