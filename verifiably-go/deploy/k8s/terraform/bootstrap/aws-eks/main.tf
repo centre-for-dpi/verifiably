@@ -70,7 +70,11 @@ resource "null_resource" "kubeconfig" {
     endpoint     = module.eks.cluster_endpoint
   }
   provisioner "local-exec" {
-    command = <<-EOT
+    # Terraform defaults local-exec to /bin/sh. On Debian/Ubuntu that is
+    # dash, which has no `set -o pipefail` and aborts with "Illegal option".
+    # macOS /bin/sh is bash, which is why this only failed in CI.
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
       set -euo pipefail
       command -v aws >/dev/null || { echo "aws CLI not installed"; exit 127; }
       mkdir -p "${abspath(var.kubeconfig_dir)}"
