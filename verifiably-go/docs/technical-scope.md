@@ -513,6 +513,20 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
   | `KSV-0014` ×2 | HIGH | `wso2is`, `libretranslate` charts | **Real.** Neither sets `readOnlyRootFilesystem`. Both genuinely write at runtime (WSO2IS to its deployment tree, LibreTranslate to its model cache), so the fix is an `emptyDir` for the writable paths plus the flag — which needs a running cluster to validate. Converges with G.3.8. |
   | `DS-0031` | CRITICAL | `Dockerfile` | **False positive.** `VERIFIABLY_AUTH_PROVIDERS_FILE` is a path (`/app/config/auth-providers.json`), flagged by a name heuristic. Resolve with a scoped Trivy ignore carrying this justification, not a blanket suppression. |
 
+- **G.4.5 — Generate the demo TLS certificates at bootstrap instead of committing them.** Trivy's secret scanner blocks on three private keys in the tree:
+
+  ```
+  deploy/compose/stack/inji/certify-nginx/certs/nginx.key
+  deploy/compose/stack/inji/certify-preauth-nginx/certs/nginx.key
+  deploy/compose/stack/wso2-certs/wso2.key
+  ```
+
+  Each is self-signed with `subject == issuer` and a CN that is a Docker service name (`certify-nginx`, `wso2`), not a routable domain, and `deploy.sh` does not regenerate them. So the exposure is genuinely small — the key authenticates nothing outside a container network already told to trust that exact certificate, there is no CA, and anyone can mint an equivalent in a second. It is still the wrong pattern to ship from a project about verifiable credentials, and every deployment shares one key.
+
+  Fix: generate on first `deploy.sh up`, `.gitignore` the outputs, remove the committed keys (and, since they are in history, treat them as compromised and never reuse them elsewhere). Held out of the gate PR deliberately — it changes how the stack comes up on a clean host, which needs verifying against a real Docker daemon rather than asserting. Until then a **scoped, expiring** ignore in `.trivyignore.yaml` covers exactly these three paths; a committed key anywhere else still fails the build.
+
+  Sonar's secret detector independently flagged the same three, plus `wso2carbon.jks`, an SMTP password in `bootstrap-credebl.sh`, a PostgreSQL password in `common.sh`, and — the one that matters most — **JWK private keys in the `walt-wallet` chart defaults**, which means every deployment that does not override them shares a wallet signing key. That last one belongs with Workstream F, not here.
+
   Sequencing: G.2 (a verified cluster) → fix → flip `exit-code` to `1`. The split in `image.yml` is deliberate — vulnerability and secret scanning stay **blocking** (that pair caught 8 real CVEs on its first run), and only misconfiguration is deferred.
 - **G.4.3** — Backup and restore runbook for CNPG Postgres. Nothing in the deploy tree currently restores a Hub's trust registry after loss, which is the one piece of state that cannot be regenerated.
 

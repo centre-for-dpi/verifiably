@@ -112,6 +112,7 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
           scanners: vuln,secret
+          trivyignores: verifiably-go/.trivyignore.yaml
 
       # REPORT-ONLY: infrastructure misconfiguration. Not a lower standard --
       # a different backlog. The live findings are:
@@ -132,6 +133,7 @@ jobs:
       # a broken deploy. Tracked in docs/technical-scope.md as G.3/G.4; becomes
       # blocking once G.2 has a verified cluster to test the fixes against.
       - name: Trivy misconfiguration scan (report-only)
+        if: always()   # must still produce SARIF when the blocking scan fails
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
@@ -143,7 +145,7 @@ jobs:
           output: trivy-misconfig.sarif
 
       - uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: hashFiles('trivy-misconfig.sarif') != ''
         with:
           sarif_file: trivy-misconfig.sarif
           category: trivy-misconfig

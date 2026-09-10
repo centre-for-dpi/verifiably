@@ -1,0 +1,38 @@
+# Trivy ignore file — scoped, justified, and expiring.
+#
+# Rules here are per-path, never per-ID-globally: a new committed key anywhere
+# else in the tree must still fail the build. Every entry carries why it is
+# here and what would remove it.
+#
+# Referenced from .github/workflows/image.yml via the `trivyignores` input.
+
+secrets:
+  # Three self-signed TLS keys shipped so `./deploy.sh up` works on a clean
+  # host with no certificate provisioning step.
+  #
+  # Why this is not a credential leak: each certificate is self-signed with
+  # subject == issuer and a CN that is a Docker service name (certify-nginx,
+  # wso2), not a routable domain. The key authenticates nothing outside a
+  # container network that has been told to trust that exact certificate, and
+  # anyone can mint an equivalent one in a second. There is no CA, no public
+  # DNS name, and no trust path to anything real.
+  #
+  # Why it is still wrong: every deployment shares one key, and a private key
+  # in a public repository is a bad pattern to model in a project about
+  # verifiable credentials, whatever the blast radius.
+  #
+  # The fix is to generate them at bootstrap and gitignore them, which is a
+  # change to deploy.sh's first-run path -- tracked as G.4.5 in
+  # docs/technical-scope.md. It is deliberately NOT bundled into the PR that
+  # introduces the gate: it alters how the demo stack comes up on a clean
+  # host, and that needs verifying against a real Docker daemon rather than
+  # asserting.
+  - id: private-key
+    paths:
+      - "deploy/compose/stack/inji/certify-nginx/certs/nginx.key"
+      - "deploy/compose/stack/inji/certify-preauth-nginx/certs/nginx.key"
+      - "deploy/compose/stack/wso2-certs/wso2.key"
+    statement: >-
+      Self-signed demo TLS keys for internal container hostnames; no CA, no
+      public DNS name. Replaced by bootstrap-time generation (G.4.5).
+    expired_at: 2026-12-31
