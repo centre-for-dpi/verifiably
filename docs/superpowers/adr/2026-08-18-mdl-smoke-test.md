@@ -1,0 +1,212 @@
+# mDL issuance smoke test — run when a walt.id container is available
+
+Companion to `2026-08-18-mdl-issuer-walletid-not-standalone.md` follow-up 3.
+
+**UPDATE — actually run, end to end, on `cdpi-vps` (`deploy.sh up waltid`
+alongside the existing `hub` deployment, both isolated by port/project-name
+overrides).** `POST /api/v1/credentials/issue` with
+`schema_id=org.iso.18013.5.1.mDL` returned a real `credential_id` +
+`offer_uri`, and the resolved offer genuinely advertised
+`credential_configuration_ids: ["org.iso.18013.5.1.mDL"]`. Three real bugs
+were found and fixed in the process — none were anticipated by this doc's
+original (code-reading-only) predictions below, so read the corrections
+inline rather than trusting the speculative text where it conflicts:
+
+1. `deploy.sh` unconditionally overwrote `CADDY_HTTP_PORT`/silently died on
+   `docker inspect` of a container the scenario never starts — both fixed
+   (`8d6d621`, `963f003`), unrelated to walt.id/mdl code itself.
+2. `displayNameFor` mangled the mdoc entry's doctype-keyed config id into an
+   unreadable name (`"org.iso.18013.5.1.m DL"`) — fixed (`911f2fe`).
+3. **The actual blocker, and the one this doc got wrong (see Step 2's
+   correction below): `schemaAllowlistDefault` never included mDL at all** —
+   an earlier stale comment claimed "five credentials" but the array only
+   ever had four. Fixed (`1b2a8d0`). Fix #2 was real and worth keeping, but
+   didn't fix the 404 by itself — #3 did.
+
+The steps below are left as originally drafted (pre-execution) for the
+sections that still hold; corrections are called out where reality diverged.
+
+## What this proves
+
+That `POST /api/v1/credentials/issue` genuinely round-trips a valid mdoc
+through walt.id's real `/openid4vc/mdoc/issue` route — the one piece of the
+architecture that couldn't be confirmed by reading code alone.
+
+## Prerequisites
+
+1. The stack up: `deploy/compose/stack/docker-compose.yml` brings up
+   `issuer-api` (walt.id, port `${WALTID_ISSUER_PORT:-7002}`) among others.
+2. `VERIFIABLY_API_KEYS` set on the `verifiably-go` process with at least one
+   key — that's your `Authorization: Bearer <key>` below.
+3. Confirm the mDL entry is actually live in walt.id's served metadata (not
+   just present in the repo's `.conf` — the mounted file could be stale):
+
+```bash
+curl -s http://localhost:7002/draft13/.well-known/openid-credential-issuer \
+  | jq '.credential_configurations_supported["org.iso.18013.5.1.mDL"]'
+```
+
+Expected: a non-null object with `"format": "mso_mdoc"`,
+`"proof_types_supported": {"jwt": {...}}` (confirms this session's `cwt`→`jwt`
+fix, commit `1ac0c7d`/`078e69e` on `feat/mdl-issuer`, is present in the
+running config — if this still shows `cwt`, the container is running a stale
+mount).
+
+## Step 1: confirm discovery surfaces it, and reconfirm the eligibility gap
+
+**Correction from an earlier draft of this doc:** `GET /api/v1/schemas`
+(`h.APIListSchemas`) filters to `s.Custom` schemas only
+(`internal/handlers/api_schemas.go:135-138`) — it will NOT show the built-in
+walt.id mDL entry. Neither does `GET /api/schemas`
+(`h.ServePublicSchemas`, same `!s.Custom` filter,
+`internal/handlers/public_schemas.go:29-33`). Nothing in this repo exposes
+the raw `ListAllSchemas()` output as external JSON — it's rendered into HTML
+views only. The closest real, callable check is the eligibility endpoint,
+which already surfaces the full unscoped catalog and is exactly what this
+ADR's follow-up 1 investigation traced:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/credentials/eligible \
+  -H "Authorization: Bearer $VERIFIABLY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"claims": {"family_name": "Pérez", "given_name": "Ana", "birthdate": "1990-03-15", "cedula": "001-1234567-8"}}' \
+  | jq '.credentials[] | select(.id | test("18013"))'
+```
+
+(Confirmed real route: `POST /api/v1/credentials/eligible` →
+`h.APICheckEligibility`, `cmd/server/main.go:734`. The operator path — API
+key + a `claims` body — is the branch that runs when a key is present;
+`internal/handlers/eligibility.go:126` onward.)
+
+Expected, per the ADR's traced conclusion: `available: false`, with
+`missing_claims` containing `driving_privileges` and `expiry_date` — this
+confirms the eligibility gate genuinely rejects self-issue for mDL (as
+predicted from reading `identity_prefill.go`'s alias table), NOT that
+discovery is broken. This is the expected, correct result, not a bug to
+chase — it's why Step 2 goes through the operator flow instead.
+
+If you want to see the field list itself (not just eligibility), the
+simplest confirmation is indirect: run Step 2 with an intentionally wrong
+`schema_id` and read the 404 body, or check the running walt.id container's
+`/.well-known/openid-credential-issuer` response directly (prerequisite
+check above) — the ISO field names aren't in that document either (mdoc
+metadata doesn't declare per-claim types the way VC `credential_definition`
+does), so the curated list in `fieldsForCredentialType` genuinely can't be
+verified from outside the Go process without adding a debug endpoint. Not
+adding one here — out of scope for a smoke test.
+
+## Step 2: issue via the operator flow
+
+`schema_id` must be walt.id's exact configuration ID (`findSchemaByID`
+matches `Schema.ID` or a variant's `ID` verbatim, `internal/handlers/schema.go:21-28`
+— no fuzzy/display-name lookup). Get it from the prerequisite check's
+`.well-known` response: it's the JSON key inside
+`credential_configurations_supported` whose value has `"format":
+"mso_mdoc"` and `"doctype": "org.iso.18013.5.1.mDL"` — i.e. re-run:
+
+```bash
+curl -s http://localhost:7002/draft13/.well-known/openid-credential-issuer \
+  | jq -r '.credential_configurations_supported | to_entries[] | select(.value.format == "mso_mdoc") | .key'
+```
+
+and use that exact string (likely `org.iso.18013.5.1.mDL` itself, or
+`org.iso.18013.5.1.mDL_mso_mdoc` if walt.id appends a format suffix — the
+command above tells you which, don't guess):
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/credentials/issue \
+  -H "Authorization: Bearer $VERIFIABLY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schema_id": "<exact key from the command above>",
+    "subject_data": {
+      "family_name": "Pérez",
+      "given_name": "Ana",
+      "birth_date": "1990-03-15",
+      "document_number": "001-1234567-8",
+      "driving_privileges": "B",
+      "expiry_date": "2030-03-15"
+    }
+  }' | jq .
+```
+
+Expected: `200 OK`, `{"credential_id": "...", "offer_uri": "openid-credential-offer://...", "flow": "pre_auth", ...}`
+— no `valid_from`/`valid_until` needed (per `resolveIssuanceWindow`,
+`internal/handlers/issued.go:35-49`: mDL likely has `ExpiresWithWindow() ==
+false`, since `statusListKindFor` explicitly treats `mso_mdoc` as "MSO/IACA
+[revocation], out of scope" rather than a bitstring/token schema — if this
+step 400s asking for `valid_until`, the schema DOES declare a window; add
+`"valid_until": "<RFC3339 date>"` and retry).
+
+**If this 400s or 502s instead**, the error message is the actual finding —
+capture it verbatim. The two most likely failure shapes, per the code read:
+- `IssueToWallet` → walt.id `/openid4vc/mdoc/issue` returns non-2xx: read
+  walt.id's response body in the wrapped Go error; check whether
+  `buildMdocData`'s namespace-keyed body
+  (`internal/adapters/waltid/issuer.go:1025-1038`, `{"org.iso.18013.5.1": {...6 fields...}}`)
+  is what walt.id v0.18.2's mdoc issuer actually expects, or whether the real
+  wire shape differs from what the doc comment assumed.
+- A schema-not-found 404 — **this is exactly what happened live, and this
+  doc's original text about it was wrong.** It claimed "the default
+  allowlist... does include `Iso18013 Drivers License Credential`" — false;
+  `schemaAllowlistDefault` (`issuer.go:210-216`) only ever had four entries
+  (Bank Id, Educational ID, Tax Receipt, University Degree), confirmed via
+  `git blame` back to the original author. `applySchemaAllowlist` genuinely
+  does filter `APIIssue`'s search space (that part of the original text was
+  correct — it's called inside `ListSchemas`, which `ListAllSchemas` calls
+  with no bypass), so an unlisted schema is truly unreachable by
+  `schema_id`, not just hidden from a UI grid. Proven by isolation: with the
+  default allowlist active, `BankId_jwt_vc_json` issued fine while
+  `Iso18013DriversLicenseCredential_jwt_vc_json` (a completely different
+  variant from the mdoc entry, ruling out the displayNameFor bug as the
+  cause) also 404'd. **Fixed in `1b2a8d0`** by adding
+  `"Iso18013 Drivers License Credential"` as a fifth default entry. If your
+  deployment sets `VERIFIABLY_WALTID_SCHEMA_ALLOWLIST` explicitly (overriding
+  the default array entirely), you still need to add it there yourself, or
+  set the var to `*`.
+
+## Step 3: confirm the wallet can receive it
+
+**Not yet run** — Steps 1-2 above (server-side issuance) were confirmed live
+on `cdpi-vps`; this step needs a real `cdpi-wallet` client, which wasn't
+exercised this session. Also worth noting explicitly: the offer's
+`credential_issuer` resolved to `http://161.97.152.40:7002/draft13` (the
+walt.id host), NOT `verifiably-go`'s own base
+(`http://161.97.152.40:8081`) — this is precisely the issuer-host/aud gap
+already documented in `cdpi-wallet`'s `receive.tsx` (commit `0053481`).
+That gap doesn't block this step (the wallet talks to whatever
+`credential_issuer` says, not to `verifiably-go`), but confirms the
+documented concern was accurately characterized: two different hosts serve
+two different roles in this flow (walt.id issues, verifiably-go orchestrates
+via the operator API), by design, not by accident.
+
+Take `offer_uri` from Step 2 and run it through `cdpi-wallet`'s normal
+receive flow (`app/receive.tsx`'s existing `resolveOID4VCI` — no mDL-specific
+code path needed anymore, per this session's `storeCredential.ts` fix,
+`main` commit `bfe87e3`). Confirm in the wallet's logs:
+
+- `[oid4vci] requestCredentials returned: 1 immediate, 0 deferred` (Credo
+  accepted the `mso_mdoc` config and didn't bounce it as unsupported)
+- `[oid4vci] stored MdocRecord id: ...` (the new dispatch branch fired, not
+  the `unknown record type, not stored` warning)
+
+Then confirm the stored record is queryable and carries a `kmsKeyId`:
+
+```ts
+// in a dev console / temporary debug screen
+const records = await agent.mdoc.getAll();
+console.log(records.map(r => ({ id: r.id, keyId: r.credentialInstances[0]?.kmsKeyId })));
+```
+
+Expected: one record, `keyId` non-empty (confirms Credo's own binding
+resolver — not `storeMdoc.ts`, which isn't in this path — set it correctly).
+
+## What this smoke test does NOT cover
+
+- BLE presentation (`presentMdoc.ts`, Task 8 on `feat/mdl-holder`) — separately
+  gated on Fase 0 hardware per the original spec, unaffected by this ADR.
+- Whether the mdoc walt.id issues is *itself* spec-correct CBOR/COSE (valid
+  IssuerAuth, correct MSO structure) — that's walt.id's own conformance, not
+  something this repo's code determines. If a conformant external mdoc
+  verifier can validate the credential, that's the real confirmation; this
+  smoke test only proves the transport/storage plumbing works.

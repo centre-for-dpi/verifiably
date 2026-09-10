@@ -200,18 +200,26 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 	return out, nil
 }
 
-// schemaAllowlistDefault is the five-credential demo set we surface in the
+// schemaAllowlistDefault is the curated demo set we surface in the
 // walt.id issuance flow by default — chosen to reduce decision fatigue on
 // the schema-picker card grid (walt.id ships ~30 credential configurations
 // out-of-the-box, most of which are noise for a demo). To override at
 // deploy time, set VERIFIABLY_WALTID_SCHEMA_ALLOWLIST to a comma-separated
 // list of display-names. Set it to "*" to disable filtering and see every
 // schema walt.id advertises.
+//
+// "Iso18013 Drivers License Credential" (the mDL/mdoc entry) added
+// deliberately — found missing while running the mDL smoke test on
+// cdpi-vps: an earlier stale doc comment here claimed a "five-credential"
+// set, but the array only ever had these original four, so mDL 404'd from
+// every discovery path (APIIssue's schema_id lookup included) regardless
+// of the displayNameFor fix that made its display name resolvable at all.
 var schemaAllowlistDefault = []string{
 	"Bank Id",
 	"Educational ID",
 	"Tax Receipt",
 	"University Degree",
+	"Iso18013 Drivers License Credential",
 }
 
 // applySchemaAllowlist filters the walt.id ListSchemas output to the
@@ -1211,6 +1219,28 @@ func displayNameFor(id string, cfg credentialConfigurationEntry) string {
 	//    provides one — that's the cleanest possible label.
 	if len(cfg.Display) > 0 && strings.TrimSpace(cfg.Display[0].Name) != "" {
 		return strings.TrimSpace(cfg.Display[0].Name)
+	}
+	// 1.5. mso_mdoc config ids don't follow the `<TypeName>_<format>`
+	// convention the rest of walt.id's catalog uses — they're keyed by
+	// doctype verbatim (see buildMDocEntry's doc comment), e.g.
+	// "org.iso.18013.5.1.mDL", with no "_mso_mdoc" suffix to strip. Step 2
+	// below only recognizes an underscore-joined `_<format>` suffix, so it
+	// never fires here, and step 3's humaniser then mangles the dotted
+	// string character-by-character (confirmed live: produced the
+	// unreadable "org.iso.18013.5.1.m DL" for this exact id — a stray
+	// space inserted mid-acronym). This also means the schema silently
+	// falls outside schemaAllowlistDefault's curated names, since nothing
+	// there matches the mangled output. Namespace convention mirrors
+	// buildMdocData: strip the doctype's last dot-segment.
+	if cfg.Format == "mso_mdoc" {
+		doctype := strings.TrimSpace(cfg.DocType)
+		if doctype == "" {
+			doctype = id
+		}
+		if i := strings.LastIndex(doctype, "."); i > 0 {
+			return doctype[i+1:]
+		}
+		return doctype
 	}
 	// 2. Strip the known format suffix from the id. walt.id's config ids
 	//    all end with `_<format>`, but the type itself can contain
