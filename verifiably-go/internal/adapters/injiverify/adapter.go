@@ -78,10 +78,10 @@ func (a *Adapter) ListOID4VPTemplates(_ context.Context) (map[string]vctypes.OID
 
 // vpRequestCreate matches POST /v1/verify/vp-request body shape.
 type vpRequestCreate struct {
-	ClientID               string                 `json:"clientId"`
-	TransactionID          string                 `json:"transactionId,omitempty"`
+	ClientID               string         `json:"clientId"`
+	TransactionID          string         `json:"transactionId,omitempty"`
 	PresentationDefinition map[string]any `json:"presentationDefinition,omitempty"`
-	Nonce                  string                 `json:"nonce,omitempty"`
+	Nonce                  string         `json:"nonce,omitempty"`
 }
 
 // vpRequestResponse is the slim view of VPRequestResponseDto.
@@ -209,13 +209,13 @@ func (a *Adapter) FetchPresentationResult(ctx context.Context, state, templateKe
 	}
 	creds, holder := normalizeInjiCredentials(res.VCResults)
 	result := backend.VerificationResult{
-		Valid:             valid,
-		Method:            fmt.Sprintf("OID4VP · %s", tpl.Disclosure),
-		Format:            tpl.Format,
-		Issuer:            "(resolved by verifier)",
-		Subject:           "(resolved by verifier)",
-		Requested:         tpl.Fields,
-		Issued:            time.Now().UTC(),
+		Valid:     valid,
+		Method:    fmt.Sprintf("OID4VP · %s", tpl.Disclosure),
+		Format:    tpl.Format,
+		Issuer:    "(resolved by verifier)",
+		Subject:   "(resolved by verifier)",
+		Requested: tpl.Fields,
+		Issued:    time.Now().UTC(),
 		// Inji Verify's vcverifier does NOT check status for VC_SD_JWT (it logs
 		// "Credential status checking not supported for this credential format"),
 		// so this path has NOT checked revocation. Report honestly; the handler's
@@ -379,12 +379,12 @@ func (a *Adapter) verifyJSONLD(ctx context.Context, req backend.DirectVerifyRequ
 		valid = true
 	}
 	return backend.VerificationResult{
-		Valid:             valid,
-		Method:            methodLabel(req.Method, "vc-verification"),
-		Format:            "w3c_vcdm_2",
-		Issuer:            extractIssuerFromJSONLD(cred),
-		Subject:           "(from credential)",
-		Issued:            time.Now().UTC(),
+		Valid:   valid,
+		Method:  methodLabel(req.Method, "vc-verification"),
+		Format:  "w3c_vcdm_2",
+		Issuer:  extractIssuerFromJSONLD(cred),
+		Subject: "(from credential)",
+		Issued:  time.Now().UTC(),
 		// Decode the credentialSubject claims (F12) and the normalized credential
 		// (F14) so the handler shows the values AND runs the revocation/temporal
 		// gates — Inji Verify's own /vc-verification is status-blind.
@@ -420,12 +420,12 @@ func (a *Adapter) verifyViaSubmission(ctx context.Context, req backend.DirectVer
 		issuer = creds[0].Issuer
 	}
 	return backend.VerificationResult{
-		Valid:             strings.EqualFold(res.VPResultStatus, "SUCCESS"),
-		Method:            methodLabel(req.Method, "vc-submission"),
-		Format:            "sd_jwt_vc (IETF)",
-		Issuer:            issuer,
-		Subject:           "(from credential)",
-		Issued:            time.Now().UTC(),
+		Valid:   strings.EqualFold(res.VPResultStatus, "SUCCESS"),
+		Method:  methodLabel(req.Method, "vc-submission"),
+		Format:  "sd_jwt_vc (IETF)",
+		Issuer:  issuer,
+		Subject: "(from credential)",
+		Issued:  time.Now().UTC(),
 		// Decode disclosed claims (F12) + normalized credential (F14) so the
 		// handler shows the values and runs the revocation/temporal gates.
 		DisclosedFields: disclosed,

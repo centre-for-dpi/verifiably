@@ -281,7 +281,6 @@ func (l *IssuanceLog) VerifyChain() []error {
 	return errs
 }
 
-
 // scanRows reads a pgx.Rows result into IssuedCredential slice.
 func scanRows(rows pgx.Rows) []issuance.IssuedCredential {
 	defer rows.Close()

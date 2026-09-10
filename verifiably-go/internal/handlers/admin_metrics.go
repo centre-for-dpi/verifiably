@@ -207,9 +207,9 @@ func buildMetricsFromMemory() metricsPageBody {
 // ── Shared aggregation ───────────────────────────────────────────────────────
 
 type dpgAccum struct {
-	issuedOK, issuedErr     int64
-	verifReq, verifDone     int64
-	issueSumMS, issueCount  float64
+	issuedOK, issuedErr      int64
+	verifReq, verifDone      int64
+	issueSumMS, issueCount   float64
 	verifySumMS, verifyCount float64
 }
 

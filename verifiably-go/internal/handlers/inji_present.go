@@ -9,6 +9,7 @@
 //     vp_token = issuer SD-JWT + held disclosures + a fresh KB-JWT bound to the
 //     request's nonce/aud (signed with the retained holder key), and
 //     direct-posts it to the request's response_uri.
+//
 // It then polls the verdict via the same FetchPresentationResult the verifier
 // UI uses and renders it.
 package handlers

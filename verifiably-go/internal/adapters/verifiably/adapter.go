@@ -59,9 +59,11 @@ var _ backend.Adapter = (*Adapter)(nil)
 
 // ── Catalog stubs ─────────────────────────────────────────────────────────────
 
-func (a *Adapter) ListIssuerDpgs(_ context.Context) (map[string]vctypes.DPG, error)  { return nil, nil }
-func (a *Adapter) ListHolderDpgs(_ context.Context) (map[string]vctypes.DPG, error)  { return nil, nil }
-func (a *Adapter) ListVerifierDpgs(_ context.Context) (map[string]vctypes.DPG, error) { return nil, nil }
+func (a *Adapter) ListIssuerDpgs(_ context.Context) (map[string]vctypes.DPG, error) { return nil, nil }
+func (a *Adapter) ListHolderDpgs(_ context.Context) (map[string]vctypes.DPG, error) { return nil, nil }
+func (a *Adapter) ListVerifierDpgs(_ context.Context) (map[string]vctypes.DPG, error) {
+	return nil, nil
+}
 
 // ── Schema stubs ──────────────────────────────────────────────────────────────
 
@@ -182,11 +184,11 @@ func (a *Adapter) RequestPresentation(ctx context.Context, req backend.Presentat
 
 type verifyResultBody struct {
 	Status    string            `json:"status"`
-	Valid      bool              `json:"valid"`
-	Pending    bool              `json:"pending"`
-	Issuer     string            `json:"issuer"`
-	Format     string            `json:"format"`
-	Disclosed  map[string]string `json:"disclosed"`
+	Valid     bool              `json:"valid"`
+	Pending   bool              `json:"pending"`
+	Issuer    string            `json:"issuer"`
+	Format    string            `json:"format"`
+	Disclosed map[string]string `json:"disclosed"`
 }
 
 // FetchPresentationResult GETs the member's /api/v1/verify/result/{state}.

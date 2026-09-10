@@ -24,12 +24,12 @@ type credentialIssuerMetadata struct {
 }
 
 type credentialConfigurationEntry struct {
-	Format         string                       `json:"format"`
-	Scope          string                       `json:"scope,omitempty"`
-	Display        []map[string]json.RawMessage `json:"display,omitempty"`
-	Order          []string                     `json:"order,omitempty"`
-	CredentialDef  *credentialDefinitionEntry   `json:"credential_definition,omitempty"`
-	Vct            string                       `json:"vct,omitempty"`
+	Format        string                       `json:"format"`
+	Scope         string                       `json:"scope,omitempty"`
+	Display       []map[string]json.RawMessage `json:"display,omitempty"`
+	Order         []string                     `json:"order,omitempty"`
+	CredentialDef *credentialDefinitionEntry   `json:"credential_definition,omitempty"`
+	Vct           string                       `json:"vct,omitempty"`
 }
 
 type credentialDefinitionEntry struct {
@@ -234,12 +234,12 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		// inside issuer_state so the wallet can surface them.
 		issuerState := randomID()
 		offer := map[string]any{
-			"credential_issuer":              firstNonEmpty(a.cfg.OfferIssuerURL, a.cfg.PublicBaseURL),
-			"credential_configuration_ids":   []string{req.Schema.ID},
+			"credential_issuer":            firstNonEmpty(a.cfg.OfferIssuerURL, a.cfg.PublicBaseURL),
+			"credential_configuration_ids": []string{req.Schema.ID},
 			"grants": map[string]any{
 				"authorization_code": map[string]any{
-					"issuer_state":          issuerState,
-					"authorization_server":  a.cfg.AuthorizationServer,
+					"issuer_state":         issuerState,
+					"authorization_server": a.cfg.AuthorizationServer,
 				},
 			},
 		}

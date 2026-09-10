@@ -11,7 +11,7 @@ import (
 // that need to embed a scannable QR of an OID4VCI offer URI or an OID4VP
 // request URI. Pure stdlib + go-qrcode; no external services involved.
 //
-//   GET /qr?text=<url-encoded payload>[&size=<pixels>]
+//	GET /qr?text=<url-encoded payload>[&size=<pixels>]
 func (h *H) QRImage(w http.ResponseWriter, r *http.Request) {
 	text := r.URL.Query().Get("text")
 	if text == "" {

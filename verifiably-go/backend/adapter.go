@@ -279,12 +279,12 @@ type IssueBulkResult struct {
 
 // BulkRowResult is the per-row output for a bulk issuance.
 type BulkRowResult struct {
-	Row     int               // 1-indexed position in the source (CSV/API/DB)
-	Subject map[string]string // the row's raw field values (holder, dateOfBirth, …)
-	Label   string            // one-line summary picked from Subject (holder | firstName+familyName | first value)
-	Status  string            // "issued" | "failed"
-	OfferURI string           // OID4VCI offer URI — empty when Status=="failed"
-	Error   string            // failure reason (truncated) — empty when Status=="issued"
+	Row      int               // 1-indexed position in the source (CSV/API/DB)
+	Subject  map[string]string // the row's raw field values (holder, dateOfBirth, …)
+	Label    string            // one-line summary picked from Subject (holder | firstName+familyName | first value)
+	Status   string            // "issued" | "failed"
+	OfferURI string            // OID4VCI offer URI — empty when Status=="failed"
+	Error    string            // failure reason (truncated) — empty when Status=="issued"
 }
 
 // BulkError describes one row-level error in a bulk issuance.
@@ -298,9 +298,9 @@ type BulkError struct {
 //
 //   - By key:   set TemplateKey to a preset the adapter knows about.
 //   - By value: set Template to an inline OID4VPTemplate (typically one the
-//               handler assembled from a schema + user-selected fields).
-//               Adapters that see a non-nil Template use it verbatim and
-//               ignore TemplateKey.
+//     handler assembled from a schema + user-selected fields).
+//     Adapters that see a non-nil Template use it verbatim and
+//     ignore TemplateKey.
 type PresentationRequest struct {
 	VerifierDpg string
 	TemplateKey string // adapter-defined; maps to the verifier's stored presentation templates
@@ -336,8 +336,8 @@ type DirectVerifyRequest struct {
 // PresentCredentialRequest is the input to PresentCredential.
 type PresentCredentialRequest struct {
 	HolderDpg      string
-	CredentialID   string // id of a credential already in the holder's wallet
-	RequestURI     string // the openid4vp:// URI the holder received
+	CredentialID   string   // id of a credential already in the holder's wallet
+	RequestURI     string   // the openid4vp:// URI the holder received
 	DisclosedClaim []string // optional: subset of claims to disclose for SD-JWT VC
 }
 

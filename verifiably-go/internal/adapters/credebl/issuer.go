@@ -359,7 +359,7 @@ func truncate(s string, n int) string {
 // --- custom schema push to CREDEBL ---
 
 type schemaCreateRequest struct {
-	Type          string           `json:"type"`
+	Type          string            `json:"type"`
 	SchemaPayload schemaPayloadBody `json:"schemaPayload"`
 }
 
@@ -387,10 +387,10 @@ type schemaCreateResponse struct {
 }
 
 type templateCreateRequest struct {
-	Name         string            `json:"name"`
-	Format       string            `json:"format"`
-	SignerOption  string            `json:"signerOption"`
-	CanBeRevoked bool              `json:"canBeRevoked"`
+	Name         string             `json:"name"`
+	Format       string             `json:"format"`
+	SignerOption string             `json:"signerOption"`
+	CanBeRevoked bool               `json:"canBeRevoked"`
 	Template     templateCreateBody `json:"template"`
 }
 
@@ -509,7 +509,7 @@ func (a *Adapter) createCredeblTemplate(ctx context.Context, schema vctypes.Sche
 	tmplBody := templateCreateRequest{
 		Name:         schema.Name,
 		Format:       "dc+sd-jwt",
-		SignerOption:  "DID",
+		SignerOption: "DID",
 		CanBeRevoked: false,
 		Template:     templateCreateBody{Vct: vct, Attributes: tAttrs},
 	}

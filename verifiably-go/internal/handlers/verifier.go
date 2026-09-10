@@ -272,12 +272,12 @@ func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG
 		}
 	}
 	return map[string]any{
-		"VerifierDpgObj": dpg,
-		"Schemas":        filtered,
-		"AllSchemas":     schemas,
-		"Stds":           stds,
-		"Filter":         sess.VerifierSchemaFilter,
-		"Query":          sess.VerifierSchemaQuery,
+		"VerifierDpgObj":  dpg,
+		"Schemas":         filtered,
+		"AllSchemas":      schemas,
+		"Stds":            stds,
+		"Filter":          sess.VerifierSchemaFilter,
+		"Query":           sess.VerifierSchemaQuery,
 		"CustomTemplate":  sess.CustomOID4VPTemplate,
 		"CustomSchemaID":  sess.CustomOID4VPSchemaID,
 		"Delegation":      sess.VerifierDelegation,

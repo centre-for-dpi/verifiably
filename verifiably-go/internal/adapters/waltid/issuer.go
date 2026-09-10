@@ -63,17 +63,17 @@ func (a *Adapter) ensureIssuerKey(ctx context.Context) error {
 // credentialIssuerMetadata is a slim view of /draft13/.well-known/openid-credential-issuer
 // — only the fields this adapter reads.
 type credentialIssuerMetadata struct {
-	CredentialIssuer                  string                                    `json:"credential_issuer"`
-	CredentialConfigurationsSupported map[string]credentialConfigurationEntry   `json:"credential_configurations_supported"`
-	Display                           []map[string]json.RawMessage              `json:"display,omitempty"`
+	CredentialIssuer                  string                                  `json:"credential_issuer"`
+	CredentialConfigurationsSupported map[string]credentialConfigurationEntry `json:"credential_configurations_supported"`
+	Display                           []map[string]json.RawMessage            `json:"display,omitempty"`
 }
 
 type credentialConfigurationEntry struct {
-	Format               string                       `json:"format"`
-	Scope                string                       `json:"scope,omitempty"`
-	CredentialDefinition *credentialDefinitionEntry   `json:"credential_definition,omitempty"`
-	Vct                  string                       `json:"vct,omitempty"`
-	DocType              string                       `json:"doctype,omitempty"`
+	Format               string                     `json:"format"`
+	Scope                string                     `json:"scope,omitempty"`
+	CredentialDefinition *credentialDefinitionEntry `json:"credential_definition,omitempty"`
+	Vct                  string                     `json:"vct,omitempty"`
+	DocType              string                     `json:"doctype,omitempty"`
 	// Display is the per-configuration human-readable label walt.id
 	// advertises (one entry per locale). displayNameFor prefers display[0].name
 	// when present because it's the cleanest label.

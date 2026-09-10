@@ -9,13 +9,13 @@ import (
 
 func TestOID4VCIFormat(t *testing.T) {
 	cases := map[string]string{
-		"w3c_vcdm_2":      "jwt_vc_json",
-		"w3c_vcdm_1":      "jwt_vc_json",
-		"jwt_vc":          "jwt_vc_json",
-		"":                "jwt_vc_json",
-		"sd_jwt_vc":       "vc+sd-jwt",
+		"w3c_vcdm_2":       "jwt_vc_json",
+		"w3c_vcdm_1":       "jwt_vc_json",
+		"jwt_vc":           "jwt_vc_json",
+		"":                 "jwt_vc_json",
+		"sd_jwt_vc":        "vc+sd-jwt",
 		"sd_jwt_vc (IETF)": "vc+sd-jwt",
-		"mso_mdoc":        "mso_mdoc",
+		"mso_mdoc":         "mso_mdoc",
 	}
 	for std, want := range cases {
 		if got := OID4VCIFormat(std); got != want {

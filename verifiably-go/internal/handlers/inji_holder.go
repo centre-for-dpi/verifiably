@@ -45,7 +45,9 @@ func envOr(key, def string) string {
 	return def
 }
 
-func injiAuthcodeEnabled() bool { return strings.TrimSpace(os.Getenv("INJI_AUTHCODE_CLIENT_KEY_PEM")) != "" }
+func injiAuthcodeEnabled() bool {
+	return strings.TrimSpace(os.Getenv("INJI_AUTHCODE_CLIENT_KEY_PEM")) != ""
+}
 func injiAuthcodeClientID() string { return envOr("INJI_AUTHCODE_CLIENT_ID", "wallet-demo-client") }
 func injiAuthcodeKID() string      { return envOr("INJI_AUTHCODE_CLIENT_KID", "wallet-demo-client-kid") }
 func injiAuthcodeScope() string    { return envOr("INJI_AUTHCODE_SCOPE", "mock_identity_vc_ldp") }
@@ -54,7 +56,7 @@ func injiAuthcodeScope() string    { return envOr("INJI_AUTHCODE_SCOPE", "mock_i
 // auth factor in eSignet's amr_acr_mapping (vs "generated-code" = OTP). The holder's
 // PIN is the one stored in the mock-identity by /holder/register. Override via env.
 func injiAuthcodeACR() string { return envOr("INJI_AUTHCODE_ACR", "mosip:idp:acr:static-code") }
-func esignetBase() string          { return strings.TrimRight(envOr("ESIGNET_BASE_URL", ""), "/") }
+func esignetBase() string     { return strings.TrimRight(envOr("ESIGNET_BASE_URL", ""), "/") }
 
 func injiHolderCallbackURL() string {
 	return strings.TrimRight(envOr("VERIFIABLY_PUBLIC_URL", ""), "/") + "/holder/wallet/inji/callback"
@@ -82,9 +84,9 @@ func injiAuthcodeClientKey() (*rsa.PrivateKey, error) {
 	return rk, nil
 }
 
-func b64u(b []byte) string         { return base64.RawURLEncoding.EncodeToString(b) }
-func b64uJSON(v any) string        { b, _ := json.Marshal(v); return b64u(b) }
-func randB64(n int) string         { b := make([]byte, n); _, _ = rand.Read(b); return b64u(b) }
+func b64u(b []byte) string          { return base64.RawURLEncoding.EncodeToString(b) }
+func b64uJSON(v any) string         { b, _ := json.Marshal(v); return b64u(b) }
+func randB64(n int) string          { b := make([]byte, n); _, _ = rand.Read(b); return b64u(b) }
 func pkceChallenge(v string) string { h := sha256.Sum256([]byte(v)); return b64u(h[:]) }
 
 func signRS256(key *rsa.PrivateKey, header, claims map[string]any) (string, error) {

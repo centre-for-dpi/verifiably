@@ -225,7 +225,7 @@ func TestIssueToWallet_DiagnosticOnInvalidConfigID(t *testing.T) {
 	fake := &fakeIssuer{
 		t: t,
 		metadataConfigs: map[string]credentialConfigurationEntry{
-			"BankId_jwt_vc_json":    {Format: "jwt_vc_json"},
+			"BankId_jwt_vc_json":              {Format: "jwt_vc_json"},
 			"OpenBadgeCredential_jwt_vc_json": {Format: "jwt_vc_json"},
 		},
 	}

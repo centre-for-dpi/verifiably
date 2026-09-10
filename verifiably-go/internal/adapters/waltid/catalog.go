@@ -31,11 +31,12 @@ var catalogMu sync.Mutex
 // requirement from the catalog-edit redesign.
 //
 // Returns:
-//   primary  — the configID matching the schema's default wire format, what
-//              IssueToWallet reaches for in the common path
-//   all      — every configID written to the catalog (for registeredConfigIDs)
-//   changed  — true if at least one entry was newly written; false on a re-save
-//              of an already-registered schema (idempotent)
+//
+//	primary  — the configID matching the schema's default wire format, what
+//	           IssueToWallet reaches for in the common path
+//	all      — every configID written to the catalog (for registeredConfigIDs)
+//	changed  — true if at least one entry was newly written; false on a re-save
+//	           of an already-registered schema (idempotent)
 //
 // Concurrent callers serialise via catalogMu.
 func appendCredentialType(catalogPath string, schema vctypes.Schema) (primary string, all []string, changed bool, err error) {
@@ -248,6 +249,7 @@ func buildLinkedDataEntry(configID, typeName, wireFormat string, schema vctypes.
 //     ApplyVariant), and
 //   - tpl.Vct in the verifier handler (CredentialVct, whether it reads the
 //     catalog Vct or recomputes it — both now yield the same URL).
+//
 // The earlier bare-type-name form (e.g. "FarmerCredential") pre-dated the
 // host-derived convention; once the verifier moved to CredentialVct the bare
 // name stranded walt.id SD-JWTs — the wallet held vct="FarmerCredential" while

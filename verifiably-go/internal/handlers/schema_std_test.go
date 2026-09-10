@@ -10,14 +10,14 @@ import "testing"
 // issue time.
 func TestCanonicalStd(t *testing.T) {
 	cases := map[string]string{
-		"sd_jwt_vc":         "sd_jwt_vc (IETF)",
-		"sd_jwt_vc (IETF)":  "sd_jwt_vc (IETF)",
-		"  sd_jwt_vc  ":     "sd_jwt_vc (IETF)",
-		"w3c_vcdm_2":        "w3c_vcdm_2",
-		"w3c_vcdm_1":        "w3c_vcdm_1",
-		"mso_mdoc":          "mso_mdoc",
-		"":                  "",
-		"some_other_value":  "some_other_value",
+		"sd_jwt_vc":        "sd_jwt_vc (IETF)",
+		"sd_jwt_vc (IETF)": "sd_jwt_vc (IETF)",
+		"  sd_jwt_vc  ":    "sd_jwt_vc (IETF)",
+		"w3c_vcdm_2":       "w3c_vcdm_2",
+		"w3c_vcdm_1":       "w3c_vcdm_1",
+		"mso_mdoc":         "mso_mdoc",
+		"":                 "",
+		"some_other_value": "some_other_value",
 	}
 	for in, want := range cases {
 		if got := canonicalStd(in); got != want {

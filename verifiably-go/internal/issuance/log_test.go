@@ -15,9 +15,9 @@ func TestAppendListGet(t *testing.T) {
 	a := IssuedCredential{
 		ID: "vc-1", SchemaID: "sx", SchemaName: "Driver License",
 		Std: "w3c_vcdm_2", Format: "ldp_vc", IssuerDpg: "Walt Community Stack",
-		HolderHint: "Wanjiru",
+		HolderHint:    "Wanjiru",
 		SubjectFields: map[string]string{"fullName": "Wanjiru", "id": "X"},
-		StatusList: &StatusListEntry{Type: "bitstring", ListID: "v1", Index: 0},
+		StatusList:    &StatusListEntry{Type: "bitstring", ListID: "v1", Index: 0},
 	}
 	if _, err := l.Append(a); err != nil {
 		t.Fatalf("append: %v", err)

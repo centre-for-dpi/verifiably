@@ -23,11 +23,11 @@ import (
 // backends.json. All URLs are required; the credentials block is optional
 // (if absent, the adapter registers a fresh demo account on first use).
 type Config struct {
-	IssuerBaseURL   string   `json:"issuerBaseUrl"`
-	VerifierBaseURL string   `json:"verifierBaseUrl"`
-	WalletBaseURL   string   `json:"walletBaseUrl"`
-	StandardVersion string   `json:"standardVersion"` // "draft13" (default) or "draft11"
-	DemoAccount     Account  `json:"demoAccount"`
+	IssuerBaseURL   string  `json:"issuerBaseUrl"`
+	VerifierBaseURL string  `json:"verifierBaseUrl"`
+	WalletBaseURL   string  `json:"walletBaseUrl"`
+	StandardVersion string  `json:"standardVersion"` // "draft13" (default) or "draft11"
+	DemoAccount     Account `json:"demoAccount"`
 	// IssuerKey / IssuerDID pin a stable onboarding result so every demo run
 	// issues from the same DID. Both are optional — when empty, the adapter
 	// onboards a new key on first use and caches it in-process. Shape of

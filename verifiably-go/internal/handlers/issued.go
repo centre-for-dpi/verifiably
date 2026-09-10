@@ -128,12 +128,12 @@ func (h *H) recordIssuance(sess *Session, schema vctypes.Schema, issuerDpg strin
 		}
 	}
 	rec := issuance.IssuedCredential{
-		ID:            id,
-		SchemaID:      schema.ID,
-		SchemaName:    schema.Name,
-		Std:           schema.Std,
-		Format:        format,
-		IssuerDpg:     issuerDpg,
+		ID:         id,
+		SchemaID:   schema.ID,
+		SchemaName: schema.Name,
+		Std:        schema.Std,
+		Format:     format,
+		IssuerDpg:  issuerDpg,
 		// OwnerKey scopes the entry to the issuing operator so the list
 		// page never surfaces this credential to a different OIDC
 		// subject. See sessionOwnerKey for the derivation.

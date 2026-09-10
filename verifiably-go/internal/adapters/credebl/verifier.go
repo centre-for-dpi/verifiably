@@ -54,8 +54,8 @@ type presentationCreateResponse struct {
 
 type verifierPresentationResponse struct {
 	Data struct {
-		State                string          `json:"state"`
-		PresentationDocument json.RawMessage `json:"presentationDocument"`
+		State                        string          `json:"state"`
+		PresentationDocument         json.RawMessage `json:"presentationDocument"`
 		AuthorizationResponsePayload struct {
 			VpToken string `json:"vp_token"`
 		} `json:"authorizationResponsePayload"`

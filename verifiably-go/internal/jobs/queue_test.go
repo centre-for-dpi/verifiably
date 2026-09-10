@@ -159,7 +159,7 @@ func TestQueueFull(t *testing.T) {
 
 	// Fill the pending buffer (256 slots) plus the worker slot.
 	blockRow := Rows{{"block": "1"}}
-	_ , _ = q.Submit(slowCtx, blockRow, workSlow) // occupies the worker
+	_, _ = q.Submit(slowCtx, blockRow, workSlow) // occupies the worker
 
 	ctx := context.Background()
 	for i := 0; i < 256; i++ {

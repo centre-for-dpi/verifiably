@@ -73,10 +73,10 @@ func TestMemLog_AppendAndQuery(t *testing.T) {
 	l := newMemLog()
 
 	e := Event{
-		ID:        NewID(),
-		IssuerDID: "did:web:issuer.gov",
-		SchemaID:  "DNI",
-		Status:    "valid",
+		ID:         NewID(),
+		IssuerDID:  "did:web:issuer.gov",
+		SchemaID:   "DNI",
+		Status:     "valid",
 		VerifiedAt: time.Now(),
 	}
 	if err := l.Append(ctx, e); err != nil {

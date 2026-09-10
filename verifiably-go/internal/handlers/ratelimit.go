@@ -53,12 +53,12 @@ func (e *rateEntry) allow(limit int) bool {
 // source). For multi-instance deployments, replace the in-process maps with
 // a Redis counter while keeping the same VERIFIABLY_RATE_* env-var interface.
 type RateLimiter struct {
-	keyLimit     int
-	ipLimit      int
-	trustedNets  []*net.IPNet // from VERIFIABLY_TRUSTED_PROXIES
-	mu           sync.Mutex
-	byKey        map[string]*rateEntry
-	byIP         map[string]*rateEntry
+	keyLimit    int
+	ipLimit     int
+	trustedNets []*net.IPNet // from VERIFIABLY_TRUSTED_PROXIES
+	mu          sync.Mutex
+	byKey       map[string]*rateEntry
+	byIP        map[string]*rateEntry
 }
 
 // NewRateLimiter builds a RateLimiter reading VERIFIABLY_RATE_KEY_RPM,

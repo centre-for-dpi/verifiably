@@ -50,11 +50,11 @@ type walletListing struct {
 }
 
 type walletRef struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	CreatedOn   string `json:"createdOn"`
-	AddedOn     string `json:"addedOn"`
-	Permission  string `json:"permission"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	CreatedOn  string `json:"createdOn"`
+	AddedOn    string `json:"addedOn"`
+	Permission string `json:"permission"`
 }
 
 // ensureWalletSession registers-or-logs-in a walt.id account for the
@@ -257,10 +257,10 @@ func (a *Adapter) ParseOffer(ctx context.Context, offerURI string) (vctypes.Cred
 	// preview text — credential type(s), issuer id — instead of an opaque
 	// "Incoming credential" label.
 	var parsed struct {
-		CredentialIssuer              string   `json:"credential_issuer"`
-		CredentialConfigurationIds    []string `json:"credential_configuration_ids"`
-		Credentials                   []any    `json:"credentials"` // older shape
-		Grants                        map[string]any `json:"grants"`
+		CredentialIssuer           string         `json:"credential_issuer"`
+		CredentialConfigurationIds []string       `json:"credential_configuration_ids"`
+		Credentials                []any          `json:"credentials"` // older shape
+		Grants                     map[string]any `json:"grants"`
 	}
 	_ = json.Unmarshal(body, &parsed)
 
@@ -425,17 +425,17 @@ func (a *Adapter) ClaimCredential(ctx context.Context, cred vctypes.Credential) 
 //
 // Two call shapes are tried in order to cover walt.id's wallet-api versions:
 //
-//   1. Match-then-present. Calls /exchange/matchCredentialsForPresentationDefinition
-//      first so the wallet resolves the PD URL, fetches the definition, and
-//      returns the credentials that match. If that succeeds we submit with
-//      the wallet's own canonical credential-id (which can differ from the
-//      id surfaced by ListWalletCredentials when walt.id re-emits ids
-//      per-presentation). If the match call fails we continue to step 2 —
-//      some older wallet-api builds don't expose the match endpoint.
+//  1. Match-then-present. Calls /exchange/matchCredentialsForPresentationDefinition
+//     first so the wallet resolves the PD URL, fetches the definition, and
+//     returns the credentials that match. If that succeeds we submit with
+//     the wallet's own canonical credential-id (which can differ from the
+//     id surfaced by ListWalletCredentials when walt.id re-emits ids
+//     per-presentation). If the match call fails we continue to step 2 —
+//     some older wallet-api builds don't expose the match endpoint.
 //
-//   2. Direct submit with the caller-provided CredentialID. This is the
-//      original code path; kept as a fallback because it works on builds
-//      where matchCredentialsForPresentationDefinition is missing.
+//  2. Direct submit with the caller-provided CredentialID. This is the
+//     original code path; kept as a fallback because it works on builds
+//     where matchCredentialsForPresentationDefinition is missing.
 //
 // Either way, the raw 400 body is surfaced verbatim to the caller so the
 // UI toast shows the walt.id error (previously the user saw
@@ -1311,6 +1311,7 @@ func truncateClaim(s string, n int) string {
 //   - "presentationDefinitionMatch" + "false" — no held credential
 //     satisfies the PD; the pre-flight in PresentCredential usually
 //     catches this first with a more specific message.
+//
 // RevocationError is the sentinel error friendlyPresentError returns when
 // walt.id's wallet-api rejects the presentation because the credential's
 // status-list policy failed. Carrying it as a typed value lets the
