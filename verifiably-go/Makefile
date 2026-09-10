@@ -19,9 +19,20 @@ IMAGE_LATEST := $(REGISTRY)/$(IMAGE_NAME):latest
         k8s-up k8s-down k8s-status k8s-logs \
         setup up-all down-all reset nuke status \
         waltid-up waltid-down inji-up inji-down credebl-up credebl-down \
-        help
+        fmt lint cover cover-html quality help
+
+# Pinned to the version .github/workflows/quality.yml runs, so `make lint`
+# locally and the CI gate can never disagree about what is a finding.
+GOLANGCI_VERSION ?= v2.13.2
 
 help:
+	@echo "Quality gate (mirrors .github/workflows/quality.yml):"
+	@echo "  fmt              gofmt + goimports the tree in place"
+	@echo "  lint             golangci-lint $(GOLANGCI_VERSION) — must report 0 issues"
+	@echo "  cover            go test -race with coverage; prints the total"
+	@echo "  cover-html       cover, then open the HTML report"
+	@echo "  quality          fmt-check + lint + cover (what CI runs)"
+	@echo ""
 	@echo "Image / k8s:"
 	@echo "  image            Build container image as $$REGISTRY/$$IMAGE_NAME:$$GIT_SHA"
 	@echo "  image-push       Push the SHA-tagged image"
@@ -47,6 +58,32 @@ help:
 	@echo "Per-role targets (waltid-issuer-up, inji-authcode-up, ...) are a documented"
 	@echo "follow-on — deploy.sh currently deploys at DPG granularity. See"
 	@echo "docs/deploy-reproducibility.md."
+
+# --- Quality gate ---
+# These mirror .github/workflows/quality.yml exactly. If CI fails and `make
+# quality` passes, the two have drifted — fix the Makefile, not the workflow.
+
+fmt:
+	gofmt -w $$(gofmt -l . | grep -v '\\.terraform' || true)
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION) fmt ./...
+
+lint:
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION) run --timeout=10m ./...
+
+cover:
+	go test ./... -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./...
+	@go tool cover -func=coverage.out | tail -1
+
+cover-html: cover
+	go tool cover -html=coverage.out
+
+quality:
+	@unformatted=$$(gofmt -l . | grep -v '\\.terraform' || true); \
+	  if [ -n "$$unformatted" ]; then \
+	    echo "not gofmt-clean:"; echo "$$unformatted"; echo "run: make fmt"; exit 1; \
+	  fi
+	$(MAKE) lint
+	$(MAKE) cover
 
 test:
 	docker run --rm \

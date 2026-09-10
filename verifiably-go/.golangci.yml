@@ -1,0 +1,100 @@
+# golangci-lint configuration — verifiably-go
+#
+# Philosophy: the gate is narrow and non-negotiable rather than wide and
+# routinely bypassed. Everything enabled here was measured against the tree
+# at the time it was introduced and either passes clean or has a small,
+# enumerated backlog. Adding a linter means fixing its findings in the same
+# PR — never adding a blanket exclusion.
+#
+# Local:  make lint
+# CI:     .github/workflows/quality.yml
+
+version: "2"
+
+run:
+  timeout: 5m
+  # Test files are first-class code here — 16k lines of them, and the
+  # adapter fakes in *_test.go are as load-bearing as the adapters.
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # --- correctness ---
+    - errcheck      # unchecked error returns
+    - govet         # stdlib vet suite
+    - ineffassign   # assignments never read
+    - staticcheck   # staticcheck + stylecheck + quickfix (SA/ST/S/QF)
+    - unused        # dead identifiers
+    - bodyclose     # unclosed HTTP response bodies (leaks against 4 DPG backends)
+    - rowserrcheck  # unchecked sql.Rows.Err — we hand-roll pgx queries
+    - nilerr        # `return nil` after a non-nil error check
+    - errorlint     # %v on errors, missing errors.Is/As
+
+  # gosec is deliberately NOT in the blocking set. It has a live backlog of
+  # findings (SSRF/path-traversal taint, cookie attributes, 0644 WriteFile,
+  # crypto/md5) that need triage rather than a blanket exclusion, so it runs
+  # report-only in .github/workflows/quality.yml and publishes SARIF to the
+  # GitHub Security tab. Flip it to blocking once the backlog is at zero.
+
+  settings:
+    errcheck:
+      # Deferred Close on a read-only handle and metrics Fprintf to a
+      # ResponseWriter have no recoverable failure mode. Everything else
+      # must be checked.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (net/http.ResponseWriter).Write
+      check-type-assertions: true
+      check-blank: false
+
+    staticcheck:
+      checks:
+        - all
+        # ST1000: package comments on every package — the internal/* tree is
+        # deliberately terse. Revisit if the packages ever go public.
+        - -ST1000
+
+    govet:
+      enable-all: true
+      disable:
+        # fieldalignment optimises struct packing; the request/response
+        # shapes in backend/ are ordered for readability on purpose.
+        - fieldalignment
+        # shadow flags every idiomatic `if err := f(); err != nil` inside a
+        # scope that already has an `err`. 38 hits, none of them defects.
+        - shadow
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # Tests may ignore errors on setup helpers and use weak randomness.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - bodyclose
+
+      # The e2e/ tree is throwaway driver scripts, not shipped code.
+      - path: ^e2e/
+        linters:
+          - errcheck
+          - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/verifiably/verifiably-go
+
+issues:
+  # No free passes: a new finding fails the build even if the file already
+  # had others. max-*-per-linter/same defaults of 3/50 hide real problems.
+  max-issues-per-linter: 0
+  max-same-issues: 0
