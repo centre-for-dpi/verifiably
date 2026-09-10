@@ -22,4 +22,9 @@ EXPOSE 8099
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD wget -q -O- http://127.0.0.1:${PORT}/health || exit 1
 
+# Demo fixture, but it still should not run as root — the compose stack mounts
+# it alongside real services and it is the kind of thing that gets copied.
+RUN useradd --system --uid 10002 --no-create-home appuser
+USER 10002:10002
+
 CMD ["python", "/app/citizen_service.py"]

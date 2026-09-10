@@ -51,6 +51,13 @@ ENV VERIFIABLY_ADDR=:8080 \
     VERIFIABLY_LOCALES_DIR=/app/locales \
     VERIFIABLY_DOCS_ROOT=/app/docs-src
 EXPOSE 8080
+
+# The distroless :nonroot base already runs as uid 65532, but state it
+# explicitly: a future base-image bump that drops the tag suffix would
+# otherwise silently promote this container to root, and the K8s charts
+# enforce PodSecurity `restricted`, which requires runAsNonRoot.
+USER nonroot:nonroot
+
 # /app/locales is writable via a volume mount in production so translation
 # cache persists across container recreates.
 VOLUME ["/app/locales"]

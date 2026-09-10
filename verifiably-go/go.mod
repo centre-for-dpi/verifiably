@@ -1,6 +1,6 @@
 module github.com/verifiably/verifiably-go
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.1
@@ -11,8 +11,8 @@ require (
 	github.com/piprate/json-gold v0.8.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/yuin/goldmark v1.7.8
-	golang.org/x/net v0.54.0
-	golang.org/x/text v0.37.0
+	golang.org/x/net v0.59.0
+	golang.org/x/text v0.42.0
 )
 
 require (
@@ -30,9 +30,9 @@ require (
 	github.com/pquerna/cachecontrol v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.15.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/image v0.41.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/image v0.46.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
