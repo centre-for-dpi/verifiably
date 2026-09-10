@@ -3,12 +3,16 @@ name: k8s-e2e
 on:
   pull_request:
     paths:
-      - 'deploy/k8s/**'
-      - 'cmd/**'
-      - 'backend/**'
-      - 'internal/**'
-      - 'e2e/**'
+      - 'verifiably-go/deploy/k8s/**'
+      - 'verifiably-go/cmd/**'
+      - 'verifiably-go/backend/**'
+      - 'verifiably-go/internal/**'
+      - 'verifiably-go/e2e/**'
       - '.github/workflows/k8s-e2e.yml'
+
+defaults:
+  run:
+    working-directory: verifiably-go
 
 jobs:
   kind-up-test-down:

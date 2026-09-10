@@ -4,24 +4,28 @@ on:
   push:
     branches: [main]
     paths:
-      - 'cmd/**'
-      - 'backend/**'
-      - 'internal/**'
-      - 'vctypes/**'
-      - 'templates/**'
-      - 'static/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Dockerfile'
-      - 'Makefile'
+      - 'verifiably-go/cmd/**'
+      - 'verifiably-go/backend/**'
+      - 'verifiably-go/internal/**'
+      - 'verifiably-go/vctypes/**'
+      - 'verifiably-go/templates/**'
+      - 'verifiably-go/static/**'
+      - 'verifiably-go/go.mod'
+      - 'verifiably-go/go.sum'
+      - 'verifiably-go/Dockerfile'
+      - 'verifiably-go/Makefile'
       - '.github/workflows/image.yml'
   pull_request:
     paths:
-      - 'cmd/**'
-      - 'backend/**'
-      - 'internal/**'
-      - 'vctypes/**'
-      - 'Dockerfile'
+      - 'verifiably-go/cmd/**'
+      - 'verifiably-go/backend/**'
+      - 'verifiably-go/internal/**'
+      - 'verifiably-go/vctypes/**'
+      - 'verifiably-go/Dockerfile'
+
+defaults:
+  run:
+    working-directory: verifiably-go
 
 env:
   REGISTRY: ghcr.io/${{ github.repository_owner }}
@@ -36,12 +40,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache-dependency-path: verifiably-go/go.sum
       - name: go build
         run: go build ./...
       - name: go vet
         run: go vet ./...
-      - name: go test
-        run: go test ./...
+      # Unit tests run in quality.yml, which is the single producer of
+      # coverage.out. This job keeps build + vet as a fast pre-gate.
       - name: host-aliases unit tests
         run: bash scripts/ci/test-host-aliases.sh
       # Report-only: the guard also flags the legitimately vendor-specific Inji/
@@ -87,7 +92,7 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: verifiably-go
           push: false
           load: true
           tags: ${{ steps.tags.outputs.ref }}
@@ -98,6 +103,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
+          scan-ref: verifiably-go
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: true
