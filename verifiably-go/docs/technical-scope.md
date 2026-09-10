@@ -514,7 +514,7 @@ tear down                                     10m 23s
 
 Three separate runs ended this way, and three ran **concurrently** on one branch because no workflow had a concurrency group. Two conclusions: the job could not pass as configured, and it was costing ~90 runner-minutes per push to learn that.
 
-- **G.5.1 — Two tiers, done.** `k8s.yml` replaces `k8s-e2e.yml`. A `render` job runs on every PR in ~90s with no cluster: `helm lint` per chart, `helm dep update` + `helm template` on the umbrella, `kubeconform` on the rendered manifests, and `terraform fmt -check` + `validate` on all five modules. The `cluster` job keeps the real bring-up but runs nightly, on `workflow_dispatch`, or on a PR labelled `k8s-e2e`.
+- **G.5.1 — Two tiers, done.** `k8s.yml` replaces `k8s-e2e.yml`. A `render` job runs on every PR in ~40s with no cluster (measured: 37s): `helm lint` per chart, `helm dep update` + `helm template` on the umbrella, `kubeconform` on the rendered manifests, and `terraform fmt -check` + `validate` on all five modules. The `cluster` job keeps the real bring-up but runs nightly, on `workflow_dispatch`, or on a PR labelled `k8s-e2e`.
 
   It found a bug on its first run: **every Ingress emitted a duplicate `cert-manager.io/cluster-issuer` annotation** — the chart's own `values.yaml` sets it and the template appended the global one as a second line. Invalid YAML; Kubernetes resolves a duplicate key by silently taking the last value. Four charts fixed by merging the maps rather than concatenating.
 

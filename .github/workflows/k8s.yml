@@ -2,7 +2,7 @@ name: k8s
 
 # Two tiers, because they answer different questions at very different costs.
 #
-#   render   every PR, ~90s, no cluster. Charts lint, the umbrella templates,
+#   render   every PR, ~40s, no cluster. Charts lint, the umbrella templates,
 #            the rendered manifests validate against the Kubernetes schemas,
 #            and every Terraform module is formatted and valid.
 #
