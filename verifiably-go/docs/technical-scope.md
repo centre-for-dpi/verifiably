@@ -499,6 +499,23 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
 - **G.3.7** — Vault Transit: uncomment `vault-bootstrap.tf` after init (runbook exists at `deploy/k8s/runbooks/vault-init.md`). Converges with F.2.
 - **G.3.8** — Verify WSO2IS passes PodSecurity `restricted`. If it does not, narrow the container-level concession — **never downgrade the namespace label**, per the workplan's own ground rule.
 
+### G.4.6 — The security badge reads E, and why (P1)
+
+The README's SonarCloud security badge shows **E**. That is not a scanner artefact and it should not be made green by triage. Sonar's rating is worst-finding-wins: **one BLOCKER means E**, and there are nine. All nine are secrets-class, and eight of them are key material committed to a public repository.
+
+| # | Finding | Assessment | Action |
+|---|---|---|---|
+| 1 | `walt-wallet/config/auth.conf:19` + its `deploy/k8s/config/wallet/` twin — **RSA private key** (`tokenKey`) | **The most serious finding in this document.** It signs wallet auth tokens, and it is a *chart default* — every deployment that does not override it shares one key, so anyone with the repo can mint valid wallet tokens against it. The file's own comment already says "treat the JWK below as a high-sensitivity secret". | Externalise like `encryptionKey`/`signKey`, or land the Vault Transit reference the comment calls the real fix. Not attempted here: `auth.conf` is bind-mounted verbatim and resolved by walt.id itself, so the change cannot be verified without running walt.id. Belongs with **Workstream F**. |
+| 2–4 | `nginx.key` ×2, `wso2.key` — self-signed TLS keys | Low impact: `subject == issuer`, CN is a Docker service name, no CA, no public DNS. Wrong pattern, small blast radius. | G.4.5 — generate at bootstrap. |
+| 5 | `wso2carbon.jks` — weak password `wso2carbon` | WSO2's documented default, in a demo keystore. Same class as 2–4. | G.4.5. |
+| 6 | `common.sh:47` — `VERIFIABLY_PG_PASSWORD:=verifiably` | **Real.** Postgres was published on `0.0.0.0:5439` with `verifiably:verifiably`, holding sessions, the issuance log and status lists — a guessable-credential database on the public internet for any VPS/EC2 deployment. | **Partly fixed:** Postgres and Redis are now bound to `127.0.0.1` in compose. The literal default remains; `deploy.sh setup` already generates a random password (`deploy.sh:1157`), so the fix is to remove the fallback and generate-if-missing on the `ensure_credebl_env` pattern. |
+| 7 | `bootstrap-credebl.sh:129` — `SMTP_PASS=mailpit` | **False positive.** Mailpit is a local dev mail catcher on `credebl-mailpit:1025` that accepts anything; there is no account behind it. | Mark *Safe* in SonarCloud with this justification. |
+| 8 | `oob-redirect.py:13` — user-controlled data in a response header | **Real, and worse than the rule title suggests.** `self.path` was concatenated onto the MinIO bucket URL (path traversal out of the bucket), the stored value was passed to `send_header` verbatim (open redirect, and CR/LF gives response splitting), and upstream exceptions were echoed to the caller (leaking internal hostnames). | **Fixed.** Strict key allowlist, scheme allowlist plus C0-control rejection on the redirect target, generic upstream errors. 23 assertions cover it. |
+
+So the badge moves off E only when the committed key material goes. Two of the nine are addressed here; **finding 1 is the one to schedule first**, and it is a Workstream F item rather than a deploy chore.
+
+A note on what *not* to do: SonarCloud lets these be marked Won't Fix, which would turn the badge green in a minute. Only finding 7 deserves that. Doing it to the rest would leave a repository publishing a signing key behind an A rating, which is worse than the E.
+
 ### G.5 CI cost and shape for the K8s path (P1)
 
 The first runs of the cluster e2e produced this profile:
@@ -641,6 +658,7 @@ Phase 4 — long lead
 ## 13. Changelog
 
 - **2026-09-10** — Initial scope. Baseline measured at `b571e62`. Workstream A implemented; B–G proposed.
+- **2026-09-11 (rev 6)** — Assessed the E security badge finding by finding (G.4.6). Fixed the oob-redirect path-traversal/open-redirect/header-injection issue and bound Postgres and Redis to loopback. Recorded that the badge cannot leave E until the committed wallet signing key is removed, and that marking the remainder Won't Fix would be worse than the E.
 - **2026-09-11 (rev 5)** — Added G.5 after profiling the cluster e2e: two-tier split landed (render on every PR, cluster nightly/on-demand), concurrency groups added to all three workflows, CI teardown reduced from a 10-minute cascading terraform destroy to `kind delete cluster`. The render tier immediately found a duplicate-annotation bug in four Ingress templates.
 - **2026-09-11 (rev 4)** — First CI runs landed. Recorded the Trivy misconfiguration backlog as G.4.4 with a per-finding assessment; noted that vulnerability/secret scanning stays blocking while misconfiguration is report-only until G.2 provides a cluster to validate fixes against.
 - **2026-09-10 (rev 3)** — Decision recorded: the quality gate is a required check and applies to PRs #14 and #15; the earlier recommendation to defer it is withdrawn. §3.3 now states what each PR must do to clear it, and R11 reframed accordingly.
