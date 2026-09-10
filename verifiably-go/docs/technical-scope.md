@@ -499,6 +499,33 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
 - **G.3.7** — Vault Transit: uncomment `vault-bootstrap.tf` after init (runbook exists at `deploy/k8s/runbooks/vault-init.md`). Converges with F.2.
 - **G.3.8** — Verify WSO2IS passes PodSecurity `restricted`. If it does not, narrow the container-level concession — **never downgrade the namespace label**, per the workplan's own ground rule.
 
+### G.5 CI cost and shape for the K8s path (P1)
+
+The first runs of the cluster e2e produced this profile:
+
+```
+setup (helm, terraform, kind, kubectl, node)      ~20s
+bring up cluster + waltid stack               18m 12s   ← step timeout
+  └─ helm_release.waltid: Still creating…     12m 40s   never converged
+tear down                                     10m 23s
+                                              ────────
+                                              ~29 min, cancelled by the 25m ceiling
+```
+
+Three separate runs ended this way, and three ran **concurrently** on one branch because no workflow had a concurrency group. Two conclusions: the job could not pass as configured, and it was costing ~90 runner-minutes per push to learn that.
+
+- **G.5.1 — Two tiers, done.** `k8s.yml` replaces `k8s-e2e.yml`. A `render` job runs on every PR in ~90s with no cluster: `helm lint` per chart, `helm dep update` + `helm template` on the umbrella, `kubeconform` on the rendered manifests, and `terraform fmt -check` + `validate` on all five modules. The `cluster` job keeps the real bring-up but runs nightly, on `workflow_dispatch`, or on a PR labelled `k8s-e2e`.
+
+  It found a bug on its first run: **every Ingress emitted a duplicate `cert-manager.io/cluster-issuer` annotation** — the chart's own `values.yaml` sets it and the template appended the global one as a second line. Invalid YAML; Kubernetes resolves a duplicate key by silently taking the last value. Four charts fixed by merging the maps rather than concatenating.
+
+- **G.5.2 — Restore `push: main` for the cluster tier once G.2 converges.** Deliberately absent today: a check that always fails teaches people to ignore CI. The nightly is the interim signal.
+
+- **G.5.3 — Trim the platform for CI.** The smoke set is four UI tests, and the platform installs **13 Helm releases** to run them — Argo CD, Loki, Promtail, kube-prometheus-stack, MinIO, Vault, Kyverno, MetalLB, ESO, cert-manager, ingress-nginx, CNPG. `platform/variables.tf` has no toggles, so it is all-or-nothing. A minimal profile is the largest single lever on bring-up time, and plausibly on convergence too — the resource ceiling is a live hypothesis for why the umbrella never becomes ready.
+
+- **G.5.4 — Caching, after the above.** Worth being precise: caching shortens *pulls*, not *convergence*, and much of the 18 minutes is waiting for pods to be ready. In payoff order: the kind node image (~1 GB), pre-pulled platform images `kind load`ed in, the Helm repo cache (already wired in the render job), `TF_PLUGIN_CACHE_DIR`, and reusing the image `image.yml` already built rather than rebuilding.
+
+- **G.5.5 — Vendored chart staleness.** `umbrella/waltid/charts/*.tgz` are committed. `helm dep build` honours `Chart.lock` and reuses them, so a chart template edited without re-running `helm dep update` is packaged — and deployed — in its stale form. The render job runs `dep update` for this reason, but the underlying hazard remains: consider generating the vendored charts at deploy time instead of committing them.
+
 ### G.4 Production posture (P2)
 
 - **G.4.1** — Cosign keyless signing is scaffolded in `image.yml` (`id-token: write` is already requested) but not implemented. Complete it and add verification at admission via the Kyverno policies already deployed.
@@ -614,6 +641,7 @@ Phase 4 — long lead
 ## 13. Changelog
 
 - **2026-09-10** — Initial scope. Baseline measured at `b571e62`. Workstream A implemented; B–G proposed.
+- **2026-09-11 (rev 5)** — Added G.5 after profiling the cluster e2e: two-tier split landed (render on every PR, cluster nightly/on-demand), concurrency groups added to all three workflows, CI teardown reduced from a 10-minute cascading terraform destroy to `kind delete cluster`. The render tier immediately found a duplicate-annotation bug in four Ingress templates.
 - **2026-09-11 (rev 4)** — First CI runs landed. Recorded the Trivy misconfiguration backlog as G.4.4 with a per-finding assessment; noted that vulnerability/secret scanning stays blocking while misconfiguration is report-only until G.2 provides a cluster to validate fixes against.
 - **2026-09-10 (rev 3)** — Decision recorded: the quality gate is a required check and applies to PRs #14 and #15; the earlier recommendation to defer it is withdrawn. §3.3 now states what each PR must do to clear it, and R11 reframed accordingly.
 - **2026-09-10 (rev 2)** — Surveyed the three open PRs against the fetched branches. Added §3. B.5 reduced to three remainder items (PR #14 delivers the rest); F.1 rebased onto PR #14's `internal/signer` instead of proposing a new package; A.3 adopts PR #15's per-function gate alongside the floor; A.6 corrected (project key `centre-for-dpi_verifiably`, Analysis Method path, required-checks timing). Added Phase 0.5 and risks R10–R12.

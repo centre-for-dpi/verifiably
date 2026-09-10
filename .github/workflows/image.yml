@@ -23,6 +23,11 @@ on:
       - 'verifiably-go/vctypes/**'
       - 'verifiably-go/Dockerfile'
 
+concurrency:
+  # Without this, every push to a PR stacks another image build + Trivy scan.
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: verifiably-go
