@@ -109,7 +109,14 @@ jobs:
           go-version: '1.25'
           cache-dependency-path: verifiably-go/go.sum
 
+      # `shell: bash` is REQUIRED here, not cosmetic. The default Linux shell
+      # for `run:` is `bash -e` WITHOUT pipefail, so `go test | tee` takes
+      # tee's exit status and a failing test suite reports success. That is
+      # exactly what happened on this branch's first run: the PostgreSQL tests
+      # failed on a NOT NULL column and the job went green. Naming the shell
+      # switches on `-eo pipefail`.
       - name: go test with coverage
+        shell: bash
         run: |
           go test ./... \
             -race \

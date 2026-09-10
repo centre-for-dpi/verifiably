@@ -51,6 +51,9 @@ func sample(id, schema string) issuance.IssuedCredential {
 		IssuerDpg:  "Walt Community Stack",
 		OwnerKey:   "operator-a",
 		HolderHint: "holder@example.gov",
+		// subject_fields is NOT NULL in the schema, so a credential with no
+		// claims still has to serialise as an empty object rather than nil.
+		SubjectFields: map[string]string{"fullName": "Ada Lovelace"},
 	}
 }
 
