@@ -503,6 +503,17 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
 
 - **G.4.1** — Cosign keyless signing is scaffolded in `image.yml` (`id-token: write` is already requested) but not implemented. Complete it and add verification at admission via the Kyverno policies already deployed.
 - **G.4.2** — Flip the Trivy **image** scan from `exit-code: '0'` to `'1'`. The filesystem scan already blocks; the image scan was left report-only "to tighten in Phase 7.2", which has now shipped.
+
+- **G.4.4 — Clear the Trivy misconfiguration backlog, then make it blocking.** The first-ever run of `image.yml` produced these, and they are currently report-only (SARIF to the Security tab) because every real one sits in infrastructure that has never been observed running — see G.2. Fixing `readOnlyRootFilesystem` blind, on two containers that write at runtime, on a stack that has never booted, buys a green gate and a broken deploy.
+
+  | Finding | Severity | Where | Assessment |
+  |---|---|---|---|
+  | `AWS-0040` / `AWS-0041` | CRITICAL | `bootstrap/aws-eks` | **Real.** The EKS control plane is reachable from `0.0.0.0/0`. Acceptable for a dev bootstrap, not for the production topology the module is meant to serve. Restrict to a CIDR allowlist, or put the API behind a bastion/VPN. |
+  | `AWS-0104` | CRITICAL | `bootstrap/aws-eks` | **Real**, lower practical severity — unrestricted egress on the cluster security group. Tighten once the workload's outbound dependencies are enumerated. |
+  | `KSV-0014` ×2 | HIGH | `wso2is`, `libretranslate` charts | **Real.** Neither sets `readOnlyRootFilesystem`. Both genuinely write at runtime (WSO2IS to its deployment tree, LibreTranslate to its model cache), so the fix is an `emptyDir` for the writable paths plus the flag — which needs a running cluster to validate. Converges with G.3.8. |
+  | `DS-0031` | CRITICAL | `Dockerfile` | **False positive.** `VERIFIABLY_AUTH_PROVIDERS_FILE` is a path (`/app/config/auth-providers.json`), flagged by a name heuristic. Resolve with a scoped Trivy ignore carrying this justification, not a blanket suppression. |
+
+  Sequencing: G.2 (a verified cluster) → fix → flip `exit-code` to `1`. The split in `image.yml` is deliberate — vulnerability and secret scanning stay **blocking** (that pair caught 8 real CVEs on its first run), and only misconfiguration is deferred.
 - **G.4.3** — Backup and restore runbook for CNPG Postgres. Nothing in the deploy tree currently restores a Hub's trust registry after loss, which is the one piece of state that cannot be regenerated.
 
 ---
@@ -589,5 +600,6 @@ Phase 4 — long lead
 ## 13. Changelog
 
 - **2026-09-10** — Initial scope. Baseline measured at `b571e62`. Workstream A implemented; B–G proposed.
+- **2026-09-11 (rev 4)** — First CI runs landed. Recorded the Trivy misconfiguration backlog as G.4.4 with a per-finding assessment; noted that vulnerability/secret scanning stays blocking while misconfiguration is report-only until G.2 provides a cluster to validate fixes against.
 - **2026-09-10 (rev 3)** — Decision recorded: the quality gate is a required check and applies to PRs #14 and #15; the earlier recommendation to defer it is withdrawn. §3.3 now states what each PR must do to clear it, and R11 reframed accordingly.
 - **2026-09-10 (rev 2)** — Surveyed the three open PRs against the fetched branches. Added §3. B.5 reduced to three remainder items (PR #14 delivers the rest); F.1 rebased onto PR #14's `internal/signer` instead of proposing a new package; A.3 adopts PR #15's per-function gate alongside the floor; A.6 corrected (project key `centre-for-dpi_verifiably`, Analysis Method path, required-checks timing). Added Phase 0.5 and risks R10–R12.
