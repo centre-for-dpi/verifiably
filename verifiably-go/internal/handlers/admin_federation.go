@@ -347,9 +347,9 @@ func (h *H) UpdateFederationMember(w http.ResponseWriter, r *http.Request) {
 
 	_ = r.ParseForm()
 	entry := trust.TrustedIssuer{
-		DID:          did,
-		AccreditedAt: existing.AccreditedAt,
-		DisplayName:  strings.TrimSpace(r.FormValue("display_name")),
+		DID:             did,
+		AccreditedAt:    existing.AccreditedAt,
+		DisplayName:     strings.TrimSpace(r.FormValue("display_name")),
 		ServiceEndpoint: strings.TrimRight(strings.TrimSpace(r.FormValue("service_endpoint")), "/"),
 	}
 	entry.StatusListPolicy = strings.TrimSpace(r.FormValue("status_list_policy"))

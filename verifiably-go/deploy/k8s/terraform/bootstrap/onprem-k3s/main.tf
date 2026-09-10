@@ -20,7 +20,11 @@ locals {
 resource "null_resource" "preflight" {
   triggers = { hash = sha1(jsonencode(var.nodes)) }
   provisioner "local-exec" {
-    command = <<-EOT
+    # Terraform defaults local-exec to /bin/sh. On Debian/Ubuntu that is
+    # dash, which has no `set -o pipefail` and aborts with "Illegal option".
+    # macOS /bin/sh is bash, which is why this only failed in CI.
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
       set -euo pipefail
       command -v k3sup >/dev/null || { echo "k3sup not installed (https://github.com/alexellis/k3sup)"; exit 127; }
       [ -f "${var.ssh_key_path}" ] || { echo "ssh key not found at ${var.ssh_key_path}"; exit 1; }
@@ -40,7 +44,11 @@ resource "null_resource" "k3s_server_primary" {
   depends_on = [null_resource.preflight]
 
   provisioner "local-exec" {
-    command = <<-EOT
+    # Terraform defaults local-exec to /bin/sh. On Debian/Ubuntu that is
+    # dash, which has no `set -o pipefail` and aborts with "Illegal option".
+    # macOS /bin/sh is bash, which is why this only failed in CI.
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
       set -euo pipefail
       k3sup install \
         --ip "${self.triggers.server_ip}" \
@@ -70,7 +78,11 @@ resource "null_resource" "k3s_join" {
   depends_on = [null_resource.k3s_server_primary]
 
   provisioner "local-exec" {
-    command = <<-EOT
+    # Terraform defaults local-exec to /bin/sh. On Debian/Ubuntu that is
+    # dash, which has no `set -o pipefail` and aborts with "Illegal option".
+    # macOS /bin/sh is bash, which is why this only failed in CI.
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
       set -euo pipefail
       k3sup join \
         --ip "${self.triggers.ip}" \

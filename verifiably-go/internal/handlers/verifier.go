@@ -272,12 +272,12 @@ func verifierCustomData(sess *Session, schemas []vctypes.Schema, dpg vctypes.DPG
 		}
 	}
 	return map[string]any{
-		"VerifierDpgObj": dpg,
-		"Schemas":        filtered,
-		"AllSchemas":     schemas,
-		"Stds":           stds,
-		"Filter":         sess.VerifierSchemaFilter,
-		"Query":          sess.VerifierSchemaQuery,
+		"VerifierDpgObj":  dpg,
+		"Schemas":         filtered,
+		"AllSchemas":      schemas,
+		"Stds":            stds,
+		"Filter":          sess.VerifierSchemaFilter,
+		"Query":           sess.VerifierSchemaQuery,
 		"CustomTemplate":  sess.CustomOID4VPTemplate,
 		"CustomSchemaID":  sess.CustomOID4VPSchemaID,
 		"Delegation":      sess.VerifierDelegation,
@@ -934,20 +934,19 @@ func (h *H) VerifyDirect(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, err.Error())
 		return
 	}
-	directStatus := "ok"
-	if !res.Valid {
-		directStatus = "error"
-	}
-	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", directStatus)
 	// Run the temporal + revocation (+ delegation) gates like every other verify
 	// path. The direct path is the ONLY one that skipped them, so a revoked or
 	// expired credential re-verified from its PDF/QR still read "valid" (F14).
 	// The adapter now populates res.Credentials so StatusRefOf can read the
 	// credentialStatus / status_list pointer; a no-op when it couldn't decode one.
+	// The counter is emitted after the gates: attachDelegationVerdict can flip
+	// res.Valid, and counting before it under-reported failures.
 	h.attachDelegationVerdict(r, &res)
+	directStatus := "ok"
 	if !res.Valid {
 		directStatus = "error"
 	}
+	metrics.Inc("verification_completed_total", "dpg", sess.VerifierDpg, "schema", "", "status", directStatus)
 	h.attachTrustStatus(r, &res)
 	h.attachIssuerDisplay(r, &res)
 	h.renderFragment(w, r, "fragment_verify_result", res)

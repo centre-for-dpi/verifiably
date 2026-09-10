@@ -386,16 +386,16 @@ func credentialTypeForCustomTemplate(tpl vctypes.OID4VPTemplate) string {
 // GET /openid4vc/session/{id}. Walt.id returns a rich object including
 // policy results, credential submissions, etc.; we consume what the UI needs.
 type sessionResult struct {
-	SessionID                string          `json:"sessionId"`
-	VerificationResult       *bool           `json:"verificationResult,omitempty"`
-	OverallVerificationResult *bool          `json:"overallVerificationResult,omitempty"`
-	TokenResponse            json.RawMessage `json:"tokenResponse,omitempty"`
-	AuthorizationRequest     json.RawMessage `json:"authorizationRequest,omitempty"`
-	PolicyResults            json.RawMessage `json:"policyResults,omitempty"`
-	VPPolicies               json.RawMessage `json:"vpPolicies,omitempty"`
-	VCPolicies               json.RawMessage `json:"vcPolicies,omitempty"`
-	Success                  *bool           `json:"success,omitempty"`
-	Issued                   string          `json:"issued,omitempty"`
+	SessionID                 string          `json:"sessionId"`
+	VerificationResult        *bool           `json:"verificationResult,omitempty"`
+	OverallVerificationResult *bool           `json:"overallVerificationResult,omitempty"`
+	TokenResponse             json.RawMessage `json:"tokenResponse,omitempty"`
+	AuthorizationRequest      json.RawMessage `json:"authorizationRequest,omitempty"`
+	PolicyResults             json.RawMessage `json:"policyResults,omitempty"`
+	VPPolicies                json.RawMessage `json:"vpPolicies,omitempty"`
+	VCPolicies                json.RawMessage `json:"vcPolicies,omitempty"`
+	Success                   *bool           `json:"success,omitempty"`
+	Issued                    string          `json:"issued,omitempty"`
 }
 
 // FetchPresentationResult polls GET /openid4vc/session/{id} for a terminal
@@ -479,26 +479,26 @@ func buildVPPolicies() []any {
 // Verified end-to-end against waltid-verification-policies-jvm-1.0.0-
 // SNAPSHOT.jar (decompiled bytecode) — full pipeline:
 //
-//   W3C   data.vc.credentialStatus  →  W3CEntry (type, statusPurpose,
-//                                       statusListIndex, statusListCredential)
-//         GET statusListCredential  →  JWT
-//         payload.vc.credentialSubject  →  W3CStatusContent (type,
-//                                          statusPurpose, encodedList)
-//         args.type    == content.type     (W3CStatusValidator.customValidations)
-//         args.purpose == content.statusPurpose
-//         W3cStatusListExpansionAlgorithmFactory dispatches on
-//         content.type ∈ {"BitstringStatusList", "StatusList2021",
-//         "RevocationList2020"} — anything else IllegalArgumentException.
-//         BitstringStatusList branch requires multibase base64-url
-//         (encodedList prefixed with "u") then GZIP. BigEndianRepresentation
-//         (MSB-first) bit reader. Final check: bitValue == args.value.
+//	W3C   data.vc.credentialStatus  →  W3CEntry (type, statusPurpose,
+//	                                    statusListIndex, statusListCredential)
+//	      GET statusListCredential  →  JWT
+//	      payload.vc.credentialSubject  →  W3CStatusContent (type,
+//	                                       statusPurpose, encodedList)
+//	      args.type    == content.type     (W3CStatusValidator.customValidations)
+//	      args.purpose == content.statusPurpose
+//	      W3cStatusListExpansionAlgorithmFactory dispatches on
+//	      content.type ∈ {"BitstringStatusList", "StatusList2021",
+//	      "RevocationList2020"} — anything else IllegalArgumentException.
+//	      BitstringStatusList branch requires multibase base64-url
+//	      (encodedList prefixed with "u") then GZIP. BigEndianRepresentation
+//	      (MSB-first) bit reader. Final check: bitValue == args.value.
 //
-//   IETF  data.status  →  IETFEntry { status_list: { idx, uri } }
-//         GET status_list.uri  →  JWT (typ ignored)
-//         payload.status_list  →  IETFStatusContent (bits, lst)
-//         No type/purpose validation. zlib + base64url decode (no multibase).
-//         LittleEndianRepresentation (LSB-first) bit reader.
-//         Final check: bitValue == args.value.
+//	IETF  data.status  →  IETFEntry { status_list: { idx, uri } }
+//	      GET status_list.uri  →  JWT (typ ignored)
+//	      payload.status_list  →  IETFStatusContent (bits, lst)
+//	      No type/purpose validation. zlib + base64url decode (no multibase).
+//	      LittleEndianRepresentation (LSB-first) bit reader.
+//	      Final check: bitValue == args.value.
 //
 // Polymorphism gotcha that bit us: args.type is compared against the
 // LIST's credentialSubject.type (= "BitstringStatusList"), NOT the
@@ -510,7 +510,7 @@ func buildVPPolicies() []any {
 //   - bare "credential-status"        → "args required"
 //   - "not-revoked-token-status-list" → 400 "No policy found by name"
 //   - "revoked-status-list"           → that's RevocationPolicy, only handles
-//                                       VCDM 1.0 RevocationList2020.
+//     VCDM 1.0 RevocationList2020.
 func buildVCPolicies(selected []string, webhookURL, format string) []any {
 	out := []any{}
 	isIETF := format == "vc+sd-jwt" || format == "dc+sd-jwt"

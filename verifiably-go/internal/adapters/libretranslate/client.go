@@ -19,8 +19,8 @@ import (
 // Client translates strings via a LibreTranslate endpoint with a persistent
 // disk cache. Safe for concurrent use.
 type Client struct {
-	BaseURL   string
-	Source    string // source language; defaults to "en"
+	BaseURL    string
+	Source     string // source language; defaults to "en"
 	LocalesDir string
 
 	mu    sync.Mutex

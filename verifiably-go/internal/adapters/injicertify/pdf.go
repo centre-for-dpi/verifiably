@@ -89,7 +89,7 @@ func (a *Adapter) issueAsPDFPreAuth(ctx context.Context, req backend.IssueReques
 		}
 	}
 	staged := preAuthorizedDataRequest{
-		CredentialConfigurationId: req.Schema.ID,
+		CredentialConfigurationID: req.Schema.ID,
 		Claims:                    claims,
 	}
 	var stageResp preAuthorizedDataResponse

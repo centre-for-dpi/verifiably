@@ -9,6 +9,7 @@
 //     vp_token = issuer SD-JWT + held disclosures + a fresh KB-JWT bound to the
 //     request's nonce/aud (signed with the retained holder key), and
 //     direct-posts it to the request's response_uri.
+//
 // It then polls the verdict via the same FetchPresentationResult the verifier
 // UI uses and renders it.
 package handlers
@@ -32,10 +33,6 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 )
-
-// injiVerifyVendor is the backends.json vendor key for the Inji Verify adapter
-// (matches the "Inji Verify" special-case already used in verifier.go).
-const injiVerifyVendor = "Inji Verify"
 
 // marshalECKeyPEM / parseECKeyPEM serialise the retained holder key.
 func marshalECKeyPEM(key *ecdsa.PrivateKey) (string, error) {

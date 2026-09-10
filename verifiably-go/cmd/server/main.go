@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/verifiably/verifiably-go/internal/adapters/factory"
 	"github.com/verifiably/verifiably-go/internal/adapters/registry"
 	"github.com/verifiably/verifiably-go/internal/credentialcache"
@@ -1394,7 +1395,7 @@ func loadTrustSigningKey() (*ecdsa.PrivateKey, error) {
 		// Also try PKCS8 format (openssl genpkey output)
 		parsed, err2 := x509.ParsePKCS8PrivateKey(block.Bytes)
 		if err2 != nil {
-			return nil, fmt.Errorf("trust: parse VERIFIABLY_TRUST_SIGNING_KEY (EC: %v; PKCS8: %v)", err, err2)
+			return nil, fmt.Errorf("trust: parse VERIFIABLY_TRUST_SIGNING_KEY (EC: %w; PKCS8: %w)", err, err2)
 		}
 		ec, ok := parsed.(*ecdsa.PrivateKey)
 		if !ok {

@@ -166,7 +166,7 @@ func TestURLAuthority(t *testing.T) {
 		"https://wso2is:9443/oauth2/token": "https://wso2is:9443",
 		"https://172.24.0.1:9443":          "https://172.24.0.1:9443",
 		"http://keycloak:8180/realms/x":    "http://keycloak:8180",
-		"":                                  "",
+		"":                                 "",
 	}
 	for in, want := range tests {
 		if got := urlAuthority(in); got != want {

@@ -50,8 +50,8 @@ func TestBuildAndEvaluate_RoundTrip(t *testing.T) {
 	// Not revoked → authorised.
 	ok := Evaluate(context.Background(), creds, holder, Options{
 		Now: now, RequestedAction: "present",
-		Status: func(context.Context, StatusRef) (bool, error) { return false, nil },
-		Trust:  func(context.Context, string, string) error { return nil },
+		Status:     func(context.Context, StatusRef) (bool, error) { return false, nil },
+		Trust:      func(context.Context, string, string) error { return nil },
 		FailClosed: true,
 	})
 	if !ok.Authorized {
@@ -62,8 +62,10 @@ func TestBuildAndEvaluate_RoundTrip(t *testing.T) {
 	// delegation's allocated index, proving the status pointer round-trips.
 	denied := Evaluate(context.Background(), creds, holder, Options{
 		Now: now, RequestedAction: "present",
-		Status: func(_ context.Context, ref StatusRef) (bool, error) { return ref.Index == int64(delegStatus.Index), nil },
-		Trust:  func(context.Context, string, string) error { return nil },
+		Status: func(_ context.Context, ref StatusRef) (bool, error) {
+			return ref.Index == int64(delegStatus.Index), nil
+		},
+		Trust:      func(context.Context, string, string) error { return nil },
 		FailClosed: true,
 	})
 	if denied.Authorized {

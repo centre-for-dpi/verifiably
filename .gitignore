@@ -109,3 +109,11 @@ verifiably-go/.agent-runtime/
 
 # Delegated-access build plan — local working doc, not committed.
 verifiably-go/docs/delegated-access/build-plan.md
+
+# Quality-gate artifacts (produced by `make cover` / `make lint` / CI)
+verifiably-go/coverage.out
+verifiably-go/coverage.html
+verifiably-go/golangci-lint-report.xml
+verifiably-go/gosec.sarif
+verifiably-go/test-output.txt
+verifiably-go/.scannerwork/

@@ -1,0 +1,209 @@
+name: k8s
+
+# Two tiers, because they answer different questions at very different costs.
+#
+#   render   every PR, ~40s, no cluster. Charts lint, the umbrella templates,
+#            the rendered manifests validate against the Kubernetes schemas,
+#            and every Terraform module is formatted and valid.
+#
+#   cluster  nightly / on demand / on a labelled PR. Real kind cluster, full
+#            platform + workloads, e2e smoke set.
+#
+# Why the cluster tier does NOT run on pull requests by default:
+# it cannot currently pass. Its first three runs all hit the timeout, each
+# spending ~12m40s on `helm_release.waltid: Still creating…` before being
+# killed -- the workloads layer has never converged, which docs/k8s/resume.md
+# also records from a laptop attempt. A permanently-red check on every PR
+# teaches people to ignore CI, and it burned three concurrent 29-minute jobs
+# on a single branch before this split.
+#
+# Restore `push: branches: [main]` here once G.2 in docs/technical-scope.md
+# has a converging cluster. Until then the nightly run is the signal, and
+# `render` is what actually gates PRs.
+
+on:
+  pull_request:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC nightly — the cluster tier's real trigger
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'DPG scenario to bring up'
+        required: false
+        default: 'waltid'
+
+concurrency:
+  # A kind cluster bring-up is ~20 minutes. Without this, every push to a PR
+  # stacks another one: three ran in parallel on chore/quality-gate.
+  group: k8s-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: verifiably-go
+
+env:
+  # Charts template ingress hosts off this; helm fails without it.
+  DOMAIN: verifiably.local
+
+jobs:
+  # ── Tier 1: no cluster, every PR ──────────────────────────────────────────
+  render:
+    name: charts + terraform render
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Cache helm repository metadata
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/helm
+            ~/.local/share/helm
+          key: helm-${{ hashFiles('verifiably-go/deploy/k8s/helm/**/Chart.yaml', 'verifiably-go/deploy/k8s/helm/**/Chart.lock') }}
+          restore-keys: helm-
+
+      - name: helm lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          for c in deploy/k8s/helm/charts/*/; do
+            echo "── $(basename "$c")"
+            helm lint "$c" --set global.domain="$DOMAIN"
+          done
+
+      - name: helm template the umbrella
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `dep update`, not `dep build`. build honours Chart.lock and will
+          # happily reuse the vendored .tgz files, so a chart template edited
+          # without re-running dep update would be validated in its STALE
+          # packaged form -- and then deployed that way too. update repackages
+          # from source, so what this job checks is what the tree contains.
+          helm dep update deploy/k8s/helm/umbrella/waltid
+          helm template waltid deploy/k8s/helm/umbrella/waltid \
+            --set global.domain="$DOMAIN" \
+            > /tmp/rendered.yaml
+          echo "rendered $(grep -c '^kind:' /tmp/rendered.yaml) resources"
+
+      # Catches the class of bug that took the workloads layer down on the
+      # last real run: a manifest that renders but is not a valid object.
+      # CRDs installed by the platform layer are not available here, so
+      # missing schemas are skipped rather than failed.
+      - name: kubeconform
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver=v0.6.7
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${ver}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp kubeconform
+          sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
+          kubeconform -strict -summary -ignore-missing-schemas \
+            -kubernetes-version 1.31.0 \
+            /tmp/rendered.yaml
+
+      - name: terraform fmt + validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TF_PLUGIN_CACHE_DIR="$HOME/.terraform.d/plugin-cache"
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          fail=0
+          for d in deploy/k8s/terraform/bootstrap/*/ \
+                   deploy/k8s/terraform/platform \
+                   deploy/k8s/terraform/workloads; do
+            [ -d "$d" ] || continue
+            echo "── $d"
+            terraform -chdir="$d" fmt -check -recursive || { echo "::error::$d is not terraform-fmt clean"; fail=1; }
+            terraform -chdir="$d" init -backend=false -input=false >/dev/null
+            terraform -chdir="$d" validate || fail=1
+          done
+          exit $fail
+
+  # ── Tier 2: real cluster, not on PRs unless labelled ──────────────────────
+  cluster:
+    name: kind up · e2e · down
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'k8s-e2e')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false   # the deploy script parses terraform output
+
+      - name: Install kind + kubectl
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          sudo install -m 0755 /tmp/kind /usr/local/bin/kind
+          # kubectl ships on the runner image; install it only if that changes.
+          if ! command -v kubectl >/dev/null; then
+            ver=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
+            curl -fsSLo /tmp/kubectl "https://dl.k8s.io/release/${ver}/bin/linux/amd64/kubectl"
+            sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+          fi
+          kind --version && kubectl version --client && helm version --short && terraform version
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Bring up cluster + stack
+        timeout-minutes: 25
+        run: |
+          ./deploy/k8s/scripts/k8s-deploy.sh up "${{ inputs.scenario || 'waltid' }}" --target=local
+
+      # Whatever state the bring-up reached, capture it. The last three runs
+      # died with nothing but "Still creating…" in the log, which says the
+      # umbrella did not converge but not which pod is stuck or why. This is
+      # the evidence G.2 needs.
+      - name: Diagnostics
+        if: always()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -60 || true
+          kubectl describe pods -n waltid | head -300 || true
+          kubectl top nodes || true
+
+      - name: Run e2e smoke set
+        timeout-minutes: 5
+        run: |
+          ./deploy/k8s/test/e2e/run-against-cluster.sh
+
+      # `k8s-deploy.sh reset` terraform-destroys workloads, then platform, then
+      # the cluster. Uninstalling 13 Helm releases whose webhooks and finalizers
+      # block namespace deletion took 10m21s on the last run -- to tear down a
+      # cluster that is deleted wholesale a moment later. In CI the runner is
+      # discarded anyway, so delete the cluster and stop.
+      - name: Tear down
+        if: always()
+        run: |
+          kind delete cluster --name verifiably-dev || true

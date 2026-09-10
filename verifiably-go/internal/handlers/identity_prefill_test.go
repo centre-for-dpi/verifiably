@@ -7,15 +7,15 @@ import (
 
 func TestNormIdentityKey(t *testing.T) {
 	cases := map[string]string{
-		"given_name":   "givenname",
-		"givenName":    "givenname",
-		"given-name":   "givenname",
-		"Given Name":   "givenname",
+		"given_name":    "givenname",
+		"givenName":     "givenname",
+		"given-name":    "givenname",
+		"Given Name":    "givenname",
 		"date_of_birth": "dateofbirth",
-		"DOB":          "dob",
-		"cédula":       "cdula", // accented rune is stripped (non-ASCII)
-		"national_id":  "nationalid",
-		"":             "",
+		"DOB":           "dob",
+		"cédula":        "cdula", // accented rune is stripped (non-ASCII)
+		"national_id":   "nationalid",
+		"":              "",
 	}
 	for in, want := range cases {
 		if got := normIdentityKey(in); got != want {

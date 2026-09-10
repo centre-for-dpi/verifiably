@@ -75,8 +75,8 @@ func (s *stubVerifier) ListWalletCredentials(context.Context) ([]vctypes.Credent
 	return nil, nil
 }
 func (s *stubVerifier) DeleteWalletCredential(context.Context, string) error { return nil }
-func (s *stubVerifier) ListExampleOffers(context.Context) ([]string, error)   { return nil, nil }
-func (s *stubVerifier) BootstrapOffers(context.Context) ([]string, error)     { return nil, nil }
+func (s *stubVerifier) ListExampleOffers(context.Context) ([]string, error)  { return nil, nil }
+func (s *stubVerifier) BootstrapOffers(context.Context) ([]string, error)    { return nil, nil }
 func (s *stubVerifier) ListOID4VPTemplates(context.Context) (map[string]vctypes.OID4VPTemplate, error) {
 	return s.templates, nil
 }
@@ -92,6 +92,7 @@ func (s *stubVerifier) PresentCredential(context.Context, backend.PresentCredent
 func (s *stubVerifier) VerifyDirect(context.Context, backend.DirectVerifyRequest) (backend.VerificationResult, error) {
 	return backend.VerificationResult{}, nil
 }
+
 // newDualVerifierRegistry builds a Registry with two verifier adapters, each
 // exposing one distinct template. Returns the registry and both stubs.
 func newDualVerifierRegistry() (*Registry, *stubVerifier, *stubVerifier) {

@@ -138,9 +138,9 @@ func TestRunBulkProvision_DispatchAndKeying(t *testing.T) {
 
 	rows := []map[string]string{
 		{"individualId": "9090", "fullName": "Grace", "dob": "1906-12-09"},
-		{"uin": "7777", "fullName": "Ada"},          // identity via uin; dob absent
-		{"fullName": "NoId"},                        // no identity -> rejected
-		{"individualId": "5", "foo": "bar"},         // no schema fields -> rejected
+		{"uin": "7777", "fullName": "Ada"},  // identity via uin; dob absent
+		{"fullName": "NoId"},                // no identity -> rejected
+		{"individualId": "5", "foo": "bar"}, // no schema fields -> rejected
 	}
 	r := httptest.NewRequest(http.MethodPost, "/issuer/issue/csv", nil)
 	w := httptest.NewRecorder()

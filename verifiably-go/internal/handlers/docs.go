@@ -23,6 +23,8 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	gmhtml "github.com/yuin/goldmark/renderer/html"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // docsRoot is the filesystem directory to scan for markdown. Set at
@@ -70,7 +72,7 @@ func scanDocs(root string) ([]docEntry, error) {
 	var out []docEntry
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // best-effort; don't fail the whole scan on one bad dir
+			return nil //nolint:nilerr // best-effort; don't fail the whole scan on one bad dir
 		}
 		name := d.Name()
 		if d.IsDir() {
@@ -85,7 +87,7 @@ func scanDocs(root string) ([]docEntry, error) {
 		}
 		rel, err := filepath.Rel(root, p)
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // an unrelativizable path is skipped, not fatal to the scan
 		}
 		title := titleFromMarkdown(p)
 		if title == "" {
@@ -137,10 +139,18 @@ func deriveTitleFromPath(rel string) string {
 	for i, p := range parts {
 		p = strings.ReplaceAll(p, "-", " ")
 		p = strings.ReplaceAll(p, "_", " ")
-		parts[i] = strings.Title(p)
+		parts[i] = titleCaser.String(p)
 	}
 	return strings.Join(parts, " / ")
 }
+
+// titleCaser title-cases doc path segments for the generated TOC. cases.Title
+// is the Unicode-correct replacement for the deprecated strings.Title.
+//
+// cases.NoLower is required to preserve strings.Title's behaviour: without it
+// cases.Title lowercases the remainder of each word, so an all-caps segment
+// like "README" would render as "Readme" in the TOC.
+var titleCaser = cases.Title(language.English, cases.NoLower)
 
 // categoryFor picks a group label from the top-level path segment so the
 // TOC clusters related docs. "docs/architecture.md" → "Architecture docs",

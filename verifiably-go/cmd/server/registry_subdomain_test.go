@@ -18,10 +18,10 @@ func TestPurposeSubdomainRootRedirect(t *testing.T) {
 	}))
 
 	cases := []struct {
-		name     string
-		host     string
-		path     string
-		wantLoc  string // "" => expect passthrough
+		name    string
+		host    string
+		path    string
+		wantLoc string // "" => expect passthrough
 	}{
 		{"identity-registry root redirects", "identity.registry.in-labs.cdpi.dev", "/", "/registrar/identities"},
 		{"identity-registry root with port redirects", "identity.registry.in-labs.cdpi.dev:443", "/", "/registrar/identities"},

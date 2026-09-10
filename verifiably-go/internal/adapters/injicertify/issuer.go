@@ -24,12 +24,12 @@ type credentialIssuerMetadata struct {
 }
 
 type credentialConfigurationEntry struct {
-	Format         string                       `json:"format"`
-	Scope          string                       `json:"scope,omitempty"`
-	Display        []map[string]json.RawMessage `json:"display,omitempty"`
-	Order          []string                     `json:"order,omitempty"`
-	CredentialDef  *credentialDefinitionEntry   `json:"credential_definition,omitempty"`
-	Vct            string                       `json:"vct,omitempty"`
+	Format        string                       `json:"format"`
+	Scope         string                       `json:"scope,omitempty"`
+	Display       []map[string]json.RawMessage `json:"display,omitempty"`
+	Order         []string                     `json:"order,omitempty"`
+	CredentialDef *credentialDefinitionEntry   `json:"credential_definition,omitempty"`
+	Vct           string                       `json:"vct,omitempty"`
 }
 
 type credentialDefinitionEntry struct {
@@ -132,7 +132,7 @@ func (a *Adapter) PrefillSubjectFields(_ context.Context, _ vctypes.Schema) (map
 
 // preAuthorizedDataRequest matches POST /v1/certify/pre-authorized-data.
 type preAuthorizedDataRequest struct {
-	CredentialConfigurationId string         `json:"credential_configuration_id"`
+	CredentialConfigurationID string         `json:"credential_configuration_id"`
 	Claims                    map[string]any `json:"claims"`
 }
 
@@ -202,7 +202,7 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 			}
 		}
 		body := preAuthorizedDataRequest{
-			CredentialConfigurationId: req.Schema.ID,
+			CredentialConfigurationID: req.Schema.ID,
 			Claims:                    claims,
 		}
 		var resp preAuthorizedDataResponse
@@ -234,12 +234,12 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		// inside issuer_state so the wallet can surface them.
 		issuerState := randomID()
 		offer := map[string]any{
-			"credential_issuer":              firstNonEmpty(a.cfg.OfferIssuerURL, a.cfg.PublicBaseURL),
-			"credential_configuration_ids":   []string{req.Schema.ID},
+			"credential_issuer":            firstNonEmpty(a.cfg.OfferIssuerURL, a.cfg.PublicBaseURL),
+			"credential_configuration_ids": []string{req.Schema.ID},
 			"grants": map[string]any{
 				"authorization_code": map[string]any{
-					"issuer_state":          issuerState,
-					"authorization_server":  a.cfg.AuthorizationServer,
+					"issuer_state":         issuerState,
+					"authorization_server": a.cfg.AuthorizationServer,
 				},
 			},
 		}
@@ -351,7 +351,7 @@ func rowLabelInji(row map[string]string) string {
 func (a *Adapter) BootstrapOffers(ctx context.Context) ([]string, error) {
 	schemas, err := a.ListSchemas(ctx, a.Vendor)
 	if err != nil || len(schemas) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilerr // BootstrapOffers is best-effort demo seeding; a backend that can't list schemas must not block startup.
 	}
 	// Only the pre-auth card can bootstrap a fully-self-contained offer.
 	// Auth-Code offers require a live wallet to hit eSignet — not useful as a
@@ -366,7 +366,7 @@ func (a *Adapter) BootstrapOffers(ctx context.Context) ([]string, error) {
 		Flow:        string(ModePreAuth),
 	})
 	if err != nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // BootstrapOffers is best-effort demo seeding; a failed speculative issuance must not block startup.
 	}
 	return []string{res.OfferURI}, nil
 }
