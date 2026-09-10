@@ -305,6 +305,11 @@ subject/identity/credential-config operations; it is implemented by
 
 ## Testing
 
+> The quality gate (`make quality` / `.github/workflows/quality.yml`), the current
+> coverage baseline and the plan to raise it live in
+> [`technical-scope.md`](technical-scope.md) § Workstream A.
+
+
 `e2e/` holds puppeteer-core tests per DPG flow:
 
 - `waltid-test.mjs` — end-to-end issue + hold + present on walt.id
