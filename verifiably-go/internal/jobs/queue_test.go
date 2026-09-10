@@ -106,12 +106,24 @@ func TestSubscriberReceivesProgress(t *testing.T) {
 	subCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	id, err := q.Submit(ctx, rows, workOK)
+	// Subscribe registers a channel for FUTURE events; it does not replay the
+	// job's current state. With an instant workFn the job could finish before
+	// Subscribe ran, leaving the subscriber with nothing and the test failing
+	// roughly one run in five. Hold the work until the subscription exists, so
+	// the ordering is guaranteed rather than merely likely.
+	release := make(chan struct{})
+	work := func(_ context.Context, _ map[string]string) error {
+		<-release
+		return nil
+	}
+
+	id, err := q.Submit(ctx, rows, work)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 
 	ch := q.Subscribe(subCtx, id)
+	close(release)
 	var received []Progress
 	for p := range ch {
 		received = append(received, p)
