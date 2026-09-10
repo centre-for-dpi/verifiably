@@ -146,7 +146,11 @@ func deriveTitleFromPath(rel string) string {
 
 // titleCaser title-cases doc path segments for the generated TOC. cases.Title
 // is the Unicode-correct replacement for the deprecated strings.Title.
-var titleCaser = cases.Title(language.English)
+//
+// cases.NoLower is required to preserve strings.Title's behaviour: without it
+// cases.Title lowercases the remainder of each word, so an all-caps segment
+// like "README" would render as "Readme" in the TOC.
+var titleCaser = cases.Title(language.English, cases.NoLower)
 
 // categoryFor picks a group label from the top-level path segment so the
 // TOC clusters related docs. "docs/architecture.md" → "Architecture docs",
