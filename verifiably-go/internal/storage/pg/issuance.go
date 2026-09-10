@@ -69,7 +69,14 @@ func (l *IssuanceLog) Append(c issuance.IssuedCredential) (issuance.IssuedCreden
 	// SubjectFields is tagged json:"-" in the struct; the PG backend follows the
 	// same convention so PII never reaches the database. Search by subject-field
 	// value is ephemeral (in-memory only), matching the file-backed backend.
-	var subjectJSON []byte
+	//
+	// It must still be written as an empty JSON object rather than left nil.
+	// The column is `subject_fields JSONB NOT NULL DEFAULT '{}'`, and pgx maps a
+	// nil []byte to an explicit SQL NULL -- which bypasses the DEFAULT and
+	// violates the constraint, failing EVERY insert with SQLSTATE 23502. A
+	// column default only applies when the column is omitted from the INSERT,
+	// not when NULL is passed for it.
+	subjectJSON := []byte("{}")
 	var statusJSON []byte
 	if c.StatusList != nil {
 		statusJSON, _ = json.Marshal(c.StatusList)
