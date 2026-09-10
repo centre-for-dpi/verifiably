@@ -79,6 +79,28 @@ jobs:
   test:
     name: unit tests + coverage
     runs-on: ubuntu-latest
+
+    # internal/storage/pg is hand-rolled pgx with dynamically-built WHERE
+    # clauses and a hash chain; a fake would only test the fake. The tests skip
+    # themselves when VERIFIABLY_TEST_PG_DSN is unset, so `go test ./...` stays
+    # green on a laptop without Docker.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: verifiably_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      VERIFIABLY_TEST_PG_DSN: postgres://postgres:postgres@localhost:5432/verifiably_test?sslmode=disable
+
     steps:
       - uses: actions/checkout@v4
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/httpx"
+	"github.com/verifiably/verifiably-go/vctypes"
 )
 
 func adapterAgainst(t *testing.T, h http.HandlerFunc) *Adapter {
@@ -129,5 +130,47 @@ func TestParseOffer_UnresolvableIsTyped(t *testing.T) {
 	}
 	if !errors.Is(err, backend.ErrOfferUnresolvable) {
 		t.Errorf("error must wrap ErrOfferUnresolvable so handlers can branch on it; got %v", err)
+	}
+}
+
+// After a successful claim the adapter re-lists the wallet to back-fill the
+// credential's real subject fields, because walt.id's useOfferRequest response
+// does not echo the stored credential id. That re-list is best-effort: the
+// claim has already succeeded, so failing it here would tell the holder their
+// credential was rejected when it is sitting in their wallet. Hence the
+// //nolint:nilerr — and hence this test, which stops that annotation from ever
+// covering a real error.
+func TestClaimCredential_BackfillFailureKeepsTheClaim(t *testing.T) {
+	var claimed bool
+	a := adapterAgainst(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/login"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"token":"t0k3n"}`))
+		case strings.HasSuffix(r.URL.Path, "/accounts/wallets"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"wallets":[{"id":"w1"}]}`))
+		case strings.Contains(r.URL.Path, "/exchange/useOfferRequest"):
+			claimed = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			// The wallet re-list fails — the back-fill cannot happen.
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
+
+	cred, err := a.ClaimCredential(context.Background(), vctypes.Credential{
+		ID:     "pending-1",
+		Fields: map[string]string{"offer_uri": "openid-credential-offer://x", "config_id": "Cedula"},
+	})
+	if err != nil {
+		t.Fatalf("a failed back-fill must not fail the claim: %v", err)
+	}
+	if !claimed {
+		t.Fatal("the claim call was never made")
+	}
+	if cred.Status != "accepted" {
+		t.Errorf("Status = %q, want accepted — the credential IS in the wallet", cred.Status)
 	}
 }

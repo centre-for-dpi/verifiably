@@ -63,8 +63,9 @@ func TestBootstrapOffers_FailedIssuanceDoesNotError(t *testing.T) {
 		// Templates list fine, so BootstrapOffers gets as far as issuing...
 		if r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":{"data":[{"templateId":"t1","name":"Cedula",` +
-				`"template":{"vct":"Cedula","attributes":[{"name":"fullName"}]}}]}}`))
+			_, _ = w.Write([]byte(`{"data":[{"id":"t1","name":"Cedula","format":"dc+sd-jwt",` +
+				`"attributes":{"vct":"Cedula","attributes":[` +
+				`{"key":"fullName","value_type":"string"}]}}]}`))
 			return
 		}
 		// ...and the speculative issuance itself fails.
@@ -119,5 +120,27 @@ func TestResolveTemplateID_WrongTypedCacheEntryIsAMiss(t *testing.T) {
 	}
 	if !called {
 		t.Error("a wrong-typed cache entry must fall through to the backend")
+	}
+}
+
+// The verifier's template dropdown is derived from the issuer's schema list. A
+// CREDEBL instance that is unreachable yields an empty dropdown, not a 500 on
+// the verifier page — the operator can still use direct verify. That is why the
+// return carries //nolint:nilerr.
+func TestListOID4VPTemplates_UnreachableBackendYieldsEmptyDropdown(t *testing.T) {
+	s := bootstrapSrv(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	})
+	a := newTestAdapter(t, s.URL)
+
+	tmpl, err := a.ListOID4VPTemplates(context.Background())
+	if err != nil {
+		t.Fatalf("an unreachable backend must not fail the verifier page: %v", err)
+	}
+	if tmpl == nil {
+		t.Error("must return an empty map, not nil — the template ranges over it")
+	}
+	if len(tmpl) != 0 {
+		t.Errorf("templates = %v, want empty", tmpl)
 	}
 }

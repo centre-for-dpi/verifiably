@@ -63,3 +63,26 @@ func TestBootstrapOffers_AuthCodeModeIssuesNothing(t *testing.T) {
 		t.Error("auth-code mode must not attempt a speculative issuance")
 	}
 }
+
+// Metadata resolves, so BootstrapOffers finds a schema and tries to issue — and
+// the issuance itself fails. Same contract: empty slice, no error.
+func TestBootstrapOffers_FailedIssuanceDoesNotError(t *testing.T) {
+	a := newAdapterAgainst(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"credential_configurations_supported":{` +
+				`"CedulaCredential":{"format":"vc+sd-jwt","vct":"Cedula",` +
+				`"claims":{"fullName":{"display":[{"name":"Full name"}]}}}}}`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}, ModePreAuth)
+
+	offers, err := a.BootstrapOffers(context.Background())
+	if err != nil {
+		t.Fatalf("BootstrapOffers must not error when issuance fails: %v", err)
+	}
+	if len(offers) != 0 {
+		t.Errorf("offers = %v, want none", offers)
+	}
+}
