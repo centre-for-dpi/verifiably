@@ -49,9 +49,16 @@ _SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
 def seg(value, what="path segment"):
-    if not isinstance(value, str) or ".." in value or not _SEGMENT_RE.match(value):
+    m = _SEGMENT_RE.match(value) if isinstance(value, str) else None
+    if m is None or ".." in value:
         raise HTTPException(status_code=400, detail=f"invalid {what}")
-    return value
+    # Return the MATCHED span, not the argument. Functionally identical -- the
+    # pattern is anchored -- but it hands back a value derived from the regex
+    # rather than the caller's string, so the returned object is provably the
+    # text that passed validation. Returning `value` left taint analysis
+    # tracing the request input straight through the validator into the URL,
+    # which is why S7044 survived the first fix.
+    return m.group(0)
 
 
 def entity_name(s):
