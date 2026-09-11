@@ -46,7 +46,14 @@ export VERIFIABLY_ENV_FILE
 # single-node / dev deployments). Set to enable HA / multi-replica.
 # Example: postgres://verifiably:verifiably@localhost:5439/verifiably?sslmode=disable
 : "${VERIFIABLY_PG_USER:=verifiably}"
-: "${VERIFIABLY_PG_PASSWORD:=verifiably}"
+# No literal default: "verifiably" was a guessable password on a database
+# holding sessions, the issuance log and the status lists. deploy.sh setup
+# writes a random one into .env; this generates one for an .env that predates
+# that, so an upgrade never silently falls back to a known value.
+if [[ -z "${VERIFIABLY_PG_PASSWORD:-}" ]]; then
+  VERIFIABLY_PG_PASSWORD="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | base64 | tr -d '/+=\n')"
+  export VERIFIABLY_PG_PASSWORD
+fi
 : "${VERIFIABLY_PG_DB:=verifiably}"
 : "${VERIFIABLY_PG_PORT:=5439}"
 : "${VERIFIABLY_DATABASE_URL:=}"   # empty = file-backed stores

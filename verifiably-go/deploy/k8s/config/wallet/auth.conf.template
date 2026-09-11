@@ -8,17 +8,17 @@
 # Phase 7.1 replaces it with a Vault Transit reference, which is the
 # real fix.
 #
-# tokenKey is supplied per-deployment through wallet.tokenKey (ideally from a
-# Secret via ESO) and has NO default. It previously shipped inline, which meant
-# every deployment that did not override it signed wallet tokens with the same
-# key. That key is in the git history of a public repo: treat it as compromised.
+# The key is no longer committed. scripts/gen-demo-pki.sh renders this
+# template with a freshly generated RSA JWK on first `deploy.sh up`, and the
+# rendered auth.conf is gitignored. The key that used to live here is in the
+# git history of a public repo: treat it as compromised and never reuse it.
 
 encryptionKey = "${WALLET_ENCRYPTION_KEY}"  // 128-bit symmetric (16 ASCII chars)
 signKey       = "${WALLET_SIGN_KEY}"        // 128-bit symmetric (16 ASCII chars)
 
 # Available signing algorithms: RS256 or HS256.
 # Phase 7.1: this becomes a Vault Transit key reference.
-tokenKey = "{{ required "wallet.tokenKey is required: supply the wallet token-signing JWK (see scripts/gen-demo-pki.sh). It is deliberately not defaulted -- a shared default would mean every deployment signs wallet tokens with the same key." .Values.wallet.tokenKey }}"
+tokenKey = "__WALLET_TOKEN_JWK__"
 
 audTokenClaim = "http://${SERVICE_HOST}:${WALLET_BACKEND_PORT}"
 issTokenClaim = "http://${SERVICE_HOST}:${WALLET_BACKEND_PORT}"

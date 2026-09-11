@@ -1,5 +1,11 @@
 # Schema mirrors docs/k8s/values-schema.md (wallet-api section).
 wallet:
+  # Token-signing JWK for the wallet's own auth tokens. NO DEFAULT, on purpose:
+  # this used to ship inline, so every deployment that did not override it
+  # signed wallet tokens with the same key. Generate one with
+  # `scripts/gen-demo-pki.sh` (or `openssl genrsa 2048 | scripts/pem-to-jwk.py`)
+  # and supply it from a Secret via ESO in anything that is not a demo.
+  tokenKey: ""
   image:
     repository: waltid/wallet-api
     tag: "0.18.2"

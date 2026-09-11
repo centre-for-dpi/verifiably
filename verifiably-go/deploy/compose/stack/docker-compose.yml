@@ -39,7 +39,11 @@ services:
     volumes:
       - verifiably-redis-data:/data
     ports:
-      - "${VERIFIABLY_REDIS_PORT:-6380}:6379"
+      # Loopback-bound: nothing outside this host has any business reaching the
+      # session store directly. verifiably-go connects over the compose network
+      # by service name, so the published port exists only for operator
+      # convenience (redis-cli from the host).
+      - "127.0.0.1:${VERIFIABLY_REDIS_PORT:-6380}:6379"
     command: >
       redis-server
       --save 60 1
@@ -60,11 +64,18 @@ services:
     environment:
       POSTGRES_DB: ${VERIFIABLY_PG_DB:-verifiably}
       POSTGRES_USER: ${VERIFIABLY_PG_USER:-verifiably}
-      POSTGRES_PASSWORD: ${VERIFIABLY_PG_PASSWORD:-verifiably}
+      POSTGRES_PASSWORD: ${VERIFIABLY_PG_PASSWORD:?set by scripts/common.sh; never defaulted}
     volumes:
       - verifiably-pg-data:/var/lib/postgresql/data
     ports:
-      - "${VERIFIABLY_PG_PORT:-5439}:5432"
+      # Loopback-bound. This database holds sessions, the issuance log and the
+      # status lists, and its default credentials are verifiably/verifiably --
+      # so on a VPS or EC2 deployment the previous 0.0.0.0 binding put a
+      # guessable-credential Postgres on the public internet. The app reaches it
+      # over the compose network by service name; the published port is for
+      # psql from the host only. Credential generation is tracked as G.4.6 in
+      # docs/technical-scope.md.
+      - "127.0.0.1:${VERIFIABLY_PG_PORT:-5439}:5432"
 
   caddy:
     image: caddy:2.8

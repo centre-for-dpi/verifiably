@@ -80,9 +80,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # wallet.tokenKey has no default on purpose -- a shared default would
+          # mean every deployment signs wallet tokens with the same key. CI
+          # supplies a throwaway one so the chart still renders here; the real
+          # one is generated per-deployment by scripts/gen-demo-pki.sh.
+          TOKEN_JWK=$(openssl genrsa 2048 2>/dev/null | python3 scripts/pem-to-jwk.py)
           for c in deploy/k8s/helm/charts/*/; do
             echo "── $(basename "$c")"
-            helm lint "$c" --set global.domain="$DOMAIN"
+            helm lint "$c" --set global.domain="$DOMAIN" --set-string wallet.tokenKey="$TOKEN_JWK"
           done
 
       - name: helm template the umbrella
@@ -95,8 +100,10 @@ jobs:
           # packaged form -- and then deployed that way too. update repackages
           # from source, so what this job checks is what the tree contains.
           helm dep update deploy/k8s/helm/umbrella/waltid
+          TOKEN_JWK=$(openssl genrsa 2048 2>/dev/null | python3 scripts/pem-to-jwk.py)
           helm template waltid deploy/k8s/helm/umbrella/waltid \
             --set global.domain="$DOMAIN" \
+            --set-string walt-wallet.wallet.tokenKey="$TOKEN_JWK" \
             > /tmp/rendered.yaml
           echo "rendered $(grep -c '^kind:' /tmp/rendered.yaml) resources"
 
