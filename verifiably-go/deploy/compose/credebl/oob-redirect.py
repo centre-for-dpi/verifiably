@@ -26,7 +26,7 @@ MINIO = "http://credebl-minio:9000/credebl-bucket"
 
 # One flat object key, no separators: the invitation id and nothing else.
 # Rejecting '/' and '.' pairs here is what keeps the request inside the bucket.
-KEY_RE = re.compile(r"^/[A-Za-z0-9_-]{1,128}(?:\.json)?$")
+KEY_RE = re.compile(r"^/(?P<key>[A-Za-z0-9_-]{1,128}(?:\.json)?)$")
 
 # The stored value is handed to a browser as a Location, so it has to be a
 # scheme we are willing to navigate to. didcomm:// is included because Aries
@@ -52,12 +52,21 @@ def safe_redirect_target(value):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if not KEY_RE.match(self.path):
+        match = KEY_RE.match(self.path)
+        if not match:
             self.send_error(400, "invalid invitation id")
             return
 
+        # Rebuild the URL from the CAPTURED key rather than concatenating
+        # self.path. Functionally the regex already made traversal impossible,
+        # but taint analysis cannot see a regex as a sanitiser -- and neither
+        # can a reader skimming the file. The tainted value never reaches
+        # urlopen now, which is both provable and obvious.
+        key = urllib.parse.quote(match.group("key"), safe="")
+        target = f"{MINIO}/{key}"
+
         try:
-            with urllib.request.urlopen(MINIO + self.path, timeout=FETCH_TIMEOUT) as resp:
+            with urllib.request.urlopen(target, timeout=FETCH_TIMEOUT) as resp:
                 oob_url = json.loads(resp.read())
         except Exception:
             self.send_error(502, "could not resolve invitation")
