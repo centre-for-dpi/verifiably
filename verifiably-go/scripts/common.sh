@@ -44,7 +44,9 @@ export VERIFIABLY_ENV_FILE
 # PostgreSQL for verifiably-go's own persistence (sessions, issuance log,
 # status lists). Leave unset to use the file-backed stores (default for
 # single-node / dev deployments). Set to enable HA / multi-replica.
-# Example: postgres://verifiably:verifiably@localhost:5439/verifiably?sslmode=disable
+# Example: postgres://USER:PASSWORD@localhost:5439/verifiably?sslmode=disable
+# (placeholders on purpose — an example with real-looking credentials both
+#  trips secret scanners and invites copy-paste of a weak password)
 : "${VERIFIABLY_PG_USER:=verifiably}"
 # No literal default: "verifiably" was a guessable password on a database
 # holding sessions, the issuance log and the status lists. deploy.sh setup
@@ -198,6 +200,7 @@ export REGISTRY_ADMIN_HOST_PORT VERIFIABLY_REGISTRY_ADMIN_URL REGISTRY_ADMIN_SUN
 : "${CREDEBL_JWT_TOKEN_SECRET:=}"
 : "${CREDEBL_PLATFORM_SEED:=}"
 : "${CREDEBL_AGENT_API_KEY:=}"
+: "${CREDEBL_SMTP_PASSWORD:=}"        # auto-generated in ensure_credebl_env if empty
 : "${CREDEBL_PLATFORM_WALLET_PASSWORD:=}"
 : "${CREDEBL_NEXTAUTH_SECRET:=}"
 : "${CREDEBL_KEYCLOAK_CLIENT_SECRET:=}"
