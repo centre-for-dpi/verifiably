@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The persistent session store is what makes a container restart invisible to a
@@ -99,16 +100,23 @@ func TestStartFlusher(t *testing.T) {
 		s.StartFlusher(ctx)
 		cancel()
 
-		// The final flush happens on the flusher goroutine. Reload until it
-		// lands rather than sleeping for a fixed interval.
+		// The final flush happens on the flusher goroutine, so this has to
+		// wait for another goroutine to run. The first version of this loop
+		// spun on os.Stat 200 times with no sleep, which completes in
+		// microseconds and never yields -- it passed on a multi-core laptop
+		// and failed on a loaded CI runner where the flusher had not been
+		// scheduled yet. Poll on a real deadline instead: each Sleep is a
+		// scheduling point, so the flusher gets a turn.
 		path := filepath.Join(dir, "on-shutdown.sess")
-		for range 200 {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
 			if _, err := os.Stat(path); err == nil {
 				return
 			}
-		}
-		if _, err := os.Stat(path); err != nil {
-			t.Errorf("context cancel did not trigger a final flush: %v", err)
+			if time.Now().After(deadline) {
+				t.Fatalf("context cancel did not trigger a final flush within 5s (%s)", path)
+			}
+			time.Sleep(5 * time.Millisecond)
 		}
 	})
 }
