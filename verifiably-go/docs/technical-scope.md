@@ -516,6 +516,27 @@ So the badge moves off E only when the committed key material goes. Two of the n
 
 A note on what *not* to do: SonarCloud lets these be marked Won't Fix, which would turn the badge green in a minute. Only finding 7 deserves that. Doing it to the rest would leave a repository publishing a signing key behind an A rating, which is worse than the E.
 
+### D.5 — SSRF: a private-IP denylist is the wrong control here (P1)
+
+Sonar reports five `gosecurity:S5144` findings — user input reaching an outbound URL. `internal/handlers/ssrf.go` already has a guard (`ssrfBlockHost`) that rejects hosts resolving into private, loopback, link-local and metadata ranges. None of the five use it, and **applying it would break the product.**
+
+`VERIFIABLY_PUBLIC_HOST=172.24.0.1` is the documented default for localhost mode, and every DPG the stack talks to — `certify-nginx`, `walt-issuer`, `credebl-minio` — lives on a Docker bridge network. In this architecture the legitimate destinations *are* the private addresses. A denylist of RFC1918 rejects the stack's own services and permits nothing useful.
+
+The right control is an **allowlist** built from what the deployment has already declared: `backends.json` DPG hosts, `VERIFIABLY_REGISTRIES` providers, and the federation member list. That is a real design change, not a patch, and it needs a decision about the OID4VP case below.
+
+Reviewed individually:
+
+| Site | Where the URL comes from | Assessment |
+|---|---|---|
+| `inji_present.go:193` | `request_uri` out of a scanned or pasted OID4VP request URI | **Highest risk — genuinely third-party.** The verifier could be anyone. In a federation it should be a known member, which ties this to E.4's trust chain rather than to a URL filter. |
+| `bulk.go:672` | Operator-entered "Bulk from API" URL | Authenticated operator using a feature whose entire purpose is fetching from an arbitrary registry. Allowlist or accept by design — but say which. |
+| `inji_schema.go:190`, `:282` | `registryProvider.URL`, from the `VERIFIABLY_REGISTRIES` env var | **Effectively a false positive.** This is deployment configuration, not request input; the taint engine is following env → config → URL. |
+| `admin_federation.go:418` | Admin-entered federation member `serviceEndpoint` | Admin-only, and adding a member is already a trust decision. Lowest of the five. |
+
+**Fixed now, independent of the above:** three of these used `http.DefaultClient`, which has **no timeout**. A destination that accepts the connection and never answers pins the calling goroutine indefinitely — point a registry at a black hole and every provisioning request leaks one. Six call sites now use a shared 30-second client.
+
+**Consequence for the security rating:** these five are the only thing standing between C and B. They should not be cleared by rushing an allowlist, and they should not be marked Won't Fix — the `inji_present` one is a real exposure. B is therefore gated on this design, which belongs with Workstream D.
+
 ### G.5 CI cost and shape for the K8s path (P1)
 
 The first runs of the cluster e2e produced this profile:
@@ -658,6 +679,7 @@ Phase 4 — long lead
 ## 13. Changelog
 
 - **2026-09-10** — Initial scope. Baseline measured at `b571e62`. Workstream A implemented; B–G proposed.
+- **2026-09-12 (rev 7)** — Security rating E → D (all BLOCKERs cleared). Fixed the mechanical CRITICAL/MAJOR findings and reviewed the five SSRF ones individually (D.5): a private-IP denylist is the wrong control for a stack whose legitimate services are all on private addresses, so B is gated on an allowlist design rather than a patch.
 - **2026-09-11 (rev 6)** — Assessed the E security badge finding by finding (G.4.6). Fixed the oob-redirect path-traversal/open-redirect/header-injection issue and bound Postgres and Redis to loopback. Recorded that the badge cannot leave E until the committed wallet signing key is removed, and that marking the remainder Won't Fix would be worse than the E.
 - **2026-09-11 (rev 5)** — Added G.5 after profiling the cluster e2e: two-tier split landed (render on every PR, cluster nightly/on-demand), concurrency groups added to all three workflows, CI teardown reduced from a 10-minute cascading terraform destroy to `kind delete cluster`. The render tier immediately found a duplicate-annotation bug in four Ingress templates.
 - **2026-09-11 (rev 4)** — First CI runs landed. Recorded the Trivy misconfiguration backlog as G.4.4 with a per-finding assessment; noted that vulnerability/secret scanning stays blocking while misconfiguration is report-only until G.2 provides a cluster to validate fixes against.

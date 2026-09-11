@@ -191,7 +191,7 @@ func (h *H) fetchInjiVPRequest(ctx context.Context, requestURI string) (injiJAR,
 		return jar, fmt.Errorf("no request_uri in %q", requestURI)
 	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ru, nil)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := outboundClient.Do(req)
 	if err != nil {
 		return jar, err
 	}
@@ -317,7 +317,7 @@ func (h *H) postVPResponse(ctx context.Context, jar injiJAR, vpToken string, des
 	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, jar.ResponseURI, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := outboundClient.Do(req)
 	if err != nil {
 		return err
 	}

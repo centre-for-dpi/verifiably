@@ -60,7 +60,7 @@ apt-get install -y --no-install-recommends \
 if ! command -v docker >/dev/null; then
   log "[2/8] docker"
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  curl --proto '=https' --tlsv1.2 -fsSL https://download.docker.com/linux/ubuntu/gpg \
     | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   chmod a+r /etc/apt/keyrings/docker.gpg
   echo \
@@ -78,7 +78,7 @@ fi
 # ---------------------------------------------------------------- 3. kubectl
 if ! command -v kubectl >/dev/null; then
   log "[3/8] kubectl"
-  curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key \
+  curl --proto '=https' --tlsv1.2 -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key \
     | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /" \
     > /etc/apt/sources.list.d/kubernetes.list
@@ -91,7 +91,7 @@ fi
 # ---------------------------------------------------------------- 4. helm
 if ! command -v helm >/dev/null; then
   log "[4/8] helm"
-  curl -fsSL https://baltocdn.com/helm/signing.asc \
+  curl --proto '=https' --tlsv1.2 -fsSL https://baltocdn.com/helm/signing.asc \
     | gpg --dearmor -o /etc/apt/keyrings/helm.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" \
     > /etc/apt/sources.list.d/helm.list
@@ -104,7 +104,7 @@ fi
 # ---------------------------------------------------------------- 5. terraform
 if ! command -v terraform >/dev/null; then
   log "[5/8] terraform"
-  curl -fsSL https://apt.releases.hashicorp.com/gpg \
+  curl --proto '=https' --tlsv1.2 -fsSL https://apt.releases.hashicorp.com/gpg \
     | gpg --dearmor -o /etc/apt/keyrings/hashicorp.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
     > /etc/apt/sources.list.d/hashicorp.list
@@ -117,7 +117,7 @@ fi
 # ---------------------------------------------------------------- 6. k6
 if ! command -v k6 >/dev/null; then
   log "[6/8] k6"
-  curl -fsSL https://dl.k6.io/key.gpg \
+  curl --proto '=https' --tlsv1.2 -fsSL https://dl.k6.io/key.gpg \
     | gpg --dearmor -o /etc/apt/keyrings/k6.gpg
   echo "deb [signed-by=/etc/apt/keyrings/k6.gpg] https://dl.k6.io/deb stable main" \
     > /etc/apt/sources.list.d/k6.list
@@ -132,7 +132,7 @@ if ! command -v kind >/dev/null; then
   log "[6.5/8] kind binary"
   arch=$(dpkg --print-architecture)
   case "$arch" in amd64) k_arch=amd64;; arm64) k_arch=arm64;; *) fail "unsupported arch: $arch";; esac
-  curl -fsSL "https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-${k_arch}" -o /usr/local/bin/kind
+  curl --proto '=https' --tlsv1.2 -fsSL "https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-${k_arch}" -o /usr/local/bin/kind
   chmod +x /usr/local/bin/kind
 fi
 
@@ -167,7 +167,7 @@ if ! systemctl is-active --quiet k3s; then
   # We disable traefik because the platform chart installs ingress-nginx,
   # and servicelb because we install MetalLB via the platform chart so
   # the same lb_mode=metallb wiring works on EKS / on-prem / EC2.
-  curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik --disable=servicelb --write-kubeconfig-mode=644" sh -
+  curl --proto '=https' --tlsv1.2 -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik --disable=servicelb --write-kubeconfig-mode=644" sh -
   # Wait for kubeconfig + node Ready.
   for _ in $(seq 1 60); do
     [[ -f /etc/rancher/k3s/k3s.yaml ]] && break

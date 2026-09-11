@@ -32,7 +32,7 @@ wso2is:
 
   resources:
     requests: { cpu: 500m, memory: 1Gi }
-    limits:   { memory: 2Gi }
+    limits:   { memory: 2Gi, ephemeral-storage: 2Gi }  # ephemeral-storage caps disk use so one pod cannot evict the node
 
   persistence:
     enabled: true
