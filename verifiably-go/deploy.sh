@@ -43,6 +43,9 @@ source "$SCRIPT_DIR/scripts/bootstrap-waltid-did.sh"
 # shellcheck source=scripts/gen-caddy.sh
 source "$SCRIPT_DIR/scripts/gen-caddy.sh"
 
+# shellcheck source=scripts/gen-demo-pki.sh
+source "$SCRIPT_DIR/scripts/gen-demo-pki.sh"
+
 
 # ---------------------------------------------------------------- subcommands
 
@@ -310,6 +313,12 @@ cmd_up() {
       export ISSUER_DID_DOMAIN=$(printf '%s' "$AUTHCODE_PUBLIC_URL" | sed -E 's#^https?://##; s#[:/].*$##')
     fi
   fi
+
+  # Demo PKI pre-flight: the TLS keys, the WSO2 keystore and the wallet's
+  # token-signing JWK are generated locally rather than committed, so they have
+  # to exist before compose bind-mounts them. Idempotent -- existing files are
+  # left alone, so this never rotates a key under a running stack.
+  ensure_demo_pki
 
   # CREDEBL pre-flight: generate secrets + write agent runtime env BEFORE
   # docker compose up so the generated config/credebl.env file exists when

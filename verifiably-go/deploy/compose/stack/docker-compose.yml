@@ -64,7 +64,7 @@ services:
     environment:
       POSTGRES_DB: ${VERIFIABLY_PG_DB:-verifiably}
       POSTGRES_USER: ${VERIFIABLY_PG_USER:-verifiably}
-      POSTGRES_PASSWORD: ${VERIFIABLY_PG_PASSWORD:-verifiably}
+      POSTGRES_PASSWORD: ${VERIFIABLY_PG_PASSWORD:?set by scripts/common.sh; never defaulted}
     volumes:
       - verifiably-pg-data:/var/lib/postgresql/data
     ports:
