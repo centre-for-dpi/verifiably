@@ -164,7 +164,7 @@ func fetchRegistryByEntity(ctx context.Context, p registryProvider, id string) m
 		return out
 	}
 	req, _ := http.NewRequestWithContext(cctx, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := outboundClient.Do(req)
 	if err != nil || resp == nil {
 		return out
 	}
@@ -190,7 +190,7 @@ func sunbirdSchemas(ctx context.Context, baseURL string) []string {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
 		strings.TrimRight(baseURL, "/")+"/api/v1/Schema/search", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := outboundClient.Do(req)
 	if err != nil || resp == nil || resp.StatusCode != http.StatusOK {
 		return nil
 	}
@@ -228,7 +228,7 @@ func fetchRegistrySunbird(ctx context.Context, p registryProvider, id string) ma
 	endpoint := strings.TrimRight(p.URL, "/") + "/api/v1/" + p.Entity + "/search"
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := outboundClient.Do(req)
 	if err != nil || resp == nil {
 		return nil
 	}
@@ -281,7 +281,7 @@ func searchRegistryAll(ctx context.Context, p registryProvider, entity string) [
 	endpoint := strings.TrimRight(p.URL, "/") + "/api/v1/" + entity + "/search"
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := outboundClient.Do(req)
 	if err != nil || resp == nil {
 		return nil
 	}

@@ -3,8 +3,10 @@ package handlers
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // ssrfBlockHost looks up host and returns an error if any resolved IP falls
@@ -57,3 +59,14 @@ func validateOfferURL(raw string) error {
 	}
 	return ssrfBlockHost(host)
 }
+
+// outboundClient is the client for outbound calls to operator-configured
+// endpoints (Sunbird registries, OID4VP request_uri fetches).
+//
+// http.DefaultClient has NO timeout. A destination that accepts the connection
+// and then never answers pins the calling handler's goroutine indefinitely,
+// which is a denial-of-service with no attacker sophistication required --
+// point a registry at a black hole and every provisioning request leaks a
+// goroutine. 30s is generous for a registry search and finite, which is the
+// property that matters.
+var outboundClient = &http.Client{Timeout: 30 * time.Second}
