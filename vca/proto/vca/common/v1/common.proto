@@ -1,0 +1,29 @@
+// Shared types for every Verifiable Credentials Adapter service.
+syntax = "proto3";
+
+package vca.common.v1;
+
+// Format names a credential encoding. Values match the format identifiers of
+// OpenID for Verifiable Credential Issuance 1.0.
+enum Format {
+  FORMAT_UNSPECIFIED = 0;
+  // IETF SD-JWT VC with media type vc+sd-jwt (legacy).
+  FORMAT_VC_SD_JWT = 1;
+  // IETF SD-JWT VC with media type dc+sd-jwt.
+  FORMAT_DC_SD_JWT = 2;
+  // W3C VC secured as a JWT (jwt_vc_json).
+  FORMAT_JWT_VC_JSON = 3;
+  // W3C VC secured with a Data Integrity proof (ldp_vc).
+  FORMAT_LDP_VC = 4;
+  // ISO/IEC 18013-5 mdoc (mso_mdoc).
+  FORMAT_MSO_MDOC = 5;
+  // Reserved for W3C Data Integrity BBS proofs (ADR-031).
+  FORMAT_LDP_VC_BBS = 6;
+}
+
+// Credential carries one credential without changing its bytes.
+message Credential {
+  Format format = 1;
+  // The credential exactly as the issuer produced it.
+  bytes payload = 2;
+}
