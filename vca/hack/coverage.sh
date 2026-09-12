@@ -4,11 +4,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 floor="${1:-90}"
-out=$($GO_TEST_CMD 2>/dev/null || go test -cover -count=1 ./... )
+if [[ -n "${GO_TEST_CMD:-}" ]]; then
+  # shellcheck disable=SC2086
+  out=$($GO_TEST_CMD)
+else
+  out=$(go test -cover -count=1 ./...)
+fi
 echo "$out"
 fail=0
 while read -r line; do
-  pkg=$(awk '{print $2}' <<<"$line")
+  # "ok <pkg> 0.1s coverage: ..." or "<pkg> coverage: 0.0% ..." (no test files)
+  pkg=$(awk '{ if ($1 == "ok") print $2; else print $1 }' <<<"$line")
   pct=$(grep -oE '[0-9]+\.[0-9]+%' <<<"$line" | head -1 | tr -d '%')
   [ -z "$pct" ] && continue
   want="$floor"
