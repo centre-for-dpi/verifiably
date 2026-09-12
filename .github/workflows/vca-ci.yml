@@ -1,0 +1,181 @@
+name: vca-ci
+
+# PR gate for the Verifiable Credentials Adapters (vca/).
+# Implements ADR-006 decisions 2, 5 and 6.
+# Every job blocks the merge. There is no continue-on-error anywhere.
+# The legacy monolith (verifiably-go/) keeps its own workflows.
+
+on:
+  push:
+    branches: [main, vc-adapter]
+    paths:
+      - 'vca/**'
+      - '.github/workflows/vca-ci.yml'
+  pull_request:
+    branches: [main, vc-adapter]
+    paths:
+      - 'vca/**'
+      - '.github/workflows/vca-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vca-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION_FILE: vca/go.mod
+  # go.sum is regenerated on a networked machine (make tidy). Until it is
+  # committed, -mod=mod lets CI resolve the module graph itself.
+  GOFLAGS: -mod=mod
+  GOTOOLCHAIN: local
+
+defaults:
+  run:
+    working-directory: vca
+
+jobs:
+  commits:
+    name: conventional commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit subjects
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            range="${BASE}..${HEAD}"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "$BEFORE" 2>/dev/null; then
+            range="${BEFORE}..${SHA}"
+          else
+            range="${SHA}~1..${SHA}"
+          fi
+          ./hack/check-commits.sh "$range"
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck vca/hack
+        run: |
+          shellcheck --version
+          shellcheck -S style hack/*.sh
+          ./hack/check-commits_test.sh
+
+  lint:
+    name: gofmt + go vet + golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: vca/go.mod
+
+      - name: Download modules
+        run: go mod download
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+          working-directory: vca
+          args: --timeout=10m
+
+  proto:
+    name: buf lint + breaking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+          version: 1.73.0
+
+      - name: buf lint
+        run: buf lint
+
+      - name: buf breaking against last release tag
+        run: |
+          tag=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          if [ -z "$tag" ]; then
+            echo "::notice::no v* tag exists yet; buf breaking has nothing to compare against and is skipped"
+            exit 0
+          fi
+          if ! git ls-tree -d "$tag" vca/proto >/dev/null 2>&1 || [ -z "$(git ls-tree -d "$tag" vca/proto)" ]; then
+            echo "::notice::tag $tag has no vca/proto directory; buf breaking is skipped"
+            exit 0
+          fi
+          echo "comparing against $tag"
+          buf breaking --against "../.git#tag=${tag},subdir=vca"
+
+  test:
+    name: go test + coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: vca/go.mod
+
+      - name: Download modules
+        run: go mod download
+
+      - name: go test (race, coverage)
+        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Coverage gate (90 percent, core at 100)
+        run: ./hack/coverage.sh 90
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vca-coverage
+          path: vca/coverage.out
+          retention-days: 7
+
+  trivy:
+    name: trivy fs (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: vca
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          scanners: vuln,secret,misconfig

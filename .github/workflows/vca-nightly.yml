@@ -1,0 +1,103 @@
+name: vca-nightly
+
+# Nightly checks for the Verifiable Credentials Adapters (vca/).
+# Implements ADR-006 decision 7.
+# Slow and environment-heavy checks run here, not on every PR:
+#   the full unit suite, contract tests against real DPG containers,
+#   and a Helm render plus kind deploy of deploy/vca/helm/*.
+# Every job blocks. There is no continue-on-error anywhere.
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vca-nightly
+  cancel-in-progress: false
+
+env:
+  GOFLAGS: -mod=mod
+  GOTOOLCHAIN: local
+
+jobs:
+  test:
+    name: make test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vca
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: vca/go.mod
+          cache-dependency-path: vca/go.mod
+
+      - name: Download modules
+        run: go mod download
+
+      - name: make test
+        run: make test
+
+      - name: make cover
+        run: make cover
+
+  contract:
+    name: contract tests (real DPGs)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vca
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: vca/go.mod
+          cache-dependency-path: vca/go.mod
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Contract tests
+        env:
+          # Space separated DPG names, for example "waltid inji credebl esignet".
+          # Empty until the first dpg-adapter service ships its compose file.
+          VCA_CONTRACT_DPGS: ${{ vars.VCA_CONTRACT_DPGS }}
+        run: ./hack/contract-tests.sh
+
+  k8s:
+    name: helm render + kind deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for charts
+        id: charts
+        run: |
+          if ls deploy/vca/helm/*/Chart.yaml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::deploy/vca/helm has no charts yet; the kind deploy is skipped"
+          fi
+
+      - uses: azure/setup-helm@v4
+        if: steps.charts.outputs.present == 'true'
+        with:
+          version: v3.19.0
+
+      - uses: helm/kind-action@v1
+        if: steps.charts.outputs.present == 'true'
+        with:
+          version: v0.30.0
+          cluster_name: vca-smoke
+          wait: 120s
+
+      - name: Kubernetes smoke
+        run: ./vca/hack/k8s-smoke.sh

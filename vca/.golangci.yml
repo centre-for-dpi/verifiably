@@ -1,0 +1,50 @@
+# golangci-lint v2 configuration for vca (ADR-006 decision 5).
+# The gate is strict. No path exclusions. A new finding blocks the merge.
+#
+# Local:  golangci-lint run ./...
+# CI:     .github/workflows/vca-ci.yml
+
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - errorlint
+    - nilerr
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    generated: strict
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/centre-for-dpi/vc-adapters
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
