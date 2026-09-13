@@ -1,0 +1,10 @@
+{
+  "credential_issuer": "https://walt-issuer.example.org",
+  "credential_configuration_ids": ["IdentityCredential_vc+sd-jwt"],
+  "grants": {
+    "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+      "pre-authorized_code": "eyJhbGciOiJIUzI1NiJ9.cHJlYXV0aA.c2ln",
+      "tx_code": {"input_mode": "numeric", "length": 4}
+    }
+  }
+}

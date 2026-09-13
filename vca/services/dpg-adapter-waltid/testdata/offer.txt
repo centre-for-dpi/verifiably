@@ -1,0 +1,1 @@
+openid-credential-offer://issuer.example.org?credential_offer_uri=https%3A%2F%2Fwalt-issuer.example.org%2Fopenid4vc%2FcredentialOffer%3Fid%3D4b2f3f16-1f0a-4b8c-8e58-0d9a1d2c3e4f

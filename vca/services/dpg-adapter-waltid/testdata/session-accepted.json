@@ -1,0 +1,20 @@
+{
+  "id": "9c0e2f1b-77f4-4f2e-a0b1-6f6b2c1d8e55",
+  "tokenResponse": {
+    "vp_token": "eyJhbGciOiJFUzI1NiIsInR5cCI6InZjK3NkLWp3dCJ9.eyJ2Y3QiOiJodHRwczovL3dhbHQtaXNzdWVyLmV4YW1wbGUub3JnL2lkZW50aXR5X2NyZWRlbnRpYWwifQ.c2ln~WyJzYWx0IiwiYWdlX292ZXJfMTgiLHRydWVd~",
+    "presentation_submission": {"id": "9c0e2f1b", "definition_id": "9c0e2f1b"}
+  },
+  "verificationResult": true,
+  "policyResults": {
+    "results": [
+      {
+        "credential": "IdentityCredential",
+        "policyResults": [
+          {"policy": "signature", "is_success": true},
+          {"policy": "expired", "is_success": true},
+          {"policy": "credential-status", "is_success": true}
+        ]
+      }
+    ]
+  }
+}

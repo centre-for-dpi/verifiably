@@ -1,0 +1,1 @@
+openid4vp://authorize?response_type=vp_token&client_id=x509_san_dns%3Awalt-verifier.example.org&response_mode=direct_post&state=9c0e2f1b-77f4-4f2e-a0b1-6f6b2c1d8e55&presentation_definition_uri=https%3A%2F%2Fwalt-verifier.example.org%2Fopenid4vc%2Fpd%2F9c0e2f1b-77f4-4f2e-a0b1-6f6b2c1d8e55

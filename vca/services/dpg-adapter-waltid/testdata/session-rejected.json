@@ -1,0 +1,17 @@
+{
+  "id": "9c0e2f1b-77f4-4f2e-a0b1-6f6b2c1d8e55",
+  "tokenResponse": {
+    "vp_token": ["eyJhbGciOiJFUzI1NiJ9.eyJ2YyI6e319.c2ln"]
+  },
+  "verificationResult": false,
+  "policyResults": {
+    "results": [
+      {
+        "policyResults": [
+          {"policy": "signature", "is_success": true},
+          {"policy": "credential-status", "is_success": false, "error": "the credential is revoked"}
+        ]
+      }
+    ]
+  }
+}

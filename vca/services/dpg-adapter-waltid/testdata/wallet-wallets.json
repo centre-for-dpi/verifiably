@@ -1,0 +1,11 @@
+{
+  "account": "c6b7b2ad-3a06-4f1a-9d1b-4c0f6a0c9b21",
+  "wallets": [
+    {
+      "id": "7d0f9c1e-5b2a-4c8d-9e3f-1a2b3c4d5e6f",
+      "name": "Wallet of the citizen",
+      "createdOn": "2026-01-14T09:12:33Z",
+      "permission": "ADMINISTRATE"
+    }
+  ]
+}

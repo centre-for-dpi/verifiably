@@ -1,0 +1,28 @@
+{
+  "credential_issuer": "https://walt-issuer.example.org",
+  "credential_endpoint": "https://walt-issuer.example.org/credential",
+  "authorization_servers": ["https://walt-issuer.example.org"],
+  "credential_configurations_supported": {
+    "UniversityDegree_jwt_vc_json": {
+      "format": "jwt_vc_json",
+      "cryptographic_binding_methods_supported": ["did"],
+      "credential_signing_alg_values_supported": ["ES256"],
+      "credential_definition": {
+        "type": ["VerifiableCredential", "UniversityDegree"]
+      },
+      "display": [{"name": "University Degree", "locale": "en-US"}]
+    },
+    "IdentityCredential_vc+sd-jwt": {
+      "format": "vc+sd-jwt",
+      "vct": "https://walt-issuer.example.org/identity_credential",
+      "cryptographic_binding_methods_supported": ["jwk"],
+      "credential_signing_alg_values_supported": ["ES256"],
+      "display": [{"name": "Identity Credential", "locale": "en-US"}]
+    },
+    "org.iso.18013.5.1.mDL": {
+      "format": "mso_mdoc",
+      "doctype": "org.iso.18013.5.1.mDL",
+      "display": [{"name": "Driving Licence", "locale": "en-US"}]
+    }
+  }
+}

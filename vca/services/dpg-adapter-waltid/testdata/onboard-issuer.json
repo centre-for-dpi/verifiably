@@ -1,0 +1,14 @@
+{
+  "issuerKey": {
+    "type": "jwk",
+    "jwk": {
+      "kty": "EC",
+      "crv": "P-256",
+      "kid": "9f5f2f8d1f6c4a2e9c3b7d5e8a1b4c6d",
+      "x": "b1Pf5ChhMkH0V7vY1nOqeZ0m2lZ7g0h1aRq0mQ3Yl3M",
+      "y": "hM3cVQY2qz6k1hJqU7nWlYt0xJ8bXcD2aZ9fPq4RsTg",
+      "d": "Vh8CtT1oZgYy2hQ3mRa8kL0nPq5Xc7eD9sT2uW4yA6c"
+    }
+  },
+  "issuerDid": "did:key:zDnaerDaTF5BXEavCrfRZEk316dpbLsfPDZ3WJ5hRTPFU2169"
+}
