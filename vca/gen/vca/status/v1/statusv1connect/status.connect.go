@@ -52,6 +52,8 @@ const (
 	StatusServiceSetStatusProcedure = "/vca.status.v1.StatusService/SetStatus"
 	// StatusServiceGetStatusProcedure is the fully-qualified name of the StatusService's GetStatus RPC.
 	StatusServiceGetStatusProcedure = "/vca.status.v1.StatusService/GetStatus"
+	// StatusServiceGetListProcedure is the fully-qualified name of the StatusService's GetList RPC.
+	StatusServiceGetListProcedure = "/vca.status.v1.StatusService/GetList"
 	// StatusServiceListListsProcedure is the fully-qualified name of the StatusService's ListLists RPC.
 	StatusServiceListListsProcedure = "/vca.status.v1.StatusService/ListLists"
 	// StatusServiceRotateKeyProcedure is the fully-qualified name of the StatusService's RotateKey RPC.
@@ -67,6 +69,9 @@ type StatusServiceClient interface {
 	SetStatus(context.Context, *connect.Request[v1.SetStatusRequest]) (*connect.Response[v1.SetStatusResponse], error)
 	// GetStatus reads the status value of one index.
 	GetStatus(context.Context, *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error)
+	// GetList returns the signed list bytes and their media type. The HTTP
+	// handler that serves the public list calls this RPC.
+	GetList(context.Context, *connect.Request[v1.GetListRequest]) (*connect.Response[v1.GetListResponse], error)
 	// ListLists returns the lists of this issuer in pages.
 	ListLists(context.Context, *connect.Request[v1.ListListsRequest]) (*connect.Response[v1.ListListsResponse], error)
 	// RotateKey creates a new signing key and signs every list with it.
@@ -103,6 +108,12 @@ func NewStatusServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(statusServiceMethods.ByName("GetStatus")),
 			connect.WithClientOptions(opts...),
 		),
+		getList: connect.NewClient[v1.GetListRequest, v1.GetListResponse](
+			httpClient,
+			baseURL+StatusServiceGetListProcedure,
+			connect.WithSchema(statusServiceMethods.ByName("GetList")),
+			connect.WithClientOptions(opts...),
+		),
 		listLists: connect.NewClient[v1.ListListsRequest, v1.ListListsResponse](
 			httpClient,
 			baseURL+StatusServiceListListsProcedure,
@@ -123,6 +134,7 @@ type statusServiceClient struct {
 	allocateIndex *connect.Client[v1.AllocateIndexRequest, v1.AllocateIndexResponse]
 	setStatus     *connect.Client[v1.SetStatusRequest, v1.SetStatusResponse]
 	getStatus     *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
+	getList       *connect.Client[v1.GetListRequest, v1.GetListResponse]
 	listLists     *connect.Client[v1.ListListsRequest, v1.ListListsResponse]
 	rotateKey     *connect.Client[v1.RotateKeyRequest, v1.RotateKeyResponse]
 }
@@ -140,6 +152,11 @@ func (c *statusServiceClient) SetStatus(ctx context.Context, req *connect.Reques
 // GetStatus calls vca.status.v1.StatusService.GetStatus.
 func (c *statusServiceClient) GetStatus(ctx context.Context, req *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error) {
 	return c.getStatus.CallUnary(ctx, req)
+}
+
+// GetList calls vca.status.v1.StatusService.GetList.
+func (c *statusServiceClient) GetList(ctx context.Context, req *connect.Request[v1.GetListRequest]) (*connect.Response[v1.GetListResponse], error) {
+	return c.getList.CallUnary(ctx, req)
 }
 
 // ListLists calls vca.status.v1.StatusService.ListLists.
@@ -161,6 +178,9 @@ type StatusServiceHandler interface {
 	SetStatus(context.Context, *connect.Request[v1.SetStatusRequest]) (*connect.Response[v1.SetStatusResponse], error)
 	// GetStatus reads the status value of one index.
 	GetStatus(context.Context, *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error)
+	// GetList returns the signed list bytes and their media type. The HTTP
+	// handler that serves the public list calls this RPC.
+	GetList(context.Context, *connect.Request[v1.GetListRequest]) (*connect.Response[v1.GetListResponse], error)
 	// ListLists returns the lists of this issuer in pages.
 	ListLists(context.Context, *connect.Request[v1.ListListsRequest]) (*connect.Response[v1.ListListsResponse], error)
 	// RotateKey creates a new signing key and signs every list with it.
@@ -193,6 +213,12 @@ func NewStatusServiceHandler(svc StatusServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(statusServiceMethods.ByName("GetStatus")),
 		connect.WithHandlerOptions(opts...),
 	)
+	statusServiceGetListHandler := connect.NewUnaryHandler(
+		StatusServiceGetListProcedure,
+		svc.GetList,
+		connect.WithSchema(statusServiceMethods.ByName("GetList")),
+		connect.WithHandlerOptions(opts...),
+	)
 	statusServiceListListsHandler := connect.NewUnaryHandler(
 		StatusServiceListListsProcedure,
 		svc.ListLists,
@@ -213,6 +239,8 @@ func NewStatusServiceHandler(svc StatusServiceHandler, opts ...connect.HandlerOp
 			statusServiceSetStatusHandler.ServeHTTP(w, r)
 		case StatusServiceGetStatusProcedure:
 			statusServiceGetStatusHandler.ServeHTTP(w, r)
+		case StatusServiceGetListProcedure:
+			statusServiceGetListHandler.ServeHTTP(w, r)
 		case StatusServiceListListsProcedure:
 			statusServiceListListsHandler.ServeHTTP(w, r)
 		case StatusServiceRotateKeyProcedure:
@@ -236,6 +264,10 @@ func (UnimplementedStatusServiceHandler) SetStatus(context.Context, *connect.Req
 
 func (UnimplementedStatusServiceHandler) GetStatus(context.Context, *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.status.v1.StatusService.GetStatus is not implemented"))
+}
+
+func (UnimplementedStatusServiceHandler) GetList(context.Context, *connect.Request[v1.GetListRequest]) (*connect.Response[v1.GetListResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.status.v1.StatusService.GetList is not implemented"))
 }
 
 func (UnimplementedStatusServiceHandler) ListLists(context.Context, *connect.Request[v1.ListListsRequest]) (*connect.Response[v1.ListListsResponse], error) {

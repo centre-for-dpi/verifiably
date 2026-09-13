@@ -690,6 +690,153 @@ func (x *GetStatusResponse) GetChangedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// GetListRequest selects one list.
+type GetListRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The list id.
+	ListId string `protobuf:"bytes,1,opt,name=list_id,json=listId,proto3" json:"list_id,omitempty"`
+	// The media type the caller accepts. Empty selects the default of the kind.
+	// A token list accepts application/statuslist+jwt or application/statuslist+cwt.
+	Accept        string `protobuf:"bytes,2,opt,name=accept,proto3" json:"accept,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetListRequest) Reset() {
+	*x = GetListRequest{}
+	mi := &file_vca_status_v1_status_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetListRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetListRequest) ProtoMessage() {}
+
+func (x *GetListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_status_v1_status_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetListRequest.ProtoReflect.Descriptor instead.
+func (*GetListRequest) Descriptor() ([]byte, []int) {
+	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetListRequest) GetListId() string {
+	if x != nil {
+		return x.ListId
+	}
+	return ""
+}
+
+func (x *GetListRequest) GetAccept() string {
+	if x != nil {
+		return x.Accept
+	}
+	return ""
+}
+
+// GetListResponse returns the signed list.
+type GetListResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The signed list exactly as the service serves it over HTTP.
+	Body []byte `protobuf:"bytes,1,opt,name=body,proto3" json:"body,omitempty"`
+	// The media type of the body.
+	MediaType string `protobuf:"bytes,2,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	// The ETag value of this signature.
+	Etag string `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
+	// The time of the signature.
+	SignedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=signed_at,json=signedAt,proto3" json:"signed_at,omitempty"`
+	// The time the signature expires.
+	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// The list description.
+	List          *StatusList `protobuf:"bytes,6,opt,name=list,proto3" json:"list,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetListResponse) Reset() {
+	*x = GetListResponse{}
+	mi := &file_vca_status_v1_status_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetListResponse) ProtoMessage() {}
+
+func (x *GetListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_status_v1_status_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetListResponse.ProtoReflect.Descriptor instead.
+func (*GetListResponse) Descriptor() ([]byte, []int) {
+	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetListResponse) GetBody() []byte {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+func (x *GetListResponse) GetMediaType() string {
+	if x != nil {
+		return x.MediaType
+	}
+	return ""
+}
+
+func (x *GetListResponse) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+func (x *GetListResponse) GetSignedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SignedAt
+	}
+	return nil
+}
+
+func (x *GetListResponse) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+func (x *GetListResponse) GetList() *StatusList {
+	if x != nil {
+		return x.List
+	}
+	return nil
+}
+
 // ListListsRequest selects a page and filters.
 type ListListsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -705,7 +852,7 @@ type ListListsRequest struct {
 
 func (x *ListListsRequest) Reset() {
 	*x = ListListsRequest{}
-	mi := &file_vca_status_v1_status_proto_msgTypes[7]
+	mi := &file_vca_status_v1_status_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -717,7 +864,7 @@ func (x *ListListsRequest) String() string {
 func (*ListListsRequest) ProtoMessage() {}
 
 func (x *ListListsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_status_v1_status_proto_msgTypes[7]
+	mi := &file_vca_status_v1_status_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -730,7 +877,7 @@ func (x *ListListsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListListsRequest.ProtoReflect.Descriptor instead.
 func (*ListListsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{7}
+	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListListsRequest) GetKind() Kind {
@@ -767,7 +914,7 @@ type ListListsResponse struct {
 
 func (x *ListListsResponse) Reset() {
 	*x = ListListsResponse{}
-	mi := &file_vca_status_v1_status_proto_msgTypes[8]
+	mi := &file_vca_status_v1_status_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -779,7 +926,7 @@ func (x *ListListsResponse) String() string {
 func (*ListListsResponse) ProtoMessage() {}
 
 func (x *ListListsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_status_v1_status_proto_msgTypes[8]
+	mi := &file_vca_status_v1_status_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -792,7 +939,7 @@ func (x *ListListsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListListsResponse.ProtoReflect.Descriptor instead.
 func (*ListListsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{8}
+	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListListsResponse) GetLists() []*StatusList {
@@ -822,7 +969,7 @@ type RotateKeyRequest struct {
 
 func (x *RotateKeyRequest) Reset() {
 	*x = RotateKeyRequest{}
-	mi := &file_vca_status_v1_status_proto_msgTypes[9]
+	mi := &file_vca_status_v1_status_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -834,7 +981,7 @@ func (x *RotateKeyRequest) String() string {
 func (*RotateKeyRequest) ProtoMessage() {}
 
 func (x *RotateKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_status_v1_status_proto_msgTypes[9]
+	mi := &file_vca_status_v1_status_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -847,7 +994,7 @@ func (x *RotateKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RotateKeyRequest.ProtoReflect.Descriptor instead.
 func (*RotateKeyRequest) Descriptor() ([]byte, []int) {
-	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{9}
+	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RotateKeyRequest) GetIssuerDid() string {
@@ -879,7 +1026,7 @@ type RotateKeyResponse struct {
 
 func (x *RotateKeyResponse) Reset() {
 	*x = RotateKeyResponse{}
-	mi := &file_vca_status_v1_status_proto_msgTypes[10]
+	mi := &file_vca_status_v1_status_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -891,7 +1038,7 @@ func (x *RotateKeyResponse) String() string {
 func (*RotateKeyResponse) ProtoMessage() {}
 
 func (x *RotateKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_status_v1_status_proto_msgTypes[10]
+	mi := &file_vca_status_v1_status_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -904,7 +1051,7 @@ func (x *RotateKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RotateKeyResponse.ProtoReflect.Descriptor instead.
 func (*RotateKeyResponse) Descriptor() ([]byte, []int) {
-	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{10}
+	return file_vca_status_v1_status_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RotateKeyResponse) GetKeyId() string {
@@ -978,7 +1125,19 @@ const file_vca_status_v1_status_proto_rawDesc = "" +
 	"\x05value\x18\x01 \x01(\x05R\x05value\x120\n" +
 	"\apurpose\x18\x02 \x01(\x0e2\x16.vca.status.v1.PurposeR\apurpose\x129\n" +
 	"\n" +
-	"changed_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tchangedAt\"\x9c\x01\n" +
+	"changed_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tchangedAt\"A\n" +
+	"\x0eGetListRequest\x12\x17\n" +
+	"\alist_id\x18\x01 \x01(\tR\x06listId\x12\x16\n" +
+	"\x06accept\x18\x02 \x01(\tR\x06accept\"\xfb\x01\n" +
+	"\x0fGetListResponse\x12\x12\n" +
+	"\x04body\x18\x01 \x01(\fR\x04body\x12\x1d\n" +
+	"\n" +
+	"media_type\x18\x02 \x01(\tR\tmediaType\x12\x12\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\x127\n" +
+	"\tsigned_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bsignedAt\x129\n" +
+	"\n" +
+	"expires_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12-\n" +
+	"\x04list\x18\x06 \x01(\v2\x19.vca.status.v1.StatusListR\x04list\"\x9c\x01\n" +
 	"\x10ListListsRequest\x12'\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x13.vca.status.v1.KindR\x04kind\x120\n" +
 	"\apurpose\x18\x02 \x01(\x0e2\x16.vca.status.v1.PurposeR\apurpose\x12-\n" +
@@ -1003,11 +1162,12 @@ const file_vca_status_v1_status_proto_rawDesc = "" +
 	"\x13PURPOSE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12PURPOSE_REVOCATION\x10\x01\x12\x16\n" +
 	"\x12PURPOSE_SUSPENSION\x10\x02\x12\x13\n" +
-	"\x0fPURPOSE_MESSAGE\x10\x032\xab\x03\n" +
+	"\x0fPURPOSE_MESSAGE\x10\x032\xf5\x03\n" +
 	"\rStatusService\x12Z\n" +
 	"\rAllocateIndex\x12#.vca.status.v1.AllocateIndexRequest\x1a$.vca.status.v1.AllocateIndexResponse\x12N\n" +
 	"\tSetStatus\x12\x1f.vca.status.v1.SetStatusRequest\x1a .vca.status.v1.SetStatusResponse\x12N\n" +
-	"\tGetStatus\x12\x1f.vca.status.v1.GetStatusRequest\x1a .vca.status.v1.GetStatusResponse\x12N\n" +
+	"\tGetStatus\x12\x1f.vca.status.v1.GetStatusRequest\x1a .vca.status.v1.GetStatusResponse\x12H\n" +
+	"\aGetList\x12\x1d.vca.status.v1.GetListRequest\x1a\x1e.vca.status.v1.GetListResponse\x12N\n" +
 	"\tListLists\x12\x1f.vca.status.v1.ListListsRequest\x1a .vca.status.v1.ListListsResponse\x12N\n" +
 	"\tRotateKey\x12\x1f.vca.status.v1.RotateKeyRequest\x1a .vca.status.v1.RotateKeyResponseB\xb8\x01\n" +
 	"\x11com.vca.status.v1B\vStatusProtoP\x01Z@github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1;statusv1\xa2\x02\x03VSX\xaa\x02\rVca.Status.V1\xca\x02\rVca\\Status\\V1\xe2\x02\x19Vca\\Status\\V1\\GPBMetadata\xea\x02\x0fVca::Status::V1b\x06proto3"
@@ -1025,7 +1185,7 @@ func file_vca_status_v1_status_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_status_v1_status_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_vca_status_v1_status_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_vca_status_v1_status_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_vca_status_v1_status_proto_goTypes = []any{
 	(Kind)(0),                     // 0: vca.status.v1.Kind
 	(Purpose)(0),                  // 1: vca.status.v1.Purpose
@@ -1036,47 +1196,54 @@ var file_vca_status_v1_status_proto_goTypes = []any{
 	(*SetStatusResponse)(nil),     // 6: vca.status.v1.SetStatusResponse
 	(*GetStatusRequest)(nil),      // 7: vca.status.v1.GetStatusRequest
 	(*GetStatusResponse)(nil),     // 8: vca.status.v1.GetStatusResponse
-	(*ListListsRequest)(nil),      // 9: vca.status.v1.ListListsRequest
-	(*ListListsResponse)(nil),     // 10: vca.status.v1.ListListsResponse
-	(*RotateKeyRequest)(nil),      // 11: vca.status.v1.RotateKeyRequest
-	(*RotateKeyResponse)(nil),     // 12: vca.status.v1.RotateKeyResponse
-	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),         // 14: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),         // 15: vca.common.v1.PageResult
+	(*GetListRequest)(nil),        // 9: vca.status.v1.GetListRequest
+	(*GetListResponse)(nil),       // 10: vca.status.v1.GetListResponse
+	(*ListListsRequest)(nil),      // 11: vca.status.v1.ListListsRequest
+	(*ListListsResponse)(nil),     // 12: vca.status.v1.ListListsResponse
+	(*RotateKeyRequest)(nil),      // 13: vca.status.v1.RotateKeyRequest
+	(*RotateKeyResponse)(nil),     // 14: vca.status.v1.RotateKeyResponse
+	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
+	(*v1.Pagination)(nil),         // 16: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),         // 17: vca.common.v1.PageResult
 }
 var file_vca_status_v1_status_proto_depIdxs = []int32{
 	0,  // 0: vca.status.v1.StatusList.kind:type_name -> vca.status.v1.Kind
 	1,  // 1: vca.status.v1.StatusList.purpose:type_name -> vca.status.v1.Purpose
-	13, // 2: vca.status.v1.StatusList.signed_at:type_name -> google.protobuf.Timestamp
-	13, // 3: vca.status.v1.StatusList.expires_at:type_name -> google.protobuf.Timestamp
-	13, // 4: vca.status.v1.StatusList.created_at:type_name -> google.protobuf.Timestamp
+	15, // 2: vca.status.v1.StatusList.signed_at:type_name -> google.protobuf.Timestamp
+	15, // 3: vca.status.v1.StatusList.expires_at:type_name -> google.protobuf.Timestamp
+	15, // 4: vca.status.v1.StatusList.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 5: vca.status.v1.AllocateIndexRequest.purpose:type_name -> vca.status.v1.Purpose
 	0,  // 6: vca.status.v1.AllocateIndexRequest.kind:type_name -> vca.status.v1.Kind
 	0,  // 7: vca.status.v1.AllocateIndexResponse.kind:type_name -> vca.status.v1.Kind
 	1,  // 8: vca.status.v1.AllocateIndexResponse.purpose:type_name -> vca.status.v1.Purpose
-	13, // 9: vca.status.v1.SetStatusResponse.signed_at:type_name -> google.protobuf.Timestamp
+	15, // 9: vca.status.v1.SetStatusResponse.signed_at:type_name -> google.protobuf.Timestamp
 	1,  // 10: vca.status.v1.GetStatusResponse.purpose:type_name -> vca.status.v1.Purpose
-	13, // 11: vca.status.v1.GetStatusResponse.changed_at:type_name -> google.protobuf.Timestamp
-	0,  // 12: vca.status.v1.ListListsRequest.kind:type_name -> vca.status.v1.Kind
-	1,  // 13: vca.status.v1.ListListsRequest.purpose:type_name -> vca.status.v1.Purpose
-	14, // 14: vca.status.v1.ListListsRequest.page:type_name -> vca.common.v1.Pagination
-	2,  // 15: vca.status.v1.ListListsResponse.lists:type_name -> vca.status.v1.StatusList
-	15, // 16: vca.status.v1.ListListsResponse.page:type_name -> vca.common.v1.PageResult
-	3,  // 17: vca.status.v1.StatusService.AllocateIndex:input_type -> vca.status.v1.AllocateIndexRequest
-	5,  // 18: vca.status.v1.StatusService.SetStatus:input_type -> vca.status.v1.SetStatusRequest
-	7,  // 19: vca.status.v1.StatusService.GetStatus:input_type -> vca.status.v1.GetStatusRequest
-	9,  // 20: vca.status.v1.StatusService.ListLists:input_type -> vca.status.v1.ListListsRequest
-	11, // 21: vca.status.v1.StatusService.RotateKey:input_type -> vca.status.v1.RotateKeyRequest
-	4,  // 22: vca.status.v1.StatusService.AllocateIndex:output_type -> vca.status.v1.AllocateIndexResponse
-	6,  // 23: vca.status.v1.StatusService.SetStatus:output_type -> vca.status.v1.SetStatusResponse
-	8,  // 24: vca.status.v1.StatusService.GetStatus:output_type -> vca.status.v1.GetStatusResponse
-	10, // 25: vca.status.v1.StatusService.ListLists:output_type -> vca.status.v1.ListListsResponse
-	12, // 26: vca.status.v1.StatusService.RotateKey:output_type -> vca.status.v1.RotateKeyResponse
-	22, // [22:27] is the sub-list for method output_type
-	17, // [17:22] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	15, // 11: vca.status.v1.GetStatusResponse.changed_at:type_name -> google.protobuf.Timestamp
+	15, // 12: vca.status.v1.GetListResponse.signed_at:type_name -> google.protobuf.Timestamp
+	15, // 13: vca.status.v1.GetListResponse.expires_at:type_name -> google.protobuf.Timestamp
+	2,  // 14: vca.status.v1.GetListResponse.list:type_name -> vca.status.v1.StatusList
+	0,  // 15: vca.status.v1.ListListsRequest.kind:type_name -> vca.status.v1.Kind
+	1,  // 16: vca.status.v1.ListListsRequest.purpose:type_name -> vca.status.v1.Purpose
+	16, // 17: vca.status.v1.ListListsRequest.page:type_name -> vca.common.v1.Pagination
+	2,  // 18: vca.status.v1.ListListsResponse.lists:type_name -> vca.status.v1.StatusList
+	17, // 19: vca.status.v1.ListListsResponse.page:type_name -> vca.common.v1.PageResult
+	3,  // 20: vca.status.v1.StatusService.AllocateIndex:input_type -> vca.status.v1.AllocateIndexRequest
+	5,  // 21: vca.status.v1.StatusService.SetStatus:input_type -> vca.status.v1.SetStatusRequest
+	7,  // 22: vca.status.v1.StatusService.GetStatus:input_type -> vca.status.v1.GetStatusRequest
+	9,  // 23: vca.status.v1.StatusService.GetList:input_type -> vca.status.v1.GetListRequest
+	11, // 24: vca.status.v1.StatusService.ListLists:input_type -> vca.status.v1.ListListsRequest
+	13, // 25: vca.status.v1.StatusService.RotateKey:input_type -> vca.status.v1.RotateKeyRequest
+	4,  // 26: vca.status.v1.StatusService.AllocateIndex:output_type -> vca.status.v1.AllocateIndexResponse
+	6,  // 27: vca.status.v1.StatusService.SetStatus:output_type -> vca.status.v1.SetStatusResponse
+	8,  // 28: vca.status.v1.StatusService.GetStatus:output_type -> vca.status.v1.GetStatusResponse
+	10, // 29: vca.status.v1.StatusService.GetList:output_type -> vca.status.v1.GetListResponse
+	12, // 30: vca.status.v1.StatusService.ListLists:output_type -> vca.status.v1.ListListsResponse
+	14, // 31: vca.status.v1.StatusService.RotateKey:output_type -> vca.status.v1.RotateKeyResponse
+	26, // [26:32] is the sub-list for method output_type
+	20, // [20:26] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_vca_status_v1_status_proto_init() }
@@ -1090,7 +1257,7 @@ func file_vca_status_v1_status_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_status_v1_status_proto_rawDesc), len(file_vca_status_v1_status_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

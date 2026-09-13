@@ -32,6 +32,10 @@ service SchemaService {
   // ListPublic returns the published schemas without staff only fields.
   // Wallets and verifiers call it without a session.
   rpc ListPublic(ListPublicRequest) returns (ListPublicResponse);
+  // GetIssuerMetadata returns the OID4VCI issuer metadata that the
+  // published schemas produce (ADR-013 decision 4). The well-known HTTP
+  // handler serves the same document.
+  rpc GetIssuerMetadata(GetIssuerMetadataRequest) returns (GetIssuerMetadataResponse);
   // GetVct returns the SD-JWT VC type metadata of one published schema
   // (ADR-013 decision 5).
   rpc GetVct(GetVctRequest) returns (GetVctResponse);
@@ -242,6 +246,20 @@ message ListPublicResponse {
   repeated PublicSchema schemas = 1;
   // The page description.
   vca.common.v1.PageResult page = 2;
+}
+
+// GetIssuerMetadataRequest selects the metadata document. It has no fields.
+message GetIssuerMetadataRequest {}
+
+// GetIssuerMetadataResponse returns the issuer metadata.
+message GetIssuerMetadataResponse {
+  // The full OID4VCI issuer metadata document, as a JSON string.
+  string metadata = 1;
+  // The credential_configurations_supported entries, keyed by
+  // configuration id, each as a JSON string.
+  map<string, string> credential_configurations_supported = 2;
+  // The time the service built the document.
+  google.protobuf.Timestamp generated_at = 3;
 }
 
 // GetVctRequest selects a schema by vct.

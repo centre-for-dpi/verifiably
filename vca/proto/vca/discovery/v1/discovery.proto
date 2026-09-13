@@ -32,6 +32,9 @@ service DiscoveryService {
   // VersionTemplate stores a new version of an existing template
   // (ADR-022 decision 4). Old versions stay readable.
   rpc VersionTemplate(VersionTemplateRequest) returns (VersionTemplateResponse);
+  // DeleteTemplate removes every version of a template that no combined
+  // template or policy set references.
+  rpc DeleteTemplate(DeleteTemplateRequest) returns (DeleteTemplateResponse);
 }
 
 // Issuer is one crawled issuer.
@@ -224,6 +227,18 @@ message GetTemplateRequest {
   string id = 1;
   // The version. Zero selects the latest version.
   int32 version = 2;
+}
+
+// DeleteTemplateRequest selects a template.
+message DeleteTemplateRequest {
+  // The template id.
+  string id = 1;
+}
+
+// DeleteTemplateResponse confirms the removal.
+message DeleteTemplateResponse {
+  // The number of versions the service removed.
+  int32 versions_removed = 1;
 }
 
 // GetTemplateResponse returns the template.

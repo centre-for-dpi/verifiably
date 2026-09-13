@@ -31,6 +31,8 @@ service IssuerBackendService {
   rpc Issue(IssueRequest) returns (IssueResponse);
   // IssueBatch produces many credentials in one call.
   rpc IssueBatch(IssueBatchRequest) returns (IssueBatchResponse);
+  // GetIssuanceStatus returns the state of one offer or deferred issuance.
+  rpc GetIssuanceStatus(GetIssuanceStatusRequest) returns (GetIssuanceStatusResponse);
   // Revoke sets the status bit of one credential through its status index.
   rpc Revoke(RevokeRequest) returns (RevokeResponse);
   // GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
@@ -260,6 +262,43 @@ message RevokeRequest {
 message RevokeResponse {
   // The time the DPG applied the change.
   google.protobuf.Timestamp revoked_at = 1;
+}
+
+// GetIssuanceStatusRequest selects one offer or deferred issuance.
+message GetIssuanceStatusRequest {
+  // The adapter assigned offer id from CreateOffer.
+  string offer_id = 1;
+  // The OID4VCI transaction id of a deferred issuance. Empty for an offer.
+  string transaction_id = 2;
+}
+
+// GetIssuanceStatusResponse returns the state of the issuance.
+message GetIssuanceStatusResponse {
+  // The state.
+  State state = 1;
+  // The credential for the state STATE_ISSUED, when the DPG returns it.
+  vca.common.v1.Credential credential = 2;
+  // The time the wallet claimed the offer. Empty when not claimed.
+  google.protobuf.Timestamp claimed_at = 3;
+  // The time at which the offer stops working.
+  google.protobuf.Timestamp expires_at = 4;
+  // The error text from the DPG for the state STATE_FAILED.
+  string error = 5;
+
+  // State names where an issuance is in its life cycle.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // The offer exists and no wallet has claimed it.
+    STATE_PENDING = 1;
+    // The wallet claimed the offer and the DPG issued the credential.
+    STATE_ISSUED = 2;
+    // The DPG deferred the issuance and the wallet must poll.
+    STATE_DEFERRED = 3;
+    // The offer expired before a wallet claimed it.
+    STATE_EXPIRED = 4;
+    // The DPG could not issue the credential.
+    STATE_FAILED = 5;
+  }
 }
 
 // GetIssuerMetadataRequest has no fields.

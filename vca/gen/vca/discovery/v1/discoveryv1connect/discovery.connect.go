@@ -62,6 +62,9 @@ const (
 	// DiscoveryServiceVersionTemplateProcedure is the fully-qualified name of the DiscoveryService's
 	// VersionTemplate RPC.
 	DiscoveryServiceVersionTemplateProcedure = "/vca.discovery.v1.DiscoveryService/VersionTemplate"
+	// DiscoveryServiceDeleteTemplateProcedure is the fully-qualified name of the DiscoveryService's
+	// DeleteTemplate RPC.
+	DiscoveryServiceDeleteTemplateProcedure = "/vca.discovery.v1.DiscoveryService/DeleteTemplate"
 )
 
 // DiscoveryServiceClient is a client for the vca.discovery.v1.DiscoveryService service.
@@ -84,6 +87,9 @@ type DiscoveryServiceClient interface {
 	// VersionTemplate stores a new version of an existing template
 	// (ADR-022 decision 4). Old versions stay readable.
 	VersionTemplate(context.Context, *connect.Request[v1.VersionTemplateRequest]) (*connect.Response[v1.VersionTemplateResponse], error)
+	// DeleteTemplate removes every version of a template that no combined
+	// template or policy set references.
+	DeleteTemplate(context.Context, *connect.Request[v1.DeleteTemplateRequest]) (*connect.Response[v1.DeleteTemplateResponse], error)
 }
 
 // NewDiscoveryServiceClient constructs a client for the vca.discovery.v1.DiscoveryService service.
@@ -145,6 +151,12 @@ func NewDiscoveryServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(discoveryServiceMethods.ByName("VersionTemplate")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteTemplate: connect.NewClient[v1.DeleteTemplateRequest, v1.DeleteTemplateResponse](
+			httpClient,
+			baseURL+DiscoveryServiceDeleteTemplateProcedure,
+			connect.WithSchema(discoveryServiceMethods.ByName("DeleteTemplate")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -158,6 +170,7 @@ type discoveryServiceClient struct {
 	listTemplates       *connect.Client[v1.ListTemplatesRequest, v1.ListTemplatesResponse]
 	getTemplate         *connect.Client[v1.GetTemplateRequest, v1.GetTemplateResponse]
 	versionTemplate     *connect.Client[v1.VersionTemplateRequest, v1.VersionTemplateResponse]
+	deleteTemplate      *connect.Client[v1.DeleteTemplateRequest, v1.DeleteTemplateResponse]
 }
 
 // Crawl calls vca.discovery.v1.DiscoveryService.Crawl.
@@ -200,6 +213,11 @@ func (c *discoveryServiceClient) VersionTemplate(ctx context.Context, req *conne
 	return c.versionTemplate.CallUnary(ctx, req)
 }
 
+// DeleteTemplate calls vca.discovery.v1.DiscoveryService.DeleteTemplate.
+func (c *discoveryServiceClient) DeleteTemplate(ctx context.Context, req *connect.Request[v1.DeleteTemplateRequest]) (*connect.Response[v1.DeleteTemplateResponse], error) {
+	return c.deleteTemplate.CallUnary(ctx, req)
+}
+
 // DiscoveryServiceHandler is an implementation of the vca.discovery.v1.DiscoveryService service.
 type DiscoveryServiceHandler interface {
 	// Crawl fetches the metadata of every trusted issuer now and refreshes
@@ -220,6 +238,9 @@ type DiscoveryServiceHandler interface {
 	// VersionTemplate stores a new version of an existing template
 	// (ADR-022 decision 4). Old versions stay readable.
 	VersionTemplate(context.Context, *connect.Request[v1.VersionTemplateRequest]) (*connect.Response[v1.VersionTemplateResponse], error)
+	// DeleteTemplate removes every version of a template that no combined
+	// template or policy set references.
+	DeleteTemplate(context.Context, *connect.Request[v1.DeleteTemplateRequest]) (*connect.Response[v1.DeleteTemplateResponse], error)
 }
 
 // NewDiscoveryServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -277,6 +298,12 @@ func NewDiscoveryServiceHandler(svc DiscoveryServiceHandler, opts ...connect.Han
 		connect.WithSchema(discoveryServiceMethods.ByName("VersionTemplate")),
 		connect.WithHandlerOptions(opts...),
 	)
+	discoveryServiceDeleteTemplateHandler := connect.NewUnaryHandler(
+		DiscoveryServiceDeleteTemplateProcedure,
+		svc.DeleteTemplate,
+		connect.WithSchema(discoveryServiceMethods.ByName("DeleteTemplate")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.discovery.v1.DiscoveryService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DiscoveryServiceCrawlProcedure:
@@ -295,6 +322,8 @@ func NewDiscoveryServiceHandler(svc DiscoveryServiceHandler, opts ...connect.Han
 			discoveryServiceGetTemplateHandler.ServeHTTP(w, r)
 		case DiscoveryServiceVersionTemplateProcedure:
 			discoveryServiceVersionTemplateHandler.ServeHTTP(w, r)
+		case DiscoveryServiceDeleteTemplateProcedure:
+			discoveryServiceDeleteTemplateHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -334,4 +363,8 @@ func (UnimplementedDiscoveryServiceHandler) GetTemplate(context.Context, *connec
 
 func (UnimplementedDiscoveryServiceHandler) VersionTemplate(context.Context, *connect.Request[v1.VersionTemplateRequest]) (*connect.Response[v1.VersionTemplateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.discovery.v1.DiscoveryService.VersionTemplate is not implemented"))
+}
+
+func (UnimplementedDiscoveryServiceHandler) DeleteTemplate(context.Context, *connect.Request[v1.DeleteTemplateRequest]) (*connect.Response[v1.DeleteTemplateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.discovery.v1.DiscoveryService.DeleteTemplate is not implemented"))
 }

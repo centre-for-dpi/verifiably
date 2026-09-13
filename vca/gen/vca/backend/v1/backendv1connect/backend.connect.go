@@ -63,6 +63,9 @@ const (
 	// IssuerBackendServiceIssueBatchProcedure is the fully-qualified name of the IssuerBackendService's
 	// IssueBatch RPC.
 	IssuerBackendServiceIssueBatchProcedure = "/vca.backend.v1.IssuerBackendService/IssueBatch"
+	// IssuerBackendServiceGetIssuanceStatusProcedure is the fully-qualified name of the
+	// IssuerBackendService's GetIssuanceStatus RPC.
+	IssuerBackendServiceGetIssuanceStatusProcedure = "/vca.backend.v1.IssuerBackendService/GetIssuanceStatus"
 	// IssuerBackendServiceRevokeProcedure is the fully-qualified name of the IssuerBackendService's
 	// Revoke RPC.
 	IssuerBackendServiceRevokeProcedure = "/vca.backend.v1.IssuerBackendService/Revoke"
@@ -182,6 +185,8 @@ type IssuerBackendServiceClient interface {
 	Issue(context.Context, *connect.Request[v1.IssueRequest]) (*connect.Response[v1.IssueResponse], error)
 	// IssueBatch produces many credentials in one call.
 	IssueBatch(context.Context, *connect.Request[v1.IssueBatchRequest]) (*connect.Response[v1.IssueBatchResponse], error)
+	// GetIssuanceStatus returns the state of one offer or deferred issuance.
+	GetIssuanceStatus(context.Context, *connect.Request[v1.GetIssuanceStatusRequest]) (*connect.Response[v1.GetIssuanceStatusResponse], error)
 	// Revoke sets the status bit of one credential through its status index.
 	Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error)
 	// GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
@@ -223,6 +228,12 @@ func NewIssuerBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(issuerBackendServiceMethods.ByName("IssueBatch")),
 			connect.WithClientOptions(opts...),
 		),
+		getIssuanceStatus: connect.NewClient[v1.GetIssuanceStatusRequest, v1.GetIssuanceStatusResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceGetIssuanceStatusProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("GetIssuanceStatus")),
+			connect.WithClientOptions(opts...),
+		),
 		revoke: connect.NewClient[v1.RevokeRequest, v1.RevokeResponse](
 			httpClient,
 			baseURL+IssuerBackendServiceRevokeProcedure,
@@ -244,6 +255,7 @@ type issuerBackendServiceClient struct {
 	createOffer                     *connect.Client[v1.CreateOfferRequest, v1.CreateOfferResponse]
 	issue                           *connect.Client[v1.IssueRequest, v1.IssueResponse]
 	issueBatch                      *connect.Client[v1.IssueBatchRequest, v1.IssueBatchResponse]
+	getIssuanceStatus               *connect.Client[v1.GetIssuanceStatusRequest, v1.GetIssuanceStatusResponse]
 	revoke                          *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
 	getIssuerMetadata               *connect.Client[v1.GetIssuerMetadataRequest, v1.GetIssuerMetadataResponse]
 }
@@ -269,6 +281,11 @@ func (c *issuerBackendServiceClient) IssueBatch(ctx context.Context, req *connec
 	return c.issueBatch.CallUnary(ctx, req)
 }
 
+// GetIssuanceStatus calls vca.backend.v1.IssuerBackendService.GetIssuanceStatus.
+func (c *issuerBackendServiceClient) GetIssuanceStatus(ctx context.Context, req *connect.Request[v1.GetIssuanceStatusRequest]) (*connect.Response[v1.GetIssuanceStatusResponse], error) {
+	return c.getIssuanceStatus.CallUnary(ctx, req)
+}
+
 // Revoke calls vca.backend.v1.IssuerBackendService.Revoke.
 func (c *issuerBackendServiceClient) Revoke(ctx context.Context, req *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error) {
 	return c.revoke.CallUnary(ctx, req)
@@ -291,6 +308,8 @@ type IssuerBackendServiceHandler interface {
 	Issue(context.Context, *connect.Request[v1.IssueRequest]) (*connect.Response[v1.IssueResponse], error)
 	// IssueBatch produces many credentials in one call.
 	IssueBatch(context.Context, *connect.Request[v1.IssueBatchRequest]) (*connect.Response[v1.IssueBatchResponse], error)
+	// GetIssuanceStatus returns the state of one offer or deferred issuance.
+	GetIssuanceStatus(context.Context, *connect.Request[v1.GetIssuanceStatusRequest]) (*connect.Response[v1.GetIssuanceStatusResponse], error)
 	// Revoke sets the status bit of one credential through its status index.
 	Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error)
 	// GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
@@ -328,6 +347,12 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 		connect.WithSchema(issuerBackendServiceMethods.ByName("IssueBatch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	issuerBackendServiceGetIssuanceStatusHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceGetIssuanceStatusProcedure,
+		svc.GetIssuanceStatus,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("GetIssuanceStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	issuerBackendServiceRevokeHandler := connect.NewUnaryHandler(
 		IssuerBackendServiceRevokeProcedure,
 		svc.Revoke,
@@ -350,6 +375,8 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 			issuerBackendServiceIssueHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceIssueBatchProcedure:
 			issuerBackendServiceIssueBatchHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceGetIssuanceStatusProcedure:
+			issuerBackendServiceGetIssuanceStatusHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceRevokeProcedure:
 			issuerBackendServiceRevokeHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceGetIssuerMetadataProcedure:
@@ -377,6 +404,10 @@ func (UnimplementedIssuerBackendServiceHandler) Issue(context.Context, *connect.
 
 func (UnimplementedIssuerBackendServiceHandler) IssueBatch(context.Context, *connect.Request[v1.IssueBatchRequest]) (*connect.Response[v1.IssueBatchResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.IssueBatch is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) GetIssuanceStatus(context.Context, *connect.Request[v1.GetIssuanceStatusRequest]) (*connect.Response[v1.GetIssuanceStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.GetIssuanceStatus is not implemented"))
 }
 
 func (UnimplementedIssuerBackendServiceHandler) Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error) {

@@ -1148,6 +1148,98 @@ func (x *GetTemplateRequest) GetVersion() int32 {
 	return 0
 }
 
+// DeleteTemplateRequest selects a template.
+type DeleteTemplateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The template id.
+	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTemplateRequest) Reset() {
+	*x = DeleteTemplateRequest{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTemplateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTemplateRequest) ProtoMessage() {}
+
+func (x *DeleteTemplateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTemplateRequest.ProtoReflect.Descriptor instead.
+func (*DeleteTemplateRequest) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *DeleteTemplateRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+// DeleteTemplateResponse confirms the removal.
+type DeleteTemplateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The number of versions the service removed.
+	VersionsRemoved int32 `protobuf:"varint,1,opt,name=versions_removed,json=versionsRemoved,proto3" json:"versions_removed,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DeleteTemplateResponse) Reset() {
+	*x = DeleteTemplateResponse{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTemplateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTemplateResponse) ProtoMessage() {}
+
+func (x *DeleteTemplateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTemplateResponse.ProtoReflect.Descriptor instead.
+func (*DeleteTemplateResponse) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *DeleteTemplateResponse) GetVersionsRemoved() int32 {
+	if x != nil {
+		return x.VersionsRemoved
+	}
+	return 0
+}
+
 // GetTemplateResponse returns the template.
 type GetTemplateResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1159,7 +1251,7 @@ type GetTemplateResponse struct {
 
 func (x *GetTemplateResponse) Reset() {
 	*x = GetTemplateResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[17]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1171,7 +1263,7 @@ func (x *GetTemplateResponse) String() string {
 func (*GetTemplateResponse) ProtoMessage() {}
 
 func (x *GetTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[17]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1184,7 +1276,7 @@ func (x *GetTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTemplateResponse.ProtoReflect.Descriptor instead.
 func (*GetTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{17}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetTemplateResponse) GetTemplate() *PresentationTemplate {
@@ -1205,7 +1297,7 @@ type VersionTemplateRequest struct {
 
 func (x *VersionTemplateRequest) Reset() {
 	*x = VersionTemplateRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[18]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1217,7 +1309,7 @@ func (x *VersionTemplateRequest) String() string {
 func (*VersionTemplateRequest) ProtoMessage() {}
 
 func (x *VersionTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[18]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1230,7 +1322,7 @@ func (x *VersionTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionTemplateRequest.ProtoReflect.Descriptor instead.
 func (*VersionTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{18}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *VersionTemplateRequest) GetTemplate() *PresentationTemplate {
@@ -1251,7 +1343,7 @@ type VersionTemplateResponse struct {
 
 func (x *VersionTemplateResponse) Reset() {
 	*x = VersionTemplateResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[19]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1263,7 +1355,7 @@ func (x *VersionTemplateResponse) String() string {
 func (*VersionTemplateResponse) ProtoMessage() {}
 
 func (x *VersionTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[19]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1276,7 +1368,7 @@ func (x *VersionTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionTemplateResponse.ProtoReflect.Descriptor instead.
 func (*VersionTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{19}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *VersionTemplateResponse) GetTemplate() *PresentationTemplate {
@@ -1305,7 +1397,7 @@ type PresentationTemplate_CredentialQuery struct {
 
 func (x *PresentationTemplate_CredentialQuery) Reset() {
 	*x = PresentationTemplate_CredentialQuery{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[20]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1317,7 +1409,7 @@ func (x *PresentationTemplate_CredentialQuery) String() string {
 func (*PresentationTemplate_CredentialQuery) ProtoMessage() {}
 
 func (x *PresentationTemplate_CredentialQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[20]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1459,13 +1551,17 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\">\n" +
 	"\x12GetTemplateRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\x05R\aversion\"Y\n" +
+	"\aversion\x18\x02 \x01(\x05R\aversion\"'\n" +
+	"\x15DeleteTemplateRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"C\n" +
+	"\x16DeleteTemplateResponse\x12)\n" +
+	"\x10versions_removed\x18\x01 \x01(\x05R\x0fversionsRemoved\"Y\n" +
 	"\x13GetTemplateResponse\x12B\n" +
 	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate\"\\\n" +
 	"\x16VersionTemplateRequest\x12B\n" +
 	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate\"]\n" +
 	"\x17VersionTemplateResponse\x12B\n" +
-	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate2\x8d\x06\n" +
+	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate2\xf2\x06\n" +
 	"\x10DiscoveryService\x12H\n" +
 	"\x05Crawl\x12\x1e.vca.discovery.v1.CrawlRequest\x1a\x1f.vca.discovery.v1.CrawlResponse\x12Z\n" +
 	"\vListIssuers\x12$.vca.discovery.v1.ListIssuersRequest\x1a%.vca.discovery.v1.ListIssuersResponse\x12r\n" +
@@ -1474,7 +1570,8 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x0eCreateTemplate\x12'.vca.discovery.v1.CreateTemplateRequest\x1a(.vca.discovery.v1.CreateTemplateResponse\x12`\n" +
 	"\rListTemplates\x12&.vca.discovery.v1.ListTemplatesRequest\x1a'.vca.discovery.v1.ListTemplatesResponse\x12Z\n" +
 	"\vGetTemplate\x12$.vca.discovery.v1.GetTemplateRequest\x1a%.vca.discovery.v1.GetTemplateResponse\x12f\n" +
-	"\x0fVersionTemplate\x12(.vca.discovery.v1.VersionTemplateRequest\x1a).vca.discovery.v1.VersionTemplateResponseB\xd0\x01\n" +
+	"\x0fVersionTemplate\x12(.vca.discovery.v1.VersionTemplateRequest\x1a).vca.discovery.v1.VersionTemplateResponse\x12c\n" +
+	"\x0eDeleteTemplate\x12'.vca.discovery.v1.DeleteTemplateRequest\x1a(.vca.discovery.v1.DeleteTemplateResponseB\xd0\x01\n" +
 	"\x14com.vca.discovery.v1B\x0eDiscoveryProtoP\x01ZFgithub.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1;discoveryv1\xa2\x02\x03VDX\xaa\x02\x10Vca.Discovery.V1\xca\x02\x10Vca\\Discovery\\V1\xe2\x02\x1cVca\\Discovery\\V1\\GPBMetadata\xea\x02\x12Vca::Discovery::V1b\x06proto3"
 
 var (
@@ -1489,7 +1586,7 @@ func file_vca_discovery_v1_discovery_proto_rawDescGZIP() []byte {
 	return file_vca_discovery_v1_discovery_proto_rawDescData
 }
 
-var file_vca_discovery_v1_discovery_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_vca_discovery_v1_discovery_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_vca_discovery_v1_discovery_proto_goTypes = []any{
 	(*Issuer)(nil),                               // 0: vca.discovery.v1.Issuer
 	(*CredentialType)(nil),                       // 1: vca.discovery.v1.CredentialType
@@ -1508,44 +1605,46 @@ var file_vca_discovery_v1_discovery_proto_goTypes = []any{
 	(*ListTemplatesRequest)(nil),                 // 14: vca.discovery.v1.ListTemplatesRequest
 	(*ListTemplatesResponse)(nil),                // 15: vca.discovery.v1.ListTemplatesResponse
 	(*GetTemplateRequest)(nil),                   // 16: vca.discovery.v1.GetTemplateRequest
-	(*GetTemplateResponse)(nil),                  // 17: vca.discovery.v1.GetTemplateResponse
-	(*VersionTemplateRequest)(nil),               // 18: vca.discovery.v1.VersionTemplateRequest
-	(*VersionTemplateResponse)(nil),              // 19: vca.discovery.v1.VersionTemplateResponse
-	(*PresentationTemplate_CredentialQuery)(nil), // 20: vca.discovery.v1.PresentationTemplate.CredentialQuery
-	nil,                                 // 21: vca.discovery.v1.CrawlResponse.FailedEntry
-	(v1.TrustLookupResponse_Outcome)(0), // 22: vca.trust.v1.TrustLookupResponse.Outcome
-	(*timestamppb.Timestamp)(nil),       // 23: google.protobuf.Timestamp
-	(v11.Format)(0),                     // 24: vca.common.v1.Format
-	(*v12.Display)(nil),                 // 25: vca.schema.v1.Display
-	(*v11.Pagination)(nil),              // 26: vca.common.v1.Pagination
-	(*v11.PageResult)(nil),              // 27: vca.common.v1.PageResult
+	(*DeleteTemplateRequest)(nil),                // 17: vca.discovery.v1.DeleteTemplateRequest
+	(*DeleteTemplateResponse)(nil),               // 18: vca.discovery.v1.DeleteTemplateResponse
+	(*GetTemplateResponse)(nil),                  // 19: vca.discovery.v1.GetTemplateResponse
+	(*VersionTemplateRequest)(nil),               // 20: vca.discovery.v1.VersionTemplateRequest
+	(*VersionTemplateResponse)(nil),              // 21: vca.discovery.v1.VersionTemplateResponse
+	(*PresentationTemplate_CredentialQuery)(nil), // 22: vca.discovery.v1.PresentationTemplate.CredentialQuery
+	nil,                                 // 23: vca.discovery.v1.CrawlResponse.FailedEntry
+	(v1.TrustLookupResponse_Outcome)(0), // 24: vca.trust.v1.TrustLookupResponse.Outcome
+	(*timestamppb.Timestamp)(nil),       // 25: google.protobuf.Timestamp
+	(v11.Format)(0),                     // 26: vca.common.v1.Format
+	(*v12.Display)(nil),                 // 27: vca.schema.v1.Display
+	(*v11.Pagination)(nil),              // 28: vca.common.v1.Pagination
+	(*v11.PageResult)(nil),              // 29: vca.common.v1.PageResult
 }
 var file_vca_discovery_v1_discovery_proto_depIdxs = []int32{
-	22, // 0: vca.discovery.v1.Issuer.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	23, // 1: vca.discovery.v1.Issuer.crawled_at:type_name -> google.protobuf.Timestamp
-	24, // 2: vca.discovery.v1.CredentialType.format:type_name -> vca.common.v1.Format
-	25, // 3: vca.discovery.v1.CredentialType.display:type_name -> vca.schema.v1.Display
-	20, // 4: vca.discovery.v1.PresentationTemplate.queries:type_name -> vca.discovery.v1.PresentationTemplate.CredentialQuery
-	23, // 5: vca.discovery.v1.PresentationTemplate.created_at:type_name -> google.protobuf.Timestamp
-	21, // 6: vca.discovery.v1.CrawlResponse.failed:type_name -> vca.discovery.v1.CrawlResponse.FailedEntry
-	23, // 7: vca.discovery.v1.CrawlResponse.crawled_at:type_name -> google.protobuf.Timestamp
-	26, // 8: vca.discovery.v1.ListIssuersRequest.page:type_name -> vca.common.v1.Pagination
+	24, // 0: vca.discovery.v1.Issuer.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	25, // 1: vca.discovery.v1.Issuer.crawled_at:type_name -> google.protobuf.Timestamp
+	26, // 2: vca.discovery.v1.CredentialType.format:type_name -> vca.common.v1.Format
+	27, // 3: vca.discovery.v1.CredentialType.display:type_name -> vca.schema.v1.Display
+	22, // 4: vca.discovery.v1.PresentationTemplate.queries:type_name -> vca.discovery.v1.PresentationTemplate.CredentialQuery
+	25, // 5: vca.discovery.v1.PresentationTemplate.created_at:type_name -> google.protobuf.Timestamp
+	23, // 6: vca.discovery.v1.CrawlResponse.failed:type_name -> vca.discovery.v1.CrawlResponse.FailedEntry
+	25, // 7: vca.discovery.v1.CrawlResponse.crawled_at:type_name -> google.protobuf.Timestamp
+	28, // 8: vca.discovery.v1.ListIssuersRequest.page:type_name -> vca.common.v1.Pagination
 	0,  // 9: vca.discovery.v1.ListIssuersResponse.issuers:type_name -> vca.discovery.v1.Issuer
-	27, // 10: vca.discovery.v1.ListIssuersResponse.page:type_name -> vca.common.v1.PageResult
-	26, // 11: vca.discovery.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
-	24, // 12: vca.discovery.v1.ListCredentialTypesRequest.format:type_name -> vca.common.v1.Format
+	29, // 10: vca.discovery.v1.ListIssuersResponse.page:type_name -> vca.common.v1.PageResult
+	28, // 11: vca.discovery.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
+	26, // 12: vca.discovery.v1.ListCredentialTypesRequest.format:type_name -> vca.common.v1.Format
 	1,  // 13: vca.discovery.v1.ListCredentialTypesResponse.types:type_name -> vca.discovery.v1.CredentialType
-	27, // 14: vca.discovery.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
+	29, // 14: vca.discovery.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
 	2,  // 15: vca.discovery.v1.GetFieldsResponse.fields:type_name -> vca.discovery.v1.Field
 	3,  // 16: vca.discovery.v1.CreateTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
 	3,  // 17: vca.discovery.v1.CreateTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
-	26, // 18: vca.discovery.v1.ListTemplatesRequest.page:type_name -> vca.common.v1.Pagination
+	28, // 18: vca.discovery.v1.ListTemplatesRequest.page:type_name -> vca.common.v1.Pagination
 	3,  // 19: vca.discovery.v1.ListTemplatesResponse.templates:type_name -> vca.discovery.v1.PresentationTemplate
-	27, // 20: vca.discovery.v1.ListTemplatesResponse.page:type_name -> vca.common.v1.PageResult
+	29, // 20: vca.discovery.v1.ListTemplatesResponse.page:type_name -> vca.common.v1.PageResult
 	3,  // 21: vca.discovery.v1.GetTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
 	3,  // 22: vca.discovery.v1.VersionTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
 	3,  // 23: vca.discovery.v1.VersionTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
-	24, // 24: vca.discovery.v1.PresentationTemplate.CredentialQuery.format:type_name -> vca.common.v1.Format
+	26, // 24: vca.discovery.v1.PresentationTemplate.CredentialQuery.format:type_name -> vca.common.v1.Format
 	4,  // 25: vca.discovery.v1.DiscoveryService.Crawl:input_type -> vca.discovery.v1.CrawlRequest
 	6,  // 26: vca.discovery.v1.DiscoveryService.ListIssuers:input_type -> vca.discovery.v1.ListIssuersRequest
 	8,  // 27: vca.discovery.v1.DiscoveryService.ListCredentialTypes:input_type -> vca.discovery.v1.ListCredentialTypesRequest
@@ -1553,17 +1652,19 @@ var file_vca_discovery_v1_discovery_proto_depIdxs = []int32{
 	12, // 29: vca.discovery.v1.DiscoveryService.CreateTemplate:input_type -> vca.discovery.v1.CreateTemplateRequest
 	14, // 30: vca.discovery.v1.DiscoveryService.ListTemplates:input_type -> vca.discovery.v1.ListTemplatesRequest
 	16, // 31: vca.discovery.v1.DiscoveryService.GetTemplate:input_type -> vca.discovery.v1.GetTemplateRequest
-	18, // 32: vca.discovery.v1.DiscoveryService.VersionTemplate:input_type -> vca.discovery.v1.VersionTemplateRequest
-	5,  // 33: vca.discovery.v1.DiscoveryService.Crawl:output_type -> vca.discovery.v1.CrawlResponse
-	7,  // 34: vca.discovery.v1.DiscoveryService.ListIssuers:output_type -> vca.discovery.v1.ListIssuersResponse
-	9,  // 35: vca.discovery.v1.DiscoveryService.ListCredentialTypes:output_type -> vca.discovery.v1.ListCredentialTypesResponse
-	11, // 36: vca.discovery.v1.DiscoveryService.GetFields:output_type -> vca.discovery.v1.GetFieldsResponse
-	13, // 37: vca.discovery.v1.DiscoveryService.CreateTemplate:output_type -> vca.discovery.v1.CreateTemplateResponse
-	15, // 38: vca.discovery.v1.DiscoveryService.ListTemplates:output_type -> vca.discovery.v1.ListTemplatesResponse
-	17, // 39: vca.discovery.v1.DiscoveryService.GetTemplate:output_type -> vca.discovery.v1.GetTemplateResponse
-	19, // 40: vca.discovery.v1.DiscoveryService.VersionTemplate:output_type -> vca.discovery.v1.VersionTemplateResponse
-	33, // [33:41] is the sub-list for method output_type
-	25, // [25:33] is the sub-list for method input_type
+	20, // 32: vca.discovery.v1.DiscoveryService.VersionTemplate:input_type -> vca.discovery.v1.VersionTemplateRequest
+	17, // 33: vca.discovery.v1.DiscoveryService.DeleteTemplate:input_type -> vca.discovery.v1.DeleteTemplateRequest
+	5,  // 34: vca.discovery.v1.DiscoveryService.Crawl:output_type -> vca.discovery.v1.CrawlResponse
+	7,  // 35: vca.discovery.v1.DiscoveryService.ListIssuers:output_type -> vca.discovery.v1.ListIssuersResponse
+	9,  // 36: vca.discovery.v1.DiscoveryService.ListCredentialTypes:output_type -> vca.discovery.v1.ListCredentialTypesResponse
+	11, // 37: vca.discovery.v1.DiscoveryService.GetFields:output_type -> vca.discovery.v1.GetFieldsResponse
+	13, // 38: vca.discovery.v1.DiscoveryService.CreateTemplate:output_type -> vca.discovery.v1.CreateTemplateResponse
+	15, // 39: vca.discovery.v1.DiscoveryService.ListTemplates:output_type -> vca.discovery.v1.ListTemplatesResponse
+	19, // 40: vca.discovery.v1.DiscoveryService.GetTemplate:output_type -> vca.discovery.v1.GetTemplateResponse
+	21, // 41: vca.discovery.v1.DiscoveryService.VersionTemplate:output_type -> vca.discovery.v1.VersionTemplateResponse
+	18, // 42: vca.discovery.v1.DiscoveryService.DeleteTemplate:output_type -> vca.discovery.v1.DeleteTemplateResponse
+	34, // [34:43] is the sub-list for method output_type
+	25, // [25:34] is the sub-list for method input_type
 	25, // [25:25] is the sub-list for extension type_name
 	25, // [25:25] is the sub-list for extension extendee
 	0,  // [0:25] is the sub-list for field type_name
@@ -1580,7 +1681,7 @@ func file_vca_discovery_v1_discovery_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_discovery_v1_discovery_proto_rawDesc), len(file_vca_discovery_v1_discovery_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

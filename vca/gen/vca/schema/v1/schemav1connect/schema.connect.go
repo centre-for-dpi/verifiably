@@ -58,6 +58,9 @@ const (
 	// SchemaServiceListPublicProcedure is the fully-qualified name of the SchemaService's ListPublic
 	// RPC.
 	SchemaServiceListPublicProcedure = "/vca.schema.v1.SchemaService/ListPublic"
+	// SchemaServiceGetIssuerMetadataProcedure is the fully-qualified name of the SchemaService's
+	// GetIssuerMetadata RPC.
+	SchemaServiceGetIssuerMetadataProcedure = "/vca.schema.v1.SchemaService/GetIssuerMetadata"
 	// SchemaServiceGetVctProcedure is the fully-qualified name of the SchemaService's GetVct RPC.
 	SchemaServiceGetVctProcedure = "/vca.schema.v1.SchemaService/GetVct"
 	// SchemaServiceListVersionsProcedure is the fully-qualified name of the SchemaService's
@@ -85,6 +88,10 @@ type SchemaServiceClient interface {
 	// ListPublic returns the published schemas without staff only fields.
 	// Wallets and verifiers call it without a session.
 	ListPublic(context.Context, *connect.Request[v1.ListPublicRequest]) (*connect.Response[v1.ListPublicResponse], error)
+	// GetIssuerMetadata returns the OID4VCI issuer metadata that the
+	// published schemas produce (ADR-013 decision 4). The well-known HTTP
+	// handler serves the same document.
+	GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error)
 	// GetVct returns the SD-JWT VC type metadata of one published schema
 	// (ADR-013 decision 5).
 	GetVct(context.Context, *connect.Request[v1.GetVctRequest]) (*connect.Response[v1.GetVctResponse], error)
@@ -151,6 +158,12 @@ func NewSchemaServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(schemaServiceMethods.ByName("ListPublic")),
 			connect.WithClientOptions(opts...),
 		),
+		getIssuerMetadata: connect.NewClient[v1.GetIssuerMetadataRequest, v1.GetIssuerMetadataResponse](
+			httpClient,
+			baseURL+SchemaServiceGetIssuerMetadataProcedure,
+			connect.WithSchema(schemaServiceMethods.ByName("GetIssuerMetadata")),
+			connect.WithClientOptions(opts...),
+		),
 		getVct: connect.NewClient[v1.GetVctRequest, v1.GetVctResponse](
 			httpClient,
 			baseURL+SchemaServiceGetVctProcedure,
@@ -168,16 +181,17 @@ func NewSchemaServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 
 // schemaServiceClient implements SchemaServiceClient.
 type schemaServiceClient struct {
-	create       *connect.Client[v1.CreateRequest, v1.CreateResponse]
-	update       *connect.Client[v1.UpdateRequest, v1.UpdateResponse]
-	publish      *connect.Client[v1.PublishRequest, v1.PublishResponse]
-	retire       *connect.Client[v1.RetireRequest, v1.RetireResponse]
-	get          *connect.Client[v1.GetRequest, v1.GetResponse]
-	list         *connect.Client[v1.ListRequest, v1.ListResponse]
-	search       *connect.Client[v1.SearchRequest, v1.SearchResponse]
-	listPublic   *connect.Client[v1.ListPublicRequest, v1.ListPublicResponse]
-	getVct       *connect.Client[v1.GetVctRequest, v1.GetVctResponse]
-	listVersions *connect.Client[v1.ListVersionsRequest, v1.ListVersionsResponse]
+	create            *connect.Client[v1.CreateRequest, v1.CreateResponse]
+	update            *connect.Client[v1.UpdateRequest, v1.UpdateResponse]
+	publish           *connect.Client[v1.PublishRequest, v1.PublishResponse]
+	retire            *connect.Client[v1.RetireRequest, v1.RetireResponse]
+	get               *connect.Client[v1.GetRequest, v1.GetResponse]
+	list              *connect.Client[v1.ListRequest, v1.ListResponse]
+	search            *connect.Client[v1.SearchRequest, v1.SearchResponse]
+	listPublic        *connect.Client[v1.ListPublicRequest, v1.ListPublicResponse]
+	getIssuerMetadata *connect.Client[v1.GetIssuerMetadataRequest, v1.GetIssuerMetadataResponse]
+	getVct            *connect.Client[v1.GetVctRequest, v1.GetVctResponse]
+	listVersions      *connect.Client[v1.ListVersionsRequest, v1.ListVersionsResponse]
 }
 
 // Create calls vca.schema.v1.SchemaService.Create.
@@ -220,6 +234,11 @@ func (c *schemaServiceClient) ListPublic(ctx context.Context, req *connect.Reque
 	return c.listPublic.CallUnary(ctx, req)
 }
 
+// GetIssuerMetadata calls vca.schema.v1.SchemaService.GetIssuerMetadata.
+func (c *schemaServiceClient) GetIssuerMetadata(ctx context.Context, req *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error) {
+	return c.getIssuerMetadata.CallUnary(ctx, req)
+}
+
 // GetVct calls vca.schema.v1.SchemaService.GetVct.
 func (c *schemaServiceClient) GetVct(ctx context.Context, req *connect.Request[v1.GetVctRequest]) (*connect.Response[v1.GetVctResponse], error) {
 	return c.getVct.CallUnary(ctx, req)
@@ -250,6 +269,10 @@ type SchemaServiceHandler interface {
 	// ListPublic returns the published schemas without staff only fields.
 	// Wallets and verifiers call it without a session.
 	ListPublic(context.Context, *connect.Request[v1.ListPublicRequest]) (*connect.Response[v1.ListPublicResponse], error)
+	// GetIssuerMetadata returns the OID4VCI issuer metadata that the
+	// published schemas produce (ADR-013 decision 4). The well-known HTTP
+	// handler serves the same document.
+	GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error)
 	// GetVct returns the SD-JWT VC type metadata of one published schema
 	// (ADR-013 decision 5).
 	GetVct(context.Context, *connect.Request[v1.GetVctRequest]) (*connect.Response[v1.GetVctResponse], error)
@@ -312,6 +335,12 @@ func NewSchemaServiceHandler(svc SchemaServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(schemaServiceMethods.ByName("ListPublic")),
 		connect.WithHandlerOptions(opts...),
 	)
+	schemaServiceGetIssuerMetadataHandler := connect.NewUnaryHandler(
+		SchemaServiceGetIssuerMetadataProcedure,
+		svc.GetIssuerMetadata,
+		connect.WithSchema(schemaServiceMethods.ByName("GetIssuerMetadata")),
+		connect.WithHandlerOptions(opts...),
+	)
 	schemaServiceGetVctHandler := connect.NewUnaryHandler(
 		SchemaServiceGetVctProcedure,
 		svc.GetVct,
@@ -342,6 +371,8 @@ func NewSchemaServiceHandler(svc SchemaServiceHandler, opts ...connect.HandlerOp
 			schemaServiceSearchHandler.ServeHTTP(w, r)
 		case SchemaServiceListPublicProcedure:
 			schemaServiceListPublicHandler.ServeHTTP(w, r)
+		case SchemaServiceGetIssuerMetadataProcedure:
+			schemaServiceGetIssuerMetadataHandler.ServeHTTP(w, r)
 		case SchemaServiceGetVctProcedure:
 			schemaServiceGetVctHandler.ServeHTTP(w, r)
 		case SchemaServiceListVersionsProcedure:
@@ -385,6 +416,10 @@ func (UnimplementedSchemaServiceHandler) Search(context.Context, *connect.Reques
 
 func (UnimplementedSchemaServiceHandler) ListPublic(context.Context, *connect.Request[v1.ListPublicRequest]) (*connect.Response[v1.ListPublicResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.schema.v1.SchemaService.ListPublic is not implemented"))
+}
+
+func (UnimplementedSchemaServiceHandler) GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.schema.v1.SchemaService.GetIssuerMetadata is not implemented"))
 }
 
 func (UnimplementedSchemaServiceHandler) GetVct(context.Context, *connect.Request[v1.GetVctRequest]) (*connect.Response[v1.GetVctResponse], error) {

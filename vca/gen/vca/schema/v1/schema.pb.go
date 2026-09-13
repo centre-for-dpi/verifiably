@@ -1314,6 +1314,108 @@ func (x *ListPublicResponse) GetPage() *v1.PageResult {
 	return nil
 }
 
+// GetIssuerMetadataRequest selects the metadata document. It has no fields.
+type GetIssuerMetadataRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetIssuerMetadataRequest) Reset() {
+	*x = GetIssuerMetadataRequest{}
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetIssuerMetadataRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetIssuerMetadataRequest) ProtoMessage() {}
+
+func (x *GetIssuerMetadataRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetIssuerMetadataRequest.ProtoReflect.Descriptor instead.
+func (*GetIssuerMetadataRequest) Descriptor() ([]byte, []int) {
+	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{19}
+}
+
+// GetIssuerMetadataResponse returns the issuer metadata.
+type GetIssuerMetadataResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The full OID4VCI issuer metadata document, as a JSON string.
+	Metadata string `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	// The credential_configurations_supported entries, keyed by
+	// configuration id, each as a JSON string.
+	CredentialConfigurationsSupported map[string]string `protobuf:"bytes,2,rep,name=credential_configurations_supported,json=credentialConfigurationsSupported,proto3" json:"credential_configurations_supported,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// The time the service built the document.
+	GeneratedAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=generated_at,json=generatedAt,proto3" json:"generated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetIssuerMetadataResponse) Reset() {
+	*x = GetIssuerMetadataResponse{}
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetIssuerMetadataResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetIssuerMetadataResponse) ProtoMessage() {}
+
+func (x *GetIssuerMetadataResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetIssuerMetadataResponse.ProtoReflect.Descriptor instead.
+func (*GetIssuerMetadataResponse) Descriptor() ([]byte, []int) {
+	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *GetIssuerMetadataResponse) GetMetadata() string {
+	if x != nil {
+		return x.Metadata
+	}
+	return ""
+}
+
+func (x *GetIssuerMetadataResponse) GetCredentialConfigurationsSupported() map[string]string {
+	if x != nil {
+		return x.CredentialConfigurationsSupported
+	}
+	return nil
+}
+
+func (x *GetIssuerMetadataResponse) GetGeneratedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.GeneratedAt
+	}
+	return nil
+}
+
 // GetVctRequest selects a schema by vct.
 type GetVctRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1325,7 +1427,7 @@ type GetVctRequest struct {
 
 func (x *GetVctRequest) Reset() {
 	*x = GetVctRequest{}
-	mi := &file_vca_schema_v1_schema_proto_msgTypes[19]
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1337,7 +1439,7 @@ func (x *GetVctRequest) String() string {
 func (*GetVctRequest) ProtoMessage() {}
 
 func (x *GetVctRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_schema_v1_schema_proto_msgTypes[19]
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1350,7 +1452,7 @@ func (x *GetVctRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetVctRequest.ProtoReflect.Descriptor instead.
 func (*GetVctRequest) Descriptor() ([]byte, []int) {
-	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{19}
+	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetVctRequest) GetVct() string {
@@ -1375,7 +1477,7 @@ type GetVctResponse struct {
 
 func (x *GetVctResponse) Reset() {
 	*x = GetVctResponse{}
-	mi := &file_vca_schema_v1_schema_proto_msgTypes[20]
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1387,7 +1489,7 @@ func (x *GetVctResponse) String() string {
 func (*GetVctResponse) ProtoMessage() {}
 
 func (x *GetVctResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_schema_v1_schema_proto_msgTypes[20]
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1400,7 +1502,7 @@ func (x *GetVctResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetVctResponse.ProtoReflect.Descriptor instead.
 func (*GetVctResponse) Descriptor() ([]byte, []int) {
-	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{20}
+	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetVctResponse) GetTypeMetadata() string {
@@ -1435,7 +1537,7 @@ type ListVersionsRequest struct {
 
 func (x *ListVersionsRequest) Reset() {
 	*x = ListVersionsRequest{}
-	mi := &file_vca_schema_v1_schema_proto_msgTypes[21]
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1447,7 +1549,7 @@ func (x *ListVersionsRequest) String() string {
 func (*ListVersionsRequest) ProtoMessage() {}
 
 func (x *ListVersionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_schema_v1_schema_proto_msgTypes[21]
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1460,7 +1562,7 @@ func (x *ListVersionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVersionsRequest.ProtoReflect.Descriptor instead.
 func (*ListVersionsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{21}
+	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListVersionsRequest) GetId() string {
@@ -1481,7 +1583,7 @@ type ListVersionsResponse struct {
 
 func (x *ListVersionsResponse) Reset() {
 	*x = ListVersionsResponse{}
-	mi := &file_vca_schema_v1_schema_proto_msgTypes[22]
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1493,7 +1595,7 @@ func (x *ListVersionsResponse) String() string {
 func (*ListVersionsResponse) ProtoMessage() {}
 
 func (x *ListVersionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_schema_v1_schema_proto_msgTypes[22]
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1506,7 +1608,7 @@ func (x *ListVersionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVersionsResponse.ProtoReflect.Descriptor instead.
 func (*ListVersionsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{22}
+	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListVersionsResponse) GetSchemas() []*Schema {
@@ -1608,7 +1710,15 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"\x04page\x18\x01 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"z\n" +
 	"\x12ListPublicResponse\x125\n" +
 	"\aschemas\x18\x01 \x03(\v2\x1b.vca.schema.v1.PublicSchemaR\aschemas\x12-\n" +
-	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\"!\n" +
+	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\"\x1a\n" +
+	"\x18GetIssuerMetadataRequest\"\xee\x02\n" +
+	"\x19GetIssuerMetadataResponse\x12\x1a\n" +
+	"\bmetadata\x18\x01 \x01(\tR\bmetadata\x12\x9f\x01\n" +
+	"#credential_configurations_supported\x18\x02 \x03(\v2O.vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntryR!credentialConfigurationsSupported\x12=\n" +
+	"\fgenerated_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vgeneratedAt\x1aT\n" +
+	"&CredentialConfigurationsSupportedEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"!\n" +
 	"\rGetVctRequest\x12\x10\n" +
 	"\x03vct\x18\x01 \x01(\tR\x03vct\"l\n" +
 	"\x0eGetVctResponse\x12#\n" +
@@ -1623,7 +1733,7 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATE_DRAFT\x10\x01\x12\x13\n" +
 	"\x0fSTATE_PUBLISHED\x10\x02\x12\x11\n" +
-	"\rSTATE_RETIRED\x10\x032\xe7\x05\n" +
+	"\rSTATE_RETIRED\x10\x032\xcf\x06\n" +
 	"\rSchemaService\x12E\n" +
 	"\x06Create\x12\x1c.vca.schema.v1.CreateRequest\x1a\x1d.vca.schema.v1.CreateResponse\x12E\n" +
 	"\x06Update\x12\x1c.vca.schema.v1.UpdateRequest\x1a\x1d.vca.schema.v1.UpdateResponse\x12H\n" +
@@ -1633,7 +1743,8 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"\x04List\x12\x1a.vca.schema.v1.ListRequest\x1a\x1b.vca.schema.v1.ListResponse\x12E\n" +
 	"\x06Search\x12\x1c.vca.schema.v1.SearchRequest\x1a\x1d.vca.schema.v1.SearchResponse\x12Q\n" +
 	"\n" +
-	"ListPublic\x12 .vca.schema.v1.ListPublicRequest\x1a!.vca.schema.v1.ListPublicResponse\x12E\n" +
+	"ListPublic\x12 .vca.schema.v1.ListPublicRequest\x1a!.vca.schema.v1.ListPublicResponse\x12f\n" +
+	"\x11GetIssuerMetadata\x12'.vca.schema.v1.GetIssuerMetadataRequest\x1a(.vca.schema.v1.GetIssuerMetadataResponse\x12E\n" +
 	"\x06GetVct\x12\x1c.vca.schema.v1.GetVctRequest\x1a\x1d.vca.schema.v1.GetVctResponse\x12W\n" +
 	"\fListVersions\x12\".vca.schema.v1.ListVersionsRequest\x1a#.vca.schema.v1.ListVersionsResponseB\xb8\x01\n" +
 	"\x11com.vca.schema.v1B\vSchemaProtoP\x01Z@github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1;schemav1\xa2\x02\x03VSX\xaa\x02\rVca.Schema.V1\xca\x02\rVca\\Schema\\V1\xe2\x02\x19Vca\\Schema\\V1\\GPBMetadata\xea\x02\x0fVca::Schema::V1b\x06proto3"
@@ -1651,45 +1762,48 @@ func file_vca_schema_v1_schema_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_schema_v1_schema_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vca_schema_v1_schema_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_vca_schema_v1_schema_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_vca_schema_v1_schema_proto_goTypes = []any{
-	(State)(0),                    // 0: vca.schema.v1.State
-	(*Display)(nil),               // 1: vca.schema.v1.Display
-	(*Schema)(nil),                // 2: vca.schema.v1.Schema
-	(*CreateRequest)(nil),         // 3: vca.schema.v1.CreateRequest
-	(*CreateResponse)(nil),        // 4: vca.schema.v1.CreateResponse
-	(*UpdateRequest)(nil),         // 5: vca.schema.v1.UpdateRequest
-	(*UpdateResponse)(nil),        // 6: vca.schema.v1.UpdateResponse
-	(*PublishRequest)(nil),        // 7: vca.schema.v1.PublishRequest
-	(*PublishResponse)(nil),       // 8: vca.schema.v1.PublishResponse
-	(*RetireRequest)(nil),         // 9: vca.schema.v1.RetireRequest
-	(*RetireResponse)(nil),        // 10: vca.schema.v1.RetireResponse
-	(*GetRequest)(nil),            // 11: vca.schema.v1.GetRequest
-	(*GetResponse)(nil),           // 12: vca.schema.v1.GetResponse
-	(*ListRequest)(nil),           // 13: vca.schema.v1.ListRequest
-	(*ListResponse)(nil),          // 14: vca.schema.v1.ListResponse
-	(*SearchRequest)(nil),         // 15: vca.schema.v1.SearchRequest
-	(*SearchResponse)(nil),        // 16: vca.schema.v1.SearchResponse
-	(*PublicSchema)(nil),          // 17: vca.schema.v1.PublicSchema
-	(*ListPublicRequest)(nil),     // 18: vca.schema.v1.ListPublicRequest
-	(*ListPublicResponse)(nil),    // 19: vca.schema.v1.ListPublicResponse
-	(*GetVctRequest)(nil),         // 20: vca.schema.v1.GetVctRequest
-	(*GetVctResponse)(nil),        // 21: vca.schema.v1.GetVctResponse
-	(*ListVersionsRequest)(nil),   // 22: vca.schema.v1.ListVersionsRequest
-	(*ListVersionsResponse)(nil),  // 23: vca.schema.v1.ListVersionsResponse
-	nil,                           // 24: vca.schema.v1.PublicSchema.ConfigurationIdsEntry
-	(v1.Format)(0),                // 25: vca.common.v1.Format
-	(*timestamppb.Timestamp)(nil), // 26: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),         // 27: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),         // 28: vca.common.v1.PageResult
+	(State)(0),                        // 0: vca.schema.v1.State
+	(*Display)(nil),                   // 1: vca.schema.v1.Display
+	(*Schema)(nil),                    // 2: vca.schema.v1.Schema
+	(*CreateRequest)(nil),             // 3: vca.schema.v1.CreateRequest
+	(*CreateResponse)(nil),            // 4: vca.schema.v1.CreateResponse
+	(*UpdateRequest)(nil),             // 5: vca.schema.v1.UpdateRequest
+	(*UpdateResponse)(nil),            // 6: vca.schema.v1.UpdateResponse
+	(*PublishRequest)(nil),            // 7: vca.schema.v1.PublishRequest
+	(*PublishResponse)(nil),           // 8: vca.schema.v1.PublishResponse
+	(*RetireRequest)(nil),             // 9: vca.schema.v1.RetireRequest
+	(*RetireResponse)(nil),            // 10: vca.schema.v1.RetireResponse
+	(*GetRequest)(nil),                // 11: vca.schema.v1.GetRequest
+	(*GetResponse)(nil),               // 12: vca.schema.v1.GetResponse
+	(*ListRequest)(nil),               // 13: vca.schema.v1.ListRequest
+	(*ListResponse)(nil),              // 14: vca.schema.v1.ListResponse
+	(*SearchRequest)(nil),             // 15: vca.schema.v1.SearchRequest
+	(*SearchResponse)(nil),            // 16: vca.schema.v1.SearchResponse
+	(*PublicSchema)(nil),              // 17: vca.schema.v1.PublicSchema
+	(*ListPublicRequest)(nil),         // 18: vca.schema.v1.ListPublicRequest
+	(*ListPublicResponse)(nil),        // 19: vca.schema.v1.ListPublicResponse
+	(*GetIssuerMetadataRequest)(nil),  // 20: vca.schema.v1.GetIssuerMetadataRequest
+	(*GetIssuerMetadataResponse)(nil), // 21: vca.schema.v1.GetIssuerMetadataResponse
+	(*GetVctRequest)(nil),             // 22: vca.schema.v1.GetVctRequest
+	(*GetVctResponse)(nil),            // 23: vca.schema.v1.GetVctResponse
+	(*ListVersionsRequest)(nil),       // 24: vca.schema.v1.ListVersionsRequest
+	(*ListVersionsResponse)(nil),      // 25: vca.schema.v1.ListVersionsResponse
+	nil,                               // 26: vca.schema.v1.PublicSchema.ConfigurationIdsEntry
+	nil,                               // 27: vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
+	(v1.Format)(0),                    // 28: vca.common.v1.Format
+	(*timestamppb.Timestamp)(nil),     // 29: google.protobuf.Timestamp
+	(*v1.Pagination)(nil),             // 30: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),             // 31: vca.common.v1.PageResult
 }
 var file_vca_schema_v1_schema_proto_depIdxs = []int32{
 	0,  // 0: vca.schema.v1.Schema.state:type_name -> vca.schema.v1.State
 	1,  // 1: vca.schema.v1.Schema.display:type_name -> vca.schema.v1.Display
-	25, // 2: vca.schema.v1.Schema.formats:type_name -> vca.common.v1.Format
-	26, // 3: vca.schema.v1.Schema.created_at:type_name -> google.protobuf.Timestamp
-	26, // 4: vca.schema.v1.Schema.published_at:type_name -> google.protobuf.Timestamp
-	26, // 5: vca.schema.v1.Schema.retired_at:type_name -> google.protobuf.Timestamp
+	28, // 2: vca.schema.v1.Schema.formats:type_name -> vca.common.v1.Format
+	29, // 3: vca.schema.v1.Schema.created_at:type_name -> google.protobuf.Timestamp
+	29, // 4: vca.schema.v1.Schema.published_at:type_name -> google.protobuf.Timestamp
+	29, // 5: vca.schema.v1.Schema.retired_at:type_name -> google.protobuf.Timestamp
 	2,  // 6: vca.schema.v1.CreateRequest.schema:type_name -> vca.schema.v1.Schema
 	2,  // 7: vca.schema.v1.CreateResponse.schema:type_name -> vca.schema.v1.Schema
 	2,  // 8: vca.schema.v1.UpdateRequest.schema:type_name -> vca.schema.v1.Schema
@@ -1697,46 +1811,50 @@ var file_vca_schema_v1_schema_proto_depIdxs = []int32{
 	2,  // 10: vca.schema.v1.PublishResponse.schema:type_name -> vca.schema.v1.Schema
 	2,  // 11: vca.schema.v1.RetireResponse.schemas:type_name -> vca.schema.v1.Schema
 	2,  // 12: vca.schema.v1.GetResponse.schema:type_name -> vca.schema.v1.Schema
-	27, // 13: vca.schema.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
+	30, // 13: vca.schema.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
 	0,  // 14: vca.schema.v1.ListRequest.state:type_name -> vca.schema.v1.State
-	25, // 15: vca.schema.v1.ListRequest.format:type_name -> vca.common.v1.Format
+	28, // 15: vca.schema.v1.ListRequest.format:type_name -> vca.common.v1.Format
 	2,  // 16: vca.schema.v1.ListResponse.schemas:type_name -> vca.schema.v1.Schema
-	28, // 17: vca.schema.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
-	27, // 18: vca.schema.v1.SearchRequest.page:type_name -> vca.common.v1.Pagination
+	31, // 17: vca.schema.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
+	30, // 18: vca.schema.v1.SearchRequest.page:type_name -> vca.common.v1.Pagination
 	2,  // 19: vca.schema.v1.SearchResponse.schemas:type_name -> vca.schema.v1.Schema
-	28, // 20: vca.schema.v1.SearchResponse.page:type_name -> vca.common.v1.PageResult
+	31, // 20: vca.schema.v1.SearchResponse.page:type_name -> vca.common.v1.PageResult
 	1,  // 21: vca.schema.v1.PublicSchema.display:type_name -> vca.schema.v1.Display
-	25, // 22: vca.schema.v1.PublicSchema.formats:type_name -> vca.common.v1.Format
-	24, // 23: vca.schema.v1.PublicSchema.configuration_ids:type_name -> vca.schema.v1.PublicSchema.ConfigurationIdsEntry
-	27, // 24: vca.schema.v1.ListPublicRequest.page:type_name -> vca.common.v1.Pagination
+	28, // 22: vca.schema.v1.PublicSchema.formats:type_name -> vca.common.v1.Format
+	26, // 23: vca.schema.v1.PublicSchema.configuration_ids:type_name -> vca.schema.v1.PublicSchema.ConfigurationIdsEntry
+	30, // 24: vca.schema.v1.ListPublicRequest.page:type_name -> vca.common.v1.Pagination
 	17, // 25: vca.schema.v1.ListPublicResponse.schemas:type_name -> vca.schema.v1.PublicSchema
-	28, // 26: vca.schema.v1.ListPublicResponse.page:type_name -> vca.common.v1.PageResult
-	2,  // 27: vca.schema.v1.ListVersionsResponse.schemas:type_name -> vca.schema.v1.Schema
-	3,  // 28: vca.schema.v1.SchemaService.Create:input_type -> vca.schema.v1.CreateRequest
-	5,  // 29: vca.schema.v1.SchemaService.Update:input_type -> vca.schema.v1.UpdateRequest
-	7,  // 30: vca.schema.v1.SchemaService.Publish:input_type -> vca.schema.v1.PublishRequest
-	9,  // 31: vca.schema.v1.SchemaService.Retire:input_type -> vca.schema.v1.RetireRequest
-	11, // 32: vca.schema.v1.SchemaService.Get:input_type -> vca.schema.v1.GetRequest
-	13, // 33: vca.schema.v1.SchemaService.List:input_type -> vca.schema.v1.ListRequest
-	15, // 34: vca.schema.v1.SchemaService.Search:input_type -> vca.schema.v1.SearchRequest
-	18, // 35: vca.schema.v1.SchemaService.ListPublic:input_type -> vca.schema.v1.ListPublicRequest
-	20, // 36: vca.schema.v1.SchemaService.GetVct:input_type -> vca.schema.v1.GetVctRequest
-	22, // 37: vca.schema.v1.SchemaService.ListVersions:input_type -> vca.schema.v1.ListVersionsRequest
-	4,  // 38: vca.schema.v1.SchemaService.Create:output_type -> vca.schema.v1.CreateResponse
-	6,  // 39: vca.schema.v1.SchemaService.Update:output_type -> vca.schema.v1.UpdateResponse
-	8,  // 40: vca.schema.v1.SchemaService.Publish:output_type -> vca.schema.v1.PublishResponse
-	10, // 41: vca.schema.v1.SchemaService.Retire:output_type -> vca.schema.v1.RetireResponse
-	12, // 42: vca.schema.v1.SchemaService.Get:output_type -> vca.schema.v1.GetResponse
-	14, // 43: vca.schema.v1.SchemaService.List:output_type -> vca.schema.v1.ListResponse
-	16, // 44: vca.schema.v1.SchemaService.Search:output_type -> vca.schema.v1.SearchResponse
-	19, // 45: vca.schema.v1.SchemaService.ListPublic:output_type -> vca.schema.v1.ListPublicResponse
-	21, // 46: vca.schema.v1.SchemaService.GetVct:output_type -> vca.schema.v1.GetVctResponse
-	23, // 47: vca.schema.v1.SchemaService.ListVersions:output_type -> vca.schema.v1.ListVersionsResponse
-	38, // [38:48] is the sub-list for method output_type
-	28, // [28:38] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	31, // 26: vca.schema.v1.ListPublicResponse.page:type_name -> vca.common.v1.PageResult
+	27, // 27: vca.schema.v1.GetIssuerMetadataResponse.credential_configurations_supported:type_name -> vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
+	29, // 28: vca.schema.v1.GetIssuerMetadataResponse.generated_at:type_name -> google.protobuf.Timestamp
+	2,  // 29: vca.schema.v1.ListVersionsResponse.schemas:type_name -> vca.schema.v1.Schema
+	3,  // 30: vca.schema.v1.SchemaService.Create:input_type -> vca.schema.v1.CreateRequest
+	5,  // 31: vca.schema.v1.SchemaService.Update:input_type -> vca.schema.v1.UpdateRequest
+	7,  // 32: vca.schema.v1.SchemaService.Publish:input_type -> vca.schema.v1.PublishRequest
+	9,  // 33: vca.schema.v1.SchemaService.Retire:input_type -> vca.schema.v1.RetireRequest
+	11, // 34: vca.schema.v1.SchemaService.Get:input_type -> vca.schema.v1.GetRequest
+	13, // 35: vca.schema.v1.SchemaService.List:input_type -> vca.schema.v1.ListRequest
+	15, // 36: vca.schema.v1.SchemaService.Search:input_type -> vca.schema.v1.SearchRequest
+	18, // 37: vca.schema.v1.SchemaService.ListPublic:input_type -> vca.schema.v1.ListPublicRequest
+	20, // 38: vca.schema.v1.SchemaService.GetIssuerMetadata:input_type -> vca.schema.v1.GetIssuerMetadataRequest
+	22, // 39: vca.schema.v1.SchemaService.GetVct:input_type -> vca.schema.v1.GetVctRequest
+	24, // 40: vca.schema.v1.SchemaService.ListVersions:input_type -> vca.schema.v1.ListVersionsRequest
+	4,  // 41: vca.schema.v1.SchemaService.Create:output_type -> vca.schema.v1.CreateResponse
+	6,  // 42: vca.schema.v1.SchemaService.Update:output_type -> vca.schema.v1.UpdateResponse
+	8,  // 43: vca.schema.v1.SchemaService.Publish:output_type -> vca.schema.v1.PublishResponse
+	10, // 44: vca.schema.v1.SchemaService.Retire:output_type -> vca.schema.v1.RetireResponse
+	12, // 45: vca.schema.v1.SchemaService.Get:output_type -> vca.schema.v1.GetResponse
+	14, // 46: vca.schema.v1.SchemaService.List:output_type -> vca.schema.v1.ListResponse
+	16, // 47: vca.schema.v1.SchemaService.Search:output_type -> vca.schema.v1.SearchResponse
+	19, // 48: vca.schema.v1.SchemaService.ListPublic:output_type -> vca.schema.v1.ListPublicResponse
+	21, // 49: vca.schema.v1.SchemaService.GetIssuerMetadata:output_type -> vca.schema.v1.GetIssuerMetadataResponse
+	23, // 50: vca.schema.v1.SchemaService.GetVct:output_type -> vca.schema.v1.GetVctResponse
+	25, // 51: vca.schema.v1.SchemaService.ListVersions:output_type -> vca.schema.v1.ListVersionsResponse
+	41, // [41:52] is the sub-list for method output_type
+	30, // [30:41] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_vca_schema_v1_schema_proto_init() }
@@ -1750,7 +1868,7 @@ func file_vca_schema_v1_schema_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_schema_v1_schema_proto_rawDesc), len(file_vca_schema_v1_schema_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   24,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -26,6 +26,9 @@ service StatusService {
   rpc SetStatus(SetStatusRequest) returns (SetStatusResponse);
   // GetStatus reads the status value of one index.
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // GetList returns the signed list bytes and their media type. The HTTP
+  // handler that serves the public list calls this RPC.
+  rpc GetList(GetListRequest) returns (GetListResponse);
   // ListLists returns the lists of this issuer in pages.
   rpc ListLists(ListListsRequest) returns (ListListsResponse);
   // RotateKey creates a new signing key and signs every list with it.
@@ -143,6 +146,31 @@ message GetStatusResponse {
   Purpose purpose = 2;
   // The time of the last change of this index. Empty when never changed.
   google.protobuf.Timestamp changed_at = 3;
+}
+
+// GetListRequest selects one list.
+message GetListRequest {
+  // The list id.
+  string list_id = 1;
+  // The media type the caller accepts. Empty selects the default of the kind.
+  // A token list accepts application/statuslist+jwt or application/statuslist+cwt.
+  string accept = 2;
+}
+
+// GetListResponse returns the signed list.
+message GetListResponse {
+  // The signed list exactly as the service serves it over HTTP.
+  bytes body = 1;
+  // The media type of the body.
+  string media_type = 2;
+  // The ETag value of this signature.
+  string etag = 3;
+  // The time of the signature.
+  google.protobuf.Timestamp signed_at = 4;
+  // The time the signature expires.
+  google.protobuf.Timestamp expires_at = 5;
+  // The list description.
+  StatusList list = 6;
 }
 
 // ListListsRequest selects a page and filters.
