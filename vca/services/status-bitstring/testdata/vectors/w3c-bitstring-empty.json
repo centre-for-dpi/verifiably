@@ -1,0 +1,8 @@
+{
+  "source": "W3C Bitstring Status List v1.0, section 3.2, example 2",
+  "note": "The encoded list of a new list with the minimum size. Every bit is zero.",
+  "size": 131072,
+  "bits": 1,
+  "encodedList": "uH4sIAAAAAAAAA-3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAIC3AYbSVKsAQAAA",
+  "statusPurpose": "revocation"
+}
