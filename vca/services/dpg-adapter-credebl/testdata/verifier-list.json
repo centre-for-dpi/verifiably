@@ -1,0 +1,10 @@
+{
+  "statusCode": 200,
+  "message": "Verifiers fetched",
+  "data": [
+    {
+      "id": "6f3a0e52-8c17-4d94-b2e6-5a1d7c9b0f48",
+      "publicVerifierId": "verifiable-credentials-adapters"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "statusCode": 201,
+  "message": "Credential offer created",
+  "data": {
+    "credentialOffer": "openid-credential-offer://?credential_offer_uri=http%3A%2F%2Fcredebl-agent%3A8001%2Foid4vci%2F43cdb080%2Foffers%2F5f2c1d7b-6a09-4e83-9c14-2b7d8e0f3a56",
+    "issuanceSession": {
+      "id": "5f2c1d7b-6a09-4e83-9c14-2b7d8e0f3a56",
+      "state": "OfferCreated",
+      "userPin": "8143"
+    }
+  }
+}

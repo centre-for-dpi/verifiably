@@ -1,0 +1,14 @@
+{
+  "statusCode": 200,
+  "data": {
+    "id": "2d7f8a91-5c30-4e17-9b62-0a4d8f1e3c75",
+    "state": "ResponseVerified",
+    "presentationDocument": {"vct": "https://credebl.example.org/credentials/FarmerCredential"},
+    "authorizationResponsePayload": {
+      "vp_token": {
+        "vc-1": ["eyJhbGciOiJFUzI1NiIsInR5cCI6ImRjK3NkLWp3dCJ9.eyJ2Y3QiOiJodHRwczovL2NyZWRlYmwuZXhhbXBsZS5vcmcvY3JlZGVudGlhbHMvRmFybWVyQ3JlZGVudGlhbCJ9.c2ln~WyJzYWx0IiwiZnVsbE5hbWUiLCJBZGEgTG92ZWxhY2UiXQ~"]
+      },
+      "state": "2d7f8a91-5c30-4e17-9b62-0a4d8f1e3c75"
+    }
+  }
+}

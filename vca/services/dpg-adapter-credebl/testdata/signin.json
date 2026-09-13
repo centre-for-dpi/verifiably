@@ -1,0 +1,9 @@
+{
+  "statusCode": 200,
+  "message": "User signed in successfully",
+  "data": {
+    "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwbGF0Zm9ybS1hZG1pbiIsImV4cCI6NDA3MDkwODgwMH0.c2ln",
+    "token_type": "Bearer",
+    "expires_in": 1800
+  }
+}

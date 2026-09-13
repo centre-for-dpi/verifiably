@@ -1,0 +1,31 @@
+{
+  "statusCode": 200,
+  "message": "Templates fetched",
+  "data": [
+    {
+      "id": "8e5a2c41-9f37-4c0b-b1ad-72d9e6c85f13",
+      "name": "FarmerCredential",
+      "format": "dc+sd-jwt",
+      "attributes": {
+        "vct": "https://credebl.example.org/credentials/FarmerCredential",
+        "attributes": [
+          {"key": "fullName", "value_type": "string", "disclose": true},
+          {"key": "farmerID", "value_type": "string", "disclose": true},
+          {"key": "hectares", "value_type": "number", "disclose": false}
+        ]
+      }
+    },
+    {
+      "id": "1c9f7b02-4d18-4e63-8a75-0b2c6e4a9d51",
+      "name": "IdentityCredential",
+      "format": "vc+sd-jwt",
+      "attributes": {
+        "vct": "https://credebl.example.org/credentials/IdentityCredential",
+        "attributes": [
+          {"key": "given_name", "value_type": "string", "disclose": true},
+          {"key": "age_over_18", "value_type": "boolean", "disclose": true}
+        ]
+      }
+    }
+  ]
+}

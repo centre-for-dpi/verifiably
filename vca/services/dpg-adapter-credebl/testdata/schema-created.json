@@ -1,0 +1,9 @@
+{
+  "statusCode": 201,
+  "message": "Schema created",
+  "data": {
+    "id": "b7d1c3e9-2a48-4f50-91cb-6e0d5a2f8c74",
+    "schemaId": "did:web:credebl.example.org?service=anoncreds&relativeRef=/schema?schemaId=FarmerCredential",
+    "schemaLedgerId": "FarmerCredential:1.0"
+  }
+}

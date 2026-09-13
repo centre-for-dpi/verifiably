@@ -1,0 +1,9 @@
+{
+  "statusCode": 201,
+  "message": "Template created",
+  "data": {
+    "id": "d4e8a1f7-3b62-4c95-8d07-1f5a9e2b6c30",
+    "name": "FarmerCredential",
+    "format": "dc+sd-jwt"
+  }
+}

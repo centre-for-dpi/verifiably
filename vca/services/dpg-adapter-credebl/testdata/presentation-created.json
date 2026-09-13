@@ -1,0 +1,11 @@
+{
+  "statusCode": 201,
+  "message": "Presentation request created",
+  "data": {
+    "authorizationRequest": "openid4vp://?client_id=did%3Aweb%3Acredebl.example.org&request_uri=https%3A%2F%2Fcredebl.example.org%2Foid4vp%2Frequest%2F2d7f8a91",
+    "verificationSession": {
+      "id": "2d7f8a91-5c30-4e17-9b62-0a4d8f1e3c75",
+      "state": "RequestUriRetrieved"
+    }
+  }
+}
