@@ -153,7 +153,7 @@ func TestProtoConversion(t *testing.T) {
 
 func TestAdminProvidersRPC(t *testing.T) {
 	reg, _ := oidcflow.NewRegistry(nil, nil)
-	svc := oidcflow.AdminProviders{Registry: reg, Authorize: oidcflow.BearerAuthorizer("admin-token"), Roles: []string{"issuer"}}
+	svc := oidcflow.AdminProviders{Registry: reg, Authorize: oidcflow.BearerAuthorizer("admin-token"), Roles: []string{"issuer"}, InternalAuthority: "http://idp:8080"}
 	path, h := oidcflow.NewAdminHandler(svc)
 	mux := http.NewServeMux()
 	mux.Handle(path, h)
@@ -189,6 +189,9 @@ func TestAdminProvidersRPC(t *testing.T) {
 	id := created.Msg.GetProvider().GetId()
 	if id == "" || created.Msg.GetProvider().GetRoles()[0] != commonv1.Role_ROLE_ISSUER {
 		t.Fatalf("created: %+v", created.Msg)
+	}
+	if p, _ := reg.Get(id); p.InternalAuthority != "http://idp:8080" {
+		t.Fatalf("internal authority: %+v", p)
 	}
 	if _, err := authed.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: &adminv1.AuthProvider{}})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("invalid: %v", err)

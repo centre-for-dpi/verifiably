@@ -56,6 +56,19 @@ type AdminProviders struct {
 	// Roles, when set, replaces the roles of every provider it stores,
 	// so an issuer deployment holds only issuer providers.
 	Roles []string
+	// InternalAuthority, when set, is applied to every provider it
+	// stores, for split horizon deployments (ADR-012 decision 6).
+	InternalAuthority string
+}
+
+func (a AdminProviders) apply(p Provider) Provider {
+	if a.Roles != nil {
+		p.Roles = a.Roles
+	}
+	if a.InternalAuthority != "" {
+		p.InternalAuthority = a.InternalAuthority
+	}
+	return p
 }
 
 // NewAdminHandler returns the Connect path and handler.
@@ -81,11 +94,8 @@ func (a AdminProviders) CreateAuthProvider(ctx context.Context, req *connect.Req
 	if req.Msg.GetDynamicRegistration() {
 		return nil, connect.NewError(connect.CodeUnimplemented, wrap(ErrInvalidProvider, "dynamic client registration is not supported here"))
 	}
-	p := FromAdminProto(req.Msg.GetProvider())
+	p := a.apply(FromAdminProto(req.Msg.GetProvider()))
 	p.ID = ""
-	if a.Roles != nil {
-		p.Roles = a.Roles
-	}
 	stored, err := a.Registry.Put(p)
 	if err != nil {
 		return nil, ConnectError(err)
@@ -123,12 +133,9 @@ func (a AdminProviders) UpdateAuthProvider(ctx context.Context, req *connect.Req
 	if err := a.auth(ctx, req.Header()); err != nil {
 		return nil, err
 	}
-	p := FromAdminProto(req.Msg.GetProvider())
+	p := a.apply(FromAdminProto(req.Msg.GetProvider()))
 	if _, err := a.Registry.Get(p.ID); err != nil {
 		return nil, ConnectError(err)
-	}
-	if a.Roles != nil {
-		p.Roles = a.Roles
 	}
 	stored, err := a.Registry.Put(p)
 	if err != nil {
