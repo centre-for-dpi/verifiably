@@ -89,5 +89,5 @@ result, because a comma is not always the best choice.
 The linter cannot check every rule. A reviewer checks that each
 sentence gives one instruction and that the text uses glossary terms.
 
-The linter does not run on `docs/adr.md`. A decision record is a
+The linter does not run on `../ADR.md`. A decision record is a
 historical record of a choice. Do not rewrite it after review.

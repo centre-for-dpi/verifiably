@@ -92,6 +92,6 @@ If a step fails, see [errors.md](../../docs/errors.md) for the message and the n
 
 - API: [`proto/vca/walletauth/v1/walletauth.proto`](../../proto/vca/walletauth/v1/walletauth.proto)
 - OpenAPI: `gen/openapi/walletauth.yaml`
-- Decision record: [ADR-020](../../docs/adr.md#adr-020-wallet-oidc-auth-flows)
+- Decision record: [ADR-020](../../../ADR.md#adr-020-wallet-oidc-auth-flows)
 - Error codes: VCA-301, VCA-303, VCA-401
 - Standards: [OIDC Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [RFC 7636](https://www.rfc-editor.org/rfc/rfc7636.html), [RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html), [RFC 7523](https://www.rfc-editor.org/rfc/rfc7523.html)

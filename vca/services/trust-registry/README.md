@@ -82,7 +82,7 @@ If a step fails, see [errors.md](../../docs/errors.md) for the message and the n
 
 - API: [`proto/vca/trust/v1/trust.proto`](../../proto/vca/trust/v1/trust.proto)
 - OpenAPI: `gen/openapi/trust.yaml`
-- Decision record: [ADR-011](../../docs/adr.md#adr-011-signed-trust-registry-with-dedi-and-etsi-as-distinct-methods)
+- Decision record: [ADR-011](../../../ADR.md#adr-011-signed-trust-registry-with-dedi-and-etsi-as-distinct-methods)
 - Service document: [docs/trust-registry.md](../../docs/trust-registry.md)
 - Error codes: VCA-201 (the verifier policy service returns it from a `TrustLookup` result)
 - Standards: [ETSI TS 119 602](https://www.etsi.org/deliver/etsi_ts/119600_119699/119602/01.01.01_60/ts_119602v010101p.pdf), [ETSI TS 119 612](https://www.etsi.org/deliver/etsi_ts/119600_119699/119612/02.03.01_60/ts_119612v020301p.pdf), [RFC 7515](https://www.rfc-editor.org/rfc/rfc7515.html), [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517.html), [did:web](https://w3c-ccg.github.io/did-method-web/)

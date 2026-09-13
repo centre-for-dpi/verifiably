@@ -102,6 +102,6 @@ If a step fails, see [errors.md](../../docs/errors.md) for the message and the n
 
 - API: [`proto/vca/issuerauth/v1/issuerauth.proto`](../../proto/vca/issuerauth/v1/issuerauth.proto)
 - OpenAPI: `gen/openapi/issuerauth.yaml`
-- Decision record: [ADR-012](../../docs/adr.md#adr-012-issuer-oidc-auth-flows)
+- Decision record: [ADR-012](../../../ADR.md#adr-012-issuer-oidc-auth-flows)
 - Error codes: VCA-301, VCA-302, VCA-401
 - Standards: [OIDC Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [RFC 7636](https://www.rfc-editor.org/rfc/rfc7636.html), [RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html), [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517.html)
