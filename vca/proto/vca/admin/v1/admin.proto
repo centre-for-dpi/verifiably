@@ -1,0 +1,515 @@
+// SPDX-License-Identifier: Apache-2.0
+// Super admin service (ADR-009, ADR-010). The vca admin CLI and the admin
+// portal are two clients of this one service. Every RPC writes an audit
+// record with actor, action, and request id (ADR-009 decision 6).
+syntax = "proto3";
+
+package vca.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+import "vca/trust/v1/trust.proto";
+
+// AdminService holds every super admin operation.
+// The description option of each RPC is its help text (ADR-009 decision 4).
+// The CLI, the man pages, the portal help page, and the OpenAPI file show it.
+service AdminService {
+  // CreateTenant creates one tenant. A tenant is one operator organisation.
+  rpc CreateTenant(CreateTenantRequest) returns (CreateTenantResponse) {
+    option (vca.common.v1.description) = "Creates one tenant.";
+  }
+  // GetTenant returns one tenant by id.
+  rpc GetTenant(GetTenantRequest) returns (GetTenantResponse) {
+    option (vca.common.v1.description) = "Returns one tenant by id.";
+  }
+  // ListTenants returns tenants in pages.
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse) {
+    option (vca.common.v1.description) = "Returns tenants in pages.";
+  }
+  // UpdateTenant changes the display name or the state of one tenant.
+  rpc UpdateTenant(UpdateTenantRequest) returns (UpdateTenantResponse) {
+    option (vca.common.v1.description) = "Changes the display name or the state of one tenant.";
+  }
+  // DeleteTenant removes one tenant and every record it owns.
+  rpc DeleteTenant(DeleteTenantRequest) returns (DeleteTenantResponse) {
+    option (vca.common.v1.description) = "Removes one tenant and every record it owns.";
+  }
+
+  // UpsertTrustEntry creates or replaces one trust entry (ADR-011).
+  // The admin service forwards the entry to the trust service, which
+  // publishes it in every enabled method.
+  rpc UpsertTrustEntry(UpsertTrustEntryRequest) returns (UpsertTrustEntryResponse) {
+    option (vca.common.v1.description) = "Creates or replaces one trust entry.";
+  }
+  // GetTrustEntry returns one trust entry by entity identifier.
+  rpc GetTrustEntry(GetTrustEntryRequest) returns (GetTrustEntryResponse) {
+    option (vca.common.v1.description) = "Returns one trust entry by entity identifier.";
+  }
+  // ListTrustEntries returns trust entries in pages.
+  rpc ListTrustEntries(ListTrustEntriesRequest) returns (ListTrustEntriesResponse) {
+    option (vca.common.v1.description) = "Returns trust entries in pages.";
+  }
+  // DeleteTrustEntry removes one trust entry.
+  rpc DeleteTrustEntry(DeleteTrustEntryRequest) returns (DeleteTrustEntryResponse) {
+    option (vca.common.v1.description) = "Removes one trust entry.";
+  }
+
+  // CreateAuthProvider registers one OIDC provider (ADR-012 decision 5).
+  // The service fetches the discovery document to check the URL.
+  rpc CreateAuthProvider(CreateAuthProviderRequest) returns (CreateAuthProviderResponse) {
+    option (vca.common.v1.description) = "Registers one OIDC provider.";
+  }
+  // GetAuthProvider returns one provider by id.
+  rpc GetAuthProvider(GetAuthProviderRequest) returns (GetAuthProviderResponse) {
+    option (vca.common.v1.description) = "Returns one provider by id.";
+  }
+  // ListAuthProviders returns providers in pages.
+  rpc ListAuthProviders(ListAuthProvidersRequest) returns (ListAuthProvidersResponse) {
+    option (vca.common.v1.description) = "Returns providers in pages.";
+  }
+  // UpdateAuthProvider changes one provider.
+  rpc UpdateAuthProvider(UpdateAuthProviderRequest) returns (UpdateAuthProviderResponse) {
+    option (vca.common.v1.description) = "Changes one provider.";
+  }
+  // DeleteAuthProvider removes one provider. Active sessions end.
+  rpc DeleteAuthProvider(DeleteAuthProviderRequest) returns (DeleteAuthProviderResponse) {
+    option (vca.common.v1.description) = "Removes one provider.";
+  }
+
+  // CreateApiKey creates one machine API key. The response shows the
+  // secret value once. The service stores only its hash.
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse) {
+    option (vca.common.v1.description) = "Creates one machine API key.";
+  }
+  // ListApiKeys returns API keys without their secret values.
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse) {
+    option (vca.common.v1.description) = "Returns API keys without their secret values.";
+  }
+  // RevokeApiKey disables one API key at once.
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse) {
+    option (vca.common.v1.description) = "Disables one API key at once.";
+  }
+
+  // GetServiceHealth returns the health of every service in the deployment.
+  rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse) {
+    option (vca.common.v1.description) = "Returns the health of every service in the deployment.";
+  }
+
+  // QueryAuditLog returns audit records that match a filter, newest first.
+  rpc QueryAuditLog(QueryAuditLogRequest) returns (QueryAuditLogResponse) {
+    option (vca.common.v1.description) = "Returns audit records that match a filter, newest first.";
+  }
+
+  // OnboardAdmin binds the first super admin (ADR-010 decision 4).
+  // The caller sends the one time bootstrap token and an OIDC id token.
+  // The service binds the iss and sub claims to the super admin role.
+  rpc OnboardAdmin(OnboardAdminRequest) returns (OnboardAdminResponse) {
+    option (vca.common.v1.description) = "Binds the first super admin with the bootstrap token.";
+  }
+
+  // ListCommands returns the command tree with descriptions.
+  // The CLI, the man pages, and the portal help page render this list.
+  rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse) {
+    option (vca.common.v1.description) = "Returns the command tree with descriptions.";
+  }
+}
+
+// Tenant is one operator organisation.
+message Tenant {
+  // The tenant id. The service assigns it.
+  string id = 1;
+  // The display name.
+  string display_name = 2;
+  // The state of the tenant.
+  State state = 3;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 4;
+  // The time of the last change.
+  google.protobuf.Timestamp updated_at = 5;
+
+  // State names whether the tenant can act.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // The tenant can act.
+    STATE_ACTIVE = 1;
+    // The tenant cannot act. Its data stays.
+    STATE_SUSPENDED = 2;
+  }
+}
+
+// CreateTenantRequest names the new tenant.
+message CreateTenantRequest {
+  // The display name. Required. At most 200 characters.
+  string display_name = 1;
+}
+
+// CreateTenantResponse returns the new tenant.
+message CreateTenantResponse {
+  // The tenant.
+  Tenant tenant = 1;
+}
+
+// GetTenantRequest selects a tenant.
+message GetTenantRequest {
+  // The tenant id.
+  string id = 1;
+}
+
+// GetTenantResponse returns the tenant.
+message GetTenantResponse {
+  // The tenant.
+  Tenant tenant = 1;
+}
+
+// ListTenantsRequest selects a page.
+message ListTenantsRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListTenantsResponse returns a page of tenants.
+message ListTenantsResponse {
+  // The tenants in the page.
+  repeated Tenant tenants = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// UpdateTenantRequest changes a tenant.
+message UpdateTenantRequest {
+  // The tenant id.
+  string id = 1;
+  // The new display name. Empty keeps the current name.
+  string display_name = 2;
+  // The new state. Unspecified keeps the current state.
+  Tenant.State state = 3;
+}
+
+// UpdateTenantResponse returns the changed tenant.
+message UpdateTenantResponse {
+  // The tenant.
+  Tenant tenant = 1;
+}
+
+// DeleteTenantRequest selects a tenant.
+message DeleteTenantRequest {
+  // The tenant id.
+  string id = 1;
+}
+
+// DeleteTenantResponse has no fields.
+message DeleteTenantResponse {}
+
+// UpsertTrustEntryRequest carries the entry to create or replace.
+message UpsertTrustEntryRequest {
+  // The entry. The identifier is the key.
+  vca.trust.v1.TrustEntry entry = 1;
+}
+
+// UpsertTrustEntryResponse returns the stored entry.
+message UpsertTrustEntryResponse {
+  // The entry as stored.
+  vca.trust.v1.TrustEntry entry = 1;
+}
+
+// GetTrustEntryRequest selects an entry.
+message GetTrustEntryRequest {
+  // The entity identifier.
+  vca.trust.v1.TrustEntry.Identifier identifier = 1;
+}
+
+// GetTrustEntryResponse returns the entry.
+message GetTrustEntryResponse {
+  // The entry.
+  vca.trust.v1.TrustEntry entry = 1;
+}
+
+// ListTrustEntriesRequest selects a page and a role filter.
+message ListTrustEntriesRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The role filter. Unspecified returns every role.
+  vca.common.v1.Role role = 2;
+}
+
+// ListTrustEntriesResponse returns a page of entries.
+message ListTrustEntriesResponse {
+  // The entries in the page.
+  repeated vca.trust.v1.TrustEntry entries = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// DeleteTrustEntryRequest selects an entry.
+message DeleteTrustEntryRequest {
+  // The entity identifier.
+  vca.trust.v1.TrustEntry.Identifier identifier = 1;
+}
+
+// DeleteTrustEntryResponse has no fields.
+message DeleteTrustEntryResponse {}
+
+// AuthProvider is one OpenID Connect provider.
+message AuthProvider {
+  // The provider id. The service assigns it.
+  string id = 1;
+  // The display name shown on the login page.
+  string display_name = 2;
+  // The OIDC discovery URL. Must be an absolute https URL.
+  string discovery_url = 3;
+  // The OAuth 2.0 client id.
+  string client_id = 4;
+  // The reference to the client secret. Optional for public clients.
+  vca.common.v1.SecretRef client_secret = 5;
+  // The roles that can log in with this provider.
+  repeated vca.common.v1.Role roles = 6;
+  // The JSON path of the claim that carries roles (ADR-012 decision 3).
+  string roles_claim_path = 7;
+  // True when the provider accepts logins.
+  bool enabled = 8;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// CreateAuthProviderRequest carries the provider to register.
+message CreateAuthProviderRequest {
+  // The provider. The service ignores id and created_at.
+  AuthProvider provider = 1;
+  // True asks the service to register the client with Dynamic Client
+  // Registration and to ignore client_id and client_secret.
+  bool dynamic_registration = 2;
+}
+
+// CreateAuthProviderResponse returns the stored provider.
+message CreateAuthProviderResponse {
+  // The provider as stored.
+  AuthProvider provider = 1;
+}
+
+// GetAuthProviderRequest selects a provider.
+message GetAuthProviderRequest {
+  // The provider id.
+  string id = 1;
+}
+
+// GetAuthProviderResponse returns the provider.
+message GetAuthProviderResponse {
+  // The provider.
+  AuthProvider provider = 1;
+}
+
+// ListAuthProvidersRequest selects a page.
+message ListAuthProvidersRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListAuthProvidersResponse returns a page of providers.
+message ListAuthProvidersResponse {
+  // The providers in the page.
+  repeated AuthProvider providers = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// UpdateAuthProviderRequest replaces a provider.
+message UpdateAuthProviderRequest {
+  // The provider with the new values. The id selects the record.
+  AuthProvider provider = 1;
+}
+
+// UpdateAuthProviderResponse returns the changed provider.
+message UpdateAuthProviderResponse {
+  // The provider.
+  AuthProvider provider = 1;
+}
+
+// DeleteAuthProviderRequest selects a provider.
+message DeleteAuthProviderRequest {
+  // The provider id.
+  string id = 1;
+}
+
+// DeleteAuthProviderResponse has no fields.
+message DeleteAuthProviderResponse {}
+
+// ApiKey is one machine credential without its secret value.
+message ApiKey {
+  // The key id.
+  string id = 1;
+  // The display name.
+  string display_name = 2;
+  // The tenant that owns the key.
+  string tenant_id = 3;
+  // The roles the key grants.
+  repeated vca.common.v1.Role roles = 4;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 5;
+  // The end of validity. Empty means no end.
+  google.protobuf.Timestamp expires_at = 6;
+  // The revocation time. Empty means the key is active.
+  google.protobuf.Timestamp revoked_at = 7;
+  // The first 8 characters of the secret, for display.
+  string prefix = 8;
+}
+
+// CreateApiKeyRequest names the new key.
+message CreateApiKeyRequest {
+  // The display name. Required.
+  string display_name = 1;
+  // The tenant that owns the key. Required.
+  string tenant_id = 2;
+  // The roles the key grants. At least one.
+  repeated vca.common.v1.Role roles = 3;
+  // The end of validity. Empty means no end.
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+// CreateApiKeyResponse returns the key and its secret value once.
+message CreateApiKeyResponse {
+  // The key record.
+  ApiKey key = 1;
+  // The secret value. The service does not return it again.
+  string secret = 2;
+}
+
+// ListApiKeysRequest selects a page and a tenant filter.
+message ListApiKeysRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The tenant filter. Empty returns every tenant.
+  string tenant_id = 2;
+}
+
+// ListApiKeysResponse returns a page of keys.
+message ListApiKeysResponse {
+  // The keys in the page.
+  repeated ApiKey keys = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// RevokeApiKeyRequest selects a key.
+message RevokeApiKeyRequest {
+  // The key id.
+  string id = 1;
+}
+
+// RevokeApiKeyResponse has no fields.
+message RevokeApiKeyResponse {}
+
+// GetServiceHealthRequest has no fields.
+message GetServiceHealthRequest {}
+
+// GetServiceHealthResponse lists every service and its health.
+message GetServiceHealthResponse {
+  // The services.
+  repeated ServiceHealth services = 1;
+
+  // ServiceHealth is the health of one service.
+  message ServiceHealth {
+    // The service name.
+    string name = 1;
+    // The version of the running image.
+    string version = 2;
+    // True when the readyz probe of the service passed.
+    bool ready = 3;
+    // The time of the probe.
+    google.protobuf.Timestamp checked_at = 4;
+    // The probe error text, when the probe failed.
+    string error = 5;
+  }
+}
+
+// AuditRecord is one entry of the append only audit log.
+message AuditRecord {
+  // The record id. Ids increase over time.
+  string id = 1;
+  // The time of the action.
+  google.protobuf.Timestamp at = 2;
+  // The actor as iss|sub, or the API key id.
+  string actor = 3;
+  // The action, for example admin.CreateTenant.
+  string action = 4;
+  // The W3C Trace Context request id.
+  string request_id = 5;
+  // The id of the record the action touched, when any.
+  string target = 6;
+  // True when the action succeeded.
+  bool ok = 7;
+}
+
+// QueryAuditLogRequest filters the audit log.
+message QueryAuditLogRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The earliest time. Empty means no lower bound.
+  google.protobuf.Timestamp from = 2;
+  // The latest time. Empty means no upper bound.
+  google.protobuf.Timestamp to = 3;
+  // The actor filter. Empty returns every actor.
+  string actor = 4;
+  // The action filter. Empty returns every action.
+  string action = 5;
+}
+
+// QueryAuditLogResponse returns a page of records.
+message QueryAuditLogResponse {
+  // The records in the page, newest first.
+  repeated AuditRecord records = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// OnboardAdminRequest exchanges the bootstrap token for the admin role.
+message OnboardAdminRequest {
+  // The one time bootstrap token that vca setup printed.
+  string bootstrap_token = 1;
+  // The OIDC id token of the admin from the login the CLI or portal did.
+  string id_token = 2;
+  // The provider id that issued the id token.
+  string provider_id = 3;
+}
+
+// OnboardAdminResponse confirms the binding.
+message OnboardAdminResponse {
+  // The issuer claim now bound to the super admin role.
+  string issuer = 1;
+  // The subject claim now bound to the super admin role.
+  string subject = 2;
+}
+
+// ListCommandsRequest has no fields.
+message ListCommandsRequest {}
+
+// ListCommandsResponse returns the command tree.
+message ListCommandsResponse {
+  // The commands, in the order the help page shows them.
+  repeated Command commands = 1;
+
+  // Command is one CLI command and its help text.
+  message Command {
+    // The full command path, for example admin trust add.
+    string path = 1;
+    // The one line summary in Simplified Technical English.
+    string summary = 2;
+    // The long description in Simplified Technical English.
+    string description = 3;
+    // The RPC the command calls, for example AdminService.UpsertTrustEntry.
+    string rpc = 4;
+    // The flags of the command.
+    repeated Flag flags = 5;
+  }
+
+  // Flag is one command flag.
+  message Flag {
+    // The flag name without dashes.
+    string name = 1;
+    // The one line description.
+    string description = 2;
+    // True when the flag is mandatory.
+    bool mandatory = 3;
+    // The default value, when any.
+    string default_value = 4;
+  }
+}

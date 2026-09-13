@@ -1,0 +1,210 @@
+// SPDX-License-Identifier: Apache-2.0
+// Status list service (ADR-018, ADR-019). One package serves both the W3C
+// Bitstring Status List and the IETF Token Status List. The two kinds
+// share allocation, storage, and key management. They differ only in the
+// encoding and the signing envelope (ADR-019 decision 4).
+// The public list endpoints are standard HTTP GET handlers, not RPCs
+// (ADR-003 decision 7). They send cache headers and an ETag:
+//   GET /status/bitstring/<list_id> serves the VCDM 2.0 list credential.
+//   GET /status/token/<list_id> serves application/statuslist+jwt.
+//   GET /status/token/<list_id> with Accept application/statuslist+cwt serves the CWT.
+//   GET /.well-known/jwks.json serves the signing keys.
+syntax = "proto3";
+
+package vca.status.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+
+// StatusService allocates indices and sets status values.
+// The issuance and issued credentials services call it (ADR-018 decision 4).
+service StatusService {
+  // AllocateIndex reserves one random index in a list of the given
+  // purpose and kind. The service creates a list when none has room.
+  rpc AllocateIndex(AllocateIndexRequest) returns (AllocateIndexResponse);
+  // SetStatus writes the status value of one index and signs the list again.
+  rpc SetStatus(SetStatusRequest) returns (SetStatusResponse);
+  // GetStatus reads the status value of one index.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // GetList returns the signed list bytes and their media type. The HTTP
+  // handler that serves the public list calls this RPC.
+  rpc GetList(GetListRequest) returns (GetListResponse);
+  // ListLists returns the lists of this issuer in pages.
+  rpc ListLists(ListListsRequest) returns (ListListsResponse);
+  // RotateKey creates a new signing key and signs every list with it.
+  // The old key stays in the JWKS until every list has a new signature.
+  rpc RotateKey(RotateKeyRequest) returns (RotateKeyResponse);
+}
+
+// Kind names the status list standard.
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  // W3C Bitstring Status List v1.0 (ADR-018).
+  KIND_BITSTRING = 1;
+  // IETF Token Status List (ADR-019).
+  KIND_TOKEN = 2;
+}
+
+// Purpose names what a status value means (ADR-018 decision 3).
+enum Purpose {
+  PURPOSE_UNSPECIFIED = 0;
+  // The value 1 means the issuer revoked the credential. This is final.
+  PURPOSE_REVOCATION = 1;
+  // The value 1 means the issuer suspended the credential for now.
+  PURPOSE_SUSPENSION = 2;
+  // The value is an index into a message table of the list.
+  PURPOSE_MESSAGE = 3;
+}
+
+// StatusList describes one list.
+message StatusList {
+  // The list id. The service assigns it.
+  string id = 1;
+  // The kind.
+  Kind kind = 2;
+  // The purpose.
+  Purpose purpose = 3;
+  // The public URL of the list.
+  string url = 4;
+  // The number of entries. At least 131072 for a bitstring list.
+  int64 size = 5;
+  // The number of bits per entry. 1, 2, 4, or 8. A bitstring list uses 1.
+  int32 bits = 6;
+  // The number of indices the service has allocated.
+  int64 allocated = 7;
+  // The issuer DID that signs the list.
+  string issuer_did = 8;
+  // The key id of the current signature.
+  string key_id = 9;
+  // The time of the current signature.
+  google.protobuf.Timestamp signed_at = 10;
+  // The time the current signature expires and the service signs again.
+  google.protobuf.Timestamp expires_at = 11;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 12;
+}
+
+// AllocateIndexRequest selects a purpose and a kind.
+message AllocateIndexRequest {
+  // The purpose.
+  Purpose purpose = 1;
+  // The kind.
+  Kind kind = 2;
+  // The issuer DID. Empty selects the deployment default.
+  string issuer_did = 3;
+  // The number of bits per entry for a token list. Zero means 1.
+  int32 bits = 4;
+}
+
+// AllocateIndexResponse returns the reserved index.
+message AllocateIndexResponse {
+  // The list id.
+  string list_id = 1;
+  // The index in the list.
+  int64 index = 2;
+  // The public URL of the list. The DPG embeds it in the credential.
+  string url = 3;
+  // The kind.
+  Kind kind = 4;
+  // The purpose.
+  Purpose purpose = 5;
+}
+
+// SetStatusRequest writes one value.
+message SetStatusRequest {
+  // The list id.
+  string list_id = 1;
+  // The index in the list.
+  int64 index = 2;
+  // The new value. 0 or 1 for a 1 bit list. Up to 255 for an 8 bit list.
+  int32 value = 3;
+  // The reason for the audit log. Never a secret.
+  string reason = 4;
+}
+
+// SetStatusResponse confirms the write.
+message SetStatusResponse {
+  // The value before the write.
+  int32 previous_value = 1;
+  // The time of the new signature.
+  google.protobuf.Timestamp signed_at = 2;
+}
+
+// GetStatusRequest reads one value.
+message GetStatusRequest {
+  // The list id.
+  string list_id = 1;
+  // The index in the list.
+  int64 index = 2;
+}
+
+// GetStatusResponse returns the value.
+message GetStatusResponse {
+  // The value.
+  int32 value = 1;
+  // The purpose of the list.
+  Purpose purpose = 2;
+  // The time of the last change of this index. Empty when never changed.
+  google.protobuf.Timestamp changed_at = 3;
+}
+
+// GetListRequest selects one list.
+message GetListRequest {
+  // The list id.
+  string list_id = 1;
+  // The media type the caller accepts. Empty selects the default of the kind.
+  // A token list accepts application/statuslist+jwt or application/statuslist+cwt.
+  string accept = 2;
+}
+
+// GetListResponse returns the signed list.
+message GetListResponse {
+  // The signed list exactly as the service serves it over HTTP.
+  bytes body = 1;
+  // The media type of the body.
+  string media_type = 2;
+  // The ETag value of this signature.
+  string etag = 3;
+  // The time of the signature.
+  google.protobuf.Timestamp signed_at = 4;
+  // The time the signature expires.
+  google.protobuf.Timestamp expires_at = 5;
+  // The list description.
+  StatusList list = 6;
+}
+
+// ListListsRequest selects a page and filters.
+message ListListsRequest {
+  // The kind filter. Unspecified returns every kind.
+  Kind kind = 1;
+  // The purpose filter. Unspecified returns every purpose.
+  Purpose purpose = 2;
+  // The page to return.
+  vca.common.v1.Pagination page = 3;
+}
+
+// ListListsResponse returns a page of lists.
+message ListListsResponse {
+  // The lists in the page.
+  repeated StatusList lists = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// RotateKeyRequest selects an issuer.
+message RotateKeyRequest {
+  // The issuer DID. Empty selects the deployment default.
+  string issuer_did = 1;
+  // The algorithm of the new key. ES256 or EdDSA. Empty keeps the current one.
+  string algorithm = 2;
+}
+
+// RotateKeyResponse returns the new key id.
+message RotateKeyResponse {
+  // The key id of the new key.
+  string key_id = 1;
+  // The key id of the old key that stays in the JWKS for now.
+  string previous_key_id = 2;
+  // The number of lists the service signed again.
+  int32 lists_signed = 3;
+}

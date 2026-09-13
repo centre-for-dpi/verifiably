@@ -1,0 +1,342 @@
+// SPDX-License-Identifier: Apache-2.0
+// Wallet portal service (ADR-021). The citizen web wallet calls these RPCs
+// to discover, claim, view, present, and delete credentials. The service
+// delegates wallet actions to the DPG holder backend.
+// Every RPC takes the session JWT of ADR-020 in the Authorization header.
+syntax = "proto3";
+
+package vca.walletportal.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+import "vca/schema/v1/schema.proto";
+import "vca/trust/v1/trust.proto";
+
+// WalletPortalService serves the citizen wallet pages.
+service WalletPortalService {
+  // ListDiscoverable returns the schemas that issuers publish for
+  // pre-authorized issuance (ADR-021 decision 1).
+  rpc ListDiscoverable(ListDiscoverableRequest) returns (ListDiscoverableResponse);
+  // ListClaimable returns the schemas the citizen can get with the
+  // authorization code flow. The eligibility answer is yes or no per schema
+  // and nothing more (ADR-021 decision 2).
+  rpc ListClaimable(ListClaimableRequest) returns (ListClaimableResponse);
+  // Claim starts the authorization code flow for one schema.
+  rpc Claim(ClaimRequest) returns (ClaimResponse);
+  // Scan takes the text of a scanned QR code and returns what it is.
+  rpc Scan(ScanRequest) returns (ScanResponse);
+  // Paste takes pasted text and returns what it is.
+  rpc Paste(PasteRequest) returns (PasteResponse);
+  // Accept claims a pending offer into the wallet.
+  rpc Accept(AcceptRequest) returns (AcceptResponse);
+  // Reject discards a pending offer.
+  rpc Reject(RejectRequest) returns (RejectResponse);
+  // Delete removes one credential from the wallet.
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  // ListMine returns the credentials in the wallet with trust and status.
+  rpc ListMine(ListMineRequest) returns (ListMineResponse);
+  // PresentStart reads an OID4VP request and returns the consent screen
+  // data: each requested claim and its value (ADR-021 decision 5).
+  rpc PresentStart(PresentStartRequest) returns (PresentStartResponse);
+  // PresentConfirm sends the presentation after the citizen consented.
+  rpc PresentConfirm(PresentConfirmRequest) returns (PresentConfirmResponse);
+}
+
+// Card is one credential as the wallet shows it (ADR-021 decision 6).
+message Card {
+  // The credential id in the wallet.
+  string id = 1;
+  // The card title from the display metadata.
+  string title = 2;
+  // The credential type.
+  string type = 3;
+  // The wire format.
+  vca.common.v1.Format format = 4;
+  // The issuer DID or URL.
+  string issuer = 5;
+  // The issuer display name from the trust list, when known.
+  string issuer_name = 6;
+  // The trust outcome of the issuer.
+  vca.trust.v1.TrustLookupResponse.Outcome trust = 7;
+  // The validity window of the credential.
+  vca.common.v1.ValidityWindow validity = 8;
+  // The revocation state as the status list reports it.
+  RevocationState revocation = 9;
+  // The plain language status line, in Simplified Technical English.
+  string status_text = 10;
+  // The visible claims, keyed by name, as text.
+  map<string, string> claims = 11;
+  // The time the wallet received the credential.
+  google.protobuf.Timestamp received_at = 12;
+  // The display metadata of the schema, when known.
+  vca.schema.v1.Display display = 13;
+
+  // RevocationState names what the status list says.
+  enum RevocationState {
+    REVOCATION_STATE_UNSPECIFIED = 0;
+    // The status list shows the credential as valid.
+    REVOCATION_STATE_VALID = 1;
+    // The issuer suspended the credential.
+    REVOCATION_STATE_SUSPENDED = 2;
+    // The issuer revoked the credential.
+    REVOCATION_STATE_REVOKED = 3;
+    // The credential has no status list.
+    REVOCATION_STATE_NONE = 4;
+    // The wallet could not read the status list.
+    REVOCATION_STATE_UNKNOWN = 5;
+  }
+}
+
+// Offering is one schema an issuer offers.
+message Offering {
+  // The issuer URL.
+  string credential_issuer = 1;
+  // The issuer display name.
+  string issuer_name = 2;
+  // The trust outcome of the issuer.
+  vca.trust.v1.TrustLookupResponse.Outcome trust = 3;
+  // The schema.
+  vca.schema.v1.PublicSchema schema = 4;
+}
+
+// ListDiscoverableRequest selects a page.
+message ListDiscoverableRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListDiscoverableResponse returns the offerings.
+message ListDiscoverableResponse {
+  // The offerings in the page.
+  repeated Offering offerings = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// ListClaimableRequest selects a page.
+message ListClaimableRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListClaimableResponse returns the offerings with eligibility.
+message ListClaimableResponse {
+  // The offerings in the page.
+  repeated Item items = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+
+  // Item is one offering and whether the citizen can claim it.
+  message Item {
+    // The offering.
+    Offering offering = 1;
+    // True when the issuer says the citizen can get this credential.
+    bool eligible = 2;
+  }
+}
+
+// ClaimRequest selects an offering.
+message ClaimRequest {
+  // The issuer URL.
+  string credential_issuer = 1;
+  // The schema id at the issuer.
+  string schema_id = 2;
+  // The wire format to ask for.
+  vca.common.v1.Format format = 3;
+}
+
+// ClaimResponse returns the next step.
+message ClaimResponse {
+  // The URL the browser opens to authorize at the issuer, when the flow
+  // needs a browser step.
+  string authorization_url = 1;
+  // The card, when the wallet got the credential without a browser step.
+  Card card = 2;
+  // The pending offer id, when the wallet must call Accept.
+  string offer_id = 3;
+}
+
+// Detected says what a scanned or pasted text is.
+message Detected {
+  // The kind of the text.
+  Kind kind = 1;
+  // The pending offer id, for an offer.
+  string offer_id = 2;
+  // The offer summary, for an offer.
+  OfferSummary offer = 3;
+  // The presentation id, for a presentation request. PresentStart takes it.
+  string presentation_id = 4;
+  // The error, when the text is not usable.
+  vca.common.v1.Error error = 5;
+
+  // Kind names the type of a scanned text.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // An OID4VCI credential offer.
+    KIND_CREDENTIAL_OFFER = 1;
+    // An OID4VP presentation request.
+    KIND_PRESENTATION_REQUEST = 2;
+    // A credential in one of the supported formats.
+    KIND_CREDENTIAL = 3;
+    // Text the wallet does not understand.
+    KIND_UNKNOWN = 4;
+  }
+}
+
+// OfferSummary is what the wallet shows before the citizen accepts.
+message OfferSummary {
+  // The issuer URL.
+  string credential_issuer = 1;
+  // The issuer display name.
+  string issuer_name = 2;
+  // The trust outcome of the issuer.
+  vca.trust.v1.TrustLookupResponse.Outcome trust = 3;
+  // The credential types in the offer.
+  repeated string types = 4;
+  // The display metadata per type, when known.
+  repeated vca.schema.v1.Display display = 5;
+  // True when the offer needs a transaction code.
+  bool needs_pin = 6;
+}
+
+// ScanRequest carries the decoded QR text.
+message ScanRequest {
+  // The text the browser decoded from the QR code.
+  string text = 1;
+}
+
+// ScanResponse returns what the text is.
+message ScanResponse {
+  // The detection.
+  Detected detected = 1;
+}
+
+// PasteRequest carries pasted text.
+message PasteRequest {
+  // The pasted text. At most 64 KiB.
+  string text = 1;
+}
+
+// PasteResponse returns what the text is.
+message PasteResponse {
+  // The detection.
+  Detected detected = 1;
+}
+
+// AcceptRequest claims a pending offer.
+message AcceptRequest {
+  // The pending offer id.
+  string offer_id = 1;
+  // The transaction code, when the offer needs one.
+  string pin = 2;
+}
+
+// AcceptResponse returns the new card.
+message AcceptResponse {
+  // The card.
+  Card card = 1;
+}
+
+// RejectRequest discards a pending offer.
+message RejectRequest {
+  // The pending offer id.
+  string offer_id = 1;
+}
+
+// RejectResponse has no fields.
+message RejectResponse {}
+
+// DeleteRequest removes a credential.
+message DeleteRequest {
+  // The credential id in the wallet.
+  string id = 1;
+}
+
+// DeleteResponse has no fields.
+message DeleteResponse {}
+
+// ListMineRequest selects a page.
+message ListMineRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListMineResponse returns the cards.
+message ListMineResponse {
+  // The cards in the page.
+  repeated Card cards = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// PresentStartRequest selects a presentation request.
+message PresentStartRequest {
+  // The presentation id from Scan or Paste, or the request URI itself.
+  string presentation_id = 1;
+}
+
+// PresentStartResponse is the consent screen data.
+message PresentStartResponse {
+  // The presentation id to confirm.
+  string presentation_id = 1;
+  // The verifier client id, usually a URL.
+  string verifier = 2;
+  // The verifier display name from the trust list, when known.
+  string verifier_name = 3;
+  // The trust outcome of the verifier.
+  vca.trust.v1.TrustLookupResponse.Outcome trust = 4;
+  // One entry per credential the verifier asks for.
+  repeated RequestedCredential requested = 5;
+  // The purpose text the verifier gave, when any.
+  string purpose = 6;
+
+  // RequestedCredential is one credential the verifier asks for.
+  message RequestedCredential {
+    // The DCQL credential query id.
+    string query_id = 1;
+    // The credential type the verifier filters on.
+    string type = 2;
+    // The wire format the verifier accepts.
+    vca.common.v1.Format format = 3;
+    // The cards in the wallet that match.
+    repeated Card matches = 4;
+    // The claims the verifier asks for, with the value the first match holds.
+    repeated Claim claims = 5;
+
+    // Claim is one requested claim.
+    message Claim {
+      // The claim path, for example given_name or address.street.
+      string path = 1;
+      // The value the wallet would disclose, as text.
+      string value = 2;
+      // True when the verifier marks the claim as needed.
+      bool mandatory = 3;
+    }
+  }
+}
+
+// PresentConfirmRequest sends the presentation.
+message PresentConfirmRequest {
+  // The presentation id.
+  string presentation_id = 1;
+  // The chosen card per query id.
+  map<string, string> selected_cards = 2;
+  // The claim paths the citizen agreed to disclose, per query id.
+  map<string, ClaimPaths> disclosed = 3;
+
+  // ClaimPaths is a list of claim paths.
+  message ClaimPaths {
+    // The claim paths.
+    repeated string paths = 1;
+  }
+}
+
+// PresentConfirmResponse reports the outcome.
+message PresentConfirmResponse {
+  // True when the verifier accepted the presentation.
+  bool accepted = 1;
+  // The redirect URI the verifier returned, when any.
+  string redirect_uri = 2;
+  // The plain language outcome text.
+  string message = 3;
+}

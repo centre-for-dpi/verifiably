@@ -1,0 +1,206 @@
+// SPDX-License-Identifier: Apache-2.0
+// Verifier ingestion service (ADR-023). Every carrier decodes to one
+// RawPresentation. The decoders are pure functions in vc-core.
+// The OID4VP direct_post endpoint that wallets call is a standard HTTP
+// handler at POST /oid4vp/response (ADR-003 decision 7). That handler
+// calls ReceiveDirectPost.
+syntax = "proto3";
+
+package vca.ingest.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+
+// IngestService turns any supported carrier into a RawPresentation.
+service IngestService {
+  // Ingest decodes bytes from one carrier into a RawPresentation.
+  rpc Ingest(IngestRequest) returns (IngestResponse);
+  // CreateOid4vpRequest starts an OID4VP transaction from a template
+  // and returns the request URI for the wallet.
+  rpc CreateOid4vpRequest(CreateOid4vpRequestRequest) returns (CreateOid4vpRequestResponse);
+  // ReceiveDirectPost takes the wallet response of one transaction.
+  // The HTTP direct_post handler calls it after it parsed the form body.
+  rpc ReceiveDirectPost(ReceiveDirectPostRequest) returns (ReceiveDirectPostResponse);
+  // GetTransaction returns the state of one OID4VP transaction.
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
+}
+
+// Carrier names how a presentation arrived (ADR-023 decision 1).
+enum Carrier {
+  CARRIER_UNSPECIFIED = 0;
+  // An OID4VP response from a wallet.
+  CARRIER_OID4VP = 1;
+  // An image upload with a QR code.
+  CARRIER_IMAGE = 2;
+  // A PDF upload with a QR code.
+  CARRIER_PDF = 3;
+  // An XML document with an embedded credential.
+  CARRIER_XML = 4;
+  // Pasted JSON or a pasted compact token.
+  CARRIER_JSON = 5;
+  // The text of an ordinary QR code.
+  CARRIER_QR = 6;
+  // The text of a MOSIP Claim 169 QR code.
+  CARRIER_QR_CLAIM169 = 7;
+}
+
+// DetectedType names what the decoder found inside the carrier.
+enum DetectedType {
+  DETECTED_TYPE_UNSPECIFIED = 0;
+  // One credential.
+  DETECTED_TYPE_CREDENTIAL = 1;
+  // A verifiable presentation with one or more credentials.
+  DETECTED_TYPE_PRESENTATION = 2;
+  // A CWT with claim 169.
+  DETECTED_TYPE_CWT_CLAIM169 = 3;
+  // A legacy PixelPass payload.
+  DETECTED_TYPE_PIXELPASS = 4;
+  // Bytes the decoder does not understand.
+  DETECTED_TYPE_UNKNOWN = 5;
+}
+
+// RawPresentation is the normalised input of the policy service
+// (ADR-023 decision 2).
+message RawPresentation {
+  // The reference the results service stores. The service assigns it.
+  string ref = 1;
+  // The carrier the bytes came from.
+  Carrier carrier = 2;
+  // The credential format, when the decoder found one.
+  vca.common.v1.Format format = 3;
+  // The decoded bytes. A compact token, a JSON document, or CBOR.
+  bytes payload = 4;
+  // What the decoder found.
+  DetectedType detected_type = 5;
+  // The credentials the decoder split out of the payload.
+  repeated vca.common.v1.Credential credentials = 6;
+  // The OID4VP transaction id, for CARRIER_OID4VP.
+  string transaction_id = 7;
+  // The nonce the verifier sent, for CARRIER_OID4VP.
+  string nonce = 8;
+  // The holder key binding JWT, when the presentation has one.
+  string key_binding = 9;
+  // The time of ingestion.
+  google.protobuf.Timestamp received_at = 10;
+  // The SHA-256 hash of the input bytes, hex encoded.
+  string input_hash = 11;
+}
+
+// XmlConfig says where a credential sits in an XML document (ADR-023 decision 4).
+message XmlConfig {
+  // The XPath of the element or attribute that holds the credential.
+  string xpath = 1;
+  // The encoding of the text at the XPath.
+  Encoding encoding = 2;
+  // The XML namespaces, keyed by prefix.
+  map<string, string> namespaces = 3;
+
+  // Encoding names how the credential sits in the text.
+  enum Encoding {
+    ENCODING_UNSPECIFIED = 0;
+    // The text is the credential.
+    ENCODING_TEXT = 1;
+    // The text is the credential in base64.
+    ENCODING_BASE64 = 2;
+  }
+}
+
+// IngestRequest carries the input bytes.
+message IngestRequest {
+  // The input bytes. At most 16 MiB.
+  bytes payload = 1;
+  // The carrier hint. Unspecified lets the decoder detect the carrier.
+  Carrier carrier = 2;
+  // The XML configuration, for CARRIER_XML.
+  XmlConfig xml = 3;
+  // The media type of the input, when the client knows it.
+  string media_type = 4;
+}
+
+// IngestResponse returns the normalised presentation.
+message IngestResponse {
+  // The presentation.
+  RawPresentation presentation = 1;
+  // The decoder steps in order, for the operator, for example
+  // qr, base45, zlib, cwt.
+  repeated string steps = 2;
+}
+
+// CreateOid4vpRequestRequest selects a template.
+message CreateOid4vpRequestRequest {
+  // The presentation template id from the discovery service.
+  string template_id = 1;
+  // The template version. Zero selects the latest version.
+  int32 template_version = 2;
+  // The DCQL query to use instead of a template, as a JSON string.
+  string dcql = 3;
+  // The response mode. direct_post or direct_post.jwt. Empty selects direct_post.
+  string response_mode = 4;
+}
+
+// CreateOid4vpRequestResponse describes the transaction.
+message CreateOid4vpRequestResponse {
+  // The transaction id.
+  string transaction_id = 1;
+  // The openid4vp request URI for the wallet.
+  string request_uri = 2;
+  // The QR code payload the page shows. The same value as request_uri.
+  string qr_payload = 3;
+  // The nonce the wallet must bind to.
+  string nonce = 4;
+  // The time at which the request stops working.
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+// ReceiveDirectPostRequest carries the parsed wallet response.
+message ReceiveDirectPostRequest {
+  // The state parameter of the response.
+  string state = 1;
+  // The vp_token parameter as the wallet sent it.
+  string vp_token = 2;
+  // The presentation_submission parameter, for Presentation Exchange wallets.
+  string presentation_submission = 3;
+  // The response JWT, for direct_post.jwt.
+  string response_jwt = 4;
+  // The error parameter, when the wallet refused.
+  string error = 5;
+}
+
+// ReceiveDirectPostResponse returns the normalised presentation.
+message ReceiveDirectPostResponse {
+  // The presentation.
+  RawPresentation presentation = 1;
+  // The redirect URI to send back to the wallet, when configured.
+  string redirect_uri = 2;
+}
+
+// GetTransactionRequest selects a transaction.
+message GetTransactionRequest {
+  // The transaction id.
+  string transaction_id = 1;
+}
+
+// GetTransactionResponse returns the transaction state.
+message GetTransactionResponse {
+  // The state.
+  State state = 1;
+  // The presentation, when the wallet answered.
+  RawPresentation presentation = 2;
+  // The template id the transaction used.
+  string template_id = 3;
+  // The template version.
+  int32 template_version = 4;
+
+  // State names the transaction phase.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // No wallet has answered yet.
+    STATE_PENDING = 1;
+    // The wallet answered.
+    STATE_RECEIVED = 2;
+    // The wallet refused.
+    STATE_REFUSED = 3;
+    // The request expired.
+    STATE_EXPIRED = 4;
+  }
+}

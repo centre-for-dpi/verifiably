@@ -1,0 +1,497 @@
+// SPDX-License-Identifier: Apache-2.0
+// DPG adapter contract. This file replaces the legacy 25 method Adapter
+// interface with one small service per role (ADR-002 decision 2).
+// A DPG adapter serves only the services its DPG supports. For each
+// other service it returns the Connect code Unimplemented.
+// The adapter never re-encodes a credential (ADR-003 decision 6).
+syntax = "proto3";
+
+package vca.backend.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+
+// CapabilityService tells a caller what the adapter can do.
+// Every adapter serves this service.
+service CapabilityService {
+  // GetCapabilities returns the formats, channels, roles, and protocols
+  // that this adapter supports. The UI offers only what is possible
+  // (ADR-016 decision 6).
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+}
+
+// IssuerBackendService drives the issuer side of a DPG.
+service IssuerBackendService {
+  // RegisterCredentialConfiguration makes a published schema known to the
+  // DPG so the DPG can issue it (ADR-013 decision 3).
+  rpc RegisterCredentialConfiguration(RegisterCredentialConfigurationRequest) returns (RegisterCredentialConfigurationResponse);
+  // CreateOffer builds an OID4VCI credential offer for one subject.
+  rpc CreateOffer(CreateOfferRequest) returns (CreateOfferResponse);
+  // Issue produces one credential and returns it as opaque bytes.
+  rpc Issue(IssueRequest) returns (IssueResponse);
+  // IssueBatch produces many credentials in one call.
+  rpc IssueBatch(IssueBatchRequest) returns (IssueBatchResponse);
+  // GetIssuanceStatus returns the state of one offer or deferred issuance.
+  rpc GetIssuanceStatus(GetIssuanceStatusRequest) returns (GetIssuanceStatusResponse);
+  // Revoke sets the status bit of one credential through its status index.
+  rpc Revoke(RevokeRequest) returns (RevokeResponse);
+  // GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
+  rpc GetIssuerMetadata(GetIssuerMetadataRequest) returns (GetIssuerMetadataResponse);
+}
+
+// HolderBackendService drives the wallet side of a DPG.
+service HolderBackendService {
+  // Register creates the wallet account for one citizen.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  // ListCredentials returns the credentials in one wallet.
+  rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
+  // AcceptOffer claims a credential offer into the wallet.
+  rpc AcceptOffer(AcceptOfferRequest) returns (AcceptOfferResponse);
+  // Present answers an OID4VP request with credentials from the wallet.
+  rpc Present(PresentRequest) returns (PresentResponse);
+  // DeleteCredential removes one credential from the wallet.
+  rpc DeleteCredential(DeleteCredentialRequest) returns (DeleteCredentialResponse);
+}
+
+// VerifierBackendService drives the verifier side of a DPG.
+service VerifierBackendService {
+  // CreateRequest starts an OID4VP transaction and returns its request URI.
+  rpc CreateRequest(CreateRequestRequest) returns (CreateRequestResponse);
+  // GetResult returns the state of one OID4VP transaction.
+  rpc GetResult(GetResultRequest) returns (GetResultResponse);
+}
+
+// CatalogBackendService reads the credential types a DPG knows.
+service CatalogBackendService {
+  // ListCredentialTypes returns the credential configurations of the DPG.
+  rpc ListCredentialTypes(ListCredentialTypesRequest) returns (ListCredentialTypesResponse);
+}
+
+// Channel names a way to deliver a credential to a citizen (ADR-016).
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0;
+  // OID4VCI pre-authorized code flow.
+  CHANNEL_OID4VCI_PREAUTH = 1;
+  // OID4VCI authorization code flow.
+  CHANNEL_OID4VCI_AUTHCODE = 2;
+  // A PDF document with a QR code.
+  CHANNEL_PDF = 3;
+  // An email that carries the offer.
+  CHANNEL_EMAIL = 4;
+  // An SMS that carries the offer.
+  CHANNEL_SMS = 5;
+  // A download link.
+  CHANNEL_LINK = 6;
+}
+
+// Protocol names a standard exchange protocol an adapter speaks.
+enum Protocol {
+  PROTOCOL_UNSPECIFIED = 0;
+  // OpenID for Verifiable Credential Issuance 1.0.
+  PROTOCOL_OID4VCI = 1;
+  // OpenID for Verifiable Presentations 1.0.
+  PROTOCOL_OID4VP = 2;
+  // OID4VP with DCQL queries and credential_sets.
+  PROTOCOL_OID4VP_DCQL = 3;
+  // OID4VP with Presentation Exchange (legacy wallets).
+  PROTOCOL_OID4VP_PEX = 4;
+  // OID4VCI batch credential issuance.
+  PROTOCOL_OID4VCI_BATCH = 5;
+  // OID4VCI deferred credential issuance.
+  PROTOCOL_OID4VCI_DEFERRED = 6;
+}
+
+// GetCapabilitiesRequest has no fields.
+message GetCapabilitiesRequest {}
+
+// GetCapabilitiesResponse lists what the adapter supports.
+message GetCapabilitiesResponse {
+  // The name of the adapter, for example the service name.
+  string adapter = 1;
+  // The version of the DPG behind the adapter.
+  string dpg_version = 2;
+  // The credential formats the adapter can issue or check.
+  repeated vca.common.v1.Format formats = 3;
+  // The delivery channels the adapter supports.
+  repeated Channel channels = 4;
+  // The roles the adapter serves. The adapter returns Unimplemented for
+  // the service of each role that is not in this list.
+  repeated vca.common.v1.Role roles = 5;
+  // The exchange protocols the adapter speaks.
+  repeated Protocol protocols = 6;
+}
+
+// CredentialConfiguration is one entry of credential_configurations_supported
+// in the OID4VCI issuer metadata.
+message CredentialConfiguration {
+  // The configuration id the wallet uses in the offer.
+  string id = 1;
+  // The wire format.
+  vca.common.v1.Format format = 2;
+  // The credential type. The VCDM type name or the SD-JWT VC vct.
+  string type = 3;
+  // The JSON Schema 2020-12 document of the credential, as a string.
+  string json_schema = 4;
+  // The OID4VCI display metadata, as a JSON string.
+  string display = 5;
+  // The claim names the issuer marks as selectively disclosable.
+  repeated string sd_claims = 6;
+}
+
+// RegisterCredentialConfigurationRequest carries one configuration to register.
+message RegisterCredentialConfigurationRequest {
+  // The configuration to register. The adapter replaces an entry with the same id.
+  CredentialConfiguration configuration = 1;
+}
+
+// RegisterCredentialConfigurationResponse confirms the registration.
+message RegisterCredentialConfigurationResponse {
+  // The configuration id as the DPG stores it.
+  string id = 1;
+}
+
+// StatusListBinding points at the status entry of one credential.
+message StatusListBinding {
+  // The kind of status list.
+  Kind kind = 1;
+  // The id of the list in the status service.
+  string list_id = 2;
+  // The index of the credential in the list.
+  int64 index = 3;
+  // The public URL that a verifier fetches.
+  string publish_url = 4;
+
+  // Kind names the status list standard.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // W3C Bitstring Status List (ADR-018).
+    KIND_BITSTRING = 1;
+    // IETF Token Status List (ADR-019).
+    KIND_TOKEN = 2;
+  }
+}
+
+// IssueSpec is the input that CreateOffer, Issue, and IssueBatch share.
+message IssueSpec {
+  // The credential configuration id from RegisterCredentialConfiguration.
+  string configuration_id = 1;
+  // The wire format to produce.
+  vca.common.v1.Format format = 2;
+  // The subject claims as a JSON object string.
+  string subject_data = 3;
+  // The subject reference and DID, when the flow knows them.
+  vca.common.v1.Subject subject = 4;
+  // The validity window. Empty selects the DPG default.
+  vca.common.v1.ValidityWindow validity = 5;
+  // The status entry to embed. Empty means the credential is not revocable.
+  StatusListBinding status = 6;
+  // The holder proof JWT from an authorization code request, when present.
+  string holder_key_proof = 7;
+  // A full credential body to use as is, as a JSON string. When set, the
+  // adapter ignores subject_data. Only VCDM formats honour this field.
+  string credential_data = 8;
+}
+
+// CreateOfferRequest asks for an OID4VCI credential offer.
+message CreateOfferRequest {
+  // What to issue.
+  IssueSpec spec = 1;
+  // The OID4VCI flow. Only the two OID4VCI channels are valid here.
+  Channel channel = 2;
+}
+
+// CreateOfferResponse describes the credential offer.
+message CreateOfferResponse {
+  // The openid-credential-offer URI.
+  string offer_uri = 1;
+  // The adapter assigned id of the offer.
+  string offer_id = 2;
+  // The flow the adapter used. It can differ from the request.
+  Channel channel = 3;
+  // The time at which the offer stops working.
+  google.protobuf.Timestamp expires_at = 4;
+  // The transaction code the citizen types in the wallet. Empty when not needed.
+  string pin = 5;
+}
+
+// IssueRequest asks for one signed credential.
+message IssueRequest {
+  // What to issue.
+  IssueSpec spec = 1;
+}
+
+// IssueResponse carries the signed credential.
+message IssueResponse {
+  // The credential as the DPG produced it.
+  vca.common.v1.Credential credential = 1;
+  // The DPG assigned id of the credential, when the DPG has one.
+  string credential_id = 2;
+}
+
+// IssueBatchRequest asks for many credentials in one call.
+message IssueBatchRequest {
+  // One spec per credential. The order of items is stable.
+  repeated IssueSpec specs = 1;
+}
+
+// IssueBatchResponse returns one item per input spec, in the same order.
+message IssueBatchResponse {
+  // The per item results.
+  repeated Item items = 1;
+
+  // Item is the result of one spec.
+  message Item {
+    // The zero based position of the spec in the request.
+    int32 position = 1;
+    // The credential, when issuance succeeded.
+    vca.common.v1.Credential credential = 2;
+    // The error, when issuance failed.
+    vca.common.v1.Error error = 3;
+  }
+}
+
+// RevokeRequest sets the status of one credential.
+message RevokeRequest {
+  // The status entry of the credential.
+  StatusListBinding status = 1;
+  // The reason for the audit log. Never a secret.
+  string reason = 2;
+}
+
+// RevokeResponse confirms the change.
+message RevokeResponse {
+  // The time the DPG applied the change.
+  google.protobuf.Timestamp revoked_at = 1;
+}
+
+// GetIssuanceStatusRequest selects one offer or deferred issuance.
+message GetIssuanceStatusRequest {
+  // The adapter assigned offer id from CreateOffer.
+  string offer_id = 1;
+  // The OID4VCI transaction id of a deferred issuance. Empty for an offer.
+  string transaction_id = 2;
+}
+
+// GetIssuanceStatusResponse returns the state of the issuance.
+message GetIssuanceStatusResponse {
+  // The state.
+  State state = 1;
+  // The credential for the state STATE_ISSUED, when the DPG returns it.
+  vca.common.v1.Credential credential = 2;
+  // The time the wallet claimed the offer. Empty when not claimed.
+  google.protobuf.Timestamp claimed_at = 3;
+  // The time at which the offer stops working.
+  google.protobuf.Timestamp expires_at = 4;
+  // The error text from the DPG for the state STATE_FAILED.
+  string error = 5;
+
+  // State names where an issuance is in its life cycle.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // The offer exists and no wallet has claimed it.
+    STATE_PENDING = 1;
+    // The wallet claimed the offer and the DPG issued the credential.
+    STATE_ISSUED = 2;
+    // The DPG deferred the issuance and the wallet must poll.
+    STATE_DEFERRED = 3;
+    // The offer expired before a wallet claimed it.
+    STATE_EXPIRED = 4;
+    // The DPG could not issue the credential.
+    STATE_FAILED = 5;
+  }
+}
+
+// GetIssuerMetadataRequest has no fields.
+message GetIssuerMetadataRequest {}
+
+// GetIssuerMetadataResponse carries the issuer metadata.
+message GetIssuerMetadataResponse {
+  // The issuer identifier URL.
+  string issuer = 1;
+  // The issuer DID.
+  string issuer_did = 2;
+  // The full metadata document as the DPG serves it, as a JSON string.
+  string metadata_json = 3;
+  // The credential configurations the DPG offers.
+  repeated CredentialConfiguration configurations = 4;
+}
+
+// RegisterRequest creates a wallet for one citizen.
+message RegisterRequest {
+  // The pairwise subject of the citizen, formed as iss|sub (ADR-020).
+  string pairwise_subject = 1;
+  // The public key of the holder as a JWK string, when the browser holds the key.
+  string holder_public_jwk = 2;
+}
+
+// RegisterResponse returns the wallet id.
+message RegisterResponse {
+  // The DPG assigned wallet id.
+  string wallet_id = 1;
+  // The holder DID the DPG created, when it created one.
+  string holder_did = 2;
+}
+
+// WalletCredential is one credential in a wallet.
+message WalletCredential {
+  // The DPG assigned id.
+  string id = 1;
+  // The credential bytes.
+  vca.common.v1.Credential credential = 2;
+  // The credential type name for display.
+  string type = 3;
+  // The issuer DID or URL.
+  string issuer = 4;
+  // The time the wallet received the credential.
+  google.protobuf.Timestamp received_at = 5;
+}
+
+// ListCredentialsRequest selects a wallet.
+message ListCredentialsRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The page to return.
+  vca.common.v1.Pagination page = 2;
+}
+
+// ListCredentialsResponse returns the credentials of the wallet.
+message ListCredentialsResponse {
+  // The credentials in the page.
+  repeated WalletCredential credentials = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// AcceptOfferRequest claims an offer.
+message AcceptOfferRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The openid-credential-offer URI.
+  string offer_uri = 2;
+  // The transaction code, when the offer needs one.
+  string pin = 3;
+  // The IdP access token to use as the authorization grant, when present.
+  string authorization_grant = 4;
+}
+
+// AcceptOfferResponse returns the claimed credential.
+message AcceptOfferResponse {
+  // The credential now in the wallet.
+  WalletCredential credential = 1;
+}
+
+// PresentRequest answers an OID4VP request.
+message PresentRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The openid4vp request URI or request object.
+  string request_uri = 2;
+  // The ids of the credentials to present, in request order.
+  repeated string credential_ids = 3;
+  // The claim names to disclose. Empty discloses every requested claim.
+  repeated string disclosed_claims = 4;
+}
+
+// PresentResponse reports the outcome of the presentation.
+message PresentResponse {
+  // True when the verifier accepted the presentation.
+  bool accepted = 1;
+  // The claim names the wallet disclosed.
+  repeated string shared_claims = 2;
+  // The verifier state or transaction id, when the verifier returned one.
+  string verifier_state = 3;
+  // The redirect URI the verifier returned, when present.
+  string redirect_uri = 4;
+}
+
+// DeleteCredentialRequest removes one credential.
+message DeleteCredentialRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The credential id from ListCredentials.
+  string credential_id = 2;
+}
+
+// DeleteCredentialResponse has no fields.
+message DeleteCredentialResponse {}
+
+// CreateRequestRequest starts an OID4VP transaction.
+message CreateRequestRequest {
+  // The DCQL query as a JSON string (ADR-022 decision 3).
+  string dcql = 1;
+  // The Presentation Exchange definition as a JSON string. The caller
+  // sets it only for a DPG that lists PROTOCOL_OID4VP_PEX.
+  string presentation_definition = 2;
+  // The nonce the wallet must bind to.
+  string nonce = 3;
+  // The URL the verifier calls back with the result, when present.
+  string webhook_url = 4;
+  // The DPG side check names to run, for example signature or expired.
+  repeated string dpg_policies = 5;
+}
+
+// CreateRequestResponse describes the transaction.
+message CreateRequestResponse {
+  // The openid4vp request URI for the wallet.
+  string request_uri = 1;
+  // The server side state that GetResult takes.
+  string state = 2;
+  // The time at which the request stops working.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// GetResultRequest selects a transaction.
+message GetResultRequest {
+  // The state from CreateRequest.
+  string state = 1;
+}
+
+// GetResultResponse returns the transaction state.
+message GetResultResponse {
+  // The transaction state.
+  State state = 1;
+  // The vp_token as the wallet sent it, one entry per credential.
+  repeated vca.common.v1.Credential presented = 2;
+  // The DPG verdict per check, as the DPG reported it.
+  repeated DpgCheck dpg_checks = 3;
+  // The time the wallet answered. Empty while pending.
+  google.protobuf.Timestamp received_at = 4;
+
+  // State names the transaction phase.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // No wallet has answered yet.
+    STATE_PENDING = 1;
+    // The wallet answered and the DPG accepted the response.
+    STATE_ACCEPTED = 2;
+    // The wallet answered and the DPG rejected the response.
+    STATE_REJECTED = 3;
+    // The request expired without an answer.
+    STATE_EXPIRED = 4;
+  }
+
+  // DpgCheck is one check the DPG ran. VCA runs its own checks too
+  // (ADR-024 decision 2).
+  message DpgCheck {
+    // The DPG name of the check.
+    string name = 1;
+    // True when the check passed.
+    bool passed = 2;
+    // The DPG reason text when the check failed.
+    string reason = 3;
+  }
+}
+
+// ListCredentialTypesRequest selects a page.
+message ListCredentialTypesRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListCredentialTypesResponse returns the credential configurations.
+message ListCredentialTypesResponse {
+  // The configurations in the page.
+  repeated CredentialConfiguration configurations = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}

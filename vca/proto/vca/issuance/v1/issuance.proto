@@ -1,0 +1,211 @@
+// SPDX-License-Identifier: Apache-2.0
+// Issuance service (ADR-016). The service takes an issue request and
+// allocates a status index. It then calls the DPG adapter, writes the
+// issued record, and delivers the result over the chosen channel.
+// The standard OID4VCI endpoints of the DPG stay HTTP (ADR-003 decision 7).
+syntax = "proto3";
+
+package vca.issuance.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/backend/v1/backend.proto";
+import "vca/common/v1/common.proto";
+
+// IssuanceService issues credentials over every supported channel.
+service IssuanceService {
+  // Issue issues one credential to one subject.
+  rpc Issue(IssueRequest) returns (IssueResponse);
+  // IssueBatch issues many credentials in one job and streams progress.
+  rpc IssueBatch(IssueBatchRequest) returns (stream IssueBatchResponse);
+  // Deferred completes a deferred OID4VCI issuance when the DPG supports it.
+  rpc Deferred(DeferredRequest) returns (DeferredResponse);
+  // GetOffer returns the state of one offer or delivery.
+  rpc GetOffer(GetOfferRequest) returns (GetOfferResponse);
+  // GetBatch returns the per row results of one batch job in pages.
+  rpc GetBatch(GetBatchRequest) returns (GetBatchResponse);
+}
+
+// Delivery says where to send the offer or the document (ADR-016 decision 5).
+message Delivery {
+  // The channel.
+  vca.backend.v1.Channel channel = 1;
+  // The email address for CHANNEL_EMAIL.
+  string email = 2;
+  // The phone number in E.164 form for CHANNEL_SMS.
+  string phone = 3;
+  // The BCP 47 language tag of the message text.
+  string locale = 4;
+}
+
+// IssueRequest asks for one credential.
+message IssueRequest {
+  // The schema id.
+  string schema_id = 1;
+  // The schema version. Zero selects the latest published version.
+  int32 schema_version = 2;
+  // The subject claims as a JSON object string. The service checks
+  // them against the schema before it calls the DPG.
+  string subject_data = 3;
+  // The subject reference and DID, when the flow knows them.
+  vca.common.v1.Subject subject = 4;
+  // The wire format. Unspecified selects the first format of the schema.
+  vca.common.v1.Format format = 5;
+  // The delivery channel and address.
+  Delivery delivery = 6;
+  // The validity window. Empty selects the schema default.
+  vca.common.v1.ValidityWindow validity = 7;
+  // The status list purpose. revocation, suspension, or message.
+  // Empty means revocation. The value none makes the credential not revocable.
+  string status_purpose = 8;
+  // The holder proof JWT from an authorization code request, when present.
+  string holder_key_proof = 9;
+}
+
+// Offer is the state of one issuance.
+message Offer {
+  // The offer id. The service assigns it.
+  string id = 1;
+  // The channel.
+  vca.backend.v1.Channel channel = 2;
+  // The state of the offer.
+  State state = 3;
+  // The openid-credential-offer URI for the two OID4VCI channels.
+  string offer_uri = 4;
+  // The transaction code the citizen types, when the DPG needs one.
+  string pin = 5;
+  // The reference of the PDF for CHANNEL_PDF. GET /issuance/pdf/<ref> serves the bytes.
+  string pdf_ref = 6;
+  // The download link for CHANNEL_LINK.
+  string link = 7;
+  // The issued record id in the issued credentials service.
+  string record_id = 8;
+  // The credential, when the DPG returned it at once.
+  vca.common.v1.Credential credential = 9;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 10;
+  // The time at which the offer stops working.
+  google.protobuf.Timestamp expires_at = 11;
+  // The time the wallet claimed the credential. Empty until claimed.
+  google.protobuf.Timestamp claimed_at = 12;
+  // The DPG transaction id for a deferred issuance.
+  string transaction_id = 13;
+
+  // State names the offer phase.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // The DPG created the offer. No wallet claimed it yet.
+    STATE_PENDING = 1;
+    // A wallet claimed the credential, or the document went out.
+    STATE_DELIVERED = 2;
+    // The DPG accepted the request and will issue later.
+    STATE_DEFERRED = 3;
+    // The offer expired.
+    STATE_EXPIRED = 4;
+    // The issuance failed.
+    STATE_FAILED = 5;
+  }
+}
+
+// IssueResponse returns the offer.
+message IssueResponse {
+  // The offer.
+  Offer offer = 1;
+}
+
+// IssueBatchRequest asks for many credentials.
+message IssueBatchRequest {
+  // The schema id.
+  string schema_id = 1;
+  // The schema version. Zero selects the latest published version.
+  int32 schema_version = 2;
+  // The wire format.
+  vca.common.v1.Format format = 3;
+  // The delivery channel. The per row address comes from the row.
+  vca.backend.v1.Channel channel = 4;
+  // One item per subject.
+  repeated Item items = 5;
+  // The data source job id, when the data source service started the batch.
+  string source_job_id = 6;
+
+  // Item is one subject in the batch.
+  message Item {
+    // The 1 based row number the caller shows to the operator.
+    int64 row = 1;
+    // The subject claims as a JSON object string.
+    string subject_data = 2;
+    // The delivery address for the row.
+    Delivery delivery = 3;
+  }
+}
+
+// IssueBatchResponse is one progress message of a batch job.
+message IssueBatchResponse {
+  // The job id.
+  string job_id = 1;
+  // The number of items done so far.
+  int64 processed = 2;
+  // The number of items issued so far.
+  int64 accepted = 3;
+  // The number of items that failed so far.
+  int64 rejected = 4;
+  // The total number of items.
+  int64 total = 5;
+  // True on the last message of the stream.
+  bool done = 6;
+}
+
+// BatchRow is the result of one item of a batch job.
+message BatchRow {
+  // The row number from the request.
+  int64 row = 1;
+  // A one line label from the subject data, for the operator.
+  string label = 2;
+  // The offer, when issuance succeeded.
+  Offer offer = 3;
+  // The error, when issuance failed.
+  vca.common.v1.Error error = 4;
+}
+
+// DeferredRequest completes a deferred issuance.
+message DeferredRequest {
+  // The offer id.
+  string offer_id = 1;
+}
+
+// DeferredResponse returns the offer after the call.
+message DeferredResponse {
+  // The offer. Its state becomes DELIVERED, DEFERRED, or FAILED.
+  Offer offer = 1;
+}
+
+// GetOfferRequest selects an offer.
+message GetOfferRequest {
+  // The offer id.
+  string id = 1;
+}
+
+// GetOfferResponse returns the offer.
+message GetOfferResponse {
+  // The offer.
+  Offer offer = 1;
+}
+
+// GetBatchRequest selects a job and a page.
+message GetBatchRequest {
+  // The job id.
+  string job_id = 1;
+  // The page to return.
+  vca.common.v1.Pagination page = 2;
+  // True returns failed rows only.
+  bool failed_only = 3;
+}
+
+// GetBatchResponse returns a page of rows.
+message GetBatchResponse {
+  // The rows in the page, in row order.
+  repeated BatchRow rows = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+  // The job progress at the time of the call.
+  IssueBatchResponse progress = 3;
+}

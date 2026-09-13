@@ -1,0 +1,219 @@
+// SPDX-License-Identifier: Apache-2.0
+// Verifier policy service (ADR-024). A policy set is a list of named
+// checks. Each check is a pure function over a normalised presentation.
+// VCA runs the mandatory checks itself and never trusts the DPG alone.
+syntax = "proto3";
+
+package vca.policy.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+import "vca/ingest/v1/ingest.proto";
+
+// PolicyService evaluates presentations and manages policy sets.
+service PolicyService {
+  // Evaluate runs one policy set over one presentation and returns the
+  // per check results. The overall verdict is the conjunction.
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+  // ListChecks returns the check names the service knows, with the
+  // parameters each takes.
+  rpc ListChecks(ListChecksRequest) returns (ListChecksResponse);
+  // CreatePolicySet stores a policy set as version 1.
+  rpc CreatePolicySet(CreatePolicySetRequest) returns (CreatePolicySetResponse);
+  // UpdatePolicySet stores a new version of a policy set
+  // (ADR-024 decision 6). Old versions stay readable.
+  rpc UpdatePolicySet(UpdatePolicySetRequest) returns (UpdatePolicySetResponse);
+  // GetPolicySet returns one version.
+  rpc GetPolicySet(GetPolicySetRequest) returns (GetPolicySetResponse);
+  // ListPolicySets returns the latest version of each set in pages.
+  rpc ListPolicySets(ListPolicySetsRequest) returns (ListPolicySetsResponse);
+  // DeletePolicySet removes every version of a set.
+  rpc DeletePolicySet(DeletePolicySetRequest) returns (DeletePolicySetResponse);
+}
+
+// Outcome names the result of one check.
+enum Outcome {
+  OUTCOME_UNSPECIFIED = 0;
+  // The check passed.
+  OUTCOME_PASS = 1;
+  // The check failed.
+  OUTCOME_FAIL = 2;
+  // The check did not apply to this presentation.
+  OUTCOME_SKIP = 3;
+  // The check could not run, for example a status list was not reachable.
+  OUTCOME_ERROR = 4;
+}
+
+// CheckResult is the outcome of one check (ADR-024 decision 1).
+message CheckResult {
+  // The check name, for example signature, key_binding, nbf, exp,
+  // audience, nonce, status, trust_chain, or schema.
+  string name = 1;
+  // The outcome.
+  Outcome outcome = 2;
+  // The reason in Simplified Technical English, for the operator.
+  string detail = 3;
+  // The evidence the check used, keyed by name. For example the key id,
+  // the status list URL, or the trust list URL. Never personal data.
+  map<string, string> evidence = 4;
+  // The zero based index of the credential the check ran on.
+  // Minus 1 means the check ran on the whole presentation.
+  int32 credential_index = 5;
+  // The catalogue error for a failed check, when one applies.
+  vca.common.v1.Error error = 6;
+}
+
+// PolicySet is a named list of checks with parameters (ADR-024 decision 6).
+message PolicySet {
+  // The set id. Stable across versions.
+  string id = 1;
+  // The version number. Starts at 1 and increases by 1.
+  int32 version = 2;
+  // The display name.
+  string display_name = 3;
+  // The checks, in run order.
+  repeated Check checks = 4;
+  // The tenant that owns the set.
+  string tenant_id = 5;
+  // The staff subject that created this version.
+  string created_by = 6;
+  // The creation time of this version.
+  google.protobuf.Timestamp created_at = 7;
+
+  // Check is one named check with its parameters.
+  message Check {
+    // The check name from ListChecks.
+    string name = 1;
+    // The parameters, keyed by name. For example fail_mode with the
+    // value open or closed for the status check.
+    map<string, string> params = 2;
+    // True when a FAIL of this check makes the whole verdict FAIL.
+    // The mandatory checks of ADR-024 decision 2 ignore false here.
+    bool blocking = 3;
+  }
+}
+
+// EvaluateRequest carries the presentation and the policy set.
+message EvaluateRequest {
+  // The presentation from the ingestion service.
+  vca.ingest.v1.RawPresentation presentation = 1;
+  // The policy set id. Empty uses the deployment default set.
+  string policy_set_id = 2;
+  // The policy set version. Zero selects the latest version.
+  int32 policy_set_version = 3;
+  // The expected audience for the audience check. Empty uses the verifier client id.
+  string audience = 4;
+  // The expected nonce for the nonce check. Empty uses the transaction nonce.
+  string nonce = 5;
+  // The time of evaluation. Empty means now.
+  google.protobuf.Timestamp at = 6;
+}
+
+// EvaluateResponse returns the results.
+message EvaluateResponse {
+  // The overall verdict.
+  Verdict verdict = 1;
+  // The per check results, in run order.
+  repeated CheckResult checks = 2;
+  // The policy set id the service used.
+  string policy_set_id = 3;
+  // The policy set version the service used.
+  int32 policy_set_version = 4;
+  // The time of evaluation.
+  google.protobuf.Timestamp evaluated_at = 5;
+
+  // Verdict names the overall result.
+  enum Verdict {
+    VERDICT_UNSPECIFIED = 0;
+    // Every blocking check passed or did not apply.
+    VERDICT_VALID = 1;
+    // At least one blocking check failed.
+    VERDICT_INVALID = 2;
+    // No blocking check failed, but at least one could not run.
+    VERDICT_INDETERMINATE = 3;
+  }
+}
+
+// ListChecksRequest has no fields.
+message ListChecksRequest {}
+
+// ListChecksResponse returns the known checks.
+message ListChecksResponse {
+  // The checks.
+  repeated CheckInfo checks = 1;
+
+  // CheckInfo describes one check.
+  message CheckInfo {
+    // The check name.
+    string name = 1;
+    // The one sentence description in Simplified Technical English.
+    string description = 2;
+    // The parameter names the check takes, with a description each.
+    map<string, string> params = 3;
+    // True when VCA always runs the check (ADR-024 decision 2).
+    bool mandatory = 4;
+  }
+}
+
+// CreatePolicySetRequest carries the first version.
+message CreatePolicySetRequest {
+  // The set. The service ignores id, version, and timestamps.
+  PolicySet policy_set = 1;
+}
+
+// CreatePolicySetResponse returns the stored set.
+message CreatePolicySetResponse {
+  // The set as stored.
+  PolicySet policy_set = 1;
+}
+
+// UpdatePolicySetRequest carries a new version.
+message UpdatePolicySetRequest {
+  // The set. The id selects the set. The service assigns the version.
+  PolicySet policy_set = 1;
+}
+
+// UpdatePolicySetResponse returns the stored version.
+message UpdatePolicySetResponse {
+  // The set as stored.
+  PolicySet policy_set = 1;
+}
+
+// GetPolicySetRequest selects a version.
+message GetPolicySetRequest {
+  // The set id.
+  string id = 1;
+  // The version. Zero selects the latest version.
+  int32 version = 2;
+}
+
+// GetPolicySetResponse returns the set.
+message GetPolicySetResponse {
+  // The set.
+  PolicySet policy_set = 1;
+}
+
+// ListPolicySetsRequest selects a page.
+message ListPolicySetsRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The tenant filter. Empty returns every tenant the session can read.
+  string tenant_id = 2;
+}
+
+// ListPolicySetsResponse returns the sets.
+message ListPolicySetsResponse {
+  // The sets in the page.
+  repeated PolicySet policy_sets = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// DeletePolicySetRequest selects a set.
+message DeletePolicySetRequest {
+  // The set id.
+  string id = 1;
+}
+
+// DeletePolicySetResponse has no fields.
+message DeletePolicySetResponse {}

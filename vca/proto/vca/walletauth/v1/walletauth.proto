@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: Apache-2.0
+// Wallet authentication service (ADR-020). Citizens log in with OIDC and
+// PKCE at a national IdP. The service issues short lived session JWTs and
+// holds no personal data beyond the pairwise subject iss|sub.
+// The OIDC provider redirects the browser to GET /wallet/auth/callback,
+// a plain HTTP handler that calls LoginCallback (ADR-003 decision 7).
+// The JWKS at GET /.well-known/jwks.json is also plain HTTP.
+syntax = "proto3";
+
+package vca.walletauth.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// WalletAuthService logs citizens in and binds holder keys.
+service WalletAuthService {
+  // ListProviders returns the providers a citizen can log in with.
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+  // LoginStart creates a PKCE login and returns the authorization URL.
+  rpc LoginStart(LoginStartRequest) returns (LoginStartResponse);
+  // LoginCallback exchanges the authorization code and returns a session.
+  // On first login the service registers the wallet with the holder backend.
+  rpc LoginCallback(LoginCallbackRequest) returns (LoginCallbackResponse);
+  // Introspect checks a session JWT and returns its claims.
+  rpc Introspect(IntrospectRequest) returns (IntrospectResponse);
+  // Logout ends the session and, when the IdP supports it, returns the
+  // RP initiated logout URL (ADR-020 decision 5).
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  // RegisterHolderKey stores the public key the browser created with
+  // WebCrypto (ADR-020 decision 4). The private key never leaves the browser.
+  rpc RegisterHolderKey(RegisterHolderKeyRequest) returns (RegisterHolderKeyResponse);
+  // GetAuthorizationGrant returns the IdP token to use as the OID4VCI
+  // authorization grant (ADR-020 decision 3), when the DPG supports it.
+  rpc GetAuthorizationGrant(GetAuthorizationGrantRequest) returns (GetAuthorizationGrantResponse);
+}
+
+// Provider is the public view of one OIDC provider.
+message Provider {
+  // The provider id from the admin service.
+  string id = 1;
+  // The display name shown on the login page.
+  string display_name = 2;
+  // The issuer URL from the discovery document.
+  string issuer = 3;
+  // The logo URL, when any.
+  string logo_uri = 4;
+}
+
+// ListProvidersRequest has no fields.
+message ListProvidersRequest {}
+
+// ListProvidersResponse returns the enabled providers.
+message ListProvidersResponse {
+  // The providers.
+  repeated Provider providers = 1;
+}
+
+// LoginStartRequest selects a provider.
+message LoginStartRequest {
+  // The provider id.
+  string provider_id = 1;
+  // The portal path to return to after login. Must be a relative path.
+  string return_to = 2;
+}
+
+// LoginStartResponse returns the authorization URL.
+message LoginStartResponse {
+  // The URL the browser opens at the provider.
+  string authorization_url = 1;
+  // The state value. The callback must carry the same value.
+  string state = 2;
+  // The time at which the login stops working.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// LoginCallbackRequest carries the provider response.
+message LoginCallbackRequest {
+  // The state from LoginStart.
+  string state = 1;
+  // The authorization code from the provider.
+  string code = 2;
+  // The error code from the provider, when the login failed.
+  string error = 3;
+}
+
+// LoginCallbackResponse returns the session.
+message LoginCallbackResponse {
+  // The session JWT. The browser stores it in a cookie.
+  string session_token = 1;
+  // The session claims.
+  Session session = 2;
+  // The portal path to return to.
+  string return_to = 3;
+  // True when this login created the wallet.
+  bool new_wallet = 4;
+}
+
+// Session is the claim set of a wallet session JWT.
+message Session {
+  // The token id (jti).
+  string id = 1;
+  // The pairwise subject, formed as iss|sub of the IdP.
+  string pairwise_subject = 2;
+  // The wallet id at the holder backend.
+  string wallet_id = 3;
+  // The holder DID, when one exists.
+  string holder_did = 4;
+  // True when the session has a registered holder key.
+  bool has_holder_key = 5;
+  // The time of issue (iat).
+  google.protobuf.Timestamp issued_at = 6;
+  // The time of expiry (exp).
+  google.protobuf.Timestamp expires_at = 7;
+  // The provider that authenticated the citizen.
+  string provider_id = 8;
+}
+
+// IntrospectRequest carries a session JWT.
+message IntrospectRequest {
+  // The session JWT.
+  string session_token = 1;
+}
+
+// IntrospectResponse returns the claims when the token is valid.
+message IntrospectResponse {
+  // True when the signature, expiry, and deny list checks passed.
+  bool active = 1;
+  // The claims. Empty when active is false.
+  Session session = 2;
+}
+
+// LogoutRequest ends a session.
+message LogoutRequest {
+  // The session JWT.
+  string session_token = 1;
+}
+
+// LogoutResponse returns the provider logout URL, when any.
+message LogoutResponse {
+  // The RP initiated logout URL at the provider. Empty when the
+  // provider does not support it.
+  string provider_logout_url = 1;
+}
+
+// RegisterHolderKeyRequest carries a public key.
+message RegisterHolderKeyRequest {
+  // The session JWT.
+  string session_token = 1;
+  // The public key as a JWK string. EC P-256 or Ed25519.
+  string public_jwk = 2;
+  // A JWS over the session id, signed with the private key, that proves
+  // possession of the key.
+  string proof = 3;
+}
+
+// RegisterHolderKeyResponse confirms the binding.
+message RegisterHolderKeyResponse {
+  // The JWK thumbprint of the key.
+  string thumbprint = 1;
+  // The holder DID the service derived from the key, for example did:jwk.
+  string holder_did = 2;
+}
+
+// GetAuthorizationGrantRequest selects a session.
+message GetAuthorizationGrantRequest {
+  // The session JWT.
+  string session_token = 1;
+  // The issuer URL the grant is for.
+  string credential_issuer = 2;
+}
+
+// GetAuthorizationGrantResponse returns the grant.
+message GetAuthorizationGrantResponse {
+  // The IdP access token or id token to send as the grant.
+  string grant = 1;
+  // The grant type the DPG expects.
+  string grant_type = 2;
+  // The time at which the grant stops working.
+  google.protobuf.Timestamp expires_at = 3;
+}

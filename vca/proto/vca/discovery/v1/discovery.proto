@@ -1,0 +1,260 @@
+// SPDX-License-Identifier: Apache-2.0
+// Verifier discovery service (ADR-022). The service crawls the trusted
+// issuers of the trust list. It reads their OID4VCI metadata and published
+// schemas and caches them with a TTL. Verifier staff build presentation
+// templates from the catalogue. Wallets read the same catalogue.
+syntax = "proto3";
+
+package vca.discovery.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+import "vca/schema/v1/schema.proto";
+import "vca/trust/v1/trust.proto";
+
+// DiscoveryService crawls issuers and manages presentation templates.
+service DiscoveryService {
+  // Crawl fetches the metadata of every trusted issuer now and refreshes
+  // the cache. The scheduled crawl runs the same code.
+  rpc Crawl(CrawlRequest) returns (CrawlResponse);
+  // ListIssuers returns the crawled issuers in pages.
+  rpc ListIssuers(ListIssuersRequest) returns (ListIssuersResponse);
+  // ListCredentialTypes returns the credential types of the catalogue.
+  rpc ListCredentialTypes(ListCredentialTypesRequest) returns (ListCredentialTypesResponse);
+  // GetFields returns the claims of one credential type with their types.
+  rpc GetFields(GetFieldsRequest) returns (GetFieldsResponse);
+  // CreateTemplate stores a presentation template as version 1.
+  rpc CreateTemplate(CreateTemplateRequest) returns (CreateTemplateResponse);
+  // ListTemplates returns the latest version of each template in pages.
+  rpc ListTemplates(ListTemplatesRequest) returns (ListTemplatesResponse);
+  // GetTemplate returns one template version.
+  rpc GetTemplate(GetTemplateRequest) returns (GetTemplateResponse);
+  // VersionTemplate stores a new version of an existing template
+  // (ADR-022 decision 4). Old versions stay readable.
+  rpc VersionTemplate(VersionTemplateRequest) returns (VersionTemplateResponse);
+  // DeleteTemplate removes every version of a template that no combined
+  // template or policy set references.
+  rpc DeleteTemplate(DeleteTemplateRequest) returns (DeleteTemplateResponse);
+}
+
+// Issuer is one crawled issuer.
+message Issuer {
+  // The issuer URL from the metadata.
+  string credential_issuer = 1;
+  // The issuer DID from the trust list.
+  string did = 2;
+  // The display name.
+  string display_name = 3;
+  // The trust outcome at the time of the crawl.
+  vca.trust.v1.TrustLookupResponse.Outcome trust = 4;
+  // The number of credential types the issuer offers.
+  int32 type_count = 5;
+  // The time of the last successful crawl.
+  google.protobuf.Timestamp crawled_at = 6;
+  // The error of the last crawl, when it failed.
+  string last_error = 7;
+}
+
+// CredentialType is one type an issuer offers.
+message CredentialType {
+  // The issuer URL.
+  string credential_issuer = 1;
+  // The credential type. The VCDM type name or the SD-JWT VC vct.
+  string type = 2;
+  // The OID4VCI configuration id.
+  string configuration_id = 3;
+  // The wire format.
+  vca.common.v1.Format format = 4;
+  // The display metadata.
+  repeated vca.schema.v1.Display display = 5;
+  // The schema id and version at the issuer, when the issuer publishes one.
+  string schema_id = 6;
+  // The schema version.
+  int32 schema_version = 7;
+}
+
+// Field is one claim of a credential type.
+message Field {
+  // The claim path, for example given_name or address.street.
+  string path = 1;
+  // The JSON Schema type. string, number, integer, boolean, object, or array.
+  string type = 2;
+  // The JSON Schema format, when any. For example date or uri.
+  string format = 3;
+  // The title from the schema, when any.
+  string title = 4;
+  // True when the schema lists the claim as required.
+  bool mandatory = 5;
+  // True when the holder can disclose the claim on its own.
+  bool selectively_disclosable = 6;
+}
+
+// PresentationTemplate is a stored presentation request (ADR-022 decision 3).
+message PresentationTemplate {
+  // The template id. Stable across versions.
+  string id = 1;
+  // The version number. Starts at 1 and increases by 1.
+  int32 version = 2;
+  // The display name.
+  string display_name = 3;
+  // The DCQL query as a JSON string. This is the request the wallet gets.
+  string dcql = 4;
+  // The structured view of the same request, for the UI and for the
+  // combined presentation service.
+  repeated CredentialQuery queries = 5;
+  // The purpose text shown to the citizen.
+  string purpose = 6;
+  // The tenant that owns the template.
+  string tenant_id = 7;
+  // The staff subject that created this version.
+  string created_by = 8;
+  // The creation time of this version.
+  google.protobuf.Timestamp created_at = 9;
+
+  // CredentialQuery is one credential the template asks for.
+  message CredentialQuery {
+    // The DCQL credential query id.
+    string query_id = 1;
+    // The credential type.
+    string type = 2;
+    // The wire format. Unspecified accepts every format of the type.
+    vca.common.v1.Format format = 3;
+    // The claim paths to ask for.
+    repeated string claims = 4;
+    // The issuer URLs to accept. Empty accepts every trusted issuer.
+    repeated string issuers = 5;
+  }
+}
+
+// CrawlRequest selects issuers.
+message CrawlRequest {
+  // The issuer URLs to crawl. Empty crawls every trusted issuer.
+  repeated string credential_issuers = 1;
+}
+
+// CrawlResponse counts the crawl.
+message CrawlResponse {
+  // The number of issuers the crawl read.
+  int32 crawled = 1;
+  // The issuers the crawl could not read, with the error each.
+  map<string, string> failed = 2;
+  // The time of the crawl.
+  google.protobuf.Timestamp crawled_at = 3;
+}
+
+// ListIssuersRequest selects a page.
+message ListIssuersRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListIssuersResponse returns the issuers.
+message ListIssuersResponse {
+  // The issuers in the page.
+  repeated Issuer issuers = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// ListCredentialTypesRequest selects a page and filters.
+message ListCredentialTypesRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The issuer filter. Empty returns every issuer.
+  string credential_issuer = 2;
+  // The format filter. Unspecified returns every format.
+  vca.common.v1.Format format = 3;
+  // The free text filter on type and display name.
+  string query = 4;
+}
+
+// ListCredentialTypesResponse returns the types.
+message ListCredentialTypesResponse {
+  // The types in the page.
+  repeated CredentialType types = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// GetFieldsRequest selects a type.
+message GetFieldsRequest {
+  // The issuer URL.
+  string credential_issuer = 1;
+  // The credential type.
+  string type = 2;
+}
+
+// GetFieldsResponse returns the fields.
+message GetFieldsResponse {
+  // The fields in schema order.
+  repeated Field fields = 1;
+  // The JSON Schema 2020-12 document the fields came from, as a string.
+  string json_schema = 2;
+}
+
+// CreateTemplateRequest carries the first version.
+message CreateTemplateRequest {
+  // The template. The service ignores id, version, and timestamps.
+  // When dcql is empty the service builds it from queries.
+  PresentationTemplate template = 1;
+}
+
+// CreateTemplateResponse returns the stored template.
+message CreateTemplateResponse {
+  // The template as stored.
+  PresentationTemplate template = 1;
+}
+
+// ListTemplatesRequest selects a page.
+message ListTemplatesRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The tenant filter. Empty returns every tenant the session can read.
+  string tenant_id = 2;
+}
+
+// ListTemplatesResponse returns the templates.
+message ListTemplatesResponse {
+  // The templates in the page.
+  repeated PresentationTemplate templates = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// GetTemplateRequest selects a version.
+message GetTemplateRequest {
+  // The template id.
+  string id = 1;
+  // The version. Zero selects the latest version.
+  int32 version = 2;
+}
+
+// DeleteTemplateRequest selects a template.
+message DeleteTemplateRequest {
+  // The template id.
+  string id = 1;
+}
+
+// DeleteTemplateResponse confirms the removal.
+message DeleteTemplateResponse {
+  // The number of versions the service removed.
+  int32 versions_removed = 1;
+}
+
+// GetTemplateResponse returns the template.
+message GetTemplateResponse {
+  // The template.
+  PresentationTemplate template = 1;
+}
+
+// VersionTemplateRequest carries a new version.
+message VersionTemplateRequest {
+  // The template. The id selects the template. The service assigns the version.
+  PresentationTemplate template = 1;
+}
+
+// VersionTemplateResponse returns the stored version.
+message VersionTemplateResponse {
+  // The template as stored.
+  PresentationTemplate template = 1;
+}

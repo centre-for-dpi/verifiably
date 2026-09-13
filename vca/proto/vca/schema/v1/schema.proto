@@ -1,0 +1,291 @@
+// SPDX-License-Identifier: Apache-2.0
+// Schema registry service (ADR-013). A schema is a JSON Schema 2020-12
+// document with an immutable version. An update creates a new version.
+// The public read endpoints are standard HTTP, not RPCs (ADR-003 decision 7):
+//   GET /api/schemas serves the published schemas as JSON.
+//   GET /.well-known/openid-credential-issuer serves the OID4VCI metadata.
+//   GET /vct/<id> serves the SD-JWT VC type metadata document.
+syntax = "proto3";
+
+package vca.schema.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+
+// SchemaService manages schema versions and their state.
+service SchemaService {
+  // Create stores a new schema as version 1 in the draft state.
+  rpc Create(CreateRequest) returns (CreateResponse);
+  // Update stores a new draft version of an existing schema.
+  rpc Update(UpdateRequest) returns (UpdateResponse);
+  // Publish moves one draft version to published and registers it with
+  // the DPG through the issuer backend (ADR-013 decision 3).
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  // Retire moves one published version to retired. Issuance with it stops.
+  rpc Retire(RetireRequest) returns (RetireResponse);
+  // Get returns one version. An empty version returns the latest one.
+  rpc Get(GetRequest) returns (GetResponse);
+  // List returns schemas in pages with filters.
+  rpc List(ListRequest) returns (ListResponse);
+  // Search returns schemas whose name, description, or type match a text.
+  rpc Search(SearchRequest) returns (SearchResponse);
+  // ListPublic returns the published schemas without staff only fields.
+  // Wallets and verifiers call it without a session.
+  rpc ListPublic(ListPublicRequest) returns (ListPublicResponse);
+  // GetIssuerMetadata returns the OID4VCI issuer metadata that the
+  // published schemas produce (ADR-013 decision 4). The well-known HTTP
+  // handler serves the same document.
+  rpc GetIssuerMetadata(GetIssuerMetadataRequest) returns (GetIssuerMetadataResponse);
+  // GetVct returns the SD-JWT VC type metadata of one published schema
+  // (ADR-013 decision 5).
+  rpc GetVct(GetVctRequest) returns (GetVctResponse);
+  // ListVersions returns the version history of one schema.
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+}
+
+// State names the life cycle state of a schema version (ADR-013 decision 2).
+enum State {
+  STATE_UNSPECIFIED = 0;
+  // Staff can edit the version. No DPG knows it.
+  STATE_DRAFT = 1;
+  // The DPG can issue the version. Nobody can edit it.
+  STATE_PUBLISHED = 2;
+  // Issuance stopped. Verifiers can still read the version.
+  STATE_RETIRED = 3;
+}
+
+// Display is the OID4VCI display metadata of a schema.
+message Display {
+  // The name shown on a wallet card.
+  string name = 1;
+  // The one sentence description shown under the name.
+  string description = 2;
+  // The BCP 47 language tag of name and description.
+  string locale = 3;
+  // The logo URL, when any.
+  string logo_uri = 4;
+  // The card background colour as a CSS hex value, when any.
+  string background_color = 5;
+  // The card text colour as a CSS hex value, when any.
+  string text_color = 6;
+}
+
+// Schema is one version of one credential schema.
+message Schema {
+  // The schema id. Stable across versions.
+  string id = 1;
+  // The version number. Starts at 1 and increases by 1.
+  int32 version = 2;
+  // The credential type. The VCDM type name or the SD-JWT VC vct.
+  string type = 3;
+  // The JSON Schema 2020-12 document, as a string.
+  string json_schema = 4;
+  // The state of this version.
+  State state = 5;
+  // The display metadata, one entry per locale.
+  repeated Display display = 6;
+  // The property names the issuer marks as selectively disclosable.
+  repeated string sd_claims = 7;
+  // The wire formats the issuer offers this schema in.
+  repeated vca.common.v1.Format formats = 8;
+  // True when credentials of this schema carry a validity window.
+  bool expires = 9;
+  // The property names that the issued credentials portal indexes for
+  // search (ADR-017 decision 2). Every other property stays out of the log.
+  repeated string searchable_claims = 10;
+  // The tenant that owns the schema.
+  string tenant_id = 11;
+  // The staff subject that created this version.
+  string created_by = 12;
+  // The creation time of this version.
+  google.protobuf.Timestamp created_at = 13;
+  // The publish time. Empty for a draft.
+  google.protobuf.Timestamp published_at = 14;
+  // The retire time. Empty unless retired.
+  google.protobuf.Timestamp retired_at = 15;
+  // The number of days the issued record of a credential stays
+  // (ADR-017 decision 5). Zero means the deployment default.
+  int32 retention_days = 16;
+}
+
+// CreateRequest carries the first version.
+message CreateRequest {
+  // The schema. The service ignores id, version, state, and timestamps.
+  Schema schema = 1;
+}
+
+// CreateResponse returns the stored version.
+message CreateResponse {
+  // The schema as stored.
+  Schema schema = 1;
+}
+
+// UpdateRequest carries a new draft version.
+message UpdateRequest {
+  // The schema. The id selects the schema. The service assigns the version.
+  Schema schema = 1;
+}
+
+// UpdateResponse returns the stored version.
+message UpdateResponse {
+  // The schema as stored.
+  Schema schema = 1;
+}
+
+// PublishRequest selects a draft version.
+message PublishRequest {
+  // The schema id.
+  string id = 1;
+  // The version. Zero selects the latest draft.
+  int32 version = 2;
+}
+
+// PublishResponse returns the published version.
+message PublishResponse {
+  // The schema as stored.
+  Schema schema = 1;
+  // The DPG configuration id the issuer backend returned.
+  string configuration_id = 2;
+}
+
+// RetireRequest selects a published version.
+message RetireRequest {
+  // The schema id.
+  string id = 1;
+  // The version. Zero selects every published version.
+  int32 version = 2;
+  // The reason for the audit log.
+  string reason = 3;
+}
+
+// RetireResponse returns the retired versions.
+message RetireResponse {
+  // The versions now retired.
+  repeated Schema schemas = 1;
+}
+
+// GetRequest selects a version.
+message GetRequest {
+  // The schema id.
+  string id = 1;
+  // The version. Zero selects the latest version.
+  int32 version = 2;
+}
+
+// GetResponse returns the version.
+message GetResponse {
+  // The schema.
+  Schema schema = 1;
+}
+
+// ListRequest selects a page and filters.
+message ListRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The state filter. Unspecified returns every state.
+  State state = 2;
+  // The format filter. Unspecified returns every format.
+  vca.common.v1.Format format = 3;
+  // The tenant filter. Empty returns every tenant the session can read.
+  string tenant_id = 4;
+}
+
+// ListResponse returns the latest version of each schema in the page.
+message ListResponse {
+  // The schemas in the page.
+  repeated Schema schemas = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// SearchRequest carries a free text query.
+message SearchRequest {
+  // The text to match. At most 200 characters.
+  string query = 1;
+  // The page to return.
+  vca.common.v1.Pagination page = 2;
+}
+
+// SearchResponse returns the matches.
+message SearchResponse {
+  // The schemas in the page, best match first.
+  repeated Schema schemas = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// PublicSchema is the wallet and verifier view of a published schema.
+message PublicSchema {
+  // The schema id.
+  string id = 1;
+  // The version number.
+  int32 version = 2;
+  // The credential type.
+  string type = 3;
+  // The JSON Schema 2020-12 document, as a string.
+  string json_schema = 4;
+  // The display metadata.
+  repeated Display display = 5;
+  // The wire formats the issuer offers.
+  repeated vca.common.v1.Format formats = 6;
+  // The property names the holder can disclose one by one.
+  repeated string sd_claims = 7;
+  // The OID4VCI credential configuration id per format.
+  map<string, string> configuration_ids = 8;
+}
+
+// ListPublicRequest selects a page.
+message ListPublicRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListPublicResponse returns the published schemas.
+message ListPublicResponse {
+  // The schemas in the page.
+  repeated PublicSchema schemas = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// GetIssuerMetadataRequest selects the metadata document. It has no fields.
+message GetIssuerMetadataRequest {}
+
+// GetIssuerMetadataResponse returns the issuer metadata.
+message GetIssuerMetadataResponse {
+  // The full OID4VCI issuer metadata document, as a JSON string.
+  string metadata = 1;
+  // The credential_configurations_supported entries, keyed by
+  // configuration id, each as a JSON string.
+  map<string, string> credential_configurations_supported = 2;
+  // The time the service built the document.
+  google.protobuf.Timestamp generated_at = 3;
+}
+
+// GetVctRequest selects a schema by vct.
+message GetVctRequest {
+  // The vct value, which is the schema type.
+  string vct = 1;
+}
+
+// GetVctResponse returns the type metadata document.
+message GetVctResponse {
+  // The SD-JWT VC type metadata document, as a JSON string.
+  string type_metadata = 1;
+  // The schema id and version the document came from.
+  string schema_id = 2;
+  // The version number.
+  int32 version = 3;
+}
+
+// ListVersionsRequest selects a schema.
+message ListVersionsRequest {
+  // The schema id.
+  string id = 1;
+}
+
+// ListVersionsResponse returns every version, newest first.
+message ListVersionsResponse {
+  // The versions.
+  repeated Schema schemas = 1;
+}

@@ -1,0 +1,173 @@
+// SPDX-License-Identifier: Apache-2.0
+// Verifier combined presentation service (ADR-026). A combined template
+// lists several presentation templates plus cross credential rules.
+// Each credential passes the policy set on its own. The cross rules then
+// run. The overall verdict is the conjunction (ADR-026 decision 3).
+syntax = "proto3";
+
+package vca.combined.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+import "vca/ingest/v1/ingest.proto";
+import "vca/policy/v1/policy.proto";
+import "vca/results/v1/results.proto";
+
+// CombinedService manages combined templates and evaluates them.
+service CombinedService {
+  // Create stores a combined template.
+  rpc Create(CreateRequest) returns (CreateResponse);
+  // Get returns one combined template.
+  rpc Get(GetRequest) returns (GetResponse);
+  // List returns combined templates in pages.
+  rpc List(ListRequest) returns (ListResponse);
+  // Delete removes one combined template.
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  // EvaluateCombined runs the policy set per credential, then the cross
+  // rules, and returns one result with a card per credential.
+  rpc EvaluateCombined(EvaluateCombinedRequest) returns (EvaluateCombinedResponse);
+  // BuildDcql merges the DCQL of the member templates into one query
+  // with credential_sets (ADR-026 decision 1).
+  rpc BuildDcql(BuildDcqlRequest) returns (BuildDcqlResponse);
+}
+
+// CrossRule names a rule that spans two credentials (ADR-026 decision 2).
+enum CrossRule {
+  CROSS_RULE_UNSPECIFIED = 0;
+  // The subject identifier of both credentials is the same.
+  // Params: left and right name the query ids. Optional claim names the
+  // path to compare. Empty compares the subject id.
+  CROSS_RULE_SAME_SUBJECT = 1;
+  // The delegation credential names the holder as the delegate. Its
+  // delegator is the subject of the other credential.
+  // Params: subject and delegation name the query ids. This rule lifts
+  // the legacy delegation evaluator (ADR-026 decision 5).
+  CROSS_RULE_DELEGATION_LINK = 2;
+  // A date claim of one credential is before a date claim of the other.
+  // Params: before_query, before_claim, after_query, and after_claim.
+  CROSS_RULE_DATE_ORDER = 3;
+}
+
+// CombinedTemplate is a list of templates plus cross rules.
+message CombinedTemplate {
+  // The template id. The service assigns it.
+  string id = 1;
+  // The display name.
+  string display_name = 2;
+  // The member templates from the discovery service.
+  repeated Member members = 3;
+  // The cross rules, in run order.
+  repeated Rule rules = 4;
+  // The policy set id to run per credential. Empty uses the default set.
+  string policy_set_id = 5;
+  // The tenant that owns the template.
+  string tenant_id = 6;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 7;
+
+  // Member is one presentation template in the combination.
+  message Member {
+    // The presentation template id.
+    string template_id = 1;
+    // The template version. Zero selects the latest version at evaluation.
+    int32 template_version = 2;
+    // The alternative group. Members with the same group form one
+    // credential_sets option. Empty means the member is mandatory.
+    string alternative_group = 3;
+  }
+
+  // Rule is one cross rule with its parameters.
+  message Rule {
+    // The rule kind.
+    CrossRule kind = 1;
+    // The parameters, keyed by name. See the CrossRule comments.
+    map<string, string> params = 2;
+    // The display name of the rule on the summary card.
+    string display_name = 3;
+  }
+}
+
+// CreateRequest carries the template to store.
+message CreateRequest {
+  // The template. The service ignores id and created_at.
+  CombinedTemplate template = 1;
+}
+
+// CreateResponse returns the stored template.
+message CreateResponse {
+  // The template as stored.
+  CombinedTemplate template = 1;
+}
+
+// GetRequest selects a template.
+message GetRequest {
+  // The template id.
+  string id = 1;
+}
+
+// GetResponse returns the template.
+message GetResponse {
+  // The template.
+  CombinedTemplate template = 1;
+}
+
+// ListRequest selects a page.
+message ListRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The tenant filter. Empty returns every tenant the session can read.
+  string tenant_id = 2;
+}
+
+// ListResponse returns the templates.
+message ListResponse {
+  // The templates in the page.
+  repeated CombinedTemplate templates = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// DeleteRequest selects a template.
+message DeleteRequest {
+  // The template id.
+  string id = 1;
+}
+
+// DeleteResponse has no fields.
+message DeleteResponse {}
+
+// EvaluateCombinedRequest carries the presentation and the template.
+message EvaluateCombinedRequest {
+  // The presentation with every credential the wallet sent.
+  vca.ingest.v1.RawPresentation presentation = 1;
+  // The combined template id.
+  string template_id = 2;
+  // The DCQL query id of each credential, in presentation order.
+  // Empty lets the service match credentials to queries by type.
+  repeated string query_ids = 3;
+  // The time of evaluation. Empty means now.
+  google.protobuf.Timestamp at = 4;
+}
+
+// EvaluateCombinedResponse returns the combined result.
+message EvaluateCombinedResponse {
+  // The result with one card per credential and the cross checks
+  // (ADR-026 decision 4). The results service stores it.
+  vca.results.v1.VerificationResult result = 1;
+  // The per credential verdicts, keyed by query id.
+  map<string, vca.policy.v1.EvaluateResponse.Verdict> credential_verdicts = 2;
+  // The cross rule results, in run order.
+  repeated vca.policy.v1.CheckResult cross_checks = 3;
+}
+
+// BuildDcqlRequest selects a template.
+message BuildDcqlRequest {
+  // The combined template id.
+  string template_id = 1;
+}
+
+// BuildDcqlResponse returns the merged query.
+message BuildDcqlResponse {
+  // The DCQL query as a JSON string.
+  string dcql = 1;
+}
