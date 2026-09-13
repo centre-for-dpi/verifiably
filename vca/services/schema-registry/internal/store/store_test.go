@@ -173,7 +173,7 @@ func TestFileBackendRoundTrip(t *testing.T) {
 type failing struct{ err error }
 
 func (f failing) Load() ([]byte, bool, error) { return nil, false, f.err }
-func (f failing) Save([]byte) error         { return f.err }
+func (f failing) Save([]byte) error           { return f.err }
 
 func TestBackendErrors(t *testing.T) {
 	boom := errors.New("boom")
