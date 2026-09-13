@@ -5,7 +5,7 @@ export PATH := $(HOME)/.cache/vca-mirrors/bin:$(PATH)
 ifneq ($(wildcard go.work),)
 export GOPROXY := off
 export GOSUMDB := off
-export GOFLAGS := -mod=mod
+export GOFLAGS :=
 endif
 COVERAGE_FLOOR ?= 90
 
@@ -35,3 +35,5 @@ tidy: ## regenerate go.sum on a networked machine
 
 build: ## build every service and the CLI
 	$(GO) build ./...
+ste-lint: ## Simplified Technical English check on docs and proto comments
+	./hack/ste-lint.sh docs/*.md README.md proto/vca/*/v1/*.proto
