@@ -84,8 +84,8 @@ func (f file) Save(data []byte) error {
 
 // document is the saved form of the state.
 type document struct {
-	Sequence  uint64                     `json:"sequence"`
-	Sources   map[string]source.Source   `json:"sources"`
+	Sequence  uint64                      `json:"sequence"`
+	Sources   map[string]source.Source    `json:"sources"`
 	FieldMaps map[string]mapping.FieldMap `json:"field_maps"`
 }
 
