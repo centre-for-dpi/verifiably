@@ -4,7 +4,16 @@ syntax = "proto3";
 
 package vca.common.v1;
 
+import "google/protobuf/descriptor.proto";
 import "google/protobuf/timestamp.proto";
+
+// The description option carries the one sentence help text of an RPC in
+// Simplified Technical English (ADR-009 decision 4). The CLI help, the man
+// pages, the portal help page, and the OpenAPI document read this text.
+extend google.protobuf.MethodOptions {
+  // The help text of the RPC. One sentence in the active voice.
+  string description = 51001;
+}
 
 // Format names a credential encoding. Values match the format identifiers of
 // OpenID for Verifiable Credential Issuance 1.0.
@@ -43,6 +52,18 @@ message Credential {
   Format format = 1;
   // The credential exactly as the issuer produced it.
   bytes payload = 2;
+}
+
+// Presentation carries one presentation without changing its bytes
+// (ADR-003 decision 6). A presentation holds one or more credentials.
+message Presentation {
+  // The encoding of the payload.
+  Format format = 1;
+  // The presentation exactly as the wallet produced it.
+  bytes payload = 2;
+  // The media type of the payload when the format alone does not say it,
+  // for example application/dc+sd-jwt.
+  string media_type = 3;
 }
 
 // Pagination selects one page of a list. A client sends it with a List RPC.

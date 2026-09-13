@@ -12,6 +12,7 @@ package commonv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -207,7 +208,7 @@ func (x SecretRef_Store) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SecretRef_Store.Descriptor instead.
 func (SecretRef_Store) EnumDescriptor() ([]byte, []int) {
-	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{6, 0}
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{7, 0}
 }
 
 // Credential carries one credential without changing its bytes.
@@ -265,6 +266,72 @@ func (x *Credential) GetPayload() []byte {
 	return nil
 }
 
+// Presentation carries one presentation without changing its bytes
+// (ADR-003 decision 6). A presentation holds one or more credentials.
+type Presentation struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The encoding of the payload.
+	Format Format `protobuf:"varint,1,opt,name=format,proto3,enum=vca.common.v1.Format" json:"format,omitempty"`
+	// The presentation exactly as the wallet produced it.
+	Payload []byte `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	// The media type of the payload when the format alone does not say it,
+	// for example application/dc+sd-jwt.
+	MediaType     string `protobuf:"bytes,3,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Presentation) Reset() {
+	*x = Presentation{}
+	mi := &file_vca_common_v1_common_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Presentation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Presentation) ProtoMessage() {}
+
+func (x *Presentation) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_common_v1_common_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Presentation.ProtoReflect.Descriptor instead.
+func (*Presentation) Descriptor() ([]byte, []int) {
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Presentation) GetFormat() Format {
+	if x != nil {
+		return x.Format
+	}
+	return Format_FORMAT_UNSPECIFIED
+}
+
+func (x *Presentation) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *Presentation) GetMediaType() string {
+	if x != nil {
+		return x.MediaType
+	}
+	return ""
+}
+
 // Pagination selects one page of a list. A client sends it with a List RPC.
 type Pagination struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -279,7 +346,7 @@ type Pagination struct {
 
 func (x *Pagination) Reset() {
 	*x = Pagination{}
-	mi := &file_vca_common_v1_common_proto_msgTypes[1]
+	mi := &file_vca_common_v1_common_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -291,7 +358,7 @@ func (x *Pagination) String() string {
 func (*Pagination) ProtoMessage() {}
 
 func (x *Pagination) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_common_v1_common_proto_msgTypes[1]
+	mi := &file_vca_common_v1_common_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -304,7 +371,7 @@ func (x *Pagination) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pagination.ProtoReflect.Descriptor instead.
 func (*Pagination) Descriptor() ([]byte, []int) {
-	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{1}
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Pagination) GetPageSize() int32 {
@@ -335,7 +402,7 @@ type PageResult struct {
 
 func (x *PageResult) Reset() {
 	*x = PageResult{}
-	mi := &file_vca_common_v1_common_proto_msgTypes[2]
+	mi := &file_vca_common_v1_common_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -347,7 +414,7 @@ func (x *PageResult) String() string {
 func (*PageResult) ProtoMessage() {}
 
 func (x *PageResult) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_common_v1_common_proto_msgTypes[2]
+	mi := &file_vca_common_v1_common_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -360,7 +427,7 @@ func (x *PageResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PageResult.ProtoReflect.Descriptor instead.
 func (*PageResult) Descriptor() ([]byte, []int) {
-	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{2}
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *PageResult) GetNextPageToken() string {
@@ -396,7 +463,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_vca_common_v1_common_proto_msgTypes[3]
+	mi := &file_vca_common_v1_common_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -408,7 +475,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_common_v1_common_proto_msgTypes[3]
+	mi := &file_vca_common_v1_common_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -421,7 +488,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{3}
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Error) GetCode() string {
@@ -466,7 +533,7 @@ type Subject struct {
 
 func (x *Subject) Reset() {
 	*x = Subject{}
-	mi := &file_vca_common_v1_common_proto_msgTypes[4]
+	mi := &file_vca_common_v1_common_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -478,7 +545,7 @@ func (x *Subject) String() string {
 func (*Subject) ProtoMessage() {}
 
 func (x *Subject) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_common_v1_common_proto_msgTypes[4]
+	mi := &file_vca_common_v1_common_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -491,7 +558,7 @@ func (x *Subject) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Subject.ProtoReflect.Descriptor instead.
 func (*Subject) Descriptor() ([]byte, []int) {
-	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{4}
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Subject) GetRef() string {
@@ -521,7 +588,7 @@ type ValidityWindow struct {
 
 func (x *ValidityWindow) Reset() {
 	*x = ValidityWindow{}
-	mi := &file_vca_common_v1_common_proto_msgTypes[5]
+	mi := &file_vca_common_v1_common_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -533,7 +600,7 @@ func (x *ValidityWindow) String() string {
 func (*ValidityWindow) ProtoMessage() {}
 
 func (x *ValidityWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_common_v1_common_proto_msgTypes[5]
+	mi := &file_vca_common_v1_common_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -546,7 +613,7 @@ func (x *ValidityWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidityWindow.ProtoReflect.Descriptor instead.
 func (*ValidityWindow) Descriptor() ([]byte, []int) {
-	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{5}
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ValidityWindow) GetValidFrom() *timestamppb.Timestamp {
@@ -578,7 +645,7 @@ type SecretRef struct {
 
 func (x *SecretRef) Reset() {
 	*x = SecretRef{}
-	mi := &file_vca_common_v1_common_proto_msgTypes[6]
+	mi := &file_vca_common_v1_common_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -590,7 +657,7 @@ func (x *SecretRef) String() string {
 func (*SecretRef) ProtoMessage() {}
 
 func (x *SecretRef) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_common_v1_common_proto_msgTypes[6]
+	mi := &file_vca_common_v1_common_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -603,7 +670,7 @@ func (x *SecretRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretRef.ProtoReflect.Descriptor instead.
 func (*SecretRef) Descriptor() ([]byte, []int) {
-	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{6}
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SecretRef) GetStore() SecretRef_Store {
@@ -620,15 +687,39 @@ func (x *SecretRef) GetName() string {
 	return ""
 }
 
+var file_vca_common_v1_common_proto_extTypes = []protoimpl.ExtensionInfo{
+	{
+		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         51001,
+		Name:          "vca.common.v1.description",
+		Tag:           "bytes,51001,opt,name=description",
+		Filename:      "vca/common/v1/common.proto",
+	},
+}
+
+// Extension fields to descriptorpb.MethodOptions.
+var (
+	// The help text of the RPC. One sentence in the active voice.
+	//
+	// optional string description = 51001;
+	E_Description = &file_vca_common_v1_common_proto_extTypes[0]
+)
+
 var File_vca_common_v1_common_proto protoreflect.FileDescriptor
 
 const file_vca_common_v1_common_proto_rawDesc = "" +
 	"\n" +
-	"\x1avca/common/v1/common.proto\x12\rvca.common.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"U\n" +
+	"\x1avca/common/v1/common.proto\x12\rvca.common.v1\x1a google/protobuf/descriptor.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"U\n" +
 	"\n" +
 	"Credential\x12-\n" +
 	"\x06format\x18\x01 \x01(\x0e2\x15.vca.common.v1.FormatR\x06format\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload\"H\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload\"v\n" +
+	"\fPresentation\x12-\n" +
+	"\x06format\x18\x01 \x01(\x0e2\x15.vca.common.v1.FormatR\x06format\x12\x18\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload\x12\x1d\n" +
+	"\n" +
+	"media_type\x18\x03 \x01(\tR\tmediaType\"H\n" +
 	"\n" +
 	"Pagination\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
@@ -678,7 +769,8 @@ const file_vca_common_v1_common_proto_rawDesc = "" +
 	"\vROLE_HOLDER\x10\x02\x12\x11\n" +
 	"\rROLE_VERIFIER\x10\x03\x12\x0e\n" +
 	"\n" +
-	"ROLE_ADMIN\x10\x04B\xb8\x01\n" +
+	"ROLE_ADMIN\x10\x04:B\n" +
+	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18\xb9\x8e\x03 \x01(\tR\vdescriptionB\xb8\x01\n" +
 	"\x11com.vca.common.v1B\vCommonProtoP\x01Z@github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1;commonv1\xa2\x02\x03VCX\xaa\x02\rVca.Common.V1\xca\x02\rVca\\Common\\V1\xe2\x02\x19Vca\\Common\\V1\\GPBMetadata\xea\x02\x0fVca::Common::V1b\x06proto3"
 
 var (
@@ -694,32 +786,36 @@ func file_vca_common_v1_common_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_common_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_vca_common_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_vca_common_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_vca_common_v1_common_proto_goTypes = []any{
-	(Format)(0),                   // 0: vca.common.v1.Format
-	(Role)(0),                     // 1: vca.common.v1.Role
-	(SecretRef_Store)(0),          // 2: vca.common.v1.SecretRef.Store
-	(*Credential)(nil),            // 3: vca.common.v1.Credential
-	(*Pagination)(nil),            // 4: vca.common.v1.Pagination
-	(*PageResult)(nil),            // 5: vca.common.v1.PageResult
-	(*Error)(nil),                 // 6: vca.common.v1.Error
-	(*Subject)(nil),               // 7: vca.common.v1.Subject
-	(*ValidityWindow)(nil),        // 8: vca.common.v1.ValidityWindow
-	(*SecretRef)(nil),             // 9: vca.common.v1.SecretRef
-	nil,                           // 10: vca.common.v1.Error.ParamsEntry
-	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
+	(Format)(0),                        // 0: vca.common.v1.Format
+	(Role)(0),                          // 1: vca.common.v1.Role
+	(SecretRef_Store)(0),               // 2: vca.common.v1.SecretRef.Store
+	(*Credential)(nil),                 // 3: vca.common.v1.Credential
+	(*Presentation)(nil),               // 4: vca.common.v1.Presentation
+	(*Pagination)(nil),                 // 5: vca.common.v1.Pagination
+	(*PageResult)(nil),                 // 6: vca.common.v1.PageResult
+	(*Error)(nil),                      // 7: vca.common.v1.Error
+	(*Subject)(nil),                    // 8: vca.common.v1.Subject
+	(*ValidityWindow)(nil),             // 9: vca.common.v1.ValidityWindow
+	(*SecretRef)(nil),                  // 10: vca.common.v1.SecretRef
+	nil,                                // 11: vca.common.v1.Error.ParamsEntry
+	(*timestamppb.Timestamp)(nil),      // 12: google.protobuf.Timestamp
+	(*descriptorpb.MethodOptions)(nil), // 13: google.protobuf.MethodOptions
 }
 var file_vca_common_v1_common_proto_depIdxs = []int32{
 	0,  // 0: vca.common.v1.Credential.format:type_name -> vca.common.v1.Format
-	10, // 1: vca.common.v1.Error.params:type_name -> vca.common.v1.Error.ParamsEntry
-	11, // 2: vca.common.v1.ValidityWindow.valid_from:type_name -> google.protobuf.Timestamp
-	11, // 3: vca.common.v1.ValidityWindow.valid_until:type_name -> google.protobuf.Timestamp
-	2,  // 4: vca.common.v1.SecretRef.store:type_name -> vca.common.v1.SecretRef.Store
-	5,  // [5:5] is the sub-list for method output_type
-	5,  // [5:5] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	0,  // 1: vca.common.v1.Presentation.format:type_name -> vca.common.v1.Format
+	11, // 2: vca.common.v1.Error.params:type_name -> vca.common.v1.Error.ParamsEntry
+	12, // 3: vca.common.v1.ValidityWindow.valid_from:type_name -> google.protobuf.Timestamp
+	12, // 4: vca.common.v1.ValidityWindow.valid_until:type_name -> google.protobuf.Timestamp
+	2,  // 5: vca.common.v1.SecretRef.store:type_name -> vca.common.v1.SecretRef.Store
+	13, // 6: vca.common.v1.description:extendee -> google.protobuf.MethodOptions
+	7,  // [7:7] is the sub-list for method output_type
+	7,  // [7:7] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	6,  // [6:7] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_vca_common_v1_common_proto_init() }
@@ -733,14 +829,15 @@ func file_vca_common_v1_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_common_v1_common_proto_rawDesc), len(file_vca_common_v1_common_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   8,
-			NumExtensions: 0,
+			NumMessages:   9,
+			NumExtensions: 1,
 			NumServices:   0,
 		},
 		GoTypes:           file_vca_common_v1_common_proto_goTypes,
 		DependencyIndexes: file_vca_common_v1_common_proto_depIdxs,
 		EnumInfos:         file_vca_common_v1_common_proto_enumTypes,
 		MessageInfos:      file_vca_common_v1_common_proto_msgTypes,
+		ExtensionInfos:    file_vca_common_v1_common_proto_extTypes,
 	}.Build()
 	File_vca_common_v1_common_proto = out.File
 	file_vca_common_v1_common_proto_goTypes = nil
