@@ -1,0 +1,241 @@
+// SPDX-License-Identifier: Apache-2.0
+// Trust registry service (ADR-011). The service keeps one canonical trust
+// entry per entity and publishes it through the etsi and dedi methods.
+// The signed lists and the JWKS are standard HTTP GET endpoints, not RPCs
+// (ADR-003 decision 7):
+//   GET /trust/etsi/list.json serves the ETSI TS 119 602 JSON list as a JWS.
+//   GET /.well-known/dedi.index.json serves the DeDi manifest.
+//   GET /trust/dedi/<file> serves the DeDi directory files.
+//   GET /.well-known/jwks.json serves the signing keys.
+syntax = "proto3";
+
+package vca.trust.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+
+// TrustService edits, publishes, and queries trust entries.
+service TrustService {
+  // UpsertEntry creates or replaces one entry. The entity id is the key.
+  rpc UpsertEntry(UpsertEntryRequest) returns (UpsertEntryResponse);
+  // GetEntry returns one entry by entity id.
+  rpc GetEntry(GetEntryRequest) returns (GetEntryResponse);
+  // ListEntries returns entries in pages with optional filters.
+  rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
+  // DeleteEntry removes one entry. The next Publish drops it from the lists.
+  rpc DeleteEntry(DeleteEntryRequest) returns (DeleteEntryResponse);
+  // Publish signs and writes the list of one method. The service also
+  // publishes after each edit. This RPC forces a new publication.
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  // TrustLookup returns the trust status of one entity for one role,
+  // with provenance (ADR-011 decision 7). The verifier policy service
+  // calls it with a cached, signature checked copy of the lists.
+  rpc TrustLookup(TrustLookupRequest) returns (TrustLookupResponse);
+  // ImportEtsi reads an ETSI TS 119 612 XML trusted list and creates
+  // entries for its entities (ADR-011 decision 2).
+  rpc ImportEtsi(ImportEtsiRequest) returns (ImportEtsiResponse);
+}
+
+// Method names a trust list publication format (ADR-011 decisions 2 and 3).
+enum Method {
+  METHOD_UNSPECIFIED = 0;
+  // ETSI TS 119 602 JSON list, signed as JWS.
+  METHOD_ETSI = 1;
+  // Decentralized Directory (DeDi) signed directory files.
+  METHOD_DEDI = 2;
+}
+
+// Status names the trust state of an entity.
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  // Relying parties trust the entity.
+  STATUS_ACTIVE = 1;
+  // Relying parties do not trust the entity for now.
+  STATUS_SUSPENDED = 2;
+  // Relying parties no longer trust the entity.
+  STATUS_REVOKED = 3;
+}
+
+// TrustEntry is the canonical trust record of one entity (ADR-011 decision 1).
+message TrustEntry {
+  // The entity identifier.
+  Identifier identifier = 1;
+  // The display name of the entity.
+  string display_name = 2;
+  // The role of the entity in the ecosystem.
+  vca.common.v1.Role role = 3;
+  // The trust status.
+  Status status = 4;
+  // The validity of the entry.
+  vca.common.v1.ValidityWindow validity = 5;
+  // The credential types the entity can issue or request.
+  // A type is a VCDM type name or an SD-JWT VC vct. Empty means every type.
+  repeated string credential_types = 6;
+  // The base URL of the entity deployment.
+  string service_endpoint = 7;
+  // The public URLs of the status lists of the entity.
+  repeated string status_list_endpoints = 8;
+  // The time of the last change.
+  google.protobuf.Timestamp updated_at = 9;
+
+  // Identifier names an entity by DID or by x509 subject.
+  message Identifier {
+    // The caller sets exactly one of did or x509_subject.
+    oneof id {
+      // A DID, for example did:web:issuer.example.
+      string did = 1;
+      // An x509 subject distinguished name, as ETSI entries use.
+      string x509_subject = 2;
+    }
+  }
+}
+
+// UpsertEntryRequest carries the entry to store.
+message UpsertEntryRequest {
+  // The entry. The service sets updated_at.
+  TrustEntry entry = 1;
+}
+
+// UpsertEntryResponse returns the stored entry.
+message UpsertEntryResponse {
+  // The entry as stored.
+  TrustEntry entry = 1;
+}
+
+// GetEntryRequest selects an entry.
+message GetEntryRequest {
+  // The entity identifier.
+  TrustEntry.Identifier identifier = 1;
+}
+
+// GetEntryResponse returns the entry.
+message GetEntryResponse {
+  // The entry.
+  TrustEntry entry = 1;
+}
+
+// ListEntriesRequest selects a page and filters.
+message ListEntriesRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The role filter. Unspecified returns every role.
+  vca.common.v1.Role role = 2;
+  // The status filter. Unspecified returns every status.
+  Status status = 3;
+  // The credential type filter. Empty returns every type.
+  string credential_type = 4;
+}
+
+// ListEntriesResponse returns a page of entries.
+message ListEntriesResponse {
+  // The entries in the page.
+  repeated TrustEntry entries = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// DeleteEntryRequest selects an entry.
+message DeleteEntryRequest {
+  // The entity identifier.
+  TrustEntry.Identifier identifier = 1;
+}
+
+// DeleteEntryResponse has no fields.
+message DeleteEntryResponse {}
+
+// PublishRequest selects a method.
+message PublishRequest {
+  // The method to publish. Unspecified publishes every enabled method.
+  Method method = 1;
+}
+
+// PublishResponse describes each publication.
+message PublishResponse {
+  // One item per published method.
+  repeated Publication publications = 1;
+
+  // Publication is the result of one method.
+  message Publication {
+    // The method.
+    Method method = 1;
+    // The public URL of the list or manifest.
+    string url = 2;
+    // The number of entries in the list.
+    int32 entry_count = 3;
+    // The time of signing.
+    google.protobuf.Timestamp published_at = 4;
+    // The key id of the signing key.
+    string key_id = 5;
+  }
+}
+
+// TrustLookupRequest asks if relying parties trust an entity for a role.
+message TrustLookupRequest {
+  // The entity identifier.
+  TrustEntry.Identifier identifier = 1;
+  // The role to check.
+  vca.common.v1.Role role = 2;
+  // The credential type to check. Empty checks the entity only.
+  string credential_type = 3;
+  // The time of the check. Empty means now.
+  google.protobuf.Timestamp at = 4;
+}
+
+// TrustLookupResponse returns the status with provenance.
+message TrustLookupResponse {
+  // The outcome of the lookup.
+  Outcome outcome = 1;
+  // The entry the lookup found, when any.
+  TrustEntry entry = 2;
+  // Where the answer came from.
+  Provenance provenance = 3;
+  // The reason in Simplified Technical English when the outcome is
+  // not trusted, for example the entry expired.
+  string reason = 4;
+
+  // Outcome names the lookup result.
+  enum Outcome {
+    OUTCOME_UNSPECIFIED = 0;
+    // The entity is on an enabled list, active, and valid at the time.
+    OUTCOME_TRUSTED = 1;
+    // The entity is on a list but suspended, revoked, or out of validity.
+    OUTCOME_UNTRUSTED = 2;
+    // No enabled list names the entity.
+    OUTCOME_UNKNOWN = 3;
+    // The service could not read a list. The policy service decides
+    // fail open or fail closed.
+    OUTCOME_UNAVAILABLE = 4;
+  }
+
+  // Provenance says which list gave the answer.
+  message Provenance {
+    // The method of the list.
+    Method method = 1;
+    // The URL of the list.
+    string list_url = 2;
+    // The key id that signed the list.
+    string key_id = 3;
+    // The time the service last checked the list signature.
+    google.protobuf.Timestamp checked_at = 4;
+    // True when the answer came from the local cache.
+    bool cached = 5;
+  }
+}
+
+// ImportEtsiRequest carries an XML trusted list.
+message ImportEtsiRequest {
+  // The ETSI TS 119 612 XML document.
+  bytes xml = 1;
+  // True writes nothing and returns what the import would change.
+  bool dry_run = 2;
+}
+
+// ImportEtsiResponse counts the changes.
+message ImportEtsiResponse {
+  // The number of entries the import created.
+  int32 created = 1;
+  // The number of entries the import replaced.
+  int32 updated = 2;
+  // The entities the import skipped, with a reason each.
+  repeated string skipped = 3;
+}
