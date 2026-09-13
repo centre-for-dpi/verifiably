@@ -33,6 +33,14 @@ clone golang/text v0.42.0 text
 clone golang/sync v0.23.0 sync
 clone golang/sys v0.48.0 sys
 
+# GitHub-hosted modules used by core/ need no mirror: fetch them straight
+# from GitHub into the module cache (proxy.golang.org is blocked). Run
+# outside the module so go.sum is not touched; make tidy owns go.sum.
+( cd "$MIRRORS" && GOWORK=off GOPROXY=direct GOSUMDB=off go mod download \
+  github.com/go-jose/go-jose/v4@v4.1.5 \
+  github.com/fxamacker/cbor/v2@v2.9.1 \
+  github.com/x448/float16@v0.8.4 )
+
 export GOPROXY=off GOSUMDB=off GOFLAGS=-mod=mod
 ( cd "$MIRRORS/protobuf-go" && go mod edit -replace github.com/google/go-cmp="$MIRRORS/go-cmp" && GOBIN="$BIN" go install ./cmd/protoc-gen-go )
 ( cd "$MIRRORS/connect-go" && go mod edit -replace google.golang.org/protobuf="$MIRRORS/protobuf-go" -replace github.com/google/go-cmp="$MIRRORS/go-cmp" && GOBIN="$BIN" go install ./cmd/protoc-gen-connect-go )
