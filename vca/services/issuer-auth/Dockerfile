@@ -3,7 +3,8 @@
 #   docker build -f services/issuer-auth/Dockerfile -t ghcr.io/centre-for-dpi/vca-issuer-auth .
 FROM golang:1.25 AS build
 WORKDIR /src
-COPY go.mod go.sum ./
+# go.sum is absent until "make tidy" runs on a networked machine.
+COPY go.mod go.su[m] ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev
