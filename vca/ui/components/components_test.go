@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"html/template"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -228,6 +229,16 @@ func TestWriteErrors(t *testing.T) {
 	k := newKit(t)
 	if err := k.Render(failWriter{}, "badge", Badge{Status: "ok", Text: "x"}); err == nil {
 		t.Error("write error must be returned")
+	}
+	var empty *Kit
+	if err := empty.Render(io.Discard, "badge", Badge{Status: "ok", Text: "x"}); !errors.Is(err, ErrNoTemplates) {
+		t.Errorf("empty kit Render err = %v", err)
+	}
+	if err := (&Kit{}).RenderPage(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), Page{Title: "t"}); !errors.Is(err, ErrNoTemplates) {
+		t.Errorf("empty kit RenderPage err = %v", err)
+	}
+	if got := Join("<a>", "<b>"); got != "<a>\n<b>\n" {
+		t.Errorf("Join = %q", got)
 	}
 	if len(Names) != 11 {
 		t.Errorf("Names = %v", Names)

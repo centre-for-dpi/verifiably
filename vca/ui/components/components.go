@@ -71,8 +71,14 @@ type normalizer interface {
 	normalize() (any, error)
 }
 
+// ErrNoTemplates is returned by a Kit that New did not create.
+var ErrNoTemplates = errors.New("components: kit has no templates, use New")
+
 // Render writes the named component with data to w.
 func (k *Kit) Render(w io.Writer, name string, data any) error {
+	if k == nil || k.tpl == nil {
+		return ErrNoTemplates
+	}
 	if n, ok := data.(normalizer); ok {
 		var err error
 		if data, err = n.normalize(); err != nil {
@@ -97,6 +103,16 @@ func (k *Kit) HTML(name string, data any) (template.HTML, error) {
 	return template.HTML(buf.String()), nil //nolint:gosec // output of html/template
 }
 
+// Join concatenates trusted HTML fragments, for example the output of HTML.
+func Join(parts ...template.HTML) template.HTML {
+	var b strings.Builder
+	for _, p := range parts {
+		b.WriteString(string(p))
+		b.WriteString("\n")
+	}
+	return template.HTML(b.String()) //nolint:gosec // inputs are already trusted
+}
+
 // IsHTMX reports whether the request comes from htmx and is not a history restore.
 func IsHTMX(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"
@@ -106,6 +122,9 @@ func IsHTMX(r *http.Request) bool {
 // and the title in the HX-Title header. Every other request receives the
 // full layout.
 func (k *Kit) RenderPage(w http.ResponseWriter, r *http.Request, page Page) error {
+	if k == nil || k.tpl == nil {
+		return ErrNoTemplates
+	}
 	data, err := page.normalize()
 	if err != nil {
 		return fmt.Errorf("components: page: %w", err)
