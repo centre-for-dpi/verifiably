@@ -1,0 +1,9 @@
+{{define "table"}}<div class="table-wrap"><table{{if .ID}} id="{{.ID}}"{{end}}>
+<caption>{{.Caption}}</caption>
+<thead><tr>{{range .Columns}}<th scope="col">{{.}}</th>{{end}}</tr></thead>
+<tbody>
+{{range .Rows}}<tr>{{range .}}<td>{{if .HTML}}{{.HTML}}{{else}}{{.Text}}{{end}}</td>{{end}}</tr>
+{{else}}<tr><td colspan="{{len .Columns}}">{{.Empty}}</td></tr>
+{{end}}</tbody>
+</table></div>
+{{end}}

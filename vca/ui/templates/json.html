@@ -1,0 +1,5 @@
+{{define "json"}}<details class="json"{{if .Open}} open{{end}}>
+<summary>{{.Summary}}</summary>
+<pre id="{{.ID}}" tabindex="0" role="region" aria-label="{{.Summary}}"><code>{{.Text}}</code></pre>
+</details>
+{{end}}

@@ -1,0 +1,1 @@
+{{define "toast"}}<div class="toast toast-{{.Level}}"{{if .ID}} id="{{.ID}}"{{end}}{{if .OOB}} hx-swap-oob="beforeend:#toasts"{{end}}>{{.Text}}</div>{{end}}

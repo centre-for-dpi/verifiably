@@ -1,0 +1,6 @@
+{{define "card"}}<section class="card" id="{{.ID}}"{{if .Title}} aria-labelledby="{{.ID}}-title"{{end}}>
+{{if .Title}}<h2 id="{{.ID}}-title">{{.Title}}</h2>
+{{end}}{{if .Text}}<p>{{.Text}}</p>
+{{end}}{{.Body}}{{if .Footer}}<div class="card-footer">{{.Footer}}</div>
+{{end}}</section>
+{{end}}
