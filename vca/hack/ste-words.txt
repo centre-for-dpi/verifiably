@@ -1,0 +1,97 @@
+# Banned words and phrases with STE approved replacements.
+# Format: <banned phrase> -> <replacement>
+# Matching is case-insensitive and on word boundaries.
+# Lines that start with # are comments.
+utilize -> use
+utilise -> use
+utilization -> use
+leverage -> use
+in order to -> to
+prior to -> before
+subsequent to -> after
+commence -> start
+initiate -> start
+terminate -> stop
+facilitate -> help
+accomplish -> do
+approximately -> about
+additional -> more
+adequate -> sufficient
+attempt -> try
+assist -> help
+carry out -> do
+demonstrate -> show
+determine -> find
+endeavour -> try
+endeavor -> try
+ensure -> make sure
+enable -> let
+e.g. -> for example
+i.e. -> that is
+etc. -> and so on
+in the event that -> if
+in the event of -> if
+in case of -> if
+with regard to -> about
+with respect to -> about
+regarding -> about
+concerning -> about
+irrespective of -> regardless of
+notwithstanding -> although
+whilst -> while
+amongst -> among
+upon -> on
+via -> through
+perform -> do
+obtain -> get
+acquire -> get
+retrieve -> get
+require -> need
+requirement -> need
+sufficient -> enough
+numerous -> many
+multiple -> many
+various -> different
+identical -> the same
+implement -> add
+implementation -> code
+functionality -> function
+capability -> function
+modify -> change
+modification -> change
+alter -> change
+eliminate -> remove
+subsequently -> then
+consequently -> so
+thus -> so
+hence -> so
+therefore -> so
+however -> but
+nevertheless -> but
+furthermore -> also
+moreover -> also
+in addition -> also
+at this point in time -> now
+at the present time -> now
+currently -> now
+presently -> now
+seamless -> smooth
+seamlessly -> smoothly
+robust -> strong
+simply -> (remove)
+just -> (remove)
+basically -> (remove)
+actually -> (remove)
+really -> (remove)
+very -> (remove)
+please -> (remove)
+it should be noted that -> note
+it is necessary to -> you must
+it is possible to -> you can
+should -> must
+may -> can
+might -> can
+ought to -> must
+shall -> must
+verify -> check
+validate -> check

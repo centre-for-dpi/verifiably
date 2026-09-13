@@ -7,6 +7,23 @@
 [![Security](https://sonarcloud.io/api/project_badges/measure?project=centre-for-dpi_verifiably&metric=security_rating)](https://sonarcloud.io/project/security_hotspots?id=centre-for-dpi_verifiably)
 [![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=centre-for-dpi_verifiably&metric=sqale_rating)](https://sonarcloud.io/component_measures?id=centre-for-dpi_verifiably&metric=Maintainability)
 
+## Verifiable Credentials Adapters
+
+This project is now **Verifiable Credentials Adapters** (VCA), Go module
+`github.com/centre-for-dpi/vc-adapters` (ADR-001). VCA is a set of small
+services. Each service adds one function to walt.id, Inji, or CREDEBL.
+The new code lives under [`vca/`](vca/). Start there:
+
+- [`vca/README.md`](vca/README.md): purpose, one-command start, the list of services.
+- [`vca/docs/adr.md`](vca/docs/adr.md): the architecture decision records.
+- [`vca/docs/glossary.md`](vca/docs/glossary.md): the project dictionary.
+
+The `verifiably` monolith below stays in `verifiably-go/` until each role
+has the same functions in VCA (ADR-030). The text below describes the
+monolith and does not follow the VCA writing style yet.
+
+## verifiably (legacy)
+
 A thin, backend-agnostic Go + HTMX UI for issuing, holding, and verifying
 W3C Verifiable Credentials against real DPG (Digital Public Goods) stacks.
 One interface (`backend.Adapter`) drives every screen; swap implementations

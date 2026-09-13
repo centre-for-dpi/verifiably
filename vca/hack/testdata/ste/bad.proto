@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+
+package vca.test.v1;
+
+// The credential was signed by the issuer prior to delivery.
+message Credential {
+  string utilize_this = 1; // A field name, not prose.
+  // See https://example.invalid/prior-to for the format.
+  string format = 2;
+}
