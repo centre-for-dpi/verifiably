@@ -2966,29 +2966,29 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1c\n" +
 	"\tmandatory\x18\x03 \x01(\bR\tmandatory\x12#\n" +
-	"\rdefault_value\x18\x04 \x01(\tR\fdefaultValue2\xa6\x0f\n" +
-	"\fAdminService\x12U\n" +
-	"\fCreateTenant\x12!.vca.admin.v1.CreateTenantRequest\x1a\".vca.admin.v1.CreateTenantResponse\x12L\n" +
-	"\tGetTenant\x12\x1e.vca.admin.v1.GetTenantRequest\x1a\x1f.vca.admin.v1.GetTenantResponse\x12R\n" +
-	"\vListTenants\x12 .vca.admin.v1.ListTenantsRequest\x1a!.vca.admin.v1.ListTenantsResponse\x12U\n" +
-	"\fUpdateTenant\x12!.vca.admin.v1.UpdateTenantRequest\x1a\".vca.admin.v1.UpdateTenantResponse\x12U\n" +
-	"\fDeleteTenant\x12!.vca.admin.v1.DeleteTenantRequest\x1a\".vca.admin.v1.DeleteTenantResponse\x12a\n" +
-	"\x10UpsertTrustEntry\x12%.vca.admin.v1.UpsertTrustEntryRequest\x1a&.vca.admin.v1.UpsertTrustEntryResponse\x12X\n" +
-	"\rGetTrustEntry\x12\".vca.admin.v1.GetTrustEntryRequest\x1a#.vca.admin.v1.GetTrustEntryResponse\x12a\n" +
-	"\x10ListTrustEntries\x12%.vca.admin.v1.ListTrustEntriesRequest\x1a&.vca.admin.v1.ListTrustEntriesResponse\x12a\n" +
-	"\x10DeleteTrustEntry\x12%.vca.admin.v1.DeleteTrustEntryRequest\x1a&.vca.admin.v1.DeleteTrustEntryResponse\x12g\n" +
-	"\x12CreateAuthProvider\x12'.vca.admin.v1.CreateAuthProviderRequest\x1a(.vca.admin.v1.CreateAuthProviderResponse\x12^\n" +
-	"\x0fGetAuthProvider\x12$.vca.admin.v1.GetAuthProviderRequest\x1a%.vca.admin.v1.GetAuthProviderResponse\x12d\n" +
-	"\x11ListAuthProviders\x12&.vca.admin.v1.ListAuthProvidersRequest\x1a'.vca.admin.v1.ListAuthProvidersResponse\x12g\n" +
-	"\x12UpdateAuthProvider\x12'.vca.admin.v1.UpdateAuthProviderRequest\x1a(.vca.admin.v1.UpdateAuthProviderResponse\x12g\n" +
-	"\x12DeleteAuthProvider\x12'.vca.admin.v1.DeleteAuthProviderRequest\x1a(.vca.admin.v1.DeleteAuthProviderResponse\x12U\n" +
-	"\fCreateApiKey\x12!.vca.admin.v1.CreateApiKeyRequest\x1a\".vca.admin.v1.CreateApiKeyResponse\x12R\n" +
-	"\vListApiKeys\x12 .vca.admin.v1.ListApiKeysRequest\x1a!.vca.admin.v1.ListApiKeysResponse\x12U\n" +
-	"\fRevokeApiKey\x12!.vca.admin.v1.RevokeApiKeyRequest\x1a\".vca.admin.v1.RevokeApiKeyResponse\x12a\n" +
-	"\x10GetServiceHealth\x12%.vca.admin.v1.GetServiceHealthRequest\x1a&.vca.admin.v1.GetServiceHealthResponse\x12X\n" +
-	"\rQueryAuditLog\x12\".vca.admin.v1.QueryAuditLogRequest\x1a#.vca.admin.v1.QueryAuditLogResponse\x12U\n" +
-	"\fOnboardAdmin\x12!.vca.admin.v1.OnboardAdminRequest\x1a\".vca.admin.v1.OnboardAdminResponse\x12U\n" +
-	"\fListCommands\x12!.vca.admin.v1.ListCommandsRequest\x1a\".vca.admin.v1.ListCommandsResponseB\xb0\x01\n" +
+	"\rdefault_value\x18\x04 \x01(\tR\fdefaultValue2\x8f\x16\n" +
+	"\fAdminService\x12n\n" +
+	"\fCreateTenant\x12!.vca.admin.v1.CreateTenantRequest\x1a\".vca.admin.v1.CreateTenantResponse\"\x17\xca\xf3\x18\x13Creates one tenant.\x12k\n" +
+	"\tGetTenant\x12\x1e.vca.admin.v1.GetTenantRequest\x1a\x1f.vca.admin.v1.GetTenantResponse\"\x1d\xca\xf3\x18\x19Returns one tenant by id.\x12q\n" +
+	"\vListTenants\x12 .vca.admin.v1.ListTenantsRequest\x1a!.vca.admin.v1.ListTenantsResponse\"\x1d\xca\xf3\x18\x19Returns tenants in pages.\x12\x8f\x01\n" +
+	"\fUpdateTenant\x12!.vca.admin.v1.UpdateTenantRequest\x1a\".vca.admin.v1.UpdateTenantResponse\"8\xca\xf3\x184Changes the display name or the state of one tenant.\x12\x87\x01\n" +
+	"\fDeleteTenant\x12!.vca.admin.v1.DeleteTenantRequest\x1a\".vca.admin.v1.DeleteTenantResponse\"0\xca\xf3\x18,Removes one tenant and every record it owns.\x12\x8b\x01\n" +
+	"\x10UpsertTrustEntry\x12%.vca.admin.v1.UpsertTrustEntryRequest\x1a&.vca.admin.v1.UpsertTrustEntryResponse\"(\xca\xf3\x18$Creates or replaces one trust entry.\x12\x8b\x01\n" +
+	"\rGetTrustEntry\x12\".vca.admin.v1.GetTrustEntryRequest\x1a#.vca.admin.v1.GetTrustEntryResponse\"1\xca\xf3\x18-Returns one trust entry by entity identifier.\x12\x86\x01\n" +
+	"\x10ListTrustEntries\x12%.vca.admin.v1.ListTrustEntriesRequest\x1a&.vca.admin.v1.ListTrustEntriesResponse\"#\xca\xf3\x18\x1fReturns trust entries in pages.\x12\x7f\n" +
+	"\x10DeleteTrustEntry\x12%.vca.admin.v1.DeleteTrustEntryRequest\x1a&.vca.admin.v1.DeleteTrustEntryResponse\"\x1c\xca\xf3\x18\x18Removes one trust entry.\x12\x89\x01\n" +
+	"\x12CreateAuthProvider\x12'.vca.admin.v1.CreateAuthProviderRequest\x1a(.vca.admin.v1.CreateAuthProviderResponse\" \xca\xf3\x18\x1cRegisters one OIDC provider.\x12\x7f\n" +
+	"\x0fGetAuthProvider\x12$.vca.admin.v1.GetAuthProviderRequest\x1a%.vca.admin.v1.GetAuthProviderResponse\"\x1f\xca\xf3\x18\x1bReturns one provider by id.\x12\x85\x01\n" +
+	"\x11ListAuthProviders\x12&.vca.admin.v1.ListAuthProvidersRequest\x1a'.vca.admin.v1.ListAuthProvidersResponse\"\x1f\xca\xf3\x18\x1bReturns providers in pages.\x12\x82\x01\n" +
+	"\x12UpdateAuthProvider\x12'.vca.admin.v1.UpdateAuthProviderRequest\x1a(.vca.admin.v1.UpdateAuthProviderResponse\"\x19\xca\xf3\x18\x15Changes one provider.\x12\x82\x01\n" +
+	"\x12DeleteAuthProvider\x12'.vca.admin.v1.DeleteAuthProviderRequest\x1a(.vca.admin.v1.DeleteAuthProviderResponse\"\x19\xca\xf3\x18\x15Removes one provider.\x12w\n" +
+	"\fCreateApiKey\x12!.vca.admin.v1.CreateApiKeyRequest\x1a\".vca.admin.v1.CreateApiKeyResponse\" \xca\xf3\x18\x1cCreates one machine API key.\x12\x85\x01\n" +
+	"\vListApiKeys\x12 .vca.admin.v1.ListApiKeysRequest\x1a!.vca.admin.v1.ListApiKeysResponse\"1\xca\xf3\x18-Returns API keys without their secret values.\x12x\n" +
+	"\fRevokeApiKey\x12!.vca.admin.v1.RevokeApiKeyRequest\x1a\".vca.admin.v1.RevokeApiKeyResponse\"!\xca\xf3\x18\x1dDisables one API key at once.\x12\x9d\x01\n" +
+	"\x10GetServiceHealth\x12%.vca.admin.v1.GetServiceHealthRequest\x1a&.vca.admin.v1.GetServiceHealthResponse\":\xca\xf3\x186Returns the health of every service in the deployment.\x12\x96\x01\n" +
+	"\rQueryAuditLog\x12\".vca.admin.v1.QueryAuditLogRequest\x1a#.vca.admin.v1.QueryAuditLogResponse\"<\xca\xf3\x188Returns audit records that match a filter, newest first.\x12\x90\x01\n" +
+	"\fOnboardAdmin\x12!.vca.admin.v1.OnboardAdminRequest\x1a\".vca.admin.v1.OnboardAdminResponse\"9\xca\xf3\x185Binds the first super admin with the bootstrap token.\x12\x86\x01\n" +
+	"\fListCommands\x12!.vca.admin.v1.ListCommandsRequest\x1a\".vca.admin.v1.ListCommandsResponse\"/\xca\xf3\x18+Returns the command tree with descriptions.B\xb0\x01\n" +
 	"\x10com.vca.admin.v1B\n" +
 	"AdminProtoP\x01Z>github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1;adminv1\xa2\x02\x03VAX\xaa\x02\fVca.Admin.V1\xca\x02\fVca\\Admin\\V1\xe2\x02\x18Vca\\Admin\\V1\\GPBMetadata\xea\x02\x0eVca::Admin::V1b\x06proto3"
 

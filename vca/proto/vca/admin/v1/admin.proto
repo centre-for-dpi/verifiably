@@ -11,65 +11,107 @@ import "vca/common/v1/common.proto";
 import "vca/trust/v1/trust.proto";
 
 // AdminService holds every super admin operation.
-// The leading comment of each RPC is its help text. The CLI, the man
-// pages, the portal help page, and the OpenAPI file all show it.
+// The description option of each RPC is its help text (ADR-009 decision 4).
+// The CLI, the man pages, the portal help page, and the OpenAPI file show it.
 service AdminService {
   // CreateTenant creates one tenant. A tenant is one operator organisation.
-  rpc CreateTenant(CreateTenantRequest) returns (CreateTenantResponse);
+  rpc CreateTenant(CreateTenantRequest) returns (CreateTenantResponse) {
+    option (vca.common.v1.description) = "Creates one tenant.";
+  }
   // GetTenant returns one tenant by id.
-  rpc GetTenant(GetTenantRequest) returns (GetTenantResponse);
+  rpc GetTenant(GetTenantRequest) returns (GetTenantResponse) {
+    option (vca.common.v1.description) = "Returns one tenant by id.";
+  }
   // ListTenants returns tenants in pages.
-  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse) {
+    option (vca.common.v1.description) = "Returns tenants in pages.";
+  }
   // UpdateTenant changes the display name or the state of one tenant.
-  rpc UpdateTenant(UpdateTenantRequest) returns (UpdateTenantResponse);
+  rpc UpdateTenant(UpdateTenantRequest) returns (UpdateTenantResponse) {
+    option (vca.common.v1.description) = "Changes the display name or the state of one tenant.";
+  }
   // DeleteTenant removes one tenant and every record it owns.
-  rpc DeleteTenant(DeleteTenantRequest) returns (DeleteTenantResponse);
+  rpc DeleteTenant(DeleteTenantRequest) returns (DeleteTenantResponse) {
+    option (vca.common.v1.description) = "Removes one tenant and every record it owns.";
+  }
 
   // UpsertTrustEntry creates or replaces one trust entry (ADR-011).
   // The admin service forwards the entry to the trust service, which
   // publishes it in every enabled method.
-  rpc UpsertTrustEntry(UpsertTrustEntryRequest) returns (UpsertTrustEntryResponse);
+  rpc UpsertTrustEntry(UpsertTrustEntryRequest) returns (UpsertTrustEntryResponse) {
+    option (vca.common.v1.description) = "Creates or replaces one trust entry.";
+  }
   // GetTrustEntry returns one trust entry by entity identifier.
-  rpc GetTrustEntry(GetTrustEntryRequest) returns (GetTrustEntryResponse);
+  rpc GetTrustEntry(GetTrustEntryRequest) returns (GetTrustEntryResponse) {
+    option (vca.common.v1.description) = "Returns one trust entry by entity identifier.";
+  }
   // ListTrustEntries returns trust entries in pages.
-  rpc ListTrustEntries(ListTrustEntriesRequest) returns (ListTrustEntriesResponse);
+  rpc ListTrustEntries(ListTrustEntriesRequest) returns (ListTrustEntriesResponse) {
+    option (vca.common.v1.description) = "Returns trust entries in pages.";
+  }
   // DeleteTrustEntry removes one trust entry.
-  rpc DeleteTrustEntry(DeleteTrustEntryRequest) returns (DeleteTrustEntryResponse);
+  rpc DeleteTrustEntry(DeleteTrustEntryRequest) returns (DeleteTrustEntryResponse) {
+    option (vca.common.v1.description) = "Removes one trust entry.";
+  }
 
   // CreateAuthProvider registers one OIDC provider (ADR-012 decision 5).
   // The service fetches the discovery document to check the URL.
-  rpc CreateAuthProvider(CreateAuthProviderRequest) returns (CreateAuthProviderResponse);
+  rpc CreateAuthProvider(CreateAuthProviderRequest) returns (CreateAuthProviderResponse) {
+    option (vca.common.v1.description) = "Registers one OIDC provider.";
+  }
   // GetAuthProvider returns one provider by id.
-  rpc GetAuthProvider(GetAuthProviderRequest) returns (GetAuthProviderResponse);
+  rpc GetAuthProvider(GetAuthProviderRequest) returns (GetAuthProviderResponse) {
+    option (vca.common.v1.description) = "Returns one provider by id.";
+  }
   // ListAuthProviders returns providers in pages.
-  rpc ListAuthProviders(ListAuthProvidersRequest) returns (ListAuthProvidersResponse);
+  rpc ListAuthProviders(ListAuthProvidersRequest) returns (ListAuthProvidersResponse) {
+    option (vca.common.v1.description) = "Returns providers in pages.";
+  }
   // UpdateAuthProvider changes one provider.
-  rpc UpdateAuthProvider(UpdateAuthProviderRequest) returns (UpdateAuthProviderResponse);
+  rpc UpdateAuthProvider(UpdateAuthProviderRequest) returns (UpdateAuthProviderResponse) {
+    option (vca.common.v1.description) = "Changes one provider.";
+  }
   // DeleteAuthProvider removes one provider. Active sessions end.
-  rpc DeleteAuthProvider(DeleteAuthProviderRequest) returns (DeleteAuthProviderResponse);
+  rpc DeleteAuthProvider(DeleteAuthProviderRequest) returns (DeleteAuthProviderResponse) {
+    option (vca.common.v1.description) = "Removes one provider.";
+  }
 
   // CreateApiKey creates one machine API key. The response shows the
   // secret value once. The service stores only its hash.
-  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse) {
+    option (vca.common.v1.description) = "Creates one machine API key.";
+  }
   // ListApiKeys returns API keys without their secret values.
-  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse) {
+    option (vca.common.v1.description) = "Returns API keys without their secret values.";
+  }
   // RevokeApiKey disables one API key at once.
-  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse) {
+    option (vca.common.v1.description) = "Disables one API key at once.";
+  }
 
   // GetServiceHealth returns the health of every service in the deployment.
-  rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse);
+  rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse) {
+    option (vca.common.v1.description) = "Returns the health of every service in the deployment.";
+  }
 
   // QueryAuditLog returns audit records that match a filter, newest first.
-  rpc QueryAuditLog(QueryAuditLogRequest) returns (QueryAuditLogResponse);
+  rpc QueryAuditLog(QueryAuditLogRequest) returns (QueryAuditLogResponse) {
+    option (vca.common.v1.description) = "Returns audit records that match a filter, newest first.";
+  }
 
   // OnboardAdmin binds the first super admin (ADR-010 decision 4).
   // The caller sends the one time bootstrap token and an OIDC id token.
   // The service binds the iss and sub claims to the super admin role.
-  rpc OnboardAdmin(OnboardAdminRequest) returns (OnboardAdminResponse);
+  rpc OnboardAdmin(OnboardAdminRequest) returns (OnboardAdminResponse) {
+    option (vca.common.v1.description) = "Binds the first super admin with the bootstrap token.";
+  }
 
   // ListCommands returns the command tree with descriptions.
   // The CLI, the man pages, and the portal help page render this list.
-  rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse);
+  rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse) {
+    option (vca.common.v1.description) = "Returns the command tree with descriptions.";
+  }
 }
 
 // Tenant is one operator organisation.
