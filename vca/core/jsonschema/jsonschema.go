@@ -106,7 +106,7 @@ func (s Schema) Property(name string) (map[string]any, bool) {
 		return nil, false
 	}
 	if ref, ok := sub["$ref"].(string); ok {
-		if r, err := s.resolve(ref); err == nil {
+		if r, err := s.Resolve(ref); err == nil {
 			if m, ok := r.(map[string]any); ok {
 				return m, true
 			}
@@ -124,7 +124,8 @@ func (s Schema) Required() []string {
 	return stringList(obj["required"])
 }
 
-// plainNumbers turns every json.Number into a float64.
+// plainNumbers returns a copy of v in which every number is a float64.
+// It never changes v.
 func plainNumbers(v any) any {
 	switch x := v.(type) {
 	case json.Number:
@@ -139,13 +140,17 @@ func plainNumbers(v any) any {
 	case float32:
 		return float64(x)
 	case map[string]any:
+		out := make(map[string]any, len(x))
 		for k, e := range x {
-			x[k] = plainNumbers(e)
+			out[k] = plainNumbers(e)
 		}
+		return out
 	case []any:
+		out := make([]any, len(x))
 		for i, e := range x {
-			x[i] = plainNumbers(e)
+			out[i] = plainNumbers(e)
 		}
+		return out
 	}
 	return v
 }
@@ -321,8 +326,9 @@ func (v *validator) add(path, keyword, format string, args ...any) {
 	v.problems = append(v.problems, Problem{Path: path, Keyword: keyword, Message: fmt.Sprintf(format, args...)})
 }
 
-// resolve follows a local $ref. The fragment is a JSON Pointer.
-func (s Schema) resolve(ref string) (any, error) {
+// Resolve follows a local $ref such as "#/$defs/address". The fragment
+// is a JSON Pointer into the document.
+func (s Schema) Resolve(ref string) (any, error) {
 	frag := strings.TrimPrefix(ref, "#")
 	frag, _ = url.PathUnescape(frag)
 	cur := s.root
@@ -359,7 +365,7 @@ func (v *validator) walk(schema any, instance any, path string, depth int) {
 			v.add(path, "$ref", "the schema reference chain is too deep")
 			return
 		}
-		target, err := v.schema.resolve(ref)
+		target, err := v.schema.Resolve(ref)
 		if err != nil {
 			v.add(path, "$ref", "the schema reference %s does not resolve", ref)
 			return
