@@ -1,0 +1,9 @@
+{{define "dialog"}}<dialog id="{{.ID}}" aria-labelledby="{{.ID}}-title"{{if .Open}} open{{end}}>
+<h2 id="{{.ID}}-title">{{.Title}}</h2>
+{{if .Text}}<p>{{.Text}}</p>
+{{end}}{{.Body}}<form method="dialog" class="dialog-actions">
+{{range .Actions}}{{template "button" .}}
+{{end}}<button type="submit" class="btn btn-secondary">{{.CloseText}}</button>
+</form>
+</dialog>
+{{end}}

@@ -1,0 +1,11 @@
+{{define "field"}}<div class="field">
+<label for="{{.ID}}">{{.Label}}{{if .Required}} <span class="required" aria-hidden="true">*</span>{{end}}</label>
+{{if eq .Type "textarea"}}<textarea id="{{.ID}}" name="{{.Name}}"{{if .Required}} required{{end}}{{if .DescribedBy}} aria-describedby="{{.DescribedBy}}"{{end}}{{if .Error}} aria-invalid="true"{{end}}{{range $k, $v := .Attrs}} {{safeAttr $k $v}}{{end}}>{{.Value}}</textarea>
+{{else if eq .Type "select"}}<select id="{{.ID}}" name="{{.Name}}"{{if .Required}} required{{end}}{{if .DescribedBy}} aria-describedby="{{.DescribedBy}}"{{end}}{{if .Error}} aria-invalid="true"{{end}}{{range $k, $v := .Attrs}} {{safeAttr $k $v}}{{end}}>
+{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Text}}</option>
+{{end}}</select>
+{{else}}<input type="{{.Type}}" id="{{.ID}}" name="{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}{{if .DescribedBy}} aria-describedby="{{.DescribedBy}}"{{end}}{{if .Error}} aria-invalid="true"{{end}}{{range $k, $v := .Attrs}} {{safeAttr $k $v}}{{end}}>
+{{end}}{{if .Hint}}<p class="hint" id="{{.ID}}-hint">{{.Hint}}</p>
+{{end}}{{if .Error}}<p class="error" id="{{.ID}}-error">{{.Error}}</p>
+{{end}}</div>
+{{end}}

@@ -1,0 +1,23 @@
+vca UI kit: third-party notices
+
+This kit is licensed under Apache-2.0 (see the repository LICENSE).
+
+1. UI architecture, palette, WCAG contrast math, theme bootstrap and
+   accessibility test patterns are adapted from adamndegwa by Adam Ndegwa
+   (https://github.com/adammwaniki/adamndegwa, main @ 0173066),
+   licensed under the Apache License, Version 2.0.
+   Copyright Adam Ndegwa.
+
+2. htmx 2.0.10 (static/htmx.min.js), licensed under the Zero-Clause BSD
+   licence (static/LICENSE.htmx.txt). https://htmx.org
+
+3. Fonts (static/fonts/), each licensed under the SIL Open Font License 1.1.
+   Files come from the Fontsource packages on npm, latin subsets only:
+   - Big Shoulders Inline Display, @fontsource-variable/big-shoulders-inline-display 5.3.0
+     (static/fonts/LICENSE.big-shoulders-inline-display.txt)
+   - Cinzel, @fontsource-variable/cinzel 5.3.0
+     (static/fonts/LICENSE.cinzel.txt)
+   - Google Sans Flex, @fontsource-variable/google-sans-flex 5.3.1
+     (static/fonts/LICENSE.google-sans-flex.txt)
+   - Google Sans Code, @fontsource-variable/google-sans-code 5.3.0
+     (static/fonts/LICENSE.google-sans-code.txt)

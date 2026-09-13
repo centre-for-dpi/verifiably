@@ -1,0 +1,105 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+{{if .Description}}<meta name="description" content="{{.Description}}">
+{{end}}<link rel="stylesheet" href="/static/vca.css">
+<script>
+/* Theme: apply the stored choice before first paint. Storage can throw in
+   privacy modes; a failure falls back to the system preference, which the
+   stylesheet follows through prefers-color-scheme when no stamp is set. */
+(function(){
+  var stored = null;
+  try { stored = localStorage.getItem('theme'); } catch (e) {}
+  if (stored === 'dark' || stored === 'light') {
+    document.documentElement.setAttribute('data-theme', stored);
+  }
+})();
+</script>
+</head>
+<body>
+<a class="skip-link" href="#page">{{.Text.SkipLink}}</a>
+<header class="header">
+{{if .Nav.Brand.Text}}<a class="brand" href="{{.Nav.Brand.Href}}">{{.Nav.Brand.Text}}</a>
+{{end}}<nav class="nav" aria-label="{{.Nav.Label}}">
+<ul>
+{{range .Nav.Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} hx-get="{{.Href}}" hx-target="#page" hx-push-url="true">{{.Text}}</a></li>
+{{end}}</ul>
+</nav>
+<button class="btn btn-ghost theme-toggle" type="button" hidden data-theme-toggle aria-label="{{.Text.ThemeToggle}}" data-label-toggle="{{.Text.ThemeToggle}}" data-label-system="{{.Text.ThemeSystem}}" data-label-light="{{.Text.ThemeLight}}" data-label-dark="{{.Text.ThemeDark}}">{{.Text.ThemeToggle}}</button>
+</header>
+<main id="page" tabindex="-1">
+{{template "page" .}}
+</main>
+<div id="toasts" class="toasts" aria-live="polite">
+{{range .Toasts}}{{template "toast" .}}
+{{end}}</div>
+{{if .Footer}}<footer class="footer">{{.Footer}}</footer>
+{{end}}<script src="/static/htmx.min.js" defer></script>
+<script>
+(function(){
+  var doc = document.documentElement;
+  var modes = ['system', 'light', 'dark'];
+  function current() {
+    var s = null;
+    try { s = localStorage.getItem('theme'); } catch (e) {}
+    return (s === 'light' || s === 'dark') ? s : 'system';
+  }
+  function apply(mode) {
+    if (mode === 'system') { doc.removeAttribute('data-theme'); }
+    else { doc.setAttribute('data-theme', mode); }
+    try {
+      if (mode === 'system') { localStorage.removeItem('theme'); }
+      else { localStorage.setItem('theme', mode); }
+    } catch (e) {}
+  }
+  var toggle = document.querySelector('[data-theme-toggle]');
+  if (toggle) {
+    var label = function(mode) {
+      var name = toggle.getAttribute('data-label-' + mode) || mode;
+      toggle.textContent = name;
+      toggle.setAttribute('aria-label', toggle.getAttribute('data-label-toggle') + ': ' + name);
+    };
+    label(current());
+    toggle.hidden = false;
+    toggle.addEventListener('click', function(){
+      var next = modes[(modes.indexOf(current()) + 1) % modes.length];
+      apply(next);
+      label(next);
+    });
+  }
+  /* Disclosure buttons: aria-controls names the region, aria-expanded is the state. */
+  document.addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('button[aria-controls]') : null;
+    if (b) {
+      var region = document.getElementById(b.getAttribute('aria-controls'));
+      if (region) {
+        var open = b.getAttribute('aria-expanded') !== 'true';
+        b.setAttribute('aria-expanded', open ? 'true' : 'false');
+        region.hidden = !open;
+      }
+    }
+    var o = e.target.closest ? e.target.closest('[data-open-dialog]') : null;
+    if (o) {
+      var dlg = document.getElementById(o.getAttribute('data-open-dialog'));
+      if (dlg && dlg.showModal) { dlg.showModal(); }
+    }
+  });
+  /* HTMX: title from HX-Title, focus moves to the swapped main region. */
+  document.body.addEventListener('htmx:afterRequest', function(e){
+    var t = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Title');
+    if (t) { document.title = t; }
+  });
+  document.body.addEventListener('htmx:afterSettle', function(e){
+    var main = document.getElementById('page');
+    if (e.detail.target === main) { main.focus(); }
+  });
+})();
+</script>
+</body>
+</html>
+{{end}}
+{{define "page"}}<h1>{{.Heading}}</h1>
+{{.Content}}{{end}}

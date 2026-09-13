@@ -1,0 +1,155 @@
+/* vca UI kit base stylesheet.
+   Colour tokens and font stacks are prepended at startup from the Go theme
+   and font pack. This file must only use the --token custom properties. */
+
+*,*::before,*::after{box-sizing:border-box}
+*{margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--font-body);
+  font-size:1rem;
+  line-height:1.5;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--primary);color:var(--paper)}
+a{color:var(--primary);text-underline-offset:.15em}
+a:hover{color:var(--accent)}
+img,svg{max-width:100%;height:auto}
+code,pre,kbd{font-family:var(--font-meta)}
+
+/* ---------- accessibility ---------- */
+.skip-link{
+  position:absolute;left:-9999px;top:0;
+  background:var(--ink);color:var(--paper);
+  font-family:var(--font-meta);font-size:.9rem;
+  padding:.75rem 1rem;z-index:200;text-decoration:none;
+}
+.skip-link:focus{left:0}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.visually-hidden{
+  position:absolute!important;width:1px;height:1px;
+  padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);
+  white-space:nowrap;border:0;
+}
+/* Target size, WCAG 2.2 SC 2.5.8: every control is at least 24 by 24 CSS px. */
+button,[role="button"],input:not([type="hidden"]),select,textarea,summary,.nav a{
+  min-width:24px;min-height:24px;
+}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{transition:none!important;animation:none!important}
+}
+
+/* ---------- layout ---------- */
+.header{
+  display:flex;flex-wrap:wrap;align-items:center;gap:1rem;
+  padding:.75rem 1.5rem;border-bottom:1px solid var(--line);
+}
+.brand{
+  font-family:var(--font-heading);font-weight:700;font-size:1.1rem;
+  letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:var(--ink);
+}
+.nav ul{display:flex;flex-wrap:wrap;gap:.25rem 1rem;list-style:none}
+.nav a{
+  display:inline-flex;align-items:center;padding:.4rem .25rem;
+  font-family:var(--font-meta);font-size:.85rem;letter-spacing:.08em;
+  text-transform:uppercase;text-decoration:none;color:var(--ink);
+  border-bottom:2px solid transparent;
+}
+.nav a:hover{color:var(--primary)}
+.nav a[aria-current="page"]{border-bottom-color:var(--accent);color:var(--primary)}
+.theme-toggle{margin-left:auto}
+main{flex:1;width:100%;max-width:70rem;margin:0 auto;padding:1.5rem}
+.footer{
+  padding:1rem 1.5rem;border-top:1px solid var(--line);
+  font-family:var(--font-meta);font-size:.85rem;color:var(--muted);
+}
+h1{font-family:var(--font-display);font-weight:700;font-size:2.5rem;line-height:1.1;margin:0 0 1rem}
+h2,h3,h4{font-family:var(--font-heading);line-height:1.2;margin:0 0 .5rem}
+h2{font-size:1.4rem}
+h3{font-size:1.15rem}
+p{margin:0 0 1rem}
+
+/* ---------- card ---------- */
+.card{
+  border:1px solid var(--line);border-radius:.5rem;padding:1rem 1.25rem;
+  margin:0 0 1rem;background:var(--paper);
+}
+.card-footer{margin-top:.75rem;font-family:var(--font-meta);font-size:.85rem;color:var(--muted)}
+
+/* ---------- field ---------- */
+.field{display:flex;flex-direction:column;gap:.35rem;margin:0 0 1rem;max-width:40rem}
+.field label{font-family:var(--font-meta);font-weight:600;font-size:.95rem}
+.field input,.field select,.field textarea{
+  font:inherit;color:var(--ink);background:var(--paper);
+  border:1px solid var(--muted);border-radius:.3rem;padding:.5rem .65rem;min-height:2.5rem;
+}
+.field textarea{min-height:6rem;resize:vertical}
+.field [aria-invalid="true"]{border-color:var(--bad);border-width:2px}
+.hint{font-size:.9rem;color:var(--muted)}
+.error{font-size:.9rem;color:var(--bad);font-weight:600}
+.required{color:var(--bad)}
+
+/* ---------- table ---------- */
+.table-wrap{overflow-x:auto;margin:0 0 1rem}
+table{border-collapse:collapse;width:100%}
+caption{text-align:left;font-family:var(--font-heading);font-weight:600;padding:.5rem 0}
+th,td{text-align:left;padding:.5rem .65rem;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--font-meta);font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
+
+/* ---------- badge ---------- */
+.badge{
+  display:inline-block;padding:.15rem .6rem;border-radius:1rem;
+  font-family:var(--font-meta);font-size:.85rem;font-weight:600;
+  border:2px solid currentColor;color:var(--ink);
+}
+.badge-ok{color:var(--ok)}
+.badge-warn{color:var(--warn)}
+.badge-bad{color:var(--bad)}
+.badge-info{color:var(--primary)}
+
+/* ---------- toast ---------- */
+.toasts{position:fixed;right:1rem;bottom:1rem;display:flex;flex-direction:column;gap:.5rem;z-index:150;max-width:24rem}
+.toast{
+  padding:.75rem 1rem;border-radius:.4rem;background:var(--paper);color:var(--ink);
+  border:2px solid var(--ink);box-shadow:0 .25rem 1rem rgba(0,0,0,.2);
+}
+.toast-ok{border-color:var(--ok)}
+.toast-warn{border-color:var(--warn)}
+.toast-bad{border-color:var(--bad)}
+
+/* ---------- dialog ---------- */
+dialog{
+  color:var(--ink);background:var(--paper);border:2px solid var(--ink);
+  border-radius:.5rem;padding:1.25rem;max-width:32rem;width:calc(100% - 2rem);
+}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.dialog-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem}
+
+/* ---------- qr ---------- */
+.qr{display:block;width:16rem;max-width:100%;background:#FFFFFF;padding:.5rem;border:1px solid var(--line)}
+
+/* ---------- json ---------- */
+.json summary{cursor:pointer;padding:.4rem 0;font-family:var(--font-meta)}
+.json pre{
+  overflow:auto;padding:.75rem;border:1px solid var(--line);border-radius:.3rem;
+  font-size:.9rem;line-height:1.4;max-height:24rem;
+}
+
+/* ---------- button ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.4rem;
+  min-height:2.5rem;padding:.5rem 1rem;border-radius:.3rem;
+  font:inherit;font-family:var(--font-meta);font-weight:600;cursor:pointer;
+  text-decoration:none;border:2px solid var(--primary);color:var(--primary);background:var(--paper);
+}
+.btn-primary{background:var(--primary);color:var(--paper)}
+.btn-danger{border-color:var(--bad);color:var(--bad)}
+.btn:hover{border-color:var(--accent)}
+.btn[disabled],.btn[aria-disabled="true"]{cursor:not-allowed;opacity:.6}
+.btn-ghost{border-color:transparent;color:var(--ink)}
