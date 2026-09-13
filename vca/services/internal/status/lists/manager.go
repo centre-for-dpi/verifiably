@@ -110,6 +110,9 @@ type Options struct {
 	// Size is the number of entries of a new list. A bitstring list is
 	// raised to bitstring.MinSize.
 	Size int
+	// DefaultBits is the status width of a new list when the caller
+	// asks for none. Zero means 1.
+	DefaultBits int
 	// TTL is the validity of a signature. Zero means DefaultTTL.
 	TTL time.Duration
 	// Now returns the current time. Nil means time.Now.
@@ -136,6 +139,9 @@ func Open(ctx context.Context, opts Options) (*Manager, error) {
 	}
 	if opts.TTL <= 0 {
 		opts.TTL = DefaultTTL
+	}
+	if opts.DefaultBits <= 0 {
+		opts.DefaultBits = 1
 	}
 	opts.BaseURL = strings.TrimRight(opts.BaseURL, "/")
 	m := &Manager{opts: opts, records: map[string]Record{}, signed: map[string]Signed{}}
@@ -204,7 +210,7 @@ func (m *Manager) Allocate(ctx context.Context, issuerDID string, purpose Purpos
 		return Allocation{}, err
 	}
 	if bitsPerEntry == 0 {
-		bitsPerEntry = 1
+		bitsPerEntry = m.opts.DefaultBits
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
