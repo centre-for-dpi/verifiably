@@ -5,6 +5,7 @@ package ui
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -32,6 +33,8 @@ func get(h http.Handler, method, path string, etag string) *httptest.ResponseRec
 	return rec
 }
 
+var fontPx = regexp.MustCompile(`font-size:\s*[0-9.]+px`)
+
 func TestStylesheetCarriesThemeFontsAndA11y(t *testing.T) {
 	css, err := StylesheetCSS(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
 	if err != nil {
@@ -52,6 +55,7 @@ func TestStylesheetCarriesThemeFontsAndA11y(t *testing.T) {
 		"@font-face", "font-display:swap", ".skip-link", ":focus-visible", "prefers-reduced-motion",
 		"min-width:24px;min-height:24px", ".visually-hidden", "var(--font-body)", "prefers-color-scheme: dark",
 		".card", ".field", ".badge", ".toast", "dialog", ".qr", ".json", ".btn", "th,td",
+		"outline-offset:2px", ".table-wrap{overflow-x:auto", "flex-wrap:wrap",
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("stylesheet missing %q", want)
@@ -59,6 +63,10 @@ func TestStylesheetCarriesThemeFontsAndA11y(t *testing.T) {
 	}
 	if strings.Contains(css, "outline:none") || strings.Contains(css, "outline: none") {
 		t.Error("stylesheet must not remove focus outlines")
+	}
+	// Font sizes scale with the user setting (WCAG 2.2 SC 1.4.4), so no px.
+	if fontPx.MatchString(css) {
+		t.Error("stylesheet sets a font-size in px")
 	}
 	// The base stylesheet must only use tokens, never literal theme colours.
 	base := css[strings.Index(css, "/* vca UI kit base stylesheet"):]
