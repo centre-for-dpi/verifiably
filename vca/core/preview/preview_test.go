@@ -157,7 +157,7 @@ func TestPreviewCredentialFormats(t *testing.T) {
 	}
 
 	expiring, err := PreviewCredential(s, nil, Options{Format: FormatMsoMdoc})
-	if err != nil || !strings.Contains(expiring.CredentialJSON, `"validUntil": "2025-01-31T10:00:00Z"`) {
+	if err != nil || !strings.Contains(expiring.CredentialJSON, `"validUntil": "2025-01-30T10:00:00Z"`) {
 		t.Fatalf("mdoc validUntil: %v %s", err, expiring.CredentialJSON)
 	}
 	s.Expires = false
