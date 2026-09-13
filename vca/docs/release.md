@@ -44,8 +44,8 @@ The push starts `.github/workflows/vca-release.yml`.
 ## What the workflow publishes
 
 - Images `ghcr.io/<owner>/vca-<service>:vX.Y.Z`, `:vX.Y` and `:vX` for every
-  service under `vca/services/*/` with a `Dockerfile`. Each image is signed
-  with cosign and carries SPDX and CycloneDX SBOM attestations.
+  service under `vca/services/*/` with a `Dockerfile`. Cosign signs each
+  image. Each image carries SPDX and CycloneDX SBOM attestations.
 - A GitHub Release named `vX.Y.Z` with the generated notes and these files:
   `vca_vX.Y.Z_<os>_<arch>` binaries with `.sha256` checksums, `*.tgz` Helm
   chart packages, `*.spdx.json` and `*.cdx.json` SBOM files, and one
@@ -57,7 +57,7 @@ A tag such as `v1.2.0-rc.1` publishes the `:v1.2.0-rc.1` image tag only.
 The floating `:v1.2` and `:v1` tags do not move. The GitHub Release is
 marked as a pre-release.
 
-## Verify a published image
+## Check a published image
 
 ```sh
 ref=ghcr.io/<owner>/vca-<service>@sha256:<digest>
@@ -73,5 +73,5 @@ cosign verify-attestation --type spdxjson \
 
 ## Fix a bad release
 
-Do not move or delete a tag that was pushed. Fix the problem on `main`,
+Do not move or delete a pushed tag. Fix the problem on `main`,
 then tag the next patch version.

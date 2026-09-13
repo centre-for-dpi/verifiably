@@ -1,7 +1,7 @@
 # CI for the Verifiable Credentials Adapters
 
 This page describes the workflows that check and ship the code under `vca/`.
-The workflows implement ADR-006. They live at the repository root in
+The workflows follow ADR-006. They live at the repository root in
 `.github/workflows/` (ADR-006 decision 6). All workflow files for this
 code start with `vca-`. The legacy monolith under `verifiably-go/` keeps its
 own workflows (`quality.yml`, `image.yml`, `k8s.yml`).
@@ -38,7 +38,7 @@ Notes:
 - The commit check accepts these types: `build`, `chore`, `ci`, `docs`,
   `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`. A scope is
   optional and must be lower case. A `!` before the colon marks a breaking
-  change. Merge commits are ignored.
+  change. The check ignores merge commits.
 - Coverage uses `go test -race -coverprofile`. The gate reads the per
   package numbers. Packages under `gen/` and `cmd/` are not gated.
 
@@ -56,25 +56,26 @@ shellcheck hack/*.sh
 
 ## vca-release: publish a release
 
-The workflow starts when a tag `vX.Y.Z` is pushed. See
+A push of a tag `vX.Y.Z` starts the workflow. See
 [release.md](release.md) for the operator steps. The jobs are:
 
 1. `version`: parses the tag as SemVer 2.0.0 and discovers every service
    under `vca/services/*/` that has a `Dockerfile`. A tag that is not
    SemVer fails the workflow.
-2. `images`: one job per service. Builds the image, pushes
-   `ghcr.io/<owner>/vca-<service>:vX.Y.Z`, `:vX.Y` and `:vX`, sets the OCI
+2. `images`: one job per service. It builds the image and pushes
+   `ghcr.io/<owner>/vca-<service>:vX.Y.Z`, `:vX.Y` and `:vX`. It sets the OCI
    labels `title`, `description`, `version`, `revision`, `source`,
-   `licenses=Apache-2.0` and `created` (ADR-005 decision 4), scans the image
-   with Trivy (blocking), signs it keyless with cosign, and attaches SBOM
-   attestations in SPDX and CycloneDX (ADR-005 decision 5). A pre-release
-   tag such as `v1.2.0-rc.1` does not move the `vX.Y` and `vX` tags.
+   `licenses=Apache-2.0` and `created` (ADR-005 decision 4). It scans the
+   image with Trivy (blocking) and signs it keyless with cosign. It also
+   attaches SBOM attestations in SPDX and CycloneDX (ADR-005 decision 5).
+   A pre-release tag such as `v1.2.0-rc.1` does not move the `vX.Y` and
+   `vX` tags.
 3. `cli`: builds the `vca` binary for linux and darwin on amd64 and arm64
    with plain `go build`, when `vca/cmd/vca` exists.
 4. `charts`: lints and packages every chart under `deploy/vca/helm/*`, when
    that directory exists.
-5. `release`: generates release notes with `vca/hack/release-notes.sh`,
-   lists the image digests, and creates the GitHub Release with the
+5. `release`: it generates release notes with `vca/hack/release-notes.sh`
+   and lists the image digests. It creates the GitHub Release with the
    binaries, checksums, chart packages, SBOM files and digest files attached.
 
 All services get the same version per release (ADR-006 decision 4).
@@ -87,12 +88,12 @@ All services get the same version per release (ADR-006 decision 4).
 | contract tests (real DPGs) | Runs contract tests against real DPG containers named in the repository variable `VCA_CONTRACT_DPGS`. With no names, prints a message and passes. | `vca/hack/contract-tests.sh` |
 | helm render + kind deploy | Creates a kind cluster, lints, renders and installs every chart under `deploy/vca/helm/*`, and waits for the deployments. With no charts, prints a notice and passes. | `vca/hack/k8s-smoke.sh` |
 
-A nightly failure does not block a merge. It does show on the Actions page
-and must be fixed before the next release.
+A nightly failure does not block a merge. It shows on the Actions page.
+The team must fix it before the next release.
 
 ## Pinned actions
 
-Every third party action is pinned to a version tag. Trivy is pinned to an
+Pin every third party action to a version tag. Pin Trivy to an
 exact release. Do not use `@master` or `@main`.
 
 ## Scripts in `vca/hack/`
