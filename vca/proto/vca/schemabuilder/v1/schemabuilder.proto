@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: Apache-2.0
+// Schema builder service (ADR-014). The builder page calls
+// PreviewCredential on each edit. The service renders the preview with a
+// pure function from vc-core and never touches the registry or the DPG.
+syntax = "proto3";
+
+package vca.schemabuilder.v1;
+
+import "vca/common/v1/common.proto";
+import "vca/schema/v1/schema.proto";
+
+// SchemaBuilderService renders previews and imports schemas.
+service SchemaBuilderService {
+  // PreviewCredential renders the three live view tabs from a schema
+  // and sample data (ADR-014 decision 3).
+  rpc PreviewCredential(PreviewCredentialRequest) returns (PreviewCredentialResponse);
+  // Import converts an existing JSON Schema or a DPG catalogue entry into
+  // a draft schema in the registry (ADR-014 decision 6).
+  rpc Import(ImportRequest) returns (ImportResponse);
+  // SampleData builds sample values from a schema for the preview.
+  rpc SampleData(SampleDataRequest) returns (SampleDataResponse);
+}
+
+// PreviewCredentialRequest carries the draft and the sample values.
+message PreviewCredentialRequest {
+  // The draft schema. The service reads json_schema, display, and sd_claims.
+  vca.schema.v1.Schema schema = 1;
+  // The sample subject values as a JSON object string.
+  string sample = 2;
+  // The wire format to preview. Unspecified previews the first format of the schema.
+  vca.common.v1.Format format = 3;
+  // The BCP 47 language tag of the wallet card. Empty selects the first display entry.
+  string locale = 4;
+}
+
+// PreviewCredentialResponse carries the three preview tabs.
+message PreviewCredentialResponse {
+  // The sample credential as a JSON string in the chosen format.
+  string credential_json = 1;
+  // The wallet card.
+  WalletCard wallet_card = 2;
+  // The reference of the PDF preview. GET /pdf/preview/<ref> serves the bytes.
+  string pdf_preview_ref = 3;
+  // The schema problems the sample shows, in Simplified Technical English.
+  repeated string problems = 4;
+
+  // WalletCard is what a wallet shows for the credential.
+  message WalletCard {
+    // The card title from the display metadata.
+    string title = 1;
+    // The card description.
+    string description = 2;
+    // The logo URL, when any.
+    string logo_uri = 3;
+    // The background colour as a CSS hex value.
+    string background_color = 4;
+    // The text colour as a CSS hex value.
+    string text_color = 5;
+    // The claim rows in display order.
+    repeated Row rows = 6;
+  }
+
+  // Row is one claim on the card.
+  message Row {
+    // The claim label from the schema title or the property name.
+    string label = 1;
+    // The sample value as text.
+    string value = 2;
+    // True when the holder can hide this claim in a presentation.
+    bool selectively_disclosable = 3;
+  }
+}
+
+// ImportRequest carries one of two import sources.
+message ImportRequest {
+  // The caller sets exactly one source.
+  oneof source {
+    // A JSON Schema 2020-12 document, as a string.
+    string json_schema = 1;
+    // The id of a DPG catalogue entry from CatalogBackendService.
+    string catalog_entry_id = 2;
+  }
+  // The credential type to give the draft. Empty derives it from the source.
+  string type = 3;
+}
+
+// ImportResponse returns the draft the registry stored.
+message ImportResponse {
+  // The draft schema as stored.
+  vca.schema.v1.Schema schema = 1;
+  // The parts of the source the import could not map.
+  repeated string warnings = 2;
+}
+
+// SampleDataRequest selects a schema.
+message SampleDataRequest {
+  // The JSON Schema 2020-12 document, as a string.
+  string json_schema = 1;
+}
+
+// SampleDataResponse returns generated sample values.
+message SampleDataResponse {
+  // The sample values as a JSON object string.
+  string sample = 1;
+}

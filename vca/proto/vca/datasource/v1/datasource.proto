@@ -1,0 +1,350 @@
+// SPDX-License-Identifier: Apache-2.0
+// Data source service (ADR-015). A source is a CSV file, an HTTP API, or
+// an SQL database. A source record holds secret references only, never a
+// secret value. HTTP sources pass an allowlist and an SSRF guard.
+syntax = "proto3";
+
+package vca.datasource.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+
+// DataSourceService manages sources, mappings, and bulk runs.
+service DataSourceService {
+  // Create stores one source.
+  rpc Create(CreateRequest) returns (CreateResponse);
+  // Update replaces one source.
+  rpc Update(UpdateRequest) returns (UpdateResponse);
+  // List returns sources in pages.
+  rpc List(ListRequest) returns (ListResponse);
+  // Get returns one source.
+  rpc Get(GetRequest) returns (GetResponse);
+  // Delete removes one source and its mappings.
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  // PreviewFields returns the field names and types the source exposes.
+  rpc PreviewFields(PreviewFieldsRequest) returns (PreviewFieldsResponse);
+  // PreviewRows returns at most limit rows with values masked.
+  rpc PreviewRows(PreviewRowsRequest) returns (PreviewRowsResponse);
+  // SetFieldMap stores the mapping from source fields to schema properties.
+  rpc SetFieldMap(SetFieldMapRequest) returns (SetFieldMapResponse);
+  // GetFieldMap returns the mapping of one source and schema pair.
+  rpc GetFieldMap(GetFieldMapRequest) returns (GetFieldMapResponse);
+  // RunBulk starts a bulk issuance job and streams its progress
+  // (ADR-015 decision 7). The stream ends with a message whose done is true.
+  rpc RunBulk(RunBulkRequest) returns (stream RunBulkResponse);
+}
+
+// Source is one data source.
+message Source {
+  // The source id. The service assigns it.
+  string id = 1;
+  // The display name.
+  string display_name = 2;
+  // The tenant that owns the source.
+  string tenant_id = 3;
+  // The source kind. The caller sets exactly one.
+  oneof kind {
+    // A CSV file.
+    CsvSource csv = 4;
+    // An HTTP API.
+    HttpSource http = 5;
+    // An SQL database.
+    SqlSource sql = 6;
+  }
+  // The access rules of the source (ADR-015 decision 3).
+  Access access = 7;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 8;
+  // The time of the last change.
+  google.protobuf.Timestamp updated_at = 9;
+
+  // Access lists which staff roles can do what with the source.
+  // Role names come from vca.issuerauth.v1.IssuerRole, as strings.
+  message Access {
+    // The roles that can see field names.
+    repeated string view_fields = 1;
+    // The roles that can see masked rows.
+    repeated string preview_rows = 2;
+    // The roles that can run bulk issuance from the source.
+    repeated string issue = 3;
+  }
+}
+
+// CsvSource reads a CSV file that staff upload.
+message CsvSource {
+  // The reference of the uploaded file in the service blob store.
+  string file_ref = 1;
+  // The delimiter. Defaults to a comma.
+  string delimiter = 2;
+  // True when the first row holds field names.
+  bool has_header = 3;
+  // The character encoding. Defaults to UTF-8.
+  string encoding = 4;
+}
+
+// HttpSource reads rows from an HTTP API.
+message HttpSource {
+  // The URL of the API. Must be on the allowlist and must not point at a
+  // private network address.
+  string url = 1;
+  // The HTTP method. GET or POST.
+  string method = 2;
+  // The request headers without secrets.
+  map<string, string> headers = 3;
+  // The credential to send. The caller sets at most one.
+  oneof auth {
+    // A bearer token reference.
+    vca.common.v1.SecretRef bearer_token = 4;
+    // A basic auth user and password reference.
+    BasicAuth basic = 5;
+    // A client certificate and key reference for mTLS.
+    MtlsAuth mtls = 6;
+  }
+  // The JSON path of the array of rows in the response body.
+  string rows_path = 7;
+  // The timeout in seconds. Defaults to 30.
+  int32 timeout_seconds = 8;
+
+  // BasicAuth is a user name and a password reference.
+  message BasicAuth {
+    // The user name.
+    string username = 1;
+    // The password reference.
+    vca.common.v1.SecretRef password = 2;
+  }
+
+  // MtlsAuth is a client certificate and its key reference.
+  message MtlsAuth {
+    // The reference of the PEM certificate chain.
+    vca.common.v1.SecretRef certificate = 1;
+    // The reference of the PEM private key.
+    vca.common.v1.SecretRef private_key = 2;
+  }
+}
+
+// SqlSource reads rows from a database.
+message SqlSource {
+  // The database driver. postgres, mysql, or sqlite.
+  string driver = 1;
+  // The reference of the connection string, which holds the password.
+  vca.common.v1.SecretRef dsn = 2;
+  // The read only query. Must be a single SELECT statement.
+  string query = 3;
+  // The timeout in seconds. Defaults to 30.
+  int32 timeout_seconds = 4;
+}
+
+// Field is one field the source exposes.
+message Field {
+  // The field name.
+  string name = 1;
+  // The inferred type. string, number, integer, boolean, or date.
+  string type = 2;
+  // A masked example value.
+  string example = 3;
+}
+
+// Transform names a pure function the mapping applies (ADR-015 decision 5).
+enum Transform {
+  TRANSFORM_UNSPECIFIED = 0;
+  // Remove leading and trailing white space.
+  TRANSFORM_TRIM = 1;
+  // Parse a date with the input layout and format it with the output layout.
+  TRANSFORM_DATE_FORMAT = 2;
+  // Use a constant value and ignore the source field.
+  TRANSFORM_CONSTANT = 3;
+  // Join several source fields with a separator.
+  TRANSFORM_CONCAT = 4;
+  // Change the text to upper case.
+  TRANSFORM_UPPER = 5;
+  // Change the text to lower case.
+  TRANSFORM_LOWER = 6;
+}
+
+// FieldMap maps the fields of one source to the properties of one schema.
+message FieldMap {
+  // The source id.
+  string source_id = 1;
+  // The schema id.
+  string schema_id = 2;
+  // The schema version.
+  int32 schema_version = 3;
+  // The rules, one per schema property.
+  repeated Rule rules = 4;
+
+  // Rule fills one schema property.
+  message Rule {
+    // The schema property name.
+    string property = 1;
+    // The source field names the rule reads. One field, or several for CONCAT.
+    repeated string source_fields = 2;
+    // The transform to apply. Unspecified copies the value as is.
+    Transform transform = 3;
+    // The transform parameters, for example input_layout, output_layout,
+    // value, or separator.
+    map<string, string> params = 4;
+  }
+}
+
+// CreateRequest carries the source to store.
+message CreateRequest {
+  // The source. The service ignores id and timestamps.
+  Source source = 1;
+}
+
+// CreateResponse returns the stored source.
+message CreateResponse {
+  // The source as stored.
+  Source source = 1;
+}
+
+// UpdateRequest replaces a source.
+message UpdateRequest {
+  // The source with the new values. The id selects the record.
+  Source source = 1;
+}
+
+// UpdateResponse returns the changed source.
+message UpdateResponse {
+  // The source as stored.
+  Source source = 1;
+}
+
+// ListRequest selects a page.
+message ListRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The tenant filter. Empty returns every tenant the session can read.
+  string tenant_id = 2;
+}
+
+// ListResponse returns a page of sources.
+message ListResponse {
+  // The sources in the page.
+  repeated Source sources = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// GetRequest selects a source.
+message GetRequest {
+  // The source id.
+  string id = 1;
+}
+
+// GetResponse returns the source.
+message GetResponse {
+  // The source.
+  Source source = 1;
+}
+
+// DeleteRequest selects a source.
+message DeleteRequest {
+  // The source id.
+  string id = 1;
+}
+
+// DeleteResponse has no fields.
+message DeleteResponse {}
+
+// PreviewFieldsRequest selects a source.
+message PreviewFieldsRequest {
+  // The source id.
+  string source_id = 1;
+}
+
+// PreviewFieldsResponse returns the fields.
+message PreviewFieldsResponse {
+  // The fields in source order.
+  repeated Field fields = 1;
+}
+
+// PreviewRowsRequest selects a source and a row limit.
+message PreviewRowsRequest {
+  // The source id.
+  string source_id = 1;
+  // The maximum number of rows. The service caps it at 20.
+  int32 limit = 2;
+}
+
+// PreviewRowsResponse returns masked rows.
+message PreviewRowsResponse {
+  // The rows. The service masks every value except its first and last character.
+  repeated Row rows = 1;
+  // The total number of rows in the source, when the source knows it.
+  int64 total_rows = 2;
+
+  // Row is one masked row.
+  message Row {
+    // The values keyed by field name.
+    map<string, string> values = 1;
+  }
+}
+
+// SetFieldMapRequest carries the mapping to store.
+message SetFieldMapRequest {
+  // The mapping.
+  FieldMap field_map = 1;
+}
+
+// SetFieldMapResponse returns the stored mapping.
+message SetFieldMapResponse {
+  // The mapping as stored.
+  FieldMap field_map = 1;
+  // The schema properties that no rule fills.
+  repeated string unmapped_properties = 2;
+}
+
+// GetFieldMapRequest selects a mapping.
+message GetFieldMapRequest {
+  // The source id.
+  string source_id = 1;
+  // The schema id.
+  string schema_id = 2;
+}
+
+// GetFieldMapResponse returns the mapping.
+message GetFieldMapResponse {
+  // The mapping.
+  FieldMap field_map = 1;
+}
+
+// RunBulkRequest starts a bulk job.
+message RunBulkRequest {
+  // The source id.
+  string source_id = 1;
+  // The schema id.
+  string schema_id = 2;
+  // The schema version. Zero selects the latest published version.
+  int32 schema_version = 3;
+  // The wire format to issue.
+  vca.common.v1.Format format = 4;
+  // True checks every row against the schema and issues nothing.
+  bool dry_run = 5;
+}
+
+// RunBulkResponse is one progress message of a bulk job.
+message RunBulkResponse {
+  // The job id. The issuance service keeps the per row results under it.
+  string job_id = 1;
+  // The number of rows read so far.
+  int64 processed = 2;
+  // The number of rows issued so far.
+  int64 accepted = 3;
+  // The number of rows that failed so far.
+  int64 rejected = 4;
+  // The total number of rows, when known.
+  int64 total = 5;
+  // True on the last message of the stream.
+  bool done = 6;
+  // The most recent row errors, at most 10 per message.
+  repeated RowError errors = 7;
+
+  // RowError is one failed row.
+  message RowError {
+    // The 1 based row number in the source.
+    int64 row = 1;
+    // The error.
+    vca.common.v1.Error error = 2;
+  }
+}
