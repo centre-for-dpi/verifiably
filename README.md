@@ -15,7 +15,7 @@ services. Each service adds one function to walt.id, Inji, or CREDEBL.
 The new code lives under [`vca/`](vca/). Start there:
 
 - [`vca/README.md`](vca/README.md): purpose, one-command start, the list of services.
-- [`vca/docs/adr.md`](vca/docs/adr.md): the architecture decision records.
+- [`ADR.md`](ADR.md): the architecture decision records.
 - [`vca/docs/glossary.md`](vca/docs/glossary.md): the project dictionary.
 
 The `verifiably` monolith below stays in `verifiably-go/` until each role
