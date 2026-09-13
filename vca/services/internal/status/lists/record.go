@@ -50,6 +50,8 @@ var (
 	ErrNotFound     = errors.New("lists: list not found")
 	ErrBadPurpose   = errors.New("lists: unsupported purpose")
 	ErrBadKind      = errors.New("lists: unsupported kind")
+	ErrBadValue     = errors.New("lists: unsupported status value")
+	ErrOutOfRange   = errors.New("lists: index is out of range")
 )
 
 // CheckPurpose reports whether p is a supported purpose.
@@ -182,7 +184,7 @@ func (r Record) Get(i int) (int, error) {
 	case KindBitstring:
 		v, err := bitstring.FromBytes(r.Values).Get(i)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("%w: %w", ErrOutOfRange, err)
 		}
 		if v {
 			return 1, nil
@@ -194,7 +196,10 @@ func (r Record) Get(i int) (int, error) {
 			return 0, err
 		}
 		v, err := l.Get(i)
-		return int(v), err
+		if err != nil {
+			return 0, fmt.Errorf("%w: %w", ErrOutOfRange, err)
+		}
+		return int(v), nil
 	}
 }
 
@@ -209,12 +214,12 @@ func (r *Record) Set(i, v int, now time.Time) (int, error) {
 		return 0, err
 	}
 	if v < 0 || v > 255 {
-		return 0, fmt.Errorf("lists: value %d is out of range", v)
+		return 0, fmt.Errorf("%w: %d", ErrBadValue, v)
 	}
 	switch r.Kind {
 	case KindBitstring:
 		if v > 1 {
-			return 0, fmt.Errorf("lists: value %d does not fit in 1 bit", v)
+			return 0, fmt.Errorf("%w: %d does not fit in 1 bit", ErrBadValue, v)
 		}
 		l := bitstring.FromBytes(r.Values)
 		// i is allocated, so it is in range.
@@ -224,7 +229,7 @@ func (r *Record) Set(i, v int, now time.Time) (int, error) {
 		// Bits and Values are valid by construction.
 		l, _ := token.FromBytes(r.Bits, r.Values)
 		if err := l.Set(i, uint8(v)); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("%w: %d does not fit in %d bits", ErrBadValue, v, r.Bits)
 		}
 		r.Values = l.Bytes()
 	}

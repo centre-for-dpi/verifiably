@@ -259,7 +259,7 @@ func (m *Manager) sign(ctx context.Context, rec Record, issuer keys.Issuer) (Sig
 	}
 	s := Signed{ListID: rec.ID, KeyID: issuer.Kid(issuer.Active()), IssuerDID: issuer.DID(), SignedAt: now, ExpiresAt: exp}
 	for _, b := range bodies {
-		s.Artifacts = append(s.Artifacts, Artifact{MediaType: b.MediaType, Body: b.Body, ETag: etagOf(b.Body)})
+		s.Artifacts = append(s.Artifacts, Artifact{MediaType: b.MediaType, Body: b.Body, ETag: ETagOf(b.Body)})
 	}
 	if len(s.Artifacts) == 0 {
 		return Signed{}, errors.New("lists: securer returned no artifact")
@@ -486,7 +486,8 @@ func (m *Manager) Rotate(ctx context.Context, issuerDID string, alg jose.Algorit
 // JWKS returns the public keys of every issuer as a JWKS document.
 func (m *Manager) JWKS() []byte { return m.opts.Issuers.JWKSJSON() }
 
-func etagOf(body []byte) string {
+// ETagOf returns the strong entity tag of body.
+func ETagOf(body []byte) string {
 	sum := sha256.Sum256(body)
 	return `"` + hex.EncodeToString(sum[:16]) + `"`
 }
