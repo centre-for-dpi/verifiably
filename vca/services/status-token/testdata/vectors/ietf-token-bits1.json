@@ -1,0 +1,9 @@
+{
+  "source": "draft-ietf-oauth-status-list, section 4.1, status list with 1 bit",
+  "note": "Sixteen one bit statuses. The lst value is the compressed and encoded bit array.",
+  "bits": 1,
+  "size": 16,
+  "statuses": [1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1],
+  "bytesHex": "b9a3",
+  "lst": "eNrbuRgAAhcBXQ"
+}
