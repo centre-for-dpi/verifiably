@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
 // Shared types for every Verifiable Credentials Adapter service.
 syntax = "proto3";
 
 package vca.common.v1;
+
+import "google/protobuf/timestamp.proto";
 
 // Format names a credential encoding. Values match the format identifiers of
 // OpenID for Verifiable Credential Issuance 1.0.
@@ -21,9 +24,93 @@ enum Format {
   FORMAT_LDP_VC_BBS = 6;
 }
 
+// Role names one of the four deployment roles of ADR-007.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  // The deployment issues credentials.
+  ROLE_ISSUER = 1;
+  // The deployment holds credentials for citizens (wallet).
+  ROLE_HOLDER = 2;
+  // The deployment checks presentations.
+  ROLE_VERIFIER = 3;
+  // The deployment runs the super admin service and portal.
+  ROLE_ADMIN = 4;
+}
+
 // Credential carries one credential without changing its bytes.
 message Credential {
+  // The encoding of the payload.
   Format format = 1;
   // The credential exactly as the issuer produced it.
   bytes payload = 2;
+}
+
+// Pagination selects one page of a list. A client sends it with a List RPC.
+message Pagination {
+  // The maximum number of items in the page. Zero selects the server default.
+  // The server caps the value at its configured maximum.
+  int32 page_size = 1;
+  // The token from the previous PageResult. Empty selects the first page.
+  string page_token = 2;
+}
+
+// PageResult describes the page a List RPC returned.
+message PageResult {
+  // The token for the next page. Empty means this page is the last page.
+  string next_page_token = 1;
+  // The total number of items that match the query, when the server knows it.
+  // Zero means the server did not count the items.
+  int64 total_size = 2;
+}
+
+// Error carries the VCA error catalogue entry of a failed RPC.
+// A service attaches it as a Connect error detail (docs/errors.md).
+message Error {
+  // The catalogue code, for example VCA-101. The code never changes meaning.
+  string code = 1;
+  // The message in Simplified Technical English with placeholders filled in.
+  string message = 2;
+  // One instruction that tells the user what to do next.
+  string next_step = 3;
+  // The placeholder values that the service put into the message.
+  // A value never contains a secret.
+  map<string, string> params = 4;
+}
+
+// Subject points at a credential subject without personal data.
+message Subject {
+  // The salted, one way reference of the subject (ADR-017 decision 2).
+  string ref = 1;
+  // The subject DID, when the issuance flow knows it. Empty in the
+  // operator started pre-authorized flow.
+  string did = 2;
+}
+
+// ValidityWindow is the period in which a credential or entry is valid.
+message ValidityWindow {
+  // The start of the validity. Empty means valid from creation.
+  google.protobuf.Timestamp valid_from = 1;
+  // The end of the validity. Empty means no end.
+  google.protobuf.Timestamp valid_until = 2;
+}
+
+// SecretRef points at a secret in the environment or a KMS.
+// A record stores the reference, never the secret value (ADR-015 decision 2).
+message SecretRef {
+  // The store that holds the secret.
+  Store store = 1;
+  // The name of the secret in the store, for example an environment
+  // variable name or a KMS key path.
+  string name = 2;
+
+  // Store names where a secret lives.
+  enum Store {
+    STORE_UNSPECIFIED = 0;
+    // A process environment variable.
+    STORE_ENV = 1;
+    // A file on a mounted volume, read at start.
+    STORE_FILE = 2;
+    // A key management service reached over its API.
+    STORE_KMS = 3;
+  }
 }
