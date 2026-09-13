@@ -36,4 +36,4 @@ tidy: ## regenerate go.sum on a networked machine
 build: ## build every service and the CLI
 	$(GO) build ./...
 ste-lint: ## Simplified Technical English check on docs and proto comments
-	./hack/ste-lint.sh docs/*.md README.md proto/vca/*/v1/*.proto
+	./hack/ste-lint.sh $$(ls docs/*.md | grep -v adr.md) README.md $$(find proto -name "*.proto")
