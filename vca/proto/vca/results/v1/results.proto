@@ -1,0 +1,190 @@
+// SPDX-License-Identifier: Apache-2.0
+// Verifier results service (ADR-025). Each verification stores one
+// VerificationResult. The service keeps personal data only for the
+// configured window and deletes the raw presentation first.
+// The public citizen check page stores nothing (ADR-025 decision 5).
+syntax = "proto3";
+
+package vca.results.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+import "vca/policy/v1/policy.proto";
+
+// ResultsService stores, reads, exports, and purges results.
+service ResultsService {
+  // Store writes one result and returns its id.
+  rpc Store(StoreRequest) returns (StoreResponse);
+  // Get returns one result.
+  rpc Get(GetRequest) returns (GetResponse);
+  // Query returns results that match a filter, newest first.
+  rpc Query(QueryRequest) returns (QueryResponse);
+  // Export streams results that match a filter as CSV or JSON lines.
+  rpc Export(ExportRequest) returns (stream ExportResponse);
+  // Purge deletes results and raw presentations older than the window.
+  // The scheduled job calls it. Staff can call it too.
+  rpc Purge(PurgeRequest) returns (PurgeResponse);
+}
+
+// CredentialSummary is the card of one credential (ADR-025 decision 2).
+message CredentialSummary {
+  // The card title. The credential type or its display name.
+  string title = 1;
+  // The credential type.
+  string type = 2;
+  // The wire format.
+  vca.common.v1.Format format = 3;
+  // The issuer DID or URL.
+  string issuer = 4;
+  // The issuer display name from the trust list, when known.
+  string issuer_name = 5;
+  // The trust outcome of the issuer as a plain word: trusted, untrusted,
+  // unknown, or unavailable.
+  string trust = 6;
+  // The subject display fields, keyed by claim path, as text.
+  map<string, string> display_fields = 7;
+  // The role of the credential in a combined presentation.
+  // Empty, subject, or delegation (ADR-026).
+  string role = 8;
+  // The checks that ran on this credential.
+  repeated vca.policy.v1.CheckResult checks = 9;
+  // The validity window of the credential.
+  vca.common.v1.ValidityWindow validity = 10;
+  // The full decoded credential as a JSON string, for the expanded view.
+  // Empty after the retention window.
+  string decoded_json = 11;
+}
+
+// VerificationResult is one stored verification (ADR-025 decision 1).
+message VerificationResult {
+  // The result id. The service assigns it.
+  string id = 1;
+  // The overall verdict.
+  vca.policy.v1.EvaluateResponse.Verdict verdict = 2;
+  // The checks that ran on the whole presentation.
+  repeated vca.policy.v1.CheckResult checks = 3;
+  // One summary per credential.
+  repeated CredentialSummary credentials = 4;
+  // The reference of the raw presentation. Empty after the purge.
+  string raw_ref = 5;
+  // The presentation template id, when the verification used one.
+  string template_id = 6;
+  // The template version.
+  int32 template_version = 7;
+  // The policy set id.
+  string policy_set_id = 8;
+  // The policy set version.
+  int32 policy_set_version = 9;
+  // The time the presentation arrived.
+  google.protobuf.Timestamp received_at = 10;
+  // The time of evaluation.
+  google.protobuf.Timestamp evaluated_at = 11;
+  // The time after which the purge deletes personal data.
+  google.protobuf.Timestamp retain_until = 12;
+  // The carrier the presentation came from, as a plain word.
+  string carrier = 13;
+  // The tenant that owns the result.
+  string tenant_id = 14;
+  // The cross credential rule results of a combined presentation (ADR-026).
+  repeated vca.policy.v1.CheckResult cross_checks = 15;
+}
+
+// Filter narrows a query or an export (ADR-025 decision 4).
+message Filter {
+  // The earliest evaluation time. Empty means no lower bound.
+  google.protobuf.Timestamp from = 1;
+  // The latest evaluation time. Empty means no upper bound.
+  google.protobuf.Timestamp to = 2;
+  // The verdict. Unspecified returns every verdict.
+  vca.policy.v1.EvaluateResponse.Verdict verdict = 3;
+  // The issuer DID or URL. Empty returns every issuer.
+  string issuer = 4;
+  // The template id. Empty returns every template.
+  string template_id = 5;
+  // The tenant. Empty returns every tenant the session can read.
+  string tenant_id = 6;
+}
+
+// StoreRequest carries the result to store.
+message StoreRequest {
+  // The result. The service ignores id and retain_until.
+  VerificationResult result = 1;
+}
+
+// StoreResponse returns the stored result.
+message StoreResponse {
+  // The result as stored.
+  VerificationResult result = 1;
+}
+
+// GetRequest selects a result.
+message GetRequest {
+  // The result id.
+  string id = 1;
+}
+
+// GetResponse returns the result.
+message GetResponse {
+  // The result.
+  VerificationResult result = 1;
+}
+
+// QueryRequest carries a filter and a page.
+message QueryRequest {
+  // The filter.
+  Filter filter = 1;
+  // The page to return.
+  vca.common.v1.Pagination page = 2;
+}
+
+// QueryResponse returns a page of results.
+message QueryResponse {
+  // The results in the page, newest first.
+  repeated VerificationResult results = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// ExportRequest selects results and a format.
+message ExportRequest {
+  // The filter.
+  Filter filter = 1;
+  // The output encoding.
+  Encoding encoding = 2;
+
+  // Encoding names the export format.
+  enum Encoding {
+    ENCODING_UNSPECIFIED = 0;
+    // RFC 4180 CSV with a header row. One row per credential.
+    ENCODING_CSV = 1;
+    // One JSON object per line. One object per result.
+    ENCODING_JSON = 2;
+  }
+}
+
+// ExportResponse is one chunk of the export.
+message ExportResponse {
+  // The chunk bytes. The client concatenates the chunks in order.
+  bytes chunk = 1;
+  // True on the last chunk.
+  bool done = 2;
+}
+
+// PurgeRequest selects what to delete.
+message PurgeRequest {
+  // The cut off time. The purge deletes data older than it.
+  // Empty uses the configured retention window.
+  google.protobuf.Timestamp before = 1;
+  // True deletes the raw presentations only and keeps the results.
+  bool raw_only = 2;
+  // True writes nothing and returns the counts.
+  bool dry_run = 3;
+}
+
+// PurgeResponse counts the deletions.
+message PurgeResponse {
+  // The number of raw presentations deleted.
+  int64 raw_deleted = 1;
+  // The number of results deleted.
+  int64 results_deleted = 2;
+}
