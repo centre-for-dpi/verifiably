@@ -1,0 +1,6 @@
+{
+  "credential_offer_uri": null,
+  "errors": [
+    {"errorCode": "invalid_request", "errorMessage": "unknown claim statusIdx"}
+  ]
+}

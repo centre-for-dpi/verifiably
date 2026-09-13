@@ -1,0 +1,9 @@
+{
+  "credential_issuer": "https://inji-certify.example.org",
+  "credential_configuration_ids": ["FarmerCredential"],
+  "grants": {
+    "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+      "pre-authorized_code": "eyJhbGciOiJIUzI1NiJ9.cHJlYXV0aC1jb2Rl.c2ln"
+    }
+  }
+}

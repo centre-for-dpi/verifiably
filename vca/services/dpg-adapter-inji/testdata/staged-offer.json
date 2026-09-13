@@ -1,0 +1,4 @@
+{
+  "credential_offer_uri": "openid-credential-offer://inji-certify.example.org?credential_offer_uri=https%3A%2F%2Finji-certify.example.org%2Fv1%2Fcertify%2Fissuance%2Fcredential-offer%2F0f0b0d26-6a45-4b31-9c17-3a5f7e1c2d84",
+  "errors": []
+}

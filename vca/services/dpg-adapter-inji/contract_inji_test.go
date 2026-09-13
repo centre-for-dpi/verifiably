@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build contract_inji
+
+// This file runs against a real Inji deployment. The build tag keeps it
+// out of the normal test run (ADR-004 decision 4). The script
+// hack/contract-tests.sh runs it in the nightly job.
+package main
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
+)
+
+// contractEnv reads the URLs of the real deployment. The test skips
+// itself when no Inji Certify URL is set.
+func contractEnv(t *testing.T) config.Config {
+	t.Helper()
+	certify := os.Getenv("VCA_INJI_CONTRACT_CERTIFY_URL")
+	verify := os.Getenv("VCA_INJI_CONTRACT_VERIFY_URL")
+	if certify == "" && verify == "" {
+		t.Skip("set VCA_INJI_CONTRACT_CERTIFY_URL to run the Inji contract test")
+	}
+	return config.Config{
+		CertifyURL:     certify,
+		VerifyURL:      verify,
+		MetadataPath:   envOr("VCA_INJI_CONTRACT_METADATA_PATH", "/v1/certify/issuance/.well-known/openid-credential-issuer"),
+		VerifyClientID: os.Getenv("VCA_INJI_CONTRACT_VERIFY_CLIENT_ID"),
+		DpgVersion:     envOr("VCA_INJI_CONTRACT_DPG_VERSION", "0.14.0"),
+		PublicURL:      os.Getenv("VCA_INJI_CONTRACT_PUBLIC_URL"),
+		Timeout:        30 * time.Second,
+		Retries:        1,
+		MaxBytes:       8 << 20,
+		OfferTTL:       15 * time.Minute,
+	}
+}
+
+func envOr(name, fallback string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// newContractApp wires the adapter against the real deployment.
+func newContractApp(t *testing.T) *app.App {
+	t.Helper()
+	a, err := app.Build(contractEnv(t), app.Deps{HTTP: &http.Client{Timeout: 30 * time.Second}})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	return a
+}
+
+func TestContractIssuerMetadata(t *testing.T) {
+	if contractEnv(t).CertifyURL == "" {
+		t.Skip("set VCA_INJI_CONTRACT_CERTIFY_URL to run the issuer contract test")
+	}
+	a := newContractApp(t)
+	resp, err := a.Service.GetIssuerMetadata(context.Background(),
+		connect.NewRequest(&backendv1.GetIssuerMetadataRequest{}))
+	if err != nil {
+		t.Fatalf("GetIssuerMetadata: %v", err)
+	}
+	if resp.Msg.GetIssuer() == "" {
+		t.Fatal("the real issuer returned no identifier")
+	}
+	if len(resp.Msg.GetConfigurations()) == 0 {
+		t.Fatal("the real issuer advertises no credential configuration")
+	}
+}
+
+func TestContractIssueThroughThePreAuthorizedFlow(t *testing.T) {
+	cfg := contractEnv(t)
+	if cfg.CertifyURL == "" {
+		t.Skip("set VCA_INJI_CONTRACT_CERTIFY_URL to run the issuer contract test")
+	}
+	configurationID := os.Getenv("VCA_INJI_CONTRACT_CONFIGURATION_ID")
+	subject := os.Getenv("VCA_INJI_CONTRACT_SUBJECT_DATA")
+	if configurationID == "" || subject == "" {
+		t.Skip("set VCA_INJI_CONTRACT_CONFIGURATION_ID and VCA_INJI_CONTRACT_SUBJECT_DATA")
+	}
+	a := newContractApp(t)
+	resp, err := a.Service.Issue(context.Background(), connect.NewRequest(&backendv1.IssueRequest{
+		Spec: &backendv1.IssueSpec{ConfigurationId: configurationID, SubjectData: subject},
+	}))
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if len(resp.Msg.GetCredential().GetPayload()) == 0 {
+		t.Fatal("the real issuer returned no credential")
+	}
+}
+
+func TestContractCreateRequestAndReadTheResult(t *testing.T) {
+	cfg := contractEnv(t)
+	if cfg.VerifyURL == "" {
+		t.Skip("set VCA_INJI_CONTRACT_VERIFY_URL to run the verifier contract test")
+	}
+	a := newContractApp(t)
+	ctx := context.Background()
+	definition := `{"id":"contract","input_descriptors":[{"id":"d1",` +
+		`"format":{"ldp_vc":{"proof_type":["Ed25519Signature2020"]}},` +
+		`"constraints":{"fields":[{"path":["$.credentialSubject.fullName"]}]}}]}`
+	created, err := a.Service.CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{
+		PresentationDefinition: definition,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+	if !strings.HasPrefix(created.Msg.GetRequestUri(), "openid4vp://") {
+		t.Fatalf("request URI = %q", created.Msg.GetRequestUri())
+	}
+	result, err := a.Service.GetResult(ctx, connect.NewRequest(&backendv1.GetResultRequest{
+		State: created.Msg.GetState(),
+	}))
+	if err != nil {
+		t.Fatalf("GetResult: %v", err)
+	}
+	if result.Msg.GetState() != backendv1.GetResultResponse_STATE_PENDING {
+		t.Fatalf("state = %v, a new transaction is pending", result.Msg.GetState())
+	}
+}

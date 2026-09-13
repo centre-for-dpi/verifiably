@@ -1,0 +1,27 @@
+{
+  "credential_issuer": "https://inji-certify.example.org",
+  "credential_endpoint": "https://inji-certify.example.org/v1/certify/issuance/credential",
+  "authorization_servers": ["https://esignet.example.org/v1/esignet"],
+  "credential_configurations_supported": {
+    "FarmerCredential": {
+      "format": "ldp_vc",
+      "scope": "farmer_vc_ldp",
+      "order": ["fullName", "farmerID", "district", "statusIdx", "statusUri"],
+      "display": [{"name": "Farmer Credential", "locale": "en", "logo": {"url": "https://inji-certify.example.org/logo.png"}}],
+      "credential_definition": {
+        "type": ["VerifiableCredential", "FarmerCredential"],
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2",
+          "https://inji-certify.example.org/contexts/farmer.json"
+        ]
+      }
+    },
+    "IdentityCredential": {
+      "format": "vc+sd-jwt",
+      "scope": "identity_vc_sd_jwt",
+      "vct": "https://inji-certify.example.org/credentials/IdentityCredential",
+      "order": ["given_name", "family_name", "birth_date", "statusIdx", "statusUri"],
+      "display": [{"name": "Identity Credential", "locale": "en"}]
+    }
+  }
+}
