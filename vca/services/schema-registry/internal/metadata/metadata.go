@@ -137,8 +137,8 @@ func SchemaObject(r record.Record) map[string]any {
 	return obj
 }
 
-// display renders the OID4VCI display entries of a schema.
-func display(list []record.Display) []map[string]any {
+// Display renders the OID4VCI display entries of a schema.
+func Display(list []record.Display) []map[string]any {
 	out := make([]map[string]any, 0, len(list))
 	for _, d := range list {
 		e := map[string]any{"name": d.Name, "locale": d.Locale}
@@ -185,7 +185,7 @@ func Configuration(r record.Record, format string, opts Options) map[string]any 
 		"scope":  record.ConfigurationID(r.Type, format),
 		"cryptographic_binding_methods_supported": []string{"jwk", "did:key", "did:jwk"},
 		"credential_signing_alg_values_supported": opts.algs(),
-		"display":               display(r.Display),
+		"display":               Display(r.Display),
 		"claims":                claimsMetadata(r),
 		"credential_metadata":   map[string]any{"schema_uri": SchemaURL(opts.BaseURL, r.ID, r.Version)},
 		"proof_types_supported": map[string]any{"jwt": map[string]any{"proof_signing_alg_values_supported": opts.algs()}},
@@ -257,7 +257,7 @@ func PublicSchema(r record.Record, opts Options) map[string]any {
 		"state":             string(r.State),
 		"url":               SchemaURL(opts.BaseURL, r.ID, r.Version),
 		"json_schema":       SchemaObject(r),
-		"display":           display(r.Display),
+		"display":           Display(r.Display),
 		"formats":           append([]string(nil), r.Formats...),
 		"sd_claims":         append([]string{}, r.SDClaims...),
 		"configuration_ids": ids,
