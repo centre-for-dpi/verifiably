@@ -5,11 +5,19 @@
 -- keyed by its name, so the column aliases here MUST match the schema's
 -- FieldsSpec verbatim (case-sensitive, same camelCase as walt.id templates).
 --
--- Connection strings (pick the one matching how the VC platform runs):
+-- Connection strings (pick the one matching how the VC platform runs).
+-- For the two "main-stack DB" cases, citizens is the real password ONLY on
+-- a deployment from before CITIZENS_PG_PASSWORD existed — a fresh deploy
+-- generates a random one into verifiably-go's own .env (VERIFIABLY_ROOT/.env
+-- for the docker-mode default layout); read CITIZENS_PG_PASSWORD from there
+-- and substitute it below. The dockerized "ministry" scenario is a separate,
+-- self-contained compose stack (testdata/bulk-issuance/docker-compose.yml)
+-- whose own citizens-db always uses the literal "citizens" — it never reads
+-- CITIZENS_PG_PASSWORD.
 --   • main-stack DB, VC platform in docker (default for the demo):
---       postgres://citizens:citizens@citizens-postgres:5432/citizens
+--       postgres://citizens:<CITIZENS_PG_PASSWORD>@citizens-postgres:5432/citizens
 --   • main-stack DB, VC platform on bare metal (go run):
---       postgres://citizens:citizens@localhost:5435/citizens
+--       postgres://citizens:<CITIZENS_PG_PASSWORD>@localhost:5435/citizens
 --   • dockerized "ministry" scenario, VC platform same host + docker:
 --       postgres://citizens:citizens@ministry-citizens-db:5432/citizens
 --   • dockerized "ministry" scenario, accessed from bare metal or remote:

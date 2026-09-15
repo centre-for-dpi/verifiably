@@ -208,6 +208,20 @@ type issuer2OfferResponse struct {
 // issuer2OfferTTL bounds how long the citizen has to scan the offer.
 const issuer2OfferTTL = 300
 
+// isBooleanFieldName reports whether fields declares name as Datatype
+// "boolean" — mirrors handlers.isBooleanField, but this package cannot
+// import internal/handlers (issuance.go is where the flat map[string]string
+// subject data is built in the first place; adapters/waltid is downstream
+// of it).
+func isBooleanFieldName(fields []vctypes.FieldSpec, name string) bool {
+	for _, f := range fields {
+		if f.Name == name {
+			return f.Datatype == "boolean"
+		}
+	}
+	return false
+}
+
 // buildIssuer2Offer turns a schema plus the operator's filled-in fields into
 // a credential-offer request.
 //
@@ -268,6 +282,23 @@ func buildIssuer2Offer(schema vctypes.Schema, subject map[string]string, structu
 	for k, v := range subject {
 		if v == "" {
 			continue // omit rather than assert a blank
+		}
+		// issuer-api2 has no conversionType for booleans (unlike
+		// stringToFullDate for dates or base64StringToByteString for
+		// images — confirmed against walt.id's StringToCborTypeConversion
+		// enum, which has exactly those 4 string-input members and none for
+		// booleans). A key ABSENT from entriesConfigMap instead falls
+		// through executeMapping's `?? value.toDataElement()` branch, which
+		// converts a native JSON boolean straight to a CBOR boolean with no
+		// mapping entry needed at all. subject is map[string]string, so
+		// boolFieldValue's "true"/"false" must be turned back into a real
+		// bool HERE, before it is marshaled — otherwise it round-trips as
+		// the JSON string "true", which walt.id's fallback converts to a
+		// CBOR text string (tstr), not the mandatory CBOR bool a conformant
+		// reader's age-attestation check requires.
+		if isBooleanFieldName(schema.FieldsSpec, k) {
+			data[k] = strings.EqualFold(v, "true")
+			continue
 		}
 		data[k] = v
 	}

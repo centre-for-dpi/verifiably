@@ -319,7 +319,7 @@ func gatherStructuredForTest(t *testing.T, r *http.Request, schema vctypes.Schem
 		if !isStructuredField(fs) {
 			continue
 		}
-		raw, err := mdoc.EncodeDrivingPrivileges(drivingPrivilegeRows(r, 0))
+		raw, err := mdoc.EncodeDrivingPrivileges(drivingPrivilegeRows(r))
 		if err != nil {
 			t.Fatalf("encode %s: %v", fs.Name, err)
 		}
@@ -467,7 +467,7 @@ func TestDrivingPrivilegesZeroRowsWarnsOperator(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	_ = req.ParseForm()
 
-	filled := drivingPrivilegeRows(req, 0)
+	filled := drivingPrivilegeRows(req)
 	if len(filled) != 0 {
 		t.Fatalf("drivingPrivilegeRows read %d entries, want 0 for this test's premise", len(filled))
 	}
@@ -554,26 +554,44 @@ func TestValidateDrivingPrivilegesCount(t *testing.T) {
 // wrong for mdoc, so mdoc dates must be trimmed. The driving-privilege dates
 // already were; the flat ones were not.
 func TestMdocDatesAreFullDateNotRFC3339(t *testing.T) {
+	t.Run("w3c keeps full RFC3339", func(t *testing.T) {
+		// -240 = UTC-4, the offset the operator's browser reported.
+		got := normalizeIssuanceTimeTZ("1984-08-18", -240)
+		want := "1984-08-18T04:00:00Z"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
 	for _, tc := range []struct {
-		name, std, in, want string
+		name, in, want string
 	}{
-		{"mdoc trims the time", "mso_mdoc", "1984-08-18", "1984-08-18"},
-		{"w3c keeps full RFC3339", "w3c_vcdm_2", "1984-08-18", "1984-08-18T04:00:00Z"},
+		{"bare date passes through unchanged", "1984-08-18", "1984-08-18"},
+		{"datetime-local input is trimmed to the date", "1984-08-18T04:00:00", "1984-08-18"},
+		{"RFC3339 input is trimmed to the date", "1984-08-18T04:00:00Z", "1984-08-18"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// -240 = UTC-4, the offset the operator's browser reported.
-			normalized := normalizeIssuanceTimeTZ(tc.in, -240)
-			got := normalized
-			if tc.std == "mso_mdoc" {
-				got = fullDateOnly(normalized)
-			}
+			got := fullDateValue(tc.in)
 			if got != tc.want {
-				t.Errorf("%s: got %q, want %q", tc.std, got, tc.want)
+				t.Errorf("got %q, want %q", got, tc.want)
 			}
-			if tc.std == "mso_mdoc" && strings.Contains(got, "T") {
+			if strings.Contains(got, "T") {
 				t.Errorf("mdoc date %q still carries a time component — walt.id "+
 					"rejects it at index 10", got)
 			}
 		})
+	}
+}
+
+// TestFullDateValueDoesNotShiftForEastOfUTCOperators guards against the exact
+// regression a prior implementation had: routing a full-date value through
+// normalizeIssuanceTimeTZ (parse in the operator's zone, then convert to
+// UTC) before truncating shifted the day back by one for any zone east of
+// UTC. fullDateValue must never do that conversion.
+func TestFullDateValueDoesNotShiftForEastOfUTCOperators(t *testing.T) {
+	got := fullDateValue("1984-08-18")
+	want := "1984-08-18"
+	if got != want {
+		t.Fatalf("got %q, want %q — a full-date must not shift regardless of timezone", got, want)
 	}
 }

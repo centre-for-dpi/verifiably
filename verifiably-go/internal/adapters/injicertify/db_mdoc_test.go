@@ -93,3 +93,29 @@ func TestMdocCredentialConfigValues(t *testing.T) {
 		t.Error("mso_mdoc_claims missing portrait — ISO 18013-5 Table 3 mandatory element (NOTE: the spike's own working config did NOT include portrait — Task 4 Step 7 must verify this empirically; if it fails, this claim declaration alone is not sufficient and this task must be revisited)")
 	}
 }
+
+// TestMdocVCTemplateBooleanFieldIsUnquoted guards against age_over_18 (Photo
+// ID's mandatory boolean element) reaching Inji's template as a quoted
+// string marker. rootContext holds this claim as a Java String ("true"/
+// "false", from SubjectData's map[string]string); a QUOTED marker would
+// substitute into `"true"` — a JSON string, which convertToDataItem's own
+// String branch unconditionally wraps as a CBOR text string (tstr), not the
+// mandatory CBOR bool ISO/IEC 23220-1 requires. An UNQUOTED marker (the same
+// treatment driving_privileges already gets) substitutes the bare literal
+// true/false, which preprocessForCBOR passes through untouched and
+// convertToDataItem's Boolean branch encodes as a real CBOR bool.
+func TestMdocVCTemplateBooleanFieldIsUnquoted(t *testing.T) {
+	fields := mdoc.MandatoryFields(mdoc.PhotoIDDocType)
+	vcTemplate := mdocVCTemplate(mdoc.PhotoIDDocType, fields)
+	decoded, err := base64.StdEncoding.DecodeString(vcTemplate)
+	if err != nil {
+		t.Fatalf("vc_template is not valid base64: %v", err)
+	}
+	body := string(decoded)
+	if !strings.Contains(body, `"age_over_18", "elementValue": ${rootContext['org.iso.23220.1'].age_over_18}`) {
+		t.Errorf("vc_template's age_over_18 marker must be UNQUOTED bracket-notation nested access, got: %s", body)
+	}
+	if strings.Contains(body, `"age_over_18", "elementValue": "${rootContext['org.iso.23220.1'].age_over_18}"`) {
+		t.Errorf("vc_template's age_over_18 marker is quoted — it will serialise as a CBOR text string instead of a CBOR bool, got: %s", body)
+	}
+}

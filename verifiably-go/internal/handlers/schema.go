@@ -678,14 +678,7 @@ func (h *H) SaveSchema(w http.ResponseWriter, r *http.Request) {
 		// to [a-zA-Z_][a-zA-Z0-9_]* before this point). Validate here, once, at
 		// the point both mso_mdoc save paths (Auth-Code rejection above,
 		// SaveCustomSchema below) share.
-		validDocType := false
-		for _, dt := range mdoc.KnownDocTypes() {
-			if dt.DocType == strings.TrimSpace(schema.AdditionalTypes[0]) {
-				validDocType = true
-				break
-			}
-		}
-		if len(schema.AdditionalTypes) == 0 || !validDocType {
+		if !mdocDocTypeValid(schema) {
 			h.errorToast(w, r, "docType de mdoc inválido — selecciona uno de la lista.")
 			return
 		}
@@ -902,7 +895,6 @@ func extractBuilderData(r *http.Request) builderData {
 	// call just makes that explicit before we hand r.Form to the helper.
 	_ = r.ParseForm()
 	d.Fields = parseFieldSpecsFromForm(r.Form)
-	d.BlankLangRows = blankLangRowsFromForm(r.Form, d.Fields)
 
 	// For mdoc, the standard's mandatory elements are preloaded and locked:
 	// the docType defines them, so an operator cannot omit or rename one and
@@ -959,6 +951,13 @@ func extractBuilderData(r *http.Request) builderData {
 		}
 		d.Fields = merged
 	}
+	// Computed against the FINAL d.Fields ordering, past the mdoc
+	// mandatory-first merge above — BlankLangRows is an index-keyed
+	// map[int]int, and the merge reorders d.Fields for mso_mdoc schemas. The
+	// form's own field_lang_i_j keys are already rendered in that same
+	// merged order, so this lookup must run after the merge to stay
+	// consistent with them.
+	d.BlankLangRows = blankLangRowsFromForm(r.Form, d.Fields)
 	return d
 }
 
@@ -974,6 +973,25 @@ func findFieldByName(fields []vctypes.FieldSpec, name string) (vctypes.FieldSpec
 func isMandatoryName(mandatory []vctypes.FieldSpec, name string) bool {
 	for _, m := range mandatory {
 		if m.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// mdocDocTypeValid reports whether schema.AdditionalTypes[0] is one of
+// mdoc.KnownDocTypes() — the only docTypes issuer-api2 has a pre-provisioned
+// profile for. The emptiness check runs BEFORE the index, not after: an
+// earlier version indexed AdditionalTypes[0] first and guarded len(...)==0
+// five lines later, so the guard could never prevent the panic it was
+// written for.
+func mdocDocTypeValid(schema vctypes.Schema) bool {
+	if len(schema.AdditionalTypes) == 0 {
+		return false
+	}
+	docType := strings.TrimSpace(schema.AdditionalTypes[0])
+	for _, dt := range mdoc.KnownDocTypes() {
+		if dt.DocType == docType {
 			return true
 		}
 	}

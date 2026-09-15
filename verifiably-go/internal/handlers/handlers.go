@@ -1287,10 +1287,21 @@ func asciiSafeJSON(v any) ([]byte, error) {
 	}
 	out := make([]byte, 0, len(raw))
 	for _, r := range string(raw) {
-		if r > 127 {
-			out = append(out, []byte(fmt.Sprintf(`\u%04x`, r))...)
-		} else {
+		switch {
+		case r <= 127:
 			out = append(out, byte(r))
+		case r > 0xFFFF:
+			// Outside the Basic Multilingual Plane (e.g. an emoji): JSON has
+			// no single \uXXXX escape for these — \u%04x with a code point
+			// above 0xFFFF would print 5+ hex digits, which is not a valid
+			// JSON escape at all. Encode as a UTF-16 surrogate pair instead,
+			// exactly as JSON.stringify / json.Marshal itself would.
+			r -= 0x10000
+			high := 0xD800 + (r >> 10)
+			low := 0xDC00 + (r & 0x3FF)
+			out = append(out, []byte(fmt.Sprintf(`\u%04x\u%04x`, high, low))...)
+		default:
+			out = append(out, []byte(fmt.Sprintf(`\u%04x`, r))...)
 		}
 	}
 	return out, nil

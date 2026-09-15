@@ -66,6 +66,11 @@ render_waltid_service_confs() {
   # no ports; Caddy proxies only its /openid4vci/* and /.well-known/* paths
   # (see the walt-issuer2 entry below) so the unauthenticated /issuer2/*
   # management API stays off the public internet.
+  #
+  # This is the RUNTIME path (gitignored), not the tracked *.baseline.conf —
+  # seed_issuer2_configs has already cp -n'd it into place by the time this
+  # runs. This file is where the real ciTokenKey/credentialEncryptionKey
+  # private JWKs below get written, so it must never be the tracked file.
   local issuer2_conf="$SCRIPT_DIR/deploy/k8s/config/issuer2/issuer-service.conf"
   if [[ -f "$issuer2_conf" ]]; then
     local issuer2_url
@@ -360,7 +365,7 @@ seed_credential_issuer_catalog() {
 }
 
 # seed_issuer2_configs is seed_credential_issuer_catalog's counterpart for
-# issuer-api2. Same split, same reason, two files instead of one:
+# issuer-api2. Same split, same reason, three files instead of one:
 #
 #   issuer2-profiles.conf           <- provision_issuer2_certificates renders
 #                                      the deployment's real DSC/IACA x5chain
@@ -369,14 +374,41 @@ seed_credential_issuer_catalog() {
 #                                      rewrites a docType's display block every
 #                                      time an operator saves a custom mdoc
 #                                      schema under their own name.
+#   issuer-service.conf             <- render_waltid_service_confs renders the
+#                                      public baseUrl AND the two PRIVATE EC
+#                                      P-256 JWKs (ciTokenKey,
+#                                      credentialEncryptionKey) into it.
 #
-# Both were tracked in git while carrying that generated/operator content, so a
-# `git pull`, `git checkout` or `git stash pop` silently reverted them — putting
-# walt.id's PUBLISHED EXAMPLE certificate back into the x5chain (every mdoc
-# issued after that is refused by every wallet, with no error on our side) and
-# throwing away the operator's schema display name. Neither loss announces
-# itself. Tracking the *.baseline.conf seeds instead, and gitignoring the
-# runtime files, is what makes the generated state survive git operations.
+# All three were tracked in git while carrying that generated/operator content,
+# so a `git pull`, `git checkout` or `git stash pop` silently reverted them —
+# putting walt.id's PUBLISHED EXAMPLE certificate back into the x5chain (every
+# mdoc issued after that is refused by every wallet, with no error on our side),
+# throwing away the operator's schema display name, and reverting
+# issuer-service.conf to its __RENDERED_BY_DEPLOY_*__ placeholders (a bare
+# `docker compose restart issuer-api2`, or a host reboot under
+# `restart: unless-stopped`, then boots issuer-api2 against literal placeholder
+# strings and it fails to start). None of those losses announces itself.
+# Tracking the *.baseline.conf seeds instead, and gitignoring the runtime
+# files, is what makes the generated state survive git operations.
+#
+# issuer-service.conf additionally must not be tracked because it holds PRIVATE
+# KEYS once rendered: a routine `git add -A && git commit` on a deploy host
+# would otherwise put the issuer's signing and credential-encryption keys into
+# repository history.
+#
+# MIGRATING AN EXISTING DEPLOYMENT (one-time, only for hosts seeded before
+# issuer-service.conf joined this list): that host has a MODIFIED tracked
+# issuer-service.conf carrying its real keys, so `git pull` refuses to merge
+# ("Your local changes would be overwritten"). Discard the local copy and let
+# the next deploy re-render it:
+#
+#   git checkout -- verifiably-go/deploy/k8s/config/issuer2/issuer-service.conf
+#   git pull && ./deploy.sh up
+#
+# Discarding is safe: both keys are persisted in .env (and in
+# deploy/k8s/config/issuer2/certs/issuer2-aux.env, gitignored), and
+# render_waltid_service_confs re-renders them into the freshly seeded runtime
+# file on the next `up`. Nothing needs to be copied out by hand.
 #
 # `cp -n` (no-clobber) is load-bearing, not defensive: an operator upgrading an
 # existing deployment already has real certificates and a saved display name
@@ -392,7 +424,7 @@ seed_credential_issuer_catalog() {
 seed_issuer2_configs() {
   local dir="$SCRIPT_DIR/deploy/k8s/config/issuer2"
   local name
-  for name in issuer2-profiles credential-issuer-metadata; do
+  for name in issuer2-profiles credential-issuer-metadata issuer-service; do
     local baseline="$dir/$name.baseline.conf"
     local runtime="$dir/$name.conf"
     if [[ ! -f "$baseline" ]]; then

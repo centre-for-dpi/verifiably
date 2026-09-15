@@ -129,6 +129,65 @@ func setIssuer2Display(metadataPath string, docType string, schema vctypes.Schem
 	return true, nil
 }
 
+// hoconScanner walks HOCON bytes reporting only STRUCTURAL characters —
+// those outside any quoted string and outside any comment. Every brace- and
+// bracket-counting loop in this file shares it, so none of them can drift
+// onto a different idea of what counts as structure.
+//
+// This exists because a raw byte scan miscounts in two ways that both
+// corrupt the file. A schema name is free operator text landing inside a
+// quoted `name = "..."` value, so an operator who saves a schema called
+// `Licencia}` writes a `}` into the file that a naive counter reads as the
+// end of the configuration — the NEXT save then splices a display block
+// into the wrong position and leaves unbalanced braces, which crash-loops
+// issuer-api2 (syncIssuer2DisplayName restarts it on every mdoc schema
+// save) and takes all mdoc issuance down. Comments are the same hazard from
+// upstream rather than from an operator: this file is synced from
+// waltid-credentials, so a future release could add a `# see {foo}` line.
+type hoconScanner struct {
+	s        string
+	i        int
+	inString bool
+}
+
+// next returns the byte at the current position and whether it is
+// structural, then advances. Callers loop while pos() < len, reading each
+// byte exactly once — the scanner consumes escape sequences and comment
+// bodies internally, so a caller never sees them.
+func (h *hoconScanner) next() (c byte, structural bool) {
+	c = h.s[h.i]
+	if h.inString {
+		switch c {
+		case '\\':
+			h.i++ // consume the escaped character with its backslash
+		case '"':
+			h.inString = false
+		}
+		h.i++
+		return c, false
+	}
+	switch {
+	case c == '"':
+		h.inString = true
+		h.i++
+		return c, false
+	case c == '#', c == '/' && h.i+1 < len(h.s) && h.s[h.i+1] == '/':
+		// Comment runs to end of line. HOCON also has /* */ block comments
+		// in principle, but neither walt.id's shipped file nor the HOCON
+		// spec's common usage employs them, and treating `/*` as structure
+		// would be wrong only for a file that already does not exist.
+		for h.i < len(h.s) && h.s[h.i] != '\n' {
+			h.i++
+		}
+		return c, false
+	}
+	h.i++
+	return c, true
+}
+
+func (h *hoconScanner) pos() int   { return h.i }
+func (h *hoconScanner) done() bool { return h.i >= len(h.s) }
+
 // findConfigBlock locates the body of a `"<configID>" = { ... }` entry, brace
 // counting from the opening `{` exactly as stripBlockEntry does. Returns the
 // byte range of the body EXCLUDING the braces themselves, plus the indent of
@@ -183,15 +242,21 @@ func findConfigBlock(content, configID string) (start, end int, indent string, o
 		}
 
 		depth := 0
-		for j := open; j < len(content); j++ {
-			switch content[j] {
+		sc := &hoconScanner{s: content, i: open}
+		for !sc.done() {
+			at := sc.pos()
+			c, structural := sc.next()
+			if !structural {
+				continue
+			}
+			switch c {
 			case '{':
 				depth++
 			case '}':
 				depth--
 			}
 			if depth == 0 {
-				return open + 1, j, indent, true
+				return open + 1, at, indent, true
 			}
 		}
 		return 0, 0, "", false
@@ -223,8 +288,14 @@ func replaceDisplayBlock(body, indent, rendered string) string {
 // the run of indentation preceding it (so the replacement lands flush).
 func findTopLevelDisplay(body string) (start, end int, ok bool) {
 	depth := 0
-	for i := 0; i < len(body); i++ {
-		switch body[i] {
+	outer := &hoconScanner{s: body}
+	for !outer.done() {
+		i := outer.pos()
+		c, structural := outer.next()
+		if !structural {
+			continue
+		}
+		switch c {
 		case '{', '[':
 			depth++
 			continue
@@ -257,8 +328,14 @@ func findTopLevelDisplay(body string) (start, end int, ok bool) {
 		}
 		open += i
 		d := 0
-		for j := open; j < len(body); j++ {
-			switch body[j] {
+		inner := &hoconScanner{s: body, i: open}
+		for !inner.done() {
+			j := inner.pos()
+			c, structural := inner.next()
+			if !structural {
+				continue
+			}
+			switch c {
 			case '[':
 				d++
 			case ']':

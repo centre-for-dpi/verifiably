@@ -51,10 +51,20 @@ start_container() {
     chmod 0777 "$catalog_dir" 2>/dev/null || true
     chmod 0666 "$catalog_dir"/*.conf 2>/dev/null || true
   fi
+  # Unlike issuer/'s catalog dir, issuer2's config dir also holds
+  # issuer-service.conf, which by this point carries the real private
+  # ciTokenKey/credentialEncryptionKey JWKs rendered in by
+  # render_waltid_service_confs (gen-caddy.sh). A wildcard chmod would make
+  # those world-readable AND world-writable — recoverable by any local
+  # account, or overwritable to make issuer-api2 load attacker-chosen keys on
+  # its next restart (setIssuer2Display triggers exactly that restart on
+  # every mdoc schema save). So grant write only to the one file
+  # verifiably-go actually writes, and leave the rest — including
+  # issuer-service.conf — at their default mode.
   local issuer2_dir="$SCRIPT_DIR/deploy/k8s/config/issuer2"
   if [[ -d "$issuer2_dir" ]]; then
-    chmod 0777 "$issuer2_dir" 2>/dev/null || true
-    chmod 0666 "$issuer2_dir"/*.conf 2>/dev/null || true
+    chmod 0775 "$issuer2_dir" 2>/dev/null || true
+    chmod 0666 "$issuer2_dir/credential-issuer-metadata.conf" 2>/dev/null || true
   fi
   # Resolve the docker group's GID at deploy time so --group-add works on
   # any host (Debian/Ubuntu typically use 999 or 984; macOS Docker Desktop

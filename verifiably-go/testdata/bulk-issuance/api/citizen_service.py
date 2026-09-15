@@ -9,7 +9,7 @@ app's bulk.go fetchJSONRows expects, so the URL can be pasted straight
 into the issuer's "API" bulk form.
 
 Usage:
-  CITIZENS_DSN=postgres://citizens:citizens@localhost:5435/citizens \
+  CITIZENS_DSN=postgres://citizens:$CITIZENS_PG_PASSWORD@localhost:5435/citizens \
     python3 citizen_service.py --port 8099
 
   # inside docker, reach it via host.docker.internal:8099 (verifiably-go
@@ -44,9 +44,12 @@ except ImportError:
     sys.exit(1)
 
 
+# Real password is CITIZENS_PG_PASSWORD from verifiably-go's own .env
+# (generated on `deploy.sh setup`); "citizens" only matches a host that
+# predates that variable.
 DSN = os.environ.get(
     "CITIZENS_DSN",
-    "postgres://citizens:citizens@localhost:5435/citizens",
+    "postgres://citizens:%s@localhost:5435/citizens" % os.environ.get("CITIZENS_PG_PASSWORD", "citizens"),
 )
 REQUIRED_TOKEN = os.environ.get("CITIZENS_API_TOKEN", "").strip()
 

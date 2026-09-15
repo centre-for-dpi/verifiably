@@ -105,9 +105,16 @@ verifiably-go/deploy/k8s/config/issuer/credential-issuer-metadata.conf
 # - credential-issuer-metadata.conf carries the operator's own mdoc schema
 #   display name, written by internal/adapters/waltid/catalog_issuer2.go
 #   (setIssuer2Display) on each custom-schema save.
-# We DO NOT want git to revert either on the next pull/checkout.
+# - issuer-service.conf carries this deployment's real baseUrl AND the private
+#   ciTokenKey / credentialEncryptionKey EC P-256 JWKs, rendered in by
+#   render_waltid_service_confs (gen-caddy.sh). Tracked, it would put the
+#   issuer's private signing/encryption keys into repository history on the
+#   next commit from a deploy host, and reverting it on a pull would boot
+#   issuer-api2 against literal placeholder strings.
+# We DO NOT want git to revert any of these on the next pull/checkout.
 verifiably-go/deploy/k8s/config/issuer2/issuer2-profiles.conf
 verifiably-go/deploy/k8s/config/issuer2/credential-issuer-metadata.conf
+verifiably-go/deploy/k8s/config/issuer2/issuer-service.conf
 
 # mdoc issuance PKI (runtime). Generated on first deploy by
 # provision_issuer2_certificates -> cmd/mdl-pki-gen. Contains the DSC and IACA

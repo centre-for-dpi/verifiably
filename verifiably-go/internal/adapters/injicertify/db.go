@@ -385,7 +385,20 @@ func mdocVCTemplate(doctype string, fields []vctypes.FieldSpec) string {
 	for digestID, f := range fields {
 		accessor := fmt.Sprintf(`rootContext['%s'].%s`, namespace, f.Name)
 		elementValue := "\"${" + accessor + "}\""
-		if f.Format == mdoc.FormatDrivingPrivileges {
+		// Two claim kinds need the UNQUOTED marker, for the same underlying
+		// reason: Velocity substitutes the rootContext value as literal
+		// text, so the quotes around the marker decide whether Inji's JSON
+		// parse yields a String (→ CBOR tstr) or a real JSON type.
+		//   - driving_privileges: a pre-serialized JSON array string, which
+		//     unquoted becomes a real JSON array (→ CBOR array).
+		//   - booleans (age_over_18/21): "true"/"false" from SubjectData's
+		//     map[string]string, which unquoted becomes the JSON literal
+		//     true/false. preprocessForCBOR passes it through untouched (a
+		//     Boolean matches none of its byte[]/String/Map/List branches,
+		//     so it falls to `return obj`) and convertToDataItem's own
+		//     Boolean branch encodes SimpleValue.TRUE/FALSE — the CBOR bool
+		//     ISO/IEC 23220-1 makes mandatory for Photo ID.
+		if f.Format == mdoc.FormatDrivingPrivileges || f.Datatype == "boolean" {
 			elementValue = "${" + accessor + "}"
 		}
 		itemLines = append(itemLines, fmt.Sprintf(

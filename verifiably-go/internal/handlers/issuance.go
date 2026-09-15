@@ -349,17 +349,16 @@ const maxDrivingPrivilegeRows = 4
 // Rows left blank are dropped by EncodeDrivingPrivileges, so the form can
 // render spare rows without forcing the operator to use them.
 //
-// Dates are normalized through the same tz-aware helper as every other date
-// field, then cut back to the "YYYY-MM-DD" full-date form walt.id's
-// `stringToFullDate` conversion expects — an RFC3339 timestamp fails that
-// conversion.
-func drivingPrivilegeRows(r *http.Request, tzOffset int) []mdoc.DrivingPrivilege {
+// Dates are full-dates (ISO 18013-5 tag 1004, no time component and no
+// zone), so they're taken verbatim via fullDateValue rather than routed
+// through the tz-aware normalizer — see fullDateValue's doc comment.
+func drivingPrivilegeRows(r *http.Request) []mdoc.DrivingPrivilege {
 	var out []mdoc.DrivingPrivilege
 	for i := 0; i < maxDrivingPrivilegeRows; i++ {
 		suffix := "_" + strconv.Itoa(i)
 		code := strings.TrimSpace(r.FormValue("dp_vehicle_category_code" + suffix))
-		issue := fullDateOnly(normalizeIssuanceTimeTZ(r.FormValue("dp_issue_date"+suffix), tzOffset))
-		expiry := fullDateOnly(normalizeIssuanceTimeTZ(r.FormValue("dp_expiry_date"+suffix), tzOffset))
+		issue := fullDateValue(r.FormValue("dp_issue_date" + suffix))
+		expiry := fullDateValue(r.FormValue("dp_expiry_date" + suffix))
 		if code == "" && issue == "" && expiry == "" {
 			continue
 		}
@@ -403,10 +402,19 @@ func validateDrivingPrivilegesCount(filled []mdoc.DrivingPrivilege) error {
 	return nil
 }
 
-// fullDateOnly trims an RFC3339 timestamp back to its date part. walt.id's
-// `stringToFullDate` conversion parses a bare "YYYY-MM-DD"; handing it a full
-// timestamp fails with a DateTimeParseException at signing time.
-func fullDateOnly(s string) string {
+// fullDateValue extracts a bare "YYYY-MM-DD" from a date or datetime-local
+// input, with NO timezone conversion. walt.id's `stringToFullDate`
+// conversion parses a bare "YYYY-MM-DD"; handing it a full timestamp fails
+// with a DateTimeParseException at signing time.
+//
+// The no-conversion part is equally load-bearing: ISO 18013-5's CBOR
+// full-date (tag 1004) has no time component and no zone, so routing this
+// through normalizeIssuanceTimeTZ (which converts to UTC before truncating)
+// shifts the day by one for every operator east of UTC. It trims the date
+// part off an RFC3339/datetime-local input verbatim rather than
+// reinterpreting it in the selected zone.
+func fullDateValue(s string) string {
+	s = strings.TrimSpace(s)
 	if i := strings.IndexByte(s, 'T'); i > 0 {
 		return s[:i]
 	}
@@ -641,7 +649,7 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 			// and stringifying an array here is exactly the bug this path
 			// exists to fix (TODO.md F4). They travel in StructuredData, which
 			// only the mdoc adapter reads.
-			filled := drivingPrivilegeRows(r, tzOffset)
+			filled := drivingPrivilegeRows(r)
 			// Both count-based guards (0 rows / over-cap) live in
 			// validateDrivingPrivilegesCount so they are reachable from a
 			// test without a full issuance round trip — see its doc
@@ -664,28 +672,24 @@ func (h *H) SubmitIssue(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		v := strings.TrimSpace(r.FormValue("field_" + fs.Name))
-		// Date/datetime fields (e.g. a delegation's valid_until capability
-		// expiry) are normalized to RFC3339 UTC so the claim is well-formed
-		// regardless of the browser's datetime-local wire format. Every other
-		// field is stored verbatim — this stays generic, keyed on the field's
-		// declared Format, not its name.
-		if fs.Format == "date" || fs.Format == "datetime" {
-			v = normalizeIssuanceTimeTZ(v, tzOffset)
+		// Time-ish fields get normalized; every other field is stored
+		// verbatim. This stays generic, keyed on the field's declared
+		// Format, not its name — but an mdoc full-date and a W3C/SD-JWT
+		// instant are genuinely different types and need different handling.
+		if fs.Format == "date" && schema.Std == "mso_mdoc" {
 			// ISO 18013-5 dates are CBOR full-date (tag 1004): YYYY-MM-DD with
-			// NO time component. normalizeIssuanceTimeTZ returns full RFC3339,
-			// which is right for W3C validFrom/SD-JWT nbf but not here — it
-			// made walt.id reject a real issuance at wallet redemption with
-			//
-			//	DateTimeParseException: Text '1984-08-18T04:00:00Z' could not be
-			//	parsed, unparsed text found at index 10
-			//
-			// Index 10 is exactly where the date ends and "T04:00:00Z" begins.
-			// The driving-privilege dates already did this (see
-			// drivingPrivilegeRows); the flat date fields did not, which is the
-			// inconsistency that let it through.
-			if fs.Format == "date" && schema.Std == "mso_mdoc" {
-				v = fullDateOnly(v)
-			}
+			// no time component and no zone. Routing this through
+			// normalizeIssuanceTimeTZ (as the branch below does) would parse
+			// "1984-08-18" IN the operator's selected zone and convert to UTC
+			// before truncating — shifting the day back one for every zone
+			// east of UTC (e.g. UTC+05:30 turns 1984-08-18 into 1984-08-17).
+			v = fullDateValue(v)
+		} else if fs.Format == "date" || fs.Format == "datetime" {
+			// A real instant (e.g. a delegation's valid_until capability
+			// expiry): normalized to RFC3339 UTC in the operator's selected
+			// zone so the claim is well-formed regardless of the browser's
+			// datetime-local wire format.
+			v = normalizeIssuanceTimeTZ(v, tzOffset)
 		}
 		subject[fs.Name] = v
 	}

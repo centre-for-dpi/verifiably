@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -55,6 +57,107 @@ func TestCurrentBuilderSchemaCarriesDocType(t *testing.T) {
 		if bt := saved.BaseType(); bt != docType {
 			t.Errorf("%s: BaseType() = %q, want the docType — issuance resolves the issuer-api2 profile from this", docType, bt)
 		}
+	}
+}
+
+// TestMdocDocTypeValidRejectsEmptyAdditionalTypesWithoutPanicking pins the
+// ordering fix: a prior version indexed AdditionalTypes[0] inside the
+// validation loop and only guarded len(...)==0 five lines later, so the
+// guard could never prevent the index panic it was written for. It stayed
+// unreachable only by an invariant established elsewhere (extractBuilderData
+// back-fills DocType from mdoc.KnownDocTypes()[0]); this test exercises the
+// function directly with the invariant broken, the way a future change to
+// KnownDocTypes or the back-fill condition could.
+func TestMdocDocTypeValidRejectsEmptyAdditionalTypesWithoutPanicking(t *testing.T) {
+	schema := vctypes.Schema{Std: "mso_mdoc", AdditionalTypes: nil}
+	if mdocDocTypeValid(schema) {
+		t.Fatal("mdocDocTypeValid(empty AdditionalTypes) = true, want false")
+	}
+}
+
+func TestMdocDocTypeValidAcceptsKnownDocType(t *testing.T) {
+	schema := vctypes.Schema{Std: "mso_mdoc", AdditionalTypes: []string{"org.iso.18013.5.1.mDL"}}
+	if !mdocDocTypeValid(schema) {
+		t.Fatal("mdocDocTypeValid(org.iso.18013.5.1.mDL) = false, want true")
+	}
+}
+
+func TestMdocDocTypeValidRejectsUnknownDocType(t *testing.T) {
+	schema := vctypes.Schema{Std: "mso_mdoc", AdditionalTypes: []string{"custom-not-a-real-doctype"}}
+	if mdocDocTypeValid(schema) {
+		t.Fatal("mdocDocTypeValid(unknown docType) = true, want false")
+	}
+}
+
+// TestExtractBuilderDataBlankLangRowsMatchesThePostMergeField pins a
+// stale-index bug: BlankLangRows used to be computed against d.Fields as
+// SUBMITTED, before the block below reorders d.Fields into "mandatory
+// elements first, then the operator's extras" for mso_mdoc schemas.
+// BlankLangRows is index-keyed (map[int]int) and was never remapped, so a
+// key computed pre-merge could point at a different field once the reorder
+// ran — exactly the operator-visible symptom this test targets: the blank
+// row shows up under the wrong claim.
+//
+// This reproduces the steady-state case the builder template actually
+// produces: on every re-render, the "field_lang_i_j" keys the browser posts
+// back are indexed against the template's own {{range .Fields}} loop, which
+// iterates the ALREADY-MERGED order (mandatory-first). So a real round trip
+// keeps form-index and Fields-index in agreement — the guard is that
+// BlankLangRows must be computed against that SAME final order, not an
+// earlier, different one.
+func TestExtractBuilderDataBlankLangRowsMatchesThePostMergeField(t *testing.T) {
+	form := url.Values{}
+	form.Set("std", "mso_mdoc")
+	form.Set("doctype", "org.iso.18013.5.1.mDL")
+	// parseFieldSpecsFromForm stops at the first index with no
+	// field_name_<i> key at all, so every row before the custom one needs a
+	// placeholder — matching the mandatory fields by NAME, exactly what the
+	// builder template re-posts for its own already-merged rows, so the
+	// merge recognizes them as mandatory (isMandatoryName) and folds them
+	// into the curated entries instead of appending 11 blank "custom" rows
+	// ahead of the real one.
+	mandatory := mdoc.MandatoryFields("org.iso.18013.5.1.mDL")
+	for i, m := range mandatory {
+		form.Set(fmt.Sprintf("field_name_%d", i), m.Name)
+		form.Set(fmt.Sprintf("field_datatype_%d", i), "string")
+	}
+	mandatoryCount := len(mandatory)
+	// One custom field, submitted at the row right after the mandatory
+	// placeholders. After the mandatory-first merge it lands at
+	// mandatoryCount — its form keys mirror that post-merge position,
+	// exactly as a real re-render posts.
+	customIdx := mandatoryCount
+	form.Set(fmt.Sprintf("field_name_%d", customIdx), "custom_extra")
+	form.Set(fmt.Sprintf("field_datatype_%d", customIdx), "string")
+	form.Set(fmt.Sprintf("field_lang_%d_0", customIdx), "en")
+	form.Set(fmt.Sprintf("field_label_%d_0", customIdx), "Custom Extra")
+	// A second, deliberately BLANK language row on the SAME field —
+	// language left unset, label left unset. blankLangRowsFromForm keeps
+	// counting past the first (implicit) row as long as either key is
+	// present in the form at all.
+	form.Set(fmt.Sprintf("field_lang_%d_1", customIdx), "")
+	form.Set(fmt.Sprintf("field_label_%d_1", customIdx), "x")
+
+	req := httptest.NewRequest(http.MethodPost, "/issuer/schema/build/doctype", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	data := extractBuilderData(req)
+
+	gotIdx := -1
+	for i, f := range data.Fields {
+		if f.Name == "custom_extra" {
+			gotIdx = i
+			break
+		}
+	}
+	if gotIdx != customIdx {
+		t.Fatalf("custom_extra landed at index %d after the mandatory-first merge, want %d — adjust the test's form indices to match; got fields=%+v", gotIdx, customIdx, data.Fields)
+	}
+	if data.BlankLangRows[customIdx] == 0 {
+		t.Errorf("BlankLangRows[%d] (custom_extra's field) = 0, want its blank language row recorded there; got BlankLangRows=%v", customIdx, data.BlankLangRows)
+	}
+	if n := len(data.BlankLangRows); n != 1 {
+		t.Errorf("BlankLangRows has %d entries, want exactly 1 (only custom_extra submitted a blank row); got %v", n, data.BlankLangRows)
 	}
 }
 

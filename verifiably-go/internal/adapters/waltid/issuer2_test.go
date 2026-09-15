@@ -172,6 +172,76 @@ func TestBuildIssuer2OfferOmitsUnsetFields(t *testing.T) {
 	}
 }
 
+// TestBuildIssuer2OfferEmitsRealBooleanNotString guards against age_over_18/
+// age_over_21 (and any other boolean-datatype mdoc field) reaching walt.id
+// as the JSON string "true" instead of the JSON literal true. issuer-api2
+// has no conversionType for booleans — unlike stringToFullDate for dates —
+// so a string here becomes a CBOR text string (tstr) instead of the
+// mandatory CBOR bool a conformant reader's age-attestation check expects.
+func TestBuildIssuer2OfferEmitsRealBooleanNotString(t *testing.T) {
+	schema := vctypes.Schema{
+		ID:   "org.iso.23220.photoid.1",
+		Std:  "mso_mdoc",
+		Name: "Photo ID",
+		FieldsSpec: []vctypes.FieldSpec{
+			{Name: "family_name", Datatype: "string"},
+			{Name: "age_over_18", Datatype: "boolean"},
+		},
+	}
+	subject := map[string]string{
+		"family_name": "Perez",
+		"age_over_18": "true",
+	}
+
+	req, err := buildIssuer2Offer(schema, subject, nil)
+	if err != nil {
+		t.Fatalf("buildIssuer2Offer: %v", err)
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	body := string(raw)
+
+	if !strings.Contains(body, `"age_over_18":true`) {
+		t.Errorf("age_over_18 did not serialise as a real JSON boolean: %s", body)
+	}
+	if strings.Contains(body, `"age_over_18":"true"`) {
+		t.Errorf("age_over_18 serialised as a JSON STRING — walt.id has no conversionType for booleans, so this becomes a CBOR tstr instead of a CBOR bool: %s", body)
+	}
+}
+
+// TestBuildIssuer2OfferEmitsFalseBooleanNotOmitted covers the half that is
+// easy to lose: an UNTICKED required boolean. boolFieldValue yields the
+// string "false" (never ""), so it must survive the empty-value skip above
+// and reach walt.id as the JSON literal false — `age_over_18=false` is
+// meaningful data about the holder, not an unanswered question, and
+// dropping it would let the profile's own default stand in for the
+// operator's actual answer.
+func TestBuildIssuer2OfferEmitsFalseBooleanNotOmitted(t *testing.T) {
+	schema := vctypes.Schema{
+		ID:   "org.iso.23220.photoid.1",
+		Std:  "mso_mdoc",
+		Name: "Photo ID",
+		FieldsSpec: []vctypes.FieldSpec{
+			{Name: "age_over_18", Datatype: "boolean"},
+		},
+	}
+	req, err := buildIssuer2Offer(schema, map[string]string{"age_over_18": "false"}, nil)
+	if err != nil {
+		t.Fatalf("buildIssuer2Offer: %v", err)
+	}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, `"age_over_18":false`) {
+		t.Errorf("an unticked required boolean did not reach walt.id as the JSON literal false: %s", body)
+	}
+}
+
 func TestMdocNamespaceFor(t *testing.T) {
 	tests := []struct{ in, want string }{
 		{"org.iso.18013.5.1.mDL", "org.iso.18013.5.1"},
