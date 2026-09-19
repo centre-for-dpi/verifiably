@@ -86,6 +86,7 @@ Each service lives in `services/<name>/`. Shared pure code lives in
 ## Documents
 
 - [Architecture decisions](docs/adr.md): the 31 decision records that define VCA.
+- [ADR status](docs/adr-status.md): the state of every decision in the tree.
 - [Glossary](docs/glossary.md): the project dictionary.
 - [Writing style](docs/style.md): the rules for all reader-facing text.
 - [Service document template](docs/template-service.md): the four sections each service documents.
