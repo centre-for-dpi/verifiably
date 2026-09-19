@@ -53,7 +53,7 @@ func filled(t *testing.T, bits int, values map[int]int) lists.Record {
 		t.Fatal(err)
 	}
 	for i := range 16 {
-		rec.Allocated[i/8] |= 1 << (7 - uint(i%8))
+		rec.Allocated[i/8] |= 1 << (7 - i%8)
 		rec.AllocatedCount++
 	}
 	for i, v := range values {
@@ -91,8 +91,8 @@ func TestSecureBothRepresentations(t *testing.T) {
 				t.Fatalf("typ = %s", header.Typ)
 			}
 			var m map[string]any
-			if err := json.Unmarshal(payload, &m); err != nil {
-				t.Fatal(err)
+			if serr := json.Unmarshal(payload, &m); serr != nil {
+				t.Fatal(serr)
 			}
 			jwtClaims, jwtList, err := token.ParseJWTClaims(m)
 			if err != nil {
@@ -125,8 +125,14 @@ func TestSecureBothRepresentations(t *testing.T) {
 				t.Fatalf("bits = %d %d", jwtList.Bits(), cwtList.Bits())
 			}
 			for i := range 16 {
-				a, _ := jwtList.Get(i)
-				b, _ := cwtList.Get(i)
+				a, verr := jwtList.Get(i)
+				if verr != nil {
+					t.Fatalf("unexpected error: %v", verr)
+				}
+				b, verr := cwtList.Get(i)
+				if verr != nil {
+					t.Fatalf("unexpected error: %v", verr)
+				}
 				if a != b || int(a) != want[i] {
 					t.Fatalf("bits %d index %d: jwt %d cwt %d want %d", bits, i, a, b, want[i])
 				}
@@ -149,14 +155,17 @@ func TestSecureWithoutOptionalClaims(t *testing.T) {
 	if _, ok := m["ttl"]; ok {
 		t.Fatal("ttl must be absent")
 	}
-	sl, _ := m["status_list"].(map[string]any)
+	sl := mustAs[map[string]any](t, m["status_list"])
 	if _, ok := sl["aggregation_uri"]; ok {
 		t.Fatal("aggregation_uri must be absent")
 	}
 	if m["iss"] != "did:web:issuer.example" {
 		t.Fatalf("iss = %v", m["iss"])
 	}
-	header, _ := jose.PeekHeader(string(out[0].Body))
+	header, verr := jose.PeekHeader(string(out[0].Body))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if header.Kid != issuer.Active().ID {
 		t.Fatalf("kid = %s", header.Kid)
 	}
@@ -168,7 +177,10 @@ func TestSecureRejectsBadRecords(t *testing.T) {
 	if sec.Kind() != lists.KindToken || len(sec.MediaTypes()) != 2 {
 		t.Fatal("accessors")
 	}
-	wrong, _ := lists.NewRecord("b", lists.KindBitstring, lists.Revocation, 1, 0, "default", t0)
+	wrong, verr := lists.NewRecord("b", lists.KindBitstring, lists.Revocation, 1, 0, "default", t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := sec.Secure(wrong, issuer, "u", t0, t0); !errors.Is(err, lists.ErrBadKind) {
 		t.Fatalf("err = %v", err)
 	}

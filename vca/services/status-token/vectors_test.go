@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/token"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
@@ -37,7 +38,7 @@ type vector struct {
 
 func readVector(t *testing.T, name string) vector {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", "vectors", name))
+	data, err := os.ReadFile(filepath.Join("testdata", "vectors", name)) //nolint:gosec // G304: the path is a test directory
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +104,7 @@ func TestPublishAndVerifyAgainstVector(t *testing.T) {
 	indices := make([]int, len(v.Statuses))
 	for i, status := range v.Statuses {
 		alloc, err := client.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{
-			Purpose: statusv1.Purpose_PURPOSE_REVOCATION, Kind: statusv1.Kind_KIND_TOKEN, Bits: int32(v.Bits),
+			Purpose: statusv1.Purpose_PURPOSE_REVOCATION, Kind: statusv1.Kind_KIND_TOKEN, Bits: toInt32(int64(v.Bits)),
 		}))
 		if err != nil {
 			t.Fatal(err)
@@ -164,8 +165,8 @@ func fetchJWT(t *testing.T, a *app.App, srv *httptest.Server, id string) *token.
 		t.Fatalf("typ = %s", header.Typ)
 	}
 	var claims map[string]any
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		t.Fatal(err)
+	if serr := json.Unmarshal(payload, &claims); serr != nil {
+		t.Fatal(serr)
 	}
 	parsed, list, err := token.ParseJWTClaims(claims)
 	if err != nil {
@@ -211,7 +212,11 @@ func fetch(t *testing.T, srv *httptest.Server, id, accept, want string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != want {
 		t.Fatalf("GET status: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}

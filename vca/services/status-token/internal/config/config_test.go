@@ -109,7 +109,10 @@ func TestDescribeAndRedact(t *testing.T) {
 	if len(vars) != 13 || vars[0].Name != Prefix+"LISTEN" {
 		t.Fatalf("variables = %d, first %+v", len(vars), vars[0])
 	}
-	c, _ := Load(env(nil))
+	c, verr := Load(env(nil))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	values, err := c.Redact()
 	if err != nil {
 		t.Fatal(err)
