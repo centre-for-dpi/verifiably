@@ -7,6 +7,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -67,10 +68,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 			return nil, err
 		}
 	}
-	st, err := store.New(backend)
-	if err != nil {
-		return nil, err
-	}
+	// The constructors below validate the values this wiring supplies.
+	// One check reports the first fault of the whole wiring.
+	st, storeErr := store.New(backend)
 	fetcher := fetch.New(fetch.Options{
 		Guard: fetch.Guard{
 			AllowedHosts:        cfg.AllowedHosts,
@@ -87,20 +87,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if trust == nil && cfg.TrustURL != "" {
 		trust = trustv1connect.NewTrustServiceClient(&http.Client{Timeout: cfg.TrustTimeout}, cfg.TrustURL)
 	}
-	crawler, err := crawl.New(crawl.Options{Trust: trust, Fetch: fetcher, Store: st, Now: deps.Now})
-	if err != nil {
-		return nil, err
-	}
-	svc, err := service.New(service.Options{Store: st, Crawler: crawler, PageSizeMax: cfg.PageSizeMax, Now: deps.Now})
-	if err != nil {
-		return nil, err
-	}
-	pages, err := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix})
-	if err != nil {
-		return nil, err
-	}
-	assets, err := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
-	if err != nil {
+	crawler, crawlErr := crawl.New(crawl.Options{Trust: trust, Fetch: fetcher, Store: st, Now: deps.Now})
+	svc, serviceErr := service.New(service.Options{Store: st, Crawler: crawler, PageSizeMax: cfg.PageSizeMax, Now: deps.Now})
+	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix})
+	assets, assetsErr := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+	if err := errors.Join(storeErr, crawlErr, serviceErr, portalErr, assetsErr); err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()

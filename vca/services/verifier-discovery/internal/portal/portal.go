@@ -183,29 +183,34 @@ func link(href, text string) template.HTML {
 	return template.HTML(`<a href="` + template.HTMLEscapeString(href) + `">` + template.HTMLEscapeString(text) + `</a>`) //nolint:gosec // both parts are escaped
 }
 
-// join renders several components in order.
-func (p *Portal) join(parts ...part) (template.HTML, error) {
-	out := make([]template.HTML, 0, len(parts))
-	for _, item := range parts {
-		h, err := p.opts.Kit.HTML(item.name, item.data)
-		if err != nil {
-			return "", err
-		}
-		out = append(out, h)
-	}
-	return components.Join(out...), nil
+// blocks renders components and keeps the first error. A component
+// fails only when its data is wrong, which is a programming fault, so
+// one check for each page is enough.
+type blocks struct {
+	kit *components.Kit
+	err error
 }
 
-// part is one component of a page.
-type part struct {
-	name string
-	data any
+// add renders one component and returns its markup.
+func (b *blocks) add(name string, data any) template.HTML {
+	if b.err != nil {
+		return ""
+	}
+	h, err := b.kit.HTML(name, data)
+	if err != nil {
+		b.err = err
+	}
+	return h
 }
+
+// blocks returns a renderer over the kit of the portal.
+func (p *Portal) blocks() *blocks { return &blocks{kit: p.opts.Kit} }
 
 // form wraps content in a form element.
-func form(action, method string, content template.HTML) template.HTML {
+func form(action, method string, content ...template.HTML) template.HTML {
 	open := `<form class="filters" action="` + template.HTMLEscapeString(action) + `" method="` + template.HTMLEscapeString(method) + `">`
-	return components.Join(template.HTML(open), content, template.HTML(`</form>`)) //nolint:gosec // both parts are escaped
+	parts := append([]template.HTML{template.HTML(open)}, content...) //nolint:gosec // both parts are escaped
+	return components.Join(append(parts, template.HTML(`</form>`))...)
 }
 
 // issuers renders the issuer list.
@@ -214,12 +219,10 @@ func (p *Portal) issuers(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	b := p.blocks()
 	rows := make([]components.Row, 0, len(resp.Msg.GetIssuers()))
 	for _, issuer := range resp.Msg.GetIssuers() {
-		badge, err := p.opts.Kit.HTML("badge", components.Badge{Status: trustStatus(issuer.GetTrust()), Text: TrustText(issuer.GetTrust())})
-		if err != nil {
-			return err
-		}
+		badge := b.add("badge", components.Badge{Status: trustStatus(issuer.GetTrust()), Text: TrustText(issuer.GetTrust())})
 		name := issuer.GetDisplayName()
 		if name == "" {
 			name = issuer.GetCredentialIssuer()
@@ -232,17 +235,14 @@ func (p *Portal) issuers(w http.ResponseWriter, r *http.Request) error {
 			{Text: crawledText(issuer)},
 		})
 	}
-	table, err := p.opts.Kit.HTML("table", components.Table{
+	table := b.add("table", components.Table{
 		ID: "issuers", Caption: fmt.Sprintf("Trusted issuers, %d found", len(rows)),
 		Columns: []string{"Issuer", "URL", "Trust", "Types", "Last crawl"},
 		Rows:    rows, Empty: "The catalogue is empty. Run a crawl to read the trusted issuers.",
 	})
-	if err != nil {
-		return err
-	}
-	action, err := p.join(part{"button", components.Button{Text: "Crawl now", Type: "submit", Variant: "primary"}})
-	if err != nil {
-		return err
+	action := b.add("button", components.Button{Text: "Crawl now", Type: "submit", Variant: "primary"})
+	if b.err != nil {
+		return b.err
 	}
 	return p.opts.Kit.RenderPage(w, r, components.Page{
 		Title:       "Trusted issuers",
@@ -270,7 +270,7 @@ func trustStatus(outcome trustv1.TrustLookupResponse_Outcome) string {
 	case trustv1.TrustLookupResponse_OUTCOME_TRUSTED:
 		return "ok"
 	case trustv1.TrustLookupResponse_OUTCOME_UNTRUSTED:
-		return "error"
+		return "bad"
 	case trustv1.TrustLookupResponse_OUTCOME_UNAVAILABLE:
 		return "warn"
 	}
@@ -300,7 +300,8 @@ func (p *Portal) types(w http.ResponseWriter, r *http.Request) error {
 	}
 	rows := make([]components.Row, 0, len(resp.Msg.GetTypes()))
 	for _, t := range resp.Msg.GetTypes() {
-		href := p.opts.Prefix + "/fields?credential_issuer=" + url.QueryEscape(t.GetCredentialIssuer()) + "&type=" + url.QueryEscape(t.GetType())
+		href := p.opts.Prefix + "/fields?credential_issuer=" + url.QueryEscape(t.GetCredentialIssuer()) +
+			"&type=" + url.QueryEscape(t.GetType()) + "&format=" + url.QueryEscape(catalog.FormatName(t.GetFormat()))
 		rows = append(rows, components.Row{
 			{HTML: link(href, displayName(t))},
 			{Text: t.GetType()},
@@ -308,17 +309,15 @@ func (p *Portal) types(w http.ResponseWriter, r *http.Request) error {
 			{Text: t.GetCredentialIssuer()},
 		})
 	}
-	filters, err := p.typeFilters(req)
-	if err != nil {
-		return err
-	}
-	table, err := p.opts.Kit.HTML("table", components.Table{
+	b := p.blocks()
+	filters := p.typeFilters(b, req)
+	table := b.add("table", components.Table{
 		ID: "types", Caption: fmt.Sprintf("Credential types, %d found", len(rows)),
 		Columns: []string{"Name", "Type", "Format", "Issuer"},
 		Rows:    rows, Empty: "No credential type matches the filters.",
 	})
-	if err != nil {
-		return err
+	if b.err != nil {
+		return b.err
 	}
 	return p.opts.Kit.RenderPage(w, r, components.Page{
 		Title:       "Credential types",
@@ -337,22 +336,18 @@ func displayName(t *discoveryv1.CredentialType) string {
 }
 
 // typeFilters renders the filter form of the type list.
-func (p *Portal) typeFilters(req *discoveryv1.ListCredentialTypesRequest) (template.HTML, error) {
+func (p *Portal) typeFilters(b *blocks, req *discoveryv1.ListCredentialTypesRequest) template.HTML {
 	options := []components.Option{{Value: "", Text: "Any format", Selected: req.GetFormat() == commonv1.Format_FORMAT_UNSPECIFIED}}
 	for _, f := range Formats {
 		name := catalog.FormatName(f)
 		options = append(options, components.Option{Value: name, Text: name, Selected: f == req.GetFormat()})
 	}
-	content, err := p.join(
-		part{"field", components.Field{ID: "q", Label: "Search", Value: req.GetQuery(), Hint: "The search matches the type name and the display name."}},
-		part{"field", components.Field{ID: "credential_issuer", Label: "Issuer URL", Value: req.GetCredentialIssuer(), Hint: "Leave it empty to see every issuer."}},
-		part{"field", components.Field{ID: "format", Label: "Format", Type: "select", Options: options}},
-		part{"button", components.Button{Text: "Apply", Type: "submit", Variant: "primary"}},
+	return form(p.opts.Prefix+"/types", "get",
+		b.add("field", components.Field{ID: "q", Label: "Search", Value: req.GetQuery(), Hint: "The search matches the type name and the display name."}),
+		b.add("field", components.Field{ID: "credential_issuer", Label: "Issuer URL", Value: req.GetCredentialIssuer(), Hint: "Leave it empty to see every issuer."}),
+		b.add("field", components.Field{ID: "format", Label: "Format", Type: "select", Options: options}),
+		b.add("button", components.Button{Text: "Apply", Type: "submit", Variant: "primary"}),
 	)
-	if err != nil {
-		return "", err
-	}
-	return form(p.opts.Prefix+"/types", "get", content), nil
 }
 
 // fields renders the claims of one type with the save form.
@@ -366,15 +361,13 @@ func (p *Portal) fields(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	selection, err := p.selectionForm(issuer, typeName, q.Get("format"), resp.Msg.GetFields())
-	if err != nil {
-		return err
-	}
-	schema, err := p.opts.Kit.HTML("json", components.JSON{
+	b := p.blocks()
+	selection := p.selectionForm(b, issuer, typeName, q.Get("format"), resp.Msg.GetFields())
+	schema := b.add("json", components.JSON{
 		ID: "schema", Summary: "JSON Schema document of the credential type", Data: rawJSON(resp.Msg.GetJsonSchema()),
 	})
-	if err != nil {
-		return err
+	if b.err != nil {
+		return b.err
 	}
 	return p.opts.Kit.RenderPage(w, r, components.Page{
 		Title:       "Claims of " + typeName,
@@ -386,20 +379,22 @@ func (p *Portal) fields(w http.ResponseWriter, r *http.Request) error {
 }
 
 // selectionForm renders the claim tick boxes and the template fields.
-func (p *Portal) selectionForm(issuer, typeName, format string, fields []*discoveryv1.Field) (template.HTML, error) {
+func (p *Portal) selectionForm(b *blocks, issuer, typeName, format string, fields []*discoveryv1.Field) template.HTML {
 	if format == "" {
 		format = "dc+sd-jwt"
 	}
-	parts := []part{
-		{"field", components.Field{ID: "display_name", Label: "Template name", Required: true, Hint: "Staff see this name in the template list."}},
-		{"field", components.Field{ID: "purpose", Label: "Purpose", Hint: "The citizen reads this sentence before the wallet shares the claims."}},
-	}
-	options := []components.Option{}
+	options := make([]components.Option, 0, len(Formats))
 	for _, f := range Formats {
 		name := catalog.FormatName(f)
 		options = append(options, components.Option{Value: name, Text: name, Selected: name == format})
 	}
-	parts = append(parts, part{"field", components.Field{ID: "format", Label: "Format", Type: "select", Options: options}})
+	parts := []template.HTML{
+		template.HTML(`<input type="hidden" name="credential_issuer" value="` + template.HTMLEscapeString(issuer) + `">`), //nolint:gosec // the value is escaped
+		template.HTML(`<input type="hidden" name="type" value="` + template.HTMLEscapeString(typeName) + `">`),            //nolint:gosec // the value is escaped
+		b.add("field", components.Field{ID: "display_name", Label: "Template name", Required: true, Hint: "Staff see this name in the template list."}),
+		b.add("field", components.Field{ID: "purpose", Label: "Purpose", Hint: "The citizen reads this sentence before the wallet shares the claims."}),
+		b.add("field", components.Field{ID: "format", Label: "Format", Type: "select", Options: options}),
+	}
 	for i, f := range fields {
 		label := f.GetTitle()
 		if label == "" {
@@ -412,18 +407,12 @@ func (p *Portal) selectionForm(issuer, typeName, format string, fields []*discov
 		if f.GetSelectivelyDisclosable() {
 			hint += ", the holder can disclose it alone"
 		}
-		parts = append(parts, part{"field", components.Field{
+		parts = append(parts, b.add("field", components.Field{
 			ID: "claim-" + strconv.Itoa(i), Name: "claim", Label: label, Type: "checkbox", Value: f.GetPath(), Hint: hint,
-		}})
+		}))
 	}
-	parts = append(parts, part{"button", components.Button{Text: "Save template", Type: "submit", Variant: "primary"}})
-	content, err := p.join(parts...)
-	if err != nil {
-		return "", err
-	}
-	hidden := template.HTML(`<input type="hidden" name="credential_issuer" value="` + template.HTMLEscapeString(issuer) + `">` + //nolint:gosec // the value is escaped
-		`<input type="hidden" name="type" value="` + template.HTMLEscapeString(typeName) + `">`)
-	return form(p.opts.Prefix+"/templates", "post", components.Join(hidden, content)), nil
+	parts = append(parts, b.add("button", components.Button{Text: "Save template", Type: "submit", Variant: "primary"}))
+	return form(p.opts.Prefix+"/templates", "post", parts...)
 }
 
 // saveTemplate stores the selection of the fields page.
@@ -468,13 +457,14 @@ func (p *Portal) templates(w http.ResponseWriter, r *http.Request) error {
 			{Text: t.GetPurpose()},
 		})
 	}
-	table, err := p.opts.Kit.HTML("table", components.Table{
+	b := p.blocks()
+	table := b.add("table", components.Table{
 		ID: "templates", Caption: fmt.Sprintf("Presentation templates, %d found", len(rows)),
 		Columns: []string{"Name", "Latest version", "Asks for", "Purpose"},
 		Rows:    rows, Empty: "No template exists. Open a credential type and tick the claims to make one.",
 	})
-	if err != nil {
-		return err
+	if b.err != nil {
+		return b.err
 	}
 	return p.opts.Kit.RenderPage(w, r, components.Page{
 		Title:       "Presentation templates",
@@ -508,29 +498,18 @@ func (p *Portal) templateDetail(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	t := resp.Msg.GetTemplate()
-	summary, err := p.opts.Kit.HTML("card", components.Card{
+	b := p.blocks()
+	summary := b.add("card", components.Card{
 		ID: "summary", Title: t.GetDisplayName(),
 		Text:   t.GetPurpose(),
 		Footer: fmt.Sprintf("Version %d, asks for %s", t.GetVersion(), queryText(t)),
 	})
-	if err != nil {
-		return err
-	}
-	query, err := p.opts.Kit.HTML("json", components.JSON{ID: "dcql", Summary: "DCQL query the wallet receives", Open: true, Data: rawJSON(t.GetDcql())})
-	if err != nil {
-		return err
-	}
-	exchange, err := p.presentationExchange(t)
-	if err != nil {
-		return err
-	}
-	claims, err := p.claimsTable(t)
-	if err != nil {
-		return err
-	}
-	remove, err := p.join(part{"button", components.Button{Text: "Delete template", Type: "submit", Variant: "danger"}})
-	if err != nil {
-		return err
+	claims := p.claimsTable(b, t)
+	query := b.add("json", components.JSON{ID: "dcql", Summary: "DCQL query the wallet receives", Open: true, Data: rawJSON(t.GetDcql())})
+	exchange := p.presentationExchange(b, t)
+	remove := b.add("button", components.Button{Text: "Delete template", Type: "submit", Variant: "danger"})
+	if b.err != nil {
+		return b.err
 	}
 	return p.opts.Kit.RenderPage(w, r, components.Page{
 		Title:       t.GetDisplayName(),
@@ -543,7 +522,7 @@ func (p *Portal) templateDetail(w http.ResponseWriter, r *http.Request) error {
 }
 
 // claimsTable lists the claims of every credential query.
-func (p *Portal) claimsTable(t *discoveryv1.PresentationTemplate) (template.HTML, error) {
+func (p *Portal) claimsTable(b *blocks, t *discoveryv1.PresentationTemplate) template.HTML {
 	var rows []components.Row
 	for _, q := range t.GetQueries() {
 		for _, claim := range q.GetClaims() {
@@ -555,7 +534,7 @@ func (p *Portal) claimsTable(t *discoveryv1.PresentationTemplate) (template.HTML
 			})
 		}
 	}
-	return p.opts.Kit.HTML("table", components.Table{
+	return b.add("table", components.Table{
 		ID: "claims", Caption: "Claims the request asks for",
 		Columns: []string{"Credential type", "Format", "Claim", "Issuers"},
 		Rows:    rows, Empty: "The request asks for every claim of the credential.",
@@ -564,16 +543,16 @@ func (p *Portal) claimsTable(t *discoveryv1.PresentationTemplate) (template.HTML
 
 // presentationExchange renders the generated Presentation Exchange 2.0
 // definition, for a Digital Public Good that needs the older language.
-func (p *Portal) presentationExchange(t *discoveryv1.PresentationTemplate) (template.HTML, error) {
+func (p *Portal) presentationExchange(b *blocks, t *discoveryv1.PresentationTemplate) template.HTML {
 	record := tmpl.Template{ID: t.GetId(), DCQL: t.GetDcql(), Purpose: t.GetPurpose()}
 	data, err := record.PresentationExchange()
 	if err != nil {
-		return p.opts.Kit.HTML("card", components.Card{
+		return b.add("card", components.Card{
 			ID: "exchange", Title: "Presentation Exchange 2.0",
 			Text: "The service cannot generate the older query language from this template.",
 		})
 	}
-	return p.opts.Kit.HTML("json", components.JSON{
+	return b.add("json", components.JSON{
 		ID: "exchange", Summary: "Presentation Exchange 2.0 definition for older wallets", Data: rawJSON(string(data)),
 	})
 }
