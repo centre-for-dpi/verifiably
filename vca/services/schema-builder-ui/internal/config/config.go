@@ -1,80 +1,72 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package config reads the service settings from environment variables.
-// It is a minimal local stand-in for the shared services/internal/config
-// package. The orchestrator replaces it later.
+// Package config reads the schema builder settings from the environment
+// with the shared config package (ADR-014).
 package config
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
-)
 
-// Config holds every setting of the service.
-type Config struct {
-	// Listen is the address the HTTP server binds, for example :8081.
-	Listen string
-	// RegistryURL is the Connect base URL of the schema registry. The
-	// builder saves every draft there.
-	RegistryURL string
-	// RegistryTimeout bounds one call to the schema registry.
-	RegistryTimeout time.Duration
-	// CatalogURL is the Connect base URL of the DPG adapter that serves
-	// CatalogBackendService. Empty turns the catalogue import off.
-	CatalogURL string
-	// CatalogTimeout bounds one call to the DPG catalogue.
-	CatalogTimeout time.Duration
-	// PortalURL links the builder pages to the schema registry portal.
-	PortalURL string
-	// Prefix is the URL prefix of the builder pages.
-	Prefix string
-	// Issuer is the issuer identifier the preview credential carries.
-	Issuer string
-	// PDFCacheSize is the number of preview documents the cache holds.
-	PDFCacheSize int
-}
+	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+)
 
 // Prefix of every variable.
 const Prefix = "VCA_SCHEMABUILDER_"
 
+// Config holds every setting of the service.
+type Config struct {
+	// Listen is the address the HTTP server binds, for example :8081.
+	Listen string `env:"LISTEN" default:":8081"`
+	// RegistryURL is the Connect base URL of the schema registry. The
+	// builder saves every draft there.
+	RegistryURL string `env:"REGISTRY_URL" required:"true"`
+	// RegistryTimeout bounds one call to the schema registry.
+	RegistryTimeout time.Duration `env:"REGISTRY_TIMEOUT" default:"10s"`
+	// CatalogURL is the Connect base URL of the DPG adapter that serves
+	// CatalogBackendService. Empty turns the catalogue import off.
+	CatalogURL string `env:"CATALOG_URL"`
+	// CatalogTimeout bounds one call to the DPG catalogue.
+	CatalogTimeout time.Duration `env:"CATALOG_TIMEOUT" default:"10s"`
+	// PortalURL links the builder pages to the schema registry portal.
+	PortalURL string `env:"PORTAL_URL"`
+	// Prefix is the URL prefix of the builder pages.
+	Prefix string `env:"PREFIX" default:"/builder"`
+	// Issuer is the issuer identifier the preview credential carries.
+	Issuer string `env:"ISSUER"`
+	// PDFCacheSize is the number of preview documents the cache holds.
+	PDFCacheSize int `env:"PDF_CACHE_SIZE" default:"64"`
+}
+
 // Load reads the settings with getenv, for example os.Getenv.
 func Load(getenv func(string) string) (Config, error) {
-	get := func(name, def string) string {
-		if v := strings.TrimSpace(getenv(Prefix + name)); v != "" {
-			return v
+	var c Config
+	if err := sharedconfig.Load(Prefix, &c, getenv); err != nil {
+		return Config{}, err
+	}
+	return c.normalize()
+}
+
+// normalize checks the values and trims the URLs.
+func (c Config) normalize() (Config, error) {
+	c.RegistryURL = strings.TrimRight(c.RegistryURL, "/")
+	c.CatalogURL = strings.TrimRight(c.CatalogURL, "/")
+	c.Issuer = strings.TrimRight(c.Issuer, "/")
+	c.Prefix = "/" + strings.Trim(c.Prefix, "/")
+	for _, d := range []struct {
+		name  string
+		value time.Duration
+	}{
+		{"REGISTRY_TIMEOUT", c.RegistryTimeout},
+		{"CATALOG_TIMEOUT", c.CatalogTimeout},
+	} {
+		if d.value <= 0 {
+			return Config{}, fmt.Errorf("config: %s%s must be a positive duration such as 10s", Prefix, d.name)
 		}
-		return def
 	}
-	c := Config{
-		Listen:      get("LISTEN", ":8081"),
-		RegistryURL: strings.TrimRight(get("REGISTRY_URL", ""), "/"),
-		CatalogURL:  strings.TrimRight(get("CATALOG_URL", ""), "/"),
-		PortalURL:   get("PORTAL_URL", ""),
-		Prefix:      "/" + strings.Trim(get("PREFIX", "/builder"), "/"),
-		Issuer:      strings.TrimRight(get("ISSUER", ""), "/"),
-	}
-	if c.RegistryURL == "" {
-		return Config{}, fmt.Errorf("config: %sREGISTRY_URL is required", Prefix)
-	}
-	var err error
-	if c.RegistryTimeout, err = duration(get("REGISTRY_TIMEOUT", "10s"), "REGISTRY_TIMEOUT"); err != nil {
-		return Config{}, err
-	}
-	if c.CatalogTimeout, err = duration(get("CATALOG_TIMEOUT", "10s"), "CATALOG_TIMEOUT"); err != nil {
-		return Config{}, err
-	}
-	if c.PDFCacheSize, err = strconv.Atoi(get("PDF_CACHE_SIZE", "64")); err != nil || c.PDFCacheSize <= 0 {
+	if c.PDFCacheSize <= 0 {
 		return Config{}, fmt.Errorf("config: %sPDF_CACHE_SIZE must be a positive number", Prefix)
 	}
 	return c, nil
-}
-
-func duration(value, name string) (time.Duration, error) {
-	d, err := time.ParseDuration(value)
-	if err != nil || d <= 0 {
-		return 0, fmt.Errorf("config: %s%s must be a positive duration such as 10s", Prefix, name)
-	}
-	return d, nil
 }
