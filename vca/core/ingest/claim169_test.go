@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
+
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
-	"github.com/fxamacker/cbor/v2"
 )
 
 func TestDecodeClaim169(t *testing.T) {

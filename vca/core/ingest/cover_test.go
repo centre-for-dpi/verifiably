@@ -11,9 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
+
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
-	"github.com/fxamacker/cbor/v2"
 )
 
 func TestClaim169NotANumber(t *testing.T) {

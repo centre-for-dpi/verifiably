@@ -11,10 +11,11 @@ import (
 	"net/http"
 	"strings"
 
-	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
-	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 )
 
 // AdminService is the full proto service name. The Connect URL of one

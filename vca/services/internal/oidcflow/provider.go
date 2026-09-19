@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DefaultScopes are the scopes a provider gets when the record names none.

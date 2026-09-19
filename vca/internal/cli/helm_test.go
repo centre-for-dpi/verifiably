@@ -11,9 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
-	"gopkg.in/yaml.v3"
 )
 
 // chartMeta is the part of a Chart.yaml the tests read.

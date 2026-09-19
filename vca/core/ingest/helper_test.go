@@ -12,10 +12,11 @@ import (
 	"image/png"
 	"testing"
 
-	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
+
+	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 )
 
 // qrImage builds an image that holds the QR code of text.

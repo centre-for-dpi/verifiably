@@ -9,8 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"gopkg.in/yaml.v3"
+
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // portRx reads the two default port numbers out of one port line.

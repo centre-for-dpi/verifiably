@@ -13,10 +13,11 @@ package cli
 import (
 	"strings"
 
-	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
-	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // Kind is the value shape of one setting.

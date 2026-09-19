@@ -13,8 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 	"github.com/fxamacker/cbor/v2"
+
+	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 )
 
 // Claim169 is the MOSIP QR code claim key (IANA CWT claims registry).

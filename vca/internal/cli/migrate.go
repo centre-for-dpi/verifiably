@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/centre-for-dpi/vc-adapters/internal/migrate"
 	"github.com/spf13/cobra"
+
+	"github.com/centre-for-dpi/vc-adapters/internal/migrate"
 )
 
 // DefaultPgDriver is the database/sql driver the export uses when the
