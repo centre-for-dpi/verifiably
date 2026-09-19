@@ -28,8 +28,10 @@ service IngestService {
 // Carrier names how a presentation arrived (ADR-023 decision 1).
 enum Carrier {
   CARRIER_UNSPECIFIED = 0;
-  // An OID4VP response from a wallet.
-  CARRIER_OID4VP = 1;
+  // Deprecated: one value stood for both OID4VP directions. A client
+  // sends CARRIER_OID4VP_RESPONSE or CARRIER_OID4VP_REQUEST instead.
+  // The service still reads this value as an OID4VP response.
+  CARRIER_OID4VP = 1 [deprecated = true];
   // An image upload with a QR code.
   CARRIER_IMAGE = 2;
   // A PDF upload with a QR code.
@@ -42,6 +44,10 @@ enum Carrier {
   CARRIER_QR = 6;
   // The text of a MOSIP Claim 169 QR code.
   CARRIER_QR_CLAIM169 = 7;
+  // An OID4VP authorization request that the verifier made.
+  CARRIER_OID4VP_REQUEST = 8;
+  // An OID4VP response from a wallet.
+  CARRIER_OID4VP_RESPONSE = 9;
 }
 
 // DetectedType names what the decoder found inside the carrier.
@@ -74,9 +80,9 @@ message RawPresentation {
   DetectedType detected_type = 5;
   // The credentials the decoder split out of the payload.
   repeated vca.common.v1.Credential credentials = 6;
-  // The OID4VP transaction id, for CARRIER_OID4VP.
+  // The OID4VP transaction id, for an OID4VP carrier.
   string transaction_id = 7;
-  // The nonce the verifier sent, for CARRIER_OID4VP.
+  // The nonce the verifier sent, for an OID4VP carrier.
   string nonce = 8;
   // The holder key binding JWT, when the presentation has one.
   string key_binding = 9;

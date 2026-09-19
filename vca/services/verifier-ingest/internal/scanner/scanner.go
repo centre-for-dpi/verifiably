@@ -324,8 +324,10 @@ func payloadValue(payload []byte) any {
 // CarrierText returns the reader facing name of a carrier.
 func CarrierText(c ingestv1.Carrier) string {
 	switch c {
-	case ingestv1.Carrier_CARRIER_OID4VP:
-		return "OID4VP"
+	case ingestv1.Carrier_CARRIER_OID4VP, ingestv1.Carrier_CARRIER_OID4VP_RESPONSE: //nolint:staticcheck // the deprecated value stays readable
+		return "OID4VP response"
+	case ingestv1.Carrier_CARRIER_OID4VP_REQUEST:
+		return "OID4VP request"
 	case ingestv1.Carrier_CARRIER_IMAGE:
 		return "Image"
 	case ingestv1.Carrier_CARRIER_PDF:

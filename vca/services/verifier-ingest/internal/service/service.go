@@ -360,8 +360,10 @@ func ProtoFormat(name string) commonv1.Format {
 // CarrierOf returns the core carrier of a proto carrier.
 func CarrierOf(c ingestv1.Carrier) ingest.Carrier {
 	switch c {
-	case ingestv1.Carrier_CARRIER_OID4VP:
+	case ingestv1.Carrier_CARRIER_OID4VP, ingestv1.Carrier_CARRIER_OID4VP_RESPONSE: //nolint:staticcheck // the deprecated value stays readable
 		return ingest.CarrierOID4VPResponse
+	case ingestv1.Carrier_CARRIER_OID4VP_REQUEST:
+		return ingest.CarrierOID4VPRequest
 	case ingestv1.Carrier_CARRIER_IMAGE:
 		return ingest.CarrierImage
 	case ingestv1.Carrier_CARRIER_PDF:
@@ -379,11 +381,13 @@ func CarrierOf(c ingestv1.Carrier) ingest.Carrier {
 }
 
 // ProtoCarrier returns the proto carrier of a core carrier. The proto
-// has one value for both OID4VP directions.
+// has one value per OID4VP direction.
 func ProtoCarrier(c ingest.Carrier) ingestv1.Carrier {
 	switch c {
-	case ingest.CarrierOID4VPRequest, ingest.CarrierOID4VPResponse:
-		return ingestv1.Carrier_CARRIER_OID4VP
+	case ingest.CarrierOID4VPRequest:
+		return ingestv1.Carrier_CARRIER_OID4VP_REQUEST
+	case ingest.CarrierOID4VPResponse:
+		return ingestv1.Carrier_CARRIER_OID4VP_RESPONSE
 	case ingest.CarrierImage:
 		return ingestv1.Carrier_CARRIER_IMAGE
 	case ingest.CarrierPDF:

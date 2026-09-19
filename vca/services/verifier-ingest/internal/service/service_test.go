@@ -483,14 +483,15 @@ func TestReadyAndStore(t *testing.T) {
 
 func TestConversions(t *testing.T) {
 	carriers := map[ingestv1.Carrier]ingest.Carrier{
-		ingestv1.Carrier_CARRIER_OID4VP:      ingest.CarrierOID4VPResponse,
-		ingestv1.Carrier_CARRIER_IMAGE:       ingest.CarrierImage,
-		ingestv1.Carrier_CARRIER_PDF:         ingest.CarrierPDF,
-		ingestv1.Carrier_CARRIER_XML:         ingest.CarrierXML,
-		ingestv1.Carrier_CARRIER_JSON:        ingest.CarrierJSON,
-		ingestv1.Carrier_CARRIER_QR:          ingest.CarrierQR,
-		ingestv1.Carrier_CARRIER_QR_CLAIM169: ingest.CarrierClaim169,
-		ingestv1.Carrier_CARRIER_UNSPECIFIED: ingest.CarrierUnknown,
+		ingestv1.Carrier_CARRIER_OID4VP_RESPONSE: ingest.CarrierOID4VPResponse,
+		ingestv1.Carrier_CARRIER_OID4VP_REQUEST:  ingest.CarrierOID4VPRequest,
+		ingestv1.Carrier_CARRIER_IMAGE:           ingest.CarrierImage,
+		ingestv1.Carrier_CARRIER_PDF:             ingest.CarrierPDF,
+		ingestv1.Carrier_CARRIER_XML:             ingest.CarrierXML,
+		ingestv1.Carrier_CARRIER_JSON:            ingest.CarrierJSON,
+		ingestv1.Carrier_CARRIER_QR:              ingest.CarrierQR,
+		ingestv1.Carrier_CARRIER_QR_CLAIM169:     ingest.CarrierClaim169,
+		ingestv1.Carrier_CARRIER_UNSPECIFIED:     ingest.CarrierUnknown,
 	}
 	for in, want := range carriers {
 		if got := service.CarrierOf(in); got != want {
@@ -502,8 +503,8 @@ func TestConversions(t *testing.T) {
 			}
 		}
 	}
-	if service.ProtoCarrier(ingest.CarrierOID4VPRequest) != ingestv1.Carrier_CARRIER_OID4VP {
-		t.Error("both OID4VP directions share one proto value")
+	if service.CarrierOf(ingestv1.Carrier_CARRIER_OID4VP) != ingest.CarrierOID4VPResponse { //nolint:staticcheck // the deprecated value stays readable
+		t.Error("the deprecated value still reads as an OID4VP response")
 	}
 	if service.ProtoCarrier("tape") != ingestv1.Carrier_CARRIER_UNSPECIFIED {
 		t.Error("an unknown carrier is unspecified")

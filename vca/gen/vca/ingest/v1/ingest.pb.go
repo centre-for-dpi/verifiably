@@ -35,7 +35,11 @@ type Carrier int32
 
 const (
 	Carrier_CARRIER_UNSPECIFIED Carrier = 0
-	// An OID4VP response from a wallet.
+	// Deprecated: one value stood for both OID4VP directions. A client
+	// sends CARRIER_OID4VP_RESPONSE or CARRIER_OID4VP_REQUEST instead.
+	// The service still reads this value as an OID4VP response.
+	//
+	// Deprecated: Marked as deprecated in vca/ingest/v1/ingest.proto.
 	Carrier_CARRIER_OID4VP Carrier = 1
 	// An image upload with a QR code.
 	Carrier_CARRIER_IMAGE Carrier = 2
@@ -49,6 +53,10 @@ const (
 	Carrier_CARRIER_QR Carrier = 6
 	// The text of a MOSIP Claim 169 QR code.
 	Carrier_CARRIER_QR_CLAIM169 Carrier = 7
+	// An OID4VP authorization request that the verifier made.
+	Carrier_CARRIER_OID4VP_REQUEST Carrier = 8
+	// An OID4VP response from a wallet.
+	Carrier_CARRIER_OID4VP_RESPONSE Carrier = 9
 )
 
 // Enum value maps for Carrier.
@@ -62,16 +70,20 @@ var (
 		5: "CARRIER_JSON",
 		6: "CARRIER_QR",
 		7: "CARRIER_QR_CLAIM169",
+		8: "CARRIER_OID4VP_REQUEST",
+		9: "CARRIER_OID4VP_RESPONSE",
 	}
 	Carrier_value = map[string]int32{
-		"CARRIER_UNSPECIFIED": 0,
-		"CARRIER_OID4VP":      1,
-		"CARRIER_IMAGE":       2,
-		"CARRIER_PDF":         3,
-		"CARRIER_XML":         4,
-		"CARRIER_JSON":        5,
-		"CARRIER_QR":          6,
-		"CARRIER_QR_CLAIM169": 7,
+		"CARRIER_UNSPECIFIED":     0,
+		"CARRIER_OID4VP":          1,
+		"CARRIER_IMAGE":           2,
+		"CARRIER_PDF":             3,
+		"CARRIER_XML":             4,
+		"CARRIER_JSON":            5,
+		"CARRIER_QR":              6,
+		"CARRIER_QR_CLAIM169":     7,
+		"CARRIER_OID4VP_REQUEST":  8,
+		"CARRIER_OID4VP_RESPONSE": 9,
 	}
 )
 
@@ -294,9 +306,9 @@ type RawPresentation struct {
 	DetectedType DetectedType `protobuf:"varint,5,opt,name=detected_type,json=detectedType,proto3,enum=vca.ingest.v1.DetectedType" json:"detected_type,omitempty"`
 	// The credentials the decoder split out of the payload.
 	Credentials []*v1.Credential `protobuf:"bytes,6,rep,name=credentials,proto3" json:"credentials,omitempty"`
-	// The OID4VP transaction id, for CARRIER_OID4VP.
+	// The OID4VP transaction id, for an OID4VP carrier.
 	TransactionId string `protobuf:"bytes,7,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
-	// The nonce the verifier sent, for CARRIER_OID4VP.
+	// The nonce the verifier sent, for an OID4VP carrier.
 	Nonce string `protobuf:"bytes,8,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	// The holder key binding JWT, when the presentation has one.
 	KeyBinding string `protobuf:"bytes,9,opt,name=key_binding,json=keyBinding,proto3" json:"key_binding,omitempty"`
@@ -1099,17 +1111,19 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\rSTATE_PENDING\x10\x01\x12\x12\n" +
 	"\x0eSTATE_RECEIVED\x10\x02\x12\x11\n" +
 	"\rSTATE_REFUSED\x10\x03\x12\x11\n" +
-	"\rSTATE_EXPIRED\x10\x04*\xa6\x01\n" +
+	"\rSTATE_EXPIRED\x10\x04*\xe3\x01\n" +
 	"\aCarrier\x12\x17\n" +
-	"\x13CARRIER_UNSPECIFIED\x10\x00\x12\x12\n" +
-	"\x0eCARRIER_OID4VP\x10\x01\x12\x11\n" +
+	"\x13CARRIER_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x0eCARRIER_OID4VP\x10\x01\x1a\x02\b\x01\x12\x11\n" +
 	"\rCARRIER_IMAGE\x10\x02\x12\x0f\n" +
 	"\vCARRIER_PDF\x10\x03\x12\x0f\n" +
 	"\vCARRIER_XML\x10\x04\x12\x10\n" +
 	"\fCARRIER_JSON\x10\x05\x12\x0e\n" +
 	"\n" +
 	"CARRIER_QR\x10\x06\x12\x17\n" +
-	"\x13CARRIER_QR_CLAIM169\x10\a*\xc3\x01\n" +
+	"\x13CARRIER_QR_CLAIM169\x10\a\x12\x1a\n" +
+	"\x16CARRIER_OID4VP_REQUEST\x10\b\x12\x1b\n" +
+	"\x17CARRIER_OID4VP_RESPONSE\x10\t*\xc3\x01\n" +
 	"\fDetectedType\x12\x1d\n" +
 	"\x19DETECTED_TYPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18DETECTED_TYPE_CREDENTIAL\x10\x01\x12\x1e\n" +

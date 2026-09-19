@@ -172,7 +172,7 @@ func presentation(t *testing.T, onBehalfOf string) *ingestv1.RawPresentation {
 		AllowedAction: []string{"present"},
 	})
 	return &ingestv1.RawPresentation{
-		Ref: "raw-1", Carrier: ingestv1.Carrier_CARRIER_OID4VP, Nonce: "n1",
+		Ref: "raw-1", Carrier: ingestv1.Carrier_CARRIER_OID4VP_RESPONSE, Nonce: "n1",
 		ReceivedAt: timestamppb.New(testNow),
 		Credentials: []*commonv1.Credential{
 			{Format: commonv1.Format_FORMAT_LDP_VC, Payload: jsonBytes(t, subject)},
