@@ -258,10 +258,9 @@ func Parse(raw []byte) (Credential, error) {
 		return FromJWT(string(raw))
 	case FormatJSONLD, FormatJSON:
 		var m map[string]any
-		if err := json.Unmarshal(bytes.TrimSpace(raw), &m); err != nil {
-			return Credential{}, fmt.Errorf("vc: decode json credential: %w", err)
-		}
-		return FromObject(m), nil
+		// DetectFormat already parsed these bytes, so err is always nil.
+		err := json.Unmarshal(bytes.TrimSpace(raw), &m)
+		return FromObject(m), err
 	case FormatMdoc:
 		return Credential{}, fmt.Errorf("vc: mdoc credentials are not decoded by this package")
 	}

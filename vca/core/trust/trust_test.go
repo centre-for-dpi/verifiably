@@ -112,7 +112,10 @@ func TestBuildVerifyRoundTrip(t *testing.T) {
 	}
 	for _, alg := range jose.SigningAlgorithms {
 		t.Run(string(alg), func(t *testing.T) {
-			key, _ := jose.GenerateKey(alg)
+			key, err := jose.GenerateKey(alg)
+			if err != nil {
+				t.Fatalf("jose.GenerateKey: %v", err)
+			}
 			tok, err := Build(entries, key, BuildOptions{Issuer: "did:web:hub.gov", Kid: "k1", Now: now, TTL: time.Hour})
 			if err != nil {
 				t.Fatal(err)
@@ -120,11 +123,17 @@ func TestBuildVerifyRoundTrip(t *testing.T) {
 			if strings.Count(tok, ".") != 2 {
 				t.Fatal("JWT must have 3 parts")
 			}
-			hdr, _ := jose.PeekHeader(tok)
+			hdr, err := jose.PeekHeader(tok)
+			if err != nil {
+				t.Fatalf("jose.PeekHeader: %v", err)
+			}
 			if hdr.Alg != string(alg) || hdr.Typ != TypeJWT || hdr.Kid != "k1" {
 				t.Fatalf("header = %+v", hdr)
 			}
-			pub, _ := jose.PublicJWK(key, "k1")
+			pub, err := jose.PublicJWK(key, "k1")
+			if err != nil {
+				t.Fatalf("jose.PublicJWK: %v", err)
+			}
 			list, err := Verify(tok, jose.JWKS{Keys: []jose.JWK{pub}}, now.Add(30*time.Minute))
 			if err != nil {
 				t.Fatal(err)
@@ -149,12 +158,18 @@ func TestBuildVerifyRoundTrip(t *testing.T) {
 }
 
 func TestBuildDefaultsAndErrors(t *testing.T) {
-	key, _ := jose.GenerateKey(jose.ES256)
+	key, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
 	tok, err := Build(nil, key, BuildOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	claims, _ := jose.PeekPayload(tok)
+	claims, err := jose.PeekPayload(tok)
+	if err != nil {
+		t.Fatalf("jose.PeekPayload: %v", err)
+	}
 	if claims["exp"].(float64)-claims["iat"].(float64) != DefaultTTL.Seconds() {
 		t.Fatalf("default ttl: %v", claims)
 	}
@@ -167,13 +182,31 @@ func TestBuildDefaultsAndErrors(t *testing.T) {
 }
 
 func TestVerifyErrors(t *testing.T) {
-	key, _ := jose.GenerateKey(jose.ES256)
-	pub, _ := jose.PublicJWK(key, "")
+	key, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	pub, err := jose.PublicJWK(key, "")
+	if err != nil {
+		t.Fatalf("jose.PublicJWK: %v", err)
+	}
 	set := jose.JWKS{Keys: []jose.JWK{pub}}
-	other, _ := jose.GenerateKey(jose.ES256)
-	wrongKey, _ := Build(nil, other, BuildOptions{})
-	noExp, _ := jose.Sign(key, "", TypeJWT, map[string]any{"iss": "x"})
-	badClaims, _ := jose.Sign(key, "", TypeJWT, map[string]any{"exp": "soon"})
+	other, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	wrongKey, err := Build(nil, other, BuildOptions{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	noExp, err := jose.Sign(key, "", TypeJWT, map[string]any{"iss": "x"})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
+	badClaims, err := jose.Sign(key, "", TypeJWT, map[string]any{"exp": "soon"})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
 	cases := []struct{ name, tok string }{
 		{"malformed", "not.a.valid.jwt"},
 		{"wrong key", wrongKey},
@@ -188,18 +221,32 @@ func TestVerifyErrors(t *testing.T) {
 		})
 	}
 	// Zero now uses the wall clock.
-	fresh, _ := Build(nil, key, BuildOptions{})
+	fresh, err := Build(nil, key, BuildOptions{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
 	if _, err := Verify(fresh, set, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func FuzzParseList(f *testing.F) {
-	key, _ := jose.GenerateKey(jose.ES256)
-	pub, _ := jose.PublicJWK(key, "")
-	tok, _ := Build([]Entry{{DID: "did:web:a"}}, key, BuildOptions{Now: now})
+	key, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		f.Fatalf("jose.GenerateKey: %v", err)
+	}
+	pub, err := jose.PublicJWK(key, "")
+	if err != nil {
+		f.Fatalf("jose.PublicJWK: %v", err)
+	}
+	tok, err := Build([]Entry{{DID: "did:web:a"}}, key, BuildOptions{Now: now})
+	if err != nil {
+		f.Fatalf("Build: %v", err)
+	}
 	f.Add(tok)
 	f.Fuzz(func(t *testing.T, tok string) {
-		_, _ = Verify(tok, jose.JWKS{Keys: []jose.JWK{pub}}, now)
+		if _, err := Verify(tok, jose.JWKS{Keys: []jose.JWK{pub}}, now); err != nil && err.Error() == "" {
+			t.Fatalf("Verify must describe the failure")
+		}
 	})
 }

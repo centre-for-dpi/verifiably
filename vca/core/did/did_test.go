@@ -88,16 +88,28 @@ func TestResolveWeb(t *testing.T) {
 	if doc.ID != "did:web:example.com" || len(doc.VerificationMethod) != 1 || doc.VerificationMethod[0].PublicKeyJWK["kty"] != "EC" {
 		t.Fatalf("doc = %+v", doc)
 	}
-	_, _ = r.Resolve(ctx, "did:web:example.com")
+	_, errAssign := r.Resolve(ctx, "did:web:example.com")
+	if errAssign != nil {
+		t.Fatalf("r.Resolve: %v", errAssign)
+	}
 	if calls != 2 {
 		t.Fatalf("no cache: expected 2 fetches, got %d", calls)
 	}
 
 	calls = 0
 	cached := NewResolver(fetcher(sampleDoc, nil, &calls), &memCache{m: map[string]Document{}})
-	_, _ = cached.Resolve(ctx, "did:web:a.example.com")
-	_, _ = cached.Resolve(ctx, "did:web:a.example.com")
-	_, _ = cached.Resolve(ctx, "did:web:b.example.com")
+	_, errAssign2 := cached.Resolve(ctx, "did:web:a.example.com")
+	if errAssign2 != nil {
+		t.Fatalf("cached.Resolve: %v", errAssign2)
+	}
+	_, errAssign3 := cached.Resolve(ctx, "did:web:a.example.com")
+	if errAssign3 != nil {
+		t.Fatalf("cached.Resolve: %v", errAssign3)
+	}
+	_, errAssign4 := cached.Resolve(ctx, "did:web:b.example.com")
+	if errAssign4 != nil {
+		t.Fatalf("cached.Resolve: %v", errAssign4)
+	}
 	if calls != 2 {
 		t.Fatalf("cache: expected 2 fetches, got %d", calls)
 	}
@@ -132,7 +144,10 @@ func TestResolveWeb(t *testing.T) {
 }
 
 func TestDocumentKey(t *testing.T) {
-	doc, _ := ParseDocument([]byte(sampleDoc))
+	doc, err := ParseDocument([]byte(sampleDoc))
+	if err != nil {
+		t.Fatalf("ParseDocument: %v", err)
+	}
 	for _, id := range []string{"", "did:web:example.com#key-1", "#key-1", "key-1"} {
 		if vm, ok := doc.Key(id); !ok || vm.ID != "did:web:example.com#key-1" {
 			t.Fatalf("Key(%q) = %+v, %v", id, vm, ok)
@@ -151,16 +166,28 @@ func TestDocumentKey(t *testing.T) {
 }
 
 func TestPublicKey(t *testing.T) {
-	edPub, _, _ := ed25519.GenerateKey(rand.Reader)
-	jwk, _ := jose.PublicJWK(edPub, "")
-	m, _ := jose.JWKToMap(jwk)
+	edPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", err)
+	}
+	jwk, err := jose.PublicJWK(edPub, "")
+	if err != nil {
+		t.Fatalf("jose.PublicJWK: %v", err)
+	}
+	m, err := jose.JWKToMap(jwk)
+	if err != nil {
+		t.Fatalf("jose.JWKToMap: %v", err)
+	}
 	if k, err := PublicKey(VerificationMethod{PublicKeyJWK: m}); err != nil || !bytes.Equal(k.(ed25519.PublicKey), edPub) {
 		t.Fatalf("jwk: %v", err)
 	}
 	if _, err := PublicKey(VerificationMethod{PublicKeyJWK: map[string]any{"kty": "EC"}}); err == nil {
 		t.Fatal("bad jwk must fail")
 	}
-	didKey, _ := FromPublicKey(edPub)
+	didKey, err := FromPublicKey(edPub)
+	if err != nil {
+		t.Fatalf("FromPublicKey: %v", err)
+	}
 	mb := strings.TrimPrefix(didKey, "did:key:")
 	if k, err := PublicKey(VerificationMethod{PublicKeyMultibase: mb}); err != nil || !bytes.Equal(k.(ed25519.PublicKey), edPub) {
 		t.Fatalf("multibase: %v", err)
@@ -172,8 +199,14 @@ func TestPublicKey(t *testing.T) {
 
 // Regression: legacy ldproof_test pinned did:key:z6Mk for Ed25519.
 func TestDIDKeyRoundTrip(t *testing.T) {
-	edPub, _, _ := ed25519.GenerateKey(rand.Reader)
-	ec, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	edPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", err)
+	}
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
 	edDID, err := FromPublicKey(edPub)
 	if err != nil || !strings.HasPrefix(edDID, "did:key:z6Mk") {
 		t.Fatalf("ed25519 did:key = %q, %v", edDID, err)
@@ -196,7 +229,10 @@ func TestDIDKeyRoundTrip(t *testing.T) {
 		}
 	}
 	vm, _ := must(KeyDocument(ecDID)).Key("")
-	k, _ := PublicKey(vm)
+	k, err := PublicKey(vm)
+	if err != nil {
+		t.Fatalf("PublicKey: %v", err)
+	}
 	if !k.(*ecdsa.PublicKey).Equal(&ec.PublicKey) {
 		t.Fatal("P-256 key did not round trip")
 	}
@@ -205,7 +241,10 @@ func TestDIDKeyRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
 	if _, err := FromPublicKey(&p384.PublicKey); err == nil {
 		t.Fatal("P-384 must fail")
 	}
@@ -230,9 +269,18 @@ func must(doc Document, err error) Document {
 
 // Regression: legacy TestNewSelfSignedKeyDIDJWKRoundTrip.
 func TestDIDJWKRoundTrip(t *testing.T) {
-	ec, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	jwk, _ := jose.PublicJWK(&ec.PublicKey, "")
-	m, _ := jose.JWKToMap(jwk)
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
+	jwk, err := jose.PublicJWK(&ec.PublicKey, "")
+	if err != nil {
+		t.Fatalf("jose.PublicJWK: %v", err)
+	}
+	m, err := jose.JWKToMap(jwk)
+	if err != nil {
+		t.Fatalf("jose.JWKToMap: %v", err)
+	}
 	d, err := FromJWK(m)
 	if err != nil || !strings.HasPrefix(d, "did:jwk:") {
 		t.Fatalf("FromJWK = %q, %v", d, err)
@@ -265,7 +313,10 @@ func TestDIDJWKRoundTrip(t *testing.T) {
 	if _, err := FromJWK(map[string]any{"kty": "EC"}); err == nil {
 		t.Fatal("invalid jwk must fail")
 	}
-	edPub, edPriv, _ := ed25519.GenerateKey(rand.Reader)
+	edPub, edPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", err)
+	}
 	privRaw := `{"kty":"OKP","crv":"Ed25519","x":"` + base64.RawURLEncoding.EncodeToString(edPub) + `","d":"` + base64.RawURLEncoding.EncodeToString(edPriv.Seed()) + `"}`
 	bad := []string{
 		"did:web:x",
@@ -311,21 +362,35 @@ func FuzzParseDocument(f *testing.F) {
 			return
 		}
 		for _, vm := range doc.VerificationMethod {
-			_, _ = PublicKey(vm)
+			if _, err := PublicKey(vm); err != nil && err.Error() == "" {
+				t.Fatalf("PublicKey must describe the failure")
+			}
 		}
 	})
 }
 
 func FuzzParseDID(f *testing.F) {
-	edPub, _, _ := ed25519.GenerateKey(rand.Reader)
-	d, _ := FromPublicKey(edPub)
+	edPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		f.Fatalf("ed25519.GenerateKey: %v", err)
+	}
+	d, err := FromPublicKey(edPub)
+	if err != nil {
+		f.Fatalf("FromPublicKey: %v", err)
+	}
 	f.Add(d)
 	f.Add("did:jwk:eyJrdHkiOiJPS1AifQ")
 	f.Add("did:web:example.com%3A8443:a:b")
 	f.Fuzz(func(t *testing.T, s string) {
-		_, _ = KeyDocument(s)
-		_, _ = JWKDocument(s)
-		_, _ = WebURL(s)
+		if _, err := KeyDocument(s); err != nil && err.Error() == "" {
+			t.Fatalf("KeyDocument must describe the failure")
+		}
+		if _, err := JWKDocument(s); err != nil && err.Error() == "" {
+			t.Fatalf("JWKDocument must describe the failure")
+		}
+		if _, err := WebURL(s); err != nil && err.Error() == "" {
+			t.Fatalf("WebURL must describe the failure")
+		}
 		if b, err := base58Decode(strings.TrimPrefix(s, "z")); err == nil && len(s) > 1 {
 			if base58Encode(b) != strings.TrimPrefix(s, "z") {
 				t.Fatalf("base58 round trip mismatch for %q", s)

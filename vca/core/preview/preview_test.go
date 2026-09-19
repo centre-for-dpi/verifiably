@@ -102,7 +102,10 @@ func TestSampleData(t *testing.T) {
 
 func TestPreviewCredentialFormats(t *testing.T) {
 	s := schema()
-	sample, _ := SampleData(degree)
+	sample, err := SampleData(degree)
+	if err != nil {
+		t.Fatalf("SampleData: %v", err)
+	}
 	sample["extra"] = "e"
 	sample["iss"] = "spoof"
 	now := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -148,7 +151,9 @@ func TestPreviewCredentialFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 	var payload map[string]any
-	_ = json.Unmarshal([]byte(sd.CredentialJSON), &payload)
+	if err := json.Unmarshal([]byte(sd.CredentialJSON), &payload); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	if payload["vct"] != "UniversityDegree" || payload["iss"] != "did:web:issuer.example" || payload["iat"] != float64(DefaultNow.Unix()) || payload["exp"] == nil {
 		t.Fatalf("sd-jwt: %v", payload)
 	}
@@ -168,7 +173,9 @@ func TestPreviewCredentialFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 	var doc map[string]any
-	_ = json.Unmarshal([]byte(mdoc.CredentialJSON), &doc)
+	if err := json.Unmarshal([]byte(mdoc.CredentialJSON), &doc); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	if doc["docType"] != "UniversityDegree" || doc["validityInfo"].(map[string]any)["validUntil"] != nil {
 		t.Fatalf("mdoc: %v", doc)
 	}
@@ -214,7 +221,10 @@ func TestStringify(t *testing.T) {
 
 func TestPDF(t *testing.T) {
 	s := schema()
-	sample, _ := SampleData(degree)
+	sample, err := SampleData(degree)
+	if err != nil {
+		t.Fatalf("SampleData: %v", err)
+	}
 	sample["name"] = strings.Repeat("word ", 40) + "(end)\\"
 	sample["long"] = strings.Repeat("x", 200) + "é€"
 	p, err := PreviewCredential(s, sample, Options{})

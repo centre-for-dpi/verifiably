@@ -48,12 +48,20 @@ func TestEncodeDecodeJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	var want, got any
-	_ = json.Unmarshal(vc, &want)
+	if err := json.Unmarshal(vc, &want); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	if err := json.Unmarshal(dec, &got); err != nil {
 		t.Fatalf("decoded is not JSON: %s", dec)
 	}
-	wb, _ := json.Marshal(want)
-	gb, _ := json.Marshal(got)
+	wb, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	gb, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
 	if !bytes.Equal(wb, gb) {
 		t.Fatalf("round trip mismatch:\n%s\n%s", wb, gb)
 	}
@@ -78,8 +86,13 @@ func deflate(t *testing.T, b []byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	w := zlib.NewWriter(&buf)
-	_, _ = w.Write(b)
-	_ = w.Close()
+	_, errAssign := w.Write(b)
+	if errAssign != nil {
+		t.Fatalf("w.Write: %v", errAssign)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("w.Close: %v", err)
+	}
 	return buf.Bytes()
 }
 
@@ -106,7 +119,10 @@ func TestDecodeErrors(t *testing.T) {
 }
 
 func FuzzParseDecode(f *testing.F) {
-	enc, _ := Encode([]byte(`{"a":[1,2,{"b":null}]}`))
+	enc, err := Encode([]byte(`{"a":[1,2,{"b":null}]}`))
+	if err != nil {
+		f.Fatalf("Encode: %v", err)
+	}
 	f.Add(enc)
 	f.Add("%69 VD92EX0")
 	f.Fuzz(func(t *testing.T, s string) {
