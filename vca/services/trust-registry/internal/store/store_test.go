@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/entry"
 )
 
@@ -19,7 +20,7 @@ func issuer(did string) entry.Entry {
 }
 
 func TestMemoryLifecycle(t *testing.T) {
-	s, err := Open(Memory())
+	s, err := Open(sharedstore.MemoryDoc())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +70,14 @@ func TestMemoryLifecycle(t *testing.T) {
 
 func TestFilePersists(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "trust.json")
-	s, err := Open(File(path))
+	s, err := Open(sharedstore.FileDoc(path))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.Upsert(issuer("did:web:a"), t0); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Open(File(path))
+	again, err := Open(sharedstore.FileDoc(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,27 +94,18 @@ func TestFileErrors(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "bad.json"), []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(File(filepath.Join(dir, "bad.json"))); err == nil {
+	if _, err := Open(sharedstore.FileDoc(filepath.Join(dir, "bad.json"))); err == nil {
 		t.Fatal("bad json")
 	}
 	if err := os.WriteFile(filepath.Join(dir, "null.json"), []byte(`{"revision":2}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(File(filepath.Join(dir, "null.json")))
+	s, err := Open(sharedstore.FileDoc(filepath.Join(dir, "null.json")))
 	if err != nil || s.Revision() != 2 || len(s.List()) != 0 {
 		t.Fatal("nil entries map")
 	}
-	if _, err := Open(File(dir)); err == nil {
+	if _, err := Open(sharedstore.FileDoc(dir)); err == nil {
 		t.Fatal("read a directory")
-	}
-	if err := File(filepath.Join(dir, "missing", "x.json")).Save([]byte("{}")); err == nil {
-		t.Fatal("write into a missing directory")
-	}
-	if err := os.Mkdir(filepath.Join(dir, "target.json"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := File(filepath.Join(dir, "target.json")).Save([]byte("{}")); err == nil {
-		t.Fatal("rename over a directory")
 	}
 }
 

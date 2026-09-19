@@ -183,3 +183,12 @@ func h2cProtocols() *http.Protocols {
 	p.SetUnencryptedHTTP2(true)
 	return &p
 }
+
+func TestReadyMessage(t *testing.T) {
+	h := Handler(Options{ReadyMessage: func() string { return "ok providers=2" }})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != 200 || rec.Body.String() != "ok providers=2" {
+		t.Fatalf("readyz: %d %q", rec.Code, rec.Body.String())
+	}
+}

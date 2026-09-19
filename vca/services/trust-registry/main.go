@@ -12,13 +12,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/config"
-	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/serve"
 )
 
 func main() {
@@ -49,7 +48,7 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 	if healthcheck {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		return serve.Healthcheck(ctx, "http://127.0.0.1"+portOf(cfg.Listen)+"/readyz")
+		return serve.Healthcheck(ctx, cfg.Listen)
 	}
 	log := slog.New(slog.NewJSONHandler(stdout, nil))
 	a, err := app.Build(cfg, app.Deps{Log: log})
@@ -58,14 +57,10 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	log.Info("listening", "addr", cfg.Listen)
-	return serve.New(cfg.Listen, a.Mux, a.Service.Ready).Run(ctx)
-}
-
-// portOf returns the ":port" part of a listen address.
-func portOf(listen string) string {
-	if i := strings.LastIndex(listen, ":"); i >= 0 {
-		return listen[i:]
-	}
-	return ":8080"
+	return serve.Run(ctx, serve.Options{
+		Listen:  cfg.Listen,
+		Handler: a.Mux,
+		Ready:   a.Service.Ready,
+		Log:     log,
+	})
 }

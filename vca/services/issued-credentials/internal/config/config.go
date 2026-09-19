@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package config reads the service settings from environment variables.
-// It is a minimal local stand-in for the shared services/internal/config
-// package. The orchestrator replaces it later.
+// Package config reads the issued credentials settings from the
+// environment with the shared config package (ADR-017).
 package config
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
+	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/retention"
 )
 
@@ -20,93 +19,71 @@ const Prefix = "VCA_ISSUED_"
 // Config holds every setting of the service.
 type Config struct {
 	// Listen is the address the HTTP server binds, for example :8080.
-	Listen string
+	Listen string `env:"LISTEN" default:":8080"`
 	// StoreFile is the JSON file of the log. Empty keeps the log in
 	// memory, so a restart loses it.
-	StoreFile string
+	StoreFile string `env:"STORE_FILE"`
 	// Salt keys the one way subject reference (ADR-017 decision 2).
-	Salt string
+	Salt string `env:"SALT" secret:"true"`
 	// SaltFile holds the salt when Salt is empty.
-	SaltFile string
+	SaltFile string `env:"SALT_FILE"`
 	// HeadKeyFile is the PKCS 8 PEM file of the head signing key. Empty
 	// makes the service generate a key at start.
-	HeadKeyFile string
+	HeadKeyFile string `env:"HEAD_KEY_FILE"`
 	// HeadIssuer names the deployment in the signed head.
-	HeadIssuer string
+	HeadIssuer string `env:"HEAD_ISSUER"`
 	// HeadPeriod is the time between two signatures of an unchanged tip.
-	HeadPeriod time.Duration
-	// Retention holds the per schema retention rules
+	HeadPeriod time.Duration `env:"HEAD_PERIOD" default:"24h"`
+	// RetentionRules holds the per schema retention rules
 	// (ADR-017 decision 5).
-	Retention retention.Policy
+	RetentionRules string `env:"RETENTION"`
 	// PruneInterval is the time between two prune runs. Zero turns the
 	// scheduled job off.
-	PruneInterval time.Duration
+	PruneInterval time.Duration `env:"PRUNE_INTERVAL" default:"24h"`
 	// StatusURL is the base URL of the status service. Empty rejects
 	// every status change.
-	StatusURL string
+	StatusURL string `env:"STATUS_URL"`
 	// StatusTimeout bounds one status service call.
-	StatusTimeout time.Duration
+	StatusTimeout time.Duration `env:"STATUS_TIMEOUT" default:"10s"`
 	// PageSizeMax caps the page size of List and Search.
-	PageSizeMax int
+	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+
+	// Retention is the parsed form of RetentionRules.
+	Retention retention.Policy
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
 func Load(getenv func(string) string) (Config, error) {
-	get := func(name, def string) string {
-		if v := strings.TrimSpace(getenv(Prefix + name)); v != "" {
-			return v
-		}
-		return def
+	var c Config
+	if err := sharedconfig.Load(Prefix, &c, getenv); err != nil {
+		return Config{}, err
 	}
-	c := Config{
-		Listen:      get("LISTEN", ":8080"),
-		StoreFile:   get("STORE_FILE", ""),
-		Salt:        get("SALT", ""),
-		SaltFile:    get("SALT_FILE", ""),
-		HeadKeyFile: get("HEAD_KEY_FILE", ""),
-		HeadIssuer:  get("HEAD_ISSUER", ""),
-		StatusURL:   strings.TrimRight(get("STATUS_URL", ""), "/"),
-	}
+	return c.normalize()
+}
+
+// normalize checks the values and fills the derived fields.
+func (c Config) normalize() (Config, error) {
+	c.StatusURL = strings.TrimRight(c.StatusURL, "/")
 	var err error
-	if c.Retention, err = retention.Parse(get("RETENTION", "")); err != nil {
+	if c.Retention, err = retention.Parse(c.RetentionRules); err != nil {
 		return Config{}, fmt.Errorf("config: %sRETENTION: %w", Prefix, err)
 	}
-	if c.HeadPeriod, err = duration(get("HEAD_PERIOD", "24h"), "HEAD_PERIOD"); err != nil {
-		return Config{}, err
+	for _, d := range []struct {
+		name  string
+		value time.Duration
+	}{
+		{"HEAD_PERIOD", c.HeadPeriod},
+		{"STATUS_TIMEOUT", c.StatusTimeout},
+	} {
+		if d.value <= 0 {
+			return Config{}, fmt.Errorf("config: %s%s must be a positive duration such as 24h", Prefix, d.name)
+		}
 	}
-	if c.StatusTimeout, err = duration(get("STATUS_TIMEOUT", "10s"), "STATUS_TIMEOUT"); err != nil {
-		return Config{}, err
+	if c.PruneInterval < 0 {
+		return Config{}, fmt.Errorf("config: %sPRUNE_INTERVAL must be a duration such as 24h, or 0 to turn the job off", Prefix)
 	}
-	if c.PruneInterval, err = interval(get("PRUNE_INTERVAL", "24h"), "PRUNE_INTERVAL"); err != nil {
-		return Config{}, err
-	}
-	if c.PageSizeMax, err = count(get("PAGE_SIZE_MAX", "50"), "PAGE_SIZE_MAX"); err != nil {
-		return Config{}, err
+	if c.PageSizeMax <= 0 {
+		return Config{}, fmt.Errorf("config: %sPAGE_SIZE_MAX must be a positive number", Prefix)
 	}
 	return c, nil
-}
-
-func count(value, name string) (int, error) {
-	v, err := strconv.Atoi(value)
-	if err != nil || v <= 0 {
-		return 0, fmt.Errorf("config: %s%s must be a positive number", Prefix, name)
-	}
-	return v, nil
-}
-
-func duration(value, name string) (time.Duration, error) {
-	d, err := time.ParseDuration(value)
-	if err != nil || d <= 0 {
-		return 0, fmt.Errorf("config: %s%s must be a positive duration such as 24h", Prefix, name)
-	}
-	return d, nil
-}
-
-// interval reads a duration that may be zero. Zero turns a job off.
-func interval(value, name string) (time.Duration, error) {
-	d, err := time.ParseDuration(value)
-	if err != nil || d < 0 {
-		return 0, fmt.Errorf("config: %s%s must be a duration such as 24h, or 0 to turn the job off", Prefix, name)
-	}
-	return d, nil
 }

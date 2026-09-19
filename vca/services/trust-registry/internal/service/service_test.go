@@ -17,6 +17,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/dedi"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/etsi"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/keys"
@@ -49,10 +50,10 @@ type fixture struct {
 	ring  *keys.Ring
 }
 
-func newFixture(t *testing.T, backend store.Backend, publishers ...publish.Publisher) fixture {
+func newFixture(t *testing.T, backend sharedstore.Document, publishers ...publish.Publisher) fixture {
 	t.Helper()
 	if backend == nil {
-		backend = store.Memory()
+		backend = sharedstore.MemoryDoc()
 	}
 	st, err := store.Open(backend)
 	if err != nil {
@@ -111,7 +112,7 @@ func TestNewErrors(t *testing.T) {
 	if _, err := New(Options{}); err == nil {
 		t.Fatal("missing options")
 	}
-	st, _ := store.Open(store.Memory())
+	st, _ := store.Open(sharedstore.MemoryDoc())
 	k, _ := keys.Generate(jose.ES256, t0)
 	ring, _ := keys.NewRing(k)
 	bad := failing{method: "etsi", publishErr: errors.New("no")}
@@ -376,7 +377,7 @@ func TestStoreFailures(t *testing.T) {
 
 func TestRepublishFailures(t *testing.T) {
 	ctx := context.Background()
-	st, _ := store.Open(store.Memory())
+	st, _ := store.Open(sharedstore.MemoryDoc())
 	k, _ := keys.Generate(jose.ES256, t0)
 	ring, _ := keys.NewRing(k)
 	p := &togglePublisher{}

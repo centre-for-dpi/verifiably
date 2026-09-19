@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/record"
 )
 
@@ -25,7 +26,7 @@ func fixedID(id string) func(string) string {
 	return func(string) string { return id }
 }
 
-func open(t *testing.T, b Backend, opts Options) *Store {
+func open(t *testing.T, b sharedstore.Document, opts Options) *Store {
 	t.Helper()
 	s, err := Open(b, opts)
 	if err != nil {
@@ -49,7 +50,7 @@ func TestRandomID(t *testing.T) {
 }
 
 func TestCreateVersionsAndTransitions(t *testing.T) {
-	s := open(t, Memory(), Options{NewID: fixedID("degree")})
+	s := open(t, sharedstore.MemoryDoc(), Options{NewID: fixedID("degree")})
 	r, err := s.Create(sample("Degree"), now)
 	if err != nil {
 		t.Fatal(err)
@@ -116,12 +117,12 @@ func TestCreateVersionsAndTransitions(t *testing.T) {
 }
 
 func TestCreateRetriesBadIDs(t *testing.T) {
-	s := open(t, Memory(), Options{NewID: fixedID("Not Valid")})
+	s := open(t, sharedstore.MemoryDoc(), Options{NewID: fixedID("Not Valid")})
 	r, err := s.Create(sample("Degree"), now)
 	if err != nil || !record.ValidID(r.ID) {
 		t.Fatalf("retry %+v %v", r, err)
 	}
-	s = open(t, Memory(), Options{NewID: fixedID("fixed")})
+	s = open(t, sharedstore.MemoryDoc(), Options{NewID: fixedID("fixed")})
 	if _, err := s.Create(sample("A"), now); err != nil {
 		t.Fatal(err)
 	}
@@ -132,41 +133,25 @@ func TestCreateRetriesBadIDs(t *testing.T) {
 
 func TestFileBackendRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "schemas.json")
-	s := open(t, File(path), Options{NewID: fixedID("degree")})
+	s := open(t, sharedstore.FileDoc(path), Options{NewID: fixedID("degree")})
 	if _, err := s.Create(sample("Degree"), now); err != nil {
 		t.Fatal(err)
 	}
-	again := open(t, File(path), Options{})
+	again := open(t, sharedstore.FileDoc(path), Options{})
 	if got, ok := again.Get("degree", 1); !ok || got.Type != "Degree" || again.Revision() != 1 {
 		t.Fatal("reload")
 	}
 	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(File(path), Options{}); err == nil {
+	if _, err := Open(sharedstore.FileDoc(path), Options{}); err == nil {
 		t.Fatal("bad document must fail")
 	}
 	if err := os.WriteFile(path, []byte(`{"revision": 3}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s := open(t, File(path), Options{}); s.Revision() != 3 || len(s.All()) != 0 {
+	if s := open(t, sharedstore.FileDoc(path), Options{}); s.Revision() != 3 || len(s.All()) != 0 {
 		t.Fatal("nil schemas map")
-	}
-	dir := t.TempDir()
-	if _, _, err := File(dir).Load(); err == nil {
-		t.Fatal("directory read must fail")
-	}
-	if err := File(filepath.Join(dir, "missing", "x.json")).Save([]byte("{}")); err == nil {
-		t.Fatal("write to a missing directory must fail")
-	}
-	if err := File(filepath.Join(dir, "d")).Save([]byte("{}")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, "d2"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := File(filepath.Join(dir, "d2")).Save([]byte("{}")); err == nil {
-		t.Fatal("rename over a directory must fail")
 	}
 }
 

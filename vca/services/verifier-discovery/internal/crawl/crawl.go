@@ -18,11 +18,11 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/catalog"
-	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/fetch"
 )
 
 // PageSize is the page size of the trust list call.
@@ -39,7 +39,7 @@ type Writer interface {
 
 // Getter fetches one document.
 type Getter interface {
-	Get(ctx context.Context, url string) (fetch.Doc, error)
+	Get(ctx context.Context, url string) (fetchguard.Doc, error)
 	Forget(url string)
 }
 

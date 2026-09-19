@@ -17,6 +17,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/dedi"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/etsi"
@@ -68,9 +69,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	backend := store.Memory()
+	backend := sharedstore.MemoryDoc()
 	if cfg.StoreFile != "" {
-		backend = store.File(cfg.StoreFile)
+		backend = sharedstore.FileDoc(cfg.StoreFile)
 	}
 	st, err := store.Open(backend)
 	if err != nil {

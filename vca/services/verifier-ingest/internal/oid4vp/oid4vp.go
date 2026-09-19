@@ -18,12 +18,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -135,38 +135,23 @@ type Allowlist struct {
 	AllowPlainHTTP bool
 }
 
-// Check reads the URL and reports whether the service may fetch it.
-func (a Allowlist) Check(raw string) (*url.URL, error) {
+// Check reads the URL and reports whether the service may fetch it. It
+// uses the shared guard of core/fetchguard (ADR-002 decision 7). The
+// host allowlist is the control of this service, so the guard allows a
+// private address of an allowed host.
+func (a Allowlist) Check(ctx context.Context, raw string) (*url.URL, error) {
 	if len(a.Hosts) == 0 {
 		return nil, fmt.Errorf("%w: no host is allowed, set the allowed hosts first", ErrRefused)
 	}
-	u, err := url.Parse(strings.TrimSpace(raw))
+	u, err := fetchguard.Guard{
+		AllowedHosts:        a.Hosts,
+		AllowPlainHTTP:      a.AllowPlainHTTP,
+		AllowPrivateNetwork: true,
+	}.Check(ctx, raw)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s is not a URL", ErrRefused, raw)
+		return nil, fmt.Errorf("%w: %w", ErrRefused, err)
 	}
-	switch u.Scheme {
-	case "https":
-	case "http":
-		if !a.AllowPlainHTTP {
-			return nil, fmt.Errorf("%w: %s is not https", ErrRefused, raw)
-		}
-	default:
-		return nil, fmt.Errorf("%w: the scheme %q is not http or https", ErrRefused, u.Scheme)
-	}
-	if u.User != nil {
-		return nil, fmt.Errorf("%w: a URL with a user name is not allowed", ErrRefused)
-	}
-	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
-	if host == "" {
-		return nil, fmt.Errorf("%w: the URL has no host", ErrRefused)
-	}
-	for _, allowed := range a.Hosts {
-		allowed = strings.ToLower(strings.TrimSpace(allowed))
-		if allowed == host || (strings.HasPrefix(allowed, ".") && strings.HasSuffix(host, allowed)) {
-			return u, nil
-		}
-	}
-	return nil, fmt.Errorf("%w: the host %q is not on the allowed list", ErrRefused, host)
+	return u, nil
 }
 
 // Fetcher reads a request object from an allowed host.
@@ -183,43 +168,28 @@ type Fetcher struct {
 
 // Fetch reads the request object at raw.
 func (f Fetcher) Fetch(ctx context.Context, raw string) (string, error) {
-	u, err := f.Allow.Check(raw)
-	if err != nil {
+	if _, err := f.Allow.Check(ctx, raw); err != nil {
 		return "", err
-	}
-	client := f.Client
-	if client == nil {
-		timeout := f.Timeout
-		if timeout <= 0 {
-			timeout = 10 * time.Second
-		}
-		client = &http.Client{Timeout: timeout}
 	}
 	limit := f.MaxBytes
 	if limit <= 0 {
 		limit = 128 << 10
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	doc, err := fetchguard.New(fetchguard.Options{
+		Guard: fetchguard.Guard{
+			AllowedHosts:        f.Allow.Hosts,
+			AllowPlainHTTP:      f.Allow.AllowPlainHTTP,
+			AllowPrivateNetwork: true,
+		},
+		Client:   f.Client,
+		Timeout:  f.Timeout,
+		MaxBytes: limit,
+		Accept:   MediaTypeRequestObject + ", application/jwt",
+	}).Get(ctx, raw)
 	if err != nil {
 		return "", fmt.Errorf("oid4vp: %w", err)
 	}
-	req.Header.Set("Accept", MediaTypeRequestObject+", application/jwt")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("oid4vp: read %s: %w", u, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("oid4vp: %s answered %d", u, resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
-	if err != nil {
-		return "", fmt.Errorf("oid4vp: read %s: %w", u, err)
-	}
-	if len(body) > limit {
-		return "", fmt.Errorf("oid4vp: the request object at %s is larger than %d bytes", u, limit)
-	}
-	return strings.TrimSpace(string(body)), nil
+	return strings.TrimSpace(string(doc.Body)), nil
 }
 
 // ReadRequestObject reads the claims of a request object. It does not

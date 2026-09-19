@@ -27,12 +27,6 @@ func freePort(t *testing.T) string {
 	return addr
 }
 
-func TestPortOf(t *testing.T) {
-	if portOf(":8080") != ":8080" || portOf("127.0.0.1:9") != ":9" || portOf("bad") != ":8080" {
-		t.Fatal("portOf")
-	}
-}
-
 func TestRunFlagsAndConfigErrors(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := run(context.Background(), []string{"-nope"}, env(nil), &out, &errOut); code != 2 {

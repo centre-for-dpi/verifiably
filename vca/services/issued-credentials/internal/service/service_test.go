@@ -15,6 +15,7 @@ import (
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/head"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/record"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/retention"
@@ -49,7 +50,7 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	st, err := store.Open(store.Memory())
+	st, err := store.Open(sharedstore.MemoryDoc())
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -360,7 +361,7 @@ func TestRevokeReportsAStatusServiceFailure(t *testing.T) {
 }
 
 func TestRevokeWithoutAStatusClient(t *testing.T) {
-	st, err := store.Open(store.Memory())
+	st, err := store.Open(sharedstore.MemoryDoc())
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -473,7 +474,7 @@ func TestExportEncodings(t *testing.T) {
 }
 
 func TestExportWritesEveryChunk(t *testing.T) {
-	st, err := store.Open(store.Memory())
+	st, err := store.Open(sharedstore.MemoryDoc())
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

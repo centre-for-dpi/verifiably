@@ -15,6 +15,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
@@ -29,7 +30,7 @@ var now = time.Date(2024, 1, 31, 10, 0, 0, 0, time.UTC)
 func registry(t *testing.T) (*service.Service, string) {
 	t.Helper()
 	n := 0
-	st, err := store.Open(store.Memory(), store.Options{NewID: func(string) string {
+	st, err := store.Open(sharedstore.MemoryDoc(), store.Options{NewID: func(string) string {
 		n++
 		return "degree-" + string(rune('a'+n-1))
 	}})

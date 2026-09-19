@@ -112,7 +112,7 @@ in a test network.
 | Package | Content |
 |---|---|
 | `internal/entry` | The canonical entry, validation, proto conversion, and lookup evaluation. |
-| `internal/store` | The versioned store with memory and file backends. |
+| `internal/store` | The versioned store over the shared store document. |
 | `internal/keys` | The key ring with `kid`, rotation, and JWKS. |
 | `internal/publish` | The `TrustListPublisher` interface and the published snapshot. |
 | `internal/etsi` | The etsi publisher and the TS 119 612 XML import. |
@@ -121,4 +121,4 @@ in a test network.
 | `internal/httpapi` | The plain HTTP endpoints with `ETag` and cache headers. |
 | `internal/service` | The Connect handler of `TrustService`. |
 | `internal/app` | The wiring from configuration to handler. |
-| `internal/config`, `internal/serve` | Local stand-ins for the shared config and server packages. |
+| `internal/config` | The environment settings, read with the shared config package. |

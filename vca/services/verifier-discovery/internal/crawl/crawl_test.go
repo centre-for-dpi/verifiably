@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	shared "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/catalog"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/crawl"
-	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/fetch"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/store"
 )
 
@@ -77,16 +77,16 @@ type fakeFetch struct {
 	fetched []string
 }
 
-func (f *fakeFetch) Get(_ context.Context, url string) (fetch.Doc, error) {
+func (f *fakeFetch) Get(_ context.Context, url string) (fetchguard.Doc, error) {
 	f.fetched = append(f.fetched, url)
 	if err, ok := f.errs[url]; ok {
-		return fetch.Doc{}, err
+		return fetchguard.Doc{}, err
 	}
 	body, ok := f.docs[url]
 	if !ok {
-		return fetch.Doc{}, errors.New("not found")
+		return fetchguard.Doc{}, errors.New("not found")
 	}
-	return fetch.Doc{URL: url, Body: []byte(body)}, nil
+	return fetchguard.Doc{URL: url, Body: []byte(body)}, nil
 }
 
 func (f *fakeFetch) Forget(url string) { f.forgot = append(f.forgot, url) }

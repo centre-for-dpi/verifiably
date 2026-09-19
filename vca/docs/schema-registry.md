@@ -113,13 +113,12 @@ query value can never reach the page as text.
 | Package | Role |
 |---|---|
 | `internal/record` | The canonical version, its validation, its life cycle rules, and the proto conversion. |
-| `internal/store` | The versioned store over a JSON document backend, in memory or on a file. |
+| `internal/store` | The versioned store over the shared store document. |
 | `internal/metadata` | The pure builders of every public document. |
 | `internal/service` | The `SchemaService` handler. |
 | `internal/httpapi` | The public HTTP endpoints with the cache headers. |
 | `internal/portal` | The staff pages. |
-| `internal/config` | The environment settings. |
-| `internal/serve` | The h2c server with `/healthz` and `/readyz`. |
+| `internal/config` | The environment settings, read with the shared config package. |
 | `internal/app` | The wiring of every part. |
 
 ## Reference

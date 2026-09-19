@@ -12,12 +12,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/crawl"
-	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/fetch"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/httpapi"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/portal"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/service"
@@ -71,8 +71,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	// The constructors below validate the values this wiring supplies.
 	// One check reports the first fault of the whole wiring.
 	st, storeErr := store.New(backend)
-	fetcher := fetch.New(fetch.Options{
-		Guard: fetch.Guard{
+	fetcher := fetchguard.New(fetchguard.Options{
+		Guard: fetchguard.Guard{
 			AllowedHosts:        cfg.AllowedHosts,
 			AllowPrivateNetwork: cfg.AllowPrivateNetwork,
 			AllowPlainHTTP:      cfg.AllowPlainHTTP,

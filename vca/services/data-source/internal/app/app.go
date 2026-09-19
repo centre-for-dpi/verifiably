@@ -24,6 +24,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/sqlsrc"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/store"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 // App is the wired service.
@@ -60,9 +61,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if deps.Log == nil {
 		deps.Log = slog.Default()
 	}
-	backend := store.Memory()
+	backend := sharedstore.MemoryDoc()
 	if cfg.StoreFile != "" {
-		backend = store.File(cfg.StoreFile)
+		backend = sharedstore.FileDoc(cfg.StoreFile)
 	}
 	st, err := store.Open(backend)
 	if err != nil {

@@ -12,7 +12,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/server"
 )
@@ -37,7 +39,9 @@ func run(args []string) int {
 		return 1
 	}
 	if *healthcheck {
-		if err := server.Healthcheck(cfg.Listen); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := serve.Healthcheck(ctx, cfg.Listen); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
@@ -51,7 +55,13 @@ func run(args []string) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := server.Run(ctx, cfg.Listen, server.Handler(svc), log); err != nil {
+	opts := serve.Options{
+		Listen:       cfg.Listen,
+		Handler:      server.Handler(svc),
+		ReadyMessage: server.ReadyMessage(svc),
+		Log:          log,
+	}
+	if err := serve.Run(ctx, opts); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

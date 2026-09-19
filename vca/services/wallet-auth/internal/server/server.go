@@ -4,33 +4,43 @@
 package server
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/grants"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/limits"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/service"
-	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/wallets"
 )
+
+// persister returns the document store of the service. An empty dir
+// keeps every document in the process.
+func persister(dir string) (oidcflow.Persister, error) {
+	kv := store.Memory()
+	if dir != "" {
+		var err error
+		if kv, err = store.File(dir); err != nil {
+			return nil, err
+		}
+	}
+	return store.NewJSON(kv), nil
+}
 
 // Audience is the aud claim of every session JWT.
 const Audience = "vca-wallet"
 
 // Build wires the service from the configuration.
 func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
-	persist, err := store.New(cfg.StateDir)
+	persist, err := persister(cfg.StateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -170,58 +180,13 @@ func Handler(svc *service.Service) http.Handler {
 		mux.Handle("POST "+prefix+"/logout", oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Logout)))
 		mux.Handle("GET "+prefix+"/session", oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Session)))
 	}
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, "ok providers=%d wallets=%d", len(svc.Providers().Enabled()), svc.Wallets().Count())
-	})
 	return mux
 }
 
-// Run serves h on addr until ctx ends, then drains for up to 5 seconds.
-func Run(ctx context.Context, addr string, h http.Handler, log *slog.Logger) error {
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
+// ReadyMessage returns the body of the readiness response. It reports
+// the counts of the service state.
+func ReadyMessage(svc *service.Service) func() string {
+	return func() string {
+		return fmt.Sprintf("ok providers=%d wallets=%d", len(svc.Providers().Enabled()), svc.Wallets().Count())
 	}
-	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
-	errc := make(chan error, 1)
-	go func() { errc <- srv.Serve(ln) }()
-	log.Info("wallet-auth listening", "addr", ln.Addr().String())
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return srv.Shutdown(shutdownCtx)
-	case err := <-errc:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	}
-}
-
-// Healthcheck calls GET /healthz on addr. It backs the -healthcheck flag
-// that the container HEALTHCHECK runs (ADR-005 decision 6).
-func Healthcheck(addr string) error {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return err
-	}
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	res, err := client.Get("http://" + net.JoinHostPort(host, port) + "/healthz")
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("healthz returned %d", res.StatusCode)
-	}
-	return nil
 }

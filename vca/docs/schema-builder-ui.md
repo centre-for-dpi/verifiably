@@ -125,8 +125,7 @@ keeps its value on every post and reads well with a screen reader.
 | `internal/service` | The `SchemaBuilderService` handler. |
 | `internal/pages` | The builder pages and the import page. |
 | `internal/fake` | The test doubles of the registry client and the catalogue client. |
-| `internal/config` | The environment settings. |
-| `internal/serve` | The h2c server with `/healthz` and `/readyz`. |
+| `internal/config` | The environment settings, read with the shared config package. |
 | `internal/app` | The wiring of every part. |
 
 ## Reference

@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package fetch reads issuer documents over HTTP with a guard against
+// Package fetchguard reads documents over HTTP with a guard against
 // server side request forgery and a cache with a time to live and an
-// entity tag (ADR-022 decision 1).
+// entity tag (ADR-022 decision 1). Every service that reads a URL from
+// a user or from another service shares it (ADR-002 decision 7).
 //
 // The guard refuses a URL that is not http or https, a URL with a user
 // name, a port outside the allowed set, a host outside the allowed list,
 // and a host that resolves to a private, loopback, link local, or
 // multicast address. A deployment turns the private address rule off for
 // development only.
-package fetch
+package fetchguard
 
 import (
 	"context"
@@ -26,7 +27,7 @@ import (
 )
 
 // ErrRefused reports that the guard refused the URL.
-var ErrRefused = errors.New("fetch: the guard refused the URL")
+var ErrRefused = errors.New("fetchguard: the guard refused the URL")
 
 // DefaultMaxBytes caps one document when the caller sets no limit.
 const DefaultMaxBytes = 1 << 20
@@ -70,6 +71,12 @@ func (g Guard) Check(ctx context.Context, raw string) (*url.URL, error) {
 	}
 	if !g.hostAllowed(host) {
 		return nil, fmt.Errorf("%w: the host %q is not on the allowed list", ErrRefused, host)
+	}
+	// The address rules only matter when the deployment blocks private
+	// addresses. A guard that allows them needs no name resolution, so a
+	// service that trusts its host allowlist does no lookup.
+	if g.AllowPrivateNetwork {
+		return u, nil
 	}
 	addrs, err := g.addresses(ctx, host)
 	if err != nil {
@@ -129,9 +136,6 @@ func systemResolve(ctx context.Context, host string) ([]netip.Addr, error) {
 
 // checkAddress reports whether the fetcher may reach one address.
 func (g Guard) checkAddress(addr netip.Addr) error {
-	if g.AllowPrivateNetwork {
-		return nil
-	}
 	addr = addr.Unmap()
 	switch {
 	case addr.IsLoopback(), addr.IsPrivate(), addr.IsLinkLocalUnicast(), addr.IsLinkLocalMulticast(),
@@ -223,17 +227,15 @@ func (f *Fetcher) Get(ctx context.Context, raw string) (Doc, error) {
 		cached.FromCache = true
 		return cached, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, key, nil)
-	if err != nil {
-		return Doc{}, fmt.Errorf("fetch: %w", err)
-	}
+	// The guard parsed the URL already, so the request needs no parse.
+	req := (&http.Request{Method: http.MethodGet, URL: u, Header: http.Header{}}).WithContext(ctx)
 	req.Header.Set("Accept", f.opts.Accept)
 	if ok && cached.ETag != "" {
 		req.Header.Set("If-None-Match", cached.ETag)
 	}
 	resp, err := f.opts.Client.Do(req)
 	if err != nil {
-		return Doc{}, fmt.Errorf("fetch: get %s: %w", key, err)
+		return Doc{}, fmt.Errorf("fetchguard: get %s: %w", key, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotModified && ok {
@@ -243,14 +245,14 @@ func (f *Fetcher) Get(ctx context.Context, raw string) (Doc, error) {
 		return cached, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Doc{}, fmt.Errorf("fetch: %s answered %d", key, resp.StatusCode)
+		return Doc{}, fmt.Errorf("fetchguard: %s answered %d", key, resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(f.opts.MaxBytes)+1))
 	if err != nil {
-		return Doc{}, fmt.Errorf("fetch: read %s: %w", key, err)
+		return Doc{}, fmt.Errorf("fetchguard: read %s: %w", key, err)
 	}
 	if len(body) > f.opts.MaxBytes {
-		return Doc{}, fmt.Errorf("fetch: %s is larger than %d bytes", key, f.opts.MaxBytes)
+		return Doc{}, fmt.Errorf("fetchguard: %s is larger than %d bytes", key, f.opts.MaxBytes)
 	}
 	doc := Doc{URL: key, Body: body, ETag: resp.Header.Get("ETag"), FetchedAt: now}
 	f.store(key, doc)
