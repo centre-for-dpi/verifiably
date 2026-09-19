@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/fake"
@@ -91,7 +92,7 @@ func TestNewChecksOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("service: %v", err)
 	}
-	if _, err := pages.New(pages.Options{Builder: svc}); err == nil {
+	if _, serr := pages.New(pages.Options{Builder: svc}); serr == nil {
 		t.Error("pages without a registry must fail")
 	}
 	pg, err := pages.New(pages.Options{Builder: svc, Registry: &fake.Registry{}, Prefix: "pages/"})

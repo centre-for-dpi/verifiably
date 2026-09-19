@@ -59,12 +59,12 @@ func TestDocumentKeepsFieldOrder(t *testing.T) {
 	if root["additionalProperties"] != false {
 		t.Errorf("additionalProperties = %v", root["additionalProperties"])
 	}
-	props := root["properties"].(map[string]any)
-	grade := props["grade"].(map[string]any)
-	if got := grade["enum"].([]any); len(got) != 3 || got[0] != float64(1) {
+	props := mustAs[map[string]any](t, root["properties"])
+	grade := mustAs[map[string]any](t, props["grade"])
+	if got := mustAs[[]any](t, grade["enum"]); len(got) != 3 || got[0] != float64(1) {
 		t.Errorf("enum = %v, want numbers", got)
 	}
-	date := props["birth_date"].(map[string]any)
+	date := mustAs[map[string]any](t, props["birth_date"])
 	if date["format"] != "date" {
 		t.Errorf("format = %v", date["format"])
 	}
@@ -75,7 +75,7 @@ func TestDocumentKeepsFieldOrder(t *testing.T) {
 
 func TestDocumentEscapesText(t *testing.T) {
 	d := draft.Draft{
-		Type: "T", Title: "A \"quoted\"\ttitle\\", Description: "Line\none\rtwo",
+		Type: "T", Title: "A \"quoted\"\ttitle\\", Description: "Line\none\rtwo\x01",
 		Fields: []draft.Field{{Name: "a", Label: "é", Type: "string"}},
 	}.Normalize()
 	var root map[string]any
@@ -85,11 +85,11 @@ func TestDocumentEscapesText(t *testing.T) {
 	if root["title"] != "A \"quoted\"\ttitle\\" {
 		t.Errorf("title = %q", root["title"])
 	}
-	if root["description"] != "Line\none\rtwo" {
+	if root["description"] != "Line\none\rtwo\x01" {
 		t.Errorf("description = %q", root["description"])
 	}
-	props := root["properties"].(map[string]any)
-	if props["a"].(map[string]any)["title"] != "é" {
+	props := mustAs[map[string]any](t, root["properties"])
+	if mustAs[map[string]any](t, props["a"])["title"] != "é" {
 		t.Errorf("label = %v", props["a"])
 	}
 }
@@ -100,7 +100,7 @@ func TestDocumentEmptyDraft(t *testing.T) {
 	if err := json.Unmarshal([]byte(doc), &root); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if got := root["required"].([]any); len(got) != 0 {
+	if got := mustAs[[]any](t, root["required"]); len(got) != 0 {
 		t.Errorf("required = %v, want empty", got)
 	}
 	if _, has := root["description"]; has {
@@ -118,14 +118,14 @@ func TestEnumValueConversion(t *testing.T) {
 	if err := json.Unmarshal([]byte(d.Document()), &root); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	props := root["properties"].(map[string]any)
+	props := mustAs[map[string]any](t, root["properties"])
 	cases := map[string][]any{
 		"n": {1.5, "x"},
 		"b": {true, "maybe"},
 		"i": {float64(7), "x"},
 	}
 	for key, want := range cases {
-		got := props[key].(map[string]any)["enum"].([]any)
+		got := mustAs[[]any](t, mustAs[map[string]any](t, props[key])["enum"])
 		for i := range want {
 			if got[i] != want[i] {
 				t.Errorf("%s enum[%d] = %v, want %v", key, i, got[i], want[i])

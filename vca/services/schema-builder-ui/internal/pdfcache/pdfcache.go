@@ -83,7 +83,9 @@ func (c *Cache) Register(mux *http.ServeMux) {
 		w.Header().Set("Content-Disposition", `inline; filename="preview.pdf"`)
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		_, _ = w.Write(doc)
+		if _, err := w.Write(doc); err != nil {
+			return
+		}
 	})
 }
 

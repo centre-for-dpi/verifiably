@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/fake"

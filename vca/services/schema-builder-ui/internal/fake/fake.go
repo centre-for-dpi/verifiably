@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
