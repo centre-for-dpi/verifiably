@@ -13,7 +13,7 @@ import (
 // ordinary test run.
 
 func FuzzDecode(f *testing.F) {
-	f.Add([]byte(sdjwtToken))
+	f.Add([]byte(sampleSDJWT))
 	f.Add([]byte(`{"type":["VerifiablePresentation"],"verifiableCredential":["a"]}`))
 	f.Add([]byte("openid4vp://authorize?nonce=1"))
 	f.Add([]byte("%PDF-1.7\n1 0 obj\n<< /Subtype /Image /Filter /FlateDecode >>\nstream\nx\nendstream\nendobj\n"))
@@ -30,7 +30,7 @@ func FuzzDecode(f *testing.F) {
 }
 
 func FuzzDecodeText(f *testing.F) {
-	f.Add(sdjwtToken)
+	f.Add(sampleSDJWT)
 	f.Add("{}")
 	f.Add("~~~")
 	f.Add("NCFOXN%TS3DH")

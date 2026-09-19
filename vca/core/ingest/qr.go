@@ -25,7 +25,7 @@ func DecodeQRImage(img image.Image) (string, error) {
 	bitmap, _ := gozxing.NewBinaryBitmapFromImage(img)
 	result, err := qrcode.NewQRCodeReader().Decode(bitmap, nil)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrNoQRCode, err)
+		return "", fmt.Errorf("%w: %w", ErrNoQRCode, err)
 	}
 	return result.GetText(), nil
 }

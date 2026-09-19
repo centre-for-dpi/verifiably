@@ -42,7 +42,7 @@ func (c Code) Bitmap(scale, quiet int) Bitmap {
 				row := ((y+quiet)*scale + dy) * stride
 				for dx := 0; dx < scale; dx++ {
 					px := (x+quiet)*scale + dx
-					pixels[row+px/8] &^= 1 << uint(7-px%8)
+					pixels[row+px/8] &^= 1 << (7 - px%8)
 				}
 			}
 		}

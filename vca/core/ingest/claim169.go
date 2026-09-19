@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 	"time"
@@ -238,10 +239,16 @@ func claimTime(m map[int64]any, key int64) time.Time {
 func asInt(v any) (int64, bool) {
 	switch n := v.(type) {
 	case uint64:
+		if n > math.MaxInt64 {
+			return 0, false
+		}
 		return int64(n), true
 	case int64:
 		return n, true
 	case float64:
+		if n < math.MinInt64 || n > math.MaxInt64 {
+			return 0, false
+		}
 		return int64(n), true
 	}
 	return 0, false

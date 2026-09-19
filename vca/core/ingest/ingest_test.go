@@ -11,8 +11,8 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
 
-// sdjwtToken is an SD-JWT VC with one disclosure and no key binding.
-const sdjwtToken = "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2V4YW1wbGUudGVzdC9waWQifQ.c2ln~WyJzYWx0IiwiZ2l2ZW5fbmFtZSIsIkFzaGEiXQ~"
+// sampleSDJWT is an SD-JWT VC with one disclosure and no key binding.
+const sampleSDJWT = "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2V4YW1wbGUudGVzdC9waWQifQ.c2ln~WyJzYWx0IiwiZ2l2ZW5fbmFtZSIsIkFzaGEiXQ~"
 
 func TestDetect(t *testing.T) {
 	cases := []struct {
@@ -33,7 +33,7 @@ func TestDetect(t *testing.T) {
 		{"request url", []byte("https://verifier.test/authorize?request_uri=https%3A%2F%2Fa.test"), "", ingest.CarrierOID4VPRequest},
 		{"plain url", []byte("https://verifier.test/page"), "", ingest.CarrierQR},
 		{"base45", []byte("NCFOXN%TS3DH"), "", ingest.CarrierClaim169},
-		{"token", []byte(sdjwtToken), "", ingest.CarrierQR},
+		{"token", []byte(sampleSDJWT), "", ingest.CarrierQR},
 		{"empty", []byte("   "), "", ingest.CarrierUnknown},
 	}
 	for _, c := range cases {
@@ -61,7 +61,7 @@ func TestDecodeLimits(t *testing.T) {
 }
 
 func TestDecodeSDJWT(t *testing.T) {
-	res, err := ingest.Decode([]byte(sdjwtToken), ingest.Options{Carrier: ingest.CarrierJSON})
+	res, err := ingest.Decode([]byte(sampleSDJWT), ingest.Options{Carrier: ingest.CarrierJSON})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestDecodeSDJWT(t *testing.T) {
 	if res.InputHash == "" || res.Carrier != ingest.CarrierJSON {
 		t.Errorf("envelope = %+v", res)
 	}
-	bound := sdjwtToken + jwt(t, map[string]any{"nonce": "n"})
+	bound := sampleSDJWT + jwt(t, map[string]any{"nonce": "n"})
 	res, err = ingest.Decode([]byte(bound), ingest.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func TestDecodeVPToken(t *testing.T) {
 	if res.Detected != ingest.TypePresentation || res.Steps[0] != "vp_token" {
 		t.Errorf("single token result = %+v", res)
 	}
-	list := jsonText(t, []any{token, sdjwtToken, 7})
+	list := jsonText(t, []any{token, sampleSDJWT, 7})
 	res, err = ingest.Decode([]byte(list), ingest.Options{Carrier: ingest.CarrierOID4VPResponse})
 	if err != nil {
 		t.Fatal(err)
@@ -246,7 +246,7 @@ func TestDecodeVPToken(t *testing.T) {
 	if len(res.Credentials) != 2 {
 		t.Errorf("array result = %+v", res)
 	}
-	byQuery := jsonText(t, map[string]any{"pid": []any{sdjwtToken}, "licence": token})
+	byQuery := jsonText(t, map[string]any{"pid": []any{sampleSDJWT}, "licence": token})
 	res, err = ingest.Decode([]byte(byQuery), ingest.Options{Carrier: ingest.CarrierOID4VPResponse})
 	if err != nil {
 		t.Fatal(err)
@@ -275,7 +275,7 @@ func TestDecodeVPTokenFallsBackToJSON(t *testing.T) {
 }
 
 func TestDecodeImageCarrier(t *testing.T) {
-	png := qrPNG(t, sdjwtToken)
+	png := qrPNG(t, sampleSDJWT)
 	res, err := ingest.Decode(png, ingest.Options{})
 	if err != nil {
 		t.Fatal(err)

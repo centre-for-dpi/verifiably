@@ -71,7 +71,8 @@ func Decode(s string) ([]byte, error) {
 		return nil, errors.New("pixelpass: payload exceeds MaxDecodedBytes")
 	}
 	var v any
-	if decMode().Unmarshal(inflated, &v) != nil {
+	if !decodesAsCBOR(inflated, &v) {
+		// The payload is not CBOR. Return the inflated bytes as they are.
 		return inflated, nil
 	}
 	js, err := json.Marshal(v)
@@ -79,6 +80,11 @@ func Decode(s string) ([]byte, error) {
 		return nil, fmt.Errorf("pixelpass: cbor to json: %w", err)
 	}
 	return js, nil
+}
+
+// decodesAsCBOR reports whether raw decodes as CBOR into v.
+func decodesAsCBOR(raw []byte, v any) bool {
+	return decMode().Unmarshal(raw, v) == nil
 }
 
 // decMode decodes CBOR maps as map[string]any so encoding/json can

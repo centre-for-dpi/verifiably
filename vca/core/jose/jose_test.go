@@ -264,7 +264,7 @@ func TestJWKParse(t *testing.T) {
 }
 
 func TestPublicJWK(t *testing.T) {
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("rsa.GenerateKey: %v", err)
 	}

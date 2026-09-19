@@ -13,7 +13,7 @@ import (
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 )
 
-const credentialJSON = `{"@context":["https://www.w3.org/ns/credentials/v2"],
+const sampleVCDoc = `{"@context":["https://www.w3.org/ns/credentials/v2"],
 "type":["VerifiableCredential","Passport"],"issuer":"did:web:issuer",
 "validFrom":"2026-01-01T00:00:00Z","validUntil":"2027-01-01T00:00:00Z",
 "credentialSubject":{"id":"did:key:holder","given_name":"Ada"}}`
@@ -21,7 +21,7 @@ const credentialJSON = `{"@context":["https://www.w3.org/ns/credentials/v2"],
 func credential() *commonv1.Credential {
 	return &commonv1.Credential{
 		Format:  commonv1.Format_FORMAT_LDP_VC,
-		Payload: []byte(credentialJSON),
+		Payload: []byte(sampleVCDoc),
 	}
 }
 

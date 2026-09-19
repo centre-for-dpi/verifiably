@@ -125,7 +125,7 @@ func (m *matrix) drawVersion() {
 	}
 	bits := versionBits(m.version)
 	for i := 0; i < 18; i++ {
-		on := bits&(1<<uint(i)) != 0
+		on := bits&(1<<i) != 0
 		x, y := i/3, m.size-11+i%3
 		m.set(x, y, on, true)
 		m.set(y, x, on, true)
@@ -161,7 +161,7 @@ func formatBits(mask int) int {
 // drawFormat writes the format information in both of its places.
 func (m *matrix) drawFormat(mask int) {
 	bits := formatBits(mask)
-	get := func(i int) bool { return bits&(1<<uint(i)) != 0 }
+	get := func(i int) bool { return bits&(1<<i) != 0 }
 	// The first copy runs around the upper left finder pattern.
 	for i := 0; i <= 5; i++ {
 		m.set(8, i, get(i), true)
@@ -203,7 +203,7 @@ func (m *matrix) placeData(codewords []byte) {
 				}
 				on := false
 				if i := bit / 8; i < len(codewords) {
-					on = codewords[i]&(1<<uint(7-bit%8)) != 0
+					on = codewords[i]&(1<<(7-bit%8)) != 0
 				}
 				m.set(x, y, on, false)
 				bit++

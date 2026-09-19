@@ -121,7 +121,7 @@ func (g Guard) addresses(ctx context.Context, host string) ([]netip.Addr, error)
 	}
 	addrs, err := resolve(ctx, host)
 	if err != nil {
-		return nil, fmt.Errorf("%w: cannot resolve %q: %v", ErrRefused, host, err)
+		return nil, fmt.Errorf("%w: cannot resolve %q: %w", ErrRefused, host, err)
 	}
 	if len(addrs) == 0 {
 		return nil, fmt.Errorf("%w: %q resolves to no address", ErrRefused, host)

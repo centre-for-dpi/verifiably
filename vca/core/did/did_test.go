@@ -224,8 +224,8 @@ func TestDIDKeyRoundTrip(t *testing.T) {
 			t.Fatalf("doc = %+v", doc)
 		}
 		vm, _ := doc.Key("")
-		if _, err := PublicKey(vm); err != nil {
-			t.Fatal(err)
+		if _, keyErr := PublicKey(vm); keyErr != nil {
+			t.Fatal(keyErr)
 		}
 	}
 	vm, _ := must(KeyDocument(ecDID)).Key("")

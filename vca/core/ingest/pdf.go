@@ -355,24 +355,35 @@ func pixel(row []byte, x, bits, maxValue int, s space, palette []color.RGBA) col
 		}
 		return color.RGBA{A: 0xff}
 	case s.components == 1:
-		v := uint8(read(0) * 255 / maxValue)
+		v := clamp8(read(0) * 255 / maxValue)
 		return color.RGBA{R: v, G: v, B: v, A: 0xff}
 	case s.components == 4:
 		c, m, yy, k := read(0), read(1), read(2), read(3)
 		return color.RGBA{
-			R: uint8((maxValue - c) * (maxValue - k) * 255 / (maxValue * maxValue)),
-			G: uint8((maxValue - m) * (maxValue - k) * 255 / (maxValue * maxValue)),
-			B: uint8((maxValue - yy) * (maxValue - k) * 255 / (maxValue * maxValue)),
+			R: clamp8((maxValue - c) * (maxValue - k) * 255 / (maxValue * maxValue)),
+			G: clamp8((maxValue - m) * (maxValue - k) * 255 / (maxValue * maxValue)),
+			B: clamp8((maxValue - yy) * (maxValue - k) * 255 / (maxValue * maxValue)),
 			A: 0xff,
 		}
 	default:
 		return color.RGBA{
-			R: uint8(read(0) * 255 / maxValue),
-			G: uint8(read(1) * 255 / maxValue),
-			B: uint8(read(2) * 255 / maxValue),
+			R: clamp8(read(0) * 255 / maxValue),
+			G: clamp8(read(1) * 255 / maxValue),
+			B: clamp8(read(2) * 255 / maxValue),
 			A: 0xff,
 		}
 	}
+}
+
+// clamp8 converts v to a byte. It limits v to the 0 to 255 range.
+func clamp8(v int) uint8 {
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return uint8(v)
 }
 
 // sample reads the sample with the index from a packed row.

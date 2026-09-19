@@ -36,7 +36,7 @@ func TestClaim169NotANumber(t *testing.T) {
 }
 
 func TestDecodeXMLCarrier(t *testing.T) {
-	doc := "<root><vc>" + sdjwtToken + "</vc></root>"
+	doc := "<root><vc>" + sampleSDJWT + "</vc></root>"
 	res, err := ingest.Decode([]byte(doc), ingest.Options{XML: ingest.XMLConfig{Path: "root.vc"}})
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +178,7 @@ func TestCredentialLimit(t *testing.T) {
 
 func TestVPTokenEdgeCases(t *testing.T) {
 	// A list with one entry the text decoder refuses.
-	res, err := ingest.DecodeVPToken(jsonText(t, []any{" ", sdjwtToken}))
+	res, err := ingest.DecodeVPToken(jsonText(t, []any{" ", sampleSDJWT}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,8 +204,8 @@ func TestVPTokenEdgeCases(t *testing.T) {
 }
 
 func TestKeyBindingFromFirstToken(t *testing.T) {
-	bound := sdjwtToken + jwt(t, map[string]any{"nonce": "n"})
-	res, err := ingest.DecodeVPToken(jsonText(t, []any{bound, sdjwtToken}))
+	bound := sampleSDJWT + jwt(t, map[string]any{"nonce": "n"})
+	res, err := ingest.DecodeVPToken(jsonText(t, []any{bound, sampleSDJWT}))
 	if err != nil {
 		t.Fatal(err)
 	}

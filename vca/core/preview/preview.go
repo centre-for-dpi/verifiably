@@ -22,8 +22,9 @@ import (
 
 // Format identifiers of OpenID for Verifiable Credential Issuance 1.0.
 const (
-	FormatDcSdJwt   = "dc+sd-jwt"
-	FormatVcSdJwt   = "vc+sd-jwt"
+	FormatDcSdJwt = "dc+sd-jwt"
+	FormatVcSdJwt = "vc+sd-jwt"
+	//nolint:staticcheck // ST1003: service packages outside this change use this name.
 	FormatJwtVcJson = "jwt_vc_json"
 	FormatLdpVc     = "ldp_vc"
 	FormatMsoMdoc   = "mso_mdoc"

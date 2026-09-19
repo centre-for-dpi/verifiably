@@ -7,7 +7,7 @@ import "testing"
 // pixelAt reports whether the pixel is dark.
 func (b Bitmap) pixelAt(x, y int) bool {
 	stride := (b.Width + 7) / 8
-	return b.Pixels[y*stride+x/8]&(1<<uint(7-x%8)) == 0
+	return b.Pixels[y*stride+x/8]&(1<<(7-x%8)) == 0
 }
 
 func TestBitmapScalesEveryModule(t *testing.T) {
