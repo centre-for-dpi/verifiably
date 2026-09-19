@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -44,7 +45,14 @@ func server(t *testing.T, r reader, maxAge time.Duration) *httptest.Server {
 }
 
 // get performs one request and returns the response.
-func get(t *testing.T, url string, header http.Header) *http.Response {
+// answer holds the part of an HTTP response that the tests read.
+type answer struct {
+	status int
+	header http.Header
+	body   []byte
+}
+
+func get(t *testing.T, url string, header http.Header) answer {
 	t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
@@ -57,38 +65,44 @@ func get(t *testing.T, url string, header http.Header) *http.Response {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = resp.Body.Close() })
-	return resp
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := resp.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
+	return answer{status: resp.StatusCode, header: resp.Header, body: raw}
 }
 
 func TestCatalogue(t *testing.T) {
 	s := server(t, reader{issuers: sample}, 5*time.Minute)
 	resp := get(t, s.URL+"/catalog", nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d", resp.StatusCode)
+	if resp.status != http.StatusOK {
+		t.Fatalf("status = %d", resp.status)
 	}
-	if resp.Header.Get("Cache-Control") != "public, max-age=300" {
-		t.Errorf("cache control = %q", resp.Header.Get("Cache-Control"))
+	if resp.header.Get("Cache-Control") != "public, max-age=300" {
+		t.Errorf("cache control = %q", resp.header.Get("Cache-Control"))
 	}
-	if resp.Header.Get("Access-Control-Allow-Origin") != "*" {
+	if resp.header.Get("Access-Control-Allow-Origin") != "*" {
 		t.Error("a wallet reads the catalogue from another origin")
 	}
 	var body struct {
 		Issuers []catalog.Issuer `json:"issuers"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(resp.body, &body); err != nil {
 		t.Fatal(err)
 	}
 	if len(body.Issuers) != 1 || len(body.Issuers[0].Types) != 2 {
 		t.Errorf("body = %+v", body)
 	}
-	etag := resp.Header.Get("ETag")
+	etag := resp.header.Get("ETag")
 	if etag == "" {
 		t.Fatal("the answer carries an entity tag")
 	}
 	again := get(t, s.URL+"/catalog", http.Header{"If-None-Match": []string{etag}})
-	if again.StatusCode != http.StatusNotModified {
-		t.Errorf("a matching entity tag wants 304, got %d", again.StatusCode)
+	if again.status != http.StatusNotModified {
+		t.Errorf("a matching entity tag wants 304, got %d", again.status)
 	}
 }
 
@@ -101,13 +115,13 @@ func TestIssuersAndTypes(t *testing.T) {
 			TypeCount        int    `json:"type_count"`
 		} `json:"issuers"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&issuers); err != nil {
+	if err := json.Unmarshal(resp.body, &issuers); err != nil {
 		t.Fatal(err)
 	}
 	if len(issuers.Issuers) != 1 || issuers.Issuers[0].TypeCount != 2 {
 		t.Errorf("issuers = %+v", issuers)
 	}
-	if resp.Header.Get("Cache-Control") != "" {
+	if resp.header.Get("Cache-Control") != "" {
 		t.Error("a zero max age writes no cache header")
 	}
 	all := get(t, s.URL+"/catalog/types", nil)
@@ -117,7 +131,7 @@ func TestIssuersAndTypes(t *testing.T) {
 			Format string `json:"format"`
 		} `json:"types"`
 	}
-	if err := json.NewDecoder(all.Body).Decode(&types); err != nil {
+	if err := json.Unmarshal(all.body, &types); err != nil {
 		t.Fatal(err)
 	}
 	if len(types.Types) != 2 {
@@ -125,7 +139,7 @@ func TestIssuersAndTypes(t *testing.T) {
 	}
 	filtered := get(t, s.URL+"/catalog/types?format=ldp_vc&type=Degree", nil)
 	types.Types = nil
-	if err := json.NewDecoder(filtered.Body).Decode(&types); err != nil {
+	if err := json.Unmarshal(filtered.body, &types); err != nil {
 		t.Fatal(err)
 	}
 	if len(types.Types) != 1 || types.Types[0].Type != "Degree" {
@@ -133,7 +147,7 @@ func TestIssuersAndTypes(t *testing.T) {
 	}
 	none := get(t, s.URL+"/catalog/types?format=mso_mdoc", nil)
 	types.Types = nil
-	if err := json.NewDecoder(none.Body).Decode(&types); err != nil {
+	if err := json.Unmarshal(none.body, &types); err != nil {
 		t.Fatal(err)
 	}
 	if len(types.Types) != 0 {
@@ -145,8 +159,8 @@ func TestCatalogueErrors(t *testing.T) {
 	s := server(t, reader{err: errors.New("the store is down")}, 0)
 	for _, path := range []string{"/catalog", "/catalog/issuers", "/catalog/types"} {
 		resp := get(t, s.URL+path, nil)
-		if resp.StatusCode != http.StatusInternalServerError {
-			t.Errorf("%s status = %d", path, resp.StatusCode)
+		if resp.status != http.StatusInternalServerError {
+			t.Errorf("%s status = %d", path, resp.status)
 		}
 	}
 }

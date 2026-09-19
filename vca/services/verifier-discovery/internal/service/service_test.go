@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
@@ -106,9 +107,9 @@ func TestListIssuers(t *testing.T) {
 	if second.Msg.GetPage().GetNextPageToken() != "" {
 		t.Error("the last page has no token")
 	}
-	if _, err := svc.ListIssuers(context.Background(), connect.NewRequest(&discoveryv1.ListIssuersRequest{
+	if _, serr := svc.ListIssuers(context.Background(), connect.NewRequest(&discoveryv1.ListIssuersRequest{
 		Page: &commonv1.Pagination{PageToken: "nonsense"},
-	})); err == nil {
+	})); serr == nil {
 		t.Error("a bad token wants an error")
 	}
 	past, err := svc.ListIssuers(context.Background(), connect.NewRequest(&discoveryv1.ListIssuersRequest{
@@ -234,8 +235,8 @@ func TestTemplateLifecycle(t *testing.T) {
 	if stored.GetDcql() == "" || stored.GetCreatedAt() == nil {
 		t.Errorf("template = %+v", stored)
 	}
-	if _, err := svc.CreateTemplate(ctx, connect.NewRequest(templateRequest("Age check"))); connect.CodeOf(err) != connect.CodeAlreadyExists {
-		t.Errorf("a second create wants already exists, got %v", err)
+	if _, serr := svc.CreateTemplate(ctx, connect.NewRequest(templateRequest("Age check"))); connect.CodeOf(serr) != connect.CodeAlreadyExists {
+		t.Errorf("a second create wants already exists, got %v", serr)
 	}
 	next := templateRequest("Age check")
 	next.Template.Id = "age-check"
@@ -378,8 +379,8 @@ func TestCrawlRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Crawl(ctx, connect.NewRequest(&discoveryv1.CrawlRequest{})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
-		t.Errorf("a crawl without a trust registry wants failed precondition, got %v", err)
+	if _, serr := svc.Crawl(ctx, connect.NewRequest(&discoveryv1.CrawlRequest{})); connect.CodeOf(serr) != connect.CodeFailedPrecondition {
+		t.Errorf("a crawl without a trust registry wants failed precondition, got %v", serr)
 	}
 	on, err := crawl.New(crawl.Options{Trust: fakeTrust{}, Fetch: noFetch{}, Store: st})
 	if err != nil {
@@ -404,8 +405,8 @@ func TestCrawlRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Crawl(ctx, connect.NewRequest(&discoveryv1.CrawlRequest{})); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Errorf("a trust list error wants unavailable, got %v", err)
+	if _, serr := svc.Crawl(ctx, connect.NewRequest(&discoveryv1.CrawlRequest{})); connect.CodeOf(serr) != connect.CodeUnavailable {
+		t.Errorf("a trust list error wants unavailable, got %v", serr)
 	}
 	// A service with no crawler at all refuses too.
 	svc, err = service.New(service.Options{Store: st})

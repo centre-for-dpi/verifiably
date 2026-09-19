@@ -25,12 +25,14 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
@@ -492,7 +494,7 @@ func (p *Portal) templateDetail(w http.ResponseWriter, r *http.Request) error {
 		version = n
 	}
 	resp, err := p.opts.Client.GetTemplate(r.Context(), connect.NewRequest(&discoveryv1.GetTemplateRequest{
-		Id: id, Version: int32(version),
+		Id: id, Version: toInt32(int64(version)),
 	}))
 	if err != nil {
 		return err
@@ -577,4 +579,15 @@ func rawJSON(text string) any {
 		return map[string]any{"document": text}
 	}
 	return v
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

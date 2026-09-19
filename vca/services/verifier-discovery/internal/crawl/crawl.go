@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"

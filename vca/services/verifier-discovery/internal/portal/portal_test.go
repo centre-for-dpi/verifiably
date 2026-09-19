@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
@@ -45,8 +46,8 @@ func newPortal(t *testing.T) (*portal.Portal, *service.Service) {
 			},
 		}},
 	}
-	if err := st.PutIssuer(context.Background(), issuer); err != nil {
-		t.Fatal(err)
+	if serr := st.PutIssuer(context.Background(), issuer); serr != nil {
+		t.Fatal(serr)
 	}
 	svc, err := service.New(service.Options{Store: st, PageSizeMax: 50})
 	if err != nil {
@@ -80,7 +81,11 @@ func page(t *testing.T, s *httptest.Server, path string) (int, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +106,11 @@ func post(t *testing.T, s *httptest.Server, path string, form url.Values) (int, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	return resp.StatusCode, resp.Header.Get("Location")
 }
 
@@ -261,8 +270,8 @@ func TestIssuerPageShowsCrawlError(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := catalog.Issuer{CredentialIssuer: "https://b.example", LastError: "the host is down", Trust: catalog.TrustUnavailable}
-	if err := st.PutIssuer(context.Background(), record); err != nil {
-		t.Fatal(err)
+	if serr := st.PutIssuer(context.Background(), record); serr != nil {
+		t.Fatal(serr)
 	}
 	svc, err := service.New(service.Options{Store: st})
 	if err != nil {
@@ -326,8 +335,8 @@ func TestIssuerAndTypeFallbacks(t *testing.T) {
 		CredentialIssuer: "https://c.example", Trust: catalog.TrustUntrusted,
 		Types: []catalog.CredentialType{{Type: "BareType", Format: "ldp_vc"}},
 	}
-	if err := st.PutIssuer(context.Background(), record); err != nil {
-		t.Fatal(err)
+	if serr := st.PutIssuer(context.Background(), record); serr != nil {
+		t.Fatal(serr)
 	}
 	svc, err := service.New(service.Options{Store: st})
 	if err != nil {
@@ -365,8 +374,8 @@ func TestTemplateDetailWithUnreadableQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := tmpl.Template{ID: "broken", Version: 1, DisplayName: "Broken", DCQL: "not json"}
-	if err := st.PutTemplate(context.Background(), record); err != nil {
-		t.Fatal(err)
+	if serr := st.PutTemplate(context.Background(), record); serr != nil {
+		t.Fatal(serr)
 	}
 	svc, err := service.New(service.Options{Store: st})
 	if err != nil {
@@ -396,8 +405,8 @@ func TestFieldsPageWithoutSchema(t *testing.T) {
 		CredentialIssuer: "https://d.example",
 		Types:            []catalog.CredentialType{{Type: "Plain", Format: "ldp_vc"}},
 	}
-	if err := st.PutIssuer(context.Background(), record); err != nil {
-		t.Fatal(err)
+	if serr := st.PutIssuer(context.Background(), record); serr != nil {
+		t.Fatal(serr)
 	}
 	svc, err := service.New(service.Options{Store: st})
 	if err != nil {

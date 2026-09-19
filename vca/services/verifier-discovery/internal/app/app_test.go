@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/app"
@@ -49,11 +50,11 @@ func issuerServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-credential-issuer", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"credential_issuer":"` + "http://" + r.Host + `",
+		mustWrite(t, w, []byte(`{"credential_issuer":"`+"http://"+r.Host+`",
 			"credential_configurations_supported":{"pid":{"format":"dc+sd-jwt","vct":"pid"}}}`))
 	})
 	mux.HandleFunc("GET /api/schemas", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"schemas":[]}`))
+		mustWrite(t, w, []byte(`{"schemas":[]}`))
 	})
 	s := httptest.NewServer(mux)
 	t.Cleanup(s.Close)
@@ -102,7 +103,9 @@ func TestBuildAndServe(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("GET %s answered %d", path, resp.StatusCode)
 		}
