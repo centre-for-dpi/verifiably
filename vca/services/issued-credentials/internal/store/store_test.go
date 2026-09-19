@@ -213,8 +213,8 @@ func TestOpenRejectsABrokenChain(t *testing.T) {
 	var doc struct {
 		Entries []hashchain.Entry `json:"entries"`
 	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		t.Fatalf("decode: %v", err)
+	if serr := json.Unmarshal(data, &doc); serr != nil {
+		t.Fatalf("decode: %v", serr)
 	}
 	doc.Entries[0].Hash = "0000"
 	broken, err := json.Marshal(doc)

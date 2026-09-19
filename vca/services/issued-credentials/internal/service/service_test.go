@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
@@ -355,7 +356,7 @@ func TestRevokeReportsAStatusServiceFailure(t *testing.T) {
 	if !errors.As(err, &cerr) || len(cerr.Details()) != 1 {
 		t.Fatalf("want one error detail, got %v", err)
 	}
-	if got, _ := f.svc.Get(context.Background(), connect.NewRequest(&issuedv1.GetRequest{Id: "a"})); got.Msg.GetRecord().GetStatus() != issuedv1.Status_STATUS_ACTIVE {
+	if got, ierr := f.svc.Get(context.Background(), connect.NewRequest(&issuedv1.GetRequest{Id: "a"})); ierr != nil || got.Msg.GetRecord().GetStatus() != issuedv1.Status_STATUS_ACTIVE {
 		t.Error("a failed status call must leave the record active")
 	}
 }
@@ -369,11 +370,11 @@ func TestRevokeWithoutAStatusClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	if _, err := svc.AppendRecord(record.Record{
+	if _, serr := svc.AppendRecord(record.Record{
 		ID: "a", SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
 		Binding: record.Binding{Kind: record.KindToken, ListID: "v1", Index: 1},
-	}); err != nil {
-		t.Fatalf("append: %v", err)
+	}); serr != nil {
+		t.Fatalf("append: %v", serr)
 	}
 	_, err = svc.Revoke(context.Background(), connect.NewRequest(&issuedv1.RevokeRequest{
 		Id: "a", Status: issuedv1.Status_STATUS_REVOKED, Reason: "x",

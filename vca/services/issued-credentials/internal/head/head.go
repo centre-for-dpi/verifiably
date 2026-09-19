@@ -37,6 +37,8 @@ var (
 const Period = 24 * time.Hour
 
 // TokenType is the typ header of the signed head.
+//
+//nolint:gosec // G101: the value is a media type, not a credential
 const TokenType = "vca-chain-head+jwt"
 
 // Tip is the state of the chain that the store reports.

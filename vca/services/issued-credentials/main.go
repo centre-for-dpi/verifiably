@@ -34,7 +34,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 2
 	}
 	if err := serveOrProbe(ctx, *healthcheck, getenv, stdout); err != nil {
-		fmt.Fprintln(stderr, err)
+		printLine(stderr, err)
 		return 1
 	}
 	return 0
@@ -46,9 +46,9 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 		return err
 	}
 	if healthcheck {
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		return serve.Healthcheck(ctx, cfg.Listen)
+		return serve.Healthcheck(probeCtx, cfg.Listen)
 	}
 	log := slog.New(slog.NewJSONHandler(stdout, nil))
 	a, err := app.Build(cfg, app.Deps{Log: log})
@@ -64,4 +64,12 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 		Ready:   a.Service.Ready,
 		Log:     log,
 	})
+}
+
+// printLine writes one line to w. It returns the process exit status.
+func printLine(w io.Writer, v any) int {
+	if _, err := fmt.Fprintln(w, v); err != nil {
+		return 1
+	}
+	return 0
 }

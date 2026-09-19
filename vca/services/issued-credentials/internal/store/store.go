@@ -57,8 +57,8 @@ func Open(b sharedstore.Document) (*Store, error) {
 		return s, nil
 	}
 	var doc document
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("store: decode: %w", err)
+	if serr := json.Unmarshal(data, &doc); serr != nil {
+		return nil, fmt.Errorf("store: decode: %w", serr)
 	}
 	chain, err := hashchain.Load(doc.Entries)
 	if err != nil {

@@ -3,13 +3,15 @@
 package service
 
 import (
+	"math"
 	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/record"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // formatNames maps the proto enum to the OID4VCI format identifier.
@@ -111,7 +113,7 @@ func ToProto(r record.Record) *issuedv1.IssuedRecord {
 	out := &issuedv1.IssuedRecord{
 		Id:               r.ID,
 		SchemaId:         r.SchemaID,
-		SchemaVersion:    int32(r.SchemaVersion),
+		SchemaVersion:    toInt32(int64(r.SchemaVersion)),
 		Subject:          &commonv1.Subject{Ref: r.SubjectRef},
 		Format:           FormatEnum(r.Format),
 		Status:           StatusEnum(r.Status),
@@ -202,4 +204,15 @@ type headView struct {
 	SignedAt   time.Time
 	JWS        string
 	KeyID      string
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

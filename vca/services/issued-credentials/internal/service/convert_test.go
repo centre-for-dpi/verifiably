@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/record"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/service"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestFormatNames(t *testing.T) {

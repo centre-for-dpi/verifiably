@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
@@ -331,8 +332,8 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 	if err != nil {
 		return record.Record{}, err
 	}
-	if err := record.NextStatus(current.Status, want); err != nil {
-		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition, err)
+	if serr := record.NextStatus(current.Status, want); serr != nil {
+		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition, serr)
 	}
 	if current.Binding.IsZero() {
 		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition, record.ErrNoBinding)
@@ -347,8 +348,8 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 		Value:  value,
 		Reason: reason,
 	})
-	if _, err := s.opts.Status.SetStatus(ctx, req); err != nil {
-		return record.Record{}, unavailable("the status service", err)
+	if _, serr := s.opts.Status.SetStatus(ctx, req); serr != nil {
+		return record.Record{}, unavailable("the status service", serr)
 	}
 	changed, err := s.opts.Store.SetStatus(id, want, reason, s.opts.Now())
 	if err != nil {
@@ -393,7 +394,7 @@ func notFound(err error) error {
 
 // unavailable returns a VCA-401 error for a service the call cannot reach.
 func unavailable(name string, cause error) error {
-	err := connect.NewError(connect.CodeUnavailable, fmt.Errorf("The service cannot reach %s: %w", name, cause))
+	err := connect.NewError(connect.CodeUnavailable, fmt.Errorf("the service cannot reach %s: %w", name, cause))
 	detail, derr := connect.NewErrorDetail(&commonv1.Error{
 		Code:     "VCA-401",
 		Message:  err.Message(),

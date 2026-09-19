@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 )
@@ -56,7 +57,9 @@ func chainHead(heads Heads) http.HandlerFunc {
 		w.Header().Set("Content-Type", MediaTypeJOSE)
 		w.Header().Set("Cache-Control", "public, max-age=300")
 		w.Header().Set("ETag", `"`+head.GetRecordHash()+`"`)
-		_, _ = w.Write([]byte(head.GetJws()))
+		if _, err := w.Write([]byte(head.GetJws())); err != nil {
+			return
+		}
 	}
 }
 
@@ -70,7 +73,9 @@ func jwks(keys Keys) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/jwk-set+json")
 		w.Header().Set("Cache-Control", "public, max-age=3600")
-		_, _ = w.Write(body)
+		if _, err := w.Write(body); err != nil {
+			return
+		}
 	}
 }
 
