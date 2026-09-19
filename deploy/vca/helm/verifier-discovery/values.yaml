@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: Apache-2.0
+# Values of the verifier-discovery service chart (ADR-008 decision 5).
+replicaCount: 1
+
+image:
+  repository: ghcr.io/centre-for-dpi/vca-verifier-discovery
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# The container listens on this port and the Service sends traffic to it.
+containerPort: 8090
+listenVariable: VCA_DISCOVERY_LISTEN
+
+service:
+  type: ClusterIP
+  port: 8090
+
+# The container runs as this non-root user.
+runAsUser: 65532
+
+# Plain settings become a ConfigMap. Secrets stay in a Secret that
+# the operator creates, named here.
+config: {}
+existingSecret: vca-secrets
+
+persistence:
+  enabled: true
+  mountPath: /data
+  existingClaim: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 192Mi
+
+nameOverride: ""
+fullnameOverride: ""
