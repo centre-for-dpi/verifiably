@@ -27,8 +27,8 @@ const (
 	EnvBootstrapURL = "VCA_BOOTSTRAP_URL"
 	// EnvBootstrapUser is the DPG administrator name.
 	EnvBootstrapUser = "VCA_BOOTSTRAP_ADMIN_USER"
-	// EnvBootstrapPassword is the DPG administrator password.
-	EnvBootstrapPassword = "VCA_BOOTSTRAP_ADMIN_PASSWORD"
+	// EnvBootstrapSecret names the DPG administrator password variable.
+	EnvBootstrapSecret = "VCA_BOOTSTRAP_ADMIN_PASSWORD" //nolint:gosec // G101: this is a variable name, not a credential.
 	// EnvBootstrapOrg is the CREDEBL organisation name.
 	EnvBootstrapOrg = "VCA_BOOTSTRAP_ORG"
 )
@@ -219,7 +219,7 @@ func keycloakToken(ctx context.Context, opts BootstrapOptions, base string) (str
 		"grant_type": {"password"},
 		"client_id":  {"admin-cli"},
 		"username":   {opts.value(EnvBootstrapUser, "admin")},
-		"password":   {opts.value(EnvBootstrapPassword, "admin")},
+		"password":   {opts.value(EnvBootstrapSecret, "admin")},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		base+"/realms/master/protocol/openid-connect/token", strings.NewReader(form.Encode()))
@@ -251,14 +251,14 @@ type credeblOrg struct {
 // and does nothing (ADR-008 decision 4).
 func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResult, error) {
 	var result BootstrapResult
-	base, err := opts.baseURL()
-	if err != nil {
-		return result, err
+	base, baseErr := opts.baseURL()
+	if baseErr != nil {
+		return result, baseErr
 	}
 	name := opts.value(EnvBootstrapOrg, "vca-"+ShortName(opts.Pair.Role.String()))
 	signin, err := json.Marshal(map[string]string{
 		"email":    opts.value(EnvBootstrapUser, "admin@example.com"),
-		"password": opts.value(EnvBootstrapPassword, ""),
+		"password": opts.value(EnvBootstrapSecret, ""),
 	})
 	if err != nil {
 		return result, fmt.Errorf("build the sign in request: %w", err)
@@ -272,7 +272,7 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 			AccessToken string `json:"access_token"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(answer, &session); err != nil || session.Data.AccessToken == "" {
+	if gotErr := json.Unmarshal(answer, &session); gotErr != nil || session.Data.AccessToken == "" {
 		return result, errors.New("CREDEBL sign in: the answer holds no access_token")
 	}
 	result.step(opts.Out, "CREDEBL sign in done")
@@ -286,8 +286,8 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 			Organizations []credeblOrg `json:"organizations"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(listed, &orgs); err != nil {
-		return result, fmt.Errorf("list the organisations: %w", err)
+	if gotErr := json.Unmarshal(listed, &orgs); gotErr != nil {
+		return result, fmt.Errorf("list the organisations: %w", gotErr)
 	}
 	for _, org := range orgs.Data.Organizations {
 		if org.Name == name {

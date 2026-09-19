@@ -84,7 +84,8 @@ func TestRenderComposeIsValidYaml(t *testing.T) {
 }
 
 func TestRenderComposeIsDeterministic(t *testing.T) {
-	if RenderCompose() != RenderCompose() {
+	first, second := RenderCompose(), RenderCompose()
+	if first != second {
 		t.Error("two renders differ")
 	}
 }

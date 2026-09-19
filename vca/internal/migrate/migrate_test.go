@@ -136,9 +136,9 @@ func TestListIDOfFile(t *testing.T) {
 func writeStateDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	issued, err := json.Marshal(sampleIssued(t))
-	if err != nil {
-		t.Fatalf("encode: %v", err)
+	issued, issuedErr := json.Marshal(sampleIssued(t))
+	if issuedErr != nil {
+		t.Fatalf("encode: %v", issuedErr)
 	}
 	write(t, filepath.Join(dir, migrate.IssuedLogName), issued)
 	write(t, filepath.Join(dir, "status-list-bitstring-v1.json"), listFile(t, 32, 8, make([]byte, 4)))

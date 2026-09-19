@@ -208,9 +208,9 @@ func newSetupCommand(env Environment) *cobra.Command {
 			}
 			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
 			for _, p := range pairs {
-				existing, err := ReadExisting(root, p)
-				if err != nil {
-					return err
+				existing, existingErr := ReadExisting(root, p)
+				if existingErr != nil {
+					return existingErr
 				}
 				plan, err := BuildPlan(SetupRequest{
 					Pair:        p,
@@ -227,9 +227,9 @@ func newSetupCommand(env Environment) *cobra.Command {
 				}
 				fmt.Fprint(cmd.OutOrStdout(), plan.Summary())
 				if !nonInteractive && !yes {
-					ok, err := prompter.Confirm("Write these files?", true)
-					if err != nil {
-						return err
+					ok, confirmErr := prompter.Confirm("Write these files?", true)
+					if confirmErr != nil {
+						return confirmErr
 					}
 					if !ok {
 						fmt.Fprintf(cmd.OutOrStdout(), "setup %s: nothing written\n", p.Name())
@@ -394,7 +394,7 @@ func newDpgCommand(env Environment) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			for _, name := range []string{EnvBootstrapURL, EnvBootstrapUser, EnvBootstrapPassword, EnvBootstrapOrg} {
+			for _, name := range []string{EnvBootstrapURL, EnvBootstrapUser, EnvBootstrapSecret, EnvBootstrapOrg} {
 				if v := env.Getenv(name); v != "" {
 					values[name] = v
 				}
@@ -462,7 +462,7 @@ func newAdminCommand(env Environment) *cobra.Command {
 			groups[c.Group] = group
 			admin.AddCommand(group)
 		}
-		group.AddCommand(newAdminRpcCommand(c, resolve))
+		group.AddCommand(newAdminRPCCommand(c, resolve))
 	}
 	for _, c := range AdminCommands() {
 		if c.Verb != "" {
@@ -476,8 +476,8 @@ func newAdminCommand(env Environment) *cobra.Command {
 	return admin
 }
 
-// newAdminRpcCommand builds one leaf command of the admin tree.
-func newAdminRpcCommand(c AdminCommand, resolve func() (AdminClient, error)) *cobra.Command {
+// newAdminRPCCommand builds one leaf command of the admin tree.
+func newAdminRPCCommand(c AdminCommand, resolve func() (AdminClient, error)) *cobra.Command {
 	var (
 		body string
 		file string

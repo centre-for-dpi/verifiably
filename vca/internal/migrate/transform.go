@@ -204,10 +204,10 @@ func IssuerSlug(issuerDID string) string {
 func AllocatedBits(size, count int) []byte {
 	out := make([]byte, (size+7)/8)
 	for i := 0; i < count && i < size; i++ {
-		out[i/8] |= 1 << (7 - uint(i%8))
+		out[i/8] |= 1 << (7 - i%8)
 	}
 	for i := size; i < len(out)*8; i++ {
-		out[i/8] |= 1 << (7 - uint(i%8))
+		out[i/8] |= 1 << (7 - i%8)
 	}
 	return out
 }
@@ -319,9 +319,9 @@ func Build(l Legacy, opts Options) (Bundle, error) {
 		return Bundle{}, err
 	}
 	for _, list := range l.Lists {
-		rec, err := ToListRecord(list, o)
-		if err != nil {
-			return Bundle{}, err
+		rec, recErr := ToListRecord(list, o)
+		if recErr != nil {
+			return Bundle{}, recErr
 		}
 		if rec.Kind == KindToken {
 			b.Token = append(b.Token, rec)

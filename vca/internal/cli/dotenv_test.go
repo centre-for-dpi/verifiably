@@ -74,7 +74,8 @@ func TestRenderDotenv(t *testing.T) {
 	if strings.Index(out, "VCA_A=1") > strings.Index(out, "VCA_PORTS_PORTAL=8080") {
 		t.Error("the extra block is not sorted")
 	}
-	if RenderDotenv("x", nil, nil) != RenderDotenv("x", nil, nil) {
+	first, second := RenderDotenv("x", nil, nil), RenderDotenv("x", nil, nil)
+	if first != second {
 		t.Error("the output is not deterministic")
 	}
 }

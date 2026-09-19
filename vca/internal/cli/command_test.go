@@ -116,7 +116,7 @@ func TestSetupReadsTheProcessEnvironment(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
 	}
-	data, err := os.ReadFile(filepath.Join(root, "deploy", "admin-waltid", EnvFileName))
+	data, err := os.ReadFile(filepath.Clean(filepath.Join(root, "deploy", "admin-waltid", EnvFileName)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -654,9 +654,9 @@ func TestManWritesOnePagePerCommand(t *testing.T) {
 	if !strings.Contains(out, "wrote the man pages") {
 		t.Errorf("out = %s", out)
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
+	entries, entriesErr := os.ReadDir(dir)
+	if entriesErr != nil {
+		t.Fatal(entriesErr)
 	}
 	if len(entries) < 30 {
 		t.Errorf("got %d man pages", len(entries))
@@ -666,7 +666,7 @@ func TestManWritesOnePagePerCommand(t *testing.T) {
 			t.Errorf("%s is missing: %v", name, err)
 		}
 	}
-	page, err := os.ReadFile(filepath.Join(dir, "vca-admin-trust-add.1"))
+	page, err := os.ReadFile(filepath.Clean(filepath.Join(dir, "vca-admin-trust-add.1")))
 	if err != nil {
 		t.Fatal(err)
 	}

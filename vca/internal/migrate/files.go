@@ -127,8 +127,8 @@ func Read(dir string) (Bundle, error) {
 		return Bundle{}, err
 	}
 	if len(issued) > 0 {
-		if err := json.Unmarshal(issued, &b.Issued); err != nil {
-			return Bundle{}, fmt.Errorf("%w: read %s: %w", ErrInput, IssuedFile, err)
+		if issuedErr := json.Unmarshal(issued, &b.Issued); issuedErr != nil {
+			return Bundle{}, fmt.Errorf("%w: read %s: %w", ErrInput, IssuedFile, issuedErr)
 		}
 	}
 	trust, err := readOptional(filepath.Join(dir, TrustFile))
@@ -137,8 +137,8 @@ func Read(dir string) (Bundle, error) {
 	}
 	b.Trust.Entries = map[string]TrustEntry{}
 	if len(trust) > 0 {
-		if err := json.Unmarshal(trust, &b.Trust); err != nil {
-			return Bundle{}, fmt.Errorf("%w: read %s: %w", ErrInput, TrustFile, err)
+		if trustErr := json.Unmarshal(trust, &b.Trust); trustErr != nil {
+			return Bundle{}, fmt.Errorf("%w: read %s: %w", ErrInput, TrustFile, trustErr)
 		}
 	}
 	if b.Bitstring, err = readLists(dir, BitstringDir); err != nil {

@@ -5,6 +5,7 @@ package cli
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,11 +126,12 @@ func TestBuildPlanFailsAndListsEveryMissingValue(t *testing.T) {
 }
 
 func asMissing(err error, target **MissingValuesError) bool {
-	m, ok := err.(*MissingValuesError)
-	if ok {
-		*target = m
+	var m *MissingValuesError
+	if !errors.As(err, &m) {
+		return false
 	}
-	return ok
+	*target = m
+	return true
 }
 
 func TestBuildPlanReportsBadValues(t *testing.T) {
@@ -260,13 +262,13 @@ func TestPlanSummaryHidesSecrets(t *testing.T) {
 
 func TestWritePlanAndReadExisting(t *testing.T) {
 	root := t.TempDir()
-	plan, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: issuerFlags(), Random: rand.Reader})
-	if err != nil {
-		t.Fatalf("BuildPlan: %v", err)
+	plan, planErr := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: issuerFlags(), Random: rand.Reader})
+	if planErr != nil {
+		t.Fatalf("BuildPlan: %v", planErr)
 	}
-	written, err := WritePlan(root, plan)
-	if err != nil {
-		t.Fatalf("WritePlan: %v", err)
+	written, writtenErr := WritePlan(root, plan)
+	if writtenErr != nil {
+		t.Fatalf("WritePlan: %v", writtenErr)
 	}
 	if len(written) != len(plan.Files) {
 		t.Errorf("wrote %d files, want %d", len(written), len(plan.Files))

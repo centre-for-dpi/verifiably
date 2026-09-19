@@ -66,11 +66,11 @@ func TestBundleWriteAndRead(t *testing.T) {
 	if err != nil || len(written) != 4 {
 		t.Fatalf("write: %v %v", written, err)
 	}
-	if _, err := b.Write(dir, false); !errors.Is(err, migrate.ErrExists) {
-		t.Fatalf("want ErrExists, got %v", err)
+	if _, gotErr := b.Write(dir, false); !errors.Is(gotErr, migrate.ErrExists) {
+		t.Fatalf("want ErrExists, got %v", gotErr)
 	}
-	if _, err := b.Write(dir, true); err != nil {
-		t.Fatalf("force: %v", err)
+	if _, gotErr := b.Write(dir, true); gotErr != nil {
+		t.Fatalf("force: %v", gotErr)
 	}
 	back, err := migrate.Read(dir)
 	if err != nil {
@@ -211,7 +211,7 @@ func TestImport(t *testing.T) {
 	if err != nil || len(written) != 4 {
 		t.Fatalf("import: %v %v", written, err)
 	}
-	data, err := os.ReadFile(filepath.Join(into, migrate.BitstringDir, migrate.ListsDir, "bitstring-v1.json"))
+	data, err := os.ReadFile(filepath.Clean(filepath.Join(into, migrate.BitstringDir, migrate.ListsDir, "bitstring-v1.json")))
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}

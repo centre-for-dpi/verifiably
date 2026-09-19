@@ -106,13 +106,13 @@ type sessionAnswer struct {
 // authorization URL, and waits for the one time code ([RFC 8252]
 // section 7.3). No token travels in a URL ([RFC 9700] section 4.3.2).
 func LoopbackLogin(ctx context.Context, opts LoginOptions) (string, error) {
-	start, err := opts.endpoint(LoopbackStartPath)
-	if err != nil {
-		return "", err
+	start, startErr := opts.endpoint(LoopbackStartPath)
+	if startErr != nil {
+		return "", startErr
 	}
-	exchange, err := opts.endpoint(LoopbackTokenPath)
-	if err != nil {
-		return "", err
+	exchange, exchangeErr := opts.endpoint(LoopbackTokenPath)
+	if exchangeErr != nil {
+		return "", exchangeErr
 	}
 	listener, err := opts.listen()
 	if err != nil {
@@ -133,7 +133,7 @@ func LoopbackLogin(ctx context.Context, opts LoginOptions) (string, error) {
 		AuthorizationURL string `json:"authorization_url"`
 		RedirectURI      string `json:"redirect_uri"`
 	}
-	if err := json.Unmarshal(body, &answer); err != nil || answer.AuthorizationURL == "" {
+	if gotErr := json.Unmarshal(body, &answer); gotErr != nil || answer.AuthorizationURL == "" {
 		return "", errors.New("start the login: the answer holds no authorization_url")
 	}
 	fmt.Fprintf(opts.Out, "Open this address in a browser and log in:\n%s\n", answer.AuthorizationURL)

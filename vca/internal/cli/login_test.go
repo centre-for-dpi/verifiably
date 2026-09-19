@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -303,8 +304,8 @@ func TestLoopbackLoginIgnoresAnotherPath(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("another path answered %d", resp.StatusCode)
 	}
-	if err := resp.Body.Close(); err != nil {
-		t.Fatalf("resp.Body.Close: %v", err)
+	if gotErr := resp.Body.Close(); gotErr != nil {
+		t.Fatalf("resp.Body.Close: %v", gotErr)
 	}
 	<-done
 	if err == nil {
@@ -576,7 +577,7 @@ func TestPendingAndStatusErrors(t *testing.T) {
 		t.Errorf("got %q", s.Error())
 	}
 	// describe keeps an error it cannot read.
-	if got := describe(io.ErrUnexpectedEOF); got != io.ErrUnexpectedEOF {
+	if got := describe(io.ErrUnexpectedEOF); !errors.Is(got, io.ErrUnexpectedEOF) {
 		t.Errorf("describe changed a plain error: %v", got)
 	}
 	if got := describe(&statusError{status: 500, body: []byte("boom")}); !strings.Contains(got.Error(), "500") {

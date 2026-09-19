@@ -82,7 +82,7 @@ func asksQuestion(s Setting) bool {
 	if !s.Asks() {
 		return false
 	}
-	return !(s.Secret && s.Kind == KindSecretRef)
+	return !s.Secret || s.Kind != KindSecretRef
 }
 
 // AskAll asks every question that no higher source already answered.
