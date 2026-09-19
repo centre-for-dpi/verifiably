@@ -65,7 +65,9 @@ buf generate
 go build ./...
 ```
 
-`buf breaking` runs in CI against the last release tag (ADR-003 decision 4).
+`buf breaking` runs in CI through `hack/buf-breaking.sh`. The script
+compares against the last release tag. Before the first release it
+compares against the merge base with `main` (ADR-003 decision 4).
 
 ## OpenAPI
 
