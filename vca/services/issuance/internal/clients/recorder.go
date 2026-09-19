@@ -3,27 +3,17 @@
 package clients
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"connectrpc.com/connect"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
-	"google.golang.org/protobuf/encoding/protojson"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 )
-
-// RecordPath is the endpoint of the issued credentials service that
-// takes one new record.
-//
-// The service contract vca.issued.v1 reads and changes records. It has
-// no RPC that appends one, so the issuance service sends the record as
-// ProtoJSON to this endpoint. A later release of the contract can add an
-// Append RPC, and only this file changes.
-const RecordPath = "/issued/records"
 
 // ErrNoRecorder reports that no issued credentials service is set.
 var ErrNoRecorder = errors.New("clients: no issued credentials URL")
@@ -48,51 +38,46 @@ func (f recorderFunc) Record(ctx context.Context, r *issuedv1.IssuedRecord) (str
 	return f(ctx, r)
 }
 
-// HTTPRecorder sends the record to the issued credentials service.
-type HTTPRecorder struct {
-	baseURL string
-	client  *http.Client
+// Appender is the part of the issued credentials contract that the
+// issuance service calls. A test passes a fake and needs no server.
+type Appender interface {
+	// Append records one issuance and returns its id and hash.
+	Append(context.Context, *connect.Request[issuedv1.AppendRequest]) (
+		*connect.Response[issuedv1.AppendResponse], error)
 }
 
-// NewHTTPRecorder returns a recorder that posts to the base URL.
-func NewHTTPRecorder(baseURL string, client *http.Client) *HTTPRecorder {
+// AppendRecorder writes the record with the Append RPC of the issued
+// credentials service (ADR-017 decision 1).
+type AppendRecorder struct {
+	client Appender
+}
+
+// NewAppendRecorder returns a recorder over an Append client.
+func NewAppendRecorder(client Appender) *AppendRecorder {
+	return &AppendRecorder{client: client}
+}
+
+// NewConnectRecorder returns a recorder that calls the Append RPC of
+// the service at baseURL.
+func NewConnectRecorder(baseURL string, client *http.Client) *AppendRecorder {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" {
+		return &AppendRecorder{}
+	}
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &HTTPRecorder{baseURL: strings.TrimRight(baseURL, "/"), client: client}
+	return &AppendRecorder{client: issuedv1connect.NewIssuedServiceClient(client, baseURL)}
 }
 
 // Record stores one issued record and returns its id.
-func (h *HTTPRecorder) Record(ctx context.Context, r *issuedv1.IssuedRecord) (string, error) {
-	if h == nil || h.baseURL == "" {
+func (a *AppendRecorder) Record(ctx context.Context, r *issuedv1.IssuedRecord) (string, error) {
+	if a == nil || a.client == nil {
 		return "", ErrNoRecorder
 	}
-	body, err := protojson.Marshal(r)
-	if err != nil {
-		return "", fmt.Errorf("clients: encode the record: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		h.baseURL+RecordPath, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("clients: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	resp, err := h.client.Do(req)
+	resp, err := a.client.Append(ctx, connect.NewRequest(&issuedv1.AppendRequest{Record: r}))
 	if err != nil {
 		return "", fmt.Errorf("clients: write the record: %w", err)
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("clients: the issued credentials service returned %d: %s",
-			resp.StatusCode, string(raw))
-	}
-	var stored issuedv1.IssuedRecord
-	if len(bytes.TrimSpace(raw)) > 0 {
-		if err := protojson.Unmarshal(raw, &stored); err != nil {
-			return "", fmt.Errorf("clients: read the record answer: %w", err)
-		}
-	}
-	return stored.GetId(), nil
+	return resp.Msg.GetId(), nil
 }

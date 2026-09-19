@@ -40,6 +40,8 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// IssuedServiceAppendProcedure is the fully-qualified name of the IssuedService's Append RPC.
+	IssuedServiceAppendProcedure = "/vca.issued.v1.IssuedService/Append"
 	// IssuedServiceListProcedure is the fully-qualified name of the IssuedService's List RPC.
 	IssuedServiceListProcedure = "/vca.issued.v1.IssuedService/List"
 	// IssuedServiceSearchProcedure is the fully-qualified name of the IssuedService's Search RPC.
@@ -58,10 +60,15 @@ const (
 	// IssuedServiceVerifyChainProcedure is the fully-qualified name of the IssuedService's VerifyChain
 	// RPC.
 	IssuedServiceVerifyChainProcedure = "/vca.issued.v1.IssuedService/VerifyChain"
+	// IssuedServicePruneProcedure is the fully-qualified name of the IssuedService's Prune RPC.
+	IssuedServicePruneProcedure = "/vca.issued.v1.IssuedService/Prune"
 )
 
 // IssuedServiceClient is a client for the vca.issued.v1.IssuedService service.
 type IssuedServiceClient interface {
+	// Append records one issuance in the log. The issuance service calls
+	// it after a credential reaches the holder (ADR-017 decision 1).
+	Append(context.Context, *connect.Request[v1.AppendRequest]) (*connect.Response[v1.AppendResponse], error)
 	// List returns records in pages with filters.
 	List(context.Context, *connect.Request[v1.ListRequest]) (*connect.Response[v1.ListResponse], error)
 	// Search returns records whose searchable claims match a text.
@@ -81,6 +88,9 @@ type IssuedServiceClient interface {
 	// VerifyChain walks the chain from one record to the head and reports
 	// the first broken link, when any.
 	VerifyChain(context.Context, *connect.Request[v1.VerifyChainRequest]) (*connect.Response[v1.VerifyChainResponse], error)
+	// Prune runs the retention rules and drops the records that the
+	// retention window no longer covers (ADR-017 decision 5).
+	Prune(context.Context, *connect.Request[v1.PruneRequest]) (*connect.Response[v1.PruneResponse], error)
 }
 
 // NewIssuedServiceClient constructs a client for the vca.issued.v1.IssuedService service. By
@@ -94,6 +104,12 @@ func NewIssuedServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 	baseURL = strings.TrimRight(baseURL, "/")
 	issuedServiceMethods := v1.File_vca_issued_v1_issued_proto.Services().ByName("IssuedService").Methods()
 	return &issuedServiceClient{
+		append: connect.NewClient[v1.AppendRequest, v1.AppendResponse](
+			httpClient,
+			baseURL+IssuedServiceAppendProcedure,
+			connect.WithSchema(issuedServiceMethods.ByName("Append")),
+			connect.WithClientOptions(opts...),
+		),
 		list: connect.NewClient[v1.ListRequest, v1.ListResponse](
 			httpClient,
 			baseURL+IssuedServiceListProcedure,
@@ -142,11 +158,18 @@ func NewIssuedServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(issuedServiceMethods.ByName("VerifyChain")),
 			connect.WithClientOptions(opts...),
 		),
+		prune: connect.NewClient[v1.PruneRequest, v1.PruneResponse](
+			httpClient,
+			baseURL+IssuedServicePruneProcedure,
+			connect.WithSchema(issuedServiceMethods.ByName("Prune")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // issuedServiceClient implements IssuedServiceClient.
 type issuedServiceClient struct {
+	append       *connect.Client[v1.AppendRequest, v1.AppendResponse]
 	list         *connect.Client[v1.ListRequest, v1.ListResponse]
 	search       *connect.Client[v1.SearchRequest, v1.SearchResponse]
 	get          *connect.Client[v1.GetRequest, v1.GetResponse]
@@ -155,6 +178,12 @@ type issuedServiceClient struct {
 	export       *connect.Client[v1.ExportRequest, v1.ExportResponse]
 	getChainHead *connect.Client[v1.GetChainHeadRequest, v1.GetChainHeadResponse]
 	verifyChain  *connect.Client[v1.VerifyChainRequest, v1.VerifyChainResponse]
+	prune        *connect.Client[v1.PruneRequest, v1.PruneResponse]
+}
+
+// Append calls vca.issued.v1.IssuedService.Append.
+func (c *issuedServiceClient) Append(ctx context.Context, req *connect.Request[v1.AppendRequest]) (*connect.Response[v1.AppendResponse], error) {
+	return c.append.CallUnary(ctx, req)
 }
 
 // List calls vca.issued.v1.IssuedService.List.
@@ -197,8 +226,16 @@ func (c *issuedServiceClient) VerifyChain(ctx context.Context, req *connect.Requ
 	return c.verifyChain.CallUnary(ctx, req)
 }
 
+// Prune calls vca.issued.v1.IssuedService.Prune.
+func (c *issuedServiceClient) Prune(ctx context.Context, req *connect.Request[v1.PruneRequest]) (*connect.Response[v1.PruneResponse], error) {
+	return c.prune.CallUnary(ctx, req)
+}
+
 // IssuedServiceHandler is an implementation of the vca.issued.v1.IssuedService service.
 type IssuedServiceHandler interface {
+	// Append records one issuance in the log. The issuance service calls
+	// it after a credential reaches the holder (ADR-017 decision 1).
+	Append(context.Context, *connect.Request[v1.AppendRequest]) (*connect.Response[v1.AppendResponse], error)
 	// List returns records in pages with filters.
 	List(context.Context, *connect.Request[v1.ListRequest]) (*connect.Response[v1.ListResponse], error)
 	// Search returns records whose searchable claims match a text.
@@ -218,6 +255,9 @@ type IssuedServiceHandler interface {
 	// VerifyChain walks the chain from one record to the head and reports
 	// the first broken link, when any.
 	VerifyChain(context.Context, *connect.Request[v1.VerifyChainRequest]) (*connect.Response[v1.VerifyChainResponse], error)
+	// Prune runs the retention rules and drops the records that the
+	// retention window no longer covers (ADR-017 decision 5).
+	Prune(context.Context, *connect.Request[v1.PruneRequest]) (*connect.Response[v1.PruneResponse], error)
 }
 
 // NewIssuedServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -227,6 +267,12 @@ type IssuedServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewIssuedServiceHandler(svc IssuedServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	issuedServiceMethods := v1.File_vca_issued_v1_issued_proto.Services().ByName("IssuedService").Methods()
+	issuedServiceAppendHandler := connect.NewUnaryHandler(
+		IssuedServiceAppendProcedure,
+		svc.Append,
+		connect.WithSchema(issuedServiceMethods.ByName("Append")),
+		connect.WithHandlerOptions(opts...),
+	)
 	issuedServiceListHandler := connect.NewUnaryHandler(
 		IssuedServiceListProcedure,
 		svc.List,
@@ -275,8 +321,16 @@ func NewIssuedServiceHandler(svc IssuedServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(issuedServiceMethods.ByName("VerifyChain")),
 		connect.WithHandlerOptions(opts...),
 	)
+	issuedServicePruneHandler := connect.NewUnaryHandler(
+		IssuedServicePruneProcedure,
+		svc.Prune,
+		connect.WithSchema(issuedServiceMethods.ByName("Prune")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.issued.v1.IssuedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case IssuedServiceAppendProcedure:
+			issuedServiceAppendHandler.ServeHTTP(w, r)
 		case IssuedServiceListProcedure:
 			issuedServiceListHandler.ServeHTTP(w, r)
 		case IssuedServiceSearchProcedure:
@@ -293,6 +347,8 @@ func NewIssuedServiceHandler(svc IssuedServiceHandler, opts ...connect.HandlerOp
 			issuedServiceGetChainHeadHandler.ServeHTTP(w, r)
 		case IssuedServiceVerifyChainProcedure:
 			issuedServiceVerifyChainHandler.ServeHTTP(w, r)
+		case IssuedServicePruneProcedure:
+			issuedServicePruneHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -301,6 +357,10 @@ func NewIssuedServiceHandler(svc IssuedServiceHandler, opts ...connect.HandlerOp
 
 // UnimplementedIssuedServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedIssuedServiceHandler struct{}
+
+func (UnimplementedIssuedServiceHandler) Append(context.Context, *connect.Request[v1.AppendRequest]) (*connect.Response[v1.AppendResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.issued.v1.IssuedService.Append is not implemented"))
+}
 
 func (UnimplementedIssuedServiceHandler) List(context.Context, *connect.Request[v1.ListRequest]) (*connect.Response[v1.ListResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.issued.v1.IssuedService.List is not implemented"))
@@ -332,4 +392,8 @@ func (UnimplementedIssuedServiceHandler) GetChainHead(context.Context, *connect.
 
 func (UnimplementedIssuedServiceHandler) VerifyChain(context.Context, *connect.Request[v1.VerifyChainRequest]) (*connect.Response[v1.VerifyChainResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.issued.v1.IssuedService.VerifyChain is not implemented"))
+}
+
+func (UnimplementedIssuedServiceHandler) Prune(context.Context, *connect.Request[v1.PruneRequest]) (*connect.Response[v1.PruneResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.issued.v1.IssuedService.Prune is not implemented"))
 }

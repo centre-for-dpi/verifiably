@@ -94,10 +94,10 @@ func (s *Service) SubjectRef(subject string) string {
 	return record.SubjectRef(s.opts.Salt, subject)
 }
 
-// Append writes one issuance to the log. The proto has no Append RPC,
-// so the issuance path calls this method in process. It fills the
-// retention time from the per schema rules (ADR-017 decision 5).
-func (s *Service) Append(r record.Record) (record.Record, error) {
+// AppendRecord writes one issuance to the log. The Append RPC and the
+// in process issuance path both call it. It fills the retention time
+// from the per schema rules (ADR-017 decision 5).
+func (s *Service) AppendRecord(r record.Record) (record.Record, error) {
 	if r.IssuedAt.IsZero() {
 		r.IssuedAt = s.opts.Now()
 	}
@@ -107,9 +107,51 @@ func (s *Service) Append(r record.Record) (record.Record, error) {
 	return s.opts.Store.Append(r)
 }
 
-// Prune drops every record whose retention ended
+// PruneDue drops every record whose retention ended
 // (ADR-017 decision 5). The scheduled job of the app calls it.
-func (s *Service) Prune() (int, error) { return s.opts.Store.Prune(s.opts.Now()) }
+func (s *Service) PruneDue() (int, error) { return s.opts.Store.Prune(s.opts.Now()) }
+
+// Append records one issuance (ADR-017 decision 1). The issuance
+// service calls it after a credential reaches the holder.
+func (s *Service) Append(_ context.Context, req *connect.Request[issuedv1.AppendRequest]) (*connect.Response[issuedv1.AppendResponse], error) {
+	in := req.Msg.GetRecord()
+	if in == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs a record"))
+	}
+	r := FromProto(in)
+	if strings.TrimSpace(r.ID) == "" {
+		r.ID = record.NewID(s.opts.Now(), r.SchemaID, r.Hash)
+	}
+	stored, err := s.AppendRecord(r)
+	if err != nil {
+		return nil, appendError(err)
+	}
+	return connect.NewResponse(&issuedv1.AppendResponse{Id: stored.ID, RecordHash: stored.RecordHash}), nil
+}
+
+// Prune runs the retention rules (ADR-017 decision 5). A dry run counts
+// the records that are due and drops none.
+func (s *Service) Prune(_ context.Context, req *connect.Request[issuedv1.PruneRequest]) (*connect.Response[issuedv1.PruneResponse], error) {
+	pruned, err := s.opts.Store.PruneWhere(s.opts.Now(), req.Msg.GetSchemaId(), req.Msg.GetDryRun())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&issuedv1.PruneResponse{
+		Pruned:    int64(pruned),
+		Remaining: int64(s.opts.Store.Len()),
+	}), nil
+}
+
+// appendError maps a store error of an append to a Connect error.
+func appendError(err error) error {
+	if errors.Is(err, store.ErrDuplicate) {
+		return connect.NewError(connect.CodeAlreadyExists, err)
+	}
+	if errors.Is(err, record.ErrInvalid) {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewError(connect.CodeInternal, err)
+}
 
 // List returns records in pages, newest first.
 func (s *Service) List(_ context.Context, req *connect.Request[issuedv1.ListRequest]) (*connect.Response[issuedv1.ListResponse], error) {

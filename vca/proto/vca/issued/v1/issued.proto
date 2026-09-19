@@ -14,6 +14,9 @@ import "vca/common/v1/common.proto";
 
 // IssuedService reads and changes issued records.
 service IssuedService {
+  // Append records one issuance in the log. The issuance service calls
+  // it after a credential reaches the holder (ADR-017 decision 1).
+  rpc Append(AppendRequest) returns (AppendResponse);
   // List returns records in pages with filters.
   rpc List(ListRequest) returns (ListResponse);
   // Search returns records whose searchable claims match a text.
@@ -33,6 +36,9 @@ service IssuedService {
   // VerifyChain walks the chain from one record to the head and reports
   // the first broken link, when any.
   rpc VerifyChain(VerifyChainRequest) returns (VerifyChainResponse);
+  // Prune runs the retention rules and drops the records that the
+  // retention window no longer covers (ADR-017 decision 5).
+  rpc Prune(PruneRequest) returns (PruneResponse);
 }
 
 // Status names the status of an issued credential.
@@ -86,6 +92,38 @@ message IssuedRecord {
   string status_reason = 17;
   // The time after which the scheduled job prunes the record.
   google.protobuf.Timestamp retain_until = 18;
+}
+
+// AppendRequest carries one issuance to record.
+message AppendRequest {
+  // The record to write. The service assigns the id, the hashes, and
+  // the retention time. It keeps every other field.
+  IssuedRecord record = 1;
+}
+
+// AppendResponse returns the identity of the stored record.
+message AppendResponse {
+  // The record id the service assigned.
+  string id = 1;
+  // The hash of the stored record over its fields, hex encoded.
+  string record_hash = 2;
+}
+
+// PruneRequest selects the records of one retention run.
+message PruneRequest {
+  // True counts the records that are due and drops none.
+  bool dry_run = 1;
+  // The schema id to prune. Empty prunes every schema.
+  string schema_id = 2;
+}
+
+// PruneResponse returns the counts of one retention run.
+message PruneResponse {
+  // The number of records the run dropped. A dry run reports the
+  // number of records that are due.
+  int64 pruned = 1;
+  // The number of records the log holds after the run.
+  int64 remaining = 2;
 }
 
 // Filter narrows a list, search, or export.

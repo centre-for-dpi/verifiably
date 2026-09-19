@@ -98,7 +98,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	recorder := deps.Recorder
 	if recorder == nil {
 		if cfg.IssuedURL != "" {
-			recorder = clients.NewHTTPRecorder(cfg.IssuedURL, &http.Client{Timeout: cfg.Timeout})
+			recorder = clients.NewConnectRecorder(cfg.IssuedURL, &http.Client{Timeout: cfg.Timeout})
 		} else {
 			recorder = clients.LogRecorder(deps.Log)
 		}

@@ -428,3 +428,34 @@ func TestPruneRollsBackOnSaveFailure(t *testing.T) {
 		t.Errorf("pruned = %d, want 0", s2.Pruned())
 	}
 }
+
+func TestPruneWhereFiltersAndCounts(t *testing.T) {
+	s, err := store.Open(store.Memory())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	add := func(id, schema string) {
+		t.Helper()
+		if _, err := s.Append(record.Record{
+			ID: id, SchemaID: schema, SchemaVersion: 1, SubjectRef: "ref-" + id,
+			IssuedAt: at(1), RetainUntil: at(1).Add(time.Hour),
+		}); err != nil {
+			t.Fatalf("append %s: %v", id, err)
+		}
+	}
+	add("a", "visitor")
+	add("b", "diploma")
+	later := at(1).Add(2 * time.Hour)
+	if n, err := s.PruneWhere(later, "", true); err != nil || n != 2 {
+		t.Fatalf("dry run = %d %v, want 2", n, err)
+	}
+	if s.Len() != 2 {
+		t.Fatalf("len = %d, want 2 after a dry run", s.Len())
+	}
+	if n, err := s.PruneWhere(later, "visitor", false); err != nil || n != 1 {
+		t.Fatalf("filtered prune = %d %v, want 1", n, err)
+	}
+	if s.Len() != 1 {
+		t.Fatalf("len = %d, want 1", s.Len())
+	}
+}

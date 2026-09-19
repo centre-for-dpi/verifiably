@@ -155,3 +155,20 @@ func TestBindingIsZero(t *testing.T) {
 		t.Fatal("IsZero")
 	}
 }
+
+func TestNewIDIsStableAndUnique(t *testing.T) {
+	at := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	first := NewID(at, "diploma", "hash-a")
+	if len(first) != IDLength {
+		t.Fatalf("len = %d, want %d", len(first), IDLength)
+	}
+	if first != NewID(at, "diploma", "hash-a") {
+		t.Error("the same issuance must get the same id")
+	}
+	if first == NewID(at, "diploma", "hash-b") {
+		t.Error("another credential must get another id")
+	}
+	if first == NewID(at.Add(time.Second), "diploma", "hash-a") {
+		t.Error("another time must get another id")
+	}
+}
