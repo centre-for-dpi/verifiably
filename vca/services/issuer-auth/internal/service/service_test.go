@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -23,6 +25,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuerauth/v1/issuerauthv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/roles"
@@ -89,7 +92,11 @@ func newFixture(t *testing.T) *fixture {
 		Signer:    signer,
 		CSRF:      csrf,
 	})
-	mux.Handle("/", server.Handler(f.svc))
+	mux.Handle("/", serve.Handler(serve.Options{
+		Handler:      server.Handler(f.svc),
+		ReadyMessage: server.ReadyMessage(f.svc),
+		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}))
 	if _, err := providers.Put(oidcflow.Provider{ID: "idp", DisplayName: "Fake", DiscoveryURL: idp.DiscoveryURL(), ClientID: idp.ClientID, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}

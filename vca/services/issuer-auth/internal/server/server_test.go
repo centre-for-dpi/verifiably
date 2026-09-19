@@ -3,15 +3,14 @@
 package server_test
 
 import (
-	"context"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/config"
@@ -111,71 +110,24 @@ func TestBuild(t *testing.T) {
 	}
 }
 
-func freePort(t *testing.T) string {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+func TestHandlerRoutes(t *testing.T) {
+	svc, err := server.Build(baseConfig(t), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	addr := ln.Addr().String()
-	ln.Close()
-	return addr
+	rec := httptest.NewRecorder()
+	server.Handler(svc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("jwks: %d", rec.Code)
+	}
 }
 
-func TestRunAndHealthcheck(t *testing.T) {
-	cfg := baseConfig(t)
-	svc, err := server.Build(cfg, quiet)
+func TestReadyMessage(t *testing.T) {
+	svc, err := server.Build(baseConfig(t), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	addr := freePort(t)
-	if err := server.Healthcheck(addr); err == nil {
-		t.Fatal("healthcheck passed with nothing listening")
+	if msg := server.ReadyMessage(svc)(); !strings.Contains(msg, "providers=") {
+		t.Fatalf("ready message = %q", msg)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- server.Run(ctx, addr, server.Handler(svc), quiet) }()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if err := server.Healthcheck(addr); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("server did not start")
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	_, port, _ := net.SplitHostPort(addr)
-	if err := server.Healthcheck(":" + port); err != nil {
-		t.Fatalf("empty host: %v", err)
-	}
-	res, err := http.Get("http://" + addr + "/readyz")
-	if err != nil || res.StatusCode != 200 {
-		t.Fatalf("readyz: %v", err)
-	}
-	res.Body.Close()
-	cancel()
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	// A busy port makes Run fail.
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
-	defer ln.Close()
-	if err := server.Run(context.Background(), ln.Addr().String(), server.Handler(svc), quiet); err == nil {
-		t.Fatal("busy port accepted")
-	}
-	if err := server.Healthcheck("bad"); err == nil {
-		t.Fatal("bad addr accepted")
-	}
-	// A handler that answers 500 fails the healthcheck.
-	bad := http.NewServeMux()
-	bad.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) })
-	addr2 := freePort(t)
-	ctx2, cancel2 := context.WithCancel(context.Background())
-	go func() { _ = server.Run(ctx2, addr2, bad, quiet) }()
-	time.Sleep(50 * time.Millisecond)
-	if err := server.Healthcheck(addr2); err == nil {
-		t.Fatal("500 passed")
-	}
-	cancel2()
 }
