@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -248,7 +249,9 @@ func (s *Service) providerMetadata(ctx context.Context, providerID string) (oidc
 	}
 	meta, err := onboard.Discover(ctx, s.d.Client, p.DiscoveryURL)
 	if err != nil {
-		return oidcflow.Provider{}, onboard.Metadata{}, err
+		// A provider that does not answer is an upstream fault, so the
+		// CLI sees 502 and not 500.
+		return oidcflow.Provider{}, onboard.Metadata{}, fmt.Errorf("%w: %v", oidcflow.ErrUpstream, err)
 	}
 	return p, meta, nil
 }

@@ -534,3 +534,107 @@ func TestACallbackWithAnUnknownStateFails(t *testing.T) {
 		t.Fatalf("status = %d", res.StatusCode)
 	}
 }
+
+// bare builds a second service over the same registry and records, with
+// no audit log and with an own secret resolver.
+func (h *harness) bare(t *testing.T, secrets oidcflow.SecretResolver) *login.Service {
+	t.Helper()
+	cache := oidcflow.NewCache(nil, 0)
+	svc, err := login.New(login.Deps{
+		Cfg:       h.cfg,
+		Flow:      &oidcflow.Flow{Cache: cache, Secrets: secrets},
+		Cache:     cache,
+		Providers: h.svc.Providers(),
+		Signer:    h.svc.Signer(),
+		CSRF:      h.svc.CSRF(),
+		Records:   h.rec,
+	})
+	if err != nil {
+		t.Fatalf("login.New: %v", err)
+	}
+	return svc
+}
+
+// roundTrip runs one login on svc and returns the state and the code.
+func (h *harness) roundTrip(t *testing.T, svc *login.Service) (string, string) {
+	t.Helper()
+	u, err := svc.Start(context.Background(), "idp", "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	back, err := h.idp.Authorize(u)
+	if err != nil {
+		t.Fatalf("Authorize: %v", err)
+	}
+	parsed, err := url.Parse(back)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	return parsed.Query().Get("state"), parsed.Query().Get("code")
+}
+
+func TestALoginWorksWithoutAnAuditLog(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.rec.BindAdmin(ctx, h.idp.Issuer(), h.idp.Subject); err != nil {
+		t.Fatalf("BindAdmin: %v", err)
+	}
+	svc := h.bare(t, nil)
+	state, code := h.roundTrip(t, svc)
+	token, claims, _, err := svc.Complete(ctx, state, code, "")
+	if err != nil || token == "" || !claims.HasRole(login.RoleSuperAdmin) {
+		t.Fatalf("Complete = %v, %v", claims, err)
+	}
+}
+
+func TestCompleteReportsAProviderError(t *testing.T) {
+	h := newHarness(t)
+	svc := h.bare(t, nil)
+	state, _ := h.roundTrip(t, svc)
+	if _, _, _, err := svc.Complete(context.Background(), state, "", "access_denied"); !errors.Is(err, oidcflow.ErrProviderError) {
+		t.Fatalf("Complete = %v", err)
+	}
+}
+
+func TestTheDeviceEndpointUsesTheConfiguredSecretResolver(t *testing.T) {
+	h := newHarness(t)
+	id := h.deviceProvider(t)
+	p, err := h.svc.Providers().Get(id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	p.ClientSecret = oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: "VCA_TEST_CLIENT_SECRET"}
+	if _, err := h.svc.Providers().Put(p); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	calls := 0
+	svc := h.bare(t, func(ref oidcflow.SecretRef) (string, error) {
+		calls++
+		return "secret-value", nil
+	})
+	req := httptest.NewRequest(http.MethodPost, "/device_authorization",
+		strings.NewReader(url.Values{"provider": {id}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	svc.DeviceAuthorization(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if calls == 0 {
+		t.Fatal("the service did not use the secret resolver")
+	}
+}
+
+func TestTheDeviceEndpointReportsAnUnreachableProvider(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.svc.Providers().Put(oidcflow.Provider{
+		ID: "gone", DiscoveryURL: "http://127.0.0.1:1/.well-known/openid-configuration",
+		ClientID: "x", Enabled: true,
+	}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	status, body := h.post(t, "/device_authorization", url.Values{"provider": {"gone"}})
+	if status != http.StatusBadGateway {
+		t.Fatalf("status = %d body = %v", status, body)
+	}
+}
