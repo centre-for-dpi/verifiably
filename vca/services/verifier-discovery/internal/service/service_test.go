@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
@@ -17,7 +18,6 @@ import (
 	shared "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/catalog"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/crawl"
-	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/fetch"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/store"
 )
@@ -359,8 +359,8 @@ func (f fakeTrust) ListEntries(context.Context, *connect.Request[trustv1.ListEnt
 // noFetch answers no document.
 type noFetch struct{}
 
-func (noFetch) Get(context.Context, string) (fetch.Doc, error) {
-	return fetch.Doc{}, errors.New("no network")
+func (noFetch) Get(context.Context, string) (fetchguard.Doc, error) {
+	return fetchguard.Doc{}, errors.New("no network")
 }
 func (noFetch) Forget(string) {}
 
