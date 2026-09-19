@@ -5,9 +5,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"io"
 	"net"
 	"net/http"
@@ -21,160 +18,174 @@ import (
 	"time"
 )
 
-// idp is a fake OpenID Connect provider.
-type idp struct {
-	server     *httptest.Server
-	code       string
-	verifier   string
-	deviceCode string
-	pending    int
-	noDevice   bool
-	noAuth     bool
-	failToken  bool
+// fakeAdmin is a stand in for the admin service login endpoints.
+type fakeAdmin struct {
+	server *httptest.Server
+	// port is the loopback port the CLI asked for.
+	port string
+	// provider and bootstrap record the form fields the CLI sent.
+	provider  string
+	bootstrap string
+	// pending is the number of authorization_pending answers to send.
+	pending int
+	// noURL drops the authorization URL from the start answer.
+	noURL bool
+	// noDeviceCode drops the device code from the start answer.
+	noDeviceCode bool
+	// failStart makes the start endpoint answer an OAuth error.
+	failStart bool
+	// failToken makes the token endpoints answer an OAuth error.
+	failToken bool
+	// noToken drops the access token from the token answer.
+	noToken bool
 }
 
-func newIdp(t *testing.T, state *idp) *httptest.Server {
+func newFakeAdmin(t *testing.T, state *fakeAdmin) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	server := httptest.NewUnstartedServer(mux)
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		base := "http://" + server.Listener.Addr().String()
-		doc := `{"issuer":"` + base + `","token_endpoint":"` + base + `/token"`
-		if !state.noAuth {
-			doc += `,"authorization_endpoint":"` + base + `/auth"`
-		}
-		if !state.noDevice {
-			doc += `,"device_authorization_endpoint":"` + base + `/device"`
-		}
-		_, _ = io.WriteString(w, doc+"}")
-	})
-	mux.HandleFunc("/device", func(w http.ResponseWriter, _ *http.Request) {
-		state.deviceCode = "d-code"
-		_, _ = io.WriteString(w, `{"device_code":"d-code","user_code":"WXYZ-1234","verification_uri":"http://idp/activate","interval":0}`)
-	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+	// record keeps the last value the CLI sent for each field. The
+	// second call of a flow carries the code only, so an empty field
+	// leaves the record alone.
+	record := func(r *http.Request) {
 		_ = r.ParseForm()
-		if state.failToken {
+		if v := r.PostFormValue("provider"); v != "" {
+			state.provider = v
+		}
+		if v := r.PostFormValue(BootstrapField); v != "" {
+			state.bootstrap = v
+		}
+	}
+	mux.HandleFunc(LoopbackStartPath, func(w http.ResponseWriter, r *http.Request) {
+		record(r)
+		state.port = r.PostFormValue("port")
+		if state.failStart {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
+			_, _ = io.WriteString(w, `{"error":"invalid_request","error_description":"port must be a number from 1024 to 65535"}`)
 			return
 		}
-		if r.Form.Get("grant_type") == "urn:ietf:params:oauth:grant-type:device_code" && state.pending > 0 {
+		if state.noURL {
+			_, _ = io.WriteString(w, `{}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"authorization_url":"https://idp.example/auth?state=abc",`+
+			`"redirect_uri":"http://127.0.0.1:`+state.port+`/callback"}`)
+	})
+	mux.HandleFunc(LoopbackTokenPath, func(w http.ResponseWriter, r *http.Request) {
+		record(r)
+		if r.PostFormValue("code") == "" || state.failToken {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":"invalid_grant","error_description":"the code is not valid or it expired"}`)
+			return
+		}
+		writeSession(w, state)
+	})
+	mux.HandleFunc(DeviceStartPath, func(w http.ResponseWriter, r *http.Request) {
+		record(r)
+		if state.failStart {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":"unsupported_grant_type","error_description":"the provider supports no device grant, use the loopback helper at /cli/login"}`)
+			return
+		}
+		if state.noDeviceCode {
+			_, _ = io.WriteString(w, `{}`)
+			return
+		}
+		_, _ = io.WriteString(w,
+			`{"device_code":"d-code","user_code":"WXYZ-1234","verification_uri":"https://idp.example/activate","interval":0,"provider":"p-1"}`)
+	})
+	mux.HandleFunc(DeviceTokenPath, func(w http.ResponseWriter, r *http.Request) {
+		record(r)
+		if r.PostFormValue("grant_type") != DeviceGrant || r.PostFormValue("device_code") == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":"invalid_request"}`)
+			return
+		}
+		if state.failToken {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":"access_denied","error_description":"the admin refused the login"}`)
+			return
+		}
+		if state.pending > 0 {
 			state.pending--
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = io.WriteString(w, `{"error":"authorization_pending"}`)
 			return
 		}
-		state.verifier = r.Form.Get("code_verifier")
-		_, _ = io.WriteString(w, `{"access_token":"an-access-token","token_type":"Bearer","expires_in":300}`)
+		writeSession(w, state)
 	})
 	server.Start()
 	state.server = server
 	return server
 }
 
-func loginOptions(server *httptest.Server, out io.Writer) LoginOptions {
+func writeSession(w http.ResponseWriter, state *fakeAdmin) {
+	if state.noToken {
+		_, _ = io.WriteString(w, `{"token_type":"Bearer"}`)
+		return
+	}
+	_, _ = io.WriteString(w, `{"access_token":"an-admin-session","token_type":"Bearer","expires_in":900,"csrf_token":"c"}`)
+}
+
+func adminLoginOptions(server *httptest.Server, out io.Writer) LoginOptions {
 	return LoginOptions{
-		DiscoveryURL: server.URL + "/.well-known/openid-configuration",
-		ClientID:     "vca-admin",
-		Random:       rand.Reader,
-		Out:          out,
-		Poll:         time.Millisecond,
-		Deadline:     10 * time.Second,
+		AdminURL: server.URL,
+		Out:      out,
+		Poll:     time.Millisecond,
+		Deadline: 10 * time.Second,
 	}
 }
 
-func TestNewPkce(t *testing.T) {
-	got, err := NewPkce(rand.Reader)
-	if err != nil {
-		t.Fatalf("NewPkce: %v", err)
-	}
-	sum := sha256.Sum256([]byte(got.Verifier))
-	if got.Challenge != base64.RawURLEncoding.EncodeToString(sum[:]) {
-		t.Error("the challenge is not the S256 hash of the verifier")
-	}
-	if _, err := NewPkce(&shortReader{n: 1}); err == nil {
-		t.Fatal("a failing random source passed")
-	}
+// lockedBuffer is a buffer two goroutines can use.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
 }
 
-func TestFetchDiscovery(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
-	defer server.Close()
-	got, err := FetchDiscovery(context.Background(), nil, server.URL+"/.well-known/openid-configuration")
-	if err != nil {
-		t.Fatalf("FetchDiscovery: %v", err)
-	}
-	if got.TokenEndpoint == "" || got.AuthorizationEndpoint == "" {
-		t.Errorf("discovery = %+v", got)
-	}
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{}`)
-	}))
-	defer bad.Close()
-	if _, err := FetchDiscovery(context.Background(), nil, bad.URL); err == nil {
-		t.Error("a document with no token endpoint passed")
-	}
-	notJSON := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `nope`)
-	}))
-	defer notJSON.Close()
-	if _, err := FetchDiscovery(context.Background(), nil, notJSON.URL); err == nil {
-		t.Error("a document that is not JSON passed")
-	}
-	if _, err := FetchDiscovery(context.Background(), nil, "://"); err == nil {
-		t.Error("a bad URL passed")
-	}
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
 }
 
-// visit reads the printed authorization URL and calls the redirect URI.
-func visit(t *testing.T, printed string, values url.Values) {
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// waitForPort waits until the fake admin service knows the loopback port.
+func waitForPort(t *testing.T, state *fakeAdmin, out *lockedBuffer) string {
 	t.Helper()
-	line := ""
-	for _, l := range strings.Split(printed, "\n") {
-		if strings.Contains(l, "response_type=code") {
-			line = l
+	for i := 0; i < 500; i++ {
+		if strings.Contains(out.String(), "https://idp.example/auth") {
+			return state.port
 		}
+		time.Sleep(2 * time.Millisecond)
 	}
-	if line == "" {
-		t.Fatalf("no authorization URL was printed:\n%s", printed)
-	}
-	u, err := url.Parse(line)
+	t.Fatalf("the login printed no authorization URL:\n%s", out.String())
+	return ""
+}
+
+// callback calls the loopback address the way the admin service does.
+func callback(t *testing.T, port string, values url.Values) {
+	t.Helper()
+	target := "http://127.0.0.1:" + port + LoopbackCallbackPath + "?" + values.Encode()
+	resp, err := http.Get(target) // #nosec G107 -- a loopback address in a test
 	if err != nil {
-		t.Fatalf("parse the printed URL: %v", err)
-	}
-	q := u.Query()
-	if q.Get("code_challenge_method") != "S256" {
-		t.Errorf("the challenge method = %q", q.Get("code_challenge_method"))
-	}
-	if q.Get("response_type") != "code" {
-		t.Errorf("the response type = %q", q.Get("response_type"))
-	}
-	redirect, err := url.Parse(q.Get("redirect_uri"))
-	if err != nil {
-		t.Fatalf("parse the redirect URI: %v", err)
-	}
-	if redirect.Hostname() != "127.0.0.1" {
-		t.Errorf("the redirect host = %q", redirect.Hostname())
-	}
-	if values.Get("state") == "keep" {
-		values.Set("state", q.Get("state"))
-	}
-	redirect.RawQuery = values.Encode()
-	resp, err := http.Get(redirect.String()) // #nosec G107 -- a loopback address in a test
-	if err != nil {
-		t.Fatalf("call the redirect URI: %v", err)
+		t.Fatalf("call the loopback address: %v", err)
 	}
 	_ = resp.Body.Close()
 }
 
 func TestLoopbackLogin(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	var out lockedBuffer
-	opts := loginOptions(server, &out)
+	opts := adminLoginOptions(server, &out)
+	opts.Provider = "p-1"
+	opts.BootstrapToken = "boot"
 	done := make(chan struct{})
 	var token string
 	var err error
@@ -182,52 +193,36 @@ func TestLoopbackLogin(t *testing.T) {
 		token, err = LoopbackLogin(context.Background(), opts)
 		close(done)
 	}()
-	waitForPrint(t, &out)
-	visit(t, out.String(), url.Values{"code": {"an-auth-code"}, "state": {"keep"}})
+	port := waitForPort(t, state, &out)
+	callback(t, port, url.Values{"code": {"one-time-code"}})
 	<-done
 	if err != nil {
 		t.Fatalf("LoopbackLogin: %v\n%s", err, out.String())
 	}
-	if token != "an-access-token" {
+	if token != "an-admin-session" {
 		t.Errorf("token = %q", token)
 	}
-	if state.verifier == "" {
-		t.Error("the token call carried no PKCE verifier")
+	if state.provider != "p-1" || state.bootstrap != "boot" {
+		t.Errorf("provider = %q, bootstrap = %q", state.provider, state.bootstrap)
+	}
+	if port == "" || port == "0" {
+		t.Errorf("the CLI asked for port %q", port)
 	}
 }
 
-func TestLoopbackLoginRejectsABadState(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
+func TestLoopbackLoginReportsAnAdminError(t *testing.T) {
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	var out lockedBuffer
 	done := make(chan struct{})
 	var err error
 	go func() {
-		_, err = LoopbackLogin(context.Background(), loginOptions(server, &out))
+		_, err = LoopbackLogin(context.Background(), adminLoginOptions(server, &out))
 		close(done)
 	}()
-	waitForPrint(t, &out)
-	visit(t, out.String(), url.Values{"code": {"c"}, "state": {"wrong"}})
-	<-done
-	if err == nil || !strings.Contains(err.Error(), "state") {
-		t.Fatalf("got %v", err)
-	}
-}
-
-func TestLoopbackLoginReportsAProviderError(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
-	defer server.Close()
-	var out lockedBuffer
-	done := make(chan struct{})
-	var err error
-	go func() {
-		_, err = LoopbackLogin(context.Background(), loginOptions(server, &out))
-		close(done)
-	}()
-	waitForPrint(t, &out)
-	visit(t, out.String(), url.Values{"error": {"access_denied"}, "state": {"keep"}})
+	port := waitForPort(t, state, &out)
+	callback(t, port, url.Values{"error": {"access_denied"}})
 	<-done
 	if err == nil || !strings.Contains(err.Error(), "access_denied") {
 		t.Fatalf("got %v", err)
@@ -235,159 +230,228 @@ func TestLoopbackLoginReportsAProviderError(t *testing.T) {
 }
 
 func TestLoopbackLoginNeedsACode(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	var out lockedBuffer
 	done := make(chan struct{})
 	var err error
 	go func() {
-		_, err = LoopbackLogin(context.Background(), loginOptions(server, &out))
+		_, err = LoopbackLogin(context.Background(), adminLoginOptions(server, &out))
 		close(done)
 	}()
-	waitForPrint(t, &out)
-	visit(t, out.String(), url.Values{"state": {"keep"}})
+	port := waitForPort(t, state, &out)
+	callback(t, port, url.Values{})
 	<-done
 	if err == nil || !strings.Contains(err.Error(), "no code") {
 		t.Fatalf("got %v", err)
 	}
 }
 
-func TestLoopbackLoginTimesOut(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
+func TestLoopbackLoginIgnoresAnotherPath(t *testing.T) {
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
+	defer server.Close()
+	var out lockedBuffer
+	opts := adminLoginOptions(server, &out)
+	opts.Deadline = 300 * time.Millisecond
+	done := make(chan struct{})
+	var err error
+	go func() {
+		_, err = LoopbackLogin(context.Background(), opts)
+		close(done)
+	}()
+	port := waitForPort(t, state, &out)
+	resp, getErr := http.Get("http://127.0.0.1:" + port + "/other") // #nosec G107 -- a loopback address
+	if getErr != nil {
+		t.Fatalf("call the loopback address: %v", getErr)
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("another path answered %d", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+	<-done
+	if err == nil {
+		t.Fatal("a login with no callback passed")
+	}
+}
+
+func TestLoopbackLoginReportsAFailedExchange(t *testing.T) {
+	state := &fakeAdmin{failToken: true}
+	server := newFakeAdmin(t, state)
+	defer server.Close()
+	var out lockedBuffer
+	done := make(chan struct{})
+	var err error
+	go func() {
+		_, err = LoopbackLogin(context.Background(), adminLoginOptions(server, &out))
+		close(done)
+	}()
+	port := waitForPort(t, state, &out)
+	callback(t, port, url.Values{"code": {"c"}})
+	<-done
+	if err == nil || !strings.Contains(err.Error(), "invalid_grant") {
+		t.Fatalf("got %v", err)
+	}
+	if !strings.Contains(err.Error(), "expired") {
+		t.Errorf("the description is missing: %v", err)
+	}
+}
+
+func TestLoopbackLoginReportsAFailedStart(t *testing.T) {
+	state := &fakeAdmin{failStart: true}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	var out bytes.Buffer
-	opts := loginOptions(server, &out)
+	_, err := LoopbackLogin(context.Background(), adminLoginOptions(server, &out))
+	if err == nil || !strings.Contains(err.Error(), "invalid_request") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLoopbackLoginNeedsAnAuthorizationURL(t *testing.T) {
+	state := &fakeAdmin{noURL: true}
+	server := newFakeAdmin(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	_, err := LoopbackLogin(context.Background(), adminLoginOptions(server, &out))
+	if err == nil || !strings.Contains(err.Error(), "authorization_url") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLoopbackLoginTimesOut(t *testing.T) {
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	opts := adminLoginOptions(server, &out)
 	opts.Deadline = 10 * time.Millisecond
 	if _, err := LoopbackLogin(context.Background(), opts); err == nil {
 		t.Fatal("a login with no answer passed")
 	}
 }
 
-func TestLoopbackLoginNeedsAnAuthorizationEndpoint(t *testing.T) {
-	state := &idp{noAuth: true}
-	server := newIdp(t, state)
-	defer server.Close()
-	var out bytes.Buffer
-	if _, err := LoopbackLogin(context.Background(), loginOptions(server, &out)); err == nil {
-		t.Fatal("a provider with no authorization endpoint passed")
-	}
-}
-
-func TestLoopbackLoginReportsABadDiscoveryURL(t *testing.T) {
-	var out bytes.Buffer
-	opts := loginOptions(httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})), &out)
-	opts.DiscoveryURL = "://"
-	if _, err := LoopbackLogin(context.Background(), opts); err == nil {
-		t.Fatal("a bad discovery URL passed")
-	}
-}
-
 func TestLoopbackLoginReportsAFailedListener(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	var out bytes.Buffer
-	opts := loginOptions(server, &out)
+	opts := adminLoginOptions(server, &out)
 	opts.Listen = func() (net.Listener, error) { return nil, io.ErrUnexpectedEOF }
 	if _, err := LoopbackLogin(context.Background(), opts); err == nil {
 		t.Fatal("a failed listener passed")
 	}
 }
 
-func TestLoopbackLoginReportsAFailingRandomSource(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
-	defer server.Close()
+func TestLoginNeedsTheAdminURL(t *testing.T) {
 	var out bytes.Buffer
-	for _, n := range []int{1, 40} {
-		opts := loginOptions(server, &out)
-		opts.Random = &shortReader{n: n}
+	for _, bad := range []string{"", "  ", "://", "ftp://admin.example", "admin.example"} {
+		opts := LoginOptions{AdminURL: bad, Out: &out}
 		if _, err := LoopbackLogin(context.Background(), opts); err == nil {
-			t.Errorf("a random source of %d bytes passed", n)
+			t.Errorf("loopback accepted %q", bad)
+		}
+		if _, err := DeviceLogin(context.Background(), opts); err == nil {
+			t.Errorf("device accepted %q", bad)
 		}
 	}
 }
 
 func TestDeviceLogin(t *testing.T) {
-	state := &idp{pending: 2}
-	server := newIdp(t, state)
+	state := &fakeAdmin{pending: 2}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	var out bytes.Buffer
-	token, err := DeviceLogin(context.Background(), loginOptions(server, &out))
+	token, err := DeviceLogin(context.Background(), adminLoginOptions(server, &out))
 	if err != nil {
 		t.Fatalf("DeviceLogin: %v", err)
 	}
-	if token != "an-access-token" {
+	if token != "an-admin-session" {
 		t.Errorf("token = %q", token)
 	}
 	if !strings.Contains(out.String(), "WXYZ-1234") {
 		t.Errorf("the user code is missing:\n%s", out.String())
 	}
+	if !strings.Contains(out.String(), "https://idp.example/activate") {
+		t.Errorf("the verification URI is missing:\n%s", out.String())
+	}
 	if state.pending != 0 {
 		t.Errorf("the CLI stopped polling with %d answers left", state.pending)
 	}
-}
-
-func TestDeviceLoginNeedsTheEndpoint(t *testing.T) {
-	state := &idp{noDevice: true}
-	server := newIdp(t, state)
-	defer server.Close()
-	var out bytes.Buffer
-	if _, err := DeviceLogin(context.Background(), loginOptions(server, &out)); err == nil {
-		t.Fatal("a provider with no device endpoint passed")
+	// The CLI sends back the provider the start answer named.
+	if state.provider != "p-1" {
+		t.Errorf("provider = %q", state.provider)
 	}
 }
 
-func TestDeviceLoginReportsAProviderError(t *testing.T) {
-	state := &idp{failToken: true}
-	server := newIdp(t, state)
+func TestDeviceLoginReportsAFailedStart(t *testing.T) {
+	state := &fakeAdmin{failStart: true}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	var out bytes.Buffer
-	_, err := DeviceLogin(context.Background(), loginOptions(server, &out))
-	if err == nil || !strings.Contains(err.Error(), "invalid_grant") {
+	_, err := DeviceLogin(context.Background(), adminLoginOptions(server, &out))
+	if err == nil || !strings.Contains(err.Error(), "unsupported_grant_type") {
+		t.Fatalf("got %v", err)
+	}
+	if !strings.Contains(err.Error(), "/cli/login") {
+		t.Errorf("the advice is missing: %v", err)
+	}
+}
+
+func TestDeviceLoginNeedsADeviceCode(t *testing.T) {
+	state := &fakeAdmin{noDeviceCode: true}
+	server := newFakeAdmin(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	_, err := DeviceLogin(context.Background(), adminLoginOptions(server, &out))
+	if err == nil || !strings.Contains(err.Error(), "device_code") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestDeviceLoginReportsARefusedLogin(t *testing.T) {
+	state := &fakeAdmin{failToken: true}
+	server := newFakeAdmin(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	_, err := DeviceLogin(context.Background(), adminLoginOptions(server, &out))
+	if err == nil || !strings.Contains(err.Error(), "access_denied") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestDeviceLoginNeedsAnAccessToken(t *testing.T) {
+	state := &fakeAdmin{noToken: true}
+	server := newFakeAdmin(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	_, err := DeviceLogin(context.Background(), adminLoginOptions(server, &out))
+	if err == nil || !strings.Contains(err.Error(), "access_token") {
 		t.Fatalf("got %v", err)
 	}
 }
 
 func TestDeviceLoginGivesUp(t *testing.T) {
-	state := &idp{pending: 1000}
-	server := newIdp(t, state)
+	state := &fakeAdmin{pending: 1000}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	var out bytes.Buffer
-	opts := loginOptions(server, &out)
+	opts := adminLoginOptions(server, &out)
 	opts.Deadline = 20 * time.Millisecond
 	if _, err := DeviceLogin(context.Background(), opts); err == nil {
 		t.Fatal("a login that never finished passed")
 	}
 }
 
-func TestDeviceLoginReportsABadStart(t *testing.T) {
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "openid-configuration") {
-			base := "http://" + r.Host
-			_, _ = io.WriteString(w, `{"token_endpoint":"`+base+`/token","device_authorization_endpoint":"`+base+`/device"}`)
-			return
-		}
-		_, _ = io.WriteString(w, `{}`)
-	}))
-	defer bad.Close()
+func TestDeviceLoginReportsAClosedService(t *testing.T) {
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
+	base := server.URL
+	server.Close()
 	var out bytes.Buffer
-	opts := LoginOptions{
-		DiscoveryURL: bad.URL + "/.well-known/openid-configuration",
-		ClientID:     "vca-admin", Random: rand.Reader, Out: &out,
-		Poll: time.Millisecond, Deadline: time.Second,
-	}
+	opts := LoginOptions{AdminURL: base, Out: &out, Poll: time.Millisecond, Deadline: time.Second}
 	if _, err := DeviceLogin(context.Background(), opts); err == nil {
-		t.Fatal("an answer with no device code passed")
-	}
-}
-
-func TestDeviceLoginReportsABadDiscoveryURL(t *testing.T) {
-	var out bytes.Buffer
-	if _, err := DeviceLogin(context.Background(), LoginOptions{DiscoveryURL: "://", Out: &out}); err == nil {
-		t.Fatal("a bad discovery URL passed")
+		t.Fatal("a closed service passed")
 	}
 }
 
@@ -436,21 +500,35 @@ func TestLoadTokenReportsAnUnreadableFile(t *testing.T) {
 
 func TestLoginOptionDefaults(t *testing.T) {
 	var opts LoginOptions
-	if len(opts.scopes()) == 0 || opts.poll() == 0 || opts.deadline() == 0 {
+	if opts.poll() == 0 || opts.deadline() == 0 {
 		t.Error("a zero LoginOptions has no defaults")
 	}
-	set := LoginOptions{Scopes: []string{"openid"}, Poll: time.Second, Deadline: time.Minute}
-	if len(set.scopes()) != 1 || set.poll() != time.Second || set.deadline() != time.Minute {
+	set := LoginOptions{Poll: time.Second, Deadline: time.Minute}
+	if set.poll() != time.Second || set.deadline() != time.Minute {
 		t.Error("the set values were ignored")
 	}
 	listener, err := opts.listen()
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
+	if _, err := listenPort(listener); err != nil {
+		t.Errorf("listenPort: %v", err)
+	}
 	_ = listener.Close()
 }
 
-func TestPendingError(t *testing.T) {
+func TestFormCarriesOnlyWhatIsSet(t *testing.T) {
+	empty := LoginOptions{}.form()
+	if len(empty) != 0 {
+		t.Errorf("an empty login sent %v", empty)
+	}
+	full := LoginOptions{Provider: "p", BootstrapToken: "b"}.form()
+	if full.Get("provider") != "p" || full.Get(BootstrapField) != "b" {
+		t.Errorf("form = %v", full)
+	}
+}
+
+func TestPendingAndStatusErrors(t *testing.T) {
 	e := &pendingError{code: "slow_down"}
 	if !strings.Contains(e.Error(), "slow_down") {
 		t.Errorf("got %q", e.Error())
@@ -459,46 +537,25 @@ func TestPendingError(t *testing.T) {
 	if !strings.Contains(s.Error(), "400") {
 		t.Errorf("got %q", s.Error())
 	}
+	// describe keeps an error it cannot read.
+	if got := describe(io.ErrUnexpectedEOF); got != io.ErrUnexpectedEOF {
+		t.Errorf("describe changed a plain error: %v", got)
+	}
+	if got := describe(&statusError{status: 500, body: []byte("boom")}); !strings.Contains(got.Error(), "500") {
+		t.Errorf("describe lost the status: %v", got)
+	}
+	plain := describe(&statusError{status: 400, body: []byte(`{"error":"invalid_request"}`)})
+	if plain.Error() != "invalid_request" {
+		t.Errorf("describe = %q", plain.Error())
+	}
+	withMessage := describe(&statusError{status: 400, body: []byte(`{"error":"x","message":"why"}`)})
+	if withMessage.Error() != "x: why" {
+		t.Errorf("describe = %q", withMessage.Error())
+	}
 }
 
 func TestPostFormReportsABadEndpoint(t *testing.T) {
 	if _, err := postForm(context.Background(), LoginOptions{}, "://", nil); err == nil {
 		t.Fatal("a bad endpoint passed")
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	url := server.URL
-	server.Close()
-	if _, err := postForm(context.Background(), LoginOptions{}, url, nil); err == nil {
-		t.Fatal("a closed server passed")
-	}
-}
-
-// lockedBuffer is a buffer two goroutines can use.
-type lockedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *lockedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
-
-// waitForPrint waits until the login prints the authorization URL.
-func waitForPrint(t *testing.T, b *lockedBuffer) {
-	t.Helper()
-	for i := 0; i < 500; i++ {
-		if strings.Contains(b.String(), "response_type=code") {
-			return
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-	t.Fatal("the login printed no authorization URL")
 }

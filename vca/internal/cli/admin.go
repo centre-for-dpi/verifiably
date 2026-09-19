@@ -49,73 +49,68 @@ func (c AdminCommand) URL(base string) string {
 	return strings.TrimRight(base, "/") + "/" + AdminService + "/" + c.Method
 }
 
-// adminGroups maps the object of an RPC name to a command group.
-// The order is the order of the groups in the help text.
-var adminGroups = []struct{ object, group string }{
-	{"Tenants", "tenant"},
-	{"Tenant", "tenant"},
-	{"TrustEntries", "trust"},
-	{"TrustEntry", "trust"},
-	{"AuthProviders", "provider"},
-	{"AuthProvider", "provider"},
-	{"ApiKeys", "apikey"},
-	{"ApiKey", "apikey"},
-	{"ServiceHealth", "health"},
-	{"AuditLog", "audit"},
-	{"Admin", "onboard"},
-	{"Commands", "commands"},
+// adminPaths is the command tree of the admin service. The same table
+// lives in services/admin/internal/service/commands.go, which the
+// portal help page renders. A test checks that the two agree, so the
+// CLI and the portal never show a different command (ADR-009 decision 3).
+//
+// The order is the order of the help page.
+var adminPaths = []struct{ path, method string }{
+	{"tenant create", "CreateTenant"},
+	{"tenant get", "GetTenant"},
+	{"tenant list", "ListTenants"},
+	{"tenant update", "UpdateTenant"},
+	{"tenant delete", "DeleteTenant"},
+	{"trust add", "UpsertTrustEntry"},
+	{"trust get", "GetTrustEntry"},
+	{"trust list", "ListTrustEntries"},
+	{"trust remove", "DeleteTrustEntry"},
+	{"onboard", "CreateAuthProvider"},
+	{"provider get", "GetAuthProvider"},
+	{"provider list", "ListAuthProviders"},
+	{"provider update", "UpdateAuthProvider"},
+	{"provider remove", "DeleteAuthProvider"},
+	{"apikey create", "CreateApiKey"},
+	{"apikey list", "ListApiKeys"},
+	{"apikey revoke", "RevokeApiKey"},
+	{"health", "GetServiceHealth"},
+	{"audit", "QueryAuditLog"},
+	{"bind", "OnboardAdmin"},
+	{"help", "ListCommands"},
 }
 
-// adminVerbs maps the action of an RPC name to a command verb.
-var adminVerbs = []string{"Create", "Upsert", "Get", "List", "Update", "Delete", "Revoke", "Query", "Onboard"}
-
-// splitMethod turns an RPC name into a group and a verb.
-// CreateTenant becomes tenant create. GetServiceHealth becomes health get.
-func splitMethod(method string) (group, verb string) {
-	action, object := "", method
-	for _, a := range adminVerbs {
-		if strings.HasPrefix(method, a) {
-			action, object = a, strings.TrimPrefix(method, a)
-			break
-		}
-	}
-	for _, g := range adminGroups {
-		if object == g.object {
-			group = g.group
-			break
-		}
-	}
-	if group == "" {
-		group = strings.ToLower(object)
-	}
-	verb = strings.ToLower(action)
-	// A group whose whole name is the action needs no verb.
-	if group == verb {
-		verb = ""
-	}
-	return group, verb
-}
-
-// AdminCommands lists the command tree in the order of the RPCs in the
-// proto file. The descriptions come from the description option, so the
-// CLI help, the man pages, and the portal help page never drift
-// (ADR-009 decisions 3 and 4).
+// AdminCommands lists the command tree in the order of the help page.
+// The description of each command is the description option of its RPC,
+// so one sentence written once reaches the CLI, the man pages, the
+// portal help page, and the OpenAPI file (ADR-009 decisions 3 and 4).
 func AdminCommands() []AdminCommand {
-	sd := (&adminv1.CreateTenantRequest{}).ProtoReflect().Descriptor().ParentFile().Services().ByName("AdminService")
-	if sd == nil {
-		return nil
-	}
-	methods := sd.Methods()
-	out := make([]AdminCommand, 0, methods.Len())
-	for i := 0; i < methods.Len(); i++ {
-		md := methods.Get(i)
-		group, verb := splitMethod(string(md.Name()))
+	descriptions := adminDescriptions()
+	out := make([]AdminCommand, 0, len(adminPaths))
+	for _, item := range adminPaths {
+		group, verb, _ := strings.Cut(item.path, " ")
 		out = append(out, AdminCommand{
 			Group:       group,
 			Verb:        verb,
-			Method:      string(md.Name()),
-			Description: methodDescription(md),
+			Method:      item.method,
+			Description: descriptions[item.method],
 		})
+	}
+	return out
+}
+
+// adminDescriptions reads the description option of every RPC of the
+// admin service from the generated descriptor.
+func adminDescriptions() map[string]string {
+	out := map[string]string{}
+	sd := (&adminv1.CreateTenantRequest{}).ProtoReflect().Descriptor().
+		ParentFile().Services().ByName("AdminService")
+	if sd == nil {
+		return out
+	}
+	methods := sd.Methods()
+	for i := 0; i < methods.Len(); i++ {
+		md := methods.Get(i)
+		out[string(md.Name())] = methodDescription(md)
 	}
 	return out
 }

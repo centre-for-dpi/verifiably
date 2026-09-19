@@ -4,8 +4,6 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,79 +13,52 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// TokenFileName is the file that holds the admin access token.
+// TokenFileName is the file that holds the admin session token.
 const TokenFileName = "admin-token"
 
-// Discovery holds the endpoints the CLI needs from an OpenID Connect
-// discovery document ([OIDC Discovery 1.0]).
-type Discovery struct {
-	// Issuer is the issuer identifier.
-	Issuer string `json:"issuer"`
-	// AuthorizationEndpoint starts the loopback login.
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	// TokenEndpoint exchanges the code for a token.
-	TokenEndpoint string `json:"token_endpoint"`
-	// DeviceAuthorizationEndpoint starts the device login ([RFC 8628]).
-	DeviceAuthorizationEndpoint string `json:"device_authorization_endpoint"`
-}
+// The admin service holds the OpenID Connect client, so the CLI needs no
+// client id, no client secret, and no provider discovery. These are the
+// four endpoints it calls (services/admin/README.md, ADR-010 decision 6).
+const (
+	// LoopbackStartPath starts a loopback login.
+	LoopbackStartPath = "/cli/login"
+	// LoopbackTokenPath exchanges the one time loopback code.
+	LoopbackTokenPath = "/cli/token"
+	// DeviceStartPath starts the device authorization grant.
+	DeviceStartPath = "/device_authorization"
+	// DeviceTokenPath exchanges a device code for a session token.
+	DeviceTokenPath = "/token"
+)
 
-// FetchDiscovery reads the discovery document of a provider.
-func FetchDiscovery(ctx context.Context, client *http.Client, discoveryURL string) (Discovery, error) {
-	var out Discovery
-	body, err := doJSON(ctx, orDefault(client), http.MethodGet, discoveryURL, "", nil)
-	if err != nil {
-		return out, fmt.Errorf("read the discovery document: %w", err)
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return out, fmt.Errorf("read the discovery document: %w", err)
-	}
-	if out.TokenEndpoint == "" {
-		return out, errors.New("read the discovery document: it holds no token_endpoint")
-	}
-	return out, nil
-}
+// LoopbackCallbackPath is the path the admin service redirects to on the
+// loopback address. The admin service builds the same URL, so the two
+// must match.
+const LoopbackCallbackPath = "/callback"
 
-func orDefault(c *http.Client) *http.Client {
-	if c == nil {
-		return http.DefaultClient
-	}
-	return c
-}
+// DeviceGrant is the grant type of the device authorization grant
+// ([RFC 8628] section 3.4).
+const DeviceGrant = "urn:ietf:params:oauth:grant-type:device_code"
 
-// Pkce holds one proof key for code exchange ([RFC 7636]).
-type Pkce struct {
-	// Verifier is the random secret.
-	Verifier string
-	// Challenge is the S256 hash of the verifier.
-	Challenge string
-}
-
-// NewPkce builds a verifier and its S256 challenge.
-func NewPkce(random io.Reader) (Pkce, error) {
-	verifier, err := RandomSecret(random)
-	if err != nil {
-		return Pkce{}, err
-	}
-	sum := sha256.Sum256([]byte(verifier))
-	return Pkce{Verifier: verifier, Challenge: base64.RawURLEncoding.EncodeToString(sum[:])}, nil
-}
+// BootstrapField is the form field that carries the one time bootstrap
+// token of the first super admin (ADR-010 decision 4).
+const BootstrapField = "bootstrap_token"
 
 // LoginOptions holds one admin login.
 type LoginOptions struct {
-	// DiscoveryURL is the OIDC discovery URL of the provider.
-	DiscoveryURL string
-	// ClientID is the OAuth 2.0 client id of the CLI.
-	ClientID string
-	// Scopes are the scopes to ask for.
-	Scopes []string
+	// AdminURL is the base URL of the admin service.
+	AdminURL string
+	// Provider is the provider id to log in with. Empty takes the only
+	// enabled provider.
+	Provider string
+	// BootstrapToken binds the first super admin. It is empty after that.
+	BootstrapToken string
 	// HTTP makes the calls.
 	HTTP *http.Client
-	// Random is the source of the PKCE verifier and the state.
-	Random io.Reader
 	// Out receives the instructions for the operator.
 	Out io.Writer
 	// Listen builds the loopback listener. A nil value listens on
@@ -99,31 +70,47 @@ type LoginOptions struct {
 	Deadline time.Duration
 }
 
-// tokenAnswer is the answer of a token endpoint.
-type tokenAnswer struct {
+// endpoint returns one admin endpoint URL.
+func (o LoginOptions) endpoint(path string) (string, error) {
+	base := strings.TrimRight(strings.TrimSpace(o.AdminURL), "/")
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", errors.New("login: set the admin service URL with --url or VCA_ADMIN_URL")
+	}
+	return base + path, nil
+}
+
+// form builds the shared fields of a login request.
+func (o LoginOptions) form() url.Values {
+	values := url.Values{}
+	if o.Provider != "" {
+		values.Set("provider", o.Provider)
+	}
+	if o.BootstrapToken != "" {
+		values.Set(BootstrapField, o.BootstrapToken)
+	}
+	return values
+}
+
+// sessionAnswer is the answer of /cli/token and /token.
+type sessionAnswer struct {
 	AccessToken string `json:"access_token"`
-	IDToken     string `json:"id_token"`
 	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
+	ExpiresIn   int64  `json:"expires_in"`
+	CsrfToken   string `json:"csrf_token"`
 	Error       string `json:"error"`
 }
 
-// LoopbackLogin runs the authorization code flow with PKCE against a
-// loopback redirect URI. The flow has no client secret and no implicit
-// grant (ADR-010 decision 2).
+// LoopbackLogin logs a super admin in through the browser.
+// The CLI opens a loopback port, asks the admin service for the
+// authorization URL, and waits for the one time code ([RFC 8252]
+// section 7.3). No token travels in a URL ([RFC 9700] section 4.3.2).
 func LoopbackLogin(ctx context.Context, opts LoginOptions) (string, error) {
-	found, err := FetchDiscovery(ctx, opts.HTTP, opts.DiscoveryURL)
+	start, err := opts.endpoint(LoopbackStartPath)
 	if err != nil {
 		return "", err
 	}
-	if found.AuthorizationEndpoint == "" {
-		return "", errors.New("login: the provider has no authorization_endpoint")
-	}
-	pkce, err := NewPkce(opts.Random)
-	if err != nil {
-		return "", err
-	}
-	state, err := RandomSecret(opts.Random)
+	exchange, err := opts.endpoint(LoopbackTokenPath)
 	if err != nil {
 		return "", err
 	}
@@ -132,31 +119,39 @@ func LoopbackLogin(ctx context.Context, opts LoginOptions) (string, error) {
 		return "", fmt.Errorf("listen on the loopback address: %w", err)
 	}
 	defer func() { _ = listener.Close() }()
-	redirect := "http://" + listener.Addr().String() + "/callback"
-	query := url.Values{
-		"response_type":         {"code"},
-		"client_id":             {opts.ClientID},
-		"redirect_uri":          {redirect},
-		"state":                 {state},
-		"code_challenge":        {pkce.Challenge},
-		"code_challenge_method": {"S256"},
-		"scope":                 {strings.Join(opts.scopes(), " ")},
-	}
-	fmt.Fprintf(opts.Out, "Open this address in a browser and log in:\n%s?%s\n",
-		found.AuthorizationEndpoint, query.Encode())
-
-	code, err := waitForCode(ctx, listener, state, opts.deadline())
+	port, err := listenPort(listener)
 	if err != nil {
 		return "", err
 	}
-	form := url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"redirect_uri":  {redirect},
-		"client_id":     {opts.ClientID},
-		"code_verifier": {pkce.Verifier},
+	begin := opts.form()
+	begin.Set("port", port)
+	body, err := postForm(ctx, opts, start, begin)
+	if err != nil {
+		return "", fmt.Errorf("start the login: %w", describe(err))
 	}
-	return postToken(ctx, opts, found.TokenEndpoint, form)
+	var answer struct {
+		AuthorizationURL string `json:"authorization_url"`
+		RedirectURI      string `json:"redirect_uri"`
+	}
+	if err := json.Unmarshal(body, &answer); err != nil || answer.AuthorizationURL == "" {
+		return "", errors.New("start the login: the answer holds no authorization_url")
+	}
+	fmt.Fprintf(opts.Out, "Open this address in a browser and log in:\n%s\n", answer.AuthorizationURL)
+
+	code, err := waitForCode(ctx, listener, opts.deadline())
+	if err != nil {
+		return "", err
+	}
+	return postSession(ctx, opts, exchange, url.Values{"code": {code}})
+}
+
+// listenPort returns the port of a loopback listener as text.
+func listenPort(listener net.Listener) (string, error) {
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		return "", errors.New("login: the loopback listener has no TCP address")
+	}
+	return strconv.Itoa(addr.Port), nil
 }
 
 // codeResult is the answer of the loopback callback.
@@ -165,20 +160,19 @@ type codeResult struct {
 	err  error
 }
 
-// waitForCode serves one request on the loopback listener and returns the
-// authorization code. It checks the state value ([RFC 9700]).
-func waitForCode(ctx context.Context, listener net.Listener, state string, deadline time.Duration) (string, error) {
+// waitForCode serves one request on the loopback listener and returns
+// the one time code that the admin service sent.
+func waitForCode(ctx context.Context, listener net.Listener, deadline time.Duration) (string, error) {
 	results := make(chan codeResult, 1)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		if got := q.Get("state"); got != state {
-			http.Error(w, "the state value does not match", http.StatusBadRequest)
-			results <- codeResult{err: errors.New("login: the state value does not match")}
+		if r.URL.Path != LoopbackCallbackPath {
+			http.NotFound(w, r)
 			return
 		}
+		q := r.URL.Query()
 		if fault := q.Get("error"); fault != "" {
-			http.Error(w, "the provider reported an error", http.StatusBadRequest)
-			results <- codeResult{err: fmt.Errorf("login: the provider reported %s", fault)}
+			http.Error(w, "the login failed", http.StatusBadRequest)
+			results <- codeResult{err: fmt.Errorf("login: the admin service reported %s", fault)}
 			return
 		}
 		code := q.Get("code")
@@ -211,29 +205,28 @@ func waitForCode(ctx context.Context, listener net.Listener, state string, deadl
 	}
 }
 
-// DeviceLogin runs the device authorization grant ([RFC 8628]).
-// An operator uses it on a host with no browser.
+// DeviceLogin logs a super admin in on a host with no browser.
+// The admin service proxies the device authorization grant ([RFC 8628]),
+// so the CLI holds no client secret.
 func DeviceLogin(ctx context.Context, opts LoginOptions) (string, error) {
-	found, err := FetchDiscovery(ctx, opts.HTTP, opts.DiscoveryURL)
+	start, err := opts.endpoint(DeviceStartPath)
 	if err != nil {
 		return "", err
 	}
-	if found.DeviceAuthorizationEndpoint == "" {
-		return "", errors.New("login: the provider has no device_authorization_endpoint")
-	}
-	start := url.Values{
-		"client_id": {opts.ClientID},
-		"scope":     {strings.Join(opts.scopes(), " ")},
-	}
-	body, err := postForm(ctx, opts, found.DeviceAuthorizationEndpoint, start)
+	exchange, err := opts.endpoint(DeviceTokenPath)
 	if err != nil {
-		return "", fmt.Errorf("start the device login: %w", err)
+		return "", err
+	}
+	body, err := postForm(ctx, opts, start, opts.form())
+	if err != nil {
+		return "", fmt.Errorf("start the device login: %w", describe(err))
 	}
 	var device struct {
 		DeviceCode      string `json:"device_code"`
 		UserCode        string `json:"user_code"`
 		VerificationURI string `json:"verification_uri"`
 		Interval        int    `json:"interval"`
+		Provider        string `json:"provider"`
 	}
 	if err := json.Unmarshal(body, &device); err != nil || device.DeviceCode == "" {
 		return "", errors.New("start the device login: the answer holds no device_code")
@@ -243,14 +236,15 @@ func DeviceLogin(ctx context.Context, opts LoginOptions) (string, error) {
 	if device.Interval > 0 {
 		wait = time.Duration(device.Interval) * time.Second
 	}
-	form := url.Values{
-		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
-		"device_code": {device.DeviceCode},
-		"client_id":   {opts.ClientID},
+	form := opts.form()
+	form.Set("grant_type", DeviceGrant)
+	form.Set("device_code", device.DeviceCode)
+	if device.Provider != "" {
+		form.Set("provider", device.Provider)
 	}
 	end := time.Now().Add(opts.deadline())
 	for time.Now().Before(end) {
-		token, err := postToken(ctx, opts, found.TokenEndpoint, form)
+		token, err := postSession(ctx, opts, exchange, form)
 		if err == nil {
 			return token, nil
 		}
@@ -270,43 +264,66 @@ func DeviceLogin(ctx context.Context, opts LoginOptions) (string, error) {
 // pendingError reports that the operator has not finished yet.
 type pendingError struct{ code string }
 
-func (e *pendingError) Error() string { return "login: the provider reports " + e.code }
+func (e *pendingError) Error() string { return "login: the admin service reports " + e.code }
 
-// postToken calls the token endpoint and returns the access token.
-func postToken(ctx context.Context, opts LoginOptions, endpoint string, form url.Values) (string, error) {
+// postSession calls one token endpoint and returns the session token.
+func postSession(ctx context.Context, opts LoginOptions, endpoint string, form url.Values) (string, error) {
 	body, err := postForm(ctx, opts, endpoint, form)
 	if err != nil {
 		var fault *statusError
 		if errors.As(err, &fault) {
-			var parsed tokenAnswer
+			var parsed sessionAnswer
 			_ = json.Unmarshal(fault.body, &parsed)
 			if parsed.Error == "authorization_pending" || parsed.Error == "slow_down" {
 				return "", &pendingError{code: parsed.Error}
 			}
-			if parsed.Error != "" {
-				return "", fmt.Errorf("login: the provider reported %s", parsed.Error)
-			}
 		}
-		return "", fmt.Errorf("get a token: %w", err)
+		return "", fmt.Errorf("get a session token: %w", describe(err))
 	}
-	var parsed tokenAnswer
+	var parsed sessionAnswer
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("get a token: %w", err)
+		return "", fmt.Errorf("get a session token: %w", err)
 	}
 	if parsed.AccessToken == "" {
-		return "", errors.New("get a token: the answer holds no access_token")
+		return "", errors.New("get a session token: the answer holds no access_token")
 	}
 	return parsed.AccessToken, nil
 }
 
-// statusError carries the body of a non 2xx answer.
+// describe turns a status error into the message the admin service sent.
+func describe(err error) error {
+	var fault *statusError
+	if !errors.As(err, &fault) {
+		return err
+	}
+	var body struct {
+		Error       string `json:"error"`
+		Description string `json:"error_description"`
+		Message     string `json:"message"`
+	}
+	_ = json.Unmarshal(fault.body, &body)
+	text := body.Description
+	if text == "" {
+		text = body.Message
+	}
+	switch {
+	case body.Error != "" && text != "":
+		return fmt.Errorf("%s: %s", body.Error, text)
+	case body.Error != "":
+		return errors.New(body.Error)
+	default:
+		return fault
+	}
+}
+
+// statusError carries the body of an answer outside the 2xx range.
 type statusError struct {
 	status int
 	body   []byte
 }
 
 func (e *statusError) Error() string {
-	return fmt.Sprintf("the provider answered %d", e.status)
+	return fmt.Sprintf("the admin service answered %d", e.status)
 }
 
 // postForm sends one form encoded request.
@@ -316,7 +333,12 @@ func postForm(ctx context.Context, opts LoginOptions, endpoint string, form url.
 		return nil, fmt.Errorf("build the request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := orDefault(opts.HTTP).Do(req)
+	req.Header.Set("Accept", "application/json")
+	client := opts.HTTP
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -329,13 +351,6 @@ func postForm(ctx context.Context, opts LoginOptions, endpoint string, form url.
 		return nil, &statusError{status: resp.StatusCode, body: body}
 	}
 	return body, nil
-}
-
-func (o LoginOptions) scopes() []string {
-	if len(o.Scopes) > 0 {
-		return o.Scopes
-	}
-	return []string{"openid", "profile", "email"}
 }
 
 func (o LoginOptions) poll() time.Duration {
@@ -359,7 +374,7 @@ func (o LoginOptions) listen() (net.Listener, error) {
 	return net.Listen("tcp", "127.0.0.1:0")
 }
 
-// SaveToken writes the access token with mode 0600.
+// SaveToken writes the session token with mode 0600.
 func SaveToken(dir, token string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("make %s: %w", dir, err)
@@ -371,7 +386,7 @@ func SaveToken(dir, token string) (string, error) {
 	return path, nil
 }
 
-// LoadToken reads the saved access token. A missing file gives an empty
+// LoadToken reads the saved session token. A missing file gives an empty
 // token and no error, so a command can fall back to a flag.
 func LoadToken(dir string) (string, error) {
 	path := filepath.Join(dir, TokenFileName)

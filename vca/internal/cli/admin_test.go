@@ -8,6 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -34,14 +37,16 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 		"CreateTenant":       "tenant create",
 		"ListTenants":        "tenant list",
 		"DeleteTenant":       "tenant delete",
-		"UpsertTrustEntry":   "trust upsert",
+		"UpsertTrustEntry":   "trust add",
 		"ListTrustEntries":   "trust list",
-		"CreateAuthProvider": "provider create",
+		"DeleteTrustEntry":   "trust remove",
+		"CreateAuthProvider": "onboard",
+		"DeleteAuthProvider": "provider remove",
 		"RevokeApiKey":       "apikey revoke",
-		"GetServiceHealth":   "health get",
-		"QueryAuditLog":      "audit query",
-		"OnboardAdmin":       "onboard",
-		"ListCommands":       "commands list",
+		"GetServiceHealth":   "health",
+		"QueryAuditLog":      "audit",
+		"OnboardAdmin":       "bind",
+		"ListCommands":       "help",
 	}
 	for method, path := range want {
 		got, ok := byMethod[method]
@@ -57,7 +62,7 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 
 func TestAdminGroupNames(t *testing.T) {
 	got := AdminGroupNames()
-	want := []string{"tenant", "trust", "provider", "apikey", "health", "audit", "onboard", "commands"}
+	want := []string{"tenant", "trust", "onboard", "provider", "apikey", "health", "audit", "bind", "help"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("got %v, want %v", got, want)
 	}
@@ -70,10 +75,46 @@ func TestAdminCommandURL(t *testing.T) {
 	}
 }
 
-func TestSplitMethodUnknownName(t *testing.T) {
-	group, verb := splitMethod("RenameThing")
-	if group != "renamething" || verb != "" {
-		t.Errorf("got %q %q", group, verb)
+// TestAdminTreeMatchesTheAdminService keeps the CLI tree equal to the
+// table the admin service renders on its help page (ADR-009 decision 3).
+// The admin package is internal to services/, so the test reads the
+// source instead of importing it.
+func TestAdminTreeMatchesTheAdminService(t *testing.T) {
+	path := filepath.Join("..", "..", "services", "admin", "internal", "service", "commands.go")
+	data, err := os.ReadFile(path) // #nosec G304 -- a fixed test path
+	if err != nil {
+		t.Skipf("the admin service is not in this tree: %v", err)
+	}
+	rx := regexp.MustCompile(`\{path: "admin ([a-z ]+)", rpc: "(\w+)"`)
+	var fromService []string
+	for _, m := range rx.FindAllStringSubmatch(string(data), -1) {
+		fromService = append(fromService, m[1]+" -> "+m[2])
+	}
+	if len(fromService) == 0 {
+		t.Fatalf("no commands found in %s", path)
+	}
+	var fromCli []string
+	for _, c := range AdminCommands() {
+		fromCli = append(fromCli, c.Path()+" -> "+c.Method)
+	}
+	if strings.Join(fromCli, "\n") != strings.Join(fromService, "\n") {
+		t.Errorf("the CLI tree and the admin service tree differ\nCLI:\n%s\nservice:\n%s",
+			strings.Join(fromCli, "\n"), strings.Join(fromService, "\n"))
+	}
+}
+
+func TestAdminCommandsCoverEveryRpc(t *testing.T) {
+	seen := map[string]bool{}
+	for _, c := range AdminCommands() {
+		if seen[c.Method] {
+			t.Errorf("%s appears twice", c.Method)
+		}
+		seen[c.Method] = true
+	}
+	for method := range adminDescriptions() {
+		if !seen[method] {
+			t.Errorf("no command calls %s", method)
+		}
 	}
 }
 

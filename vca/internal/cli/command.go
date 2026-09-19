@@ -426,11 +426,15 @@ func newAdminCommand(env Environment) *cobra.Command {
 	admin.PersistentFlags().StringVar(&token, "token", "",
 		"The bearer token. The default is the token that vca admin login saved.")
 
-	resolve := func() (AdminClient, error) {
-		base := serviceURL
-		if base == "" {
-			base = env.Getenv("VCA_ADMIN_URL")
+	baseURL := func() string {
+		if serviceURL != "" {
+			return serviceURL
 		}
+		return env.Getenv("VCA_ADMIN_URL")
+	}
+
+	resolve := func() (AdminClient, error) {
+		base := baseURL()
 		value := token
 		if value == "" {
 			saved, err := LoadToken(env.StateDir)
@@ -442,7 +446,7 @@ func newAdminCommand(env Environment) *cobra.Command {
 		return AdminClient{BaseURL: base, Token: value, HTTP: env.HTTP}, nil
 	}
 
-	admin.AddCommand(newAdminLoginCommand(env))
+	admin.AddCommand(newAdminLoginCommand(env, baseURL))
 	groups := map[string]*cobra.Command{}
 	for _, c := range AdminCommands() {
 		group, ok := groups[c.Group]
@@ -511,39 +515,32 @@ func newAdminRpcCommand(c AdminCommand, resolve func() (AdminClient, error)) *co
 	return cmd
 }
 
-// newAdminLoginCommand builds vca admin login (ADR-010 decisions 1 and 2).
-func newAdminLoginCommand(env Environment) *cobra.Command {
+// newAdminLoginCommand builds vca admin login (ADR-010 decisions 1, 2,
+// and 6). The admin service holds the OpenID Connect client, so the CLI
+// needs no client id and no client secret.
+func newAdminLoginCommand(env Environment, baseURL func() string) *cobra.Command {
 	var (
-		discovery string
-		clientID  string
+		provider  string
+		bootstrap string
 		device    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in as a super admin with OpenID Connect.",
-		Long: "login runs the authorization code flow with PKCE against a " +
-			"loopback redirect URI. Add --device on a host with no browser to " +
-			"run the device authorization grant instead. The token goes to a " +
-			"file with mode 0600.",
-		Example: "  vca admin login --discovery-url https://idp.example/.well-known/openid-configuration",
+		Long: "login asks the admin service for an authorization URL and waits " +
+			"on a loopback port for the one time code. Add --device on a host " +
+			"with no browser to run the device authorization grant instead. " +
+			"Add --bootstrap-token at the first login to bind the first super " +
+			"admin. The session token goes to a file with mode 0600.",
+		Example: "  vca admin login --url https://admin.example\n" +
+			"  vca admin login --device --bootstrap-token $TOKEN",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			url := discovery
-			if url == "" {
-				url = env.Getenv("VCA_OIDC_DISCOVERY_URL")
-			}
-			if url == "" {
-				return errors.New("set --discovery-url or VCA_OIDC_DISCOVERY_URL")
-			}
-			id := clientID
-			if id == "" {
-				id = env.Getenv("VCA_OIDC_CLIENT_ID")
-			}
-			if id == "" {
-				id = "vca-admin"
-			}
 			opts := LoginOptions{
-				DiscoveryURL: url, ClientID: id, HTTP: env.HTTP,
-				Random: env.Random, Out: cmd.OutOrStdout(),
+				AdminURL:       baseURL(),
+				Provider:       provider,
+				BootstrapToken: bootstrap,
+				HTTP:           env.HTTP,
+				Out:            cmd.OutOrStdout(),
 			}
 			login := LoopbackLogin
 			if device {
@@ -561,9 +558,12 @@ func newAdminLoginCommand(env Environment) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&discovery, "discovery-url", "", "The OIDC discovery URL of the provider.")
-	cmd.Flags().StringVar(&clientID, "client-id", "", "The OAuth 2.0 client id of the CLI.")
-	cmd.Flags().BoolVar(&device, "device", false, "Use the device grant instead of the loopback flow.")
+	cmd.Flags().StringVar(&provider, "provider", "",
+		"The provider id. The default is the only enabled provider.")
+	cmd.Flags().StringVar(&bootstrap, "bootstrap-token", "",
+		"The one time token that binds the first super admin.")
+	cmd.Flags().BoolVar(&device, "device", false,
+		"Use the device grant instead of the loopback flow.")
 	return cmd
 }
 

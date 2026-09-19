@@ -437,7 +437,7 @@ func TestAdminCommandReadsTheURLFromTheEnvironment(t *testing.T) {
 		}
 		return ""
 	}
-	status, _, errOut := run(t, Environment{Root: t.TempDir(), Getenv: getenv}, "admin", "health", "get")
+	status, _, errOut := run(t, Environment{Root: t.TempDir(), Getenv: getenv}, "admin", "health")
 	if status != 0 {
 		t.Fatalf("status = %d\n%s", status, errOut)
 	}
@@ -456,7 +456,7 @@ func TestAdminCommandReadsTheSavedToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, _, errOut := run(t, Environment{Root: root, StateDir: state},
-		"admin", "health", "get", "--url", server.URL)
+		"admin", "health", "--url", server.URL)
 	if status != 0 {
 		t.Fatalf("status = %d\n%s", status, errOut)
 	}
@@ -506,7 +506,7 @@ func TestAdminCommandReportsAServiceError(t *testing.T) {
 	}
 }
 
-func TestAdminOnboardIsOneCommand(t *testing.T) {
+func TestAdminBindIsOneCommand(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -514,7 +514,7 @@ func TestAdminOnboardIsOneCommand(t *testing.T) {
 	}))
 	defer server.Close()
 	status, _, errOut := run(t, Environment{Root: t.TempDir()},
-		"admin", "onboard", "--url", server.URL, "--json", `{"bootstrapToken":"t"}`)
+		"admin", "bind", "--url", server.URL, "--json", `{"bootstrapToken":"t"}`)
 	if status != 0 {
 		t.Fatalf("status = %d\n%s", status, errOut)
 	}
@@ -524,36 +524,35 @@ func TestAdminOnboardIsOneCommand(t *testing.T) {
 }
 
 func TestAdminLoginDeviceFlow(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	root := t.TempDir()
 	status, out, errOut := run(t, Environment{Root: root},
-		"admin", "login", "--device",
-		"--discovery-url", server.URL+"/.well-known/openid-configuration",
-		"--client-id", "vca-admin")
+		"admin", "login", "--device", "--url", server.URL,
+		"--bootstrap-token", "boot", "--provider", "p-1")
 	if status != 0 {
 		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
 	}
 	if !strings.Contains(out, "login done") {
 		t.Errorf("out = %s", out)
 	}
+	if state.bootstrap != "boot" {
+		t.Errorf("the bootstrap token did not reach the service: %q", state.bootstrap)
+	}
 	token, err := LoadToken(filepath.Join(root, "deploy", ".vca"))
-	if err != nil || token != "an-access-token" {
+	if err != nil || token != "an-admin-session" {
 		t.Errorf("token = %q, %v", token, err)
 	}
 }
 
 func TestAdminLoginReadsTheEnvironment(t *testing.T) {
-	state := &idp{}
-	server := newIdp(t, state)
+	state := &fakeAdmin{}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	getenv := func(k string) string {
-		switch k {
-		case "VCA_OIDC_DISCOVERY_URL":
-			return server.URL + "/.well-known/openid-configuration"
-		case "VCA_OIDC_CLIENT_ID":
-			return "from-env"
+		if k == "VCA_ADMIN_URL" {
+			return server.URL
 		}
 		return ""
 	}
@@ -563,22 +562,58 @@ func TestAdminLoginReadsTheEnvironment(t *testing.T) {
 	}
 }
 
-func TestAdminLoginNeedsADiscoveryURL(t *testing.T) {
+func TestAdminLoginNeedsTheAdminURL(t *testing.T) {
 	status, _, errOut := run(t, Environment{Root: t.TempDir()}, "admin", "login")
-	if status == 0 || !strings.Contains(errOut, "VCA_OIDC_DISCOVERY_URL") {
+	if status == 0 || !strings.Contains(errOut, "VCA_ADMIN_URL") {
 		t.Errorf("status %d, error %q", status, errOut)
 	}
 }
 
 func TestAdminLoginReportsAFailedFlow(t *testing.T) {
-	state := &idp{noDevice: true}
-	server := newIdp(t, state)
+	state := &fakeAdmin{failStart: true}
+	server := newFakeAdmin(t, state)
 	defer server.Close()
 	status, _, errOut := run(t, Environment{Root: t.TempDir()},
-		"admin", "login", "--device",
-		"--discovery-url", server.URL+"/.well-known/openid-configuration")
-	if status == 0 || !strings.Contains(errOut, "device_authorization_endpoint") {
+		"admin", "login", "--device", "--url", server.URL)
+	if status == 0 || !strings.Contains(errOut, "unsupported_grant_type") {
 		t.Errorf("status %d, error %q", status, errOut)
+	}
+}
+
+func TestAdminHelpCallsListCommands(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = io.WriteString(w, `{"commands":[{"path":"admin trust add"}]}`)
+	}))
+	defer server.Close()
+	status, out, errOut := run(t, Environment{Root: t.TempDir()},
+		"admin", "help", "--url", server.URL)
+	if status != 0 {
+		t.Fatalf("status = %d\n%s", status, errOut)
+	}
+	if gotPath != "/vca.admin.v1.AdminService/ListCommands" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if !strings.Contains(out, "admin trust add") {
+		t.Errorf("out = %s", out)
+	}
+}
+
+func TestAdminTrustAddCallsUpsert(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer server.Close()
+	status, _, errOut := run(t, Environment{Root: t.TempDir()},
+		"admin", "trust", "add", "--url", server.URL, "--json", `{"entry":{}}`)
+	if status != 0 {
+		t.Fatalf("status = %d\n%s", status, errOut)
+	}
+	if gotPath != "/vca.admin.v1.AdminService/UpsertTrustEntry" {
+		t.Errorf("path = %q", gotPath)
 	}
 }
 
@@ -599,12 +634,12 @@ func TestManWritesOnePagePerCommand(t *testing.T) {
 	if len(entries) < 30 {
 		t.Errorf("got %d man pages", len(entries))
 	}
-	for _, name := range []string{"vca.1", "vca-setup.1", "vca-deploy.1", "vca-admin-trust-upsert.1"} {
+	for _, name := range []string{"vca.1", "vca-setup.1", "vca-deploy.1", "vca-admin-trust-add.1"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("%s is missing: %v", name, err)
 		}
 	}
-	page, err := os.ReadFile(filepath.Join(dir, "vca-admin-trust-upsert.1"))
+	page, err := os.ReadFile(filepath.Join(dir, "vca-admin-trust-add.1"))
 	if err != nil {
 		t.Fatal(err)
 	}
