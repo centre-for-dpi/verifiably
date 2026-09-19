@@ -126,52 +126,8 @@ func TestSummaryOfBrokenCredential(t *testing.T) {
 	if got.GetType() != "" || got.GetTrust() != "unknown" {
 		t.Fatalf("unexpected card: %+v", got)
 	}
-}
-
-func TestTitleFallbacks(t *testing.T) {
-	if got := title("q1", vc.Credential{}); got != "q1" {
-		t.Fatalf("want the query id, got %q", got)
-	}
-	if got := title("", vc.Credential{}); got != "Credential" {
-		t.Fatalf("want the fallback, got %q", got)
-	}
-}
-
-func TestTrustWords(t *testing.T) {
-	cases := map[policyv1.Outcome]string{
-		policyv1.Outcome_OUTCOME_PASS:        "trusted",
-		policyv1.Outcome_OUTCOME_FAIL:        "untrusted",
-		policyv1.Outcome_OUTCOME_ERROR:       "unavailable",
-		policyv1.Outcome_OUTCOME_SKIP:        "unknown",
-		policyv1.Outcome_OUTCOME_UNSPECIFIED: "unknown",
-	}
-	for in, want := range cases {
-		if got := trustWord(&policyv1.CheckResult{Outcome: in}); got != want {
-			t.Fatalf("%s: want %s, got %s", in, want, got)
-		}
-	}
-}
-
-func TestDisplayFieldsAndValidity(t *testing.T) {
-	if got := displayFields(vc.Credential{}); got != nil {
-		t.Fatalf("want no fields, got %v", got)
-	}
-	claims := map[string]string{}
-	for i := 0; i < MaxDisplayFields+3; i++ {
-		claims[string(rune('a'+i))] = "v"
-	}
-	if got := displayFields(vc.Credential{Claims: claims}); len(got) != MaxDisplayFields {
-		t.Fatalf("want the cap, got %d", len(got))
-	}
-	if got := validity(vc.Credential{Raw: map[string]any{}}); got != nil {
-		t.Fatalf("want no window, got %+v", got)
-	}
-	only := validity(vc.Credential{Raw: map[string]any{"validUntil": "2027-01-01T00:00:00Z"}})
-	if only.GetValidUntil() == nil || only.GetValidFrom() != nil {
-		t.Fatalf("want only an end, got %+v", only)
-	}
-	if got := decoded(vc.Credential{Raw: map[string]any{"a": make(chan int)}}); got != "" {
-		t.Fatalf("want no JSON for a value that does not encode, got %q", got)
+	if got := summary("", "holder", &commonv1.Credential{Payload: []byte("nope")}, nil); got.GetRole() != "holder" {
+		t.Fatalf("unexpected card: %+v", got)
 	}
 }
 

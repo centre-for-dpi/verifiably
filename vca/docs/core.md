@@ -29,6 +29,7 @@ This implements ADR-002 decision 7 and ADR-030 decisions 1, 4 and 5.
 | `core/oidc` | PKCE S256 generation and verification. Discovery document parsing and endpoint rebasing. Authorisation URL support. ID token verification against a JWKS (RS256, ES256). | [RFC 7636](https://www.rfc-editor.org/rfc/rfc7636), [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html) |
 | `core/pixelpass` | PixelPass QR payload encode and decode: JSON to CBOR, zlib, base45. | [RFC 9285](https://www.rfc-editor.org/rfc/rfc9285), [RFC 8949](https://www.rfc-editor.org/rfc/rfc8949), [MOSIP PixelPass](https://github.com/mosip/pixelpass) |
 | `core/vc` | Normalised credential and presentation views, temporal bounds. VCDM and SD-JWT normalisation. Wire format detection from bytes (SD-JWT, JWT, JSON-LD, JSON, mdoc CBOR prefix). Schema types. | [W3C VC Data Model 2.0](https://www.w3.org/TR/vc-data-model-2.0/), [VC Data Model 1.1](https://www.w3.org/TR/vc-data-model/), [SD-JWT VC](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/), [ISO/IEC 18013-5](https://www.iso.org/standard/69084.html) |
+| `core/summary` | The credential card of a verification result: type, issuer, display claims, validity window, decoded JSON, trust word and checks. The results service and the combined service share it. | Internal (ADR-025, ADR-026) |
 
 ## Dependencies
 

@@ -3,9 +3,8 @@
 package service
 
 import (
-	"encoding/json"
-
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
+	summarypkg "github.com/centre-for-dpi/vc-adapters/core/summary"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	combinedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -14,11 +13,7 @@ import (
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/dcql"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/rules"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-// MaxDisplayFields caps the claims one card shows.
-const MaxDisplayFields = 20
 
 // formatName maps a proto format to the DCQL format identifier.
 func formatName(f commonv1.Format) string {
@@ -133,93 +128,13 @@ func outcomeOf(o policy.Outcome) policyv1.Outcome {
 
 // summary builds the card of one credential.
 func summary(queryID, role string, cred *commonv1.Credential, resp *policyv1.EvaluateResponse) *resultsv1.CredentialSummary {
-	out := &resultsv1.CredentialSummary{
-		Format: cred.GetFormat(), Trust: "unknown", Role: role, Checks: resp.GetChecks(),
+	fallback := queryID
+	if fallback == "" {
+		fallback = "Credential"
 	}
-	parsed, err := vc.Parse(cred.GetPayload())
-	if err == nil {
-		out.Type = parsed.PrimaryType()
-		out.Title = title(queryID, parsed)
-		out.Issuer = parsed.Issuer
-		out.DisplayFields = displayFields(parsed)
-		out.Validity = validity(parsed)
-		out.DecodedJson = decoded(parsed)
-	}
-	for _, c := range resp.GetChecks() {
-		if c.GetName() != policy.NameTrustChain {
-			continue
-		}
-		out.Trust = trustWord(c)
-		if name := c.GetEvidence()["issuer_name"]; name != "" {
-			out.IssuerName = name
-		}
-	}
-	return out
-}
-
-// title returns the card title of a credential.
-func title(queryID string, parsed vc.Credential) string {
-	if t := parsed.PrimaryType(); t != "" {
-		return t
-	}
-	if queryID != "" {
-		return queryID
-	}
-	return "Credential"
-}
-
-// trustWord maps the trust chain outcome to a plain word.
-func trustWord(c *policyv1.CheckResult) string {
-	switch c.GetOutcome() {
-	case policyv1.Outcome_OUTCOME_PASS:
-		return "trusted"
-	case policyv1.Outcome_OUTCOME_FAIL:
-		return "untrusted"
-	case policyv1.Outcome_OUTCOME_ERROR:
-		return "unavailable"
-	case policyv1.Outcome_OUTCOME_SKIP, policyv1.Outcome_OUTCOME_UNSPECIFIED:
-	}
-	return "unknown"
-}
-
-// displayFields returns the claims the card shows, capped in number.
-func displayFields(c vc.Credential) map[string]string {
-	if len(c.Claims) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(c.Claims))
-	for name, value := range c.Claims {
-		if len(out) >= MaxDisplayFields {
-			break
-		}
-		out[name] = value
-	}
-	return out
-}
-
-// validity returns the validity window of a credential.
-func validity(c vc.Credential) *commonv1.ValidityWindow {
-	from, until := c.TemporalBounds()
-	if from.IsZero() && until.IsZero() {
-		return nil
-	}
-	out := &commonv1.ValidityWindow{}
-	if !from.IsZero() {
-		out.ValidFrom = timestamppb.New(from)
-	}
-	if !until.IsZero() {
-		out.ValidUntil = timestamppb.New(until)
-	}
-	return out
-}
-
-// decoded returns the credential as indented JSON for the disclosure.
-func decoded(c vc.Credential) string {
-	raw, err := json.MarshalIndent(c.Raw, "", "  ")
-	if err != nil {
-		return ""
-	}
-	return string(raw)
+	return summarypkg.Build(cred, resp.GetChecks(), summarypkg.Options{
+		Index: -1, Role: role, FallbackTitle: fallback,
+	})
 }
 
 // worst folds the per credential verdicts and the cross rule outcome
