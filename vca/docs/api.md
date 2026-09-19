@@ -35,14 +35,14 @@ code lives in `gen/`. The repository commits it.
 | `vca.common.v1` | none | 0 | 0 | Shared types: Format, Role, Credential, Presentation, Pagination, Error, Subject, SecretRef. |
 | `vca.config.v1` | none | 0 | 0 | The setup Config message and the setting option (ADR-007). |
 | `vca.backend.v1` | CapabilityService, IssuerBackendService, HolderBackendService, VerifierBackendService, CatalogBackendService | 16 | 0 | The DPG adapter contract, one service per role function (ADR-002 decision 2). |
-| `vca.admin.v1` | AdminService | 21 | 0 | Tenants, trust entries, auth providers, API keys, health, audit log, admin onboarding (ADR-009, ADR-010). |
+| `vca.admin.v1` | AdminService | 22 | 0 | Tenants, trust entries, auth providers, API keys, health, audit log, provider and admin onboarding (ADR-009, ADR-010). |
 | `vca.trust.v1` | TrustService | 7 | 0 | Trust entries, publication per method, and TrustLookup with provenance (ADR-011). |
 | `vca.issuerauth.v1` | IssuerAuthService | 7 | 0 | Staff OIDC login, session tokens, role mapping (ADR-012). |
 | `vca.schema.v1` | SchemaService | 11 | 0 | Schema versions, publish and retire, issuer metadata, vct documents (ADR-013). |
 | `vca.schemabuilder.v1` | SchemaBuilderService | 3 | 0 | Pure preview of a schema with sample data (ADR-014). |
 | `vca.datasource.v1` | DataSourceService | 10 | 1 | CSV, HTTP, and SQL sources, previews, field maps, bulk runs (ADR-015). |
 | `vca.issuance.v1` | IssuanceService | 5 | 1 | Single and batch issuance over every channel (ADR-016). |
-| `vca.issued.v1` | IssuedService | 8 | 1 | The hash chained issued record log with revoke and export (ADR-017). |
+| `vca.issued.v1` | IssuedService | 10 | 1 | The hash chained issued record log with append, revoke, export, and retention (ADR-017). |
 | `vca.status.v1` | StatusService | 6 | 0 | Bitstring and Token status lists: allocate, set, read, signed list bytes (ADR-018, ADR-019). |
 | `vca.walletauth.v1` | WalletAuthService | 7 | 0 | Citizen OIDC login, session tokens, holder key binding (ADR-020). |
 | `vca.walletportal.v1` | WalletPortalService | 11 | 0 | Discover, claim, scan, accept, present, and consent for citizens (ADR-021). |
@@ -52,7 +52,7 @@ code lives in `gen/`. The repository commits it.
 | `vca.results.v1` | ResultsService | 5 | 1 | VerificationResult store, query, export, purge (ADR-025). |
 | `vca.combined.v1` | CombinedService | 6 | 0 | Combined templates with cross credential rules (ADR-026). |
 
-Total: 19 packages, 21 services, 143 RPCs, 4 server streaming RPCs.
+Total: 19 packages, 21 services, 146 RPCs, 4 server streaming RPCs.
 
 ## Checks
 
