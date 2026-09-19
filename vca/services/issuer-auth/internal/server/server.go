@@ -46,8 +46,8 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := seed(providers, cfg.Seed, cfg.ProviderInternalAuthority); err != nil {
-		return nil, err
+	if serr := seed(providers, cfg.Seed, cfg.ProviderInternalAuthority); serr != nil {
+		return nil, serr
 	}
 	mappings, err := roles.NewMappings(persist)
 	if err != nil {
@@ -113,7 +113,7 @@ func loadKey(path string, log *slog.Logger) (*ecdsa.PrivateKey, error) {
 		log.Warn("VCA_SECRETS_SIGNING_KEY is not set: sessions end when the service restarts")
 		return oidcflow.GenerateKey()
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: the path comes from the service configuration
 	if err != nil {
 		return nil, fmt.Errorf("signing key: %w", err)
 	}
@@ -125,7 +125,10 @@ func sessionKey(v string) []byte {
 		return []byte(v)
 	}
 	b := make([]byte, 32)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return b
 }
 

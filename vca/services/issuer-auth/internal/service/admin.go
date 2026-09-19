@@ -90,6 +90,8 @@ func clientToProto(c clients.Client) *adminv1.ApiKey {
 }
 
 // CreateApiKey implements AdminServiceHandler.
+//
+//nolint:staticcheck // ST1003: the generated Connect interface fixes this name
 func (a Admin) CreateApiKey(ctx context.Context, req *connect.Request[adminv1.CreateApiKeyRequest]) (*connect.Response[adminv1.CreateApiKeyResponse], error) {
 	if err := a.Authorize(ctx, req.Header()); err != nil {
 		return nil, oidcflow.ConnectError(err)
@@ -111,6 +113,8 @@ func (a Admin) CreateApiKey(ctx context.Context, req *connect.Request[adminv1.Cr
 }
 
 // ListApiKeys implements AdminServiceHandler.
+//
+//nolint:staticcheck // ST1003: the generated Connect interface fixes this name
 func (a Admin) ListApiKeys(ctx context.Context, req *connect.Request[adminv1.ListApiKeysRequest]) (*connect.Response[adminv1.ListApiKeysResponse], error) {
 	if err := a.Authorize(ctx, req.Header()); err != nil {
 		return nil, oidcflow.ConnectError(err)
@@ -124,6 +128,8 @@ func (a Admin) ListApiKeys(ctx context.Context, req *connect.Request[adminv1.Lis
 }
 
 // RevokeApiKey implements AdminServiceHandler.
+//
+//nolint:staticcheck // ST1003: the generated Connect interface fixes this name
 func (a Admin) RevokeApiKey(ctx context.Context, req *connect.Request[adminv1.RevokeApiKeyRequest]) (*connect.Response[adminv1.RevokeApiKeyResponse], error) {
 	if err := a.Authorize(ctx, req.Header()); err != nil {
 		return nil, oidcflow.ConnectError(err)

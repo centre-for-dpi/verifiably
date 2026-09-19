@@ -3,6 +3,8 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -20,9 +22,14 @@ func TestRun(t *testing.T) {
 		t.Fatal("missing config accepted")
 	}
 	t.Setenv("VCA_PUBLIC_URL", "http://localhost:8081")
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	ln, verr := net.Listen("tcp", "127.0.0.1:0")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	addr := ln.Addr().String()
-	ln.Close()
+	if cerr := ln.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	t.Setenv("VCA_ISSUER_AUTH_LISTEN", addr)
 	if run([]string{"-healthcheck"}) != 1 {
 		t.Fatal("healthcheck passed with nothing listening")
@@ -33,11 +40,16 @@ func TestRun(t *testing.T) {
 	}
 	t.Setenv("VCA_SECRETS_SIGNING_KEY", "")
 	// Occupy the port so the server cannot bind.
-	busy, _ := net.Listen("tcp", addr)
+	busy, verr := net.Listen("tcp", addr)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if run(nil) != 1 {
 		t.Fatal("busy port accepted")
 	}
-	busy.Close()
+	if cerr := busy.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	done := make(chan int, 1)
 	go func() { done <- run(nil) }()
 	deadline := time.Now().Add(5 * time.Second)
@@ -47,8 +59,27 @@ func TestRun(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+	if cerr := syscall.Kill(os.Getpid(), syscall.SIGTERM); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if code := <-done; code != 0 {
 		t.Fatalf("exit %d", code)
+	}
+}
+
+// failWriter fails every write. It drives the printLine error path.
+type failWriter struct{}
+
+// Write always reports an error.
+func (failWriter) Write([]byte) (int, error) {
+	return 0, errors.New("the write failed")
+}
+
+func TestPrintLineReportsTheWriteStatus(t *testing.T) {
+	if got := printLine(io.Discard, "ok"); got != 0 {
+		t.Fatalf("want status 0, got %d", got)
+	}
+	if got := printLine(failWriter{}, "ok"); got != 1 {
+		t.Fatalf("want status 1, got %d", got)
 	}
 }

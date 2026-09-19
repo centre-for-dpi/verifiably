@@ -114,7 +114,10 @@ func TestMappings(t *testing.T) {
 	if got := ms.Get("idp", ""); got.ClaimPath != "groups" {
 		t.Fatalf("%+v", got)
 	}
-	ms2, _ := roles.NewMappings(store)
+	ms2, verr := roles.NewMappings(store)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if got := ms2.Get("idp", ""); got.ClaimPath != "groups" {
 		t.Fatal("not persisted")
 	}

@@ -142,8 +142,8 @@ func (s *Service) LoginCallback(ctx context.Context, req *connect.Request[issuer
 
 // Introspect implements IssuerAuthServiceHandler.
 func (s *Service) Introspect(_ context.Context, req *connect.Request[issuerauthv1.IntrospectRequest]) (*connect.Response[issuerauthv1.IntrospectResponse], error) {
-	claims, err := s.d.Signer.Verify(req.Msg.GetSessionToken())
-	if err != nil {
+	claims, ok := s.session(req.Msg.GetSessionToken())
+	if !ok {
 		return connect.NewResponse(&issuerauthv1.IntrospectResponse{Active: false}), nil
 	}
 	return connect.NewResponse(&issuerauthv1.IntrospectResponse{Active: true, Session: toProto(claims)}), nil
@@ -214,9 +214,9 @@ func (s *Service) Complete(ctx context.Context, state, code, providerError strin
 	if err != nil {
 		return "", oidcflow.Claims{}, "", err
 	}
-	name, _ := res.Claims["name"].(string)
+	name := claimString(res.Claims, "name")
 	if name == "" {
-		name, _ = res.Claims["preferred_username"].(string)
+		name = claimString(res.Claims, "preferred_username")
 	}
 	token, claims, err := s.d.Signer.Issue(oidcflow.Claims{
 		Subject:  oidcflow.PairwiseSubject(res.Issuer, res.Subject),
@@ -239,19 +239,45 @@ func (s *Service) End(ctx context.Context, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	p, err := s.d.Providers.Get(claims.Provider)
-	if err != nil {
+	p, ok := s.knownProvider(claims.Provider)
+	if !ok {
 		return "", nil
 	}
 	post := ""
 	if s.cfg.LogoutRedirect != "" {
 		post = s.cfg.PublicBaseURL + s.cfg.LogoutRedirect
 	}
-	u, err := s.d.Flow.LogoutURL(ctx, p, s.hints.take(claims.SID), post)
+	return s.logoutURL(ctx, p, s.hints.take(claims.SID), post), nil
+}
+
+// session returns the claims of a session token. A token that does not
+// verify gives false.
+func (s *Service) session(token string) (oidcflow.Claims, bool) {
+	claims, err := s.d.Signer.Verify(token)
 	if err != nil {
-		return "", nil
+		return oidcflow.Claims{}, false
 	}
-	return u, nil
+	return claims, true
+}
+
+// knownProvider returns one provider record. A record that is missing,
+// or a store fault, gives false.
+func (s *Service) knownProvider(id string) (oidcflow.Provider, bool) {
+	p, err := s.d.Providers.Get(id)
+	if err != nil {
+		return oidcflow.Provider{}, false
+	}
+	return p, true
+}
+
+// logoutURL returns the logout URL of the provider. A provider with no
+// logout endpoint, or a fault, gives an empty string.
+func (s *Service) logoutURL(ctx context.Context, p oidcflow.Provider, hint, post string) string {
+	u, err := s.d.Flow.LogoutURL(ctx, p, hint, post)
+	if err != nil {
+		return ""
+	}
+	return u
 }
 
 // Session implements oidcflow.Logins.
@@ -306,4 +332,14 @@ func (h *hintStore) take(sid string) string {
 	v := h.m[sid]
 	delete(h.m, sid)
 	return v.token
+}
+
+// claimString returns one claim as a string. A missing claim, or a claim
+// of another type, gives an empty string.
+func claimString(claims map[string]any, key string) string {
+	value, ok := claims[key].(string)
+	if !ok {
+		return ""
+	}
+	return value
 }

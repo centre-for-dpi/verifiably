@@ -61,12 +61,30 @@ func newFixture(t *testing.T) *fixture {
 	idp.Claims["realm_access"] = map[string]any{"roles": []any{"issuer-operator"}}
 	idp.Claims["name"] = "Ada"
 	store := oidcflow.NewMemoryPersister()
-	providers, _ := oidcflow.NewRegistry(store, nil)
-	mappings, _ := roles.NewMappings(store)
-	machine, _ := clients.New(store, nil)
-	key, _ := oidcflow.GenerateKey()
-	signer, _ := oidcflow.NewSigner(key, "http://issuer.test", server.Audience, time.Minute, nil)
-	csrf, _ := oidcflow.NewCSRF([]byte("0123456789abcdef0123456789abcdef"))
+	providers, verr := oidcflow.NewRegistry(store, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	mappings, verr := roles.NewMappings(store)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	machine, verr := clients.New(store, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	key, verr := oidcflow.GenerateKey()
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	signer, verr := oidcflow.NewSigner(key, "http://issuer.test", server.Audience, time.Minute, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	csrf, verr := oidcflow.NewCSRF([]byte("0123456789abcdef0123456789abcdef"))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	// The public base URL is only known once the test server runs, so
 	// the fixture starts the server with a placeholder and rewires.
 	f := &fixture{idp: idp, store: store}
@@ -124,7 +142,9 @@ func (f *fixture) login(t *testing.T, returnTo string) *http.Response {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if res.StatusCode != http.StatusFound {
 		t.Fatalf("login status %d", res.StatusCode)
 	}
@@ -145,7 +165,11 @@ func (f *fixture) login(t *testing.T, returnTo string) *http.Response {
 func TestBrowserFlow(t *testing.T) {
 	f := newFixture(t)
 	res := f.login(t, "")
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("callback: %d", res.StatusCode)
 	}
@@ -169,38 +193,55 @@ func TestBrowserFlow(t *testing.T) {
 	if err != nil || jwks.StatusCode != 200 {
 		t.Fatalf("jwks: %v", err)
 	}
-	jwks.Body.Close()
+	if cerr := jwks.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	// Introspect through the RPC.
 	intro, err := f.client.Introspect(context.Background(), connect.NewRequest(&issuerauthv1.IntrospectRequest{SessionToken: body.SessionToken}))
 	if err != nil || !intro.Msg.GetActive() || intro.Msg.GetSession().GetRoles()[0] != issuerauthv1.IssuerRole_ISSUER_ROLE_OPERATOR || intro.Msg.GetSession().GetTenantId() != "acme" {
 		t.Fatalf("introspect: %+v %v", intro, err)
 	}
 	// Logout redirects to the provider end session endpoint.
-	req, _ := http.NewRequest(http.MethodPost, f.srv.URL+"/auth/logout", nil)
+	req, verr := http.NewRequest(http.MethodPost, f.srv.URL+"/auth/logout", nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	req.Header.Set(oidcflow.CSRFHeader, body.CSRFToken)
 	req.AddCookie(cookie)
 	out, err := browser().Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out.Body.Close()
+	if cerr := out.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if out.StatusCode != http.StatusSeeOther || !strings.HasPrefix(out.Header.Get("Location"), f.idp.Issuer()+"/logout?") || !strings.Contains(out.Header.Get("Location"), "id_token_hint=") {
 		t.Fatalf("logout: %d %s", out.StatusCode, out.Header.Get("Location"))
 	}
-	intro, _ = f.client.Introspect(context.Background(), connect.NewRequest(&issuerauthv1.IntrospectRequest{SessionToken: body.SessionToken}))
+	intro, introspectErr := f.client.Introspect(context.Background(), connect.NewRequest(&issuerauthv1.IntrospectRequest{SessionToken: body.SessionToken}))
+	if introspectErr != nil {
+		t.Fatalf("unexpected error: %v", introspectErr)
+	}
 	if intro.Msg.GetActive() {
 		t.Fatal("session still active after logout")
 	}
 	// return_to redirects.
 	res = f.login(t, "/schemas")
-	res.Body.Close()
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/schemas" {
 		t.Fatalf("return_to: %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
 	// Health endpoints.
 	for _, p := range []string{"/healthz", "/readyz"} {
-		r, _ := http.Get(f.srv.URL + p)
-		r.Body.Close()
+		r, verr := http.Get(f.srv.URL + p)
+		if verr != nil {
+			t.Fatalf("unexpected error: %v", verr)
+		}
+		if cerr := r.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
 		if r.StatusCode != 200 {
 			t.Fatalf("%s: %d", p, r.StatusCode)
 		}
@@ -218,30 +259,39 @@ func TestRPCFlow(t *testing.T) {
 	if err != nil || start.Msg.GetState() == "" || start.Msg.GetExpiresAt() == nil {
 		t.Fatalf("start: %v", err)
 	}
-	loc, _ := f.idp.Authorize(start.Msg.GetAuthorizationUrl())
-	u, _ := url.Parse(loc)
+	loc, verr := f.idp.Authorize(start.Msg.GetAuthorizationUrl())
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	u, verr := url.Parse(loc)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	cb, err := f.client.LoginCallback(ctx, connect.NewRequest(&issuerauthv1.LoginCallbackRequest{State: u.Query().Get("state"), Code: u.Query().Get("code")}))
 	if err != nil || cb.Msg.GetReturnTo() != "/x" || cb.Msg.GetSession().GetDisplayName() != "Ada" || cb.Msg.GetSession().GetProviderId() != "idp" {
 		t.Fatalf("callback: %+v %v", cb, err)
 	}
 	// The state works once.
-	if _, err := f.client.LoginCallback(ctx, connect.NewRequest(&issuerauthv1.LoginCallbackRequest{State: u.Query().Get("state"), Code: "x"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("replay: %v", err)
+	if _, serr := f.client.LoginCallback(ctx, connect.NewRequest(&issuerauthv1.LoginCallbackRequest{State: u.Query().Get("state"), Code: "x"})); connect.CodeOf(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("replay: %v", serr)
 	}
 	// Provider error.
-	start, _ = f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "idp"}))
-	if _, err := f.client.LoginCallback(ctx, connect.NewRequest(&issuerauthv1.LoginCallbackRequest{State: start.Msg.GetState(), Error: "access_denied"})); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Fatalf("provider error: %v", err)
+	start, loginStartErr := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "idp"}))
+	if loginStartErr != nil {
+		t.Fatalf("unexpected error: %v", loginStartErr)
+	}
+	if _, serr := f.client.LoginCallback(ctx, connect.NewRequest(&issuerauthv1.LoginCallbackRequest{State: start.Msg.GetState(), Error: "access_denied"})); connect.CodeOf(serr) != connect.CodeUnavailable {
+		t.Fatalf("provider error: %v", serr)
 	}
 	// Unknown and disabled providers, bad return_to.
-	if _, err := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "nope"})); connect.CodeOf(err) != connect.CodeNotFound {
-		t.Fatalf("unknown: %v", err)
+	if _, serr := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "nope"})); connect.CodeOf(serr) != connect.CodeNotFound {
+		t.Fatalf("unknown: %v", serr)
 	}
-	if _, err := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "off"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
-		t.Fatalf("disabled: %v", err)
+	if _, serr := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "off"})); connect.CodeOf(serr) != connect.CodeFailedPrecondition {
+		t.Fatalf("disabled: %v", serr)
 	}
-	if _, err := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "idp", ReturnTo: "https://evil"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("return_to: %v", err)
+	if _, serr := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "idp", ReturnTo: "https://evil"})); connect.CodeOf(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("return_to: %v", serr)
 	}
 	// Logout through the RPC and a bad token.
 	lo, err := f.client.Logout(ctx, connect.NewRequest(&issuerauthv1.LogoutRequest{SessionToken: cb.Msg.GetSessionToken()}))
@@ -252,8 +302,13 @@ func TestRPCFlow(t *testing.T) {
 		t.Fatalf("logout bad: %v", err)
 	}
 	// Tokens in the query string are refused (RFC 9700).
-	r, _ := http.Get(f.srv.URL + "/vca.issuerauth.v1.IssuerAuthService/Introspect?access_token=x")
-	r.Body.Close()
+	r, verr := http.Get(f.srv.URL + "/vca.issuerauth.v1.IssuerAuthService/Introspect?access_token=x")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	if cerr := r.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("query token: %d", r.StatusCode)
 	}
@@ -293,9 +348,16 @@ func TestRoleMappingAndDenied(t *testing.T) {
 	var body struct {
 		SessionToken string `json:"session_token"`
 	}
-	_ = json.NewDecoder(res.Body).Decode(&body)
-	res.Body.Close()
-	intro, _ := f.client.Introspect(ctx, connect.NewRequest(&issuerauthv1.IntrospectRequest{SessionToken: body.SessionToken}))
+	if cerr := json.NewDecoder(res.Body).Decode(&body); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
+	intro, verr := f.client.Introspect(ctx, connect.NewRequest(&issuerauthv1.IntrospectRequest{SessionToken: body.SessionToken}))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if intro.Msg.GetSession().GetRoles()[0] != issuerauthv1.IssuerRole_ISSUER_ROLE_ADMIN {
 		t.Fatalf("roles: %+v", intro.Msg.GetSession())
 	}
@@ -307,17 +369,25 @@ func TestRoleMappingAndDenied(t *testing.T) {
 	// A subject with no matching claim is denied.
 	f.idp.Claims["groups"] = []any{"guest"}
 	res = f.login(t, "")
-	res.Body.Close()
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("denied login: %d", res.StatusCode)
 	}
 	// An operator session cannot change mappings.
 	f.idp.Claims["groups"] = []any{"ops"}
 	mapping.Rules = append(mapping.Rules, &issuerauthv1.RoleMapping_Rule{ClaimValue: "ops", Role: issuerauthv1.IssuerRole_ISSUER_ROLE_OPERATOR})
-	_, _ = admin.SetRoleMapping(ctx, connect.NewRequest(&issuerauthv1.SetRoleMappingRequest{ProviderId: "idp", Mapping: mapping}))
+	if _, setRoleMappingErr := admin.SetRoleMapping(ctx, connect.NewRequest(&issuerauthv1.SetRoleMappingRequest{ProviderId: "idp", Mapping: mapping})); setRoleMappingErr != nil {
+		t.Fatalf("unexpected error: %v", setRoleMappingErr)
+	}
 	res = f.login(t, "")
-	_ = json.NewDecoder(res.Body).Decode(&body)
-	res.Body.Close()
+	if cerr := json.NewDecoder(res.Body).Decode(&body); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	ops := issuerauthv1connect.NewIssuerAuthServiceClient(f.srv.Client(), f.srv.URL, withBearer(body.SessionToken))
 	if _, err := ops.SetRoleMapping(ctx, connect.NewRequest(&issuerauthv1.SetRoleMappingRequest{ProviderId: "idp", Mapping: mapping})); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("operator set: %v", err)
@@ -332,35 +402,44 @@ func TestClientCredentials(t *testing.T) {
 	if err != nil || created.Msg.GetSecret() == "" || created.Msg.GetKey().GetTenantId() != "acme" || created.Msg.GetKey().GetExpiresAt() == nil {
 		t.Fatalf("create: %+v %v", created, err)
 	}
-	if _, err := f.admin.CreateApiKey(ctx, connect.NewRequest(&adminv1.CreateApiKeyRequest{})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("invalid: %v", err)
+	if _, serr := f.admin.CreateApiKey(ctx, connect.NewRequest(&adminv1.CreateApiKeyRequest{})); connect.CodeOf(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("invalid: %v", serr)
 	}
 	id, secret := created.Msg.GetKey().GetId(), created.Msg.GetSecret()
 	post := func(form url.Values, basic bool) (int, map[string]any) {
-		req, _ := http.NewRequest(http.MethodPost, f.srv.URL+"/token", strings.NewReader(form.Encode()))
+		req, verr := http.NewRequest(http.MethodPost, f.srv.URL+"/token", strings.NewReader(form.Encode()))
+		if verr != nil {
+			t.Fatalf("unexpected error: %v", verr)
+		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		if basic {
 			req.SetBasicAuth(url.QueryEscape(id), url.QueryEscape(secret))
 		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
+		res, doErr := http.DefaultClient.Do(req)
+		if doErr != nil {
+			t.Fatal(doErr)
 		}
-		defer res.Body.Close()
+		defer func() {
+			if cerr := res.Body.Close(); cerr != nil {
+				t.Errorf("the close failed: %v", cerr)
+			}
+		}()
 		var body map[string]any
-		_ = json.NewDecoder(res.Body).Decode(&body)
+		if cerr := json.NewDecoder(res.Body).Decode(&body); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
 		return res.StatusCode, body
 	}
 	code, body := post(url.Values{"grant_type": {"client_credentials"}}, true)
 	if code != 200 || body["token_type"] != "Bearer" || body["access_token"] == "" {
 		t.Fatalf("basic: %d %v", code, body)
 	}
-	tok := body["access_token"].(string)
+	tok := mustAs[string](t, body["access_token"])
 	claims, err := f.svc.Signer().Verify(tok)
 	if err != nil || claims.ClientID != id || strings.Join(claims.Roles, ",") != "issuer-operator,issuer-viewer" || claims.Subject != "client:"+id {
 		t.Fatalf("claims: %+v %v", claims, err)
 	}
-	if claims.Expiry().Sub(time.Now()) < 50*time.Minute {
+	if time.Until(claims.Expiry()) < 50*time.Minute {
 		t.Fatal("machine token ttl")
 	}
 	code, _ = post(url.Values{"grant_type": {"client_credentials"}, "client_id": {id}, "client_secret": {secret}}, false)
@@ -379,15 +458,28 @@ func TestClientCredentials(t *testing.T) {
 	if code != 401 {
 		t.Fatalf("wrong secret: %d", code)
 	}
-	r, _ := http.Get(f.srv.URL + "/token")
-	r.Body.Close()
+	r, verr := http.Get(f.srv.URL + "/token")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	if cerr := r.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if r.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("GET token: %d", r.StatusCode)
 	}
-	req, _ := http.NewRequest(http.MethodPost, f.srv.URL+"/token", strings.NewReader("%zz"))
+	req, verr := http.NewRequest(http.MethodPost, f.srv.URL+"/token", strings.NewReader("%zz"))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r, _ = http.DefaultClient.Do(req)
-	r.Body.Close()
+	r, doErr := http.DefaultClient.Do(req)
+	if doErr != nil {
+		t.Fatalf("unexpected error: %v", doErr)
+	}
+	if cerr := r.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad form: %d", r.StatusCode)
 	}
@@ -396,36 +488,42 @@ func TestClientCredentials(t *testing.T) {
 	if err != nil || len(list.Msg.GetKeys()) != 1 || list.Msg.GetKeys()[0].GetRoles()[0] != commonv1.Role_ROLE_ISSUER {
 		t.Fatalf("list: %+v %v", list, err)
 	}
-	if _, err := f.admin.RevokeApiKey(ctx, connect.NewRequest(&adminv1.RevokeApiKeyRequest{Id: id})); err != nil {
-		t.Fatal(err)
+	if _, serr := f.admin.RevokeApiKey(ctx, connect.NewRequest(&adminv1.RevokeApiKeyRequest{Id: id})); serr != nil {
+		t.Fatal(serr)
 	}
-	if _, err := f.admin.RevokeApiKey(ctx, connect.NewRequest(&adminv1.RevokeApiKeyRequest{Id: "nope"})); connect.CodeOf(err) != connect.CodeNotFound {
-		t.Fatalf("revoke missing: %v", err)
+	if _, serr := f.admin.RevokeApiKey(ctx, connect.NewRequest(&adminv1.RevokeApiKeyRequest{Id: "nope"})); connect.CodeOf(serr) != connect.CodeNotFound {
+		t.Fatalf("revoke missing: %v", serr)
 	}
 	if code, _ := post(url.Values{"grant_type": {"client_credentials"}}, true); code != 401 {
 		t.Fatalf("revoked client got a token: %d", code)
 	}
-	list, _ = f.admin.ListApiKeys(ctx, connect.NewRequest(&adminv1.ListApiKeysRequest{}))
+	list, listKeysErr := f.admin.ListApiKeys(ctx, connect.NewRequest(&adminv1.ListApiKeysRequest{}))
+	if listKeysErr != nil {
+		t.Fatalf("unexpected error: %v", listKeysErr)
+	}
 	if list.Msg.GetKeys()[0].GetRevokedAt() == nil {
 		t.Fatal("revoked_at")
 	}
 	// Admin RPCs need the admin token.
 	anon := adminv1connect.NewAdminServiceClient(f.srv.Client(), f.srv.URL)
-	if _, err := anon.CreateApiKey(ctx, connect.NewRequest(&adminv1.CreateApiKeyRequest{})); connect.CodeOf(err) != connect.CodeUnauthenticated {
-		t.Fatalf("anon create: %v", err)
+	if _, serr := anon.CreateApiKey(ctx, connect.NewRequest(&adminv1.CreateApiKeyRequest{})); connect.CodeOf(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("anon create: %v", serr)
 	}
-	if _, err := anon.ListApiKeys(ctx, connect.NewRequest(&adminv1.ListApiKeysRequest{})); connect.CodeOf(err) != connect.CodeUnauthenticated {
-		t.Fatalf("anon list: %v", err)
+	if _, serr := anon.ListApiKeys(ctx, connect.NewRequest(&adminv1.ListApiKeysRequest{})); connect.CodeOf(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("anon list: %v", serr)
 	}
-	if _, err := anon.RevokeApiKey(ctx, connect.NewRequest(&adminv1.RevokeApiKeyRequest{})); connect.CodeOf(err) != connect.CodeUnauthenticated {
-		t.Fatalf("anon revoke: %v", err)
+	if _, serr := anon.RevokeApiKey(ctx, connect.NewRequest(&adminv1.RevokeApiKeyRequest{})); connect.CodeOf(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("anon revoke: %v", serr)
 	}
 	// Providers can be registered through the admin RPC at runtime.
 	res, err := f.admin.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: &adminv1.AuthProvider{DisplayName: "New", DiscoveryUrl: f.idp.DiscoveryURL(), ClientId: "client", Enabled: true}}))
 	if err != nil || res.Msg.GetProvider().GetId() == "" {
 		t.Fatalf("create provider: %v", err)
 	}
-	list2, _ := f.client.ListProviders(ctx, connect.NewRequest(&issuerauthv1.ListProvidersRequest{}))
+	list2, verr := f.client.ListProviders(ctx, connect.NewRequest(&issuerauthv1.ListProvidersRequest{}))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if len(list2.Msg.GetProviders()) != 2 {
 		t.Fatalf("providers: %+v", list2.Msg)
 	}
@@ -438,22 +536,33 @@ func TestEndWithoutProviderOrLogoutURL(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	// A session whose provider is gone still logs out, without a URL.
-	tok, _, _ := f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "gone"})
+	tok, _, verr := f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "gone"})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	u, err := f.svc.End(ctx, tok)
 	if err != nil || u != "" {
 		t.Fatalf("gone provider: %q %v", u, err)
 	}
 	// A provider that is unreachable at logout gives no URL.
-	_, _ = f.svc.Providers().Put(oidcflow.Provider{ID: "down", DiscoveryURL: "http://127.0.0.1:1/x", ClientID: "c", Enabled: true})
-	tok, _, _ = f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "down"})
-	if u, err := f.svc.End(ctx, tok); err != nil || u != "" {
-		t.Fatalf("down provider: %q %v", u, err)
+	if _, providersErr := f.svc.Providers().Put(oidcflow.Provider{ID: "down", DiscoveryURL: "http://127.0.0.1:1/x", ClientID: "c", Enabled: true}); providersErr != nil {
+		t.Fatalf("unexpected error: %v", providersErr)
+	}
+	tok, _, signerErr1 := f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "down"})
+	if signerErr1 != nil {
+		t.Fatalf("unexpected error: %v", signerErr1)
+	}
+	if down, endErr := f.svc.End(ctx, tok); endErr != nil || down != "" {
+		t.Fatalf("down provider: %q %v", down, endErr)
 	}
 	// Post logout redirect from config.
 	cfg := f.svc.Config()
 	cfg.LogoutRedirect = "/bye"
 	svc2 := service.New(cfg, service.Deps{Flow: &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)}, Providers: f.svc.Providers(), Signer: f.svc.Signer()})
-	tok, _, _ = f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "idp"})
+	tok, _, signerErr := f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "idp"})
+	if signerErr != nil {
+		t.Fatalf("unexpected error: %v", signerErr)
+	}
 	u, err = svc2.End(ctx, tok)
 	if err != nil || !strings.Contains(u, url.QueryEscape(f.srv.URL+"/bye")) {
 		t.Fatalf("post logout: %q %v", u, err)
@@ -462,9 +571,9 @@ func TestEndWithoutProviderOrLogoutURL(t *testing.T) {
 	if _, err := f.svc.Session(ctx, "bad"); !errors.Is(err, oidcflow.ErrSessionInvalid) {
 		t.Fatal(err)
 	}
-	start, _ := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "down"}))
-	if start != nil {
-		t.Fatal("down provider started")
+	start, verr := f.client.LoginStart(ctx, connect.NewRequest(&issuerauthv1.LoginStartRequest{ProviderId: "down"}))
+	if verr == nil || start != nil {
+		t.Fatal("the down provider started")
 	}
 }
 
@@ -483,12 +592,16 @@ func TestPendingStoreFailure(t *testing.T) {
 	// A pending login for a provider that no longer exists.
 	mem := oidcflow.NewMemoryPending(nil)
 	svc = service.New(cfg, service.Deps{Flow: &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)}, Providers: f.svc.Providers(), Signer: f.svc.Signer(), Pending: mem})
-	_ = mem.Put(oidcflow.Pending{State: "s", ProviderID: "deleted", ExpiresAt: time.Now().Add(time.Minute)})
+	if cerr := mem.Put(oidcflow.Pending{State: "s", ProviderID: "deleted", ExpiresAt: time.Now().Add(time.Minute)}); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if _, _, _, err := svc.Complete(context.Background(), "s", "code", ""); !errors.Is(err, oidcflow.ErrProviderNotFound) {
 		t.Fatalf("deleted provider: %v", err)
 	}
 	// A pending login that the provider rejects at the token endpoint.
-	_ = mem.Put(oidcflow.Pending{State: "s2", ProviderID: "idp", RedirectURI: cfg.RedirectURI, Verifier: "v", Nonce: "n", ExpiresAt: time.Now().Add(time.Minute)})
+	if cerr := mem.Put(oidcflow.Pending{State: "s2", ProviderID: "idp", RedirectURI: cfg.RedirectURI, Verifier: "v", Nonce: "n", ExpiresAt: time.Now().Add(time.Minute)}); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if _, _, _, err := svc.Complete(context.Background(), "s2", "bogus", ""); !errors.Is(err, oidcflow.ErrProviderError) {
 		t.Fatalf("bogus code: %v", err)
 	}
