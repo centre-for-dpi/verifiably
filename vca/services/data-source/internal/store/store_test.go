@@ -11,18 +11,19 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/mapping"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/source"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 func csvSource(name string) source.Source {
 	return source.Source{DisplayName: name, Kind: source.KindCSV, CSV: &source.CSV{FileRef: name + ".csv", HasHeader: true}}
 }
 
-type failBackend struct{ Backend }
+type failBackend struct{ sharedstore.Document }
 
 func (failBackend) Save([]byte) error { return errors.New("disk full") }
 
 func TestStoreLifecycle(t *testing.T) {
-	st, err := Open(Memory())
+	st, err := Open(sharedstore.MemoryDoc())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,14 +85,14 @@ func TestStoreLifecycle(t *testing.T) {
 
 func TestFileBackend(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sources.json")
-	st, err := Open(File(path))
+	st, err := Open(sharedstore.FileDoc(path))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.Create(csvSource("a"), time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Open(File(path))
+	again, err := Open(sharedstore.FileDoc(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,29 +102,17 @@ func TestFileBackend(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(File(path)); err == nil {
+	if _, err := Open(sharedstore.FileDoc(path)); err == nil {
 		t.Fatal("bad json must fail")
 	}
 	dir := t.TempDir()
-	if _, err := Open(File(dir)); err == nil {
+	if _, err := Open(sharedstore.FileDoc(dir)); err == nil {
 		t.Fatal("directory must fail to load")
-	}
-	if err := File(filepath.Join(dir, "missing", "x.json")).Save([]byte("{}")); err == nil {
-		t.Fatal("missing dir must fail to save")
-	}
-	if err := os.WriteFile(filepath.Join(dir, "dst"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(filepath.Join(dir, "dst2"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := File(filepath.Join(dir, "dst2")).Save([]byte("{}")); err == nil {
-		t.Fatal("rename over a non empty directory must fail")
 	}
 }
 
 func TestSaveFailure(t *testing.T) {
-	st, err := Open(failBackend{Memory()})
+	st, err := Open(failBackend{sharedstore.MemoryDoc()})
 	if err != nil {
 		t.Fatal(err)
 	}

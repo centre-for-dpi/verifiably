@@ -20,6 +20,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/secrets"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/sqlsrc"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/store"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 var (
@@ -33,7 +34,7 @@ func as(p authz.Principal) context.Context { return authz.WithPrincipal(context.
 
 func newService(t *testing.T, schema SchemaProperties) *Service {
 	t.Helper()
-	st, err := store.Open(store.Memory())
+	st, err := store.Open(sharedstore.MemoryDoc())
 	if err != nil {
 		t.Fatal(err)
 	}
