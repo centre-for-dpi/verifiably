@@ -234,7 +234,7 @@ func fromObject(raw []byte) (Request, error) {
 }
 
 // definition is the part of a Presentation Exchange definition the
-// wallet reads. walt.id 0.18 still sends one (ADR-022 decision 3).
+// wallet reads. Some DPG verifiers still send one (ADR-022 decision 3).
 type definition struct {
 	ID               string `json:"id"`
 	Purpose          string `json:"purpose"`
