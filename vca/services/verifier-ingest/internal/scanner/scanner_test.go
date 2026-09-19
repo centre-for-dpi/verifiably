@@ -23,8 +23,8 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
-// sdjwtToken is an SD-JWT VC with one disclosure.
-const sdjwtToken = "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2V4YW1wbGUudGVzdC9waWQifQ.c2ln~WyJzYWx0IiwiZ2l2ZW5fbmFtZSIsIkFzaGEiXQ~"
+// sdjwtSample is an SD-JWT VC with one disclosure.
+const sdjwtSample = "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2V4YW1wbGUudGVzdC9waWQifQ.c2ln~WyJzYWx0IiwiZ2l2ZW5fbmFtZSIsIkFzaGEiXQ~"
 
 // setup wires a server over the camera page.
 func setup(t *testing.T) *httptest.Server {
@@ -69,7 +69,11 @@ func get(t *testing.T, s *httptest.Server, path string) (int, string, http.Heade
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +96,11 @@ func post(t *testing.T, s *httptest.Server, form url.Values, header http.Header)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -109,11 +117,11 @@ func upload(t *testing.T, s *httptest.Server, field, name string, content []byte
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := part.Write(content); err != nil {
-		t.Fatal(err)
+	if _, serr := part.Write(content); serr != nil {
+		t.Fatal(serr)
 	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
+	if serr := w.Close(); serr != nil {
+		t.Fatal(serr)
 	}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, s.URL+"/scan/ingest", &buf)
 	if err != nil {
@@ -124,7 +132,11 @@ func upload(t *testing.T, s *httptest.Server, field, name string, content []byte
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +197,7 @@ func TestStaticAssets(t *testing.T) {
 
 func TestIngestPaste(t *testing.T) {
 	s := setup(t)
-	status, body := post(t, s, url.Values{"payload": {sdjwtToken}}, nil)
+	status, body := post(t, s, url.Values{"payload": {sdjwtSample}}, nil)
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -200,7 +212,7 @@ func TestIngestPaste(t *testing.T) {
 
 func TestIngestFragmentForScript(t *testing.T) {
 	s := setup(t)
-	status, body := post(t, s, url.Values{"payload": {sdjwtToken}}, http.Header{"Hx-Request": []string{"true"}})
+	status, body := post(t, s, url.Values{"payload": {sdjwtSample}}, http.Header{"Hx-Request": []string{"true"}})
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -208,7 +220,7 @@ func TestIngestFragmentForScript(t *testing.T) {
 		t.Error("an htmx request gets a fragment, not a page")
 	}
 	a11ytest.AssertFragment(t, body)
-	fetchStatus, fetchBody := post(t, s, url.Values{"payload": {sdjwtToken}},
+	fetchStatus, fetchBody := post(t, s, url.Values{"payload": {sdjwtSample}},
 		http.Header{"Accept": []string{"*/*"}, "Sec-Fetch-Mode": []string{"cors"}})
 	if fetchStatus != http.StatusOK || strings.Contains(fetchBody, "<html") {
 		t.Error("the browser script gets a fragment too")
@@ -217,7 +229,7 @@ func TestIngestFragmentForScript(t *testing.T) {
 
 func TestIngestUpload(t *testing.T) {
 	s := setup(t)
-	status, body := upload(t, s, "upload", "credential.txt", []byte(sdjwtToken))
+	status, body := upload(t, s, "upload", "credential.txt", []byte(sdjwtSample))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -234,11 +246,11 @@ func TestIngestProblems(t *testing.T) {
 		t.Fatalf("status = %d", empty)
 	}
 	a11ytest.AssertPage(t, body)
-	if !strings.Contains(body, "The page received no file and no text") {
+	if !strings.Contains(body, "the page received no file and no text") {
 		t.Errorf("the page names the problem, got %s", body)
 	}
 	blankStatus, blank := upload(t, s, "upload", "empty.txt", nil)
-	if blankStatus != http.StatusOK || !strings.Contains(blank, "The file is empty") {
+	if blankStatus != http.StatusOK || !strings.Contains(blank, "the file is empty") {
 		t.Errorf("status = %d, body = %s", blankStatus, blank)
 	}
 	otherStatus, other := upload(t, s, "other", "x.txt", []byte("hello"))

@@ -224,8 +224,8 @@ func TestPruneDeleteError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Put(ctx, txn.Transaction{ID: "old", CreatedAt: clock.Add(-time.Hour)}); err != nil {
-		t.Fatal(err)
+	if serr := s.Put(ctx, txn.Transaction{ID: "old", CreatedAt: clock.Add(-time.Hour)}); serr != nil {
+		t.Fatal(serr)
 	}
 	failing, err := txn.NewStore(deleteFails{KeyValue: kv})
 	if err != nil {

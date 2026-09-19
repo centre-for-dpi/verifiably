@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -27,7 +29,9 @@ func freePort(t *testing.T) string {
 		t.Fatal(err)
 	}
 	addr := ln.Addr().String()
-	_ = ln.Close()
+	if cerr := ln.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	return addr
 }
 
@@ -111,7 +115,9 @@ func waitReady(t *testing.T, addr string) {
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
-			_ = resp.Body.Close()
+			if cerr := resp.Body.Close(); cerr != nil {
+				t.Errorf("the close failed: %v", cerr)
+			}
 			if resp.StatusCode == http.StatusOK {
 				return
 			}
@@ -120,5 +126,22 @@ func waitReady(t *testing.T, addr string) {
 			t.Fatal("the server did not start")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// failWriter fails every write. It drives the printLine error path.
+type failWriter struct{}
+
+// Write always reports an error.
+func (failWriter) Write([]byte) (int, error) {
+	return 0, errors.New("the write failed")
+}
+
+func TestPrintLineReportsTheWriteStatus(t *testing.T) {
+	if got := printLine(io.Discard, "ok"); got != 0 {
+		t.Fatalf("want status 0, got %d", got)
+	}
+	if got := printLine(failWriter{}, "ok"); got != 1 {
+		t.Fatalf("want status 1, got %d", got)
 	}
 }

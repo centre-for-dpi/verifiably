@@ -75,7 +75,9 @@ func TestBuildAndServe(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("GET %s answered %d", path, resp.StatusCode)
 		}
@@ -147,11 +149,11 @@ func TestPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.PruneInterval = 5 * time.Millisecond
-	if err := a.Store.Put(context.Background(), txn.Transaction{ID: "old", CreatedAt: time.Unix(0, 0).UTC()}); err != nil {
-		t.Fatal(err)
+	if serr := a.Store.Put(context.Background(), txn.Transaction{ID: "old", CreatedAt: time.Unix(0, 0).UTC()}); serr != nil {
+		t.Fatal(serr)
 	}
-	if err := a.Store.Put(context.Background(), txn.Transaction{ID: "new", CreatedAt: time.Now()}); err != nil {
-		t.Fatal(err)
+	if serr := a.Store.Put(context.Background(), txn.Transaction{ID: "new", CreatedAt: time.Now()}); serr != nil {
+		t.Fatal(serr)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 	defer cancel()

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -24,7 +26,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/oid4vp"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/txn"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // RequestPath is the path prefix of a served request object.
@@ -168,7 +169,7 @@ func (s *Service) xmlConfig(m *ingestv1.XmlConfig) ingest.XMLConfig {
 	return cfg
 }
 
-// CreateOid4vpRequest starts a transaction and returns the request URI.
+// CreateOid4VpRequest starts a transaction and returns the request URI.
 func (s *Service) CreateOid4VpRequest(ctx context.Context, req *connect.Request[ingestv1.CreateOid4VpRequestRequest]) (*connect.Response[ingestv1.CreateOid4VpRequestResponse], error) {
 	mode, err := oid4vp.ParseResponseMode(req.Msg.GetResponseMode())
 	if err != nil {
