@@ -1,0 +1,112 @@
+# Verifier presentation results
+
+This page describes the `verifier-results` service (ADR-025). The service
+README at [`services/verifier-results/README.md`](../services/verifier-results/README.md)
+says how to run it. This page says how it works.
+
+## Data model
+
+One document holds one result. A second document holds the raw
+presentation of that result. The keys are `result/<id>` and `raw/<id>`.
+
+A `VerificationResult` carries these fields.
+
+| Field | Meaning |
+|---|---|
+| `id` | The result id. The service makes a random hexadecimal id. |
+| `verdict` | The overall verdict of the policy evaluation. |
+| `checks` | The checks that ran on the whole presentation. |
+| `cross_checks` | The cross credential rule results of ADR-026. |
+| `credentials` | One `CredentialSummary` per credential. |
+| `raw_ref` | The reference of the raw presentation. The purge clears it. |
+| `template_id`, `template_version` | The presentation template. |
+| `policy_set_id`, `policy_set_version` | The rules that ran (ADR-024 decision 6). |
+| `received_at`, `evaluated_at`, `retain_until` | The times of the record. |
+| `carrier` | How the presentation arrived, as a plain word. |
+| `tenant_id` | The tenant that owns the result. |
+
+A `CredentialSummary` is the card of one credential. It holds the title,
+the type, and the wire format. It holds the issuer and the issuer display
+name. It holds the trust word and the role in a combined presentation. It
+holds the subject display fields and the check list. It holds the
+validity window and the decoded credential as JSON.
+
+## The card list
+
+The `cards` package renders one result as a card list (ADR-025 decision 2):
+
+1. A summary card. It shows the verdict badge and the check time. It also
+   shows the carrier, the template, and the policy set.
+2. One card per credential. It shows the issuer name and a trust badge.
+   It also shows the type, the role, and the validity window. It ends with
+   the subject display fields and the check list.
+3. A disclosure inside each credential card. It holds the full JSON.
+
+The staff portal and the citizen page both render this list. The two
+views cannot drift apart. The `json` component of the UI kit gives the
+disclosure a `summary` control and a labelled region. A screen reader
+then announces the expanded state (ADR-025 decision 6, ADR-027 decision 8).
+
+Every page test calls `a11ytest.AssertPage`. The assertions cover one
+`h1`, the `lang` attribute, and the skip link. They also cover the
+labelled navigation and the `main` landmark. They also cover named
+buttons and labelled inputs. They reject a placeholder link.
+
+## Trust words
+
+The card shows one of four words. The `check` package reads them from the
+`trust_chain` check of the policy evaluation.
+
+| Word | Source |
+|---|---|
+| `trusted` | The trust chain check passed. |
+| `untrusted` | The trust chain check failed. |
+| `unavailable` | The trust chain check could not run. |
+| `unknown` | No trust chain check ran. |
+
+## Retention
+
+The purge runs on a schedule and on request (ADR-025 decision 3). It
+takes two steps for each result:
+
+1. The raw presentation goes first. The purge acts when the evaluation
+   time plus `RAW_RETENTION` has passed. It deletes the `raw/<id>`
+   document. It clears `raw_ref` and every `decoded_json` field.
+2. The result goes second. When `retain_until` has passed, the purge
+   deletes the `result/<id>` document.
+
+`RAW_RETENTION` must not be longer than `RETENTION`. The raw
+presentation can then never outlive the result. A `dry_run` request
+counts the deletions and writes nothing. A `raw_only` request does step 1
+only.
+
+## Query and export
+
+`Query` reads every result, filters it, and returns a page. The newest
+result comes first. The filter matches on the evaluation time and the
+verdict. It also matches on the issuer of any credential, the template
+id, and the tenant. The filter functions are pure. The Query RPC, the
+Export RPC, and the portal list page all use the same code
+(ADR-025 decision 4).
+
+`Export` streams the matching results in 32 KiB chunks. The CSV form
+follows RFC 4180. It has a header row and one row per credential. The
+JSON form writes one compact JSON object per line. The portal serves the
+same two encodings as a download at `GET <prefix>/export`.
+
+## Citizen page
+
+The public page takes one pasted credential or presentation
+(ADR-025 decision 5). It calls the verifier policy service, builds a
+result in memory, and renders the same card list. It never calls the
+store, and a test asserts that the store stays empty after a check.
+
+A deployment without `POLICY_URL` still serves the page. The page then
+says that the deployment does not offer the check.
+
+## Follow-ups
+
+| Item | Reason |
+|---|---|
+| Raw presentation upload | The `Store` RPC takes a reference, not the bytes. The service that holds the bytes writes the raw document. The ingestion service does that. |
+| Tenant access rules | The filter accepts a tenant. The service does not yet read a session. The admin service brings the session. |
