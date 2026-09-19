@@ -6,6 +6,11 @@ version (ADR-006 decision 4).
 
 ## Before you tag
 
+Work through [release-checklist.md](release-checklist.md).
+It holds the steps that no workflow can do.
+The first tag also needs the purge of the secrets from the history
+(ADR-029 decision 6).
+
 1. Make sure `main` is green in `vca-ci` and the last `vca-nightly` run passed.
 2. Choose the next version with SemVer 2.0.0. Read the commits since the
    last tag:
