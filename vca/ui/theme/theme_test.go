@@ -40,14 +40,14 @@ func TestRelativeLuminance(t *testing.T) {
 }
 
 func TestContrastRatio(t *testing.T) {
-	if r, _ := ContrastRatio("#000000", "#FFFFFF"); math.Abs(r-21) > 0.01 {
+	if r := mustRatio(t, "#000000", "#FFFFFF"); math.Abs(r-21) > 0.01 {
 		t.Errorf("black/white = %v, want 21", r)
 	}
-	if r, _ := ContrastRatio("#21663F", "#21663F"); math.Abs(r-1) > 0.001 {
+	if r := mustRatio(t, "#21663F", "#21663F"); math.Abs(r-1) > 0.001 {
 		t.Errorf("same colour = %v, want 1", r)
 	}
-	a, _ := ContrastRatio("#0B0B09", "#F7F7F4")
-	b, _ := ContrastRatio("#F7F7F4", "#0B0B09")
+	a := mustRatio(t, "#0B0B09", "#F7F7F4")
+	b := mustRatio(t, "#F7F7F4", "#0B0B09")
 	if math.Abs(a-b) > 1e-9 {
 		t.Errorf("ratio not symmetric: %v vs %v", a, b)
 	}
@@ -145,4 +145,14 @@ func TestCSSContainsEveryToken(t *testing.T) {
 	if strings.Index(css, "--accent:") > strings.Index(css, "--bad:") {
 		t.Error("tokens are not sorted")
 	}
+}
+
+// mustRatio returns the contrast ratio of two colours.
+func mustRatio(t *testing.T, fg, bg string) float64 {
+	t.Helper()
+	r, err := ContrastRatio(fg, bg)
+	if err != nil {
+		t.Fatalf("ContrastRatio(%s, %s): %v", fg, bg, err)
+	}
+	return r
 }
