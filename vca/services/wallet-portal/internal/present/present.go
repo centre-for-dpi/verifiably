@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/dcql"
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -117,22 +118,26 @@ func Parse(raw string) (Request, error) {
 }
 
 // AllowHost reports whether the host of uri is on the allowlist. An
-// empty allowlist blocks every request URI.
-func AllowHost(uri string, hosts []string) error {
-	u, err := url.Parse(strings.TrimSpace(uri))
-	if err != nil {
+// empty allowlist blocks every request URI. It uses the shared guard of
+// core/fetchguard (ADR-002 decision 7). The host allowlist is the
+// control here, so the guard allows a private address of an allowed
+// host, and it allows plain http.
+func AllowHost(ctx context.Context, uri string, hosts []string) error {
+	if _, err := url.Parse(strings.TrimSpace(uri)); err != nil {
 		return fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return fmt.Errorf("%w: the scheme %q is not http", ErrHostNotAllowed, u.Scheme)
+	if len(hosts) == 0 {
+		return fmt.Errorf("%w: no host is allowed", ErrHostNotAllowed)
 	}
-	host := strings.ToLower(u.Hostname())
-	for _, allowed := range hosts {
-		if strings.EqualFold(strings.TrimSpace(allowed), host) && host != "" {
-			return nil
-		}
+	guard := fetchguard.Guard{
+		AllowedHosts:        hosts,
+		AllowPlainHTTP:      true,
+		AllowPrivateNetwork: true,
 	}
-	return fmt.Errorf("%w: %s", ErrHostNotAllowed, host)
+	if _, err := guard.Check(ctx, uri); err != nil {
+		return fmt.Errorf("%w: %v", ErrHostNotAllowed, err)
+	}
+	return nil
 }
 
 // Fetcher reads one request object.
@@ -144,7 +149,7 @@ func Fetch(ctx context.Context, r Request, hosts []string, fetch Fetcher) (Reque
 	if r.RequestURI == "" {
 		return r, nil
 	}
-	if err := AllowHost(r.RequestURI, hosts); err != nil {
+	if err := AllowHost(ctx, r.RequestURI, hosts); err != nil {
 		return Request{}, err
 	}
 	if fetch == nil {

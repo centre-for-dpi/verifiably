@@ -118,22 +118,22 @@ func TestParseRejects(t *testing.T) {
 
 func TestAllowHost(t *testing.T) {
 	hosts := []string{"verifier.example", " Other.Example "}
-	if err := present.AllowHost("https://verifier.example/r/1", hosts); err != nil {
+	if err := present.AllowHost(context.Background(), "https://verifier.example/r/1", hosts); err != nil {
 		t.Fatal(err)
 	}
-	if err := present.AllowHost("https://OTHER.example/r/1", hosts); err != nil {
+	if err := present.AllowHost(context.Background(), "https://OTHER.example/r/1", hosts); err != nil {
 		t.Fatal(err)
 	}
-	if err := present.AllowHost("https://attacker.example/r/1", hosts); !errors.Is(err, present.ErrHostNotAllowed) {
+	if err := present.AllowHost(context.Background(), "https://attacker.example/r/1", hosts); !errors.Is(err, present.ErrHostNotAllowed) {
 		t.Fatalf("other host: %v", err)
 	}
-	if err := present.AllowHost("file:///etc/passwd", hosts); !errors.Is(err, present.ErrHostNotAllowed) {
+	if err := present.AllowHost(context.Background(), "file:///etc/passwd", hosts); !errors.Is(err, present.ErrHostNotAllowed) {
 		t.Fatalf("file: %v", err)
 	}
-	if err := present.AllowHost("https://verifier.example/r/1", nil); !errors.Is(err, present.ErrHostNotAllowed) {
+	if err := present.AllowHost(context.Background(), "https://verifier.example/r/1", nil); !errors.Is(err, present.ErrHostNotAllowed) {
 		t.Fatalf("empty allowlist: %v", err)
 	}
-	if err := present.AllowHost("http://%zz", hosts); !errors.Is(err, present.ErrBadRequest) {
+	if err := present.AllowHost(context.Background(), "http://%zz", hosts); !errors.Is(err, present.ErrBadRequest) {
 		t.Fatalf("broken uri: %v", err)
 	}
 }
