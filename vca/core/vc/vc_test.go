@@ -12,8 +12,20 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 )
 
+// must returns v. It stops the test when err is not nil.
+func must[T any](t testing.TB, v T, err error) T {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return v
+}
+
 func b64(v any) string {
-	b, _ := json.Marshal(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
@@ -150,7 +162,7 @@ func TestFromSDJWT(t *testing.T) {
 		t.Fatal("bad payload must fail")
 	}
 	// A disclosure that matches no digest is rejected (legacy accepted it).
-	stray, _ := sdjwt.NewDisclosure("x", 1)
+	stray := must(t, sdjwt.NewDisclosure("x", 1))
 	if _, err := FromSDJWT(tok + stray.Encoded + "~"); err == nil {
 		t.Fatal("unmatched disclosure must fail")
 	}
@@ -340,7 +352,7 @@ func sampleSDJWTF(f *testing.F) (string, []sdjwt.Disclosure) {
 	if err != nil {
 		f.Fatal(err)
 	}
-	key, _ := jose.GenerateKey(jose.ES256)
-	jwt, _ := jose.Sign(key, "", "dc+sd-jwt", concealed)
+	key := must(f, jose.GenerateKey(jose.ES256))
+	jwt := must(f, jose.Sign(key, "", "dc+sd-jwt", concealed))
 	return sdjwt.Serialize(sdjwt.Presentation{IssuerJWT: jwt, Disclosures: discs}), discs
 }
