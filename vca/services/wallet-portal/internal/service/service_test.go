@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
@@ -269,13 +270,13 @@ func TestListClaimable(t *testing.T) {
 			return false, errors.New("down")
 		}
 	})
-	if _, err := down.ListClaimable(ctx(),
-		connect.NewRequest(&walletportalv1.ListClaimableRequest{})); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Fatalf("hook down: %v", err)
+	if _, serr := down.ListClaimable(ctx(),
+		connect.NewRequest(&walletportalv1.ListClaimableRequest{})); connect.CodeOf(serr) != connect.CodeUnavailable {
+		t.Fatalf("hook down: %v", serr)
 	}
 	noCatalogue := build(t, func(o *service.Options) { o.Catalogue = nil })
-	if _, err := noCatalogue.ListClaimable(ctx(),
-		connect.NewRequest(&walletportalv1.ListClaimableRequest{})); err == nil {
+	if _, serr := noCatalogue.ListClaimable(ctx(),
+		connect.NewRequest(&walletportalv1.ListClaimableRequest{})); serr == nil {
 		t.Fatal("want a catalogue error")
 	}
 	deny := build(t, func(o *service.Options) { o.Eligible = nil })
@@ -486,8 +487,8 @@ func TestDeleteInBrowserMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := held.Msg.GetDetected().GetOfferId()
-	if _, err := svc.Delete(ctx(), connect.NewRequest(&walletportalv1.DeleteRequest{Id: id})); err != nil {
-		t.Fatal(err)
+	if _, serr := svc.Delete(ctx(), connect.NewRequest(&walletportalv1.DeleteRequest{Id: id})); serr != nil {
+		t.Fatal(serr)
 	}
 	list, err := svc.ListMine(ctx(), connect.NewRequest(&walletportalv1.ListMineRequest{}))
 	if err != nil {
@@ -515,14 +516,14 @@ func TestListMine(t *testing.T) {
 	if len(resp.Msg.GetCards()) != 1 || resp.Msg.GetCards()[0].GetIssuerName() != "Agency A" {
 		t.Fatalf("cards = %+v", resp.Msg.GetCards())
 	}
-	if _, err := svc.ListMine(context.Background(),
-		connect.NewRequest(&walletportalv1.ListMineRequest{})); err == nil {
+	if _, serr := svc.ListMine(context.Background(),
+		connect.NewRequest(&walletportalv1.ListMineRequest{})); serr == nil {
 		t.Fatal("want a session error")
 	}
 	down := build(t, withHolder(&fakeHolder{listErr: errors.New("down")}))
-	if _, err := down.ListMine(ctx(),
-		connect.NewRequest(&walletportalv1.ListMineRequest{})); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Fatalf("holder down: %v", err)
+	if _, serr := down.ListMine(ctx(),
+		connect.NewRequest(&walletportalv1.ListMineRequest{})); connect.CodeOf(serr) != connect.CodeUnavailable {
+		t.Fatalf("holder down: %v", serr)
 	}
 	big, err := svc.ListMine(ctx(), connect.NewRequest(&walletportalv1.ListMineRequest{
 		Page: &commonv1.Pagination{PageSize: 900},
@@ -571,7 +572,10 @@ func requestObject() []byte {
 			"claims": []any{map[string]any{"path": []string{"given_name"}}},
 		}}},
 	}
-	raw, _ := json.Marshal(doc)
+	raw, verr := json.Marshal(doc)
+	if verr != nil {
+		panic(verr)
+	}
 	return raw
 }
 
@@ -721,11 +725,11 @@ func TestPresentDirectProblems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := noPost.PresentConfirm(ctx(), connect.NewRequest(&walletportalv1.PresentConfirmRequest{
+	if _, serr := noPost.PresentConfirm(ctx(), connect.NewRequest(&walletportalv1.PresentConfirmRequest{
 		PresentationId: "openid4vp://?request_uri=https://verifier.example/r/1",
 		SelectedCards:  map[string]string{"licence": held.Msg.GetDetected().GetOfferId()},
-	})); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Fatalf("no poster: %v", err)
+	})); connect.CodeOf(serr) != connect.CodeUnavailable {
+		t.Fatalf("no poster: %v", serr)
 	}
 	broken := build(t, func(o *service.Options) {
 		o.Fetch = fetchRequest

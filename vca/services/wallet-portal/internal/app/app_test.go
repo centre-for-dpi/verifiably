@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
@@ -144,7 +145,11 @@ func TestBuildServesThePagesAndTheRPCs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer page.Body.Close()
+	defer func() {
+		if cerr := page.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if page.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("no session page = %d", page.StatusCode)
 	}
@@ -158,9 +163,16 @@ func TestBuildServesThePagesAndTheRPCs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body := make([]byte, 4096)
-	n, _ := resp.Body.Read(body)
+	n, verr := resp.Body.Read(body)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body[:n]), "DriverLicence") {
 		t.Fatalf("discover = %d %s", resp.StatusCode, body[:n])
 	}
@@ -176,16 +188,20 @@ func TestBuildServesThePagesAndTheRPCs(t *testing.T) {
 		t.Fatalf("offerings = %+v", answer.Msg.GetOfferings())
 	}
 	noToken := connect.NewRequest(&walletportalv1.ListDiscoverableRequest{})
-	if _, err := client.ListDiscoverable(context.Background(), noToken); connect.CodeOf(err) !=
+	if _, serr := client.ListDiscoverable(context.Background(), noToken); connect.CodeOf(serr) !=
 		connect.CodeUnauthenticated {
-		t.Fatalf("no token: %v", err)
+		t.Fatalf("no token: %v", serr)
 	}
 
 	assets, err := http.Get(srv.URL + "/static/vca.css")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer assets.Body.Close()
+	defer func() {
+		if cerr := assets.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if assets.StatusCode != http.StatusOK {
 		t.Fatalf("assets = %d", assets.StatusCode)
 	}
@@ -212,15 +228,19 @@ func TestBuildInBrowserStorageMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("blobs = %d", resp.StatusCode)
 	}
 	var body struct {
 		Blobs []blobs.Record `json:"blobs"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatal(err)
+	if serr := json.NewDecoder(resp.Body).Decode(&body); serr != nil {
+		t.Fatal(serr)
 	}
 	if len(body.Blobs) != 0 {
 		t.Fatalf("blobs = %+v", body.Blobs)
@@ -229,7 +249,11 @@ func TestBuildInBrowserStorageMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer script.Body.Close()
+	defer func() {
+		if cerr := script.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if script.StatusCode != http.StatusOK {
 		t.Fatalf("script = %d", script.StatusCode)
 	}
@@ -242,7 +266,7 @@ func TestBuildWithTheJWKSURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	jwks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(raw)
+		mustWrite(t, w, raw)
 	}))
 	defer jwks.Close()
 	cfg := load(t, map[string]string{
@@ -271,7 +295,11 @@ func TestBuildWithTheJWKSURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("page = %d", resp.StatusCode)
 	}
@@ -361,7 +389,11 @@ func TestBuildWithADefaultEligibilityAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("page = %d", resp.StatusCode)
 	}

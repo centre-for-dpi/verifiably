@@ -63,5 +63,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	_, _ = w.Write(h.body)
+	if _, err := w.Write(h.body); err != nil {
+		return
+	}
 }

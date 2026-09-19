@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"

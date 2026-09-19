@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 )
@@ -130,11 +131,11 @@ func NewVerifier(opts Options) (Verifier, error) {
 	return func(token string) (Citizen, error) {
 		set, err := opts.Keys(context.Background())
 		if err != nil {
-			return Citizen{}, fmt.Errorf("%w: %v", ErrNoSession, err)
+			return Citizen{}, fmt.Errorf("%w: %w", ErrNoSession, err)
 		}
 		raw, _, err := jose.VerifyWithJWKS(token, set, []jose.Algorithm{jose.ES256, jose.EdDSA})
 		if err != nil {
-			return Citizen{}, fmt.Errorf("%w: %v", ErrNoSession, err)
+			return Citizen{}, fmt.Errorf("%w: %w", ErrNoSession, err)
 		}
 		var claims oidcflow.Claims
 		if err := json.Unmarshal(raw, &claims); err != nil {

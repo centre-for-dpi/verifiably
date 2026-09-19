@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
@@ -151,7 +152,10 @@ func requestObject(purpose string) []byte {
 	if purpose != "" {
 		doc["presentation_definition"] = nil
 	}
-	raw, _ := json.Marshal(doc)
+	raw, verr := json.Marshal(doc)
+	if verr != nil {
+		panic(verr)
+	}
 	return raw
 }
 

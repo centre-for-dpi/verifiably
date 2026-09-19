@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
@@ -62,7 +63,10 @@ func claims(exp time.Time) oidcflow.Claims {
 }
 
 func at(s string) func() time.Time {
-	t, _ := time.Parse(time.RFC3339, s)
+	t, verr := time.Parse(time.RFC3339, s)
+	if verr != nil {
+		panic(verr)
+	}
 	return func() time.Time { return t }
 }
 
@@ -273,7 +277,7 @@ func TestMiddleware(t *testing.T) {
 	v := verifier(t, f, "", now)
 	page := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, _ := session.From(r.Context())
-		_, _ = w.Write([]byte(c.Subject))
+		mustWrite(t, w, []byte(c.Subject))
 	})
 	guarded := session.Middleware(v, "/wallet/login")(page)
 	rec := httptest.NewRecorder()

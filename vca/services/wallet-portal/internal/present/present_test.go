@@ -33,7 +33,9 @@ func object(extra map[string]any) []byte {
 		"state":        "s-1",
 	}
 	var query any
-	_ = json.Unmarshal([]byte(dcqlQuery), &query)
+	if cerr := json.Unmarshal([]byte(dcqlQuery), &query); cerr != nil {
+		panic(cerr)
+	}
 	doc["dcql_query"] = query
 	for k, v := range extra {
 		if v == nil {
@@ -42,7 +44,10 @@ func object(extra map[string]any) []byte {
 		}
 		doc[k] = v
 	}
-	raw, _ := json.Marshal(doc)
+	raw, verr := json.Marshal(doc)
+	if verr != nil {
+		panic(verr)
+	}
 	return raw
 }
 
@@ -180,8 +185,8 @@ func TestParseObjectReadsSignedRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	var claims map[string]any
-	if err := json.Unmarshal(object(nil), &claims); err != nil {
-		t.Fatal(err)
+	if serr := json.Unmarshal(object(nil), &claims); serr != nil {
+		t.Fatal(serr)
 	}
 	signed, err := jose.Sign(key, "k1", "oauth-authz-req+jwt", claims)
 	if err != nil {

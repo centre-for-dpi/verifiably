@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
@@ -126,7 +127,7 @@ func TestCatalogueErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cat.Offerings(context.Background()); err == nil {
+	if _, serr := cat.Offerings(context.Background()); serr == nil {
 		t.Fatal("want an issuer error")
 	}
 	typeDown := newFake()
@@ -244,7 +245,7 @@ func TestEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := down(context.Background(), "ref", offering); err == nil {
+	if _, serr := down(context.Background(), "ref", offering); serr == nil {
 		t.Fatal("want a hook error")
 	}
 	broken, err := ports.HTTPEligibility("https://hook.example",
@@ -321,9 +322,9 @@ func TestHTTPFetcher(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ok":
-			_, _ = w.Write([]byte("document"))
+			mustWrite(t, w, []byte("document"))
 		case "/big":
-			_, _ = w.Write([]byte(strings.Repeat("a", 100)))
+			mustWrite(t, w, []byte(strings.Repeat("a", 100)))
 		default:
 			http.NotFound(w, r)
 		}
@@ -356,14 +357,14 @@ func TestHTTPPosterAndFormPoster(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err == nil && r.PostForm.Get("vp_token") != "" {
 			bodies = append(bodies, r.PostForm.Get("vp_token"))
-			_, _ = w.Write([]byte(`{"redirect_uri":"https://done.example"}`))
+			mustWrite(t, w, []byte(`{"redirect_uri":"https://done.example"}`))
 			return
 		}
 		if r.URL.Path == "/bad" {
 			http.Error(w, "no", http.StatusBadRequest)
 			return
 		}
-		_, _ = w.Write([]byte(`{"eligible":true}`))
+		mustWrite(t, w, []byte(`{"eligible":true}`))
 	}))
 	defer srv.Close()
 	post := ports.HTTPPoster(nil, 0)
@@ -371,13 +372,13 @@ func TestHTTPPosterAndFormPoster(t *testing.T) {
 	if err != nil || !strings.Contains(string(got), "eligible") {
 		t.Fatalf("post = %q %v", got, err)
 	}
-	if _, err := post(context.Background(), srv.URL+"/bad", nil); err == nil {
+	if _, serr := post(context.Background(), srv.URL+"/bad", nil); serr == nil {
 		t.Fatal("want a status error")
 	}
-	if _, err := post(context.Background(), "http://%zz/", nil); err == nil {
+	if _, serr := post(context.Background(), "http://%zz/", nil); serr == nil {
 		t.Fatal("want a request error")
 	}
-	if _, err := post(context.Background(), "http://127.0.0.1:0/", nil); err == nil {
+	if _, serr := post(context.Background(), "http://127.0.0.1:0/", nil); serr == nil {
 		t.Fatal("want a transport error")
 	}
 	form := ports.FormPoster(nil, 1<<10)

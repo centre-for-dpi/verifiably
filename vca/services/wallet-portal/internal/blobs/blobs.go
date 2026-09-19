@@ -110,7 +110,7 @@ func Marshal(e Envelope) ([]byte, error) {
 func Parse(raw []byte) (Envelope, error) {
 	var e Envelope
 	if err := json.Unmarshal(raw, &e); err != nil {
-		return Envelope{}, fmt.Errorf("%w: %v", ErrBadEnvelope, err)
+		return Envelope{}, fmt.Errorf("%w: %w", ErrBadEnvelope, err)
 	}
 	if err := e.Check(); err != nil {
 		return Envelope{}, err
@@ -246,7 +246,7 @@ func key(wallet, id string) (string, error) {
 	}
 	full := Prefix + "/" + wallet + "/" + id
 	if err := store.ValidateKey(full); err != nil {
-		return "", fmt.Errorf("%w: %v", ErrBadID, err)
+		return "", fmt.Errorf("%w: %w", ErrBadID, err)
 	}
 	return full, nil
 }
@@ -289,7 +289,7 @@ func (s *Store) Get(ctx context.Context, wallet, id string) (Record, error) {
 	}
 	var rec Record
 	if err := json.Unmarshal(raw, &rec); err != nil {
-		return Record{}, fmt.Errorf("%w: %v", ErrBadEnvelope, err)
+		return Record{}, fmt.Errorf("%w: %w", ErrBadEnvelope, err)
 	}
 	return rec, nil
 }

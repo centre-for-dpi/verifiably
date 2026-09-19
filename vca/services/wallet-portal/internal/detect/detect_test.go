@@ -156,8 +156,8 @@ func TestTextRejects(t *testing.T) {
 	if err != nil || plain.Kind != detect.Unknown {
 		t.Fatalf("plain json = %+v %v", plain, err)
 	}
-	if _, err := detect.Text("openid4vp://%zz", 0); err != nil {
-		t.Fatalf("broken uri: %v", err)
+	if _, serr := detect.Text("openid4vp://%zz", 0); serr != nil {
+		t.Fatalf("broken uri: %v", serr)
 	}
 	brace, err := detect.Text("{not json", 0)
 	if err != nil || brace.Kind != detect.Unknown {

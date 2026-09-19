@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -100,7 +101,8 @@ func (s *Service) get(ctx context.Context, kind, wallet, id string) (record, err
 		return record{}, fmt.Errorf("service: the record does not parse: %w", err)
 	}
 	if s.opts.Now().After(rec.ExpiresAt) {
-		_ = s.opts.Store.Delete(ctx, k)
+		ignored := s.opts.Store.Delete(ctx, k)
+		_ = ignored
 		return record{}, ErrExpired
 	}
 	return rec, nil
@@ -145,6 +147,20 @@ func (s *Service) list(ctx context.Context, kind, wallet string) ([]record, erro
 // newID returns a random record id.
 func newID() string {
 	b := make([]byte, 12)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return hex.EncodeToString(b)
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

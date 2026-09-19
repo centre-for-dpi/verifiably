@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/delegation"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
@@ -20,11 +22,13 @@ import (
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func now() time.Time {
-	t, _ := time.Parse(time.RFC3339, "2026-09-19T00:00:00Z")
+	t, verr := time.Parse(time.RFC3339, "2026-09-19T00:00:00Z")
+	if verr != nil {
+		panic(verr)
+	}
 	return t
 }
 
@@ -41,7 +45,10 @@ func held(id string, extra map[string]any) *backendv1.WalletCredential {
 	for k, v := range extra {
 		doc[k] = v
 	}
-	raw, _ := json.Marshal(doc)
+	raw, verr := json.Marshal(doc)
+	if verr != nil {
+		panic(verr)
+	}
 	return &backendv1.WalletCredential{
 		Id:         id,
 		Credential: &commonv1.Credential{Format: commonv1.Format_FORMAT_LDP_VC, Payload: raw},
@@ -198,8 +205,8 @@ func tokenList(t *testing.T, index int, value uint8) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := list.Set(index, value); err != nil {
-		t.Fatal(err)
+	if serr := list.Set(index, value); serr != nil {
+		t.Fatal(serr)
 	}
 	claims := token.JWTClaims(token.Claims{
 		Issuer: "did:web:issuer.example", Subject: "https://issuer.example/sl/2", IssuedAt: now(),
