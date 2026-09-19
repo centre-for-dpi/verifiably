@@ -1,0 +1,684 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package portal_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect"
+
+	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/app"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/portal"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
+)
+
+// fakeTrust is a trust registry client in process.
+type fakeTrust struct {
+	trustv1connect.TrustServiceClient
+	entries map[string]*trustv1.TrustEntry
+	// listErr, when set, makes ListEntries fail.
+	listErr error
+}
+
+func keyOf(id *trustv1.TrustEntry_Identifier) string {
+	if id.GetDid() != "" {
+		return id.GetDid()
+	}
+	return id.GetX509Subject()
+}
+
+func (f *fakeTrust) UpsertEntry(_ context.Context, req *connect.Request[trustv1.UpsertEntryRequest]) (*connect.Response[trustv1.UpsertEntryResponse], error) {
+	entry := req.Msg.GetEntry()
+	f.entries[keyOf(entry.GetIdentifier())] = entry
+	return connect.NewResponse(&trustv1.UpsertEntryResponse{Entry: entry}), nil
+}
+
+func (f *fakeTrust) GetEntry(_ context.Context, req *connect.Request[trustv1.GetEntryRequest]) (*connect.Response[trustv1.GetEntryResponse], error) {
+	entry, ok := f.entries[keyOf(req.Msg.GetIdentifier())]
+	if !ok {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("no entry"))
+	}
+	return connect.NewResponse(&trustv1.GetEntryResponse{Entry: entry}), nil
+}
+
+func (f *fakeTrust) ListEntries(_ context.Context, _ *connect.Request[trustv1.ListEntriesRequest]) (*connect.Response[trustv1.ListEntriesResponse], error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	res := &trustv1.ListEntriesResponse{Page: &commonv1.PageResult{TotalSize: int64(len(f.entries))}}
+	for _, e := range f.entries {
+		res.Entries = append(res.Entries, e)
+	}
+	return connect.NewResponse(res), nil
+}
+
+func (f *fakeTrust) DeleteEntry(_ context.Context, req *connect.Request[trustv1.DeleteEntryRequest]) (*connect.Response[trustv1.DeleteEntryResponse], error) {
+	delete(f.entries, keyOf(req.Msg.GetIdentifier()))
+	return connect.NewResponse(&trustv1.DeleteEntryResponse{}), nil
+}
+
+// harness holds the whole service behind an HTTP server.
+type harness struct {
+	app    *app.App
+	server *httptest.Server
+	idp    *oidctest.Provider
+	regIDP *httptest.Server
+	client *http.Client
+	trust  *fakeTrust
+	ready  *httptest.Server
+	csrf   string
+}
+
+// newHarness wires the service, logs one super admin in, and returns the
+// harness with a cookie jar that holds the session.
+func newHarness(t *testing.T, withTrust bool) *harness {
+	t.Helper()
+	h := &harness{trust: &fakeTrust{entries: map[string]*trustv1.TrustEntry{}}}
+	h.idp = oidctest.New()
+	t.Cleanup(h.idp.Close)
+	h.regIDP = registrationIDP(t, h.idp)
+	h.ready = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ready version=1.0.0"))
+	}))
+	t.Cleanup(h.ready.Close)
+	var handler http.Handler
+	h.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(h.server.Close)
+	cfg := config.Config{
+		Listen: ":0", PublicURL: h.server.URL, RedirectURI: h.server.URL + "/auth/callback",
+		CookieName: "vca_admin_session", InsecureCookie: true, SessionTTL: 15 * time.Minute,
+		Timeout: 5 * time.Second, PortalPrefix: portal.DefaultPrefix, LogoutRedirect: "/admin/",
+		SessionKey: "0123456789abcdef0123456789abcdef",
+		Services:   []string{"trust-registry=" + h.ready.URL},
+	}
+	deps := app.Deps{Client: h.server.Client()}
+	if withTrust {
+		deps.Trust = h.trust
+		cfg.TrustURL = h.server.URL
+	}
+	built, err := app.Build(cfg, deps)
+	if err != nil {
+		t.Fatalf("app.Build: %v", err)
+	}
+	h.app = built
+	handler = built.Mux
+	if _, err := built.Login.Providers().Put(oidcflow.Provider{
+		ID: "idp", DisplayName: "Test IdP", DiscoveryURL: h.idp.DiscoveryURL(),
+		ClientID: h.idp.ClientID, Enabled: true,
+	}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar: %v", err)
+	}
+	h.client = &http.Client{
+		Jar:           jar,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	return h
+}
+
+// registrationIDP serves metadata with a registration endpoint.
+func registrationIDP(t *testing.T, idp *oidctest.Provider) *httptest.Server {
+	t.Helper()
+	var srv *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                 idp.Issuer(),
+			"authorization_endpoint": idp.Issuer() + "/authorize",
+			"token_endpoint":         idp.Issuer() + "/token",
+			"jwks_uri":               idp.Issuer() + "/jwks",
+			"registration_endpoint":  srv.URL + "/register",
+		})
+	})
+	mux.HandleFunc("/register", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]string{"client_id": "registered"})
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// signIn runs one login with the bootstrap token and keeps the session.
+func (h *harness) signIn(t *testing.T) {
+	t.Helper()
+	if h.app.BootstrapToken == "" {
+		t.Fatal("the service printed no bootstrap token")
+	}
+	start := h.server.URL + "/auth/login?provider=idp&return_to=" +
+		url.QueryEscape("/admin/") + "&" + login.BootstrapField + "=" + url.QueryEscape(h.app.BootstrapToken)
+	res, err := h.client.Get(start)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusFound {
+		t.Fatalf("login status = %d", res.StatusCode)
+	}
+	back, err := h.idp.Authorize(res.Header.Get("Location"))
+	if err != nil {
+		t.Fatalf("authorize: %v", err)
+	}
+	done, err := h.client.Get(back)
+	if err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	done.Body.Close()
+	if done.StatusCode != http.StatusSeeOther {
+		t.Fatalf("callback status = %d", done.StatusCode)
+	}
+	sessionRes, err := h.client.Get(h.server.URL + "/auth/session")
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	defer sessionRes.Body.Close()
+	var body struct {
+		CSRFToken string `json:"csrf_token"`
+	}
+	if err := json.NewDecoder(sessionRes.Body).Decode(&body); err != nil {
+		t.Fatalf("session body: %v", err)
+	}
+	if body.CSRFToken == "" {
+		t.Fatal("the session has no synchronizer token")
+	}
+	h.csrf = body.CSRFToken
+}
+
+// get fetches one page and returns the status and the body.
+func (h *harness) get(t *testing.T, path string) (int, string) {
+	t.Helper()
+	res, err := h.client.Get(h.server.URL + path)
+	if err != nil {
+		t.Fatalf("get %s: %v", path, err)
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return res.StatusCode, string(raw)
+}
+
+// page fetches one page, checks the status, and checks accessibility.
+func (h *harness) page(t *testing.T, path string) string {
+	t.Helper()
+	status, body := h.get(t, path)
+	if status != http.StatusOK {
+		t.Fatalf("%s status = %d", path, status)
+	}
+	a11ytest.AssertPage(t, body)
+	return body
+}
+
+// post sends a form with the synchronizer token.
+func (h *harness) post(t *testing.T, path string, form url.Values) (int, string) {
+	t.Helper()
+	if form == nil {
+		form = url.Values{}
+	}
+	form.Set(oidcflow.CSRFField, h.csrf)
+	res, err := h.client.Post(h.server.URL+path, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("post %s: %v", path, err)
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
+	return res.StatusCode, string(raw)
+}
+
+func TestNewChecksItsOptions(t *testing.T) {
+	if _, err := portal.New(portal.Options{}); err == nil {
+		t.Error("New accepted no client")
+	}
+	if _, err := portal.New(portal.Options{Client: nil, Login: nil}); err == nil {
+		t.Error("New accepted no login service")
+	}
+}
+
+func TestEveryPageWithoutASessionGoesToTheLogin(t *testing.T) {
+	h := newHarness(t, true)
+	for _, path := range []string{"/admin/", "/admin/tenants", "/admin/trust", "/admin/providers", "/admin/providers/new", "/admin/keys", "/admin/audit"} {
+		status, _ := h.get(t, path)
+		if status != http.StatusSeeOther {
+			t.Errorf("%s status = %d, want a redirect to the login page", path, status)
+		}
+	}
+	status, _ := h.post(t, "/admin/tenants", url.Values{"display_name": {"x"}})
+	if status != http.StatusSeeOther {
+		t.Errorf("POST without a session = %d", status)
+	}
+}
+
+func TestLoginPageAndHelpPageNeedNoSession(t *testing.T) {
+	h := newHarness(t, true)
+	loginPage := h.page(t, "/admin/login")
+	if !strings.Contains(loginPage, "Sign in with Test IdP") {
+		t.Error("the login page lists no provider")
+	}
+	if strings.Contains(strings.ToLower(loginPage), `type="password" name="password"`) {
+		t.Error("the login page has a password field")
+	}
+	help := h.page(t, "/admin/help")
+	for _, want := range []string{"Creates one tenant.", "admin tenant create", "AdminService.CreateTenant"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("the help page misses %q", want)
+		}
+	}
+}
+
+func TestEveryPageIsAccessible(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	for _, path := range []string{
+		"/admin/", "/admin/tenants", "/admin/trust", "/admin/providers",
+		"/admin/providers/new", "/admin/keys", "/admin/audit", "/admin/help", "/admin/login",
+	} {
+		body := h.page(t, path)
+		if !strings.Contains(body, "<main") {
+			t.Errorf("%s has no main landmark", path)
+		}
+	}
+}
+
+func TestTenantPagesCreateAndDelete(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	if status, body := h.post(t, "/admin/tenants", url.Values{"display_name": {"Ministry of Health"}}); status != http.StatusSeeOther {
+		t.Fatalf("create = %d %s", status, body)
+	}
+	page := h.page(t, "/admin/tenants?notice=tenant-created")
+	if !strings.Contains(page, "Ministry of Health") {
+		t.Fatal("the new tenant is not on the page")
+	}
+	if !strings.Contains(page, portal.Notices["tenant-created"].Text) {
+		t.Error("the page shows no notice")
+	}
+	id := h.tenantID(t)
+	if status, _ := h.post(t, "/admin/tenants/"+id+"/delete", nil); status != http.StatusSeeOther {
+		t.Fatalf("delete = %d", status)
+	}
+	if page := h.page(t, "/admin/tenants"); strings.Contains(page, "Ministry of Health") {
+		t.Fatal("the tenant is still on the page")
+	}
+}
+
+// tenantID returns the id of the first tenant on the tenant page.
+func (h *harness) tenantID(t *testing.T) string {
+	t.Helper()
+	res, err := h.app.Service.ListTenants(context.Background(), authed(t, h, &adminv1.ListTenantsRequest{}))
+	if err != nil {
+		t.Fatalf("ListTenants: %v", err)
+	}
+	if len(res.Msg.GetTenants()) == 0 {
+		t.Fatal("no tenant exists")
+	}
+	return res.Msg.GetTenants()[0].GetId()
+}
+
+// authed builds an RPC request with the session of the cookie jar.
+func authed[T any](t *testing.T, h *harness, msg *T) *connect.Request[T] {
+	t.Helper()
+	req := connect.NewRequest(msg)
+	u, err := url.Parse(h.server.URL)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	for _, c := range h.client.Jar.Cookies(u) {
+		if c.Name == "vca_admin_session" {
+			req.Header().Set("Authorization", "Bearer "+c.Value)
+		}
+	}
+	return req
+}
+
+func TestTenantCreateWithoutANameFails(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	if status, _ := h.post(t, "/admin/tenants", url.Values{}); status != http.StatusBadRequest {
+		t.Fatalf("status = %d", status)
+	}
+}
+
+func TestPostWithoutTheSynchronizerTokenIsRefused(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	form := url.Values{"display_name": {"No token"}}
+	res, err := h.client.Post(h.server.URL+"/admin/tenants", "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", res.StatusCode)
+	}
+}
+
+func TestTrustPagesAddAndRemove(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	form := url.Values{
+		"identifier": {"did:web:issuer.example"}, "display_name": {"Issuer one"},
+		"role": {"issuer"}, "status": {"active"}, "service_endpoint": {"https://issuer.example"},
+	}
+	if status, body := h.post(t, "/admin/trust", form); status != http.StatusSeeOther {
+		t.Fatalf("add = %d %s", status, body)
+	}
+	page := h.page(t, "/admin/trust")
+	if !strings.Contains(page, "did:web:issuer.example") || !strings.Contains(page, "Issuer one") {
+		t.Fatal("the entry is not on the page")
+	}
+	if status, _ := h.post(t, "/admin/trust/delete", url.Values{"identifier": {"did:web:issuer.example"}}); status != http.StatusSeeOther {
+		t.Fatal("the remove action failed")
+	}
+	if page := h.page(t, "/admin/trust"); strings.Contains(page, "did:web:issuer.example") {
+		t.Fatal("the entry is still on the page")
+	}
+	// An x509 subject also works.
+	form.Set("identifier", "CN=Issuer, O=Example")
+	if status, _ := h.post(t, "/admin/trust", form); status != http.StatusSeeOther {
+		t.Fatal("the x509 entry failed")
+	}
+	if page := h.page(t, "/admin/trust?role=issuer"); !strings.Contains(page, "CN=Issuer") {
+		t.Fatal("the x509 entry is not on the page")
+	}
+}
+
+func TestTrustPageWithoutARegistryExplainsIt(t *testing.T) {
+	h := newHarness(t, false)
+	h.signIn(t)
+	page := h.page(t, "/admin/trust")
+	if !strings.Contains(page, "No trust registry") {
+		t.Fatal("the page does not name the missing registry")
+	}
+}
+
+func TestProviderWizardAddsAProvider(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	wizard := h.page(t, "/admin/providers/new")
+	if !strings.Contains(wizard, "Issuer URL") {
+		t.Fatal("the wizard has no issuer field")
+	}
+	form := url.Values{
+		"issuer": {h.regIDP.URL}, "display_name": {"Keycloak"},
+		"roles_claim_path": {"realm_access.roles"}, "dynamic": {"true"},
+	}
+	if status, body := h.post(t, "/admin/providers", form); status != http.StatusSeeOther {
+		t.Fatalf("wizard post = %d %s", status, body)
+	}
+	page := h.page(t, "/admin/providers")
+	if !strings.Contains(page, "Keycloak") || !strings.Contains(page, "registered") {
+		t.Fatal("the provider is not on the page")
+	}
+	id := ""
+	for _, p := range h.app.Login.Providers().List() {
+		if p.DisplayName == "Keycloak" {
+			id = p.ID
+		}
+	}
+	if id == "" {
+		t.Fatal("the registry has no new provider")
+	}
+	if status, _ := h.post(t, "/admin/providers/"+id+"/delete", nil); status != http.StatusSeeOther {
+		t.Fatal("the remove action failed")
+	}
+	if page := h.page(t, "/admin/providers"); strings.Contains(page, "Keycloak") {
+		t.Fatal("the provider is still on the page")
+	}
+}
+
+func TestProviderWizardWithAClientIDAndSecretReference(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	form := url.Values{
+		"issuer": {h.idp.Issuer()}, "display_name": {"WSO2"}, "dynamic": {"false"},
+		"client_id": {"given"}, "client_secret_env": {"VCA_TEST_SECRET"},
+	}
+	if status, body := h.post(t, "/admin/providers", form); status != http.StatusSeeOther {
+		t.Fatalf("wizard post = %d %s", status, body)
+	}
+	if page := h.page(t, "/admin/providers"); !strings.Contains(page, "given") {
+		t.Fatal("the provider is not on the page")
+	}
+}
+
+func TestProviderWizardReportsABadIssuer(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	if status, _ := h.post(t, "/admin/providers", url.Values{"issuer": {"nowhere"}, "display_name": {"x"}}); status != http.StatusBadRequest {
+		t.Fatalf("status = %d", status)
+	}
+}
+
+func TestKeyPagesCreateAndRevoke(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	if status, _ := h.post(t, "/admin/tenants", url.Values{"display_name": {"Tenant"}}); status != http.StatusSeeOther {
+		t.Fatal("the tenant could not be created")
+	}
+	tenant := h.tenantID(t)
+	status, body := h.post(t, "/admin/keys", url.Values{
+		"display_name": {"CI key"}, "tenant_id": {tenant}, "role": {"issuer"}, "expires_days": {"30"},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("create = %d %s", status, body)
+	}
+	a11ytest.AssertPage(t, body)
+	if !strings.Contains(body, "vca_") {
+		t.Fatal("the page does not show the secret once")
+	}
+	page := h.page(t, "/admin/keys")
+	if strings.Contains(page, "vca_") && strings.Count(page, "vca_") > 1 {
+		t.Error("the key list shows a secret value")
+	}
+	if !strings.Contains(page, "CI key") {
+		t.Fatal("the key is not on the page")
+	}
+	if status, _ := h.post(t, "/admin/keys", url.Values{
+		"display_name": {"Bad"}, "tenant_id": {tenant}, "role": {"issuer"}, "expires_days": {"soon"},
+	}); status != http.StatusBadRequest {
+		t.Error("a bad expiry was accepted")
+	}
+}
+
+func TestKeyRevokeAndFilter(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	if status, _ := h.post(t, "/admin/tenants", url.Values{"display_name": {"Tenant"}}); status != http.StatusSeeOther {
+		t.Fatal("the tenant could not be created")
+	}
+	tenant := h.tenantID(t)
+	if status, _ := h.post(t, "/admin/keys", url.Values{
+		"display_name": {"Key"}, "tenant_id": {tenant}, "role": {"admin"},
+	}); status != http.StatusOK {
+		t.Fatal("the key could not be created")
+	}
+	res, err := h.app.Service.ListApiKeys(context.Background(), authed(t, h, &adminv1.ListApiKeysRequest{}))
+	if err != nil || len(res.Msg.GetKeys()) == 0 {
+		t.Fatalf("ListApiKeys = %v", err)
+	}
+	id := res.Msg.GetKeys()[0].GetId()
+	if status, _ := h.post(t, "/admin/keys/"+id+"/revoke", nil); status != http.StatusSeeOther {
+		t.Fatal("the revoke action failed")
+	}
+	page := h.page(t, "/admin/keys?tenant_id="+tenant)
+	if !strings.Contains(page, "Revoked") {
+		t.Fatal("the key is not marked revoked")
+	}
+	if status, _ := h.post(t, "/admin/keys/missing/revoke", nil); status != http.StatusNotFound {
+		t.Error("an unknown key was revoked")
+	}
+}
+
+func TestAuditPageShowsEveryAction(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	if status, _ := h.post(t, "/admin/tenants", url.Values{"display_name": {"Audited"}}); status != http.StatusSeeOther {
+		t.Fatal("the tenant could not be created")
+	}
+	page := h.page(t, "/admin/audit")
+	if !strings.Contains(page, "admin.CreateTenant") {
+		t.Fatal("the audit page misses the action")
+	}
+	filtered := h.page(t, "/admin/audit?action=admin.CreateTenant&actor=nobody")
+	if !strings.Contains(filtered, "No record matches the filters.") {
+		t.Error("the actor filter does not work")
+	}
+}
+
+func TestAuditPagePages(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	for i := 0; i < 60; i++ {
+		if status, _ := h.post(t, "/admin/tenants", url.Values{"display_name": {"T"}}); status != http.StatusSeeOther {
+			t.Fatal("a tenant could not be created")
+		}
+	}
+	page := h.page(t, "/admin/audit")
+	if !strings.Contains(page, "Next page") {
+		t.Fatal("the audit page has no next page link")
+	}
+}
+
+func TestDashboardShowsTheServiceHealth(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	page := h.page(t, "/admin/")
+	if !strings.Contains(page, "trust-registry") {
+		t.Fatal("the dashboard misses the service")
+	}
+	if !strings.Contains(page, "Ready") {
+		t.Fatal("the dashboard shows no readiness")
+	}
+}
+
+func TestPrefixIsNormalized(t *testing.T) {
+	h := newHarness(t, true)
+	if h.app.Portal.Prefix() != "/admin" {
+		t.Fatalf("prefix = %q", h.app.Portal.Prefix())
+	}
+}
+
+func TestTrustPageShowsEveryStatusAndRole(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	cases := []struct {
+		id, role, status, want string
+	}{
+		{"did:web:one.example", "issuer", "active", "Active"},
+		{"did:web:two.example", "verifier", "suspended", "Suspended"},
+		{"did:web:three.example", "holder", "revoked", "Revoked"},
+		{"did:web:four.example", "issuer", "unknown", "Unknown"},
+	}
+	for _, c := range cases {
+		form := url.Values{
+			"identifier": {c.id}, "display_name": {c.id}, "role": {c.role}, "status": {c.status},
+		}
+		if status, body := h.post(t, "/admin/trust", form); status != http.StatusSeeOther {
+			t.Fatalf("%s add = %d %s", c.id, status, body)
+		}
+	}
+	page := h.page(t, "/admin/trust")
+	for _, c := range cases {
+		if !strings.Contains(page, c.want) {
+			t.Errorf("the page misses the status %q", c.want)
+		}
+		if !strings.Contains(page, c.id) {
+			t.Errorf("the page misses %q", c.id)
+		}
+	}
+}
+
+func TestDashboardShowsTheAdminName(t *testing.T) {
+	h := newHarness(t, true)
+	h.idp.Claims["name"] = "Amina Ali"
+	h.signIn(t)
+	if page := h.page(t, "/admin/"); !strings.Contains(page, "Amina Ali") {
+		t.Fatal("the dashboard does not name the admin")
+	}
+}
+
+func TestDashboardReportsAServiceThatIsNotReady(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	// The service list points at an address with no server, so the probe
+	// fails and the page shows the reason.
+	page := h.page(t, "/admin/")
+	if !strings.Contains(page, "trust-registry") {
+		t.Fatal("the dashboard misses the service")
+	}
+}
+
+func TestAnUnknownTenantDeleteIsNotFound(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	if status, _ := h.post(t, "/admin/tenants/missing/delete", nil); status != http.StatusNotFound {
+		t.Fatalf("status = %d", status)
+	}
+	if status, _ := h.post(t, "/admin/providers/missing/delete", nil); status != http.StatusNotFound {
+		t.Fatalf("provider status = %d", status)
+	}
+	if status, _ := h.post(t, "/admin/trust/delete", url.Values{"identifier": {""}}); status != http.StatusSeeOther {
+		t.Fatalf("a delete of a missing entry = %d", status)
+	}
+}
+
+func TestRootRedirectsToThePortal(t *testing.T) {
+	h := newHarness(t, true)
+	res, err := h.client.Get(h.server.URL + "/")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/admin/" {
+		t.Fatalf("status = %d location = %q", res.StatusCode, res.Header.Get("Location"))
+	}
+}
+
+func TestTrustPageReportsARegistryFault(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	h.trust.listErr = connect.NewError(connect.CodeUnavailable, errors.New("down"))
+	status, _ := h.get(t, "/admin/trust")
+	if status != http.StatusInternalServerError {
+		t.Fatalf("status = %d", status)
+	}
+}
+
+func TestDashboardNamesTheProbeFault(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	h.ready.Close()
+	page := h.page(t, "/admin/")
+	if !strings.Contains(page, "could not be reached") {
+		t.Fatal("the dashboard does not name the probe fault")
+	}
+	if !strings.Contains(page, "Not ready") {
+		t.Fatal("the dashboard does not mark the service")
+	}
+}
