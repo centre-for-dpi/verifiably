@@ -192,7 +192,13 @@ func waitForCode(ctx context.Context, listener net.Listener, state string, deadl
 	})
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = server.Serve(listener) }()
-	defer func() { _ = server.Close() }()
+	// Shutdown waits for the browser to receive the answer page. Close
+	// would cut the connection before the answer leaves.
+	defer func() {
+		stop, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = server.Shutdown(stop)
+	}()
 	timer := time.NewTimer(deadline)
 	defer timer.Stop()
 	select {
