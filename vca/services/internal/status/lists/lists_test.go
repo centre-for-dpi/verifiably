@@ -103,9 +103,9 @@ func TestNewRecord(t *testing.T) {
 }
 
 func TestAllocateNoReuse(t *testing.T) {
-	r, err := NewRecord("t", KindToken, Revocation, 1, 13, "s", t0)
-	if err != nil {
-		t.Fatalf("NewRecord: %v", err)
+	r, rErr := NewRecord("t", KindToken, Revocation, 1, 13, "s", t0)
+	if rErr != nil {
+		t.Fatalf("NewRecord: %v", rErr)
 	}
 	seen := map[int]bool{}
 	for i := 0; i < 13; i++ {
@@ -130,9 +130,9 @@ func TestAllocateNoReuse(t *testing.T) {
 	if _, err := r.Allocate(bytes.NewReader(nil)); !errors.Is(err, ErrFull) {
 		t.Fatal("full check must come first")
 	}
-	fresh, err := NewRecord("f", KindToken, Revocation, 1, 300, "s", t0)
-	if err != nil {
-		t.Fatalf("NewRecord: %v", err)
+	fresh, freshErr := NewRecord("f", KindToken, Revocation, 1, 300, "s", t0)
+	if freshErr != nil {
+		t.Fatalf("NewRecord: %v", freshErr)
 	}
 	if _, err := fresh.Allocate(bytes.NewReader(nil)); err == nil {
 		t.Fatal("expected entropy error")
@@ -173,13 +173,13 @@ func TestAllocateIsRandom(t *testing.T) {
 }
 
 func TestSetGetBitstring(t *testing.T) {
-	r, err := NewRecord("b", KindBitstring, Revocation, 1, 0, "s", t0)
-	if err != nil {
-		t.Fatalf("NewRecord: %v", err)
+	r, rErr := NewRecord("b", KindBitstring, Revocation, 1, 0, "s", t0)
+	if rErr != nil {
+		t.Fatalf("NewRecord: %v", rErr)
 	}
-	idx, err := r.Allocate(nil)
-	if err != nil {
-		t.Fatalf("r.Allocate: %v", err)
+	idx, idxErr := r.Allocate(nil)
+	if idxErr != nil {
+		t.Fatalf("r.Allocate: %v", idxErr)
 	}
 	if _, err := r.Set(idx+1, 1, t0); !errors.Is(err, ErrNotAllocated) && !r.IsAllocated(idx+1) {
 		t.Fatalf("err = %v", err)
@@ -223,13 +223,13 @@ func TestSetGetBitstring(t *testing.T) {
 }
 
 func TestSetGetToken(t *testing.T) {
-	r, err := NewRecord("t", KindToken, Message, 8, 4, "s", t0)
-	if err != nil {
-		t.Fatalf("NewRecord: %v", err)
+	r, rErr := NewRecord("t", KindToken, Message, 8, 4, "s", t0)
+	if rErr != nil {
+		t.Fatalf("NewRecord: %v", rErr)
 	}
-	idx, err := r.Allocate(nil)
-	if err != nil {
-		t.Fatalf("r.Allocate: %v", err)
+	idx, idxErr := r.Allocate(nil)
+	if idxErr != nil {
+		t.Fatalf("r.Allocate: %v", idxErr)
 	}
 	if _, err := r.Set(idx, 200, t0); err != nil {
 		t.Fatal(err)
@@ -237,9 +237,9 @@ func TestSetGetToken(t *testing.T) {
 	if v, _ := r.Get(idx); v != 200 {
 		t.Fatalf("v = %d", v)
 	}
-	l, err := r.TokenList()
-	if err != nil {
-		t.Fatal(err)
+	l, lErr := r.TokenList()
+	if lErr != nil {
+		t.Fatal(lErr)
 	}
 	if v, _ := l.Get(idx); v != 200 {
 		t.Fatal("TokenList")
@@ -287,9 +287,9 @@ func TestManagerLifecycle(t *testing.T) {
 	if m.Kind() != KindToken || len(m.MediaTypes()) != 2 || m.URL("x") != "https://status.example/status/x" {
 		t.Fatal("accessors")
 	}
-	a, err := m.Allocate(ctx, "", Revocation, 0)
-	if err != nil {
-		t.Fatal(err)
+	a, aErr := m.Allocate(ctx, "", Revocation, 0)
+	if aErr != nil {
+		t.Fatal(aErr)
 	}
 	if a.URL != m.URL(a.ListID) || a.Purpose != Revocation || len(a.ListID) != 32 {
 		t.Fatalf("allocation = %+v", a)
@@ -310,13 +310,13 @@ func TestManagerLifecycle(t *testing.T) {
 		t.Fatalf("expected 2 lists, got %d", len(ids))
 	}
 	// A different purpose or width gets its own list.
-	s, err := m.Allocate(ctx, "", Suspension, 1)
-	if err != nil {
-		t.Fatalf("m.Allocate: %v", err)
+	s, sErr := m.Allocate(ctx, "", Suspension, 1)
+	if sErr != nil {
+		t.Fatalf("m.Allocate: %v", sErr)
 	}
-	w, err := m.Allocate(ctx, "", Suspension, 2)
-	if err != nil {
-		t.Fatalf("m.Allocate: %v", err)
+	w, wErr := m.Allocate(ctx, "", Suspension, 2)
+	if wErr != nil {
+		t.Fatalf("m.Allocate: %v", wErr)
 	}
 	if ids[s.ListID] || s.ListID == w.ListID {
 		t.Fatal("purpose and width must select the list")
@@ -348,28 +348,28 @@ func TestManagerLifecycle(t *testing.T) {
 	if err != nil || rec.AllocatedCount != 4 {
 		t.Fatalf("record: %+v %v", rec, err)
 	}
-	if _, _, err := m.Set(ctx, "nope", 0, 1); !errors.Is(err, ErrNotFound) {
-		t.Fatal(err)
+	if _, _, gotErr := m.Set(ctx, "nope", 0, 1); !errors.Is(gotErr, ErrNotFound) {
+		t.Fatal(gotErr)
 	}
-	if _, _, err := m.Set(ctx, a.ListID, 9, 1); !errors.Is(err, ErrNotAllocated) {
-		t.Fatal(err)
+	if _, _, gotErr := m.Set(ctx, a.ListID, 9, 1); !errors.Is(gotErr, ErrNotAllocated) {
+		t.Fatal(gotErr)
 	}
-	if _, err := m.Get("nope", 0); !errors.Is(err, ErrNotFound) {
-		t.Fatal(err)
+	if _, gotErr := m.Get("nope", 0); !errors.Is(gotErr, ErrNotFound) {
+		t.Fatal(gotErr)
 	}
-	if _, err := m.Get(a.ListID, 99); err == nil {
+	if _, gotErr := m.Get(a.ListID, 99); gotErr == nil {
 		t.Fatal("expected range error")
 	}
-	if _, err := m.Record("nope"); !errors.Is(err, ErrNotFound) {
-		t.Fatal(err)
+	if _, gotErr := m.Record("nope"); !errors.Is(gotErr, ErrNotFound) {
+		t.Fatal(gotErr)
 	}
-	if _, err := m.Allocate(ctx, "", "other", 1); !errors.Is(err, ErrBadPurpose) {
-		t.Fatal(err)
+	if _, gotErr := m.Allocate(ctx, "", "other", 1); !errors.Is(gotErr, ErrBadPurpose) {
+		t.Fatal(gotErr)
 	}
-	if _, err := m.Allocate(ctx, "did:web:none", Revocation, 1); !errors.Is(err, keys.ErrUnknownIssuer) {
-		t.Fatal(err)
+	if _, gotErr := m.Allocate(ctx, "did:web:none", Revocation, 1); !errors.Is(gotErr, keys.ErrUnknownIssuer) {
+		t.Fatal(gotErr)
 	}
-	if _, err := m.Allocate(ctx, "", Revocation, 3); err == nil {
+	if _, gotErr := m.Allocate(ctx, "", Revocation, 3); gotErr == nil {
 		t.Fatal("expected bits error")
 	}
 
@@ -379,8 +379,8 @@ func TestManagerLifecycle(t *testing.T) {
 	if err != nil || !bytes.Equal(got.Artifacts[0].Body, signed.Artifacts[0].Body) || sec.calls != calls {
 		t.Fatalf("signed: %v calls %d", err, sec.calls)
 	}
-	if _, _, err := m.Signed(ctx, "nope"); !errors.Is(err, ErrNotFound) {
-		t.Fatal(err)
+	if _, _, gotErr := m.Signed(ctx, "nope"); !errors.Is(gotErr, ErrNotFound) {
+		t.Fatal(gotErr)
 	}
 
 	// Pages.
@@ -410,11 +410,11 @@ func TestManagerLifecycle(t *testing.T) {
 		t.Fatal("page past the end")
 	}
 	for _, bad := range []string{"x", "-1", "01"} {
-		if _, err := m.List("", 10, bad); err == nil {
+		if _, gotErr := m.List("", 10, bad); gotErr == nil {
 			t.Errorf("token %q: expected error", bad)
 		}
 	}
-	if _, err := m.List("", 0, ""); err == nil {
+	if _, gotErr := m.List("", 0, ""); gotErr == nil {
 		t.Fatal("expected page size error")
 	}
 	if !json.Valid(m.JWKS()) {
@@ -512,9 +512,9 @@ func TestManagerErrors(t *testing.T) {
 	kv := store.Memory()
 	is := newIssuers(t, kv)
 	failSec := &fakeSecurer{kind: KindToken, fail: errors.New("hsm down")}
-	m, err := Open(ctx, Options{Store: kv, Issuers: is, Securer: failSec, Size: 4})
-	if err != nil {
-		t.Fatalf("Open: %v", err)
+	m, mErr := Open(ctx, Options{Store: kv, Issuers: is, Securer: failSec, Size: 4})
+	if mErr != nil {
+		t.Fatalf("Open: %v", mErr)
 	}
 	if _, err := m.Allocate(ctx, "", Revocation, 1); err == nil || !strings.Contains(err.Error(), "hsm down") {
 		t.Fatalf("err = %v", err)
@@ -541,9 +541,9 @@ func TestManagerErrors(t *testing.T) {
 	if errAssign3 != nil {
 		t.Fatalf("Open: %v", errAssign3)
 	}
-	a, err := m.Allocate(ctx, "", Revocation, 1)
-	if err != nil {
-		t.Fatal(err)
+	a, aErr := m.Allocate(ctx, "", Revocation, 1)
+	if aErr != nil {
+		t.Fatal(aErr)
 	}
 	fs.failAfter = 0
 	if _, err := m.Allocate(ctx, "", Revocation, 1); err == nil {
@@ -562,14 +562,14 @@ func TestManagerErrors(t *testing.T) {
 	fs.failAfter = -1
 	// The issuer of a stored list is no longer configured.
 	fs.failAfter = -1
-	rec, err := m.Record(a.ListID)
-	if err != nil {
-		t.Fatalf("m.Record: %v", err)
+	rec, recErr := m.Record(a.ListID)
+	if recErr != nil {
+		t.Fatalf("m.Record: %v", recErr)
 	}
 	rec.IssuerSlug = "gone"
-	data, err := json.Marshal(rec)
-	if err != nil {
-		t.Fatalf("json.Marshal: %v", err)
+	data, dataErr := json.Marshal(rec)
+	if dataErr != nil {
+		t.Fatalf("json.Marshal: %v", dataErr)
 	}
 	if err := kv.Put(ctx, RecordPrefix+rec.ID, data); err != nil {
 		t.Fatalf("kv.Put: %v", err)

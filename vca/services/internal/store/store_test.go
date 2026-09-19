@@ -124,9 +124,9 @@ func TestBackends(t *testing.T) {
 func TestFileLayoutAndErrors(t *testing.T) {
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "state")
-	kv, err := File(dir)
-	if err != nil {
-		t.Fatal(err)
+	kv, kvErr := File(dir)
+	if kvErr != nil {
+		t.Fatal(kvErr)
 	}
 	if err := kv.Put(ctx, "lists/a", []byte(`1`)); err != nil {
 		t.Fatal(err)
@@ -173,10 +173,16 @@ func TestFileLayoutAndErrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Chmod(ro, 0o500); err != nil {
+		readOnly := os.FileMode(0o500)
+		if err := os.Chmod(ro, readOnly); err != nil {
 			t.Fatal(err)
 		}
-		defer os.Chmod(ro, 0o700)
+		writable := os.FileMode(0o700)
+		defer func() {
+			if err := os.Chmod(ro, writable); err != nil {
+				t.Errorf("restore mode: %v", err)
+			}
+		}()
 		if err := rkv.Put(ctx, "x", []byte("1")); err == nil {
 			t.Fatal("write into read-only dir")
 		}

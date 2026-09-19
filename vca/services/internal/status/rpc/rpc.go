@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -89,7 +90,7 @@ func (s *Service) SetStatus(ctx context.Context, req *connect.Request[statusv1.S
 		return nil, wrap(err)
 	}
 	return connect.NewResponse(&statusv1.SetStatusResponse{
-		PreviousValue: int32(prev),
+		PreviousValue: toInt32(prev),
 		SignedAt:      timestamppb.New(signed.SignedAt),
 	}), nil
 }
@@ -104,7 +105,7 @@ func (s *Service) GetStatus(_ context.Context, req *connect.Request[statusv1.Get
 	if err != nil {
 		return nil, wrap(err)
 	}
-	out := &statusv1.GetStatusResponse{Value: int32(st.Value), Purpose: toProtoPurpose(st.Purpose)}
+	out := &statusv1.GetStatusResponse{Value: toInt32(st.Value), Purpose: toProtoPurpose(st.Purpose)}
 	if st.Changed {
 		out.ChangedAt = timestamppb.New(st.ChangedAt)
 	}
@@ -175,7 +176,7 @@ func (s *Service) RotateKey(ctx context.Context, req *connect.Request[statusv1.R
 	return connect.NewResponse(&statusv1.RotateKeyResponse{
 		KeyId:         rot.KeyID,
 		PreviousKeyId: rot.PreviousKeyID,
-		ListsSigned:   int32(rot.ListsSigned),
+		ListsSigned:   toInt32(rot.ListsSigned),
 	}), nil
 }
 
@@ -187,7 +188,7 @@ func (s *Service) describe(rec lists.Record, signed lists.Signed) *statusv1.Stat
 		Purpose:   toProtoPurpose(rec.Purpose),
 		Url:       s.manager.URL(rec.ID),
 		Size:      int64(rec.Size),
-		Bits:      int32(rec.Bits),
+		Bits:      toInt32(rec.Bits),
 		Allocated: int64(rec.AllocatedCount),
 		IssuerDid: signed.IssuerDID,
 		KeyId:     signed.KeyID,
@@ -262,4 +263,15 @@ func wrap(err error) error {
 		return connect.NewError(connect.CodeCanceled, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
+}
+
+// toInt32 converts v to an int32. It limits v to the int32 range.
+func toInt32(v int) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v)
 }

@@ -22,8 +22,8 @@ func TestFakeProviderEndpoints(t *testing.T) {
 			if err != nil || res.StatusCode != 200 {
 				t.Fatalf("discovery: %v %v", err, res)
 			}
-			if err := res.Body.Close(); err != nil {
-				t.Fatalf("res.Body.Close: %v", err)
+			if gotErr := res.Body.Close(); gotErr != nil {
+				t.Fatalf("res.Body.Close: %v", gotErr)
 			}
 			// The authorization endpoint rejects a request without PKCE.
 			loc, err := idp.Authorize(idp.Server.URL + "/authorize?response_type=code&client_id=client")
@@ -45,8 +45,8 @@ func TestFakeProviderEndpoints(t *testing.T) {
 			if res.StatusCode != http.StatusBadRequest {
 				t.Fatal("GET token accepted")
 			}
-			if err := res.Body.Close(); err != nil {
-				t.Fatalf("res.Body.Close: %v", err)
+			if gotErr := res.Body.Close(); gotErr != nil {
+				t.Fatalf("res.Body.Close: %v", gotErr)
 			}
 			res, errAssign3 := http.PostForm(idp.Server.URL+"/token", url.Values{"grant_type": {"authorization_code"}, "code": {"x"}})
 			if errAssign3 != nil {
@@ -55,8 +55,8 @@ func TestFakeProviderEndpoints(t *testing.T) {
 			if res.StatusCode != http.StatusBadRequest {
 				t.Fatal("bad code accepted")
 			}
-			if err := res.Body.Close(); err != nil {
-				t.Fatalf("res.Body.Close: %v", err)
+			if gotErr := res.Body.Close(); gotErr != nil {
+				t.Fatalf("res.Body.Close: %v", gotErr)
 			}
 			// A wrong verifier fails.
 			verifier := oidc.NewVerifier()
@@ -76,8 +76,8 @@ func TestFakeProviderEndpoints(t *testing.T) {
 			if res.StatusCode != http.StatusBadRequest {
 				t.Fatal("wrong verifier accepted")
 			}
-			if err := res.Body.Close(); err != nil {
-				t.Fatalf("res.Body.Close: %v", err)
+			if gotErr := res.Body.Close(); gotErr != nil {
+				t.Fatalf("res.Body.Close: %v", gotErr)
 			}
 			// Client secret check.
 			idp.ClientSecret = "s"
@@ -88,8 +88,8 @@ func TestFakeProviderEndpoints(t *testing.T) {
 			if res.StatusCode != http.StatusUnauthorized {
 				t.Fatal("missing secret accepted")
 			}
-			if err := res.Body.Close(); err != nil {
-				t.Fatalf("res.Body.Close: %v", err)
+			if gotErr := res.Body.Close(); gotErr != nil {
+				t.Fatalf("res.Body.Close: %v", gotErr)
 			}
 			idp.ClientSecret = ""
 			// The ID token verifies against the JWKS.
@@ -104,8 +104,8 @@ func TestFakeProviderEndpoints(t *testing.T) {
 				t.Fatalf("read body: %v", readErr)
 			}
 			raw.Write(buf)
-			if err := res.Body.Close(); err != nil {
-				t.Fatalf("res.Body.Close: %v", err)
+			if gotErr := res.Body.Close(); gotErr != nil {
+				t.Fatalf("res.Body.Close: %v", gotErr)
 			}
 			set, err := jose.ParseJWKS([]byte(raw.String()))
 			if err != nil {
@@ -157,13 +157,13 @@ func TestFakeProviderSwitches(t *testing.T) {
 	first := idp.IDToken("client", "n")
 	idp.RotateKey()
 	second := idp.IDToken("client", "n")
-	h1, err := jose.PeekHeader(first)
-	if err != nil {
-		t.Fatalf("jose.PeekHeader: %v", err)
+	h1, h1Err := jose.PeekHeader(first)
+	if h1Err != nil {
+		t.Fatalf("jose.PeekHeader: %v", h1Err)
 	}
-	h2, err := jose.PeekHeader(second)
-	if err != nil {
-		t.Fatalf("jose.PeekHeader: %v", err)
+	h2, h2Err := jose.PeekHeader(second)
+	if h2Err != nil {
+		t.Fatalf("jose.PeekHeader: %v", h2Err)
 	}
 	if h1.Kid == h2.Kid {
 		t.Fatal("rotation kept the kid")

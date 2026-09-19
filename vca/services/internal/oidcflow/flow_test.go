@@ -136,9 +136,9 @@ func TestFlowFailures(t *testing.T) {
 		t.Fatalf("logout upstream: %v", err)
 	}
 
-	pend, _, err := f.Begin(context.Background(), p, "https://rp/cb", "")
-	if err != nil {
-		t.Fatalf("f.Begin: %v", err)
+	pend, _, pendErr := f.Begin(context.Background(), p, "https://rp/cb", "")
+	if pendErr != nil {
+		t.Fatalf("f.Begin: %v", pendErr)
 	}
 	if _, err := f.Complete(context.Background(), p, pend, ""); !errors.Is(err, oidcflow.ErrProviderError) {
 		t.Fatalf("empty code: %v", err)
@@ -151,8 +151,6 @@ func TestFlowFailures(t *testing.T) {
 	if _, err := f.Complete(context.Background(), p, expired, "x"); !errors.Is(err, oidcflow.ErrStateUnknown) {
 		t.Fatalf("expired: %v", err)
 	}
-	unreachable := pend
-	unreachable.ProviderID = "x"
 	if _, err := f.Complete(context.Background(), bad, pend, "x"); !errors.Is(err, oidcflow.ErrUpstream) {
 		t.Fatalf("complete upstream: %v", err)
 	}

@@ -114,9 +114,9 @@ func (plainWriter) Write(b []byte) (int, error) { return len(b), nil }
 func (plainWriter) WriteHeader(int)             {}
 
 func TestRunAndHealthcheck(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	ln, lnErr := net.Listen("tcp", "127.0.0.1:0")
+	if lnErr != nil {
+		t.Fatal(lnErr)
 	}
 	addr := ln.Addr().String()
 	short, shortCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -144,13 +144,13 @@ func TestRunAndHealthcheck(t *testing.T) {
 	}
 	// h2c: a prior knowledge HTTP/2 client gets HTTP/2.0.
 	client := &http.Client{Transport: &http.Transport{Protocols: h2cProtocols()}}
-	resp, err := client.Get("http://" + addr + "/proto")
-	if err != nil {
-		t.Fatal(err)
+	resp, respErr := client.Get("http://" + addr + "/proto")
+	if respErr != nil {
+		t.Fatal(respErr)
 	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("io.ReadAll: %v", err)
+	body, bodyErr := io.ReadAll(resp.Body)
+	if bodyErr != nil {
+		t.Fatalf("io.ReadAll: %v", bodyErr)
 	}
 	if err := resp.Body.Close(); err != nil {
 		t.Fatalf("resp.Body.Close: %v", err)

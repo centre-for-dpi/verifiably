@@ -61,7 +61,7 @@ func ValidateKey(key string) error {
 			return fmt.Errorf("%w: %q has an empty or dot segment", ErrBadKey, key)
 		}
 		for _, r := range seg {
-			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-') {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '-' {
 				return fmt.Errorf("%w: %q has the character %q", ErrBadKey, key, r)
 			}
 		}
@@ -174,7 +174,7 @@ func (f *file) Get(_ context.Context, key string) ([]byte, error) {
 }
 
 func (f *file) read(p string) ([]byte, error) {
-	data, err := os.ReadFile(p)
+	data, err := os.ReadFile(filepath.Clean(p))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotFound
 	}

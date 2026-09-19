@@ -34,7 +34,7 @@ func BearerAuthorizer(token string) Authorizer {
 // AnyAuthorizer allows a request that any of the given authorizers allows.
 func AnyAuthorizer(list ...Authorizer) Authorizer {
 	return func(ctx context.Context, h http.Header) error {
-		var last error = ErrUnauthorized
+		last := ErrUnauthorized
 		for _, a := range list {
 			if err := a(ctx, h); err == nil {
 				return nil

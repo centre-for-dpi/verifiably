@@ -89,9 +89,9 @@ func TestSignerRoundTrip(t *testing.T) {
 func TestSignerRejects(t *testing.T) {
 	s := newSigner(t)
 	other := newSigner(t)
-	tok, _, err := other.Issue(oidcflow.Claims{Subject: "u"})
-	if err != nil {
-		t.Fatalf("other.Issue: %v", err)
+	tok, _, tokErr := other.Issue(oidcflow.Claims{Subject: "u"})
+	if tokErr != nil {
+		t.Fatalf("other.Issue: %v", tokErr)
 	}
 	if _, err := s.Verify(tok); !errors.Is(err, oidcflow.ErrSessionInvalid) {
 		t.Fatalf("other key: %v", err)
@@ -100,29 +100,29 @@ func TestSignerRejects(t *testing.T) {
 		t.Fatalf("garbage: %v", err)
 	}
 	// Wrong issuer and audience.
-	key, err := oidcflow.GenerateKey()
-	if err != nil {
-		t.Fatalf("oidcflow.GenerateKey: %v", err)
+	key, keyErr := oidcflow.GenerateKey()
+	if keyErr != nil {
+		t.Fatalf("oidcflow.GenerateKey: %v", keyErr)
 	}
-	wrongIss, err := oidcflow.NewSigner(key, "https://other", "vca", time.Minute, nil)
-	if err != nil {
-		t.Fatalf("oidcflow.NewSigner: %v", err)
+	wrongIss, wrongIssErr := oidcflow.NewSigner(key, "https://other", "vca", time.Minute, nil)
+	if wrongIssErr != nil {
+		t.Fatalf("oidcflow.NewSigner: %v", wrongIssErr)
 	}
-	wrongAud, err := oidcflow.NewSigner(key, "https://auth.example", "other", time.Minute, nil)
-	if err != nil {
-		t.Fatalf("oidcflow.NewSigner: %v", err)
+	wrongAud, wrongAudErr := oidcflow.NewSigner(key, "https://auth.example", "other", time.Minute, nil)
+	if wrongAudErr != nil {
+		t.Fatalf("oidcflow.NewSigner: %v", wrongAudErr)
 	}
 	same, err := oidcflow.NewSigner(key, "https://auth.example", "vca", time.Minute, nil)
 	if err != nil {
 		t.Fatalf("oidcflow.NewSigner: %v", err)
 	}
 	for name, sg := range map[string]*oidcflow.Signer{"iss": wrongIss, "aud": wrongAud} {
-		tok, _, err := sg.Issue(oidcflow.Claims{Subject: "u"})
-		if err != nil {
-			t.Fatalf("sg.Issue: %v", err)
+		issued, _, issueErr := sg.Issue(oidcflow.Claims{Subject: "u"})
+		if issueErr != nil {
+			t.Fatalf("sg.Issue: %v", issueErr)
 		}
-		if _, err := same.Verify(tok); !errors.Is(err, oidcflow.ErrSessionInvalid) {
-			t.Fatalf("%s: %v", name, err)
+		if _, gotErr := same.Verify(issued); !errors.Is(gotErr, oidcflow.ErrSessionInvalid) {
+			t.Fatalf("%s: %v", name, gotErr)
 		}
 	}
 	// Expired.
@@ -133,22 +133,22 @@ func TestSignerRejects(t *testing.T) {
 		t.Fatalf("same.Issue: %v", errAssign)
 	}
 	same.WithClock(time.Now)
-	if _, err := same.Verify(tok); !errors.Is(err, oidcflow.ErrSessionInvalid) {
-		t.Fatalf("expired: %v", err)
+	if _, gotErr := same.Verify(tok); !errors.Is(gotErr, oidcflow.ErrSessionInvalid) {
+		t.Fatalf("expired: %v", gotErr)
 	}
 	// A token whose payload is not a claim set.
 	bad, err := jose.Sign(key, "k", "JWT", []int{1})
 	if err != nil {
 		t.Fatalf("jose.Sign: %v", err)
 	}
-	if _, err := same.Verify(bad); !errors.Is(err, oidcflow.ErrSessionInvalid) {
-		t.Fatalf("bad payload: %v", err)
+	if _, gotErr := same.Verify(bad); !errors.Is(gotErr, oidcflow.ErrSessionInvalid) {
+		t.Fatalf("bad payload: %v", gotErr)
 	}
 	// Constructor checks.
-	if _, err := oidcflow.NewSigner(nil, "i", "a", 0, nil); err == nil {
+	if _, gotErr := oidcflow.NewSigner(nil, "i", "a", 0, nil); gotErr == nil {
 		t.Fatal("nil key")
 	}
-	if _, err := oidcflow.NewSigner(key, "", "a", 0, nil); err == nil {
+	if _, gotErr := oidcflow.NewSigner(key, "", "a", 0, nil); gotErr == nil {
 		t.Fatal("no issuer")
 	}
 	def, err := oidcflow.NewSigner(key, "i", "a", 0, nil)
@@ -161,13 +161,13 @@ func TestSignerRejects(t *testing.T) {
 }
 
 func TestKeyPEM(t *testing.T) {
-	key, err := oidcflow.GenerateKey()
-	if err != nil {
-		t.Fatalf("oidcflow.GenerateKey: %v", err)
+	key, keyErr := oidcflow.GenerateKey()
+	if keyErr != nil {
+		t.Fatalf("oidcflow.GenerateKey: %v", keyErr)
 	}
-	raw, err := oidcflow.EncodeKeyPEM(key)
-	if err != nil {
-		t.Fatal(err)
+	raw, rawErr := oidcflow.EncodeKeyPEM(key)
+	if rawErr != nil {
+		t.Fatal(rawErr)
 	}
 	back, err := oidcflow.ParseKeyPEM(raw)
 	if err != nil || !back.Equal(key) {
@@ -181,10 +181,10 @@ func TestKeyPEM(t *testing.T) {
 	if err != nil || !back.Equal(key) {
 		t.Fatalf("pkcs8: %v", err)
 	}
-	if _, err := oidcflow.ParseKeyPEM([]byte("nope")); err == nil {
+	if _, gotErr := oidcflow.ParseKeyPEM([]byte("nope")); gotErr == nil {
 		t.Fatal("no block")
 	}
-	if _, err := oidcflow.ParseKeyPEM(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1, 2}})); err == nil {
+	if _, gotErr := oidcflow.ParseKeyPEM(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1, 2}})); gotErr == nil {
 		t.Fatal("bad der")
 	}
 	// A P-384 key is ECDSA but not P-256.

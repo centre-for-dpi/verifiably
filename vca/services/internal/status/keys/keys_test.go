@@ -62,9 +62,9 @@ func TestNewAndGenerate(t *testing.T) {
 	if _, err := Generate("HS256", t0); err == nil {
 		t.Fatal("expected error for HS256")
 	}
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("rsa.GenerateKey: %v", err)
+	rsaKey, rsaKeyErr := rsa.GenerateKey(rand.Reader, 2048)
+	if rsaKeyErr != nil {
+		t.Fatalf("rsa.GenerateKey: %v", rsaKeyErr)
 	}
 	if _, err := New(rsaKey, t0); err == nil {
 		t.Fatal("expected error for RSA")
