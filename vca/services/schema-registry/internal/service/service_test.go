@@ -15,6 +15,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/metadata"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/record"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/store"
@@ -46,7 +47,7 @@ func (f *fakeBackend) RegisterCredentialConfiguration(_ context.Context, req *co
 
 func newService(t *testing.T, backend backendv1connect.IssuerBackendServiceClient) (*Service, *fakeBackend) {
 	t.Helper()
-	st, err := store.Open(store.Memory(), store.Options{NewID: func(typ string) string { return strings.ToLower(typ) }})
+	st, err := store.Open(sharedstore.MemoryDoc(), store.Options{NewID: func(typ string) string { return strings.ToLower(typ) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +94,7 @@ func TestNew(t *testing.T) {
 	if s.MetadataOptions().Now != now {
 		t.Fatal("now")
 	}
-	st, _ := store.Open(store.Memory(), store.Options{})
+	st, _ := store.Open(sharedstore.MemoryDoc(), store.Options{})
 	if d, err := New(Options{Store: st}); err != nil || d.opts.PageSizeMax != DefaultPageSize || d.opts.Now == nil {
 		t.Fatal("defaults")
 	}

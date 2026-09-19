@@ -12,6 +12,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/httpapi"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/portal"
@@ -52,9 +53,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		deps.Backend = backendv1connect.NewIssuerBackendServiceClient(
 			&http.Client{Timeout: cfg.BackendTimeout}, cfg.BackendURL)
 	}
-	backend := store.Memory()
+	backend := sharedstore.MemoryDoc()
 	if cfg.StoreFile != "" {
-		backend = store.File(cfg.StoreFile)
+		backend = sharedstore.FileDoc(cfg.StoreFile)
 	}
 	st, err := store.Open(backend, store.Options{})
 	if err != nil {
