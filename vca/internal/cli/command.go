@@ -44,6 +44,9 @@ type Environment struct {
 	HTTP *http.Client
 	// StateDir holds the saved admin token.
 	StateDir string
+	// OpenDB opens the legacy database of vca migrate export. Nil opens
+	// it with database/sql.
+	OpenDB OpenDB
 }
 
 // withDefaults fills the fields a caller left empty.
@@ -154,6 +157,7 @@ func NewRootCommand(env Environment) *cobra.Command {
 		newDownCommand(env),
 		newDpgCommand(env),
 		newAdminCommand(env),
+		newMigrateCommand(env),
 		newManCommand(env),
 	)
 	return root
