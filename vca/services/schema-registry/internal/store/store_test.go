@@ -61,21 +61,21 @@ func TestCreateVersionsAndTransitions(t *testing.T) {
 	if s.Revision() != 1 {
 		t.Fatal("revision")
 	}
-	if dup, err := s.Create(sample("Degree"), now); err != nil || dup.ID == "degree" {
-		t.Fatalf("duplicate id must get a random id: %+v %v", dup, err)
+	if dup, serr := s.Create(sample("Degree"), now); serr != nil || dup.ID == "degree" {
+		t.Fatalf("duplicate id must get a random id: %+v %v", dup, serr)
 	}
-	if _, err := s.Create(record.Record{}, now); err == nil {
+	if _, serr := s.Create(record.Record{}, now); serr == nil {
 		t.Fatal("invalid record must fail")
 	}
 	v2, err := s.AddVersion("degree", sample("Degree"), now.Add(time.Hour))
 	if err != nil || v2.Version != 2 || v2.State != record.StateDraft {
 		t.Fatalf("v2 %+v %v", v2, err)
 	}
-	if _, err := s.AddVersion("degree", record.Record{}, now); err == nil {
+	if _, serr := s.AddVersion("degree", record.Record{}, now); serr == nil {
 		t.Fatal("invalid version must fail")
 	}
-	if _, err := s.AddVersion("nope", sample("X"), now); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing id: %v", err)
+	if _, serr := s.AddVersion("nope", sample("X"), now); !errors.Is(serr, ErrNotFound) {
+		t.Fatalf("missing id: %v", serr)
 	}
 	got, ok := s.Get("degree", 0)
 	if !ok || got.Version != 2 {

@@ -8,15 +8,17 @@ package record
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // State is the life cycle state of a version.
@@ -36,13 +38,13 @@ var States = []State{StateDraft, StatePublished, StateRetired}
 const (
 	FormatVcSdJwt   = "vc+sd-jwt"
 	FormatDcSdJwt   = "dc+sd-jwt"
-	FormatJwtVcJson = "jwt_vc_json"
+	FormatJwtVcJSON = "jwt_vc_json"
 	FormatLdpVc     = "ldp_vc"
 	FormatMsoMdoc   = "mso_mdoc"
 )
 
 // Formats lists every format a schema can offer, in enum order.
-var Formats = []string{FormatVcSdJwt, FormatDcSdJwt, FormatJwtVcJson, FormatLdpVc, FormatMsoMdoc}
+var Formats = []string{FormatVcSdJwt, FormatDcSdJwt, FormatJwtVcJSON, FormatLdpVc, FormatMsoMdoc}
 
 // MaxTypeLength caps the credential type.
 const MaxTypeLength = 200
@@ -234,7 +236,7 @@ func FormatFromProto(f commonv1.Format) (string, error) {
 	case commonv1.Format_FORMAT_DC_SD_JWT:
 		return FormatDcSdJwt, nil
 	case commonv1.Format_FORMAT_JWT_VC_JSON:
-		return FormatJwtVcJson, nil
+		return FormatJwtVcJSON, nil
 	case commonv1.Format_FORMAT_LDP_VC:
 		return FormatLdpVc, nil
 	case commonv1.Format_FORMAT_MSO_MDOC:
@@ -250,7 +252,7 @@ func FormatToProto(f string) commonv1.Format {
 		return commonv1.Format_FORMAT_VC_SD_JWT
 	case FormatDcSdJwt:
 		return commonv1.Format_FORMAT_DC_SD_JWT
-	case FormatJwtVcJson:
+	case FormatJwtVcJSON:
 		return commonv1.Format_FORMAT_JWT_VC_JSON
 	case FormatLdpVc:
 		return commonv1.Format_FORMAT_LDP_VC
@@ -326,10 +328,10 @@ func FromProto(m *schemav1.Schema) (Record, error) {
 // ToProto renders the version as a Schema message.
 func ToProto(r Record) *schemav1.Schema {
 	m := &schemav1.Schema{
-		Id: r.ID, Version: int32(r.Version), Type: r.Type, JsonSchema: r.JSONSchema, State: StateToProto(r.State),
+		Id: r.ID, Version: toInt32(int64(r.Version)), Type: r.Type, JsonSchema: r.JSONSchema, State: StateToProto(r.State),
 		SdClaims: append([]string(nil), r.SDClaims...), Expires: r.Expires,
 		SearchableClaims: append([]string(nil), r.SearchableClaims...), TenantId: r.TenantID, CreatedBy: r.CreatedBy,
-		RetentionDays: int32(r.RetentionDays), Display: DisplayToProto(r.Display),
+		RetentionDays: toInt32(int64(r.RetentionDays)), Display: DisplayToProto(r.Display),
 	}
 	for _, f := range r.Formats {
 		m.Formats = append(m.Formats, FormatToProto(f))
@@ -355,7 +357,7 @@ func DisplayToProto(list []Display) []*schemav1.Display {
 // ToPublicProto renders the wallet and verifier view of a version.
 func ToPublicProto(r Record) *schemav1.PublicSchema {
 	m := &schemav1.PublicSchema{
-		Id: r.ID, Version: int32(r.Version), Type: r.Type, JsonSchema: r.JSONSchema,
+		Id: r.ID, Version: toInt32(int64(r.Version)), Type: r.Type, JsonSchema: r.JSONSchema,
 		Display: DisplayToProto(r.Display), SdClaims: append([]string(nil), r.SDClaims...),
 		ConfigurationIds: map[string]string{},
 	}
@@ -382,4 +384,15 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

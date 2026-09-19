@@ -18,7 +18,7 @@ var now = time.Date(2024, 1, 31, 10, 0, 0, 0, time.UTC)
 func published() record.Record {
 	return record.Record{
 		ID: "degree", Version: 2, Type: "UniversityDegree", JSONSchema: doc, State: record.StatePublished,
-		Formats:  []string{record.FormatDcSdJwt, record.FormatJwtVcJson, record.FormatLdpVc, record.FormatMsoMdoc, record.FormatVcSdJwt},
+		Formats:  []string{record.FormatDcSdJwt, record.FormatJwtVcJSON, record.FormatLdpVc, record.FormatMsoMdoc, record.FormatVcSdJwt},
 		Display:  []record.Display{{Name: "Degree", Description: "A degree", Locale: "en", LogoURI: "https://x/logo.png", BackgroundColor: "#fff", TextColor: "#000"}},
 		SDClaims: []string{"name"}, PublishedAt: now, ConfigurationIDs: map[string]string{record.FormatDcSdJwt: "dpg-id"},
 	}
@@ -69,31 +69,31 @@ func TestConfigurations(t *testing.T) {
 	if sd["vct"] != "https://r/.well-known/vct/UniversityDegree" || sd["format"] != record.FormatDcSdJwt {
 		t.Fatalf("sd-jwt %v", sd)
 	}
-	claims := sd["claims"].([]map[string]any)
+	claims := mustAs[[]map[string]any](t, sd["claims"])
 	if len(claims) != 2 || claims[0]["mandatory"] != true {
 		t.Fatalf("claims %v", claims)
 	}
 	if configs["UniversityDegree_mso_mdoc"]["doctype"] != "UniversityDegree" {
 		t.Fatal("mdoc")
 	}
-	ldp := configs["UniversityDegree_ldp_vc"]["credential_definition"].(map[string]any)
-	if ldp["@context"].([]string)[0] != VCDMContext {
+	ldp := mustAs[map[string]any](t, configs["UniversityDegree_ldp_vc"]["credential_definition"])
+	if mustAs[[]string](t, ldp["@context"])[0] != VCDMContext {
 		t.Fatal("ldp context")
 	}
-	jwt := configs["UniversityDegree_jwt_vc_json"]["credential_definition"].(map[string]any)
+	jwt := mustAs[map[string]any](t, configs["UniversityDegree_jwt_vc_json"]["credential_definition"])
 	if _, has := jwt["@context"]; has {
 		t.Fatal("jwt_vc_json has no context")
 	}
-	d := sd["display"].([]map[string]any)[0]
-	if d["logo"].(map[string]any)["uri"] != "https://x/logo.png" || d["background_color"] != "#fff" || d["text_color"] != "#000" {
+	d := mustAs[[]map[string]any](t, sd["display"])[0]
+	if mustAs[map[string]any](t, d["logo"])["uri"] != "https://x/logo.png" || d["background_color"] != "#fff" || d["text_color"] != "#000" {
 		t.Fatalf("display %v", d)
 	}
 	r.Display = nil
 	c := Configuration(r, record.FormatDcSdJwt, Options{BaseURL: "https://r", SigningAlgs: []string{"ES384"}})
-	if c["claims"].([]map[string]any)[0]["display"].([]map[string]any)[0]["name"] != "Full name" {
+	if mustAs[[]map[string]any](t, mustAs[[]map[string]any](t, c["claims"])[0]["display"])[0]["name"] != "Full name" {
 		t.Fatal("claim display without locale")
 	}
-	if c["credential_signing_alg_values_supported"].([]string)[0] != "ES384" {
+	if mustAs[[]string](t, c["credential_signing_alg_values_supported"])[0] != "ES384" {
 		t.Fatal("algs")
 	}
 }
@@ -104,7 +104,7 @@ func TestIssuerMetadata(t *testing.T) {
 	if doc["credential_issuer"] != "https://issuer" || doc["credential_endpoint"] != "https://issuer/credential" {
 		t.Fatalf("issuer %v", doc)
 	}
-	if doc["authorization_servers"].([]string)[0] != "https://as" || doc["generated_at"] != "2024-01-31T10:00:00Z" {
+	if mustAs[[]string](t, doc["authorization_servers"])[0] != "https://as" || doc["generated_at"] != "2024-01-31T10:00:00Z" {
 		t.Fatal("servers or time")
 	}
 	if _, err := json.Marshal(doc); err != nil {
@@ -126,11 +126,11 @@ func TestPublicListAndSchemaDocument(t *testing.T) {
 	opts := Options{BaseURL: "https://r", Now: now}
 	r := published()
 	doc := PublicList([]record.Record{r}, opts)
-	list := doc["schemas"].([]map[string]any)
+	list := mustAs[[]map[string]any](t, doc["schemas"])
 	if len(list) != 1 || list[0]["url"] != "https://r/schemas/degree/2" || list[0]["published_at"] != "2024-01-31T10:00:00Z" {
 		t.Fatalf("list %v", list)
 	}
-	if list[0]["configuration_ids"].(map[string]string)[record.FormatDcSdJwt] != "dpg-id" || list[0]["vct"] == nil {
+	if mustAs[map[string]string](t, list[0]["configuration_ids"])[record.FormatDcSdJwt] != "dpg-id" || list[0]["vct"] == nil {
 		t.Fatal("ids or vct")
 	}
 	if doc["issuer_metadata"] != "https://r"+IssuerMetadataPath {
@@ -146,7 +146,7 @@ func TestPublicListAndSchemaDocument(t *testing.T) {
 		t.Fatal("no published_at")
 	}
 	s := SchemaDocument(r, opts)
-	if s["$id"] != "https://r/schemas/degree/2" || s["title"] != "Degree" || !strings.Contains(s["$schema"].(string), "2020-12") {
+	if s["$id"] != "https://r/schemas/degree/2" || s["title"] != "Degree" || !strings.Contains(mustAs[string](t, s["$schema"]), "2020-12") {
 		t.Fatalf("schema document %v", s)
 	}
 	r.JSONSchema = `{"$schema": "x", "title": "Keep"}`
@@ -163,26 +163,26 @@ func TestTypeMetadataAndFindVct(t *testing.T) {
 	if doc["vct"] != "https://r/.well-known/vct/UniversityDegree" || doc["name"] != "Degree" || doc["description"] != "A degree" {
 		t.Fatalf("type metadata %v", doc)
 	}
-	claims := doc["claims"].([]map[string]any)
+	claims := mustAs[[]map[string]any](t, doc["claims"])
 	if claims[0]["sd"] != "allowed" || claims[1]["sd"] != "never" {
 		t.Fatal("sd flags")
 	}
-	texts := claims[0]["display"].([]map[string]any)
+	texts := mustAs[[]map[string]any](t, claims[0]["display"])
 	if texts[0]["label"] != "Full name" || texts[0]["description"] != "The legal name" || texts[0]["lang"] != "en" {
 		t.Fatalf("claim display %v", texts)
 	}
-	rendering := doc["display"].([]map[string]any)[0]["rendering"].(map[string]any)["simple"].(map[string]any)
+	rendering := mustAs[map[string]any](t, mustAs[map[string]any](t, mustAs[[]map[string]any](t, doc["display"])[0]["rendering"])["simple"])
 	if rendering["background_color"] != "#fff" {
 		t.Fatal("rendering")
 	}
 	r.Display = []record.Display{{Name: "Plain", Locale: "fr"}}
 	doc = TypeMetadata(r, opts)
-	if _, has := doc["display"].([]map[string]any)[0]["rendering"]; has {
+	if _, has := mustAs[[]map[string]any](t, doc["display"])[0]["rendering"]; has {
 		t.Fatal("no rendering without colours")
 	}
 	r.Display = nil
 	doc = TypeMetadata(r, opts)
-	if doc["claims"].([]map[string]any)[0]["display"].([]map[string]any)[0]["label"] != "Full name" {
+	if mustAs[[]map[string]any](t, mustAs[[]map[string]any](t, doc["claims"])[0]["display"])[0]["label"] != "Full name" {
 		t.Fatal("label without locale")
 	}
 	old := published()

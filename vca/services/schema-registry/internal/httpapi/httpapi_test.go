@@ -100,7 +100,7 @@ func TestSchemas(t *testing.T) {
 	if !ok || len(list) != 1 {
 		t.Fatalf("schemas %v", body["schemas"])
 	}
-	first := list[0].(map[string]any)
+	first := mustAs[map[string]any](t, list[0])
 	if first["id"] != "degree" || first["version"] != float64(2) {
 		t.Fatalf("entry %v", first)
 	}

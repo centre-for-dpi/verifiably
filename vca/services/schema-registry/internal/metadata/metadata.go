@@ -116,8 +116,8 @@ func Claims(r record.Record) []Claim {
 	for _, name := range parsed.Properties() {
 		c := Claim{Name: name, Required: required[name], SD: sd[name]}
 		if sub, ok := parsed.Property(name); ok {
-			c.Title, _ = sub["title"].(string)
-			c.Description, _ = sub["description"].(string)
+			c.Title = stringField(sub, "title")
+			c.Description = stringField(sub, "description")
 		}
 		if c.Title == "" {
 			c.Title = name
@@ -360,4 +360,14 @@ func FindVct(published []record.Record, vct string, opts Options) (record.Record
 		}
 	}
 	return found, ok
+}
+
+// stringField returns one field as a string. A missing field, or a field
+// of another type, gives an empty string.
+func stringField(doc map[string]any, key string) string {
+	value, ok := doc[key].(string)
+	if !ok {
+		return ""
+	}
+	return value
 }
