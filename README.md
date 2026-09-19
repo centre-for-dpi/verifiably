@@ -573,11 +573,11 @@ Supported `verifierBackendType` values:
 > entry in the issuer node's `VERIFIABLY_API_KEYS` env var.
 > For example, if issuer-b runs with:
 > ```
-> VERIFIABLY_API_KEYS=hub:d0517ce8d93a907390cee0c9e7895e929d9a85fdffb30dd9d8920553fbc3e778
+> VERIFIABLY_API_KEYS=hub:REPLACE_ME
 > ```
 > then `federation.json` must have:
 > ```json
-> "apiKey": "d0517ce8d93a907390cee0c9e7895e929d9a85fdffb30dd9d8920553fbc3e778"
+> "apiKey": "REPLACE_ME"
 > ```
 > A mismatch causes a silent `401` on the public `/verify` portal — the
 > "generate presentation" button appears to do nothing. After correcting the

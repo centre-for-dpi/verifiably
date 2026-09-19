@@ -28,6 +28,7 @@ Each job runs alone. A failure in one job blocks the merge.
 | gofmt + go vet + golangci-lint | Formatting, vet, and the linters in `vca/.golangci.yml` (`gosec` and `errcheck` included, no exclusions) | golangci-lint v2 |
 | buf lint + breaking | Proto style, and no breaking change against the last `v*` tag | `buf` |
 | go test + coverage gate | Unit tests with the race detector; each package at 90 percent or more, `vca/core/...` at 100 | `go test`, `vca/hack/coverage.sh` |
+| secret scan (blocking) | No key store, PEM private key, 64 hex API key, or literal password in the tracked tree | `vca/hack/secret-scan.sh` |
 | trivy fs (blocking) | No HIGH or CRITICAL vulnerability, secret, or misconfiguration under `vca/` | Trivy |
 
 Notes:
@@ -41,6 +42,12 @@ Notes:
   change. The check ignores merge commits.
 - Coverage uses `go test -race -coverprofile`. The gate reads the per
   package numbers. Packages under `gen/` and `cmd/` are not gated.
+- The secret scan reads the files that git tracks, in the whole
+  repository (ADR-029 decision 6). It never reads the history, because the
+  history purge is a release step, see
+  [release-checklist.md](release-checklist.md). A known legacy finding
+  sits in `vca/hack/secret-scan-allow.txt` with its reason, and the scan
+  prints it as a warning.
 
 To run the same checks on your machine:
 
@@ -51,6 +58,7 @@ golangci-lint run ./...
 make test
 make cover
 shellcheck hack/*.sh
+./hack/secret-scan.sh
 ./hack/check-commits.sh origin/main..HEAD
 ```
 

@@ -11,11 +11,15 @@ on:
     paths:
       - 'vca/**'
       - '.github/workflows/vca-ci.yml'
+      - 'verifiably-go/config/**'
+      - 'verifiably-go/deploy/**'
   pull_request:
     branches: [main, vc-adapter]
     paths:
       - 'vca/**'
       - '.github/workflows/vca-ci.yml'
+      - 'verifiably-go/config/**'
+      - 'verifiably-go/deploy/**'
   workflow_dispatch:
 
 permissions:
@@ -74,6 +78,15 @@ jobs:
           shellcheck --version
           shellcheck -S style hack/*.sh
           ./hack/check-commits_test.sh
+
+  secrets:
+    name: secret scan (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No tracked secret (ADR-029 decision 6)
+        run: ./hack/secret-scan.sh
 
   lint:
     name: gofmt + go vet + golangci-lint
