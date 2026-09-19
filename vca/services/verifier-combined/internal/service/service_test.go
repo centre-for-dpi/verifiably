@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/delegation"
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	combinedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1"
@@ -25,7 +27,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/combos"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/rules"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var testNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -344,11 +345,11 @@ func TestBuildDcqlAlternatives(t *testing.T) {
 	if err := json.Unmarshal([]byte(got.Msg.GetDcql()), &doc); err != nil {
 		t.Fatal(err)
 	}
-	sets := doc["credential_sets"].([]any)
+	sets := mustAs[[]any](t, doc["credential_sets"])
 	if len(sets) != 1 {
 		t.Fatalf("want one set, got %v", sets)
 	}
-	options := sets[0].(map[string]any)["options"].([]any)
+	options := mustAs[[]any](t, mustAs[map[string]any](t, sets[0])["options"])
 	if len(options) != 2 {
 		t.Fatalf("want two options, got %v", options)
 	}

@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/delegation"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	combinedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1"
@@ -31,7 +33,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/combos"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/dcql"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/rules"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DefaultPageSize is the page size when the request gives none.
@@ -316,7 +317,7 @@ func (s *Service) EvaluateCombined(ctx context.Context, req *connect.Request[com
 		}
 		result.PolicySetId = resp.GetPolicySetId()
 		result.PolicySetVersion = resp.GetPolicySetVersion()
-		parsed, _ := vc.Parse(cred.GetPayload())
+		parsed := parseOrEmpty(cred.GetPayload())
 		role := roleOf(parsed)
 		result.Credentials = append(result.Credentials, summary(ids[i], role, cred, resp))
 		verdicts[ids[i]] = resp.GetVerdict()
@@ -405,7 +406,7 @@ func (s *Service) queryIDs(ctx context.Context, msg *combinedv1.EvaluateCombined
 		if out[i] != "" {
 			continue
 		}
-		parsed, _ := vc.Parse(creds[i].GetPayload())
+		parsed := parseOrEmpty(creds[i].GetPayload())
 		if id := matchQuery(query, parsed, taken); id != "" {
 			out[i] = id
 			taken[id] = true
@@ -463,6 +464,16 @@ func typeMatches(parsed vc.Credential, want string) bool {
 }
 
 // roleOf returns the role of a credential in a combined presentation.
+// parseOrEmpty parses a credential payload. A payload that does not parse
+// gives an empty credential. The caller then sees no claims.
+func parseOrEmpty(payload []byte) vc.Credential {
+	parsed, err := vc.Parse(payload)
+	if err != nil {
+		return vc.Credential{}
+	}
+	return parsed
+}
+
 func roleOf(parsed vc.Credential) string {
 	if _, ok := delegation.ExtractCapability(parsed); ok {
 		return RoleDelegation
