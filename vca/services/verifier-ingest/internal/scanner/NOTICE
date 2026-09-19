@@ -1,0 +1,14 @@
+verifier-ingest scanner: third-party notices
+
+This package is licensed under Apache-2.0 (see the repository LICENSE).
+
+1. static/scanner.js is lifted from verifiably-go/static/js/scanner.js of
+   this repository, licensed under the Apache License, Version 2.0.
+   The camera code stays on the device. Only the decoded text reaches the
+   service (ADR-023 decision 6).
+
+2. static/jsqr.min.js is jsQR 1.4.0, licensed under the Apache License,
+   Version 2.0. https://github.com/cozmo/jsQR
+   Copyright 2018 Cosmo Wolfe.
+   The file is the minified build that jsDelivr publishes for the npm
+   package jsqr@1.4.0.

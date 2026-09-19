@@ -29,9 +29,13 @@ clone connectrpc/connect-go v1.21.0 connect-go
 clone google/go-cmp v0.7.0 go-cmp
 clone golang/net v0.59.0 net
 clone golang/crypto v0.57.0 crypto
-clone golang/text v0.42.0 text
+# x/text v0.42.0 needs Go 1.26. gozxing needs x/text, so the mirror stays
+# on v0.30.0, which builds with Go 1.25.
+clone golang/text v0.30.0 text-v0.30
 clone golang/sync v0.23.0 sync
 clone golang/sys v0.48.0 sys
+# gozxing needs x/xerrors. The repository publishes no tags.
+[ -d "$MIRRORS/xerrors" ] || git clone -q --depth 1 https://github.com/golang/xerrors.git "$MIRRORS/xerrors"
 
 # GitHub-hosted modules used by core/ need no mirror: fetch them straight
 # from GitHub into the module cache (proxy.golang.org is blocked). Run
@@ -39,6 +43,7 @@ clone golang/sys v0.48.0 sys
 ( cd "$MIRRORS" && GOWORK=off GOPROXY=direct GOSUMDB=off go mod download \
   github.com/go-jose/go-jose/v4@v4.1.5 \
   github.com/fxamacker/cbor/v2@v2.9.1 \
+  github.com/makiuchi-d/gozxing@v0.1.1 \
   github.com/x448/float16@v0.8.4 )
 
 export GOPROXY=off GOSUMDB=off GOFLAGS=-mod=mod
@@ -56,7 +61,8 @@ replace (
 	github.com/google/go-cmp => $MIRRORS/go-cmp
 	golang.org/x/net => $MIRRORS/net
 	golang.org/x/crypto => $MIRRORS/crypto
-	golang.org/x/text => $MIRRORS/text
+	golang.org/x/text => $MIRRORS/text-v0.30
+	golang.org/x/xerrors => $MIRRORS/xerrors
 	golang.org/x/sync => $MIRRORS/sync
 	golang.org/x/sys => $MIRRORS/sys
 )
