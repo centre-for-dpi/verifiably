@@ -109,6 +109,9 @@ shred -u /tmp/replacements.txt
 
 `git filter-repo` writes a report under `.git/filter-repo/`. Read it.
 
+The operator must supply the CREDEBL platform admin password at bootstrap,
+because the tracked seed file holds `REPLACE_ME`.
+
 ### 4. Check the new history
 
 ```sh

@@ -75,7 +75,7 @@ while IFS= read -r file; do
     *) continue ;;
   esac
   grep -nEIH '(^|[[:space:]"])password"?[[:space:]]*:[[:space:]]*[^[:space:]]+' "$file" 2>/dev/null \
-    | grep -vEi 'password"?[[:space:]]*:[[:space:]]*("?\$|\{\{|""|'"''"'|<|REPLACE_ME|CHANGE|placeholder|example|null|~)' \
+    | grep -vEi 'password"?[[:space:]]*:[[:space:]]*"?(\$|\{\{|""|'"''"'|<|REPLACE_ME|CHANGE|placeholder|example|null|~)' \
     | sed 's/^/password: /' >> "$findings" || true
 done < "$findings.files"
 
