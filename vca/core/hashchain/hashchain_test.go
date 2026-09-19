@@ -48,10 +48,10 @@ func TestAppendHeadVerify(t *testing.T) {
 	if !ok || head.Hash != e1.Hash {
 		t.Fatal("head")
 	}
-	if err := Verify(c.Entries()); err != nil {
-		t.Fatal(err)
+	if verifyErr := Verify(c.Entries()); verifyErr != nil {
+		t.Fatal(verifyErr)
 	}
-	if _, _, err := c.Append(make(chan int)); err == nil {
+	if _, _, appendErr := c.Append(make(chan int)); appendErr == nil {
 		t.Fatal("bad body must fail")
 	}
 	loaded, err := Load(c.Entries())

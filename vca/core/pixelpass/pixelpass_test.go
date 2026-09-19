@@ -34,18 +34,18 @@ func TestBase45Vectors(t *testing.T) {
 
 func TestEncodeDecodeJSON(t *testing.T) {
 	vc := []byte(`{"@context":["https://www.w3.org/2018/credentials/v1"],"type":["VerifiableCredential"],"credentialSubject":{"id":"did:example:1","name":"Ana","age":30,"tags":["a","b"],"ok":true}}`)
-	enc, err := Encode(vc)
-	if err != nil {
-		t.Fatal(err)
+	enc, encErr := Encode(vc)
+	if encErr != nil {
+		t.Fatal(encErr)
 	}
 	for _, c := range enc {
 		if !bytes.ContainsRune([]byte(alphabet), c) {
 			t.Fatalf("non base45 character %q", c)
 		}
 	}
-	dec, err := Decode(" " + enc + " ")
-	if err != nil {
-		t.Fatal(err)
+	dec, decErr := Decode(" " + enc + " ")
+	if decErr != nil {
+		t.Fatal(decErr)
 	}
 	var want, got any
 	if err := json.Unmarshal(vc, &want); err != nil {

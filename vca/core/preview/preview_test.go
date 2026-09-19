@@ -51,9 +51,9 @@ func schema() Schema {
 }
 
 func TestSampleData(t *testing.T) {
-	sample, err := SampleData(degree)
-	if err != nil {
-		t.Fatal(err)
+	sample, sampleErr := SampleData(degree)
+	if sampleErr != nil {
+		t.Fatal(sampleErr)
 	}
 	want := map[string]any{
 		"name": "Sample Full name", "degree": "BSc", "year": 1900.0, "gpa": 1.5, "honours": true,
@@ -102,16 +102,16 @@ func TestSampleData(t *testing.T) {
 
 func TestPreviewCredentialFormats(t *testing.T) {
 	s := schema()
-	sample, err := SampleData(degree)
-	if err != nil {
-		t.Fatalf("SampleData: %v", err)
+	sample, sampleErr := SampleData(degree)
+	if sampleErr != nil {
+		t.Fatalf("SampleData: %v", sampleErr)
 	}
 	sample["extra"] = "e"
 	sample["iss"] = "spoof"
 	now := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
-	p, err := PreviewCredential(s, sample, Options{Now: now, SchemaURL: "https://issuer.example/schemas/1"})
-	if err != nil {
-		t.Fatal(err)
+	p, pErr := PreviewCredential(s, sample, Options{Now: now, SchemaURL: "https://issuer.example/schemas/1"})
+	if pErr != nil {
+		t.Fatal(pErr)
 	}
 	if p.Format != FormatJwtVcJson {
 		t.Fatalf("format: %s", p.Format)
@@ -146,9 +146,9 @@ func TestPreviewCredentialFormats(t *testing.T) {
 		t.Fatalf("ref: %s", p.PDFRef)
 	}
 
-	sd, err := PreviewCredential(s, sample, Options{Format: FormatDcSdJwt, Locale: "fr", Issuer: "did:web:issuer.example"})
-	if err != nil {
-		t.Fatal(err)
+	sd, sdErr := PreviewCredential(s, sample, Options{Format: FormatDcSdJwt, Locale: "fr", Issuer: "did:web:issuer.example"})
+	if sdErr != nil {
+		t.Fatal(sdErr)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(sd.CredentialJSON), &payload); err != nil {
@@ -173,8 +173,8 @@ func TestPreviewCredentialFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 	var doc map[string]any
-	if err := json.Unmarshal([]byte(mdoc.CredentialJSON), &doc); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
+	if gotErr := json.Unmarshal([]byte(mdoc.CredentialJSON), &doc); gotErr != nil {
+		t.Fatalf("json.Unmarshal: %v", gotErr)
 	}
 	if doc["docType"] != "UniversityDegree" || doc["validityInfo"].(map[string]any)["validUntil"] != nil {
 		t.Fatalf("mdoc: %v", doc)

@@ -325,11 +325,11 @@ func TestExtractCapabilityForms(t *testing.T) {
 		t.Fatalf("flat = %+v %v", cap, ok)
 	}
 	flatRaw := vc.Credential{Raw: map[string]any{"allowed_action": "present", "credentialSubject": map[string]any{"onBehalfOf": "urn:q"}}}
-	if cap, ok := ExtractCapability(flatRaw); !ok || cap.OnBehalfOf != "urn:q" {
-		t.Fatalf("flat raw = %+v %v", cap, ok)
+	if raw, found := ExtractCapability(flatRaw); !found || raw.OnBehalfOf != "urn:q" {
+		t.Fatalf("flat raw = %+v %v", raw, found)
 	}
 	none := vc.Credential{Raw: map[string]any{"termsOfUse": []any{map[string]any{"type": "Other"}, "x"}, "delegation": "not json"}}
-	if _, ok := ExtractCapability(none); ok {
+	if _, found := ExtractCapability(none); found {
 		t.Fatal("no capability expected")
 	}
 	single := vc.Credential{Raw: map[string]any{"termsOfUse": map[string]any{"type": []any{"DelegationCapability"}, "onBehalfOf": "urn:s", "validUntil": "2030-01-01", "allowFurtherDelegation": true}}}

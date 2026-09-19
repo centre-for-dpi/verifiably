@@ -176,24 +176,24 @@ func TestDecodeClaim169Carrier(t *testing.T) {
 
 func TestDecodePixelPassFallback(t *testing.T) {
 	inner := jsonText(t, map[string]any{"@context": []string{"x"}, "type": []string{"VerifiableCredential"}})
-	code, err := pixelpass.Encode([]byte(inner))
-	if err != nil {
-		t.Fatal(err)
+	code, codeErr := pixelpass.Encode([]byte(inner))
+	if codeErr != nil {
+		t.Fatal(codeErr)
 	}
-	res, err := ingest.Decode([]byte(code), ingest.Options{Carrier: ingest.CarrierClaim169})
-	if err != nil {
-		t.Fatal(err)
+	res, resErr := ingest.Decode([]byte(code), ingest.Options{Carrier: ingest.CarrierClaim169})
+	if resErr != nil {
+		t.Fatal(resErr)
 	}
 	if res.Detected != ingest.TypeCredential || res.Steps[0] != "base45" {
 		t.Errorf("result = %+v", res)
 	}
-	plain, err := pixelpass.Encode([]byte("PLAIN TEXT"))
-	if err != nil {
-		t.Fatal(err)
+	plain, plainErr := pixelpass.Encode([]byte("PLAIN TEXT"))
+	if plainErr != nil {
+		t.Fatal(plainErr)
 	}
-	res, err = ingest.Decode([]byte(plain), ingest.Options{Carrier: ingest.CarrierClaim169})
-	if err != nil {
-		t.Fatal(err)
+	res, resErr = ingest.Decode([]byte(plain), ingest.Options{Carrier: ingest.CarrierClaim169})
+	if resErr != nil {
+		t.Fatal(resErr)
 	}
 	if res.Detected != ingest.TypePixelPass {
 		t.Errorf("a payload the decoder does not know is a legacy PixelPass code, got %+v", res)

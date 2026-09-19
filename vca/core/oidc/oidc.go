@@ -166,9 +166,9 @@ type TokenOptions struct {
 // when ClientID is set, aud or azp. It returns the claims.
 func VerifyToken(token string, keys jose.JWKS, opts TokenOptions) (map[string]any, error) {
 	// Reject on issuer before any signature work.
-	unverified, err := jose.PeekPayload(token)
-	if err != nil {
-		return nil, err
+	unverified, unverifiedErr := jose.PeekPayload(token)
+	if unverifiedErr != nil {
+		return nil, unverifiedErr
 	}
 	if err := checkIssuer(unverified, opts.Issuers); err != nil {
 		return nil, err

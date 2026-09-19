@@ -189,7 +189,7 @@ func TestParseDisclosure(t *testing.T) {
 	if err != nil || d.Name != "given_name" || d.Value != "Ana" {
 		t.Fatalf("object disclosure = %+v, %v", d, err)
 	}
-	if _, err := NewDisclosure("x", make(chan int)); err == nil {
+	if _, chanErr := NewDisclosure("x", make(chan int)); chanErr == nil {
 		t.Fatal("unmarshalable value must fail")
 	}
 	nd, err := NewDisclosure("", 5)
@@ -372,9 +372,9 @@ func badArrDg(t *testing.T) string {
 
 func TestVerifyWithoutKeyBinding(t *testing.T) {
 	f := newFixture(t, nil)
-	res, err := Verify(f.tok, f.opts())
-	if err != nil {
-		t.Fatal(err)
+	res, resErr := Verify(f.tok, f.opts())
+	if resErr != nil {
+		t.Fatal(resErr)
 	}
 	if res.KeyBound || res.HolderKey == nil || res.Claims["role"] != "Owner" || res.Header.Kid != "issuer-key" {
 		t.Fatalf("result = %+v", res)

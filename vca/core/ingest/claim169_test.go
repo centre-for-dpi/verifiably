@@ -103,16 +103,16 @@ func TestDecodeClaim169Errors(t *testing.T) {
 }
 
 func TestParseSign1Errors(t *testing.T) {
-	wrongTag, err := cbor.Marshal(cbor.Tag{Number: 17, Content: []any{[]byte{}, map[any]any{}, []byte("p"), []byte("s")}})
-	if err != nil {
-		t.Fatal(err)
+	wrongTag, wrongTagErr := cbor.Marshal(cbor.Tag{Number: 17, Content: []any{[]byte{}, map[any]any{}, []byte("p"), []byte("s")}})
+	if wrongTagErr != nil {
+		t.Fatal(wrongTagErr)
 	}
 	if _, err := ingest.ParseSign1(wrongTag); err == nil {
 		t.Error("a tag other than 18 wants an error")
 	}
-	badHeader, err := cbor.Marshal([]any{[]byte("not cbor at all"), map[any]any{}, []byte("p"), []byte("s")})
-	if err != nil {
-		t.Fatal(err)
+	badHeader, badHeaderErr := cbor.Marshal([]any{[]byte("not cbor at all"), map[any]any{}, []byte("p"), []byte("s")})
+	if badHeaderErr != nil {
+		t.Fatal(badHeaderErr)
 	}
 	if _, err := ingest.ParseSign1(badHeader); err == nil {
 		t.Error("a broken protected header wants an error")
@@ -134,9 +134,9 @@ func TestParseCWTErrors(t *testing.T) {
 	if _, err := ingest.ParseCWT([]byte("not cbor")); err == nil {
 		t.Error("bytes that are not CBOR want an error")
 	}
-	notMap, err := cbor.Marshal(map[int64]any{169: "text"})
-	if err != nil {
-		t.Fatal(err)
+	notMap, notMapErr := cbor.Marshal(map[int64]any{169: "text"})
+	if notMapErr != nil {
+		t.Fatal(notMapErr)
 	}
 	if _, err := ingest.ParseCWT(notMap); err == nil {
 		t.Error("a claim 169 that is not a map wants an error")

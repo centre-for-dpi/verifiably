@@ -181,20 +181,20 @@ func TestVerifyRejects(t *testing.T) {
 func TestVerifyWithJWKS(t *testing.T) {
 	k1 := mustKey(t, ES256)
 	k2 := mustKey(t, EdDSA)
-	j1, err := PublicJWK(k1, "k1")
-	if err != nil {
-		t.Fatalf("PublicJWK: %v", err)
+	j1, j1Err := PublicJWK(k1, "k1")
+	if j1Err != nil {
+		t.Fatalf("PublicJWK: %v", j1Err)
 	}
-	j2, err := PublicJWK(k2, "k2")
-	if err != nil {
-		t.Fatalf("PublicJWK: %v", err)
+	j2, j2Err := PublicJWK(k2, "k2")
+	if j2Err != nil {
+		t.Fatalf("PublicJWK: %v", j2Err)
 	}
 	set := JWKS{Keys: []JWK{j1, j2}}
 	algs := []Algorithm{ES256, EdDSA}
 
-	withKid, err := Sign(k2, "k2", "JWT", map[string]any{"x": 1})
-	if err != nil {
-		t.Fatalf("Sign: %v", err)
+	withKid, withKidErr := Sign(k2, "k2", "JWT", map[string]any{"x": 1})
+	if withKidErr != nil {
+		t.Fatalf("Sign: %v", withKidErr)
 	}
 	if _, hdr, err := VerifyWithJWKS(withKid, set, algs); err != nil || hdr.Kid != "k2" {
 		t.Fatalf("kid match: %v %+v", err, hdr)
@@ -203,15 +203,15 @@ func TestVerifyWithJWKS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
-	if _, _, err := VerifyWithJWKS(noKid, set, algs); err != nil {
-		t.Fatalf("no kid tries all keys: %v", err)
+	if _, _, gotErr := VerifyWithJWKS(noKid, set, algs); gotErr != nil {
+		t.Fatalf("no kid tries all keys: %v", gotErr)
 	}
 	unknownKid, err := Sign(k1, "zz", "JWT", map[string]any{"x": 1})
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
-	if _, _, err := VerifyWithJWKS(unknownKid, set, algs); !errors.Is(err, ErrNoKey) {
-		t.Fatalf("unknown kid: %v", err)
+	if _, _, gotErr := VerifyWithJWKS(unknownKid, set, algs); !errors.Is(gotErr, ErrNoKey) {
+		t.Fatalf("unknown kid: %v", gotErr)
 	}
 	k3 := mustKey(t, ES256)
 	foreign, err := Sign(k3, "", "JWT", map[string]any{"x": 1})
@@ -228,25 +228,25 @@ func TestVerifyWithJWKS(t *testing.T) {
 
 func TestJWKParse(t *testing.T) {
 	key := mustKey(t, ES256)
-	pub, err := PublicJWK(key, "kid-1")
-	if err != nil {
-		t.Fatalf("PublicJWK: %v", err)
+	pub, pubErr := PublicJWK(key, "kid-1")
+	if pubErr != nil {
+		t.Fatalf("PublicJWK: %v", pubErr)
 	}
-	raw, err := json.Marshal(pub)
-	if err != nil {
-		t.Fatalf("json.Marshal: %v", err)
+	raw, rawErr := json.Marshal(pub)
+	if rawErr != nil {
+		t.Fatalf("json.Marshal: %v", rawErr)
 	}
 	k, err := ParseJWK(raw)
 	if err != nil || k.KeyID != "kid-1" {
 		t.Fatalf("ParseJWK: %v %+v", err, k)
 	}
-	if _, err := ParseJWK([]byte("nope")); err == nil {
+	if _, gotErr := ParseJWK([]byte("nope")); gotErr == nil {
 		t.Fatal("bad json must fail")
 	}
-	if _, err := ParseJWK([]byte(`{"kty":"EC","crv":"P-256","x":"AA","y":"AA"}`)); err == nil {
+	if _, gotErr := ParseJWK([]byte(`{"kty":"EC","crv":"P-256","x":"AA","y":"AA"}`)); gotErr == nil {
 		t.Fatal("invalid point must fail")
 	}
-	if _, err := ParseJWK([]byte(`{"kty":"RSA","n":"AQAB","e":"AA"}`)); err == nil {
+	if _, gotErr := ParseJWK([]byte(`{"kty":"RSA","n":"AQAB","e":"AA"}`)); gotErr == nil {
 		t.Fatal("zero exponent must fail")
 	}
 
@@ -303,22 +303,22 @@ func TestPublicJWK(t *testing.T) {
 }
 
 func TestThumbprintAndMaps(t *testing.T) {
-	jwk, err := PublicJWK(mustKey(t, ES256), "")
-	if err != nil {
-		t.Fatalf("PublicJWK: %v", err)
+	jwk, jwkErr := PublicJWK(mustKey(t, ES256), "")
+	if jwkErr != nil {
+		t.Fatalf("PublicJWK: %v", jwkErr)
 	}
 	tp, err := Thumbprint(jwk)
 	if err != nil || len(tp) != 43 {
 		t.Fatalf("Thumbprint = %q, %v", tp, err)
 	}
-	if _, err := Thumbprint(JWK{Key: "nope"}); err == nil {
+	if _, gotErr := Thumbprint(JWK{Key: "nope"}); gotErr == nil {
 		t.Fatal("bad key must fail")
 	}
 	m, err := JWKToMap(jwk)
 	if err != nil || m["kty"] != "EC" {
 		t.Fatalf("JWKToMap = %v, %v", m, err)
 	}
-	if _, err := JWKToMap(JWK{Key: "nope"}); err == nil {
+	if _, gotErr := JWKToMap(JWK{Key: "nope"}); gotErr == nil {
 		t.Fatal("bad key must fail")
 	}
 	back, err := JWKFromMap(m)

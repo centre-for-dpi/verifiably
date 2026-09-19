@@ -122,9 +122,9 @@ func decodeImageXObject(dict string, stream []byte) (image.Image, error) {
 
 // decodeFlateImage inflates a raster image stream and builds an image.
 func decodeFlateImage(dict string, stream []byte) (image.Image, error) {
-	raw, err := inflatePDFStream(stream)
-	if err != nil {
-		return nil, err
+	raw, rawErr := inflatePDFStream(stream)
+	if rawErr != nil {
+		return nil, rawErr
 	}
 	if img, _, err := image.Decode(bytes.NewReader(raw)); err == nil {
 		return img, nil

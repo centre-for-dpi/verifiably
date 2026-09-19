@@ -81,9 +81,9 @@ func TestResolveWeb(t *testing.T) {
 	ctx := context.Background()
 	calls := 0
 	r := NewResolver(fetcher(sampleDoc, nil, &calls), nil)
-	doc, err := r.Resolve(ctx, "did:web:example.com")
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
+	doc, docErr := r.Resolve(ctx, "did:web:example.com")
+	if docErr != nil {
+		t.Fatalf("Resolve: %v", docErr)
 	}
 	if doc.ID != "did:web:example.com" || len(doc.VerificationMethod) != 1 || doc.VerificationMethod[0].PublicKeyJWK["kty"] != "EC" {
 		t.Fatalf("doc = %+v", doc)
@@ -166,17 +166,17 @@ func TestDocumentKey(t *testing.T) {
 }
 
 func TestPublicKey(t *testing.T) {
-	edPub, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("ed25519.GenerateKey: %v", err)
+	edPub, _, edPubErr := ed25519.GenerateKey(rand.Reader)
+	if edPubErr != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", edPubErr)
 	}
-	jwk, err := jose.PublicJWK(edPub, "")
-	if err != nil {
-		t.Fatalf("jose.PublicJWK: %v", err)
+	jwk, jwkErr := jose.PublicJWK(edPub, "")
+	if jwkErr != nil {
+		t.Fatalf("jose.PublicJWK: %v", jwkErr)
 	}
-	m, err := jose.JWKToMap(jwk)
-	if err != nil {
-		t.Fatalf("jose.JWKToMap: %v", err)
+	m, mErr := jose.JWKToMap(jwk)
+	if mErr != nil {
+		t.Fatalf("jose.JWKToMap: %v", mErr)
 	}
 	if k, err := PublicKey(VerificationMethod{PublicKeyJWK: m}); err != nil || !bytes.Equal(k.(ed25519.PublicKey), edPub) {
 		t.Fatalf("jwk: %v", err)
@@ -199,13 +199,13 @@ func TestPublicKey(t *testing.T) {
 
 // Regression: legacy ldproof_test pinned did:key:z6Mk for Ed25519.
 func TestDIDKeyRoundTrip(t *testing.T) {
-	edPub, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("ed25519.GenerateKey: %v", err)
+	edPub, _, edPubErr := ed25519.GenerateKey(rand.Reader)
+	if edPubErr != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", edPubErr)
 	}
-	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	ec, ecErr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if ecErr != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", ecErr)
 	}
 	edDID, err := FromPublicKey(edPub)
 	if err != nil || !strings.HasPrefix(edDID, "did:key:z6Mk") {
@@ -216,9 +216,9 @@ func TestDIDKeyRoundTrip(t *testing.T) {
 		t.Fatalf("p256 did:key = %q, %v", ecDID, err)
 	}
 	for _, d := range []string{edDID, ecDID, ecDID + "#frag"} {
-		doc, err := KeyDocument(d)
-		if err != nil {
-			t.Fatalf("KeyDocument(%s): %v", d, err)
+		doc, docErr := KeyDocument(d)
+		if docErr != nil {
+			t.Fatalf("KeyDocument(%s): %v", d, docErr)
 		}
 		if doc.ID != strings.SplitN(d, "#", 2)[0] || len(doc.VerificationMethod) != 1 || doc.AssertionMethod[0] != doc.VerificationMethod[0].ID {
 			t.Fatalf("doc = %+v", doc)
@@ -237,8 +237,8 @@ func TestDIDKeyRoundTrip(t *testing.T) {
 		t.Fatal("P-256 key did not round trip")
 	}
 	// Resolver dispatch.
-	if _, err := NewResolver(nil, nil).Resolve(context.Background(), edDID); err != nil {
-		t.Fatal(err)
+	if _, gotErr := NewResolver(nil, nil).Resolve(context.Background(), edDID); gotErr != nil {
+		t.Fatal(gotErr)
 	}
 
 	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
@@ -269,17 +269,17 @@ func must(doc Document, err error) Document {
 
 // Regression: legacy TestNewSelfSignedKeyDIDJWKRoundTrip.
 func TestDIDJWKRoundTrip(t *testing.T) {
-	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	ec, ecErr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if ecErr != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", ecErr)
 	}
-	jwk, err := jose.PublicJWK(&ec.PublicKey, "")
-	if err != nil {
-		t.Fatalf("jose.PublicJWK: %v", err)
+	jwk, jwkErr := jose.PublicJWK(&ec.PublicKey, "")
+	if jwkErr != nil {
+		t.Fatalf("jose.PublicJWK: %v", jwkErr)
 	}
-	m, err := jose.JWKToMap(jwk)
-	if err != nil {
-		t.Fatalf("jose.JWKToMap: %v", err)
+	m, mErr := jose.JWKToMap(jwk)
+	if mErr != nil {
+		t.Fatalf("jose.JWKToMap: %v", mErr)
 	}
 	d, err := FromJWK(m)
 	if err != nil || !strings.HasPrefix(d, "did:jwk:") {
@@ -299,18 +299,18 @@ func TestDIDJWKRoundTrip(t *testing.T) {
 	}
 	// Padded base64url is accepted.
 	padded := "did:jwk:" + base64.URLEncoding.EncodeToString(raw)
-	if _, err := JWKDocument(padded); err != nil {
-		t.Fatalf("padded: %v", err)
+	if _, gotErr := JWKDocument(padded); gotErr != nil {
+		t.Fatalf("padded: %v", gotErr)
 	}
-	if _, err := NewResolver(nil, nil).Resolve(context.Background(), d); err != nil {
-		t.Fatal(err)
+	if _, gotErr := NewResolver(nil, nil).Resolve(context.Background(), d); gotErr != nil {
+		t.Fatal(gotErr)
 	}
 
 	priv := map[string]any{"kty": "EC", "crv": "P-256", "x": m["x"], "y": m["y"], "d": "AA"}
-	if _, err := FromJWK(priv); err == nil {
+	if _, gotErr := FromJWK(priv); gotErr == nil {
 		t.Fatal("private jwk must fail")
 	}
-	if _, err := FromJWK(map[string]any{"kty": "EC"}); err == nil {
+	if _, gotErr := FromJWK(map[string]any{"kty": "EC"}); gotErr == nil {
 		t.Fatal("invalid jwk must fail")
 	}
 	edPub, edPriv, err := ed25519.GenerateKey(rand.Reader)

@@ -387,17 +387,17 @@ func Verify(tok string, opts VerifyOptions) (Result, error) {
 	if opts.IssuerKey == nil {
 		return Result{}, errors.New("sdjwt: IssuerKey resolver is required")
 	}
-	p, err := Parse(tok)
-	if err != nil {
-		return Result{}, err
+	p, pErr := Parse(tok)
+	if pErr != nil {
+		return Result{}, pErr
 	}
-	hdr, err := jose.PeekHeader(p.IssuerJWT)
-	if err != nil {
-		return Result{}, err
+	hdr, hdrErr := jose.PeekHeader(p.IssuerJWT)
+	if hdrErr != nil {
+		return Result{}, hdrErr
 	}
-	unverified, err := jose.PeekPayload(p.IssuerJWT)
-	if err != nil {
-		return Result{}, err
+	unverified, unverifiedErr := jose.PeekPayload(p.IssuerJWT)
+	if unverifiedErr != nil {
+		return Result{}, unverifiedErr
 	}
 	key, err := opts.IssuerKey(hdr, unverified)
 	if err != nil {
@@ -410,8 +410,8 @@ func Verify(tok string, opts VerifyOptions) (Result, error) {
 	// raw is the same payload PeekPayload parsed above, so it is an object.
 	var payload map[string]any
 	_ = json.Unmarshal(raw, &payload)
-	if err := checkIssuerTimes(payload, opts); err != nil {
-		return Result{}, err
+	if gotErr := checkIssuerTimes(payload, opts); gotErr != nil {
+		return Result{}, gotErr
 	}
 	claims, err := Resolve(payload, p.Disclosures)
 	if err != nil {
@@ -420,9 +420,9 @@ func Verify(tok string, opts VerifyOptions) (Result, error) {
 	res := Result{Header: hdr, Claims: claims}
 	if cnf, ok := payload["cnf"].(map[string]any); ok {
 		if jwkMap, ok := cnf["jwk"].(map[string]any); ok {
-			k, err := jose.JWKFromMap(jwkMap)
-			if err != nil {
-				return Result{}, fmt.Errorf("sdjwt: cnf.jwk: %w", err)
+			k, keyErr := jose.JWKFromMap(jwkMap)
+			if keyErr != nil {
+				return Result{}, fmt.Errorf("sdjwt: cnf.jwk: %w", keyErr)
 			}
 			res.HolderKey = &k
 		}

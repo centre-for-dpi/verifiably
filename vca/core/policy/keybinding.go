@@ -32,12 +32,12 @@ func keyBindingOf(index int, c Credential, pc Context) CheckResult {
 	if c.Format != vc.FormatSDJWT {
 		return result(NameKeyBinding, Skip, index, "the credential is not an SD-JWT", ev)
 	}
-	pres, err := sdjwt.Parse(c.Token)
-	if err != nil {
+	pres, presErr := sdjwt.Parse(c.Token)
+	if presErr != nil {
 		return result(NameKeyBinding, Fail, index, "the SD-JWT does not parse", ev)
 	}
-	payload, err := jose.PeekPayload(pres.IssuerJWT)
-	if err != nil {
+	payload, payloadErr := jose.PeekPayload(pres.IssuerJWT)
+	if payloadErr != nil {
 		return result(NameKeyBinding, Fail, index, "the issuer JWT payload does not parse", ev)
 	}
 	if _, err := sdjwt.Resolve(payload, pres.Disclosures); err != nil {

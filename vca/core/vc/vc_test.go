@@ -129,9 +129,9 @@ func TestFromObjectJWTWrapper(t *testing.T) {
 // Regression: legacy TestFromCompactSDJWT with digest matched disclosures.
 func TestFromSDJWT(t *testing.T) {
 	tok, discs := sampleSDJWT(t)
-	got, err := FromSDJWT(tok)
-	if err != nil {
-		t.Fatal(err)
+	got, gotErr := FromSDJWT(tok)
+	if gotErr != nil {
+		t.Fatal(gotErr)
 	}
 	if got.Format != string(FormatSDJWT) || got.SubjectID != "did:key:delegate" || got.Issuer != "did:web:issuer" {
 		t.Fatalf("got %+v", got)

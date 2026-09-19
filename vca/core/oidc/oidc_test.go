@@ -166,15 +166,15 @@ func TestVerifyTokenValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("jose.Sign: %v", err)
 	}
-	if claims, err := VerifyToken(es, f.keys, baseOpts()); err != nil || claims["sub"] != "user-2" {
-		t.Fatalf("ES256: %v %v", claims, err)
+	if esClaims, esErr := VerifyToken(es, f.keys, baseOpts()); esErr != nil || esClaims["sub"] != "user-2" {
+		t.Fatalf("ES256: %v %v", esClaims, esErr)
 	}
 	azp, err := jose.Sign(f.ecKey, "ec1", "JWT", map[string]any{"iss": "http://keycloak:8180/realms/x", "azp": "client", "exp": exp})
 	if err != nil {
 		t.Fatalf("jose.Sign: %v", err)
 	}
-	if _, err := VerifyToken(azp, f.keys, baseOpts()); err != nil {
-		t.Fatalf("azp fallback: %v", err)
+	if _, azpErr := VerifyToken(azp, f.keys, baseOpts()); azpErr != nil {
+		t.Fatalf("azp fallback: %v", azpErr)
 	}
 	noClient := baseOpts()
 	noClient.ClientID = ""

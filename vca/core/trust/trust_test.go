@@ -182,18 +182,18 @@ func TestBuildDefaultsAndErrors(t *testing.T) {
 }
 
 func TestVerifyErrors(t *testing.T) {
-	key, err := jose.GenerateKey(jose.ES256)
-	if err != nil {
-		t.Fatalf("jose.GenerateKey: %v", err)
+	key, keyErr := jose.GenerateKey(jose.ES256)
+	if keyErr != nil {
+		t.Fatalf("jose.GenerateKey: %v", keyErr)
 	}
-	pub, err := jose.PublicJWK(key, "")
-	if err != nil {
-		t.Fatalf("jose.PublicJWK: %v", err)
+	pub, pubErr := jose.PublicJWK(key, "")
+	if pubErr != nil {
+		t.Fatalf("jose.PublicJWK: %v", pubErr)
 	}
 	set := jose.JWKS{Keys: []jose.JWK{pub}}
-	other, err := jose.GenerateKey(jose.ES256)
-	if err != nil {
-		t.Fatalf("jose.GenerateKey: %v", err)
+	other, otherErr := jose.GenerateKey(jose.ES256)
+	if otherErr != nil {
+		t.Fatalf("jose.GenerateKey: %v", otherErr)
 	}
 	wrongKey, err := Build(nil, other, BuildOptions{})
 	if err != nil {
@@ -215,7 +215,7 @@ func TestVerifyErrors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := Verify(tc.tok, set, time.Time{}); err == nil {
+			if _, gotErr := Verify(tc.tok, set, time.Time{}); gotErr == nil {
 				t.Fatal("expected error")
 			}
 		})
