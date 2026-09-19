@@ -50,14 +50,14 @@ func TestBuildVcdmCredentialCarriesTheWindowAndTheStatus(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("read the body: %v", err)
 	}
-	types, _ := doc["type"].([]any)
+	types := mustAs[[]any](t, doc["type"])
 	if len(types) != 2 || types[0] != "VerifiableCredential" || types[1] != "FarmerCredential" {
 		t.Fatalf("types = %v, a repeat must drop out", types)
 	}
 	if doc["validFrom"] != "2026-01-01T00:00:00Z" || doc["validUntil"] != "2027-01-01T00:00:00Z" {
 		t.Fatalf("window = %v %v", doc["validFrom"], doc["validUntil"])
 	}
-	status, _ := doc["credentialStatus"].(map[string]any)
+	status := mustAs[map[string]any](t, doc["credentialStatus"])
 	if status["statusListIndex"] != "5" {
 		t.Fatalf("statusListIndex = %#v, a verifier needs a string", status["statusListIndex"])
 	}
@@ -72,7 +72,9 @@ func TestBuildVcdmCredentialWithoutAStatusOrAWindow(t *testing.T) {
 		t.Fatalf("BuildVcdmCredential: %v", err)
 	}
 	var doc map[string]any
-	_ = json.Unmarshal(raw, &doc)
+	if cerr := json.Unmarshal(raw, &doc); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if _, ok := doc["credentialStatus"]; ok {
 		t.Fatal("a credential without a status entry must not be revocable")
 	}
@@ -94,15 +96,17 @@ func TestBuildSdJwtCredentialPutsTheClaimsAtTheRoot(t *testing.T) {
 		t.Fatalf("BuildSdJwtCredential: %v", err)
 	}
 	var doc map[string]any
-	_ = json.Unmarshal(raw, &doc)
+	if cerr := json.Unmarshal(raw, &doc); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if doc["age_over_18"] != true {
 		t.Fatalf("the claim is not at the root: %v", doc)
 	}
 	if doc["nbf"] == nil || doc["exp"] == nil {
 		t.Fatalf("the window is missing: %v", doc)
 	}
-	status, _ := doc["status"].(map[string]any)
-	list, _ := status["status_list"].(map[string]any)
+	status := mustAs[map[string]any](t, doc["status"])
+	list := mustAs[map[string]any](t, status["status_list"])
 	if list["uri"] != "https://s.example/token/1" {
 		t.Fatalf("status = %v", status)
 	}
@@ -114,7 +118,9 @@ func TestBuildMdocDataStripsTheLastPartOfTheDoctype(t *testing.T) {
 		t.Fatalf("BuildMdocData: %v", err)
 	}
 	var doc map[string]map[string]any
-	_ = json.Unmarshal(raw, &doc)
+	if cerr := json.Unmarshal(raw, &doc); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if doc["org.iso.18013.5.1"]["family_name"] != "Lovelace" {
 		t.Fatalf("body = %s", raw)
 	}
@@ -133,12 +139,14 @@ func TestBuildMdocDataStripsTheLastPartOfTheDoctype(t *testing.T) {
 func TestBuildSelectiveDisclosureMarksEveryClaim(t *testing.T) {
 	raw := BuildSelectiveDisclosure(map[string]any{"a": 1, "b": 2})
 	var doc map[string]any
-	_ = json.Unmarshal(raw, &doc)
-	fields, _ := doc["fields"].(map[string]any)
+	if cerr := json.Unmarshal(raw, &doc); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
+	fields := mustAs[map[string]any](t, doc["fields"])
 	if len(fields) != 2 {
 		t.Fatalf("fields = %v", fields)
 	}
-	first, _ := fields["a"].(map[string]any)
+	first := mustAs[map[string]any](t, fields["a"])
 	if first["sd"] != true {
 		t.Fatalf("the claim a is not disclosable: %v", fields)
 	}

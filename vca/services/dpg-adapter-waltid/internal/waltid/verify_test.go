@@ -24,7 +24,7 @@ func TestRequestCredentialsFromDefinitionKeepsTheDescriptor(t *testing.T) {
 	if _, ok := got[1]["format"]; ok {
 		t.Fatal("a descriptor without a format must add none")
 	}
-	descriptor, _ := got[0]["input_descriptor"].(map[string]any)
+	descriptor := mustAs[map[string]any](t, got[0]["input_descriptor"])
 	if descriptor["id"] != "d1" {
 		t.Fatalf("descriptor = %v", descriptor)
 	}
@@ -54,14 +54,14 @@ func TestVCPoliciesMapTheCheckNames(t *testing.T) {
 		t.Fatalf("policies = %v, an unknown name drops out", got)
 	}
 	ietf := VCPolicies([]string{"status-list"}, FormatDcSdJwt)
-	entry, _ := ietf[0].(map[string]any)
-	args, _ := entry["args"].(map[string]any)
+	entry := mustAs[map[string]any](t, ietf[0])
+	args := mustAs[map[string]any](t, entry["args"])
 	if entry["policy"] != "credential-status" || args["discriminator"] != "ietf" {
 		t.Fatalf("policy = %v", entry)
 	}
 	w3c := VCPolicies([]string{"status-list"}, FormatLdpVc)
-	entry, _ = w3c[0].(map[string]any)
-	args, _ = entry["args"].(map[string]any)
+	entry = mustAs[map[string]any](t, w3c[0])
+	args = mustAs[map[string]any](t, entry["args"])
 	if args["type"] != "BitstringStatusList" || args["purpose"] != "revocation" {
 		t.Fatalf("args = %v", args)
 	}
@@ -72,8 +72,8 @@ func TestWebhookPolicyNeedsAUrl(t *testing.T) {
 		t.Fatalf("policy = %v, an empty URL adds none", got)
 	}
 	got := WebhookPolicy("https://vca.example/hook")
-	entry, _ := got[0].(map[string]any)
-	args, _ := entry["args"].(map[string]any)
+	entry := mustAs[map[string]any](t, got[0])
+	args := mustAs[map[string]any](t, entry["args"])
 	if args["url"] != "https://vca.example/hook" {
 		t.Fatalf("args = %v", args)
 	}

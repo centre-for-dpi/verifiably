@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/fake"
@@ -20,7 +22,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const testdata = "../../testdata"
@@ -272,7 +273,7 @@ func TestRegisterCredentialConfigurationBorrowsAConfigurationOfTheSameFormat(t *
 	if err := json.Unmarshal([]byte(toJSON(t, body["credentialData"])), &credential); err != nil {
 		t.Fatalf("read the credential data: %v", err)
 	}
-	types, _ := credential["type"].([]any)
+	types := mustAs[[]any](t, credential["type"])
 	if len(types) != 2 || types[1] != "FarmerCredential" {
 		t.Fatalf("types = %v, want the type of the schema", types)
 	}
@@ -360,17 +361,17 @@ func TestCreateOfferUsesTheSdJwtPathAndSetsTheDisclosureMap(t *testing.T) {
 	if body["vct"] != "https://issuer.example.org/credentials/identity-2026" {
 		t.Fatalf("vct = %v", body["vct"])
 	}
-	sd, _ := body["selectiveDisclosure"].(map[string]any)
-	fields, _ := sd["fields"].(map[string]any)
+	sd := mustAs[map[string]any](t, body["selectiveDisclosure"])
+	fields := mustAs[map[string]any](t, sd["fields"])
 	if len(fields) != 2 {
 		t.Fatalf("the disclosure map has %d fields, want one per claim", len(fields))
 	}
-	credential, _ := body["credentialData"].(map[string]any)
+	credential := mustAs[map[string]any](t, body["credentialData"])
 	if credential["given_name"] != "Ada" {
 		t.Fatalf("the SD-JWT claims must sit at the payload root, got %v", credential)
 	}
-	status, _ := credential["status"].(map[string]any)
-	list, _ := status["status_list"].(map[string]any)
+	status := mustAs[map[string]any](t, credential["status"])
+	list := mustAs[map[string]any](t, status["status_list"])
 	if list == nil || list["uri"] != "https://status.example.org/token/1" {
 		t.Fatalf("status = %v", status)
 	}
@@ -400,12 +401,12 @@ func TestCreateOfferPutsABitstringStatusEntryInTheVcdmBody(t *testing.T) {
 	if err := f.RequestJSON("/openid4vc/jwt/issue", &body); err != nil {
 		t.Fatalf("read the issue request: %v", err)
 	}
-	credential, _ := body["credentialData"].(map[string]any)
-	subject, _ := credential["credentialSubject"].(map[string]any)
+	credential := mustAs[map[string]any](t, body["credentialData"])
+	subject := mustAs[map[string]any](t, credential["credentialSubject"])
 	if subject["id"] != "did:key:zHolder" {
 		t.Fatalf("the subject DID is missing: %v", subject)
 	}
-	status, _ := credential["credentialStatus"].(map[string]any)
+	status := mustAs[map[string]any](t, credential["credentialStatus"])
 	if status["type"] != "BitstringStatusListEntry" {
 		t.Fatalf("status type = %v", status["type"])
 	}
@@ -429,7 +430,7 @@ func TestCreateOfferSendsAWholeCredentialBodyAsItIs(t *testing.T) {
 	if err := f.RequestJSON("/openid4vc/jwt/issue", &body); err != nil {
 		t.Fatalf("read the issue request: %v", err)
 	}
-	credential, _ := body["credentialData"].(map[string]any)
+	credential := mustAs[map[string]any](t, body["credentialData"])
 	if credential["termsOfUse"] == nil {
 		t.Fatalf("the caller body was not kept: %v", credential)
 	}
@@ -450,8 +451,8 @@ func TestCreateOfferUsesTheMdocPath(t *testing.T) {
 	if err := f.RequestJSON("/openid4vc/mdoc/issue", &body); err != nil {
 		t.Fatalf("the mdoc issue path was not called: %v", err)
 	}
-	data, _ := body["mdocData"].(map[string]any)
-	claims, _ := data["org.iso.18013.5.1"].(map[string]any)
+	data := mustAs[map[string]any](t, body["mdocData"])
+	claims := mustAs[map[string]any](t, data["org.iso.18013.5.1"])
 	if claims["family_name"] != "Lovelace" {
 		t.Fatalf("the mdoc namespace is wrong: %v", data)
 	}
@@ -589,7 +590,7 @@ func TestListCredentialTypesReportsAFailure(t *testing.T) {
 // readFixture returns one recorded answer of the testdata directory.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(testdata, name))
+	raw, err := os.ReadFile(filepath.Join(testdata, name)) //nolint:gosec // G304: the path is a test directory
 	if err != nil {
 		t.Fatalf("read %s: %v", name, err)
 	}

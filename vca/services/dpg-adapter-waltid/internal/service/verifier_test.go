@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/fake"
 )
@@ -63,8 +64,8 @@ func TestCreateRequestSendsTheInputDescriptorUnchanged(t *testing.T) {
 	if entry["format"] != "vc+sd-jwt" {
 		t.Fatalf("format = %v", entry["format"])
 	}
-	descriptor, _ := entry["input_descriptor"].(map[string]any)
-	constraints, _ := descriptor["constraints"].(map[string]any)
+	descriptor := mustAs[map[string]any](t, entry["input_descriptor"])
+	constraints := mustAs[map[string]any](t, descriptor["constraints"])
 	if constraints["limit_disclosure"] != "required" {
 		t.Fatalf("the descriptor lost its constraints: %v", descriptor)
 	}
@@ -110,7 +111,7 @@ func findPolicyArgs(t *testing.T, policies []any, name string) map[string]any {
 		if !ok || entry["policy"] != name {
 			continue
 		}
-		args, _ := entry["args"].(map[string]any)
+		args := mustAs[map[string]any](t, entry["args"])
 		return args
 	}
 	return map[string]any{}

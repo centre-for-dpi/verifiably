@@ -105,7 +105,7 @@ func (f *Server) RequestJSON(path string, out any) error {
 
 // file returns one recorded answer.
 func (f *Server) file(name string) ([]byte, error) {
-	return os.ReadFile(filepath.Join(f.dir, name))
+	return os.ReadFile(filepath.Join(f.dir, name)) //nolint:gosec // G304: the name is one of the fixed answers
 }
 
 func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +168,9 @@ func (f *Server) send(w http.ResponseWriter, name, contentType string) {
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
-	_, _ = w.Write(raw)
+	if _, err := w.Write(raw); err != nil {
+		return
+	}
 }
 
 // readBody reads the request body without failing on an empty one.
