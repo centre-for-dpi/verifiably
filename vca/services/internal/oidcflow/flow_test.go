@@ -44,7 +44,10 @@ func runLogin(t *testing.T, f *oidcflow.Flow, idp *oidctest.Provider, p oidcflow
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}
-	u, _ := url.Parse(loc)
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
 	if u.Query().Get("state") != pend.State {
 		t.Fatalf("state mismatch")
 	}
@@ -133,7 +136,10 @@ func TestFlowFailures(t *testing.T) {
 		t.Fatalf("logout upstream: %v", err)
 	}
 
-	pend, _, _ := f.Begin(context.Background(), p, "https://rp/cb", "")
+	pend, _, err := f.Begin(context.Background(), p, "https://rp/cb", "")
+	if err != nil {
+		t.Fatalf("f.Begin: %v", err)
+	}
 	if _, err := f.Complete(context.Background(), p, pend, ""); !errors.Is(err, oidcflow.ErrProviderError) {
 		t.Fatalf("empty code: %v", err)
 	}
@@ -170,8 +176,14 @@ func TestFlowFailures(t *testing.T) {
 	// A token signed with a key the provider no longer publishes fails.
 	wrongClient := p
 	wrongClient.ClientID = "other"
-	pend2, _, _ := f.Begin(context.Background(), p, "https://rp/cb", "")
-	loc, _ := idp.Authorize(oidcflow.AuthorizeURL(idp.Server.URL+"/authorize", idp.ClientID, "https://rp/cb", pend2.State, pend2.Nonce, pend2.Verifier, []string{"openid"}))
+	pend2, _, err := f.Begin(context.Background(), p, "https://rp/cb", "")
+	if err != nil {
+		t.Fatalf("f.Begin: %v", err)
+	}
+	loc, err := idp.Authorize(oidcflow.AuthorizeURL(idp.Server.URL+"/authorize", idp.ClientID, "https://rp/cb", pend2.State, pend2.Nonce, pend2.Verifier, []string{"openid"}))
+	if err != nil {
+		t.Fatalf("idp.Authorize: %v", err)
+	}
 	code := mustQuery(t, loc, "code")
 	if _, err := f.Complete(context.Background(), wrongClient, pend2, code); !errors.Is(err, oidcflow.ErrSessionInvalid) {
 		t.Fatalf("aud mismatch: %v", err)
@@ -196,7 +208,10 @@ func TestFlowInternalAuthorityAndTokenEndpointFailures(t *testing.T) {
 			http.Redirect(w, r, idp.Server.URL+"/jwks", http.StatusFound)
 			return
 		}
-		_, _ = w.Write([]byte("<html>"))
+		_, errAssign := w.Write([]byte("<html>"))
+		if errAssign != nil {
+			t.Fatalf("w.Write: %v", errAssign)
+		}
 	}))
 	defer garbage.Close()
 	f := newFlow(t)
@@ -297,9 +312,15 @@ func TestCacheAndMetadata(t *testing.T) {
 		case "/404":
 			w.WriteHeader(http.StatusNotFound)
 		case "/badjwks":
-			_, _ = w.Write([]byte(`{"keys":[]}`))
+			_, errAssign := w.Write([]byte(`{"keys":[]}`))
+			if errAssign != nil {
+				t.Fatalf("w.Write: %v", errAssign)
+			}
 		case "/badmeta":
-			_, _ = w.Write([]byte(`{}`))
+			_, errAssign2 := w.Write([]byte(`{}`))
+			if errAssign2 != nil {
+				t.Fatalf("w.Write: %v", errAssign2)
+			}
 		}
 	}))
 	defer srv.Close()

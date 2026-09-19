@@ -157,7 +157,10 @@ func TestAllocateRejectsBadInput(t *testing.T) {
 func TestSetAndGetErrors(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t, lists.KindToken, 8, 0)
-	a, _ := s.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{Purpose: statusv1.Purpose_PURPOSE_REVOCATION}))
+	a, err := s.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{Purpose: statusv1.Purpose_PURPOSE_REVOCATION}))
+	if err != nil {
+		t.Fatalf("s.AllocateIndex: %v", err)
+	}
 	id := a.Msg.GetListId()
 	unused := a.Msg.GetIndex() + 1
 	if unused >= 8 {
@@ -194,7 +197,10 @@ func TestSetAndGetErrors(t *testing.T) {
 func TestGetList(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t, lists.KindToken, 8, 0)
-	a, _ := s.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{Purpose: statusv1.Purpose_PURPOSE_REVOCATION}))
+	a, err := s.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{Purpose: statusv1.Purpose_PURPOSE_REVOCATION}))
+	if err != nil {
+		t.Fatalf("s.AllocateIndex: %v", err)
+	}
 	id := a.Msg.GetListId()
 	def, err := s.GetList(ctx, connect.NewRequest(&statusv1.GetListRequest{ListId: id}))
 	if err != nil {
@@ -328,7 +334,10 @@ func TestPurposeMapping(t *testing.T) {
 func TestSignerFailureIsInternal(t *testing.T) {
 	ctx := context.Background()
 	kv := store.Memory()
-	is, _ := keys.Open(ctx, kv, keys.Options{Now: func() time.Time { return t0 }})
+	is, err := keys.Open(ctx, kv, keys.Options{Now: func() time.Time { return t0 }})
+	if err != nil {
+		t.Fatalf("keys.Open: %v", err)
+	}
 	m, err := lists.Open(ctx, lists.Options{
 		Store: kv, Issuers: is, Securer: testSecurer{kind: lists.KindToken, fail: errors.New("hsm down")},
 		Size: 8, Now: func() time.Time { return t0 },
@@ -336,7 +345,10 @@ func TestSignerFailureIsInternal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, _ := New(m, 0)
+	s, err := New(m, 0)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	_, err = s.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{Purpose: statusv1.Purpose_PURPOSE_REVOCATION}))
 	if connect.CodeOf(err) != connect.CodeInternal {
 		t.Fatalf("err = %v", err)

@@ -62,19 +62,31 @@ func TestNewAndGenerate(t *testing.T) {
 	if _, err := Generate("HS256", t0); err == nil {
 		t.Fatal("expected error for HS256")
 	}
-	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
 	if _, err := New(rsaKey, t0); err == nil {
 		t.Fatal("expected error for RSA")
 	}
-	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
 	if _, err := New(p384, t0); err == nil || !strings.Contains(err.Error(), "curve") {
 		t.Fatalf("expected curve error, got %v", err)
 	}
 }
 
 func TestParsePEM(t *testing.T) {
-	a, _ := jose.GenerateKey(jose.ES256)
-	b, _ := jose.GenerateKey(jose.EdDSA)
+	a, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	b, err := jose.GenerateKey(jose.EdDSA)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
 	keys, err := ParsePEM(pemOf(t, a, b), t0)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +101,13 @@ func TestParsePEM(t *testing.T) {
 		{"empty", nil},
 		{"wrong block", pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: []byte{1}})},
 		{"bad der", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1}})},
-		{"rsa", func() []byte { k, _ := rsa.GenerateKey(rand.Reader, 2048); return pemOf(t, k) }()},
+		{"rsa", func() []byte {
+			k, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("rsa.GenerateKey: %v", err)
+			}
+			return pemOf(t, k)
+		}()},
 	}
 	for _, tc := range bad {
 		if _, err := ParsePEM(tc.data, t0); err == nil {
@@ -145,8 +163,14 @@ func TestOpenGeneratesAndReloads(t *testing.T) {
 func TestOpenConfiguredAndImport(t *testing.T) {
 	ctx := context.Background()
 	kv := store.Memory()
-	a, _ := jose.GenerateKey(jose.EdDSA)
-	b, _ := jose.GenerateKey(jose.ES256)
+	a, err := jose.GenerateKey(jose.EdDSA)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	b, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
 	opts := Options{Configured: []string{"did:web:one", "did:web:two"}, ImportPEM: pemOf(t, a, b), Alg: jose.EdDSA}
 	is, err := Open(ctx, kv, opts)
 	if err != nil {
@@ -193,26 +217,45 @@ func TestOpenErrors(t *testing.T) {
 	if _, err := Open(ctx, kv, Options{ImportPEM: []byte("junk")}); err == nil {
 		t.Fatal("expected import error")
 	}
-	_ = kv.Put(ctx, Prefix+DefaultSlug, []byte("{"))
+	if err := kv.Put(ctx, Prefix+DefaultSlug, []byte("{")); err != nil {
+		t.Fatalf("kv.Put: %v", err)
+	}
 	if _, err := Open(ctx, kv, Options{}); err == nil {
 		t.Fatal("expected parse error")
 	}
-	_ = kv.Put(ctx, Prefix+DefaultSlug, []byte(`{"keys":[]}`))
+	if err := kv.Put(ctx, Prefix+DefaultSlug, []byte(`{"keys":[]}`)); err != nil {
+		t.Fatalf("kv.Put: %v", err)
+	}
 	if _, err := Open(ctx, kv, Options{}); err == nil || !strings.Contains(err.Error(), "no key") {
 		t.Fatalf("err = %v", err)
 	}
-	_ = kv.Put(ctx, Prefix+DefaultSlug, []byte(`{"keys":[{"pkcs8":"AQ==","created_at":"2026-01-01T00:00:00Z"}]}`))
+	if err := kv.Put(ctx, Prefix+DefaultSlug, []byte(`{"keys":[{"pkcs8":"AQ==","created_at":"2026-01-01T00:00:00Z"}]}`)); err != nil {
+		t.Fatalf("kv.Put: %v", err)
+	}
 	if _, err := Open(ctx, kv, Options{}); err == nil {
 		t.Fatal("expected PKCS #8 error")
 	}
-	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	der, _ := x509.MarshalPKCS8PrivateKey(rsaKey)
-	doc, _ := json.Marshal(document{Keys: []keyDocument{{PKCS8: der, CreatedAt: t0}}})
-	_ = kv.Put(ctx, Prefix+DefaultSlug, doc)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(rsaKey)
+	if err != nil {
+		t.Fatalf("x509.MarshalPKCS8PrivateKey: %v", err)
+	}
+	doc, err := json.Marshal(document{Keys: []keyDocument{{PKCS8: der, CreatedAt: t0}}})
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if err := kv.Put(ctx, Prefix+DefaultSlug, doc); err != nil {
+		t.Fatalf("kv.Put: %v", err)
+	}
 	if _, err := Open(ctx, kv, Options{}); err == nil {
 		t.Fatal("expected key type error")
 	}
-	_ = kv.Delete(ctx, Prefix+DefaultSlug)
+	if err := kv.Delete(ctx, Prefix+DefaultSlug); err != nil {
+		t.Fatalf("kv.Delete: %v", err)
+	}
 	if _, err := Open(ctx, kv, Options{}); err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +263,9 @@ func TestOpenErrors(t *testing.T) {
 	if _, err := Open(ctx, kv, Options{Configured: []string{"did:web:x"}}); err != nil {
 		t.Fatal(err)
 	}
-	_ = kv.Put(ctx, Prefix+Slug("did:web:x"), []byte(`{"configured_did":"did:web:y","keys":[]}`))
+	if err := kv.Put(ctx, Prefix+Slug("did:web:x"), []byte(`{"configured_did":"did:web:y","keys":[]}`)); err != nil {
+		t.Fatalf("kv.Put: %v", err)
+	}
 	if _, err := Open(ctx, kv, Options{Configured: []string{"did:web:x"}}); err == nil {
 		t.Fatal("expected ring mismatch")
 	}

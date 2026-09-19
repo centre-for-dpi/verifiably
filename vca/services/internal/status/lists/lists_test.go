@@ -76,7 +76,10 @@ func TestNewRecord(t *testing.T) {
 	if tok.Size != 5 || tok.Bits != 2 || len(tok.Values) != 2 || len(tok.Allocated) != 1 || tok.Allocated[0] != 0b00000111 {
 		t.Fatalf("token record = %+v", tok)
 	}
-	tok1, _ := NewRecord("c", KindToken, Message, 0, 8, "s", t0)
+	tok1, err := NewRecord("c", KindToken, Message, 0, 8, "s", t0)
+	if err != nil {
+		t.Fatalf("NewRecord: %v", err)
+	}
 	if tok1.Bits != 1 || tok1.Allocated[0] != 0 {
 		t.Fatalf("token bits default = %+v", tok1)
 	}
@@ -100,7 +103,10 @@ func TestNewRecord(t *testing.T) {
 }
 
 func TestAllocateNoReuse(t *testing.T) {
-	r, _ := NewRecord("t", KindToken, Revocation, 1, 13, "s", t0)
+	r, err := NewRecord("t", KindToken, Revocation, 1, 13, "s", t0)
+	if err != nil {
+		t.Fatalf("NewRecord: %v", err)
+	}
 	seen := map[int]bool{}
 	for i := 0; i < 13; i++ {
 		idx, err := r.Allocate(nil)
@@ -124,12 +130,18 @@ func TestAllocateNoReuse(t *testing.T) {
 	if _, err := r.Allocate(bytes.NewReader(nil)); !errors.Is(err, ErrFull) {
 		t.Fatal("full check must come first")
 	}
-	fresh, _ := NewRecord("f", KindToken, Revocation, 1, 300, "s", t0)
+	fresh, err := NewRecord("f", KindToken, Revocation, 1, 300, "s", t0)
+	if err != nil {
+		t.Fatalf("NewRecord: %v", err)
+	}
 	if _, err := fresh.Allocate(bytes.NewReader(nil)); err == nil {
 		t.Fatal("expected entropy error")
 	}
 	// A corrupt count makes Allocate fail instead of returning a used index.
-	corrupt, _ := NewRecord("c", KindToken, Revocation, 1, 8, "s", t0)
+	corrupt, err := NewRecord("c", KindToken, Revocation, 1, 8, "s", t0)
+	if err != nil {
+		t.Fatalf("NewRecord: %v", err)
+	}
 	corrupt.Allocated[0] = 0xff
 	if _, err := corrupt.Allocate(nil); err == nil || errors.Is(err, ErrFull) {
 		t.Fatalf("err = %v", err)
@@ -137,10 +149,16 @@ func TestAllocateNoReuse(t *testing.T) {
 }
 
 func TestAllocateIsRandom(t *testing.T) {
-	r, _ := NewRecord("t", KindToken, Revocation, 1, 4096, "s", t0)
+	r, err := NewRecord("t", KindToken, Revocation, 1, 4096, "s", t0)
+	if err != nil {
+		t.Fatalf("NewRecord: %v", err)
+	}
 	var first []int
 	for i := 0; i < 8; i++ {
-		idx, _ := r.Allocate(nil)
+		idx, err := r.Allocate(nil)
+		if err != nil {
+			t.Fatalf("r.Allocate: %v", err)
+		}
 		first = append(first, idx)
 	}
 	sorted := true
@@ -155,8 +173,14 @@ func TestAllocateIsRandom(t *testing.T) {
 }
 
 func TestSetGetBitstring(t *testing.T) {
-	r, _ := NewRecord("b", KindBitstring, Revocation, 1, 0, "s", t0)
-	idx, _ := r.Allocate(nil)
+	r, err := NewRecord("b", KindBitstring, Revocation, 1, 0, "s", t0)
+	if err != nil {
+		t.Fatalf("NewRecord: %v", err)
+	}
+	idx, err := r.Allocate(nil)
+	if err != nil {
+		t.Fatalf("r.Allocate: %v", err)
+	}
 	if _, err := r.Set(idx+1, 1, t0); !errors.Is(err, ErrNotAllocated) && !r.IsAllocated(idx+1) {
 		t.Fatalf("err = %v", err)
 	}
@@ -189,15 +213,24 @@ func TestSetGetBitstring(t *testing.T) {
 	if got, _ := r.BitstringList().Get(idx); !got {
 		t.Fatal("BitstringList")
 	}
-	prev, _ = r.Set(idx, 0, t0)
+	prev, errAssign := r.Set(idx, 0, t0)
+	if errAssign != nil {
+		t.Fatalf("r.Set: %v", errAssign)
+	}
 	if prev != 1 {
 		t.Fatal("prev")
 	}
 }
 
 func TestSetGetToken(t *testing.T) {
-	r, _ := NewRecord("t", KindToken, Message, 8, 4, "s", t0)
-	idx, _ := r.Allocate(nil)
+	r, err := NewRecord("t", KindToken, Message, 8, 4, "s", t0)
+	if err != nil {
+		t.Fatalf("NewRecord: %v", err)
+	}
+	idx, err := r.Allocate(nil)
+	if err != nil {
+		t.Fatalf("r.Allocate: %v", err)
+	}
 	if _, err := r.Set(idx, 200, t0); err != nil {
 		t.Fatal(err)
 	}
@@ -214,8 +247,14 @@ func TestSetGetToken(t *testing.T) {
 	if _, err := r.Get(4); err == nil {
 		t.Fatal("expected range error")
 	}
-	two, _ := NewRecord("t2", KindToken, Message, 2, 4, "s", t0)
-	idx, _ = two.Allocate(nil)
+	two, err := NewRecord("t2", KindToken, Message, 2, 4, "s", t0)
+	if err != nil {
+		t.Fatalf("NewRecord: %v", err)
+	}
+	idx, errAssign := two.Allocate(nil)
+	if errAssign != nil {
+		t.Fatalf("two.Allocate: %v", errAssign)
+	}
 	if _, err := two.Set(idx, 4, t0); err == nil {
 		t.Fatal("expected width error")
 	}
@@ -271,8 +310,14 @@ func TestManagerLifecycle(t *testing.T) {
 		t.Fatalf("expected 2 lists, got %d", len(ids))
 	}
 	// A different purpose or width gets its own list.
-	s, _ := m.Allocate(ctx, "", Suspension, 1)
-	w, _ := m.Allocate(ctx, "", Suspension, 2)
+	s, err := m.Allocate(ctx, "", Suspension, 1)
+	if err != nil {
+		t.Fatalf("m.Allocate: %v", err)
+	}
+	w, err := m.Allocate(ctx, "", Suspension, 2)
+	if err != nil {
+		t.Fatalf("m.Allocate: %v", err)
+	}
 	if ids[s.ListID] || s.ListID == w.ListID {
 		t.Fatal("purpose and width must select the list")
 	}
@@ -350,11 +395,17 @@ func TestManagerLifecycle(t *testing.T) {
 	if p2.Entries[0].Signed.ListID != p2.Entries[0].Record.ID {
 		t.Fatal("entry signed")
 	}
-	p3, _ := m.List(Suspension, 10, "")
+	p3, err := m.List(Suspension, 10, "")
+	if err != nil {
+		t.Fatalf("m.List: %v", err)
+	}
 	if len(p3.Entries) != 2 || p3.Total != 2 {
 		t.Fatalf("filtered page = %+v", p3)
 	}
-	p4, _ := m.List("", 10, "99")
+	p4, err := m.List("", 10, "99")
+	if err != nil {
+		t.Fatalf("m.List: %v", err)
+	}
 	if len(p4.Entries) != 0 {
 		t.Fatal("page past the end")
 	}
@@ -376,7 +427,10 @@ func TestManagerLifecycle(t *testing.T) {
 	if err != nil || !bytes.Equal(s2.Artifacts[0].Body, signed.Artifacts[0].Body) {
 		t.Fatal("restart lost the signature")
 	}
-	st2, _ := again.Get(a.ListID, a.Index)
+	st2, err := again.Get(a.ListID, a.Index)
+	if err != nil {
+		t.Fatalf("again.Get: %v", err)
+	}
 	if st2.Value != 1 || !st2.ChangedAt.Equal(t0) {
 		t.Fatal("restart lost the value")
 	}
@@ -399,11 +453,17 @@ func TestManagerExpiryAndRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, _ := m.Record(a.ListID)
+	rec, err := m.Record(a.ListID)
+	if err != nil {
+		t.Fatalf("m.Record: %v", err)
+	}
 	if rec.Size != bitstring.MinSize {
 		t.Fatal("bitstring size")
 	}
-	_, s1, _ := m.Signed(ctx, a.ListID)
+	_, s1, err := m.Signed(ctx, a.ListID)
+	if err != nil {
+		t.Fatalf("m.Signed: %v", err)
+	}
 	if !s1.ExpiresAt.Equal(t0.Add(DefaultTTL)) {
 		t.Fatalf("default TTL: %v", s1.ExpiresAt)
 	}
@@ -420,7 +480,10 @@ func TestManagerExpiryAndRotation(t *testing.T) {
 	if rot.ListsSigned != 1 || rot.KeyID == rot.PreviousKeyID || !strings.HasSuffix(rot.KeyID, "#0") {
 		t.Fatalf("rotation = %+v", rot)
 	}
-	_, s3, _ := m.Signed(ctx, a.ListID)
+	_, s3, err := m.Signed(ctx, a.ListID)
+	if err != nil {
+		t.Fatalf("m.Signed: %v", err)
+	}
 	if s3.KeyID != rot.KeyID || s3.IssuerDID == oldDID {
 		t.Fatalf("list not signed with the new key: %+v", s3)
 	}
@@ -433,7 +496,9 @@ func TestManagerExpiryAndRotation(t *testing.T) {
 	var set struct {
 		Keys []map[string]any `json:"keys"`
 	}
-	_ = json.Unmarshal(m.JWKS(), &set)
+	if err := json.Unmarshal(m.JWKS(), &set); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	if len(set.Keys) != 2 {
 		t.Fatalf("JWKS has %d keys", len(set.Keys))
 	}
@@ -447,23 +512,35 @@ func TestManagerErrors(t *testing.T) {
 	kv := store.Memory()
 	is := newIssuers(t, kv)
 	failSec := &fakeSecurer{kind: KindToken, fail: errors.New("hsm down")}
-	m, _ := Open(ctx, Options{Store: kv, Issuers: is, Securer: failSec, Size: 4})
+	m, err := Open(ctx, Options{Store: kv, Issuers: is, Securer: failSec, Size: 4})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
 	if _, err := m.Allocate(ctx, "", Revocation, 1); err == nil || !strings.Contains(err.Error(), "hsm down") {
 		t.Fatalf("err = %v", err)
 	}
 	empty := &emptySecurer{fakeSecurer{kind: KindToken}}
-	m, _ = Open(ctx, Options{Store: kv, Issuers: is, Securer: empty, Size: 4})
+	m, errAssign := Open(ctx, Options{Store: kv, Issuers: is, Securer: empty, Size: 4})
+	if errAssign != nil {
+		t.Fatalf("Open: %v", errAssign)
+	}
 	if _, err := m.Allocate(ctx, "", Revocation, 1); err == nil || !strings.Contains(err.Error(), "no artifact") {
 		t.Fatalf("err = %v", err)
 	}
 	// A working manager whose store then fails.
 	sec := &fakeSecurer{kind: KindToken}
 	fs := &flaky{KeyValue: kv, failAfter: -1}
-	m, _ = Open(ctx, Options{Store: fs, Issuers: is, Securer: sec, Size: 4, Rand: bytes.NewReader(nil)})
+	m, errAssign2 := Open(ctx, Options{Store: fs, Issuers: is, Securer: sec, Size: 4, Rand: bytes.NewReader(nil)})
+	if errAssign2 != nil {
+		t.Fatalf("Open: %v", errAssign2)
+	}
 	if _, err := m.Allocate(ctx, "", Revocation, 1); err == nil || !strings.Contains(err.Error(), "random id") {
 		t.Fatalf("err = %v", err)
 	}
-	m, _ = Open(ctx, Options{Store: fs, Issuers: is, Securer: sec, Size: 4, Now: func() time.Time { return t0 }})
+	m, errAssign3 := Open(ctx, Options{Store: fs, Issuers: is, Securer: sec, Size: 4, Now: func() time.Time { return t0 }})
+	if errAssign3 != nil {
+		t.Fatalf("Open: %v", errAssign3)
+	}
 	a, err := m.Allocate(ctx, "", Revocation, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -485,10 +562,18 @@ func TestManagerErrors(t *testing.T) {
 	fs.failAfter = -1
 	// The issuer of a stored list is no longer configured.
 	fs.failAfter = -1
-	rec, _ := m.Record(a.ListID)
+	rec, err := m.Record(a.ListID)
+	if err != nil {
+		t.Fatalf("m.Record: %v", err)
+	}
 	rec.IssuerSlug = "gone"
-	data, _ := json.Marshal(rec)
-	_ = kv.Put(ctx, RecordPrefix+rec.ID, data)
+	data, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if err := kv.Put(ctx, RecordPrefix+rec.ID, data); err != nil {
+		t.Fatalf("kv.Put: %v", err)
+	}
 	m2, err := Open(ctx, Options{Store: kv, Issuers: is, Securer: sec, Size: 4, Now: func() time.Time { return t0.Add(48 * time.Hour) }})
 	if err != nil {
 		t.Fatal(err)
@@ -500,16 +585,24 @@ func TestManagerErrors(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	// Broken documents in the store.
-	_ = kv.Put(ctx, RecordPrefix+"bad", []byte("{"))
+	if err := kv.Put(ctx, RecordPrefix+"bad", []byte("{")); err != nil {
+		t.Fatalf("kv.Put: %v", err)
+	}
 	if _, err := Open(ctx, Options{Store: kv, Issuers: is, Securer: sec}); err == nil {
 		t.Fatal("expected parse error")
 	}
-	_ = kv.Delete(ctx, RecordPrefix+"bad")
-	_ = kv.Put(ctx, SignedPrefix+"bad", []byte("{"))
+	if err := kv.Delete(ctx, RecordPrefix+"bad"); err != nil {
+		t.Fatalf("kv.Delete: %v", err)
+	}
+	if err := kv.Put(ctx, SignedPrefix+"bad", []byte("{")); err != nil {
+		t.Fatalf("kv.Put: %v", err)
+	}
 	if _, err := Open(ctx, Options{Store: kv, Issuers: is, Securer: sec}); err == nil {
 		t.Fatal("expected parse error")
 	}
-	_ = kv.Delete(ctx, SignedPrefix+"bad")
+	if err := kv.Delete(ctx, SignedPrefix+"bad"); err != nil {
+		t.Fatalf("kv.Delete: %v", err)
+	}
 	if _, err := Open(ctx, Options{Store: &flaky{KeyValue: kv, listErr: true}, Issuers: is, Securer: sec}); err == nil {
 		t.Fatal("expected list error")
 	}

@@ -61,7 +61,10 @@ func TestBackends(t *testing.T) {
 			if err != nil || strings.Join(keys, ",") != "lists/a,lists/b" {
 				t.Fatalf("list: %v %v", keys, err)
 			}
-			all, _ := kv.List(ctx, "")
+			all, err := kv.List(ctx, "")
+			if err != nil {
+				t.Fatalf("kv.List: %v", err)
+			}
 			if len(all) != 3 {
 				t.Fatalf("list all: %v", all)
 			}
@@ -132,8 +135,12 @@ func TestFileLayoutAndErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A stray temporary file and a non JSON file are not keys.
-	_ = os.WriteFile(filepath.Join(dir, "lists", ".b.json.tmp"), []byte("x"), 0o600)
-	_ = os.WriteFile(filepath.Join(dir, "lists", "notes.txt"), []byte("x"), 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "lists", ".b.json.tmp"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lists", "notes.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
 	keys, err := kv.List(ctx, "")
 	if err != nil || strings.Join(keys, ",") != "lists/a" {
 		t.Fatalf("%v %v", keys, err)

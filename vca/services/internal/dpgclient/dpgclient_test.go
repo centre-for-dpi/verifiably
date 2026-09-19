@@ -5,6 +5,7 @@ package dpgclient
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -31,11 +32,16 @@ func TestJSONSendsAndDecodes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
 		gotAgent, gotType = r.Header.Get("User-Agent"), r.Header.Get("Content-Type")
-		buf := make([]byte, r.ContentLength)
-		_, _ = r.Body.Read(buf)
+		buf, readErr := io.ReadAll(r.Body)
+		if readErr != nil {
+			t.Errorf("read body: %v", readErr)
+		}
 		gotBody = string(buf)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"abc","count":9007199254740993}`))
+		_, errAssign2 := w.Write([]byte(`{"id":"abc","count":9007199254740993}`))
+		if errAssign2 != nil {
+			t.Errorf("w.Write: %v", errAssign2)
+		}
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv, Options{Token: "secret"})
@@ -92,7 +98,10 @@ func TestJSONReportsAnUnencodableBody(t *testing.T) {
 
 func TestJSONReportsABrokenResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("not json"))
+		_, errAssign := w.Write([]byte("not json"))
+		if errAssign != nil {
+			t.Errorf("w.Write: %v", errAssign)
+		}
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv, Options{})
@@ -107,10 +116,15 @@ func TestFormSendsTheEncodedValues(t *testing.T) {
 	var gotBody, gotType string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotType = r.Header.Get("Content-Type")
-		buf := make([]byte, r.ContentLength)
-		_, _ = r.Body.Read(buf)
+		buf, readErr := io.ReadAll(r.Body)
+		if readErr != nil {
+			t.Errorf("read body: %v", readErr)
+		}
 		gotBody = string(buf)
-		_, _ = w.Write([]byte(`{"access_token":"at"}`))
+		_, errAssign2 := w.Write([]byte(`{"access_token":"at"}`))
+		if errAssign2 != nil {
+			t.Errorf("w.Write: %v", errAssign2)
+		}
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv, Options{})
@@ -145,7 +159,10 @@ func TestFormReportsAFailedCall(t *testing.T) {
 
 func TestTextReturnsTheTrimmedBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("  openid-credential-offer://x  \n"))
+		_, errAssign := w.Write([]byte("  openid-credential-offer://x  \n"))
+		if errAssign != nil {
+			t.Errorf("w.Write: %v", errAssign)
+		}
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv, Options{})
@@ -173,7 +190,10 @@ func TestDoRetriesAServerError(t *testing.T) {
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
-		_, _ = w.Write([]byte("ok"))
+		_, errAssign := w.Write([]byte("ok"))
+		if errAssign != nil {
+			t.Errorf("w.Write: %v", errAssign)
+		}
 	}))
 	defer srv.Close()
 	waits := []time.Duration{}
@@ -212,7 +232,10 @@ func TestDoDoesNotRetryAClientError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(strings.Repeat("z", 300)))
+		_, errAssign := w.Write([]byte(strings.Repeat("z", 300)))
+		if errAssign != nil {
+			t.Errorf("w.Write: %v", errAssign)
+		}
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv, Options{})
@@ -245,7 +268,10 @@ func TestDoRejectsABodyAboveTheLimit(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
-		_, _ = w.Write([]byte(strings.Repeat("a", 100)))
+		_, errAssign := w.Write([]byte(strings.Repeat("a", 100)))
+		if errAssign != nil {
+			t.Errorf("w.Write: %v", errAssign)
+		}
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv, Options{MaxBytes: 10})
@@ -281,7 +307,10 @@ func TestDoSendsTheTraceparentAndExtraHeaders(t *testing.T) {
 		gotTrace = r.Header.Get(trace.Header)
 		gotExtra = r.Header.Get("X-Correlation-Id")
 		gotAccept = r.Header.Get("Accept")
-		_, _ = w.Write([]byte("{}"))
+		_, errAssign := w.Write([]byte("{}"))
+		if errAssign != nil {
+			t.Errorf("w.Write: %v", errAssign)
+		}
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv, Options{})
@@ -306,7 +335,10 @@ func TestRequestTokenOverridesTheClientToken(t *testing.T) {
 	var got string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Get("Authorization")
-		_, _ = w.Write([]byte("{}"))
+		_, errAssign := w.Write([]byte("{}"))
+		if errAssign != nil {
+			t.Errorf("w.Write: %v", errAssign)
+		}
 	}))
 	defer srv.Close()
 	c := newTestClient(t, srv, Options{Token: "static"})

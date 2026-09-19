@@ -21,7 +21,10 @@ func TestParseAndString(t *testing.T) {
 	if c.String() != "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" {
 		t.Fatal(c.String())
 	}
-	off, _ := Parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00")
+	off, err := Parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
 	if off.Sampled || !strings.HasSuffix(off.String(), "-00") {
 		t.Fatal("flags")
 	}

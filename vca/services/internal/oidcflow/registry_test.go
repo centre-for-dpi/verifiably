@@ -58,7 +58,10 @@ func TestRegistry(t *testing.T) {
 	created := p.CreatedAt
 	p.DisplayName = "B"
 	p.CreatedAt = time.Time{}
-	p2, _ := reg.Put(p)
+	p2, err := reg.Put(p)
+	if err != nil {
+		t.Fatalf("reg.Put: %v", err)
+	}
 	if !p2.CreatedAt.Equal(created) || p2.DisplayName != "B" {
 		t.Fatalf("update kept created_at: %+v", p2)
 	}
@@ -87,7 +90,10 @@ func TestRegistry(t *testing.T) {
 	}
 	// Persist failures roll back.
 	fp := &failingPersister{Persister: store}
-	reg3, _ := oidcflow.NewRegistry(fp, clock)
+	reg3, err := oidcflow.NewRegistry(fp, clock)
+	if err != nil {
+		t.Fatalf("oidcflow.NewRegistry: %v", err)
+	}
 	fp.failSave = true
 	if _, err := reg3.Put(oidcflow.Provider{ID: "new", DiscoveryURL: "https://n/x", ClientID: "c"}); err == nil {
 		t.Fatal("save error hidden")
@@ -118,7 +124,9 @@ func TestRegistry(t *testing.T) {
 	}
 	// Bad stored JSON.
 	bad := oidcflow.NewMemoryPersister()
-	_ = bad.Save("providers", "not a list")
+	if err := bad.Save("providers", "not a list"); err != nil {
+		t.Fatalf("bad.Save: %v", err)
+	}
 	if _, err := oidcflow.NewRegistry(bad, nil); err == nil {
 		t.Fatal("bad json accepted")
 	}
@@ -156,7 +164,10 @@ func TestProtoConversion(t *testing.T) {
 }
 
 func TestAdminProvidersRPC(t *testing.T) {
-	reg, _ := oidcflow.NewRegistry(nil, nil)
+	reg, err := oidcflow.NewRegistry(nil, nil)
+	if err != nil {
+		t.Fatalf("oidcflow.NewRegistry: %v", err)
+	}
 	svc := oidcflow.AdminProviders{Registry: reg, Authorize: oidcflow.BearerAuthorizer("admin-token"), Roles: []string{"issuer"}, InternalAuthority: "http://idp:8080"}
 	path, h := oidcflow.NewAdminHandler(svc)
 	mux := http.NewServeMux()
