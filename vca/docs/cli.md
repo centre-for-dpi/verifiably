@@ -11,6 +11,7 @@ The source is `vca/cmd/vca` and `vca/internal/cli`.
 - `vca status` shows the containers. `vca down` stops them.
 - `vca dpg bootstrap` configures a DPG after it boots.
 - `vca admin` calls the admin service.
+- `vca migrate` carries the data of a legacy deployment into the services.
 - `vca man` writes the man pages.
 
 ## How to run
@@ -204,6 +205,44 @@ page, and the OpenAPI file (ADR-009 decision 4).
 `--url` names the admin service. `VCA_ADMIN_URL` is the default.
 `--token` names the bearer token. The saved token is the default.
 
+## migrate
+
+```sh
+vca migrate export --from-state-dir ./state --out ./migration --salt "$SALT"
+vca migrate import --from ./migration --into /var/lib/vca
+```
+
+The migrate commands carry the data of a legacy verifiably-go deployment into
+the services (ADR-030 decision 8).
+`export` reads one legacy source and writes four import files.
+`import` writes those files into the state directory of the services.
+Sessions and caches are not migrated.
+
+`export` reads a PostgreSQL database with `--from-pg`, or a state directory
+with `--from-state-dir`.
+Name exactly one source.
+The database source needs a `database/sql` driver with the name of
+`--pg-driver`, and the released binary links none.
+
+| Flag | What it does |
+|---|---|
+| `--from-pg` | The DSN of the legacy database. |
+| `--from-state-dir` | The legacy state directory. |
+| `--pg-driver` | The `database/sql` driver name. The default is `postgres`. |
+| `--out` | The directory that receives the import files. |
+| `--salt` | The salt of the subject reference. |
+| `--salt-file` | A file that holds the salt. |
+| `--keep-claim` | A subject claim to keep. Repeat the flag for more. |
+| `--issuer-did` | The DID that signs the migrated status lists. |
+| `--status-base-url` | The public root URL of the status services. |
+| `--force` | Replace the files that exist. |
+
+`import` takes `--from`, `--into`, and `--force`.
+It checks every document first, so a broken export writes nothing.
+
+`docs/migrate.md` holds the file layout, the salt rules, and the order of a
+cutover.
+
 ## man
 
 ```sh
@@ -248,6 +287,8 @@ go test -run TestAdminTreeMatchesTheAdminService ./internal/cli/
 - ADR-008: the deploy commands, the compose profiles, and the Helm charts.
 - ADR-009: the admin command tree and the generated man pages.
 - ADR-010: the OpenID Connect login of the super admin.
+- ADR-030 decision 8: the data migration of the migrate commands.
+- `docs/migrate.md`: the migration files and the order of a cutover.
 - `services/admin/README.md`: the login endpoints the CLI calls.
 - `proto/vca/config/v1/config.proto`: every setup variable.
 - `proto/vca/admin/v1/admin.proto`: every admin RPC.
