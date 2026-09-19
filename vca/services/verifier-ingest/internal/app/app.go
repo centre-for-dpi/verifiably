@@ -8,6 +8,9 @@ package app
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -33,8 +36,8 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
-// PruneInterval is the time between two prune runs of the store.
-const PruneInterval = 10 * time.Minute
+// DefaultPruneInterval is the time between two prune runs of the store.
+const DefaultPruneInterval = 10 * time.Minute
 
 // App is the wired service.
 type App struct {
@@ -46,6 +49,9 @@ type App struct {
 	Store *txn.Store
 	// Config is the configuration the wiring used.
 	Config config.Config
+	// PruneInterval is the time between two prune runs. Build sets it
+	// to DefaultPruneInterval. Tests shorten it.
+	PruneInterval time.Duration
 }
 
 // Deps are the side effects the wiring needs. Tests inject fakes.
@@ -123,7 +129,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	deps.Log.Info("verifier ingest ready",
 		"base_url", cfg.BaseURL, "client_id", cfg.ClientID, "discovery_url", cfg.DiscoveryURL,
 		"scanner", page.Prefix(), "request_uri_hosts", cfg.RequestURIHosts, "kid", kid)
-	return &App{Mux: mux, Service: svc, Store: store, Config: cfg}, nil
+	return &App{Mux: mux, Service: svc, Store: store, Config: cfg, PruneInterval: DefaultPruneInterval}, nil
 }
 
 // xmlConfig returns the default XML configuration of the deployment.
@@ -137,9 +143,9 @@ func xmlConfig(cfg config.Config) ingest.XMLConfig {
 
 // loadKey reads the request object key, or generates one for this
 // process.
-func loadKey(cfg config.Config, deps Deps) (crypto.PrivateKey, string, error) {
+func loadKey(cfg config.Config, deps Deps) (crypto.Signer, string, error) {
 	if cfg.SigningKeyFile == "" {
-		key, err := jose.GenerateKey(jose.ES256)
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			return nil, "", fmt.Errorf("app: generate a request object key: %w", err)
 		}
@@ -158,8 +164,9 @@ func loadKey(cfg config.Config, deps Deps) (crypto.PrivateKey, string, error) {
 	return key, keyID(key), nil
 }
 
-// parsePEM reads the first PKCS 8 private key of a PEM file.
-func parsePEM(data []byte) (crypto.PrivateKey, error) {
+// parsePEM reads the first PKCS 8 private key of a PEM file. The key
+// must be able to sign.
+func parsePEM(data []byte) (crypto.Signer, error) {
 	for rest := data; len(rest) > 0; {
 		var block *pem.Block
 		block, rest = pem.Decode(rest)
@@ -173,34 +180,32 @@ func parsePEM(data []byte) (crypto.PrivateKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("app: read the signing key: %w", err)
 		}
-		return key, nil
+		signer, ok := key.(crypto.Signer)
+		if !ok {
+			return nil, fmt.Errorf("app: the signing key of type %T cannot sign", key)
+		}
+		return signer, nil
 	}
 	return nil, errors.New("app: the signing key file holds no PKCS 8 private key")
 }
 
 // keyID returns the JWK thumbprint of the public key, or an empty id.
-func keyID(key crypto.PrivateKey) string {
-	signer, ok := key.(crypto.Signer)
-	if !ok {
-		return ""
-	}
-	jwk, err := jose.PublicJWK(signer.Public(), "")
+func keyID(key crypto.Signer) string {
+	jwk, err := jose.PublicJWK(key.Public(), "")
 	if err != nil {
 		return ""
 	}
-	thumbprint, err := jose.Thumbprint(jwk)
-	if err != nil {
-		return ""
-	}
+	// A JWK the kit built always has a thumbprint.
+	thumbprint, _ := jose.Thumbprint(jwk)
 	return thumbprint
 }
 
-// Prune removes finished transactions every PruneInterval until ctx ends.
+// Prune removes old transactions on every tick until ctx ends.
 func (a *App) Prune(ctx context.Context, log *slog.Logger) {
-	if a.Config.TransactionTTL <= 0 {
+	if a.Config.TransactionTTL <= 0 || a.PruneInterval <= 0 {
 		return
 	}
-	ticker := time.NewTicker(PruneInterval)
+	ticker := time.NewTicker(a.PruneInterval)
 	defer ticker.Stop()
 	for {
 		select {
