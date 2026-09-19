@@ -54,14 +54,18 @@ func TestBackends(t *testing.T) {
 				t.Fatalf("get: %s %v", got, err)
 			}
 			got[0] = 'x'
-			if again, _ := kv.Get(ctx, "lists/a"); string(again) != `{"n":1}` {
-				t.Fatal("get returned shared memory")
+			again, againErr := kv.Get(ctx, "lists/a")
+			if againErr != nil || string(again) != `{"n":1}` {
+				t.Fatalf("get returned shared memory: %v", againErr)
 			}
 			keys, err := kv.List(ctx, "lists/")
 			if err != nil || strings.Join(keys, ",") != "lists/a,lists/b" {
 				t.Fatalf("list: %v %v", keys, err)
 			}
-			all, _ := kv.List(ctx, "")
+			all, err := kv.List(ctx, "")
+			if err != nil {
+				t.Fatalf("kv.List: %v", err)
+			}
 			if len(all) != 3 {
 				t.Fatalf("list all: %v", all)
 			}
@@ -75,8 +79,9 @@ func TestBackends(t *testing.T) {
 			if err := kv.CompareAndSwap(ctx, "lists/a", []byte(`{"n":1}`), []byte(`{"n":3}`)); err != nil {
 				t.Fatalf("cas: %v", err)
 			}
-			if got, _ := kv.Get(ctx, "lists/a"); string(got) != `{"n":3}` {
-				t.Fatalf("after cas: %s", got)
+			after, afterErr := kv.Get(ctx, "lists/a")
+			if afterErr != nil || string(after) != `{"n":3}` {
+				t.Fatalf("after cas: %s %v", after, afterErr)
 			}
 			if err := kv.CompareAndSwap(ctx, "lists/c", []byte(`{}`), []byte(`{}`)); !errors.Is(err, ErrConflict) {
 				t.Fatalf("cas update missing: %v", err)
@@ -121,9 +126,9 @@ func TestBackends(t *testing.T) {
 func TestFileLayoutAndErrors(t *testing.T) {
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "state")
-	kv, err := File(dir)
-	if err != nil {
-		t.Fatal(err)
+	kv, kvErr := File(dir)
+	if kvErr != nil {
+		t.Fatal(kvErr)
 	}
 	if err := kv.Put(ctx, "lists/a", []byte(`1`)); err != nil {
 		t.Fatal(err)
@@ -132,8 +137,12 @@ func TestFileLayoutAndErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A stray temporary file and a non JSON file are not keys.
-	_ = os.WriteFile(filepath.Join(dir, "lists", ".b.json.tmp"), []byte("x"), 0o600)
-	_ = os.WriteFile(filepath.Join(dir, "lists", "notes.txt"), []byte("x"), 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "lists", ".b.json.tmp"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lists", "notes.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
 	keys, err := kv.List(ctx, "")
 	if err != nil || strings.Join(keys, ",") != "lists/a" {
 		t.Fatalf("%v %v", keys, err)
@@ -166,10 +175,16 @@ func TestFileLayoutAndErrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Chmod(ro, 0o500); err != nil {
+		readOnly := os.FileMode(0o500)
+		if err := os.Chmod(ro, readOnly); err != nil {
 			t.Fatal(err)
 		}
-		defer os.Chmod(ro, 0o700)
+		writable := os.FileMode(0o700)
+		defer func() {
+			if err := os.Chmod(ro, writable); err != nil {
+				t.Errorf("restore mode: %v", err)
+			}
+		}()
 		if err := rkv.Put(ctx, "x", []byte("1")); err == nil {
 			t.Fatal("write into read-only dir")
 		}

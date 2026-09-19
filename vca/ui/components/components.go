@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/ui"
 )
 
@@ -48,6 +49,7 @@ func SafeAttr(name, value string) template.HTMLAttr {
 	if !safeAttrNames[name] {
 		return ""
 	}
+	//nolint:gosec // G203: the name is on a whitelist and the value is escaped.
 	return template.HTMLAttr(name + `="` + html.EscapeString(value) + `"`)
 }
 
@@ -129,15 +131,15 @@ func (k *Kit) RenderPage(w http.ResponseWriter, r *http.Request, page Page) erro
 	if err != nil {
 		return fmt.Errorf("components: page: %w", err)
 	}
-	p := data.(Page)
+	p := anyval.As[Page](data)
 	name := "layout"
 	if IsHTMX(r) {
 		name = "page"
 		w.Header().Set("HX-Title", p.Title)
 	}
 	var buf bytes.Buffer
-	if err := k.tpl.ExecuteTemplate(&buf, name, p); err != nil {
-		return fmt.Errorf("components: %s: %w", name, err)
+	if tplErr := k.tpl.ExecuteTemplate(&buf, name, p); tplErr != nil {
+		return fmt.Errorf("components: %s: %w", name, tplErr)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, err = w.Write(buf.Bytes())
@@ -210,7 +212,7 @@ func (p Page) normalize() (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		p.Toasts[i] = t.(Toast)
+		p.Toasts[i] = anyval.As[Toast](t)
 	}
 	return p, nil
 }
@@ -380,7 +382,7 @@ func (d Dialog) normalize() (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		d.Actions[i] = b.(Button)
+		d.Actions[i] = anyval.As[Button](b)
 	}
 	return d, nil
 }

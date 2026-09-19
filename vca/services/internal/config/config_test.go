@@ -127,7 +127,7 @@ func TestDescribeAndRedact(t *testing.T) {
 	if vars[0] != (Variable{Name: "X_LISTEN", Default: ":8080"}) || vars[1] != (Variable{Name: "X_SECRET", Secret: true, Required: true}) {
 		t.Fatalf("%+v", vars)
 	}
-	if err := Load("X_", &s, env(map[string]string{"X_SECRET": "hush", "X_METHODS": "a,b"})); err != nil {
+	if gotErr := Load("X_", &s, env(map[string]string{"X_SECRET": "hush", "X_METHODS": "a,b"})); gotErr != nil {
 		t.Fatal(err)
 	}
 	got, err := Redact("X_", &s)

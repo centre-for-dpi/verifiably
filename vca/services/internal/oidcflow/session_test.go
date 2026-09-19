@@ -89,7 +89,10 @@ func TestSignerRoundTrip(t *testing.T) {
 func TestSignerRejects(t *testing.T) {
 	s := newSigner(t)
 	other := newSigner(t)
-	tok, _, _ := other.Issue(oidcflow.Claims{Subject: "u"})
+	tok, _, tokErr := other.Issue(oidcflow.Claims{Subject: "u"})
+	if tokErr != nil {
+		t.Fatalf("other.Issue: %v", tokErr)
+	}
 	if _, err := s.Verify(tok); !errors.Is(err, oidcflow.ErrSessionInvalid) {
 		t.Fatalf("other key: %v", err)
 	}
@@ -97,65 +100,98 @@ func TestSignerRejects(t *testing.T) {
 		t.Fatalf("garbage: %v", err)
 	}
 	// Wrong issuer and audience.
-	key, _ := oidcflow.GenerateKey()
-	wrongIss, _ := oidcflow.NewSigner(key, "https://other", "vca", time.Minute, nil)
-	wrongAud, _ := oidcflow.NewSigner(key, "https://auth.example", "other", time.Minute, nil)
-	same, _ := oidcflow.NewSigner(key, "https://auth.example", "vca", time.Minute, nil)
+	key, keyErr := oidcflow.GenerateKey()
+	if keyErr != nil {
+		t.Fatalf("oidcflow.GenerateKey: %v", keyErr)
+	}
+	wrongIss, wrongIssErr := oidcflow.NewSigner(key, "https://other", "vca", time.Minute, nil)
+	if wrongIssErr != nil {
+		t.Fatalf("oidcflow.NewSigner: %v", wrongIssErr)
+	}
+	wrongAud, wrongAudErr := oidcflow.NewSigner(key, "https://auth.example", "other", time.Minute, nil)
+	if wrongAudErr != nil {
+		t.Fatalf("oidcflow.NewSigner: %v", wrongAudErr)
+	}
+	same, err := oidcflow.NewSigner(key, "https://auth.example", "vca", time.Minute, nil)
+	if err != nil {
+		t.Fatalf("oidcflow.NewSigner: %v", err)
+	}
 	for name, sg := range map[string]*oidcflow.Signer{"iss": wrongIss, "aud": wrongAud} {
-		tok, _, _ := sg.Issue(oidcflow.Claims{Subject: "u"})
-		if _, err := same.Verify(tok); !errors.Is(err, oidcflow.ErrSessionInvalid) {
-			t.Fatalf("%s: %v", name, err)
+		issued, _, issueErr := sg.Issue(oidcflow.Claims{Subject: "u"})
+		if issueErr != nil {
+			t.Fatalf("sg.Issue: %v", issueErr)
+		}
+		if _, gotErr := same.Verify(issued); !errors.Is(gotErr, oidcflow.ErrSessionInvalid) {
+			t.Fatalf("%s: %v", name, gotErr)
 		}
 	}
 	// Expired.
 	past := time.Now().Add(-time.Hour)
 	same.WithClock(func() time.Time { return past })
-	tok, _, _ = same.Issue(oidcflow.Claims{Subject: "u"})
+	tok, _, errAssign := same.Issue(oidcflow.Claims{Subject: "u"})
+	if errAssign != nil {
+		t.Fatalf("same.Issue: %v", errAssign)
+	}
 	same.WithClock(time.Now)
-	if _, err := same.Verify(tok); !errors.Is(err, oidcflow.ErrSessionInvalid) {
-		t.Fatalf("expired: %v", err)
+	if _, gotErr := same.Verify(tok); !errors.Is(gotErr, oidcflow.ErrSessionInvalid) {
+		t.Fatalf("expired: %v", gotErr)
 	}
 	// A token whose payload is not a claim set.
-	bad, _ := jose.Sign(key, "k", "JWT", []int{1})
-	if _, err := same.Verify(bad); !errors.Is(err, oidcflow.ErrSessionInvalid) {
-		t.Fatalf("bad payload: %v", err)
+	bad, err := jose.Sign(key, "k", "JWT", []int{1})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
+	if _, gotErr := same.Verify(bad); !errors.Is(gotErr, oidcflow.ErrSessionInvalid) {
+		t.Fatalf("bad payload: %v", gotErr)
 	}
 	// Constructor checks.
-	if _, err := oidcflow.NewSigner(nil, "i", "a", 0, nil); err == nil {
+	if _, gotErr := oidcflow.NewSigner(nil, "i", "a", 0, nil); gotErr == nil {
 		t.Fatal("nil key")
 	}
-	if _, err := oidcflow.NewSigner(key, "", "a", 0, nil); err == nil {
+	if _, gotErr := oidcflow.NewSigner(key, "", "a", 0, nil); gotErr == nil {
 		t.Fatal("no issuer")
 	}
-	def, _ := oidcflow.NewSigner(key, "i", "a", 0, nil)
+	def, err := oidcflow.NewSigner(key, "i", "a", 0, nil)
+	if err != nil {
+		t.Fatalf("oidcflow.NewSigner: %v", err)
+	}
 	if def.TTL() != oidcflow.DefaultSessionTTL {
 		t.Fatal("default ttl")
 	}
 }
 
 func TestKeyPEM(t *testing.T) {
-	key, _ := oidcflow.GenerateKey()
-	raw, err := oidcflow.EncodeKeyPEM(key)
-	if err != nil {
-		t.Fatal(err)
+	key, keyErr := oidcflow.GenerateKey()
+	if keyErr != nil {
+		t.Fatalf("oidcflow.GenerateKey: %v", keyErr)
+	}
+	raw, rawErr := oidcflow.EncodeKeyPEM(key)
+	if rawErr != nil {
+		t.Fatal(rawErr)
 	}
 	back, err := oidcflow.ParseKeyPEM(raw)
 	if err != nil || !back.Equal(key) {
 		t.Fatalf("round trip: %v", err)
 	}
-	pkcs8, _ := x509.MarshalPKCS8PrivateKey(key)
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("x509.MarshalPKCS8PrivateKey: %v", err)
+	}
 	back, err = oidcflow.ParseKeyPEM(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}))
 	if err != nil || !back.Equal(key) {
 		t.Fatalf("pkcs8: %v", err)
 	}
-	if _, err := oidcflow.ParseKeyPEM([]byte("nope")); err == nil {
+	if _, gotErr := oidcflow.ParseKeyPEM([]byte("nope")); gotErr == nil {
 		t.Fatal("no block")
 	}
-	if _, err := oidcflow.ParseKeyPEM(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1, 2}})); err == nil {
+	if _, gotErr := oidcflow.ParseKeyPEM(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1, 2}})); gotErr == nil {
 		t.Fatal("bad der")
 	}
 	// A P-384 key is ECDSA but not P-256.
-	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
 	if _, err := oidcflow.NewSigner(p384, "i", "a", 0, nil); err == nil {
 		t.Fatal("p384 accepted")
 	}
@@ -173,8 +209,12 @@ func TestPendingAndDenyStores(t *testing.T) {
 	now := time.Now()
 	clock := func() time.Time { return now }
 	ps := oidcflow.NewMemoryPending(clock)
-	_ = ps.Put(oidcflow.Pending{State: "a", ExpiresAt: now.Add(time.Minute)})
-	_ = ps.Put(oidcflow.Pending{State: "old", ExpiresAt: now.Add(-time.Minute)})
+	if err := ps.Put(oidcflow.Pending{State: "a", ExpiresAt: now.Add(time.Minute)}); err != nil {
+		t.Fatalf("ps.Put: %v", err)
+	}
+	if err := ps.Put(oidcflow.Pending{State: "old", ExpiresAt: now.Add(-time.Minute)}); err != nil {
+		t.Fatalf("ps.Put: %v", err)
+	}
 	if _, ok := ps.Take("old"); ok {
 		t.Fatal("expired taken")
 	}
@@ -187,22 +227,34 @@ func TestPendingAndDenyStores(t *testing.T) {
 	if _, ok := ps.Take("a"); ok {
 		t.Fatal("taken twice")
 	}
-	_ = ps.Put(oidcflow.Pending{State: "b", ExpiresAt: now.Add(time.Minute)})
+	if err := ps.Put(oidcflow.Pending{State: "b", ExpiresAt: now.Add(time.Minute)}); err != nil {
+		t.Fatalf("ps.Put: %v", err)
+	}
 	now = now.Add(2 * time.Minute)
 	if _, ok := ps.Take("b"); ok {
 		t.Fatal("expired on take")
 	}
-	_ = ps.Put(oidcflow.Pending{State: "c", ExpiresAt: now.Add(-time.Minute)})
-	_ = ps.Put(oidcflow.Pending{State: "d", ExpiresAt: now.Add(time.Minute)})
+	if err := ps.Put(oidcflow.Pending{State: "c", ExpiresAt: now.Add(-time.Minute)}); err != nil {
+		t.Fatalf("ps.Put: %v", err)
+	}
+	if err := ps.Put(oidcflow.Pending{State: "d", ExpiresAt: now.Add(time.Minute)}); err != nil {
+		t.Fatalf("ps.Put: %v", err)
+	}
 
 	dl := oidcflow.NewMemoryDenyList(clock)
-	_ = dl.Revoke("s1", now.Add(time.Minute))
-	_ = dl.Revoke("s0", now.Add(-time.Minute))
+	if err := dl.Revoke("s1", now.Add(time.Minute)); err != nil {
+		t.Fatalf("dl.Revoke: %v", err)
+	}
+	if err := dl.Revoke("s0", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("dl.Revoke: %v", err)
+	}
 	if !dl.Revoked("s1") || dl.Revoked("s0") || dl.Revoked("none") {
 		t.Fatal("deny list")
 	}
 	now = now.Add(2 * time.Minute)
-	_ = dl.Revoke("s2", now.Add(time.Minute))
+	if err := dl.Revoke("s2", now.Add(time.Minute)); err != nil {
+		t.Fatalf("dl.Revoke: %v", err)
+	}
 	if dl.Revoked("s1") {
 		t.Fatal("expired entry stays")
 	}
@@ -300,7 +352,13 @@ func TestErrorMapping(t *testing.T) {
 
 func rsaPKCS8(t *testing.T) []byte {
 	t.Helper()
-	_, priv, _ := ed25519.GenerateKey(rand.Reader)
-	der, _ := x509.MarshalPKCS8PrivateKey(priv)
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		t.Fatalf("x509.MarshalPKCS8PrivateKey: %v", err)
+	}
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 }

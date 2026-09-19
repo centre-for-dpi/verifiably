@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve/trace"
 )
 
@@ -78,16 +79,16 @@ func Handler(opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte("ok\n"))
+		anyval.DiscardWrite(w.Write([]byte("ok\n")))
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		if !opts.Ready() {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("not ready\n"))
+			anyval.DiscardWrite(w.Write([]byte("not ready\n")))
 			return
 		}
-		_, _ = w.Write([]byte(opts.ReadyMessage()))
+		anyval.DiscardWrite(w.Write([]byte(opts.ReadyMessage())))
 	})
 	mux.Handle("/", opts.Handler)
 	return RequestID(trace.Middleware(AccessLog(opts.Log, mux)))
@@ -145,7 +146,7 @@ func Healthcheck(ctx context.Context, listen string) error {
 	if err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { anyval.Discard(resp.Body.Close()) }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("serve: %s returned %d", url, resp.StatusCode)
 	}
@@ -165,7 +166,7 @@ type ctxKey struct{}
 
 // RequestIDFrom returns the request id stored by RequestID.
 func RequestIDFrom(ctx context.Context) string {
-	id, _ := ctx.Value(ctxKey{}).(string)
+	id := anyval.As[string](ctx.Value(ctxKey{}))
 	return id
 }
 
@@ -197,7 +198,7 @@ func safeID(id string) bool {
 
 func newID() string {
 	b := make([]byte, 12)
-	_, _ = rand.Read(b)
+	anyval.Must(rand.Read(b))
 	return hex.EncodeToString(b)
 }
 

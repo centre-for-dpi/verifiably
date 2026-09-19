@@ -4,6 +4,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -99,7 +100,7 @@ func TestAskGivesUpAfterThreeBadAnswers(t *testing.T) {
 func TestAskReportsClosedInput(t *testing.T) {
 	var out bytes.Buffer
 	p := NewPrompter(strings.NewReader(""), &out)
-	if _, err := p.Ask(find(t, Settings(), "public_url"), ""); err != ErrNoInput {
+	if _, err := p.Ask(find(t, Settings(), "public_url"), ""); !errors.Is(err, ErrNoInput) {
 		t.Fatalf("got %v, want ErrNoInput", err)
 	}
 	// An offered value survives a closed input.

@@ -30,6 +30,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // MaxPDFImages bounds the number of images the extractor returns.
@@ -122,9 +124,9 @@ func decodeImageXObject(dict string, stream []byte) (image.Image, error) {
 
 // decodeFlateImage inflates a raster image stream and builds an image.
 func decodeFlateImage(dict string, stream []byte) (image.Image, error) {
-	raw, err := inflatePDFStream(stream)
-	if err != nil {
-		return nil, err
+	raw, rawErr := inflatePDFStream(stream)
+	if rawErr != nil {
+		return nil, rawErr
 	}
 	if img, _, err := image.Decode(bytes.NewReader(raw)); err == nil {
 		return img, nil
@@ -159,7 +161,7 @@ func inflatePDFStream(stream []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ingest: image stream: %w", err)
 	}
-	defer func() { _ = zr.Close() }()
+	defer anyval.Close(zr)
 	out, err := io.ReadAll(io.LimitReader(zr, MaxInflatedBytes+1))
 	if err != nil && len(out) == 0 {
 		return nil, fmt.Errorf("ingest: inflate the image stream: %w", err)
@@ -214,7 +216,7 @@ func indexedPalette(text string) ([]color.RGBA, error) {
 	raw := make([]byte, 0, len(clean)/2)
 	for i := 0; i+1 < len(clean); i += 2 {
 		// The pattern accepts hexadecimal digits only, so this parses.
-		n, _ := strconv.ParseUint(clean[i:i+2], 16, 8)
+		n := anyval.Must(strconv.ParseUint(clean[i:i+2], 16, 8))
 		raw = append(raw, byte(n))
 	}
 	if len(raw) < 3 {
@@ -355,24 +357,35 @@ func pixel(row []byte, x, bits, maxValue int, s space, palette []color.RGBA) col
 		}
 		return color.RGBA{A: 0xff}
 	case s.components == 1:
-		v := uint8(read(0) * 255 / maxValue)
+		v := clamp8(read(0) * 255 / maxValue)
 		return color.RGBA{R: v, G: v, B: v, A: 0xff}
 	case s.components == 4:
 		c, m, yy, k := read(0), read(1), read(2), read(3)
 		return color.RGBA{
-			R: uint8((maxValue - c) * (maxValue - k) * 255 / (maxValue * maxValue)),
-			G: uint8((maxValue - m) * (maxValue - k) * 255 / (maxValue * maxValue)),
-			B: uint8((maxValue - yy) * (maxValue - k) * 255 / (maxValue * maxValue)),
+			R: clamp8((maxValue - c) * (maxValue - k) * 255 / (maxValue * maxValue)),
+			G: clamp8((maxValue - m) * (maxValue - k) * 255 / (maxValue * maxValue)),
+			B: clamp8((maxValue - yy) * (maxValue - k) * 255 / (maxValue * maxValue)),
 			A: 0xff,
 		}
 	default:
 		return color.RGBA{
-			R: uint8(read(0) * 255 / maxValue),
-			G: uint8(read(1) * 255 / maxValue),
-			B: uint8(read(2) * 255 / maxValue),
+			R: clamp8(read(0) * 255 / maxValue),
+			G: clamp8(read(1) * 255 / maxValue),
+			B: clamp8(read(2) * 255 / maxValue),
 			A: 0xff,
 		}
 	}
+}
+
+// clamp8 converts v to a byte. It limits v to the 0 to 255 range.
+func clamp8(v int) uint8 {
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return uint8(v)
 }
 
 // sample reads the sample with the index from a packed row.

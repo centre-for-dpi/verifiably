@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // ErrRefused reports that the guard refused the URL.
@@ -121,7 +123,7 @@ func (g Guard) addresses(ctx context.Context, host string) ([]netip.Addr, error)
 	}
 	addrs, err := resolve(ctx, host)
 	if err != nil {
-		return nil, fmt.Errorf("%w: cannot resolve %q: %v", ErrRefused, host, err)
+		return nil, fmt.Errorf("%w: cannot resolve %q: %w", ErrRefused, host, err)
 	}
 	if len(addrs) == 0 {
 		return nil, fmt.Errorf("%w: %q resolves to no address", ErrRefused, host)
@@ -237,7 +239,10 @@ func (f *Fetcher) Get(ctx context.Context, raw string) (Doc, error) {
 	if err != nil {
 		return Doc{}, fmt.Errorf("fetchguard: get %s: %w", key, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		// The body is read below, so a close failure has no effect.
+		anyval.Discard(resp.Body.Close())
+	}()
 	if resp.StatusCode == http.StatusNotModified && ok {
 		cached.FetchedAt = now
 		cached.NotModified = true

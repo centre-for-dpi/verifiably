@@ -17,7 +17,15 @@ func ParseHex(hex string) (r, g, b uint8, err error) {
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("invalid hex colour %q", hex)
 	}
-	return uint8(v >> 16), uint8(v >> 8), uint8(v), nil
+	return channel(v >> 16), channel(v >> 8), channel(v), nil
+}
+
+// channel returns the low 8 bits of v as a channel value.
+func channel(v uint64) uint8 {
+	if v > 0xff {
+		return channel(v & 0xff)
+	}
+	return uint8(v)
 }
 
 // RelativeLuminance computes the WCAG relative luminance of "#RRGGBB".

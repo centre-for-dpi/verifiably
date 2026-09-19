@@ -2,7 +2,10 @@
 
 package ingest
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestDictValue(t *testing.T) {
 	cases := []struct {
@@ -140,5 +143,29 @@ func TestRemovePredictorBelowTen(t *testing.T) {
 	}
 	if len(out) != len(raw) {
 		t.Errorf("a predictor below ten changes nothing, got %d bytes", len(out))
+	}
+}
+
+func TestAsIntRejectsOutOfRangeNumbers(t *testing.T) {
+	if _, ok := asInt(uint64(math.MaxUint64)); ok {
+		t.Fatal("a uint64 above MaxInt64 must not convert")
+	}
+	if _, ok := asInt(math.MaxFloat64); ok {
+		t.Fatal("a float above MaxInt64 must not convert")
+	}
+	if _, ok := asInt(-math.MaxFloat64); ok {
+		t.Fatal("a float below MinInt64 must not convert")
+	}
+}
+
+func TestClamp8LimitsTheRange(t *testing.T) {
+	if got := clamp8(-1); got != 0 {
+		t.Fatalf("clamp8(-1) = %d", got)
+	}
+	if got := clamp8(300); got != 255 {
+		t.Fatalf("clamp8(300) = %d", got)
+	}
+	if got := clamp8(7); got != 7 {
+		t.Fatalf("clamp8(7) = %d", got)
 	}
 }

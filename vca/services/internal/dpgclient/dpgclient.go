@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve/trace"
 )
 
@@ -250,7 +251,7 @@ func (c *Client) attempt(ctx context.Context, target string, r Request) (*Respon
 	if err != nil {
 		return nil, fmt.Errorf("dpgclient: %s %s: %w", r.Method, target, err)
 	}
-	defer resp.Body.Close()
+	defer func() { anyval.Discard(resp.Body.Close()) }()
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, c.maxBytes+1))
 	if readErr != nil {
 		return nil, fmt.Errorf("dpgclient: read %s: %w", target, readErr)

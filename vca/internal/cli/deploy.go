@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // Runner runs one command. The deploy commands take a Runner, so a test
@@ -88,7 +90,7 @@ func lifecycle(ctx context.Context, opts DeployOptions, action []string) error {
 			return err
 		}
 		args := ComposeArgs(opts.Root, p, action)
-		fmt.Fprintf(opts.Out, "docker %s\n", strings.Join(args, " "))
+		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "docker %s\n", strings.Join(args, " ")))
 		if err := opts.Run(ctx, "docker", args); err != nil {
 			return fmt.Errorf("deploy %s: %w", p.Name(), err)
 		}
@@ -103,7 +105,7 @@ func printDryRun(opts DeployOptions, action []string) error {
 	}
 	for _, p := range opts.Pairs {
 		args := ComposeArgs(opts.Root, p, action)
-		fmt.Fprintf(opts.Out, "\n# %s\ndocker %s\n", p.Name(), strings.Join(args, " "))
+		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "\n# %s\ndocker %s\n", p.Name(), strings.Join(args, " ")))
 	}
 	return nil
 }

@@ -250,8 +250,8 @@ func splitBrackets(part string) (string, Path, error) {
 			return "", nil, fmt.Errorf("dcql: the claim path part %q has an unclosed bracket", part)
 		}
 		inner := rest[1:end]
-		switch {
-		case inner == "":
+		switch inner {
+		case "":
 			out = append(out, All())
 		default:
 			i, err := strconv.Atoi(inner)

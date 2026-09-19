@@ -34,26 +34,34 @@ func TestBase45Vectors(t *testing.T) {
 
 func TestEncodeDecodeJSON(t *testing.T) {
 	vc := []byte(`{"@context":["https://www.w3.org/2018/credentials/v1"],"type":["VerifiableCredential"],"credentialSubject":{"id":"did:example:1","name":"Ana","age":30,"tags":["a","b"],"ok":true}}`)
-	enc, err := Encode(vc)
-	if err != nil {
-		t.Fatal(err)
+	enc, encErr := Encode(vc)
+	if encErr != nil {
+		t.Fatal(encErr)
 	}
 	for _, c := range enc {
 		if !bytes.ContainsRune([]byte(alphabet), c) {
 			t.Fatalf("non base45 character %q", c)
 		}
 	}
-	dec, err := Decode(" " + enc + " ")
-	if err != nil {
-		t.Fatal(err)
+	dec, decErr := Decode(" " + enc + " ")
+	if decErr != nil {
+		t.Fatal(decErr)
 	}
 	var want, got any
-	_ = json.Unmarshal(vc, &want)
+	if err := json.Unmarshal(vc, &want); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	if err := json.Unmarshal(dec, &got); err != nil {
 		t.Fatalf("decoded is not JSON: %s", dec)
 	}
-	wb, _ := json.Marshal(want)
-	gb, _ := json.Marshal(got)
+	wb, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	gb, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
 	if !bytes.Equal(wb, gb) {
 		t.Fatalf("round trip mismatch:\n%s\n%s", wb, gb)
 	}
@@ -78,8 +86,13 @@ func deflate(t *testing.T, b []byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	w := zlib.NewWriter(&buf)
-	_, _ = w.Write(b)
-	_ = w.Close()
+	_, errAssign := w.Write(b)
+	if errAssign != nil {
+		t.Fatalf("w.Write: %v", errAssign)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("w.Close: %v", err)
+	}
 	return buf.Bytes()
 }
 
@@ -106,7 +119,10 @@ func TestDecodeErrors(t *testing.T) {
 }
 
 func FuzzParseDecode(f *testing.F) {
-	enc, _ := Encode([]byte(`{"a":[1,2,{"b":null}]}`))
+	enc, err := Encode([]byte(`{"a":[1,2,{"b":null}]}`))
+	if err != nil {
+		f.Fatalf("Encode: %v", err)
+	}
 	f.Add(enc)
 	f.Add("%69 VD92EX0")
 	f.Fuzz(func(t *testing.T, s string) {

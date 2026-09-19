@@ -25,8 +25,14 @@ func b64u(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 // signRS256 builds an RS256 JWT by hand, as the legacy tests did.
 func signRS256(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]any) string {
 	t.Helper()
-	hdr, _ := json.Marshal(map[string]any{"alg": "RS256", "kid": kid, "typ": "JWT"})
-	pl, _ := json.Marshal(claims)
+	hdr, err := json.Marshal(map[string]any{"alg": "RS256", "kid": kid, "typ": "JWT"})
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	pl, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
 	input := b64u(hdr) + "." + b64u(pl)
 	sum := sha256.Sum256([]byte(input))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
@@ -122,10 +128,22 @@ type tokenFixture struct {
 
 func newTokenFixture(t *testing.T) tokenFixture {
 	t.Helper()
-	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	ecKey, _ := jose.GenerateKey(jose.ES256)
-	j1, _ := jose.PublicJWK(rsaKey, "k1")
-	j2, _ := jose.PublicJWK(ecKey, "ec1")
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	ecKey, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	j1, err := jose.PublicJWK(rsaKey, "k1")
+	if err != nil {
+		t.Fatalf("jose.PublicJWK: %v", err)
+	}
+	j2, err := jose.PublicJWK(ecKey, "ec1")
+	if err != nil {
+		t.Fatalf("jose.PublicJWK: %v", err)
+	}
 	return tokenFixture{rsaKey: rsaKey, ecKey: ecKey, keys: jose.JWKS{Keys: []jose.JWK{j1, j2}}}
 }
 
@@ -144,18 +162,27 @@ func TestVerifyTokenValid(t *testing.T) {
 	if sc := StringClaims(claims); sc["given_name"] != "Ana" || len(sc) != 4 {
 		t.Fatalf("StringClaims = %v", sc)
 	}
-	es, _ := jose.Sign(f.ecKey, "ec1", "JWT", map[string]any{"iss": "http://keycloak:8180/realms/x/", "sub": "user-2", "aud": []string{"account", "client"}, "exp": exp, "nbf": float64(now.Add(30 * time.Second).Unix())})
-	if claims, err := VerifyToken(es, f.keys, baseOpts()); err != nil || claims["sub"] != "user-2" {
-		t.Fatalf("ES256: %v %v", claims, err)
+	es, err := jose.Sign(f.ecKey, "ec1", "JWT", map[string]any{"iss": "http://keycloak:8180/realms/x/", "sub": "user-2", "aud": []string{"account", "client"}, "exp": exp, "nbf": float64(now.Add(30 * time.Second).Unix())})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
 	}
-	azp, _ := jose.Sign(f.ecKey, "ec1", "JWT", map[string]any{"iss": "http://keycloak:8180/realms/x", "azp": "client", "exp": exp})
-	if _, err := VerifyToken(azp, f.keys, baseOpts()); err != nil {
-		t.Fatalf("azp fallback: %v", err)
+	if esClaims, esErr := VerifyToken(es, f.keys, baseOpts()); esErr != nil || esClaims["sub"] != "user-2" {
+		t.Fatalf("ES256: %v %v", esClaims, esErr)
+	}
+	azp, err := jose.Sign(f.ecKey, "ec1", "JWT", map[string]any{"iss": "http://keycloak:8180/realms/x", "azp": "client", "exp": exp})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
+	if _, azpErr := VerifyToken(azp, f.keys, baseOpts()); azpErr != nil {
+		t.Fatalf("azp fallback: %v", azpErr)
 	}
 	noClient := baseOpts()
 	noClient.ClientID = ""
 	noClient.Now = time.Time{}
-	fresh, _ := jose.Sign(f.ecKey, "ec1", "JWT", map[string]any{"iss": "http://keycloak:8180/realms/x", "exp": float64(time.Now().Add(time.Hour).Unix())})
+	fresh, err := jose.Sign(f.ecKey, "ec1", "JWT", map[string]any{"iss": "http://keycloak:8180/realms/x", "exp": float64(time.Now().Add(time.Hour).Unix())})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
 	if _, err := VerifyToken(fresh, f.keys, noClient); err != nil {
 		t.Fatalf("no client id, wall clock: %v", err)
 	}
@@ -175,10 +202,16 @@ func TestVerifyTokenRejects(t *testing.T) {
 		}
 		return out
 	}
-	other, _ := rsa.GenerateKey(rand.Reader, 2048)
+	other, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
 	tampered := signRS256(t, f.rsaKey, "k1", base)
 	parts := strings.Split(tampered, ".")
-	sig, _ := base64.RawURLEncoding.DecodeString(parts[2])
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		t.Fatalf("base64.RawURLEncoding.DecodeString: %v", err)
+	}
 	sig[len(sig)/2] ^= 0xff
 	tampered = parts[0] + "." + parts[1] + "." + b64u(sig)
 	strict := baseOpts()
@@ -226,11 +259,22 @@ func FuzzParseDiscovery(f *testing.F) {
 }
 
 func FuzzParseToken(f *testing.F) {
-	key, _ := jose.GenerateKey(jose.ES256)
-	pub, _ := jose.PublicJWK(key, "k")
-	tok, _ := jose.Sign(key, "k", "JWT", map[string]any{"iss": "i", "exp": float64(now.Add(time.Hour).Unix()), "aud": "c"})
+	key, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		f.Fatalf("jose.GenerateKey: %v", err)
+	}
+	pub, err := jose.PublicJWK(key, "k")
+	if err != nil {
+		f.Fatalf("jose.PublicJWK: %v", err)
+	}
+	tok, err := jose.Sign(key, "k", "JWT", map[string]any{"iss": "i", "exp": float64(now.Add(time.Hour).Unix()), "aud": "c"})
+	if err != nil {
+		f.Fatalf("jose.Sign: %v", err)
+	}
 	f.Add(tok)
 	f.Fuzz(func(t *testing.T, tok string) {
-		_, _ = VerifyToken(tok, jose.JWKS{Keys: []jose.JWK{pub}}, TokenOptions{Issuers: []string{"i"}, ClientID: "c", Now: now})
+		if _, err := VerifyToken(tok, jose.JWKS{Keys: []jose.JWK{pub}}, TokenOptions{Issuers: []string{"i"}, ClientID: "c", Now: now}); err != nil && err.Error() == "" {
+			t.Fatalf("VerifyToken must describe the failure")
+		}
 	})
 }

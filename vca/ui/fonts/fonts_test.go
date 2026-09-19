@@ -41,12 +41,16 @@ func TestDefaultFilesAreShipped(t *testing.T) {
 		}
 		total += st.Size()
 		head := make([]byte, 4)
-		f, err := os.Open(filepath.Join(staticFonts, name))
+		f, err := os.Open(filepath.Clean(filepath.Join(staticFonts, name)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _ = f.Read(head)
-		_ = f.Close()
+		if _, readErr := f.Read(head); readErr != nil {
+			t.Errorf("read %s: %v", name, readErr)
+		}
+		if closeErr := f.Close(); closeErr != nil {
+			t.Errorf("close %s: %v", name, closeErr)
+		}
 		if string(head) != "wOF2" {
 			t.Errorf("%s is not a woff2 file", name)
 		}
@@ -54,12 +58,15 @@ func TestDefaultFilesAreShipped(t *testing.T) {
 	if total > 1<<20 {
 		t.Errorf("font pack is %d bytes, want under 1 MiB", total)
 	}
-	licences, _ := filepath.Glob(filepath.Join(staticFonts, "LICENSE.*.txt"))
+	licences, globErr := filepath.Glob(filepath.Join(staticFonts, "LICENSE.*.txt"))
+	if globErr != nil {
+		t.Fatalf("glob licences: %v", globErr)
+	}
 	if len(licences) != 4 {
 		t.Errorf("want 4 font licence files, got %d", len(licences))
 	}
 	for _, l := range licences {
-		b, err := os.ReadFile(l)
+		b, err := os.ReadFile(filepath.Clean(l))
 		if err != nil {
 			t.Fatal(err)
 		}

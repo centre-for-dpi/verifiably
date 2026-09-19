@@ -5,6 +5,7 @@ package delegation
 import (
 	"encoding/json"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
@@ -165,7 +166,7 @@ func DelegationClaims(d DelegationSpec) map[string]string {
 		deleg["controller"] = d.Issuer
 	}
 	// A map of strings, bools and string lists always encodes.
-	b, _ := json.Marshal(deleg)
+	b := anyval.Must(json.Marshal(deleg))
 	out := map[string]string{"onBehalfOf": d.OnBehalfOf, "delegation": string(b)}
 	if d.Role != "" {
 		out["role"] = d.Role

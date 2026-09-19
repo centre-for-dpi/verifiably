@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/fxamacker/cbor/v2"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // MaxDecodedBytes bounds the inflated size Decode accepts.
@@ -38,13 +40,13 @@ func Encode(data []byte) (string, error) {
 	var v any
 	if json.Unmarshal(data, &v) == nil {
 		// JSON values always encode as CBOR.
-		payload, _ = cbor.Marshal(v)
+		payload = anyval.Must(cbor.Marshal(v))
 	}
 	var buf bytes.Buffer
 	// Writes to a bytes.Buffer cannot fail.
-	w, _ := zlib.NewWriterLevel(&buf, zlib.BestCompression)
-	_, _ = w.Write(payload)
-	_ = w.Close()
+	w := anyval.Must(zlib.NewWriterLevel(&buf, zlib.BestCompression))
+	anyval.Must(w.Write(payload))
+	anyval.MustDo(w.Close())
 	return EncodeBase45(buf.Bytes()), nil
 }
 
@@ -71,7 +73,8 @@ func Decode(s string) ([]byte, error) {
 		return nil, errors.New("pixelpass: payload exceeds MaxDecodedBytes")
 	}
 	var v any
-	if decMode().Unmarshal(inflated, &v) != nil {
+	if !decodesAsCBOR(inflated, &v) {
+		// The payload is not CBOR. Return the inflated bytes as they are.
 		return inflated, nil
 	}
 	js, err := json.Marshal(v)
@@ -81,11 +84,16 @@ func Decode(s string) ([]byte, error) {
 	return js, nil
 }
 
+// decodesAsCBOR reports whether raw decodes as CBOR into v.
+func decodesAsCBOR(raw []byte, v any) bool {
+	return decMode().Unmarshal(raw, v) == nil
+}
+
 // decMode decodes CBOR maps as map[string]any so encoding/json can
 // marshal them. PixelPass payloads come from JSON, so keys are strings.
 func decMode() cbor.DecMode {
 	// The options are valid constants, so DecMode cannot fail.
-	dm, _ := cbor.DecOptions{DefaultMapType: reflect.TypeOf(map[string]any(nil))}.DecMode()
+	dm := anyval.Must(cbor.DecOptions{DefaultMapType: reflect.TypeOf(map[string]any(nil))}.DecMode())
 	return dm
 }
 

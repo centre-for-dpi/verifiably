@@ -116,7 +116,7 @@ func TestSetupReadsTheProcessEnvironment(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
 	}
-	data, err := os.ReadFile(filepath.Join(root, "deploy", "admin-waltid", EnvFileName))
+	data, err := os.ReadFile(filepath.Clean(filepath.Join(root, "deploy", "admin-waltid", EnvFileName)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +409,10 @@ func TestAdminCommandCallsTheService(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		_, _ = io.WriteString(w, `{"tenants":[]}`)
+		_, errAssign := io.WriteString(w, `{"tenants":[]}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	root := t.TempDir()
@@ -428,7 +431,10 @@ func TestAdminCommandCallsTheService(t *testing.T) {
 
 func TestAdminCommandReadsTheURLFromTheEnvironment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{}`)
+		_, errAssign := io.WriteString(w, `{}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	getenv := func(k string) string {
@@ -447,7 +453,10 @@ func TestAdminCommandReadsTheSavedToken(t *testing.T) {
 	var gotAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		_, _ = io.WriteString(w, `{}`)
+		_, errAssign := io.WriteString(w, `{}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	root := t.TempDir()
@@ -468,9 +477,15 @@ func TestAdminCommandReadsTheSavedToken(t *testing.T) {
 func TestAdminCommandReadsTheRequestFile(t *testing.T) {
 	var gotBody string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("io.ReadAll: %v", err)
+		}
 		gotBody = string(body)
-		_, _ = io.WriteString(w, `{}`)
+		_, errAssign := io.WriteString(w, `{}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	root := t.TempDir()
@@ -496,7 +511,10 @@ func TestAdminCommandReadsTheRequestFile(t *testing.T) {
 func TestAdminCommandReportsAServiceError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = io.WriteString(w, `{"code":"not_found","message":"no tenant"}`)
+		_, errAssign := io.WriteString(w, `{"code":"not_found","message":"no tenant"}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	status, _, errOut := run(t, Environment{Root: t.TempDir()},
@@ -510,7 +528,10 @@ func TestAdminBindIsOneCommand(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		_, _ = io.WriteString(w, `{}`)
+		_, errAssign := io.WriteString(w, `{}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	status, _, errOut := run(t, Environment{Root: t.TempDir()},
@@ -584,7 +605,10 @@ func TestAdminHelpCallsListCommands(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		_, _ = io.WriteString(w, `{"commands":[{"path":"admin trust add"}]}`)
+		_, errAssign := io.WriteString(w, `{"commands":[{"path":"admin trust add"}]}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	status, out, errOut := run(t, Environment{Root: t.TempDir()},
@@ -604,7 +628,10 @@ func TestAdminTrustAddCallsUpsert(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		_, _ = io.WriteString(w, `{}`)
+		_, errAssign := io.WriteString(w, `{}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	status, _, errOut := run(t, Environment{Root: t.TempDir()},
@@ -627,9 +654,9 @@ func TestManWritesOnePagePerCommand(t *testing.T) {
 	if !strings.Contains(out, "wrote the man pages") {
 		t.Errorf("out = %s", out)
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
+	entries, entriesErr := os.ReadDir(dir)
+	if entriesErr != nil {
+		t.Fatal(entriesErr)
 	}
 	if len(entries) < 30 {
 		t.Errorf("got %d man pages", len(entries))
@@ -639,7 +666,7 @@ func TestManWritesOnePagePerCommand(t *testing.T) {
 			t.Errorf("%s is missing: %v", name, err)
 		}
 	}
-	page, err := os.ReadFile(filepath.Join(dir, "vca-admin-trust-add.1"))
+	page, err := os.ReadFile(filepath.Clean(filepath.Join(dir, "vca-admin-trust-add.1")))
 	if err != nil {
 		t.Fatal(err)
 	}

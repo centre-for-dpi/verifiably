@@ -13,6 +13,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 func mustKey(t *testing.T, alg Algorithm) any {
@@ -94,14 +96,20 @@ func TestSignNoKid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hdr, _ := PeekHeader(tok)
+	hdr, err := PeekHeader(tok)
+	if err != nil {
+		t.Fatalf("PeekHeader: %v", err)
+	}
 	if hdr.Kid != "" || hdr.Typ != "statuslist+jwt" {
 		t.Fatalf("header = %+v", hdr)
 	}
 }
 
 func TestSignErrors(t *testing.T) {
-	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
 	cases := []struct {
 		name   string
 		key    any
@@ -150,9 +158,12 @@ func TestPeekErrors(t *testing.T) {
 }
 
 func TestVerifyRejects(t *testing.T) {
-	key := mustKey(t, ES256).(*ecdsa.PrivateKey)
-	other := mustKey(t, ES256).(*ecdsa.PrivateKey)
-	tok, _ := Sign(key, "k1", "JWT", map[string]any{"a": 1})
+	key := anyval.As[*ecdsa.PrivateKey](mustKey(t, ES256))
+	other := anyval.As[*ecdsa.PrivateKey](mustKey(t, ES256))
+	tok, err := Sign(key, "k1", "JWT", map[string]any{"a": 1})
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
 
 	if _, _, err := Verify(tok, &other.PublicKey, []Algorithm{ES256}); !errors.Is(err, ErrSignatureInvalid) {
 		t.Fatalf("wrong key: %v", err)
@@ -172,25 +183,43 @@ func TestVerifyRejects(t *testing.T) {
 func TestVerifyWithJWKS(t *testing.T) {
 	k1 := mustKey(t, ES256)
 	k2 := mustKey(t, EdDSA)
-	j1, _ := PublicJWK(k1, "k1")
-	j2, _ := PublicJWK(k2, "k2")
+	j1, j1Err := PublicJWK(k1, "k1")
+	if j1Err != nil {
+		t.Fatalf("PublicJWK: %v", j1Err)
+	}
+	j2, j2Err := PublicJWK(k2, "k2")
+	if j2Err != nil {
+		t.Fatalf("PublicJWK: %v", j2Err)
+	}
 	set := JWKS{Keys: []JWK{j1, j2}}
 	algs := []Algorithm{ES256, EdDSA}
 
-	withKid, _ := Sign(k2, "k2", "JWT", map[string]any{"x": 1})
+	withKid, withKidErr := Sign(k2, "k2", "JWT", map[string]any{"x": 1})
+	if withKidErr != nil {
+		t.Fatalf("Sign: %v", withKidErr)
+	}
 	if _, hdr, err := VerifyWithJWKS(withKid, set, algs); err != nil || hdr.Kid != "k2" {
 		t.Fatalf("kid match: %v %+v", err, hdr)
 	}
-	noKid, _ := Sign(k1, "", "JWT", map[string]any{"x": 1})
-	if _, _, err := VerifyWithJWKS(noKid, set, algs); err != nil {
-		t.Fatalf("no kid tries all keys: %v", err)
+	noKid, err := Sign(k1, "", "JWT", map[string]any{"x": 1})
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
 	}
-	unknownKid, _ := Sign(k1, "zz", "JWT", map[string]any{"x": 1})
-	if _, _, err := VerifyWithJWKS(unknownKid, set, algs); !errors.Is(err, ErrNoKey) {
-		t.Fatalf("unknown kid: %v", err)
+	if _, _, gotErr := VerifyWithJWKS(noKid, set, algs); gotErr != nil {
+		t.Fatalf("no kid tries all keys: %v", gotErr)
+	}
+	unknownKid, err := Sign(k1, "zz", "JWT", map[string]any{"x": 1})
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	if _, _, gotErr := VerifyWithJWKS(unknownKid, set, algs); !errors.Is(gotErr, ErrNoKey) {
+		t.Fatalf("unknown kid: %v", gotErr)
 	}
 	k3 := mustKey(t, ES256)
-	foreign, _ := Sign(k3, "", "JWT", map[string]any{"x": 1})
+	foreign, err := Sign(k3, "", "JWT", map[string]any{"x": 1})
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
 	if _, _, err := VerifyWithJWKS(foreign, set, algs); !errors.Is(err, ErrSignatureInvalid) {
 		t.Fatalf("foreign key: %v", err)
 	}
@@ -201,19 +230,25 @@ func TestVerifyWithJWKS(t *testing.T) {
 
 func TestJWKParse(t *testing.T) {
 	key := mustKey(t, ES256)
-	pub, _ := PublicJWK(key, "kid-1")
-	raw, _ := json.Marshal(pub)
+	pub, pubErr := PublicJWK(key, "kid-1")
+	if pubErr != nil {
+		t.Fatalf("PublicJWK: %v", pubErr)
+	}
+	raw, rawErr := json.Marshal(pub)
+	if rawErr != nil {
+		t.Fatalf("json.Marshal: %v", rawErr)
+	}
 	k, err := ParseJWK(raw)
 	if err != nil || k.KeyID != "kid-1" {
 		t.Fatalf("ParseJWK: %v %+v", err, k)
 	}
-	if _, err := ParseJWK([]byte("nope")); err == nil {
+	if _, gotErr := ParseJWK([]byte("nope")); gotErr == nil {
 		t.Fatal("bad json must fail")
 	}
-	if _, err := ParseJWK([]byte(`{"kty":"EC","crv":"P-256","x":"AA","y":"AA"}`)); err == nil {
+	if _, gotErr := ParseJWK([]byte(`{"kty":"EC","crv":"P-256","x":"AA","y":"AA"}`)); gotErr == nil {
 		t.Fatal("invalid point must fail")
 	}
-	if _, err := ParseJWK([]byte(`{"kty":"RSA","n":"AQAB","e":"AA"}`)); err == nil {
+	if _, gotErr := ParseJWK([]byte(`{"kty":"RSA","n":"AQAB","e":"AA"}`)); gotErr == nil {
 		t.Fatal("zero exponent must fail")
 	}
 
@@ -231,16 +266,22 @@ func TestJWKParse(t *testing.T) {
 }
 
 func TestPublicJWK(t *testing.T) {
-	rsaKey, _ := rsa.GenerateKey(rand.Reader, 1024)
-	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	ed := mustKey(t, EdDSA).(ed25519.PrivateKey)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
+	ed := anyval.As[ed25519.PrivateKey](mustKey(t, EdDSA))
 	cases := []struct {
 		name string
 		key  any
 		alg  string
 	}{
 		{"ecdsa private", mustKey(t, ES256), "ES256"},
-		{"ecdsa public", &mustKey(t, ES256).(*ecdsa.PrivateKey).PublicKey, "ES256"},
+		{"ecdsa public", &anyval.As[*ecdsa.PrivateKey](mustKey(t, ES256)).PublicKey, "ES256"},
 		{"ed private", ed, "EdDSA"},
 		{"ed public", ed.Public(), "EdDSA"},
 		{"rsa private", rsaKey, "RS256"},
@@ -264,26 +305,32 @@ func TestPublicJWK(t *testing.T) {
 }
 
 func TestThumbprintAndMaps(t *testing.T) {
-	jwk, _ := PublicJWK(mustKey(t, ES256), "")
+	jwk, jwkErr := PublicJWK(mustKey(t, ES256), "")
+	if jwkErr != nil {
+		t.Fatalf("PublicJWK: %v", jwkErr)
+	}
 	tp, err := Thumbprint(jwk)
 	if err != nil || len(tp) != 43 {
 		t.Fatalf("Thumbprint = %q, %v", tp, err)
 	}
-	if _, err := Thumbprint(JWK{Key: "nope"}); err == nil {
+	if _, gotErr := Thumbprint(JWK{Key: "nope"}); gotErr == nil {
 		t.Fatal("bad key must fail")
 	}
 	m, err := JWKToMap(jwk)
 	if err != nil || m["kty"] != "EC" {
 		t.Fatalf("JWKToMap = %v, %v", m, err)
 	}
-	if _, err := JWKToMap(JWK{Key: "nope"}); err == nil {
+	if _, gotErr := JWKToMap(JWK{Key: "nope"}); gotErr == nil {
 		t.Fatal("bad key must fail")
 	}
 	back, err := JWKFromMap(m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tp2, _ := Thumbprint(back)
+	tp2, err := Thumbprint(back)
+	if err != nil {
+		t.Fatalf("Thumbprint: %v", err)
+	}
 	if tp2 != tp {
 		t.Fatal("thumbprint changed across map round trip")
 	}
@@ -293,29 +340,50 @@ func TestThumbprintAndMaps(t *testing.T) {
 }
 
 func FuzzParseJWK(f *testing.F) {
-	jwk, _ := PublicJWK(mustKeyF(f), "k")
-	raw, _ := json.Marshal(jwk)
+	jwk, err := PublicJWK(mustKeyF(f), "k")
+	if err != nil {
+		f.Fatalf("PublicJWK: %v", err)
+	}
+	raw, err := json.Marshal(jwk)
+	if err != nil {
+		f.Fatalf("json.Marshal: %v", err)
+	}
 	f.Add(raw)
 	f.Add([]byte(`{"kty":"RSA","n":"AQAB","e":"AQAB"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if k, err := ParseJWK(data); err == nil {
-			_, _ = Thumbprint(k)
+			if _, err := Thumbprint(k); err != nil && err.Error() == "" {
+				t.Fatalf("Thumbprint must describe the failure")
+			}
 		}
-		_, _ = ParseJWKS(data)
+		if _, err := ParseJWKS(data); err != nil && err.Error() == "" {
+			t.Fatalf("ParseJWKS must describe the failure")
+		}
 	})
 }
 
 func FuzzParseToken(f *testing.F) {
 	key := mustKeyF(f)
-	tok, _ := Sign(key, "k", "JWT", map[string]any{"a": "b"})
+	tok, err := Sign(key, "k", "JWT", map[string]any{"a": "b"})
+	if err != nil {
+		f.Fatalf("Sign: %v", err)
+	}
 	f.Add(tok)
 	f.Add("a.b.c")
 	f.Fuzz(func(t *testing.T, tok string) {
-		_, _ = PeekHeader(tok)
-		_, _ = PeekPayload(tok)
-		pub, _ := PublicJWK(key, "k")
-		_, _, _ = Verify(tok, pub.Key, SigningAlgorithms)
-		_, _, _ = VerifyWithJWKS(tok, JWKS{Keys: []JWK{pub}}, SigningAlgorithms)
+		if _, err := PeekHeader(tok); err != nil && err.Error() == "" {
+			t.Fatalf("PeekHeader must describe the failure")
+		}
+		if _, err := PeekPayload(tok); err != nil && err.Error() == "" {
+			t.Fatalf("PeekPayload must describe the failure")
+		}
+		pub := anyval.Must(PublicJWK(key, "k"))
+		if _, _, err := Verify(tok, pub.Key, SigningAlgorithms); err != nil && err.Error() == "" {
+			t.Fatalf("Verify must describe the failure")
+		}
+		if _, _, err := VerifyWithJWKS(tok, JWKS{Keys: []JWK{pub}}, SigningAlgorithms); err != nil && err.Error() == "" {
+			t.Fatalf("VerifyWithJWKS must describe the failure")
+		}
 	})
 }
 

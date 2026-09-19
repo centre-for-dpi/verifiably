@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
@@ -31,11 +32,14 @@ func fakeWaltid(t *testing.T, calls *int) *httptest.Server {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		did, _ := body["did"].(map[string]any)
-		cfg, _ := did["config"].(map[string]any)
+		did := anyval.As[map[string]any](body["did"])
+		cfg := anyval.As[map[string]any](did["config"])
 		*calls++
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"issuerDid":"did:web:`+cfg["domain"].(string)+`:issuer","issuerKey":{"kty":"EC"}}`)
+		_, errAssign := io.WriteString(w, `{"issuerDid":"did:web:`+anyval.As[string](cfg["domain"])+`:issuer","issuerKey":{"kty":"EC"}}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 }
 
@@ -98,7 +102,10 @@ func TestBootstrapWaltidReportsServerProblems(t *testing.T) {
 		t.Fatal("a 500 answer passed")
 	}
 	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{}`)
+		_, errAssign := io.WriteString(w, `{}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer empty.Close()
 	if _, err := BootstrapWaltid(context.Background(), waltidOptions(t, empty.URL, &out)); err == nil {
@@ -173,16 +180,25 @@ func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
 		switch {
 		case r.URL.Path == "/realms/master/protocol/openid-connect/token":
 			if state.badToken {
-				_, _ = io.WriteString(w, `{}`)
+				_, errAssign := io.WriteString(w, `{}`)
+				if errAssign != nil {
+					t.Fatalf("io.WriteString: %v", errAssign)
+				}
 				return
 			}
-			_, _ = io.WriteString(w, `{"access_token":"a-token"}`)
+			_, errAssign2 := io.WriteString(w, `{"access_token":"a-token"}`)
+			if errAssign2 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign2)
+			}
 		case r.URL.Path == "/admin/realms/"+DefaultRealm && r.Method == http.MethodGet:
 			if !state.realmExists {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			_, _ = io.WriteString(w, `{"realm":"`+DefaultRealm+`"}`)
+			_, errAssign3 := io.WriteString(w, `{"realm":"`+DefaultRealm+`"}`)
+			if errAssign3 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign3)
+			}
 		case r.URL.Path == "/admin/realms/"+DefaultRealm && r.Method == http.MethodPut:
 			state.updated++
 			w.WriteHeader(http.StatusNoContent)
@@ -276,7 +292,10 @@ func TestBootstrapInjiNeedsTheGeneratedRealm(t *testing.T) {
 func TestBootstrapInjiReportsAnUnexpectedStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/token") {
-			_, _ = io.WriteString(w, `{"access_token":"a-token"}`)
+			_, errAssign := io.WriteString(w, `{"access_token":"a-token"}`)
+			if errAssign != nil {
+				t.Fatalf("io.WriteString: %v", errAssign)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusForbidden)
@@ -299,7 +318,10 @@ func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v1/auth/signin":
-			_, _ = io.WriteString(w, `{"data":{"access_token":"a-token"}}`)
+			_, errAssign := io.WriteString(w, `{"data":{"access_token":"a-token"}}`)
+			if errAssign != nil {
+				t.Fatalf("io.WriteString: %v", errAssign)
+			}
 		case r.URL.Path == "/v1/orgs" && r.Method == http.MethodGet:
 			out := struct {
 				Data struct {
@@ -309,14 +331,21 @@ func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 			for _, name := range state.orgs {
 				out.Data.Organizations = append(out.Data.Organizations, credeblOrg{ID: name, Name: name})
 			}
-			_ = json.NewEncoder(w).Encode(out)
+			if err := json.NewEncoder(w).Encode(out); err != nil {
+				t.Fatalf("json.NewEncoder: %v", err)
+			}
 		case r.URL.Path == "/v1/orgs" && r.Method == http.MethodPost:
 			var body map[string]string
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("json.NewDecoder: %v", err)
+			}
 			state.orgs = append(state.orgs, body["name"])
 			state.created++
 			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `{"data":{"id":"1"}}`)
+			_, errAssign2 := io.WriteString(w, `{"data":{"id":"1"}}`)
+			if errAssign2 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign2)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -377,7 +406,10 @@ func TestBootstrapCredeblUsesTheNamedOrganisation(t *testing.T) {
 func TestBootstrapCredeblReportsProblems(t *testing.T) {
 	var out bytes.Buffer
 	noToken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{"data":{}}`)
+		_, errAssign := io.WriteString(w, `{"data":{}}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer noToken.Close()
 	if _, err := BootstrapCredebl(context.Background(), credeblOptions(noToken.URL, &out)); err == nil {
@@ -386,10 +418,16 @@ func TestBootstrapCredeblReportsProblems(t *testing.T) {
 
 	badList := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/signin" {
-			_, _ = io.WriteString(w, `{"data":{"access_token":"a-token"}}`)
+			_, errAssign2 := io.WriteString(w, `{"data":{"access_token":"a-token"}}`)
+			if errAssign2 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign2)
+			}
 			return
 		}
-		_, _ = io.WriteString(w, `not json`)
+		_, errAssign3 := io.WriteString(w, `not json`)
+		if errAssign3 != nil {
+			t.Fatalf("io.WriteString: %v", errAssign3)
+		}
 	}))
 	defer badList.Close()
 	if _, err := BootstrapCredebl(context.Background(), credeblOptions(badList.URL, &out)); err == nil {
@@ -399,9 +437,15 @@ func TestBootstrapCredeblReportsProblems(t *testing.T) {
 	failCreate := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v1/auth/signin":
-			_, _ = io.WriteString(w, `{"data":{"access_token":"a-token"}}`)
+			_, errAssign4 := io.WriteString(w, `{"data":{"access_token":"a-token"}}`)
+			if errAssign4 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign4)
+			}
 		case r.Method == http.MethodGet:
-			_, _ = io.WriteString(w, `{"data":{"organizations":[]}}`)
+			_, errAssign5 := io.WriteString(w, `{"data":{"organizations":[]}}`)
+			if errAssign5 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign5)
+			}
 		default:
 			w.WriteHeader(http.StatusConflict)
 		}

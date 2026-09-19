@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // The file names of an export. An import writes the same names under
@@ -61,9 +63,9 @@ func (b Bundle) Files() (map[string][]byte, error) {
 	// Every document holds strings, numbers, times, and byte slices, so
 	// the encoder cannot fail.
 	out := map[string][]byte{}
-	issued, _ := json.Marshal(b.Issued)
+	issued := anyval.Must(json.Marshal(b.Issued))
 	out[IssuedFile] = issued
-	trust, _ := json.Marshal(b.Trust)
+	trust := anyval.Must(json.Marshal(b.Trust))
 	out[TrustFile] = trust
 	for dir, records := range map[string][]ListRecord{BitstringDir: b.Bitstring, TokenDir: b.Token} {
 		for _, rec := range records {
@@ -71,7 +73,7 @@ func (b Bundle) Files() (map[string][]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			data, _ := json.Marshal(rec)
+			data := anyval.Must(json.Marshal(rec))
 			out[path] = data
 		}
 	}
@@ -127,8 +129,8 @@ func Read(dir string) (Bundle, error) {
 		return Bundle{}, err
 	}
 	if len(issued) > 0 {
-		if err := json.Unmarshal(issued, &b.Issued); err != nil {
-			return Bundle{}, fmt.Errorf("%w: read %s: %w", ErrInput, IssuedFile, err)
+		if issuedErr := json.Unmarshal(issued, &b.Issued); issuedErr != nil {
+			return Bundle{}, fmt.Errorf("%w: read %s: %w", ErrInput, IssuedFile, issuedErr)
 		}
 	}
 	trust, err := readOptional(filepath.Join(dir, TrustFile))
@@ -137,8 +139,8 @@ func Read(dir string) (Bundle, error) {
 	}
 	b.Trust.Entries = map[string]TrustEntry{}
 	if len(trust) > 0 {
-		if err := json.Unmarshal(trust, &b.Trust); err != nil {
-			return Bundle{}, fmt.Errorf("%w: read %s: %w", ErrInput, TrustFile, err)
+		if trustErr := json.Unmarshal(trust, &b.Trust); trustErr != nil {
+			return Bundle{}, fmt.Errorf("%w: read %s: %w", ErrInput, TrustFile, trustErr)
 		}
 	}
 	if b.Bitstring, err = readLists(dir, BitstringDir); err != nil {

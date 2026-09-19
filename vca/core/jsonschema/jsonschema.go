@@ -24,6 +24,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // MaxRefDepth bounds the number of nested $ref hops.
@@ -100,7 +102,7 @@ func (s Schema) Property(name string) (map[string]any, bool) {
 	if !ok {
 		return nil, false
 	}
-	props, _ := obj["properties"].(map[string]any)
+	props := anyval.As[map[string]any](obj["properties"])
 	sub, ok := props[name].(map[string]any)
 	if !ok {
 		return nil, false
@@ -129,7 +131,9 @@ func (s Schema) Required() []string {
 func plainNumbers(v any) any {
 	switch x := v.(type) {
 	case json.Number:
-		f, _ := x.Float64()
+		f, rangeErr := x.Float64()
+		// A number out of range becomes an infinity, which validation reports.
+		anyval.Discard(rangeErr)
 		return f
 	case int:
 		return float64(x)
@@ -190,7 +194,7 @@ func readKeys(dec *json.Decoder) []string {
 		if err != nil {
 			return names
 		}
-		names = append(names, key.(string))
+		names = append(names, anyval.As[string](key))
 		var skip json.RawMessage
 		if err := dec.Decode(&skip); err != nil {
 			return names
@@ -330,7 +334,9 @@ func (v *validator) add(path, keyword, format string, args ...any) {
 // is a JSON Pointer into the document.
 func (s Schema) Resolve(ref string) (any, error) {
 	frag := strings.TrimPrefix(ref, "#")
-	frag, _ = url.PathUnescape(frag)
+	if unescaped, unescapeErr := url.PathUnescape(frag); unescapeErr == nil {
+		frag = unescaped
+	}
 	cur := s.root
 	if frag == "" {
 		return cur, nil
@@ -359,7 +365,7 @@ func (v *validator) walk(schema any, instance any, path string, depth int) {
 		}
 		return
 	}
-	obj := schema.(map[string]any)
+	obj := anyval.As[map[string]any](schema)
 	if ref, has := obj["$ref"].(string); has {
 		if depth >= MaxRefDepth {
 			v.add(path, "$ref", "the schema reference chain is too deep")
@@ -426,7 +432,7 @@ func (v *validator) checkNumber(obj map[string]any, x float64, path string) {
 }
 
 func (v *validator) checkObject(obj map[string]any, x map[string]any, path string, depth int) {
-	props, _ := obj["properties"].(map[string]any)
+	props := anyval.As[map[string]any](obj["properties"])
 	for _, name := range stringList(obj["required"]) {
 		if _, has := x[name]; !has {
 			v.add(path+"/"+escape(name), "required", "the property %s is required", name)
@@ -560,14 +566,14 @@ func containsValue(list []any, v any) bool {
 func describe(list []any) string {
 	parts := make([]string, 0, len(list))
 	for _, e := range list {
-		b, _ := json.Marshal(e)
+		b := anyval.OrZero(json.Marshal(e))
 		parts = append(parts, string(b))
 	}
 	return strings.Join(parts, ", ")
 }
 
 func stringList(v any) []string {
-	list, _ := v.([]any)
+	list := anyval.As[[]any](v)
 	out := make([]string, 0, len(list))
 	for _, e := range list {
 		if s, ok := e.(string); ok {

@@ -79,8 +79,8 @@ func TestSpecVectors(t *testing.T) {
 	if !bytes.Equal(two.Bytes(), []byte{0xc9, 0x44, 0xf9}) {
 		t.Fatalf("bits=2 bytes = %x", two.Bytes())
 	}
-	if v, _ := two.Get(3); v != 3 {
-		t.Fatalf("Get(3) = %d", v)
+	if got := mustGet(t, two, 3); got != 3 {
+		t.Fatalf("Get(3) = %d", got)
 	}
 }
 
@@ -88,13 +88,13 @@ func TestSetGetAllWidths(t *testing.T) {
 	for _, bits := range []int{1, 2, 4, 8} {
 		l := mustNew(t, bits, 20)
 		maxV := uint8(1<<uint(bits) - 1)
-		for i := 0; i < 20; i++ {
-			if err := l.Set(i, uint8(i)&maxV); err != nil {
+		for i := uint8(0); i < 20; i++ {
+			if err := l.Set(int(i), i&maxV); err != nil {
 				t.Fatal(err)
 			}
 		}
-		for i := 0; i < 20; i++ {
-			if v, err := l.Get(i); err != nil || v != uint8(i)&maxV {
+		for i := uint8(0); i < 20; i++ {
+			if v, err := l.Get(int(i)); err != nil || v != i&maxV {
 				t.Fatalf("bits=%d Get(%d) = %d, %v", bits, i, v, err)
 			}
 		}
@@ -118,8 +118,13 @@ func TestSetGetAllWidths(t *testing.T) {
 func TestDecodeErrors(t *testing.T) {
 	var bomb bytes.Buffer
 	w := zlib.NewWriter(&bomb)
-	_, _ = w.Write(make([]byte, MaxDecodedBytes+1))
-	_ = w.Close()
+	_, errAssign := w.Write(make([]byte, MaxDecodedBytes+1))
+	if errAssign != nil {
+		t.Fatalf("w.Write: %v", errAssign)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("w.Close: %v", err)
+	}
 	b64 := base64.RawURLEncoding.EncodeToString
 	cases := []struct {
 		name string
@@ -154,16 +159,18 @@ func sampleClaims() Claims {
 
 func TestJWTClaimsRoundTrip(t *testing.T) {
 	l := mustNew(t, 1, 16)
-	_ = l.Set(3, Invalid)
+	if err := l.Set(3, Invalid); err != nil {
+		t.Fatalf("l.Set: %v", err)
+	}
 	m := JWTClaims(sampleClaims(), l)
 	if m["ttl"] != int64(43200) || m["exp"] == nil {
 		t.Fatalf("claims = %v", m)
 	}
 	// Simulate a JSON round trip: numbers become float64.
 	js := map[string]any{
-		"iss": m["iss"], "sub": m["sub"], "iat": float64(m["iat"].(int64)),
-		"exp": float64(m["exp"].(int64)), "ttl": float64(43200),
-		"status_list": map[string]any{"bits": float64(1), "lst": m["status_list"].(map[string]any)["lst"],
+		"iss": m["iss"], "sub": m["sub"], "iat": float64(mustInt64(t, m["iat"])),
+		"exp": float64(mustInt64(t, m["exp"])), "ttl": float64(43200),
+		"status_list": map[string]any{"bits": float64(1), "lst": mustMap(t, m["status_list"])["lst"],
 			"aggregation_uri": "https://issuer.example/status/all"},
 	}
 	c, got, err := ParseJWTClaims(js)
@@ -173,7 +180,7 @@ func TestJWTClaimsRoundTrip(t *testing.T) {
 	if c != sampleClaims() {
 		t.Fatalf("claims = %+v", c)
 	}
-	if v, _ := got.Get(3); v != Invalid {
+	if mustGet(t, got, 3) != Invalid {
 		t.Fatal("bit 3 must be Invalid")
 	}
 	// Minimal claims: no exp, ttl or aggregation_uri.
@@ -181,7 +188,7 @@ func TestJWTClaimsRoundTrip(t *testing.T) {
 	if _, ok := min["exp"]; ok {
 		t.Fatal("exp must be omitted")
 	}
-	if _, ok := min["status_list"].(map[string]any)["aggregation_uri"]; ok {
+	if _, ok := mustMap(t, min["status_list"])["aggregation_uri"]; ok {
 		t.Fatal("aggregation_uri must be omitted")
 	}
 	bad := []struct {
@@ -233,4 +240,34 @@ func FuzzParseDecode(f *testing.F) {
 			t.Fatalf("re-encode must decode: %v", err)
 		}
 	})
+}
+
+// mustGet returns the status at index i. It stops the test when Get fails.
+func mustGet(t *testing.T, l *List, i int) uint8 {
+	t.Helper()
+	v, err := l.Get(i)
+	if err != nil {
+		t.Fatalf("Get(%d): %v", i, err)
+	}
+	return v
+}
+
+// mustInt64 returns the int64 in v. It stops the test for any other type.
+func mustInt64(t *testing.T, v any) int64 {
+	t.Helper()
+	n, isInt := v.(int64)
+	if !isInt {
+		t.Fatalf("value %v is not an int64", v)
+	}
+	return n
+}
+
+// mustMap returns the object in v. It stops the test for any other type.
+func mustMap(t *testing.T, v any) map[string]any {
+	t.Helper()
+	m, isObject := v.(map[string]any)
+	if !isObject {
+		t.Fatalf("value %v is not an object", v)
+	}
+	return m
 }

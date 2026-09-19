@@ -18,6 +18,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // A4 page size in points.
@@ -194,9 +196,9 @@ func resourceName(font Font) string {
 func deflate(in []byte) []byte {
 	var buf bytes.Buffer
 	// Writes to a bytes.Buffer never fail.
-	w, _ := zlib.NewWriterLevel(&buf, zlib.BestCompression)
-	_, _ = w.Write(in)
-	_ = w.Close()
+	w := anyval.Must(zlib.NewWriterLevel(&buf, zlib.BestCompression))
+	anyval.Must(w.Write(in))
+	anyval.MustDo(w.Close())
 	return buf.Bytes()
 }
 

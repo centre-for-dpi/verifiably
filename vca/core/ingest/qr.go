@@ -13,6 +13,8 @@ import (
 
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // ErrNoQRCode reports that no frame held a QR code.
@@ -22,10 +24,10 @@ var ErrNoQRCode = errors.New("ingest: the upload holds no QR code")
 // (ISO/IEC 18004, ADR-023 decision 3).
 func DecodeQRImage(img image.Image) (string, error) {
 	// The reader builds the bitmap from the image and never fails here.
-	bitmap, _ := gozxing.NewBinaryBitmapFromImage(img)
+	bitmap := anyval.Must(gozxing.NewBinaryBitmapFromImage(img))
 	result, err := qrcode.NewQRCodeReader().Decode(bitmap, nil)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrNoQRCode, err)
+		return "", fmt.Errorf("%w: %w", ErrNoQRCode, err)
 	}
 	return result.GetText(), nil
 }

@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/token"
 )
@@ -119,7 +120,7 @@ func NewRecord(id string, kind Kind, purpose Purpose, bitsPerEntry, size int, is
 	}
 	allocated := make([]byte, (size+7)/8)
 	for i := size; i < len(allocated)*8; i++ {
-		allocated[i/8] |= 1 << (7 - uint(i%8))
+		allocated[i/8] |= 1 << (7 - i%8)
 	}
 	return Record{
 		ID: id, Kind: kind, Purpose: purpose, Bits: bitsPerEntry, Size: size,
@@ -135,7 +136,7 @@ func (r Record) IsAllocated(i int) bool {
 	if i < 0 || i >= r.Size {
 		return false
 	}
-	return r.Allocated[i/8]&(1<<(7-uint(i%8))) != 0
+	return r.Allocated[i/8]&(1<<(7-i%8)) != 0
 }
 
 // Allocate picks one free index at random and marks it allocated
@@ -161,7 +162,7 @@ func (r *Record) Allocate(rnd io.Reader) (int, error) {
 			continue
 		}
 		for bit := 0; bit < 8; bit++ {
-			mask := byte(1 << (7 - uint(bit)))
+			mask := byte(1 << (7 - bit))
 			if b&mask != 0 {
 				continue
 			}
@@ -223,11 +224,11 @@ func (r *Record) Set(i, v int, now time.Time) (int, error) {
 		}
 		l := bitstring.FromBytes(r.Values)
 		// i is allocated, so it is in range.
-		_ = l.Set(i, v == 1)
+		anyval.MustDo(l.Set(i, v == 1))
 		r.Values = l.Bytes()
 	default:
 		// Bits and Values are valid by construction.
-		l, _ := token.FromBytes(r.Bits, r.Values)
+		l := anyval.Must(token.FromBytes(r.Bits, r.Values))
 		if err := l.Set(i, uint8(v)); err != nil {
 			return 0, fmt.Errorf("%w: %d does not fit in %d bits", ErrBadValue, v, r.Bits)
 		}

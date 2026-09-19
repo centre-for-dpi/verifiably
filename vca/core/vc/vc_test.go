@@ -13,7 +13,10 @@ import (
 )
 
 func b64(v any) string {
-	b, _ := json.Marshal(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
@@ -126,9 +129,9 @@ func TestFromObjectJWTWrapper(t *testing.T) {
 // Regression: legacy TestFromCompactSDJWT with digest matched disclosures.
 func TestFromSDJWT(t *testing.T) {
 	tok, discs := sampleSDJWT(t)
-	got, err := FromSDJWT(tok)
-	if err != nil {
-		t.Fatal(err)
+	got, gotErr := FromSDJWT(tok)
+	if gotErr != nil {
+		t.Fatal(gotErr)
 	}
 	if got.Format != string(FormatSDJWT) || got.SubjectID != "did:key:delegate" || got.Issuer != "did:web:issuer" {
 		t.Fatalf("got %+v", got)
@@ -150,7 +153,10 @@ func TestFromSDJWT(t *testing.T) {
 		t.Fatal("bad payload must fail")
 	}
 	// A disclosure that matches no digest is rejected (legacy accepted it).
-	stray, _ := sdjwt.NewDisclosure("x", 1)
+	stray, err := sdjwt.NewDisclosure("x", 1)
+	if err != nil {
+		t.Fatalf("sdjwt.NewDisclosure: %v", err)
+	}
 	if _, err := FromSDJWT(tok + stray.Encoded + "~"); err == nil {
 		t.Fatal("unmatched disclosure must fail")
 	}
@@ -340,7 +346,13 @@ func sampleSDJWTF(f *testing.F) (string, []sdjwt.Disclosure) {
 	if err != nil {
 		f.Fatal(err)
 	}
-	key, _ := jose.GenerateKey(jose.ES256)
-	jwt, _ := jose.Sign(key, "", "dc+sd-jwt", concealed)
+	key, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		f.Fatalf("jose.GenerateKey: %v", err)
+	}
+	jwt, err := jose.Sign(key, "", "dc+sd-jwt", concealed)
+	if err != nil {
+		f.Fatalf("jose.Sign: %v", err)
+	}
 	return sdjwt.Serialize(sdjwt.Presentation{IssuerJWT: jwt, Disclosures: discs}), discs
 }

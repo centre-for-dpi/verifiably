@@ -9,8 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"gopkg.in/yaml.v3"
+
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // portRx reads the two default port numbers out of one port line.
@@ -83,7 +84,8 @@ func TestRenderComposeIsValidYaml(t *testing.T) {
 }
 
 func TestRenderComposeIsDeterministic(t *testing.T) {
-	if RenderCompose() != RenderCompose() {
+	first, second := RenderCompose(), RenderCompose()
+	if first != second {
 		t.Error("two renders differ")
 	}
 }

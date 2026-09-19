@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
@@ -27,8 +28,8 @@ const (
 	EnvBootstrapURL = "VCA_BOOTSTRAP_URL"
 	// EnvBootstrapUser is the DPG administrator name.
 	EnvBootstrapUser = "VCA_BOOTSTRAP_ADMIN_USER"
-	// EnvBootstrapPassword is the DPG administrator password.
-	EnvBootstrapPassword = "VCA_BOOTSTRAP_ADMIN_PASSWORD"
+	// EnvBootstrapSecret names the DPG administrator password variable.
+	EnvBootstrapSecret = "VCA_BOOTSTRAP_ADMIN_PASSWORD" //nolint:gosec // G101: this is a variable name, not a credential.
 	// EnvBootstrapOrg is the CREDEBL organisation name.
 	EnvBootstrapOrg = "VCA_BOOTSTRAP_ORG"
 )
@@ -66,7 +67,7 @@ func (r *BootstrapResult) step(out io.Writer, format string, args ...any) {
 	line := fmt.Sprintf(format, args...)
 	r.Steps = append(r.Steps, line)
 	if out != nil {
-		fmt.Fprintln(out, line)
+		anyval.DiscardWrite(fmt.Fprintln(out, line))
 	}
 }
 
@@ -219,7 +220,7 @@ func keycloakToken(ctx context.Context, opts BootstrapOptions, base string) (str
 		"grant_type": {"password"},
 		"client_id":  {"admin-cli"},
 		"username":   {opts.value(EnvBootstrapUser, "admin")},
-		"password":   {opts.value(EnvBootstrapPassword, "admin")},
+		"password":   {opts.value(EnvBootstrapSecret, "admin")},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		base+"/realms/master/protocol/openid-connect/token", strings.NewReader(form.Encode()))
@@ -251,14 +252,14 @@ type credeblOrg struct {
 // and does nothing (ADR-008 decision 4).
 func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResult, error) {
 	var result BootstrapResult
-	base, err := opts.baseURL()
-	if err != nil {
-		return result, err
+	base, baseErr := opts.baseURL()
+	if baseErr != nil {
+		return result, baseErr
 	}
 	name := opts.value(EnvBootstrapOrg, "vca-"+ShortName(opts.Pair.Role.String()))
 	signin, err := json.Marshal(map[string]string{
 		"email":    opts.value(EnvBootstrapUser, "admin@example.com"),
-		"password": opts.value(EnvBootstrapPassword, ""),
+		"password": opts.value(EnvBootstrapSecret, ""),
 	})
 	if err != nil {
 		return result, fmt.Errorf("build the sign in request: %w", err)
@@ -272,7 +273,7 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 			AccessToken string `json:"access_token"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(answer, &session); err != nil || session.Data.AccessToken == "" {
+	if gotErr := json.Unmarshal(answer, &session); gotErr != nil || session.Data.AccessToken == "" {
 		return result, errors.New("CREDEBL sign in: the answer holds no access_token")
 	}
 	result.step(opts.Out, "CREDEBL sign in done")
@@ -286,8 +287,8 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 			Organizations []credeblOrg `json:"organizations"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(listed, &orgs); err != nil {
-		return result, fmt.Errorf("list the organisations: %w", err)
+	if gotErr := json.Unmarshal(listed, &orgs); gotErr != nil {
+		return result, fmt.Errorf("list the organisations: %w", gotErr)
 	}
 	for _, org := range orgs.Data.Organizations {
 		if org.Name == name {
@@ -344,7 +345,7 @@ func doStatus(ctx context.Context, c *http.Client, method, target, token string,
 	if err != nil {
 		return 0, nil, fmt.Errorf("%s %s: %w", method, target, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { anyval.Discard(resp.Body.Close()) }()
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return 0, nil, fmt.Errorf("read the answer: %w", err)
@@ -358,7 +359,7 @@ func send(c *http.Client, req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { anyval.Discard(resp.Body.Close()) }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read the answer: %w", err)

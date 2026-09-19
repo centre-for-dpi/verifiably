@@ -132,8 +132,8 @@ func (w *bitWriter) write(value, n int) {
 		if w.bits%8 == 0 {
 			w.out = append(w.out, 0)
 		}
-		if value&(1<<uint(i)) != 0 {
-			w.out[w.bits/8] |= 1 << uint(7-w.bits%8)
+		if value&(1<<i) != 0 {
+			w.out[w.bits/8] |= 1 << (7 - w.bits%8)
 		}
 		w.bits++
 	}

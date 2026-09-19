@@ -17,6 +17,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
 	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
@@ -95,7 +96,7 @@ func StylesheetCSS(light, dark theme.Theme, pack fonts.Pack) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(h.(*handler).files["vca.css"].body), nil
+	return string(anyval.As[*handler](h).files["vca.css"].body), nil
 }
 
 func newAsset(body []byte, contentType string) asset {
@@ -132,5 +133,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	_, _ = w.Write(a.body)
+	_, writeErr := w.Write(a.body)
+	// A failed write means the client is gone. There is nothing to report.
+	anyval.Discard(writeErr)
 }

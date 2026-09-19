@@ -40,8 +40,15 @@ func TestHandler(t *testing.T) {
 				t.Error("no trace context")
 			}
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte("hello"))
-			w.(http.Flusher).Flush()
+			_, errAssign := w.Write([]byte("hello"))
+			if errAssign != nil {
+				t.Fatalf("w.Write: %v", errAssign)
+			}
+			flusher, isFlusher := w.(http.Flusher)
+			if !isFlusher {
+				t.Fatal("the writer is not a flusher")
+			}
+			flusher.Flush()
 		}),
 	})
 	get := func(path string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -107,9 +114,9 @@ func (plainWriter) Write(b []byte) (int, error) { return len(b), nil }
 func (plainWriter) WriteHeader(int)             {}
 
 func TestRunAndHealthcheck(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	ln, lnErr := net.Listen("tcp", "127.0.0.1:0")
+	if lnErr != nil {
+		t.Fatal(lnErr)
 	}
 	addr := ln.Addr().String()
 	short, shortCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -122,7 +129,10 @@ func TestRunAndHealthcheck(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(ctx, Options{Listener: ln, Log: slog.New(slog.NewJSONHandler(&buf, nil)), Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = io.WriteString(w, r.Proto)
+			_, errAssign := io.WriteString(w, r.Proto)
+			if errAssign != nil {
+				t.Errorf("io.WriteString: %v", errAssign)
+			}
 		})})
 	}()
 	deadline := time.Now().Add(5 * time.Second)
@@ -134,12 +144,17 @@ func TestRunAndHealthcheck(t *testing.T) {
 	}
 	// h2c: a prior knowledge HTTP/2 client gets HTTP/2.0.
 	client := &http.Client{Transport: &http.Transport{Protocols: h2cProtocols()}}
-	resp, err := client.Get("http://" + addr + "/proto")
-	if err != nil {
-		t.Fatal(err)
+	resp, respErr := client.Get("http://" + addr + "/proto")
+	if respErr != nil {
+		t.Fatal(respErr)
 	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	body, bodyErr := io.ReadAll(resp.Body)
+	if bodyErr != nil {
+		t.Fatalf("io.ReadAll: %v", bodyErr)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("resp.Body.Close: %v", err)
+	}
 	if string(body) != "HTTP/2.0" {
 		t.Fatalf("proto = %s", body)
 	}
@@ -158,8 +173,13 @@ func TestRunAndHealthcheck(t *testing.T) {
 		t.Fatal("bad listen")
 	}
 	// A closed listener makes Serve fail at once.
-	closed, _ := net.Listen("tcp", "127.0.0.1:0")
-	closed.Close()
+	closed, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen: %v", err)
+	}
+	if err := closed.Close(); err != nil {
+		t.Fatalf("closed.Close: %v", err)
+	}
 	if err := Run(context.Background(), Options{Listener: closed}); err == nil {
 		t.Fatal("closed listener")
 	}

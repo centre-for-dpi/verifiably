@@ -125,10 +125,16 @@ func TestAdminClientCall(t *testing.T) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		gotVersion = r.Header.Get("Connect-Protocol-Version")
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("io.ReadAll: %v", err)
+		}
 		gotBody = string(body)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"tenant":{"id":"t-1"}}`)
+		_, errAssign := io.WriteString(w, `{"tenant":{"id":"t-1"}}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	client := AdminClient{BaseURL: server.URL, Token: "a-token"}
@@ -157,9 +163,15 @@ func TestAdminClientCall(t *testing.T) {
 func TestAdminClientSendsAnEmptyObject(t *testing.T) {
 	var gotBody string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("io.ReadAll: %v", err)
+		}
 		gotBody = string(body)
-		_, _ = io.WriteString(w, `{}`)
+		_, errAssign := io.WriteString(w, `{}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	client := AdminClient{BaseURL: server.URL}
@@ -174,7 +186,10 @@ func TestAdminClientSendsAnEmptyObject(t *testing.T) {
 func TestAdminClientReportsAConnectError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = io.WriteString(w, `{"code":"not_found","message":"no tenant t-9"}`)
+		_, errAssign := io.WriteString(w, `{"code":"not_found","message":"no tenant t-9"}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
 	}))
 	defer server.Close()
 	client := AdminClient{BaseURL: server.URL}

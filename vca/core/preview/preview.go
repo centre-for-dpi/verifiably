@@ -17,13 +17,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
 )
 
 // Format identifiers of OpenID for Verifiable Credential Issuance 1.0.
 const (
-	FormatDcSdJwt   = "dc+sd-jwt"
-	FormatVcSdJwt   = "vc+sd-jwt"
+	FormatDcSdJwt = "dc+sd-jwt"
+	FormatVcSdJwt = "vc+sd-jwt"
+	//nolint:staticcheck // ST1003: service packages outside this change use this name.
 	FormatJwtVcJson = "jwt_vc_json"
 	FormatLdpVc     = "ldp_vc"
 	FormatMsoMdoc   = "mso_mdoc"
@@ -392,7 +394,7 @@ func sampleValue(parsed jsonschema.Schema, sub map[string]any, name string, dept
 		}
 		return []any{sampleValue(parsed, items, name, depth+1)}
 	case "object":
-		props, _ := sub["properties"].(map[string]any)
+		props := anyval.As[map[string]any](sub["properties"])
 		obj := map[string]any{}
 		for _, key := range sortedKeys(props) {
 			if child, ok := props[key].(map[string]any); ok {

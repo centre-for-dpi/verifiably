@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -53,17 +54,16 @@ type Key struct {
 
 // Public returns the public JWK of the key with kid.
 func (k Key) Public(kid string) jose.JWK {
-	// Private is ES256 or Ed25519 by construction, so PublicJWK cannot fail.
-	jwk, _ := jose.PublicJWK(k.Private, kid)
-	return jwk
+	// Private is ES256 or Ed25519 in a ring built by New. A key of any
+	// other type gives the zero JWK, which fails later checks.
+	return anyval.OrZero(jose.PublicJWK(k.Private, kid))
 }
 
 // DIDJWK returns the did:jwk of the public key.
 func (k Key) DIDJWK() string {
-	m, _ := jose.JWKToMap(k.Public(""))
-	// The key is ES256 or Ed25519 by construction, so FromJWK cannot fail.
-	d, _ := did.FromJWK(m)
-	return d
+	// A key that New did not accept gives "", which fails later checks.
+	m := anyval.OrZero(jose.JWKToMap(k.Public("")))
+	return anyval.OrZero(did.FromJWK(m))
 }
 
 // New wraps a private key. It checks the key type and sets the kid to
@@ -76,7 +76,8 @@ func New(private crypto.PrivateKey, now time.Time) (Key, error) {
 	if ec, ok := private.(*ecdsa.PrivateKey); ok && ec.Curve != elliptic.P256() {
 		return Key{}, fmt.Errorf("keys: unsupported curve %s", ec.Curve.Params().Name)
 	}
-	jwk, _ := jose.PublicJWK(private, "")
+	// AlgorithmFor accepted the key above, so PublicJWK cannot fail.
+	jwk := anyval.Must(jose.PublicJWK(private, ""))
 	kid, err := jose.Thumbprint(jwk)
 	if err != nil {
 		return Key{}, err
@@ -413,6 +414,6 @@ func (is *Issuers) JWKSJSON() []byte {
 	}
 	sort.SliceStable(set.Keys, func(a, b int) bool { return set.Keys[a].KeyID < set.Keys[b].KeyID })
 	// Every key encodes, so Marshal cannot fail.
-	out, _ := json.Marshal(set)
+	out := anyval.Must(json.Marshal(set))
 	return out
 }

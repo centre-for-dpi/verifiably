@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // Variable describes one setting of a service.
@@ -208,7 +210,7 @@ func format(v reflect.Value) string {
 	}
 	switch v.Kind() {
 	case reflect.Slice:
-		return strings.Join(v.Interface().([]string), ",")
+		return strings.Join(anyval.As[[]string](v.Interface()), ",")
 	default:
 		return fmt.Sprint(v.Interface())
 	}

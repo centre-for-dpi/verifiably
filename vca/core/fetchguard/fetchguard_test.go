@@ -113,7 +113,10 @@ func server(t *testing.T, body string, etag string, hits *int) *httptest.Server 
 				return
 			}
 		}
-		_, _ = w.Write([]byte(body))
+		_, errAssign := w.Write([]byte(body))
+		if errAssign != nil {
+			t.Fatalf("w.Write: %v", errAssign)
+		}
 	}))
 	t.Cleanup(s.Close)
 	return s

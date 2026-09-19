@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // The queries read the three legacy tables of ADR-030 decision 8. The
@@ -51,7 +53,7 @@ func readIssued(ctx context.Context, db Queryer) ([]LegacyIssued, error) {
 	if err != nil {
 		return nil, fmt.Errorf("migrate: read issued_credentials: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() { anyval.Discard(rows.Close()) }()
 	var out []LegacyIssued
 	for rows.Next() {
 		var (
@@ -95,7 +97,7 @@ func readLists4PG(ctx context.Context, db Queryer) ([]LegacyList, error) {
 	if err != nil {
 		return nil, fmt.Errorf("migrate: read status_lists: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() { anyval.Discard(rows.Close()) }()
 	var out []LegacyList
 	for rows.Next() {
 		var l LegacyList
@@ -118,7 +120,7 @@ func readTrust(ctx context.Context, db Queryer) ([]LegacyTrust, error) {
 	if err != nil {
 		return nil, fmt.Errorf("migrate: read trusted_issuers: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() { anyval.Discard(rows.Close()) }()
 	var out []LegacyTrust
 	for rows.Next() {
 		var (

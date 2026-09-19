@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/hashchain"
 )
 
@@ -167,7 +168,9 @@ func BuildIssuedDocument(items []LegacyIssued, opts Options) (IssuedDocument, er
 		record := r
 		// The event holds strings, times, and a string map, so it
 		// always encodes and Append cannot fail.
-		chain, _, _ = chain.Append(IssuedEvent{Kind: EventIssue, Record: &record})
+		next, _, appendErr := chain.Append(IssuedEvent{Kind: EventIssue, Record: &record})
+		anyval.MustDo(appendErr)
+		chain = next
 		if c.RevokedAt != nil {
 			revoked = append(revoked, IssuedChange{
 				RecordID: r.ID, Status: StatusRevoked, Reason: o.Reason, ChangedAt: c.RevokedAt.UTC(),
@@ -182,7 +185,9 @@ func BuildIssuedDocument(items []LegacyIssued, opts Options) (IssuedDocument, er
 	})
 	for i := range revoked {
 		change := revoked[i]
-		chain, _, _ = chain.Append(IssuedEvent{Kind: EventStatus, Change: &change})
+		next, _, appendErr := chain.Append(IssuedEvent{Kind: EventStatus, Change: &change})
+		anyval.MustDo(appendErr)
+		chain = next
 	}
 	return IssuedDocument{Entries: chain.Entries()}, nil
 }
@@ -204,10 +209,10 @@ func IssuerSlug(issuerDID string) string {
 func AllocatedBits(size, count int) []byte {
 	out := make([]byte, (size+7)/8)
 	for i := 0; i < count && i < size; i++ {
-		out[i/8] |= 1 << (7 - uint(i%8))
+		out[i/8] |= 1 << (7 - i%8)
 	}
 	for i := size; i < len(out)*8; i++ {
-		out[i/8] |= 1 << (7 - uint(i%8))
+		out[i/8] |= 1 << (7 - i%8)
 	}
 	return out
 }
@@ -319,9 +324,9 @@ func Build(l Legacy, opts Options) (Bundle, error) {
 		return Bundle{}, err
 	}
 	for _, list := range l.Lists {
-		rec, err := ToListRecord(list, o)
-		if err != nil {
-			return Bundle{}, err
+		rec, recErr := ToListRecord(list, o)
+		if recErr != nil {
+			return Bundle{}, recErr
 		}
 		if rec.Kind == KindToken {
 			b.Token = append(b.Token, rec)

@@ -24,22 +24,38 @@ func TestNewClampsToMinSize(t *testing.T) {
 	}
 }
 
+// mustGet returns bit i of l. It stops the test when Get fails.
+func mustGet(t *testing.T, l *List, i int) bool {
+	t.Helper()
+	v, err := l.Get(i)
+	if err != nil {
+		t.Fatalf("Get(%d): %v", i, err)
+	}
+	return v
+}
+
+func TestMultibaseError(t *testing.T) {
+	if got := multibase([]byte("x"), errors.New("boom")); got != "" {
+		t.Fatalf("multibase with error = %q", got)
+	}
+}
+
 // Regression: legacy TestBitstringSetGet.
 func TestSetGet(t *testing.T) {
 	b := New(0)
-	if v, _ := b.Get(0); v {
+	if mustGet(t, b, 0) {
 		t.Fatal("fresh bit must be 0")
 	}
 	if err := b.Set(0, true); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := b.Get(0); !v {
+	if !mustGet(t, b, 0) {
 		t.Fatal("Set then Get should be true")
 	}
 	if err := b.Set(0, false); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := b.Get(0); v {
+	if mustGet(t, b, 0) {
 		t.Fatal("after clearing, Get should be false")
 	}
 	for _, i := range []int{-1, MinSize} {
@@ -74,7 +90,9 @@ func TestMSBFirst(t *testing.T) {
 func TestEncodeDecodeRoundTrip(t *testing.T) {
 	a := New(0)
 	for i := 0; i < 256; i += 17 {
-		_ = a.Set(i, true)
+		if err := a.Set(i, true); err != nil {
+			t.Fatalf("a.Set: %v", err)
+		}
 	}
 	enc := a.Encode()
 	if !strings.HasPrefix(enc, "u") {
@@ -88,8 +106,8 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 		t.Fatalf("size %d != %d", b.Size(), a.Size())
 	}
 	for i := 0; i < 256; i++ {
-		x, _ := a.Get(i)
-		y, _ := b.Get(i)
+		x := mustGet(t, a, i)
+		y := mustGet(t, b, i)
 		if x != y {
 			t.Fatalf("mismatch at bit %d", i)
 		}
@@ -114,8 +132,13 @@ func TestDecodeSpecExample(t *testing.T) {
 func TestDecodeErrors(t *testing.T) {
 	var bomb bytes.Buffer
 	w := gzip.NewWriter(&bomb)
-	_, _ = w.Write(make([]byte, MaxDecodedBytes+1))
-	_ = w.Close()
+	_, errAssign := w.Write(make([]byte, MaxDecodedBytes+1))
+	if errAssign != nil {
+		t.Fatalf("w.Write: %v", errAssign)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("w.Close: %v", err)
+	}
 	cases := []struct{ name, in string }{
 		{"empty", ""},
 		{"no prefix", "H4sI"},
@@ -135,13 +158,18 @@ func TestDecodeErrors(t *testing.T) {
 
 func TestCredentialAndParse(t *testing.T) {
 	l := New(0)
-	_ = l.Set(5, true)
+	if err := l.Set(5, true); err != nil {
+		t.Fatalf("l.Set: %v", err)
+	}
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	vc := Credential("https://issuer.example/status/1", "did:web:issuer.example", Revocation, l, now)
 	if vc["validFrom"] != "2026-01-02T03:04:05Z" || vc["issuer"] != "did:web:issuer.example" {
 		t.Fatalf("vc = %v", vc)
 	}
-	cs := vc["credentialSubject"].(map[string]any)
+	cs, isObject := vc["credentialSubject"].(map[string]any)
+	if !isObject {
+		t.Fatal("credentialSubject must be an object")
+	}
 	if cs["id"] != "https://issuer.example/status/1#list" || cs["type"] != TypeList {
 		t.Fatalf("credentialSubject = %v", cs)
 	}
@@ -149,7 +177,7 @@ func TestCredentialAndParse(t *testing.T) {
 	if err != nil || purpose != Revocation {
 		t.Fatalf("ParseCredential: %v %q", err, purpose)
 	}
-	if v, _ := got.Get(5); !v {
+	if !mustGet(t, got, 5) {
 		t.Fatal("bit 5 must survive the round trip")
 	}
 	// JWT claim set wrapper (VCDM 2.0 secured with JOSE).

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/oidc"
 )
@@ -39,7 +40,8 @@ func ParseMetadata(raw []byte) (Metadata, error) {
 		EndSessionEndpoint string `json:"end_session_endpoint"`
 	}
 	// raw parsed once above, so it parses again.
-	_ = json.Unmarshal(raw, &extra)
+	// Extra members are optional, so a decode failure leaves them empty.
+	anyval.Discard(json.Unmarshal(raw, &extra))
 	return Metadata{Discovery: d, EndSessionEndpoint: extra.EndSessionEndpoint}, nil
 }
 
@@ -144,7 +146,7 @@ func (c *Cache) get(ctx context.Context, u string) ([]byte, error) {
 	if err != nil {
 		return nil, wrap(ErrUpstream, "%v", err)
 	}
-	defer res.Body.Close()
+	defer func() { anyval.Discard(res.Body.Close()) }()
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxBody))
 	if err != nil {
 		return nil, wrap(ErrUpstream, "read %s: %v", u, err)

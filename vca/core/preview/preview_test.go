@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 const degree = `{
@@ -51,9 +53,9 @@ func schema() Schema {
 }
 
 func TestSampleData(t *testing.T) {
-	sample, err := SampleData(degree)
-	if err != nil {
-		t.Fatal(err)
+	sample, sampleErr := SampleData(degree)
+	if sampleErr != nil {
+		t.Fatal(sampleErr)
 	}
 	want := map[string]any{
 		"name": "Sample Full name", "degree": "BSc", "year": 1900.0, "gpa": 1.5, "honours": true,
@@ -65,19 +67,19 @@ func TestSampleData(t *testing.T) {
 			t.Errorf("%s: got %#v want %#v", k, sample[k], v)
 		}
 	}
-	if tags := sample["tags"].([]any); len(tags) != 1 || tags[0] != "Sample tags" {
+	if tags := anyval.As[[]any](sample["tags"]); len(tags) != 1 || tags[0] != "Sample tags" {
 		t.Errorf("tags: %v", sample["tags"])
 	}
-	if empty := sample["empty"].([]any); len(empty) != 0 {
+	if empty := anyval.As[[]any](sample["empty"]); len(empty) != 0 {
 		t.Errorf("empty: %v", sample["empty"])
 	}
-	if addr := sample["addr"].(map[string]any); addr["street"] != "Sample street" {
+	if addr := anyval.As[map[string]any](sample["addr"]); addr["street"] != "Sample street" {
 		t.Errorf("addr: %v", sample["addr"])
 	}
 	if bad := sample["bad"]; bad != "Sample bad" {
 		t.Errorf("bad ref: %v", bad)
 	}
-	if sub := sample["sub"].(map[string]any); sub["a"] != "Sample a" || len(sub) != 1 {
+	if sub := anyval.As[map[string]any](sample["sub"]); sub["a"] != "Sample a" || len(sub) != 1 {
 		t.Errorf("sub: %v", sub)
 	}
 	if _, has := sample["flag"]; has {
@@ -87,7 +89,7 @@ func TestSampleData(t *testing.T) {
 		t.Fatal("bad schema")
 	}
 	long, err := SampleData(`{"properties": {"n": {"type": "string", "minLength": 20}}}`)
-	if err != nil || len(long["n"].(string)) != 20 {
+	if err != nil || len(anyval.As[string](long["n"])) != 20 {
 		t.Fatalf("minLength: %v %v", long, err)
 	}
 	loop, err := SampleData(`{"properties": {"n": {"$ref": "#/properties/n"}}}`)
@@ -102,13 +104,16 @@ func TestSampleData(t *testing.T) {
 
 func TestPreviewCredentialFormats(t *testing.T) {
 	s := schema()
-	sample, _ := SampleData(degree)
+	sample, sampleErr := SampleData(degree)
+	if sampleErr != nil {
+		t.Fatalf("SampleData: %v", sampleErr)
+	}
 	sample["extra"] = "e"
 	sample["iss"] = "spoof"
 	now := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
-	p, err := PreviewCredential(s, sample, Options{Now: now, SchemaURL: "https://issuer.example/schemas/1"})
-	if err != nil {
-		t.Fatal(err)
+	p, pErr := PreviewCredential(s, sample, Options{Now: now, SchemaURL: "https://issuer.example/schemas/1"})
+	if pErr != nil {
+		t.Fatal(pErr)
 	}
 	if p.Format != FormatJwtVcJson {
 		t.Fatalf("format: %s", p.Format)
@@ -120,10 +125,10 @@ func TestPreviewCredentialFormats(t *testing.T) {
 	if vc["validFrom"] != "2025-06-01T00:00:00Z" || vc["validUntil"] != "2026-06-01T00:00:00Z" || vc["issuer"] != DefaultIssuer {
 		t.Fatalf("vc: %v", vc)
 	}
-	if vc["credentialSchema"].(map[string]any)["id"] != "https://issuer.example/schemas/1" {
+	if anyval.As[map[string]any](vc["credentialSchema"])["id"] != "https://issuer.example/schemas/1" {
 		t.Fatalf("schema: %v", vc["credentialSchema"])
 	}
-	if vc["credentialSubject"].(map[string]any)["name"] != "Sample Full name" {
+	if anyval.As[map[string]any](vc["credentialSubject"])["name"] != "Sample Full name" {
 		t.Fatalf("subject: %v", vc["credentialSubject"])
 	}
 	if p.Card.Title != "Degree" || p.Card.BackgroundColor != "#112233" || len(p.Card.Rows) == 0 {
@@ -143,12 +148,14 @@ func TestPreviewCredentialFormats(t *testing.T) {
 		t.Fatalf("ref: %s", p.PDFRef)
 	}
 
-	sd, err := PreviewCredential(s, sample, Options{Format: FormatDcSdJwt, Locale: "fr", Issuer: "did:web:issuer.example"})
-	if err != nil {
-		t.Fatal(err)
+	sd, sdErr := PreviewCredential(s, sample, Options{Format: FormatDcSdJwt, Locale: "fr", Issuer: "did:web:issuer.example"})
+	if sdErr != nil {
+		t.Fatal(sdErr)
 	}
 	var payload map[string]any
-	_ = json.Unmarshal([]byte(sd.CredentialJSON), &payload)
+	if err := json.Unmarshal([]byte(sd.CredentialJSON), &payload); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	if payload["vct"] != "UniversityDegree" || payload["iss"] != "did:web:issuer.example" || payload["iat"] != float64(DefaultNow.Unix()) || payload["exp"] == nil {
 		t.Fatalf("sd-jwt: %v", payload)
 	}
@@ -168,8 +175,10 @@ func TestPreviewCredentialFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 	var doc map[string]any
-	_ = json.Unmarshal([]byte(mdoc.CredentialJSON), &doc)
-	if doc["docType"] != "UniversityDegree" || doc["validityInfo"].(map[string]any)["validUntil"] != nil {
+	if gotErr := json.Unmarshal([]byte(mdoc.CredentialJSON), &doc); gotErr != nil {
+		t.Fatalf("json.Unmarshal: %v", gotErr)
+	}
+	if doc["docType"] != "UniversityDegree" || anyval.As[map[string]any](doc["validityInfo"])["validUntil"] != nil {
 		t.Fatalf("mdoc: %v", doc)
 	}
 	if mdoc.Card.Title != "UniversityDegree" || len(mdoc.Card.Rows) != 0 {
@@ -214,7 +223,10 @@ func TestStringify(t *testing.T) {
 
 func TestPDF(t *testing.T) {
 	s := schema()
-	sample, _ := SampleData(degree)
+	sample, err := SampleData(degree)
+	if err != nil {
+		t.Fatalf("SampleData: %v", err)
+	}
 	sample["name"] = strings.Repeat("word ", 40) + "(end)\\"
 	sample["long"] = strings.Repeat("x", 200) + "é€"
 	p, err := PreviewCredential(s, sample, Options{})

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -36,10 +37,22 @@ func b64json(t *testing.T, v any) string {
 
 func newFixture(t *testing.T, extra map[string]any) fixture {
 	t.Helper()
-	issuer, _ := jose.GenerateKey(jose.ES256)
-	holder, _ := jose.GenerateKey(jose.ES256)
-	holderJWK, _ := jose.PublicJWK(holder, "")
-	cnf, _ := jose.JWKToMap(holderJWK)
+	issuer, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	holder, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	holderJWK, err := jose.PublicJWK(holder, "")
+	if err != nil {
+		t.Fatalf("jose.PublicJWK: %v", err)
+	}
+	cnf, err := jose.JWKToMap(holderJWK)
+	if err != nil {
+		t.Fatalf("jose.JWKToMap: %v", err)
+	}
 	claims := map[string]any{
 		"iss": "did:web:issuer", "sub": "did:key:delegate", "vct": "PetAccessCredential",
 		"onBehalfOf": "urn:pet:bosco", "allowedAction": "present", "role": "Owner",
@@ -56,7 +69,7 @@ func newFixture(t *testing.T, extra map[string]any) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := fixture{issuer: issuer.(*ecdsa.PrivateKey), holder: holder.(*ecdsa.PrivateKey), payload: payload, discs: discs}
+	f := fixture{issuer: anyval.As[*ecdsa.PrivateKey](issuer), holder: anyval.As[*ecdsa.PrivateKey](holder), payload: payload, discs: discs}
 	f.tok = Serialize(Presentation{IssuerJWT: jwt, Disclosures: discs})
 	return f
 }
@@ -75,7 +88,10 @@ func (f fixture) opts() VerifyOptions {
 
 func (f fixture) withKB(t *testing.T, aud, nonce string, iat time.Time) string {
 	t.Helper()
-	p, _ := Parse(f.tok)
+	p, err := Parse(f.tok)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
 	kb, err := KeyBinding(p, f.holder, DefaultAlg, aud, nonce, iat)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +109,10 @@ func TestParseAndResolve(t *testing.T) {
 	if len(p.Disclosures) != 2 || p.KeyBindingJWT != "" {
 		t.Fatalf("presentation = %+v", p)
 	}
-	payload, _ := jose.PeekPayload(p.IssuerJWT)
+	payload, err := jose.PeekPayload(p.IssuerJWT)
+	if err != nil {
+		t.Fatalf("jose.PeekPayload: %v", err)
+	}
 	claims, err := Resolve(payload, p.Disclosures)
 	if err != nil {
 		t.Fatal(err)
@@ -171,10 +190,13 @@ func TestParseDisclosure(t *testing.T) {
 	if err != nil || d.Name != "given_name" || d.Value != "Ana" {
 		t.Fatalf("object disclosure = %+v, %v", d, err)
 	}
-	if _, err := NewDisclosure("x", make(chan int)); err == nil {
+	if _, chanErr := NewDisclosure("x", make(chan int)); chanErr == nil {
 		t.Fatal("unmarshalable value must fail")
 	}
-	nd, _ := NewDisclosure("", 5)
+	nd, err := NewDisclosure("", 5)
+	if err != nil {
+		t.Fatalf("NewDisclosure: %v", err)
+	}
 	back, err := ParseDisclosure(nd.Encoded)
 	if err != nil || back.Name != "" || back.Value != float64(5) {
 		t.Fatalf("round trip = %+v, %v", back, err)
@@ -208,14 +230,38 @@ func TestConcealErrors(t *testing.T) {
 }
 
 func TestResolveNestedAndArrays(t *testing.T) {
-	inner, _ := NewDisclosure("street", "Main 1")
-	innerDg, _ := Digest("sha-384", inner.Encoded)
-	addr, _ := NewDisclosure("address", map[string]any{"_sd": []any{innerDg}, "city": "Lima"})
-	addrDg, _ := Digest("sha-384", addr.Encoded)
-	us, _ := NewDisclosure("", "US")
-	usDg, _ := Digest("sha-384", us.Encoded)
-	de, _ := NewDisclosure("", "DE")
-	deDg, _ := Digest("sha-384", de.Encoded)
+	inner, err := NewDisclosure("street", "Main 1")
+	if err != nil {
+		t.Fatalf("NewDisclosure: %v", err)
+	}
+	innerDg, err := Digest("sha-384", inner.Encoded)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
+	addr, err := NewDisclosure("address", map[string]any{"_sd": []any{innerDg}, "city": "Lima"})
+	if err != nil {
+		t.Fatalf("NewDisclosure: %v", err)
+	}
+	addrDg, err := Digest("sha-384", addr.Encoded)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
+	us, err := NewDisclosure("", "US")
+	if err != nil {
+		t.Fatalf("NewDisclosure: %v", err)
+	}
+	usDg, err := Digest("sha-384", us.Encoded)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
+	de, err := NewDisclosure("", "DE")
+	if err != nil {
+		t.Fatalf("NewDisclosure: %v", err)
+	}
+	deDg, err := Digest("sha-384", de.Encoded)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
 	payload := map[string]any{
 		"_sd_alg":       "sha-384",
 		"_sd":           []any{addrDg, "unknown-digest"},
@@ -227,11 +273,11 @@ func TestResolveNestedAndArrays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := claims["address"].(map[string]any)
+	a := anyval.As[map[string]any](claims["address"])
 	if a["street"] != "Main 1" || a["city"] != "Lima" {
 		t.Fatalf("address = %v", a)
 	}
-	nats := claims["nationalities"].([]any)
+	nats := anyval.As[[]any](claims["nationalities"])
 	if len(nats) != 3 || nats[0] != "US" || nats[1] != "FR" {
 		t.Fatalf("nationalities = %v", nats)
 	}
@@ -272,43 +318,64 @@ func TestResolveNestedAndArrays(t *testing.T) {
 
 func usDg256(t *testing.T, d Disclosure) string {
 	t.Helper()
-	dg, _ := Digest(DefaultAlg, d.Encoded)
+	dg, err := Digest(DefaultAlg, d.Encoded)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
 	return dg
 }
 
 // brokenObj is an object disclosure whose value carries an invalid _sd.
 func brokenObj(t *testing.T) Disclosure {
 	t.Helper()
-	raw, _ := json.Marshal([]any{"fixed-salt", "broken", map[string]any{"_sd": "x"}})
-	d, _ := ParseDisclosure(base64.RawURLEncoding.EncodeToString(raw))
+	raw, err := json.Marshal([]any{"fixed-salt", "broken", map[string]any{"_sd": "x"}})
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	d, err := ParseDisclosure(base64.RawURLEncoding.EncodeToString(raw))
+	if err != nil {
+		t.Fatalf("ParseDisclosure: %v", err)
+	}
 	return d
 }
 
 func brokenDg(t *testing.T) string {
 	t.Helper()
-	dg, _ := Digest("sha-384", brokenObj(t).Encoded)
+	dg, err := Digest("sha-384", brokenObj(t).Encoded)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
 	return dg
 }
 
 func badArr(t *testing.T) Disclosure {
 	t.Helper()
 	// Deterministic salt so badArrDg matches.
-	raw, _ := json.Marshal([]any{"fixed-salt", map[string]any{"_sd": "x"}})
-	d, _ := ParseDisclosure(base64.RawURLEncoding.EncodeToString(raw))
+	raw, err := json.Marshal([]any{"fixed-salt", map[string]any{"_sd": "x"}})
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	d, err := ParseDisclosure(base64.RawURLEncoding.EncodeToString(raw))
+	if err != nil {
+		t.Fatalf("ParseDisclosure: %v", err)
+	}
 	return d
 }
 
 func badArrDg(t *testing.T) string {
 	t.Helper()
-	dg, _ := Digest("sha-384", badArr(t).Encoded)
+	dg, err := Digest("sha-384", badArr(t).Encoded)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
 	return dg
 }
 
 func TestVerifyWithoutKeyBinding(t *testing.T) {
 	f := newFixture(t, nil)
-	res, err := Verify(f.tok, f.opts())
-	if err != nil {
-		t.Fatal(err)
+	res, resErr := Verify(f.tok, f.opts())
+	if resErr != nil {
+		t.Fatal(resErr)
 	}
 	if res.KeyBound || res.HolderKey == nil || res.Claims["role"] != "Owner" || res.Header.Kid != "issuer-key" {
 		t.Fatalf("result = %+v", res)
@@ -319,9 +386,18 @@ func TestVerifyWithoutKeyBinding(t *testing.T) {
 		t.Fatalf("want ErrNoKeyBinding, got %v", err)
 	}
 	// No cnf at all is fine without key binding.
-	issuer, _ := jose.GenerateKey(jose.EdDSA)
-	jwt, _ := jose.Sign(issuer, "", "dc+sd-jwt", map[string]any{"iss": "x"})
-	pub, _ := jose.PublicJWK(issuer, "")
+	issuer, err := jose.GenerateKey(jose.EdDSA)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	jwt, err := jose.Sign(issuer, "", "dc+sd-jwt", map[string]any{"iss": "x"})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
+	pub, err := jose.PublicJWK(issuer, "")
+	if err != nil {
+		t.Fatalf("jose.PublicJWK: %v", err)
+	}
 	res, err = Verify(jwt+"~", VerifyOptions{IssuerKey: func(jose.Header, map[string]any) (crypto.PublicKey, error) { return pub.Key, nil }})
 	if err != nil || res.HolderKey != nil {
 		t.Fatalf("no cnf: %+v %v", res, err)
@@ -330,14 +406,20 @@ func TestVerifyWithoutKeyBinding(t *testing.T) {
 
 func TestVerifyIssuerErrors(t *testing.T) {
 	f := newFixture(t, nil)
-	other, _ := jose.GenerateKey(jose.ES256)
+	other, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
 	badKey := f.opts()
 	badKey.IssuerKey = func(jose.Header, map[string]any) (crypto.PublicKey, error) {
-		return &other.(*ecdsa.PrivateKey).PublicKey, nil
+		return &anyval.As[*ecdsa.PrivateKey](other).PublicKey, nil
 	}
 	resolverErr := f.opts()
 	resolverErr.IssuerKey = func(jose.Header, map[string]any) (crypto.PublicKey, error) { return nil, errors.New("no key") }
-	arrayPayload, _ := jose.Sign(f.issuer, "issuer-key", "x", []int{1})
+	arrayPayload, err := jose.Sign(f.issuer, "issuer-key", "x", []int{1})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
 	expired := newFixture(t, map[string]any{"exp": float64(now.Add(-2 * time.Minute).Unix())})
 	future := newFixture(t, map[string]any{"nbf": float64(now.Add(2 * time.Minute).Unix())})
 	badCnf := newFixture(t, map[string]any{"cnf": map[string]any{"jwk": map[string]any{"kty": "EC"}}})
@@ -399,18 +481,48 @@ func TestVerifyKeyBinding(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 
-	p, _ := Parse(f.tok)
-	otherHolder, _ := jose.GenerateKey(jose.ES256)
-	wrongKey, _ := KeyBinding(p, otherHolder, DefaultAlg, "https://verifier.example", "n-1", now)
-	wrongTyp, _ := jose.Sign(f.holder, "", "JWT", map[string]any{"aud": "https://verifier.example", "nonce": "n-1", "iat": now.Unix()})
-	arrayKB, _ := jose.Sign(f.holder, "", TypeKB, []int{1})
-	noIat, _ := jose.Sign(f.holder, "", TypeKB, map[string]any{"aud": "https://verifier.example", "nonce": "n-1"})
-	sdHash, _ := Digest(DefaultAlg, f.tok)
-	badHash, _ := jose.Sign(f.holder, "", TypeKB, map[string]any{"aud": "https://verifier.example", "nonce": "n-1", "iat": now.Unix(), "sd_hash": "nope"})
+	p, err := Parse(f.tok)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	otherHolder, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatalf("jose.GenerateKey: %v", err)
+	}
+	wrongKey, err := KeyBinding(p, otherHolder, DefaultAlg, "https://verifier.example", "n-1", now)
+	if err != nil {
+		t.Fatalf("KeyBinding: %v", err)
+	}
+	wrongTyp, err := jose.Sign(f.holder, "", "JWT", map[string]any{"aud": "https://verifier.example", "nonce": "n-1", "iat": now.Unix()})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
+	arrayKB, err := jose.Sign(f.holder, "", TypeKB, []int{1})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
+	noIat, err := jose.Sign(f.holder, "", TypeKB, map[string]any{"aud": "https://verifier.example", "nonce": "n-1"})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
+	sdHash, err := Digest(DefaultAlg, f.tok)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
+	badHash, err := jose.Sign(f.holder, "", TypeKB, map[string]any{"aud": "https://verifier.example", "nonce": "n-1", "iat": now.Unix(), "sd_hash": "nope"})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
 	// A KB-JWT over a different disclosure set.
-	reduced, _ := KeyBinding(Presentation{IssuerJWT: p.IssuerJWT, Disclosures: p.Disclosures[:1]}, f.holder, DefaultAlg, "https://verifier.example", "n-1", now)
+	reduced, err := KeyBinding(Presentation{IssuerJWT: p.IssuerJWT, Disclosures: p.Disclosures[:1]}, f.holder, DefaultAlg, "https://verifier.example", "n-1", now)
+	if err != nil {
+		t.Fatalf("KeyBinding: %v", err)
+	}
 	noCnf := newFixture(t, map[string]any{"cnf": "none"})
-	noCnfKB, _ := jose.Sign(f.holder, "", TypeKB, map[string]any{"aud": "https://verifier.example", "nonce": "n-1", "iat": now.Unix(), "sd_hash": sdHash})
+	noCnfKB, err := jose.Sign(f.holder, "", TypeKB, map[string]any{"aud": "https://verifier.example", "nonce": "n-1", "iat": now.Unix(), "sd_hash": sdHash})
+	if err != nil {
+		t.Fatalf("jose.Sign: %v", err)
+	}
 
 	cases := []struct {
 		name string
@@ -449,21 +561,37 @@ func TestVerifyKeyBinding(t *testing.T) {
 }
 
 func FuzzParsePresentation(f *testing.F) {
-	issuer, _ := jose.GenerateKey(jose.ES256)
+	issuer, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		f.Fatalf("jose.GenerateKey: %v", err)
+	}
 	claims := map[string]any{"iss": "x", "a": 1, "b": []any{"x"}}
-	payload, discs, _ := Conceal(claims, []string{"a"})
-	jwt, _ := jose.Sign(issuer, "", "dc+sd-jwt", payload)
+	payload, discs, err := Conceal(claims, []string{"a"})
+	if err != nil {
+		f.Fatalf("Conceal: %v", err)
+	}
+	jwt, err := jose.Sign(issuer, "", "dc+sd-jwt", payload)
+	if err != nil {
+		f.Fatalf("jose.Sign: %v", err)
+	}
 	f.Add(Serialize(Presentation{IssuerJWT: jwt, Disclosures: discs}))
 	f.Add("a.b.c~WyJzIiwibiIsMV0~")
-	pub, _ := jose.PublicJWK(issuer, "")
+	pub, err := jose.PublicJWK(issuer, "")
+	if err != nil {
+		f.Fatalf("jose.PublicJWK: %v", err)
+	}
 	f.Fuzz(func(t *testing.T, tok string) {
 		p, err := Parse(tok)
 		if err != nil {
 			return
 		}
 		if payload, err := jose.PeekPayload(p.IssuerJWT); err == nil {
-			_, _ = Resolve(payload, p.Disclosures)
+			if _, err := Resolve(payload, p.Disclosures); err != nil && err.Error() == "" {
+				t.Fatalf("Resolve must describe the failure")
+			}
 		}
-		_, _ = Verify(tok, VerifyOptions{IssuerKey: func(jose.Header, map[string]any) (crypto.PublicKey, error) { return pub.Key, nil }})
+		if _, err := Verify(tok, VerifyOptions{IssuerKey: func(jose.Header, map[string]any) (crypto.PublicKey, error) { return pub.Key, nil }}); err != nil && err.Error() == "" {
+			t.Fatalf("Verify must describe the failure")
+		}
 	})
 }

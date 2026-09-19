@@ -6,6 +6,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
@@ -61,7 +62,7 @@ func schemaURL(c vc.Credential) string {
 		if !ok {
 			continue
 		}
-		if id, _ := m["id"].(string); id != "" {
+		if id := anyval.As[string](m["id"]); id != "" {
 			return id
 		}
 	}

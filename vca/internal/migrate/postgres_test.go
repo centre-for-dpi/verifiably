@@ -178,5 +178,7 @@ func TestOpenPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	_ = db.Close()
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close: %v", err)
+	}
 }

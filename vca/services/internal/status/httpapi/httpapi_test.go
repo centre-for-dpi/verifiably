@@ -81,7 +81,11 @@ func TestServeListDefaultAndAccept(t *testing.T) {
 	url := srv.URL + ListPrefix + "abc"
 
 	resp := get(t, url, "", "")
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("resp.Body.Close: %v", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -100,25 +104,41 @@ func TestServeListDefaultAndAccept(t *testing.T) {
 	}
 
 	cwt := get(t, url, "application/statuslist+cwt", "")
-	defer cwt.Body.Close()
+	defer func() {
+		if err := cwt.Body.Close(); err != nil {
+			t.Errorf("cwt.Body.Close: %v", err)
+		}
+	}()
 	if cwt.Header.Get("Content-Type") != "application/statuslist+cwt" {
 		t.Fatalf("cwt content type = %s", cwt.Header.Get("Content-Type"))
 	}
 
 	notModified := get(t, url, "", etag)
-	defer notModified.Body.Close()
+	defer func() {
+		if err := notModified.Body.Close(); err != nil {
+			t.Errorf("notModified.Body.Close: %v", err)
+		}
+	}()
 	if notModified.StatusCode != http.StatusNotModified {
 		t.Fatalf("status = %d", notModified.StatusCode)
 	}
 
 	star := get(t, url, "", "*")
-	defer star.Body.Close()
+	defer func() {
+		if err := star.Body.Close(); err != nil {
+			t.Errorf("star.Body.Close: %v", err)
+		}
+	}()
 	if star.StatusCode != http.StatusNotModified {
 		t.Fatal("If-None-Match: * must match")
 	}
 
 	weak := get(t, url, "", `W/`+etag+`, "other"`)
-	defer weak.Body.Close()
+	defer func() {
+		if err := weak.Body.Close(); err != nil {
+			t.Errorf("weak.Body.Close: %v", err)
+		}
+	}()
 	if weak.StatusCode != http.StatusNotModified {
 		t.Fatal("weak tag must match")
 	}
@@ -128,12 +148,20 @@ func TestServeListErrors(t *testing.T) {
 	srv := newServer(newSource(), 0)
 	defer srv.Close()
 	missing := get(t, srv.URL+ListPrefix+"none", "", "")
-	defer missing.Body.Close()
+	defer func() {
+		if err := missing.Body.Close(); err != nil {
+			t.Errorf("missing.Body.Close: %v", err)
+		}
+	}()
 	if missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", missing.StatusCode)
 	}
 	bad := get(t, srv.URL+ListPrefix+"abc", "text/plain", "")
-	defer bad.Body.Close()
+	defer func() {
+		if err := bad.Body.Close(); err != nil {
+			t.Errorf("bad.Body.Close: %v", err)
+		}
+	}()
 	if bad.StatusCode != http.StatusNotAcceptable {
 		t.Fatalf("status = %d", bad.StatusCode)
 	}
@@ -143,14 +171,22 @@ func TestServeListErrors(t *testing.T) {
 	other := newServer(src, 0)
 	defer other.Close()
 	resp := get(t, other.URL+ListPrefix+"abc", "application/other", "")
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("resp.Body.Close: %v", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusNotAcceptable {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	broken := newServer(fakeSource{types: []string{"a/b"}, err: errors.New("store down")}, 0)
 	defer broken.Close()
 	down := get(t, broken.URL+ListPrefix+"abc", "", "")
-	defer down.Body.Close()
+	defer func() {
+		if err := down.Body.Close(); err != nil {
+			t.Errorf("down.Body.Close: %v", err)
+		}
+	}()
 	if down.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", down.StatusCode)
 	}
@@ -160,7 +196,11 @@ func TestServeJWKS(t *testing.T) {
 	srv := newServer(newSource(), 0)
 	defer srv.Close()
 	resp := get(t, srv.URL+JWKSPath, "", "")
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("resp.Body.Close: %v", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/jwk-set+json" {
 		t.Fatalf("status %d type %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
@@ -168,7 +208,11 @@ func TestServeJWKS(t *testing.T) {
 		t.Fatalf("default max age = %s", resp.Header.Get("Cache-Control"))
 	}
 	again := get(t, srv.URL+JWKSPath, "", resp.Header.Get("ETag"))
-	defer again.Body.Close()
+	defer func() {
+		if err := again.Body.Close(); err != nil {
+			t.Errorf("again.Body.Close: %v", err)
+		}
+	}()
 	if again.StatusCode != http.StatusNotModified {
 		t.Fatal("jwks etag")
 	}

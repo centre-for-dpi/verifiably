@@ -6,6 +6,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
 
@@ -115,7 +116,7 @@ func refID(v any) string {
 	case string:
 		return t
 	case map[string]any:
-		id, _ := t["id"].(string)
+		id := anyval.As[string](t["id"])
 		return id
 	}
 	return ""

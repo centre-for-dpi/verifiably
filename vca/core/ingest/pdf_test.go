@@ -40,14 +40,14 @@ func grayImage(t *testing.T, text string) (samples []byte, width, height int) {
 }
 
 func TestExtractPDFImagesGray(t *testing.T) {
-	samples, width, height := grayImage(t, sdjwtToken)
+	samples, width, height := grayImage(t, sampleSDJWT)
 	dict := fmt.Sprintf("/Subtype /Image /Filter /FlateDecode /Width %d /Height %d /BitsPerComponent 8 /ColorSpace /DeviceGray", width, height)
 	pdf := pdfWithStream(dict, deflate(t, samples))
 	text, err := ingest.DecodePDF(pdf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text != sdjwtToken {
+	if text != sampleSDJWT {
 		t.Errorf("text = %q", text)
 	}
 	res, err := ingest.Decode(pdf, ingest.Options{})

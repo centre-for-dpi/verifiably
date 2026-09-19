@@ -8,6 +8,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -16,7 +17,9 @@ import (
 
 func TestCWTClaimsRoundTrip(t *testing.T) {
 	l := mustNew(t, 2, 12)
-	_ = l.Set(1, Suspended)
+	if err := l.Set(1, Suspended); err != nil {
+		t.Fatalf("l.Set: %v", err)
+	}
 	raw := CWTClaims(sampleClaims(), l)
 	c, got, err := ParseCWTClaims(raw)
 	if err != nil {
@@ -25,7 +28,7 @@ func TestCWTClaimsRoundTrip(t *testing.T) {
 	if c != sampleClaims() {
 		t.Fatalf("claims = %+v", c)
 	}
-	if v, _ := got.Get(1); v != Suspended {
+	if mustGet(t, got, 1) != Suspended {
 		t.Fatal("index 1 must be Suspended")
 	}
 	// Minimal claims.
@@ -46,7 +49,13 @@ func TestCWTClaimsRoundTrip(t *testing.T) {
 }
 
 func TestParseCWTClaimsErrors(t *testing.T) {
-	enc := func(v any) []byte { b, _ := cbor.Marshal(v); return b }
+	enc := func(v any) []byte {
+		b, err := cbor.Marshal(v)
+		if err != nil {
+			t.Fatalf("cbor.Marshal: %v", err)
+		}
+		return b
+	}
 	cases := []struct {
 		name string
 		raw  []byte
@@ -75,8 +84,14 @@ func TestParseCWTClaimsErrors(t *testing.T) {
 }
 
 func TestSignVerifyCWT(t *testing.T) {
-	ec, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	_, ed, _ := ed25519.GenerateKey(rand.Reader)
+	ec, ecErr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if ecErr != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", ecErr)
+	}
+	_, ed, edErr := ed25519.GenerateKey(rand.Reader)
+	if edErr != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", edErr)
+	}
 	payload := CWTClaims(sampleClaims(), mustNew(t, 1, 8))
 	for name, key := range map[string]any{"es256": ec, "eddsa": ed} {
 		t.Run(name, func(t *testing.T) {
@@ -116,8 +131,14 @@ func TestSignVerifyCWT(t *testing.T) {
 		})
 	}
 	// No kid.
-	alg, sign, _ := KeySigner(ec)
-	msg, _ := SignCWT(payload, alg, nil, sign)
+	alg, sign, err := KeySigner(ec)
+	if err != nil {
+		t.Fatalf("KeySigner: %v", err)
+	}
+	msg, err := SignCWT(payload, alg, nil, sign)
+	if err != nil {
+		t.Fatalf("SignCWT: %v", err)
+	}
 	if _, err := VerifyCWT(msg, func(_ int64, kid, _, _ []byte) error {
 		if kid != nil {
 			t.Fatal("kid must be nil")
@@ -133,7 +154,10 @@ func TestSignVerifyCWT(t *testing.T) {
 }
 
 func TestKeySignerErrors(t *testing.T) {
-	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
 	if _, _, err := KeySigner(p384); err == nil {
 		t.Fatal("P-384 must fail")
 	}
@@ -143,8 +167,14 @@ func TestKeySignerErrors(t *testing.T) {
 }
 
 func TestKeyVerifierErrors(t *testing.T) {
-	ec, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	edPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
+	edPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", err)
+	}
 	data := []byte("data")
 	if err := KeyVerifier(&ec.PublicKey)(COSEAlgEdDSA, nil, data, make([]byte, 64)); err == nil {
 		t.Fatal("wrong alg for EC must fail")
@@ -161,7 +191,13 @@ func TestKeyVerifierErrors(t *testing.T) {
 }
 
 func TestVerifyCWTStructureErrors(t *testing.T) {
-	enc := func(v any) []byte { b, _ := cbor.Marshal(v); return b }
+	enc := func(v any) []byte {
+		b, err := cbor.Marshal(v)
+		if err != nil {
+			t.Fatalf("cbor.Marshal: %v", err)
+		}
+		return b
+	}
 	ok := func(int64, []byte, []byte, []byte) error { return nil }
 	goodHdr := enc(map[int64]any{coseAlg: COSEAlgES256, coseTyp: TypeCWT})
 	cases := []struct {
@@ -190,15 +226,28 @@ func TestVerifyCWTStructureErrors(t *testing.T) {
 }
 
 func FuzzParseCWT(f *testing.F) {
-	ec, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	alg, sign, _ := KeySigner(ec)
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		f.Fatalf("ecdsa.GenerateKey: %v", err)
+	}
+	alg, sign, err := KeySigner(ec)
+	if err != nil {
+		f.Fatalf("KeySigner: %v", err)
+	}
 	payload := CWTClaims(sampleClaims(), mustNewF(f))
-	msg, _ := SignCWT(payload, alg, []byte("k"), sign)
+	msg, err := SignCWT(payload, alg, []byte("k"), sign)
+	if err != nil {
+		f.Fatalf("SignCWT: %v", err)
+	}
 	f.Add(msg)
 	f.Add(payload)
 	f.Fuzz(func(t *testing.T, data []byte) {
-		_, _, _ = ParseCWTClaims(data)
-		_, _ = VerifyCWT(data, KeyVerifier(&ec.PublicKey))
+		if _, _, err := ParseCWTClaims(data); err != nil && err.Error() == "" {
+			t.Fatal("ParseCWTClaims must describe the failure")
+		}
+		if _, err := VerifyCWT(data, KeyVerifier(&ec.PublicKey)); err != nil && err.Error() == "" {
+			t.Fatal("VerifyCWT must describe the failure")
+		}
 	})
 }
 
@@ -208,4 +257,16 @@ func mustNewF(f *testing.F) *List {
 		f.Fatal(err)
 	}
 	return l
+}
+
+func TestValueHelpers(t *testing.T) {
+	if _, ok := asInt(uint64(math.MaxUint64)); ok {
+		t.Fatal("a uint64 above MaxInt64 must not convert")
+	}
+	if got := bytesOrNil([]byte("x"), errors.New("boom")); got != nil {
+		t.Fatalf("bytesOrNil with error = %v", got)
+	}
+	if got := floatOf("not a number"); got != 0 {
+		t.Fatalf("floatOf = %v", got)
+	}
 }

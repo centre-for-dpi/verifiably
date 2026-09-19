@@ -46,9 +46,9 @@ func tokenCred(index int) Credential {
 // tokenDoc returns a signed Status List Token.
 func tokenDoc(t *testing.T, b builder, set int, value uint8) []byte {
 	t.Helper()
-	l, err := token.New(1, bitstring.MinSize)
-	if err != nil {
-		t.Fatal(err)
+	l, lErr := token.New(1, bitstring.MinSize)
+	if lErr != nil {
+		t.Fatal(lErr)
 	}
 	if err := l.Set(set, value); err != nil {
 		t.Fatal(err)

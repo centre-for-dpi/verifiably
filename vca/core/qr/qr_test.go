@@ -314,9 +314,7 @@ func TestEncodeMaskRejectsAMaskOutOfRange(t *testing.T) {
 
 func TestPenaltyFinderLikeFindsBothDirections(t *testing.T) {
 	m := newMatrix(1)
-	for x, on := range finderLike {
-		m.dark[x] = on
-	}
+	copy(m.dark, finderLike[:])
 	if got := m.penaltyFinderLike(); got < 40 {
 		t.Fatalf("penalty = %d, want at least 40", got)
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
@@ -32,12 +33,12 @@ func keyBindingOf(index int, c Credential, pc Context) CheckResult {
 	if c.Format != vc.FormatSDJWT {
 		return result(NameKeyBinding, Skip, index, "the credential is not an SD-JWT", ev)
 	}
-	pres, err := sdjwt.Parse(c.Token)
-	if err != nil {
+	pres, presErr := sdjwt.Parse(c.Token)
+	if presErr != nil {
 		return result(NameKeyBinding, Fail, index, "the SD-JWT does not parse", ev)
 	}
-	payload, err := jose.PeekPayload(pres.IssuerJWT)
-	if err != nil {
+	payload, payloadErr := jose.PeekPayload(pres.IssuerJWT)
+	if payloadErr != nil {
 		return result(NameKeyBinding, Fail, index, "the issuer JWT payload does not parse", ev)
 	}
 	if _, err := sdjwt.Resolve(payload, pres.Disclosures); err != nil {
@@ -108,7 +109,7 @@ func checkDigest(pres sdjwt.Presentation, payload, kb map[string]any) string {
 	if err != nil {
 		return "the credential names an unknown digest algorithm"
 	}
-	if got, _ := kb["sd_hash"].(string); got != want {
+	if got := anyval.As[string](kb["sd_hash"]); got != want {
 		return "the key binding JWT does not cover the disclosures"
 	}
 	return ""

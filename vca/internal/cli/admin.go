@@ -11,10 +11,12 @@ import (
 	"net/http"
 	"strings"
 
-	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
-	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 )
 
 // AdminService is the full proto service name. The Connect URL of one
@@ -193,14 +195,14 @@ func (c AdminClient) Call(ctx context.Context, cmd AdminCommand, body []byte) ([
 	if err != nil {
 		return nil, fmt.Errorf("call %s: %w", cmd.Method, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { anyval.Discard(resp.Body.Close()) }()
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read the answer: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		fault := &ConnectError{Status: resp.StatusCode}
-		_ = json.Unmarshal(answer, fault)
+		anyval.Discard(json.Unmarshal(answer, fault))
 		return nil, fault
 	}
 	return answer, nil

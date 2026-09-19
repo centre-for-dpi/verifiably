@@ -24,6 +24,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // Errors the package returns. Callers match them with errors.Is.
@@ -70,8 +72,8 @@ func Canonical(v any) ([]byte, error) {
 	var generic any
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
-	_ = dec.Decode(&generic)
-	out, _ := json.Marshal(generic)
+	anyval.MustDo(dec.Decode(&generic))
+	out := anyval.Must(json.Marshal(generic))
 	return out, nil
 }
 

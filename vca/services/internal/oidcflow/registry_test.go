@@ -44,9 +44,9 @@ func TestRegistry(t *testing.T) {
 	// after the second provider.
 	clock := func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) }
 	store := oidcflow.NewMemoryPersister()
-	reg, err := oidcflow.NewRegistry(store, clock)
-	if err != nil {
-		t.Fatal(err)
+	reg, regErr := oidcflow.NewRegistry(store, clock)
+	if regErr != nil {
+		t.Fatal(regErr)
 	}
 	if _, err := reg.Put(oidcflow.Provider{ID: "bad"}); !errors.Is(err, oidcflow.ErrInvalidProvider) {
 		t.Fatalf("invalid: %v", err)
@@ -58,11 +58,14 @@ func TestRegistry(t *testing.T) {
 	created := p.CreatedAt
 	p.DisplayName = "B"
 	p.CreatedAt = time.Time{}
-	p2, _ := reg.Put(p)
+	p2, err := reg.Put(p)
+	if err != nil {
+		t.Fatalf("reg.Put: %v", err)
+	}
 	if !p2.CreatedAt.Equal(created) || p2.DisplayName != "B" {
 		t.Fatalf("update kept created_at: %+v", p2)
 	}
-	if _, err := reg.Put(oidcflow.Provider{ID: "z", DiscoveryURL: "https://z/x", ClientID: "c", Enabled: false}); err != nil {
+	if _, gotErr := reg.Put(oidcflow.Provider{ID: "z", DiscoveryURL: "https://z/x", ClientID: "c", Enabled: false}); gotErr != nil {
 		t.Fatal(err)
 	}
 	if got := reg.List(); len(got) != 2 || got[1].ID != "z" {
@@ -71,23 +74,26 @@ func TestRegistry(t *testing.T) {
 	if got := reg.Enabled(); len(got) != 1 || got[0].ID != p.ID {
 		t.Fatalf("enabled: %+v", got)
 	}
-	if _, err := reg.Get("nope"); !errors.Is(err, oidcflow.ErrProviderNotFound) {
-		t.Fatalf("get: %v", err)
+	if _, gotErr := reg.Get("nope"); !errors.Is(gotErr, oidcflow.ErrProviderNotFound) {
+		t.Fatalf("get: %v", gotErr)
 	}
 	// A new registry on the same store sees the records.
 	reg2, err := oidcflow.NewRegistry(store, clock)
 	if err != nil || len(reg2.List()) != 2 {
 		t.Fatalf("reload: %v", err)
 	}
-	if err := reg.Delete("z"); err != nil {
-		t.Fatal(err)
+	if gotErr := reg.Delete("z"); gotErr != nil {
+		t.Fatal(gotErr)
 	}
-	if err := reg.Delete("z"); !errors.Is(err, oidcflow.ErrProviderNotFound) {
-		t.Fatalf("delete twice: %v", err)
+	if gotErr := reg.Delete("z"); !errors.Is(gotErr, oidcflow.ErrProviderNotFound) {
+		t.Fatalf("delete twice: %v", gotErr)
 	}
 	// Persist failures roll back.
 	fp := &failingPersister{Persister: store}
-	reg3, _ := oidcflow.NewRegistry(fp, clock)
+	reg3, err := oidcflow.NewRegistry(fp, clock)
+	if err != nil {
+		t.Fatalf("oidcflow.NewRegistry: %v", err)
+	}
 	fp.failSave = true
 	if _, err := reg3.Put(oidcflow.Provider{ID: "new", DiscoveryURL: "https://n/x", ClientID: "c"}); err == nil {
 		t.Fatal("save error hidden")
@@ -100,8 +106,9 @@ func TestRegistry(t *testing.T) {
 	if _, err := reg3.Put(existing); err == nil {
 		t.Fatal("save error hidden on update")
 	}
-	if got, _ := reg3.Get(existing.ID); got.DisplayName == "changed" {
-		t.Fatal("update not rolled back")
+	stored, storedErr := reg3.Get(existing.ID)
+	if storedErr != nil || stored.DisplayName == "changed" {
+		t.Fatalf("update not rolled back: %v", storedErr)
 	}
 	if err := reg3.Delete(existing.ID); err == nil {
 		t.Fatal("delete save error hidden")
@@ -118,7 +125,9 @@ func TestRegistry(t *testing.T) {
 	}
 	// Bad stored JSON.
 	bad := oidcflow.NewMemoryPersister()
-	_ = bad.Save("providers", "not a list")
+	if err := bad.Save("providers", "not a list"); err != nil {
+		t.Fatalf("bad.Save: %v", err)
+	}
 	if _, err := oidcflow.NewRegistry(bad, nil); err == nil {
 		t.Fatal("bad json accepted")
 	}
@@ -146,7 +155,7 @@ func TestProtoConversion(t *testing.T) {
 		if st == "odd" {
 			want = oidcflow.SecretNone
 		}
-		if q.ClientSecret.Store != want && !(want == oidcflow.SecretNone && q.ClientSecret.IsZero()) {
+		if q.ClientSecret.Store != want && (want != oidcflow.SecretNone || !q.ClientSecret.IsZero()) {
 			t.Fatalf("store %s -> %s", st, q.ClientSecret.Store)
 		}
 	}
@@ -156,7 +165,10 @@ func TestProtoConversion(t *testing.T) {
 }
 
 func TestAdminProvidersRPC(t *testing.T) {
-	reg, _ := oidcflow.NewRegistry(nil, nil)
+	reg, regErr := oidcflow.NewRegistry(nil, nil)
+	if regErr != nil {
+		t.Fatalf("oidcflow.NewRegistry: %v", regErr)
+	}
 	svc := oidcflow.AdminProviders{Registry: reg, Authorize: oidcflow.BearerAuthorizer("admin-token"), Roles: []string{"issuer"}, InternalAuthority: "http://idp:8080"}
 	path, h := oidcflow.NewAdminHandler(svc)
 	mux := http.NewServeMux()
@@ -186,16 +198,17 @@ func TestAdminProvidersRPC(t *testing.T) {
 	if _, err := authed.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: prov, DynamicRegistration: true})); connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Fatalf("dynamic: %v", err)
 	}
-	created, err := authed.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: prov}))
-	if err != nil {
-		t.Fatal(err)
+	created, createdErr := authed.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: prov}))
+	if createdErr != nil {
+		t.Fatal(createdErr)
 	}
 	id := created.Msg.GetProvider().GetId()
 	if id == "" || created.Msg.GetProvider().GetRoles()[0] != commonv1.Role_ROLE_ISSUER {
 		t.Fatalf("created: %+v", created.Msg)
 	}
-	if p, _ := reg.Get(id); p.InternalAuthority != "http://idp:8080" {
-		t.Fatalf("internal authority: %+v", p)
+	p, pErr := reg.Get(id)
+	if pErr != nil || p.InternalAuthority != "http://idp:8080" {
+		t.Fatalf("internal authority: %+v %v", p, pErr)
 	}
 	if _, err := authed.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: &adminv1.AuthProvider{}})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("invalid: %v", err)
@@ -204,7 +217,7 @@ func TestAdminProvidersRPC(t *testing.T) {
 	if err != nil || got.Msg.GetProvider().GetDisplayName() != "A" {
 		t.Fatalf("get: %v", err)
 	}
-	if _, err := authed.GetAuthProvider(ctx, connect.NewRequest(&adminv1.GetAuthProviderRequest{Id: "x"})); connect.CodeOf(err) != connect.CodeNotFound {
+	if _, gotErr := authed.GetAuthProvider(ctx, connect.NewRequest(&adminv1.GetAuthProviderRequest{Id: "x"})); connect.CodeOf(gotErr) != connect.CodeNotFound {
 		t.Fatalf("get missing: %v", err)
 	}
 	list, err := authed.ListAuthProviders(ctx, connect.NewRequest(&adminv1.ListAuthProvidersRequest{}))

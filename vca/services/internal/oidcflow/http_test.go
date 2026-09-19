@@ -64,7 +64,10 @@ func (f *fakeLogins) Session(_ context.Context, token string) (oidcflow.Claims, 
 func newHandlers(t *testing.T) (*fakeLogins, oidcflow.Handlers, *http.ServeMux) {
 	t.Helper()
 	s := newSigner(t)
-	c, _ := oidcflow.NewCSRF([]byte("0123456789abcdef0123456789abcdef"))
+	c, err := oidcflow.NewCSRF([]byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatalf("oidcflow.NewCSRF: %v", err)
+	}
 	fl := &fakeLogins{signer: s, claims: oidcflow.Claims{Subject: "u", Roles: []string{"issuer-viewer"}}}
 	h := oidcflow.Handlers{Logins: fl, Cookie: oidcflow.Cookie{Name: "sess", Secure: true}, CSRF: c}
 	mux := http.NewServeMux()
@@ -185,7 +188,9 @@ func TestHandlersCallbackLogoutSession(t *testing.T) {
 	var sess struct {
 		CSRFToken string `json:"csrf_token"`
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &sess)
+	if err := json.Unmarshal(rec.Body.Bytes(), &sess); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	r = httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
 	r.Header.Set(oidcflow.CSRFHeader, sess.CSRFToken)
 	r.AddCookie(cookie)
@@ -205,7 +210,9 @@ func TestHandlersLogoutFallbackAndEndError(t *testing.T) {
 	var body struct {
 		CSRFToken string `json:"csrf_token"`
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	fl.endErr = oidcflow.ErrUpstream
 	r := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	r.Header.Set(oidcflow.CSRFHeader, body.CSRFToken)

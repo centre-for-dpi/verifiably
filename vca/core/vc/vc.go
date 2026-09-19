@@ -163,14 +163,16 @@ var reserved = map[string]bool{
 // FromObject normalises a decoded VCDM credential object. The object may
 // be a JWT claim set that carries the credential under "vc".
 func FromObject(obj map[string]any) Credential {
-	inner, _ := obj["vc"].(map[string]any)
-	if inner == nil {
+	inner, isObject := obj["vc"].(map[string]any)
+	if !isObject || inner == nil {
 		inner = obj
 	}
 	claims := map[string]string{}
 	subject := ""
 	if cs, ok := inner["credentialSubject"].(map[string]any); ok {
-		subject, _ = cs["id"].(string)
+		if id, isString := cs["id"].(string); isString {
+			subject = id
+		}
 		for k, v := range cs {
 			if k != "id" {
 				claims[k] = Stringify(v)
@@ -256,8 +258,9 @@ func Parse(raw []byte) (Credential, error) {
 		return FromJWT(string(raw))
 	case FormatJSONLD, FormatJSON:
 		var m map[string]any
-		_ = json.Unmarshal(bytes.TrimSpace(raw), &m)
-		return FromObject(m), nil
+		// DetectFormat already parsed these bytes, so err is always nil.
+		err := json.Unmarshal(bytes.TrimSpace(raw), &m)
+		return FromObject(m), err
 	case FormatMdoc:
 		return Credential{}, fmt.Errorf("vc: mdoc credentials are not decoded by this package")
 	}
@@ -368,7 +371,10 @@ func Stringify(v any) string {
 }
 
 func str(m map[string]any, key string) string {
-	s, _ := m[key].(string)
+	s, isString := m[key].(string)
+	if !isString {
+		return ""
+	}
 	return s
 }
 

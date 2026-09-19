@@ -48,10 +48,10 @@ func TestAppendHeadVerify(t *testing.T) {
 	if !ok || head.Hash != e1.Hash {
 		t.Fatal("head")
 	}
-	if err := Verify(c.Entries()); err != nil {
-		t.Fatal(err)
+	if verifyErr := Verify(c.Entries()); verifyErr != nil {
+		t.Fatal(verifyErr)
 	}
-	if _, _, err := c.Append(make(chan int)); err == nil {
+	if _, _, appendErr := c.Append(make(chan int)); appendErr == nil {
 		t.Fatal("bad body must fail")
 	}
 	loaded, err := Load(c.Entries())
@@ -67,9 +67,18 @@ func TestAppendHeadVerify(t *testing.T) {
 
 func TestVerifyFailures(t *testing.T) {
 	c := New()
-	c, _, _ = c.Append("a")
-	c, _, _ = c.Append("b")
-	c, _, _ = c.Append("c")
+	c, _, errAssign := c.Append("a")
+	if errAssign != nil {
+		t.Fatalf("c.Append: %v", errAssign)
+	}
+	c, _, errAssign2 := c.Append("b")
+	if errAssign2 != nil {
+		t.Fatalf("c.Append: %v", errAssign2)
+	}
+	c, _, errAssign3 := c.Append("c")
+	if errAssign3 != nil {
+		t.Fatalf("c.Append: %v", errAssign3)
+	}
 	good := c.Entries()
 
 	tamperedBody := c.Entries()
