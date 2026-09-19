@@ -65,7 +65,7 @@ func RenderDotenv(header string, list []Resolution, extra map[string]string) str
 		b.WriteString(r.Setting.Env + "=" + quoteValue(r.Value) + "\n")
 	}
 	if len(extra) > 0 {
-		b.WriteString("\n# Ports and addresses that vca assigned.\n")
+		b.WriteString("\n# Ports, addresses, and service links that vca assigned.\n")
 		names := make([]string, 0, len(extra))
 		for k := range extra {
 			names = append(names, k)

@@ -5,6 +5,7 @@ package cli
 import (
 	"sort"
 	"strconv"
+	"strings"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
@@ -28,6 +29,49 @@ type Service struct {
 	Dpg configv1.Dpg
 	// Stateful reports whether the service needs a data volume.
 	Stateful bool
+	// Links name the variables that point at another service.
+	// The CLI fills them from the port plan of the deployment.
+	Links []Link
+	// Fixed lists the variables whose value never changes.
+	Fixed []FixedValue
+}
+
+// LinkKind says how the CLI builds the value of a cross service variable.
+type LinkKind int
+
+const (
+	// LinkURL is the base URL of one other service, plus a path.
+	LinkURL LinkKind = iota
+	// LinkServiceMap is every service of the deployment, as name=url
+	// items separated by commas. The admin health page reads it.
+	LinkServiceMap
+	// LinkAdapterMap is the DPG adapter of the pair, as one name=url item.
+	LinkAdapterMap
+	// LinkDpgName is the short name of the DPG of the pair.
+	LinkDpgName
+	// LinkPublicURL is the public base URL of the deployment.
+	LinkPublicURL
+)
+
+// Link is one variable that names another service.
+type Link struct {
+	// Env is the variable the service reads.
+	Env string
+	// Target is the service the variable points at. It is used by
+	// LinkURL only.
+	Target string
+	// Path is the path the CLI adds to the base URL.
+	Path string
+	// Kind says how to build the value.
+	Kind LinkKind
+}
+
+// FixedValue is one variable with a value the CLI always writes.
+type FixedValue struct {
+	// Env is the variable name.
+	Env string
+	// Value is the value.
+	Value string
 }
 
 // Image returns the image reference of the service without a tag.
@@ -44,6 +88,13 @@ func Catalog() []Service {
 		commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER, commonv1.Role_ROLE_VERIFIER,
 	}
 	out := []Service{
+		{Name: "admin", ListenEnv: "VCA_ADMIN_LISTEN", ExposedPort: 8093, Roles: admin, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_ADMIN_PUBLIC_URL", Kind: LinkPublicURL},
+				{Env: "VCA_ADMIN_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
+				{Env: "VCA_ADMIN_SERVICES", Kind: LinkServiceMap},
+			},
+			Fixed: []FixedValue{{Env: "VCA_ADMIN_STATE_DIR", Value: "/data"}}},
 		{Name: "data-source", ListenEnv: "VCA_DATASOURCE_LISTEN", ExposedPort: 8083, Roles: issuer, Stateful: true},
 		{Name: "dpg-adapter-credebl", ListenEnv: "VCA_CREDEBL_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_CREDEBL},
 		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI},
@@ -62,6 +113,16 @@ func Catalog() []Service {
 		{Name: "verifier-policy", ListenEnv: "VCA_VERIFIER_POLICY_LISTEN", ExposedPort: 8086, Roles: verifier, Stateful: true},
 		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true},
 		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder},
+		{Name: "wallet-portal", ListenEnv: "VCA_WALLET_PORTAL_LISTEN", ExposedPort: 8092, Roles: holder, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_WALLET_PORTAL_AUTH_JWKS_URL", Target: "wallet-auth", Path: "/.well-known/jwks.json", Kind: LinkURL},
+				{Env: "VCA_WALLET_PORTAL_LOGIN_URL", Target: "wallet-auth", Path: "/login", Kind: LinkURL},
+				{Env: "VCA_WALLET_PORTAL_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
+				{Env: "VCA_WALLET_PORTAL_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
+				{Env: "VCA_WALLET_PORTAL_DPG", Kind: LinkDpgName},
+				{Env: "VCA_WALLET_PORTAL_DPG_ADAPTERS", Kind: LinkAdapterMap},
+			},
+			Fixed: []FixedValue{{Env: "VCA_WALLET_PORTAL_STATE_DIR", Value: "/data"}}},
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -89,23 +150,27 @@ func portalService(role commonv1.Role) string {
 	case commonv1.Role_ROLE_ISSUER:
 		return "issuance"
 	case commonv1.Role_ROLE_HOLDER:
-		return "wallet-auth"
+		return "wallet-portal"
 	case commonv1.Role_ROLE_VERIFIER:
 		return "verifier-results"
 	case commonv1.Role_ROLE_ADMIN:
-		return "trust-registry"
+		return "admin"
 	default:
 		return ""
 	}
 }
 
-// authService names the login service of a role. Only the issuer role
-// runs a separate one.
+// authService names the login service of a role. The verifier role and
+// the admin role log staff in from their portal, so they run none.
 func authService(role commonv1.Role) string {
-	if role == commonv1.Role_ROLE_ISSUER {
+	switch role {
+	case commonv1.Role_ROLE_ISSUER:
 		return "issuer-auth"
+	case commonv1.Role_ROLE_HOLDER:
+		return "wallet-auth"
+	default:
+		return ""
 	}
-	return ""
 }
 
 // firstServicePort is the port the CLI assigns to the first service that
@@ -213,4 +278,122 @@ func PortValues(plan []PortAssignment) map[string]string {
 		out["VCA_HOST_PORT_"+envName(a.Service.Name)] = strconv.Itoa(a.Host)
 	}
 	return out
+}
+
+// ownerPair returns the pair of the same DPG that runs one service.
+// The pair of the caller wins when it runs the service itself, so a DPG
+// adapter stays inside its own profile.
+func ownerPair(p Pair, name string) (Pair, bool) {
+	for _, s := range ServicesFor(p) {
+		if s.Name == name {
+			return p, true
+		}
+	}
+	for _, r := range Roles() {
+		other := Pair{Role: r, Dpg: p.Dpg}
+		for _, s := range ServicesFor(other) {
+			if s.Name == name {
+				return other, true
+			}
+		}
+	}
+	return Pair{}, false
+}
+
+// serviceURL returns the URL of one service on the compose network.
+// Every container of a pair carries the name <pair>-<service>, so two
+// pairs of the same DPG reach each other.
+func serviceURL(p Pair, name string) (string, bool) {
+	owner, ok := ownerPair(p, name)
+	if !ok {
+		return "", false
+	}
+	for _, a := range AssignPorts(owner, nil) {
+		if a.Service.Name == name {
+			return "http://" + composeServiceName(owner, a.Service) + ":" + strconv.Itoa(a.Listen), true
+		}
+	}
+	return "", false
+}
+
+// deploymentServices lists every service of one DPG across every role,
+// once each, in service name order.
+func deploymentServices(d configv1.Dpg) []Service {
+	seen := map[string]bool{}
+	var out []Service
+	for _, s := range Catalog() {
+		if s.Dpg != configv1.Dpg_DPG_UNSPECIFIED && s.Dpg != d {
+			continue
+		}
+		if seen[s.Name] {
+			continue
+		}
+		seen[s.Name] = true
+		out = append(out, s)
+	}
+	return out
+}
+
+// LinkValues returns every cross service variable of one pair, keyed by
+// variable name. The values point at the container names of the compose
+// file, so a role reaches the services of another role of the same DPG.
+// A link whose target no role runs is left out.
+func LinkValues(p Pair, values map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, s := range ServicesFor(p) {
+		for _, f := range s.Fixed {
+			out[f.Env] = f.Value
+		}
+		for _, link := range s.Links {
+			if value, ok := linkValue(p, s, link, values); ok {
+				out[link.Env] = value
+			}
+		}
+	}
+	return out
+}
+
+// linkValue builds the value of one link.
+func linkValue(p Pair, s Service, link Link, values map[string]string) (string, bool) {
+	switch link.Kind {
+	case LinkURL:
+		base, ok := serviceURL(p, link.Target)
+		if !ok {
+			return "", false
+		}
+		return base + link.Path, true
+	case LinkServiceMap:
+		var items []string
+		for _, other := range deploymentServices(p.Dpg) {
+			if other.Name == s.Name {
+				continue
+			}
+			base, ok := serviceURL(p, other.Name)
+			if !ok {
+				continue
+			}
+			items = append(items, other.Name+"="+base)
+		}
+		if len(items) == 0 {
+			return "", false
+		}
+		return strings.Join(items, ","), true
+	case LinkAdapterMap:
+		name := "dpg-adapter-" + ShortName(p.Dpg.String())
+		base, ok := serviceURL(p, name)
+		if !ok {
+			return "", false
+		}
+		return ShortName(p.Dpg.String()) + "=" + base, true
+	case LinkDpgName:
+		if p.Dpg == configv1.Dpg_DPG_UNSPECIFIED {
+			return "", false
+		}
+		return ShortName(p.Dpg.String()), true
+	case LinkPublicURL:
+		value := strings.TrimRight(values["VCA_PUBLIC_URL"], "/")
+		return value, value != ""
+	default:
+		return "", false
+	}
 }

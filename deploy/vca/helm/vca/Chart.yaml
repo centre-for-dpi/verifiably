@@ -8,6 +8,10 @@ type: application
 version: 0.1.0
 appVersion: "0.1.0"
 dependencies:
+  - name: admin
+    version: 0.1.0
+    repository: "file://../admin"
+    condition: roles.admin.enabled
   - name: data-source
     version: 0.1.0
     repository: "file://../data-source"
@@ -79,4 +83,8 @@ dependencies:
   - name: wallet-auth
     version: 0.1.0
     repository: "file://../wallet-auth"
+    condition: roles.holder.enabled
+  - name: wallet-portal
+    version: 0.1.0
+    repository: "file://../wallet-portal"
     condition: roles.holder.enabled

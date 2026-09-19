@@ -120,9 +120,13 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, &InvalidValuesError{Pair: req.Pair.Name(), Problems: problems}
 	}
 	plan := AssignPorts(req.Pair, values)
+	extra := PortValues(plan)
+	for name, value := range LinkValues(req.Pair, values) {
+		extra[name] = value
+	}
 	files := []File{{
 		Name: EnvFileName,
-		Data: []byte(RenderDotenv(req.Pair.Name()+" deployment", list, PortValues(plan))),
+		Data: []byte(RenderDotenv(req.Pair.Name()+" deployment", list, extra)),
 		Mode: 0o600,
 	}}
 	files = append(files, secretFiles...)

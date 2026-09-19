@@ -356,7 +356,19 @@ services:
       - path: ../holder-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_AUTH:-18301}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_HOST_PORT_WALLET_AUTH:-18301}:${VCA_PORTS_AUTH:-8081}"
+  holder-waltid-wallet-portal:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-wallet-portal:${VCA_VERSION:-latest}
+    profiles: [holder-waltid]
+    container_name: holder-waltid-wallet-portal
+    env_file:
+      - path: ../holder-waltid/.env
+        required: true
+    ports:
+      - "${VCA_HOST_PORT_WALLET_PORTAL:-18302}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - holder-waltid-wallet-portal-data:/data
 
   # Profile holder-inji
   holder-inji-dpg-adapter-inji:
@@ -378,7 +390,19 @@ services:
       - path: ../holder-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_AUTH:-18401}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_HOST_PORT_WALLET_AUTH:-18401}:${VCA_PORTS_AUTH:-8081}"
+  holder-inji-wallet-portal:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-wallet-portal:${VCA_VERSION:-latest}
+    profiles: [holder-inji]
+    container_name: holder-inji-wallet-portal
+    env_file:
+      - path: ../holder-inji/.env
+        required: true
+    ports:
+      - "${VCA_HOST_PORT_WALLET_PORTAL:-18402}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - holder-inji-wallet-portal-data:/data
 
   # Profile holder-credebl
   holder-credebl-dpg-adapter-credebl:
@@ -400,7 +424,19 @@ services:
       - path: ../holder-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_AUTH:-18501}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_HOST_PORT_WALLET_AUTH:-18501}:${VCA_PORTS_AUTH:-8081}"
+  holder-credebl-wallet-portal:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-wallet-portal:${VCA_VERSION:-latest}
+    profiles: [holder-credebl]
+    container_name: holder-credebl-wallet-portal
+    env_file:
+      - path: ../holder-credebl/.env
+        required: true
+    ports:
+      - "${VCA_HOST_PORT_WALLET_PORTAL:-18502}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - holder-credebl-wallet-portal-data:/data
 
   # Profile verifier-waltid
   verifier-waltid-dpg-adapter-waltid:
@@ -613,6 +649,18 @@ services:
       - verifier-credebl-verifier-results-data:/data
 
   # Profile admin-waltid
+  admin-waltid-admin:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-admin:${VCA_VERSION:-latest}
+    profiles: [admin-waltid]
+    container_name: admin-waltid-admin
+    env_file:
+      - path: ../admin-waltid/.env
+        required: true
+    ports:
+      - "${VCA_HOST_PORT_ADMIN:-18900}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - admin-waltid-admin-data:/data
   admin-waltid-trust-registry:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-trust-registry:${VCA_VERSION:-latest}
@@ -622,11 +670,23 @@ services:
       - path: ../admin-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_TRUST_REGISTRY:-18900}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_HOST_PORT_TRUST_REGISTRY:-18901}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
       - admin-waltid-trust-registry-data:/data
 
   # Profile admin-inji
+  admin-inji-admin:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-admin:${VCA_VERSION:-latest}
+    profiles: [admin-inji]
+    container_name: admin-inji-admin
+    env_file:
+      - path: ../admin-inji/.env
+        required: true
+    ports:
+      - "${VCA_HOST_PORT_ADMIN:-19000}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - admin-inji-admin-data:/data
   admin-inji-trust-registry:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-trust-registry:${VCA_VERSION:-latest}
@@ -636,11 +696,23 @@ services:
       - path: ../admin-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_TRUST_REGISTRY:-19000}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_HOST_PORT_TRUST_REGISTRY:-19001}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
       - admin-inji-trust-registry-data:/data
 
   # Profile admin-credebl
+  admin-credebl-admin:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-admin:${VCA_VERSION:-latest}
+    profiles: [admin-credebl]
+    container_name: admin-credebl-admin
+    env_file:
+      - path: ../admin-credebl/.env
+        required: true
+    ports:
+      - "${VCA_HOST_PORT_ADMIN:-19100}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - admin-credebl-admin-data:/data
   admin-credebl-trust-registry:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-trust-registry:${VCA_VERSION:-latest}
@@ -650,7 +722,7 @@ services:
       - path: ../admin-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_TRUST_REGISTRY:-19100}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_HOST_PORT_TRUST_REGISTRY:-19101}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
       - admin-credebl-trust-registry-data:/data
 
@@ -659,9 +731,15 @@ networks:
     name: vca
 
 volumes:
+  admin-credebl-admin-data:
   admin-credebl-trust-registry-data:
+  admin-inji-admin-data:
   admin-inji-trust-registry-data:
+  admin-waltid-admin-data:
   admin-waltid-trust-registry-data:
+  holder-credebl-wallet-portal-data:
+  holder-inji-wallet-portal-data:
+  holder-waltid-wallet-portal-data:
   issuer-credebl-data-source-data:
   issuer-credebl-issued-credentials-data:
   issuer-credebl-schema-registry-data:

@@ -1,4 +1,7 @@
 dependencies:
+- name: admin
+  repository: file://../admin
+  version: 0.1.0
 - name: data-source
   repository: file://../data-source
   version: 0.1.0
@@ -53,5 +56,8 @@ dependencies:
 - name: wallet-auth
   repository: file://../wallet-auth
   version: 0.1.0
-digest: sha256:555eb1f0fe4a16ece08c92a14c80512a5d3854c81d2d9af1097fbf5ea0ca0ecf
-generated: "2026-09-19T07:23:35.594611746Z"
+- name: wallet-portal
+  repository: file://../wallet-portal
+  version: 0.1.0
+digest: sha256:3aa745690c8a839ec192dda37a82290a6c92cce03f9b75d0b0fd08935f40e91d
+generated: "2026-09-19T08:01:56.569600303Z"

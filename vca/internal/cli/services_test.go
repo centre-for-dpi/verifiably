@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -108,11 +109,11 @@ func TestServicesForRoleSets(t *testing.T) {
 		t.Errorf("the issuer runs %d services, want 9", len(issuer))
 	}
 	holder := ServicesFor(Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI})
-	if len(holder) != 2 {
-		t.Errorf("the holder runs %d services, want 2", len(holder))
+	if len(holder) != 3 {
+		t.Errorf("the holder runs %d services, want 3", len(holder))
 	}
 	admin := ServicesFor(Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_CREDEBL})
-	if len(admin) != 1 || admin[0].Name != "trust-registry" {
+	if len(admin) != 2 || admin[0].Name != "admin" || admin[1].Name != "trust-registry" {
 		t.Errorf("the admin set = %+v", admin)
 	}
 }
@@ -185,13 +186,16 @@ func TestPortValues(t *testing.T) {
 	p := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
 	plan := AssignPorts(p, nil)
 	values := PortValues(plan)
-	if values["VCA_WALLET_AUTH_LISTEN"] != ":8080" {
+	if values["VCA_WALLET_PORTAL_LISTEN"] != ":8080" {
+		t.Errorf("the wallet-portal listen address = %q", values["VCA_WALLET_PORTAL_LISTEN"])
+	}
+	if values["VCA_WALLET_AUTH_LISTEN"] != ":8081" {
 		t.Errorf("the wallet-auth listen address = %q", values["VCA_WALLET_AUTH_LISTEN"])
 	}
 	if values["VCA_PORTS_PORTAL"] != "8080" {
 		t.Errorf("the portal port = %q", values["VCA_PORTS_PORTAL"])
 	}
-	if values["VCA_HOST_PORT_WALLET_AUTH"] == "" {
+	if values["VCA_HOST_PORT_WALLET_PORTAL"] == "" {
 		t.Error("the host port is missing")
 	}
 	if values["VCA_PORTS_ADAPTER"] != "8090" {
@@ -217,8 +221,11 @@ func TestPortalAndAuthService(t *testing.T) {
 	if portalService(commonv1.Role_ROLE_UNSPECIFIED) != "" {
 		t.Error("an unknown role has a portal")
 	}
-	if authService(commonv1.Role_ROLE_HOLDER) != "" {
-		t.Error("the holder runs a separate auth service")
+	if authService(commonv1.Role_ROLE_VERIFIER) != "" {
+		t.Error("the verifier runs a separate auth service")
+	}
+	if authService(commonv1.Role_ROLE_HOLDER) != "wallet-auth" {
+		t.Error("the holder runs no auth service")
 	}
 	for _, r := range Roles() {
 		name := portalService(r)
@@ -231,5 +238,136 @@ func TestPortalAndAuthService(t *testing.T) {
 		if !found {
 			t.Errorf("role %v has portal %q, which it does not run", r, name)
 		}
+	}
+}
+
+func TestAdminAndWalletPortalAreInTheCatalog(t *testing.T) {
+	byName := map[string]Service{}
+	for _, s := range Catalog() {
+		byName[s.Name] = s
+	}
+	admin, ok := byName["admin"]
+	if !ok {
+		t.Fatal("the catalog has no admin service")
+	}
+	if admin.ExposedPort != 8093 || admin.ListenEnv != "VCA_ADMIN_LISTEN" || !admin.Stateful {
+		t.Errorf("admin = %+v", admin)
+	}
+	if len(admin.Roles) != 1 || admin.Roles[0] != commonv1.Role_ROLE_ADMIN {
+		t.Errorf("admin roles = %v", admin.Roles)
+	}
+	portal, ok := byName["wallet-portal"]
+	if !ok {
+		t.Fatal("the catalog has no wallet-portal service")
+	}
+	if portal.ExposedPort != 8092 || portal.ListenEnv != "VCA_WALLET_PORTAL_LISTEN" || !portal.Stateful {
+		t.Errorf("wallet-portal = %+v", portal)
+	}
+	if len(portal.Roles) != 1 || portal.Roles[0] != commonv1.Role_ROLE_HOLDER {
+		t.Errorf("wallet-portal roles = %v", portal.Roles)
+	}
+}
+
+func TestWalletPortalLinks(t *testing.T) {
+	p := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
+	got := LinkValues(p, map[string]string{"VCA_PUBLIC_URL": "https://wallet.example"})
+	want := map[string]string{
+		"VCA_WALLET_PORTAL_AUTH_JWKS_URL": "http://holder-waltid-wallet-auth:8081/.well-known/jwks.json",
+		"VCA_WALLET_PORTAL_LOGIN_URL":     "http://holder-waltid-wallet-auth:8081/login",
+		"VCA_WALLET_PORTAL_DISCOVERY_URL": "http://verifier-waltid-verifier-discovery:8101",
+		"VCA_WALLET_PORTAL_TRUST_URL":     "http://admin-waltid-trust-registry:8100",
+		"VCA_WALLET_PORTAL_DPG":           "waltid",
+		"VCA_WALLET_PORTAL_DPG_ADAPTERS":  "waltid=http://holder-waltid-dpg-adapter-waltid:8090",
+		"VCA_WALLET_PORTAL_STATE_DIR":     "/data",
+	}
+	for name, value := range want {
+		if got[name] != value {
+			t.Errorf("%s = %q, want %q", name, got[name], value)
+		}
+	}
+}
+
+func TestAdminLinks(t *testing.T) {
+	p := Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_INJI}
+	got := LinkValues(p, map[string]string{"VCA_PUBLIC_URL": "https://admin.example/"})
+	if got["VCA_ADMIN_PUBLIC_URL"] != "https://admin.example" {
+		t.Errorf("the public URL = %q", got["VCA_ADMIN_PUBLIC_URL"])
+	}
+	if got["VCA_ADMIN_TRUST_URL"] != "http://admin-inji-trust-registry:8100" {
+		t.Errorf("the trust URL = %q", got["VCA_ADMIN_TRUST_URL"])
+	}
+	if got["VCA_ADMIN_STATE_DIR"] != "/data" {
+		t.Errorf("the state directory = %q", got["VCA_ADMIN_STATE_DIR"])
+	}
+	// The health probe list names every other service of the DPG.
+	list := got["VCA_ADMIN_SERVICES"]
+	for _, name := range []string{"trust-registry", "issuance", "wallet-portal", "verifier-results", "dpg-adapter-inji"} {
+		if !strings.Contains(list, name+"=http://") {
+			t.Errorf("the probe list has no %s:\n%s", name, list)
+		}
+	}
+	if strings.Contains(list, "admin=http://") {
+		t.Error("the admin service probes itself")
+	}
+	if strings.Contains(list, "dpg-adapter-waltid") {
+		t.Errorf("the probe list names another DPG:\n%s", list)
+	}
+}
+
+func TestLinkValuesSkipAnUnknownTarget(t *testing.T) {
+	p := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_UNSPECIFIED}
+	got := LinkValues(p, nil)
+	if _, ok := got["VCA_WALLET_PORTAL_DPG"]; ok {
+		t.Error("a pair with no DPG got a DPG name")
+	}
+	if _, ok := got["VCA_WALLET_PORTAL_DPG_ADAPTERS"]; ok {
+		t.Error("a pair with no DPG got an adapter map")
+	}
+	if _, ok := got["VCA_WALLET_PORTAL_AUTH_JWKS_URL"]; !ok {
+		t.Error("the JWKS URL of the same role is missing")
+	}
+	// No public URL means no VCA_ADMIN_PUBLIC_URL value.
+	admin := LinkValues(Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_WALTID}, nil)
+	if _, ok := admin["VCA_ADMIN_PUBLIC_URL"]; ok {
+		t.Error("an empty public URL reached the file")
+	}
+}
+
+func TestServiceURLAndOwnerPair(t *testing.T) {
+	p := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
+	if _, ok := serviceURL(p, "no-such-service"); ok {
+		t.Error("an unknown service has a URL")
+	}
+	owner, ok := ownerPair(p, "wallet-auth")
+	if !ok || owner != p {
+		t.Errorf("owner of wallet-auth = %v, %v", owner, ok)
+	}
+	owner, ok = ownerPair(p, "issuance")
+	if !ok || owner.Role != commonv1.Role_ROLE_ISSUER || owner.Dpg != p.Dpg {
+		t.Errorf("owner of issuance = %v, %v", owner, ok)
+	}
+	if _, ok := ownerPair(p, "no-such-service"); ok {
+		t.Error("an unknown service has an owner")
+	}
+}
+
+func TestDeploymentServicesKeepOneAdapter(t *testing.T) {
+	list := deploymentServices(configv1.Dpg_DPG_CREDEBL)
+	seen := map[string]bool{}
+	adapters := 0
+	for _, s := range list {
+		if seen[s.Name] {
+			t.Errorf("%s appears twice", s.Name)
+		}
+		seen[s.Name] = true
+		if strings.HasPrefix(s.Name, "dpg-adapter-") {
+			adapters++
+		}
+	}
+	if adapters != 1 || !seen["dpg-adapter-credebl"] {
+		t.Errorf("got %d adapters in %v", adapters, seen)
+	}
+	if len(list) != len(Catalog())-2 {
+		t.Errorf("got %d services, want %d", len(list), len(Catalog())-2)
 	}
 }
