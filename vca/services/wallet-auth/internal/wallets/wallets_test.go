@@ -68,18 +68,21 @@ func TestRegistry(t *testing.T) {
 	if reg.Count() != 1 {
 		t.Fatal("count")
 	}
-	if _, err := reg.Get("nope"); !errors.Is(err, wallets.ErrNotFound) {
-		t.Fatal(err)
+	if _, serr := reg.Get("nope"); !errors.Is(serr, wallets.ErrNotFound) {
+		t.Fatal(serr)
 	}
-	if _, err := reg.BindKey("nope", "tp", "did"); !errors.Is(err, wallets.ErrNotFound) {
-		t.Fatal(err)
+	if _, serr := reg.BindKey("nope", "tp", "did"); !errors.Is(serr, wallets.ErrNotFound) {
+		t.Fatal(serr)
 	}
 	w, err = reg.BindKey("hash1", "tp", "did:jwk:x")
 	if err != nil || w.KeyThumbprint != "tp" || w.HolderDID != "did:jwk:x" {
 		t.Fatalf("%+v %v", w, err)
 	}
-	reg2, _ := wallets.New(store, nil)
-	if got, _ := reg2.Get("hash1"); got.KeyThumbprint != "tp" {
+	reg2, verr := wallets.New(store, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	if got, ierr := reg2.Get("hash1"); ierr != nil || got.KeyThumbprint != "tp" {
 		t.Fatal("not persisted")
 	}
 	// Save failures roll back.
@@ -93,7 +96,7 @@ func TestRegistry(t *testing.T) {
 	if _, err := reg.BindKey("hash1", "other", ""); err == nil {
 		t.Fatal("save error hidden")
 	}
-	if got, _ := reg.Get("hash1"); got.KeyThumbprint != "tp" {
+	if got, ierr := reg.Get("hash1"); ierr != nil || got.KeyThumbprint != "tp" {
 		t.Fatal("bind not rolled back")
 	}
 	if _, err := wallets.New(store, nil); err == nil {
@@ -108,7 +111,10 @@ func TestConnectRegistrar(t *testing.T) {
 	mux.Handle(path, h)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	reg, _ := wallets.New(oidcflow.NewMemoryPersister(), nil)
+	reg, verr := wallets.New(oidcflow.NewMemoryPersister(), nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	r := wallets.NewConnectRegistrar(srv.Client(), srv.URL)
 	w, created, err := reg.Ensure(context.Background(), "hash", r)
 	if err != nil || !created || w.WalletID != "w-hash" || w.HolderDID != "did:example:1" || be.got != "hash" {

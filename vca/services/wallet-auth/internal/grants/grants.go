@@ -92,7 +92,10 @@ func (v *Vault) Put(sid string, g Grant) error {
 		return fmt.Errorf("grants: %w", err)
 	}
 	nonce := make([]byte, v.aead.NonceSize())
-	_, _ = rand.Read(nonce)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(nonce); err != nil {
+		panic(err)
+	}
 	ct := v.aead.Seal(nil, nonce, plain, []byte(sid))
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -170,9 +173,13 @@ func (v *Vault) open(sid string) (Grant, error) {
 }
 
 func (v *Vault) seal(sid string, g Grant) error {
-	plain, _ := json.Marshal(g)
+	plain, ignored := json.Marshal(g)
+	_ = ignored
 	nonce := make([]byte, v.aead.NonceSize())
-	_, _ = rand.Read(nonce)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(nonce); err != nil {
+		panic(err)
+	}
 	ct := v.aead.Seal(nil, nonce, plain, []byte(sid))
 	prev := v.m[sid]
 	v.m[sid] = sealed{Nonce: base64.RawURLEncoding.EncodeToString(nonce), Data: base64.RawURLEncoding.EncodeToString(ct)}

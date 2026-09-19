@@ -58,20 +58,39 @@ func TestBuild(t *testing.T) {
 		t.Fatalf("seed: %+v %v", p, err)
 	}
 	// A second build keeps the stored record and does not overwrite it.
-	_, _ = svc.Providers().Put(oidcflow.Provider{ID: "default", DisplayName: "Kept", DiscoveryURL: p.DiscoveryURL, ClientID: "c", Enabled: true})
-	svc, _ = server.Build(cfg, quiet)
-	if p, _ := svc.Providers().Get("default"); p.DisplayName != "Kept" {
+	if _, providersErr := svc.Providers().Put(oidcflow.Provider{ID: "default", DisplayName: "Kept", DiscoveryURL: p.DiscoveryURL, ClientID: "c", Enabled: true}); providersErr != nil {
+		t.Fatalf("unexpected error: %v", providersErr)
+	}
+	svc, buildErr := server.Build(cfg, quiet)
+	if buildErr != nil {
+		t.Fatalf("unexpected error: %v", buildErr)
+	}
+	if p, ierr := svc.Providers().Get("default"); ierr != nil || p.DisplayName != "Kept" {
 		t.Fatal("seed overwrote the stored provider")
 	}
 	// A signing key file is used, and its kid is stable.
-	key, _ := oidcflow.GenerateKey()
-	pem, _ := oidcflow.EncodeKeyPEM(key)
+	key, verr := oidcflow.GenerateKey()
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	pem, verr := oidcflow.EncodeKeyPEM(key)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	cfg.SigningKeyPath = filepath.Join(t.TempDir(), "key.pem")
-	_ = os.WriteFile(cfg.SigningKeyPath, pem, 0o600)
+	if cerr := os.WriteFile(cfg.SigningKeyPath, pem, 0o600); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	cfg.SessionKey = "0123456789abcdef0123456789abcdef"
 	cfg.AdminToken = "t"
-	a, _ := server.Build(cfg, quiet)
-	b, _ := server.Build(cfg, quiet)
+	a, verr := server.Build(cfg, quiet)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	b, verr := server.Build(cfg, quiet)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if a.Signer().KeyID() != b.Signer().KeyID() {
 		t.Fatal("kid differs between builds")
 	}
@@ -80,7 +99,9 @@ func TestBuild(t *testing.T) {
 	if _, err := server.Build(cfg, quiet); err == nil {
 		t.Fatal("missing key accepted")
 	}
-	_ = os.WriteFile(cfg.SigningKeyPath, []byte("junk"), 0o600)
+	if cerr := os.WriteFile(cfg.SigningKeyPath, []byte("junk"), 0o600); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if _, err := server.Build(cfg, quiet); err == nil {
 		t.Fatal("bad key accepted")
 	}
@@ -97,7 +118,9 @@ func TestBuild(t *testing.T) {
 	}
 	cfg.Seed = config.SeedProvider{}
 	file := filepath.Join(t.TempDir(), "file")
-	_ = os.WriteFile(file, nil, 0o600)
+	if cerr := os.WriteFile(file, nil, 0o600); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	cfg.StateDir = filepath.Join(file, "x")
 	if _, err := server.Build(cfg, quiet); err == nil {
 		t.Fatal("bad state dir accepted")
@@ -119,7 +142,9 @@ func TestBuild(t *testing.T) {
 	cfg.HolderBackendURL = ""
 	for _, doc := range []string{"providers", "wallets", "grants"} {
 		dir := t.TempDir()
-		_ = os.WriteFile(filepath.Join(dir, doc+".json"), []byte("{bad"), 0o600)
+		if cerr := os.WriteFile(filepath.Join(dir, doc+".json"), []byte("{bad"), 0o600); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
 		cfg.StateDir = dir
 		if _, err := server.Build(cfg, quiet); err == nil {
 			t.Fatalf("corrupt %s accepted", doc)

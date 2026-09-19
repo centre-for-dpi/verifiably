@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -35,14 +36,14 @@ func run(args []string) int {
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	cfg, err := config.FromEnv(os.Getenv)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		printLine(os.Stderr, err)
 		return 1
 	}
 	if *healthcheck {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		probeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := serve.Healthcheck(ctx, cfg.Listen); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+		if serr := serve.Healthcheck(probeCtx, cfg.Listen); serr != nil {
+			printLine(os.Stderr, serr)
 			return 1
 		}
 		return 0
@@ -50,7 +51,7 @@ func run(args []string) int {
 	log.Info("wallet-auth starting", "version", version, "public_url", cfg.PublicBaseURL)
 	svc, err := server.Build(cfg, log)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		printLine(os.Stderr, err)
 		return 1
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -62,7 +63,15 @@ func run(args []string) int {
 		Log:          log,
 	}
 	if err := serve.Run(ctx, opts); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		printLine(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
+// printLine writes one line to w. It returns the process exit status.
+func printLine(w io.Writer, v any) int {
+	if _, err := fmt.Fprintln(w, v); err != nil {
 		return 1
 	}
 	return 0

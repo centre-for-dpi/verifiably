@@ -83,12 +83,30 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(beSrv.Close)
 
 	store := oidcflow.NewMemoryPersister()
-	providers, _ := oidcflow.NewRegistry(store, nil)
-	walletReg, _ := wallets.New(store, nil)
-	key, _ := oidcflow.GenerateKey()
-	signer, _ := oidcflow.NewSigner(key, "http://wallet.test", server.Audience, time.Minute, nil)
-	csrf, _ := oidcflow.NewCSRF([]byte("0123456789abcdef0123456789abcdef"))
-	vault, _ := grants.New([]byte("0123456789abcdef0123456789abcdef"), store, nil)
+	providers, verr := oidcflow.NewRegistry(store, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	walletReg, verr := wallets.New(store, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	key, verr := oidcflow.GenerateKey()
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	signer, verr := oidcflow.NewSigner(key, "http://wallet.test", server.Audience, time.Minute, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	csrf, verr := oidcflow.NewCSRF([]byte("0123456789abcdef0123456789abcdef"))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	vault, verr := grants.New([]byte("0123456789abcdef0123456789abcdef"), store, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	limiter := limits.NewMemory(100, time.Minute, time.Minute, nil)
 	f := &fixture{idp: idp, backend: be, store: store, limiter: limiter}
 	mux := http.NewServeMux()
@@ -120,7 +138,9 @@ func newFixture(t *testing.T) *fixture {
 		ReadyMessage: server.ReadyMessage(f.svc),
 		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}))
-	_, _ = providers.Put(oidcflow.Provider{ID: "esignet", DisplayName: "National ID", DiscoveryURL: idp.DiscoveryURL(), ClientID: idp.ClientID, Scopes: []string{"openid"}, LogoURI: "https://idp/logo.png", Enabled: true})
+	if _, putErr := providers.Put(oidcflow.Provider{ID: "esignet", DisplayName: "National ID", DiscoveryURL: idp.DiscoveryURL(), ClientID: idp.ClientID, Scopes: []string{"openid"}, LogoURI: "https://idp/logo.png", Enabled: true}); putErr != nil {
+		t.Fatalf("unexpected error: %v", putErr)
+	}
 	f.client = walletauthv1connect.NewWalletAuthServiceClient(f.srv.Client(), f.srv.URL)
 	return f
 }
@@ -141,11 +161,16 @@ func (f *fixture) login(t *testing.T) (callbackBody, *http.Cookie) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if res.StatusCode != http.StatusFound {
 		t.Fatalf("login: %d", res.StatusCode)
 	}
-	loc, _ := f.idp.Authorize(res.Header.Get("Location"))
+	loc, verr := f.idp.Authorize(res.Header.Get("Location"))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if !strings.HasPrefix(loc, f.srv.URL+"/wallet/auth/callback?") {
 		t.Fatalf("redirect uri: %s", loc)
 	}
@@ -153,12 +178,18 @@ func (f *fixture) login(t *testing.T) (callbackBody, *http.Cookie) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("callback: %d", res.StatusCode)
 	}
 	var body callbackBody
-	_ = json.NewDecoder(res.Body).Decode(&body)
+	if cerr := json.NewDecoder(res.Body).Decode(&body); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	return body, res.Cookies()[0]
 }
 
@@ -178,8 +209,13 @@ func TestBrowserFlow(t *testing.T) {
 	// The persisted store holds no iss, sub, or access token.
 	for _, doc := range []string{"wallets", "grants"} {
 		var v any
-		_ = f.store.Load(doc, &v)
-		enc, _ := json.Marshal(v)
+		if cerr := f.store.Load(doc, &v); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
+		enc, verr := json.Marshal(v)
+		if verr != nil {
+			t.Fatalf("unexpected error: %v", verr)
+		}
 		if strings.Contains(string(enc), "user-1") || strings.Contains(string(enc), f.idp.Issuer()) || strings.Contains(string(enc), "at-") {
 			t.Fatalf("%s leaks personal data: %s", doc, enc)
 		}
@@ -190,16 +226,27 @@ func TestBrowserFlow(t *testing.T) {
 		t.Fatal("wallet not reused")
 	}
 	// Logout goes to the provider with the post logout redirect.
-	req, _ := http.NewRequest(http.MethodPost, f.srv.URL+"/wallet/auth/logout", nil)
+	req, verr := http.NewRequest(http.MethodPost, f.srv.URL+"/wallet/auth/logout", nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	req.Header.Set(oidcflow.CSRFHeader, body.CSRFToken)
 	req.AddCookie(cookie)
-	out, _ := browser().Do(req)
-	out.Body.Close()
+	out, verr := browser().Do(req)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	if cerr := out.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	loc := out.Header.Get("Location")
 	if out.StatusCode != http.StatusSeeOther || !strings.HasPrefix(loc, f.idp.Issuer()+"/logout?") || !strings.Contains(loc, "id_token_hint=") || !strings.Contains(loc, url.QueryEscape(f.srv.URL+"/bye")) {
 		t.Fatalf("logout: %d %s", out.StatusCode, loc)
 	}
-	intro, _ := f.client.Introspect(context.Background(), connect.NewRequest(&walletauthv1.IntrospectRequest{SessionToken: body.SessionToken}))
+	intro, verr := f.client.Introspect(context.Background(), connect.NewRequest(&walletauthv1.IntrospectRequest{SessionToken: body.SessionToken}))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if intro.Msg.GetActive() {
 		t.Fatal("still active")
 	}
@@ -208,8 +255,13 @@ func TestBrowserFlow(t *testing.T) {
 		t.Fatalf("grant after logout: %v", err)
 	}
 	for _, p := range []string{"/healthz", "/readyz", "/.well-known/jwks.json"} {
-		r, _ := http.Get(f.srv.URL + p)
-		r.Body.Close()
+		r, verr := http.Get(f.srv.URL + p)
+		if verr != nil {
+			t.Fatalf("unexpected error: %v", verr)
+		}
+		if cerr := r.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
 		if r.StatusCode != 200 {
 			t.Fatalf("%s: %d", p, r.StatusCode)
 		}
@@ -230,8 +282,14 @@ func TestRPCFlowAndGrant(t *testing.T) {
 	if !strings.Contains(start.Msg.GetAuthorizationUrl(), "scope=openid&") && !strings.HasSuffix(start.Msg.GetAuthorizationUrl(), "scope=openid") {
 		t.Fatalf("scopes: %s", start.Msg.GetAuthorizationUrl())
 	}
-	loc, _ := f.idp.Authorize(start.Msg.GetAuthorizationUrl())
-	u, _ := url.Parse(loc)
+	loc, verr := f.idp.Authorize(start.Msg.GetAuthorizationUrl())
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	u, verr := url.Parse(loc)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	cb, err := f.client.LoginCallback(ctx, connect.NewRequest(&walletauthv1.LoginCallbackRequest{State: u.Query().Get("state"), Code: u.Query().Get("code")}))
 	if err != nil || !cb.Msg.GetNewWallet() || cb.Msg.GetReturnTo() != "/wallet" || cb.Msg.GetSession().GetWalletId() == "" || cb.Msg.GetSession().GetProviderId() != "esignet" {
 		t.Fatalf("callback: %+v %v", cb, err)
@@ -242,38 +300,49 @@ func TestRPCFlowAndGrant(t *testing.T) {
 	if err != nil || !strings.HasPrefix(g.Msg.GetGrant(), "at-") || g.Msg.GetGrantType() != config.DefaultGrantType || g.Msg.GetExpiresAt() == nil {
 		t.Fatalf("grant: %+v %v", g, err)
 	}
-	if _, err := f.client.GetAuthorizationGrant(ctx, connect.NewRequest(&walletauthv1.GetAuthorizationGrantRequest{SessionToken: tok, CredentialIssuer: "https://other.example"})); connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("other issuer: %v", err)
+	if _, serr := f.client.GetAuthorizationGrant(ctx, connect.NewRequest(&walletauthv1.GetAuthorizationGrantRequest{SessionToken: tok, CredentialIssuer: "https://other.example"})); connect.CodeOf(serr) != connect.CodePermissionDenied {
+		t.Fatalf("other issuer: %v", serr)
 	}
-	if _, err := f.client.GetAuthorizationGrant(ctx, connect.NewRequest(&walletauthv1.GetAuthorizationGrantRequest{SessionToken: tok, CredentialIssuer: "issuer"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("bad issuer: %v", err)
+	if _, serr := f.client.GetAuthorizationGrant(ctx, connect.NewRequest(&walletauthv1.GetAuthorizationGrantRequest{SessionToken: tok, CredentialIssuer: "issuer"})); connect.CodeOf(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("bad issuer: %v", serr)
 	}
 	// A session without a stored grant.
-	other, _, _ := f.svc.Signer().Issue(oidcflow.Claims{Subject: "x", Provider: "esignet"})
-	if _, err := f.client.GetAuthorizationGrant(ctx, connect.NewRequest(&walletauthv1.GetAuthorizationGrantRequest{SessionToken: other, CredentialIssuer: "https://issuer.example"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
-		t.Fatalf("no grant: %v", err)
+	other, _, verr := f.svc.Signer().Issue(oidcflow.Claims{Subject: "x", Provider: "esignet"})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	if _, serr := f.client.GetAuthorizationGrant(ctx, connect.NewRequest(&walletauthv1.GetAuthorizationGrantRequest{SessionToken: other, CredentialIssuer: "https://issuer.example"})); connect.CodeOf(serr) != connect.CodeFailedPrecondition {
+		t.Fatalf("no grant: %v", serr)
 	}
 	// Logout through the RPC.
 	lo, err := f.client.Logout(ctx, connect.NewRequest(&walletauthv1.LogoutRequest{SessionToken: tok}))
 	if err != nil || !strings.Contains(lo.Msg.GetProviderLogoutUrl(), "/logout?") {
 		t.Fatalf("logout: %+v %v", lo, err)
 	}
-	if _, err := f.client.Logout(ctx, connect.NewRequest(&walletauthv1.LogoutRequest{SessionToken: tok})); connect.CodeOf(err) != connect.CodeUnauthenticated {
-		t.Fatalf("logout twice: %v", err)
+	if _, serr := f.client.Logout(ctx, connect.NewRequest(&walletauthv1.LogoutRequest{SessionToken: tok})); connect.CodeOf(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("logout twice: %v", serr)
 	}
 	// Failures.
-	if _, err := f.client.LoginStart(ctx, connect.NewRequest(&walletauthv1.LoginStartRequest{ProviderId: "nope"})); connect.CodeOf(err) != connect.CodeNotFound {
-		t.Fatalf("unknown: %v", err)
+	if _, serr := f.client.LoginStart(ctx, connect.NewRequest(&walletauthv1.LoginStartRequest{ProviderId: "nope"})); connect.CodeOf(serr) != connect.CodeNotFound {
+		t.Fatalf("unknown: %v", serr)
 	}
-	if _, err := f.client.LoginCallback(ctx, connect.NewRequest(&walletauthv1.LoginCallbackRequest{State: "nope", Code: "c"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("state: %v", err)
+	if _, serr := f.client.LoginCallback(ctx, connect.NewRequest(&walletauthv1.LoginCallbackRequest{State: "nope", Code: "c"})); connect.CodeOf(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("state: %v", serr)
 	}
-	start, _ = f.client.LoginStart(ctx, connect.NewRequest(&walletauthv1.LoginStartRequest{ProviderId: "esignet"}))
-	if _, err := f.client.LoginCallback(ctx, connect.NewRequest(&walletauthv1.LoginCallbackRequest{State: start.Msg.GetState(), Error: "access_denied"})); connect.CodeOf(err) != connect.CodeUnavailable {
-		t.Fatalf("provider error: %v", err)
+	start, loginStartErr := f.client.LoginStart(ctx, connect.NewRequest(&walletauthv1.LoginStartRequest{ProviderId: "esignet"}))
+	if loginStartErr != nil {
+		t.Fatalf("unexpected error: %v", loginStartErr)
 	}
-	r, _ := http.Get(f.srv.URL + "/vca.walletauth.v1.WalletAuthService/Introspect?session_token=x")
-	r.Body.Close()
+	if _, serr := f.client.LoginCallback(ctx, connect.NewRequest(&walletauthv1.LoginCallbackRequest{State: start.Msg.GetState(), Error: "access_denied"})); connect.CodeOf(serr) != connect.CodeUnavailable {
+		t.Fatalf("provider error: %v", serr)
+	}
+	r, verr := http.Get(f.srv.URL + "/vca.walletauth.v1.WalletAuthService/Introspect?session_token=x")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	if cerr := r.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("query token: %d", r.StatusCode)
 	}
@@ -302,8 +371,13 @@ func TestRateLimit(t *testing.T) {
 	if _, err := client.LoginStart(ctx, connect.NewRequest(&walletauthv1.LoginStartRequest{ProviderId: "esignet"})); connect.CodeOf(err) != connect.CodeResourceExhausted {
 		t.Fatalf("limit: %v", err)
 	}
-	res, _ := browser().Get(srv.URL + "/login?provider=esignet")
-	res.Body.Close()
+	res, verr := browser().Get(srv.URL + "/login?provider=esignet")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if res.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("http limit: %d", res.StatusCode)
 	}
@@ -323,15 +397,30 @@ func TestRegisterHolderKey(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	body, _ := f.login(t)
-	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	pub, _ := jose.PublicJWK(priv, "")
-	pubJSON, _ := json.Marshal(pub)
-	proof, _ := jose.Sign(priv, "", "JWT", map[string]string{"sid": body.Claims.SID})
+	priv, verr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	pub, verr := jose.PublicJWK(priv, "")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	pubJSON, verr := json.Marshal(pub)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	proof, verr := jose.Sign(priv, "", "JWT", map[string]string{"sid": body.Claims.SID})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	res, err := f.client.RegisterHolderKey(ctx, connect.NewRequest(&walletauthv1.RegisterHolderKeyRequest{SessionToken: body.SessionToken, PublicJwk: string(pubJSON), Proof: proof}))
 	if err != nil || res.Msg.GetThumbprint() == "" || !strings.HasPrefix(res.Msg.GetHolderDid(), "did:jwk:") {
 		t.Fatalf("%+v %v", res, err)
 	}
-	w, _ := f.svc.Wallets().Get(body.Claims.Subject)
+	w, verr := f.svc.Wallets().Get(body.Claims.Subject)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if w.KeyThumbprint != res.Msg.GetThumbprint() || w.HolderDID != res.Msg.GetHolderDid() {
 		t.Fatalf("wallet: %+v", w)
 	}
@@ -341,10 +430,22 @@ func TestRegisterHolderKey(t *testing.T) {
 		t.Fatal("has_holder_key")
 	}
 	// Ed25519 with a raw string payload.
-	edPub, edPriv, _ := ed25519.GenerateKey(rand.Reader)
-	edJWK, _ := jose.PublicJWK(edPub, "")
-	edJSON, _ := json.Marshal(edJWK)
-	edProof, _ := jose.Sign(edPriv, "", "JWT", body2.Claims.SID)
+	edPub, edPriv, verr := ed25519.GenerateKey(rand.Reader)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	edJWK, verr := jose.PublicJWK(edPub, "")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	edJSON, verr := json.Marshal(edJWK)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	edProof, verr := jose.Sign(edPriv, "", "JWT", body2.Claims.SID)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := f.client.RegisterHolderKey(ctx, connect.NewRequest(&walletauthv1.RegisterHolderKeyRequest{SessionToken: body2.SessionToken, PublicJwk: string(edJSON), Proof: edProof})); err != nil {
 		t.Fatalf("ed25519: %v", err)
 	}
@@ -366,19 +467,34 @@ func TestRegisterHolderKey(t *testing.T) {
 	}
 	// A private JWK and a P-384 key are refused.
 	privJWK := jose.JWK{Key: priv}
-	privJSON, _ := json.Marshal(privJWK)
+	privJSON, verr := json.Marshal(privJWK)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := f.client.RegisterHolderKey(ctx, connect.NewRequest(&walletauthv1.RegisterHolderKeyRequest{SessionToken: body2.SessionToken, PublicJwk: string(privJSON), Proof: proof})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("private jwk: %v", err)
 	}
-	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	p384, verr := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	p384JWK := jose.JWK{Key: &p384.PublicKey}
-	p384JSON, _ := json.Marshal(p384JWK)
+	p384JSON, verr := json.Marshal(p384JWK)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := f.client.RegisterHolderKey(ctx, connect.NewRequest(&walletauthv1.RegisterHolderKeyRequest{SessionToken: body2.SessionToken, PublicJwk: string(p384JSON), Proof: proof})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("p384: %v", err)
 	}
 	// A session whose wallet record is gone.
-	orphan, orphanClaims, _ := f.svc.Signer().Issue(oidcflow.Claims{Subject: "orphan", Provider: "esignet"})
-	orphanProof, _ := jose.Sign(priv, "", "JWT", map[string]string{"sid": orphanClaims.SID})
+	orphan, orphanClaims, verr := f.svc.Signer().Issue(oidcflow.Claims{Subject: "orphan", Provider: "esignet"})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	orphanProof, verr := jose.Sign(priv, "", "JWT", map[string]string{"sid": orphanClaims.SID})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := f.client.RegisterHolderKey(ctx, connect.NewRequest(&walletauthv1.RegisterHolderKeyRequest{SessionToken: orphan, PublicJwk: string(pubJSON), Proof: orphanProof})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("orphan: %v", err)
 	}
@@ -416,18 +532,26 @@ func TestFailurePaths(t *testing.T) {
 	d = base
 	d.Pending = mem
 	svc := service.New(cfg, d)
-	_ = mem.Put(oidcflow.Pending{State: "s", ProviderID: "gone", ExpiresAt: time.Now().Add(time.Minute)})
+	if cerr := mem.Put(oidcflow.Pending{State: "s", ProviderID: "gone", ExpiresAt: time.Now().Add(time.Minute)}); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if _, _, _, err := svc.Complete(ctx, "s", "code", ""); !errors.Is(err, oidcflow.ErrProviderNotFound) {
 		t.Fatalf("gone: %v", err)
 	}
-	_ = mem.Put(oidcflow.Pending{State: "s2", ProviderID: "esignet", RedirectURI: cfg.RedirectURI, Verifier: "v", Nonce: "n", ExpiresAt: time.Now().Add(time.Minute)})
+	if cerr := mem.Put(oidcflow.Pending{State: "s2", ProviderID: "esignet", RedirectURI: cfg.RedirectURI, Verifier: "v", Nonce: "n", ExpiresAt: time.Now().Add(time.Minute)}); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	if _, _, _, err := svc.Complete(ctx, "s2", "bogus", ""); !errors.Is(err, oidcflow.ErrProviderError) {
 		t.Fatalf("bogus code: %v", err)
 	}
 	// The holder backend is down at first login.
 	d = base
 	d.Registrar = wallets.NewConnectRegistrar(nil, "http://127.0.0.1:1")
-	d.Grants, _ = grants.New([]byte("0123456789abcdef0123456789abcdef"), nil, nil)
+	value33, newErr3 := grants.New([]byte("0123456789abcdef0123456789abcdef"), nil, nil)
+	if newErr3 != nil {
+		t.Fatalf("unexpected error: %v", newErr3)
+	}
+	d.Grants = value33
 	down := service.New(cfg, d)
 	if err := runLogin(t, f, down); !errors.Is(err, oidcflow.ErrUpstream) {
 		t.Fatalf("backend down: %v", err)
@@ -436,30 +560,53 @@ func TestFailurePaths(t *testing.T) {
 	fs := &failStore{Persister: oidcflow.NewMemoryPersister()}
 	d = base
 	d.Registrar = wallets.LocalRegistrar{}
-	d.Grants, _ = grants.New([]byte("0123456789abcdef0123456789abcdef"), fs, nil)
+	value32, newErr2 := grants.New([]byte("0123456789abcdef0123456789abcdef"), fs, nil)
+	if newErr2 != nil {
+		t.Fatalf("unexpected error: %v", newErr2)
+	}
+	d.Grants = value32
 	fs.fail = true
 	if err := runLogin(t, f, service.New(cfg, d)); err == nil {
 		t.Fatal("vault error hidden")
 	}
 	// The wallet store cannot persist.
-	freshWallets, _ := wallets.New(fs, nil)
+	freshWallets, verr := wallets.New(fs, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	d = base
 	d.Wallets = freshWallets
 	d.Registrar = wallets.LocalRegistrar{}
-	d.Grants, _ = grants.New([]byte("0123456789abcdef0123456789abcdef"), nil, nil)
+	value31, newErr1 := grants.New([]byte("0123456789abcdef0123456789abcdef"), nil, nil)
+	if newErr1 != nil {
+		t.Fatalf("unexpected error: %v", newErr1)
+	}
+	d.Grants = value31
 	if err := runLogin(t, f, service.New(cfg, d)); err == nil {
 		t.Fatal("wallet error hidden")
 	}
 	// Logout of a session whose provider is gone or unreachable.
 	d = base
-	d.Grants, _ = grants.New([]byte("0123456789abcdef0123456789abcdef"), nil, nil)
+	value30, newErr := grants.New([]byte("0123456789abcdef0123456789abcdef"), nil, nil)
+	if newErr != nil {
+		t.Fatalf("unexpected error: %v", newErr)
+	}
+	d.Grants = value30
 	svc = service.New(cfg, d)
-	tok, _, _ := f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "gone"})
+	tok, _, verr := f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "gone"})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if u, err := svc.End(ctx, tok); err != nil || u != "" {
 		t.Fatalf("gone provider: %q %v", u, err)
 	}
-	_, _ = f.svc.Providers().Put(oidcflow.Provider{ID: "down", DiscoveryURL: "http://127.0.0.1:1/x", ClientID: "c", Enabled: true})
-	tok, _, _ = f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "down"})
+	if _, providersErr := f.svc.Providers().Put(oidcflow.Provider{ID: "down", DiscoveryURL: "http://127.0.0.1:1/x", ClientID: "c", Enabled: true}); providersErr != nil {
+		t.Fatalf("unexpected error: %v", providersErr)
+	}
+	tok, _, signerErr := f.svc.Signer().Issue(oidcflow.Claims{Subject: "u", Provider: "down"})
+	if signerErr != nil {
+		t.Fatalf("unexpected error: %v", signerErr)
+	}
 	if u, err := svc.End(ctx, tok); err != nil || u != "" {
 		t.Fatalf("down provider: %q %v", u, err)
 	}
@@ -487,7 +634,10 @@ func runLogin(t *testing.T, f *fixture, svc *service.Service) error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, _ := url.Parse(loc)
+	q, verr := url.Parse(loc)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	_, _, _, err = svc.Complete(context.Background(), q.Query().Get("state"), q.Query().Get("code"), "")
 	return err
 }
