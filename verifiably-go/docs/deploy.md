@@ -47,8 +47,9 @@ and seed scripts expect via relative paths.
 `deploy/compose/stack/Caddyfile.public`, `config/docker-compose.injiweb-fix.rendered.yml`.
 Secrets are auto-generated and persisted so re-runs are stable: `config/wso2is.env` (WSO2
 DCR), `deploy/compose/credebl/config/credebl.env` (CREDEBL), `config/trust-signing-key.pem`
-(hub). The demo IdP/TLS keystores under `deploy/compose/**/certs*/` are committed demo
-material — replace them for any non-demo use.
+(hub). No private key material is committed any more (ADR-029 decision 6): the demo
+IdP/TLS keystores under `deploy/compose/**/certs*/` are generated locally, see
+[Demo PKI: generate, never commit](#demo-pki-generate-never-commit).
 
 ## Subcommands
 
@@ -204,7 +205,7 @@ The key ones:
 | `MIMOTO_PORT`                  | `8099`        | Mimoto BFF                                                                 |
 | `KEYCLOAK_{PORT,REALM,CLIENT_ID}` | `8180/vcplatform/vcplatform` | Keycloak OIDC wiring                            |
 | `WSO2_{PORT,CLIENT_ID,CLIENT_SECRET}` | `9443/verifiably_go_client/<generated>` | WSO2IS OIDC. `CLIENT_SECRET` populated by `scripts/bootstrap-wso2is.sh` on first up |
-| `INJIWEB_P12_PASSWORD`         | `xy4gh6swa2i` | Matches the p12 in `deploy/compose/injiweb/config/certs/`                  |
+| `INJIWEB_P12_PASSWORD`         | `xy4gh6swa2i` | Password of the locally generated p12 in `deploy/compose/injiweb/config/certs/` (see Demo PKI) |
 | `INJI_PROXY_EXTRA_KIDS`        | _(empty)_     | Pre-seed kids for the PRIMARY (auth-code) inji-proxy did.json handler      |
 | `INJI_PROXY_PREAUTH_EXTRA_KIDS`| _(empty)_     | Pre-seed kids for the PRE-AUTH inji-proxy did.json handler                 |
 | `VERIFIABLY_DEBUG_MOCK_MARKERS`| `0`           | Show `[mock]` pills on surfaces still mock-backed                          |
@@ -263,6 +264,56 @@ CREDEBL entry:
 Command-line override: set `VERIFIABLY_ENV_FILE=/path/to/other.env
 ./deploy.sh ...` to swap the entire file for one invocation (e.g. keep
 `.env` pinned to laptop, ship `.env.ec2` for a staging run).
+
+## Demo PKI: generate, never commit
+
+No private key material is tracked in this repository (ADR-029 decision 6).
+The TLS keys, the WSO2 keystores and the walt.id wallet `tokenKey` are produced on
+the host by `scripts/gen-demo-pki.sh`, which `deploy.sh up` calls for you:
+
+```bash
+cd verifiably-go
+./scripts/gen-demo-pki.sh          # idempotent: an existing file is left alone
+```
+
+It writes (all gitignored):
+
+| Path | What |
+|---|---|
+| `deploy/compose/stack/inji/certify-nginx/certs/` | self-signed TLS for the Certify front-end |
+| `deploy/compose/stack/inji/certify-preauth-nginx/certs/` | self-signed TLS for the pre-auth front-end |
+| `deploy/compose/stack/wso2-certs/` | WSO2IS `wso2.key`, `wso2.p12`, `wso2.jks` |
+| `deploy/k8s/config/wallet/auth.conf` | walt.id wallet token-signing JWK (RSA 2048) |
+
+Delete a file and re-run the script to rotate it.
+
+### Inji Web / Mimoto keystore (`oidckeystore.p12`)
+
+This one used to be committed at `deploy/compose/injiweb/config/certs/` and at
+`.../certs-runtime/`. Both copies are removed and both directories are gitignored.
+`gen-demo-pki.sh` does not yet generate it, so create it once per host before
+`./deploy.sh up inji`:
+
+```bash
+cd verifiably-go/deploy/compose/injiweb/config/certs
+openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+  -keyout oidc.key -out oidc.crt -subj "/CN=wallet-demo-client"
+openssl pkcs12 -export -inkey oidc.key -in oidc.crt \
+  -name wallet-demo-client -out oidckeystore.p12 \
+  -passout "pass:$INJIWEB_P12_PASSWORD"
+rm oidc.key oidc.crt
+chmod 600 oidckeystore.p12
+```
+
+`deploy.sh` copies it to `certs-runtime/` on every `up`, and
+`scripts/start-container.sh` extracts `INJI_AUTHCODE_CLIENT_KEY_PEM` from it at
+runtime. Register the matching public certificate with eSignet for the
+`client_assertion` to verify.
+
+The keystores that were committed before are in the git history of a public
+repository: treat every key in them as compromised and never reuse one. The
+history purge is a release step; `vca/docs/release-checklist.md` holds the
+commands.
 
 ## Secrets to regenerate per deployment
 

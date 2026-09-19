@@ -13,9 +13,8 @@
 # Plans
 go-build-plan.md
 
-# Loose scratch copy of the wallet-demo-client p12 — the real copy lives
-# at verifiably-go/deploy/compose/injiweb/config/certs/oidckeystore.p12
-# which IS tracked.
+# Loose scratch copy of the wallet-demo-client p12. No copy is tracked any
+# more (ADR-029 decision 6); see the demo PKI block below.
 /oidckeystore.p12/
 
 
@@ -128,3 +127,15 @@ verifiably-go/deploy/compose/stack/wso2-certs/*.jks
 verifiably-go/deploy/compose/stack/inji/certify-nginx/certs/
 verifiably-go/deploy/compose/stack/inji/certify-preauth-nginx/certs/
 verifiably-go/deploy/k8s/config/wallet/auth.conf
+
+# Inji Web / Mimoto demo keystore. It used to be tracked at both paths
+# below; ADR-029 decision 6 removed it. Generate it locally, see
+# verifiably-go/docs/deploy.md.
+verifiably-go/deploy/compose/injiweb/config/certs/
+verifiably-go/deploy/compose/injiweb/config/certs-runtime/
+
+# No private key material of any deployment is tracked.
+verifiably-go/deploy/**/*.p12
+verifiably-go/deploy/**/*.jks
+verifiably-go/deploy/**/*.key
+verifiably-go/deploy/**/*.pem
