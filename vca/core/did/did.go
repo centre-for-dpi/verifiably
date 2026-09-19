@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -217,8 +218,8 @@ func KeyDocument(did string) (Document, error) {
 		return Document{}, err
 	}
 	// decodeMultikey returns Ed25519 or P-256 keys only. Both convert.
-	jwk, _ := jose.PublicJWK(pub, "")
-	m, _ := jose.JWKToMap(jwk)
+	jwk := anyval.Must(jose.PublicJWK(pub, ""))
+	m := anyval.Must(jose.JWKToMap(jwk))
 	id := "did:key:" + mb
 	vmID := id + "#" + mb
 	return Document{
@@ -290,7 +291,8 @@ func JWKDocument(did string) (Document, error) {
 	if !jwk.IsPublic() {
 		return Document{}, errors.New("did: did:jwk must carry a public key")
 	}
-	m, _ := jose.JWKToMap(jwk)
+	// The JWK was parsed above, so it always writes.
+	m := anyval.Must(jose.JWKToMap(jwk))
 	id := "did:jwk:" + enc
 	return Document{
 		ID: id,
@@ -311,7 +313,8 @@ func FromJWK(pub map[string]any) (string, error) {
 	if _, err := jose.JWKFromMap(pub); err != nil {
 		return "", err
 	}
-	raw, _ := json.Marshal(pub)
+	// JWKFromMap accepted the object above, so it always writes.
+	raw := anyval.Must(json.Marshal(pub))
 	return "did:jwk:" + base64.RawURLEncoding.EncodeToString(raw), nil
 }
 

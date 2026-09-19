@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
@@ -108,7 +109,7 @@ func checkDigest(pres sdjwt.Presentation, payload, kb map[string]any) string {
 	if err != nil {
 		return "the credential names an unknown digest algorithm"
 	}
-	if got, _ := kb["sd_hash"].(string); got != want {
+	if got := anyval.As[string](kb["sd_hash"]); got != want {
 		return "the key binding JWT does not cover the disclosures"
 	}
 	return ""

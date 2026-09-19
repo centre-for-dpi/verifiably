@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 const degree = `{
@@ -65,19 +67,19 @@ func TestSampleData(t *testing.T) {
 			t.Errorf("%s: got %#v want %#v", k, sample[k], v)
 		}
 	}
-	if tags := sample["tags"].([]any); len(tags) != 1 || tags[0] != "Sample tags" {
+	if tags := anyval.As[[]any](sample["tags"]); len(tags) != 1 || tags[0] != "Sample tags" {
 		t.Errorf("tags: %v", sample["tags"])
 	}
-	if empty := sample["empty"].([]any); len(empty) != 0 {
+	if empty := anyval.As[[]any](sample["empty"]); len(empty) != 0 {
 		t.Errorf("empty: %v", sample["empty"])
 	}
-	if addr := sample["addr"].(map[string]any); addr["street"] != "Sample street" {
+	if addr := anyval.As[map[string]any](sample["addr"]); addr["street"] != "Sample street" {
 		t.Errorf("addr: %v", sample["addr"])
 	}
 	if bad := sample["bad"]; bad != "Sample bad" {
 		t.Errorf("bad ref: %v", bad)
 	}
-	if sub := sample["sub"].(map[string]any); sub["a"] != "Sample a" || len(sub) != 1 {
+	if sub := anyval.As[map[string]any](sample["sub"]); sub["a"] != "Sample a" || len(sub) != 1 {
 		t.Errorf("sub: %v", sub)
 	}
 	if _, has := sample["flag"]; has {
@@ -87,7 +89,7 @@ func TestSampleData(t *testing.T) {
 		t.Fatal("bad schema")
 	}
 	long, err := SampleData(`{"properties": {"n": {"type": "string", "minLength": 20}}}`)
-	if err != nil || len(long["n"].(string)) != 20 {
+	if err != nil || len(anyval.As[string](long["n"])) != 20 {
 		t.Fatalf("minLength: %v %v", long, err)
 	}
 	loop, err := SampleData(`{"properties": {"n": {"$ref": "#/properties/n"}}}`)
@@ -123,10 +125,10 @@ func TestPreviewCredentialFormats(t *testing.T) {
 	if vc["validFrom"] != "2025-06-01T00:00:00Z" || vc["validUntil"] != "2026-06-01T00:00:00Z" || vc["issuer"] != DefaultIssuer {
 		t.Fatalf("vc: %v", vc)
 	}
-	if vc["credentialSchema"].(map[string]any)["id"] != "https://issuer.example/schemas/1" {
+	if anyval.As[map[string]any](vc["credentialSchema"])["id"] != "https://issuer.example/schemas/1" {
 		t.Fatalf("schema: %v", vc["credentialSchema"])
 	}
-	if vc["credentialSubject"].(map[string]any)["name"] != "Sample Full name" {
+	if anyval.As[map[string]any](vc["credentialSubject"])["name"] != "Sample Full name" {
 		t.Fatalf("subject: %v", vc["credentialSubject"])
 	}
 	if p.Card.Title != "Degree" || p.Card.BackgroundColor != "#112233" || len(p.Card.Rows) == 0 {
@@ -176,7 +178,7 @@ func TestPreviewCredentialFormats(t *testing.T) {
 	if gotErr := json.Unmarshal([]byte(mdoc.CredentialJSON), &doc); gotErr != nil {
 		t.Fatalf("json.Unmarshal: %v", gotErr)
 	}
-	if doc["docType"] != "UniversityDegree" || doc["validityInfo"].(map[string]any)["validUntil"] != nil {
+	if doc["docType"] != "UniversityDegree" || anyval.As[map[string]any](doc["validityInfo"])["validUntil"] != nil {
 		t.Fatalf("mdoc: %v", doc)
 	}
 	if mdoc.Card.Title != "UniversityDegree" || len(mdoc.Card.Rows) != 0 {

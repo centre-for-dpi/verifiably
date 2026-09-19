@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
@@ -84,7 +85,7 @@ func jwtResult(text string) (Result, error) {
 // already read the document, so the reader cannot fail here.
 func jsonResult(text string, format vc.Format) Result {
 	var doc map[string]any
-	_ = json.Unmarshal([]byte(text), &doc)
+	anyval.MustDo(json.Unmarshal([]byte(text), &doc))
 	res := Result{Format: format, Payload: []byte(text), Detected: TypeCredential, Steps: []string{"json"}}
 	inner, hasInner := doc["verifiableCredential"]
 	if !hasInner && !hasType(doc, "VerifiablePresentation") {
@@ -94,7 +95,7 @@ func jsonResult(text string, format vc.Format) Result {
 	res.Detected = TypePresentation
 	res.Credentials = credentialsOf(inner)
 	if proof, ok := doc["proof"].(map[string]any); ok {
-		res.KeyBinding, _ = proof["jwt"].(string)
+		res.KeyBinding = anyval.As[string](proof["jwt"])
 	}
 	return res
 }
@@ -142,7 +143,7 @@ func credentialOf(item any) (Credential, bool) {
 		return Credential{Format: vc.DetectFormat([]byte(t)), Payload: []byte(t)}, true
 	case map[string]any:
 		// The value came from a JSON document, so it always writes.
-		raw, _ := json.Marshal(t)
+		raw := anyval.Must(json.Marshal(t))
 		return Credential{Format: vc.DetectFormat(raw), Payload: raw}, true
 	}
 	return Credential{}, false

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
 
@@ -64,7 +65,7 @@ func baseOpts() Options {
 }
 
 func tou(c vc.Credential) map[string]any {
-	return c.Raw["termsOfUse"].([]any)[0].(map[string]any)
+	return anyval.As[map[string]any](anyval.As[[]any](c.Raw["termsOfUse"])[0])
 }
 
 func TestEvaluateNotADelegationPresentation(t *testing.T) {
@@ -137,11 +138,11 @@ func TestEvaluateFailures(t *testing.T) {
 		reason string
 	}{
 		{"linkage mismatch", func(c []vc.Credential, _ *Options, _ **vc.HolderBinding) {
-			c[0].Raw["credentialSubject"].(map[string]any)["subjectRef"] = "urn:person:someone-else"
+			anyval.As[map[string]any](c[0].Raw["credentialSubject"])["subjectRef"] = "urn:person:someone-else"
 		}, "linkage failed"},
 		{"empty onBehalfOf", func(c []vc.Credential, _ *Options, _ **vc.HolderBinding) {
 			tou(c[1])["invocationTarget"] = ""
-			c[1].Raw["credentialSubject"].(map[string]any)["onBehalfOf"] = map[string]any{}
+			anyval.As[map[string]any](c[1].Raw["credentialSubject"])["onBehalfOf"] = map[string]any{}
 		}, "linkage failed"},
 		{"expired caveat", func(c []vc.Credential, _ *Options, _ **vc.HolderBinding) {
 			tou(c[1])["caveat"] = []any{map[string]any{"validUntil": "2020-01-01T00:00:00Z"}}
@@ -427,7 +428,7 @@ func TestBuildAndEvaluateRoundTrip(t *testing.T) {
 		ContextURL: ctxURL, Issuer: issuer, DelegateID: parent, OnBehalfOf: childRef, Role: "Mother",
 		AllowedAction: []string{"present", "consent:disclose"}, ValidUntil: until, Status: delegStatus, Type: "PowerOfAttorney",
 	})
-	if deleg["type"].([]string)[2] != "PowerOfAttorney" || deleg["validUntil"] != until {
+	if anyval.As[[]string](deleg["type"])[2] != "PowerOfAttorney" || deleg["validUntil"] != until {
 		t.Fatalf("deleg = %v", deleg)
 	}
 	creds := []vc.Credential{vc.FromObject(birth), vc.FromObject(deleg)}
@@ -452,20 +453,20 @@ func TestBuildAndEvaluateRoundTrip(t *testing.T) {
 
 func TestBuildVariants(t *testing.T) {
 	v1 := BuildSubjectCredential(SubjectSpec{DataModel: vc.ModelVCDM1, ValidFrom: "2020-01-01T00:00:00Z", ValidUntil: "2030-01-01T00:00:00Z"})
-	if v1["@context"].([]string)[0] != ContextVCDM1 || v1["issuanceDate"] != "2020-01-01T00:00:00Z" || v1["expirationDate"] != "2030-01-01T00:00:00Z" {
+	if anyval.As[[]string](v1["@context"])[0] != ContextVCDM1 || v1["issuanceDate"] != "2020-01-01T00:00:00Z" || v1["expirationDate"] != "2030-01-01T00:00:00Z" {
 		t.Fatalf("v1 = %v", v1)
 	}
-	if v1["type"].([]string)[1] != "IdentityCredential" {
+	if anyval.As[[]string](v1["type"])[1] != "IdentityCredential" {
 		t.Fatalf("default type: %v", v1["type"])
 	}
 	if _, ok := v1["issuer"]; ok {
 		t.Fatal("issuer must be omitted when empty")
 	}
 	d := BuildDelegationCredential(DelegationSpec{OnBehalfOf: "urn:x", Type: "DelegatedAccessCredential", ValidFrom: "2020-01-01T00:00:00Z"})
-	if len(d["type"].([]string)) != 2 || d["validFrom"] != "2020-01-01T00:00:00Z" {
+	if len(anyval.As[[]string](d["type"])) != 2 || d["validFrom"] != "2020-01-01T00:00:00Z" {
 		t.Fatalf("d = %v", d)
 	}
-	capability := d["termsOfUse"].([]any)[0].(map[string]any)
+	capability := anyval.As[map[string]any](anyval.As[[]any](d["termsOfUse"])[0])
 	for _, k := range []string{"delegate", "controller", "allowedAction", "caveat"} {
 		if _, ok := capability[k]; ok {
 			t.Fatalf("%s must be omitted", k)

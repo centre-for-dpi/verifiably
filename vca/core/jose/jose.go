@@ -21,6 +21,8 @@ import (
 	"strings"
 
 	gojose "github.com/go-jose/go-jose/v4"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // Algorithm is a JWS signature algorithm name (RFC 7518 section 3.1).
@@ -103,7 +105,7 @@ func Sign(key crypto.PrivateKey, kid, typ string, claims any) (string, error) {
 		return "", fmt.Errorf("jose: sign: %w", err)
 	}
 	// CompactSerialize fails only for multi-signature objects. Sign makes one.
-	out, _ := jws.CompactSerialize()
+	out := anyval.Must(jws.CompactSerialize())
 	return out, nil
 }
 
@@ -296,6 +298,6 @@ func JWKToMap(k JWK) (map[string]any, error) {
 	}
 	// The JSON came from the marshaller one line above, so it always parses.
 	var m map[string]any
-	_ = json.Unmarshal(raw, &m)
+	anyval.MustDo(json.Unmarshal(raw, &m))
 	return m, nil
 }

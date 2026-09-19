@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -101,12 +102,12 @@ func ParseDisclosure(seg string) (Disclosure, error) {
 	if len(arr) != 2 && len(arr) != 3 {
 		return Disclosure{}, fmt.Errorf("sdjwt: disclosure has %d elements, want 2 or 3", len(arr))
 	}
-	salt, _ := arr[0].(string)
+	salt := anyval.As[string](arr[0])
 	if salt == "" {
 		return Disclosure{}, errors.New("sdjwt: disclosure salt must be a non-empty string")
 	}
 	if len(arr) == 3 {
-		name, _ := arr[1].(string)
+		name := anyval.As[string](arr[1])
 		if name == "" || name == "_sd" || name == "..." {
 			return Disclosure{}, fmt.Errorf("sdjwt: disclosure name %q is not allowed", name)
 		}
@@ -119,7 +120,7 @@ func ParseDisclosure(seg string) (Disclosure, error) {
 // name is empty for an array element.
 func NewDisclosure(name string, value any) (Disclosure, error) {
 	salt := make([]byte, 16)
-	_, _ = rand.Read(salt)
+	anyval.Must(rand.Read(salt))
 	s := base64.RawURLEncoding.EncodeToString(salt)
 	arr := []any{s, name, value}
 	if name == "" {
@@ -173,7 +174,7 @@ func Conceal(payload map[string]any, names []string) (map[string]any, []Disclosu
 		if err != nil {
 			return nil, nil, err
 		}
-		dg, _ := Digest(DefaultAlg, d.Encoded)
+		dg := anyval.Must(Digest(DefaultAlg, d.Encoded))
 		digests = append(digests, dg)
 		discs = append(discs, d)
 		delete(out, n)
@@ -210,7 +211,7 @@ func Resolve(payload map[string]any, discs []Disclosure) (map[string]any, error)
 	byDigest := make(map[string]*Disclosure, len(discs))
 	used := make(map[string]bool, len(discs))
 	for i := range discs {
-		dg, _ := Digest(alg, discs[i].Encoded)
+		dg := anyval.Must(Digest(alg, discs[i].Encoded))
 		if _, dup := byDigest[dg]; dup {
 			return nil, errors.New("sdjwt: duplicate disclosure")
 		}
@@ -409,7 +410,7 @@ func Verify(tok string, opts VerifyOptions) (Result, error) {
 	}
 	// raw is the same payload PeekPayload parsed above, so it is an object.
 	var payload map[string]any
-	_ = json.Unmarshal(raw, &payload)
+	anyval.MustDo(json.Unmarshal(raw, &payload))
 	if gotErr := checkIssuerTimes(payload, opts); gotErr != nil {
 		return Result{}, gotErr
 	}
@@ -468,10 +469,10 @@ func verifyKeyBinding(p Presentation, payload map[string]any, holder *jose.JWK, 
 	if err := json.Unmarshal(raw, &kb); err != nil {
 		return nil, fmt.Errorf("%w: payload: %w", ErrKeyBindingInvalid, err)
 	}
-	if aud, _ := kb["aud"].(string); aud != opts.Audience {
+	if aud := anyval.As[string](kb["aud"]); aud != opts.Audience {
 		return nil, fmt.Errorf("%w: aud %q does not match %q", ErrKeyBindingInvalid, aud, opts.Audience)
 	}
-	if nonce, _ := kb["nonce"].(string); nonce != opts.Nonce {
+	if nonce := anyval.As[string](kb["nonce"]); nonce != opts.Nonce {
 		return nil, fmt.Errorf("%w: nonce mismatch", ErrKeyBindingInvalid)
 	}
 	iat, ok := kb["iat"].(float64)
@@ -490,8 +491,9 @@ func verifyKeyBinding(p Presentation, payload map[string]any, holder *jose.JWK, 
 	if a, ok := payload["_sd_alg"].(string); ok {
 		alg = a
 	}
-	want, _ := Digest(alg, Serialize(Presentation{IssuerJWT: p.IssuerJWT, Disclosures: p.Disclosures}))
-	if got, _ := kb["sd_hash"].(string); got != want {
+	// An algorithm this package does not know gives "", which never matches.
+	want := anyval.OrZero(Digest(alg, Serialize(Presentation{IssuerJWT: p.IssuerJWT, Disclosures: p.Disclosures})))
+	if got := anyval.As[string](kb["sd_hash"]); got != want {
 		return nil, fmt.Errorf("%w: sd_hash mismatch", ErrKeyBindingInvalid)
 	}
 	return kb, nil

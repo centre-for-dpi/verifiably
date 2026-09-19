@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // ErrRefused reports that the guard refused the URL.
@@ -237,7 +239,10 @@ func (f *Fetcher) Get(ctx context.Context, raw string) (Doc, error) {
 	if err != nil {
 		return Doc{}, fmt.Errorf("fetchguard: get %s: %w", key, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		// The body is read below, so a close failure has no effect.
+		anyval.Discard(resp.Body.Close())
+	}()
 	if resp.StatusCode == http.StatusNotModified && ok {
 		cached.FetchedAt = now
 		cached.NotModified = true

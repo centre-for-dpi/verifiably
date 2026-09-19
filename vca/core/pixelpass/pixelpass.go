@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/fxamacker/cbor/v2"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // MaxDecodedBytes bounds the inflated size Decode accepts.
@@ -38,13 +40,13 @@ func Encode(data []byte) (string, error) {
 	var v any
 	if json.Unmarshal(data, &v) == nil {
 		// JSON values always encode as CBOR.
-		payload, _ = cbor.Marshal(v)
+		payload = anyval.Must(cbor.Marshal(v))
 	}
 	var buf bytes.Buffer
 	// Writes to a bytes.Buffer cannot fail.
-	w, _ := zlib.NewWriterLevel(&buf, zlib.BestCompression)
-	_, _ = w.Write(payload)
-	_ = w.Close()
+	w := anyval.Must(zlib.NewWriterLevel(&buf, zlib.BestCompression))
+	anyval.Must(w.Write(payload))
+	anyval.MustDo(w.Close())
 	return EncodeBase45(buf.Bytes()), nil
 }
 
@@ -91,7 +93,7 @@ func decodesAsCBOR(raw []byte, v any) bool {
 // marshal them. PixelPass payloads come from JSON, so keys are strings.
 func decMode() cbor.DecMode {
 	// The options are valid constants, so DecMode cannot fail.
-	dm, _ := cbor.DecOptions{DefaultMapType: reflect.TypeOf(map[string]any(nil))}.DecMode()
+	dm := anyval.Must(cbor.DecOptions{DefaultMapType: reflect.TypeOf(map[string]any(nil))}.DecMode())
 	return dm
 }
 

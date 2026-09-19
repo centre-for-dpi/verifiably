@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -178,7 +179,7 @@ func TestPublicKey(t *testing.T) {
 	if mErr != nil {
 		t.Fatalf("jose.JWKToMap: %v", mErr)
 	}
-	if k, err := PublicKey(VerificationMethod{PublicKeyJWK: m}); err != nil || !bytes.Equal(k.(ed25519.PublicKey), edPub) {
+	if k, err := PublicKey(VerificationMethod{PublicKeyJWK: m}); err != nil || !bytes.Equal(anyval.As[ed25519.PublicKey](k), edPub) {
 		t.Fatalf("jwk: %v", err)
 	}
 	if _, err := PublicKey(VerificationMethod{PublicKeyJWK: map[string]any{"kty": "EC"}}); err == nil {
@@ -189,7 +190,7 @@ func TestPublicKey(t *testing.T) {
 		t.Fatalf("FromPublicKey: %v", err)
 	}
 	mb := strings.TrimPrefix(didKey, "did:key:")
-	if k, err := PublicKey(VerificationMethod{PublicKeyMultibase: mb}); err != nil || !bytes.Equal(k.(ed25519.PublicKey), edPub) {
+	if k, err := PublicKey(VerificationMethod{PublicKeyMultibase: mb}); err != nil || !bytes.Equal(anyval.As[ed25519.PublicKey](k), edPub) {
 		t.Fatalf("multibase: %v", err)
 	}
 	if _, err := PublicKey(VerificationMethod{ID: "x"}); err == nil {
@@ -233,7 +234,7 @@ func TestDIDKeyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PublicKey: %v", err)
 	}
-	if !k.(*ecdsa.PublicKey).Equal(&ec.PublicKey) {
+	if !anyval.As[*ecdsa.PublicKey](k).Equal(&ec.PublicKey) {
 		t.Fatal("P-256 key did not round trip")
 	}
 	// Resolver dispatch.
@@ -294,7 +295,7 @@ func TestDIDJWKRoundTrip(t *testing.T) {
 		t.Fatalf("JWKDocument = %+v, %v", doc, err)
 	}
 	k, err := PublicKey(doc.VerificationMethod[0])
-	if err != nil || !k.(*ecdsa.PublicKey).Equal(&ec.PublicKey) {
+	if err != nil || !anyval.As[*ecdsa.PublicKey](k).Equal(&ec.PublicKey) {
 		t.Fatalf("key mismatch: %v", err)
 	}
 	// Padded base64url is accepted.

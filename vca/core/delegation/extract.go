@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
 
@@ -177,7 +178,8 @@ func subjectIdentifies(c vc.Credential, onBehalfOf string) bool {
 // SD-JWT status.status_list claim.
 func StatusRefOf(c vc.Credential) (StatusRef, bool) {
 	if uri := flatClaim(c, "statusUri"); uri != "" {
-		idx, _ := strconv.ParseInt(strings.TrimSpace(flatClaim(c, "statusIdx")), 10, 64)
+		// A value that is not a whole number means index 0.
+		idx := anyval.OrZero(strconv.ParseInt(strings.TrimSpace(flatClaim(c, "statusIdx")), 10, 64))
 		typ := "TokenStatusList"
 		if strings.Contains(strings.ToLower(flatClaim(c, "statusType")), "bitstring") {
 			typ = "BitstringStatusListEntry"
@@ -301,7 +303,7 @@ func asSlice(v any) []any {
 }
 
 func mapStr(m map[string]any, key string) string {
-	s, _ := m[key].(string)
+	s := anyval.As[string](m[key])
 	return s
 }
 
@@ -316,7 +318,7 @@ func mapStrSlice(m map[string]any, keys ...string) []string {
 }
 
 func mapBool(m map[string]any, key string) bool {
-	b, _ := m[key].(bool)
+	b := anyval.As[bool](m[key])
 	return b
 }
 
@@ -326,7 +328,8 @@ func mapInt(m map[string]any, key string) int64 {
 	case float64:
 		return int64(v)
 	case string:
-		n, _ := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		// A value that is not a whole number means 0.
+		n := anyval.OrZero(strconv.ParseInt(strings.TrimSpace(v), 10, 64))
 		return n
 	}
 	return 0

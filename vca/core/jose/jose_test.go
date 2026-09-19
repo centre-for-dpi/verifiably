@@ -13,6 +13,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 func mustKey(t *testing.T, alg Algorithm) any {
@@ -156,8 +158,8 @@ func TestPeekErrors(t *testing.T) {
 }
 
 func TestVerifyRejects(t *testing.T) {
-	key := mustKey(t, ES256).(*ecdsa.PrivateKey)
-	other := mustKey(t, ES256).(*ecdsa.PrivateKey)
+	key := anyval.As[*ecdsa.PrivateKey](mustKey(t, ES256))
+	other := anyval.As[*ecdsa.PrivateKey](mustKey(t, ES256))
 	tok, err := Sign(key, "k1", "JWT", map[string]any{"a": 1})
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
@@ -272,14 +274,14 @@ func TestPublicJWK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %v", err)
 	}
-	ed := mustKey(t, EdDSA).(ed25519.PrivateKey)
+	ed := anyval.As[ed25519.PrivateKey](mustKey(t, EdDSA))
 	cases := []struct {
 		name string
 		key  any
 		alg  string
 	}{
 		{"ecdsa private", mustKey(t, ES256), "ES256"},
-		{"ecdsa public", &mustKey(t, ES256).(*ecdsa.PrivateKey).PublicKey, "ES256"},
+		{"ecdsa public", &anyval.As[*ecdsa.PrivateKey](mustKey(t, ES256)).PublicKey, "ES256"},
 		{"ed private", ed, "EdDSA"},
 		{"ed public", ed.Public(), "EdDSA"},
 		{"rsa private", rsaKey, "RS256"},
@@ -375,7 +377,7 @@ func FuzzParseToken(f *testing.F) {
 		if _, err := PeekPayload(tok); err != nil && err.Error() == "" {
 			t.Fatalf("PeekPayload must describe the failure")
 		}
-		pub, _ := PublicJWK(key, "k")
+		pub := anyval.Must(PublicJWK(key, "k"))
 		if _, _, err := Verify(tok, pub.Key, SigningAlgorithms); err != nil && err.Error() == "" {
 			t.Fatalf("Verify must describe the failure")
 		}

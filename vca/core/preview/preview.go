@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
 )
 
@@ -393,7 +394,7 @@ func sampleValue(parsed jsonschema.Schema, sub map[string]any, name string, dept
 		}
 		return []any{sampleValue(parsed, items, name, depth+1)}
 	case "object":
-		props, _ := sub["properties"].(map[string]any)
+		props := anyval.As[map[string]any](sub["properties"])
 		obj := map[string]any{}
 		for _, key := range sortedKeys(props) {
 			if child, ok := props[key].(map[string]any); ok {

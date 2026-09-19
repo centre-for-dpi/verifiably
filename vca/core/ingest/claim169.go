@@ -16,6 +16,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 )
 
@@ -147,7 +148,7 @@ func Inflate(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ingest: zlib: %w", err)
 	}
-	defer func() { _ = zr.Close() }()
+	defer anyval.Close(zr)
 	out, err := io.ReadAll(io.LimitReader(zr, MaxInflatedBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("ingest: inflate: %w", err)
@@ -192,13 +193,13 @@ func ParseSign1(raw []byte) (Sign1, error) {
 	if alg, ok := asInt(hdr[coseAlg]); ok {
 		s.Algorithm = alg
 	}
-	s.KeyID, _ = hdr[coseKid].([]byte)
+	s.KeyID = anyval.As[[]byte](hdr[coseKid])
 	return s, nil
 }
 
 // sigStructure builds the Signature1 structure of RFC 9052 section 4.4.
 func sigStructure(protected, payload []byte) []byte {
-	out, _ := cbor.Marshal([]any{"Signature1", protected, []byte{}, payload})
+	out := anyval.Must(cbor.Marshal([]any{"Signature1", protected, []byte{}, payload}))
 	return out
 }
 
@@ -209,9 +210,9 @@ func ParseCWT(raw []byte) (CWT, error) {
 		return CWT{}, fmt.Errorf("ingest: CWT claims: %w", err)
 	}
 	c := CWT{}
-	c.Issuer, _ = m[cwtIss].(string)
-	c.Subject, _ = m[cwtSub].(string)
-	c.Audience, _ = m[cwtAud].(string)
+	c.Issuer = anyval.As[string](m[cwtIss])
+	c.Subject = anyval.As[string](m[cwtSub])
+	c.Audience = anyval.As[string](m[cwtAud])
 	c.IssuedAt = claimTime(m, cwtIat)
 	c.NotBefore = claimTime(m, cwtNbf)
 	c.ExpiresAt = claimTime(m, cwtExp)
@@ -287,6 +288,6 @@ func keyText(k any) string {
 
 // decMode decodes CBOR maps into map[any]any, so integer keys survive.
 func decMode() cbor.DecMode {
-	dm, _ := cbor.DecOptions{DefaultMapType: reflect.TypeOf(map[any]any(nil))}.DecMode()
+	dm := anyval.Must(cbor.DecOptions{DefaultMapType: reflect.TypeOf(map[any]any(nil))}.DecMode())
 	return dm
 }

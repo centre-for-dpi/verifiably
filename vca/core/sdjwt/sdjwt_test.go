@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -68,7 +69,7 @@ func newFixture(t *testing.T, extra map[string]any) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := fixture{issuer: issuer.(*ecdsa.PrivateKey), holder: holder.(*ecdsa.PrivateKey), payload: payload, discs: discs}
+	f := fixture{issuer: anyval.As[*ecdsa.PrivateKey](issuer), holder: anyval.As[*ecdsa.PrivateKey](holder), payload: payload, discs: discs}
 	f.tok = Serialize(Presentation{IssuerJWT: jwt, Disclosures: discs})
 	return f
 }
@@ -272,11 +273,11 @@ func TestResolveNestedAndArrays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := claims["address"].(map[string]any)
+	a := anyval.As[map[string]any](claims["address"])
 	if a["street"] != "Main 1" || a["city"] != "Lima" {
 		t.Fatalf("address = %v", a)
 	}
-	nats := claims["nationalities"].([]any)
+	nats := anyval.As[[]any](claims["nationalities"])
 	if len(nats) != 3 || nats[0] != "US" || nats[1] != "FR" {
 		t.Fatalf("nationalities = %v", nats)
 	}
@@ -411,7 +412,7 @@ func TestVerifyIssuerErrors(t *testing.T) {
 	}
 	badKey := f.opts()
 	badKey.IssuerKey = func(jose.Header, map[string]any) (crypto.PublicKey, error) {
-		return &other.(*ecdsa.PrivateKey).PublicKey, nil
+		return &anyval.As[*ecdsa.PrivateKey](other).PublicKey, nil
 	}
 	resolverErr := f.opts()
 	resolverErr.IssuerKey = func(jose.Header, map[string]any) (crypto.PublicKey, error) { return nil, errors.New("no key") }

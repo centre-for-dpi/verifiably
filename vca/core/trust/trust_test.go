@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -170,7 +171,7 @@ func TestBuildDefaultsAndErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("jose.PeekPayload: %v", err)
 	}
-	if claims["exp"].(float64)-claims["iat"].(float64) != DefaultTTL.Seconds() {
+	if anyval.As[float64](claims["exp"])-anyval.As[float64](claims["iat"]) != DefaultTTL.Seconds() {
 		t.Fatalf("default ttl: %v", claims)
 	}
 	if _, err := Build([]Entry{{}}, key, BuildOptions{}); err == nil {

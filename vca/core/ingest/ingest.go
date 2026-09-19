@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
@@ -330,6 +331,6 @@ func decodeRequest(text string) (Result, error) {
 		return Result{}, errors.New("ingest: the OID4VP request has no parameter")
 	}
 	// A map of strings always writes.
-	payload, _ := json.Marshal(params)
+	payload := anyval.Must(json.Marshal(params))
 	return Result{Format: vc.FormatJSON, Payload: payload, Detected: TypeRequest, Steps: []string{"url"}}, nil
 }

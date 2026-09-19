@@ -30,6 +30,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // MaxPDFImages bounds the number of images the extractor returns.
@@ -159,7 +161,7 @@ func inflatePDFStream(stream []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ingest: image stream: %w", err)
 	}
-	defer func() { _ = zr.Close() }()
+	defer anyval.Close(zr)
 	out, err := io.ReadAll(io.LimitReader(zr, MaxInflatedBytes+1))
 	if err != nil && len(out) == 0 {
 		return nil, fmt.Errorf("ingest: inflate the image stream: %w", err)
@@ -214,7 +216,7 @@ func indexedPalette(text string) ([]color.RGBA, error) {
 	raw := make([]byte, 0, len(clean)/2)
 	for i := 0; i+1 < len(clean); i += 2 {
 		// The pattern accepts hexadecimal digits only, so this parses.
-		n, _ := strconv.ParseUint(clean[i:i+2], 16, 8)
+		n := anyval.Must(strconv.ParseUint(clean[i:i+2], 16, 8))
 		raw = append(raw, byte(n))
 	}
 	if len(raw) < 3 {

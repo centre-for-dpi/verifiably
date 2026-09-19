@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -41,14 +42,14 @@ var (
 // NewVerifier returns a random PKCE code_verifier (43 characters).
 func NewVerifier() string {
 	b := make([]byte, 32)
-	_, _ = rand.Read(b)
+	anyval.Must(rand.Read(b))
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // NewState returns a random state value for the authorisation round trip.
 func NewState() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	anyval.Must(rand.Read(b))
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
@@ -179,7 +180,7 @@ func VerifyToken(token string, keys jose.JWKS, opts TokenOptions) (map[string]an
 	}
 	// raw is the payload PeekPayload parsed above, so it is an object.
 	var claims map[string]any
-	_ = json.Unmarshal(raw, &claims)
+	anyval.MustDo(json.Unmarshal(raw, &claims))
 	if err := checkTimes(claims, opts); err != nil {
 		return nil, err
 	}
@@ -190,7 +191,7 @@ func VerifyToken(token string, keys jose.JWKS, opts TokenOptions) (map[string]an
 }
 
 func checkIssuer(claims map[string]any, issuers []string) error {
-	iss, _ := claims["iss"].(string)
+	iss := anyval.As[string](claims["iss"])
 	for _, k := range issuers {
 		if k != "" && strings.TrimRight(iss, "/") == strings.TrimRight(k, "/") {
 			return nil
@@ -230,7 +231,7 @@ func checkAudience(claims map[string]any, clientID string) error {
 			return nil
 		}
 	}
-	if azp, _ := claims["azp"].(string); azp == clientID {
+	if azp := anyval.As[string](claims["azp"]); azp == clientID {
 		return nil
 	}
 	return fmt.Errorf("%w: %q", ErrAudience, clientID)
