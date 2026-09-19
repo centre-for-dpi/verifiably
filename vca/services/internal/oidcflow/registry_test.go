@@ -106,8 +106,9 @@ func TestRegistry(t *testing.T) {
 	if _, err := reg3.Put(existing); err == nil {
 		t.Fatal("save error hidden on update")
 	}
-	if got, _ := reg3.Get(existing.ID); got.DisplayName == "changed" {
-		t.Fatal("update not rolled back")
+	stored, storedErr := reg3.Get(existing.ID)
+	if storedErr != nil || stored.DisplayName == "changed" {
+		t.Fatalf("update not rolled back: %v", storedErr)
 	}
 	if err := reg3.Delete(existing.ID); err == nil {
 		t.Fatal("delete save error hidden")
@@ -205,8 +206,9 @@ func TestAdminProvidersRPC(t *testing.T) {
 	if id == "" || created.Msg.GetProvider().GetRoles()[0] != commonv1.Role_ROLE_ISSUER {
 		t.Fatalf("created: %+v", created.Msg)
 	}
-	if p, _ := reg.Get(id); p.InternalAuthority != "http://idp:8080" {
-		t.Fatalf("internal authority: %+v", p)
+	p, pErr := reg.Get(id)
+	if pErr != nil || p.InternalAuthority != "http://idp:8080" {
+		t.Fatalf("internal authority: %+v %v", p, pErr)
 	}
 	if _, err := authed.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: &adminv1.AuthProvider{}})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("invalid: %v", err)

@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/token"
 )
@@ -223,11 +224,11 @@ func (r *Record) Set(i, v int, now time.Time) (int, error) {
 		}
 		l := bitstring.FromBytes(r.Values)
 		// i is allocated, so it is in range.
-		_ = l.Set(i, v == 1)
+		anyval.MustDo(l.Set(i, v == 1))
 		r.Values = l.Bytes()
 	default:
 		// Bits and Values are valid by construction.
-		l, _ := token.FromBytes(r.Bits, r.Values)
+		l := anyval.Must(token.FromBytes(r.Bits, r.Values))
 		if err := l.Set(i, uint8(v)); err != nil {
 			return 0, fmt.Errorf("%w: %d does not fit in %d bits", ErrBadValue, v, r.Bits)
 		}

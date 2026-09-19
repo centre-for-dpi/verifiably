@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // Header is the name of the trace context header.
@@ -62,7 +64,8 @@ func Parse(value string) (Context, error) {
 	if !isHex(parts[3], 2) {
 		return Context{}, fmt.Errorf("trace: bad flags %q", parts[3])
 	}
-	flags, _ := hex.DecodeString(parts[3])
+	// The caller checked the shape, so a decode failure leaves flags empty.
+	flags := anyval.OrZero(hex.DecodeString(parts[3]))
 	return Context{TraceID: strings.ToLower(parts[1]), SpanID: strings.ToLower(parts[2]), Sampled: flags[0]&1 == 1}, nil
 }
 
@@ -87,7 +90,7 @@ func (c Context) Child() Context {
 func randomHex(n int) string {
 	b := make([]byte, n)
 	// crypto/rand never fails on the supported platforms (Go 1.24 and later).
-	_, _ = rand.Read(b)
+	anyval.Must(rand.Read(b))
 	return hex.EncodeToString(b)
 }
 

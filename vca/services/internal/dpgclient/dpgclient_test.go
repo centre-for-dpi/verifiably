@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve/trace"
 )
 
@@ -67,7 +68,7 @@ func TestJSONSendsAndDecodes(t *testing.T) {
 	if out.ID != "abc" {
 		t.Fatalf("id = %q", out.ID)
 	}
-	if got := out.Count; got == nil || got.(interface{ String() string }).String() != "9007199254740993" {
+	if got := out.Count; got == nil || anyval.As[interface{ String() string }](got).String() != "9007199254740993" {
 		t.Fatalf("count = %v, a whole number must stay whole", got)
 	}
 }

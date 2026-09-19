@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/keys"
@@ -38,10 +39,10 @@ func (f *fakeSecurer) Secure(rec Record, issuer keys.Issuer, url string, signedA
 	if f.fail != nil {
 		return nil, f.fail
 	}
-	body, _ := json.Marshal(map[string]any{
+	body := anyval.Must(json.Marshal(map[string]any{
 		"url": url, "iss": issuer.DID(), "kid": issuer.Kid(issuer.Active()), "values": rec.Values,
 		"iat": signedAt.Unix(), "exp": expiresAt.Unix(),
-	})
+	}))
 	return []Unsigned{{MediaType: "application/test+json", Body: body}, {MediaType: "application/test+cbor", Body: append([]byte{0xa0}, body...)}}, nil
 }
 
@@ -210,8 +211,9 @@ func TestSetGetBitstring(t *testing.T) {
 	if _, err := r.Get(-1); !errors.Is(err, bitstring.ErrOutOfRange) {
 		t.Fatalf("err = %v", err)
 	}
-	if got, _ := r.BitstringList().Get(idx); !got {
-		t.Fatal("BitstringList")
+	bit, bitErr := r.BitstringList().Get(idx)
+	if bitErr != nil || !bit {
+		t.Fatalf("BitstringList: %v %v", bit, bitErr)
 	}
 	prev, errAssign := r.Set(idx, 0, t0)
 	if errAssign != nil {
@@ -234,15 +236,17 @@ func TestSetGetToken(t *testing.T) {
 	if _, err := r.Set(idx, 200, t0); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := r.Get(idx); v != 200 {
-		t.Fatalf("v = %d", v)
+	v, vErr := r.Get(idx)
+	if vErr != nil || v != 200 {
+		t.Fatalf("v = %d, %v", v, vErr)
 	}
 	l, lErr := r.TokenList()
 	if lErr != nil {
 		t.Fatal(lErr)
 	}
-	if v, _ := l.Get(idx); v != 200 {
-		t.Fatal("TokenList")
+	listValue, listErr := l.Get(idx)
+	if listErr != nil || listValue != 200 {
+		t.Fatalf("TokenList: %d %v", listValue, listErr)
 	}
 	if _, err := r.Get(4); err == nil {
 		t.Fatal("expected range error")

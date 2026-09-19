@@ -54,8 +54,9 @@ func TestBackends(t *testing.T) {
 				t.Fatalf("get: %s %v", got, err)
 			}
 			got[0] = 'x'
-			if again, _ := kv.Get(ctx, "lists/a"); string(again) != `{"n":1}` {
-				t.Fatal("get returned shared memory")
+			again, againErr := kv.Get(ctx, "lists/a")
+			if againErr != nil || string(again) != `{"n":1}` {
+				t.Fatalf("get returned shared memory: %v", againErr)
 			}
 			keys, err := kv.List(ctx, "lists/")
 			if err != nil || strings.Join(keys, ",") != "lists/a,lists/b" {
@@ -78,8 +79,9 @@ func TestBackends(t *testing.T) {
 			if err := kv.CompareAndSwap(ctx, "lists/a", []byte(`{"n":1}`), []byte(`{"n":3}`)); err != nil {
 				t.Fatalf("cas: %v", err)
 			}
-			if got, _ := kv.Get(ctx, "lists/a"); string(got) != `{"n":3}` {
-				t.Fatalf("after cas: %s", got)
+			after, afterErr := kv.Get(ctx, "lists/a")
+			if afterErr != nil || string(after) != `{"n":3}` {
+				t.Fatalf("after cas: %s %v", after, afterErr)
 			}
 			if err := kv.CompareAndSwap(ctx, "lists/c", []byte(`{}`), []byte(`{}`)); !errors.Is(err, ErrConflict) {
 				t.Fatalf("cas update missing: %v", err)

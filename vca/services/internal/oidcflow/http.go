@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // Cookie describes the session cookie a service sets at the callback.
@@ -86,7 +88,8 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	// A failed write means the client is gone. There is nothing to report.
+	anyval.Discard(json.NewEncoder(w).Encode(v))
 }
 
 // WriteError writes an OAuth 2.0 style error body.

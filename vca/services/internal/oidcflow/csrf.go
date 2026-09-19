@@ -9,6 +9,8 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // CSRFHeader is the request header that carries the synchronizer token.
@@ -36,7 +38,7 @@ func NewCSRF(key []byte) (CSRF, error) {
 // Token returns a new token for sid.
 func (c CSRF) Token(sid string) string {
 	nonce := make([]byte, 16)
-	_, _ = rand.Read(nonce)
+	anyval.Must(rand.Read(nonce))
 	n := base64.RawURLEncoding.EncodeToString(nonce)
 	return n + "." + c.mac(sid, n)
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/oidc"
 )
@@ -162,7 +163,7 @@ func (f *Flow) Complete(ctx context.Context, p Provider, pend Pending, code stri
 	if err != nil {
 		return Result{}, err
 	}
-	if nonce, _ := claims["nonce"].(string); nonce != pend.Nonce {
+	if nonce := anyval.As[string](claims["nonce"]); nonce != pend.Nonce {
 		return Result{}, ErrNonce
 	}
 	res := Result{
@@ -171,8 +172,8 @@ func (f *Flow) Complete(ctx context.Context, p Provider, pend Pending, code stri
 		AccessToken:  tok.AccessToken,
 		RefreshToken: tok.RefreshToken,
 	}
-	res.Issuer, _ = claims["iss"].(string)
-	res.Subject, _ = claims["sub"].(string)
+	res.Issuer = anyval.As[string](claims["iss"])
+	res.Subject = anyval.As[string](claims["sub"])
 	if tok.ExpiresIn > 0 {
 		res.TokenExpiresAt = f.now().Add(time.Duration(tok.ExpiresIn) * time.Second)
 	}
@@ -215,8 +216,9 @@ func (f *Flow) exchange(ctx context.Context, p Provider, m Metadata, pend Pendin
 	if err != nil {
 		return tokenResponse{}, wrap(ErrUpstream, "token endpoint: %v", err)
 	}
-	defer res.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(res.Body, maxBody))
+	defer func() { anyval.Discard(res.Body.Close()) }()
+	// A read failure leaves the body empty, which the caller reports.
+	body := anyval.OrZero(io.ReadAll(io.LimitReader(res.Body, maxBody)))
 	var tok tokenResponse
 	if err := json.Unmarshal(body, &tok); err != nil {
 		return tokenResponse{}, wrap(ErrUpstream, "token endpoint returned %d with a body that is not JSON", res.StatusCode)

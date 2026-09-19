@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/oidc"
 )
@@ -67,13 +68,13 @@ type authRequest struct {
 
 // New starts a fake provider with a fresh ES256 key.
 func New() *Provider {
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key := anyval.Must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
 	return start(key)
 }
 
 // NewRS256 starts a fake provider with a fresh RSA key.
 func NewRS256() *Provider {
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	key := anyval.Must(rsa.GenerateKey(rand.Reader, 2048))
 	return start(key)
 }
 
@@ -102,13 +103,13 @@ func (p *Provider) setKey(key crypto.PrivateKey) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.key = key
-	pub, _ := jose.PublicJWK(key, "")
-	p.kid, _ = jose.Thumbprint(pub)
+	pub := anyval.Must(jose.PublicJWK(key, ""))
+	p.kid = anyval.Must(jose.Thumbprint(pub))
 }
 
 // RotateKey replaces the signing key, to test JWKS refresh.
 func (p *Provider) RotateKey() {
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key := anyval.Must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
 	p.setKey(key)
 }
 
@@ -129,7 +130,7 @@ func (p *Provider) Authorize(authorizationURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer res.Body.Close()
+	defer func() { anyval.Discard(res.Body.Close()) }()
 	return res.Header.Get("Location"), nil
 }
 
@@ -158,7 +159,7 @@ func (p *Provider) discovery(w http.ResponseWriter, _ *http.Request) {
 
 func (p *Provider) jwks(w http.ResponseWriter, _ *http.Request) {
 	p.mu.Lock()
-	pub, _ := jose.PublicJWK(p.key, p.kid)
+	pub := anyval.Must(jose.PublicJWK(p.key, p.kid))
 	p.mu.Unlock()
 	writeJSON(w, http.StatusOK, jose.JWKS{Keys: []jose.JWK{pub}})
 }
@@ -177,7 +178,7 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.codes[code] = authRequest{challenge: q.Get("code_challenge"), nonce: q.Get("nonce"), redirectURI: q.Get("redirect_uri"), clientID: q.Get("client_id")}
 	p.mu.Unlock()
-	u, _ := url.Parse(q.Get("redirect_uri"))
+	u := anyval.OrZero(url.Parse(q.Get("redirect_uri")))
 	v := u.Query()
 	v.Set("code", code)
 	v.Set("state", q.Get("state"))
@@ -240,7 +241,7 @@ func (p *Provider) IDToken(aud, nonce string) string {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	tok, _ := signAny(p.key, p.kid, claims)
+	tok := anyval.Must(signAny(p.key, p.kid, claims))
 	return tok
 }
 
@@ -255,7 +256,7 @@ func (p *Provider) logout(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	anyval.Discard(json.NewEncoder(w).Encode(v))
 }
 
 // signAny signs with ES256 through core/jose, or with RS256 directly.
@@ -263,12 +264,12 @@ func signAny(key crypto.PrivateKey, kid string, claims map[string]any) (string, 
 	if _, ok := key.(*rsa.PrivateKey); !ok {
 		return jose.Sign(key, kid, "JWT", claims)
 	}
-	return signRS256(key.(*rsa.PrivateKey), kid, claims)
+	return signRS256(anyval.As[*rsa.PrivateKey](key), kid, claims)
 }
 
 func signRS256(key *rsa.PrivateKey, kid string, claims map[string]any) (string, error) {
-	header, _ := json.Marshal(map[string]string{"alg": "RS256", "typ": "JWT", "kid": kid})
-	payload, _ := json.Marshal(claims)
+	header := anyval.Must(json.Marshal(map[string]string{"alg": "RS256", "typ": "JWT", "kid": kid}))
+	payload := anyval.Must(json.Marshal(claims))
 	input := b64(header) + "." + b64(payload)
 	sum := sha256.Sum256([]byte(input))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])

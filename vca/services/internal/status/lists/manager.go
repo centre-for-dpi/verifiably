@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/keys"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -270,7 +271,7 @@ func (m *Manager) sign(ctx context.Context, rec Record, issuer keys.Issuer) (Sig
 	if len(s.Artifacts) == 0 {
 		return Signed{}, errors.New("lists: securer returned no artifact")
 	}
-	data, _ := json.Marshal(s)
+	data := anyval.Must(json.Marshal(s))
 	if err := m.opts.Store.Put(ctx, SignedPrefix+rec.ID, data); err != nil {
 		return Signed{}, fmt.Errorf("lists: %w", err)
 	}
@@ -279,7 +280,7 @@ func (m *Manager) sign(ctx context.Context, rec Record, issuer keys.Issuer) (Sig
 }
 
 func (m *Manager) saveRecord(ctx context.Context, rec Record) error {
-	data, _ := json.Marshal(rec)
+	data := anyval.Must(json.Marshal(rec))
 	if err := m.opts.Store.Put(ctx, RecordPrefix+rec.ID, data); err != nil {
 		return fmt.Errorf("lists: %w", err)
 	}

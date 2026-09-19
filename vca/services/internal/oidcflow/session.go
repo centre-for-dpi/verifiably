@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -89,8 +90,8 @@ func NewSigner(key *ecdsa.PrivateKey, issuer, audience string, ttl time.Duration
 	if deny == nil {
 		deny = NewMemoryDenyList(nil)
 	}
-	pub, _ := jose.PublicJWK(key, "")
-	kid, _ := jose.Thumbprint(pub)
+	pub := anyval.Must(jose.PublicJWK(key, ""))
+	kid := anyval.Must(jose.Thumbprint(pub))
 	return &Signer{key: key, kid: kid, issuer: issuer, audience: audience, ttl: ttl, now: time.Now, deny: deny}, nil
 }
 
@@ -168,7 +169,7 @@ func (s *Signer) Revoke(token string) (Claims, error) {
 
 // JWKS returns the public key set that other services verify with.
 func (s *Signer) JWKS() jose.JWKS {
-	pub, _ := jose.PublicJWK(s.key, s.kid)
+	pub := anyval.Must(jose.PublicJWK(s.key, s.kid))
 	return jose.JWKS{Keys: []jose.JWK{pub}}
 }
 
@@ -221,6 +222,6 @@ func EncodeKeyPEM(k *ecdsa.PrivateKey) ([]byte, error) {
 
 func randomID() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	anyval.Must(rand.Read(b))
 	return base64.RawURLEncoding.EncodeToString(b)
 }

@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/lists"
 )
 
@@ -110,7 +111,7 @@ func (h *Handler) write(w http.ResponseWriter, r *http.Request, mediaType string
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
-		_, _ = w.Write(body)
+		anyval.DiscardWrite(w.Write(body))
 	}
 }
 

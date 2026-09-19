@@ -39,8 +39,9 @@ func TestDocumentRoundTrip(t *testing.T) {
 			if err := d.Save([]byte(`{"a":2}`)); err != nil {
 				t.Fatal(err)
 			}
-			if data, _, _ := d.Load(); string(data) != `{"a":2}` {
-				t.Fatalf("replace: %q", data)
+			data, _, loadErr := d.Load()
+			if loadErr != nil || string(data) != `{"a":2}` {
+				t.Fatalf("replace: %q %v", data, loadErr)
 			}
 		})
 	}

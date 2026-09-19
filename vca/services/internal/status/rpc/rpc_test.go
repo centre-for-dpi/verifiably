@@ -12,6 +12,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/keys"
@@ -36,9 +37,9 @@ func (s testSecurer) Secure(rec lists.Record, issuer keys.Issuer, url string, si
 	if s.fail != nil {
 		return nil, s.fail
 	}
-	body, _ := json.Marshal(map[string]any{
+	body := anyval.Must(json.Marshal(map[string]any{
 		"url": url, "iss": issuer.DID(), "values": rec.Values, "iat": signedAt.Unix(), "exp": expiresAt.Unix(),
-	})
+	}))
 	return []lists.Unsigned{
 		{MediaType: "application/test+json", Body: body},
 		{MediaType: "application/test+cbor", Body: append([]byte{0xa0}, body...)},
