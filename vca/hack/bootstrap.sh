@@ -36,6 +36,12 @@ clone golang/sync v0.23.0 sync
 clone golang/sys v0.48.0 sys
 # gozxing needs x/xerrors. The repository publishes no tags.
 [ -d "$MIRRORS/xerrors" ] || git clone -q --depth 1 https://github.com/golang/xerrors.git "$MIRRORS/xerrors"
+# cobra needs gopkg.in/yaml.v3, a vanity path. The GitHub mirror is
+# github.com/go-yaml/yaml at tag v3.0.1 (ADR-007 decision 1).
+clone go-yaml/yaml v3.0.1 yaml-v3
+# The yaml mirror requires gopkg.in/check.v1 for its own tests only.
+# Drop the requirement and the tests so no extra vanity path is needed.
+( cd "$MIRRORS/yaml-v3" && rm -f ./*_test.go && GOWORK=off GOFLAGS=-mod=mod go mod edit -droprequire gopkg.in/check.v1 )
 
 # GitHub-hosted modules used by core/ need no mirror: fetch them straight
 # from GitHub into the module cache (proxy.golang.org is blocked). Run
@@ -44,7 +50,12 @@ clone golang/sys v0.48.0 sys
   github.com/go-jose/go-jose/v4@v4.1.5 \
   github.com/fxamacker/cbor/v2@v2.9.1 \
   github.com/makiuchi-d/gozxing@v0.1.1 \
-  github.com/x448/float16@v0.8.4 )
+  github.com/x448/float16@v0.8.4 \
+  github.com/spf13/cobra@v1.10.1 \
+  github.com/spf13/pflag@v1.0.9 \
+  github.com/inconshreveable/mousetrap@v1.1.0 \
+  github.com/cpuguy83/go-md2man/v2@v2.0.6 \
+  github.com/russross/blackfriday/v2@v2.1.0 )
 
 export GOPROXY=off GOSUMDB=off GOFLAGS=-mod=mod
 ( cd "$MIRRORS/protobuf-go" && go mod edit -replace github.com/google/go-cmp="$MIRRORS/go-cmp" && GOBIN="$BIN" go install ./cmd/protoc-gen-go )
@@ -65,6 +76,7 @@ replace (
 	golang.org/x/xerrors => $MIRRORS/xerrors
 	golang.org/x/sync => $MIRRORS/sync
 	golang.org/x/sys => $MIRRORS/sys
+	gopkg.in/yaml.v3 => $MIRRORS/yaml-v3
 )
 WORK
 echo "wrote go.work; add $BIN to PATH"

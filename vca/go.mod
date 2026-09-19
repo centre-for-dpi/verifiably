@@ -4,10 +4,16 @@ go 1.25.0
 
 require (
 	connectrpc.com/connect v1.21.0
+	github.com/cpuguy83/go-md2man/v2 v2.0.6
 	github.com/fxamacker/cbor/v2 v2.9.1
 	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/inconshreveable/mousetrap v1.1.0
 	github.com/makiuchi-d/gozxing v0.1.1
+	github.com/russross/blackfriday/v2 v2.1.0
+	github.com/spf13/cobra v1.10.1
+	github.com/spf13/pflag v1.0.9
 	golang.org/x/text v0.30.0
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da
 	google.golang.org/protobuf v1.36.12
+	gopkg.in/yaml.v3 v3.0.1
 )

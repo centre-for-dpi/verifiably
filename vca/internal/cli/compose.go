@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package cli
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+)
+
+// ComposeFile is the path of the committed compose file, from the
+// repository root (ADR-008 decision 1).
+const ComposeFile = "deploy/vca/compose.yaml"
+
+// ComposeProject is the compose project name.
+const ComposeProject = "vca"
+
+// DpgStackFiles lists the compose file of each DPG stack. The main
+// compose file pulls them in with include (ADR-008 decision 3).
+func DpgStackFiles() []string {
+	out := make([]string, 0, len(Dpgs()))
+	for _, d := range Dpgs() {
+		out = append(out, "dpg/"+ShortName(d.String())+".yaml")
+	}
+	return out
+}
+
+// composeServiceName is the compose service name of one VCA service in
+// one pair. Two pairs run the same image, so the pair name goes first.
+func composeServiceName(p Pair, s Service) string { return p.Name() + "-" + s.Name }
+
+// RenderCompose renders the whole compose file. The output is
+// deterministic, so the committed file and the --dry-run output match.
+//
+// One profile exists per role and DPG pair. Compose starts only the
+// services of the profile the operator names (ADR-008 decisions 1 and 2).
+func RenderCompose() string {
+	var b strings.Builder
+	b.WriteString("# SPDX-License-Identifier: Apache-2.0\n")
+	b.WriteString("# The vca CLI generates this file. Do not edit it by hand.\n")
+	b.WriteString("# Run: go test ./internal/cli/ to check that it is current.\n")
+	b.WriteString("#\n")
+	b.WriteString("# One profile exists per role and DPG pair, for example issuer-waltid.\n")
+	b.WriteString("# Start one with: vca deploy --role issuer --dpg waltid\n")
+	b.WriteString("# That runs: docker compose --profile issuer-waltid up -d\n")
+	b.WriteString("#\n")
+	b.WriteString("# Every service runs read only, as a non-root user, with no added\n")
+	b.WriteString("# capabilities, and with no Docker socket (ADR-005 decisions 2 and 3).\n")
+	fmt.Fprintf(&b, "name: %s\n\n", ComposeProject)
+
+	b.WriteString("include:\n")
+	for _, path := range DpgStackFiles() {
+		fmt.Fprintf(&b, "  - path: %s\n", path)
+	}
+	b.WriteString("\n")
+
+	b.WriteString("x-vca-service: &vca-service\n")
+	b.WriteString("  restart: unless-stopped\n")
+	b.WriteString("  read_only: true\n")
+	b.WriteString("  user: \"65532:65532\"\n")
+	b.WriteString("  security_opt:\n")
+	b.WriteString("    - no-new-privileges:true\n")
+	b.WriteString("  cap_drop:\n")
+	b.WriteString("    - ALL\n")
+	b.WriteString("  tmpfs:\n")
+	b.WriteString("    - /tmp\n")
+	b.WriteString("  networks:\n")
+	b.WriteString("    - vca\n\n")
+
+	b.WriteString("services:\n")
+	var volumes []string
+	for _, p := range AllPairs() {
+		fmt.Fprintf(&b, "\n  # Profile %s\n", p.Name())
+		for _, a := range AssignPorts(p, nil) {
+			volumes = append(volumes, renderComposeService(&b, p, a)...)
+		}
+	}
+
+	b.WriteString("\nnetworks:\n  vca:\n    name: vca\n")
+	if len(volumes) > 0 {
+		sort.Strings(volumes)
+		b.WriteString("\nvolumes:\n")
+		for _, v := range volumes {
+			fmt.Fprintf(&b, "  %s:\n", v)
+		}
+	}
+	return b.String()
+}
+
+// renderComposeService writes one service block and returns the volume
+// names it needs.
+func renderComposeService(b *strings.Builder, p Pair, a PortAssignment) []string {
+	name := composeServiceName(p, a.Service)
+	hostVar := "VCA_HOST_PORT_" + envName(a.Service.Name)
+	fmt.Fprintf(b, "  %s:\n", name)
+	b.WriteString("    <<: *vca-service\n")
+	fmt.Fprintf(b, "    image: %s:${VCA_VERSION:-latest}\n", a.Service.Image())
+	fmt.Fprintf(b, "    profiles: [%s]\n", p.Name())
+	fmt.Fprintf(b, "    container_name: %s\n", name)
+	b.WriteString("    env_file:\n")
+	fmt.Fprintf(b, "      - path: ../%s/%s\n", p.Name(), EnvFileName)
+	b.WriteString("        required: true\n")
+	b.WriteString("    ports:\n")
+	fmt.Fprintf(b, "      - \"${%s:-%d}:${%s:-%d}\"\n", hostVar, a.Host, a.PortEnv, a.Listen)
+	if a.Service.Stateful {
+		volume := name + "-data"
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - %s:/data\n", volume)
+		return []string{volume}
+	}
+	return nil
+}
+
+// Profiles lists the compose profiles of a deploy run. One pair gives one
+// profile. The --all flag gives every pair of the chosen DPG
+// (ADR-008 decision 2).
+func Profiles(pairs []Pair) []string {
+	out := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, p.Name())
+	}
+	return out
+}
+
+// PairsForDpg lists every role of one DPG, in role order.
+func PairsForDpg(d configv1.Dpg) []Pair {
+	var out []Pair
+	for _, p := range AllPairs() {
+		if p.Dpg == d {
+			out = append(out, p)
+		}
+	}
+	return out
+}

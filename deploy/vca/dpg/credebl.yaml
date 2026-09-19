@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: Apache-2.0
+# CREDEBL platform (ADR-008 decision 3).
+# verifiably-go/docs/dpg-matrix.md records CREDEBL as v2.x with images
+# published only as ghcr.io/credebl/*:latest. CREDEBL publishes no
+# version tag, so the tag is the variable CREDEBL_VERSION. Set it to a
+# digest in production, for example CREDEBL_VERSION=sha-1a2b3c4.
+# Keycloak and PostgreSQL are pinned.
+# The main compose file pulls this file in with include.
+#
+# Start it with: vca deploy --role issuer --dpg credebl
+
+services:
+  credebl-keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    profiles: [issuer-credebl, holder-credebl, verifier-credebl, admin-credebl]
+    container_name: credebl-keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ../issuer-credebl:/opt/keycloak/data/import:ro
+    ports:
+      - "${CREDEBL_KEYCLOAK_HOST_PORT:-17180}:8080"
+    networks:
+      - vca
+
+  credebl-postgres:
+    image: postgres:16.4-alpine
+    profiles: [issuer-credebl, holder-credebl, verifier-credebl]
+    container_name: credebl-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: credebl
+      POSTGRES_PASSWORD: ${CREDEBL_DB_PASSWORD:-credebl}
+      POSTGRES_DB: credebl
+    volumes:
+      - credebl-db:/var/lib/postgresql/data
+    networks:
+      - vca
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U credebl"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  credebl-nats:
+    image: nats:2.10.22-alpine
+    profiles: [issuer-credebl, holder-credebl, verifier-credebl]
+    container_name: credebl-nats
+    restart: unless-stopped
+    command: ["-js"]
+    networks:
+      - vca
+
+  credebl-api-gateway:
+    image: ghcr.io/credebl/api-gateway:${CREDEBL_VERSION:-latest}
+    profiles: [issuer-credebl, holder-credebl, verifier-credebl]
+    container_name: credebl-api-gateway
+    restart: unless-stopped
+    depends_on:
+      credebl-postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://credebl:${CREDEBL_DB_PASSWORD:-credebl}@credebl-postgres:5432/credebl
+      NATS_URL: nats://credebl-nats:4222
+      KEYCLOAK_DOMAIN: ${CREDEBL_KEYCLOAK_URL:-http://credebl-keycloak:8080}
+    ports:
+      - "${CREDEBL_API_HOST_PORT:-17181}:5000"
+    networks:
+      - vca
+
+  credebl-agent-provisioning:
+    image: ghcr.io/credebl/agent-provisioning:${CREDEBL_VERSION:-latest}
+    profiles: [issuer-credebl, holder-credebl]
+    container_name: credebl-agent-provisioning
+    restart: unless-stopped
+    environment:
+      NATS_URL: nats://credebl-nats:4222
+    networks:
+      - vca
+
+volumes:
+  credebl-db:

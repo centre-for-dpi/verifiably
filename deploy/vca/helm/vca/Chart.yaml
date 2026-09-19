@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: Apache-2.0
+# The umbrella chart of the Verifiable Credentials Adapters
+# (ADR-008 decision 5). Turn a role on with roles.<role>.enabled.
+apiVersion: v2
+name: vca
+description: "Verifiable Credentials Adapters, one chart per role."
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: data-source
+    version: 0.1.0
+    repository: "file://../data-source"
+    condition: roles.issuer.enabled
+  - name: dpg-adapter-credebl
+    version: 0.1.0
+    repository: "file://../dpg-adapter-credebl"
+    condition: dpg.credebl.enabled
+  - name: dpg-adapter-inji
+    version: 0.1.0
+    repository: "file://../dpg-adapter-inji"
+    condition: dpg.inji.enabled
+  - name: dpg-adapter-waltid
+    version: 0.1.0
+    repository: "file://../dpg-adapter-waltid"
+    condition: dpg.waltid.enabled
+  - name: issuance
+    version: 0.1.0
+    repository: "file://../issuance"
+    condition: roles.issuer.enabled
+  - name: issued-credentials
+    version: 0.1.0
+    repository: "file://../issued-credentials"
+    condition: roles.issuer.enabled
+  - name: issuer-auth
+    version: 0.1.0
+    repository: "file://../issuer-auth"
+    condition: roles.issuer.enabled
+  - name: schema-builder-ui
+    version: 0.1.0
+    repository: "file://../schema-builder-ui"
+    condition: roles.issuer.enabled
+  - name: schema-registry
+    version: 0.1.0
+    repository: "file://../schema-registry"
+    condition: roles.issuer.enabled
+  - name: status-bitstring
+    version: 0.1.0
+    repository: "file://../status-bitstring"
+    condition: roles.issuer.enabled
+  - name: status-token
+    version: 0.1.0
+    repository: "file://../status-token"
+    condition: roles.issuer.enabled
+  - name: trust-registry
+    version: 0.1.0
+    repository: "file://../trust-registry"
+    condition: roles.admin.enabled
+  - name: verifier-combined
+    version: 0.1.0
+    repository: "file://../verifier-combined"
+    condition: roles.verifier.enabled
+  - name: verifier-discovery
+    version: 0.1.0
+    repository: "file://../verifier-discovery"
+    condition: roles.verifier.enabled
+  - name: verifier-ingest
+    version: 0.1.0
+    repository: "file://../verifier-ingest"
+    condition: roles.verifier.enabled
+  - name: verifier-policy
+    version: 0.1.0
+    repository: "file://../verifier-policy"
+    condition: roles.verifier.enabled
+  - name: verifier-results
+    version: 0.1.0
+    repository: "file://../verifier-results"
+    condition: roles.verifier.enabled
+  - name: wallet-auth
+    version: 0.1.0
+    repository: "file://../wallet-auth"
+    condition: roles.holder.enabled

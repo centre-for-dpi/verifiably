@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# Turn on one role, or several. Every service of the role starts.
+roles:
+  issuer:
+    enabled: false
+  holder:
+    enabled: false
+  verifier:
+    enabled: false
+  admin:
+    enabled: false
+
+# Turn on the DPG adapter of the stack behind the role.
+dpg:
+  waltid:
+    enabled: false
+  inji:
+    enabled: false
+  credebl:
+    enabled: false

@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v2
+name: verifier-ingest
+description: "Verifiable Credentials Adapters: the verifier-ingest service."
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
