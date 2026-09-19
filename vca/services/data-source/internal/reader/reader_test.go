@@ -63,7 +63,7 @@ func newReader(t *testing.T, srv *httptest.Server, vars map[string]string) Reade
 		SQL:     sqlsrc.Reader{},
 		CSVDir:  t.TempDir(),
 		ReadFile: func(p string) ([]byte, error) {
-			return os.ReadFile(p)
+			return os.ReadFile(p) //nolint:gosec // G304: the path is a test directory
 		},
 	}
 	if srv != nil {
@@ -110,7 +110,7 @@ func TestReadHTTP(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		gotAuth = req.Header.Get("Authorization")
-		_, _ = w.Write([]byte(`{"rows":[{"id":1,"name":"Ada"}]}`))
+		mustWrite(t, w, []byte(`{"rows":[{"id":1,"name":"Ada"}]}`))
 	}))
 	defer srv.Close()
 	vars := map[string]string{"TOKEN": "t0k", "PASS": "pw"}

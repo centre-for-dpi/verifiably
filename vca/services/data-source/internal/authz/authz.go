@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -113,11 +114,11 @@ func JWKSVerifier(set jose.JWKS, now func() time.Time) Verifier {
 	return func(token string) (Principal, error) {
 		raw, _, err := jose.VerifyWithJWKS(token, set, []jose.Algorithm{jose.ES256, jose.EdDSA})
 		if err != nil {
-			return Principal{}, fmt.Errorf("%w: %v", ErrNoSession, err)
+			return Principal{}, fmt.Errorf("%w: %w", ErrNoSession, err)
 		}
 		var c claims
 		if err := json.Unmarshal(raw, &c); err != nil {
-			return Principal{}, fmt.Errorf("%w: claims: %v", ErrNoSession, err)
+			return Principal{}, fmt.Errorf("%w: claims: %w", ErrNoSession, err)
 		}
 		if !now().Before(time.Unix(c.ExpiresAt, 0)) {
 			return Principal{}, fmt.Errorf("%w: expired", ErrNoSession)

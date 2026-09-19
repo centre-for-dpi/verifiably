@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -61,8 +62,14 @@ func signed(t *testing.T, key any, kid string, c any) string {
 }
 
 func TestJWKSVerifier(t *testing.T) {
-	key, _ := jose.GenerateKey(jose.ES256)
-	pub, _ := jose.PublicJWK(key, "k1")
+	key, verr := jose.GenerateKey(jose.ES256)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	pub, verr := jose.PublicJWK(key, "k1")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	set := jose.JWKS{Keys: []jose.JWK{pub}}
 	now := func() time.Time { return time.Unix(1000, 0) }
 	v := JWKSVerifier(set, now)
@@ -76,7 +83,10 @@ func TestJWKSVerifier(t *testing.T) {
 	if _, err := v(signed(t, key, "k1", []int{1})); !errors.Is(err, ErrNoSession) {
 		t.Fatalf("bad claims %v", err)
 	}
-	other, _ := jose.GenerateKey(jose.ES256)
+	other, verr := jose.GenerateKey(jose.ES256)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := v(signed(t, other, "k1", map[string]any{"exp": 2000})); !errors.Is(err, ErrNoSession) {
 		t.Fatalf("wrong key %v", err)
 	}

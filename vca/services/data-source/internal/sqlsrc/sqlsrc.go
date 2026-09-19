@@ -88,7 +88,8 @@ func (r Reader) Read(ctx context.Context, req Request) (table.Table, error) {
 	if err != nil {
 		return table.Table{}, fmt.Errorf("sqlsrc: open: %w", err)
 	}
-	defer db.Close()
+	// Nothing can act on a close fault of a handle.
+	defer func() { ignored := db.Close(); _ = ignored }()
 	db.SetMaxOpenConns(1)
 	timeout := req.Timeout
 	if timeout <= 0 {
@@ -100,7 +101,8 @@ func (r Reader) Read(ctx context.Context, req Request) (table.Table, error) {
 	if err != nil {
 		return table.Table{}, fmt.Errorf("sqlsrc: query: %w", err)
 	}
-	defer rows.Close()
+	// Nothing can act on a close fault of a handle.
+	defer func() { ignored := rows.Close(); _ = ignored }()
 	cols, err := rows.Columns()
 	if err != nil {
 		return table.Table{}, fmt.Errorf("sqlsrc: columns: %w", err)

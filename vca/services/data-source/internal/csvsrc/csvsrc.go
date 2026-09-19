@@ -83,7 +83,7 @@ func Parse(r io.Reader, o Options) (table.Table, error) {
 	rd.TrimLeadingSpace = true
 	records, err := rd.ReadAll()
 	if err != nil {
-		return table.Table{}, fmt.Errorf("%w: %v", ErrBadCSV, err)
+		return table.Table{}, fmt.Errorf("%w: %w", ErrBadCSV, err)
 	}
 	var fields []string
 	if o.HasHeader && len(records) > 0 {

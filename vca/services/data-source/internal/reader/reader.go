@@ -74,7 +74,7 @@ func (r Reader) csvBytes(ref string) ([]byte, error) {
 	if strings.HasPrefix(ref, DataPrefix) {
 		data, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(ref, DataPrefix))
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrCSVRef, err)
+			return nil, fmt.Errorf("%w: %w", ErrCSVRef, err)
 		}
 		return data, nil
 	}

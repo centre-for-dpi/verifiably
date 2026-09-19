@@ -115,7 +115,8 @@ func (f Fetcher) Fetch(ctx context.Context, r Request) (table.Table, error) {
 		}
 		return table.Table{}, fmt.Errorf("httpsrc: %s %s: %w", method, u.Host, err)
 	}
-	defer resp.Body.Close()
+	// Nothing can act on a close fault of a response body.
+	defer func() { ignored := resp.Body.Close(); _ = ignored }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return table.Table{}, fmt.Errorf("%w: %d", ErrStatus, resp.StatusCode)
 	}
@@ -140,7 +141,7 @@ func (f Fetcher) client(host string, ips []net.IP, auth Auth) (*http.Client, err
 	if len(auth.CertPEM) > 0 || len(auth.KeyPEM) > 0 {
 		cert, err := tls.X509KeyPair(auth.CertPEM, auth.KeyPEM)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrBadMTLS, err)
+			return nil, fmt.Errorf("%w: %w", ErrBadMTLS, err)
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
@@ -154,7 +155,7 @@ func (f Fetcher) client(host string, ips []net.IP, auth Auth) (*http.Client, err
 			if err != nil {
 				return nil, err
 			}
-			var last error = ErrNoAddress
+			var last = ErrNoAddress
 			for _, ip := range ips {
 				c, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
 				if err == nil {
@@ -180,7 +181,7 @@ func Rows(body []byte, pointer string) (table.Table, error) {
 	dec.UseNumber()
 	var doc any
 	if err := dec.Decode(&doc); err != nil {
-		return table.Table{}, fmt.Errorf("%w: %v", ErrNotJSON, err)
+		return table.Table{}, fmt.Errorf("%w: %w", ErrNotJSON, err)
 	}
 	node, err := Pointer(doc, pointer)
 	if err != nil {
@@ -249,6 +250,7 @@ func Stringify(v any) string {
 		return strconv.FormatBool(x)
 	}
 	// Maps and slices from the decoder always encode.
-	b, _ := json.Marshal(v)
+	b, ignored1 := json.Marshal(v)
+	_ = ignored1
 	return string(b)
 }
