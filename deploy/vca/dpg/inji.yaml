@@ -1,0 +1,151 @@
+# SPDX-License-Identifier: Apache-2.0
+# MOSIP Inji stack and eSignet (ADR-008 decision 3).
+# The versions come from verifiably-go/docs/dpg-matrix.md:
+#   Inji Certify 0.14.0, Inji Web 0.16.0, Mimoto 0.21.0,
+#   Inji Verify 0.16.0, eSignet 1.5.1, mock identity 0.10.1,
+#   Keycloak 25.0.
+# The main compose file pulls this file in with include.
+#
+# Start it with: vca deploy --role issuer --dpg inji
+
+services:
+  inji-keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    profiles: [issuer-inji, holder-inji, verifier-inji, admin-inji]
+    container_name: inji-keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ../issuer-inji:/opt/keycloak/data/import:ro
+    ports:
+      - "${INJI_KEYCLOAK_HOST_PORT:-17080}:8080"
+    networks:
+      - vca
+
+  inji-certify-postgres:
+    image: postgres:15.8-alpine
+    profiles: [issuer-inji]
+    container_name: inji-certify-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: certify
+      POSTGRES_PASSWORD: ${INJI_DB_PASSWORD:-certify}
+      POSTGRES_DB: certify
+    volumes:
+      - inji-certify-db:/var/lib/postgresql/data
+    networks:
+      - vca
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U certify"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  inji-certify:
+    image: injistack/inji-certify-with-plugins:0.14.0
+    profiles: [issuer-inji]
+    container_name: inji-certify
+    restart: unless-stopped
+    depends_on:
+      inji-certify-postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://inji-certify-postgres:5432/certify
+      SPRING_DATASOURCE_USERNAME: certify
+      SPRING_DATASOURCE_PASSWORD: ${INJI_DB_PASSWORD:-certify}
+    ports:
+      - "${INJI_CERTIFY_HOST_PORT:-17081}:8090"
+    networks:
+      - vca
+
+  inji-esignet:
+    image: mosipid/esignet-with-plugins:1.5.1
+    profiles: [issuer-inji, holder-inji]
+    container_name: inji-esignet
+    restart: unless-stopped
+    environment:
+      MOSIP_ESIGNET_HOST: ${INJI_ESIGNET_HOST:-inji-esignet}
+    ports:
+      - "${INJI_ESIGNET_HOST_PORT:-17082}:8088"
+    networks:
+      - vca
+
+  inji-mock-identity:
+    image: mosipid/mock-identity-system:0.10.1
+    profiles: [issuer-inji, holder-inji]
+    container_name: inji-mock-identity
+    restart: unless-stopped
+    ports:
+      - "${INJI_MOCK_IDENTITY_HOST_PORT:-17083}:8082"
+    networks:
+      - vca
+
+  inji-mimoto:
+    image: injistack/mimoto:0.21.0
+    profiles: [holder-inji]
+    container_name: inji-mimoto
+    restart: unless-stopped
+    ports:
+      - "${INJI_MIMOTO_HOST_PORT:-17084}:8099"
+    networks:
+      - vca
+
+  inji-web:
+    image: injistack/inji-web:0.16.0
+    profiles: [holder-inji]
+    container_name: inji-web
+    restart: unless-stopped
+    ports:
+      - "${INJI_WEB_HOST_PORT:-17085}:3000"
+    networks:
+      - vca
+
+  inji-verify-postgres:
+    image: postgres:13.16-alpine
+    profiles: [verifier-inji]
+    container_name: inji-verify-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: injiverify
+      POSTGRES_PASSWORD: ${INJI_VERIFY_DB_PASSWORD:-injiverify}
+      POSTGRES_DB: injiverify
+    volumes:
+      - inji-verify-db:/var/lib/postgresql/data
+    networks:
+      - vca
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U injiverify"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  inji-verify-service:
+    image: mosipid/inji-verify-service:0.16.0
+    profiles: [verifier-inji]
+    container_name: inji-verify-service
+    restart: unless-stopped
+    depends_on:
+      inji-verify-postgres:
+        condition: service_healthy
+    ports:
+      - "${INJI_VERIFY_SERVICE_HOST_PORT:-17086}:8000"
+    networks:
+      - vca
+
+  inji-verify-ui:
+    image: mosipid/inji-verify-ui:0.16.0
+    profiles: [verifier-inji]
+    container_name: inji-verify-ui
+    restart: unless-stopped
+    ports:
+      - "${INJI_VERIFY_UI_HOST_PORT:-17087}:3000"
+    networks:
+      - vca
+
+volumes:
+  inji-certify-db:
+  inji-verify-db:
