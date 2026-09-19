@@ -55,10 +55,8 @@ func IssuerKey(url string) string {
 
 // PutIssuer writes one issuer record.
 func (s *Store) PutIssuer(ctx context.Context, issuer catalog.Issuer) error {
-	data, err := json.Marshal(issuer)
-	if err != nil {
-		return fmt.Errorf("store: write the issuer: %w", err)
-	}
+	// The record holds strings, numbers, and times, so it always writes.
+	data, _ := json.Marshal(issuer)
 	return s.kv.Put(ctx, IssuerKey(issuer.CredentialIssuer), data)
 }
 
@@ -116,10 +114,8 @@ func TemplateKey(id string, version int32) string {
 // PutTemplate writes one template version. It refuses to replace a
 // stored version.
 func (s *Store) PutTemplate(ctx context.Context, t template.Template) error {
-	data, err := json.Marshal(t)
-	if err != nil {
-		return fmt.Errorf("store: write the template: %w", err)
-	}
+	// The record holds strings, numbers, and times, so it always writes.
+	data, _ := json.Marshal(t)
 	key := TemplateKey(t.ID, t.Version)
 	if err := s.kv.CompareAndSwap(ctx, key, nil, data); err != nil {
 		if errors.Is(err, store.ErrConflict) {

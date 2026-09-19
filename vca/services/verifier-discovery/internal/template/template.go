@@ -174,7 +174,11 @@ func (t Template) PresentationExchange() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dcql.MarshalPresentationExchange(q, t.ID, t.Purpose)
+	id := t.ID
+	if id == "" {
+		id = "presentation-request"
+	}
+	return dcql.MarshalPresentationExchange(q, id, t.Purpose)
 }
 
 // Query returns the parsed DCQL query of a template.
