@@ -26,7 +26,11 @@ func openFakeLegacyDB(t *testing.T) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Errorf("close: %v", closeErr)
+		}
+	})
 	return db, nil
 }
 

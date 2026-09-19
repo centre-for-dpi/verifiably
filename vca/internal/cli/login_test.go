@@ -48,7 +48,9 @@ func newFakeAdmin(t *testing.T, state *fakeAdmin) *httptest.Server {
 	// second call of a flow carries the code only, so an empty field
 	// leaves the record alone.
 	record := func(r *http.Request) {
-		_ = r.ParseForm()
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("r.ParseForm: %v", err)
+		}
 		if v := r.PostFormValue("provider"); v != "" {
 			state.provider = v
 		}
@@ -61,21 +63,33 @@ func newFakeAdmin(t *testing.T, state *fakeAdmin) *httptest.Server {
 		state.port = r.PostFormValue("port")
 		if state.failStart {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"error":"invalid_request","error_description":"port must be a number from 1024 to 65535"}`)
+			_, errAssign := io.WriteString(w, `{"error":"invalid_request","error_description":"port must be a number from 1024 to 65535"}`)
+			if errAssign != nil {
+				t.Fatalf("io.WriteString: %v", errAssign)
+			}
 			return
 		}
 		if state.noURL {
-			_, _ = io.WriteString(w, `{}`)
+			_, errAssign2 := io.WriteString(w, `{}`)
+			if errAssign2 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign2)
+			}
 			return
 		}
-		_, _ = io.WriteString(w, `{"authorization_url":"https://idp.example/auth?state=abc",`+
+		_, errAssign3 := io.WriteString(w, `{"authorization_url":"https://idp.example/auth?state=abc",`+
 			`"redirect_uri":"http://127.0.0.1:`+state.port+`/callback"}`)
+		if errAssign3 != nil {
+			t.Fatalf("io.WriteString: %v", errAssign3)
+		}
 	})
 	mux.HandleFunc(LoopbackTokenPath, func(w http.ResponseWriter, r *http.Request) {
 		record(r)
 		if r.PostFormValue("code") == "" || state.failToken {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"error":"invalid_grant","error_description":"the code is not valid or it expired"}`)
+			_, errAssign4 := io.WriteString(w, `{"error":"invalid_grant","error_description":"the code is not valid or it expired"}`)
+			if errAssign4 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign4)
+			}
 			return
 		}
 		writeSession(w, state)
@@ -84,32 +98,50 @@ func newFakeAdmin(t *testing.T, state *fakeAdmin) *httptest.Server {
 		record(r)
 		if state.failStart {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"error":"unsupported_grant_type","error_description":"the provider supports no device grant, use the loopback helper at /cli/login"}`)
+			_, errAssign5 := io.WriteString(w, `{"error":"unsupported_grant_type","error_description":"the provider supports no device grant, use the loopback helper at /cli/login"}`)
+			if errAssign5 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign5)
+			}
 			return
 		}
 		if state.noDeviceCode {
-			_, _ = io.WriteString(w, `{}`)
+			_, errAssign6 := io.WriteString(w, `{}`)
+			if errAssign6 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign6)
+			}
 			return
 		}
-		_, _ = io.WriteString(w,
+		_, errAssign7 := io.WriteString(w,
 			`{"device_code":"d-code","user_code":"WXYZ-1234","verification_uri":"https://idp.example/activate","interval":0,"provider":"p-1"}`)
+		if errAssign7 != nil {
+			t.Fatalf("io.WriteString: %v", errAssign7)
+		}
 	})
 	mux.HandleFunc(DeviceTokenPath, func(w http.ResponseWriter, r *http.Request) {
 		record(r)
 		if r.PostFormValue("grant_type") != DeviceGrant || r.PostFormValue("device_code") == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"error":"invalid_request"}`)
+			_, errAssign8 := io.WriteString(w, `{"error":"invalid_request"}`)
+			if errAssign8 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign8)
+			}
 			return
 		}
 		if state.failToken {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"error":"access_denied","error_description":"the admin refused the login"}`)
+			_, errAssign9 := io.WriteString(w, `{"error":"access_denied","error_description":"the admin refused the login"}`)
+			if errAssign9 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign9)
+			}
 			return
 		}
 		if state.pending > 0 {
 			state.pending--
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, `{"error":"authorization_pending"}`)
+			_, errAssign10 := io.WriteString(w, `{"error":"authorization_pending"}`)
+			if errAssign10 != nil {
+				t.Fatalf("io.WriteString: %v", errAssign10)
+			}
 			return
 		}
 		writeSession(w, state)
@@ -175,7 +207,9 @@ func callback(t *testing.T, port string, values url.Values) {
 	if err != nil {
 		t.Fatalf("call the loopback address: %v", err)
 	}
-	_ = resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("resp.Body.Close: %v", err)
+	}
 }
 
 func TestLoopbackLogin(t *testing.T) {
@@ -269,7 +303,9 @@ func TestLoopbackLoginIgnoresAnotherPath(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("another path answered %d", resp.StatusCode)
 	}
-	_ = resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("resp.Body.Close: %v", err)
+	}
 	<-done
 	if err == nil {
 		t.Fatal("a login with no callback passed")
@@ -514,7 +550,9 @@ func TestLoginOptionDefaults(t *testing.T) {
 	if _, err := listenPort(listener); err != nil {
 		t.Errorf("listenPort: %v", err)
 	}
-	_ = listener.Close()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("listener.Close: %v", err)
+	}
 }
 
 func TestFormCarriesOnlyWhatIsSet(t *testing.T) {

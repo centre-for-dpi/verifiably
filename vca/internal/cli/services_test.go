@@ -55,7 +55,10 @@ func TestCatalogExposedPortsMatchTheDockerfiles(t *testing.T) {
 			t.Errorf("%s has no EXPOSE line", s.Name)
 			continue
 		}
-		want, _ := strconv.Atoi(string(m[1]))
+		want, err := strconv.Atoi(string(m[1]))
+		if err != nil {
+			t.Fatalf("strconv.Atoi: %v", err)
+		}
 		if s.ExposedPort != want {
 			t.Errorf("%s exposed port = %d, want %d", s.Name, s.ExposedPort, want)
 		}

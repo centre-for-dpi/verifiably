@@ -46,7 +46,11 @@ func openFake(t *testing.T, answers map[string]fakeResult) *sql.DB {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Errorf("close: %v", closeErr)
+		}
+	})
 	return db
 }
 
