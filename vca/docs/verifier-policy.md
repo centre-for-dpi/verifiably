@@ -54,6 +54,7 @@ Everything else gives `VALID`.
 | `status` | no | Reads the status list entry of each credential. |
 | `trust_chain` | no | Looks each issuer up on the trust lists and checks the chain links. |
 | `schema` | no | Validates each credential against the schema it declares. |
+| `derived_proof` | no | Reserved for BBS selective disclosure (ADR-031 decision 2). It returns `SKIP` with the detail "reserved for BBS: not implemented". |
 
 A mandatory check always runs, and a `FAIL` of it always blocks
 (ADR-024 decision 2). A policy set adds the optional checks and says
