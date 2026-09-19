@@ -202,6 +202,7 @@ func setup(t *testing.T, change func(*service.Options)) *harness {
 	}
 	mux := http.NewServeMux()
 	pages.Register(mux)
+	mux.Handle("GET /wallet/wallet.js", pages.Script())
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mux.ServeHTTP(w, r.WithContext(session.With(r.Context(), citizen())))
 	})

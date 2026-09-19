@@ -25,6 +25,9 @@ type Config struct {
 	StateDir string `env:"STATE_DIR"`
 	// PortalPrefix is the URL prefix of the citizen pages.
 	PortalPrefix string `env:"PORTAL_PREFIX" default:"/wallet"`
+	// LoginURL is the login page of the wallet authentication service.
+	// A citizen with no session goes there. Empty answers 401 instead.
+	LoginURL string `env:"LOGIN_URL"`
 	// AuthJWKSURL is the JWKS URL of the wallet authentication service.
 	// The middleware reads it to check a session JWT (ADR-020 decision 2).
 	AuthJWKSURL string `env:"AUTH_JWKS_URL"`

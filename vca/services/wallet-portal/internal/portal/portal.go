@@ -97,6 +97,11 @@ func New(opts Options) (*Portal, error) {
 // Prefix returns the URL prefix of the pages.
 func (p *Portal) Prefix() string { return p.opts.Prefix }
 
+// Script returns the handler of the browser script. The caller serves
+// it outside the session middleware, because the page loads it before
+// the citizen logs in.
+func (p *Portal) Script() http.Handler { return p.script }
+
 // Register adds every page to mux.
 func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.mine))
@@ -110,7 +115,6 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/delete", p.handle(p.remove))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/present", p.handle(p.consent))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present", p.handle(p.submit))
-	mux.Handle("GET "+p.opts.Prefix+static.Path, p.script)
 }
 
 // handle answers with one sentence when a page fails.
