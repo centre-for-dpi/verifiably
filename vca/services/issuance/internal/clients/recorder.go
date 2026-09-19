@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 )

@@ -86,7 +86,10 @@ func TestFileWritesTheMessageAndTheAttachment(t *testing.T) {
 	}
 	found := false
 	for _, e := range entries {
-		raw, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+		raw, verr := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304: the path is a test directory
+		if verr != nil {
+			t.Fatalf("unexpected error: %v", verr)
+		}
 		if strings.Contains(string(raw), "ada@example.org") {
 			found = true
 		}
@@ -135,7 +138,10 @@ func TestFileKeepsTheAttachmentInTheDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	entries, _ := os.ReadDir(dir)
+	entries, verr := os.ReadDir(dir)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	for _, e := range entries {
 		if strings.Contains(e.Name(), "..") {
 			t.Fatalf("the file %q leaves the directory", e.Name())

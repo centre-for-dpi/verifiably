@@ -14,11 +14,12 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/clients"
-	"google.golang.org/protobuf/proto"
 )
 
 // fakeCapability answers as the capability RPC of a DPG adapter.
@@ -212,7 +213,7 @@ func TestConnectRecorderReachesAServer(t *testing.T) {
 			t.Errorf("marshal: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/proto")
-		_, _ = w.Write(body)
+		mustWrite(t, w, body)
 	}))
 	defer srv.Close()
 	id, err := clients.NewConnectRecorder(srv.URL+"/", srv.Client()).Record(context.Background(),

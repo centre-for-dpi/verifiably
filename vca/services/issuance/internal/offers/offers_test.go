@@ -90,7 +90,10 @@ func TestOfferKeepsADeliveredOfferAfterTheWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PutOffer: %v", err)
 	}
-	got, _ := s.Offer(ctx, "offer-1")
+	got, verr := s.Offer(ctx, "offer-1")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if got.State != offers.StateDelivered {
 		t.Fatalf("state = %q", got.State)
 	}

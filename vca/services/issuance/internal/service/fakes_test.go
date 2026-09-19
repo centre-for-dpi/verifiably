@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"

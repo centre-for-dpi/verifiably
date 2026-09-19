@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
@@ -120,7 +121,11 @@ func TestBuildServesTheRpcAndTheDocument(t *testing.T) {
 	if derr != nil {
 		t.Fatalf("get the document: %v", derr)
 	}
-	defer doc.Body.Close()
+	defer func() {
+		if cerr := doc.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if doc.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", doc.StatusCode)
 	}
@@ -131,7 +136,11 @@ func TestBuildServesTheRpcAndTheDocument(t *testing.T) {
 	if merr != nil {
 		t.Fatalf("get the document: %v", merr)
 	}
-	defer missing.Body.Close()
+	defer func() {
+		if cerr := missing.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", missing.StatusCode)
 	}
