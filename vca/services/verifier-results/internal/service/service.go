@@ -14,13 +14,14 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/export"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/query"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/results"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DefaultPageSize is the page size when the request gives none.

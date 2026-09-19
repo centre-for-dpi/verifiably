@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var at = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)

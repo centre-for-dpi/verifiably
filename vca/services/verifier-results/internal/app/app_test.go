@@ -15,11 +15,12 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/config"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var testNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -107,7 +108,11 @@ func TestHandlerServes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("want 200, got %d", resp.StatusCode)
 	}
@@ -115,7 +120,11 @@ func TestHandlerServes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer page.Body.Close()
+	defer func() {
+		if cerr := page.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if page.StatusCode != http.StatusOK {
 		t.Fatalf("want the portal page, got %d", page.StatusCode)
 	}
@@ -123,7 +132,11 @@ func TestHandlerServes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer css.Body.Close()
+	defer func() {
+		if cerr := css.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if css.StatusCode != http.StatusOK {
 		t.Fatalf("want the stylesheet, got %d", css.StatusCode)
 	}
@@ -132,7 +145,11 @@ func TestHandlerServes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check.Body.Close()
+	defer func() {
+		if cerr := check.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(check.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -152,13 +169,13 @@ func TestPurgeJob(t *testing.T) {
 	stale := &resultsv1.VerificationResult{
 		Id: "stale", RawRef: "raw", EvaluatedAt: timestamppb.New(time.Now().Add(-2000 * time.Hour)),
 	}
-	if _, err := a.Store.Put(context.Background(), stale); err != nil {
-		t.Fatal(err)
+	if _, serr := a.Store.Put(context.Background(), stale); serr != nil {
+		t.Fatal(serr)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	a.Purge(ctx, nil)
-	if _, err := a.Store.Get(context.Background(), "stale"); err == nil {
+	if _, serr := a.Store.Get(context.Background(), "stale"); serr == nil {
 		t.Fatal("want the stale result purged")
 	}
 

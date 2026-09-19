@@ -25,13 +25,14 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/export"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DefaultPrefix is the URL prefix of the staff pages.
@@ -244,8 +245,8 @@ func (p *Portal) resultTable(ctx context.Context, filter *resultsv1.Filter) (tem
 
 // detail renders the card list of one result.
 func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
-	got, err := p.opts.Service.Read(r.Context(), r.PathValue("id"))
-	if err != nil {
+	got, ok := p.read(r)
+	if !ok {
 		http.Error(w, "no such verification", http.StatusNotFound)
 		return nil
 	}
@@ -426,4 +427,14 @@ func at(r *resultsv1.VerificationResult) string {
 		return "not known"
 	}
 	return r.GetEvaluatedAt().AsTime().UTC().Format(time.RFC3339)
+}
+
+// read returns one result by the id in the path. A result that is
+// missing, or a store fault, gives false.
+func (p *Portal) read(r *http.Request) (*resultsv1.VerificationResult, bool) {
+	got, err := p.opts.Service.Read(r.Context(), r.PathValue("id"))
+	if err != nil {
+		return nil, false
+	}
+	return got, true
 }

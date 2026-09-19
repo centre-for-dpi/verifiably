@@ -13,9 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // Header is the first row of a CSV export.
@@ -31,10 +32,12 @@ func CSV(w io.Writer, results []*resultsv1.VerificationResult) error {
 	out := csv.NewWriter(w)
 	// csv.Writer buffers and keeps the first error, so one check at the
 	// end reports every write problem.
-	_ = out.Write(Header)
+	ignored2 := out.Write(Header)
+	_ = ignored2
 	for _, r := range results {
 		for _, row := range credentialRows(r) {
-			_ = out.Write(row)
+			ignored := out.Write(row)
+			_ = ignored
 		}
 	}
 	out.Flush()
