@@ -4,83 +4,19 @@
 // entry version and the store revision. The revision is the sequence
 // number of the next publication.
 //
-// The Backend interface is a minimal local stand-in for the shared
-// services/internal/store package. The orchestrator replaces it later.
+// The store saves the whole state through the shared store package
+// (ADR-004 decision 3).
 package store
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/entry"
 )
-
-// Backend loads and saves the whole state document.
-type Backend interface {
-	// Load returns the saved document. found is false on first use.
-	Load() (data []byte, found bool, err error)
-	// Save writes the document.
-	Save(data []byte) error
-}
-
-// memory keeps the document in the process.
-type memory struct {
-	mu   sync.Mutex
-	data []byte
-}
-
-// Memory returns a backend that keeps the document in the process.
-func Memory() Backend { return &memory{} }
-
-func (m *memory) Load() ([]byte, bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.data == nil {
-		return nil, false, nil
-	}
-	return append([]byte(nil), m.data...), true, nil
-}
-
-func (m *memory) Save(data []byte) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.data = append([]byte(nil), data...)
-	return nil
-}
-
-// file keeps the document in one JSON file. Save writes a temporary file
-// and renames it, so a reader never sees a partial document.
-type file struct{ path string }
-
-// File returns a backend that keeps the document at path.
-func File(path string) Backend { return file{path: path} }
-
-func (f file) Load() ([]byte, bool, error) {
-	data, err := os.ReadFile(f.path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, fmt.Errorf("store: read %s: %w", f.path, err)
-	}
-	return data, true, nil
-}
-
-func (f file) Save(data []byte) error {
-	tmp := filepath.Join(filepath.Dir(f.path), "."+filepath.Base(f.path)+".tmp")
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("store: write %s: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, f.path); err != nil {
-		return fmt.Errorf("store: rename %s: %w", tmp, err)
-	}
-	return nil
-}
 
 // document is the saved form of the state.
 type document struct {
@@ -91,12 +27,12 @@ type document struct {
 // Store holds the entries behind a mutex and saves after each change.
 type Store struct {
 	mu      sync.RWMutex
-	backend Backend
+	backend sharedstore.Document
 	doc     document
 }
 
-// Open reads the saved state from the backend.
-func Open(b Backend) (*Store, error) {
+// Open reads the saved state from the document.
+func Open(b sharedstore.Document) (*Store, error) {
 	data, found, err := b.Load()
 	if err != nil {
 		return nil, err
