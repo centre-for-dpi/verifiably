@@ -650,3 +650,28 @@ func TestRoleNamesAndValuesRoundTrip(t *testing.T) {
 		t.Error("an unknown name has a role")
 	}
 }
+
+func TestOnboardProviderDelegatesToTheOnboardingPath(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	resp, err := h.svc.OnboardProvider(ctx, request(h, &adminv1.OnboardProviderRequest{
+		IssuerUrl:           h.idpSrv.URL,
+		DynamicRegistration: true,
+	}))
+	if err != nil {
+		t.Fatalf("OnboardProvider: %v", err)
+	}
+	p := resp.Msg.GetProvider()
+	if p.GetId() == "" || p.GetClientId() != "registered" || !p.GetEnabled() {
+		t.Fatalf("provider = %+v", p)
+	}
+	got, err := h.svc.GetAuthProvider(ctx, request(h, &adminv1.GetAuthProviderRequest{Id: p.GetId()}))
+	if err != nil || got.Msg.GetProvider().GetId() != p.GetId() {
+		t.Fatalf("GetAuthProvider = %+v, %v", got.Msg, err)
+	}
+	if _, err := h.svc.OnboardProvider(ctx, request(h, &adminv1.OnboardProviderRequest{
+		IssuerUrl: "nowhere",
+	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("a bad issuer URL = %v", err)
+	}
+}

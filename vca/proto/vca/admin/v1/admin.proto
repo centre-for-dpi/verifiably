@@ -75,6 +75,13 @@ service AdminService {
   rpc DeleteAuthProvider(DeleteAuthProviderRequest) returns (DeleteAuthProviderResponse) {
     option (vca.common.v1.description) = "Removes one provider.";
   }
+  // OnboardProvider registers one OIDC provider from its issuer URL.
+  // The service reads the provider metadata and registers a client. It
+  // runs the same onboarding path as CreateAuthProvider
+  // (ADR-010 decision 3).
+  rpc OnboardProvider(OnboardProviderRequest) returns (OnboardProviderResponse) {
+    option (vca.common.v1.description) = "Registers one OIDC provider from its issuer URL.";
+  }
 
   // CreateApiKey creates one machine API key. The response shows the
   // secret value once. The service stores only its hash.
@@ -282,6 +289,25 @@ message CreateAuthProviderRequest {
 
 // CreateAuthProviderResponse returns the stored provider.
 message CreateAuthProviderResponse {
+  // The provider as stored.
+  AuthProvider provider = 1;
+}
+
+// OnboardProviderRequest carries the issuer of one OIDC provider.
+message OnboardProviderRequest {
+  // The issuer URL of the provider. Must be an absolute https URL.
+  string issuer_url = 1;
+  // The OAuth 2.0 client id. Empty asks for dynamic registration.
+  string client_id = 2;
+  // The reference to the client secret. Empty for a public client.
+  vca.common.v1.SecretRef client_secret = 3;
+  // True asks the service to register the client with Dynamic Client
+  // Registration and to ignore client_id and client_secret.
+  bool dynamic_registration = 4;
+}
+
+// OnboardProviderResponse returns the stored provider.
+message OnboardProviderResponse {
   // The provider as stored.
   AuthProvider provider = 1;
 }

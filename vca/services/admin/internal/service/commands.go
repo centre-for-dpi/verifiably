@@ -82,6 +82,14 @@ var commands = []command{
 			{name: "initial-access-token", text: "The token the registration endpoint asks for."},
 			{name: "roles-claim-path", text: "The dot path of the claim that carries roles.", value: "realm_access.roles"},
 		}},
+	{path: "admin onboard-provider", rpc: "OnboardProvider",
+		long: "Registers one provider from its issuer URL. The command runs the same onboarding path as admin onboard.",
+		flags: []flag{
+			{name: "issuer-url", text: "The issuer URL of the provider.", mandatory: true},
+			{name: "client-id", text: "The client id, when the provider registers no client."},
+			{name: "client-secret-env", text: "The environment variable that holds the client secret."},
+			{name: "dynamic", text: "Register the client with dynamic client registration.", value: "true"},
+		}},
 	{path: "admin provider get", rpc: "GetAuthProvider", flags: []flag{
 		{name: "id", text: "The provider id.", mandatory: true},
 	}},

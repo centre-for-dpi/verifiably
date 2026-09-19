@@ -66,6 +66,7 @@ var adminPaths = []struct{ path, method string }{
 	{"trust list", "ListTrustEntries"},
 	{"trust remove", "DeleteTrustEntry"},
 	{"onboard", "CreateAuthProvider"},
+	{"onboard-provider", "OnboardProvider"},
 	{"provider get", "GetAuthProvider"},
 	{"provider list", "ListAuthProviders"},
 	{"provider update", "UpdateAuthProvider"},
