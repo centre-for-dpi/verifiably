@@ -76,7 +76,10 @@ func TestTenantValidation(t *testing.T) {
 	if _, err := s.CreateTenant(ctx, strings.Repeat("x", records.MaxDisplayName+1)); !errors.Is(err, records.ErrInvalid) {
 		t.Errorf("long name: %v", err)
 	}
-	tenant, _ := s.CreateTenant(ctx, "Tenant")
+	tenant, verr := s.CreateTenant(ctx, "Tenant")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := s.UpdateTenant(ctx, tenant.ID, "", "gone"); !errors.Is(err, records.ErrInvalid) {
 		t.Errorf("bad state: %v", err)
 	}
@@ -98,9 +101,15 @@ func TestListTenantsSortsByCreationTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	first, _ := s.CreateTenant(ctx, "First")
+	first, verr := s.CreateTenant(ctx, "First")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	now = at.Add(time.Minute)
-	second, _ := s.CreateTenant(ctx, "Second")
+	second, verr := s.CreateTenant(ctx, "Second")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	list, err := s.ListTenants(ctx)
 	if err != nil {
 		t.Fatalf("ListTenants: %v", err)
@@ -113,13 +122,22 @@ func TestListTenantsSortsByCreationTime(t *testing.T) {
 func TestListTenantsSortsEqualTimesByID(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	a, _ := s.CreateTenant(ctx, "A")
-	b, _ := s.CreateTenant(ctx, "B")
+	a, verr := s.CreateTenant(ctx, "A")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	b, verr := s.CreateTenant(ctx, "B")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	want := a.ID
 	if b.ID < a.ID {
 		want = b.ID
 	}
-	list, _ := s.ListTenants(ctx)
+	list, verr := s.ListTenants(ctx)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if list[0].ID != want {
 		t.Fatalf("first = %q, want %q", list[0].ID, want)
 	}
@@ -128,7 +146,10 @@ func TestListTenantsSortsEqualTimesByID(t *testing.T) {
 func TestAPIKeyLifecycle(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	tenant, _ := s.CreateTenant(ctx, "Tenant")
+	tenant, verr := s.CreateTenant(ctx, "Tenant")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	key, secret, err := s.CreateKey(ctx, records.KeySpec{DisplayName: "CI", TenantID: tenant.ID, Roles: []string{"issuer"}})
 	if err != nil {
 		t.Fatalf("CreateKey: %v", err)
@@ -162,7 +183,10 @@ func TestAPIKeyLifecycle(t *testing.T) {
 func TestAPIKeyExpiry(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	tenant, _ := s.CreateTenant(ctx, "Tenant")
+	tenant, verr := s.CreateTenant(ctx, "Tenant")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	_, secret, err := s.CreateKey(ctx, records.KeySpec{
 		DisplayName: "Short", TenantID: tenant.ID, Roles: []string{"admin"}, ExpiresAt: at.Add(-time.Minute),
 	})
@@ -187,7 +211,10 @@ func TestAuthenticateRejectsUnknownSecrets(t *testing.T) {
 func TestCreateKeyValidation(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	tenant, _ := s.CreateTenant(ctx, "Tenant")
+	tenant, verr := s.CreateTenant(ctx, "Tenant")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	cases := map[string]records.KeySpec{
 		"no name":   {TenantID: tenant.ID, Roles: []string{"admin"}},
 		"no tenant": {DisplayName: "k", Roles: []string{"admin"}},
@@ -209,24 +236,42 @@ func TestCreateKeyValidation(t *testing.T) {
 func TestListKeysFiltersByTenantAndDeleteRemovesThem(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t)
-	one, _ := s.CreateTenant(ctx, "One")
-	two, _ := s.CreateTenant(ctx, "Two")
-	_, secret, _ := s.CreateKey(ctx, records.KeySpec{DisplayName: "a", TenantID: one.ID, Roles: []string{"admin"}})
+	one, verr := s.CreateTenant(ctx, "One")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	two, verr := s.CreateTenant(ctx, "Two")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	_, secret, verr := s.CreateKey(ctx, records.KeySpec{DisplayName: "a", TenantID: one.ID, Roles: []string{"admin"}})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, _, err := s.CreateKey(ctx, records.KeySpec{DisplayName: "b", TenantID: two.ID, Roles: []string{"admin"}}); err != nil {
 		t.Fatalf("CreateKey: %v", err)
 	}
-	all, _ := s.ListKeys(ctx, "")
+	all, verr := s.ListKeys(ctx, "")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if len(all) != 2 {
 		t.Fatalf("all keys = %d", len(all))
 	}
-	mine, _ := s.ListKeys(ctx, one.ID)
+	mine, verr := s.ListKeys(ctx, one.ID)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if len(mine) != 1 || mine[0].TenantID != one.ID {
 		t.Fatalf("filtered keys = %+v", mine)
 	}
 	if err := s.DeleteTenant(ctx, one.ID); err != nil {
 		t.Fatalf("DeleteTenant: %v", err)
 	}
-	left, _ := s.ListKeys(ctx, "")
+	left, verr := s.ListKeys(ctx, "")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if len(left) != 1 || left[0].TenantID != two.ID {
 		t.Fatalf("keys after delete = %+v", left)
 	}
@@ -251,14 +296,14 @@ func TestAdminBinding(t *testing.T) {
 	if !s.IsAdmin(ctx, "https://idp.example/", "user-1") {
 		t.Fatal("IsAdmin is false after a binding")
 	}
-	if _, err := s.BindAdmin(ctx, "", "user"); !errors.Is(err, records.ErrInvalid) {
-		t.Errorf("empty issuer: %v", err)
+	if _, serr := s.BindAdmin(ctx, "", "user"); !errors.Is(serr, records.ErrInvalid) {
+		t.Errorf("empty issuer: %v", serr)
 	}
-	if _, err := s.BindAdmin(ctx, "https://idp.example", " "); !errors.Is(err, records.ErrInvalid) {
-		t.Errorf("empty subject: %v", err)
+	if _, serr := s.BindAdmin(ctx, "https://idp.example", " "); !errors.Is(serr, records.ErrInvalid) {
+		t.Errorf("empty subject: %v", serr)
 	}
-	if _, err := s.BindAdmin(ctx, "https://idp.example", "user-2"); err != nil {
-		t.Fatalf("BindAdmin: %v", err)
+	if _, serr := s.BindAdmin(ctx, "https://idp.example", "user-2"); serr != nil {
+		t.Fatalf("BindAdmin: %v", serr)
 	}
 	list, err := s.ListAdmins(ctx)
 	if err != nil || len(list) != 2 {
@@ -267,8 +312,9 @@ func TestAdminBinding(t *testing.T) {
 	if list[0].Subject > list[1].Subject {
 		t.Errorf("admins are not sorted: %+v", list)
 	}
-	if n, _ := s.CountAdmins(ctx); n != 2 {
-		t.Errorf("CountAdmins = %d", n)
+	n, cerr := s.CountAdmins(ctx)
+	if cerr != nil || n != 2 {
+		t.Errorf("CountAdmins = %d, %v", n, cerr)
 	}
 }
 
@@ -325,7 +371,9 @@ func TestBootstrapTokenIsUsedOnce(t *testing.T) {
 }
 
 func TestNewSecretAndIDAreRandom(t *testing.T) {
-	if records.NewSecret() == records.NewSecret() || records.NewID() == records.NewID() {
+	firstSecret, secondSecret := records.NewSecret(), records.NewSecret()
+	firstID, secondID := records.NewID(), records.NewID()
+	if firstSecret == secondSecret || firstID == secondID {
 		t.Fatal("two random values are equal")
 	}
 }
@@ -336,7 +384,6 @@ type failStore struct {
 	failPut  bool
 	failList bool
 	failDel  bool
-	bad      string
 }
 
 func (f failStore) Put(ctx context.Context, key string, value []byte) error {
@@ -363,7 +410,10 @@ func (f failStore) Delete(ctx context.Context, key string) error {
 func TestStoreErrorsTravelToTheCaller(t *testing.T) {
 	ctx := context.Background()
 	kv := store.Memory()
-	s, _ := records.New(failStore{KeyValue: kv, failPut: true}, nil)
+	s, verr := records.New(failStore{KeyValue: kv, failPut: true}, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := s.CreateTenant(ctx, "Tenant"); err == nil {
 		t.Error("CreateTenant hid a store error")
 	}
@@ -373,7 +423,10 @@ func TestStoreErrorsTravelToTheCaller(t *testing.T) {
 	if err := s.SetBootstrap(ctx, records.NewBootstrapToken()); err == nil {
 		t.Error("SetBootstrap hid a store error")
 	}
-	listFail, _ := records.New(failStore{KeyValue: kv, failList: true}, nil)
+	listFail, verr := records.New(failStore{KeyValue: kv, failList: true}, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := listFail.ListTenants(ctx); err == nil {
 		t.Error("ListTenants hid a store error")
 	}
@@ -386,12 +439,21 @@ func TestStoreErrorsTravelToTheCaller(t *testing.T) {
 	if _, err := listFail.ListAdmins(ctx); err == nil {
 		t.Error("ListAdmins hid a store error")
 	}
-	good, _ := records.New(kv, nil)
-	tenant, _ := good.CreateTenant(ctx, "Tenant")
+	good, verr := records.New(kv, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	tenant, verr := good.CreateTenant(ctx, "Tenant")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, _, err := good.CreateKey(ctx, records.KeySpec{DisplayName: "k", TenantID: tenant.ID, Roles: []string{"admin"}}); err != nil {
 		t.Fatalf("CreateKey: %v", err)
 	}
-	delFail, _ := records.New(failStore{KeyValue: kv, failDel: true}, nil)
+	delFail, verr := records.New(failStore{KeyValue: kv, failDel: true}, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if err := delFail.DeleteTenant(ctx, tenant.ID); err == nil {
 		t.Error("DeleteTenant hid a store error")
 	}
@@ -403,7 +465,10 @@ func TestBrokenDocumentsAreReported(t *testing.T) {
 	if err := kv.Put(ctx, "tenants/broken", []byte("{")); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	s, _ := records.New(kv, nil)
+	s, verr := records.New(kv, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := s.GetTenant(ctx, "broken"); err == nil {
 		t.Error("GetTenant read a broken document")
 	}
@@ -426,7 +491,10 @@ func TestBrokenDocumentsAreReported(t *testing.T) {
 
 func TestGetTenantReportsAStoreFault(t *testing.T) {
 	ctx := context.Background()
-	s, _ := records.New(store.Memory(), nil)
+	s, verr := records.New(store.Memory(), nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := s.GetTenant(ctx, "bad key"); err == nil {
 		t.Fatal("GetTenant accepted a bad key")
 	}

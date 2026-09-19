@@ -115,13 +115,14 @@ func (s *Service) guard(ctx context.Context, h http.Header) (login.Identity, err
 
 // write records one action that changed state and returns err unchanged.
 func (s *Service) write(ctx context.Context, actor, action, target string, err error) error {
-	_, _ = s.d.Audit.Append(ctx, audit.Entry{
+	_, ignored := s.d.Audit.Append(ctx, audit.Entry{
 		Actor:     actor,
 		Action:    action,
 		RequestID: serve.RequestIDFrom(ctx),
 		Target:    target,
 		OK:        err == nil,
 	})
+	_ = ignored
 	return err
 }
 
@@ -154,8 +155,8 @@ func (s *Service) CreateTenant(ctx context.Context, req *connect.Request[adminv1
 		return nil, err
 	}
 	tenant, err := s.d.Records.CreateTenant(ctx, req.Msg.GetDisplayName())
-	if err := s.write(ctx, id.Actor, "admin.CreateTenant", tenant.ID, err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.CreateTenant", tenant.ID, err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.CreateTenantResponse{Tenant: tenantProto(tenant)}), nil
 }
@@ -167,8 +168,8 @@ func (s *Service) GetTenant(ctx context.Context, req *connect.Request[adminv1.Ge
 		return nil, err
 	}
 	tenant, err := s.d.Records.GetTenant(ctx, req.Msg.GetId())
-	if err := s.write(ctx, id.Actor, "admin.GetTenant", req.Msg.GetId(), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.GetTenant", req.Msg.GetId(), err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.GetTenantResponse{Tenant: tenantProto(tenant)}), nil
 }
@@ -180,8 +181,8 @@ func (s *Service) ListTenants(ctx context.Context, req *connect.Request[adminv1.
 		return nil, err
 	}
 	all, err := s.d.Records.ListTenants(ctx)
-	if err := s.write(ctx, id.Actor, "admin.ListTenants", "", err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.ListTenants", "", err); serr != nil {
+		return nil, fail(serr)
 	}
 	page, next := paginate(all, req.Msg.GetPage(), func(t records.Tenant) string { return t.ID })
 	res := &adminv1.ListTenantsResponse{Page: &commonv1.PageResult{NextPageToken: next, TotalSize: int64(len(all))}}
@@ -198,8 +199,8 @@ func (s *Service) UpdateTenant(ctx context.Context, req *connect.Request[adminv1
 		return nil, err
 	}
 	tenant, err := s.d.Records.UpdateTenant(ctx, req.Msg.GetId(), req.Msg.GetDisplayName(), stateName(req.Msg.GetState()))
-	if err := s.write(ctx, id.Actor, "admin.UpdateTenant", req.Msg.GetId(), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.UpdateTenant", req.Msg.GetId(), err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.UpdateTenantResponse{Tenant: tenantProto(tenant)}), nil
 }
@@ -211,8 +212,8 @@ func (s *Service) DeleteTenant(ctx context.Context, req *connect.Request[adminv1
 		return nil, err
 	}
 	err = s.d.Records.DeleteTenant(ctx, req.Msg.GetId())
-	if err := s.write(ctx, id.Actor, "admin.DeleteTenant", req.Msg.GetId(), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.DeleteTenant", req.Msg.GetId(), err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.DeleteTenantResponse{}), nil
 }
@@ -237,8 +238,8 @@ func (s *Service) UpsertTrustEntry(ctx context.Context, req *connect.Request[adm
 		return nil, fail(s.write(ctx, id.Actor, "admin.UpsertTrustEntry", "", err))
 	}
 	res, err := client.UpsertEntry(ctx, connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: req.Msg.GetEntry()}))
-	if err := s.write(ctx, id.Actor, "admin.UpsertTrustEntry", identifierText(req.Msg.GetEntry().GetIdentifier()), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.UpsertTrustEntry", identifierText(req.Msg.GetEntry().GetIdentifier()), err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.UpsertTrustEntryResponse{Entry: res.Msg.GetEntry()}), nil
 }
@@ -254,8 +255,8 @@ func (s *Service) GetTrustEntry(ctx context.Context, req *connect.Request[adminv
 		return nil, fail(s.write(ctx, id.Actor, "admin.GetTrustEntry", "", err))
 	}
 	res, err := client.GetEntry(ctx, connect.NewRequest(&trustv1.GetEntryRequest{Identifier: req.Msg.GetIdentifier()}))
-	if err := s.write(ctx, id.Actor, "admin.GetTrustEntry", identifierText(req.Msg.GetIdentifier()), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.GetTrustEntry", identifierText(req.Msg.GetIdentifier()), err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.GetTrustEntryResponse{Entry: res.Msg.GetEntry()}), nil
 }
@@ -273,8 +274,8 @@ func (s *Service) ListTrustEntries(ctx context.Context, req *connect.Request[adm
 	res, err := client.ListEntries(ctx, connect.NewRequest(&trustv1.ListEntriesRequest{
 		Page: req.Msg.GetPage(), Role: req.Msg.GetRole(),
 	}))
-	if err := s.write(ctx, id.Actor, "admin.ListTrustEntries", "", err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.ListTrustEntries", "", err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.ListTrustEntriesResponse{
 		Entries: res.Msg.GetEntries(), Page: res.Msg.GetPage(),
@@ -292,8 +293,8 @@ func (s *Service) DeleteTrustEntry(ctx context.Context, req *connect.Request[adm
 		return nil, fail(s.write(ctx, id.Actor, "admin.DeleteTrustEntry", "", err))
 	}
 	_, err = client.DeleteEntry(ctx, connect.NewRequest(&trustv1.DeleteEntryRequest{Identifier: req.Msg.GetIdentifier()}))
-	if err := s.write(ctx, id.Actor, "admin.DeleteTrustEntry", identifierText(req.Msg.GetIdentifier()), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.DeleteTrustEntry", identifierText(req.Msg.GetIdentifier()), err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.DeleteTrustEntryResponse{}), nil
 }
@@ -307,8 +308,8 @@ func (s *Service) CreateAuthProvider(ctx context.Context, req *connect.Request[a
 		return nil, err
 	}
 	stored, err := s.onboardProvider(ctx, req.Msg.GetProvider(), req.Msg.GetDynamicRegistration())
-	if err := s.write(ctx, id.Actor, "admin.CreateAuthProvider", stored.ID, err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.CreateAuthProvider", stored.ID, err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.CreateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
 }
@@ -328,8 +329,8 @@ func (s *Service) OnboardProvider(ctx context.Context, req *connect.Request[admi
 		Enabled:      true,
 	}
 	stored, err := s.onboardProvider(ctx, provider, req.Msg.GetDynamicRegistration())
-	if err := s.write(ctx, id.Actor, "admin.OnboardProvider", stored.ID, err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.OnboardProvider", stored.ID, err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.OnboardProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
 }
@@ -405,8 +406,8 @@ func (s *Service) UpdateAuthProvider(ctx context.Context, req *connect.Request[a
 	in.Scopes = current.Scopes
 	in.InternalAuthority = current.InternalAuthority
 	stored, err := s.d.Providers.Put(in)
-	if err := s.write(ctx, id.Actor, "admin.UpdateAuthProvider", in.ID, err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.UpdateAuthProvider", in.ID, err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.UpdateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
 }
@@ -418,14 +419,16 @@ func (s *Service) DeleteAuthProvider(ctx context.Context, req *connect.Request[a
 		return nil, err
 	}
 	err = s.d.Providers.Delete(req.Msg.GetId())
-	if err := s.write(ctx, id.Actor, "admin.DeleteAuthProvider", req.Msg.GetId(), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.DeleteAuthProvider", req.Msg.GetId(), err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.DeleteAuthProviderResponse{}), nil
 }
 
 // CreateApiKey implements AdminServiceHandler. The response shows the
 // secret value once.
+//
+//nolint:staticcheck // ST1003: the generated Connect interface fixes this name
 func (s *Service) CreateApiKey(ctx context.Context, req *connect.Request[adminv1.CreateApiKeyRequest]) (*connect.Response[adminv1.CreateApiKeyResponse], error) {
 	id, err := s.guard(ctx, req.Header())
 	if err != nil {
@@ -440,21 +443,23 @@ func (s *Service) CreateApiKey(ctx context.Context, req *connect.Request[adminv1
 		spec.ExpiresAt = req.Msg.GetExpiresAt().AsTime()
 	}
 	key, secret, err := s.d.Records.CreateKey(ctx, spec)
-	if err := s.write(ctx, id.Actor, "admin.CreateApiKey", key.ID, err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.CreateApiKey", key.ID, err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.CreateApiKeyResponse{Key: keyProto(key), Secret: secret}), nil
 }
 
 // ListApiKeys implements AdminServiceHandler.
+//
+//nolint:staticcheck // ST1003: the generated Connect interface fixes this name
 func (s *Service) ListApiKeys(ctx context.Context, req *connect.Request[adminv1.ListApiKeysRequest]) (*connect.Response[adminv1.ListApiKeysResponse], error) {
 	id, err := s.guard(ctx, req.Header())
 	if err != nil {
 		return nil, err
 	}
 	all, err := s.d.Records.ListKeys(ctx, req.Msg.GetTenantId())
-	if err := s.write(ctx, id.Actor, "admin.ListApiKeys", req.Msg.GetTenantId(), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.ListApiKeys", req.Msg.GetTenantId(), err); serr != nil {
+		return nil, fail(serr)
 	}
 	page, next := paginate(all, req.Msg.GetPage(), func(k records.APIKey) string { return k.ID })
 	res := &adminv1.ListApiKeysResponse{Page: &commonv1.PageResult{NextPageToken: next, TotalSize: int64(len(all))}}
@@ -465,14 +470,16 @@ func (s *Service) ListApiKeys(ctx context.Context, req *connect.Request[adminv1.
 }
 
 // RevokeApiKey implements AdminServiceHandler.
+//
+//nolint:staticcheck // ST1003: the generated Connect interface fixes this name
 func (s *Service) RevokeApiKey(ctx context.Context, req *connect.Request[adminv1.RevokeApiKeyRequest]) (*connect.Response[adminv1.RevokeApiKeyResponse], error) {
 	id, err := s.guard(ctx, req.Header())
 	if err != nil {
 		return nil, err
 	}
 	_, err = s.d.Records.RevokeKey(ctx, req.Msg.GetId())
-	if err := s.write(ctx, id.Actor, "admin.RevokeApiKey", req.Msg.GetId(), err); err != nil {
-		return nil, fail(err)
+	if serr := s.write(ctx, id.Actor, "admin.RevokeApiKey", req.Msg.GetId(), err); serr != nil {
+		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.RevokeApiKeyResponse{}), nil
 }

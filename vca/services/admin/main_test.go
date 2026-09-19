@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -75,7 +77,9 @@ func TestRunServesAndAnswersTheHealthcheck(t *testing.T) {
 	for time.Now().Before(deadline) {
 		res, err := http.Get("http://" + addr + "/readyz")
 		if err == nil {
-			res.Body.Close()
+			if cerr := res.Body.Close(); cerr != nil {
+				t.Errorf("the close failed: %v", cerr)
+			}
 			ready = res.StatusCode == http.StatusOK
 			break
 		}
@@ -100,5 +104,22 @@ func TestRunServesAndAnswersTheHealthcheck(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "bootstrap_token") {
 		t.Error("the start printed no bootstrap token")
+	}
+}
+
+// failWriter fails every write. It drives the printLine error path.
+type failWriter struct{}
+
+// Write always reports an error.
+func (failWriter) Write([]byte) (int, error) {
+	return 0, errors.New("the write failed")
+}
+
+func TestPrintLineReportsTheWriteStatus(t *testing.T) {
+	if got := printLine(io.Discard, "ok"); got != 0 {
+		t.Fatalf("want status 0, got %d", got)
+	}
+	if got := printLine(failWriter{}, "ok"); got != 1 {
+		t.Fatalf("want status 1, got %d", got)
 	}
 }

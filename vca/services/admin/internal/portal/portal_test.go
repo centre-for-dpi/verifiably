@@ -96,7 +96,7 @@ func newHarness(t *testing.T, withTrust bool) *harness {
 	t.Cleanup(h.idp.Close)
 	h.regIDP = registrationIDP(t, h.idp)
 	h.ready = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("ready version=1.0.0"))
+		mustWrite(t, w, []byte("ready version=1.0.0"))
 	}))
 	t.Cleanup(h.ready.Close)
 	var handler http.Handler
@@ -122,11 +122,11 @@ func newHarness(t *testing.T, withTrust bool) *harness {
 	}
 	h.app = built
 	handler = built.Mux
-	if _, err := built.Login.Providers().Put(oidcflow.Provider{
+	if _, serr := built.Login.Providers().Put(oidcflow.Provider{
 		ID: "idp", DisplayName: "Test IdP", DiscoveryURL: h.idp.DiscoveryURL(),
 		ClientID: h.idp.ClientID, Enabled: true,
-	}); err != nil {
-		t.Fatalf("Put: %v", err)
+	}); serr != nil {
+		t.Fatalf("Put: %v", serr)
 	}
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -146,18 +146,22 @@ func registrationIDP(t *testing.T, idp *oidctest.Provider) *httptest.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		if cerr := json.NewEncoder(w).Encode(map[string]any{
 			"issuer":                 idp.Issuer(),
 			"authorization_endpoint": idp.Issuer() + "/authorize",
 			"token_endpoint":         idp.Issuer() + "/token",
 			"jwks_uri":               idp.Issuer() + "/jwks",
 			"registration_endpoint":  srv.URL + "/register",
-		})
+		}); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
 	})
 	mux.HandleFunc("/register", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]string{"client_id": "registered"})
+		if cerr := json.NewEncoder(w).Encode(map[string]string{"client_id": "registered"}); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
 	})
 	srv = httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -176,7 +180,9 @@ func (h *harness) signIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	res.Body.Close()
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if res.StatusCode != http.StatusFound {
 		t.Fatalf("login status = %d", res.StatusCode)
 	}
@@ -188,7 +194,9 @@ func (h *harness) signIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
-	done.Body.Close()
+	if cerr := done.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if done.StatusCode != http.StatusSeeOther {
 		t.Fatalf("callback status = %d", done.StatusCode)
 	}
@@ -196,7 +204,11 @@ func (h *harness) signIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	defer sessionRes.Body.Close()
+	defer func() {
+		if cerr := sessionRes.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	var body struct {
 		CSRFToken string `json:"csrf_token"`
 	}
@@ -216,7 +228,11 @@ func (h *harness) get(t *testing.T, path string) (int, string) {
 	if err != nil {
 		t.Fatalf("get %s: %v", path, err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -246,8 +262,15 @@ func (h *harness) post(t *testing.T, path string, form url.Values) (int, string)
 	if err != nil {
 		t.Fatalf("post %s: %v", path, err)
 	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
+	raw, verr := io.ReadAll(res.Body)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	return res.StatusCode, string(raw)
 }
 
@@ -372,7 +395,11 @@ func TestPostWithoutTheSynchronizerTokenIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", res.StatusCode)
 	}
@@ -654,7 +681,11 @@ func TestRootRedirectsToThePortal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/admin/" {
 		t.Fatalf("status = %d location = %q", res.StatusCode, res.Header.Get("Location"))
 	}

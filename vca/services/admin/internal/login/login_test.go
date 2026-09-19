@@ -76,10 +76,12 @@ func newDeviceIDP(t *testing.T, idp *oidctest.Provider) *deviceIDP {
 		if d.body != "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(d.status)
-			_, _ = w.Write([]byte(d.body))
+			mustWrite(t, w, []byte(d.body))
 			return
 		}
-		_ = r.ParseForm()
+		if cerr := r.ParseForm(); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
 		if r.PostFormValue("device_code") != d.pending {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "authorization_pending"})
 			return
@@ -97,7 +99,9 @@ func newDeviceIDP(t *testing.T, idp *oidctest.Provider) *deviceIDP {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if cerr := json.NewEncoder(w).Encode(v); cerr != nil {
+		panic(cerr)
+	}
 }
 
 // newHarness builds the whole login service over the fake provider.
@@ -123,11 +127,11 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("registry: %v", err)
 	}
-	if _, err := registry.Put(oidcflow.Provider{
+	if _, serr := registry.Put(oidcflow.Provider{
 		ID: "idp", DisplayName: "Test IdP", DiscoveryURL: idp.DiscoveryURL(),
 		ClientID: idp.ClientID, Enabled: true, Roles: []string{"admin"},
-	}); err != nil {
-		t.Fatalf("Put: %v", err)
+	}); serr != nil {
+		t.Fatalf("Put: %v", serr)
 	}
 	key, err := oidcflow.GenerateKey()
 	if err != nil {
@@ -179,13 +183,17 @@ func (h *harness) deviceProvider(t *testing.T) string {
 }
 
 // login runs one browser login and returns the session token.
-func (h *harness) login(t *testing.T, query string) (string, *http.Response) {
+func (h *harness) login(t *testing.T, query string) (string, int) {
 	t.Helper()
 	res, err := h.client.Get(h.server.URL + "/auth/login?provider=idp" + query)
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusFound {
 		t.Fatalf("login status = %d", res.StatusCode)
 	}
@@ -197,13 +205,17 @@ func (h *harness) login(t *testing.T, query string) (string, *http.Response) {
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
-	t.Cleanup(func() { done.Body.Close() })
+	t.Cleanup(func() {
+		if cerr := done.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	})
 	for _, c := range done.Cookies() {
 		if c.Name == h.cfg.CookieName {
-			return c.Value, done
+			return c.Value, done.StatusCode
 		}
 	}
-	return "", done
+	return "", done.StatusCode
 }
 
 func TestNewChecksTheDependencies(t *testing.T) {
@@ -214,12 +226,12 @@ func TestNewChecksTheDependencies(t *testing.T) {
 
 func TestLoginWithoutABindingIsRefused(t *testing.T) {
 	h := newHarness(t)
-	token, res := h.login(t, "")
+	token, status := h.login(t, "")
 	if token != "" {
 		t.Fatalf("a subject with no binding got a session")
 	}
-	if res.StatusCode == http.StatusOK {
-		t.Fatalf("status = %d", res.StatusCode)
+	if status == http.StatusOK {
+		t.Fatalf("status = %d", status)
 	}
 	page, err := h.audit.Query(context.Background(), audit.Filter{Action: "admin.Login"})
 	if err != nil || len(page.Records) != 1 || page.Records[0].OK {
@@ -280,7 +292,11 @@ func TestLoginRejectsAnUnknownProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", res.StatusCode)
 	}
@@ -334,8 +350,8 @@ func TestSessionAuthenticationAndCSRF(t *testing.T) {
 	// A POST without a synchronizer token fails (ADR-010 decision 7).
 	req := httptest.NewRequest(http.MethodPost, "/admin/tenants", nil)
 	req.Header = header
-	if _, err := h.svc.CheckCSRF(ctx, req); !errors.Is(err, oidcflow.ErrCSRF) {
-		t.Fatalf("CheckCSRF without a token: %v", err)
+	if _, serr := h.svc.CheckCSRF(ctx, req); !errors.Is(serr, oidcflow.ErrCSRF) {
+		t.Fatalf("CheckCSRF without a token: %v", serr)
 	}
 	claims, err := h.svc.Session(ctx, session)
 	if err != nil {
@@ -468,7 +484,11 @@ func TestLogoutRevokesTheSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("logout: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("logout status = %d", res.StatusCode)
 	}
@@ -529,7 +549,11 @@ func TestACallbackWithAnUnknownStateFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d", res.StatusCode)
 	}

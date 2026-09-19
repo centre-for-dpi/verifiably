@@ -203,6 +203,9 @@ func Matches(rec Record, f Filter) bool {
 // milliseconds with 15 digits, a dash, and 12 random characters.
 func NewID(at time.Time) string {
 	b := make([]byte, 9)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return fmt.Sprintf("%015d-%s", at.UTC().UnixMilli(), base64.RawURLEncoding.EncodeToString(b))
 }

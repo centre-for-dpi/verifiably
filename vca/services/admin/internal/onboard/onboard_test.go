@@ -56,11 +56,13 @@ func newIDP(t *testing.T) *idp {
 	})
 	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		p.lastAuth = r.Header.Get("Authorization")
-		_ = json.NewDecoder(r.Body).Decode(&p.lastRequest)
+		if cerr := json.NewDecoder(r.Body).Decode(&p.lastRequest); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
 		if p.registerBody != "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(p.registerStatus)
-			_, _ = w.Write([]byte(p.registerBody))
+			mustWrite(t, w, []byte(p.registerBody))
 			return
 		}
 		writeJSON(w, p.registerStatus, map[string]string{"client_id": "new-client", "client_secret": "s3cret"})
@@ -73,7 +75,9 @@ func newIDP(t *testing.T) *idp {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if cerr := json.NewEncoder(w).Encode(v); cerr != nil {
+		panic(cerr)
+	}
 }
 
 func TestDiscoveryURLAddsTheWellKnownPath(t *testing.T) {
@@ -103,7 +107,7 @@ func TestDiscoverReadsEveryEndpoint(t *testing.T) {
 
 func TestDiscoverRejectsBadDocuments(t *testing.T) {
 	notJSON := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("not json"))
+		mustWrite(t, w, []byte("not json"))
 	}))
 	defer notJSON.Close()
 	missing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -226,7 +230,7 @@ func TestRunRegistersTheClientAndStoresTheSecretInAFile(t *testing.T) {
 	if err != nil || value != "s3cret" {
 		t.Fatalf("Resolve = %q, %v", value, err)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "client_secret_KEYCLOAK"))
+	raw, err := os.ReadFile(filepath.Join(dir, "client_secret_KEYCLOAK")) //nolint:gosec // the path is a test directory
 	if err != nil || string(raw) != "s3cret" {
 		t.Fatalf("file = %q, %v", raw, err)
 	}

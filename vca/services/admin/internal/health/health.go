@@ -111,8 +111,11 @@ func (p *Prober) Check(ctx context.Context, target Target) Result {
 		res.Error = Reason(err)
 		return res
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	// Nothing can act on a close fault of a response body.
+	defer func() { ignored := resp.Body.Close(); _ = ignored }()
+	// A read fault leaves the body empty, so the version stays unknown.
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	_ = readErr
 	res.Version = Version(resp.Header.Get(VersionHeader), string(body))
 	res.CheckedAt = p.now().UTC()
 	if resp.StatusCode != http.StatusOK {

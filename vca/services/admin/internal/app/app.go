@@ -210,7 +210,7 @@ func loadKey(path string, log *slog.Logger) (*ecdsa.PrivateKey, error) {
 		log.Warn("VCA_ADMIN_SIGNING_KEY is not set: sessions end when the service restarts")
 		return oidcflow.GenerateKey()
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // the path comes from the service configuration
 	if err != nil {
 		return nil, fmt.Errorf("app: signing key: %w", err)
 	}
@@ -222,9 +222,10 @@ func sessionKey(value string) []byte {
 	if len(value) >= 16 {
 		return []byte(value)
 	}
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return b
+	// rand.Text returns 26 random characters from crypto/rand. The key
+	// lives until the service restarts.
+	fresh := rand.Text()
+	return []byte(fresh)
 }
 
 // Persister stores the provider registry document in the shared key
