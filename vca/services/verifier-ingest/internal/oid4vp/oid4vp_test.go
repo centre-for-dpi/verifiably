@@ -144,7 +144,7 @@ func TestAllowlistRefuses(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := c.allow.Check(c.url)
+			_, err := c.allow.Check(context.Background(), c.url)
 			if err == nil {
 				t.Fatal("want an error")
 			}
@@ -158,12 +158,12 @@ func TestAllowlistRefuses(t *testing.T) {
 func TestAllowlistAccepts(t *testing.T) {
 	allow := oid4vp.Allowlist{Hosts: []string{"wallet.example", ".gov.example"}}
 	for _, url := range []string{"https://wallet.example/r", "https://WALLET.example./r", "https://id.gov.example/r"} {
-		if _, err := allow.Check(url); err != nil {
+		if _, err := allow.Check(context.Background(), url); err != nil {
 			t.Errorf("Check(%q) = %v", url, err)
 		}
 	}
 	dev := oid4vp.Allowlist{Hosts: []string{"localhost"}, AllowPlainHTTP: true}
-	if _, err := dev.Check("http://localhost:9/r"); err != nil {
+	if _, err := dev.Check(context.Background(), "http://localhost:9/r"); err != nil {
 		t.Errorf("a development deployment reaches localhost, got %v", err)
 	}
 }

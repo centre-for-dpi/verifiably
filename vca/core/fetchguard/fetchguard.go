@@ -72,6 +72,12 @@ func (g Guard) Check(ctx context.Context, raw string) (*url.URL, error) {
 	if !g.hostAllowed(host) {
 		return nil, fmt.Errorf("%w: the host %q is not on the allowed list", ErrRefused, host)
 	}
+	// The address rules only matter when the deployment blocks private
+	// addresses. A guard that allows them needs no name resolution, so a
+	// service that trusts its host allowlist does no lookup.
+	if g.AllowPrivateNetwork {
+		return u, nil
+	}
 	addrs, err := g.addresses(ctx, host)
 	if err != nil {
 		return nil, err
@@ -130,9 +136,6 @@ func systemResolve(ctx context.Context, host string) ([]netip.Addr, error) {
 
 // checkAddress reports whether the fetcher may reach one address.
 func (g Guard) checkAddress(addr netip.Addr) error {
-	if g.AllowPrivateNetwork {
-		return nil
-	}
 	addr = addr.Unmap()
 	switch {
 	case addr.IsLoopback(), addr.IsPrivate(), addr.IsLinkLocalUnicast(), addr.IsLinkLocalMulticast(),
