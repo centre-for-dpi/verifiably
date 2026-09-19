@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -64,7 +65,7 @@ func TestNewCertifyFillsTheDefaultMetadataPath(t *testing.T) {
 	var path string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
-		_, _ = w.Write([]byte(`{"credential_issuer":"https://i.example"}`))
+		mustWrite(t, w, []byte(`{"credential_issuer":"https://i.example"}`))
 	}))
 	defer srv.Close()
 	c := NewCertify(newHTTP(srv), "")
@@ -85,7 +86,7 @@ func TestNewCertifyFillsTheDefaultMetadataPath(t *testing.T) {
 
 func TestMetadataReportsABrokenDocument(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("not json"))
+		mustWrite(t, w, []byte("not json"))
 	}))
 	defer srv.Close()
 	if _, err := NewCertify(newHTTP(srv), "/m").Metadata(context.Background()); err == nil {
@@ -96,7 +97,7 @@ func TestMetadataReportsABrokenDocument(t *testing.T) {
 func TestStageReportsAnErrorListAndAnEmptyAnswer(t *testing.T) {
 	body := `{"errors":[{"errorCode":"invalid_request","errorMessage":"unknown claim"}]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := NewCertify(newHTTP(srv), "/m")
@@ -105,7 +106,7 @@ func TestStageReportsAnErrorListAndAnEmptyAnswer(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 	body = `{"credential_offer_uri":""}`
-	if _, err := c.Stage(context.Background(), "x", nil); err == nil {
+	if _, serr := c.Stage(context.Background(), "x", nil); serr == nil {
 		t.Fatal("Stage accepted an empty offer URI")
 	}
 	body = `{"credential_offer_uri":"openid-credential-offer://x"}`
@@ -145,7 +146,7 @@ func TestOfferDocumentURLKeepsThePathAndDropsTheHost(t *testing.T) {
 func TestFetchOfferNeedsThePreAuthorizedGrant(t *testing.T) {
 	body := `{"credential_issuer":"https://i.example","grants":{}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := NewCertify(newHTTP(srv), "/m")
@@ -178,10 +179,12 @@ func TestRedeemSendsTheGrantAsAForm(t *testing.T) {
 	body := `{"access_token":"at","c_nonce":"n1"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotType = r.Header.Get("Content-Type")
-		buf := make([]byte, r.ContentLength)
-		_, _ = r.Body.Read(buf)
-		gotBody = string(buf)
-		_, _ = w.Write([]byte(body))
+		raw, rerr := io.ReadAll(r.Body)
+		if rerr != nil {
+			t.Errorf("the read failed: %v", rerr)
+		}
+		gotBody = string(raw)
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := NewCertify(newHTTP(srv), "/m")
@@ -249,7 +252,7 @@ func TestRequestCredentialUnwrapsBothShapes(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := NewCertify(newHTTP(srv), "/m")
@@ -320,10 +323,10 @@ func TestProofKeySignsTheHeaderInjiAccepts(t *testing.T) {
 	if _, ok := claims["iss"]; ok {
 		t.Fatal("the pre-authorized flow has no named holder, so the proof carries no iss")
 	}
-	if claims["iat"].(float64) != float64(now.Unix()) {
+	if mustAs[float64](t, claims["iat"]) != float64(now.Unix()) {
 		t.Fatalf("iat = %v", claims["iat"])
 	}
-	if claims["exp"].(float64) != float64(now.Add(ProofLife).Unix()) {
+	if mustAs[float64](t, claims["exp"]) != float64(now.Add(ProofLife).Unix()) {
 		t.Fatalf("exp = %v", claims["exp"])
 	}
 	// The signature is 64 bytes, which is the fixed size of ES256.

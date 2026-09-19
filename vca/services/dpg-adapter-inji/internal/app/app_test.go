@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
@@ -67,7 +68,9 @@ func TestBuildServesEveryBackendService(t *testing.T) {
 		if err != nil {
 			t.Fatalf("post %s: %v", path, err)
 		}
-		_ = resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
 		if resp.StatusCode == http.StatusNotFound {
 			t.Fatalf("%s is not served", path)
 		}
@@ -94,17 +97,24 @@ func TestOfferEndpointServesTheHostedOffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get the offer: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	if resp.Header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("cache control = %q", resp.Header.Get("Cache-Control"))
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, verr := io.ReadAll(resp.Body)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	var offer map[string]any
-	if err := json.Unmarshal(body, &offer); err != nil {
-		t.Fatalf("the offer is not JSON: %v", err)
+	if serr := json.Unmarshal(body, &offer); serr != nil {
+		t.Fatalf("the offer is not JSON: %v", serr)
 	}
 	if offer["credential_issuer"] == nil {
 		t.Fatalf("offer = %v", offer)
@@ -113,7 +123,11 @@ func TestOfferEndpointServesTheHostedOffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	defer missing.Body.Close()
+	defer func() {
+		if cerr := missing.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", missing.StatusCode)
 	}

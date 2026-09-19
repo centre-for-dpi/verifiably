@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
@@ -18,7 +20,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const testdata = "../../testdata"
@@ -348,8 +349,8 @@ func TestCreateOfferHostsTheAuthorizationCodeOffer(t *testing.T) {
 	if err := json.Unmarshal([]byte(document), &offer); err != nil {
 		t.Fatalf("the offer document is not JSON: %v", err)
 	}
-	grants, _ := offer["grants"].(map[string]any)
-	grant, _ := grants["authorization_code"].(map[string]any)
+	grants := mustAs[map[string]any](t, offer["grants"])
+	grant := mustAs[map[string]any](t, grants["authorization_code"])
 	if grant["authorization_server"] != "https://esignet.example/v1/esignet" {
 		t.Fatalf("grant = %v", grant)
 	}
