@@ -28,8 +28,8 @@ func TestStoreLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	if _, err := st.Create(source.Source{}, now); !errors.Is(err, source.ErrInvalid) {
-		t.Fatalf("invalid create: %v", err)
+	if _, serr := st.Create(source.Source{}, now); !errors.Is(serr, source.ErrInvalid) {
+		t.Fatalf("invalid create: %v", serr)
 	}
 	b, err := st.Create(csvSource("b"), now.Add(time.Hour))
 	if err != nil {
@@ -89,8 +89,8 @@ func TestFileBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Create(csvSource("a"), time.Now()); err != nil {
-		t.Fatal(err)
+	if _, serr := st.Create(csvSource("a"), time.Now()); serr != nil {
+		t.Fatal(serr)
 	}
 	again, err := Open(sharedstore.FileDoc(path))
 	if err != nil {

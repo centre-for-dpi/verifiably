@@ -56,7 +56,8 @@ func IssuerKey(url string) string {
 // PutIssuer writes one issuer record.
 func (s *Store) PutIssuer(ctx context.Context, issuer catalog.Issuer) error {
 	// The record holds strings, numbers, and times, so it always writes.
-	data, _ := json.Marshal(issuer)
+	data, ignored2 := json.Marshal(issuer)
+	_ = ignored2
 	return s.kv.Put(ctx, IssuerKey(issuer.CredentialIssuer), data)
 }
 
@@ -115,7 +116,8 @@ func TemplateKey(id string, version int32) string {
 // stored version.
 func (s *Store) PutTemplate(ctx context.Context, t template.Template) error {
 	// The record holds strings, numbers, and times, so it always writes.
-	data, _ := json.Marshal(t)
+	data, ignored := json.Marshal(t)
+	_ = ignored
 	key := TemplateKey(t.ID, t.Version)
 	if err := s.kv.CompareAndSwap(ctx, key, nil, data); err != nil {
 		if errors.Is(err, store.ErrConflict) {
@@ -158,7 +160,7 @@ func (s *Store) Versions(ctx context.Context, id string) ([]int32, error) {
 	}
 	out := make([]int32, 0, len(keys))
 	for _, key := range keys {
-		n, err := strconv.Atoi(strings.TrimPrefix(key, TemplatePrefix+id+"/v"))
+		n, err := strconv.ParseInt(strings.TrimPrefix(key, TemplatePrefix+id+"/v"), 10, 32)
 		if err != nil {
 			continue
 		}

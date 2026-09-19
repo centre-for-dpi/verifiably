@@ -9,12 +9,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
@@ -25,7 +28,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/lookup"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/publish"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DefaultPageSize is the page size when the request gives none.
@@ -126,8 +128,8 @@ func (s *Service) UpsertEntry(ctx context.Context, req *connect.Request[trustv1.
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if e.DID != "" && s.opts.Resolver != nil {
-		if _, err := s.opts.Resolver.Resolve(ctx, e.DID); err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("service: the DID %s does not resolve: %w", e.DID, err))
+		if _, serr := s.opts.Resolver.Resolve(ctx, e.DID); serr != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("service: the DID %s does not resolve: %w", e.DID, serr))
 		}
 	}
 	stored, _, err := s.opts.Store.Upsert(e, s.opts.Now())
@@ -251,7 +253,7 @@ func (s *Service) Publish(_ context.Context, req *connect.Request[trustv1.Publis
 		resp.Publications = append(resp.Publications, &trustv1.PublishResponse_Publication{
 			Method:      methodProto(p.Method),
 			Url:         p.URL,
-			EntryCount:  int32(p.EntryCount),
+			EntryCount:  toInt32(int64(p.EntryCount)),
 			PublishedAt: timestamppb.New(p.PublishedAt),
 			KeyId:       p.KeyID,
 		})
@@ -362,4 +364,15 @@ func outcomeProto(o lookup.Outcome) trustv1.TrustLookupResponse_Outcome {
 		return trustv1.TrustLookupResponse_OUTCOME_UNKNOWN
 	}
 	return trustv1.TrustLookupResponse_OUTCOME_UNAVAILABLE
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

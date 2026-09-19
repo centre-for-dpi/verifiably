@@ -12,11 +12,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -25,7 +28,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/metadata"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/record"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DefaultPageSize is the page size when the request gives none.
@@ -142,7 +144,8 @@ func (s *Service) Publish(ctx context.Context, req *connect.Request[schemav1.Pub
 // configuration id of each format.
 func (s *Service) register(ctx context.Context, r record.Record) (map[string]string, error) {
 	ids := map[string]string{}
-	display, _ := json.Marshal(metadata.Display(r.Display))
+	display, ignored := json.Marshal(metadata.Display(r.Display))
+	_ = ignored
 	for _, f := range r.Formats {
 		id := record.ConfigurationID(r.Type, f)
 		if s.opts.Backend != nil {
@@ -326,7 +329,7 @@ func (s *Service) GetVct(_ context.Context, req *connect.Request[schemav1.GetVct
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&schemav1.GetVctResponse{TypeMetadata: string(doc), SchemaId: r.ID, Version: int32(r.Version)}), nil
+	return connect.NewResponse(&schemav1.GetVctResponse{TypeMetadata: string(doc), SchemaId: r.ID, Version: toInt32(int64(r.Version))}), nil
 }
 
 // ListVersions returns every version of one schema, newest first.
@@ -389,4 +392,15 @@ func storeError(err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	return connect.NewError(connect.CodeInternal, err)
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

@@ -19,7 +19,7 @@ func clock() func() time.Time { return func() time.Time { return at } }
 func TestCheckReportsAReadyService(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set(health.VersionHeader, "1.2.3")
-		_, _ = w.Write([]byte("ready\n"))
+		mustWrite(t, w, []byte("ready\n"))
 	}))
 	defer srv.Close()
 	p := health.New(nil, time.Second, clock())
@@ -34,7 +34,7 @@ func TestCheckReportsAReadyService(t *testing.T) {
 
 func TestCheckReadsTheVersionFromTheBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("ready version=0.9.1 providers=2"))
+		mustWrite(t, w, []byte("ready version=0.9.1 providers=2"))
 	}))
 	defer srv.Close()
 	res := health.New(nil, 0, nil).Check(context.Background(), health.Target{Name: "issuer-auth", URL: srv.URL})
@@ -93,7 +93,7 @@ func TestCheckReportsATimeout(t *testing.T) {
 
 func TestCheckAllSortsByName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("ready"))
+		mustWrite(t, w, []byte("ready"))
 	}))
 	defer srv.Close()
 	p := health.New(nil, time.Second, clock())

@@ -15,8 +15,10 @@ import (
 func TestCreateRequestBuildsTheWalletUri(t *testing.T) {
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		_, _ = w.Write([]byte(`{"transactionId":"tx-1","requestId":"req-1","expiresAt":1777000000}`))
+		if cerr := json.NewDecoder(r.Body).Decode(&body); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
+		mustWrite(t, w, []byte(`{"transactionId":"tx-1","requestId":"req-1","expiresAt":1777000000}`))
 	}))
 	defer srv.Close()
 	v := NewVerify(newHTTP(srv), "did:web:verifier.example:v1:verify", "https://verify.example")
@@ -57,7 +59,7 @@ func TestCreateRequestBuildsTheWalletUri(t *testing.T) {
 
 func TestCreateRequestUsesTheBaseUrlWhenNoPublicUrlIsSet(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"transactionId":"tx","requestId":"req"}`))
+		mustWrite(t, w, []byte(`{"transactionId":"tx","requestId":"req"}`))
 	}))
 	defer srv.Close()
 	v := NewVerify(newHTTP(srv), "did:x", "")
@@ -73,7 +75,7 @@ func TestCreateRequestUsesTheBaseUrlWhenNoPublicUrlIsSet(t *testing.T) {
 func TestCreateRequestChecksTheDefinitionAndTheAnswer(t *testing.T) {
 	body := `{"transactionId":"tx","requestId":""}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	v := NewVerify(newHTTP(srv), "did:x", "")
@@ -100,7 +102,7 @@ func TestResultReadsTheTransaction(t *testing.T) {
 	var path string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
-		_, _ = w.Write([]byte(`{"transactionId":"tx-1","vpResultStatus":"SUCCESS","vcResults":[]}`))
+		mustWrite(t, w, []byte(`{"transactionId":"tx-1","vpResultStatus":"SUCCESS","vcResults":[]}`))
 	}))
 	defer srv.Close()
 	v := NewVerify(newHTTP(srv), "did:x", "")

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"

@@ -436,21 +436,30 @@ func Hash(value string) string {
 // NewID returns a random record id of 22 characters.
 func NewID() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // NewSecret returns a new API key secret. The value starts with vca_.
 func NewSecret() string {
 	b := make([]byte, 32)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return SecretPrefix + base64.RawURLEncoding.EncodeToString(b)
 }
 
 // NewBootstrapToken returns a random bootstrap token (ADR-010 decision 4).
 func NewBootstrapToken() string {
 	b := make([]byte, 24)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 

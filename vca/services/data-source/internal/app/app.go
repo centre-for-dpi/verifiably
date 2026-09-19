@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/authz"

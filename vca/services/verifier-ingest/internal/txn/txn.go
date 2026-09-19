@@ -175,7 +175,8 @@ func (s *Store) Put(ctx context.Context, t Transaction) error {
 		return fmt.Errorf("txn: the transaction id %q is not valid", t.ID)
 	}
 	// The record holds strings, numbers, bytes, and times, so it writes.
-	data, _ := json.Marshal(t)
+	data, ignored := json.Marshal(t)
+	_ = ignored
 	return s.kv.Put(ctx, key(t.ID), data)
 }
 

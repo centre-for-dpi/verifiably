@@ -88,7 +88,9 @@ func offerHandler(svc *service.Service) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write([]byte(document))
+		if _, err := w.Write([]byte(document)); err != nil {
+			return
+		}
 	}
 }
 

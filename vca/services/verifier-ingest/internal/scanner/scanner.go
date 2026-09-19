@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -217,17 +218,17 @@ func readInput(r *http.Request) ([]byte, string, error) {
 	contentType := r.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		if err := r.ParseMultipartForm(MaxUploadBytes); err != nil {
-			return nil, "", errors.New("The upload is too large or not a form.")
+			return nil, "", errors.New("the upload is too large or not a form")
 		}
 		file, header, err := r.FormFile("upload")
 		if err != nil {
 			return textOf(r)
 		}
-		defer func() { _ = file.Close() }()
+		defer func() { ignoredClose := file.Close(); _ = ignoredClose }()
 		return readFile(file, header)
 	}
 	if err := r.ParseForm(); err != nil {
-		return nil, "", errors.New("The form could not be read.")
+		return nil, "", errors.New("the form could not be read")
 	}
 	return textOf(r)
 }
@@ -236,7 +237,7 @@ func readInput(r *http.Request) ([]byte, string, error) {
 func textOf(r *http.Request) ([]byte, string, error) {
 	text := strings.TrimSpace(r.PostFormValue("payload"))
 	if text == "" {
-		return nil, "", errors.New("The page received no file and no text.")
+		return nil, "", errors.New("the page received no file and no text")
 	}
 	return []byte(text), "", nil
 }
@@ -245,13 +246,13 @@ func textOf(r *http.Request) ([]byte, string, error) {
 func readFile(file multipart.File, header *multipart.FileHeader) ([]byte, string, error) {
 	data, err := io.ReadAll(io.LimitReader(file, MaxUploadBytes+1))
 	if err != nil {
-		return nil, "", errors.New("The file could not be read.")
+		return nil, "", errors.New("the file could not be read")
 	}
 	if len(data) > MaxUploadBytes {
-		return nil, "", fmt.Errorf("The file is larger than %d bytes.", MaxUploadBytes)
+		return nil, "", fmt.Errorf("the file is larger than %d bytes", MaxUploadBytes)
 	}
 	if len(data) == 0 {
-		return nil, "", errors.New("The file is empty.")
+		return nil, "", errors.New("the file is empty")
 	}
 	return data, header.Header.Get("Content-Type"), nil
 }

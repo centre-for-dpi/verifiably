@@ -214,7 +214,8 @@ func (Publisher) Publish(in publish.Input) (publish.Publication, error) {
 	}
 	list := Build(in)
 	// The list holds only strings, numbers, and times, so Marshal cannot fail.
-	body, _ := json.Marshal(list)
+	body, ignored := json.Marshal(list)
+	_ = ignored
 	claims := Claims{
 		Issuer:    in.Issuer.ID,
 		IssuedAt:  list.SchemeInformation.IssueDateTime.Unix(),

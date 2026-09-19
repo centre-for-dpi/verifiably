@@ -170,7 +170,7 @@ func TestAllowlistAccepts(t *testing.T) {
 
 func TestFetch(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(" token.value.here \n"))
+		mustWrite(t, w, []byte(" token.value.here \n"))
 	}))
 	defer s.Close()
 	f := oid4vp.Fetcher{Allow: oid4vp.Allowlist{Hosts: []string{"127.0.0.1"}, AllowPlainHTTP: true}}
@@ -186,7 +186,7 @@ func TestFetch(t *testing.T) {
 func TestFetchLimitsAndErrors(t *testing.T) {
 	allow := oid4vp.Allowlist{Hosts: []string{"127.0.0.1"}, AllowPlainHTTP: true}
 	big := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(strings.Repeat("a", 100)))
+		mustWrite(t, w, []byte(strings.Repeat("a", 100)))
 	}))
 	defer big.Close()
 	small := oid4vp.Fetcher{Allow: allow, MaxBytes: 10}

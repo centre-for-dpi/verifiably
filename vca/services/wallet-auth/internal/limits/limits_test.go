@@ -18,18 +18,18 @@ func TestMemoryLimiter(t *testing.T) {
 	m := limits.NewMemory(2, time.Minute, time.Minute, func() time.Time { return now })
 	ctx := context.Background()
 	for i := 0; i < 2; i++ {
-		if ok, _ := m.Allow(ctx, "a"); !ok {
+		if ok, ierr := m.Allow(ctx, "a"); ierr != nil || !ok {
 			t.Fatalf("request %d blocked", i)
 		}
 	}
-	if ok, _ := m.Allow(ctx, "a"); ok {
+	if ok, ierr := m.Allow(ctx, "a"); ierr != nil || ok {
 		t.Fatal("third request allowed")
 	}
-	if ok, _ := m.Allow(ctx, "b"); !ok {
+	if ok, ierr := m.Allow(ctx, "b"); ierr != nil || !ok {
 		t.Fatal("other key blocked")
 	}
 	now = now.Add(2 * time.Minute)
-	if ok, _ := m.Allow(ctx, "a"); !ok {
+	if ok, ierr := m.Allow(ctx, "a"); ierr != nil || !ok {
 		t.Fatal("new window blocked")
 	}
 	if limits.NewMemory(0, 0, 0, nil) == nil {
@@ -45,24 +45,34 @@ func TestMemoryOTP(t *testing.T) {
 	if err != nil || len(c) != 6 {
 		t.Fatalf("%q %v", c, err)
 	}
-	if ok, _ := m.Check(ctx, "phone", "000000"+c); ok {
+	if ok, ierr := m.Check(ctx, "phone", "000000"+c); ierr != nil || ok {
 		t.Fatal("wrong code accepted")
 	}
-	c, _ = m.Issue(ctx, "phone")
-	if ok, _ := m.Check(ctx, "phone", c); !ok {
+	c, issueErr3 := m.Issue(ctx, "phone")
+	if issueErr3 != nil {
+		t.Fatalf("unexpected error: %v", issueErr3)
+	}
+	if ok, ierr := m.Check(ctx, "phone", c); ierr != nil || !ok {
 		t.Fatal("code rejected")
 	}
-	if ok, _ := m.Check(ctx, "phone", c); ok {
+	if ok, ierr := m.Check(ctx, "phone", c); ierr != nil || ok {
 		t.Fatal("code reused")
 	}
-	c, _ = m.Issue(ctx, "phone")
-	_, _ = m.Issue(ctx, "old")
+	c, issueErr2 := m.Issue(ctx, "phone")
+	if issueErr2 != nil {
+		t.Fatalf("unexpected error: %v", issueErr2)
+	}
+	if _, issueErr1 := m.Issue(ctx, "old"); issueErr1 != nil {
+		t.Fatalf("unexpected error: %v", issueErr1)
+	}
 	now = now.Add(2 * time.Minute)
-	if ok, _ := m.Check(ctx, "phone", c); ok {
+	if ok, ierr := m.Check(ctx, "phone", c); ierr != nil || ok {
 		t.Fatal("expired code accepted")
 	}
-	_, _ = m.Issue(ctx, "new")
-	if ok, _ := m.Check(ctx, "old", "x"); ok {
+	if _, issueErr := m.Issue(ctx, "new"); issueErr != nil {
+		t.Fatalf("unexpected error: %v", issueErr)
+	}
+	if ok, ierr := m.Check(ctx, "old", "x"); ierr != nil || ok {
 		t.Fatal("swept code accepted")
 	}
 }

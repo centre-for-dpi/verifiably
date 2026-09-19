@@ -174,13 +174,13 @@ func TestFetchHTTP(t *testing.T) {
 		case "/redirect":
 			http.Redirect(w, r, "/rows", http.StatusFound)
 		case "/big":
-			w.Write([]byte(`[{"a":"` + strings.Repeat("x", 100) + `"}]`))
+			mustWrite(t, w, []byte(`[{"a":"`+strings.Repeat("x", 100)+`"}]`))
 		case "/fail":
 			w.WriteHeader(http.StatusBadGateway)
 		case "/slow":
 			time.Sleep(300 * time.Millisecond)
 		default:
-			w.Write([]byte(`{"rows":[{"id":"1"}]}`))
+			mustWrite(t, w, []byte(`{"rows":[{"id":"1"}]}`))
 		}
 	}))
 	defer srv.Close()
@@ -220,9 +220,14 @@ func TestFetchHTTP(t *testing.T) {
 		})
 	}
 	// A refused connection reports the dial error.
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	ln, verr := net.Listen("tcp", "127.0.0.1:0")
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	closed := "http://" + ln.Addr().String()
-	ln.Close()
+	if cerr := ln.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	if _, err := f.Fetch(context.Background(), Request{URL: closed}); err == nil {
 		t.Fatal("closed port")
 	}
@@ -233,7 +238,10 @@ func TestFetchHTTP(t *testing.T) {
 
 func selfSigned(t *testing.T) (tls.Certificate, *x509.CertPool, []byte, []byte) {
 	t.Helper()
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, verr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "client"},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
@@ -244,10 +252,16 @@ func selfSigned(t *testing.T) (tls.Certificate, *x509.CertPool, []byte, []byte) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyDER, _ := x509.MarshalECPrivateKey(key)
+	keyDER, verr := x509.MarshalECPrivateKey(key)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-	cert, _ := tls.X509KeyPair(certPEM, keyPEM)
+	cert, verr := tls.X509KeyPair(certPEM, keyPEM)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(certPEM)
 	return cert, pool, certPEM, keyPEM
@@ -260,9 +274,9 @@ func TestFetchTLSAndMTLS(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		w.Write([]byte(`[{"ok":"yes"}]`))
+		mustWrite(t, w, []byte(`[{"ok":"yes"}]`))
 	}))
-	srv.TLS = &tls.Config{ClientAuth: tls.VerifyClientCertIfGiven, ClientCAs: clientPool}
+	srv.TLS = &tls.Config{ClientAuth: tls.VerifyClientCertIfGiven, ClientCAs: clientPool, MinVersion: tls.VersionTLS12}
 	srv.StartTLS()
 	defer srv.Close()
 	roots := x509.NewCertPool()

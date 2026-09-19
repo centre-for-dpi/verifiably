@@ -9,11 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
@@ -22,8 +24,10 @@ import (
 // randomID returns a random identifier.
 func randomID() string {
 	b := make([]byte, 16)
-	// crypto/rand never fails on the platforms Go 1.24 and later support.
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -181,7 +185,7 @@ func (s *Service) stagedClaims(ctx context.Context, spec *backendv1.IssueSpec) (
 	cfg, ok := meta.Configurations[spec.GetConfigurationId()]
 	if !ok {
 		return inji.Configuration{}, nil, connect.NewError(connect.CodeNotFound, fmt.Errorf(
-			"Inji Certify does not advertise the configuration %q", spec.GetConfigurationId()))
+			"the configuration %q is not advertised by Inji Certify", spec.GetConfigurationId()))
 	}
 	subject := map[string]any{}
 	if raw := strings.TrimSpace(spec.GetSubjectData()); raw != "" {
@@ -192,7 +196,7 @@ func (s *Service) stagedClaims(ctx context.Context, spec *backendv1.IssueSpec) (
 	}
 	if len(subject) == 0 {
 		return inji.Configuration{}, nil, connect.NewError(connect.CodeInvalidArgument,
-			errors.New("Inji Certify rejects an empty claim set"))
+			errors.New("the claim set is empty, and Inji Certify rejects it"))
 	}
 	status := inji.StatusEntry{}
 	if b := spec.GetStatus(); b != nil {
@@ -299,7 +303,7 @@ func (s *Service) IssueBatch(
 	}
 	out := &backendv1.IssueBatchResponse{Items: make([]*backendv1.IssueBatchResponse_Item, 0, len(specs))}
 	for i, spec := range specs {
-		item := &backendv1.IssueBatchResponse_Item{Position: int32(i)}
+		item := &backendv1.IssueBatchResponse_Item{Position: toInt32(int64(i))}
 		credential, err := s.issueOne(ctx, spec)
 		if err != nil {
 			item.Error = &commonv1.Error{
@@ -396,4 +400,15 @@ func parseToken(token string) (int, error) {
 		return 0, errors.New("service: bad page token")
 	}
 	return n, nil
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

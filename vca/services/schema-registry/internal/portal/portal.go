@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
@@ -369,7 +370,7 @@ func (p *Portal) filterForm(q string, state schemav1.State, format commonv1.Form
 
 // version reads the version query value. Zero means the latest version.
 func version(r *http.Request) int32 {
-	n, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("version")))
+	n, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("version")), 10, 32)
 	if err != nil || n < 0 {
 		return 0
 	}
@@ -582,9 +583,9 @@ func (p *Portal) versions(w http.ResponseWriter, r *http.Request) error {
 	list := resp.Msg.GetSchemas()
 	rows := make([]components.Row, 0, len(list))
 	for _, m := range list {
-		badge, err := p.opts.Kit.HTML("badge", components.Badge{Status: StateStatus(m.GetState()), Text: StateText(m.GetState())})
-		if err != nil {
-			return err
+		badge, badgeErr := p.opts.Kit.HTML("badge", components.Badge{Status: StateStatus(m.GetState()), Text: StateText(m.GetState())})
+		if badgeErr != nil {
+			return badgeErr
 		}
 		rows = append(rows, components.Row{
 			{HTML: link(p.detailURL(m.GetId(), m.GetVersion()), "Version "+strconv.Itoa(int(m.GetVersion())))},
@@ -662,7 +663,7 @@ func formVersion(r *http.Request) (int32, error) {
 	if raw == "" {
 		return 0, nil
 	}
-	n, err := strconv.Atoi(raw)
+	n, err := strconv.ParseInt(raw, 10, 32)
 	if err != nil || n < 0 {
 		return 0, connect.NewError(connect.CodeInvalidArgument, errors.New("portal: the version must be a number"))
 	}

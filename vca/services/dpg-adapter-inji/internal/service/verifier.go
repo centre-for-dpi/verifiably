@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
@@ -35,7 +36,7 @@ func (s *Service) CreateRequest(
 	definition := strings.TrimSpace(req.Msg.GetPresentationDefinition())
 	if definition == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(
-			"Inji Verify 0.16.0 reads a Presentation Exchange definition only; set presentation_definition"))
+			"set presentation_definition, because Inji Verify 0.16.0 reads a Presentation Exchange definition only"))
 	}
 	nonce := req.Msg.GetNonce()
 	if nonce == "" {

@@ -55,12 +55,16 @@ func TestBuildWiresEveryRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("jwks: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	var set struct {
 		Keys []map[string]any `json:"keys"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&set); err != nil {
-		t.Fatalf("jwks body: %v", err)
+	if serr := json.NewDecoder(res.Body).Decode(&set); serr != nil {
+		t.Fatalf("jwks body: %v", serr)
 	}
 	if len(set.Keys) != 1 || set.Keys[0]["alg"] != "ES256" {
 		t.Fatalf("jwks = %+v", set.Keys)
@@ -69,7 +73,11 @@ func TestBuildWiresEveryRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assets: %v", err)
 	}
-	defer static.Body.Close()
+	defer func() {
+		if cerr := static.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if static.StatusCode != http.StatusOK {
 		t.Fatalf("assets status = %d", static.StatusCode)
 	}
@@ -77,7 +85,11 @@ func TestBuildWiresEveryRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rpc: %v", err)
 	}
-	defer rpc.Body.Close()
+	defer func() {
+		if cerr := rpc.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if rpc.StatusCode != http.StatusOK {
 		t.Fatalf("rpc status = %d", rpc.StatusCode)
 	}
@@ -95,11 +107,11 @@ func TestBuildKeepsTheStateOnDisk(t *testing.T) {
 	if first.BootstrapToken != cfg.BootstrapToken {
 		t.Fatalf("token = %q", first.BootstrapToken)
 	}
-	if _, err := first.Login.Providers().Put(oidcflow.Provider{
+	if _, serr := first.Login.Providers().Put(oidcflow.Provider{
 		ID: "kept", DiscoveryURL: "https://idp.example/.well-known/openid-configuration",
 		ClientID: "client", Enabled: true,
-	}); err != nil {
-		t.Fatalf("Put: %v", err)
+	}); serr != nil {
+		t.Fatalf("Put: %v", serr)
 	}
 	second, err := app.Build(cfg, app.Deps{Log: quiet()})
 	if err != nil {
@@ -143,8 +155,8 @@ func TestBuildReadsASigningKeyFile(t *testing.T) {
 		t.Fatalf("EncodeKeyPEM: %v", err)
 	}
 	path := filepath.Join(t.TempDir(), "key.pem")
-	if err := os.WriteFile(path, pem, 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+	if serr := os.WriteFile(path, pem, 0o600); serr != nil {
+		t.Fatalf("WriteFile: %v", serr)
 	}
 	cfg := baseConfig()
 	cfg.SigningKeyPath = path
@@ -205,15 +217,15 @@ func TestBootstrapIsSkippedWhenAnAdminExists(t *testing.T) {
 		t.Fatal("the first start printed no token")
 	}
 	// Bind an admin, then start again. The second start prints no token.
-	if _, err := a.Login.OnboardAdmin(context.Background(), "", "", ""); err == nil {
+	if _, serr := a.Login.OnboardAdmin(context.Background(), "", "", ""); serr == nil {
 		t.Fatal("OnboardAdmin accepted an empty request")
 	}
 	kv, err := store.File(filepath.Join(dir, "records"))
 	if err != nil {
 		t.Fatalf("store.File: %v", err)
 	}
-	if err := kv.Put(context.Background(), "admins/manual", []byte(`{"issuer":"https://idp.example","subject":"user"}`)); err != nil {
-		t.Fatalf("Put: %v", err)
+	if serr := kv.Put(context.Background(), "admins/manual", []byte(`{"issuer":"https://idp.example","subject":"user"}`)); serr != nil {
+		t.Fatalf("Put: %v", serr)
 	}
 	second, err := app.Build(cfg, app.Deps{Log: quiet()})
 	if err != nil {
@@ -239,7 +251,11 @@ func TestBuildFillsTheOptionalDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/admin/" {
 		t.Fatalf("status = %d location = %q", res.StatusCode, res.Header.Get("Location"))
 	}
@@ -252,8 +268,8 @@ func TestBuildReportsNoTokenWhenTheBootstrapIsSpent(t *testing.T) {
 		t.Fatalf("store.File: %v", err)
 	}
 	spent := `{"hash":"0000","used_at":"2026-01-01T00:00:00Z"}`
-	if err := kv.Put(context.Background(), "bootstrap", []byte(spent)); err != nil {
-		t.Fatalf("Put: %v", err)
+	if serr := kv.Put(context.Background(), "bootstrap", []byte(spent)); serr != nil {
+		t.Fatalf("Put: %v", serr)
 	}
 	cfg := baseConfig()
 	cfg.StateDir = dir
@@ -281,19 +297,31 @@ func TestBuildPrintsNoTokenWhenTheSameTokenIsSpent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store.File: %v", err)
 	}
-	token := "a-spent-bootstrap-token-value"
-	doc := `{"hash":"` + records.Hash(token) + `","used_at":"2026-01-01T00:00:00Z"}`
-	if err := kv.Put(context.Background(), "bootstrap", []byte(doc)); err != nil {
-		t.Fatalf("Put: %v", err)
+	spent := "a-spent-bootstrap-value"
+	doc := `{"hash":"` + records.Hash(spent) + `","used_at":"2026-01-01T00:00:00Z"}`
+	if serr := kv.Put(context.Background(), "bootstrap", []byte(doc)); serr != nil {
+		t.Fatalf("Put: %v", serr)
 	}
 	cfg := baseConfig()
 	cfg.StateDir = dir
-	cfg.BootstrapToken = token
+	cfg.BootstrapToken = spent
 	a, err := app.Build(cfg, app.Deps{Log: quiet()})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	if a.BootstrapToken != "" {
 		t.Fatal("the start printed a token that is already spent")
+	}
+}
+
+func TestBuildReportsABootstrapWriteFault(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "records", "bootstrap.json"), 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	cfg := baseConfig()
+	cfg.StateDir = dir
+	if _, err := app.Build(cfg, app.Deps{Log: quiet()}); err == nil {
+		t.Fatal("a bootstrap write fault must fail the build")
 	}
 }

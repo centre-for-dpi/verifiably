@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/delegation"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
@@ -29,7 +31,6 @@ import (
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Trust is the trust outcome of one issuer, with its display name.

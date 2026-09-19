@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -51,7 +52,10 @@ func newService(t *testing.T, backend backendv1connect.IssuerBackendServiceClien
 	if err != nil {
 		t.Fatal(err)
 	}
-	fb, _ := backend.(*fakeBackend)
+	fb, ok := backend.(*fakeBackend)
+	if backend != nil && !ok {
+		t.Fatalf("want a fake backend, got %T", backend)
+	}
 	s, err := New(Options{Store: st, Backend: backend, Metadata: metadata.Options{BaseURL: "https://r"}, PageSizeMax: 2, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +98,10 @@ func TestNew(t *testing.T) {
 	if s.MetadataOptions().Now != now {
 		t.Fatal("now")
 	}
-	st, _ := store.Open(sharedstore.MemoryDoc(), store.Options{})
+	st, verr := store.Open(sharedstore.MemoryDoc(), store.Options{})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if d, err := New(Options{Store: st}); err != nil || d.opts.PageSizeMax != DefaultPageSize || d.opts.Now == nil {
 		t.Fatal("defaults")
 	}
@@ -114,20 +121,20 @@ func TestCreateUpdateGet(t *testing.T) {
 	if err != nil || up.Msg.GetSchema().GetVersion() != 2 {
 		t.Fatalf("update %v %v", up, err)
 	}
-	if _, err := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: &schemav1.Schema{Id: "Bad Id"}})); code(err) != connect.CodeInvalidArgument {
+	if _, serr := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: &schemav1.Schema{Id: "Bad Id"}})); code(serr) != connect.CodeInvalidArgument {
 		t.Fatal("bad id")
 	}
-	if _, err := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: &schemav1.Schema{Id: "degree"}})); code(err) != connect.CodeInvalidArgument {
+	if _, serr := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: &schemav1.Schema{Id: "degree"}})); code(serr) != connect.CodeInvalidArgument {
 		t.Fatal("invalid update")
 	}
-	if _, err := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: schemaWithID("ghost")})); code(err) != connect.CodeNotFound {
+	if _, serr := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: schemaWithID("ghost")})); code(serr) != connect.CodeNotFound {
 		t.Fatal("missing schema")
 	}
 	got, err := s.Get(ctx, connect.NewRequest(&schemav1.GetRequest{Id: "degree"}))
 	if err != nil || got.Msg.GetSchema().GetVersion() != 2 {
 		t.Fatal("get latest")
 	}
-	if _, err := s.Get(ctx, connect.NewRequest(&schemav1.GetRequest{Id: "degree", Version: 9})); code(err) != connect.CodeNotFound {
+	if _, serr := s.Get(ctx, connect.NewRequest(&schemav1.GetRequest{Id: "degree", Version: 9})); code(serr) != connect.CodeNotFound {
 		t.Fatal("get missing")
 	}
 	versions, err := s.ListVersions(ctx, connect.NewRequest(&schemav1.ListVersionsRequest{Id: "degree"}))
@@ -160,26 +167,26 @@ func TestPublishAndRetire(t *testing.T) {
 		t.Fatalf("calls %v", fb.calls)
 	}
 	var display []map[string]any
-	if err := json.Unmarshal([]byte(fb.calls[0].GetDisplay()), &display); err != nil || display[0]["name"] != "Degree card" {
-		t.Fatalf("display %s %v", fb.calls[0].GetDisplay(), err)
+	if serr := json.Unmarshal([]byte(fb.calls[0].GetDisplay()), &display); serr != nil || display[0]["name"] != "Degree card" {
+		t.Fatalf("display %s %v", fb.calls[0].GetDisplay(), serr)
 	}
-	if _, err := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree"})); code(err) != connect.CodeFailedPrecondition {
-		t.Fatalf("no draft left: %v", err)
+	if _, serr := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree"})); code(serr) != connect.CodeFailedPrecondition {
+		t.Fatalf("no draft left: %v", serr)
 	}
-	if _, err := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree", Version: 1})); code(err) != connect.CodeFailedPrecondition {
+	if _, serr := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree", Version: 1})); code(serr) != connect.CodeFailedPrecondition {
 		t.Fatal("published version")
 	}
-	if _, err := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree", Version: 5})); code(err) != connect.CodeNotFound {
+	if _, serr := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree", Version: 5})); code(serr) != connect.CodeNotFound {
 		t.Fatal("missing version")
 	}
-	if _, err := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "ghost"})); code(err) != connect.CodeNotFound {
+	if _, serr := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "ghost"})); code(serr) != connect.CodeNotFound {
 		t.Fatal("missing schema")
 	}
 	vct, err := s.GetVct(ctx, connect.NewRequest(&schemav1.GetVctRequest{Vct: "Degree"}))
 	if err != nil || vct.Msg.GetSchemaId() != "degree" || vct.Msg.GetVersion() != 1 || !strings.Contains(vct.Msg.GetTypeMetadata(), `"vct":"https://r/.well-known/vct/Degree"`) {
 		t.Fatalf("vct %v %v", vct, err)
 	}
-	if _, err := s.GetVct(ctx, connect.NewRequest(&schemav1.GetVctRequest{Vct: "ghost"})); code(err) != connect.CodeNotFound {
+	if _, serr := s.GetVct(ctx, connect.NewRequest(&schemav1.GetVctRequest{Vct: "ghost"})); code(serr) != connect.CodeNotFound {
 		t.Fatal("vct missing")
 	}
 	meta, err := s.GetIssuerMetadata(ctx, connect.NewRequest(&schemav1.GetIssuerMetadataRequest{}))
@@ -194,20 +201,20 @@ func TestPublishAndRetire(t *testing.T) {
 		t.Fatalf("public %v %v", pubList, err)
 	}
 	// A second draft, published, then retire every published version.
-	if _, err := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: schemaWithID("degree")})); err != nil {
-		t.Fatal(err)
+	if _, serr := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: schemaWithID("degree")})); serr != nil {
+		t.Fatal(serr)
 	}
-	if _, err := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree", Version: 2})); err != nil {
-		t.Fatal(err)
+	if _, serr := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree", Version: 2})); serr != nil {
+		t.Fatal(serr)
 	}
-	if _, err := s.Retire(ctx, connect.NewRequest(&schemav1.RetireRequest{Id: "degree", Version: 9})); code(err) != connect.CodeNotFound {
+	if _, serr := s.Retire(ctx, connect.NewRequest(&schemav1.RetireRequest{Id: "degree", Version: 9})); code(serr) != connect.CodeNotFound {
 		t.Fatal("retire missing version")
 	}
 	ret, err := s.Retire(ctx, connect.NewRequest(&schemav1.RetireRequest{Id: "degree", Version: 2, Reason: "test"}))
 	if err != nil || len(ret.Msg.GetSchemas()) != 1 || ret.Msg.GetSchemas()[0].GetState() != schemav1.State_STATE_RETIRED {
 		t.Fatalf("retire one %v %v", ret, err)
 	}
-	if _, err := s.Retire(ctx, connect.NewRequest(&schemav1.RetireRequest{Id: "degree", Version: 2})); code(err) != connect.CodeFailedPrecondition {
+	if _, serr := s.Retire(ctx, connect.NewRequest(&schemav1.RetireRequest{Id: "degree", Version: 2})); code(serr) != connect.CodeFailedPrecondition {
 		t.Fatal("retire twice")
 	}
 	ret, err = s.Retire(ctx, connect.NewRequest(&schemav1.RetireRequest{Id: "degree"}))
@@ -260,24 +267,33 @@ func TestListSearchAndPaging(t *testing.T) {
 	if err != nil || len(list.Msg.GetSchemas()) != 1 || list.Msg.GetPage().GetNextPageToken() != "" {
 		t.Fatalf("page 2 %v %v", list, err)
 	}
-	if list, _ := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{Page: &commonv1.Pagination{PageToken: "99"}})); len(list.Msg.GetSchemas()) != 0 {
+	if past, ierr := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{Page: &commonv1.Pagination{PageToken: "99"}})); ierr != nil || len(past.Msg.GetSchemas()) != 0 {
 		t.Fatal("offset past the end")
 	}
-	if _, err := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{Page: &commonv1.Pagination{PageToken: "x"}})); code(err) != connect.CodeInvalidArgument {
+	if _, serr := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{Page: &commonv1.Pagination{PageToken: "x"}})); code(serr) != connect.CodeInvalidArgument {
 		t.Fatal("bad token")
 	}
-	list, _ = s.List(ctx, connect.NewRequest(&schemav1.ListRequest{State: schemav1.State_STATE_PUBLISHED}))
+	list, listErr2 := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{State: schemav1.State_STATE_PUBLISHED}))
+	if listErr2 != nil {
+		t.Fatalf("unexpected error: %v", listErr2)
+	}
 	if len(list.Msg.GetSchemas()) != 1 || list.Msg.GetSchemas()[0].GetId() != "beta" {
 		t.Fatal("state filter")
 	}
-	list, _ = s.List(ctx, connect.NewRequest(&schemav1.ListRequest{Format: commonv1.Format_FORMAT_MSO_MDOC}))
+	list, listErr1 := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{Format: commonv1.Format_FORMAT_MSO_MDOC}))
+	if listErr1 != nil {
+		t.Fatalf("unexpected error: %v", listErr1)
+	}
 	if len(list.Msg.GetSchemas()) != 0 {
 		t.Fatal("format filter")
 	}
-	if _, err := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{Format: commonv1.Format_FORMAT_LDP_VC_BBS})); code(err) != connect.CodeInvalidArgument {
+	if _, serr := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{Format: commonv1.Format_FORMAT_LDP_VC_BBS})); code(serr) != connect.CodeInvalidArgument {
 		t.Fatal("unsupported format")
 	}
-	list, _ = s.List(ctx, connect.NewRequest(&schemav1.ListRequest{TenantId: "t1"}))
+	list, listErr := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{TenantId: "t1"}))
+	if listErr != nil {
+		t.Fatalf("unexpected error: %v", listErr)
+	}
 	if len(list.Msg.GetSchemas()) != 0 {
 		t.Fatal("tenant filter")
 	}

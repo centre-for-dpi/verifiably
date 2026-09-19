@@ -295,8 +295,8 @@ func (s *Service) OnboardAdmin(ctx context.Context, providerID, idToken, bootstr
 	if err != nil {
 		return records.Admin{}, err
 	}
-	issuer, _ := claims["iss"].(string)
-	subject, _ := claims["sub"].(string)
+	issuer := claimString(claims, "iss")
+	subject := claimString(claims, "sub")
 	if issuer == "" || subject == "" {
 		return records.Admin{}, oidcflow.ErrSessionInvalid
 	}
@@ -341,19 +341,35 @@ func (s *Service) End(ctx context.Context, token string) (string, error) {
 		return "", err
 	}
 	s.log(ctx, claims.Subject, "admin.Logout", claims.Provider, true)
-	p, err := s.d.Providers.Get(claims.Provider)
-	if err != nil {
+	p, ok := s.knownProvider(claims.Provider)
+	if !ok {
 		return "", nil
 	}
 	post := ""
 	if s.d.Cfg.LogoutRedirect != "" {
 		post = s.d.Cfg.PublicURL + s.d.Cfg.LogoutRedirect
 	}
-	u, err := s.d.Flow.LogoutURL(ctx, p, s.takeHint(claims.SID), post)
+	return s.logoutURL(ctx, p, claims.SID, post), nil
+}
+
+// knownProvider returns one provider record. A record that is missing,
+// or a store fault, gives false.
+func (s *Service) knownProvider(id string) (oidcflow.Provider, bool) {
+	p, err := s.d.Providers.Get(id)
 	if err != nil {
-		return "", nil
+		return oidcflow.Provider{}, false
 	}
-	return u, nil
+	return p, true
+}
+
+// logoutURL returns the logout URL of the provider. A provider with no
+// logout endpoint, or a fault, gives an empty string.
+func (s *Service) logoutURL(ctx context.Context, p oidcflow.Provider, sid, post string) string {
+	u, err := s.d.Flow.LogoutURL(ctx, p, s.takeHint(sid), post)
+	if err != nil {
+		return ""
+	}
+	return u
 }
 
 // Session implements oidcflow.Logins.
@@ -450,7 +466,8 @@ func (s *Service) log(ctx context.Context, actor, action, target string, ok bool
 	if s.d.Audit == nil {
 		return
 	}
-	_, _ = s.d.Audit.Append(ctx, audit.Entry{Actor: actor, Action: action, Target: target, OK: ok})
+	_, ignored := s.d.Audit.Append(ctx, audit.Entry{Actor: actor, Action: action, Target: target, OK: ok})
+	_ = ignored
 }
 
 func (s *Service) takeBootstrap(state string) string {
@@ -495,9 +512,18 @@ func (s *Service) takeHint(sid string) string {
 
 // name returns the display name of a claim set.
 func name(claims map[string]any) string {
-	if v, _ := claims["name"].(string); v != "" {
+	if v := claimString(claims, "name"); v != "" {
 		return v
 	}
-	v, _ := claims["preferred_username"].(string)
-	return v
+	return claimString(claims, "preferred_username")
+}
+
+// claimString returns one claim as a string. A missing claim, or a claim
+// of another type, gives an empty string.
+func claimString(claims map[string]any, key string) string {
+	value, ok := claims[key].(string)
+	if !ok {
+		return ""
+	}
+	return value
 }

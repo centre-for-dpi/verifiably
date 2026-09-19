@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
@@ -68,8 +69,15 @@ func TestBuildServesTheChainHeadEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
+	body, verr := io.ReadAll(resp.Body)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if resp.StatusCode != http.StatusOK || strings.Count(string(body), ".") != 2 {
 		t.Fatalf("status %d body %q", resp.StatusCode, body)
 	}
@@ -77,8 +85,15 @@ func TestBuildServesTheChainHeadEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("jwks: %v", err)
 	}
-	defer keys.Body.Close()
-	raw, _ := io.ReadAll(keys.Body)
+	defer func() {
+		if cerr := keys.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
+	raw, verr := io.ReadAll(keys.Body)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	set := a.Signer.JWKS()
 	if _, err := head.Verify(string(body), set); err != nil {
 		t.Errorf("the head must verify with the served key: %v", err)
@@ -119,8 +134,8 @@ func TestBuildServesTheConnectAPI(t *testing.T) {
 	for stream.Receive() {
 		body = append(body, stream.Msg().GetChunk()...)
 	}
-	if err := stream.Err(); err != nil {
-		t.Fatalf("stream: %v", err)
+	if serr := stream.Err(); serr != nil {
+		t.Fatalf("stream: %v", serr)
 	}
 	if !strings.HasPrefix(string(body), "id,schema_id,") {
 		t.Errorf("body = %.40q", body)
@@ -202,11 +217,11 @@ func TestBuildReadsTheSaltAndTheKeyFile(t *testing.T) {
 	}
 	keyPath := filepath.Join(dir, "head.pem")
 	saltPath := filepath.Join(dir, "salt")
-	if err := os.WriteFile(keyPath, pem, 0o600); err != nil {
-		t.Fatalf("write key: %v", err)
+	if serr := os.WriteFile(keyPath, pem, 0o600); serr != nil {
+		t.Fatalf("write key: %v", serr)
 	}
-	if err := os.WriteFile(saltPath, []byte(" pepper \n"), 0o600); err != nil {
-		t.Fatalf("write salt: %v", err)
+	if serr := os.WriteFile(saltPath, []byte(" pepper \n"), 0o600); serr != nil {
+		t.Fatalf("write salt: %v", serr)
 	}
 	a := build(t, map[string]string{
 		"VCA_ISSUED_HEAD_KEY_FILE": keyPath,

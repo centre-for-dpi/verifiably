@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -101,8 +102,8 @@ func (s *Service) issueOne(ctx context.Context, r request) (offers.Offer, error)
 	if err != nil {
 		return offers.Offer{}, err
 	}
-	if err := checkClaims(schema, r.claims); err != nil {
-		return offers.Offer{}, err
+	if serr := checkClaims(schema, r.claims); serr != nil {
+		return offers.Offer{}, serr
 	}
 	format := formatOf(r.format, schema.GetFormats(), caps)
 	if !caps.SupportsFormat(format) {
@@ -113,8 +114,8 @@ func (s *Service) issueOne(ctx context.Context, r request) (offers.Offer, error)
 	if channel == backendv1.Channel_CHANNEL_UNSPECIFIED {
 		channel = backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
 	}
-	if err := s.checkChannel(caps, channel); err != nil {
-		return offers.Offer{}, err
+	if serr := s.checkChannel(caps, channel); serr != nil {
+		return offers.Offer{}, serr
 	}
 	binding, err := s.allocateStatus(ctx, r.statusPurpose, format)
 	if err != nil {
@@ -484,7 +485,8 @@ func (s *Service) record(ctx context.Context, offer *offers.Offer,
 // mustJSON returns the JSON form of the claims. The map holds strings
 // only, so the call never fails.
 func mustJSON(claims map[string]string) string {
-	raw, _ := json.Marshal(claims)
+	raw, ignored := json.Marshal(claims)
+	_ = ignored
 	return string(raw)
 }
 

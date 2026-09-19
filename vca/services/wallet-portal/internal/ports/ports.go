@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
@@ -72,7 +74,7 @@ func NewCatalogue(client discoveryv1connect.DiscoveryServiceClient, pageSize int
 	if pageSize <= 0 {
 		pageSize = DefaultPageSize
 	}
-	return &discovery{client: client, pageSize: int32(pageSize)}, nil
+	return &discovery{client: client, pageSize: toInt32(int64(pageSize))}, nil
 }
 
 // Offerings reads the issuers and their credential types.
@@ -327,7 +329,8 @@ func HTTPFetcher(client *http.Client, maxBytes int64) Fetcher {
 		if err != nil {
 			return nil, fmt.Errorf("ports: %w", err)
 		}
-		defer resp.Body.Close()
+		// Nothing can act on a close fault of a response body.
+		defer func() { ignored := resp.Body.Close(); _ = ignored }()
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("ports: %s returned %d", target, resp.StatusCode)
 		}
@@ -351,7 +354,8 @@ func HTTPPoster(client *http.Client, maxBytes int64) Poster {
 		if err != nil {
 			return nil, fmt.Errorf("ports: %w", err)
 		}
-		defer resp.Body.Close()
+		// Nothing can act on a close fault of a response body.
+		defer func() { ignored := resp.Body.Close(); _ = ignored }()
 		if resp.StatusCode >= 400 {
 			return nil, fmt.Errorf("ports: %s returned %d", target, resp.StatusCode)
 		}
@@ -376,7 +380,8 @@ func FormPoster(client *http.Client, maxBytes int64) func(context.Context, strin
 		if err != nil {
 			return nil, fmt.Errorf("ports: %w", err)
 		}
-		defer resp.Body.Close()
+		// Nothing can act on a close fault of a response body.
+		defer func() { ignored := resp.Body.Close(); _ = ignored }()
 		if resp.StatusCode >= 400 {
 			return nil, fmt.Errorf("ports: %s returned %d", target, resp.StatusCode)
 		}
@@ -463,4 +468,15 @@ func (c *Cache) put(url string, body []byte) {
 		delete(c.entries, c.order[0])
 		c.order = c.order[1:]
 	}
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

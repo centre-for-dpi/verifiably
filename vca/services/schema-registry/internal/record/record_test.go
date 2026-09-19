@@ -15,7 +15,7 @@ const doc = `{"type": "object", "properties": {"name": {"type": "string"}, "age"
 
 func valid() Record {
 	return Record{
-		Type: "UniversityDegree", JSONSchema: doc, Formats: []string{FormatDcSdJwt, FormatJwtVcJson},
+		Type: "UniversityDegree", JSONSchema: doc, Formats: []string{FormatDcSdJwt, FormatJwtVcJSON},
 		Display:  []Display{{Name: "Degree", Description: "A degree", Locale: "en"}},
 		SDClaims: []string{"name"}, SearchableClaims: []string{"name"},
 	}
@@ -76,7 +76,7 @@ func TestHelpers(t *testing.T) {
 	if ConfigurationID("https://issuer.example/vct/degree", FormatDcSdJwt) != "https-issuer.example-vct-degree_dc+sd-jwt" {
 		t.Error(ConfigurationID("https://issuer.example/vct/degree", FormatDcSdJwt))
 	}
-	if ConfigurationID("UniversityDegree", FormatJwtVcJson) != "UniversityDegree_jwt_vc_json" {
+	if ConfigurationID("UniversityDegree", FormatJwtVcJSON) != "UniversityDegree_jwt_vc_json" {
 		t.Error("plain configuration id")
 	}
 	list := Sorted([]Record{{ID: "b", Version: 2}, {ID: "b", Version: 1}, {ID: "a", Version: 1}})
@@ -96,7 +96,7 @@ func TestLifecycle(t *testing.T) {
 	if err != nil || p.State != StatePublished || !p.PublishedAt.Equal(now) || p.ConfigurationIDs[FormatDcSdJwt] != "x" {
 		t.Fatalf("publish: %v %+v", err, p)
 	}
-	if _, err := p.Publish(now, nil); err == nil {
+	if _, serr := p.Publish(now, nil); serr == nil {
 		t.Fatal("publish twice")
 	}
 	x, err := p.Retire(now)

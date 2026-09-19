@@ -29,8 +29,10 @@ const (
 	// StagedOfferError is a staging call that Inji rejected.
 	StagedOfferError Answer = "staged-offer-error.json"
 	// CredentialLdp is a JSON-LD credential.
+	//nolint:gosec // G101: the value is a file name, not a credential
 	CredentialLdp Answer = "credential-ldp.json"
 	// CredentialSdJwt is an SD-JWT VC credential.
+	//nolint:gosec // G101: the value is a file name, not a credential
 	CredentialSdJwt Answer = "credential-sdjwt.json"
 	// ResultPending is a transaction that no wallet answered.
 	ResultPending Answer = "vp-result-pending.json"
@@ -38,6 +40,7 @@ const (
 	ResultSuccess Answer = "vp-result-success.json"
 	// ResultWrongCredential is a success answer with a credential that
 	// does not carry a requested claim.
+	//nolint:gosec // G101: the value is a file name, not a credential
 	ResultWrongCredential Answer = "vp-result-wrong-credential.json"
 	// ResultInvalid is a transaction that Inji Verify rejected.
 	ResultInvalid Answer = "vp-result-invalid.json"
@@ -126,7 +129,8 @@ func (f *Server) RequestJSON(path string, out any) error {
 }
 
 func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
+	body, ignored := io.ReadAll(r.Body)
+	_ = ignored
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
 	forced := f.status[r.URL.Path]
@@ -159,11 +163,13 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 // send writes one recorded answer.
 func (f *Server) send(w http.ResponseWriter, name string) {
-	raw, err := os.ReadFile(filepath.Join(f.dir, name))
+	raw, err := os.ReadFile(filepath.Join(f.dir, name)) //nolint:gosec // G304: the name is one of the fixed answers
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(raw)
+	if _, err := w.Write(raw); err != nil {
+		return
+	}
 }

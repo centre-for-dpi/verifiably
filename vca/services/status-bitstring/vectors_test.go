@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
@@ -34,7 +35,7 @@ type vector struct {
 
 func readVector(t *testing.T, name string) vector {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", "vectors", name))
+	data, err := os.ReadFile(filepath.Join("testdata", "vectors", name)) //nolint:gosec // G304: the path is a test directory
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,10 +94,10 @@ func TestPublishAndVerifyAgainstVector(t *testing.T) {
 	if !bytes.Equal(decodeList(t, fresh.encoded), want.Bytes()) {
 		t.Fatalf("a new list encodes to %s", fresh.encoded)
 	}
-	if _, err := client.SetStatus(ctx, connect.NewRequest(&statusv1.SetStatusRequest{
+	if _, serr := client.SetStatus(ctx, connect.NewRequest(&statusv1.SetStatusRequest{
 		ListId: alloc.Msg.GetListId(), Index: alloc.Msg.GetIndex(), Value: 1, Reason: "revoked in a test",
-	})); err != nil {
-		t.Fatal(err)
+	})); serr != nil {
+		t.Fatal(serr)
 	}
 	after := credentialOf(t, a, srv, alloc.Msg.GetListId())
 	if bytes.Equal(decodeList(t, after.encoded), want.Bytes()) {
@@ -111,7 +112,11 @@ func TestPublishAndVerifyAgainstVector(t *testing.T) {
 	}
 	count := 0
 	for i := 0; i < after.list.Size(); i++ {
-		if b, _ := after.list.Get(i); b {
+		b, gerr := after.list.Get(i)
+		if gerr != nil {
+			t.Fatalf("unexpected error: %v", gerr)
+		}
+		if b {
 			count++
 		}
 	}
@@ -145,7 +150,11 @@ func credentialOf(t *testing.T, a *app.App, srv *httptest.Server, id string) pub
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != securer.MediaType {
 		t.Fatalf("GET status: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
@@ -165,14 +174,14 @@ func credentialOf(t *testing.T, a *app.App, srv *httptest.Server, id string) pub
 		t.Fatalf("typ = %s", header.Typ)
 	}
 	var doc map[string]any
-	if err := json.Unmarshal(payload, &doc); err != nil {
-		t.Fatal(err)
+	if serr := json.Unmarshal(payload, &doc); serr != nil {
+		t.Fatal(serr)
 	}
 	purpose, list, err := bitstring.ParseCredential(doc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	subject, _ := doc["credentialSubject"].(map[string]any)
-	encoded, _ := subject["encodedList"].(string)
+	subject := mustAs[map[string]any](t, doc["credentialSubject"])
+	encoded := mustAs[string](t, subject["encodedList"])
 	return published{encoded: encoded, purpose: purpose, list: list}
 }

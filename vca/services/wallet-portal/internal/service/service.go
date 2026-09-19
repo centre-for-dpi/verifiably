@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -229,8 +230,8 @@ func (s *Service) Claim(ctx context.Context, req *connect.Request[walletportalv1
 		id := s.opts.NewID()
 		rec := record{ID: id, URI: offerURI, Issuer: msg.GetCredentialIssuer(),
 			Types: []string{msg.GetSchemaId()}}
-		if err := s.put(ctx, KindOffer, citizen.WalletKey(), rec); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
+		if serr := s.put(ctx, KindOffer, citizen.WalletKey(), rec); serr != nil {
+			return nil, connect.NewError(connect.CodeInternal, serr)
 		}
 		return connect.NewResponse(&walletportalv1.ClaimResponse{OfferId: id}), nil
 	}
@@ -347,7 +348,8 @@ func (s *Service) Accept(ctx context.Context, req *connect.Request[walletportalv
 	if err != nil {
 		return nil, err
 	}
-	_ = s.drop(ctx, KindOffer, citizen.WalletKey(), rec.ID)
+	ignored2 := s.drop(ctx, KindOffer, citizen.WalletKey(), rec.ID)
+	_ = ignored2
 	return connect.NewResponse(&walletportalv1.AcceptResponse{Card: card}), nil
 }
 
@@ -393,8 +395,8 @@ func (s *Service) Delete(ctx context.Context, req *connect.Request[walletportalv
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("name the credential"))
 	}
 	if s.opts.Holder == nil {
-		if err := s.drop(ctx, KindHeld, citizen.WalletKey(), id); err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		if serr := s.drop(ctx, KindHeld, citizen.WalletKey(), id); serr != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, serr)
 		}
 		return connect.NewResponse(&walletportalv1.DeleteResponse{}), nil
 	}
@@ -405,7 +407,8 @@ func (s *Service) Delete(ctx context.Context, req *connect.Request[walletportalv
 		return nil, connect.NewError(connect.CodeUnavailable,
 			errors.New("the wallet did not remove the credential, try again later"))
 	}
-	_ = s.drop(ctx, KindHeld, citizen.WalletKey(), id)
+	ignored := s.drop(ctx, KindHeld, citizen.WalletKey(), id)
+	_ = ignored
 	return connect.NewResponse(&walletportalv1.DeleteResponse{}), nil
 }
 
@@ -446,7 +449,7 @@ func (s *Service) held(ctx context.Context, citizen session.Citizen, page *commo
 	}
 	size := page.GetPageSize()
 	if size <= 0 || int(size) > s.opts.PageSizeMax {
-		size = int32(s.opts.PageSizeMax)
+		size = toInt32(int64(s.opts.PageSizeMax))
 	}
 	resp, err := s.opts.Holder.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{
 		WalletId: citizen.WalletID,

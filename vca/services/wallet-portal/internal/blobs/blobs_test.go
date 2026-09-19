@@ -16,7 +16,10 @@ import (
 )
 
 func now() time.Time {
-	t, _ := time.Parse(time.RFC3339, "2026-09-19T00:00:00Z")
+	t, verr := time.Parse(time.RFC3339, "2026-09-19T00:00:00Z")
+	if verr != nil {
+		panic(verr)
+	}
 	return t
 }
 
@@ -30,8 +33,8 @@ func TestRoundTripSameFormat(t *testing.T) {
 	if len(key) != blobs.KeyBytes {
 		t.Fatalf("key = %d bytes", len(key))
 	}
-	credential := "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJEcml2ZXIifQ.sig~WyJzIiwiYSIsMV0~"
-	envelope, err := blobs.Seal(key, []byte(credential))
+	sample := "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJEcml2ZXIifQ.sig~WyJzIiwiYSIsMV0~"
+	envelope, err := blobs.Seal(key, []byte(sample))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +62,7 @@ func TestRoundTripSameFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(plain) != credential {
+	if string(plain) != sample {
 		t.Fatalf("plaintext = %q", plain)
 	}
 }
@@ -269,14 +272,14 @@ func TestStoreReadsBrokenRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if err := kv.Put(ctx, "blob/w/b1", []byte("{oops")); err != nil {
-		t.Fatal(err)
+	if serr := kv.Put(ctx, "blob/w/b1", []byte("{oops")); serr != nil {
+		t.Fatal(serr)
 	}
-	if _, err := st.Get(ctx, "w", "b1"); !errors.Is(err, blobs.ErrBadEnvelope) {
-		t.Fatalf("err = %v", err)
+	if _, serr := st.Get(ctx, "w", "b1"); !errors.Is(serr, blobs.ErrBadEnvelope) {
+		t.Fatalf("err = %v", serr)
 	}
-	list, err := st.List(ctx, "w")
-	if err != nil || len(list) != 0 {
-		t.Fatalf("list = %+v %v", list, err)
+	list, serr := st.List(ctx, "w")
+	if serr != nil || len(list) != 0 {
+		t.Fatalf("list = %+v %v", list, serr)
 	}
 }

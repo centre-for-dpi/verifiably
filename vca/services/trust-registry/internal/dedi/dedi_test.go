@@ -81,8 +81,8 @@ func TestPublishAndVerify(t *testing.T) {
 		Document Index     `json:"document"`
 		Proof    Signature `json:"proof"`
 	}
-	if err := json.Unmarshal(pub.Files[IndexPath].Body, &env); err != nil {
-		t.Fatal(err)
+	if serr := json.Unmarshal(pub.Files[IndexPath].Body, &env); serr != nil {
+		t.Fatal(serr)
 	}
 	idx := env.Document
 	if idx.SchemaVersion != SchemaVersion || idx.SigningKey.KeyID != in.Signer.ID || idx.SigningKey.Alg != "EdDSA" || idx.JWKSURL != "https://trust.example/.well-known/jwks.json" || idx.URL != pub.URL {
@@ -100,7 +100,10 @@ func TestPublishAndVerify(t *testing.T) {
 	if !strings.Contains(string(pub.Files["/dedi/dedi.issuers.json"].Body), `"records":[{"id":"did:web:i.example"`) {
 		t.Fatal("issuers file order")
 	}
-	ring, _ := keys.NewRing(in.Signer)
+	ring, verr := keys.NewRing(in.Signer)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	v, err := p.Verify(pub.Files, ring.JWKS(), t0.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -116,8 +119,14 @@ func TestPublishAndVerify(t *testing.T) {
 func TestVerifyErrors(t *testing.T) {
 	in := input(t)
 	var p Publisher
-	pub, _ := p.Publish(in)
-	ring, _ := keys.NewRing(in.Signer)
+	pub, verr := p.Publish(in)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	ring, verr := keys.NewRing(in.Signer)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	set := ring.JWKS()
 	clone := func() map[string]publish.File {
 		out := map[string]publish.File{}
@@ -132,8 +141,14 @@ func TestVerifyErrors(t *testing.T) {
 	if _, err := p.Verify(map[string]publish.File{}, set, t0); err == nil {
 		t.Fatal("missing index")
 	}
-	other, _ := keys.Generate(jose.ES256, t0)
-	otherRing, _ := keys.NewRing(other)
+	other, verr := keys.Generate(jose.ES256, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	otherRing, verr := keys.NewRing(other)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := p.Verify(pub.Files, otherRing.JWKS(), t0); err == nil {
 		t.Fatal("wrong key")
 	}
@@ -152,20 +167,32 @@ func TestVerifyErrors(t *testing.T) {
 	if _, err := p.Verify(files, set, t0); err == nil || !strings.Contains(err.Error(), "envelope") {
 		t.Fatal("envelope")
 	}
-	wrongTyp, _ := ring.Sign("jwt", Index{})
+	wrongTyp, verr := ring.Sign("jwt", Index{})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	files[IndexPath] = publish.File{Body: []byte(`{"proof":{"jws":"` + wrongTyp + `"}}`)}
 	if _, err := p.Verify(files, set, t0); err == nil || !strings.Contains(err.Error(), "typ") {
 		t.Fatal("typ")
 	}
-	notObject, _ := ring.Sign(TypeJWS, []int{1})
+	notObject, verr := ring.Sign(TypeJWS, []int{1})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	files[IndexPath] = publish.File{Body: []byte(`{"proof":{"jws":"` + notObject + `"}}`)}
 	if _, err := p.Verify(files, set, t0); err == nil || !strings.Contains(err.Error(), "document") {
 		t.Fatal("document")
 	}
 	badRecord := DirectoryFile{Records: []Record{{ID: "x", Role: "issuer", Status: "active"}}}
-	body, _ := sign(badRecord, in.Signer)
+	body, verr := sign(badRecord, in.Signer)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	idx := Index{ExpiresAt: t0.Add(time.Hour), Directories: []Directory{{Name: "issuers", Digest: digest(body)}}}
-	idxBody, _ := sign(idx, in.Signer)
+	idxBody, verr := sign(idx, in.Signer)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	files = map[string]publish.File{IndexPath: {Body: idxBody}, "/dedi/dedi.issuers.json": {Body: body}}
 	if _, err := p.Verify(files, set, t0); err == nil || !strings.Contains(err.Error(), "record 0") {
 		t.Fatal("bad record")

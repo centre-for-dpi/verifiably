@@ -89,11 +89,11 @@ func TestJSONShape(t *testing.T) {
 	if !ok || len(creds) != 1 {
 		t.Fatalf("want one credential, got %v", doc["credentials"])
 	}
-	first := creds[0].(map[string]any)
+	first := mustAs[map[string]any](t, creds[0])
 	if first["format"] != "dc+sd-jwt" || first["id"] != "a" {
 		t.Fatalf("unexpected credential: %v", first)
 	}
-	meta := first["meta"].(map[string]any)
+	meta := mustAs[map[string]any](t, first["meta"])
 	if _, ok := meta["vct_values"]; !ok {
 		t.Fatalf("want the vct values, got %v", meta)
 	}

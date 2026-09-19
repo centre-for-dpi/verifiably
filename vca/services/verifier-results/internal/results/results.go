@@ -18,10 +18,11 @@ import (
 	"regexp"
 	"sort"
 
-	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
-	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 // ResultPrefix of every result key.
@@ -55,13 +56,16 @@ func New(kv store.KeyValue, newID func() string) *Store {
 
 func randomID() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return hex.EncodeToString(b)
 }
 
 // Put writes a result. An empty id gets a new one.
 func (s *Store) Put(ctx context.Context, r *resultsv1.VerificationResult) (*resultsv1.VerificationResult, error) {
-	out := proto.Clone(r).(*resultsv1.VerificationResult)
+	out := proto.CloneOf(r)
 	if out.GetId() == "" {
 		out.Id = s.newID()
 	}

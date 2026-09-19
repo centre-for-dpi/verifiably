@@ -66,8 +66,8 @@ func (g Guard) Check(ctx context.Context, rawURL string) (*url.URL, []net.IP, er
 	if u.Hostname() == "" {
 		return nil, nil, fmt.Errorf("%w: empty host", ErrHost)
 	}
-	if err := g.checkAllowlist(u); err != nil {
-		return nil, nil, err
+	if serr := g.checkAllowlist(u); serr != nil {
+		return nil, nil, serr
 	}
 	ips, err := g.Resolve(ctx, u.Hostname())
 	if err != nil {
@@ -145,7 +145,10 @@ var specialRanges = mustCIDRs(
 func mustCIDRs(cidrs ...string) []*net.IPNet {
 	out := make([]*net.IPNet, 0, len(cidrs))
 	for _, c := range cidrs {
-		_, n, _ := net.ParseCIDR(c)
+		_, n, err := net.ParseCIDR(c)
+		if err != nil {
+			panic(err)
+		}
 		out = append(out, n)
 	}
 	return out

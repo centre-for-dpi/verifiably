@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/preview"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
@@ -195,7 +196,7 @@ func (p *Pages) builder(w http.ResponseWriter, r *http.Request) error {
 
 // version reads the version query value. Zero means the latest version.
 func version(r *http.Request) int32 {
-	n, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("version")))
+	n, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("version")), 10, 32)
 	if err != nil || n < 0 {
 		return 0
 	}
@@ -371,14 +372,16 @@ func (p *Pages) preview(w http.ResponseWriter, r *http.Request) error {
 func (s state) values() (map[string]any, string) {
 	if strings.TrimSpace(s.Sample) != "" {
 		out := map[string]any{}
-		_ = json.Unmarshal([]byte(s.Sample), &out)
+		ignored2 := json.Unmarshal([]byte(s.Sample), &out)
+		_ = ignored2
 		return out, s.Sample
 	}
 	out, err := preview.SampleData(s.Draft.Document())
 	if err != nil {
 		return map[string]any{}, ""
 	}
-	raw, _ := json.MarshalIndent(out, "", "  ")
+	raw, ignored := json.MarshalIndent(out, "", "  ")
+	_ = ignored
 	return out, string(raw)
 }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1/issuancev1connect"
 )

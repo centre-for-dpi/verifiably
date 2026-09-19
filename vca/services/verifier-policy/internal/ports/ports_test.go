@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
-	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 )
@@ -25,7 +25,7 @@ func TestHTTPFetcher(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		_, _ = w.Write([]byte("hello"))
+		mustWrite(t, w, []byte("hello"))
 	}))
 	defer srv.Close()
 	fetch := HTTPFetcher(srv.Client(), 16)
@@ -155,8 +155,11 @@ func TestKeysFromJWKS(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		raw, _ := json.Marshal(jose.JWKS{Keys: []jose.JWK{pub}})
-		_, _ = w.Write(raw)
+		raw, verr := json.Marshal(jose.JWKS{Keys: []jose.JWK{pub}})
+		if verr != nil {
+			t.Fatalf("unexpected error: %v", verr)
+		}
+		mustWrite(t, w, raw)
 	}))
 	defer srv.Close()
 	fetch := HTTPFetcher(srv.Client(), 1<<20)
@@ -235,7 +238,7 @@ func TestTrustLookup(t *testing.T) {
 }
 
 func TestPolicyFetcherType(t *testing.T) {
-	var f policy.Fetcher = HTTPFetcher(nil, 1)
+	var f = HTTPFetcher(nil, 1)
 	if f == nil {
 		t.Fatal("want a fetcher")
 	}

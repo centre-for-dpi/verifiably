@@ -639,7 +639,7 @@ func (p *Portal) wizard(w http.ResponseWriter, r *http.Request, s session) error
 	b := p.blocks()
 	steps := b.add("card", components.Card{
 		ID: "steps", Title: "How the wizard works",
-		Body: template.HTML(`<ol>` +
+		Body: template.HTML(`<ol>` + //nolint:gosec // every part is a literal
 			`<li>The service reads the metadata document of the issuer.</li>` +
 			`<li>The service registers a client when the provider advertises a registration endpoint.</li>` +
 			`<li>The service stores the provider and keeps the client secret out of the record.</li>` +

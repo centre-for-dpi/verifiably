@@ -31,7 +31,7 @@ func TestFormatOf(t *testing.T) {
 
 func TestCarrierName(t *testing.T) {
 	cases := map[ingestv1.Carrier]string{
-		ingestv1.Carrier_CARRIER_OID4VP:      "oid4vp",
+		ingestv1.Carrier_CARRIER_OID4VP:      "oid4vp", //nolint:staticcheck // SA1019: the service still reads the old carrier value
 		ingestv1.Carrier_CARRIER_IMAGE:       "image",
 		ingestv1.Carrier_CARRIER_PDF:         "pdf",
 		ingestv1.Carrier_CARRIER_XML:         "xml",

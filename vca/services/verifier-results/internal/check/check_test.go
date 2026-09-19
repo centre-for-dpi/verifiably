@@ -10,17 +10,19 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var testNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 
-const credentialJSON = `{"@context":["https://www.w3.org/ns/credentials/v2"],
+//nolint:gosec // G101: the value is a sample document, not a credential
+const passportJSON = `{"@context":["https://www.w3.org/ns/credentials/v2"],
 "type":["VerifiableCredential","Passport"],"issuer":"did:web:issuer",
 "validFrom":"2026-01-01T00:00:00Z","validUntil":"2027-01-01T00:00:00Z",
 "credentialSubject":{"id":"did:key:holder","given_name":"Ada"}}`
@@ -58,7 +60,7 @@ func response() *policyv1.EvaluateResponse {
 func TestEvaluate(t *testing.T) {
 	got, err := Evaluate(context.Background(), Options{
 		Client: fakePolicy{resp: response()}, Now: func() time.Time { return testNow },
-	}, []byte(credentialJSON))
+	}, []byte(passportJSON))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,14 +94,14 @@ func TestEvaluateProblems(t *testing.T) {
 	}
 	if _, err := Evaluate(context.Background(), Options{
 		Client: fakePolicy{err: errors.New("offline")},
-	}, []byte(credentialJSON)); err == nil {
+	}, []byte(passportJSON)); err == nil {
 		t.Fatal("want the client error")
 	}
 }
 
 func TestRawOfFormats(t *testing.T) {
 	cases := map[string]commonv1.Format{
-		credentialJSON:                commonv1.Format_FORMAT_LDP_VC,
+		passportJSON:                  commonv1.Format_FORMAT_LDP_VC,
 		"eyJhIjoxfQ.eyJiIjoyfQ.c2ln":  commonv1.Format_FORMAT_JWT_VC_JSON,
 		"eyJhIjoxfQ.eyJiIjoyfQ.c2ln~": commonv1.Format_FORMAT_DC_SD_JWT,
 		"{}":                          commonv1.Format_FORMAT_UNSPECIFIED,

@@ -148,14 +148,17 @@ func fromObject(uri string, doc map[string]any) Offering {
 			}
 		}
 	}
-	grants, _ := doc["grants"].(map[string]any)
+	grants, isObject := doc["grants"].(map[string]any)
+	if !isObject {
+		return out
+	}
 	for name, raw := range grants {
 		if !strings.Contains(name, "pre-authorized_code") {
 			continue
 		}
 		out.PreAuthorized = true
-		grant, _ := raw.(map[string]any)
-		if _, ok := grant["tx_code"]; ok {
+		grant, isGrant := raw.(map[string]any)
+		if _, ok := grant["tx_code"]; isGrant && ok {
 			out.NeedsPIN = true
 		}
 	}

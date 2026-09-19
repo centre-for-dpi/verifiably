@@ -85,7 +85,10 @@ func RandomID(typ string) string {
 		slug = "schema"
 	}
 	var raw [4]byte
-	_, _ = rand.Read(raw[:])
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(raw[:]); err != nil {
+		panic(err)
+	}
 	return slug + "-" + hex.EncodeToString(raw[:])
 }
 

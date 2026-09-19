@@ -38,7 +38,10 @@ func snapshot(t *testing.T, pubs ...publish.Publisher) *publish.Snapshot {
 	t.Helper()
 	var list []publish.Publication
 	for _, p := range pubs {
-		pub, _ := p.Publish(publish.Input{})
+		pub, verr := p.Publish(publish.Input{})
+		if verr != nil {
+			t.Fatalf("unexpected error: %v", verr)
+		}
 		list = append(list, pub)
 	}
 	s, err := publish.NewSnapshot(list...)

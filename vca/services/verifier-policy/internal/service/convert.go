@@ -3,6 +3,8 @@
 package service
 
 import (
+	"math"
+
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -61,7 +63,7 @@ func toCredential(format vc.Format, payload []byte) policy.Credential {
 // carrierName returns the plain word of a carrier.
 func carrierName(c ingestv1.Carrier) string {
 	switch c {
-	case ingestv1.Carrier_CARRIER_OID4VP:
+	case ingestv1.Carrier_CARRIER_OID4VP: //nolint:staticcheck // SA1019: the service still reads the old carrier value
 		return "oid4vp"
 	case ingestv1.Carrier_CARRIER_IMAGE:
 		return "image"
@@ -89,7 +91,7 @@ func ToProtoResults(results []policy.CheckResult) []*policyv1.CheckResult {
 			Outcome:         outcomeOf(r.Result),
 			Detail:          r.Detail,
 			Evidence:        r.Evidence,
-			CredentialIndex: int32(r.CredentialIndex),
+			CredentialIndex: toInt32(int64(r.CredentialIndex)),
 		})
 	}
 	return out
@@ -132,4 +134,15 @@ func ToCoreSet(set *policyv1.PolicySet) policy.Set {
 		})
 	}
 	return out
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

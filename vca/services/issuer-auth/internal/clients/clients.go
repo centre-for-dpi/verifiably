@@ -164,6 +164,9 @@ func hash(secret string) string {
 
 func random(n int) string {
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }

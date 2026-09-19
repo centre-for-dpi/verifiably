@@ -12,15 +12,17 @@ package catalog
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // MetadataPath is the well known path of the issuer metadata.
@@ -200,7 +202,7 @@ func (i Issuer) ToProto() *discoveryv1.Issuer {
 		Did:              i.DID,
 		DisplayName:      i.DisplayName,
 		Trust:            TrustOutcome(i.Trust),
-		TypeCount:        int32(len(i.Types)),
+		TypeCount:        toInt32(int64(len(i.Types))),
 		LastError:        i.LastError,
 	}
 	if !i.CrawledAt.IsZero() {
@@ -474,4 +476,15 @@ func Merge(types []CredentialType, schemas map[string]CredentialType) []Credenti
 // URLFor joins a service endpoint and a path.
 func URLFor(endpoint, path string) string {
 	return strings.TrimRight(endpoint, "/") + path
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

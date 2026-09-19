@@ -121,9 +121,9 @@ func (Publisher) Publish(in publish.Input) (publish.Publication, error) {
 				doc.Records = append(doc.Records, FromEntry(e))
 			}
 		}
-		body, err := sign(doc, in.Signer)
-		if err != nil {
-			return publish.Publication{}, err
+		body, signErr := sign(doc, in.Signer)
+		if signErr != nil {
+			return publish.Publication{}, signErr
 		}
 		files[DirectoryPath(d.name)] = publish.File{ContentType: ContentType, Body: body}
 		index.Directories = append(index.Directories, Directory{
@@ -204,10 +204,11 @@ func sign(doc any, signer keys.Key) ([]byte, error) {
 		return nil, fmt.Errorf("dedi: %w", err)
 	}
 	// doc signed one line above, so it encodes.
-	body, _ := json.Marshal(Signed{
+	body, ignored := json.Marshal(Signed{
 		Document: doc,
 		Proof:    Signature{Type: SignatureType, KeyID: signer.ID, Alg: string(signer.Alg), JWS: jws},
 	})
+	_ = ignored
 	return body, nil
 }
 

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/token"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
@@ -57,7 +58,13 @@ func pemOf(t *testing.T, alg jose.Algorithm) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 }
 
-func get(t *testing.T, srv *httptest.Server, path, accept string) (*http.Response, []byte) {
+// answer holds the part of an HTTP response that the tests read.
+type answer struct {
+	status int
+	header http.Header
+}
+
+func get(t *testing.T, srv *httptest.Server, path, accept string) (answer, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, srv.URL+path, nil)
 	if err != nil {
@@ -70,12 +77,16 @@ func get(t *testing.T, srv *httptest.Server, path, accept string) (*http.Respons
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return resp, body
+	return answer{status: resp.StatusCode, header: resp.Header}, body
 }
 
 func TestBuildServesJWTAndCWTFromOneBitArray(t *testing.T) {
@@ -105,26 +116,26 @@ func TestBuildServesJWTAndCWTFromOneBitArray(t *testing.T) {
 	index := int(alloc.Msg.GetIndex())
 
 	resp, body := get(t, srv, path, "")
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != securer.MediaTypeJWT {
-		t.Fatalf("default: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	if resp.status != http.StatusOK || resp.header.Get("Content-Type") != securer.MediaTypeJWT {
+		t.Fatalf("default: %d %s", resp.status, resp.header.Get("Content-Type"))
 	}
-	if !strings.Contains(resp.Header.Get("Cache-Control"), "max-age=300") || resp.Header.Get("ETag") == "" {
-		t.Fatalf("headers = %v", resp.Header)
+	if !strings.Contains(resp.header.Get("Cache-Control"), "max-age=300") || resp.header.Get("ETag") == "" {
+		t.Fatalf("headers = %v", resp.header)
 	}
 	checkJWT(t, app, string(body), index)
 
 	cwtResp, cwtBody := get(t, srv, path, securer.MediaTypeCWT)
-	if cwtResp.StatusCode != http.StatusOK || cwtResp.Header.Get("Content-Type") != securer.MediaTypeCWT {
-		t.Fatalf("cwt: %d %s", cwtResp.StatusCode, cwtResp.Header.Get("Content-Type"))
+	if cwtResp.status != http.StatusOK || cwtResp.header.Get("Content-Type") != securer.MediaTypeCWT {
+		t.Fatalf("cwt: %d %s", cwtResp.status, cwtResp.header.Get("Content-Type"))
 	}
 	checkCWT(t, app, cwtBody, index)
 
 	notAcceptable, _ := get(t, srv, path, "application/pdf")
-	if notAcceptable.StatusCode != http.StatusNotAcceptable {
-		t.Fatalf("accept: %d", notAcceptable.StatusCode)
+	if notAcceptable.status != http.StatusNotAcceptable {
+		t.Fatalf("accept: %d", notAcceptable.status)
 	}
 	cached, _ := get(t, srv, path, "")
-	if cached.Header.Get("ETag") != resp.Header.Get("ETag") {
+	if cached.header.Get("ETag") != resp.header.Get("ETag") {
 		t.Fatal("the ETag changed without a write")
 	}
 }
@@ -144,8 +155,8 @@ func checkJWT(t *testing.T, app *App, jwt string, index int) {
 		t.Fatalf("typ = %s", header.Typ)
 	}
 	var claims map[string]any
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		t.Fatal(err)
+	if serr := json.Unmarshal(payload, &claims); serr != nil {
+		t.Fatal(serr)
 	}
 	parsed, list, err := token.ParseJWTClaims(claims)
 	if err != nil {

@@ -9,16 +9,18 @@ package source
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	datasourcev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/csvsrc"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/secrets"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/sqlsrc"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Kind names the type of a source.
@@ -124,7 +126,7 @@ func (c CSV) validate() error {
 		return fmt.Errorf("%w: csv.file_ref is empty", ErrInvalid)
 	}
 	if err := (csvsrc.Options{Delimiter: c.Delimiter, Encoding: c.Encoding}).Validate(); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalid, err)
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return nil
 }
@@ -167,7 +169,7 @@ func (h HTTP) validate() error {
 			continue
 		}
 		if err := r.Validate(); err != nil {
-			return fmt.Errorf("%w: %v", ErrInvalid, err)
+			return fmt.Errorf("%w: %w", ErrInvalid, err)
 		}
 	}
 	return checkTimeout(h.Timeout)
@@ -178,10 +180,10 @@ func (q SQL) validate() error {
 		return fmt.Errorf("%w: sql.driver is empty", ErrInvalid)
 	}
 	if err := q.DSN.Validate(); err != nil {
-		return fmt.Errorf("%w: sql.dsn: %v", ErrInvalid, err)
+		return fmt.Errorf("%w: sql.dsn: %w", ErrInvalid, err)
 	}
 	if err := sqlsrc.CheckQuery(q.Query); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalid, err)
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return checkTimeout(q.Timeout)
 }
@@ -264,7 +266,7 @@ func ToProto(s Source) *datasourcev1.Source {
 	case KindCSV:
 		p.Kind = &datasourcev1.Source_Csv{Csv: &datasourcev1.CsvSource{FileRef: s.CSV.FileRef, Delimiter: s.CSV.Delimiter, HasHeader: s.CSV.HasHeader, Encoding: s.CSV.Encoding}}
 	case KindHTTP:
-		h := &datasourcev1.HttpSource{Url: s.HTTP.URL, Method: s.HTTP.Method, Headers: s.HTTP.Headers, RowsPath: s.HTTP.RowsPath, TimeoutSeconds: int32(s.HTTP.Timeout / time.Second)}
+		h := &datasourcev1.HttpSource{Url: s.HTTP.URL, Method: s.HTTP.Method, Headers: s.HTTP.Headers, RowsPath: s.HTTP.RowsPath, TimeoutSeconds: toInt32(int64(s.HTTP.Timeout / time.Second))}
 		switch {
 		case !s.HTTP.Bearer.IsZero():
 			h.Auth = &datasourcev1.HttpSource_BearerToken{BearerToken: refToProto(s.HTTP.Bearer)}
@@ -275,7 +277,7 @@ func ToProto(s Source) *datasourcev1.Source {
 		}
 		p.Kind = &datasourcev1.Source_Http{Http: h}
 	case KindSQL:
-		p.Kind = &datasourcev1.Source_Sql{Sql: &datasourcev1.SqlSource{Driver: s.SQL.Driver, Dsn: refToProto(s.SQL.DSN), Query: s.SQL.Query, TimeoutSeconds: int32(s.SQL.Timeout / time.Second)}}
+		p.Kind = &datasourcev1.Source_Sql{Sql: &datasourcev1.SqlSource{Driver: s.SQL.Driver, Dsn: refToProto(s.SQL.DSN), Query: s.SQL.Query, TimeoutSeconds: toInt32(int64(s.SQL.Timeout / time.Second))}}
 	}
 	return p
 }
@@ -317,4 +319,15 @@ func refToProto(r secrets.Ref) *commonv1.SecretRef {
 		p.Store = commonv1.SecretRef_STORE_KMS
 	}
 	return p
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

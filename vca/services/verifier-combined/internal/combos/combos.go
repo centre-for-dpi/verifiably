@@ -7,17 +7,20 @@ package combos
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 
-	combinedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1"
-	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	combinedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
+
+// idSuffixLen is the length of the random suffix in a default id.
+const idSuffixLen = 8
 
 // Prefix of every key this package writes.
 const Prefix = "combined/"
@@ -37,7 +40,7 @@ type Store struct {
 }
 
 // New builds a store on a key value backend. A nil newID makes a slug
-// plus random hex.
+// plus random text.
 func New(kv store.KeyValue, newID func(string) string) *Store {
 	if newID == nil {
 		newID = defaultID
@@ -61,18 +64,17 @@ func defaultID(displayName string) string {
 	if len(slug) > 32 {
 		slug = strings.Trim(slug[:32], "-")
 	}
-	b := make([]byte, 4)
-	_, _ = rand.Read(b)
+	suffix := strings.ToLower(rand.Text()[:idSuffixLen])
 	if slug == "" {
-		return "combined-" + hex.EncodeToString(b)
+		return "combined-" + suffix
 	}
-	return slug + "-" + hex.EncodeToString(b)
+	return slug + "-" + suffix
 }
 
 // Create stores a template. An empty id gets a new one.
 func (s *Store) Create(ctx context.Context, t *combinedv1.CombinedTemplate) (
 	*combinedv1.CombinedTemplate, error) {
-	out := proto.Clone(t).(*combinedv1.CombinedTemplate)
+	out := proto.CloneOf(t)
 	if out.GetId() == "" {
 		out.Id = s.newID(out.GetDisplayName())
 	}

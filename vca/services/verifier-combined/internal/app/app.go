@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1/combinedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"

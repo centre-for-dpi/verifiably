@@ -38,11 +38,11 @@ func TestRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := reg.Create("", "t", []string{"issuer-admin"}, nil); !errors.Is(err, clients.ErrInvalid) {
-		t.Fatal(err)
+	if _, _, serr := reg.Create("", "t", []string{"issuer-admin"}, nil); !errors.Is(serr, clients.ErrInvalid) {
+		t.Fatal(serr)
 	}
-	if _, _, err := reg.Create("x", "t", nil, nil); !errors.Is(err, clients.ErrInvalid) {
-		t.Fatal(err)
+	if _, _, serr := reg.Create("x", "t", nil, nil); !errors.Is(serr, clients.ErrInvalid) {
+		t.Fatal(serr)
 	}
 	c, secret, err := reg.Create("robot", "t1", []string{"issuer-operator"}, nil)
 	if err != nil || c.ID == "" || secret == "" || c.Prefix != secret[:8] || c.SecretHash == secret {
@@ -59,7 +59,10 @@ func TestRegistry(t *testing.T) {
 		t.Fatal("unknown id")
 	}
 	exp := now.Add(time.Hour)
-	c2, s2, _ := reg.Create("temp", "t2", []string{"issuer-viewer"}, &exp)
+	c2, s2, verr := reg.Create("temp", "t2", []string{"issuer-viewer"}, &exp)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if len(reg.List("")) != 2 || len(reg.List("t2")) != 1 || reg.List("t2")[0].ID != c2.ID {
 		t.Fatal("list")
 	}
@@ -77,7 +80,10 @@ func TestRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Persisted.
-	reg2, _ := clients.New(store, clock)
+	reg2, verr := clients.New(store, clock)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if len(reg2.List("")) != 2 || reg2.List("t1")[0].RevokedAt == nil {
 		t.Fatal("not persisted")
 	}

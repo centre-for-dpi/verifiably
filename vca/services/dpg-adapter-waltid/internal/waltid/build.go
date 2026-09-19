@@ -148,9 +148,11 @@ func BuildSelectiveDisclosure(subject map[string]any) []byte {
 	for k := range subject {
 		fields[k] = map[string]any{"sd": true}
 	}
-	raw, _ := json.Marshal(map[string]any{
+	// The map holds strings and numbers only, so Marshal cannot fail.
+	raw, ignored := json.Marshal(map[string]any{
 		"fields": fields, "decoyMode": "NONE", "decoys": 0,
 	})
+	_ = ignored
 	return raw
 }
 

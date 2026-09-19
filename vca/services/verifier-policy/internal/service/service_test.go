@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
@@ -18,7 +20,6 @@ import (
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/sets"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var testNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -91,7 +92,7 @@ func (f fixture) presentation(t *testing.T, aud, nonce string) *ingestv1.RawPres
 	}
 	p.KeyBindingJWT = kb
 	return &ingestv1.RawPresentation{
-		Carrier: ingestv1.Carrier_CARRIER_OID4VP,
+		Carrier: ingestv1.Carrier_CARRIER_OID4VP, //nolint:staticcheck // SA1019: the service still reads the old carrier value
 		Nonce:   nonce,
 		Credentials: []*commonv1.Credential{{
 			Format: commonv1.Format_FORMAT_DC_SD_JWT, Payload: []byte(sdjwt.Serialize(p)),

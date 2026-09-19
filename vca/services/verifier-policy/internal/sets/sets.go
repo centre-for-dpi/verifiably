@@ -17,10 +17,11 @@ import (
 	"regexp"
 	"strings"
 
-	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
-	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 // Prefix of every key this package writes.
@@ -66,7 +67,10 @@ func defaultID(displayName string) string {
 		slug = strings.Trim(slug[:32], "-")
 	}
 	b := make([]byte, 4)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	if slug == "" {
 		return "set-" + hex.EncodeToString(b)
 	}
@@ -80,7 +84,7 @@ func key(id string, version int32) string {
 
 // Create stores a set as version 1.
 func (s *Store) Create(ctx context.Context, set *policyv1.PolicySet) (*policyv1.PolicySet, error) {
-	out := proto.Clone(set).(*policyv1.PolicySet)
+	out := proto.CloneOf(set)
 	if out.GetId() == "" {
 		out.Id = s.newID(out.GetDisplayName())
 	}
@@ -100,7 +104,7 @@ func (s *Store) Update(ctx context.Context, set *policyv1.PolicySet) (*policyv1.
 	if err != nil {
 		return nil, err
 	}
-	out := proto.Clone(set).(*policyv1.PolicySet)
+	out := proto.CloneOf(set)
 	out.Version = latest.GetVersion() + 1
 	return out, s.put(ctx, out)
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	datasourcev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
@@ -46,8 +47,8 @@ func TestBuildServesTheService(t *testing.T) {
 		Kind:        &datasourcev1.Source_Csv{Csv: &datasourcev1.CsvSource{FileRef: "staff.csv", HasHeader: true}},
 		Access:      &datasourcev1.Source_Access{ViewFields: []string{authz.Viewer}},
 	}})
-	if _, err := client.Create(context.Background(), req); connect.CodeOf(err) != connect.CodeUnauthenticated {
-		t.Fatalf("no session must be unauthenticated, got %v", err)
+	if _, serr := client.Create(context.Background(), req); connect.CodeOf(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("no session must be unauthenticated, got %v", serr)
 	}
 	req.Header().Set(authz.HeaderRoles, authz.Admin)
 	resp, err := client.Create(context.Background(), req)

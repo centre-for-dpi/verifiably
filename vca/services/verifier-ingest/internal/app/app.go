@@ -196,7 +196,8 @@ func keyID(key crypto.Signer) string {
 		return ""
 	}
 	// A JWK the kit built always has a thumbprint.
-	thumbprint, _ := jose.Thumbprint(jwk)
+	thumbprint, ignored := jose.Thumbprint(jwk)
+	_ = ignored
 	return thumbprint
 }
 

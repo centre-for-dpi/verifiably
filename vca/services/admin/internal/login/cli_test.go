@@ -21,9 +21,15 @@ func (h *harness) post(t *testing.T, path string, form url.Values) (int, map[str
 	if err != nil {
 		t.Fatalf("post %s: %v", path, err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body := map[string]any{}
-	_ = json.NewDecoder(res.Body).Decode(&body)
+	if cerr := json.NewDecoder(res.Body).Decode(&body); cerr != nil {
+		t.Fatalf("unexpected error: %v", cerr)
+	}
 	return res.StatusCode, body
 }
 
@@ -92,7 +98,7 @@ func TestTokenEndpointReturnsAnAdminSession(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("status = %d body = %v", status, body)
 	}
-	session, _ := body["access_token"].(string)
+	session := mustAs[string](t, body["access_token"])
 	if session == "" {
 		t.Fatalf("body = %v", body)
 	}
@@ -174,7 +180,7 @@ func TestLoopbackLoginGivesASessionToTheCLI(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("status = %d body = %v", status, body)
 	}
-	authorizeURL, _ := body["authorization_url"].(string)
+	authorizeURL := mustAs[string](t, body["authorization_url"])
 	if authorizeURL == "" || body["redirect_uri"] != login.LoopbackURL("49152", "") {
 		t.Fatalf("body = %v", body)
 	}
@@ -186,7 +192,11 @@ func TestLoopbackLoginGivesASessionToTheCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("callback status = %d", res.StatusCode)
 	}
@@ -204,7 +214,7 @@ func TestLoopbackLoginGivesASessionToTheCLI(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("token status = %d body = %v", status, body)
 	}
-	session, _ := body["access_token"].(string)
+	session := mustAs[string](t, body["access_token"])
 	claims, err := h.svc.Session(ctx, session)
 	if err != nil || !claims.HasRole(login.RoleSuperAdmin) {
 		t.Fatalf("claims = %+v, %v", claims, err)
@@ -242,7 +252,7 @@ func TestCallbackOfACLILoginReportsAFailure(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("status = %d body = %v", status, body)
 	}
-	authorizeURL, _ := body["authorization_url"].(string)
+	authorizeURL := mustAs[string](t, body["authorization_url"])
 	parsed, err := url.Parse(authorizeURL)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -252,7 +262,11 @@ func TestCallbackOfACLILoginReportsAFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode == http.StatusSeeOther {
 		t.Fatalf("a failed login redirected to the loopback")
 	}
@@ -273,7 +287,11 @@ func TestQueryTokensAreRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d", res.StatusCode)
 	}

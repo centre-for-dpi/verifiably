@@ -12,10 +12,11 @@ import (
 )
 
 // signinHandler answers the sign in call and passes the rest on.
-func signinHandler(next http.HandlerFunc) http.HandlerFunc {
+func signinHandler(t *testing.T, next http.HandlerFunc) http.HandlerFunc {
+	t.Helper()
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/signin" {
-			_, _ = w.Write([]byte(`{"data":{"access_token":"t"}}`))
+			mustWrite(t, w, []byte(`{"data":{"access_token":"t"}}`))
 			return
 		}
 		next(w, r)
@@ -53,10 +54,12 @@ func TestParseDcqlRejectsABadDocument(t *testing.T) {
 func TestCreatePresentationSendsTheQuery(t *testing.T) {
 	var body map[string]any
 	var query string
-	srv := httptest.NewServer(signinHandler(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		query = r.URL.RawQuery
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		_, _ = w.Write([]byte(`{"data":{"authorizationRequest":"openid4vp://x",
+		if cerr := json.NewDecoder(r.Body).Decode(&body); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
+		mustWrite(t, w, []byte(`{"data":{"authorizationRequest":"openid4vp://x",
           "verificationSession":{"id":"s-1"}}}`))
 	}))
 	defer srv.Close()
@@ -77,7 +80,7 @@ func TestCreatePresentationSendsTheQuery(t *testing.T) {
 	if body["responseMode"] != "direct_post" {
 		t.Fatalf("body = %v", body)
 	}
-	signer, _ := body["requestSigner"].(map[string]any)
+	signer := mustAs[map[string]any](t, body["requestSigner"])
 	if signer["method"] != "DID" {
 		t.Fatalf("signer = %v", signer)
 	}
@@ -87,8 +90,8 @@ func TestCreatePresentationSendsTheQuery(t *testing.T) {
 }
 
 func TestCreatePresentationReportsAnEmptyAnswer(t *testing.T) {
-	srv := httptest.NewServer(signinHandler(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"data":{"authorizationRequest":""}}`))
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		mustWrite(t, w, []byte(`{"data":{"authorizationRequest":""}}`))
 	}))
 	defer srv.Close()
 	_, err := newClient(srv, nil).CreatePresentation(context.Background(), "v", DcqlQuery{})
@@ -98,11 +101,11 @@ func TestCreatePresentationReportsAnEmptyAnswer(t *testing.T) {
 }
 
 func TestPresentationReadsTheSession(t *testing.T) {
-	srv := httptest.NewServer(signinHandler(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.RawQuery, "id=s-1") {
 			t.Errorf("query = %q", r.URL.RawQuery)
 		}
-		_, _ = w.Write([]byte(`{"data":{"state":"ResponseVerified",
+		mustWrite(t, w, []byte(`{"data":{"state":"ResponseVerified",
           "authorizationResponsePayload":{"vp_token":{"vc-1":["token-a"]}}}}`))
 	}))
 	defer srv.Close()
@@ -116,7 +119,7 @@ func TestPresentationReadsTheSession(t *testing.T) {
 }
 
 func TestPresentationNeedsAState(t *testing.T) {
-	srv := httptest.NewServer(signinHandler(func(http.ResponseWriter, *http.Request) {}))
+	srv := httptest.NewServer(signinHandler(t, func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 	if _, err := newClient(srv, nil).Presentation(context.Background(), "  "); err == nil {
 		t.Fatal("Presentation accepted an empty state")
@@ -124,7 +127,7 @@ func TestPresentationNeedsAState(t *testing.T) {
 }
 
 func TestPresentationReportsAFailure(t *testing.T) {
-	srv := httptest.NewServer(signinHandler(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
@@ -155,28 +158,30 @@ func TestTokensReadEveryShape(t *testing.T) {
 
 func TestEnsureVerifierCreatesOne(t *testing.T) {
 	var body map[string]any
-	srv := httptest.NewServer(signinHandler(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		_, _ = w.Write([]byte(`{"data":{"id":"v-1"}}`))
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if cerr := json.NewDecoder(r.Body).Decode(&body); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
+		mustWrite(t, w, []byte(`{"data":{"id":"v-1"}}`))
 	}))
 	defer srv.Close()
 	got, err := newClient(srv, nil).EnsureVerifier(context.Background(), "vca", "https://x/logo.png")
 	if err != nil || got != "v-1" {
 		t.Fatalf("EnsureVerifier = %q, %v", got, err)
 	}
-	metadata, _ := body["clientMetadata"].(map[string]any)
+	metadata := mustAs[map[string]any](t, body["clientMetadata"])
 	if metadata["logo_uri"] != "https://x/logo.png" {
 		t.Fatalf("metadata = %v", metadata)
 	}
 }
 
 func TestEnsureVerifierFindsAnExistingOne(t *testing.T) {
-	srv := httptest.NewServer(signinHandler(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
-		_, _ = w.Write([]byte(`{"data":[{"id":"v-1","publicVerifierId":"vca"}]}`))
+		mustWrite(t, w, []byte(`{"data":[{"id":"v-1","publicVerifierId":"vca"}]}`))
 	}))
 	defer srv.Close()
 	got, err := newClient(srv, nil).EnsureVerifier(context.Background(), "vca", "")
@@ -188,13 +193,13 @@ func TestEnsureVerifierFindsAnExistingOne(t *testing.T) {
 func TestEnsureVerifierReportsAMissingListing(t *testing.T) {
 	list := `{"data":[]}`
 	status := http.StatusOK
-	srv := httptest.NewServer(signinHandler(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
 		w.WriteHeader(status)
-		_, _ = w.Write([]byte(list))
+		mustWrite(t, w, []byte(list))
 	}))
 	defer srv.Close()
 	c := newClient(srv, nil)
@@ -210,9 +215,9 @@ func TestEnsureVerifierReportsAMissingListing(t *testing.T) {
 func TestEnsureVerifierReportsAnEmptyIdentifierAndAFailure(t *testing.T) {
 	body := `{"data":{"id":""}}`
 	status := http.StatusOK
-	srv := httptest.NewServer(signinHandler(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := newClient(srv, nil)

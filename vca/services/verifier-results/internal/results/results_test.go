@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var testNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)

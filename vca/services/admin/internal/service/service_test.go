@@ -106,7 +106,7 @@ func newHarness(t *testing.T) *harness {
 	h.idpSrv = registrationIDP(t, h.idp)
 	h.health = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set(health.VersionHeader, "1.0.0")
-		_, _ = w.Write([]byte("ready"))
+		mustWrite(t, w, []byte("ready"))
 	}))
 	t.Cleanup(h.health.Close)
 	kv := store.Memory()
@@ -122,11 +122,11 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("registry: %v", err)
 	}
-	if _, err := registry.Put(oidcflow.Provider{
+	if _, serr := registry.Put(oidcflow.Provider{
 		ID: "idp", DisplayName: "Test IdP", DiscoveryURL: h.idp.DiscoveryURL(),
 		ClientID: h.idp.ClientID, Enabled: true,
-	}); err != nil {
-		t.Fatalf("Put: %v", err)
+	}); serr != nil {
+		t.Fatalf("Put: %v", serr)
 	}
 	signKey, err := oidcflow.GenerateKey()
 	if err != nil {
@@ -205,7 +205,9 @@ func registrationIDP(t *testing.T, idp *oidctest.Provider) *httptest.Server {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if cerr := json.NewEncoder(w).Encode(v); cerr != nil {
+		panic(cerr)
+	}
 }
 
 // call adds the admin credential to a request.
@@ -275,8 +277,8 @@ func TestTenantRPCsAndTheAuditTrail(t *testing.T) {
 	if err != nil || len(list.Msg.GetTenants()) != 2 {
 		t.Fatalf("ListTenants = %d, %v", len(list.Msg.GetTenants()), err)
 	}
-	if _, err := h.svc.DeleteTenant(ctx, request(h, &adminv1.DeleteTenantRequest{Id: id})); err != nil {
-		t.Fatalf("DeleteTenant: %v", err)
+	if _, serr := h.svc.DeleteTenant(ctx, request(h, &adminv1.DeleteTenantRequest{Id: id})); serr != nil {
+		t.Fatalf("DeleteTenant: %v", serr)
 	}
 	page, err := h.log.Query(ctx, audit.Filter{})
 	if err != nil {

@@ -158,8 +158,8 @@ func (s *Service) LoginCallback(ctx context.Context, req *connect.Request[wallet
 
 // Introspect implements WalletAuthServiceHandler.
 func (s *Service) Introspect(_ context.Context, req *connect.Request[walletauthv1.IntrospectRequest]) (*connect.Response[walletauthv1.IntrospectResponse], error) {
-	claims, err := s.d.Signer.Verify(req.Msg.GetSessionToken())
-	if err != nil {
+	claims, ok := s.session(req.Msg.GetSessionToken())
+	if !ok {
 		return connect.NewResponse(&walletauthv1.IntrospectResponse{Active: false}), nil
 	}
 	return connect.NewResponse(&walletauthv1.IntrospectResponse{Active: true, Session: toProto(claims)}), nil
@@ -183,7 +183,7 @@ func (s *Service) GetAuthorizationGrant(_ context.Context, req *connect.Request[
 		return nil, oidcflow.ConnectError(err)
 	}
 	issuer := req.Msg.GetCredentialIssuer()
-	if u, err := url.Parse(issuer); err != nil || u.Scheme == "" || u.Host == "" {
+	if u, serr := url.Parse(issuer); serr != nil || u.Scheme == "" || u.Host == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("credential_issuer must be an absolute URL"))
 	}
 	g, err := s.d.Grants.Take(claims.SID, issuer)
@@ -266,20 +266,47 @@ func (s *Service) End(ctx context.Context, token string) (string, error) {
 		return "", err
 	}
 	hint := s.d.Grants.IDToken(claims.SID)
-	_ = s.d.Grants.Delete(claims.SID)
-	p, err := s.d.Providers.Get(claims.Provider)
-	if err != nil {
+	ignored := s.d.Grants.Delete(claims.SID)
+	_ = ignored
+	p, ok := s.knownProvider(claims.Provider)
+	if !ok {
 		return "", nil
 	}
 	post := ""
 	if s.cfg.LogoutRedirect != "" {
 		post = s.cfg.PublicBaseURL + s.cfg.LogoutRedirect
 	}
+	return s.logoutURL(ctx, p, hint, post), nil
+}
+
+// session returns the claims of a session token. A token that does not
+// verify gives false.
+func (s *Service) session(token string) (oidcflow.Claims, bool) {
+	claims, err := s.d.Signer.Verify(token)
+	if err != nil {
+		return oidcflow.Claims{}, false
+	}
+	return claims, true
+}
+
+// knownProvider returns one provider record. A record that is missing,
+// or a store fault, gives false.
+func (s *Service) knownProvider(id string) (oidcflow.Provider, bool) {
+	p, err := s.d.Providers.Get(id)
+	if err != nil {
+		return oidcflow.Provider{}, false
+	}
+	return p, true
+}
+
+// logoutURL returns the logout URL of the provider. A provider with no
+// logout endpoint, or a fault, gives an empty string.
+func (s *Service) logoutURL(ctx context.Context, p oidcflow.Provider, hint, post string) string {
 	u, err := s.d.Flow.LogoutURL(ctx, p, hint, post)
 	if err != nil {
-		return "", nil
+		return ""
 	}
-	return u, nil
+	return u
 }
 
 // Session implements oidcflow.Logins.

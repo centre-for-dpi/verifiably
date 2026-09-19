@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -24,7 +26,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/lookup"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/publish"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var t0 = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -59,8 +60,14 @@ func newFixture(t *testing.T, backend sharedstore.Document, publishers ...publis
 	if err != nil {
 		t.Fatal(err)
 	}
-	k, _ := keys.Generate(jose.ES256, t0)
-	ring, _ := keys.NewRing(k)
+	k, verr := keys.Generate(jose.ES256, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	ring, verr := keys.NewRing(k)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if len(publishers) == 0 {
 		publishers = []publish.Publisher{etsi.Publisher{}, dedi.Publisher{}}
 	}
@@ -112,9 +119,18 @@ func TestNewErrors(t *testing.T) {
 	if _, err := New(Options{}); err == nil {
 		t.Fatal("missing options")
 	}
-	st, _ := store.Open(sharedstore.MemoryDoc())
-	k, _ := keys.Generate(jose.ES256, t0)
-	ring, _ := keys.NewRing(k)
+	st, verr := store.Open(sharedstore.MemoryDoc())
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	k, verr := keys.Generate(jose.ES256, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	ring, verr := keys.NewRing(k)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	bad := failing{method: "etsi", publishErr: errors.New("no")}
 	cache := lookup.New([]publish.Publisher{bad}, ring.JWKS, lookup.Options{})
 	if _, err := New(Options{Store: st, Ring: ring, Publishers: []publish.Publisher{bad}, Cache: cache}); err == nil {
@@ -176,19 +192,19 @@ func TestCRUDAndPublish(t *testing.T) {
 		protoEntry("did:web:missing.example", commonv1.Role_ROLE_ISSUER, trustv1.Status_STATUS_ACTIVE),
 	}
 	for i, e := range bad {
-		if _, err := svc.UpsertEntry(ctx, connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: e})); code(err) != connect.CodeInvalidArgument {
-			t.Errorf("upsert case %d: %v", i, err)
+		if _, serr := svc.UpsertEntry(ctx, connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: e})); code(serr) != connect.CodeInvalidArgument {
+			t.Errorf("upsert case %d: %v", i, serr)
 		}
 	}
 	got, err := svc.GetEntry(ctx, connect.NewRequest(&trustv1.GetEntryRequest{Identifier: didID("did:web:issuer.example")}))
 	if err != nil || got.Msg.GetEntry().GetDisplayName() != "E" {
 		t.Fatal("get", err)
 	}
-	if _, err := svc.GetEntry(ctx, connect.NewRequest(&trustv1.GetEntryRequest{Identifier: didID("did:web:none")})); code(err) != connect.CodeNotFound {
-		t.Fatal("get missing", err)
+	if _, serr := svc.GetEntry(ctx, connect.NewRequest(&trustv1.GetEntryRequest{Identifier: didID("did:web:none")})); code(serr) != connect.CodeNotFound {
+		t.Fatal("get missing", serr)
 	}
-	if _, err := svc.GetEntry(ctx, connect.NewRequest(&trustv1.GetEntryRequest{})); code(err) != connect.CodeInvalidArgument {
-		t.Fatal("get invalid", err)
+	if _, serr := svc.GetEntry(ctx, connect.NewRequest(&trustv1.GetEntryRequest{})); code(serr) != connect.CodeInvalidArgument {
+		t.Fatal("get invalid", serr)
 	}
 	pub, err := svc.Publish(ctx, connect.NewRequest(&trustv1.PublishRequest{Method: trustv1.Method_METHOD_DEDI}))
 	if err != nil || len(pub.Msg.GetPublications()) != 1 || pub.Msg.GetPublications()[0].GetMethod() != trustv1.Method_METHOD_DEDI || pub.Msg.GetPublications()[0].GetEntryCount() != 1 {
@@ -300,8 +316,8 @@ func TestTrustLookup(t *testing.T) {
 	if r.GetOutcome() != trustv1.TrustLookupResponse_OUTCOME_UNTRUSTED || r.GetReason() == "" {
 		t.Fatalf("untrusted %+v", r)
 	}
-	if r := lookupReq("did:web:z", commonv1.Role_ROLE_ISSUER, timestamppb.New(t0)); r.GetOutcome() != trustv1.TrustLookupResponse_OUTCOME_UNKNOWN {
-		t.Fatalf("unknown %+v", r)
+	if unknown := lookupReq("did:web:z", commonv1.Role_ROLE_ISSUER, timestamppb.New(t0)); unknown.GetOutcome() != trustv1.TrustLookupResponse_OUTCOME_UNKNOWN {
+		t.Fatalf("unknown %+v", unknown)
 	}
 	*f.clock = t0.Add(3 * time.Hour)
 	r = lookupReq("did:web:a", commonv1.Role_ROLE_ISSUER, nil)
@@ -349,8 +365,8 @@ func TestImportEtsi(t *testing.T) {
 	if err != nil || r.Msg.GetOutcome() != trustv1.TrustLookupResponse_OUTCOME_TRUSTED {
 		t.Fatal("lookup imported", err)
 	}
-	if _, err := svc.ImportEtsi(ctx, connect.NewRequest(&trustv1.ImportEtsiRequest{Xml: []byte("<x")})); code(err) != connect.CodeInvalidArgument {
-		t.Fatal("bad xml", err)
+	if _, serr := svc.ImportEtsi(ctx, connect.NewRequest(&trustv1.ImportEtsiRequest{Xml: []byte("<x")})); code(serr) != connect.CodeInvalidArgument {
+		t.Fatal("bad xml", serr)
 	}
 	empty, err := svc.ImportEtsi(ctx, connect.NewRequest(&trustv1.ImportEtsiRequest{Xml: []byte(`<TrustServiceStatusList xmlns="http://uri.etsi.org/02231/v2#"/>`)}))
 	if err != nil || empty.Msg.GetCreated() != 0 {
@@ -377,9 +393,18 @@ func TestStoreFailures(t *testing.T) {
 
 func TestRepublishFailures(t *testing.T) {
 	ctx := context.Background()
-	st, _ := store.Open(sharedstore.MemoryDoc())
-	k, _ := keys.Generate(jose.ES256, t0)
-	ring, _ := keys.NewRing(k)
+	st, verr := store.Open(sharedstore.MemoryDoc())
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	k, verr := keys.Generate(jose.ES256, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	ring, verr := keys.NewRing(k)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	p := &togglePublisher{}
 	cache := lookup.New([]publish.Publisher{p}, ring.JWKS, lookup.Options{Now: func() time.Time { return t0 }})
 	svc, err := New(Options{Store: st, Ring: ring, Publishers: []publish.Publisher{p}, Cache: cache, Now: func() time.Time { return t0 }})

@@ -78,7 +78,7 @@ func TestMetadataReadsThePathOfTheStandardVersion(t *testing.T) {
 	var path string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
-		_, _ = w.Write([]byte(`{"credential_issuer":"https://i.example","credential_configurations_supported":{}}`))
+		mustWrite(t, w, []byte(`{"credential_issuer":"https://i.example","credential_configurations_supported":{}}`))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{StandardVersion: "draft11"})
@@ -96,7 +96,7 @@ func TestMetadataReadsThePathOfTheStandardVersion(t *testing.T) {
 
 func TestMetadataReportsABrokenDocument(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("not json"))
+		mustWrite(t, w, []byte("not json"))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})
@@ -126,7 +126,7 @@ func TestEnsureIssuerKeyOnboardsOnceAndCachesTheAnswer(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
-		_, _ = w.Write([]byte(`{"issuerKey":{"type":"jwk"},"issuerDid":"did:key:zNew"}`))
+		mustWrite(t, w, []byte(`{"issuerKey":{"type":"jwk"},"issuerDid":"did:key:zNew"}`))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})
@@ -143,7 +143,7 @@ func TestEnsureIssuerKeyOnboardsOnceAndCachesTheAnswer(t *testing.T) {
 
 func TestEnsureIssuerKeyReportsAnEmptyAnswer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{}`))
+		mustWrite(t, w, []byte(`{}`))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})
@@ -185,10 +185,10 @@ func TestLoginReportsAMissingTokenOrWallet(t *testing.T) {
 	body := `{"token":""}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/wallets") {
-			_, _ = w.Write([]byte(`{"wallets":[]}`))
+			mustWrite(t, w, []byte(`{"wallets":[]}`))
 			return
 		}
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})
@@ -207,7 +207,7 @@ func TestLoginReportsAFailedListing(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		_, _ = w.Write([]byte(`{"token":"t"}`))
+		mustWrite(t, w, []byte(`{"token":"t"}`))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})
@@ -219,8 +219,10 @@ func TestLoginReportsAFailedListing(t *testing.T) {
 func TestPresentReadsTheRedirect(t *testing.T) {
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		_, _ = w.Write([]byte(`{"redirectUri":"https://verifier.example/ok"}`))
+		if cerr := json.NewDecoder(r.Body).Decode(&body); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
+		mustWrite(t, w, []byte(`{"redirectUri":"https://verifier.example/ok"}`))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})
@@ -250,7 +252,7 @@ func TestListAndDeleteAndResolveAndAcceptReachTheWallet(t *testing.T) {
 	var seen []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = append(seen, r.Method+" "+r.URL.Path)
-		_, _ = w.Write([]byte(`[]`))
+		mustWrite(t, w, []byte(`[]`))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})
@@ -286,7 +288,7 @@ func TestSessionResultReadsTheSession(t *testing.T) {
 		if r.URL.EscapedPath() != "/openid4vc/session/a%20b" {
 			t.Errorf("path = %q", r.URL.EscapedPath())
 		}
-		_, _ = w.Write([]byte(`{"id":"a b","verificationResult":true}`))
+		mustWrite(t, w, []byte(`{"id":"a b","verificationResult":true}`))
 	}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})

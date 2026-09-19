@@ -9,12 +9,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
@@ -22,7 +25,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/crawl"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/template"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DefaultPageSize is the page size when a request gives none.
@@ -79,7 +81,7 @@ func (s *Service) Crawl(ctx context.Context, req *connect.Request[discoveryv1.Cr
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
 	return connect.NewResponse(&discoveryv1.CrawlResponse{
-		Crawled:   int32(res.Crawled),
+		Crawled:   toInt32(int64(res.Crawled)),
 		Failed:    res.Failed,
 		CrawledAt: timestamppb.New(res.At),
 	}), nil
@@ -279,7 +281,7 @@ func (s *Service) DeleteTemplate(ctx context.Context, req *connect.Request[disco
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&discoveryv1.DeleteTemplateResponse{VersionsRemoved: int32(removed)}), nil
+	return connect.NewResponse(&discoveryv1.DeleteTemplateResponse{VersionsRemoved: toInt32(int64(removed))}), nil
 }
 
 // Versions returns the version numbers of one template. The portal uses
@@ -323,4 +325,15 @@ func (s *Service) page(p *commonv1.Pagination, total int) (bounds, string, error
 		next = strconv.Itoa(to)
 	}
 	return bounds{from: from, to: to}, next, nil
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

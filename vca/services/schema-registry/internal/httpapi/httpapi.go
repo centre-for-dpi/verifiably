@@ -113,7 +113,9 @@ func (h *Handler) write(w http.ResponseWriter, r *http.Request, doc any, content
 	if r.Method == http.MethodHead {
 		return
 	}
-	_, _ = w.Write(body)
+	if _, err := w.Write(body); err != nil {
+		return
+	}
 }
 
 // matches reports whether the If-None-Match header names etag.

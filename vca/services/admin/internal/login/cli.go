@@ -106,7 +106,7 @@ func (s *Service) Token(w http.ResponseWriter, r *http.Request) {
 		ExpiresIn int64  `json:"expires_in"`
 		Error     string `json:"error"`
 	}
-	if err := json.Unmarshal(body, &answer); err != nil {
+	if serr := json.Unmarshal(body, &answer); serr != nil {
 		oidcflow.WriteError(w, http.StatusBadGateway, "temporarily_unavailable", "the provider answer is not JSON")
 		return
 	}
@@ -115,7 +115,9 @@ func (s *Service) Token(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(status)
-		_, _ = w.Write(body)
+		if _, werr := w.Write(body); werr != nil {
+			return
+		}
 		return
 	}
 	if answer.IDToken == "" {
@@ -127,8 +129,8 @@ func (s *Service) Token(w http.ResponseWriter, r *http.Request) {
 		s.failOAuth(w, err)
 		return
 	}
-	issuer, _ := claims["iss"].(string)
-	subject, _ := claims["sub"].(string)
+	issuer := claimString(claims, "iss")
+	subject := claimString(claims, "sub")
 	token, session, err := s.session(ctx, p, issuer, subject, name(claims), r.PostFormValue(BootstrapField), answer.IDToken)
 	if err != nil {
 		s.failOAuth(w, err)
@@ -217,7 +219,10 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 // newCode returns a one time loopback code.
 func newCode() string {
 	b := make([]byte, 24)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
@@ -251,7 +256,7 @@ func (s *Service) providerMetadata(ctx context.Context, providerID string) (oidc
 	if err != nil {
 		// A provider that does not answer is an upstream fault, so the
 		// CLI sees 502 and not 500.
-		return oidcflow.Provider{}, onboard.Metadata{}, fmt.Errorf("%w: %v", oidcflow.ErrUpstream, err)
+		return oidcflow.Provider{}, onboard.Metadata{}, fmt.Errorf("%w: %w", oidcflow.ErrUpstream, err)
 	}
 	return p, meta, nil
 }
@@ -276,7 +281,8 @@ func (s *Service) post(ctx context.Context, endpoint string, form url.Values, p 
 	if err != nil {
 		return nil, 0, oidcflow.ErrUpstream
 	}
-	defer resp.Body.Close()
+	// Nothing can act on a close fault of a response body.
+	defer func() { ignored := resp.Body.Close(); _ = ignored }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return nil, 0, oidcflow.ErrUpstream

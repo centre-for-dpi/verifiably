@@ -48,8 +48,8 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := seed(providers, cfg); err != nil {
-		return nil, err
+	if serr := seed(providers, cfg); serr != nil {
+		return nil, serr
 	}
 	walletReg, err := wallets.New(persist, nil)
 	if err != nil {
@@ -144,7 +144,7 @@ func loadKey(path string, log *slog.Logger) (*ecdsa.PrivateKey, error) {
 		log.Warn("VCA_SECRETS_SIGNING_KEY is not set: sessions end when the service restarts")
 		return oidcflow.GenerateKey()
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: the path comes from the service configuration
 	if err != nil {
 		return nil, fmt.Errorf("signing key: %w", err)
 	}
@@ -160,7 +160,10 @@ func randomIfEmpty(v string, n int) []byte {
 
 func randomBytes(n int) []byte {
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return b
 }
 

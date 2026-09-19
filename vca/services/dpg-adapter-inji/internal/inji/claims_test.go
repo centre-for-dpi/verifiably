@@ -68,12 +68,12 @@ func TestAuthorizationCodeOffer(t *testing.T) {
 	if got["credential_issuer"] != "https://i.example" {
 		t.Fatalf("offer = %v", got)
 	}
-	ids, _ := got["credential_configuration_ids"].([]string)
+	ids := mustAs[[]string](t, got["credential_configuration_ids"])
 	if len(ids) != 1 || ids[0] != "FarmerCredential" {
 		t.Fatalf("ids = %v", ids)
 	}
-	grants, _ := got["grants"].(map[string]any)
-	grant, _ := grants["authorization_code"].(map[string]any)
+	grants := mustAs[map[string]any](t, got["grants"])
+	grant := mustAs[map[string]any](t, grants["authorization_code"])
 	if grant["issuer_state"] != "state-1" {
 		t.Fatalf("grant = %v", grant)
 	}
@@ -81,8 +81,8 @@ func TestAuthorizationCodeOffer(t *testing.T) {
 		t.Fatalf("grant = %v", grant)
 	}
 	bare := AuthorizationCodeOffer("https://i.example", "x", "s", "")
-	grants, _ = bare["grants"].(map[string]any)
-	grant, _ = grants["authorization_code"].(map[string]any)
+	grants = mustAs[map[string]any](t, bare["grants"])
+	grant = mustAs[map[string]any](t, grants["authorization_code"])
 	if _, ok := grant["authorization_server"]; ok {
 		t.Fatal("an empty identity provider adds no member")
 	}

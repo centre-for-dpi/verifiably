@@ -106,8 +106,10 @@ func New(kv store.KeyValue, now func() time.Time) *Store {
 // NewID returns a new random identifier.
 func NewID() string {
 	b := make([]byte, 16)
-	// crypto/rand never fails on the platforms Go 1.24 and later support.
-	_, _ = rand.Read(b)
+	// crypto/rand cannot fail on a platform that Go supports.
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
 	return hex.EncodeToString(b)
 }
 

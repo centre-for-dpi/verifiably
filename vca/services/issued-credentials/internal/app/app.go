@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"

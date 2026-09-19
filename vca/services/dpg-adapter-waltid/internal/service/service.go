@@ -17,12 +17,13 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // AdapterName is the name the capability answer carries.

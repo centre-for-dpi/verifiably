@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	shared "github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -28,8 +29,8 @@ var clock = time.Unix(1700000000, 0).UTC()
 // query is a small DCQL query.
 const query = `{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["v"]}}]}`
 
-// sdjwtToken is an SD-JWT VC with one disclosure.
-const sdjwtToken = "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2V4YW1wbGUudGVzdC9waWQifQ.c2ln~WyJzYWx0IiwiZ2l2ZW5fbmFtZSIsIkFzaGEiXQ~"
+// sdjwtSample is an SD-JWT VC with one disclosure.
+const sdjwtSample = "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2V4YW1wbGUudGVzdC9waWQifQ.c2ln~WyJzYWx0IiwiZ2l2ZW5fbmFtZSIsIkFzaGEiXQ~"
 
 // setup wires a server over the wallet endpoints.
 func setup(t *testing.T, now func() time.Time) (*httptest.Server, *service.Service, *txn.Store) {
@@ -92,7 +93,11 @@ func get(t *testing.T, s *httptest.Server, path string) (int, string, http.Heade
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +117,11 @@ func post(t *testing.T, s *httptest.Server, path string, form url.Values) (int, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -164,11 +173,11 @@ func TestRequestObjectSigningFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(context.Background(), txn.Transaction{
+	if serr := store.Put(context.Background(), txn.Transaction{
 		ID: "abc", Nonce: "n", StateParam: "s", State: txn.StatePending,
 		CreatedAt: clock, ExpiresAt: clock.Add(time.Minute),
-	}); err != nil {
-		t.Fatal(err)
+	}); serr != nil {
+		t.Fatal(serr)
 	}
 	handler, err := httpapi.New(svc)
 	if err != nil {
@@ -188,7 +197,7 @@ func TestDirectPost(t *testing.T) {
 	s, svc, store := setup(t, nil)
 	record := create(t, svc, store)
 	status, body := post(t, s, service.ResponsePath, url.Values{
-		"state": {record.StateParam}, "vp_token": {sdjwtToken},
+		"state": {record.StateParam}, "vp_token": {sdjwtSample},
 	})
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, body %s", status, body)
@@ -231,7 +240,7 @@ func TestDirectPostWithoutRedirect(t *testing.T) {
 	defer s.Close()
 	record := create(t, svc, store)
 	status, body := post(t, s, service.ResponsePath, url.Values{
-		"state": {record.StateParam}, "vp_token": {sdjwtToken},
+		"state": {record.StateParam}, "vp_token": {sdjwtSample},
 	})
 	if status != http.StatusOK || strings.TrimSpace(body) != "{}" {
 		t.Errorf("status = %d, body = %s", status, body)
@@ -242,7 +251,7 @@ func TestDirectPostErrors(t *testing.T) {
 	now := clock
 	s, svc, store := setup(t, func() time.Time { return now })
 	record := create(t, svc, store)
-	unknown, body := post(t, s, service.ResponsePath, url.Values{"state": {"none"}, "vp_token": {sdjwtToken}})
+	unknown, body := post(t, s, service.ResponsePath, url.Values{"state": {"none"}, "vp_token": {sdjwtSample}})
 	if unknown != http.StatusNotFound || !strings.Contains(body, "no such transaction") {
 		t.Errorf("status = %d, body = %s", unknown, body)
 	}
@@ -259,7 +268,7 @@ func TestDirectPostErrors(t *testing.T) {
 	second := create(t, svc, store)
 	now = clock.Add(2 * time.Minute)
 	gone, body := post(t, s, service.ResponsePath, url.Values{
-		"state": {second.StateParam}, "vp_token": {sdjwtToken},
+		"state": {second.StateParam}, "vp_token": {sdjwtSample},
 	})
 	if gone != http.StatusGone || !strings.Contains(body, "expired") {
 		t.Errorf("status = %d, body = %s", gone, body)
@@ -277,7 +286,11 @@ func TestDirectPostRejectsBadBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("a body that is not a form answers %d", resp.StatusCode)
 	}
@@ -308,7 +321,7 @@ func TestDirectPostStoreFailure(t *testing.T) {
 	handler.Register(mux)
 	s := httptest.NewServer(mux)
 	defer s.Close()
-	status, body := post(t, s, service.ResponsePath, url.Values{"state": {"s"}, "vp_token": {sdjwtToken}})
+	status, body := post(t, s, service.ResponsePath, url.Values{"state": {"s"}, "vp_token": {sdjwtSample}})
 	if status != http.StatusNotFound {
 		t.Errorf("status = %d, body = %s", status, body)
 	}

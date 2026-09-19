@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/config"

@@ -88,7 +88,7 @@ func Parse(raw string) (Request, error) {
 	}
 	u, err := url.Parse(text)
 	if err != nil {
-		return Request{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
+		return Request{}, fmt.Errorf("%w: %w", ErrBadRequest, err)
 	}
 	q := u.Query()
 	if uri := strings.TrimSpace(q.Get("request_uri")); uri != "" {
@@ -104,7 +104,7 @@ func Parse(raw string) (Request, error) {
 	for _, name := range []string{"dcql_query", "presentation_definition"} {
 		if value := q.Get(name); value != "" {
 			var nested any
-			if err := json.Unmarshal([]byte(value), &nested); err != nil {
+			if serr := json.Unmarshal([]byte(value), &nested); serr != nil {
 				return Request{}, fmt.Errorf("%w: the %s does not parse", ErrBadRequest, name)
 			}
 			doc[name] = nested
@@ -112,7 +112,7 @@ func Parse(raw string) (Request, error) {
 	}
 	raw2, err := json.Marshal(doc)
 	if err != nil {
-		return Request{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
+		return Request{}, fmt.Errorf("%w: %w", ErrBadRequest, err)
 	}
 	return fromObject(raw2)
 }
@@ -124,7 +124,7 @@ func Parse(raw string) (Request, error) {
 // host, and it allows plain http.
 func AllowHost(ctx context.Context, uri string, hosts []string) error {
 	if _, err := url.Parse(strings.TrimSpace(uri)); err != nil {
-		return fmt.Errorf("%w: %v", ErrBadRequest, err)
+		return fmt.Errorf("%w: %w", ErrBadRequest, err)
 	}
 	if len(hosts) == 0 {
 		return fmt.Errorf("%w: no host is allowed", ErrHostNotAllowed)
@@ -135,7 +135,7 @@ func AllowHost(ctx context.Context, uri string, hosts []string) error {
 		AllowPrivateNetwork: true,
 	}
 	if _, err := guard.Check(ctx, uri); err != nil {
-		return fmt.Errorf("%w: %v", ErrHostNotAllowed, err)
+		return fmt.Errorf("%w: %w", ErrHostNotAllowed, err)
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func ParseObject(raw []byte) (Request, error) {
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		return Request{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
+		return Request{}, fmt.Errorf("%w: %w", ErrBadRequest, err)
 	}
 	return fromObject(encoded)
 }
@@ -203,7 +203,7 @@ type requestObject struct {
 func fromObject(raw []byte) (Request, error) {
 	var doc requestObject
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return Request{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
+		return Request{}, fmt.Errorf("%w: %w", ErrBadRequest, err)
 	}
 	out := Request{
 		ClientID: doc.ClientID, Nonce: doc.Nonce, ResponseURI: doc.ResponseURI,
@@ -273,10 +273,10 @@ func fromDefinition(raw []byte) (dcql.Query, string, string, error) {
 		cq := dcql.CredentialQuery{ID: dcql.CleanID(d.ID), Format: formatOf(d.Format)}
 		for _, f := range d.Constraints.Fields {
 			name := claimName(f.Path)
-			switch {
-			case name == "":
+			switch name {
+			case "":
 				continue
-			case name == "vct" || name == "type":
+			case "vct", "type":
 				if pattern := firstNonEmpty(f.Filter.Const, f.Filter.Pattern); pattern != "" {
 					cq.Meta = &dcql.Meta{VctValues: []string{strings.Trim(pattern, "^$")}}
 				}
@@ -431,7 +431,7 @@ func FormatName(f commonv1.Format) string {
 func Disclosed(credential string, paths []string) (string, error) {
 	parsed, err := sdjwt.Parse(credential)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrBadRequest, err)
+		return "", fmt.Errorf("%w: %w", ErrBadRequest, err)
 	}
 	keep := map[string]bool{}
 	for _, p := range paths {

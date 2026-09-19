@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1/issuancev1connect"
@@ -152,7 +153,9 @@ func documentHandler(svc *service.Service) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/pdf")
 		w.Header().Set("Content-Disposition", `attachment; filename="credential.pdf"`)
 		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write(document)
+		if _, err := w.Write(document); err != nil {
+			return
+		}
 	}
 }
 

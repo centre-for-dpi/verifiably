@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/summary"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -18,7 +20,6 @@ import (
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Options configure the evaluator.

@@ -35,7 +35,7 @@ type Account struct {
 	Type string `json:"type"`
 }
 
-// Session is a wallet-api login: a token and the first wallet.
+// WalletSession is a wallet-api login: a token and the first wallet.
 type WalletSession struct {
 	// Token is the wallet-api session token.
 	Token string
@@ -64,7 +64,8 @@ func (c *Client) Login(ctx context.Context, acc Account) (WalletSession, error) 
 	acc.Type = "email"
 	// A repeated registration fails because the account exists. The
 	// login below decides whether the account is usable.
-	_ = c.wallet.JSON(ctx, http.MethodPost, "/wallet-api/auth/register", acc, nil)
+	ignored2 := c.wallet.JSON(ctx, http.MethodPost, "/wallet-api/auth/register", acc, nil)
+	_ = ignored2
 	var tok loginResponse
 	if err := c.wallet.JSON(ctx, http.MethodPost, "/wallet-api/auth/login", acc, &tok); err != nil {
 		return WalletSession{}, fmt.Errorf("waltid: wallet login: %w", err)
@@ -185,7 +186,8 @@ func (c *Client) Present(ctx context.Context, s WalletSession, requestURI string
 	}
 	var out PresentResult
 	if len(strings.TrimSpace(string(resp.Body))) > 0 {
-		_ = json.Unmarshal(resp.Body, &out)
+		ignored := json.Unmarshal(resp.Body, &out)
+		_ = ignored
 	}
 	return out, nil
 }

@@ -70,7 +70,7 @@ func TestSecureAndVerify(t *testing.T) {
 		if _, err := rec.Allocate(nil); err != nil {
 			t.Fatal(err)
 		}
-		rec.Allocated[idx/8] |= 1 << (7 - uint(idx%8))
+		rec.Allocated[idx/8] |= 1 << (7 - idx%8)
 		rec.AllocatedCount++
 		if _, err := rec.Set(idx, 1, t0); err != nil {
 			t.Fatal(err)
@@ -108,8 +108,8 @@ func TestSecureAndVerify(t *testing.T) {
 			t.Fatalf("%s: verify: %v", alg, err)
 		}
 		var claims map[string]any
-		if err := json.Unmarshal(payload, &claims); err != nil {
-			t.Fatal(err)
+		if serr := json.Unmarshal(payload, &claims); serr != nil {
+			t.Fatal(serr)
 		}
 		purpose, list, err := bitstring.ParseCredential(claims)
 		if err != nil {
@@ -118,7 +118,7 @@ func TestSecureAndVerify(t *testing.T) {
 		if purpose != bitstring.Revocation || list.Size() != bitstring.MinSize {
 			t.Fatalf("%s: purpose %s size %d", alg, purpose, list.Size())
 		}
-		if v, _ := list.Get(idx); !v {
+		if v, ierr := list.Get(idx); ierr != nil || !v {
 			t.Fatalf("%s: index %d must be set", alg, idx)
 		}
 		if claims["issuer"] != issuer.DID() || !strings.HasPrefix(issuer.DID(), "did:jwk:") {
@@ -127,7 +127,7 @@ func TestSecureAndVerify(t *testing.T) {
 		if claims["validUntil"] != t0.Add(24*time.Hour).Format(time.RFC3339) {
 			t.Fatalf("%s: validUntil = %v", alg, claims["validUntil"])
 		}
-		types, _ := claims["type"].([]any)
+		types := mustAs[[]any](t, claims["type"])
 		if len(types) != 2 || types[1] != bitstring.TypeCredential {
 			t.Fatalf("%s: type = %v", alg, claims["type"])
 		}
@@ -148,14 +148,20 @@ func TestSecureUsesConfiguredDID(t *testing.T) {
 	if claims["issuer"] != "did:web:issuer.example" {
 		t.Fatalf("issuer = %v", claims["issuer"])
 	}
-	header, _ := jose.PeekHeader(string(out[0].Body))
+	header, verr := jose.PeekHeader(string(out[0].Body))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if header.Kid != issuer.Active().ID {
 		t.Fatalf("kid = %s", header.Kid)
 	}
 }
 
 func TestCredentialRejectsBadRecords(t *testing.T) {
-	small, _ := lists.NewRecord("s", lists.KindToken, lists.Revocation, 1, 8, "default", t0)
+	small, verr := lists.NewRecord("s", lists.KindToken, lists.Revocation, 1, 8, "default", t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := Credential(small, "did:x", "u", t0, t0); !errors.Is(err, lists.ErrBadKind) {
 		t.Fatalf("err = %v", err)
 	}

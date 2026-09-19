@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
@@ -32,8 +33,8 @@ var clock = time.Unix(1700000000, 0).UTC()
 // query is a small DCQL query.
 const query = `{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["https://a.example/pid"]}}]}`
 
-// sdjwtToken is an SD-JWT VC with one disclosure.
-const sdjwtToken = "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2V4YW1wbGUudGVzdC9waWQifQ.c2ln~WyJzYWx0IiwiZ2l2ZW5fbmFtZSIsIkFzaGEiXQ~"
+// sdjwtSample is an SD-JWT VC with one disclosure.
+const sdjwtSample = "eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2V4YW1wbGUudGVzdC9waWQifQ.c2ln~WyJzYWx0IiwiZ2l2ZW5fbmFtZSIsIkFzaGEiXQ~"
 
 // fakeDiscovery answers one template.
 type fakeDiscovery struct {
@@ -99,7 +100,7 @@ func TestIngestCarriers(t *testing.T) {
 	svc, _ := build(t, service.Options{})
 	ctx := context.Background()
 	resp, err := svc.Ingest(ctx, connect.NewRequest(&ingestv1.IngestRequest{
-		Payload: []byte(sdjwtToken), Carrier: ingestv1.Carrier_CARRIER_JSON,
+		Payload: []byte(sdjwtSample), Carrier: ingestv1.Carrier_CARRIER_JSON,
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +126,7 @@ func TestIngestCarriers(t *testing.T) {
 func TestIngestXML(t *testing.T) {
 	svc, _ := build(t, service.Options{XML: ingest.XMLConfig{Path: "root.vc"}})
 	ctx := context.Background()
-	doc := "<root><vc>" + sdjwtToken + "</vc></root>"
+	doc := "<root><vc>" + sdjwtSample + "</vc></root>"
 	resp, err := svc.Ingest(ctx, connect.NewRequest(&ingestv1.IngestRequest{Payload: []byte(doc)}))
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +134,7 @@ func TestIngestXML(t *testing.T) {
 	if resp.Msg.GetPresentation().GetCarrier() != ingestv1.Carrier_CARRIER_XML {
 		t.Errorf("carrier = %v", resp.Msg.GetPresentation().GetCarrier())
 	}
-	other := "<envelope><body>" + sdjwtToken + "</body></envelope>"
+	other := "<envelope><body>" + sdjwtSample + "</body></envelope>"
 	resp, err = svc.Ingest(ctx, connect.NewRequest(&ingestv1.IngestRequest{
 		Payload: []byte(other),
 		Xml:     &ingestv1.XmlConfig{Xpath: "envelope.body", Encoding: ingestv1.XmlConfig_ENCODING_TEXT},
@@ -168,7 +169,7 @@ func TestIngestResolvesRequestURI(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(token))
+		mustWrite(t, w, []byte(token))
 	}))
 	defer server.Close()
 	svc, _ := build(t, service.Options{Fetcher: oid4vp.Fetcher{
@@ -214,7 +215,7 @@ func TestIngestKeepsRequestWhenFetchFails(t *testing.T) {
 
 func TestIngestResolveRejectsBadObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("not a token"))
+		mustWrite(t, w, []byte("not a token"))
 	}))
 	defer server.Close()
 	svc, _ := build(t, service.Options{Fetcher: oid4vp.Fetcher{
@@ -351,7 +352,7 @@ func TestReceiveDirectPost(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, err := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
-		State: record.StateParam, VpToken: sdjwtToken,
+		State: record.StateParam, VpToken: sdjwtSample,
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -390,20 +391,20 @@ func TestReceiveDirectPostRefusedAndErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
-		State: "unknown", VpToken: sdjwtToken,
-	})); connect.CodeOf(err) != connect.CodeNotFound {
-		t.Errorf("an unknown state wants not found, got %v", err)
+	if _, serr := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
+		State: "unknown", VpToken: sdjwtSample,
+	})); connect.CodeOf(serr) != connect.CodeNotFound {
+		t.Errorf("an unknown state wants not found, got %v", serr)
 	}
-	if _, err := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
+	if _, serr := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
 		State: record.StateParam,
-	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Errorf("an answer without a token wants invalid argument, got %v", err)
+	})); connect.CodeOf(serr) != connect.CodeInvalidArgument {
+		t.Errorf("an answer without a token wants invalid argument, got %v", serr)
 	}
-	if _, err := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
+	if _, serr := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
 		State: record.StateParam, VpToken: " ",
-	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Errorf("a blank token wants invalid argument, got %v", err)
+	})); connect.CodeOf(serr) != connect.CodeInvalidArgument {
+		t.Errorf("a blank token wants invalid argument, got %v", serr)
 	}
 	refused, err := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
 		State: record.StateParam, Error: "access_denied",
@@ -431,10 +432,10 @@ func TestReceiveDirectPostRefusedAndErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = clock.Add(2 * time.Minute)
-	if _, err := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
-		State: secondRecord.StateParam, VpToken: sdjwtToken,
-	})); connect.CodeOf(err) != connect.CodeDeadlineExceeded {
-		t.Errorf("an expired request wants deadline exceeded, got %v", err)
+	if _, serr := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
+		State: secondRecord.StateParam, VpToken: sdjwtSample,
+	})); connect.CodeOf(serr) != connect.CodeDeadlineExceeded {
+		t.Errorf("an expired request wants deadline exceeded, got %v", serr)
 	}
 	expired, err := svc.GetTransaction(ctx, connect.NewRequest(&ingestv1.GetTransactionRequest{
 		TransactionId: secondRecord.ID,
@@ -459,7 +460,7 @@ func TestReceiveDirectPostUsesResponseJWT(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{
-		State: record.StateParam, ResponseJwt: sdjwtToken,
+		State: record.StateParam, ResponseJwt: sdjwtSample,
 	})); err != nil {
 		t.Fatalf("the response member is the fallback: %v", err)
 	}

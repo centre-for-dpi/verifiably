@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/oid4vp"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/service"
@@ -59,7 +60,9 @@ func (h *Handler) requestObject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", oid4vp.MediaTypeRequestObject)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write([]byte(token))
+	if _, err := w.Write([]byte(token)); err != nil {
+		return
+	}
 }
 
 // directPost takes the answer of a wallet and calls ReceiveDirectPost.
@@ -92,7 +95,9 @@ func (h *Handler) directPost(w http.ResponseWriter, r *http.Request) {
 
 // writeJSON writes one small JSON document.
 func writeJSON(w http.ResponseWriter, body string) {
-	_, _ = w.Write([]byte(body))
+	if _, err := w.Write([]byte(body)); err != nil {
+		return
+	}
 }
 
 // quote writes a JSON string. The URI comes from the configuration.

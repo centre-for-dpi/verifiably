@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
@@ -77,16 +78,20 @@ func TestBuildServesRPCAndPublicList(t *testing.T) {
 	if !strings.HasPrefix(alloc.Msg.GetUrl(), "http://localhost:8084/status/") {
 		t.Fatalf("url = %s", alloc.Msg.GetUrl())
 	}
-	if _, err := client.SetStatus(context.Background(), connect.NewRequest(&statusv1.SetStatusRequest{
+	if _, serr := client.SetStatus(context.Background(), connect.NewRequest(&statusv1.SetStatusRequest{
 		ListId: alloc.Msg.GetListId(), Index: alloc.Msg.GetIndex(), Value: 1, Reason: "test",
-	})); err != nil {
-		t.Fatal(err)
+	})); serr != nil {
+		t.Fatal(serr)
 	}
 	resp, err := srv.Client().Get(srv.URL + "/status/" + alloc.Msg.GetListId())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != securer.MediaType {
 		t.Fatalf("status %d type %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
@@ -102,7 +107,9 @@ func TestBuildServesRPCAndPublicList(t *testing.T) {
 	if err != nil || jwks.StatusCode != http.StatusOK {
 		t.Fatalf("jwks: %v %v", err, jwks)
 	}
-	jwks.Body.Close()
+	if cerr := jwks.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 }
 
 // checkCredential verifies the signed credential with the service JWKS
@@ -121,8 +128,8 @@ func checkCredential(t *testing.T, app *App, token string, index int64) {
 		t.Fatalf("typ = %s", header.Typ)
 	}
 	var doc map[string]any
-	if err := json.Unmarshal(payload, &doc); err != nil {
-		t.Fatal(err)
+	if serr := json.Unmarshal(payload, &doc); serr != nil {
+		t.Fatal(serr)
 	}
 	purpose, list, err := bitstring.ParseCredential(doc)
 	if err != nil {

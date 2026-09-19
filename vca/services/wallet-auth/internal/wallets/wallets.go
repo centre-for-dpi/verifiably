@@ -66,7 +66,7 @@ func NewConnectRegistrar(httpClient connect.HTTPClient, baseURL string) ConnectR
 func (r ConnectRegistrar) Register(ctx context.Context, key, holderJWK string) (string, string, error) {
 	res, err := r.client.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: key, HolderPublicJwk: holderJWK}))
 	if err != nil {
-		return "", "", fmt.Errorf("%w: holder backend: %v", oidcflow.ErrUpstream, err)
+		return "", "", fmt.Errorf("%w: holder backend: %w", oidcflow.ErrUpstream, err)
 	}
 	return res.Msg.GetWalletId(), res.Msg.GetHolderDid(), nil
 }

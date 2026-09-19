@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
@@ -52,7 +53,8 @@ func HTTPFetcher(client *http.Client, maxBytes int64) policy.Fetcher {
 		if err != nil {
 			return nil, fmt.Errorf("ports: %w", err)
 		}
-		defer resp.Body.Close()
+		// Nothing can act on a close fault of a response body.
+		defer func() { ignored := resp.Body.Close(); _ = ignored }()
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("ports: %s returned %d", url, resp.StatusCode)
 		}

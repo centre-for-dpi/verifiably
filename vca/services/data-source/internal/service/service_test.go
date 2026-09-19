@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/mapping"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	datasourcev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1"
@@ -95,23 +96,23 @@ func TestSourceLifecycleAndRoles(t *testing.T) {
 		t.Fatalf("created: %v", created.Msg)
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := s.Create(as(admin), connect.NewRequest(&datasourcev1.CreateRequest{Source: csvSource("b", nil)})); err != nil {
-			t.Fatal(err)
+		if _, serr := s.Create(as(admin), connect.NewRequest(&datasourcev1.CreateRequest{Source: csvSource("b", nil)})); serr != nil {
+			t.Fatal(serr)
 		}
 	}
 
 	// Get and List respect the view rule and the tenant.
-	if _, err := s.Get(as(viewer), connect.NewRequest(&datasourcev1.GetRequest{Id: id})); err != nil {
-		t.Fatalf("viewer get: %v", err)
+	if _, serr := s.Get(as(viewer), connect.NewRequest(&datasourcev1.GetRequest{Id: id})); serr != nil {
+		t.Fatalf("viewer get: %v", serr)
 	}
-	if _, err := s.Get(as(other), connect.NewRequest(&datasourcev1.GetRequest{Id: id})); code(err) != connect.CodeNotFound {
-		t.Fatalf("other tenant get: %v", err)
+	if _, serr := s.Get(as(other), connect.NewRequest(&datasourcev1.GetRequest{Id: id})); code(serr) != connect.CodeNotFound {
+		t.Fatalf("other tenant get: %v", serr)
 	}
-	if _, err := s.Get(as(viewer), connect.NewRequest(&datasourcev1.GetRequest{Id: "src-2"})); code(err) != connect.CodePermissionDenied {
-		t.Fatalf("viewer get admin only source: %v", err)
+	if _, serr := s.Get(as(viewer), connect.NewRequest(&datasourcev1.GetRequest{Id: "src-2"})); code(serr) != connect.CodePermissionDenied {
+		t.Fatalf("viewer get admin only source: %v", serr)
 	}
-	if _, err := s.Get(context.Background(), connect.NewRequest(&datasourcev1.GetRequest{Id: id})); code(err) != connect.CodeUnauthenticated {
-		t.Fatalf("no principal get: %v", err)
+	if _, serr := s.Get(context.Background(), connect.NewRequest(&datasourcev1.GetRequest{Id: id})); code(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("no principal get: %v", serr)
 	}
 	list, err := s.List(as(viewer), connect.NewRequest(&datasourcev1.ListRequest{}))
 	if err != nil || len(list.Msg.GetSources()) != 1 || list.Msg.GetPage().GetTotalSize() != 1 {
@@ -129,11 +130,11 @@ func TestSourceLifecycleAndRoles(t *testing.T) {
 	if err != nil || len(list.Msg.GetSources()) != 1 {
 		t.Fatalf("tenant filter: %v %v", list, err)
 	}
-	if _, err := s.List(as(admin), connect.NewRequest(&datasourcev1.ListRequest{Page: &commonv1.Pagination{PageToken: "x"}})); code(err) != connect.CodeInvalidArgument {
-		t.Fatalf("bad token: %v", err)
+	if _, serr := s.List(as(admin), connect.NewRequest(&datasourcev1.ListRequest{Page: &commonv1.Pagination{PageToken: "x"}})); code(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("bad token: %v", serr)
 	}
-	if _, err := s.List(context.Background(), connect.NewRequest(&datasourcev1.ListRequest{})); code(err) != connect.CodeUnauthenticated {
-		t.Fatalf("no principal list: %v", err)
+	if _, serr := s.List(context.Background(), connect.NewRequest(&datasourcev1.ListRequest{})); code(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("no principal list: %v", serr)
 	}
 
 	// Update keeps the tenant and needs an editor.
@@ -144,19 +145,19 @@ func TestSourceLifecycleAndRoles(t *testing.T) {
 		t.Fatalf("update: %v %v", got, err)
 	}
 	upd.TenantId = "t2"
-	if _, err := s.Update(as(operator), connect.NewRequest(&datasourcev1.UpdateRequest{Source: upd})); code(err) != connect.CodePermissionDenied {
-		t.Fatalf("move tenant: %v", err)
+	if _, serr := s.Update(as(operator), connect.NewRequest(&datasourcev1.UpdateRequest{Source: upd})); code(serr) != connect.CodePermissionDenied {
+		t.Fatalf("move tenant: %v", serr)
 	}
 	upd.Id = "nope"
-	if _, err := s.Update(as(operator), connect.NewRequest(&datasourcev1.UpdateRequest{Source: upd})); code(err) != connect.CodeNotFound {
-		t.Fatalf("update missing: %v", err)
+	if _, serr := s.Update(as(operator), connect.NewRequest(&datasourcev1.UpdateRequest{Source: upd})); code(serr) != connect.CodeNotFound {
+		t.Fatalf("update missing: %v", serr)
 	}
-	if _, err := s.Update(as(viewer), connect.NewRequest(&datasourcev1.UpdateRequest{Source: upd})); code(err) != connect.CodePermissionDenied {
-		t.Fatalf("viewer update: %v", err)
+	if _, serr := s.Update(as(viewer), connect.NewRequest(&datasourcev1.UpdateRequest{Source: upd})); code(serr) != connect.CodePermissionDenied {
+		t.Fatalf("viewer update: %v", serr)
 	}
 	bad := &datasourcev1.Source{Id: id, DisplayName: "x"}
-	if _, err := s.Update(as(operator), connect.NewRequest(&datasourcev1.UpdateRequest{Source: bad})); code(err) != connect.CodeInvalidArgument {
-		t.Fatalf("invalid update: %v", err)
+	if _, serr := s.Update(as(operator), connect.NewRequest(&datasourcev1.UpdateRequest{Source: bad})); code(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("invalid update: %v", serr)
 	}
 
 	// Previews.
@@ -164,8 +165,8 @@ func TestSourceLifecycleAndRoles(t *testing.T) {
 	if err != nil || len(fields.Msg.GetFields()) != 3 || fields.Msg.GetFields()[2].GetType() != "date" || fields.Msg.GetFields()[1].GetExample() != "A**********e" {
 		t.Fatalf("fields: %v %v", fields, err)
 	}
-	if _, err := s.PreviewRows(as(viewer), connect.NewRequest(&datasourcev1.PreviewRowsRequest{SourceId: id})); code(err) != connect.CodePermissionDenied {
-		t.Fatalf("viewer preview rows: %v", err)
+	if _, serr := s.PreviewRows(as(viewer), connect.NewRequest(&datasourcev1.PreviewRowsRequest{SourceId: id})); code(serr) != connect.CodePermissionDenied {
+		t.Fatalf("viewer preview rows: %v", serr)
 	}
 	rows, err := s.PreviewRows(as(operator), connect.NewRequest(&datasourcev1.PreviewRowsRequest{SourceId: id, Limit: 2}))
 	if err != nil || len(rows.Msg.GetRows()) != 2 || rows.Msg.GetTotalRows() != 3 || rows.Msg.GetRows()[0].GetValues()["id"] != "*" {
@@ -175,11 +176,11 @@ func TestSourceLifecycleAndRoles(t *testing.T) {
 	if err != nil || len(rows.Msg.GetRows()) != 3 {
 		t.Fatalf("rows capped: %v %v", rows, err)
 	}
-	if _, err := s.PreviewRows(as(admin), connect.NewRequest(&datasourcev1.PreviewRowsRequest{SourceId: "nope"})); code(err) != connect.CodeNotFound {
-		t.Fatalf("preview missing: %v", err)
+	if _, serr := s.PreviewRows(as(admin), connect.NewRequest(&datasourcev1.PreviewRowsRequest{SourceId: "nope"})); code(serr) != connect.CodeNotFound {
+		t.Fatalf("preview missing: %v", serr)
 	}
-	if _, err := s.PreviewFields(context.Background(), connect.NewRequest(&datasourcev1.PreviewFieldsRequest{SourceId: id})); code(err) != connect.CodeUnauthenticated {
-		t.Fatalf("no principal preview: %v", err)
+	if _, serr := s.PreviewFields(context.Background(), connect.NewRequest(&datasourcev1.PreviewFieldsRequest{SourceId: id})); code(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("no principal preview: %v", serr)
 	}
 	broken := csvSource("broken", nil)
 	broken.Kind = &datasourcev1.Source_Csv{Csv: &datasourcev1.CsvSource{FileRef: "missing.csv"}}
@@ -245,51 +246,57 @@ func TestFieldMaps(t *testing.T) {
 	if err != nil || len(got.Msg.GetFieldMap().GetRules()) != 2 || got.Msg.GetFieldMap().GetSchemaVersion() != 2 {
 		t.Fatalf("get: %v %v", got, err)
 	}
-	if _, err := s.GetFieldMap(as(operator), connect.NewRequest(&datasourcev1.GetFieldMapRequest{SourceId: id, SchemaId: "other"})); code(err) != connect.CodeNotFound {
-		t.Fatalf("get missing: %v", err)
+	if _, serr := s.GetFieldMap(as(operator), connect.NewRequest(&datasourcev1.GetFieldMapRequest{SourceId: id, SchemaId: "other"})); code(serr) != connect.CodeNotFound {
+		t.Fatalf("get missing: %v", serr)
 	}
-	if _, err := s.GetFieldMap(as(operator), connect.NewRequest(&datasourcev1.GetFieldMapRequest{SourceId: "nope"})); code(err) != connect.CodeNotFound {
-		t.Fatalf("get missing source: %v", err)
+	if _, serr := s.GetFieldMap(as(operator), connect.NewRequest(&datasourcev1.GetFieldMapRequest{SourceId: "nope"})); code(serr) != connect.CodeNotFound {
+		t.Fatalf("get missing source: %v", serr)
 	}
-	if _, err := s.GetFieldMap(as(viewer), connect.NewRequest(&datasourcev1.GetFieldMapRequest{SourceId: id, SchemaId: "person"})); code(err) != connect.CodePermissionDenied {
-		t.Fatalf("viewer get: %v", err)
+	if _, serr := s.GetFieldMap(as(viewer), connect.NewRequest(&datasourcev1.GetFieldMapRequest{SourceId: id, SchemaId: "person"})); code(serr) != connect.CodePermissionDenied {
+		t.Fatalf("viewer get: %v", serr)
 	}
-	if _, err := s.GetFieldMap(context.Background(), connect.NewRequest(&datasourcev1.GetFieldMapRequest{SourceId: id})); code(err) != connect.CodeUnauthenticated {
-		t.Fatalf("no principal get: %v", err)
+	if _, serr := s.GetFieldMap(context.Background(), connect.NewRequest(&datasourcev1.GetFieldMapRequest{SourceId: id})); code(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("no principal get: %v", serr)
 	}
-	if _, err := s.SetFieldMap(as(viewer), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(err) != connect.CodePermissionDenied {
-		t.Fatalf("viewer set: %v", err)
+	if _, serr := s.SetFieldMap(as(viewer), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(serr) != connect.CodePermissionDenied {
+		t.Fatalf("viewer set: %v", serr)
 	}
-	adminOnly, _ := s.Create(as(admin), connect.NewRequest(&datasourcev1.CreateRequest{Source: csvSource("b", nil)}))
+	adminOnly, verr := s.Create(as(admin), connect.NewRequest(&datasourcev1.CreateRequest{Source: csvSource("b", nil)}))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	fm2 := &datasourcev1.FieldMap{SourceId: adminOnly.Msg.GetSource().GetId(), SchemaId: "x", Rules: fm.Rules}
-	if _, err := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm2})); code(err) != connect.CodePermissionDenied {
-		t.Fatalf("operator set on admin only source: %v", err)
+	if _, serr := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm2})); code(serr) != connect.CodePermissionDenied {
+		t.Fatalf("operator set on admin only source: %v", serr)
 	}
 	fm.SchemaId = ""
-	if _, err := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(err) != connect.CodeInvalidArgument {
-		t.Fatalf("empty schema: %v", err)
+	if _, serr := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("empty schema: %v", serr)
 	}
 	fm.SchemaId = "person"
 	fm.Rules = []*datasourcev1.FieldMap_Rule{{Property: "p", SourceFields: []string{"a"}, Transform: datasourcev1.Transform(99)}}
-	if _, err := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(err) != connect.CodeInvalidArgument {
-		t.Fatalf("unknown transform: %v", err)
+	if _, serr := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("unknown transform: %v", serr)
 	}
 	fm.Rules = []*datasourcev1.FieldMap_Rule{{Property: "p", SourceFields: []string{"a"}}}
 	fm.SourceId = "nope"
-	if _, err := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(err) != connect.CodeNotFound {
-		t.Fatalf("missing source: %v", err)
+	if _, serr := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(serr) != connect.CodeNotFound {
+		t.Fatalf("missing source: %v", serr)
 	}
 	fm.SourceId = id
 	schemaErr = errors.New("down")
-	if _, err := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(err) != connect.CodeUnavailable {
-		t.Fatalf("schema down: %v", err)
+	if _, serr := s.SetFieldMap(as(operator), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(serr) != connect.CodeUnavailable {
+		t.Fatalf("schema down: %v", serr)
 	}
-	if _, err := s.SetFieldMap(context.Background(), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(err) != connect.CodeUnauthenticated {
-		t.Fatalf("no principal set: %v", err)
+	if _, serr := s.SetFieldMap(context.Background(), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm})); code(serr) != connect.CodeUnauthenticated {
+		t.Fatalf("no principal set: %v", serr)
 	}
 	// Without a schema lookup the response lists no unmapped property.
 	plain := newService(t, nil)
-	c2, _ := plain.Create(as(admin), connect.NewRequest(&datasourcev1.CreateRequest{Source: csvSource("a", nil)}))
+	c2, verr := plain.Create(as(admin), connect.NewRequest(&datasourcev1.CreateRequest{Source: csvSource("a", nil)}))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	fm.SourceId = c2.Msg.GetSource().GetId()
 	set, err = plain.SetFieldMap(as(admin), connect.NewRequest(&datasourcev1.SetFieldMapRequest{FieldMap: fm}))
 	if err != nil || len(set.Msg.GetUnmappedProperties()) != 0 {
@@ -332,7 +339,7 @@ func TestToConnect(t *testing.T) {
 		t.Fatal("VCA-303 detail missing")
 	}
 	msg, err := ce.Details()[0].Value()
-	if err != nil || msg.(*commonv1.Error).GetCode() != "VCA-303" {
+	if err != nil || mustAs[*commonv1.Error](t, msg).GetCode() != "VCA-303" {
 		t.Fatalf("detail: %v %v", msg, err)
 	}
 	if !errors.As(denied("r"), &ce) || len(ce.Details()) != 1 {

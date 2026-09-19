@@ -10,10 +10,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/mapping"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	datasourcev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1"
@@ -293,8 +295,8 @@ func (s *Service) read(ctx context.Context, id string, pick func(source.Access) 
 	if err != nil {
 		return table.Table{}, err
 	}
-	if err := s.allow(p, pick(src.Access), action); err != nil {
-		return table.Table{}, err
+	if serr := s.allow(p, pick(src.Access), action); serr != nil {
+		return table.Table{}, serr
 	}
 	tb, err := s.opts.Reader.Read(ctx, src)
 	if err != nil {
@@ -343,21 +345,21 @@ func (s *Service) allow(p authz.Principal, rule []string, action string) error {
 
 // denied returns a VCA-302 permission error.
 func denied(role string) error {
-	err := connect.NewError(connect.CodePermissionDenied, errors.New("You do not have permission to do this."))
+	err := connect.NewError(connect.CodePermissionDenied, errors.New("you do not have permission to do this"))
 	attach(err, "VCA-302", "Ask an administrator for the "+role+" role.", map[string]string{"role": role})
 	return err
 }
 
 // unavailable returns a VCA-401 error for a source the service cannot reach.
 func unavailable(name string, cause error) error {
-	err := connect.NewError(connect.CodeUnavailable, fmt.Errorf("The service cannot reach %s: %w", name, cause))
+	err := connect.NewError(connect.CodeUnavailable, fmt.Errorf("the service cannot reach %s: %w", name, cause))
 	attach(err, "VCA-401", "Wait one minute, then try again. If the problem stays, contact the operator.", map[string]string{"source": name})
 	return err
 }
 
 // tooLarge returns a VCA-303 error.
 func tooLarge(cause error) error {
-	err := connect.NewError(connect.CodeResourceExhausted, fmt.Errorf("The request is too large: %w", cause))
+	err := connect.NewError(connect.CodeResourceExhausted, fmt.Errorf("the request is too large: %w", cause))
 	attach(err, "VCA-303", "Send a smaller request.", nil)
 	return err
 }
@@ -443,7 +445,7 @@ func FieldMapFromProto(p *datasourcev1.FieldMap) mapping.FieldMap {
 
 // FieldMapToProto converts a core field map.
 func FieldMapToProto(fm mapping.FieldMap) *datasourcev1.FieldMap {
-	p := &datasourcev1.FieldMap{SourceId: fm.SourceID, SchemaId: fm.SchemaID, SchemaVersion: int32(fm.SchemaVersion)}
+	p := &datasourcev1.FieldMap{SourceId: fm.SourceID, SchemaId: fm.SchemaID, SchemaVersion: toInt32(int64(fm.SchemaVersion))}
 	for _, r := range fm.Rules {
 		t := datasourcev1.Transform_TRANSFORM_UNSPECIFIED
 		for k, v := range transformNames {
@@ -454,4 +456,15 @@ func FieldMapToProto(fm mapping.FieldMap) *datasourcev1.FieldMap {
 		p.Rules = append(p.Rules, &datasourcev1.FieldMap_Rule{Property: r.Property, SourceFields: r.SourceFields, Transform: t, Params: r.Params})
 	}
 	return p
+}
+
+// toInt32 converts n to int32. A value out of range clamps to the limit.
+func toInt32(n int64) int32 {
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if n < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(n)
 }

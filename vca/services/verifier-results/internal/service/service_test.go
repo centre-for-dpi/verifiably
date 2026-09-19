@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/results"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var testNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -148,10 +149,10 @@ func TestQueryAndPaging(t *testing.T) {
 	if len(far.Msg.GetResults()) != 0 {
 		t.Fatal("want no results past the end")
 	}
-	if _, err := svc.Query(ctx, connect.NewRequest(&resultsv1.QueryRequest{
+	if _, serr := svc.Query(ctx, connect.NewRequest(&resultsv1.QueryRequest{
 		Page: &commonv1.Pagination{PageToken: "x"},
-	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("want a bad token error, got %v", err)
+	})); connect.CodeOf(serr) != connect.CodeInvalidArgument {
+		t.Fatalf("want a bad token error, got %v", serr)
 	}
 	filtered, err := svc.QueryAll(ctx, &resultsv1.Filter{Issuer: "did:web:other"})
 	if err != nil {
@@ -229,7 +230,7 @@ func TestPurge(t *testing.T) {
 	if dry.Msg.GetRawDeleted() != 1 || dry.Msg.GetResultsDeleted() != 1 {
 		t.Fatalf("unexpected dry run counts: %+v", dry.Msg)
 	}
-	if _, err := svc.opts.Store.Get(ctx, "old"); err != nil {
+	if _, serr := svc.opts.Store.Get(ctx, "old"); serr != nil {
 		t.Fatal("want the dry run to write nothing")
 	}
 	counts, err := svc.PurgeNow(ctx)

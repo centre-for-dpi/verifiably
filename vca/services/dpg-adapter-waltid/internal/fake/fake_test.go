@@ -3,6 +3,7 @@
 package fake_test
 
 import (
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -113,10 +114,16 @@ func get(t *testing.T, f *fake.Server, path string) string {
 	if err != nil {
 		t.Fatalf("get %s: %v", path, err)
 	}
-	defer resp.Body.Close()
-	buf := make([]byte, 4096)
-	n, _ := resp.Body.Read(buf)
-	return string(buf[:n])
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
+	body, verr := io.ReadAll(resp.Body)
+	if verr != nil {
+		t.Fatalf("read %s: %v", path, verr)
+	}
+	return string(body)
 }
 
 func post(t *testing.T, f *fake.Server, path, body string) {
@@ -125,7 +132,9 @@ func post(t *testing.T, f *fake.Server, path, body string) {
 	if err != nil {
 		t.Fatalf("post %s: %v", path, err)
 	}
-	_ = resp.Body.Close()
+	if cerr := resp.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 }
 
 func status(t *testing.T, f *fake.Server, path string) int {
@@ -134,6 +143,10 @@ func status(t *testing.T, f *fake.Server, path string) int {
 	if err != nil {
 		t.Fatalf("get %s: %v", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
 	return resp.StatusCode
 }

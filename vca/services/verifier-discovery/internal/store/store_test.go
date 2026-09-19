@@ -48,8 +48,8 @@ func TestIssuerRoundTrip(t *testing.T) {
 		t.Errorf("issuer = %+v", got)
 	}
 	second := catalog.Issuer{CredentialIssuer: "https://a.example"}
-	if err := s.PutIssuer(ctx, second); err != nil {
-		t.Fatal(err)
+	if serr := s.PutIssuer(ctx, second); serr != nil {
+		t.Fatal(serr)
 	}
 	list, err := s.ListIssuers(ctx)
 	if err != nil {
@@ -58,8 +58,8 @@ func TestIssuerRoundTrip(t *testing.T) {
 	if len(list) != 2 || list[0].CredentialIssuer != "https://a.example" {
 		t.Errorf("the list is ordered by URL, got %+v", list)
 	}
-	if err := s.DeleteIssuer(ctx, record.CredentialIssuer); err != nil {
-		t.Fatal(err)
+	if serr := s.DeleteIssuer(ctx, record.CredentialIssuer); serr != nil {
+		t.Fatal(serr)
 	}
 	_, err = s.GetIssuer(ctx, record.CredentialIssuer)
 	if !errors.Is(err, store.ErrNotFound) {
@@ -68,7 +68,8 @@ func TestIssuerRoundTrip(t *testing.T) {
 }
 
 func TestIssuerKeyIsStable(t *testing.T) {
-	if store.IssuerKey("https://a.example") != store.IssuerKey("https://a.example") {
+	first, second := store.IssuerKey("https://a.example"), store.IssuerKey("https://a.example")
+	if first != second {
 		t.Error("the key of one URL never changes")
 	}
 	if store.IssuerKey("https://a.example") == store.IssuerKey("https://b.example") {
@@ -284,10 +285,10 @@ func TestPartialBackendErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readFails.ListIssuers(ctx); err == nil {
+	if _, serr := readFails.ListIssuers(ctx); serr == nil {
 		t.Error("a read error stops the issuer list")
 	}
-	if _, err := readFails.ListTemplates(ctx); err == nil {
+	if _, serr := readFails.ListTemplates(ctx); serr == nil {
 		t.Error("a read error stops the template list")
 	}
 	deleteFails, err := store.New(halfBroken{KeyValue: kv, failDelete: true})

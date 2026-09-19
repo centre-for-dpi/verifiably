@@ -144,7 +144,8 @@ func HTTPFetcher(client *http.Client) did.Fetcher {
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		// Nothing can act on a close fault of a response body.
+		defer func() { ignored := resp.Body.Close(); _ = ignored }()
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("app: %s returned %d", url, resp.StatusCode)
 		}

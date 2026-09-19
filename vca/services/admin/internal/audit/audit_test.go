@@ -252,19 +252,31 @@ func (f failStore) Get(ctx context.Context, key string) ([]byte, error) {
 func TestStoreErrorsTravelToTheCaller(t *testing.T) {
 	ctx := context.Background()
 	kv := store.Memory()
-	appendFail, _ := audit.New(failStore{KeyValue: kv, failSwap: true}, nil)
+	appendFail, verr := audit.New(failStore{KeyValue: kv, failSwap: true}, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := appendFail.Append(ctx, audit.Entry{Action: "admin.CreateTenant"}); err == nil {
 		t.Error("Append hid a store error")
 	}
-	listFail, _ := audit.New(failStore{KeyValue: kv, failList: true}, nil)
+	listFail, verr := audit.New(failStore{KeyValue: kv, failList: true}, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := listFail.Query(ctx, audit.Filter{}); err == nil {
 		t.Error("Query hid a list error")
 	}
-	good, _ := audit.New(kv, nil)
+	good, verr := audit.New(kv, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := good.Append(ctx, audit.Entry{Action: "admin.CreateTenant"}); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
-	getFail, _ := audit.New(failStore{KeyValue: kv, failGet: true}, nil)
+	getFail, verr := audit.New(failStore{KeyValue: kv, failGet: true}, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := getFail.Query(ctx, audit.Filter{}); err == nil {
 		t.Error("Query hid a get error")
 	}
@@ -276,7 +288,10 @@ func TestQueryReportsABrokenRecord(t *testing.T) {
 	if err := kv.Put(ctx, audit.Prefix+"broken", []byte("{")); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	l, _ := audit.New(kv, nil)
+	l, verr := audit.New(kv, nil)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := l.Query(ctx, audit.Filter{}); err == nil {
 		t.Fatal("Query read a broken record")
 	}

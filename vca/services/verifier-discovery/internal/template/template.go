@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/centre-for-dpi/vc-adapters/core/dcql"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // MaxNameLength caps the display name and the purpose.

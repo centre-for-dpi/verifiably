@@ -125,14 +125,15 @@ func Discover(ctx context.Context, client Fetcher, discoveryURL string) (Metadat
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
 	if err != nil {
-		return Metadata{}, fmt.Errorf("%w: %v", ErrDiscovery, err)
+		return Metadata{}, fmt.Errorf("%w: %w", ErrDiscovery, err)
 	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return Metadata{}, fmt.Errorf("%w: the provider could not be reached", ErrDiscovery)
 	}
-	defer resp.Body.Close()
+	// Nothing can act on a close fault of a response body.
+	defer func() { ignored := resp.Body.Close(); _ = ignored }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return Metadata{}, fmt.Errorf("%w: the document could not be read", ErrDiscovery)
@@ -187,11 +188,11 @@ func Register(ctx context.Context, client Fetcher, endpoint string, body Registe
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
-		return RegisterResponse{}, fmt.Errorf("%w: %v", ErrRegistration, err)
+		return RegisterResponse{}, fmt.Errorf("%w: %w", ErrRegistration, err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(raw)))
 	if err != nil {
-		return RegisterResponse{}, fmt.Errorf("%w: %v", ErrRegistration, err)
+		return RegisterResponse{}, fmt.Errorf("%w: %w", ErrRegistration, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -202,7 +203,8 @@ func Register(ctx context.Context, client Fetcher, endpoint string, body Registe
 	if err != nil {
 		return RegisterResponse{}, fmt.Errorf("%w: the provider could not be reached", ErrRegistration)
 	}
-	defer resp.Body.Close()
+	// Nothing can act on a close fault of a response body.
+	defer func() { ignored := resp.Body.Close(); _ = ignored }()
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return RegisterResponse{}, fmt.Errorf("%w: the response could not be read", ErrRegistration)
@@ -253,11 +255,11 @@ func (v *Vault) Store(providerID, secret string) (oidcflow.SecretRef, error) {
 		return oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: name}, nil
 	}
 	if err := os.MkdirAll(v.dir, 0o700); err != nil {
-		return oidcflow.SecretRef{}, fmt.Errorf("%w: %v", ErrSecret, err)
+		return oidcflow.SecretRef{}, fmt.Errorf("%w: %w", ErrSecret, err)
 	}
 	path := filepath.Join(v.dir, "client_secret_"+SafeName(providerID))
 	if err := os.WriteFile(path, []byte(secret), 0o600); err != nil {
-		return oidcflow.SecretRef{}, fmt.Errorf("%w: %v", ErrSecret, err)
+		return oidcflow.SecretRef{}, fmt.Errorf("%w: %w", ErrSecret, err)
 	}
 	return oidcflow.SecretRef{Store: oidcflow.SecretFile, Name: path}, nil
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/mapping"
 	datasourcev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1"
 )

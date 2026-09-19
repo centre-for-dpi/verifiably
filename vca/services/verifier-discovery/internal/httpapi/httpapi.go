@@ -152,5 +152,7 @@ func (a *API) write(w http.ResponseWriter, r *http.Request, body any) {
 		return
 	}
 	w.Header().Set("Content-Length", fmt.Sprint(len(data)))
-	_, _ = w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		return
+	}
 }
