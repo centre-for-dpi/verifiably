@@ -100,7 +100,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	_, _ = w.Write(f.Body)
+	if _, err := w.Write(f.Body); err != nil {
+		return
+	}
 }
 
 // matches reports whether the If-None-Match header names etag.

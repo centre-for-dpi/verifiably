@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
@@ -47,15 +48,22 @@ func TestBuildWithGeneratedKey(t *testing.T) {
 	srv := httptest.NewServer(app.Mux)
 	defer srv.Close()
 	for _, path := range []string{"/trust-list/etsi.json", "/trust-list/etsi.jws", "/.well-known/jwks.json", "/.well-known/dedi.index.json", "/dedi/dedi.issuers.json"} {
-		resp, err := srv.Client().Get(srv.URL + path)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			t.Errorf("%s: %v %v", path, err, resp)
+		resp, getErr := srv.Client().Get(srv.URL + path)
+		if getErr != nil {
+			t.Errorf("%s: %v", path, getErr)
+			continue
+		}
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: status %d", path, resp.StatusCode)
 		}
 	}
 	client := trustv1connect.NewTrustServiceClient(srv.Client(), srv.URL)
 	e := &trustv1.TrustEntry{Identifier: &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_Did{Did: "did:web:a.example"}}, Role: commonv1.Role_ROLE_ISSUER, Status: trustv1.Status_STATUS_ACTIVE}
-	if _, err := client.UpsertEntry(context.Background(), connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: e})); err != nil {
-		t.Fatal(err)
+	if _, serr := client.UpsertEntry(context.Background(), connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: e})); serr != nil {
+		t.Fatal(serr)
 	}
 	r, err := client.TrustLookup(context.Background(), connect.NewRequest(&trustv1.TrustLookupRequest{Identifier: e.Identifier, Role: commonv1.Role_ROLE_ISSUER}))
 	if err != nil || r.Msg.GetOutcome() != trustv1.TrustLookupResponse_OUTCOME_TRUSTED {
@@ -65,8 +73,14 @@ func TestBuildWithGeneratedKey(t *testing.T) {
 
 func TestBuildWithKeyFileAndStoreFile(t *testing.T) {
 	dir := t.TempDir()
-	k, _ := keys.Generate(jose.EdDSA, t0)
-	pemData, _ := keys.EncodePEM([]keys.Key{k})
+	k, verr := keys.Generate(jose.EdDSA, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	pemData, verr := keys.EncodePEM([]keys.Key{k})
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	cfg := load(t, map[string]string{
 		"VCA_TRUST_SIGNING_KEY_FILE": filepath.Join(dir, "key.pem"),
 		"VCA_TRUST_STORE_FILE":       filepath.Join(dir, "trust.json"),
@@ -85,8 +99,8 @@ func TestBuildWithKeyFileAndStoreFile(t *testing.T) {
 		t.Fatal("ring or methods")
 	}
 	e := &trustv1.TrustEntry{Identifier: &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_Did{Did: "did:web:a.example"}}, Role: commonv1.Role_ROLE_ISSUER, Status: trustv1.Status_STATUS_ACTIVE}
-	if _, err := app.Service.UpsertEntry(context.Background(), connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: e})); err != nil {
-		t.Fatal(err)
+	if _, serr := app.Service.UpsertEntry(context.Background(), connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: e})); serr != nil {
+		t.Fatal(serr)
 	}
 	again, err := Build(cfg, deps)
 	if err != nil {
@@ -133,7 +147,9 @@ func TestHTTPFetcher(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		_, _ = io.WriteString(w, strings.Repeat("x", MaxDocumentSize+10))
+		if _, writeStringErr := io.WriteString(w, strings.Repeat("x", MaxDocumentSize+10)); writeStringErr != nil {
+			t.Fatalf("unexpected error: %v", writeStringErr)
+		}
 	}))
 	defer srv.Close()
 	fetch := HTTPFetcher(srv.Client())

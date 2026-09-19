@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Role names the role of an entity in the ecosystem.

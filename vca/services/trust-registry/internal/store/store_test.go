@@ -74,8 +74,8 @@ func TestFilePersists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.Upsert(issuer("did:web:a"), t0); err != nil {
-		t.Fatal(err)
+	if _, _, serr := s.Upsert(issuer("did:web:a"), t0); serr != nil {
+		t.Fatal(serr)
 	}
 	again, err := Open(sharedstore.FileDoc(path))
 	if err != nil {

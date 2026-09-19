@@ -27,7 +27,7 @@ func TestGenerateAndNew(t *testing.T) {
 	if err != nil || ed.Alg != jose.EdDSA || !ed.IsEd25519() {
 		t.Fatalf("eddsa %+v %v", ed, err)
 	}
-	if _, err := Generate(jose.RS256, t0); err == nil {
+	if _, serr := Generate(jose.RS256, t0); serr == nil {
 		t.Fatal("rs256 must fail")
 	}
 	named, err := New(es.Private, "k1", t0)
@@ -38,19 +38,31 @@ func TestGenerateAndNew(t *testing.T) {
 	if pub.KeyID != "k1" || !pub.IsPublic() {
 		t.Fatal("public jwk")
 	}
-	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	rsaKey, verr := rsa.GenerateKey(rand.Reader, 2048)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := New(rsaKey, "", t0); err == nil {
 		t.Fatal("rsa must fail")
 	}
-	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	p384, verr := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := New(p384, "", t0); err == nil {
 		t.Fatal("p384 must fail")
 	}
 }
 
 func TestPEMRoundTrip(t *testing.T) {
-	a, _ := Generate(jose.ES256, t0)
-	b, _ := Generate(jose.EdDSA, t0)
+	a, verr := Generate(jose.ES256, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	b, verr := Generate(jose.EdDSA, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	data, err := EncodePEM([]Key{a, b})
 	if err != nil {
 		t.Fatal(err)
@@ -68,8 +80,14 @@ func TestPEMRoundTrip(t *testing.T) {
 	if _, err := ParsePEM(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1}}), t0); err == nil {
 		t.Fatal("bad der")
 	}
-	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	der, _ := x509.MarshalPKCS8PrivateKey(rsaKey)
+	rsaKey, verr := rsa.GenerateKey(rand.Reader, 2048)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	der, verr := x509.MarshalPKCS8PrivateKey(rsaKey)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := ParsePEM(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), t0); err == nil {
 		t.Fatal("rsa pem must fail")
 	}
@@ -82,11 +100,17 @@ func TestRing(t *testing.T) {
 	if _, err := NewRing(); err == nil {
 		t.Fatal("empty ring")
 	}
-	a, _ := Generate(jose.ES256, t0)
+	a, verr := Generate(jose.ES256, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := NewRing(a, a); err == nil {
 		t.Fatal("duplicate kid")
 	}
-	old, _ := Generate(jose.EdDSA, t0.Add(-48*time.Hour))
+	old, verr := Generate(jose.EdDSA, t0.Add(-48*time.Hour))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	r, err := NewRing(a, old)
 	if err != nil {
 		t.Fatal(err)
@@ -98,12 +122,15 @@ func TestRing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hdr, _ := jose.PeekHeader(token)
+	hdr, verr := jose.PeekHeader(token)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if hdr.Kid != a.ID || hdr.Typ != "trust-list+jwt" {
 		t.Fatalf("header %+v", hdr)
 	}
-	if _, _, err := jose.VerifyWithJWKS(token, r.JWKS(), jose.SigningAlgorithms); err != nil {
-		t.Fatal(err)
+	if _, _, serr := jose.VerifyWithJWKS(token, r.JWKS(), jose.SigningAlgorithms); serr != nil {
+		t.Fatal(serr)
 	}
 	set, err := jose.ParseJWKS(r.JWKSJSON())
 	if err != nil || len(set.Keys) != 2 || !strings.Contains(string(r.JWKSJSON()), a.ID) {
@@ -115,7 +142,10 @@ func TestRing(t *testing.T) {
 	if err := r.Rotate(old); err == nil {
 		t.Fatal("rotate to retired")
 	}
-	b, _ := Generate(jose.ES256, t0.Add(time.Hour))
+	b, verr := Generate(jose.ES256, t0.Add(time.Hour))
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if err := r.Rotate(b); err != nil {
 		t.Fatal(err)
 	}

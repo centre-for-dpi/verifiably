@@ -92,13 +92,16 @@ func TestPublishAndVerify(t *testing.T) {
 		t.Fatalf("publication %+v", pub)
 	}
 	var list List
-	if err := json.Unmarshal(pub.Files[PathJSON].Body, &list); err != nil || len(list.Entities) != 2 {
+	if serr := json.Unmarshal(pub.Files[PathJSON].Body, &list); serr != nil || len(list.Entities) != 2 {
 		t.Fatal("json file")
 	}
 	if pub.Files[PathJWS].ContentType != ContentTypeJWS {
 		t.Fatal("content type")
 	}
-	ring, _ := keys.NewRing(in.Signer)
+	ring, verr := keys.NewRing(in.Signer)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	v, err := p.Verify(pub.Files, ring.JWKS(), t0.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -109,8 +112,14 @@ func TestPublishAndVerify(t *testing.T) {
 	if _, err := p.Verify(pub.Files, ring.JWKS(), t0.Add(2*time.Hour)); err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatal("expired")
 	}
-	other, _ := keys.Generate(jose.EdDSA, t0)
-	otherRing, _ := keys.NewRing(other)
+	other, verr := keys.Generate(jose.EdDSA, t0)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
+	otherRing, verr := keys.NewRing(other)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	if _, err := p.Verify(pub.Files, otherRing.JWKS(), t0); err == nil {
 		t.Fatal("wrong key")
 	}
@@ -130,7 +139,10 @@ func TestPublishAndVerify(t *testing.T) {
 
 func TestVerifyJWSErrors(t *testing.T) {
 	in := input(t)
-	ring, _ := keys.NewRing(in.Signer)
+	ring, verr := keys.NewRing(in.Signer)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	sign := func(typ string, claims any) string {
 		tok, err := ring.Sign(typ, claims)
 		if err != nil {
@@ -158,7 +170,10 @@ func TestVerifyJWSErrors(t *testing.T) {
 
 func selfSigned(t *testing.T, cn string, notAfter time.Time) string {
 	t.Helper()
-	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	priv, verr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if verr != nil {
+		t.Fatalf("unexpected error: %v", verr)
+	}
 	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: cn, Organization: []string{"Org"}}, NotBefore: t0, NotAfter: notAfter}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
 	if err != nil {

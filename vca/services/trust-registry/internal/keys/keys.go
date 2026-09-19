@@ -35,7 +35,8 @@ type Key struct {
 // Public returns the public JWK of the key.
 func (k Key) Public() jose.JWK {
 	// Private is ES256 or Ed25519 by construction, so PublicJWK cannot fail.
-	jwk, _ := jose.PublicJWK(k.Private, k.ID)
+	jwk, ignored3 := jose.PublicJWK(k.Private, k.ID)
+	_ = ignored3
 	return jwk
 }
 
@@ -50,7 +51,8 @@ func New(private crypto.PrivateKey, kid string, now time.Time) (Key, error) {
 		return Key{}, fmt.Errorf("keys: unsupported curve %s", ec.Curve.Params().Name)
 	}
 	if kid == "" {
-		jwk, _ := jose.PublicJWK(private, "")
+		jwk, ignored2 := jose.PublicJWK(private, "")
+		_ = ignored2
 		kid, err = jose.Thumbprint(jwk)
 		if err != nil {
 			return Key{}, err
@@ -192,7 +194,8 @@ func (r *Ring) JWKS() jose.JWKS {
 // JWKSJSON returns the JWKS document bytes.
 func (r *Ring) JWKSJSON() []byte {
 	// Every key in the ring encodes, so Marshal cannot fail.
-	out, _ := json.Marshal(r.JWKS())
+	out, ignored := json.Marshal(r.JWKS())
+	_ = ignored
 	return out
 }
 

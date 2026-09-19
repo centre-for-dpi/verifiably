@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -23,7 +25,9 @@ func freePort(t *testing.T) string {
 		t.Fatal(err)
 	}
 	addr := ln.Addr().String()
-	ln.Close()
+	if cerr := ln.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
 	return addr
 }
 
@@ -55,7 +59,9 @@ func TestRunServesAndHealthchecks(t *testing.T) {
 	for {
 		resp, err := http.Get("http://" + addr + "/readyz")
 		if err == nil {
-			resp.Body.Close()
+			if cerr := resp.Body.Close(); cerr != nil {
+				t.Errorf("the close failed: %v", cerr)
+			}
 			if resp.StatusCode == http.StatusOK {
 				break
 			}
@@ -78,5 +84,22 @@ func TestRunServesAndHealthchecks(t *testing.T) {
 	bad := env(map[string]string{"VCA_TRUST_LISTEN": "300.0.0.1:x", "VCA_TRUST_RESOLVE_DIDS": "false"})
 	if code := run(ctx, nil, bad, &out, &errOut); code != 1 {
 		t.Fatalf("listen error: %d", code)
+	}
+}
+
+// failWriter fails every write. It drives the printLine error path.
+type failWriter struct{}
+
+// Write always reports an error.
+func (failWriter) Write([]byte) (int, error) {
+	return 0, errors.New("the write failed")
+}
+
+func TestPrintLineReportsTheWriteStatus(t *testing.T) {
+	if got := printLine(io.Discard, "ok"); got != 0 {
+		t.Fatalf("want status 0, got %d", got)
+	}
+	if got := printLine(failWriter{}, "ok"); got != 1 {
+		t.Fatalf("want status 1, got %d", got)
 	}
 }
