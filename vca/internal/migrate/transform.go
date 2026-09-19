@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/hashchain"
 )
 
@@ -167,7 +168,9 @@ func BuildIssuedDocument(items []LegacyIssued, opts Options) (IssuedDocument, er
 		record := r
 		// The event holds strings, times, and a string map, so it
 		// always encodes and Append cannot fail.
-		chain, _, _ = chain.Append(IssuedEvent{Kind: EventIssue, Record: &record})
+		next, _, appendErr := chain.Append(IssuedEvent{Kind: EventIssue, Record: &record})
+		anyval.MustDo(appendErr)
+		chain = next
 		if c.RevokedAt != nil {
 			revoked = append(revoked, IssuedChange{
 				RecordID: r.ID, Status: StatusRevoked, Reason: o.Reason, ChangedAt: c.RevokedAt.UTC(),
@@ -182,7 +185,9 @@ func BuildIssuedDocument(items []LegacyIssued, opts Options) (IssuedDocument, er
 	})
 	for i := range revoked {
 		change := revoked[i]
-		chain, _, _ = chain.Append(IssuedEvent{Kind: EventStatus, Change: &change})
+		next, _, appendErr := chain.Append(IssuedEvent{Kind: EventStatus, Change: &change})
+		anyval.MustDo(appendErr)
+		chain = next
 	}
 	return IssuedDocument{Entries: chain.Entries()}, nil
 }

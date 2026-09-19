@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/internal/migrate"
 )
 
@@ -120,7 +121,7 @@ func newMigrateImportCommand() *cobra.Command {
 				return err
 			}
 			for _, path := range written {
-				fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", path)
+				anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", path))
 			}
 			return nil
 		},
@@ -162,12 +163,12 @@ func runMigrateExport(ctx context.Context, out io.Writer, env Environment, f mig
 		return err
 	}
 	for _, path := range written {
-		fmt.Fprintf(out, "wrote %s\n", path)
+		anyval.DiscardWrite(fmt.Fprintf(out, "wrote %s\n", path))
 	}
 	c := bundle.Counts()
-	fmt.Fprintf(out, "log entries %d, bitstring lists %d, token lists %d, trust entries %d\n",
-		c.Issued, c.Bitstring, c.Token, c.Trust)
-	fmt.Fprint(out, "sessions and caches are not migrated\n")
+	anyval.DiscardWrite(fmt.Fprintf(out, "log entries %d, bitstring lists %d, token lists %d, trust entries %d\n",
+		c.Issued, c.Bitstring, c.Token, c.Trust))
+	anyval.DiscardWrite(fmt.Fprint(out, "sessions and caches are not migrated\n"))
 	return nil
 }
 
@@ -212,6 +213,6 @@ func readLegacy(ctx context.Context, env Environment, f migrateFlags) (migrate.L
 	if err != nil {
 		return migrate.Legacy{}, err
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { anyval.Discard(db.Close()) }()
 	return migrate.ReadPostgres(ctx, db)
 }

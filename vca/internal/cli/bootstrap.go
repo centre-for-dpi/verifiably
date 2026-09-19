@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
@@ -66,7 +67,7 @@ func (r *BootstrapResult) step(out io.Writer, format string, args ...any) {
 	line := fmt.Sprintf(format, args...)
 	r.Steps = append(r.Steps, line)
 	if out != nil {
-		fmt.Fprintln(out, line)
+		anyval.DiscardWrite(fmt.Fprintln(out, line))
 	}
 }
 
@@ -344,7 +345,7 @@ func doStatus(ctx context.Context, c *http.Client, method, target, token string,
 	if err != nil {
 		return 0, nil, fmt.Errorf("%s %s: %w", method, target, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { anyval.Discard(resp.Body.Close()) }()
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return 0, nil, fmt.Errorf("read the answer: %w", err)
@@ -358,7 +359,7 @@ func send(c *http.Client, req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { anyval.Discard(resp.Body.Close()) }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read the answer: %w", err)

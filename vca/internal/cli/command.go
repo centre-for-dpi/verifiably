@@ -14,6 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // Version is the version the CLI prints. The release build sets it with
@@ -84,7 +86,7 @@ func Execute(env Environment) int {
 	root := NewRootCommand(env)
 	root.SetArgs(env.Args)
 	if err := root.Execute(); err != nil {
-		fmt.Fprintf(env.ErrOut, "vca: %s\n", err)
+		anyval.DiscardWrite(fmt.Fprintf(env.ErrOut, "vca: %s\n", err))
 		return 1
 	}
 	return 0
@@ -225,14 +227,14 @@ func newSetupCommand(env Environment) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprint(cmd.OutOrStdout(), plan.Summary())
+				anyval.DiscardWrite(fmt.Fprint(cmd.OutOrStdout(), plan.Summary()))
 				if !nonInteractive && !yes {
 					ok, confirmErr := prompter.Confirm("Write these files?", true)
 					if confirmErr != nil {
 						return confirmErr
 					}
 					if !ok {
-						fmt.Fprintf(cmd.OutOrStdout(), "setup %s: nothing written\n", p.Name())
+						anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(), "setup %s: nothing written\n", p.Name()))
 						continue
 					}
 				}
@@ -241,7 +243,7 @@ func newSetupCommand(env Environment) *cobra.Command {
 					return err
 				}
 				for _, path := range written {
-					fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", path)
+					anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", path))
 				}
 			}
 			return nil
@@ -276,7 +278,7 @@ func readEnvFile(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { anyval.Discard(f.Close()) }()
 	values, err := ParseDotenv(f)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
@@ -510,7 +512,7 @@ func newAdminRPCCommand(c AdminCommand, resolve func() (AdminClient, error)) *co
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(cmd.OutOrStdout(), PrettyJSON(answer))
+			anyval.DiscardWrite(fmt.Fprint(cmd.OutOrStdout(), PrettyJSON(answer)))
 			return nil
 		},
 	}
@@ -558,7 +560,7 @@ func newAdminLoginCommand(env Environment, baseURL func() string) *cobra.Command
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "login done; the token is in %s\n", path)
+			anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(), "login done; the token is in %s\n", path))
 			return nil
 		},
 	}
@@ -595,7 +597,7 @@ func newManCommand(env Environment) *cobra.Command {
 			if err := doc.GenManTree(tree, header, dir); err != nil {
 				return fmt.Errorf("write the man pages: %w", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "wrote the man pages to %s\n", dir)
+			anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(), "wrote the man pages to %s\n", dir))
 			return nil
 		},
 	}

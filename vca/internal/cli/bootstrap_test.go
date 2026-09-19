@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
@@ -31,11 +32,11 @@ func fakeWaltid(t *testing.T, calls *int) *httptest.Server {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		did, _ := body["did"].(map[string]any)
-		cfg, _ := did["config"].(map[string]any)
+		did := anyval.As[map[string]any](body["did"])
+		cfg := anyval.As[map[string]any](did["config"])
 		*calls++
 		w.Header().Set("Content-Type", "application/json")
-		_, errAssign := io.WriteString(w, `{"issuerDid":"did:web:`+cfg["domain"].(string)+`:issuer","issuerKey":{"kty":"EC"}}`)
+		_, errAssign := io.WriteString(w, `{"issuerDid":"did:web:`+anyval.As[string](cfg["domain"])+`:issuer","issuerKey":{"kty":"EC"}}`)
 		if errAssign != nil {
 			t.Fatalf("io.WriteString: %v", errAssign)
 		}

@@ -17,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // fakeAdmin is a stand in for the admin service login endpoints.
@@ -154,10 +156,10 @@ func newFakeAdmin(t *testing.T, state *fakeAdmin) *httptest.Server {
 
 func writeSession(w http.ResponseWriter, state *fakeAdmin) {
 	if state.noToken {
-		_, _ = io.WriteString(w, `{"token_type":"Bearer"}`)
+		anyval.DiscardWrite(io.WriteString(w, `{"token_type":"Bearer"}`))
 		return
 	}
-	_, _ = io.WriteString(w, `{"access_token":"an-admin-session","token_type":"Bearer","expires_in":900,"csrf_token":"c"}`)
+	anyval.DiscardWrite(io.WriteString(w, `{"access_token":"an-admin-session","token_type":"Bearer","expires_in":900,"csrf_token":"c"}`))
 }
 
 func adminLoginOptions(server *httptest.Server, out io.Writer) LoginOptions {

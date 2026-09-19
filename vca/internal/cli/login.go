@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // TokenFileName is the file that holds the admin session token.
@@ -118,7 +120,7 @@ func LoopbackLogin(ctx context.Context, opts LoginOptions) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("listen on the loopback address: %w", err)
 	}
-	defer func() { _ = listener.Close() }()
+	defer func() { anyval.Discard(listener.Close()) }()
 	port, err := listenPort(listener)
 	if err != nil {
 		return "", err
@@ -136,7 +138,7 @@ func LoopbackLogin(ctx context.Context, opts LoginOptions) (string, error) {
 	if gotErr := json.Unmarshal(body, &answer); gotErr != nil || answer.AuthorizationURL == "" {
 		return "", errors.New("start the login: the answer holds no authorization_url")
 	}
-	fmt.Fprintf(opts.Out, "Open this address in a browser and log in:\n%s\n", answer.AuthorizationURL)
+	anyval.DiscardWrite(fmt.Fprintf(opts.Out, "Open this address in a browser and log in:\n%s\n", answer.AuthorizationURL))
 
 	code, err := waitForCode(ctx, listener, opts.deadline())
 	if err != nil {
@@ -181,17 +183,17 @@ func waitForCode(ctx context.Context, listener net.Listener, deadline time.Durat
 			results <- codeResult{err: errors.New("login: the answer holds no code")}
 			return
 		}
-		_, _ = io.WriteString(w, "Login done. Close this page and go back to the terminal.\n")
+		anyval.DiscardWrite(io.WriteString(w, "Login done. Close this page and go back to the terminal.\n"))
 		results <- codeResult{code: code}
 	})
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = server.Serve(listener) }()
+	go func() { anyval.Discard(server.Serve(listener)) }()
 	// Shutdown waits for the browser to receive the answer page. Close
 	// would cut the connection before the answer leaves.
 	defer func() {
 		stop, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		_ = server.Shutdown(stop)
+		anyval.Discard(server.Shutdown(stop))
 	}()
 	timer := time.NewTimer(deadline)
 	defer timer.Stop()
@@ -231,7 +233,7 @@ func DeviceLogin(ctx context.Context, opts LoginOptions) (string, error) {
 	if err := json.Unmarshal(body, &device); err != nil || device.DeviceCode == "" {
 		return "", errors.New("start the device login: the answer holds no device_code")
 	}
-	fmt.Fprintf(opts.Out, "Open %s and type the code %s\n", device.VerificationURI, device.UserCode)
+	anyval.DiscardWrite(fmt.Fprintf(opts.Out, "Open %s and type the code %s\n", device.VerificationURI, device.UserCode))
 	wait := opts.poll()
 	if device.Interval > 0 {
 		wait = time.Duration(device.Interval) * time.Second
@@ -273,7 +275,7 @@ func postSession(ctx context.Context, opts LoginOptions, endpoint string, form u
 		var fault *statusError
 		if errors.As(err, &fault) {
 			var parsed sessionAnswer
-			_ = json.Unmarshal(fault.body, &parsed)
+			anyval.Discard(json.Unmarshal(fault.body, &parsed))
 			if parsed.Error == "authorization_pending" || parsed.Error == "slow_down" {
 				return "", &pendingError{code: parsed.Error}
 			}
@@ -301,7 +303,7 @@ func describe(err error) error {
 		Description string `json:"error_description"`
 		Message     string `json:"message"`
 	}
-	_ = json.Unmarshal(fault.body, &body)
+	anyval.Discard(json.Unmarshal(fault.body, &body))
 	text := body.Description
 	if text == "" {
 		text = body.Message
@@ -342,7 +344,7 @@ func postForm(ctx context.Context, opts LoginOptions, endpoint string, form url.
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { anyval.Discard(resp.Body.Close()) }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read the answer: %w", err)

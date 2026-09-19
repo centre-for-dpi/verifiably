@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
@@ -89,7 +90,7 @@ func walk(md protoreflect.MessageDescriptor, prefix string, roles []commonv1.Rol
 	fields := md.Fields()
 	for i := 0; i < fields.Len(); i++ {
 		fd := fields.Get(i)
-		opt, _ := proto.GetExtension(fd.Options(), configv1.E_Setting).(*configv1.Setting)
+		opt := anyval.As[*configv1.Setting](proto.GetExtension(fd.Options(), configv1.E_Setting))
 		if opt == nil {
 			continue
 		}

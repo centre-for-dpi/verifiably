@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // EnvFileName is the name of the file that setup writes in the output
@@ -223,7 +225,7 @@ func ReadExisting(root string, p Pair) (map[string]string, error) {
 		}
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { anyval.Discard(f.Close()) }()
 	values, err := ParseDotenv(f)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)

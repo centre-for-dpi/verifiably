@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // The file names of an export. An import writes the same names under
@@ -61,9 +63,9 @@ func (b Bundle) Files() (map[string][]byte, error) {
 	// Every document holds strings, numbers, times, and byte slices, so
 	// the encoder cannot fail.
 	out := map[string][]byte{}
-	issued, _ := json.Marshal(b.Issued)
+	issued := anyval.Must(json.Marshal(b.Issued))
 	out[IssuedFile] = issued
-	trust, _ := json.Marshal(b.Trust)
+	trust := anyval.Must(json.Marshal(b.Trust))
 	out[TrustFile] = trust
 	for dir, records := range map[string][]ListRecord{BitstringDir: b.Bitstring, TokenDir: b.Token} {
 		for _, rec := range records {
@@ -71,7 +73,7 @@ func (b Bundle) Files() (map[string][]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			data, _ := json.Marshal(rec)
+			data := anyval.Must(json.Marshal(rec))
 			out[path] = data
 		}
 	}

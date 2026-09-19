@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // The CLI reads the rule of a setting from the validation text of the
@@ -75,8 +77,9 @@ func checksFor(s Setting) []check {
 		out = append(out, everyItemIn(splitNames(m[1])))
 	}
 	if m := rxBetween.FindStringSubmatch(rule); m != nil {
-		low, _ := strconv.Atoi(m[1])
-		high, _ := strconv.Atoi(m[2])
+		// A bound that is not a whole number means 0.
+		low := anyval.OrZero(strconv.Atoi(m[1]))
+		high := anyval.OrZero(strconv.Atoi(m[2]))
 		out = append(out, inRange(low, high))
 	}
 	switch {

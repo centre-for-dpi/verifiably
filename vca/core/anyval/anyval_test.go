@@ -57,3 +57,7 @@ func (failingCloser) Close() error { return errors.New("boom") }
 func TestClose(t *testing.T) {
 	Close(failingCloser{})
 }
+
+func TestDiscardWrite(t *testing.T) {
+	DiscardWrite(0, errors.New("boom"))
+}

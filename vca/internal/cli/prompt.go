@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // maxTries is the number of times the CLI asks one question again after a
@@ -47,7 +49,7 @@ func (p Prompter) Ask(s Setting, offered string) (string, error) {
 			answer = offered
 		}
 		if verr := Validate(s, answer); verr != nil {
-			fmt.Fprintf(p.Out, "  %s\n", verr)
+			anyval.DiscardWrite(fmt.Fprintf(p.Out, "  %s\n", verr))
 			continue
 		}
 		return answer, nil
@@ -57,22 +59,22 @@ func (p Prompter) Ask(s Setting, offered string) (string, error) {
 
 // printQuestion writes the help text, the rule, and the offered value.
 func (p Prompter) printQuestion(s Setting, offered string) {
-	fmt.Fprintf(p.Out, "\n%s\n", s.Description)
+	anyval.DiscardWrite(fmt.Fprintf(p.Out, "\n%s\n", s.Description))
 	if s.Validation != "" {
-		fmt.Fprintf(p.Out, "  Rule: %s\n", s.Validation)
+		anyval.DiscardWrite(fmt.Fprintf(p.Out, "  Rule: %s\n", s.Validation))
 	}
 	if len(s.Choices) > 0 {
-		fmt.Fprintf(p.Out, "  Choices: %s\n", strings.Join(s.Choices, ", "))
+		anyval.DiscardWrite(fmt.Fprintf(p.Out, "  Choices: %s\n", strings.Join(s.Choices, ", ")))
 	}
 	shown := offered
 	if s.Secret {
 		shown = Mask(offered)
 	}
 	if shown != "" {
-		fmt.Fprintf(p.Out, "%s [%s]: ", s.Env, shown)
+		anyval.DiscardWrite(fmt.Fprintf(p.Out, "%s [%s]: ", s.Env, shown))
 		return
 	}
-	fmt.Fprintf(p.Out, "%s: ", s.Env)
+	anyval.DiscardWrite(fmt.Fprintf(p.Out, "%s: ", s.Env))
 }
 
 // asksQuestion reports whether the CLI asks the operator for a setting.
@@ -120,7 +122,7 @@ func (p Prompter) Confirm(question string, fallback bool) (bool, error) {
 	if fallback {
 		offered = "Y/n"
 	}
-	fmt.Fprintf(p.Out, "\n%s [%s]: ", question, offered)
+	anyval.DiscardWrite(fmt.Fprintf(p.Out, "\n%s [%s]: ", question, offered))
 	line, err := p.In.ReadString('\n')
 	answer := strings.ToLower(strings.TrimSpace(line))
 	if answer == "" {

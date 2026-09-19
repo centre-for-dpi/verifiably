@@ -42,6 +42,12 @@ func Discard(err error) {
 	_ = err
 }
 
+// DiscardWrite drops the byte count and the error of a write. Use it for
+// console output, where a failed write has no remedy.
+func DiscardWrite(_ int, err error) {
+	Discard(err)
+}
+
 // Close closes c and drops the close error. Use it in a defer where the
 // failure of a close has no effect on the result.
 func Close(c io.Closer) {
