@@ -134,7 +134,8 @@ func (f *Server) take(path string) int {
 }
 
 func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
+	body, ignored := io.ReadAll(r.Body)
+	_ = ignored
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
 	forced := f.take(r.URL.Path)
@@ -174,11 +175,13 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 // send writes one recorded answer.
 func (f *Server) send(w http.ResponseWriter, name string) {
-	raw, err := os.ReadFile(filepath.Join(f.dir, name))
+	raw, err := os.ReadFile(filepath.Join(f.dir, name)) //nolint:gosec // G304: the name is one of the fixed answers
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(raw)
+	if _, err := w.Write(raw); err != nil {
+		return
+	}
 }

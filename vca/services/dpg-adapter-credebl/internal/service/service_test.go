@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/credebl"
@@ -20,7 +22,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const testdata = "../../testdata"
@@ -194,15 +195,15 @@ func TestRegisterCredentialConfigurationStoresTheSchemaAndTheTemplate(t *testing
 	if template["format"] != "dc+sd-jwt" || template["signerOption"] != "DID" {
 		t.Fatalf("template = %v", template)
 	}
-	body, _ := template["template"].(map[string]any)
+	body := mustAs[map[string]any](t, template["template"])
 	if body["vct"] != "https://credebl.example.org/credentials/NewCredential" {
 		t.Fatalf("template body = %v", body)
 	}
-	attributes, _ := body["attributes"].([]any)
+	attributes := mustAs[[]any](t, body["attributes"])
 	if len(attributes) != 3 {
 		t.Fatalf("attributes = %v", attributes)
 	}
-	first, _ := attributes[0].(map[string]any)
+	first := mustAs[map[string]any](t, attributes[0])
 	if first["key"] != "farmerID" {
 		t.Fatalf("the attributes must come in a stable order, got %v", attributes)
 	}
@@ -309,8 +310,8 @@ func TestCreateOfferRewritesTheOfferOntoThePublicHost(t *testing.T) {
 	if err := f.RequestJSON("/v1/orgs/org-1/oid4vc/issuer-1/create-offer", &body); err != nil {
 		t.Fatalf("read the offer request: %v", err)
 	}
-	credentials, _ := body["credentials"].([]any)
-	first, _ := credentials[0].(map[string]any)
+	credentials := mustAs[[]any](t, body["credentials"])
+	first := mustAs[map[string]any](t, credentials[0])
 	if first["templateId"] != "8e5a2c41-9f37-4c0b-b1ad-72d9e6c85f13" {
 		t.Fatalf("the offer must name the template identifier, got %v", first)
 	}
@@ -386,11 +387,11 @@ func TestGetIssuerMetadataBuildsTheDocument(t *testing.T) {
 	if err := json.Unmarshal([]byte(resp.Msg.GetMetadataJson()), &document); err != nil {
 		t.Fatalf("the metadata is not JSON: %v", err)
 	}
-	entries, _ := document["credential_configurations_supported"].(map[string]any)
+	entries := mustAs[map[string]any](t, document["credential_configurations_supported"])
 	if len(entries) != 2 {
 		t.Fatalf("entries = %v", entries)
 	}
-	entry, _ := entries["8e5a2c41-9f37-4c0b-b1ad-72d9e6c85f13"].(map[string]any)
+	entry := mustAs[map[string]any](t, entries["8e5a2c41-9f37-4c0b-b1ad-72d9e6c85f13"])
 	if entry["format"] != "dc+sd-jwt" || entry["vct"] == nil || entry["claims"] == nil {
 		t.Fatalf("entry = %v", entry)
 	}

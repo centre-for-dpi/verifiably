@@ -16,7 +16,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // G501: the CREDEBL key derivation fixes MD5
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -242,7 +242,7 @@ func deriveKey(password, salt []byte, keyLen, ivLen int) (key, iv []byte) {
 	var derived []byte
 	var previous []byte
 	for len(derived) < keyLen+ivLen {
-		h := md5.New()
+		h := md5.New() //nolint:gosec // G401: the CREDEBL key derivation fixes MD5
 		_, _ = h.Write(previous)
 		_, _ = h.Write(password)
 		_, _ = h.Write(salt)

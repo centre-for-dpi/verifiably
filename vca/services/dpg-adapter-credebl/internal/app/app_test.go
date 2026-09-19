@@ -60,7 +60,9 @@ func TestBuildServesEveryBackendService(t *testing.T) {
 		if err != nil {
 			t.Fatalf("post %s: %v", path, err)
 		}
-		_ = resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
 		if resp.StatusCode == http.StatusNotFound {
 			t.Fatalf("%s is not served", path)
 		}

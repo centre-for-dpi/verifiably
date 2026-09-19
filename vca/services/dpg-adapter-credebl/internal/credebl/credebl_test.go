@@ -128,7 +128,7 @@ func TestTokenSignsInOnceAndCachesTheAnswer(t *testing.T) {
 		if r.URL.Path == "/v1/auth/signin" {
 			calls++
 		}
-		_, _ = w.Write([]byte(`{"data":{"access_token":"h.` + payload + `.s"}}`))
+		mustWrite(t, w, []byte(`{"data":{"access_token":"h.`+payload+`.s"}}`))
 	}))
 	defer srv.Close()
 	c := newClient(srv, nil)
@@ -152,7 +152,7 @@ func TestTokenSignsInOnceAndCachesTheAnswer(t *testing.T) {
 
 func TestTokenUsesAnHourWhenTheTokenNamesNoEnd(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"data":{"access_token":"opaque"}}`))
+		mustWrite(t, w, []byte(`{"data":{"access_token":"opaque"}}`))
 	}))
 	defer srv.Close()
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -170,7 +170,7 @@ func TestTokenReportsAnEmptyAnswerAndAFailure(t *testing.T) {
 	status := http.StatusOK
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := newClient(srv, nil)
@@ -199,7 +199,7 @@ func TestACallSignsInAgainAfterAnUnauthorizedAnswer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/signin" {
 			signins++
-			_, _ = w.Write([]byte(`{"data":{"access_token":"t"}}`))
+			mustWrite(t, w, []byte(`{"data":{"access_token":"t"}}`))
 			return
 		}
 		calls++
@@ -207,7 +207,7 @@ func TestACallSignsInAgainAfterAnUnauthorizedAnswer(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		_, _ = w.Write([]byte(`{"data":[]}`))
+		mustWrite(t, w, []byte(`{"data":[]}`))
 	}))
 	defer srv.Close()
 	c := newClient(srv, nil)
@@ -222,7 +222,7 @@ func TestACallSignsInAgainAfterAnUnauthorizedAnswer(t *testing.T) {
 func TestACallGivesUpAfterTwoUnauthorizedAnswers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/signin" {
-			_, _ = w.Write([]byte(`{"data":{"access_token":"t"}}`))
+			mustWrite(t, w, []byte(`{"data":{"access_token":"t"}}`))
 			return
 		}
 		w.WriteHeader(http.StatusUnauthorized)
@@ -236,13 +236,13 @@ func TestACallGivesUpAfterTwoUnauthorizedAnswers(t *testing.T) {
 func TestTemplatesReadTheAttributesColumn(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/signin" {
-			_, _ = w.Write([]byte(`{"data":{"access_token":"t"}}`))
+			mustWrite(t, w, []byte(`{"data":{"access_token":"t"}}`))
 			return
 		}
 		if r.URL.Path != "/v1/orgs/org-1/oid4vc/issuer-1/template" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"data":[{"id":"t-1","name":"Farmer","format":"dc+sd-jwt",
+		mustWrite(t, w, []byte(`{"data":[{"id":"t-1","name":"Farmer","format":"dc+sd-jwt",
           "attributes":{"vct":"https://v.example/vct","attributes":[
             {"key":"fullName","value_type":"string","disclose":true}]}}]}`))
 	}))
@@ -263,11 +263,13 @@ func TestCreateOfferSendsThePreAuthorizedType(t *testing.T) {
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/signin" {
-			_, _ = w.Write([]byte(`{"data":{"access_token":"t"}}`))
+			mustWrite(t, w, []byte(`{"data":{"access_token":"t"}}`))
 			return
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		_, _ = w.Write([]byte(`{"data":{"credentialOffer":"openid-credential-offer://x",
+		if cerr := json.NewDecoder(r.Body).Decode(&body); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
+		mustWrite(t, w, []byte(`{"data":{"credentialOffer":"openid-credential-offer://x",
           "issuanceSession":{"id":"s-1","userPin":"1234"}}}`))
 	}))
 	defer srv.Close()
@@ -282,12 +284,12 @@ func TestCreateOfferSendsThePreAuthorizedType(t *testing.T) {
 	if body["authorizationType"] != "preAuthorizedCodeFlow" {
 		t.Fatalf("body = %v", body)
 	}
-	credentials, _ := body["credentials"].([]any)
-	first, _ := credentials[0].(map[string]any)
+	credentials := mustAs[[]any](t, body["credentials"])
+	first := mustAs[map[string]any](t, credentials[0])
 	if first["templateId"] != "t-1" {
 		t.Fatalf("credentials = %v", credentials)
 	}
-	payload, _ := first["payload"].(map[string]any)
+	payload := mustAs[map[string]any](t, first["payload"])
 	if payload["fullName"] != "Ada" {
 		t.Fatalf("payload = %v", payload)
 	}
@@ -300,10 +302,10 @@ func TestCreateOfferChecksItsInputAndTheAnswer(t *testing.T) {
 	body := `{"data":{"credentialOffer":""}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/signin" {
-			_, _ = w.Write([]byte(`{"data":{"access_token":"t"}}`))
+			mustWrite(t, w, []byte(`{"data":{"access_token":"t"}}`))
 			return
 		}
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := newClient(srv, nil)
@@ -333,10 +335,10 @@ func TestCreateSchemaAndTemplateReadTheIdentifier(t *testing.T) {
 	body := `{"data":{"id":"","schemaId":"","schemaLedgerId":"ledger-1"}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/signin" {
-			_, _ = w.Write([]byte(`{"data":{"access_token":"t"}}`))
+			mustWrite(t, w, []byte(`{"data":{"access_token":"t"}}`))
 			return
 		}
-		_, _ = w.Write([]byte(body))
+		mustWrite(t, w, []byte(body))
 	}))
 	defer srv.Close()
 	c := newClient(srv, nil)
@@ -346,10 +348,10 @@ func TestCreateSchemaAndTemplateReadTheIdentifier(t *testing.T) {
 		t.Fatalf("CreateSchema = %q, %v", got, err)
 	}
 	body = `{"data":{}}`
-	if _, err := c.CreateSchema(context.Background(), "Farmer", "", nil); err == nil {
+	if _, serr := c.CreateSchema(context.Background(), "Farmer", "", nil); serr == nil {
 		t.Fatal("CreateSchema accepted an answer without an identifier")
 	}
-	if _, err := c.CreateTemplate(context.Background(), "Farmer", "dc+sd-jwt", "v", nil); err == nil {
+	if _, serr := c.CreateTemplate(context.Background(), "Farmer", "dc+sd-jwt", "v", nil); serr == nil {
 		t.Fatal("CreateTemplate accepted an answer without an identifier")
 	}
 	body = `{"data":{"id":"tpl-1"}}`
