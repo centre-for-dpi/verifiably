@@ -47,7 +47,7 @@ func schema() Schema {
 		JSONSchema: degree,
 		Display:    []Display{{Name: "Degree", Description: "A university degree", Locale: "en", BackgroundColor: "#112233", TextColor: "#ffffff"}, {Name: "Diplôme", Locale: "fr"}},
 		SDClaims:   []string{"name", "ghost"},
-		Formats:    []string{FormatJwtVcJson, FormatDcSdJwt},
+		Formats:    []string{FormatJwtVcJSON, FormatDcSdJwt},
 		Expires:    true,
 	}
 }
@@ -115,7 +115,7 @@ func TestPreviewCredentialFormats(t *testing.T) {
 	if pErr != nil {
 		t.Fatal(pErr)
 	}
-	if p.Format != FormatJwtVcJson {
+	if p.Format != FormatJwtVcJSON {
 		t.Fatalf("format: %s", p.Format)
 	}
 	var vc map[string]any

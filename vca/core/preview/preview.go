@@ -23,16 +23,15 @@ import (
 
 // Format identifiers of OpenID for Verifiable Credential Issuance 1.0.
 const (
-	FormatDcSdJwt = "dc+sd-jwt"
-	FormatVcSdJwt = "vc+sd-jwt"
-	//nolint:staticcheck // ST1003: service packages outside this change use this name.
-	FormatJwtVcJson = "jwt_vc_json"
+	FormatDcSdJwt   = "dc+sd-jwt"
+	FormatVcSdJwt   = "vc+sd-jwt"
+	FormatJwtVcJSON = "jwt_vc_json"
 	FormatLdpVc     = "ldp_vc"
 	FormatMsoMdoc   = "mso_mdoc"
 )
 
 // Formats lists every format PreviewCredential can render.
-var Formats = []string{FormatDcSdJwt, FormatVcSdJwt, FormatJwtVcJson, FormatLdpVc, FormatMsoMdoc}
+var Formats = []string{FormatDcSdJwt, FormatVcSdJwt, FormatJwtVcJSON, FormatLdpVc, FormatMsoMdoc}
 
 // DefaultIssuer is the issuer identifier of a preview when Options gives none.
 const DefaultIssuer = "https://issuer.example"
@@ -282,7 +281,7 @@ func credential(s Schema, sample map[string]any, format string, opts Options) ma
 				"validUntil": validUntil(s, expires),
 			},
 		}
-	case FormatJwtVcJson, FormatLdpVc:
+	case FormatJwtVcJSON, FormatLdpVc:
 		vc := map[string]any{
 			"@context":          []string{"https://www.w3.org/ns/credentials/v2"},
 			"type":              []string{"VerifiableCredential", s.Type},

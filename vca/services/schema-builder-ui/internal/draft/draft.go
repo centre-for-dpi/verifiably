@@ -40,7 +40,7 @@ var FieldTypes = []string{"string", "number", "integer", "boolean"}
 var FieldFormats = []string{"", "date", "date-time", "email", "uri"}
 
 // Formats lists the wire formats the builder offers, in OID4VCI spelling.
-var Formats = []string{preview.FormatDcSdJwt, preview.FormatVcSdJwt, preview.FormatJwtVcJson, preview.FormatLdpVc, preview.FormatMsoMdoc}
+var Formats = []string{preview.FormatDcSdJwt, preview.FormatVcSdJwt, preview.FormatJwtVcJSON, preview.FormatLdpVc, preview.FormatMsoMdoc}
 
 // name is the property name rule. A property name starts with a letter.
 var name = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)

@@ -15,7 +15,7 @@ import (
 var formats = map[string]commonv1.Format{
 	preview.FormatVcSdJwt:   commonv1.Format_FORMAT_VC_SD_JWT,
 	preview.FormatDcSdJwt:   commonv1.Format_FORMAT_DC_SD_JWT,
-	preview.FormatJwtVcJson: commonv1.Format_FORMAT_JWT_VC_JSON,
+	preview.FormatJwtVcJSON: commonv1.Format_FORMAT_JWT_VC_JSON,
 	preview.FormatLdpVc:     commonv1.Format_FORMAT_LDP_VC,
 	preview.FormatMsoMdoc:   commonv1.Format_FORMAT_MSO_MDOC,
 }
