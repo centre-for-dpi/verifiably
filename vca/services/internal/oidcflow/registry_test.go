@@ -39,15 +39,19 @@ func (f *failingPersister) Load(name string, v any) error {
 }
 
 func TestRegistry(t *testing.T) {
+	// The clock is fixed and both ids are explicit, so List gives the
+	// same order on every run. A random id can start with "z" and sort
+	// after the second provider.
+	clock := func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) }
 	store := oidcflow.NewMemoryPersister()
-	reg, err := oidcflow.NewRegistry(store, nil)
+	reg, err := oidcflow.NewRegistry(store, clock)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reg.Put(oidcflow.Provider{ID: "bad"}); !errors.Is(err, oidcflow.ErrInvalidProvider) {
 		t.Fatalf("invalid: %v", err)
 	}
-	p, err := reg.Put(oidcflow.Provider{DisplayName: "A", DiscoveryURL: "https://a/.well-known/openid-configuration", ClientID: "c", Enabled: true})
+	p, err := reg.Put(oidcflow.Provider{ID: "a", DisplayName: "A", DiscoveryURL: "https://a/.well-known/openid-configuration", ClientID: "c", Enabled: true})
 	if err != nil || p.ID == "" || p.CreatedAt.IsZero() {
 		t.Fatalf("put: %+v %v", p, err)
 	}
@@ -71,7 +75,7 @@ func TestRegistry(t *testing.T) {
 		t.Fatalf("get: %v", err)
 	}
 	// A new registry on the same store sees the records.
-	reg2, err := oidcflow.NewRegistry(store, nil)
+	reg2, err := oidcflow.NewRegistry(store, clock)
 	if err != nil || len(reg2.List()) != 2 {
 		t.Fatalf("reload: %v", err)
 	}
@@ -83,7 +87,7 @@ func TestRegistry(t *testing.T) {
 	}
 	// Persist failures roll back.
 	fp := &failingPersister{Persister: store}
-	reg3, _ := oidcflow.NewRegistry(fp, nil)
+	reg3, _ := oidcflow.NewRegistry(fp, clock)
 	fp.failSave = true
 	if _, err := reg3.Put(oidcflow.Provider{ID: "new", DiscoveryURL: "https://n/x", ClientID: "c"}); err == nil {
 		t.Fatal("save error hidden")
