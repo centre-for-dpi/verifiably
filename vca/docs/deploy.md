@@ -91,6 +91,29 @@ The `.env` file of the pair carries both numbers:
 | `VCA_PORTS_<SERVICE>` | The port of every other service, from 8100 up. |
 | `VCA_HOST_PORT_<SERVICE>` | The port on the machine that runs compose. |
 
+### Service links
+
+Some services need the URL of another service.
+The CLI reads the port plan and writes each URL into the .env file:
+
+| Variable | What it points at |
+|---|---|
+| `VCA_WALLET_PORTAL_AUTH_JWKS_URL` | The JWKS of the wallet auth service. |
+| `VCA_WALLET_PORTAL_LOGIN_URL` | The login page of the wallet auth service. |
+| `VCA_WALLET_PORTAL_DISCOVERY_URL` | The verifier discovery service. |
+| `VCA_WALLET_PORTAL_TRUST_URL` | The trust registry service. |
+| `VCA_WALLET_PORTAL_DPG_ADAPTERS` | The DPG adapter of the pair. |
+| `VCA_ADMIN_PUBLIC_URL` | The public base URL of the deployment. |
+| `VCA_ADMIN_TRUST_URL` | The trust registry service. |
+| `VCA_ADMIN_SERVICES` | Every other service of the same DPG, for the health page. |
+
+A link can name a service of another role.
+The container names carry the pair, for example
+`verifier-waltid-verifier-discovery`.
+Every profile joins the same `vca` network, so one role reaches another
+role of the same DPG.
+Start the other role, or edit the value by hand.
+
 Each role and DPG pair owns a block of one hundred host ports.
 The first block starts at 18000.
 
@@ -139,17 +162,20 @@ The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 | `issuer-waltid` | 9 | 864 MiB | 1536 MiB | 2400 MiB | 3.25 |
 | `issuer-inji` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
 | `issuer-credebl` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
-| `holder-waltid` | 2 | 192 MiB | 1536 MiB | 1728 MiB | 1.5 |
-| `holder-inji` | 2 | 192 MiB | 2560 MiB | 2752 MiB | 1.5 |
-| `holder-credebl` | 2 | 192 MiB | 2560 MiB | 2752 MiB | 1.5 |
+| `holder-waltid` | 3 | 288 MiB | 1536 MiB | 1824 MiB | 1.75 |
+| `holder-inji` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
+| `holder-credebl` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
 | `verifier-waltid` | 6 | 576 MiB | 1536 MiB | 2112 MiB | 2.5 |
 | `verifier-inji` | 6 | 576 MiB | 2560 MiB | 3136 MiB | 2.5 |
 | `verifier-credebl` | 6 | 576 MiB | 2560 MiB | 3136 MiB | 2.5 |
-| `admin-waltid` | 1 | 96 MiB | 256 MiB | 352 MiB | 1.25 |
-| `admin-inji` | 1 | 96 MiB | 256 MiB | 352 MiB | 1.25 |
-| `admin-credebl` | 1 | 96 MiB | 256 MiB | 352 MiB | 1.25 |
+| `admin-waltid` | 2 | 192 MiB | 256 MiB | 448 MiB | 1.5 |
+| `admin-inji` | 2 | 192 MiB | 256 MiB | 448 MiB | 1.5 |
+| `admin-credebl` | 2 | 192 MiB | 256 MiB | 448 MiB | 1.5 |
 
 The VCA figure is 96 MiB per service.
+The admin role runs the admin service and the trust registry.
+The holder role runs the wallet portal, the wallet auth service, and one
+DPG adapter.
 Each service is one static Go binary in a distroless image.
 The DPG figure is the floor of the stack in `deploy/vca/dpg/`.
 The admin role talks to no DPG, so it needs only its own database.

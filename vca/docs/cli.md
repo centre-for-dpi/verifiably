@@ -154,35 +154,48 @@ The admin commands are clients of `vca.admin.v1.AdminService`.
 The admin portal calls the same service.
 No action exists in one place only (ADR-009 decision 1).
 
-Log in first:
+Log in first. The admin service holds the OpenID Connect client, so the
+CLI needs no client id and no client secret:
 
 ```sh
-vca admin login --discovery-url https://idp.example/.well-known/openid-configuration
+vca admin login --url https://admin.example
+vca admin login --url https://admin.example --bootstrap-token "$TOKEN"
+vca admin login --url https://admin.example --device
 ```
 
-`login` runs the authorization code flow with PKCE against a loopback
-redirect URI.
-Add `--device` on a host with no browser.
-The token goes to `deploy/.vca/admin-token` with mode 0600.
+`login` asks the admin service for an authorization URL at `/cli/login`.
+It waits on a loopback port and sends the one time code to `/cli/token`.
+No token travels in a URL.
+`--device` posts to `/device_authorization` and polls `/token` instead.
+Use it on a host with no browser.
+`--bootstrap-token` binds the first super admin in one login.
+The service prints that token once at its first start.
+The session token goes to `deploy/.vca/admin-token` with mode 0600.
 
 Then call an RPC:
 
 ```sh
 vca admin tenant list --json '{"pageSize":20}'
-vca admin trust upsert --file entry.json
-vca admin health get
+vca admin trust add --file entry.json
+vca admin health
 ```
 
-| Group | Commands |
+| Command | RPC |
 |---|---|
-| `tenant` | `create`, `get`, `list`, `update`, `delete` |
-| `trust` | `upsert`, `get`, `list`, `delete` |
-| `provider` | `create`, `get`, `list`, `update`, `delete` |
-| `apikey` | `create`, `list`, `revoke` |
-| `health` | `get` |
-| `audit` | `query` |
-| `onboard` | The first super admin binding |
-| `commands` | `list` |
+| `tenant create`, `get`, `list`, `update`, `delete` | The tenant RPCs |
+| `trust add`, `get`, `list`, `remove` | The trust entry RPCs |
+| `onboard` | `CreateAuthProvider` |
+| `provider get`, `list`, `update`, `remove` | The provider RPCs |
+| `apikey create`, `list`, `revoke` | The API key RPCs |
+| `health` | `GetServiceHealth` |
+| `audit` | `QueryAuditLog` |
+| `bind` | `OnboardAdmin` |
+| `help` | `ListCommands` |
+
+The table is the same table that the admin service renders on its help
+page at `/admin/help`.
+A test fails when the two differ, so the CLI and the portal never drift
+(ADR-009 decision 3).
 
 The help text of each command is the `description` option of the RPC.
 One sentence written once reaches the CLI, the man pages, the portal help
@@ -223,14 +236,22 @@ go run ./cmd/vca man --dir /tmp/man
 man /tmp/man/vca-setup.1
 ```
 
+Check that the CLI tree and the admin portal agree:
+
+```sh
+go test -run TestAdminTreeMatchesTheAdminService ./internal/cli/
+```
+
 ## Reference
 
 - ADR-007: the setup CLI, its inputs, its outputs, and its order of sources.
 - ADR-008: the deploy commands, the compose profiles, and the Helm charts.
 - ADR-009: the admin command tree and the generated man pages.
 - ADR-010: the OpenID Connect login of the super admin.
+- `services/admin/README.md`: the login endpoints the CLI calls.
 - `proto/vca/config/v1/config.proto`: every setup variable.
 - `proto/vca/admin/v1/admin.proto`: every admin RPC.
 - [Twelve factor config](https://12factor.net/config)
 - [RFC 7636 PKCE](https://www.rfc-editor.org/rfc/rfc7636.html)
 - [RFC 8628 device grant](https://www.rfc-editor.org/rfc/rfc8628.html)
+- [RFC 8252 native apps](https://www.rfc-editor.org/rfc/rfc8252.html)

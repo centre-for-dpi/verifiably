@@ -44,7 +44,7 @@ The names come from ADR-002.
 
 Admin:
 
-- `admin`: the super admin API and portal, with man pages and a help page.
+- `admin`: the super admin API and portal, with man pages and a help page. See [docs/admin.md](docs/admin.md).
 
 Trust:
 
@@ -64,7 +64,7 @@ Issuer:
 Holder:
 
 - `wallet-auth`: OIDC sign-in for citizens and binding of a holder to a wallet.
-- `wallet-portal`: web wallet pages to discover, claim, view, present, and delete credentials.
+- `wallet-portal`: web wallet pages to discover, claim, view, present, and delete credentials. See [docs/wallet-portal.md](docs/wallet-portal.md).
 
 Verifier:
 
@@ -90,6 +90,10 @@ Each service lives in `services/<name>/`. Shared pure code lives in
 - [Writing style](docs/style.md): the rules for all reader-facing text.
 - [Service document template](docs/template-service.md): the four sections each service documents.
 - [Error catalogue](docs/errors.md): every user-facing error, with the next step.
+- [Command line tool](docs/cli.md): the vca setup, deploy, dpg, and admin commands.
+- [Deployment](docs/deploy.md): the compose profiles, the DPG stacks, and the Helm charts.
+- [Super admin service](docs/admin.md): the admin API, the portal, and the login flows.
+- [Wallet portal](docs/wallet-portal.md): the citizen wallet pages and the browser storage.
 - `docs/<service>/`: one folder per service, planned as each service ships.
 
 ## Layout
