@@ -38,6 +38,10 @@ type Options struct {
 	Handler http.Handler
 	// Ready reports whether the service can take traffic. Nil means yes.
 	Ready func() bool
+	// ReadyMessage returns the body of a ready response. A service uses
+	// it to report a count, for example the number of providers. Nil
+	// means the body "ready".
+	ReadyMessage func() string
 	// Log receives the access log and the lifecycle messages. Nil means
 	// slog.Default.
 	Log *slog.Logger
@@ -54,6 +58,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Ready == nil {
 		o.Ready = func() bool { return true }
+	}
+	if o.ReadyMessage == nil {
+		o.ReadyMessage = func() string { return "ready\n" }
 	}
 	if o.Log == nil {
 		o.Log = slog.Default()
@@ -80,7 +87,7 @@ func Handler(opts Options) http.Handler {
 			_, _ = w.Write([]byte("not ready\n"))
 			return
 		}
-		_, _ = w.Write([]byte("ready\n"))
+		_, _ = w.Write([]byte(opts.ReadyMessage()))
 	})
 	mux.Handle("/", opts.Handler)
 	return RequestID(trace.Middleware(AccessLog(opts.Log, mux)))
