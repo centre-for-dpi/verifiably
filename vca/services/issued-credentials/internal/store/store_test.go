@@ -5,12 +5,12 @@ package store_test
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/hashchain"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/record"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/store"
 )
@@ -50,7 +50,7 @@ type badLoad struct{}
 func (badLoad) Load() ([]byte, bool, error) { return nil, false, errors.New("no disk") }
 func (badLoad) Save([]byte) error           { return nil }
 
-func open(t *testing.T, b store.Backend) *store.Store {
+func open(t *testing.T, b sharedstore.Document) *store.Store {
 	t.Helper()
 	s, err := store.Open(b)
 	if err != nil {
@@ -60,7 +60,7 @@ func open(t *testing.T, b store.Backend) *store.Store {
 }
 
 func TestAppendGetAndHead(t *testing.T) {
-	s := open(t, store.Memory())
+	s := open(t, sharedstore.MemoryDoc())
 	if _, ok := s.Head(); ok {
 		t.Fatal("an empty chain has no head")
 	}
@@ -94,7 +94,7 @@ func TestAppendGetAndHead(t *testing.T) {
 }
 
 func TestAppendRejectsInvalidAndDuplicate(t *testing.T) {
-	s := open(t, store.Memory())
+	s := open(t, sharedstore.MemoryDoc())
 	if _, err := s.Append(record.Record{}); !errors.Is(err, record.ErrInvalid) {
 		t.Errorf("err = %v, want ErrInvalid", err)
 	}
@@ -126,7 +126,7 @@ func TestOpenReportsALoadError(t *testing.T) {
 }
 
 func TestSetStatus(t *testing.T) {
-	s := open(t, store.Memory())
+	s := open(t, sharedstore.MemoryDoc())
 	if _, err := s.Append(rec("a", 1)); err != nil {
 		t.Fatalf("append: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestSetStatus(t *testing.T) {
 }
 
 func TestSetStatusReportsASaveFailure(t *testing.T) {
-	m := store.Memory()
+	m := sharedstore.MemoryDoc()
 	s := open(t, m)
 	if _, err := s.Append(rec("a", 1)); err != nil {
 		t.Fatalf("append: %v", err)
@@ -165,7 +165,7 @@ func TestSetStatusReportsASaveFailure(t *testing.T) {
 }
 
 func TestAllSortsNewestFirst(t *testing.T) {
-	s := open(t, store.Memory())
+	s := open(t, sharedstore.MemoryDoc())
 	for _, r := range []record.Record{rec("a", 1), rec("b", 5), rec("c", 3)} {
 		if _, err := s.Append(r); err != nil {
 			t.Fatalf("append: %v", err)
@@ -182,14 +182,14 @@ func TestAllSortsNewestFirst(t *testing.T) {
 
 func TestFileBackendRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "log.json")
-	s := open(t, store.File(path))
+	s := open(t, sharedstore.FileDoc(path))
 	if _, err := s.Append(rec("a", 1)); err != nil {
 		t.Fatalf("append: %v", err)
 	}
 	if _, err := s.SetStatus("a", record.Suspended, "review", at(2)); err != nil {
 		t.Fatalf("set status: %v", err)
 	}
-	again := open(t, store.File(path))
+	again := open(t, sharedstore.FileDoc(path))
 	got, ok := again.Get("a")
 	if !ok || got.Status != record.Suspended || got.StatusReason != "review" {
 		t.Errorf("reloaded record = %+v %v", got, ok)
@@ -200,32 +200,8 @@ func TestFileBackendRoundTrip(t *testing.T) {
 	}
 }
 
-func TestFileBackendErrors(t *testing.T) {
-	dir := t.TempDir()
-	missing := store.File(filepath.Join(dir, "none.json"))
-	if _, found, err := missing.Load(); found || err != nil {
-		t.Errorf("a missing file must read as empty, got %v %v", found, err)
-	}
-	// A directory cannot be read as a file.
-	if _, _, err := store.File(dir).Load(); err == nil {
-		t.Error("want a read error for a directory")
-	}
-	// A save under a missing directory fails.
-	if err := store.File(filepath.Join(dir, "sub", "log.json")).Save([]byte("{}")); err == nil {
-		t.Error("want a write error")
-	}
-	// A rename over a directory fails.
-	target := filepath.Join(dir, "busy")
-	if err := os.Mkdir(target, 0o750); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := store.File(target).Save([]byte("{}")); err == nil {
-		t.Error("want a rename error")
-	}
-}
-
 func TestOpenRejectsABrokenChain(t *testing.T) {
-	m := store.Memory()
+	m := sharedstore.MemoryDoc()
 	s := open(t, m)
 	if _, err := s.Append(rec("a", 1)); err != nil {
 		t.Fatalf("append: %v", err)
@@ -254,7 +230,7 @@ func TestOpenRejectsABrokenChain(t *testing.T) {
 }
 
 func TestOpenRejectsBadJSON(t *testing.T) {
-	m := store.Memory()
+	m := sharedstore.MemoryDoc()
 	if err := m.Save([]byte("not json")); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -268,7 +244,7 @@ func TestOpenRejectsAnEntryThatIsNotAnEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("append: %v", err)
 	}
-	m := store.Memory()
+	m := sharedstore.MemoryDoc()
 	data, err := json.Marshal(map[string]any{"entries": chain.Entries()})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -290,7 +266,7 @@ func TestFoldIgnoresEmptyEvents(t *testing.T) {
 		}
 		chain = next
 	}
-	m := store.Memory()
+	m := sharedstore.MemoryDoc()
 	data, err := json.Marshal(map[string]any{"entries": chain.Entries()})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -314,7 +290,7 @@ func TestStatusEventForAnUnknownRecordIsIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("append: %v", err)
 	}
-	m := store.Memory()
+	m := sharedstore.MemoryDoc()
 	data, err := json.Marshal(map[string]any{"entries": chain.Entries()})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -329,7 +305,7 @@ func TestStatusEventForAnUnknownRecordIsIgnored(t *testing.T) {
 }
 
 func TestVerify(t *testing.T) {
-	s := open(t, store.Memory())
+	s := open(t, sharedstore.MemoryDoc())
 	for _, r := range []record.Record{rec("a", 1), rec("b", 2), rec("c", 3)} {
 		if _, err := s.Append(r); err != nil {
 			t.Fatalf("append: %v", err)
@@ -349,7 +325,7 @@ func TestVerify(t *testing.T) {
 }
 
 func TestPrune(t *testing.T) {
-	s := open(t, store.Memory())
+	s := open(t, sharedstore.MemoryDoc())
 	keep := rec("keep", 1)
 	drop := rec("drop", 2)
 	drop.RetainUntil = at(3)
@@ -383,7 +359,7 @@ func TestPrune(t *testing.T) {
 }
 
 func TestPruneSurvivesAReopen(t *testing.T) {
-	m := store.Memory()
+	m := sharedstore.MemoryDoc()
 	s := open(t, m)
 	drop := rec("drop", 1)
 	drop.RetainUntil = at(2)
@@ -406,7 +382,7 @@ func TestPruneSurvivesAReopen(t *testing.T) {
 }
 
 func TestPruneRollsBackOnSaveFailure(t *testing.T) {
-	m := store.Memory()
+	m := sharedstore.MemoryDoc()
 	s := open(t, m)
 	drop := rec("drop", 1)
 	drop.RetainUntil = at(2)

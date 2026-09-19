@@ -18,6 +18,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/head"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/httpapi"
@@ -63,9 +64,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if deps.Log == nil {
 		deps.Log = slog.Default()
 	}
-	backend := store.Memory()
+	backend := sharedstore.MemoryDoc()
 	if cfg.StoreFile != "" {
-		backend = store.File(cfg.StoreFile)
+		backend = sharedstore.FileDoc(cfg.StoreFile)
 	}
 	st, err := store.Open(backend)
 	if err != nil {
