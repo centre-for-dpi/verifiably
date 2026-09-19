@@ -87,7 +87,7 @@ func (l *List) pos(i int) (int, byte, error) {
 	if i < 0 || i >= l.size {
 		return 0, 0, fmt.Errorf("%w: %d of %d", ErrOutOfRange, i, l.size)
 	}
-	return i / 8, 1 << (7 - uint(i%8)), nil
+	return i / 8, 1 << (7 - i%8), nil
 }
 
 // Get reads bit i.
@@ -116,11 +116,30 @@ func (l *List) Set(i int, v bool) error {
 // Encode returns the encodedList value: "u" + base64url(gzip(bytes)).
 func (l *List) Encode() string {
 	var buf bytes.Buffer
-	// Writes to a bytes.Buffer cannot fail.
 	w := gzip.NewWriter(&buf)
-	_, _ = w.Write(l.bits)
-	_ = w.Close()
-	return "u" + base64.RawURLEncoding.EncodeToString(buf.Bytes())
+	_, writeErr := w.Write(l.bits)
+	closeErr := w.Close()
+	return multibase(buf.Bytes(), errors.Join(writeErr, closeErr))
+}
+
+// multibase returns "u" plus the base64url form of b. It returns "" when
+// err is not nil. Writes to a bytes.Buffer cannot fail, so Encode never
+// sees an error.
+func multibase(b []byte, err error) string {
+	if err != nil {
+		return ""
+	}
+	return "u" + base64.RawURLEncoding.EncodeToString(b)
+}
+
+// stringAt returns the string held at key in m. It returns "" when the key
+// is absent or the value is not a string.
+func stringAt(m map[string]any, key string) string {
+	s, isString := m[key].(string)
+	if !isString {
+		return ""
+	}
+	return s
 }
 
 // Decode parses an encodedList value produced by Encode or by another
@@ -187,11 +206,11 @@ func ParseCredential(doc map[string]any) (Purpose, *List, error) {
 	if !ok {
 		return "", nil, errors.New("bitstring: credentialSubject missing")
 	}
-	enc, _ := cs["encodedList"].(string)
+	enc := stringAt(cs, "encodedList")
 	if enc == "" {
 		return "", nil, errors.New("bitstring: encodedList missing")
 	}
-	purpose, _ := cs["statusPurpose"].(string)
+	purpose := stringAt(cs, "statusPurpose")
 	if purpose == "" {
 		return "", nil, errors.New("bitstring: statusPurpose missing")
 	}
@@ -212,10 +231,10 @@ type EntryRef struct {
 // ParseEntry reads a BitstringStatusListEntry object.
 // statusListIndex is a string per the specification. A number is accepted too.
 func ParseEntry(cs map[string]any) (EntryRef, error) {
-	if t, _ := cs["type"].(string); t != TypeEntry {
+	if t := stringAt(cs, "type"); t != TypeEntry {
 		return EntryRef{}, fmt.Errorf("bitstring: credentialStatus type %q is not %s", t, TypeEntry)
 	}
-	url, _ := cs["statusListCredential"].(string)
+	url := stringAt(cs, "statusListCredential")
 	if url == "" {
 		return EntryRef{}, errors.New("bitstring: statusListCredential missing")
 	}
@@ -235,7 +254,7 @@ func ParseEntry(cs map[string]any) (EntryRef, error) {
 	default:
 		return EntryRef{}, errors.New("bitstring: statusListIndex missing")
 	}
-	purpose, _ := cs["statusPurpose"].(string)
+	purpose := stringAt(cs, "statusPurpose")
 	if purpose == "" {
 		purpose = string(Revocation)
 	}

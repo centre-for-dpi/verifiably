@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"time"
 
@@ -63,8 +64,7 @@ func CWTClaims(c Claims, l *List) []byte {
 		m[cwtTTL] = int64(c.TTL / time.Second)
 	}
 	// A map of scalars and byte strings always encodes.
-	out, _ := cbor.Marshal(m)
-	return out
+	return bytesOrNil(cbor.Marshal(m))
 }
 
 // ParseCWTClaims reads a CBOR claim set built by CWTClaims or another issuer.
@@ -73,7 +73,7 @@ func ParseCWTClaims(raw []byte) (Claims, *List, error) {
 	if err := cbor.Unmarshal(raw, &m); err != nil {
 		return Claims{}, nil, fmt.Errorf("token: cwt claims: %w", err)
 	}
-	sub, _ := m[cwtSub].(string)
+	sub := stringOf(m[cwtSub])
 	if sub == "" {
 		return Claims{}, nil, errors.New("token: sub claim missing")
 	}
@@ -86,14 +86,14 @@ func ParseCWTClaims(raw []byte) (Claims, *List, error) {
 		return Claims{}, nil, errors.New("token: status_list claim missing")
 	}
 	bits, _ := asInt(sl["bits"])
-	lst, _ := sl["lst"].([]byte)
+	lst := bytesOf(sl["lst"])
 	l, err := Decompress(int(bits), lst)
 	if err != nil {
 		return Claims{}, nil, err
 	}
 	c := Claims{Subject: sub, IssuedAt: time.Unix(iat, 0).UTC()}
-	c.Issuer, _ = m[cwtIss].(string)
-	c.AggregationURI, _ = sl["aggregation_uri"].(string)
+	c.Issuer = stringOf(m[cwtIss])
+	c.AggregationURI = stringOf(sl["aggregation_uri"])
 	if exp, ok := asInt(m[cwtExp]); ok {
 		c.ExpiresAt = time.Unix(exp, 0).UTC()
 	}
@@ -106,11 +106,41 @@ func ParseCWTClaims(raw []byte) (Claims, *List, error) {
 func asInt(v any) (int64, bool) {
 	switch n := v.(type) {
 	case uint64:
+		if n > math.MaxInt64 {
+			return 0, false
+		}
 		return int64(n), true
 	case int64:
 		return n, true
 	}
 	return 0, false
+}
+
+// bytesOrNil returns b when err is nil. It returns nil otherwise. The CBOR
+// values that this package encodes always marshal, so err is always nil.
+func bytesOrNil(b []byte, err error) []byte {
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+// stringOf returns the string in v. It returns "" when v is not a string.
+func stringOf(v any) string {
+	s, isString := v.(string)
+	if !isString {
+		return ""
+	}
+	return s
+}
+
+// bytesOf returns the byte string in v. It returns nil when v is not one.
+func bytesOf(v any) []byte {
+	b, isBytes := v.([]byte)
+	if !isBytes {
+		return nil
+	}
+	return b
 }
 
 // Signer signs data and returns the raw COSE signature bytes.
@@ -129,8 +159,7 @@ type coseSign1 struct {
 
 func sigStructure(protected, payload []byte) []byte {
 	// ["Signature1", protected, external_aad, payload] (RFC 9052 section 4.4).
-	out, _ := cbor.Marshal([]any{"Signature1", protected, []byte{}, payload})
-	return out
+	return bytesOrNil(cbor.Marshal([]any{"Signature1", protected, []byte{}, payload}))
 }
 
 // SignCWT wraps payload in a tagged COSE_Sign1 message with typ
@@ -140,14 +169,13 @@ func SignCWT(payload []byte, alg int64, kid []byte, sign Signer) ([]byte, error)
 	if len(kid) > 0 {
 		hdr[coseKid] = kid
 	}
-	protected, _ := cbor.Marshal(hdr)
+	protected := bytesOrNil(cbor.Marshal(hdr))
 	sig, err := sign(sigStructure(protected, payload))
 	if err != nil {
 		return nil, fmt.Errorf("token: cose sign: %w", err)
 	}
 	msg := coseSign1{Protected: protected, Unprotected: map[any]any{}, Payload: payload, Signature: sig}
-	out, _ := cbor.Marshal(cbor.Tag{Number: coseSign1Tag, Content: msg})
-	return out, nil
+	return bytesOrNil(cbor.Marshal(cbor.Tag{Number: coseSign1Tag, Content: msg})), nil
 }
 
 // VerifyCWT checks a COSE_Sign1 message and returns its payload.
@@ -168,14 +196,14 @@ func VerifyCWT(msg []byte, verify Verifier) ([]byte, error) {
 	if err := cbor.Unmarshal(s.Protected, &hdr); err != nil {
 		return nil, fmt.Errorf("token: cose protected header: %w", err)
 	}
-	if typ, _ := hdr[coseTyp].(string); typ != TypeCWT {
+	if typ := stringOf(hdr[coseTyp]); typ != TypeCWT {
 		return nil, fmt.Errorf("token: cose typ %q is not %s", typ, TypeCWT)
 	}
 	alg, ok := asInt(hdr[coseAlg])
 	if !ok {
 		return nil, errors.New("token: cose alg missing")
 	}
-	kid, _ := hdr[coseKid].([]byte)
+	kid := bytesOf(hdr[coseKid])
 	if err := verify(alg, kid, sigStructure(s.Protected, s.Payload), s.Signature); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrSignatureInvalid, err)
 	}

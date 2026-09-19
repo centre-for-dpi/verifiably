@@ -91,12 +91,12 @@ func (l *List) Bytes() []byte {
 	return out
 }
 
-func (l *List) pos(i int) (int, uint, error) {
+func (l *List) pos(i int) (int, int, error) {
 	if i < 0 || i >= l.size {
 		return 0, 0, fmt.Errorf("%w: %d of %d", ErrOutOfRange, i, l.size)
 	}
 	perByte := 8 / l.bits
-	return i / perByte, uint(i%perByte) * uint(l.bits), nil
+	return i / perByte, (i % perByte) * l.bits, nil
 }
 
 // Get reads the status at index i.
@@ -105,7 +105,7 @@ func (l *List) Get(i int) (uint8, error) {
 	if err != nil {
 		return 0, err
 	}
-	mask := byte(1<<uint(l.bits) - 1)
+	mask := maskFor(l.bits)
 	return (l.data[idx] >> shift) & mask, nil
 }
 
@@ -115,7 +115,7 @@ func (l *List) Set(i int, v uint8) error {
 	if err != nil {
 		return err
 	}
-	mask := byte(1<<uint(l.bits) - 1)
+	mask := maskFor(l.bits)
 	if v > mask {
 		return fmt.Errorf("token: status %d does not fit in %d bits", v, l.bits)
 	}
@@ -126,11 +126,25 @@ func (l *List) Set(i int, v uint8) error {
 // Compress returns the zlib compressed list bytes (the CWT lst value).
 func (l *List) Compress() []byte {
 	var buf bytes.Buffer
-	// Writes to a bytes.Buffer cannot fail.
-	w, _ := zlib.NewWriterLevel(&buf, zlib.BestCompression)
-	_, _ = w.Write(l.data)
-	_ = w.Close()
-	return buf.Bytes()
+	// Writes to a bytes.Buffer cannot fail, and the level is a valid constant.
+	w, levelErr := zlib.NewWriterLevel(&buf, zlib.BestCompression)
+	_, writeErr := w.Write(l.data)
+	closeErr := w.Close()
+	return bytesOrNil(buf.Bytes(), errors.Join(levelErr, writeErr, closeErr))
+}
+
+// maskFor returns the value mask for a status width of bits.
+func maskFor(bits int) byte {
+	switch bits {
+	case 1:
+		return 0x01
+	case 2:
+		return 0x03
+	case 4:
+		return 0x0f
+	default:
+		return 0xff
+	}
 }
 
 // Encode returns the base64url form of Compress (the JWT lst value).
@@ -200,7 +214,7 @@ func JWTClaims(c Claims, l *List) map[string]any {
 
 // ParseJWTClaims reads a decoded Status List JWT claim set.
 func ParseJWTClaims(m map[string]any) (Claims, *List, error) {
-	sub, _ := m["sub"].(string)
+	sub := stringOf(m["sub"])
 	if sub == "" {
 		return Claims{}, nil, errors.New("token: sub claim missing")
 	}
@@ -212,15 +226,15 @@ func ParseJWTClaims(m map[string]any) (Claims, *List, error) {
 	if !ok {
 		return Claims{}, nil, errors.New("token: status_list claim missing")
 	}
-	bits, _ := sl["bits"].(float64)
-	lst, _ := sl["lst"].(string)
+	bits := floatOf(sl["bits"])
+	lst := stringOf(sl["lst"])
 	l, err := Decode(int(bits), lst)
 	if err != nil {
 		return Claims{}, nil, err
 	}
 	c := Claims{Subject: sub, IssuedAt: time.Unix(int64(iat), 0).UTC()}
-	c.Issuer, _ = m["iss"].(string)
-	c.AggregationURI, _ = sl["aggregation_uri"].(string)
+	c.Issuer = stringOf(m["iss"])
+	c.AggregationURI = stringOf(sl["aggregation_uri"])
 	if exp, ok := m["exp"].(float64); ok {
 		c.ExpiresAt = time.Unix(int64(exp), 0).UTC()
 	}
@@ -243,7 +257,7 @@ func ParseRef(status map[string]any) (Ref, error) {
 	if !ok {
 		return Ref{}, errors.New("token: status.status_list missing")
 	}
-	uri, _ := sl["uri"].(string)
+	uri := stringOf(sl["uri"])
 	if uri == "" {
 		return Ref{}, errors.New("token: status_list.uri missing")
 	}
@@ -252,4 +266,13 @@ func ParseRef(status map[string]any) (Ref, error) {
 		return Ref{}, errors.New("token: status_list.idx is not a non-negative integer")
 	}
 	return Ref{URI: uri, Index: int(idx)}, nil
+}
+
+// floatOf returns the number in v. It returns 0 when v is not a number.
+func floatOf(v any) float64 {
+	f, isFloat := v.(float64)
+	if !isFloat {
+		return 0
+	}
+	return f
 }
