@@ -406,7 +406,7 @@ func TestPruneRollsBackOnSaveFailure(t *testing.T) {
 }
 
 func TestPruneWhereFiltersAndCounts(t *testing.T) {
-	s, err := store.Open(store.Memory())
+	s, err := store.Open(sharedstore.MemoryDoc())
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
