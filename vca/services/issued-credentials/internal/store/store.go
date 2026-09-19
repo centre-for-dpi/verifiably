@@ -343,6 +343,13 @@ func (s *Store) Verify(fromRecordID string) (checked int64, broken string, err e
 // The chain keeps every event, so the head still proves that no entry
 // went missing. It returns the number of records it dropped.
 func (s *Store) Prune(now time.Time) (int, error) {
+	return s.PruneWhere(now, "", false)
+}
+
+// PruneWhere drops the records of one schema whose retention ended
+// before now. An empty schemaID covers every schema. A dry run counts
+// the records that are due and drops none.
+func (s *Store) PruneWhere(now time.Time, schemaID string, dryRun bool) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var kept, gone []string
@@ -351,14 +358,15 @@ func (s *Store) Prune(now time.Time) (int, error) {
 		if !ok {
 			continue
 		}
-		if !r.RetainUntil.IsZero() && now.After(r.RetainUntil) {
+		due := !r.RetainUntil.IsZero() && now.After(r.RetainUntil)
+		if due && (schemaID == "" || r.SchemaID == schemaID) {
 			gone = append(gone, id)
 			continue
 		}
 		kept = append(kept, id)
 	}
-	if len(gone) == 0 {
-		return 0, nil
+	if len(gone) == 0 || dryRun {
+		return len(gone), nil
 	}
 	for _, id := range gone {
 		s.pruned[id] = struct{}{}
@@ -374,6 +382,13 @@ func (s *Store) Prune(now time.Time) (int, error) {
 	}
 	s.order = kept
 	return len(gone), nil
+}
+
+// Len returns the number of records the read index holds.
+func (s *Store) Len() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.order)
 }
 
 // Pruned returns the number of records that Prune removed.

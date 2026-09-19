@@ -260,14 +260,16 @@ func TestIngestUnknownBytes(t *testing.T) {
 
 func TestCarrierAndDetectedText(t *testing.T) {
 	carriers := map[ingestv1.Carrier]string{
-		ingestv1.Carrier_CARRIER_OID4VP:      "OID4VP",
-		ingestv1.Carrier_CARRIER_IMAGE:       "Image",
-		ingestv1.Carrier_CARRIER_PDF:         "PDF",
-		ingestv1.Carrier_CARRIER_XML:         "XML",
-		ingestv1.Carrier_CARRIER_JSON:        "JSON",
-		ingestv1.Carrier_CARRIER_QR:          "QR code",
-		ingestv1.Carrier_CARRIER_QR_CLAIM169: "Claim 169 QR code",
-		ingestv1.Carrier_CARRIER_UNSPECIFIED: "Unknown",
+		ingestv1.Carrier_CARRIER_OID4VP:          "OID4VP response", //nolint:staticcheck // the deprecated value stays readable
+		ingestv1.Carrier_CARRIER_OID4VP_RESPONSE: "OID4VP response",
+		ingestv1.Carrier_CARRIER_OID4VP_REQUEST:  "OID4VP request",
+		ingestv1.Carrier_CARRIER_IMAGE:           "Image",
+		ingestv1.Carrier_CARRIER_PDF:             "PDF",
+		ingestv1.Carrier_CARRIER_XML:             "XML",
+		ingestv1.Carrier_CARRIER_JSON:            "JSON",
+		ingestv1.Carrier_CARRIER_QR:              "QR code",
+		ingestv1.Carrier_CARRIER_QR_CLAIM169:     "Claim 169 QR code",
+		ingestv1.Carrier_CARRIER_UNSPECIFIED:     "Unknown",
 	}
 	for carrier, want := range carriers {
 		if got := scanner.CarrierText(carrier); got != want {

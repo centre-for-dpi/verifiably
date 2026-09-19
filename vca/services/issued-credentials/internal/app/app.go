@@ -170,7 +170,7 @@ func (a *App) Prune(ctx context.Context, log *slog.Logger) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			n, err := a.Service.Prune()
+			n, err := a.Service.PruneDue()
 			if err != nil {
 				log.Error("prune failed", "error", err)
 				continue

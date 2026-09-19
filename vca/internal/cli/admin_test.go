@@ -41,6 +41,7 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 		"ListTrustEntries":   "trust list",
 		"DeleteTrustEntry":   "trust remove",
 		"CreateAuthProvider": "onboard",
+		"OnboardProvider":    "onboard-provider",
 		"DeleteAuthProvider": "provider remove",
 		"RevokeApiKey":       "apikey revoke",
 		"GetServiceHealth":   "health",
@@ -62,7 +63,7 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 
 func TestAdminGroupNames(t *testing.T) {
 	got := AdminGroupNames()
-	want := []string{"tenant", "trust", "onboard", "provider", "apikey", "health", "audit", "bind", "help"}
+	want := []string{"tenant", "trust", "onboard", "onboard-provider", "provider", "apikey", "health", "audit", "bind", "help"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("got %v, want %v", got, want)
 	}
@@ -85,7 +86,7 @@ func TestAdminTreeMatchesTheAdminService(t *testing.T) {
 	if err != nil {
 		t.Skipf("the admin service is not in this tree: %v", err)
 	}
-	rx := regexp.MustCompile(`\{path: "admin ([a-z ]+)", rpc: "(\w+)"`)
+	rx := regexp.MustCompile(`\{path: "admin ([a-z- ]+)", rpc: "(\w+)"`)
 	var fromService []string
 	for _, m := range rx.FindAllStringSubmatch(string(data), -1) {
 		fromService = append(fromService, m[1]+" -> "+m[2])

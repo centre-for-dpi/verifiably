@@ -6,10 +6,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +18,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/clients"
+	"google.golang.org/protobuf/proto"
 )
 
 // fakeCapability answers as the capability RPC of a DPG adapter.
@@ -152,16 +153,26 @@ func TestLogRecorderWritesTheRecord(t *testing.T) {
 	}
 }
 
-func TestHTTPRecorderPostsTheRecord(t *testing.T) {
-	var path, body string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		path, body = r.URL.Path, string(raw)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"record-1"}`))
-	}))
-	defer srv.Close()
-	id, err := clients.NewHTTPRecorder(srv.URL+"/", srv.Client()).Record(context.Background(),
+// fakeAppender answers as the Append RPC of the issued credentials
+// service.
+type fakeAppender struct {
+	got *issuedv1.AppendRequest
+	err error
+}
+
+func (f *fakeAppender) Append(_ context.Context, req *connect.Request[issuedv1.AppendRequest]) (
+	*connect.Response[issuedv1.AppendResponse], error,
+) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.got = req.Msg
+	return connect.NewResponse(&issuedv1.AppendResponse{Id: "record-1", RecordHash: "hash-1"}), nil
+}
+
+func TestAppendRecorderCallsTheRPC(t *testing.T) {
+	fake := &fakeAppender{}
+	id, err := clients.NewAppendRecorder(fake).Record(context.Background(),
 		&issuedv1.IssuedRecord{SchemaId: "farmer", Hash: "abc"})
 	if err != nil {
 		t.Fatalf("Record: %v", err)
@@ -169,55 +180,51 @@ func TestHTTPRecorderPostsTheRecord(t *testing.T) {
 	if id != "record-1" {
 		t.Fatalf("id = %q", id)
 	}
-	if path != clients.RecordPath {
-		t.Fatalf("path = %q, want %q", path, clients.RecordPath)
-	}
-	if !bytes.Contains([]byte(body), []byte("farmer")) {
-		t.Fatalf("body = %s", body)
+	if fake.got.GetRecord().GetSchemaId() != "farmer" {
+		t.Fatalf("request = %+v", fake.got)
 	}
 }
 
-func TestHTTPRecorderAcceptsAnEmptyAnswer(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer srv.Close()
-	id, err := clients.NewHTTPRecorder(srv.URL, nil).Record(context.Background(),
-		&issuedv1.IssuedRecord{SchemaId: "farmer"})
-	if err != nil || id != "" {
-		t.Fatalf("id = %q, error = %v", id, err)
-	}
-}
-
-func TestHTTPRecorderReportsAFailure(t *testing.T) {
+func TestAppendRecorderReportsAFailure(t *testing.T) {
 	ctx := context.Background()
 	record := &issuedv1.IssuedRecord{SchemaId: "farmer"}
-	if _, err := clients.NewHTTPRecorder("", nil).Record(ctx, record); !errors.Is(
+	if _, err := clients.NewConnectRecorder("", nil).Record(ctx, record); !errors.Is(
 		err, clients.ErrNoRecorder) {
 		t.Fatalf("error = %v, want ErrNoRecorder", err)
 	}
-	var missing *clients.HTTPRecorder
+	var missing *clients.AppendRecorder
 	if _, err := missing.Record(ctx, record); !errors.Is(err, clients.ErrNoRecorder) {
 		t.Fatalf("error = %v, want ErrNoRecorder", err)
 	}
-	rejecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "no", http.StatusBadRequest)
-	}))
-	defer rejecting.Close()
-	if _, err := clients.NewHTTPRecorder(rejecting.URL, nil).Record(ctx, record); err == nil {
-		t.Fatal("the recorder passed a rejected record")
+	fake := &fakeAppender{err: connect.NewError(connect.CodeUnavailable, errors.New("down"))}
+	if _, err := clients.NewAppendRecorder(fake).Record(ctx, record); err == nil {
+		t.Fatal("the recorder hid a failed call")
 	}
-	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("not json"))
+}
+
+func TestConnectRecorderReachesAServer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/vca.issued.v1.IssuedService/Append") {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		body, err := proto.Marshal(&issuedv1.AppendResponse{Id: "record-2"})
+		if err != nil {
+			t.Errorf("marshal: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/proto")
+		_, _ = w.Write(body)
 	}))
-	defer broken.Close()
-	if _, err := clients.NewHTTPRecorder(broken.URL, nil).Record(ctx, record); err == nil {
-		t.Fatal("the recorder read a broken answer")
+	defer srv.Close()
+	id, err := clients.NewConnectRecorder(srv.URL+"/", srv.Client()).Record(context.Background(),
+		&issuedv1.IssuedRecord{SchemaId: "farmer"})
+	if err != nil {
+		t.Fatalf("Record: %v", err)
 	}
-	if _, err := clients.NewHTTPRecorder("http://127.0.0.1:1", nil).Record(ctx, record); err == nil {
+	if id != "record-2" {
+		t.Fatalf("id = %q", id)
+	}
+	if _, err := clients.NewConnectRecorder("http://127.0.0.1:1", nil).Record(
+		context.Background(), &issuedv1.IssuedRecord{}); err == nil {
 		t.Fatal("the recorder passed an unreachable service")
-	}
-	if _, err := clients.NewHTTPRecorder("http://%zz", nil).Record(ctx, record); err == nil {
-		t.Fatal("the recorder passed a bad URL")
 	}
 }

@@ -57,7 +57,7 @@ func build(t *testing.T, env map[string]string, deps app.Deps) *app.App {
 
 func TestBuildServesTheChainHeadEndpoints(t *testing.T) {
 	a := build(t, nil, app.Deps{})
-	if _, err := a.Service.Append(record.Record{
+	if _, err := a.Service.AppendRecord(record.Record{
 		ID: "a", SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
 	}); err != nil {
 		t.Fatalf("append: %v", err)
@@ -91,7 +91,7 @@ func TestBuildServesTheChainHeadEndpoints(t *testing.T) {
 func TestBuildServesTheConnectAPI(t *testing.T) {
 	a := build(t, map[string]string{"VCA_ISSUED_RETENTION": "default=1y"}, app.Deps{})
 	for _, id := range []string{"a", "b"} {
-		if _, err := a.Service.Append(record.Record{
+		if _, err := a.Service.AppendRecord(record.Record{
 			ID: id, SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref-" + id,
 			IssuedAt: clock, SearchableClaims: map[string]string{"name": "Wanjiru"},
 		}); err != nil {
@@ -148,7 +148,7 @@ func (f *fakeStatus) SetStatus(context.Context, *connect.Request[statusv1.SetSta
 func TestBuildUsesTheInjectedStatusClient(t *testing.T) {
 	status := &fakeStatus{}
 	a := build(t, nil, app.Deps{Status: status})
-	if _, err := a.Service.Append(record.Record{
+	if _, err := a.Service.AppendRecord(record.Record{
 		ID: "a", SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
 		Binding: record.Binding{Kind: record.KindBitstring, ListID: "v1", Index: 3},
 	}); err != nil {
@@ -174,7 +174,7 @@ func TestBuildMakesAStatusClientFromTheURL(t *testing.T) {
 	}))
 	defer backend.Close()
 	a := build(t, map[string]string{"VCA_ISSUED_STATUS_URL": backend.URL + "/"}, app.Deps{})
-	if _, err := a.Service.Append(record.Record{
+	if _, err := a.Service.AppendRecord(record.Record{
 		ID: "a", SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
 		Binding: record.Binding{Kind: record.KindToken, ListID: "v1", Index: 1},
 	}); err != nil {
@@ -254,7 +254,7 @@ func TestPruneJob(t *testing.T) {
 		"VCA_ISSUED_RETENTION":      "visitor=1h",
 		"VCA_ISSUED_PRUNE_INTERVAL": "1ms",
 	}, app.Deps{Now: func() time.Time { return now }})
-	if _, err := a.Service.Append(record.Record{
+	if _, err := a.Service.AppendRecord(record.Record{
 		ID: "a", SchemaID: "visitor", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
 	}); err != nil {
 		t.Fatalf("append: %v", err)

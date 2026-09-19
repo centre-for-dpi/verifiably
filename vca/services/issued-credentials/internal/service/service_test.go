@@ -93,7 +93,7 @@ func (f *fixture) add(t *testing.T, id, schema string, day int, claims map[strin
 		Binding:          record.Binding{Kind: record.KindBitstring, ListID: "v1", Index: int64(day)},
 		SearchableClaims: claims,
 	}
-	got, err := f.svc.Append(r)
+	got, err := f.svc.AppendRecord(r)
 	if err != nil {
 		t.Fatalf("append %s: %v", id, err)
 	}
@@ -121,7 +121,7 @@ func TestAppendFillsRetentionAndSubjectRef(t *testing.T) {
 	}
 	// An issuance without a time uses the clock.
 	r := record.Record{ID: "r2", SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref"}
-	stored, err := f.svc.Append(r)
+	stored, err := f.svc.AppendRecord(r)
 	if err != nil {
 		t.Fatalf("append: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestListReportsAnExpiredCredential(t *testing.T) {
 		ID: "old", SchemaID: "visitor", SchemaVersion: 1, SubjectRef: "ref",
 		IssuedAt: clock, ValidUntil: clock.Add(time.Hour),
 	}
-	if _, err := f.svc.Append(r); err != nil {
+	if _, err := f.svc.AppendRecord(r); err != nil {
 		t.Fatalf("append: %v", err)
 	}
 	f.now = clock.Add(2 * time.Hour)
@@ -327,7 +327,7 @@ func TestRevokeRejectsBadInput(t *testing.T) {
 
 func TestRevokeNeedsAStatusListBinding(t *testing.T) {
 	f := newFixture(t)
-	if _, err := f.svc.Append(record.Record{
+	if _, err := f.svc.AppendRecord(record.Record{
 		ID: "nobinding", SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
 	}); err != nil {
 		t.Fatalf("append: %v", err)
@@ -368,7 +368,7 @@ func TestRevokeWithoutAStatusClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	if _, err := svc.Append(record.Record{
+	if _, err := svc.AppendRecord(record.Record{
 		ID: "a", SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
 		Binding: record.Binding{Kind: record.KindToken, ListID: "v1", Index: 1},
 	}); err != nil {
@@ -486,7 +486,7 @@ func TestExportWritesEveryChunk(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	for i := range 5 {
-		if _, err := svc.Append(record.Record{
+		if _, err := svc.AppendRecord(record.Record{
 			ID: string(rune('a' + i)), SchemaID: "diploma", SchemaVersion: 1,
 			SubjectRef: "ref", IssuedAt: clock,
 		}); err != nil {
@@ -554,11 +554,11 @@ func TestPrune(t *testing.T) {
 	f := newFixture(t)
 	f.add(t, "short", "visitor", 0, nil)
 	f.add(t, "long", "diploma", 0, nil)
-	if n, err := f.svc.Prune(); err != nil || n != 0 {
+	if n, err := f.svc.PruneDue(); err != nil || n != 0 {
 		t.Fatalf("early prune = %d %v", n, err)
 	}
 	f.now = clock.Add(40 * retention.Day)
-	n, err := f.svc.Prune()
+	n, err := f.svc.PruneDue()
 	if err != nil || n != 1 {
 		t.Fatalf("prune = %d %v, want 1", n, err)
 	}
@@ -568,5 +568,84 @@ func TestPrune(t *testing.T) {
 	}
 	if len(resp.Msg.GetRecords()) != 1 || resp.Msg.GetRecords()[0].GetId() != "long" {
 		t.Errorf("records = %+v", resp.Msg.GetRecords())
+	}
+}
+
+func TestAppendRPCAssignsAnID(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	resp, err := f.svc.Append(ctx, connect.NewRequest(&issuedv1.AppendRequest{
+		Record: &issuedv1.IssuedRecord{
+			SchemaId:      "diploma",
+			SchemaVersion: 1,
+			Subject:       &commonv1.Subject{Ref: f.svc.SubjectRef("subject-a")},
+			Format:        commonv1.Format_FORMAT_DC_SD_JWT,
+			Hash:          "abc",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if len(resp.Msg.GetId()) != record.IDLength || resp.Msg.GetRecordHash() == "" {
+		t.Fatalf("append answer = %+v", resp.Msg)
+	}
+	got, err := f.svc.Get(ctx, connect.NewRequest(&issuedv1.GetRequest{Id: resp.Msg.GetId()}))
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Msg.GetRecord().GetRetainUntil() == nil {
+		t.Error("the service must fill the retention time")
+	}
+}
+
+func TestAppendRPCRejectsBadInput(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if _, err := f.svc.Append(ctx, connect.NewRequest(&issuedv1.AppendRequest{})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("empty request err = %v, want invalid argument", err)
+	}
+	bad := &issuedv1.IssuedRecord{Id: "x", SchemaId: "diploma", SchemaVersion: 1}
+	if _, err := f.svc.Append(ctx, connect.NewRequest(&issuedv1.AppendRequest{Record: bad})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("empty subject err = %v, want invalid argument", err)
+	}
+	good := &issuedv1.IssuedRecord{
+		Id: "twice", SchemaId: "diploma", SchemaVersion: 1,
+		Subject: &commonv1.Subject{Ref: "ref"},
+	}
+	if _, err := f.svc.Append(ctx, connect.NewRequest(&issuedv1.AppendRequest{Record: good})); err != nil {
+		t.Fatalf("first append: %v", err)
+	}
+	if _, err := f.svc.Append(ctx, connect.NewRequest(&issuedv1.AppendRequest{Record: good})); connect.CodeOf(err) != connect.CodeAlreadyExists {
+		t.Errorf("second append err = %v, want already exists", err)
+	}
+}
+
+func TestPruneRPCCountsAndFilters(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	f.add(t, "short", "visitor", 0, nil)
+	f.add(t, "long", "diploma", 0, nil)
+	f.now = clock.Add(40 * retention.Day)
+
+	dry, err := f.svc.Prune(ctx, connect.NewRequest(&issuedv1.PruneRequest{DryRun: true}))
+	if err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if dry.Msg.GetPruned() != 1 || dry.Msg.GetRemaining() != 2 {
+		t.Fatalf("dry run = %+v, want 1 due and 2 kept", dry.Msg)
+	}
+	other, err := f.svc.Prune(ctx, connect.NewRequest(&issuedv1.PruneRequest{SchemaId: "diploma"}))
+	if err != nil {
+		t.Fatalf("other schema: %v", err)
+	}
+	if other.Msg.GetPruned() != 0 || other.Msg.GetRemaining() != 2 {
+		t.Fatalf("other schema = %+v, want no change", other.Msg)
+	}
+	run, err := f.svc.Prune(ctx, connect.NewRequest(&issuedv1.PruneRequest{SchemaId: "visitor"}))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if run.Msg.GetPruned() != 1 || run.Msg.GetRemaining() != 1 {
+		t.Fatalf("run = %+v, want one dropped and one kept", run.Msg)
 	}
 }

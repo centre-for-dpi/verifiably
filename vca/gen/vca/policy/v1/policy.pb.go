@@ -150,6 +150,9 @@ type CheckResult struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The check name, for example signature, key_binding, nbf, exp,
 	// audience, nonce, status, trust_chain, or schema.
+	// The name derived_proof holds a place for BBS selective disclosure
+	// (ADR-031 decision 2). The check returns SKIP until a DPG can issue
+	// bbs-2023 proofs.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// The outcome.
 	Outcome Outcome `protobuf:"varint,2,opt,name=outcome,proto3,enum=vca.policy.v1.Outcome" json:"outcome,omitempty"`

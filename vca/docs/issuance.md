@@ -105,11 +105,11 @@ step.
 
 ADR-017 decision 1 puts the record of an issuance in the issued
 credentials service. The contract `vca.issued.v1` reads and changes
-records today. It has no RPC that appends one. The service posts the
-record as ProtoJSON to `POST /issued/records` until the contract grows
-one. The file `services/issuance/internal/clients/recorder.go` holds
-that code alone. A deployment without the issued credentials service
-keeps the record in the log.
+records. The `Append` RPC of that contract takes one new record and
+returns its id and its hash. The issuance service calls it with a
+Connect client. The file `services/issuance/internal/clients/recorder.go`
+holds that code alone. A deployment without the issued credentials
+service keeps the record in the log.
 
 ## Tests
 

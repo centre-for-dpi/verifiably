@@ -118,6 +118,17 @@ func SubjectRef(salt, subject string) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
+// IDLength is the number of hex characters of a record id.
+const IDLength = 32
+
+// NewID returns the id of a record. The id is a one way digest of the
+// issuance time, the schema id, and the credential hash. The function
+// is pure, so the same issuance always gets the same id.
+func NewID(at time.Time, schemaID, hash string) string {
+	sum := sha256.Sum256([]byte(at.UTC().Format(time.RFC3339Nano) + "\x00" + schemaID + "\x00" + hash))
+	return hex.EncodeToString(sum[:])[:IDLength]
+}
+
 // Validate checks one issue event before it joins the chain.
 func (r Record) Validate() error {
 	switch {

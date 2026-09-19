@@ -79,6 +79,9 @@ const (
 	// AdminServiceDeleteAuthProviderProcedure is the fully-qualified name of the AdminService's
 	// DeleteAuthProvider RPC.
 	AdminServiceDeleteAuthProviderProcedure = "/vca.admin.v1.AdminService/DeleteAuthProvider"
+	// AdminServiceOnboardProviderProcedure is the fully-qualified name of the AdminService's
+	// OnboardProvider RPC.
+	AdminServiceOnboardProviderProcedure = "/vca.admin.v1.AdminService/OnboardProvider"
 	// AdminServiceCreateApiKeyProcedure is the fully-qualified name of the AdminService's CreateApiKey
 	// RPC.
 	AdminServiceCreateApiKeyProcedure = "/vca.admin.v1.AdminService/CreateApiKey"
@@ -135,6 +138,11 @@ type AdminServiceClient interface {
 	UpdateAuthProvider(context.Context, *connect.Request[v1.UpdateAuthProviderRequest]) (*connect.Response[v1.UpdateAuthProviderResponse], error)
 	// DeleteAuthProvider removes one provider. Active sessions end.
 	DeleteAuthProvider(context.Context, *connect.Request[v1.DeleteAuthProviderRequest]) (*connect.Response[v1.DeleteAuthProviderResponse], error)
+	// OnboardProvider registers one OIDC provider from its issuer URL.
+	// The service reads the provider metadata and registers a client. It
+	// runs the same onboarding path as CreateAuthProvider
+	// (ADR-010 decision 3).
+	OnboardProvider(context.Context, *connect.Request[v1.OnboardProviderRequest]) (*connect.Response[v1.OnboardProviderResponse], error)
 	// CreateApiKey creates one machine API key. The response shows the
 	// secret value once. The service stores only its hash.
 	CreateApiKey(context.Context, *connect.Request[v1.CreateApiKeyRequest]) (*connect.Response[v1.CreateApiKeyResponse], error)
@@ -250,6 +258,12 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("DeleteAuthProvider")),
 			connect.WithClientOptions(opts...),
 		),
+		onboardProvider: connect.NewClient[v1.OnboardProviderRequest, v1.OnboardProviderResponse](
+			httpClient,
+			baseURL+AdminServiceOnboardProviderProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("OnboardProvider")),
+			connect.WithClientOptions(opts...),
+		),
 		createApiKey: connect.NewClient[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse](
 			httpClient,
 			baseURL+AdminServiceCreateApiKeyProcedure,
@@ -311,6 +325,7 @@ type adminServiceClient struct {
 	listAuthProviders  *connect.Client[v1.ListAuthProvidersRequest, v1.ListAuthProvidersResponse]
 	updateAuthProvider *connect.Client[v1.UpdateAuthProviderRequest, v1.UpdateAuthProviderResponse]
 	deleteAuthProvider *connect.Client[v1.DeleteAuthProviderRequest, v1.DeleteAuthProviderResponse]
+	onboardProvider    *connect.Client[v1.OnboardProviderRequest, v1.OnboardProviderResponse]
 	createApiKey       *connect.Client[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse]
 	listApiKeys        *connect.Client[v1.ListApiKeysRequest, v1.ListApiKeysResponse]
 	revokeApiKey       *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
@@ -390,6 +405,11 @@ func (c *adminServiceClient) DeleteAuthProvider(ctx context.Context, req *connec
 	return c.deleteAuthProvider.CallUnary(ctx, req)
 }
 
+// OnboardProvider calls vca.admin.v1.AdminService.OnboardProvider.
+func (c *adminServiceClient) OnboardProvider(ctx context.Context, req *connect.Request[v1.OnboardProviderRequest]) (*connect.Response[v1.OnboardProviderResponse], error) {
+	return c.onboardProvider.CallUnary(ctx, req)
+}
+
 // CreateApiKey calls vca.admin.v1.AdminService.CreateApiKey.
 func (c *adminServiceClient) CreateApiKey(ctx context.Context, req *connect.Request[v1.CreateApiKeyRequest]) (*connect.Response[v1.CreateApiKeyResponse], error) {
 	return c.createApiKey.CallUnary(ctx, req)
@@ -458,6 +478,11 @@ type AdminServiceHandler interface {
 	UpdateAuthProvider(context.Context, *connect.Request[v1.UpdateAuthProviderRequest]) (*connect.Response[v1.UpdateAuthProviderResponse], error)
 	// DeleteAuthProvider removes one provider. Active sessions end.
 	DeleteAuthProvider(context.Context, *connect.Request[v1.DeleteAuthProviderRequest]) (*connect.Response[v1.DeleteAuthProviderResponse], error)
+	// OnboardProvider registers one OIDC provider from its issuer URL.
+	// The service reads the provider metadata and registers a client. It
+	// runs the same onboarding path as CreateAuthProvider
+	// (ADR-010 decision 3).
+	OnboardProvider(context.Context, *connect.Request[v1.OnboardProviderRequest]) (*connect.Response[v1.OnboardProviderResponse], error)
 	// CreateApiKey creates one machine API key. The response shows the
 	// secret value once. The service stores only its hash.
 	CreateApiKey(context.Context, *connect.Request[v1.CreateApiKeyRequest]) (*connect.Response[v1.CreateApiKeyResponse], error)
@@ -569,6 +594,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("DeleteAuthProvider")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceOnboardProviderHandler := connect.NewUnaryHandler(
+		AdminServiceOnboardProviderProcedure,
+		svc.OnboardProvider,
+		connect.WithSchema(adminServiceMethods.ByName("OnboardProvider")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceCreateApiKeyHandler := connect.NewUnaryHandler(
 		AdminServiceCreateApiKeyProcedure,
 		svc.CreateApiKey,
@@ -641,6 +672,8 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceUpdateAuthProviderHandler.ServeHTTP(w, r)
 		case AdminServiceDeleteAuthProviderProcedure:
 			adminServiceDeleteAuthProviderHandler.ServeHTTP(w, r)
+		case AdminServiceOnboardProviderProcedure:
+			adminServiceOnboardProviderHandler.ServeHTTP(w, r)
 		case AdminServiceCreateApiKeyProcedure:
 			adminServiceCreateApiKeyHandler.ServeHTTP(w, r)
 		case AdminServiceListApiKeysProcedure:
@@ -718,6 +751,10 @@ func (UnimplementedAdminServiceHandler) UpdateAuthProvider(context.Context, *con
 
 func (UnimplementedAdminServiceHandler) DeleteAuthProvider(context.Context, *connect.Request[v1.DeleteAuthProviderRequest]) (*connect.Response[v1.DeleteAuthProviderResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.DeleteAuthProvider is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) OnboardProvider(context.Context, *connect.Request[v1.OnboardProviderRequest]) (*connect.Response[v1.OnboardProviderResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.OnboardProvider is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) CreateApiKey(context.Context, *connect.Request[v1.CreateApiKeyRequest]) (*connect.Response[v1.CreateApiKeyResponse], error) {

@@ -313,6 +313,27 @@ func (s *Service) CreateAuthProvider(ctx context.Context, req *connect.Request[a
 	return connect.NewResponse(&adminv1.CreateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
 }
 
+// OnboardProvider implements AdminServiceHandler. It registers one OIDC
+// provider from its issuer URL. It runs the same onboarding path as
+// CreateAuthProvider (ADR-010 decision 3).
+func (s *Service) OnboardProvider(ctx context.Context, req *connect.Request[adminv1.OnboardProviderRequest]) (*connect.Response[adminv1.OnboardProviderResponse], error) {
+	id, err := s.guard(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	provider := &adminv1.AuthProvider{
+		DiscoveryUrl: req.Msg.GetIssuerUrl(),
+		ClientId:     req.Msg.GetClientId(),
+		ClientSecret: req.Msg.GetClientSecret(),
+		Enabled:      true,
+	}
+	stored, err := s.onboardProvider(ctx, provider, req.Msg.GetDynamicRegistration())
+	if err := s.write(ctx, id.Actor, "admin.OnboardProvider", stored.ID, err); err != nil {
+		return nil, fail(err)
+	}
+	return connect.NewResponse(&adminv1.OnboardProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
+}
+
 // onboardProvider runs the onboarding and stores the record.
 func (s *Service) onboardProvider(ctx context.Context, m *adminv1.AuthProvider, dynamic bool) (oidcflow.Provider, error) {
 	in := oidcflow.FromAdminProto(m)

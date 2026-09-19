@@ -137,19 +137,11 @@ jobs:
       - name: buf lint
         run: buf lint
 
-      - name: buf breaking against last release tag
-        run: |
-          tag=$(git tag --list 'v*' --sort=-v:refname | head -1)
-          if [ -z "$tag" ]; then
-            echo "::notice::no v* tag exists yet; buf breaking has nothing to compare against and is skipped"
-            exit 0
-          fi
-          if ! git ls-tree -d "$tag" vca/proto >/dev/null 2>&1 || [ -z "$(git ls-tree -d "$tag" vca/proto)" ]; then
-            echo "::notice::tag $tag has no vca/proto directory; buf breaking is skipped"
-            exit 0
-          fi
-          echo "comparing against $tag"
-          buf breaking --against "../.git#tag=${tag},subdir=vca"
+      - name: Fetch main for the merge base
+        run: git fetch --no-tags origin main || true
+
+      - name: buf breaking against the last tag or the merge base
+        run: ./hack/buf-breaking.sh
 
   test:
     name: go test + coverage gate

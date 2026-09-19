@@ -62,6 +62,9 @@ const (
 	NameStatus     = "status"
 	NameTrustChain = "trust_chain"
 	NameSchema     = "schema"
+	// NameDerivedProof is the check that BBS selective disclosure will
+	// use (ADR-031 decision 2). It is reserved and returns SKIP.
+	NameDerivedProof = "derived_proof"
 )
 
 // CheckResult is the outcome of one check (ADR-024 decision 1).
@@ -253,6 +256,11 @@ func Checks() []Check {
 			Name:        NameSchema,
 			Description: "Check the credential against the JSON Schema it declares.",
 			Run:         schema,
+		},
+		{
+			Name:        NameDerivedProof,
+			Description: "Check a BBS derived proof. The check is reserved and returns SKIP.",
+			Run:         derivedProof,
 		},
 	}
 }

@@ -26,16 +26,19 @@ Each job runs alone. A failure in one job blocks the merge.
 | conventional commits | Every commit subject in the PR follows Conventional Commits 1.0.0 | `vca/hack/check-commits.sh` |
 | shellcheck | Every script under `vca/hack/` is clean at the `style` level, and `check-commits_test.sh` passes | `shellcheck` |
 | gofmt + go vet + golangci-lint | Formatting, vet, and the linters in `vca/.golangci.yml` (`gosec` and `errcheck` included, no exclusions) | golangci-lint v2 |
-| buf lint + breaking | Proto style, and no breaking change against the last `v*` tag | `buf` |
+| buf lint + breaking | Proto style, and no breaking change against the last `v*` tag or the merge base with `main` | `buf`, `vca/hack/buf-breaking.sh` |
 | go test + coverage gate | Unit tests with the race detector; each package at 90 percent or more, `vca/core/...` at 100 | `go test`, `vca/hack/coverage.sh` |
 | secret scan (blocking) | No key store, PEM private key, 64 hex API key, or literal password in the tracked tree | `vca/hack/secret-scan.sh` |
 | trivy fs (blocking) | No HIGH or CRITICAL vulnerability, secret, or misconfiguration under `vca/` | Trivy |
 
 Notes:
 
-- `buf breaking` compares against the newest tag that matches `v*`. When
-  the repository has no such tag, or the tag has no `vca/proto`, the step
-  prints a notice and passes. The first release creates the baseline.
+- `vca/hack/buf-breaking.sh` runs the check. It compares against the
+  newest tag that matches `v*`. A repository with no such tag gets the
+  merge base with `main` instead (ADR-003 decision 4). A tag without a
+  `vca/proto` directory gets the same treatment. A repository with no tag
+  and no `main` branch has no baseline. The script then prints a message
+  and passes. Set `BUF_BREAKING_REF` to compare against one reference.
 - The commit check accepts these types: `build`, `chore`, `ci`, `docs`,
   `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`. A scope is
   optional and must be lower case. A `!` before the colon marks a breaking
