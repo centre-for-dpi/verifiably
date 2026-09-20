@@ -18,16 +18,24 @@ stays in `verifiably-go/` until each role has the same functions.
 
 ## Start
 
-Planned, after ADR-007 and ADR-008 ship:
+Three steps take you from a clone to a running role:
 
 ```sh
-vca setup --all && vca deploy --all
+cd vca && go mod tidy && go build -o vca ./cmd/vca && sudo install vca /usr/local/bin/
+vca doctor --all --dpg waltid --from-source
+vca setup --all && vca deploy --all --build
 ```
 
-`vca setup` asks only the questions that your role and DPG need. It
-writes one `.env` file per role and DPG pair. `vca deploy` starts the
-services with Docker Compose profiles. Use `--role` and `--dpg` to start
-one role with one DPG.
+`vca doctor` checks Docker, the memory, and the ports, and names the fix
+for each fail. `vca setup` asks only the questions that your role and DPG
+need. It writes one `.env` file per role and DPG pair. `vca deploy`
+starts the services with Docker Compose profiles. Use `--role` and
+`--dpg` to start one role with one DPG. Use `--build` until the first
+release publishes the images.
+
+Read [Get started](docs/getting-started.md) first. It lists the
+prerequisites and the three ways to get the binary. It also holds the
+local path, the server path, and the common errors.
 
 Now, for developers:
 
@@ -85,6 +93,7 @@ Each service lives in `services/<name>/`. Shared pure code lives in
 
 ## Documents
 
+- [Get started](docs/getting-started.md): the prerequisites, the binary, and the first run.
 - [Architecture decisions](docs/adr.md): the 31 decision records that define VCA.
 - [ADR status](docs/adr-status.md): the state of every decision in the tree.
 - [Glossary](docs/glossary.md): the project dictionary.
