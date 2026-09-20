@@ -10,11 +10,12 @@ Read it first. It covers a laptop and a server with a public name.
 | Go | 1.25 or newer | Only to build `vca` from source | `go version` |
 | Docker Engine | 24 or newer, and your user in the `docker` group | Always | `docker version` |
 | Docker Compose | v2, the `docker compose` plugin | Always | `docker compose version` |
-| Memory | 4 GB free per role | Always | `free -m` |
+| Memory | 3.5 GB free for one role and one DPG | Always | `free -m` |
 | Disk | 10 GB free for the images and the volumes | Always | `df -h .` |
 | Host ports | One block of ports per role and DPG pair | Always | `vca ports --role issuer --dpg waltid` |
 
 A pair starts at host port 18000. Each pair owns its own block.
+The Keycloak of each DPG stack has its own host port as well.
 `vca ports --role <role> --dpg <dpg>` prints every port of one pair.
 `docs/deploy.md` holds the memory floor of each pair.
 
@@ -74,24 +75,51 @@ An error names `ADR.md` when the path you gave is not the root.
 ## The local machine path
 
 Use this path on a laptop. There is no TLS and no Caddy.
+Run one role with one DPG. Four commands start it:
 
-1. Set the public URL to the portal of the role:
+```sh
+vca doctor --role issuer --dpg waltid --from-source
+vca setup --role issuer --dpg waltid
+vca deploy --role issuer --dpg waltid --build
+vca dpg bootstrap waltid --role issuer
+```
 
-   ```sh
-   export VCA_PUBLIC_URL=http://localhost:18002
-   ```
+`vca setup` asks no question on a laptop.
+Every value has a default.
+The public URL is `http://localhost` with the host port of the portal.
+The DPG URL is the container of the stack.
+The identity provider is the Keycloak of the stack.
+The command prints a summary of every value before it writes.
 
-   18002 is the host port of the issuer portal.
-   `vca ports --role issuer --dpg waltid` prints the number for you.
+Open `http://localhost:18002` in a browser.
+That is the issuer portal.
+The wallet portal, the verifier portal, and the admin portal each have
+their own host port.
+`vca ports --role issuer --dpg waltid` prints every port of one pair.
 
-2. Run `vca setup`, `vca deploy --build`, and `vca dpg bootstrap`.
-3. Open `http://localhost:18002` in a browser.
-   The wallet portal, the verifier portal, and the admin portal each have
-   their own host port. `vca ports` prints them.
+One pair needs 2336 MiB to 3424 MiB of free memory:
+
+| Pair | Memory floor |
+|---|---|
+| `admin-<dpg>` | 704 MiB |
+| `holder-waltid` | 2336 MiB |
+| `verifier-waltid` | 2624 MiB |
+| `issuer-waltid` | 2912 MiB |
+| `holder-inji`, `holder-credebl` | 2848 MiB |
+| `verifier-inji`, `verifier-credebl` | 3136 MiB |
+| `issuer-inji`, `issuer-credebl` | 3424 MiB |
+
+`docs/deploy.md` holds the full table.
+`vca doctor --suggest` names the largest selection that fits this host.
+
+`--all` is the server-class option.
+`--all --dpg waltid` starts the four roles of one stack and needs
+8576 MiB.
+`--all` alone starts every role of every DPG and needs about 28 GB.
 
 The setup command writes a `Caddyfile`, but a local run does not need it.
-The identity provider of a local run uses a self-signed certificate.
-Your browser asks you to accept it once.
+The Keycloak of the stack serves the login page on its own host port.
+`http://localhost:17010` is the walt.id one.
 
 ## The server path
 
@@ -119,13 +147,10 @@ Without it you cannot start the same deployment again.
 
 ## The first run
 
-This run starts the issuer role with walt.id on a laptop.
+The four commands of "The local machine path" start the issuer role with
+walt.id. Check it with:
 
 ```sh
-vca doctor --role issuer --dpg waltid --from-source
-vca setup --role issuer --dpg waltid
-vca deploy --role issuer --dpg waltid --build
-vca dpg bootstrap waltid --role issuer
 vca status --role issuer --dpg waltid
 ```
 
@@ -157,7 +182,7 @@ The volumes stay, so the data survives.
 ## How to check it works
 
 ```sh
-vca doctor --all --dpg waltid   # one stack fits a laptop; drop --dpg for all three
+vca doctor --suggest            # the largest selection that fits this host
 vca deploy --role issuer --dpg waltid --build --dry-run
 vca status --role issuer --dpg waltid
 ```
