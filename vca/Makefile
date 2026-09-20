@@ -9,7 +9,9 @@ export GOFLAGS :=
 endif
 COVERAGE_FLOOR ?= 90
 
-.PHONY: bootstrap gen lint test cover tidy build
+GOBIN ?= $(HOME)/go/bin
+
+.PHONY: bootstrap gen lint test cover tidy build install doctor
 
 bootstrap: ## install buf plugins (mirrors when the network is restricted)
 	./hack/bootstrap.sh
@@ -35,5 +37,12 @@ tidy: ## regenerate go.sum on a networked machine
 
 build: ## build every service and the CLI
 	$(GO) build ./...
+
+install: ## build the vca CLI into GOBIN
+	$(GO) build -o $(GOBIN)/vca ./cmd/vca
+	@echo "installed $(GOBIN)/vca; add that directory to PATH"
+
+doctor: ## check that this host meets every prerequisite
+	$(GO) run ./cmd/vca doctor --all --dpg waltid --from-source
 ste-lint: ## Simplified Technical English check on docs and proto comments
 	./hack/ste-lint.sh $$(ls docs/*.md | grep -v adr.md) README.md $$(find proto -name "*.proto")
