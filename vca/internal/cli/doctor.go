@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -97,6 +98,120 @@ var ErrDoctorFailed = errors.New("doctor: the host does not meet every prerequis
 // figure is the table of docs/deploy.md (ADR-008 decision 7).
 func MemoryFloorMiB(p Pair) int { return Floor(p).TotalMemoryMiB() }
 
+// SelectionFloorMiB returns the memory floor of a list of pairs. The
+// doctor command adds only the pairs the operator selected.
+func SelectionFloorMiB(pairs []Pair) int {
+	total := 0
+	for _, p := range pairs {
+		total += MemoryFloorMiB(p)
+	}
+	return total
+}
+
+// Selection is one choice of pairs with the flags that name it and its
+// memory floor.
+type Selection struct {
+	// Flags is the command line that selects the pairs.
+	Flags string
+	// Pairs are the role and DPG pairs of the selection.
+	Pairs []Pair
+	// MemoryMiB is the memory floor of the selection.
+	MemoryMiB int
+}
+
+// newSelection builds one selection from its flags and its pairs.
+func newSelection(flags string, pairs []Pair) Selection {
+	return Selection{Flags: flags, Pairs: pairs, MemoryMiB: SelectionFloorMiB(pairs)}
+}
+
+// StackSelections lists one selection per DPG stack, smallest first.
+func StackSelections() []Selection {
+	var out []Selection
+	for _, d := range Dpgs() {
+		name := ShortName(d.String())
+		out = append(out, newSelection("--all --dpg "+name, PairsForDpg(d)))
+	}
+	sortSelections(out)
+	return out
+}
+
+// PairSelections lists one selection per role and DPG pair, smallest
+// first.
+func PairSelections() []Selection {
+	var out []Selection
+	for _, p := range AllPairs() {
+		flags := fmt.Sprintf("--role %s --dpg %s", ShortName(p.Role.String()), ShortName(p.Dpg.String()))
+		out = append(out, newSelection(flags, []Pair{p}))
+	}
+	sortSelections(out)
+	return out
+}
+
+// Selections lists every selection the CLI offers, smallest first.
+func Selections() []Selection {
+	out := append(PairSelections(), StackSelections()...)
+	out = append(out, newSelection("--all", AllPairs()))
+	sortSelections(out)
+	return out
+}
+
+// sortSelections orders selections by memory, then by flags, so the
+// output never changes between runs.
+func sortSelections(list []Selection) {
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].MemoryMiB != list[j].MemoryMiB {
+			return list[i].MemoryMiB < list[j].MemoryMiB
+		}
+		return list[i].Flags < list[j].Flags
+	})
+}
+
+// LargestFit returns the largest selection that fits the free memory.
+// It reports false when even the smallest one does not fit.
+func LargestFit(freeMiB int) (Selection, bool) {
+	list := Selections()
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].MemoryMiB <= freeMiB {
+			return list[i], true
+		}
+	}
+	return list[0], false
+}
+
+// fits returns the largest selection of the list that fits the free
+// memory. It falls back to the smallest one.
+func fits(list []Selection, freeMiB int) Selection {
+	out := list[0]
+	for _, s := range list {
+		if s.MemoryMiB <= freeMiB {
+			out = s
+		}
+	}
+	return out
+}
+
+// MemoryHint returns the one line hint that names a smaller selection.
+// The doctor command and the setup command print it when the free
+// memory is under the floor of the selection (ADR-008 decision 7).
+func MemoryHint(freeMiB int) string {
+	stack := fits(StackSelections(), freeMiB)
+	pair := fits(PairSelections(), freeMiB)
+	return fmt.Sprintf("Use %s for one stack (%d MiB) or %s for one pair (%d MiB)",
+		stack.Flags, stack.MemoryMiB, pair.Flags, pair.MemoryMiB)
+}
+
+// FloorReport renders the memory floor of every selected pair as a
+// plain text table with a total.
+func FloorReport(pairs []Pair) string {
+	var b strings.Builder
+	b.WriteString("\nMemory floor of this selection\n")
+	for _, p := range pairs {
+		fmt.Fprintf(&b, "  %-18s %5d MiB\n", p.Name(), MemoryFloorMiB(p))
+	}
+	fmt.Fprintf(&b, "  %-18s %5d MiB\n", "total", SelectionFloorMiB(pairs))
+	return b.String()
+}
+
 // HostPorts returns every host port of one pair, in service name order.
 // The .env file of the pair can override a port, so the values map wins.
 func HostPorts(p Pair, values map[string]string) []PortAssignment {
@@ -123,7 +238,8 @@ func RunChecks(opts DoctorOptions) []Check {
 	return out
 }
 
-// Doctor prints one line per check and reports a failed run.
+// Doctor prints one line per check and reports a failed run. It also
+// prints the memory floor of every selected pair.
 func Doctor(opts DoctorOptions) error {
 	checks := RunChecks(opts)
 	failed := 0
@@ -133,12 +249,51 @@ func Doctor(opts DoctorOptions) error {
 			failed++
 		}
 	}
+	anyval.DiscardWrite(fmt.Fprint(opts.Out, FloorReport(opts.Pairs)))
+	if hint := memoryHintOf(opts.Probe, opts.Pairs); hint != "" {
+		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "\n%s\n", hint))
+	}
 	if failed == 0 {
 		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "\n%d checks passed. The host is ready.\n", len(checks)))
 		return nil
 	}
 	anyval.DiscardWrite(fmt.Fprintf(opts.Out, "\n%d of %d checks failed.\n", failed, len(checks)))
 	return ErrDoctorFailed
+}
+
+// memoryHintOf returns the hint when the free memory is under the floor
+// of the selection. It returns an empty string when the selection fits
+// or when the probe cannot read the memory.
+func memoryHintOf(probe Probe, pairs []Pair) string {
+	if len(pairs) == 0 {
+		return ""
+	}
+	free, err := probe.FreeMemoryMiB()
+	if err != nil || free >= SelectionFloorMiB(pairs) {
+		return ""
+	}
+	return MemoryHint(free)
+}
+
+// Suggest prints the largest selection that fits the free memory of the
+// host (ADR-008 decision 7).
+func Suggest(opts DoctorOptions) error {
+	free, err := opts.Probe.FreeMemoryMiB()
+	if err != nil {
+		return fmt.Errorf("read the free memory: %w", err)
+	}
+	anyval.DiscardWrite(fmt.Fprintf(opts.Out, "%d MiB free\n", free))
+	best, ok := LargestFit(free)
+	if !ok {
+		anyval.DiscardWrite(fmt.Fprintf(opts.Out,
+			"No selection fits. The smallest is %s, which needs %d MiB.\n", best.Flags, best.MemoryMiB))
+		return ErrDoctorFailed
+	}
+	anyval.DiscardWrite(fmt.Fprintf(opts.Out,
+		"The largest selection that fits is %s, which needs %d MiB.\n", best.Flags, best.MemoryMiB))
+	anyval.DiscardWrite(fmt.Fprintf(opts.Out, "  vca setup %s\n  vca deploy %s --build\n", best.Flags, best.Flags))
+	anyval.DiscardWrite(fmt.Fprint(opts.Out, FloorReport(best.Pairs)))
+	return nil
 }
 
 // goCheck reports the Go version of a source build.

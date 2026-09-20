@@ -38,6 +38,9 @@ func run(t *testing.T, env Environment, args ...string) (int, string, string) {
 	if env.Run == nil {
 		env.Run = func(context.Context, string, []string) error { return nil }
 	}
+	if env.NewProbe == nil {
+		env.NewProbe = func(context.Context) Probe { return healthyProbe() }
+	}
 	env.Args = args
 	status := Execute(env)
 	return status, out.String(), errOut.String()
@@ -730,5 +733,55 @@ func TestSetupReportsAWriteFailure(t *testing.T) {
 	)
 	if status == 0 {
 		t.Fatalf("a bad output directory passed:\n%s", errOut)
+	}
+}
+
+// smallHostEnv answers every check with a pass, but with 6 GB free.
+func smallHostEnv(root string) Environment {
+	return Environment{Root: root, NewProbe: func(context.Context) Probe {
+		probe := healthyProbe()
+		probe.memory = 6 * 1024
+		return probe
+	}}
+}
+
+func TestDoctorSuggestPrintsASelection(t *testing.T) {
+	status, out, errOut := run(t, smallHostEnv(t.TempDir()), "doctor", "--suggest")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	best, ok := LargestFit(6 * 1024)
+	if !ok {
+		t.Fatal("no selection fits 6 GB")
+	}
+	if !strings.Contains(out, best.Flags) {
+		t.Errorf("the output does not name %s:\n%s", best.Flags, out)
+	}
+}
+
+func TestDoctorAllPrintsTheMemoryHint(t *testing.T) {
+	status, out, _ := run(t, smallHostEnv(t.TempDir()), "doctor", "--all")
+	if status == 0 {
+		t.Error("a host with 6 GB free passed --all")
+	}
+	if !strings.Contains(out, MemoryHint(6*1024)) {
+		t.Errorf("the report has no hint:\n%s", out)
+	}
+	if !strings.Contains(out, "Memory floor of this selection") {
+		t.Errorf("the report has no floor table:\n%s", out)
+	}
+}
+
+func TestSetupAllPrintsTheMemoryHint(t *testing.T) {
+	root := t.TempDir()
+	env := smallHostEnv(root)
+	env.In = strings.NewReader("")
+	status, out, errOut := run(t, env, "setup", "--all", "--dpg", "waltid",
+		"--non-interactive", "--set", "VCA_REDIS_URL=redis://redis:6379")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if !strings.Contains(out, MemoryHint(6*1024)) {
+		t.Errorf("the run printed no hint:\n%s", out)
 	}
 }

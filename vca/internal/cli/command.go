@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -52,6 +53,9 @@ type Environment struct {
 	// Getwd reads the working directory. The CLI walks up from it to
 	// find the repository root. Nil reads it with os.Getwd.
 	Getwd func() (string, error)
+	// NewProbe reads the host for the doctor command and for the memory
+	// hint of the setup command. Nil reads the real host.
+	NewProbe func(context.Context) Probe
 }
 
 // withDefaults fills the fields a caller left empty.
@@ -76,6 +80,9 @@ func (e Environment) withDefaults() Environment {
 	}
 	if e.Getwd == nil {
 		e.Getwd = os.Getwd
+	}
+	if e.NewProbe == nil {
+		e.NewProbe = func(ctx context.Context) Probe { return NewSystemProbe(ctx) }
 	}
 	if e.Run == nil {
 		e.Run = ExecRunner(e.Out, e.ErrOut)
@@ -251,6 +258,11 @@ func newSetupCommand(env *Environment) *cobra.Command {
 			if root == "" {
 				root = filepath.Join(env.Root, "deploy")
 			}
+			if hint := memoryHintOf(env.NewProbe(cmd.Context()), pairs); hint != "" {
+				anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(),
+					"This host has less free memory than this selection needs (%d MiB).\n%s\n\n",
+					SelectionFloorMiB(pairs), hint))
+			}
 			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
 			for _, p := range pairs {
 				existing, existingErr := ReadExisting(root, p)
@@ -410,18 +422,27 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 	var (
 		sel        selection
 		fromSource bool
+		suggest    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check that this host meets every prerequisite.",
 		Long: "doctor prints one line per prerequisite with a pass or a fail " +
 			"and the fix. It checks Docker, the compose plugin, the free " +
-			"memory, every host port of the selection, and the public URL.\n\n" +
+			"memory, every host port of the selection, and the public URL. " +
+			"It then prints the memory floor of every selected pair.\n\n" +
 			"The command exits with status 1 when one check fails. Add " +
-			"--from-source when you build the tool with Go.",
+			"--from-source when you build the tool with Go. Add --suggest to " +
+			"print the largest selection that fits the free memory.",
 		Example: "  vca doctor --role issuer --dpg waltid\n" +
-			"  vca doctor --all --dpg waltid --from-source",
+			"  vca doctor --all --dpg waltid --from-source\n" +
+			"  vca doctor --suggest",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if suggest {
+				return Suggest(DoctorOptions{
+					Probe: env.NewProbe(cmd.Context()), Out: cmd.OutOrStdout(),
+				})
+			}
 			pairs, err := sel.pairs()
 			if err != nil {
 				return err
@@ -442,7 +463,7 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 					}
 					return values
 				},
-				Probe: NewSystemProbe(cmd.Context()),
+				Probe: env.NewProbe(cmd.Context()),
 				Out:   cmd.OutOrStdout(),
 			})
 		},
@@ -450,6 +471,8 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 	addSelectionFlags(cmd, &sel)
 	cmd.Flags().BoolVar(&fromSource, "from-source", false,
 		"Check the Go version too. Only a source build needs Go.")
+	cmd.Flags().BoolVar(&suggest, "suggest", false,
+		"Print the largest selection that fits the free memory.")
 	return cmd
 }
 

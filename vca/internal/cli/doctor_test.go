@@ -480,3 +480,143 @@ func TestPortsCommandFailsOnABrokenEnvFile(t *testing.T) {
 		t.Errorf("status = %d, err = %s", status, errOut)
 	}
 }
+
+func TestSelectionFloorAddsOnlyTheSelectedPairs(t *testing.T) {
+	one := SelectionFloorMiB([]Pair{issuerPair()})
+	if one != MemoryFloorMiB(issuerPair()) {
+		t.Errorf("one pair = %d MiB", one)
+	}
+	stack := SelectionFloorMiB(PairsForDpg(dpgWaltid(t)))
+	if stack <= one {
+		t.Errorf("one stack = %d MiB, one pair = %d MiB", stack, one)
+	}
+	if all := SelectionFloorMiB(AllPairs()); all <= stack {
+		t.Errorf("every pair = %d MiB, one stack = %d MiB", all, stack)
+	}
+}
+
+func TestSelectionsGrowInOrder(t *testing.T) {
+	list := Selections()
+	if len(list) != len(AllPairs())+len(Dpgs())+1 {
+		t.Fatalf("got %d selections", len(list))
+	}
+	for i := 1; i < len(list); i++ {
+		if list[i].MemoryMiB < list[i-1].MemoryMiB {
+			t.Errorf("selection %d is smaller than %d", i, i-1)
+		}
+	}
+	if list[len(list)-1].Flags != "--all" {
+		t.Errorf("the largest selection = %q", list[len(list)-1].Flags)
+	}
+}
+
+func TestLargestFit(t *testing.T) {
+	all := SelectionFloorMiB(AllPairs())
+	got, ok := LargestFit(all)
+	if !ok || got.Flags != "--all" {
+		t.Errorf("got %+v, ok %v", got, ok)
+	}
+	smallest := Selections()[0]
+	if _, fit := LargestFit(smallest.MemoryMiB - 1); fit {
+		t.Error("a host with no memory got a selection")
+	}
+	got, ok = LargestFit(smallest.MemoryMiB)
+	if !ok || got.MemoryMiB != smallest.MemoryMiB {
+		t.Errorf("got %+v", got)
+	}
+}
+
+// TestMemoryHintNamesASmallerSelection is the laptop of ADR-008
+// decision 7. Six GB is under the floor of every pair together.
+func TestMemoryHintNamesASmallerSelection(t *testing.T) {
+	hint := MemoryHint(6 * 1024)
+	for _, want := range []string{"--all --dpg ", "for one stack (", "--role ", "for one pair ("} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("the hint has no %q:\n%s", want, hint)
+		}
+	}
+	tiny := MemoryHint(0)
+	if !strings.Contains(tiny, "--all --dpg ") {
+		t.Errorf("hint = %s", tiny)
+	}
+}
+
+func TestDoctorPrintsTheFloorOfEverySelectedPair(t *testing.T) {
+	pairs := PairsForDpg(dpgWaltid(t))
+	var out strings.Builder
+	probe := healthyProbe()
+	probe.memory = 64000
+	if err := Doctor(DoctorOptions{Pairs: pairs, Probe: probe, Out: &out}); err != nil {
+		t.Fatalf("Doctor: %v", err)
+	}
+	text := out.String()
+	for _, p := range pairs {
+		if !strings.Contains(text, p.Name()) {
+			t.Errorf("the report misses %s:\n%s", p.Name(), text)
+		}
+	}
+	if !strings.Contains(text, "Memory floor of this selection") {
+		t.Errorf("the report has no floor table:\n%s", text)
+	}
+	if strings.Contains(text, "for one stack (") {
+		t.Errorf("a host with free memory got the hint:\n%s", text)
+	}
+}
+
+func TestDoctorPrintsTheHintOnASmallHost(t *testing.T) {
+	var out strings.Builder
+	probe := healthyProbe()
+	probe.memory = 6 * 1024
+	err := Doctor(DoctorOptions{Pairs: AllPairs(), Probe: probe, Out: &out})
+	if !errors.Is(err, ErrDoctorFailed) {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(out.String(), MemoryHint(6*1024)) {
+		t.Errorf("the report has no hint:\n%s", out.String())
+	}
+}
+
+func TestSuggestPrintsTheLargestSelectionThatFits(t *testing.T) {
+	var out strings.Builder
+	probe := healthyProbe()
+	probe.memory = 6 * 1024
+	if err := Suggest(DoctorOptions{Probe: probe, Out: &out}); err != nil {
+		t.Fatalf("Suggest: %v", err)
+	}
+	best, ok := LargestFit(6 * 1024)
+	if !ok {
+		t.Fatal("no selection fits 6 GB")
+	}
+	for _, want := range []string{best.Flags, "6144 MiB free", "Memory floor of this selection"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("the output has no %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestSuggestReportsAHostWithNoRoom(t *testing.T) {
+	var out strings.Builder
+	probe := healthyProbe()
+	probe.memory = 1
+	if err := Suggest(DoctorOptions{Probe: probe, Out: &out}); !errors.Is(err, ErrDoctorFailed) {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(out.String(), "No selection fits") {
+		t.Errorf("out = %s", out.String())
+	}
+	probe.memoryErr = errors.New("no meminfo")
+	if err := Suggest(DoctorOptions{Probe: probe, Out: &out}); err == nil {
+		t.Fatal("a failed probe passed")
+	}
+}
+
+func TestMemoryHintOfIsSilentWithoutPairsOrMemory(t *testing.T) {
+	probe := healthyProbe()
+	if got := memoryHintOf(probe, nil); got != "" {
+		t.Errorf("got %q", got)
+	}
+	probe.memoryErr = errors.New("no meminfo")
+	if got := memoryHintOf(probe, AllPairs()); got != "" {
+		t.Errorf("got %q", got)
+	}
+}

@@ -50,11 +50,14 @@ The walk stops at the first directory that holds `ADR.md`.
 ```sh
 vca doctor --role issuer --dpg waltid
 vca doctor --all --from-source
+vca doctor --suggest
 ```
 
 `doctor` prints one line per prerequisite with a pass or a fail.
 A fail line names the fix.
 The command exits with status 1 when one check fails.
+It then prints the memory floor of every selected pair and the total.
+The memory check adds only the pairs you selected.
 
 | Check | What it needs |
 |---|---|
@@ -68,6 +71,16 @@ The command exits with status 1 when one check fails.
 
 The public URL comes from the environment, or from the `.env` file of the
 pair.
+
+When the free memory is under the floor, `doctor` and `setup` print one
+hint:
+
+```
+Use --all --dpg waltid for one stack (8576 MiB) or --role admin --dpg waltid for one pair (704 MiB)
+```
+
+`vca doctor --suggest` prints the largest selection that fits the free
+memory of this host, with the two commands that start it.
 
 ## ports
 
