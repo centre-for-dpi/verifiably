@@ -51,7 +51,7 @@ docker compose --project-name vca \
   --profile issuer-waltid up -d
 ```
 
-Add `--all` to start every role of one DPG.
+Add `--all` to start every role of every DPG. Add `--all --dpg waltid` to start every role of one DPG.
 Add `--dry-run` to print the rendered file and the commands.
 Add `--build` before the first release. See "Images from source".
 

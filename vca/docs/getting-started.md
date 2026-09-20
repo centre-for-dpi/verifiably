@@ -153,7 +153,7 @@ The volumes stay, so the data survives.
 ## How to check it works
 
 ```sh
-vca doctor --all --dpg waltid
+vca doctor --all --dpg waltid   # one stack fits a laptop; drop --dpg for all three
 vca deploy --role issuer --dpg waltid --build --dry-run
 vca status --role issuer --dpg waltid
 ```

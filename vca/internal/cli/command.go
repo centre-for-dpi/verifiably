@@ -141,7 +141,7 @@ func addSelectionFlags(cmd *cobra.Command, s *selection) {
 	cmd.Flags().StringVar(&s.dpg, "dpg", "",
 		"The digital public good: "+strings.Join(DpgNames(), ", ")+".")
 	cmd.Flags().BoolVar(&s.all, "all", false,
-		"Act on every role. Add --dpg to pick one stack.")
+		"Act on every role of every DPG. Add --dpg to limit it to one stack.")
 }
 
 // NewRootCommand builds the whole command tree.
@@ -341,10 +341,12 @@ func newDeployCommand(env *Environment) *cobra.Command {
 		Short: "Start one role and DPG with docker compose.",
 		Long: "deploy runs docker compose with the profile of the role and the " +
 			"DPG against the committed compose file. Add --all to start every " +
-			"role of one DPG. Add --dry-run to print the rendered compose file " +
+			"role of every DPG, or --all --dpg to start every role of one DPG. " +
+			"Add --dry-run to print the rendered compose file " +
 			"and the commands without starting anything.",
 		Example: "  vca deploy --role verifier --dpg waltid\n" +
-			"  vca deploy --all --dpg inji --dry-run",
+			"  vca deploy --all --dpg inji --dry-run\n" +
+			"  vca deploy --all --build",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			pairs, err := sel.pairs()
 			if err != nil {

@@ -22,7 +22,7 @@ Three steps take you from a clone to a running role:
 
 ```sh
 cd vca && go mod tidy && go build -o vca ./cmd/vca && sudo install vca /usr/local/bin/
-vca doctor --all --dpg waltid --from-source
+vca doctor --all --from-source
 vca setup --all && vca deploy --all --build
 ```
 
@@ -31,7 +31,9 @@ for each fail. `vca setup` asks only the questions that your role and DPG
 need. It writes one `.env` file per role and DPG pair. `vca deploy`
 starts the services with Docker Compose profiles. Use `--role` and
 `--dpg` to start one role with one DPG. Use `--build` until the first
-release publishes the images.
+release publishes the images. `--all` alone acts on every role of
+every DPG. Add `--dpg waltid` to limit it to one stack, which fits a
+laptop.
 
 Read [Get started](docs/getting-started.md) first. It lists the
 prerequisites and the three ways to get the binary. It also holds the

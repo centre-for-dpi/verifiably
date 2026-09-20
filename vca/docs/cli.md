@@ -49,7 +49,7 @@ The walk stops at the first directory that holds `ADR.md`.
 
 ```sh
 vca doctor --role issuer --dpg waltid
-vca doctor --all --dpg waltid --from-source
+vca doctor --all --from-source
 ```
 
 `doctor` prints one line per prerequisite with a pass or a fail.
@@ -118,7 +118,7 @@ A second run keeps every secret (ADR-007 decision 5).
 |---|---|
 | `--role` | The deployment role. |
 | `--dpg` | The digital public good. |
-| `--all` | Every role. Add `--dpg` to pick one stack. |
+| `--all` | Every role of every DPG. Add `--dpg` to limit it to one stack. |
 | `--env-file` | A dotenv file that prefills the answers. |
 | `--non-interactive` | Ask nothing. The run fails and lists every missing value. |
 | `--set NAME=value` | One value. Repeat the flag for more values. |
@@ -169,7 +169,7 @@ vca down   --role issuer --dpg waltid
 
 `deploy` runs `docker compose` with the profile of the pair against
 `deploy/vca/compose.yaml`.
-`--all` starts every role of one DPG.
+`--all` starts every role of every DPG. Add `--dpg` to start every role of one DPG.
 `--dry-run` prints the rendered compose file and the commands.
 It starts nothing.
 `--build` adds `deploy/vca/compose.build.yaml` and the `--build` flag of
