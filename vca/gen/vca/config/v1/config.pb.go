@@ -210,7 +210,8 @@ type Config struct {
 	// The DPG behind the role. Required. The CLI flag is --dpg.
 	Dpg Dpg `protobuf:"varint,2,opt,name=dpg,proto3,enum=vca.config.v1.Dpg" json:"dpg,omitempty"`
 	// The public base URL of the deployment, for example https://issuer.example.
-	// Required. Must be an absolute https URL without a path or a trailing slash.
+	// Optional. Defaults to http://localhost with the host port of the portal.
+	// A public host must use an absolute https URL without a path or a trailing slash.
 	// Wallets and verifiers reach the deployment at this URL.
 	PublicUrl string `protobuf:"bytes,3,opt,name=public_url,json=publicUrl,proto3" json:"public_url,omitempty"`
 	// The base URL that other containers on the same network use.
@@ -649,15 +650,15 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\brequired\x18\a \x01(\bR\brequired\x12\x1e\n" +
 	"\n" +
 	"validation\x18\b \x01(\tR\n" +
-	"validation\"\xe4!\n" +
+	"validation\"\x9a\"\n" +
 	"\x06Config\x12x\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x13.vca.common.v1.RoleBO\xd2\xf3\x18K\n" +
 	"\x14The deployment role.\x12\bVCA_ROLE8\x01B'One of issuer, holder, verifier, admin.R\x04role\x12~\n" +
 	"\x03dpg\x18\x02 \x01(\x0e2\x12.vca.config.v1.DpgBX\xd2\xf3\x18T\n" +
-	"(The digital public good behind the role.\x12\aVCA_DPG8\x01B\x1dOne of waltid, inji, credebl.R\x03dpg\x12\x98\x01\n" +
+	"(The digital public good behind the role.\x12\aVCA_DPG8\x01B\x1dOne of waltid, inji, credebl.R\x03dpg\x12\xce\x01\n" +
 	"\n" +
-	"public_url\x18\x03 \x01(\tBy\xd2\xf3\x18u\n" +
-	"&The public base URL of the deployment.\x12\x0eVCA_PUBLIC_URL8\x01B9An absolute https URL without a path or a trailing slash.R\tpublicUrl\x12\xb8\x01\n" +
+	"public_url\x18\x03 \x01(\tB\xae\x01\xd2\xf3\x18\xa9\x01\n" +
+	"=The public base URL of the deployment. Defaults to localhost.\x12\x0eVCA_PUBLIC_URLBXAn absolute https URL without a path or a trailing slash. http is allowed for localhost.R\tpublicUrl\x12\xb8\x01\n" +
 	"\finternal_url\x18\x04 \x01(\tB\x94\x01\xd2\xf3\x18\x8f\x01\n" +
 	"?The base URL that other containers use to reach the deployment.\x12\x10VCA_INTERNAL_URLB:An absolute http or https URL. Defaults to the public URL.R\vinternalUrl\x12\xa6\x01\n" +
 	"\fdatabase_url\x18\x05 \x01(\tB\x82\x01\xd2\xf3\x18~\n" +

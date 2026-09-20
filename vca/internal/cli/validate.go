@@ -87,7 +87,11 @@ func checksFor(s Setting) []check {
 		out = append(out, isURL([]string{"http", "https"}, false))
 	case strings.Contains(rule, "absolute https url"):
 		noPath := strings.Contains(rule, "without a path")
-		out = append(out, isURL([]string{"https"}, noPath))
+		if strings.Contains(rule, "http is allowed for localhost") {
+			out = append(out, isPublicURL(noPath))
+		} else {
+			out = append(out, isURL([]string{"https"}, noPath))
+		}
 	case strings.Contains(rule, "host and port or a url"):
 		out = append(out, isHostPortOrURL)
 	}
@@ -159,6 +163,28 @@ func inRange(low, high int) check {
 		}
 		return ""
 	}
+}
+
+// isPublicURL accepts https for any host and http for a loopback host.
+func isPublicURL(noPath bool) check {
+	strict := isURL([]string{"https"}, noPath)
+	loose := isURL([]string{"http", "https"}, noPath)
+	return func(value string) string {
+		u, err := url.Parse(value)
+		if err == nil && isLoopbackHost(u.Hostname()) {
+			return loose(value)
+		}
+		return strict(value)
+	}
+}
+
+// isLoopbackHost reports whether the host names the local machine.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func isURL(schemes []string, noPath bool) check {

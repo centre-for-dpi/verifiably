@@ -72,13 +72,13 @@ message Config {
     validation: "One of waltid, inji, credebl."
   }];
   // The public base URL of the deployment, for example https://issuer.example.
-  // Required. Must be an absolute https URL without a path or a trailing slash.
+  // Optional. Defaults to http://localhost with the host port of the portal.
+  // A public host must use an absolute https URL without a path or a trailing slash.
   // Wallets and verifiers reach the deployment at this URL.
   string public_url = 3 [(setting) = {
-    description: "The public base URL of the deployment."
+    description: "The public base URL of the deployment. Defaults to localhost."
     env: "VCA_PUBLIC_URL"
-    required: true
-    validation: "An absolute https URL without a path or a trailing slash."
+    validation: "An absolute https URL without a path or a trailing slash. http is allowed for localhost."
   }];
   // The base URL that other containers on the same network use.
   // Optional. Defaults to public_url. Must be an absolute http or https URL.

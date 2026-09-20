@@ -109,6 +109,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	list := ResolveAll(settings, src)
 	list = applyRoleAndDpg(list, req.Pair)
+	list = applyLocalPublicURL(list, req.Pair)
 	list = applyDerivedDefaults(list)
 	list, secretFiles, err := FillSecrets(list, req.Random)
 	if err != nil {
@@ -138,6 +139,32 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	files = append(files, dpgFiles...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files}, nil
+}
+
+// applyLocalPublicURL fills an empty public URL with the localhost address
+// of the portal of the pair. A laptop deployment then needs no public host
+// (ADR-007 decision 4, ADR-008 decision 7).
+func applyLocalPublicURL(list []Resolution, p Pair) []Resolution {
+	out := make([]Resolution, len(list))
+	copy(out, list)
+	for i := range out {
+		if out[i].Setting.Path != "public_url" || out[i].Value != "" {
+			continue
+		}
+		out[i].Value, out[i].Origin = LocalPublicURL(p), OriginDefault
+	}
+	return out
+}
+
+// LocalPublicURL returns http://localhost with the host port of the
+// portal of the pair.
+func LocalPublicURL(p Pair) string {
+	for _, a := range AssignPorts(p, nil) {
+		if a.Service.Name == portalService(p.Role) {
+			return fmt.Sprintf("http://localhost:%d", a.Host)
+		}
+	}
+	return "http://localhost"
 }
 
 // applyRoleAndDpg fills the role and the DPG from the flags of the run.
