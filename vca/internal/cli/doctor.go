@@ -439,10 +439,13 @@ func (p *SystemProbe) FreeMemoryMiB() (int, error) {
 	return parseMemAvailable(string(data))
 }
 
-// PortFree reports whether the CLI can listen on a host port.
+// PortFree reports whether the CLI can listen on a host port. A listen
+// error means another program holds the port, which is an answer and not
+// a failure of the check.
 func (p *SystemProbe) PortFree(port int) (bool, error) {
-	listener, err := p.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
-	if err != nil {
+	listener, listenErr := p.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	free := listenErr == nil
+	if !free {
 		return false, nil
 	}
 	return true, listener.Close()
