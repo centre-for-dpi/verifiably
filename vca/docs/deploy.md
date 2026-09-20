@@ -13,10 +13,23 @@ This page covers Docker Compose and Kubernetes (ADR-008).
 
 ## How to run
 
+New to the project? Read [Get started](getting-started.md) first.
+It lists the prerequisites and the three ways to get the `vca` binary.
+
+### Step 0: check the host
+
+```sh
+vca doctor --role issuer --dpg waltid
+```
+
+The command prints one line per prerequisite with a pass or a fail.
+It checks Docker, the compose plugin, the free memory, the host ports,
+and the public URL. It exits with status 1 on any fail.
+
 ### Step 1: set up the role
 
 ```sh
-go build -o vca ./cmd/vca
+cd vca && go mod tidy && go build -o vca ./cmd/vca
 ./vca setup --role issuer --dpg waltid
 ```
 
@@ -40,6 +53,7 @@ docker compose --project-name vca \
 
 Add `--all` to start every role of one DPG.
 Add `--dry-run` to print the rendered file and the commands.
+Add `--build` before the first release. See "Images from source".
 
 ### Step 3: configure the DPG
 
@@ -67,6 +81,46 @@ To write the file again:
 ```sh
 VCA_WRITE_COMPOSE=1 go test -run TestComposeFileIsCurrent ./internal/cli/
 ```
+
+### Images from source
+
+The compose file names the image
+`ghcr.io/centre-for-dpi/vca-<service>:${VCA_VERSION:-latest}`.
+No release has published those images yet, so a plain `vca deploy` fails
+with `pull access denied`.
+Build the images from the source in this repository instead:
+
+```sh
+vca deploy --role issuer --dpg waltid --build
+```
+
+That adds a second file to the compose command:
+
+```sh
+docker compose --project-name vca \
+  --file deploy/vca/compose.yaml \
+  --file deploy/vca/compose.build.yaml \
+  --env-file deploy/issuer-waltid/.env \
+  --profile issuer-waltid up -d --build
+```
+
+The repository holds `deploy/vca/compose.build.yaml`.
+The renderer in `vca/internal/cli/build.go` writes it, and a Go test
+fails when the committed file and the renderer differ.
+Each service gets `context: ../../vca` and
+`dockerfile: services/<name>/Dockerfile`.
+
+To build the images without compose:
+
+```sh
+vca images build --role issuer --dpg waltid
+```
+
+Each image gets the tag `local`.
+The command then sets `VCA_VERSION=local` in the `.env` file of the pair,
+so the next `vca deploy` starts the local images.
+After the first tagged release, drop `--build` and set `VCA_VERSION` to
+the release tag.
 
 ### Profiles
 
@@ -116,6 +170,8 @@ Start the other role, or edit the value by hand.
 
 Each role and DPG pair owns a block of one hundred host ports.
 The first block starts at 18000.
+`vca ports --role issuer --dpg waltid` prints the ports of one pair.
+`vca doctor` checks that each one is free.
 
 ### Hardening
 
@@ -230,6 +286,7 @@ go test ./internal/cli/
 
 ## Reference
 
+- [Get started](getting-started.md): the prerequisites and the first run.
 - ADR-005: one image per service, non-root, read only, no Docker socket.
 - ADR-007: the setup CLI and the files it writes.
 - ADR-008: the profiles, the DPG includes, the bootstrap, and the charts.

@@ -6,8 +6,11 @@ The source is `vca/cmd/vca` and `vca/internal/cli`.
 
 ## What it does
 
+- `vca doctor` checks that the host meets every prerequisite.
+- `vca ports` prints the host ports of one role and one DPG.
 - `vca setup` asks the setup questions of one role and one DPG.
 - `vca deploy` starts the services of one role and one DPG.
+- `vca images build` builds the service images from this source.
 - `vca status` shows the containers. `vca down` stops them.
 - `vca dpg bootstrap` configures a DPG after it boots.
 - `vca admin` calls the admin service.
@@ -19,9 +22,62 @@ The source is `vca/cmd/vca` and `vca/internal/cli`.
 Build the tool from the `vca` directory:
 
 ```sh
+go mod tidy
 go build -o vca ./cmd/vca
 ./vca --help
 ```
+
+`go mod tidy` writes `go.sum`, which the repository does not ship yet.
+`make install` builds the same binary into your `GOBIN` directory.
+[Get started](getting-started.md) lists the other two ways to get it.
+
+### Where the tool looks for the repository
+
+You can run `vca` in any directory.
+The tool reads `deploy/vca/compose.yaml` under the repository root.
+It finds that root in this order:
+
+| Order | Source | How to set it |
+|---|---|---|
+| 1 | The `--repo` flag | `vca deploy --repo /srv/verifiably ...` |
+| 2 | The `VCA_REPO` variable | `export VCA_REPO=/srv/verifiably` |
+| 3 | A walk up from your working directory | Nothing to do |
+
+The walk stops at the first directory that holds `ADR.md`.
+
+## doctor
+
+```sh
+vca doctor --role issuer --dpg waltid
+vca doctor --all --dpg waltid --from-source
+```
+
+`doctor` prints one line per prerequisite with a pass or a fail.
+A fail line names the fix.
+The command exits with status 1 when one check fails.
+
+| Check | What it needs |
+|---|---|
+| `go` | Go 1.25 or newer. Only `--from-source` turns this check on. |
+| `docker` | Docker 24 or newer with a daemon that answers. |
+| `docker compose` | The compose plugin, version 2 or newer. |
+| `memory` | The memory floor of the selection, from `docs/deploy.md`. |
+| `port <n>` | Every host port of the pair is free. |
+| `public url` | `VCA_PUBLIC_URL` resolves when it is not localhost. |
+| `port 80`, `port 443` | Both are free when you use a public URL. |
+
+The public URL comes from the environment, or from the `.env` file of the
+pair.
+
+## ports
+
+```sh
+vca ports --role issuer --dpg waltid
+```
+
+The command prints one line per service with the host port and the
+container port.
+Open those host ports in the firewall of a server.
 
 ## setup
 
@@ -116,7 +172,23 @@ vca down   --role issuer --dpg waltid
 `--all` starts every role of one DPG.
 `--dry-run` prints the rendered compose file and the commands.
 It starts nothing.
+`--build` adds `deploy/vca/compose.build.yaml` and the `--build` flag of
+compose, so compose builds every image from this source.
+Use `--build` before the first tagged release.
+No release has published the images yet.
 See `docs/deploy.md` for the compose layout and the resource floor.
+
+## images build
+
+```sh
+vca images build --role issuer --dpg waltid
+vca images build --all --dpg waltid --dry-run
+```
+
+The command runs `docker build` once per service of the selection.
+Each image gets the tag `local`.
+The command then sets `VCA_VERSION=local` in the `.env` file of each
+pair, so the next `vca deploy` starts the local images.
 
 ## dpg bootstrap
 
@@ -283,6 +355,7 @@ go test -run TestAdminTreeMatchesTheAdminService ./internal/cli/
 
 ## Reference
 
+- [Get started](getting-started.md): the prerequisites and the first run.
 - ADR-007: the setup CLI, its inputs, its outputs, and its order of sources.
 - ADR-008: the deploy commands, the compose profiles, and the Helm charts.
 - ADR-009: the admin command tree and the generated man pages.
