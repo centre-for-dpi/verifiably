@@ -21,7 +21,7 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_HEALTH_ENABLED: "true"
     volumes:
-      - ../issuer-credebl:/opt/keycloak/data/import:ro
+      - ../${CREDEBL_REALM_DIR:-issuer-credebl}:/opt/keycloak/data/import:ro
     ports:
       - "${CREDEBL_KEYCLOAK_HOST_PORT:-17180}:8080"
     networks:

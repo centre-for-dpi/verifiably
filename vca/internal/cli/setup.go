@@ -100,17 +100,15 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		File:     req.File,
 		Existing: req.Existing,
 	}
+	list := resolveWithDefaults(settings, src, req.Pair)
 	if req.Interactive {
-		answers, err := req.Prompter.AskAll(settings, src)
+		answers, err := req.Prompter.AskMissing(list)
 		if err != nil {
 			return Plan{}, err
 		}
 		src.Answers = answers
+		list = resolveWithDefaults(settings, src, req.Pair)
 	}
-	list := ResolveAll(settings, src)
-	list = applyRoleAndDpg(list, req.Pair)
-	list = applyLocalPublicURL(list, req.Pair)
-	list = applyDerivedDefaults(list, req.Pair)
 	list, secretFiles, err := FillSecrets(list, req.Random)
 	if err != nil {
 		return Plan{}, err
@@ -139,6 +137,16 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	files = append(files, dpgFiles...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files}, nil
+}
+
+// resolveWithDefaults resolves every setting and fills every value that
+// follows from the pair. The result holds a question only where no
+// source and no default supplied a value.
+func resolveWithDefaults(settings []Setting, src Sources, p Pair) []Resolution {
+	list := ResolveAll(settings, src)
+	list = applyRoleAndDpg(list, p)
+	list = applyLocalPublicURL(list, p)
+	return applyDerivedDefaults(list, p)
 }
 
 // applyLocalPublicURL fills an empty public URL with the localhost address
@@ -190,12 +198,18 @@ func applyRoleAndDpg(list []Resolution, p Pair) []Resolution {
 func applyDerivedDefaults(list []Resolution, p Pair) []Resolution {
 	out := make([]Resolution, len(list))
 	copy(out, list)
+	pairDefaults := map[string]string{
+		"dpg_url":            DefaultDpgURL(p),
+		"oidc.discovery_url": DefaultDiscoveryURL(p),
+		"oidc.public_url":    DefaultOidcPublicURL(p),
+		"oidc.client_id":     DefaultClientID(p.Role),
+	}
 	for i := range out {
-		if out[i].Value != "" || out[i].Setting.Path != "dpg_url" {
+		if out[i].Value != "" {
 			continue
 		}
-		if url := DefaultDpgURL(p); url != "" {
-			out[i].Value, out[i].Origin = url, OriginDefault
+		if value := pairDefaults[out[i].Setting.Path]; value != "" {
+			out[i].Value, out[i].Origin = value, OriginDefault
 		}
 	}
 	public := ""

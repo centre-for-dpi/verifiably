@@ -212,13 +212,23 @@ func memoryCheck(opts DoctorOptions) Check {
 	return Check{Name: name, OK: true, Detail: detail}
 }
 
-// portChecks reports one check per host port of every pair.
+// portChecks reports one check per host port of every pair. The
+// Keycloak of a DPG stack is shared by the roles of that stack, so its
+// port appears once.
 func portChecks(opts DoctorOptions) []Check {
 	var out []Check
+	seen := map[int]bool{}
 	for _, p := range opts.Pairs {
 		var values map[string]string
 		if opts.Values != nil {
 			values = opts.Values(p)
+		}
+		for _, d := range DpgHostPorts(p) {
+			if seen[d.Host] {
+				continue
+			}
+			seen[d.Host] = true
+			out = append(out, dpgPortCheck(opts.Probe, d))
 		}
 		for _, a := range HostPorts(p, values) {
 			name := fmt.Sprintf("port %d", a.Host)
@@ -238,6 +248,22 @@ func portChecks(opts DoctorOptions) []Check {
 		}
 	}
 	return out
+}
+
+// dpgPortCheck reports one host port of a DPG stack container.
+func dpgPortCheck(probe Probe, d DpgPort) Check {
+	name := fmt.Sprintf("port %d", d.Host)
+	free, err := probe.PortFree(d.Host)
+	switch {
+	case err != nil:
+		return Check{Name: name, Detail: d.Container + ": cannot test the port",
+			Fix: "check the port by hand with: ss -ltnp"}
+	case !free:
+		return Check{Name: name, Detail: d.Container + ": another program holds it",
+			Fix: "stop that program, or set " + d.Env + " in the environment of docker compose"}
+	default:
+		return Check{Name: name, OK: true, Detail: d.Container}
+	}
 }
 
 // publicURLChecks report the name resolution and the TLS ports of a

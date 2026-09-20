@@ -81,8 +81,9 @@ func TestDoctorPassesOnAHealthyHost(t *testing.T) {
 	if !strings.Contains(out.String(), "The host is ready") {
 		t.Errorf("out = %s", out.String())
 	}
-	if len(probe.testedPorts) != len(ServicesFor(issuerPair())) {
-		t.Errorf("tested %v", probe.testedPorts)
+	want := len(ServicesFor(issuerPair())) + len(DpgHostPorts(issuerPair()))
+	if len(probe.testedPorts) != want {
+		t.Errorf("tested %v, want %d ports", probe.testedPorts, want)
 	}
 }
 
@@ -156,8 +157,8 @@ func TestDoctorReportsDockerAndCompose(t *testing.T) {
 func TestDoctorComparesTheMemoryFloor(t *testing.T) {
 	pair := issuerPair()
 	want := MemoryFloorMiB(pair)
-	if want != 2400 {
-		t.Errorf("the floor of issuer-waltid = %d MiB, want 2400", want)
+	if want != 2912 {
+		t.Errorf("the floor of issuer-waltid = %d MiB, want 2912", want)
 	}
 	probe := healthyProbe()
 	probe.memory = want - 1
@@ -174,8 +175,8 @@ func TestDoctorComparesTheMemoryFloor(t *testing.T) {
 
 func TestMemoryFloorOfEveryPairMatchesTheDocument(t *testing.T) {
 	want := map[string]int{
-		"issuer-waltid": 2400, "issuer-inji": 3424, "holder-waltid": 1824,
-		"verifier-waltid": 2112, "admin-waltid": 448, "admin-inji": 448,
+		"issuer-waltid": 2912, "issuer-inji": 3424, "holder-waltid": 2336,
+		"verifier-waltid": 2624, "admin-waltid": 704, "admin-inji": 704,
 	}
 	for _, p := range AllPairs() {
 		if got, ok := want[p.Name()]; ok && MemoryFloorMiB(p) != got {
@@ -220,8 +221,14 @@ func TestDoctorUsesThePortOfTheEnvFile(t *testing.T) {
 		Pairs: []Pair{pair}, Probe: probe,
 		Values: func(Pair) map[string]string { return values },
 	})
-	if !strings.Contains(checks[0].Name, "19999") {
-		t.Errorf("check = %+v", checks[0])
+	found := false
+	for _, c := range checks {
+		if strings.Contains(c.Name, "19999") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("checks = %+v", checks)
 	}
 }
 

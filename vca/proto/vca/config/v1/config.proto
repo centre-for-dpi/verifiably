@@ -165,27 +165,30 @@ message Config {
   // Oidc describes one OpenID Connect provider.
   message Oidc {
     // The OIDC discovery URL of the provider.
-    // Required. Must be an absolute https URL. The CLI fetches the
-    // discovery document to check it.
+    // Required. Defaults to the Keycloak of the DPG stack on the compose
+    // network. A production deployment points it at the national IdP.
     string discovery_url = 1 [(setting) = {
-      description: "The OIDC discovery URL of the provider."
+      description: "The OIDC discovery URL of the provider. Defaults to the Keycloak of the stack."
       env: "VCA_OIDC_DISCOVERY_URL"
       required: true
-      validation: "An absolute https URL that serves a discovery document."
+      validation: "An absolute http or https URL that serves a discovery document."
     }];
-    // The OAuth 2.0 client id. Required unless the CLI registers the
-    // client with Dynamic Client Registration (ADR-010 decision 3).
+    // The OAuth 2.0 client id. Optional. Defaults to vca- plus the role
+    // name, which is the client the generated realm holds
+    // (ADR-010 decision 3).
     string client_id = 2 [(setting) = {
-      description: "The OAuth 2.0 client id at the provider."
+      description: "The OAuth 2.0 client id at the provider. Defaults to vca- plus the role."
       env: "VCA_OIDC_CLIENT_ID"
-      validation: "Required unless the CLI registers the client itself."
+      validation: "Defaults to vca- plus the role name."
     }];
-    // The reference to the client secret. Optional for public clients.
+    // The reference to the client secret. Required. The CLI generates it
+    // and writes it into the generated realm.
     vca.common.v1.SecretRef client_secret = 3 [(setting) = {
       description: "The reference to the OAuth 2.0 client secret."
       env: "VCA_OIDC_CLIENT_SECRET"
       secret: true
-      validation: "Optional for public clients."
+      required: true
+      validation: "32 random bytes. The CLI generates it."
     }];
     // The JSON path of the claim that carries roles (ADR-012 decision 3).
     // Optional. Defaults to realm_access.roles.
@@ -200,6 +203,15 @@ message Config {
       description: "The redirect URI registered at the provider."
       env: "VCA_OIDC_REDIRECT_URI"
       validation: "Defaults to the public URL plus /auth/callback. Must match the provider exactly."
+    }];
+    // The base URL that a browser uses to reach the provider.
+    // Optional. Defaults to http://localhost with the host port of the
+    // Keycloak of the DPG stack. The discovery URL stays a container
+    // URL, so the browser needs this one as well.
+    string public_url = 6 [(setting) = {
+      description: "The base URL that a browser uses to reach the provider."
+      env: "VCA_OIDC_PUBLIC_URL"
+      validation: "An absolute http or https URL. Defaults to the host port of the Keycloak."
     }];
   }
 

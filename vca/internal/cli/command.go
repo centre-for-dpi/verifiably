@@ -479,6 +479,10 @@ func newPortsCommand(env *Environment) *cobra.Command {
 					anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(),
 						"  %-22s host %d  container %d\n", a.Service.Name, a.Host, a.Listen))
 				}
+				for _, d := range DpgHostPorts(p) {
+					anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(),
+						"  %-22s host %d  container 8080\n", d.Container, d.Host))
+				}
 			}
 			return nil
 		},

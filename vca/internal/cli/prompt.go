@@ -87,29 +87,23 @@ func asksQuestion(s Setting) bool {
 	return !s.Secret || s.Kind != KindSecretRef
 }
 
-// AskAll asks every question that no higher source already answered.
-// It returns the answers keyed by environment variable name.
-// A setting that a flag, the environment, or the env file already filled
-// gets no question, because those sources win anyway (ADR-007 decision 4).
-func (p Prompter) AskAll(settings []Setting, src Sources) (map[string]string, error) {
+// AskMissing asks one question per required value that no source and no
+// default filled. It returns the answers keyed by environment variable
+// name. Every value of a laptop deployment has a default, so that run
+// answers no question (ADR-007 decision 2, ADR-008 decision 7).
+// Set an optional value with --set or with the env file.
+func (p Prompter) AskMissing(list []Resolution) (map[string]string, error) {
 	answers := make(map[string]string)
-	for _, s := range settings {
-		if !asksQuestion(s) {
+	for _, r := range list {
+		if r.Value != "" || !r.Setting.Required || !asksQuestion(r.Setting) {
 			continue
 		}
-		if _, origin := Resolve(s, src); origin == OriginFlag || origin == OriginEnv || origin == OriginFile {
-			continue
-		}
-		offered := s.Default
-		if v, ok := lookup(src.Existing, s.Env); ok && s.Secret {
-			offered = v
-		}
-		answer, err := p.Ask(s, offered)
+		answer, err := p.Ask(r.Setting, "")
 		if err != nil {
 			return nil, err
 		}
 		if answer != "" {
-			answers[s.Env] = answer
+			answers[r.Setting.Env] = answer
 		}
 	}
 	return answers, nil

@@ -20,7 +20,7 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_HEALTH_ENABLED: "true"
     volumes:
-      - ../issuer-inji:/opt/keycloak/data/import:ro
+      - ../${INJI_REALM_DIR:-issuer-inji}:/opt/keycloak/data/import:ro
     ports:
       - "${INJI_KEYCLOAK_HOST_PORT:-17080}:8080"
     networks:

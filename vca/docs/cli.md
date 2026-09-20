@@ -62,7 +62,7 @@ The command exits with status 1 when one check fails.
 | `docker` | Docker 24 or newer with a daemon that answers. |
 | `docker compose` | The compose plugin, version 2 or newer. |
 | `memory` | The memory floor of the selection, from `docs/deploy.md`. |
-| `port <n>` | Every host port of the pair is free. |
+| `port <n>` | Every host port of the pair and of the Keycloak is free. |
 | `public url` | `VCA_PUBLIC_URL` resolves when it is not localhost. |
 | `port 80`, `port 443` | Both are free when you use a public URL. |
 
@@ -85,10 +85,14 @@ Open those host ports in the firewall of a server.
 vca setup --role {issuer|holder|verifier|admin} --dpg {waltid|inji|credebl}
 ```
 
-The command asks only the questions that the role and the DPG need.
+The command asks only for a required value that no source and no default
+filled.
 A verifier operator never sees an issuer question.
-Each question shows the help text, the rule, and the offered value.
+A laptop deployment answers no question, because every value has a
+default (ADR-008 decision 7).
+Each question shows the help text and the rule.
 A bad answer repeats the question with the reason.
+Set an optional value with `--set` or with the `--env-file` file.
 
 The questions come from one place: the `Config` message in
 `proto/vca/config/v1/config.proto`.
@@ -136,8 +140,8 @@ deploy/issuer-waltid/Caddyfile             mode 0644
 deploy/issuer-waltid/waltid-onboard.json   mode 0644
 ```
 
-An Inji pair and a CREDEBL pair get `keycloak-realm.json` in place of
-`waltid-onboard.json`.
+Every pair gets `keycloak-realm.json`, because every DPG stack ships a
+Keycloak. Only a walt.id pair gets `waltid-onboard.json`.
 The CLI shows a summary of every value and its source before it writes.
 A secret never appears in the summary.
 

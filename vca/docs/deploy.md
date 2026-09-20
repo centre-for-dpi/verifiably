@@ -198,7 +198,7 @@ The versions come from `verifiably-go/docs/dpg-matrix.md`:
 | `dpg/inji.yaml` | Inji Verify UI and service | 0.16.0 |
 | `dpg/inji.yaml` | eSignet and mock identity | 1.5.1 and 0.10.1 |
 | `dpg/credebl.yaml` | API gateway and agent provisioning | `CREDEBL_VERSION` |
-| `dpg/inji.yaml` and `dpg/credebl.yaml` | Keycloak | 25.0 |
+| Every `dpg/*.yaml` file | Keycloak | 25.0 |
 
 CREDEBL publishes no version tag.
 The DPG matrix records `ghcr.io/credebl/*:latest`.
@@ -207,6 +207,39 @@ Set it to a digest before you go to production.
 
 A VCA service never needs a DPG rebuild.
 A DPG upgrade is a version change in one file.
+
+### The identity provider
+
+Every stack ships Keycloak 25.0.
+A laptop deployment then needs no other identity provider.
+`vca setup` fills `VCA_OIDC_DISCOVERY_URL` with the Keycloak of the
+stack, on the compose network:
+
+| DPG | Keycloak container | Host port | Default `VCA_OIDC_DISCOVERY_URL` |
+|---|---|---|---|
+| `waltid` | `waltid-keycloak` | 17010 | `http://waltid-keycloak:8080/realms/vca/.well-known/openid-configuration` |
+| `inji` | `inji-keycloak` | 17080 | `http://inji-keycloak:8080/realms/vca/.well-known/openid-configuration` |
+| `credebl` | `credebl-keycloak` | 17180 | `http://credebl-keycloak:8080/realms/vca/.well-known/openid-configuration` |
+
+A browser cannot reach a container name, so `VCA_OIDC_PUBLIC_URL` points
+at `http://localhost` with the host port of the table.
+The login page opens there.
+`vca doctor` checks that the host port is free.
+
+`vca setup` writes `deploy/<role>-<dpg>/keycloak-realm.json`.
+The realm is `vca`.
+It holds one client with the id `vca-<role>`, a generated client secret,
+the authorization code flow, and PKCE.
+Keycloak imports the file on its first start.
+It reads the directory of the issuer pair of the stack.
+Set `WALTID_REALM_DIR`, `INJI_REALM_DIR`, or `CREDEBL_REALM_DIR` to
+another pair directory when you run one other role alone.
+
+A production deployment replaces this Keycloak with the national
+identity provider.
+Set `VCA_OIDC_DISCOVERY_URL`, `VCA_OIDC_CLIENT_ID`, and
+`VCA_OIDC_CLIENT_SECRET` to the values of that provider.
+Register the redirect URI of `VCA_OIDC_REDIRECT_URI` there.
 
 ### The DPG API URL
 
@@ -236,18 +269,18 @@ The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 
 | Role and DPG | VCA services | VCA memory | DPG memory | Total memory | CPUs |
 |---|---|---|---|---|---|
-| `issuer-waltid` | 9 | 864 MiB | 1536 MiB | 2400 MiB | 3.25 |
+| `issuer-waltid` | 9 | 864 MiB | 2048 MiB | 2912 MiB | 3.25 |
 | `issuer-inji` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
 | `issuer-credebl` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
-| `holder-waltid` | 3 | 288 MiB | 1536 MiB | 1824 MiB | 1.75 |
+| `holder-waltid` | 3 | 288 MiB | 2048 MiB | 2336 MiB | 1.75 |
 | `holder-inji` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
 | `holder-credebl` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
-| `verifier-waltid` | 6 | 576 MiB | 1536 MiB | 2112 MiB | 2.5 |
+| `verifier-waltid` | 6 | 576 MiB | 2048 MiB | 2624 MiB | 2.5 |
 | `verifier-inji` | 6 | 576 MiB | 2560 MiB | 3136 MiB | 2.5 |
 | `verifier-credebl` | 6 | 576 MiB | 2560 MiB | 3136 MiB | 2.5 |
-| `admin-waltid` | 2 | 192 MiB | 256 MiB | 448 MiB | 1.5 |
-| `admin-inji` | 2 | 192 MiB | 256 MiB | 448 MiB | 1.5 |
-| `admin-credebl` | 2 | 192 MiB | 256 MiB | 448 MiB | 1.5 |
+| `admin-waltid` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
+| `admin-inji` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
+| `admin-credebl` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 
 The VCA figure is 96 MiB per service.
 The admin role runs the admin service and the trust registry.
@@ -255,7 +288,8 @@ The holder role runs the wallet portal, the wallet auth service, and one
 DPG adapter.
 Each service is one static Go binary in a distroless image.
 The DPG figure is the floor of the stack in `deploy/vca/dpg/`.
-The admin role talks to no DPG, so it needs only its own database.
+The admin role talks to no DPG.
+Its profile starts only the Keycloak of the stack.
 
 ## Kubernetes
 

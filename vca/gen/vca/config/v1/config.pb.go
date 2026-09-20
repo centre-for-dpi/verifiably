@@ -373,20 +373,27 @@ func (x *Config) GetRedisUrl() string {
 type Config_Oidc struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The OIDC discovery URL of the provider.
-	// Required. Must be an absolute https URL. The CLI fetches the
-	// discovery document to check it.
+	// Required. Defaults to the Keycloak of the DPG stack on the compose
+	// network. A production deployment points it at the national IdP.
 	DiscoveryUrl string `protobuf:"bytes,1,opt,name=discovery_url,json=discoveryUrl,proto3" json:"discovery_url,omitempty"`
-	// The OAuth 2.0 client id. Required unless the CLI registers the
-	// client with Dynamic Client Registration (ADR-010 decision 3).
+	// The OAuth 2.0 client id. Optional. Defaults to vca- plus the role
+	// name, which is the client the generated realm holds
+	// (ADR-010 decision 3).
 	ClientId string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	// The reference to the client secret. Optional for public clients.
+	// The reference to the client secret. Required. The CLI generates it
+	// and writes it into the generated realm.
 	ClientSecret *v1.SecretRef `protobuf:"bytes,3,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
 	// The JSON path of the claim that carries roles (ADR-012 decision 3).
 	// Optional. Defaults to realm_access.roles.
 	RolesClaimPath string `protobuf:"bytes,4,opt,name=roles_claim_path,json=rolesClaimPath,proto3" json:"roles_claim_path,omitempty"`
 	// The redirect URI. Optional. Defaults to public_url plus /auth/callback.
 	// Must match the value at the provider exactly.
-	RedirectUri   string `protobuf:"bytes,5,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	RedirectUri string `protobuf:"bytes,5,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	// The base URL that a browser uses to reach the provider.
+	// Optional. Defaults to http://localhost with the host port of the
+	// Keycloak of the DPG stack. The discovery URL stays a container
+	// URL, so the browser needs this one as well.
+	PublicUrl     string `protobuf:"bytes,6,opt,name=public_url,json=publicUrl,proto3" json:"public_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -452,6 +459,13 @@ func (x *Config_Oidc) GetRolesClaimPath() string {
 func (x *Config_Oidc) GetRedirectUri() string {
 	if x != nil {
 		return x.RedirectUri
+	}
+	return ""
+}
+
+func (x *Config_Oidc) GetPublicUrl() string {
+	if x != nil {
+		return x.PublicUrl
 	}
 	return ""
 }
@@ -652,7 +666,7 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\brequired\x18\a \x01(\bR\brequired\x12\x1e\n" +
 	"\n" +
 	"validation\x18\b \x01(\tR\n" +
-	"validation\"\x9a\"\n" +
+	"validation\"\xa9$\n" +
 	"\x06Config\x12x\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x13.vca.common.v1.RoleBO\xd2\xf3\x18K\n" +
 	"\x14The deployment role.\x12\bVCA_ROLE8\x01B'One of issuer, holder, verifier, admin.R\x04role\x12~\n" +
@@ -681,18 +695,21 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\tlog_level\x18\f \x01(\tBh\xd2\xf3\x18d\n" +
 	"+The log level of every service of the role.\x12\rVCA_LOG_LEVEL\x1a\x04infoB One of debug, info, warn, error.R\blogLevel\x12\x8e\x01\n" +
 	"\tredis_url\x18\r \x01(\tBq\xd2\xf3\x18m\n" +
-	"1The Redis URL for rate limits and one time codes.\x12\rVCA_REDIS_URL \x01*\x01\x028\x01B\"Starts with redis:// or rediss://.R\bredisUrl\x1a\xcd\x06\n" +
-	"\x04Oidc\x12\xa6\x01\n" +
-	"\rdiscovery_url\x18\x01 \x01(\tB\x80\x01\xd2\xf3\x18|\n" +
-	"'The OIDC discovery URL of the provider.\x12\x16VCA_OIDC_DISCOVERY_URL8\x01B7An absolute https URL that serves a discovery document.R\fdiscoveryUrl\x12\x95\x01\n" +
-	"\tclient_id\x18\x02 \x01(\tBx\xd2\xf3\x18t\n" +
-	"(The OAuth 2.0 client id at the provider.\x12\x12VCA_OIDC_CLIENT_IDB4Required unless the CLI registers the client itself.R\bclientId\x12\xaa\x01\n" +
-	"\rclient_secret\x18\x03 \x01(\v2\x18.vca.common.v1.SecretRefBk\xd2\xf3\x18g\n" +
-	"-The reference to the OAuth 2.0 client secret.\x12\x16VCA_OIDC_CLIENT_SECRET \x01B\x1cOptional for public clients.R\fclientSecret\x12\x93\x01\n" +
+	"1The Redis URL for rate limits and one time codes.\x12\rVCA_REDIS_URL \x01*\x01\x028\x01B\"Starts with redis:// or rediss://.R\bredisUrl\x1a\xdc\b\n" +
+	"\x04Oidc\x12\xd6\x01\n" +
+	"\rdiscovery_url\x18\x01 \x01(\tB\xb0\x01\xd2\xf3\x18\xab\x01\n" +
+	"NThe OIDC discovery URL of the provider. Defaults to the Keycloak of the stack.\x12\x16VCA_OIDC_DISCOVERY_URL8\x01B?An absolute http or https URL that serves a discovery document.R\fdiscoveryUrl\x12\xa7\x01\n" +
+	"\tclient_id\x18\x02 \x01(\tB\x89\x01\xd2\xf3\x18\x84\x01\n" +
+	"HThe OAuth 2.0 client id at the provider. Defaults to vca- plus the role.\x12\x12VCA_OIDC_CLIENT_IDB$Defaults to vca- plus the role name.R\bclientId\x12\xb6\x01\n" +
+	"\rclient_secret\x18\x03 \x01(\v2\x18.vca.common.v1.SecretRefBw\xd2\xf3\x18s\n" +
+	"-The reference to the OAuth 2.0 client secret.\x12\x16VCA_OIDC_CLIENT_SECRET \x018\x01B&32 random bytes. The CLI generates it.R\fclientSecret\x12\x93\x01\n" +
 	"\x10roles_claim_path\x18\x04 \x01(\tBi\xd2\xf3\x18e\n" +
 	"4The JSON path of the token claim that carries roles.\x12\x19VCA_OIDC_ROLES_CLAIM_PATH\x1a\x12realm_access.rolesR\x0erolesClaimPath\x12\xc0\x01\n" +
 	"\fredirect_uri\x18\x05 \x01(\tB\x9c\x01\xd2\xf3\x18\x97\x01\n" +
-	",The redirect URI registered at the provider.\x12\x15VCA_OIDC_REDIRECT_URIBPDefaults to the public URL plus /auth/callback. Must match the provider exactly.R\vredirectUri\x1a\x84\a\n" +
+	",The redirect URI registered at the provider.\x12\x15VCA_OIDC_REDIRECT_URIBPDefaults to the public URL plus /auth/callback. Must match the provider exactly.R\vredirectUri\x12\xbe\x01\n" +
+	"\n" +
+	"public_url\x18\x06 \x01(\tB\x9e\x01\xd2\xf3\x18\x99\x01\n" +
+	"7The base URL that a browser uses to reach the provider.\x12\x13VCA_OIDC_PUBLIC_URLBIAn absolute http or https URL. Defaults to the host port of the Keycloak.R\tpublicUrl\x1a\x84\a\n" +
 	"\aSecrets\x12\xc4\x01\n" +
 	"\vsigning_key\x18\x01 \x01(\v2\x18.vca.common.v1.SecretRefB\x88\x01\xd2\xf3\x18\x83\x01\n" +
 	"3The ES256 or Ed25519 signing key of the deployment.\x12\x17VCA_SECRETS_SIGNING_KEY \x018\x01B/A reference to a PEM or JWK file, or a KMS key.R\n" +

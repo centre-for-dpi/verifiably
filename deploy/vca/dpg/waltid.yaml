@@ -1,12 +1,30 @@
 # SPDX-License-Identifier: Apache-2.0
 # walt.id Community Stack v0.18.2 (ADR-008 decision 3).
 # The versions come from verifiably-go/docs/dpg-matrix.md.
+# Keycloak 25.0 is the identity provider of the local path.
 # The main compose file pulls this file in with include.
 # VCA services never rebuild a DPG image.
 #
 # Start it with: vca deploy --role issuer --dpg waltid
 
 services:
+  waltid-keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    profiles: [issuer-waltid, holder-waltid, verifier-waltid, admin-waltid]
+    container_name: waltid-keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ../${WALTID_REALM_DIR:-issuer-waltid}:/opt/keycloak/data/import:ro
+    ports:
+      - "${WALTID_KEYCLOAK_HOST_PORT:-17010}:8080"
+    networks:
+      - vca
+
   waltid-postgres:
     image: postgres:16.4-alpine
     profiles: [holder-waltid]

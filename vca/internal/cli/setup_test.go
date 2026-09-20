@@ -16,9 +16,9 @@ import (
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
-func roleAdmin(t *testing.T) commonv1.Role {
+func roleHolder(t *testing.T) commonv1.Role {
 	t.Helper()
-	r, err := ParseRole("admin")
+	r, err := ParseRole("holder")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +79,8 @@ func TestBuildPlanNonInteractive(t *testing.T) {
 			t.Errorf("the plan has no %s", want)
 		}
 	}
-	if names[RealmFile] {
-		t.Error("a walt.id pair got a Keycloak realm")
+	if !names[RealmFile] {
+		t.Error("a walt.id pair got no Keycloak realm")
 	}
 }
 
@@ -107,7 +107,8 @@ func TestBuildPlanEnvFileModeIs0600(t *testing.T) {
 }
 
 func TestBuildPlanFailsAndListsEveryMissingValue(t *testing.T) {
-	_, err := BuildPlan(SetupRequest{Pair: issuerPair(), Random: rand.Reader})
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
+	_, err := BuildPlan(SetupRequest{Pair: holder, Random: rand.Reader})
 	if err == nil {
 		t.Fatal("BuildPlan passed with no values")
 	}
@@ -119,7 +120,7 @@ func TestBuildPlanFailsAndListsEveryMissingValue(t *testing.T) {
 		t.Errorf("got %d missing settings", len(missing.Settings))
 	}
 	text := err.Error()
-	for _, want := range []string{"VCA_OIDC_DISCOVERY_URL"} {
+	for _, want := range []string{"VCA_REDIS_URL"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the error does not name %s:\n%s", want, text)
 		}
@@ -182,46 +183,35 @@ func TestBuildPlanAdminNeedsABootstrapToken(t *testing.T) {
 }
 
 func TestBuildPlanInteractive(t *testing.T) {
-	answers := strings.Join([]string{
-		"https://issuer.example", // public URL
-		"",                       // internal URL, empty
-		"postgres://vca@pg/vca",  // database URL
-		"https://idp.example/.well-known/openid-configuration",
-		"vca-issuer",             // OIDC client id
-		"",                       // roles claim path, default
-		"",                       // redirect URI, derived
-		"",                       // signing key id
-		"",                       // portal port
-		"",                       // auth port
-		"",                       // adapter port
-		"",                       // trust methods
-		"http://issuer-api:7002", // DPG URL
-		"",                       // OTLP endpoint
-		"",                       // log level
-	}, "\n") + "\n"
+	// The holder pair has one value with no default.
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
 	var out strings.Builder
 	plan, err := BuildPlan(SetupRequest{
-		Pair:        issuerPair(),
+		Pair:        holder,
 		Interactive: true,
-		Prompter:    NewPrompter(strings.NewReader(answers), &out),
+		Prompter:    NewPrompter(strings.NewReader("redis://cache:6379\n"), &out),
 		Random:      rand.Reader,
 	})
 	if err != nil {
 		t.Fatalf("BuildPlan: %v\n%s", err, out.String())
 	}
 	values := Values(plan.Resolutions)
-	if values["VCA_PUBLIC_URL"] != "https://issuer.example" {
+	if values["VCA_REDIS_URL"] != "redis://cache:6379" {
+		t.Errorf("the Redis URL = %q", values["VCA_REDIS_URL"])
+	}
+	if values["VCA_PUBLIC_URL"] != LocalPublicURL(holder) {
 		t.Errorf("the public URL = %q", values["VCA_PUBLIC_URL"])
 	}
-	if values["VCA_DPG_URL"] != "http://issuer-api:7002" {
-		t.Errorf("the DPG URL = %q", values["VCA_DPG_URL"])
+	if !strings.Contains(out.String(), "VCA_REDIS_URL") {
+		t.Errorf("the CLI asked no question:\n%s", out.String())
 	}
 }
 
 func TestBuildPlanInteractiveReportsAClosedInput(t *testing.T) {
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
 	var out strings.Builder
 	_, err := BuildPlan(SetupRequest{
-		Pair:        issuerPair(),
+		Pair:        holder,
 		Interactive: true,
 		Prompter:    NewPrompter(strings.NewReader(""), &out),
 		Random:      rand.Reader,
@@ -454,8 +444,8 @@ func TestDpgConfigFilesReportsABadPublicURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DpgConfigFiles: %v", err)
 	}
-	if len(files) != 1 || files[0].Name != CaddyFile {
-		t.Errorf("files = %+v", files)
+	if len(files) != 2 || files[0].Name != CaddyFile || files[1].Name != RealmFile {
+		t.Errorf("files = %d entries", len(files))
 	}
 }
 

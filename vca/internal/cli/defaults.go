@@ -40,6 +40,101 @@ var dpgAPIURL = map[configv1.Dpg]map[commonv1.Role]string{
 // The admin role calls no DPG, so it gets an empty value.
 func DefaultDpgURL(p Pair) string { return dpgAPIURL[p.Dpg][p.Role] }
 
+// keycloakHostPort is the host port that each DPG stack maps to port
+// 8080 of its Keycloak. The numbers come from the compose file of the
+// stack under deploy/vca/dpg.
+var keycloakHostPort = map[configv1.Dpg]int{
+	configv1.Dpg_DPG_WALTID:  17010,
+	configv1.Dpg_DPG_INJI:    17080,
+	configv1.Dpg_DPG_CREDEBL: 17180,
+}
+
+// KeycloakContainer returns the container name of the Keycloak of one
+// DPG stack. Every stack ships one, so a laptop needs no other IdP.
+func KeycloakContainer(d configv1.Dpg) string {
+	if _, ok := keycloakHostPort[d]; !ok {
+		return ""
+	}
+	return ShortName(d.String()) + "-keycloak"
+}
+
+// KeycloakHostPort returns the host port of the Keycloak of one DPG
+// stack. A browser reaches the login page there.
+func KeycloakHostPort(d configv1.Dpg) int { return keycloakHostPort[d] }
+
+// KeycloakHostPortEnv is the compose variable that carries the host port
+// of the Keycloak of one DPG stack.
+func KeycloakHostPortEnv(d configv1.Dpg) string {
+	if KeycloakContainer(d) == "" {
+		return ""
+	}
+	return envName(ShortName(d.String())) + "_KEYCLOAK_HOST_PORT"
+}
+
+// DefaultDiscoveryURL returns the discovery URL of the Keycloak of the
+// stack, as the services reach it on the compose network. A production
+// deployment replaces it with the national IdP.
+func DefaultDiscoveryURL(p Pair) string {
+	name := KeycloakContainer(p.Dpg)
+	if name == "" {
+		return ""
+	}
+	return fmt.Sprintf("http://%s:8080/realms/%s/.well-known/openid-configuration", name, DefaultRealm)
+}
+
+// DefaultOidcPublicURL returns the browser facing base URL of the
+// Keycloak of the stack, on the host port the compose file maps.
+func DefaultOidcPublicURL(p Pair) string {
+	port := KeycloakHostPort(p.Dpg)
+	if port == 0 {
+		return ""
+	}
+	return fmt.Sprintf("http://localhost:%d", port)
+}
+
+// DefaultClientID returns the OAuth 2.0 client id of one role. The
+// generated realm holds a client with this id.
+func DefaultClientID(role commonv1.Role) string {
+	name := ShortName(role.String())
+	if name == "" {
+		return ""
+	}
+	return "vca-" + name
+}
+
+// DpgPort is one host port of a container of a DPG stack.
+type DpgPort struct {
+	// Container is the container name in the stack compose file.
+	Container string
+	// Host is the port on the machine that runs compose.
+	Host int
+	// Env is the compose variable that overrides the host port.
+	Env string
+}
+
+// DpgHostPorts lists the host ports of the DPG stack of one pair that
+// the deployment itself needs. The Keycloak of the stack is one, because
+// a browser reaches the login page there.
+func DpgHostPorts(p Pair) []DpgPort {
+	name := KeycloakContainer(p.Dpg)
+	if name == "" {
+		return nil
+	}
+	return []DpgPort{{Container: name, Host: KeycloakHostPort(p.Dpg), Env: KeycloakHostPortEnv(p.Dpg)}}
+}
+
+// IdpTable renders the Keycloak of every DPG stack as a Markdown table.
+// The deploy documentation includes it.
+func IdpTable() string {
+	rows := "| DPG | Keycloak container | Host port | Default `VCA_OIDC_DISCOVERY_URL` |\n|---|---|---|---|\n"
+	for _, d := range Dpgs() {
+		p := Pair{Dpg: d}
+		rows += fmt.Sprintf("| `%s` | `%s` | %d | `%s` |\n",
+			ShortName(d.String()), KeycloakContainer(d), KeycloakHostPort(d), DefaultDiscoveryURL(p))
+	}
+	return rows
+}
+
 // DpgURLTable renders the default DPG URL of every pair as a Markdown
 // table. The deploy documentation includes it.
 func DpgURLTable() string {

@@ -111,58 +111,54 @@ func TestAskReportsClosedInput(t *testing.T) {
 	}
 }
 
-func TestAskAllSkipsWhatHigherSourcesFilled(t *testing.T) {
-	settings := Filter(Settings(), roleAdmin(t), dpgWaltid(t))
+func TestAskMissingAsksOnlyForAMissingRequiredValue(t *testing.T) {
+	settings := Filter(Settings(), roleHolder(t), dpgWaltid(t))
 	var out bytes.Buffer
-	// Blank lines take the offered default of every optional question.
-	lines := strings.Repeat("\n", 30)
-	p := NewPrompter(strings.NewReader(lines), &out)
-	src := Sources{
-		Flags: map[string]string{
-			"VCA_PUBLIC_URL":         "https://flag.example",
-			"VCA_DATABASE_URL":       "postgres://flag/db",
-			"VCA_OIDC_DISCOVERY_URL": "https://idp.example/.well-known/openid-configuration",
-		},
-		File: map[string]string{"VCA_LOG_LEVEL": "warn"},
-	}
-	answers, err := p.AskAll(settings, src)
+	p := NewPrompter(strings.NewReader("redis://cache:6379\n"), &out)
+	list := resolveWithDefaults(settings, Sources{}, Pair{Role: roleHolder(t), Dpg: dpgWaltid(t)})
+	answers, err := p.AskMissing(list)
 	if err != nil {
-		t.Fatalf("AskAll: %v", err)
+		t.Fatalf("AskMissing: %v", err)
 	}
-	if _, ok := answers["VCA_PUBLIC_URL"]; ok {
-		t.Error("the CLI asked for a value a flag already set")
+	if answers["VCA_REDIS_URL"] != "redis://cache:6379" {
+		t.Errorf("got %q", answers["VCA_REDIS_URL"])
 	}
-	if _, ok := answers["VCA_LOG_LEVEL"]; ok {
-		t.Error("the CLI asked for a value the env file already set")
-	}
-	if _, ok := answers["VCA_SECRETS_SESSION_KEY"]; ok {
-		t.Error("the CLI asked for a generated secret")
-	}
-	if _, ok := answers["VCA_ROLE"]; ok {
-		t.Error("the CLI asked for the role")
+	for _, name := range []string{
+		"VCA_PUBLIC_URL", "VCA_DPG_URL", "VCA_OIDC_DISCOVERY_URL",
+		"VCA_DATABASE_URL", "VCA_LOG_LEVEL", "VCA_SECRETS_SESSION_KEY", "VCA_ROLE",
+	} {
+		if _, ok := answers[name]; ok {
+			t.Errorf("the CLI asked for %s", name)
+		}
 	}
 }
 
-func TestAskAllOffersAnExistingSecret(t *testing.T) {
-	s := find(t, Settings(), "database_url")
+// TestAskMissingAsksNothingOnALaptop is the laptop path of
+// ADR-008 decision 7. Every value of the issuer pair has a default.
+func TestAskMissingAsksNothingOnALaptop(t *testing.T) {
+	p := issuerPair()
+	settings := Filter(Settings(), p.Role, p.Dpg)
 	var out bytes.Buffer
-	p := NewPrompter(strings.NewReader("\n"), &out)
-	answers, err := p.AskAll([]Setting{s}, Sources{
-		Existing: map[string]string{"VCA_DATABASE_URL": "postgres://kept/db"},
-	})
+	prompter := NewPrompter(strings.NewReader(""), &out)
+	answers, err := prompter.AskMissing(resolveWithDefaults(settings, Sources{}, p))
 	if err != nil {
-		t.Fatalf("AskAll: %v", err)
+		t.Fatalf("AskMissing: %v", err)
 	}
-	if answers["VCA_DATABASE_URL"] != "postgres://kept/db" {
-		t.Errorf("got %q", answers["VCA_DATABASE_URL"])
+	if len(answers) != 0 {
+		t.Errorf("the CLI asked %d questions: %v", len(answers), answers)
+	}
+	if out.Len() != 0 {
+		t.Errorf("the CLI printed a question:\n%s", out.String())
 	}
 }
 
-func TestAskAllReportsAFailedQuestion(t *testing.T) {
+func TestAskMissingReportsAFailedQuestion(t *testing.T) {
 	var out bytes.Buffer
 	p := NewPrompter(strings.NewReader(""), &out)
-	if _, err := p.AskAll([]Setting{find(t, Settings(), "public_url")}, Sources{}); err == nil {
-		t.Fatal("AskAll passed with no input")
+	list := []Resolution{{Setting: find(t, Settings(), "public_url")}}
+	list[0].Setting.Required = true
+	if _, err := p.AskMissing(list); err == nil {
+		t.Fatal("AskMissing passed with no input")
 	}
 }
 

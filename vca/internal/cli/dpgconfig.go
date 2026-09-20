@@ -72,6 +72,7 @@ type realmClient struct {
 	ClientID                  string   `json:"clientId"`
 	Name                      string   `json:"name"`
 	Enabled                   bool     `json:"enabled"`
+	Secret                    string   `json:"secret,omitempty"`
 	PublicClient              bool     `json:"publicClient"`
 	StandardFlowEnabled       bool     `json:"standardFlowEnabled"`
 	ImplicitFlowEnabled       bool     `json:"implicitFlowEnabled"`
@@ -103,10 +104,11 @@ type realmRole struct {
 	Description string `json:"description"`
 }
 
-// KeycloakRealm renders the realm that the Inji and the CREDEBL stacks
-// import. The realm holds one public client with the exact redirect URI
-// of the deployment, the authorization code flow, and PKCE
-// (ADR-010 decision 2). The implicit flow stays off.
+// KeycloakRealm renders the realm that the Keycloak of every DPG stack
+// imports. The realm holds one client with the exact redirect URI of the
+// deployment, the authorization code flow, and PKCE
+// (ADR-010 decision 2). The implicit flow stays off. A generated client
+// secret makes the client confidential.
 func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 	public := strings.TrimRight(values["VCA_PUBLIC_URL"], "/")
 	if public == "" {
@@ -114,17 +116,19 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 	}
 	clientID := values["VCA_OIDC_CLIENT_ID"]
 	if clientID == "" {
-		clientID = "vca-" + ShortName(p.Role.String())
+		clientID = DefaultClientID(p.Role)
 	}
 	redirect := values["VCA_OIDC_REDIRECT_URI"]
 	if redirect == "" {
 		redirect = public + "/auth/callback"
 	}
+	secret := values["VCA_OIDC_CLIENT_SECRET"]
 	client := realmClient{
 		ClientID:            clientID,
 		Name:                "Verifiable Credentials Adapters " + ShortName(p.Role.String()),
 		Enabled:             true,
-		PublicClient:        true,
+		Secret:              secret,
+		PublicClient:        secret == "",
 		StandardFlowEnabled: true,
 		RedirectUris:        []string{redirect},
 		WebOrigins:          []string{public},
@@ -177,23 +181,21 @@ func WaltidOnboard(values map[string]string) ([]byte, error) {
 }
 
 // DpgConfigFiles renders every generated DPG configuration file of a pair.
-// walt.id gets the onboarding body. Inji and CREDEBL get a Keycloak realm.
-// Every pair gets a Caddyfile.
+// Every stack ships a Keycloak, so every pair gets a realm. walt.id gets
+// the onboarding body as well. Every pair gets a Caddyfile.
 func DpgConfigFiles(p Pair, values map[string]string, plan []PortAssignment) ([]File, error) {
 	files := []File{{Name: CaddyFile, Data: []byte(Caddyfile(p, values, plan)), Mode: 0o644}}
-	switch p.Dpg {
-	case configv1.Dpg_DPG_WALTID:
-		body, err := WaltidOnboard(values)
-		if err != nil {
-			return nil, err
+	realmBody, err := KeycloakRealm(p, values)
+	if err != nil {
+		return nil, err
+	}
+	files = append(files, File{Name: RealmFile, Data: append(realmBody, '\n'), Mode: 0o644})
+	if p.Dpg == configv1.Dpg_DPG_WALTID {
+		body, onboardErr := WaltidOnboard(values)
+		if onboardErr != nil {
+			return nil, onboardErr
 		}
 		files = append(files, File{Name: OnboardFile, Data: append(body, '\n'), Mode: 0o644})
-	case configv1.Dpg_DPG_INJI, configv1.Dpg_DPG_CREDEBL:
-		body, err := KeycloakRealm(p, values)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, File{Name: RealmFile, Data: append(body, '\n'), Mode: 0o644})
 	}
 	return files, nil
 }
@@ -221,12 +223,16 @@ func (f ResourceFloor) TotalMemoryMiB() int { return f.VcaMemoryMiB + f.DpgMemor
 const perServiceMemoryMiB = 96
 
 // dpgMemoryMiB is the memory floor of one DPG stack, from the compose
-// files under deploy/vca/dpg.
+// files under deploy/vca/dpg. Each figure holds the Keycloak of the
+// stack.
 var dpgMemoryMiB = map[configv1.Dpg]int{
-	configv1.Dpg_DPG_WALTID:  1536,
+	configv1.Dpg_DPG_WALTID:  2048,
 	configv1.Dpg_DPG_INJI:    2560,
 	configv1.Dpg_DPG_CREDEBL: 2560,
 }
+
+// keycloakMemoryMiB is the memory floor of the Keycloak of one stack.
+const keycloakMemoryMiB = 512
 
 // Floor returns the resource floor of one pair. The target of ADR-008
 // decision 7 is under 4 GB for a single role with one DPG.
@@ -234,8 +240,9 @@ func Floor(p Pair) ResourceFloor {
 	services := len(ServicesFor(p))
 	dpg := dpgMemoryMiB[p.Dpg]
 	if p.Role == commonv1.Role_ROLE_ADMIN {
-		// The admin role talks to no DPG, so it needs only Postgres.
-		dpg = 256
+		// The admin role talks to no DPG. Its profile starts only the
+		// Keycloak of the stack, which logs the admins in.
+		dpg = keycloakMemoryMiB
 	}
 	return ResourceFloor{
 		Role:         p.Role,

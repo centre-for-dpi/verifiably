@@ -91,16 +91,30 @@ func TestSetupNonInteractive(t *testing.T) {
 	}
 }
 
+// TestSetupNonInteractiveNeedsNoValueOnALaptop is the laptop path of
+// ADR-008 decision 7. Every value has a default.
+func TestSetupNonInteractiveNeedsNoValueOnALaptop(t *testing.T) {
+	root := t.TempDir()
+	status, out, errOut := run(t, Environment{Root: root},
+		"setup", "--role", "issuer", "--dpg", "waltid", "--non-interactive")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	for _, name := range []string{EnvFileName, RealmFile, OnboardFile} {
+		if _, err := os.Stat(filepath.Join(root, "deploy", "issuer-waltid", name)); err != nil {
+			t.Errorf("%s was not written: %v", name, err)
+		}
+	}
+}
+
 func TestSetupNonInteractiveListsEveryMissingValue(t *testing.T) {
 	status, _, errOut := run(t, Environment{Root: t.TempDir()},
-		"setup", "--role", "issuer", "--dpg", "waltid", "--non-interactive")
+		"setup", "--role", "holder", "--dpg", "waltid", "--non-interactive")
 	if status == 0 {
-		t.Fatal("a run with no values passed")
+		t.Fatal("a run with no Redis URL passed")
 	}
-	for _, want := range []string{"VCA_OIDC_DISCOVERY_URL"} {
-		if !strings.Contains(errOut, want) {
-			t.Errorf("the error does not name %s:\n%s", want, errOut)
-		}
+	if !strings.Contains(errOut, "VCA_REDIS_URL") {
+		t.Errorf("the error does not name VCA_REDIS_URL:\n%s", errOut)
 	}
 }
 
@@ -218,19 +232,9 @@ func TestSetupAllComposesEveryRole(t *testing.T) {
 
 func TestSetupInteractiveAsksThenWrites(t *testing.T) {
 	root := t.TempDir()
-	answers := strings.Join([]string{
-		"https://admin.example", // public URL
-		"",                      // internal URL
-		"postgres://vca@pg/vca", // database URL
-		"https://idp.example/.well-known/openid-configuration",
-		"", "", "", // client id, roles claim, redirect URI
-		"",     // signing key id
-		"", "", // portal port, auth port
-		"",  // trust methods
-		"",  // OTLP endpoint
-		"",  // log level
-		"y", // write the files
-	}, "\n") + "\n"
+	// Every value of the admin pair has a default, so the only
+	// question is the last one.
+	answers := "y\n"
 	status, out, errOut := run(t, Environment{Root: root, In: strings.NewReader(answers)},
 		"setup", "--role", "admin", "--dpg", "waltid")
 	if status != 0 {
@@ -246,12 +250,7 @@ func TestSetupInteractiveAsksThenWrites(t *testing.T) {
 
 func TestSetupInteractiveKeepsTheFilesOnNo(t *testing.T) {
 	root := t.TempDir()
-	answers := strings.Join([]string{
-		"https://admin.example", "", "postgres://vca@pg/vca",
-		"https://idp.example/.well-known/openid-configuration",
-		"", "", "", "", "", "", "", "", "",
-		"n",
-	}, "\n") + "\n"
+	answers := "n\n"
 	status, out, errOut := run(t, Environment{Root: root, In: strings.NewReader(answers)},
 		"setup", "--role", "admin", "--dpg", "waltid")
 	if status != 0 {
