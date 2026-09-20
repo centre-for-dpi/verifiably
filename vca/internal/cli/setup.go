@@ -110,7 +110,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	list := ResolveAll(settings, src)
 	list = applyRoleAndDpg(list, req.Pair)
 	list = applyLocalPublicURL(list, req.Pair)
-	list = applyDerivedDefaults(list)
+	list = applyDerivedDefaults(list, req.Pair)
 	list, secretFiles, err := FillSecrets(list, req.Random)
 	if err != nil {
 		return Plan{}, err
@@ -183,11 +183,21 @@ func applyRoleAndDpg(list []Resolution, p Pair) []Resolution {
 	return out
 }
 
-// applyDerivedDefaults fills the values the Config message says follow
-// from another value: the internal URL and the OIDC redirect URI.
-func applyDerivedDefaults(list []Resolution) []Resolution {
+// applyDerivedDefaults fills every value that follows from the pair or
+// from another value. The DPG URL follows from the role and the DPG.
+// The internal URL and the OIDC redirect URI follow from the public URL
+// (ADR-007 decision 2).
+func applyDerivedDefaults(list []Resolution, p Pair) []Resolution {
 	out := make([]Resolution, len(list))
 	copy(out, list)
+	for i := range out {
+		if out[i].Value != "" || out[i].Setting.Path != "dpg_url" {
+			continue
+		}
+		if url := DefaultDpgURL(p); url != "" {
+			out[i].Value, out[i].Origin = url, OriginDefault
+		}
+	}
 	public := ""
 	for _, r := range out {
 		if r.Setting.Path == "public_url" {

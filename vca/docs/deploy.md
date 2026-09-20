@@ -208,6 +208,27 @@ Set it to a digest before you go to production.
 A VCA service never needs a DPG rebuild.
 A DPG upgrade is a version change in one file.
 
+### The DPG API URL
+
+`vca setup` fills `VCA_DPG_URL` from the role and the DPG.
+The value is the container URL of the DPG API on the `vca` network:
+
+| Role and DPG | Default `VCA_DPG_URL` |
+|---|---|
+| `issuer-waltid` | `http://waltid-issuer-api:7002` |
+| `issuer-inji` | `http://inji-certify:8090` |
+| `issuer-credebl` | `http://credebl-api-gateway:5000` |
+| `holder-waltid` | `http://waltid-wallet-api:7001` |
+| `holder-inji` | `http://inji-web:3000` |
+| `holder-credebl` | `http://credebl-api-gateway:5000` |
+| `verifier-waltid` | `http://waltid-verifier-api:7003` |
+| `verifier-inji` | `http://inji-verify-service:8000` |
+| `verifier-credebl` | `http://credebl-api-gateway:5000` |
+
+The admin role calls no DPG, so it has no default.
+Set `VCA_DPG_URL` yourself when the DPG runs on another host.
+Your value always wins over the default.
+
 ## The resource floor
 
 One role with one DPG stays under 4 GB of memory (ADR-008 decision 7).
