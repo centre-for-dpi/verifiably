@@ -54,6 +54,9 @@ type Setting struct {
 	Secret bool
 	// Required reports whether a missing value is an error.
 	Required bool
+	// Prompt reports whether an interactive run asks for the value even
+	// though it has a default (ADR-007 decision 2).
+	Prompt bool
 	// Validation is the rule in plain words.
 	Validation string
 	// Roles lists the roles that need the setting. Empty means every role.
@@ -117,6 +120,7 @@ func walk(md protoreflect.MessageDescriptor, prefix string, roles []commonv1.Rol
 			Default:     opt.GetDefault(),
 			Secret:      opt.GetSecret(),
 			Required:    opt.GetRequired(),
+			Prompt:      opt.GetPrompt(),
 			Validation:  opt.GetValidation(),
 			Roles:       childRoles,
 			Dpgs:        childDpgs,

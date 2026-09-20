@@ -109,7 +109,11 @@ type Setting struct {
 	// True when the CLI fails without a value in non interactive mode.
 	Required bool `protobuf:"varint,7,opt,name=required,proto3" json:"required,omitempty"`
 	// The validation rule in plain words, for example an absolute https URL.
-	Validation    string `protobuf:"bytes,8,opt,name=validation,proto3" json:"validation,omitempty"`
+	Validation string `protobuf:"bytes,8,opt,name=validation,proto3" json:"validation,omitempty"`
+	// True when an interactive run asks for the field even though it has a
+	// default. The question shows the default in brackets. An empty answer
+	// keeps the default.
+	Prompt        bool `protobuf:"varint,9,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -200,6 +204,13 @@ func (x *Setting) GetValidation() string {
 	return ""
 }
 
+func (x *Setting) GetPrompt() bool {
+	if x != nil {
+		return x.Prompt
+	}
+	return false
+}
+
 // Config is the full set of setup variables of one role and DPG pair.
 // The CLI asks only for the fields that the chosen role and DPG need.
 // Validation notes on each field are the rules the CLI applies.
@@ -213,6 +224,8 @@ type Config struct {
 	// Optional. Defaults to http://localhost with the host port of the portal.
 	// A public host must use an absolute https URL without a path or a trailing slash.
 	// Wallets and verifiers reach the deployment at this URL.
+	// An interactive run always asks for it, because only the operator
+	// knows the public host (ADR-007 decision 2).
 	PublicUrl string `protobuf:"bytes,3,opt,name=public_url,json=publicUrl,proto3" json:"public_url,omitempty"`
 	// The base URL that other containers on the same network use.
 	// Optional. Defaults to public_url. Must be an absolute http or https URL.
@@ -655,7 +668,7 @@ var File_vca_config_v1_config_proto protoreflect.FileDescriptor
 
 const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\n" +
-	"\x1avca/config/v1/config.proto\x12\rvca.config.v1\x1a google/protobuf/descriptor.proto\x1a\x1avca/common/v1/common.proto\"\xfe\x01\n" +
+	"\x1avca/config/v1/config.proto\x12\rvca.config.v1\x1a google/protobuf/descriptor.proto\x1a\x1avca/common/v1/common.proto\"\x96\x02\n" +
 	"\aSetting\x12 \n" +
 	"\vdescription\x18\x01 \x01(\tR\vdescription\x12\x10\n" +
 	"\x03env\x18\x02 \x01(\tR\x03env\x12\x18\n" +
@@ -666,15 +679,16 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\brequired\x18\a \x01(\bR\brequired\x12\x1e\n" +
 	"\n" +
 	"validation\x18\b \x01(\tR\n" +
-	"validation\"\xa9$\n" +
+	"validation\x12\x16\n" +
+	"\x06prompt\x18\t \x01(\bR\x06prompt\"\xdf$\n" +
 	"\x06Config\x12x\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x13.vca.common.v1.RoleBO\xd2\xf3\x18K\n" +
 	"\x14The deployment role.\x12\bVCA_ROLE8\x01B'One of issuer, holder, verifier, admin.R\x04role\x12~\n" +
 	"\x03dpg\x18\x02 \x01(\x0e2\x12.vca.config.v1.DpgBX\xd2\xf3\x18T\n" +
-	"(The digital public good behind the role.\x12\aVCA_DPG8\x01B\x1dOne of waltid, inji, credebl.R\x03dpg\x12\xce\x01\n" +
+	"(The digital public good behind the role.\x12\aVCA_DPG8\x01B\x1dOne of waltid, inji, credebl.R\x03dpg\x12\x84\x02\n" +
 	"\n" +
-	"public_url\x18\x03 \x01(\tB\xae\x01\xd2\xf3\x18\xa9\x01\n" +
-	"=The public base URL of the deployment. Defaults to localhost.\x12\x0eVCA_PUBLIC_URLBXAn absolute https URL without a path or a trailing slash. http is allowed for localhost.R\tpublicUrl\x12\xb8\x01\n" +
+	"public_url\x18\x03 \x01(\tB\xe4\x01\xd2\xf3\x18\xdf\x01\n" +
+	"qThe public base URL of the deployment. Leave blank for localhost. Enter https://issuer.example for a public host.\x12\x0eVCA_PUBLIC_URLBXAn absolute https URL without a path or a trailing slash. http is allowed for localhost.H\x01R\tpublicUrl\x12\xb8\x01\n" +
 	"\finternal_url\x18\x04 \x01(\tB\x94\x01\xd2\xf3\x18\x8f\x01\n" +
 	"?The base URL that other containers use to reach the deployment.\x12\x10VCA_INTERNAL_URLB:An absolute http or https URL. Defaults to the public URL.R\vinternalUrl\x12\xa6\x01\n" +
 	"\fdatabase_url\x18\x05 \x01(\tB\x82\x01\xd2\xf3\x18~\n" +

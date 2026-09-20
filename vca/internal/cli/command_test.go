@@ -237,7 +237,8 @@ func TestSetupInteractiveAsksThenWrites(t *testing.T) {
 	root := t.TempDir()
 	// Every value of the admin pair has a default, so the only
 	// question is the last one.
-	answers := "y\n"
+	// The first line answers the public URL question with the default.
+	answers := "\ny\n"
 	status, out, errOut := run(t, Environment{Root: root, In: strings.NewReader(answers)},
 		"setup", "--role", "admin", "--dpg", "waltid")
 	if status != 0 {
@@ -253,7 +254,8 @@ func TestSetupInteractiveAsksThenWrites(t *testing.T) {
 
 func TestSetupInteractiveKeepsTheFilesOnNo(t *testing.T) {
 	root := t.TempDir()
-	answers := "n\n"
+	// The first line answers the public URL question with the default.
+	answers := "\nn\n"
 	status, out, errOut := run(t, Environment{Root: root, In: strings.NewReader(answers)},
 		"setup", "--role", "admin", "--dpg", "waltid")
 	if status != 0 {

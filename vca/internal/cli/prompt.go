@@ -88,27 +88,73 @@ func asksQuestion(s Setting) bool {
 	return !s.Secret || s.Kind != KindSecretRef
 }
 
-// AskMissing asks one question per required value that no source and no
-// default filled. It returns the answers keyed by environment variable
-// name. Every value of a laptop deployment has a default, so that run
-// answers no question (ADR-007 decision 2, ADR-008 decision 7).
-// Set an optional value with --set or with the env file.
-func (p Prompter) AskMissing(list []Resolution) (map[string]string, error) {
+// AskAll asks every question of one setup run. It asks the settings the
+// proto marks with prompt first, then each required value that no source
+// and no default filled. It returns the answers keyed by environment
+// variable name (ADR-007 decision 2, ADR-008 decision 7).
+//
+// The offers map pre-fills one question, keyed by environment variable
+// name. A --all run passes the answer of the last pair, so the operator
+// presses enter to repeat it. Set an optional value with --set or with
+// the env file.
+func (p Prompter) AskAll(list []Resolution, offers map[string]string) (map[string]string, error) {
 	answers := make(map[string]string)
+	if err := p.askPrompted(list, offers, answers); err != nil {
+		return nil, err
+	}
+	if err := p.askMissing(list, answers); err != nil {
+		return nil, err
+	}
+	return answers, nil
+}
+
+// askPrompted asks the settings the proto marks with prompt. The
+// question shows the default in brackets, so an empty answer keeps it.
+// A value that a flag, the environment, or the env file supplied needs
+// no question.
+func (p Prompter) askPrompted(list []Resolution, offers, answers map[string]string) error {
+	for _, r := range list {
+		if !r.Setting.Prompt || !asksQuestion(r.Setting) || !opensAQuestion(r.Origin) {
+			continue
+		}
+		offered := r.Value
+		if v, ok := offers[r.Setting.Env]; ok && v != "" {
+			offered = v
+		}
+		answer, err := p.Ask(r.Setting, offered)
+		if err != nil {
+			return err
+		}
+		if answer != "" {
+			answers[r.Setting.Env] = answer
+		}
+	}
+	return nil
+}
+
+// askMissing asks one question per required value that no source and no
+// default filled. Every value of a laptop deployment has a default, so
+// that run answers no question here.
+func (p Prompter) askMissing(list []Resolution, answers map[string]string) error {
 	for _, r := range list {
 		if r.Value != "" || !r.Setting.Required || !asksQuestion(r.Setting) {
 			continue
 		}
 		answer, err := p.Ask(r.Setting, "")
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if answer != "" {
 			answers[r.Setting.Env] = answer
 		}
 	}
-	return answers, nil
+	return nil
 }
+
+// opensAQuestion reports whether an origin still leaves the question
+// open. A default or no value at all does. A value the operator supplied
+// does not, because the run must not ask for what it already has.
+func opensAQuestion(o Origin) bool { return o == OriginNone || o == OriginDefault }
 
 // ErrEmptyMenu reports that a menu was built with no option.
 var ErrEmptyMenu = errors.New("setup: the menu has no option")

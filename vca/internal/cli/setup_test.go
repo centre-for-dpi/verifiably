@@ -189,7 +189,7 @@ func TestBuildPlanInteractive(t *testing.T) {
 	plan, err := BuildPlan(SetupRequest{
 		Pair:        holder,
 		Interactive: true,
-		Prompter:    NewPrompter(strings.NewReader("redis://cache:6379\n"), &out),
+		Prompter:    NewPrompter(strings.NewReader("\nredis://cache:6379\n"), &out),
 		Random:      rand.Reader,
 	})
 	if err != nil {

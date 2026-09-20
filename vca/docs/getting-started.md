@@ -94,8 +94,8 @@ vca dpg bootstrap
 Each command asks for the role and the DPG, because no flag names them.
 Name them ahead of time with `--role <role> --dpg <dpg>` instead.
 
-`vca setup` asks no setting question on a laptop.
-Every value has a default.
+`vca setup` asks one setting question on a laptop: the public URL.
+Press Enter to keep the default. Every other value has a default too.
 The public URL is `http://localhost` with the host port of the portal.
 The DPG URL is the container of the stack.
 The identity provider is the Keycloak of the stack.

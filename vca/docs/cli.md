@@ -126,19 +126,34 @@ vca setup
 vca setup --role <role> --dpg <dpg>
 ```
 
-The command asks only for a required value that no source and no default
-filled.
+### The questions
+
+A terminal run asks two kinds of question, in this order:
+
+1. Every setting the proto marks with `prompt: true`.
+   The run asks for it even though it has a default.
+   The question shows the default in brackets.
+   An empty answer keeps the default.
+   The public URL is the only such setting today.
+2. Every required value that no source and no default filled.
+   There is none today, so a run that answers question 1 with enter is
+   done.
+
 A verifier operator never sees an issuer question.
-A laptop deployment answers no question, because every value has a
+A laptop deployment answers one question, because every other value has a
 default (ADR-008 decision 7).
 Each question shows the help text and the rule.
 A bad answer repeats the question with the reason.
+A value that a flag, the environment, or the env file supplied is not
+asked for again.
 Set an optional value with `--set` or with the `--env-file` file.
 
 The questions come from one place: the `Config` message in
 `proto/vca/config/v1/config.proto`.
 Each field carries a `setting` option.
-The option names the variable, the default, the rule, the roles, and the DPGs.
+The option names the variable, the default, the rule, the roles, and the
+DPGs.
+It also says whether the run prompts for the field.
 The CLI reads the generated descriptor.
 Nobody writes a question twice (ADR-007 decision 6).
 

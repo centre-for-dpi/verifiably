@@ -51,6 +51,10 @@ message Setting {
   bool required = 7;
   // The validation rule in plain words, for example an absolute https URL.
   string validation = 8;
+  // True when an interactive run asks for the field even though it has a
+  // default. The question shows the default in brackets. An empty answer
+  // keeps the default.
+  bool prompt = 9;
 }
 
 // Config is the full set of setup variables of one role and DPG pair.
@@ -75,9 +79,12 @@ message Config {
   // Optional. Defaults to http://localhost with the host port of the portal.
   // A public host must use an absolute https URL without a path or a trailing slash.
   // Wallets and verifiers reach the deployment at this URL.
+  // An interactive run always asks for it, because only the operator
+  // knows the public host (ADR-007 decision 2).
   string public_url = 3 [(setting) = {
-    description: "The public base URL of the deployment. Defaults to localhost."
+    description: "The public base URL of the deployment. Leave blank for localhost. Enter https://issuer.example for a public host."
     env: "VCA_PUBLIC_URL"
+    prompt: true
     validation: "An absolute https URL without a path or a trailing slash. http is allowed for localhost."
   }];
   // The base URL that other containers on the same network use.

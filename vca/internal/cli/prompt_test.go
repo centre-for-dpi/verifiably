@@ -111,20 +111,21 @@ func TestAskReportsClosedInput(t *testing.T) {
 	}
 }
 
-func TestAskMissingAsksOnlyForAMissingRequiredValue(t *testing.T) {
+func TestAskAllAsksOnlyForAMissingRequiredValue(t *testing.T) {
 	settings := Filter(Settings(), roleHolder(t), dpgWaltid(t))
 	var out bytes.Buffer
-	p := NewPrompter(strings.NewReader("redis://cache:6379\n"), &out)
+	// The first line answers the public URL question with the default.
+	p := NewPrompter(strings.NewReader("\nredis://cache:6379\n"), &out)
 	list := resolveWithDefaults(settings, Sources{}, Pair{Role: roleHolder(t), Dpg: dpgWaltid(t)})
-	answers, err := p.AskMissing(list)
+	answers, err := p.AskAll(list, nil)
 	if err != nil {
-		t.Fatalf("AskMissing: %v", err)
+		t.Fatalf("AskAll: %v", err)
 	}
 	if answers["VCA_REDIS_URL"] != "redis://cache:6379" {
 		t.Errorf("got %q", answers["VCA_REDIS_URL"])
 	}
 	for _, name := range []string{
-		"VCA_PUBLIC_URL", "VCA_DPG_URL", "VCA_OIDC_DISCOVERY_URL",
+		"VCA_DPG_URL", "VCA_OIDC_DISCOVERY_URL",
 		"VCA_DATABASE_URL", "VCA_LOG_LEVEL", "VCA_SECRETS_SESSION_KEY", "VCA_ROLE",
 	} {
 		if _, ok := answers[name]; ok {
@@ -133,32 +134,75 @@ func TestAskMissingAsksOnlyForAMissingRequiredValue(t *testing.T) {
 	}
 }
 
-// TestAskMissingAsksNothingOnALaptop is the laptop path of
-// ADR-008 decision 7. Every value of the issuer pair has a default.
-func TestAskMissingAsksNothingOnALaptop(t *testing.T) {
+// TestAskAllAsksOneQuestionOnALaptop is the laptop path of
+// ADR-008 decision 7. Every value of the issuer pair has a default, so
+// the public URL is the one question.
+func TestAskAllAsksOneQuestionOnALaptop(t *testing.T) {
 	p := issuerPair()
 	settings := Filter(Settings(), p.Role, p.Dpg)
 	var out bytes.Buffer
-	prompter := NewPrompter(strings.NewReader(""), &out)
-	answers, err := prompter.AskMissing(resolveWithDefaults(settings, Sources{}, p))
+	prompter := NewPrompter(strings.NewReader("\n"), &out)
+	answers, err := prompter.AskAll(resolveWithDefaults(settings, Sources{}, p), nil)
 	if err != nil {
-		t.Fatalf("AskMissing: %v", err)
+		t.Fatalf("AskAll: %v", err)
 	}
-	if len(answers) != 0 {
+	if answers["VCA_PUBLIC_URL"] != LocalPublicURL(p) {
+		t.Errorf("an empty answer did not keep the default: %q", answers["VCA_PUBLIC_URL"])
+	}
+	if len(answers) != 1 {
 		t.Errorf("the CLI asked %d questions: %v", len(answers), answers)
 	}
-	if out.Len() != 0 {
-		t.Errorf("the CLI printed a question:\n%s", out.String())
+	if !strings.Contains(out.String(), LocalPublicURL(p)) {
+		t.Errorf("the question does not show the default:\n%s", out.String())
 	}
 }
 
-func TestAskMissingReportsAFailedQuestion(t *testing.T) {
+// TestAskAllSkipsAPromptSettingThatASourceFilled proves a --set flag
+// answers the question, so the run stays silent.
+func TestAskAllSkipsAPromptSettingThatASourceFilled(t *testing.T) {
+	p := issuerPair()
+	settings := Filter(Settings(), p.Role, p.Dpg)
+	src := Sources{Flags: map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"}}
+	var out bytes.Buffer
+	prompter := NewPrompter(strings.NewReader(""), &out)
+	answers, err := prompter.AskAll(resolveWithDefaults(settings, src, p), nil)
+	if err != nil {
+		t.Fatalf("AskAll: %v", err)
+	}
+	if len(answers) != 0 || out.Len() != 0 {
+		t.Errorf("the CLI asked a question it had the answer to:\n%s", out.String())
+	}
+}
+
+// TestAskAllUsesTheOffer proves a --all run pre-fills the question with
+// the answer of the last pair.
+func TestAskAllUsesTheOffer(t *testing.T) {
+	p := issuerPair()
+	settings := Filter(Settings(), p.Role, p.Dpg)
+	var out bytes.Buffer
+	prompter := NewPrompter(strings.NewReader("\n"), &out)
+	offers := map[string]string{"VCA_PUBLIC_URL": "https://one.example"}
+	answers, err := prompter.AskAll(resolveWithDefaults(settings, Sources{}, p), offers)
+	if err != nil {
+		t.Fatalf("AskAll: %v", err)
+	}
+	if answers["VCA_PUBLIC_URL"] != "https://one.example" {
+		t.Errorf("the offer was not repeated: %q", answers["VCA_PUBLIC_URL"])
+	}
+}
+
+func TestAskAllReportsAFailedQuestion(t *testing.T) {
 	var out bytes.Buffer
 	p := NewPrompter(strings.NewReader(""), &out)
 	list := []Resolution{{Setting: find(t, Settings(), "public_url")}}
 	list[0].Setting.Required = true
-	if _, err := p.AskMissing(list); err == nil {
-		t.Fatal("AskMissing passed with no input")
+	list[0].Setting.Prompt = false
+	if _, err := p.AskAll(list, nil); err == nil {
+		t.Fatal("AskAll passed with no input")
+	}
+	list[0].Setting.Prompt = true
+	if _, err := p.AskAll(list, nil); err == nil {
+		t.Fatal("AskAll passed a prompt question with no input")
 	}
 }
 

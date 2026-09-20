@@ -131,6 +131,20 @@ func TestAsks(t *testing.T) {
 	}
 }
 
+// TestPromptSettings pins the settings an interactive run asks for even
+// though they have a default (ADR-007 decision 2).
+func TestPromptSettings(t *testing.T) {
+	var prompted []string
+	for _, s := range Settings() {
+		if s.Prompt {
+			prompted = append(prompted, s.Path)
+		}
+	}
+	if len(prompted) != 1 || prompted[0] != "public_url" {
+		t.Errorf("the prompt settings are %v, want [public_url]", prompted)
+	}
+}
+
 func TestFilterHidesOtherRoles(t *testing.T) {
 	all := Settings()
 	verifier := Filter(all, commonv1.Role_ROLE_VERIFIER, configv1.Dpg_DPG_WALTID)

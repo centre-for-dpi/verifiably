@@ -37,6 +37,9 @@ type SetupRequest struct {
 	Interactive bool
 	// Prompter asks the questions when Interactive is true.
 	Prompter Prompter
+	// Offers pre-fills one question, keyed by variable name. A --all run
+	// passes the answer of the last pair (ADR-007 decision 2).
+	Offers map[string]string
 	// Random is the source of generated secrets.
 	Random io.Reader
 }
@@ -102,7 +105,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	list := resolveWithDefaults(settings, src, req.Pair)
 	if req.Interactive {
-		answers, err := req.Prompter.AskMissing(list)
+		answers, err := req.Prompter.AskAll(list, req.Offers)
 		if err != nil {
 			return Plan{}, err
 		}
