@@ -41,7 +41,7 @@ type migrateFlags struct {
 }
 
 // newMigrateCommand builds vca migrate (ADR-030 decision 8).
-func newMigrateCommand(env Environment) *cobra.Command {
+func newMigrateCommand(env *Environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "migrate",
 		Short: "Carry the data of a verifiably-go deployment into the services.",
@@ -57,7 +57,7 @@ func newMigrateCommand(env Environment) *cobra.Command {
 }
 
 // newMigrateExportCommand builds vca migrate export.
-func newMigrateExportCommand(env Environment) *cobra.Command {
+func newMigrateExportCommand(env *Environment) *cobra.Command {
 	var f migrateFlags
 	cmd := &cobra.Command{
 		Use:   "export",
@@ -76,7 +76,7 @@ func newMigrateExportCommand(env Environment) *cobra.Command {
 		Example: "  vca migrate export --from-state-dir ./state --out ./migration --salt $SALT\n" +
 			"  vca migrate export --from-pg postgres://user:pass@host/db --out ./migration --salt $SALT",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runMigrateExport(cmd.Context(), cmd.OutOrStdout(), env, f)
+			return runMigrateExport(cmd.Context(), cmd.OutOrStdout(), *env, f)
 		},
 	}
 	cmd.Flags().StringVar(&f.fromPg, "from-pg", "", "The DSN of the legacy PostgreSQL database.")

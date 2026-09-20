@@ -49,6 +49,9 @@ type Environment struct {
 	// OpenDB opens the legacy database of vca migrate export. Nil opens
 	// it with database/sql.
 	OpenDB OpenDB
+	// Getwd reads the working directory. The CLI walks up from it to
+	// find the repository root. Nil reads it with os.Getwd.
+	Getwd func() (string, error)
 }
 
 // withDefaults fills the fields a caller left empty.
@@ -71,6 +74,9 @@ func (e Environment) withDefaults() Environment {
 	if e.Random == nil {
 		e.Random = rand.Reader
 	}
+	if e.Getwd == nil {
+		e.Getwd = os.Getwd
+	}
 	if e.Run == nil {
 		e.Run = ExecRunner(e.Out, e.ErrOut)
 	}
@@ -82,11 +88,14 @@ func (e Environment) withDefaults() Environment {
 
 // Execute runs the CLI and returns the process exit status.
 func Execute(env Environment) int {
-	env = env.withDefaults()
+	errOut := env.ErrOut
+	if errOut == nil {
+		errOut = os.Stderr
+	}
 	root := NewRootCommand(env)
 	root.SetArgs(env.Args)
 	if err := root.Execute(); err != nil {
-		anyval.DiscardWrite(fmt.Fprintf(env.ErrOut, "vca: %s\n", err))
+		anyval.DiscardWrite(fmt.Fprintf(errOut, "vca: %s\n", err))
 		return 1
 	}
 	return 0
@@ -137,7 +146,11 @@ func addSelectionFlags(cmd *cobra.Command, s *selection) {
 
 // NewRootCommand builds the whole command tree.
 func NewRootCommand(env Environment) *cobra.Command {
+	rootGiven := env.Root != ""
+	stateGiven := env.StateDir != ""
 	env = env.withDefaults()
+	shared := &env
+	var repoFlag string
 	root := &cobra.Command{
 		Use:   "vca",
 		Short: "Set up and deploy the Verifiable Credentials Adapters.",
@@ -152,21 +165,51 @@ func NewRootCommand(env Environment) *cobra.Command {
 	root.SetOut(env.Out)
 	root.SetErr(env.ErrOut)
 	root.SetIn(env.In)
+	root.PersistentFlags().StringVar(&repoFlag, "repo", "",
+		"The repository root that holds "+RepoMarker+". The default is "+
+			RepoEnv+", or the first parent directory that holds "+RepoMarker+".")
+	root.PersistentPreRunE = func(_ *cobra.Command, _ []string) error {
+		return applyRepoRoot(shared, repoFlag, rootGiven, stateGiven)
+	}
 	root.AddCommand(
-		newSetupCommand(env),
-		newDeployCommand(env),
-		newStatusCommand(env),
-		newDownCommand(env),
-		newDpgCommand(env),
-		newAdminCommand(env),
-		newMigrateCommand(env),
-		newManCommand(env),
+		newSetupCommand(shared),
+		newDeployCommand(shared),
+		newImagesCommand(shared),
+		newStatusCommand(shared),
+		newDownCommand(shared),
+		newDoctorCommand(shared),
+		newPortsCommand(shared),
+		newDpgCommand(shared),
+		newAdminCommand(shared),
+		newMigrateCommand(shared),
+		newManCommand(shared),
 	)
 	return root
 }
 
+// applyRepoRoot sets the repository root of one run. It runs before
+// every command, so each command reads one root (ADR-008 decision 1).
+func applyRepoRoot(env *Environment, flag string, rootGiven, stateGiven bool) error {
+	if flag == "" && rootGiven {
+		return nil
+	}
+	wd, err := env.Getwd()
+	if err != nil {
+		return fmt.Errorf("read the working directory: %w", err)
+	}
+	root, err := ResolveRepoRoot(flag, env.Getenv, wd)
+	if err != nil {
+		return err
+	}
+	env.Root = root
+	if !stateGiven {
+		env.StateDir = filepath.Join(root, "deploy", ".vca")
+	}
+	return nil
+}
+
 // newSetupCommand builds vca setup (ADR-007).
-func newSetupCommand(env Environment) *cobra.Command {
+func newSetupCommand(env *Environment) *cobra.Command {
 	var (
 		sel            selection
 		envFile        string
@@ -287,10 +330,11 @@ func readEnvFile(path string) (map[string]string, error) {
 }
 
 // newDeployCommand builds vca deploy (ADR-008 decisions 1, 2, and 6).
-func newDeployCommand(env Environment) *cobra.Command {
+func newDeployCommand(env *Environment) *cobra.Command {
 	var (
 		sel    selection
 		dryRun bool
+		build  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "deploy",
@@ -307,7 +351,7 @@ func newDeployCommand(env Environment) *cobra.Command {
 				return err
 			}
 			return Deploy(cmd.Context(), DeployOptions{
-				Root: env.Root, Pairs: pairs, DryRun: dryRun,
+				Root: env.Root, Pairs: pairs, DryRun: dryRun, Build: build,
 				Out: cmd.OutOrStdout(), Run: env.Run,
 			})
 		},
@@ -315,11 +359,134 @@ func newDeployCommand(env Environment) *cobra.Command {
 	addSelectionFlags(cmd, &sel)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Print the rendered compose file and the commands only.")
+	cmd.Flags().BoolVar(&build, "build", false,
+		"Build every image from the source in this repository first.")
+	return cmd
+}
+
+// newImagesCommand builds vca images build (ADR-008 decision 1).
+func newImagesCommand(env *Environment) *cobra.Command {
+	images := &cobra.Command{
+		Use:   "images",
+		Short: "Work with the service images.",
+		Long: "The images commands build the service images from the source " +
+			"in this repository. Use them before the first tagged release, " +
+			"when the registry holds no image yet.",
+	}
+	var (
+		sel    selection
+		dryRun bool
+	)
+	build := &cobra.Command{
+		Use:   "build",
+		Short: "Build one image per service with the tag local.",
+		Long: "build runs docker build for every service of the selection. " +
+			"Each image gets the tag " + LocalTag + ". The command then sets " +
+			VersionEnv + "=" + LocalTag + " in the .env file of each pair, so " +
+			"vca deploy starts the local images.",
+		Example: "  vca images build --role issuer --dpg waltid\n" +
+			"  vca images build --all --dpg waltid --dry-run",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			pairs, err := sel.pairs()
+			if err != nil {
+				return err
+			}
+			return BuildImages(cmd.Context(), ImageOptions{
+				Root: env.Root, Pairs: pairs, DryRun: dryRun,
+				Out: cmd.OutOrStdout(), Run: env.Run,
+			})
+		},
+	}
+	addSelectionFlags(build, &sel)
+	build.Flags().BoolVar(&dryRun, "dry-run", false, "Print the commands only.")
+	images.AddCommand(build)
+	return images
+}
+
+// newDoctorCommand builds vca doctor (ADR-007 decision 1).
+func newDoctorCommand(env *Environment) *cobra.Command {
+	var (
+		sel        selection
+		fromSource bool
+	)
+	cmd := &cobra.Command{
+		Use:   "doctor",
+		Short: "Check that this host meets every prerequisite.",
+		Long: "doctor prints one line per prerequisite with a pass or a fail " +
+			"and the fix. It checks Docker, the compose plugin, the free " +
+			"memory, every host port of the selection, and the public URL.\n\n" +
+			"The command exits with status 1 when one check fails. Add " +
+			"--from-source when you build the tool with Go.",
+		Example: "  vca doctor --role issuer --dpg waltid\n" +
+			"  vca doctor --all --dpg waltid --from-source",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			pairs, err := sel.pairs()
+			if err != nil {
+				return err
+			}
+			public, err := PublicURLOf(env.Root, pairs, env.Getenv)
+			if err != nil {
+				return err
+			}
+			deployRoot := filepath.Join(env.Root, "deploy")
+			return Doctor(DoctorOptions{
+				Pairs:      pairs,
+				FromSource: fromSource,
+				PublicURL:  public,
+				Values: func(p Pair) map[string]string {
+					values, readErr := ReadExisting(deployRoot, p)
+					if readErr != nil {
+						return nil
+					}
+					return values
+				},
+				Probe: NewSystemProbe(cmd.Context()),
+				Out:   cmd.OutOrStdout(),
+			})
+		},
+	}
+	addSelectionFlags(cmd, &sel)
+	cmd.Flags().BoolVar(&fromSource, "from-source", false,
+		"Check the Go version too. Only a source build needs Go.")
+	return cmd
+}
+
+// newPortsCommand builds vca ports (ADR-008 decision 1).
+func newPortsCommand(env *Environment) *cobra.Command {
+	var sel selection
+	cmd := &cobra.Command{
+		Use:   "ports",
+		Short: "Print the host ports of one role and DPG.",
+		Long: "ports prints one line per service with the port inside the " +
+			"container and the port on the machine that runs compose. Open " +
+			"those host ports in the firewall of a server.",
+		Example: "  vca ports --role issuer --dpg waltid",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			pairs, err := sel.pairs()
+			if err != nil {
+				return err
+			}
+			deployRoot := filepath.Join(env.Root, "deploy")
+			for _, p := range pairs {
+				values, readErr := ReadExisting(deployRoot, p)
+				if readErr != nil {
+					return readErr
+				}
+				anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(), "%s\n", p.Name()))
+				for _, a := range HostPorts(p, values) {
+					anyval.DiscardWrite(fmt.Fprintf(cmd.OutOrStdout(),
+						"  %-22s host %d  container %d\n", a.Service.Name, a.Host, a.Listen))
+				}
+			}
+			return nil
+		},
+	}
+	addSelectionFlags(cmd, &sel)
 	return cmd
 }
 
 // newStatusCommand builds vca status (ADR-008 decision 6).
-func newStatusCommand(env Environment) *cobra.Command {
+func newStatusCommand(env *Environment) *cobra.Command {
 	var sel selection
 	cmd := &cobra.Command{
 		Use:     "status",
@@ -341,7 +508,7 @@ func newStatusCommand(env Environment) *cobra.Command {
 }
 
 // newDownCommand builds vca down (ADR-008 decision 6).
-func newDownCommand(env Environment) *cobra.Command {
+func newDownCommand(env *Environment) *cobra.Command {
 	var sel selection
 	cmd := &cobra.Command{
 		Use:   "down",
@@ -364,7 +531,7 @@ func newDownCommand(env Environment) *cobra.Command {
 }
 
 // newDpgCommand builds vca dpg bootstrap (ADR-008 decision 4).
-func newDpgCommand(env Environment) *cobra.Command {
+func newDpgCommand(env *Environment) *cobra.Command {
 	dpg := &cobra.Command{
 		Use:   "dpg",
 		Short: "Configure a digital public good after it boots.",
@@ -415,7 +582,7 @@ func newDpgCommand(env Environment) *cobra.Command {
 }
 
 // newAdminCommand builds the vca admin tree (ADR-009 decisions 1 and 2).
-func newAdminCommand(env Environment) *cobra.Command {
+func newAdminCommand(env *Environment) *cobra.Command {
 	var (
 		serviceURL string
 		token      string
@@ -524,7 +691,7 @@ func newAdminRPCCommand(c AdminCommand, resolve func() (AdminClient, error)) *co
 // newAdminLoginCommand builds vca admin login (ADR-010 decisions 1, 2,
 // and 6). The admin service holds the OpenID Connect client, so the CLI
 // needs no client id and no client secret.
-func newAdminLoginCommand(env Environment, baseURL func() string) *cobra.Command {
+func newAdminLoginCommand(env *Environment, baseURL func() string) *cobra.Command {
 	var (
 		provider  string
 		bootstrap string
@@ -574,7 +741,7 @@ func newAdminLoginCommand(env Environment, baseURL func() string) *cobra.Command
 }
 
 // newManCommand builds vca man (ADR-009 decision 2).
-func newManCommand(env Environment) *cobra.Command {
+func newManCommand(env *Environment) *cobra.Command {
 	var dir string
 	cmd := &cobra.Command{
 		Use:   "man",
@@ -590,7 +757,7 @@ func newManCommand(env Environment) *cobra.Command {
 			if err := os.MkdirAll(dir, 0o750); err != nil {
 				return fmt.Errorf("make %s: %w", dir, err)
 			}
-			tree := NewRootCommand(env)
+			tree := NewRootCommand(*env)
 			tree.DisableAutoGenTag = true
 			header := &doc.GenManHeader{Title: "VCA", Section: "1",
 				Source: "Verifiable Credentials Adapters " + Version}

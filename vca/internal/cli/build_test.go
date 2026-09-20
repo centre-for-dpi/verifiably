@@ -220,3 +220,60 @@ func TestSetEnvValueFails(t *testing.T) {
 		t.Error("a missing file must fail")
 	}
 }
+
+func TestDeployBuildUsesBothFiles(t *testing.T) {
+	root := deployRoot(t, issuerPair())
+	rec := &recorder{}
+	status, out, errOut := run(t, Environment{Root: root, Run: rec.run},
+		"deploy", "--role", "issuer", "--dpg", "waltid", "--build")
+	if status != 0 {
+		t.Fatalf("status = %d, err = %s", status, errOut)
+	}
+	joined := strings.Join(rec.calls[0], " ")
+	for _, want := range []string{ComposePath(root), ComposeBuildPath(root), "--build"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the command has no %q: %s", want, joined)
+		}
+	}
+	if !strings.Contains(out, ComposeBuildPath(root)) {
+		t.Errorf("out = %s", out)
+	}
+}
+
+func TestDeployBuildDryRunPrintsTheOverrideFile(t *testing.T) {
+	root := deployRoot(t, issuerPair())
+	status, out, errOut := run(t, Environment{Root: root},
+		"deploy", "--role", "issuer", "--dpg", "waltid", "--build", "--dry-run")
+	if status != 0 {
+		t.Fatalf("status = %d, err = %s", status, errOut)
+	}
+	if !strings.Contains(out, "dockerfile: services/issuance/Dockerfile") {
+		t.Errorf("out = %s", out)
+	}
+	if !strings.Contains(out, "--build") {
+		t.Errorf("out = %s", out)
+	}
+}
+
+func TestImagesBuildCommand(t *testing.T) {
+	root := deployRoot(t, issuerPair())
+	rec := &recorder{}
+	status, out, errOut := run(t, Environment{Root: root, Run: rec.run},
+		"images", "build", "--role", "issuer", "--dpg", "waltid")
+	if status != 0 {
+		t.Fatalf("status = %d, err = %s", status, errOut)
+	}
+	if len(rec.calls) != len(ServicesFor(issuerPair())) {
+		t.Errorf("calls = %v", rec.calls)
+	}
+	if !strings.Contains(out, LocalTag) {
+		t.Errorf("out = %s", out)
+	}
+}
+
+func TestImagesBuildCommandNeedsAPair(t *testing.T) {
+	status, _, errOut := run(t, Environment{Root: t.TempDir()}, "images", "build")
+	if status == 0 || !strings.Contains(errOut, "--role") {
+		t.Errorf("status = %d, err = %s", status, errOut)
+	}
+}
