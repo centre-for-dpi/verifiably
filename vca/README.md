@@ -18,6 +18,10 @@ stays in `verifiably-go/` until each role has the same functions.
 
 ## Start
 
+Read [Get started](docs/getting-started.md) first. It lists the
+prerequisites and the three ways to get the binary. It also holds the
+local path, the server path, and the common errors.
+
 Three steps take you from a clone to a running role:
 
 ```sh
@@ -34,10 +38,6 @@ starts the services with Docker Compose profiles. Use `--role` and
 release publishes the images. `--all` alone acts on every role of
 every DPG. Add `--dpg waltid` to limit it to one stack, which fits a
 laptop.
-
-Read [Get started](docs/getting-started.md) first. It lists the
-prerequisites and the three ways to get the binary. It also holds the
-local path, the server path, and the common errors.
 
 Now, for developers:
 
