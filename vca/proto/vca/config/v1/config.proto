@@ -159,12 +159,13 @@ message Config {
     validation: "One of debug, info, warn, error."
   }];
   // The Redis URL for rate limits and OTP (ADR-020 decision 6).
-  // Required for the holder role. Must start with redis:// or rediss://.
+  // Optional. Empty selects the in-memory limiter, which is fine for one
+  // replica. Set a Redis URL for more than one replica.
+  // Must start with redis:// or rediss://.
   string redis_url = 13 [(setting) = {
-    description: "The Redis URL for rate limits and one time codes."
+    description: "The Redis URL for rate limits and one time codes. Empty selects the in-memory limiter, which is fine for one replica."
     env: "VCA_REDIS_URL"
     secret: true
-    required: true
     roles: ROLE_HOLDER
     validation: "Starts with redis:// or rediss://."
   }];

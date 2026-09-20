@@ -64,7 +64,7 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_WALLET_AUTH_GRANT_KEY` | The 32 byte AES key that seals IdP tokens, hex or base64. Empty makes a key at start. | none |
 | `VCA_WALLET_AUTH_GRANT_TYPE` | The grant type that `GetAuthorizationGrant` returns. | `urn:ietf:params:oauth:grant-type:jwt-bearer` |
 | `VCA_WALLET_AUTH_HOLDER_BACKEND_URL` | The Connect base URL of the holder backend adapter. Empty keeps wallet ids local. | none |
-| `VCA_REDIS_URL` | Selects the Redis rate limiter. This build has no Redis client and refuses to start. | none |
+| `VCA_REDIS_URL` | Optional. Empty selects the in-memory limiter, which is fine for one replica. Set a Redis URL for more than one replica. This build has no Redis client and refuses to start with one set. | none |
 | `VCA_WALLET_AUTH_LOGIN_RATE` | The login starts one client address can make per minute. | `30` |
 | `VCA_WALLET_AUTH_ADMIN_TOKEN` | The bearer token the admin service uses for the provider RPCs. | none |
 | `VCA_WALLET_AUTH_STATE_DIR` | The directory for the persisted documents. Empty keeps them in memory. | none |

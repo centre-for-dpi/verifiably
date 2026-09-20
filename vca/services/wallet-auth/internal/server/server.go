@@ -103,8 +103,10 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 }
 
 // newLimiter selects Redis when VCA_REDIS_URL is set (ADR-020 decision
-// 6). This build has no Redis client, so that path returns
-// limits.ErrNotConfigured and the service refuses to start.
+// 6). The variable is optional. Empty selects the in-memory limiter,
+// which is fine for one replica. This build has no Redis client, so a
+// set URL returns limits.ErrNotConfigured and the service refuses to
+// start.
 func newLimiter(cfg config.Config) (limits.Limiter, error) {
 	if cfg.RedisURL != "" {
 		return limits.NewRedisLimiter(cfg.RedisURL)

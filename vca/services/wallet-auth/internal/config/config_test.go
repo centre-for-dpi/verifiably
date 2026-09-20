@@ -5,11 +5,14 @@ package config_test
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/server"
 )
 
 func env(m map[string]string) config.Lookup {
@@ -26,6 +29,26 @@ func TestFromEnvDefaults(t *testing.T) {
 	}
 	if c.GrantType != config.DefaultGrantType || c.CookieName != "vca_wallet_session" || c.Salt != nil || c.GrantKey != nil || c.Seed.HasSeed() {
 		t.Fatalf("%+v", c)
+	}
+	// VCA_REDIS_URL is optional. An unset variable loads and selects the
+	// in-memory limiter (ADR-020 decision 6).
+	if c.RedisURL != "" {
+		t.Fatalf("the Redis URL = %q, want empty", c.RedisURL)
+	}
+}
+
+// TestStartsWithoutRedis proves the service starts with VCA_REDIS_URL
+// unset. The in-memory limiter serves one replica (ADR-020 decision 6).
+func TestStartsWithoutRedis(t *testing.T) {
+	c, err := config.FromEnv(env(map[string]string{"VCA_PUBLIC_URL": "https://wallet.example"}))
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if c.RedisURL != "" {
+		t.Fatalf("the Redis URL = %q, want empty", c.RedisURL)
+	}
+	if _, err := server.Build(c, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
+		t.Fatalf("Build with no Redis URL: %v", err)
 	}
 }
 

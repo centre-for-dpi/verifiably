@@ -110,14 +110,17 @@ func TestSetupNonInteractiveNeedsNoValueOnALaptop(t *testing.T) {
 	}
 }
 
-func TestSetupNonInteractiveListsEveryMissingValue(t *testing.T) {
-	status, _, errOut := run(t, Environment{Root: t.TempDir()},
+// TestSetupNonInteractiveHolderNeedsNoValue proves the Redis URL no
+// longer blocks a holder run (ADR-020 decision 6).
+func TestSetupNonInteractiveHolderNeedsNoValue(t *testing.T) {
+	root := t.TempDir()
+	status, out, errOut := run(t, Environment{Root: root},
 		"setup", "--role", "holder", "--dpg", "waltid", "--non-interactive")
-	if status == 0 {
-		t.Fatal("a run with no Redis URL passed")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
 	}
-	if !strings.Contains(errOut, "VCA_REDIS_URL") {
-		t.Errorf("the error does not name VCA_REDIS_URL:\n%s", errOut)
+	if strings.Contains(out, "VCA_REDIS_URL") {
+		t.Errorf("the plan holds a Redis URL:\n%s", out)
 	}
 }
 
@@ -276,7 +279,7 @@ func TestSetupAllRepeatsThePublicHost(t *testing.T) {
 	root := t.TempDir()
 	answers := strings.Join([]string{
 		"https://one.example\n", "y\n", // issuer
-		"\n", "redis://cache:6379\n", "y\n", // holder
+		"\n", "y\n", // holder
 		"\n", "y\n", // verifier
 		"\n", "y\n", // admin
 	}, "")

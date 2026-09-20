@@ -106,9 +106,11 @@ func TestBuildPlanEnvFileModeIs0600(t *testing.T) {
 	}
 }
 
+// TestBuildPlanFailsAndListsEveryMissingValue uses a pair with no DPG.
+// No stack backs it, so the discovery URL has no default. Every one of
+// the twelve real pairs has a default for every required value.
 func TestBuildPlanFailsAndListsEveryMissingValue(t *testing.T) {
-	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
-	_, err := BuildPlan(SetupRequest{Pair: holder, Random: rand.Reader})
+	_, err := BuildPlan(SetupRequest{Pair: Pair{Role: commonv1.Role_ROLE_HOLDER}, Random: rand.Reader})
 	if err == nil {
 		t.Fatal("BuildPlan passed with no values")
 	}
@@ -120,7 +122,7 @@ func TestBuildPlanFailsAndListsEveryMissingValue(t *testing.T) {
 		t.Errorf("got %d missing settings", len(missing.Settings))
 	}
 	text := err.Error()
-	for _, want := range []string{"VCA_REDIS_URL"} {
+	for _, want := range []string{"VCA_OIDC_DISCOVERY_URL"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the error does not name %s:\n%s", want, text)
 		}
@@ -149,17 +151,25 @@ func TestBuildPlanReportsBadValues(t *testing.T) {
 	}
 }
 
-func TestBuildPlanHolderNeedsRedis(t *testing.T) {
+// TestBuildPlanHolderRedisIsOptional is ADR-020 decision 6. An empty
+// Redis URL selects the in-memory limiter, which serves one replica.
+func TestBuildPlanHolderRedisIsOptional(t *testing.T) {
 	pair := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
 	flags := issuerFlags()
-	_, err := BuildPlan(SetupRequest{Pair: pair, Flags: flags, Random: rand.Reader})
-	if err == nil || !strings.Contains(err.Error(), "VCA_REDIS_URL") {
-		t.Fatalf("got %v, want a missing Redis URL", err)
-	}
-	flags["VCA_REDIS_URL"] = "redis://redis:6379/0"
 	plan, err := BuildPlan(SetupRequest{Pair: pair, Flags: flags, Random: rand.Reader})
 	if err != nil {
+		t.Fatalf("BuildPlan with no Redis URL: %v", err)
+	}
+	if Values(plan.Resolutions)["VCA_REDIS_URL"] != "" {
+		t.Error("the plan invented a Redis URL")
+	}
+	flags["VCA_REDIS_URL"] = "redis://redis:6379/0"
+	plan, err = BuildPlan(SetupRequest{Pair: pair, Flags: flags, Random: rand.Reader})
+	if err != nil {
 		t.Fatalf("BuildPlan: %v", err)
+	}
+	if Values(plan.Resolutions)["VCA_REDIS_URL"] != "redis://redis:6379/0" {
+		t.Error("the plan dropped the Redis URL")
 	}
 	if !fileNames(plan)[RealmFile] {
 		t.Error("an Inji pair got no Keycloak realm")
@@ -183,27 +193,41 @@ func TestBuildPlanAdminNeedsABootstrapToken(t *testing.T) {
 }
 
 func TestBuildPlanInteractive(t *testing.T) {
-	// The holder pair has one value with no default.
 	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
+	// An empty answer keeps the localhost default.
 	var out strings.Builder
 	plan, err := BuildPlan(SetupRequest{
 		Pair:        holder,
 		Interactive: true,
-		Prompter:    NewPrompter(strings.NewReader("\nredis://cache:6379\n"), &out),
+		Prompter:    NewPrompter(strings.NewReader("\n"), &out),
 		Random:      rand.Reader,
 	})
 	if err != nil {
 		t.Fatalf("BuildPlan: %v\n%s", err, out.String())
 	}
 	values := Values(plan.Resolutions)
-	if values["VCA_REDIS_URL"] != "redis://cache:6379" {
-		t.Errorf("the Redis URL = %q", values["VCA_REDIS_URL"])
-	}
 	if values["VCA_PUBLIC_URL"] != LocalPublicURL(holder) {
 		t.Errorf("the public URL = %q", values["VCA_PUBLIC_URL"])
 	}
-	if !strings.Contains(out.String(), "VCA_REDIS_URL") {
+	if values["VCA_REDIS_URL"] != "" {
+		t.Errorf("the CLI asked for the optional Redis URL: %q", values["VCA_REDIS_URL"])
+	}
+	if !strings.Contains(out.String(), "VCA_PUBLIC_URL") {
 		t.Errorf("the CLI asked no question:\n%s", out.String())
+	}
+	// A public host answer wins over the default.
+	out.Reset()
+	plan, err = BuildPlan(SetupRequest{
+		Pair:        holder,
+		Interactive: true,
+		Prompter:    NewPrompter(strings.NewReader("https://wallet.example\n"), &out),
+		Random:      rand.Reader,
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v\n%s", err, out.String())
+	}
+	if got := Values(plan.Resolutions)["VCA_PUBLIC_URL"]; got != "https://wallet.example" {
+		t.Errorf("the public URL = %q", got)
 	}
 }
 
@@ -227,10 +251,10 @@ func TestCarryOffersKeepsAPublicHostOnly(t *testing.T) {
 }
 
 func TestBuildPlanInteractiveReportsAClosedInput(t *testing.T) {
-	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
+	// A pair with no DPG has no default discovery URL, so the run asks.
 	var out strings.Builder
 	_, err := BuildPlan(SetupRequest{
-		Pair:        holder,
+		Pair:        Pair{Role: commonv1.Role_ROLE_HOLDER},
 		Interactive: true,
 		Prompter:    NewPrompter(strings.NewReader(""), &out),
 		Random:      rand.Reader,

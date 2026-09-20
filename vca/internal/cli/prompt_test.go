@@ -111,22 +111,25 @@ func TestAskReportsClosedInput(t *testing.T) {
 	}
 }
 
+// TestAskAllAsksOnlyForAMissingRequiredValue uses a pair with no DPG.
+// No stack backs it, so the discovery URL has no default.
 func TestAskAllAsksOnlyForAMissingRequiredValue(t *testing.T) {
-	settings := Filter(Settings(), roleHolder(t), dpgWaltid(t))
+	pair := Pair{Role: roleHolder(t)}
+	settings := Filter(Settings(), pair.Role, pair.Dpg)
 	var out bytes.Buffer
 	// The first line answers the public URL question with the default.
-	p := NewPrompter(strings.NewReader("\nredis://cache:6379\n"), &out)
-	list := resolveWithDefaults(settings, Sources{}, Pair{Role: roleHolder(t), Dpg: dpgWaltid(t)})
-	answers, err := p.AskAll(list, nil)
+	p := NewPrompter(strings.NewReader(
+		"\nhttps://idp.example/.well-known/openid-configuration\nhttp://dpg:8080\n"), &out)
+	answers, err := p.AskAll(resolveWithDefaults(settings, Sources{}, pair), nil)
 	if err != nil {
 		t.Fatalf("AskAll: %v", err)
 	}
-	if answers["VCA_REDIS_URL"] != "redis://cache:6379" {
-		t.Errorf("got %q", answers["VCA_REDIS_URL"])
+	if answers["VCA_OIDC_DISCOVERY_URL"] != "https://idp.example/.well-known/openid-configuration" {
+		t.Errorf("got %q", answers["VCA_OIDC_DISCOVERY_URL"])
 	}
 	for _, name := range []string{
-		"VCA_DPG_URL", "VCA_OIDC_DISCOVERY_URL",
-		"VCA_DATABASE_URL", "VCA_LOG_LEVEL", "VCA_SECRETS_SESSION_KEY", "VCA_ROLE",
+		"VCA_REDIS_URL", "VCA_DATABASE_URL", "VCA_LOG_LEVEL",
+		"VCA_SECRETS_SESSION_KEY", "VCA_ROLE",
 	} {
 		if _, ok := answers[name]; ok {
 			t.Errorf("the CLI asked for %s", name)

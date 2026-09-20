@@ -82,6 +82,8 @@ type Config struct {
 	// adapter. Empty keeps wallet ids local.
 	HolderBackendURL string
 	// RedisURL selects the Redis rate limiter (ADR-020 decision 6).
+	// Optional. Empty selects the in-memory limiter, which is fine for
+	// one replica. Set a Redis URL for more than one replica.
 	RedisURL string
 	// LoginRate is the number of login starts one client address can
 	// make per minute.

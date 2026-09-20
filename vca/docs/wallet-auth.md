@@ -75,11 +75,13 @@ response redirects the browser to the RP initiated logout URL with
 The `limits` package defines a `Limiter` and an `OTP` interface with an
 in-memory version for one replica. The service limits login starts per
 client address, 30 per minute by default, on the HTTP endpoint and on the
-`LoginStart` RPC. ADR-020 decision 6 asks for Redis. The build network
-cannot fetch a Redis client, so `RedisLimiter` is a stub that returns
-`ErrNotConfigured`. A deployment that sets `VCA_REDIS_URL` refuses to
-start until the client lands. The doc comment on the type names the
-Redis commands the real version uses.
+`LoginStart` RPC. `VCA_REDIS_URL` is optional. Empty selects the
+in-memory limiter, which is fine for one replica. Set a Redis URL for
+more than one replica. ADR-020 decision 6 asks for Redis. The build
+network cannot fetch a Redis client, so `RedisLimiter` is a stub that
+returns `ErrNotConfigured`. A deployment that sets `VCA_REDIS_URL`
+refuses to start until the client lands. The doc comment on the type
+names the Redis commands the real version uses.
 
 ## Storage
 
