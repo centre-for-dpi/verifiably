@@ -269,6 +269,39 @@ func TestSetupInteractiveKeepsTheFilesOnNo(t *testing.T) {
 	}
 }
 
+// TestSetupAllRepeatsThePublicHost is the --all path of ADR-007
+// decision 2. The run asks one public URL question per pair. The answer
+// of the first pair pre-fills the next question, so enter repeats it.
+func TestSetupAllRepeatsThePublicHost(t *testing.T) {
+	root := t.TempDir()
+	answers := strings.Join([]string{
+		"https://one.example\n", "y\n", // issuer
+		"\n", "redis://cache:6379\n", "y\n", // holder
+		"\n", "y\n", // verifier
+		"\n", "y\n", // admin
+	}, "")
+	status, out, errOut := run(t, Environment{Root: root, In: strings.NewReader(answers)},
+		"setup", "--all", "--dpg", "waltid")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if strings.Count(out, "Public URL [") != 4 {
+		t.Errorf("the run asked %d public URL questions:\n%s", strings.Count(out, "Public URL ["), out)
+	}
+	if !strings.Contains(out, "Public URL [https://one.example]") {
+		t.Errorf("the next pair got no offer:\n%s", out)
+	}
+	for _, name := range []string{"issuer-waltid", "holder-waltid", "verifier-waltid", "admin-waltid"} {
+		data, err := os.ReadFile(filepath.Clean(filepath.Join(root, "deploy", name, EnvFileName)))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if !strings.Contains(string(data), "https://one.example") {
+			t.Errorf("%s did not keep the public host:\n%s", name, data)
+		}
+	}
+}
+
 func TestSetupWritesToTheNamedDirectory(t *testing.T) {
 	root := t.TempDir()
 	out := filepath.Join(root, "elsewhere")

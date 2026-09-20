@@ -69,6 +69,32 @@ type Setting struct {
 	Choices []string
 }
 
+// acronyms are the path words that a question label writes in capitals.
+var acronyms = map[string]string{
+	"url":  "URL",
+	"uri":  "URI",
+	"oidc": "OIDC",
+	"dpg":  "DPG",
+	"otlp": "OTLP",
+}
+
+// Label is the name of the setting in a question, for example
+// "Public URL". It comes from the field path, so no label is written
+// twice (ADR-007 decision 6).
+func (s Setting) Label() string {
+	words := strings.FieldsFunc(s.Path, func(r rune) bool { return r == '.' || r == '_' })
+	for i, w := range words {
+		if up, ok := acronyms[w]; ok {
+			words[i] = up
+			continue
+		}
+		if i == 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
 // Asks reports whether the CLI asks a question for the setting.
 // The role and the DPG fields come from the flags, and the CLI assigns
 // the service port map, so none of those three needs a question.

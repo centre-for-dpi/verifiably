@@ -376,6 +376,9 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					"This host has less free memory than this selection needs (%d MiB).\n%s\n\n",
 					SelectionFloorMiB(pairs), hint))
 			}
+			// The answer of one pair pre-fills the question of the next
+			// pair of a --all run (ADR-007 decision 2).
+			offers := map[string]string{}
 			for _, p := range pairs {
 				existing, existingErr := ReadExisting(root, p)
 				if existingErr != nil {
@@ -389,11 +392,13 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					Existing:    existing,
 					Interactive: !sel.nonInteractive,
 					Prompter:    prompter,
+					Offers:      offers,
 					Random:      env.Random,
 				})
 				if err != nil {
 					return err
 				}
+				offers = CarryOffers(plan)
 				anyval.DiscardWrite(fmt.Fprint(cmd.OutOrStdout(), plan.Summary()))
 				if !sel.nonInteractive && !yes {
 					ok, confirmErr := prompter.Confirm("Write these files?", true)

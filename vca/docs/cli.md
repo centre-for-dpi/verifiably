@@ -134,7 +134,16 @@ A terminal run asks two kinds of question, in this order:
    The run asks for it even though it has a default.
    The question shows the default in brackets.
    An empty answer keeps the default.
-   The public URL is the only such setting today.
+   The public URL is the only such setting today:
+
+   ```text
+   The public base URL of the deployment. Leave blank for localhost.
+   Enter https://issuer.example for a public host.
+     Rule: An absolute https URL without a path or a trailing slash.
+     Variable: VCA_PUBLIC_URL
+   Public URL [http://localhost:18002]:
+   ```
+
 2. Every required value that no source and no default filled.
    There is none today, so a run that answers question 1 with enter is
    done.
@@ -147,6 +156,13 @@ A bad answer repeats the question with the reason.
 A value that a flag, the environment, or the env file supplied is not
 asked for again.
 Set an optional value with `--set` or with the `--env-file` file.
+A run that is not interactive asks nothing.
+
+A `--all` run asks the same questions once per pair.
+The answer of one pair pre-fills the question of the next pair, so enter
+repeats it.
+A localhost answer does not carry over, because each pair has its own
+host port.
 
 The questions come from one place: the `Config` message in
 `proto/vca/config/v1/config.proto`.

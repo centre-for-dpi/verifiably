@@ -207,6 +207,25 @@ func TestBuildPlanInteractive(t *testing.T) {
 	}
 }
 
+// TestCarryOffersKeepsAPublicHostOnly proves a --all run repeats a
+// public host on the next pair and never a localhost address.
+func TestCarryOffersKeepsAPublicHostOnly(t *testing.T) {
+	local, err := BuildPlan(SetupRequest{Pair: issuerPair(), Random: rand.Reader})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	if len(CarryOffers(local)) != 0 {
+		t.Errorf("a localhost value carried over: %v", CarryOffers(local))
+	}
+	public, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: issuerFlags(), Random: rand.Reader})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	if CarryOffers(public)["VCA_PUBLIC_URL"] != "https://issuer.example" {
+		t.Errorf("the public host did not carry over: %v", CarryOffers(public))
+	}
+}
+
 func TestBuildPlanInteractiveReportsAClosedInput(t *testing.T) {
 	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
 	var out strings.Builder

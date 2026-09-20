@@ -152,8 +152,17 @@ func TestAskAllAsksOneQuestionOnALaptop(t *testing.T) {
 	if len(answers) != 1 {
 		t.Errorf("the CLI asked %d questions: %v", len(answers), answers)
 	}
-	if !strings.Contains(out.String(), LocalPublicURL(p)) {
-		t.Errorf("the question does not show the default:\n%s", out.String())
+	// The question reads "Public URL [http://localhost:18002]: ".
+	want := "Public URL [" + LocalPublicURL(p) + "]: "
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("the question is not %q:\n%s", want, out.String())
+	}
+	for _, note := range []string{
+		"Leave blank for localhost", "https://issuer.example", "Variable: VCA_PUBLIC_URL",
+	} {
+		if !strings.Contains(out.String(), note) {
+			t.Errorf("the question misses %q:\n%s", note, out.String())
+		}
 	}
 }
 

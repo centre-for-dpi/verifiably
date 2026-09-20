@@ -238,6 +238,24 @@ func applyDerivedDefaults(list []Resolution, p Pair) []Resolution {
 	return out
 }
 
+// CarryOffers returns the values that pre-fill the questions of the next
+// pair of a --all run. A public host carries over, so the operator
+// presses enter to repeat it. A localhost value does not, because each
+// pair has its own host port (ADR-007 decision 2).
+func CarryOffers(p Plan) map[string]string {
+	out := make(map[string]string)
+	for _, r := range p.Resolutions {
+		if !r.Setting.Prompt || r.Value == "" {
+			continue
+		}
+		if r.Setting.Path == "public_url" && r.Value == LocalPublicURL(p.Pair) {
+			continue
+		}
+		out[r.Setting.Env] = r.Value
+	}
+	return out
+}
+
 // Summary renders the table the CLI shows before it writes anything
 // (ADR-007 decision 2). A secret value never appears.
 func (p Plan) Summary() string {

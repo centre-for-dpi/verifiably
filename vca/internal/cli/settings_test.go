@@ -131,6 +131,23 @@ func TestAsks(t *testing.T) {
 	}
 }
 
+func TestLabel(t *testing.T) {
+	cases := map[string]string{
+		"public_url":         "Public URL",
+		"oidc.discovery_url": "OIDC discovery URL",
+		"log_level":          "Log level",
+		"dpg_url":            "DPG URL",
+		"otlp_endpoint":      "OTLP endpoint",
+		"oidc.redirect_uri":  "OIDC redirect URI",
+	}
+	all := Settings()
+	for path, want := range cases {
+		if got := find(t, all, path).Label(); got != want {
+			t.Errorf("Label(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
 // TestPromptSettings pins the settings an interactive run asks for even
 // though they have a default (ADR-007 decision 2).
 func TestPromptSettings(t *testing.T) {
