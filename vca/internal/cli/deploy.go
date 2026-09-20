@@ -28,6 +28,9 @@ type DeployOptions struct {
 	// DryRun prints the rendered compose file and the commands only
 	// (ADR-008 decision 6).
 	DryRun bool
+	// Build adds the build override file and the --build flag, so
+	// compose builds every image from the source in this repository.
+	Build bool
 	// Out receives the printed output.
 	Out io.Writer
 	// Run runs docker compose. A nil Runner means a dry run.
@@ -48,19 +51,36 @@ func EnvPath(root string, p Pair) string {
 // ComposeArgs builds the docker compose arguments of one pair and one
 // action, for example up -d (ADR-008 decision 1).
 func ComposeArgs(root string, p Pair, action []string) []string {
+	return ComposeArgsBuild(root, p, action, false)
+}
+
+// ComposeArgsBuild builds the docker compose arguments of one pair. A
+// build run adds the committed override file, so compose builds every
+// image from the source in this repository.
+func ComposeArgsBuild(root string, p Pair, action []string, build bool) []string {
 	args := []string{
 		"compose",
 		"--project-name", ComposeProject,
 		"--file", ComposePath(root),
+	}
+	if build {
+		args = append(args, "--file", ComposeBuildPath(root))
+	}
+	args = append(args,
 		"--env-file", EnvPath(root, p),
 		"--profile", p.Name(),
-	}
+	)
 	return append(args, action...)
 }
 
-// Deploy starts every named pair (ADR-008 decisions 1 and 2).
+// Deploy starts every named pair (ADR-008 decisions 1 and 2). A build
+// run adds --build, so compose builds the images first.
 func Deploy(ctx context.Context, opts DeployOptions) error {
-	return lifecycle(ctx, opts, []string{"up", "-d"})
+	action := []string{"up", "-d"}
+	if opts.Build {
+		action = append(action, "--build")
+	}
+	return lifecycle(ctx, opts, action)
 }
 
 // Status shows the containers of every named pair (ADR-008 decision 6).
@@ -89,7 +109,7 @@ func lifecycle(ctx context.Context, opts DeployOptions, action []string) error {
 		if err := checkEnvFile(opts.Root, p); err != nil {
 			return err
 		}
-		args := ComposeArgs(opts.Root, p, action)
+		args := ComposeArgsBuild(opts.Root, p, action, opts.Build)
 		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "docker %s\n", strings.Join(args, " ")))
 		if err := opts.Run(ctx, "docker", args); err != nil {
 			return fmt.Errorf("deploy %s: %w", p.Name(), err)
@@ -103,8 +123,13 @@ func printDryRun(opts DeployOptions, action []string) error {
 	if _, err := io.WriteString(opts.Out, RenderCompose()); err != nil {
 		return fmt.Errorf("print the compose file: %w", err)
 	}
+	if opts.Build {
+		if _, err := io.WriteString(opts.Out, "\n"+RenderComposeBuild()); err != nil {
+			return fmt.Errorf("print the build override file: %w", err)
+		}
+	}
 	for _, p := range opts.Pairs {
-		args := ComposeArgs(opts.Root, p, action)
+		args := ComposeArgsBuild(opts.Root, p, action, opts.Build)
 		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "\n# %s\ndocker %s\n", p.Name(), strings.Join(args, " ")))
 	}
 	return nil

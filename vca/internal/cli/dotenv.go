@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 )
@@ -89,4 +90,44 @@ func quoteValue(v string) string {
 		return `"` + r.Replace(v) + `"`
 	}
 	return v
+}
+
+// ApplyEnvLine returns the text of a dotenv file with one variable set
+// to one value. It replaces the line that holds the variable, or it adds
+// the line at the end. The function is pure, so a test needs no file.
+func ApplyEnvLine(text, name, value string) string {
+	lines := strings.Split(text, "\n")
+	want := name + "="
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimPrefix(strings.TrimSpace(line), "export ")
+		if !strings.HasPrefix(trimmed, want) {
+			continue
+		}
+		lines[i] = name + "=" + quoteValue(value)
+		found = true
+	}
+	out := strings.Join(lines, "\n")
+	if found {
+		return out
+	}
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return out + "\n# The vca images build command set this tag.\n" +
+		name + "=" + quoteValue(value) + "\n"
+}
+
+// SetEnvValue sets one variable in a dotenv file on the disk. The file
+// keeps mode 0600, because it holds secrets (ADR-007 decision 5).
+func SetEnvValue(path, name, value string) error {
+	data, err := os.ReadFile(path) // #nosec G304 -- the path comes from the pair name
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	next := ApplyEnvLine(string(data), name, value)
+	if err := os.WriteFile(path, []byte(next), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
 }

@@ -1,0 +1,275 @@
+# SPDX-License-Identifier: Apache-2.0
+# The vca CLI generates this file. Do not edit it by hand.
+# Run: go test ./internal/cli/ to check that it is current.
+#
+# This file adds a build block to every VCA service. Use it before
+# the first release, when no image is in the registry yet.
+# Start one pair with: vca deploy --role issuer --dpg waltid --build
+# That runs docker compose with both files and with --build.
+name: vca
+
+services:
+
+  # Profile issuer-waltid
+  issuer-waltid-data-source:
+    build:
+      context: ../../vca
+      dockerfile: services/data-source/Dockerfile
+  issuer-waltid-dpg-adapter-waltid:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-waltid/Dockerfile
+  issuer-waltid-issuance:
+    build:
+      context: ../../vca
+      dockerfile: services/issuance/Dockerfile
+  issuer-waltid-issued-credentials:
+    build:
+      context: ../../vca
+      dockerfile: services/issued-credentials/Dockerfile
+  issuer-waltid-issuer-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/issuer-auth/Dockerfile
+  issuer-waltid-schema-builder-ui:
+    build:
+      context: ../../vca
+      dockerfile: services/schema-builder-ui/Dockerfile
+  issuer-waltid-schema-registry:
+    build:
+      context: ../../vca
+      dockerfile: services/schema-registry/Dockerfile
+  issuer-waltid-status-bitstring:
+    build:
+      context: ../../vca
+      dockerfile: services/status-bitstring/Dockerfile
+  issuer-waltid-status-token:
+    build:
+      context: ../../vca
+      dockerfile: services/status-token/Dockerfile
+
+  # Profile issuer-inji
+  issuer-inji-data-source:
+    build:
+      context: ../../vca
+      dockerfile: services/data-source/Dockerfile
+  issuer-inji-dpg-adapter-inji:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-inji/Dockerfile
+  issuer-inji-issuance:
+    build:
+      context: ../../vca
+      dockerfile: services/issuance/Dockerfile
+  issuer-inji-issued-credentials:
+    build:
+      context: ../../vca
+      dockerfile: services/issued-credentials/Dockerfile
+  issuer-inji-issuer-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/issuer-auth/Dockerfile
+  issuer-inji-schema-builder-ui:
+    build:
+      context: ../../vca
+      dockerfile: services/schema-builder-ui/Dockerfile
+  issuer-inji-schema-registry:
+    build:
+      context: ../../vca
+      dockerfile: services/schema-registry/Dockerfile
+  issuer-inji-status-bitstring:
+    build:
+      context: ../../vca
+      dockerfile: services/status-bitstring/Dockerfile
+  issuer-inji-status-token:
+    build:
+      context: ../../vca
+      dockerfile: services/status-token/Dockerfile
+
+  # Profile issuer-credebl
+  issuer-credebl-data-source:
+    build:
+      context: ../../vca
+      dockerfile: services/data-source/Dockerfile
+  issuer-credebl-dpg-adapter-credebl:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-credebl/Dockerfile
+  issuer-credebl-issuance:
+    build:
+      context: ../../vca
+      dockerfile: services/issuance/Dockerfile
+  issuer-credebl-issued-credentials:
+    build:
+      context: ../../vca
+      dockerfile: services/issued-credentials/Dockerfile
+  issuer-credebl-issuer-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/issuer-auth/Dockerfile
+  issuer-credebl-schema-builder-ui:
+    build:
+      context: ../../vca
+      dockerfile: services/schema-builder-ui/Dockerfile
+  issuer-credebl-schema-registry:
+    build:
+      context: ../../vca
+      dockerfile: services/schema-registry/Dockerfile
+  issuer-credebl-status-bitstring:
+    build:
+      context: ../../vca
+      dockerfile: services/status-bitstring/Dockerfile
+  issuer-credebl-status-token:
+    build:
+      context: ../../vca
+      dockerfile: services/status-token/Dockerfile
+
+  # Profile holder-waltid
+  holder-waltid-dpg-adapter-waltid:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-waltid/Dockerfile
+  holder-waltid-wallet-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/wallet-auth/Dockerfile
+  holder-waltid-wallet-portal:
+    build:
+      context: ../../vca
+      dockerfile: services/wallet-portal/Dockerfile
+
+  # Profile holder-inji
+  holder-inji-dpg-adapter-inji:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-inji/Dockerfile
+  holder-inji-wallet-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/wallet-auth/Dockerfile
+  holder-inji-wallet-portal:
+    build:
+      context: ../../vca
+      dockerfile: services/wallet-portal/Dockerfile
+
+  # Profile holder-credebl
+  holder-credebl-dpg-adapter-credebl:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-credebl/Dockerfile
+  holder-credebl-wallet-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/wallet-auth/Dockerfile
+  holder-credebl-wallet-portal:
+    build:
+      context: ../../vca
+      dockerfile: services/wallet-portal/Dockerfile
+
+  # Profile verifier-waltid
+  verifier-waltid-dpg-adapter-waltid:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-waltid/Dockerfile
+  verifier-waltid-verifier-combined:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-combined/Dockerfile
+  verifier-waltid-verifier-discovery:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-discovery/Dockerfile
+  verifier-waltid-verifier-ingest:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-ingest/Dockerfile
+  verifier-waltid-verifier-policy:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-policy/Dockerfile
+  verifier-waltid-verifier-results:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-results/Dockerfile
+
+  # Profile verifier-inji
+  verifier-inji-dpg-adapter-inji:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-inji/Dockerfile
+  verifier-inji-verifier-combined:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-combined/Dockerfile
+  verifier-inji-verifier-discovery:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-discovery/Dockerfile
+  verifier-inji-verifier-ingest:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-ingest/Dockerfile
+  verifier-inji-verifier-policy:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-policy/Dockerfile
+  verifier-inji-verifier-results:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-results/Dockerfile
+
+  # Profile verifier-credebl
+  verifier-credebl-dpg-adapter-credebl:
+    build:
+      context: ../../vca
+      dockerfile: services/dpg-adapter-credebl/Dockerfile
+  verifier-credebl-verifier-combined:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-combined/Dockerfile
+  verifier-credebl-verifier-discovery:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-discovery/Dockerfile
+  verifier-credebl-verifier-ingest:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-ingest/Dockerfile
+  verifier-credebl-verifier-policy:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-policy/Dockerfile
+  verifier-credebl-verifier-results:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-results/Dockerfile
+
+  # Profile admin-waltid
+  admin-waltid-admin:
+    build:
+      context: ../../vca
+      dockerfile: services/admin/Dockerfile
+  admin-waltid-trust-registry:
+    build:
+      context: ../../vca
+      dockerfile: services/trust-registry/Dockerfile
+
+  # Profile admin-inji
+  admin-inji-admin:
+    build:
+      context: ../../vca
+      dockerfile: services/admin/Dockerfile
+  admin-inji-trust-registry:
+    build:
+      context: ../../vca
+      dockerfile: services/trust-registry/Dockerfile
+
+  # Profile admin-credebl
+  admin-credebl-admin:
+    build:
+      context: ../../vca
+      dockerfile: services/admin/Dockerfile
+  admin-credebl-trust-registry:
+    build:
+      context: ../../vca
+      dockerfile: services/trust-registry/Dockerfile
