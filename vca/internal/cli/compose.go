@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
@@ -42,9 +43,9 @@ func RenderCompose() string {
 	b.WriteString("# The vca CLI generates this file. Do not edit it by hand.\n")
 	b.WriteString("# Run: go test ./internal/cli/ to check that it is current.\n")
 	b.WriteString("#\n")
-	b.WriteString("# One profile exists per role and DPG pair, for example issuer-waltid.\n")
-	b.WriteString("# Start one with: vca deploy --role issuer --dpg waltid\n")
-	b.WriteString("# That runs: docker compose --profile issuer-waltid up -d\n")
+	b.WriteString("# One profile exists per role and DPG pair, named <role>-<dpg>.\n")
+	b.WriteString("# Start one with: vca deploy --role <role> --dpg <dpg>\n")
+	b.WriteString("# That runs: docker compose --profile <role>-<dpg> up -d\n")
 	b.WriteString("#\n")
 	b.WriteString("# Every service runs read only, as a non-root user, with no added\n")
 	b.WriteString("# capabilities, and with no Docker socket (ADR-005 decisions 2 and 3).\n")
@@ -120,6 +121,19 @@ func Profiles(pairs []Pair) []string {
 	out := make([]string, 0, len(pairs))
 	for _, p := range pairs {
 		out = append(out, p.Name())
+	}
+	return out
+}
+
+// PairsForRole lists every DPG of one role, in DPG order. The order is
+// the proto order, so no DPG reads as the first choice
+// (ADR-001 decision 2, ADR-002 decision 2).
+func PairsForRole(r commonv1.Role) []Pair {
+	var out []Pair
+	for _, p := range AllPairs() {
+		if p.Role == r {
+			out = append(out, p)
+		}
 	}
 	return out
 }

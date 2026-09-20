@@ -4,7 +4,7 @@
 #
 # This file adds a build block to every VCA service. Use it before
 # the first release, when no image is in the registry yet.
-# Start one pair with: vca deploy --role issuer --dpg waltid --build
+# Start one pair with: vca deploy --role <role> --dpg <dpg> --build
 # That runs docker compose with both files and with --build.
 name: vca
 

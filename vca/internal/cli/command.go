@@ -56,15 +56,23 @@ type Environment struct {
 	// NewProbe reads the host for the doctor command and for the memory
 	// hint of the setup command. Nil reads the real host.
 	NewProbe func(context.Context) Probe
+	// IsTTY reports whether a person watches the input. The CLI asks the
+	// role and the DPG only then (ADR-007 decision 2). Nil reads the real
+	// standard input, unless the caller supplied In.
+	IsTTY func() bool
 }
 
 // withDefaults fills the fields a caller left empty.
 func (e Environment) withDefaults() Environment {
+	inGiven := e.In != nil
 	if e.Root == "" {
 		e.Root = "."
 	}
 	if e.In == nil {
 		e.In = os.Stdin
+	}
+	if e.IsTTY == nil {
+		e.IsTTY = func() bool { return !inGiven && stdinIsTerminal() }
 	}
 	if e.Out == nil {
 		e.Out = os.Stdout
@@ -93,6 +101,16 @@ func (e Environment) withDefaults() Environment {
 	return e
 }
 
+// stdinIsTerminal reports whether the standard input is a character
+// device. A pipe and a file are not, so a script asks nothing.
+func stdinIsTerminal() bool {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
 // Execute runs the CLI and returns the process exit status.
 func Execute(env Environment) int {
 	errOut := env.ErrOut
@@ -108,11 +126,80 @@ func Execute(env Environment) int {
 	return 0
 }
 
-// selection holds the --role, --dpg, and --all flags of one command.
+// AllChoice is the menu line that stands for every role or every DPG.
+const AllChoice = "all"
+
+// RoleQuestion and DpgQuestion head the two selection menus.
+const (
+	RoleQuestion = "Which role?"
+	DpgQuestion  = "Which DPG?"
+)
+
+// selection holds the --role, --dpg, --all, and --non-interactive flags
+// of one command.
 type selection struct {
 	role string
 	dpg  string
 	all  bool
+	// nonInteractive stops every question. The run then fails on a
+	// missing name (ADR-007 decision 3).
+	nonInteractive bool
+	// allowAll says the command takes --all, so the menus offer "all".
+	allowAll bool
+	// everyDpg says the operator chose one role with every DPG.
+	everyDpg bool
+}
+
+// roleChoices lists the role menu in proto order. No DPG and no role is
+// a default or a first choice (ADR-001 decision 2, ADR-002 decision 2).
+func (s selection) roleChoices() []string {
+	return withAll(RoleNames(), s.allowAll)
+}
+
+// dpgChoices lists the DPG menu in proto order.
+func (s selection) dpgChoices() []string {
+	return withAll(DpgNames(), s.allowAll)
+}
+
+// withAll appends the "all" line when the command takes --all.
+func withAll(names []string, allowAll bool) []string {
+	if !allowAll {
+		return names
+	}
+	return append(names, AllChoice)
+}
+
+// ask fills a missing --role or --dpg from a numbered menu. It asks
+// nothing when the run is not interactive, so that run keeps the error
+// of a missing name (ADR-007 decision 2).
+func (s *selection) ask(p Prompter, interactive bool) error {
+	if !interactive || s.all {
+		return nil
+	}
+	if s.role == "" {
+		choice, err := p.Choose(RoleQuestion, s.roleChoices())
+		if err != nil {
+			return err
+		}
+		if choice == AllChoice {
+			s.all = true
+		} else {
+			s.role = choice
+		}
+	}
+	if s.dpg != "" {
+		return nil
+	}
+	choice, err := p.Choose(DpgQuestion, s.dpgChoices())
+	if err != nil {
+		return err
+	}
+	if choice == AllChoice {
+		s.everyDpg = true
+		return nil
+	}
+	s.dpg = choice
+	return nil
 }
 
 // pairs turns the flags into the list of role and DPG pairs to act on.
@@ -126,6 +213,13 @@ func (s selection) pairs() ([]Pair, error) {
 			return nil, err
 		}
 		return PairsForDpg(d), nil
+	}
+	if s.role != "" && s.everyDpg {
+		r, err := ParseRole(s.role)
+		if err != nil {
+			return nil, err
+		}
+		return PairsForRole(r), nil
 	}
 	if s.role == "" || s.dpg == "" {
 		return nil, errors.New("name --role and --dpg, or use --all")
@@ -141,14 +235,32 @@ func (s selection) pairs() ([]Pair, error) {
 	return []Pair{{Role: r, Dpg: d}}, nil
 }
 
-// addSelectionFlags adds --role, --dpg, and --all to a command.
+// resolve asks the menus when a name is missing, then builds the pairs.
+// The caller passes the one Prompter of the run, so no answer is lost in
+// a second buffer.
+func (s *selection) resolve(p Prompter, env *Environment) ([]Pair, error) {
+	if s.role == "" || s.dpg == "" {
+		if err := s.ask(p, !s.nonInteractive && env.IsTTY()); err != nil {
+			return nil, err
+		}
+	}
+	return s.pairs()
+}
+
+// addSelectionFlags adds --role, --dpg, --all, and --non-interactive to
+// a command.
 func addSelectionFlags(cmd *cobra.Command, s *selection) {
+	s.allowAll = true
 	cmd.Flags().StringVar(&s.role, "role", "",
-		"The deployment role: "+strings.Join(RoleNames(), ", ")+".")
+		"The deployment role: "+strings.Join(RoleNames(), ", ")+
+			". A terminal run asks for it when the flag is absent.")
 	cmd.Flags().StringVar(&s.dpg, "dpg", "",
-		"The digital public good: "+strings.Join(DpgNames(), ", ")+".")
+		"The digital public good: "+strings.Join(DpgNames(), ", ")+
+			". The three are equal. A terminal run asks for it when the flag is absent.")
 	cmd.Flags().BoolVar(&s.all, "all", false,
 		"Act on every role of every DPG. Add --dpg to limit it to one stack.")
+	cmd.Flags().BoolVar(&s.nonInteractive, "non-interactive", false,
+		"Ask nothing. The run fails and names every missing value.")
 }
 
 // NewRootCommand builds the whole command tree.
@@ -218,12 +330,11 @@ func applyRepoRoot(env *Environment, flag string, rootGiven, stateGiven bool) er
 // newSetupCommand builds vca setup (ADR-007).
 func newSetupCommand(env *Environment) *cobra.Command {
 	var (
-		sel            selection
-		envFile        string
-		nonInteractive bool
-		sets           []string
-		outRoot        string
-		yes            bool
+		sel     selection
+		envFile string
+		sets    []string
+		outRoot string
+		yes     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -236,10 +347,12 @@ func newSetupCommand(env *Environment) *cobra.Command {
 			"and the default in the proto.\n\n" +
 			"Secrets are generated and written with mode 0600. A second run " +
 			"keeps them.",
-		Example: "  vca setup --role issuer --dpg waltid\n" +
-			"  vca setup --all --dpg inji --env-file base.env --non-interactive",
+		Example: "  vca setup\n" +
+			"  vca setup --role <role> --dpg <dpg>\n" +
+			"  vca setup --all --dpg <dpg> --env-file base.env --non-interactive",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			pairs, err := sel.pairs()
+			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
+			pairs, err := sel.resolve(prompter, env)
 			if err != nil {
 				return err
 			}
@@ -263,7 +376,6 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					"This host has less free memory than this selection needs (%d MiB).\n%s\n\n",
 					SelectionFloorMiB(pairs), hint))
 			}
-			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
 			for _, p := range pairs {
 				existing, existingErr := ReadExisting(root, p)
 				if existingErr != nil {
@@ -275,7 +387,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					Env:         env.Getenv,
 					File:        file,
 					Existing:    existing,
-					Interactive: !nonInteractive,
+					Interactive: !sel.nonInteractive,
 					Prompter:    prompter,
 					Random:      env.Random,
 				})
@@ -283,7 +395,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					return err
 				}
 				anyval.DiscardWrite(fmt.Fprint(cmd.OutOrStdout(), plan.Summary()))
-				if !nonInteractive && !yes {
+				if !sel.nonInteractive && !yes {
 					ok, confirmErr := prompter.Confirm("Write these files?", true)
 					if confirmErr != nil {
 						return confirmErr
@@ -306,8 +418,6 @@ func newSetupCommand(env *Environment) *cobra.Command {
 	}
 	addSelectionFlags(cmd, &sel)
 	cmd.Flags().StringVar(&envFile, "env-file", "", "A dotenv file that prefills the answers.")
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false,
-		"Ask nothing. The run fails and lists every missing value.")
 	cmd.Flags().StringArrayVar(&sets, "set", nil, "One value as NAME=value. Repeat the flag for more.")
 	cmd.Flags().StringVar(&outRoot, "out", "", "The directory that holds one folder per pair.")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Write the files without the last question.")
@@ -356,11 +466,13 @@ func newDeployCommand(env *Environment) *cobra.Command {
 			"role of every DPG, or --all --dpg to start every role of one DPG. " +
 			"Add --dry-run to print the rendered compose file " +
 			"and the commands without starting anything.",
-		Example: "  vca deploy --role verifier --dpg waltid\n" +
-			"  vca deploy --all --dpg inji --dry-run\n" +
+		Example: "  vca deploy --build\n" +
+			"  vca deploy --role <role> --dpg <dpg>\n" +
+			"  vca deploy --all --dpg <dpg> --dry-run\n" +
 			"  vca deploy --all --build",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			pairs, err := sel.pairs()
+			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
+			pairs, err := sel.resolve(prompter, env)
 			if err != nil {
 				return err
 			}
@@ -398,10 +510,11 @@ func newImagesCommand(env *Environment) *cobra.Command {
 			"Each image gets the tag " + LocalTag + ". The command then sets " +
 			VersionEnv + "=" + LocalTag + " in the .env file of each pair, so " +
 			"vca deploy starts the local images.",
-		Example: "  vca images build --role issuer --dpg waltid\n" +
-			"  vca images build --all --dpg waltid --dry-run",
+		Example: "  vca images build --role <role> --dpg <dpg>\n" +
+			"  vca images build --all --dpg <dpg> --dry-run",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			pairs, err := sel.pairs()
+			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
+			pairs, err := sel.resolve(prompter, env)
 			if err != nil {
 				return err
 			}
@@ -434,8 +547,9 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 			"The command exits with status 1 when one check fails. Add " +
 			"--from-source when you build the tool with Go. Add --suggest to " +
 			"print the largest selection that fits the free memory.",
-		Example: "  vca doctor --role issuer --dpg waltid\n" +
-			"  vca doctor --all --dpg waltid --from-source\n" +
+		Example: "  vca doctor --from-source\n" +
+			"  vca doctor --role <role> --dpg <dpg>\n" +
+			"  vca doctor --all --dpg <dpg> --from-source\n" +
 			"  vca doctor --suggest",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if suggest {
@@ -443,7 +557,8 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 					Probe: env.NewProbe(cmd.Context()), Out: cmd.OutOrStdout(),
 				})
 			}
-			pairs, err := sel.pairs()
+			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
+			pairs, err := sel.resolve(prompter, env)
 			if err != nil {
 				return err
 			}
@@ -485,9 +600,10 @@ func newPortsCommand(env *Environment) *cobra.Command {
 		Long: "ports prints one line per service with the port inside the " +
 			"container and the port on the machine that runs compose. Open " +
 			"those host ports in the firewall of a server.",
-		Example: "  vca ports --role issuer --dpg waltid",
+		Example: "  vca ports --role <role> --dpg <dpg>",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			pairs, err := sel.pairs()
+			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
+			pairs, err := sel.resolve(prompter, env)
 			if err != nil {
 				return err
 			}
@@ -521,9 +637,10 @@ func newStatusCommand(env *Environment) *cobra.Command {
 		Use:     "status",
 		Short:   "Show the containers of one role and DPG.",
 		Long:    "status runs docker compose ps with the profile of the role and the DPG.",
-		Example: "  vca status --role issuer --dpg waltid",
+		Example: "  vca status --role <role> --dpg <dpg>",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			pairs, err := sel.pairs()
+			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
+			pairs, err := sel.resolve(prompter, env)
 			if err != nil {
 				return err
 			}
@@ -544,9 +661,10 @@ func newDownCommand(env *Environment) *cobra.Command {
 		Short: "Stop one role and DPG.",
 		Long: "down runs docker compose down with the profile of the role and " +
 			"the DPG. The volumes stay, so no data is lost.",
-		Example: "  vca down --role issuer --dpg waltid",
+		Example: "  vca down --role <role> --dpg <dpg>",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			pairs, err := sel.pairs()
+			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
+			pairs, err := sel.resolve(prompter, env)
 			if err != nil {
 				return err
 			}
@@ -567,21 +685,33 @@ func newDpgCommand(env *Environment) *cobra.Command {
 		Long: "The dpg commands call the HTTP API of the digital public good. " +
 			"Nothing writes into a DPG database and nothing restarts a container.",
 	}
+	var nonInteractive bool
 	bootstrap := &cobra.Command{
-		Use:   "bootstrap [" + strings.Join(DpgNames(), "|") + "]",
+		Use:   "bootstrap [<dpg>]",
 		Short: "Apply the post boot configuration of one DPG.",
-		Long: "bootstrap provisions the walt.id did:web issuer and its key, " +
-			"imports the generated Keycloak realm for Inji and eSignet, or " +
-			"creates the CREDEBL organisation. Each run checks first, so a " +
-			"second run changes nothing.",
-		Example: "  vca dpg bootstrap waltid --role issuer",
-		Args:    cobra.ExactArgs(1),
+		Long: "bootstrap applies the post boot steps of the chosen DPG. It " +
+			"provisions the did:web issuer and its key, imports the generated " +
+			"Keycloak realm, or creates the organisation, as that DPG needs. " +
+			"Each run checks first, so a second run changes nothing.\n\n" +
+			"<dpg> is one of " + strings.Join(DpgNames(), ", ") +
+			". A terminal run asks for the DPG and the role when they are absent.",
+		Example: "  vca dpg bootstrap <dpg> --role issuer",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			d, err := ParseDpg(args[0])
+			p := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
+			interactive := !nonInteractive && env.IsTTY()
+			name, err := bootstrapName(p, args, interactive)
 			if err != nil {
 				return err
 			}
-			role := cmd.Flag("role").Value.String()
+			d, err := ParseDpg(name)
+			if err != nil {
+				return err
+			}
+			role, err := bootstrapRole(p, cmd, interactive)
+			if err != nil {
+				return err
+			}
 			r, err := ParseRole(role)
 			if err != nil {
 				return err
@@ -605,9 +735,35 @@ func newDpgCommand(env *Environment) *cobra.Command {
 		},
 	}
 	bootstrap.Flags().String("role", "issuer",
-		"The role whose .env file holds the DPG URL: "+strings.Join(RoleNames(), ", ")+".")
+		"The role whose .env file holds the DPG URL: "+strings.Join(RoleNames(), ", ")+
+			". A terminal run asks for it when the flag is absent.")
+	bootstrap.Flags().BoolVar(&nonInteractive, "non-interactive", false,
+		"Ask nothing. The run uses the named DPG and the default role.")
 	dpg.AddCommand(bootstrap)
 	return dpg
+}
+
+// bootstrapName reads the DPG name of vca dpg bootstrap. A terminal run
+// with no argument gets the menu (ADR-007 decision 2).
+func bootstrapName(p Prompter, args []string, interactive bool) (string, error) {
+	if len(args) == 1 {
+		return args[0], nil
+	}
+	if !interactive {
+		return "", errors.New("name the DPG: " + strings.Join(DpgNames(), ", "))
+	}
+	return p.Choose(DpgQuestion, DpgNames())
+}
+
+// bootstrapRole reads the role of vca dpg bootstrap. A terminal run that
+// passed no --role gets the menu. Every other run keeps the default, so
+// a script behaves as before.
+func bootstrapRole(p Prompter, cmd *cobra.Command, interactive bool) (string, error) {
+	flag := cmd.Flag("role")
+	if flag.Changed || !interactive {
+		return flag.Value.String(), nil
+	}
+	return p.Choose(RoleQuestion, RoleNames())
 }
 
 // newAdminCommand builds the vca admin tree (ADR-009 decisions 1 and 2).

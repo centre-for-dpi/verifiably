@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
@@ -107,6 +108,59 @@ func (p Prompter) AskMissing(list []Resolution) (map[string]string, error) {
 		}
 	}
 	return answers, nil
+}
+
+// ErrEmptyMenu reports that a menu was built with no option.
+var ErrEmptyMenu = errors.New("setup: the menu has no option")
+
+// Choose shows a numbered menu and returns the chosen option. The
+// operator answers with the number or with the name. The options keep
+// the order the caller gave, which is the order of the proto enum
+// (ADR-007 decision 2).
+func (p Prompter) Choose(question string, options []string) (string, error) {
+	if len(options) == 0 {
+		return "", ErrEmptyMenu
+	}
+	for try := 0; try < maxTries; try++ {
+		p.printMenu(question, options)
+		line, err := p.In.ReadString('\n')
+		answer := strings.TrimSpace(line)
+		if answer == "" && err != nil {
+			return "", ErrNoInput
+		}
+		if choice, ok := matchOption(answer, options); ok {
+			return choice, nil
+		}
+		anyval.DiscardWrite(fmt.Fprintf(p.Out,
+			"  Answer with a number from 1 to %d, or with the name.\n", len(options)))
+	}
+	return "", fmt.Errorf("setup: the menu got %d bad answers", maxTries)
+}
+
+// printMenu writes the question and one numbered line per option.
+func (p Prompter) printMenu(question string, options []string) {
+	anyval.DiscardWrite(fmt.Fprintf(p.Out, "\n%s\n", question))
+	for i, o := range options {
+		anyval.DiscardWrite(fmt.Fprintf(p.Out, "  %d) %s\n", i+1, o))
+	}
+	anyval.DiscardWrite(fmt.Fprintf(p.Out, "Number [1-%d]: ", len(options)))
+}
+
+// matchOption reads one menu answer. It accepts the number of a line or
+// the name on it.
+func matchOption(answer string, options []string) (string, bool) {
+	if n, err := strconv.Atoi(answer); err == nil {
+		if n >= 1 && n <= len(options) {
+			return options[n-1], true
+		}
+		return "", false
+	}
+	for _, o := range options {
+		if strings.EqualFold(answer, o) {
+			return o, true
+		}
+	}
+	return "", false
 }
 
 // Confirm asks a yes or no question. It returns the fallback when the

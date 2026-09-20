@@ -49,7 +49,7 @@ func RenderComposeBuild() string {
 	b.WriteString("#\n")
 	b.WriteString("# This file adds a build block to every VCA service. Use it before\n")
 	b.WriteString("# the first release, when no image is in the registry yet.\n")
-	b.WriteString("# Start one pair with: vca deploy --role issuer --dpg waltid --build\n")
+	b.WriteString("# Start one pair with: vca deploy --role <role> --dpg <dpg> --build\n")
 	b.WriteString("# That runs docker compose with both files and with --build.\n")
 	fmt.Fprintf(&b, "name: %s\n\n", ComposeProject)
 	b.WriteString("services:\n")

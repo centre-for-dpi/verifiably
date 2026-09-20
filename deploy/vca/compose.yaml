@@ -2,9 +2,9 @@
 # The vca CLI generates this file. Do not edit it by hand.
 # Run: go test ./internal/cli/ to check that it is current.
 #
-# One profile exists per role and DPG pair, for example issuer-waltid.
-# Start one with: vca deploy --role issuer --dpg waltid
-# That runs: docker compose --profile issuer-waltid up -d
+# One profile exists per role and DPG pair, named <role>-<dpg>.
+# Start one with: vca deploy --role <role> --dpg <dpg>
+# That runs: docker compose --profile <role>-<dpg> up -d
 #
 # Every service runs read only, as a non-root user, with no added
 # capabilities, and with no Docker socket (ADR-005 decisions 2 and 3).
