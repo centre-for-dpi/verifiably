@@ -218,8 +218,10 @@ type Config struct {
 	// Optional. Defaults to public_url. Must be an absolute http or https URL.
 	InternalUrl string `protobuf:"bytes,4,opt,name=internal_url,json=internalUrl,proto3" json:"internal_url,omitempty"`
 	// The PostgreSQL connection URL of the services of this role.
-	// Required. Must start with postgres:// or postgresql://.
-	// The CLI stores the password part as a secret reference.
+	// Reserved for the PostgreSQL backend. No service reads it yet.
+	// Every service keeps its data in the file store under /data
+	// (ADR-002 decision 3). Optional. When set, it must start with
+	// postgres:// or postgresql://.
 	DatabaseUrl string `protobuf:"bytes,5,opt,name=database_url,json=databaseUrl,proto3" json:"database_url,omitempty"`
 	// The OIDC provider that staff, citizens, or admins log in with.
 	// Required for every role.
@@ -662,7 +664,7 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\finternal_url\x18\x04 \x01(\tB\x94\x01\xd2\xf3\x18\x8f\x01\n" +
 	"?The base URL that other containers use to reach the deployment.\x12\x10VCA_INTERNAL_URLB:An absolute http or https URL. Defaults to the public URL.R\vinternalUrl\x12\xa6\x01\n" +
 	"\fdatabase_url\x18\x05 \x01(\tB\x82\x01\xd2\xf3\x18~\n" +
-	";The PostgreSQL connection URL of the services of this role.\x12\x10VCA_DATABASE_URL \x018\x01B)Starts with postgres:// or postgresql://.R\vdatabaseUrl\x12i\n" +
+	"=Reserved for the PostgreSQL backend. No service reads it yet.\x12\x10VCA_DATABASE_URL \x01B)Starts with postgres:// or postgresql://.R\vdatabaseUrl\x12i\n" +
 	"\x04oidc\x18\x06 \x01(\v2\x1a.vca.config.v1.Config.OidcB9\xd2\xf3\x185\n" +
 	"'The OpenID Connect provider for logins.\x12\bVCA_OIDC8\x01R\x04oidc\x12|\n" +
 	"\asecrets\x18\a \x01(\v2\x1d.vca.config.v1.Config.SecretsBC\xd2\xf3\x18?\n" +

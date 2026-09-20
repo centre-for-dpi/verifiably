@@ -165,8 +165,9 @@ func TestValidateAllListsEveryProblem(t *testing.T) {
 		find(t, all, "database_url"),
 	}
 	problems := ValidateAll(settings, map[string]string{
-		"VCA_PUBLIC_URL": "http://x",
-		"VCA_LOG_LEVEL":  "trace",
+		"VCA_PUBLIC_URL":   "http://x",
+		"VCA_LOG_LEVEL":    "trace",
+		"VCA_DATABASE_URL": "mysql://x/y",
 	})
 	if len(problems) != 3 {
 		t.Fatalf("got %d problems, want 3: %v", len(problems), problems)

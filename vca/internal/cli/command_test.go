@@ -97,7 +97,7 @@ func TestSetupNonInteractiveListsEveryMissingValue(t *testing.T) {
 	if status == 0 {
 		t.Fatal("a run with no values passed")
 	}
-	for _, want := range []string{"VCA_DATABASE_URL", "VCA_DPG_URL"} {
+	for _, want := range []string{"VCA_DPG_URL", "VCA_OIDC_DISCOVERY_URL"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the error does not name %s:\n%s", want, errOut)
 		}

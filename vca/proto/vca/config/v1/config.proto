@@ -88,13 +88,14 @@ message Config {
     validation: "An absolute http or https URL. Defaults to the public URL."
   }];
   // The PostgreSQL connection URL of the services of this role.
-  // Required. Must start with postgres:// or postgresql://.
-  // The CLI stores the password part as a secret reference.
+  // Reserved for the PostgreSQL backend. No service reads it yet.
+  // Every service keeps its data in the file store under /data
+  // (ADR-002 decision 3). Optional. When set, it must start with
+  // postgres:// or postgresql://.
   string database_url = 5 [(setting) = {
-    description: "The PostgreSQL connection URL of the services of this role."
+    description: "Reserved for the PostgreSQL backend. No service reads it yet."
     env: "VCA_DATABASE_URL"
     secret: true
-    required: true
     validation: "Starts with postgres:// or postgresql://."
   }];
   // The OIDC provider that staff, citizens, or admins log in with.

@@ -43,6 +43,21 @@ func TestSettingsWalksEveryLeaf(t *testing.T) {
 	}
 }
 
+// TestDatabaseURLIsOptional keeps the PostgreSQL URL out of the required
+// list. No service reads it yet (ADR-002 decision 3).
+func TestDatabaseURLIsOptional(t *testing.T) {
+	db := find(t, Settings(), "database_url")
+	if db.Required {
+		t.Error("the database URL is still required")
+	}
+	if !strings.Contains(db.Description, "No service reads it yet") {
+		t.Errorf("description = %q", db.Description)
+	}
+	if err := Validate(db, ""); err != nil {
+		t.Errorf("an empty database URL failed: %v", err)
+	}
+}
+
 func TestSettingsKinds(t *testing.T) {
 	all := Settings()
 	cases := map[string]Kind{

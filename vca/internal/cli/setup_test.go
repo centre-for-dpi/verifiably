@@ -115,11 +115,11 @@ func TestBuildPlanFailsAndListsEveryMissingValue(t *testing.T) {
 	if !asMissing(err, &missing) {
 		t.Fatalf("got %T, want MissingValuesError", err)
 	}
-	if len(missing.Settings) < 3 {
+	if len(missing.Settings) < 2 {
 		t.Errorf("got %d missing settings", len(missing.Settings))
 	}
 	text := err.Error()
-	for _, want := range []string{"VCA_DATABASE_URL", "VCA_DPG_URL", "VCA_OIDC_DISCOVERY_URL"} {
+	for _, want := range []string{"VCA_DPG_URL", "VCA_OIDC_DISCOVERY_URL"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the error does not name %s:\n%s", want, text)
 		}

@@ -148,10 +148,14 @@ One role, with every answer on the command line:
 ```sh
 vca setup --role issuer --dpg waltid --non-interactive \
   --set VCA_PUBLIC_URL=https://issuer.example \
-  --set VCA_DATABASE_URL=postgres://vca@postgres:5432/vca \
   --set VCA_DPG_URL=http://waltid-issuer-api:7002 \
   --set VCA_OIDC_DISCOVERY_URL=https://idp.example/.well-known/openid-configuration
 ```
+
+`VCA_DATABASE_URL` is optional.
+The PostgreSQL backend keeps it for later.
+No service reads it yet. Every service keeps its data in the file store
+under `/data` (ADR-002 decision 3).
 
 Every role of one stack in one run (ADR-007 decision 7):
 
