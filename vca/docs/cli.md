@@ -45,10 +45,34 @@ It finds that root in this order:
 
 The walk stops at the first directory that holds `ADR.md`.
 
+## The role and the DPG
+
+Most commands take `--role` and `--dpg`.
+`<role>` is one of `issuer`, `holder`, `verifier`, `admin`.
+`<dpg>` is one of `waltid`, `inji`, `credebl`; the three are equal.
+
+Leave a flag out and a terminal run asks for it with a numbered menu.
+The menu lists every value in the order of the proto enum, and adds
+`all` where `--all` is valid.
+Pick a line by its number or type the name.
+A run that is not a terminal, and a run with `--non-interactive`, asks
+nothing. It fails and names the missing flag.
+
+```
+Which role?
+  1) issuer
+  2) holder
+  3) verifier
+  4) admin
+  5) all
+Number [1-5]:
+```
+
 ## doctor
 
 ```sh
-vca doctor --role issuer --dpg waltid
+vca doctor --from-source
+vca doctor --role <role> --dpg <dpg>
 vca doctor --all --from-source
 vca doctor --suggest
 ```
@@ -76,16 +100,19 @@ When the free memory is under the floor, `doctor` and `setup` print one
 hint:
 
 ```
-Use --all --dpg waltid for one stack (8576 MiB) or --role admin --dpg waltid for one pair (704 MiB)
+Use --all --dpg <dpg> for one stack (<n> MiB) or --role admin --dpg <dpg> for one pair (<n> MiB)
 ```
 
-`vca doctor --suggest` prints the largest selection that fits the free
-memory of this host, with the two commands that start it.
+The hint names the largest DPG that fits and the memory it needs.
+One stack needs 8576 MiB with `waltid` and 10112 MiB with `inji` or
+`credebl`. One admin pair needs 704 MiB with any DPG.
+`vca doctor --suggest` prints the selection that fits the free memory of
+this host, with the two commands that start it.
 
 ## ports
 
 ```sh
-vca ports --role issuer --dpg waltid
+vca ports --role <role> --dpg <dpg>
 ```
 
 The command prints one line per service with the host port and the
@@ -95,7 +122,8 @@ Open those host ports in the firewall of a server.
 ## setup
 
 ```sh
-vca setup --role {issuer|holder|verifier|admin} --dpg {waltid|inji|credebl}
+vca setup
+vca setup --role <role> --dpg <dpg>
 ```
 
 The command asks only for a required value that no source and no default
@@ -133,11 +161,11 @@ A second run keeps every secret (ADR-007 decision 5).
 
 | Flag | What it does |
 |---|---|
-| `--role` | The deployment role. |
-| `--dpg` | The digital public good. |
+| `--role` | The deployment role. A terminal run asks for it when the flag is absent. |
+| `--dpg` | The digital public good. A terminal run asks for it when the flag is absent. |
 | `--all` | Every role of every DPG. Add `--dpg` to limit it to one stack. |
 | `--env-file` | A dotenv file that prefills the answers. |
-| `--non-interactive` | Ask nothing. The run fails and lists every missing value. |
+| `--non-interactive` | Ask nothing. The run fails and names every missing value. |
 | `--set NAME=value` | One value. Repeat the flag for more values. |
 | `--out` | The directory that holds one folder per pair. |
 | `--yes` | Write the files without the last question. |
@@ -147,14 +175,20 @@ A second run keeps every secret (ADR-007 decision 5).
 The command writes one folder per role and DPG pair:
 
 ```
-deploy/issuer-waltid/.env                  mode 0600
-deploy/issuer-waltid/signing-key.pem       mode 0600
-deploy/issuer-waltid/Caddyfile             mode 0644
-deploy/issuer-waltid/waltid-onboard.json   mode 0644
+deploy/<role>-<dpg>/.env                mode 0600
+deploy/<role>-<dpg>/signing-key.pem     mode 0600
+deploy/<role>-<dpg>/Caddyfile           mode 0644
+deploy/<role>-<dpg>/keycloak-realm.json mode 0644
 ```
 
 Every pair gets `keycloak-realm.json`, because every DPG stack ships a
-Keycloak. Only a walt.id pair gets `waltid-onboard.json`.
+Keycloak. A pair also gets the extra file its DPG needs:
+
+| DPG | Extra file |
+|---|---|
+| `waltid` | `waltid-onboard.json` |
+| `inji` | None |
+| `credebl` | None |
 The CLI shows a summary of every value and its source before it writes.
 A secret never appears in the summary.
 
@@ -163,11 +197,13 @@ A secret never appears in the summary.
 One role, with every answer on the command line:
 
 ```sh
-vca setup --role issuer --dpg waltid --non-interactive \
+vca setup --role <role> --dpg <dpg> --non-interactive \
   --set VCA_PUBLIC_URL=https://issuer.example \
-  --set VCA_DPG_URL=http://waltid-issuer-api:7002 \
   --set VCA_OIDC_DISCOVERY_URL=https://idp.example/.well-known/openid-configuration
 ```
+
+`VCA_DPG_URL` has a default per role and DPG. `docs/deploy.md` holds the
+table of the twelve values.
 
 `VCA_DATABASE_URL` is optional.
 The PostgreSQL backend keeps it for later.
@@ -177,15 +213,15 @@ under `/data` (ADR-002 decision 3).
 Every role of one stack in one run (ADR-007 decision 7):
 
 ```sh
-vca setup --all --dpg waltid --env-file base.env --non-interactive
+vca setup --all --dpg <dpg> --env-file base.env --non-interactive
 ```
 
 ## deploy, status, and down
 
 ```sh
-vca deploy --role issuer --dpg waltid
-vca status --role issuer --dpg waltid
-vca down   --role issuer --dpg waltid
+vca deploy --role <role> --dpg <dpg>
+vca status --role <role> --dpg <dpg>
+vca down   --role <role> --dpg <dpg>
 ```
 
 `deploy` runs `docker compose` with the profile of the pair against
@@ -202,8 +238,8 @@ See `docs/deploy.md` for the compose layout and the resource floor.
 ## images build
 
 ```sh
-vca images build --role issuer --dpg waltid
-vca images build --all --dpg waltid --dry-run
+vca images build --role <role> --dpg <dpg>
+vca images build --all --dpg <dpg> --dry-run
 ```
 
 The command runs `docker build` once per service of the selection.
@@ -214,13 +250,13 @@ pair, so the next `vca deploy` starts the local images.
 ## dpg bootstrap
 
 ```sh
-vca dpg bootstrap waltid --role issuer
-vca dpg bootstrap inji --role holder
-vca dpg bootstrap credebl --role issuer
+vca dpg bootstrap
+vca dpg bootstrap <dpg> --role <role>
 ```
 
 The command calls the HTTP API of the DPG (ADR-008 decision 4).
 It writes into no DPG database and it restarts no container.
+A terminal run with no DPG name and no `--role` asks for both.
 
 | DPG | What the command does |
 |---|---|
@@ -358,7 +394,7 @@ go test ./internal/cli/
 Print the rendered compose file without a Docker daemon:
 
 ```sh
-go run ./cmd/vca deploy --role issuer --dpg waltid --dry-run
+go run ./cmd/vca deploy --role <role> --dpg <dpg> --dry-run
 ```
 
 Write the man pages and read one:

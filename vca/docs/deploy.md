@@ -19,27 +19,34 @@ It lists the prerequisites and the three ways to get the `vca` binary.
 ### Step 0: check the host
 
 ```sh
-vca doctor --role issuer --dpg waltid
+vca doctor --role <role> --dpg <dpg>
 ```
+
+`<dpg>` is one of `waltid`, `inji`, `credebl`; the three are equal.
+`<role>` is one of `issuer`, `holder`, `verifier`, `admin`.
+Leave either flag out and the command asks for it with a numbered menu.
+A run that is not a terminal, or that passes `--non-interactive`, fails
+and names the missing flag.
 
 The command prints one line per prerequisite with a pass or a fail.
 It checks Docker, the compose plugin, the free memory, the host ports,
 and the public URL. It exits with status 1 on any fail.
+`vca doctor --suggest` prints the selection that fits the free memory.
 
 ### Step 1: set up the role
 
 ```sh
 cd vca && go mod tidy && go build -o vca ./cmd/vca
-./vca setup --role issuer --dpg waltid
+./vca setup --role <role> --dpg <dpg>
 ```
 
-The command writes `deploy/issuer-waltid/.env` and the DPG configuration.
+The command writes `deploy/<role>-<dpg>/.env` and the DPG configuration.
 See `docs/cli.md` for the questions and the order of the sources.
 
 ### Step 2: start the containers
 
 ```sh
-./vca deploy --role issuer --dpg waltid
+./vca deploy --role <role> --dpg <dpg>
 ```
 
 That runs this command for you:
@@ -47,18 +54,18 @@ That runs this command for you:
 ```sh
 docker compose --project-name vca \
   --file deploy/vca/compose.yaml \
-  --env-file deploy/issuer-waltid/.env \
-  --profile issuer-waltid up -d
+  --env-file deploy/<role>-<dpg>/.env \
+  --profile <role>-<dpg> up -d
 ```
 
-Add `--all` to start every role of every DPG. Add `--all --dpg waltid` to start every role of one DPG.
+Add `--all` to start every role of every DPG. Add `--all --dpg <dpg>` to start every role of one DPG.
 Add `--dry-run` to print the rendered file and the commands.
 Add `--build` before the first release. See "Images from source".
 
 ### Step 3: configure the DPG
 
 ```sh
-./vca dpg bootstrap waltid --role issuer
+./vca dpg bootstrap <dpg> --role <role>
 ```
 
 The command calls the DPG HTTP API. It runs again with no harm.
@@ -66,10 +73,10 @@ The command calls the DPG HTTP API. It runs again with no harm.
 ### Step 4: check the deployment
 
 ```sh
-./vca status --role issuer --dpg waltid
+./vca status --role <role> --dpg <dpg>
 ```
 
-Stop it with `./vca down --role issuer --dpg waltid`.
+Stop it with `./vca down --role <role> --dpg <dpg>`.
 The volumes stay, so the data survives.
 
 ## The compose file
@@ -91,7 +98,7 @@ with `pull access denied`.
 Build the images from the source in this repository instead:
 
 ```sh
-vca deploy --role issuer --dpg waltid --build
+vca deploy --role <role> --dpg <dpg> --build
 ```
 
 That adds a second file to the compose command:
@@ -100,8 +107,8 @@ That adds a second file to the compose command:
 docker compose --project-name vca \
   --file deploy/vca/compose.yaml \
   --file deploy/vca/compose.build.yaml \
-  --env-file deploy/issuer-waltid/.env \
-  --profile issuer-waltid up -d --build
+  --env-file deploy/<role>-<dpg>/.env \
+  --profile <role>-<dpg> up -d --build
 ```
 
 The repository holds `deploy/vca/compose.build.yaml`.
@@ -113,7 +120,7 @@ Each service gets `context: ../../vca` and
 To build the images without compose:
 
 ```sh
-vca images build --role issuer --dpg waltid
+vca images build --role <role> --dpg <dpg>
 ```
 
 Each image gets the tag `local`.
@@ -125,7 +132,8 @@ the release tag.
 ### Profiles
 
 One profile exists per role and DPG pair.
-The names are `issuer-waltid`, `holder-inji`, `admin-credebl`, and so on.
+The name is `<role>-<dpg>`, so the twelve names run from `issuer-waltid`
+to `admin-credebl`.
 Compose starts only the services of the profile you name
 (ADR-008 decisions 1 and 2).
 
@@ -162,15 +170,15 @@ The CLI reads the port plan and writes each URL into the .env file:
 | `VCA_ADMIN_SERVICES` | Every other service of the same DPG, for the health page. |
 
 A link can name a service of another role.
-The container names carry the pair, for example
-`verifier-waltid-verifier-discovery`.
+The container names carry the pair, as in
+`verifier-<dpg>-verifier-discovery`.
 Every profile joins the same `vca` network, so one role reaches another
 role of the same DPG.
 Start the other role, or edit the value by hand.
 
 Each role and DPG pair owns a block of one hundred host ports.
 The first block starts at 18000.
-`vca ports --role issuer --dpg waltid` prints the ports of one pair.
+`vca ports --role <role> --dpg <dpg>` prints the ports of one pair.
 `vca doctor` checks that each one is free.
 
 ### Hardening
@@ -282,6 +290,14 @@ The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 | `admin-inji` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 | `admin-credebl` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 
+One stack is the four roles of one DPG together:
+
+| Selection | `waltid` | `inji` | `credebl` |
+|---|---|---|---|
+| `--all --dpg <dpg>` | 8576 MiB | 10112 MiB | 10112 MiB |
+
+`--all` alone starts every role of every DPG and needs 28800 MiB.
+
 The VCA figure is 96 MiB per service.
 The admin role runs the admin service and the trust registry.
 The holder role runs the wallet portal, the wallet auth service, and one
@@ -306,8 +322,8 @@ Turn one role on and pick its DPG adapter:
 
 ```sh
 helm upgrade --install vca deploy/vca/helm/vca \
-  --set roles.issuer.enabled=true \
-  --set dpg.waltid.enabled=true
+  --set roles.<role>.enabled=true \
+  --set dpg.<dpg>.enabled=true
 ```
 
 Check the charts:
@@ -334,8 +350,8 @@ kind cluster (ADR-006 decision 7).
 ## How to check it works
 
 ```sh
-go run ./cmd/vca deploy --role issuer --dpg waltid --dry-run
-docker compose --file deploy/vca/compose.yaml config --profile issuer-waltid
+go run ./cmd/vca deploy --role <role> --dpg <dpg> --dry-run
+docker compose --file deploy/vca/compose.yaml config --profile <role>-<dpg>
 go test ./internal/cli/
 ```
 

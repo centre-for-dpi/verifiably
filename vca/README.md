@@ -26,21 +26,26 @@ Three steps take you from a clone to a running role:
 
 ```sh
 cd vca && go mod tidy && go install ./cmd/vca   # puts vca in $HOME/go/bin, no root needed
-vca doctor --role issuer --dpg waltid --from-source
-vca setup --role issuer --dpg waltid && vca deploy --role issuer --dpg waltid --build
+vca doctor --from-source        # asks for the role and the DPG
+vca setup && vca deploy --build # asks again, then starts one role with one DPG
 ```
+
+Each command asks for the role and the DPG when the `--role` and `--dpg`
+flags are absent. The menu lists every role and every DPG. `<dpg>` is one
+of `waltid`, `inji`, `credebl`; the three are equal. Add the flags to
+answer ahead of time, as in `vca deploy --role <role> --dpg <dpg>`.
 
 `vca doctor` checks Docker, the memory, and the ports, and names the fix
 for each fail. It prints the memory floor of each selected pair.
 `vca setup` asks only for a required value that no source and no default
-filled, so a laptop run answers no question. It writes one `.env` file
-per role and DPG pair. `vca deploy` starts the services with Docker
+filled. A laptop run answers no setting question. It writes one `.env`
+file per role and DPG pair. `vca deploy` starts the services with Docker
 Compose profiles. Use `--build` until the first release publishes the
 images. One role with one DPG needs about 3 GB of memory.
-`--all --dpg waltid` starts the four roles of one stack and needs about
-8.5 GB. `--all` alone starts every role of every DPG and needs about
-28 GB, so it is a server option. `vca doctor --suggest` names the
-largest selection that fits your host.
+`--all --dpg <dpg>` starts the four roles of one stack and needs 8.5 GB
+to 10 GB, by DPG. `--all` alone starts every role of every DPG and needs about
+28 GB, so it is a server option. `vca doctor --suggest` prints the
+selection that fits your host.
 
 Now, for developers:
 
