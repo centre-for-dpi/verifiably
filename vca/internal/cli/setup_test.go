@@ -231,6 +231,30 @@ func TestBuildPlanInteractive(t *testing.T) {
 	}
 }
 
+// TestBuildPlanEveryPairNeedsNoValue is ADR-007 decision 3. A run with
+// no flag, no environment, and no env file must pass for each of the
+// twelve pairs. Every required value has a default, a derived value, or
+// a generated secret.
+func TestBuildPlanEveryPairNeedsNoValue(t *testing.T) {
+	for _, p := range AllPairs() {
+		t.Run(p.Name(), func(t *testing.T) {
+			plan, err := BuildPlan(SetupRequest{Pair: p, Random: rand.Reader})
+			var missing *MissingValuesError
+			if errors.As(err, &missing) {
+				t.Fatalf("%s needs a value:\n%v", p.Name(), err)
+			}
+			if err != nil {
+				t.Fatalf("BuildPlan %s: %v", p.Name(), err)
+			}
+			for _, r := range plan.Resolutions {
+				if r.Setting.Required && r.Value == "" {
+					t.Errorf("%s has no value for %s", p.Name(), r.Setting.Env)
+				}
+			}
+		})
+	}
+}
+
 // TestCarryOffersKeepsAPublicHostOnly proves a --all run repeats a
 // public host on the next pair and never a localhost address.
 func TestCarryOffersKeepsAPublicHostOnly(t *testing.T) {

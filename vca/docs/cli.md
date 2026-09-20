@@ -188,6 +188,29 @@ The CLI takes the first value it finds, in this order:
 A secret that an earlier run generated comes before the default.
 A second run keeps every secret (ADR-007 decision 5).
 
+### The required values
+
+The proto marks these settings `required: true`.
+Each one has a value without an answer.
+So `vca setup --role <role> --dpg <dpg> --non-interactive` passes
+with no flag, no environment, and no env file.
+It does so for each of the twelve pairs.
+
+| Variable | Where the value comes from |
+|---|---|
+| `VCA_ROLE` | The `--role` flag or the menu |
+| `VCA_DPG` | The `--dpg` flag or the menu |
+| `VCA_OIDC_DISCOVERY_URL` | The Keycloak of the DPG stack |
+| `VCA_OIDC_CLIENT_SECRET` | Generated, 32 random bytes |
+| `VCA_DPG_URL` | The DPG API container of the pair |
+| `VCA_SECRETS_SIGNING_KEY` | Generated, `signing-key.pem` |
+| `VCA_SECRETS_SESSION_KEY` | Generated, 32 random bytes |
+| `VCA_SECRETS_BOOTSTRAP_TOKEN` | Generated for the admin role |
+| `VCA_PORTS_PORTAL` | `8080` |
+
+`VCA_REDIS_URL` is optional (ADR-020 decision 6).
+Empty selects the in-memory limiter, which is fine for one replica.
+
 ### Flags
 
 | Flag | What it does |
