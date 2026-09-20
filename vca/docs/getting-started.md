@@ -8,7 +8,7 @@ Read it first. It covers a laptop and a server with a public name.
 | Need | Version | When | How to check |
 |---|---|---|---|
 | Go | 1.25 or newer | Only to build `vca` from source | `go version` |
-| Docker Engine | 24 or newer | Always | `docker version` |
+| Docker Engine | 24 or newer, and your user in the `docker` group | Always | `docker version` |
 | Docker Compose | v2, the `docker compose` plugin | Always | `docker compose version` |
 | Memory | 4 GB free per role | Always | `free -m` |
 | Disk | 10 GB free for the images and the volumes | Always | `df -h .` |
@@ -45,9 +45,13 @@ There are three ways. Pick one.
    ```sh
    cd vca
    go mod tidy
-   go build -o vca ./cmd/vca
-   sudo install vca /usr/local/bin/
+   go install ./cmd/vca
    ```
+
+   `go install` writes the binary to `$HOME/go/bin`, which needs no
+   root access. Add that directory to your `PATH`. If you want a
+   system-wide copy and you have root access, run
+   `sudo install $HOME/go/bin/vca /usr/local/bin/` instead.
 
 Until the first tag, only the source build works.
 No release and no tag exist yet, so use way 3.

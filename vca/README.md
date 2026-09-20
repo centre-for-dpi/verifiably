@@ -21,7 +21,7 @@ stays in `verifiably-go/` until each role has the same functions.
 Three steps take you from a clone to a running role:
 
 ```sh
-cd vca && go mod tidy && go build -o vca ./cmd/vca && sudo install vca /usr/local/bin/
+cd vca && go mod tidy && go install ./cmd/vca   # puts vca in $HOME/go/bin, no root needed
 vca doctor --all --from-source
 vca setup --all && vca deploy --all --build
 ```
