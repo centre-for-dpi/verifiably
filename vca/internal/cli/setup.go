@@ -196,15 +196,21 @@ func applyRoleAndDpg(list []Resolution, p Pair) []Resolution {
 
 // applyDerivedDefaults fills every value that follows from the pair or
 // from another value. The DPG URL follows from the role and the DPG.
-// The internal URL and the OIDC redirect URI follow from the public URL
-// (ADR-007 decision 2).
+// The internal URL, the OIDC redirect URI, and the OIDC public URL
+// follow from the public URL (ADR-007 decision 2).
 func applyDerivedDefaults(list []Resolution, p Pair) []Resolution {
 	out := make([]Resolution, len(list))
 	copy(out, list)
+	public := ""
+	for _, r := range out {
+		if r.Setting.Path == "public_url" {
+			public = strings.TrimRight(r.Value, "/")
+		}
+	}
 	pairDefaults := map[string]string{
 		"dpg_url":            DefaultDpgURL(p),
 		"oidc.discovery_url": DefaultDiscoveryURL(p),
-		"oidc.public_url":    DefaultOidcPublicURL(p),
+		"oidc.public_url":    OidcPublicURLFor(p, public),
 		"oidc.client_id":     DefaultClientID(p.Role),
 	}
 	for i := range out {
@@ -213,12 +219,6 @@ func applyDerivedDefaults(list []Resolution, p Pair) []Resolution {
 		}
 		if value := pairDefaults[out[i].Setting.Path]; value != "" {
 			out[i].Value, out[i].Origin = value, OriginDefault
-		}
-	}
-	public := ""
-	for _, r := range out {
-		if r.Setting.Path == "public_url" {
-			public = strings.TrimRight(r.Value, "/")
 		}
 	}
 	if public == "" {

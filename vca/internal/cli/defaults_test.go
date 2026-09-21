@@ -4,6 +4,7 @@ package cli
 
 import (
 	"crypto/rand"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -272,5 +273,50 @@ func TestDeployDocHoldsTheDpgURLTable(t *testing.T) {
 	}
 	if !strings.Contains(string(data), FloorTable()) {
 		t.Errorf("docs/deploy.md does not hold the memory floor table:\n%s", FloorTable())
+	}
+}
+
+func TestOidcPublicURLFollowsThePublicHost(t *testing.T) {
+	p := issuerPair()
+	cases := map[string]string{
+		"":                            "http://localhost:17010",
+		"http://localhost:18002":      "http://localhost:17010",
+		"http://127.0.0.1:18002":      "http://localhost:17010",
+		"https://labs.example":        "http://labs.example:17010",
+		"https://labs.example/":       "http://labs.example:17010",
+		"https://issuer.example:8443": "http://issuer.example:17010",
+		"not a url":                   "http://localhost:17010",
+	}
+	for public, want := range cases {
+		if got := OidcPublicURLFor(p, public); got != want {
+			t.Errorf("%q: got %q, want %q", public, got, want)
+		}
+	}
+	if DefaultOidcPublicURL(p) != "http://localhost:17010" {
+		t.Errorf("DefaultOidcPublicURL = %q", DefaultOidcPublicURL(p))
+	}
+}
+
+func TestBuildPlanDerivesTheOidcPublicURLFromThePublicURL(t *testing.T) {
+	flags := baseFlags()
+	flags["VCA_PUBLIC_URL"] = "https://labs.example"
+	for _, p := range AllPairs() {
+		plan, err := BuildPlan(SetupRequest{Pair: p, Flags: flags, Random: rand.Reader})
+		if err != nil {
+			t.Fatalf("%s: BuildPlan: %v", p.Name(), err)
+		}
+		values := Values(plan.Resolutions)
+		want := fmt.Sprintf("http://labs.example:%d", KeycloakHostPort(p.Dpg))
+		if values["VCA_OIDC_PUBLIC_URL"] != want {
+			t.Errorf("%s: VCA_OIDC_PUBLIC_URL = %q, want %q", p.Name(), values["VCA_OIDC_PUBLIC_URL"], want)
+		}
+	}
+	flags["VCA_OIDC_PUBLIC_URL"] = "https://idp.example"
+	plan, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: flags, Random: rand.Reader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Values(plan.Resolutions)["VCA_OIDC_PUBLIC_URL"]; got != "https://idp.example" {
+		t.Errorf("a given value lost: %q", got)
 	}
 }

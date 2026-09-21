@@ -83,13 +83,26 @@ func DefaultDiscoveryURL(p Pair) string {
 }
 
 // DefaultOidcPublicURL returns the browser facing base URL of the
-// Keycloak of the stack, on the host port the compose file maps.
-func DefaultOidcPublicURL(p Pair) string {
+// Keycloak of the stack, on the host port the compose file maps, for a
+// local deployment.
+func DefaultOidcPublicURL(p Pair) string { return OidcPublicURLFor(p, "") }
+
+// OidcPublicURLFor returns the browser facing base URL of the Keycloak
+// of the stack for one public URL. A local public URL, or none, gives
+// http://localhost with the host port. A public host gives http with
+// that host and the same port, because the browser of a remote user
+// cannot reach localhost on the server. Keycloak listens with no TLS
+// on that port, so a production deployment sets its own value.
+func OidcPublicURLFor(p Pair, publicURL string) string {
 	port := KeycloakHostPort(p.Dpg)
 	if port == 0 {
 		return ""
 	}
-	return fmt.Sprintf("http://localhost:%d", port)
+	host := hostOf(publicURL)
+	if host == "" || isLocalHost(host) {
+		host = "localhost"
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
 }
 
 // DefaultClientID returns the OAuth 2.0 client id of one role. The
