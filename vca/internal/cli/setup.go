@@ -132,6 +132,9 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range LinkValues(req.Pair, values) {
 		extra[name] = value
 	}
+	for name, value := range Passthrough(settings, req.Flags, req.File) {
+		extra[name] = value
+	}
 	files := []File{{
 		Name: EnvFileName,
 		Data: []byte(RenderDotenv(req.Pair.Name()+" deployment", list, extra)),
@@ -144,6 +147,31 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	files = append(files, dpgFiles...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files}, nil
+}
+
+// PassthroughPrefix marks a variable that setup writes as given. A
+// service setting that the proto does not declare, for example the
+// CREDEBL operator account of the CREDEBL adapter, reaches the .env
+// file this way from a --set flag or an env file.
+const PassthroughPrefix = "VCA_"
+
+// Passthrough returns every flag and env file value whose name starts
+// with VCA_ and that no setting declares. A flag wins over the file.
+func Passthrough(settings []Setting, flags, file map[string]string) map[string]string {
+	known := make(map[string]bool, len(settings))
+	for _, s := range settings {
+		known[s.Env] = true
+	}
+	out := map[string]string{}
+	for _, src := range []map[string]string{file, flags} {
+		for name, value := range src {
+			if !strings.HasPrefix(name, PassthroughPrefix) || known[name] || strings.TrimSpace(value) == "" {
+				continue
+			}
+			out[name] = value
+		}
+	}
+	return out
 }
 
 // resolveWithDefaults resolves every setting and fills every value that
@@ -317,7 +345,30 @@ func ReadExisting(root string, p Pair) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	if err := upgradeSigningKeyRef(OutputDir(root, p), values); err != nil {
+		return nil, err
+	}
 	return values, nil
+}
+
+// legacySigningKeyRef is the value an earlier setup wrote. It named the
+// PEM file by a relative path that no container could open.
+const legacySigningKeyRef = "file:" + SigningKeyFile
+
+// upgradeSigningKeyRef replaces the legacy file reference with the PEM
+// of that file, so a second run of setup repairs an existing pair and
+// keeps its key.
+func upgradeSigningKeyRef(dir string, values map[string]string) error {
+	if values["VCA_SECRETS_SIGNING_KEY"] != legacySigningKeyRef {
+		return nil
+	}
+	path := filepath.Join(dir, SigningKeyFile)
+	pemBytes, err := os.ReadFile(path) // #nosec G304 -- the path comes from the pair name
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	values["VCA_SECRETS_SIGNING_KEY"] = SigningKeyRef(pemBytes)
+	return nil
 }
 
 // WritePlan writes every file of the plan under the deploy root.

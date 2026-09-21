@@ -155,19 +155,21 @@ The `.env` file of the pair carries both numbers:
 
 ### Service links
 
-Some services need the URL of another service.
-The CLI reads the port plan and writes each URL into the .env file:
+Every service reads its settings under its own prefix, for example
+`VCA_ISSUANCE_`.
+The CLI writes each value a service needs into the .env file under
+that name.
+The service catalogue in `internal/cli/services.go` holds the list, and
+`TestLinkValuesFeedEveryService` keeps it in step with the services.
+The values come in five kinds:
 
-| Variable | What it points at |
-|---|---|
-| `VCA_WALLET_PORTAL_AUTH_JWKS_URL` | The JWKS of the wallet auth service. |
-| `VCA_WALLET_PORTAL_LOGIN_URL` | The login page of the wallet auth service. |
-| `VCA_WALLET_PORTAL_DISCOVERY_URL` | The verifier discovery service. |
-| `VCA_WALLET_PORTAL_TRUST_URL` | The trust registry service. |
-| `VCA_WALLET_PORTAL_DPG_ADAPTERS` | The DPG adapter of the pair. |
-| `VCA_ADMIN_PUBLIC_URL` | The public base URL of the deployment. |
-| `VCA_ADMIN_TRUST_URL` | The trust registry service. |
-| `VCA_ADMIN_SERVICES` | Every other service of the same DPG, for the health page. |
+| Kind | Example | Value |
+|---|---|---|
+| Service URL | `VCA_ISSUANCE_SCHEMA_URL` | The container name and port of another service, from the port plan. |
+| Adapter URL | `VCA_ISSUANCE_ADAPTER_URL` | The DPG adapter of the pair. |
+| Public URL | `VCA_SCHEMA_BASE_URL` | `VCA_PUBLIC_URL` plus the path the Caddyfile routes to the service. |
+| Copy | `VCA_ADMIN_SIGNING_KEY`, `VCA_WALTID_ISSUER_URL` | A shared value under the name the service reads: the signing key, the session key, the bootstrap token, or `VCA_DPG_URL`. |
+| Fixed | `VCA_ISSUER_AUTH_STATE_DIR=/data` | A path under the data volume. |
 
 A link can name a service of another role.
 The container names carry the pair, as in
@@ -176,10 +178,53 @@ Every profile joins the same `vca` network, so one role reaches another
 role of the same DPG.
 Start the other role, or edit the value by hand.
 
+A variable that no setting declares passes through from `--set` or the
+env file when its name starts with `VCA_`.
+The CREDEBL adapter needs four such values: `VCA_CREDEBL_EMAIL`,
+`VCA_CREDEBL_PASSWORD`, `VCA_CREDEBL_CRYPTO_KEY`, and
+`VCA_CREDEBL_ORG_ID`.
+
 Each role and DPG pair owns a block of one hundred host ports.
 The first block starts at 18000.
 `vca ports --role <role> --dpg <dpg>` prints the ports of one pair.
 `vca doctor` checks that each one is free.
+
+### The signing key
+
+`vca setup` writes the ES256 key to `deploy/<pair>/signing-key.pem`
+with mode 0600, and writes the same PEM as base64 into
+`VCA_SECRETS_SIGNING_KEY`, with the prefix `base64:`.
+The .env file has mode 0600 too.
+A file on the host belongs to the operator.
+The container user 65532 cannot read it, so the key travels in the
+variable.
+Every service accepts the PEM text, `base64:` and the PEM, `file:` and
+a path, or a bare path.
+A second run of setup upgrades a pair that an earlier version wrote
+with `file:signing-key.pem`.
+
+### Data volumes
+
+A stateful service keeps its files under `/data` on a named volume,
+`vca_<pair>-<service>-data`.
+The image holds `/data` with owner 65532, and Docker copies that owner
+into a new named volume, so the service can write.
+A volume that an older image created belongs to root and every write
+fails with `permission denied`.
+Remove those volumes once, before the first deploy with the new images:
+
+```sh
+vca down --all
+docker volume rm $(docker volume ls -q --filter name=vca_)
+```
+
+To keep the data instead, change the owner:
+
+```sh
+for v in $(docker volume ls -q --filter name=vca_); do
+  docker run --rm -v "$v:/v" alpine chown 65532:65532 /v
+done
+```
 
 ### Hardening
 

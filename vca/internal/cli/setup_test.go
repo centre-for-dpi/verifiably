@@ -70,7 +70,7 @@ func TestBuildPlanNonInteractive(t *testing.T) {
 	if values["VCA_SECRETS_SESSION_KEY"] == "" {
 		t.Error("the session key was not generated")
 	}
-	if values["VCA_SECRETS_SIGNING_KEY"] != "file:"+SigningKeyFile {
+	if !strings.HasPrefix(values["VCA_SECRETS_SIGNING_KEY"], SigningKeyRefPrefix) {
 		t.Errorf("the signing key = %q", values["VCA_SECRETS_SIGNING_KEY"])
 	}
 	names := fileNames(plan)
@@ -579,5 +579,65 @@ func TestFloorAndFloorTable(t *testing.T) {
 	}
 	if strings.Count(table, "\n") != len(AllPairs())+2 {
 		t.Errorf("the table has the wrong row count:\n%s", table)
+	}
+}
+
+// TestReadExistingUpgradesTheLegacyKeyReference repairs a pair that an
+// earlier setup wrote with file:signing-key.pem.
+func TestReadExistingUpgradesTheLegacyKeyReference(t *testing.T) {
+	root := t.TempDir()
+	p := issuerPair()
+	dir := OutputDir(root, p)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	env := "VCA_SECRETS_SIGNING_KEY=file:signing-key.pem\nVCA_SECRETS_SESSION_KEY=s\n"
+	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadExisting(root, p); err == nil {
+		t.Error("a missing PEM passed")
+	}
+	if err := os.WriteFile(filepath.Join(dir, SigningKeyFile), []byte("PEM"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values, err := ReadExisting(root, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["VCA_SECRETS_SIGNING_KEY"] != SigningKeyRef([]byte("PEM")) || values["VCA_SECRETS_SESSION_KEY"] != "s" {
+		t.Errorf("values = %v", values)
+	}
+}
+
+// TestPassthroughWritesUndeclaredVariables carries a service setting
+// that the proto does not declare from --set or the env file.
+func TestPassthroughWritesUndeclaredVariables(t *testing.T) {
+	settings := Filter(Settings(), commonv1.Role_ROLE_ISSUER, configv1.Dpg_DPG_CREDEBL)
+	flags := map[string]string{"VCA_CREDEBL_EMAIL": "ops@example", "VCA_PUBLIC_URL": "https://x.example", "OTHER": "no"}
+	file := map[string]string{"VCA_CREDEBL_EMAIL": "file@example", "VCA_CREDEBL_ORG_ID": "org", "VCA_EMPTY": " "}
+	got := Passthrough(settings, flags, file)
+	want := map[string]string{"VCA_CREDEBL_EMAIL": "ops@example", "VCA_CREDEBL_ORG_ID": "org"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q, want %q", k, got[k], v)
+		}
+	}
+	p := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_CREDEBL}
+	plan, err := BuildPlan(SetupRequest{Pair: p, Flags: flags, Random: rand.Reader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var env string
+	for _, f := range plan.Files {
+		if f.Name == EnvFileName {
+			env = string(f.Data)
+		}
+	}
+	if !strings.Contains(env, "VCA_CREDEBL_EMAIL=ops@example\n") || strings.Contains(env, "OTHER=") {
+		t.Errorf("env:\n%s", env)
 	}
 }

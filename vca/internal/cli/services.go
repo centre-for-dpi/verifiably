@@ -49,21 +49,45 @@ const (
 	LinkAdapterMap
 	// LinkDpgName is the short name of the DPG of the pair.
 	LinkDpgName
-	// LinkPublicURL is the public base URL of the deployment.
+	// LinkPublicURL is the public base URL of the deployment, plus a
+	// path.
 	LinkPublicURL
+	// LinkAdapterURL is the base URL of the DPG adapter of the pair,
+	// plus a path.
+	LinkAdapterURL
+	// LinkCopy is the value of another variable of the same .env file.
+	// Target names that variable. A service that reads a shared secret
+	// or the DPG URL under its own prefix gets it this way.
+	LinkCopy
 )
 
 // Link is one variable that names another service.
 type Link struct {
 	// Env is the variable the service reads.
 	Env string
-	// Target is the service the variable points at. It is used by
-	// LinkURL only.
+	// Target is the service the variable points at. LinkURL reads a
+	// service name. LinkCopy reads a variable name.
 	Target string
 	// Path is the path the CLI adds to the base URL.
 	Path string
 	// Kind says how to build the value.
 	Kind LinkKind
+	// Roles limits the link to some roles. Empty means every role that
+	// runs the service.
+	Roles []commonv1.Role
+}
+
+// appliesTo reports whether a link is written for one role.
+func (l Link) appliesTo(r commonv1.Role) bool {
+	if len(l.Roles) == 0 {
+		return true
+	}
+	for _, role := range l.Roles {
+		if role == r {
+			return true
+		}
+	}
+	return false
 }
 
 // FixedValue is one variable with a value the CLI always writes.
@@ -87,32 +111,116 @@ func Catalog() []Service {
 	everyRole := []commonv1.Role{
 		commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER, commonv1.Role_ROLE_VERIFIER,
 	}
+	// signingKey is the shared signing key under the name a service
+	// reads. sessionKey and bootstrapToken are the same for the other
+	// two generated secrets.
+	signingKey := func(env string) Link { return Link{Env: env, Target: "VCA_SECRETS_SIGNING_KEY", Kind: LinkCopy} }
+	sessionKey := func(env string) Link { return Link{Env: env, Target: "VCA_SECRETS_SESSION_KEY", Kind: LinkCopy} }
+	dpgURL := func(env string, roles ...commonv1.Role) Link {
+		return Link{Env: env, Target: "VCA_DPG_URL", Kind: LinkCopy, Roles: roles}
+	}
+	state := func(env string) []FixedValue { return []FixedValue{{Env: env, Value: "/data"}} }
 	out := []Service{
 		{Name: "admin", ListenEnv: "VCA_ADMIN_LISTEN", ExposedPort: 8093, Roles: admin, Stateful: true,
 			Links: []Link{
 				{Env: "VCA_ADMIN_PUBLIC_URL", Kind: LinkPublicURL},
 				{Env: "VCA_ADMIN_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
 				{Env: "VCA_ADMIN_SERVICES", Kind: LinkServiceMap},
+				signingKey("VCA_ADMIN_SIGNING_KEY"),
+				sessionKey("VCA_ADMIN_SESSION_KEY"),
+				{Env: "VCA_ADMIN_BOOTSTRAP_TOKEN", Target: "VCA_SECRETS_BOOTSTRAP_TOKEN", Kind: LinkCopy},
 			},
-			Fixed: []FixedValue{{Env: "VCA_ADMIN_STATE_DIR", Value: "/data"}}},
-		{Name: "data-source", ListenEnv: "VCA_DATASOURCE_LISTEN", ExposedPort: 8083, Roles: issuer, Stateful: true},
-		{Name: "dpg-adapter-credebl", ListenEnv: "VCA_CREDEBL_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_CREDEBL},
-		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI},
-		{Name: "dpg-adapter-waltid", ListenEnv: "VCA_WALTID_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_WALTID},
-		{Name: "issuance", ListenEnv: "VCA_ISSUANCE_LISTEN", ExposedPort: 8080, Roles: issuer},
-		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true},
-		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer},
-		{Name: "schema-builder-ui", ListenEnv: "VCA_SCHEMABUILDER_LISTEN", ExposedPort: 8081, Roles: issuer},
-		{Name: "schema-registry", ListenEnv: "VCA_SCHEMA_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true},
-		{Name: "status-bitstring", ListenEnv: "VCA_STATUS_BITSTRING_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true},
-		{Name: "status-token", ListenEnv: "VCA_STATUS_TOKEN_LISTEN", ExposedPort: 8085, Roles: issuer, Stateful: true},
-		{Name: "trust-registry", ListenEnv: "VCA_TRUST_LISTEN", ExposedPort: 8080, Roles: admin, Stateful: true},
-		{Name: "verifier-combined", ListenEnv: "VCA_VERIFIER_COMBINED_LISTEN", ExposedPort: 8088, Roles: verifier, Stateful: true},
-		{Name: "verifier-discovery", ListenEnv: "VCA_DISCOVERY_LISTEN", ExposedPort: 8090, Roles: verifier, Stateful: true},
-		{Name: "verifier-ingest", ListenEnv: "VCA_INGEST_LISTEN", ExposedPort: 8091, Roles: verifier},
-		{Name: "verifier-policy", ListenEnv: "VCA_VERIFIER_POLICY_LISTEN", ExposedPort: 8086, Roles: verifier, Stateful: true},
-		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true},
-		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder},
+			Fixed: state("VCA_ADMIN_STATE_DIR")},
+		{Name: "data-source", ListenEnv: "VCA_DATASOURCE_LISTEN", ExposedPort: 8083, Roles: issuer, Stateful: true,
+			Fixed: []FixedValue{{Env: "VCA_DATASOURCE_STORE_FILE", Value: "/data/sources.json"}}},
+		{Name: "dpg-adapter-credebl", ListenEnv: "VCA_CREDEBL_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_CREDEBL,
+			Links: []Link{dpgURL("VCA_CREDEBL_API_URL")}},
+		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI,
+			Links: []Link{
+				dpgURL("VCA_INJI_CERTIFY_URL", commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER),
+				dpgURL("VCA_INJI_VERIFY_URL", commonv1.Role_ROLE_VERIFIER),
+				{Env: "VCA_INJI_PUBLIC_URL", Kind: LinkPublicURL},
+			}},
+		{Name: "dpg-adapter-waltid", ListenEnv: "VCA_WALTID_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_WALTID,
+			Links: []Link{
+				dpgURL("VCA_WALTID_ISSUER_URL", commonv1.Role_ROLE_ISSUER),
+				dpgURL("VCA_WALTID_WALLET_URL", commonv1.Role_ROLE_HOLDER),
+				dpgURL("VCA_WALTID_VERIFIER_URL", commonv1.Role_ROLE_VERIFIER),
+			}},
+		{Name: "issuance", ListenEnv: "VCA_ISSUANCE_LISTEN", ExposedPort: 8080, Roles: issuer,
+			Links: []Link{
+				{Env: "VCA_ISSUANCE_PUBLIC_URL", Kind: LinkPublicURL},
+				{Env: "VCA_ISSUANCE_ADAPTER_URL", Kind: LinkAdapterURL},
+				{Env: "VCA_ISSUANCE_SCHEMA_URL", Target: "schema-registry", Kind: LinkURL},
+				{Env: "VCA_ISSUANCE_STATUS_URL", Target: "status-bitstring", Kind: LinkURL},
+				{Env: "VCA_ISSUANCE_ISSUED_URL", Target: "issued-credentials", Kind: LinkURL},
+				{Env: "VCA_ISSUANCE_DATA_SOURCE_URL", Target: "data-source", Kind: LinkURL},
+			}},
+		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
+			Links: []Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}},
+			Fixed: []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}}},
+		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer, Stateful: true,
+			Fixed: state("VCA_ISSUER_AUTH_STATE_DIR")},
+		{Name: "schema-builder-ui", ListenEnv: "VCA_SCHEMABUILDER_LISTEN", ExposedPort: 8081, Roles: issuer,
+			Links: []Link{
+				{Env: "VCA_SCHEMABUILDER_REGISTRY_URL", Target: "schema-registry", Kind: LinkURL},
+				{Env: "VCA_SCHEMABUILDER_CATALOG_URL", Kind: LinkAdapterURL},
+				{Env: "VCA_SCHEMABUILDER_PORTAL_URL", Kind: LinkPublicURL, Path: "/schema-registry"},
+			}},
+		{Name: "schema-registry", ListenEnv: "VCA_SCHEMA_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_SCHEMA_BASE_URL", Kind: LinkPublicURL, Path: "/schema-registry"},
+				{Env: "VCA_SCHEMA_BACKEND_URL", Kind: LinkAdapterURL},
+				{Env: "VCA_SCHEMA_BUILDER_URL", Target: "schema-builder-ui", Kind: LinkURL},
+			},
+			Fixed: []FixedValue{{Env: "VCA_SCHEMA_STORE_FILE", Value: "/data/schemas.json"}}},
+		{Name: "status-bitstring", ListenEnv: "VCA_STATUS_BITSTRING_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_STATUS_BITSTRING_BASE_URL", Kind: LinkPublicURL, Path: "/status-bitstring"},
+				signingKey("VCA_STATUS_BITSTRING_SIGNING_KEY_FILE"),
+			},
+			Fixed: state("VCA_STATUS_BITSTRING_STATE_DIR")},
+		{Name: "status-token", ListenEnv: "VCA_STATUS_TOKEN_LISTEN", ExposedPort: 8085, Roles: issuer, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_STATUS_TOKEN_BASE_URL", Kind: LinkPublicURL, Path: "/status-token"},
+				signingKey("VCA_STATUS_TOKEN_SIGNING_KEY_FILE"),
+			},
+			Fixed: state("VCA_STATUS_TOKEN_STATE_DIR")},
+		{Name: "trust-registry", ListenEnv: "VCA_TRUST_LISTEN", ExposedPort: 8080, Roles: admin, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_TRUST_BASE_URL", Kind: LinkPublicURL, Path: "/trust-registry"},
+				signingKey("VCA_TRUST_SIGNING_KEY_FILE"),
+			},
+			Fixed: []FixedValue{{Env: "VCA_TRUST_STORE_FILE", Value: "/data/trust.json"}}},
+		{Name: "verifier-combined", ListenEnv: "VCA_VERIFIER_COMBINED_LISTEN", ExposedPort: 8088, Roles: verifier, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_VERIFIER_COMBINED_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
+				{Env: "VCA_VERIFIER_COMBINED_RESULTS_URL", Target: "verifier-results", Kind: LinkURL},
+				{Env: "VCA_VERIFIER_COMBINED_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
+			},
+			Fixed: state("VCA_VERIFIER_COMBINED_STATE_DIR")},
+		{Name: "verifier-discovery", ListenEnv: "VCA_DISCOVERY_LISTEN", ExposedPort: 8090, Roles: verifier, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL, Path: "/verifier-discovery"},
+				{Env: "VCA_DISCOVERY_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
+			},
+			Fixed: state("VCA_DISCOVERY_STATE_DIR")},
+		{Name: "verifier-ingest", ListenEnv: "VCA_INGEST_LISTEN", ExposedPort: 8091, Roles: verifier, Stateful: true,
+			Links: []Link{
+				{Env: "VCA_INGEST_BASE_URL", Kind: LinkPublicURL, Path: "/verifier-ingest"},
+				{Env: "VCA_INGEST_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
+				signingKey("VCA_INGEST_SIGNING_KEY_FILE"),
+			},
+			Fixed: state("VCA_INGEST_STATE_DIR")},
+		{Name: "verifier-policy", ListenEnv: "VCA_VERIFIER_POLICY_LISTEN", ExposedPort: 8086, Roles: verifier, Stateful: true,
+			Links: []Link{{Env: "VCA_VERIFIER_POLICY_TRUST_URL", Target: "trust-registry", Kind: LinkURL}},
+			Fixed: state("VCA_VERIFIER_POLICY_STATE_DIR")},
+		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true,
+			Links: []Link{{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL}},
+			Fixed: state("VCA_VERIFIER_RESULTS_STATE_DIR")},
+		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder, Stateful: true,
+			Links: []Link{{Env: "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", Kind: LinkAdapterURL}},
+			Fixed: state("VCA_WALLET_AUTH_STATE_DIR")},
 		{Name: "wallet-portal", ListenEnv: "VCA_WALLET_PORTAL_LISTEN", ExposedPort: 8092, Roles: holder, Stateful: true,
 			Links: []Link{
 				{Env: "VCA_WALLET_PORTAL_AUTH_JWKS_URL", Target: "wallet-auth", Path: "/.well-known/jwks.json", Kind: LinkURL},
@@ -122,7 +230,7 @@ func Catalog() []Service {
 				{Env: "VCA_WALLET_PORTAL_DPG", Kind: LinkDpgName},
 				{Env: "VCA_WALLET_PORTAL_DPG_ADAPTERS", Kind: LinkAdapterMap},
 			},
-			Fixed: []FixedValue{{Env: "VCA_WALLET_PORTAL_STATE_DIR", Value: "/data"}}},
+			Fixed: state("VCA_WALLET_PORTAL_STATE_DIR")},
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -345,6 +453,9 @@ func LinkValues(p Pair, values map[string]string) map[string]string {
 			out[f.Env] = f.Value
 		}
 		for _, link := range s.Links {
+			if !link.appliesTo(p.Role) {
+				continue
+			}
 			if value, ok := linkValue(p, s, link, values); ok {
 				out[link.Env] = value
 			}
@@ -392,6 +503,19 @@ func linkValue(p Pair, s Service, link Link, values map[string]string) (string, 
 		return ShortName(p.Dpg.String()), true
 	case LinkPublicURL:
 		value := strings.TrimRight(values["VCA_PUBLIC_URL"], "/")
+		if value == "" {
+			return "", false
+		}
+		return value + link.Path, true
+	case LinkAdapterURL:
+		name := "dpg-adapter-" + ShortName(p.Dpg.String())
+		base, ok := serviceURL(p, name)
+		if !ok {
+			return "", false
+		}
+		return base + link.Path, true
+	case LinkCopy:
+		value := values[link.Target]
 		return value, value != ""
 	default:
 		return "", false

@@ -75,7 +75,7 @@ func FillSecrets(list []Resolution, random io.Reader) ([]Resolution, []File, err
 				return nil, nil, err
 			}
 			files = append(files, File{Name: SigningKeyFile, Data: pemBytes, Mode: 0o600})
-			out[i].Value = "file:" + SigningKeyFile
+			out[i].Value = SigningKeyRef(pemBytes)
 			out[i].Origin = OriginExisting
 			continue
 		}
@@ -87,6 +87,19 @@ func FillSecrets(list []Resolution, random io.Reader) ([]Resolution, []File, err
 		out[i].Origin = OriginExisting
 	}
 	return out, files, nil
+}
+
+// SigningKeyRefPrefix marks a signing key reference that carries the
+// PEM itself as base64. The services read this form, the PEM text, and
+// a file path.
+const SigningKeyRefPrefix = "base64:"
+
+// SigningKeyRef returns the value of VCA_SECRETS_SIGNING_KEY for one
+// PEM. The key travels in the .env file, which has mode 0600 like the
+// PEM file, because a file on the host belongs to the operator and the
+// container user 65532 cannot read it (ADR-005 decision 2).
+func SigningKeyRef(pemBytes []byte) string {
+	return SigningKeyRefPrefix + base64.StdEncoding.EncodeToString(pemBytes)
 }
 
 // Mask hides a secret value in a summary or a log.

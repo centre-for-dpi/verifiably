@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"strings"
@@ -72,11 +73,14 @@ func TestFillSecretsGeneratesAndKeeps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FillSecrets: %v", err)
 	}
-	if out[0].Value != "file:"+SigningKeyFile {
-		t.Errorf("signing key value = %q", out[0].Value)
-	}
 	if len(files) != 1 || files[0].Name != SigningKeyFile || files[0].Mode != 0o600 {
 		t.Fatalf("files = %+v", files)
+	}
+	if out[0].Value != SigningKeyRef(files[0].Data) || !strings.HasPrefix(out[0].Value, "base64:") {
+		t.Errorf("signing key value = %q", out[0].Value)
+	}
+	if raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(out[0].Value, "base64:")); err != nil || string(raw) != string(files[0].Data) {
+		t.Errorf("the value does not carry the PEM: %v", err)
 	}
 	if out[1].Value == "" {
 		t.Error("the session key was not generated")
@@ -98,7 +102,7 @@ func TestFillSecretsGeneratesAndKeeps(t *testing.T) {
 func TestFillSecretsIsRerunnable(t *testing.T) {
 	list := []Resolution{
 		{Setting: Setting{Path: "secrets.session_key", Env: "VCA_SECRETS_SESSION_KEY", Secret: true, Required: true, Kind: KindSecretRef}, Value: "kept", Origin: OriginExisting},
-		{Setting: Setting{Path: "secrets.signing_key", Env: "VCA_SECRETS_SIGNING_KEY", Secret: true, Required: true, Kind: KindSecretRef}, Value: "file:" + SigningKeyFile, Origin: OriginExisting},
+		{Setting: Setting{Path: "secrets.signing_key", Env: "VCA_SECRETS_SIGNING_KEY", Secret: true, Required: true, Kind: KindSecretRef}, Value: "base64:QQ==", Origin: OriginExisting},
 	}
 	out, files, err := FillSecrets(list, rand.Reader)
 	if err != nil {

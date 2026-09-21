@@ -221,7 +221,7 @@ It does so for each of the twelve pairs.
 | `VCA_OIDC_DISCOVERY_URL` | The Keycloak of the DPG stack |
 | `VCA_OIDC_CLIENT_SECRET` | Generated, 32 random bytes |
 | `VCA_DPG_URL` | The DPG API container of the pair |
-| `VCA_SECRETS_SIGNING_KEY` | Generated, `signing-key.pem` |
+| `VCA_SECRETS_SIGNING_KEY` | Generated, `signing-key.pem`, also in the variable as `base64:` |
 | `VCA_SECRETS_SESSION_KEY` | Generated, 32 random bytes |
 | `VCA_SECRETS_BOOTSTRAP_TOKEN` | Generated for the admin role |
 | `VCA_PORTS_PORTAL` | `8080` |
@@ -239,7 +239,7 @@ Empty selects the in-memory limiter, which is fine for one replica.
 | `--domain` | The base domain. Every pair gets `https://<role>-<dpg>.<domain>`. Also `VCA_DOMAIN`. |
 | `--env-file` | A dotenv file that prefills the answers. |
 | `--non-interactive` | Ask nothing. The run fails and names every missing value. |
-| `--set NAME=value` | One value. Repeat the flag for more values. |
+| `--set NAME=value` | One value. Repeat the flag for more values. A `VCA_` name that no setting declares passes through to the .env file. |
 | `--out` | The directory that holds one folder per pair. |
 | `--yes` | Write the files without the last question. |
 

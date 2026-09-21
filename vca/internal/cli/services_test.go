@@ -374,3 +374,135 @@ func TestDeploymentServicesKeepOneAdapter(t *testing.T) {
 		t.Errorf("got %d services, want %d", len(list), len(Catalog())-2)
 	}
 }
+
+// TestLinkValuesFeedEveryService is the contract between the .env file
+// and the services. Every variable a service requires at start, every
+// state path, and every shared secret must reach the container under
+// the name the service reads.
+func TestLinkValuesFeedEveryService(t *testing.T) {
+	values := map[string]string{
+		"VCA_PUBLIC_URL":              "https://issuer-waltid.labs.example",
+		"VCA_DPG_URL":                 "http://waltid-issuer-api:7002",
+		"VCA_SECRETS_SIGNING_KEY":     "base64:QQ==",
+		"VCA_SECRETS_SESSION_KEY":     "session",
+		"VCA_SECRETS_BOOTSTRAP_TOKEN": "boot",
+	}
+	issuer := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}
+	got := LinkValues(issuer, values)
+	want := map[string]string{
+		"VCA_ISSUANCE_ADAPTER_URL":              "http://issuer-waltid-dpg-adapter-waltid:8090",
+		"VCA_ISSUANCE_SCHEMA_URL":               "http://issuer-waltid-schema-registry:8103",
+		"VCA_ISSUANCE_STATUS_URL":               "http://issuer-waltid-status-bitstring:8104",
+		"VCA_ISSUANCE_ISSUED_URL":               "http://issuer-waltid-issued-credentials:8101",
+		"VCA_ISSUANCE_DATA_SOURCE_URL":          "http://issuer-waltid-data-source:8100",
+		"VCA_ISSUANCE_PUBLIC_URL":               "https://issuer-waltid.labs.example",
+		"VCA_SCHEMABUILDER_REGISTRY_URL":        "http://issuer-waltid-schema-registry:8103",
+		"VCA_SCHEMABUILDER_CATALOG_URL":         "http://issuer-waltid-dpg-adapter-waltid:8090",
+		"VCA_SCHEMABUILDER_PORTAL_URL":          "https://issuer-waltid.labs.example/schema-registry",
+		"VCA_SCHEMA_BASE_URL":                   "https://issuer-waltid.labs.example/schema-registry",
+		"VCA_SCHEMA_BACKEND_URL":                "http://issuer-waltid-dpg-adapter-waltid:8090",
+		"VCA_SCHEMA_BUILDER_URL":                "http://issuer-waltid-schema-builder-ui:8102",
+		"VCA_SCHEMA_STORE_FILE":                 "/data/schemas.json",
+		"VCA_ISSUED_STATUS_URL":                 "http://issuer-waltid-status-bitstring:8104",
+		"VCA_ISSUED_STORE_FILE":                 "/data/issued.json",
+		"VCA_DATASOURCE_STORE_FILE":             "/data/sources.json",
+		"VCA_ISSUER_AUTH_STATE_DIR":             "/data",
+		"VCA_STATUS_BITSTRING_STATE_DIR":        "/data",
+		"VCA_STATUS_BITSTRING_BASE_URL":         "https://issuer-waltid.labs.example/status-bitstring",
+		"VCA_STATUS_BITSTRING_SIGNING_KEY_FILE": "base64:QQ==",
+		"VCA_STATUS_TOKEN_STATE_DIR":            "/data",
+		"VCA_STATUS_TOKEN_SIGNING_KEY_FILE":     "base64:QQ==",
+		"VCA_WALTID_ISSUER_URL":                 "http://waltid-issuer-api:7002",
+	}
+	for name, value := range want {
+		if got[name] != value {
+			t.Errorf("issuer: %s = %q, want %q", name, got[name], value)
+		}
+	}
+	for _, name := range []string{"VCA_WALTID_WALLET_URL", "VCA_WALTID_VERIFIER_URL", "VCA_ADMIN_SIGNING_KEY"} {
+		if _, ok := got[name]; ok {
+			t.Errorf("issuer: %s belongs to another role", name)
+		}
+	}
+
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
+	values["VCA_DPG_URL"] = "http://inji-web:3000"
+	got = LinkValues(holder, values)
+	for name, value := range map[string]string{
+		"VCA_INJI_CERTIFY_URL":               "http://inji-web:3000",
+		"VCA_INJI_PUBLIC_URL":                "https://issuer-waltid.labs.example",
+		"VCA_WALLET_AUTH_HOLDER_BACKEND_URL": "http://holder-inji-dpg-adapter-inji:8090",
+		"VCA_WALLET_AUTH_STATE_DIR":          "/data",
+	} {
+		if got[name] != value {
+			t.Errorf("holder: %s = %q, want %q", name, got[name], value)
+		}
+	}
+	if _, ok := got["VCA_INJI_VERIFY_URL"]; ok {
+		t.Error("holder: the verify URL belongs to the verifier")
+	}
+
+	verifier := Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_CREDEBL}
+	values["VCA_DPG_URL"] = "http://credebl-api-gateway:5000"
+	got = LinkValues(verifier, values)
+	for name, value := range map[string]string{
+		"VCA_CREDEBL_API_URL":                 "http://credebl-api-gateway:5000",
+		"VCA_VERIFIER_COMBINED_POLICY_URL":    "http://verifier-credebl-verifier-policy:8103",
+		"VCA_VERIFIER_COMBINED_RESULTS_URL":   "http://verifier-credebl-verifier-results:8080",
+		"VCA_VERIFIER_COMBINED_DISCOVERY_URL": "http://verifier-credebl-verifier-discovery:8101",
+		"VCA_DISCOVERY_TRUST_URL":             "http://admin-credebl-trust-registry:8100",
+		"VCA_DISCOVERY_BASE_URL":              "https://issuer-waltid.labs.example/verifier-discovery",
+		"VCA_INGEST_DISCOVERY_URL":            "http://verifier-credebl-verifier-discovery:8101",
+		"VCA_INGEST_BASE_URL":                 "https://issuer-waltid.labs.example/verifier-ingest",
+		"VCA_INGEST_SIGNING_KEY_FILE":         "base64:QQ==",
+		"VCA_INGEST_STATE_DIR":                "/data",
+		"VCA_VERIFIER_POLICY_TRUST_URL":       "http://admin-credebl-trust-registry:8100",
+		"VCA_VERIFIER_RESULTS_POLICY_URL":     "http://verifier-credebl-verifier-policy:8103",
+		"VCA_VERIFIER_COMBINED_STATE_DIR":     "/data",
+		"VCA_VERIFIER_RESULTS_STATE_DIR":      "/data",
+	} {
+		if got[name] != value {
+			t.Errorf("verifier: %s = %q, want %q", name, got[name], value)
+		}
+	}
+
+	admin := Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_WALTID}
+	got = LinkValues(admin, values)
+	for name, value := range map[string]string{
+		"VCA_ADMIN_SIGNING_KEY":      "base64:QQ==",
+		"VCA_ADMIN_SESSION_KEY":      "session",
+		"VCA_ADMIN_BOOTSTRAP_TOKEN":  "boot",
+		"VCA_TRUST_BASE_URL":         "https://issuer-waltid.labs.example/trust-registry",
+		"VCA_TRUST_SIGNING_KEY_FILE": "base64:QQ==",
+		"VCA_TRUST_STORE_FILE":       "/data/trust.json",
+	} {
+		if got[name] != value {
+			t.Errorf("admin: %s = %q, want %q", name, got[name], value)
+		}
+	}
+	// A missing source leaves the copy out, so a service falls back to
+	// its own default instead of reading an empty string.
+	got = LinkValues(admin, map[string]string{})
+	if _, ok := got["VCA_ADMIN_SIGNING_KEY"]; ok {
+		t.Error("an empty secret was copied")
+	}
+}
+
+// TestEveryStatefulServiceNamesItsStatePath keeps the image and the .env
+// in step: a stateful service gets a path under /data from the CLI.
+func TestEveryStatefulServiceNamesItsStatePath(t *testing.T) {
+	for _, s := range Catalog() {
+		if !s.Stateful {
+			continue
+		}
+		found := false
+		for _, f := range s.Fixed {
+			if strings.HasPrefix(f.Value, "/data") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s is stateful but names no path under /data", s.Name)
+		}
+	}
+}
