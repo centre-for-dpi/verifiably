@@ -43,6 +43,11 @@ type Environment struct {
 	Random io.Reader
 	// Run runs docker compose.
 	Run Runner
+	// Output runs docker and returns its output. The deploy command
+	// reads the compose configuration and the container list with it.
+	// Nil runs the real docker when Run is nil as well; a test that gives
+	// only Run gets no container name check.
+	Output OutputRunner
 	// HTTP makes the DPG and admin calls.
 	HTTP *http.Client
 	// StateDir holds the saved admin token.
@@ -94,6 +99,9 @@ func (e Environment) withDefaults() Environment {
 	}
 	if e.Run == nil {
 		e.Run = ExecRunner(e.Out, e.ErrOut)
+		if e.Output == nil {
+			e.Output = commandOutput
+		}
 	}
 	if e.StateDir == "" {
 		e.StateDir = filepath.Join(e.Root, "deploy", ".vca")
@@ -483,7 +491,7 @@ func newDeployCommand(env *Environment) *cobra.Command {
 			}
 			return Deploy(cmd.Context(), DeployOptions{
 				Root: env.Root, Pairs: pairs, DryRun: dryRun, Build: build,
-				Out: cmd.OutOrStdout(), Run: env.Run,
+				Out: cmd.OutOrStdout(), Run: env.Run, Output: env.Output,
 			})
 		},
 	}

@@ -230,9 +230,23 @@ stack, on the compose network:
 | `credebl` | `credebl-keycloak` | 17180 | `http://credebl-keycloak:8080/realms/vca/.well-known/openid-configuration` |
 
 A browser cannot reach a container name, so `VCA_OIDC_PUBLIC_URL` points
-at `http://localhost` with the host port of the table.
+at the host port of the table.
+A local deployment gets `http://localhost` with that port.
+A public `VCA_PUBLIC_URL` gets `http://<public host>` with that port,
+because the browser of a remote user cannot reach `localhost` on the
+server.
 The login page opens there.
+Keycloak listens with no TLS on that port.
+For a test, open the port in the firewall.
+For a public service, put the port behind Caddy and set
+`VCA_OIDC_PUBLIC_URL` to that address.
 `vca doctor` checks that the host port is free.
+
+`vca deploy` reads the container names of the pair from
+`docker compose config`.
+When another compose project or a hand-started container holds one of
+them, it stops before it starts anything.
+The message prints the `docker rm -f` line that clears them.
 
 `vca setup` writes `deploy/<role>-<dpg>/keycloak-realm.json`.
 The realm is `vca`.

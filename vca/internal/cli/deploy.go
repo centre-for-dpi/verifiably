@@ -35,6 +35,10 @@ type DeployOptions struct {
 	Out io.Writer
 	// Run runs docker compose. A nil Runner means a dry run.
 	Run Runner
+	// Output runs docker and returns its output. Deploy uses it to find
+	// a container that holds a name the pair needs before compose starts
+	// anything. A nil Output skips that check.
+	Output OutputRunner
 }
 
 // ErrNoPairs reports a lifecycle command with no role and DPG pair.
@@ -108,6 +112,11 @@ func lifecycle(ctx context.Context, opts DeployOptions, action []string) error {
 	for _, p := range opts.Pairs {
 		if err := checkEnvFile(opts.Root, p); err != nil {
 			return err
+		}
+		if action[0] == "up" {
+			if err := checkContainerNames(ctx, opts, p); err != nil {
+				return err
+			}
 		}
 		args := ComposeArgsBuild(opts.Root, p, action, opts.Build)
 		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "docker %s\n", strings.Join(args, " ")))
