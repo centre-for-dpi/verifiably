@@ -229,18 +229,20 @@ stack, on the compose network:
 | `inji` | `inji-keycloak` | 17080 | `http://inji-keycloak:8080/realms/vca/.well-known/openid-configuration` |
 | `credebl` | `credebl-keycloak` | 17180 | `http://credebl-keycloak:8080/realms/vca/.well-known/openid-configuration` |
 
-A browser cannot reach a container name, so `VCA_OIDC_PUBLIC_URL` points
-at the host port of the table.
-A local deployment gets `http://localhost` with that port.
-A public `VCA_PUBLIC_URL` gets `http://<public host>` with that port,
-because the browser of a remote user cannot reach `localhost` on the
-server.
-The login page opens there.
-Keycloak listens with no TLS on that port.
-For a test, open the port in the firewall.
-For a public service, put the port behind Caddy and set
-`VCA_OIDC_PUBLIC_URL` to that address.
-`vca doctor` checks that the host port is free.
+A browser cannot reach a container name, so `VCA_OIDC_PUBLIC_URL` names
+the address the browser uses.
+A local deployment gets `http://localhost` with the host port of the
+table.
+A base domain gets `https://<dpg>-keycloak.<domain>`.
+The Caddyfile of the issuer pair of the stack sends that host name to
+the host port.
+Keycloak reads the `X-Forwarded` headers of the proxy
+(`KC_PROXY_HEADERS=xforwarded`), so its login page and its redirects
+carry the public address.
+A public `VCA_PUBLIC_URL` with no base domain gets `http://<public host>`
+with the host port, with no TLS. Use it for a test only.
+`vca doctor` checks that the host port is free and that the host name
+resolves.
 
 `vca deploy` reads the container names of the pair from
 `docker compose config`.
@@ -308,9 +310,11 @@ One stack is the four roles of one DPG together:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 8576 MiB | 10112 MiB | 10112 MiB |
+| `--all --dpg <dpg>` | 3968 MiB | 4480 MiB | 4480 MiB |
 
-`--all` alone starts every role of every DPG and needs 28800 MiB.
+`--all` alone starts every role of every DPG and needs 12928 MiB.
+The four roles of one DPG share one DPG stack and one Keycloak, so a
+stack counts once.
 
 The VCA figure is 96 MiB per service.
 The admin role runs the admin service and the trust registry.

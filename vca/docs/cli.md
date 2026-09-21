@@ -104,7 +104,7 @@ Use --all --dpg <dpg> for one stack (<n> MiB) or --role admin --dpg <dpg> for on
 ```
 
 The hint names the largest DPG that fits and the memory it needs.
-One stack needs 8576 MiB with `waltid` and 10112 MiB with `inji` or
+One stack needs 3968 MiB with `waltid` and 4480 MiB with `inji` or
 `credebl`. One admin pair needs 704 MiB with any DPG.
 `vca doctor --suggest` prints the selection that fits the free memory of
 this host, with the two commands that start it.
@@ -128,7 +128,25 @@ vca setup --role <role> --dpg <dpg>
 
 ### The questions
 
-A terminal run asks two kinds of question, in this order:
+A terminal run asks three kinds of question, in this order:
+
+0. The base domain, once.
+   The run asks it when it sets up more than one pair.
+   A public URL from a flag, the environment, or an env file skips it.
+   Every pair then gets `https://<role>-<dpg>.<domain>` and the
+   Keycloak of each stack gets `https://<dpg>-keycloak.<domain>`.
+   One wildcard DNS record, `*.<domain>`, serves them all.
+   An empty answer asks one public URL per pair instead.
+   `--domain` or `VCA_DOMAIN` answers it without a question.
+
+   ```text
+   The base domain of the deployment. Every pair gets its own host name
+   under it, for example https://issuer-waltid.<domain>. One wildcard DNS
+   record, *.<domain>, must point at this host.
+   Leave blank to answer one public URL per pair instead.
+     Variable: VCA_DOMAIN
+   Base domain []:
+   ```
 
 1. Every setting the proto marks with `prompt: true`.
    The run asks for it even though it has a default.
@@ -218,6 +236,7 @@ Empty selects the in-memory limiter, which is fine for one replica.
 | `--role` | The deployment role. A terminal run asks for it when the flag is absent. |
 | `--dpg` | The digital public good. A terminal run asks for it when the flag is absent. |
 | `--all` | Every role of every DPG. Add `--dpg` to limit it to one stack. |
+| `--domain` | The base domain. Every pair gets `https://<role>-<dpg>.<domain>`. Also `VCA_DOMAIN`. |
 | `--env-file` | A dotenv file that prefills the answers. |
 | `--non-interactive` | Ask nothing. The run fails and names every missing value. |
 | `--set NAME=value` | One value. Repeat the flag for more values. |
@@ -268,6 +287,12 @@ Every role of one stack in one run (ADR-007 decision 7):
 
 ```sh
 vca setup --all --dpg <dpg> --env-file base.env --non-interactive
+```
+
+Every pair on its own host name under one base domain:
+
+```sh
+vca setup --all --domain labs.example --yes
 ```
 
 ## deploy, status, and down

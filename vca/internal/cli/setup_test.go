@@ -476,24 +476,66 @@ func TestWaltidOnboard(t *testing.T) {
 
 func TestCaddyfile(t *testing.T) {
 	values := map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"}
-	plan := AssignPorts(issuerPair(), nil)
-	got := Caddyfile(issuerPair(), values, plan)
+	got := Caddyfile(issuerPair(), values)
 	if !strings.Contains(got, "issuer.example {") {
 		t.Errorf("the host block is missing:\n%s", got)
 	}
-	if !strings.Contains(got, "reverse_proxy issuance:8080") {
+	// The proxy of the host reaches a service on its host port.
+	if !strings.Contains(got, "reverse_proxy 127.0.0.1:18002") {
 		t.Errorf("the portal route is missing:\n%s", got)
 	}
-	if !strings.Contains(got, "handle /schema-registry/*") {
+	if !strings.Contains(got, "handle /schema-registry/* {\n\t\treverse_proxy 127.0.0.1:18006") {
 		t.Errorf("a service route is missing:\n%s", got)
 	}
 	// The portal route comes last, so it catches everything else.
-	if strings.Index(got, "handle /") > strings.Index(got, "reverse_proxy issuance") {
+	if strings.LastIndex(got, "handle /") > strings.Index(got, "reverse_proxy 127.0.0.1:18002") {
 		t.Error("the portal route is not last")
 	}
-	fallback := Caddyfile(issuerPair(), nil, plan)
+	if strings.Contains(got, "keycloak") {
+		t.Errorf("a local OIDC public URL got a Keycloak site:\n%s", got)
+	}
+	if !strings.Contains(got, "import <deploy dir>/*/Caddyfile") {
+		t.Errorf("the import hint is missing:\n%s", got)
+	}
+	fallback := Caddyfile(issuerPair(), nil)
 	if !strings.Contains(fallback, "localhost {") {
 		t.Errorf("the fallback host is missing:\n%s", fallback)
+	}
+}
+
+func TestCaddyfileHonoursAHostPortOverride(t *testing.T) {
+	values := map[string]string{
+		"VCA_PUBLIC_URL":         "https://issuer.example",
+		"VCA_HOST_PORT_ISSUANCE": "28002",
+	}
+	got := Caddyfile(issuerPair(), values)
+	if !strings.Contains(got, "reverse_proxy 127.0.0.1:28002") {
+		t.Errorf("the override was lost:\n%s", got)
+	}
+}
+
+func TestCaddyfileKeycloakSite(t *testing.T) {
+	values := map[string]string{
+		"VCA_PUBLIC_URL":      "https://issuer-waltid.labs.example",
+		"VCA_OIDC_PUBLIC_URL": "https://waltid-keycloak.labs.example",
+	}
+	got := Caddyfile(issuerPair(), values)
+	if !strings.Contains(got, "waltid-keycloak.labs.example {\n\treverse_proxy 127.0.0.1:17010\n}") {
+		t.Errorf("the Keycloak site is missing:\n%s", got)
+	}
+	values["WALTID_KEYCLOAK_HOST_PORT"] = "27010"
+	if got := Caddyfile(issuerPair(), values); !strings.Contains(got, "127.0.0.1:27010") {
+		t.Errorf("the Keycloak port override was lost:\n%s", got)
+	}
+	// Only the issuer pair carries the site, so an import of every
+	// Caddyfile declares the host once.
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
+	if got := Caddyfile(holder, values); strings.Contains(got, "keycloak") {
+		t.Errorf("the holder pair got a Keycloak site:\n%s", got)
+	}
+	admin := Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_UNSPECIFIED}
+	if got := Caddyfile(admin, values); strings.Contains(got, "keycloak") {
+		t.Errorf("a pair with no Keycloak got a site:\n%s", got)
 	}
 }
 

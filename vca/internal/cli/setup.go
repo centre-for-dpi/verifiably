@@ -42,6 +42,10 @@ type SetupRequest struct {
 	Offers map[string]string
 	// Random is the source of generated secrets.
 	Random io.Reader
+	// Domain is the base domain of the deployment. It gives every pair
+	// its own host name and puts the Keycloak of the stack behind the
+	// reverse proxy of the host. Empty means none.
+	Domain string
 }
 
 // Plan is the result of a setup run before anything reaches the disk.
@@ -103,14 +107,14 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		File:     req.File,
 		Existing: req.Existing,
 	}
-	list := resolveWithDefaults(settings, src, req.Pair)
+	list := resolveWithDefaults(settings, src, req.Pair, req.Domain)
 	if req.Interactive {
 		answers, err := req.Prompter.AskAll(list, req.Offers)
 		if err != nil {
 			return Plan{}, err
 		}
 		src.Answers = answers
-		list = resolveWithDefaults(settings, src, req.Pair)
+		list = resolveWithDefaults(settings, src, req.Pair, req.Domain)
 	}
 	list, secretFiles, err := FillSecrets(list, req.Random)
 	if err != nil {
@@ -145,11 +149,12 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 // resolveWithDefaults resolves every setting and fills every value that
 // follows from the pair. The result holds a question only where no
 // source and no default supplied a value.
-func resolveWithDefaults(settings []Setting, src Sources, p Pair) []Resolution {
+func resolveWithDefaults(settings []Setting, src Sources, p Pair, domain string) []Resolution {
 	list := ResolveAll(settings, src)
 	list = applyRoleAndDpg(list, p)
+	list = applyDomain(list, p, domain)
 	list = applyLocalPublicURL(list, p)
-	return applyDerivedDefaults(list, p)
+	return applyDerivedDefaults(list, p, domain)
 }
 
 // applyLocalPublicURL fills an empty public URL with the localhost address
@@ -197,8 +202,10 @@ func applyRoleAndDpg(list []Resolution, p Pair) []Resolution {
 // applyDerivedDefaults fills every value that follows from the pair or
 // from another value. The DPG URL follows from the role and the DPG.
 // The internal URL, the OIDC redirect URI, and the OIDC public URL
-// follow from the public URL (ADR-007 decision 2).
-func applyDerivedDefaults(list []Resolution, p Pair) []Resolution {
+// follow from the public URL. A base domain puts the Keycloak of the
+// stack on its own host name behind the reverse proxy of the host
+// (ADR-007 decision 2).
+func applyDerivedDefaults(list []Resolution, p Pair, domain string) []Resolution {
 	out := make([]Resolution, len(list))
 	copy(out, list)
 	public := ""
@@ -213,12 +220,20 @@ func applyDerivedDefaults(list []Resolution, p Pair) []Resolution {
 		"oidc.public_url":    OidcPublicURLFor(p, public),
 		"oidc.client_id":     DefaultClientID(p.Role),
 	}
+	oidcOrigin := OriginDefault
+	if domain != "" {
+		pairDefaults["oidc.public_url"] = KeycloakPublicURL(p.Dpg, domain)
+		oidcOrigin = OriginDomain
+	}
 	for i := range out {
 		if out[i].Value != "" {
 			continue
 		}
 		if value := pairDefaults[out[i].Setting.Path]; value != "" {
 			out[i].Value, out[i].Origin = value, OriginDefault
+			if out[i].Setting.Path == "oidc.public_url" {
+				out[i].Origin = oidcOrigin
+			}
 		}
 	}
 	if public == "" {

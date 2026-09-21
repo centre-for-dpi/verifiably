@@ -120,7 +120,7 @@ func TestAskAllAsksOnlyForAMissingRequiredValue(t *testing.T) {
 	// The first line answers the public URL question with the default.
 	p := NewPrompter(strings.NewReader(
 		"\nhttps://idp.example/.well-known/openid-configuration\nhttp://dpg:8080\n"), &out)
-	answers, err := p.AskAll(resolveWithDefaults(settings, Sources{}, pair), nil)
+	answers, err := p.AskAll(resolveWithDefaults(settings, Sources{}, pair, ""), nil)
 	if err != nil {
 		t.Fatalf("AskAll: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAskAllAsksOneQuestionOnALaptop(t *testing.T) {
 	settings := Filter(Settings(), p.Role, p.Dpg)
 	var out bytes.Buffer
 	prompter := NewPrompter(strings.NewReader("\n"), &out)
-	answers, err := prompter.AskAll(resolveWithDefaults(settings, Sources{}, p), nil)
+	answers, err := prompter.AskAll(resolveWithDefaults(settings, Sources{}, p, ""), nil)
 	if err != nil {
 		t.Fatalf("AskAll: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestAskAllSkipsAPromptSettingThatASourceFilled(t *testing.T) {
 	src := Sources{Flags: map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"}}
 	var out bytes.Buffer
 	prompter := NewPrompter(strings.NewReader(""), &out)
-	answers, err := prompter.AskAll(resolveWithDefaults(settings, src, p), nil)
+	answers, err := prompter.AskAll(resolveWithDefaults(settings, src, p, ""), nil)
 	if err != nil {
 		t.Fatalf("AskAll: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestAskAllUsesTheOffer(t *testing.T) {
 	var out bytes.Buffer
 	prompter := NewPrompter(strings.NewReader("\n"), &out)
 	offers := map[string]string{"VCA_PUBLIC_URL": "https://one.example"}
-	answers, err := prompter.AskAll(resolveWithDefaults(settings, Sources{}, p), offers)
+	answers, err := prompter.AskAll(resolveWithDefaults(settings, Sources{}, p, ""), offers)
 	if err != nil {
 		t.Fatalf("AskAll: %v", err)
 	}

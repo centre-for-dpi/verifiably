@@ -343,6 +343,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 		sets    []string
 		outRoot string
 		yes     bool
+		domain  string
 	)
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -357,6 +358,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 			"keeps them.",
 		Example: "  vca setup\n" +
 			"  vca setup --role <role> --dpg <dpg>\n" +
+			"  vca setup --all --domain labs.example\n" +
 			"  vca setup --all --dpg <dpg> --env-file base.env --non-interactive",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())
@@ -384,6 +386,10 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					"This host has less free memory than this selection needs (%d MiB).\n%s\n\n",
 					SelectionFloorMiB(pairs), hint))
 			}
+			base, err := resolveDomain(domain, env.Getenv, flags, file, pairs, !sel.nonInteractive, prompter)
+			if err != nil {
+				return err
+			}
 			// The answer of one pair pre-fills the question of the next
 			// pair of a --all run (ADR-007 decision 2).
 			offers := map[string]string{}
@@ -402,6 +408,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					Prompter:    prompter,
 					Offers:      offers,
 					Random:      env.Random,
+					Domain:      base,
 				})
 				if err != nil {
 					return err
@@ -434,7 +441,37 @@ func newSetupCommand(env *Environment) *cobra.Command {
 	cmd.Flags().StringArrayVar(&sets, "set", nil, "One value as NAME=value. Repeat the flag for more.")
 	cmd.Flags().StringVar(&outRoot, "out", "", "The directory that holds one folder per pair.")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Write the files without the last question.")
+	cmd.Flags().StringVar(&domain, "domain", "",
+		"The base domain. Every pair gets https://<role>-<dpg>.<domain>. Also "+DomainEnv+".")
 	return cmd
+}
+
+// resolveDomain reads the base domain of a setup run: the --domain flag,
+// then VCA_DOMAIN, then one question when the run sets up more than one
+// pair and no source named a public URL. A single pair keeps its own
+// public URL question (ADR-007 decision 2).
+func resolveDomain(flag string, getenv func(string) string, flags, file map[string]string,
+	pairs []Pair, interactive bool, prompter Prompter) (string, error) {
+	raw := flag
+	if raw == "" && getenv != nil {
+		raw = getenv(DomainEnv)
+	}
+	if raw != "" {
+		return NormalizeDomain(raw)
+	}
+	if !interactive || len(pairs) < 2 {
+		return "", nil
+	}
+	if _, ok := flags["VCA_PUBLIC_URL"]; ok {
+		return "", nil
+	}
+	if _, ok := file["VCA_PUBLIC_URL"]; ok {
+		return "", nil
+	}
+	if getenv != nil && strings.TrimSpace(getenv("VCA_PUBLIC_URL")) != "" {
+		return "", nil
+	}
+	return prompter.AskDomain()
 }
 
 // parseSets turns --set NAME=value flags into a map.

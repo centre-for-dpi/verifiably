@@ -18,6 +18,9 @@ const (
 	OriginFile
 	// OriginAnswer means the operator typed the value.
 	OriginAnswer
+	// OriginDomain means the base domain of the run derived the value
+	// (ADR-007 decision 2).
+	OriginDomain
 	// OriginExisting means an earlier run of setup generated the secret.
 	// The CLI keeps it so a second run does not lose a secret
 	// (ADR-007 decision 5).
@@ -37,6 +40,8 @@ func (o Origin) String() string {
 		return "env file"
 	case OriginAnswer:
 		return "answer"
+	case OriginDomain:
+		return "domain"
 	case OriginExisting:
 		return "existing file"
 	case OriginDefault:

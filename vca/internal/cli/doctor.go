@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // MinGoMajor and MinGoMinor are the oldest Go version that builds the
@@ -99,11 +100,21 @@ var ErrDoctorFailed = errors.New("doctor: the host does not meet every prerequis
 func MemoryFloorMiB(p Pair) int { return Floor(p).TotalMemoryMiB() }
 
 // SelectionFloorMiB returns the memory floor of a list of pairs. The
-// doctor command adds only the pairs the operator selected.
+// doctor command adds only the pairs the operator selected. The roles
+// of one DPG share one DPG stack and one Keycloak, so the DPG figure of
+// a stack counts once, at the largest figure of the selected roles.
 func SelectionFloorMiB(pairs []Pair) int {
 	total := 0
+	stacks := map[configv1.Dpg]int{}
 	for _, p := range pairs {
-		total += MemoryFloorMiB(p)
+		f := Floor(p)
+		total += f.VcaMemoryMiB
+		if f.DpgMemoryMiB > stacks[p.Dpg] {
+			stacks[p.Dpg] = f.DpgMemoryMiB
+		}
+	}
+	for _, m := range stacks {
+		total += m
 	}
 	return total
 }
@@ -421,40 +432,88 @@ func dpgPortCheck(probe Probe, d DpgPort) Check {
 	}
 }
 
-// publicURLChecks report the name resolution and the TLS ports of a
-// public deployment. A local deployment needs neither.
+// publicURLChecks report the name resolution of every public host name
+// of the selection and the state of the TLS ports. A local deployment
+// needs neither. The hosts come from the .env file of every pair, so a
+// base domain gives one check per pair host and one per Keycloak host.
+// VCA_PUBLIC_URL in the environment or in the options adds one more.
 func publicURLChecks(opts DoctorOptions) []Check {
 	raw := strings.TrimSpace(opts.PublicURL)
-	if raw == "" {
-		return []Check{{Name: "public url", OK: true,
-			Detail: "VCA_PUBLIC_URL is not set; the deployment stays local"}}
-	}
-	host := hostOf(raw)
-	if host == "" {
-		return []Check{{Name: "public url", Detail: raw + " is not a URL",
+	hosts, bad := publicHosts(opts)
+	if bad != "" {
+		return []Check{{Name: "public url", Detail: bad + " is not a URL",
 			Fix: "set VCA_PUBLIC_URL to a URL, for example https://issuer.example"}}
 	}
-	if isLocalHost(host) {
+	if len(hosts) == 0 {
+		if raw == "" {
+			return []Check{{Name: "public url", OK: true,
+				Detail: "VCA_PUBLIC_URL is not set; the deployment stays local"}}
+		}
 		return []Check{{Name: "public url", OK: true, Detail: raw + " is local; no TLS is needed"}}
 	}
-	out := []Check{resolveCheck(opts.Probe, raw, host)}
+	var out []Check
+	for _, host := range hosts {
+		out = append(out, resolveCheck(opts.Probe, host))
+	}
 	for _, port := range []int{80, 443} {
 		out = append(out, publicPortCheck(opts.Probe, port))
 	}
 	return out
 }
 
+// publicHosts collects the public host names of the selection, sorted
+// and without repeats. Local names are left out. The second value is
+// a public URL that does not parse.
+func publicHosts(opts DoctorOptions) ([]string, string) {
+	seen := map[string]bool{}
+	add := func(raw string) string {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return ""
+		}
+		host := hostOf(raw)
+		if host == "" {
+			return raw
+		}
+		if !isLocalHost(host) {
+			seen[host] = true
+		}
+		return ""
+	}
+	if bad := add(opts.PublicURL); bad != "" {
+		return nil, bad
+	}
+	if opts.Values != nil {
+		for _, p := range opts.Pairs {
+			values := opts.Values(p)
+			add(values["VCA_PUBLIC_URL"])
+			add(values["VCA_OIDC_PUBLIC_URL"])
+		}
+	}
+	hosts := make([]string, 0, len(seen))
+	for host := range seen {
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	return hosts, ""
+}
+
 // resolveCheck reports a public host name that does not resolve.
-func resolveCheck(p Probe, raw, host string) Check {
+func resolveCheck(p Probe, host string) Check {
 	if err := p.LookupHost(host); err != nil {
 		return Check{Name: "public url", Detail: host + " does not resolve",
-			Fix: "add a DNS A record or AAAA record for " + host + " that points at this host"}
+			Fix: "add a DNS A record or AAAA record for " + host + " that points at this host, " +
+				"or one wildcard record for the base domain"}
 	}
-	return Check{Name: "public url", OK: true, Detail: raw + " resolves"}
+	return Check{Name: "public url", OK: true, Detail: host + " resolves"}
 }
 
 // publicPortCheck reports port 80 or port 443 of a public deployment.
-// Caddy needs both to get a Let's Encrypt certificate.
+// A held port is not a failure: a reverse proxy that other projects
+// share holds them on a shared host, and it imports the generated
+// Caddyfile. A free port means the operator starts Caddy with the
+// generated file. Caddy needs both ports for a Let's Encrypt
+// certificate.
 func publicPortCheck(p Probe, port int) Check {
 	name := fmt.Sprintf("port %d", port)
 	free, err := p.PortFree(port)
@@ -462,10 +521,10 @@ func publicPortCheck(p Probe, port int) Check {
 	case err != nil:
 		return Check{Name: name, Detail: "cannot test the port", Fix: "check the port by hand with: ss -ltnp"}
 	case !free:
-		return Check{Name: name, Detail: "another program holds it",
-			Fix: "stop the other web server; Caddy needs ports 80 and 443 for the certificate"}
+		return Check{Name: name, OK: true,
+			Detail: "a web server holds it; import deploy/*/Caddyfile into that server"}
 	default:
-		return Check{Name: name, OK: true, Detail: "free for Caddy and Let's Encrypt"}
+		return Check{Name: name, OK: true, Detail: "free; start Caddy with deploy/<pair>/Caddyfile"}
 	}
 }
 

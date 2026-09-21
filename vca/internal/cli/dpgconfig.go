@@ -35,10 +35,14 @@ func hostOf(raw string) string {
 	return u.Hostname()
 }
 
-// Caddyfile renders the reverse proxy configuration of a pair.
-// Caddy terminates TLS at the public host and sends every request to the
-// portal service on the compose network (ADR-007 decision 5).
-func Caddyfile(p Pair, values map[string]string, plan []PortAssignment) string {
+// Caddyfile renders the reverse proxy configuration of a pair. The
+// reverse proxy of the host terminates TLS and forwards every request
+// to the host port of a service, so the file works from a Caddy that
+// other projects on the same host share. One line in that Caddy,
+// import <deploy dir>/*/Caddyfile, takes every pair (ADR-007 decision 5).
+// The issuer pair of a stack also carries the site of the Keycloak of
+// the stack when the OIDC public URL names a public host.
+func Caddyfile(p Pair, values map[string]string) string {
 	host := hostOf(values["VCA_PUBLIC_URL"])
 	if host == "" {
 		host = "localhost"
@@ -47,22 +51,55 @@ func Caddyfile(p Pair, values map[string]string, plan []PortAssignment) string {
 	fmt.Fprintf(&b, "# Caddyfile for %s. The vca setup command generated it.\n", p.Name())
 	fmt.Fprintf(&b, "# Edit it and run vca deploy --role %s --dpg %s again.\n",
 		ShortName(p.Role.String()), ShortName(p.Dpg.String()))
+	b.WriteString("# Import it into the Caddy of the host: import <deploy dir>/*/Caddyfile\n")
 	fmt.Fprintf(&b, "%s {\n", host)
 	b.WriteString("\tencode gzip\n")
-	for _, a := range plan {
+	for _, a := range HostPorts(p, values) {
 		if a.Service.Name == portalService(p.Role) {
 			continue
 		}
 		fmt.Fprintf(&b, "\thandle /%s/* {\n", a.Service.Name)
-		fmt.Fprintf(&b, "\t\treverse_proxy %s:%d\n", a.Service.Name, a.Listen)
+		fmt.Fprintf(&b, "\t\treverse_proxy 127.0.0.1:%d\n", a.Host)
 		b.WriteString("\t}\n")
 	}
-	for _, a := range plan {
+	for _, a := range HostPorts(p, values) {
 		if a.Service.Name != portalService(p.Role) {
 			continue
 		}
-		fmt.Fprintf(&b, "\treverse_proxy %s:%d\n", a.Service.Name, a.Listen)
+		fmt.Fprintf(&b, "\treverse_proxy 127.0.0.1:%d\n", a.Host)
 	}
+	b.WriteString("}\n")
+	if site := keycloakSite(p, values); site != "" {
+		b.WriteString("\n" + site)
+	}
+	return b.String()
+}
+
+// keycloakSite renders the site block of the Keycloak of the stack. The
+// issuer pair owns it, as it owns the realm import. A local OIDC public
+// URL needs no site.
+func keycloakSite(p Pair, values map[string]string) string {
+	if p.Role != commonv1.Role_ROLE_ISSUER {
+		return ""
+	}
+	host := hostOf(values["VCA_OIDC_PUBLIC_URL"])
+	if host == "" || isLocalHost(host) {
+		return ""
+	}
+	port := KeycloakHostPort(p.Dpg)
+	if port == 0 {
+		return ""
+	}
+	for _, d := range DpgHostPorts(p) {
+		if d.Container == KeycloakContainer(p.Dpg) {
+			port = portFrom(values, d.Env, d.Host)
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "# The Keycloak of the %s stack. The browser reaches the login page here.\n",
+		ShortName(p.Dpg.String()))
+	fmt.Fprintf(&b, "%s {\n", host)
+	fmt.Fprintf(&b, "\treverse_proxy 127.0.0.1:%d\n", port)
 	b.WriteString("}\n")
 	return b.String()
 }
@@ -184,7 +221,7 @@ func WaltidOnboard(values map[string]string) ([]byte, error) {
 // Every stack ships a Keycloak, so every pair gets a realm. walt.id gets
 // the onboarding body as well. Every pair gets a Caddyfile.
 func DpgConfigFiles(p Pair, values map[string]string, plan []PortAssignment) ([]File, error) {
-	files := []File{{Name: CaddyFile, Data: []byte(Caddyfile(p, values, plan)), Mode: 0o644}}
+	files := []File{{Name: CaddyFile, Data: []byte(Caddyfile(p, values)), Mode: 0o644}}
 	realmBody, err := KeycloakRealm(p, values)
 	if err != nil {
 		return nil, err

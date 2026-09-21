@@ -255,11 +255,22 @@ func TestDoctorReportsAPublicURLThatDoesNotResolve(t *testing.T) {
 	}
 }
 
-func TestDoctorReportsBusyTLSPorts(t *testing.T) {
+// TestDoctorAcceptsAHeldTLSPort is the shared host case: a reverse
+// proxy of another project holds 80 and 443 and imports the Caddyfile.
+func TestDoctorAcceptsAHeldTLSPort(t *testing.T) {
 	probe := healthyProbe()
 	probe.busyPorts = map[int]bool{80: true, 443: true}
 	checks := publicURLChecks(DoctorOptions{PublicURL: "https://issuer.example", Probe: probe})
-	if len(failed(checks)) != 2 {
+	if len(failed(checks)) != 0 {
+		t.Errorf("checks = %+v", checks)
+	}
+	held := 0
+	for _, c := range checks {
+		if strings.Contains(c.Detail, "import deploy/*/Caddyfile") {
+			held++
+		}
+	}
+	if held != 2 {
 		t.Errorf("checks = %+v", checks)
 	}
 	probe = healthyProbe()
@@ -267,6 +278,37 @@ func TestDoctorReportsBusyTLSPorts(t *testing.T) {
 	checks = publicURLChecks(DoctorOptions{PublicURL: "https://issuer.example", Probe: probe})
 	if len(failed(checks)) != 2 {
 		t.Errorf("checks = %+v", checks)
+	}
+}
+
+// TestDoctorResolvesEveryPairHost reads the host of every pair and of
+// the Keycloak out of the .env values, once each.
+func TestDoctorResolvesEveryPairHost(t *testing.T) {
+	probe := healthyProbe()
+	pairs := PairsForDpg(dpgWaltid(t))
+	values := func(p Pair) map[string]string {
+		return map[string]string{
+			"VCA_PUBLIC_URL":      "https://" + p.Name() + ".labs.example",
+			"VCA_OIDC_PUBLIC_URL": "https://waltid-keycloak.labs.example",
+		}
+	}
+	checks := publicURLChecks(DoctorOptions{Pairs: pairs, Values: values, Probe: probe})
+	if len(failed(checks)) != 0 {
+		t.Errorf("checks = %+v", checks)
+	}
+	want := []string{
+		"admin-waltid.labs.example", "holder-waltid.labs.example", "issuer-waltid.labs.example",
+		"verifier-waltid.labs.example", "waltid-keycloak.labs.example",
+	}
+	if strings.Join(probe.lookedUp, " ") != strings.Join(want, " ") {
+		t.Errorf("looked up %v, want %v", probe.lookedUp, want)
+	}
+	local := func(Pair) map[string]string {
+		return map[string]string{"VCA_PUBLIC_URL": "http://localhost:18002", "VCA_OIDC_PUBLIC_URL": "http://localhost:17010"}
+	}
+	checks = publicURLChecks(DoctorOptions{Pairs: pairs, Values: local, Probe: healthyProbe()})
+	if len(checks) != 1 || !checks[0].OK {
+		t.Errorf("local values must give one passing check: %+v", checks)
 	}
 }
 

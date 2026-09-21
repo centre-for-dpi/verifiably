@@ -273,11 +273,13 @@ func TestSetupInteractiveKeepsTheFilesOnNo(t *testing.T) {
 }
 
 // TestSetupAllRepeatsThePublicHost is the --all path of ADR-007
-// decision 2. The run asks one public URL question per pair. The answer
-// of the first pair pre-fills the next question, so enter repeats it.
+// decision 2 with no base domain. The run asks the base domain once,
+// then one public URL question per pair. The answer of the first pair
+// pre-fills the next question, so enter repeats it.
 func TestSetupAllRepeatsThePublicHost(t *testing.T) {
 	root := t.TempDir()
 	answers := strings.Join([]string{
+		"\n",                           // no base domain
 		"https://one.example\n", "y\n", // issuer
 		"\n", "y\n", // holder
 		"\n", "y\n", // verifier
@@ -287,6 +289,9 @@ func TestSetupAllRepeatsThePublicHost(t *testing.T) {
 		"setup", "--all", "--dpg", "waltid")
 	if status != 0 {
 		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if strings.Count(out, "Base domain [") != 1 {
+		t.Errorf("the run asked %d base domain questions:\n%s", strings.Count(out, "Base domain ["), out)
 	}
 	if strings.Count(out, "Public URL [") != 4 {
 		t.Errorf("the run asked %d public URL questions:\n%s", strings.Count(out, "Public URL ["), out)
@@ -302,6 +307,97 @@ func TestSetupAllRepeatsThePublicHost(t *testing.T) {
 		if !strings.Contains(string(data), "https://one.example") {
 			t.Errorf("%s did not keep the public host:\n%s", name, data)
 		}
+	}
+}
+
+// TestSetupAllWithADomainAsksNoPublicURL gives every pair its own host
+// name under the base domain, and the Keycloak of the stack its own.
+func TestSetupAllWithADomainAsksNoPublicURL(t *testing.T) {
+	root := t.TempDir()
+	answers := strings.Join([]string{
+		"*.Labs.Example\n", // the base domain, as a wildcard record reads
+		"y\n", "y\n", "y\n", "y\n",
+	}, "")
+	status, out, errOut := run(t, Environment{Root: root, In: strings.NewReader(answers)},
+		"setup", "--all", "--dpg", "waltid")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if strings.Contains(out, "Public URL [") {
+		t.Errorf("the run asked a public URL question:\n%s", out)
+	}
+	if !strings.Contains(out, "VCA_PUBLIC_URL = https://issuer-waltid.labs.example  (domain)") {
+		t.Errorf("the summary has no domain value:\n%s", out)
+	}
+	for _, name := range []string{"issuer-waltid", "holder-waltid", "verifier-waltid", "admin-waltid"} {
+		data, err := os.ReadFile(filepath.Clean(filepath.Join(root, "deploy", name, EnvFileName)))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		for _, want := range []string{
+			"VCA_PUBLIC_URL=https://" + name + ".labs.example\n",
+			"VCA_OIDC_REDIRECT_URI=https://" + name + ".labs.example/auth/callback\n",
+			"VCA_OIDC_PUBLIC_URL=https://waltid-keycloak.labs.example\n",
+		} {
+			if !strings.Contains(string(data), want) {
+				t.Errorf("%s has no %q:\n%s", name, want, data)
+			}
+		}
+	}
+	caddy, err := os.ReadFile(filepath.Clean(filepath.Join(root, "deploy", "issuer-waltid", CaddyFile)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"issuer-waltid.labs.example {", "waltid-keycloak.labs.example {", "127.0.0.1:17010"} {
+		if !strings.Contains(string(caddy), want) {
+			t.Errorf("the Caddyfile has no %q:\n%s", want, caddy)
+		}
+	}
+}
+
+// TestSetupDomainFlagAndEnv take the base domain without a question.
+func TestSetupDomainFlagAndEnv(t *testing.T) {
+	root := t.TempDir()
+	status, out, errOut := run(t, Environment{Root: root, In: strings.NewReader("")},
+		"setup", "--role", "issuer", "--dpg", "inji", "--domain", "labs.example", "--yes")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if !strings.Contains(out, "VCA_PUBLIC_URL = https://issuer-inji.labs.example  (domain)") {
+		t.Errorf("flag: %s", out)
+	}
+	getenv := func(name string) string {
+		if name == DomainEnv {
+			return "other.example"
+		}
+		return ""
+	}
+	status, out, errOut = run(t, Environment{Root: root, In: strings.NewReader(""), Getenv: getenv},
+		"setup", "--role", "issuer", "--dpg", "inji", "--yes")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if !strings.Contains(out, "VCA_PUBLIC_URL = https://issuer-inji.other.example  (domain)") {
+		t.Errorf("env: %s", out)
+	}
+	status, _, errOut = run(t, Environment{Root: root, In: strings.NewReader("")},
+		"setup", "--role", "issuer", "--dpg", "inji", "--domain", "https://x/y", "--yes")
+	if status == 0 || !strings.Contains(errOut, "DNS name") {
+		t.Errorf("a bad domain passed: %d %s", status, errOut)
+	}
+}
+
+// TestSetupAllSkipsTheDomainQuestionWhenAPublicURLIsGiven keeps a
+// scripted run scripted.
+func TestSetupAllSkipsTheDomainQuestionWhenAPublicURLIsGiven(t *testing.T) {
+	root := t.TempDir()
+	status, out, errOut := run(t, Environment{Root: root, In: strings.NewReader("")},
+		"setup", "--all", "--dpg", "waltid", "--set", "VCA_PUBLIC_URL=https://one.example", "--yes")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if strings.Contains(out, "Base domain [") {
+		t.Errorf("the run asked the base domain:\n%s", out)
 	}
 }
 
@@ -774,11 +870,15 @@ func TestSetupReportsAWriteFailure(t *testing.T) {
 	}
 }
 
-// smallHostEnv answers every check with a pass, but with 6 GB free.
+// smallHostMiB is the free memory of the small host: under one stack,
+// over one issuer pair.
+const smallHostMiB = 3600
+
+// smallHostEnv answers every check with a pass, but with little memory.
 func smallHostEnv(root string) Environment {
 	return Environment{Root: root, NewProbe: func(context.Context) Probe {
 		probe := healthyProbe()
-		probe.memory = 6 * 1024
+		probe.memory = smallHostMiB
 		return probe
 	}}
 }
@@ -788,7 +888,7 @@ func TestDoctorSuggestPrintsASelection(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
 	}
-	best, ok := LargestFit(6 * 1024)
+	best, ok := LargestFit(smallHostMiB)
 	if !ok {
 		t.Fatal("no selection fits 6 GB")
 	}
@@ -802,7 +902,7 @@ func TestDoctorAllPrintsTheMemoryHint(t *testing.T) {
 	if status == 0 {
 		t.Error("a host with 6 GB free passed --all")
 	}
-	if !strings.Contains(out, MemoryHint(6*1024)) {
+	if !strings.Contains(out, MemoryHint(smallHostMiB)) {
 		t.Errorf("the report has no hint:\n%s", out)
 	}
 	if !strings.Contains(out, "Memory floor of this selection") {
@@ -819,7 +919,7 @@ func TestSetupAllPrintsTheMemoryHint(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
 	}
-	if !strings.Contains(out, MemoryHint(6*1024)) {
+	if !strings.Contains(out, MemoryHint(smallHostMiB)) {
 		t.Errorf("the run printed no hint:\n%s", out)
 	}
 }

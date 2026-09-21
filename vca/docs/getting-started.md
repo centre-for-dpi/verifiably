@@ -124,9 +124,11 @@ One pair needs 704 MiB to 3424 MiB of free memory:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 8576 MiB | 10112 MiB | 10112 MiB |
+| `--all --dpg <dpg>` | 3968 MiB | 4480 MiB | 4480 MiB |
 
-`--all` alone starts every role of every DPG and needs about 28 GB.
+`--all` alone starts every role of every DPG and needs 12928 MiB.
+The four roles of one DPG share one DPG stack and one Keycloak, so a
+stack counts once.
 
 The setup command writes a `Caddyfile`, but a local run does not need it.
 The Keycloak of the stack serves the login page on its own host port:
@@ -139,22 +141,46 @@ The Keycloak of the stack serves the login page on its own host port:
 
 ## The server path
 
-Use this path on a machine with a public name.
+Use this path on a machine with a public name. The machine can run
+other projects. VCA binds only its own host ports, 17000 to 19999, and
+hands the reverse proxy of the machine one file per pair.
 
-1. Point a DNS A record or AAAA record at the server.
-2. Open port 80 and port 443 in the firewall.
-   Caddy needs both to get a Let's Encrypt certificate.
-3. Set the public URL to that name:
+1. Point one wildcard DNS record, `*.<domain>`, at the server.
+   For example `*.labs.example`.
+   Every pair then gets `https://<role>-<dpg>.<domain>`, for example
+   `https://issuer-waltid.labs.example`, and the Keycloak of each stack
+   gets `https://<dpg>-keycloak.<domain>`.
+2. Run the setup with the base domain:
 
    ```sh
-   export VCA_PUBLIC_URL=https://issuer.example
+   vca setup --all --dpg <dpg> --domain <domain>
    ```
 
-4. Run `vca doctor --role <role> --dpg <dpg>`.
-   It checks that the name resolves and that the two ports are free.
-5. Run the setup, the deploy, and the bootstrap of the next section.
-6. Start Caddy with the generated `deploy/<role>-<dpg>/Caddyfile`.
-   Caddy gets the certificate from Let's Encrypt on its first start.
+   A terminal run with more than one pair asks the base domain when the
+   flag is absent.
+3. Run `vca doctor --all --dpg <dpg>`.
+   It checks that every host name resolves and reports who holds port
+   80 and port 443.
+4. Run the deploy and the bootstrap of the next section.
+5. Give the reverse proxy the generated files.
+   Each `deploy/<role>-<dpg>/Caddyfile` holds one site per host name and
+   sends the requests to `127.0.0.1:<host port>`.
+   A Caddy that already runs on the machine takes them with one line in
+   its own Caddyfile, then a reload:
+
+   ```
+   import /path/to/verifiably/deploy/*/Caddyfile
+   ```
+
+   ```sh
+   sudo systemctl reload caddy
+   ```
+
+   A machine with no web server starts Caddy with the same import line.
+   Caddy gets one certificate per host name from Let's Encrypt on its
+   first start. Port 80 and port 443 must be open in the firewall.
+   Another reverse proxy, such as nginx, takes the same host names and
+   host ports from the file.
 
 `vca setup` writes the secrets with mode 0600 into
 `deploy/<role>-<dpg>/`.
@@ -193,6 +219,8 @@ The volumes stay, so the data survives.
 | `pull access denied` or `manifest unknown` | No release published the images yet. | Add `--build` to `vca deploy`, or run `vca images build`. |
 | `port is already allocated` | Another program holds a host port. | Stop that program. Or set `VCA_HOST_PORT_<SERVICE>` in the `.env` file of the pair. |
 | `no such host` in the browser | The DNS name does not point at the server. | Add the DNS record. Wait for the old answer to expire. |
+| `DNS_PROBE_FINISHED_NXDOMAIN` | The host name has no DNS record. `vca doctor` reports it. | Add one wildcard record, `*.<domain>`, or one record per pair. |
+| `ERR_SSL_PROTOCOL_ERROR` | A web server holds port 443 but has no certificate for the host name. | Import `deploy/*/Caddyfile` into that server and reload it. |
 | `Cannot connect to the Docker daemon` | The daemon does not run. | Start Docker. Add your user to the `docker` group. |
 | `container name is in use outside the vca compose project` | A container from an older compose project, or one you started by hand, holds a name the pair needs. | Run the `docker rm -f` line that the message prints. Then run `vca deploy` again. |
 | `The container name "/inji-certify" is already in use` | Same cause, reported by an older `vca` binary. | `docker rm -f inji-certify`, then run `vca deploy` again. |
