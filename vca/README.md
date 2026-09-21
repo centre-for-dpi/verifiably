@@ -42,9 +42,9 @@ filled. A laptop run answers no setting question. It writes one `.env`
 file per role and DPG pair. `vca deploy` starts the services with Docker
 Compose profiles. Use `--build` until the first release publishes the
 images. One role with one DPG needs about 3 GB of memory.
-`--all --dpg <dpg>` starts the four roles of one stack and needs 8.5 GB
-to 10 GB, by DPG. `--all` alone starts every role of every DPG and needs about
-28 GB, so it is a server option. `vca doctor --suggest` prints the
+`--all --dpg <dpg>` starts the four roles of one stack and needs 4 GB
+to 4.5 GB, by DPG. `--all` alone starts every role of every DPG and needs
+about 13 GB, so it is a server option. `vca doctor --suggest` prints the
 selection that fits your host.
 
 Now, for developers:
