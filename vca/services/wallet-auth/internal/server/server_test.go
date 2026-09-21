@@ -48,13 +48,13 @@ func TestBuild(t *testing.T) {
 		t.Fatal("no seed expected")
 	}
 	// A seed provider from the environment lands under id "default".
-	cfg.Seed = config.SeedProvider{DiscoveryURL: "https://idp/.well-known/openid-configuration", ClientID: "c", ClientSecretEnv: "S"}
+	cfg.Seed = config.SeedProvider{DiscoveryURL: "https://idp/.well-known/openid-configuration", ClientID: "c", ClientSecret: "S"}
 	svc, err = server.Build(cfg, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p, err := svc.Providers().Get("default")
-	if err != nil || p.ClientSecret.Name != "S" || !p.Enabled {
+	if err != nil || p.ClientSecret.Name != "VCA_OIDC_CLIENT_SECRET" || !p.Enabled {
 		t.Fatalf("seed: %+v %v", p, err)
 	}
 	// A second build keeps the stored record and does not overwrite it.

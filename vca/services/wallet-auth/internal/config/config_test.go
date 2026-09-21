@@ -86,7 +86,7 @@ func TestFromEnvValues(t *testing.T) {
 	if string(c.Salt) != "0123456789abcdef" || string(c.GrantKey) != key || c.GrantType != "custom" || c.HolderBackendURL != "http://adapter:8090" || c.RedisURL != "redis://r" {
 		t.Fatalf("%+v", c)
 	}
-	if c.AdminToken != "t" || c.StateDir != "/s" || c.CookieName != "c" || c.LogoutRedirect != "/bye" || c.ProviderInternalAuthority != "http://idp:8080" || !c.Seed.HasSeed() || c.Seed.ClientSecretEnv != "S" {
+	if c.AdminToken != "t" || c.StateDir != "/s" || c.CookieName != "c" || c.LogoutRedirect != "/bye" || c.ProviderInternalAuthority != "http://idp:8080" || !c.Seed.HasSeed() || c.Seed.ClientSecret != "S" {
 		t.Fatalf("%+v", c)
 	}
 	// A raw url safe base64 key and a plain key work too.

@@ -58,8 +58,9 @@ type common struct {
 	DiscoveryURL string `env:"OIDC_DISCOVERY_URL"`
 	// ClientID is the client id of the seed provider.
 	ClientID string `env:"OIDC_CLIENT_ID"`
-	// ClientSecretEnv names the variable that holds the client secret.
-	ClientSecretEnv string `env:"OIDC_CLIENT_SECRET"`
+	// ClientSecret is the client secret. The provider record keeps a
+	// reference to the variable, never the value.
+	ClientSecret string `env:"OIDC_CLIENT_SECRET" secret:"true"`
 	// RolesClaimPath is the path of the roles claim.
 	RolesClaimPath string `env:"OIDC_ROLES_CLAIM_PATH" default:"realm_access.roles"`
 }
@@ -106,10 +107,10 @@ type Config struct {
 // SeedProvider is the provider that the setup CLI writes to the
 // environment. It is registered at start with id "default".
 type SeedProvider struct {
-	DiscoveryURL    string
-	ClientID        string
-	ClientSecretEnv string
-	RolesClaimPath  string
+	DiscoveryURL   string
+	ClientID       string
+	ClientSecret   string
+	RolesClaimPath string
 }
 
 // Lookup reads one environment variable. os.Getenv is the usual value.
@@ -141,10 +142,10 @@ func FromEnv(get Lookup) (Config, error) {
 		LogoutRedirect:            s.LogoutRedirect,
 		ProviderInternalAuthority: k.InternalAuthority,
 		Seed: SeedProvider{
-			DiscoveryURL:    k.DiscoveryURL,
-			ClientID:        k.ClientID,
-			ClientSecretEnv: k.ClientSecretEnv,
-			RolesClaimPath:  k.RolesClaimPath,
+			DiscoveryURL:   k.DiscoveryURL,
+			ClientID:       k.ClientID,
+			ClientSecret:   k.ClientSecret,
+			RolesClaimPath: k.RolesClaimPath,
 		},
 	}
 	return c.normalize()

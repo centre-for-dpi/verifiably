@@ -24,6 +24,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
+	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/httpapi"
@@ -153,7 +154,7 @@ func loadKey(cfg config.Config, deps Deps) (crypto.Signer, string, error) {
 			"setting", config.Prefix+"SIGNING_KEY_FILE")
 		return key, keyID(key), nil
 	}
-	data, err := deps.ReadFile(cfg.SigningKeyFile)
+	data, err := sharedconfig.ReadKey(deps.ReadFile, cfg.SigningKeyFile)
 	if err != nil {
 		return nil, "", fmt.Errorf("app: read the signing key file: %w", err)
 	}

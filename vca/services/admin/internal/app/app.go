@@ -29,6 +29,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/portal"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
+	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/ui"
@@ -210,7 +211,7 @@ func loadKey(path string, log *slog.Logger) (*ecdsa.PrivateKey, error) {
 		log.Warn("VCA_ADMIN_SIGNING_KEY is not set: sessions end when the service restarts")
 		return oidcflow.GenerateKey()
 	}
-	raw, err := os.ReadFile(path) //nolint:gosec // the path comes from the service configuration
+	raw, err := sharedconfig.ReadKey(os.ReadFile, path)
 	if err != nil {
 		return nil, fmt.Errorf("app: signing key: %w", err)
 	}

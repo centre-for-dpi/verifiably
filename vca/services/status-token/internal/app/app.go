@@ -15,6 +15,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/httpapi"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/keys"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/lists"
@@ -113,7 +114,7 @@ func readKeyFile(path string, read func(string) ([]byte, error)) ([]byte, error)
 	if path == "" {
 		return nil, nil
 	}
-	data, err := read(path)
+	data, err := sharedconfig.ReadKey(read, path)
 	if err != nil {
 		return nil, fmt.Errorf("app: read signing key file: %w", err)
 	}

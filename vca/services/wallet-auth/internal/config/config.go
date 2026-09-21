@@ -47,7 +47,7 @@ type common struct {
 	InternalAuthority string `env:"OIDC_INTERNAL_AUTHORITY"`
 	DiscoveryURL      string `env:"OIDC_DISCOVERY_URL"`
 	ClientID          string `env:"OIDC_CLIENT_ID"`
-	ClientSecretEnv   string `env:"OIDC_CLIENT_SECRET"`
+	ClientSecret      string `env:"OIDC_CLIENT_SECRET" secret:"true"`
 	RedisURL          string `env:"REDIS_URL"`
 }
 
@@ -108,9 +108,9 @@ type Config struct {
 // SeedProvider is the provider that the setup CLI writes to the
 // environment. It is registered at start with id "default".
 type SeedProvider struct {
-	DiscoveryURL    string
-	ClientID        string
-	ClientSecretEnv string
+	DiscoveryURL string
+	ClientID     string
+	ClientSecret string
 }
 
 // HasSeed reports whether the environment names a provider.
@@ -147,9 +147,9 @@ func FromEnv(get Lookup) (Config, error) {
 		LogoutRedirect:            s.LogoutRedirect,
 		ProviderInternalAuthority: k.InternalAuthority,
 		Seed: SeedProvider{
-			DiscoveryURL:    k.DiscoveryURL,
-			ClientID:        k.ClientID,
-			ClientSecretEnv: k.ClientSecretEnv,
+			DiscoveryURL: k.DiscoveryURL,
+			ClientID:     k.ClientID,
+			ClientSecret: k.ClientSecret,
 		},
 	}
 	var err error

@@ -17,6 +17,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/dedi"
@@ -117,7 +118,7 @@ func loadRing(cfg config.Config, deps Deps) (*keys.Ring, error) {
 		deps.Log.Warn("no signing key file, generated a key for this process only", "alg", cfg.SigningAlg, "setting", config.Prefix+"SIGNING_KEY_FILE")
 		return keys.NewRing(k)
 	}
-	data, err := deps.ReadFile(cfg.SigningKeyFile)
+	data, err := sharedconfig.ReadKey(deps.ReadFile, cfg.SigningKeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("app: read signing key file: %w", err)
 	}

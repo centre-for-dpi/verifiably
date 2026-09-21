@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuerauth/v1/issuerauthv1connect"
+	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/clients"
@@ -101,8 +102,10 @@ func seed(reg *oidcflow.Registry, s config.SeedProvider, internalAuthority strin
 		Enabled:           true,
 		InternalAuthority: internalAuthority,
 	}
-	if s.ClientSecretEnv != "" {
-		p.ClientSecret = oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: s.ClientSecretEnv}
+	if s.ClientSecret != "" {
+		// The variable holds the secret itself. The reference names the
+		// variable, so the registry never stores the value.
+		p.ClientSecret = oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: config.CommonPrefix + "OIDC_CLIENT_SECRET"}
 	}
 	_, err := reg.Put(p)
 	return err
@@ -113,7 +116,7 @@ func loadKey(path string, log *slog.Logger) (*ecdsa.PrivateKey, error) {
 		log.Warn("VCA_SECRETS_SIGNING_KEY is not set: sessions end when the service restarts")
 		return oidcflow.GenerateKey()
 	}
-	raw, err := os.ReadFile(path) //nolint:gosec // G304: the path comes from the service configuration
+	raw, err := sharedconfig.ReadKey(os.ReadFile, path)
 	if err != nil {
 		return nil, fmt.Errorf("signing key: %w", err)
 	}
