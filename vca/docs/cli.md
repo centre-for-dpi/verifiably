@@ -295,6 +295,20 @@ Every pair on its own host name under one base domain:
 vca setup --all --domain labs.example --yes
 ```
 
+## proxy
+
+```sh
+vca proxy --all | sudo tee /etc/caddy/vca.caddy >/dev/null
+```
+
+`proxy` prints the Caddyfile of every selected pair as one snippet.
+The reverse proxy of the host imports it.
+VCA binds no port 80 or 443, so it shares the host with other projects.
+Each site sends its requests to `127.0.0.1` and the host port of a
+service.
+The command names a pair with no Caddyfile on standard error and
+leaves it out.
+
 ## deploy, status, and down
 
 ```sh

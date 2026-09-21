@@ -306,6 +306,7 @@ func NewRootCommand(env Environment) *cobra.Command {
 		newDownCommand(shared),
 		newDoctorCommand(shared),
 		newPortsCommand(shared),
+		newProxyCommand(shared),
 		newDpgCommand(shared),
 		newAdminCommand(shared),
 		newMigrateCommand(shared),
@@ -673,6 +674,41 @@ func newPortsCommand(env *Environment) *cobra.Command {
 						"  %-22s host %d  container 8080\n", d.Container, d.Host))
 				}
 			}
+			return nil
+		},
+	}
+	addSelectionFlags(cmd, &sel)
+	return cmd
+}
+
+// newProxyCommand builds vca proxy (ADR-007 decision 5).
+func newProxyCommand(env *Environment) *cobra.Command {
+	var sel selection
+	cmd := &cobra.Command{
+		Use:   "proxy",
+		Short: "Print the reverse proxy snippet of one or more pairs.",
+		Long: "proxy prints the Caddyfile of every selected pair as one snippet. " +
+			"The reverse proxy of the host imports it, so VCA shares the host " +
+			"with other projects and binds no port 80 or 443 itself. Each site " +
+			"sends its requests to 127.0.0.1 and the host port of a service.",
+		Example: "  vca proxy --all | sudo tee /etc/caddy/vca.caddy >/dev/null\n" +
+			"  echo 'import /etc/caddy/vca.caddy' | sudo tee -a /etc/caddy/Caddyfile\n" +
+			"  sudo systemctl reload caddy",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			prompter := NewPrompter(cmd.InOrStdin(), cmd.ErrOrStderr())
+			pairs, err := sel.resolve(prompter, env)
+			if err != nil {
+				return err
+			}
+			snippet, skipped, err := ProxySnippet(env.Root, pairs)
+			if err != nil {
+				return err
+			}
+			for _, name := range skipped {
+				anyval.DiscardWrite(fmt.Fprintf(cmd.ErrOrStderr(),
+					"proxy: %s has no Caddyfile; run vca setup for it first\n", name))
+			}
+			anyval.DiscardWrite(io.WriteString(cmd.OutOrStdout(), snippet))
 			return nil
 		},
 	}

@@ -162,25 +162,31 @@ hands the reverse proxy of the machine one file per pair.
    It checks that every host name resolves and reports who holds port
    80 and port 443.
 4. Run the deploy and the bootstrap of the next section.
-5. Give the reverse proxy the generated files.
-   Each `deploy/<role>-<dpg>/Caddyfile` holds one site per host name and
-   sends the requests to `127.0.0.1:<host port>`.
-   A Caddy that already runs on the machine takes them with one line in
-   its own Caddyfile, then a reload:
-
-   ```
-   import /path/to/verifiably/deploy/*/Caddyfile
-   ```
+5. Give the reverse proxy the generated sites.
+   `vca proxy` prints the Caddyfile of every pair as one snippet.
+   Each site sends its requests to `127.0.0.1:<host port>`.
+   A Caddy that already runs on the machine takes the snippet with one
+   import line and a reload:
 
    ```sh
+   vca proxy --all | sudo tee /etc/caddy/vca.caddy >/dev/null
+   echo 'import /etc/caddy/vca.caddy' | sudo tee -a /etc/caddy/Caddyfile
    sudo systemctl reload caddy
    ```
 
+   The copy under `/etc/caddy` matters: the `caddy` user cannot read a
+   file under your home directory.
+   Run `vca proxy` again after every `vca setup`.
    A machine with no web server starts Caddy with the same import line.
    Caddy gets one certificate per host name from Let's Encrypt on its
    first start. Port 80 and port 443 must be open in the firewall.
    Another reverse proxy, such as nginx, takes the same host names and
-   host ports from the file.
+   host ports from the snippet.
+6. Open the addresses that `vca deploy` prints at the end.
+   The public URL of a pair is its portal: the issuance portal, the
+   wallet portal, the verifier results portal, or the admin portal.
+   The login page is the Keycloak of the stack at
+   `https://<dpg>-keycloak.<domain>`.
 
 `vca setup` writes the secrets with mode 0600 into
 `deploy/<role>-<dpg>/`.
@@ -221,7 +227,7 @@ The volumes stay, so the data survives.
 | `no such host` in the browser | The DNS name does not point at the server. | Add the DNS record. Wait for the old answer to expire. |
 | `DNS_PROBE_FINISHED_NXDOMAIN` | The host name has no DNS record. `vca doctor` reports it. | Add one wildcard record, `*.<domain>`, or one record per pair. |
 | `permission denied` under `/data` in a container log | A data volume from an older image belongs to root. | `vca down --all`, then remove or chown the `vca_` volumes. See "Data volumes" in `deploy.md`. |
-| `ERR_SSL_PROTOCOL_ERROR` | A web server holds port 443 but has no certificate for the host name. | Import `deploy/*/Caddyfile` into that server and reload it. |
+| `ERR_SSL_PROTOCOL_ERROR` | A web server holds port 443 but has no certificate for the host name. | Give it the snippet of `vca proxy` and reload it. See step 5 of "The server path". |
 | `Cannot connect to the Docker daemon` | The daemon does not run. | Start Docker. Add your user to the `docker` group. |
 | `container name is in use outside the vca compose project` | A container from an older compose project, or one you started by hand, holds a name the pair needs. | Run the `docker rm -f` line that the message prints. Then run `vca deploy` again. |
 | `The container name "/inji-certify" is already in use` | Same cause, reported by an older `vca` binary. | `docker rm -f inji-certify`, then run `vca deploy` again. |

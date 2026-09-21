@@ -361,10 +361,7 @@ func composeCheck(p Probe) Check {
 
 // memoryCheck compares the free memory with the floor of the pairs.
 func memoryCheck(opts DoctorOptions) Check {
-	want := 0
-	for _, p := range opts.Pairs {
-		want += MemoryFloorMiB(p)
-	}
+	want := SelectionFloorMiB(opts.Pairs)
 	name := "memory"
 	fix := fmt.Sprintf("free memory, or use a host with %d MiB for this selection", want)
 	got, err := opts.Probe.FreeMemoryMiB()

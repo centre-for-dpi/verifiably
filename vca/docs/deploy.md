@@ -62,6 +62,11 @@ Add `--all` to start every role of every DPG. Add `--all --dpg <dpg>` to start e
 Add `--dry-run` to print the rendered file and the commands.
 Add `--build` before the first release. See "Images from source".
 
+`vca deploy` ends with the addresses to open: the public URL of every
+pair, which is its portal, and the login page of each stack.
+A public host also gets the three lines that hand the reverse proxy the
+`vca proxy` snippet.
+
 ### Step 3: configure the DPG
 
 ```sh

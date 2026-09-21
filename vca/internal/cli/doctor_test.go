@@ -5,6 +5,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -660,5 +661,17 @@ func TestMemoryHintOfIsSilentWithoutPairsOrMemory(t *testing.T) {
 	probe.memoryErr = errors.New("no meminfo")
 	if got := memoryHintOf(probe, AllPairs()); got != "" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// TestMemoryCheckCountsAStackOnce keeps the check line and the floor
+// table of the same report in step.
+func TestMemoryCheckCountsAStackOnce(t *testing.T) {
+	pairs := PairsForDpg(dpgWaltid(t))
+	probe := healthyProbe()
+	probe.memory = SelectionFloorMiB(pairs)
+	got := memoryCheck(DoctorOptions{Pairs: pairs, Probe: probe})
+	if !got.OK || !strings.Contains(got.Detail, fmt.Sprintf("%d MiB needed", SelectionFloorMiB(pairs))) {
+		t.Errorf("check = %+v", got)
 	}
 }

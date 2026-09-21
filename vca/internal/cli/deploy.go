@@ -84,7 +84,13 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 	if opts.Build {
 		action = append(action, "--build")
 	}
-	return lifecycle(ctx, opts, action)
+	if err := lifecycle(ctx, opts, action); err != nil {
+		return err
+	}
+	if !opts.DryRun {
+		writeEntryReport(opts.Out, opts.Root, opts.Pairs)
+	}
+	return nil
 }
 
 // Status shows the containers of every named pair (ADR-008 decision 6).
