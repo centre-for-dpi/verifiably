@@ -47,7 +47,7 @@ Configuration comes from environment variables. The table lists each one.
 
 The container image is `ghcr.io/centre-for-dpi/vca-status-token`. It listens on
 one port and runs as a non-root user with a read-only file system.
-Mount a volume at `/state` to keep the lists and the keys across a restart.
+Mount a volume at `/data` to keep the lists and the keys across a restart.
 
 To rotate the signing key, call `RotateKey`. The service signs every list again with the new key. The old key stays in the JWKS, so an old copy of a list stays verifiable.
 

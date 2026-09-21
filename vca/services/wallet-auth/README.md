@@ -76,7 +76,7 @@ Set `VCA_WALLET_AUTH_SALT` and `VCA_WALLET_AUTH_GRANT_KEY` in production. Withou
 
 The container image is `ghcr.io/centre-for-dpi/vca-wallet-auth`. It listens on
 one port and runs as a non-root user with a read-only file system. Mount a
-volume at `/state` to keep providers and wallets between restarts.
+volume at `/data` to keep providers and wallets between restarts.
 
 ## How to check it works
 

@@ -86,7 +86,7 @@ The provider record holds a reference to the secret, never the value. Set `VCA_O
 
 The container image is `ghcr.io/centre-for-dpi/vca-issuer-auth`. It listens on
 one port and runs as a non-root user with a read-only file system. Mount a
-volume at `/state` to keep providers between restarts.
+volume at `/data` to keep providers between restarts.
 
 ## How to check it works
 

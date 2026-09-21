@@ -6,9 +6,14 @@ COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOFLAGS=-trimpath go build -ldflags="-s -w" -o /out/trust-registry ./services/trust-registry
+RUN mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/trust-registry /trust-registry
+# The volume mount point exists in the image and belongs to the nonroot
+# user, so a new named volume copies that ownership and the service
+# can write. A container that mounts a root owned volume cannot.
+COPY --from=build --chown=65532:65532 /out/data /data
 USER nonroot:nonroot
 EXPOSE 8080
 ENV VCA_TRUST_LISTEN=:8080

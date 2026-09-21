@@ -7,6 +7,7 @@ COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOFLAGS=-trimpath go build -ldflags="-s -w" -o /out/dpg-adapter-inji ./services/dpg-adapter-inji
+RUN mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 LABEL org.opencontainers.image.title="dpg-adapter-inji" \
@@ -14,6 +15,10 @@ LABEL org.opencontainers.image.title="dpg-adapter-inji" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/centre-for-dpi/verifiably"
 COPY --from=build /out/dpg-adapter-inji /dpg-adapter-inji
+# The volume mount point exists in the image and belongs to the nonroot
+# user, so a new named volume copies that ownership and the service
+# can write. A container that mounts a root owned volume cannot.
+COPY --from=build --chown=65532:65532 /out/data /data
 USER nonroot:nonroot
 EXPOSE 8080
 ENV VCA_INJI_LISTEN=:8080

@@ -10,6 +10,7 @@ COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOFLAGS=-trimpath go build -ldflags="-s -w -X main.version=${VERSION}" \
     -o /out/status-bitstring ./services/status-bitstring
+RUN mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian13:nonroot
 ARG VERSION=dev
@@ -23,12 +24,16 @@ LABEL org.opencontainers.image.title="vca-status-bitstring" \
       org.opencontainers.image.source="https://github.com/centre-for-dpi/verifiably" \
       org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=build /out/status-bitstring /status-bitstring
+# The volume mount point exists in the image and belongs to the nonroot
+# user, so a new named volume copies that ownership and the service
+# can write. A container that mounts a root owned volume cannot.
+COPY --from=build --chown=65532:65532 /out/data /data
 USER nonroot:nonroot
-# The file system is read only. Mount a volume at /state for the lists
+# The file system is read only. Mount a volume at /data for the lists
 # and the signing keys.
 ENV VCA_STATUS_BITSTRING_LISTEN=:8084 \
-    VCA_STATUS_BITSTRING_STATE_DIR=/state
-VOLUME ["/state"]
+    VCA_STATUS_BITSTRING_STATE_DIR=/data
+VOLUME ["/data"]
 EXPOSE 8084
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD ["/status-bitstring", "-healthcheck"]
