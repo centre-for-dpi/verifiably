@@ -6,6 +6,8 @@
 # digest in production, for example CREDEBL_VERSION=sha-1a2b3c4.
 # Keycloak and PostgreSQL are pinned.
 # The main compose file pulls this file in with include.
+# Every host port binds to VCA_BIND, which vca setup sets to 127.0.0.1
+# on a public host.
 #
 # Start it with: vca deploy --role issuer --dpg credebl
 
@@ -25,9 +27,11 @@ services:
       # works behind TLS.
       KC_PROXY_HEADERS: xforwarded
     volumes:
-      - ../${CREDEBL_REALM_DIR:-issuer-credebl}:/opt/keycloak/data/import:ro
+      # Keycloak parses every JSON file of the import directory, so the
+      # directory holds the realm alone (vca setup writes it).
+      - ../${CREDEBL_REALM_DIR:-issuer-credebl}/keycloak:/opt/keycloak/data/import:ro
     ports:
-      - "${CREDEBL_KEYCLOAK_HOST_PORT:-17180}:8080"
+      - "${VCA_BIND:-0.0.0.0}:${CREDEBL_KEYCLOAK_HOST_PORT:-17180}:8080"
     networks:
       - vca
 
@@ -72,7 +76,7 @@ services:
       NATS_URL: nats://credebl-nats:4222
       KEYCLOAK_DOMAIN: ${CREDEBL_KEYCLOAK_URL:-http://credebl-keycloak:8080}
     ports:
-      - "${CREDEBL_API_HOST_PORT:-17181}:5000"
+      - "${VCA_BIND:-0.0.0.0}:${CREDEBL_API_HOST_PORT:-17181}:5000"
     networks:
       - vca
 

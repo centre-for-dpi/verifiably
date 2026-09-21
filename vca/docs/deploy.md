@@ -157,6 +157,7 @@ The `.env` file of the pair carries both numbers:
 | `VCA_PORTS_ADAPTER` | The port of the DPG adapter. |
 | `VCA_PORTS_<SERVICE>` | The port of every other service, from 8100 up. |
 | `VCA_HOST_PORT_<SERVICE>` | The port on the machine that runs compose. |
+| `VCA_BIND` | The address the host ports bind to. See "Hardening". |
 
 ### Service links
 
@@ -172,9 +173,27 @@ The values come in five kinds:
 |---|---|---|
 | Service URL | `VCA_ISSUANCE_SCHEMA_URL` | The container name and port of another service, from the port plan. |
 | Adapter URL | `VCA_ISSUANCE_ADAPTER_URL` | The DPG adapter of the pair. |
-| Public URL | `VCA_SCHEMA_BASE_URL` | `VCA_PUBLIC_URL` plus the path the Caddyfile routes to the service. |
+| Public URL | `VCA_SCHEMA_BASE_URL`, `VCA_TRUST_BASE_URL` | `VCA_PUBLIC_URL`, plus a prefix when the route table gives the service one. |
 | Copy | `VCA_ADMIN_SIGNING_KEY`, `VCA_WALTID_ISSUER_URL` | A shared value under the name the service reads: the signing key, the session key, the bootstrap token, or `VCA_DPG_URL`. |
 | Fixed | `VCA_ISSUER_AUTH_STATE_DIR=/data` | A path under the data volume. |
+
+The public URL kind follows the route table of the pair.
+The `Caddyfile` of the pair comes from the same table, so a service and
+its public URL agree.
+The routes come in three kinds:
+
+| Route kind | Example | Public URL of the service |
+|---|---|---|
+| Root | `/portal/*` of `schema-registry`, `/oid4vp/*` of `verifier-ingest` | The bare `VCA_PUBLIC_URL`. The service sees the full path. |
+| Prefix | `/status-token/*`, `/trust-registry/*` | `VCA_PUBLIC_URL` plus the prefix. The proxy removes the prefix. |
+| Home | `/` and every path no route names | The home service of the role answers. |
+
+A service with HTML pages gets root routes, because its pages link
+with absolute paths.
+The staff pages of `verifier-discovery` move to `/discovery` through
+`VCA_DISCOVERY_PORTAL_PREFIX`, because `verifier-results` holds
+`/portal`.
+"Where each page lives" in `getting-started.md` lists every path.
 
 A link can name a service of another role.
 The container names carry the pair, as in
@@ -242,6 +261,16 @@ Every VCA service in the compose file:
 
 Those four rules come from ADR-005 decisions 2 and 3.
 
+Every published port of the compose file and of the DPG stack files
+binds to `VCA_BIND`.
+`vca setup` writes `VCA_BIND=127.0.0.1` into the `.env` file of a pair
+whose public URL names a public host.
+The reverse proxy of the machine then reaches the services and the DPG
+components on the loopback address. No other machine reaches them.
+A laptop deployment with a localhost public URL gets no `VCA_BIND`, so
+compose keeps its default, `0.0.0.0`.
+Set `VCA_BIND` by hand in the `.env` file to change it.
+
 ## The DPG stacks
 
 `deploy/vca/compose.yaml` pulls in the DPG files with `include`
@@ -300,12 +329,17 @@ When another compose project or a hand-started container holds one of
 them, it stops before it starts anything.
 The message prints the `docker rm -f` line that clears them.
 
-`vca setup` writes `deploy/<role>-<dpg>/keycloak-realm.json`.
+`vca setup` writes `deploy/<role>-<dpg>/keycloak/vca-realm.json`.
 The realm is `vca`.
 It holds one client with the id `vca-<role>`, a generated client secret,
 the authorization code flow, and PKCE.
 Keycloak imports the file on its first start.
-It reads the directory of the issuer pair of the stack.
+It reads the `keycloak` directory of the issuer pair of the stack.
+That directory holds the realm alone.
+Keycloak parses every JSON file of its import directory, and one other
+file stops the import.
+The directory has mode 0755 and the file has mode 0644, so the
+Keycloak user inside the container reads them.
 Set `WALTID_REALM_DIR`, `INJI_REALM_DIR`, or `CREDEBL_REALM_DIR` to
 another pair directory when you run one other role alone.
 

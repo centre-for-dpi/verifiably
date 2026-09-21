@@ -649,8 +649,9 @@ func newPortsCommand(env *Environment) *cobra.Command {
 		Use:   "ports",
 		Short: "Print the host ports of one role and DPG.",
 		Long: "ports prints one line per service with the port inside the " +
-			"container and the port on the machine that runs compose. Open " +
-			"those host ports in the firewall of a server.",
+			"container and the port on the machine that runs compose. On a " +
+			"server the host ports bind to 127.0.0.1 (VCA_BIND in the .env " +
+			"file), so only the reverse proxy of the machine reaches them.",
 		Example: "  vca ports --role <role> --dpg <dpg>",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			prompter := NewPrompter(cmd.InOrStdin(), cmd.OutOrStdout())

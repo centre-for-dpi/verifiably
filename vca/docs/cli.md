@@ -117,7 +117,9 @@ vca ports --role <role> --dpg <dpg>
 
 The command prints one line per service with the host port and the
 container port.
-Open those host ports in the firewall of a server.
+On a server the ports bind to the loopback address, and the reverse
+proxy of the machine reaches them. See "Hardening" in `deploy.md`.
+Open only port 80 and port 443 in the firewall of a server.
 
 ## setup
 
@@ -159,7 +161,7 @@ A terminal run asks three kinds of question, in this order:
    Enter https://issuer.example for a public host.
      Rule: An absolute https URL without a path or a trailing slash.
      Variable: VCA_PUBLIC_URL
-   Public URL [http://localhost:18002]:
+   Public URL [http://localhost:18006]:
    ```
 
 2. Every required value that no source and no default filled.
@@ -248,14 +250,17 @@ Empty selects the in-memory limiter, which is fine for one replica.
 The command writes one folder per role and DPG pair:
 
 ```
-deploy/<role>-<dpg>/.env                mode 0600
-deploy/<role>-<dpg>/signing-key.pem     mode 0600
-deploy/<role>-<dpg>/Caddyfile           mode 0644
-deploy/<role>-<dpg>/keycloak-realm.json mode 0644
+deploy/<role>-<dpg>/.env                    mode 0600
+deploy/<role>-<dpg>/signing-key.pem         mode 0600
+deploy/<role>-<dpg>/Caddyfile               mode 0644
+deploy/<role>-<dpg>/keycloak/               mode 0755
+deploy/<role>-<dpg>/keycloak/vca-realm.json mode 0644
 ```
 
-Every pair gets `keycloak-realm.json`, because every DPG stack ships a
-Keycloak. A pair also gets the extra file its DPG needs:
+Every pair gets `keycloak/vca-realm.json`, because every DPG stack
+ships a Keycloak. The realm sits alone in its directory, because
+Keycloak parses every JSON file of its import directory. A pair also
+gets the extra file its DPG needs:
 
 | DPG | Extra file |
 |---|---|

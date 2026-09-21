@@ -155,7 +155,7 @@ func TestAskAllAsksOneQuestionOnALaptop(t *testing.T) {
 	if len(answers) != 1 {
 		t.Errorf("the CLI asked %d questions: %v", len(answers), answers)
 	}
-	// The question reads "Public URL [http://localhost:18002]: ".
+	// The question reads "Public URL [http://localhost:18006]: ".
 	want := "Public URL [" + LocalPublicURL(p) + "]: "
 	if !strings.Contains(out.String(), want) {
 		t.Errorf("the question is not %q:\n%s", want, out.String())

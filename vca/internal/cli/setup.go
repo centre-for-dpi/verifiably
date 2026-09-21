@@ -135,6 +135,9 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range Passthrough(settings, req.Flags, req.File) {
 		extra[name] = value
 	}
+	if bind, ok := BindAddress(values); ok {
+		extra[BindEnv] = bind
+	}
 	files := []File{{
 		Name: EnvFileName,
 		Data: []byte(RenderDotenv(req.Pair.Name()+" deployment", list, extra)),
@@ -147,6 +150,27 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	files = append(files, dpgFiles...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files}, nil
+}
+
+// BindEnv is the variable that holds the address the host ports bind
+// to. The compose file reads it, so a public host publishes no service
+// port on every interface.
+const BindEnv = "VCA_BIND"
+
+// LoopbackAddress is the bind address of a public host. The reverse
+// proxy of the host reaches the ports there, and nothing else does.
+const LoopbackAddress = "127.0.0.1"
+
+// BindAddress returns the bind address of the host ports of a pair. A
+// public host name gets the loopback address. A local public URL gets
+// nothing, so compose keeps its default and a laptop reaches the ports
+// from any interface.
+func BindAddress(values map[string]string) (string, bool) {
+	host := hostOf(values["VCA_PUBLIC_URL"])
+	if host == "" || isLocalHost(host) {
+		return "", false
+	}
+	return LoopbackAddress, true
 }
 
 // PassthroughPrefix marks a variable that setup writes as given. A
@@ -186,8 +210,8 @@ func resolveWithDefaults(settings []Setting, src Sources, p Pair, domain string)
 }
 
 // applyLocalPublicURL fills an empty public URL with the localhost address
-// of the portal of the pair. A laptop deployment then needs no public host
-// (ADR-007 decision 4, ADR-008 decision 7).
+// of the home service of the pair. A laptop deployment then needs no
+// public host (ADR-007 decision 4, ADR-008 decision 7).
 func applyLocalPublicURL(list []Resolution, p Pair) []Resolution {
 	out := make([]Resolution, len(list))
 	copy(out, list)
@@ -201,10 +225,10 @@ func applyLocalPublicURL(list []Resolution, p Pair) []Resolution {
 }
 
 // LocalPublicURL returns http://localhost with the host port of the
-// portal of the pair.
+// home service of the pair, so the address opens the home page.
 func LocalPublicURL(p Pair) string {
 	for _, a := range AssignPorts(p, nil) {
-		if a.Service.Name == portalService(p.Role) {
+		if a.Service.Name == HomeOf(p.Role).Service {
 			return fmt.Sprintf("http://localhost:%d", a.Host)
 		}
 	}
@@ -326,6 +350,23 @@ func (p Plan) Summary() string {
 	return b.String()
 }
 
+// readableDirMode is the mode of a subdirectory that a container with
+// another user id reads, such as the realm directory of Keycloak.
+const readableDirMode = 0o755
+
+// makeReadableDir creates a directory with readableDirMode. MkdirAll
+// keeps the mode of a directory that already exists, so the function
+// sets it as well.
+func makeReadableDir(dir string) error {
+	if err := os.MkdirAll(dir, readableDirMode); err != nil { //nolint:gosec // another user reads the directory
+		return fmt.Errorf("make %s: %w", dir, err)
+	}
+	if err := os.Chmod(dir, readableDirMode); err != nil { //nolint:gosec // another user reads the directory
+		return fmt.Errorf("set the mode of %s: %w", dir, err)
+	}
+	return nil
+}
+
 // OutputDir returns the directory of a pair under the deploy root.
 func OutputDir(root string, p Pair) string { return filepath.Join(root, p.Name()) }
 
@@ -372,7 +413,9 @@ func upgradeSigningKeyRef(dir string, values map[string]string) error {
 }
 
 // WritePlan writes every file of the plan under the deploy root.
-// A secret file gets mode 0600 (ADR-007 decision 5).
+// A secret file gets mode 0600 (ADR-007 decision 5). A file in a
+// subdirectory gets that directory with mode 0755, so a container that
+// runs as another user, such as Keycloak, reads it.
 func WritePlan(root string, p Plan) ([]string, error) {
 	dir := OutputDir(root, p.Pair)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -384,6 +427,11 @@ func WritePlan(root string, p Plan) ([]string, error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 	for _, f := range files {
 		path := filepath.Join(dir, f.Name)
+		if sub := filepath.Dir(path); sub != dir {
+			if err := makeReadableDir(sub); err != nil {
+				return nil, err
+			}
+		}
 		if err := os.WriteFile(path, f.Data, f.Mode); err != nil {
 			return nil, fmt.Errorf("write %s: %w", path, err)
 		}

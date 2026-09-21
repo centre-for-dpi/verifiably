@@ -8,6 +8,8 @@
 #
 # Every service runs read only, as a non-root user, with no added
 # capabilities, and with no Docker socket (ADR-005 decisions 2 and 3).
+# Every host port binds to VCA_BIND. vca setup sets it to 127.0.0.1 on
+# a public host, so only the reverse proxy reaches the services.
 name: vca
 
 include:
@@ -40,7 +42,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DATA_SOURCE:-18000}:${VCA_PORTS_DATA_SOURCE:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18000}:${VCA_PORTS_DATA_SOURCE:-8100}"
     volumes:
       - issuer-waltid-data-source-data:/data
   issuer-waltid-dpg-adapter-waltid:
@@ -52,7 +54,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18001}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18001}:${VCA_PORTS_ADAPTER:-8090}"
   issuer-waltid-issuance:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issuance:${VCA_VERSION:-latest}
@@ -62,7 +64,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUANCE:-18002}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18002}:${VCA_PORTS_PORTAL:-8080}"
   issuer-waltid-issued-credentials:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issued-credentials:${VCA_VERSION:-latest}
@@ -72,7 +74,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18003}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18003}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
     volumes:
       - issuer-waltid-issued-credentials-data:/data
   issuer-waltid-issuer-auth:
@@ -84,7 +86,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUER_AUTH:-18004}:${VCA_PORTS_AUTH:-8081}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18004}:${VCA_PORTS_AUTH:-8081}"
     volumes:
       - issuer-waltid-issuer-auth-data:/data
   issuer-waltid-schema-builder-ui:
@@ -96,7 +98,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18005}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18005}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
   issuer-waltid-schema-registry:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-schema-registry:${VCA_VERSION:-latest}
@@ -106,7 +108,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_SCHEMA_REGISTRY:-18006}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_REGISTRY:-18006}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
     volumes:
       - issuer-waltid-schema-registry-data:/data
   issuer-waltid-status-bitstring:
@@ -118,7 +120,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_STATUS_BITSTRING:-18007}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18007}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
       - issuer-waltid-status-bitstring-data:/data
   issuer-waltid-status-token:
@@ -130,7 +132,7 @@ services:
       - path: ../issuer-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_STATUS_TOKEN:-18008}:${VCA_PORTS_STATUS_TOKEN:-8105}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18008}:${VCA_PORTS_STATUS_TOKEN:-8105}"
     volumes:
       - issuer-waltid-status-token-data:/data
 
@@ -144,7 +146,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DATA_SOURCE:-18100}:${VCA_PORTS_DATA_SOURCE:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18100}:${VCA_PORTS_DATA_SOURCE:-8100}"
     volumes:
       - issuer-inji-data-source-data:/data
   issuer-inji-dpg-adapter-inji:
@@ -156,7 +158,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18101}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18101}:${VCA_PORTS_ADAPTER:-8090}"
   issuer-inji-issuance:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issuance:${VCA_VERSION:-latest}
@@ -166,7 +168,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUANCE:-18102}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18102}:${VCA_PORTS_PORTAL:-8080}"
   issuer-inji-issued-credentials:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issued-credentials:${VCA_VERSION:-latest}
@@ -176,7 +178,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18103}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18103}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
     volumes:
       - issuer-inji-issued-credentials-data:/data
   issuer-inji-issuer-auth:
@@ -188,7 +190,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUER_AUTH:-18104}:${VCA_PORTS_AUTH:-8081}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18104}:${VCA_PORTS_AUTH:-8081}"
     volumes:
       - issuer-inji-issuer-auth-data:/data
   issuer-inji-schema-builder-ui:
@@ -200,7 +202,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18105}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18105}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
   issuer-inji-schema-registry:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-schema-registry:${VCA_VERSION:-latest}
@@ -210,7 +212,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_SCHEMA_REGISTRY:-18106}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_REGISTRY:-18106}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
     volumes:
       - issuer-inji-schema-registry-data:/data
   issuer-inji-status-bitstring:
@@ -222,7 +224,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_STATUS_BITSTRING:-18107}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18107}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
       - issuer-inji-status-bitstring-data:/data
   issuer-inji-status-token:
@@ -234,7 +236,7 @@ services:
       - path: ../issuer-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_STATUS_TOKEN:-18108}:${VCA_PORTS_STATUS_TOKEN:-8105}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18108}:${VCA_PORTS_STATUS_TOKEN:-8105}"
     volumes:
       - issuer-inji-status-token-data:/data
 
@@ -248,7 +250,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DATA_SOURCE:-18200}:${VCA_PORTS_DATA_SOURCE:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18200}:${VCA_PORTS_DATA_SOURCE:-8100}"
     volumes:
       - issuer-credebl-data-source-data:/data
   issuer-credebl-dpg-adapter-credebl:
@@ -260,7 +262,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18201}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18201}:${VCA_PORTS_ADAPTER:-8090}"
   issuer-credebl-issuance:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issuance:${VCA_VERSION:-latest}
@@ -270,7 +272,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUANCE:-18202}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18202}:${VCA_PORTS_PORTAL:-8080}"
   issuer-credebl-issued-credentials:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issued-credentials:${VCA_VERSION:-latest}
@@ -280,7 +282,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18203}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18203}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
     volumes:
       - issuer-credebl-issued-credentials-data:/data
   issuer-credebl-issuer-auth:
@@ -292,7 +294,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ISSUER_AUTH:-18204}:${VCA_PORTS_AUTH:-8081}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18204}:${VCA_PORTS_AUTH:-8081}"
     volumes:
       - issuer-credebl-issuer-auth-data:/data
   issuer-credebl-schema-builder-ui:
@@ -304,7 +306,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18205}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18205}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
   issuer-credebl-schema-registry:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-schema-registry:${VCA_VERSION:-latest}
@@ -314,7 +316,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_SCHEMA_REGISTRY:-18206}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_REGISTRY:-18206}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
     volumes:
       - issuer-credebl-schema-registry-data:/data
   issuer-credebl-status-bitstring:
@@ -326,7 +328,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_STATUS_BITSTRING:-18207}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18207}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
       - issuer-credebl-status-bitstring-data:/data
   issuer-credebl-status-token:
@@ -338,7 +340,7 @@ services:
       - path: ../issuer-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_STATUS_TOKEN:-18208}:${VCA_PORTS_STATUS_TOKEN:-8105}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18208}:${VCA_PORTS_STATUS_TOKEN:-8105}"
     volumes:
       - issuer-credebl-status-token-data:/data
 
@@ -352,7 +354,7 @@ services:
       - path: ../holder-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18300}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18300}:${VCA_PORTS_ADAPTER:-8090}"
   holder-waltid-wallet-auth:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-wallet-auth:${VCA_VERSION:-latest}
@@ -362,7 +364,7 @@ services:
       - path: ../holder-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_AUTH:-18301}:${VCA_PORTS_AUTH:-8081}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18301}:${VCA_PORTS_AUTH:-8081}"
     volumes:
       - holder-waltid-wallet-auth-data:/data
   holder-waltid-wallet-portal:
@@ -374,7 +376,7 @@ services:
       - path: ../holder-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_PORTAL:-18302}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_PORTAL:-18302}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - holder-waltid-wallet-portal-data:/data
 
@@ -388,7 +390,7 @@ services:
       - path: ../holder-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18400}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18400}:${VCA_PORTS_ADAPTER:-8090}"
   holder-inji-wallet-auth:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-wallet-auth:${VCA_VERSION:-latest}
@@ -398,7 +400,7 @@ services:
       - path: ../holder-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_AUTH:-18401}:${VCA_PORTS_AUTH:-8081}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18401}:${VCA_PORTS_AUTH:-8081}"
     volumes:
       - holder-inji-wallet-auth-data:/data
   holder-inji-wallet-portal:
@@ -410,7 +412,7 @@ services:
       - path: ../holder-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_PORTAL:-18402}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_PORTAL:-18402}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - holder-inji-wallet-portal-data:/data
 
@@ -424,7 +426,7 @@ services:
       - path: ../holder-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18500}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18500}:${VCA_PORTS_ADAPTER:-8090}"
   holder-credebl-wallet-auth:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-wallet-auth:${VCA_VERSION:-latest}
@@ -434,7 +436,7 @@ services:
       - path: ../holder-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_AUTH:-18501}:${VCA_PORTS_AUTH:-8081}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18501}:${VCA_PORTS_AUTH:-8081}"
     volumes:
       - holder-credebl-wallet-auth-data:/data
   holder-credebl-wallet-portal:
@@ -446,7 +448,7 @@ services:
       - path: ../holder-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_WALLET_PORTAL:-18502}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_PORTAL:-18502}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - holder-credebl-wallet-portal-data:/data
 
@@ -460,7 +462,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18600}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18600}:${VCA_PORTS_ADAPTER:-8090}"
   verifier-waltid-verifier-combined:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-verifier-combined:${VCA_VERSION:-latest}
@@ -470,7 +472,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_COMBINED:-18601}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18601}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
       - verifier-waltid-verifier-combined-data:/data
   verifier-waltid-verifier-discovery:
@@ -482,7 +484,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18602}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18602}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
     volumes:
       - verifier-waltid-verifier-discovery-data:/data
   verifier-waltid-verifier-ingest:
@@ -494,7 +496,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_INGEST:-18603}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18603}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     volumes:
       - verifier-waltid-verifier-ingest-data:/data
   verifier-waltid-verifier-policy:
@@ -506,7 +508,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_POLICY:-18604}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18604}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
       - verifier-waltid-verifier-policy-data:/data
   verifier-waltid-verifier-results:
@@ -518,7 +520,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_RESULTS:-18605}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18605}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - verifier-waltid-verifier-results-data:/data
 
@@ -532,7 +534,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18700}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18700}:${VCA_PORTS_ADAPTER:-8090}"
   verifier-inji-verifier-combined:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-verifier-combined:${VCA_VERSION:-latest}
@@ -542,7 +544,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_COMBINED:-18701}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18701}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
       - verifier-inji-verifier-combined-data:/data
   verifier-inji-verifier-discovery:
@@ -554,7 +556,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18702}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18702}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
     volumes:
       - verifier-inji-verifier-discovery-data:/data
   verifier-inji-verifier-ingest:
@@ -566,7 +568,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_INGEST:-18703}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18703}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     volumes:
       - verifier-inji-verifier-ingest-data:/data
   verifier-inji-verifier-policy:
@@ -578,7 +580,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_POLICY:-18704}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18704}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
       - verifier-inji-verifier-policy-data:/data
   verifier-inji-verifier-results:
@@ -590,7 +592,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_RESULTS:-18705}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18705}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - verifier-inji-verifier-results-data:/data
 
@@ -604,7 +606,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18800}:${VCA_PORTS_ADAPTER:-8090}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18800}:${VCA_PORTS_ADAPTER:-8090}"
   verifier-credebl-verifier-combined:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-verifier-combined:${VCA_VERSION:-latest}
@@ -614,7 +616,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_COMBINED:-18801}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18801}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
       - verifier-credebl-verifier-combined-data:/data
   verifier-credebl-verifier-discovery:
@@ -626,7 +628,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18802}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18802}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
     volumes:
       - verifier-credebl-verifier-discovery-data:/data
   verifier-credebl-verifier-ingest:
@@ -638,7 +640,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_INGEST:-18803}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18803}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     volumes:
       - verifier-credebl-verifier-ingest-data:/data
   verifier-credebl-verifier-policy:
@@ -650,7 +652,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_POLICY:-18804}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18804}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
       - verifier-credebl-verifier-policy-data:/data
   verifier-credebl-verifier-results:
@@ -662,7 +664,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_VERIFIER_RESULTS:-18805}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18805}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - verifier-credebl-verifier-results-data:/data
 
@@ -676,7 +678,7 @@ services:
       - path: ../admin-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ADMIN:-18900}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ADMIN:-18900}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - admin-waltid-admin-data:/data
   admin-waltid-trust-registry:
@@ -688,7 +690,7 @@ services:
       - path: ../admin-waltid/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_TRUST_REGISTRY:-18901}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-18901}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
       - admin-waltid-trust-registry-data:/data
 
@@ -702,7 +704,7 @@ services:
       - path: ../admin-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ADMIN:-19000}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ADMIN:-19000}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - admin-inji-admin-data:/data
   admin-inji-trust-registry:
@@ -714,7 +716,7 @@ services:
       - path: ../admin-inji/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_TRUST_REGISTRY:-19001}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-19001}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
       - admin-inji-trust-registry-data:/data
 
@@ -728,7 +730,7 @@ services:
       - path: ../admin-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_ADMIN:-19100}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ADMIN:-19100}:${VCA_PORTS_PORTAL:-8080}"
     volumes:
       - admin-credebl-admin-data:/data
   admin-credebl-trust-registry:
@@ -740,7 +742,7 @@ services:
       - path: ../admin-credebl/.env
         required: true
     ports:
-      - "${VCA_HOST_PORT_TRUST_REGISTRY:-19101}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-19101}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
       - admin-credebl-trust-registry-data:/data
 

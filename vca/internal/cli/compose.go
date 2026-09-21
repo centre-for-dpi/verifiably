@@ -49,6 +49,8 @@ func RenderCompose() string {
 	b.WriteString("#\n")
 	b.WriteString("# Every service runs read only, as a non-root user, with no added\n")
 	b.WriteString("# capabilities, and with no Docker socket (ADR-005 decisions 2 and 3).\n")
+	b.WriteString("# Every host port binds to VCA_BIND. vca setup sets it to 127.0.0.1 on\n")
+	b.WriteString("# a public host, so only the reverse proxy reaches the services.\n")
 	fmt.Fprintf(&b, "name: %s\n\n", ComposeProject)
 
 	b.WriteString("include:\n")
@@ -104,7 +106,9 @@ func renderComposeService(b *strings.Builder, p Pair, a PortAssignment) []string
 	fmt.Fprintf(b, "      - path: ../%s/%s\n", p.Name(), EnvFileName)
 	b.WriteString("        required: true\n")
 	b.WriteString("    ports:\n")
-	fmt.Fprintf(b, "      - \"${%s:-%d}:${%s:-%d}\"\n", hostVar, a.Host, a.PortEnv, a.Listen)
+	// A public host sets VCA_BIND to the loopback address, so only the
+	// reverse proxy of the host reaches the port.
+	fmt.Fprintf(b, "      - \"${%s:-0.0.0.0}:${%s:-%d}:${%s:-%d}\"\n", BindEnv, hostVar, a.Host, a.PortEnv, a.Listen)
 	if a.Service.Stateful {
 		volume := name + "-data"
 		b.WriteString("    volumes:\n")

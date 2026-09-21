@@ -19,10 +19,13 @@ import (
 type EntryPoint struct {
 	// Pair is the role and DPG pair.
 	Pair Pair
-	// Portal is the service that answers at the public URL.
+	// Portal is the home service, which answers at the public URL.
 	Portal string
 	// URL is the public URL of the pair.
 	URL string
+	// Pages lists the HTML pages of the pair, from the route table.
+	// The home page comes first.
+	Pages []PageLink
 	// Login is the browser facing URL of the identity provider.
 	Login string
 	// Local reports a localhost URL, which needs no reverse proxy.
@@ -45,8 +48,9 @@ func EntryPoints(root string, pairs []Pair) ([]EntryPoint, error) {
 		host := hostOf(url)
 		out = append(out, EntryPoint{
 			Pair:   p,
-			Portal: portalService(p.Role),
+			Portal: HomeOf(p.Role).Service,
 			URL:    url,
+			Pages:  Pages(p, url),
 			Login:  strings.TrimRight(values["VCA_OIDC_PUBLIC_URL"], "/"),
 			Local:  host == "" || isLocalHost(host),
 		})
@@ -54,8 +58,9 @@ func EntryPoints(root string, pairs []Pair) ([]EntryPoint, error) {
 	return out, nil
 }
 
-// EntryReport renders the addresses to open after a deploy, and the
-// one step a public host still needs: the reverse proxy snippet.
+// EntryReport renders the pages to open after a deploy, and the one
+// step a public host still needs: the reverse proxy snippet. The pages
+// come from the route table, so the report and the Caddyfile agree.
 func EntryReport(points []EntryPoint) string {
 	if len(points) == 0 {
 		return ""
@@ -64,7 +69,10 @@ func EntryReport(points []EntryPoint) string {
 	b.WriteString("\nOpen\n")
 	public := false
 	for _, e := range points {
-		fmt.Fprintf(&b, "  %-18s %-17s %s\n", e.Pair.Name(), e.Portal, e.URL)
+		fmt.Fprintf(&b, "  %s\n", e.Pair.Name())
+		for _, page := range e.Pages {
+			fmt.Fprintf(&b, "    %-22s %-19s %s\n", page.Title, page.Service, page.URL)
+		}
 		if !e.Local {
 			public = true
 		}

@@ -224,6 +224,9 @@ func injiOptions(t *testing.T, base string, out io.Writer) BootstrapOptions {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(dir, RealmDir), 0o750); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, RealmFile), body, 0o600); err != nil {
 		t.Fatal(err)
 	}

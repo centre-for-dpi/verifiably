@@ -5,6 +5,8 @@
 #   Inji Verify 0.16.0, eSignet 1.5.1, mock identity 0.10.1,
 #   Keycloak 25.0.
 # The main compose file pulls this file in with include.
+# Every host port binds to VCA_BIND, which vca setup sets to 127.0.0.1
+# on a public host.
 #
 # Start it with: vca deploy --role issuer --dpg inji
 
@@ -24,9 +26,11 @@ services:
       # works behind TLS.
       KC_PROXY_HEADERS: xforwarded
     volumes:
-      - ../${INJI_REALM_DIR:-issuer-inji}:/opt/keycloak/data/import:ro
+      # Keycloak parses every JSON file of the import directory, so the
+      # directory holds the realm alone (vca setup writes it).
+      - ../${INJI_REALM_DIR:-issuer-inji}/keycloak:/opt/keycloak/data/import:ro
     ports:
-      - "${INJI_KEYCLOAK_HOST_PORT:-17080}:8080"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_KEYCLOAK_HOST_PORT:-17080}:8080"
     networks:
       - vca
 
@@ -62,7 +66,7 @@ services:
       SPRING_DATASOURCE_USERNAME: certify
       SPRING_DATASOURCE_PASSWORD: ${INJI_DB_PASSWORD:-certify}
     ports:
-      - "${INJI_CERTIFY_HOST_PORT:-17081}:8090"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_CERTIFY_HOST_PORT:-17081}:8090"
     networks:
       - vca
 
@@ -74,7 +78,7 @@ services:
     environment:
       MOSIP_ESIGNET_HOST: ${INJI_ESIGNET_HOST:-inji-esignet}
     ports:
-      - "${INJI_ESIGNET_HOST_PORT:-17082}:8088"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_ESIGNET_HOST_PORT:-17082}:8088"
     networks:
       - vca
 
@@ -84,7 +88,7 @@ services:
     container_name: inji-mock-identity
     restart: unless-stopped
     ports:
-      - "${INJI_MOCK_IDENTITY_HOST_PORT:-17083}:8082"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_MOCK_IDENTITY_HOST_PORT:-17083}:8082"
     networks:
       - vca
 
@@ -94,7 +98,7 @@ services:
     container_name: inji-mimoto
     restart: unless-stopped
     ports:
-      - "${INJI_MIMOTO_HOST_PORT:-17084}:8099"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_MIMOTO_HOST_PORT:-17084}:8099"
     networks:
       - vca
 
@@ -104,7 +108,7 @@ services:
     container_name: inji-web
     restart: unless-stopped
     ports:
-      - "${INJI_WEB_HOST_PORT:-17085}:3000"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_WEB_HOST_PORT:-17085}:3000"
     networks:
       - vca
 
@@ -136,7 +140,7 @@ services:
       inji-verify-postgres:
         condition: service_healthy
     ports:
-      - "${INJI_VERIFY_SERVICE_HOST_PORT:-17086}:8000"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_VERIFY_SERVICE_HOST_PORT:-17086}:8000"
     networks:
       - vca
 
@@ -146,7 +150,7 @@ services:
     container_name: inji-verify-ui
     restart: unless-stopped
     ports:
-      - "${INJI_VERIFY_UI_HOST_PORT:-17087}:3000"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_VERIFY_UI_HOST_PORT:-17087}:3000"
     networks:
       - vca
 

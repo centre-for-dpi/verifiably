@@ -17,8 +17,12 @@ import (
 const (
 	// CaddyFile is the reverse proxy configuration of a pair.
 	CaddyFile = "Caddyfile"
-	// RealmFile is the Keycloak realm that Inji and CREDEBL import.
-	RealmFile = "keycloak-realm.json"
+	// RealmDir is the directory the Keycloak of the stack imports. It
+	// holds the realm alone, because Keycloak parses every JSON file of
+	// its import directory and a non realm file aborts the import.
+	RealmDir = "keycloak"
+	// RealmFile is the Keycloak realm that every DPG stack imports.
+	RealmFile = RealmDir + "/vca-realm.json"
 	// OnboardFile is the walt.id issuer onboarding request body.
 	OnboardFile = "waltid-onboard.json"
 )
@@ -40,6 +44,14 @@ func hostOf(raw string) string {
 // to the host port of a service, so the file works from a Caddy that
 // other projects on the same host share. One line in that Caddy,
 // import <deploy dir>/*/Caddyfile, takes every pair (ADR-007 decision 5).
+//
+// The site holds one handle block per route of the route table, in
+// service name order. A Strip route renders handle_path, so the service
+// sees the path without its prefix. The exact root redirects to the
+// home page of the role, and a final handle block sends every other
+// path to the home service. Caddy sorts handle blocks by the length of
+// their path matcher, so the order in the file does not matter.
+//
 // The issuer pair of a stack also carries the site of the Keycloak of
 // the stack when the OIDC public URL names a public host.
 func Caddyfile(p Pair, values map[string]string) string {
@@ -47,6 +59,7 @@ func Caddyfile(p Pair, values map[string]string) string {
 	if host == "" {
 		host = "localhost"
 	}
+	home := HomeOf(p.Role)
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Caddyfile for %s. The vca setup command generated it.\n", p.Name())
 	fmt.Fprintf(&b, "# Edit it and run vca deploy --role %s --dpg %s again.\n",
@@ -54,20 +67,30 @@ func Caddyfile(p Pair, values map[string]string) string {
 	b.WriteString("# Import it into the Caddy of the host: import <deploy dir>/*/Caddyfile\n")
 	fmt.Fprintf(&b, "%s {\n", host)
 	b.WriteString("\tencode gzip\n")
-	for _, a := range HostPorts(p, values) {
-		if a.Service.Name == portalService(p.Role) {
-			continue
+	for _, sr := range PairRoutes(p, values) {
+		directive := "handle"
+		if sr.Route.Strip {
+			directive = "handle_path"
 		}
-		fmt.Fprintf(&b, "\thandle /%s/* {\n", a.Service.Name)
-		fmt.Fprintf(&b, "\t\treverse_proxy 127.0.0.1:%d\n", a.Host)
+		fmt.Fprintf(&b, "\t# %s\n", sr.Service)
+		fmt.Fprintf(&b, "\t%s %s {\n", directive, sr.Route.Match)
+		fmt.Fprintf(&b, "\t\treverse_proxy 127.0.0.1:%d\n", sr.Host)
 		b.WriteString("\t}\n")
 	}
+	homePort := 0
 	for _, a := range HostPorts(p, values) {
-		if a.Service.Name != portalService(p.Role) {
-			continue
+		if a.Service.Name == home.Service {
+			homePort = a.Host
 		}
-		fmt.Fprintf(&b, "\treverse_proxy 127.0.0.1:%d\n", a.Host)
 	}
+	fmt.Fprintf(&b, "\t# The home page of the %s role, on %s\n", ShortName(p.Role.String()), home.Service)
+	b.WriteString("\thandle / {\n")
+	// The * matcher keeps Caddy from reading the path as a matcher.
+	fmt.Fprintf(&b, "\t\tredir * %s 302\n", home.Path)
+	b.WriteString("\t}\n")
+	b.WriteString("\thandle {\n")
+	fmt.Fprintf(&b, "\t\treverse_proxy 127.0.0.1:%d\n", homePort)
+	b.WriteString("\t}\n")
 	b.WriteString("}\n")
 	if site := keycloakSite(p, values); site != "" {
 		b.WriteString("\n" + site)
@@ -218,8 +241,9 @@ func WaltidOnboard(values map[string]string) ([]byte, error) {
 }
 
 // DpgConfigFiles renders every generated DPG configuration file of a pair.
-// Every stack ships a Keycloak, so every pair gets a realm. walt.id gets
-// the onboarding body as well. Every pair gets a Caddyfile.
+// Every stack ships a Keycloak, so every pair gets a realm in its own
+// directory. walt.id gets the onboarding body as well. Every pair gets a
+// Caddyfile.
 func DpgConfigFiles(p Pair, values map[string]string, plan []PortAssignment) ([]File, error) {
 	files := []File{{Name: CaddyFile, Data: []byte(Caddyfile(p, values)), Mode: 0o644}}
 	realmBody, err := KeycloakRealm(p, values)

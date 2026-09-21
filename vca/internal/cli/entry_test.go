@@ -45,15 +45,23 @@ func TestEntryPointsAndReport(t *testing.T) {
 	if len(points) != 3 {
 		t.Fatalf("got %d entry points", len(points))
 	}
-	if points[0].Pair.Name() != "issuer-waltid" || points[0].Portal != "issuance" ||
+	if points[0].Pair.Name() != "issuer-waltid" || points[0].Portal != "schema-registry" ||
 		points[0].URL != "https://issuer-waltid.labs.example" || points[0].Local {
 		t.Errorf("first = %+v", points[0])
 	}
+	// The pages come from the route table: the home page first.
+	if len(points[0].Pages) != 2 || points[0].Pages[0].URL != "https://issuer-waltid.labs.example/portal/" ||
+		points[0].Pages[1].URL != "https://issuer-waltid.labs.example/builder/" {
+		t.Errorf("issuer pages = %+v", points[0].Pages)
+	}
 	report := EntryReport(points)
 	for _, want := range []string{
-		"Open\n",
-		"issuer-waltid      issuance          https://issuer-waltid.labs.example",
-		"holder-waltid      wallet-portal     https://holder-waltid.labs.example",
+		"Open\n  issuer-waltid\n",
+		"    Schemas                schema-registry     https://issuer-waltid.labs.example/portal/\n",
+		"    Schema builder         schema-builder-ui   https://issuer-waltid.labs.example/builder/\n",
+		"  holder-waltid\n    Wallet                 wallet-portal       https://holder-waltid.labs.example/wallet/\n",
+		"  verifier-waltid\n    Verification results   verifier-results    https://verifier-waltid.labs.example/portal/\n",
+		"    Citizen check          verifier-results    https://verifier-waltid.labs.example/verify/\n",
 		"Login\n  https://waltid-keycloak.labs.example\n",
 		"vca proxy --all | sudo tee /etc/caddy/vca.caddy",
 	} {
@@ -72,12 +80,12 @@ func TestEntryPointsAndReport(t *testing.T) {
 func TestEntryReportLocalNeedsNoProxy(t *testing.T) {
 	root := t.TempDir()
 	p := issuerPair()
-	writePairEnv(t, root, p, "VCA_PUBLIC_URL=http://localhost:18002\nVCA_OIDC_PUBLIC_URL=http://localhost:17010\n", "")
+	writePairEnv(t, root, p, "VCA_PUBLIC_URL=http://localhost:18006\nVCA_OIDC_PUBLIC_URL=http://localhost:17010\n", "")
 	points, err := EntryPoints(root, []Pair{p})
 	if err != nil || len(points) != 1 || !points[0].Local {
 		t.Fatalf("points = %+v, %v", points, err)
 	}
-	if report := EntryReport(points); strings.Contains(report, "vca proxy") || !strings.Contains(report, "http://localhost:18002") {
+	if report := EntryReport(points); strings.Contains(report, "vca proxy") || !strings.Contains(report, "http://localhost:18006/portal/") {
 		t.Errorf("report:\n%s", report)
 	}
 }
@@ -92,7 +100,7 @@ func TestDeployPrintsTheEntryPoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Open\n  issuer-waltid      issuance          https://issuer-waltid.labs.example") {
+	if !strings.Contains(out.String(), "Open\n  issuer-waltid\n    Schemas                schema-registry     https://issuer-waltid.labs.example/portal/") {
 		t.Errorf("out:\n%s", out.String())
 	}
 	// A dry run prints the commands only.

@@ -60,7 +60,7 @@ func (p Prompter) Ask(s Setting, offered string) (string, error) {
 
 // printQuestion writes the help text, the rule, the variable name, and
 // the offered value. The last line carries the label of the setting, for
-// example "Public URL [http://localhost:18002]: ".
+// example "Public URL [http://localhost:18006]: ".
 func (p Prompter) printQuestion(s Setting, offered string) {
 	anyval.DiscardWrite(fmt.Fprintf(p.Out, "\n%s\n", s.Description))
 	if s.Validation != "" {

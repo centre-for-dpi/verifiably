@@ -397,11 +397,70 @@ func TestWritePlanReportsABadRoot(t *testing.T) {
 	}
 }
 
-func TestWritePlanReportsABadFileName(t *testing.T) {
+func TestWritePlanMakesASubdirectory(t *testing.T) {
 	root := t.TempDir()
-	plan := Plan{Pair: issuerPair(), Files: []File{{Name: "sub/dir/x", Data: []byte("x"), Mode: 0o600}}}
+	plan := Plan{Pair: issuerPair(), Files: []File{{Name: "sub/dir/x", Data: []byte("x"), Mode: 0o644}}}
+	written, err := WritePlan(root, plan)
+	if err != nil {
+		t.Fatalf("WritePlan: %v", err)
+	}
+	path := filepath.Join(OutputDir(root, issuerPair()), "sub", "dir", "x")
+	if len(written) != 1 || written[0] != path {
+		t.Errorf("written = %v", written)
+	}
+	// Another user in a container reads the directory, so it is 0755.
+	info, err := os.Stat(filepath.Dir(path))
+	if err != nil || info.Mode().Perm() != 0o755 {
+		t.Errorf("subdirectory mode = %v, %v", info.Mode(), err)
+	}
+	// A second run keeps the directory and the file.
+	if _, again := WritePlan(root, plan); again != nil {
+		t.Fatalf("second WritePlan: %v", again)
+	}
+}
+
+func TestWritePlanReportsABadSubdirectory(t *testing.T) {
+	root := t.TempDir()
+	// A file where the subdirectory must go is an error.
+	if err := os.MkdirAll(OutputDir(root, issuerPair()), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(OutputDir(root, issuerPair()), "sub"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan := Plan{Pair: issuerPair(), Files: []File{{Name: "sub/x", Data: []byte("x"), Mode: 0o600}}}
 	if _, err := WritePlan(root, plan); err == nil {
-		t.Fatal("WritePlan passed a missing subdirectory")
+		t.Fatal("WritePlan passed a file in place of the subdirectory")
+	}
+}
+
+func TestSetupWritesTheRealmIntoItsOwnDirectory(t *testing.T) {
+	root := t.TempDir()
+	plan, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: baseFlags(), Random: rand.Reader})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	if _, err = WritePlan(root, plan); err != nil {
+		t.Fatalf("WritePlan: %v", err)
+	}
+	dir := filepath.Join(OutputDir(root, issuerPair()), RealmDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+	// Keycloak parses every JSON file of the directory, so the realm is alone.
+	if len(entries) != 1 || entries[0].Name() != "vca-realm.json" {
+		t.Errorf("the realm directory holds %d entries", len(entries))
+	}
+	info, err := os.Stat(filepath.Join(dir, "vca-realm.json"))
+	if err != nil || info.Mode().Perm() != 0o644 {
+		t.Errorf("realm mode = %v, %v", info.Mode(), err)
+	}
+	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o755 {
+		t.Errorf("realm directory mode = %v, %v", info.Mode(), err)
+	}
+	if _, err := os.Stat(filepath.Join(OutputDir(root, issuerPair()), "keycloak-realm.json")); err == nil {
+		t.Error("the old realm file at the pair root was written")
 	}
 }
 
@@ -477,19 +536,35 @@ func TestWaltidOnboard(t *testing.T) {
 func TestCaddyfile(t *testing.T) {
 	values := map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"}
 	got := Caddyfile(issuerPair(), values)
-	if !strings.Contains(got, "issuer.example {") {
+	if !strings.Contains(got, "issuer.example {\n\tencode gzip\n") {
 		t.Errorf("the host block is missing:\n%s", got)
 	}
-	// The proxy of the host reaches a service on its host port.
-	if !strings.Contains(got, "reverse_proxy 127.0.0.1:18002") {
-		t.Errorf("the portal route is missing:\n%s", got)
+	// The proxy of the host reaches each service on its host port.
+	for _, want := range []string{
+		"\thandle /auth/* {\n\t\treverse_proxy 127.0.0.1:18004\n\t}\n",
+		"\thandle /token {\n\t\treverse_proxy 127.0.0.1:18004\n\t}\n",
+		"\thandle /.well-known/jwks.json {\n\t\treverse_proxy 127.0.0.1:18004\n\t}\n",
+		"\thandle /portal/* {\n\t\treverse_proxy 127.0.0.1:18006\n\t}\n",
+		"\thandle /static/* {\n\t\treverse_proxy 127.0.0.1:18006\n\t}\n",
+		"\thandle /builder/* {\n\t\treverse_proxy 127.0.0.1:18005\n\t}\n",
+		"\thandle /issuance/pdf/* {\n\t\treverse_proxy 127.0.0.1:18002\n\t}\n",
+		"\thandle_path /status-bitstring/* {\n\t\treverse_proxy 127.0.0.1:18007\n\t}\n",
+		"\thandle_path /status-token/* {\n\t\treverse_proxy 127.0.0.1:18008\n\t}\n",
+		"\thandle / {\n\t\tredir * /portal/ 302\n\t}\n",
+		"\thandle {\n\t\treverse_proxy 127.0.0.1:18006\n\t}\n}\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the Caddyfile has no %q:\n%s", want, got)
+		}
 	}
-	if !strings.Contains(got, "handle /schema-registry/* {\n\t\treverse_proxy 127.0.0.1:18006") {
-		t.Errorf("a service route is missing:\n%s", got)
+	// No route names a service prefix that the services do not know.
+	if strings.Contains(got, "/schema-registry/") || strings.Contains(got, "handle_path /auth") {
+		t.Errorf("a wrong route:\n%s", got)
 	}
-	// The portal route comes last, so it catches everything else.
-	if strings.LastIndex(got, "handle /") > strings.Index(got, "reverse_proxy 127.0.0.1:18002") {
-		t.Error("the portal route is not last")
+	// The root redirect and the fallback come last.
+	if strings.LastIndex(got, "handle_path") > strings.Index(got, "handle / {") ||
+		strings.Index(got, "handle / {") > strings.Index(got, "\thandle {\n") {
+		t.Error("the home routes are not last")
 	}
 	if strings.Contains(got, "keycloak") {
 		t.Errorf("a local OIDC public URL got a Keycloak site:\n%s", got)
@@ -505,12 +580,16 @@ func TestCaddyfile(t *testing.T) {
 
 func TestCaddyfileHonoursAHostPortOverride(t *testing.T) {
 	values := map[string]string{
-		"VCA_PUBLIC_URL":         "https://issuer.example",
-		"VCA_HOST_PORT_ISSUANCE": "28002",
+		"VCA_PUBLIC_URL":                "https://issuer.example",
+		"VCA_HOST_PORT_ISSUANCE":        "28002",
+		"VCA_HOST_PORT_SCHEMA_REGISTRY": "28006",
 	}
 	got := Caddyfile(issuerPair(), values)
-	if !strings.Contains(got, "reverse_proxy 127.0.0.1:28002") {
+	if !strings.Contains(got, "handle /issuance/pdf/* {\n\t\treverse_proxy 127.0.0.1:28002") {
 		t.Errorf("the override was lost:\n%s", got)
+	}
+	if !strings.Contains(got, "\thandle {\n\t\treverse_proxy 127.0.0.1:28006") {
+		t.Errorf("the home override was lost:\n%s", got)
 	}
 }
 

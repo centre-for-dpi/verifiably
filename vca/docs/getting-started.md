@@ -96,16 +96,23 @@ Name them ahead of time with `--role <role> --dpg <dpg>` instead.
 
 `vca setup` asks one setting question on a laptop: the public URL.
 Press Enter to keep the default. Every other value has a default too.
-The public URL is `http://localhost` with the host port of the portal.
+The public URL is `http://localhost` with the host port of the home
+service of the role. "Where each page lives" names the home service.
 The DPG URL is the container of the stack.
 The identity provider is the Keycloak of the stack.
 The command prints a summary of every value before it writes.
 
-Open the portal of the role in a browser.
-The issuer portal of the first pair is `http://localhost:18002`.
-The wallet portal, the verifier portal, and the admin portal each have
+Open the home page of the role in a browser.
+`vca deploy` prints the pages at the end.
+The schemas page of the first issuer pair is
+`http://localhost:18006/portal/`.
+The wallet, the verification results, and the admin portal each have
 their own host port.
 `vca ports --role <role> --dpg <dpg>` prints every port of one pair.
+A laptop has no reverse proxy, so each service answers on its own host
+port.
+The login redirect of the pair then does not reach the auth service.
+Use the server path for a login test.
 
 One pair needs 704 MiB to 3424 MiB of free memory:
 
@@ -142,8 +149,9 @@ The Keycloak of the stack serves the login page on its own host port:
 ## The server path
 
 Use this path on a machine with a public name. The machine can run
-other projects. VCA binds only its own host ports, 17000 to 19999, and
-hands the reverse proxy of the machine one file per pair.
+other projects. VCA binds only its own host ports, 17000 to 19999, on
+the loopback address. It hands the reverse proxy of the machine one
+file per pair.
 
 1. Point one wildcard DNS record, `*.<domain>`, at the server.
    For example `*.labs.example`.
@@ -182,16 +190,139 @@ hands the reverse proxy of the machine one file per pair.
    first start. Port 80 and port 443 must be open in the firewall.
    Another reverse proxy, such as nginx, takes the same host names and
    host ports from the snippet.
-6. Open the addresses that `vca deploy` prints at the end.
-   The public URL of a pair is its portal: the issuance portal, the
-   wallet portal, the verifier results portal, or the admin portal.
-   The login page is the Keycloak of the stack at
+6. Open the pages that `vca deploy` prints at the end.
+   The root of a pair sends the browser to the home page of the role.
+   The issuer opens `/portal/` of the schema registry.
+   The holder opens `/wallet/`.
+   The verifier opens `/portal/` of the verification results.
+   The admin opens `/admin/`.
+   The issuer also prints the schema builder at `/builder/`.
+   The verifier also prints the citizen check at `/verify/`, the issuer
+   discovery pages at `/discovery/`, and the scanner at `/scan/`.
+   The login of a page goes to `/auth/login` on the same host name.
+   The browser then sees the Keycloak of the stack at
    `https://<dpg>-keycloak.<domain>`.
+   "Where each page lives" lists every path.
 
 `vca setup` writes the secrets with mode 0600 into
 `deploy/<role>-<dpg>/`.
 Back up that directory. It holds the `.env` file and the signing key.
 Without it you cannot start the same deployment again.
+
+## Where each page lives
+
+Every service of a pair answers on the one host name of the pair.
+The route table in `internal/cli/services.go` says which service takes
+which path, and the `Caddyfile` of the pair comes from it.
+A service with HTML pages sits at the root, because its pages link
+with absolute paths.
+An API only service whose public URLs come from its `*_BASE_URL`
+setting keeps a prefix.
+The reverse proxy removes the prefix before the request reaches the
+service.
+`/static/*` is the same asset set in every UI service, so the home
+service of the role serves it.
+
+The `issuer` role. Its home page is `/portal/` on `schema-registry`.
+
+| Path | Service | Note |
+|---|---|---|
+| `/` | `schema-registry` | Sends the browser to `/portal/`. |
+| `/vca.datasource.v1.DataSourceService/*` | `data-source` |  |
+| `/vca.issuance.v1.IssuanceService/*` | `issuance` |  |
+| `/issuance/pdf/*` | `issuance` |  |
+| `/vca.issued.v1.IssuedService/*` | `issued-credentials` |  |
+| `/issued/chain-head` | `issued-credentials` |  |
+| `/issued/jwks.json` | `issued-credentials` |  |
+| `/vca.issuerauth.v1.IssuerAuthService/*` | `issuer-auth` |  |
+| `/vca.admin.v1.AdminService/*` | `issuer-auth` |  |
+| `/.well-known/jwks.json` | `issuer-auth` |  |
+| `/token` | `issuer-auth` |  |
+| `/auth/*` | `issuer-auth` |  |
+| `/vca.schemabuilder.v1.SchemaBuilderService/*` | `schema-builder-ui` |  |
+| `/builder/*` | `schema-builder-ui` | A page: Schema builder. |
+| `/pdf/preview/*` | `schema-builder-ui` |  |
+| `/vca.schema.v1.SchemaService/*` | `schema-registry` |  |
+| `/.well-known/openid-credential-issuer` | `schema-registry` |  |
+| `/.well-known/vct/*` | `schema-registry` |  |
+| `/vct/*` | `schema-registry` |  |
+| `/schemas/*` | `schema-registry` |  |
+| `/api/schemas` | `schema-registry` |  |
+| `/portal/*` | `schema-registry` | A page: Schemas. |
+| `/static/*` | `schema-registry` |  |
+| `/status-bitstring/*` | `status-bitstring` | The service sees the path without `/status-bitstring`. |
+| `/status-token/*` | `status-token` | The service sees the path without `/status-token`. |
+| `/vca.backend.v1.CapabilityService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.IssuerBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.HolderBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.VerifierBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.CatalogBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| Every other path | `schema-registry` | |
+
+The `holder` role. Its home page is `/wallet/` on `wallet-portal`.
+
+| Path | Service | Note |
+|---|---|---|
+| `/` | `wallet-portal` | Sends the browser to `/wallet/`. |
+| `/vca.walletauth.v1.WalletAuthService/*` | `wallet-auth` |  |
+| `/vca.admin.v1.AdminService/*` | `wallet-auth` |  |
+| `/.well-known/jwks.json` | `wallet-auth` |  |
+| `/auth/*` | `wallet-auth` | The service sees the path without `/auth`. |
+| `/vca.walletportal.v1.WalletPortalService/*` | `wallet-portal` |  |
+| `/wallet/*` | `wallet-portal` | A page: Wallet. |
+| `/static/*` | `wallet-portal` |  |
+| `/vca.backend.v1.CapabilityService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.IssuerBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.HolderBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.VerifierBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.CatalogBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| Every other path | `wallet-portal` | |
+
+The `verifier` role. Its home page is `/portal/` on `verifier-results`.
+
+| Path | Service | Note |
+|---|---|---|
+| `/` | `verifier-results` | Sends the browser to `/portal/`. |
+| `/vca.combined.v1.CombinedService/*` | `verifier-combined` |  |
+| `/vca.discovery.v1.DiscoveryService/*` | `verifier-discovery` |  |
+| `/catalog` | `verifier-discovery` |  |
+| `/catalog/*` | `verifier-discovery` |  |
+| `/discovery/*` | `verifier-discovery` | A page: Issuer discovery. |
+| `/vca.ingest.v1.IngestService/*` | `verifier-ingest` |  |
+| `/oid4vp/*` | `verifier-ingest` |  |
+| `/scan/*` | `verifier-ingest` | A page: Scanner. |
+| `/vca.policy.v1.PolicyService/*` | `verifier-policy` |  |
+| `/vca.results.v1.ResultsService/*` | `verifier-results` |  |
+| `/portal/*` | `verifier-results` | A page: Verification results. |
+| `/verify/*` | `verifier-results` | A page: Citizen check. |
+| `/static/*` | `verifier-results` |  |
+| `/vca.backend.v1.CapabilityService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.IssuerBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.HolderBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.VerifierBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/vca.backend.v1.CatalogBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| Every other path | `verifier-results` | |
+
+The `admin` role. Its home page is `/admin/` on `admin`.
+
+| Path | Service | Note |
+|---|---|---|
+| `/` | `admin` | Sends the browser to `/admin/`. |
+| `/vca.admin.v1.AdminService/*` | `admin` |  |
+| `/.well-known/jwks.json` | `admin` |  |
+| `/auth/*` | `admin` |  |
+| `/device_authorization` | `admin` |  |
+| `/token` | `admin` |  |
+| `/cli/*` | `admin` |  |
+| `/admin/*` | `admin` | A page: Admin portal. |
+| `/static/*` | `admin` |  |
+| `/trust-registry/*` | `trust-registry` | The service sees the path without `/trust-registry`. |
+| Every other path | `admin` | |
+
+`vca deploy` prints the pages of each pair from the same table.
 
 ## The first run
 
@@ -207,7 +338,8 @@ Use it until the first release publishes the images.
 `vca images build --role <role> --dpg <dpg>` does the same builds and
 tags each image `local`.
 
-Open the portal at the host port that `vca ports` prints.
+Open the home page of the role at the host port that `vca ports`
+prints.
 Stop the deployment when you finish:
 
 ```sh
@@ -242,6 +374,21 @@ vca status --role <role> --dpg <dpg>
 
 The dry run prints the compose file, the build override file, and the
 commands. It starts nothing.
+
+After a real deploy, open the pages that the command prints:
+
+| Role | Page | What you see |
+|---|---|---|
+| `issuer` | `/portal/` | The schemas of the registry. `/builder/` opens the schema builder. |
+| `holder` | `/wallet/` | The wallet. It sends a citizen with no session to `/auth/login`. |
+| `verifier` | `/portal/` | The verification results. `/verify/` is the citizen check. |
+| `admin` | `/admin/` | The admin portal. |
+
+The root of a pair answers with a redirect to the home page.
+`/auth/login` on the issuer pair sends the browser to the Keycloak of
+the stack and comes back to `/auth/callback`.
+A `404` at the root means the reverse proxy has an old `Caddyfile`.
+Run `vca proxy` again and reload the proxy.
 
 ## Reference
 

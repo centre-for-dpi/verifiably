@@ -10,17 +10,21 @@ import (
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
-func TestLocalPublicURLNamesThePortalPort(t *testing.T) {
+func TestLocalPublicURLNamesTheHomePort(t *testing.T) {
 	p := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}
 	got := LocalPublicURL(p)
 	want := ""
 	for _, a := range AssignPorts(p, nil) {
-		if a.Service.Name == portalService(p.Role) {
+		if a.Service.Name == HomeOf(p.Role).Service {
 			want = fmt.Sprintf("http://localhost:%d", a.Host)
 		}
 	}
 	if want == "" || got != want {
 		t.Fatalf("got %q, want %q", got, want)
+	}
+	// The schema registry serves the staff pages of the issuer.
+	if got != "http://localhost:18006" {
+		t.Errorf("the issuer home is %q", got)
 	}
 }
 
