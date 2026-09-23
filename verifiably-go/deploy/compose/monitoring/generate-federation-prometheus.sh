@@ -27,7 +27,7 @@ COMPOSE_FILE="${COMPOSE_FILE:-$MONITORING_DIR/../hub/docker-compose.yml}"
 
 # Load hub .env for POSTGRES_USER / POSTGRES_DB credentials.
 ENV_FILE="$(dirname "$COMPOSE_FILE")/.env"
-if [ -f "$ENV_FILE" ]; then
+if [[ -f "$ENV_FILE" ]]; then
   set -o allexport
   # shellcheck source=/dev/null
   source "$ENV_FILE"
@@ -53,9 +53,9 @@ ORDER BY did;
 cp "$TEMPLATE_FILE" "$OUTPUT_FILE"
 
 MEMBER_COUNT=0
-if [ -n "$MEMBERS" ]; then
+if [[ -n "$MEMBERS" ]]; then
   while IFS=$'\t' read -r did display_name service_endpoint api_key; do
-    [ -z "$did" ] && continue
+    [[ -z "$did" ]] && continue
     MEMBER_COUNT=$((MEMBER_COUNT + 1))
 
     host=$(printf '%s' "$service_endpoint" | sed -E 's#^https?://##')
@@ -73,7 +73,7 @@ if [ -n "$MEMBERS" ]; then
       echo "    metrics_path: /metrics"
       echo "    scheme: ${scheme}"
       echo "    honor_labels: true"
-      if [ -n "$api_key" ]; then
+      if [[ -n "$api_key" ]]; then
         echo "    authorization:"
         echo "      type: Bearer"
         echo "      credentials: ${api_key}"

@@ -184,7 +184,8 @@ h1.page-title em { font-style: italic; color: var(--accent); font-weight: 300; }
 .tab.active { color: var(--ink); border-bottom-color: var(--accent); }
 
 .field { margin-bottom: 1.25rem; }
-.field label { display: block; font-size: 0.8rem; color: var(--ink-mute); margin-bottom: 0.4rem; letter-spacing: 0.02em; }
+.field label,
+.field .field-caption { display: block; font-size: 0.8rem; color: var(--ink-mute); margin-bottom: 0.4rem; letter-spacing: 0.02em; }
 .field input, .field select, .field textarea {
   width: 100%; background: var(--bg); border: 1px solid var(--line);
   color: var(--ink); padding: 0.75rem 0.9rem; font-family: inherit; font-size: 0.95rem;
@@ -815,4 +816,45 @@ tr:hover td { background: var(--bg-elev); }
 }
 @keyframes btn-spin {
   to { transform: rotate(360deg); }
+}
+
+/* Tile cards on the hub landing page.
+   These were five divs carrying onmouseover/onmouseout to move the border
+   colour. Each already sat inside an <a>, so the link worked on a keyboard --
+   but the highlight did not, which left keyboard users with no visible cue for
+   the thing they had focused. :hover and :focus-within give both, with no
+   inline script. */
+.tile-card {
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  transition: border-color 0.15s;
+}
+.tile-link { text-decoration: none; display: block; }
+.tile-link:hover .tile-card,
+.tile-link:focus-visible .tile-card,
+.tile-link:focus-within .tile-card {
+  border-color: var(--accent, #6366f1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile-card { transition: none; }
+}
+
+/* Visually hidden, still announced.
+   A placeholder is not an accessible name: it disappears on the first
+   keystroke and several screen readers never announce it at all. Search and
+   filter controls that have no visible caption carry a label with this class
+   instead, so the control is named without changing the layout. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

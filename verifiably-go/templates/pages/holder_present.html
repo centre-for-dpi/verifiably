@@ -17,16 +17,16 @@
         hx-disabled-elt="find button[type='submit']"
         style="margin-top:2rem;display:flex;flex-direction:column;gap:1rem">
     <div>
-      <label class="caps" style="display:block;margin-bottom:0.5rem">1. Verifier's request URI</label>
-      <textarea name="request_uri" rows="3" class="mono" required
+      <label class="caps" for="present-request-uri" style="display:block;margin-bottom:0.5rem">1. Verifier's request URI</label>
+      <textarea id="present-request-uri" name="request_uri" rows="3" class="mono" required
                 placeholder="openid4vp://?client_id=…&request_uri=…"
                 style="width:100%;font-size:0.78rem;background:var(--bg);border:1px solid var(--line);padding:0.6rem;color:var(--ink);font-family:'JetBrains Mono',monospace;border-radius:2px;resize:vertical"></textarea>
     </div>
 
     <div>
-      <label class="caps" style="display:block;margin-bottom:0.5rem">2. Credential from your wallet</label>
+      <label class="caps" for="present-credential" style="display:block;margin-bottom:0.5rem">2. Credential from your wallet</label>
       {{if .Body.Credentials}}
-        <select name="credential_id" required style="width:100%;padding:0.6rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+        <select id="present-credential" name="credential_id" required style="width:100%;padding:0.6rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
           {{range .Body.Credentials}}
             <option value="{{.ID}}" data-format="{{.Format}}" {{if eq $.Body.PreselectCredentialID .ID}}selected{{end}}>{{.Title}}{{if .Format}} · {{.Format}}{{end}} — {{if .IssuerDisplay}}{{.IssuerDisplay}}{{else}}{{.Issuer}}{{end}}</option>
           {{end}}

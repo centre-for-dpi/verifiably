@@ -9,7 +9,7 @@ libretranslate:
 
   replicas: 1
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
+    requests: { cpu: 100m, memory: 256Mi, ephemeral-storage: 512Mi }
     limits:   { memory: 1Gi, ephemeral-storage: 2Gi }  # ephemeral-storage caps disk use so one pod cannot evict the node
 
   persistence:

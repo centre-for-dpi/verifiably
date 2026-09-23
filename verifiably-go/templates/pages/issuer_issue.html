@@ -91,8 +91,9 @@
              want the user to see. */}}
         {{range .Schema.FieldsSpec}}
           <div class="field">
-            <label>{{replaceUnderscore .Name}}{{if .Required}} *{{end}}</label>
+            <label for="claim-{{.Name}}">{{replaceUnderscore .Name}}{{if .Required}} *{{end}}</label>
             <input
+              id="claim-{{.Name}}"
               type="{{if eq .Format "date"}}date{{else if eq .Format "datetime"}}datetime-local{{else if eq .Format "uri"}}url{{else if eq .Datatype "number"}}number{{else if eq .Datatype "integer"}}number{{else if eq .Datatype "boolean"}}checkbox{{else}}text{{end}}"
               {{if eq .Datatype "integer"}}step="1"{{end}}
               name="field_{{.Name}}"
@@ -120,8 +121,8 @@
            injects the exact option if it's not in the list). Governs every
            date/time field on this form + the validity window below. */}}
       <div class="field" data-tz-field style="margin-top:0.8rem">
-        <label>Timezone for date &amp; time fields</label>
-        <select name="tz_offset" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
+        <label for="tz-offset">Timezone for date &amp; time fields</label>
+        <select id="tz-offset" name="tz_offset" style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
           <option value="-720">UTC−12:00</option>
           <option value="-660">UTC−11:00</option>
           <option value="-600">UTC−10:00</option>
@@ -175,13 +176,13 @@
         <summary style="cursor:pointer;font-size:0.8rem;color:#555">Validity window — this credential expires</summary>
         <div class="form-grid" style="margin-top:0.6rem">
           <div class="field">
-            <label>Valid from</label>
-            <input type="datetime-local" name="valid_from">
+            <label for="valid-from">Valid from</label>
+            <input id="valid-from" type="datetime-local" name="valid_from">
             <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.3rem 0 0">Leave empty to start from the moment of issuance.</p>
           </div>
           <div class="field">
-            <label>Valid until *</label>
-            <input type="datetime-local" name="valid_until" required>
+            <label for="valid-until">Valid until *</label>
+            <input id="valid-until" type="datetime-local" name="valid_until" required>
             <p class="hint" style="font-size:0.72rem;color:var(--ink-mute);margin:0.3rem 0 0">After this instant a verifier denies the credential as expired.</p>
           </div>
         </div>
@@ -190,16 +191,16 @@
 
     {{else if eq .SingleSource "api"}}
       <div class="field">
-        <label>API endpoint</label>
-        <input type="text" name="api_url" value="https://registrar.example.org/v1/graduates/{id}">
+        <label for="single-api-url">API endpoint</label>
+        <input id="single-api-url" type="text" name="api_url" value="https://registrar.example.org/v1/graduates/{id}">
       </div>
       <div class="field">
-        <label>Authentication</label>
-        <input type="text" name="api_auth" value="Bearer ••••••">
+        <label for="single-api-auth">Authentication</label>
+        <input id="single-api-auth" type="text" name="api_auth" value="Bearer ••••••">
       </div>
       <div class="field">
-        <label>Subject ID to fetch</label>
-        <input type="text" name="subject_id" value="2024-4821">
+        <label for="single-subject-id">Subject ID to fetch</label>
+        <input id="single-subject-id" type="text" name="subject_id" value="2024-4821">
       </div>
       <p style="font-size:0.82rem;color:var(--ink-mute)">The issuer will GET <span class="mono">{api_url}</span> (substituting <span class="mono">{id}</span>) and map the response into the credential fields.</p>
 
@@ -211,12 +212,15 @@
       {{range .Sources}}
         {{if eq .Key $src}}
           <div class="field">
-            <label>{{.Label}}</label>
+            {{/* Captions the hint below, not a control -- so it is not a
+                 <label>. A label pointing at nothing is announced as an empty
+                 form field by a screen reader. */}}
+            <div class="field-caption">{{.Label}}</div>
             <p style="font-size:0.82rem;color:var(--ink-mute);margin:0.25rem 0">{{.Hint}}</p>
           </div>
           <div class="field">
-            <label>Subject lookup key</label>
-            <input type="text" name="lookup_key" placeholder="key for this source">
+            <label for="single-lookup-key">Subject lookup key</label>
+            <input id="single-lookup-key" type="text" name="lookup_key" placeholder="key for this source">
           </div>
         {{end}}
       {{end}}
@@ -332,7 +336,7 @@
        and returns the column→field mapping screen (into #csv-preview). The
        issuer doesn't need exact field names — they map columns next. */}}
   {{if eq .Source "api"}}
-    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
+    <form hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
       <input type="hidden" name="source" value="api">
       <label style="display:flex;flex-direction:column;gap:0.25rem">
@@ -351,7 +355,7 @@
       <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else if eq .Source "db"}}
-    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
+    <form hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
       <input type="hidden" name="source" value="db">
       <label style="display:flex;flex-direction:column;gap:0.25rem">
@@ -366,7 +370,7 @@
       <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else if eq .Source "registry"}}
-    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
+    <form hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML"
           style="display:flex;flex-direction:column;gap:0.75rem">
       <input type="hidden" name="source" value="registry">
       {{/* Contract callout — the registry is an EXTERNAL, read-only data source.
@@ -413,11 +417,12 @@
       <button class="btn" type="submit" style="align-self:flex-start">Preview &amp; map →</button>
     </form>
   {{else}}
-    <form id="bulk-form" hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+    <form hx-post="/issuer/issue/bulk/preview" hx-target="#csv-preview" hx-swap="innerHTML" hx-encoding="multipart/form-data">
       <input type="hidden" name="source" value="csv">
       <div class="caps" style="margin-bottom:0.75rem">CSV upload</div>
       <div style="background:var(--bg-elev);border:2px dashed var(--line);padding:2.5rem 2rem;border-radius:2px">
-        <input type="file" name="csv_file" accept=".csv,text/csv" required style="display:block;margin:0 auto 1rem;max-width:320px">
+        <label class="visually-hidden" for="bulk-csv">CSV file of holders</label>
+        <input id="bulk-csv" type="file" name="csv_file" accept=".csv,text/csv" required style="display:block;margin:0 auto 1rem;max-width:320px">
         <div style="text-align:center;margin-bottom:1rem"><button class="btn" type="submit">Preview &amp; map →</button></div>
         <div style="font-size:0.75rem;color:var(--ink-mute);text-align:center">Header row required. You'll map the CSV's columns to the credential fields next — column names don't have to match.</div>
       </div>
@@ -485,9 +490,9 @@
   <form hx-post="/issuer/issue/bulk/apply" hx-target="#csv-preview" hx-swap="innerHTML" style="display:flex;flex-direction:column;gap:0.6rem">
     {{if .IsProvision}}
     <div style="display:grid;grid-template-columns:14rem 1fr;gap:0.5rem;align-items:center">
-      <label style="font-weight:500">Holder identity <span class="mono" style="color:var(--ink-mute)">(individualId)</span></label>
+      <label for="map-individualId" style="font-weight:500">Holder identity <span class="mono" style="color:var(--ink-mute)">(individualId)</span></label>
       <input type="hidden" name="mfield" value="individualId">
-      <select name="mcol" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.4rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+      <select id="map-individualId" name="mcol" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.4rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
         <option value="">— none —</option>
         {{range $cols}}<option value="{{.}}"{{if eq . $.IdentityDefault}} selected{{end}}>{{.}}</option>{{end}}
       </select>
@@ -495,9 +500,9 @@
     {{end}}
     {{range .Fields}}{{$field := .}}
     <div style="display:grid;grid-template-columns:14rem 1fr;gap:0.5rem;align-items:center">
-      <label>{{replaceUnderscore $field}}</label>
+      <label for="map-{{$field}}">{{replaceUnderscore $field}}</label>
       <input type="hidden" name="mfield" value="{{$field}}">
-      <select name="mcol" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.4rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
+      <select id="map-{{$field}}" name="mcol" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;padding:0.4rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px">
         <option value="">— none —</option>
         {{range $cols}}<option value="{{.}}"{{if eq . (index $.Defaults $field)}} selected{{end}}>{{.}}</option>{{end}}
       </select>
@@ -561,7 +566,8 @@
                    fit on screen. One-click select handler fills the clipboard
                    fallback on non-HTTPS origins where navigator.clipboard is
                    undefined. */}}
-              <textarea readonly rows="2" onclick="this.select()"
+              <label class="visually-hidden" for="offer-uri-{{.Row}}">Credential offer URI for row {{.Row}}</label>
+              <textarea id="offer-uri-{{.Row}}" readonly rows="2" onclick="this.select()"
                         style="width:100%;max-width:28rem;font-family:'JetBrains Mono',monospace;font-size:0.68rem;line-height:1.25;padding:0.3rem 0.4rem;border:1px solid var(--line);border-radius:3px;background:var(--bg);color:var(--ink-soft);resize:vertical;word-break:break-all">{{.OfferURI}}</textarea>
             {{else}}
               <div style="font-size:0.72rem;color:var(--err);font-style:italic">{{.Error}}</div>

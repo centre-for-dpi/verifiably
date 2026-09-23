@@ -149,7 +149,7 @@ start_container() {
   # per host, so a holder can claim inside verifiably (no inji-web redirect).
   local _inji_p12="$SCRIPT_DIR/deploy/compose/injiweb/config/certs/oidckeystore.p12"
   local _inji_key_pem=""
-  if [ -f "$_inji_p12" ] && command -v openssl >/dev/null 2>&1; then
+  if [[ -f "$_inji_p12" ]] && command -v openssl >/dev/null 2>&1; then
     _inji_key_pem=$(openssl pkcs12 -in "$_inji_p12" -nodes -nocerts -legacy -passin "pass:${INJIWEB_P12_PASSWORD:-xy4gh6swa2i}" 2>/dev/null | openssl pkcs8 -topk8 -nocrypt 2>/dev/null || true)
   fi
   local _inji_esignet_url="${ESIGNET_BASE_URL:-$(url_for esignet "${VERIFIABLY_PUBLIC_HOST:-${PUBLIC_HOST:-localhost}}" "${ESIGNET_PUBLIC_PORT:-3005}")}"

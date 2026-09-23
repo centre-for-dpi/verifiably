@@ -11,8 +11,8 @@
         hx-target="#qr-area"
         hx-swap="outerHTML">
 
-    <div class="field" style="margin-bottom:1rem">
-      <label style="font-size:0.8rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em">Data disclosure</label>
+    <fieldset class="field" style="margin-bottom:1rem;border:0;padding:0;margin-inline:0;min-inline-size:0">
+      <legend style="font-size:0.8rem;color:var(--ink-mute);text-transform:uppercase;letter-spacing:0.05em;padding:0">Data disclosure</legend>
       <div style="display:flex;gap:1.25rem;font-size:0.85rem;margin-top:0.35rem;flex-wrap:wrap">
         <label style="display:inline-flex;align-items:center;gap:0.35rem;cursor:pointer">
           <input type="radio" name="disclosure" value="selective" checked>
@@ -23,7 +23,7 @@
           full — entire credential
         </label>
       </div>
-    </div>
+    </fieldset>
 
     <div id="public-verify-body">
       {{template "fragment_public_verify_body" .Body}}
@@ -58,7 +58,9 @@
   </div>
 
   {{/* Search */}}
+  <label class="visually-hidden" for="verify-cred-search">Search credentials</label>
   <input type="search"
+         id="verify-cred-search"
          name="q"
          placeholder="Search credentials…"
          value="{{.Query}}"
@@ -205,9 +207,9 @@
   </div>
   <p style="margin:0 0 0.6rem;font-size:0.8rem;color:var(--ink-soft)">{{.Reason}}</p>
   <table style="width:100%;font-size:0.78rem;border-collapse:collapse">
-    <tr><td style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap">Linkage</td><td>{{if .Linkage}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">delegation is about the presented subject</span></td></tr>
-    <tr><td style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap">Invocation</td><td>{{if .Invocation}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">presenter is the bound delegate</span></td></tr>
-    <tr><td style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap">Capability</td><td>{{if .Capability}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">action permitted, within validity</span></td></tr>
+    <tr><th scope="row" style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap;text-align:left;font-weight:normal">Linkage</th><td>{{if .Linkage}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">delegation is about the presented subject</span></td></tr>
+    <tr><th scope="row" style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap;text-align:left;font-weight:normal">Invocation</th><td>{{if .Invocation}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">presenter is the bound delegate</span></td></tr>
+    <tr><th scope="row" style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap;text-align:left;font-weight:normal">Capability</th><td>{{if .Capability}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">action permitted, within validity</span></td></tr>
     <tr><td style="color:var(--ink-mute);padding:0.18rem 0.75rem 0.18rem 0;white-space:nowrap">Not revoked</td><td>{{if .NotRevoked}}<span class="pill ok" style="font-size:0.66rem">pass ✓</span>{{else}}<span class="pill err" style="font-size:0.66rem">fail ✗</span>{{end}} <span style="color:var(--ink-mute);font-size:0.72rem">independent delegation status list</span></td></tr>
   </table>
 </div>
@@ -271,7 +273,7 @@
       <table style="width:100%;margin-top:0.5rem;font-size:0.8rem;border-collapse:collapse">
         {{range $k,$v := .DisclosedFields}}
         <tr>
-          <td style="color:var(--ink-mute);padding:0.15rem 0.75rem 0.15rem 0;white-space:nowrap">{{$k}}</td>
+          <th scope="row" style="color:var(--ink-mute);padding:0.15rem 0.75rem 0.15rem 0;white-space:nowrap;text-align:left;font-weight:normal">{{$k}}</th>
           <td style="word-break:break-word">{{$v}}</td>
         </tr>
         {{end}}

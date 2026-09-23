@@ -29,8 +29,8 @@ verifier:
     minAvailable: 1
 
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits:   { memory: 512Mi }
+    requests: { cpu: 100m, memory: 256Mi, ephemeral-storage: 256Mi }
+    limits:   { memory: 512Mi, ephemeral-storage: 1Gi }  # caps disk use so one pod cannot evict the node
 
   livenessProbe:
     httpGet: { path: /swagger/index.html, port: http }

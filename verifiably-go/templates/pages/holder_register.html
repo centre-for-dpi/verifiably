@@ -36,7 +36,7 @@
       {{t "for Individual ID" $.Lang}} <span class="mono">{{$.Body.IndividualID}}</span>. {{t "Enter it below and choose a PIN." $.Lang}}
     </div>
     <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Verification code *" $.Lang}}
-      <input class="input" type="text" name="otp" placeholder="6 digits" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required autofocus></label>
+      <input class="input" type="text" name="otp" placeholder="6 digits" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required></label>
     <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Set your PIN — you log in with this *" $.Lang}}
       <input class="input" type="password" name="pin" placeholder="6 digits" maxlength="6" minlength="6" inputmode="numeric" required></label>
     <div style="display:flex;gap:0.75rem;align-items:center">
@@ -50,7 +50,7 @@
   <form method="post" action="/holder/register" style="display:grid;gap:0.75rem;max-width:520px">
     <input type="hidden" name="step" value="request">
     <label style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.85rem">{{t "Individual ID *" $.Lang}}
-      <input class="input" type="text" name="individual_id" placeholder="9876543210" maxlength="16" required autofocus></label>
+      <input class="input" type="text" name="individual_id" placeholder="9876543210" maxlength="16" required></label>
     <div style="font-size:0.78rem;color:var(--ink-mute)">{{t "We'll email a one-time code to the address your registrar has on file to confirm it's you." $.Lang}}</div>
     <button class="btn" type="submit"{{if not $.Body.EmailEnabled}} disabled{{end}}>{{t "Send verification code →" $.Lang}}</button>
   </form>
