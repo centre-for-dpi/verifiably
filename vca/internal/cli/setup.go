@@ -412,7 +412,8 @@ func upgradeSigningKeyRef(dir string, values map[string]string) error {
 	return nil
 }
 
-// WritePlan writes every file of the plan under the deploy root.
+// WritePlan writes every file of the plan under the deploy root, and the
+// default theme file when the root has none yet.
 // A secret file gets mode 0600 (ADR-007 decision 5). A file in a
 // subdirectory gets that directory with mode 0755, so a container that
 // runs as another user, such as Keycloak, reads it.
@@ -440,6 +441,16 @@ func WritePlan(root string, p Plan) ([]string, error) {
 			return nil, fmt.Errorf("set the mode of %s: %w", path, err)
 		}
 		written = append(written, path)
+	}
+	// The theme file of every page lives next to the compose file. The
+	// first setup writes the default; an edited file stays (ADR-032).
+	theme := filepath.Join(root, "vca", "theme.yaml")
+	wrote, err := WriteDefaultTheme(theme)
+	if err != nil {
+		return nil, err
+	}
+	if wrote {
+		written = append(written, theme)
 	}
 	return written, nil
 }

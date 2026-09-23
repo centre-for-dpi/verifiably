@@ -15,6 +15,7 @@ The source is `vca/cmd/vca` and `vca/internal/cli`.
 - `vca dpg bootstrap` configures a DPG after it boots.
 - `vca admin` calls the admin service.
 - `vca migrate` carries the data of a legacy deployment into the services.
+- `vca theme` checks and applies the theme file of every page.
 - `vca man` writes the man pages.
 
 ## How to run
@@ -267,6 +268,10 @@ gets the extra file its DPG needs:
 | `waltid` | `waltid-onboard.json` |
 | `inji` | None |
 | `credebl` | None |
+
+The first run also writes `deploy/vca/theme.yaml` with mode 0644 when the
+file is absent (ADR-032 decision 1).
+A later run never replaces it, so an edited look survives.
 The CLI shows a summary of every value and its source before it writes.
 A secret never appears in the summary.
 
@@ -470,6 +475,39 @@ It checks every document first, so a broken export writes nothing.
 `docs/migrate.md` holds the file layout, the salt rules, and the order of a
 cutover.
 
+## theme
+
+```sh
+vca theme check
+vca theme check --file deploy/theme.local.yaml
+vca theme apply
+vca theme print-default > deploy/theme.local.yaml
+```
+
+The look of every page comes from one file, `deploy/vca/theme.yaml`
+(ADR-032).
+`check` reads the file and validates it.
+It prints `theme file <path>: valid`, or one line per problem with the
+YAML path of the value, and exits with status 1.
+A colour pairing below WCAG AA appears with its name and its ratio, for
+example `colors.light: pairing "primary button label": contrast 3.10:1 is
+below 4.5:1`.
+`apply` runs the check, then restarts the services that draw pages in
+every deployed pair through `docker compose restart`.
+A service with no pages keeps running.
+`print-default` prints the shipped file.
+
+The default path is `VCA_THEME_HOST_FILE`, else `deploy/vca/theme.yaml`.
+Export the variable in the shell that runs `vca` and `docker compose`.
+A relative value resolves against `deploy/vca`, as the bind mount of the
+compose file does, so `deploy/theme.local.yaml` is `../theme.local.yaml`.
+That file is git ignored, so a rebrand keeps the tree clean.
+On Kubernetes, `apply` has no work to do; run
+`helm upgrade vca deploy/vca/helm/vca --set-file global.theme.file=theme.yaml`
+instead.
+The section "Change the look after deployment" in `ui.md` lists the
+values and the rules.
+
 ## man
 
 ```sh
@@ -515,6 +553,7 @@ go test -run TestAdminTreeMatchesTheAdminService ./internal/cli/
 - ADR-008: the deploy commands, the compose profiles, and the Helm charts.
 - ADR-009: the admin command tree and the generated man pages.
 - ADR-010: the OpenID Connect login of the super admin.
+- ADR-032: the theme file and the theme commands.
 - ADR-030 decision 8: the data migration of the migrate commands.
 - `docs/migrate.md`: the migration files and the order of a cutover.
 - `services/admin/README.md`: the login endpoints the CLI calls.

@@ -256,8 +256,10 @@ Every service that draws pages reads `VCA_THEME_FILE` at start
 (ADR-032 decision 1).
 The compose file sets it to `/etc/vca/theme.yaml` and mounts
 `deploy/vca/theme.yaml` there, read only.
-Set `VCA_THEME_HOST_FILE` in the `.env` file, or in the environment of the
-`vca` command, to mount another file, for example `deploy/theme.local.yaml`.
+Export `VCA_THEME_HOST_FILE` in the shell that runs `vca` and
+`docker compose` to mount another file, for example
+`../theme.local.yaml` for the git ignored `deploy/theme.local.yaml`.
+A relative value resolves against `deploy/vca`.
 A service that reads a file with a problem stops before it listens and
 prints every problem.
 See the section "Change the look after deployment" in `ui.md`.

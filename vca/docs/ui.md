@@ -4,7 +4,7 @@
 each service one theme, one font pack, and one asset handler. It also gives
 a set of `html/template` components that meet WCAG 2.2 Level AA.
 
-This document covers ADR-027 decisions 3 to 9.
+This document covers ADR-027 decisions 3 to 9 and ADR-032.
 
 ## Rules
 
@@ -92,6 +92,71 @@ The logo response carries `Content-Security-Policy: default-src 'none';
 style-src 'unsafe-inline'; sandbox`. Pages show the logo only through an
 `img` element, so an SVG logo cannot run script.
 
+## Change the look after deployment
+
+One file holds the look of every page: `deploy/vca/theme.yaml`
+(ADR-032 decision 1). A deployment rebrands by editing it, with no build
+and no Go code. Every service that draws pages reads the file at
+start through `VCA_THEME_FILE`. An empty variable selects the embedded
+default, which is the tracked file byte for byte.
+
+A national rebrand takes three steps:
+
+1. Edit `deploy/vca/theme.yaml`, or a copy named by `VCA_THEME_HOST_FILE`:
+   the colours, the wordmark, the logo, the radii, the role accents.
+2. Run `vca theme check`. It names every pairing below AA with its ratio
+   and every bad value with its YAML path.
+3. Run `vca theme apply`. It checks again and restarts only the services
+   that draw pages. On Kubernetes run
+   `helm upgrade vca deploy/vca/helm/vca --set-file global.theme.file=theme.yaml`.
+
+`vca theme print-default` prints the shipped file. Copy it to
+`deploy/theme.local.yaml`, which git ignores, and export
+`VCA_THEME_HOST_FILE=../theme.local.yaml` to keep the tree clean.
+
+| Key | Value | Rule |
+|---|---|---|
+| `version` | `1` | The one version this reader accepts. |
+| `name` | A short name. | Not empty. It names the themes in the stylesheet. |
+| `wordmark.text` | The name in the header and the footer. | 1 to 32 characters. No `<`, `>`, `&`, or `"`. |
+| `wordmark.emphasis` | An optional second part in the primary colour. | 0 to 32 characters, same characters. |
+| `logo.data_uri` | An optional `data:image/svg+xml;base64,`, `data:image/png;base64,` or `data:image/webp;base64,` URI. | 64 KiB or less after decoding. |
+| `logo.alt` | The text a screen reader says for the logo. | Required with `logo.data_uri`. |
+| `fonts.heading.family`, `fonts.body.family` | `Cinzel` or `Google Sans Flex`. | The binary embeds these two families only. |
+| `fonts.heading.fallback`, `fonts.body.fallback`, `fonts.mono.fallback` | The fallback stack. | Letters, digits, spaces, commas, hyphens, and single quotes only. The mono stack ends in `monospace`. |
+| `colors.light.<token>`, `colors.dark.<token>` | The fifteen tokens of the token table below. | Every token present, six digit hex. Every kit pairing at its minimum ratio. |
+| `radii.small`, `radii.medium`, `radii.pill` | `0` or a number of `rem`. | `small` and `medium` are 1rem or less. |
+| `spacing` | Seven `rem` values. | Strictly increasing. |
+| `roles.<role>.light`, `roles.<role>.dark` | An optional accent per role: `admin`, `issuer`, `holder`, `verifier`. | 4.5:1 on the paper of its mode. Empty inherits `accent`. |
+
+The kit owns the pairings and their minimum ratios
+(`theme.DefaultPairings`). The file sets colours only, so no file can make
+a page fail AA (ADR-032 decision 2). A file with a problem stops the
+service before it listens, and the log holds the same lines that
+`vca theme check` prints. Each line starts with `theme file <path>:` and
+the YAML path of the value:
+
+| Problem | Example |
+|---|---|
+| Unknown key | `line 12: field colours not found in type themefile.File` |
+| Wrong version | `version: 2 is not supported; use 1` |
+| Missing token | `colors.dark.invert-fg: missing` |
+| Pairing below its minimum | `colors.light: pairing "primary button label": contrast 3.10:1 is below 4.5:1 (#F0EFE9 on #5B9E73)` |
+| Family not shipped | `fonts.heading.family: "Papyrus" is not shipped; use Cinzel or Google Sans Flex` |
+| Bad fallback stack | `fonts.mono.fallback: must end with monospace` |
+| Long wordmark | `wordmark.text: 40 characters, the limit is 32` |
+| Logo without text | `logo.alt: required when logo.data_uri is set` |
+| Radius in pixels | `radii.small: use rem, got 3px` |
+| Spacing out of order | `spacing[3]: 0.5rem is not larger than spacing[2] 0.75rem` |
+| Role accent too faint | `roles.issuer.dark: contrast 2.91:1 is below 4.5:1 on #000000` |
+
+The reader lives in `vca/internal/themefile`, outside the kit, so the kit
+stays standard library only (ADR-032 decision 5). Services load the file
+through `services/internal/uikit`, which builds the asset handler and
+the component kit from the same values. Compose mounts the file at
+`/etc/vca/theme.yaml`, and the umbrella chart holds it in a ConfigMap.
+See `deploy.md` for both.
+
 ## Brand
 
 `brand.Brand` holds the brand data. `brand.CSS` writes it as custom
@@ -112,9 +177,11 @@ use it.
 
 ## How to add a theme
 
-A theme is one Go value of type `theme.Theme`. The tokens are the single
-source of truth. `theme.CSS` writes them as CSS custom properties, so CSS
-and Go can never disagree on a colour.
+A deployment sets its colours in the theme file above. This section is
+for work on the kit itself. A theme is one Go value of type
+`theme.Theme`. The tokens are the single source of truth. `theme.CSS`
+writes them as CSS custom properties, so CSS and Go can never disagree on
+a colour.
 
 1. Copy `theme.DefaultLight` into your package. Give the theme a new name.
 2. Set the fifteen tokens of the table below. Use six digit hex colours.
@@ -159,7 +226,9 @@ header cycles through system, light, and dark.
 
 ## How to swap a font pack
 
-A font pack is one Go value of type `fonts.Pack` with three roles.
+A deployment picks its families in the theme file above. This section is
+for work on the kit itself. A font pack is one Go value of type
+`fonts.Pack` with three roles.
 
 | Role | CSS variable | Used for |
 |---|---|---|
@@ -325,6 +394,7 @@ gate.
 - [html/template](https://pkg.go.dev/html/template)
 - [htmx](https://htmx.org/)
 - [CSS Fonts Level 4, font-display](https://www.w3.org/TR/css-fonts-4/#font-display-desc)
+- ADR-032: the theme file, its rules, and the theme commands.
 - Third-party notices: `ui/NOTICE`. The architecture derives from
   [adamndegwa](https://github.com/adammwaniki/adamndegwa) by Adam Ndegwa,
   Apache-2.0.

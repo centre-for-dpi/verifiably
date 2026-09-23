@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra/doc"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	"github.com/centre-for-dpi/vc-adapters/internal/themefile"
 )
 
 // Version is the version the CLI prints. The release build sets it with
@@ -310,6 +311,7 @@ func NewRootCommand(env Environment) *cobra.Command {
 		newDpgCommand(shared),
 		newAdminCommand(shared),
 		newMigrateCommand(shared),
+		newThemeCommand(shared),
 		newManCommand(shared),
 	)
 	return root
@@ -1010,6 +1012,60 @@ func newAdminLoginCommand(env *Environment, baseURL func() string) *cobra.Comman
 	cmd.Flags().BoolVar(&device, "device", false,
 		"Use the device grant instead of the loopback flow.")
 	return cmd
+}
+
+// newThemeCommand builds vca theme check, apply, and print-default
+// (ADR-032 decision 6).
+func newThemeCommand(env *Environment) *cobra.Command {
+	theme := &cobra.Command{
+		Use:   "theme",
+		Short: "Check and apply the theme file of every page.",
+		Long: "The look of every page comes from one file, deploy/vca/theme.yaml. " +
+			"Edit it, run vca theme check, then vca theme apply.\n\n" +
+			"check reads the file, names every value that breaks a rule with its " +
+			"YAML path, and names every colour pairing below WCAG AA with its ratio. " +
+			"apply runs the check and restarts the services that draw pages in " +
+			"every deployed pair. print-default prints the shipped file.\n\n" +
+			"The default path is " + ThemeHostFileEnv + ", else deploy/vca/theme.yaml. " +
+			"A relative " + ThemeHostFileEnv + " resolves against deploy/vca, as the " +
+			"compose file does. On Kubernetes run: helm upgrade vca deploy/vca/helm/vca " +
+			"--set-file global.theme.file=theme.yaml",
+		Example: "  vca theme check\n" +
+			"  vca theme check --file deploy/theme.local.yaml\n" +
+			"  vca theme apply\n" +
+			"  vca theme print-default > deploy/theme.local.yaml",
+	}
+	var file string
+	check := &cobra.Command{
+		Use:   "check",
+		Short: "Validate the theme file and name every problem.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return ThemeCheck(ThemePath(env.Root, file, env.Getenv), cmd.OutOrStdout())
+		},
+	}
+	check.Flags().StringVar(&file, "file", "", "The theme file to check. The default is "+ThemeHostFileEnv+", else deploy/vca/theme.yaml.")
+	var applyFile string
+	apply := &cobra.Command{
+		Use:   "apply",
+		Short: "Check the theme file, then restart the services that draw pages.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return ThemeApply(cmd.Context(), ThemeOptions{
+				Root: env.Root, Path: ThemePath(env.Root, applyFile, env.Getenv),
+				Out: cmd.OutOrStdout(), Run: env.Run,
+			})
+		},
+	}
+	apply.Flags().StringVar(&applyFile, "file", "", "The theme file to check first. The default is "+ThemeHostFileEnv+", else deploy/vca/theme.yaml.")
+	printDefault := &cobra.Command{
+		Use:   "print-default",
+		Short: "Print the shipped theme file.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := cmd.OutOrStdout().Write(themefile.Default())
+			return err
+		},
+	}
+	theme.AddCommand(check, apply, printDefault)
+	return theme
 }
 
 // newManCommand builds vca man (ADR-009 decision 2).

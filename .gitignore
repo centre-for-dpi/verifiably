@@ -139,3 +139,7 @@ verifiably-go/deploy/**/*.p12
 verifiably-go/deploy/**/*.jks
 verifiably-go/deploy/**/*.key
 verifiably-go/deploy/**/*.pem
+
+# The local copy of the theme file (ADR-032). vca theme check and the
+# compose file read it through VCA_THEME_HOST_FILE.
+deploy/theme.local.yaml

@@ -58,6 +58,22 @@ func TestRootHelp(t *testing.T) {
 	}
 }
 
+func TestHelpListsThemeCommands(t *testing.T) {
+	status, out, _ := run(t, Environment{Root: t.TempDir()}, "--help")
+	if status != 0 || !strings.Contains(out, "theme") {
+		t.Fatalf("status %d, the root help has no theme command:\n%s", status, out)
+	}
+	status, out, _ = run(t, Environment{Root: t.TempDir()}, "theme", "--help")
+	if status != 0 {
+		t.Fatalf("status = %d", status)
+	}
+	for _, want := range []string{"check", "apply", "print-default", "vca theme check", "helm upgrade"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the theme help has no %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestUnknownCommandFails(t *testing.T) {
 	status, _, errOut := run(t, Environment{Root: t.TempDir()}, "fly")
 	if status == 0 {

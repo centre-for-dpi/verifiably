@@ -328,8 +328,9 @@ func TestWritePlanAndReadExisting(t *testing.T) {
 	if writtenErr != nil {
 		t.Fatalf("WritePlan: %v", writtenErr)
 	}
-	if len(written) != len(plan.Files) {
-		t.Errorf("wrote %d files, want %d", len(written), len(plan.Files))
+	// The first run also writes the default theme file (ADR-032).
+	if len(written) != len(plan.Files)+1 {
+		t.Errorf("wrote %d files, want %d", len(written), len(plan.Files)+1)
 	}
 	dir := filepath.Join(root, "issuer-waltid")
 	for _, name := range []string{EnvFileName, SigningKeyFile} {
@@ -405,7 +406,7 @@ func TestWritePlanMakesASubdirectory(t *testing.T) {
 		t.Fatalf("WritePlan: %v", err)
 	}
 	path := filepath.Join(OutputDir(root, issuerPair()), "sub", "dir", "x")
-	if len(written) != 1 || written[0] != path {
+	if len(written) != 2 || written[0] != path || written[1] != filepath.Join(root, "vca", "theme.yaml") {
 		t.Errorf("written = %v", written)
 	}
 	// Another user in a container reads the directory, so it is 0755.
