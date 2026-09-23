@@ -311,6 +311,55 @@ func TestStylesheetCarriesContentComponents(t *testing.T) {
 	}
 }
 
+// cssRules returns every "selector{declarations}" block of the base
+// stylesheet whose selector list contains sel, with the declarations.
+func cssRules(base, sel string) []string {
+	var out []string
+	for _, block := range strings.Split(base, "}") {
+		i := strings.Index(block, "{")
+		if i < 0 {
+			continue
+		}
+		selectors := strings.TrimSpace(block[strings.LastIndex(block[:i], "\n")+1 : i])
+		for _, s := range strings.Split(selectors, ",") {
+			if strings.TrimSpace(s) == sel {
+				out = append(out, block[i+1:])
+			}
+		}
+	}
+	return out
+}
+
+// TestHeroTitleNeverBreaksInsideAWord proves the hero title cannot break
+// inside a word: its size follows the width of its column through container
+// query units, so a long word shrinks instead of wrapping mid word, and the
+// rules never allow break-all or anywhere.
+func TestHeroTitleNeverBreaksInsideAWord(t *testing.T) {
+	base := baseCSS(t)
+	rules := cssRules(base, ".hero h1")
+	if len(rules) == 0 {
+		t.Fatal("base.css has no .hero h1 rule")
+	}
+	joined := strings.Join(rules, "\n")
+	for _, bad := range []string{"break-all", "anywhere", "break-word"} {
+		if strings.Contains(joined, bad) {
+			t.Errorf(".hero h1 rules allow breaking inside a word: %q", bad)
+		}
+	}
+	for _, want := range []string{"overflow-wrap:normal", "cqi", "text-wrap:balance"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf(".hero h1 rules missing %q", want)
+		}
+	}
+	left := strings.Join(cssRules(base, ".hero-left"), "\n")
+	if !strings.Contains(left, "container-type:inline-size") {
+		t.Error(".hero-left must be a size container, so cqi units follow the column width")
+	}
+	if strings.Contains(base, ".shell .hero h1") {
+		t.Error("the shell needs no hero override once the size follows the column")
+	}
+}
+
 // TestBaseCSSUsesBrandVariables checks that every brand variable reaches
 // the page, so a radius, a spacing step, or a role accent in the theme
 // file changes what users see.

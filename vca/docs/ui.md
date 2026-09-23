@@ -367,7 +367,9 @@ fails a page where two nav landmarks share a label.
 
 `Hero`: `Label`, `Title`, `Emphasis` (second line in the primary colour),
 `Lead`, `Actions`, `Aside`. `Page.Hero` renders it in place of the page
-header, so the hero carries the one `h1`.
+header, so the hero carries the one `h1`. Container query units size
+the title from its column. A long word shrinks and never breaks in the
+middle.
 
 `Tiles`: `Items`. `Tile`: `Num`, `Title`, `Text`, `Meta`, `Href`.
 

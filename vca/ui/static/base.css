@@ -192,15 +192,20 @@ h1,h2,h3,h4{overflow-wrap:break-word}
 
 /* ---------- hero ---------- */
 .hero{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+/* The left column is a size container: the title measures itself against
+   the column width through cqi units (10cqi fits a 15 letter word in
+   Cinzel), so a long word shrinks instead of wrapping mid word. */
 .hero-left{
   min-width:0;padding:var(--space-7) var(--space-7) 2.5rem 0;border-right:1px solid var(--line);
   display:flex;flex-direction:column;justify-content:center;
+  container-type:inline-size;
 }
 .hero-right{
   min-width:0;padding:var(--space-7) 0 2.5rem var(--space-7);
   display:flex;flex-direction:column;justify-content:center;gap:var(--space-6);
 }
-.hero h1,.hero-title{font-size:clamp(2.4rem,8vw,6.5rem);line-height:.9;letter-spacing:.01em;margin:0}
+.hero h1,.hero-title{font-size:clamp(1.75rem,4.5vw,6.5rem);line-height:.9;letter-spacing:.01em;margin:0}
+.hero h1{font-size:clamp(1.75rem,10cqi,6.5rem);overflow-wrap:normal;text-wrap:balance}
 .hero h1 em,.hero-title em{display:block;font-style:normal;color:var(--primary)}
 .role-row{display:flex;align-items:center;gap:.9rem;margin-top:2.4rem}
 .role-dot{width:.6rem;height:.6rem;border-radius:50%;background:var(--primary)}
@@ -269,8 +274,6 @@ h1,h2,h3,h4{overflow-wrap:break-word}
 .tile:hover .tile-line,.tile:focus-visible .tile-line,.card-link:hover .card-link-line,.card-link:focus-visible .card-link-line{background:var(--invert-accent);width:4rem}
 
 .hero-actions{display:flex;flex-wrap:wrap;gap:var(--space-3)}
-/* Inside the portal shell the main column is narrower, so the title is too. */
-.shell .hero h1{font-size:clamp(2rem,5vw,4rem)}
 .tiles{list-style:none}
 .tiles>li{display:flex;min-width:0}
 .tile{flex:1}
