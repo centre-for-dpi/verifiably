@@ -34,6 +34,7 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/metrics"
+	"github.com/verifiably/verifiably-go/internal/outbound"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -667,9 +668,16 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 // a flat object whose string values become a row. Nested objects are
 // serialized back to JSON strings for operator inspection; numeric values
 // are stringified via fmt.Sprint. A row limit of 0 means "all rows".
-func fetchJSONRows(ctx context.Context, url, authHeader, limitStr string) ([]map[string]string, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func fetchJSONRows(ctx context.Context, rawURL, authHeader, limitStr string) ([]map[string]string, error) {
+	// The destination is whatever the operator typed. The feature exists to
+	// fetch from an arbitrary registry, so the control is an allowlist the
+	// deployment seeds and the operator extends -- not a guess about which
+	// addresses are internal, which on this stack is every address that works.
+	endpoint, err := outbound.Default().Resolve(ctx, outbound.OperatorFetch, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +685,7 @@ func fetchJSONRows(ctx context.Context, url, authHeader, limitStr string) ([]map
 	if authHeader != "" {
 		req.Header.Set("Authorization", authHeader)
 	}
-	resp, err := client.Do(req)
+	resp, err := outbound.Default().Client(outbound.OperatorFetch).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -690,21 +698,7 @@ func fetchJSONRows(ctx context.Context, url, authHeader, limitStr string) ([]map
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode JSON: %w", err)
 	}
-	// Accept either a bare array or {"rows": [...]} / {"data": [...]}.
-	items, ok := raw.([]any)
-	if !ok {
-		if obj, isObj := raw.(map[string]any); isObj {
-			for _, key := range []string{"rows", "data", "items", "results"} {
-				if v, has := obj[key]; has {
-					if arr, isArr := v.([]any); isArr {
-						items = arr
-						ok = true
-						break
-					}
-				}
-			}
-		}
-	}
+	items, ok := jsonRowItems(raw)
 	if !ok {
 		return nil, fmt.Errorf("response is not a JSON array or {rows|data|items|results:[...]}")
 	}
@@ -712,13 +706,44 @@ func fetchJSONRows(ctx context.Context, url, authHeader, limitStr string) ([]map
 	if limitStr != "" {
 		_, _ = fmt.Sscan(limitStr, &limit)
 	}
+	rows := rowsFromJSONItems(items, limit)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no rows in response (array had %d items, none were objects)", len(items))
+	}
+	return rows, nil
+}
+
+// jsonRowItems finds the array of records in a decoded response. Registries
+// disagree about the envelope, so a bare array and the four common wrappers are
+// all accepted.
+func jsonRowItems(raw any) ([]any, bool) {
+	if arr, isArr := raw.([]any); isArr {
+		return arr, true
+	}
+	obj, isObj := raw.(map[string]any)
+	if !isObj {
+		return nil, false
+	}
+	for _, key := range []string{"rows", "data", "items", "results"} {
+		if arr, isArr := obj[key].([]any); isArr {
+			return arr, true
+		}
+	}
+	return nil, false
+}
+
+// rowsFromJSONItems flattens each record to string values for operator review.
+// A limit of 0 means every row; items that are not objects are skipped rather
+// than failing the import, because one malformed record should not lose the
+// other nine hundred.
+func rowsFromJSONItems(items []any, limit int) []map[string]string {
 	rows := make([]map[string]string, 0, len(items))
 	for i, item := range items {
 		if limit > 0 && i >= limit {
 			break
 		}
-		obj, ok := item.(map[string]any)
-		if !ok {
+		obj, isObj := item.(map[string]any)
+		if !isObj {
 			continue
 		}
 		row := make(map[string]string, len(obj))
@@ -727,10 +752,7 @@ func fetchJSONRows(ctx context.Context, url, authHeader, limitStr string) ([]map
 		}
 		rows = append(rows, row)
 	}
-	if len(rows) == 0 {
-		return nil, fmt.Errorf("no rows in response (array had %d items, none were objects)", len(items))
-	}
-	return rows, nil
+	return rows
 }
 
 // queryDBRows opens a pgx connection, runs the SELECT, and coerces every

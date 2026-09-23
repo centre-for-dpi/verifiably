@@ -22,6 +22,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/didresolver"
 	"github.com/verifiably/verifiably-go/internal/issuance"
 	"github.com/verifiably/verifiably-go/internal/jobs"
+	"github.com/verifiably/verifiably-go/internal/outbound"
 	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/internal/statuslistcache"
@@ -137,6 +138,11 @@ type H struct {
 	// .../bulk/{id}/events for progress. nil falls back to the synchronous
 	// /api/v1/credentials/issue/bulk endpoint.
 	BulkJobQueue *jobs.Queue
+
+	// Outbound decides which destinations this deployment may call, per
+	// purpose. nil uses the process-wide policy built from the environment at
+	// startup; tests set it to scope a single handler's permitted destinations.
+	Outbound *outbound.Policy
 
 	// TrustRegistry is the national trust registry used to validate issuer
 	// DIDs during credential verification. When non-nil, every terminal
