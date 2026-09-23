@@ -238,6 +238,7 @@ by `deploy.sh cmd_up` in subdomain mode — pin them in `.env` only to override.
 | `VERIFIABLY_REGISTRIES` | `.env` (JSON array) | Configured external registries (Sunbird RC + federated agency registries) the bulk engine reads from. See [dpg/registries.md](dpg/registries.md). |
 | `VERIFIABLY_REGISTRY_ADMIN_URL` | `.env` | Link to the registry-admin console. |
 | `VERIFIABLY_OUTBOUND_ALLOW` | unset | Comma-separated hosts this deployment may fetch from, beyond what it has already declared. An entry is a host (`registry.gov`), a host and port (`registry.gov:8081`), a full URL, or a leading-dot suffix (`.gov` matches `a.gov`, not `gov`). **An entry with a port permits only that port** — on a Docker network one address carries the whole stack, so allowing the registry on `:8081` must not also allow Postgres on `:5432`. See [Outbound destinations](#outbound-destinations). |
+| `VERIFIABLY_OUTBOUND_DENY` | unset | Comma-separated CIDR prefixes no outbound call may reach, on top of link-local (which already covers `169.254.169.254` on AWS, GCP and Azure) and AWS's IPv6 metadata range. Set this on a cloud whose metadata endpoint is an ordinary address — Alibaba uses `100.100.100.200/32`, Oracle `192.0.0.192/32`. A malformed prefix stops the process at startup rather than being skipped. |
 | `VERIFIABLY_OUTBOUND_DEV_OPEN` | unset | `1` lifts the allowlist for interop testing against an arbitrary INJI Verify or registry. **The process refuses to start if this is set while `VERIFIABLY_PUBLIC_HOST` is not local.** |
 
 ### Outbound destinations
@@ -271,9 +272,16 @@ It is the wrong control here and widening it would break the product: every DPG
 this stack talks to — `certify-nginx`, `walt-issuer`, `credebl-minio`, the
 Sunbird registries — is on a Docker bridge, and `VERIFIABLY_PUBLIC_HOST=172.24.0.1`
 is the documented localhost default. The legitimate destinations *are* the
-private addresses. Only two things are denied for every purpose: cloud metadata
-(`169.254.0.0/16` and the IPv6 form), which is never a destination this product
-has, and this deployment's own public host, which would be a self-request loop.
+private addresses. Only two things are denied for every purpose: cloud metadata, which is never a
+destination this product has, and this deployment's own public host, which would
+be a self-request loop.
+
+Metadata is recognised by asking the address what it is — link-local covers
+`169.254.169.254` on AWS, GCP and Azure, the range around it, its IPv4-mapped
+form, and IPv6 `fe80::/10`. AWS's IPv6 metadata endpoint sits inside the
+unique-local range instead, which is otherwise legitimate here (an IPv6 Docker
+network uses it), so that one prefix is named specifically. A cloud whose
+metadata endpoint is an ordinary address goes in `VERIFIABLY_OUTBOUND_DENY`.
 
 Two checks happen after the URL has been approved, because approving a URL is
 not the same as approving the connection:

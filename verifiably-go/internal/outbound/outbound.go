@@ -99,6 +99,7 @@ func (p Purpose) widenVar() string {
 
 const (
 	envAllow    = "VERIFIABLY_OUTBOUND_ALLOW"
+	envDeny     = "VERIFIABLY_OUTBOUND_DENY"
 	envDevOpen  = "VERIFIABLY_OUTBOUND_DEV_OPEN"
 	envPublic   = "VERIFIABLY_PUBLIC_HOST"
 	envRegistry = "VERIFIABLY_REGISTRIES"
@@ -111,27 +112,25 @@ const (
 // distinguish "we refused to fetch this" from "the fetch failed".
 var ErrBlocked = errors.New("outbound destination not permitted")
 
-// denied lists the ranges no purpose may reach. Deliberately short: cloud
-// metadata (AWS, GCP, Azure and the IPv6 form AWS added), which is the address
-// an SSRF is usually aimed at and never a destination this product has, and
-// nothing else. Private ranges are absent by design -- see the package comment.
-var denied = mustCIDRs(
-	"169.254.0.0/16",         // link-local, incl. 169.254.169.254 metadata
-	"fd00:ec2::/64",          // AWS IMDS over IPv6
-	"::ffff:169.254.0.0/112", // IPv4-mapped form of the above, in case a name
-	// resolves to a mapped address rather than a v4 one
-)
+// awsIMDSv6 is the one metadata range that link-local does not cover. AWS put
+// its IPv6 instance metadata endpoint inside the unique-local range, which is
+// otherwise legitimate here -- an IPv6 Docker network uses it -- so denying the
+// whole of fc00::/7 would reject the stack's own services. The prefix is named
+// instead. Operators on a cloud whose metadata endpoint is neither link-local
+// nor this can add theirs with VERIFIABLY_OUTBOUND_DENY.
+const awsIMDSv6 = "fd00:ec2::/64"
 
-func mustCIDRs(cidrs ...string) []*net.IPNet {
+// parseCIDRs turns prefix strings into networks, naming the bad one.
+func parseCIDRs(cidrs ...string) ([]*net.IPNet, error) {
 	out := make([]*net.IPNet, 0, len(cidrs))
 	for _, c := range cidrs {
-		_, n, err := net.ParseCIDR(c)
+		_, n, err := net.ParseCIDR(strings.TrimSpace(c))
 		if err != nil {
-			panic("outbound: bad built-in CIDR " + c + ": " + err.Error())
+			return nil, fmt.Errorf("%q is not a CIDR prefix: %w", c, err)
 		}
 		out = append(out, n)
 	}
-	return out
+	return out, nil
 }
 
 // Config builds a Policy. The zero value denies both allowlisted purposes and
@@ -166,6 +165,12 @@ type Config struct {
 	// so the service cannot be made to call itself.
 	SelfHosts []string
 
+	// Deny adds CIDR prefixes no purpose may reach, on top of link-local and
+	// the AWS IPv6 metadata range. For a cloud whose metadata endpoint is
+	// neither -- Alibaba and Oracle both use ordinary addresses -- name it
+	// here. Malformed entries are an error, not a silent omission.
+	Deny []string
+
 	// Timeout bounds every request. Zero means 30s. A destination that accepts
 	// the connection and never answers would otherwise pin the calling
 	// goroutine indefinitely.
@@ -175,11 +180,12 @@ type Config struct {
 // Policy answers whether a destination is permitted, and hands out clients that
 // keep checking once the request is in flight.
 type Policy struct {
-	allow     map[Purpose][]hostRule
-	members   func(context.Context) []string
-	devOpen   bool
-	selfHosts map[string]bool
-	timeout   time.Duration
+	allow        map[Purpose][]hostRule
+	members      func(context.Context) []string
+	devOpen      bool
+	selfHosts    map[string]bool
+	denyPrefixes []*net.IPNet
+	timeout      time.Duration
 
 	// lookupIP is the resolver, replaceable in tests. It must return every
 	// address the host resolves to, because the dial check rejects the request
@@ -209,14 +215,29 @@ func (r hostRule) match(host, port string) bool {
 
 // New builds a Policy from an explicit Config.
 func New(cfg Config) *Policy {
+	// The built-in prefix is a constant this package controls, so a parse
+	// failure here is a programming error rather than a configuration one.
+	builtin, err := parseCIDRs(awsIMDSv6)
+	if err != nil {
+		panic("outbound: built-in prefix " + awsIMDSv6 + ": " + err.Error())
+	}
+	extra, err := parseCIDRs(cfg.Deny...)
+	if err != nil {
+		// New cannot report this; FromEnv validates first so an operator sees
+		// the message. Reaching here means a caller passed a bad prefix in
+		// code, and dropping it silently would be the wrong failure.
+		panic("outbound: Config.Deny: " + err.Error())
+	}
+
 	p := &Policy{
-		allow:     map[Purpose][]hostRule{},
-		members:   cfg.Members,
-		devOpen:   cfg.DevOpen,
-		selfHosts: map[string]bool{},
-		timeout:   cfg.Timeout,
-		lookupIP:  defaultLookupIP,
-		clients:   map[Purpose]*http.Client{},
+		allow:        map[Purpose][]hostRule{},
+		members:      cfg.Members,
+		devOpen:      cfg.DevOpen,
+		selfHosts:    map[string]bool{},
+		denyPrefixes: append(builtin, extra...),
+		timeout:      cfg.Timeout,
+		lookupIP:     defaultLookupIP,
+		clients:      map[Purpose]*http.Client{},
 	}
 	if p.timeout == 0 {
 		p.timeout = defaultTimeout
@@ -308,7 +329,7 @@ func (p *Policy) Resolve(ctx context.Context, purpose Purpose, raw string) (*url
 		return nil, fmt.Errorf("%w: %s must not call this deployment (%s)", ErrBlocked, purpose, host)
 	}
 	// A literal address skips DNS entirely, so check it here as well as at dial.
-	if ip := net.ParseIP(host); ip != nil && isDenied(ip) {
+	if ip := net.ParseIP(host); ip != nil && p.denies(ip) {
 		return nil, fmt.Errorf("%w: %s to a reserved address (%s)", ErrBlocked, purpose, ip)
 	}
 
@@ -363,13 +384,24 @@ func hostPort(host, port string) string {
 	return net.JoinHostPort(host, port)
 }
 
-func isDenied(ip net.IP) bool {
-	for _, n := range denied {
+// denies reports whether this address is one no purpose may reach.
+//
+// Link-local is the whole of the usual answer: 169.254.169.254 on AWS, GCP and
+// Azure, 169.254.0.0/16 around it, and fe80::/10 on the IPv6 side. Asking the
+// address what it is beats matching it against a prefix written out here --
+// net.IP.IsLinkLocalUnicast calls To4 first, so a v4-mapped form such as
+// ::ffff:169.254.169.254 is caught by the same question, with no second range
+// to keep in step.
+//
+// Private ranges are deliberately absent -- see the package comment.
+func (p *Policy) denies(ip net.IP) bool {
+	if ip.IsLinkLocalUnicast() {
+		return true
+	}
+	for _, n := range p.denyPrefixes {
 		if n.Contains(ip) {
 			return true
 		}
-		// A v4 address and its v4-mapped v6 form are the same destination; test
-		// both so "::ffff:169.254.169.254" cannot slip past a v4 CIDR.
 		if v4 := ip.To4(); v4 != nil && n.Contains(v4) {
 			return true
 		}
@@ -422,7 +454,7 @@ func (p *Policy) dial(ctx context.Context, network, addr string) (net.Conn, erro
 		return nil, fmt.Errorf("%w: %q resolves to nothing", ErrBlocked, host)
 	}
 	for _, ip := range ips {
-		if isDenied(ip) {
+		if p.denies(ip) {
 			return nil, fmt.Errorf("%w: %q resolves to a reserved address (%s)", ErrBlocked, host, ip)
 		}
 	}
@@ -457,6 +489,7 @@ func (p *Policy) checkRedirect(purpose Purpose) func(*http.Request, []*http.Requ
 //
 //	VERIFIABLY_REGISTRIES        registry base URLs      -> OperatorFetch
 //	VERIFIABLY_OUTBOUND_ALLOW    extra hosts, comma-separated -> both allowlisted purposes
+//	VERIFIABLY_OUTBOUND_DENY     extra CIDR prefixes          -> denied everywhere
 //	VERIFIABLY_PUBLIC_HOST       this deployment          -> denied everywhere
 //	VERIFIABLY_OUTBOUND_DEV_OPEN lifts the allowlist      -> local deployments only
 //
@@ -484,6 +517,15 @@ func FromEnv(members func(context.Context) []string) (*Policy, error) {
 	// talks to it, so a bulk import from it needs no second declaration.
 	cfg.Allow[OperatorFetch] = append(cfg.Allow[OperatorFetch],
 		registryHostsFromEnv(os.Getenv(envRegistry))...)
+
+	for _, c := range strings.Split(os.Getenv(envDeny), ",") {
+		if c = strings.TrimSpace(c); c != "" {
+			cfg.Deny = append(cfg.Deny, c)
+		}
+	}
+	if _, err := parseCIDRs(cfg.Deny...); err != nil {
+		return nil, fmt.Errorf("%s: %w", envDeny, err)
+	}
 
 	public := strings.TrimSpace(os.Getenv(envPublic))
 	if public != "" {

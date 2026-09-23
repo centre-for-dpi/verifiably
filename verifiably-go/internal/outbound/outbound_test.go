@@ -42,13 +42,54 @@ func TestResolveRejectsCredentialsInAuthority(t *testing.T) {
 func TestResolveRejectsLiteralMetadataAddresses(t *testing.T) {
 	p := New(Config{DevOpen: true})
 	for _, raw := range []string{
-		"http://169.254.169.254/latest/meta-data/",
-		"http://[::ffff:169.254.169.254]/latest/meta-data/",
-		"http://[fd00:ec2::254]/latest/meta-data/",
+		"http://169.254.169.254/latest/meta-data/",     // AWS, GCP, Azure
+		"http://[::ffff:169.254.169.254]/latest/meta/", // the v4-mapped form
+		"http://169.254.1.1/",                          // the rest of link-local
+		"http://[fe80::1]/",                            // IPv6 link-local
+		"http://[fd00:ec2::254]/latest/meta-data/",     // AWS IMDS over IPv6
 	} {
 		if _, err := p.Resolve(ctx(), Verifier, raw); err == nil {
 			t.Errorf("Resolve(%q) = nil, want the metadata address blocked", raw)
 		}
+	}
+}
+
+func TestDenyIsExtensibleForOtherClouds(t *testing.T) {
+	// Alibaba and Oracle put metadata on ordinary addresses, which are not
+	// link-local and cannot be guessed here.
+	p := New(Config{DevOpen: true, Deny: []string{"100.100.100.200/32", "192.0.0.192/32"}})
+	for _, raw := range []string{"http://100.100.100.200/", "http://192.0.0.192/"} {
+		if _, err := p.Resolve(ctx(), Verifier, raw); err == nil {
+			t.Errorf("Resolve(%q) = nil, want the configured range denied", raw)
+		}
+	}
+	// A neighbouring address is still reachable: the prefix denies what it says.
+	if _, err := p.Resolve(ctx(), Verifier, "http://100.100.100.201/"); err != nil {
+		t.Errorf("an address outside the denied prefix was rejected: %v", err)
+	}
+}
+
+func TestFromEnvRejectsAMalformedDenyPrefix(t *testing.T) {
+	t.Setenv(envDeny, "100.100.100.200/32, not-a-cidr")
+	_, err := FromEnv(nil)
+	if err == nil {
+		t.Fatal("a malformed deny prefix was accepted")
+	}
+	if !strings.Contains(err.Error(), envDeny) || !strings.Contains(err.Error(), "not-a-cidr") {
+		t.Errorf("error %q names neither the variable nor the bad entry", err)
+	}
+}
+
+func TestFromEnvAppliesDenyPrefixes(t *testing.T) {
+	t.Setenv(envDeny, "203.0.113.0/24")
+	t.Setenv(envDevOpen, "1")
+	t.Setenv(envPublic, "localhost")
+	p, err := FromEnv(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Resolve(ctx(), Verifier, "http://203.0.113.7/"); err == nil {
+		t.Error("an operator-denied range was reachable")
 	}
 }
 
