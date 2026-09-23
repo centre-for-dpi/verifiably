@@ -551,28 +551,32 @@ func isLocalHost(host string) bool {
 }
 
 var (
-	defaultOnce sync.Once
-	defaultMu   sync.RWMutex
-	defaultPol  *Policy
+	defaultMu  sync.RWMutex
+	defaultPol *Policy
 )
 
 // Default is the policy used by call sites that have no handler to carry one.
 // It is built from the environment on first use; a configuration error there
 // yields the zero-config policy, which denies both allowlisted purposes.
 func Default() *Policy {
-	defaultOnce.Do(func() {
-		p, err := FromEnv(nil)
-		if err != nil {
-			p = New(Config{})
-		}
-		defaultMu.Lock()
-		if defaultPol == nil {
-			defaultPol = p
-		}
-		defaultMu.Unlock()
-	})
 	defaultMu.RLock()
-	defer defaultMu.RUnlock()
+	p := defaultPol
+	defaultMu.RUnlock()
+	if p != nil {
+		return p
+	}
+
+	defaultMu.Lock()
+	defer defaultMu.Unlock()
+	if defaultPol == nil {
+		fromEnv, err := FromEnv(nil)
+		if err != nil {
+			// FromEnv only refuses one combination, and it is one main() will
+			// have already died on. Reaching here means no main(): fail closed.
+			fromEnv = New(Config{})
+		}
+		defaultPol = fromEnv
+	}
 	return defaultPol
 }
 
@@ -582,5 +586,4 @@ func SetDefault(p *Policy) {
 	defaultMu.Lock()
 	defaultPol = p
 	defaultMu.Unlock()
-	defaultOnce.Do(func() {})
 }

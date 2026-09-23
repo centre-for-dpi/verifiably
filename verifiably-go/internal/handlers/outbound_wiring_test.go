@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -157,10 +158,58 @@ func TestFetchJSONRowsIsAllowlisted(t *testing.T) {
 
 func TestHandlerOutboundFallsBackToTheProcessPolicy(t *testing.T) {
 	scoped := outbound.New(outbound.Config{DevOpen: true})
-	if got := (&H{Outbound: scoped}).outbound(); got != scoped {
+	if (&H{Outbound: scoped}).outbound() != scoped {
 		t.Error("a handler with its own policy did not use it")
 	}
-	if got := (&H{}).outbound(); got != outbound.Default() {
+	if (&H{}).outbound() != outbound.Default() {
 		t.Error("a handler without one did not fall back to the process policy")
+	}
+}
+
+func TestJSONRowItemsAcceptsTheCommonEnvelopes(t *testing.T) {
+	// Registries disagree about the envelope; all four wrappers and a bare
+	// array mean the same thing to an operator.
+	for _, body := range []string{
+		`[{"a":"1"}]`,
+		`{"rows":[{"a":"1"}]}`,
+		`{"data":[{"a":"1"}]}`,
+		`{"items":[{"a":"1"}]}`,
+		`{"results":[{"a":"1"}]}`,
+	} {
+		var raw any
+		if err := json.Unmarshal([]byte(body), &raw); err != nil {
+			t.Fatal(err)
+		}
+		items, ok := jsonRowItems(raw)
+		if !ok || len(items) != 1 {
+			t.Errorf("jsonRowItems(%s) = %v, %v", body, items, ok)
+		}
+	}
+	for _, body := range []string{`{"total":3}`, `"a string"`, `null`, `{"rows":{"a":"1"}}`} {
+		var raw any
+		_ = json.Unmarshal([]byte(body), &raw)
+		if _, ok := jsonRowItems(raw); ok {
+			t.Errorf("jsonRowItems(%s) accepted a shape with no records", body)
+		}
+	}
+}
+
+func TestRowsFromJSONItemsSkipsNonObjectsAndHonoursLimit(t *testing.T) {
+	items := []any{
+		map[string]any{"id": "1", "n": float64(7)},
+		"not an object", // one malformed record must not lose the rest
+		map[string]any{"id": "2"},
+		map[string]any{"id": "3"},
+	}
+	rows := rowsFromJSONItems(items, 0)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %v, want the three objects", rows)
+	}
+	if rows[0]["n"] != "7" {
+		t.Errorf("numeric value = %q, want it stringified", rows[0]["n"])
+	}
+	// The limit counts items as they arrive, including the ones skipped.
+	if got := rowsFromJSONItems(items, 2); len(got) != 1 {
+		t.Errorf("limit 2 gave %d rows, want 1 (the second item is not an object)", len(got))
 	}
 }

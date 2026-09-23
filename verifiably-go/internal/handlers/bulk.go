@@ -698,21 +698,7 @@ func fetchJSONRows(ctx context.Context, rawURL, authHeader, limitStr string) ([]
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode JSON: %w", err)
 	}
-	// Accept either a bare array or {"rows": [...]} / {"data": [...]}.
-	items, ok := raw.([]any)
-	if !ok {
-		if obj, isObj := raw.(map[string]any); isObj {
-			for _, key := range []string{"rows", "data", "items", "results"} {
-				if v, has := obj[key]; has {
-					if arr, isArr := v.([]any); isArr {
-						items = arr
-						ok = true
-						break
-					}
-				}
-			}
-		}
-	}
+	items, ok := jsonRowItems(raw)
 	if !ok {
 		return nil, fmt.Errorf("response is not a JSON array or {rows|data|items|results:[...]}")
 	}
@@ -720,13 +706,44 @@ func fetchJSONRows(ctx context.Context, rawURL, authHeader, limitStr string) ([]
 	if limitStr != "" {
 		_, _ = fmt.Sscan(limitStr, &limit)
 	}
+	rows := rowsFromJSONItems(items, limit)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no rows in response (array had %d items, none were objects)", len(items))
+	}
+	return rows, nil
+}
+
+// jsonRowItems finds the array of records in a decoded response. Registries
+// disagree about the envelope, so a bare array and the four common wrappers are
+// all accepted.
+func jsonRowItems(raw any) ([]any, bool) {
+	if arr, isArr := raw.([]any); isArr {
+		return arr, true
+	}
+	obj, isObj := raw.(map[string]any)
+	if !isObj {
+		return nil, false
+	}
+	for _, key := range []string{"rows", "data", "items", "results"} {
+		if arr, isArr := obj[key].([]any); isArr {
+			return arr, true
+		}
+	}
+	return nil, false
+}
+
+// rowsFromJSONItems flattens each record to string values for operator review.
+// A limit of 0 means every row; items that are not objects are skipped rather
+// than failing the import, because one malformed record should not lose the
+// other nine hundred.
+func rowsFromJSONItems(items []any, limit int) []map[string]string {
 	rows := make([]map[string]string, 0, len(items))
 	for i, item := range items {
 		if limit > 0 && i >= limit {
 			break
 		}
-		obj, ok := item.(map[string]any)
-		if !ok {
+		obj, isObj := item.(map[string]any)
+		if !isObj {
 			continue
 		}
 		row := make(map[string]string, len(obj))
@@ -735,10 +752,7 @@ func fetchJSONRows(ctx context.Context, rawURL, authHeader, limitStr string) ([]
 		}
 		rows = append(rows, row)
 	}
-	if len(rows) == 0 {
-		return nil, fmt.Errorf("no rows in response (array had %d items, none were objects)", len(items))
-	}
-	return rows, nil
+	return rows
 }
 
 // queryDBRows opens a pgx connection, runs the SELECT, and coerces every
