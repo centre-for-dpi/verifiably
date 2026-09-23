@@ -36,7 +36,7 @@ func TestDemoPageIsAccessible(t *testing.T) {
 	doc := rec.Body.String()
 	a11ytest.AssertPage(t, doc)
 	for _, want := range []string{
-		"<h1>vca UI kit demo</h1>", `<section class="card"`, "<dialog", "<details", `<img class="qr"`,
+		"<h1>vca UI kit demo</h1>", `<p class="pg-header-label">UI kit</p>`, `<section class="card"`, "<dialog", "<details", `<img class="qr"`,
 		"<table", "badge-ok", `aria-expanded="true"`, `<label for="issuer">`, `<select id="kind"`,
 		`hx-get="/toast?t=now"`, `data-open-dialog="confirm"`, `toast-info`, "htmx 2.0.10",
 	} {

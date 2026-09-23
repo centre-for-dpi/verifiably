@@ -68,7 +68,7 @@ func TestStylesheetCarriesThemeFontsAndA11y(t *testing.T) {
 	// Headings use Cinzel and code uses the generic monospace stack. The
 	// removed display and meta roles leave no trace.
 	for _, want := range []string{
-		"h1{font-family:var(--font-heading)", "code,pre,kbd{font-family:var(--font-mono)}",
+		"h1{font-family:var(--font-heading)", "code,pre,kbd,.num{font-family:var(--font-mono)}",
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("stylesheet missing %q", want)
@@ -170,6 +170,98 @@ func TestAssetsRejectsBadInput(t *testing.T) {
 	fsys["static/base.css"] = &fstest.MapFile{Data: []byte("body{}")}
 	if _, err := build(fsys, light, dark, pack); err == nil || !strings.Contains(err.Error(), "htmx") {
 		t.Errorf("missing htmx should fail, got %v", err)
+	}
+}
+
+var (
+	varUse  = regexp.MustCompile(`var\(--([a-z0-9-]+)`)
+	varDecl = regexp.MustCompile(`--([a-z0-9-]+):`)
+	hexLit  = regexp.MustCompile(`#[0-9A-Fa-f]{3,8}\b`)
+)
+
+// baseCSS returns the embedded base stylesheet.
+func baseCSS(t *testing.T) string {
+	t.Helper()
+	b, err := fs.ReadFile(Static, "static/base.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestBaseCSSUsesOnlyDeclaredTokens proves base.css reads only the custom
+// properties the generated part of vca.css declares: theme tokens and font
+// variables. base.css declares none of its own.
+func TestBaseCSSUsesOnlyDeclaredTokens(t *testing.T) {
+	css, err := StylesheetCSS(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := baseCSS(t)
+	prefix := strings.TrimSuffix(css, base)
+	if prefix == css {
+		t.Fatal("vca.css does not end with base.css")
+	}
+	allowed := map[string]bool{}
+	for _, name := range theme.Required() {
+		allowed[name] = true
+	}
+	for _, s := range fonts.Slots(fonts.Default()) {
+		allowed[s.Var] = true
+	}
+	declared := map[string]bool{}
+	for _, m := range varDecl.FindAllStringSubmatch(prefix, -1) {
+		declared[m[1]] = true
+	}
+	used := varUse.FindAllStringSubmatch(base, -1)
+	if len(used) == 0 {
+		t.Fatal("base.css uses no custom property")
+	}
+	for _, m := range used {
+		if !allowed[m[1]] {
+			t.Errorf("base.css uses --%s, which is not a theme token or a font variable", m[1])
+		}
+		if !declared[m[1]] {
+			t.Errorf("base.css uses --%s, which vca.css never declares", m[1])
+		}
+	}
+	for _, m := range varDecl.FindAllStringSubmatch(base, -1) {
+		t.Errorf("base.css declares --%s; only the generated part declares properties", m[1])
+	}
+	for name := range allowed {
+		if !declared[name] {
+			t.Errorf("vca.css does not declare --%s", name)
+		}
+	}
+}
+
+// TestStylesheetCarriesAdamndegwaStructure checks the port of the
+// adamndegwa site structure: the header bar, the inverting tiles and link
+// cards, the page header, the tracked labels, and the footer monogram.
+func TestStylesheetCarriesAdamndegwaStructure(t *testing.T) {
+	base := baseCSS(t)
+	for _, want := range []string{
+		".site-header::after", ".wordmark em{font-style:normal;color:var(--primary)}",
+		"letter-spacing:.14em", "letter-spacing:.18em", ".nav a::after",
+		".tile:hover", ".tile:focus-visible", ".card-link:hover", ".card-link:focus-visible",
+		"background:var(--invert-bg)", "color:var(--invert-fg)", "var(--invert-muted)", "var(--invert-accent)",
+		".pg-header", ".pg-header-label", ".hero", ".site-footer", ".ft-monogram",
+		"@media (max-width:56.25rem)", "font-variant-numeric:tabular-nums", ".num",
+		"color:var(--secondary)",
+	} {
+		if !strings.Contains(base, want) {
+			t.Errorf("base.css missing %q", want)
+		}
+	}
+	// Only the QR code keeps a literal colour: a scanner needs a white quiet zone.
+	for _, lit := range hexLit.FindAllString(base, -1) {
+		if lit != "#FFFFFF" {
+			t.Errorf("base.css holds the colour literal %s; use a token", lit)
+		}
+	}
+	// Dark mode needs no extra selectors: the invert tokens differ per mode.
+	if strings.Contains(base, "data-theme") {
+		t.Error("base.css must not branch on data-theme")
 	}
 }
 

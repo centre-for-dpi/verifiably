@@ -90,8 +90,7 @@ source of truth. `theme.CSS` writes them as CSS custom properties, so CSS
 and Go can never disagree on a colour.
 
 1. Copy `theme.DefaultLight` into your package. Give the theme a new name.
-2. Set the nine tokens: `ink`, `paper`, `primary`, `accent`, `warn`, `bad`,
-   `ok`, `muted`, `line`. Use six digit hex colours.
+2. Set the fifteen tokens of the table below. Use six digit hex colours.
 3. Keep the pairings. Each pairing names a foreground token, a background
    token, and the minimum ratio the stylesheet needs.
 4. Do the same for a dark theme and set `Dark: true`.
@@ -99,6 +98,28 @@ and Go can never disagree on a colour.
    pairing below its minimum and every missing token.
 6. Add a unit test that calls `theme.Validate` on your theme. A theme that
    fails AA then fails the build.
+
+| Token | Default light | Used for |
+|---|---|---|
+| `ink` | ink `#0B0B09` | Text. |
+| `paper` | paper `#F0EFE9` | The page canvas. |
+| `primary` | pine `#21663F` | Links, primary buttons, and the emphasis of the wordmark. |
+| `accent` | gold `#7A632A` | Labels, the bar under the wordmark, rules, and the focus ring. |
+| `spark` | brass `#F0D053` | A rare highlight on a dark surface. |
+| `secondary` | charcoal `#3B3F39` | Secondary text and navigation labels. |
+| `muted` | stone `#6A6A65` | Meta text and input borders. |
+| `line` | mist `#D9DAD6` | Hairlines. |
+| `invert-bg` | pine `#21663F` | The surface of a tile or link card on hover and focus. |
+| `invert-fg` | paper `#F0EFE9` | Text on that surface. |
+| `invert-muted` | mist `#D9DAD6` | Secondary text on that surface. |
+| `invert-accent` | brass `#F0D053` | Labels, rules, and arrows on that surface. |
+| `warn` | `#7A4B00` | Warning state. |
+| `bad` | `#A61B1B` | Error state. |
+| `ok` | `#1E6B3B` | Success state. |
+
+The default palette comes from the adamndegwa brand. The dark theme uses a
+black canvas. There, the inverted surface is moss, and all text on it is
+black. `theme.DefaultPairings` lists every pairing with its minimum ratio.
 
 A light theme renders under `:root`. A dark theme renders under
 `[data-theme="dark"]` and again under `prefers-color-scheme: dark` for
@@ -163,7 +184,9 @@ component. `components.Names` lists every template.
 ### Data structs
 
 `Page`: `Lang` (default `en`), `Title`, `Heading` (default `Title`),
-`Description`, `Nav`, `Content`, `Toasts`, `Footer`, `Text`.
+`Label`, `Lead`, `Description`, `Nav`, `Content`, `Toasts`, `Footer`, `Text`.
+The page header shows `Label` in the accent colour above the `h1`, and
+`Lead` under it.
 
 `Nav`: `Label` (default `Main`), `Brand`, `Links`. `Link`: `Href`, `Text`,
 `Current`.

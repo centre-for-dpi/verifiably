@@ -27,10 +27,26 @@ const (
 	OK      = "ok"      // success state
 	Muted   = "muted"   // secondary text, input borders
 	Line    = "line"    // decorative hairlines
+
+	Spark        = "spark"         // rare highlight on dark surfaces
+	Secondary    = "secondary"     // secondary text
+	InvertBG     = "invert-bg"     // tile and link card surface on hover and focus
+	InvertFG     = "invert-fg"     // text on the inverted surface
+	InvertMuted  = "invert-muted"  // secondary text on the inverted surface
+	InvertAccent = "invert-accent" // labels, rules and arrows on the inverted surface
 )
 
 // Required lists the token names a theme must define.
-var required = []string{Ink, Paper, Primary, Accent, Warn, Bad, OK, Muted, Line}
+var required = []string{
+	Ink, Paper, Primary, Accent, Spark, Secondary, Muted, Line,
+	InvertBG, InvertFG, InvertMuted, InvertAccent, Warn, Bad, OK,
+}
+
+// Required returns the token names a theme must define, in the order of
+// the theme file.
+func Required() []string {
+	return append([]string(nil), required...)
+}
 
 // Minimum contrast ratios from WCAG 2.2 (1.4.3 and 1.4.11).
 const (
@@ -60,49 +76,67 @@ type Theme struct {
 var tokenName = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // DefaultLight returns the light theme.
-// The palette derives from the adamndegwa brand deck (Apache-2.0).
+// The palette is the adamndegwa brand (Apache-2.0): ink on a warm paper
+// canvas, pine for links and emphasis, gold for labels and rules, and brass
+// as the rare spark on the inverted pine surface.
 func DefaultLight() Theme {
 	return Theme{
 		Name: "default-light",
 		Tokens: map[string]string{
-			Ink:     "#0B0B09",
-			Paper:   "#F0EFE9",
-			Primary: "#21663F",
-			Accent:  "#7A632A",
-			Warn:    "#7A4B00",
-			Bad:     "#A61B1B",
-			OK:      "#1E6B3B",
-			Muted:   "#6A6A65",
-			Line:    "#D9DAD6",
+			Ink:          "#0B0B09", // ink
+			Paper:        "#F0EFE9", // paper
+			Primary:      "#21663F", // pine
+			Accent:       "#7A632A", // gold
+			Spark:        "#F0D053", // brass
+			Secondary:    "#3B3F39", // charcoal
+			Muted:        "#6A6A65", // stone
+			Line:         "#D9DAD6", // mist
+			InvertBG:     "#21663F", // pine
+			InvertFG:     "#F0EFE9", // paper
+			InvertMuted:  "#D9DAD6", // mist
+			InvertAccent: "#F0D053", // brass
+			Warn:         "#7A4B00",
+			Bad:          "#A61B1B",
+			OK:           "#1E6B3B",
 		},
-		Pairings: defaultPairings(),
+		Pairings: DefaultPairings(),
 	}
 }
 
-// DefaultDark returns the dark theme. The canvas is pure black.
+// DefaultDark returns the dark theme. The canvas is pure black. The
+// inverted surface is moss, so every text on it is black.
 func DefaultDark() Theme {
 	return Theme{
 		Name: "default-dark",
 		Dark: true,
 		Tokens: map[string]string{
-			Ink:     "#F7F7F4",
-			Paper:   "#000000",
-			Primary: "#49A863",
-			Accent:  "#C9A855",
-			Warn:    "#F5D96E",
-			Bad:     "#FF8A80",
-			OK:      "#6FCB8A",
-			Muted:   "#8A8A8A",
-			Line:    "#3A3A38",
+			Ink:          "#F7F7F4", // paper
+			Paper:        "#000000", // black
+			Primary:      "#49A863", // moss
+			Accent:       "#C9A855", // gold
+			Spark:        "#F5D96E", // brass
+			Secondary:    "#A8A8A4", // charcoal
+			Muted:        "#888888", // stone
+			Line:         "#3A3A38", // hairline
+			InvertBG:     "#49A863", // moss
+			InvertFG:     "#000000", // black
+			InvertMuted:  "#000000", // black
+			InvertAccent: "#000000", // black
+			Warn:         "#F5D96E",
+			Bad:          "#FF8A80",
+			OK:           "#6FCB8A",
 		},
-		Pairings: defaultPairings(),
+		Pairings: DefaultPairings(),
 	}
 }
 
-// defaultPairings lists every pairing the base stylesheet uses.
-func defaultPairings() []Pairing {
+// DefaultPairings lists every pairing the base stylesheet uses. The kit
+// owns this list: a theme sets colours, never the pairings or their minimum
+// ratios. Each call returns a new slice.
+func DefaultPairings() []Pairing {
 	return []Pairing{
 		{"body text", Ink, Paper, MinText},
+		{"secondary text", Secondary, Paper, MinText},
 		{"links and primary text", Primary, Paper, MinText},
 		{"accent text", Accent, Paper, MinText},
 		{"warning text", Warn, Paper, MinText},
@@ -111,6 +145,9 @@ func defaultPairings() []Pairing {
 		{"muted text", Muted, Paper, MinText},
 		{"inverse: paper on ink (skip link)", Paper, Ink, MinText},
 		{"primary button label", Paper, Primary, MinText},
+		{"inverted text", InvertFG, InvertBG, MinText},
+		{"inverted muted text", InvertMuted, InvertBG, MinText},
+		{"inverted accent text", InvertAccent, InvertBG, MinText},
 		{"input border", Muted, Paper, MinLarge},
 		{"focus ring", Accent, Paper, MinLarge},
 		{"status badge outline: warn", Warn, Paper, MinLarge},

@@ -83,6 +83,7 @@ func TestEveryComponentRendersInsideLayout(t *testing.T) {
 	for _, want := range []string{
 		`<html lang="en">`, `<title>Demo</title>`, `<h1>Demo</h1>`,
 		`class="skip-link" href="#page"`, `<nav class="nav" aria-label="Main">`, `<main id="page"`,
+		`<header class="site-header">`, `<a class="wordmark" href="/">vca</a>`, `<div class="pg-header">`,
 		`aria-current="page"`, `data-theme-toggle aria-label="Theme"`, `aria-live="polite"`,
 		`localStorage.getItem('theme')`, `try {`, `setAttribute('data-theme'`, `removeAttribute('data-theme')`,
 		`name="viewport" content="width=device-width, initial-scale=1"`, `/static/vca.css`, `/static/htmx.min.js`,
@@ -93,7 +94,7 @@ func TestEveryComponentRendersInsideLayout(t *testing.T) {
 		`alt="QR code: open the wallet offer"`, `width="256"`, `<details class="json" open>`, `role="region" aria-label="Raw credential"`,
 		`&#34;a&#34;: 1`, `aria-controls="j1" aria-expanded="false"`, `hx-get="/x?a=1&amp;b=2"`,
 		`data-open-dialog="d1" aria-haspopup="dialog"`, `<a class="btn btn-ghost" href="/docs"`, `aria-label="Close" disabled`,
-		`<textarea id="notes"`, `<option value="a" selected>A</option>`, `<footer class="footer">vca</footer>`,
+		`<textarea id="notes"`, `<option value="a" selected>A</option>`, `<footer class="site-footer">vca</footer>`,
 		`Content-Type`,
 	} {
 		if want == "Content-Type" {
@@ -120,7 +121,7 @@ func TestRenderPageHTMX(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc := rec.Body.String()
-	if strings.Contains(doc, "<html") || !strings.HasPrefix(doc, "<h1>Head</h1>") || !strings.Contains(doc, "<p>x</p>") {
+	if strings.Contains(doc, "<html") || !strings.Contains(doc, "<h1>Head</h1>") || !strings.Contains(doc, "<p>x</p>") {
 		t.Errorf("partial = %q", doc)
 	}
 	if rec.Header().Get("HX-Title") != "Partial" {
@@ -142,6 +143,22 @@ func TestRenderPageHTMX(t *testing.T) {
 	if err := k.RenderPage(httptest.NewRecorder(), req, Page{Title: "x", Toasts: []Toast{{Level: "loud"}}}); err == nil {
 		t.Error("page with a bad toast should fail")
 	}
+}
+
+func TestPageHeaderCarriesAccentLabel(t *testing.T) {
+	k := newKit(t)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	if err := k.RenderPage(rec, req, Page{Title: "Schemas", Label: "Issuer", Lead: "Define what you issue."}); err != nil {
+		t.Fatal(err)
+	}
+	want := `<div class="pg-header">` + "\n" + `<p class="pg-header-label">Issuer</p>` + "\n" +
+		`<h1>Schemas</h1>` + "\n" + `<p class="pg-header-lead">Define what you issue.</p>` + "\n</div>"
+	if doc := rec.Body.String(); !strings.HasPrefix(doc, want) {
+		t.Errorf("page header = %q, want prefix %q", doc, want)
+	}
+	a11ytest.AssertFragment(t, rec.Body.String())
 }
 
 func TestPageTextAndLangCanBeTranslated(t *testing.T) {

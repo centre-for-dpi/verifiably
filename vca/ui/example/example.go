@@ -99,6 +99,8 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 	parts = append(parts, template.HTML(`</form>`)) //nolint:gosec // literal
 	return components.Page{
 		Title:       "vca UI kit demo",
+		Label:       "UI kit",
+		Lead:        "Every component of the kit on one page, in the light and the dark theme.",
 		Description: "Every component of the vca UI kit on one page.",
 		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "vca"},
 			Links: []components.Link{{Href: "/", Text: "Demo", Current: true}, {Href: "/static/vca.css", Text: "Stylesheet"}}},
