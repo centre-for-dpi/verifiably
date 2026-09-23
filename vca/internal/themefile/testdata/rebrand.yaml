@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: Apache-2.0
+# A rebrand example: a blue and brown national look with a logo and an issuer accent.
+version: 1
+name: ministry
+wordmark:
+  text: "Ministry"
+  emphasis: "ID"
+logo:
+  data_uri: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMCAxMCI+PGNpcmNsZSBjeD0iNSIgY3k9IjUiIHI9IjQiLz48L3N2Zz4="
+  alt: "The crest"
+fonts:
+  heading:
+    family: "Google Sans Flex"
+    fallback: "system-ui, sans-serif"
+  body:
+    family: "Google Sans Flex"
+    fallback: "system-ui, sans-serif"
+  mono:
+    fallback: "Menlo, Consolas, monospace"
+colors:
+  light:
+    ink: "#101418"
+    paper: "#FFFFFF"
+    primary: "#1B4D8C"
+    accent: "#8A4B08"
+    spark: "#F0B36A"
+    secondary: "#3A4048"
+    muted: "#5F6670"
+    line: "#D6DAE0"
+    invert-bg: "#1B4D8C"
+    invert-fg: "#FFFFFF"
+    invert-muted: "#D6DAE0"
+    invert-accent: "#F0B36A"
+    warn: "#7A4B00"
+    bad: "#A61B1B"
+    ok: "#1E6B3B"
+  dark:
+    ink: "#F2F5F8"
+    paper: "#0A0F1A"
+    primary: "#7FB2F0"
+    accent: "#F0B36A"
+    spark: "#FFD27A"
+    secondary: "#B8C0CC"
+    muted: "#8A93A0"
+    line: "#2A3340"
+    invert-bg: "#7FB2F0"
+    invert-fg: "#0A0F1A"
+    invert-muted: "#0A0F1A"
+    invert-accent: "#0A0F1A"
+    warn: "#F5D96E"
+    bad: "#FF8A80"
+    ok: "#6FCB8A"
+radii:
+  small: "0"
+  medium: "0.5rem"
+  pill: "62.5rem"
+spacing: ["0.25rem", "0.5rem", "0.75rem", "1rem", "1.5rem", "2rem", "3rem"]
+roles:
+  admin:    { light: "", dark: "" }
+  issuer:   { light: "#8A4B08", dark: "#F0B36A" }
+  holder:   { light: "", dark: "" }
+  verifier: { light: "", dark: "" }

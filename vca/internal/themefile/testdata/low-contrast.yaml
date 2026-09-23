@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: Apache-2.0
+# The look of every VCA page. Edit it, run "vca theme check", then "vca theme apply".
+version: 1
+name: adamndegwa
+wordmark:
+  text: "VCA"
+  emphasis: ""            # optional second part, drawn in the primary colour
+logo:
+  data_uri: ""            # optional: data:image/svg+xml;base64,... or png or webp, 64 KiB at most
+  alt: ""                 # required when data_uri is set
+fonts:
+  heading:
+    family: "Cinzel"
+    fallback: "Georgia, 'Times New Roman', serif"
+  body:
+    family: "Google Sans Flex"
+    fallback: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+  mono:
+    fallback: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+colors:
+  light:
+    ink: "#0B0B09"          # text
+    paper: "#F0EFE9"        # canvas
+    primary: "#5B9E73"
+    accent: "#7A632A"       # gold: labels, rules, focus ring
+    spark: "#F0D053"        # brass: rare highlight on dark surfaces
+    secondary: "#3B3F39"    # charcoal: secondary text
+    muted: "#6A6A65"        # stone: meta text, input borders
+    line: "#D9DAD6"         # mist: hairlines
+    invert-bg: "#21663F"    # tile and card hover surface
+    invert-fg: "#F0EFE9"
+    invert-muted: "#D9DAD6"
+    invert-accent: "#F0D053"
+    warn: "#7A4B00"
+    bad: "#A61B1B"
+    ok: "#1E6B3B"
+  dark:
+    ink: "#F7F7F4"
+    paper: "#000000"
+    primary: "#49A863"
+    accent: "#C9A855"
+    spark: "#F5D96E"
+    secondary: "#A8A8A4"
+    muted: "#888888"
+    line: "#3A3A38"
+    invert-bg: "#49A863"
+    invert-fg: "#000000"
+    invert-muted: "#000000"
+    invert-accent: "#000000"
+    warn: "#F5D96E"
+    bad: "#FF8A80"
+    ok: "#6FCB8A"
+radii:
+  small: "0.125rem"
+  medium: "0.25rem"
+  pill: "62.5rem"
+spacing: ["0.25rem", "0.5rem", "0.75rem", "1rem", "1.5rem", "2rem", "3rem"]
+roles:                      # optional accent per role; empty inherits "accent"
+  admin:    { light: "", dark: "" }
+  issuer:   { light: "", dark: "" }
+  holder:   { light: "", dark: "" }
+  verifier: { light: "", dark: "" }

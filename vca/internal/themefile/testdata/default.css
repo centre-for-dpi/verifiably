@@ -1,0 +1,11 @@
+/* font pack: adamndegwa */
+@font-face{font-family:'Cinzel';font-style:normal;font-weight:400 900;font-display:swap;src:url(/static/fonts/cinzel-latin-wght-normal.woff2) format('woff2-variations');}
+@font-face{font-family:'Google Sans Flex';font-style:normal;font-weight:1 1000;font-display:swap;src:url(/static/fonts/google-sans-flex-latin-wght-normal.woff2) format('woff2-variations');}
+:root{--font-heading:'Cinzel', Georgia, 'Times New Roman', serif;--font-body:'Google Sans Flex', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;--font-mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;}
+/* theme: adamndegwa-light */
+:root{--accent:#7A632A;--bad:#A61B1B;--ink:#0B0B09;--invert-accent:#F0D053;--invert-bg:#21663F;--invert-fg:#F0EFE9;--invert-muted:#D9DAD6;--line:#D9DAD6;--muted:#6A6A65;--ok:#1E6B3B;--paper:#F0EFE9;--primary:#21663F;--secondary:#3B3F39;--spark:#F0D053;--warn:#7A4B00;}
+/* theme: adamndegwa-dark */
+[data-theme="dark"]{--accent:#C9A855;--bad:#FF8A80;--ink:#F7F7F4;--invert-accent:#000000;--invert-bg:#49A863;--invert-fg:#000000;--invert-muted:#000000;--line:#3A3A38;--muted:#888888;--ok:#6FCB8A;--paper:#000000;--primary:#49A863;--secondary:#A8A8A4;--spark:#F5D96E;--warn:#F5D96E;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--accent:#C9A855;--bad:#FF8A80;--ink:#F7F7F4;--invert-accent:#000000;--invert-bg:#49A863;--invert-fg:#000000;--invert-muted:#000000;--line:#3A3A38;--muted:#888888;--ok:#6FCB8A;--paper:#000000;--primary:#49A863;--secondary:#A8A8A4;--spark:#F5D96E;--warn:#F5D96E;}}
+/* brand */
+:root{--radius-s:0.125rem;--radius-m:0.25rem;--radius-pill:62.5rem;--space-1:0.25rem;--space-2:0.5rem;--space-3:0.75rem;--space-4:1rem;--space-5:1.5rem;--space-6:2rem;--space-7:3rem;--role-accent:var(--accent);}
