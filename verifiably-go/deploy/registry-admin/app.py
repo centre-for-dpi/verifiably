@@ -852,6 +852,7 @@ async def import_db(entity: str, request: Request):
 
 @app.post("/credential/{entity}/import-registry", response_class=HTMLResponse)
 async def import_registry(entity: str, request: Request):
+    entity = seg(entity, "entity")
     s, err = _ready(entity)
     if err:
         return HTMLResponse(err)
