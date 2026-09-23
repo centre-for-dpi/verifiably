@@ -23,7 +23,7 @@ This document covers ADR-027 decisions 3 to 9.
 |---|---|
 | `ui` | `Assets` handler, embedded templates and static files, `HTMXVersion`, `Prefix`. |
 | `ui/theme` | `Theme` type, `DefaultLight`, `DefaultDark`, `Validate`, `CSS`, `ContrastRatio`. |
-| `ui/fonts` | `Pack` type with four roles, `Default`, `Validate`, `CSS`, `Files`. |
+| `ui/fonts` | `Pack` type with three roles, `Default`, `Shipped`, `Validate`, `CSS`, `Files`. |
 | `ui/components` | `Kit` with one template and one data struct per component. |
 | `ui/a11ytest` | `AssertPage`, `AssertFragment`, and `Check` for tests. |
 | `ui/example` | Demo page that uses every component. `cmd/demo` serves it. |
@@ -81,7 +81,7 @@ gets `304 Not Modified`.
 |---|---|
 | `/static/vca.css` | Font faces, light tokens, dark tokens, then the base stylesheet. |
 | `/static/htmx.min.js` | htmx, version in `ui.HTMXVersion`. |
-| `/static/fonts/<file>.woff2` | One file per font role. |
+| `/static/fonts/<file>.woff2` | One file per font role that has a file: the heading and the body font. |
 
 ## How to add a theme
 
@@ -111,25 +111,34 @@ header cycles through system, light, and dark.
 
 ## How to swap a font pack
 
-A font pack is one Go value of type `fonts.Pack` with four roles.
+A font pack is one Go value of type `fonts.Pack` with three roles.
 
 | Role | CSS variable | Used for |
 |---|---|---|
-| `Display` | `--font-display` | Hero text and page titles. |
-| `Heading` | `--font-heading` | Section headings and labels. |
-| `Body` | `--font-body` | Body copy. |
-| `Meta` | `--font-meta` | Navigation, badges, code, numbers. |
+| `Heading` | `--font-heading` | Page titles, section headings, and the brand. |
+| `Body` | `--font-body` | Body copy, labels, navigation, badges, buttons, and numbers. |
+| `Mono` | `--font-mono` | Code. |
 
-1. Put one `.woff2` file per role under `ui/static/fonts/`. Use lower case
-   file names. Keep the sum of the four files below 1 MB.
+The default pack uses Cinzel for `Heading` and Google Sans Flex for
+`Body`. The kit ships these two files only. `Shipped` returns them by
+family name. `Mono` is a generic monospace stack with no file, so the
+browser uses a monospace font of the system.
+
+1. Put one `.woff2` file each for `Heading` and `Body` under
+   `ui/static/fonts/`. Use lower case file names. Keep the sum of the
+   files below 1 MB.
 2. Add the licence file of each font next to it and list it in `ui/NOTICE`.
 3. Copy `fonts.Default` into your package. Set `Family`, `Fallback`, `File`,
-   and `Weight` for each role.
-4. Pass the pack to `ui.Assets`. `Validate` rejects an empty role, a family
-   with quotes, or a file name that is not `.woff2`.
+   and `Weight` for `Heading` and `Body`. Set only `Fallback` for `Mono`.
+4. Pass the pack to `ui.Assets`. `Validate` rejects an empty role and a
+   family with quotes. It rejects a file name that is not `.woff2` and a
+   fallback with CSS syntax in it.
+5. `Validate` rejects a `Mono` role with a family, a file, or a weight.
+   The `Mono` fallback must end in `monospace`.
 
-`fonts.CSS` writes one `@font-face` per role with `font-display: swap`. The
-browser shows the fallback stack until the file arrives.
+`fonts.CSS` writes one `@font-face` per role with a file, with
+`font-display: swap`. The browser shows the fallback stack until the file
+arrives.
 
 ## Components
 

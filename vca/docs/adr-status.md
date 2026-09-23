@@ -377,7 +377,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-032 | 1 One theme file with a path variable | Not started | `deploy/vca/theme.yaml` | Proposed record. No work exists yet. |
 | ADR-032 | 2 The kit keeps the pairings, the file sets colours | Not started | `vca/ui/theme` | Proposed record. No work exists yet. |
-| ADR-032 | 3 Two font families and a monospace stack | Not started | `vca/ui/fonts` | Proposed record. No work exists yet. |
+| ADR-032 | 3 Two font families and a monospace stack | Done | `vca/ui/fonts` | |
 | ADR-032 | 4 Wordmark, logo, radii, spacing, role accents | Not started | `vca/internal/themefile` | Proposed record. No work exists yet. |
 | ADR-032 | 5 The YAML reader lives outside the kit | Not started | `vca/internal/themefile` | Proposed record. No work exists yet. |
 | ADR-032 | 6 Theme check and theme apply commands | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
@@ -515,8 +515,8 @@ A row that is not `Done` carries a note.
 
 | Status | Decisions |
 |---|---|
-| Done | 170 |
+| Done | 171 |
 | Partial | 20 |
 | Deferred | 3 |
-| Not started | 71 |
+| Not started | 70 |
 | Total | 264 |

@@ -11,13 +11,12 @@ This kit is licensed under Apache-2.0 (see the repository LICENSE).
 2. htmx 2.0.10 (static/htmx.min.js), licensed under the Zero-Clause BSD
    licence (static/LICENSE.htmx.txt). https://htmx.org
 
-3. Fonts (static/fonts/), each licensed under the SIL Open Font License 1.1.
-   Files come from the Fontsource packages on npm, latin subsets only:
-   - Big Shoulders Inline Display, @fontsource-variable/big-shoulders-inline-display 5.3.0
-     (static/fonts/LICENSE.big-shoulders-inline-display.txt)
+3. Two fonts (static/fonts/), each licensed under the SIL Open Font
+   License 1.1. Files come from the Fontsource packages on npm, latin
+   subsets only:
    - Cinzel, @fontsource-variable/cinzel 5.3.0
      (static/fonts/LICENSE.cinzel.txt)
    - Google Sans Flex, @fontsource-variable/google-sans-flex 5.3.1
      (static/fonts/LICENSE.google-sans-flex.txt)
-   - Google Sans Code, @fontsource-variable/google-sans-code 5.3.0
-     (static/fonts/LICENSE.google-sans-code.txt)
+   Code and numbers use the generic monospace fonts of the system. The
+   kit ships no monospace font file.

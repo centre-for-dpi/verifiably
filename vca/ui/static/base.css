@@ -1,6 +1,8 @@
 /* vca UI kit base stylesheet.
    Colour tokens and font stacks are prepended at startup from the Go theme
-   and font pack. This file must only use the --token custom properties. */
+   and font pack. This file must only use the --token custom properties.
+   Fonts: --font-heading for headings, --font-body for text and labels,
+   --font-mono for code. */
 
 *,*::before,*::after{box-sizing:border-box}
 *{margin:0;padding:0}
@@ -20,13 +22,13 @@ body{
 a{color:var(--primary);text-underline-offset:.15em}
 a:hover{color:var(--accent)}
 img,svg{max-width:100%;height:auto}
-code,pre,kbd{font-family:var(--font-meta)}
+code,pre,kbd{font-family:var(--font-mono)}
 
 /* ---------- accessibility ---------- */
 .skip-link{
   position:absolute;left:-9999px;top:0;
   background:var(--ink);color:var(--paper);
-  font-family:var(--font-meta);font-size:.9rem;
+  font-family:var(--font-body);font-size:.9rem;
   padding:.75rem 1rem;z-index:200;text-decoration:none;
 }
 .skip-link:focus{left:0}
@@ -57,7 +59,7 @@ button,[role="button"],input:not([type="hidden"]),select,textarea,summary,.nav a
 .nav ul{display:flex;flex-wrap:wrap;gap:.25rem 1rem;list-style:none}
 .nav a{
   display:inline-flex;align-items:center;padding:.4rem .25rem;
-  font-family:var(--font-meta);font-size:.85rem;letter-spacing:.08em;
+  font-family:var(--font-body);font-size:.85rem;letter-spacing:.08em;
   text-transform:uppercase;text-decoration:none;color:var(--ink);
   border-bottom:2px solid transparent;
 }
@@ -67,9 +69,9 @@ button,[role="button"],input:not([type="hidden"]),select,textarea,summary,.nav a
 main{flex:1;width:100%;max-width:70rem;margin:0 auto;padding:1.5rem}
 .footer{
   padding:1rem 1.5rem;border-top:1px solid var(--line);
-  font-family:var(--font-meta);font-size:.85rem;color:var(--muted);
+  font-family:var(--font-body);font-size:.85rem;color:var(--muted);
 }
-h1{font-family:var(--font-display);font-weight:700;font-size:2.5rem;line-height:1.1;margin:0 0 1rem}
+h1{font-family:var(--font-heading);font-weight:700;font-size:2.5rem;line-height:1.1;margin:0 0 1rem}
 h2,h3,h4{font-family:var(--font-heading);line-height:1.2;margin:0 0 .5rem}
 h2{font-size:1.4rem}
 h3{font-size:1.15rem}
@@ -80,11 +82,11 @@ p{margin:0 0 1rem}
   border:1px solid var(--line);border-radius:.5rem;padding:1rem 1.25rem;
   margin:0 0 1rem;background:var(--paper);
 }
-.card-footer{margin-top:.75rem;font-family:var(--font-meta);font-size:.85rem;color:var(--muted)}
+.card-footer{margin-top:.75rem;font-family:var(--font-body);font-size:.85rem;color:var(--muted)}
 
 /* ---------- field ---------- */
 .field{display:flex;flex-direction:column;gap:.35rem;margin:0 0 1rem;max-width:40rem}
-.field label{font-family:var(--font-meta);font-weight:600;font-size:.95rem}
+.field label{font-family:var(--font-body);font-weight:600;font-size:.95rem}
 .field input,.field select,.field textarea{
   font:inherit;color:var(--ink);background:var(--paper);
   border:1px solid var(--muted);border-radius:.3rem;padding:.5rem .65rem;min-height:2.5rem;
@@ -100,12 +102,12 @@ p{margin:0 0 1rem}
 table{border-collapse:collapse;width:100%}
 caption{text-align:left;font-family:var(--font-heading);font-weight:600;padding:.5rem 0}
 th,td{text-align:left;padding:.5rem .65rem;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-family:var(--font-meta);font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
+th{font-family:var(--font-body);font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
 
 /* ---------- badge ---------- */
 .badge{
   display:inline-block;padding:.15rem .6rem;border-radius:1rem;
-  font-family:var(--font-meta);font-size:.85rem;font-weight:600;
+  font-family:var(--font-body);font-size:.85rem;font-weight:600;
   border:2px solid currentColor;color:var(--ink);
 }
 .badge-ok{color:var(--ok)}
@@ -135,7 +137,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .qr{display:block;width:16rem;max-width:100%;background:#FFFFFF;padding:.5rem;border:1px solid var(--line)}
 
 /* ---------- json ---------- */
-.json summary{cursor:pointer;padding:.4rem 0;font-family:var(--font-meta)}
+.json summary{cursor:pointer;padding:.4rem 0;font-family:var(--font-body)}
 .json pre{
   overflow:auto;padding:.75rem;border:1px solid var(--line);border-radius:.3rem;
   font-size:.9rem;line-height:1.4;max-height:24rem;
@@ -145,7 +147,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:.4rem;
   min-height:2.5rem;padding:.5rem 1rem;border-radius:.3rem;
-  font:inherit;font-family:var(--font-meta);font-weight:600;cursor:pointer;
+  font:inherit;font-family:var(--font-body);font-weight:600;cursor:pointer;
   text-decoration:none;border:2px solid var(--primary);color:var(--primary);background:var(--paper);
 }
 .btn-primary{background:var(--primary);color:var(--paper)}

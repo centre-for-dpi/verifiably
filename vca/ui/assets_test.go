@@ -3,8 +3,12 @@
 package ui
 
 import (
+	"bytes"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -59,6 +63,20 @@ func TestStylesheetCarriesThemeFontsAndA11y(t *testing.T) {
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("stylesheet missing %q", want)
+		}
+	}
+	// Headings use Cinzel and code uses the generic monospace stack. The
+	// removed display and meta roles leave no trace.
+	for _, want := range []string{
+		"h1{font-family:var(--font-heading)", "code,pre,kbd{font-family:var(--font-mono)}",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("stylesheet missing %q", want)
+		}
+	}
+	for _, gone := range []string{"var(--font-display)", "--font-meta"} {
+		if strings.Contains(css, gone) {
+			t.Errorf("stylesheet still uses %q", gone)
 		}
 	}
 	if strings.Contains(css, "outline:none") || strings.Contains(css, "outline: none") {
@@ -152,5 +170,57 @@ func TestAssetsRejectsBadInput(t *testing.T) {
 	fsys["static/base.css"] = &fstest.MapFile{Data: []byte("body{}")}
 	if _, err := build(fsys, light, dark, pack); err == nil || !strings.Contains(err.Error(), "htmx") {
 		t.Errorf("missing htmx should fail, got %v", err)
+	}
+}
+
+// removedFamilies are the font families the owner removed from the pack.
+// The strings are split so this file does not match itself.
+var removedFamilies = []string{
+	"big" + " shoulders", "big" + "-shoulders", "google sans" + " code", "google-sans" + "-code",
+}
+
+func hasRemovedFamily(b []byte) string {
+	low := bytes.ToLower(b)
+	for _, f := range removedFamilies {
+		if bytes.Contains(low, []byte(f)) {
+			return f
+		}
+	}
+	return ""
+}
+
+// TestNoRemovedFamilyAnywhere checks every file name and file under ui/,
+// and every line of docs/ui.md, for a removed font family.
+func TestNoRemovedFamilyAnywhere(t *testing.T) {
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if f := hasRemovedFamily([]byte(path)); f != "" {
+			t.Errorf("%s: the name holds %q", path, f)
+		}
+		if d.IsDir() {
+			return nil
+		}
+		b, readErr := os.ReadFile(filepath.Clean(path))
+		if readErr != nil {
+			return readErr
+		}
+		if f := hasRemovedFamily(b); f != "" {
+			t.Errorf("%s: the file holds %q", path, f)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk ui: %v", err)
+	}
+	doc, err := os.ReadFile(filepath.Join("..", "docs", "ui.md"))
+	if err != nil {
+		t.Fatalf("read docs/ui.md: %v", err)
+	}
+	for i, line := range bytes.Split(doc, []byte("\n")) {
+		if f := hasRemovedFamily(line); f != "" {
+			t.Errorf("docs/ui.md:%d holds %q", i+1, f)
+		}
 	}
 }
