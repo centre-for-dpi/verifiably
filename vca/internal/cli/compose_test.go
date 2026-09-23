@@ -30,14 +30,15 @@ type composeDoc struct {
 }
 
 type composeService struct {
-	Image       string   `yaml:"image"`
-	Profiles    []string `yaml:"profiles"`
-	Ports       []string `yaml:"ports"`
-	ReadOnly    bool     `yaml:"read_only"`
-	User        string   `yaml:"user"`
-	CapDrop     []string `yaml:"cap_drop"`
-	SecurityOpt []string `yaml:"security_opt"`
-	Volumes     []string `yaml:"volumes"`
+	Image       string            `yaml:"image"`
+	Profiles    []string          `yaml:"profiles"`
+	Ports       []string          `yaml:"ports"`
+	ReadOnly    bool              `yaml:"read_only"`
+	User        string            `yaml:"user"`
+	CapDrop     []string          `yaml:"cap_drop"`
+	SecurityOpt []string          `yaml:"security_opt"`
+	Volumes     []string          `yaml:"volumes"`
+	Environment map[string]string `yaml:"environment"`
 }
 
 // TestComposeFileIsCurrent keeps the committed compose file equal to the
@@ -115,8 +116,8 @@ func TestComposeHasOneServicePerPairAndService(t *testing.T) {
 			if !strings.HasPrefix(svc.Image, s.Image()+":") {
 				t.Errorf("%s image = %q", name, svc.Image)
 			}
-			if s.Stateful && len(svc.Volumes) != 1 {
-				t.Errorf("%s is stateful but has %d volumes", name, len(svc.Volumes))
+			if s.Stateful && !hasVolume(svc.Volumes, "/data") {
+				t.Errorf("%s is stateful but has no data volume: %v", name, svc.Volumes)
 			}
 		}
 	}
@@ -247,4 +248,53 @@ func knownProfile(name string) bool {
 		}
 	}
 	return false
+}
+
+// hasVolume reports whether one volume line mounts the target path.
+func hasVolume(volumes []string, target string) bool {
+	for _, v := range volumes {
+		if strings.Contains(v, ":"+target+":") || strings.HasSuffix(v, ":"+target) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestUIServicesMountTheThemeFile is the delivery of the theme file
+// (ADR-032 decision 1): every service that draws pages reads
+// VCA_THEME_FILE and mounts the file read only; no other service does.
+func TestUIServicesMountTheThemeFile(t *testing.T) {
+	var doc composeDoc
+	if err := yaml.Unmarshal([]byte(RenderCompose()), &doc); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	ui := 0
+	for _, p := range AllPairs() {
+		for _, s := range ServicesFor(p) {
+			name := composeServiceName(p, s)
+			svc := doc.Services[name]
+			mounted := hasVolume(svc.Volumes, ThemeMountPath)
+			value, hasVar := svc.Environment[ThemeFileEnv]
+			if s.UI {
+				ui++
+				if !mounted {
+					t.Errorf("%s draws pages but does not mount the theme file: %v", name, svc.Volumes)
+				}
+				if value != ThemeMountPath {
+					t.Errorf("%s %s = %q, want %q", name, ThemeFileEnv, value, ThemeMountPath)
+				}
+				continue
+			}
+			if mounted || hasVar {
+				t.Errorf("%s draws no page but has the theme file", name)
+			}
+		}
+	}
+	if ui == 0 {
+		t.Fatal("no service draws pages")
+	}
+	want := "${" + ThemeHostFileEnv + ":-./theme.yaml}:" + ThemeMountPath + ":ro"
+	if !strings.Contains(RenderCompose(), want) {
+		t.Errorf("the compose file has no %q mount", want)
+	}
 }

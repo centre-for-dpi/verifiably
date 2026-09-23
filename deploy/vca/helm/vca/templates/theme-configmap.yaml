@@ -1,0 +1,20 @@
+{{- /* SPDX-License-Identifier: Apache-2.0 */ -}}
+{{- /*
+The theme file of every UI service (ADR-032 decision 1). The default is
+files/theme.yaml, a copy of deploy/vca/theme.yaml. Replace it with:
+  helm upgrade vca deploy/vca/helm/vca --set-file global.theme.file=theme.yaml
+Every UI chart mounts this ConfigMap and rolls its pods on a change.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-theme
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: vca
+data:
+  theme.yaml: |
+{{ .Values.global.theme.file | default (.Files.Get "files/theme.yaml") | indent 4 }}

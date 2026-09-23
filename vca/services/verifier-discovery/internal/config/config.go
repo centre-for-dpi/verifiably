@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
 // Prefix of every variable of this service.
@@ -20,6 +21,10 @@ const Prefix = "VCA_DISCOVERY_"
 type Config struct {
 	// Listen is the address the HTTP server binds.
 	Listen string `env:"LISTEN" default:":8090"`
+	// ThemeFile is the theme file of the deployment, from VCA_THEME_FILE.
+	// Every service that serves HTML reads the same variable, so it carries
+	// no service prefix. Empty selects the embedded default look.
+	ThemeFile string
 	// BaseURL is the public root of the service.
 	BaseURL string `env:"BASE_URL" default:"http://localhost:8090"`
 	// StateDir holds the store files. Empty keeps the state in memory
@@ -63,6 +68,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := config.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	c.TrustURL = strings.TrimRight(c.TrustURL, "/")
 	return c, c.Check()

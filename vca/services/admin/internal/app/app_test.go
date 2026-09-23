@@ -19,6 +19,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 )
 
 // quiet returns a logger that writes nothing to the test output.
@@ -324,4 +325,14 @@ func TestBuildReportsABootstrapWriteFault(t *testing.T) {
 	if _, err := app.Build(cfg, app.Deps{Log: quiet()}); err == nil {
 		t.Fatal("a bootstrap write fault must fail the build")
 	}
+}
+
+// TestAppFailsOnBadThemeFile proves the service stops at start when the
+// theme file fails a kit pairing, and that the error names the pairing.
+func TestAppFailsOnBadThemeFile(t *testing.T) {
+	path := uikittest.LowContrastFile(t)
+	cfg := baseConfig()
+	cfg.ThemeFile = path
+	_, err := app.Build(cfg, app.Deps{Log: quiet()})
+	uikittest.AssertBadThemeError(t, err, path)
 }

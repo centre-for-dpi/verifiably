@@ -507,3 +507,36 @@ func TestEveryStatefulServiceNamesItsStatePath(t *testing.T) {
 		}
 	}
 }
+
+// TestUIServicesAreTheOnesWithPages keeps the UI flag honest: a service
+// draws pages when and only when one of its routes names a page.
+func TestUIServicesAreTheOnesWithPages(t *testing.T) {
+	var ui []string
+	for _, s := range Catalog() {
+		pages := false
+		for _, r := range s.Routes {
+			if r.Page != "" {
+				pages = true
+			}
+		}
+		if s.UI != pages {
+			t.Errorf("%s: UI = %v but has a page route = %v", s.Name, s.UI, pages)
+		}
+		if s.UI {
+			ui = append(ui, s.Name)
+		}
+	}
+	want := []string{"admin", "schema-builder-ui", "schema-registry", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-portal"}
+	if strings.Join(ui, ",") != strings.Join(want, ",") {
+		t.Errorf("UI services = %v, want %v", ui, want)
+	}
+	got := UIServices()
+	if len(got) != len(want) {
+		t.Fatalf("UIServices = %d, want %d", len(got), len(want))
+	}
+	for i, s := range got {
+		if s.Name != want[i] {
+			t.Errorf("UIServices[%d] = %s, want %s", i, s.Name, want[i])
+		}
+	}
+}

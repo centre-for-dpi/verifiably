@@ -22,6 +22,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/metadata"
 	"github.com/centre-for-dpi/vc-adapters/ui"
@@ -187,4 +188,14 @@ func writeFile(path, text string) error {
 // schemaClient builds a Connect client for the test server.
 func schemaClient(base string) schemav1connect.SchemaServiceClient {
 	return schemav1connect.NewSchemaServiceClient(http.DefaultClient, base)
+}
+
+// TestAppFailsOnBadThemeFile proves the service stops at start when the
+// theme file fails a kit pairing, and that the error names the pairing.
+func TestAppFailsOnBadThemeFile(t *testing.T) {
+	path := uikittest.LowContrastFile(t)
+	cfg := settings(t)
+	cfg.ThemeFile = path
+	_, err := Build(cfg, Deps{})
+	uikittest.AssertBadThemeError(t, err, path)
 }

@@ -169,6 +169,15 @@ message Config {
     roles: ROLE_HOLDER
     validation: "Starts with redis:// or rediss://."
   }];
+  // The theme file that every service with pages reads at start
+  // (ADR-032 decision 1). Optional. Empty selects the embedded default
+  // look. Compose and the Helm charts point it at their mounted copy of
+  // deploy/vca/theme.yaml. The CLI asks no question for it.
+  string theme_file = 14 [(setting) = {
+    description: "The theme file inside the container. Empty selects the embedded default look."
+    env: "VCA_THEME_FILE"
+    validation: "A file path inside the container. Compose mounts deploy/vca/theme.yaml at /etc/vca/theme.yaml."
+  }];
 
   // Oidc describes one OpenID Connect provider.
   message Oidc {

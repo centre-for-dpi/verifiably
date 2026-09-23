@@ -24,6 +24,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1/walletportalv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/blobs"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/config"
@@ -34,8 +35,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/static"
 	"github.com/centre-for-dpi/vc-adapters/ui"
-	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
-	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
 // App is the wired service.
@@ -121,14 +120,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	pages, err := portal.New(portal.Options{
-		Service: svc, Guard: guard, Prefix: cfg.PortalPrefix,
-		LoginPath: cfg.LoginURL, Now: deps.Now,
-	})
+	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
 	if err != nil {
 		return nil, err
 	}
-	assets, err := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+	pages, err := portal.New(portal.Options{
+		Service: svc, Guard: guard, Prefix: cfg.PortalPrefix,
+		LoginPath: cfg.LoginURL, Now: deps.Now, Kit: kit,
+	})
 	if err != nil {
 		return nil, err
 	}

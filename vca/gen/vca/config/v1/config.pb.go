@@ -258,7 +258,12 @@ type Config struct {
 	// Optional. Empty selects the in-memory limiter, which is fine for one
 	// replica. Set a Redis URL for more than one replica.
 	// Must start with redis:// or rediss://.
-	RedisUrl      string `protobuf:"bytes,13,opt,name=redis_url,json=redisUrl,proto3" json:"redis_url,omitempty"`
+	RedisUrl string `protobuf:"bytes,13,opt,name=redis_url,json=redisUrl,proto3" json:"redis_url,omitempty"`
+	// The theme file that every service with pages reads at start
+	// (ADR-032 decision 1). Optional. Empty selects the embedded default
+	// look. Compose and the Helm charts point it at their mounted copy of
+	// deploy/vca/theme.yaml. The CLI asks no question for it.
+	ThemeFile     string `protobuf:"bytes,14,opt,name=theme_file,json=themeFile,proto3" json:"theme_file,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -380,6 +385,13 @@ func (x *Config) GetLogLevel() string {
 func (x *Config) GetRedisUrl() string {
 	if x != nil {
 		return x.RedisUrl
+	}
+	return ""
+}
+
+func (x *Config) GetThemeFile() string {
+	if x != nil {
+		return x.ThemeFile
 	}
 	return ""
 }
@@ -682,7 +694,7 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\n" +
 	"validation\x18\b \x01(\tR\n" +
 	"validation\x12\x16\n" +
-	"\x06prompt\x18\t \x01(\bR\x06prompt\"\xa3%\n" +
+	"\x06prompt\x18\t \x01(\bR\x06prompt\"\x8a'\n" +
 	"\x06Config\x12x\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x13.vca.common.v1.RoleBO\xd2\xf3\x18K\n" +
 	"\x14The deployment role.\x12\bVCA_ROLE8\x01B'One of issuer, holder, verifier, admin.R\x04role\x12~\n" +
@@ -711,7 +723,10 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\tlog_level\x18\f \x01(\tBh\xd2\xf3\x18d\n" +
 	"+The log level of every service of the role.\x12\rVCA_LOG_LEVEL\x1a\x04infoB One of debug, info, warn, error.R\blogLevel\x12\xd2\x01\n" +
 	"\tredis_url\x18\r \x01(\tB\xb4\x01\xd2\xf3\x18\xaf\x01\n" +
-	"uThe Redis URL for rate limits and one time codes. Empty selects the in-memory limiter, which is fine for one replica.\x12\rVCA_REDIS_URL \x01*\x01\x02B\"Starts with redis:// or rediss://.R\bredisUrl\x1a\xdc\b\n" +
+	"uThe Redis URL for rate limits and one time codes. Empty selects the in-memory limiter, which is fine for one replica.\x12\rVCA_REDIS_URL \x01*\x01\x02B\"Starts with redis:// or rediss://.R\bredisUrl\x12\xe4\x01\n" +
+	"\n" +
+	"theme_file\x18\x0e \x01(\tB\xc4\x01\xd2\xf3\x18\xbf\x01\n" +
+	"MThe theme file inside the container. Empty selects the embedded default look.\x12\x0eVCA_THEME_FILEB^A file path inside the container. Compose mounts deploy/vca/theme.yaml at /etc/vca/theme.yaml.R\tthemeFile\x1a\xdc\b\n" +
 	"\x04Oidc\x12\xd6\x01\n" +
 	"\rdiscovery_url\x18\x01 \x01(\tB\xb0\x01\xd2\xf3\x18\xab\x01\n" +
 	"NThe OIDC discovery URL of the provider. Defaults to the Keycloak of the stack.\x12\x16VCA_OIDC_DISCOVERY_URL8\x01B?An absolute http or https URL that serves a discovery document.R\fdiscoveryUrl\x12\xa7\x01\n" +

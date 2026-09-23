@@ -17,14 +17,14 @@ import (
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
+	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/check"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/portal"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/results"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/ui"
-	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
-	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
 // App is the wired service.
@@ -90,6 +90,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 			return check.Evaluate(ctx, check.Options{Client: policyClient, Now: deps.Now}, payload)
 		}
 	}
+	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
+	if err != nil {
+		return nil, err
+	}
+	renderer, err := cards.New(kit)
+	if err != nil {
+		return nil, err
+	}
 	pages, err := portal.New(portal.Options{
 		Service:       svc,
 		Prefix:        cfg.PortalPrefix,
@@ -97,11 +105,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Evaluate:      evaluate,
 		MaxPasteBytes: cfg.MaxPasteBytes,
 		Now:           deps.Now,
+		Cards:         renderer,
 	})
-	if err != nil {
-		return nil, err
-	}
-	assets, err := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
 	if err != nil {
 		return nil, err
 	}

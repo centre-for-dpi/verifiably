@@ -250,6 +250,18 @@ for v in $(docker volume ls -q --filter name=vca_); do
 done
 ```
 
+### The theme file
+
+Every service that draws pages reads `VCA_THEME_FILE` at start
+(ADR-032 decision 1).
+The compose file sets it to `/etc/vca/theme.yaml` and mounts
+`deploy/vca/theme.yaml` there, read only.
+Set `VCA_THEME_HOST_FILE` in the `.env` file, or in the environment of the
+`vca` command, to mount another file, for example `deploy/theme.local.yaml`.
+A service that reads a file with a problem stops before it listens and
+prints every problem.
+See the section "Change the look after deployment" in `ui.md`.
+
 ### Hardening
 
 Every VCA service in the compose file:
@@ -440,10 +452,22 @@ The Go test checks every chart against the service catalog.
 It runs `helm lint` and `helm template` when helm is on the path.
 The packaged dependencies of the umbrella chart sit in
 `deploy/vca/helm/vca/charts/`, so helm needs no network.
+`TestPackagedChartsMatchTheSource` fails when a package differs from its
+chart directory.
 After you change a service chart, package the dependencies again:
 
 ```sh
-cd deploy/vca/helm/vca && helm dependency build
+cd vca && VCA_WRITE_HELM=1 go test ./internal/cli/ -run TestPackagedCharts
+```
+
+The umbrella chart holds the theme file of every page in the ConfigMap
+`<release>-theme` (ADR-032 decision 1).
+Its default is `files/theme.yaml`, a copy of `deploy/vca/theme.yaml`.
+Every UI chart mounts the ConfigMap at `/etc/vca` and rolls its pods when
+the file changes:
+
+```sh
+helm upgrade vca deploy/vca/helm/vca --set-file global.theme.file=theme.yaml
 ```
 
 `vca/hack/k8s-smoke.sh` lints, renders, and installs every chart into a

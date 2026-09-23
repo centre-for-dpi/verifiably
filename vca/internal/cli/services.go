@@ -29,6 +29,10 @@ type Service struct {
 	Dpg configv1.Dpg
 	// Stateful reports whether the service needs a data volume.
 	Stateful bool
+	// UI reports whether the service draws HTML pages. Such a service
+	// reads the theme file at start, so compose and the Helm charts
+	// deliver it (ADR-032 decision 1).
+	UI bool
 	// Links name the variables that point at another service.
 	// The CLI fills them from the port plan of the deployment.
 	Links []Link
@@ -128,7 +132,7 @@ func Catalog() []Service {
 	auth := Route{Match: "/auth/*"}
 	assets := Route{Match: "/static/*"}
 	out := []Service{
-		{Name: "admin", ListenEnv: "VCA_ADMIN_LISTEN", ExposedPort: 8093, Roles: admin, Stateful: true,
+		{Name: "admin", ListenEnv: "VCA_ADMIN_LISTEN", ExposedPort: 8093, Roles: admin, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_ADMIN_PUBLIC_URL", Kind: LinkPublicURL},
 				{Env: "VCA_ADMIN_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
@@ -188,7 +192,7 @@ func Catalog() []Service {
 				rpc("vca.issuerauth.v1.IssuerAuthService"), rpc("vca.admin.v1.AdminService"),
 				jwks, {Match: "/token"}, auth,
 			}},
-		{Name: "schema-builder-ui", ListenEnv: "VCA_SCHEMABUILDER_LISTEN", ExposedPort: 8081, Roles: issuer,
+		{Name: "schema-builder-ui", ListenEnv: "VCA_SCHEMABUILDER_LISTEN", ExposedPort: 8081, Roles: issuer, UI: true,
 			Links: []Link{
 				{Env: "VCA_SCHEMABUILDER_REGISTRY_URL", Target: "schema-registry", Kind: LinkURL},
 				{Env: "VCA_SCHEMABUILDER_CATALOG_URL", Kind: LinkAdapterURL},
@@ -200,7 +204,7 @@ func Catalog() []Service {
 				rpc("vca.schemabuilder.v1.SchemaBuilderService"),
 				{Match: "/builder/*", Page: "Schema builder"}, {Match: "/pdf/preview/*"},
 			}},
-		{Name: "schema-registry", ListenEnv: "VCA_SCHEMA_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true,
+		{Name: "schema-registry", ListenEnv: "VCA_SCHEMA_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_SCHEMA_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_SCHEMA_BACKEND_URL", Kind: LinkAdapterURL},
@@ -248,7 +252,7 @@ func Catalog() []Service {
 			},
 			Fixed:  state("VCA_VERIFIER_COMBINED_STATE_DIR"),
 			Routes: []Route{rpc("vca.combined.v1.CombinedService")}},
-		{Name: "verifier-discovery", ListenEnv: "VCA_DISCOVERY_LISTEN", ExposedPort: 8090, Roles: verifier, Stateful: true,
+		{Name: "verifier-discovery", ListenEnv: "VCA_DISCOVERY_LISTEN", ExposedPort: 8090, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_DISCOVERY_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
@@ -262,7 +266,7 @@ func Catalog() []Service {
 				rpc("vca.discovery.v1.DiscoveryService"),
 				{Match: "/catalog"}, {Match: "/catalog/*"}, {Match: "/discovery/*", Page: "Issuer discovery"},
 			}},
-		{Name: "verifier-ingest", ListenEnv: "VCA_INGEST_LISTEN", ExposedPort: 8091, Roles: verifier, Stateful: true,
+		{Name: "verifier-ingest", ListenEnv: "VCA_INGEST_LISTEN", ExposedPort: 8091, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_INGEST_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_INGEST_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
@@ -279,7 +283,7 @@ func Catalog() []Service {
 			Links:  []Link{{Env: "VCA_VERIFIER_POLICY_TRUST_URL", Target: "trust-registry", Kind: LinkURL}},
 			Fixed:  state("VCA_VERIFIER_POLICY_STATE_DIR"),
 			Routes: []Route{rpc("vca.policy.v1.PolicyService")}},
-		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true,
+		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL}},
 			Fixed: state("VCA_VERIFIER_RESULTS_STATE_DIR"),
 			Routes: []Route{
@@ -296,7 +300,7 @@ func Catalog() []Service {
 				rpc("vca.walletauth.v1.WalletAuthService"), rpc("vca.admin.v1.AdminService"),
 				jwks, {Match: "/auth/*", Strip: true},
 			}},
-		{Name: "wallet-portal", ListenEnv: "VCA_WALLET_PORTAL_LISTEN", ExposedPort: 8092, Roles: holder, Stateful: true,
+		{Name: "wallet-portal", ListenEnv: "VCA_WALLET_PORTAL_LISTEN", ExposedPort: 8092, Roles: holder, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_WALLET_PORTAL_AUTH_JWKS_URL", Target: "wallet-auth", Path: "/.well-known/jwks.json", Kind: LinkURL},
 				// The browser follows the login URL, so it is public. The
@@ -313,6 +317,17 @@ func Catalog() []Service {
 			}},
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// UIServices lists the services that draw pages, in name order.
+func UIServices() []Service {
+	var out []Service
+	for _, s := range Catalog() {
+		if s.UI {
+			out = append(out, s)
+		}
+	}
 	return out
 }
 

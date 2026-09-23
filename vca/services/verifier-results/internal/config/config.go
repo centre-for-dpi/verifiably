@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
 // Prefix of every variable of this service.
@@ -20,6 +21,10 @@ const Prefix = "VCA_VERIFIER_RESULTS_"
 type Config struct {
 	// Listen is the address the HTTP server binds.
 	Listen string `env:"LISTEN" default:":8087"`
+	// ThemeFile is the theme file of the deployment, from VCA_THEME_FILE.
+	// Every service that serves HTML reads the same variable, so it carries
+	// no service prefix. Empty selects the embedded default look.
+	ThemeFile string
 	// StateDir holds the result files. Empty keeps the results in
 	// memory and loses them on restart.
 	StateDir string `env:"STATE_DIR"`
@@ -54,6 +59,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := config.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
 	return c, c.Check()
 }
 

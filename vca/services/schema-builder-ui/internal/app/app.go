@@ -13,13 +13,12 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schemabuilder/v1/schemabuilderv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/pages"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/pdfcache"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/ui"
-	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
-	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
 // App is the wired service.
@@ -61,12 +60,12 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Registry: deps.Registry, Catalog: deps.Catalog,
 		PDF: pdfcache.New(cfg.PDFCacheSize), Issuer: cfg.Issuer,
 	})
+	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
 	builder, pagesErr := pages.New(pages.Options{
 		Builder: svc, Registry: deps.Registry, Prefix: cfg.Prefix,
-		RegistryURL: cfg.PortalURL, Catalog: deps.Catalog != nil,
+		RegistryURL: cfg.PortalURL, Catalog: deps.Catalog != nil, Kit: kit,
 	})
-	assets, assetsErr := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
-	if err := first(svcErr, pagesErr, assetsErr); err != nil {
+	if err := first(svcErr, assetsErr, pagesErr); err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()

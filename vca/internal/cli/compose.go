@@ -18,6 +18,18 @@ const ComposeFile = "deploy/vca/compose.yaml"
 // ComposeProject is the compose project name.
 const ComposeProject = "vca"
 
+// Theme file delivery (ADR-032 decision 1). Every UI service reads
+// ThemeFileEnv. Compose mounts the file of the host at ThemeMountPath,
+// read only. The host file is deploy/vca/theme.yaml, next to the compose
+// file, unless ThemeHostFileEnv names another one, for example the git
+// ignored deploy/theme.local.yaml.
+const (
+	ThemeFileEnv     = "VCA_THEME_FILE"
+	ThemeHostFileEnv = "VCA_THEME_HOST_FILE"
+	ThemeMountPath   = "/etc/vca/theme.yaml"
+	themeHostDefault = "./theme.yaml"
+)
+
 // DpgStackFiles lists the compose file of each DPG stack. The main
 // compose file pulls them in with include (ADR-008 decision 3).
 func DpgStackFiles() []string {
@@ -109,13 +121,24 @@ func renderComposeService(b *strings.Builder, p Pair, a PortAssignment) []string
 	// A public host sets VCA_BIND to the loopback address, so only the
 	// reverse proxy of the host reaches the port.
 	fmt.Fprintf(b, "      - \"${%s:-0.0.0.0}:${%s:-%d}:${%s:-%d}\"\n", BindEnv, hostVar, a.Host, a.PortEnv, a.Listen)
-	if a.Service.Stateful {
-		volume := name + "-data"
-		b.WriteString("    volumes:\n")
-		fmt.Fprintf(b, "      - %s:/data\n", volume)
-		return []string{volume}
+	if a.Service.UI {
+		b.WriteString("    environment:\n")
+		fmt.Fprintf(b, "      %s: %s\n", ThemeFileEnv, ThemeMountPath)
 	}
-	return nil
+	var volumes []string
+	if a.Service.Stateful {
+		volumes = append(volumes, name+"-data")
+	}
+	if a.Service.Stateful || a.Service.UI {
+		b.WriteString("    volumes:\n")
+	}
+	for _, v := range volumes {
+		fmt.Fprintf(b, "      - %s:/data\n", v)
+	}
+	if a.Service.UI {
+		fmt.Fprintf(b, "      - ${%s:-%s}:%s:ro\n", ThemeHostFileEnv, themeHostDefault, ThemeMountPath)
+	}
+	return volumes
 }
 
 // Profiles lists the compose profiles of a deploy run. One pair gives one

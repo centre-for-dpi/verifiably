@@ -16,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/crawl"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/httpapi"
@@ -23,8 +24,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/ui"
-	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
-	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
 // App is the wired service.
@@ -89,8 +88,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	crawler, crawlErr := crawl.New(crawl.Options{Trust: trust, Fetch: fetcher, Store: st, Now: deps.Now})
 	svc, serviceErr := service.New(service.Options{Store: st, Crawler: crawler, PageSizeMax: cfg.PageSizeMax, Now: deps.Now})
-	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix})
-	assets, assetsErr := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
+	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit})
 	if err := errors.Join(storeErr, crawlErr, serviceErr, portalErr, assetsErr); err != nil {
 		return nil, err
 	}

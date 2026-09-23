@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/themefile"
 )
 
 // chartMeta is the part of a Chart.yaml the tests read.
@@ -203,14 +205,14 @@ func TestUmbrellaChartTurnsRolesOn(t *testing.T) {
 			t.Errorf("%s has no packaged dependency at charts/: %v", s.Name, err)
 		}
 	}
-	var values map[string]map[string]map[string]bool
+	var values map[string]map[string]map[string]any
 	readYaml(t, filepath.Join(dir, "values.yaml"), &values)
 	for _, r := range Roles() {
 		name := ShortName(r.String())
 		if _, ok := values["roles"][name]; !ok {
 			t.Errorf("the umbrella values have no roles.%s", name)
 		}
-		if values["roles"][name]["enabled"] {
+		if values["roles"][name]["enabled"] == true {
 			t.Errorf("roles.%s.enabled is on by default", name)
 		}
 	}
@@ -268,5 +270,170 @@ func TestHelmLintAndTemplate(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "name: test-issuance") {
 		t.Error("the admin role rendered an issuer service")
+	}
+}
+
+// themeValues is the theme part of a UI chart's values.yaml.
+type themeValues struct {
+	Theme struct {
+		Enabled   bool   `yaml:"enabled"`
+		ConfigMap string `yaml:"configMap"`
+		MountPath string `yaml:"mountPath"`
+	} `yaml:"theme"`
+	Global struct {
+		Theme struct {
+			File string `yaml:"file"`
+		} `yaml:"theme"`
+	} `yaml:"global"`
+}
+
+// TestUIChartsMountTheThemeConfigMap checks the Kubernetes delivery of
+// the theme file (ADR-032 decision 1): every UI chart mounts the theme
+// ConfigMap read only, sets VCA_THEME_FILE, and rolls its pods through a
+// checksum of the file. No other chart touches it.
+func TestUIChartsMountTheThemeConfigMap(t *testing.T) {
+	root := repoRoot()
+	for _, s := range Catalog() {
+		dir := HelmChartDir(root, s.Name)
+		data, err := os.ReadFile(filepath.Join(dir, "templates", "deployment.yaml")) // #nosec G304 -- a fixed test path
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		mentions := strings.Contains(text, ThemeFileEnv) || strings.Contains(text, "checksum/theme") || strings.Contains(text, "name: theme")
+		if !s.UI {
+			if mentions {
+				t.Errorf("%s draws no page but its deployment names the theme", s.Name)
+			}
+			continue
+		}
+		for _, want := range []string{
+			"checksum/theme: {{ .Values.global.theme.file | sha256sum }}",
+			"- name: " + ThemeFileEnv,
+			"value: {{ .Values.theme.mountPath }}/theme.yaml",
+			"mountPath: {{ .Values.theme.mountPath }}",
+			"readOnly: true",
+			`{{ .Values.theme.configMap | default (printf "%s-theme" .Release.Name) }}`,
+		} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s deployment lacks %q", s.Name, want)
+			}
+		}
+		var values themeValues
+		readYaml(t, filepath.Join(dir, "values.yaml"), &values)
+		if !values.Theme.Enabled || values.Theme.MountPath != filepath.Dir(ThemeMountPath) || values.Theme.ConfigMap != "" {
+			t.Errorf("%s theme values = %+v", s.Name, values.Theme)
+		}
+		if values.Global.Theme.File != "" {
+			t.Errorf("%s ships a theme file in its values", s.Name)
+		}
+	}
+	umbrella := HelmChartDir(root, UmbrellaChart)
+	data, err := os.ReadFile(filepath.Join(umbrella, "templates", "theme-configmap.yaml")) // #nosec G304 -- a fixed test path
+	if err != nil {
+		t.Fatalf("the umbrella chart has no theme ConfigMap: %v", err)
+	}
+	for _, want := range []string{"kind: ConfigMap", "name: {{ .Release.Name }}-theme", "theme.yaml:", `.Files.Get "files/theme.yaml"`, ".Values.global.theme.file"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("the theme ConfigMap lacks %q", want)
+		}
+	}
+	var values themeValues
+	readYaml(t, filepath.Join(umbrella, "values.yaml"), &values)
+	if values.Global.Theme.File != "" {
+		t.Error("the umbrella values carry a theme file; the default comes from files/theme.yaml")
+	}
+}
+
+// TestUmbrellaThemeFileEqualsShippedTheme keeps the default the chart
+// ships equal to the tracked theme file.
+func TestUmbrellaThemeFileEqualsShippedTheme(t *testing.T) {
+	root := repoRoot()
+	chart, err := os.ReadFile(filepath.Join(HelmChartDir(root, UmbrellaChart), "files", "theme.yaml")) // #nosec G304 -- a fixed test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	shipped, err := os.ReadFile(filepath.Join(root, themefile.ShippedPath)) // #nosec G304 -- a fixed test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(chart) != string(shipped) {
+		t.Errorf("deploy/vca/helm/vca/files/theme.yaml differs from %s; copy the tracked file over it", themefile.ShippedPath)
+	}
+	if string(chart) != string(themefile.Default()) {
+		t.Error("the chart theme file differs from the embedded default")
+	}
+}
+
+// TestPackagedChartsMatchTheSource keeps the packaged dependencies of the
+// umbrella chart equal to the chart directories, so helm renders the
+// templates the tree holds. Set VCA_WRITE_HELM=1 to package them again.
+func TestPackagedChartsMatchTheSource(t *testing.T) {
+	root := repoRoot()
+	for _, s := range Catalog() {
+		want, err := PackageChart(HelmChartDir(root, s.Name), s.Name)
+		if err != nil {
+			t.Fatalf("package %s: %v", s.Name, err)
+		}
+		wantFiles, err := ChartFiles(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(HelmChartDir(root, UmbrellaChart), "charts", s.Name+"-"+ChartVersion+".tgz")
+		got, err := os.ReadFile(path) // #nosec G304 -- a fixed test path
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		gotFiles, err := ChartFiles(got)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if reflect.DeepEqual(gotFiles, wantFiles) {
+			continue
+		}
+		// A package that already holds the source stays as helm wrote it.
+		if os.Getenv("VCA_WRITE_HELM") != "" {
+			if err := os.WriteFile(path, want, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		t.Errorf("%s differs from the chart directory; run VCA_WRITE_HELM=1 go test ./internal/cli/ -run TestPackagedCharts", path)
+	}
+}
+
+func TestPackageChartIsDeterministicAndNamed(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "templates"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"Chart.yaml": "name: x\n", "templates/a.yaml": "a: 1\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := PackageChart(dir, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := PackageChart(dir, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Error("two packages of one chart differ")
+	}
+	files, err := ChartFiles(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files["x/Chart.yaml"] != "name: x\n" || files["x/templates/a.yaml"] != "a: 1\n" || len(files) != 2 {
+		t.Errorf("files = %v", files)
+	}
+	if _, err := PackageChart(filepath.Join(dir, "missing"), "x"); err == nil {
+		t.Error("a missing chart packaged")
+	}
+	if _, err := ChartFiles([]byte("not a tgz")); err == nil {
+		t.Error("garbage read as a chart")
 	}
 }

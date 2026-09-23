@@ -12,6 +12,7 @@ import (
 	"time"
 
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
 // Prefix is the environment variable prefix of every setting.
@@ -24,6 +25,10 @@ const DefaultListen = ":8093"
 type Config struct {
 	// Listen is the address to bind.
 	Listen string `env:"LISTEN" default:":8093"`
+	// ThemeFile is the theme file of the deployment, from VCA_THEME_FILE.
+	// Every service that serves HTML reads the same variable, so it carries
+	// no service prefix. Empty selects the embedded default look.
+	ThemeFile string
 	// PublicURL is the URL the browser uses. Redirect URIs derive from it.
 	PublicURL string `env:"PUBLIC_URL" required:"true"`
 	// RedirectURI is the exact redirect URI registered at the provider.
@@ -77,6 +82,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := sharedconfig.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
 	return c.normalize()
 }
 

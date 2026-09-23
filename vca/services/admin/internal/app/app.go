@@ -32,9 +32,8 @@ import (
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/ui"
-	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
-	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
 // App is the wired service.
@@ -134,11 +133,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	pages, err := portal.New(portal.Options{Client: svc, Login: loginService, Prefix: cfg.PortalPrefix})
+	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
 	if err != nil {
 		return nil, err
 	}
-	assets, err := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+	pages, err := portal.New(portal.Options{Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit})
 	if err != nil {
 		return nil, err
 	}

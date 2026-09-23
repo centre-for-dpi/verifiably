@@ -13,14 +13,13 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/httpapi"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/portal"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/ui"
-	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
-	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
 // App is the wired service.
@@ -68,13 +67,13 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	pages, err := portal.New(portal.Options{
-		Client: svc, Prefix: cfg.PortalPrefix, BuilderURL: cfg.BuilderURL,
-	})
+	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
 	if err != nil {
 		return nil, err
 	}
-	assets, err := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+	pages, err := portal.New(portal.Options{
+		Client: svc, Prefix: cfg.PortalPrefix, BuilderURL: cfg.BuilderURL, Kit: kit,
+	})
 	if err != nil {
 		return nil, err
 	}

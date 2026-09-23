@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/txn"
@@ -214,4 +215,14 @@ func TestBuildReadFileInjection(t *testing.T) {
 	if err == nil {
 		t.Error("a read error wants an error")
 	}
+}
+
+// TestAppFailsOnBadThemeFile proves the service stops at start when the
+// theme file fails a kit pairing, and that the error names the pairing.
+func TestAppFailsOnBadThemeFile(t *testing.T) {
+	path := uikittest.LowContrastFile(t)
+	cfg := settings(t, nil)
+	cfg.ThemeFile = path
+	_, err := app.Build(cfg, app.Deps{Log: quiet()})
+	uikittest.AssertBadThemeError(t, err, path)
 }

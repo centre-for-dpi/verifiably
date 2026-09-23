@@ -20,6 +20,7 @@ import (
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/config"
 )
 
@@ -200,4 +201,14 @@ func TestConnectClientDefault(t *testing.T) {
 	if connectClient(base(t), Deps{ConnectClient: http.DefaultClient}) == nil {
 		t.Fatal("want the injected client")
 	}
+}
+
+// TestAppFailsOnBadThemeFile proves the service stops at start when the
+// theme file fails a kit pairing, and that the error names the pairing.
+func TestAppFailsOnBadThemeFile(t *testing.T) {
+	path := uikittest.LowContrastFile(t)
+	cfg := base(t)
+	cfg.ThemeFile = path
+	_, err := Build(cfg, Deps{Log: quiet()})
+	uikittest.AssertBadThemeError(t, err, path)
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/httpapi"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/oid4vp"
@@ -33,8 +34,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/txn"
 	"github.com/centre-for-dpi/vc-adapters/ui"
-	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
-	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
 // DefaultPruneInterval is the time between two prune runs of the store.
@@ -117,9 +116,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Now:           deps.Now,
 	})
 	wallet, walletErr := httpapi.New(svc)
-	page, pageErr := scanner.New(scanner.Options{Client: svc, Prefix: cfg.ScannerPrefix})
-	assets, assetsErr := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
-	if err := errors.Join(storeErr, serviceErr, walletErr, pageErr, assetsErr); err != nil {
+	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
+	page, pageErr := scanner.New(scanner.Options{Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit})
+	if err := errors.Join(storeErr, serviceErr, walletErr, assetsErr, pageErr); err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()

@@ -16,6 +16,9 @@ spec:
         {{- include "vca.selectorLabels" . | nindent 8 }}
       annotations:
         checksum/config: {{ toYaml .Values.config | sha256sum }}
+        {{- if .Values.theme.enabled }}
+        checksum/theme: {{ .Values.global.theme.file | sha256sum }}
+        {{- end }}
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -48,6 +51,11 @@ spec:
             - secretRef:
                 name: {{ .Values.existingSecret }}
             {{- end }}
+          {{- if .Values.theme.enabled }}
+          env:
+            - name: VCA_THEME_FILE
+              value: {{ .Values.theme.mountPath }}/theme.yaml
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -67,6 +75,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.theme.enabled }}
+            - name: theme
+              mountPath: {{ .Values.theme.mountPath }}
+              readOnly: true
+            {{- end }}
             {{- if .Values.persistence.enabled }}
             - name: data
               mountPath: {{ .Values.persistence.mountPath }}
@@ -74,6 +87,11 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.theme.enabled }}
+        - name: theme
+          configMap:
+            name: {{ .Values.theme.configMap | default (printf "%s-theme" .Release.Name) }}
+        {{- end }}
         {{- if .Values.persistence.enabled }}
         - name: data
           {{- if .Values.persistence.existingClaim }}

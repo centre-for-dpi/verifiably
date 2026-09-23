@@ -18,3 +18,12 @@ dpg:
     enabled: false
   credebl:
     enabled: false
+
+# The look of every page (ADR-032). Empty uses files/theme.yaml, a copy
+# of deploy/vca/theme.yaml. Replace it with:
+#   helm upgrade vca deploy/vca/helm/vca --set-file global.theme.file=theme.yaml
+# The value sits under global, so every UI chart sees it and rolls its
+# pods through a checksum annotation when the file changes.
+global:
+  theme:
+    file: ""

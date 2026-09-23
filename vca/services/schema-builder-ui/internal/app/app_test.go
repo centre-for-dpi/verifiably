@@ -13,6 +13,7 @@ import (
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/fake"
@@ -168,4 +169,14 @@ func TestWiringUsesTheDefaultLogger(t *testing.T) {
 	if _, err := app.Build(settings(t, map[string]string{}), app.Deps{Registry: &fake.Registry{}}); err != nil {
 		t.Errorf("build: %v", err)
 	}
+}
+
+// TestAppFailsOnBadThemeFile proves the service stops at start when the
+// theme file fails a kit pairing, and that the error names the pairing.
+func TestAppFailsOnBadThemeFile(t *testing.T) {
+	path := uikittest.LowContrastFile(t)
+	cfg := settings(t, map[string]string{})
+	cfg.ThemeFile = path
+	_, err := app.Build(cfg, app.Deps{Registry: &fake.Registry{}})
+	uikittest.AssertBadThemeError(t, err, path)
 }

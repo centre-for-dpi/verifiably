@@ -10,6 +10,7 @@ import (
 	"time"
 
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
 // Prefix of every variable.
@@ -19,6 +20,10 @@ const Prefix = "VCA_SCHEMABUILDER_"
 type Config struct {
 	// Listen is the address the HTTP server binds, for example :8081.
 	Listen string `env:"LISTEN" default:":8081"`
+	// ThemeFile is the theme file of the deployment, from VCA_THEME_FILE.
+	// Every service that serves HTML reads the same variable, so it carries
+	// no service prefix. Empty selects the embedded default look.
+	ThemeFile string
 	// RegistryURL is the Connect base URL of the schema registry. The
 	// builder saves every draft there.
 	RegistryURL string `env:"REGISTRY_URL" required:"true"`
@@ -45,6 +50,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := sharedconfig.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
 	return c.normalize()
 }
 

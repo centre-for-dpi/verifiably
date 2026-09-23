@@ -281,6 +281,16 @@ func TestNewChecksItsOptions(t *testing.T) {
 	if _, err := portal.New(portal.Options{Client: nil, Login: nil}); err == nil {
 		t.Error("New accepted no login service")
 	}
+	// The app passes the kit of the theme file. A caller with none gets
+	// the default kit and the default prefix.
+	h := newHarness(t, false)
+	p, err := portal.New(portal.Options{Client: h.app.Service, Login: h.app.Login})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if p.Prefix() != portal.DefaultPrefix {
+		t.Errorf("prefix = %q", p.Prefix())
+	}
 }
 
 func TestEveryPageWithoutASessionGoesToTheLogin(t *testing.T) {
