@@ -36,7 +36,7 @@ func TestFetchInjiVPRequest(t *testing.T) {
 	defer srv.Close()
 
 	reqURI := "openid4vp://authorize?client_id=x&request_uri=" + url.QueryEscape(srv.URL+"/jar")
-	got, err := (&H{}).fetchInjiVPRequest(context.Background(), reqURI)
+	got, err := (&H{Outbound: permitting(srv.URL)}).fetchInjiVPRequest(context.Background(), reqURI)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestFetchInjiVPRequest(t *testing.T) {
 }
 
 func TestFetchInjiVPRequestErrors(t *testing.T) {
-	h := &H{}
+	h := &H{Outbound: permitting()}
 	// no request_uri param
 	if _, err := h.fetchInjiVPRequest(context.Background(), "openid4vp://authorize?client_id=x"); err == nil {
 		t.Error("expected error when request_uri missing")
@@ -59,6 +59,9 @@ func TestFetchInjiVPRequestErrors(t *testing.T) {
 		_, _ = w.Write([]byte(bad))
 	}))
 	defer srv.Close()
+	// Permit this server, so the error below is the one this case is about
+	// (no nonce/response_uri) and not the allowlist rejecting the host.
+	h.Outbound = permitting(srv.URL)
 	if _, err := h.fetchInjiVPRequest(context.Background(), "openid4vp://authorize?request_uri="+url.QueryEscape(srv.URL)); err == nil {
 		t.Error("expected error when nonce/response_uri absent")
 	}
@@ -75,7 +78,7 @@ func TestInjiDirectPost(t *testing.T) {
 	defer srv.Close()
 
 	jar := injiJAR{ResponseURI: srv.URL, State: "req_9", PDID: "pd-9", DescID: "vc-1"}
-	if err := (&H{}).injiDirectPost(context.Background(), jar, "issuer~disc~kb", "vc+sd-jwt"); err != nil {
+	if err := (&H{Outbound: permitting(srv.URL)}).injiDirectPost(context.Background(), jar, "issuer~disc~kb", "vc+sd-jwt"); err != nil {
 		t.Fatal(err)
 	}
 	if gotForm.Get("vp_token") != "issuer~disc~kb" {
@@ -107,7 +110,7 @@ func TestInjiDirectPostError(t *testing.T) {
 		_, _ = w.Write([]byte("nope"))
 	}))
 	defer srv.Close()
-	err := (&H{}).injiDirectPost(context.Background(), injiJAR{ResponseURI: srv.URL}, "vp", "ldp_vp")
+	err := (&H{Outbound: permitting(srv.URL)}).injiDirectPost(context.Background(), injiJAR{ResponseURI: srv.URL}, "vp", "ldp_vp")
 	if err == nil || !strings.Contains(err.Error(), "direct-post 400") {
 		t.Fatalf("expected direct-post 400 error, got %v", err)
 	}

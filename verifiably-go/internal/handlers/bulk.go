@@ -34,6 +34,7 @@ import (
 
 	"github.com/verifiably/verifiably-go/backend"
 	"github.com/verifiably/verifiably-go/internal/metrics"
+	"github.com/verifiably/verifiably-go/internal/outbound"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -667,9 +668,16 @@ func (h *H) runBulkProvision(w http.ResponseWriter, r *http.Request, sess *Sessi
 // a flat object whose string values become a row. Nested objects are
 // serialized back to JSON strings for operator inspection; numeric values
 // are stringified via fmt.Sprint. A row limit of 0 means "all rows".
-func fetchJSONRows(ctx context.Context, url, authHeader, limitStr string) ([]map[string]string, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func fetchJSONRows(ctx context.Context, rawURL, authHeader, limitStr string) ([]map[string]string, error) {
+	// The destination is whatever the operator typed. The feature exists to
+	// fetch from an arbitrary registry, so the control is an allowlist the
+	// deployment seeds and the operator extends -- not a guess about which
+	// addresses are internal, which on this stack is every address that works.
+	endpoint, err := outbound.Default().Resolve(ctx, outbound.OperatorFetch, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +685,7 @@ func fetchJSONRows(ctx context.Context, url, authHeader, limitStr string) ([]map
 	if authHeader != "" {
 		req.Header.Set("Authorization", authHeader)
 	}
-	resp, err := client.Do(req)
+	resp, err := outbound.Default().Client(outbound.OperatorFetch).Do(req)
 	if err != nil {
 		return nil, err
 	}

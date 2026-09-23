@@ -3,10 +3,10 @@ package handlers
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"strings"
-	"time"
+
+	"github.com/verifiably/verifiably-go/internal/outbound"
 )
 
 // ssrfBlockHost looks up host and returns an error if any resolved IP falls
@@ -60,13 +60,17 @@ func validateOfferURL(raw string) error {
 	return ssrfBlockHost(host)
 }
 
-// outboundClient is the client for outbound calls to operator-configured
-// endpoints (Sunbird registries, OID4VP request_uri fetches).
-//
-// http.DefaultClient has NO timeout. A destination that accepts the connection
-// and then never answers pins the calling handler's goroutine indefinitely,
-// which is a denial-of-service with no attacker sophistication required --
-// point a registry at a black hole and every provisioning request leaks a
-// goroutine. 30s is generous for a registry search and finite, which is the
-// property that matters.
-var outboundClient = &http.Client{Timeout: 30 * time.Second}
+// The shared 30s client that used to live here is gone: every outbound call it
+// served now goes through internal/outbound, which keeps the timeout and adds
+// the checks a bare client cannot make -- the address is re-checked at dial
+// time, and redirects are re-checked per hop. See (*H).outbound below.
+
+// outbound returns the policy this handler set makes requests under: its own
+// when a caller (or a test) supplied one, otherwise the process-wide policy
+// main() installed from the environment.
+func (h *H) outbound() *outbound.Policy {
+	if h != nil && h.Outbound != nil {
+		return h.Outbound
+	}
+	return outbound.Default()
+}

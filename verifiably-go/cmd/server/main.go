@@ -48,6 +48,7 @@ import (
 	"github.com/verifiably/verifiably-go/internal/jobs"
 	"github.com/verifiably/verifiably-go/internal/mailer"
 	"github.com/verifiably/verifiably-go/internal/metrics"
+	"github.com/verifiably/verifiably-go/internal/outbound"
 	"github.com/verifiably/verifiably-go/internal/roles"
 	"github.com/verifiably/verifiably-go/internal/schemacache"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
@@ -412,6 +413,11 @@ func main() {
 		log.Printf("status-list: feature disabled — %v", err)
 	}
 
+	// outboundMembers supplies the verifier allowlist. It stays nil on a
+	// deployment with no trust registry, which means no verifier is permitted
+	// unless VERIFIABLY_OUTBOUND_ALLOW names one.
+	var outboundMembers func(context.Context) []string
+
 	// Verification events log (Fase 6) — PostgreSQL only (by design: file-backed
 	// logs don't scale for Hub aggregation and can't support efficient issuer stats
 	// queries). nil when pool is absent — deployments without DB run fine without it.
@@ -452,6 +458,22 @@ func main() {
 			h.TrustRegistry = trust.NewPGStore(pgPool)
 		} else {
 			h.TrustRegistry = trust.NewMemStore()
+		}
+		// Federation members are the verifier allowlist, and they are added
+		// while the process runs, so the policy reads them at call time rather
+		// than taking a copy here.
+		outboundMembers = func(ctx context.Context) []string {
+			issuers, err := h.TrustRegistry.TrustedIssuers(ctx)
+			if err != nil {
+				return nil
+			}
+			out := make([]string, 0, len(issuers))
+			for _, iss := range issuers {
+				if iss.ServiceEndpoint != "" {
+					out = append(out, iss.ServiceEndpoint)
+				}
+			}
+			return out
 		}
 		h.TrustJWTSecret = trustKey
 		h.TrustJWTIssuer = strings.TrimRight(os.Getenv("VERIFIABLY_PUBLIC_URL"), "/")
@@ -609,6 +631,18 @@ func main() {
 	if err := handlers.SetDocsRoot(docsRoot); err != nil {
 		log.Printf("docs: SetDocsRoot(%q) failed: %v (TOC may be empty)", docsRoot, err)
 	}
+
+	// Outbound destination policy. Built here, after the trust registry, so the
+	// verifier allowlist can read federation members. A configuration error is
+	// fatal rather than degraded: the one combination FromEnv rejects is
+	// dev-open on a public deployment, which would fetch any URL a stranger put
+	// in a QR code, and starting anyway would be the wrong answer to that.
+	outboundPolicy, err := outbound.FromEnv(outboundMembers)
+	if err != nil {
+		log.Fatalf("outbound policy: %v", err)
+	}
+	outbound.SetDefault(outboundPolicy)
+	h.Outbound = outboundPolicy
 
 	mux := http.NewServeMux()
 

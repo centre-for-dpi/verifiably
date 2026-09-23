@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/verifiably/verifiably-go/internal/outbound"
 	"github.com/verifiably/verifiably-go/internal/trust"
 )
 
@@ -131,8 +132,15 @@ func (h *H) RegisterFederationMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Healthz check — non-blocking if ServiceEndpoint absent.
+	// Healthz check — non-blocking if ServiceEndpoint absent. The endpoint is
+	// normalised first, and the normalised form is what gets stored.
 	if entry.ServiceEndpoint != "" {
+		normalised, err := normaliseServiceEndpoint(r.Context(), entry.ServiceEndpoint)
+		if err != nil {
+			h.errorToast(w, r, fmt.Sprintf("Service endpoint rejected: %v", err))
+			return
+		}
+		entry.ServiceEndpoint = normalised
 		if err := federationHealthz(r.Context(), entry.ServiceEndpoint); err != nil {
 			h.errorToast(w, r, fmt.Sprintf("Healthz check failed for %s: %v", entry.ServiceEndpoint, err))
 			return
@@ -381,8 +389,15 @@ func (h *H) UpdateFederationMember(w http.ResponseWriter, r *http.Request) {
 		entry.VerifierAPIKey = existing.VerifierAPIKey
 	}
 
-	// Healthz check — non-blocking if ServiceEndpoint absent.
+	// Healthz check — non-blocking if ServiceEndpoint absent. The endpoint is
+	// normalised first, and the normalised form is what gets stored.
 	if entry.ServiceEndpoint != "" {
+		normalised, err := normaliseServiceEndpoint(r.Context(), entry.ServiceEndpoint)
+		if err != nil {
+			h.errorToast(w, r, fmt.Sprintf("Service endpoint rejected: %v", err))
+			return
+		}
+		entry.ServiceEndpoint = normalised
 		if err := federationHealthz(r.Context(), entry.ServiceEndpoint); err != nil {
 			h.errorToast(w, r, fmt.Sprintf("Healthz check failed for %s: %v", entry.ServiceEndpoint, err))
 			return
@@ -410,16 +425,41 @@ func (h *H) UpdateFederationMember(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// federationHealthz pings GET {serviceEndpoint}/healthz (5 s timeout).
+// normaliseServiceEndpoint validates an admin-entered federation member
+// endpoint and returns it rebuilt from the parts that passed the check.
+//
+// Storing the rebuilt value is the point: every later use -- the healthz probe
+// below, the verifier adapter, and the OID4VP verifier allowlist that reads
+// member endpoints -- then works from a value checked once, here, at the moment
+// it was written, rather than each re-deriving trust from the raw form field.
+func normaliseServiceEndpoint(ctx context.Context, raw string) (string, error) {
+	u, err := outbound.Default().Resolve(ctx, outbound.Federation, raw)
+	if err != nil {
+		return "", err
+	}
+	// A member endpoint is a base URL. A query or fragment on it is noise at
+	// best, and a way to smuggle something past a later eyeball at worst.
+	u.Path = strings.TrimRight(u.Path, "/")
+	u.RawQuery, u.Fragment = "", ""
+	return u.String(), nil
+}
+
+// federationHealthz pings GET {serviceEndpoint}/healthz (5 s timeout), through
+// the outbound policy so the address is re-checked at dial and redirects off
+// the endpoint are not followed.
 func federationHealthz(ctx context.Context, serviceEndpoint string) error {
-	hzURL := strings.TrimRight(serviceEndpoint, "/") + "/healthz"
+	base, err := outbound.Default().Resolve(ctx, outbound.Federation, serviceEndpoint)
+	if err != nil {
+		return err
+	}
+	hzURL := base.JoinPath("healthz").String()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, hzURL, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := outbound.Default().Client(outbound.Federation).Do(req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", hzURL, err)
 	}

@@ -516,7 +516,21 @@ So the badge moves off E only when the committed key material goes. Two of the n
 
 A note on what *not* to do: SonarCloud lets these be marked Won't Fix, which would turn the badge green in a minute. Only finding 7 deserves that. Doing it to the rest would leave a repository publishing a signing key behind an A rating, which is worse than the E.
 
-### D.5 — SSRF: a private-IP denylist is the wrong control here (P1)
+### D.5 — SSRF: a private-IP denylist is the wrong control here (P1) — **DONE**
+
+**Resolved 2026-09-23** by `internal/outbound`. The allowlist proposed below is
+built, seeded from `VERIFIABLY_REGISTRIES`, `backends.json` and the live
+federation member list, and all five `gosecurity:S5144` findings are closed. The
+per-site assessment that follows is retained because it is the record of why
+each site got the control it did, and because the trust-chain question raised
+for `inji_present.go` is still open (it becomes E6.4's data source).
+
+Two holes found while building it, neither in the original assessment: the
+previous guard resolved a host and then handed the *name* to the client, which
+resolved again (DNS rebinding), and the shared client followed redirects
+unchecked, so an allowed host could redirect to metadata. Both are closed.
+
+
 
 Sonar reports five `gosecurity:S5144` findings — user input reaching an outbound URL. `internal/handlers/ssrf.go` already has a guard (`ssrfBlockHost`) that rejects hosts resolving into private, loopback, link-local and metadata ranges. None of the five use it, and **applying it would break the product.**
 
@@ -535,7 +549,7 @@ Reviewed individually:
 
 **Fixed now, independent of the above:** three of these used `http.DefaultClient`, which has **no timeout**. A destination that accepts the connection and never answers pins the calling goroutine indefinitely — point a registry at a black hole and every provisioning request leaks one. Six call sites now use a shared 30-second client.
 
-**Consequence for the security rating:** these five are the only thing standing between C and B. They should not be cleared by rushing an allowlist, and they should not be marked Won't Fix — the `inji_present` one is a real exposure. B is therefore gated on this design, which belongs with Workstream D.
+**Consequence for the security rating:** these five were the only thing standing between C and B. They were not cleared by rushing an allowlist and not marked Won't Fix — the `inji_present` one is a real exposure. The design landed instead; see the note at the head of this section.
 
 ### G.5 CI cost and shape for the K8s path (P1)
 
@@ -679,6 +693,7 @@ Phase 4 — long lead
 ## 13. Changelog
 
 - **2026-09-10** — Initial scope. Baseline measured at `b571e62`. Workstream A implemented; B–G proposed.
+- **2026-09-23 (rev 8)** — Security rating C → B. `internal/outbound` replaces the ad-hoc guard at all five SSRF sites (D.5): a per-purpose allowlist seeded from existing config, plus a dial-time address check and a per-hop redirect check, which close a DNS-rebinding window and an unchecked-redirect path that the original per-site review had not spotted. The dev-open switch is configurable and refuses to start on a non-local public host.
 - **2026-09-12 (rev 7)** — Security rating E → D (all BLOCKERs cleared). Fixed the mechanical CRITICAL/MAJOR findings and reviewed the five SSRF ones individually (D.5): a private-IP denylist is the wrong control for a stack whose legitimate services are all on private addresses, so B is gated on an allowlist design rather than a patch.
 - **2026-09-11 (rev 6)** — Assessed the E security badge finding by finding (G.4.6). Fixed the oob-redirect path-traversal/open-redirect/header-injection issue and bound Postgres and Redis to loopback. Recorded that the badge cannot leave E until the committed wallet signing key is removed, and that marking the remainder Won't Fix would be worse than the E.
 - **2026-09-11 (rev 5)** — Added G.5 after profiling the cluster e2e: two-tier split landed (render on every PR, cluster nightly/on-demand), concurrency groups added to all three workflows, CI teardown reduced from a 10-minute cascading terraform destroy to `kind delete cluster`. The render tier immediately found a duplicate-annotation bug in four Ingress templates.
