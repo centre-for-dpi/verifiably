@@ -45,4 +45,4 @@ install: ## build the vca CLI into GOBIN
 doctor: ## check that this host meets every prerequisite
 	$(GO) run ./cmd/vca doctor --all --dpg waltid --from-source
 ste-lint: ## Simplified Technical English check on docs and proto comments
-	./hack/ste-lint.sh $$(ls docs/*.md | grep -v adr.md) README.md $$(find proto -name "*.proto")
+	./hack/ste-lint.sh $$(ls docs/*.md | grep -v adr.md) docs/adr/*.md README.md $$(find proto -name "*.proto")

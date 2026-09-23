@@ -53,7 +53,7 @@ Now, for developers:
 2. Run `make gen`. This generates Go code from the files in `proto/`.
 3. Run `make test`. This runs the unit tests.
 4. Run `make cover`. This checks the coverage floor.
-5. Run `hack/ste-lint.sh docs/*.md README.md`. This checks the documents.
+5. Run `make ste-lint`. This checks the documents and the decision records.
 
 ## Services
 
@@ -104,7 +104,8 @@ Each service lives in `services/<name>/`. Shared pure code lives in
 ## Documents
 
 - [Get started](docs/getting-started.md): the prerequisites, the binary, and the first run.
-- [Architecture decisions](docs/adr.md): the 31 decision records that define VCA.
+- [Architecture decisions](docs/adr.md): the 31 root decision records that define VCA, and the index of the new records.
+- [Decision records](docs/adr): one file per record from ADR-032 on. A new record supersedes or extends a root decision.
 - [ADR status](docs/adr-status.md): the state of every decision in the tree.
 - [Glossary](docs/glossary.md): the project dictionary.
 - [Writing style](docs/style.md): the rules for all reader-facing text.

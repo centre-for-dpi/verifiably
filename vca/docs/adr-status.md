@@ -1,8 +1,10 @@
 # ADR status
 
 This page records the state of every decision in the architecture
-decision records. The record set is [ADR.md](../../ADR.md). The page
-covers ADR-001 to ADR-031, one row per decision.
+decision records. The root record set is [ADR.md](../../ADR.md). It
+holds ADR-001 to ADR-031. The records from ADR-032 on are files in
+[adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
+ADR-046, one row per decision.
 
 The status values are:
 
@@ -315,12 +317,12 @@ A row that is not `Done` carries a note.
 | ADR-027 | 1 WCAG 2.2 AA with WAI-ARIA 1.2 | Partial | `vca/ui`, `vca/docs/ui.md` | The kit meets the structural criteria. Nobody has audited each portal page against all criteria. |
 | ADR-027 | 2 Fix the measured failures | Partial | `vca/ui/static/base.css` | The new kit has none of the named faults. The legacy pages in `verifiably-go/` keep them. |
 | ADR-027 | 3 Go and HTMX kit with no third-party module | Done | `vca/ui/components` | |
-| ADR-027 | 4 Theme package with a contrast test | Done | `vca/ui/theme` | |
+| ADR-027 | 4 Theme package with a contrast test | Done | `vca/ui/theme` | Superseded in part by ADR-032. |
 | ADR-027 | 5 CSS tokens equal the Go constants | Done | `vca/ui/theme` | |
-| ADR-027 | 6 Self-hosted font pack | Done | `vca/ui/fonts` | |
+| ADR-027 | 6 Self-hosted font pack | Done | `vca/ui/fonts` | Superseded in part by ADR-032. |
 | ADR-027 | 7 Components with one data struct each | Done | `vca/ui/components` | |
 | ADR-027 | 8 Accessibility tests in Go at 100 percent | Done | `vca/ui/a11ytest` | |
-| ADR-027 | 9 Every page works without JavaScript | Done | `vca/ui/templates` | |
+| ADR-027 | 9 Every page works without JavaScript | Done | `vca/ui/templates` | Superseded in part by ADR-043. |
 | ADR-027 | 10 Message catalogues per language | Partial | `vca/ui/components` | The components take a catalogue and set `html lang`. The tree holds the English text alone. |
 | ADR-027 | 11 Axe in end to end tests and a manual audit | Partial | `vca/ui/a11ytest` | The Go checks run on each build. No axe job and no manual audit exist yet. |
 
@@ -369,6 +371,146 @@ A row that is not `Done` carries a note.
 | ADR-031 | 4 SD-JWT VC and mdoc until then | Done | `vca/core/sdjwt` | |
 | ADR-031 | 5 A quarterly check of the specification | Not started | `vca/docs` | The new tree has no spec-versions page that records the check. |
 
+## ADR-032: Theme and brand from one declarative file
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-032 | 1 One theme file with a path variable | Not started | `deploy/vca/theme.yaml` | Proposed record. No work exists yet. |
+| ADR-032 | 2 The kit keeps the pairings, the file sets colours | Not started | `vca/ui/theme` | Proposed record. No work exists yet. |
+| ADR-032 | 3 Two font families and a monospace stack | Not started | `vca/ui/fonts` | Proposed record. No work exists yet. |
+| ADR-032 | 4 Wordmark, logo, radii, spacing, role accents | Not started | `vca/internal/themefile` | Proposed record. No work exists yet. |
+| ADR-032 | 5 The YAML reader lives outside the kit | Not started | `vca/internal/themefile` | Proposed record. No work exists yet. |
+| ADR-032 | 6 Theme check and theme apply commands | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
+
+## ADR-033: Landing service, role picker, and role intro pages
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-033 | 1 A stateless landing service | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
+| ADR-033 | 2 One landing container per deployment | Not started | `deploy/vca/compose.yaml` | Proposed record. No work exists yet. |
+| ADR-033 | 3 Short text on VCA, the DPGs, and the triangle of trust | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
+| ADR-033 | 4 Live stacks with pinned versions and links | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
+| ADR-033 | 5 The role picker lists live roles only | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
+| ADR-033 | 6 Role intro pages with step cards and sign in | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
+
+## ADR-034: Backend adaptivity through a peer topology and feature lists
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-034 | 1 The CLI writes the peer list | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
+| ADR-034 | 2 A shared probe with a timeout and a cache | Not started | `vca/services/internal` | Proposed record. No work exists yet. |
+| ADR-034 | 3 Absent, starting, and live pairs | Not started | `vca/services/internal` | Proposed record. No work exists yet. |
+| ADR-034 | 4 Features and DPG information in the adapter answer | Not started | `vca/proto/vca/backend/v1` | Proposed record. No work exists yet. |
+| ADR-034 | 5 Pages show live features only | Not started | `vca/ui` | Proposed record. No work exists yet. |
+
+## ADR-035: Provider agnostic sign in with one realm per role
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-035 | 1 Four realms with self registration | Not started | `deploy/vca` | Proposed record. No work exists yet. |
+| ADR-035 | 2 Keycloak is a provider record, not a dependency | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-035 | 3 Register action with a fallback | Not started | `vca/services/internal/oidcflow` | Proposed record. No work exists yet. |
+| ADR-035 | 4 Three token authentication methods | Not started | `vca/core/oidc` | Proposed record. No work exists yet. |
+| ADR-035 | 5 The admin portal pushes provider records | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-035 | 6 The first admin registers and binds | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-035 | 7 The CLI makes the Keycloak password | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
+
+## ADR-036: Verifier staff sign in
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-036 | 1 A verifier-auth service per verifier pair | Not started | `vca/services/verifier-auth` | Proposed record. No work exists yet. |
+| ADR-036 | 2 Verifier staff pages need a session | Not started | `vca/services/verifier-*` | Proposed record. No work exists yet. |
+| ADR-036 | 3 Issuer staff pages get the same guard | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+
+## ADR-037: Tenants mapped to DPG tenancy
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-037 | 1 A VCA tenant binds to DPG tenants | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-037 | 2 A tenant backend service in the contract | Not started | `vca/proto/vca/backend/v1` | Proposed record. No work exists yet. |
+| ADR-037 | 3 Tenancy shows only on stacks that have it | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+
+## ADR-038: API keys for VCA and for stacks
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-038 | 1 Tenant scope and expiry on VCA keys | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-038 | 2 Stack client credentials next to VCA keys | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+
+## ADR-039: Federated audit log
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-039 | 1 An audit service in each recording service | Not started | `vca/proto/vca/audit/v1` | Proposed record. No work exists yet. |
+| ADR-039 | 2 The admin page merges the live peers | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-039 | 3 Events carry no claim values | Not started | `vca/proto/vca/audit/v1` | Proposed record. No work exists yet. |
+
+## ADR-040: Notifications page before notification delivery
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-040 | 1 Notifications pages list the channels | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-040 | 2 DPG webhooks and callbacks when the adapter lists them | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+
+## ADR-041: Verifier trust cache and offline verification window
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-041 | 1 Signature checked snapshots | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
+| ADR-041 | 2 A refresh schedule per source | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
+| ADR-041 | 3 An offline window of at most seven days | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
+| ADR-041 | 4 A stale status list fails the check | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
+| ADR-041 | 5 Cache RPCs and a caching page | Not started | `vca/proto/vca/policy/v1` | Proposed record. No work exists yet. |
+
+## ADR-042: DCQL builder and DIF Presentation Exchange queries
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-042 | 1 A template has a kind | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
+| ADR-042 | 2 A DCQL builder with a live query view | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
+| ADR-042 | 3 A claim predicate policy check | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
+| ADR-042 | 4 PE authoring, validation, and conversion | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
+| ADR-042 | 5 A pure core package for PE | Not started | `vca/core/pex` | Proposed record. No work exists yet. |
+
+## ADR-043: Issuance channels and bulk sources
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-043 | 1 The list of channels | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+| ADR-043 | 2 The page offers live channels only | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+| ADR-043 | 3 Digital Credentials API button with a fallback | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+| ADR-043 | 4 Bulk issuance from data sources | Not started | `vca/services/data-source` | Proposed record. No work exists yet. |
+
+## ADR-044: Placement of the role pages
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-044 | 1 The issuer home moves to issuance | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+| ADR-044 | 2 Issued credentials and sources pages | Not started | `vca/services/issued-credentials` | Proposed record. No work exists yet. |
+| ADR-044 | 3 The verifier home stays on verifier-results | Not started | `vca/services/verifier-results` | Proposed record. No work exists yet. |
+| ADR-044 | 4 DCQL, PE, and request pages | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
+| ADR-044 | 5 One role navigation package bound to the routes | Not started | `vca/internal/rolenav` | Proposed record. No work exists yet. |
+
+## ADR-045: Full DPG surfacing
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-045 | 1 Each adapter lists every feature of its DPG | Not started | `vca/services/dpg-adapter-*` | Proposed record. No work exists yet. |
+| ADR-045 | 2 New format, protocol, and channel values | Not started | `vca/proto/vca/common/v1` | Proposed record. No work exists yet. |
+| ADR-045 | 3 The holder uses the DPG wallet | Not started | `vca/services/wallet-portal` | Proposed record. No work exists yet. |
+| ADR-045 | 4 The whole CREDEBL platform, pinned by digest | Not started | `deploy/vca` | Proposed record. No work exists yet. |
+| ADR-045 | 5 The walt.id stack adds verifier-api2 | Not started | `deploy/vca` | Proposed record. No work exists yet. |
+
+## ADR-046: Issuer identity through the DPG
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-046 | 1 Issuer identity RPCs | Not started | `vca/proto/vca/backend/v1` | Proposed record. No work exists yet. |
+| ADR-046 | 2 One click provision or an import | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+| ADR-046 | 3 Trust registry entry in state pending | Not started | `vca/services/trust-registry` | Proposed record. No work exists yet. |
+| ADR-046 | 4 No issuer private key in VCA | Not started | `vca/services/dpg-adapter-*` | Proposed record. No work exists yet. |
+
 ## Counts
 
 | Status | Decisions |
@@ -376,5 +518,5 @@ A row that is not `Done` carries a note.
 | Done | 170 |
 | Partial | 20 |
 | Deferred | 3 |
-| Not started | 6 |
-| Total | 199 |
+| Not started | 71 |
+| Total | 264 |
