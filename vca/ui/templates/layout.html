@@ -21,9 +21,10 @@
 </head>
 <body>
 <a class="skip-link" href="#page">{{.Text.SkipLink}}</a>
+{{- $mark := mark}}
 <header class="site-header">
-{{if .Nav.Brand.Text}}<a class="wordmark" href="{{.Nav.Brand.Href}}">{{.Nav.Brand.Text}}</a>
-{{end}}<nav class="nav" aria-label="{{.Nav.Label}}">
+<a class="wordmark" href="{{.Nav.Brand.Href}}">{{if $mark.LogoSrc}}<img src="{{$mark.LogoSrc}}" alt="{{$mark.LogoAlt}}">{{end}}<span class="wordmark-text">{{$mark.Text}}{{if $mark.Emphasis}}&nbsp;<em>{{$mark.Emphasis}}</em>{{end}}</span>{{if .Nav.Brand.Text}}<span class="wordmark-context">{{.Nav.Brand.Text}}</span>{{end}}</a>
+<nav class="nav" aria-label="{{.Nav.Label}}">
 <ul>
 {{range .Nav.Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} hx-get="{{.Href}}" hx-target="#page" hx-push-url="true">{{.Text}}</a></li>
 {{end}}</ul>
@@ -36,8 +37,11 @@
 <div id="toasts" class="toasts" aria-live="polite">
 {{range .Toasts}}{{template "toast" .}}
 {{end}}</div>
-{{if .Footer}}<footer class="site-footer">{{.Footer}}</footer>
-{{end}}<script src="/static/htmx.min.js" defer></script>
+<footer class="site-footer">
+<span class="ft-monogram"><span class="ft-name">{{$mark.Text}}{{if $mark.Emphasis}} {{$mark.Emphasis}}{{end}}</span></span>
+{{if .Footer}}<span class="ft-note">{{.Footer}}</span>
+{{end}}</footer>
+<script src="/static/htmx.min.js" defer></script>
 <script>
 (function(){
   var doc = document.documentElement;

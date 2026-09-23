@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
+	"github.com/centre-for-dpi/vc-adapters/ui/brand"
 )
 
 func newKit(t *testing.T) *Kit {
@@ -83,7 +84,8 @@ func TestEveryComponentRendersInsideLayout(t *testing.T) {
 	for _, want := range []string{
 		`<html lang="en">`, `<title>Demo</title>`, `<h1>Demo</h1>`,
 		`class="skip-link" href="#page"`, `<nav class="nav" aria-label="Main">`, `<main id="page"`,
-		`<header class="site-header">`, `<a class="wordmark" href="/">vca</a>`, `<div class="pg-header">`,
+		`<header class="site-header">`, `<a class="wordmark" href="/"><span class="wordmark-text">VCA</span><span class="wordmark-context">vca</span></a>`,
+		`<div class="pg-header">`,
 		`aria-current="page"`, `data-theme-toggle aria-label="Theme"`, `aria-live="polite"`,
 		`localStorage.getItem('theme')`, `try {`, `setAttribute('data-theme'`, `removeAttribute('data-theme')`,
 		`name="viewport" content="width=device-width, initial-scale=1"`, `/static/vca.css`, `/static/htmx.min.js`,
@@ -94,7 +96,7 @@ func TestEveryComponentRendersInsideLayout(t *testing.T) {
 		`alt="QR code: open the wallet offer"`, `width="256"`, `<details class="json" open>`, `role="region" aria-label="Raw credential"`,
 		`&#34;a&#34;: 1`, `aria-controls="j1" aria-expanded="false"`, `hx-get="/x?a=1&amp;b=2"`,
 		`data-open-dialog="d1" aria-haspopup="dialog"`, `<a class="btn btn-ghost" href="/docs"`, `aria-label="Close" disabled`,
-		`<textarea id="notes"`, `<option value="a" selected>A</option>`, `<footer class="site-footer">vca</footer>`,
+		`<textarea id="notes"`, `<option value="a" selected>A</option>`, `<footer class="site-footer">` + "\n" + `<span class="ft-monogram"><span class="ft-name">VCA</span></span>` + "\n" + `<span class="ft-note">vca</span>`,
 		`Content-Type`,
 	} {
 		if want == "Content-Type" {
@@ -142,6 +144,52 @@ func TestRenderPageHTMX(t *testing.T) {
 	}
 	if err := k.RenderPage(httptest.NewRecorder(), req, Page{Title: "x", Toasts: []Toast{{Level: "loud"}}}); err == nil {
 		t.Error("page with a bad toast should fail")
+	}
+}
+
+func TestLayoutRendersWordmarkAndLogo(t *testing.T) {
+	b := brand.Default()
+	b.Wordmark, b.Emphasis = "Republic", "Credentials"
+	b.Logo = brand.Logo{DataURI: "data:image/png;base64,iVBORw==", Alt: "Republic crest"}
+	k, err := New(WithBrand(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := k.Mark(); got != (Mark{Text: "Republic", Emphasis: "Credentials", LogoSrc: "/static/logo.png", LogoAlt: "Republic crest"}) {
+		t.Errorf("Mark() = %+v", got)
+	}
+	rec := httptest.NewRecorder()
+	page := Page{Title: "Issue", Nav: Nav{Brand: Link{Href: "/issuer/", Text: "Issuer"}}}
+	if err := k.RenderPage(rec, httptest.NewRequest(http.MethodGet, "/", nil), page); err != nil {
+		t.Fatal(err)
+	}
+	doc := rec.Body.String()
+	a11ytest.AssertPage(t, doc)
+	for _, want := range []string{
+		`<a class="wordmark" href="/issuer/"><img src="/static/logo.png" alt="Republic crest"><span class="wordmark-text">Republic&nbsp;<em>Credentials</em></span><span class="wordmark-context">Issuer</span></a>`,
+		`<span class="ft-monogram"><span class="ft-name">Republic Credentials</span></span>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("page missing %q\n%s", want, doc)
+		}
+	}
+	if strings.Contains(doc, "ft-note") {
+		t.Error("a page with no footer text has no note")
+	}
+
+	// The default kit draws the default wordmark and no logo.
+	rec = httptest.NewRecorder()
+	if err := newKit(t).RenderPage(rec, httptest.NewRequest(http.MethodGet, "/", nil), Page{Title: "Home"}); err != nil {
+		t.Fatal(err)
+	}
+	if doc := rec.Body.String(); !strings.Contains(doc, `<a class="wordmark" href="/"><span class="wordmark-text">VCA</span></a>`) || strings.Contains(doc, "<img") {
+		t.Errorf("default wordmark wrong:\n%s", doc)
+	}
+
+	// A logo the kit cannot serve stops New.
+	b.Logo.DataURI = "data:image/gif;base64,R0lG"
+	if _, err := New(WithBrand(b)); err == nil || !strings.Contains(err.Error(), "logo") {
+		t.Errorf("bad logo should fail New, got %v", err)
 	}
 }
 

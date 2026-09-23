@@ -22,6 +22,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/ui"
+	"github.com/centre-for-dpi/vc-adapters/ui/brand"
 )
 
 // Names lists every template a Kit can render.
@@ -53,18 +54,62 @@ func SafeAttr(name, value string) template.HTMLAttr {
 	return template.HTMLAttr(name + `="` + html.EscapeString(value) + `"`)
 }
 
-// Kit holds the parsed templates.
+// Kit holds the parsed templates and the brand mark the layout draws.
 type Kit struct {
-	tpl *template.Template
+	tpl  *template.Template
+	mark Mark
 }
 
-// New parses the embedded templates.
-func New() (*Kit, error) {
-	tpl, err := template.New("kit").Funcs(template.FuncMap{"safeAttr": SafeAttr}).ParseFS(ui.Templates, "templates/*.html")
+// Mark is the brand mark of the layout: the wordmark, its emphasis, and
+// the logo. LogoSrc is empty when the brand has no logo.
+type Mark struct {
+	Text     string
+	Emphasis string
+	LogoSrc  string // path under ui.Prefix, for example "/static/logo.svg"
+	LogoAlt  string
+}
+
+// options collects the settings of New.
+type options struct {
+	brand brand.Brand
+}
+
+// KitOption changes one setting of New. The name Option belongs to the
+// choices of a select field.
+type KitOption func(*options)
+
+// WithBrand sets the brand the layout draws. The default is brand.Default.
+// Serve the same brand with ui.AssetsFor, so the logo path resolves.
+func WithBrand(b brand.Brand) KitOption {
+	return func(o *options) { o.brand = b }
+}
+
+// New parses the embedded templates. It fails when the brand logo cannot
+// be decoded.
+func New(opts ...KitOption) (*Kit, error) {
+	o := options{brand: brand.Default()}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	logo, err := o.brand.Logo.File()
+	if err != nil {
+		return nil, fmt.Errorf("components: brand logo: %w", err)
+	}
+	mark := Mark{Text: o.brand.Wordmark, Emphasis: o.brand.Emphasis}
+	if logo.Name != "" {
+		mark.LogoSrc, mark.LogoAlt = ui.Prefix+logo.Name, o.brand.Logo.Alt
+	}
+	funcs := template.FuncMap{"safeAttr": SafeAttr, "mark": func() Mark { return mark }}
+	tpl, err := template.New("kit").Funcs(funcs).ParseFS(ui.Templates, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("components: %w", err)
 	}
-	return &Kit{tpl: tpl}, nil
+	return &Kit{tpl: tpl, mark: mark}, nil
+}
+
+// Mark returns the brand mark the layout draws.
+func (k *Kit) Mark() Mark {
+	return k.mark
 }
 
 // normalizer is implemented by every data struct. It fills defaults and
@@ -171,7 +216,7 @@ type Link struct {
 // Nav is the labelled navigation landmark.
 type Nav struct {
 	Label string // aria-label of the nav, default "Main"
-	Brand Link   // optional site name, rendered before the links
+	Brand Link   // Href is the target of the wordmark, default "/"; Text names the service beside it
 	Links []Link
 }
 
@@ -200,9 +245,8 @@ func (p Page) normalize() (any, error) {
 	if p.Heading == "" {
 		p.Heading = p.Title
 	}
-	if p.Nav.Label == "" {
-		p.Nav.Label = "Main"
-	}
+	fill(&p.Nav.Label, "Main")
+	fill(&p.Nav.Brand.Href, "/")
 	d := DefaultText()
 	fill(&p.Text.SkipLink, d.SkipLink)
 	fill(&p.Text.ThemeToggle, d.ThemeToggle)

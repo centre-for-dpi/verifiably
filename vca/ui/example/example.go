@@ -11,18 +11,18 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/ui"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
-	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
-	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
 // Handler returns the demo server: assets under /static/, the demo page at
-// /, and a toast partial at /toast for the htmx button.
+// /, and a toast partial at /toast for the htmx button. The assets and the
+// kit share one config, so the layout draws the brand the assets serve.
 func Handler() (http.Handler, error) {
-	assets, err := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+	cfg := ui.DefaultConfig()
+	assets, err := ui.AssetsFor(cfg)
 	if err != nil {
 		return nil, err
 	}
-	kit, err := components.New()
+	kit, err := components.New(components.WithBrand(cfg.Brand))
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		Label:       "UI kit",
 		Lead:        "Every component of the kit on one page, in the light and the dark theme.",
 		Description: "Every component of the vca UI kit on one page.",
-		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "vca"},
+		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "UI kit"},
 			Links: []components.Link{{Href: "/", Text: "Demo", Current: true}, {Href: "/static/vca.css", Text: "Stylesheet"}}},
 		Toasts:  []components.Toast{{Level: "info", Text: "Demo page loaded"}},
 		Footer:  fmt.Sprintf("vca UI kit, htmx %s", ui.HTMXVersion),

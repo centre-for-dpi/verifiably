@@ -4,6 +4,7 @@ package ui
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/centre-for-dpi/vc-adapters/ui/brand"
 	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
 	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
@@ -164,11 +166,11 @@ func TestAssetsRejectsBadInput(t *testing.T) {
 	for _, f := range fonts.Files(pack) {
 		fsys["static/fonts/"+f] = &fstest.MapFile{Data: []byte("wOF2")}
 	}
-	if _, err := build(fsys, light, dark, pack); err == nil || !strings.Contains(err.Error(), "base.css") {
+	if _, err := build(fsys, Config{Light: light, Dark: dark, Fonts: pack, Brand: brand.Default()}); err == nil || !strings.Contains(err.Error(), "base.css") {
 		t.Errorf("missing base.css should fail, got %v", err)
 	}
 	fsys["static/base.css"] = &fstest.MapFile{Data: []byte("body{}")}
-	if _, err := build(fsys, light, dark, pack); err == nil || !strings.Contains(err.Error(), "htmx") {
+	if _, err := build(fsys, Config{Light: light, Dark: dark, Fonts: pack, Brand: brand.Default()}); err == nil || !strings.Contains(err.Error(), "htmx") {
 		t.Errorf("missing htmx should fail, got %v", err)
 	}
 }
@@ -191,7 +193,7 @@ func baseCSS(t *testing.T) string {
 
 // TestBaseCSSUsesOnlyDeclaredTokens proves base.css reads only the custom
 // properties the generated part of vca.css declares: theme tokens and font
-// variables. base.css declares none of its own.
+// variables, and brand variables. base.css declares none of its own.
 func TestBaseCSSUsesOnlyDeclaredTokens(t *testing.T) {
 	css, err := StylesheetCSS(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
 	if err != nil {
@@ -209,6 +211,9 @@ func TestBaseCSSUsesOnlyDeclaredTokens(t *testing.T) {
 	for _, s := range fonts.Slots(fonts.Default()) {
 		allowed[s.Var] = true
 	}
+	for _, m := range varDecl.FindAllStringSubmatch(brand.CSS(brand.Default()), -1) {
+		allowed[m[1]] = true
+	}
 	declared := map[string]bool{}
 	for _, m := range varDecl.FindAllStringSubmatch(prefix, -1) {
 		declared[m[1]] = true
@@ -219,7 +224,7 @@ func TestBaseCSSUsesOnlyDeclaredTokens(t *testing.T) {
 	}
 	for _, m := range used {
 		if !allowed[m[1]] {
-			t.Errorf("base.css uses --%s, which is not a theme token or a font variable", m[1])
+			t.Errorf("base.css uses --%s, which is not a theme token, a font variable, or a brand variable", m[1])
 		}
 		if !declared[m[1]] {
 			t.Errorf("base.css uses --%s, which vca.css never declares", m[1])
@@ -262,6 +267,117 @@ func TestStylesheetCarriesAdamndegwaStructure(t *testing.T) {
 	// Dark mode needs no extra selectors: the invert tokens differ per mode.
 	if strings.Contains(base, "data-theme") {
 		t.Error("base.css must not branch on data-theme")
+	}
+}
+
+// TestBaseCSSUsesBrandVariables checks that every brand variable reaches
+// the page, so a radius, a spacing step, or a role accent in the theme
+// file changes what users see.
+func TestBaseCSSUsesBrandVariables(t *testing.T) {
+	base := baseCSS(t)
+	used := map[string]bool{}
+	for _, m := range varUse.FindAllStringSubmatch(base, -1) {
+		used[m[1]] = true
+	}
+	decls := varDecl.FindAllStringSubmatch(brand.CSS(brand.Default()), -1)
+	if len(decls) != 11 {
+		t.Fatalf("brand declares %d variables, want 11", len(decls))
+	}
+	for _, m := range decls {
+		if !used[m[1]] {
+			t.Errorf("base.css never uses --%s", m[1])
+		}
+	}
+	for _, want := range []string{".wordmark-text", ".wordmark-context", ".ft-note", ".pg-header-label{", "color:var(--role-accent)"} {
+		if !strings.Contains(base, want) {
+			t.Errorf("base.css missing %q", want)
+		}
+	}
+}
+
+// logoConfig returns the default config with an SVG logo.
+func logoConfig() Config {
+	cfg := DefaultConfig()
+	cfg.Brand.Logo = brand.Logo{
+		DataURI: "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)),
+		Alt:     "Crest",
+	}
+	return cfg
+}
+
+func TestServeLogo(t *testing.T) {
+	h, err := AssetsFor(logoConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := get(h, http.MethodGet, "/static/logo.svg", "")
+	if rec.Code != 200 || rec.Body.String() != `<svg xmlns="http://www.w3.org/2000/svg"/>` {
+		t.Fatalf("logo: status %d, body %q", rec.Code, rec.Body.String())
+	}
+	for k, want := range map[string]string{
+		"Content-Type":            "image/svg+xml",
+		"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+		"X-Content-Type-Options":  "nosniff",
+	} {
+		if got := rec.Header().Get(k); got != want {
+			t.Errorf("%s = %q, want %q", k, got, want)
+		}
+	}
+	if rec := get(h, http.MethodGet, "/static/vca.css", ""); rec.Header().Get("Content-Security-Policy") != "" {
+		t.Error("only the logo carries the sandbox policy")
+	}
+	if rec := get(newAssets(t), http.MethodGet, "/static/logo.svg", ""); rec.Code != 404 {
+		t.Errorf("no logo should give 404, got %d", rec.Code)
+	}
+}
+
+func TestStylesheetForOrdersFontsThemesBrandBase(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Brand.RoleAccents["issuer"] = brand.Accent{Light: "#1F4E79", Dark: "#9CC3E6"}
+	css, err := StylesheetFor(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marks := []string{"@font-face", "/* theme: default-light */", "/* theme: default-dark */", "/* brand */", `[data-role="issuer"]`, "/* vca UI kit base stylesheet"}
+	last := -1
+	for _, m := range marks {
+		i := strings.Index(css, m)
+		if i <= last {
+			t.Fatalf("%q is at %d, after %d; want the order %v", m, i, last, marks)
+		}
+		last = i
+	}
+	plain, err := StylesheetCSS(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain == css || !strings.Contains(plain, brand.CSS(brand.Default())) {
+		t.Error("StylesheetCSS must use the default brand")
+	}
+	// A new brand gives a new ETag.
+	a, b := newAssets(t), anyvalHandler(t, cfg)
+	if get(a, http.MethodGet, "/static/vca.css", "").Header().Get("ETag") == get(b, http.MethodGet, "/static/vca.css", "").Header().Get("ETag") {
+		t.Error("the ETag must follow the stylesheet content")
+	}
+}
+
+func anyvalHandler(t *testing.T, cfg Config) http.Handler {
+	t.Helper()
+	h, err := AssetsFor(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+func TestAssetsForRejectsABadBrand(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Brand.Radii.Small = "3px"
+	if _, err := AssetsFor(cfg); err == nil || !strings.Contains(err.Error(), "radii.small") {
+		t.Errorf("bad brand should fail, got %v", err)
+	}
+	if _, err := StylesheetFor(cfg); err == nil {
+		t.Error("StylesheetFor should report the bad brand")
 	}
 }
 

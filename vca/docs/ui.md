@@ -21,29 +21,33 @@ This document covers ADR-027 decisions 3 to 9.
 
 | Package | Purpose |
 |---|---|
-| `ui` | `Assets` handler, embedded templates and static files, `HTMXVersion`, `Prefix`. |
-| `ui/theme` | `Theme` type, `DefaultLight`, `DefaultDark`, `Validate`, `CSS`, `ContrastRatio`. |
+| `ui` | `Config`, `DefaultConfig`, `AssetsFor` and `Assets` handlers, `StylesheetFor`, embedded templates and static files, `HTMXVersion`, `Prefix`. |
+| `ui/theme` | `Theme` type, `DefaultLight`, `DefaultDark`, `DefaultPairings`, `Required`, `Validate`, `CSS`, `ContrastRatio`. |
+| `ui/brand` | `Brand` type with the wordmark, logo, radii, spacing, and role accents. `Default`, `Validate`, `CSS`, `Roles`. |
 | `ui/fonts` | `Pack` type with three roles, `Default`, `Shipped`, `Validate`, `CSS`, `Files`. |
-| `ui/components` | `Kit` with one template and one data struct per component. |
+| `ui/components` | `Kit` with one template and one data struct per component. `WithBrand` sets the brand of the layout. |
 | `ui/a11ytest` | `AssertPage`, `AssertFragment`, and `Check` for tests. |
 | `ui/example` | Demo page that uses every component. `cmd/demo` serves it. |
 
 ## How to use the kit
 
-1. Build the asset handler once at start. It checks the themes and the font
-   pack and generates `/static/vca.css`.
-2. Parse the templates once with `components.New`.
+1. Build the asset handler once at start with `ui.AssetsFor(cfg)`. It checks
+   the themes, the font pack, and the brand, and generates `/static/vca.css`.
+   `ui.DefaultConfig` returns the shipped look.
+2. Parse the templates once with `components.New(components.WithBrand(cfg.Brand))`.
+   Use the same brand as the assets, so the logo path resolves.
 3. Mount the assets under `ui.Prefix`, which is `/static/`.
 4. In each page handler, compose the body with `Kit.HTML` and `components.Join`.
 5. Call `Kit.RenderPage`. It writes the full layout, or only the page partial
    for an htmx request, and sets the `HX-Title` header.
 
 ```go
-assets, err := ui.Assets(theme.DefaultLight(), theme.DefaultDark(), fonts.Default())
+cfg := ui.DefaultConfig()
+assets, err := ui.AssetsFor(cfg)
 if err != nil {
 	return err
 }
-kit, err := components.New()
+kit, err := components.New(components.WithBrand(cfg.Brand))
 if err != nil {
 	return err
 }
@@ -79,9 +83,32 @@ gets `304 Not Modified`.
 
 | Path | Content |
 |---|---|
-| `/static/vca.css` | Font faces, light tokens, dark tokens, then the base stylesheet. |
+| `/static/vca.css` | Font faces, light tokens, dark tokens, brand properties, then the base stylesheet. |
 | `/static/htmx.min.js` | htmx, version in `ui.HTMXVersion`. |
 | `/static/fonts/<file>.woff2` | One file per font role that has a file: the heading and the body font. |
+| `/static/logo.svg`, `.png`, or `.webp` | The brand logo, when the brand has one. |
+
+The logo response carries `Content-Security-Policy: default-src 'none';
+style-src 'unsafe-inline'; sandbox`. Pages show the logo only through an
+`img` element, so an SVG logo cannot run script.
+
+## Brand
+
+`brand.Brand` holds the brand data. `brand.CSS` writes it as custom
+properties. `brand.Validate` checks it against the two themes.
+
+| Field | Rule | CSS |
+|---|---|---|
+| `Wordmark` | 1 to 32 characters. No `<`, `>`, `&`, or `"`. | None. The layout draws it in the header and the footer. |
+| `Emphasis` | 0 to 32 characters, same characters. | None. The layout draws it in an `em` in the primary colour. |
+| `Logo` | A base64 data URI of an SVG, PNG, or WebP image, 64 KiB or less. A logo needs an `Alt` text. | None. The layout draws it in an `img` with its `alt`. |
+| `Radii` | `Small` and `Medium` are `0` or 1rem or less. `Pill` is `0` or a `rem` value. | `--radius-s`, `--radius-m`, `--radius-pill` |
+| `Spacing` | Seven `rem` values that increase. | `--space-1` to `--space-7` |
+| `RoleAccents` | One `Accent` per role: `admin`, `issuer`, `holder`, `verifier`. A set colour needs 4.5:1 on the paper of its mode. | `--role-accent`, one rule per `data-role` value |
+
+`--role-accent` is the theme accent until a role sets its own colour. The
+bar under the wordmark, the page header label, and the navigation underline
+use it.
 
 ## How to add a theme
 
@@ -169,8 +196,8 @@ component. `components.Names` lists every template.
 
 | Name | Struct | Renders | Required fields |
 |---|---|---|---|
-| `layout` | `Page` | Full document with head, skip link, header, nav, theme toggle, `main`, toast region, footer. | `Title` |
-| `page` | `Page` | The `h1` and `Content`, for htmx requests. | `Title` |
+| `layout` | `Page` | Full document: head, skip link, header with wordmark, nav, theme toggle, `main`, toasts, and a footer with the monogram. | `Title` |
+| `page` | `Page` | The page header with `Label`, the `h1`, and `Lead`, then `Content`. htmx requests get only this part. | `Title` |
 | `card` | `Card` | `section` labelled by its `h2`. | `ID` |
 | `field` | `Field` | `label` plus `input`, `textarea`, or `select`, with hint and error text. | `ID`, `Label` |
 | `table` | `Table` | Table with `caption`, `th scope="col"`, and an empty row text. | `Caption`, `Columns` |
@@ -189,7 +216,8 @@ The page header shows `Label` in the accent colour above the `h1`, and
 `Lead` under it.
 
 `Nav`: `Label` (default `Main`), `Brand`, `Links`. `Link`: `Href`, `Text`,
-`Current`.
+`Current`. The wordmark links to `Brand.Href` (default `/`). `Brand.Text`
+names the service beside the wordmark.
 
 `Text`: `SkipLink`, `ThemeToggle`, `ThemeSystem`, `ThemeLight`, `ThemeDark`.
 A message catalogue fills these for each language.
@@ -285,7 +313,7 @@ a11ytest.AssertPage(t, rec.Body.String())
 
 ## Coverage
 
-`ui`, `ui/theme`, `ui/fonts`, and `ui/a11ytest` hold 100 percent statement
+`ui`, `ui/theme`, `ui/fonts`, `ui/brand`, and `ui/a11ytest` hold 100 percent statement
 coverage. `ui/components` holds at least 95 percent. `make cover` enforces
 the floor of ADR-004. The e2e suite runs axe against every page as a second
 gate.

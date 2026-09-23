@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	"github.com/centre-for-dpi/vc-adapters/ui/brand"
 	"github.com/centre-for-dpi/vc-adapters/ui/fonts"
 	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
@@ -41,21 +42,48 @@ const Prefix = "/static/"
 // cacheControl marks every asset immutable for one year.
 const cacheControl = "public, max-age=31536000, immutable"
 
+// logoPolicy sandboxes the logo, so an SVG cannot run script even when a
+// browser opens it on its own. Pages show the logo only through <img>.
+const logoPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+
 type asset struct {
 	body        []byte
 	contentType string
 	etag        string
+	csp         string // Content-Security-Policy, empty for none
 }
 
-// Assets validates the themes and the font pack, generates /static/vca.css,
-// and returns a handler for every file under /static/.
-// Every response carries an ETag and a long Cache-Control.
+// Config is the whole look of a deployment: two themes, a font pack, and
+// the brand.
+type Config struct {
+	Light theme.Theme
+	Dark  theme.Theme
+	Fonts fonts.Pack
+	Brand brand.Brand
+}
+
+// DefaultConfig returns the shipped look.
+func DefaultConfig() Config {
+	return Config{Light: theme.DefaultLight(), Dark: theme.DefaultDark(), Fonts: fonts.Default(), Brand: brand.Default()}
+}
+
+// Assets validates the themes and the font pack, generates /static/vca.css
+// with the default brand, and returns a handler for every file under
+// /static/. It is AssetsFor with brand.Default.
 func Assets(light, dark theme.Theme, pack fonts.Pack) (http.Handler, error) {
-	return build(Static, light, dark, pack)
+	return AssetsFor(Config{Light: light, Dark: dark, Fonts: pack, Brand: brand.Default()})
 }
 
-// build is Assets over any file system, so tests can inject a broken one.
-func build(static fs.FS, light, dark theme.Theme, pack fonts.Pack) (http.Handler, error) {
+// AssetsFor validates the config, generates /static/vca.css, and returns a
+// handler for every file under /static/, the logo included when the brand
+// has one. Every response carries an ETag and a long Cache-Control.
+func AssetsFor(cfg Config) (http.Handler, error) {
+	return build(Static, cfg)
+}
+
+// build is AssetsFor over any file system, so tests can inject a broken one.
+func build(static fs.FS, cfg Config) (http.Handler, error) {
+	light, dark, pack := cfg.Light, cfg.Dark, cfg.Fonts
 	if light.Dark || !dark.Dark {
 		return nil, fmt.Errorf("ui: light theme %q and dark theme %q have wrong Dark flags", light.Name, dark.Name)
 	}
@@ -66,6 +94,9 @@ func build(static fs.FS, light, dark theme.Theme, pack fonts.Pack) (http.Handler
 	}
 	if err := fonts.Validate(pack); err != nil {
 		return nil, fmt.Errorf("ui: %w", err)
+	}
+	if err := brand.Validate(cfg.Brand, light, dark); err != nil {
+		return nil, fmt.Errorf("ui: brand: %w", err)
 	}
 	files := map[string]asset{}
 	for _, name := range fonts.Files(pack) {
@@ -79,20 +110,33 @@ func build(static fs.FS, light, dark theme.Theme, pack fonts.Pack) (http.Handler
 	if err != nil {
 		return nil, fmt.Errorf("ui: %w", err)
 	}
-	css := fonts.CSS(pack) + theme.CSS(light) + theme.CSS(dark) + string(base)
+	css := fonts.CSS(pack) + theme.CSS(light) + theme.CSS(dark) + brand.CSS(cfg.Brand) + string(base)
 	files["vca.css"] = newAsset([]byte(css), "text/css; charset=utf-8")
 	htmx, err := fs.ReadFile(static, "static/htmx.min.js")
 	if err != nil {
 		return nil, fmt.Errorf("ui: %w", err)
 	}
 	files["htmx.min.js"] = newAsset(htmx, "text/javascript; charset=utf-8")
+	// Validate proved the logo decodes, so OrZero never drops an error here.
+	if logo := anyval.OrZero(cfg.Brand.Logo.File()); logo.Name != "" {
+		a := newAsset(logo.Body, logo.ContentType)
+		a.csp = logoPolicy
+		files[logo.Name] = a
+	}
 	return &handler{files: files}, nil
 }
 
-// StylesheetCSS returns the generated stylesheet text without serving it.
-// Tests and build tools use it.
+// StylesheetCSS returns the generated stylesheet text for the default
+// brand without serving it. Tests and build tools use it.
 func StylesheetCSS(light, dark theme.Theme, pack fonts.Pack) (string, error) {
-	h, err := Assets(light, dark, pack)
+	return StylesheetFor(Config{Light: light, Dark: dark, Fonts: pack, Brand: brand.Default()})
+}
+
+// StylesheetFor returns the text of /static/vca.css for the config: the
+// font faces, the light and dark tokens, the brand properties, then
+// base.css.
+func StylesheetFor(cfg Config) (string, error) {
+	h, err := AssetsFor(cfg)
 	if err != nil {
 		return "", err
 	}
@@ -124,6 +168,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", a.etag)
 	w.Header().Set("Cache-Control", cacheControl)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if a.csp != "" {
+		w.Header().Set("Content-Security-Policy", a.csp)
+	}
 	if strings.Contains(r.Header.Get("If-None-Match"), a.etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
