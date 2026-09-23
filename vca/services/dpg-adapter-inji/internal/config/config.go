@@ -36,8 +36,18 @@ type Config struct {
 	// VerifyClientID is the DID the Inji Verify service presents to a
 	// wallet as the client identifier.
 	VerifyClientID string `env:"VERIFY_CLIENT_ID"`
-	// DpgVersion names the Inji release for the capability answer.
+	// DpgVersion names the Inji Certify release for the capability
+	// answer.
 	DpgVersion string `env:"DPG_VERSION" default:"0.14.0"`
+	// VerifyVersion names the Inji Verify release of the stack.
+	VerifyVersion string `env:"VERIFY_VERSION" default:"0.16.0"`
+	// EsignetVersion names the eSignet release of the stack.
+	EsignetVersion string `env:"ESIGNET_VERSION" default:"1.5.1"`
+	// MockIdentityVersion names the mock identity system release of the
+	// stack.
+	MockIdentityVersion string `env:"MOCK_IDENTITY_VERSION" default:"0.10.1"`
+	// KeycloakVersion names the Keycloak release of the stack.
+	KeycloakVersion string `env:"KEYCLOAK_VERSION" default:"25.0"`
 	// Timeout bounds one call to Inji.
 	Timeout time.Duration `env:"TIMEOUT" default:"30s"`
 	// Retries is the number of extra attempts after a failed call.
@@ -70,6 +80,20 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("config: %sMAX_BYTES must be a positive number", Prefix)
 	}
 	return c, nil
+}
+
+// Versions maps every component of the stack, named as the stack file
+// names it without the prefix, onto its pinned version. The capability
+// answer reports them (ADR-034 decision 4).
+func (c Config) Versions() map[string]string {
+	return map[string]string{
+		"certify":        c.DpgVersion,
+		"esignet":        c.EsignetVersion,
+		"mock-identity":  c.MockIdentityVersion,
+		"verify-service": c.VerifyVersion,
+		"verify-ui":      c.VerifyVersion,
+		"keycloak":       c.KeycloakVersion,
+	}
 }
 
 // Describe lists the variables for the start log and the documentation.

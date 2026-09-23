@@ -50,6 +50,9 @@ type Options struct {
 	DefaultPin string
 	// PageSizeMax caps a list page.
 	PageSizeMax int
+	// Versions maps each stack component onto its pinned version for
+	// the capability answer. The configuration supplies it.
+	Versions map[string]string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 }
@@ -65,6 +68,7 @@ type Service struct {
 	internalURL  string
 	defaultPin   string
 	pageSizeMax  int
+	versions     map[string]string
 	now          func() time.Time
 }
 
@@ -95,6 +99,7 @@ func New(opts Options) (*Service, error) {
 		internalURL:  strings.TrimRight(opts.InternalURL, "/"),
 		defaultPin:   opts.DefaultPin,
 		pageSizeMax:  opts.PageSizeMax,
+		versions:     opts.Versions,
 		now:          opts.Now,
 	}, nil
 }
@@ -143,6 +148,12 @@ func (s *Service) GetCapabilities(
 			backendv1.Protocol_PROTOCOL_OID4VP,
 			backendv1.Protocol_PROTOCOL_OID4VP_DCQL,
 		},
+		// RegisterCredentialConfiguration writes a schema and a template
+		// to the platform. Revoke, GetIssuanceStatus, and IssueBatch
+		// answer Unimplemented, so their features stay off the list.
+		// The platform embeds no status entry of VCA in what it signs.
+		Features: []backendv1.Feature{backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API},
+		DpgInfo:  s.dpgInfo(),
 	}), nil
 }
 

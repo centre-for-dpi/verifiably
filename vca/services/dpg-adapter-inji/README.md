@@ -35,7 +35,11 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_OFFER_ISSUER` | The issuer identifier of a hosted offer. |
 | `VCA_INJI_METADATA_PATH` | The path of the issuer metadata on Inji Certify. |
 | `VCA_INJI_VERIFY_CLIENT_ID` | The DID Inji Verify shows a wallet. |
-| `VCA_INJI_DPG_VERSION` | The Inji release the answer of `GetCapabilities` reports. |
+| `VCA_INJI_DPG_VERSION` | The Inji Certify release the answer of `GetCapabilities` reports. |
+| `VCA_INJI_VERIFY_VERSION` | The Inji Verify release of the stack. The default is `0.16.0`. |
+| `VCA_INJI_ESIGNET_VERSION` | The eSignet release of the stack. The default is `1.5.1`. |
+| `VCA_INJI_MOCK_IDENTITY_VERSION` | The mock identity system release of the stack. The default is `0.10.1`. |
+| `VCA_INJI_KEYCLOAK_VERSION` | The Keycloak release of the stack. The default is `25.0`. |
 | `VCA_INJI_TIMEOUT` | The bound of one call to Inji. The default is `30s`. |
 | `VCA_INJI_RETRIES` | The number of extra attempts. The default is `2`. |
 | `VCA_INJI_MAX_BYTES` | The bound of a response body. The default is 8 megabytes. |

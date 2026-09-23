@@ -56,6 +56,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		OfferIssuer:         cfg.OfferIssuer,
 		AuthorizationServer: cfg.AuthorizationServer,
 		OfferTTL:            cfg.OfferTTL,
+		Versions:            cfg.Versions(),
 	})
 	if err != nil {
 		return nil, err

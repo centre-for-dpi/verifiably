@@ -31,6 +31,7 @@ Set at least one walt.id URL. Each URL turns on one role.
 | `VCA_WALTID_WALLET_URL` | The base URL of the walt.id wallet API. |
 | `VCA_WALTID_STANDARD_VERSION` | The OID4VCI draft name. The default is `draft13`. |
 | `VCA_WALTID_DPG_VERSION` | The walt.id release the answer of `GetCapabilities` reports. |
+| `VCA_WALTID_KEYCLOAK_VERSION` | The Keycloak release of the stack. The default is `25.0`. |
 | `VCA_WALTID_ISSUER_DID` | The signing DID. Empty onboards one at first use. |
 | `VCA_WALTID_ISSUER_KEY` | The signing key as a JSON web key wrapper. It is a secret. |
 | `VCA_WALTID_VCT_BASE` | The base URL of the `vct` of a custom SD-JWT credential. |

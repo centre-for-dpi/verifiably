@@ -82,6 +82,12 @@ enum Channel {
   CHANNEL_SMS = 5;
   // A download link.
   CHANNEL_LINK = 6;
+  // The browser Digital Credentials API.
+  CHANNEL_DC_API = 7;
+  // A DIDComm out of band invitation that carries the offer.
+  CHANNEL_DIDCOMM_OOB = 8;
+  // A QR code that carries the credential as CBOR under claim 169.
+  CHANNEL_CLAIM169_QR = 9;
 }
 
 // Protocol names a standard exchange protocol an adapter speaks.
@@ -99,6 +105,64 @@ enum Protocol {
   PROTOCOL_OID4VCI_BATCH = 5;
   // OID4VCI deferred credential issuance.
   PROTOCOL_OID4VCI_DEFERRED = 6;
+  // DIDComm issue credential protocol, version 2.
+  PROTOCOL_DIDCOMM_ISSUE_V2 = 7;
+  // DIDComm present proof protocol, version 2.
+  PROTOCOL_DIDCOMM_PRESENT_V2 = 8;
+  // Presentation through the browser Digital Credentials API.
+  PROTOCOL_DC_API = 9;
+}
+
+// Feature names one thing an adapter does against its DPG beyond the
+// role services. A page shows a feature on a stack only when the live
+// adapter lists it (ADR-034 decision 5). An adapter lists a feature
+// only when the RPC behind it works today.
+enum Feature {
+  FEATURE_UNSPECIFIED = 0;
+  // The adapter creates the issuer DID and key in the DPG.
+  FEATURE_ISSUER_IDENTITY_PROVISION = 1;
+  // The adapter imports an existing DID and key into the DPG.
+  FEATURE_ISSUER_IDENTITY_IMPORT_DID = 2;
+  // The adapter imports an X.509 certificate chain into the DPG.
+  FEATURE_ISSUER_IDENTITY_IMPORT_X509 = 3;
+  // RegisterCredentialConfiguration makes a schema issuable on the DPG.
+  FEATURE_CREDENTIAL_CONFIG_API = 4;
+  // Revoke sets a credential to revoked through the DPG.
+  FEATURE_REVOCATION = 5;
+  // Revoke can suspend and reinstate a credential through the DPG.
+  FEATURE_SUSPENSION = 6;
+  // GetIssuanceStatus reports whether a wallet claimed an offer.
+  FEATURE_ISSUANCE_STATUS = 7;
+  // The DPG keeps a searchable ledger of issued credentials.
+  FEATURE_ISSUED_LEDGER = 8;
+  // IssueBatch issues many credentials in one DPG call.
+  FEATURE_BULK_NATIVE = 9;
+  // The DPG can ask the holder to present a credential before it issues.
+  FEATURE_PRESENTATION_DURING_ISSUANCE = 10;
+  // The DPG separates tenants.
+  FEATURE_MULTI_TENANCY = 11;
+  // The DPG issues client credentials per tenant.
+  FEATURE_TENANT_CLIENT_CREDENTIALS = 12;
+  // The DPG calls a webhook on events.
+  FEATURE_WEBHOOKS = 13;
+  // The DPG calls back on issuance and presentation session events.
+  FEATURE_SESSION_CALLBACKS = 14;
+  // The DPG groups tenants into ecosystems.
+  FEATURE_ECOSYSTEMS = 15;
+  // The wallet manages its keys.
+  FEATURE_WALLET_KEYS = 16;
+  // The wallet manages its DIDs.
+  FEATURE_WALLET_DIDS = 17;
+  // The wallet keeps an event log.
+  FEATURE_WALLET_EVENTS = 18;
+  // The wallet can decline a pending offer.
+  FEATURE_WALLET_REJECT_OFFER = 19;
+  // The verifier checks an uploaded credential, QR code, image, or PDF.
+  FEATURE_VERIFY_UPLOAD = 20;
+  // The verifier takes a presentation through the Digital Credentials API.
+  FEATURE_DC_API_VERIFY = 21;
+  // The verifier asks for AnonCreds proofs with predicates.
+  FEATURE_ANONCREDS_PROOF = 22;
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -119,6 +183,40 @@ message GetCapabilitiesResponse {
   repeated vca.common.v1.Role roles = 5;
   // The exchange protocols the adapter speaks.
   repeated Protocol protocols = 6;
+  // The features the adapter implements against the DPG today.
+  repeated Feature features = 7;
+  // The DPG behind the adapter, with its components and links.
+  DpgInfo dpg_info = 8;
+  // The DID methods the adapter can provision or use, as method names
+  // such as did:key.
+  repeated string did_methods = 9;
+  // The status list kinds the adapter can embed in a credential.
+  repeated StatusListBinding.Kind status_mechanisms = 10;
+}
+
+// DpgInfo names the DPG behind an adapter. The pages show it, so a
+// vendor name never appears outside the adapters (ADR-001 decision 4).
+message DpgInfo {
+  // The name of the DPG as a page shows it.
+  string display_name = 1;
+  // The release of the DPG.
+  string version = 2;
+  // The components the stack runs for the roles this adapter serves.
+  repeated Component components = 3;
+}
+
+// Component is one deployed part of a DPG stack.
+message Component {
+  // The name of the component, as the stack file names it.
+  string name = 1;
+  // The pinned version or image tag.
+  string version = 2;
+  // The source repository.
+  string repository_url = 3;
+  // The documentation.
+  string docs_url = 4;
+  // The SPDX licence identifier.
+  string license = 5;
 }
 
 // CredentialConfiguration is one entry of credential_configurations_supported

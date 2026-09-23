@@ -70,6 +70,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		PublicURL:    cfg.PublicURL,
 		InternalURL:  cfg.InternalURL,
 		DefaultPin:   cfg.DefaultPin,
+		Versions:     cfg.Versions(),
 	})
 	if err != nil {
 		return nil, err

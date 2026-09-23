@@ -3,6 +3,7 @@
 package config_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func TestLoadFillsTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Listen != ":8080" || cfg.DpgVersion != "2.x" {
+	if cfg.Listen != ":8080" || cfg.DpgVersion != "latest" {
 		t.Fatalf("config = %+v", cfg)
 	}
 	if cfg.VerifierName != "verifiable-credentials-adapters" {
@@ -113,4 +114,61 @@ func TestDescribeMarksTheSecrets(t *testing.T) {
 			t.Fatalf("%s must be a secret", name)
 		}
 	}
+}
+
+// TestDefaultVersionsMatchTheStackFile binds the versions the capability
+// answer reports to the image tags of the stack file, so a bump of one
+// without the other fails here (ADR-034 decision 4). CREDEBL publishes
+// no version tag, so the tag is the default of CREDEBL_VERSION until a
+// digest pins it.
+func TestDefaultVersionsMatchTheStackFile(t *testing.T) {
+	cfg, err := config.Load(env(required()))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	tags := stackImageTags(t, "../../../../../deploy/vca/dpg/credebl.yaml")
+	versions := cfg.Versions()
+	if len(versions) < 3 {
+		t.Fatalf("versions = %v, want the platform services and the identity provider", versions)
+	}
+	for name, version := range versions {
+		tag, ok := tags["credebl-"+name]
+		if !ok {
+			t.Errorf("the stack file runs no service credebl-%s", name)
+			continue
+		}
+		if tag != version {
+			t.Errorf("%s: the answer says %s but the stack file runs %s", name, version, tag)
+		}
+	}
+}
+
+// stackImageTags reads the image tag of every service of a compose file.
+// A tag of the form ${NAME:-default} resolves to its default.
+func stackImageTags(t *testing.T, path string) map[string]string {
+	t.Helper()
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: the path is a test constant
+	if err != nil {
+		t.Fatalf("read the stack file: %v", err)
+	}
+	out := map[string]string{}
+	service := ""
+	for _, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   ") && strings.HasSuffix(trimmed, ":"):
+			service = strings.TrimSuffix(trimmed, ":")
+		case strings.HasPrefix(trimmed, "image:") && service != "":
+			image := strings.TrimSpace(strings.TrimPrefix(trimmed, "image:"))
+			tag := image[strings.LastIndex(image, ":")+1:]
+			if strings.HasPrefix(image[strings.Index(image, ":")+1:], "${") {
+				tag = image[strings.Index(image, ":")+1:]
+			}
+			if strings.HasPrefix(tag, "${") {
+				tag = strings.TrimSuffix(tag[strings.Index(tag, ":-")+2:], "}")
+			}
+			out[service] = tag
+		}
+	}
+	return out
 }

@@ -41,7 +41,7 @@ func contractEnv(t *testing.T) config.Config {
 		VerifierName: "verifiable-credentials-adapters-contract",
 		PublicURL:    os.Getenv("VCA_CREDEBL_CONTRACT_PUBLIC_URL"),
 		InternalURL:  os.Getenv("VCA_CREDEBL_CONTRACT_INTERNAL_URL"),
-		DpgVersion:   "2.x",
+		DpgVersion:   "latest",
 		Timeout:      30 * time.Second,
 		Retries:      1,
 		MaxBytes:     8 << 20,

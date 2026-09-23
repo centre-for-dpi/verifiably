@@ -51,6 +51,9 @@ type Options struct {
 	OfferTTL time.Duration
 	// PageSizeMax caps a list page.
 	PageSizeMax int
+	// Versions maps each stack component onto its pinned version for
+	// the capability answer. The configuration supplies it.
+	Versions map[string]string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// NewID returns a new random identifier. Nil uses crypto/rand.
@@ -69,6 +72,7 @@ type Service struct {
 	authorizationServer string
 	offerTTL            time.Duration
 	pageSizeMax         int
+	versions            map[string]string
 	now                 func() time.Time
 	newID               func() string
 }
@@ -107,6 +111,7 @@ func New(opts Options) (*Service, error) {
 		authorizationServer: opts.AuthorizationServer,
 		offerTTL:            opts.OfferTTL,
 		pageSizeMax:         opts.PageSizeMax,
+		versions:            opts.Versions,
 		now:                 opts.Now,
 		newID:               opts.NewID,
 	}, nil
@@ -160,12 +165,22 @@ func (s *Service) GetCapabilities(
 			out.Channels = append(out.Channels, backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE)
 		}
 		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VCI)
+		// The staged claims carry the two status markers, so a credential
+		// points at a token status list or a bitstring status list
+		// (ADR-018, ADR-019). RegisterCredentialConfiguration, Revoke,
+		// GetIssuanceStatus, and IssueBatch answer Unimplemented, so no
+		// feature is listed today.
+		out.StatusMechanisms = []backendv1.StatusListBinding_Kind{
+			backendv1.StatusListBinding_KIND_BITSTRING,
+			backendv1.StatusListBinding_KIND_TOKEN,
+		}
 	}
 	if s.verify != nil {
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_VERIFIER)
 		out.Protocols = append(out.Protocols,
 			backendv1.Protocol_PROTOCOL_OID4VP, backendv1.Protocol_PROTOCOL_OID4VP_PEX)
 	}
+	out.DpgInfo = s.dpgInfo()
 	return connect.NewResponse(out), nil
 }
 

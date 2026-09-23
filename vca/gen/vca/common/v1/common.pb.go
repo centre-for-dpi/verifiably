@@ -44,6 +44,8 @@ const (
 	Format_FORMAT_MSO_MDOC Format = 5
 	// Reserved for W3C Data Integrity BBS proofs (ADR-031).
 	Format_FORMAT_LDP_VC_BBS Format = 6
+	// Hyperledger AnonCreds over DIDComm.
+	Format_FORMAT_ANONCREDS Format = 7
 )
 
 // Enum value maps for Format.
@@ -56,6 +58,7 @@ var (
 		4: "FORMAT_LDP_VC",
 		5: "FORMAT_MSO_MDOC",
 		6: "FORMAT_LDP_VC_BBS",
+		7: "FORMAT_ANONCREDS",
 	}
 	Format_value = map[string]int32{
 		"FORMAT_UNSPECIFIED": 0,
@@ -65,6 +68,7 @@ var (
 		"FORMAT_LDP_VC":      4,
 		"FORMAT_MSO_MDOC":    5,
 		"FORMAT_LDP_VC_BBS":  6,
+		"FORMAT_ANONCREDS":   7,
 	}
 )
 
@@ -754,7 +758,7 @@ const file_vca_common_v1_common_proto_rawDesc = "" +
 	"\tSTORE_ENV\x10\x01\x12\x0e\n" +
 	"\n" +
 	"STORE_FILE\x10\x02\x12\r\n" +
-	"\tSTORE_KMS\x10\x03*\xa3\x01\n" +
+	"\tSTORE_KMS\x10\x03*\xb9\x01\n" +
 	"\x06Format\x12\x16\n" +
 	"\x12FORMAT_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10FORMAT_VC_SD_JWT\x10\x01\x12\x14\n" +
@@ -762,7 +766,8 @@ const file_vca_common_v1_common_proto_rawDesc = "" +
 	"\x12FORMAT_JWT_VC_JSON\x10\x03\x12\x11\n" +
 	"\rFORMAT_LDP_VC\x10\x04\x12\x13\n" +
 	"\x0fFORMAT_MSO_MDOC\x10\x05\x12\x15\n" +
-	"\x11FORMAT_LDP_VC_BBS\x10\x06*a\n" +
+	"\x11FORMAT_LDP_VC_BBS\x10\x06\x12\x14\n" +
+	"\x10FORMAT_ANONCREDS\x10\a*a\n" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_ISSUER\x10\x01\x12\x0f\n" +

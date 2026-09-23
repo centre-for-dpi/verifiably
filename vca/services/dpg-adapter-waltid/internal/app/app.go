@@ -59,6 +59,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		DpgVersion:      cfg.DpgVersion,
 		StandardVersion: cfg.StandardVersion,
 		VctBase:         cfg.VctBase,
+		Versions:        cfg.Versions(),
 	})
 	if err != nil {
 		return nil, err

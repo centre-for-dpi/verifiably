@@ -30,7 +30,7 @@ func settings(f *fake.Server) config.Config {
 		IssuerID:    "issuer-1",
 		PublicURL:   "https://credebl.example.org",
 		InternalURL: "http://credebl-agent:8001",
-		DpgVersion:  "2.x",
+		DpgVersion:  "latest",
 		Timeout:     5 * time.Second,
 		MaxBytes:    1 << 20,
 	}

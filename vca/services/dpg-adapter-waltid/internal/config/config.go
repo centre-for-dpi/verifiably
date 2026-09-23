@@ -28,7 +28,11 @@ type Config struct {
 	// puts it in the metadata path.
 	StandardVersion string `env:"STANDARD_VERSION" default:"draft13"`
 	// DpgVersion names the walt.id release for the capability answer.
+	// The issuer, verifier, and wallet APIs share it.
 	DpgVersion string `env:"DPG_VERSION" default:"0.18.2"`
+	// KeycloakVersion names the Keycloak release of the stack for the
+	// capability answer.
+	KeycloakVersion string `env:"KEYCLOAK_VERSION" default:"25.0"`
 	// IssuerDid pins the signing DID. Empty onboards a key at first use.
 	IssuerDid string `env:"ISSUER_DID"`
 	// IssuerKey is the JWK wrapper of the signing key, as JSON. Empty
@@ -64,6 +68,18 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("config: %sMAX_BYTES must be a positive number", Prefix)
 	}
 	return c, nil
+}
+
+// Versions maps every component of the stack, named as the stack file
+// names it without the prefix, onto its pinned version. The capability
+// answer reports them (ADR-034 decision 4).
+func (c Config) Versions() map[string]string {
+	return map[string]string{
+		"issuer-api":   c.DpgVersion,
+		"verifier-api": c.DpgVersion,
+		"wallet-api":   c.DpgVersion,
+		"keycloak":     c.KeycloakVersion,
+	}
 }
 
 // Describe lists the variables for the start log and the documentation.

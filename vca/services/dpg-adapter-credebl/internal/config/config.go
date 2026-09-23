@@ -44,7 +44,11 @@ type Config struct {
 	// DefaultPin is the transaction code of a pre-authorized offer.
 	DefaultPin string `env:"DEFAULT_PIN" secret:"true"`
 	// DpgVersion names the CREDEBL release for the capability answer.
-	DpgVersion string `env:"DPG_VERSION" default:"2.x"`
+	// CREDEBL publishes no version tag, so the default is the image tag
+	// the stack file pulls. Set it to the digest a deployment pins.
+	DpgVersion string `env:"DPG_VERSION" default:"latest"`
+	// KeycloakVersion names the Keycloak release of the stack.
+	KeycloakVersion string `env:"KEYCLOAK_VERSION" default:"25.0"`
 	// Timeout bounds one call to CREDEBL.
 	Timeout time.Duration `env:"TIMEOUT" default:"30s"`
 	// Retries is the number of extra attempts after a failed call.
@@ -69,6 +73,17 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("config: %sMAX_BYTES must be a positive number", Prefix)
 	}
 	return c, nil
+}
+
+// Versions maps every component of the stack, named as the stack file
+// names it without the prefix, onto its pinned version. The capability
+// answer reports them (ADR-034 decision 4).
+func (c Config) Versions() map[string]string {
+	return map[string]string{
+		"api-gateway":        c.DpgVersion,
+		"agent-provisioning": c.DpgVersion,
+		"keycloak":           c.KeycloakVersion,
+	}
 }
 
 // Describe lists the variables for the start log and the documentation.

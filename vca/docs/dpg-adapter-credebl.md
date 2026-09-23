@@ -44,6 +44,16 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Channels | OID4VCI pre-authorized code |
 | Protocols | OID4VCI, OID4VP, OID4VP with DCQL |
 | Roles | Issuer and verifier |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API` |
+| DID methods | None. The organisation of the platform holds the issuer DID. |
+| Status mechanisms | None. The platform embeds no status entry of VCA. |
+| DPG information | The platform name, the image tag, the api gateway, agent provisioning, and Keycloak |
+
+Each component carries its pinned version, its repository, its
+documentation, and its licence. CREDEBL publishes no version tag, so
+the default version is the image tag `latest` of the stack file. A
+test binds the defaults to the stack file. A page shows a feature on
+this stack only when the answer lists it (ADR-034).
 
 CREDEBL is the only one of the three DPGs that reads DCQL.
 

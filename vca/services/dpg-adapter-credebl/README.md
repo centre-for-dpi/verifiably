@@ -35,7 +35,8 @@ never opens the CREDEBL database and it never controls a container.
 | `VCA_CREDEBL_PUBLIC_URL` | The host a wallet reaches the CREDEBL agent on. |
 | `VCA_CREDEBL_INTERNAL_URL` | The host the CREDEBL agent writes into an offer. |
 | `VCA_CREDEBL_DEFAULT_PIN` | The transaction code of an offer. It holds a secret. |
-| `VCA_CREDEBL_DPG_VERSION` | The CREDEBL release the answer of `GetCapabilities` reports. |
+| `VCA_CREDEBL_DPG_VERSION` | The CREDEBL image tag the answer of `GetCapabilities` reports. The default is `latest`. |
+| `VCA_CREDEBL_KEYCLOAK_VERSION` | The Keycloak release of the stack. The default is `25.0`. |
 | `VCA_CREDEBL_TIMEOUT` | The bound of one call. The default is `30s`. |
 | `VCA_CREDEBL_RETRIES` | The number of extra attempts. The default is `2`. |
 | `VCA_CREDEBL_MAX_BYTES` | The bound of a response body. The default is 8 megabytes. |

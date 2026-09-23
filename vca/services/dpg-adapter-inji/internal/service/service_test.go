@@ -51,10 +51,14 @@ func newService(t *testing.T, r roles) (*service.Service, *fake.Server) {
 	}
 	ids := 0
 	svc, err := service.New(service.Options{
-		Certify:             inji.NewCertify(client(r.certify), ""),
-		Verify:              inji.NewVerify(client(r.verify), "did:web:verify.example:v1:verify", f.URL()),
-		Store:               store.Memory(),
-		DpgVersion:          "0.14.0",
+		Certify:    inji.NewCertify(client(r.certify), ""),
+		Verify:     inji.NewVerify(client(r.verify), "did:web:verify.example:v1:verify", f.URL()),
+		Store:      store.Memory(),
+		DpgVersion: "0.14.0",
+		Versions: map[string]string{
+			"certify": "0.14.0", "esignet": "1.5.1", "mock-identity": "0.10.1",
+			"verify-service": "0.16.0", "verify-ui": "0.16.0", "keycloak": "25.0",
+		},
 		PublicURL:           "https://adapter.example",
 		AuthorizationServer: "https://esignet.example/v1/esignet",
 		OfferTTL:            15 * time.Minute,
@@ -478,4 +482,145 @@ func TestListCredentialTypesReportsAFailure(t *testing.T) {
 	_, err := svc.ListCredentialTypes(context.Background(),
 		connect.NewRequest(&backendv1.ListCredentialTypesRequest{}))
 	wantCode(t, err, connect.CodeUnavailable)
+}
+
+func TestCapabilitiesCarryDpgInfo(t *testing.T) {
+	svc, _ := newService(t, both)
+	resp, err := svc.GetCapabilities(context.Background(),
+		connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatalf("GetCapabilities: %v", err)
+	}
+	info := resp.Msg.GetDpgInfo()
+	if info.GetDisplayName() == "" || info.GetVersion() != "0.14.0" {
+		t.Fatalf("dpg info = %v", info)
+	}
+	seen := map[string]string{}
+	for _, c := range info.GetComponents() {
+		if c.GetName() == "" || c.GetVersion() == "" || c.GetLicense() == "" {
+			t.Errorf("component %v lacks a name, a version, or a licence", c)
+		}
+		for _, u := range []string{c.GetRepositoryUrl(), c.GetDocsUrl()} {
+			if !strings.HasPrefix(u, "https://") {
+				t.Errorf("component %s: %q is not an https URL", c.GetName(), u)
+			}
+		}
+		if _, dup := seen[c.GetName()]; dup {
+			t.Errorf("component %s appears twice", c.GetName())
+		}
+		seen[c.GetName()] = c.GetVersion()
+	}
+	want := map[string]string{
+		"certify": "0.14.0", "esignet": "1.5.1", "mock-identity": "0.10.1",
+		"verify-service": "0.16.0", "verify-ui": "0.16.0", "keycloak": "25.0",
+	}
+	for name, version := range want {
+		if seen[name] != version {
+			t.Errorf("component %s = %q, want %q", name, seen[name], version)
+		}
+	}
+	if !hasStatusKind(resp.Msg.GetStatusMechanisms(), backendv1.StatusListBinding_KIND_BITSTRING) ||
+		!hasStatusKind(resp.Msg.GetStatusMechanisms(), backendv1.StatusListBinding_KIND_TOKEN) {
+		t.Errorf("status mechanisms = %v, want both list kinds", resp.Msg.GetStatusMechanisms())
+	}
+	if len(resp.Msg.GetDidMethods()) != 0 {
+		t.Errorf("DID methods = %v, the adapter manages no issuer DID today", resp.Msg.GetDidMethods())
+	}
+}
+
+func TestCapabilitiesOfAVerifierOnlyDeploymentNameNoIssuerComponent(t *testing.T) {
+	svc, _ := newService(t, roles{verify: true})
+	resp, err := svc.GetCapabilities(context.Background(),
+		connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatalf("GetCapabilities: %v", err)
+	}
+	names := map[string]bool{}
+	for _, c := range resp.Msg.GetDpgInfo().GetComponents() {
+		names[c.GetName()] = true
+	}
+	if names["certify"] || names["esignet"] || names["mock-identity"] {
+		t.Errorf("a verifier only deployment lists issuer components: %v", names)
+	}
+	if !names["verify-service"] || !names["keycloak"] {
+		t.Errorf("the verifier components are missing: %v", names)
+	}
+	if len(resp.Msg.GetStatusMechanisms()) != 0 {
+		t.Errorf("a verifier only deployment embeds no status: %v", resp.Msg.GetStatusMechanisms())
+	}
+}
+
+// TestCapabilitiesListOnlyImplementedFeatures maps every feature that
+// has an RPC behind it onto that RPC and calls it against the fake. The
+// answer lists a feature when and only when the RPC works. A listed
+// feature whose RPC answers Unimplemented is a lie the pages would show
+// (ADR-034 decision 5).
+func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
+	svc, _ := newService(t, both)
+	ctx := context.Background()
+	resp, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatalf("GetCapabilities: %v", err)
+	}
+	revoke := func() error {
+		_, err := svc.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{}))
+		return err
+	}
+	table := []struct {
+		feature backendv1.Feature
+		call    func() error
+		// exact reports that the RPC works when and only when the
+		// feature is listed. Suspension shares its RPC with revocation,
+		// and a batch that loops over single issuances is not native.
+		exact bool
+	}{
+		{backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API, func() error {
+			_, err := svc.RegisterCredentialConfiguration(ctx,
+				connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+					Configuration: &backendv1.CredentialConfiguration{
+						Id: "probe", Format: commonv1.Format_FORMAT_LDP_VC, Type: "Probe",
+					},
+				}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_REVOCATION, revoke, true},
+		{backendv1.Feature_FEATURE_SUSPENSION, revoke, false},
+		{backendv1.Feature_FEATURE_ISSUANCE_STATUS, func() error {
+			_, err := svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_BULK_NATIVE, func() error {
+			_, err := svc.IssueBatch(ctx, connect.NewRequest(&backendv1.IssueBatchRequest{}))
+			return err
+		}, false},
+	}
+	listed := map[backendv1.Feature]bool{}
+	for _, f := range resp.Msg.GetFeatures() {
+		listed[f] = true
+	}
+	known := map[backendv1.Feature]bool{}
+	for _, row := range table {
+		known[row.feature] = true
+		works := connect.CodeOf(row.call()) != connect.CodeUnimplemented
+		if listed[row.feature] && !works {
+			t.Errorf("the feature %v is listed but its RPC answers Unimplemented", row.feature)
+		}
+		if row.exact && works && !listed[row.feature] {
+			t.Errorf("the RPC of the feature %v works but the answer does not list it", row.feature)
+		}
+	}
+	for f := range listed {
+		if !known[f] {
+			t.Errorf("the feature %v has no RPC behind it yet, so the answer must not list it", f)
+		}
+	}
+}
+
+func hasStatusKind(list []backendv1.StatusListBinding_Kind, want backendv1.StatusListBinding_Kind) bool {
+	for _, k := range list {
+		if k == want {
+			return true
+		}
+	}
+	return false
 }

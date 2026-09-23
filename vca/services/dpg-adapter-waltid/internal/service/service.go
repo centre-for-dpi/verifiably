@@ -44,6 +44,9 @@ type Options struct {
 	VctBase string
 	// PageSizeMax caps a list page.
 	PageSizeMax int
+	// Versions maps each stack component onto its pinned version for
+	// the capability answer. The configuration supplies it.
+	Versions map[string]string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 }
@@ -56,6 +59,7 @@ type Service struct {
 	standardVersion string
 	vctBase         string
 	pageSizeMax     int
+	versions        map[string]string
 	now             func() time.Time
 }
 
@@ -83,6 +87,7 @@ func New(opts Options) (*Service, error) {
 		standardVersion: opts.StandardVersion,
 		vctBase:         strings.TrimRight(opts.VctBase, "/"),
 		pageSizeMax:     opts.PageSizeMax,
+		versions:        opts.Versions,
 		now:             opts.Now,
 	}, nil
 }
@@ -134,6 +139,18 @@ func (s *Service) GetCapabilities(
 			backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
 		}
 		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VCI)
+		// RegisterCredentialConfiguration works, so a schema can go to
+		// the stack. Revoke, GetIssuanceStatus, and IssueBatch answer
+		// Unimplemented, so their features stay off the list.
+		out.Features = []backendv1.Feature{backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API}
+		// The adapter onboards a did:key issuer at first use.
+		out.DidMethods = []string{"did:key"}
+		// The issued credential carries the status entry the caller
+		// binds, of either list kind (ADR-018, ADR-019).
+		out.StatusMechanisms = []backendv1.StatusListBinding_Kind{
+			backendv1.StatusListBinding_KIND_BITSTRING,
+			backendv1.StatusListBinding_KIND_TOKEN,
+		}
 	}
 	if s.client.HasWallet() {
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_HOLDER)
@@ -145,6 +162,7 @@ func (s *Service) GetCapabilities(
 		out.Protocols = append(out.Protocols,
 			backendv1.Protocol_PROTOCOL_OID4VP, backendv1.Protocol_PROTOCOL_OID4VP_PEX)
 	}
+	out.DpgInfo = s.dpgInfo()
 	return connect.NewResponse(out), nil
 }
 

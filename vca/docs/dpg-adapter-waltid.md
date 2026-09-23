@@ -44,6 +44,15 @@ The answer of `GetCapabilities` reports what the release supports.
 | Channels | OID4VCI pre-authorized code, OID4VCI authorization code |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API` when the configuration names an issuer URL |
+| DID methods | `did:key`, which the adapter onboards at first use |
+| Status mechanisms | Bitstring status list and token status list, when the configuration names an issuer URL |
+| DPG information | The stack name, the release, and one component per wired role plus Keycloak |
+
+Each component carries its pinned version, its repository, its
+documentation, and its licence. The versions come from the
+configuration, and a test binds the defaults to the stack file. A page
+shows a feature on this stack only when the answer lists it (ADR-034).
 
 Release 0.18.2 has no DCQL query support, so the answer never lists
 `PROTOCOL_OID4VP_DCQL`. The release has no document export, so the

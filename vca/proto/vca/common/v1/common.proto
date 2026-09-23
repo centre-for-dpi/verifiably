@@ -31,6 +31,8 @@ enum Format {
   FORMAT_MSO_MDOC = 5;
   // Reserved for W3C Data Integrity BBS proofs (ADR-031).
   FORMAT_LDP_VC_BBS = 6;
+  // Hyperledger AnonCreds over DIDComm.
+  FORMAT_ANONCREDS = 7;
 }
 
 // Role names one of the four deployment roles of ADR-007.

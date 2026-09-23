@@ -45,6 +45,15 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Channels | OID4VCI pre-authorized code and document. An identity provider adds the authorization code flow. |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
+| Features | None today. Every RPC behind a feature answers `unimplemented`. |
+| DID methods | None. The deployment sets the issuer identity of Inji Certify. |
+| Status mechanisms | Bitstring status list and token status list, when the configuration names a Certify URL |
+| DPG information | The stack name, the Certify release, and one component per wired role plus Keycloak |
+
+Each component carries its pinned version, its repository, its
+documentation, and its licence. The versions come from the
+configuration, and a test binds the defaults to the stack file. A page
+shows a feature on this stack only when the answer lists it (ADR-034).
 
 ## What the adapter does not do
 
