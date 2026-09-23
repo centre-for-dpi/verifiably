@@ -276,6 +276,15 @@ component. `components.Names` lists every template.
 | `qr` | `QR` | QR image with `alt`, `width`, and `height`. | `Src`, `Alt` |
 | `json` | `JSON` | `details` disclosure with a labelled `pre` region of indented JSON. | `ID`, `Summary` |
 | `button` | `Button` | `button`, or `a.btn` when `Href` has a value. | `Text` or `AriaLabel` |
+| `hero` | `Hero` | Two column opening block with the `h1`, a tracked label, a lead, actions, and an aside. Set `Page.Hero`; it replaces the page header. | `Title` |
+| `tiles` | `Tiles` | Grid of link tiles that invert on hover and focus. | `Items` with `Title` and `Href` |
+| `steps` | `Steps` | Ordered step cards. Each state carries a word: `Done`, `Current`, `Locked`. | `Items` with `Title` |
+| `checklist` | `Checklist` | `section` labelled by its `h2`, with items that say `Done` or `To do`. | `ID`, `Title`, `Items` |
+| `stat` | `Stat` | One summary card: label, value, sentence, link. Put several in `div.stats` for a grid. | `Label`, `Value` |
+| `stepper` | `Stepper` | Progress of a multi step form. The current step carries `aria-current="step"`. | `Label`, `Steps` (two or more), `Current` |
+| `choice` | `Choice` | `fieldset` with a `legend` and radio cards, or checkbox cards with `Multiple`. | `ID`, `Legend`, `Options` |
+| `code` | `Code` | `figure` with a `figcaption` and a `pre` region named by it. | `ID`, `Label`, `Text` |
+| `empty` | `Empty` | Empty state with a title, a sentence, and the one action that fills it. | `Title`, `Action` |
 
 ### Data structs
 
@@ -347,6 +356,30 @@ fails a page where two nav landmarks share a label.
 
 `Attrs` accepts only names on the whitelist in `components.SafeAttr`: the
 `hx-*` attributes and common input attributes. Any other name is an error.
+
+`Hero`: `Label`, `Title`, `Emphasis` (second line in the primary colour),
+`Lead`, `Actions`, `Aside`. `Page.Hero` renders it in place of the page
+header, so the hero carries the one `h1`.
+
+`Tiles`: `Items`. `Tile`: `Num`, `Title`, `Text`, `Meta`, `Href`.
+
+`Steps`: `Items`, `Text`. `Step`: `Title`, `Text`, `State` (empty, `done`,
+`current`, `locked`), `Href`, `LinkText` (default `Open`). `StepText`:
+`Done`, `Current`, `Locked`. At most one step is current.
+
+`Checklist`: `ID`, `Title`, `Note`, `Items`, `Text`. `Check`: `Text`,
+`Detail`, `Done`. `CheckText`: `Done`, `Todo`.
+
+`Stat`: `Label`, `Value`, `Text`, `Href`, `LinkText` (default `Open`).
+
+`Stepper`: `Label`, `Steps`, `Current` (from 1), `Text`. Steps before the
+current one carry a hidden `Done` for screen readers.
+
+`Choice`: `ID`, `Name` (default `ID`), `Legend`, `Hint`, `Options`,
+`Multiple`. `ChoiceOption`: `Value`, `Title`, `Text`, `Meta`, `Checked`,
+`Disabled`. Every input has an id `<ID>-<n>` and its own `label`.
+
+`Code`: `ID`, `Label`, `Text`. `Empty`: `Title`, `Text`, `Action`.
 
 ### Rendering
 

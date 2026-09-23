@@ -36,12 +36,16 @@ func TestDemoPageIsAccessible(t *testing.T) {
 	doc := rec.Body.String()
 	a11ytest.AssertPage(t, doc)
 	for _, want := range []string{
-		"<h1>vca UI kit demo</h1>", `<p class="pg-header-label">UI kit</p>`, `<section class="card"`, "<dialog", "<details", `<img class="qr"`,
+		`<title>vca UI kit demo</title>`, `<h1>Every component,<em>one page.</em></h1>`, `<span class="role">UI kit</span>`, `<section class="card"`, "<dialog", "<details", `<img class="qr"`,
 		"<table", "badge-ok", `aria-expanded="true"`, `<label for="issuer">`, `<select id="kind"`,
 		`hx-get="/toast?t=now"`, `data-open-dialog="confirm"`, `toast-info`, "htmx 2.0.10",
 		// The demo page uses the portal shell.
 		`<body data-role="issuer" class="has-shell">`, `<span class="role-chip">Issuer</span>`, `aria-label="Stack"`,
 		`aria-current="true"`, `stack-starting`, `name="csrf_token"`, `>Sign out</button>`, `<nav aria-label="Portal">`,
+		// The nine content components.
+		`<section class="hero">`, `<ul class="tiles">`, `<ol class="steps">`, `aria-current="step"`, `<section class="checklist"`,
+		`<div class="stats">`, `<span class="stat-value">`, `<ol class="stepper"`, `<fieldset class="choice"`, `<legend>`,
+		`<figure class="code"`, `<div class="empty">`,
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("demo page missing %q", want)

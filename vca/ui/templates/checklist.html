@@ -1,0 +1,10 @@
+{{define "checklist"}}<section class="checklist" id="{{.ID}}" aria-labelledby="{{.ID}}-title">
+<div class="checklist-head"><h2 id="{{.ID}}-title">{{.Title}}</h2>{{if .Note}}<p class="checklist-note">{{.Note}}</p>{{end}}</div>
+<ul>
+{{$t := .Text}}{{range .Items}}<li class="check{{if .Done}} check-done{{end}}">
+<span class="check-mark" aria-hidden="true"></span>
+<span class="check-body"><span class="check-state">{{if .Done}}{{$t.Done}}{{else}}{{$t.Todo}}{{end}}</span> <span class="check-text">{{.Text}}</span>{{if .Detail}}<span class="check-detail">{{.Detail}}</span>{{end}}</span>
+</li>
+{{end}}</ul>
+</section>
+{{end}}

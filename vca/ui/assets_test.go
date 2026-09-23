@@ -292,6 +292,25 @@ func TestStylesheetCarriesShell(t *testing.T) {
 	}
 }
 
+// TestStylesheetCarriesContentComponents checks the classes of the content
+// components, and that a tile inverts to the invert tokens on hover.
+func TestStylesheetCarriesContentComponents(t *testing.T) {
+	base := baseCSS(t)
+	if !strings.Contains(base, ".tile:hover,.tile:focus-visible,.card-link:hover,.card-link:focus-visible{background:var(--invert-bg);color:var(--invert-fg)}") {
+		t.Error("a tile must invert to --invert-bg and --invert-fg on hover and focus")
+	}
+	for _, want := range []string{
+		".hero-actions{", ".tiles>li{", ".tile-meta{", ".steps{", ".step-num{", ".step-state{", ".step-locked",
+		".checklist{", ".check-mark{", ".check-done .check-mark", ".stats{", ".stat{", ".stat-value{",
+		".stepper{", ".stepper-num{", ".stepper-current .stepper-num", ".choice{", ".choice-card{", ".choice-card:has(:checked)",
+		".choice-card:has(:focus-visible)", ".code{", ".code pre{", ".empty{", ".empty-title{",
+	} {
+		if !strings.Contains(base, want) {
+			t.Errorf("base.css missing %q", want)
+		}
+	}
+}
+
 // TestBaseCSSUsesBrandVariables checks that every brand variable reaches
 // the page, so a radius, a spacing step, or a role accent in the theme
 // file changes what users see.

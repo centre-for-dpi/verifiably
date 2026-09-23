@@ -1,0 +1,12 @@
+{{define "choice"}}<fieldset class="choice" id="{{.ID}}">
+<legend>{{.Legend}}</legend>
+{{if .Hint}}<p class="hint" id="{{.ID}}-hint">{{.Hint}}</p>
+{{end}}<div class="choice-grid">
+{{$c := .}}{{range $i, $o := .Options}}{{$id := $c.OptionID $i}}<label class="choice-card" for="{{$id}}">
+<input type="{{$c.InputType}}" id="{{$id}}" name="{{$c.Name}}" value="{{$o.Value}}"{{if $c.Hint}} aria-describedby="{{$c.ID}}-hint"{{end}}{{if $o.Checked}} checked{{end}}{{if $o.Disabled}} disabled{{end}}>
+<span class="choice-body"><span class="choice-title">{{$o.Title}}</span>{{if $o.Text}}<span class="choice-text">{{$o.Text}}</span>{{end}}</span>
+{{if $o.Meta}}<span class="choice-meta">{{$o.Meta}}</span>
+{{end}}</label>
+{{end}}</div>
+</fieldset>
+{{end}}

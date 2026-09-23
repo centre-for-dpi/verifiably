@@ -26,7 +26,8 @@ import (
 )
 
 // Names lists every template a Kit can render.
-var Names = []string{"layout", "page", "card", "field", "table", "badge", "toast", "dialog", "qr", "json", "button"}
+var Names = []string{"layout", "page", "card", "field", "table", "badge", "toast", "dialog", "qr", "json", "button",
+	"hero", "tiles", "steps", "checklist", "stat", "stepper", "choice", "code", "empty"}
 
 // safeAttrNames is the whitelist for the safeAttr template function.
 // Only these attribute names can be added through an Attrs map.
@@ -99,7 +100,7 @@ func New(opts ...KitOption) (*Kit, error) {
 	if logo.Name != "" {
 		mark.LogoSrc, mark.LogoAlt = ui.Prefix+logo.Name, o.brand.Logo.Alt
 	}
-	funcs := template.FuncMap{"safeAttr": SafeAttr, "mark": func() Mark { return mark }}
+	funcs := template.FuncMap{"safeAttr": SafeAttr, "mark": func() Mark { return mark }, "inc": func(i int) int { return i + 1 }}
 	tpl, err := template.New("kit").Funcs(funcs).ParseFS(ui.Templates, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("components: %w", err)
@@ -340,6 +341,7 @@ type Page struct {
 	Description string
 	Nav         Nav
 	Shell       *Shell        // the portal frame; nil renders a plain page
+	Hero        *Hero         // replaces the page header and carries the h1
 	Content     template.HTML // composed from Kit.HTML
 	Toasts      []Toast
 	Footer      string
@@ -366,6 +368,14 @@ func (p Page) normalize() (any, error) {
 		}
 		sh := anyval.As[Shell](s)
 		p.Shell = &sh
+	}
+	if p.Hero != nil {
+		h, err := p.Hero.normalize()
+		if err != nil {
+			return nil, err
+		}
+		hero := anyval.As[Hero](h)
+		p.Hero = &hero
 	}
 	for i := range p.Toasts {
 		t, err := p.Toasts[i].normalize()
@@ -635,6 +645,305 @@ func (b Button) normalize() (any, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+// Hero is the opening block of a landing or intro page. It carries the one
+// h1 of the page, so set Page.Hero and the page header steps aside.
+type Hero struct {
+	Label    string // tracked label above the title, for example the product name
+	Title    string // required, the h1
+	Emphasis string // second line of the title in the primary colour
+	Lead     string
+	Actions  []Button
+	Aside    template.HTML // optional block under the actions, after a rule
+}
+
+func (h Hero) normalize() (any, error) {
+	if h.Title == "" {
+		return nil, errors.New("hero: title is required")
+	}
+	for i := range h.Actions {
+		b, err := h.Actions[i].normalize()
+		if err != nil {
+			return nil, fmt.Errorf("hero: %w", err)
+		}
+		h.Actions[i] = anyval.As[Button](b)
+	}
+	return h, nil
+}
+
+// Tile is one inverting link card of a Tiles grid.
+type Tile struct {
+	Num   string // small tracked label in the top left, for example "01" or a role
+	Title string // required, the h2 of the tile
+	Text  string
+	Meta  string // small text under the description, for example the stacks
+	Href  string // required
+}
+
+// Tiles is a grid of link tiles. Under 56.25rem the grid has two columns,
+// under 30rem one.
+type Tiles struct {
+	Items []Tile // at least one
+}
+
+func (t Tiles) normalize() (any, error) {
+	if len(t.Items) == 0 {
+		return nil, errors.New("tiles: at least one tile is required")
+	}
+	for _, it := range t.Items {
+		if it.Title == "" || it.Href == "" {
+			return nil, fmt.Errorf("tiles: tile %q needs a title and an href", it.Title)
+		}
+	}
+	return t, nil
+}
+
+// StepStates lists the values Step.State accepts. An empty state is a plain
+// step with no state text.
+var StepStates = []string{"", "done", "current", "locked"}
+
+// StepText holds the words that name a step state, so the state never
+// depends on colour alone.
+type StepText struct {
+	Done    string // default "Done"
+	Current string // default "Current"
+	Locked  string // default "Locked"
+}
+
+func (t StepText) fill() StepText {
+	fill(&t.Done, "Done")
+	fill(&t.Current, "Current")
+	fill(&t.Locked, "Locked")
+	return t
+}
+
+// For returns the word of one state.
+func (t StepText) For(state string) string {
+	switch state {
+	case "done":
+		return t.Done
+	case "current":
+		return t.Current
+	}
+	return t.Locked
+}
+
+// Step is one numbered card of a Steps list.
+type Step struct {
+	Title    string // required
+	Text     string
+	State    string // one of StepStates
+	Href     string // optional link at the foot of the card
+	LinkText string // default "Open"
+}
+
+// Steps is an ordered list of step cards, as on a role intro page or a
+// portal overview where the steps unlock in order.
+type Steps struct {
+	Items []Step // at least one
+	Text  StepText
+}
+
+func (s Steps) normalize() (any, error) {
+	if len(s.Items) == 0 {
+		return nil, errors.New("steps: at least one step is required")
+	}
+	current := 0
+	for i := range s.Items {
+		st := &s.Items[i]
+		if st.Title == "" {
+			return nil, fmt.Errorf("steps: step %d has no title", i+1)
+		}
+		if !contains(StepStates, st.State) {
+			return nil, fmt.Errorf("steps: step %q: unknown state %q", st.Title, st.State)
+		}
+		if st.State == "current" {
+			current++
+		}
+		fill(&st.LinkText, "Open")
+	}
+	if current > 1 {
+		return nil, errors.New("steps: at most one step is current")
+	}
+	s.Text = s.Text.fill()
+	return s, nil
+}
+
+// CheckText holds the words that name a checklist item state.
+type CheckText struct {
+	Done string // default "Done"
+	Todo string // default "To do"
+}
+
+// Check is one item of a Checklist.
+type Check struct {
+	Text   string // required
+	Detail string
+	Done   bool
+}
+
+// Checklist is a titled list of items that stay until done, as the first
+// run checklist of the admin portal.
+type Checklist struct {
+	ID    string // required, used for aria-labelledby
+	Title string // required
+	Note  string // small text beside the title
+	Items []Check
+	Text  CheckText
+}
+
+func (c Checklist) normalize() (any, error) {
+	if err := checkID(c.ID); err != nil {
+		return nil, fmt.Errorf("checklist: %w", err)
+	}
+	if c.Title == "" {
+		return nil, fmt.Errorf("checklist %q: title is required", c.ID)
+	}
+	if len(c.Items) == 0 {
+		return nil, fmt.Errorf("checklist %q: at least one item is required", c.ID)
+	}
+	for i, it := range c.Items {
+		if it.Text == "" {
+			return nil, fmt.Errorf("checklist %q: item %d has no text", c.ID, i+1)
+		}
+	}
+	fill(&c.Text.Done, "Done")
+	fill(&c.Text.Todo, "To do")
+	return c, nil
+}
+
+// Stat is one summary card: a label, a value, a sentence, and a link.
+// Put several in a div with the class stats for a grid.
+type Stat struct {
+	Label    string // required
+	Value    string // required, a count or a short phrase
+	Text     string
+	Href     string
+	LinkText string // default "Open"
+}
+
+func (s Stat) normalize() (any, error) {
+	if s.Label == "" || s.Value == "" {
+		return nil, errors.New("stat: label and value are required")
+	}
+	fill(&s.LinkText, "Open")
+	return s, nil
+}
+
+// Stepper shows where a multi step form stands. Current counts from 1.
+type Stepper struct {
+	Label   string   // required, aria-label of the list, for example "Progress"
+	Steps   []string // at least two names
+	Current int      // 1 to len(Steps)
+	Text    StepText // Done names the steps before Current for screen readers
+}
+
+func (s Stepper) normalize() (any, error) {
+	if s.Label == "" {
+		return nil, errors.New("stepper: label is required")
+	}
+	if len(s.Steps) < 2 {
+		return nil, errors.New("stepper: at least two steps are required")
+	}
+	for i, name := range s.Steps {
+		if name == "" {
+			return nil, fmt.Errorf("stepper: step %d has no name", i+1)
+		}
+	}
+	if s.Current < 1 || s.Current > len(s.Steps) {
+		return nil, fmt.Errorf("stepper: current %d is not between 1 and %d", s.Current, len(s.Steps))
+	}
+	s.Text = s.Text.fill()
+	return s, nil
+}
+
+// ChoiceOption is one card of a Choice.
+type ChoiceOption struct {
+	Value    string // required
+	Title    string // required
+	Text     string
+	Meta     string // small text at the end of the card, for example the stacks
+	Checked  bool
+	Disabled bool
+}
+
+// Choice is a group of radio cards, or of checkbox cards with Multiple,
+// inside a fieldset with a legend.
+type Choice struct {
+	ID       string // required, also the default Name
+	Name     string
+	Legend   string // required
+	Hint     string
+	Options  []ChoiceOption // at least one
+	Multiple bool           // checkboxes instead of radios
+}
+
+// OptionID returns the id of option i, counted from 0.
+func (c Choice) OptionID(i int) string { return fmt.Sprintf("%s-%d", c.ID, i+1) }
+
+// InputType returns the input type of the options.
+func (c Choice) InputType() string {
+	if c.Multiple {
+		return "checkbox"
+	}
+	return "radio"
+}
+
+func (c Choice) normalize() (any, error) {
+	if err := checkID(c.ID); err != nil {
+		return nil, fmt.Errorf("choice: %w", err)
+	}
+	if c.Legend == "" {
+		return nil, fmt.Errorf("choice %q: legend is required", c.ID)
+	}
+	if len(c.Options) == 0 {
+		return nil, fmt.Errorf("choice %q: at least one option is required", c.ID)
+	}
+	for i, o := range c.Options {
+		if o.Value == "" || o.Title == "" {
+			return nil, fmt.Errorf("choice %q: option %d needs a value and a title", c.ID, i+1)
+		}
+	}
+	fill(&c.Name, c.ID)
+	return c, nil
+}
+
+// Code is a labelled block of code or of a long value, for example an
+// offer URL or a DID document.
+type Code struct {
+	ID    string // required
+	Label string // required, the figcaption and the region name
+	Text  string // required
+}
+
+func (c Code) normalize() (any, error) {
+	if err := checkID(c.ID); err != nil {
+		return nil, fmt.Errorf("code: %w", err)
+	}
+	if c.Label == "" || c.Text == "" {
+		return nil, fmt.Errorf("code %q: label and text are required", c.ID)
+	}
+	return c, nil
+}
+
+// Empty is an empty state: what is missing and the one action that fills it.
+type Empty struct {
+	Title  string // required
+	Text   string
+	Action Button // required
+}
+
+func (e Empty) normalize() (any, error) {
+	if e.Title == "" {
+		return nil, errors.New("empty: title is required")
+	}
+	b, err := e.Action.normalize()
+	if err != nil {
+		return nil, fmt.Errorf("empty: %w", err)
+	}
+	e.Action = anyval.As[Button](b)
+	return e, nil
 }
 
 func checkID(id string) error {

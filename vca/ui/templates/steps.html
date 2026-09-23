@@ -1,0 +1,9 @@
+{{define "steps"}}<ol class="steps">
+{{$t := .Text}}{{range $i, $s := .Items}}<li class="step{{if $s.State}} step-{{$s.State}}{{end}}"{{if eq $s.State "current"}} aria-current="step"{{end}}>
+<div class="step-top"><span class="step-num" aria-hidden="true">{{inc $i}}</span>{{if $s.State}}<span class="step-state">{{$t.For $s.State}}</span>{{end}}</div>
+<span class="step-title">{{$s.Title}}</span>
+{{if $s.Text}}<p class="step-text">{{$s.Text}}</p>
+{{end}}{{if $s.Href}}<a class="step-link" href="{{$s.Href}}">{{$s.LinkText}}</a>
+{{end}}</li>
+{{end}}</ol>
+{{end}}

@@ -1,0 +1,4 @@
+{{define "stepper"}}<ol class="stepper" aria-label="{{.Label}}">
+{{$cur := .Current}}{{$t := .Text}}{{range $i, $name := .Steps}}{{$n := inc $i}}<li class="stepper-step{{if lt $n $cur}} stepper-done{{else if eq $n $cur}} stepper-current{{end}}"{{if eq $n $cur}} aria-current="step"{{end}}><span class="stepper-num" aria-hidden="true">{{$n}}</span><span class="stepper-name">{{$name}}</span>{{if lt $n $cur}}<span class="visually-hidden">{{$t.Done}}</span>{{end}}</li>
+{{end}}</ol>
+{{end}}

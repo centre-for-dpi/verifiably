@@ -1,0 +1,6 @@
+{{define "empty"}}<div class="empty">
+<p class="empty-title">{{.Title}}</p>
+{{if .Text}}<p class="empty-text">{{.Text}}</p>
+{{end}}{{template "button" .Action}}
+</div>
+{{end}}

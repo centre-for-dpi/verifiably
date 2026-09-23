@@ -1,0 +1,10 @@
+{{define "tiles"}}<ul class="tiles">
+{{range .Items}}<li><a class="tile" href="{{.Href}}">
+<div class="tile-top"><span class="tile-num">{{.Num}}</span><svg class="tile-arrow" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg></div>
+<h2>{{.Title}}</h2>
+{{if .Text}}<p>{{.Text}}</p>
+{{end}}{{if .Meta}}<span class="tile-meta">{{.Meta}}</span>
+{{end}}<div class="tile-line" aria-hidden="true"></div>
+</a></li>
+{{end}}</ul>
+{{end}}

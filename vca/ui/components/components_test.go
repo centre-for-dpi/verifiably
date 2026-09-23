@@ -50,6 +50,287 @@ func samples(t *testing.T, k *Kit) map[string]any {
 		"qr":     QR{Src: "data:image/png;base64,iVBORw0KGgo=", Alt: "QR code: open the wallet offer"},
 		"json":   JSON{ID: "j1", Summary: "Raw credential", Data: map[string]any{"a": 1, "b": []string{"x"}}, Open: true},
 		"button": Button{Text: "Details", Controls: "j1", Expanded: false, Attrs: map[string]string{"hx-get": "/x?a=1&b=2"}},
+		"tiles": Tiles{Items: []Tile{{Num: "01", Title: "Proceed as issuer", Text: "Define what you issue.", Meta: "On two stacks", Href: "/roles/issuer/"},
+			{Num: "02", Title: "Proceed as holder", Href: "/roles/holder/"}}},
+		"steps": Steps{Items: []Step{{Title: "Identify", Text: "Register keys.", State: "done"}, {Title: "Define", State: "current", Href: "/schemas", LinkText: "Open schemas"},
+			{Title: "Issue", State: "locked"}, {Title: "Manage"}}},
+		"checklist": Checklist{ID: "first-run", Title: "First run checklist", Note: "Steps stay until done",
+			Items: []Check{{Text: "Register the first admin", Detail: "Done in the admin realm", Done: true}, {Text: "Turn off self registration"}}},
+		"stat":    Stat{Label: "Trust list", Value: "12 trusted issuers", Text: "Issuers a verifier accepts.", Href: "/trust", LinkText: "Open trust list"},
+		"stepper": Stepper{Label: "Issue progress", Steps: []string{"Source", "Claims", "Delivery"}, Current: 2},
+		"choice": Choice{ID: "source", Legend: "Source", Hint: "Pick one", Options: []ChoiceOption{
+			{Value: "single", Title: "Single credential", Text: "Type the claims.", Checked: true},
+			{Value: "bulk", Title: "Bulk", Text: "One credential per record.", Meta: "3 sources", Disabled: true}}},
+		"code":  Code{ID: "offer", Label: "Credential offer", Text: "openid-credential-offer://?a=<b>"},
+		"empty": Empty{Title: "Nothing issued yet", Text: "The first credential appears here.", Action: Button{Text: "Issue one", Href: "/issue", Variant: "primary"}},
+	}
+}
+
+func TestHeroReplacesPageHeader(t *testing.T) {
+	k := newKit(t)
+	hero := &Hero{Label: "Verifiable Credentials Adapter", Title: "One front door to", Emphasis: "open credentials.",
+		Lead:    "Issue, hold and check credentials on open source stacks.",
+		Actions: []Button{{Text: "Start", Href: "/roles/", Variant: "primary"}, {Text: "Read the primer", Href: "/#how", Variant: "ghost"}},
+		Aside:   `<p class="ethos-note">Only running services appear.</p>`}
+	doc := renderShellPage(t, k, Page{Title: "VCA", Hero: hero, Nav: Nav{Links: []Link{{Href: "/", Text: "Home"}}}})
+	for _, want := range []string{
+		`<section class="hero">`, `<div class="hero-left">`, `<span class="role">Verifiable Credentials Adapter</span>`,
+		`<h1>One front door to<em>open credentials.</em></h1>`, `<div class="hero-right">`,
+		`<p class="desc">Issue, hold and check credentials on open source stacks.</p>`,
+		`<div class="hero-actions">`, `<a class="btn btn-primary" href="/roles/">Start</a>`,
+		`<div class="hero-rule" aria-hidden="true"></div>`, `<p class="ethos-note">Only running services appear.</p>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("hero page missing %q\n%s", want, doc)
+		}
+	}
+	if strings.Contains(doc, "pg-header") {
+		t.Error("a hero replaces the page header")
+	}
+	if strings.Count(doc, "<h1>") != 1 {
+		t.Error("the hero carries the one h1")
+	}
+	// The hero also renders alone, and rejects a missing title.
+	frag := mustHTML(t, k, "hero", Hero{Title: "Plain"})
+	a11ytest.AssertFragment(t, string(frag))
+	if strings.Contains(string(frag), "hero-actions") || strings.Contains(string(frag), "hero-rule") || strings.Contains(string(frag), "role-row") {
+		t.Errorf("a bare hero has no optional parts:\n%s", frag)
+	}
+	if err := k.RenderPage(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), Page{Title: "x", Hero: &Hero{}}); err == nil {
+		t.Error("a hero without a title should fail")
+	}
+	if err := k.RenderPage(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), Page{Title: "x", Hero: &Hero{Title: "t", Actions: []Button{{}}}}); err == nil {
+		t.Error("a hero with a bad action should fail")
+	}
+}
+
+func TestTilesRequireTitleAndHref(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "tiles", sampleTiles()))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<ul class="tiles">`, `<li><a class="tile" href="/roles/issuer/">`, `<span class="tile-num">01</span>`,
+		`<svg class="tile-arrow"`, `aria-hidden="true"`, `<h2>Proceed as issuer</h2>`, `<p>Define what you issue.</p>`,
+		`<span class="tile-meta">On two stacks</span>`, `<div class="tile-line" aria-hidden="true"></div>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("tiles missing %q\n%s", want, doc)
+		}
+	}
+	for name, data := range map[string]any{
+		"no items": Tiles{},
+		"no title": Tiles{Items: []Tile{{Href: "/x"}}},
+		"no href":  Tiles{Items: []Tile{{Title: "x"}}},
+	} {
+		if _, err := k.HTML("tiles", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func sampleTiles() Tiles {
+	return Tiles{Items: []Tile{{Num: "01", Title: "Proceed as issuer", Text: "Define what you issue.", Meta: "On two stacks", Href: "/roles/issuer/"}}}
+}
+
+func TestStepsStateHasText(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "steps", samples(t, k)["steps"]))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<ol class="steps">`,
+		`<li class="step step-done">`, `<span class="step-num" aria-hidden="true">1</span>`, `<span class="step-state">Done</span>`,
+		`<li class="step step-current" aria-current="step">`, `<span class="step-state">Current</span>`,
+		`<li class="step step-locked">`, `<span class="step-state">Locked</span>`,
+		`<span class="step-title">Identify</span>`, `<p class="step-text">Register keys.</p>`,
+		`<a class="step-link" href="/schemas">Open schemas</a>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("steps missing %q\n%s", want, doc)
+		}
+	}
+	// A step without a state has no state text; a link without text says Open.
+	plain := string(mustHTML(t, k, "steps", Steps{Items: []Step{{Title: "Manage", Href: "/issued"}}}))
+	if strings.Contains(plain, "step-state") || !strings.Contains(plain, `<li class="step">`) || !strings.Contains(plain, `>Open</a>`) {
+		t.Errorf("plain step wrong:\n%s", plain)
+	}
+	// State words can be translated.
+	fr := string(mustHTML(t, k, "steps", Steps{Items: []Step{{Title: "x", State: "done"}}, Text: StepText{Done: "Fait"}}))
+	if !strings.Contains(fr, `<span class="step-state">Fait</span>`) {
+		t.Errorf("translated state missing:\n%s", fr)
+	}
+	for name, data := range map[string]any{
+		"no items":    Steps{},
+		"no title":    Steps{Items: []Step{{State: "done"}}},
+		"bad state":   Steps{Items: []Step{{Title: "x", State: "soon"}}},
+		"two current": Steps{Items: []Step{{Title: "x", State: "current"}, {Title: "y", State: "current"}}},
+	} {
+		if _, err := k.HTML("steps", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestChecklistMarksDoneInWords(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "checklist", samples(t, k)["checklist"]))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<section class="checklist" id="first-run" aria-labelledby="first-run-title">`, `<h2 id="first-run-title">First run checklist</h2>`,
+		`<p class="checklist-note">Steps stay until done</p>`,
+		`<li class="check check-done">`, `<span class="check-mark" aria-hidden="true"></span>`, `<span class="check-state">Done</span>`,
+		`<span class="check-text">Register the first admin</span>`, `<span class="check-detail">Done in the admin realm</span>`,
+		`<li class="check">`, `<span class="check-state">To do</span>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("checklist missing %q\n%s", want, doc)
+		}
+	}
+	fr := string(mustHTML(t, k, "checklist", Checklist{ID: "c", Title: "T", Items: []Check{{Text: "x"}}, Text: CheckText{Todo: "À faire"}}))
+	if !strings.Contains(fr, `<span class="check-state">À faire</span>`) {
+		t.Errorf("translated state missing:\n%s", fr)
+	}
+	for name, data := range map[string]any{
+		"no id":    Checklist{Title: "x", Items: []Check{{Text: "x"}}},
+		"no title": Checklist{ID: "c", Items: []Check{{Text: "x"}}},
+		"no items": Checklist{ID: "c", Title: "x"},
+		"no text":  Checklist{ID: "c", Title: "x", Items: []Check{{Detail: "d"}}},
+	} {
+		if _, err := k.HTML("checklist", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestStatCardLinksOut(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "stat", samples(t, k)["stat"]))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<div class="stat">`, `<span class="stat-label">Trust list</span>`, `<span class="stat-value">12 trusted issuers</span>`,
+		`<p class="stat-text">Issuers a verifier accepts.</p>`, `<a class="stat-link" href="/trust">Open trust list</a>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("stat missing %q\n%s", want, doc)
+		}
+	}
+	bare := string(mustHTML(t, k, "stat", Stat{Label: "Keys", Value: "None yet", Href: "/keys"}))
+	if strings.Contains(bare, "stat-text") || !strings.Contains(bare, `>Open</a>`) {
+		t.Errorf("bare stat wrong:\n%s", bare)
+	}
+	if s := string(mustHTML(t, k, "stat", Stat{Label: "Keys", Value: "None"})); strings.Contains(s, "stat-link") {
+		t.Error("no href, no link")
+	}
+	for name, data := range map[string]any{"no label": Stat{Value: "1"}, "no value": Stat{Label: "x"}} {
+		if _, err := k.HTML("stat", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestStepperMarksCurrentStep(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "stepper", samples(t, k)["stepper"]))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<ol class="stepper" aria-label="Issue progress">`,
+		`<li class="stepper-step stepper-done"><span class="stepper-num" aria-hidden="true">1</span><span class="stepper-name">Source</span><span class="visually-hidden">Done</span></li>`,
+		`<li class="stepper-step stepper-current" aria-current="step"><span class="stepper-num" aria-hidden="true">2</span><span class="stepper-name">Claims</span></li>`,
+		`<li class="stepper-step"><span class="stepper-num" aria-hidden="true">3</span><span class="stepper-name">Delivery</span></li>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("stepper missing %q\n%s", want, doc)
+		}
+	}
+	if strings.Count(doc, `aria-current="step"`) != 1 {
+		t.Error("exactly one current step")
+	}
+	fr := string(mustHTML(t, k, "stepper", Stepper{Label: "P", Steps: []string{"a", "b"}, Current: 2, Text: StepText{Done: "Fait"}}))
+	if !strings.Contains(fr, `<span class="visually-hidden">Fait</span>`) {
+		t.Errorf("translated done missing:\n%s", fr)
+	}
+	for name, data := range map[string]any{
+		"no label":     Stepper{Steps: []string{"a", "b"}, Current: 1},
+		"one step":     Stepper{Label: "P", Steps: []string{"a"}, Current: 1},
+		"empty step":   Stepper{Label: "P", Steps: []string{"a", ""}, Current: 1},
+		"current zero": Stepper{Label: "P", Steps: []string{"a", "b"}},
+		"current high": Stepper{Label: "P", Steps: []string{"a", "b"}, Current: 3},
+	} {
+		if _, err := k.HTML("stepper", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestChoiceIsAFieldsetWithLegend(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "choice", samples(t, k)["choice"]))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<fieldset class="choice" id="source">`, `<legend>Source</legend>`, `<p class="hint" id="source-hint">Pick one</p>`,
+		`<label class="choice-card" for="source-1">`, `<input type="radio" id="source-1" name="source" value="single" aria-describedby="source-hint" checked>`,
+		`<span class="choice-title">Single credential</span>`, `<span class="choice-text">Type the claims.</span>`,
+		`<input type="radio" id="source-2" name="source" value="bulk" aria-describedby="source-hint" disabled>`, `<span class="choice-meta">3 sources</span>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("choice missing %q\n%s", want, doc)
+		}
+	}
+	multi := string(mustHTML(t, k, "choice", Choice{ID: "ch", Name: "channels", Legend: "Channels", Multiple: true, Options: []ChoiceOption{{Value: "qr", Title: "QR"}}}))
+	if !strings.Contains(multi, `<input type="checkbox" id="ch-1" name="channels" value="qr">`) || strings.Contains(multi, "hint") {
+		t.Errorf("multiple choice wrong:\n%s", multi)
+	}
+	for name, data := range map[string]any{
+		"no id":      Choice{Legend: "x", Options: []ChoiceOption{{Value: "a", Title: "A"}}},
+		"no legend":  Choice{ID: "c", Options: []ChoiceOption{{Value: "a", Title: "A"}}},
+		"no options": Choice{ID: "c", Legend: "x"},
+		"no value":   Choice{ID: "c", Legend: "x", Options: []ChoiceOption{{Title: "A"}}},
+		"no title":   Choice{ID: "c", Legend: "x", Options: []ChoiceOption{{Value: "a"}}},
+	} {
+		if _, err := k.HTML("choice", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestCodeBlockIsLabelled(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "code", samples(t, k)["code"]))
+	a11ytest.AssertFragment(t, doc)
+	want := `<figure class="code" id="offer">` + "\n" + `<figcaption id="offer-label">Credential offer</figcaption>` + "\n" +
+		`<pre tabindex="0" role="region" aria-labelledby="offer-label"><code>openid-credential-offer://?a=&lt;b&gt;</code></pre>` + "\n</figure>\n"
+	if doc != want {
+		t.Errorf("code = %q, want %q", doc, want)
+	}
+	for name, data := range map[string]any{
+		"no id":    Code{Label: "x", Text: "y"},
+		"no label": Code{ID: "c", Text: "y"},
+		"no text":  Code{ID: "c", Label: "x"},
+	} {
+		if _, err := k.HTML("code", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestEmptyStateHasAction(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "empty", samples(t, k)["empty"]))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<div class="empty">`, `<p class="empty-title">Nothing issued yet</p>`, `<p class="empty-text">The first credential appears here.</p>`,
+		`<a class="btn btn-primary" href="/issue">Issue one</a>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("empty state missing %q\n%s", want, doc)
+		}
+	}
+	for name, data := range map[string]any{
+		"no title":  Empty{Action: Button{Text: "x"}},
+		"no action": Empty{Title: "x"},
+	} {
+		if _, err := k.HTML("empty", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
 	}
 }
 
@@ -472,7 +753,7 @@ func TestWriteErrors(t *testing.T) {
 	if got := Join("<a>", "<b>"); got != "<a>\n<b>\n" {
 		t.Errorf("Join = %q", got)
 	}
-	if len(Names) != 11 {
+	if len(Names) != 20 {
 		t.Errorf("Names = %v", Names)
 	}
 	for _, n := range Names {

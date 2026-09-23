@@ -1,0 +1,7 @@
+{{define "stat"}}<div class="stat">
+<span class="stat-label">{{.Label}}</span>
+<span class="stat-value">{{.Value}}</span>
+{{if .Text}}<p class="stat-text">{{.Text}}</p>
+{{end}}{{if .Href}}<a class="stat-link" href="{{.Href}}">{{.LinkText}}</a>
+{{end}}</div>
+{{end}}

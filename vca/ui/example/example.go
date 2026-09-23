@@ -72,6 +72,31 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		name string
 		data any
 	}{
+		{"stepper", components.Stepper{Label: "Demo progress", Steps: []string{"Source", "Claims", "Delivery"}, Current: 2}},
+		{"steps", components.Steps{Items: []components.Step{
+			{Title: "Identify your organisation", Text: "Register keys and metadata with the trust registry.", State: "done"},
+			{Title: "Define what you issue", Text: "Publish a schema, or build one.", State: "current", Href: "/", LinkText: "Open schemas"},
+			{Title: "Issue", Text: "One credential by hand, or many from a data source.", State: "locked"},
+			{Title: "Manage what you issued", Text: "Search, review, suspend or revoke."},
+		}}},
+		{"stat", components.Stat{Label: "Trust list", Value: "12 trusted issuers", Text: "Issuers a verifier on this deployment accepts.", Href: "/", LinkText: "Open trust list"}},
+		{"checklist", components.Checklist{ID: "first-run", Title: "First run checklist", Note: "Steps stay until done",
+			Items: []components.Check{
+				{Text: "Register the first admin account", Detail: "Done through the admin realm", Done: true},
+				{Text: "Turn off self registration for admins", Detail: "Realm settings, Login, User registration"},
+			}}},
+		{"choice", components.Choice{ID: "source", Legend: "Source", Hint: "Options a stack cannot do are hidden for that stack.",
+			Options: []components.ChoiceOption{
+				{Value: "single", Title: "Single credential", Text: "Type the claims in a form built from the schema.", Checked: true},
+				{Value: "bulk", Title: "Bulk from a data source", Text: "One credential per record.", Meta: "3 sources"},
+			}}},
+		{"code", components.Code{ID: "offer", Label: "Credential offer", Text: "openid-credential-offer://?credential_offer_uri=https://issuer.example/offers/1"}},
+		{"empty", components.Empty{Title: "Nothing issued yet", Text: "The first credential you issue appears here.",
+			Action: components.Button{Text: "Issue the first one", Href: "/", Variant: "primary"}}},
+		{"tiles", components.Tiles{Items: []components.Tile{
+			{Num: "Issuer", Title: "Proceed as issuer", Text: "Register your organisation, define what you issue, then issue credentials.", Meta: "On two stacks", Href: "/"},
+			{Num: "Holder", Title: "Proceed as holder", Text: "Discover offers, claim credentials into a wallet and present them.", Href: "/"},
+		}}},
 		{"card", components.Card{ID: "verdict", Title: "Verification result", Text: "The credential is valid.", Body: okBadge, Footer: "Checked today"}},
 		{"table", components.Table{Caption: "Checks", Columns: []string{"Check", "Result"}, Rows: []components.Row{
 			{{Text: "Signature"}, {HTML: okBadge}},
@@ -87,20 +112,27 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		{"dialog", components.Dialog{ID: "confirm", Title: "Revoke credential", Text: "This cannot be undone.",
 			Actions: []components.Button{{Text: "Revoke", Type: "submit", Variant: "danger", Value: "revoke"}}}},
 	}
-	parts := make([]template.HTML, 0, len(steps)+2)
+	parts := make([]template.HTML, 0, len(steps)+4)
 	parts = append(parts, template.HTML(`<form action="/" method="get">`)) //nolint:gosec // literal
 	for _, s := range steps {
 		h, err := kit.HTML(s.name, s.data)
 		if err != nil {
 			return components.Page{}, err
 		}
+		if s.name == "stat" {
+			h = components.Join(template.HTML(`<div class="stats">`), h, h, template.HTML(`</div>`)) //nolint:gosec // literal
+		}
 		parts = append(parts, h)
 	}
 	parts = append(parts, template.HTML(`</form>`)) //nolint:gosec // literal
+	hero := &components.Hero{
+		Label: "UI kit", Title: "Every component,", Emphasis: "one page.",
+		Lead:    "The kit in the light and the dark theme, with the portal shell around it.",
+		Actions: []components.Button{{Text: "Stylesheet", Href: "/static/vca.css", Variant: "primary"}},
+	}
 	return components.Page{
 		Title:       "vca UI kit demo",
-		Label:       "UI kit",
-		Lead:        "Every component of the kit on one page, in the light and the dark theme.",
+		Hero:        hero,
 		Description: "Every component of the vca UI kit on one page.",
 		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "UI kit"},
 			Links: []components.Link{{Href: "/", Text: "Demo", Current: true}, {Href: "/static/vca.css", Text: "Stylesheet"}}},
