@@ -270,6 +270,28 @@ func TestStylesheetCarriesAdamndegwaStructure(t *testing.T) {
 	}
 }
 
+// TestStylesheetCarriesShell checks the portal shell: the role chip and the
+// side nav draw the role accent, the shell is a grid on a wide screen, and
+// under 56.25rem the side nav is a disclosure with a visible summary.
+func TestStylesheetCarriesShell(t *testing.T) {
+	base := baseCSS(t)
+	for _, want := range []string{
+		".role-chip{", "border:1px solid var(--role-accent)", ".stack-nav a[aria-current=\"true\"]", ".stack-starting",
+		".user-menu form{", ".shell{flex:1;display:grid;grid-template-columns:15rem minmax(0,1fr)", ".side-nav{",
+		".side-nav-toggle{display:none}", ".side-links a[aria-current=\"page\"]", ".side-label{",
+	} {
+		if !strings.Contains(base, want) {
+			t.Errorf("base.css missing %q", want)
+		}
+	}
+	narrow := base[strings.Index(base, "@media (max-width:56.25rem)"):]
+	for _, want := range []string{".shell{display:block}", "display:list-item", ".side-nav[open] .side-nav-toggle"} {
+		if !strings.Contains(narrow, want) {
+			t.Errorf("narrow rules missing %q", want)
+		}
+	}
+}
+
 // TestBaseCSSUsesBrandVariables checks that every brand variable reaches
 // the page, so a radius, a spacing step, or a role accent in the theme
 // file changes what users see.

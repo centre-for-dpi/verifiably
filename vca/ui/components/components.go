@@ -191,19 +191,129 @@ func (k *Kit) RenderPage(w http.ResponseWriter, r *http.Request, page Page) erro
 	return err
 }
 
-// Text holds the user-facing strings of the layout, so a message catalogue
-// can translate them.
+// Text holds the user-facing strings of the layout and the shell, so a
+// message catalogue can translate them.
 type Text struct {
 	SkipLink    string
 	ThemeToggle string
 	ThemeSystem string
 	ThemeLight  string
 	ThemeDark   string
+	SignOut     string // the sign out button of the shell user menu
+	Menu        string // the side nav disclosure on narrow screens
+	StackNav    string // aria-label of the stack switcher
+	SideNav     string // aria-label of the side navigation
+	Starting    string // badge text of a stack that is not live yet
 }
 
 // DefaultText returns the English layout strings.
 func DefaultText() Text {
-	return Text{SkipLink: "Skip to content", ThemeToggle: "Theme", ThemeSystem: "System", ThemeLight: "Light", ThemeDark: "Dark"}
+	return Text{SkipLink: "Skip to content", ThemeToggle: "Theme", ThemeSystem: "System", ThemeLight: "Light", ThemeDark: "Dark",
+		SignOut: "Sign out", Menu: "Menu", StackNav: "Stack", SideNav: "Portal", Starting: "Starting"}
+}
+
+// fillText completes t from the English defaults.
+func fillText(t Text) Text {
+	d := DefaultText()
+	fill(&t.SkipLink, d.SkipLink)
+	fill(&t.ThemeToggle, d.ThemeToggle)
+	fill(&t.ThemeSystem, d.ThemeSystem)
+	fill(&t.ThemeLight, d.ThemeLight)
+	fill(&t.ThemeDark, d.ThemeDark)
+	fill(&t.SignOut, d.SignOut)
+	fill(&t.Menu, d.Menu)
+	fill(&t.StackNav, d.StackNav)
+	fill(&t.SideNav, d.SideNav)
+	fill(&t.Starting, d.Starting)
+	return t
+}
+
+// CSRFField is the default name of the hidden field in the sign out form.
+// It matches the synchronizer token field of the auth services.
+const CSRFField = "csrf_token"
+
+// StackStates lists the values StackLink.State accepts. An empty state is
+// a live stack with a link. A starting stack renders as text with a badge.
+var StackStates = []string{"", "starting"}
+
+// StackLink is one stack in the switcher of the shell.
+type StackLink struct {
+	Name    string // required
+	Href    string // required unless State is "starting"
+	Current bool   // the stack this page runs on; at most one
+	State   string // one of StackStates
+}
+
+// User is the signed in user of the shell. An empty Name hides the menu.
+type User struct {
+	Name      string
+	SignOut   string // action of the sign out form, required with Name
+	CSRF      string // synchronizer token, required with Name
+	CSRFField string // name of the hidden field, default CSRFField
+}
+
+// NavSection is one group of links in the side navigation.
+type NavSection struct {
+	Label string // optional heading of the group
+	Links []Link // at least one
+}
+
+// Shell is the portal frame around a page: the role chip beside the
+// wordmark, the stack switcher, the user menu, and the side navigation.
+// The body carries data-role, so the role accent of the brand applies.
+type Shell struct {
+	Role      string // one of brand.Roles, required
+	RoleLabel string // chip text, default the role with a capital
+	Stacks    []StackLink
+	User      User
+	Sections  []NavSection
+}
+
+// ID returns the id of the label of section i, counted from 1.
+func (NavSection) ID(i int) string { return fmt.Sprintf("side-%d-label", i+1) }
+
+func (s Shell) normalize() (any, error) {
+	if !contains(brand.Roles(), s.Role) {
+		return nil, fmt.Errorf("shell: unknown role %q", s.Role)
+	}
+	if s.RoleLabel == "" {
+		s.RoleLabel = strings.ToUpper(s.Role[:1]) + s.Role[1:]
+	}
+	current := 0
+	for _, st := range s.Stacks {
+		if st.Name == "" {
+			return nil, errors.New("shell: stack name is required")
+		}
+		if !contains(StackStates, st.State) {
+			return nil, fmt.Errorf("shell: stack %q: unknown state %q", st.Name, st.State)
+		}
+		if st.State == "" && st.Href == "" {
+			return nil, fmt.Errorf("shell: stack %q: href is required", st.Name)
+		}
+		if st.Current {
+			current++
+		}
+	}
+	if current > 1 {
+		return nil, errors.New("shell: at most one stack is current")
+	}
+	if s.User.Name != "" {
+		if s.User.SignOut == "" || s.User.CSRF == "" {
+			return nil, errors.New("shell: user needs a sign out action and a CSRF token")
+		}
+		fill(&s.User.CSRFField, CSRFField)
+	}
+	for _, sec := range s.Sections {
+		if len(sec.Links) == 0 {
+			return nil, fmt.Errorf("shell: section %q has no links", sec.Label)
+		}
+		for _, l := range sec.Links {
+			if l.Href == "" || l.Text == "" {
+				return nil, fmt.Errorf("shell: section %q: every link needs href and text", sec.Label)
+			}
+		}
+	}
+	return s, nil
 }
 
 // Link is one navigation link. Current marks the active page.
@@ -229,6 +339,7 @@ type Page struct {
 	Lead        string // optional sentence under the h1
 	Description string
 	Nav         Nav
+	Shell       *Shell        // the portal frame; nil renders a plain page
 	Content     template.HTML // composed from Kit.HTML
 	Toasts      []Toast
 	Footer      string
@@ -247,12 +358,15 @@ func (p Page) normalize() (any, error) {
 	}
 	fill(&p.Nav.Label, "Main")
 	fill(&p.Nav.Brand.Href, "/")
-	d := DefaultText()
-	fill(&p.Text.SkipLink, d.SkipLink)
-	fill(&p.Text.ThemeToggle, d.ThemeToggle)
-	fill(&p.Text.ThemeSystem, d.ThemeSystem)
-	fill(&p.Text.ThemeLight, d.ThemeLight)
-	fill(&p.Text.ThemeDark, d.ThemeDark)
+	p.Text = fillText(p.Text)
+	if p.Shell != nil {
+		s, err := p.Shell.normalize()
+		if err != nil {
+			return nil, err
+		}
+		sh := anyval.As[Shell](s)
+		p.Shell = &sh
+	}
 	for i := range p.Toasts {
 		t, err := p.Toasts[i].normalize()
 		if err != nil {

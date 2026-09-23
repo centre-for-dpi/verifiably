@@ -193,6 +193,173 @@ func TestLayoutRendersWordmarkAndLogo(t *testing.T) {
 	}
 }
 
+// issuerShell returns a shell with two stacks, a user, and two nav sections.
+func issuerShell() *Shell {
+	return &Shell{
+		Role: "issuer",
+		Stacks: []StackLink{
+			{Name: "Stack A", Href: "https://issuer-a.example/issuer/", Current: true},
+			{Name: "Stack B", Href: "https://issuer-b.example/issuer/"},
+		},
+		User: User{Name: "Amina", SignOut: "/auth/logout", CSRF: "tok&en"},
+		Sections: []NavSection{
+			{Links: []Link{{Href: "/issuer/", Text: "Overview", Current: true}, {Href: "/issuer/identity", Text: "Identity"}}},
+			{Label: "Credentials", Links: []Link{{Href: "/issuer/schemas", Text: "Schemas"}, {Href: "/issuer/issue", Text: "Issue"}}},
+		},
+	}
+}
+
+func renderShellPage(t *testing.T, k *Kit, page Page) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	if err := k.RenderPage(rec, httptest.NewRequest(http.MethodGet, "/", nil), page); err != nil {
+		t.Fatal(err)
+	}
+	doc := rec.Body.String()
+	a11ytest.AssertPage(t, doc)
+	return doc
+}
+
+func TestShellRendersRoleChipStacksAndUser(t *testing.T) {
+	k := newKit(t)
+	doc := renderShellPage(t, k, Page{Title: "Overview", Shell: issuerShell(), Nav: Nav{Brand: Link{Href: "/issuer/", Text: "Issuer"}}})
+	for _, want := range []string{
+		`<body data-role="issuer" class="has-shell">`,
+		`<span class="role-chip">Issuer</span>`,
+		`<nav class="stack-nav" aria-label="Stack">`,
+		`<a href="https://issuer-a.example/issuer/" aria-current="true">Stack A</a>`,
+		`<a href="https://issuer-b.example/issuer/">Stack B</a>`,
+		`<details class="user-menu">`, `<summary>Amina</summary>`,
+		`<form method="post" action="/auth/logout">`,
+		`<input type="hidden" name="csrf_token" value="tok&amp;en">`,
+		`>Sign out</button>`,
+		`<details class="side-nav" open>`, `<summary class="side-nav-toggle">Menu</summary>`,
+		`<nav aria-label="Portal">`,
+		`<p class="side-label" id="side-2-label">Credentials</p>`, `<ul class="side-links" aria-labelledby="side-2-label">`,
+		`<a href="/issuer/" aria-current="page" hx-get="/issuer/" hx-target="#page" hx-push-url="true">Overview</a>`,
+		`<div class="shell">`, `<main id="page" tabindex="-1">`, `<h1>Overview</h1>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("shell page missing %q\n%s", want, doc)
+		}
+	}
+	// The top nav has no links, so the shell page has no empty Main landmark.
+	if strings.Contains(doc, `aria-label="Main"`) {
+		t.Error("a shell page without top links must not render an empty main nav")
+	}
+	// A plain page has no shell markup and no role.
+	plain := renderShellPage(t, k, Page{Title: "Home"})
+	for _, gone := range []string{"data-role", "has-shell", `<div class="shell">`, "role-chip", "user-menu", `<details class="side-nav"`, "stack-nav"} {
+		if strings.Contains(plain, gone) {
+			t.Errorf("plain page must not contain %q", gone)
+		}
+	}
+	if !strings.Contains(plain, `<nav class="nav" aria-label="Main">`) {
+		t.Error("plain page keeps the main nav")
+	}
+}
+
+func TestShellHidesStackNavWithOneStack(t *testing.T) {
+	k := newKit(t)
+	sh := issuerShell()
+	sh.Stacks = sh.Stacks[:1]
+	doc := renderShellPage(t, k, Page{Title: "Overview", Shell: sh})
+	if strings.Contains(doc, `aria-label="Stack"`) || strings.Contains(doc, "stack-nav") {
+		t.Error("one stack needs no switcher")
+	}
+	sh.Stacks = nil
+	doc = renderShellPage(t, k, Page{Title: "Overview", Shell: sh})
+	if strings.Contains(doc, "stack-nav") {
+		t.Error("no stack needs no switcher")
+	}
+}
+
+func TestShellSideNavMarksCurrent(t *testing.T) {
+	k := newKit(t)
+	doc := renderShellPage(t, k, Page{Title: "Identity", Shell: issuerShell()})
+	if strings.Count(doc, `aria-current="page"`) != 1 {
+		t.Errorf("want one current side link, got %d", strings.Count(doc, `aria-current="page"`))
+	}
+	if !strings.Contains(doc, `<a href="/issuer/" aria-current="page"`) {
+		t.Error("the current side link is Overview")
+	}
+	if !strings.Contains(doc, `<a href="/issuer/identity" hx-get="/issuer/identity"`) {
+		t.Error("other side links carry no aria-current")
+	}
+	// A section without a label is a plain list.
+	if !strings.Contains(doc, `<ul class="side-links">`) {
+		t.Error("the first section has no label and no aria-labelledby")
+	}
+}
+
+func TestShellStartingStackHasNoLink(t *testing.T) {
+	k := newKit(t)
+	sh := issuerShell()
+	sh.Stacks = append(sh.Stacks, StackLink{Name: "Stack C", State: "starting"})
+	doc := renderShellPage(t, k, Page{Title: "Overview", Shell: sh})
+	want := `<li><span class="stack-starting">Stack C <span class="badge badge-warn">Starting</span></span></li>`
+	if !strings.Contains(doc, want) {
+		t.Errorf("starting stack should render as text with a badge, want %q in\n%s", want, doc)
+	}
+	if strings.Contains(doc, `href="">`) || strings.Contains(doc, `>Stack C</a>`) {
+		t.Error("a starting stack must not be a link")
+	}
+}
+
+func TestShellTextCanBeTranslated(t *testing.T) {
+	k := newKit(t)
+	sh := issuerShell()
+	sh.RoleLabel = "Émetteur"
+	sh.Stacks = append(sh.Stacks, StackLink{Name: "C", State: "starting"})
+	page := Page{Lang: "fr", Title: "Vue", Shell: sh,
+		Text: Text{SignOut: "Se déconnecter", Menu: "Menu du portail", StackNav: "Pile", SideNav: "Portail", Starting: "Démarrage"}}
+	doc := renderShellPage(t, k, page)
+	for _, want := range []string{`<span class="role-chip">Émetteur</span>`, `>Se déconnecter</button>`, `<summary class="side-nav-toggle">Menu du portail</summary>`,
+		`aria-label="Pile"`, `<nav aria-label="Portail">`, `<span class="badge badge-warn">Démarrage</span>`} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("shell page missing %q", want)
+		}
+	}
+}
+
+func TestShellRejectsBadData(t *testing.T) {
+	k := newKit(t)
+	cases := map[string]func(*Shell){
+		"unknown role":        func(s *Shell) { s.Role = "root" },
+		"no role":             func(s *Shell) { s.Role = "" },
+		"stack no name":       func(s *Shell) { s.Stacks[0].Name = "" },
+		"live stack no href":  func(s *Shell) { s.Stacks[1].Href = "" },
+		"unknown stack state": func(s *Shell) { s.Stacks[1].State = "down" },
+		"two current stacks":  func(s *Shell) { s.Stacks[1].Current = true },
+		"user no sign out":    func(s *Shell) { s.User.SignOut = "" },
+		"user no csrf":        func(s *Shell) { s.User.CSRF = "" },
+		"section no links":    func(s *Shell) { s.Sections = append(s.Sections, NavSection{Label: "Empty"}) },
+		"link no href":        func(s *Shell) { s.Sections[0].Links[0].Href = "" },
+		"link no text":        func(s *Shell) { s.Sections[0].Links[0].Text = "" },
+	}
+	for name, mutate := range cases {
+		sh := issuerShell()
+		mutate(sh)
+		rec := httptest.NewRecorder()
+		if err := k.RenderPage(rec, httptest.NewRequest(http.MethodGet, "/", nil), Page{Title: "x", Shell: sh}); err == nil {
+			t.Errorf("%s: expected an error", name)
+		} else if rec.Body.Len() != 0 {
+			t.Errorf("%s: nothing must be written on error", name)
+		}
+	}
+	// A shell without a user renders no user menu; the CSRF field name can change.
+	sh := issuerShell()
+	sh.User = User{}
+	if doc := renderShellPage(t, k, Page{Title: "x", Shell: sh}); strings.Contains(doc, "user-menu") {
+		t.Error("no user, no menu")
+	}
+	sh = issuerShell()
+	sh.User.CSRFField = "_token"
+	if doc := renderShellPage(t, k, Page{Title: "x", Shell: sh}); !strings.Contains(doc, `name="_token"`) {
+		t.Error("CSRFField should rename the hidden field")
+	}
+}
+
 func TestPageHeaderCarriesAccentLabel(t *testing.T) {
 	k := newKit(t)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

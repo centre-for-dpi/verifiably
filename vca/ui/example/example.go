@@ -104,8 +104,27 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		Description: "Every component of the vca UI kit on one page.",
 		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "UI kit"},
 			Links: []components.Link{{Href: "/", Text: "Demo", Current: true}, {Href: "/static/vca.css", Text: "Stylesheet"}}},
+		Shell:   demoShell(),
 		Toasts:  []components.Toast{{Level: "info", Text: "Demo page loaded"}},
 		Footer:  fmt.Sprintf("vca UI kit, htmx %s", ui.HTMXVersion),
 		Content: components.Join(parts...),
 	}, nil
+}
+
+// demoShell frames the demo page as an issuer portal with two live stacks,
+// one starting stack, a user, and two navigation sections.
+func demoShell() *components.Shell {
+	return &components.Shell{
+		Role: "issuer",
+		Stacks: []components.StackLink{
+			{Name: "Stack A", Href: "/", Current: true},
+			{Name: "Stack B", Href: "/?stack=b"},
+			{Name: "Stack C", State: "starting"},
+		},
+		User: components.User{Name: "Demo user", SignOut: "/auth/logout", CSRF: "demo-token"},
+		Sections: []components.NavSection{
+			{Links: []components.Link{{Href: "/", Text: "Overview", Current: true}}},
+			{Label: "Kit", Links: []components.Link{{Href: "/static/vca.css", Text: "Stylesheet"}, {Href: "/toast?t=nav", Text: "Toast"}}},
+		},
+	}
 }

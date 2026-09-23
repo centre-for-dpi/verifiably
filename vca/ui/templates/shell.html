@@ -1,0 +1,30 @@
+{{/* shell-tools: the stack switcher and the user menu at the end of the
+     site header. The data is the Page. */}}
+{{define "shell-tools"}}{{if gt (len .Shell.Stacks) 1}}<nav class="stack-nav" aria-label="{{.Text.StackNav}}">
+<ul>
+{{range .Shell.Stacks}}{{if eq .State "starting"}}<li><span class="stack-starting">{{.Name}} <span class="badge badge-warn">{{$.Text.Starting}}</span></span></li>
+{{else}}<li><a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a></li>
+{{end}}{{end}}</ul>
+</nav>
+{{end}}{{if .Shell.User.Name}}<details class="user-menu">
+<summary>{{.Shell.User.Name}}</summary>
+<form method="post" action="{{.Shell.User.SignOut}}">
+<input type="hidden" name="{{.Shell.User.CSRFField}}" value="{{.Shell.User.CSRF}}">
+<button type="submit" class="btn btn-ghost">{{.Text.SignOut}}</button>
+</form>
+</details>
+{{end}}{{end}}
+{{/* shell-side: the side navigation. On a narrow screen the details
+     disclosure folds it; on a wide screen the summary is hidden and the
+     layout script keeps it open. */}}
+{{define "shell-side"}}<details class="side-nav" open>
+<summary class="side-nav-toggle">{{.Text.Menu}}</summary>
+<nav aria-label="{{.Text.SideNav}}">
+{{range $i, $s := .Shell.Sections}}{{if $s.Label}}<p class="side-label" id="{{$s.ID $i}}">{{$s.Label}}</p>
+<ul class="side-links" aria-labelledby="{{$s.ID $i}}">
+{{else}}<ul class="side-links">
+{{end}}{{range $s.Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} hx-get="{{.Href}}" hx-target="#page" hx-push-url="true">{{.Text}}</a></li>
+{{end}}</ul>
+{{end}}</nav>
+</details>
+{{end}}

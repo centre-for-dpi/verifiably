@@ -39,6 +39,9 @@ func TestDemoPageIsAccessible(t *testing.T) {
 		"<h1>vca UI kit demo</h1>", `<p class="pg-header-label">UI kit</p>`, `<section class="card"`, "<dialog", "<details", `<img class="qr"`,
 		"<table", "badge-ok", `aria-expanded="true"`, `<label for="issuer">`, `<select id="kind"`,
 		`hx-get="/toast?t=now"`, `data-open-dialog="confirm"`, `toast-info`, "htmx 2.0.10",
+		// The demo page uses the portal shell.
+		`<body data-role="issuer" class="has-shell">`, `<span class="role-chip">Issuer</span>`, `aria-label="Stack"`,
+		`aria-current="true"`, `stack-starting`, `name="csrf_token"`, `>Sign out</button>`, `<nav aria-label="Portal">`,
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("demo page missing %q", want)

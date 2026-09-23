@@ -74,6 +74,32 @@ func labelled(t tag) bool {
 	return t.attrs["aria-label"] != "" || t.attrs["aria-labelledby"] != ""
 }
 
+// textByID maps every id to the text of its element, for aria-labelledby.
+func textByID(tags []tag) map[string]string {
+	out := map[string]string{}
+	for _, t := range tags {
+		if id := t.attrs["id"]; id != "" {
+			out[id] = textOf(t)
+		}
+	}
+	return out
+}
+
+// navName returns the accessible name of a nav landmark: its aria-label, or
+// the text of the element aria-labelledby names. An unnamed nav gives "".
+func navName(t tag, texts map[string]string) string {
+	if l := t.attrs["aria-label"]; l != "" {
+		return l
+	}
+	if id := t.attrs["aria-labelledby"]; id != "" {
+		if s := texts[id]; s != "" {
+			return s
+		}
+		return "#" + id
+	}
+	return ""
+}
+
 // Check returns every rule the document breaks. An empty result is a pass.
 func Check(doc string) []string {
 	tags := parse(doc)
@@ -100,6 +126,9 @@ func Check(doc string) []string {
 			labels[t.attrs["for"]] = true
 		}
 	}
+	texts := textByID(tags)
+	navNames := map[string]int{}
+	var navOrder []string
 	for _, t := range tags {
 		switch t.name {
 		case "html":
@@ -116,9 +145,15 @@ func Check(doc string) []string {
 			}
 		case "nav":
 			nav = true
-			if !labelled(t) {
+			name := navName(t, texts)
+			if name == "" {
 				add("nav landmark has no aria-label or aria-labelledby")
+				continue
 			}
+			if navNames[name] == 0 {
+				navOrder = append(navOrder, name)
+			}
+			navNames[name]++
 		case "img":
 			if !t.has["alt"] {
 				add("img without alt: src=%q", t.attrs["src"])
@@ -138,6 +173,13 @@ func Check(doc string) []string {
 			if !labels[t.attrs["id"]] && !labelled(t) {
 				add("%s %q has no label", t.name, t.attrs["id"])
 			}
+		}
+	}
+	// Every nav landmark needs a unique name, so a screen reader user can
+	// tell the main nav, the stack switcher, and the side nav apart.
+	for _, name := range navOrder {
+		if n := navNames[name]; n > 1 {
+			add("nav label %q is used %d times; give each nav a unique aria-label", name, n)
 		}
 	}
 	if !skip {

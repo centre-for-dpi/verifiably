@@ -19,22 +19,28 @@
 })();
 </script>
 </head>
-<body>
+<body{{if .Shell}} data-role="{{.Shell.Role}}" class="has-shell"{{end}}>
 <a class="skip-link" href="#page">{{.Text.SkipLink}}</a>
 {{- $mark := mark}}
 <header class="site-header">
 <a class="wordmark" href="{{.Nav.Brand.Href}}">{{if $mark.LogoSrc}}<img src="{{$mark.LogoSrc}}" alt="{{$mark.LogoAlt}}">{{end}}<span class="wordmark-text">{{$mark.Text}}{{if $mark.Emphasis}}&nbsp;<em>{{$mark.Emphasis}}</em>{{end}}</span>{{if .Nav.Brand.Text}}<span class="wordmark-context">{{.Nav.Brand.Text}}</span>{{end}}</a>
-<nav class="nav" aria-label="{{.Nav.Label}}">
+{{if .Shell}}<span class="role-chip">{{.Shell.RoleLabel}}</span>
+{{end}}{{if or .Nav.Links (not .Shell)}}<nav class="nav" aria-label="{{.Nav.Label}}">
 <ul>
 {{range .Nav.Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} hx-get="{{.Href}}" hx-target="#page" hx-push-url="true">{{.Text}}</a></li>
 {{end}}</ul>
 </nav>
-<button class="btn btn-ghost theme-toggle" type="button" hidden data-theme-toggle aria-label="{{.Text.ThemeToggle}}" data-label-toggle="{{.Text.ThemeToggle}}" data-label-system="{{.Text.ThemeSystem}}" data-label-light="{{.Text.ThemeLight}}" data-label-dark="{{.Text.ThemeDark}}">{{.Text.ThemeToggle}}</button>
+{{end}}{{if .Shell}}{{template "shell-tools" .}}{{end}}<button class="btn btn-ghost theme-toggle" type="button" hidden data-theme-toggle aria-label="{{.Text.ThemeToggle}}" data-label-toggle="{{.Text.ThemeToggle}}" data-label-system="{{.Text.ThemeSystem}}" data-label-light="{{.Text.ThemeLight}}" data-label-dark="{{.Text.ThemeDark}}">{{.Text.ThemeToggle}}</button>
 </header>
-<main id="page" tabindex="-1">
+{{if .Shell}}<div class="shell">
+{{template "shell-side" .}}<main id="page" tabindex="-1">
 {{template "page" .}}
 </main>
-<div id="toasts" class="toasts" aria-live="polite">
+</div>
+{{else}}<main id="page" tabindex="-1">
+{{template "page" .}}
+</main>
+{{end}}<div id="toasts" class="toasts" aria-live="polite">
 {{range .Toasts}}{{template "toast" .}}
 {{end}}</div>
 <footer class="site-footer">
@@ -89,6 +95,24 @@
     if (o) {
       var dlg = document.getElementById(o.getAttribute('data-open-dialog'));
       if (dlg && dlg.showModal) { dlg.showModal(); }
+    }
+  });
+  /* Side nav: a disclosure on a narrow screen, always open on a wide one. */
+  var side = document.querySelector('details.side-nav');
+  if (side && window.matchMedia) {
+    var narrow = window.matchMedia('(max-width: 56.25rem)');
+    var fold = function(){ side.open = !narrow.matches; };
+    fold();
+    if (narrow.addEventListener) { narrow.addEventListener('change', fold); }
+  }
+  /* Navigation: after an htmx swap the link of the new path is current. */
+  document.body.addEventListener('htmx:pushedIntoHistory', function(e){
+    var path = e.detail && e.detail.path;
+    if (!path) { return; }
+    var links = document.querySelectorAll('nav a[hx-get]');
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].getAttribute('href') === path) { links[i].setAttribute('aria-current', 'page'); }
+      else { links[i].removeAttribute('aria-current'); }
     }
   });
   /* HTMX: title from HX-Title, focus moves to the swapped main region. */

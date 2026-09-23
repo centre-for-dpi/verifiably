@@ -288,8 +288,39 @@ The page header shows `Label` in the accent colour above the `h1`, and
 `Current`. The wordmark links to `Brand.Href` (default `/`). `Brand.Text`
 names the service beside the wordmark.
 
-`Text`: `SkipLink`, `ThemeToggle`, `ThemeSystem`, `ThemeLight`, `ThemeDark`.
-A message catalogue fills these for each language.
+`Text`: `SkipLink`, `ThemeToggle`, `ThemeSystem`, `ThemeLight`, `ThemeDark`,
+`SignOut`, `Menu`, `StackNav`, `SideNav`, `Starting`. A message catalogue
+fills these for each language.
+
+### Portal shell
+
+`Page.Shell` frames a portal page. A nil shell renders a plain page. The
+shell adds a role chip beside the wordmark, a stack switcher, a user menu,
+and a side navigation. The body carries `data-role`. The role accent of the
+brand then colours the chip, the side navigation, and the header bar.
+
+`Shell`: `Role` (one of `brand.Roles`), `RoleLabel` (default the role with
+a capital), `Stacks`, `User`, `Sections`.
+
+`StackLink`: `Name`, `Href`, `Current`, `State`. An empty state is a live
+stack with a link. The state `starting` renders the name as text with a
+badge. The switcher appears only with two or more stacks. The current stack
+carries `aria-current="true"`.
+
+`User`: `Name`, `SignOut` (the form action), `CSRF` (the synchronizer
+token), `CSRFField` (default `csrf_token`). An empty name hides the menu.
+The menu is a `details` disclosure with a POST form, so it works without
+a script.
+
+`NavSection`: `Label`, `Links`. A label renders above its list and names
+it through `aria-labelledby`. The current link carries
+`aria-current="page"`. Under 56.25rem the side navigation folds into a
+`details` disclosure. On a wide screen the stylesheet hides the summary and
+the layout script keeps the disclosure open.
+
+The three nav landmarks carry different labels: `Main` for the top links,
+`Stack` for the switcher, and `Portal` for the side navigation. `a11ytest`
+fails a page where two nav landmarks share a label.
 
 `Card`: `ID`, `Title`, `Text`, `Body`, `Footer`.
 
@@ -363,6 +394,7 @@ colour and motion rules.
 | Every button and link has a minimum size of 24 by 24 CSS pixels. | [2.5.8 Target Size (Minimum)](https://www.w3.org/TR/WCAG22/#target-size-minimum) | `ui` stylesheet test |
 | `html lang` follows the active catalogue. Default is `en`. | [3.1.1 Language of Page](https://www.w3.org/TR/WCAG22/#language-of-page) | `a11ytest` |
 | The nav landmark has the same label on every page. | [3.2.3 Consistent Navigation](https://www.w3.org/TR/WCAG22/#consistent-navigation) | `a11ytest` |
+| Every nav landmark on a page has a unique label. | [1.3.6 Identify Purpose](https://www.w3.org/TR/WCAG22/#identify-purpose) | `a11ytest` |
 | Every field has a `label`. Required fields carry `required`. | [3.3.2 Labels or Instructions](https://www.w3.org/TR/WCAG22/#labels-or-instructions) | `a11ytest` |
 | An error sets `aria-invalid` and links the error text. | [3.3.1 Error Identification](https://www.w3.org/TR/WCAG22/#error-identification) | `components` tests |
 | Icon buttons need `aria-label`. Disclosure buttons carry `aria-expanded`. | [4.1.2 Name, Role, Value](https://www.w3.org/TR/WCAG22/#name-role-value) | `a11ytest` |

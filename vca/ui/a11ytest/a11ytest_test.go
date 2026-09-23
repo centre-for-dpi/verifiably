@@ -83,6 +83,41 @@ func TestEachRule(t *testing.T) {
 	}
 }
 
+// TestDuplicateNavLabelFails proves that two nav landmarks with the same
+// accessible name fail, and that distinct names pass, whether the name comes
+// from aria-label or aria-labelledby.
+func TestDuplicateNavLabelFails(t *testing.T) {
+	two := strings.Replace(good, `<nav aria-label="Main"><a href="/">Home</a></nav>`,
+		`<nav aria-label="Main"><a href="/">Home</a></nav><nav aria-label="Main"><a href="/x">X</a></nav>`, 1)
+	problems := Check(two)
+	if !strings.Contains(strings.Join(problems, "\n"), `nav label "Main" is used 2 times`) {
+		t.Errorf("duplicate nav labels should fail, got %v", problems)
+	}
+	ft := &fakeT{}
+	AssertFragment(ft, `<nav aria-label="Main"></nav><nav aria-label="Main"></nav>`)
+	if len(ft.msgs) != 1 {
+		t.Errorf("AssertFragment should report the duplicate once, got %v", ft.msgs)
+	}
+
+	distinct := strings.Replace(good, `<nav aria-label="Main"><a href="/">Home</a></nav>`,
+		`<nav aria-label="Main"><a href="/">Home</a></nav><nav aria-label="Stack"><a href="/x">X</a></nav>`+
+			`<p id="side-label">Portal</p><nav aria-labelledby="side-label"><a href="/y">Y</a></nav>`, 1)
+	if p := Check(distinct); len(p) != 0 {
+		t.Errorf("distinct nav labels should pass, got %v", p)
+	}
+	byID := strings.Replace(good, `<nav aria-label="Main"><a href="/">Home</a></nav>`,
+		`<p id="l">Main</p><nav aria-labelledby="l"><a href="/">Home</a></nav><nav aria-labelledby="l"><a href="/x">X</a></nav>`, 1)
+	if p := Check(byID); !strings.Contains(strings.Join(p, "\n"), `nav label "Main" is used 2 times`) {
+		t.Errorf("duplicate aria-labelledby names should fail, got %v", p)
+	}
+	// An id that names no element is reported by its id.
+	missing := strings.Replace(good, `<nav aria-label="Main"><a href="/">Home</a></nav>`,
+		`<nav aria-labelledby="nope"><a href="/">Home</a></nav><nav aria-labelledby="nope"><a href="/x">X</a></nav>`, 1)
+	if p := Check(missing); !strings.Contains(strings.Join(p, "\n"), `nav label "#nope" is used 2 times`) {
+		t.Errorf("unresolved aria-labelledby should fail by id, got %v", p)
+	}
+}
+
 func TestParseHandlesUnclosedAndCase(t *testing.T) {
 	tags := parse(`<BUTTON aria-label="x"><INPUT type="text" ID="q">`)
 	if len(tags) != 2 || tags[0].name != "button" || tags[1].attrs["id"] != "q" {
