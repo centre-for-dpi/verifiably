@@ -65,8 +65,8 @@
     </p>
     {{if .Delegation}}
     <div style="margin-top:0.75rem">
-      <label style="font-size:0.74rem;color:var(--ink-mute);display:block;margin-bottom:0.3rem;font-weight:600">Relationship scenario</label>
-      <select name="scenario"
+      <label for="builder-scenario" style="font-size:0.74rem;color:var(--ink-mute);display:block;margin-bottom:0.3rem;font-weight:600">Relationship scenario</label>
+      <select id="builder-scenario" name="scenario"
               hx-post="/issuer/schema/build/delegation"
               hx-include="#builder-form-el"
               hx-target="#builder-form"
@@ -95,32 +95,32 @@
   </div>
 
   <div class="field">
-    <label>Name</label>
-    <input type="text" name="name" value="{{.Name}}" placeholder="e.g. Alumni Card" required>
+    <label for="builder-name">Name</label>
+    <input id="builder-name" type="text" name="name" value="{{.Name}}" placeholder="e.g. Alumni Card" required>
   </div>
 
   <div class="field">
-    <label>Description</label>
-    <input type="text" name="desc" value="{{.Desc}}" placeholder="Short human-readable description">
+    <label for="builder-desc">Description</label>
+    <input id="builder-desc" type="text" name="desc" value="{{.Desc}}" placeholder="Short human-readable description">
   </div>
 
   <div class="field">
-    <label>Issuer attribution
+    <label for="builder-issuer-display">Issuer attribution
       <span style="font-size:0.7rem;color:var(--ink-mute);font-weight:400;margin-left:0.25rem">(who issues this credential — shown to holders + verifiers)</span>
     </label>
-    <input type="text" name="issuer_display_name" value="{{.IssuerDisplayName}}" placeholder="e.g. Ministry of Health">
+    <input id="builder-issuer-display" type="text" name="issuer_display_name" value="{{.IssuerDisplayName}}" placeholder="e.g. Ministry of Health">
   </div>
 
   <div class="field">
-    <label>Credential type
+    <label for="builder-extra-type">Credential type
       <span style="font-size:0.7rem;color:var(--ink-mute);font-weight:400;margin-left:0.25rem">(in addition to <span class="mono">VerifiableCredential</span>)</span>
     </label>
-    <input type="text" name="extra_type" value="{{.ExtraType}}" placeholder="e.g. AlumniCard">
+    <input id="builder-extra-type" type="text" name="extra_type" value="{{.ExtraType}}" placeholder="e.g. AlumniCard">
   </div>
 
   <div class="field">
-    <label>Format</label>
-    <select name="std">
+    <label for="builder-std">Format</label>
+    <select id="builder-std" name="std">
       {{$cur := .Std}}
       <option value="w3c_vcdm_2"      {{if eq $cur "w3c_vcdm_2"}}selected{{end}}>w3c_vcdm_2 — W3C VCDM 2.0 (JSON-LD)</option>
       <option value="w3c_vcdm_1"      {{if eq $cur "w3c_vcdm_1"}}selected{{end}}>w3c_vcdm_1 — W3C VCDM 1.1 (JSON-LD)</option>
@@ -155,7 +155,9 @@
 
 {{define "_field_row"}}
 <div style="display:grid;grid-template-columns:1fr 160px 72px 36px;gap:0.5rem;align-items:center">
-  <input type="text"
+  <label class="visually-hidden" for="field-name-{{.Idx}}">Field name</label>
+  <input id="field-name-{{.Idx}}"
+         type="text"
          name="field_name_{{.Idx}}"
          value="{{.Field.Name}}"
          placeholder="field_name"
@@ -163,7 +165,8 @@
          title="Solo letras (a-z, A-Z), dígitos y guión bajo. No se permiten caracteres especiales (ñ, tildes, espacios)."
          style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.7rem;font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--ink);border-radius:2px">
 
-  <select name="field_datatype_{{.Idx}}"
+  <label class="visually-hidden" for="field-datatype-{{.Idx}}">Field data type</label>
+  <select id="field-datatype-{{.Idx}}" name="field_datatype_{{.Idx}}"
           style="background:var(--bg);border:1px solid var(--line);padding:0.55rem 0.6rem;font-family:inherit;font-size:0.82rem;color:var(--ink);border-radius:2px">
     {{$dt := .Field.Datatype}}
     {{$fmt := .Field.Format}}

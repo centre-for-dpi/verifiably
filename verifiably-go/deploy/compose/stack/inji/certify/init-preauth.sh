@@ -13,9 +13,9 @@
 # with the backend's CERTIFY_ISSUER_DID so issued VCs and the did.json agree.
 set -euo pipefail
 
-if [ -n "${PREAUTH_DID_DOMAIN:-}" ]; then
+if [[ -n "${PREAUTH_DID_DOMAIN:-}" ]]; then
     DID="did:web:${PREAUTH_DID_DOMAIN}"
-elif [ -n "${ISSUER_DID_DOMAIN:-}" ]; then
+elif [[ -n "${ISSUER_DID_DOMAIN:-}" ]]; then
     DID="did:web:${ISSUER_DID_DOMAIN}"
 else
     DID="did:web:certify-preauth-nginx"

@@ -23,8 +23,8 @@
         Pick a credential type below, choose its format, check the fields you need, then generate.
       </p>
 
-      <div class="field" style="margin-bottom:1rem">
-        <label>Disclosure</label>
+      <fieldset class="field" style="margin-bottom:1rem;border:0;padding:0;margin-inline:0;min-inline-size:0">
+        <legend style="padding:0">Disclosure</legend>
         <div style="display:flex;gap:1rem;font-size:0.85rem">
           <label style="display:inline-flex;align-items:center;gap:0.35rem">
             <input type="radio" name="disclosure" value="selective" checked>
@@ -35,15 +35,15 @@
             full credential shared
           </label>
         </div>
-      </div>
+      </fieldset>
 
       {{/* Credential policies — mirrors walt.id's Customise Verification
            section. Signature / Expired / Not Before are default-on so a
            verifier still runs the core checks even if the operator leaves
            everything alone. Webhook is off by default and pairs with an
            inline URL input that only matters when the box is ticked. */}}
-      <div class="field" style="margin-bottom:1rem">
-        <label>Credential Policies</label>
+      <fieldset class="field" style="margin-bottom:1rem;border:0;padding:0;margin-inline:0;min-inline-size:0">
+        <legend style="padding:0">Credential Policies</legend>
         <div style="display:flex;flex-direction:column;gap:0.35rem;font-size:0.85rem">
           <label style="display:inline-flex;align-items:center;gap:0.35rem">
             <input type="checkbox" name="policy" value="signature" checked>
@@ -68,7 +68,7 @@
                    style="flex:1;min-width:200px;padding:0.3rem 0.5rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;font-size:0.8rem">
           </label>
         </div>
-      </div>
+      </fieldset>
 
       <div class="field" style="margin-bottom:1rem;border:1px solid var(--line);border-radius:4px;padding:0.7rem 0.9rem;background:var(--bg-soft,rgba(0,0,0,0.025))">
         <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-weight:600;margin:0">
@@ -149,7 +149,8 @@
               style="display:flex;flex-direction:column;gap:0.5rem"
               onsubmit="uploadQR(event)">
           <input type="hidden" name="method" value="upload">
-          <input type="file" name="credential_image" accept="image/png,image/jpeg,image/webp,application/pdf" required>
+          <label class="visually-hidden" for="verify-upload">Credential image or PDF</label>
+          <input id="verify-upload" type="file" name="credential_image" accept="image/png,image/jpeg,image/webp,application/pdf" required>
           <button class="btn small" type="submit">Verify upload →</button>
         </form>
       </div>
@@ -164,7 +165,8 @@
               hx-swap="innerHTML"
               style="display:flex;flex-direction:column;gap:0.5rem">
           <input type="hidden" name="method" value="paste">
-          <textarea name="credential_data" rows="3" class="mono"
+          <label class="visually-hidden" for="verify-paste">Credential to verify</label>
+          <textarea id="verify-paste" name="credential_data" rows="3" class="mono"
                     placeholder="eyJhbGci…"
                     style="font-size:0.7rem;background:var(--bg);border:1px solid var(--line);padding:0.5rem;color:var(--ink);font-family:'JetBrains Mono',monospace;border-radius:2px;resize:vertical"></textarea>
           <button class="btn small" type="submit">Verify →</button>
@@ -523,7 +525,9 @@
     {{end}}
   </div>
 
+  <label class="visually-hidden" for="verifier-cred-search">Search credentials</label>
   <input type="search"
+         id="verifier-cred-search"
          name="q"
          placeholder="Search credentials…"
          value="{{.Query}}"

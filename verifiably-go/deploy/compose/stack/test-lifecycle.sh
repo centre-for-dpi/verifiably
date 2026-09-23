@@ -125,7 +125,7 @@ PRESENT_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "$PRESENT_REQ")
-if [ "$PRESENT_RESP" = "200" ]; then
+if [[ "$PRESENT_RESP" == "200" ]]; then
   echo "  PASS: Credential presented (HTTP 200)"
 else
   echo "  FAIL: HTTP $PRESENT_RESP"
@@ -137,7 +137,7 @@ echo ""
 echo "[8/8] Verify credential (6-point check)"
 sleep 2
 RESULT=$(curl -s "$VERIFIER_URL/openid4vc/session/$STATE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verificationResult','unknown'))")
-if [ "$RESULT" = "True" ]; then
+if [[ "$RESULT" == "True" ]]; then
   echo "  PASS: *** VERIFICATION PASSED ***"
 else
   echo "  FAIL: verificationResult=$RESULT"

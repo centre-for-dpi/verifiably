@@ -19,6 +19,7 @@ import io
 import csv
 import json
 import re
+import asyncio
 import time
 import html
 import threading
@@ -787,7 +788,10 @@ async def credential_import(entity: str, file: UploadFile = File(...)):
             fail += 1
             if len(errs) < 3:
                 errs.append("http " + str(st) + ": " + txt[:80])
-        time.sleep(0.3)
+        # await, not time.sleep: this runs inside an async handler, so a
+        # blocking sleep stops the event loop and every other request with it.
+        # At 0.3s a row, a thousand-row import froze the console for 5 minutes.
+        await asyncio.sleep(0.3)
     detail = (" &middot; sample errors: " + esc("; ".join(errs))) if errs else ""
     msg = ("CSV import complete: <b>" + str(okc) + "</b> created, <b>" + str(dup)
            + "</b> duplicates, <b>" + str(fail) + "</b> failed." + detail)
