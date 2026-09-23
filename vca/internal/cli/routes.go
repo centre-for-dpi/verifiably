@@ -8,6 +8,7 @@ import (
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 )
 
 // Route is one path of a service behind the reverse proxy of a pair.
@@ -126,17 +127,19 @@ type Home struct {
 // HomeOf returns the home of a role. The page comes from the code of
 // the service: the root of schema-registry and of admin redirect to
 // their portal prefix, wallet-portal serves its pages under /wallet,
-// and verifier-results serves the staff pages under /portal.
+// and verifier-results serves the staff pages under /portal. The
+// topology package names the service, so a page and the CLI agree.
 func HomeOf(role commonv1.Role) Home {
+	service := topology.HomeService(role)
 	switch role {
 	case commonv1.Role_ROLE_ISSUER:
-		return Home{Service: "schema-registry", Path: "/portal/"}
+		return Home{Service: service, Path: "/portal/"}
 	case commonv1.Role_ROLE_HOLDER:
-		return Home{Service: "wallet-portal", Path: "/wallet/"}
+		return Home{Service: service, Path: "/wallet/"}
 	case commonv1.Role_ROLE_VERIFIER:
-		return Home{Service: "verifier-results", Path: "/portal/"}
+		return Home{Service: service, Path: "/portal/"}
 	case commonv1.Role_ROLE_ADMIN:
-		return Home{Service: "admin", Path: "/admin/"}
+		return Home{Service: service, Path: "/admin/"}
 	default:
 		return Home{}
 	}

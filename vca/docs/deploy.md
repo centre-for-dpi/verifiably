@@ -167,7 +167,7 @@ The CLI writes each value a service needs into the .env file under
 that name.
 The service catalogue in `internal/cli/services.go` holds the list, and
 `TestLinkValuesFeedEveryService` keeps it in step with the services.
-The values come in five kinds:
+The values come in six kinds:
 
 | Kind | Example | Value |
 |---|---|---|
@@ -176,6 +176,35 @@ The values come in five kinds:
 | Public URL | `VCA_SCHEMA_BASE_URL`, `VCA_TRUST_BASE_URL` | `VCA_PUBLIC_URL`, plus a prefix when the route table gives the service one. |
 | Copy | `VCA_ADMIN_SIGNING_KEY`, `VCA_WALTID_ISSUER_URL` | A shared value under the name the service reads: the signing key, the session key, the bootstrap token, or `VCA_DPG_URL`. |
 | Fixed | `VCA_ISSUER_AUTH_STATE_DIR=/data` | A path under the data volume. |
+| Peers | `VCA_PEERS` | Every candidate pair of the deployment. See "Peers". |
+
+### Peers
+
+A page must know three things about the pairs (ADR-034): which ones a
+deployment can run, which ones run now, and what each can do.
+The CLI writes `VCA_PEERS` for every service with pages, for
+`issuer-auth`, for `wallet-auth`, and for `admin`.
+The value lists all twelve pairs on one line.
+Each item is `<pair>|<public URL>|<service>=<internal URL>,...` and a
+semicolon separates the items.
+The pair itself keeps the public URL of its own `.env` file.
+Under a base domain, every other pair gets `https://<pair>.<domain>`.
+Without one, a pair directory that names a public URL keeps it, and the
+rest get `http://localhost:<host port>` of their home service.
+The internal URLs follow the port plan of each pair.
+Setup reads the `.env` file of every pair directory present, so a moved
+port of another pair reaches the list.
+Run setup again for a pair after you change the ports of another.
+
+The package `internal/topology` parses the value and probes each pair.
+It asks the home service of each pair for `/readyz` and the DPG adapter
+for its capabilities.
+The probes run in parallel with a timeout of one second.
+The answer stays in a cache for fifteen seconds.
+A pair whose host name does not resolve is absent, and no page shows
+it.
+A pair that resolves but is not ready is starting.
+Only a ready pair with an answer from its adapter is live.
 
 The public URL kind follows the route table of the pair.
 The `Caddyfile` of the pair comes from the same table, so a service and

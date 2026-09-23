@@ -9,6 +9,7 @@ import (
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 )
 
 // ImagePrefix is the registry path of every service image (ADR-005).
@@ -66,6 +67,11 @@ const (
 	// Target names that variable. A service that reads a shared secret
 	// or the DPG URL under its own prefix gets it this way.
 	LinkCopy
+	// LinkPeers is every candidate pair of the deployment with its
+	// public URL and the internal URL of each of its services, in the
+	// format of the topology package. Every service that draws pages
+	// reads it (ADR-034 decision 1).
+	LinkPeers
 )
 
 // Link is one variable that names another service.
@@ -127,6 +133,9 @@ func Catalog() []Service {
 		return Link{Env: env, Target: "VCA_DPG_URL", Kind: LinkCopy, Roles: roles}
 	}
 	state := func(env string) []FixedValue { return []FixedValue{{Env: env, Value: "/data"}} }
+	// peers is the candidate pair list of every service that draws
+	// pages or logs a user in (ADR-034 decision 1).
+	peers := Link{Env: topology.Env, Kind: LinkPeers}
 	// jwks and auth are the routes of the auth service of a role.
 	jwks := Route{Match: "/.well-known/jwks.json"}
 	auth := Route{Match: "/auth/*"}
@@ -140,6 +149,7 @@ func Catalog() []Service {
 				signingKey("VCA_ADMIN_SIGNING_KEY"),
 				sessionKey("VCA_ADMIN_SESSION_KEY"),
 				{Env: "VCA_ADMIN_BOOTSTRAP_TOKEN", Target: "VCA_SECRETS_BOOTSTRAP_TOKEN", Kind: LinkCopy},
+				peers,
 			},
 			Fixed: state("VCA_ADMIN_STATE_DIR"),
 			Routes: []Route{
@@ -185,6 +195,7 @@ func Catalog() []Service {
 			Fixed:  []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}},
 			Routes: []Route{rpc("vca.issued.v1.IssuedService"), {Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}}},
 		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer, Stateful: true,
+			Links: []Link{peers},
 			Fixed: state("VCA_ISSUER_AUTH_STATE_DIR"),
 			// The service mounts the login endpoints at / and at /auth. The
 			// pair routes only /auth, so the redirect URI of the realm holds.
@@ -197,6 +208,7 @@ func Catalog() []Service {
 				{Env: "VCA_SCHEMABUILDER_REGISTRY_URL", Target: "schema-registry", Kind: LinkURL},
 				{Env: "VCA_SCHEMABUILDER_CATALOG_URL", Kind: LinkAdapterURL},
 				{Env: "VCA_SCHEMABUILDER_PORTAL_URL", Kind: LinkPublicURL, Path: "/portal/"},
+				peers,
 			},
 			// The root of the service redirects to /builder/, but the home
 			// of the issuer takes the root of the pair.
@@ -209,6 +221,7 @@ func Catalog() []Service {
 				{Env: "VCA_SCHEMA_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_SCHEMA_BACKEND_URL", Kind: LinkAdapterURL},
 				{Env: "VCA_SCHEMA_BUILDER_URL", Kind: LinkPublicURL, Path: "/builder/"},
+				peers,
 			},
 			Fixed: []FixedValue{{Env: "VCA_SCHEMA_STORE_FILE", Value: "/data/schemas.json"}},
 			// The OID4VCI metadata, the vct documents, and the schema files
@@ -256,6 +269,7 @@ func Catalog() []Service {
 			Links: []Link{
 				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_DISCOVERY_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
+				peers,
 			},
 			// The staff pages default to /portal, which verifier-results
 			// holds, so the pair moves them to /discovery. The pages link
@@ -271,6 +285,7 @@ func Catalog() []Service {
 				{Env: "VCA_INGEST_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_INGEST_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
 				signingKey("VCA_INGEST_SIGNING_KEY_FILE"),
+				peers,
 			},
 			Fixed: state("VCA_INGEST_STATE_DIR"),
 			// The wallet reaches the OID4VP endpoints under the base URL,
@@ -284,14 +299,14 @@ func Catalog() []Service {
 			Fixed:  state("VCA_VERIFIER_POLICY_STATE_DIR"),
 			Routes: []Route{rpc("vca.policy.v1.PolicyService")}},
 		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true, UI: true,
-			Links: []Link{{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL}},
+			Links: []Link{{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL}, peers},
 			Fixed: state("VCA_VERIFIER_RESULTS_STATE_DIR"),
 			Routes: []Route{
 				rpc("vca.results.v1.ResultsService"),
 				{Match: "/portal/*", Page: "Verification results"}, {Match: "/verify/*", Page: "Citizen check"}, assets,
 			}},
 		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder, Stateful: true,
-			Links: []Link{{Env: "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", Kind: LinkAdapterURL}},
+			Links: []Link{{Env: "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", Kind: LinkAdapterURL}, peers},
 			Fixed: state("VCA_WALLET_AUTH_STATE_DIR"),
 			// The service mounts the login endpoints at / and at
 			// /wallet/auth. The proxy removes /auth, so the redirect URI of
@@ -310,6 +325,7 @@ func Catalog() []Service {
 				{Env: "VCA_WALLET_PORTAL_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
 				{Env: "VCA_WALLET_PORTAL_DPG", Kind: LinkDpgName},
 				{Env: "VCA_WALLET_PORTAL_DPG_ADAPTERS", Kind: LinkAdapterMap},
+				peers,
 			},
 			Fixed: state("VCA_WALLET_PORTAL_STATE_DIR"),
 			Routes: []Route{
@@ -367,17 +383,9 @@ func portalService(role commonv1.Role) string {
 }
 
 // authService names the login service of a role. The verifier role and
-// the admin role log staff in from their portal, so they run none.
-func authService(role commonv1.Role) string {
-	switch role {
-	case commonv1.Role_ROLE_ISSUER:
-		return "issuer-auth"
-	case commonv1.Role_ROLE_HOLDER:
-		return "wallet-auth"
-	default:
-		return ""
-	}
-}
+// the admin role log staff in from their portal, so they run none. The
+// topology package holds the table, so a page and the CLI agree.
+func authService(role commonv1.Role) string { return topology.AuthService(role) }
 
 // firstServicePort is the port the CLI assigns to the first service that
 // is not the portal, the auth service, or the adapter.
@@ -540,11 +548,22 @@ func deploymentServices(d configv1.Dpg) []Service {
 	return out
 }
 
+// PeerOverrides holds the .env values of every other pair directory of
+// the deploy root, keyed by pair name. The peer list honours the port
+// overrides and the public URL of each of them.
+type PeerOverrides map[string]map[string]string
+
 // LinkValues returns every cross service variable of one pair, keyed by
 // variable name. The values point at the container names of the compose
 // file, so a role reaches the services of another role of the same DPG.
 // A link whose target no role runs is left out.
 func LinkValues(p Pair, values map[string]string) map[string]string {
+	return LinkValuesWith(p, values, nil)
+}
+
+// LinkValuesWith is LinkValues with the .env values of the other pair
+// directories, so the peer list honours their overrides.
+func LinkValuesWith(p Pair, values map[string]string, peers PeerOverrides) map[string]string {
 	out := map[string]string{}
 	for _, s := range ServicesFor(p) {
 		for _, f := range s.Fixed {
@@ -554,7 +573,7 @@ func LinkValues(p Pair, values map[string]string) map[string]string {
 			if !link.appliesTo(p.Role) {
 				continue
 			}
-			if value, ok := linkValue(p, s, link, values); ok {
+			if value, ok := linkValue(p, s, link, values, peers); ok {
 				out[link.Env] = value
 			}
 		}
@@ -562,8 +581,45 @@ func LinkValues(p Pair, values map[string]string) map[string]string {
 	return out
 }
 
+// Peers lists every candidate pair of the deployment for the topology
+// package (ADR-034 decision 1). The pair itself keeps the public URL of
+// its values. Under a base domain every other pair gets its host name
+// there. Otherwise a pair directory that names a public URL keeps it,
+// and the rest get the localhost address of their home service. The
+// internal URLs follow the port plan of each pair, with the overrides
+// of its own .env file.
+func Peers(p Pair, values map[string]string, overrides PeerOverrides) []topology.Peer {
+	domain := values[DomainEnv]
+	out := make([]topology.Peer, 0, len(AllPairs()))
+	for _, candidate := range AllPairs() {
+		own := candidate == p
+		ports := overrides[candidate.Name()]
+		public := ""
+		switch {
+		case own:
+			public = strings.TrimRight(values["VCA_PUBLIC_URL"], "/")
+			ports = values
+		case domain != "":
+			public = PairPublicURL(candidate, domain)
+		case strings.TrimRight(ports["VCA_PUBLIC_URL"], "/") != "":
+			public = strings.TrimRight(ports["VCA_PUBLIC_URL"], "/")
+		}
+		if public == "" {
+			public = LocalPublicURL(candidate)
+		}
+		services := map[string]string{}
+		for _, a := range AssignPorts(candidate, ports) {
+			services[a.Service.Name] = "http://" + composeServiceName(candidate, a.Service) + ":" + strconv.Itoa(a.Listen)
+		}
+		out = append(out, topology.Peer{
+			Pair: candidate.Name(), Role: candidate.Role, Dpg: candidate.Dpg, PublicURL: public, Services: services,
+		})
+	}
+	return out
+}
+
 // linkValue builds the value of one link.
-func linkValue(p Pair, s Service, link Link, values map[string]string) (string, bool) {
+func linkValue(p Pair, s Service, link Link, values map[string]string, peers PeerOverrides) (string, bool) {
 	switch link.Kind {
 	case LinkURL:
 		base, ok := serviceURL(p, link.Target)
@@ -615,6 +671,8 @@ func linkValue(p Pair, s Service, link Link, values map[string]string) (string, 
 	case LinkCopy:
 		value := values[link.Target]
 		return value, value != ""
+	case LinkPeers:
+		return topology.Format(Peers(p, values, peers)), true
 	default:
 		return "", false
 	}

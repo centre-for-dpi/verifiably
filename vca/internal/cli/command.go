@@ -401,6 +401,12 @@ func newSetupCommand(env *Environment) *cobra.Command {
 				if existingErr != nil {
 					return existingErr
 				}
+				// The pairs written so far in this run count as well, so
+				// every peer list of a --all run agrees.
+				peers, peersErr := ReadPeerOverrides(root)
+				if peersErr != nil {
+					return peersErr
+				}
 				plan, err := BuildPlan(SetupRequest{
 					Pair:        p,
 					Flags:       flags,
@@ -412,6 +418,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					Offers:      offers,
 					Random:      env.Random,
 					Domain:      base,
+					Peers:       peers,
 				})
 				if err != nil {
 					return err

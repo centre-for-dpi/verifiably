@@ -397,11 +397,11 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-034 | 1 The CLI writes the peer list | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
-| ADR-034 | 2 A shared probe with a timeout and a cache | Not started | `vca/services/internal` | Proposed record. No work exists yet. |
-| ADR-034 | 3 Absent, starting, and live pairs | Not started | `vca/services/internal` | Proposed record. No work exists yet. |
-| ADR-034 | 4 Features and DPG information in the adapter answer | Not started | `vca/proto/vca/backend/v1` | Proposed record. No work exists yet. |
-| ADR-034 | 5 Pages show live features only | Not started | `vca/ui` | Proposed record. No work exists yet. |
+| ADR-034 | 1 The CLI writes the peer list | Done | `vca/internal/cli/services.go` | `VCA_PEERS` reaches every UI service, the auth services, and admin. The landing follows with its service. |
+| ADR-034 | 2 A shared probe with a timeout and a cache | Done | `vca/internal/topology` | |
+| ADR-034 | 3 Absent, starting, and live pairs | Done | `vca/internal/topology` | The pages that read the states follow. |
+| ADR-034 | 4 Features and DPG information in the adapter answer | Done | `vca/proto/vca/backend/v1` | Each adapter lists only the features whose RPC works today. |
+| ADR-034 | 5 Pages show live features only | Not started | `vca/ui` | No page reads the feature list yet. |
 
 ## ADR-035: Provider agnostic sign in with one realm per role
 

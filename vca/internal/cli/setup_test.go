@@ -14,6 +14,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 )
 
 func roleHolder(t *testing.T) commonv1.Role {
@@ -719,5 +720,105 @@ func TestPassthroughWritesUndeclaredVariables(t *testing.T) {
 	}
 	if !strings.Contains(env, "VCA_CREDEBL_EMAIL=ops@example\n") || strings.Contains(env, "OTHER=") {
 		t.Errorf("env:\n%s", env)
+	}
+}
+
+// envValue reads one variable of the rendered .env file of a plan.
+func envValue(t *testing.T, plan Plan, name string) string {
+	t.Helper()
+	for _, f := range plan.Files {
+		if f.Name != EnvFileName {
+			continue
+		}
+		values, err := ParseDotenv(strings.NewReader(string(f.Data)))
+		if err != nil {
+			t.Fatalf("parse the .env: %v", err)
+		}
+		return values[name]
+	}
+	t.Fatal("the plan has no .env file")
+	return ""
+}
+
+// TestBuildPlanWritesThePeersOfADomainSetup checks that the base domain
+// of the run reaches the peer list, so a page links every pair on its
+// own host name (ADR-034 decision 1).
+func TestBuildPlanWritesThePeersOfADomainSetup(t *testing.T) {
+	flags := issuerFlags()
+	delete(flags, "VCA_PUBLIC_URL")
+	plan, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: flags, Random: rand.Reader, Domain: "labs.example"})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	peers, err := topology.Parse(envValue(t, plan, topology.Env))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(peers) != len(AllPairs()) {
+		t.Fatalf("got %d peers, want %d", len(peers), len(AllPairs()))
+	}
+	for _, peer := range peers {
+		if peer.PublicURL != "https://"+peer.Pair+".labs.example" {
+			t.Errorf("%s: public URL = %q", peer.Pair, peer.PublicURL)
+		}
+	}
+	if envValue(t, plan, DomainEnv) != "" {
+		t.Error("the domain itself must not leak into the .env file as a setting")
+	}
+}
+
+// TestBuildPlanReadsThePeerDirectories checks that setup honours the
+// port overrides and the public URL of every pair directory present.
+func TestBuildPlanReadsThePeerDirectories(t *testing.T) {
+	root := t.TempDir()
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
+	holderPlan, planErr := BuildPlan(SetupRequest{
+		Pair: holder, Random: rand.Reader,
+		Flags: map[string]string{"VCA_PUBLIC_URL": "https://wallet.example", "VCA_PORTS_PORTAL": "9090"},
+	})
+	if planErr != nil {
+		t.Fatalf("BuildPlan holder: %v", planErr)
+	}
+	if _, werr := WritePlan(root, holderPlan); werr != nil {
+		t.Fatalf("WritePlan holder: %v", werr)
+	}
+	overrides, err := ReadPeerOverrides(root)
+	if err != nil {
+		t.Fatalf("ReadPeerOverrides: %v", err)
+	}
+	if overrides["holder-inji"]["VCA_PORTS_PORTAL"] != "9090" {
+		t.Fatalf("overrides = %v", overrides)
+	}
+	plan, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: issuerFlags(), Random: rand.Reader, Peers: overrides})
+	if err != nil {
+		t.Fatalf("BuildPlan issuer: %v", err)
+	}
+	peers, err := topology.Parse(envValue(t, plan, topology.Env))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	for _, peer := range peers {
+		if peer.Pair != "holder-inji" {
+			continue
+		}
+		if peer.Home() != "http://holder-inji-wallet-portal:9090" || peer.PublicURL != "https://wallet.example" {
+			t.Errorf("holder-inji = %+v", peer)
+		}
+	}
+	// A root with no pair directory gives no override, and a broken
+	// .env file reports its path.
+	empty, err := ReadPeerOverrides(t.TempDir())
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty root: %v, %v", empty, err)
+	}
+	bad := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(bad, "admin-waltid"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, "admin-waltid", EnvFileName), []byte("not a line\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadPeerOverrides(bad); err == nil || !strings.Contains(err.Error(), "admin-waltid") {
+		t.Fatalf("a broken .env must name its pair: %v", err)
 	}
 }

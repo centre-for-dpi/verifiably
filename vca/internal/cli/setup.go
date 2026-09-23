@@ -46,6 +46,10 @@ type SetupRequest struct {
 	// its own host name and puts the Keycloak of the stack behind the
 	// reverse proxy of the host. Empty means none.
 	Domain string
+	// Peers holds the .env values of every pair directory present, from
+	// ReadPeerOverrides. The peer list of the pages honours their port
+	// overrides and public URLs (ADR-034 decision 1).
+	Peers PeerOverrides
 }
 
 // Plan is the result of a setup run before anything reaches the disk.
@@ -129,7 +133,16 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	plan := AssignPorts(req.Pair, values)
 	extra := PortValues(plan)
-	for name, value := range LinkValues(req.Pair, values) {
+	// The base domain reaches the peer list through the values, and
+	// only there: the .env file never records it as a setting.
+	linkValues := make(map[string]string, len(values)+1)
+	for name, value := range values {
+		linkValues[name] = value
+	}
+	if req.Domain != "" {
+		linkValues[DomainEnv] = req.Domain
+	}
+	for name, value := range LinkValuesWith(req.Pair, linkValues, req.Peers) {
 		extra[name] = value
 	}
 	for name, value := range Passthrough(settings, req.Flags, req.File) {
@@ -390,6 +403,30 @@ func ReadExisting(root string, p Pair) (map[string]string, error) {
 		return nil, err
 	}
 	return values, nil
+}
+
+// ReadPeerOverrides reads the .env file of every pair directory under
+// the deploy root, keyed by pair name. A pair with no directory is left
+// out. The peer list of a setup run honours the values found here.
+func ReadPeerOverrides(root string) (PeerOverrides, error) {
+	out := PeerOverrides{}
+	for _, p := range AllPairs() {
+		path := filepath.Join(OutputDir(root, p), EnvFileName)
+		f, err := os.Open(path) // #nosec G304 -- the path comes from the pair name
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("read %s: %w", path, err)
+		}
+		values, perr := ParseDotenv(f)
+		anyval.Discard(f.Close())
+		if perr != nil {
+			return nil, fmt.Errorf("read %s: %w", path, perr)
+		}
+		out[p.Name()] = values
+	}
+	return out, nil
 }
 
 // legacySigningKeyRef is the value an earlier setup wrote. It named the

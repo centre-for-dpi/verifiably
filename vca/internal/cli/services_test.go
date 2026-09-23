@@ -12,6 +12,7 @@ import (
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 )
 
 func TestCatalogMatchesTheServiceDirectories(t *testing.T) {
@@ -537,6 +538,143 @@ func TestUIServicesAreTheOnesWithPages(t *testing.T) {
 	for i, s := range got {
 		if s.Name != want[i] {
 			t.Errorf("UIServices[%d] = %s, want %s", i, s.Name, want[i])
+		}
+	}
+}
+
+// TestLinkValuesWritePeers is the contract between the .env file and the
+// topology package: every service that draws pages, every auth service,
+// and the admin get all twelve candidate pairs with their public URL
+// and the internal URL of each of their services (ADR-034 decision 1).
+func TestLinkValuesWritePeers(t *testing.T) {
+	p := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}
+	compose := RenderCompose()
+
+	// A domain setup gives every pair its own host name.
+	got := LinkValues(p, map[string]string{
+		"VCA_PUBLIC_URL": "https://issuer-waltid.labs.example", DomainEnv: "labs.example",
+	})
+	peers, err := topology.Parse(got[topology.Env])
+	if err != nil {
+		t.Fatalf("Parse: %v\n%s", err, got[topology.Env])
+	}
+	if len(peers) != len(AllPairs()) {
+		t.Fatalf("got %d peers, want %d", len(peers), len(AllPairs()))
+	}
+	for i, peer := range peers {
+		want := AllPairs()[i]
+		if peer.Pair != want.Name() || peer.Role != want.Role || peer.Dpg != want.Dpg {
+			t.Errorf("peer %d = %s, want %s", i, peer.Pair, want.Name())
+		}
+		if peer.PublicURL != "https://"+want.Name()+".labs.example" {
+			t.Errorf("%s: public URL = %q", peer.Pair, peer.PublicURL)
+		}
+		if len(peer.Services) != len(ServicesFor(want)) {
+			t.Errorf("%s: %d services, want %d", peer.Pair, len(peer.Services), len(ServicesFor(want)))
+		}
+		for name, url := range peer.Services {
+			host := strings.TrimPrefix(url, "http://")
+			host = host[:strings.Index(host, ":")]
+			if !strings.Contains(compose, "\n  "+host+":\n") {
+				t.Errorf("%s: the service %s points at %s, which the compose file does not render", peer.Pair, name, host)
+			}
+		}
+		if peer.Home() == "" {
+			t.Errorf("%s: no home service", peer.Pair)
+		}
+		if want.Role != commonv1.Role_ROLE_ADMIN && peer.Adapter() == "" {
+			t.Errorf("%s: no adapter", peer.Pair)
+		}
+	}
+
+	// A local setup gives every pair the host port of its home service.
+	got = LinkValues(p, map[string]string{"VCA_PUBLIC_URL": LocalPublicURL(p)})
+	peers, err = topology.Parse(got[topology.Env])
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	for i, peer := range peers {
+		if peer.PublicURL != LocalPublicURL(AllPairs()[i]) {
+			t.Errorf("%s: public URL = %q, want %q", peer.Pair, peer.PublicURL, LocalPublicURL(AllPairs()[i]))
+		}
+	}
+	if !strings.HasPrefix(peers[0].PublicURL, "http://localhost:") {
+		t.Errorf("local public URL = %q", peers[0].PublicURL)
+	}
+
+	// The own pair keeps the public URL the operator chose.
+	got = LinkValues(p, map[string]string{"VCA_PUBLIC_URL": "https://credentials.example/"})
+	peers, err = topology.Parse(got[topology.Env])
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if peers[0].PublicURL != "https://credentials.example" {
+		t.Errorf("own public URL = %q", peers[0].PublicURL)
+	}
+}
+
+// TestPeersHonourThePortOverridesOfEveryPair keeps the internal URLs
+// true when a pair moved its portal, auth, or adapter port.
+func TestPeersHonourThePortOverridesOfEveryPair(t *testing.T) {
+	p := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}
+	overrides := PeerOverrides{
+		"holder-inji": {"VCA_PORTS_PORTAL": "9090", "VCA_PUBLIC_URL": "https://wallet.example"},
+	}
+	got := LinkValuesWith(p, map[string]string{"VCA_PUBLIC_URL": LocalPublicURL(p), "VCA_PORTS_ADAPTER": "9500"}, overrides)
+	peers, err := topology.Parse(got[topology.Env])
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	byName := map[string]topology.Peer{}
+	for _, peer := range peers {
+		byName[peer.Pair] = peer
+	}
+	if byName["holder-inji"].Home() != "http://holder-inji-wallet-portal:9090" {
+		t.Errorf("holder-inji home = %q", byName["holder-inji"].Home())
+	}
+	if byName["holder-inji"].PublicURL != "https://wallet.example" {
+		t.Errorf("holder-inji public URL = %q", byName["holder-inji"].PublicURL)
+	}
+	if byName["issuer-waltid"].Adapter() != "http://issuer-waltid-dpg-adapter-waltid:9500" {
+		t.Errorf("own adapter = %q", byName["issuer-waltid"].Adapter())
+	}
+	if byName["holder-waltid"].Home() != "http://holder-waltid-wallet-portal:8080" {
+		t.Errorf("an untouched pair keeps its default: %q", byName["holder-waltid"].Home())
+	}
+}
+
+// TestPeersReachTheRightServices names the services that read VCA_PEERS.
+func TestPeersReachTheRightServices(t *testing.T) {
+	want := map[string]bool{
+		"admin": true, "schema-builder-ui": true, "schema-registry": true, "verifier-discovery": true,
+		"verifier-ingest": true, "verifier-results": true, "wallet-portal": true,
+		"issuer-auth": true, "wallet-auth": true,
+	}
+	for _, s := range Catalog() {
+		has := false
+		for _, l := range s.Links {
+			if l.Kind == LinkPeers {
+				has = true
+				if l.Env != topology.Env {
+					t.Errorf("%s: the peers link writes %s, want %s", s.Name, l.Env, topology.Env)
+				}
+			}
+		}
+		if has != want[s.Name] {
+			t.Errorf("%s: reads peers = %v, want %v", s.Name, has, want[s.Name])
+		}
+	}
+}
+
+// TestHomeAndAuthServicesAgreeWithTheTopology keeps the CLI routes and
+// the topology package on one table.
+func TestHomeAndAuthServicesAgreeWithTheTopology(t *testing.T) {
+	for _, r := range Roles() {
+		if HomeOf(r).Service != topology.HomeService(r) {
+			t.Errorf("%v: home %s, topology says %s", r, HomeOf(r).Service, topology.HomeService(r))
+		}
+		if authService(r) != topology.AuthService(r) {
+			t.Errorf("%v: auth %s, topology says %s", r, authService(r), topology.AuthService(r))
 		}
 	}
 }
