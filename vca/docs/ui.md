@@ -301,6 +301,14 @@ names the service beside the wordmark.
 `SignOut`, `Menu`, `StackNav`, `SideNav`, `Starting`. A message catalogue
 fills these for each language.
 
+The English catalogue lives in `internal/msg`. `msg.T(key, args...)`
+returns the sentence of a key with `{1}`, `{2}` and so on replaced, and
+`msg.Keys` lists every key. Its test holds every value to the STE rules:
+sentences of 20 words or fewer, active voice, no dash, no banned word.
+A key that ends in `.label` is a short label of at most four words.
+Every new sentence of a page goes into the catalogue, not into a template
+or a handler.
+
 ### Portal shell
 
 `Page.Shell` frames a portal page. A nil shell renders a plain page. The
