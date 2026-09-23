@@ -13,7 +13,7 @@ GOBIN ?= $(HOME)/go/bin
 
 .PHONY: bootstrap gen lint test cover tidy build install doctor
 
-bootstrap: ## install buf plugins (mirrors when the network is restricted)
+bootstrap: ## install buf and its plugins (mirrors when the network is restricted)
 	./hack/bootstrap.sh
 
 gen: ## generate Go code from proto

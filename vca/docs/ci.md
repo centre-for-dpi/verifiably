@@ -111,7 +111,7 @@ exact release. Do not use `@master` or `@main`.
 
 | Script | Purpose |
 | --- | --- |
-| `bootstrap.sh` | Installs buf plugins, with mirrors on a restricted network |
+| `bootstrap.sh` | Installs buf from its release with a SHA-256 check, and the buf plugins, with mirrors on a restricted network |
 | `coverage.sh <floor>` | Fails when a package is below the floor; `core/...` must be 100 |
 | `check-commits.sh <range>` | Validates commit subjects in a git range |
 | `check-commits_test.sh` | Tests `check-commits.sh` with good and bad subjects |

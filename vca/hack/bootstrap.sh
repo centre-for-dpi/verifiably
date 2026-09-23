@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Prepares a machine to build vca.
-# Normal network: installs buf and the two protoc plugins with go install.
+# Both networks: installs buf from its GitHub release and checks the
+# SHA-256 of the binary before it runs.
+# Normal network: installs the two protoc plugins with go install.
 # Restricted network (no proxy.golang.org): clones GitHub mirrors of the
 # vanity-hosted modules and writes a go.work file (git-ignored) that replaces
 # them. go.sum stays authoritative for normal machines; run "make tidy" on a
@@ -14,6 +16,48 @@ mkdir -p "$MIRRORS" "$BIN"
 clone() { # repo tag dir
   [ -d "$MIRRORS/$3" ] || git clone -q --depth 1 -b "$2" "https://github.com/$1.git" "$MIRRORS/$3"
 }
+
+# buf comes from the GitHub release, because the Go module proxy is not
+# reachable on a restricted network. The sums below come from the
+# sha256.txt file of the release. The script also checks that file, so a
+# changed release fails before the binary runs.
+BUF_VERSION=1.47.2
+buf_sum() { # asset name -> pinned SHA-256
+  case "$1" in
+    buf-Linux-x86_64) echo 3a0c4da8d46eea8136affa63db202c76a44f8112384160b73c3fffb1cf14b5d8 ;;
+    buf-Linux-aarch64) echo 47ddd7ac0bb2a29f8c92aa420dd113bed3b6857190976402eec93ab9847270b4 ;;
+    *) return 1 ;;
+  esac
+}
+
+install_buf() {
+  if [ -x "$BIN/buf" ] && [ "$("$BIN/buf" --version 2>/dev/null)" = "$BUF_VERSION" ]; then
+    echo "buf $BUF_VERSION: present in $BIN"
+    return 0
+  fi
+  local asset want url tmp listed got
+  asset="buf-$(uname -s)-$(uname -m)"
+  if ! want=$(buf_sum "$asset"); then
+    echo "buf: no pinned release for $asset; install buf $BUF_VERSION by hand" >&2
+    return 0
+  fi
+  url="https://github.com/bufbuild/buf/releases/download/v$BUF_VERSION"
+  tmp=$(mktemp -d)
+  curl -fsSL --retry 3 -o "$tmp/sha256.txt" "$url/sha256.txt"
+  curl -fsSL --retry 3 -o "$tmp/$asset" "$url/$asset"
+  listed=$(awk -v a="$asset" '$2 == a { print $1 }' "$tmp/sha256.txt")
+  got=$(sha256sum "$tmp/$asset" | awk '{ print $1 }')
+  if [ "$listed" != "$want" ] || [ "$got" != "$want" ]; then
+    echo "buf: SHA-256 mismatch for $asset (pinned $want, sha256.txt ${listed:-none}, file $got)" >&2
+    rm -rf "$tmp"
+    return 1
+  fi
+  install -m 0755 "$tmp/$asset" "$BIN/buf"
+  rm -rf "$tmp"
+  echo "buf $BUF_VERSION: installed in $BIN"
+}
+
+install_buf
 
 if curl -fsS --max-time 5 https://proxy.golang.org >/dev/null 2>&1; then
   echo "network: normal"

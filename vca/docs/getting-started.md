@@ -8,6 +8,7 @@ Read it first. It covers a laptop and a server with a public name.
 | Need | Version | When | How to check |
 |---|---|---|---|
 | Go | 1.25 or newer | Only to build `vca` from source | `go version` |
+| buf | 1.47.2 | Only to change the proto files. `make bootstrap` installs it and checks its SHA-256 | `buf --version` |
 | Docker Engine | 24 or newer, and your user in the `docker` group | Always | `docker version` |
 | Docker Compose | v2, the `docker compose` plugin | Always | `docker compose version` |
 | Memory | 3.5 GB free for one role and one DPG | Always | `free -m` |
