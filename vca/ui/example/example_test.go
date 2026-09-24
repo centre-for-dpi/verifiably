@@ -77,6 +77,35 @@ func TestDemoPageIsAccessible(t *testing.T) {
 	}
 }
 
+// TestSignInPageIsAccessible renders the sign in chooser of the demo:
+// the block carries the one h1 and every part of the board.
+func TestSignInPageIsAccessible(t *testing.T) {
+	h, err := Handler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := get(t, h, "/signin", false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	doc := rec.Body.String()
+	a11ytest.AssertPage(t, doc)
+	for _, want := range []string{
+		`<title>Sign in</title>`, `<section class="signin">`, `<h1>Sign in as an admin.</h1>`, `<span class="signin-meta">vca-admin-realm</span>`,
+		`<div class="signin-callout">`, `<section class="card" id="bootstrap"`, `<span>or</span>`, `>Register a new account</a>`, `<p class="signin-note">`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("sign in page missing %q", want)
+		}
+	}
+	if _, err := SignInPage(&components.Kit{}); !errors.Is(err, components.ErrNoTemplates) {
+		t.Errorf("empty kit err = %v", err)
+	}
+	if rec := get(t, Mux(http.NotFoundHandler(), &components.Kit{}, DemoPage), "/signin", false); rec.Code != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", rec.Code)
+	}
+}
+
 func TestEmptyKitFails(t *testing.T) {
 	if _, err := DemoPage(&components.Kit{}); !errors.Is(err, components.ErrNoTemplates) {
 		t.Errorf("empty kit err = %v", err)

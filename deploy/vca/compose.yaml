@@ -90,8 +90,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18004}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-waltid-issuer-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-schema-builder-ui:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-schema-builder-ui:${VCA_VERSION:-latest}
@@ -201,8 +204,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18104}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-inji-issuer-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-schema-builder-ui:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-schema-builder-ui:${VCA_VERSION:-latest}
@@ -312,8 +318,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18204}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-credebl-issuer-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-schema-builder-ui:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-schema-builder-ui:${VCA_VERSION:-latest}
@@ -389,8 +398,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18301}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - holder-waltid-wallet-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   holder-waltid-wallet-portal:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-wallet-portal:${VCA_VERSION:-latest}
@@ -428,8 +440,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18401}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - holder-inji-wallet-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   holder-inji-wallet-portal:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-wallet-portal:${VCA_VERSION:-latest}
@@ -467,8 +482,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18501}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - holder-credebl-wallet-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   holder-credebl-wallet-portal:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-wallet-portal:${VCA_VERSION:-latest}

@@ -110,6 +110,7 @@ func newHarness(t *testing.T, withTrust bool) *harness {
 		Timeout: 5 * time.Second, PortalPrefix: portal.DefaultPrefix, LogoutRedirect: "/admin/",
 		SessionKey: "0123456789abcdef0123456789abcdef",
 		Services:   []string{"trust-registry=" + h.ready.URL},
+		LandingURL: "https://vca.example",
 	}
 	deps := app.Deps{Client: h.server.Client()}
 	if withTrust {
@@ -309,12 +310,51 @@ func TestEveryPageWithoutASessionGoesToTheLogin(t *testing.T) {
 
 func TestLoginPageAndHelpPageNeedNoSession(t *testing.T) {
 	h := newHarness(t, true)
-	loginPage := h.page(t, "/admin/login")
-	if !strings.Contains(loginPage, "Sign in with Test IdP") {
-		t.Error("the login page lists no provider")
-	}
+	loginPage := h.page(t, "/admin/login?notice=signed-out")
 	if strings.Contains(strings.ToLower(loginPage), `type="password" name="password"`) {
 		t.Error("the login page has a password field")
+	}
+	// Board Signin-Admin: the shared chooser with the bootstrap card
+	// (P1-08, ADR-035 decision 6).
+	for _, want := range []string{
+		`<h1>Sign in as an admin.</h1>`, `<span class="role">Admin</span>`,
+		`<a class="btn btn-primary signin-provider" href="/auth/login?provider=idp&amp;return_to=%2Fadmin%2F"><span>Test IdP</span></a>`,
+		`<div class="signin-callout"><strong>First admin after deployment?</strong>`,
+		`<section class="card" id="bootstrap"`, `<input type="password" id="bootstrap_token" name="bootstrap_token"`,
+		`<input type="hidden" name="provider" value="idp">`,
+		`<input type="hidden" name="return_to" value="/admin/">`, `>Sign in and bind</button>`,
+		`formaction="/auth/register"`, `>Register and bind</button>`,
+		`<p class="signin-note">VCA is not tied to Keycloak.`, `class="toast toast-info"`, `You are signed out.`,
+		`<a class="signin-back" href="https://vca.example/roles/"`,
+	} {
+		if !strings.Contains(loginPage, want) {
+			t.Errorf("login page missing %q\n%s", want, loginPage)
+		}
+	}
+	// A generic provider without prompt=create offers no plain register
+	// action; the bootstrap card still lets the first admin register.
+	if strings.Contains(loginPage, `href="/auth/register`) {
+		t.Error("a generic provider offers no register link")
+	}
+	// With one provider the bootstrap form needs no provider id field.
+	if strings.Contains(loginPage, `id="provider"`) {
+		t.Error("one provider: the id field is hidden")
+	}
+	if _, err := h.app.Login.Providers().Put(oidcflow.Provider{ID: "second", DisplayName: "Second", DiscoveryURL: h.idp.DiscoveryURL(), ClientID: h.idp.ClientID, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if two := h.page(t, "/admin/login"); !strings.Contains(two, `<input type="text" id="provider" name="provider"`) {
+		t.Errorf("two providers: the id field shows:\n%s", two)
+	}
+	// The chooser answers at /auth/ too, so the landing link of the admin
+	// role works, and return_to reaches the login links.
+	authPage := h.page(t, "/auth/?return_to=/admin/audit")
+	if !strings.Contains(authPage, `href="/auth/login?provider=idp&amp;return_to=%2Fadmin%2Faudit"`) {
+		t.Errorf("/auth/ misses the return path:\n%s", authPage)
+	}
+	status, body := h.get(t, "/auth/providers.json")
+	if status != http.StatusOK || !strings.Contains(body, `"role":"admin"`) || !strings.Contains(body, `"id":"idp"`) || strings.Contains(body, h.idp.ClientID) {
+		t.Errorf("providers.json: %d %s", status, body)
 	}
 	help := h.page(t, "/admin/help")
 	for _, want := range []string{"Creates one tenant.", "admin tenant create", "AdminService.CreateTenant"} {

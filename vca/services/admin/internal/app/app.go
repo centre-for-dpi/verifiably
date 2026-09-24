@@ -140,7 +140,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	pages, err := portal.New(portal.Options{Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit})
+	pages, err := portal.New(portal.Options{Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit, LandingURL: cfg.LandingURL})
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +162,13 @@ func (a *App) mount(assets http.Handler) {
 	a.Mux.Handle("GET /.well-known/jwks.json", a.Login.Signer().JWKSHandler())
 	handlers := a.Login.Handlers()
 	a.Mux.Handle("GET /auth/login", oidcflow.RejectQueryTokens(http.HandlerFunc(a.Login.Login)))
+	a.Mux.Handle("GET /auth/register", oidcflow.RejectQueryTokens(http.HandlerFunc(a.Login.RegisterStart)))
 	a.Mux.Handle("GET /auth/callback", oidcflow.RejectQueryTokens(http.HandlerFunc(a.Login.Callback)))
+	// The chooser and its listing answer at /auth/ like every auth
+	// service, so the landing reaches them the same way (ADR-035).
+	chooser := a.Portal.Chooser()
+	a.Mux.Handle("GET /auth/{$}", oidcflow.RejectQueryTokens(http.HandlerFunc(chooser.Page)))
+	a.Mux.HandleFunc("GET /auth/providers.json", chooser.ProvidersJSON)
 	a.Mux.Handle("POST /auth/logout", oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Logout)))
 	a.Mux.Handle("GET /auth/session", oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Session)))
 	a.Login.MountCLI(a.Mux)

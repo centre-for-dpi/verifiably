@@ -629,3 +629,43 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
    The small aside of a hero. */
 .note{max-width:40rem}
 .note p{margin:.8rem 0 0;line-height:1.6;color:var(--secondary)}
+
+/* ---------- sign in ----------
+   The chooser of a role: the role, the title, the lead and the back link
+   on the left, a hairline panel with the provider buttons on the right.
+   The realm of a provider sits in the monospace stack. */
+.signin{
+  display:grid;grid-template-columns:5fr 6fr;gap:var(--space-7);align-items:center;
+  padding:var(--space-7) 0;min-height:min(calc(100vh - 12rem),44rem);
+}
+.signin-left{display:flex;flex-direction:column;gap:var(--space-4);min-width:0;container-type:inline-size}
+.signin-left .role-row{margin-top:0}
+.signin h1{font-size:clamp(1.75rem,9cqi,4.5rem);line-height:.95;margin:0;overflow-wrap:normal;text-wrap:balance}
+.signin-back{font-size:.9rem;font-weight:600;text-decoration:none}
+.signin-back:hover{text-decoration:underline}
+.signin-panel{
+  display:flex;flex-direction:column;gap:var(--space-4);min-width:0;
+  padding:var(--space-6) 2rem;border:1px solid var(--line);border-radius:var(--radius-m);
+}
+.signin-label{margin:0;font-family:var(--font-body);font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+.signin-providers{list-style:none;display:flex;flex-direction:column;gap:var(--space-3)}
+.signin-providers>li{display:flex}
+.signin-provider{flex:1;justify-content:space-between;gap:var(--space-4);min-height:3.25rem;padding:var(--space-3) 1.25rem;text-align:left}
+.signin-meta{font-family:var(--font-mono);font-size:.8rem;letter-spacing:0;text-transform:none;opacity:.85}
+.signin-empty{margin:0;color:var(--secondary)}
+.signin-callout{
+  padding:var(--space-3) var(--space-4);border:1px solid var(--line);border-left:3px solid var(--accent);
+  font-size:.9rem;line-height:1.55;color:var(--secondary);
+}
+.signin-callout strong{color:var(--ink)}
+.signin-panel .card{margin:0}
+.signin-panel .field{margin:0 0 var(--space-4)}
+.signin-or{display:flex;align-items:center;gap:var(--space-3);font-size:.8rem;color:var(--muted)}
+.signin-or::before,.signin-or::after{content:'';flex:1;height:1px;background:var(--line)}
+.signin-register{display:flex;flex-direction:column;gap:var(--space-3)}
+.signin-register .btn{justify-content:center}
+.signin-note{margin:0;text-align:center;font-size:.8rem;color:var(--muted)}
+@media (max-width:56.25rem){
+  .signin{grid-template-columns:1fr;gap:var(--space-6);padding:var(--space-6) 0}
+  .signin-panel{padding:var(--space-5) 1.4rem}
+}

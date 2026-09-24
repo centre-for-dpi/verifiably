@@ -517,6 +517,50 @@ func (s *failStore) Save(name string, v any) error {
 	return s.Persister.Save(name, v)
 }
 
+// TestRegisterStartsARegistration is ADR-035 decision 3 for the holder:
+// Register begins a pending login at the register action of the
+// provider and the callback finishes it like a login. A generic provider
+// without prompt=create gives ErrRegisterUnsupported, an unknown one
+// ErrProviderNotFound, and a pending store fault surfaces.
+func TestRegisterStartsARegistration(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if _, err := f.svc.Register(ctx, "esignet", "/wallet/"); !errors.Is(err, oidcflow.ErrRegisterUnsupported) {
+		t.Fatalf("generic provider: %v", err)
+	}
+	if _, err := f.svc.Register(ctx, "nope", ""); !errors.Is(err, oidcflow.ErrProviderNotFound) {
+		t.Fatalf("unknown provider: %v", err)
+	}
+	create := oidctest.New()
+	create.PromptValuesSupported = []string{"create"}
+	t.Cleanup(create.Close)
+	if _, err := f.svc.Providers().Put(oidcflow.Provider{ID: "create", DisplayName: "Create", DiscoveryURL: create.DiscoveryURL(), ClientID: create.ClientID, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	u, err := f.svc.Register(ctx, "create", "/wallet/")
+	if err != nil || !strings.Contains(u, "prompt=create") {
+		t.Fatalf("Register = %q, %v", u, err)
+	}
+	back, err := create.Authorize(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := browser().Get(back)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/wallet/" {
+		t.Errorf("callback after a registration: %d %q", res.StatusCode, res.Header.Get("Location"))
+	}
+	d := service.Deps{Flow: &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)}, Providers: f.svc.Providers(), Wallets: f.svc.Wallets(), Signer: f.svc.Signer(), Pending: failingPending{}}
+	if _, err := service.New(f.svc.Config(), d).Register(ctx, "create", ""); err == nil {
+		t.Fatal("pending error hidden")
+	}
+}
+
 func TestFailurePaths(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

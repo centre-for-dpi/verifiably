@@ -24,6 +24,30 @@ The service follows RFC 9700: no implicit flow, exact redirect URI match,
 PKCE S256 on every request, and no token in a query string. A request
 with `access_token` in the query gets `400`.
 
+## Sign in chooser
+
+`GET /auth/` draws the sign in page of the issuer role with the renderer
+that every auth service shares, `services/internal/signin` (ADR-035,
+board Signin). The left column names the role, the title, and the way
+back to the role picker of the landing, from
+`VCA_ISSUER_AUTH_LANDING_URL`. The right panel lists one button per
+enabled provider with its realm in the monospace stack, the default
+provider first. A provider with a register action gets a register
+button after a rule; a provider without one gets none. One line says
+that VCA is not tied to Keycloak.
+
+`GET /auth/providers.json` lists the providers with `id`,
+`display_name`, `realm`, and `register`, and nothing else: no client
+id, no discovery URL, no secret. The landing reads it to name the realm
+on the intro page. `GET /auth/register?provider=<id>&return_to=<path>`
+starts a registration. It uses `prompt=create` when the provider lists
+it, else the registration endpoint of a Keycloak realm. A provider that
+offers neither gives `404`. The registration ends at the same redirect
+URI as a login. The three paths answer at the root too.
+
+The page reads the theme file of the deployment at start, like every
+service that draws pages (ADR-032).
+
 ## Session tokens
 
 A session JWT carries `iss` (the public URL), `sub` (`iss|sub` of the

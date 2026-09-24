@@ -391,7 +391,7 @@ A row that is not `Done` carries a note.
 | ADR-033 | 3 Short text on VCA, the DPGs, and the triangle of trust | Done | `vca/services/landing/internal/pages` | |
 | ADR-033 | 4 Live stacks with pinned versions and links | Done | `vca/services/landing/internal/pages` | |
 | ADR-033 | 5 The role picker lists live roles only | Done | `vca/services/landing/internal/pages` | |
-| ADR-033 | 6 Role intro pages with step cards and sign in | Partial | `vca/services/landing/internal/pages` | The steps and the sign in link exist. The realm label waits for the provider list of the auth services. |
+| ADR-033 | 6 Role intro pages with step cards and sign in | Done | `vca/services/landing/internal/pages` | The sign in band names the provider and the realm from `/auth/providers.json` of the pair. |
 
 ## ADR-034: Backend adaptivity through a peer topology and feature lists
 
@@ -409,10 +409,10 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-035 | 1 Four realms with self registration | Not started | `deploy/vca` | Proposed record. No work exists yet. |
 | ADR-035 | 2 Keycloak is a provider record, not a dependency | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
-| ADR-035 | 3 Register action with a fallback | Not started | `vca/services/internal/oidcflow` | Proposed record. No work exists yet. |
+| ADR-035 | 3 Register action with a fallback | Done | `vca/services/internal/signin` | The chooser of every auth service offers `/auth/register` when the provider supports it. |
 | ADR-035 | 4 Three token authentication methods | Not started | `vca/core/oidc` | Proposed record. No work exists yet. |
 | ADR-035 | 5 The admin portal pushes provider records | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
-| ADR-035 | 6 The first admin registers and binds | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-035 | 6 The first admin registers and binds | Partial | `vca/services/admin` | The admin chooser registers with the bootstrap token in one flow. The first run checklist item waits for P2-01. |
 | ADR-035 | 7 The CLI makes the Keycloak password | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
 
 ## ADR-036: Verifier staff sign in

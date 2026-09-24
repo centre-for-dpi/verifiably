@@ -14,8 +14,9 @@ import (
 )
 
 // Handler returns the demo server: assets under /static/, the demo page at
-// /, and a toast partial at /toast for the htmx button. The assets and the
-// kit share one config, so the layout draws the brand the assets serve.
+// /, the sign in chooser at /signin, and a toast partial at /toast for the
+// htmx button. The assets and the kit share one config, so the layout
+// draws the brand the assets serve.
 func Handler() (http.Handler, error) {
 	cfg := ui.DefaultConfig()
 	assets, err := ui.AssetsFor(cfg)
@@ -39,6 +40,15 @@ func Mux(assets http.Handler, kit *components.Kit, build PageFunc) http.Handler 
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		serve(w, func() error {
 			page, err := build(kit)
+			if err != nil {
+				return err
+			}
+			return kit.RenderPage(w, r, page)
+		})
+	})
+	mux.HandleFunc("GET /signin", func(w http.ResponseWriter, r *http.Request) {
+		serve(w, func() error {
+			page, err := SignInPage(kit)
 			if err != nil {
 				return err
 			}
@@ -159,11 +169,42 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		Hero:        hero,
 		Description: "Every component of the vca UI kit on one page.",
 		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "UI kit"},
-			Links: []components.Link{{Href: "/", Text: "Demo", Current: true}, {Href: "/static/vca.css", Text: "Stylesheet"}}},
+			Links: []components.Link{{Href: "/", Text: "Demo", Current: true}, {Href: "/signin", Text: "Sign in"}, {Href: "/static/vca.css", Text: "Stylesheet"}}},
 		Shell:   demoShell(),
 		Toasts:  []components.Toast{{Level: "info", Text: "Demo page loaded"}},
 		Footer:  fmt.Sprintf("vca UI kit, htmx %s", ui.HTMXVersion),
 		Content: components.Join(parts...),
+	}, nil
+}
+
+// SignInPage composes the sign in chooser of a role: the block carries
+// the h1, so the page has no other header.
+func SignInPage(kit *components.Kit) (components.Page, error) {
+	extra, err := kit.HTML("card", components.Card{
+		ID: "bootstrap", Title: "First super admin", Text: "Paste the bootstrap token that the service printed at its first start.",
+	})
+	if err != nil {
+		return components.Page{}, err
+	}
+	return components.Page{
+		Title:       "Sign in",
+		Description: "The sign in chooser of the vca UI kit.",
+		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "UI kit"},
+			Links: []components.Link{{Href: "/", Text: "Demo"}, {Href: "/signin", Text: "Sign in", Current: true}}},
+		SignIn: &components.SignIn{
+			Role: "Admin", Title: "Sign in as an admin.",
+			Lead: "You return to the admin portal after sign in. The admin sets the login providers.",
+			Back: components.Link{Href: "/", Text: "Choose another role"}, Label: "Continue with",
+			Providers: []components.SignInProvider{
+				{Text: "Keycloak", Href: "/", Meta: "vca-admin-realm"},
+				{Text: "Identity Server", Href: "/", Meta: "oidc"},
+			},
+			CalloutLabel: "First admin after deployment?", Callout: "Paste the bootstrap token, then register. Then turn off self registration in the realm settings.",
+			Extra:    extra,
+			Register: []components.Button{{Text: "Register a new account", Href: "/", Variant: "ghost"}},
+			Note:     "VCA is not tied to Keycloak. Any OIDC provider the admin adds appears here.",
+		},
+		Footer: fmt.Sprintf("vca UI kit, htmx %s", ui.HTMXVersion),
 	}, nil
 }
 

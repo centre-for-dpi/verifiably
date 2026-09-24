@@ -290,6 +290,7 @@ component. `components.Names` lists every template.
 | `stacks` | `Stacks` | One `article` per stack: name, version, components with links, and one row per role with its state as a word. | `Items` with `ID`, `Name`, `Roles` |
 | `cta` | `CTA` | Call to action band: `section` labelled by its `h2`, a sentence, and one button. | `ID`, `Title`, `Action` |
 | `note` | `Note` | Small aside of a hero: a tracked label, a sentence, and the accent line. Set it as `Hero.Aside`. | `Text` |
+| `signin` | `SignIn` | The sign in chooser of a role. Left: role, `h1`, lead and back link. Right: provider buttons with the realm in the monospace stack, a callout, and an extra block. Then a rule, the register actions, and a note. Set `Page.SignIn`; it replaces the page header. | `Title` |
 
 ### Data structs
 
@@ -381,6 +382,12 @@ fails a page where two nav landmarks share a label.
 header, so the hero carries the one `h1`. Container query units size
 the title from its column. A long word shrinks and never breaks in the
 middle.
+
+`SignIn`: `Role`, `Title`, `Lead`, `Back`, `Label`, `Providers`, `Empty`,
+`CalloutLabel`, `Callout`, `Extra`, `Or` (default `or`), `Register`, `Note`.
+`SignInProvider`: `Text`, `Href`, `Meta`. The first provider renders as the
+primary button, the rest as secondary buttons. `Page.SignIn` renders the
+block in place of the page header, so it carries the one `h1`.
 
 `Tiles`: `Items`. `Tile`: `Num`, `Title`, `Text`, `Meta`, `Href`.
 

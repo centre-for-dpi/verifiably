@@ -129,7 +129,7 @@
 </body>
 </html>
 {{end}}
-{{define "page"}}{{if .Hero}}{{template "hero" .Hero}}{{else}}<div class="pg-header">
+{{define "page"}}{{if .Hero}}{{template "hero" .Hero}}{{else if .SignIn}}{{template "signin" .SignIn}}{{else}}<div class="pg-header">
 {{if .Label}}<p class="pg-header-label">{{.Label}}</p>
 {{end}}<h1>{{.Heading}}</h1>
 {{if .Lead}}<p class="pg-header-lead">{{.Lead}}</p>

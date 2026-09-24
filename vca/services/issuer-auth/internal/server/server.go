@@ -11,14 +11,19 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuerauth/v1/issuerauthv1connect"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/roles"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/service"
+	"github.com/centre-for-dpi/vc-adapters/ui"
 )
 
 // persister returns the document store of the service. An empty dir
@@ -73,6 +78,10 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 	if cfg.AdminToken == "" {
 		log.Warn("VCA_ISSUER_AUTH_ADMIN_TOKEN is not set: only issuer-admin sessions can register providers")
 	}
+	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
+	if err != nil {
+		return nil, err
+	}
 	return service.New(cfg, service.Deps{
 		Flow:      &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)},
 		Providers: providers,
@@ -80,6 +89,8 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 		Clients:   machine,
 		Signer:    signer,
 		CSRF:      csrf,
+		Kit:       kit,
+		Assets:    assets,
 	}), nil
 }
 
@@ -132,7 +143,10 @@ func sessionKey(v string) []byte {
 	return b
 }
 
-// Handler returns the HTTP handler with every route of the service.
+// Handler returns the HTTP handler with every route of the service. The
+// sign in chooser, its listing, and the register start sit beside the
+// login endpoints at / and at /auth (ADR-035). A build with no kit
+// leaves the pages out, which a test of the RPCs alone can use.
 func Handler(svc *service.Service) http.Handler {
 	mux := http.NewServeMux()
 	path, h := issuerauthv1connect.NewIssuerAuthServiceHandler(svc)
@@ -144,6 +158,19 @@ func Handler(svc *service.Service) http.Handler {
 	handlers := svc.Handlers()
 	handlers.Mount(mux, "")
 	handlers.Mount(mux, "/auth")
+	if svc.Kit() == nil {
+		return mux
+	}
+	// The options are complete, so New cannot fail here.
+	chooser := anyval.Must(signin.New(signin.Options{
+		Kit: svc.Kit(), Role: commonv1.Role_ROLE_ISSUER, Providers: svc.Providers(), Registrar: svc, Metadata: svc.Flow(),
+		LandingURL: svc.Config().LandingURL,
+	}))
+	chooser.Mount(mux, "")
+	chooser.Mount(mux, "/auth")
+	if svc.Assets() != nil {
+		mux.Handle("GET "+ui.Prefix, svc.Assets())
+	}
 	return mux
 }
 

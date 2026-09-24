@@ -15,6 +15,9 @@ It does not store a name, an email address, or any other claim of the citizen. I
 
 | Path | Method | Purpose |
 |---|---|---|
+| `/` | GET | The sign in chooser of the holder role: one button per provider, and a register action when the provider offers one. |
+| `/providers.json` | GET | The providers with `id`, `display_name`, `realm`, and `register`. Nothing else. |
+| `/register?provider=<id>&return_to=<path>` | GET | Starts a registration. Rate limited like a login. |
 | `/login?provider=<id>&return_to=<path>` | GET | Starts a login. Rate limited per client address. |
 | `/callback` | GET | Ends a login. The service sets the session cookie and returns the session JWT. |
 | `/logout` | POST | Ends the session. The request needs the `X-CSRF-Token` header. |
@@ -24,7 +27,7 @@ It does not store a name, an email address, or any other claim of the citizen. I
 | `/vca.admin.v1.AdminService/*AuthProvider*` | POST | Registers providers at runtime. Needs the admin token. |
 | `/healthz`, `/readyz` | GET | Health probes. |
 
-The same login endpoints exist under `/wallet/auth/`. The default redirect URI is the public URL plus `/wallet/auth/callback`.
+The same endpoints exist under `/auth/` and `/wallet/auth/`. The pair proxy removes `/auth`, so a browser opens `<public URL>/auth/`. The default redirect URI is the public URL plus `/wallet/auth/callback`.
 
 ### Issuance grant
 
@@ -72,6 +75,8 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_WALLET_AUTH_COOKIE_NAME` | The session cookie name. | `vca_wallet_session` |
 | `VCA_WALLET_AUTH_INSECURE_COOKIE` | Drops the `Secure` cookie flag. Use it on localhost only. | `false` |
 | `VCA_WALLET_AUTH_LOGOUT_REDIRECT` | The relative path the browser goes to after logout. | none |
+| `VCA_WALLET_AUTH_LANDING_URL` | The public URL of the landing. The sign in chooser links back to its role picker. | none |
+| `VCA_THEME_FILE` | The theme file of the deployment (ADR-032). Empty selects the embedded default. | none |
 
 Set `VCA_WALLET_AUTH_SALT` and `VCA_WALLET_AUTH_GRANT_KEY` in production. Without them, wallet keys and sealed grants change at each restart.
 
@@ -83,7 +88,7 @@ volume at `/data` to keep providers and wallets between restarts.
 
 1. Open `http://localhost:8083/healthz`. The response is `200 OK`.
 2. Open `http://localhost:8083/readyz`. The response is `200 OK` with the number of providers and wallets.
-3. Open `http://localhost:8083/login?provider=default` in a browser and log in at the provider.
+3. Open `http://localhost:8083/` in a browser, pick the provider, and log in.
 4. Look for a JSON body with `session_token` and `csrf_token`. The `sub` claim is a hash, not the IdP subject.
 5. Call `GetAuthorizationGrant` with the token and an issuer URL. Look for the IdP access token in `grant`.
 

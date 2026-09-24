@@ -1,0 +1,23 @@
+{{define "signin"}}<section class="signin">
+<div class="signin-left">
+{{if .Role}}<div class="role-row"><span class="role-dot" aria-hidden="true"></span><span class="role">{{.Role}}</span></div>
+{{end}}<h1>{{.Title}}</h1>
+{{if .Lead}}<p class="desc">{{.Lead}}</p>
+{{end}}{{if .Back.Href}}<a class="signin-back" href="{{.Back.Href}}"{{if external .Back.Href}} rel="noopener"{{end}}>{{.Back.Text}}</a>
+{{end}}</div>
+<div class="signin-panel">
+{{if .Label}}<p class="signin-label">{{.Label}}</p>
+{{end}}{{if .Providers}}<ul class="signin-providers">
+{{range $i, $p := .Providers}}<li><a class="btn {{if eq $i 0}}btn-primary{{else}}btn-secondary{{end}} signin-provider" href="{{$p.Href}}"><span>{{$p.Text}}</span>{{if $p.Meta}}<span class="signin-meta">{{$p.Meta}}</span>{{end}}</a></li>
+{{end}}</ul>
+{{else if .Empty}}<p class="signin-empty">{{.Empty}}</p>
+{{end}}{{if .Callout}}<div class="signin-callout">{{if .CalloutLabel}}<strong>{{.CalloutLabel}}</strong> {{end}}{{.Callout}}</div>
+{{end}}{{if .Extra}}{{.Extra}}
+{{end}}{{if .Register}}<div class="signin-or"><span>{{.Or}}</span></div>
+<div class="signin-register">
+{{range .Register}}{{template "button" .}}
+{{end}}</div>
+{{end}}{{if .Note}}<p class="signin-note">{{.Note}}</p>
+{{end}}</div>
+</section>
+{{end}}

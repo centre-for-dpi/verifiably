@@ -3,6 +3,7 @@
 package server_test
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -14,9 +15,13 @@ import (
 	"testing"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/limits"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/server"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -199,4 +204,79 @@ func TestReadyMessage(t *testing.T) {
 	if msg := server.ReadyMessage(svc)(); !strings.Contains(msg, "providers=") {
 		t.Fatalf("ready message = %q", msg)
 	}
+}
+
+// TestAuthRootServesChooser is P1-08 for the holder: the chooser, the
+// listing, and the register start answer under every prefix the pair
+// proxy and a peer use, the register start honours the login rate
+// limit, and a provider with no register action gives 404.
+func TestAuthRootServesChooser(t *testing.T) {
+	realm := oidctest.New()
+	defer realm.Close()
+	cfg := baseConfig(t)
+	cfg.LandingURL = "https://vca.example"
+	cfg.LoginRate = 2
+	svc, err := server.Build(cfg, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Providers().Put(oidcflow.Provider{
+		ID: "default", DisplayName: "Keycloak", DiscoveryURL: realm.DiscoveryURL(), ClientID: realm.ClientID, Enabled: true,
+		Profile: oidcflow.Profile{Kind: oidcflow.KindKeycloak, Realm: "vca-holder-realm", IsDefault: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := server.Handler(svc)
+	get := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.RemoteAddr = "10.0.0.9:1234"
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	for _, prefix := range server.Prefixes {
+		rec := get(prefix + "/")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s/: status %d: %s", prefix, rec.Code, rec.Body.String())
+		}
+		doc := rec.Body.String()
+		a11ytest.AssertPage(t, doc)
+		for _, want := range []string{
+			`<h1>Sign in as a holder.</h1>`, `<span class="signin-meta">vca-holder-realm</span>`,
+			`href="/auth/login?provider=default&amp;return_to=%2Fwallet%2F"`, `href="/auth/register?provider=default&amp;return_to=%2Fwallet%2F"`,
+			`href="https://vca.example/roles/"`,
+		} {
+			if !strings.Contains(doc, want) {
+				t.Errorf("%s/ missing %q\n%s", prefix, want, doc)
+			}
+		}
+		var listing signin.Listing
+		if rec := get(prefix + "/providers.json"); rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &listing) != nil || listing.Role != "holder" || len(listing.Providers) != 1 || !listing.Providers[0].Register {
+			t.Errorf("%s/providers.json: %d %s", prefix, rec.Code, rec.Body.String())
+		}
+	}
+	rec := get("/auth/register?provider=default")
+	if loc := rec.Header().Get("Location"); rec.Code != http.StatusFound || !strings.HasPrefix(loc, realm.Issuer()+"/protocol/openid-connect/registrations?") {
+		t.Errorf("register: %d %q", rec.Code, loc)
+	}
+	if rec := get("/register?provider=nope"); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown provider: %d", rec.Code)
+	}
+	// The third start from the same address in a minute is refused.
+	if rec := get("/wallet/auth/register?provider=default"); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("rate limit: %d", rec.Code)
+	}
+	if rec := get("/static/vca.css"); rec.Code != http.StatusOK {
+		t.Errorf("stylesheet: %d", rec.Code)
+	}
+}
+
+// TestAppFailsOnBadThemeFile proves the service stops at start when the
+// theme file fails a kit pairing, and that the error names the pairing.
+func TestAppFailsOnBadThemeFile(t *testing.T) {
+	path := uikittest.LowContrastFile(t)
+	cfg := baseConfig(t)
+	cfg.ThemeFile = path
+	_, err := server.Build(cfg, quiet)
+	uikittest.AssertBadThemeError(t, err, path)
 }

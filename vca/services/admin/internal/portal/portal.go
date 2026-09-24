@@ -47,10 +47,12 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/helptext"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
@@ -76,11 +78,18 @@ type Options struct {
 	// LoginPath is where the login page sends the browser. Empty means
 	// /auth/login.
 	LoginPath string
+	// RegisterPath is where the register action sends the browser. Empty
+	// means /auth/register.
+	RegisterPath string
+	// LandingURL is the public URL of the landing. The login page links
+	// back to its role picker. Empty hides the link.
+	LandingURL string
 }
 
 // Portal serves the admin pages.
 type Portal struct {
-	opts Options
+	opts    Options
+	chooser *signin.Chooser
 }
 
 // New builds the portal.
@@ -96,7 +105,10 @@ func New(opts Options) (*Portal, error) {
 	}
 	opts.Prefix = "/" + strings.Trim(opts.Prefix, "/")
 	if opts.LoginPath == "" {
-		opts.LoginPath = "/auth/login"
+		opts.LoginPath = signin.DefaultLoginPath
+	}
+	if opts.RegisterPath == "" {
+		opts.RegisterPath = signin.DefaultRegisterPath
 	}
 	if opts.Kit == nil {
 		kit, err := components.New()
@@ -105,7 +117,18 @@ func New(opts Options) (*Portal, error) {
 		}
 		opts.Kit = kit
 	}
-	return &Portal{opts: opts}, nil
+	p := &Portal{opts: opts}
+	chooser, err := signin.New(signin.Options{
+		Kit: opts.Kit, Role: commonv1.Role_ROLE_ADMIN, Providers: opts.Login.Providers(), Metadata: opts.Login.Flow(),
+		LoginPath: opts.LoginPath, RegisterPath: opts.RegisterPath, LandingURL: opts.LandingURL,
+		Home: opts.Prefix + "/", Callout: true, Extra: p.bootstrapCard, Empty: msg.T("signin.admin.none"),
+		Toasts: func(r *http.Request) []components.Toast { return notice(r.URL.Query().Get("notice")) },
+	})
+	if err != nil {
+		return nil, err
+	}
+	p.chooser = chooser
+	return p, nil
 }
 
 // Prefix returns the URL prefix of the pages.
@@ -115,7 +138,7 @@ func (p *Portal) Prefix() string { return p.opts.Prefix }
 func (p *Portal) Register(mux *http.ServeMux) {
 	at := p.opts.Prefix
 	mux.HandleFunc("GET "+at+"/{$}", p.guarded(p.dashboard))
-	mux.HandleFunc("GET "+at+"/login", p.open(p.loginPage))
+	mux.HandleFunc("GET "+at+"/login", p.chooser.Page)
 	mux.HandleFunc("GET "+at+"/help", p.open(p.help))
 	mux.HandleFunc("GET "+at+"/tenants", p.guarded(p.tenants))
 	mux.HandleFunc("POST "+at+"/tenants", p.posted(p.createTenant))
@@ -286,11 +309,6 @@ func getForm(action string, content ...template.HTML) template.HTML {
 	return components.Join(append(parts, template.HTML(`</form>`))...)
 }
 
-// link renders one anchor. Both parts are escaped.
-func link(href, text string) template.HTML {
-	return template.HTML(`<a href="` + template.HTMLEscapeString(href) + `">` + template.HTMLEscapeString(text) + `</a>`) //nolint:gosec // both parts are escaped
-}
-
 // Notices maps a notice code to the sentence the page shows.
 var Notices = map[string]components.Toast{
 	"tenant-created":   {Level: "ok", Text: "The tenant is created."},
@@ -311,48 +329,38 @@ func notice(value string) []components.Toast {
 	return nil
 }
 
-// loginPage lists the providers that accept an admin login (ADR-010
-// decision 1). The page has no password field at all.
-func (p *Portal) loginPage(w http.ResponseWriter, r *http.Request) error {
+// Chooser returns the sign in chooser of the admin role (ADR-035, board
+// Signin-Admin). The app mounts its page and listing under /auth too.
+func (p *Portal) Chooser() *signin.Chooser { return p.chooser }
+
+// bootstrapCard is the extra block of the admin chooser (ADR-010
+// decision 4, ADR-035 decision 6): the bootstrap token with a sign in
+// and a register action, both of which bind the first super admin. The
+// page has no password field at all.
+func (p *Portal) bootstrapCard(returnTo string) (template.HTML, error) {
 	b := p.blocks()
-	var rows []components.Row
-	for _, provider := range p.opts.Login.Providers().Enabled() {
-		name := provider.DisplayName
-		if name == "" {
-			name = provider.ID
-		}
-		href := p.opts.LoginPath + "?provider=" + queryEscape(provider.ID) + "&return_to=" + queryEscape(p.opts.Prefix+"/")
-		rows = append(rows, components.Row{{HTML: link(href, "Sign in with "+name)}, {Text: provider.DiscoveryURL}})
-	}
-	table := b.add("table", components.Table{
-		ID: "providers", Caption: "Login providers",
-		Columns: []string{"Provider", "Discovery URL"}, Rows: rows,
-		Empty: "No login provider is registered. Run vca admin onboard to add one.",
+	// With one provider the form names it in a hidden field. Otherwise
+	// the admin types the id.
+	provider := b.add("field", components.Field{
+		ID: "provider", Label: msg.T("signin.admin.provider.label"), Hint: msg.T("signin.admin.provider.hint"),
 	})
-	bootstrap := b.add("card", components.Card{
-		ID: "bootstrap", Title: "First super admin",
-		Text: "Paste the bootstrap token that the service printed at its first start. The token binds your identity to the super admin role once.",
+	if enabled := p.opts.Login.Providers().Enabled(); len(enabled) == 1 {
+		provider = template.HTML(`<input type="hidden" name="provider" value="` + template.HTMLEscapeString(enabled[0].ID) + `">`) //nolint:gosec // the value is escaped
+	}
+	card := b.add("card", components.Card{
+		ID: "bootstrap", Title: msg.T("signin.admin.bootstrap.label"),
+		Text: msg.T("signin.admin.bootstrap.text"),
 		Body: getForm(p.opts.LoginPath,
+			provider,
 			b.add("field", components.Field{
-				ID: "provider", Label: "Provider id", Hint: "Leave the field empty when one provider is registered.",
+				ID: login.BootstrapField, Label: msg.T("signin.admin.token.label"), Type: "password",
 			}),
-			b.add("field", components.Field{
-				ID: login.BootstrapField, Label: "Bootstrap token", Type: "password",
-			}),
-			template.HTML(`<input type="hidden" name="return_to" value="`+template.HTMLEscapeString(p.opts.Prefix+"/")+`">`), //nolint:gosec // the value is escaped
-			b.add("button", components.Button{Text: "Sign in and bind", Type: "submit", Variant: "primary"}),
+			template.HTML(`<input type="hidden" name="return_to" value="`+template.HTMLEscapeString(returnTo)+`">`), //nolint:gosec // the value is escaped
+			b.add("button", components.Button{Text: msg.T("signin.admin.bind.label"), Type: "submit", Variant: "primary"}),
+			b.add("button", components.Button{Text: msg.T("signin.admin.register_bind.label"), Type: "submit", Attrs: map[string]string{"formaction": p.opts.RegisterPath}}),
 		),
 	})
-	if b.err != nil {
-		return b.err
-	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
-		Title:       "Sign in",
-		Description: "The admin portal uses OpenID Connect only. It stores no password.",
-		Nav:         components.Nav{Label: "Super admin", Links: []components.Link{{Href: p.opts.Prefix + "/help", Text: "Help"}}},
-		Content:     components.Join(table, bootstrap),
-		Toasts:      notice(r.URL.Query().Get("notice")),
-	})
+	return card, b.err
 }
 
 // dashboard shows the health of every service and the record counts.

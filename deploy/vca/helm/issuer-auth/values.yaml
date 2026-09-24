@@ -37,3 +37,17 @@ resources:
 
 nameOverride: ""
 fullnameOverride: ""
+
+# The theme file of every page (ADR-032). The pod mounts the ConfigMap
+# that holds theme.yaml under mountPath and reads it at start. An empty
+# configMap names <release>-theme, which the umbrella chart makes from
+# its files/theme.yaml or from --set-file global.theme.file. The pod
+# rolls when global.theme.file changes.
+theme:
+  enabled: true
+  configMap: ""
+  mountPath: /etc/vca
+
+global:
+  theme:
+    file: ""

@@ -239,7 +239,7 @@ The `issuer` role. Its home page is `/portal/` on `schema-registry`.
 | `/vca.admin.v1.AdminService/*` | `issuer-auth` |  |
 | `/.well-known/jwks.json` | `issuer-auth` |  |
 | `/token` | `issuer-auth` |  |
-| `/auth/*` | `issuer-auth` |  |
+| `/auth/*` | `issuer-auth` | A page: Sign in. |
 | `/vca.schemabuilder.v1.SchemaBuilderService/*` | `schema-builder-ui` |  |
 | `/builder/*` | `schema-builder-ui` | A page: Schema builder. |
 | `/pdf/preview/*` | `schema-builder-ui` |  |
@@ -269,7 +269,7 @@ The `holder` role. Its home page is `/wallet/` on `wallet-portal`.
 | `/vca.walletauth.v1.WalletAuthService/*` | `wallet-auth` |  |
 | `/vca.admin.v1.AdminService/*` | `wallet-auth` |  |
 | `/.well-known/jwks.json` | `wallet-auth` |  |
-| `/auth/*` | `wallet-auth` | The service sees the path without `/auth`. |
+| `/auth/*` | `wallet-auth` | A page: Sign in. |
 | `/vca.walletportal.v1.WalletPortalService/*` | `wallet-portal` |  |
 | `/wallet/*` | `wallet-portal` | A page: Wallet. |
 | `/static/*` | `wallet-portal` |  |

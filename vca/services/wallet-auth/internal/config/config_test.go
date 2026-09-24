@@ -71,6 +71,8 @@ func TestFromEnvValues(t *testing.T) {
 		"VCA_WALLET_AUTH_COOKIE_NAME":        "c",
 		"VCA_WALLET_AUTH_LOGOUT_REDIRECT":    "/bye",
 		"VCA_OIDC_INTERNAL_AUTHORITY":        "http://idp:8080",
+		"VCA_THEME_FILE":                     "/etc/vca/theme.yaml",
+		"VCA_WALLET_AUTH_LANDING_URL":        "https://vca.example/",
 		"VCA_OIDC_DISCOVERY_URL":             "http://idp/.well-known/openid-configuration",
 		"VCA_OIDC_CLIENT_ID":                 "c",
 		"VCA_OIDC_CLIENT_SECRET":             "S",
@@ -89,6 +91,9 @@ func TestFromEnvValues(t *testing.T) {
 	}
 	if string(c.Salt) != "0123456789abcdef" || string(c.GrantKey) != key || c.GrantType != "custom" || c.HolderBackendURL != "http://adapter:8090" || c.RedisURL != "redis://r" {
 		t.Fatalf("%+v", c)
+	}
+	if c.ThemeFile != "/etc/vca/theme.yaml" || c.LandingURL != "https://vca.example" {
+		t.Errorf("theme file and landing URL: %+v", c)
 	}
 	if c.AdminToken != "t" || c.StateDir != "/s" || c.CookieName != "c" || c.LogoutRedirect != "/bye" || c.ProviderInternalAuthority != "http://idp:8080" || !c.Seed.HasSeed() || c.Seed.ClientSecret != "S" {
 		t.Fatalf("%+v", c)

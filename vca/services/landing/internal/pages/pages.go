@@ -18,6 +18,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
 	"github.com/centre-for-dpi/vc-adapters/services/landing/internal/descriptor"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -37,6 +38,14 @@ const (
 
 // refreshEvery is the htmx trigger of the stacks block.
 const refreshEvery = "every 30s"
+
+// listingTimeout bounds the read of the sign in listing of a pair. The
+// intro page renders without it.
+const listingTimeout = time.Second
+
+// ProviderSource reads the sign in listing of an auth service at base
+// (P1-08). signin.Fetch is one; a test passes a fixed table.
+type ProviderSource func(ctx context.Context, base string) (signin.Listing, error)
 
 // Renderer renders the components and the pages. A components.Kit is
 // one; a test passes one that fails on purpose.
@@ -62,6 +71,10 @@ type Options struct {
 	// Now returns the current time for the "updated" line. Nil means
 	// time.Now.
 	Now func() time.Time
+	// Providers reads the sign in listing of a pair, so the intro page
+	// names the realm of the role. Nil selects signin.Fetch with a one
+	// second client.
+	Providers ProviderSource
 }
 
 // Pages serves the landing routes.
@@ -79,6 +92,12 @@ func New(opts Options) (*Pages, error) {
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
+	}
+	if opts.Providers == nil {
+		client := &http.Client{Timeout: listingTimeout}
+		opts.Providers = func(ctx context.Context, base string) (signin.Listing, error) {
+			return signin.Fetch(ctx, client, base)
+		}
 	}
 	return &Pages{opts: opts}, nil
 }

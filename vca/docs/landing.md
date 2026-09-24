@@ -75,8 +75,16 @@ features (ADR-034 decision 5):
 
 The sign in band links to `<pair public URL>/auth/?return_to=<home>`
 of the pair of the role. One live stack gives one button. Several give
-one button per stack, named after the stack. The realm of the sign in
-follows once the auth services publish their providers.
+one button per stack, named after the stack.
+
+With one live stack the band names the provider and the realm. The
+landing reads `GET <auth service>/auth/providers.json` of the pair on
+the internal network, with a one second timeout. The admin pair has no
+auth service, so the landing asks its home service. The first provider
+of the listing gives the sentence, and the register flag adds the offer
+to register. A listing the landing cannot read, or an empty one, keeps
+the plain sentence. Several live stacks keep it too, because the realm
+differs per stack.
 
 A role with no live pair gets one sentence and a link back to the
 picker. An unknown role answers `404`.

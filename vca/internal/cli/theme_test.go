@@ -153,7 +153,7 @@ func TestThemeApplyRestartsOnlyUIServices(t *testing.T) {
 	// The landing draws pages too. It runs once, so the first pair
 	// restarts it (ADR-033 decision 2).
 	wantIssuer := append(ComposeArgs(root, issuer, []string{"restart"}),
-		"issuer-waltid-schema-builder-ui", "issuer-waltid-schema-registry", "vca-landing")
+		"issuer-waltid-issuer-auth", "issuer-waltid-schema-builder-ui", "issuer-waltid-schema-registry", "vca-landing")
 	if got := strings.Join(rec.calls[0][1:], " "); got != strings.Join(wantIssuer, " ") || rec.calls[0][0] != "docker" {
 		t.Errorf("issuer command = %v\nwant docker %v", rec.calls[0], wantIssuer)
 	}
@@ -167,7 +167,7 @@ func TestThemeApplyRestartsOnlyUIServices(t *testing.T) {
 			t.Errorf("apply restarted a service with no pages: %s", text)
 		}
 	}
-	for _, want := range []string{"docker compose", "restart issuer-waltid-schema-builder-ui", "restart admin-inji-admin"} {
+	for _, want := range []string{"docker compose", "restart issuer-waltid-issuer-auth issuer-waltid-schema-builder-ui", "restart admin-inji-admin"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}

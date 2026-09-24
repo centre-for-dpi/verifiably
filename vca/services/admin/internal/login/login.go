@@ -149,6 +149,9 @@ func (s *Service) CSRF() oidcflow.CSRF { return s.d.CSRF }
 // Providers returns the provider registry.
 func (s *Service) Providers() *oidcflow.Registry { return s.d.Providers }
 
+// Flow returns the login flow, which reads provider metadata.
+func (s *Service) Flow() *oidcflow.Flow { return s.d.Flow }
+
 // Handlers returns the shared login endpoints. The cookie carries
 // SameSite=Lax and HttpOnly.
 func (s *Service) Handlers() oidcflow.Handlers {
@@ -169,18 +172,31 @@ func (s *Service) Cookie() oidcflow.Cookie {
 // bootstrap token in the query binds the first super admin at the end
 // of the login.
 func (s *Service) Start(ctx context.Context, providerID, returnTo string) (string, error) {
-	_, u, err := s.begin(ctx, providerID, returnTo, "", "")
+	_, u, err := s.begin(ctx, providerID, returnTo, "", "", false)
 	return u, err
 }
 
-// begin starts a login and remembers the bootstrap token and the CLI
-// port of the state.
-func (s *Service) begin(ctx context.Context, providerID, returnTo, bootstrapToken, port string) (oidcflow.Pending, string, error) {
+// Register implements signin.Registrar (ADR-035 decision 3). It starts
+// a registration at the provider; the callback finishes it like a
+// login. The first admin registers with a bootstrap token through
+// RegisterStart instead (ADR-035 decision 6).
+func (s *Service) Register(ctx context.Context, providerID, returnTo string) (string, error) {
+	_, u, err := s.begin(ctx, providerID, returnTo, "", "", true)
+	return u, err
+}
+
+// begin starts a login, or a registration when register is set, and
+// remembers the bootstrap token and the CLI port of the state.
+func (s *Service) begin(ctx context.Context, providerID, returnTo, bootstrapToken, port string, register bool) (oidcflow.Pending, string, error) {
 	p, err := s.provider(ctx, providerID)
 	if err != nil {
 		return oidcflow.Pending{}, "", err
 	}
-	pend, u, err := s.d.Flow.Begin(ctx, p, s.d.Cfg.RedirectURI, returnTo)
+	start := s.d.Flow.Begin
+	if register {
+		start = s.d.Flow.BeginRegister
+	}
+	pend, u, err := start(ctx, p, s.d.Cfg.RedirectURI, returnTo)
 	if err != nil {
 		return oidcflow.Pending{}, "", err
 	}

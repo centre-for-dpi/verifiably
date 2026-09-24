@@ -14,6 +14,7 @@ import (
 	"time"
 
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
 // Prefix of the variables of this service.
@@ -36,6 +37,7 @@ type settings struct {
 	CookieName       string        `env:"COOKIE_NAME" default:"vca_wallet_session"`
 	InsecureCookie   bool          `env:"INSECURE_COOKIE"`
 	LogoutRedirect   string        `env:"LOGOUT_REDIRECT"`
+	LandingURL       string        `env:"LANDING_URL"`
 }
 
 // common are the VCA_ variables that other services read too.
@@ -104,6 +106,12 @@ type Config struct {
 	ProviderInternalAuthority string
 	// Seed is an optional provider from VCA_OIDC_* variables.
 	Seed SeedProvider
+	// ThemeFile is the theme file of the deployment, from VCA_THEME_FILE.
+	// Empty selects the embedded default (ADR-032 decision 1).
+	ThemeFile string
+	// LandingURL is the public URL of the landing, without a trailing
+	// slash. Empty hides the way back on the sign in chooser.
+	LandingURL string
 }
 
 // SeedProvider is the provider that the setup CLI writes to the
@@ -149,6 +157,8 @@ func FromEnv(get Lookup) (Config, error) {
 		InsecureCookie:            s.InsecureCookie,
 		LogoutRedirect:            s.LogoutRedirect,
 		ProviderInternalAuthority: k.InternalAuthority,
+		ThemeFile:                 strings.TrimSpace(get(uikit.ThemeFileEnv)),
+		LandingURL:                strings.TrimRight(strings.TrimSpace(s.LandingURL), "/"),
 		Seed: SeedProvider{
 			DiscoveryURL: k.DiscoveryURL,
 			ClientID:     k.ClientID,

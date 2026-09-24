@@ -762,7 +762,7 @@ func TestWriteErrors(t *testing.T) {
 	if got := Join("<a>", "<b>"); got != "<a>\n<b>\n" {
 		t.Errorf("Join = %q", got)
 	}
-	if len(Names) != 25 {
+	if len(Names) != 26 {
 		t.Errorf("Names = %v", Names)
 	}
 	for _, n := range Names {
@@ -1001,5 +1001,83 @@ func TestTileCarriesAFigure(t *testing.T) {
 	}
 	if _, err := k.HTML("tiles", Tiles{Columns: 5, Items: []Tile{{Title: "x", Href: "/"}}}); err == nil {
 		t.Error("five columns passed")
+	}
+}
+
+// TestSignInRendersProvidersAndRegister checks the sign in chooser
+// (ADR-035): the role and the title on the left with the lead and the
+// back link, one button per provider with its realm in the monospace
+// stack on the right, the callout, the extra block, the rule with the
+// word "or", the register actions, and the note. The block carries the
+// one h1 of the page.
+func TestSignInRendersProvidersAndRegister(t *testing.T) {
+	k := newKit(t)
+	block := &SignIn{
+		Role: "Issuer", Title: "Sign in as an issuer.", Lead: "You return to the issuer portal after sign in.",
+		Back: Link{Href: "https://vca.example/roles/", Text: "Choose another role"}, Label: "Continue with",
+		Providers: []SignInProvider{
+			{Text: "Keycloak", Href: "/auth/login?provider=default", Meta: "vca-issuer-realm"},
+			{Text: "Second", Href: "/auth/login?provider=b"},
+		},
+		Callout: "Paste the bootstrap token, then register.", CalloutLabel: "First admin?",
+		Extra: `<p id="extra">Extra</p>`,
+		Or:    "or", Register: []Button{{Text: "Register a new account", Href: "/auth/register?provider=default", Variant: "ghost"}},
+		Note: "VCA is not tied to Keycloak.",
+	}
+	doc := renderShellPage(t, k, Page{Title: "Sign in", SignIn: block, Nav: Nav{Links: []Link{{Href: "/", Text: "Home"}}}})
+	for _, want := range []string{
+		`<section class="signin">`, `<div class="signin-left">`, `<span class="role">Issuer</span>`,
+		`<h1>Sign in as an issuer.</h1>`, `<p class="desc">You return to the issuer portal after sign in.</p>`,
+		`<a class="signin-back" href="https://vca.example/roles/" rel="noopener">Choose another role</a>`,
+		`<div class="signin-panel">`, `<p class="signin-label">Continue with</p>`, `<ul class="signin-providers">`,
+		`<a class="btn btn-primary signin-provider" href="/auth/login?provider=default"><span>Keycloak</span><span class="signin-meta">vca-issuer-realm</span></a>`,
+		`<a class="btn btn-secondary signin-provider" href="/auth/login?provider=b"><span>Second</span></a>`,
+		`<div class="signin-callout"><strong>First admin?</strong> Paste the bootstrap token, then register.</div>`,
+		`<p id="extra">Extra</p>`, `<div class="signin-or"><span>or</span></div>`, `<div class="signin-register">`,
+		`<a class="btn btn-ghost" href="/auth/register?provider=default">Register a new account</a>`,
+		`<p class="signin-note">VCA is not tied to Keycloak.</p>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("sign in page missing %q\n%s", want, doc)
+		}
+	}
+	if strings.Contains(doc, "pg-header") {
+		t.Error("a sign in block replaces the page header")
+	}
+	if strings.Count(doc, "<h1>") != 1 {
+		t.Error("the sign in block carries the one h1")
+	}
+	// Without providers the panel says so, and every optional part is
+	// absent when its field is empty.
+	bare := string(mustHTML(t, k, "signin", SignIn{Title: "Plain", Empty: "No provider yet."}))
+	a11ytest.AssertFragment(t, bare)
+	if !strings.Contains(bare, `<p class="signin-empty">No provider yet.</p>`) {
+		t.Errorf("an empty chooser names the gap:\n%s", bare)
+	}
+	for _, absent := range []string{"role-row", "desc", "signin-back", "signin-label", "signin-providers", "signin-callout", "signin-or", "signin-register", "signin-note"} {
+		if strings.Contains(bare, absent) {
+			t.Errorf("a bare sign in block has no %s:\n%s", absent, bare)
+		}
+	}
+	// The word on the rule defaults to "or", and a local back link
+	// carries no rel.
+	local := string(mustHTML(t, k, "signin", SignIn{Title: "T", Back: Link{Href: "/roles/", Text: "Back"}, Register: []Button{{Text: "Register", Href: "/r"}}}))
+	if !strings.Contains(local, `<a class="signin-back" href="/roles/">Back</a>`) || !strings.Contains(local, `<span>or</span>`) {
+		t.Errorf("local back link and default rule word:\n%s", local)
+	}
+	// A missing title, a provider without a link, and a bad register
+	// button fail.
+	for name, bad := range map[string]SignIn{
+		"no title":         {},
+		"provider no href": {Title: "T", Providers: []SignInProvider{{Text: "X"}}},
+		"provider no text": {Title: "T", Providers: []SignInProvider{{Href: "/x"}}},
+		"bad register":     {Title: "T", Register: []Button{{}}},
+	} {
+		if _, err := k.HTML("signin", bad); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+	if err := k.RenderPage(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), Page{Title: "x", SignIn: &SignIn{}}); err == nil {
+		t.Error("a page with a bad sign in block should fail")
 	}
 }

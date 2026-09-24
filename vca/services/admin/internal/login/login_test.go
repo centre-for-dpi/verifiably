@@ -160,6 +160,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	h.svc = svc
 	h.handler.HandleFunc("GET /auth/login", svc.Login)
+	h.handler.HandleFunc("GET /auth/register", svc.RegisterStart)
 	h.handler.HandleFunc("GET /auth/callback", svc.Callback)
 	handlers := svc.Handlers()
 	h.handler.HandleFunc("POST /auth/logout", handlers.Logout)
@@ -185,7 +186,14 @@ func (h *harness) deviceProvider(t *testing.T) string {
 // login runs one browser login and returns the session token.
 func (h *harness) login(t *testing.T, query string) (string, int) {
 	t.Helper()
-	res, err := h.client.Get(h.server.URL + "/auth/login?provider=idp" + query)
+	return h.start(t, "/auth/login?provider=idp"+query)
+}
+
+// start opens one login or register start and follows it through the
+// provider and the callback. It returns the session token.
+func (h *harness) start(t *testing.T, path string) (string, int) {
+	t.Helper()
+	res, err := h.client.Get(h.server.URL + path)
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -269,6 +277,66 @@ func TestBootstrapTokenBindsTheFirstSuperAdmin(t *testing.T) {
 	spent, _ := h.login(t, "&"+login.BootstrapField+"="+token)
 	if spent == "" {
 		t.Log("the bound admin keeps the role")
+	}
+}
+
+// TestRegisterBindsTheFirstSuperAdmin is ADR-035 decision 6: the first
+// admin registers at the provider with prompt=create and binds with the
+// bootstrap token in one flow. A provider without a register action
+// gives 404, and Register without a token starts a plain registration.
+func TestRegisterBindsTheFirstSuperAdmin(t *testing.T) {
+	h := newHarness(t)
+	h.idp.PromptValuesSupported = []string{"login", "create"}
+	ctx := context.Background()
+	token := records.NewBootstrapToken()
+	if err := h.rec.SetBootstrap(ctx, token); err != nil {
+		t.Fatalf("SetBootstrap: %v", err)
+	}
+	res, err := h.client.Get(h.server.URL + "/auth/register?provider=idp&return_to=/admin/&" + login.BootstrapField + "=" + token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loc := res.Header.Get("Location")
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	if res.StatusCode != http.StatusFound || !strings.Contains(loc, "prompt=create") {
+		t.Fatalf("register start: %d %q", res.StatusCode, loc)
+	}
+	session, status := h.start(t, "/auth/register?provider=idp&return_to=/admin/&"+login.BootstrapField+"="+token)
+	if session == "" || status != http.StatusSeeOther {
+		t.Fatalf("the register flow gave no session: %d", status)
+	}
+	claims, err := h.svc.Session(ctx, session)
+	if err != nil || !claims.HasRole(login.RoleSuperAdmin) {
+		t.Fatalf("claims = %+v, %v", claims, err)
+	}
+	if h.rec.BootstrapPending(ctx) {
+		t.Error("the bootstrap token is still pending")
+	}
+	// Register without a token, as the Registrar of the chooser.
+	u, err := h.svc.Register(ctx, "idp", "/admin/")
+	if err != nil || !strings.Contains(u, "prompt=create") {
+		t.Errorf("Register = %q, %v", u, err)
+	}
+	// A provider that offers no registration gives 404.
+	h.idp.PromptValuesSupported = nil
+	other, err := h.svc.Providers().Put(oidcflow.Provider{ID: "plain", DisplayName: "Plain", DiscoveryURL: h.device.server.URL + "/.well-known/openid-configuration", ClientID: h.idp.ClientID, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err = h.client.Get(h.server.URL + "/auth/register?provider=" + other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("register without support: %d", res.StatusCode)
+	}
+	if _, err := h.svc.Register(ctx, "nope", ""); !errors.Is(err, oidcflow.ErrProviderNotFound) {
+		t.Errorf("unknown provider: %v", err)
 	}
 }
 
@@ -506,6 +574,9 @@ func TestEndReportsAnInvalidToken(t *testing.T) {
 
 func TestAccessorsAreWired(t *testing.T) {
 	h := newHarness(t)
+	if h.svc.Flow() == nil {
+		t.Error("Flow is nil")
+	}
 	if h.svc.Signer() == nil || h.svc.Providers() == nil {
 		t.Fatal("an accessor returned nothing")
 	}

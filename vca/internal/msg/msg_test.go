@@ -155,7 +155,7 @@ func TestTSubstitutes(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"intro.signin.text", []string{"issuers", "vca-issuer-realm"}, "This deployment signs issuers in through vca-issuer-realm. You can register if you have no account."},
+		{"intro.signin.realm", []string{"issuers", "Keycloak", "vca-issuer-realm"}, "This deployment signs issuers in through Keycloak in the realm vca-issuer-realm."},
 		{"roles.available_on.label", []string{"walt.id, Inji"}, "Available on walt.id, Inji"},
 		{"roles.available_on.label", nil, "Available on {1}"},
 		{"shell.sign_out.label", []string{"extra"}, "Sign out"},

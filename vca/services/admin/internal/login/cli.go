@@ -153,7 +153,7 @@ func (s *Service) LoopbackStart(w http.ResponseWriter, r *http.Request) {
 		oidcflow.WriteError(w, http.StatusBadRequest, "invalid_request", "port must be a number from 1024 to 65535")
 		return
 	}
-	_, u, err := s.begin(r.Context(), r.PostFormValue("provider"), "", r.PostFormValue(BootstrapField), port)
+	_, u, err := s.begin(r.Context(), r.PostFormValue("provider"), "", r.PostFormValue(BootstrapField), port, false)
 	if err != nil {
 		s.failOAuth(w, err)
 		return
@@ -206,8 +206,22 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 // query, so the first super admin binds the role with one login
 // (ADR-010 decision 4).
 func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
+	s.startFromQuery(w, r, false)
+}
+
+// RegisterStart handles GET /auth/register. It sends the browser to the
+// register action of the provider. A bootstrap token in the query binds
+// the first super admin when the registration ends (ADR-035 decision
+// 6). A provider with no register action gives 404.
+func (s *Service) RegisterStart(w http.ResponseWriter, r *http.Request) {
+	s.startFromQuery(w, r, true)
+}
+
+// startFromQuery begins a login or a registration from the query of a
+// browser request.
+func (s *Service) startFromQuery(w http.ResponseWriter, r *http.Request, register bool) {
 	q := r.URL.Query()
-	_, u, err := s.begin(r.Context(), q.Get("provider"), q.Get("return_to"), q.Get(BootstrapField), "")
+	_, u, err := s.begin(r.Context(), q.Get("provider"), q.Get("return_to"), q.Get(BootstrapField), "", register)
 	if err != nil {
 		s.failOAuth(w, err)
 		return

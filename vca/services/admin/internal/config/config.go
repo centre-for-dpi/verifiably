@@ -63,6 +63,9 @@ type Config struct {
 	// LogoutRedirect is the relative path the browser opens after a
 	// logout when the provider has no end session endpoint.
 	LogoutRedirect string `env:"LOGOUT_REDIRECT" default:"/admin/"`
+	// LandingURL is the public URL of the landing. The sign in page links
+	// back to its role picker. Empty hides the way back.
+	LandingURL string `env:"LANDING_URL"`
 	// Seed is the provider of the stack from the VCA_OIDC_* variables
 	// that the setup CLI writes. The first admin signs in with it and
 	// binds with the bootstrap token (ADR-035 decision 6).
@@ -163,6 +166,7 @@ func (c Config) normalize() (Config, error) {
 		return Config{}, errors.New("config: VCA_ADMIN_PORTAL_PREFIX must start with a slash")
 	}
 	c.PortalPrefix = "/" + strings.Trim(c.PortalPrefix, "/")
+	c.LandingURL = strings.TrimRight(strings.TrimSpace(c.LandingURL), "/")
 	if !strings.HasPrefix(c.LogoutRedirect, "/") {
 		return Config{}, errors.New("config: VCA_ADMIN_LOGOUT_REDIRECT must be a relative path")
 	}

@@ -104,6 +104,10 @@ const (
 	// format of the topology package. Every service that draws pages
 	// reads it (ADR-034 decision 1).
 	LinkPeers
+	// LinkLandingURL is the public URL of the landing, plus a path. The
+	// sign in chooser of an auth service links back to its role picker
+	// (ADR-035).
+	LinkLandingURL
 )
 
 // Link is one variable that names another service.
@@ -168,9 +172,14 @@ func Catalog() []Service {
 	// peers is the candidate pair list of every service that draws
 	// pages or logs a user in (ADR-034 decision 1).
 	peers := Link{Env: topology.Env, Kind: LinkPeers}
-	// jwks and auth are the routes of the auth service of a role.
+	// landing is the way back from a sign in chooser (ADR-035).
+	landing := func(env string) Link { return Link{Env: env, Kind: LinkLandingURL} }
+	// jwks and auth are the routes of the auth service of a role. The
+	// auth services of the issuer, holder, and verifier draw the sign in
+	// chooser at /auth/ (ADR-035); the admin draws its own at /admin/login.
 	jwks := Route{Match: "/.well-known/jwks.json"}
 	auth := Route{Match: "/auth/*"}
+	signIn := Route{Match: "/auth/*", Page: "Sign in"}
 	assets := Route{Match: "/static/*"}
 	out := []Service{
 		// The landing runs once per deployment and serves every role. Its
@@ -187,7 +196,7 @@ func Catalog() []Service {
 				signingKey("VCA_ADMIN_SIGNING_KEY"),
 				sessionKey("VCA_ADMIN_SESSION_KEY"),
 				{Env: "VCA_ADMIN_BOOTSTRAP_TOKEN", Target: "VCA_SECRETS_BOOTSTRAP_TOKEN", Kind: LinkCopy},
-				peers,
+				peers, landing("VCA_ADMIN_LANDING_URL"),
 			},
 			Fixed: state("VCA_ADMIN_STATE_DIR"),
 			Routes: []Route{
@@ -232,14 +241,16 @@ func Catalog() []Service {
 			Links:  []Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}},
 			Fixed:  []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}},
 			Routes: []Route{rpc("vca.issued.v1.IssuedService"), {Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}}},
-		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer, Stateful: true,
-			Links: []Link{peers},
+		// The auth services draw the sign in chooser (ADR-035), so they
+		// read the theme file like every UI service.
+		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer, Stateful: true, UI: true,
+			Links: []Link{peers, landing("VCA_ISSUER_AUTH_LANDING_URL")},
 			Fixed: state("VCA_ISSUER_AUTH_STATE_DIR"),
 			// The service mounts the login endpoints at / and at /auth. The
 			// pair routes only /auth, so the redirect URI of the realm holds.
 			Routes: []Route{
 				rpc("vca.issuerauth.v1.IssuerAuthService"), rpc("vca.admin.v1.AdminService"),
-				jwks, {Match: "/token"}, auth,
+				jwks, {Match: "/token"}, signIn,
 			}},
 		{Name: "schema-builder-ui", ListenEnv: "VCA_SCHEMABUILDER_LISTEN", ExposedPort: 8081, Roles: issuer, UI: true,
 			Links: []Link{
@@ -343,22 +354,22 @@ func Catalog() []Service {
 				rpc("vca.results.v1.ResultsService"),
 				{Match: "/portal/*", Page: "Verification results"}, {Match: "/verify/*", Page: "Citizen check"}, assets,
 			}},
-		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder, Stateful: true,
-			Links: []Link{{Env: "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", Kind: LinkAdapterURL}, peers},
+		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder, Stateful: true, UI: true,
+			Links: []Link{{Env: "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", Kind: LinkAdapterURL}, peers, landing("VCA_WALLET_AUTH_LANDING_URL")},
 			Fixed: state("VCA_WALLET_AUTH_STATE_DIR"),
 			// The service mounts the login endpoints at / and at
 			// /wallet/auth. The proxy removes /auth, so the redirect URI of
 			// the realm of the role has the same shape for every role.
 			Routes: []Route{
 				rpc("vca.walletauth.v1.WalletAuthService"), rpc("vca.admin.v1.AdminService"),
-				jwks, {Match: "/auth/*", Strip: true},
+				jwks, {Match: "/auth/*", Strip: true, Page: "Sign in"},
 			}},
 		{Name: "wallet-portal", ListenEnv: "VCA_WALLET_PORTAL_LISTEN", ExposedPort: 8092, Roles: holder, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_WALLET_PORTAL_AUTH_JWKS_URL", Target: "wallet-auth", Path: "/.well-known/jwks.json", Kind: LinkURL},
-				// The browser follows the login URL, so it is public. The
-				// seed provider of wallet-auth has the id default.
-				{Env: "VCA_WALLET_PORTAL_LOGIN_URL", Kind: LinkPublicURL, Path: "/auth/login?provider=default&return_to=/wallet/"},
+				// The browser follows the login URL, so it is public. It opens
+				// the sign in chooser of wallet-auth (ADR-035).
+				{Env: "VCA_WALLET_PORTAL_LOGIN_URL", Kind: LinkPublicURL, Path: "/auth/?return_to=/wallet/"},
 				{Env: "VCA_WALLET_PORTAL_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
 				{Env: "VCA_WALLET_PORTAL_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
 				{Env: "VCA_WALLET_PORTAL_DPG", Kind: LinkDpgName},
@@ -767,6 +778,8 @@ func linkValue(p Pair, s Service, link Link, values map[string]string, peers Pee
 		return value, value != ""
 	case LinkPeers:
 		return topology.Format(Peers(p, values, peers)), true
+	case LinkLandingURL:
+		return LandingPublicURL(values[DomainEnv]) + link.Path, true
 	default:
 		return "", false
 	}

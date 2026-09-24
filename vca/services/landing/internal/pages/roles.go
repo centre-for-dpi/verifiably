@@ -3,6 +3,7 @@
 package pages
 
 import (
+	"context"
 	"html/template"
 	"net/http"
 
@@ -114,7 +115,7 @@ func (p *Pages) intro(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg.T("common.render_failed"), http.StatusInternalServerError)
 		return
 	}
-	signin, err := p.signIn(view, live)
+	signin, err := p.signIn(r.Context(), role, view, live)
 	if err != nil {
 		http.Error(w, msg.T("common.render_failed"), http.StatusInternalServerError)
 		return
@@ -149,13 +150,20 @@ func countWord(n int) string {
 
 // signIn builds the sign in block: one button on one live stack, one
 // button per stack on several (ADR-033 decision 6). The first is the
-// primary action.
-func (p *Pages) signIn(view Overview, live []topology.Status) (template.HTML, error) {
+// primary action. With one stack the sentence names the provider and
+// the realm from the listing of its auth service (ADR-035).
+func (p *Pages) signIn(ctx context.Context, role commonv1.Role, view Overview, live []topology.Status) (template.HTML, error) {
 	label := func(pair topology.Status) string {
 		if len(live) > 1 {
 			return msg.T("intro.signin.stack.label", view.StackName(pair.Peer.Dpg))
 		}
 		return msg.T("intro.signin.continue.label")
+	}
+	text := msg.T("intro.signin.lead")
+	if len(live) == 1 {
+		if sentence, ok := p.realmSentence(ctx, role, live[0].Peer); ok {
+			text = sentence
+		}
 	}
 	var more []template.HTML
 	for _, pair := range live[1:] {
@@ -166,13 +174,38 @@ func (p *Pages) signIn(view Overview, live []topology.Status) (template.HTML, er
 		more = append(more, b)
 	}
 	band := components.CTA{
-		ID: "signin", Title: msg.T("intro.signin.label"), Text: msg.T("intro.signin.lead"),
+		ID: "signin", Title: msg.T("intro.signin.label"), Text: text,
 		Action: components.Button{Text: label(live[0]), Href: live[0].Peer.SignInURL(), Variant: "primary"},
 	}
 	if len(more) > 0 {
 		band.More = components.Join(more...)
 	}
 	return p.html("cta", band)
+}
+
+// realmSentence reads the sign in listing of a pair and names its first
+// provider and realm. A pair without an auth service, such as the admin,
+// lists providers on its home service. An unreachable or empty listing
+// gives false, and the band keeps its plain lead.
+func (p *Pages) realmSentence(ctx context.Context, role commonv1.Role, peer topology.Peer) (string, bool) {
+	base := peer.Auth()
+	if base == "" {
+		base = peer.Home()
+	}
+	listing, err := p.opts.Providers(ctx, base)
+	if err != nil || len(listing.Providers) == 0 {
+		return "", false
+	}
+	first := listing.Providers[0]
+	who := msg.T("role." + descriptor.RoleID(role) + ".plural.label")
+	sentence := msg.T("intro.signin.through", who, first.DisplayName)
+	if first.Realm != "" {
+		sentence = msg.T("intro.signin.realm", who, first.DisplayName, first.Realm)
+	}
+	if first.Register {
+		sentence += " " + msg.T("intro.signin.register")
+	}
+	return sentence, true
 }
 
 // has reports whether one live pair lists the feature, protocol, or

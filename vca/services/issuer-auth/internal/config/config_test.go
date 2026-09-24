@@ -48,6 +48,8 @@ func TestFromEnvValues(t *testing.T) {
 		"VCA_SECRETS_SIGNING_KEY":           "/run/key.pem",
 		"VCA_SECRETS_SESSION_KEY":           "0123456789abcdef0123456789abcdef",
 		"VCA_OIDC_INTERNAL_AUTHORITY":       "http://idp:8080",
+		"VCA_THEME_FILE":                    "/etc/vca/theme.yaml",
+		"VCA_ISSUER_AUTH_LANDING_URL":       "https://vca.example/",
 		"VCA_OIDC_PUBLIC_URL":               "http://localhost:17010",
 	}))
 	if err != nil {
@@ -55,6 +57,9 @@ func TestFromEnvValues(t *testing.T) {
 	}
 	if c.Seed.PublicURL != "http://localhost:17010" {
 		t.Errorf("the seed lost the public URL: %+v", c.Seed)
+	}
+	if c.ThemeFile != "/etc/vca/theme.yaml" || c.LandingURL != "https://vca.example" {
+		t.Errorf("theme file and landing URL: %+v", c)
 	}
 	if c.Listen != ":9000" || c.RedirectURI != "http://localhost:8081/callback" || c.SessionTTL != 5*time.Minute || c.MachineTokenTTL != 30*time.Minute || !c.InsecureCookie || c.LogoutRedirect != "/bye" {
 		t.Fatalf("%+v", c)

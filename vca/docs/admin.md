@@ -43,6 +43,16 @@ same sentence. You write the sentence once.
 The portal uses OpenID Connect only. It has no password field, and the
 service stores no password.
 
+`GET /admin/login` and `GET /auth/` draw the sign in chooser of the
+admin role (ADR-035, board Signin-Admin). The page comes from the
+renderer that every auth service shares, `services/internal/signin`,
+so the four roles look the same. It shows one button per enabled
+provider with its realm, the first admin callout, and the bootstrap
+card. A provider that offers registration gets a register action.
+`GET /auth/providers.json` lists the providers with `id`,
+`display_name`, `realm`, and `register`, and nothing else. The landing
+reads it.
+
 1. The browser opens `GET /auth/login?provider=<id>&return_to=/admin/`.
 2. The service reads the provider metadata from the discovery document.
    It makes a PKCE verifier, a `state`, and a `nonce`.
@@ -69,10 +79,14 @@ exists, it stores a one time bootstrap token and logs it once:
 - `VCA_ADMIN_BOOTSTRAP_TOKEN` sets the value.
 - An empty variable makes the service generate a value.
 
-The operator opens the login page, pastes the token, and signs in. The
-service consumes the token and binds the `iss` and `sub` claims of that
-login to the super admin role. The token works once. A restart with the
-same value does not make a spent token work again.
+The operator opens the login page, pastes the token, and signs in, or
+registers when no account exists yet: the bootstrap card has both
+actions, and the register action opens
+`GET /auth/register?provider=<id>&bootstrap_token=<token>`
+(ADR-035 decision 6). The service consumes the token and binds the
+`iss` and `sub` claims of that login to the super admin role. The token
+works once. A restart with the same value does not make a spent token
+work again.
 
 The CLI does the same step with the `OnboardAdmin` RPC. The RPC takes the
 bootstrap token, an ID token, and a provider id. It needs no session,
@@ -174,7 +188,7 @@ service keeps its own records for its own logins.
 | Path | Purpose |
 |---|---|
 | `/admin/` | The dashboard with the service health. |
-| `/admin/login` | The OpenID Connect login page with the bootstrap field. |
+| `/admin/login` | The sign in chooser with the bootstrap card. `/auth/` draws the same page. |
 | `/admin/tenants` | The tenant list with the create form. |
 | `/admin/trust` | The trust entry list with the add form. |
 | `/admin/providers` | The login provider list. |

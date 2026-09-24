@@ -3,6 +3,8 @@
 package pages_test
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
@@ -216,6 +219,60 @@ func TestIntroStackChoiceWithTwoStacks(t *testing.T) {
 	doc = get(t, newPages(t, snapshot(only(holder))), "/roles/holder/", false).Body.String()
 	if !strings.Contains(doc, `href="https://`+holder+`.labs.example/auth/?return_to=%2Fwallet%2F"`) {
 		t.Errorf("holder sign in:\n%s", doc)
+	}
+}
+
+// TestIntroNamesTheRealmFromProvidersJSON is P1-08: with one live stack
+// the sign in band names the provider and the realm that the auth
+// service of the pair lists in /auth/providers.json, and offers to
+// register when the provider does. Without the listing, or with an
+// empty one, the sentence omits the realm. The admin pair has no auth
+// service, so the landing asks its home service.
+func TestIntroNamesTheRealmFromProvidersJSON(t *testing.T) {
+	first := dpgs()[0]
+	issuer := topology.PairName(commonv1.Role_ROLE_ISSUER, first)
+	admin := topology.PairName(commonv1.Role_ROLE_ADMIN, first)
+	holder := topology.PairName(commonv1.Role_ROLE_HOLDER, first)
+	var asked []string
+	listings := map[string]signin.Listing{
+		"http://" + issuer + "-auth:8081": {Role: "issuer", Providers: []signin.Entry{{ID: "default", DisplayName: "Keycloak", Realm: "vca-issuer-realm", Register: true}}},
+		"http://" + admin + "-home:8080":  {Role: "admin", Providers: []signin.Entry{{ID: "idp", DisplayName: "Identity Server", Register: false}}},
+		"http://" + holder + "-auth:8081": {Role: "holder"},
+	}
+	source := func(_ context.Context, base string) (signin.Listing, error) {
+		asked = append(asked, base)
+		l, ok := listings[base]
+		if !ok {
+			return signin.Listing{}, errors.New("unreachable")
+		}
+		return l, nil
+	}
+	h := newPagesWith(t, snapshot(only(issuer, admin, holder, topology.PairName(commonv1.Role_ROLE_VERIFIER, first))), source)
+	doc := get(t, h, "/roles/issuer/", false).Body.String()
+	a11ytest.AssertPage(t, doc)
+	if !strings.Contains(doc, "This deployment signs issuers in through Keycloak in the realm vca-issuer-realm. You can register if you have no account.") {
+		t.Errorf("issuer band:\n%s", doc)
+	}
+	doc = get(t, h, "/roles/admin/", false).Body.String()
+	if !strings.Contains(doc, "This deployment signs admins in through Identity Server.</p>") || strings.Contains(doc, "You can register") {
+		t.Errorf("admin band:\n%s", doc)
+	}
+	// An empty listing and an unreachable service keep the plain lead.
+	for _, path := range []string{"/roles/holder/", "/roles/verifier/"} {
+		doc = get(t, h, path, false).Body.String()
+		if !strings.Contains(doc, "Each stack signs you in on its own pair.") || strings.Contains(doc, "signs holders in") || strings.Contains(doc, "signs verifiers in") {
+			t.Errorf("%s band:\n%s", path, doc)
+		}
+	}
+	if strings.Join(asked, " ") != "http://"+issuer+"-auth:8081 http://"+admin+"-home:8080 http://"+holder+"-auth:8081 http://"+topology.PairName(commonv1.Role_ROLE_VERIFIER, first)+"-home:8080" {
+		t.Errorf("asked %v", asked)
+	}
+	// Two live stacks keep the plain lead: the realm differs per stack.
+	second := dpgs()[1]
+	two := newPagesWith(t, snapshot(only(issuer, topology.PairName(commonv1.Role_ROLE_ISSUER, second))), source)
+	doc = get(t, two, "/roles/issuer/", false).Body.String()
+	if strings.Contains(doc, "vca-issuer-realm") || !strings.Contains(doc, "Each stack signs you in on its own pair.") {
+		t.Errorf("two stacks:\n%s", doc)
 	}
 }
 

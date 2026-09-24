@@ -3,6 +3,7 @@
 package server_test
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,8 +14,12 @@ import (
 	"testing"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/server"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -184,4 +189,90 @@ func TestReadyMessage(t *testing.T) {
 	if msg := server.ReadyMessage(svc)(); !strings.Contains(msg, "providers=") {
 		t.Fatalf("ready message = %q", msg)
 	}
+}
+
+// TestAuthRootServesChooser is P1-08: GET /auth/ shows the sign in
+// chooser of the issuer role with the seeded Keycloak realm, /auth/
+// providers.json lists it without a secret, /auth/register sends the
+// browser to the registration endpoint of the realm, and a provider with
+// no register action gives 404. The routes exist at the root too.
+func TestAuthRootServesChooser(t *testing.T) {
+	idp := oidctest.New()
+	defer idp.Close()
+	realm := oidctest.New()
+	defer realm.Close()
+	cfg := baseConfig(t)
+	cfg.LandingURL = "https://vca.example"
+	svc, err := server.Build(cfg, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Providers().Put(oidcflow.Provider{
+		ID: "default", DisplayName: "Keycloak", DiscoveryURL: realm.DiscoveryURL(), ClientID: realm.ClientID, Enabled: true,
+		Profile: oidcflow.Profile{Kind: oidcflow.KindKeycloak, Realm: "vca-issuer-realm", IsDefault: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Providers().Put(oidcflow.Provider{ID: "other", DisplayName: "Other", DiscoveryURL: idp.DiscoveryURL(), ClientID: idp.ClientID, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	h := server.Handler(svc)
+	get := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+	for _, path := range []string{"/auth/?return_to=/portal/", "/"} {
+		rec := get(path)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", path, rec.Code, rec.Body.String())
+		}
+		doc := rec.Body.String()
+		a11ytest.AssertPage(t, doc)
+		for _, want := range []string{
+			`<h1>Sign in as an issuer.</h1>`, `<span class="signin-meta">vca-issuer-realm</span>`, `href="/auth/login?provider=default&amp;return_to=%2Fportal%2F"`,
+			`href="/auth/register?provider=default&amp;return_to=%2Fportal%2F"`, `<a class="signin-back" href="https://vca.example/roles/"`,
+		} {
+			if !strings.Contains(doc, want) {
+				t.Errorf("%s missing %q\n%s", path, want, doc)
+			}
+		}
+		if strings.Contains(doc, "register?provider=other") {
+			t.Errorf("%s: a generic provider without prompt=create offers no registration", path)
+		}
+	}
+	rec := get("/auth/providers.json")
+	var listing signin.Listing
+	if err := json.Unmarshal(rec.Body.Bytes(), &listing); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("providers.json: %d %v %s", rec.Code, err, rec.Body.String())
+	}
+	if listing.Role != "issuer" || len(listing.Providers) != 2 || listing.Providers[0].Realm != "vca-issuer-realm" || !listing.Providers[0].Register || listing.Providers[1].Register {
+		t.Errorf("listing = %+v", listing)
+	}
+	if strings.Contains(rec.Body.String(), realm.ClientID) || strings.Contains(rec.Body.String(), "discovery") {
+		t.Errorf("providers.json leaks: %s", rec.Body.String())
+	}
+	rec = get("/auth/register?provider=default&return_to=/portal/")
+	loc := rec.Header().Get("Location")
+	if rec.Code != http.StatusFound || !strings.HasPrefix(loc, realm.Issuer()+"/protocol/openid-connect/registrations?") || !strings.Contains(loc, "code_challenge_method=S256") {
+		t.Errorf("register: %d %q", rec.Code, loc)
+	}
+	if rec := get("/register?provider=other"); rec.Code != http.StatusNotFound {
+		t.Errorf("register without support: %d %s", rec.Code, rec.Body.String())
+	}
+	// The kit assets serve from the auth service too, so the page has its
+	// stylesheet when it runs alone.
+	if rec := get("/static/vca.css"); rec.Code != http.StatusOK {
+		t.Errorf("stylesheet: %d", rec.Code)
+	}
+}
+
+// TestAppFailsOnBadThemeFile proves the service stops at start when the
+// theme file fails a kit pairing, and that the error names the pairing.
+func TestAppFailsOnBadThemeFile(t *testing.T) {
+	path := uikittest.LowContrastFile(t)
+	cfg := baseConfig(t)
+	cfg.ThemeFile = path
+	_, err := server.Build(cfg, quiet)
+	uikittest.AssertBadThemeError(t, err, path)
 }

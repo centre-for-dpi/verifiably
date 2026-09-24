@@ -12,15 +12,21 @@ import (
 	"os"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/grants"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/limits"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/wallets"
+	"github.com/centre-for-dpi/vc-adapters/ui"
 )
 
 // persister returns the document store of the service. An empty dir
@@ -91,6 +97,10 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 	if cfg.AdminToken == "" {
 		log.Warn("VCA_WALLET_AUTH_ADMIN_TOKEN is not set: providers can only come from the environment")
 	}
+	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
+	if err != nil {
+		return nil, err
+	}
 	return service.New(cfg, service.Deps{
 		Flow:      &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)},
 		Providers: providers,
@@ -100,6 +110,8 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 		Limiter:   limiter,
 		Signer:    signer,
 		CSRF:      csrf,
+		Kit:       kit,
+		Assets:    assets,
 	}), nil
 }
 
@@ -169,7 +181,16 @@ func randomBytes(n int) []byte {
 	return b
 }
 
-// Handler returns the HTTP handler with every route of the service.
+// Prefixes are the paths the login endpoints answer at. The pair proxy
+// strips /auth, so the root serves the public /auth/ paths; /auth and
+// /wallet/auth serve a peer on the internal network and an older
+// redirect URI.
+var Prefixes = []string{"", "/auth", "/wallet/auth"}
+
+// Handler returns the HTTP handler with every route of the service. The
+// sign in chooser, its listing, and the register start sit beside the
+// login endpoints under every prefix (ADR-035). A build with no kit
+// leaves the pages out, which a test of the RPCs alone can use.
 func Handler(svc *service.Service) http.Handler {
 	mux := http.NewServeMux()
 	path, h := walletauthv1connect.NewWalletAuthServiceHandler(svc)
@@ -178,12 +199,27 @@ func Handler(svc *service.Service) http.Handler {
 	mux.Handle(adminPath, oidcflow.RejectQueryTokens(adminH))
 	mux.Handle("/.well-known/jwks.json", svc.Signer().JWKSHandler())
 	handlers := svc.Handlers()
-	for _, prefix := range []string{"", "/wallet/auth"} {
-		// Login starts are rate limited per client address.
+	var chooser *signin.Chooser
+	if svc.Kit() != nil {
+		// The options are complete, so New cannot fail here.
+		chooser = anyval.Must(signin.New(signin.Options{
+			Kit: svc.Kit(), Role: commonv1.Role_ROLE_HOLDER, Providers: svc.Providers(), Metadata: svc.Flow(),
+			LandingURL: svc.Config().LandingURL,
+		}))
+		mux.Handle("GET "+ui.Prefix, svc.Assets())
+	}
+	for _, prefix := range Prefixes {
+		// Login and register starts are rate limited per client address.
 		mux.Handle("GET "+prefix+"/login", limits.Middleware(svc.Limiter(), false, oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Login))))
 		mux.Handle("GET "+prefix+"/callback", oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Callback)))
 		mux.Handle("POST "+prefix+"/logout", oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Logout)))
 		mux.Handle("GET "+prefix+"/session", oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Session)))
+		if chooser == nil {
+			continue
+		}
+		chooser.Mount(mux, prefix)
+		register := signin.RegisterHandler(svc, topology.HomePath(commonv1.Role_ROLE_HOLDER))
+		mux.Handle("GET "+prefix+"/register", limits.Middleware(svc.Limiter(), false, oidcflow.RejectQueryTokens(register)))
 	}
 	return mux
 }

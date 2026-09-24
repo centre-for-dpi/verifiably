@@ -73,6 +73,8 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_ISSUER_AUTH_COOKIE_NAME` | The session cookie name. | `vca_issuer_session` |
 | `VCA_ISSUER_AUTH_INSECURE_COOKIE` | Drops the `Secure` cookie flag. Use it on localhost only. | `false` |
 | `VCA_ISSUER_AUTH_LOGOUT_REDIRECT` | The relative path the browser goes to after logout. | none |
+| `VCA_ISSUER_AUTH_LANDING_URL` | The public URL of the landing. The sign in chooser links back to its role picker. | none |
+| `VCA_THEME_FILE` | The theme file of the deployment (ADR-032). Empty selects the embedded default. | none |
 
 Register more providers at runtime with the admin RPC. You do not need a JSON file:
 
@@ -89,11 +91,20 @@ The container image is `ghcr.io/centre-for-dpi/vca-issuer-auth`. It listens on
 one port and runs as a non-root user with a read-only file system. Mount a
 volume at `/data` to keep providers between restarts.
 
+## Sign in chooser
+
+`GET /auth/` draws the sign in page of the issuer role: one button per
+enabled provider with its realm, and a register action when the provider
+offers one (ADR-035). `GET /auth/providers.json` lists the providers with
+`id`, `display_name`, `realm`, and `register`, and nothing else.
+`GET /auth/register?provider=<id>&return_to=<path>` starts a registration.
+The same paths answer at the root. See [docs/issuer-auth.md](../../docs/issuer-auth.md).
+
 ## How to check it works
 
 1. Open `http://localhost:8081/healthz`. The response is `200 OK`.
 2. Open `http://localhost:8081/readyz`. The response is `200 OK` with the number of providers.
-3. Open `http://localhost:8081/login?provider=default` in a browser and log in at the provider.
+3. Open `http://localhost:8081/auth/` in a browser, pick the provider, and log in.
 4. Look for a JSON body with `session_token` and `csrf_token`, and a `Set-Cookie` header with `HttpOnly; Secure; SameSite=Lax`.
 5. Open `http://localhost:8081/.well-known/jwks.json`. Look for one key with `kty: EC` and the `kid` from the token header.
 

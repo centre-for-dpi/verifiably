@@ -270,9 +270,10 @@ type Seed struct {
 
 // SeedProvider builds the seeded provider record (ADR-035 decision 2).
 // A discovery URL of a Keycloak realm gives a record of kind keycloak
-// with that realm and the console of the realm; any other URL gives a
-// generic record. The registration mode stays open, so the metadata of
-// the provider decides at login time.
+// with that realm, the console of the realm, and the product name as
+// its display name; any other URL gives a generic record. The
+// registration mode stays open, so the metadata of the provider decides
+// at login time.
 func SeedProvider(s Seed) Provider {
 	p := Provider{
 		ID:                SeedID,
@@ -298,6 +299,7 @@ func SeedProvider(s Seed) Provider {
 		base = oidc.Authority(s.DiscoveryURL)
 	}
 	p.Kind = KindKeycloak
+	p.DisplayName = "Keycloak"
 	p.Realm = realm
 	p.ConsoleURL = base + "/admin/" + realm + "/console/"
 	return p

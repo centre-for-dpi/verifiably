@@ -50,15 +50,18 @@ func TestEntryPointsAndReport(t *testing.T) {
 		points[0].URL != "https://issuer-waltid.labs.example" || points[0].Local {
 		t.Errorf("first = %+v", points[0])
 	}
-	// The pages come from the route table: the home page first.
-	if len(points[0].Pages) != 2 || points[0].Pages[0].URL != "https://issuer-waltid.labs.example/portal/" ||
-		points[0].Pages[1].URL != "https://issuer-waltid.labs.example/builder/" {
+	// The pages come from the route table: the home page first, then
+	// the sign in chooser of the role (ADR-035), then the rest.
+	if len(points[0].Pages) != 3 || points[0].Pages[0].URL != "https://issuer-waltid.labs.example/portal/" ||
+		points[0].Pages[1].URL != "https://issuer-waltid.labs.example/auth/" || points[0].Pages[1].Title != "Sign in" ||
+		points[0].Pages[2].URL != "https://issuer-waltid.labs.example/builder/" {
 		t.Errorf("issuer pages = %+v", points[0].Pages)
 	}
 	report := EntryReport("", points)
 	for _, want := range []string{
 		"Open\n  issuer-waltid\n",
 		"    Schemas                schema-registry     https://issuer-waltid.labs.example/portal/\n",
+		"    Sign in                issuer-auth         https://issuer-waltid.labs.example/auth/\n",
 		"    Schema builder         schema-builder-ui   https://issuer-waltid.labs.example/builder/\n",
 		"  holder-waltid\n    Wallet                 wallet-portal       https://holder-waltid.labs.example/wallet/\n",
 		"  verifier-waltid\n    Verification results   verifier-results    https://verifier-waltid.labs.example/portal/\n",

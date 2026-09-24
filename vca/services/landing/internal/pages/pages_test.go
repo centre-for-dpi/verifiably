@@ -21,6 +21,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
 	"github.com/centre-for-dpi/vc-adapters/services/landing/internal/pages"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -112,7 +113,18 @@ func snapshot(state func(role commonv1.Role, d configv1.Dpg) topology.State) top
 
 func allLive(commonv1.Role, configv1.Dpg) topology.State { return topology.Live }
 
+// noListing is a provider source that reaches no auth service.
+func noListing(context.Context, string) (signin.Listing, error) {
+	return signin.Listing{}, errors.New("unreachable")
+}
+
 func newPages(t *testing.T, snap topology.Snapshot) http.Handler {
+	t.Helper()
+	return newPagesWith(t, snap, noListing)
+}
+
+// newPagesWith builds the pages with a provider source.
+func newPagesWith(t *testing.T, snap topology.Snapshot, providers pages.ProviderSource) http.Handler {
 	t.Helper()
 	kit, err := components.New()
 	if err != nil {
@@ -121,7 +133,8 @@ func newPages(t *testing.T, snap topology.Snapshot) http.Handler {
 	p, err := pages.New(pages.Options{
 		Kit: kit, Source: fakeSource{snap: snap}, Version: "0.9.0", PublicURL: "https://vca.labs.example",
 		RepositoryURL: "https://example.org/vca", DocsURL: "https://example.org/vca/docs",
-		Now: func() time.Time { return time.Date(2026, 9, 24, 9, 42, 0, 0, time.UTC) },
+		Now:       func() time.Time { return time.Date(2026, 9, 24, 9, 42, 0, 0, time.UTC) },
+		Providers: providers,
 	})
 	if err != nil {
 		t.Fatal(err)

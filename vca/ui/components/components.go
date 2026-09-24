@@ -28,7 +28,7 @@ import (
 // Names lists every template a Kit can render.
 var Names = []string{"layout", "page", "card", "field", "table", "badge", "toast", "dialog", "qr", "json", "button",
 	"hero", "tiles", "steps", "checklist", "stat", "stepper", "choice", "code", "empty",
-	"block", "figure", "stacks", "cta", "note"}
+	"block", "figure", "stacks", "cta", "note", "signin"}
 
 // safeAttrNames is the whitelist for the safeAttr template function.
 // Only these attribute names can be added through an Attrs map.
@@ -356,6 +356,7 @@ type Page struct {
 	Nav         Nav
 	Shell       *Shell        // the portal frame; nil renders a plain page
 	Hero        *Hero         // replaces the page header and carries the h1
+	SignIn      *SignIn       // the sign in chooser; it replaces the page header and carries the h1
 	Content     template.HTML // composed from Kit.HTML
 	Toasts      []Toast
 	Footer      string
@@ -390,6 +391,14 @@ func (p Page) normalize() (any, error) {
 		}
 		hero := anyval.As[Hero](h)
 		p.Hero = &hero
+	}
+	if p.SignIn != nil {
+		s, err := p.SignIn.normalize()
+		if err != nil {
+			return nil, err
+		}
+		block := anyval.As[SignIn](s)
+		p.SignIn = &block
 	}
 	for i := range p.Toasts {
 		t, err := p.Toasts[i].normalize()
@@ -1151,6 +1160,55 @@ func (n Note) normalize() (any, error) {
 		return nil, errors.New("note: text is required")
 	}
 	return n, nil
+}
+
+// SignInProvider is one provider button of a SignIn block.
+type SignInProvider struct {
+	Text string // required, the display name of the provider
+	Href string // required, the login start of the provider
+	Meta string // optional realm or tenant label, drawn in the monospace stack
+}
+
+// SignIn is the sign in chooser of a role (ADR-035). The left column
+// holds the role, the h1, the lead, and a link back to the role picker.
+// The right panel holds one button per provider, an optional callout, an
+// optional block from Kit.HTML, the register actions after a rule, and a
+// note. It carries the one h1 of the page, so set Page.SignIn and the
+// page header steps aside.
+type SignIn struct {
+	Role         string // role label above the title
+	Title        string // required, the h1
+	Lead         string
+	Back         Link   // optional link back to the role picker
+	Label        string // heading of the panel, for example "Continue with"
+	Providers    []SignInProvider
+	Empty        string        // sentence shown when Providers is empty
+	CalloutLabel string        // bold lead of the callout
+	Callout      string        // optional callout, for example for the first admin
+	Extra        template.HTML // optional block from Kit.HTML, for example a form
+	Or           string        // word on the rule before the register actions, default "or"
+	Register     []Button      // register actions; empty hides the rule
+	Note         string        // one line under the panel
+}
+
+func (s SignIn) normalize() (any, error) {
+	if s.Title == "" {
+		return nil, errors.New("signin: title is required")
+	}
+	for i, p := range s.Providers {
+		if strings.TrimSpace(p.Text) == "" || p.Href == "" {
+			return nil, fmt.Errorf("signin: provider %d needs text and href", i)
+		}
+	}
+	fill(&s.Or, "or")
+	for i := range s.Register {
+		b, err := s.Register[i].normalize()
+		if err != nil {
+			return nil, fmt.Errorf("signin: %w", err)
+		}
+		s.Register[i] = anyval.As[Button](b)
+	}
+	return s, nil
 }
 
 func checkID(id string) error {

@@ -277,7 +277,7 @@ func TestWalletPortalLinks(t *testing.T) {
 	got := LinkValues(p, map[string]string{"VCA_PUBLIC_URL": "https://wallet.example"})
 	want := map[string]string{
 		"VCA_WALLET_PORTAL_AUTH_JWKS_URL": "http://holder-waltid-wallet-auth:8081/.well-known/jwks.json",
-		"VCA_WALLET_PORTAL_LOGIN_URL":     "https://wallet.example/auth/login?provider=default&return_to=/wallet/",
+		"VCA_WALLET_PORTAL_LOGIN_URL":     "https://wallet.example/auth/?return_to=/wallet/",
 		"VCA_WALLET_PORTAL_DISCOVERY_URL": "http://verifier-waltid-verifier-discovery:8101",
 		"VCA_WALLET_PORTAL_TRUST_URL":     "http://admin-waltid-trust-registry:8100",
 		"VCA_WALLET_PORTAL_DPG":           "waltid",
@@ -287,6 +287,41 @@ func TestWalletPortalLinks(t *testing.T) {
 	for name, value := range want {
 		if got[name] != value {
 			t.Errorf("%s = %q, want %q", name, got[name], value)
+		}
+	}
+}
+
+// TestAuthServicesGetTheLandingURL is P1-08: every service that draws
+// the sign in chooser learns the landing, so the page links back to the
+// role picker. Under a base domain the landing is https://vca.<domain>;
+// without one it is the localhost port of the landing. The auth
+// services draw pages now, so they read the theme file too.
+func TestAuthServicesGetTheLandingURL(t *testing.T) {
+	cases := map[string]struct {
+		pair Pair
+		env  string
+	}{
+		"issuer": {Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}, "VCA_ISSUER_AUTH_LANDING_URL"},
+		"holder": {Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}, "VCA_WALLET_AUTH_LANDING_URL"},
+		"admin":  {Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_CREDEBL}, "VCA_ADMIN_LANDING_URL"},
+	}
+	for name, c := range cases {
+		domain := LinkValues(c.pair, map[string]string{"VCA_PUBLIC_URL": "https://x.example", DomainEnv: "labs.example"})
+		if domain[c.env] != "https://vca.labs.example" {
+			t.Errorf("%s under a domain: %s = %q", name, c.env, domain[c.env])
+		}
+		local := LinkValues(c.pair, map[string]string{"VCA_PUBLIC_URL": "http://localhost:18000"})
+		if local[c.env] != "http://localhost:17900" {
+			t.Errorf("%s on localhost: %s = %q", name, c.env, local[c.env])
+		}
+	}
+	byName := map[string]Service{}
+	for _, s := range Catalog() {
+		byName[s.Name] = s
+	}
+	for _, name := range []string{"issuer-auth", "wallet-auth", "admin"} {
+		if !byName[name].UI {
+			t.Errorf("%s draws the sign in chooser, so it is a UI service", name)
 		}
 	}
 }
@@ -530,7 +565,7 @@ func TestUIServicesAreTheOnesWithPages(t *testing.T) {
 			ui = append(ui, s.Name)
 		}
 	}
-	want := []string{"admin", "landing", "schema-builder-ui", "schema-registry", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-portal"}
+	want := []string{"admin", "issuer-auth", "landing", "schema-builder-ui", "schema-registry", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-auth", "wallet-portal"}
 	if strings.Join(ui, ",") != strings.Join(want, ",") {
 		t.Errorf("UI services = %v, want %v", ui, want)
 	}

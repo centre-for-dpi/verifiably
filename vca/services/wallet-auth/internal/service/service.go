@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/grants"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/limits"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/wallets"
+	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
 // Deps are the collaborators of the service.
@@ -34,6 +36,10 @@ type Deps struct {
 	Signer    *oidcflow.Signer
 	CSRF      oidcflow.CSRF
 	Now       func() time.Time
+	// Kit renders the sign in chooser and Assets serves its stylesheet
+	// (ADR-035). Both come from the theme file of the deployment.
+	Kit    *components.Kit
+	Assets http.Handler
 }
 
 // Service is the wallet-auth service.
@@ -67,6 +73,15 @@ func (s *Service) Providers() *oidcflow.Registry { return s.d.Providers }
 
 // Wallets returns the wallet registry.
 func (s *Service) Wallets() *wallets.Registry { return s.d.Wallets }
+
+// Flow returns the login flow, which reads provider metadata.
+func (s *Service) Flow() *oidcflow.Flow { return s.d.Flow }
+
+// Kit returns the component kit of the sign in pages.
+func (s *Service) Kit() *components.Kit { return s.d.Kit }
+
+// Assets returns the handler of the kit assets.
+func (s *Service) Assets() http.Handler { return s.d.Assets }
 
 // Limiter returns the login rate limiter.
 func (s *Service) Limiter() limits.Limiter { return s.d.Limiter }
@@ -206,6 +221,24 @@ func (s *Service) GetAuthorizationGrant(_ context.Context, req *connect.Request[
 func (s *Service) Start(ctx context.Context, providerID, returnTo string) (string, error) {
 	_, u, err := s.start(ctx, providerID, returnTo)
 	return u, err
+}
+
+// Register implements signin.Registrar (ADR-035 decision 3). It starts
+// a pending login whose first step is the register action of the
+// provider, so the callback finishes it like a login.
+func (s *Service) Register(ctx context.Context, providerID, returnTo string) (string, error) {
+	p, err := s.d.Providers.Get(providerID)
+	if err != nil {
+		return "", err
+	}
+	pend, u, err := s.d.Flow.BeginRegister(ctx, p, s.cfg.RedirectURI, returnTo)
+	if err != nil {
+		return "", err
+	}
+	if err := s.d.Pending.Put(pend); err != nil {
+		return "", err
+	}
+	return u, nil
 }
 
 // Complete implements oidcflow.Logins.

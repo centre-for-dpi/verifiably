@@ -407,6 +407,10 @@ func TestSeedProviderIsKeycloakWithRealmAndConsole(t *testing.T) {
 		p.ConsoleURL != "http://localhost:17010/admin/vca-issuer-realm/console/" {
 		t.Errorf("seed profile = %+v", p.Profile)
 	}
+	// The chooser shows the product name beside the realm (board Signin).
+	if p.DisplayName != "Keycloak" {
+		t.Errorf("seed display name = %q, want Keycloak", p.DisplayName)
+	}
 	if p.Registration != "" {
 		t.Errorf("the seed fixes the registration mode to %q; the metadata decides", p.Registration)
 	}
@@ -426,8 +430,8 @@ func TestSeedProviderIsKeycloakWithRealmAndConsole(t *testing.T) {
 	}
 	// Another provider is generic, with no realm and no console.
 	seed.DiscoveryURL = "https://idp.example/.well-known/openid-configuration"
-	if p := oidcflow.SeedProvider(seed); p.Kind != oidcflow.KindGeneric || p.Realm != "" || p.ConsoleURL != "" {
-		t.Errorf("generic seed = %+v", p.Profile)
+	if p := oidcflow.SeedProvider(seed); p.Kind != oidcflow.KindGeneric || p.Realm != "" || p.ConsoleURL != "" || p.DisplayName != "Sign in" {
+		t.Errorf("generic seed = %+v", p)
 	}
 	if realm, ok := oidcflow.KeycloakRealmOf("https://idp.example/realms/x/.well-known/openid-configuration"); !ok || realm != "x" {
 		t.Errorf("KeycloakRealmOf = %q, %v", realm, ok)

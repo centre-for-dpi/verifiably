@@ -29,6 +29,19 @@ backend to create a wallet. It stores the wallet id under the key. The
 backend receives the key, never `iss` or `sub`. Without a holder backend
 the key is the wallet id.
 
+## Sign in chooser
+
+`GET /` draws the sign in page of the holder role with the renderer that
+every auth service shares, `services/internal/signin` (ADR-035, board
+Signin). The page lists one button per enabled provider with its realm,
+and a register action when the provider offers one. `GET /providers.json`
+lists the providers with `id`, `display_name`, `realm`, and `register`,
+and nothing else. `GET /register?provider=<id>&return_to=<path>` starts
+a registration under the same rate limit as a login. The three paths
+answer under `/auth/` and `/wallet/auth/` too, so a peer on the internal
+network and the pair proxy reach them. The wallet portal sends a browser
+without a session to `<public URL>/auth/?return_to=/wallet/`.
+
 ## Session tokens
 
 A wallet session JWT carries `iss`, `sub` (the wallet key), `aud`
