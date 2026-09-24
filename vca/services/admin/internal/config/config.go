@@ -67,6 +67,12 @@ type Config struct {
 	// LandingURL is the public URL of the landing. The sign in page links
 	// back to its role picker. Empty hides the way back.
 	LandingURL string `env:"LANDING_URL"`
+	// AllowPrivateNetwork lets the "Test discovery" action of the provider
+	// form read a private or loopback address. Development only.
+	AllowPrivateNetwork bool `env:"ALLOW_PRIVATE_NETWORK" default:"false"`
+	// AllowPlainHTTP lets the "Test discovery" action read an http URL.
+	// Development only.
+	AllowPlainHTTP bool `env:"ALLOW_PLAIN_HTTP" default:"false"`
 	// Seed is the provider of the stack from the VCA_OIDC_* variables
 	// that the setup CLI writes. The first admin signs in with it and
 	// binds with the bootstrap token (ADR-035 decision 6).

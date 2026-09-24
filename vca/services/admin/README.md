@@ -51,6 +51,8 @@ It keeps no password and no client secret value. A provider record holds a refer
 | `VCA_ADMIN_PORTAL_PREFIX` | `/admin` | The URL prefix of the portal pages. |
 | `VCA_ADMIN_LOGOUT_REDIRECT` | `/admin/` | The page the browser opens after a logout. |
 | `VCA_ADMIN_LANDING_URL` | none | The public URL of the landing. The sign in page links back to its role picker. |
+| `VCA_ADMIN_ALLOW_PRIVATE_NETWORK` | `false` | Lets the "Test discovery" action of the provider form read a private or loopback address. Development only. |
+| `VCA_ADMIN_ALLOW_PLAIN_HTTP` | `false` | Lets the "Test discovery" action read an http URL. Development only. |
 | `VCA_PEERS` | empty | The candidate pairs of the deployment. A new provider goes to the auth service of every live pair it names. |
 | `VCA_OIDC_DISCOVERY_URL` | empty | The discovery URL of a first provider, registered as `default` with the role `admin`. |
 | `VCA_OIDC_CLIENT_ID` | empty | The client id of the first provider. |

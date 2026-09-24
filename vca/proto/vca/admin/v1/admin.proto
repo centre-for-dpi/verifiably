@@ -355,10 +355,27 @@ message CreateAuthProviderRequest {
   bool dynamic_registration = 2;
 }
 
-// CreateAuthProviderResponse returns the stored provider.
+// CreateAuthProviderResponse returns the stored provider and the outcome
+// of the push to the auth service of every targeted live pair.
 message CreateAuthProviderResponse {
   // The provider as stored.
   AuthProvider provider = 1;
+  // The outcome at every pair the record names (ADR-035 decision 5).
+  // Empty when the deployment names no peers or no pair matches.
+  repeated PushResult pushes = 2;
+}
+
+// PushResult is the outcome of one push of a provider record. The target
+// is the auth service of one live pair (ADR-035 decision 5).
+message PushResult {
+  // The pair name, for example issuer-waltid.
+  string pair = 1;
+  // True when the auth service took the record.
+  bool ok = 2;
+  // True when the push made a new record. False means an update.
+  bool created = 3;
+  // Why the push failed. Empty when ok is true.
+  string error = 4;
 }
 
 // OnboardProviderRequest carries the issuer of one OIDC provider.
@@ -412,10 +429,13 @@ message UpdateAuthProviderRequest {
   AuthProvider provider = 1;
 }
 
-// UpdateAuthProviderResponse returns the changed provider.
+// UpdateAuthProviderResponse returns the changed provider and the outcome
+// of the push to the auth service of every targeted live pair.
 message UpdateAuthProviderResponse {
   // The provider.
   AuthProvider provider = 1;
+  // The outcome at every pair the record names (ADR-035 decision 5).
+  repeated PushResult pushes = 2;
 }
 
 // DeleteAuthProviderRequest selects a provider.

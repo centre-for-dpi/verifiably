@@ -85,6 +85,9 @@ type harness struct {
 	trust  *fakeTrust
 	ready  *httptest.Server
 	csrf   string
+	// auth holds the fake auth service of every live pair, by pair name,
+	// when the harness has peers.
+	auth map[string]*pairAuth
 }
 
 // newHarness wires the service, logs one super admin in, and returns the
@@ -120,6 +123,8 @@ func newHarnessWith(t *testing.T, withTrust bool, more func(*testing.T, *harness
 		SessionKey: "0123456789abcdef0123456789abcdef",
 		Services:   []string{"trust-registry=" + h.ready.URL},
 		LandingURL: "https://vca.example",
+		// The test providers live on the loopback over plain http.
+		AllowPrivateNetwork: true, AllowPlainHTTP: true,
 	}
 	deps := app.Deps{Client: h.server.Client()}
 	if withTrust {
@@ -503,64 +508,6 @@ func TestTrustPageWithoutARegistryExplainsIt(t *testing.T) {
 	page := h.page(t, "/admin/trust")
 	if !strings.Contains(page, "No trust registry") {
 		t.Fatal("the page does not name the missing registry")
-	}
-}
-
-func TestProviderWizardAddsAProvider(t *testing.T) {
-	h := newHarness(t, true)
-	h.signIn(t)
-	wizard := h.page(t, "/admin/providers/new")
-	if !strings.Contains(wizard, "Issuer URL") {
-		t.Fatal("the wizard has no issuer field")
-	}
-	form := url.Values{
-		"issuer": {h.regIDP.URL}, "display_name": {"Keycloak"},
-		"roles_claim_path": {"realm_access.roles"}, "dynamic": {"true"},
-	}
-	if status, body := h.post(t, "/admin/providers", form); status != http.StatusSeeOther {
-		t.Fatalf("wizard post = %d %s", status, body)
-	}
-	page := h.page(t, "/admin/providers")
-	if !strings.Contains(page, "Keycloak") || !strings.Contains(page, "registered") {
-		t.Fatal("the provider is not on the page")
-	}
-	id := ""
-	for _, p := range h.app.Login.Providers().List() {
-		if p.DisplayName == "Keycloak" {
-			id = p.ID
-		}
-	}
-	if id == "" {
-		t.Fatal("the registry has no new provider")
-	}
-	if status, _ := h.post(t, "/admin/providers/"+id+"/delete", nil); status != http.StatusSeeOther {
-		t.Fatal("the remove action failed")
-	}
-	if page := h.page(t, "/admin/providers"); strings.Contains(page, "Keycloak") {
-		t.Fatal("the provider is still on the page")
-	}
-}
-
-func TestProviderWizardWithAClientIDAndSecretReference(t *testing.T) {
-	h := newHarness(t, true)
-	h.signIn(t)
-	form := url.Values{
-		"issuer": {h.idp.Issuer()}, "display_name": {"WSO2"}, "dynamic": {"false"},
-		"client_id": {"given"}, "client_secret_env": {"VCA_TEST_SECRET"},
-	}
-	if status, body := h.post(t, "/admin/providers", form); status != http.StatusSeeOther {
-		t.Fatalf("wizard post = %d %s", status, body)
-	}
-	if page := h.page(t, "/admin/providers"); !strings.Contains(page, "given") {
-		t.Fatal("the provider is not on the page")
-	}
-}
-
-func TestProviderWizardReportsABadIssuer(t *testing.T) {
-	h := newHarness(t, true)
-	h.signIn(t)
-	if status, _ := h.post(t, "/admin/providers", url.Values{"issuer": {"nowhere"}, "display_name": {"x"}}); status != http.StatusBadRequest {
-		t.Fatalf("status = %d", status)
 	}
 }
 

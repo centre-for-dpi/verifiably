@@ -316,29 +316,37 @@ func (s *Service) CreateAuthProvider(ctx context.Context, req *connect.Request[a
 	if serr := s.write(ctx, id.Actor, "admin.CreateAuthProvider", stored.ID, err); serr != nil {
 		return nil, fail(serr)
 	}
-	s.push(ctx, id, req.Header(), stored)
-	return connect.NewResponse(&adminv1.CreateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
+	pushes := s.push(ctx, id, req.Header(), stored)
+	return connect.NewResponse(&adminv1.CreateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored), Pushes: pushes}), nil
 }
 
 // push sends a stored provider to the auth service of every live pair
 // its roles and stacks name (ADR-035 decision 5). It forwards the admin
 // session token of the caller; an API key has none, so every target
 // then reports a failure. One audit record per target names the pair
-// and the outcome, so a partial failure stays visible.
-func (s *Service) push(ctx context.Context, id login.Identity, h http.Header, p oidcflow.Provider) {
+// and the outcome, so a partial failure stays visible, and the answer
+// carries the same outcome per target for the client.
+func (s *Service) push(ctx context.Context, id login.Identity, h http.Header, p oidcflow.Provider) []*adminv1.PushResult {
 	if s.d.FanOut == nil {
-		return
+		return nil
 	}
 	token := ""
 	if id.Session.Subject != "" {
 		token = oidcflow.TokenFromRequest(&http.Request{Header: h}, s.d.Cfg.CookieName)
 	}
 	report := s.d.FanOut.Push(ctx, token, p)
+	out := make([]*adminv1.PushResult, 0, len(report.Results))
 	for _, r := range report.Results {
-		// The audit record carries the outcome; the RPC answer stays the
-		// stored record.
+		// The RPC answer stays the stored record; the push outcome rides
+		// beside it and in the audit log.
 		anyval.Discard(s.write(ctx, id.Actor, "admin.PushAuthProvider", r.Target.Pair+" "+p.ID, r.Err))
+		res := &adminv1.PushResult{Pair: r.Target.Pair, Ok: r.Err == nil, Created: r.Created}
+		if r.Err != nil {
+			res.Error = r.Err.Error()
+		}
+		out = append(out, res)
 	}
+	return out
 }
 
 // OnboardProvider implements AdminServiceHandler. It registers one OIDC
@@ -437,8 +445,8 @@ func (s *Service) UpdateAuthProvider(ctx context.Context, req *connect.Request[a
 	if serr := s.write(ctx, id.Actor, "admin.UpdateAuthProvider", in.ID, err); serr != nil {
 		return nil, fail(serr)
 	}
-	s.push(ctx, id, req.Header(), stored)
-	return connect.NewResponse(&adminv1.UpdateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
+	pushes := s.push(ctx, id, req.Header(), stored)
+	return connect.NewResponse(&adminv1.UpdateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored), Pushes: pushes}), nil
 }
 
 // DeleteAuthProvider implements AdminServiceHandler.

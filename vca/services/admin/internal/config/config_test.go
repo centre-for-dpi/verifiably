@@ -163,6 +163,29 @@ func TestVariablesNameEverySetting(t *testing.T) {
 	}
 }
 
+// TestDiscoveryGuardFlagsDefaultOff: the "Test discovery" action of the
+// provider form reads a URL the operator typed, so the fetch guard
+// blocks private addresses and plain http unless the deployment turns
+// them on for development (ADR-022 decision 1).
+func TestDiscoveryGuardFlagsDefaultOff(t *testing.T) {
+	c, err := config.Load(env(base(nil)))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.AllowPrivateNetwork || c.AllowPlainHTTP {
+		t.Fatalf("guard flags default on: %+v", c)
+	}
+	on, err := config.Load(env(base(map[string]string{
+		"VCA_ADMIN_ALLOW_PRIVATE_NETWORK": "true", "VCA_ADMIN_ALLOW_PLAIN_HTTP": "true",
+	})))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !on.AllowPrivateNetwork || !on.AllowPlainHTTP {
+		t.Fatalf("guard flags stay off: %+v", on)
+	}
+}
+
 // TestLoadReadsThePeers reads VCA_PEERS, so the provider fan out knows
 // the candidate pairs (ADR-035 decision 5). A bad value is one error.
 func TestLoadReadsThePeers(t *testing.T) {

@@ -15,9 +15,13 @@
 //	GET  /trust                  the trust entry list with the add form
 //	POST /trust                  create or replace one trust entry
 //	POST /trust/delete           remove one trust entry
-//	GET  /providers              the OIDC provider list
-//	GET  /providers/new          the onboarding wizard (ADR-010 decision 5)
-//	POST /providers              run the onboarding
+//	GET  /providers              the login provider table (board Admin-Providers)
+//	GET  /providers/new          the provider form with the kind presets
+//	POST /providers              save a new provider and push it to the live pairs
+//	POST /providers/test         read the metadata of the typed issuer (htmx fragment)
+//	GET  /providers/{id}         the edit form of one provider
+//	POST /providers/{id}         save the changes and push them
+//	POST /providers/{id}/enable  turn one provider on or off
 //	POST /providers/{id}/delete  remove one provider
 //	GET  /keys                   the API key list with the create form
 //	POST /keys                   create one API key
@@ -44,6 +48,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -93,6 +98,10 @@ type Options struct {
 	// shell draws the stack switcher and the feature gates from it. Nil
 	// means the deployment names no peers: no switcher, no gate.
 	Snapshot func(ctx context.Context) topology.Snapshot
+	// Fetcher reads the metadata document of the "Test discovery" action
+	// through the guard against server side request forgery. Nil builds
+	// a fetcher that reaches public https hosts only.
+	Fetcher *fetchguard.Fetcher
 }
 
 // Portal serves the admin pages.
@@ -127,6 +136,9 @@ func New(opts Options) (*Portal, error) {
 		}
 		opts.Kit = kit
 	}
+	if opts.Fetcher == nil {
+		opts.Fetcher = fetchguard.New(fetchguard.Options{})
+	}
 	p := &Portal{opts: opts}
 	chooser, err := signin.New(signin.Options{
 		Kit: opts.Kit, Role: commonv1.Role_ROLE_ADMIN, Providers: opts.Login.Providers(), Metadata: opts.Login.Flow(),
@@ -156,10 +168,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+at+"/trust", p.guarded(p.trust))
 	mux.HandleFunc("POST "+at+"/trust", p.posted(p.addTrust))
 	mux.HandleFunc("POST "+at+"/trust/delete", p.posted(p.deleteTrust))
-	mux.HandleFunc("GET "+at+"/providers", p.guarded(p.providers))
-	mux.HandleFunc("GET "+at+"/providers/new", p.guarded(p.wizard))
-	mux.HandleFunc("POST "+at+"/providers", p.posted(p.onboardProvider))
-	mux.HandleFunc("POST "+at+"/providers/{id}/delete", p.posted(p.deleteProvider))
+	p.registerProviders(mux)
 	mux.HandleFunc("GET "+at+"/keys", p.guarded(p.keys))
 	mux.HandleFunc("POST "+at+"/keys", p.posted(p.createKey))
 	mux.HandleFunc("POST "+at+"/keys/{id}/revoke", p.posted(p.revokeKey))
@@ -303,14 +312,17 @@ func getForm(action string, content ...template.HTML) template.HTML {
 
 // Notices maps a notice code to the sentence the page shows.
 var Notices = map[string]components.Toast{
-	"tenant-created":   {Level: "ok", Text: "The tenant is created."},
-	"tenant-deleted":   {Level: "warn", Text: "The tenant is removed with every record it owns."},
-	"trust-saved":      {Level: "ok", Text: "The trust entry is saved. The registry publishes it again."},
-	"trust-deleted":    {Level: "warn", Text: "The trust entry is removed from the lists."},
-	"provider-added":   {Level: "ok", Text: "The login provider is ready. An admin can sign in with it."},
-	"provider-removed": {Level: "warn", Text: "The login provider is removed. Its sessions end."},
-	"key-revoked":      {Level: "warn", Text: "The API key is revoked. Calls with it fail now."},
-	"signed-out":       {Level: "info", Text: "You are signed out."},
+	"tenant-created":    {Level: "ok", Text: "The tenant is created."},
+	"tenant-deleted":    {Level: "warn", Text: "The tenant is removed with every record it owns."},
+	"trust-saved":       {Level: "ok", Text: "The trust entry is saved. The registry publishes it again."},
+	"trust-deleted":     {Level: "warn", Text: "The trust entry is removed from the lists."},
+	"provider-added":    {Level: "ok", Text: "The login provider is ready. Its roles can sign in with it."},
+	"provider-saved":    {Level: "ok", Text: "The login provider is saved."},
+	"provider-enabled":  {Level: "ok", Text: "The login provider is on. Its roles can sign in with it."},
+	"provider-disabled": {Level: "warn", Text: "The login provider is off. New sign ins with it fail."},
+	"provider-removed":  {Level: "warn", Text: "The login provider is removed. Its sessions end."},
+	"key-revoked":       {Level: "warn", Text: "The API key is revoked. Calls with it fail now."},
+	"signed-out":        {Level: "info", Text: "You are signed out."},
 }
 
 // notice returns the toast of a notice query value.
@@ -533,123 +545,6 @@ func (p *Portal) deleteTrust(w http.ResponseWriter, r *http.Request, s session) 
 		return err
 	}
 	p.redirect(w, r, "/trust", "trust-deleted")
-	return nil
-}
-
-// providers renders the OIDC provider list.
-func (p *Portal) providers(w http.ResponseWriter, r *http.Request, s session) error {
-	res, err := p.opts.Client.ListAuthProviders(r.Context(), call(s, &adminv1.ListAuthProvidersRequest{}))
-	if err != nil {
-		return err
-	}
-	b := p.blocks()
-	rows := make([]components.Row, 0, len(res.Msg.GetProviders()))
-	for _, provider := range res.Msg.GetProviders() {
-		status, text := "warn", "Disabled"
-		if provider.GetEnabled() {
-			status, text = "ok", "Enabled"
-		}
-		rows = append(rows, components.Row{
-			{Text: provider.GetDisplayName()},
-			{Text: provider.GetDiscoveryUrl()},
-			{Text: provider.GetClientId()},
-			{HTML: b.add("badge", components.Badge{Status: status, Text: text})},
-			{HTML: form(p.opts.Prefix+"/providers/"+provider.GetId()+"/delete", s.CSRF,
-				b.add("button", components.Button{Text: "Remove", Type: "submit", Variant: "danger"}))},
-		})
-	}
-	table := b.add("table", components.Table{
-		ID: "providers", Caption: fmt.Sprintf("Login providers, %d found", len(rows)),
-		Columns: []string{"Name", "Discovery URL", "Client id", "State", "Action"}, Rows: rows,
-		Empty: "No provider is registered. Start the wizard to add one.",
-	})
-	action := b.add("card", components.Card{
-		ID: "add-provider", Title: "Add a provider",
-		Text: "The wizard reads the provider metadata and registers a client when the provider supports it.",
-		Body: b.add("button", components.Button{Text: "Start the wizard", Href: p.opts.Prefix + "/providers/new", Variant: "primary"}),
-	})
-	if b.err != nil {
-		return b.err
-	}
-	return p.render(w, r, s, components.Page{
-		Title:       "Login providers",
-		Description: "An admin signs in through one of these OpenID Connect providers.",
-		Content:     components.Join(table, action),
-		Toasts:      notice(r.URL.Query().Get("notice")),
-	})
-}
-
-// wizard renders the onboarding wizard (ADR-010 decision 5). The page
-// needs a super admin session, so only an existing admin adds a
-// provider.
-func (p *Portal) wizard(w http.ResponseWriter, r *http.Request, s session) error {
-	b := p.blocks()
-	steps := b.add("card", components.Card{
-		ID: "steps", Title: "How the wizard works",
-		Body: template.HTML(`<ol>` + //nolint:gosec // every part is a literal
-			`<li>The service reads the metadata document of the issuer.</li>` +
-			`<li>The service registers a client when the provider advertises a registration endpoint.</li>` +
-			`<li>The service stores the provider and keeps the client secret out of the record.</li>` +
-			`</ol>`),
-	})
-	fields := b.add("card", components.Card{
-		ID: "provider-form", Title: "Provider details",
-		Body: form(p.opts.Prefix+"/providers", s.CSRF,
-			b.add("field", components.Field{ID: "issuer", Label: "Issuer URL", Required: true,
-				Hint: "For example https://keycloak.example/realms/vca. The service adds the well known path."}),
-			b.add("field", components.Field{ID: "display_name", Label: "Display name", Required: true}),
-			b.add("field", components.Field{ID: "roles_claim_path", Label: "Roles claim path", Value: "realm_access.roles"}),
-			b.add("field", components.Field{ID: "dynamic", Label: "Registration", Type: "select", Options: []components.Option{
-				{Value: "true", Text: "Register the client with dynamic client registration", Selected: true},
-				{Value: "false", Text: "Use the client id and the secret reference below"},
-			}}),
-			b.add("field", components.Field{ID: "client_id", Label: "Client id",
-				Hint: "Fill this field when the provider registers no client."}),
-			b.add("field", components.Field{ID: "client_secret_env", Label: "Client secret environment variable",
-				Hint: "The name of the variable that holds the secret. The record never holds the value."}),
-			b.add("button", components.Button{Text: "Add the provider", Type: "submit", Variant: "primary"}),
-		),
-	})
-	if b.err != nil {
-		return b.err
-	}
-	return p.render(w, r, s, components.Page{
-		Title:       "Provider wizard",
-		Description: "Add one OpenID Connect provider for admin logins.",
-		Content:     components.Join(steps, fields),
-	})
-}
-
-// onboardProvider runs the onboarding from the wizard.
-func (p *Portal) onboardProvider(w http.ResponseWriter, r *http.Request, s session) error {
-	provider := &adminv1.AuthProvider{
-		DisplayName:    r.PostFormValue("display_name"),
-		DiscoveryUrl:   r.PostFormValue("issuer"),
-		ClientId:       r.PostFormValue("client_id"),
-		RolesClaimPath: r.PostFormValue("roles_claim_path"),
-		Roles:          []commonv1.Role{commonv1.Role_ROLE_ADMIN},
-		Enabled:        true,
-	}
-	if env := strings.TrimSpace(r.PostFormValue("client_secret_env")); env != "" {
-		provider.ClientSecret = &commonv1.SecretRef{Store: commonv1.SecretRef_STORE_ENV, Name: env}
-	}
-	dynamic := r.PostFormValue("dynamic") != "false"
-	if _, err := p.opts.Client.CreateAuthProvider(r.Context(), call(s, &adminv1.CreateAuthProviderRequest{
-		Provider: provider, DynamicRegistration: dynamic,
-	})); err != nil {
-		return err
-	}
-	p.redirect(w, r, "/providers", "provider-added")
-	return nil
-}
-
-// deleteProvider removes one provider.
-func (p *Portal) deleteProvider(w http.ResponseWriter, r *http.Request, s session) error {
-	_, err := p.opts.Client.DeleteAuthProvider(r.Context(), call(s, &adminv1.DeleteAuthProviderRequest{Id: r.PathValue("id")}))
-	if err != nil {
-		return err
-	}
-	p.redirect(w, r, "/providers", "provider-removed")
 	return nil
 }
 

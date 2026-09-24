@@ -113,8 +113,36 @@ A stored record survives a restart, so an edit through the RPCs stays.
 4. The service stores the provider record. The record holds a reference
    to the client secret, never the value.
 
-The portal wizard at `/admin/providers/new` runs the same RPC. The page
+The portal form at `/admin/providers/new` runs the same RPC. The page
 needs a super admin session, so only an existing admin adds a provider.
+
+### The provider form
+
+The form of board Admin-Providers starts with a kind preset: Keycloak,
+WSO2 Identity Server, eSignet, or a generic OpenID Connect provider.
+The preset fills the fields the operator leaves empty: the roles claim
+path (`realm_access.roles` for Keycloak, `groups` for WSO2), the scopes,
+and the token endpoint method (`private_key_jwt` for eSignet). For a
+Keycloak discovery URL the preset reads the realm and its console URL.
+The form then takes the issuer URL, the client, the secret references,
+the token endpoint method, and the register action. It ends with the
+roles and the stacks. The stack boxes list the stacks with a present
+pair. No box means every stack.
+
+"Test discovery" reads the metadata document of the typed issuer
+through `core/fetchguard`. The guard refuses a private or loopback
+address and plain http. `VCA_ADMIN_ALLOW_PRIVATE_NETWORK` and
+`VCA_ADMIN_ALLOW_PLAIN_HTTP` turn the rules off for development. The
+answer names the issuer, the endpoints, and the dynamic registration
+support. It also names the register action of the sign in page and the
+token endpoint methods. With htmx the answer lands under the form.
+Without a script the same button posts the form and the page returns
+with the result.
+
+The edit form at `/admin/providers/{id}` shows every field but the
+secret references. An empty reference field keeps the stored one, so the
+form never echoes a reference or a value. The table offers a switch that
+turns one provider on or off and a remove action.
 
 A client secret from a registration goes to the vault. With a state
 directory the vault writes one file with mode 0600. Without a state
@@ -146,7 +174,9 @@ A push is idempotent. A target that holds a record with the same
 discovery URL and client id gets an update, not a copy. Every target
 gets one audit record, `admin.PushAuthProvider`, with the pair name,
 the record id, and the outcome. A partial failure shows there. The
-RPC answer stays the stored record.
+RPC answer carries the stored record and one `PushResult` per target.
+Each result names the pair, the outcome, and the reason of a failure.
+The portal shows one line per target after a save.
 
 ## CLI login
 
@@ -227,8 +257,9 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/login` | The sign in chooser with the bootstrap card. `/auth/` draws the same page. |
 | `/admin/tenants` | The tenant list with the create form. |
 | `/admin/trust` | The trust entry list with the add form. |
-| `/admin/providers` | The login provider list. |
-| `/admin/providers/new` | The onboarding wizard. |
+| `/admin/providers` | The login provider table: realm or issuer, roles, stacks, state, default flag, and the row actions. |
+| `/admin/providers/new` | The provider form with the kind presets and the discovery test. |
+| `/admin/providers/{id}` | The edit form of one provider. |
 | `/admin/keys` | The API key list. A new secret appears once. |
 | `/admin/audit` | The audit log with filters. |
 | `/admin/help` | Every command and every RPC with its help text. |

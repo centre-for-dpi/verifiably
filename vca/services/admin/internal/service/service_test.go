@@ -834,13 +834,28 @@ func TestCreateAuthProviderPushesToTheLivePairs(t *testing.T) {
 	if got := page.Records[0].Target; got != "issuer-waltid "+created.Msg.GetProvider().GetId() && got != "holder-waltid "+created.Msg.GetProvider().GetId() {
 		t.Fatalf("audit target %q", got)
 	}
+	// The answer carries the report: one result per target, in target
+	// order, so a client can show one line per pair.
+	pushes := created.Msg.GetPushes()
+	if len(pushes) != 2 || pushes[0].GetPair() != "issuer-waltid" || pushes[1].GetPair() != "holder-waltid" {
+		t.Fatalf("pushes %+v", pushes)
+	}
+	for _, push := range pushes {
+		if !push.GetOk() || !push.GetCreated() || push.GetError() != "" {
+			t.Errorf("push %+v, want ok and created", push)
+		}
+	}
 	// An update with a session pushes again without a duplicate.
 	p := created.Msg.GetProvider()
 	p.DisplayName = "Renamed"
 	upd := connect.NewRequest(&adminv1.UpdateAuthProviderRequest{Provider: p})
 	upd.Header().Set("Authorization", "Bearer "+h.session(t))
-	if _, uerr := h.svc.UpdateAuthProvider(ctx, upd); uerr != nil {
+	updated, uerr := h.svc.UpdateAuthProvider(ctx, upd)
+	if uerr != nil {
 		t.Fatalf("UpdateAuthProvider: %v", uerr)
+	}
+	if pushes := updated.Msg.GetPushes(); len(pushes) != 2 || pushes[0].GetCreated() || !pushes[0].GetOk() {
+		t.Fatalf("update pushes %+v, want two updates", pushes)
 	}
 	if list := issuer.registry.List(); len(list) != 1 || list[0].DisplayName != "Renamed" {
 		t.Fatalf("issuer-waltid after the update holds %+v", list)
@@ -848,8 +863,12 @@ func TestCreateAuthProviderPushesToTheLivePairs(t *testing.T) {
 	// An API key opens the RPC, but there is no session to forward, so
 	// the push fails at every target and the audit log says so.
 	in.ClientId = "vca-2"
-	if _, kerr := h.svc.CreateAuthProvider(ctx, request(h, &adminv1.CreateAuthProviderRequest{Provider: in})); kerr != nil {
+	byKey, kerr := h.svc.CreateAuthProvider(ctx, request(h, &adminv1.CreateAuthProviderRequest{Provider: in}))
+	if kerr != nil {
 		t.Fatalf("CreateAuthProvider with a key: %v", kerr)
+	}
+	if pushes := byKey.Msg.GetPushes(); len(pushes) != 2 || pushes[0].GetOk() || pushes[0].GetError() == "" {
+		t.Fatalf("key pushes %+v, want two failures with a reason", pushes)
 	}
 	page, err = h.log.Query(ctx, audit.Filter{Action: "admin.PushAuthProvider"})
 	if err != nil {

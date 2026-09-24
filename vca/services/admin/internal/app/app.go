@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
@@ -164,6 +165,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	pagesOpts := portal.Options{
 		Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit,
 		LandingURL: cfg.LandingURL, PublicURL: cfg.PublicURL,
+		Fetcher: fetchguard.New(fetchguard.Options{
+			Guard:  fetchguard.Guard{AllowPrivateNetwork: cfg.AllowPrivateNetwork, AllowPlainHTTP: cfg.AllowPlainHTTP},
+			Client: deps.Client, Timeout: cfg.Timeout,
+		}),
 	}
 	if prober != nil {
 		pagesOpts.Snapshot = prober.Snapshot

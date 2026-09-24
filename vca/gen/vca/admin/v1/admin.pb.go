@@ -1455,11 +1455,15 @@ func (x *CreateAuthProviderRequest) GetDynamicRegistration() bool {
 	return false
 }
 
-// CreateAuthProviderResponse returns the stored provider.
+// CreateAuthProviderResponse returns the stored provider and the outcome
+// of the push to the auth service of every targeted live pair.
 type CreateAuthProviderResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The provider as stored.
-	Provider      *AuthProvider `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Provider *AuthProvider `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	// The outcome at every pair the record names (ADR-035 decision 5).
+	// Empty when the deployment names no peers or no pair matches.
+	Pushes        []*PushResult `protobuf:"bytes,2,rep,name=pushes,proto3" json:"pushes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1501,6 +1505,87 @@ func (x *CreateAuthProviderResponse) GetProvider() *AuthProvider {
 	return nil
 }
 
+func (x *CreateAuthProviderResponse) GetPushes() []*PushResult {
+	if x != nil {
+		return x.Pushes
+	}
+	return nil
+}
+
+// PushResult is the outcome of one push of a provider record. The target
+// is the auth service of one live pair (ADR-035 decision 5).
+type PushResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The pair name, for example issuer-waltid.
+	Pair string `protobuf:"bytes,1,opt,name=pair,proto3" json:"pair,omitempty"`
+	// True when the auth service took the record.
+	Ok bool `protobuf:"varint,2,opt,name=ok,proto3" json:"ok,omitempty"`
+	// True when the push made a new record. False means an update.
+	Created bool `protobuf:"varint,3,opt,name=created,proto3" json:"created,omitempty"`
+	// Why the push failed. Empty when ok is true.
+	Error         string `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PushResult) Reset() {
+	*x = PushResult{}
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PushResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PushResult) ProtoMessage() {}
+
+func (x *PushResult) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PushResult.ProtoReflect.Descriptor instead.
+func (*PushResult) Descriptor() ([]byte, []int) {
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *PushResult) GetPair() string {
+	if x != nil {
+		return x.Pair
+	}
+	return ""
+}
+
+func (x *PushResult) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *PushResult) GetCreated() bool {
+	if x != nil {
+		return x.Created
+	}
+	return false
+}
+
+func (x *PushResult) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 // OnboardProviderRequest carries the issuer of one OIDC provider.
 type OnboardProviderRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1519,7 +1604,7 @@ type OnboardProviderRequest struct {
 
 func (x *OnboardProviderRequest) Reset() {
 	*x = OnboardProviderRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[22]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1531,7 +1616,7 @@ func (x *OnboardProviderRequest) String() string {
 func (*OnboardProviderRequest) ProtoMessage() {}
 
 func (x *OnboardProviderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[22]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1544,7 +1629,7 @@ func (x *OnboardProviderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnboardProviderRequest.ProtoReflect.Descriptor instead.
 func (*OnboardProviderRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{22}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *OnboardProviderRequest) GetIssuerUrl() string {
@@ -1586,7 +1671,7 @@ type OnboardProviderResponse struct {
 
 func (x *OnboardProviderResponse) Reset() {
 	*x = OnboardProviderResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[23]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1598,7 +1683,7 @@ func (x *OnboardProviderResponse) String() string {
 func (*OnboardProviderResponse) ProtoMessage() {}
 
 func (x *OnboardProviderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[23]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1611,7 +1696,7 @@ func (x *OnboardProviderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnboardProviderResponse.ProtoReflect.Descriptor instead.
 func (*OnboardProviderResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{23}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *OnboardProviderResponse) GetProvider() *AuthProvider {
@@ -1632,7 +1717,7 @@ type GetAuthProviderRequest struct {
 
 func (x *GetAuthProviderRequest) Reset() {
 	*x = GetAuthProviderRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[24]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1644,7 +1729,7 @@ func (x *GetAuthProviderRequest) String() string {
 func (*GetAuthProviderRequest) ProtoMessage() {}
 
 func (x *GetAuthProviderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[24]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1657,7 +1742,7 @@ func (x *GetAuthProviderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthProviderRequest.ProtoReflect.Descriptor instead.
 func (*GetAuthProviderRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{24}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetAuthProviderRequest) GetId() string {
@@ -1678,7 +1763,7 @@ type GetAuthProviderResponse struct {
 
 func (x *GetAuthProviderResponse) Reset() {
 	*x = GetAuthProviderResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[25]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1690,7 +1775,7 @@ func (x *GetAuthProviderResponse) String() string {
 func (*GetAuthProviderResponse) ProtoMessage() {}
 
 func (x *GetAuthProviderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[25]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1703,7 +1788,7 @@ func (x *GetAuthProviderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthProviderResponse.ProtoReflect.Descriptor instead.
 func (*GetAuthProviderResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{25}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetAuthProviderResponse) GetProvider() *AuthProvider {
@@ -1724,7 +1809,7 @@ type ListAuthProvidersRequest struct {
 
 func (x *ListAuthProvidersRequest) Reset() {
 	*x = ListAuthProvidersRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[26]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1736,7 +1821,7 @@ func (x *ListAuthProvidersRequest) String() string {
 func (*ListAuthProvidersRequest) ProtoMessage() {}
 
 func (x *ListAuthProvidersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[26]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1749,7 +1834,7 @@ func (x *ListAuthProvidersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuthProvidersRequest.ProtoReflect.Descriptor instead.
 func (*ListAuthProvidersRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{26}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListAuthProvidersRequest) GetPage() *v1.Pagination {
@@ -1772,7 +1857,7 @@ type ListAuthProvidersResponse struct {
 
 func (x *ListAuthProvidersResponse) Reset() {
 	*x = ListAuthProvidersResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[27]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1784,7 +1869,7 @@ func (x *ListAuthProvidersResponse) String() string {
 func (*ListAuthProvidersResponse) ProtoMessage() {}
 
 func (x *ListAuthProvidersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[27]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1797,7 +1882,7 @@ func (x *ListAuthProvidersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuthProvidersResponse.ProtoReflect.Descriptor instead.
 func (*ListAuthProvidersResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{27}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ListAuthProvidersResponse) GetProviders() []*AuthProvider {
@@ -1825,7 +1910,7 @@ type UpdateAuthProviderRequest struct {
 
 func (x *UpdateAuthProviderRequest) Reset() {
 	*x = UpdateAuthProviderRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[28]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1837,7 +1922,7 @@ func (x *UpdateAuthProviderRequest) String() string {
 func (*UpdateAuthProviderRequest) ProtoMessage() {}
 
 func (x *UpdateAuthProviderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[28]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1850,7 +1935,7 @@ func (x *UpdateAuthProviderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAuthProviderRequest.ProtoReflect.Descriptor instead.
 func (*UpdateAuthProviderRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{28}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *UpdateAuthProviderRequest) GetProvider() *AuthProvider {
@@ -1860,18 +1945,21 @@ func (x *UpdateAuthProviderRequest) GetProvider() *AuthProvider {
 	return nil
 }
 
-// UpdateAuthProviderResponse returns the changed provider.
+// UpdateAuthProviderResponse returns the changed provider and the outcome
+// of the push to the auth service of every targeted live pair.
 type UpdateAuthProviderResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The provider.
-	Provider      *AuthProvider `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Provider *AuthProvider `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	// The outcome at every pair the record names (ADR-035 decision 5).
+	Pushes        []*PushResult `protobuf:"bytes,2,rep,name=pushes,proto3" json:"pushes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateAuthProviderResponse) Reset() {
 	*x = UpdateAuthProviderResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[29]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1883,7 +1971,7 @@ func (x *UpdateAuthProviderResponse) String() string {
 func (*UpdateAuthProviderResponse) ProtoMessage() {}
 
 func (x *UpdateAuthProviderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[29]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1896,12 +1984,19 @@ func (x *UpdateAuthProviderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAuthProviderResponse.ProtoReflect.Descriptor instead.
 func (*UpdateAuthProviderResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{29}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *UpdateAuthProviderResponse) GetProvider() *AuthProvider {
 	if x != nil {
 		return x.Provider
+	}
+	return nil
+}
+
+func (x *UpdateAuthProviderResponse) GetPushes() []*PushResult {
+	if x != nil {
+		return x.Pushes
 	}
 	return nil
 }
@@ -1917,7 +2012,7 @@ type DeleteAuthProviderRequest struct {
 
 func (x *DeleteAuthProviderRequest) Reset() {
 	*x = DeleteAuthProviderRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[30]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1929,7 +2024,7 @@ func (x *DeleteAuthProviderRequest) String() string {
 func (*DeleteAuthProviderRequest) ProtoMessage() {}
 
 func (x *DeleteAuthProviderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[30]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1942,7 +2037,7 @@ func (x *DeleteAuthProviderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAuthProviderRequest.ProtoReflect.Descriptor instead.
 func (*DeleteAuthProviderRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{30}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DeleteAuthProviderRequest) GetId() string {
@@ -1961,7 +2056,7 @@ type DeleteAuthProviderResponse struct {
 
 func (x *DeleteAuthProviderResponse) Reset() {
 	*x = DeleteAuthProviderResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[31]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1973,7 +2068,7 @@ func (x *DeleteAuthProviderResponse) String() string {
 func (*DeleteAuthProviderResponse) ProtoMessage() {}
 
 func (x *DeleteAuthProviderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[31]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1986,7 +2081,7 @@ func (x *DeleteAuthProviderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAuthProviderResponse.ProtoReflect.Descriptor instead.
 func (*DeleteAuthProviderResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{31}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{32}
 }
 
 // ApiKey is one machine credential without its secret value.
@@ -2014,7 +2109,7 @@ type ApiKey struct {
 
 func (x *ApiKey) Reset() {
 	*x = ApiKey{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[32]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2026,7 +2121,7 @@ func (x *ApiKey) String() string {
 func (*ApiKey) ProtoMessage() {}
 
 func (x *ApiKey) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[32]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2039,7 +2134,7 @@ func (x *ApiKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApiKey.ProtoReflect.Descriptor instead.
 func (*ApiKey) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{32}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ApiKey) GetId() string {
@@ -2115,7 +2210,7 @@ type CreateApiKeyRequest struct {
 
 func (x *CreateApiKeyRequest) Reset() {
 	*x = CreateApiKeyRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[33]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2127,7 +2222,7 @@ func (x *CreateApiKeyRequest) String() string {
 func (*CreateApiKeyRequest) ProtoMessage() {}
 
 func (x *CreateApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[33]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2140,7 +2235,7 @@ func (x *CreateApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*CreateApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{33}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *CreateApiKeyRequest) GetDisplayName() string {
@@ -2184,7 +2279,7 @@ type CreateApiKeyResponse struct {
 
 func (x *CreateApiKeyResponse) Reset() {
 	*x = CreateApiKeyResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[34]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2196,7 +2291,7 @@ func (x *CreateApiKeyResponse) String() string {
 func (*CreateApiKeyResponse) ProtoMessage() {}
 
 func (x *CreateApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[34]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2209,7 +2304,7 @@ func (x *CreateApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*CreateApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{34}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *CreateApiKeyResponse) GetKey() *ApiKey {
@@ -2239,7 +2334,7 @@ type ListApiKeysRequest struct {
 
 func (x *ListApiKeysRequest) Reset() {
 	*x = ListApiKeysRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[35]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2251,7 +2346,7 @@ func (x *ListApiKeysRequest) String() string {
 func (*ListApiKeysRequest) ProtoMessage() {}
 
 func (x *ListApiKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[35]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2264,7 +2359,7 @@ func (x *ListApiKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListApiKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListApiKeysRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{35}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ListApiKeysRequest) GetPage() *v1.Pagination {
@@ -2294,7 +2389,7 @@ type ListApiKeysResponse struct {
 
 func (x *ListApiKeysResponse) Reset() {
 	*x = ListApiKeysResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[36]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2306,7 +2401,7 @@ func (x *ListApiKeysResponse) String() string {
 func (*ListApiKeysResponse) ProtoMessage() {}
 
 func (x *ListApiKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[36]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2319,7 +2414,7 @@ func (x *ListApiKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListApiKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListApiKeysResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{36}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ListApiKeysResponse) GetKeys() []*ApiKey {
@@ -2347,7 +2442,7 @@ type RevokeApiKeyRequest struct {
 
 func (x *RevokeApiKeyRequest) Reset() {
 	*x = RevokeApiKeyRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[37]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2359,7 +2454,7 @@ func (x *RevokeApiKeyRequest) String() string {
 func (*RevokeApiKeyRequest) ProtoMessage() {}
 
 func (x *RevokeApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[37]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2372,7 +2467,7 @@ func (x *RevokeApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*RevokeApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{37}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *RevokeApiKeyRequest) GetId() string {
@@ -2391,7 +2486,7 @@ type RevokeApiKeyResponse struct {
 
 func (x *RevokeApiKeyResponse) Reset() {
 	*x = RevokeApiKeyResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[38]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2403,7 +2498,7 @@ func (x *RevokeApiKeyResponse) String() string {
 func (*RevokeApiKeyResponse) ProtoMessage() {}
 
 func (x *RevokeApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[38]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2416,7 +2511,7 @@ func (x *RevokeApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*RevokeApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{38}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{39}
 }
 
 // GetServiceHealthRequest has no fields.
@@ -2428,7 +2523,7 @@ type GetServiceHealthRequest struct {
 
 func (x *GetServiceHealthRequest) Reset() {
 	*x = GetServiceHealthRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[39]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2440,7 +2535,7 @@ func (x *GetServiceHealthRequest) String() string {
 func (*GetServiceHealthRequest) ProtoMessage() {}
 
 func (x *GetServiceHealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[39]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2453,7 +2548,7 @@ func (x *GetServiceHealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetServiceHealthRequest.ProtoReflect.Descriptor instead.
 func (*GetServiceHealthRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{39}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{40}
 }
 
 // GetServiceHealthResponse lists every service and its health.
@@ -2467,7 +2562,7 @@ type GetServiceHealthResponse struct {
 
 func (x *GetServiceHealthResponse) Reset() {
 	*x = GetServiceHealthResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[40]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2479,7 +2574,7 @@ func (x *GetServiceHealthResponse) String() string {
 func (*GetServiceHealthResponse) ProtoMessage() {}
 
 func (x *GetServiceHealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[40]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2492,7 +2587,7 @@ func (x *GetServiceHealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetServiceHealthResponse.ProtoReflect.Descriptor instead.
 func (*GetServiceHealthResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{40}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GetServiceHealthResponse) GetServices() []*GetServiceHealthResponse_ServiceHealth {
@@ -2525,7 +2620,7 @@ type AuditRecord struct {
 
 func (x *AuditRecord) Reset() {
 	*x = AuditRecord{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[41]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2537,7 +2632,7 @@ func (x *AuditRecord) String() string {
 func (*AuditRecord) ProtoMessage() {}
 
 func (x *AuditRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[41]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2550,7 +2645,7 @@ func (x *AuditRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditRecord.ProtoReflect.Descriptor instead.
 func (*AuditRecord) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{41}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *AuditRecord) GetId() string {
@@ -2621,7 +2716,7 @@ type QueryAuditLogRequest struct {
 
 func (x *QueryAuditLogRequest) Reset() {
 	*x = QueryAuditLogRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[42]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2633,7 +2728,7 @@ func (x *QueryAuditLogRequest) String() string {
 func (*QueryAuditLogRequest) ProtoMessage() {}
 
 func (x *QueryAuditLogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[42]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2646,7 +2741,7 @@ func (x *QueryAuditLogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryAuditLogRequest.ProtoReflect.Descriptor instead.
 func (*QueryAuditLogRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{42}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *QueryAuditLogRequest) GetPage() *v1.Pagination {
@@ -2697,7 +2792,7 @@ type QueryAuditLogResponse struct {
 
 func (x *QueryAuditLogResponse) Reset() {
 	*x = QueryAuditLogResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[43]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2709,7 +2804,7 @@ func (x *QueryAuditLogResponse) String() string {
 func (*QueryAuditLogResponse) ProtoMessage() {}
 
 func (x *QueryAuditLogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[43]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2722,7 +2817,7 @@ func (x *QueryAuditLogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryAuditLogResponse.ProtoReflect.Descriptor instead.
 func (*QueryAuditLogResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{43}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *QueryAuditLogResponse) GetRecords() []*AuditRecord {
@@ -2754,7 +2849,7 @@ type OnboardAdminRequest struct {
 
 func (x *OnboardAdminRequest) Reset() {
 	*x = OnboardAdminRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[44]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2766,7 +2861,7 @@ func (x *OnboardAdminRequest) String() string {
 func (*OnboardAdminRequest) ProtoMessage() {}
 
 func (x *OnboardAdminRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[44]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2779,7 +2874,7 @@ func (x *OnboardAdminRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnboardAdminRequest.ProtoReflect.Descriptor instead.
 func (*OnboardAdminRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{44}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *OnboardAdminRequest) GetBootstrapToken() string {
@@ -2816,7 +2911,7 @@ type OnboardAdminResponse struct {
 
 func (x *OnboardAdminResponse) Reset() {
 	*x = OnboardAdminResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[45]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2828,7 +2923,7 @@ func (x *OnboardAdminResponse) String() string {
 func (*OnboardAdminResponse) ProtoMessage() {}
 
 func (x *OnboardAdminResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[45]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2841,7 +2936,7 @@ func (x *OnboardAdminResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnboardAdminResponse.ProtoReflect.Descriptor instead.
 func (*OnboardAdminResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{45}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *OnboardAdminResponse) GetIssuer() string {
@@ -2867,7 +2962,7 @@ type ListCommandsRequest struct {
 
 func (x *ListCommandsRequest) Reset() {
 	*x = ListCommandsRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[46]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2879,7 +2974,7 @@ func (x *ListCommandsRequest) String() string {
 func (*ListCommandsRequest) ProtoMessage() {}
 
 func (x *ListCommandsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[46]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2892,7 +2987,7 @@ func (x *ListCommandsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommandsRequest.ProtoReflect.Descriptor instead.
 func (*ListCommandsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{46}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{47}
 }
 
 // ListCommandsResponse returns the command tree.
@@ -2906,7 +3001,7 @@ type ListCommandsResponse struct {
 
 func (x *ListCommandsResponse) Reset() {
 	*x = ListCommandsResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[47]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2918,7 +3013,7 @@ func (x *ListCommandsResponse) String() string {
 func (*ListCommandsResponse) ProtoMessage() {}
 
 func (x *ListCommandsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[47]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2931,7 +3026,7 @@ func (x *ListCommandsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommandsResponse.ProtoReflect.Descriptor instead.
 func (*ListCommandsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{47}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListCommandsResponse) GetCommands() []*ListCommandsResponse_Command {
@@ -2960,7 +3055,7 @@ type GetServiceHealthResponse_ServiceHealth struct {
 
 func (x *GetServiceHealthResponse_ServiceHealth) Reset() {
 	*x = GetServiceHealthResponse_ServiceHealth{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[48]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2972,7 +3067,7 @@ func (x *GetServiceHealthResponse_ServiceHealth) String() string {
 func (*GetServiceHealthResponse_ServiceHealth) ProtoMessage() {}
 
 func (x *GetServiceHealthResponse_ServiceHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[48]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2985,7 +3080,7 @@ func (x *GetServiceHealthResponse_ServiceHealth) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use GetServiceHealthResponse_ServiceHealth.ProtoReflect.Descriptor instead.
 func (*GetServiceHealthResponse_ServiceHealth) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{40, 0}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{41, 0}
 }
 
 func (x *GetServiceHealthResponse_ServiceHealth) GetName() string {
@@ -3042,7 +3137,7 @@ type ListCommandsResponse_Command struct {
 
 func (x *ListCommandsResponse_Command) Reset() {
 	*x = ListCommandsResponse_Command{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[49]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3054,7 +3149,7 @@ func (x *ListCommandsResponse_Command) String() string {
 func (*ListCommandsResponse_Command) ProtoMessage() {}
 
 func (x *ListCommandsResponse_Command) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[49]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3067,7 +3162,7 @@ func (x *ListCommandsResponse_Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommandsResponse_Command.ProtoReflect.Descriptor instead.
 func (*ListCommandsResponse_Command) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{47, 0}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{48, 0}
 }
 
 func (x *ListCommandsResponse_Command) GetPath() string {
@@ -3122,7 +3217,7 @@ type ListCommandsResponse_Flag struct {
 
 func (x *ListCommandsResponse_Flag) Reset() {
 	*x = ListCommandsResponse_Flag{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[50]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3134,7 +3229,7 @@ func (x *ListCommandsResponse_Flag) String() string {
 func (*ListCommandsResponse_Flag) ProtoMessage() {}
 
 func (x *ListCommandsResponse_Flag) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[50]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3147,7 +3242,7 @@ func (x *ListCommandsResponse_Flag) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommandsResponse_Flag.ProtoReflect.Descriptor instead.
 func (*ListCommandsResponse_Flag) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{47, 1}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{48, 1}
 }
 
 func (x *ListCommandsResponse_Flag) GetName() string {
@@ -3263,9 +3358,16 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"is_default\x18\x11 \x01(\bR\tisDefault\"\x86\x01\n" +
 	"\x19CreateAuthProviderRequest\x126\n" +
 	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\x121\n" +
-	"\x14dynamic_registration\x18\x02 \x01(\bR\x13dynamicRegistration\"T\n" +
+	"\x14dynamic_registration\x18\x02 \x01(\bR\x13dynamicRegistration\"\x86\x01\n" +
 	"\x1aCreateAuthProviderResponse\x126\n" +
-	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\"\xc6\x01\n" +
+	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\x120\n" +
+	"\x06pushes\x18\x02 \x03(\v2\x18.vca.admin.v1.PushResultR\x06pushes\"`\n" +
+	"\n" +
+	"PushResult\x12\x12\n" +
+	"\x04pair\x18\x01 \x01(\tR\x04pair\x12\x0e\n" +
+	"\x02ok\x18\x02 \x01(\bR\x02ok\x12\x18\n" +
+	"\acreated\x18\x03 \x01(\bR\acreated\x12\x14\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\"\xc6\x01\n" +
 	"\x16OnboardProviderRequest\x12\x1d\n" +
 	"\n" +
 	"issuer_url\x18\x01 \x01(\tR\tissuerUrl\x12\x1b\n" +
@@ -3284,9 +3386,10 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\tproviders\x18\x01 \x03(\v2\x1a.vca.admin.v1.AuthProviderR\tproviders\x12-\n" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\"S\n" +
 	"\x19UpdateAuthProviderRequest\x126\n" +
-	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\"T\n" +
+	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\"\x86\x01\n" +
 	"\x1aUpdateAuthProviderResponse\x126\n" +
-	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\"+\n" +
+	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\x120\n" +
+	"\x06pushes\x18\x02 \x03(\v2\x18.vca.admin.v1.PushResultR\x06pushes\"+\n" +
 	"\x19DeleteAuthProviderRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x1c\n" +
 	"\x1aDeleteAuthProviderResponse\"\xcc\x02\n" +
@@ -3426,7 +3529,7 @@ func file_vca_admin_v1_admin_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_admin_v1_admin_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_vca_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_vca_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
 var file_vca_admin_v1_admin_proto_goTypes = []any{
 	(ProviderKind)(0),                              // 0: vca.admin.v1.ProviderKind
 	(Registration)(0),                              // 1: vca.admin.v1.Registration
@@ -3454,151 +3557,154 @@ var file_vca_admin_v1_admin_proto_goTypes = []any{
 	(*AuthProvider)(nil),                           // 23: vca.admin.v1.AuthProvider
 	(*CreateAuthProviderRequest)(nil),              // 24: vca.admin.v1.CreateAuthProviderRequest
 	(*CreateAuthProviderResponse)(nil),             // 25: vca.admin.v1.CreateAuthProviderResponse
-	(*OnboardProviderRequest)(nil),                 // 26: vca.admin.v1.OnboardProviderRequest
-	(*OnboardProviderResponse)(nil),                // 27: vca.admin.v1.OnboardProviderResponse
-	(*GetAuthProviderRequest)(nil),                 // 28: vca.admin.v1.GetAuthProviderRequest
-	(*GetAuthProviderResponse)(nil),                // 29: vca.admin.v1.GetAuthProviderResponse
-	(*ListAuthProvidersRequest)(nil),               // 30: vca.admin.v1.ListAuthProvidersRequest
-	(*ListAuthProvidersResponse)(nil),              // 31: vca.admin.v1.ListAuthProvidersResponse
-	(*UpdateAuthProviderRequest)(nil),              // 32: vca.admin.v1.UpdateAuthProviderRequest
-	(*UpdateAuthProviderResponse)(nil),             // 33: vca.admin.v1.UpdateAuthProviderResponse
-	(*DeleteAuthProviderRequest)(nil),              // 34: vca.admin.v1.DeleteAuthProviderRequest
-	(*DeleteAuthProviderResponse)(nil),             // 35: vca.admin.v1.DeleteAuthProviderResponse
-	(*ApiKey)(nil),                                 // 36: vca.admin.v1.ApiKey
-	(*CreateApiKeyRequest)(nil),                    // 37: vca.admin.v1.CreateApiKeyRequest
-	(*CreateApiKeyResponse)(nil),                   // 38: vca.admin.v1.CreateApiKeyResponse
-	(*ListApiKeysRequest)(nil),                     // 39: vca.admin.v1.ListApiKeysRequest
-	(*ListApiKeysResponse)(nil),                    // 40: vca.admin.v1.ListApiKeysResponse
-	(*RevokeApiKeyRequest)(nil),                    // 41: vca.admin.v1.RevokeApiKeyRequest
-	(*RevokeApiKeyResponse)(nil),                   // 42: vca.admin.v1.RevokeApiKeyResponse
-	(*GetServiceHealthRequest)(nil),                // 43: vca.admin.v1.GetServiceHealthRequest
-	(*GetServiceHealthResponse)(nil),               // 44: vca.admin.v1.GetServiceHealthResponse
-	(*AuditRecord)(nil),                            // 45: vca.admin.v1.AuditRecord
-	(*QueryAuditLogRequest)(nil),                   // 46: vca.admin.v1.QueryAuditLogRequest
-	(*QueryAuditLogResponse)(nil),                  // 47: vca.admin.v1.QueryAuditLogResponse
-	(*OnboardAdminRequest)(nil),                    // 48: vca.admin.v1.OnboardAdminRequest
-	(*OnboardAdminResponse)(nil),                   // 49: vca.admin.v1.OnboardAdminResponse
-	(*ListCommandsRequest)(nil),                    // 50: vca.admin.v1.ListCommandsRequest
-	(*ListCommandsResponse)(nil),                   // 51: vca.admin.v1.ListCommandsResponse
-	(*GetServiceHealthResponse_ServiceHealth)(nil), // 52: vca.admin.v1.GetServiceHealthResponse.ServiceHealth
-	(*ListCommandsResponse_Command)(nil),           // 53: vca.admin.v1.ListCommandsResponse.Command
-	(*ListCommandsResponse_Flag)(nil),              // 54: vca.admin.v1.ListCommandsResponse.Flag
-	(*timestamppb.Timestamp)(nil),                  // 55: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),                          // 56: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                          // 57: vca.common.v1.PageResult
-	(*v11.TrustEntry)(nil),                         // 58: vca.trust.v1.TrustEntry
-	(*v11.TrustEntry_Identifier)(nil),              // 59: vca.trust.v1.TrustEntry.Identifier
-	(v1.Role)(0),                                   // 60: vca.common.v1.Role
-	(*v1.SecretRef)(nil),                           // 61: vca.common.v1.SecretRef
-	(v12.Dpg)(0),                                   // 62: vca.config.v1.Dpg
+	(*PushResult)(nil),                             // 26: vca.admin.v1.PushResult
+	(*OnboardProviderRequest)(nil),                 // 27: vca.admin.v1.OnboardProviderRequest
+	(*OnboardProviderResponse)(nil),                // 28: vca.admin.v1.OnboardProviderResponse
+	(*GetAuthProviderRequest)(nil),                 // 29: vca.admin.v1.GetAuthProviderRequest
+	(*GetAuthProviderResponse)(nil),                // 30: vca.admin.v1.GetAuthProviderResponse
+	(*ListAuthProvidersRequest)(nil),               // 31: vca.admin.v1.ListAuthProvidersRequest
+	(*ListAuthProvidersResponse)(nil),              // 32: vca.admin.v1.ListAuthProvidersResponse
+	(*UpdateAuthProviderRequest)(nil),              // 33: vca.admin.v1.UpdateAuthProviderRequest
+	(*UpdateAuthProviderResponse)(nil),             // 34: vca.admin.v1.UpdateAuthProviderResponse
+	(*DeleteAuthProviderRequest)(nil),              // 35: vca.admin.v1.DeleteAuthProviderRequest
+	(*DeleteAuthProviderResponse)(nil),             // 36: vca.admin.v1.DeleteAuthProviderResponse
+	(*ApiKey)(nil),                                 // 37: vca.admin.v1.ApiKey
+	(*CreateApiKeyRequest)(nil),                    // 38: vca.admin.v1.CreateApiKeyRequest
+	(*CreateApiKeyResponse)(nil),                   // 39: vca.admin.v1.CreateApiKeyResponse
+	(*ListApiKeysRequest)(nil),                     // 40: vca.admin.v1.ListApiKeysRequest
+	(*ListApiKeysResponse)(nil),                    // 41: vca.admin.v1.ListApiKeysResponse
+	(*RevokeApiKeyRequest)(nil),                    // 42: vca.admin.v1.RevokeApiKeyRequest
+	(*RevokeApiKeyResponse)(nil),                   // 43: vca.admin.v1.RevokeApiKeyResponse
+	(*GetServiceHealthRequest)(nil),                // 44: vca.admin.v1.GetServiceHealthRequest
+	(*GetServiceHealthResponse)(nil),               // 45: vca.admin.v1.GetServiceHealthResponse
+	(*AuditRecord)(nil),                            // 46: vca.admin.v1.AuditRecord
+	(*QueryAuditLogRequest)(nil),                   // 47: vca.admin.v1.QueryAuditLogRequest
+	(*QueryAuditLogResponse)(nil),                  // 48: vca.admin.v1.QueryAuditLogResponse
+	(*OnboardAdminRequest)(nil),                    // 49: vca.admin.v1.OnboardAdminRequest
+	(*OnboardAdminResponse)(nil),                   // 50: vca.admin.v1.OnboardAdminResponse
+	(*ListCommandsRequest)(nil),                    // 51: vca.admin.v1.ListCommandsRequest
+	(*ListCommandsResponse)(nil),                   // 52: vca.admin.v1.ListCommandsResponse
+	(*GetServiceHealthResponse_ServiceHealth)(nil), // 53: vca.admin.v1.GetServiceHealthResponse.ServiceHealth
+	(*ListCommandsResponse_Command)(nil),           // 54: vca.admin.v1.ListCommandsResponse.Command
+	(*ListCommandsResponse_Flag)(nil),              // 55: vca.admin.v1.ListCommandsResponse.Flag
+	(*timestamppb.Timestamp)(nil),                  // 56: google.protobuf.Timestamp
+	(*v1.Pagination)(nil),                          // 57: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                          // 58: vca.common.v1.PageResult
+	(*v11.TrustEntry)(nil),                         // 59: vca.trust.v1.TrustEntry
+	(*v11.TrustEntry_Identifier)(nil),              // 60: vca.trust.v1.TrustEntry.Identifier
+	(v1.Role)(0),                                   // 61: vca.common.v1.Role
+	(*v1.SecretRef)(nil),                           // 62: vca.common.v1.SecretRef
+	(v12.Dpg)(0),                                   // 63: vca.config.v1.Dpg
 }
 var file_vca_admin_v1_admin_proto_depIdxs = []int32{
 	3,  // 0: vca.admin.v1.Tenant.state:type_name -> vca.admin.v1.Tenant.State
-	55, // 1: vca.admin.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
-	55, // 2: vca.admin.v1.Tenant.updated_at:type_name -> google.protobuf.Timestamp
+	56, // 1: vca.admin.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
+	56, // 2: vca.admin.v1.Tenant.updated_at:type_name -> google.protobuf.Timestamp
 	4,  // 3: vca.admin.v1.CreateTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
 	4,  // 4: vca.admin.v1.GetTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	56, // 5: vca.admin.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
+	57, // 5: vca.admin.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
 	4,  // 6: vca.admin.v1.ListTenantsResponse.tenants:type_name -> vca.admin.v1.Tenant
-	57, // 7: vca.admin.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
+	58, // 7: vca.admin.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
 	3,  // 8: vca.admin.v1.UpdateTenantRequest.state:type_name -> vca.admin.v1.Tenant.State
 	4,  // 9: vca.admin.v1.UpdateTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	58, // 10: vca.admin.v1.UpsertTrustEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
-	58, // 11: vca.admin.v1.UpsertTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	59, // 12: vca.admin.v1.GetTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	58, // 13: vca.admin.v1.GetTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	56, // 14: vca.admin.v1.ListTrustEntriesRequest.page:type_name -> vca.common.v1.Pagination
-	60, // 15: vca.admin.v1.ListTrustEntriesRequest.role:type_name -> vca.common.v1.Role
-	58, // 16: vca.admin.v1.ListTrustEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
-	57, // 17: vca.admin.v1.ListTrustEntriesResponse.page:type_name -> vca.common.v1.PageResult
-	59, // 18: vca.admin.v1.DeleteTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	61, // 19: vca.admin.v1.AuthProvider.client_secret:type_name -> vca.common.v1.SecretRef
-	60, // 20: vca.admin.v1.AuthProvider.roles:type_name -> vca.common.v1.Role
-	55, // 21: vca.admin.v1.AuthProvider.created_at:type_name -> google.protobuf.Timestamp
+	59, // 10: vca.admin.v1.UpsertTrustEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
+	59, // 11: vca.admin.v1.UpsertTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	60, // 12: vca.admin.v1.GetTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	59, // 13: vca.admin.v1.GetTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	57, // 14: vca.admin.v1.ListTrustEntriesRequest.page:type_name -> vca.common.v1.Pagination
+	61, // 15: vca.admin.v1.ListTrustEntriesRequest.role:type_name -> vca.common.v1.Role
+	59, // 16: vca.admin.v1.ListTrustEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
+	58, // 17: vca.admin.v1.ListTrustEntriesResponse.page:type_name -> vca.common.v1.PageResult
+	60, // 18: vca.admin.v1.DeleteTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	62, // 19: vca.admin.v1.AuthProvider.client_secret:type_name -> vca.common.v1.SecretRef
+	61, // 20: vca.admin.v1.AuthProvider.roles:type_name -> vca.common.v1.Role
+	56, // 21: vca.admin.v1.AuthProvider.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 22: vca.admin.v1.AuthProvider.kind:type_name -> vca.admin.v1.ProviderKind
 	1,  // 23: vca.admin.v1.AuthProvider.registration:type_name -> vca.admin.v1.Registration
-	62, // 24: vca.admin.v1.AuthProvider.stacks:type_name -> vca.config.v1.Dpg
+	63, // 24: vca.admin.v1.AuthProvider.stacks:type_name -> vca.config.v1.Dpg
 	2,  // 25: vca.admin.v1.AuthProvider.token_auth_method:type_name -> vca.admin.v1.TokenAuth
-	61, // 26: vca.admin.v1.AuthProvider.private_key:type_name -> vca.common.v1.SecretRef
+	62, // 26: vca.admin.v1.AuthProvider.private_key:type_name -> vca.common.v1.SecretRef
 	23, // 27: vca.admin.v1.CreateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
 	23, // 28: vca.admin.v1.CreateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	61, // 29: vca.admin.v1.OnboardProviderRequest.client_secret:type_name -> vca.common.v1.SecretRef
-	23, // 30: vca.admin.v1.OnboardProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	23, // 31: vca.admin.v1.GetAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	56, // 32: vca.admin.v1.ListAuthProvidersRequest.page:type_name -> vca.common.v1.Pagination
-	23, // 33: vca.admin.v1.ListAuthProvidersResponse.providers:type_name -> vca.admin.v1.AuthProvider
-	57, // 34: vca.admin.v1.ListAuthProvidersResponse.page:type_name -> vca.common.v1.PageResult
-	23, // 35: vca.admin.v1.UpdateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
-	23, // 36: vca.admin.v1.UpdateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	60, // 37: vca.admin.v1.ApiKey.roles:type_name -> vca.common.v1.Role
-	55, // 38: vca.admin.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
-	55, // 39: vca.admin.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
-	55, // 40: vca.admin.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
-	60, // 41: vca.admin.v1.CreateApiKeyRequest.roles:type_name -> vca.common.v1.Role
-	55, // 42: vca.admin.v1.CreateApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
-	36, // 43: vca.admin.v1.CreateApiKeyResponse.key:type_name -> vca.admin.v1.ApiKey
-	56, // 44: vca.admin.v1.ListApiKeysRequest.page:type_name -> vca.common.v1.Pagination
-	36, // 45: vca.admin.v1.ListApiKeysResponse.keys:type_name -> vca.admin.v1.ApiKey
-	57, // 46: vca.admin.v1.ListApiKeysResponse.page:type_name -> vca.common.v1.PageResult
-	52, // 47: vca.admin.v1.GetServiceHealthResponse.services:type_name -> vca.admin.v1.GetServiceHealthResponse.ServiceHealth
-	55, // 48: vca.admin.v1.AuditRecord.at:type_name -> google.protobuf.Timestamp
-	56, // 49: vca.admin.v1.QueryAuditLogRequest.page:type_name -> vca.common.v1.Pagination
-	55, // 50: vca.admin.v1.QueryAuditLogRequest.from:type_name -> google.protobuf.Timestamp
-	55, // 51: vca.admin.v1.QueryAuditLogRequest.to:type_name -> google.protobuf.Timestamp
-	45, // 52: vca.admin.v1.QueryAuditLogResponse.records:type_name -> vca.admin.v1.AuditRecord
-	57, // 53: vca.admin.v1.QueryAuditLogResponse.page:type_name -> vca.common.v1.PageResult
-	53, // 54: vca.admin.v1.ListCommandsResponse.commands:type_name -> vca.admin.v1.ListCommandsResponse.Command
-	55, // 55: vca.admin.v1.GetServiceHealthResponse.ServiceHealth.checked_at:type_name -> google.protobuf.Timestamp
-	54, // 56: vca.admin.v1.ListCommandsResponse.Command.flags:type_name -> vca.admin.v1.ListCommandsResponse.Flag
-	5,  // 57: vca.admin.v1.AdminService.CreateTenant:input_type -> vca.admin.v1.CreateTenantRequest
-	7,  // 58: vca.admin.v1.AdminService.GetTenant:input_type -> vca.admin.v1.GetTenantRequest
-	9,  // 59: vca.admin.v1.AdminService.ListTenants:input_type -> vca.admin.v1.ListTenantsRequest
-	11, // 60: vca.admin.v1.AdminService.UpdateTenant:input_type -> vca.admin.v1.UpdateTenantRequest
-	13, // 61: vca.admin.v1.AdminService.DeleteTenant:input_type -> vca.admin.v1.DeleteTenantRequest
-	15, // 62: vca.admin.v1.AdminService.UpsertTrustEntry:input_type -> vca.admin.v1.UpsertTrustEntryRequest
-	17, // 63: vca.admin.v1.AdminService.GetTrustEntry:input_type -> vca.admin.v1.GetTrustEntryRequest
-	19, // 64: vca.admin.v1.AdminService.ListTrustEntries:input_type -> vca.admin.v1.ListTrustEntriesRequest
-	21, // 65: vca.admin.v1.AdminService.DeleteTrustEntry:input_type -> vca.admin.v1.DeleteTrustEntryRequest
-	24, // 66: vca.admin.v1.AdminService.CreateAuthProvider:input_type -> vca.admin.v1.CreateAuthProviderRequest
-	28, // 67: vca.admin.v1.AdminService.GetAuthProvider:input_type -> vca.admin.v1.GetAuthProviderRequest
-	30, // 68: vca.admin.v1.AdminService.ListAuthProviders:input_type -> vca.admin.v1.ListAuthProvidersRequest
-	32, // 69: vca.admin.v1.AdminService.UpdateAuthProvider:input_type -> vca.admin.v1.UpdateAuthProviderRequest
-	34, // 70: vca.admin.v1.AdminService.DeleteAuthProvider:input_type -> vca.admin.v1.DeleteAuthProviderRequest
-	26, // 71: vca.admin.v1.AdminService.OnboardProvider:input_type -> vca.admin.v1.OnboardProviderRequest
-	37, // 72: vca.admin.v1.AdminService.CreateApiKey:input_type -> vca.admin.v1.CreateApiKeyRequest
-	39, // 73: vca.admin.v1.AdminService.ListApiKeys:input_type -> vca.admin.v1.ListApiKeysRequest
-	41, // 74: vca.admin.v1.AdminService.RevokeApiKey:input_type -> vca.admin.v1.RevokeApiKeyRequest
-	43, // 75: vca.admin.v1.AdminService.GetServiceHealth:input_type -> vca.admin.v1.GetServiceHealthRequest
-	46, // 76: vca.admin.v1.AdminService.QueryAuditLog:input_type -> vca.admin.v1.QueryAuditLogRequest
-	48, // 77: vca.admin.v1.AdminService.OnboardAdmin:input_type -> vca.admin.v1.OnboardAdminRequest
-	50, // 78: vca.admin.v1.AdminService.ListCommands:input_type -> vca.admin.v1.ListCommandsRequest
-	6,  // 79: vca.admin.v1.AdminService.CreateTenant:output_type -> vca.admin.v1.CreateTenantResponse
-	8,  // 80: vca.admin.v1.AdminService.GetTenant:output_type -> vca.admin.v1.GetTenantResponse
-	10, // 81: vca.admin.v1.AdminService.ListTenants:output_type -> vca.admin.v1.ListTenantsResponse
-	12, // 82: vca.admin.v1.AdminService.UpdateTenant:output_type -> vca.admin.v1.UpdateTenantResponse
-	14, // 83: vca.admin.v1.AdminService.DeleteTenant:output_type -> vca.admin.v1.DeleteTenantResponse
-	16, // 84: vca.admin.v1.AdminService.UpsertTrustEntry:output_type -> vca.admin.v1.UpsertTrustEntryResponse
-	18, // 85: vca.admin.v1.AdminService.GetTrustEntry:output_type -> vca.admin.v1.GetTrustEntryResponse
-	20, // 86: vca.admin.v1.AdminService.ListTrustEntries:output_type -> vca.admin.v1.ListTrustEntriesResponse
-	22, // 87: vca.admin.v1.AdminService.DeleteTrustEntry:output_type -> vca.admin.v1.DeleteTrustEntryResponse
-	25, // 88: vca.admin.v1.AdminService.CreateAuthProvider:output_type -> vca.admin.v1.CreateAuthProviderResponse
-	29, // 89: vca.admin.v1.AdminService.GetAuthProvider:output_type -> vca.admin.v1.GetAuthProviderResponse
-	31, // 90: vca.admin.v1.AdminService.ListAuthProviders:output_type -> vca.admin.v1.ListAuthProvidersResponse
-	33, // 91: vca.admin.v1.AdminService.UpdateAuthProvider:output_type -> vca.admin.v1.UpdateAuthProviderResponse
-	35, // 92: vca.admin.v1.AdminService.DeleteAuthProvider:output_type -> vca.admin.v1.DeleteAuthProviderResponse
-	27, // 93: vca.admin.v1.AdminService.OnboardProvider:output_type -> vca.admin.v1.OnboardProviderResponse
-	38, // 94: vca.admin.v1.AdminService.CreateApiKey:output_type -> vca.admin.v1.CreateApiKeyResponse
-	40, // 95: vca.admin.v1.AdminService.ListApiKeys:output_type -> vca.admin.v1.ListApiKeysResponse
-	42, // 96: vca.admin.v1.AdminService.RevokeApiKey:output_type -> vca.admin.v1.RevokeApiKeyResponse
-	44, // 97: vca.admin.v1.AdminService.GetServiceHealth:output_type -> vca.admin.v1.GetServiceHealthResponse
-	47, // 98: vca.admin.v1.AdminService.QueryAuditLog:output_type -> vca.admin.v1.QueryAuditLogResponse
-	49, // 99: vca.admin.v1.AdminService.OnboardAdmin:output_type -> vca.admin.v1.OnboardAdminResponse
-	51, // 100: vca.admin.v1.AdminService.ListCommands:output_type -> vca.admin.v1.ListCommandsResponse
-	79, // [79:101] is the sub-list for method output_type
-	57, // [57:79] is the sub-list for method input_type
-	57, // [57:57] is the sub-list for extension type_name
-	57, // [57:57] is the sub-list for extension extendee
-	0,  // [0:57] is the sub-list for field type_name
+	26, // 29: vca.admin.v1.CreateAuthProviderResponse.pushes:type_name -> vca.admin.v1.PushResult
+	62, // 30: vca.admin.v1.OnboardProviderRequest.client_secret:type_name -> vca.common.v1.SecretRef
+	23, // 31: vca.admin.v1.OnboardProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
+	23, // 32: vca.admin.v1.GetAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
+	57, // 33: vca.admin.v1.ListAuthProvidersRequest.page:type_name -> vca.common.v1.Pagination
+	23, // 34: vca.admin.v1.ListAuthProvidersResponse.providers:type_name -> vca.admin.v1.AuthProvider
+	58, // 35: vca.admin.v1.ListAuthProvidersResponse.page:type_name -> vca.common.v1.PageResult
+	23, // 36: vca.admin.v1.UpdateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
+	23, // 37: vca.admin.v1.UpdateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
+	26, // 38: vca.admin.v1.UpdateAuthProviderResponse.pushes:type_name -> vca.admin.v1.PushResult
+	61, // 39: vca.admin.v1.ApiKey.roles:type_name -> vca.common.v1.Role
+	56, // 40: vca.admin.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
+	56, // 41: vca.admin.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
+	56, // 42: vca.admin.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
+	61, // 43: vca.admin.v1.CreateApiKeyRequest.roles:type_name -> vca.common.v1.Role
+	56, // 44: vca.admin.v1.CreateApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
+	37, // 45: vca.admin.v1.CreateApiKeyResponse.key:type_name -> vca.admin.v1.ApiKey
+	57, // 46: vca.admin.v1.ListApiKeysRequest.page:type_name -> vca.common.v1.Pagination
+	37, // 47: vca.admin.v1.ListApiKeysResponse.keys:type_name -> vca.admin.v1.ApiKey
+	58, // 48: vca.admin.v1.ListApiKeysResponse.page:type_name -> vca.common.v1.PageResult
+	53, // 49: vca.admin.v1.GetServiceHealthResponse.services:type_name -> vca.admin.v1.GetServiceHealthResponse.ServiceHealth
+	56, // 50: vca.admin.v1.AuditRecord.at:type_name -> google.protobuf.Timestamp
+	57, // 51: vca.admin.v1.QueryAuditLogRequest.page:type_name -> vca.common.v1.Pagination
+	56, // 52: vca.admin.v1.QueryAuditLogRequest.from:type_name -> google.protobuf.Timestamp
+	56, // 53: vca.admin.v1.QueryAuditLogRequest.to:type_name -> google.protobuf.Timestamp
+	46, // 54: vca.admin.v1.QueryAuditLogResponse.records:type_name -> vca.admin.v1.AuditRecord
+	58, // 55: vca.admin.v1.QueryAuditLogResponse.page:type_name -> vca.common.v1.PageResult
+	54, // 56: vca.admin.v1.ListCommandsResponse.commands:type_name -> vca.admin.v1.ListCommandsResponse.Command
+	56, // 57: vca.admin.v1.GetServiceHealthResponse.ServiceHealth.checked_at:type_name -> google.protobuf.Timestamp
+	55, // 58: vca.admin.v1.ListCommandsResponse.Command.flags:type_name -> vca.admin.v1.ListCommandsResponse.Flag
+	5,  // 59: vca.admin.v1.AdminService.CreateTenant:input_type -> vca.admin.v1.CreateTenantRequest
+	7,  // 60: vca.admin.v1.AdminService.GetTenant:input_type -> vca.admin.v1.GetTenantRequest
+	9,  // 61: vca.admin.v1.AdminService.ListTenants:input_type -> vca.admin.v1.ListTenantsRequest
+	11, // 62: vca.admin.v1.AdminService.UpdateTenant:input_type -> vca.admin.v1.UpdateTenantRequest
+	13, // 63: vca.admin.v1.AdminService.DeleteTenant:input_type -> vca.admin.v1.DeleteTenantRequest
+	15, // 64: vca.admin.v1.AdminService.UpsertTrustEntry:input_type -> vca.admin.v1.UpsertTrustEntryRequest
+	17, // 65: vca.admin.v1.AdminService.GetTrustEntry:input_type -> vca.admin.v1.GetTrustEntryRequest
+	19, // 66: vca.admin.v1.AdminService.ListTrustEntries:input_type -> vca.admin.v1.ListTrustEntriesRequest
+	21, // 67: vca.admin.v1.AdminService.DeleteTrustEntry:input_type -> vca.admin.v1.DeleteTrustEntryRequest
+	24, // 68: vca.admin.v1.AdminService.CreateAuthProvider:input_type -> vca.admin.v1.CreateAuthProviderRequest
+	29, // 69: vca.admin.v1.AdminService.GetAuthProvider:input_type -> vca.admin.v1.GetAuthProviderRequest
+	31, // 70: vca.admin.v1.AdminService.ListAuthProviders:input_type -> vca.admin.v1.ListAuthProvidersRequest
+	33, // 71: vca.admin.v1.AdminService.UpdateAuthProvider:input_type -> vca.admin.v1.UpdateAuthProviderRequest
+	35, // 72: vca.admin.v1.AdminService.DeleteAuthProvider:input_type -> vca.admin.v1.DeleteAuthProviderRequest
+	27, // 73: vca.admin.v1.AdminService.OnboardProvider:input_type -> vca.admin.v1.OnboardProviderRequest
+	38, // 74: vca.admin.v1.AdminService.CreateApiKey:input_type -> vca.admin.v1.CreateApiKeyRequest
+	40, // 75: vca.admin.v1.AdminService.ListApiKeys:input_type -> vca.admin.v1.ListApiKeysRequest
+	42, // 76: vca.admin.v1.AdminService.RevokeApiKey:input_type -> vca.admin.v1.RevokeApiKeyRequest
+	44, // 77: vca.admin.v1.AdminService.GetServiceHealth:input_type -> vca.admin.v1.GetServiceHealthRequest
+	47, // 78: vca.admin.v1.AdminService.QueryAuditLog:input_type -> vca.admin.v1.QueryAuditLogRequest
+	49, // 79: vca.admin.v1.AdminService.OnboardAdmin:input_type -> vca.admin.v1.OnboardAdminRequest
+	51, // 80: vca.admin.v1.AdminService.ListCommands:input_type -> vca.admin.v1.ListCommandsRequest
+	6,  // 81: vca.admin.v1.AdminService.CreateTenant:output_type -> vca.admin.v1.CreateTenantResponse
+	8,  // 82: vca.admin.v1.AdminService.GetTenant:output_type -> vca.admin.v1.GetTenantResponse
+	10, // 83: vca.admin.v1.AdminService.ListTenants:output_type -> vca.admin.v1.ListTenantsResponse
+	12, // 84: vca.admin.v1.AdminService.UpdateTenant:output_type -> vca.admin.v1.UpdateTenantResponse
+	14, // 85: vca.admin.v1.AdminService.DeleteTenant:output_type -> vca.admin.v1.DeleteTenantResponse
+	16, // 86: vca.admin.v1.AdminService.UpsertTrustEntry:output_type -> vca.admin.v1.UpsertTrustEntryResponse
+	18, // 87: vca.admin.v1.AdminService.GetTrustEntry:output_type -> vca.admin.v1.GetTrustEntryResponse
+	20, // 88: vca.admin.v1.AdminService.ListTrustEntries:output_type -> vca.admin.v1.ListTrustEntriesResponse
+	22, // 89: vca.admin.v1.AdminService.DeleteTrustEntry:output_type -> vca.admin.v1.DeleteTrustEntryResponse
+	25, // 90: vca.admin.v1.AdminService.CreateAuthProvider:output_type -> vca.admin.v1.CreateAuthProviderResponse
+	30, // 91: vca.admin.v1.AdminService.GetAuthProvider:output_type -> vca.admin.v1.GetAuthProviderResponse
+	32, // 92: vca.admin.v1.AdminService.ListAuthProviders:output_type -> vca.admin.v1.ListAuthProvidersResponse
+	34, // 93: vca.admin.v1.AdminService.UpdateAuthProvider:output_type -> vca.admin.v1.UpdateAuthProviderResponse
+	36, // 94: vca.admin.v1.AdminService.DeleteAuthProvider:output_type -> vca.admin.v1.DeleteAuthProviderResponse
+	28, // 95: vca.admin.v1.AdminService.OnboardProvider:output_type -> vca.admin.v1.OnboardProviderResponse
+	39, // 96: vca.admin.v1.AdminService.CreateApiKey:output_type -> vca.admin.v1.CreateApiKeyResponse
+	41, // 97: vca.admin.v1.AdminService.ListApiKeys:output_type -> vca.admin.v1.ListApiKeysResponse
+	43, // 98: vca.admin.v1.AdminService.RevokeApiKey:output_type -> vca.admin.v1.RevokeApiKeyResponse
+	45, // 99: vca.admin.v1.AdminService.GetServiceHealth:output_type -> vca.admin.v1.GetServiceHealthResponse
+	48, // 100: vca.admin.v1.AdminService.QueryAuditLog:output_type -> vca.admin.v1.QueryAuditLogResponse
+	50, // 101: vca.admin.v1.AdminService.OnboardAdmin:output_type -> vca.admin.v1.OnboardAdminResponse
+	52, // 102: vca.admin.v1.AdminService.ListCommands:output_type -> vca.admin.v1.ListCommandsResponse
+	81, // [81:103] is the sub-list for method output_type
+	59, // [59:81] is the sub-list for method input_type
+	59, // [59:59] is the sub-list for extension type_name
+	59, // [59:59] is the sub-list for extension extendee
+	0,  // [0:59] is the sub-list for field type_name
 }
 
 func init() { file_vca_admin_v1_admin_proto_init() }
@@ -3612,7 +3718,7 @@ func file_vca_admin_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_admin_v1_admin_proto_rawDesc), len(file_vca_admin_v1_admin_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   51,
+			NumMessages:   52,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
