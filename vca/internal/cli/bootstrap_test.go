@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -179,6 +180,8 @@ type keycloakState struct {
 	badToken    bool
 	// createdRealm is the realm name of the last POST body.
 	createdRealm string
+	// putBody is the body of the last PUT.
+	putBody []byte
 }
 
 func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
@@ -215,6 +218,11 @@ func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
 			}
 		case r.URL.Path == "/admin/realms/"+state.realm && r.Method == http.MethodPut:
 			state.updated++
+			body, readErr := io.ReadAll(r.Body)
+			if readErr != nil {
+				t.Errorf("read the PUT body: %v", readErr)
+			}
+			state.putBody = body
 			w.WriteHeader(http.StatusNoContent)
 		case r.URL.Path == "/admin/realms" && r.Method == http.MethodPost:
 			if r.Header.Get("Authorization") != "Bearer a-token" {
@@ -561,5 +569,203 @@ func TestBootstrapResultStepWithNoWriter(t *testing.T) {
 	r.step(nil, "hello %s", "world")
 	if len(r.Steps) != 1 || r.Steps[0] != "hello world" {
 		t.Errorf("steps = %v", r.Steps)
+	}
+}
+
+// TestRealmRegistrationOff is P2-09: the realm helper sends the realm of
+// the role with registrationAllowed false to the Keycloak of the stack
+// and rewrites the generated realm file, so a later bootstrap keeps the
+// setting (ADR-035 decision 6).
+func TestRealmRegistrationOff(t *testing.T) {
+	state := &keycloakState{realmExists: true}
+	server := fakeKeycloak(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	opts := injiOptions(t, server.URL, &out)
+	delete(opts.Values, "VCA_DPG_URL")
+	opts.Values["VCA_OIDC_PUBLIC_URL"] = server.URL
+	got, err := RealmRegistration(context.Background(), RealmOptions{BootstrapOptions: opts, Allowed: false})
+	if err != nil {
+		t.Fatalf("RealmRegistration: %v", err)
+	}
+	if state.updated != 1 || state.created != 0 {
+		t.Fatalf("updated %d, created %d", state.updated, state.created)
+	}
+	var sent struct {
+		Realm               string `json:"realm"`
+		RegistrationAllowed *bool  `json:"registrationAllowed"`
+	}
+	if parseErr := json.Unmarshal(state.putBody, &sent); parseErr != nil {
+		t.Fatalf("the PUT body is not JSON: %v", parseErr)
+	}
+	if sent.Realm != "vca-issuer-realm" || sent.RegistrationAllowed == nil || *sent.RegistrationAllowed {
+		t.Errorf("PUT body = %s", state.putBody)
+	}
+	if !strings.Contains(strings.Join(got.Steps, " "), "self registration off") {
+		t.Errorf("steps = %v", got.Steps)
+	}
+	// The generated file carries the new value, so vca dpg bootstrap does
+	// not turn registration on again.
+	data, err := os.ReadFile(opts.realmPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"registrationAllowed": false`) {
+		t.Errorf("realm file = %s", data)
+	}
+	// On again.
+	if _, err := RealmRegistration(context.Background(), RealmOptions{BootstrapOptions: opts, Allowed: true}); err != nil {
+		t.Fatalf("RealmRegistration on: %v", err)
+	}
+	if !strings.Contains(string(state.putBody), `"registrationAllowed": true`) {
+		t.Errorf("PUT body = %s", state.putBody)
+	}
+}
+
+// TestRealmRegistrationNeedsTheRealm: a realm the Keycloak does not have
+// is an error, because the helper never creates one. A run without a
+// Keycloak URL names the variable.
+func TestRealmRegistrationNeedsTheRealm(t *testing.T) {
+	state := &keycloakState{}
+	server := fakeKeycloak(t, state)
+	defer server.Close()
+	opts := injiOptions(t, server.URL, nil)
+	opts.Values["VCA_OIDC_PUBLIC_URL"] = server.URL
+	_, err := RealmRegistration(context.Background(), RealmOptions{BootstrapOptions: opts})
+	if err == nil || !strings.Contains(err.Error(), "vca dpg bootstrap") {
+		t.Errorf("a missing realm passed: %v", err)
+	}
+	delete(opts.Values, "VCA_OIDC_PUBLIC_URL")
+	delete(opts.Values, "VCA_DPG_URL")
+	_, err = RealmRegistration(context.Background(), RealmOptions{BootstrapOptions: opts})
+	if err == nil || !strings.Contains(err.Error(), "VCA_OIDC_PUBLIC_URL") {
+		t.Errorf("a run with no URL passed: %v", err)
+	}
+	opts.Values["VCA_OIDC_PUBLIC_URL"] = server.URL
+	opts.Dir = t.TempDir()
+	if _, err := RealmRegistration(context.Background(), RealmOptions{BootstrapOptions: opts}); err == nil {
+		t.Error("a run with no realm file passed")
+	}
+}
+
+// TestRealmRegistrationRecordsTheProvider: with an admin client the
+// helper sets the register action of every Keycloak provider of the realm
+// to none, so the first run checklist marks the step done
+// (ADR-035 decision 6).
+func TestRealmRegistrationRecordsTheProvider(t *testing.T) {
+	state := &keycloakState{realmExists: true}
+	server := fakeKeycloak(t, state)
+	defer server.Close()
+	var updated []string
+	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/vca.admin.v1.AdminService/ListAuthProviders":
+			_, errAssign := io.WriteString(w, `{"providers":[
+				{"id":"kc-issuer","kind":"PROVIDER_KIND_KEYCLOAK","discoveryUrl":"`+server.URL+`/realms/vca-issuer-realm/.well-known/openid-configuration","roles":["ROLE_ISSUER"],"enabled":true},
+				{"id":"kc-admin","kind":"PROVIDER_KIND_KEYCLOAK","discoveryUrl":"`+server.URL+`/realms/vca-admin-realm/.well-known/openid-configuration","roles":["ROLE_ADMIN"],"enabled":true},
+				{"id":"wso2","kind":"PROVIDER_KIND_GENERIC","discoveryUrl":"https://idp.example/.well-known/openid-configuration","realm":"vca-issuer-realm","roles":["ROLE_ISSUER"],"enabled":true}
+			]}`)
+			if errAssign != nil {
+				t.Fatalf("io.WriteString: %v", errAssign)
+			}
+		case "/vca.admin.v1.AdminService/UpdateAuthProvider":
+			body, readErr := io.ReadAll(r.Body)
+			if readErr != nil {
+				t.Errorf("read the body: %v", readErr)
+			}
+			updated = append(updated, string(body))
+			_, errAssign := io.WriteString(w, `{}`)
+			if errAssign != nil {
+				t.Fatalf("io.WriteString: %v", errAssign)
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer admin.Close()
+	var out bytes.Buffer
+	opts := injiOptions(t, server.URL, &out)
+	opts.Values["VCA_OIDC_PUBLIC_URL"] = server.URL
+	got, err := RealmRegistration(context.Background(), RealmOptions{
+		BootstrapOptions: opts, Allowed: false, Admin: &AdminClient{BaseURL: admin.URL, Token: "t"},
+	})
+	if err != nil {
+		t.Fatalf("RealmRegistration: %v", err)
+	}
+	if len(updated) != 1 || !strings.Contains(updated[0], `"kc-issuer"`) || !strings.Contains(updated[0], "REGISTRATION_NONE") {
+		t.Errorf("updated = %v", updated)
+	}
+	if !strings.Contains(strings.Join(got.Steps, " "), "kc-issuer") {
+		t.Errorf("steps = %v", got.Steps)
+	}
+	// On again clears the record, so the metadata decides.
+	updated = nil
+	if _, err := RealmRegistration(context.Background(), RealmOptions{
+		BootstrapOptions: opts, Allowed: true, Admin: &AdminClient{BaseURL: admin.URL, Token: "t"},
+	}); err != nil {
+		t.Fatalf("RealmRegistration on: %v", err)
+	}
+	if len(updated) != 1 || !strings.Contains(updated[0], "REGISTRATION_UNSPECIFIED") {
+		t.Errorf("updated = %v", updated)
+	}
+	// A failing admin service is an error after the realm change.
+	admin.Close()
+	if _, err := RealmRegistration(context.Background(), RealmOptions{
+		BootstrapOptions: opts, Allowed: false, Admin: &AdminClient{BaseURL: admin.URL, Token: "t"},
+	}); err == nil {
+		t.Error("an unreachable admin service passed")
+	}
+}
+
+// TestRealmRegistrationReportsProblems covers the failure paths: a realm
+// file that is not JSON, a Keycloak that refuses the update, a token
+// answer with no token, and a bad on or off word.
+func TestRealmRegistrationReportsProblems(t *testing.T) {
+	state := &keycloakState{realmExists: true}
+	server := fakeKeycloak(t, state)
+	defer server.Close()
+	opts := injiOptions(t, server.URL, nil)
+	opts.Values["VCA_OIDC_PUBLIC_URL"] = server.URL
+	if err := os.WriteFile(opts.realmPath(), []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RealmRegistration(context.Background(), RealmOptions{BootstrapOptions: opts}); err == nil {
+		t.Error("a realm file that is not JSON passed")
+	}
+	if _, err := realmWithRegistration(filepath.Join(t.TempDir(), "none.json"), true); err == nil {
+		t.Error("a missing realm file passed")
+	}
+	state.badToken = true
+	opts = injiOptions(t, server.URL, nil)
+	opts.Values["VCA_OIDC_PUBLIC_URL"] = server.URL
+	if _, err := RealmRegistration(context.Background(), RealmOptions{BootstrapOptions: opts}); err == nil {
+		t.Error("an answer with no token passed")
+	}
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/token"):
+			anyval.DiscardWrite(io.WriteString(w, `{"access_token":"a-token"}`))
+		case r.Method == http.MethodGet:
+			anyval.DiscardWrite(io.WriteString(w, `{}`))
+		default:
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer refusing.Close()
+	opts = injiOptions(t, refusing.URL, nil)
+	opts.Values["VCA_OIDC_PUBLIC_URL"] = refusing.URL
+	if _, err := RealmRegistration(context.Background(), RealmOptions{BootstrapOptions: opts}); err == nil || !strings.Contains(err.Error(), "update the realm") {
+		t.Errorf("a refused update passed: %v", err)
+	}
+	for _, word := range []string{"maybe", ""} {
+		if _, err := ParseOnOff(word); err == nil {
+			t.Errorf("%q passed", word)
+		}
+	}
+	if on, err := ParseOnOff(" ON "); err != nil || !on {
+		t.Errorf("ON = %v, %v", on, err)
+	}
+	if _, ok := realmOfDiscovery(&url.URL{Path: "/no/realm/here"}); ok {
+		t.Error("a path with no realm passed")
 	}
 }

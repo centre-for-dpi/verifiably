@@ -264,7 +264,7 @@ var en = map[string]string{
 	"admin.checklist.register.text":             "Register the first admin.",
 	"admin.checklist.register.detail":           "Bound through {1}.",
 	"admin.checklist.self_reg.text":             "Turn off self registration for admins.",
-	"admin.checklist.self_reg.detail":           "Realm settings, Login, User registration. Then set the admin provider registration to none.",
+	"admin.checklist.self_reg.detail":           "Run vca dpg realm with the role admin and the registration off. Or set the admin provider register action to none.",
 	"admin.checklist.password.text":             "Change the identity provider admin password.",
 	"admin.checklist.password.detail":           "The deploy uses a default that must not stay.",
 	"admin.checklist.trust.text":                "Add at least one issuer to the trust list.",

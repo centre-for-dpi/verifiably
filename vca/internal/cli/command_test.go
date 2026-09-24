@@ -662,6 +662,108 @@ func TestDpgBootstrapRejectsBadNames(t *testing.T) {
 	}
 }
 
+// TestDpgRealmCommandHelp is P2-09: vca dpg realm exists with the three
+// flags, and a run without --registration names the values.
+func TestDpgRealmCommandHelp(t *testing.T) {
+	status, out, _ := run(t, Environment{Root: t.TempDir()}, "dpg", "realm", "--help")
+	if status != 0 {
+		t.Fatalf("status = %d", status)
+	}
+	for _, want := range []string{"--role", "--dpg", "--registration", "on|off", "first run checklist"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the help text has no %q:\n%s", want, out)
+		}
+	}
+	status, _, errOut := run(t, Environment{Root: t.TempDir()}, "dpg", "realm", "--role", "issuer", "--dpg", "inji")
+	if status == 0 || !strings.Contains(errOut, "--registration") {
+		t.Errorf("status %d, error %q", status, errOut)
+	}
+	status, _, errOut = run(t, Environment{Root: t.TempDir()}, "dpg", "realm", "--role", "issuer", "--dpg", "inji", "--registration", "maybe")
+	if status == 0 || !strings.Contains(errOut, "on or off") {
+		t.Errorf("status %d, error %q", status, errOut)
+	}
+	status, _, errOut = run(t, Environment{Root: t.TempDir()}, "dpg", "realm", "--role", "issuer", "--registration", "off")
+	if status == 0 || !strings.Contains(errOut, "--dpg") {
+		t.Errorf("status %d, error %q", status, errOut)
+	}
+}
+
+// TestDpgRealmCommandTurnsRegistrationOff drives the command through the
+// deploy directory: the Keycloak .env of the stack gives the password,
+// the pair .env gives the Keycloak URL, and the admin service records
+// the change when VCA_ADMIN_URL and a saved token exist.
+func TestDpgRealmCommandTurnsRegistrationOff(t *testing.T) {
+	root := t.TempDir()
+	state := &keycloakState{realm: RealmName(commonv1.Role_ROLE_ISSUER), password: "generated-by-setup", realmExists: true}
+	server := fakeKeycloak(t, state)
+	defer server.Close()
+	pair := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
+	dir := filepath.Join(root, "deploy", pair.Name())
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	body := "VCA_PUBLIC_URL=https://issuer.example\nVCA_OIDC_PUBLIC_URL=" + server.URL + "\n"
+	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stack := filepath.Join(root, "deploy", KeycloakDir(pair.Dpg))
+	if err := os.MkdirAll(stack, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	realm, err := KeycloakRealm(pair, map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stack, RealmName(pair.Role)+".json"), realm, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := KeycloakAdminEnv + "=admin\n" + KeycloakAdminPasswordEnv + "=generated-by-setup\n"
+	if err := os.WriteFile(filepath.Join(stack, EnvFileName), []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Without an admin URL the run changes the realm and says how to
+	// record the step.
+	status, out, errOut := run(t, Environment{Root: root}, "dpg", "realm", "--role", "issuer", "--dpg", "inji", "--registration", "off")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if state.updated != 1 || !strings.Contains(out, "self registration off") || !strings.Contains(out, "VCA_ADMIN_URL") {
+		t.Errorf("updated %d, out = %s", state.updated, out)
+	}
+	// With an admin URL and a saved token the run records the step.
+	var calls int
+	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("Authorization") != "Bearer saved-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, errAssign := io.WriteString(w, `{"providers":[]}`)
+		if errAssign != nil {
+			t.Fatalf("io.WriteString: %v", errAssign)
+		}
+	}))
+	defer admin.Close()
+	stateDir := t.TempDir()
+	if _, err := SaveToken(stateDir, "saved-token"); err != nil {
+		t.Fatal(err)
+	}
+	getenv := func(k string) string {
+		if k == "VCA_ADMIN_URL" {
+			return admin.URL
+		}
+		return ""
+	}
+	status, out, errOut = run(t, Environment{Root: root, StateDir: stateDir, Getenv: getenv},
+		"dpg", "realm", "--role", "issuer", "--dpg", "inji", "--registration", "off")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if calls != 1 || strings.Contains(out, "VCA_ADMIN_URL") {
+		t.Errorf("calls %d, out = %s", calls, out)
+	}
+}
+
 func TestAdminCommandCallsTheService(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

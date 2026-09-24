@@ -791,7 +791,8 @@ func newDownCommand(env *Environment) *cobra.Command {
 	return cmd
 }
 
-// newDpgCommand builds vca dpg bootstrap (ADR-008 decision 4).
+// newDpgCommand builds vca dpg bootstrap (ADR-008 decision 4) and vca
+// dpg realm (ADR-035 decision 6).
 func newDpgCommand(env *Environment) *cobra.Command {
 	dpg := &cobra.Command{
 		Use:   "dpg",
@@ -832,26 +833,9 @@ func newDpgCommand(env *Environment) *cobra.Command {
 			}
 			pair := Pair{Role: r, Dpg: d}
 			dir := OutputDir(filepath.Join(env.Root, "deploy"), pair)
-			values, err := ReadExisting(filepath.Join(env.Root, "deploy"), pair)
+			values, err := bootstrapValues(env, filepath.Join(env.Root, "deploy"), pair)
 			if err != nil {
 				return err
-			}
-			// The generated administrator of the Keycloak of the stack
-			// is the default; the environment beats it (ADR-035
-			// decision 7).
-			keycloak, err := ReadKeycloakEnv(filepath.Join(env.Root, "deploy"), pair.Dpg)
-			if err != nil {
-				return err
-			}
-			for name, from := range map[string]string{EnvBootstrapUser: KeycloakAdminEnv, EnvBootstrapSecret: KeycloakAdminPasswordEnv} {
-				if v := keycloak[from]; v != "" && values[name] == "" {
-					values[name] = v
-				}
-			}
-			for _, name := range []string{EnvBootstrapURL, EnvBootstrapUser, EnvBootstrapSecret, EnvBootstrapOrg} {
-				if v := env.Getenv(name); v != "" {
-					values[name] = v
-				}
 			}
 			_, err = Bootstrap(cmd.Context(), BootstrapOptions{
 				Pair: pair, Dir: dir, Values: values,
@@ -866,7 +850,111 @@ func newDpgCommand(env *Environment) *cobra.Command {
 	bootstrap.Flags().BoolVar(&nonInteractive, "non-interactive", false,
 		"Ask nothing. The run uses the named DPG and the default role.")
 	dpg.AddCommand(bootstrap)
+	dpg.AddCommand(newDpgRealmCommand(env))
 	return dpg
+}
+
+// newDpgRealmCommand builds vca dpg realm (ADR-035 decision 6).
+func newDpgRealmCommand(env *Environment) *cobra.Command {
+	var roleName, dpgName, registration string
+	cmd := &cobra.Command{
+		Use:   "realm --role <role> --dpg <dpg> --registration on|off",
+		Short: "Turn self registration of the realm of one role on or off.",
+		Long: "realm changes the self registration setting of the realm of one " +
+			"role at the Keycloak of one stack, through the Keycloak admin API. " +
+			"It writes the same value into the generated realm file, so a later " +
+			"vca dpg bootstrap keeps it.\n\n" +
+			"The first run checklist of the admin portal marks \"Turn off self " +
+			"registration\" done when the run can reach the admin service: set " +
+			"VCA_ADMIN_URL and log in with vca admin login first. The run then " +
+			"sets the register action of every provider record of that realm.\n\n" +
+			"<role> is one of " + strings.Join(RoleNames(), ", ") +
+			". <dpg> is one of " + strings.Join(DpgNames(), ", ") + ".",
+		Example: "  vca dpg realm --role admin --dpg <dpg> --registration off",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if registration == "" {
+				return errors.New("set --registration to on or off")
+			}
+			allowed, err := ParseOnOff(registration)
+			if err != nil {
+				return err
+			}
+			if dpgName == "" {
+				return errors.New("set --dpg to one of " + strings.Join(DpgNames(), ", "))
+			}
+			d, err := ParseDpg(dpgName)
+			if err != nil {
+				return err
+			}
+			r, err := ParseRole(roleName)
+			if err != nil {
+				return err
+			}
+			pair := Pair{Role: r, Dpg: d}
+			deploy := filepath.Join(env.Root, "deploy")
+			values, err := bootstrapValues(env, deploy, pair)
+			if err != nil {
+				return err
+			}
+			opts := RealmOptions{
+				BootstrapOptions: BootstrapOptions{
+					Pair: pair, Dir: OutputDir(deploy, pair), Values: values,
+					Client: env.HTTP, Out: cmd.OutOrStdout(),
+				},
+				Allowed: allowed,
+			}
+			if base := env.Getenv("VCA_ADMIN_URL"); base != "" {
+				token, err := LoadToken(env.StateDir)
+				if err != nil {
+					return err
+				}
+				if token != "" {
+					opts.Admin = &AdminClient{BaseURL: base, Token: token, HTTP: env.HTTP}
+				}
+			}
+			if _, err := RealmRegistration(cmd.Context(), opts); err != nil {
+				return err
+			}
+			if opts.Admin == nil {
+				anyval.DiscardWrite(fmt.Fprintln(cmd.OutOrStdout(),
+					"To mark the first run checklist step done, set VCA_ADMIN_URL, run vca admin login, and run this command again."))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&roleName, "role", "admin",
+		"The role whose realm changes: "+strings.Join(RoleNames(), ", ")+".")
+	cmd.Flags().StringVar(&dpgName, "dpg", "",
+		"The stack whose Keycloak holds the realm: "+strings.Join(DpgNames(), ", ")+".")
+	cmd.Flags().StringVar(&registration, "registration", "",
+		"on lets anyone register in the realm. off closes it.")
+	return cmd
+}
+
+// bootstrapValues reads the .env of a pair and adds the administrator of
+// the Keycloak of the stack. The generated administrator is the default;
+// the environment beats it (ADR-035 decision 7).
+func bootstrapValues(env *Environment, deploy string, pair Pair) (map[string]string, error) {
+	values, err := ReadExisting(deploy, pair)
+	if err != nil {
+		return nil, err
+	}
+	keycloak, err := ReadKeycloakEnv(deploy, pair.Dpg)
+	if err != nil {
+		return nil, err
+	}
+	for name, from := range map[string]string{EnvBootstrapUser: KeycloakAdminEnv, EnvBootstrapSecret: KeycloakAdminPasswordEnv} {
+		if v := keycloak[from]; v != "" && values[name] == "" {
+			values[name] = v
+		}
+	}
+	for _, name := range []string{EnvBootstrapURL, EnvBootstrapUser, EnvBootstrapSecret, EnvBootstrapOrg} {
+		if v := env.Getenv(name); v != "" {
+			values[name] = v
+		}
+	}
+	return values, nil
 }
 
 // bootstrapName reads the DPG name of vca dpg bootstrap. A terminal run

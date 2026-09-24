@@ -13,6 +13,7 @@ The source is `vca/cmd/vca` and `vca/internal/cli`.
 - `vca images build` builds the service images from this source.
 - `vca status` shows the containers. `vca down` stops them.
 - `vca dpg bootstrap` configures a DPG after it boots.
+- `vca dpg realm` turns self registration of a realm on or off.
 - `vca admin` calls the admin service.
 - `vca migrate` carries the data of a legacy deployment into the services.
 - `vca theme` checks and applies the theme file of every page.
@@ -367,7 +368,7 @@ A terminal run with no DPG name and no `--role` asks for both.
 | DPG | What the command does |
 |---|---|
 | `waltid` | Provisions a `did:web` issuer and its key. Saves `waltid-issuer.json`. |
-| `inji` | Creates or updates the `vca` realm in Keycloak. |
+| `inji` | Creates or updates the realm of the role in Keycloak. |
 | `credebl` | Signs in and creates the organisation of the deployment. |
 
 Each run checks first, so a second run changes nothing.
@@ -383,6 +384,36 @@ Four more variables steer the run:
 
 No service reads these four variables, so they are not in the `Config`
 message.
+
+## dpg realm
+
+```sh
+vca dpg realm --role <role> --dpg <dpg> --registration on|off
+```
+
+Every realm starts with self registration on (ADR-035 decision 1).
+The first admin registers, binds with the bootstrap token, and then
+closes the admin realm (ADR-035 decision 6):
+
+```sh
+vca dpg realm --role admin --dpg <dpg> --registration off
+```
+
+The command calls the Keycloak admin API of the stack at
+`VCA_OIDC_PUBLIC_URL` of the pair, or at `VCA_BOOTSTRAP_URL`.
+It reads the administrator password from `deploy/keycloak-<dpg>/.env`,
+or from `VCA_BOOTSTRAP_ADMIN_PASSWORD`.
+It writes the same value into `deploy/keycloak-<dpg>/vca-<role>-realm.json`,
+so a later `vca dpg bootstrap` keeps it.
+It never creates a realm. A missing realm names the bootstrap command.
+
+The first run checklist of the admin portal has the step "Turn off self
+registration". The step counts as done when no admin provider offers a register
+action. Set `VCA_ADMIN_URL` and log in with `vca admin login` before the
+run. The run then sets the register action of every Keycloak provider
+record of that realm to none. The checklist step turns green.
+Without the admin service the run changes the realm and prints how to
+record the step.
 
 ## admin
 
