@@ -559,6 +559,42 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
   Running or not Ready** — including previous-container logs — rather than 300
   lines of whatever sorted first.
 
+  **G.2.8 — the first real diagnosis, and it overturns the standing
+  hypothesis.** With diagnostics working, the 2026-09-24 run finally said why
+  the umbrella does not converge. **It is not the resource ceiling.** There is
+  not one `Insufficient cpu` or `Insufficient memory` event in the log. Five
+  distinct causes, all of them concrete:
+
+  | Stuck pod | Cause |
+  |---|---|
+  | `waltid-postgresql-0` | `docker.io/bitnami/postgresql:16.4.0-debian-12-r9` no longer pullable |
+  | kyverno cleanup ×4 | `docker.io/bitnami/kubectl:1.28.5`: **not found** |
+  | `waltid-verifiably-go` | `verifiably-go:local` never built or `kind load`ed — `ErrImageNeverPull` |
+  | `waltid-keycloak-0` | `Init:0/1`, then `configmap "keycloak-realm-import" not found` |
+  | prometheus, alertmanager, vault-1 | `no persistent volumes available for this claim and no storage class is set` |
+
+  Notes on three of them:
+
+  - **Bitnami.** Two separate images fail to resolve from Docker Hub. Old
+    Bitnami tags are no longer served, so this is not a flake and will not fix
+    itself. Postgres is the load-bearing one: keycloak waits on it. Worth
+    noting the stack *already* pulls `ghcr.io/cloudnative-pg/postgresql:17.0`
+    successfully elsewhere, so a replacement is close at hand.
+  - **The app image.** `umbrella/waltid/values.yaml` documents the fix in a
+    comment — *"load the image with `kind load docker-image verifiably-go:local
+    --name verifiably-dev` then leave pullPolicy=Never"* — and no workflow step
+    does it. The instruction is written down; nothing executes it.
+  - **The realm ConfigMap is never rendered.** `realm-configmap.yaml` is
+    guarded by `{{- if .Values.realm.json }}`, `realm.json` defaults to `""`,
+    and nothing sets it — while the chart's `extraVolumes` mounts that
+    ConfigMap unconditionally. Keycloak therefore cannot start under any
+    configuration currently in the tree. This makes **G.3.6 a hard blocker**,
+    not the tidy-up it is filed as.
+
+  So the platform-trimming lever in G.5.3 should be re-argued on bring-up time
+  alone; convergence is blocked by dead image tags, an unbuilt image, a
+  ConfigMap that is never created, and a missing storage class.
+
   **This unblocks the render, not the convergence.** The nightly will now get
   as far as the thing G.2 was always about — whether the umbrella becomes
   ready — which has still never been observed. Expect the next failure to be a
@@ -772,6 +808,7 @@ Phase 4 — long lead
 ## 13. Changelog
 
 - **2026-09-10** — Initial scope. Baseline measured at `b571e62`. Workstream A implemented; B–G proposed.
+- **2026-09-24 (rev 10)** — First working diagnosis of the K8s convergence failure (G.2.8), after fixing three things that were hiding it (G.2.5-G.2.7). The resource-ceiling hypothesis is not supported; the causes are two dead Bitnami image tags, an app image CI never builds or loads, a realm ConfigMap that is never rendered, and no storage class for three PVCs.
 - **2026-09-24 (rev 9)** — Fixed the nightly K8s job (G.2.5). It had failed every night since 2026-09-11 at `helm template`, not at convergence: #18 removed the wallet signing key's chart default and nothing generated one for the K8s path. The render tier hid it by fabricating its own key inline, so a green PR check sat on top of a red nightly for thirteen runs; both paths now share one generator.
 - **2026-09-23 (rev 8)** — Security rating C → B. `internal/outbound` replaces the ad-hoc guard at all five SSRF sites (D.5): a per-purpose allowlist seeded from existing config, plus a dial-time address check and a per-hop redirect check, which close a DNS-rebinding window and an unchecked-redirect path that the original per-site review had not spotted. The dev-open switch is configurable and refuses to start on a non-local public host.
 - **2026-09-12 (rev 7)** — Security rating E → D (all BLOCKERs cleared). Fixed the mechanical CRITICAL/MAJOR findings and reviewed the five SSRF ones individually (D.5): a private-IP denylist is the wrong control for a stack whose legitimate services are all on private addresses, so B is gated on an allowlist design rather than a patch.
