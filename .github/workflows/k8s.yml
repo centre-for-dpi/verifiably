@@ -100,10 +100,16 @@ jobs:
           # packaged form -- and then deployed that way too. update repackages
           # from source, so what this job checks is what the tree contains.
           helm dep update deploy/k8s/helm/umbrella/waltid
-          TOKEN_JWK=$(openssl genrsa 2048 2>/dev/null | python3 scripts/pem-to-jwk.py)
+          # The same script k8s-deploy.sh uses, deliberately. This step used to
+          # generate its own throwaway key inline, which meant it proved the
+          # chart renders IF someone supplies a key while the thing that
+          # actually deploys supplied none -- a four-second template failure
+          # that went unnoticed for thirteen nightly runs behind a green check.
+          # One code path, so a gap here fails here.
+          VALUES=$(./deploy/k8s/scripts/gen-wallet-values.sh "$RUNNER_TEMP/wallet-values.yaml")
           helm template waltid deploy/k8s/helm/umbrella/waltid \
             --set global.domain="$DOMAIN" \
-            --set-string walt-wallet.wallet.tokenKey="$TOKEN_JWK" \
+            -f "$VALUES" \
             > /tmp/rendered.yaml
           echo "rendered $(grep -c '^kind:' /tmp/rendered.yaml) resources"
 

@@ -484,6 +484,31 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
 - **G.2.1** — Run the full `up waltid --target=local` on a machine with headroom (≥ 32 GiB), or on a real EKS cluster via the existing `bootstrap/aws-eks` module.
 - **G.2.2** — Clear the known-failed state first: `helm uninstall waltid` / `terraform state rm helm_release.waltid` (`resume.md` § "Known TODOs still pending").
 - **G.2.3** — Fix the `auth-providers.json` shape crashloop that took down the `verifiably-go` pod.
+
+- **G.2.5 — The nightly was not failing to converge; it was failing to render. Fixed 2026-09-24.**
+  Every scheduled run since 2026-09-11 died in about four seconds, before a
+  pod was scheduled:
+
+  ```
+  Error: execution error at (waltid/charts/walt-wallet/templates/deployment.yaml:20:28):
+  wallet.tokenKey is required
+  ```
+
+  #18 removed the committed wallet signing key and correctly left the chart
+  value with no default. The compose path got `scripts/gen-demo-pki.sh`; the
+  K8s path got nothing, so `k8s-deploy.sh` never supplied one.
+
+  It survived thirteen nights because **the render tier generated a throwaway
+  key inline** and passed it with `--set-string`. That proved the chart renders
+  *if* someone supplies a key, while the thing that actually deploys supplied
+  none. A green check on every PR sat directly on top of a red one every night.
+  Both now call `deploy/k8s/scripts/gen-wallet-values.sh`, so a gap in the
+  deploy path fails in the render tier too.
+
+  **This unblocks the render, not the convergence.** The nightly will now get
+  as far as the thing G.2 was always about — whether the umbrella becomes
+  ready — which has still never been observed. Expect the next failure to be a
+  different one, and treat the first green run as the milestone.
 - **G.2.4** — Wire `k8s-e2e.yml` into the gate. It is now at the repo root and will run for the first time; expect it to fail initially and treat the first green run as the actual milestone.
 
 ### G.3 Calibration (P2)
@@ -693,6 +718,7 @@ Phase 4 — long lead
 ## 13. Changelog
 
 - **2026-09-10** — Initial scope. Baseline measured at `b571e62`. Workstream A implemented; B–G proposed.
+- **2026-09-24 (rev 9)** — Fixed the nightly K8s job (G.2.5). It had failed every night since 2026-09-11 at `helm template`, not at convergence: #18 removed the wallet signing key's chart default and nothing generated one for the K8s path. The render tier hid it by fabricating its own key inline, so a green PR check sat on top of a red nightly for thirteen runs; both paths now share one generator.
 - **2026-09-23 (rev 8)** — Security rating C → B. `internal/outbound` replaces the ad-hoc guard at all five SSRF sites (D.5): a per-purpose allowlist seeded from existing config, plus a dial-time address check and a per-hop redirect check, which close a DNS-rebinding window and an unchecked-redirect path that the original per-site review had not spotted. The dev-open switch is configurable and refuses to start on a non-local public host.
 - **2026-09-12 (rev 7)** — Security rating E → D (all BLOCKERs cleared). Fixed the mechanical CRITICAL/MAJOR findings and reviewed the five SSRF ones individually (D.5): a private-IP denylist is the wrong control for a stack whose legitimate services are all on private addresses, so B is gated on an allowlist design rather than a patch.
 - **2026-09-11 (rev 6)** — Assessed the E security badge finding by finding (G.4.6). Fixed the oob-redirect path-traversal/open-redirect/header-injection issue and bound Postgres and Redis to loopback. Recorded that the badge cannot leave E until the committed wallet signing key is removed, and that marking the remainder Won't Fix would be worse than the E.
