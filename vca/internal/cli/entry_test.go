@@ -36,7 +36,8 @@ func TestEntryPointsAndReport(t *testing.T) {
 			continue // no .env: left out
 		}
 		writePairEnv(t, root, p,
-			"VCA_PUBLIC_URL=https://"+p.Name()+".labs.example/\nVCA_OIDC_PUBLIC_URL=https://waltid-keycloak.labs.example\n", "")
+			"VCA_PUBLIC_URL=https://"+p.Name()+".labs.example/\nVCA_OIDC_PUBLIC_URL=https://waltid-keycloak.labs.example\n"+
+				"VCA_OIDC_DISCOVERY_URL="+DefaultDiscoveryURL(p)+"\n", "")
 	}
 	points, err := EntryPoints(root, pairs)
 	if err != nil {
@@ -63,14 +64,27 @@ func TestEntryPointsAndReport(t *testing.T) {
 		"  verifier-waltid\n    Verification results   verifier-results    https://verifier-waltid.labs.example/portal/\n",
 		"    Citizen check          verifier-results    https://verifier-waltid.labs.example/verify/\n",
 		"Login\n  https://waltid-keycloak.labs.example\n",
+		"    console https://waltid-keycloak.labs.example/admin/, administrator in deploy/keycloak-waltid/.env\n",
 		"vca proxy --all | sudo tee /etc/caddy/vca.caddy",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("report has no %q:\n%s", want, report)
 		}
 	}
-	if strings.Count(report, "waltid-keycloak") != 1 {
+	if strings.Count(report, "Login\n") != 1 || strings.Count(report, "console ") != 1 {
 		t.Errorf("the login URL repeats:\n%s", report)
+	}
+	// Another provider gets no console hint, because the CLI knows no
+	// administrator of it.
+	writePairEnv(t, root, issuerPair(),
+		"VCA_PUBLIC_URL=https://issuer-waltid.labs.example/\nVCA_OIDC_PUBLIC_URL=https://idp.example\n"+
+			"VCA_OIDC_DISCOVERY_URL=https://idp.example/.well-known/openid-configuration\n", "")
+	other, err := EntryPoints(root, []Pair{issuerPair()})
+	if err != nil || len(other) != 1 || other[0].Console != "" || other[0].AdminEnv != "" {
+		t.Errorf("another provider = %+v, %v", other, err)
+	}
+	if strings.Contains(EntryReport("", other), "console") {
+		t.Error("another provider got a console hint")
 	}
 	if EntryReport("", nil) != "" {
 		t.Error("no points must give no report")

@@ -13,6 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // run drives the whole CLI and returns the status, the output, and the
@@ -119,8 +122,13 @@ func TestSetupNonInteractiveNeedsNoValueOnALaptop(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
 	}
-	for _, name := range []string{EnvFileName, RealmFile, OnboardFile} {
+	for _, name := range []string{EnvFileName, OnboardFile} {
 		if _, err := os.Stat(filepath.Join(root, "deploy", "issuer-waltid", name)); err != nil {
+			t.Errorf("%s was not written: %v", name, err)
+		}
+	}
+	for _, name := range []string{"keycloak-waltid/vca-issuer-realm.json", "keycloak-waltid/.env"} {
+		if _, err := os.Stat(filepath.Join(root, "deploy", name)); err != nil {
 			t.Errorf("%s was not written: %v", name, err)
 		}
 	}
@@ -183,7 +191,7 @@ func TestSetupUsesTheEnvFile(t *testing.T) {
 	if !strings.Contains(out, "(env file)") {
 		t.Errorf("the summary does not name the env file:\n%s", out)
 	}
-	if _, err := os.Stat(filepath.Join(root, "deploy", "admin-inji", RealmFile)); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "deploy", "keycloak-inji", "vca-admin-realm.json")); err != nil {
 		t.Errorf("the realm file is missing: %v", err)
 	}
 }
@@ -484,6 +492,103 @@ func TestDeployAllWithNoDpgTakesEveryPair(t *testing.T) {
 		if !strings.Contains(out, "# "+p.Name()+"\n") {
 			t.Errorf("the dry run has no command for %s", p.Name())
 		}
+	}
+}
+
+// TestSetupKeepsTheKeycloakPasswordAcrossRoles is ADR-035 decision 7 on
+// the command: the second role of a stack finds the .env of the Keycloak
+// and keeps its password, and both roles write their own realm there.
+func TestSetupKeepsTheKeycloakPasswordAcrossRoles(t *testing.T) {
+	root := t.TempDir()
+	for _, role := range []string{"issuer", "holder"} {
+		status, out, errOut := run(t, Environment{Root: root},
+			"setup", "--role", role, "--dpg", "inji", "--non-interactive")
+		if status != 0 {
+			t.Fatalf("%s: status = %d\n%s\n%s", role, status, out, errOut)
+		}
+	}
+	first, err := ReadKeycloakEnv(filepath.Join(root, "deploy"), configv1.Dpg_DPG_INJI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := first[KeycloakAdminPasswordEnv]
+	if password == "" || password == "admin" {
+		t.Fatalf("password = %q", password)
+	}
+	status, out, errOut := run(t, Environment{Root: root},
+		"setup", "--role", "issuer", "--dpg", "inji", "--non-interactive")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	again, err := ReadKeycloakEnv(filepath.Join(root, "deploy"), configv1.Dpg_DPG_INJI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again[KeycloakAdminPasswordEnv] != password {
+		t.Error("a later run replaced the password of the stack")
+	}
+	for _, name := range []string{"vca-issuer-realm.json", "vca-holder-realm.json", EnvFileName} {
+		if _, err := os.Stat(filepath.Join(root, "deploy", "keycloak-inji", name)); err != nil {
+			t.Errorf("%s is missing: %v", name, err)
+		}
+	}
+	if strings.Contains(out, password) {
+		t.Error("the output shows the password")
+	}
+}
+
+// TestDpgBootstrapReadsTheKeycloakPassword proves the bootstrap run
+// signs in with the generated password of the stack, with no default.
+func TestDpgBootstrapReadsTheKeycloakPassword(t *testing.T) {
+	root := t.TempDir()
+	state := &keycloakState{realm: RealmName(commonv1.Role_ROLE_ISSUER), password: "generated-by-setup"}
+	server := fakeKeycloak(t, state)
+	defer server.Close()
+	pair := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
+	dir := filepath.Join(root, "deploy", pair.Name())
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	body := "VCA_PUBLIC_URL=https://issuer.example\nVCA_DPG_URL=" + server.URL + "\n"
+	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stack := filepath.Join(root, "deploy", KeycloakDir(pair.Dpg))
+	if err := os.MkdirAll(stack, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	realm, err := KeycloakRealm(pair, map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stack, RealmName(pair.Role)+".json"), realm, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// No password yet: the run names the variable and the file.
+	status, _, errOut := run(t, Environment{Root: root}, "dpg", "bootstrap", "inji", "--role", "issuer")
+	if status == 0 || !strings.Contains(errOut, EnvBootstrapSecret) || !strings.Contains(errOut, "keycloak-inji/.env") {
+		t.Fatalf("status = %d, error = %q", status, errOut)
+	}
+	env := KeycloakAdminEnv + "=admin\n" + KeycloakAdminPasswordEnv + "=generated-by-setup\n"
+	if err := os.WriteFile(filepath.Join(stack, EnvFileName), []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	status, out, errOut := run(t, Environment{Root: root}, "dpg", "bootstrap", "inji", "--role", "issuer")
+	if status != 0 {
+		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
+	}
+	if state.created != 1 || state.createdRealm != "vca-issuer-realm" {
+		t.Errorf("created %d realms (%q)", state.created, state.createdRealm)
+	}
+	// The environment beats the file.
+	getenv := func(k string) string {
+		if k == EnvBootstrapSecret {
+			return "wrong"
+		}
+		return ""
+	}
+	if status, _, _ := run(t, Environment{Root: root, Getenv: getenv}, "dpg", "bootstrap", "inji", "--role", "issuer"); status == 0 {
+		t.Error("a wrong password from the environment passed")
 	}
 }
 

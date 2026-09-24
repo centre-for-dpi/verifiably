@@ -80,9 +80,10 @@ func TestBuildPlanNonInteractive(t *testing.T) {
 			t.Errorf("the plan has no %s", want)
 		}
 	}
-	if !names[RealmFile] {
-		t.Error("a walt.id pair got no Keycloak realm")
+	if names["keycloak/vca-realm.json"] {
+		t.Error("the pair holds the old realm file")
 	}
+	sharedFile(t, plan, RealmFileOf(issuerPair()))
 }
 
 func fileNames(p Plan) map[string]bool {
@@ -172,9 +173,7 @@ func TestBuildPlanHolderRedisIsOptional(t *testing.T) {
 	if Values(plan.Resolutions)["VCA_REDIS_URL"] != "redis://redis:6379/0" {
 		t.Error("the plan dropped the Redis URL")
 	}
-	if !fileNames(plan)[RealmFile] {
-		t.Error("an Inji pair got no Keycloak realm")
-	}
+	sharedFile(t, plan, RealmFileOf(pair))
 }
 
 func TestBuildPlanAdminNeedsABootstrapToken(t *testing.T) {
@@ -437,36 +436,6 @@ func TestWritePlanReportsABadSubdirectory(t *testing.T) {
 	}
 }
 
-func TestSetupWritesTheRealmIntoItsOwnDirectory(t *testing.T) {
-	root := t.TempDir()
-	plan, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: baseFlags(), Random: rand.Reader})
-	if err != nil {
-		t.Fatalf("BuildPlan: %v", err)
-	}
-	if _, err = WritePlan(root, plan); err != nil {
-		t.Fatalf("WritePlan: %v", err)
-	}
-	dir := filepath.Join(OutputDir(root, issuerPair()), RealmDir)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("read %s: %v", dir, err)
-	}
-	// Keycloak parses every JSON file of the directory, so the realm is alone.
-	if len(entries) != 1 || entries[0].Name() != "vca-realm.json" {
-		t.Errorf("the realm directory holds %d entries", len(entries))
-	}
-	info, err := os.Stat(filepath.Join(dir, "vca-realm.json"))
-	if err != nil || info.Mode().Perm() != 0o644 {
-		t.Errorf("realm mode = %v, %v", info.Mode(), err)
-	}
-	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o755 {
-		t.Errorf("realm directory mode = %v, %v", info.Mode(), err)
-	}
-	if _, err := os.Stat(filepath.Join(OutputDir(root, issuerPair()), "keycloak-realm.json")); err == nil {
-		t.Error("the old realm file at the pair root was written")
-	}
-}
-
 func TestGeneratedRealmIsValidJSON(t *testing.T) {
 	pair := Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_CREDEBL}
 	body, err := KeycloakRealm(pair, map[string]string{"VCA_PUBLIC_URL": "https://verifier.example"})
@@ -477,7 +446,7 @@ func TestGeneratedRealmIsValidJSON(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if got["realm"] != DefaultRealm {
+	if got["realm"] != RealmName(commonv1.Role_ROLE_VERIFIER) || got["realm"] != "vca-verifier-realm" {
 		t.Errorf("realm = %v", got["realm"])
 	}
 	clients := anyval.As[[]any](got["clients"])
@@ -627,16 +596,26 @@ func TestDpgConfigFilesReportsABadPublicURL(t *testing.T) {
 		t.Fatal("the walt.id pair passed with no public URL")
 	}
 	inji := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
-	if _, err := DpgConfigFiles(inji, map[string]string{}, AssignPorts(inji, nil)); err == nil {
-		t.Fatal("the Inji pair passed with no public URL")
+	if _, err := DpgConfigFiles(inji, map[string]string{}, AssignPorts(inji, nil)); err != nil {
+		t.Fatalf("the Inji pair needs no public URL for its Caddyfile: %v", err)
 	}
 	admin := Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_UNSPECIFIED}
 	files, err := DpgConfigFiles(admin, map[string]string{"VCA_PUBLIC_URL": "https://a.example"}, AssignPorts(admin, nil))
 	if err != nil {
 		t.Fatalf("DpgConfigFiles: %v", err)
 	}
-	if len(files) != 2 || files[0].Name != CaddyFile || files[1].Name != RealmFile {
+	// The realm lives in the stack directory, so the pair holds the
+	// Caddyfile alone (ADR-035 decision 1).
+	if len(files) != 1 || files[0].Name != CaddyFile {
 		t.Errorf("files = %d entries", len(files))
+	}
+	if _, realmErr := KeycloakFiles(inji, map[string]string{}, nil, rand.Reader); realmErr == nil {
+		t.Fatal("the Inji realm passed with no public URL")
+	}
+	// A pair whose DPG ships no Keycloak gets no realm and no password.
+	none, err := KeycloakFiles(admin, map[string]string{"VCA_PUBLIC_URL": "https://a.example"}, nil, rand.Reader)
+	if err != nil || len(none) != 0 {
+		t.Errorf("KeycloakFiles with no Keycloak = %v, %v", none, err)
 	}
 }
 
@@ -868,8 +847,8 @@ func TestSetupWritesTheLandingEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPlan issuer: %v", err)
 	}
-	if len(plan.Shared) != 1 || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
-		t.Fatalf("shared files = %+v", plan.Shared)
+	if len(plan.Shared) != 3 || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
+		t.Fatalf("shared files = %v", sharedNames(plan))
 	}
 	if !strings.Contains(plan.Summary(), filepath.Join(LandingDir, EnvFileName)) {
 		t.Errorf("the summary does not list the landing file:\n%s", plan.Summary())
@@ -931,5 +910,255 @@ func TestSetupWritesTheLandingEnv(t *testing.T) {
 	}
 	if _, err := WritePlan(filepath.Join(root, "blocked"), plan); err == nil {
 		t.Error("a root that is a file passed")
+	}
+}
+
+// sharedFile returns one shared file of a plan by name.
+func sharedFile(t *testing.T, plan Plan, name string) File {
+	t.Helper()
+	for _, f := range plan.Shared {
+		if f.Name == name {
+			return f
+		}
+	}
+	t.Fatalf("the plan has no shared file %s; it has %v", name, sharedNames(plan))
+	return File{}
+}
+
+func sharedNames(plan Plan) []string {
+	out := make([]string, 0, len(plan.Shared))
+	for _, f := range plan.Shared {
+		out = append(out, f.Name)
+	}
+	return out
+}
+
+// TestEveryRoleGetsItsOwnRealm is ADR-035 decision 1: the four pairs of
+// one stack give four realms, each with self registration on and one
+// client with the exact redirect URI and PKCE S256.
+func TestEveryRoleGetsItsOwnRealm(t *testing.T) {
+	defaultRoles := map[commonv1.Role]string{
+		commonv1.Role_ROLE_ISSUER:   "issuer-operator",
+		commonv1.Role_ROLE_VERIFIER: "verifier-operator",
+		commonv1.Role_ROLE_HOLDER:   "holder",
+		commonv1.Role_ROLE_ADMIN:    "",
+	}
+	seen := map[string]bool{}
+	for _, p := range PairsForDpg(configv1.Dpg_DPG_WALTID) {
+		public := "https://" + p.Name() + ".example"
+		plan, err := BuildPlan(SetupRequest{Pair: p, Random: rand.Reader,
+			Flags: map[string]string{"VCA_PUBLIC_URL": public, "VCA_REDIS_URL": "redis://redis:6379"}})
+		if err != nil {
+			t.Fatalf("%s: BuildPlan: %v", p.Name(), err)
+		}
+		f := sharedFile(t, plan, RealmFileOf(p))
+		if f.Mode != 0o644 {
+			t.Errorf("%s: realm mode = %04o", p.Name(), f.Mode)
+		}
+		seen[f.Name] = true
+		var got map[string]any
+		if err := json.Unmarshal(f.Data, &got); err != nil {
+			t.Fatalf("%s: the realm is not JSON: %v", p.Name(), err)
+		}
+		if got["realm"] != RealmName(p.Role) || got["realm"] != "vca-"+ShortName(p.Role.String())+"-realm" {
+			t.Errorf("%s: realm = %v", p.Name(), got["realm"])
+		}
+		if got["registrationAllowed"] != true || got["resetPasswordAllowed"] != true {
+			t.Errorf("%s: self registration is off: %v", p.Name(), got)
+		}
+		clients := anyval.As[[]any](got["clients"])
+		if len(clients) != 1 {
+			t.Fatalf("%s: got %d clients", p.Name(), len(clients))
+		}
+		client := anyval.As[map[string]any](clients[0])
+		if client["clientId"] != DefaultClientID(p.Role) {
+			t.Errorf("%s: client id = %v", p.Name(), client["clientId"])
+		}
+		uris := anyval.As[[]any](client["redirectUris"])
+		if len(uris) != 1 || uris[0] != public+"/auth/callback" {
+			t.Errorf("%s: redirect URIs = %v", p.Name(), uris)
+		}
+		attrs := anyval.As[map[string]any](client["attributes"])
+		if attrs["pkce.code.challenge.method"] != "S256" {
+			t.Errorf("%s: PKCE method = %v", p.Name(), attrs["pkce.code.challenge.method"])
+		}
+		if client["implicitFlowEnabled"] != false || client["standardFlowEnabled"] != true {
+			t.Errorf("%s: flows = %v", p.Name(), client)
+		}
+		// The default role of a self registered user follows G.2.
+		roles := anyval.As[map[string]any](got["roles"])
+		var composites []any
+		for _, item := range anyval.As[[]any](roles["realm"]) {
+			role := anyval.As[map[string]any](item)
+			if role["name"] == "default-roles-"+RealmName(p.Role) {
+				composites = anyval.As[[]any](anyval.As[map[string]any](role["composites"])["realm"])
+			}
+		}
+		defaultRole := anyval.As[map[string]any](got["defaultRole"])
+		if defaultRole["name"] != "default-roles-"+RealmName(p.Role) {
+			t.Errorf("%s: defaultRole = %v", p.Name(), got["defaultRole"])
+		}
+		want := defaultRoles[p.Role]
+		switch {
+		case want == "" && len(composites) != 0:
+			t.Errorf("%s: a self registered user gets %v", p.Name(), composites)
+		case want != "" && (len(composites) != 1 || composites[0] != want):
+			t.Errorf("%s: default role composites = %v, want %s", p.Name(), composites, want)
+		}
+	}
+	if len(seen) != 4 {
+		t.Errorf("the four pairs wrote %d realm files: %v", len(seen), seen)
+	}
+}
+
+// TestRealmFilesLiveInTheStackDirectory keeps every realm of one stack
+// in deploy/keycloak-<dpg>, next to the .env of that Keycloak, so the
+// stack file mounts one directory whatever the role.
+func TestRealmFilesLiveInTheStackDirectory(t *testing.T) {
+	root := t.TempDir()
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
+	for _, p := range []Pair{issuerPair(), holder} {
+		plan, err := BuildPlan(SetupRequest{Pair: p, Flags: baseFlags(), Random: rand.Reader})
+		if err != nil {
+			t.Fatalf("%s: BuildPlan: %v", p.Name(), err)
+		}
+		if _, err := WritePlan(root, plan); err != nil {
+			t.Fatalf("%s: WritePlan: %v", p.Name(), err)
+		}
+		if _, err := os.Stat(filepath.Join(OutputDir(root, p), "keycloak")); err == nil {
+			t.Errorf("%s: the old realm directory of the pair was written", p.Name())
+		}
+	}
+	dir := filepath.Join(root, KeycloakDir(configv1.Dpg_DPG_WALTID))
+	if dir != filepath.Join(root, "keycloak-waltid") {
+		t.Errorf("KeycloakDir = %s", dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, ",") != ".env,vca-holder-realm.json,vca-issuer-realm.json" {
+		t.Errorf("the stack directory holds %v", names)
+	}
+	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o755 {
+		t.Errorf("stack directory mode = %v, %v", info.Mode(), err)
+	}
+	if info, err := os.Stat(filepath.Join(dir, "vca-issuer-realm.json")); err != nil || info.Mode().Perm() != 0o644 {
+		t.Errorf("realm mode = %v, %v", info.Mode(), err)
+	}
+	if info, err := os.Stat(filepath.Join(dir, EnvFileName)); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("keycloak .env mode = %v, %v", info.Mode(), err)
+	}
+	// Keycloak parses every JSON file of the directory, so nothing but
+	// realms may end in .json there.
+	for _, name := range names {
+		if strings.HasSuffix(name, ".json") && !strings.HasSuffix(name, "-realm.json") {
+			t.Errorf("%s is not a realm file", name)
+		}
+	}
+}
+
+// TestSetupUpgradesTheOldVcaRealmURL repairs a pair that an earlier
+// setup pointed at the realm named vca. The role realm replaces it. A
+// discovery URL of another provider stays as it is.
+func TestSetupUpgradesTheOldVcaRealmURL(t *testing.T) {
+	root := t.TempDir()
+	p := issuerPair()
+	dir := OutputDir(root, p)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	old := "VCA_OIDC_DISCOVERY_URL=http://waltid-keycloak:8080/realms/vca/.well-known/openid-configuration\n"
+	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values, err := ReadExisting(root, p)
+	if err != nil {
+		t.Fatalf("ReadExisting: %v", err)
+	}
+	if values["VCA_OIDC_DISCOVERY_URL"] != DefaultDiscoveryURL(p) {
+		t.Errorf("the old realm URL was kept: %q", values["VCA_OIDC_DISCOVERY_URL"])
+	}
+	if !strings.Contains(DefaultDiscoveryURL(p), "/realms/vca-issuer-realm/") {
+		t.Errorf("the default discovery URL names no role realm: %q", DefaultDiscoveryURL(p))
+	}
+	plan, err := BuildPlan(SetupRequest{Pair: p, Existing: values, Random: rand.Reader})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	if got := Values(plan.Resolutions)["VCA_OIDC_DISCOVERY_URL"]; got != DefaultDiscoveryURL(p) {
+		t.Errorf("the plan kept the old realm: %q", got)
+	}
+	custom := "VCA_OIDC_DISCOVERY_URL=https://idp.example/realms/vca/.well-known/openid-configuration\n"
+	if writeErr := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(custom), 0o600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+	values, err = ReadExisting(root, p)
+	if err != nil {
+		t.Fatalf("ReadExisting: %v", err)
+	}
+	if values["VCA_OIDC_DISCOVERY_URL"] != "https://idp.example/realms/vca/.well-known/openid-configuration" {
+		t.Errorf("another provider was changed: %q", values["VCA_OIDC_DISCOVERY_URL"])
+	}
+}
+
+// TestKeycloakAdminPasswordIsGenerated is ADR-035 decision 7: the CLI
+// writes a generated administrator password per stack, with mode 0600,
+// and keeps it on the next run.
+func TestKeycloakAdminPasswordIsGenerated(t *testing.T) {
+	root := t.TempDir()
+	plan, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: baseFlags(), Random: rand.Reader})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	f := sharedFile(t, plan, KeycloakEnvFile(configv1.Dpg_DPG_WALTID))
+	if f.Name != filepath.Join("keycloak-waltid", EnvFileName) || f.Mode != 0o600 {
+		t.Errorf("keycloak env = %s mode %04o", f.Name, f.Mode)
+	}
+	values, err := ParseDotenv(strings.NewReader(string(f.Data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := values[KeycloakAdminPasswordEnv]
+	if password == "" || password == "admin" || len(password) < 32 {
+		t.Errorf("the password is weak: %q", password)
+	}
+	if values[KeycloakAdminEnv] != "admin" {
+		t.Errorf("the administrator name = %q", values[KeycloakAdminEnv])
+	}
+	if strings.Contains(plan.Summary(), password) {
+		t.Error("the summary shows the password")
+	}
+	if _, writeErr := WritePlan(root, plan); writeErr != nil {
+		t.Fatalf("WritePlan: %v", writeErr)
+	}
+	existing, err := ReadKeycloakEnv(root, configv1.Dpg_DPG_WALTID)
+	if err != nil {
+		t.Fatalf("ReadKeycloakEnv: %v", err)
+	}
+	if existing[KeycloakAdminPasswordEnv] != password {
+		t.Errorf("the written password differs: %q", existing[KeycloakAdminPasswordEnv])
+	}
+	// The holder pair of the same stack keeps the password of the stack.
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}
+	again, err := BuildPlan(SetupRequest{Pair: holder, Flags: baseFlags(), Random: rand.Reader, Keycloak: existing})
+	if err != nil {
+		t.Fatalf("BuildPlan holder: %v", err)
+	}
+	kept, err := ParseDotenv(strings.NewReader(string(sharedFile(t, again, KeycloakEnvFile(holder.Dpg)).Data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept[KeycloakAdminPasswordEnv] != password {
+		t.Errorf("the second run replaced the password")
+	}
+	// A missing file is not an error, so the first run works.
+	none, err := ReadKeycloakEnv(t.TempDir(), configv1.Dpg_DPG_INJI)
+	if err != nil || len(none) != 0 {
+		t.Errorf("ReadKeycloakEnv of a fresh root = %v, %v", none, err)
 	}
 }

@@ -407,6 +407,12 @@ func newSetupCommand(env *Environment) *cobra.Command {
 				if peersErr != nil {
 					return peersErr
 				}
+				// The Keycloak of the stack keeps its password across
+				// the roles and the runs (ADR-035 decision 7).
+				keycloak, keycloakErr := ReadKeycloakEnv(root, p.Dpg)
+				if keycloakErr != nil {
+					return keycloakErr
+				}
 				plan, err := BuildPlan(SetupRequest{
 					Pair:        p,
 					Flags:       flags,
@@ -419,6 +425,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					Random:      env.Random,
 					Domain:      base,
 					Peers:       peers,
+					Keycloak:    keycloak,
 				})
 				if err != nil {
 					return err
@@ -828,6 +835,18 @@ func newDpgCommand(env *Environment) *cobra.Command {
 			values, err := ReadExisting(filepath.Join(env.Root, "deploy"), pair)
 			if err != nil {
 				return err
+			}
+			// The generated administrator of the Keycloak of the stack
+			// is the default; the environment beats it (ADR-035
+			// decision 7).
+			keycloak, err := ReadKeycloakEnv(filepath.Join(env.Root, "deploy"), pair.Dpg)
+			if err != nil {
+				return err
+			}
+			for name, from := range map[string]string{EnvBootstrapUser: KeycloakAdminEnv, EnvBootstrapSecret: KeycloakAdminPasswordEnv} {
+				if v := keycloak[from]; v != "" && values[name] == "" {
+					values[name] = v
+				}
 			}
 			for _, name := range []string{EnvBootstrapURL, EnvBootstrapUser, EnvBootstrapSecret, EnvBootstrapOrg} {
 				if v := env.Getenv(name); v != "" {

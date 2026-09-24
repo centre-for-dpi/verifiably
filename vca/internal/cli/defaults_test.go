@@ -193,7 +193,7 @@ func TestBuildPlanDefaultsTheDiscoveryURL(t *testing.T) {
 		if got != DefaultDiscoveryURL(p) {
 			t.Errorf("%s: VCA_OIDC_DISCOVERY_URL = %q", p.Name(), got)
 		}
-		if !strings.Contains(got, "/realms/"+DefaultRealm+"/.well-known/openid-configuration") {
+		if !strings.Contains(got, "/realms/"+RealmName(p.Role)+"/.well-known/openid-configuration") {
 			t.Errorf("%s: the discovery path is wrong: %q", p.Name(), got)
 		}
 	}
@@ -208,21 +208,12 @@ func TestGeneratedRealmHoldsTheClient(t *testing.T) {
 		t.Fatalf("BuildPlan: %v", err)
 	}
 	values := Values(plan.Resolutions)
-	var body []byte
-	for _, f := range plan.Files {
-		if f.Name == RealmFile {
-			body = f.Data
-		}
-	}
-	if body == nil {
-		t.Fatal("the plan has no realm file")
-	}
-	text := string(body)
+	text := string(sharedFile(t, plan, RealmFileOf(p)).Data)
 	for _, want := range []string{
 		`"clientId": "` + DefaultClientID(p.Role) + `"`,
 		`"secret": "` + values["VCA_OIDC_CLIENT_SECRET"] + `"`,
 		`"publicClient": false`,
-		`"realm": "` + DefaultRealm + `"`,
+		`"realm": "` + RealmName(p.Role) + `"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the realm has no %s:\n%s", want, text)

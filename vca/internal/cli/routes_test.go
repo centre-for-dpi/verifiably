@@ -328,7 +328,9 @@ func TestEveryPublishedPortBindsToVcaBind(t *testing.T) {
 }
 
 // TestDpgStacksMountTheRealmDirectory keeps the Keycloak import mount
-// on the realm directory, which holds the realm alone.
+// on the stack directory that holds the four role realms, and the
+// administrator password in the .env of that directory
+// (ADR-035 decisions 1 and 7). No default password ships.
 func TestDpgStacksMountTheRealmDirectory(t *testing.T) {
 	for _, d := range Dpgs() {
 		name := ShortName(d.String())
@@ -336,9 +338,19 @@ func TestDpgStacksMountTheRealmDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "- ../${" + envName(name) + "_REALM_DIR:-issuer-" + name + "}/" + RealmDir + ":/opt/keycloak/data/import:ro"
-		if !strings.Contains(string(data), want) {
-			t.Errorf("dpg/%s.yaml does not mount %q", name, want)
+		text := string(data)
+		for _, want := range []string{
+			"- ../" + KeycloakDir(d) + ":/opt/keycloak/data/import:ro",
+			"- path: ../" + KeycloakEnvFile(d) + "\n        required: true",
+		} {
+			if !strings.Contains(text, want) {
+				t.Errorf("dpg/%s.yaml does not hold %q", name, want)
+			}
+		}
+		for _, banned := range []string{"_REALM_DIR", KeycloakAdminPasswordEnv + ":", KeycloakAdminEnv + ":", "-admin}"} {
+			if strings.Contains(text, banned) {
+				t.Errorf("dpg/%s.yaml still holds %q", name, banned)
+			}
 		}
 	}
 }

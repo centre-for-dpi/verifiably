@@ -17,18 +17,23 @@ services:
     container_name: inji-keycloak
     restart: unless-stopped
     command: ["start-dev", "--import-realm"]
+    # The administrator name and the generated password come from the
+    # .env of the stack directory, which vca setup writes with mode 0600.
+    # No default password exists (ADR-035 decision 7).
+    env_file:
+      - path: ../keycloak-inji/.env
+        required: true
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_HEALTH_ENABLED: "true"
       # A reverse proxy in front of the host port sends X-Forwarded
       # headers. Keycloak builds its URLs from them, so the login page
       # works behind TLS.
       KC_PROXY_HEADERS: xforwarded
     volumes:
-      # Keycloak parses every JSON file of the import directory, so the
-      # directory holds the realm alone (vca setup writes it).
-      - ../${INJI_REALM_DIR:-issuer-inji}/keycloak:/opt/keycloak/data/import:ro
+      # The stack directory holds one realm per role, vca-<role>-realm.json,
+      # which vca setup writes (ADR-035 decision 1). Keycloak imports every
+      # JSON file of the directory at its first start and skips the .env.
+      - ../keycloak-inji:/opt/keycloak/data/import:ro
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_KEYCLOAK_HOST_PORT:-17080}:8080"
     networks:

@@ -5,6 +5,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,18 +18,64 @@ import (
 const (
 	// CaddyFile is the reverse proxy configuration of a pair.
 	CaddyFile = "Caddyfile"
-	// RealmDir is the directory the Keycloak of the stack imports. It
-	// holds the realm alone, because Keycloak parses every JSON file of
-	// its import directory and a non realm file aborts the import.
-	RealmDir = "keycloak"
-	// RealmFile is the Keycloak realm that every DPG stack imports.
-	RealmFile = RealmDir + "/vca-realm.json"
 	// OnboardFile is the walt.id issuer onboarding request body.
 	OnboardFile = "waltid-onboard.json"
 )
 
-// DefaultRealm is the Keycloak realm name the CLI creates.
-const DefaultRealm = "vca"
+// The Keycloak of one stack (ADR-035 decisions 1 and 7). Its directory
+// sits beside the pair directories under deploy. It holds one realm per
+// role and the .env with the generated administrator password. Keycloak
+// parses every JSON file of the directory at its first start, so nothing
+// but a realm ends in .json there.
+const (
+	// KeycloakAdminEnv names the administrator of the Keycloak.
+	KeycloakAdminEnv = "KEYCLOAK_ADMIN"
+	// KeycloakAdminPasswordEnv names the generated administrator password.
+	KeycloakAdminPasswordEnv = "KEYCLOAK_ADMIN_PASSWORD" //nolint:gosec // G101: a variable name, not a credential
+	// keycloakAdminUser is the administrator name the CLI writes.
+	keycloakAdminUser = "admin"
+	// legacyRealm is the one realm an earlier setup wrote for every role.
+	legacyRealm = "vca"
+)
+
+// RealmName returns the Keycloak realm of one role: vca-<role>-realm.
+// Each role has its own user base (ADR-035 decision 1).
+func RealmName(role commonv1.Role) string {
+	name := ShortName(role.String())
+	if name == "" {
+		return ""
+	}
+	return "vca-" + name + "-realm"
+}
+
+// KeycloakDir returns the directory of the Keycloak of one stack under
+// the deploy root: keycloak-<dpg>. A DPG with no Keycloak gives "".
+func KeycloakDir(d configv1.Dpg) string {
+	if KeycloakContainer(d) == "" {
+		return ""
+	}
+	return "keycloak-" + ShortName(d.String())
+}
+
+// RealmFileOf returns the path of the realm of one pair under the deploy
+// root: keycloak-<dpg>/vca-<role>-realm.json.
+func RealmFileOf(p Pair) string {
+	dir := KeycloakDir(p.Dpg)
+	if dir == "" || RealmName(p.Role) == "" {
+		return ""
+	}
+	return dir + "/" + RealmName(p.Role) + ".json"
+}
+
+// KeycloakEnvFile returns the path of the .env of the Keycloak of one
+// stack under the deploy root. The stack file reads it.
+func KeycloakEnvFile(d configv1.Dpg) string {
+	dir := KeycloakDir(d)
+	if dir == "" {
+		return ""
+	}
+	return dir + "/" + EnvFileName
+}
 
 // hostOf returns the host part of a URL, without the port.
 func hostOf(raw string) string {
@@ -162,14 +209,16 @@ type realmClient struct {
 	} `json:"attributes"`
 }
 
-// realm is the Keycloak realm the CLI writes for Inji and CREDEBL.
+// realm is the Keycloak realm of one role that the CLI writes.
 type realm struct {
 	Realm                 string        `json:"realm"`
 	Enabled               bool          `json:"enabled"`
 	SslRequired           string        `json:"sslRequired"`
 	RegistrationAllowed   bool          `json:"registrationAllowed"`
+	ResetPasswordAllowed  bool          `json:"resetPasswordAllowed"`
 	LoginWithEmailAllowed bool          `json:"loginWithEmailAllowed"`
 	Roles                 realmRoles    `json:"roles"`
+	DefaultRole           realmRole     `json:"defaultRole"`
 	Clients               []realmClient `json:"clients"`
 }
 
@@ -177,20 +226,65 @@ type realmRoles struct {
 	Realm []realmRole `json:"realm"`
 }
 
+// realmRole is one realm role. The default role of the realm is a
+// composite: every self registered user gets its members.
 type realmRole struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Composite   bool             `json:"composite,omitempty"`
+	Composites  *realmComposites `json:"composites,omitempty"`
 }
 
-// KeycloakRealm renders the realm that the Keycloak of every DPG stack
-// imports. The realm holds one client with the exact redirect URI of the
-// deployment, the authorization code flow, and PKCE
-// (ADR-010 decision 2). The implicit flow stays off. A generated client
-// secret makes the client confidential.
+type realmComposites struct {
+	Realm []string `json:"realm"`
+}
+
+// roleRealmRoles lists the realm roles of one role and the one a self
+// registered user gets. The issuer and verifier roles are the ones the
+// auth services map (ADR-012 decision 3, ADR-036 decision 1). A holder
+// is a citizen. An admin gets no role at registration: the bootstrap
+// token binds the first admin (ADR-035 decision 6).
+func roleRealmRoles(role commonv1.Role) (roles []realmRole, selfRegistered string) {
+	switch role {
+	case commonv1.Role_ROLE_ISSUER:
+		return []realmRole{
+			{Name: "issuer-admin", Description: "Manage schemas, issuance, and issuer staff."},
+			{Name: "issuer-operator", Description: "Issue and revoke credentials."},
+			{Name: "issuer-viewer", Description: "Read schemas and issued credentials."},
+		}, "issuer-operator"
+	case commonv1.Role_ROLE_VERIFIER:
+		return []realmRole{
+			{Name: "verifier-admin", Description: "Manage policies, trust, and verifier staff."},
+			{Name: "verifier-operator", Description: "Run verifications and read results."},
+			{Name: "verifier-viewer", Description: "Read verification results."},
+		}, "verifier-operator"
+	case commonv1.Role_ROLE_HOLDER:
+		return []realmRole{
+			{Name: "holder", Description: "Hold and present credentials."},
+		}, "holder"
+	case commonv1.Role_ROLE_ADMIN:
+		return []realmRole{
+			{Name: "super-admin", Description: "Administer tenants, trust entries, and providers."},
+		}, ""
+	}
+	return nil, ""
+}
+
+// KeycloakRealm renders the realm of the role of a pair. The Keycloak of
+// the stack imports it. The realm has self registration on, and the
+// default role of the realm gives a self registered user the role of
+// the pair (ADR-035 decision 1). It holds one client with the exact
+// redirect URI of the deployment, the authorization code flow, and PKCE
+// S256 (ADR-010 decision 2). The implicit flow stays off. A generated
+// client secret makes the client confidential.
 func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 	public := strings.TrimRight(values["VCA_PUBLIC_URL"], "/")
 	if public == "" {
 		return nil, fmt.Errorf("realm: %s is empty", "VCA_PUBLIC_URL")
+	}
+	name := RealmName(p.Role)
+	if name == "" {
+		return nil, fmt.Errorf("realm: the role of %s is unspecified", p.Name())
 	}
 	clientID := values["VCA_OIDC_CLIENT_ID"]
 	if clientID == "" {
@@ -212,16 +306,26 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 		WebOrigins:          []string{public},
 	}
 	client.Attributes.PkceCodeChallengeMethod = "S256"
+	roles, selfRegistered := roleRealmRoles(p.Role)
+	defaultRole := realmRole{
+		Name:        "default-roles-" + name,
+		Description: "The roles of every user of the realm.",
+		Composite:   true,
+		Composites:  &realmComposites{Realm: []string{}},
+	}
+	if selfRegistered != "" {
+		defaultRole.Composites.Realm = []string{selfRegistered}
+	}
 	r := realm{
-		Realm:       DefaultRealm,
-		Enabled:     true,
-		SslRequired: "external",
-		Roles: realmRoles{Realm: []realmRole{
-			{Name: "vca-issuer-staff", Description: "Issue and revoke credentials."},
-			{Name: "vca-verifier-staff", Description: "Run verifications and read results."},
-			{Name: "vca-admin", Description: "Administer tenants, trust entries, and providers."},
-		}},
-		Clients: []realmClient{client},
+		Realm:                 name,
+		Enabled:               true,
+		SslRequired:           "external",
+		RegistrationAllowed:   true,
+		ResetPasswordAllowed:  true,
+		LoginWithEmailAllowed: true,
+		Roles:                 realmRoles{Realm: append(roles, defaultRole)},
+		DefaultRole:           realmRole{Name: defaultRole.Name, Composite: true},
+		Clients:               []realmClient{client},
 	}
 	return json.MarshalIndent(r, "", "  ")
 }
@@ -258,17 +362,12 @@ func WaltidOnboard(values map[string]string) ([]byte, error) {
 	return json.MarshalIndent(req, "", "  ")
 }
 
-// DpgConfigFiles renders every generated DPG configuration file of a pair.
-// Every stack ships a Keycloak, so every pair gets a realm in its own
-// directory. walt.id gets the onboarding body as well. Every pair gets a
-// Caddyfile.
+// DpgConfigFiles renders every generated DPG configuration file of a pair
+// that lives in the directory of the pair. Every pair gets a Caddyfile.
+// walt.id gets the onboarding body as well. The realm of the pair lives
+// in the directory of the Keycloak of the stack, see KeycloakFiles.
 func DpgConfigFiles(p Pair, values map[string]string, plan []PortAssignment) ([]File, error) {
 	files := []File{{Name: CaddyFile, Data: []byte(Caddyfile(p, values)), Mode: 0o644}}
-	realmBody, err := KeycloakRealm(p, values)
-	if err != nil {
-		return nil, err
-	}
-	files = append(files, File{Name: RealmFile, Data: append(realmBody, '\n'), Mode: 0o644})
 	if p.Dpg == configv1.Dpg_DPG_WALTID {
 		body, onboardErr := WaltidOnboard(values)
 		if onboardErr != nil {
@@ -277,6 +376,57 @@ func DpgConfigFiles(p Pair, values map[string]string, plan []PortAssignment) ([]
 		files = append(files, File{Name: OnboardFile, Data: append(body, '\n'), Mode: 0o644})
 	}
 	return files, nil
+}
+
+// KeycloakFiles renders the files of the Keycloak of the stack that one
+// setup run writes, with paths relative to the deploy root: the realm of
+// the role of the pair, and the .env of the Keycloak with the generated
+// administrator password (ADR-035 decisions 1 and 7). existing holds the
+// values of that .env from an earlier run, so the password of the stack
+// survives every later run of any role. A pair whose DPG ships no
+// Keycloak gets nothing.
+func KeycloakFiles(p Pair, values, existing map[string]string, random io.Reader) ([]File, error) {
+	if KeycloakDir(p.Dpg) == "" {
+		return nil, nil
+	}
+	realmBody, err := KeycloakRealm(p, values)
+	if err != nil {
+		return nil, err
+	}
+	env, err := KeycloakEnv(p.Dpg, existing, random)
+	if err != nil {
+		return nil, err
+	}
+	return []File{
+		{Name: RealmFileOf(p), Data: append(realmBody, '\n'), Mode: 0o644},
+		{Name: KeycloakEnvFile(p.Dpg), Data: []byte(env), Mode: 0o600},
+	}, nil
+}
+
+// KeycloakEnv renders the .env of the Keycloak of one stack. The
+// administrator name is admin. The password comes from existing when an
+// earlier run generated it, else from random. No default password ships
+// (ADR-035 consequence 3).
+func KeycloakEnv(d configv1.Dpg, existing map[string]string, random io.Reader) (string, error) {
+	user := existing[KeycloakAdminEnv]
+	if user == "" {
+		user = keycloakAdminUser
+	}
+	password := existing[KeycloakAdminPasswordEnv]
+	if password == "" {
+		generated, err := RandomSecret(random)
+		if err != nil {
+			return "", fmt.Errorf("generate the Keycloak administrator password: %w", err)
+		}
+		password = generated
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "# The Keycloak of the %s stack. Every role of the stack shares it.\n", ShortName(d.String()))
+	b.WriteString("# The vca setup command wrote this file. A later run keeps the password.\n")
+	b.WriteString("# Sign in to the administration console with these values.\n")
+	b.WriteString(KeycloakAdminEnv + "=" + quoteValue(user) + "\n")
+	b.WriteString(KeycloakAdminPasswordEnv + "=" + quoteValue(password) + "\n")
+	return b.String(), nil
 }
 
 // ResourceFloor is the memory and CPU floor of one role, in the units the

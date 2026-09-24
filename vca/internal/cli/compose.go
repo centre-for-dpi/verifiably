@@ -65,9 +65,15 @@ func RenderCompose() string {
 	b.WriteString("# a public host, so only the reverse proxy reaches the services.\n")
 	fmt.Fprintf(&b, "name: %s\n\n", ComposeProject)
 
+	// Compose resolves a relative path of an included file against the
+	// directory of that file unless the include names another one. The
+	// stack files mount ../keycloak-<dpg>, which sits beside the pair
+	// directories like the ../<pair>/.env files of the service blocks,
+	// so every include resolves against the directory of this file.
 	b.WriteString("include:\n")
 	for _, path := range DpgStackFiles() {
 		fmt.Fprintf(&b, "  - path: %s\n", path)
+		b.WriteString("    project_directory: .\n")
 	}
 	b.WriteString("\n")
 

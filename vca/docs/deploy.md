@@ -355,14 +355,15 @@ A DPG upgrade is a version change in one file.
 
 Every stack ships Keycloak 25.0.
 A laptop deployment then needs no other identity provider.
-`vca setup` fills `VCA_OIDC_DISCOVERY_URL` with the Keycloak of the
-stack, on the compose network:
+`vca setup` fills `VCA_OIDC_DISCOVERY_URL` with the realm of the role at
+the Keycloak of the stack, on the compose network.
+`<role>` is `admin`, `issuer`, `holder`, or `verifier`:
 
 | DPG | Keycloak container | Host port | Default `VCA_OIDC_DISCOVERY_URL` |
 |---|---|---|---|
-| `waltid` | `waltid-keycloak` | 17010 | `http://waltid-keycloak:8080/realms/vca/.well-known/openid-configuration` |
-| `inji` | `inji-keycloak` | 17080 | `http://inji-keycloak:8080/realms/vca/.well-known/openid-configuration` |
-| `credebl` | `credebl-keycloak` | 17180 | `http://credebl-keycloak:8080/realms/vca/.well-known/openid-configuration` |
+| `waltid` | `waltid-keycloak` | 17010 | `http://waltid-keycloak:8080/realms/vca-<role>-realm/.well-known/openid-configuration` |
+| `inji` | `inji-keycloak` | 17080 | `http://inji-keycloak:8080/realms/vca-<role>-realm/.well-known/openid-configuration` |
+| `credebl` | `credebl-keycloak` | 17180 | `http://credebl-keycloak:8080/realms/vca-<role>-realm/.well-known/openid-configuration` |
 
 A browser cannot reach a container name, so `VCA_OIDC_PUBLIC_URL` names
 the address the browser uses.
@@ -385,19 +386,47 @@ When another compose project or a hand-started container holds one of
 them, it stops before it starts anything.
 The message prints the `docker rm -f` line that clears them.
 
-`vca setup` writes `deploy/<role>-<dpg>/keycloak/vca-realm.json`.
-The realm is `vca`.
-It holds one client with the id `vca-<role>`, a generated client secret,
-the authorization code flow, and PKCE.
-Keycloak imports the file on its first start.
-It reads the `keycloak` directory of the issuer pair of the stack.
-That directory holds the realm alone.
-Keycloak parses every JSON file of its import directory, and one other
-file stops the import.
-The directory has mode 0755 and the file has mode 0644, so the
+### One realm per role
+
+`vca setup` writes `deploy/keycloak-<dpg>/vca-<role>-realm.json`
+(ADR-035 decision 1).
+Each role of a stack has its own realm and its own user base:
+`vca-admin-realm`, `vca-issuer-realm`, `vca-holder-realm`, and
+`vca-verifier-realm`.
+A realm holds one client with the id `vca-<role>` and a generated
+client secret.
+The client has the exact redirect URI of the pair, the authorization
+code flow, and PKCE S256.
+Self registration is on in every realm.
+A new user of the issuer realm gets the role `issuer-operator`.
+A new user of the verifier realm gets `verifier-operator`.
+A new user of the holder realm gets `holder`.
+A new user of the admin realm gets no role.
+The bootstrap token binds the first admin (ADR-035 decision 6).
+Turn self registration off in the admin realm after the first run.
+
+Keycloak imports every realm of the directory on its first start.
+The stack file mounts `deploy/keycloak-<dpg>` read only.
+The directory has mode 0755 and a realm file has mode 0644, so the
 Keycloak user inside the container reads them.
-Set `WALTID_REALM_DIR`, `INJI_REALM_DIR`, or `CREDEBL_REALM_DIR` to
-another pair directory when you run one other role alone.
+Keycloak parses every JSON file of the directory, so nothing but a
+realm ends in `.json` there.
+A later `vca dpg bootstrap <dpg> --role <role>` run creates or updates
+the realm of that role through the Keycloak admin API.
+
+### The Keycloak administrator
+
+`vca setup` writes `deploy/keycloak-<dpg>/.env` with mode 0600
+(ADR-035 decision 7).
+It holds `KEYCLOAK_ADMIN=admin` and a generated
+`KEYCLOAK_ADMIN_PASSWORD` of 32 random bytes.
+Every role of the stack shares the file, and a later run keeps the
+password.
+No default password ships.
+Sign in to the administration console at `VCA_OIDC_PUBLIC_URL` with
+these values.
+`vca dpg bootstrap` reads the same file; `VCA_BOOTSTRAP_ADMIN_PASSWORD`
+overrides it.
 
 A production deployment replaces this Keycloak with the national
 identity provider.

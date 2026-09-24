@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // EnvFileName is the name of the file that setup writes in the output
@@ -50,6 +51,10 @@ type SetupRequest struct {
 	// ReadPeerOverrides. The peer list of the pages honours their port
 	// overrides and public URLs (ADR-034 decision 1).
 	Peers PeerOverrides
+	// Keycloak holds the values of the .env of the Keycloak of the stack
+	// from an earlier run, from ReadKeycloakEnv. The run keeps the
+	// administrator password it finds there (ADR-035 decision 7).
+	Keycloak map[string]string
 }
 
 // Plan is the result of a setup run before anything reaches the disk.
@@ -63,10 +68,12 @@ type Plan struct {
 	Ports []PortAssignment
 	// Files lists every file the plan writes, including the .env file.
 	Files []File
-	// Shared lists the files of the deployment that every pair shares,
-	// with paths relative to the deploy root: the .env of the landing
-	// (ADR-033 decision 2). Every setup run writes them again, so the
-	// peer list of the landing follows the last run.
+	// Shared lists the files of the deployment that live outside the
+	// pair directory, with paths relative to the deploy root: the .env
+	// of the landing (ADR-033 decision 2), then the realm of the role
+	// and the .env of the Keycloak of the stack (ADR-035 decisions 1
+	// and 7). Every setup run writes them again, so the peer list of the
+	// landing follows the last run and the password of the stack stays.
 	Shared []File
 }
 
@@ -168,6 +175,11 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	files = append(files, dpgFiles...)
 	shared := []File{LandingEnvFile(req.Domain, req.Pair, values, req.Peers, req.Existing[VersionEnv])}
+	keycloak, err := KeycloakFiles(req.Pair, values, req.Keycloak, req.Random)
+	if err != nil {
+		return Plan{}, err
+	}
+	shared = append(shared, keycloak...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files, Shared: shared}, nil
 }
 
@@ -436,6 +448,44 @@ func ReadExisting(root string, p Pair) (map[string]string, error) {
 	}
 	if err := upgradeSigningKeyRef(OutputDir(root, p), values); err != nil {
 		return nil, err
+	}
+	upgradeRealmURL(p, values)
+	return values, nil
+}
+
+// upgradeRealmURL replaces the discovery URL of the one realm that an
+// earlier setup wrote with the URL of the realm of the role, so a
+// second run of setup moves an existing pair to its own realm
+// (ADR-035 decision 1). Any other discovery URL stays as it is.
+func upgradeRealmURL(p Pair, values map[string]string) {
+	old := legacyDiscoveryURL(p.Dpg)
+	if old == "" || values["VCA_OIDC_DISCOVERY_URL"] != old {
+		return
+	}
+	values["VCA_OIDC_DISCOVERY_URL"] = DefaultDiscoveryURL(p)
+}
+
+// ReadKeycloakEnv reads the .env of the Keycloak of one stack under the
+// deploy root, which an earlier setup run wrote. A missing file is not
+// an error, so the first run works. A DPG with no Keycloak gives an
+// empty map.
+func ReadKeycloakEnv(root string, d configv1.Dpg) (map[string]string, error) {
+	name := KeycloakEnvFile(d)
+	if name == "" {
+		return map[string]string{}, nil
+	}
+	path := filepath.Join(root, name)
+	f, err := os.Open(path) // #nosec G304 -- the path comes from the DPG name
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return map[string]string{}, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	defer func() { anyval.Discard(f.Close()) }()
+	values, err := ParseDotenv(f)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	return values, nil
 }

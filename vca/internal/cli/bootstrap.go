@@ -176,14 +176,23 @@ func BootstrapInji(ctx context.Context, opts BootstrapOptions) (BootstrapResult,
 	return bootstrapRealm(ctx, opts, "Inji")
 }
 
-// bootstrapRealm creates or updates the realm of a Keycloak based stack.
+// realmPath returns the path of the realm of the pair role. The realm
+// lives in the directory of the Keycloak of the stack, beside the pair
+// directory (ADR-035 decision 1).
+func (o BootstrapOptions) realmPath() string {
+	return filepath.Join(filepath.Dir(o.Dir), filepath.FromSlash(RealmFileOf(o.Pair)))
+}
+
+// bootstrapRealm creates or updates the realm of the pair role at the
+// Keycloak of a stack.
 func bootstrapRealm(ctx context.Context, opts BootstrapOptions, stack string) (BootstrapResult, error) {
 	var result BootstrapResult
 	base, err := opts.baseURL()
 	if err != nil {
 		return result, err
 	}
-	realmBody, err := os.ReadFile(filepath.Join(opts.Dir, RealmFile)) // #nosec G304 -- the path comes from the pair
+	realm := RealmName(opts.Pair.Role)
+	realmBody, err := os.ReadFile(opts.realmPath()) // #nosec G304 -- the path comes from the pair
 	if err != nil {
 		return result, fmt.Errorf("read the generated realm: %w", err)
 	}
@@ -192,16 +201,16 @@ func bootstrapRealm(ctx context.Context, opts BootstrapOptions, stack string) (B
 		return result, err
 	}
 	result.step(opts.Out, "%s Keycloak token received", stack)
-	status, _, err := doStatus(ctx, opts.client(), http.MethodGet, base+"/admin/realms/"+DefaultRealm, token, nil)
+	status, _, err := doStatus(ctx, opts.client(), http.MethodGet, base+"/admin/realms/"+realm, token, nil)
 	if err != nil {
 		return result, fmt.Errorf("read the realm: %w", err)
 	}
 	if status == http.StatusOK {
 		if _, err := doJSON(ctx, opts.client(), http.MethodPut,
-			base+"/admin/realms/"+DefaultRealm, token, realmBody); err != nil {
+			base+"/admin/realms/"+realm, token, realmBody); err != nil {
 			return result, fmt.Errorf("update the realm: %w", err)
 		}
-		result.step(opts.Out, "%s realm %s present and updated", stack, DefaultRealm)
+		result.step(opts.Out, "%s realm %s present and updated", stack, realm)
 		return result, nil
 	}
 	if status != http.StatusNotFound {
@@ -210,17 +219,24 @@ func bootstrapRealm(ctx context.Context, opts BootstrapOptions, stack string) (B
 	if _, err := doJSON(ctx, opts.client(), http.MethodPost, base+"/admin/realms", token, realmBody); err != nil {
 		return result, fmt.Errorf("create the realm: %w", err)
 	}
-	result.step(opts.Out, "%s realm %s created", stack, DefaultRealm)
+	result.step(opts.Out, "%s realm %s created", stack, realm)
 	return result, nil
 }
 
-// keycloakToken gets an administrator token from the master realm.
+// keycloakToken gets an administrator token from the master realm. The
+// password comes from the .env of the Keycloak of the stack or from the
+// environment; no default exists (ADR-035 consequence 3).
 func keycloakToken(ctx context.Context, opts BootstrapOptions, base string) (string, error) {
+	password := opts.value(EnvBootstrapSecret, "")
+	if password == "" {
+		return "", fmt.Errorf("get an administrator token: set %s, or run vca setup so %s holds %s",
+			EnvBootstrapSecret, KeycloakEnvFile(opts.Pair.Dpg), KeycloakAdminPasswordEnv)
+	}
 	form := url.Values{
 		"grant_type": {"password"},
 		"client_id":  {"admin-cli"},
-		"username":   {opts.value(EnvBootstrapUser, "admin")},
-		"password":   {opts.value(EnvBootstrapSecret, "admin")},
+		"username":   {opts.value(EnvBootstrapUser, keycloakAdminUser)},
+		"password":   {password},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		base+"/realms/master/protocol/openid-connect/token", strings.NewReader(form.Encode()))

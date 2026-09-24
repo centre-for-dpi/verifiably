@@ -28,6 +28,12 @@ type EntryPoint struct {
 	Pages []PageLink
 	// Login is the browser facing URL of the identity provider.
 	Login string
+	// Console is the administration console of the Keycloak of the
+	// stack, when the pair signs in there. Empty for another provider.
+	Console string
+	// AdminEnv is the file that holds the administrator of that
+	// Keycloak, relative to the deploy directory (ADR-035 decision 7).
+	AdminEnv string
 	// Local reports a localhost URL, which needs no reverse proxy.
 	Local bool
 }
@@ -46,14 +52,19 @@ func EntryPoints(root string, pairs []Pair) ([]EntryPoint, error) {
 			continue
 		}
 		host := hostOf(url)
-		out = append(out, EntryPoint{
+		e := EntryPoint{
 			Pair:   p,
 			Portal: HomeOf(p.Role).Service,
 			URL:    url,
 			Pages:  Pages(p, url),
 			Login:  strings.TrimRight(values["VCA_OIDC_PUBLIC_URL"], "/"),
 			Local:  host == "" || isLocalHost(host),
-		})
+		}
+		if e.Login != "" && values["VCA_OIDC_DISCOVERY_URL"] == DefaultDiscoveryURL(p) {
+			e.Console = e.Login + "/admin/"
+			e.AdminEnv = KeycloakEnvFile(p.Dpg)
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }
@@ -115,10 +126,10 @@ func EntryReport(landing string, points []EntryPoint) string {
 			public = true
 		}
 	}
-	logins := map[string]bool{}
+	logins := map[string]EntryPoint{}
 	for _, e := range points {
-		if e.Login != "" && !logins[e.Login] {
-			logins[e.Login] = true
+		if _, seen := logins[e.Login]; e.Login != "" && !seen {
+			logins[e.Login] = e
 		}
 	}
 	if len(logins) > 0 {
@@ -130,6 +141,9 @@ func EntryReport(landing string, points []EntryPoint) string {
 		b.WriteString("Login\n")
 		for _, l := range names {
 			fmt.Fprintf(&b, "  %s\n", l)
+			if e := logins[l]; e.Console != "" {
+				fmt.Fprintf(&b, "    console %s, administrator in deploy/%s\n", e.Console, e.AdminEnv)
+			}
 		}
 	}
 	if public {

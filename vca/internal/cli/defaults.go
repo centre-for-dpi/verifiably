@@ -71,16 +71,31 @@ func KeycloakHostPortEnv(d configv1.Dpg) string {
 	return envName(ShortName(d.String())) + "_KEYCLOAK_HOST_PORT"
 }
 
-// DefaultDiscoveryURL returns the discovery URL of the Keycloak of the
-// stack, as the services reach it on the compose network. A production
-// deployment replaces it with the national IdP.
+// DefaultDiscoveryURL returns the discovery URL of the realm of the role
+// of the pair at the Keycloak of the stack, as the services reach it on
+// the compose network (ADR-035 decision 1). A production deployment
+// replaces it with the national IdP.
 func DefaultDiscoveryURL(p Pair) string {
-	name := KeycloakContainer(p.Dpg)
+	realm := RealmName(p.Role)
+	if realm == "" {
+		return ""
+	}
+	return discoveryURLOfRealm(p.Dpg, realm)
+}
+
+// discoveryURLOfRealm returns the discovery URL of one realm at the
+// Keycloak of one stack, on the compose network.
+func discoveryURLOfRealm(d configv1.Dpg, realm string) string {
+	name := KeycloakContainer(d)
 	if name == "" {
 		return ""
 	}
-	return fmt.Sprintf("http://%s:8080/realms/%s/.well-known/openid-configuration", name, DefaultRealm)
+	return fmt.Sprintf("http://%s:8080/realms/%s/.well-known/openid-configuration", name, realm)
 }
+
+// legacyDiscoveryURL returns the discovery URL an earlier setup wrote,
+// which named the one realm of every role.
+func legacyDiscoveryURL(d configv1.Dpg) string { return discoveryURLOfRealm(d, legacyRealm) }
 
 // DefaultOidcPublicURL returns the browser facing base URL of the
 // Keycloak of the stack, on the host port the compose file maps, for a
@@ -137,13 +152,13 @@ func DpgHostPorts(p Pair) []DpgPort {
 }
 
 // IdpTable renders the Keycloak of every DPG stack as a Markdown table.
-// The deploy documentation includes it.
+// The deploy documentation includes it. The realm follows the role of
+// the pair, so the table names it as vca-<role>-realm.
 func IdpTable() string {
 	rows := "| DPG | Keycloak container | Host port | Default `VCA_OIDC_DISCOVERY_URL` |\n|---|---|---|---|\n"
 	for _, d := range Dpgs() {
-		p := Pair{Dpg: d}
 		rows += fmt.Sprintf("| `%s` | `%s` | %d | `%s` |\n",
-			ShortName(d.String()), KeycloakContainer(d), KeycloakHostPort(d), DefaultDiscoveryURL(p))
+			ShortName(d.String()), KeycloakContainer(d), KeycloakHostPort(d), discoveryURLOfRealm(d, "vca-<role>-realm"))
 	}
 	return rows
 }

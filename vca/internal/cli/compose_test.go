@@ -78,6 +78,14 @@ func TestRenderComposeIsValidYaml(t *testing.T) {
 		if doc.Include[i]["path"] != want {
 			t.Errorf("include %d = %v, want %s", i, doc.Include[i], want)
 		}
+		// Compose resolves a relative path of an included file against
+		// the directory of that file unless the include names another
+		// one. The stack files name ../keycloak-<dpg>, which sits beside
+		// the pair directories, so every include resolves against the
+		// directory of the compose file, as the pair blocks do.
+		if doc.Include[i]["project_directory"] != "." {
+			t.Errorf("include %d does not resolve against the compose directory: %v", i, doc.Include[i])
+		}
 	}
 	if _, ok := doc.Networks["vca"]; !ok {
 		t.Error("the vca network is missing")

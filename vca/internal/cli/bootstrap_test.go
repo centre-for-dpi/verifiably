@@ -168,14 +168,24 @@ func TestBootstrapRejectsAnUnknownDpg(t *testing.T) {
 
 // keycloakState holds what the fake Keycloak server knows.
 type keycloakState struct {
+	// realm is the realm name the fake serves.
+	realm string
+	// password is the administrator password the fake accepts. Empty
+	// accepts any.
+	password    string
 	realmExists bool
 	created     int
 	updated     int
 	badToken    bool
+	// createdRealm is the realm name of the last POST body.
+	createdRealm string
 }
 
 func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
 	t.Helper()
+	if state.realm == "" {
+		state.realm = RealmName(commonv1.Role_ROLE_ISSUER)
+	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/realms/master/protocol/openid-connect/token":
@@ -186,20 +196,24 @@ func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
 				}
 				return
 			}
+			if state.password != "" && r.FormValue("password") != state.password {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
 			_, errAssign2 := io.WriteString(w, `{"access_token":"a-token"}`)
 			if errAssign2 != nil {
 				t.Fatalf("io.WriteString: %v", errAssign2)
 			}
-		case r.URL.Path == "/admin/realms/"+DefaultRealm && r.Method == http.MethodGet:
+		case r.URL.Path == "/admin/realms/"+state.realm && r.Method == http.MethodGet:
 			if !state.realmExists {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			_, errAssign3 := io.WriteString(w, `{"realm":"`+DefaultRealm+`"}`)
+			_, errAssign3 := io.WriteString(w, `{"realm":"`+state.realm+`"}`)
 			if errAssign3 != nil {
 				t.Fatalf("io.WriteString: %v", errAssign3)
 			}
-		case r.URL.Path == "/admin/realms/"+DefaultRealm && r.Method == http.MethodPut:
+		case r.URL.Path == "/admin/realms/"+state.realm && r.Method == http.MethodPut:
 			state.updated++
 			w.WriteHeader(http.StatusNoContent)
 		case r.URL.Path == "/admin/realms" && r.Method == http.MethodPost:
@@ -207,6 +221,14 @@ func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
+			var body struct {
+				Realm string `json:"realm"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			state.createdRealm = body.Realm
 			state.created++
 			state.realmExists = true
 			w.WriteHeader(http.StatusCreated)
@@ -216,25 +238,74 @@ func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
 	}))
 }
 
+// injiOptions lays out a deploy root with the realm of one Inji pair in
+// the stack directory, as vca setup writes it, and returns the options
+// of a bootstrap run of that pair.
 func injiOptions(t *testing.T, base string, out io.Writer) BootstrapOptions {
+	return injiRoleOptions(t, commonv1.Role_ROLE_ISSUER, base, out)
+}
+
+func injiRoleOptions(t *testing.T, role commonv1.Role, base string, out io.Writer) BootstrapOptions {
 	t.Helper()
-	pair := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
-	dir := t.TempDir()
+	pair := Pair{Role: role, Dpg: configv1.Dpg_DPG_INJI}
+	root := t.TempDir()
+	dir := OutputDir(root, pair)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	body, err := KeycloakRealm(pair, map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, RealmDir), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, KeycloakDir(pair.Dpg)), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, RealmFile), body, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, RealmFileOf(pair)), body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return BootstrapOptions{
 		Pair:   pair,
 		Dir:    dir,
-		Values: map[string]string{"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example"},
+		Values: map[string]string{"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example", EnvBootstrapSecret: "s3cret"},
 		Out:    out,
+	}
+}
+
+// TestBootstrapCreatesTheRoleRealm is ADR-035 decision 1 at bootstrap
+// time: the run reads the realm of the pair role from the stack
+// directory, creates it when the server has none, and updates it when
+// the server has it.
+func TestBootstrapCreatesTheRoleRealm(t *testing.T) {
+	state := &keycloakState{realm: RealmName(commonv1.Role_ROLE_HOLDER), password: "from-the-stack-env"}
+	server := fakeKeycloak(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	opts := injiRoleOptions(t, commonv1.Role_ROLE_HOLDER, server.URL, &out)
+	opts.Values[EnvBootstrapSecret] = "from-the-stack-env"
+	got, err := Bootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	if state.created != 1 || state.updated != 0 || state.createdRealm != "vca-holder-realm" {
+		t.Fatalf("created %d (%q), updated %d", state.created, state.createdRealm, state.updated)
+	}
+	if !strings.Contains(strings.Join(got.Steps, " "), "vca-holder-realm created") {
+		t.Errorf("steps = %v", got.Steps)
+	}
+	again, err := Bootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("second Bootstrap: %v", err)
+	}
+	if state.created != 1 || state.updated != 1 {
+		t.Fatalf("created %d, updated %d", state.created, state.updated)
+	}
+	if !strings.Contains(strings.Join(again.Steps, " "), "vca-holder-realm present") {
+		t.Errorf("steps = %v", again.Steps)
+	}
+	// No default password exists (ADR-035 consequence 3).
+	delete(opts.Values, EnvBootstrapSecret)
+	if _, err := Bootstrap(context.Background(), opts); err == nil || !strings.Contains(err.Error(), EnvBootstrapSecret) {
+		t.Errorf("a run with no administrator password passed: %v", err)
 	}
 }
 

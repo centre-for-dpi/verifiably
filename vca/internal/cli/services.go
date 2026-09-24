@@ -348,7 +348,7 @@ func Catalog() []Service {
 			Fixed: state("VCA_WALLET_AUTH_STATE_DIR"),
 			// The service mounts the login endpoints at / and at
 			// /wallet/auth. The proxy removes /auth, so the redirect URI of
-			// the realm is the same for every role.
+			// the realm of the role has the same shape for every role.
 			Routes: []Route{
 				rpc("vca.walletauth.v1.WalletAuthService"), rpc("vca.admin.v1.AdminService"),
 				jwks, {Match: "/auth/*", Strip: true},

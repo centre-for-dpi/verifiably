@@ -251,17 +251,20 @@ Empty selects the in-memory limiter, which is fine for one replica.
 The command writes one folder per role and DPG pair:
 
 ```
-deploy/<role>-<dpg>/.env                    mode 0600
-deploy/<role>-<dpg>/signing-key.pem         mode 0600
-deploy/<role>-<dpg>/Caddyfile               mode 0644
-deploy/<role>-<dpg>/keycloak/               mode 0755
-deploy/<role>-<dpg>/keycloak/vca-realm.json mode 0644
+deploy/<role>-<dpg>/.env                       mode 0600
+deploy/<role>-<dpg>/signing-key.pem            mode 0600
+deploy/<role>-<dpg>/Caddyfile                  mode 0644
+deploy/keycloak-<dpg>/                         mode 0755
+deploy/keycloak-<dpg>/vca-<role>-realm.json    mode 0644
+deploy/keycloak-<dpg>/.env                     mode 0600
 ```
 
-Every pair gets `keycloak/vca-realm.json`, because every DPG stack
-ships a Keycloak. The realm sits alone in its directory, because
-Keycloak parses every JSON file of its import directory. A pair also
-gets the extra file its DPG needs:
+Every DPG stack ships a Keycloak, and every role has its own realm
+(ADR-035 decision 1). So every pair writes its realm into the
+directory of the Keycloak of the stack. The `.env` of that directory holds
+the generated administrator password of the Keycloak. The first run
+of any role of the stack writes it, and every later run keeps it
+(ADR-035 decision 7). A pair also gets the extra file its DPG needs:
 
 | DPG | Extra file |
 |---|---|
