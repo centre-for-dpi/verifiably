@@ -14,8 +14,8 @@ The landing is the front door of a VCA deployment. It runs once per deployment a
 ## How to run
 
 ```sh
-vca setup --role issuer --dpg waltid
-vca deploy --role issuer --dpg waltid
+vca setup --role <role> --dpg <dpg>
+vca deploy --role <role> --dpg <dpg>
 ```
 
 Every pair profile starts the one `vca-landing` container. It reads `deploy/landing/.env`, which `vca setup` writes. On a laptop it answers at `http://localhost:17900`. Under a base domain it answers at `https://vca.<domain>`.
@@ -24,7 +24,7 @@ By hand:
 
 ```sh
 cd services/landing
-VCA_PEERS='issuer-waltid|http://localhost:18006|schema-registry=http://localhost:8080,dpg-adapter-waltid=http://localhost:8090' go run .
+VCA_PEERS='<role>-<dpg>|http://localhost:<host port>|<service>=<internal url>,...' go run .
 ```
 
 Configuration comes from environment variables. The table lists each one.

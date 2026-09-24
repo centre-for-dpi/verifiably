@@ -1,0 +1,8 @@
+{{define "cta"}}<section class="cta" id="{{.ID}}" aria-labelledby="{{.ID}}-title">
+<div class="cta-body">
+<h2 id="{{.ID}}-title">{{.Title}}</h2>
+{{if .Text}}<p class="cta-text">{{.Text}}</p>
+{{end}}</div>
+{{template "button" .Action}}
+</section>
+{{end}}

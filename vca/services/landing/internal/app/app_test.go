@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/landing/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/landing/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
 func settings(t *testing.T, values map[string]string) config.Config {
@@ -36,6 +38,25 @@ func TestWiringServesTheAssets(t *testing.T) {
 	a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/vca.css", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("assets: status = %d", rec.Code)
+	}
+	// With no peer the landing still renders, with no stack and no call
+	// to action, and the descriptor is empty.
+	rec = httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("landing: status = %d", rec.Code)
+	}
+	a11ytest.AssertPage(t, rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "No stack runs yet.") || strings.Contains(rec.Body.String(), "btn-primary") {
+		t.Errorf("landing with no peer:\n%s", rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/.well-known/vca.json", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"version":"latest"`) {
+		t.Errorf("descriptor: %d %s", rec.Code, rec.Body.String())
+	}
+	if a.Pages == nil {
+		t.Error("the pages are wired")
 	}
 }
 

@@ -64,10 +64,30 @@ func serve(w http.ResponseWriter, fn func() error) {
 
 // DemoPage composes one page from every component.
 func DemoPage(kit *components.Kit) (components.Page, error) {
-	okBadge, err := kit.HTML("badge", components.Badge{Status: "ok", Text: "Valid"})
-	if err != nil {
-		return components.Page{}, err
+	// The parts other components embed render first, in one pass.
+	pre := map[string]template.HTML{}
+	for name, data := range map[string]any{
+		"badge": components.Badge{Status: "ok", Text: "Valid"},
+		"figure": components.Figure{ID: "triangle", Title: "The triangle of trust", ViewBox: "0 0 320 200",
+			Caption: "Issuer, holder and verifier, with the trust registry between them.",
+			SVG: `<path class="fig-edge" d="M60 160 L160 40 L260 160 Z"/><circle class="fig-node" cx="60" cy="160" r="26"/>` +
+				`<circle class="fig-node" cx="160" cy="40" r="26"/><circle class="fig-node" cx="260" cy="160" r="26"/>` +
+				`<text class="fig-text" x="60" y="164">Issuer</text><text class="fig-text" x="160" y="44">Holder</text>` +
+				`<text class="fig-text" x="260" y="164">Verifier</text><text class="fig-label" x="160" y="180" text-anchor="middle">trusts</text>`},
+		"stacks": components.Stacks{Items: []components.StackCard{{
+			ID: "stack-a", Name: "Alpha Stack", Version: "Pinned 1.2.3",
+			Components: []components.Component{{Name: "issuer-api", Version: "pinned 1.2.3", RepoHref: "https://example.org/repo", RepoText: "GitHub", DocsHref: "https://example.org/docs", DocsText: "Documentation"}},
+			Roles:      []components.RoleRow{{Label: "Issuer", State: "live", Text: "Live"}, {Label: "Holder", State: "starting", Text: "Starting"}},
+		}}},
+		"note": components.Note{Label: "Note", Text: "Every component renders on this page, in both themes."},
+	} {
+		h, err := kit.HTML(name, data)
+		if err != nil {
+			return components.Page{}, err
+		}
+		pre[name] = h
 	}
+	okBadge, figure, stacks, note := pre["badge"], pre["figure"], pre["stacks"], pre["note"]
 	steps := []struct {
 		name string
 		data any
@@ -96,7 +116,10 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		{"tiles", components.Tiles{Items: []components.Tile{
 			{Num: "Issuer", Title: "Proceed as issuer", Text: "Register your organisation, define what you issue, then issue credentials.", Meta: "On two stacks", Href: "/"},
 			{Num: "Holder", Title: "Proceed as holder", Text: "Discover offers, claim credentials into a wallet and present them.", Href: "/"},
+			{Num: "03", Title: "The triangle of trust", Text: "An issuer signs, a holder presents, a verifier checks.", Figure: figure, Meta: "Read more", Href: "https://www.w3.org/TR/vc-data-model-2.0/"},
 		}}},
+		{"block", components.Block{ID: "stacks", Title: "Stacks on this deployment", Lead: "Only running services appear.", Meta: "Updated now", Body: stacks}},
+		{"cta", components.CTA{ID: "start", Title: "Pick a role.", Text: "Walk one flow end to end.", Action: components.Button{Text: "Start", Href: "/", Variant: "primary"}}},
 		{"card", components.Card{ID: "verdict", Title: "Verification result", Text: "The credential is valid.", Body: okBadge, Footer: "Checked today"}},
 		{"table", components.Table{Caption: "Checks", Columns: []string{"Check", "Result"}, Rows: []components.Row{
 			{{Text: "Signature"}, {HTML: okBadge}},
@@ -129,6 +152,7 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		Label: "UI kit", Title: "Every component,", Emphasis: "one page.",
 		Lead:    "The kit in the light and the dark theme, with the portal shell around it.",
 		Actions: []components.Button{{Text: "Stylesheet", Href: "/static/vca.css", Variant: "primary"}},
+		Aside:   note,
 	}
 	return components.Page{
 		Title:       "vca UI kit demo",

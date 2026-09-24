@@ -304,6 +304,22 @@ func TestStylesheetCarriesContentComponents(t *testing.T) {
 		".checklist{", ".check-mark{", ".check-done .check-mark", ".stats{", ".stat{", ".stat-value{",
 		".stepper{", ".stepper-num{", ".stepper-current .stepper-num", ".choice{", ".choice-card{", ".choice-card:has(:checked)",
 		".choice-card:has(:focus-visible)", ".code{", ".code pre{", ".empty{", ".empty-title{",
+		// The landing components: page block, diagram figure, stack cards,
+		// the call to action band, and the hero note.
+		".tiles-3{", ".stack-roles-group{", ".block{", ".block-head{", ".block-lead{", ".block-meta{",
+		".figure{", ".fig-node{", ".fig-edge{", ".fig-label{", ".fig-text{",
+		".stacks{", ".stack{", ".stack-head{", ".stack-version{", ".stack-label{", ".stack-components{", ".stack-component-name{",
+		".stack-component-version{", ".stack-links{", ".stack-roles{", ".stack-role{",
+		".cta{", ".cta-text{", ".note{",
+	} {
+		if !strings.Contains(base, want) {
+			t.Errorf("base.css missing %q", want)
+		}
+	}
+	// The call to action band inverts like a hovered tile, and the
+	// diagram draws with the theme tokens only.
+	for _, want := range []string{
+		".cta{", "background:var(--invert-bg)", ".fig-node{fill:var(--paper);stroke:var(--primary)", ".fig-text{fill:var(--ink)",
 	} {
 		if !strings.Contains(base, want) {
 			t.Errorf("base.css missing %q", want)

@@ -27,7 +27,7 @@
 {{if .Shell}}<span class="role-chip">{{.Shell.RoleLabel}}</span>
 {{end}}{{if or .Nav.Links (not .Shell)}}<nav class="nav" aria-label="{{.Nav.Label}}">
 <ul>
-{{range .Nav.Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} hx-get="{{.Href}}" hx-target="#page" hx-push-url="true">{{.Text}}</a></li>
+{{range .Nav.Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}{{if .Local}} hx-get="{{.Href}}" hx-target="#page" hx-push-url="true"{{else if external .Href}} rel="noopener"{{end}}>{{.Text}}</a></li>
 {{end}}</ul>
 </nav>
 {{end}}{{if .Shell}}{{template "shell-tools" .}}{{end}}<button class="btn btn-ghost theme-toggle" type="button" hidden data-theme-toggle aria-label="{{.Text.ThemeToggle}}" data-label-toggle="{{.Text.ThemeToggle}}" data-label-system="{{.Text.ThemeSystem}}" data-label-light="{{.Text.ThemeLight}}" data-label-dark="{{.Text.ThemeDark}}">{{.Text.ThemeToggle}}</button>

@@ -1,0 +1,16 @@
+{{define "stacks"}}<ul class="stacks">
+{{$s := .}}{{range .Items}}<li><article class="stack" id="{{.ID}}" aria-labelledby="{{.ID}}-title">
+<div class="stack-head"><h3 id="{{.ID}}-title">{{.Name}}</h3>{{if .Version}}<span class="stack-version">{{.Version}}</span>{{end}}</div>
+{{if .Components}}<h4 class="stack-label">{{$s.ComponentsLabel}}</h4>
+<ul class="stack-components">
+{{range .Components}}<li><span class="stack-component-name">{{.Name}}</span>{{if .Version}}<span class="stack-component-version">{{.Version}}</span>{{end}}{{if or .RepoHref .DocsHref}}<span class="stack-links">{{if .RepoHref}}<a href="{{.RepoHref}}" rel="noopener">{{.RepoText}}</a>{{end}}{{if .DocsHref}}<a href="{{.DocsHref}}" rel="noopener">{{.DocsText}}</a>{{end}}</span>{{end}}</li>
+{{end}}</ul>
+{{end}}<div class="stack-roles-group">
+<h4 class="stack-label">{{$s.RolesLabel}}</h4>
+<ul class="stack-roles">
+{{range .Roles}}<li class="stack-role stack-role-{{.State}}"><span>{{.Label}}</span><span class="badge badge-{{.Badge}}">{{.Text}}</span></li>
+{{end}}</ul>
+</div>
+</article></li>
+{{end}}</ul>
+{{end}}

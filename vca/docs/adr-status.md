@@ -386,10 +386,10 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-033 | 1 A stateless landing service | Partial | `vca/services/landing` | The service, its health endpoints, and its configuration exist. The pages follow. |
+| ADR-033 | 1 A stateless landing service | Partial | `vca/services/landing` | The landing, the stacks fragment, and the descriptor exist. The role picker and the intro pages follow. |
 | ADR-033 | 2 One landing container per deployment | Done | `deploy/vca/compose.yaml` | |
-| ADR-033 | 3 Short text on VCA, the DPGs, and the triangle of trust | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
-| ADR-033 | 4 Live stacks with pinned versions and links | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
+| ADR-033 | 3 Short text on VCA, the DPGs, and the triangle of trust | Done | `vca/services/landing/internal/pages` | |
+| ADR-033 | 4 Live stacks with pinned versions and links | Done | `vca/services/landing/internal/pages` | |
 | ADR-033 | 5 The role picker lists live roles only | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
 | ADR-033 | 6 Role intro pages with step cards and sign in | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
 
@@ -399,7 +399,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-034 | 1 The CLI writes the peer list | Done | `vca/internal/cli/services.go` | `VCA_PEERS` reaches every UI service, the auth services, admin, and the landing. |
 | ADR-034 | 2 A shared probe with a timeout and a cache | Done | `vca/internal/topology` | |
-| ADR-034 | 3 Absent, starting, and live pairs | Done | `vca/internal/topology` | The pages that read the states follow. |
+| ADR-034 | 3 Absent, starting, and live pairs | Done | `vca/internal/topology` | The landing reads the states. The portals follow. |
 | ADR-034 | 4 Features and DPG information in the adapter answer | Done | `vca/proto/vca/backend/v1` | Each adapter lists only the features whose RPC works today. |
 | ADR-034 | 5 Pages show live features only | Not started | `vca/ui` | No page reads the feature list yet. |
 

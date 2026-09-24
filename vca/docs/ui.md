@@ -285,6 +285,11 @@ component. `components.Names` lists every template.
 | `choice` | `Choice` | `fieldset` with a `legend` and radio cards, or checkbox cards with `Multiple`. | `ID`, `Legend`, `Options` |
 | `code` | `Code` | `figure` with a `figcaption` and a `pre` region named by it. | `ID`, `Label`, `Text` |
 | `empty` | `Empty` | Empty state with a title, a sentence, and the one action that fills it. | `Title`, `Action` |
+| `block` | `Block` | One section of a long page: `section` labelled by its `h2`, a lead, a meta line, a body. `Attrs` takes the htmx attributes, so a block can refresh itself. | `ID`, `Title` |
+| `figure` | `Figure` | Inline SVG diagram as an image named by its title, with a hidden caption as the text equivalent. The body uses `fig-node`, `fig-edge`, `fig-label`, and `fig-text`. | `ID`, `Title`, `Caption`, `ViewBox`, `SVG` |
+| `stacks` | `Stacks` | One `article` per stack: name, version, components with links, and one row per role with its state as a word. | `Items` with `ID`, `Name`, `Roles` |
+| `cta` | `CTA` | Call to action band: `section` labelled by its `h2`, a sentence, and one button. | `ID`, `Title`, `Action` |
+| `note` | `Note` | Small aside of a hero: a tracked label, a sentence, and the accent line. Set it as `Hero.Aside`. | `Text` |
 
 ### Data structs
 
@@ -295,7 +300,13 @@ The page header shows `Label` in the accent colour above the `h1`, and
 
 `Nav`: `Label` (default `Main`), `Brand`, `Links`. `Link`: `Href`, `Text`,
 `Current`. The wordmark links to `Brand.Href` (default `/`). `Brand.Text`
-names the service beside the wordmark.
+names the service beside the wordmark. A link to a path of the site
+swaps the main region through htmx. An anchor and an external address
+open as plain links, and an external one carries `rel="noopener"`.
+
+`Tile`: `Num`, `Title`, `Text`, `Figure`, `Meta`, `Href`. `Figure` takes
+the output of the `figure` component and sits between the text and the
+meta line.
 
 `Text`: `SkipLink`, `ThemeToggle`, `ThemeSystem`, `ThemeLight`, `ThemeDark`,
 `SignOut`, `Menu`, `StackNav`, `SideNav`, `Starting`. A message catalogue

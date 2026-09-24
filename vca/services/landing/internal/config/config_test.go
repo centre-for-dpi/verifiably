@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 )
 
@@ -13,7 +15,13 @@ func lookup(values map[string]string) func(string) string {
 	return func(name string) string { return values[name] }
 }
 
-const peers = "issuer-waltid|https://issuer-waltid.labs.example|schema-registry=http://issuer-waltid-schema-registry:8103,dpg-adapter-waltid=http://issuer-waltid-dpg-adapter-waltid:8090"
+// peers is one candidate pair, named from the enums so no vendor name
+// appears in this service.
+var peers = func() string {
+	pair := topology.PairName(commonv1.Role_ROLE_ISSUER, configv1.Dpg(1))
+	return pair + "|https://" + pair + ".labs.example|schema-registry=http://" + pair + "-schema-registry:8103," +
+		topology.AdapterService(configv1.Dpg(1)) + "=http://" + pair + "-adapter:8090"
+}()
 
 func TestLoadDefaults(t *testing.T) {
 	c, err := Load(lookup(map[string]string{}))
@@ -45,7 +53,7 @@ func TestLoadReadsEveryVariable(t *testing.T) {
 	if c.Listen != ":9000" || c.PublicURL != "https://vca.labs.example" || c.ThemeFile != "/etc/vca/theme.yaml" || c.Version != "1.2.3" {
 		t.Errorf("config = %+v", c)
 	}
-	if len(c.Peers) != 1 || c.Peers[0].Pair != "issuer-waltid" || c.Peers[0].Adapter() == "" {
+	if len(c.Peers) != 1 || c.Peers[0].Role != commonv1.Role_ROLE_ISSUER || c.Peers[0].Adapter() == "" {
 		t.Errorf("peers = %+v", c.Peers)
 	}
 }

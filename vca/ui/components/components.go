@@ -27,7 +27,8 @@ import (
 
 // Names lists every template a Kit can render.
 var Names = []string{"layout", "page", "card", "field", "table", "badge", "toast", "dialog", "qr", "json", "button",
-	"hero", "tiles", "steps", "checklist", "stat", "stepper", "choice", "code", "empty"}
+	"hero", "tiles", "steps", "checklist", "stat", "stepper", "choice", "code", "empty",
+	"block", "figure", "stacks", "cta", "note"}
 
 // safeAttrNames is the whitelist for the safeAttr template function.
 // Only these attribute names can be added through an Attrs map.
@@ -100,7 +101,7 @@ func New(opts ...KitOption) (*Kit, error) {
 	if logo.Name != "" {
 		mark.LogoSrc, mark.LogoAlt = ui.Prefix+logo.Name, o.brand.Logo.Alt
 	}
-	funcs := template.FuncMap{"safeAttr": SafeAttr, "mark": func() Mark { return mark }, "inc": func(i int) int { return i + 1 }}
+	funcs := template.FuncMap{"safeAttr": SafeAttr, "mark": func() Mark { return mark }, "inc": func(i int) int { return i + 1 }, "external": External}
 	tpl, err := template.New("kit").Funcs(funcs).ParseFS(ui.Templates, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("components: %w", err)
@@ -322,6 +323,19 @@ type Link struct {
 	Href    string
 	Text    string
 	Current bool
+}
+
+// Local reports a link to a path of this site. Only such a link swaps
+// the main region through htmx; an anchor and an external address open
+// as plain links.
+func (l Link) Local() bool {
+	return strings.HasPrefix(l.Href, "/") && !strings.HasPrefix(l.Href, "//")
+}
+
+// External reports a link that leaves this site: an absolute address or
+// a protocol relative one. Such a link carries rel="noopener".
+func External(href string) bool {
+	return strings.Contains(href, "://") || strings.HasPrefix(href, "//")
 }
 
 // Nav is the labelled navigation landmark.
@@ -674,22 +688,33 @@ func (h Hero) normalize() (any, error) {
 
 // Tile is one inverting link card of a Tiles grid.
 type Tile struct {
-	Num   string // small tracked label in the top left, for example "01" or a role
-	Title string // required, the h2 of the tile
-	Text  string
-	Meta  string // small text under the description, for example the stacks
-	Href  string // required
+	Num    string // small tracked label in the top left, for example "01" or a role
+	Title  string // required, the h2 of the tile
+	Text   string
+	Figure template.HTML // optional diagram between the text and the meta line, from the figure component
+	Meta   string        // small text under the description, for example the stacks or the link name
+	Href   string        // required
 }
+
+// External reports whether the tile leaves the site.
+func (t Tile) External() bool { return External(t.Href) }
 
 // Tiles is a grid of link tiles. Under 56.25rem the grid has two columns,
 // under 30rem one.
 type Tiles struct {
-	Items []Tile // at least one
+	Items   []Tile // at least one
+	Columns int    // 4 (default) or 3 on a wide screen
 }
 
 func (t Tiles) normalize() (any, error) {
 	if len(t.Items) == 0 {
 		return nil, errors.New("tiles: at least one tile is required")
+	}
+	if t.Columns == 0 {
+		t.Columns = 4
+	}
+	if t.Columns != 3 && t.Columns != 4 {
+		return nil, fmt.Errorf("tiles: %d columns; use 3 or 4", t.Columns)
 	}
 	for _, it := range t.Items {
 		if it.Title == "" || it.Href == "" {
@@ -944,6 +969,185 @@ func (e Empty) normalize() (any, error) {
 	}
 	e.Action = anyval.As[Button](b)
 	return e, nil
+}
+
+// Block is one section of a long page: an h2 that names it, a lead, a
+// meta line at the right of the heading, and a body. Attrs takes the
+// whitelisted htmx attributes, so a block can refresh itself.
+type Block struct {
+	ID    string // required, used for aria-labelledby
+	Title string // required, the h2
+	Lead  string
+	Meta  string
+	Body  template.HTML
+	Attrs map[string]string
+}
+
+func (b Block) normalize() (any, error) {
+	if err := checkID(b.ID); err != nil {
+		return nil, fmt.Errorf("block: %w", err)
+	}
+	if b.Title == "" {
+		return nil, fmt.Errorf("block %q: title is required", b.ID)
+	}
+	if err := checkAttrs(b.Attrs); err != nil {
+		return nil, fmt.Errorf("block %q: %w", b.ID, err)
+	}
+	return b, nil
+}
+
+// viewBox matches an SVG viewBox of four numbers.
+var viewBox = regexp.MustCompile(`^-?[0-9.]+ -?[0-9.]+ [0-9.]+ [0-9.]+$`)
+
+// svgForbidden matches what an inline diagram never holds: a script, an
+// event handler, or a foreign object.
+var svgForbidden = regexp.MustCompile(`(?i)<script|\son[a-z]+\s*=|<foreignObject|javascript:`)
+
+// Figure is an inline SVG diagram with a text equivalent. The SVG is an
+// image named by Title, and Caption carries the words a screen reader
+// gets instead of the drawing. The SVG body uses the classes fig-node,
+// fig-edge, fig-label and fig-text, which the stylesheet colours with
+// the theme tokens.
+type Figure struct {
+	ID      string        // required
+	Title   string        // required, the accessible name
+	Caption string        // required, the text equivalent
+	ViewBox string        // required, four numbers
+	SVG     template.HTML // required, the body of the svg element
+}
+
+func (f Figure) normalize() (any, error) {
+	if err := checkID(f.ID); err != nil {
+		return nil, fmt.Errorf("figure: %w", err)
+	}
+	if f.Title == "" || f.Caption == "" || f.SVG == "" {
+		return nil, fmt.Errorf("figure %q: title, caption and svg are required", f.ID)
+	}
+	if !viewBox.MatchString(f.ViewBox) {
+		return nil, fmt.Errorf("figure %q: viewBox %q is not four numbers", f.ID, f.ViewBox)
+	}
+	if svgForbidden.MatchString(string(f.SVG)) {
+		return nil, fmt.Errorf("figure %q: the svg holds a script, a handler, or a foreign object", f.ID)
+	}
+	return f, nil
+}
+
+// RoleStates lists the values RoleRow.State accepts.
+var RoleStates = []string{"live", "starting"}
+
+// RoleRow is one role of a stack card with its state.
+type RoleRow struct {
+	Label string // required, for example Issuer
+	State string // one of RoleStates
+	Text  string // required, the word of the state, for example Live
+}
+
+// Badge returns the badge status of the state.
+func (r RoleRow) Badge() string {
+	if r.State == "live" {
+		return "ok"
+	}
+	return "warn"
+}
+
+// Component is one deployed part of a stack, with its version and links.
+type Component struct {
+	Name     string // required
+	Version  string // for example "pinned 1.2.3"
+	RepoHref string
+	RepoText string // required with RepoHref
+	DocsHref string
+	DocsText string // required with DocsHref
+}
+
+// StackCard is one stack of a deployment: its name, its version, its
+// components, and one row per role with the state of that role.
+type StackCard struct {
+	ID         string // required
+	Name       string // required
+	Version    string // for example "Pinned 1.2.3"
+	Components []Component
+	Roles      []RoleRow // at least one
+}
+
+// Stacks is the list of stack cards of the landing.
+type Stacks struct {
+	Items           []StackCard // at least one
+	ComponentsLabel string      // default "Components"
+	RolesLabel      string      // default "Roles"
+}
+
+func (s Stacks) normalize() (any, error) {
+	if len(s.Items) == 0 {
+		return nil, errors.New("stacks: at least one stack is required")
+	}
+	fill(&s.ComponentsLabel, "Components")
+	fill(&s.RolesLabel, "Roles")
+	for _, it := range s.Items {
+		if err := checkID(it.ID); err != nil {
+			return nil, fmt.Errorf("stacks: %w", err)
+		}
+		if it.Name == "" {
+			return nil, fmt.Errorf("stacks: stack %q has no name", it.ID)
+		}
+		if len(it.Roles) == 0 {
+			return nil, fmt.Errorf("stacks: stack %q has no role", it.ID)
+		}
+		for _, r := range it.Roles {
+			if r.Label == "" || r.Text == "" {
+				return nil, fmt.Errorf("stacks: stack %q: every role needs a label and a state word", it.ID)
+			}
+			if !contains(RoleStates, r.State) {
+				return nil, fmt.Errorf("stacks: stack %q: unknown state %q", it.ID, r.State)
+			}
+		}
+		for _, c := range it.Components {
+			if c.Name == "" {
+				return nil, fmt.Errorf("stacks: stack %q: every component needs a name", it.ID)
+			}
+			if (c.RepoHref != "" && c.RepoText == "") || (c.DocsHref != "" && c.DocsText == "") {
+				return nil, fmt.Errorf("stacks: stack %q: component %q: every link needs text", it.ID, c.Name)
+			}
+		}
+	}
+	return s, nil
+}
+
+// CTA is the call to action band: a heading, a sentence, and one button.
+type CTA struct {
+	ID     string // required
+	Title  string // required
+	Text   string
+	Action Button // required
+}
+
+func (c CTA) normalize() (any, error) {
+	if err := checkID(c.ID); err != nil {
+		return nil, fmt.Errorf("cta: %w", err)
+	}
+	if c.Title == "" {
+		return nil, fmt.Errorf("cta %q: title is required", c.ID)
+	}
+	b, err := c.Action.normalize()
+	if err != nil {
+		return nil, fmt.Errorf("cta %q: %w", c.ID, err)
+	}
+	c.Action = anyval.As[Button](b)
+	return c, nil
+}
+
+// Note is the small aside of a hero: a tracked label, a sentence, and
+// the accent line. Set it as Hero.Aside through Kit.HTML.
+type Note struct {
+	Label string
+	Text  string // required
+}
+
+func (n Note) normalize() (any, error) {
+	if n.Text == "" {
+		return nil, errors.New("note: text is required")
+	}
+	return n, nil
 }
 
 func checkID(id string) error {

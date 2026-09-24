@@ -228,6 +228,7 @@ h1,h2,h3,h4{overflow-wrap:break-word}
   display:grid;grid-template-columns:repeat(4,1fr);
   border-top:1px solid var(--line);border-left:1px solid var(--line);
 }
+.tiles-3{grid-template-columns:repeat(3,1fr)}
 .cards-grid{
   display:grid;grid-template-columns:repeat(auto-fill,minmax(17.5rem,1fr));
   border-top:1px solid var(--line);border-left:1px solid var(--line);
@@ -541,11 +542,87 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   .hero{grid-template-columns:1fr}
   .hero-left{border-right:none;border-bottom:1px solid var(--line);padding:var(--space-7) 0}
   .hero-right{padding:var(--space-7) 0}
-  .tiles{grid-template-columns:1fr 1fr}
+  .tiles,.tiles-3{grid-template-columns:1fr 1fr}
   .tile{padding-left:1.3rem;padding-right:1.3rem}
   .tile h2{font-size:1.3rem}
   .site-footer{flex-direction:column;align-items:flex-start}
 }
 @media (max-width:30rem){
-  .tiles{grid-template-columns:1fr}
+  .tiles,.tiles-3{grid-template-columns:1fr}
 }
+
+/* ---------- page block ----------
+   One section of a long page: an h2, a lead, a meta line at the right of
+   the heading, and a body. */
+.block{padding:var(--space-7) 0 var(--space-6);border-top:1px solid var(--line)}
+.block:first-child{border-top:none}
+.block-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:var(--space-3) var(--space-6);margin:0 0 var(--space-6)}
+.block-head h2{font-size:clamp(1.5rem,3vw,2.2rem);margin:0}
+.block-lead{margin:var(--space-2) 0 0;color:var(--secondary);max-width:52ch}
+.block-meta{font-family:var(--font-body);font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---------- figure ----------
+   An inline SVG diagram. The classes colour the drawing with the tokens,
+   so a theme change reaches it and no page carries its own style. */
+.figure{margin:var(--space-3) 0 0;max-width:22rem}
+.figure svg{display:block;width:100%;height:auto;overflow:visible}
+.fig-node{fill:var(--paper);stroke:var(--primary);stroke-width:1.5}
+.fig-edge{fill:none;stroke:var(--accent);stroke-width:1.2}
+/* The text sizes come from the font-size attribute of each text element,
+   in user units, so the words scale with the drawing. */
+.fig-label{fill:var(--muted);font-family:var(--font-body);letter-spacing:.14em;text-transform:uppercase}
+.fig-text{fill:var(--ink);font-family:var(--font-heading);letter-spacing:.06em;text-anchor:middle}
+.tile:hover .fig-node,.tile:focus-visible .fig-node{fill:var(--invert-bg);stroke:var(--invert-fg)}
+.tile:hover .fig-edge,.tile:focus-visible .fig-edge{stroke:var(--invert-accent)}
+.tile:hover .fig-text,.tile:focus-visible .fig-text{fill:var(--invert-fg)}
+.tile:hover .fig-label,.tile:focus-visible .fig-label{fill:var(--invert-muted)}
+
+/* ---------- stack cards ----------
+   One card per stack of a deployment: name, version, components with
+   their links, and one row per role with its state as a word. */
+.stacks{
+  list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(18rem,1fr));
+  border-top:1px solid var(--line);border-left:1px solid var(--line);margin:0 0 var(--space-6);
+}
+.stacks>li{display:flex;min-width:0}
+.stack{
+  flex:1;display:flex;flex-direction:column;gap:var(--space-4);min-width:0;
+  padding:var(--space-5) 1.4rem var(--space-6);
+  border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+}
+.stack-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:var(--space-2) var(--space-4)}
+.stack-head h3{margin:0;font-size:1.3rem;letter-spacing:.06em;text-transform:uppercase}
+.stack-version{
+  font-family:var(--font-body);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);font-variant-numeric:tabular-nums;
+}
+.stack-label{margin:0;font-family:var(--font-body);font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--role-accent)}
+.stack-components{list-style:none;display:flex;flex-direction:column;gap:var(--space-2);margin:calc(-1 * var(--space-2)) 0 0}
+.stack-roles{list-style:none;display:flex;flex-direction:column;gap:var(--space-2);margin:0}
+.stack-roles-group{display:flex;flex-direction:column;gap:var(--space-4);margin-top:auto}
+.stack-components>li{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-1) var(--space-3);font-size:.9rem;padding:var(--space-1) 0;border-bottom:1px solid var(--line)}
+.stack-component-name{font-family:var(--font-mono);font-size:.85rem}
+.stack-component-version{color:var(--secondary);font-variant-numeric:tabular-nums}
+.stack-links{display:flex;gap:var(--space-3);margin-left:auto;font-size:.85rem}
+.stack-links a{text-decoration:none;font-weight:600}
+.stack-links a:hover{text-decoration:underline}
+.stack-role{display:flex;justify-content:space-between;align-items:center;gap:var(--space-3);font-size:.95rem}
+
+/* ---------- call to action band ----------
+   The band inverts like a hovered tile, so the primary button on it swaps
+   to the paper colours. */
+.cta{
+  display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:var(--space-5) var(--space-7);
+  margin:var(--space-6) 0;padding:var(--space-7) 2.4rem;
+  background:var(--invert-bg);color:var(--invert-fg);
+}
+.cta h2{margin:0;color:var(--invert-fg);font-size:clamp(1.4rem,3vw,2rem)}
+.cta-body{display:flex;flex-direction:column;gap:var(--space-2);max-width:40rem}
+.cta-text{margin:0;color:var(--invert-muted);font-size:1.05rem}
+.cta .btn-primary{background:var(--invert-fg);border-color:var(--invert-fg);color:var(--invert-bg)}
+.cta .btn-primary:hover{background:var(--invert-accent);border-color:var(--invert-accent);color:var(--invert-bg)}
+
+/* ---------- note ----------
+   The small aside of a hero. */
+.note{max-width:40rem}
+.note p{margin:.8rem 0 0;line-height:1.6;color:var(--secondary)}

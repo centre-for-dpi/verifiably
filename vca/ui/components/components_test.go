@@ -63,6 +63,15 @@ func samples(t *testing.T, k *Kit) map[string]any {
 			{Value: "bulk", Title: "Bulk", Text: "One credential per record.", Meta: "3 sources", Disabled: true}}},
 		"code":  Code{ID: "offer", Label: "Credential offer", Text: "openid-credential-offer://?a=<b>"},
 		"empty": Empty{Title: "Nothing issued yet", Text: "The first credential appears here.", Action: Button{Text: "Issue one", Href: "/issue", Variant: "primary"}},
+		"block": Block{ID: "how", Title: "How it works", Lead: "Three ideas.", Meta: "Two minutes", Body: "<p>Body</p>",
+			Attrs: map[string]string{"hx-get": "/how", "hx-trigger": "every 30s", "hx-swap": "outerHTML"}},
+		"figure": Figure{ID: "triangle", Title: "The triangle of trust", Caption: "Issuer, holder and verifier.", ViewBox: "0 0 320 200",
+			SVG: `<circle class="fig-node" cx="10" cy="10" r="5"/><text class="fig-text" x="1" y="1">Issuer</text>`},
+		"stacks": Stacks{Items: []StackCard{{ID: "stack-a", Name: "Alpha Stack", Version: "Pinned 1.0",
+			Components: []Component{{Name: "issuer-api", Version: "pinned 1.0", RepoHref: "https://example.org/r", RepoText: "GitHub", DocsHref: "https://example.org/d", DocsText: "Documentation"}},
+			Roles:      []RoleRow{{Label: "Issuer", State: "live", Text: "Live"}, {Label: "Holder", State: "starting", Text: "Starting"}}}}},
+		"cta":  CTA{ID: "start", Title: "Pick a role.", Text: "Walk one flow.", Action: Button{Text: "Start", Href: "/roles/", Variant: "primary"}},
+		"note": Note{Label: "One role", Text: "This deployment runs one role."},
 	}
 }
 
@@ -753,12 +762,239 @@ func TestWriteErrors(t *testing.T) {
 	if got := Join("<a>", "<b>"); got != "<a>\n<b>\n" {
 		t.Errorf("Join = %q", got)
 	}
-	if len(Names) != 20 {
+	if len(Names) != 25 {
 		t.Errorf("Names = %v", Names)
 	}
 	for _, n := range Names {
 		if k.tpl.Lookup(n) == nil {
 			t.Errorf("template %q is not defined", n)
 		}
+	}
+}
+
+// TestNavLinksBoostOnlyLocalPaths keeps htmx off a nav link that leaves
+// the page: an anchor and an external address open as plain links, a
+// local path swaps the main region.
+func TestNavLinksBoostOnlyLocalPaths(t *testing.T) {
+	k := newKit(t)
+	doc := renderShellPage(t, k, Page{Title: "VCA", Nav: Nav{Links: []Link{
+		{Href: "/roles/", Text: "Start"}, {Href: "#how", Text: "How it works"},
+		{Href: "https://example.org/docs", Text: "Docs"}, {Href: "//cdn.example/x", Text: "Odd"},
+	}}})
+	for _, want := range []string{
+		`<a href="/roles/" hx-get="/roles/" hx-target="#page" hx-push-url="true">Start</a>`,
+		`<a href="#how">How it works</a>`,
+		`<a href="https://example.org/docs" rel="noopener">Docs</a>`,
+		`<a href="//cdn.example/x" rel="noopener">Odd</a>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("nav missing %q\n%s", want, doc)
+		}
+	}
+	for href, local := range map[string]bool{"/": true, "/a/b": true, "#x": false, "https://a": false, "//a": false, "": false} {
+		if (Link{Href: href}).Local() != local {
+			t.Errorf("Local(%q) = %v", href, !local)
+		}
+	}
+}
+
+// TestBlockCarriesHeadingLeadMetaAndAttrs checks the page section: a
+// section labelled by its h2, a lead, a meta line, a body, and the
+// whitelisted htmx attributes that let it refresh itself.
+func TestBlockCarriesHeadingLeadMetaAndAttrs(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "block", Block{ID: "stacks", Title: "Stacks on this deployment", Lead: "Only running services appear.",
+		Meta: "VCA 1.0, updated 09:41", Body: `<p>body</p>`,
+		Attrs: map[string]string{"hx-get": "/stacks", "hx-trigger": "every 30s", "hx-swap": "outerHTML"}}))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<section class="block" id="stacks" aria-labelledby="stacks-title" hx-get="/stacks" hx-swap="outerHTML" hx-trigger="every 30s">`,
+		`<div class="block-head">`, `<h2 id="stacks-title">Stacks on this deployment</h2>`,
+		`<p class="block-lead">Only running services appear.</p>`, `<span class="block-meta">VCA 1.0, updated 09:41</span>`,
+		`<p>body</p>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("block missing %q\n%s", want, doc)
+		}
+	}
+	bare := string(mustHTML(t, k, "block", Block{ID: "how", Title: "How"}))
+	if strings.Contains(bare, "block-lead") || strings.Contains(bare, "block-meta") || strings.Contains(bare, "hx-") {
+		t.Errorf("a bare block has no optional parts:\n%s", bare)
+	}
+	for name, data := range map[string]any{
+		"no id":       Block{Title: "x"},
+		"no title":    Block{ID: "a"},
+		"bad attr":    Block{ID: "a", Title: "x", Attrs: map[string]string{"onclick": "x"}},
+		"bad id":      Block{ID: "1a", Title: "x"},
+		"space in id": Block{ID: "a b", Title: "x"},
+	} {
+		if _, err := k.HTML("block", data); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
+// TestFigureHasATextEquivalent checks the diagram figure: the SVG is an
+// image named by its title, and the caption carries the words a screen
+// reader gets instead of the drawing.
+func TestFigureHasATextEquivalent(t *testing.T) {
+	k := newKit(t)
+	svg := template.HTML(`<circle class="fig-node" cx="1" cy="1" r="1"/><text class="fig-text" x="0" y="0">Issuer</text>`) //nolint:gosec // literal
+	doc := string(mustHTML(t, k, "figure", Figure{ID: "triangle", Title: "The triangle of trust",
+		Caption: "Issuer, holder and verifier, with the trust registry between them.", ViewBox: "0 0 320 200", SVG: svg}))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<figure class="figure" id="triangle">`, `<svg viewBox="0 0 320 200" role="img" aria-labelledby="triangle-title triangle-caption">`,
+		`<title id="triangle-title">The triangle of trust</title>`, `<circle class="fig-node"`, `<text class="fig-text"`,
+		`<figcaption id="triangle-caption" class="visually-hidden">Issuer, holder and verifier, with the trust registry between them.</figcaption>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("figure missing %q\n%s", want, doc)
+		}
+	}
+	for name, data := range map[string]any{
+		"no id":      Figure{Title: "t", Caption: "c", ViewBox: "0 0 1 1", SVG: svg},
+		"no title":   Figure{ID: "f", Caption: "c", ViewBox: "0 0 1 1", SVG: svg},
+		"no caption": Figure{ID: "f", Title: "t", ViewBox: "0 0 1 1", SVG: svg},
+		"no svg":     Figure{ID: "f", Title: "t", Caption: "c", ViewBox: "0 0 1 1"},
+		"bad box":    Figure{ID: "f", Title: "t", Caption: "c", ViewBox: "wide", SVG: svg},
+		"script":     Figure{ID: "f", Title: "t", Caption: "c", ViewBox: "0 0 1 1", SVG: `<script>x</script>`},
+		"handler":    Figure{ID: "f", Title: "t", Caption: "c", ViewBox: "0 0 1 1", SVG: `<a onclick="x">y</a>`},
+	} {
+		if _, err := k.HTML("figure", data); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
+// TestStacksShowTheStateInWords checks the stack cards of the landing:
+// one article per stack, its version, its components with links, and
+// one row per role whose state is a word, never only a colour.
+func TestStacksShowTheStateInWords(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "stacks", Stacks{
+		ComponentsLabel: "Components", RolesLabel: "Roles",
+		Items: []StackCard{{
+			ID: "stack-a", Name: "Alpha Stack", Version: "Pinned 1.2.3",
+			Components: []Component{{Name: "issuer-api", Version: "pinned 1.2.3", RepoHref: "https://example.org/repo", RepoText: "GitHub",
+				DocsHref: "https://example.org/docs", DocsText: "Documentation"}},
+			Roles: []RoleRow{{Label: "Issuer", State: "live", Text: "Live"}, {Label: "Holder", State: "starting", Text: "Starting"}},
+		}, {ID: "stack-b", Name: "Beta Stack", Roles: []RoleRow{{Label: "Admin", State: "live", Text: "Live"}}}},
+	}))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<ul class="stacks">`, `<article class="stack" id="stack-a" aria-labelledby="stack-a-title">`,
+		`<h3 id="stack-a-title">Alpha Stack</h3>`, `<span class="stack-version">Pinned 1.2.3</span>`,
+		`<h4 class="stack-label">Components</h4>`, `<span class="stack-component-name">issuer-api</span>`,
+		`<span class="stack-component-version">pinned 1.2.3</span>`,
+		`<a href="https://example.org/repo" rel="noopener">GitHub</a>`, `<a href="https://example.org/docs" rel="noopener">Documentation</a>`,
+		`<h4 class="stack-label">Roles</h4>`, `<li class="stack-role stack-role-live"><span>Issuer</span><span class="badge badge-ok">Live</span></li>`,
+		`<li class="stack-role stack-role-starting"><span>Holder</span><span class="badge badge-warn">Starting</span></li>`,
+		`<article class="stack" id="stack-b"`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("stacks missing %q\n%s", want, doc)
+		}
+	}
+	if strings.Count(doc, `class="stack-label">Components`) != 1 {
+		t.Error("a stack with no component has no components heading")
+	}
+	for name, data := range map[string]any{
+		"no item":      Stacks{},
+		"no id":        Stacks{Items: []StackCard{{Name: "x", Roles: []RoleRow{{Label: "a", State: "live", Text: "Live"}}}}},
+		"no name":      Stacks{Items: []StackCard{{ID: "s", Roles: []RoleRow{{Label: "a", State: "live", Text: "Live"}}}}},
+		"no role":      Stacks{Items: []StackCard{{ID: "s", Name: "x"}}},
+		"bad state":    Stacks{Items: []StackCard{{ID: "s", Name: "x", Roles: []RoleRow{{Label: "a", State: "down", Text: "Down"}}}}},
+		"no text":      Stacks{Items: []StackCard{{ID: "s", Name: "x", Roles: []RoleRow{{Label: "a", State: "live"}}}}},
+		"no comp name": Stacks{Items: []StackCard{{ID: "s", Name: "x", Roles: []RoleRow{{Label: "a", State: "live", Text: "Live"}}, Components: []Component{{Version: "1"}}}}},
+		"link no text": Stacks{Items: []StackCard{{ID: "s", Name: "x", Roles: []RoleRow{{Label: "a", State: "live", Text: "Live"}}, Components: []Component{{Name: "c", RepoHref: "https://x"}}}}},
+	} {
+		if _, err := k.HTML("stacks", data); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+	// The default labels are English.
+	plain := string(mustHTML(t, k, "stacks", Stacks{Items: []StackCard{{ID: "s", Name: "x",
+		Components: []Component{{Name: "c"}}, Roles: []RoleRow{{Label: "a", State: "live", Text: "Live"}}}}}))
+	if !strings.Contains(plain, ">Components</h4>") || !strings.Contains(plain, ">Roles</h4>") {
+		t.Errorf("default labels:\n%s", plain)
+	}
+}
+
+// TestCTABandHasOneAction checks the call to action band: a section
+// labelled by its heading, a sentence, and one button.
+func TestCTABandHasOneAction(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "cta", CTA{ID: "start", Title: "Pick a role.", Text: "Walk one flow end to end.",
+		Action: Button{Text: "Start with VCA", Href: "/roles/", Variant: "primary"}}))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<section class="cta" id="start" aria-labelledby="start-title">`, `<h2 id="start-title">Pick a role.</h2>`,
+		`<p class="cta-text">Walk one flow end to end.</p>`, `<a class="btn btn-primary" href="/roles/">Start with VCA</a>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("cta missing %q\n%s", want, doc)
+		}
+	}
+	for name, data := range map[string]any{
+		"no id":      CTA{Title: "t", Action: Button{Text: "x"}},
+		"no title":   CTA{ID: "c", Action: Button{Text: "x"}},
+		"bad action": CTA{ID: "c", Title: "t"},
+	} {
+		if _, err := k.HTML("cta", data); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
+// TestNoteRendersLabelAndText checks the small aside of a hero: a tracked
+// label, a sentence, and the accent line.
+func TestNoteRendersLabelAndText(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "note", Note{Label: "One role", Text: "This deployment runs one role."}))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<div class="ethos note">`, `<span class="ethos-label">One role</span>`, `<p>This deployment runs one role.</p>`,
+		`<div class="ethos-line" aria-hidden="true"></div>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("note missing %q\n%s", want, doc)
+		}
+	}
+	bare := string(mustHTML(t, k, "note", Note{Text: "Only text."}))
+	if strings.Contains(bare, "ethos-label") {
+		t.Errorf("a note without a label has no label element:\n%s", bare)
+	}
+	if _, err := k.HTML("note", Note{}); err == nil {
+		t.Error("a note without text passed")
+	}
+}
+
+// TestTileCarriesAFigure lets a tile hold a diagram between its text and
+// its meta line, and keeps an external tile a plain link.
+func TestTileCarriesAFigure(t *testing.T) {
+	k := newKit(t)
+	fig := mustHTML(t, k, "figure", Figure{ID: "f", Title: "t", Caption: "c", ViewBox: "0 0 1 1", SVG: `<circle class="fig-node" r="1"/>`})
+	doc := string(mustHTML(t, k, "tiles", Tiles{Items: []Tile{{Num: "03", Title: "Triangle", Text: "Text.", Figure: fig, Meta: "Read more", Href: "https://example.org/x"}}}))
+	a11ytest.AssertFragment(t, doc)
+	if !strings.Contains(doc, `<a class="tile" href="https://example.org/x" rel="noopener">`) {
+		t.Errorf("an external tile needs rel=noopener:\n%s", doc)
+	}
+	text := strings.Index(doc, "<p>Text.</p>")
+	figure := strings.Index(doc, `<figure class="figure"`)
+	meta := strings.Index(doc, `<span class="tile-meta">`)
+	if text >= figure || figure >= meta {
+		t.Errorf("the figure sits between the text and the meta line:\n%s", doc)
+	}
+	local := string(mustHTML(t, k, "tiles", Tiles{Items: []Tile{{Title: "Local", Href: "/roles/"}}}))
+	if strings.Contains(local, "noopener") || !strings.Contains(local, `<ul class="tiles">`) {
+		t.Errorf("a local tile needs no rel, and four columns is the default:\n%s", local)
+	}
+	three := string(mustHTML(t, k, "tiles", Tiles{Columns: 3, Items: []Tile{{Title: "Local", Href: "/roles/"}}}))
+	if !strings.Contains(three, `<ul class="tiles tiles-3">`) {
+		t.Errorf("three columns carry the modifier:\n%s", three)
+	}
+	if _, err := k.HTML("tiles", Tiles{Columns: 5, Items: []Tile{{Title: "x", Href: "/"}}}); err == nil {
+		t.Error("five columns passed")
 	}
 }

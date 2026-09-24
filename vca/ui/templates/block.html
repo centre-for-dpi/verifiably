@@ -1,0 +1,10 @@
+{{define "block"}}<section class="block" id="{{.ID}}" aria-labelledby="{{.ID}}-title"{{range $k, $v := .Attrs}} {{safeAttr $k $v}}{{end}}>
+<div class="block-head">
+<div>
+<h2 id="{{.ID}}-title">{{.Title}}</h2>
+{{if .Lead}}<p class="block-lead">{{.Lead}}</p>
+{{end}}</div>
+{{if .Meta}}<span class="block-meta">{{.Meta}}</span>
+{{end}}</div>
+{{.Body}}</section>
+{{end}}

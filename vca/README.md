@@ -119,6 +119,7 @@ Each service lives in `services/<name>/`. Shared pure code lives in
 - [Deployment](docs/deploy.md): the compose profiles, the DPG stacks, and the Helm charts.
 - [Super admin service](docs/admin.md): the admin API, the portal, and the login flows.
 - [Wallet portal](docs/wallet-portal.md): the citizen wallet pages and the browser storage.
+- [Landing](docs/landing.md): the front door of a deployment, the stacks it shows, and the role picker.
 - `docs/<service>/`: one folder per service, planned as each service ships.
 
 ## Layout

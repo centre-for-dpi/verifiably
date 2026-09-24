@@ -1,0 +1,8 @@
+{{define "figure"}}<figure class="figure" id="{{.ID}}">
+<svg viewBox="{{.ViewBox}}" role="img" aria-labelledby="{{.ID}}-title {{.ID}}-caption">
+<title id="{{.ID}}-title">{{.Title}}</title>
+{{.SVG}}
+</svg>
+<figcaption id="{{.ID}}-caption" class="visually-hidden">{{.Caption}}</figcaption>
+</figure>
+{{end}}
