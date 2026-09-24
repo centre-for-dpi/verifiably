@@ -14,6 +14,9 @@ import (
 	"testing"
 	"time"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
@@ -389,4 +392,37 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	cfg.ThemeFile = path
 	_, err := app.Build(cfg, app.Deps{Log: quiet()})
 	uikittest.AssertBadThemeError(t, err, path)
+}
+
+// TestBuildWiresTheProviderFanOut proves the wiring probes the
+// configured peers for the provider fan out (ADR-035 decision 5) and
+// leaves it out when the configuration names none.
+func TestBuildWiresTheProviderFanOut(t *testing.T) {
+	none, err := app.Build(baseConfig(), app.Deps{Log: quiet()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if none.Prober != nil {
+		t.Fatal("no peers gives a prober")
+	}
+	cfg := baseConfig()
+	cfg.Peers = []topology.Peer{{
+		Pair: "issuer-waltid", Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID,
+		PublicURL: "https://issuer-waltid.example", Services: map[string]string{"issuer-auth": "http://issuer-waltid-issuer-auth:8081"},
+	}}
+	a, err := app.Build(cfg, app.Deps{Log: quiet()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if a.Prober == nil || len(a.Prober.Peers) != 1 {
+		t.Fatal("the peers give no prober")
+	}
+	injected := &topology.Prober{Peers: cfg.Peers}
+	b, err := app.Build(baseConfig(), app.Deps{Log: quiet(), Prober: injected})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if b.Prober != injected {
+		t.Fatal("the injected prober was replaced")
+	}
 }

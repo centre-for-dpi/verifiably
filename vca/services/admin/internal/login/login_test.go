@@ -733,3 +733,12 @@ func TestTheDeviceEndpointReportsAnUnreachableProvider(t *testing.T) {
 		t.Fatalf("status = %d body = %v", status, body)
 	}
 }
+
+// TestAudienceIsTheOneTheAuthServicesAccept proves the admin session
+// carries the audience the auth services check on their provider RPCs
+// (ADR-035 decision 5).
+func TestAudienceIsTheOneTheAuthServicesAccept(t *testing.T) {
+	if login.Audience != oidcflow.AdminAudience {
+		t.Fatalf("audience %q, the auth services accept %q", login.Audience, oidcflow.AdminAudience)
+	}
+}

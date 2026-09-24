@@ -71,6 +71,7 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_REDIS_URL` | Optional. Empty selects the in-memory limiter, which is fine for one replica. Set a Redis URL for more than one replica. This build has no Redis client and refuses to start with one set. | none |
 | `VCA_WALLET_AUTH_LOGIN_RATE` | The login starts one client address can make per minute. | `30` |
 | `VCA_WALLET_AUTH_ADMIN_TOKEN` | The bearer token the admin service uses for the provider RPCs. | none |
+| `VCA_WALLET_AUTH_ADMIN_JWKS_URL` | The key set of the admin service. An admin session it signed opens the provider RPCs too. | empty: no admin session is accepted |
 | `VCA_WALLET_AUTH_STATE_DIR` | The directory for the persisted documents. Empty keeps them in memory. | none |
 | `VCA_WALLET_AUTH_COOKIE_NAME` | The session cookie name. | `vca_wallet_session` |
 | `VCA_WALLET_AUTH_INSECURE_COOKIE` | Drops the `Secure` cookie flag. Use it on localhost only. | `false` |

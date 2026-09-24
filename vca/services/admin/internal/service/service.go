@@ -19,12 +19,14 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/fanout"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/health"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/onboard"
@@ -63,6 +65,9 @@ type Deps struct {
 	Trust trustv1connect.TrustServiceClient
 	// Health probes the services of the deployment.
 	Health *health.Prober
+	// FanOut pushes a provider record to the auth service of every live
+	// pair it names (ADR-035 decision 5). Nil pushes nothing.
+	FanOut *fanout.FanOut
 	// Now returns the current time.
 	Now func() time.Time
 }
@@ -311,7 +316,29 @@ func (s *Service) CreateAuthProvider(ctx context.Context, req *connect.Request[a
 	if serr := s.write(ctx, id.Actor, "admin.CreateAuthProvider", stored.ID, err); serr != nil {
 		return nil, fail(serr)
 	}
+	s.push(ctx, id, req.Header(), stored)
 	return connect.NewResponse(&adminv1.CreateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
+}
+
+// push sends a stored provider to the auth service of every live pair
+// its roles and stacks name (ADR-035 decision 5). It forwards the admin
+// session token of the caller; an API key has none, so every target
+// then reports a failure. One audit record per target names the pair
+// and the outcome, so a partial failure stays visible.
+func (s *Service) push(ctx context.Context, id login.Identity, h http.Header, p oidcflow.Provider) {
+	if s.d.FanOut == nil {
+		return
+	}
+	token := ""
+	if id.Session.Subject != "" {
+		token = oidcflow.TokenFromRequest(&http.Request{Header: h}, s.d.Cfg.CookieName)
+	}
+	report := s.d.FanOut.Push(ctx, token, p)
+	for _, r := range report.Results {
+		// The audit record carries the outcome; the RPC answer stays the
+		// stored record.
+		anyval.Discard(s.write(ctx, id.Actor, "admin.PushAuthProvider", r.Target.Pair+" "+p.ID, r.Err))
+	}
 }
 
 // OnboardProvider implements AdminServiceHandler. It registers one OIDC
@@ -410,6 +437,7 @@ func (s *Service) UpdateAuthProvider(ctx context.Context, req *connect.Request[a
 	if serr := s.write(ctx, id.Actor, "admin.UpdateAuthProvider", in.ID, err); serr != nil {
 		return nil, fail(serr)
 	}
+	s.push(ctx, id, req.Header(), stored)
 	return connect.NewResponse(&adminv1.UpdateAuthProviderResponse{Provider: oidcflow.ToAdminProto(stored)}), nil
 }
 

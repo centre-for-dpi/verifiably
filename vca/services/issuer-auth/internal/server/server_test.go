@@ -116,6 +116,7 @@ func TestBuild(t *testing.T) {
 	}
 	cfg.SessionKey = "0123456789abcdef0123456789abcdef"
 	cfg.AdminToken = "t"
+	cfg.AdminJWKSURL = "http://admin.invalid/.well-known/jwks.json"
 	a, verr := server.Build(cfg, quiet)
 	if verr != nil {
 		t.Fatalf("unexpected error: %v", verr)

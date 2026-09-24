@@ -116,6 +116,14 @@ The console URL of the record is the console of the realm under
 A stored record survives a restart, so an edit through the admin RPCs
 stays.
 
+Three credentials open the provider RPCs. The first is the admin token
+of `VCA_ISSUER_AUTH_ADMIN_TOKEN`. The second is an admin session that
+the admin key set at `VCA_ISSUER_AUTH_ADMIN_JWKS_URL` signed (ADR-035
+decision 5). The third is a session of this service with
+`issuer-admin`. The admin portal pushes a provider with its own
+session, so no shared token needs to travel. `verifier-auth` and
+`wallet-auth` accept the same three.
+
 ## The provider record
 
 A provider record describes the provider beyond its endpoints

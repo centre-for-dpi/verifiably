@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
@@ -70,6 +71,10 @@ type Config struct {
 	// that the setup CLI writes. The first admin signs in with it and
 	// binds with the bootstrap token (ADR-035 decision 6).
 	Seed SeedProvider
+	// Peers are the candidate pairs of the deployment, from VCA_PEERS.
+	// The provider fan out reaches the auth service of every live one
+	// (ADR-035 decision 5). Empty turns the fan out off.
+	Peers []topology.Peer
 }
 
 // CommonPrefix of the variables the deployment shares between services.
@@ -118,6 +123,11 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
+	peers, err := topology.Parse(getenv(topology.Env))
+	if err != nil {
+		return Config{}, fmt.Errorf("config: %w", err)
+	}
+	c.Peers = peers
 	return c.normalize()
 }
 

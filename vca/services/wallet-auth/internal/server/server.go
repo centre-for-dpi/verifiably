@@ -94,24 +94,30 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 	if cfg.HolderBackendURL != "" {
 		registrar = wallets.NewConnectRegistrar(nil, cfg.HolderBackendURL)
 	}
-	if cfg.AdminToken == "" {
-		log.Warn("VCA_WALLET_AUTH_ADMIN_TOKEN is not set: providers can only come from the environment")
+	if cfg.AdminToken == "" && cfg.AdminJWKSURL == "" {
+		log.Warn("VCA_WALLET_AUTH_ADMIN_TOKEN and VCA_WALLET_AUTH_ADMIN_JWKS_URL are not set: providers can only come from the environment")
+	}
+	cache := oidcflow.NewCache(nil, 0)
+	var adminSession oidcflow.Authorizer
+	if cfg.AdminJWKSURL != "" {
+		adminSession = oidcflow.JWTAuthorizer{JWKSURL: cfg.AdminJWKSURL, Audience: oidcflow.AdminAudience, Cache: cache}.Authorize()
 	}
 	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
 	if err != nil {
 		return nil, err
 	}
 	return service.New(cfg, service.Deps{
-		Flow:      &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)},
-		Providers: providers,
-		Wallets:   walletReg,
-		Registrar: registrar,
-		Grants:    vault,
-		Limiter:   limiter,
-		Signer:    signer,
-		CSRF:      csrf,
-		Kit:       kit,
-		Assets:    assets,
+		Flow:         &oidcflow.Flow{Cache: cache},
+		Providers:    providers,
+		Wallets:      walletReg,
+		Registrar:    registrar,
+		Grants:       vault,
+		Limiter:      limiter,
+		Signer:       signer,
+		CSRF:         csrf,
+		AdminSession: adminSession,
+		Kit:          kit,
+		Assets:       assets,
 	}), nil
 }
 

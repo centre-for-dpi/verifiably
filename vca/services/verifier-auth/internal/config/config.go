@@ -32,6 +32,9 @@ type settings struct {
 	TenantID string `env:"TENANT_ID" default:"default"`
 	// AdminToken lets the admin service register providers and clients.
 	AdminToken string `env:"ADMIN_TOKEN" secret:"true"`
+	// AdminJWKSURL is the key set of the admin service. An admin session
+	// it signed registers providers too (ADR-035 decision 5).
+	AdminJWKSURL string `env:"ADMIN_JWKS_URL"`
 	// StateDir is where the service persists providers and clients.
 	StateDir string `env:"STATE_DIR"`
 	// CookieName is the session cookie name.
@@ -94,6 +97,9 @@ type Config struct {
 	TenantID string
 	// AdminToken lets the admin service register providers and clients.
 	AdminToken string
+	// AdminJWKSURL is the key set of the admin service. Empty accepts no
+	// admin session on the provider RPCs.
+	AdminJWKSURL string
 	// StateDir is where the service persists providers and clients.
 	// Empty keeps them in memory.
 	StateDir string
@@ -151,6 +157,7 @@ func FromEnv(get Lookup) (Config, error) {
 		MachineTokenTTL:           s.MachineTokenTTL,
 		TenantID:                  s.TenantID,
 		AdminToken:                s.AdminToken,
+		AdminJWKSURL:              strings.TrimSpace(s.AdminJWKSURL),
 		StateDir:                  s.StateDir,
 		CookieName:                s.CookieName,
 		InsecureCookie:            s.InsecureCookie,

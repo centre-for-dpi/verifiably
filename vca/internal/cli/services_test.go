@@ -453,6 +453,7 @@ func TestLinkValuesFeedEveryService(t *testing.T) {
 		"VCA_ISSUED_STORE_FILE":                 "/data/issued.json",
 		"VCA_DATASOURCE_STORE_FILE":             "/data/sources.json",
 		"VCA_ISSUER_AUTH_STATE_DIR":             "/data",
+		"VCA_ISSUER_AUTH_ADMIN_JWKS_URL":        "http://admin-waltid-admin:8080/.well-known/jwks.json",
 		"VCA_STATUS_BITSTRING_STATE_DIR":        "/data",
 		"VCA_STATUS_BITSTRING_BASE_URL":         "https://issuer-waltid.labs.example/status-bitstring",
 		"VCA_STATUS_BITSTRING_SIGNING_KEY_FILE": "base64:QQ==",
@@ -479,6 +480,7 @@ func TestLinkValuesFeedEveryService(t *testing.T) {
 		"VCA_INJI_PUBLIC_URL":                "https://issuer-waltid.labs.example",
 		"VCA_WALLET_AUTH_HOLDER_BACKEND_URL": "http://holder-inji-dpg-adapter-inji:8090",
 		"VCA_WALLET_AUTH_STATE_DIR":          "/data",
+		"VCA_WALLET_AUTH_ADMIN_JWKS_URL":     "http://admin-inji-admin:8080/.well-known/jwks.json",
 	} {
 		if got[name] != value {
 			t.Errorf("holder: %s = %q, want %q", name, got[name], value)
@@ -505,6 +507,7 @@ func TestLinkValuesFeedEveryService(t *testing.T) {
 		"VCA_INGEST_LOGIN_URL":                "https://issuer-waltid.labs.example/auth/",
 		"VCA_VERIFIER_RESULTS_AUTH_JWKS_URL":  "http://verifier-credebl-verifier-auth:8081/.well-known/jwks.json",
 		"VCA_VERIFIER_RESULTS_LOGIN_URL":      "https://issuer-waltid.labs.example/auth/",
+		"VCA_VERIFIER_AUTH_ADMIN_JWKS_URL":    "http://admin-credebl-admin:8080/.well-known/jwks.json",
 		"VCA_INGEST_DISCOVERY_URL":            "http://verifier-credebl-verifier-discovery:8101",
 		"VCA_INGEST_BASE_URL":                 "https://issuer-waltid.labs.example",
 		"VCA_INGEST_SIGNING_KEY_FILE":         "base64:QQ==",

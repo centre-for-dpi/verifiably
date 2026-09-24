@@ -33,6 +33,7 @@ type settings struct {
 	HolderBackendURL string        `env:"HOLDER_BACKEND_URL"`
 	LoginRate        int           `env:"LOGIN_RATE" default:"30"`
 	AdminToken       string        `env:"ADMIN_TOKEN" secret:"true"`
+	AdminJWKSURL     string        `env:"ADMIN_JWKS_URL"`
 	StateDir         string        `env:"STATE_DIR"`
 	CookieName       string        `env:"COOKIE_NAME" default:"vca_wallet_session"`
 	InsecureCookie   bool          `env:"INSECURE_COOKIE"`
@@ -93,6 +94,10 @@ type Config struct {
 	LoginRate int
 	// AdminToken lets the admin service register providers.
 	AdminToken string
+	// AdminJWKSURL is the key set of the admin service. An admin session
+	// it signed registers providers too (ADR-035 decision 5). Empty
+	// accepts no admin session.
+	AdminJWKSURL string
 	// StateDir is where the service persists providers and wallets.
 	StateDir string
 	// CookieName is the session cookie name.
@@ -152,6 +157,7 @@ func FromEnv(get Lookup) (Config, error) {
 		RedisURL:                  k.RedisURL,
 		LoginRate:                 s.LoginRate,
 		AdminToken:                s.AdminToken,
+		AdminJWKSURL:              strings.TrimSpace(s.AdminJWKSURL),
 		StateDir:                  s.StateDir,
 		CookieName:                s.CookieName,
 		InsecureCookie:            s.InsecureCookie,

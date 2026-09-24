@@ -26,6 +26,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/roles"
@@ -34,13 +35,16 @@ import (
 )
 
 type fixture struct {
-	idp    *oidctest.Provider
-	svc    *service.Service
-	srv    *httptest.Server
-	client issuerauthv1connect.IssuerAuthServiceClient
-	admin  adminv1connect.AdminServiceClient
-	cfg    config.Config
-	store  *oidcflow.MemoryPersister
+	idp *oidctest.Provider
+	svc *service.Service
+	srv *httptest.Server
+	// adminSigner stands in for the admin service: its key set is the
+	// admin key set of the deployment (ADR-035 decision 5).
+	adminSigner *staffsessiontest.Issuer
+	client      issuerauthv1connect.IssuerAuthServiceClient
+	admin       adminv1connect.AdminServiceClient
+	cfg         config.Config
+	store       *oidcflow.MemoryPersister
 }
 
 func withBearer(tok string) connect.ClientOption {
@@ -87,7 +91,9 @@ func newFixture(t *testing.T) *fixture {
 	}
 	// The public base URL is only known once the test server runs, so
 	// the fixture starts the server with a placeholder and rewires.
-	f := &fixture{idp: idp, store: store}
+	adminSigner := staffsessiontest.NewWithIssuer(t, "https://admin.test", oidcflow.AdminAudience, time.Now())
+	adminKeys := adminSigner.Server(t)
+	f := &fixture{idp: idp, store: store, adminSigner: adminSigner}
 	f.cfg = config.Config{
 		PublicBaseURL:   "http://placeholder",
 		TenantID:        "acme",
@@ -109,6 +115,9 @@ func newFixture(t *testing.T) *fixture {
 		Clients:   machine,
 		Signer:    signer,
 		CSRF:      csrf,
+		AdminSession: oidcflow.JWTAuthorizer{
+			JWKSURL: adminKeys.URL + "/.well-known/jwks.json", Audience: oidcflow.AdminAudience, Cache: oidcflow.NewCache(adminKeys.Client(), 0),
+		}.Authorize(),
 	})
 	mux.Handle("/", serve.Handler(serve.Options{
 		Handler:      server.Handler(f.svc),
@@ -604,5 +613,64 @@ func TestPendingStoreFailure(t *testing.T) {
 	}
 	if _, _, _, err := svc.Complete(context.Background(), "s2", "bogus", ""); !errors.Is(err, oidcflow.ErrProviderError) {
 		t.Fatalf("bogus code: %v", err)
+	}
+}
+
+// TestAdminSessionRegistersProviders is ADR-035 decision 5: the admin
+// service pushes a provider with its own session token, and this
+// service accepts it because the admin key set signed it. A staff
+// session of this service, a session of another admin, and no token
+// are refused.
+func TestAdminSessionRegistersProviders(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	record := &adminv1.AuthProvider{
+		DisplayName: "National IdP", DiscoveryUrl: f.idp.DiscoveryURL(), ClientId: "vca", Enabled: true,
+	}
+	admin := adminv1connect.NewAdminServiceClient(f.srv.Client(), f.srv.URL, withBearer(f.adminSigner.Token(t, "kc|root", "super-admin")))
+	created, err := admin.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: record}))
+	if err != nil {
+		t.Fatalf("admin session: %v", err)
+	}
+	if got := created.Msg.GetProvider().GetRoles(); len(got) != 1 || got[0] != commonv1.Role_ROLE_ISSUER {
+		t.Fatalf("roles %v", got)
+	}
+	list, err := admin.ListAuthProviders(ctx, connect.NewRequest(&adminv1.ListAuthProvidersRequest{}))
+	if err != nil || len(list.Msg.GetProviders()) != 3 {
+		t.Fatalf("list: %v %d", err, len(list.Msg.GetProviders()))
+	}
+	for name, token := range map[string]string{
+		"another admin key": staffsessiontest.NewWithIssuer(t, "https://admin.test", oidcflow.AdminAudience, time.Now()).Token(t, "kc|eve", "super-admin"),
+		"no token":          "",
+	} {
+		client := adminv1connect.NewAdminServiceClient(f.srv.Client(), f.srv.URL, withBearer(token))
+		_, err := client.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: record}))
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	// A staff session of this service without the admin role is refused.
+	staff := f.login(t, "/")
+	if cerr := staff.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	var session string
+	for _, c := range staff.Cookies() {
+		if c.Name == f.cfg.CookieName {
+			session = c.Value
+		}
+	}
+	if session == "" {
+		t.Fatal("no session cookie")
+	}
+	client := adminv1connect.NewAdminServiceClient(f.srv.Client(), f.srv.URL, withBearer(session))
+	if _, err := client.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: record})); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("operator session: %v", err)
+	}
+	// Without an admin key set the service accepts only the token and the
+	// admin role.
+	bare := service.New(f.cfg, service.Deps{Flow: &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)}, Signer: f.svc.Signer()})
+	if err := bare.AdminAuthorizer()(ctx, http.Header{"Authorization": {"Bearer " + f.adminSigner.Token(t, "kc|root")}}); err == nil {
+		t.Fatal("no admin key set: the admin session passed")
 	}
 }

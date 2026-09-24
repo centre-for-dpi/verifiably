@@ -42,6 +42,7 @@ func TestFromEnvValues(t *testing.T) {
 		"VCA_OIDC_CLIENT_ID":                  "c",
 		"VCA_OIDC_CLIENT_SECRET":              "IDP_SECRET",
 		"VCA_VERIFIER_AUTH_ADMIN_TOKEN":       "t",
+		"VCA_VERIFIER_AUTH_ADMIN_JWKS_URL":    "http://admin-waltid-admin:8080/.well-known/jwks.json ",
 		"VCA_VERIFIER_AUTH_STATE_DIR":         "/tmp/x",
 		"VCA_VERIFIER_AUTH_TENANT_ID":         "acme",
 		"VCA_VERIFIER_AUTH_COOKIE_NAME":       "s",
@@ -64,7 +65,7 @@ func TestFromEnvValues(t *testing.T) {
 	if c.Listen != ":9000" || c.RedirectURI != "http://localhost:8081/callback" || c.SessionTTL != 5*time.Minute || c.MachineTokenTTL != 30*time.Minute || !c.InsecureCookie || c.LogoutRedirect != "/bye" {
 		t.Fatalf("%+v", c)
 	}
-	if !c.Seed.HasSeed() || c.Seed.ClientSecret != "IDP_SECRET" || c.AdminToken != "t" || c.StateDir != "/tmp/x" || c.TenantID != "acme" || c.CookieName != "s" || c.SigningKeyPath != "/run/key.pem" || c.SessionKey == "" || c.ProviderInternalAuthority != "http://idp:8080" {
+	if !c.Seed.HasSeed() || c.Seed.ClientSecret != "IDP_SECRET" || c.AdminToken != "t" || c.AdminJWKSURL != "http://admin-waltid-admin:8080/.well-known/jwks.json" || c.StateDir != "/tmp/x" || c.TenantID != "acme" || c.CookieName != "s" || c.SigningKeyPath != "/run/key.pem" || c.SessionKey == "" || c.ProviderInternalAuthority != "http://idp:8080" {
 		t.Fatalf("%+v", c)
 	}
 }

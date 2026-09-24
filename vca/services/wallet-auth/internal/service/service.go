@@ -36,6 +36,9 @@ type Deps struct {
 	Signer    *oidcflow.Signer
 	CSRF      oidcflow.CSRF
 	Now       func() time.Time
+	// AdminSession accepts the session token of the admin service on the
+	// provider RPCs (ADR-035 decision 5). Nil accepts none.
+	AdminSession oidcflow.Authorizer
 	// Kit renders the sign in chooser and Assets serves its stylesheet
 	// (ADR-035). Both come from the theme file of the deployment.
 	Kit    *components.Kit
@@ -97,11 +100,17 @@ func (s *Service) Handlers() oidcflow.Handlers {
 }
 
 // Admin returns the provider RPCs of the admin contract for this
-// deployment (ADR-012 decision 5).
+// deployment (ADR-012 decision 5). The admin service token and the
+// admin session that the admin key set signed both open them
+// (ADR-035 decision 5).
 func (s *Service) Admin() oidcflow.AdminProviders {
+	authorize := oidcflow.BearerAuthorizer(s.cfg.AdminToken)
+	if s.d.AdminSession != nil {
+		authorize = oidcflow.AnyAuthorizer(authorize, s.d.AdminSession)
+	}
 	return oidcflow.AdminProviders{
 		Registry:          s.d.Providers,
-		Authorize:         oidcflow.BearerAuthorizer(s.cfg.AdminToken),
+		Authorize:         authorize,
 		Roles:             []string{"holder"},
 		InternalAuthority: s.cfg.ProviderInternalAuthority,
 	}

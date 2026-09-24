@@ -128,6 +128,26 @@ reference of `private_key_jwt`, and the default flag.
 `docs/issuer-auth.md` lists every field and its values.
 An update keeps the fields the caller sends back.
 
+### Fan out to the auth services
+
+A stored provider reaches the auth service of every live pair its
+roles and stacks name (ADR-035 decision 5). `VCA_PEERS` lists the
+candidate pairs. The service probes them and pushes to the live ones.
+An empty stack list means every stack. The admin role has no auth
+service, so it is never a target.
+
+The push carries the admin session token of the caller. Each auth
+service checks that token against the admin key set at
+`/.well-known/jwks.json` of this service, through
+`VCA_<ROLE>_AUTH_ADMIN_JWKS_URL`. An API key opens the RPC here, but the
+auth services accept no key. A push from a key fails at every target.
+
+A push is idempotent. A target that holds a record with the same
+discovery URL and client id gets an update, not a copy. Every target
+gets one audit record, `admin.PushAuthProvider`, with the pair name,
+the record id, and the outcome. A partial failure shows there. The
+RPC answer stays the stored record.
+
 ## CLI login
 
 The CLI logs in without a browser redirect of its own:

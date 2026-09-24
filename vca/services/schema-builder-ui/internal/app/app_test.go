@@ -36,8 +36,6 @@ func settings(t *testing.T, values map[string]string) config.Config {
 	return cfg
 }
 
-var now = time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC)
-
 // staff is one signed in issuer operator. Its issuer stands in for
 // issuer-auth and signs the one session the requests of a test carry.
 type staff struct {
@@ -47,7 +45,8 @@ type staff struct {
 
 func login(t *testing.T) staff {
 	t.Helper()
-	issuer := staffsessiontest.New(t, staffsession.IssuerAudience, now)
+	// The wiring reads the real clock, so the session is minted now.
+	issuer := staffsessiontest.New(t, staffsession.IssuerAudience, time.Now())
 	return staff{issuer: issuer, token: issuer.Token(t, "kc|alice", "issuer-operator")}
 }
 
@@ -236,7 +235,7 @@ func TestPortalNeedsSession(t *testing.T) {
 		}
 	}
 	// A session of the verifier realm does not open the issuer pages.
-	verifier := staffsessiontest.New(t, staffsession.VerifierAudience, now)
+	verifier := staffsessiontest.New(t, staffsession.VerifierAudience, time.Now())
 	req := httptest.NewRequest(http.MethodGet, "/builder/", nil)
 	req.AddCookie(&http.Cookie{Name: staffsession.IssuerCookie, Value: verifier.Token(t, "kc|bob")})
 	rec := httptest.NewRecorder()

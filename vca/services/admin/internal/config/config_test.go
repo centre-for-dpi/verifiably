@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 )
 
@@ -159,5 +160,26 @@ func TestVariablesNameEverySetting(t *testing.T) {
 	}
 	if secrets != 2 || required != 1 {
 		t.Errorf("secrets = %d required = %d", secrets, required)
+	}
+}
+
+// TestLoadReadsThePeers reads VCA_PEERS, so the provider fan out knows
+// the candidate pairs (ADR-035 decision 5). A bad value is one error.
+func TestLoadReadsThePeers(t *testing.T) {
+	c, err := config.Load(env(base(map[string]string{
+		topology.Env: "issuer-waltid|https://issuer-waltid.example|issuer-auth=http://issuer-waltid-issuer-auth:8081",
+	})))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(c.Peers) != 1 || c.Peers[0].Pair != "issuer-waltid" || c.Peers[0].Auth() != "http://issuer-waltid-issuer-auth:8081" {
+		t.Fatalf("peers = %+v", c.Peers)
+	}
+	if _, bad := config.Load(env(base(map[string]string{topology.Env: "not a peer"}))); bad == nil {
+		t.Fatal("a bad peer list loaded")
+	}
+	none, err := config.Load(env(base(nil)))
+	if err != nil || len(none.Peers) != 0 {
+		t.Fatalf("no peers: %v %+v", err, none.Peers)
 	}
 }

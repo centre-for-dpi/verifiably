@@ -186,6 +186,12 @@ func Catalog() []Service {
 		return Link{Env: env, Target: auth, Path: "/.well-known/jwks.json", Kind: LinkURL}
 	}
 	staffLogin := func(env string) Link { return Link{Env: env, Kind: LinkPublicURL, Path: "/auth/"} }
+	// adminJWKS is the key set of the admin pair of the same stack. An
+	// auth service accepts an admin session it signed on its provider
+	// RPCs, so the admin portal can push a provider (ADR-035 decision 5).
+	adminJWKS := func(env string) Link {
+		return Link{Env: env, Target: "admin", Path: "/.well-known/jwks.json", Kind: LinkURL}
+	}
 	auth := Route{Match: "/auth/*"}
 	signIn := Route{Match: "/auth/*", Page: "Sign in"}
 	assets := Route{Match: "/static/*"}
@@ -252,7 +258,7 @@ func Catalog() []Service {
 		// The auth services draw the sign in chooser (ADR-035), so they
 		// read the theme file like every UI service.
 		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer, Stateful: true, UI: true,
-			Links: []Link{peers, landing("VCA_ISSUER_AUTH_LANDING_URL")},
+			Links: []Link{peers, landing("VCA_ISSUER_AUTH_LANDING_URL"), adminJWKS("VCA_ISSUER_AUTH_ADMIN_JWKS_URL")},
 			Fixed: state("VCA_ISSUER_AUTH_STATE_DIR"),
 			// The service mounts the login endpoints at / and at /auth. The
 			// pair routes only /auth, so the redirect URI of the realm holds.
@@ -321,7 +327,7 @@ func Catalog() []Service {
 		// The verifier staff sign in service (ADR-036 decision 1). It shares
 		// the routes of issuer-auth and draws the same chooser.
 		{Name: "verifier-auth", ListenEnv: "VCA_VERIFIER_AUTH_LISTEN", ExposedPort: 8081, Roles: verifier, Stateful: true, UI: true,
-			Links: []Link{peers, landing("VCA_VERIFIER_AUTH_LANDING_URL")},
+			Links: []Link{peers, landing("VCA_VERIFIER_AUTH_LANDING_URL"), adminJWKS("VCA_VERIFIER_AUTH_ADMIN_JWKS_URL")},
 			Fixed: state("VCA_VERIFIER_AUTH_STATE_DIR"),
 			Routes: []Route{
 				rpc("vca.verifierauth.v1.VerifierAuthService"), rpc("vca.admin.v1.AdminService"),
@@ -385,7 +391,10 @@ func Catalog() []Service {
 				{Match: "/portal/*", Page: "Verification results"}, {Match: "/verify/*", Page: "Citizen check"}, assets,
 			}},
 		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder, Stateful: true, UI: true,
-			Links: []Link{{Env: "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", Kind: LinkAdapterURL}, peers, landing("VCA_WALLET_AUTH_LANDING_URL")},
+			Links: []Link{
+				{Env: "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", Kind: LinkAdapterURL},
+				peers, landing("VCA_WALLET_AUTH_LANDING_URL"), adminJWKS("VCA_WALLET_AUTH_ADMIN_JWKS_URL"),
+			},
 			Fixed: state("VCA_WALLET_AUTH_STATE_DIR"),
 			// The service mounts the login endpoints at / and at
 			// /wallet/auth. The proxy removes /auth, so the redirect URI of

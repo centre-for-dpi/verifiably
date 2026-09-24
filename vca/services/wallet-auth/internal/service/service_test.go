@@ -31,6 +31,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/grants"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/limits"
@@ -60,6 +61,9 @@ type fixture struct {
 	backend *fakeBackend
 	store   *oidcflow.MemoryPersister
 	limiter *limits.Memory
+	// adminSigner stands in for the admin service: its key set is the
+	// admin key set of the deployment (ADR-035 decision 5).
+	adminSigner *staffsessiontest.Issuer
 }
 
 func withBearer(tok string) connect.ClientOption {
@@ -108,7 +112,9 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatalf("unexpected error: %v", verr)
 	}
 	limiter := limits.NewMemory(100, time.Minute, time.Minute, nil)
-	f := &fixture{idp: idp, backend: be, store: store, limiter: limiter}
+	adminSigner := staffsessiontest.NewWithIssuer(t, "https://admin.test", oidcflow.AdminAudience, time.Now())
+	adminKeys := adminSigner.Server(t)
+	f := &fixture{idp: idp, backend: be, store: store, limiter: limiter, adminSigner: adminSigner}
 	mux := http.NewServeMux()
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
@@ -132,6 +138,9 @@ func newFixture(t *testing.T) *fixture {
 		Limiter:   limiter,
 		Signer:    signer,
 		CSRF:      csrf,
+		AdminSession: oidcflow.JWTAuthorizer{
+			JWKSURL: adminKeys.URL + "/.well-known/jwks.json", Audience: oidcflow.AdminAudience, Cache: oidcflow.NewCache(adminKeys.Client(), 0),
+		}.Authorize(),
 	})
 	mux.Handle("/", serve.Handler(serve.Options{
 		Handler:      server.Handler(f.svc),
@@ -684,4 +693,37 @@ func runLogin(t *testing.T, f *fixture, svc *service.Service) error {
 	}
 	_, _, _, err = svc.Complete(context.Background(), q.Query().Get("state"), q.Query().Get("code"), "")
 	return err
+}
+
+// TestAdminSessionRegistersProviders is ADR-035 decision 5: the admin
+// service pushes a provider with its own session token, and this
+// service accepts it because the admin key set signed it. A session of
+// another admin key and no token are refused.
+func TestAdminSessionRegistersProviders(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	record := &adminv1.AuthProvider{DisplayName: "National IdP", DiscoveryUrl: f.idp.DiscoveryURL(), ClientId: "vca", Enabled: true}
+	admin := adminv1connect.NewAdminServiceClient(f.srv.Client(), f.srv.URL, withBearer(f.adminSigner.Token(t, "kc|root", "super-admin")))
+	created, err := admin.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: record}))
+	if err != nil || created.Msg.GetProvider().GetRoles()[0].String() != "ROLE_HOLDER" {
+		t.Fatalf("admin session: %+v %v", created, err)
+	}
+	for name, token := range map[string]string{
+		"another admin key": staffsessiontest.NewWithIssuer(t, "https://admin.test", oidcflow.AdminAudience, time.Now()).Token(t, "kc|eve", "super-admin"),
+		"no token":          "",
+	} {
+		client := adminv1connect.NewAdminServiceClient(f.srv.Client(), f.srv.URL, withBearer(token))
+		_, err := client.CreateAuthProvider(ctx, connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: record}))
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	// Without an admin key set only the token opens the RPCs.
+	bare := service.New(f.svc.Config(), service.Deps{Flow: &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)}, Providers: f.svc.Providers()})
+	if err := bare.Admin().Authorize(ctx, http.Header{"Authorization": {"Bearer " + f.adminSigner.Token(t, "kc|root")}}); err == nil {
+		t.Fatal("no admin key set: the admin session passed")
+	}
+	if err := bare.Admin().Authorize(ctx, http.Header{"Authorization": {"Bearer admin-token"}}); err != nil {
+		t.Fatalf("token: %v", err)
+	}
 }

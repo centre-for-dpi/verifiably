@@ -5,11 +5,15 @@ package oidcflow
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -29,6 +33,96 @@ func BearerAuthorizer(token string) Authorizer {
 		}
 		return nil
 	}
+}
+
+// AdminAudience is the aud claim of every admin session JWT. An auth
+// service accepts such a session on its provider RPCs when the admin
+// key set signed it (ADR-035 decision 5).
+const AdminAudience = "vca-admin"
+
+// jwtRefetchHold is the least time between two forced key set fetches
+// of a JWTAuthorizer, so a flood of bad tokens does not flood the admin
+// service.
+const jwtRefetchHold = 30 * time.Second
+
+// JWTAuthorizer allows requests that carry a session JWT with the given
+// audience that a key of the key set at JWKSURL signed. It keeps the
+// key set in a Cache and fetches it once more when a token names a key
+// it does not hold, so a key rotation needs no restart here.
+type JWTAuthorizer struct {
+	// JWKSURL is the key set. Empty allows nothing.
+	JWKSURL string
+	// Audience is the aud claim every token must carry. Required.
+	Audience string
+	// Cache keeps the key set. Nil makes one with the defaults.
+	Cache *Cache
+	// Now returns the current time. Nil means time.Now.
+	Now func() time.Time
+}
+
+// Authorize returns the Authorizer of the settings.
+func (j JWTAuthorizer) Authorize() Authorizer {
+	if j.Cache == nil {
+		j.Cache = NewCache(nil, 0)
+	}
+	if j.Now == nil {
+		j.Now = time.Now
+	}
+	var (
+		mu          sync.Mutex
+		lastForced  time.Time
+		forcedEver  bool
+		tokenOf     = func(h http.Header) string { return TokenFromRequest(&http.Request{Header: h}, "") }
+		verifyClaim = func(raw []byte) error {
+			var c Claims
+			if err := json.Unmarshal(raw, &c); err != nil {
+				return wrap(ErrUnauthorized, "claims: %v", err)
+			}
+			if len(c.Audience) != 1 || c.Audience[0] != j.Audience {
+				return wrap(ErrUnauthorized, "aud mismatch")
+			}
+			if c.Subject == "" || !j.Now().Before(c.Expiry()) {
+				return wrap(ErrUnauthorized, "session expired or has no subject")
+			}
+			return nil
+		}
+	)
+	return func(ctx context.Context, h http.Header) error {
+		token := tokenOf(h)
+		if j.JWKSURL == "" || j.Audience == "" || token == "" {
+			return ErrUnauthorized
+		}
+		set, err := j.Cache.JWKS(ctx, j.JWKSURL, false)
+		if err != nil {
+			return wrap(ErrUnauthorized, "admin key set: %v", err)
+		}
+		raw, _, err := jose.VerifyWithJWKS(token, set, jose.SigningAlgorithms)
+		if err != nil {
+			mu.Lock()
+			force := !forcedEver || !j.Now().Before(lastForced.Add(jwtRefetchHold))
+			if force {
+				lastForced, forcedEver = j.Now(), true
+			}
+			mu.Unlock()
+			if !force {
+				return wrap(ErrUnauthorized, "%v", err)
+			}
+			if set, err = j.Cache.JWKS(ctx, j.JWKSURL, true); err != nil {
+				return wrap(ErrUnauthorized, "admin key set: %v", err)
+			}
+			if raw, _, err = jose.VerifyWithJWKS(token, set, jose.SigningAlgorithms); err != nil {
+				return wrap(ErrUnauthorized, "%v", err)
+			}
+		}
+		return verifyClaim(raw)
+	}
+}
+
+// AdminJWTAuthorizer allows requests that carry an admin session token
+// that the admin key set at jwksURL signed (ADR-035 decision 5). An
+// empty URL allows nothing.
+func AdminJWTAuthorizer(jwksURL string) Authorizer {
+	return JWTAuthorizer{JWKSURL: jwksURL, Audience: AdminAudience}.Authorize()
 }
 
 // AnyAuthorizer allows a request that any of the given authorizers allows.

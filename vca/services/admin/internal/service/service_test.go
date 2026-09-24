@@ -20,8 +20,10 @@ import (
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/fanout"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/health"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/onboard"
@@ -729,5 +731,140 @@ func TestOnboardProviderDelegatesToTheOnboardingPath(t *testing.T) {
 		IssuerUrl: "nowhere",
 	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("a bad issuer URL = %v", err)
+	}
+}
+
+// pairAuth is one fake auth service of a live pair: the provider RPCs
+// over a registry that accepts the admin session token.
+type pairAuth struct {
+	registry *oidcflow.Registry
+	server   *httptest.Server
+}
+
+func newPairAuth(t *testing.T, h *harness, role string) *pairAuth {
+	t.Helper()
+	registry, err := oidcflow.NewRegistry(oidcflow.NewMemoryPersister(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The pair accepts what the admin key set signed, as an auth service
+	// with VCA_<ROLE>_AUTH_ADMIN_JWKS_URL does.
+	accept := func(_ context.Context, hdr http.Header) error {
+		_, verr := h.login.Signer().Verify(oidcflow.TokenFromRequest(&http.Request{Header: hdr}, ""))
+		return verr
+	}
+	mux := http.NewServeMux()
+	mux.Handle(oidcflow.NewAdminHandler(oidcflow.AdminProviders{Registry: registry, Authorize: accept, Roles: []string{role}}))
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return &pairAuth{registry: registry, server: srv}
+}
+
+// withFanOut rebuilds the service of the harness with a fan out over a
+// snapshot of one live issuer pair and one live holder pair.
+func withFanOut(t *testing.T, h *harness) (*pairAuth, *pairAuth) {
+	t.Helper()
+	issuer := newPairAuth(t, h, "issuer")
+	holder := newPairAuth(t, h, "holder")
+	snap := topology.Snapshot{Peers: []topology.Status{
+		{Peer: topology.Peer{Pair: "issuer-waltid", Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID,
+			Services: map[string]string{"issuer-auth": issuer.server.URL}}, State: topology.Live},
+		{Peer: topology.Peer{Pair: "holder-waltid", Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID,
+			Services: map[string]string{"wallet-auth": holder.server.URL}}, State: topology.Live},
+		{Peer: topology.Peer{Pair: "issuer-inji", Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}, State: topology.Absent},
+	}}
+	push, err := fanout.New(fanout.Options{Snapshot: func(context.Context) topology.Snapshot { return snap }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := service.New(service.Deps{
+		Cfg: h.cfg, Records: h.rec, Audit: h.log, Login: h.login, Providers: h.svc.Providers(),
+		Vault: onboard.NewVault(""), Fetch: http.DefaultClient, Trust: h.trust,
+		Health: health.New(nil, time.Second, nil), FanOut: push,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.svc = svc
+	return issuer, holder
+}
+
+// session mints an admin session token like a browser login would.
+func (h *harness) session(t *testing.T) string {
+	t.Helper()
+	token, _, err := h.login.Signer().Issue(oidcflow.Claims{Subject: "kc|root", Roles: []string{login.RoleSuperAdmin}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+// TestCreateAuthProviderPushesToTheLivePairs is ADR-035 decision 5: a
+// provider created with an admin session reaches the auth service of
+// every live pair its roles and stacks name, and the audit log holds
+// one record per target.
+func TestCreateAuthProviderPushesToTheLivePairs(t *testing.T) {
+	h := newHarness(t)
+	issuer, holder := withFanOut(t, h)
+	ctx := context.Background()
+	in := &adminv1.AuthProvider{
+		DisplayName: "National IdP", DiscoveryUrl: h.idp.DiscoveryURL(), ClientId: "vca", Enabled: true,
+		Roles:  []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER},
+		Stacks: []configv1.Dpg{configv1.Dpg_DPG_WALTID, configv1.Dpg_DPG_INJI},
+	}
+	req := connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: in})
+	req.Header().Set("Authorization", "Bearer "+h.session(t))
+	created, err := h.svc.CreateAuthProvider(ctx, req)
+	if err != nil {
+		t.Fatalf("CreateAuthProvider: %v", err)
+	}
+	for name, pair := range map[string]*pairAuth{"issuer-waltid": issuer, "holder-waltid": holder} {
+		list := pair.registry.List()
+		if len(list) != 1 || list[0].ClientID != "vca" || list[0].DisplayName != "National IdP" {
+			t.Fatalf("%s holds %+v", name, list)
+		}
+	}
+	page, err := h.log.Query(ctx, audit.Filter{Action: "admin.PushAuthProvider"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.TotalSize != 2 || !page.Records[0].OK || !page.Records[1].OK {
+		t.Fatalf("audit %+v", page.Records)
+	}
+	if got := page.Records[0].Target; got != "issuer-waltid "+created.Msg.GetProvider().GetId() && got != "holder-waltid "+created.Msg.GetProvider().GetId() {
+		t.Fatalf("audit target %q", got)
+	}
+	// An update with a session pushes again without a duplicate.
+	p := created.Msg.GetProvider()
+	p.DisplayName = "Renamed"
+	upd := connect.NewRequest(&adminv1.UpdateAuthProviderRequest{Provider: p})
+	upd.Header().Set("Authorization", "Bearer "+h.session(t))
+	if _, uerr := h.svc.UpdateAuthProvider(ctx, upd); uerr != nil {
+		t.Fatalf("UpdateAuthProvider: %v", uerr)
+	}
+	if list := issuer.registry.List(); len(list) != 1 || list[0].DisplayName != "Renamed" {
+		t.Fatalf("issuer-waltid after the update holds %+v", list)
+	}
+	// An API key opens the RPC, but there is no session to forward, so
+	// the push fails at every target and the audit log says so.
+	in.ClientId = "vca-2"
+	if _, kerr := h.svc.CreateAuthProvider(ctx, request(h, &adminv1.CreateAuthProviderRequest{Provider: in})); kerr != nil {
+		t.Fatalf("CreateAuthProvider with a key: %v", kerr)
+	}
+	page, err = h.log.Query(ctx, audit.Filter{Action: "admin.PushAuthProvider"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := 0
+	for _, r := range page.Records {
+		if !r.OK {
+			failed++
+		}
+	}
+	if page.TotalSize != 6 || failed != 2 {
+		t.Fatalf("audit after the key call: %d records, %d failed", page.TotalSize, failed)
+	}
+	if list := issuer.registry.List(); len(list) != 1 {
+		t.Fatalf("the key call reached issuer-waltid: %+v", list)
 	}
 }

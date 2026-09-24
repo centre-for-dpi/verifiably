@@ -21,8 +21,10 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/fanout"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/health"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/onboard"
@@ -48,6 +50,10 @@ type App struct {
 	Portal *portal.Portal
 	// Config is the configuration the wiring used.
 	Config config.Config
+	// Prober knows which pairs of the deployment run. The provider fan
+	// out reads it (ADR-035 decision 5). Nil when the configuration
+	// names no peers.
+	Prober *topology.Prober
 	// BootstrapToken is the one time token that binds the first super
 	// admin. It is empty when an admin already exists (ADR-010
 	// decision 4).
@@ -62,6 +68,9 @@ type Deps struct {
 	// Client calls the providers and the other services. Nil means a
 	// client with the configured timeout.
 	Client *http.Client
+	// Prober replaces the prober of the peers. Tests set it. Nil builds
+	// one from the configured peers.
+	Prober *topology.Prober
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -128,10 +137,22 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if trust == nil && cfg.TrustURL != "" {
 		trust = trustv1connect.NewTrustServiceClient(deps.Client, cfg.TrustURL)
 	}
+	prober := deps.Prober
+	if prober == nil && len(cfg.Peers) > 0 {
+		prober = &topology.Prober{Peers: cfg.Peers, Client: deps.Client, Now: deps.Now}
+	}
+	var push *fanout.FanOut
+	if prober != nil {
+		if push, err = fanout.New(fanout.Options{Snapshot: prober.Snapshot, Client: deps.Client, Timeout: cfg.Timeout}); err != nil {
+			return nil, err
+		}
+	} else {
+		deps.Log.Warn("no peers: a new provider stays on this service", "setting", topology.Env)
+	}
 	svc, err := service.New(service.Deps{
 		Cfg: cfg, Records: recordStore, Audit: auditLog, Login: loginService, Providers: providers,
 		Vault: vault, Fetch: deps.Client, Trust: trust,
-		Health: health.New(deps.Client, cfg.Timeout, deps.Now), Now: deps.Now,
+		Health: health.New(deps.Client, cfg.Timeout, deps.Now), FanOut: push, Now: deps.Now,
 	})
 	if err != nil {
 		return nil, err
@@ -144,14 +165,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	app := &App{Mux: http.NewServeMux(), Service: svc, Login: loginService, Portal: pages, Config: cfg}
+	app := &App{Mux: http.NewServeMux(), Service: svc, Login: loginService, Portal: pages, Config: cfg, Prober: prober}
 	if app.BootstrapToken, err = bootstrap(cfg, recordStore, deps.Log); err != nil {
 		return nil, err
 	}
 	app.mount(assets)
 	deps.Log.Info("admin ready",
 		"public_url", cfg.PublicURL, "portal", pages.Prefix(),
-		"trust_url", cfg.TrustURL, "services", len(cfg.Targets()))
+		"trust_url", cfg.TrustURL, "services", len(cfg.Targets()), "peers", len(cfg.Peers))
 	return app, nil
 }
 

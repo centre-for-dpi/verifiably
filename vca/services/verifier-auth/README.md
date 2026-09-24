@@ -69,6 +69,7 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_VERIFIER_AUTH_MACHINE_TOKEN_TTL` | The lifetime of a client credentials JWT. | `1h` |
 | `VCA_VERIFIER_AUTH_TENANT_ID` | The tenant of every session. | `default` |
 | `VCA_VERIFIER_AUTH_ADMIN_TOKEN` | The bearer token the admin service uses for the admin RPCs. | none |
+| `VCA_VERIFIER_AUTH_ADMIN_JWKS_URL` | The key set of the admin service. An admin session it signed opens the provider RPCs too. | empty: no admin session is accepted |
 | `VCA_VERIFIER_AUTH_STATE_DIR` | The directory for the persisted documents. Empty keeps them in memory. | none |
 | `VCA_VERIFIER_AUTH_COOKIE_NAME` | The session cookie name. | `vca_verifier_session` |
 | `VCA_VERIFIER_AUTH_INSECURE_COOKIE` | Drops the `Secure` cookie flag. Use it on localhost only. | `false` |

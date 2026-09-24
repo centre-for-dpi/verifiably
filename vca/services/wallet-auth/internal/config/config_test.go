@@ -67,6 +67,7 @@ func TestFromEnvValues(t *testing.T) {
 		"VCA_WALLET_AUTH_HOLDER_BACKEND_URL": "http://adapter:8090",
 		"VCA_REDIS_URL":                      "redis://r",
 		"VCA_WALLET_AUTH_ADMIN_TOKEN":        "t",
+		"VCA_WALLET_AUTH_ADMIN_JWKS_URL":     "http://admin-waltid-admin:8080/.well-known/jwks.json",
 		"VCA_WALLET_AUTH_STATE_DIR":          "/s",
 		"VCA_WALLET_AUTH_COOKIE_NAME":        "c",
 		"VCA_WALLET_AUTH_LOGOUT_REDIRECT":    "/bye",
@@ -95,7 +96,7 @@ func TestFromEnvValues(t *testing.T) {
 	if c.ThemeFile != "/etc/vca/theme.yaml" || c.LandingURL != "https://vca.example" {
 		t.Errorf("theme file and landing URL: %+v", c)
 	}
-	if c.AdminToken != "t" || c.StateDir != "/s" || c.CookieName != "c" || c.LogoutRedirect != "/bye" || c.ProviderInternalAuthority != "http://idp:8080" || !c.Seed.HasSeed() || c.Seed.ClientSecret != "S" {
+	if c.AdminToken != "t" || c.AdminJWKSURL != "http://admin-waltid-admin:8080/.well-known/jwks.json" || c.StateDir != "/s" || c.CookieName != "c" || c.LogoutRedirect != "/bye" || c.ProviderInternalAuthority != "http://idp:8080" || !c.Seed.HasSeed() || c.Seed.ClientSecret != "S" {
 		t.Fatalf("%+v", c)
 	}
 	// A raw url safe base64 key and a plain key work too.

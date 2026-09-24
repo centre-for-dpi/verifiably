@@ -411,7 +411,7 @@ A row that is not `Done` carries a note.
 | ADR-035 | 2 Keycloak is a provider record, not a dependency | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
 | ADR-035 | 3 Register action with a fallback | Done | `vca/services/internal/signin` | The chooser of every auth service offers `/auth/register` when the provider supports it. |
 | ADR-035 | 4 Three token authentication methods | Not started | `vca/core/oidc` | Proposed record. No work exists yet. |
-| ADR-035 | 5 The admin portal pushes provider records | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-035 | 5 The admin portal pushes provider records | Done | `vca/services/admin/internal/fanout` | `CreateAuthProvider` and `UpdateAuthProvider` push to the auth service of every live pair the record names, with the admin session token. The auth services accept it through `oidcflow.AdminJWTAuthorizer`. One audit record per target. |
 | ADR-035 | 6 The first admin registers and binds | Partial | `vca/services/admin` | The admin chooser registers with the bootstrap token in one flow. The first run checklist item waits for P2-01. |
 | ADR-035 | 7 The CLI makes the Keycloak password | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
 
