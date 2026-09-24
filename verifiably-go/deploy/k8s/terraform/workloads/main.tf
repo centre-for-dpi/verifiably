@@ -38,6 +38,23 @@ resource "helm_release" "waltid" {
     value = var.lb_mode == "cloud" ? "letsencrypt" : "selfsigned"
   }
 
+  # Keycloak is Bitnami's chart behind a thin wrapper, and it takes its Ingress
+  # host as ingress.hostname -- it knows nothing about global.domain, which is
+  # what every other chart here reads. The wrapper's values.yaml says the host
+  # is "set to keycloak.<domain> by umbrella chart" and nothing ever set it, so
+  # the release rendered an Ingress with no rules and an empty TLS host, which
+  # helm emits happily and the API server rejects:
+  #
+  #   Ingress "waltid-keycloak" is invalid: spec: either `defaultBackend` or
+  #   `rules` must be specified; spec.tls[0].hosts[0]: Invalid value: ""
+  #
+  # A values file cannot interpolate, so the domain has to be applied here,
+  # where it is known.
+  set {
+    name  = "keycloak.keycloak.ingress.hostname"
+    value = "keycloak.${var.domain}"
+  }
+
   values = var.values_file != "" ? [file(var.values_file)] : []
 
   wait    = true

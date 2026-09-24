@@ -484,6 +484,121 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
 - **G.2.1** — Run the full `up waltid --target=local` on a machine with headroom (≥ 32 GiB), or on a real EKS cluster via the existing `bootstrap/aws-eks` module.
 - **G.2.2** — Clear the known-failed state first: `helm uninstall waltid` / `terraform state rm helm_release.waltid` (`resume.md` § "Known TODOs still pending").
 - **G.2.3** — Fix the `auth-providers.json` shape crashloop that took down the `verifiably-go` pod.
+
+- **G.2.5 — The nightly was not failing to converge; it was failing to render. Fixed 2026-09-24.**
+  Every scheduled run since 2026-09-11 died in about four seconds, before a
+  pod was scheduled:
+
+  ```
+  Error: execution error at (waltid/charts/walt-wallet/templates/deployment.yaml:20:28):
+  wallet.tokenKey is required
+  ```
+
+  #18 removed the committed wallet signing key and correctly left the chart
+  value with no default. The compose path got `scripts/gen-demo-pki.sh`; the
+  K8s path got nothing, so `k8s-deploy.sh` never supplied one.
+
+  It survived thirteen nights because **the render tier generated a throwaway
+  key inline** and passed it with `--set-string`. That proved the chart renders
+  *if* someone supplies a key, while the thing that actually deploys supplied
+  none. A green check on every PR sat directly on top of a red one every night.
+  Both now call `deploy/k8s/scripts/gen-wallet-values.sh`, so a gap in the
+  deploy path fails in the render tier too.
+
+  A second gap found while verifying this: `on: pull_request:` carried no
+  `types:`, which defaults to `opened, synchronize, reopened`. **`labeled` is
+  not in that set**, so the `k8s-e2e` label named in the cluster job's `if:`
+  could never start anything — applying it fired no event. The on-demand
+  escape hatch G.5.1 documented existed only on paper until a push happened to
+  follow it. `types:` now names `labeled` explicitly.
+
+  **G.2.6 — keycloak's Ingress had no host.** With the render unblocked, the
+  cluster tier reached the API server for the first time and was rejected
+  there:
+
+  ```
+  Ingress "waltid-keycloak" is invalid:
+    spec: either `defaultBackend` or `rules` must be specified
+    spec.tls[0].hosts[0]: Invalid value: "" — must be an RFC 1123 subdomain
+  ```
+
+  Keycloak is Bitnami's chart behind a thin wrapper. It takes its Ingress host
+  as `ingress.hostname` and knows nothing about `global.domain`, which every
+  other chart here reads. The wrapper's `values.yaml` says the host is *"set to
+  `keycloak.<domain>` by umbrella chart"* — and nothing ever set it. A Helm
+  values file cannot interpolate, so it now comes from terraform alongside
+  `global.domain`.
+
+  Note what this says about the render tier: `helm template` emits an Ingress
+  with no rules and an empty TLS host perfectly happily, and `kubeconform`
+  accepts it, because it is schema-valid. Only the API server refuses it. The
+  render job now mirrors every value terraform sets and fails on an Ingress
+  that is missing rules or carries an empty host — verified against the
+  rendered output from the failing run.
+
+  **G.2.7 — the Diagnostics step captured nothing, and said it had.** With the
+  Ingress fixed, the cluster tier finally reached the real G.2 frontier:
+  `helm_release.waltid: Still creating…` for 15 minutes, then `context
+  deadline exceeded`. The step whose entire purpose is to explain that had
+  been printing this instead:
+
+  ```
+  Couldn't get current server API group list:
+    Get "http://localhost:8080/api?timeout=32s": connection reset by peer
+  ```
+
+  `localhost:8080` is kubectl's default when `KUBECONFIG` is unset.
+  `k8s-deploy.sh` exports it inside its own process, which does not survive
+  into a later workflow step, and every line ended in `|| true` — so the step
+  reported **success** while collecting nothing at all. Two weeks of failures
+  with no evidence, because the evidence-gatherer was silently inert.
+
+  It now resolves the kubeconfig from terraform output (falling back to `kind
+  export kubeconfig`), warns loudly when no cluster is reachable instead of
+  passing quietly, and describes and logs **only the pods that are not
+  Running or not Ready** — including previous-container logs — rather than 300
+  lines of whatever sorted first.
+
+  **G.2.8 — the first real diagnosis, and it overturns the standing
+  hypothesis.** With diagnostics working, the 2026-09-24 run finally said why
+  the umbrella does not converge. **It is not the resource ceiling.** There is
+  not one `Insufficient cpu` or `Insufficient memory` event in the log. Five
+  distinct causes, all of them concrete:
+
+  | Stuck pod | Cause |
+  |---|---|
+  | `waltid-postgresql-0` | `docker.io/bitnami/postgresql:16.4.0-debian-12-r9` no longer pullable |
+  | kyverno cleanup ×4 | `docker.io/bitnami/kubectl:1.28.5`: **not found** |
+  | `waltid-verifiably-go` | `verifiably-go:local` never built or `kind load`ed — `ErrImageNeverPull` |
+  | `waltid-keycloak-0` | `Init:0/1`, then `configmap "keycloak-realm-import" not found` |
+  | prometheus, alertmanager, vault-1 | `no persistent volumes available for this claim and no storage class is set` |
+
+  Notes on three of them:
+
+  - **Bitnami.** Two separate images fail to resolve from Docker Hub. Old
+    Bitnami tags are no longer served, so this is not a flake and will not fix
+    itself. Postgres is the load-bearing one: keycloak waits on it. Worth
+    noting the stack *already* pulls `ghcr.io/cloudnative-pg/postgresql:17.0`
+    successfully elsewhere, so a replacement is close at hand.
+  - **The app image.** `umbrella/waltid/values.yaml` documents the fix in a
+    comment — *"load the image with `kind load docker-image verifiably-go:local
+    --name verifiably-dev` then leave pullPolicy=Never"* — and no workflow step
+    does it. The instruction is written down; nothing executes it.
+  - **The realm ConfigMap is never rendered.** `realm-configmap.yaml` is
+    guarded by `{{- if .Values.realm.json }}`, `realm.json` defaults to `""`,
+    and nothing sets it — while the chart's `extraVolumes` mounts that
+    ConfigMap unconditionally. Keycloak therefore cannot start under any
+    configuration currently in the tree. This makes **G.3.6 a hard blocker**,
+    not the tidy-up it is filed as.
+
+  So the platform-trimming lever in G.5.3 should be re-argued on bring-up time
+  alone; convergence is blocked by dead image tags, an unbuilt image, a
+  ConfigMap that is never created, and a missing storage class.
+
+  **This unblocks the render, not the convergence.** The nightly will now get
+  as far as the thing G.2 was always about — whether the umbrella becomes
+  ready — which has still never been observed. Expect the next failure to be a
+  different one, and treat the first green run as the milestone.
 - **G.2.4** — Wire `k8s-e2e.yml` into the gate. It is now at the repo root and will run for the first time; expect it to fail initially and treat the first green run as the actual milestone.
 
 ### G.3 Calibration (P2)
@@ -693,6 +808,8 @@ Phase 4 — long lead
 ## 13. Changelog
 
 - **2026-09-10** — Initial scope. Baseline measured at `b571e62`. Workstream A implemented; B–G proposed.
+- **2026-09-24 (rev 10)** — First working diagnosis of the K8s convergence failure (G.2.8), after fixing three things that were hiding it (G.2.5-G.2.7). The resource-ceiling hypothesis is not supported; the causes are two dead Bitnami image tags, an app image CI never builds or loads, a realm ConfigMap that is never rendered, and no storage class for three PVCs.
+- **2026-09-24 (rev 9)** — Fixed the nightly K8s job (G.2.5). It had failed every night since 2026-09-11 at `helm template`, not at convergence: #18 removed the wallet signing key's chart default and nothing generated one for the K8s path. The render tier hid it by fabricating its own key inline, so a green PR check sat on top of a red nightly for thirteen runs; both paths now share one generator.
 - **2026-09-23 (rev 8)** — Security rating C → B. `internal/outbound` replaces the ad-hoc guard at all five SSRF sites (D.5): a per-purpose allowlist seeded from existing config, plus a dial-time address check and a per-hop redirect check, which close a DNS-rebinding window and an unchecked-redirect path that the original per-site review had not spotted. The dev-open switch is configurable and refuses to start on a non-local public host.
 - **2026-09-12 (rev 7)** — Security rating E → D (all BLOCKERs cleared). Fixed the mechanical CRITICAL/MAJOR findings and reviewed the five SSRF ones individually (D.5): a private-IP denylist is the wrong control for a stack whose legitimate services are all on private addresses, so B is gated on an allowlist design rather than a patch.
 - **2026-09-11 (rev 6)** — Assessed the E security badge finding by finding (G.4.6). Fixed the oob-redirect path-traversal/open-redirect/header-injection issue and bound Postgres and Redis to loopback. Recorded that the badge cannot leave E until the committed wallet signing key is removed, and that marking the remainder Won't Fix would be worse than the E.
