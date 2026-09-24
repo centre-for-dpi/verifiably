@@ -536,6 +536,29 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
   that is missing rules or carries an empty host — verified against the
   rendered output from the failing run.
 
+  **G.2.7 — the Diagnostics step captured nothing, and said it had.** With the
+  Ingress fixed, the cluster tier finally reached the real G.2 frontier:
+  `helm_release.waltid: Still creating…` for 15 minutes, then `context
+  deadline exceeded`. The step whose entire purpose is to explain that had
+  been printing this instead:
+
+  ```
+  Couldn't get current server API group list:
+    Get "http://localhost:8080/api?timeout=32s": connection reset by peer
+  ```
+
+  `localhost:8080` is kubectl's default when `KUBECONFIG` is unset.
+  `k8s-deploy.sh` exports it inside its own process, which does not survive
+  into a later workflow step, and every line ended in `|| true` — so the step
+  reported **success** while collecting nothing at all. Two weeks of failures
+  with no evidence, because the evidence-gatherer was silently inert.
+
+  It now resolves the kubeconfig from terraform output (falling back to `kind
+  export kubeconfig`), warns loudly when no cluster is reachable instead of
+  passing quietly, and describes and logs **only the pods that are not
+  Running or not Ready** — including previous-container logs — rather than 300
+  lines of whatever sorted first.
+
   **This unblocks the render, not the convergence.** The nightly will now get
   as far as the thing G.2 was always about — whether the umbrella becomes
   ready — which has still never been observed. Expect the next failure to be a

@@ -241,13 +241,60 @@ jobs:
       # died with nothing but "Still creating…" in the log, which says the
       # umbrella did not converge but not which pod is stuck or why. This is
       # the evidence G.2 needs.
+      # This step existed and captured nothing. k8s-deploy.sh exports
+      # KUBECONFIG inside its own process, which does not survive into a later
+      # step, so every kubectl here fell back to localhost:8080 and failed --
+      # and every line ended in `|| true`, so the step reported success while
+      # producing only connection errors. The cluster tier has been failing for
+      # two weeks with no evidence because of it.
       - name: Diagnostics
         if: always()
         run: |
-          kubectl get pods -A -o wide || true
-          kubectl get events -A --sort-by=.lastTimestamp | tail -60 || true
-          kubectl describe pods -n waltid | head -300 || true
-          kubectl top nodes || true
+          set +e
+          KUBECONFIG="$(terraform -chdir=deploy/k8s/terraform/bootstrap/local-kind \
+            output -raw kubeconfig_path 2>/dev/null)"
+          if [[ -z "$KUBECONFIG" || ! -f "$KUBECONFIG" ]]; then
+            KUBECONFIG="$RUNNER_TEMP/kind.kubeconfig"
+            kind export kubeconfig --name verifiably-dev --kubeconfig "$KUBECONFIG" 2>/dev/null
+          fi
+          export KUBECONFIG
+
+          if ! kubectl cluster-info >/dev/null 2>&1; then
+            echo "::warning::No reachable cluster, so there are no diagnostics to collect."
+            echo "kubeconfig tried: ${KUBECONFIG:-<unset>}"
+            exit 0
+          fi
+          echo "kubeconfig: $KUBECONFIG"
+
+          echo "::group::pods"
+          kubectl get pods -A -o wide
+          echo "::endgroup::"
+
+          echo "::group::pods that are not Running or not Ready"
+          kubectl get pods -A --no-headers \
+            | awk '{ split($3, r, "/"); if ($4 != "Running" || r[1] != r[2]) print }'
+          echo "::endgroup::"
+
+          echo "::group::recent events"
+          kubectl get events -A --sort-by=.lastTimestamp | tail -60
+          echo "::endgroup::"
+
+          # The useful half: describe and log only what is actually stuck,
+          # rather than 300 lines of whatever sorted first.
+          echo "::group::describe + logs for stuck pods"
+          kubectl get pods -A --no-headers \
+            | awk '{ split($3, r, "/"); if ($4 != "Running" || r[1] != r[2]) print $1, $2 }' \
+            | while read -r ns pod; do
+                echo "── $ns/$pod ──────────────────────────────"
+                kubectl describe pod -n "$ns" "$pod" | tail -40
+                kubectl logs -n "$ns" "$pod" --all-containers --tail=40 2>&1 | tail -40
+                kubectl logs -n "$ns" "$pod" --all-containers --previous --tail=40 2>/dev/null | tail -40
+              done
+          echo "::endgroup::"
+
+          echo "::group::nodes"
+          kubectl top nodes 2>/dev/null || kubectl describe nodes | grep -A 6 "Allocated resources"
+          echo "::endgroup::"
 
       - name: Run e2e smoke set
         timeout-minutes: 5
