@@ -23,7 +23,7 @@
 {{range $i, $s := .Shell.Sections}}{{if $s.Label}}<p class="side-label" id="{{$s.ID $i}}">{{$s.Label}}</p>
 <ul class="side-links" aria-labelledby="{{$s.ID $i}}">
 {{else}}<ul class="side-links">
-{{end}}{{range $s.Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} hx-get="{{.Href}}" hx-target="#page" hx-push-url="true">{{.Text}}</a></li>
+{{end}}{{range $s.Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}{{if .Local}} hx-get="{{.Href}}" hx-target="#page" hx-push-url="true"{{else if external .Href}} rel="noopener"{{end}}>{{.Text}}</a></li>
 {{end}}</ul>
 {{end}}</nav>
 </details>

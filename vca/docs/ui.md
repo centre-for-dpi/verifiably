@@ -295,9 +295,10 @@ component. `components.Names` lists every template.
 ### Data structs
 
 `Page`: `Lang` (default `en`), `Title`, `Heading` (default `Title`),
-`Label`, `Lead`, `Description`, `Nav`, `Content`, `Toasts`, `Footer`, `Text`.
-The page header shows `Label` in the accent colour above the `h1`, and
-`Lead` under it.
+`Label`, `Lead`, `Actions`, `Description`, `Nav`, `Content`, `Toasts`,
+`Footer`, `Text`. The page header shows `Label` in the accent colour above
+the `h1` and `Lead` under it. `Actions` holds buttons from `Kit.HTML` in a
+row under the lead.
 
 `Nav`: `Label` (default `Main`), `Brand`, `Links`. `Link`: `Href`, `Text`,
 `Current`. The wordmark links to `Brand.Href` (default `/`). `Brand.Text`
@@ -343,9 +344,19 @@ a script.
 
 `NavSection`: `Label`, `Links`. A label renders above its list and names
 it through `aria-labelledby`. The current link carries
-`aria-current="page"`. Under 56.25rem the side navigation folds into a
+`aria-current="page"`. A local link swaps the main region through htmx.
+An external link, for example an identity console, opens as a plain link
+with `rel="noopener"`. Under 56.25rem the side navigation folds into a
 `details` disclosure. On a wide screen the stylesheet hides the summary and
 the layout script keeps the disclosure open.
+
+The pages of each role come from `internal/rolenav`. The package lists
+the sections and the pages of a role in the order of the side navigation.
+A page can carry a feature gate. `rolenav.Nav` builds the `NavSection`
+list of the shell. It marks the page that the request path falls under.
+A test in `internal/cli` checks every path of the table against the
+route table of the pair. The navigation and the reverse proxy cannot
+drift (ADR-044 decision 5).
 
 The three nav landmarks carry different labels: `Main` for the top links,
 `Stack` for the switcher, and `Portal` for the side navigation. `a11ytest`

@@ -582,6 +582,46 @@ func TestShellSideNavMarksCurrent(t *testing.T) {
 	}
 }
 
+func TestPageHeaderActions(t *testing.T) {
+	k := newKit(t)
+	btn, err := k.HTML("button", Button{Text: "Identity console", Href: "https://kc.example/admin/x/console/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := renderShellPage(t, k, Page{Title: "Overview", Lead: "A lead.", Actions: btn, Shell: issuerShell()})
+	want := `<p class="pg-header-lead">A lead.</p>
+<div class="pg-header-actions"><a class="btn btn-secondary" href="https://kc.example/admin/x/console/">Identity console</a></div>
+</div>`
+	if !strings.Contains(doc, want) {
+		t.Errorf("want %q in\n%s", want, doc)
+	}
+	// Without actions the header has no empty row.
+	plain := renderShellPage(t, k, Page{Title: "Overview", Shell: issuerShell()})
+	if strings.Contains(plain, "pg-header-actions") {
+		t.Error("an empty actions slot renders a row")
+	}
+	a11ytest.AssertPage(t, doc)
+}
+
+func TestShellSideNavExternalLinkIsPlain(t *testing.T) {
+	k := newKit(t)
+	sh := issuerShell()
+	sh.Sections = append(sh.Sections, NavSection{Label: "Console", Links: []Link{
+		{Href: "https://kc.example/admin/vca-issuer-realm/console/", Text: "vca-issuer-realm"},
+	}})
+	doc := renderShellPage(t, k, Page{Title: "Overview", Shell: sh})
+	// An external side link opens as a plain link: no htmx swap into the
+	// main region, and rel="noopener".
+	want := `<li><a href="https://kc.example/admin/vca-issuer-realm/console/" rel="noopener">vca-issuer-realm</a></li>`
+	if !strings.Contains(doc, want) {
+		t.Errorf("want %q in\n%s", want, doc)
+	}
+	if strings.Contains(doc, `hx-get="https://kc.example`) {
+		t.Error("an external side link must not swap through htmx")
+	}
+	a11ytest.AssertPage(t, doc)
+}
+
 func TestShellStartingStackHasNoLink(t *testing.T) {
 	k := newKit(t)
 	sh := issuerShell()

@@ -91,6 +91,15 @@ type harness struct {
 // harness with a cookie jar that holds the session.
 func newHarness(t *testing.T, withTrust bool) *harness {
 	t.Helper()
+	return newHarnessWith(t, withTrust, nil)
+}
+
+// newHarnessWith wires the service like newHarness and lets more change
+// the configuration and the dependencies first, for example to add
+// peers. The factory runs after the server exists, so it can name the
+// server URL as the public URL of this pair.
+func newHarnessWith(t *testing.T, withTrust bool, more func(*testing.T, *harness) func(*config.Config, *app.Deps)) *harness {
+	t.Helper()
 	h := &harness{trust: &fakeTrust{entries: map[string]*trustv1.TrustEntry{}}}
 	h.idp = oidctest.New()
 	t.Cleanup(h.idp.Close)
@@ -116,6 +125,9 @@ func newHarness(t *testing.T, withTrust bool) *harness {
 	if withTrust {
 		deps.Trust = h.trust
 		cfg.TrustURL = h.server.URL
+	}
+	if more != nil {
+		more(t, h)(&cfg, &deps)
 	}
 	built, err := app.Build(cfg, deps)
 	if err != nil {

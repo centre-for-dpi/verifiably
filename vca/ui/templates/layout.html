@@ -133,5 +133,6 @@
 {{if .Label}}<p class="pg-header-label">{{.Label}}</p>
 {{end}}<h1>{{.Heading}}</h1>
 {{if .Lead}}<p class="pg-header-lead">{{.Lead}}</p>
+{{end}}{{if .Actions}}<div class="pg-header-actions">{{.Actions}}</div>
 {{end}}</div>
 {{end}}{{.Content}}{{end}}

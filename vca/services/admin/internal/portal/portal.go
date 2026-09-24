@@ -31,6 +31,7 @@
 package portal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html/template"
@@ -48,6 +49,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/helptext"
@@ -84,6 +86,13 @@ type Options struct {
 	// LandingURL is the public URL of the landing. The login page links
 	// back to its role picker. Empty hides the link.
 	LandingURL string
+	// PublicURL is the public URL of this admin pair. The stack switcher
+	// of the shell marks the pair whose public URL matches it current.
+	PublicURL string
+	// Snapshot returns the state of every peer of the deployment. The
+	// shell draws the stack switcher and the feature gates from it. Nil
+	// means the deployment names no peers: no switcher, no gate.
+	Snapshot func(ctx context.Context) topology.Snapshot
 }
 
 // Portal serves the admin pages.
@@ -104,6 +113,7 @@ func New(opts Options) (*Portal, error) {
 		opts.Prefix = DefaultPrefix
 	}
 	opts.Prefix = "/" + strings.Trim(opts.Prefix, "/")
+	opts.PublicURL = strings.TrimRight(opts.PublicURL, "/")
 	if opts.LoginPath == "" {
 		opts.LoginPath = signin.DefaultLoginPath
 	}
@@ -137,7 +147,7 @@ func (p *Portal) Prefix() string { return p.opts.Prefix }
 // Register adds the pages to mux.
 func (p *Portal) Register(mux *http.ServeMux) {
 	at := p.opts.Prefix
-	mux.HandleFunc("GET "+at+"/{$}", p.guarded(p.dashboard))
+	mux.HandleFunc("GET "+at+"/{$}", p.guarded(p.overview))
 	mux.HandleFunc("GET "+at+"/login", p.chooser.Page)
 	mux.HandleFunc("GET "+at+"/help", p.open(p.help))
 	mux.HandleFunc("GET "+at+"/tenants", p.guarded(p.tenants))
@@ -255,24 +265,6 @@ func statusOf(err error) int {
 	return http.StatusInternalServerError
 }
 
-// nav returns the navigation of every page.
-func (p *Portal) nav(current string) components.Nav {
-	at := p.opts.Prefix
-	return components.Nav{
-		Label: "Super admin",
-		Brand: components.Link{Href: at + "/", Text: "VCA super admin"},
-		Links: []components.Link{
-			{Href: at + "/", Text: "Overview", Current: current == "overview"},
-			{Href: at + "/tenants", Text: "Tenants", Current: current == "tenants"},
-			{Href: at + "/trust", Text: "Trust list", Current: current == "trust"},
-			{Href: at + "/providers", Text: "Login providers", Current: current == "providers"},
-			{Href: at + "/keys", Text: "API keys", Current: current == "keys"},
-			{Href: at + "/audit", Text: "Audit log", Current: current == "audit"},
-			{Href: at + "/help", Text: "Help", Current: current == "help"},
-		},
-	}
-}
-
 // blocks renders components and keeps the first error. A component fails
 // only when its data is wrong, which is a programming fault, so one
 // check for each page is enough.
@@ -363,56 +355,6 @@ func (p *Portal) bootstrapCard(returnTo string) (template.HTML, error) {
 	return card, b.err
 }
 
-// dashboard shows the health of every service and the record counts.
-func (p *Portal) dashboard(w http.ResponseWriter, r *http.Request, s session) error {
-	healthRes, err := p.opts.Client.GetServiceHealth(r.Context(), call(s, &adminv1.GetServiceHealthRequest{}))
-	if err != nil {
-		return err
-	}
-	tenants, err := p.opts.Client.ListTenants(r.Context(), call(s, &adminv1.ListTenantsRequest{}))
-	if err != nil {
-		return err
-	}
-	b := p.blocks()
-	rows := make([]components.Row, 0, len(healthRes.Msg.GetServices()))
-	for _, svc := range healthRes.Msg.GetServices() {
-		status, text := "bad", "Not ready"
-		if svc.GetReady() {
-			status, text = "ok", "Ready"
-		}
-		rows = append(rows, components.Row{
-			{Text: svc.GetName()},
-			{HTML: b.add("badge", components.Badge{Status: status, Text: text})},
-			{Text: svc.GetVersion()},
-			{Text: checkedText(svc)},
-		})
-	}
-	health := b.add("table", components.Table{
-		ID: "health", Caption: fmt.Sprintf("Service health, %d services", len(rows)),
-		Columns: []string{"Service", "State", "Version", "Last probe"}, Rows: rows,
-		Empty: "No service is configured. Set VCA_ADMIN_SERVICES to name each service.",
-	})
-	summary := b.add("card", components.Card{
-		ID: "summary", Title: "Deployment",
-		Text: fmt.Sprintf("You are signed in as %s. The deployment holds %d tenants.",
-			displayName(s.Claims), tenants.Msg.GetPage().GetTotalSize()),
-		Body: components.Join(
-			b.add("button", components.Button{Text: "Manage tenants", Href: p.opts.Prefix + "/tenants"}),
-			b.add("button", components.Button{Text: "Read the audit log", Href: p.opts.Prefix + "/audit"}),
-		),
-	})
-	if b.err != nil {
-		return b.err
-	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
-		Title:       "Super admin overview",
-		Description: "Check the health of every service and reach every admin action.",
-		Nav:         p.nav("overview"),
-		Content:     components.Join(summary, health),
-		Toasts:      notice(r.URL.Query().Get("notice")),
-	})
-}
-
 // checkedText returns the reader facing probe result of one service.
 func checkedText(svc *adminv1.GetServiceHealthResponse_ServiceHealth) string {
 	if svc.GetError() != "" {
@@ -471,10 +413,9 @@ func (p *Portal) tenants(w http.ResponseWriter, r *http.Request, s session) erro
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, s, components.Page{
 		Title:       "Tenants",
 		Description: "A tenant is one operator organisation of the deployment.",
-		Nav:         p.nav("tenants"),
 		Content:     components.Join(table, create),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
@@ -559,10 +500,9 @@ func (p *Portal) trust(w http.ResponseWriter, r *http.Request, s session) error 
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, s, components.Page{
 		Title:       "Trust list",
 		Description: "Edit the entities the deployment trusts. The trust registry signs and publishes the lists.",
-		Nav:         p.nav("trust"),
 		Content:     components.Join(table, add),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
@@ -631,10 +571,9 @@ func (p *Portal) providers(w http.ResponseWriter, r *http.Request, s session) er
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, s, components.Page{
 		Title:       "Login providers",
 		Description: "An admin signs in through one of these OpenID Connect providers.",
-		Nav:         p.nav("providers"),
 		Content:     components.Join(table, action),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
@@ -674,10 +613,9 @@ func (p *Portal) wizard(w http.ResponseWriter, r *http.Request, s session) error
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, s, components.Page{
 		Title:       "Provider wizard",
 		Description: "Add one OpenID Connect provider for admin logins.",
-		Nav:         p.nav("providers"),
 		Content:     components.Join(steps, fields),
 	})
 }
@@ -788,10 +726,9 @@ func (p *Portal) keysPage(w http.ResponseWriter, r *http.Request, s session, sec
 	if toasts == nil {
 		toasts = notice(r.URL.Query().Get("notice"))
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, s, components.Page{
 		Title:       "API keys",
 		Description: "A machine client calls the services with an API key.",
-		Nav:         p.nav("keys"),
 		Content:     components.Join(shown, table, create),
 		Toasts:      toasts,
 	})
@@ -875,18 +812,19 @@ func (p *Portal) auditLog(w http.ResponseWriter, r *http.Request, s session) err
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, s, components.Page{
 		Title:       "Audit log",
 		Description: "Every admin action with its actor, its action, and its request id.",
-		Nav:         p.nav("audit"),
 		Content:     components.Join(filters, table, more),
 	})
 }
 
 // help renders the help text of every RPC and every command from the
 // proto descriptors (ADR-009 decisions 3 and 4). The CLI shows the same
-// sentences.
+// sentences. The page needs no session; with one, the shell shows the
+// user menu.
 func (p *Portal) help(w http.ResponseWriter, r *http.Request) error {
+	s, _ := p.session(r)
 	res, err := p.opts.Client.ListCommands(r.Context(), connect.NewRequest(&adminv1.ListCommandsRequest{}))
 	if err != nil {
 		return err
@@ -921,10 +859,9 @@ func (p *Portal) help(w http.ResponseWriter, r *http.Request) error {
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, s, components.Page{
 		Title:       "Admin help",
 		Description: "Every vca admin command and every admin RPC with its help text.",
-		Nav:         p.nav("help"),
 		Content:     components.Join(intro, commandTable, rpcTable),
 	})
 }

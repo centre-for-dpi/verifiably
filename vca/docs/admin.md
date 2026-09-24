@@ -205,9 +205,25 @@ service keeps its own records for its own logins.
 
 ## Pages
 
+Every page sits in the portal shell of the UI kit. The shell holds the
+role chip, the stack switcher, the user menu, and the side navigation.
+The switcher lists the admin pairs of the deployment. The user menu holds
+the sign out form. The pages of the side navigation come from
+`internal/rolenav`. The navigation ends with one link per identity
+console that a provider record of kind `keycloak` names. A deployment
+with another provider shows no such link (ADR-035 decision 2).
+
+The overview shows six cards. They cover the trust list, the trust
+registry, the providers with their realms, the tenants, and the API keys.
+The sixth card counts the audit events of the day. The first run checklist sits
+below the cards (ADR-035 decision 6). It stays until the operator
+completes four steps. The bootstrap token bound the first admin. No
+enabled admin provider offers a register action on the sign in page. The
+trust list has one entry. Every role has one enabled provider.
+
 | Path | Purpose |
 |---|---|
-| `/admin/` | The dashboard with the service health. |
+| `/admin/` | The overview: the stat cards, the first run checklist, and the service health. |
 | `/admin/login` | The sign in chooser with the bootstrap card. `/auth/` draws the same page. |
 | `/admin/tenants` | The tenant list with the create form. |
 | `/admin/trust` | The trust entry list with the add form. |

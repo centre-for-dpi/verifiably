@@ -161,7 +161,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	pages, err := portal.New(portal.Options{Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit, LandingURL: cfg.LandingURL})
+	pagesOpts := portal.Options{
+		Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit,
+		LandingURL: cfg.LandingURL, PublicURL: cfg.PublicURL,
+	}
+	if prober != nil {
+		pagesOpts.Snapshot = prober.Snapshot
+	}
+	pages, err := portal.New(pagesOpts)
 	if err != nil {
 		return nil, err
 	}

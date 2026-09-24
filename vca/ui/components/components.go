@@ -347,11 +347,12 @@ type Nav struct {
 
 // Page is the data of the layout and the page partial.
 type Page struct {
-	Lang        string // BCP 47 tag for <html lang>, default "en"
-	Title       string // document title, required
-	Heading     string // the one h1, default Title
-	Label       string // optional accent label above the h1, for example the role
-	Lead        string // optional sentence under the h1
+	Lang        string        // BCP 47 tag for <html lang>, default "en"
+	Title       string        // document title, required
+	Heading     string        // the one h1, default Title
+	Label       string        // optional accent label above the h1, for example the role
+	Lead        string        // optional sentence under the h1
+	Actions     template.HTML // optional buttons under the lead, from Kit.HTML
 	Description string
 	Nav         Nav
 	Shell       *Shell        // the portal frame; nil renders a plain page
