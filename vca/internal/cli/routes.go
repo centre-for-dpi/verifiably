@@ -130,19 +130,11 @@ type Home struct {
 // and verifier-results serves the staff pages under /portal. The
 // topology package names the service, so a page and the CLI agree.
 func HomeOf(role commonv1.Role) Home {
-	service := topology.HomeService(role)
-	switch role {
-	case commonv1.Role_ROLE_ISSUER:
-		return Home{Service: service, Path: "/portal/"}
-	case commonv1.Role_ROLE_HOLDER:
-		return Home{Service: service, Path: "/wallet/"}
-	case commonv1.Role_ROLE_VERIFIER:
-		return Home{Service: service, Path: "/portal/"}
-	case commonv1.Role_ROLE_ADMIN:
-		return Home{Service: service, Path: "/admin/"}
-	default:
+	service, path := topology.HomeService(role), topology.HomePath(role)
+	if service == "" || path == "" {
 		return Home{}
 	}
+	return Home{Service: service, Path: path}
 }
 
 // ServiceRoute is one route of one service of a pair, with the host

@@ -3,6 +3,9 @@
 <h2 id="{{.ID}}-title">{{.Title}}</h2>
 {{if .Text}}<p class="cta-text">{{.Text}}</p>
 {{end}}</div>
+<div class="cta-actions">
 {{template "button" .Action}}
+{{if .More}}{{.More}}
+{{end}}</div>
 </section>
 {{end}}

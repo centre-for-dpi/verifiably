@@ -310,7 +310,7 @@ func TestStylesheetCarriesContentComponents(t *testing.T) {
 		".figure{", ".fig-node{", ".fig-edge{", ".fig-label{", ".fig-text{",
 		".stacks{", ".stack{", ".stack-head{", ".stack-version{", ".stack-label{", ".stack-components{", ".stack-component-name{",
 		".stack-component-version{", ".stack-links{", ".stack-roles{", ".stack-role{",
-		".cta{", ".cta-text{", ".note{",
+		".cta{", ".cta-text{", ".cta-actions{", ".note{",
 	} {
 		if !strings.Contains(base, want) {
 			t.Errorf("base.css missing %q", want)

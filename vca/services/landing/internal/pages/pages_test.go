@@ -471,6 +471,8 @@ func TestRenderFailuresAnswer500(t *testing.T) {
 	}{
 		{"/", "figure"}, {"/", "tiles"}, {"/", "block"}, {"/", "stacks"}, {"/", "cta"}, {"/", "page"},
 		{"/stacks", "block"}, {"/nothing", "empty"}, {"/nothing", "page"},
+		{"/roles/", "tiles"}, {"/roles/", "cta"}, {"/roles/", "page"},
+		{"/roles/issuer/", "steps"}, {"/roles/issuer/", "cta"}, {"/roles/issuer/", "button"}, {"/roles/issuer/", "page"},
 	} {
 		p, newErr := pages.New(pages.Options{Kit: failingKit{kit: kit, name: tc.component}, Source: fakeSource{snap: snapshot(allLive)}})
 		if newErr != nil {
@@ -500,4 +502,30 @@ func TestRenderFailuresAnswer500(t *testing.T) {
 	if rec := get(t, mux, "/", false); rec.Code != http.StatusInternalServerError {
 		t.Errorf("one role landing with a failing note: status %d", rec.Code)
 	}
+	// A role that does not run renders an empty state; the picker with no
+	// role does too; a second stack adds a button.
+	for _, tc := range []struct{ path, component string }{{"/roles/holder/", "empty"}} {
+		site, newErr := pages.New(pages.Options{Kit: failingKit{kit: kit, name: tc.component}, Source: fakeSource{snap: one}})
+		if newErr != nil {
+			t.Fatal(newErr)
+		}
+		routes := http.NewServeMux()
+		site.Register(routes)
+		if rec := get(t, routes, tc.path, false); rec.Code != http.StatusInternalServerError {
+			t.Errorf("%s with a failing %s: status %d", tc.path, tc.component, rec.Code)
+		}
+	}
+	none := snapshot(func(commonv1.Role, configv1.Dpg) topology.State { return topology.Absent })
+	p, err = pages.New(pages.Options{Kit: failingKit{kit: kit, name: "empty"}, Source: fakeSource{snap: none}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux = http.NewServeMux()
+	p.Register(mux)
+	if rec := get(t, mux, "/roles/", false); rec.Code != http.StatusInternalServerError {
+		t.Errorf("empty picker with a failing empty state: status %d", rec.Code)
+	}
 }
+
+// backendPDF is the paper channel, named here so the role tests read.
+func backendPDF() backendv1.Channel { return backendv1.Channel_CHANNEL_PDF }

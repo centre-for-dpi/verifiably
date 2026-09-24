@@ -619,6 +619,9 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .cta h2{margin:0;color:var(--invert-fg);font-size:clamp(1.4rem,3vw,2rem)}
 .cta-body{display:flex;flex-direction:column;gap:var(--space-2);max-width:40rem}
 .cta-text{margin:0;color:var(--invert-muted);font-size:1.05rem}
+.cta-actions{display:flex;flex-wrap:wrap;gap:var(--space-3)}
+.cta .btn-secondary{border-color:var(--invert-fg);color:var(--invert-fg);background:transparent}
+.cta .btn-secondary:hover{background:var(--invert-fg);color:var(--invert-bg)}
 .cta .btn-primary{background:var(--invert-fg);border-color:var(--invert-fg);color:var(--invert-bg)}
 .cta .btn-primary:hover{background:var(--invert-accent);border-color:var(--invert-accent);color:var(--invert-bg)}
 

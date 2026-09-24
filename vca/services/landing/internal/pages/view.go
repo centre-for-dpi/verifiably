@@ -161,6 +161,15 @@ func (o Overview) LiveRoles() []Role {
 	return out
 }
 
+// allLive returns every live pair of the deployment, in role order.
+func (o Overview) allLive() []topology.Status {
+	var out []topology.Status
+	for _, r := range o.Roles {
+		out = append(out, r.Live()...)
+	}
+	return out
+}
+
 // StackName returns the display name of the stack of one pair.
 func (o Overview) StackName(d configv1.Dpg) string {
 	for _, s := range o.Stacks {

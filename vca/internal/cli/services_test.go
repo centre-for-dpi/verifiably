@@ -679,6 +679,9 @@ func TestHomeAndAuthServicesAgreeWithTheTopology(t *testing.T) {
 		if authService(r) != topology.AuthService(r) {
 			t.Errorf("%v: auth %s, topology says %s", r, authService(r), topology.AuthService(r))
 		}
+		if HomeOf(r).Path != topology.HomePath(r) {
+			t.Errorf("%v: home path %s, topology says %s", r, HomeOf(r).Path, topology.HomePath(r))
+		}
 	}
 }
 

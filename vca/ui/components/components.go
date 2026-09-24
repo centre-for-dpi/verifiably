@@ -1114,11 +1114,14 @@ func (s Stacks) normalize() (any, error) {
 }
 
 // CTA is the call to action band: a heading, a sentence, and one button.
+// More takes further buttons from Kit.HTML, after the first, when the
+// reader has a choice, for example one stack per button.
 type CTA struct {
 	ID     string // required
 	Title  string // required
 	Text   string
 	Action Button // required
+	More   template.HTML
 }
 
 func (c CTA) normalize() (any, error) {

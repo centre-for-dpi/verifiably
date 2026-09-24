@@ -930,11 +930,16 @@ func TestCTABandHasOneAction(t *testing.T) {
 	a11ytest.AssertFragment(t, doc)
 	for _, want := range []string{
 		`<section class="cta" id="start" aria-labelledby="start-title">`, `<h2 id="start-title">Pick a role.</h2>`,
-		`<p class="cta-text">Walk one flow end to end.</p>`, `<a class="btn btn-primary" href="/roles/">Start with VCA</a>`,
+		`<p class="cta-text">Walk one flow end to end.</p>`, `<div class="cta-actions">`, `<a class="btn btn-primary" href="/roles/">Start with VCA</a>`,
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("cta missing %q\n%s", want, doc)
 		}
+	}
+	more := mustHTML(t, k, "button", Button{Text: "Continue on Beta", Href: "/b", Variant: "secondary"})
+	choice := string(mustHTML(t, k, "cta", CTA{ID: "s", Title: "Sign in", Action: Button{Text: "Continue on Alpha", Href: "/a", Variant: "primary"}, More: more}))
+	if !strings.Contains(choice, `href="/a">Continue on Alpha</a>`) || !strings.Contains(choice, `href="/b">Continue on Beta</a>`) {
+		t.Errorf("cta with more buttons:\n%s", choice)
 	}
 	for name, data := range map[string]any{
 		"no id":      CTA{Title: "t", Action: Button{Text: "x"}},

@@ -386,12 +386,12 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-033 | 1 A stateless landing service | Partial | `vca/services/landing` | The landing, the stacks fragment, and the descriptor exist. The role picker and the intro pages follow. |
+| ADR-033 | 1 A stateless landing service | Done | `vca/services/landing` | |
 | ADR-033 | 2 One landing container per deployment | Done | `deploy/vca/compose.yaml` | |
 | ADR-033 | 3 Short text on VCA, the DPGs, and the triangle of trust | Done | `vca/services/landing/internal/pages` | |
 | ADR-033 | 4 Live stacks with pinned versions and links | Done | `vca/services/landing/internal/pages` | |
-| ADR-033 | 5 The role picker lists live roles only | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
-| ADR-033 | 6 Role intro pages with step cards and sign in | Not started | `vca/services/landing` | Proposed record. No work exists yet. |
+| ADR-033 | 5 The role picker lists live roles only | Done | `vca/services/landing/internal/pages` | |
+| ADR-033 | 6 Role intro pages with step cards and sign in | Partial | `vca/services/landing/internal/pages` | The steps and the sign in link exist. The realm label waits for the provider list of the auth services. |
 
 ## ADR-034: Backend adaptivity through a peer topology and feature lists
 

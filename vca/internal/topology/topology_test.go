@@ -32,6 +32,21 @@ func sample() []topology.Peer {
 	}
 }
 
+func TestHomePathAndSignInURL(t *testing.T) {
+	for role, want := range map[commonv1.Role]string{
+		commonv1.Role_ROLE_ISSUER: "/portal/", commonv1.Role_ROLE_HOLDER: "/wallet/",
+		commonv1.Role_ROLE_VERIFIER: "/portal/", commonv1.Role_ROLE_ADMIN: "/admin/", commonv1.Role_ROLE_UNSPECIFIED: "",
+	} {
+		if got := topology.HomePath(role); got != want {
+			t.Errorf("HomePath(%v) = %q, want %q", role, got, want)
+		}
+	}
+	p := topology.Peer{Role: commonv1.Role_ROLE_HOLDER, PublicURL: "https://holder.example/"}
+	if got := p.SignInURL(); got != "https://holder.example/auth/?return_to=%2Fwallet%2F" {
+		t.Errorf("SignInURL = %q", got)
+	}
+}
+
 func TestFormatParseRoundTrip(t *testing.T) {
 	in := sample()
 	text := topology.Format(in)

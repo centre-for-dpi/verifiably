@@ -51,6 +51,36 @@ The hero and the band at the foot of the page adapt to the live roles:
 | One | `Continue as <role>`, to `/roles/<role>/`. | The role and the stacks it runs on. |
 | None | No action. | No stack runs yet. |
 
+## The role picker
+
+`/roles/` shows one tile per live role among issuer, holder, and
+verifier, with the stacks the role runs on. The admin comes as a band
+at the foot of the page. A role with no live pair has no tile, and a
+starting pair does not count (ADR-033 decision 5). With one live role
+the picker answers `302` to the intro page of that role. With no live
+role it says so and links back to the landing.
+
+## The role intro pages
+
+`/roles/<role>/` shows the step cards of one role, then the sign in
+band. The lead names the count of steps, which follows the live
+features (ADR-034 decision 5):
+
+| Role | Steps | What changes |
+|---|---|---|
+| Issuer | Identify, define, issue, manage. | The issue step names OID4VCI when a live issuer stack speaks it. It names a QR on a PDF when one prints it. |
+| Holder | Discover, claim, present, review. | The discover step appears when an issuer or a verifier is live, so there is something to discover. |
+| Verifier | Discover, build a request, receive, check. | The build step names DCQL. It names DIF Presentation Exchange only when a live verifier stack lists that protocol. |
+| Admin | Trust, registries, sign in, tenants, keys and audit. | The tenants step appears when a live stack separates tenants. |
+
+The sign in band links to `<pair public URL>/auth/?return_to=<home>`
+of the pair of the role. One live stack gives one button. Several give
+one button per stack, named after the stack. The realm of the sign in
+follows once the auth services publish their providers.
+
+A role with no live pair gets one sentence and a link back to the
+picker. An unknown role answers `404`.
+
 ## The descriptor
 
 `GET /.well-known/vca.json` returns one JSON document:

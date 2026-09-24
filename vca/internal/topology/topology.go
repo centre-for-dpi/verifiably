@@ -83,6 +83,29 @@ func HomeService(role commonv1.Role) string {
 	}
 }
 
+// HomePath returns the path of the home page of a role under the public
+// URL of its pair. The root of the pair redirects there, and a sign in
+// returns there.
+func HomePath(role commonv1.Role) string {
+	switch role {
+	case commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_VERIFIER:
+		return "/portal/"
+	case commonv1.Role_ROLE_HOLDER:
+		return "/wallet/"
+	case commonv1.Role_ROLE_ADMIN:
+		return "/admin/"
+	default:
+		return ""
+	}
+}
+
+// SignInURL returns the address a browser opens to sign in on a pair and
+// come back to the home page of its role: the chooser at /auth/ of the
+// public URL with return_to (ADR-033 decision 6, ADR-035).
+func (p Peer) SignInURL() string {
+	return strings.TrimRight(p.PublicURL, "/") + "/auth/?return_to=" + url.QueryEscape(HomePath(p.Role))
+}
+
 // AuthService names the login service of a role. The verifier and the
 // admin log staff in from their portal, so they run none.
 func AuthService(role commonv1.Role) string {
