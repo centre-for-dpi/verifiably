@@ -38,11 +38,17 @@
   }
   window.vcaStopScan = stop;
 
-  // post sends the decoded text and swaps the result region.
+  // post sends the decoded text and swaps the result region. The form
+  // token of the page travels in the header, so the service can bind
+  // the post to the session.
   function post(text) {
     var form = new FormData();
     form.append('payload', text);
-    return fetch(el('scan-form').getAttribute('data-ingest'), { method: 'POST', body: form })
+    var scanForm = el('scan-form');
+    var headers = {};
+    var token = scanForm.querySelector('input[name="csrf_token"]');
+    if (token) headers['X-CSRF-Token'] = token.value;
+    return fetch(scanForm.getAttribute('data-ingest'), { method: 'POST', body: form, headers: headers })
       .then(function (resp) { return resp.text(); })
       .then(function (html) {
         var target = el('scan-result');

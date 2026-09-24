@@ -3,6 +3,7 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/ecdsa"
@@ -13,13 +14,18 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/config"
@@ -57,8 +63,28 @@ func keyPEM(t *testing.T) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 }
 
+var now = time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC)
+
+// staff stands in for verifier-auth: it signs the sessions the tests send.
+func staff(t *testing.T) *staffsessiontest.Issuer {
+	t.Helper()
+	return staffsessiontest.New(t, staffsession.VerifierAudience, now)
+}
+
+// serve answers one request, with the session cookie when token is set.
+func serve(a *app.App, method, path, token string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, nil)
+	if token != "" {
+		req.AddCookie(&http.Cookie{Name: staffsession.VerifierCookie, Value: token})
+	}
+	rec := httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, req)
+	return rec
+}
+
 func TestBuildAndServe(t *testing.T) {
-	a, err := app.Build(settings(t, nil), app.Deps{Log: quiet()})
+	auth := staff(t)
+	a, err := app.Build(settings(t, nil), app.Deps{Log: quiet(), SessionKeys: auth.Keys(), Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,6 +98,7 @@ func TestBuildAndServe(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		req.AddCookie(auth.Cookie(staffsession.VerifierCookie, auth.Token(t, "kc|carol", "verifier-operator")))
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -82,6 +109,119 @@ func TestBuildAndServe(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("GET %s answered %d", path, resp.StatusCode)
 		}
+	}
+}
+
+// TestPortalNeedsSession proves the camera page answers only with a
+// session (ADR-036 decision 2), and that every post of the page needs
+// the form token, in the field or in the header the script sends.
+func TestPortalNeedsSession(t *testing.T) {
+	auth := staff(t)
+	cfg := settings(t, map[string]string{"VCA_INGEST_LOGIN_URL": "https://verifier-waltid.example/auth/"})
+	a, err := app.Build(cfg, app.Deps{Log: quiet(), SessionKeys: auth.Keys(), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/scan/", "/scan/static/scanner.js"} {
+		rec := serve(a, http.MethodGet, path, "")
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("%s: status %d, want 303", path, rec.Code)
+		}
+		if got := rec.Header().Get("Location"); got != cfg.Auth.LoginURL+"?return_to="+url.QueryEscape(path) {
+			t.Fatalf("%s: location %q", path, got)
+		}
+	}
+	if rec := serve(a, http.MethodPost, "/scan/ingest", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("post: status %d, want 401", rec.Code)
+	}
+	token := auth.Token(t, "kc|carol", "verifier-operator")
+	if rec := serve(a, http.MethodPost, "/scan/ingest", token); rec.Code != http.StatusForbidden {
+		t.Fatalf("post without token: status %d, want 403", rec.Code)
+	}
+	page := serve(a, http.MethodGet, "/scan/", token)
+	if page.Code != http.StatusOK {
+		t.Fatalf("page: status %d", page.Code)
+	}
+	if n := strings.Count(page.Body.String(), `name="`+staffsession.Field+`"`); n != 3 {
+		t.Fatalf("the page has %d form tokens, want one per form", n)
+	}
+	_, after, _ := strings.Cut(page.Body.String(), `name="`+staffsession.Field+`" value="`)
+	csrf, _, _ := strings.Cut(after, `"`)
+	// The script posts multipart data with the token in the header.
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	if err := form.WriteField("payload", "not a credential"); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/scan/ingest", &body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	req.Header.Set(staffsession.Header, csrf)
+	req.AddCookie(auth.Cookie(staffsession.VerifierCookie, token))
+	rec := httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scripted post: status %d body %s", rec.Code, rec.Body)
+	}
+	// The upload form posts multipart data with the token as a field.
+	body.Reset()
+	form = multipart.NewWriter(&body)
+	if err := form.WriteField(staffsession.Field, csrf); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.WriteField("payload", "not a credential"); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/scan/ingest", &body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	req.AddCookie(auth.Cookie(staffsession.VerifierCookie, token))
+	rec = httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload post: status %d body %s", rec.Code, rec.Body)
+	}
+	// A session of the issuer realm does not open the verifier page.
+	other := staffsessiontest.New(t, staffsession.IssuerAudience, now)
+	if rec := serve(a, http.MethodGet, "/scan/", other.Token(t, "kc|alice")); rec.Code != http.StatusSeeOther {
+		t.Fatalf("issuer session: status %d, want 303", rec.Code)
+	}
+}
+
+// TestPublicEndpointsStayOpen proves the OID4VP endpoints of the wallet
+// need no session (ADR-036 decision 2).
+func TestPublicEndpointsStayOpen(t *testing.T) {
+	cfg := settings(t, map[string]string{"VCA_INGEST_LOGIN_URL": "https://verifier-waltid.example/auth/"})
+	a, err := app.Build(cfg, app.Deps{Log: quiet(), SessionKeys: staff(t).Keys()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An unknown transaction is 404, not a redirect to the chooser.
+	if rec := serve(a, http.MethodGet, "/oid4vp/request/missing", ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("request object: status %d, want 404", rec.Code)
+	}
+	rec := serve(a, http.MethodPost, "/oid4vp/response", "")
+	if rec.Code == http.StatusUnauthorized || rec.Code == http.StatusSeeOther || rec.Code == http.StatusForbidden {
+		t.Fatalf("direct post: status %d", rec.Code)
+	}
+	if rec := serve(a, http.MethodGet, "/static/vca.css", ""); rec.Code != http.StatusOK {
+		t.Fatalf("assets: status %d", rec.Code)
+	}
+	// Without a key source the service starts and lets nobody in.
+	bare, err := app.Build(settings(t, nil), app.Deps{Log: quiet()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := serve(bare, http.MethodGet, "/scan/", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no key source: status %d, want 401", rec.Code)
+	}
+	cfg.Auth.JWKSFile = filepath.Join(t.TempDir(), "missing.json")
+	if _, err := app.Build(cfg, app.Deps{Log: quiet()}); err == nil {
+		t.Fatal("a missing key set file built")
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
@@ -42,12 +43,18 @@ type Config struct {
 	Issuer string `env:"ISSUER"`
 	// PDFCacheSize is the number of preview documents the cache holds.
 	PDFCacheSize int `env:"PDF_CACHE_SIZE" default:"64"`
+	// Auth guards the builder pages with a session of issuer-auth
+	// (ADR-036 decision 3). Its variables carry the same prefix.
+	Auth staffsession.Settings
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
 func Load(getenv func(string) string) (Config, error) {
 	var c Config
 	if err := sharedconfig.Load(Prefix, &c, getenv); err != nil {
+		return Config{}, err
+	}
+	if err := sharedconfig.Load(Prefix, &c.Auth, getenv); err != nil {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
@@ -73,6 +80,9 @@ func (c Config) normalize() (Config, error) {
 	}
 	if c.PDFCacheSize <= 0 {
 		return Config{}, fmt.Errorf("config: %sPDF_CACHE_SIZE must be a positive number", Prefix)
+	}
+	if err := c.Auth.Check(Prefix); err != nil {
+		return Config{}, err
 	}
 	return c, nil
 }

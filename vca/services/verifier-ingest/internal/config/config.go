@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
@@ -69,12 +70,19 @@ type Config struct {
 	RedirectURI string `env:"REDIRECT_URI"`
 	// ScannerPrefix is the URL prefix of the camera page.
 	ScannerPrefix string `env:"SCANNER_PREFIX" default:"/scan"`
+	// Auth guards the camera page with a session of verifier-auth
+	// (ADR-036 decision 2). Its variables carry the same prefix. The
+	// OID4VP endpoints of the wallet stay open.
+	Auth staffsession.Settings
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
 func Load(getenv func(string) string) (Config, error) {
 	var c Config
 	if err := config.Load(Prefix, &c, getenv); err != nil {
+		return Config{}, err
+	}
+	if err := config.Load(Prefix, &c.Auth, getenv); err != nil {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
@@ -114,6 +122,9 @@ func (c Config) Check() error {
 	}
 	if !strings.HasPrefix(c.ScannerPrefix, "/") {
 		problems = append(problems, Prefix+"SCANNER_PREFIX must start with a slash")
+	}
+	if c.Auth.JWKSTTL <= 0 {
+		problems = append(problems, Prefix+"AUTH_JWKS_TTL must be positive")
 	}
 	if len(problems) > 0 {
 		return errors.New("config: " + strings.Join(problems, "; "))

@@ -420,8 +420,8 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-036 | 1 A verifier-auth service per verifier pair | Done | `vca/services/verifier-auth` | Audience `vca-verifier`, roles `verifier-admin`, `verifier-operator`, `verifier-viewer`. |
-| ADR-036 | 2 Verifier staff pages need a session | Not started | `vca/services/verifier-*` | Proposed record. No work exists yet. |
-| ADR-036 | 3 Issuer staff pages get the same guard | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+| ADR-036 | 2 Verifier staff pages need a session | Done | `vca/services/internal/staffsession` | `verifier-results`, `verifier-discovery`, and `verifier-ingest` guard their staff pages. The citizen check, the catalogue, and the OID4VP endpoints stay open. |
+| ADR-036 | 3 Issuer staff pages get the same guard | Partial | `vca/services/internal/staffsession` | `schema-registry` and `schema-builder-ui` guard their pages against `issuer-auth`. The issuer home of `issuance` follows in P3-01. |
 
 ## ADR-037: Tenants mapped to DPG tenancy
 

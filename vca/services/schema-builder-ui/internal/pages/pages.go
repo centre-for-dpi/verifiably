@@ -34,6 +34,7 @@ import (
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	schemabuilderv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schemabuilder/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/draft"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/pdfcache"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/service"
@@ -514,7 +515,7 @@ func (p *Pages) render(w http.ResponseWriter, r *http.Request, s state) error {
 	s.Sample = sample
 	var err error
 	f := p.frag(&err)
-	f.raw(p.editor(&err, s))
+	f.raw(p.editor(&err, s, staffsession.HiddenField(r.Context())))
 	f.raw(p.previewRegion(&err, s))
 	if err != nil {
 		return err
@@ -535,13 +536,15 @@ func (p *Pages) render(w http.ResponseWriter, r *http.Request, s state) error {
 
 // editor renders the builder form. The form posts to the preview
 // endpoint on every edit, with a 250 millisecond debounce
-// (ADR-014 decision 1).
-func (p *Pages) editor(err *error, s state) template.HTML {
+// (ADR-014 decision 1). csrf is the hidden field that binds every post
+// of the form to the session; htmx sends the fields of the form too.
+func (p *Pages) editor(err *error, s state, csrf template.HTML) template.HTML {
 	prefix := template.HTMLEscapeString(p.opts.Prefix)
 	f := p.frag(err)
 	f.raw(template.HTML(`<form id="builder-form" method="post" action="` + prefix + `/save"` + //nolint:gosec // the prefix is escaped
 		` hx-post="` + prefix + `/preview"` +
 		` hx-trigger="` + Debounce + `" hx-target="#preview" hx-swap="outerHTML">`))
+	f.raw(csrf)
 	f.raw(template.HTML(`<input type="hidden" name="id" value="` + template.HTMLEscapeString(s.Draft.ID) + `">`)) //nolint:gosec // the id is escaped
 	f.raw(p.identityCard(err, s))
 	f.raw(p.fieldCards(err, s.Draft))
@@ -675,8 +678,9 @@ func (p *Pages) importPage(w http.ResponseWriter, r *http.Request) error {
 func (p *Pages) renderImport(w http.ResponseWriter, r *http.Request, toasts []components.Toast) error {
 	var err error
 	f := p.frag(&err)
-	f.raw(p.documentCard(&err))
-	f.raw(p.catalogCard(&err, r))
+	csrf := staffsession.HiddenField(r.Context())
+	f.raw(p.documentCard(&err, csrf))
+	f.raw(p.catalogCard(&err, r, csrf))
 	if err != nil {
 		return err
 	}
@@ -691,9 +695,10 @@ func (p *Pages) renderImport(w http.ResponseWriter, r *http.Request, toasts []co
 }
 
 // documentCard renders the JSON Schema import form.
-func (p *Pages) documentCard(err *error) template.HTML {
+func (p *Pages) documentCard(err *error, csrf template.HTML) template.HTML {
 	f := p.frag(err)
 	f.raw(template.HTML(`<form method="post" action="` + template.HTMLEscapeString(p.opts.Prefix) + `/import">`)) //nolint:gosec // the prefix is escaped
+	f.raw(csrf)
 	f.add("field", components.Field{ID: "import-type", Name: "type", Label: "Credential type",
 		Hint: "Empty takes the title of the document.", Attrs: map[string]string{"autocomplete": "off"}})
 	f.add("field", components.Field{ID: "json_schema", Label: "JSON Schema 2020-12 document", Type: "textarea", Required: true,
@@ -708,7 +713,7 @@ func (p *Pages) documentCard(err *error) template.HTML {
 
 // catalogCard renders the DPG catalogue import form, or says why the
 // deployment has no catalogue.
-func (p *Pages) catalogCard(err *error, r *http.Request) template.HTML {
+func (p *Pages) catalogCard(err *error, r *http.Request, csrf template.HTML) template.HTML {
 	if !p.opts.Catalog {
 		return p.frag(err).card(components.Card{
 			ID: "import-catalog", Title: "From the DPG catalogue",
@@ -738,6 +743,7 @@ func (p *Pages) catalogCard(err *error, r *http.Request) template.HTML {
 	}
 	f := p.frag(err)
 	f.raw(template.HTML(`<form method="post" action="` + template.HTMLEscapeString(p.opts.Prefix) + `/import">`)) //nolint:gosec // the prefix is escaped
+	f.raw(csrf)
 	f.add("field", components.Field{ID: "catalog_entry_id", Label: "Credential type of the DPG", Type: "select", Options: options})
 	f.add("button", components.Button{Text: "Import the credential type", Type: "submit", Variant: "primary"})
 	f.raw(`</form>`)

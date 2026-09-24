@@ -48,6 +48,11 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_SCHEMA_PORTAL_PREFIX` | The URL prefix of the staff pages. | `/portal` |
 | `VCA_SCHEMA_BUILDER_URL` | The schema builder URL the portal links to. | empty |
 | `VCA_SCHEMA_PAGE_SIZE_MAX` | The maximum page size of `List` and `Search`. | `200` |
+| `VCA_SCHEMA_AUTH_JWKS_URL` | The JWKS URL of `issuer-auth`. The staff pages accept only a session it signed. | empty: the staff pages accept no session |
+| `VCA_SCHEMA_AUTH_JWKS_FILE` | A JWKS file that replaces the URL, for a test. | empty |
+| `VCA_SCHEMA_AUTH_JWKS_TTL` | How long a fetched key set stays fresh. | `10m` |
+| `VCA_SCHEMA_AUTH_ISSUER` | The `iss` claim every session must carry. | empty: any issuer of the key set |
+| `VCA_SCHEMA_LOGIN_URL` | The sign in chooser a page request without a session goes to, with `return_to`. | empty: answer 401 |
 
 The container image is `ghcr.io/centre-for-dpi/vca-schema-registry`. It listens on
 one port and runs as a non-root user with a read-only file system.

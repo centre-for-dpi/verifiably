@@ -92,7 +92,10 @@ registry URL `<base>/.well-known/vct/<type>` otherwise.
 
 The staff pages live under the configured prefix, `/portal` by default
 (ADR-013 decision 6). Every page renders with the `vca/ui` kit and passes
-`a11ytest.AssertPage`.
+`a11ytest.AssertPage`. Every page needs a session of `issuer-auth`
+(ADR-036 decision 3). `VCA_SCHEMA_AUTH_JWKS_URL` names the key set and
+`VCA_SCHEMA_LOGIN_URL` names the sign in chooser. The public documents
+and the JSON listing stay open.
 
 | Path | Page |
 |---|---|

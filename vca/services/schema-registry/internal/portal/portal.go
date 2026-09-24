@@ -30,6 +30,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
@@ -393,7 +394,7 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	actions, err := p.actionsCard(m)
+	actions, err := p.actionsCard(m, staffsession.HiddenField(r.Context()))
 	if err != nil {
 		return err
 	}
@@ -528,10 +529,11 @@ func yesNo(v bool) string {
 	return "No"
 }
 
-// actionsCard renders the publish and the retire forms that the state allows.
-func (p *Portal) actionsCard(m *schemav1.Schema) (template.HTML, error) {
+// actionsCard renders the publish and the retire forms that the state
+// allows. csrf is the hidden field that binds each form to the session.
+func (p *Portal) actionsCard(m *schemav1.Schema, csrf template.HTML) (template.HTML, error) {
 	action := p.opts.Prefix + "/schemas/" + url.PathEscape(m.GetId())
-	hidden := template.HTML(`<input type="hidden" name="version" value="` + strconv.Itoa(int(m.GetVersion())) + `">`) //nolint:gosec // the value is a number
+	hidden := csrf + template.HTML(`<input type="hidden" name="version" value="`+strconv.Itoa(int(m.GetVersion()))+`">`) //nolint:gosec // the value is a number
 	switch m.GetState() {
 	case schemav1.State_STATE_DRAFT:
 		button, err := p.opts.Kit.HTML("button", components.Button{Text: "Publish this version", Type: "submit", Variant: "primary"})

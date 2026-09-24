@@ -5,6 +5,7 @@ package config_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/config"
 )
@@ -64,6 +65,8 @@ func TestLoadRejects(t *testing.T) {
 		"catalog max":    {"VCA_DISCOVERY_CATALOG_MAX_AGE": "-1s"},
 		"portal prefix":  {"VCA_DISCOVERY_PORTAL_PREFIX": "portal"},
 		"bad duration":   {"VCA_DISCOVERY_CACHE_TTL": "soon"},
+		"key set ttl":    {"VCA_DISCOVERY_AUTH_JWKS_TTL": "0s"},
+		"bad key set":    {"VCA_DISCOVERY_AUTH_JWKS_TTL": "soon"},
 	}
 	for name, values := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -75,5 +78,20 @@ func TestLoadRejects(t *testing.T) {
 				t.Errorf("error = %v", err)
 			}
 		})
+	}
+}
+
+// TestAuthSettings proves the guard variables load under the service
+// prefix (ADR-036 decision 2).
+func TestAuthSettings(t *testing.T) {
+	c, err := config.Load(env(map[string]string{
+		"VCA_DISCOVERY_AUTH_JWKS_URL": "http://verifier-auth:8081/.well-known/jwks.json",
+		"VCA_DISCOVERY_LOGIN_URL":     "https://verifier-waltid.example/auth/",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Auth.Configured() || c.Auth.LoginURL != "https://verifier-waltid.example/auth/" || c.Auth.JWKSTTL != 10*time.Minute {
+		t.Fatalf("auth %+v", c.Auth)
 	}
 }

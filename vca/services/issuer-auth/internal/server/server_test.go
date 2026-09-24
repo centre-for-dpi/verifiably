@@ -16,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issuer-auth/internal/server"
@@ -275,4 +276,17 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	cfg.ThemeFile = path
 	_, err := server.Build(cfg, quiet)
 	uikittest.AssertBadThemeError(t, err, path)
+}
+
+// TestSessionRealmMatchesTheStaffGuard proves the audience and the
+// cookie of this service are the ones the staff pages check
+// (ADR-036 decision 3).
+func TestSessionRealmMatchesTheStaffGuard(t *testing.T) {
+	realm := staffsession.IssuerRealm()
+	if server.Audience != realm.Audience {
+		t.Fatalf("audience %q, the guard checks %q", server.Audience, realm.Audience)
+	}
+	if c := baseConfig(t); c.CookieName != realm.Cookie {
+		t.Fatalf("cookie %q, the guard reads %q", c.CookieName, realm.Cookie)
+	}
 }

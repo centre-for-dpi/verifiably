@@ -91,3 +91,27 @@ func TestErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestAuthSettings proves the guard variables load under the service
+// prefix and a bad TTL is one config error (ADR-036 decision 3).
+func TestAuthSettings(t *testing.T) {
+	c, err := Load(env(map[string]string{
+		"VCA_SCHEMA_AUTH_JWKS_URL": "http://issuer-auth:8081/.well-known/jwks.json",
+		"VCA_SCHEMA_LOGIN_URL":     "https://issuer-waltid.example/auth/",
+		"VCA_SCHEMA_AUTH_JWKS_TTL": "1m",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Auth.Configured() || c.Auth.LoginURL != "https://issuer-waltid.example/auth/" || c.Auth.JWKSTTL != time.Minute {
+		t.Fatalf("auth %+v", c.Auth)
+	}
+	for name, values := range map[string]map[string]string{
+		"a bad duration": {"VCA_SCHEMA_AUTH_JWKS_TTL": "soon"},
+		"a zero TTL":     {"VCA_SCHEMA_AUTH_JWKS_TTL": "0s"},
+	} {
+		if _, err := Load(env(values)); err == nil || !strings.Contains(err.Error(), "VCA_SCHEMA_AUTH_JWKS_TTL") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

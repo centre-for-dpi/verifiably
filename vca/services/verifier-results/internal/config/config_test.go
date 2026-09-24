@@ -58,6 +58,35 @@ func TestCheckProblems(t *testing.T) {
 	if !strings.Contains(negative.Check().Error(), "PURGE_INTERVAL") {
 		t.Fatal("want a purge interval problem")
 	}
+	noTTL := Config{Retention: time.Hour, RawRetention: time.Hour, PolicyTimeout: time.Second, MaxPasteBytes: 1, PageSizeMax: 1}
+	if !strings.Contains(noTTL.Check().Error(), "AUTH_JWKS_TTL") {
+		t.Fatal("want a key set TTL problem")
+	}
+}
+
+// TestAuthSettings proves the guard variables load under the service
+// prefix and Describe lists them (ADR-036 decision 2).
+func TestAuthSettings(t *testing.T) {
+	c, err := Load(env(map[string]string{
+		"AUTH_JWKS_URL": "http://verifier-auth:8081/.well-known/jwks.json",
+		"LOGIN_URL":     "https://verifier-waltid.example/auth/",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Auth.Configured() || c.Auth.LoginURL != "https://verifier-waltid.example/auth/" || c.Auth.JWKSTTL != 10*time.Minute {
+		t.Fatalf("auth %+v", c.Auth)
+	}
+	if _, bad := Load(env(map[string]string{"AUTH_JWKS_TTL": "soon"})); bad == nil || !strings.Contains(bad.Error(), "AUTH_JWKS_TTL") {
+		t.Fatalf("bad TTL: %v", bad)
+	}
+	vars, err := Describe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vars[len(vars)-1].Name != Prefix+"LOGIN_URL" {
+		t.Fatalf("last variable %+v", vars[len(vars)-1])
+	}
 }
 
 func TestDescribeAndRedact(t *testing.T) {

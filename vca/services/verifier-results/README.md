@@ -35,6 +35,11 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_VERIFIER_RESULTS_POLICY_TIMEOUT` | The time limit of one policy service call. | `10s` |
 | `VCA_VERIFIER_RESULTS_MAX_PASTE_BYTES` | The maximum size of a pasted presentation. | `1048576` |
 | `VCA_VERIFIER_RESULTS_PAGE_SIZE_MAX` | The maximum page size of `Query`. | `50` |
+| `VCA_VERIFIER_RESULTS_AUTH_JWKS_URL` | The JWKS URL of `verifier-auth`. The staff pages accept only a session it signed. | empty: the staff pages accept no session |
+| `VCA_VERIFIER_RESULTS_AUTH_JWKS_FILE` | A JWKS file that replaces the URL, for a test. | empty |
+| `VCA_VERIFIER_RESULTS_AUTH_JWKS_TTL` | How long a fetched key set stays fresh. | `10m` |
+| `VCA_VERIFIER_RESULTS_AUTH_ISSUER` | The `iss` claim every session must carry. | empty: any issuer of the key set |
+| `VCA_VERIFIER_RESULTS_LOGIN_URL` | The sign in chooser a page request without a session goes to, with `return_to`. | empty: answer 401 |
 
 The container image is `ghcr.io/centre-for-dpi/vca-verifier-results`. It listens on one port and runs as a non-root user with a read-only file system. Mount a volume at `/data` to keep the results across a restart.
 

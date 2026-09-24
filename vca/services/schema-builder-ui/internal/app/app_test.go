@@ -10,9 +10,12 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/config"
@@ -33,6 +36,34 @@ func settings(t *testing.T, values map[string]string) config.Config {
 	return cfg
 }
 
+var now = time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC)
+
+// staff is one signed in issuer operator. Its issuer stands in for
+// issuer-auth and signs the one session the requests of a test carry.
+type staff struct {
+	issuer *staffsessiontest.Issuer
+	token  string
+}
+
+func login(t *testing.T) staff {
+	t.Helper()
+	issuer := staffsessiontest.New(t, staffsession.IssuerAudience, now)
+	return staff{issuer: issuer, token: issuer.Token(t, "kc|alice", "issuer-operator")}
+}
+
+// deps adds the key set of the staff issuer to d.
+func (s staff) deps(d app.Deps) app.Deps {
+	d.SessionKeys = s.issuer.Keys()
+	return d
+}
+
+// request builds a request that carries the session.
+func (s staff) request(method, path string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, path, body)
+	req.AddCookie(&http.Cookie{Name: staffsession.IssuerCookie, Value: s.token})
+	return req
+}
+
 func build(t *testing.T, cfg config.Config, deps app.Deps) *app.App {
 	t.Helper()
 	deps.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -43,12 +74,24 @@ func build(t *testing.T, cfg config.Config, deps app.Deps) *app.App {
 	return a
 }
 
+// csrfOf reads the form token out of a rendered page.
+func csrfOf(t *testing.T, page string) string {
+	t.Helper()
+	_, after, ok := strings.Cut(page, `name="`+staffsession.Field+`" value="`)
+	if !ok {
+		t.Fatalf("no form token in %s", page)
+	}
+	value, _, _ := strings.Cut(after, `"`)
+	return value
+}
+
 func TestWiring(t *testing.T) {
 	registry := &fake.Registry{}
 	catalog := &fake.Catalog{Entries: []*backendv1.CredentialConfiguration{{
 		Id: "diploma", Format: commonv1.Format_FORMAT_DC_SD_JWT, Type: "Diploma", JsonSchema: document,
 	}}}
-	a := build(t, settings(t, map[string]string{}), app.Deps{Registry: registry, Catalog: catalog})
+	s := login(t)
+	a := build(t, settings(t, map[string]string{}), s.deps(app.Deps{Registry: registry, Catalog: catalog}))
 	if !a.Service.Ready() {
 		t.Error("the service must be ready")
 	}
@@ -66,7 +109,7 @@ func TestWiring(t *testing.T) {
 
 	t.Run("the builder page renders", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/builder/", nil))
+		a.Mux.ServeHTTP(rec, s.request(http.MethodGet, "/builder/", nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d", rec.Code)
 		}
@@ -75,7 +118,7 @@ func TestWiring(t *testing.T) {
 
 	t.Run("the import page lists the catalogue", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/builder/import", nil))
+		a.Mux.ServeHTTP(rec, s.request(http.MethodGet, "/builder/import", nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d", rec.Code)
 		}
@@ -107,8 +150,13 @@ func TestWiring(t *testing.T) {
 	})
 
 	t.Run("the PDF preview is served", func(t *testing.T) {
-		values := url.Values{"type": {"Diploma"}, "field.0.name": {"given_name"}, "field.0.type": {"string"}}
-		req := httptest.NewRequest(http.MethodPost, "/builder/preview", strings.NewReader(values.Encode()))
+		page := httptest.NewRecorder()
+		a.Mux.ServeHTTP(page, s.request(http.MethodGet, "/builder/", nil))
+		values := url.Values{
+			"type": {"Diploma"}, "field.0.name": {"given_name"}, "field.0.type": {"string"},
+			staffsession.Field: {csrfOf(t, page.Body.String())},
+		}
+		req := s.request(http.MethodPost, "/builder/preview", strings.NewReader(values.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		a.Mux.ServeHTTP(rec, req)
@@ -132,9 +180,10 @@ func quote(s string) string {
 }
 
 func TestWiringWithoutACatalog(t *testing.T) {
-	a := build(t, settings(t, map[string]string{"PREFIX": "/edit"}), app.Deps{Registry: &fake.Registry{}})
+	s := login(t)
+	a := build(t, settings(t, map[string]string{"PREFIX": "/edit"}), s.deps(app.Deps{Registry: &fake.Registry{}}))
 	rec := httptest.NewRecorder()
-	a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/edit/import", nil))
+	a.Mux.ServeHTTP(rec, s.request(http.MethodGet, "/edit/import", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -145,14 +194,68 @@ func TestWiringWithoutACatalog(t *testing.T) {
 
 func TestWiringBuildsItsOwnClients(t *testing.T) {
 	cfg := settings(t, map[string]string{"CATALOG_URL": "http://dpg.test"})
-	a := build(t, cfg, app.Deps{})
+	s := login(t)
+	a := build(t, cfg, s.deps(app.Deps{}))
 	if a.Pages == nil {
 		t.Error("the pages must be wired")
 	}
 	rec := httptest.NewRecorder()
-	a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/builder/", nil))
+	a.Mux.ServeHTTP(rec, s.request(http.MethodGet, "/builder/", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d", rec.Code)
+	}
+}
+
+// TestPortalNeedsSession proves that no builder page answers without a
+// session (ADR-036 decision 3).
+func TestPortalNeedsSession(t *testing.T) {
+	cfg := settings(t, map[string]string{"LOGIN_URL": "https://issuer-waltid.example/auth/"})
+	s := login(t)
+	a := build(t, cfg, s.deps(app.Deps{Registry: &fake.Registry{}}))
+	for _, path := range []string{"/builder/", "/builder/import", "/builder/?id=abc"} {
+		rec := httptest.NewRecorder()
+		a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("%s: status %d, want 303", path, rec.Code)
+		}
+		if got := rec.Header().Get("Location"); got != cfg.Auth.LoginURL+"?return_to="+url.QueryEscape(path) {
+			t.Fatalf("%s: location %q", path, got)
+		}
+	}
+	for _, path := range []string{"/builder/preview", "/builder/fields", "/builder/sample", "/builder/save", "/builder/import"} {
+		rec := httptest.NewRecorder()
+		a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s: status %d, want 401", path, rec.Code)
+		}
+		// With a session but without the form token the post is refused.
+		rec = httptest.NewRecorder()
+		a.Mux.ServeHTTP(rec, s.request(http.MethodPost, path, nil))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s: status %d, want 403", path, rec.Code)
+		}
+	}
+	// A session of the verifier realm does not open the issuer pages.
+	verifier := staffsessiontest.New(t, staffsession.VerifierAudience, now)
+	req := httptest.NewRequest(http.MethodGet, "/builder/", nil)
+	req.AddCookie(&http.Cookie{Name: staffsession.IssuerCookie, Value: verifier.Token(t, "kc|bob")})
+	rec := httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("verifier session: status %d, want 303", rec.Code)
+	}
+}
+
+// TestPublicEndpointsStayOpen proves the root redirect, the assets, the
+// RPC, and the preview documents need no session.
+func TestPublicEndpointsStayOpen(t *testing.T) {
+	a := build(t, settings(t, map[string]string{}), login(t).deps(app.Deps{Registry: &fake.Registry{}}))
+	for path, want := range map[string]int{"/": http.StatusSeeOther, "/static/vca.css": http.StatusOK, "/pdf/preview/missing": http.StatusNotFound} {
+		rec := httptest.NewRecorder()
+		a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != want {
+			t.Fatalf("%s: status %d, want %d", path, rec.Code, want)
+		}
 	}
 }
 

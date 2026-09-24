@@ -2,7 +2,8 @@
 
 // Package app wires the ingestion service from its configuration: the
 // transaction store, the request object key, the discovery client, the
-// Connect handler, the wallet endpoints, and the camera page.
+// Connect handler, the wallet endpoints, and the camera page behind the
+// session guard.
 package app
 
 import (
@@ -25,6 +26,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/config"
@@ -63,6 +65,8 @@ type Deps struct {
 	Client *http.Client
 	// ReadFile reads the signing key file. Nil means os.ReadFile.
 	ReadFile func(string) ([]byte, error)
+	// SessionKeys replaces the key set of verifier-auth. Tests set it.
+	SessionKeys staffsession.Keys
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -118,13 +122,20 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	wallet, walletErr := httpapi.New(svc)
 	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
 	page, pageErr := scanner.New(scanner.Options{Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit})
-	if err := errors.Join(storeErr, serviceErr, walletErr, assetsErr, pageErr); err != nil {
+	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
+		Keys: deps.SessionKeys, ReadFile: deps.ReadFile, Now: deps.Now, Log: deps.Log, MaxFormBytes: scanner.MaxUploadBytes,
+	})
+	if err := errors.Join(storeErr, serviceErr, walletErr, assetsErr, pageErr, guardErr); err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()
 	mux.Handle(ingestv1connect.NewIngestServiceHandler(svc))
 	wallet.Register(mux)
-	page.Register(mux)
+	// The camera page sits behind the guard. The OID4VP endpoints of the
+	// wallet above stay open (ADR-036 decision 2).
+	staff := http.NewServeMux()
+	page.Register(staff)
+	mux.Handle(page.Prefix()+"/", guard.Wrap(staff))
 	mux.Handle("GET "+ui.Prefix, assets)
 	deps.Log.Info("verifier ingest ready",
 		"base_url", cfg.BaseURL, "client_id", cfg.ClientID, "discovery_url", cfg.DiscoveryURL,

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,8 @@ import (
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/config"
 )
@@ -97,8 +100,26 @@ func TestBuildBadRetention(t *testing.T) {
 	}
 }
 
+// staff stands in for verifier-auth: it signs the sessions the tests send.
+func staff(t *testing.T) *staffsessiontest.Issuer {
+	t.Helper()
+	return staffsessiontest.New(t, staffsession.VerifierAudience, testNow)
+}
+
+// serve answers one request, with the session cookie when token is set.
+func serve(a *App, method, path, token string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, nil)
+	if token != "" {
+		req.AddCookie(&http.Cookie{Name: staffsession.VerifierCookie, Value: token})
+	}
+	rec := httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, req)
+	return rec
+}
+
 func TestHandlerServes(t *testing.T) {
-	a, err := Build(base(t), Deps{Log: quiet(), Policy: fakePolicy{}, Now: func() time.Time { return testNow }})
+	issuer := staff(t)
+	a, err := Build(base(t), Deps{Log: quiet(), Policy: fakePolicy{}, Now: func() time.Time { return testNow }, SessionKeys: issuer.Keys()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +138,12 @@ func TestHandlerServes(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("want 200, got %d", resp.StatusCode)
 	}
-	page, err := srv.Client().Get(srv.URL + a.Portal.Prefix() + "/")
+	pageReq, err := http.NewRequest(http.MethodGet, srv.URL+a.Portal.Prefix()+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pageReq.AddCookie(&http.Cookie{Name: staffsession.VerifierCookie, Value: issuer.Token(t, "kc|carol", "verifier-viewer")})
+	page, err := srv.Client().Do(pageReq)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,6 +183,77 @@ func TestHandlerServes(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "Verification summary") {
 		t.Fatalf("want the citizen card, got %s", body)
+	}
+}
+
+// TestPortalNeedsSession proves that no staff page answers without a
+// session (ADR-036 decision 2): a page request goes to the chooser with
+// return_to.
+func TestPortalNeedsSession(t *testing.T) {
+	cfg := base(t)
+	cfg.Auth.LoginURL = "https://verifier-waltid.example/auth/"
+	issuer := staff(t)
+	a, err := Build(cfg, Deps{Log: quiet(), Policy: fakePolicy{}, SessionKeys: issuer.Keys(), Now: func() time.Time { return testNow }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{a.Portal.Prefix() + "/", a.Portal.Prefix() + "/results/x", a.Portal.Prefix() + "/export?format=csv"} {
+		rec := serve(a, http.MethodGet, path, "")
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("%s: status %d, want 303", path, rec.Code)
+		}
+		if got := rec.Header().Get("Location"); got != cfg.Auth.LoginURL+"?return_to="+url.QueryEscape(path) {
+			t.Fatalf("%s: location %q", path, got)
+		}
+	}
+	// A session of the issuer realm does not open the verifier pages.
+	other := staffsessiontest.New(t, staffsession.IssuerAudience, testNow)
+	if rec := serve(a, http.MethodGet, a.Portal.Prefix()+"/", other.Token(t, "kc|alice")); rec.Code != http.StatusSeeOther {
+		t.Fatalf("issuer session: status %d, want 303", rec.Code)
+	}
+	if rec := serve(a, http.MethodGet, a.Portal.Prefix()+"/", issuer.Token(t, "kc|carol")); rec.Code != http.StatusOK {
+		t.Fatalf("verifier session: status %d, want 200", rec.Code)
+	}
+	// Without a key source the service starts and lets nobody in.
+	bare, err := Build(base(t), Deps{Log: quiet()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := serve(bare, http.MethodGet, bare.Portal.Prefix()+"/", issuer.Token(t, "kc|carol")); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no key source: status %d, want 401", rec.Code)
+	}
+}
+
+func TestBuildBadKeySetFile(t *testing.T) {
+	cfg := base(t)
+	cfg.Auth.JWKSFile = filepath.Join(t.TempDir(), "missing.json")
+	if _, err := Build(cfg, Deps{Log: quiet()}); err == nil {
+		t.Fatal("a missing key set file built")
+	}
+}
+
+// TestPublicEndpointsStayOpen proves the citizen check page and its
+// form need no session (ADR-036 decision 2).
+func TestPublicEndpointsStayOpen(t *testing.T) {
+	cfg := base(t)
+	cfg.Auth.LoginURL = "https://verifier-waltid.example/auth/"
+	a, err := Build(cfg, Deps{Log: quiet(), Policy: fakePolicy{}, SessionKeys: staff(t).Keys(), Now: func() time.Time { return testNow }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := serve(a, http.MethodGet, a.Portal.PublicPrefix()+"/", ""); rec.Code != http.StatusOK {
+		t.Fatalf("citizen page: status %d", rec.Code)
+	}
+	form := url.Values{"presentation": {`{"@context":["x"],"issuer":"did:web:a"}`}}
+	req := httptest.NewRequest(http.MethodPost, a.Portal.PublicPrefix()+"/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Verification summary") {
+		t.Fatalf("citizen check: status %d body %s", rec.Code, rec.Body)
+	}
+	if rec := serve(a, http.MethodGet, "/static/vca.css", ""); rec.Code != http.StatusOK {
+		t.Fatalf("assets: status %d", rec.Code)
 	}
 }
 

@@ -2,7 +2,7 @@
 
 // Package app wires the schema registry from its configuration: the
 // store, the SchemaService handler, the public HTTP endpoints, the staff
-// portal, and the UI assets.
+// portal behind the session guard, and the UI assets.
 package app
 
 import (
@@ -12,6 +12,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/config"
@@ -34,6 +35,8 @@ type Deps struct {
 	// Backend registers published versions with the DPG. Nil builds a
 	// Connect client from the configured backend URL.
 	Backend backendv1connect.IssuerBackendServiceClient
+	// SessionKeys replaces the key set of issuer-auth. Tests set it.
+	SessionKeys staffsession.Keys
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives start messages. Nil means slog.Default.
@@ -77,10 +80,20 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	guard, err := staffsession.Build(cfg.Auth, staffsession.IssuerRealm(), config.Prefix, staffsession.Deps{
+		Keys: deps.SessionKeys, Now: deps.Now, Log: deps.Log,
+	})
+	if err != nil {
+		return nil, err
+	}
 	mux := http.NewServeMux()
 	mux.Handle(schemav1connect.NewSchemaServiceHandler(svc))
 	httpapi.New(st, svc.MetadataOptions, cfg.HTTPMaxAge).Register(mux)
-	pages.Register(mux)
+	// The staff pages sit behind the guard. The public documents above
+	// stay open (ADR-036 decision 2).
+	staff := http.NewServeMux()
+	pages.Register(staff)
+	mux.Handle(pages.Prefix()+"/", guard.Wrap(staff))
 	mux.Handle("GET "+ui.Prefix, assets)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, pages.Prefix()+"/", http.StatusSeeOther)

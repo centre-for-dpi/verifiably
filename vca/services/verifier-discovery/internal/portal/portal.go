@@ -21,6 +21,7 @@
 package portal
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,7 @@ import (
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/catalog"
 	tmpl "github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/template"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -208,10 +210,15 @@ func (b *blocks) add(name string, data any) template.HTML {
 // blocks returns a renderer over the kit of the portal.
 func (p *Portal) blocks() *blocks { return &blocks{kit: p.opts.Kit} }
 
-// form wraps content in a form element.
-func form(action, method string, content ...template.HTML) template.HTML {
+// form wraps content in a form element. A post form carries the hidden
+// field that binds it to the session of ctx.
+func form(ctx context.Context, action, method string, content ...template.HTML) template.HTML {
 	open := `<form class="filters" action="` + template.HTMLEscapeString(action) + `" method="` + template.HTMLEscapeString(method) + `">`
-	parts := append([]template.HTML{template.HTML(open)}, content...) //nolint:gosec // both parts are escaped
+	parts := []template.HTML{template.HTML(open)} //nolint:gosec // both parts are escaped
+	if method == "post" {
+		parts = append(parts, staffsession.HiddenField(ctx))
+	}
+	parts = append(parts, content...)
 	return components.Join(append(parts, template.HTML(`</form>`))...)
 }
 
@@ -250,7 +257,7 @@ func (p *Portal) issuers(w http.ResponseWriter, r *http.Request) error {
 		Title:       "Trusted issuers",
 		Description: "Browse the issuers the trust registry lists and the credential types each one offers.",
 		Nav:         p.nav("issuers"),
-		Content:     components.Join(form(p.opts.Prefix+"/crawl", "post", action), table),
+		Content:     components.Join(form(r.Context(), p.opts.Prefix+"/crawl", "post", action), table),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
 }
@@ -344,7 +351,7 @@ func (p *Portal) typeFilters(b *blocks, req *discoveryv1.ListCredentialTypesRequ
 		name := catalog.FormatName(f)
 		options = append(options, components.Option{Value: name, Text: name, Selected: f == req.GetFormat()})
 	}
-	return form(p.opts.Prefix+"/types", "get",
+	return form(context.Background(), p.opts.Prefix+"/types", "get",
 		b.add("field", components.Field{ID: "q", Label: "Search", Value: req.GetQuery(), Hint: "The search matches the type name and the display name."}),
 		b.add("field", components.Field{ID: "credential_issuer", Label: "Issuer URL", Value: req.GetCredentialIssuer(), Hint: "Leave it empty to see every issuer."}),
 		b.add("field", components.Field{ID: "format", Label: "Format", Type: "select", Options: options}),
@@ -364,7 +371,7 @@ func (p *Portal) fields(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	b := p.blocks()
-	selection := p.selectionForm(b, issuer, typeName, q.Get("format"), resp.Msg.GetFields())
+	selection := p.selectionForm(r.Context(), b, issuer, typeName, q.Get("format"), resp.Msg.GetFields())
 	schema := b.add("json", components.JSON{
 		ID: "schema", Summary: "JSON Schema document of the credential type", Data: rawJSON(resp.Msg.GetJsonSchema()),
 	})
@@ -381,7 +388,7 @@ func (p *Portal) fields(w http.ResponseWriter, r *http.Request) error {
 }
 
 // selectionForm renders the claim tick boxes and the template fields.
-func (p *Portal) selectionForm(b *blocks, issuer, typeName, format string, fields []*discoveryv1.Field) template.HTML {
+func (p *Portal) selectionForm(ctx context.Context, b *blocks, issuer, typeName, format string, fields []*discoveryv1.Field) template.HTML {
 	if format == "" {
 		format = "dc+sd-jwt"
 	}
@@ -414,7 +421,7 @@ func (p *Portal) selectionForm(b *blocks, issuer, typeName, format string, field
 		}))
 	}
 	parts = append(parts, b.add("button", components.Button{Text: "Save template", Type: "submit", Variant: "primary"}))
-	return form(p.opts.Prefix+"/templates", "post", parts...)
+	return form(ctx, p.opts.Prefix+"/templates", "post", parts...)
 }
 
 // saveTemplate stores the selection of the fields page.
@@ -518,7 +525,7 @@ func (p *Portal) templateDetail(w http.ResponseWriter, r *http.Request) error {
 		Description: "Read the stored presentation request and remove it when no service uses it.",
 		Nav:         p.nav("templates"),
 		Content: components.Join(summary, claims, query, exchange,
-			form(p.opts.Prefix+"/templates/"+url.PathEscape(id)+"/delete", "post", remove)),
+			form(r.Context(), p.opts.Prefix+"/templates/"+url.PathEscape(id)+"/delete", "post", remove)),
 		Toasts: notice(r.URL.Query().Get("notice")),
 	})
 }

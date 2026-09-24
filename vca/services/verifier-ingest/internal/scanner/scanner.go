@@ -31,6 +31,7 @@ import (
 
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
@@ -124,9 +125,10 @@ func (p *Page) nav() components.Nav {
 // show renders the camera page.
 func (p *Page) show(w http.ResponseWriter, r *http.Request) error {
 	b := &blocks{kit: p.opts.Kit}
-	camera := p.cameraCard(b)
-	upload := p.uploadCard(b)
-	paste := p.pasteCard(b)
+	csrf := staffsession.HiddenField(r.Context())
+	camera := p.cameraCard(b, csrf)
+	upload := p.uploadCard(b, csrf)
+	paste := p.pasteCard(b, csrf)
 	if b.err != nil {
 		return b.err
 	}
@@ -141,8 +143,10 @@ func (p *Page) show(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-// cameraCard renders the camera part of the page.
-func (p *Page) cameraCard(b *blocks) template.HTML {
+// cameraCard renders the camera part of the page. csrf is the hidden
+// field that binds the posts of the page to the session; the script
+// sends its value in the token header.
+func (p *Page) cameraCard(b *blocks, csrf template.HTML) template.HTML {
 	button := b.add("button", components.Button{
 		Text: "Start camera", Variant: "primary", Controls: "scan-video", Expanded: false,
 	})
@@ -155,11 +159,11 @@ func (p *Page) cameraCard(b *blocks) template.HTML {
 		Body: body, Footer: "The camera needs a secure origin, so use https or localhost.",
 	})
 	open := `<form id="scan-form" data-ingest="` + template.HTMLEscapeString(p.opts.Prefix+"/ingest") + `">`
-	return components.Join(template.HTML(open), card, template.HTML(`</form>`)) //nolint:gosec // the value is escaped
+	return components.Join(template.HTML(open), csrf, card, template.HTML(`</form>`)) //nolint:gosec // the value is escaped
 }
 
 // uploadCard renders the file upload fallback.
-func (p *Page) uploadCard(b *blocks) template.HTML {
+func (p *Page) uploadCard(b *blocks, csrf template.HTML) template.HTML {
 	field := b.add("field", components.Field{
 		ID: "upload", Name: "upload", Label: "Image, PDF, or XML file", Type: "file",
 		Hint: "The service reads the QR code of an image or a PDF, or the credential of an XML document.",
@@ -170,11 +174,11 @@ func (p *Page) uploadCard(b *blocks) template.HTML {
 		Text: "Use this when the device has no camera.",
 		Body: components.Join(field, button),
 	})
-	return formOf(p.opts.Prefix+"/ingest", "multipart/form-data", card)
+	return formOf(p.opts.Prefix+"/ingest", "multipart/form-data", components.Join(csrf, card))
 }
 
 // pasteCard renders the paste box.
-func (p *Page) pasteCard(b *blocks) template.HTML {
+func (p *Page) pasteCard(b *blocks, csrf template.HTML) template.HTML {
 	field := b.add("field", components.Field{
 		ID: "payload", Name: "payload", Label: "Credential or QR text", Type: "textarea",
 		Hint: "Paste a credential, a presentation, an OID4VP request, or the text of a QR code.",
@@ -184,7 +188,7 @@ func (p *Page) pasteCard(b *blocks) template.HTML {
 		ID: "paste-card", Title: "Paste a credential",
 		Body: components.Join(field, button),
 	})
-	return formOf(p.opts.Prefix+"/ingest", "", card)
+	return formOf(p.opts.Prefix+"/ingest", "", components.Join(csrf, card))
 }
 
 // formOf wraps content in a post form.

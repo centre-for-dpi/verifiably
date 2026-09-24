@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
@@ -51,12 +52,19 @@ type Config struct {
 	MaxPasteBytes int64 `env:"MAX_PASTE_BYTES" default:"1048576"`
 	// PageSizeMax caps the page size of Query.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+	// Auth guards the staff pages with a session of verifier-auth
+	// (ADR-036 decision 2). Its variables carry the same prefix. The
+	// citizen check page stays open.
+	Auth staffsession.Settings
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
 func Load(getenv func(string) string) (Config, error) {
 	var c Config
 	if err := config.Load(Prefix, &c, getenv); err != nil {
+		return Config{}, err
+	}
+	if err := config.Load(Prefix, &c.Auth, getenv); err != nil {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
@@ -87,15 +95,27 @@ func (c Config) Check() error {
 	if c.PageSizeMax <= 0 {
 		problems = append(problems, Prefix+"PAGE_SIZE_MAX must be positive")
 	}
+	if c.Auth.JWKSTTL <= 0 {
+		problems = append(problems, Prefix+"AUTH_JWKS_TTL must be positive")
+	}
 	if len(problems) > 0 {
 		return fmt.Errorf("config: %s", strings.Join(problems, "; "))
 	}
 	return nil
 }
 
-// Describe lists the variables of the service. The README uses it.
+// Describe lists the variables of the service, the guard variables
+// last. The README uses it.
 func Describe() ([]config.Variable, error) {
-	return config.Describe(Prefix, &Config{})
+	own, err := config.Describe(Prefix, &Config{})
+	if err != nil {
+		return nil, err
+	}
+	auth, err := config.Describe(Prefix, &staffsession.Settings{})
+	if err != nil {
+		return nil, err
+	}
+	return append(own, auth...), nil
 }
 
 // Redact returns the loaded values by variable name, secrets removed.

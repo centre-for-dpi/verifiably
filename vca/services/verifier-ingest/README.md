@@ -53,6 +53,11 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_INGEST_XML_ENCODING` | The default encoding of the XML text: `text` or `base64`. | `text` |
 | `VCA_INGEST_REDIRECT_URI` | The URI the wallet opens after a direct post. | empty |
 | `VCA_INGEST_SCANNER_PREFIX` | The URL prefix of the camera page. | `/scan` |
+| `VCA_INGEST_AUTH_JWKS_URL` | The JWKS URL of `verifier-auth`. The camera page accept only a session it signed. | empty: the camera page accept no session |
+| `VCA_INGEST_AUTH_JWKS_FILE` | A JWKS file that replaces the URL, for a test. | empty |
+| `VCA_INGEST_AUTH_JWKS_TTL` | How long a fetched key set stays fresh. | `10m` |
+| `VCA_INGEST_AUTH_ISSUER` | The `iss` claim every session must carry. | empty: any issuer of the key set |
+| `VCA_INGEST_LOGIN_URL` | The sign in chooser a page request without a session goes to, with `return_to`. | empty: answer 401 |
 
 The container image is `ghcr.io/centre-for-dpi/vca-verifier-ingest`. It listens on
 one port and runs as a non-root user with a read-only file system.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/metadata"
 )
@@ -52,6 +53,10 @@ type Config struct {
 	// PageSizeMax caps the page size of List and Search.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"200"`
 
+	// Auth guards the staff pages with a session of issuer-auth
+	// (ADR-036 decision 3). Its variables carry the same prefix.
+	Auth staffsession.Settings
+
 	// Metadata carries the OID4VCI values of the public documents.
 	Metadata metadata.Options
 }
@@ -60,6 +65,9 @@ type Config struct {
 func Load(getenv func(string) string) (Config, error) {
 	var c Config
 	if err := sharedconfig.Load(Prefix, &c, getenv); err != nil {
+		return Config{}, err
+	}
+	if err := sharedconfig.Load(Prefix, &c.Auth, getenv); err != nil {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
@@ -98,6 +106,9 @@ func (c Config) normalize() (Config, error) {
 	}
 	if c.PageSizeMax <= 0 {
 		return Config{}, fmt.Errorf("config: %sPAGE_SIZE_MAX must be a positive number", Prefix)
+	}
+	if err := c.Auth.Check(Prefix); err != nil {
+		return Config{}, err
 	}
 	return c, nil
 }

@@ -2,7 +2,8 @@
 
 // Package app wires the discovery service from its configuration: the
 // store, the guarded fetcher, the trust registry client, the crawler,
-// the Connect handler, the catalogue endpoints, and the portal pages.
+// the Connect handler, the catalogue endpoints, and the portal pages
+// behind the session guard.
 package app
 
 import (
@@ -15,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/config"
@@ -46,6 +48,8 @@ type Deps struct {
 	// Client performs the issuer fetches. Nil means a client with the
 	// configured timeout.
 	Client *http.Client
+	// SessionKeys replaces the key set of verifier-auth. Tests set it.
+	SessionKeys staffsession.Keys
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -90,13 +94,20 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	svc, serviceErr := service.New(service.Options{Store: st, Crawler: crawler, PageSizeMax: cfg.PageSizeMax, Now: deps.Now})
 	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
 	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit})
-	if err := errors.Join(storeErr, crawlErr, serviceErr, portalErr, assetsErr); err != nil {
+	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
+		Keys: deps.SessionKeys, Now: deps.Now, Log: deps.Log, MaxFormBytes: portal.MaxFormBytes,
+	})
+	if err := errors.Join(storeErr, crawlErr, serviceErr, portalErr, assetsErr, guardErr); err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()
 	mux.Handle(discoveryv1connect.NewDiscoveryServiceHandler(svc))
 	httpapi.New(httpapi.Options{Reader: svc, MaxAge: cfg.CatalogMaxAge}).Register(mux)
-	pages.Register(mux)
+	// The staff pages sit behind the guard. The catalogue endpoints
+	// above stay open (ADR-036 decision 2).
+	staff := http.NewServeMux()
+	pages.Register(staff)
+	mux.Handle(pages.Prefix()+"/", guard.Wrap(staff))
 	mux.Handle("GET "+ui.Prefix, assets)
 	deps.Log.Info("verifier discovery ready",
 		"base_url", cfg.BaseURL, "trust_url", cfg.TrustURL, "portal", pages.Prefix(),

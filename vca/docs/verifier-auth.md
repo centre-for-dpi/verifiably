@@ -57,9 +57,22 @@ the new totals. The host ports of the other verifier services move up
 by one. The CLI assigns them in service name order. `vca setup` writes
 the new plan into `deploy/verifier-<dpg>/.env`.
 
+## Staff session guard
+
 The staff pages of `verifier-results`, `verifier-discovery`, and
-`verifier-ingest` do not check the session yet. That guard is ADR-036
-decision 2 and follows in its own unit.
+`verifier-ingest` need a session of this service (ADR-036 decision 2).
+The shared package `services/internal/staffsession` checks the session
+JWT against the key set at `/.well-known/jwks.json`, the audience
+`vca-verifier`, and the expiry time. A page request without a session
+goes to the sign in chooser at `/auth/` with `return_to`. Any other
+request without a session gets 401. Every POST of a staff page carries
+a form token that the guard binds to the session. The citizen check,
+the catalogue, and the OID4VP endpoints stay open.
+
+The CLI writes `VCA_<SERVICE>_AUTH_JWKS_URL` and
+`VCA_<SERVICE>_LOGIN_URL` for each guarded service. The issuer pages of
+`schema-registry` and `schema-builder-ui` use the same guard against
+`issuer-auth` (ADR-036 decision 3).
 
 ## Tests
 

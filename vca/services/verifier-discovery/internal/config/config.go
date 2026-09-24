@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
@@ -60,12 +61,19 @@ type Config struct {
 	CatalogMaxAge time.Duration `env:"CATALOG_MAX_AGE" default:"5m"`
 	// PortalPrefix is the URL prefix of the staff pages.
 	PortalPrefix string `env:"PORTAL_PREFIX" default:"/portal"`
+	// Auth guards the staff pages with a session of verifier-auth
+	// (ADR-036 decision 2). Its variables carry the same prefix. The
+	// catalogue endpoints stay open.
+	Auth staffsession.Settings
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
 func Load(getenv func(string) string) (Config, error) {
 	var c Config
 	if err := config.Load(Prefix, &c, getenv); err != nil {
+		return Config{}, err
+	}
+	if err := config.Load(Prefix, &c.Auth, getenv); err != nil {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
@@ -100,6 +108,9 @@ func (c Config) Check() error {
 	}
 	if !strings.HasPrefix(c.PortalPrefix, "/") {
 		problems = append(problems, Prefix+"PORTAL_PREFIX must start with a slash")
+	}
+	if c.Auth.JWKSTTL <= 0 {
+		problems = append(problems, Prefix+"AUTH_JWKS_TTL must be positive")
 	}
 	if len(problems) > 0 {
 		return errors.New("config: " + strings.Join(problems, "; "))

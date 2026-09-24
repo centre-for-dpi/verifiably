@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package app wires the schema builder from its configuration: the
-// SchemaBuilderService handler, the builder pages, the PDF preview
-// handler, and the UI assets.
+// SchemaBuilderService handler, the builder pages behind the session
+// guard, the PDF preview handler, and the UI assets.
 package app
 
 import (
@@ -13,6 +13,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schemabuilder/v1/schemabuilderv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/pages"
@@ -36,6 +37,8 @@ type Deps struct {
 	// Catalog reads the DPG credential types. Nil builds a Connect client
 	// from the configured catalogue URL, when there is one.
 	Catalog backendv1connect.CatalogBackendServiceClient
+	// SessionKeys replaces the key set of issuer-auth. Tests set it.
+	SessionKeys staffsession.Keys
 	// Log receives start messages. Nil means slog.Default.
 	Log *slog.Logger
 }
@@ -65,12 +68,19 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Builder: svc, Registry: deps.Registry, Prefix: cfg.Prefix,
 		RegistryURL: cfg.PortalURL, Catalog: deps.Catalog != nil, Kit: kit,
 	})
-	if err := first(svcErr, assetsErr, pagesErr); err != nil {
+	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.IssuerRealm(), config.Prefix, staffsession.Deps{
+		Keys: deps.SessionKeys, Log: deps.Log, MaxFormBytes: pages.MaxFormBytes,
+	})
+	if err := first(svcErr, assetsErr, pagesErr, guardErr); err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()
 	mux.Handle(schemabuilderv1connect.NewSchemaBuilderServiceHandler(svc))
-	builder.Register(mux)
+	// The builder pages sit behind the guard (ADR-036 decision 3). The
+	// preview documents stay where the pages link them.
+	staff := http.NewServeMux()
+	builder.Register(staff)
+	mux.Handle(builder.Prefix()+"/", guard.Wrap(staff))
 	svc.Cache().Register(mux)
 	mux.Handle("GET "+ui.Prefix, assets)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {

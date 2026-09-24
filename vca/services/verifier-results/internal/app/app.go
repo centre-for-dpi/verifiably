@@ -2,7 +2,8 @@
 
 // Package app wires the verifier results service from its
 // configuration: the result store, the Connect handler, the staff
-// portal, the citizen check page, and the purge job.
+// portal behind the session guard, the citizen check page, and the
+// purge job.
 package app
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/cards"
@@ -45,6 +47,8 @@ type Deps struct {
 	ConnectClient connect.HTTPClient
 	// Policy replaces the policy service client. Tests set it.
 	Policy policyv1connect.PolicyServiceClient
+	// SessionKeys replaces the key set of verifier-auth. Tests set it.
+	SessionKeys staffsession.Keys
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -110,10 +114,21 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	guard, err := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
+		Keys: deps.SessionKeys, Now: deps.Now, Log: deps.Log,
+	})
+	if err != nil {
+		return nil, err
+	}
 	mux := http.NewServeMux()
 	mux.Handle(resultsv1connect.NewResultsServiceHandler(svc))
 	mux.Handle("GET "+ui.Prefix, assets)
-	pages.Register(mux)
+	// The staff pages sit behind the guard. The citizen check page
+	// stays open (ADR-036 decision 2).
+	staffPages := http.NewServeMux()
+	pages.Register(staffPages)
+	mux.Handle(pages.Prefix()+"/", guard.Wrap(staffPages))
+	mux.Handle(pages.PublicPrefix()+"/", staffPages)
 	if policyClient == nil {
 		deps.Log.Warn("no policy service, the citizen check page is not available",
 			"setting", config.Prefix+"POLICY_URL")

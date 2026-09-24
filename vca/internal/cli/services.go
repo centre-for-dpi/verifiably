@@ -178,6 +178,14 @@ func Catalog() []Service {
 	// auth services of the issuer, holder, and verifier draw the sign in
 	// chooser at /auth/ (ADR-035); the admin draws its own at /admin/login.
 	jwks := Route{Match: "/.well-known/jwks.json"}
+	// staffJWKS and staffLogin guard the staff pages of a service with a
+	// session of the auth service of its role (ADR-036 decisions 2 and
+	// 3). The key set travels on the internal network; the browser
+	// follows the login URL, so it is public.
+	staffJWKS := func(env string, auth string) Link {
+		return Link{Env: env, Target: auth, Path: "/.well-known/jwks.json", Kind: LinkURL}
+	}
+	staffLogin := func(env string) Link { return Link{Env: env, Kind: LinkPublicURL, Path: "/auth/"} }
 	auth := Route{Match: "/auth/*"}
 	signIn := Route{Match: "/auth/*", Page: "Sign in"}
 	assets := Route{Match: "/static/*"}
@@ -257,6 +265,8 @@ func Catalog() []Service {
 				{Env: "VCA_SCHEMABUILDER_REGISTRY_URL", Target: "schema-registry", Kind: LinkURL},
 				{Env: "VCA_SCHEMABUILDER_CATALOG_URL", Kind: LinkAdapterURL},
 				{Env: "VCA_SCHEMABUILDER_PORTAL_URL", Kind: LinkPublicURL, Path: "/portal/"},
+				staffJWKS("VCA_SCHEMABUILDER_AUTH_JWKS_URL", "issuer-auth"),
+				staffLogin("VCA_SCHEMABUILDER_LOGIN_URL"),
 				peers,
 			},
 			// The root of the service redirects to /builder/, but the home
@@ -270,6 +280,8 @@ func Catalog() []Service {
 				{Env: "VCA_SCHEMA_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_SCHEMA_BACKEND_URL", Kind: LinkAdapterURL},
 				{Env: "VCA_SCHEMA_BUILDER_URL", Kind: LinkPublicURL, Path: "/builder/"},
+				staffJWKS("VCA_SCHEMA_AUTH_JWKS_URL", "issuer-auth"),
+				staffLogin("VCA_SCHEMA_LOGIN_URL"),
 				peers,
 			},
 			Fixed: []FixedValue{{Env: "VCA_SCHEMA_STORE_FILE", Value: "/data/schemas.json"}},
@@ -327,6 +339,8 @@ func Catalog() []Service {
 			Links: []Link{
 				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_DISCOVERY_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
+				staffJWKS("VCA_DISCOVERY_AUTH_JWKS_URL", "verifier-auth"),
+				staffLogin("VCA_DISCOVERY_LOGIN_URL"),
 				peers,
 			},
 			// The staff pages default to /portal, which verifier-results
@@ -343,6 +357,8 @@ func Catalog() []Service {
 				{Env: "VCA_INGEST_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_INGEST_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
 				signingKey("VCA_INGEST_SIGNING_KEY_FILE"),
+				staffJWKS("VCA_INGEST_AUTH_JWKS_URL", "verifier-auth"),
+				staffLogin("VCA_INGEST_LOGIN_URL"),
 				peers,
 			},
 			Fixed: state("VCA_INGEST_STATE_DIR"),
@@ -357,7 +373,12 @@ func Catalog() []Service {
 			Fixed:  state("VCA_VERIFIER_POLICY_STATE_DIR"),
 			Routes: []Route{rpc("vca.policy.v1.PolicyService")}},
 		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true, UI: true,
-			Links: []Link{{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL}, peers},
+			Links: []Link{
+				{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
+				staffJWKS("VCA_VERIFIER_RESULTS_AUTH_JWKS_URL", "verifier-auth"),
+				staffLogin("VCA_VERIFIER_RESULTS_LOGIN_URL"),
+				peers,
+			},
 			Fixed: state("VCA_VERIFIER_RESULTS_STATE_DIR"),
 			Routes: []Route{
 				rpc("vca.results.v1.ResultsService"),

@@ -83,6 +83,8 @@ func TestRejectsBadValues(t *testing.T) {
 		{"bad catalog timeout", map[string]string{"REGISTRY_URL": "http://r", "CATALOG_TIMEOUT": "soon"}},
 		{"bad cache size", map[string]string{"REGISTRY_URL": "http://r", "PDF_CACHE_SIZE": "many"}},
 		{"zero cache size", map[string]string{"REGISTRY_URL": "http://r", "PDF_CACHE_SIZE": "0"}},
+		{"bad key set TTL", map[string]string{"REGISTRY_URL": "http://r", "AUTH_JWKS_TTL": "soon"}},
+		{"zero key set TTL", map[string]string{"REGISTRY_URL": "http://r", "AUTH_JWKS_TTL": "0s"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -90,5 +92,20 @@ func TestRejectsBadValues(t *testing.T) {
 				t.Error("the load must fail")
 			}
 		})
+	}
+}
+
+// TestAuthSettings proves the guard variables load under the service
+// prefix (ADR-036 decision 3).
+func TestAuthSettings(t *testing.T) {
+	c, err := config.Load(env(map[string]string{
+		"REGISTRY_URL": "http://r", "AUTH_JWKS_URL": "http://issuer-auth:8081/.well-known/jwks.json",
+		"LOGIN_URL": "https://issuer-waltid.example/auth/",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Auth.Configured() || c.Auth.LoginURL != "https://issuer-waltid.example/auth/" || c.Auth.JWKSTTL != 10*time.Minute {
+		t.Fatalf("auth %+v", c.Auth)
 	}
 }
