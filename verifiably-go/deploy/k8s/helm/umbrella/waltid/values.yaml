@@ -64,6 +64,10 @@ verifiably-go:
 
 keycloak:
   enabled: true
+  # The Ingress host is NOT set here. Bitnami's chart wants ingress.hostname
+  # and a values file cannot interpolate global.domain, so terraform applies
+  # keycloak.keycloak.ingress.hostname in workloads/main.tf alongside
+  # global.domain. Look there, not here.
   global:
     domain: ""
 

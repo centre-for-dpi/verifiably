@@ -512,6 +512,30 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
   escape hatch G.5.1 documented existed only on paper until a push happened to
   follow it. `types:` now names `labeled` explicitly.
 
+  **G.2.6 — keycloak's Ingress had no host.** With the render unblocked, the
+  cluster tier reached the API server for the first time and was rejected
+  there:
+
+  ```
+  Ingress "waltid-keycloak" is invalid:
+    spec: either `defaultBackend` or `rules` must be specified
+    spec.tls[0].hosts[0]: Invalid value: "" — must be an RFC 1123 subdomain
+  ```
+
+  Keycloak is Bitnami's chart behind a thin wrapper. It takes its Ingress host
+  as `ingress.hostname` and knows nothing about `global.domain`, which every
+  other chart here reads. The wrapper's `values.yaml` says the host is *"set to
+  `keycloak.<domain>` by umbrella chart"* — and nothing ever set it. A Helm
+  values file cannot interpolate, so it now comes from terraform alongside
+  `global.domain`.
+
+  Note what this says about the render tier: `helm template` emits an Ingress
+  with no rules and an empty TLS host perfectly happily, and `kubeconform`
+  accepts it, because it is schema-valid. Only the API server refuses it. The
+  render job now mirrors every value terraform sets and fails on an Ingress
+  that is missing rules or carries an empty host — verified against the
+  rendered output from the failing run.
+
   **This unblocks the render, not the convergence.** The nightly will now get
   as far as the thing G.2 was always about — whether the umbrella becomes
   ready — which has still never been observed. Expect the next failure to be a

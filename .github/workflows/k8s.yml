@@ -113,11 +113,48 @@ jobs:
           # that went unnoticed for thirteen nightly runs behind a green check.
           # One code path, so a gap here fails here.
           VALUES=$(./deploy/k8s/scripts/gen-wallet-values.sh "$RUNNER_TEMP/wallet-values.yaml")
+          # Mirror what terraform applies in workloads/main.tf. Anything the
+          # deploy path sets and this one does not is a gap this job cannot see.
           helm template waltid deploy/k8s/helm/umbrella/waltid \
             --set global.domain="$DOMAIN" \
+            --set keycloak.keycloak.ingress.hostname="keycloak.$DOMAIN" \
             -f "$VALUES" \
             > /tmp/rendered.yaml
           echo "rendered $(grep -c '^kind:' /tmp/rendered.yaml) resources"
+
+      # kubeconform checks shape, not the API server's own validation rules.
+      # An Ingress with no rules and an empty TLS host is schema-valid and is
+      # rejected on apply -- which is exactly how keycloak's Ingress got
+      # through this job and killed the cluster tier. Cheap, specific guard.
+      - name: Ingress hosts are non-empty
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, sys
+
+          bad = []
+          for doc in open('/tmp/rendered.yaml').read().split('\n---\n'):
+              if not re.search(r'^kind:\s*Ingress\s*$', doc, re.M):
+                  continue
+              name = re.search(r'^\s+name:\s*(\S+)', doc, re.M)
+              name = name.group(1) if name else '<unnamed>'
+              if not re.search(r'^\s+rules:\s*$', doc, re.M):
+                  bad.append(f'{name}: no rules (the API server requires rules or defaultBackend)')
+              for host in re.findall(r'host:\s*"?([^"\n]*)"?', doc):
+                  if not host.strip():
+                      bad.append(f'{name}: empty host in rules')
+              tls = doc.split('tls:', 1)[1].split('rules:', 1)[0] if 'tls:' in doc else ''
+              if re.search(r'^\s+-\s+""\s*$', tls, re.M):
+                  bad.append(f'{name}: empty host in spec.tls')
+
+          if bad:
+              print('Ingress objects the API server would reject:')
+              for b in bad:
+                  print('  -', b)
+              sys.exit(1)
+          print('all rendered Ingress objects carry rules and a non-empty host')
+          PY
 
       # Catches the class of bug that took the workloads layer down on the
       # last real run: a manifest that renders but is not a valid object.
