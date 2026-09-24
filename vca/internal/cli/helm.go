@@ -34,8 +34,12 @@ func HelmChartDir(root, name string) string { return filepath.Join(root, HelmRoo
 
 // ChartCondition is the values path that turns a service chart on inside
 // the umbrella chart. A role service follows its role. A DPG adapter
-// follows its DPG (ADR-008 decision 5).
+// follows its DPG (ADR-008 decision 5). A deployment scoped service has
+// no condition: it is always on (ADR-033 decision 2).
 func ChartCondition(s Service) string {
+	if s.Scope == ScopeDeployment {
+		return ""
+	}
 	if s.Dpg != configv1.Dpg_DPG_UNSPECIFIED {
 		return "dpg." + ShortName(s.Dpg.String()) + ".enabled"
 	}

@@ -58,14 +58,52 @@ func EntryPoints(root string, pairs []Pair) ([]EntryPoint, error) {
 	return out, nil
 }
 
-// EntryReport renders the pages to open after a deploy, and the one
-// step a public host still needs: the reverse proxy snippet. The pages
-// come from the route table, so the report and the Caddyfile agree.
-func EntryReport(points []EntryPoint) string {
-	if len(points) == 0 {
+// ReadLandingEnv reads deploy/landing/.env under the root. A missing
+// file gives an empty map, because a deployment that setup wrote before
+// the landing existed has none yet.
+func ReadLandingEnv(root string) (map[string]string, error) {
+	path := LandingEnvPath(root)
+	f, err := os.Open(path) // #nosec G304 -- a fixed path under the root
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return map[string]string{}, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	defer func() { anyval.Discard(f.Close()) }()
+	values, err := ParseDotenv(f)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return values, nil
+}
+
+// LandingURL reads the public URL of the landing out of its .env file.
+// It is empty when the file is missing (ADR-033 decision 2).
+func LandingURL(root string) (string, error) {
+	values, err := ReadLandingEnv(root)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(values[LandingPublicURLEnv], "/"), nil
+}
+
+// EntryReport renders the address that starts every journey, the pages
+// to open after a deploy, and the one step a public host still needs:
+// the reverse proxy snippet. The pages come from the route table, so the
+// report and the Caddyfile agree. An empty landing leaves the first
+// block out.
+func EntryReport(landing string, points []EntryPoint) string {
+	if len(points) == 0 && landing == "" {
 		return ""
 	}
 	var b strings.Builder
+	if landing != "" {
+		fmt.Fprintf(&b, "\nStart here\n  %s\n", landing)
+	}
+	if len(points) == 0 {
+		return b.String()
+	}
 	b.WriteString("\nOpen\n")
 	public := false
 	for _, e := range points {
@@ -110,6 +148,15 @@ func ProxySnippet(root string, pairs []Pair) (snippet string, skipped []string, 
 	var b strings.Builder
 	b.WriteString("# Every VCA pair of this host. The vca proxy command generated it.\n")
 	b.WriteString("# Run vca proxy again after vca setup, then reload the proxy.\n")
+	// The landing site comes first: it is the front door of every pair
+	// (ADR-033 decision 2).
+	landing, err := ReadLandingEnv(root)
+	if err != nil {
+		return "", nil, err
+	}
+	if site := LandingCaddyfile(landing); site != "" {
+		b.WriteString("\n" + site)
+	}
 	for _, p := range pairs {
 		path := filepath.Join(OutputDir(filepath.Join(root, "deploy"), p), CaddyFile)
 		data, readErr := os.ReadFile(path) // #nosec G304 -- the path comes from the pair name
@@ -135,5 +182,10 @@ func writeEntryReport(out io.Writer, root string, pairs []Pair) {
 		anyval.DiscardWrite(fmt.Fprintf(out, "\n%v\n", err))
 		return
 	}
-	anyval.DiscardWrite(io.WriteString(out, EntryReport(points)))
+	landing, err := LandingURL(root)
+	if err != nil {
+		anyval.DiscardWrite(fmt.Fprintf(out, "\n%v\n", err))
+		return
+	}
+	anyval.DiscardWrite(io.WriteString(out, EntryReport(landing, points)))
 }

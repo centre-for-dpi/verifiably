@@ -141,8 +141,9 @@ func TestBuildImagesBuildsAndSetsTheVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildImages: %v", err)
 	}
-	if len(rec.calls) != len(ServicesFor(pair)) {
-		t.Errorf("got %d builds, want %d", len(rec.calls), len(ServicesFor(pair)))
+	want := len(ServicesFor(pair)) + len(DeploymentServices())
+	if len(rec.calls) != want {
+		t.Errorf("got %d builds, want %d", len(rec.calls), want)
 	}
 	data, err := os.ReadFile(filepath.Clean(filepath.Join(dir, EnvFileName)))
 	if err != nil {
@@ -150,6 +151,41 @@ func TestBuildImagesBuildsAndSetsTheVersion(t *testing.T) {
 	}
 	if !strings.Contains(string(data), VersionEnv+"="+LocalTag) {
 		t.Errorf(".env = %q", data)
+	}
+	// The landing .env, when present, gets the version too; a missing
+	// one is not an error.
+	if strings.Contains(out.String(), "in "+LandingEnvPath(root)) {
+		t.Errorf("a missing landing file was named:\n%s", out.String())
+	}
+	landing := LandingEnvPath(root)
+	if mkErr := os.MkdirAll(filepath.Dir(landing), 0o750); mkErr != nil {
+		t.Fatal(mkErr)
+	}
+	writeFile(t, landing, []byte("VCA_LANDING_LISTEN=:8080\n"))
+	out.Reset()
+	if buildErr := BuildImages(context.Background(), ImageOptions{Root: root, Pairs: []Pair{pair}, Out: &out, Run: rec.run}); buildErr != nil {
+		t.Fatalf("BuildImages: %v", buildErr)
+	}
+	data, err = os.ReadFile(filepath.Clean(landing))
+	if err != nil || !strings.Contains(string(data), VersionEnv+"="+LocalTag) {
+		t.Errorf("landing .env = %q, %v", data, err)
+	}
+	out.Reset()
+	if err := BuildImages(context.Background(), ImageOptions{Root: root, Pairs: []Pair{pair}, Out: &out, DryRun: true}); err != nil {
+		t.Fatalf("BuildImages dry run: %v", err)
+	}
+	if !strings.Contains(out.String(), "# set "+VersionEnv+"="+LocalTag+" in "+landing) {
+		t.Errorf("dry run output:\n%s", out.String())
+	}
+	// A directory in place of the file is an error.
+	if err := os.Remove(landing); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(landing, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := BuildImages(context.Background(), ImageOptions{Root: root, Pairs: []Pair{pair}, Out: &out, Run: rec.run}); err == nil {
+		t.Error("an unreadable landing file passed")
 	}
 }
 
@@ -263,7 +299,8 @@ func TestImagesBuildCommand(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d, err = %s", status, errOut)
 	}
-	if len(rec.calls) != len(ServicesFor(issuerPair())) {
+	// The landing runs in every profile, so it is built too.
+	if len(rec.calls) != len(ServicesFor(issuerPair()))+len(DeploymentServices()) {
 		t.Errorf("calls = %v", rec.calls)
 	}
 	if !strings.Contains(out, LocalTag) {

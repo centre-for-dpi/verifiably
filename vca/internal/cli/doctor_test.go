@@ -82,7 +82,9 @@ func TestDoctorPassesOnAHealthyHost(t *testing.T) {
 	if !strings.Contains(out.String(), "The host is ready") {
 		t.Errorf("out = %s", out.String())
 	}
-	want := len(ServicesFor(issuerPair())) + len(DpgHostPorts(issuerPair()))
+	// One port per service of the pair, the DPG stack ports, and the
+	// landing once.
+	want := len(ServicesFor(issuerPair())) + len(DpgHostPorts(issuerPair())) + 1
 	if len(probe.testedPorts) != want {
 		t.Errorf("tested %v, want %d ports", probe.testedPorts, want)
 	}
@@ -673,5 +675,67 @@ func TestMemoryCheckCountsAStackOnce(t *testing.T) {
 	got := memoryCheck(DoctorOptions{Pairs: pairs, Probe: probe})
 	if !got.OK || !strings.Contains(got.Detail, fmt.Sprintf("%d MiB needed", SelectionFloorMiB(pairs))) {
 		t.Errorf("check = %+v", got)
+	}
+}
+
+// TestDoctorChecksTheLandingPort adds the one host port of the landing to
+// the port checks, once, whatever the selection (ADR-033 decision 2).
+func TestDoctorChecksTheLandingPort(t *testing.T) {
+	probe := healthyProbe()
+	probe.busyPorts = map[int]bool{LandingHostPort: true}
+	pairs := PairsForDpg(dpgWaltid(t))
+	checks := portChecks(DoctorOptions{Pairs: pairs, Probe: probe})
+	count := 0
+	for _, c := range checks {
+		if c.Name != fmt.Sprintf("port %d", LandingHostPort) {
+			continue
+		}
+		count++
+		if c.OK || !strings.Contains(c.Detail, "vca-landing") || !strings.Contains(c.Fix, "VCA_HOST_PORT_LANDING") || !strings.Contains(c.Fix, "deploy/landing/.env") {
+			t.Errorf("landing check = %+v", c)
+		}
+	}
+	if count != 1 {
+		t.Errorf("the landing port appears %d times, want once", count)
+	}
+	// An override of the landing file moves the check.
+	checks = portChecks(DoctorOptions{Pairs: pairs, Probe: probe, Landing: map[string]string{"VCA_HOST_PORT_LANDING": "17999"}})
+	found := false
+	for _, c := range checks {
+		if c.Name == "port 17999" && c.OK && strings.Contains(c.Detail, "vca-landing") {
+			found = true
+		}
+		if c.Name == fmt.Sprintf("port %d", LandingHostPort) {
+			t.Error("the default landing port is still checked")
+		}
+	}
+	if !found {
+		t.Errorf("no check of the overridden landing port: %+v", checks)
+	}
+	// A probe error is reported, not hidden.
+	probe.portErr = errors.New("no permission")
+	for _, c := range portChecks(DoctorOptions{Pairs: pairs[:1], Probe: probe}) {
+		if strings.Contains(c.Detail, "vca-landing") && (c.OK || !strings.Contains(c.Detail, "cannot test")) {
+			t.Errorf("landing check with a probe error = %+v", c)
+		}
+	}
+}
+
+// TestFloorTableNamesTheLanding keeps the deploy document honest: the
+// landing adds one service to a deployment, once, whatever the pairs.
+func TestFloorTableNamesTheLanding(t *testing.T) {
+	if LandingMemoryMiB != perServiceMemoryMiB {
+		t.Errorf("landing floor = %d MiB, want %d", LandingMemoryMiB, perServiceMemoryMiB)
+	}
+	note := FloorNote()
+	if !strings.Contains(note, "landing") || !strings.Contains(note, "96 MiB") || !strings.Contains(note, "once") {
+		t.Errorf("floor note:\n%s", note)
+	}
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "deploy.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(doc), note) {
+		t.Errorf("docs/deploy.md does not hold the floor note:\n%s", note)
 	}
 }

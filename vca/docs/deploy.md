@@ -142,6 +142,19 @@ to `admin-credebl`.
 Compose starts only the services of the profile you name
 (ADR-008 decisions 1 and 2).
 
+One service runs once per deployment: the landing, `vca-landing`
+(ADR-033 decision 2).
+Every profile lists it, so the first pair you start brings it up and the
+next pair finds it running.
+It reads `deploy/landing/.env`, which every `vca setup` run writes again.
+That file holds the listen address, the public URL, the peer list, and
+the image version.
+The landing publishes host port 17900.
+Set `VCA_HOST_PORT_LANDING` in `deploy/landing/.env` to move it.
+Under a base domain the landing answers at `https://vca.<domain>`.
+On a laptop it answers at `http://localhost:17900`.
+The deploy report names it first, under "Start here".
+
 ### Ports
 
 Several services share a port in their `EXPOSE` line.
@@ -451,6 +464,7 @@ Each service is one static Go binary in a distroless image.
 The DPG figure is the floor of the stack in `deploy/vca/dpg/`.
 The admin role talks to no DPG.
 Its profile starts only the Keycloak of the stack.
+The landing adds 96 MiB once, whatever the selection, because every profile starts the one landing container.
 
 ## Kubernetes
 

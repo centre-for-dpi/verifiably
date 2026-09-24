@@ -150,8 +150,10 @@ func TestThemeApplyRestartsOnlyUIServices(t *testing.T) {
 	if len(rec.calls) != 2 {
 		t.Fatalf("got %d commands, want 2:\n%v", len(rec.calls), rec.calls)
 	}
+	// The landing draws pages too. It runs once, so the first pair
+	// restarts it (ADR-033 decision 2).
 	wantIssuer := append(ComposeArgs(root, issuer, []string{"restart"}),
-		"issuer-waltid-schema-builder-ui", "issuer-waltid-schema-registry")
+		"issuer-waltid-schema-builder-ui", "issuer-waltid-schema-registry", "vca-landing")
 	if got := strings.Join(rec.calls[0][1:], " "); got != strings.Join(wantIssuer, " ") || rec.calls[0][0] != "docker" {
 		t.Errorf("issuer command = %v\nwant docker %v", rec.calls[0], wantIssuer)
 	}

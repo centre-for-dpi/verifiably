@@ -40,6 +40,11 @@ dependencies:
     version: 0.1.0
     repository: "file://../issuer-auth"
     condition: roles.issuer.enabled
+  # The landing runs once per deployment and has no condition: it is
+  # always on (ADR-033 decision 2).
+  - name: landing
+    version: 0.1.0
+    repository: "file://../landing"
   - name: schema-builder-ui
     version: 0.1.0
     repository: "file://../schema-builder-ui"

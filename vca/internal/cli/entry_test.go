@@ -54,7 +54,7 @@ func TestEntryPointsAndReport(t *testing.T) {
 		points[0].Pages[1].URL != "https://issuer-waltid.labs.example/builder/" {
 		t.Errorf("issuer pages = %+v", points[0].Pages)
 	}
-	report := EntryReport(points)
+	report := EntryReport("", points)
 	for _, want := range []string{
 		"Open\n  issuer-waltid\n",
 		"    Schemas                schema-registry     https://issuer-waltid.labs.example/portal/\n",
@@ -72,7 +72,7 @@ func TestEntryPointsAndReport(t *testing.T) {
 	if strings.Count(report, "waltid-keycloak") != 1 {
 		t.Errorf("the login URL repeats:\n%s", report)
 	}
-	if EntryReport(nil) != "" {
+	if EntryReport("", nil) != "" {
 		t.Error("no points must give no report")
 	}
 }
@@ -85,7 +85,7 @@ func TestEntryReportLocalNeedsNoProxy(t *testing.T) {
 	if err != nil || len(points) != 1 || !points[0].Local {
 		t.Fatalf("points = %+v, %v", points, err)
 	}
-	if report := EntryReport(points); strings.Contains(report, "vca proxy") || !strings.Contains(report, "http://localhost:18006/portal/") {
+	if report := EntryReport("", points); strings.Contains(report, "vca proxy") || !strings.Contains(report, "http://localhost:18006/portal/") {
 		t.Errorf("report:\n%s", report)
 	}
 }
@@ -151,5 +151,103 @@ func TestProxyCommand(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "proxy: holder-waltid has no Caddyfile") {
 		t.Errorf("errOut:\n%s", errOut)
+	}
+}
+
+// writeLandingEnv writes deploy/landing/.env under root.
+func writeLandingEnv(t *testing.T, root, env string) {
+	t.Helper()
+	dir := filepath.Join(root, "deploy", LandingDir)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestEntryReportStartsWithTheLanding puts the one address that starts
+// every journey first (ADR-033 consequence 1).
+func TestEntryReportStartsWithTheLanding(t *testing.T) {
+	root := t.TempDir()
+	p := issuerPair()
+	writePairEnv(t, root, p, "VCA_PUBLIC_URL=https://issuer-waltid.labs.example\n", "")
+	writeLandingEnv(t, root, "VCA_LANDING_PUBLIC_URL=https://vca.labs.example\n")
+	landing, err := LandingURL(root)
+	if err != nil || landing != "https://vca.labs.example" {
+		t.Fatalf("LandingURL = %q, %v", landing, err)
+	}
+	points, err := EntryPoints(root, []Pair{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := EntryReport(landing, points)
+	if !strings.HasPrefix(report, "\nStart here\n  https://vca.labs.example\n") {
+		t.Errorf("report:\n%s", report)
+	}
+	if !strings.Contains(report, "Open\n  issuer-waltid\n") {
+		t.Errorf("the pairs follow the landing:\n%s", report)
+	}
+	// With no landing file the report keeps the pairs alone, and a
+	// directory in place of the file is an error.
+	if got := EntryReport("", points); strings.Contains(got, "Start here") {
+		t.Errorf("report without a landing:\n%s", got)
+	}
+	empty := t.TempDir()
+	if got, err := LandingURL(empty); err != nil || got != "" {
+		t.Errorf("LandingURL of an empty root = %q, %v", got, err)
+	}
+	if err := os.MkdirAll(filepath.Join(empty, "deploy", LandingDir, EnvFileName), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LandingURL(empty); err == nil {
+		t.Error("an unreadable landing file passed")
+	}
+	// The deploy command prints it.
+	rec := &recorder{}
+	var out bytes.Buffer
+	if err := Deploy(context.Background(), DeployOptions{Root: root, Pairs: []Pair{p}, Out: &out, Run: rec.run}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Start here\n  https://vca.labs.example\n") {
+		t.Errorf("deploy output:\n%s", out.String())
+	}
+}
+
+// TestProxySnippetHoldsTheLandingSite routes vca.<domain> to the landing
+// (ADR-033 decision 2).
+func TestProxySnippetHoldsTheLandingSite(t *testing.T) {
+	root := t.TempDir()
+	p := issuerPair()
+	writePairEnv(t, root, p, "x=1\n", "issuer-waltid.labs.example {\n\treverse_proxy 127.0.0.1:18002\n}\n")
+	writeLandingEnv(t, root, "VCA_LANDING_PUBLIC_URL=https://vca.labs.example\n")
+	snippet, _, err := ProxySnippet(root, []Pair{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := "vca.labs.example {\n\tencode gzip\n\treverse_proxy 127.0.0.1:17900\n}\n"
+	if !strings.Contains(snippet, site) {
+		t.Errorf("snippet has no landing site:\n%s", snippet)
+	}
+	if strings.Index(snippet, "vca.labs.example {") > strings.Index(snippet, "issuer-waltid.labs.example {") {
+		t.Errorf("the landing site comes first:\n%s", snippet)
+	}
+	// A host port override of the landing file wins.
+	writeLandingEnv(t, root, "VCA_LANDING_PUBLIC_URL=https://vca.labs.example\nVCA_HOST_PORT_LANDING=17999\n")
+	snippet, _, err = ProxySnippet(root, []Pair{p})
+	if err != nil || !strings.Contains(snippet, "reverse_proxy 127.0.0.1:17999") {
+		t.Errorf("snippet with an override:\n%s\n%v", snippet, err)
+	}
+	// A local landing needs no site, and a missing file gives none.
+	writeLandingEnv(t, root, "VCA_LANDING_PUBLIC_URL=http://localhost:17900\n")
+	snippet, _, err = ProxySnippet(root, []Pair{p})
+	if err != nil || strings.Contains(snippet, "localhost") || strings.Contains(snippet, "17900") {
+		t.Errorf("snippet of a local landing:\n%s\n%v", snippet, err)
+	}
+	if got := LandingCaddyfile(map[string]string{}); got != "" {
+		t.Errorf("no public URL gave a site:\n%s", got)
+	}
+	if _, _, err := ProxySnippet(t.TempDir(), []Pair{p}); err != nil {
+		t.Errorf("a root without a landing file: %v", err)
 	}
 }

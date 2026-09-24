@@ -42,7 +42,39 @@ type Service struct {
 	// Routes lists the paths of the service behind the reverse proxy of
 	// the pair. The Route type documents the table and its rules.
 	Routes []Route
+	// Scope says whether the service runs once per pair or once per
+	// deployment. The zero value is ScopePair.
+	Scope Scope
 }
+
+// Scope says how many copies of a service a deployment runs.
+type Scope int
+
+const (
+	// ScopePair runs the service once in every role and DPG pair. Every
+	// service of the catalogue is one, unless it says otherwise.
+	ScopePair Scope = iota
+	// ScopeDeployment runs the service once for the whole deployment.
+	// Every pair profile starts it, it takes no pair port, and its .env
+	// file lives in its own directory under deploy (ADR-033 decision 2).
+	ScopeDeployment
+)
+
+// The landing service (ADR-033 decision 2). It listens on
+// LandingListenPort inside its container, publishes LandingHostPort on
+// the host, and reads deploy/LandingDir/.env.
+const (
+	LandingService    = "landing"
+	LandingDir        = "landing"
+	LandingHostPort   = 17900
+	LandingListenPort = 8080
+	// LandingPublicURLEnv is the address a browser opens for the landing.
+	LandingPublicURLEnv = "VCA_LANDING_PUBLIC_URL"
+	// LandingHostPortEnv overrides the host port in the landing .env.
+	LandingHostPortEnv = "VCA_HOST_PORT_LANDING"
+	// LandingHost is the host name of the landing under a base domain.
+	LandingHost = "vca"
+)
 
 // LinkKind says how the CLI builds the value of a cross service variable.
 type LinkKind int
@@ -141,6 +173,12 @@ func Catalog() []Service {
 	auth := Route{Match: "/auth/*"}
 	assets := Route{Match: "/static/*"}
 	out := []Service{
+		// The landing runs once per deployment and serves every role. Its
+		// site takes every path, so one route names the page.
+		{Name: LandingService, ListenEnv: "VCA_LANDING_LISTEN", ExposedPort: LandingListenPort, Roles: Roles(),
+			Scope: ScopeDeployment, UI: true,
+			Links:  []Link{{Env: LandingPublicURLEnv, Kind: LinkPublicURL}, peers},
+			Routes: []Route{{Match: "/*", Page: "Landing"}}},
 		{Name: "admin", ListenEnv: "VCA_ADMIN_LISTEN", ExposedPort: 8093, Roles: admin, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_ADMIN_PUBLIC_URL", Kind: LinkPublicURL},
@@ -347,12 +385,24 @@ func UIServices() []Service {
 	return out
 }
 
+// DeploymentServices lists the services that run once per deployment,
+// in name order.
+func DeploymentServices() []Service {
+	var out []Service
+	for _, s := range Catalog() {
+		if s.Scope == ScopeDeployment {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // ServicesFor lists the services of one role and DPG pair, in name order.
-// An adapter of another DPG is left out.
+// An adapter of another DPG and a deployment scoped service are left out.
 func ServicesFor(p Pair) []Service {
 	var out []Service
 	for _, s := range Catalog() {
-		if !wantsRole(s.Roles, p.Role) {
+		if s.Scope != ScopePair || !wantsRole(s.Roles, p.Role) {
 			continue
 		}
 		if s.Dpg != configv1.Dpg_DPG_UNSPECIFIED && s.Dpg != p.Dpg {
@@ -530,13 +580,14 @@ func serviceURL(p Pair, name string) (string, bool) {
 	return "", false
 }
 
-// deploymentServices lists every service of one DPG across every role,
-// once each, in service name order.
+// deploymentServices lists every pair service of one DPG across every
+// role, once each, in service name order. The admin health page reads
+// the list, so a deployment scoped service, which no pair owns, stays out.
 func deploymentServices(d configv1.Dpg) []Service {
 	seen := map[string]bool{}
 	var out []Service
 	for _, s := range Catalog() {
-		if s.Dpg != configv1.Dpg_DPG_UNSPECIFIED && s.Dpg != d {
+		if s.Scope != ScopePair || (s.Dpg != configv1.Dpg_DPG_UNSPECIFIED && s.Dpg != d) {
 			continue
 		}
 		if seen[s.Name] {
@@ -589,14 +640,19 @@ func LinkValuesWith(p Pair, values map[string]string, peers PeerOverrides) map[s
 // internal URLs follow the port plan of each pair, with the overrides
 // of its own .env file.
 func Peers(p Pair, values map[string]string, overrides PeerOverrides) []topology.Peer {
-	domain := values[DomainEnv]
+	return candidatePeers(values[DomainEnv], p.Name(), values, overrides)
+}
+
+// candidatePeers builds the peer list. own names the pair whose values
+// are the values map; an empty own, as for the landing, reads every
+// pair from the overrides.
+func candidatePeers(domain, own string, values map[string]string, overrides PeerOverrides) []topology.Peer {
 	out := make([]topology.Peer, 0, len(AllPairs()))
 	for _, candidate := range AllPairs() {
-		own := candidate == p
 		ports := overrides[candidate.Name()]
 		public := ""
 		switch {
-		case own:
+		case candidate.Name() == own:
 			public = strings.TrimRight(values["VCA_PUBLIC_URL"], "/")
 			ports = values
 		case domain != "":
@@ -614,6 +670,44 @@ func Peers(p Pair, values map[string]string, overrides PeerOverrides) []topology
 		out = append(out, topology.Peer{
 			Pair: candidate.Name(), Role: candidate.Role, Dpg: candidate.Dpg, PublicURL: public, Services: services,
 		})
+	}
+	return out
+}
+
+// LandingPublicURL returns the address a browser opens for the landing:
+// https://vca.<domain> under a base domain, else the localhost address
+// of its host port (ADR-033 decision 2).
+func LandingPublicURL(domain string) string {
+	if domain != "" {
+		return "https://" + LandingHost + "." + domain
+	}
+	return "http://localhost:" + strconv.Itoa(LandingHostPort)
+}
+
+// LandingValues returns the variables of deploy/landing/.env: the listen
+// address, the public URL, every candidate pair with the overrides of the
+// pair directories, and the image version. An empty version means
+// latest. The links of the landing entry of the catalogue drive the
+// values, so the .env and the service agree.
+func LandingValues(domain string, overrides PeerOverrides, version string) map[string]string {
+	if version == "" {
+		version = "latest"
+	}
+	out := map[string]string{VersionEnv: version}
+	for _, s := range DeploymentServices() {
+		if s.Name != LandingService {
+			continue
+		}
+		out[s.ListenEnv] = ":" + strconv.Itoa(s.ExposedPort)
+		public := LandingPublicURL(domain)
+		for _, link := range s.Links {
+			switch link.Kind {
+			case LinkPublicURL:
+				out[link.Env] = public + link.Path
+			case LinkPeers:
+				out[link.Env] = topology.Format(candidatePeers(domain, "", nil, overrides))
+			}
+		}
 	}
 	return out
 }

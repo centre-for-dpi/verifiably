@@ -60,6 +60,10 @@ Now, for developers:
 Each service has one proto API, one container image, and one document.
 The names come from ADR-002.
 
+Deployment:
+
+- `landing`: the front door of a deployment. It explains VCA, lists the stacks that run, and sends each visitor to a role. It runs once per deployment.
+
 Admin:
 
 - `admin`: the super admin API and portal, with man pages and a help page. See [docs/admin.md](docs/admin.md).

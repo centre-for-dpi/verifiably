@@ -236,7 +236,7 @@ func routeRows(role commonv1.Role) []routeRow {
 	served := map[string][]string{}
 	var adapterOrder []string
 	for _, s := range Catalog() {
-		if !wantsRole(s.Roles, role) {
+		if s.Scope != ScopePair || !wantsRole(s.Roles, role) {
 			continue
 		}
 		if s.Dpg == configv1.Dpg_DPG_UNSPECIFIED {

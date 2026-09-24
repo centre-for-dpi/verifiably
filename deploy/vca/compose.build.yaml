@@ -273,3 +273,9 @@ services:
     build:
       context: ../../vca
       dockerfile: services/trust-registry/Dockerfile
+
+  # The landing of the deployment
+  vca-landing:
+    build:
+      context: ../../vca
+      dockerfile: services/landing/Dockerfile

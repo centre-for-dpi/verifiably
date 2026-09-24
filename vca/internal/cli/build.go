@@ -4,8 +4,11 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -56,13 +59,22 @@ func RenderComposeBuild() string {
 	for _, p := range AllPairs() {
 		fmt.Fprintf(&b, "\n  # Profile %s\n", p.Name())
 		for _, a := range AssignPorts(p, nil) {
-			fmt.Fprintf(&b, "  %s:\n", composeServiceName(p, a.Service))
-			b.WriteString("    build:\n")
-			fmt.Fprintf(&b, "      context: %s\n", BuildContext)
-			fmt.Fprintf(&b, "      dockerfile: %s\n", DockerfilePath(a.Service))
+			renderBuildBlock(&b, composeServiceName(p, a.Service), a.Service)
 		}
 	}
+	for _, s := range DeploymentServices() {
+		fmt.Fprintf(&b, "\n  # The %s of the deployment\n", s.Name)
+		renderBuildBlock(&b, DeploymentServiceName(s), s)
+	}
 	return b.String()
+}
+
+// renderBuildBlock writes the build block of one compose service.
+func renderBuildBlock(b *strings.Builder, name string, s Service) {
+	fmt.Fprintf(b, "  %s:\n", name)
+	b.WriteString("    build:\n")
+	fmt.Fprintf(b, "      context: %s\n", BuildContext)
+	fmt.Fprintf(b, "      dockerfile: %s\n", DockerfilePath(s))
 }
 
 // ImageOptions holds everything one vca images build run needs.
@@ -80,11 +92,16 @@ type ImageOptions struct {
 }
 
 // BuildServices lists every service of the pairs, once each, in service
-// name order.
+// name order. A deployment scoped service runs in every profile, so it
+// is always in the list.
 func BuildServices(pairs []Pair) []Service {
 	seen := map[string]bool{}
 	var out []Service
 	for _, s := range Catalog() {
+		if s.Scope == ScopeDeployment {
+			out = append(out, s)
+			continue
+		}
 		for _, p := range pairs {
 			for _, in := range ServicesFor(p) {
 				if in.Name != s.Name || seen[s.Name] {
@@ -143,5 +160,20 @@ func BuildImages(ctx context.Context, opts ImageOptions) error {
 		}
 		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "set %s=%s in %s\n", VersionEnv, LocalTag, path))
 	}
+	// The landing reads its own .env file, so it gets the version too.
+	// A deployment that vca setup wrote before the landing existed has
+	// no such file yet; the next setup run writes it.
+	landing := LandingEnvPath(opts.Root)
+	if _, statErr := os.Stat(landing); errors.Is(statErr, fs.ErrNotExist) {
+		return nil
+	}
+	if opts.DryRun {
+		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "# set %s=%s in %s\n", VersionEnv, LocalTag, landing))
+		return nil
+	}
+	if err := SetEnvValue(landing, VersionEnv, LocalTag); err != nil {
+		return err
+	}
+	anyval.DiscardWrite(fmt.Fprintf(opts.Out, "set %s=%s in %s\n", VersionEnv, LocalTag, landing))
 	return nil
 }

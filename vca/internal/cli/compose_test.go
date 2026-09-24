@@ -96,7 +96,7 @@ func TestComposeHasOneServicePerPairAndService(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(RenderCompose()), &doc); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	want := 0
+	want := len(DeploymentServices())
 	for _, p := range AllPairs() {
 		want += len(ServicesFor(p))
 	}
@@ -296,5 +296,51 @@ func TestUIServicesMountTheThemeFile(t *testing.T) {
 	want := "${" + ThemeHostFileEnv + ":-./theme.yaml}:" + ThemeMountPath + ":ro"
 	if !strings.Contains(RenderCompose(), want) {
 		t.Errorf("the compose file has no %q mount", want)
+	}
+}
+
+// TestLandingRunsOnceForEveryProfile is the compose side of ADR-033
+// decision 2: one vca-landing container, listed in every pair profile,
+// reads deploy/landing/.env, publishes host port 17900, and mounts the
+// theme file like every other UI service.
+func TestLandingRunsOnceForEveryProfile(t *testing.T) {
+	var doc composeDoc
+	if err := yaml.Unmarshal([]byte(RenderCompose()), &doc); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	svc, ok := doc.Services["vca-landing"]
+	if !ok {
+		t.Fatal("the compose file has no vca-landing service")
+	}
+	if len(svc.Profiles) != len(AllPairs()) {
+		t.Fatalf("vca-landing profiles = %v, want every pair", svc.Profiles)
+	}
+	for i, p := range AllPairs() {
+		if svc.Profiles[i] != p.Name() {
+			t.Errorf("profile %d = %s, want %s", i, svc.Profiles[i], p.Name())
+		}
+	}
+	if svc.Image != ImagePrefix+"landing:${VCA_VERSION:-latest}" {
+		t.Errorf("image = %q", svc.Image)
+	}
+	if len(svc.Ports) != 1 || svc.Ports[0] != "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_LANDING:-17900}:${VCA_PORTS_LANDING:-8080}" {
+		t.Errorf("ports = %v", svc.Ports)
+	}
+	if svc.Environment[ThemeFileEnv] != ThemeMountPath || !hasVolume(svc.Volumes, ThemeMountPath) {
+		t.Errorf("the landing has no theme file: %v %v", svc.Environment, svc.Volumes)
+	}
+	if hasVolume(svc.Volumes, "/data") {
+		t.Error("the landing keeps no state, yet it has a data volume")
+	}
+	text := RenderCompose()
+	if !strings.Contains(text, "  vca-landing:\n") || !strings.Contains(text, "      - path: ../landing/.env\n        required: true\n") {
+		t.Errorf("the landing block does not read ../landing/.env:\n%s", text)
+	}
+	if strings.Count(text, "landing:${VCA_VERSION") != 1 {
+		t.Error("the landing image appears more than once")
+	}
+	// The build override file builds the landing too.
+	if !strings.Contains(RenderComposeBuild(), "  vca-landing:\n    build:\n      context: "+BuildContext+"\n      dockerfile: services/landing/Dockerfile\n") {
+		t.Errorf("the build override file does not build the landing:\n%s", RenderComposeBuild())
 	}
 }

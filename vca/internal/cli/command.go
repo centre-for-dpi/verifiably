@@ -638,8 +638,9 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 					}
 					return values
 				},
-				Probe: env.NewProbe(cmd.Context()),
-				Out:   cmd.OutOrStdout(),
+				Landing: landingValuesOrNil(env.Root),
+				Probe:   env.NewProbe(cmd.Context()),
+				Out:     cmd.OutOrStdout(),
 			})
 		},
 	}
@@ -649,6 +650,16 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 	cmd.Flags().BoolVar(&suggest, "suggest", false,
 		"Print the largest selection that fits the free memory.")
 	return cmd
+}
+
+// landingValuesOrNil reads the landing .env for the doctor. A read error
+// falls back to the defaults, as the pair values do.
+func landingValuesOrNil(root string) map[string]string {
+	values, err := ReadLandingEnv(root)
+	if err != nil {
+		return nil
+	}
+	return values
 }
 
 // newPortsCommand builds vca ports (ADR-008 decision 1).

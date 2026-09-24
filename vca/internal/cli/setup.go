@@ -63,6 +63,11 @@ type Plan struct {
 	Ports []PortAssignment
 	// Files lists every file the plan writes, including the .env file.
 	Files []File
+	// Shared lists the files of the deployment that every pair shares,
+	// with paths relative to the deploy root: the .env of the landing
+	// (ADR-033 decision 2). Every setup run writes them again, so the
+	// peer list of the landing follows the last run.
+	Shared []File
 }
 
 // MissingValuesError reports every required value that no source filled.
@@ -162,7 +167,34 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	files = append(files, dpgFiles...)
-	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files}, nil
+	shared := []File{LandingEnvFile(req.Domain, req.Pair, values, req.Peers, req.Existing[VersionEnv])}
+	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files, Shared: shared}, nil
+}
+
+// LandingEnvFile renders the .env of the landing for a setup run of one
+// pair. The peer list holds every pair directory present plus the pair
+// of this run with its new values, so the landing sees the run at once
+// (ADR-033 decision 2, ADR-034 decision 1). version is the image version
+// the pair already runs, or empty for latest.
+func LandingEnvFile(domain string, p Pair, values map[string]string, peers PeerOverrides, version string) File {
+	merged := make(PeerOverrides, len(peers)+1)
+	for name, v := range peers {
+		merged[name] = v
+	}
+	merged[p.Name()] = values
+	landing := LandingValues(domain, merged, version)
+	var b strings.Builder
+	b.WriteString("# The landing of the deployment. Every pair profile starts it once.\n")
+	b.WriteString("# The vca setup command wrote this file. Every setup run writes it again.\n")
+	names := make([]string, 0, len(landing))
+	for name := range landing {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		b.WriteString(name + "=" + quoteValue(landing[name]) + "\n")
+	}
+	return File{Name: filepath.Join(LandingDir, EnvFileName), Data: []byte(b.String()), Mode: 0o600}
 }
 
 // BindEnv is the variable that holds the address the host ports bind
@@ -360,6 +392,9 @@ func (p Plan) Summary() string {
 	for _, f := range p.Files {
 		fmt.Fprintf(&b, "  %s  mode %04o\n", f.Name, f.Mode)
 	}
+	for _, f := range p.Shared {
+		fmt.Fprintf(&b, "  %s  mode %04o  (shared by every pair)\n", filepath.Join("..", f.Name), f.Mode)
+	}
 	return b.String()
 }
 
@@ -474,6 +509,21 @@ func WritePlan(root string, p Plan) ([]string, error) {
 			return nil, fmt.Errorf("write %s: %w", path, err)
 		}
 		// WriteFile keeps the mode of a file that already exists, so set it.
+		if err := os.Chmod(path, f.Mode); err != nil {
+			return nil, fmt.Errorf("set the mode of %s: %w", path, err)
+		}
+		written = append(written, path)
+	}
+	// The shared files sit beside the pair directories. Every run
+	// writes them again, so they follow the last run.
+	for _, f := range p.Shared {
+		path := filepath.Join(root, f.Name)
+		if err := makeReadableDir(filepath.Dir(path)); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(path, f.Data, f.Mode); err != nil {
+			return nil, fmt.Errorf("write %s: %w", path, err)
+		}
 		if err := os.Chmod(path, f.Mode); err != nil {
 			return nil, fmt.Errorf("set the mode of %s: %w", path, err)
 		}

@@ -82,11 +82,20 @@ func ThemeApply(ctx context.Context, opts ThemeOptions) error {
 		anyval.DiscardWrite(fmt.Fprintln(opts.Out, "theme apply: no deployed pair; run vca setup and vca deploy first"))
 		return nil
 	}
-	for _, p := range pairs {
+	for i, p := range pairs {
 		action := []string{"restart"}
 		for _, s := range ServicesFor(p) {
 			if s.UI {
 				action = append(action, composeServiceName(p, s))
+			}
+		}
+		// A deployment scoped service runs once, so the first pair
+		// restarts it (ADR-033 decision 2).
+		if i == 0 {
+			for _, s := range DeploymentServices() {
+				if s.UI {
+					action = append(action, DeploymentServiceName(s))
+				}
 			}
 		}
 		args := ComposeArgs(opts.Root, p, action)

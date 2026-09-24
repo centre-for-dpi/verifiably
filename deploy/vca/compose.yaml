@@ -812,6 +812,22 @@ services:
     volumes:
       - admin-credebl-trust-registry-data:/data
 
+  # The landing of the deployment. Every profile starts it once.
+  vca-landing:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-landing:${VCA_VERSION:-latest}
+    profiles: [issuer-waltid, issuer-inji, issuer-credebl, holder-waltid, holder-inji, holder-credebl, verifier-waltid, verifier-inji, verifier-credebl, admin-waltid, admin-inji, admin-credebl]
+    container_name: vca-landing
+    env_file:
+      - path: ../landing/.env
+        required: true
+    ports:
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_LANDING:-17900}:${VCA_PORTS_LANDING:-8080}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
+    volumes:
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
+
 networks:
   vca:
     name: vca

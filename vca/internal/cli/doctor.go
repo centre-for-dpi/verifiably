@@ -85,6 +85,9 @@ type DoctorOptions struct {
 	// Values returns the .env values of one pair. A nil function uses
 	// the port plan defaults.
 	Values func(Pair) map[string]string
+	// Landing holds the .env values of the landing. A nil map uses the
+	// default host port.
+	Landing map[string]string
 	// Probe reads the host.
 	Probe Probe
 	// Out receives the report.
@@ -381,6 +384,14 @@ func memoryCheck(opts DoctorOptions) Check {
 func portChecks(opts DoctorOptions) []Check {
 	var out []Check
 	seen := map[int]bool{}
+	// The landing runs once for every pair, so its port comes first and
+	// once (ADR-033 decision 2).
+	if len(opts.Pairs) > 0 {
+		port := LandingHostPortOf(opts.Landing)
+		seen[port] = true
+		out = append(out, hostPortCheck(opts.Probe, port, DeploymentServiceName(Service{Name: LandingService}),
+			fmt.Sprintf("stop that program, or set %s in deploy/%s/%s", LandingHostPortEnv, LandingDir, EnvFileName)))
+	}
 	for _, p := range opts.Pairs {
 		var values map[string]string
 		if opts.Values != nil {
@@ -394,23 +405,32 @@ func portChecks(opts DoctorOptions) []Check {
 			out = append(out, dpgPortCheck(opts.Probe, d))
 		}
 		for _, a := range HostPorts(p, values) {
-			name := fmt.Sprintf("port %d", a.Host)
-			detail := p.Name() + " " + a.Service.Name
-			free, err := opts.Probe.PortFree(a.Host)
-			switch {
-			case err != nil:
-				out = append(out, Check{Name: name, Detail: detail + ": cannot test the port",
-					Fix: "check the port by hand with: ss -ltnp"})
-			case !free:
-				out = append(out, Check{Name: name, Detail: detail + ": another program holds it",
-					Fix: fmt.Sprintf("stop that program, or set VCA_HOST_PORT_%s in deploy/%s/.env",
-						envName(a.Service.Name), p.Name())})
-			default:
-				out = append(out, Check{Name: name, OK: true, Detail: detail})
-			}
+			out = append(out, hostPortCheck(opts.Probe, a.Host, p.Name()+" "+a.Service.Name,
+				fmt.Sprintf("stop that program, or set VCA_HOST_PORT_%s in deploy/%s/.env", envName(a.Service.Name), p.Name())))
 		}
 	}
 	return out
+}
+
+// hostPortCheck reports one host port of a VCA service. detail names
+// the service and fix tells the operator how to move the port.
+func hostPortCheck(probe Probe, port int, detail, fix string) Check {
+	name := fmt.Sprintf("port %d", port)
+	free, err := probe.PortFree(port)
+	switch {
+	case err != nil:
+		return Check{Name: name, Detail: detail + ": cannot test the port", Fix: "check the port by hand with: ss -ltnp"}
+	case !free:
+		return Check{Name: name, Detail: detail + ": another program holds it", Fix: fix}
+	default:
+		return Check{Name: name, OK: true, Detail: detail}
+	}
+}
+
+// LandingHostPortOf returns the host port of the landing: the override
+// of its .env values, else LandingHostPort.
+func LandingHostPortOf(values map[string]string) int {
+	return portFrom(values, LandingHostPortEnv, LandingHostPort)
 }
 
 // dpgPortCheck reports one host port of a DPG stack container.

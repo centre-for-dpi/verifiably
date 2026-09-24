@@ -98,6 +98,24 @@ func Caddyfile(p Pair, values map[string]string) string {
 	return b.String()
 }
 
+// LandingCaddyfile renders the site of the landing for the reverse proxy
+// of the host: vca.<domain> goes to the host port of the landing
+// (ADR-033 decision 2). A local landing or a missing public URL gives
+// nothing.
+func LandingCaddyfile(values map[string]string) string {
+	host := hostOf(values[LandingPublicURLEnv])
+	if host == "" || isLocalHost(host) {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("# The landing of the deployment. Every journey starts here.\n")
+	fmt.Fprintf(&b, "%s {\n", host)
+	b.WriteString("\tencode gzip\n")
+	fmt.Fprintf(&b, "\treverse_proxy 127.0.0.1:%d\n", LandingHostPortOf(values))
+	b.WriteString("}\n")
+	return b.String()
+}
+
 // keycloakSite renders the site block of the Keycloak of the stack. The
 // issuer pair owns it, as it owns the realm import. A local OIDC public
 // URL needs no site.
@@ -312,6 +330,16 @@ func Floor(p Pair) ResourceFloor {
 		DpgMemoryMiB: dpg,
 		Cpus:         1 + float64(services)/4,
 	}
+}
+
+// LandingMemoryMiB is the memory the landing adds to a deployment, once.
+// It is one more distroless Go service (ADR-033 consequence 2).
+const LandingMemoryMiB = perServiceMemoryMiB
+
+// FloorNote is the sentence under the floor table that names the landing.
+// The deploy documentation holds it word for word.
+func FloorNote() string {
+	return fmt.Sprintf("The landing adds %d MiB once, whatever the selection, because every profile starts the one landing container.", LandingMemoryMiB)
 }
 
 // FloorTable renders the resource floor of every pair as a Markdown table.

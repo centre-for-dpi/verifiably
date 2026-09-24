@@ -52,6 +52,12 @@ func EnvPath(root string, p Pair) string {
 	return filepath.Join(root, "deploy", p.Name(), EnvFileName)
 }
 
+// LandingEnvPath returns the path of the .env file of the landing under
+// the root (ADR-033 decision 2).
+func LandingEnvPath(root string) string {
+	return filepath.Join(root, "deploy", LandingDir, EnvFileName)
+}
+
 // ComposeArgs builds the docker compose arguments of one pair and one
 // action, for example up -d (ADR-008 decision 1).
 func ComposeArgs(root string, p Pair, action []string) []string {

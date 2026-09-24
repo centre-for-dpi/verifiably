@@ -329,9 +329,10 @@ func TestWritePlanAndReadExisting(t *testing.T) {
 	if writtenErr != nil {
 		t.Fatalf("WritePlan: %v", writtenErr)
 	}
-	// The first run also writes the default theme file (ADR-032).
-	if len(written) != len(plan.Files)+1 {
-		t.Errorf("wrote %d files, want %d", len(written), len(plan.Files)+1)
+	// The first run also writes the shared landing file and the default
+	// theme file (ADR-032, ADR-033).
+	if len(written) != len(plan.Files)+len(plan.Shared)+1 {
+		t.Errorf("wrote %d files, want %d", len(written), len(plan.Files)+len(plan.Shared)+1)
 	}
 	dir := filepath.Join(root, "issuer-waltid")
 	for _, name := range []string{EnvFileName, SigningKeyFile} {
@@ -820,5 +821,115 @@ func TestBuildPlanReadsThePeerDirectories(t *testing.T) {
 	}
 	if _, err := ReadPeerOverrides(bad); err == nil || !strings.Contains(err.Error(), "admin-waltid") {
 		t.Fatalf("a broken .env must name its pair: %v", err)
+	}
+}
+
+// TestSetupWritesTheLandingEnv checks that a setup run writes
+// deploy/landing/.env beside the pair directories, with every candidate
+// pair and the overrides of every pair directory present, the pair of
+// the run included (ADR-033 decision 2, ADR-034 decision 1).
+func TestSetupWritesTheLandingEnv(t *testing.T) {
+	root := t.TempDir()
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
+	holderPlan, err := BuildPlan(SetupRequest{
+		Pair: holder, Random: rand.Reader,
+		Flags: map[string]string{"VCA_PUBLIC_URL": "https://wallet.example", "VCA_PORTS_PORTAL": "9090"},
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan holder: %v", err)
+	}
+	written, err := WritePlan(root, holderPlan)
+	if err != nil {
+		t.Fatalf("WritePlan holder: %v", err)
+	}
+	landingPath := filepath.Join(root, LandingDir, EnvFileName)
+	found := false
+	for _, path := range written {
+		if path == landingPath {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("WritePlan wrote %v, not the landing file %s", written, landingPath)
+	}
+	overrides, err := ReadPeerOverrides(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := overrides[LandingDir]; ok {
+		t.Error("the landing directory is not a pair")
+	}
+	flags := issuerFlags()
+	flags["VCA_PORTS_ADAPTER"] = "9500"
+	plan, err := BuildPlan(SetupRequest{
+		Pair: issuerPair(), Flags: flags, Random: rand.Reader, Peers: overrides,
+		Existing: map[string]string{VersionEnv: "local"},
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan issuer: %v", err)
+	}
+	if len(plan.Shared) != 1 || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
+		t.Fatalf("shared files = %+v", plan.Shared)
+	}
+	if !strings.Contains(plan.Summary(), filepath.Join(LandingDir, EnvFileName)) {
+		t.Errorf("the summary does not list the landing file:\n%s", plan.Summary())
+	}
+	if _, writeErr := WritePlan(root, plan); writeErr != nil {
+		t.Fatalf("WritePlan issuer: %v", writeErr)
+	}
+	f, err := os.Open(landingPath) // #nosec G304 -- a test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := ParseDotenv(f)
+	anyval.Discard(f.Close())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["VCA_LANDING_LISTEN"] != ":8080" || values["VCA_LANDING_PUBLIC_URL"] != "http://localhost:17900" || values[VersionEnv] != "local" {
+		t.Errorf("landing values = %v", values)
+	}
+	peers, err := topology.Parse(values[topology.Env])
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(peers) != len(AllPairs()) {
+		t.Fatalf("got %d peers, want %d", len(peers), len(AllPairs()))
+	}
+	byName := map[string]topology.Peer{}
+	for _, peer := range peers {
+		byName[peer.Pair] = peer
+	}
+	// The holder directory and the issuer of this run both count.
+	if byName["holder-inji"].Home() != "http://holder-inji-wallet-portal:9090" || byName["holder-inji"].PublicURL != "https://wallet.example" {
+		t.Errorf("holder-inji = %+v", byName["holder-inji"])
+	}
+	if byName["issuer-waltid"].Adapter() != "http://issuer-waltid-dpg-adapter-waltid:9500" || byName["issuer-waltid"].PublicURL != "https://issuer.example" {
+		t.Errorf("issuer-waltid = %+v", byName["issuer-waltid"])
+	}
+	info, err := os.Stat(landingPath)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("landing file mode = %v, %v", info.Mode(), err)
+	}
+
+	// A domain setup names the landing host.
+	delete(flags, "VCA_PUBLIC_URL")
+	plan, err = BuildPlan(SetupRequest{Pair: issuerPair(), Flags: flags, Random: rand.Reader, Domain: "labs.example"})
+	if err != nil {
+		t.Fatalf("BuildPlan domain: %v", err)
+	}
+	shared, err := ParseDotenv(strings.NewReader(string(plan.Shared[0].Data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shared["VCA_LANDING_PUBLIC_URL"] != "https://vca.labs.example" || shared[VersionEnv] != "latest" {
+		t.Errorf("domain landing values = %v", shared)
+	}
+	// A shared file under a directory that cannot be made reports it.
+	if err := os.WriteFile(filepath.Join(root, "blocked"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WritePlan(filepath.Join(root, "blocked"), plan); err == nil {
+		t.Error("a root that is a file passed")
 	}
 }

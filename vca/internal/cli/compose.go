@@ -92,6 +92,9 @@ func RenderCompose() string {
 			volumes = append(volumes, renderComposeService(&b, p, a)...)
 		}
 	}
+	for _, s := range DeploymentServices() {
+		renderDeploymentService(&b, s)
+	}
 
 	b.WriteString("\nnetworks:\n  vca:\n    name: vca\n")
 	if len(volumes) > 0 {
@@ -139,6 +142,36 @@ func renderComposeService(b *strings.Builder, p Pair, a PortAssignment) []string
 		fmt.Fprintf(b, "      - ${%s:-%s}:%s:ro\n", ThemeHostFileEnv, themeHostDefault, ThemeMountPath)
 	}
 	return volumes
+}
+
+// DeploymentServiceName is the compose service name of a deployment
+// scoped service. No pair name goes first, because one copy runs.
+func DeploymentServiceName(s Service) string { return ComposeProject + "-" + s.Name }
+
+// renderDeploymentService writes the block of a service that runs once
+// per deployment (ADR-033 decision 2). Every pair profile lists it, so
+// the first pair that starts brings it up and the others find it
+// running. It reads the .env of its own directory under deploy.
+func renderDeploymentService(b *strings.Builder, s Service) {
+	name := DeploymentServiceName(s)
+	fmt.Fprintf(b, "\n  # The %s of the deployment. Every profile starts it once.\n", s.Name)
+	fmt.Fprintf(b, "  %s:\n", name)
+	b.WriteString("    <<: *vca-service\n")
+	fmt.Fprintf(b, "    image: %s:${%s:-latest}\n", s.Image(), VersionEnv)
+	fmt.Fprintf(b, "    profiles: [%s]\n", strings.Join(Profiles(AllPairs()), ", "))
+	fmt.Fprintf(b, "    container_name: %s\n", name)
+	b.WriteString("    env_file:\n")
+	fmt.Fprintf(b, "      - path: ../%s/%s\n", s.Name, EnvFileName)
+	b.WriteString("        required: true\n")
+	b.WriteString("    ports:\n")
+	fmt.Fprintf(b, "      - \"${%s:-0.0.0.0}:${VCA_HOST_PORT_%s:-%d}:${VCA_PORTS_%s:-%d}\"\n",
+		BindEnv, envName(s.Name), LandingHostPort, envName(s.Name), s.ExposedPort)
+	if s.UI {
+		b.WriteString("    environment:\n")
+		fmt.Fprintf(b, "      %s: %s\n", ThemeFileEnv, ThemeMountPath)
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - ${%s:-%s}:%s:ro\n", ThemeHostFileEnv, themeHostDefault, ThemeMountPath)
+	}
 }
 
 // Profiles lists the compose profiles of a deploy run. One pair gives one

@@ -371,8 +371,11 @@ func TestDeploymentServicesKeepOneAdapter(t *testing.T) {
 	if adapters != 1 || !seen["dpg-adapter-credebl"] {
 		t.Errorf("got %d adapters in %v", adapters, seen)
 	}
-	if len(list) != len(Catalog())-2 {
-		t.Errorf("got %d services, want %d", len(list), len(Catalog())-2)
+	// Two adapters of other DPGs and the landing, which no pair owns,
+	// stay out.
+	want := len(Catalog()) - 2 - len(DeploymentServices())
+	if len(list) != want {
+		t.Errorf("got %d services, want %d", len(list), want)
 	}
 }
 
@@ -527,7 +530,7 @@ func TestUIServicesAreTheOnesWithPages(t *testing.T) {
 			ui = append(ui, s.Name)
 		}
 	}
-	want := []string{"admin", "schema-builder-ui", "schema-registry", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-portal"}
+	want := []string{"admin", "landing", "schema-builder-ui", "schema-registry", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-portal"}
 	if strings.Join(ui, ",") != strings.Join(want, ",") {
 		t.Errorf("UI services = %v, want %v", ui, want)
 	}
@@ -648,7 +651,7 @@ func TestPeersReachTheRightServices(t *testing.T) {
 	want := map[string]bool{
 		"admin": true, "schema-builder-ui": true, "schema-registry": true, "verifier-discovery": true,
 		"verifier-ingest": true, "verifier-results": true, "wallet-portal": true,
-		"issuer-auth": true, "wallet-auth": true,
+		"issuer-auth": true, "wallet-auth": true, "landing": true,
 	}
 	for _, s := range Catalog() {
 		has := false
@@ -676,5 +679,118 @@ func TestHomeAndAuthServicesAgreeWithTheTopology(t *testing.T) {
 		if authService(r) != topology.AuthService(r) {
 			t.Errorf("%v: auth %s, topology says %s", r, authService(r), topology.AuthService(r))
 		}
+	}
+}
+
+// TestDeploymentServicesAreNotInPairs is the rule of a deployment scoped
+// service (ADR-033 decision 2): it runs once, so no pair lists it, no
+// pair assigns it a port, and no role table names its routes. The
+// landing is the one such service. It listens on 8080 in the container
+// and on the host port 17900.
+func TestDeploymentServicesAreNotInPairs(t *testing.T) {
+	var scoped []Service
+	for _, s := range Catalog() {
+		if s.Scope == ScopeDeployment {
+			scoped = append(scoped, s)
+		}
+	}
+	if len(scoped) != 1 || scoped[0].Name != "landing" {
+		t.Fatalf("deployment scoped services = %+v, want the landing alone", scoped)
+	}
+	landing := scoped[0]
+	if !landing.UI || landing.Stateful || landing.ExposedPort != LandingListenPort || landing.ListenEnv != "VCA_LANDING_LISTEN" {
+		t.Errorf("landing = %+v", landing)
+	}
+	if LandingHostPort != 17900 || LandingListenPort != 8080 {
+		t.Errorf("landing ports = %d and %d", LandingHostPort, LandingListenPort)
+	}
+	if len(landing.Roles) != len(Roles()) {
+		t.Errorf("the landing serves %d roles, want every role", len(landing.Roles))
+	}
+	got := DeploymentServices()
+	if len(got) != 1 || got[0].Name != "landing" {
+		t.Errorf("DeploymentServices = %+v", got)
+	}
+	for _, p := range AllPairs() {
+		for _, s := range ServicesFor(p) {
+			if s.Scope == ScopeDeployment {
+				t.Errorf("%s lists the deployment scoped service %s", p.Name(), s.Name)
+			}
+		}
+		for _, a := range AssignPorts(p, nil) {
+			if a.Service.Name == "landing" {
+				t.Errorf("%s assigns a port to the landing", p.Name())
+			}
+		}
+		for _, sr := range PairRoutes(p, nil) {
+			if sr.Service == "landing" {
+				t.Errorf("%s routes the landing", p.Name())
+			}
+		}
+	}
+	for _, d := range Dpgs() {
+		for _, s := range deploymentServices(d) {
+			if s.Scope == ScopeDeployment {
+				t.Errorf("the admin service map of %v names the landing", d)
+			}
+		}
+	}
+	if strings.Contains(RouteTable(), "landing") {
+		t.Error("the route table of the roles names the landing")
+	}
+	if ChartCondition(landing) != "" {
+		t.Errorf("the landing chart has the condition %q; it is always on", ChartCondition(landing))
+	}
+}
+
+// TestLandingValuesHoldThePeersAndTheAddress checks the .env of the
+// landing (ADR-033 decision 2, ADR-034 decision 1): the listen address,
+// the public URL under the domain or on localhost, every candidate pair
+// with the overrides of the pair directories, and the image version.
+func TestLandingValuesHoldThePeersAndTheAddress(t *testing.T) {
+	overrides := PeerOverrides{
+		"holder-inji":   {"VCA_PORTS_PORTAL": "9090", "VCA_PUBLIC_URL": "https://wallet.example"},
+		"issuer-waltid": {"VCA_PORTS_ADAPTER": "9500"},
+	}
+	got := LandingValues("", overrides, "")
+	if got["VCA_LANDING_LISTEN"] != ":8080" || got["VCA_LANDING_PUBLIC_URL"] != "http://localhost:17900" || got[VersionEnv] != "latest" {
+		t.Errorf("local values = %v", got)
+	}
+	peers, err := topology.Parse(got[topology.Env])
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(peers) != len(AllPairs()) {
+		t.Fatalf("got %d peers, want %d", len(peers), len(AllPairs()))
+	}
+	byName := map[string]topology.Peer{}
+	for _, peer := range peers {
+		byName[peer.Pair] = peer
+	}
+	if byName["holder-inji"].Home() != "http://holder-inji-wallet-portal:9090" || byName["holder-inji"].PublicURL != "https://wallet.example" {
+		t.Errorf("holder-inji = %+v", byName["holder-inji"])
+	}
+	if byName["issuer-waltid"].Adapter() != "http://issuer-waltid-dpg-adapter-waltid:9500" {
+		t.Errorf("issuer-waltid adapter = %q", byName["issuer-waltid"].Adapter())
+	}
+	if byName["verifier-credebl"].PublicURL != LocalPublicURL(Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_CREDEBL}) {
+		t.Errorf("an untouched pair gets its localhost address: %q", byName["verifier-credebl"].PublicURL)
+	}
+
+	got = LandingValues("labs.example", overrides, "local")
+	if got["VCA_LANDING_PUBLIC_URL"] != "https://vca.labs.example" || got[VersionEnv] != "local" {
+		t.Errorf("domain values = %v", got)
+	}
+	peers, err = topology.Parse(got[topology.Env])
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	for _, peer := range peers {
+		if peer.PublicURL != "https://"+peer.Pair+".labs.example" {
+			t.Errorf("%s: public URL = %q", peer.Pair, peer.PublicURL)
+		}
+	}
+	if LandingPublicURL("") != "http://localhost:17900" || LandingPublicURL("labs.example") != "https://vca.labs.example" {
+		t.Error("LandingPublicURL")
 	}
 }
