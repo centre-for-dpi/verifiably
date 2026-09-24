@@ -171,6 +171,10 @@ services:
     build:
       context: ../../vca
       dockerfile: services/dpg-adapter-waltid/Dockerfile
+  verifier-waltid-verifier-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-auth/Dockerfile
   verifier-waltid-verifier-combined:
     build:
       context: ../../vca
@@ -197,6 +201,10 @@ services:
     build:
       context: ../../vca
       dockerfile: services/dpg-adapter-inji/Dockerfile
+  verifier-inji-verifier-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-auth/Dockerfile
   verifier-inji-verifier-combined:
     build:
       context: ../../vca
@@ -223,6 +231,10 @@ services:
     build:
       context: ../../vca
       dockerfile: services/dpg-adapter-credebl/Dockerfile
+  verifier-credebl-verifier-auth:
+    build:
+      context: ../../vca
+      dockerfile: services/verifier-auth/Dockerfile
   verifier-credebl-verifier-combined:
     build:
       context: ../../vca

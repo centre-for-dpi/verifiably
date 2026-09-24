@@ -65,6 +65,10 @@ dependencies:
     version: 0.1.0
     repository: "file://../trust-registry"
     condition: roles.admin.enabled
+  - name: verifier-auth
+    version: 0.1.0
+    repository: "file://../verifier-auth"
+    condition: roles.verifier.enabled
   - name: verifier-combined
     version: 0.1.0
     repository: "file://../verifier-combined"

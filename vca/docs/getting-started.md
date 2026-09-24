@@ -121,7 +121,7 @@ One pair needs 704 MiB to 3424 MiB of free memory:
 |---|---|---|---|
 | `issuer` | 2912 MiB | 3424 MiB | 3424 MiB |
 | `holder` | 2336 MiB | 2848 MiB | 2848 MiB |
-| `verifier` | 2624 MiB | 3136 MiB | 3136 MiB |
+| `verifier` | 2720 MiB | 3232 MiB | 3232 MiB |
 | `admin` | 704 MiB | 704 MiB | 704 MiB |
 
 `docs/deploy.md` holds the full table.
@@ -286,6 +286,11 @@ The `verifier` role. Its home page is `/portal/` on `verifier-results`.
 | Path | Service | Note |
 |---|---|---|
 | `/` | `verifier-results` | Sends the browser to `/portal/`. |
+| `/vca.verifierauth.v1.VerifierAuthService/*` | `verifier-auth` |  |
+| `/vca.admin.v1.AdminService/*` | `verifier-auth` |  |
+| `/.well-known/jwks.json` | `verifier-auth` |  |
+| `/token` | `verifier-auth` |  |
+| `/auth/*` | `verifier-auth` | A page: Sign in. |
 | `/vca.combined.v1.CombinedService/*` | `verifier-combined` |  |
 | `/vca.discovery.v1.DiscoveryService/*` | `verifier-discovery` |  |
 | `/catalog` | `verifier-discovery` |  |

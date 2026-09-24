@@ -225,8 +225,11 @@ func TestPortalAndAuthService(t *testing.T) {
 	if portalService(commonv1.Role_ROLE_UNSPECIFIED) != "" {
 		t.Error("an unknown role has a portal")
 	}
-	if authService(commonv1.Role_ROLE_VERIFIER) != "" {
-		t.Error("the verifier runs a separate auth service")
+	if authService(commonv1.Role_ROLE_VERIFIER) != "verifier-auth" {
+		t.Error("the verifier runs verifier-auth (ADR-036 decision 1)")
+	}
+	if authService(commonv1.Role_ROLE_ADMIN) != "" {
+		t.Error("the admin logs staff in from its portal")
 	}
 	if authService(commonv1.Role_ROLE_HOLDER) != "wallet-auth" {
 		t.Error("the holder runs no auth service")
@@ -565,7 +568,7 @@ func TestUIServicesAreTheOnesWithPages(t *testing.T) {
 			ui = append(ui, s.Name)
 		}
 	}
-	want := []string{"admin", "issuer-auth", "landing", "schema-builder-ui", "schema-registry", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-auth", "wallet-portal"}
+	want := []string{"admin", "issuer-auth", "landing", "schema-builder-ui", "schema-registry", "verifier-auth", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-auth", "wallet-portal"}
 	if strings.Join(ui, ",") != strings.Join(want, ",") {
 		t.Errorf("UI services = %v, want %v", ui, want)
 	}
@@ -686,7 +689,7 @@ func TestPeersReachTheRightServices(t *testing.T) {
 	want := map[string]bool{
 		"admin": true, "schema-builder-ui": true, "schema-registry": true, "verifier-discovery": true,
 		"verifier-ingest": true, "verifier-results": true, "wallet-portal": true,
-		"issuer-auth": true, "wallet-auth": true, "landing": true,
+		"issuer-auth": true, "wallet-auth": true, "verifier-auth": true, "landing": true,
 	}
 	for _, s := range Catalog() {
 		has := false

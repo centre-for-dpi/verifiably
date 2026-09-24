@@ -90,6 +90,7 @@ Holder:
 
 Verifier:
 
+- `verifier-auth`: OIDC sign-in for verifier staff and API access for verifier systems.
 - `verifier-discovery`: a portal where a verifier finds schemas and issuers.
 - `verifier-ingest`: accepts a presentation in any supported format and normalises it.
 - `verifier-policy`: applies a checklist of rules to a presentation.

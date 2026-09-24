@@ -7,7 +7,8 @@ the design. The service [README](../services/wallet-auth/README.md) tells
 you how to run it.
 
 This implements ADR-020 decisions 1, 2, 3, 4, 5, and 6. It shares the
-login library and the token format with [issuer-auth](issuer-auth.md).
+login library and the token format with [issuer-auth](issuer-auth.md)
+and [verifier-auth](verifier-auth.md).
 
 ## Login flow
 

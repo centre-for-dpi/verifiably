@@ -264,7 +264,7 @@ func TestIntroNamesTheRealmFromProvidersJSON(t *testing.T) {
 			t.Errorf("%s band:\n%s", path, doc)
 		}
 	}
-	if strings.Join(asked, " ") != "http://"+issuer+"-auth:8081 http://"+admin+"-home:8080 http://"+holder+"-auth:8081 http://"+topology.PairName(commonv1.Role_ROLE_VERIFIER, first)+"-home:8080" {
+	if strings.Join(asked, " ") != "http://"+issuer+"-auth:8081 http://"+admin+"-home:8080 http://"+holder+"-auth:8081 http://"+topology.PairName(commonv1.Role_ROLE_VERIFIER, first)+"-auth:8081" {
 		t.Errorf("asked %v", asked)
 	}
 	// Two live stacks keep the plain lead: the realm differs per stack.

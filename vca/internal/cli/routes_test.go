@@ -28,6 +28,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schemabuilder/v1/schemabuilderv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/verifierauth/v1/verifierauthv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1/walletportalv1connect"
 )
@@ -90,7 +91,7 @@ func TestConnectRoutesMatchTheGeneratedNames(t *testing.T) {
 		combinedv1connect.CombinedServiceName, datasourcev1connect.DataSourceServiceName,
 		discoveryv1connect.DiscoveryServiceName, ingestv1connect.IngestServiceName,
 		issuancev1connect.IssuanceServiceName, issuedv1connect.IssuedServiceName,
-		issuerauthv1connect.IssuerAuthServiceName, policyv1connect.PolicyServiceName,
+		issuerauthv1connect.IssuerAuthServiceName, policyv1connect.PolicyServiceName, verifierauthv1connect.VerifierAuthServiceName,
 		resultsv1connect.ResultsServiceName, schemav1connect.SchemaServiceName,
 		schemabuilderv1connect.SchemaBuilderServiceName, statusv1connect.StatusServiceName,
 		trustv1connect.TrustServiceName, walletauthv1connect.WalletAuthServiceName,
@@ -153,17 +154,34 @@ func TestAuthRoutesGoToTheAuthService(t *testing.T) {
 		commonv1.Role_ROLE_ISSUER:   "issuer-auth",
 		commonv1.Role_ROLE_HOLDER:   "wallet-auth",
 		commonv1.Role_ROLE_ADMIN:    "admin",
-		commonv1.Role_ROLE_VERIFIER: "",
+		commonv1.Role_ROLE_VERIFIER: "verifier-auth",
 	}
 	for role, auth := range want {
 		p := Pair{Role: role, Dpg: configv1.Dpg_DPG_INJI}
+		found := map[string]bool{}
 		for _, sr := range PairRoutes(p, nil) {
 			switch sr.Route.Match {
 			case "/auth/*", "/.well-known/jwks.json", "/token":
+				found[sr.Route.Match] = true
 				if sr.Service != auth {
 					t.Errorf("%s: %s routes %s", p.Name(), sr.Service, sr.Route.Match)
 				}
 			}
+		}
+		if !found["/auth/*"] || !found["/.well-known/jwks.json"] {
+			t.Errorf("%s: the auth routes are %v", p.Name(), found)
+		}
+	}
+	// The verifier pair routes the token endpoint and both Connect
+	// services of its auth service (ADR-036 decision 1).
+	verifier := Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_WALTID}
+	routes := map[string]string{}
+	for _, sr := range PairRoutes(verifier, nil) {
+		routes[sr.Route.Match] = sr.Service
+	}
+	for _, match := range []string{"/token", "/vca.verifierauth.v1.VerifierAuthService/*", "/vca.admin.v1.AdminService/*"} {
+		if routes[match] != "verifier-auth" {
+			t.Errorf("verifier: %s routes %q", match, routes[match])
 		}
 	}
 	// wallet-auth mounts the login endpoints at the root, so the proxy
@@ -180,7 +198,7 @@ func TestAuthRoutesGoToTheAuthService(t *testing.T) {
 func TestPagesListsTheHomeFirst(t *testing.T) {
 	verifier := Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_CREDEBL}
 	pages := Pages(verifier, "https://verifier.example/")
-	if len(pages) != 4 || pages[0].URL != "https://verifier.example/portal/" || pages[0].Service != "verifier-results" {
+	if len(pages) != 5 || pages[0].URL != "https://verifier.example/portal/" || pages[0].Service != "verifier-results" {
 		t.Errorf("pages = %+v", pages)
 	}
 	urls := map[string]bool{}
@@ -189,6 +207,7 @@ func TestPagesListsTheHomeFirst(t *testing.T) {
 	}
 	for _, want := range []string{
 		"https://verifier.example/verify/", "https://verifier.example/discovery/", "https://verifier.example/scan/",
+		"https://verifier.example/auth/",
 	} {
 		if !urls[want] {
 			t.Errorf("pages have no %s: %+v", want, pages)

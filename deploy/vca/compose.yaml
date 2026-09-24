@@ -514,6 +514,21 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18600}:${VCA_PORTS_ADAPTER:-8090}"
+  verifier-waltid-verifier-auth:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-verifier-auth:${VCA_VERSION:-latest}
+    profiles: [verifier-waltid]
+    container_name: verifier-waltid-verifier-auth
+    env_file:
+      - path: ../verifier-waltid/.env
+        required: true
+    ports:
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_AUTH:-18601}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
+    volumes:
+      - verifier-waltid-verifier-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-waltid-verifier-combined:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-verifier-combined:${VCA_VERSION:-latest}
@@ -523,7 +538,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18601}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18602}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
       - verifier-waltid-verifier-combined-data:/data
   verifier-waltid-verifier-discovery:
@@ -535,7 +550,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18602}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18603}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -550,7 +565,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18603}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18604}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -565,7 +580,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18604}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18605}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
       - verifier-waltid-verifier-policy-data:/data
   verifier-waltid-verifier-results:
@@ -577,7 +592,7 @@ services:
       - path: ../verifier-waltid/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18605}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18606}:${VCA_PORTS_PORTAL:-8080}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -595,6 +610,21 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18700}:${VCA_PORTS_ADAPTER:-8090}"
+  verifier-inji-verifier-auth:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-verifier-auth:${VCA_VERSION:-latest}
+    profiles: [verifier-inji]
+    container_name: verifier-inji-verifier-auth
+    env_file:
+      - path: ../verifier-inji/.env
+        required: true
+    ports:
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_AUTH:-18701}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
+    volumes:
+      - verifier-inji-verifier-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-inji-verifier-combined:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-verifier-combined:${VCA_VERSION:-latest}
@@ -604,7 +634,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18701}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18702}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
       - verifier-inji-verifier-combined-data:/data
   verifier-inji-verifier-discovery:
@@ -616,7 +646,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18702}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18703}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -631,7 +661,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18703}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18704}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -646,7 +676,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18704}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18705}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
       - verifier-inji-verifier-policy-data:/data
   verifier-inji-verifier-results:
@@ -658,7 +688,7 @@ services:
       - path: ../verifier-inji/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18705}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18706}:${VCA_PORTS_PORTAL:-8080}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -676,6 +706,21 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18800}:${VCA_PORTS_ADAPTER:-8090}"
+  verifier-credebl-verifier-auth:
+    <<: *vca-service
+    image: ghcr.io/centre-for-dpi/vca-verifier-auth:${VCA_VERSION:-latest}
+    profiles: [verifier-credebl]
+    container_name: verifier-credebl-verifier-auth
+    env_file:
+      - path: ../verifier-credebl/.env
+        required: true
+    ports:
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_AUTH:-18801}:${VCA_PORTS_AUTH:-8081}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
+    volumes:
+      - verifier-credebl-verifier-auth-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-credebl-verifier-combined:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-verifier-combined:${VCA_VERSION:-latest}
@@ -685,7 +730,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18801}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18802}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
       - verifier-credebl-verifier-combined-data:/data
   verifier-credebl-verifier-discovery:
@@ -697,7 +742,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18802}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18803}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -712,7 +757,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18803}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18804}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -727,7 +772,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18804}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18805}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
       - verifier-credebl-verifier-policy-data:/data
   verifier-credebl-verifier-results:
@@ -739,7 +784,7 @@ services:
       - path: ../verifier-credebl/.env
         required: true
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18805}:${VCA_PORTS_PORTAL:-8080}"
+      - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18806}:${VCA_PORTS_PORTAL:-8080}"
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
@@ -884,16 +929,19 @@ volumes:
   issuer-waltid-schema-registry-data:
   issuer-waltid-status-bitstring-data:
   issuer-waltid-status-token-data:
+  verifier-credebl-verifier-auth-data:
   verifier-credebl-verifier-combined-data:
   verifier-credebl-verifier-discovery-data:
   verifier-credebl-verifier-ingest-data:
   verifier-credebl-verifier-policy-data:
   verifier-credebl-verifier-results-data:
+  verifier-inji-verifier-auth-data:
   verifier-inji-verifier-combined-data:
   verifier-inji-verifier-discovery-data:
   verifier-inji-verifier-ingest-data:
   verifier-inji-verifier-policy-data:
   verifier-inji-verifier-results-data:
+  verifier-waltid-verifier-auth-data:
   verifier-waltid-verifier-combined-data:
   verifier-waltid-verifier-discovery-data:
   verifier-waltid-verifier-ingest-data:

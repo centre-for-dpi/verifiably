@@ -142,8 +142,8 @@ func TestPeerNamesItsHomeAuthAndAdapter(t *testing.T) {
 		t.Error("the home services of the holder and the verifier are wrong")
 	}
 	if topology.AuthService(commonv1.Role_ROLE_HOLDER) != "wallet-auth" ||
-		topology.AuthService(commonv1.Role_ROLE_VERIFIER) != "" {
-		t.Error("the auth services of the holder and the verifier are wrong")
+		topology.AuthService(commonv1.Role_ROLE_VERIFIER) != "verifier-auth" || topology.AuthService(commonv1.Role_ROLE_ADMIN) != "" {
+		t.Error("the auth services of the holder, the verifier, and the admin are wrong")
 	}
 	if topology.HomeService(commonv1.Role_ROLE_UNSPECIFIED) != "" || topology.AuthService(commonv1.Role_ROLE_UNSPECIFIED) != "" {
 		t.Error("an unknown role has no service")

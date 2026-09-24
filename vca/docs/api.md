@@ -38,6 +38,7 @@ code lives in `gen/`. The repository commits it.
 | `vca.admin.v1` | AdminService | 22 | 0 | Tenants, trust entries, auth providers, API keys, health, audit log, provider and admin onboarding (ADR-009, ADR-010). |
 | `vca.trust.v1` | TrustService | 7 | 0 | Trust entries, publication per method, and TrustLookup with provenance (ADR-011). |
 | `vca.issuerauth.v1` | IssuerAuthService | 7 | 0 | Staff OIDC login, session tokens, role mapping (ADR-012). |
+| `vca.verifierauth.v1` | VerifierAuthService | 7 | 0 | Verifier staff OIDC login, session tokens, role mapping (ADR-036). |
 | `vca.schema.v1` | SchemaService | 11 | 0 | Schema versions, publish and retire, issuer metadata, vct documents (ADR-013). |
 | `vca.schemabuilder.v1` | SchemaBuilderService | 3 | 0 | Pure preview of a schema with sample data (ADR-014). |
 | `vca.datasource.v1` | DataSourceService | 10 | 1 | CSV, HTTP, and SQL sources, previews, field maps, bulk runs (ADR-015). |

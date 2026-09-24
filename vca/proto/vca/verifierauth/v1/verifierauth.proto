@@ -1,0 +1,190 @@
+// SPDX-License-Identifier: Apache-2.0
+// Verifier staff authentication service (ADR-036). Staff log in with OIDC
+// and PKCE. The service issues ES256 session JWTs. Other verifier services
+// check a session with the JWKS at GET /.well-known/jwks.json. That path
+// is a standard HTTP endpoint and not an RPC (ADR-003 decision 7).
+// The OIDC provider redirects the browser to GET /auth/callback, which is
+// also a plain HTTP handler. That handler calls LoginCallback.
+syntax = "proto3";
+
+package vca.verifierauth.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// VerifierAuthService logs staff in and introspects sessions.
+service VerifierAuthService {
+  // ListProviders returns the providers that staff can log in with.
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+  // LoginStart creates a PKCE login and returns the authorization URL.
+  rpc LoginStart(LoginStartRequest) returns (LoginStartResponse);
+  // LoginCallback exchanges the authorization code and returns a session.
+  rpc LoginCallback(LoginCallbackRequest) returns (LoginCallbackResponse);
+  // Introspect checks a session JWT and returns its claims.
+  rpc Introspect(IntrospectRequest) returns (IntrospectResponse);
+  // Logout ends a session. The service adds the token id to a deny list
+  // until the token expires.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  // GetRoleMapping returns how IdP claims map to verifier roles.
+  rpc GetRoleMapping(GetRoleMappingRequest) returns (GetRoleMappingResponse);
+  // SetRoleMapping replaces how IdP claims map to verifier roles.
+  rpc SetRoleMapping(SetRoleMappingRequest) returns (SetRoleMappingResponse);
+}
+
+// VerifierRole names a staff role (ADR-012 decision 3).
+enum VerifierRole {
+  VERIFIER_ROLE_UNSPECIFIED = 0;
+  // The role can change policies, trust caches, and providers.
+  VERIFIER_ROLE_ADMIN = 1;
+  // The role can run presentation requests and read their results.
+  VERIFIER_ROLE_OPERATOR = 2;
+  // The role can read every page but cannot change anything.
+  VERIFIER_ROLE_VIEWER = 3;
+}
+
+// Provider is the public view of one OIDC provider.
+message Provider {
+  // The provider id from the admin service.
+  string id = 1;
+  // The display name shown on the login page.
+  string display_name = 2;
+  // The issuer URL from the discovery document.
+  string issuer = 3;
+}
+
+// ListProvidersRequest has no fields.
+message ListProvidersRequest {}
+
+// ListProvidersResponse returns the enabled providers.
+message ListProvidersResponse {
+  // The providers.
+  repeated Provider providers = 1;
+}
+
+// LoginStartRequest selects a provider.
+message LoginStartRequest {
+  // The provider id.
+  string provider_id = 1;
+  // The portal path to return to after login. Must be a relative path.
+  string return_to = 2;
+}
+
+// LoginStartResponse returns the authorization URL.
+message LoginStartResponse {
+  // The URL the browser opens at the provider.
+  string authorization_url = 1;
+  // The state value. The callback must carry the same value.
+  string state = 2;
+  // The time at which the login stops working.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// LoginCallbackRequest carries the provider response.
+message LoginCallbackRequest {
+  // The state from LoginStart.
+  string state = 1;
+  // The authorization code from the provider.
+  string code = 2;
+  // The error code from the provider, when the login failed.
+  string error = 3;
+}
+
+// LoginCallbackResponse returns the session.
+message LoginCallbackResponse {
+  // The session JWT. The browser stores it in a cookie.
+  string session_token = 1;
+  // The session claims.
+  Session session = 2;
+  // The portal path to return to.
+  string return_to = 3;
+}
+
+// Session is the claim set of a session JWT.
+message Session {
+  // The token id (jti).
+  string id = 1;
+  // The pairwise subject, formed as iss|sub of the IdP.
+  string subject = 2;
+  // The display name from the IdP, when present.
+  string display_name = 3;
+  // The tenant of the staff member.
+  string tenant_id = 4;
+  // The verifier roles after mapping.
+  repeated VerifierRole roles = 5;
+  // The time of issue (iat).
+  google.protobuf.Timestamp issued_at = 6;
+  // The time of expiry (exp).
+  google.protobuf.Timestamp expires_at = 7;
+  // The provider that authenticated the subject.
+  string provider_id = 8;
+}
+
+// IntrospectRequest carries a session JWT.
+message IntrospectRequest {
+  // The session JWT.
+  string session_token = 1;
+}
+
+// IntrospectResponse returns the claims when the token is valid.
+message IntrospectResponse {
+  // True when the signature, expiry, and deny list checks passed.
+  bool active = 1;
+  // The claims. Empty when active is false.
+  Session session = 2;
+}
+
+// LogoutRequest ends a session.
+message LogoutRequest {
+  // The session JWT.
+  string session_token = 1;
+}
+
+// LogoutResponse returns the provider logout URL, when any.
+message LogoutResponse {
+  // The RP initiated logout URL at the provider. Empty when the
+  // provider does not support it.
+  string provider_logout_url = 1;
+}
+
+// RoleMapping says how IdP claims become verifier roles.
+message RoleMapping {
+  // The JSON path of the claim that carries the IdP roles.
+  string claim_path = 1;
+  // The rules, in order. The first rule that matches a claim value applies.
+  repeated Rule rules = 2;
+  // The role a staff member gets when no rule matches. Unspecified denies login.
+  VerifierRole default_role = 3;
+
+  // Rule maps one claim value to one verifier role.
+  message Rule {
+    // The claim value, for example verifier-admin.
+    string claim_value = 1;
+    // The verifier role.
+    VerifierRole role = 2;
+  }
+}
+
+// GetRoleMappingRequest selects a provider.
+message GetRoleMappingRequest {
+  // The provider id.
+  string provider_id = 1;
+}
+
+// GetRoleMappingResponse returns the mapping.
+message GetRoleMappingResponse {
+  // The mapping.
+  RoleMapping mapping = 1;
+}
+
+// SetRoleMappingRequest replaces the mapping of a provider.
+message SetRoleMappingRequest {
+  // The provider id.
+  string provider_id = 1;
+  // The new mapping.
+  RoleMapping mapping = 2;
+}
+
+// SetRoleMappingResponse returns the stored mapping.
+message SetRoleMappingResponse {
+  // The mapping as stored.
+  RoleMapping mapping = 1;
+}

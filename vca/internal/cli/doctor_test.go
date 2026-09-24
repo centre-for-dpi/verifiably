@@ -179,7 +179,7 @@ func TestDoctorComparesTheMemoryFloor(t *testing.T) {
 func TestMemoryFloorOfEveryPairMatchesTheDocument(t *testing.T) {
 	want := map[string]int{
 		"issuer-waltid": 2912, "issuer-inji": 3424, "holder-waltid": 2336,
-		"verifier-waltid": 2624, "admin-waltid": 704, "admin-inji": 704,
+		"verifier-waltid": 2720, "admin-waltid": 704, "admin-inji": 704,
 	}
 	for _, p := range AllPairs() {
 		if got, ok := want[p.Name()]; ok && MemoryFloorMiB(p) != got {

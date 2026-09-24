@@ -196,7 +196,7 @@ The values come in six kinds:
 A page must know three things about the pairs (ADR-034): which ones a
 deployment can run, which ones run now, and what each can do.
 The CLI writes `VCA_PEERS` for every service with pages, for
-`issuer-auth`, for `wallet-auth`, and for `admin`.
+`issuer-auth`, for `wallet-auth`, for `verifier-auth`, and for `admin`.
 The value lists all twelve pairs on one line.
 Each item is `<pair>|<public URL>|<service>=<internal URL>,...` and a
 semicolon separates the items.
@@ -468,9 +468,9 @@ The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 | `holder-waltid` | 3 | 288 MiB | 2048 MiB | 2336 MiB | 1.75 |
 | `holder-inji` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
 | `holder-credebl` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
-| `verifier-waltid` | 6 | 576 MiB | 2048 MiB | 2624 MiB | 2.5 |
-| `verifier-inji` | 6 | 576 MiB | 2560 MiB | 3136 MiB | 2.5 |
-| `verifier-credebl` | 6 | 576 MiB | 2560 MiB | 3136 MiB | 2.5 |
+| `verifier-waltid` | 7 | 672 MiB | 2048 MiB | 2720 MiB | 2.75 |
+| `verifier-inji` | 7 | 672 MiB | 2560 MiB | 3232 MiB | 2.75 |
+| `verifier-credebl` | 7 | 672 MiB | 2560 MiB | 3232 MiB | 2.75 |
 | `admin-waltid` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 | `admin-inji` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 | `admin-credebl` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |

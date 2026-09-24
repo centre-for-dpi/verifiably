@@ -306,6 +306,15 @@ func Catalog() []Service {
 			// The registry serves all of /.well-known/, which the admin
 			// service needs for its JWKS, so the registry keeps a prefix.
 			Routes: []Route{{Match: "/trust-registry/*", Strip: true}}},
+		// The verifier staff sign in service (ADR-036 decision 1). It shares
+		// the routes of issuer-auth and draws the same chooser.
+		{Name: "verifier-auth", ListenEnv: "VCA_VERIFIER_AUTH_LISTEN", ExposedPort: 8081, Roles: verifier, Stateful: true, UI: true,
+			Links: []Link{peers, landing("VCA_VERIFIER_AUTH_LANDING_URL")},
+			Fixed: state("VCA_VERIFIER_AUTH_STATE_DIR"),
+			Routes: []Route{
+				rpc("vca.verifierauth.v1.VerifierAuthService"), rpc("vca.admin.v1.AdminService"),
+				jwks, {Match: "/token"}, signIn,
+			}},
 		{Name: "verifier-combined", ListenEnv: "VCA_VERIFIER_COMBINED_LISTEN", ExposedPort: 8088, Roles: verifier, Stateful: true,
 			Links: []Link{
 				{Env: "VCA_VERIFIER_COMBINED_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
@@ -443,9 +452,9 @@ func portalService(role commonv1.Role) string {
 	}
 }
 
-// authService names the login service of a role. The verifier role and
-// the admin role log staff in from their portal, so they run none. The
-// topology package holds the table, so a page and the CLI agree.
+// authService names the login service of a role. The admin logs staff
+// in from its portal, so it runs none. The topology package holds the
+// table, so a page and the CLI agree.
 func authService(role commonv1.Role) string { return topology.AuthService(role) }
 
 // firstServicePort is the port the CLI assigns to the first service that

@@ -21,7 +21,8 @@ import (
 //   - /static/* is the same embedded asset set in every UI service, so
 //     only the home service of a role lists it.
 //   - /.well-known/jwks.json, /token, and /auth/* belong to the auth
-//     service of the role: issuer-auth, wallet-auth, or admin.
+//     service of the role: issuer-auth, wallet-auth, verifier-auth, or
+//     admin.
 //   - An API only service whose public URLs start with its *_BASE_URL
 //     keeps a prefix route with Strip, and its base URL carries the
 //     prefix: status-bitstring, status-token, and trust-registry.
@@ -73,6 +74,9 @@ import (
 //	          /scan/*                              verifier-ingest (the scanner)
 //	          /oid4vp/*                            verifier-ingest
 //	          /vca.ingest.v1.IngestService/*       verifier-ingest
+//	          /auth/*  /token  /.well-known/jwks.json       verifier-auth
+//	          /vca.verifierauth.v1.VerifierAuthService/*    verifier-auth
+//	          /vca.admin.v1.AdminService/*                  verifier-auth
 //	          /vca.policy.v1.PolicyService/*       verifier-policy
 //	          /vca.combined.v1.CombinedService/*   verifier-combined
 //	          /vca.backend.v1.*Service/*           dpg-adapter-<dpg>

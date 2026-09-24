@@ -106,14 +106,16 @@ func (p Peer) SignInURL() string {
 	return strings.TrimRight(p.PublicURL, "/") + "/auth/?return_to=" + url.QueryEscape(HomePath(p.Role))
 }
 
-// AuthService names the login service of a role. The verifier and the
-// admin log staff in from their portal, so they run none.
+// AuthService names the login service of a role. The admin logs staff
+// in from its portal, so it runs none (ADR-036 decision 1).
 func AuthService(role commonv1.Role) string {
 	switch role {
 	case commonv1.Role_ROLE_ISSUER:
 		return "issuer-auth"
 	case commonv1.Role_ROLE_HOLDER:
 		return "wallet-auth"
+	case commonv1.Role_ROLE_VERIFIER:
+		return "verifier-auth"
 	default:
 		return ""
 	}
