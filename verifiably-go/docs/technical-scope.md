@@ -505,6 +505,13 @@ There is no `umbrella/inji` and no `umbrella/credebl`, and no charts for Inji Ce
   Both now call `deploy/k8s/scripts/gen-wallet-values.sh`, so a gap in the
   deploy path fails in the render tier too.
 
+  A second gap found while verifying this: `on: pull_request:` carried no
+  `types:`, which defaults to `opened, synchronize, reopened`. **`labeled` is
+  not in that set**, so the `k8s-e2e` label named in the cluster job's `if:`
+  could never start anything — applying it fired no event. The on-demand
+  escape hatch G.5.1 documented existed only on paper until a push happened to
+  follow it. `types:` now names `labeled` explicitly.
+
   **This unblocks the render, not the convergence.** The nightly will now get
   as far as the thing G.2 was always about — whether the umbrella becomes
   ready — which has still never been observed. Expect the next failure to be a

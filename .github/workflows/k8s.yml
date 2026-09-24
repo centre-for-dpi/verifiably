@@ -23,6 +23,12 @@ name: k8s
 
 on:
   pull_request:
+    # `labeled` is not in the default set (opened, synchronize, reopened), so
+    # without it the k8s-e2e label below could never start anything: the
+    # cluster job's `if` named the label as its on-demand trigger, and adding
+    # the label fired no event at all. The escape hatch existed only on paper
+    # until a push happened to follow it.
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: '0 3 * * *'   # 03:00 UTC nightly — the cluster tier's real trigger
   workflow_dispatch:
