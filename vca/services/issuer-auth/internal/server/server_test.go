@@ -36,6 +36,35 @@ func baseConfig(t *testing.T) config.Config {
 	return c
 }
 
+// TestSeedProviderIsKeycloakWithRealmAndConsole is ADR-035 decision 2:
+// the seed of the stack is a record of kind keycloak with the realm of
+// the issuer role, the console of that realm, and the default flag.
+func TestSeedProviderIsKeycloakWithRealmAndConsole(t *testing.T) {
+	cfg := baseConfig(t)
+	cfg.Seed = config.SeedProvider{
+		DiscoveryURL:   "http://waltid-keycloak:8080/realms/vca-issuer-realm/.well-known/openid-configuration",
+		ClientID:       "vca-issuer",
+		ClientSecret:   "S",
+		RolesClaimPath: "realm_access.roles",
+		PublicURL:      "http://localhost:17010",
+	}
+	svc, err := server.Build(cfg, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := svc.Providers().Get(oidcflow.SeedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Kind != oidcflow.KindKeycloak || p.Realm != "vca-issuer-realm" || !p.IsDefault ||
+		p.ConsoleURL != "http://localhost:17010/admin/vca-issuer-realm/console/" {
+		t.Errorf("seed profile = %+v", p.Profile)
+	}
+	if len(p.Roles) != 1 || p.Roles[0] != "issuer" || p.RolesClaimPath != "realm_access.roles" {
+		t.Errorf("seed record = %+v", p)
+	}
+}
+
 func TestBuild(t *testing.T) {
 	cfg := baseConfig(t)
 	svc, err := server.Build(cfg, quiet)

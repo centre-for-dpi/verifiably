@@ -83,6 +83,19 @@ returns `ErrNotConfigured`. A deployment that sets `VCA_REDIS_URL`
 refuses to start until the client lands. The doc comment on the type
 names the Redis commands the real version uses.
 
+## Providers
+
+A first provider can come from the `VCA_OIDC_*` variables that the setup
+CLI writes. The service registers it once under the id `default` with
+the scope `openid` and the role `holder`.
+A discovery URL of a Keycloak realm gives a record of kind `keycloak`
+with that realm and the default flag.
+The console URL of the record is the console of the realm under
+`VCA_OIDC_PUBLIC_URL`.
+Both services share the flow code (ADR-035 decisions 2 to 4).
+So `docs/issuer-auth.md` describes the record fields, the register
+action, and the token endpoint methods of this service too.
+
 ## Storage
 
 The service persists `providers.json`, `wallets.json`, and `grants.json`

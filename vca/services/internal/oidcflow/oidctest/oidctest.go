@@ -48,6 +48,18 @@ type Provider struct {
 	WrongNonce bool
 	// NoEndSession removes end_session_endpoint from discovery.
 	NoEndSession bool
+	// PromptValuesSupported is advertised in discovery when set, so a
+	// test can offer prompt=create (OpenID Connect Prompt Create 1.0).
+	PromptValuesSupported []string
+	// ClientSecretPost makes the token endpoint expect the client secret
+	// in the form body and reject HTTP Basic (RFC 6749 section 2.3.1).
+	ClientSecretPost bool
+	// ClientAssertionKey, when set, makes the token endpoint expect a
+	// client assertion signed by the matching private key
+	// (RFC 7523 section 2.2) and reject every other authentication.
+	ClientAssertionKey crypto.PublicKey
+	// LastTokenForm is the form of the last token request.
+	LastTokenForm url.Values
 	// Now returns the time the ID tokens are issued at.
 	Now func() time.Time
 
@@ -154,6 +166,9 @@ func (p *Provider) discovery(w http.ResponseWriter, _ *http.Request) {
 	if !p.NoEndSession {
 		doc["end_session_endpoint"] = p.Server.URL + "/logout"
 	}
+	if len(p.PromptValuesSupported) > 0 {
+		doc["prompt_values_supported"] = p.PromptValuesSupported
+	}
 	writeJSON(w, http.StatusOK, doc)
 }
 
@@ -195,12 +210,12 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": p.TokenError})
 		return
 	}
-	if p.ClientSecret != "" {
-		id, secret, ok := r.BasicAuth()
-		if !ok || id != url.QueryEscape(p.ClientID) || secret != url.QueryEscape(p.ClientSecret) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client"})
-			return
-		}
+	p.mu.Lock()
+	p.LastTokenForm = r.PostForm
+	p.mu.Unlock()
+	if !p.clientAuthenticated(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client"})
+		return
 	}
 	p.mu.Lock()
 	req, ok := p.codes[r.PostFormValue("code")]
@@ -223,6 +238,76 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		body["id_token"] = p.IDToken(req.clientID, nonce)
 	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// ClientAssertionType is the client_assertion_type of RFC 7523.
+const ClientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+// clientAuthenticated checks the client authentication of a token
+// request against the method the fake expects.
+func (p *Provider) clientAuthenticated(r *http.Request) bool {
+	_, _, basic := r.BasicAuth()
+	switch {
+	case p.ClientAssertionKey != nil:
+		if basic || r.PostFormValue("client_secret") != "" {
+			return false
+		}
+		return p.validAssertion(r.PostFormValue("client_assertion_type"), r.PostFormValue("client_assertion"))
+	case p.ClientSecret != "" && p.ClientSecretPost:
+		return !basic && r.PostFormValue("client_id") == p.ClientID && r.PostFormValue("client_secret") == p.ClientSecret
+	case p.ClientSecret != "":
+		id, secret, ok := r.BasicAuth()
+		return ok && id == url.QueryEscape(p.ClientID) && secret == url.QueryEscape(p.ClientSecret)
+	}
+	return true
+}
+
+// validAssertion checks a client assertion: the type, the signature
+// against ClientAssertionKey, iss and sub equal to the client id, aud
+// naming the token endpoint, a jti, and an exp in the future
+// (RFC 7523 section 3).
+func (p *Provider) validAssertion(typ, assertion string) bool {
+	if typ != ClientAssertionType || assertion == "" {
+		return false
+	}
+	raw, _, err := jose.Verify(assertion, p.ClientAssertionKey, []jose.Algorithm{jose.ES256, jose.EdDSA})
+	if err != nil {
+		return false
+	}
+	var claims struct {
+		Iss string `json:"iss"`
+		Sub string `json:"sub"`
+		Aud any    `json:"aud"`
+		Jti string `json:"jti"`
+		Exp int64  `json:"exp"`
+	}
+	if json.Unmarshal(raw, &claims) != nil {
+		return false
+	}
+	audOK := false
+	for _, a := range audiences(claims.Aud) {
+		if a == p.Server.URL+"/token" {
+			audOK = true
+		}
+	}
+	return claims.Iss == p.ClientID && claims.Sub == p.ClientID && audOK && claims.Jti != "" &&
+		claims.Exp > p.Now().Unix()
+}
+
+func audiences(v any) []string {
+	switch a := v.(type) {
+	case string:
+		return []string{a}
+	case []any:
+		out := make([]string, 0, len(a))
+		for _, item := range a {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // IDToken signs an ID token for aud with the current key and Claims.

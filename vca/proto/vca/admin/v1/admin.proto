@@ -8,6 +8,7 @@ package vca.admin.v1;
 
 import "google/protobuf/timestamp.proto";
 import "vca/common/v1/common.proto";
+import "vca/config/v1/config.proto";
 import "vca/trust/v1/trust.proto";
 
 // AdminService holds every super admin operation.
@@ -256,6 +257,53 @@ message DeleteTrustEntryRequest {
 // DeleteTrustEntryResponse has no fields.
 message DeleteTrustEntryResponse {}
 
+// ProviderKind names the product behind a provider record. The kind
+// selects a fallback, such as the Keycloak registration endpoint, and
+// the labels of the login page. It is never a code dependency
+// (ADR-035 decision 2).
+enum ProviderKind {
+  PROVIDER_KIND_UNSPECIFIED = 0;
+  // Any provider that serves OpenID Connect Discovery 1.0.
+  PROVIDER_KIND_GENERIC = 1;
+  // A Keycloak realm.
+  PROVIDER_KIND_KEYCLOAK = 2;
+  // A WSO2 Identity Server tenant.
+  PROVIDER_KIND_WSO2 = 3;
+  // An eSignet deployment.
+  PROVIDER_KIND_ESIGNET = 4;
+}
+
+// Registration says how the login page offers a "Create an account"
+// action for a provider (ADR-035 decision 3). Unspecified lets the
+// service decide from the provider metadata and the kind.
+enum Registration {
+  REGISTRATION_UNSPECIFIED = 0;
+  // The page shows no register action.
+  REGISTRATION_NONE = 1;
+  // The authorization request carries prompt=create
+  // (OpenID Connect Prompt Create 1.0).
+  REGISTRATION_PROMPT_CREATE = 2;
+  // The Keycloak registration endpoint of the realm, with the same
+  // PKCE parameters as a login.
+  REGISTRATION_KEYCLOAK_ENDPOINT = 3;
+}
+
+// TokenAuth is the client authentication method at the token endpoint
+// (ADR-035 decision 4). Unspecified means client_secret_basic when the
+// record names a client secret, and none otherwise.
+enum TokenAuth {
+  TOKEN_AUTH_UNSPECIFIED = 0;
+  // HTTP Basic with the client id and the client secret
+  // (RFC 6749 section 2.3.1).
+  TOKEN_AUTH_CLIENT_SECRET_BASIC = 1;
+  // The client secret in the request body (RFC 6749 section 2.3.1).
+  TOKEN_AUTH_CLIENT_SECRET_POST = 2;
+  // A signed client assertion (RFC 7523 section 2.2), as eSignet needs.
+  TOKEN_AUTH_PRIVATE_KEY_JWT = 3;
+  // No client authentication, for a public client.
+  TOKEN_AUTH_NONE = 4;
+}
+
 // AuthProvider is one OpenID Connect provider.
 message AuthProvider {
   // The provider id. The service assigns it.
@@ -276,6 +324,26 @@ message AuthProvider {
   bool enabled = 8;
   // The creation time.
   google.protobuf.Timestamp created_at = 9;
+  // The product behind the provider (ADR-035 decision 2).
+  ProviderKind kind = 10;
+  // The realm or tenant label the login page shows, for example
+  // vca-issuer-realm. Optional.
+  string realm = 11;
+  // How the login page offers a register action (ADR-035 decision 3).
+  Registration registration = 12;
+  // The administration console of the provider, for the admin portal.
+  // Optional.
+  string console_url = 13;
+  // The stacks whose pairs use this provider. Empty means every stack.
+  repeated vca.config.v1.Dpg stacks = 14;
+  // The client authentication method at the token endpoint
+  // (ADR-035 decision 4).
+  TokenAuth token_auth_method = 15;
+  // The reference to the private key that signs the client assertion of
+  // private_key_jwt. Required for that method.
+  vca.common.v1.SecretRef private_key = 16;
+  // True for the provider that the setup CLI seeded from the stack.
+  bool is_default = 17;
 }
 
 // CreateAuthProviderRequest carries the provider to register.

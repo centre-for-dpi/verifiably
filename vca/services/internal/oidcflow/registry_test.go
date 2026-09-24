@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 )
 
@@ -291,5 +293,177 @@ func TestAuthorizers(t *testing.T) {
 	}
 	if err := oidcflow.AnyAuthorizer()(context.Background(), h); !errors.Is(err, oidcflow.ErrUnauthorized) {
 		t.Fatal(err)
+	}
+}
+
+// fullProvider is a record with every field of ADR-035 decision 2 set.
+func fullProvider() oidcflow.Provider {
+	return oidcflow.Provider{
+		ID: "kc", DisplayName: "Stack", DiscoveryURL: "https://kc.example/realms/vca-issuer-realm/.well-known/openid-configuration",
+		ClientID: "vca-issuer", ClientSecret: oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: "S"},
+		Roles: []string{"issuer"}, Enabled: true,
+		Profile: oidcflow.Profile{
+			Kind:            oidcflow.KindKeycloak,
+			Realm:           "vca-issuer-realm",
+			Registration:    oidcflow.RegistrationKeycloakEndpoint,
+			ConsoleURL:      "https://kc.example/admin/vca-issuer-realm/console/",
+			Stacks:          []string{"waltid", "inji"},
+			TokenAuthMethod: oidcflow.TokenAuthPrivateKeyJWT,
+			PrivateKey:      oidcflow.SecretRef{Store: oidcflow.SecretFile, Name: "/run/secrets/client.pem"},
+			IsDefault:       true,
+		},
+	}
+}
+
+// TestProviderRoundTripKeepsNewFields keeps the kind, the realm, the
+// registration mode, the console, the stacks, the token authentication
+// method, the key reference, and the default flag across the persister
+// and across the admin proto (ADR-035 decisions 2 and 4).
+func TestProviderRoundTripKeepsNewFields(t *testing.T) {
+	store := oidcflow.NewMemoryPersister()
+	reg, err := oidcflow.NewRegistry(store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fullProvider()
+	if _, putErr := reg.Put(want); putErr != nil {
+		t.Fatalf("Put: %v", putErr)
+	}
+	again, err := oidcflow.NewRegistry(store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := again.Get("kc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Profile, want.Profile) {
+		t.Errorf("persisted profile = %+v, want %+v", got.Profile, want.Profile)
+	}
+	m := oidcflow.ToAdminProto(want)
+	if m.GetKind() != adminv1.ProviderKind_PROVIDER_KIND_KEYCLOAK || m.GetRealm() != "vca-issuer-realm" ||
+		m.GetRegistration() != adminv1.Registration_REGISTRATION_KEYCLOAK_ENDPOINT ||
+		m.GetConsoleUrl() != want.ConsoleURL || len(m.GetStacks()) != 2 ||
+		m.GetStacks()[0] != configv1.Dpg_DPG_WALTID || m.GetStacks()[1] != configv1.Dpg_DPG_INJI ||
+		m.GetTokenAuthMethod() != adminv1.TokenAuth_TOKEN_AUTH_PRIVATE_KEY_JWT ||
+		m.GetPrivateKey().GetStore() != commonv1.SecretRef_STORE_FILE || m.GetPrivateKey().GetName() != "/run/secrets/client.pem" ||
+		!m.GetIsDefault() {
+		t.Errorf("to proto = %+v", m)
+	}
+	back := oidcflow.FromAdminProto(m)
+	if !reflect.DeepEqual(back.Profile, want.Profile) {
+		t.Errorf("from proto = %+v, want %+v", back.Profile, want.Profile)
+	}
+	// Every enum value survives the trip; an unknown string becomes the
+	// unspecified value and comes back empty.
+	for _, kind := range []oidcflow.Kind{oidcflow.KindGeneric, oidcflow.KindKeycloak, oidcflow.KindWSO2, oidcflow.KindESignet} {
+		p := oidcflow.FromAdminProto(oidcflow.ToAdminProto(oidcflow.Provider{Profile: oidcflow.Profile{Kind: kind}}))
+		if p.Kind != kind {
+			t.Errorf("kind %s -> %s", kind, p.Kind)
+		}
+	}
+	for _, mode := range []oidcflow.Registration{oidcflow.RegistrationNone, oidcflow.RegistrationPromptCreate, oidcflow.RegistrationKeycloakEndpoint} {
+		p := oidcflow.FromAdminProto(oidcflow.ToAdminProto(oidcflow.Provider{Profile: oidcflow.Profile{Registration: mode}}))
+		if p.Registration != mode {
+			t.Errorf("registration %s -> %s", mode, p.Registration)
+		}
+	}
+	for _, method := range []oidcflow.TokenAuth{oidcflow.TokenAuthClientSecretBasic, oidcflow.TokenAuthClientSecretPost, oidcflow.TokenAuthPrivateKeyJWT, oidcflow.TokenAuthNone} {
+		p := oidcflow.FromAdminProto(oidcflow.ToAdminProto(oidcflow.Provider{Profile: oidcflow.Profile{TokenAuthMethod: method}}))
+		if p.TokenAuthMethod != method {
+			t.Errorf("token auth %s -> %s", method, p.TokenAuthMethod)
+		}
+	}
+	odd := oidcflow.FromAdminProto(oidcflow.ToAdminProto(oidcflow.Provider{Profile: oidcflow.Profile{
+		Kind: "odd", Registration: "odd", TokenAuthMethod: "odd", Stacks: []string{"odd", "credebl"},
+	}}))
+	if odd.Kind != "" || odd.Registration != "" || odd.TokenAuthMethod != "" || len(odd.Stacks) != 1 || odd.Stacks[0] != "credebl" {
+		t.Errorf("odd values = %+v", odd.Profile)
+	}
+	if !oidcflow.FromAdminProto(&adminv1.AuthProvider{}).PrivateKey.IsZero() {
+		t.Error("an empty message has a key reference")
+	}
+}
+
+// TestSeedProviderIsKeycloakWithRealmAndConsole is ADR-035 decision 2:
+// the provider that the setup CLI seeds is a record of kind keycloak
+// with the realm of the role, the console of that realm, and the
+// default flag, and no code path depends on the kind.
+func TestSeedProviderIsKeycloakWithRealmAndConsole(t *testing.T) {
+	seed := oidcflow.Seed{
+		DiscoveryURL:      "http://waltid-keycloak:8080/realms/vca-issuer-realm/.well-known/openid-configuration",
+		ClientID:          "vca-issuer",
+		ClientSecretEnv:   "VCA_OIDC_CLIENT_SECRET",
+		PublicURL:         "http://localhost:17010/",
+		RolesClaimPath:    "realm_access.roles",
+		Roles:             []string{"issuer"},
+		InternalAuthority: "http://waltid-keycloak:8080",
+	}
+	p := oidcflow.SeedProvider(seed)
+	if p.ID != oidcflow.SeedID || p.DisplayName == "" || !p.Enabled || !p.IsDefault {
+		t.Errorf("seed = %+v", p)
+	}
+	if p.Kind != oidcflow.KindKeycloak || p.Realm != "vca-issuer-realm" ||
+		p.ConsoleURL != "http://localhost:17010/admin/vca-issuer-realm/console/" {
+		t.Errorf("seed profile = %+v", p.Profile)
+	}
+	if p.Registration != "" {
+		t.Errorf("the seed fixes the registration mode to %q; the metadata decides", p.Registration)
+	}
+	if p.ClientSecret != (oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: "VCA_OIDC_CLIENT_SECRET"}) ||
+		p.RolesClaimPath != "realm_access.roles" || len(p.Roles) != 1 || p.InternalAuthority != seed.InternalAuthority {
+		t.Errorf("seed record = %+v", p)
+	}
+	// No public URL: the console sits at the authority of the discovery URL.
+	seed.PublicURL = ""
+	if p := oidcflow.SeedProvider(seed); p.ConsoleURL != "http://waltid-keycloak:8080/admin/vca-issuer-realm/console/" {
+		t.Errorf("console without a public URL = %q", p.ConsoleURL)
+	}
+	// No secret variable: a public client.
+	seed.ClientSecretEnv = ""
+	if p := oidcflow.SeedProvider(seed); !p.ClientSecret.IsZero() {
+		t.Errorf("a public client got a secret: %+v", p.ClientSecret)
+	}
+	// Another provider is generic, with no realm and no console.
+	seed.DiscoveryURL = "https://idp.example/.well-known/openid-configuration"
+	if p := oidcflow.SeedProvider(seed); p.Kind != oidcflow.KindGeneric || p.Realm != "" || p.ConsoleURL != "" {
+		t.Errorf("generic seed = %+v", p.Profile)
+	}
+	if realm, ok := oidcflow.KeycloakRealmOf("https://idp.example/realms/x/.well-known/openid-configuration"); !ok || realm != "x" {
+		t.Errorf("KeycloakRealmOf = %q, %v", realm, ok)
+	}
+	for _, raw := range []string{"https://idp.example/realms//.well-known/openid-configuration", "https://idp.example/realms/x", "::bad", ""} {
+		if _, ok := oidcflow.KeycloakRealmOf(raw); ok {
+			t.Errorf("KeycloakRealmOf(%q) passed", raw)
+		}
+	}
+	// The registry seeds once and keeps a stored record.
+	reg, err := oidcflow.NewRegistry(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seedErr := reg.Seed(oidcflow.SeedProvider(seed)); seedErr != nil {
+		t.Fatalf("Seed: %v", seedErr)
+	}
+	kept, getErr := reg.Get(oidcflow.SeedID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	kept.DisplayName = "Kept"
+	if _, putErr := reg.Put(kept); putErr != nil {
+		t.Fatal(putErr)
+	}
+	if seedErr := reg.Seed(oidcflow.SeedProvider(seed)); seedErr != nil {
+		t.Fatalf("second Seed: %v", seedErr)
+	}
+	if got, gotErr := reg.Get(oidcflow.SeedID); gotErr != nil || got.DisplayName != "Kept" {
+		t.Errorf("the seed replaced the stored record: %v", gotErr)
+	}
+	fresh, err := oidcflow.NewRegistry(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fresh.Seed(oidcflow.SeedProvider(oidcflow.Seed{})); !errors.Is(err, oidcflow.ErrInvalidProvider) {
+		t.Errorf("an empty seed = %v", err)
 	}
 }

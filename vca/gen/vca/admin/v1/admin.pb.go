@@ -13,6 +13,7 @@ package adminv1
 
 import (
 	v1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	v12 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	v11 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -28,6 +29,192 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// ProviderKind names the product behind a provider record. The kind
+// selects a fallback, such as the Keycloak registration endpoint, and
+// the labels of the login page. It is never a code dependency
+// (ADR-035 decision 2).
+type ProviderKind int32
+
+const (
+	ProviderKind_PROVIDER_KIND_UNSPECIFIED ProviderKind = 0
+	// Any provider that serves OpenID Connect Discovery 1.0.
+	ProviderKind_PROVIDER_KIND_GENERIC ProviderKind = 1
+	// A Keycloak realm.
+	ProviderKind_PROVIDER_KIND_KEYCLOAK ProviderKind = 2
+	// A WSO2 Identity Server tenant.
+	ProviderKind_PROVIDER_KIND_WSO2 ProviderKind = 3
+	// An eSignet deployment.
+	ProviderKind_PROVIDER_KIND_ESIGNET ProviderKind = 4
+)
+
+// Enum value maps for ProviderKind.
+var (
+	ProviderKind_name = map[int32]string{
+		0: "PROVIDER_KIND_UNSPECIFIED",
+		1: "PROVIDER_KIND_GENERIC",
+		2: "PROVIDER_KIND_KEYCLOAK",
+		3: "PROVIDER_KIND_WSO2",
+		4: "PROVIDER_KIND_ESIGNET",
+	}
+	ProviderKind_value = map[string]int32{
+		"PROVIDER_KIND_UNSPECIFIED": 0,
+		"PROVIDER_KIND_GENERIC":     1,
+		"PROVIDER_KIND_KEYCLOAK":    2,
+		"PROVIDER_KIND_WSO2":        3,
+		"PROVIDER_KIND_ESIGNET":     4,
+	}
+)
+
+func (x ProviderKind) Enum() *ProviderKind {
+	p := new(ProviderKind)
+	*p = x
+	return p
+}
+
+func (x ProviderKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ProviderKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_admin_v1_admin_proto_enumTypes[0].Descriptor()
+}
+
+func (ProviderKind) Type() protoreflect.EnumType {
+	return &file_vca_admin_v1_admin_proto_enumTypes[0]
+}
+
+func (x ProviderKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ProviderKind.Descriptor instead.
+func (ProviderKind) EnumDescriptor() ([]byte, []int) {
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{0}
+}
+
+// Registration says how the login page offers a "Create an account"
+// action for a provider (ADR-035 decision 3). Unspecified lets the
+// service decide from the provider metadata and the kind.
+type Registration int32
+
+const (
+	Registration_REGISTRATION_UNSPECIFIED Registration = 0
+	// The page shows no register action.
+	Registration_REGISTRATION_NONE Registration = 1
+	// The authorization request carries prompt=create
+	// (OpenID Connect Prompt Create 1.0).
+	Registration_REGISTRATION_PROMPT_CREATE Registration = 2
+	// The Keycloak registration endpoint of the realm, with the same
+	// PKCE parameters as a login.
+	Registration_REGISTRATION_KEYCLOAK_ENDPOINT Registration = 3
+)
+
+// Enum value maps for Registration.
+var (
+	Registration_name = map[int32]string{
+		0: "REGISTRATION_UNSPECIFIED",
+		1: "REGISTRATION_NONE",
+		2: "REGISTRATION_PROMPT_CREATE",
+		3: "REGISTRATION_KEYCLOAK_ENDPOINT",
+	}
+	Registration_value = map[string]int32{
+		"REGISTRATION_UNSPECIFIED":       0,
+		"REGISTRATION_NONE":              1,
+		"REGISTRATION_PROMPT_CREATE":     2,
+		"REGISTRATION_KEYCLOAK_ENDPOINT": 3,
+	}
+)
+
+func (x Registration) Enum() *Registration {
+	p := new(Registration)
+	*p = x
+	return p
+}
+
+func (x Registration) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Registration) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_admin_v1_admin_proto_enumTypes[1].Descriptor()
+}
+
+func (Registration) Type() protoreflect.EnumType {
+	return &file_vca_admin_v1_admin_proto_enumTypes[1]
+}
+
+func (x Registration) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Registration.Descriptor instead.
+func (Registration) EnumDescriptor() ([]byte, []int) {
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{1}
+}
+
+// TokenAuth is the client authentication method at the token endpoint
+// (ADR-035 decision 4). Unspecified means client_secret_basic when the
+// record names a client secret, and none otherwise.
+type TokenAuth int32
+
+const (
+	TokenAuth_TOKEN_AUTH_UNSPECIFIED TokenAuth = 0
+	// HTTP Basic with the client id and the client secret
+	// (RFC 6749 section 2.3.1).
+	TokenAuth_TOKEN_AUTH_CLIENT_SECRET_BASIC TokenAuth = 1
+	// The client secret in the request body (RFC 6749 section 2.3.1).
+	TokenAuth_TOKEN_AUTH_CLIENT_SECRET_POST TokenAuth = 2
+	// A signed client assertion (RFC 7523 section 2.2), as eSignet needs.
+	TokenAuth_TOKEN_AUTH_PRIVATE_KEY_JWT TokenAuth = 3
+	// No client authentication, for a public client.
+	TokenAuth_TOKEN_AUTH_NONE TokenAuth = 4
+)
+
+// Enum value maps for TokenAuth.
+var (
+	TokenAuth_name = map[int32]string{
+		0: "TOKEN_AUTH_UNSPECIFIED",
+		1: "TOKEN_AUTH_CLIENT_SECRET_BASIC",
+		2: "TOKEN_AUTH_CLIENT_SECRET_POST",
+		3: "TOKEN_AUTH_PRIVATE_KEY_JWT",
+		4: "TOKEN_AUTH_NONE",
+	}
+	TokenAuth_value = map[string]int32{
+		"TOKEN_AUTH_UNSPECIFIED":         0,
+		"TOKEN_AUTH_CLIENT_SECRET_BASIC": 1,
+		"TOKEN_AUTH_CLIENT_SECRET_POST":  2,
+		"TOKEN_AUTH_PRIVATE_KEY_JWT":     3,
+		"TOKEN_AUTH_NONE":                4,
+	}
+)
+
+func (x TokenAuth) Enum() *TokenAuth {
+	p := new(TokenAuth)
+	*p = x
+	return p
+}
+
+func (x TokenAuth) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TokenAuth) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_admin_v1_admin_proto_enumTypes[2].Descriptor()
+}
+
+func (TokenAuth) Type() protoreflect.EnumType {
+	return &file_vca_admin_v1_admin_proto_enumTypes[2]
+}
+
+func (x TokenAuth) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TokenAuth.Descriptor instead.
+func (TokenAuth) EnumDescriptor() ([]byte, []int) {
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{2}
+}
 
 // State names whether the tenant can act.
 type Tenant_State int32
@@ -65,11 +252,11 @@ func (x Tenant_State) String() string {
 }
 
 func (Tenant_State) Descriptor() protoreflect.EnumDescriptor {
-	return file_vca_admin_v1_admin_proto_enumTypes[0].Descriptor()
+	return file_vca_admin_v1_admin_proto_enumTypes[3].Descriptor()
 }
 
 func (Tenant_State) Type() protoreflect.EnumType {
-	return &file_vca_admin_v1_admin_proto_enumTypes[0]
+	return &file_vca_admin_v1_admin_proto_enumTypes[3]
 }
 
 func (x Tenant_State) Number() protoreflect.EnumNumber {
@@ -1038,7 +1225,27 @@ type AuthProvider struct {
 	// True when the provider accepts logins.
 	Enabled bool `protobuf:"varint,8,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// The creation time.
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// The product behind the provider (ADR-035 decision 2).
+	Kind ProviderKind `protobuf:"varint,10,opt,name=kind,proto3,enum=vca.admin.v1.ProviderKind" json:"kind,omitempty"`
+	// The realm or tenant label the login page shows, for example
+	// vca-issuer-realm. Optional.
+	Realm string `protobuf:"bytes,11,opt,name=realm,proto3" json:"realm,omitempty"`
+	// How the login page offers a register action (ADR-035 decision 3).
+	Registration Registration `protobuf:"varint,12,opt,name=registration,proto3,enum=vca.admin.v1.Registration" json:"registration,omitempty"`
+	// The administration console of the provider, for the admin portal.
+	// Optional.
+	ConsoleUrl string `protobuf:"bytes,13,opt,name=console_url,json=consoleUrl,proto3" json:"console_url,omitempty"`
+	// The stacks whose pairs use this provider. Empty means every stack.
+	Stacks []v12.Dpg `protobuf:"varint,14,rep,packed,name=stacks,proto3,enum=vca.config.v1.Dpg" json:"stacks,omitempty"`
+	// The client authentication method at the token endpoint
+	// (ADR-035 decision 4).
+	TokenAuthMethod TokenAuth `protobuf:"varint,15,opt,name=token_auth_method,json=tokenAuthMethod,proto3,enum=vca.admin.v1.TokenAuth" json:"token_auth_method,omitempty"`
+	// The reference to the private key that signs the client assertion of
+	// private_key_jwt. Required for that method.
+	PrivateKey *v1.SecretRef `protobuf:"bytes,16,opt,name=private_key,json=privateKey,proto3" json:"private_key,omitempty"`
+	// True for the provider that the setup CLI seeded from the stack.
+	IsDefault     bool `protobuf:"varint,17,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1134,6 +1341,62 @@ func (x *AuthProvider) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *AuthProvider) GetKind() ProviderKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ProviderKind_PROVIDER_KIND_UNSPECIFIED
+}
+
+func (x *AuthProvider) GetRealm() string {
+	if x != nil {
+		return x.Realm
+	}
+	return ""
+}
+
+func (x *AuthProvider) GetRegistration() Registration {
+	if x != nil {
+		return x.Registration
+	}
+	return Registration_REGISTRATION_UNSPECIFIED
+}
+
+func (x *AuthProvider) GetConsoleUrl() string {
+	if x != nil {
+		return x.ConsoleUrl
+	}
+	return ""
+}
+
+func (x *AuthProvider) GetStacks() []v12.Dpg {
+	if x != nil {
+		return x.Stacks
+	}
+	return nil
+}
+
+func (x *AuthProvider) GetTokenAuthMethod() TokenAuth {
+	if x != nil {
+		return x.TokenAuthMethod
+	}
+	return TokenAuth_TOKEN_AUTH_UNSPECIFIED
+}
+
+func (x *AuthProvider) GetPrivateKey() *v1.SecretRef {
+	if x != nil {
+		return x.PrivateKey
+	}
+	return nil
+}
+
+func (x *AuthProvider) GetIsDefault() bool {
+	if x != nil {
+		return x.IsDefault
+	}
+	return false
 }
 
 // CreateAuthProviderRequest carries the provider to register.
@@ -2919,7 +3182,7 @@ var File_vca_admin_v1_admin_proto protoreflect.FileDescriptor
 
 const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x18vca/admin/v1/admin.proto\x12\fvca.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x18vca/trust/v1/trust.proto\"\xaa\x02\n" +
+	"\x18vca/admin/v1/admin.proto\x12\fvca.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/config/v1/config.proto\x1a\x18vca/trust/v1/trust.proto\"\xaa\x02\n" +
 	"\x06Tenant\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x120\n" +
@@ -2974,7 +3237,7 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"identifier\x18\x01 \x01(\v2#.vca.trust.v1.TrustEntry.IdentifierR\n" +
 	"identifier\"\x1a\n" +
-	"\x18DeleteTrustEntryResponse\"\xec\x02\n" +
+	"\x18DeleteTrustEntryResponse\"\xde\x05\n" +
 	"\fAuthProvider\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12#\n" +
@@ -2985,7 +3248,19 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\x10roles_claim_path\x18\a \x01(\tR\x0erolesClaimPath\x12\x18\n" +
 	"\aenabled\x18\b \x01(\bR\aenabled\x129\n" +
 	"\n" +
-	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x86\x01\n" +
+	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12.\n" +
+	"\x04kind\x18\n" +
+	" \x01(\x0e2\x1a.vca.admin.v1.ProviderKindR\x04kind\x12\x14\n" +
+	"\x05realm\x18\v \x01(\tR\x05realm\x12>\n" +
+	"\fregistration\x18\f \x01(\x0e2\x1a.vca.admin.v1.RegistrationR\fregistration\x12\x1f\n" +
+	"\vconsole_url\x18\r \x01(\tR\n" +
+	"consoleUrl\x12*\n" +
+	"\x06stacks\x18\x0e \x03(\x0e2\x12.vca.config.v1.DpgR\x06stacks\x12C\n" +
+	"\x11token_auth_method\x18\x0f \x01(\x0e2\x17.vca.admin.v1.TokenAuthR\x0ftokenAuthMethod\x129\n" +
+	"\vprivate_key\x18\x10 \x01(\v2\x18.vca.common.v1.SecretRefR\n" +
+	"privateKey\x12\x1d\n" +
+	"\n" +
+	"is_default\x18\x11 \x01(\bR\tisDefault\"\x86\x01\n" +
 	"\x19CreateAuthProviderRequest\x126\n" +
 	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\x121\n" +
 	"\x14dynamic_registration\x18\x02 \x01(\bR\x13dynamicRegistration\"T\n" +
@@ -3094,7 +3369,24 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1c\n" +
 	"\tmandatory\x18\x03 \x01(\bR\tmandatory\x12#\n" +
-	"\rdefault_value\x18\x04 \x01(\tR\fdefaultValue2\xa6\x17\n" +
+	"\rdefault_value\x18\x04 \x01(\tR\fdefaultValue*\x97\x01\n" +
+	"\fProviderKind\x12\x1d\n" +
+	"\x19PROVIDER_KIND_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15PROVIDER_KIND_GENERIC\x10\x01\x12\x1a\n" +
+	"\x16PROVIDER_KIND_KEYCLOAK\x10\x02\x12\x16\n" +
+	"\x12PROVIDER_KIND_WSO2\x10\x03\x12\x19\n" +
+	"\x15PROVIDER_KIND_ESIGNET\x10\x04*\x87\x01\n" +
+	"\fRegistration\x12\x1c\n" +
+	"\x18REGISTRATION_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11REGISTRATION_NONE\x10\x01\x12\x1e\n" +
+	"\x1aREGISTRATION_PROMPT_CREATE\x10\x02\x12\"\n" +
+	"\x1eREGISTRATION_KEYCLOAK_ENDPOINT\x10\x03*\xa3\x01\n" +
+	"\tTokenAuth\x12\x1a\n" +
+	"\x16TOKEN_AUTH_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eTOKEN_AUTH_CLIENT_SECRET_BASIC\x10\x01\x12!\n" +
+	"\x1dTOKEN_AUTH_CLIENT_SECRET_POST\x10\x02\x12\x1e\n" +
+	"\x1aTOKEN_AUTH_PRIVATE_KEY_JWT\x10\x03\x12\x13\n" +
+	"\x0fTOKEN_AUTH_NONE\x10\x042\xa6\x17\n" +
 	"\fAdminService\x12n\n" +
 	"\fCreateTenant\x12!.vca.admin.v1.CreateTenantRequest\x1a\".vca.admin.v1.CreateTenantResponse\"\x17\xca\xf3\x18\x13Creates one tenant.\x12k\n" +
 	"\tGetTenant\x12\x1e.vca.admin.v1.GetTenantRequest\x1a\x1f.vca.admin.v1.GetTenantResponse\"\x1d\xca\xf3\x18\x19Returns one tenant by id.\x12q\n" +
@@ -3133,171 +3425,180 @@ func file_vca_admin_v1_admin_proto_rawDescGZIP() []byte {
 	return file_vca_admin_v1_admin_proto_rawDescData
 }
 
-var file_vca_admin_v1_admin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_vca_admin_v1_admin_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_vca_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_vca_admin_v1_admin_proto_goTypes = []any{
-	(Tenant_State)(0),                              // 0: vca.admin.v1.Tenant.State
-	(*Tenant)(nil),                                 // 1: vca.admin.v1.Tenant
-	(*CreateTenantRequest)(nil),                    // 2: vca.admin.v1.CreateTenantRequest
-	(*CreateTenantResponse)(nil),                   // 3: vca.admin.v1.CreateTenantResponse
-	(*GetTenantRequest)(nil),                       // 4: vca.admin.v1.GetTenantRequest
-	(*GetTenantResponse)(nil),                      // 5: vca.admin.v1.GetTenantResponse
-	(*ListTenantsRequest)(nil),                     // 6: vca.admin.v1.ListTenantsRequest
-	(*ListTenantsResponse)(nil),                    // 7: vca.admin.v1.ListTenantsResponse
-	(*UpdateTenantRequest)(nil),                    // 8: vca.admin.v1.UpdateTenantRequest
-	(*UpdateTenantResponse)(nil),                   // 9: vca.admin.v1.UpdateTenantResponse
-	(*DeleteTenantRequest)(nil),                    // 10: vca.admin.v1.DeleteTenantRequest
-	(*DeleteTenantResponse)(nil),                   // 11: vca.admin.v1.DeleteTenantResponse
-	(*UpsertTrustEntryRequest)(nil),                // 12: vca.admin.v1.UpsertTrustEntryRequest
-	(*UpsertTrustEntryResponse)(nil),               // 13: vca.admin.v1.UpsertTrustEntryResponse
-	(*GetTrustEntryRequest)(nil),                   // 14: vca.admin.v1.GetTrustEntryRequest
-	(*GetTrustEntryResponse)(nil),                  // 15: vca.admin.v1.GetTrustEntryResponse
-	(*ListTrustEntriesRequest)(nil),                // 16: vca.admin.v1.ListTrustEntriesRequest
-	(*ListTrustEntriesResponse)(nil),               // 17: vca.admin.v1.ListTrustEntriesResponse
-	(*DeleteTrustEntryRequest)(nil),                // 18: vca.admin.v1.DeleteTrustEntryRequest
-	(*DeleteTrustEntryResponse)(nil),               // 19: vca.admin.v1.DeleteTrustEntryResponse
-	(*AuthProvider)(nil),                           // 20: vca.admin.v1.AuthProvider
-	(*CreateAuthProviderRequest)(nil),              // 21: vca.admin.v1.CreateAuthProviderRequest
-	(*CreateAuthProviderResponse)(nil),             // 22: vca.admin.v1.CreateAuthProviderResponse
-	(*OnboardProviderRequest)(nil),                 // 23: vca.admin.v1.OnboardProviderRequest
-	(*OnboardProviderResponse)(nil),                // 24: vca.admin.v1.OnboardProviderResponse
-	(*GetAuthProviderRequest)(nil),                 // 25: vca.admin.v1.GetAuthProviderRequest
-	(*GetAuthProviderResponse)(nil),                // 26: vca.admin.v1.GetAuthProviderResponse
-	(*ListAuthProvidersRequest)(nil),               // 27: vca.admin.v1.ListAuthProvidersRequest
-	(*ListAuthProvidersResponse)(nil),              // 28: vca.admin.v1.ListAuthProvidersResponse
-	(*UpdateAuthProviderRequest)(nil),              // 29: vca.admin.v1.UpdateAuthProviderRequest
-	(*UpdateAuthProviderResponse)(nil),             // 30: vca.admin.v1.UpdateAuthProviderResponse
-	(*DeleteAuthProviderRequest)(nil),              // 31: vca.admin.v1.DeleteAuthProviderRequest
-	(*DeleteAuthProviderResponse)(nil),             // 32: vca.admin.v1.DeleteAuthProviderResponse
-	(*ApiKey)(nil),                                 // 33: vca.admin.v1.ApiKey
-	(*CreateApiKeyRequest)(nil),                    // 34: vca.admin.v1.CreateApiKeyRequest
-	(*CreateApiKeyResponse)(nil),                   // 35: vca.admin.v1.CreateApiKeyResponse
-	(*ListApiKeysRequest)(nil),                     // 36: vca.admin.v1.ListApiKeysRequest
-	(*ListApiKeysResponse)(nil),                    // 37: vca.admin.v1.ListApiKeysResponse
-	(*RevokeApiKeyRequest)(nil),                    // 38: vca.admin.v1.RevokeApiKeyRequest
-	(*RevokeApiKeyResponse)(nil),                   // 39: vca.admin.v1.RevokeApiKeyResponse
-	(*GetServiceHealthRequest)(nil),                // 40: vca.admin.v1.GetServiceHealthRequest
-	(*GetServiceHealthResponse)(nil),               // 41: vca.admin.v1.GetServiceHealthResponse
-	(*AuditRecord)(nil),                            // 42: vca.admin.v1.AuditRecord
-	(*QueryAuditLogRequest)(nil),                   // 43: vca.admin.v1.QueryAuditLogRequest
-	(*QueryAuditLogResponse)(nil),                  // 44: vca.admin.v1.QueryAuditLogResponse
-	(*OnboardAdminRequest)(nil),                    // 45: vca.admin.v1.OnboardAdminRequest
-	(*OnboardAdminResponse)(nil),                   // 46: vca.admin.v1.OnboardAdminResponse
-	(*ListCommandsRequest)(nil),                    // 47: vca.admin.v1.ListCommandsRequest
-	(*ListCommandsResponse)(nil),                   // 48: vca.admin.v1.ListCommandsResponse
-	(*GetServiceHealthResponse_ServiceHealth)(nil), // 49: vca.admin.v1.GetServiceHealthResponse.ServiceHealth
-	(*ListCommandsResponse_Command)(nil),           // 50: vca.admin.v1.ListCommandsResponse.Command
-	(*ListCommandsResponse_Flag)(nil),              // 51: vca.admin.v1.ListCommandsResponse.Flag
-	(*timestamppb.Timestamp)(nil),                  // 52: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),                          // 53: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                          // 54: vca.common.v1.PageResult
-	(*v11.TrustEntry)(nil),                         // 55: vca.trust.v1.TrustEntry
-	(*v11.TrustEntry_Identifier)(nil),              // 56: vca.trust.v1.TrustEntry.Identifier
-	(v1.Role)(0),                                   // 57: vca.common.v1.Role
-	(*v1.SecretRef)(nil),                           // 58: vca.common.v1.SecretRef
+	(ProviderKind)(0),                              // 0: vca.admin.v1.ProviderKind
+	(Registration)(0),                              // 1: vca.admin.v1.Registration
+	(TokenAuth)(0),                                 // 2: vca.admin.v1.TokenAuth
+	(Tenant_State)(0),                              // 3: vca.admin.v1.Tenant.State
+	(*Tenant)(nil),                                 // 4: vca.admin.v1.Tenant
+	(*CreateTenantRequest)(nil),                    // 5: vca.admin.v1.CreateTenantRequest
+	(*CreateTenantResponse)(nil),                   // 6: vca.admin.v1.CreateTenantResponse
+	(*GetTenantRequest)(nil),                       // 7: vca.admin.v1.GetTenantRequest
+	(*GetTenantResponse)(nil),                      // 8: vca.admin.v1.GetTenantResponse
+	(*ListTenantsRequest)(nil),                     // 9: vca.admin.v1.ListTenantsRequest
+	(*ListTenantsResponse)(nil),                    // 10: vca.admin.v1.ListTenantsResponse
+	(*UpdateTenantRequest)(nil),                    // 11: vca.admin.v1.UpdateTenantRequest
+	(*UpdateTenantResponse)(nil),                   // 12: vca.admin.v1.UpdateTenantResponse
+	(*DeleteTenantRequest)(nil),                    // 13: vca.admin.v1.DeleteTenantRequest
+	(*DeleteTenantResponse)(nil),                   // 14: vca.admin.v1.DeleteTenantResponse
+	(*UpsertTrustEntryRequest)(nil),                // 15: vca.admin.v1.UpsertTrustEntryRequest
+	(*UpsertTrustEntryResponse)(nil),               // 16: vca.admin.v1.UpsertTrustEntryResponse
+	(*GetTrustEntryRequest)(nil),                   // 17: vca.admin.v1.GetTrustEntryRequest
+	(*GetTrustEntryResponse)(nil),                  // 18: vca.admin.v1.GetTrustEntryResponse
+	(*ListTrustEntriesRequest)(nil),                // 19: vca.admin.v1.ListTrustEntriesRequest
+	(*ListTrustEntriesResponse)(nil),               // 20: vca.admin.v1.ListTrustEntriesResponse
+	(*DeleteTrustEntryRequest)(nil),                // 21: vca.admin.v1.DeleteTrustEntryRequest
+	(*DeleteTrustEntryResponse)(nil),               // 22: vca.admin.v1.DeleteTrustEntryResponse
+	(*AuthProvider)(nil),                           // 23: vca.admin.v1.AuthProvider
+	(*CreateAuthProviderRequest)(nil),              // 24: vca.admin.v1.CreateAuthProviderRequest
+	(*CreateAuthProviderResponse)(nil),             // 25: vca.admin.v1.CreateAuthProviderResponse
+	(*OnboardProviderRequest)(nil),                 // 26: vca.admin.v1.OnboardProviderRequest
+	(*OnboardProviderResponse)(nil),                // 27: vca.admin.v1.OnboardProviderResponse
+	(*GetAuthProviderRequest)(nil),                 // 28: vca.admin.v1.GetAuthProviderRequest
+	(*GetAuthProviderResponse)(nil),                // 29: vca.admin.v1.GetAuthProviderResponse
+	(*ListAuthProvidersRequest)(nil),               // 30: vca.admin.v1.ListAuthProvidersRequest
+	(*ListAuthProvidersResponse)(nil),              // 31: vca.admin.v1.ListAuthProvidersResponse
+	(*UpdateAuthProviderRequest)(nil),              // 32: vca.admin.v1.UpdateAuthProviderRequest
+	(*UpdateAuthProviderResponse)(nil),             // 33: vca.admin.v1.UpdateAuthProviderResponse
+	(*DeleteAuthProviderRequest)(nil),              // 34: vca.admin.v1.DeleteAuthProviderRequest
+	(*DeleteAuthProviderResponse)(nil),             // 35: vca.admin.v1.DeleteAuthProviderResponse
+	(*ApiKey)(nil),                                 // 36: vca.admin.v1.ApiKey
+	(*CreateApiKeyRequest)(nil),                    // 37: vca.admin.v1.CreateApiKeyRequest
+	(*CreateApiKeyResponse)(nil),                   // 38: vca.admin.v1.CreateApiKeyResponse
+	(*ListApiKeysRequest)(nil),                     // 39: vca.admin.v1.ListApiKeysRequest
+	(*ListApiKeysResponse)(nil),                    // 40: vca.admin.v1.ListApiKeysResponse
+	(*RevokeApiKeyRequest)(nil),                    // 41: vca.admin.v1.RevokeApiKeyRequest
+	(*RevokeApiKeyResponse)(nil),                   // 42: vca.admin.v1.RevokeApiKeyResponse
+	(*GetServiceHealthRequest)(nil),                // 43: vca.admin.v1.GetServiceHealthRequest
+	(*GetServiceHealthResponse)(nil),               // 44: vca.admin.v1.GetServiceHealthResponse
+	(*AuditRecord)(nil),                            // 45: vca.admin.v1.AuditRecord
+	(*QueryAuditLogRequest)(nil),                   // 46: vca.admin.v1.QueryAuditLogRequest
+	(*QueryAuditLogResponse)(nil),                  // 47: vca.admin.v1.QueryAuditLogResponse
+	(*OnboardAdminRequest)(nil),                    // 48: vca.admin.v1.OnboardAdminRequest
+	(*OnboardAdminResponse)(nil),                   // 49: vca.admin.v1.OnboardAdminResponse
+	(*ListCommandsRequest)(nil),                    // 50: vca.admin.v1.ListCommandsRequest
+	(*ListCommandsResponse)(nil),                   // 51: vca.admin.v1.ListCommandsResponse
+	(*GetServiceHealthResponse_ServiceHealth)(nil), // 52: vca.admin.v1.GetServiceHealthResponse.ServiceHealth
+	(*ListCommandsResponse_Command)(nil),           // 53: vca.admin.v1.ListCommandsResponse.Command
+	(*ListCommandsResponse_Flag)(nil),              // 54: vca.admin.v1.ListCommandsResponse.Flag
+	(*timestamppb.Timestamp)(nil),                  // 55: google.protobuf.Timestamp
+	(*v1.Pagination)(nil),                          // 56: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                          // 57: vca.common.v1.PageResult
+	(*v11.TrustEntry)(nil),                         // 58: vca.trust.v1.TrustEntry
+	(*v11.TrustEntry_Identifier)(nil),              // 59: vca.trust.v1.TrustEntry.Identifier
+	(v1.Role)(0),                                   // 60: vca.common.v1.Role
+	(*v1.SecretRef)(nil),                           // 61: vca.common.v1.SecretRef
+	(v12.Dpg)(0),                                   // 62: vca.config.v1.Dpg
 }
 var file_vca_admin_v1_admin_proto_depIdxs = []int32{
-	0,  // 0: vca.admin.v1.Tenant.state:type_name -> vca.admin.v1.Tenant.State
-	52, // 1: vca.admin.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
-	52, // 2: vca.admin.v1.Tenant.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 3: vca.admin.v1.CreateTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	1,  // 4: vca.admin.v1.GetTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	53, // 5: vca.admin.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
-	1,  // 6: vca.admin.v1.ListTenantsResponse.tenants:type_name -> vca.admin.v1.Tenant
-	54, // 7: vca.admin.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
-	0,  // 8: vca.admin.v1.UpdateTenantRequest.state:type_name -> vca.admin.v1.Tenant.State
-	1,  // 9: vca.admin.v1.UpdateTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	55, // 10: vca.admin.v1.UpsertTrustEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
-	55, // 11: vca.admin.v1.UpsertTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	56, // 12: vca.admin.v1.GetTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	55, // 13: vca.admin.v1.GetTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	53, // 14: vca.admin.v1.ListTrustEntriesRequest.page:type_name -> vca.common.v1.Pagination
-	57, // 15: vca.admin.v1.ListTrustEntriesRequest.role:type_name -> vca.common.v1.Role
-	55, // 16: vca.admin.v1.ListTrustEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
-	54, // 17: vca.admin.v1.ListTrustEntriesResponse.page:type_name -> vca.common.v1.PageResult
-	56, // 18: vca.admin.v1.DeleteTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	58, // 19: vca.admin.v1.AuthProvider.client_secret:type_name -> vca.common.v1.SecretRef
-	57, // 20: vca.admin.v1.AuthProvider.roles:type_name -> vca.common.v1.Role
-	52, // 21: vca.admin.v1.AuthProvider.created_at:type_name -> google.protobuf.Timestamp
-	20, // 22: vca.admin.v1.CreateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
-	20, // 23: vca.admin.v1.CreateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	58, // 24: vca.admin.v1.OnboardProviderRequest.client_secret:type_name -> vca.common.v1.SecretRef
-	20, // 25: vca.admin.v1.OnboardProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	20, // 26: vca.admin.v1.GetAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	53, // 27: vca.admin.v1.ListAuthProvidersRequest.page:type_name -> vca.common.v1.Pagination
-	20, // 28: vca.admin.v1.ListAuthProvidersResponse.providers:type_name -> vca.admin.v1.AuthProvider
-	54, // 29: vca.admin.v1.ListAuthProvidersResponse.page:type_name -> vca.common.v1.PageResult
-	20, // 30: vca.admin.v1.UpdateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
-	20, // 31: vca.admin.v1.UpdateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	57, // 32: vca.admin.v1.ApiKey.roles:type_name -> vca.common.v1.Role
-	52, // 33: vca.admin.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
-	52, // 34: vca.admin.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
-	52, // 35: vca.admin.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
-	57, // 36: vca.admin.v1.CreateApiKeyRequest.roles:type_name -> vca.common.v1.Role
-	52, // 37: vca.admin.v1.CreateApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
-	33, // 38: vca.admin.v1.CreateApiKeyResponse.key:type_name -> vca.admin.v1.ApiKey
-	53, // 39: vca.admin.v1.ListApiKeysRequest.page:type_name -> vca.common.v1.Pagination
-	33, // 40: vca.admin.v1.ListApiKeysResponse.keys:type_name -> vca.admin.v1.ApiKey
-	54, // 41: vca.admin.v1.ListApiKeysResponse.page:type_name -> vca.common.v1.PageResult
-	49, // 42: vca.admin.v1.GetServiceHealthResponse.services:type_name -> vca.admin.v1.GetServiceHealthResponse.ServiceHealth
-	52, // 43: vca.admin.v1.AuditRecord.at:type_name -> google.protobuf.Timestamp
-	53, // 44: vca.admin.v1.QueryAuditLogRequest.page:type_name -> vca.common.v1.Pagination
-	52, // 45: vca.admin.v1.QueryAuditLogRequest.from:type_name -> google.protobuf.Timestamp
-	52, // 46: vca.admin.v1.QueryAuditLogRequest.to:type_name -> google.protobuf.Timestamp
-	42, // 47: vca.admin.v1.QueryAuditLogResponse.records:type_name -> vca.admin.v1.AuditRecord
-	54, // 48: vca.admin.v1.QueryAuditLogResponse.page:type_name -> vca.common.v1.PageResult
-	50, // 49: vca.admin.v1.ListCommandsResponse.commands:type_name -> vca.admin.v1.ListCommandsResponse.Command
-	52, // 50: vca.admin.v1.GetServiceHealthResponse.ServiceHealth.checked_at:type_name -> google.protobuf.Timestamp
-	51, // 51: vca.admin.v1.ListCommandsResponse.Command.flags:type_name -> vca.admin.v1.ListCommandsResponse.Flag
-	2,  // 52: vca.admin.v1.AdminService.CreateTenant:input_type -> vca.admin.v1.CreateTenantRequest
-	4,  // 53: vca.admin.v1.AdminService.GetTenant:input_type -> vca.admin.v1.GetTenantRequest
-	6,  // 54: vca.admin.v1.AdminService.ListTenants:input_type -> vca.admin.v1.ListTenantsRequest
-	8,  // 55: vca.admin.v1.AdminService.UpdateTenant:input_type -> vca.admin.v1.UpdateTenantRequest
-	10, // 56: vca.admin.v1.AdminService.DeleteTenant:input_type -> vca.admin.v1.DeleteTenantRequest
-	12, // 57: vca.admin.v1.AdminService.UpsertTrustEntry:input_type -> vca.admin.v1.UpsertTrustEntryRequest
-	14, // 58: vca.admin.v1.AdminService.GetTrustEntry:input_type -> vca.admin.v1.GetTrustEntryRequest
-	16, // 59: vca.admin.v1.AdminService.ListTrustEntries:input_type -> vca.admin.v1.ListTrustEntriesRequest
-	18, // 60: vca.admin.v1.AdminService.DeleteTrustEntry:input_type -> vca.admin.v1.DeleteTrustEntryRequest
-	21, // 61: vca.admin.v1.AdminService.CreateAuthProvider:input_type -> vca.admin.v1.CreateAuthProviderRequest
-	25, // 62: vca.admin.v1.AdminService.GetAuthProvider:input_type -> vca.admin.v1.GetAuthProviderRequest
-	27, // 63: vca.admin.v1.AdminService.ListAuthProviders:input_type -> vca.admin.v1.ListAuthProvidersRequest
-	29, // 64: vca.admin.v1.AdminService.UpdateAuthProvider:input_type -> vca.admin.v1.UpdateAuthProviderRequest
-	31, // 65: vca.admin.v1.AdminService.DeleteAuthProvider:input_type -> vca.admin.v1.DeleteAuthProviderRequest
-	23, // 66: vca.admin.v1.AdminService.OnboardProvider:input_type -> vca.admin.v1.OnboardProviderRequest
-	34, // 67: vca.admin.v1.AdminService.CreateApiKey:input_type -> vca.admin.v1.CreateApiKeyRequest
-	36, // 68: vca.admin.v1.AdminService.ListApiKeys:input_type -> vca.admin.v1.ListApiKeysRequest
-	38, // 69: vca.admin.v1.AdminService.RevokeApiKey:input_type -> vca.admin.v1.RevokeApiKeyRequest
-	40, // 70: vca.admin.v1.AdminService.GetServiceHealth:input_type -> vca.admin.v1.GetServiceHealthRequest
-	43, // 71: vca.admin.v1.AdminService.QueryAuditLog:input_type -> vca.admin.v1.QueryAuditLogRequest
-	45, // 72: vca.admin.v1.AdminService.OnboardAdmin:input_type -> vca.admin.v1.OnboardAdminRequest
-	47, // 73: vca.admin.v1.AdminService.ListCommands:input_type -> vca.admin.v1.ListCommandsRequest
-	3,  // 74: vca.admin.v1.AdminService.CreateTenant:output_type -> vca.admin.v1.CreateTenantResponse
-	5,  // 75: vca.admin.v1.AdminService.GetTenant:output_type -> vca.admin.v1.GetTenantResponse
-	7,  // 76: vca.admin.v1.AdminService.ListTenants:output_type -> vca.admin.v1.ListTenantsResponse
-	9,  // 77: vca.admin.v1.AdminService.UpdateTenant:output_type -> vca.admin.v1.UpdateTenantResponse
-	11, // 78: vca.admin.v1.AdminService.DeleteTenant:output_type -> vca.admin.v1.DeleteTenantResponse
-	13, // 79: vca.admin.v1.AdminService.UpsertTrustEntry:output_type -> vca.admin.v1.UpsertTrustEntryResponse
-	15, // 80: vca.admin.v1.AdminService.GetTrustEntry:output_type -> vca.admin.v1.GetTrustEntryResponse
-	17, // 81: vca.admin.v1.AdminService.ListTrustEntries:output_type -> vca.admin.v1.ListTrustEntriesResponse
-	19, // 82: vca.admin.v1.AdminService.DeleteTrustEntry:output_type -> vca.admin.v1.DeleteTrustEntryResponse
-	22, // 83: vca.admin.v1.AdminService.CreateAuthProvider:output_type -> vca.admin.v1.CreateAuthProviderResponse
-	26, // 84: vca.admin.v1.AdminService.GetAuthProvider:output_type -> vca.admin.v1.GetAuthProviderResponse
-	28, // 85: vca.admin.v1.AdminService.ListAuthProviders:output_type -> vca.admin.v1.ListAuthProvidersResponse
-	30, // 86: vca.admin.v1.AdminService.UpdateAuthProvider:output_type -> vca.admin.v1.UpdateAuthProviderResponse
-	32, // 87: vca.admin.v1.AdminService.DeleteAuthProvider:output_type -> vca.admin.v1.DeleteAuthProviderResponse
-	24, // 88: vca.admin.v1.AdminService.OnboardProvider:output_type -> vca.admin.v1.OnboardProviderResponse
-	35, // 89: vca.admin.v1.AdminService.CreateApiKey:output_type -> vca.admin.v1.CreateApiKeyResponse
-	37, // 90: vca.admin.v1.AdminService.ListApiKeys:output_type -> vca.admin.v1.ListApiKeysResponse
-	39, // 91: vca.admin.v1.AdminService.RevokeApiKey:output_type -> vca.admin.v1.RevokeApiKeyResponse
-	41, // 92: vca.admin.v1.AdminService.GetServiceHealth:output_type -> vca.admin.v1.GetServiceHealthResponse
-	44, // 93: vca.admin.v1.AdminService.QueryAuditLog:output_type -> vca.admin.v1.QueryAuditLogResponse
-	46, // 94: vca.admin.v1.AdminService.OnboardAdmin:output_type -> vca.admin.v1.OnboardAdminResponse
-	48, // 95: vca.admin.v1.AdminService.ListCommands:output_type -> vca.admin.v1.ListCommandsResponse
-	74, // [74:96] is the sub-list for method output_type
-	52, // [52:74] is the sub-list for method input_type
-	52, // [52:52] is the sub-list for extension type_name
-	52, // [52:52] is the sub-list for extension extendee
-	0,  // [0:52] is the sub-list for field type_name
+	3,  // 0: vca.admin.v1.Tenant.state:type_name -> vca.admin.v1.Tenant.State
+	55, // 1: vca.admin.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
+	55, // 2: vca.admin.v1.Tenant.updated_at:type_name -> google.protobuf.Timestamp
+	4,  // 3: vca.admin.v1.CreateTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
+	4,  // 4: vca.admin.v1.GetTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
+	56, // 5: vca.admin.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
+	4,  // 6: vca.admin.v1.ListTenantsResponse.tenants:type_name -> vca.admin.v1.Tenant
+	57, // 7: vca.admin.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
+	3,  // 8: vca.admin.v1.UpdateTenantRequest.state:type_name -> vca.admin.v1.Tenant.State
+	4,  // 9: vca.admin.v1.UpdateTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
+	58, // 10: vca.admin.v1.UpsertTrustEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
+	58, // 11: vca.admin.v1.UpsertTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	59, // 12: vca.admin.v1.GetTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	58, // 13: vca.admin.v1.GetTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	56, // 14: vca.admin.v1.ListTrustEntriesRequest.page:type_name -> vca.common.v1.Pagination
+	60, // 15: vca.admin.v1.ListTrustEntriesRequest.role:type_name -> vca.common.v1.Role
+	58, // 16: vca.admin.v1.ListTrustEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
+	57, // 17: vca.admin.v1.ListTrustEntriesResponse.page:type_name -> vca.common.v1.PageResult
+	59, // 18: vca.admin.v1.DeleteTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	61, // 19: vca.admin.v1.AuthProvider.client_secret:type_name -> vca.common.v1.SecretRef
+	60, // 20: vca.admin.v1.AuthProvider.roles:type_name -> vca.common.v1.Role
+	55, // 21: vca.admin.v1.AuthProvider.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 22: vca.admin.v1.AuthProvider.kind:type_name -> vca.admin.v1.ProviderKind
+	1,  // 23: vca.admin.v1.AuthProvider.registration:type_name -> vca.admin.v1.Registration
+	62, // 24: vca.admin.v1.AuthProvider.stacks:type_name -> vca.config.v1.Dpg
+	2,  // 25: vca.admin.v1.AuthProvider.token_auth_method:type_name -> vca.admin.v1.TokenAuth
+	61, // 26: vca.admin.v1.AuthProvider.private_key:type_name -> vca.common.v1.SecretRef
+	23, // 27: vca.admin.v1.CreateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
+	23, // 28: vca.admin.v1.CreateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
+	61, // 29: vca.admin.v1.OnboardProviderRequest.client_secret:type_name -> vca.common.v1.SecretRef
+	23, // 30: vca.admin.v1.OnboardProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
+	23, // 31: vca.admin.v1.GetAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
+	56, // 32: vca.admin.v1.ListAuthProvidersRequest.page:type_name -> vca.common.v1.Pagination
+	23, // 33: vca.admin.v1.ListAuthProvidersResponse.providers:type_name -> vca.admin.v1.AuthProvider
+	57, // 34: vca.admin.v1.ListAuthProvidersResponse.page:type_name -> vca.common.v1.PageResult
+	23, // 35: vca.admin.v1.UpdateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
+	23, // 36: vca.admin.v1.UpdateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
+	60, // 37: vca.admin.v1.ApiKey.roles:type_name -> vca.common.v1.Role
+	55, // 38: vca.admin.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
+	55, // 39: vca.admin.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
+	55, // 40: vca.admin.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
+	60, // 41: vca.admin.v1.CreateApiKeyRequest.roles:type_name -> vca.common.v1.Role
+	55, // 42: vca.admin.v1.CreateApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
+	36, // 43: vca.admin.v1.CreateApiKeyResponse.key:type_name -> vca.admin.v1.ApiKey
+	56, // 44: vca.admin.v1.ListApiKeysRequest.page:type_name -> vca.common.v1.Pagination
+	36, // 45: vca.admin.v1.ListApiKeysResponse.keys:type_name -> vca.admin.v1.ApiKey
+	57, // 46: vca.admin.v1.ListApiKeysResponse.page:type_name -> vca.common.v1.PageResult
+	52, // 47: vca.admin.v1.GetServiceHealthResponse.services:type_name -> vca.admin.v1.GetServiceHealthResponse.ServiceHealth
+	55, // 48: vca.admin.v1.AuditRecord.at:type_name -> google.protobuf.Timestamp
+	56, // 49: vca.admin.v1.QueryAuditLogRequest.page:type_name -> vca.common.v1.Pagination
+	55, // 50: vca.admin.v1.QueryAuditLogRequest.from:type_name -> google.protobuf.Timestamp
+	55, // 51: vca.admin.v1.QueryAuditLogRequest.to:type_name -> google.protobuf.Timestamp
+	45, // 52: vca.admin.v1.QueryAuditLogResponse.records:type_name -> vca.admin.v1.AuditRecord
+	57, // 53: vca.admin.v1.QueryAuditLogResponse.page:type_name -> vca.common.v1.PageResult
+	53, // 54: vca.admin.v1.ListCommandsResponse.commands:type_name -> vca.admin.v1.ListCommandsResponse.Command
+	55, // 55: vca.admin.v1.GetServiceHealthResponse.ServiceHealth.checked_at:type_name -> google.protobuf.Timestamp
+	54, // 56: vca.admin.v1.ListCommandsResponse.Command.flags:type_name -> vca.admin.v1.ListCommandsResponse.Flag
+	5,  // 57: vca.admin.v1.AdminService.CreateTenant:input_type -> vca.admin.v1.CreateTenantRequest
+	7,  // 58: vca.admin.v1.AdminService.GetTenant:input_type -> vca.admin.v1.GetTenantRequest
+	9,  // 59: vca.admin.v1.AdminService.ListTenants:input_type -> vca.admin.v1.ListTenantsRequest
+	11, // 60: vca.admin.v1.AdminService.UpdateTenant:input_type -> vca.admin.v1.UpdateTenantRequest
+	13, // 61: vca.admin.v1.AdminService.DeleteTenant:input_type -> vca.admin.v1.DeleteTenantRequest
+	15, // 62: vca.admin.v1.AdminService.UpsertTrustEntry:input_type -> vca.admin.v1.UpsertTrustEntryRequest
+	17, // 63: vca.admin.v1.AdminService.GetTrustEntry:input_type -> vca.admin.v1.GetTrustEntryRequest
+	19, // 64: vca.admin.v1.AdminService.ListTrustEntries:input_type -> vca.admin.v1.ListTrustEntriesRequest
+	21, // 65: vca.admin.v1.AdminService.DeleteTrustEntry:input_type -> vca.admin.v1.DeleteTrustEntryRequest
+	24, // 66: vca.admin.v1.AdminService.CreateAuthProvider:input_type -> vca.admin.v1.CreateAuthProviderRequest
+	28, // 67: vca.admin.v1.AdminService.GetAuthProvider:input_type -> vca.admin.v1.GetAuthProviderRequest
+	30, // 68: vca.admin.v1.AdminService.ListAuthProviders:input_type -> vca.admin.v1.ListAuthProvidersRequest
+	32, // 69: vca.admin.v1.AdminService.UpdateAuthProvider:input_type -> vca.admin.v1.UpdateAuthProviderRequest
+	34, // 70: vca.admin.v1.AdminService.DeleteAuthProvider:input_type -> vca.admin.v1.DeleteAuthProviderRequest
+	26, // 71: vca.admin.v1.AdminService.OnboardProvider:input_type -> vca.admin.v1.OnboardProviderRequest
+	37, // 72: vca.admin.v1.AdminService.CreateApiKey:input_type -> vca.admin.v1.CreateApiKeyRequest
+	39, // 73: vca.admin.v1.AdminService.ListApiKeys:input_type -> vca.admin.v1.ListApiKeysRequest
+	41, // 74: vca.admin.v1.AdminService.RevokeApiKey:input_type -> vca.admin.v1.RevokeApiKeyRequest
+	43, // 75: vca.admin.v1.AdminService.GetServiceHealth:input_type -> vca.admin.v1.GetServiceHealthRequest
+	46, // 76: vca.admin.v1.AdminService.QueryAuditLog:input_type -> vca.admin.v1.QueryAuditLogRequest
+	48, // 77: vca.admin.v1.AdminService.OnboardAdmin:input_type -> vca.admin.v1.OnboardAdminRequest
+	50, // 78: vca.admin.v1.AdminService.ListCommands:input_type -> vca.admin.v1.ListCommandsRequest
+	6,  // 79: vca.admin.v1.AdminService.CreateTenant:output_type -> vca.admin.v1.CreateTenantResponse
+	8,  // 80: vca.admin.v1.AdminService.GetTenant:output_type -> vca.admin.v1.GetTenantResponse
+	10, // 81: vca.admin.v1.AdminService.ListTenants:output_type -> vca.admin.v1.ListTenantsResponse
+	12, // 82: vca.admin.v1.AdminService.UpdateTenant:output_type -> vca.admin.v1.UpdateTenantResponse
+	14, // 83: vca.admin.v1.AdminService.DeleteTenant:output_type -> vca.admin.v1.DeleteTenantResponse
+	16, // 84: vca.admin.v1.AdminService.UpsertTrustEntry:output_type -> vca.admin.v1.UpsertTrustEntryResponse
+	18, // 85: vca.admin.v1.AdminService.GetTrustEntry:output_type -> vca.admin.v1.GetTrustEntryResponse
+	20, // 86: vca.admin.v1.AdminService.ListTrustEntries:output_type -> vca.admin.v1.ListTrustEntriesResponse
+	22, // 87: vca.admin.v1.AdminService.DeleteTrustEntry:output_type -> vca.admin.v1.DeleteTrustEntryResponse
+	25, // 88: vca.admin.v1.AdminService.CreateAuthProvider:output_type -> vca.admin.v1.CreateAuthProviderResponse
+	29, // 89: vca.admin.v1.AdminService.GetAuthProvider:output_type -> vca.admin.v1.GetAuthProviderResponse
+	31, // 90: vca.admin.v1.AdminService.ListAuthProviders:output_type -> vca.admin.v1.ListAuthProvidersResponse
+	33, // 91: vca.admin.v1.AdminService.UpdateAuthProvider:output_type -> vca.admin.v1.UpdateAuthProviderResponse
+	35, // 92: vca.admin.v1.AdminService.DeleteAuthProvider:output_type -> vca.admin.v1.DeleteAuthProviderResponse
+	27, // 93: vca.admin.v1.AdminService.OnboardProvider:output_type -> vca.admin.v1.OnboardProviderResponse
+	38, // 94: vca.admin.v1.AdminService.CreateApiKey:output_type -> vca.admin.v1.CreateApiKeyResponse
+	40, // 95: vca.admin.v1.AdminService.ListApiKeys:output_type -> vca.admin.v1.ListApiKeysResponse
+	42, // 96: vca.admin.v1.AdminService.RevokeApiKey:output_type -> vca.admin.v1.RevokeApiKeyResponse
+	44, // 97: vca.admin.v1.AdminService.GetServiceHealth:output_type -> vca.admin.v1.GetServiceHealthResponse
+	47, // 98: vca.admin.v1.AdminService.QueryAuditLog:output_type -> vca.admin.v1.QueryAuditLogResponse
+	49, // 99: vca.admin.v1.AdminService.OnboardAdmin:output_type -> vca.admin.v1.OnboardAdminResponse
+	51, // 100: vca.admin.v1.AdminService.ListCommands:output_type -> vca.admin.v1.ListCommandsResponse
+	79, // [79:101] is the sub-list for method output_type
+	57, // [57:79] is the sub-list for method input_type
+	57, // [57:57] is the sub-list for extension type_name
+	57, // [57:57] is the sub-list for extension extendee
+	0,  // [0:57] is the sub-list for field type_name
 }
 
 func init() { file_vca_admin_v1_admin_proto_init() }
@@ -3310,7 +3611,7 @@ func file_vca_admin_v1_admin_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_admin_v1_admin_proto_rawDesc), len(file_vca_admin_v1_admin_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      4,
 			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   1,

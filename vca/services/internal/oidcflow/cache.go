@@ -28,6 +28,10 @@ type Metadata struct {
 	oidc.Discovery
 	// EndSessionEndpoint is the RP initiated logout endpoint, when any.
 	EndSessionEndpoint string `json:"end_session_endpoint,omitempty"`
+	// PromptValuesSupported lists the prompt values the provider accepts.
+	// A provider that lists create supports registration through the
+	// authorization request (OpenID Connect Prompt Create 1.0).
+	PromptValuesSupported []string `json:"prompt_values_supported,omitempty"`
 }
 
 // ParseMetadata decodes a metadata document.
@@ -37,12 +41,13 @@ func ParseMetadata(raw []byte) (Metadata, error) {
 		return Metadata{}, err
 	}
 	var extra struct {
-		EndSessionEndpoint string `json:"end_session_endpoint"`
+		EndSessionEndpoint    string   `json:"end_session_endpoint"`
+		PromptValuesSupported []string `json:"prompt_values_supported"`
 	}
 	// raw parsed once above, so it parses again.
 	// Extra members are optional, so a decode failure leaves them empty.
 	anyval.Discard(json.Unmarshal(raw, &extra))
-	return Metadata{Discovery: d, EndSessionEndpoint: extra.EndSessionEndpoint}, nil
+	return Metadata{Discovery: d, EndSessionEndpoint: extra.EndSessionEndpoint, PromptValuesSupported: extra.PromptValuesSupported}, nil
 }
 
 // Rebase moves the server side endpoints to authority and keeps the

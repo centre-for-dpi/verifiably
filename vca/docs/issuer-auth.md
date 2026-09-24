@@ -85,6 +85,44 @@ service reads the secret value at the token exchange and never stores it.
 
 A first provider can come from the `VCA_OIDC_*` variables that the setup
 CLI writes. The service registers it once under the id `default`.
+A discovery URL of a Keycloak realm gives a record of kind `keycloak`
+with that realm and the default flag.
+The console URL of the record is the console of the realm under
+`VCA_OIDC_PUBLIC_URL`.
+A stored record survives a restart, so an edit through the admin RPCs
+stays.
+
+## The provider record
+
+A provider record describes the provider beyond its endpoints
+(ADR-035 decision 2):
+
+| Field | Meaning |
+|---|---|
+| `kind` | `generic`, `keycloak`, `wso2`, or `esignet`. The kind selects a fallback and a label. No code path depends on it. |
+| `realm` | The realm or tenant label the login page shows. |
+| `registration` | `none`, `prompt_create`, or `keycloak_endpoint`. Empty lets the metadata and the kind decide. |
+| `console_url` | The administration console of the provider. |
+| `stacks` | The stacks whose pairs use the provider. Empty means every stack. |
+| `token_auth_method` | `client_secret_basic`, `client_secret_post`, `private_key_jwt`, or `none`. Empty means Basic with a secret and none without one. |
+| `private_key` | A reference to the key that signs the client assertion of `private_key_jwt`. The record never holds the key. |
+| `is_default` | True for the provider that the setup CLI seeded. |
+
+The register action of the login page follows the record
+(ADR-035 decision 3).
+A provider that lists `create` in `prompt_values_supported` gets
+`prompt=create` on the authorization request.
+A provider of kind `keycloak` without it gets the registration endpoint
+of the realm with the same PKCE parameters.
+Any other provider shows no register action.
+
+The token exchange authenticates with the method of the record
+(ADR-035 decision 4).
+`private_key_jwt` sends a client assertion (RFC 7523).
+Its `iss` and `sub` are the client id, its `aud` is the token endpoint,
+and its `exp` is one minute away.
+It carries a fresh `jti`.
+The key is ES256 or Ed25519, as every VCA key (ADR-011 decision 5).
 
 ## Public and internal URLs
 

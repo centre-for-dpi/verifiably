@@ -49,6 +49,9 @@ var (
 	ErrCSRF = errors.New("oidcflow: csrf token missing or not valid")
 	// ErrSecret reports a client secret reference that cannot be read.
 	ErrSecret = errors.New("oidcflow: client secret not available")
+	// ErrRegisterUnsupported reports a provider with no register action
+	// (ADR-035 decision 3).
+	ErrRegisterUnsupported = errors.New("oidcflow: the provider offers no registration")
 )
 
 // ConnectError maps an error of this package to a Connect error.
@@ -63,7 +66,7 @@ func ConnectError(err error) *connect.Error {
 
 func connectCode(err error) connect.Code {
 	switch {
-	case errors.Is(err, ErrProviderNotFound):
+	case errors.Is(err, ErrProviderNotFound), errors.Is(err, ErrRegisterUnsupported):
 		return connect.CodeNotFound
 	case errors.Is(err, ErrProviderDisabled), errors.Is(err, ErrRoleDenied):
 		return connect.CodeFailedPrecondition

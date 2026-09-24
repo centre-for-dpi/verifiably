@@ -38,6 +38,33 @@ func baseConfig(t *testing.T) config.Config {
 	return c
 }
 
+// TestSeedProviderIsKeycloakWithRealmAndConsole is ADR-035 decision 2:
+// the seed of the stack is a record of kind keycloak with the realm of
+// the holder role, the console of that realm, and the default flag.
+func TestSeedProviderIsKeycloakWithRealmAndConsole(t *testing.T) {
+	cfg := baseConfig(t)
+	cfg.Seed = config.SeedProvider{
+		DiscoveryURL: "http://inji-keycloak:8080/realms/vca-holder-realm/.well-known/openid-configuration",
+		ClientID:     "vca-holder",
+		PublicURL:    "http://localhost:17080",
+	}
+	svc, err := server.Build(cfg, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := svc.Providers().Get(oidcflow.SeedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Kind != oidcflow.KindKeycloak || p.Realm != "vca-holder-realm" || !p.IsDefault ||
+		p.ConsoleURL != "http://localhost:17080/admin/vca-holder-realm/console/" {
+		t.Errorf("seed profile = %+v", p.Profile)
+	}
+	if len(p.Roles) != 1 || p.Roles[0] != "holder" || len(p.Scopes) != 1 || p.Scopes[0] != "openid" || !p.ClientSecret.IsZero() {
+		t.Errorf("seed record = %+v", p)
+	}
+}
+
 func TestBuild(t *testing.T) {
 	cfg := baseConfig(t)
 	svc, err := server.Build(cfg, quiet)

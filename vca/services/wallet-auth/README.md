@@ -57,6 +57,7 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_OIDC_CLIENT_ID` | The client id of the first provider. | none |
 | `VCA_OIDC_CLIENT_SECRET` | The name of the environment variable that holds the client secret. | none |
 | `VCA_OIDC_INTERNAL_AUTHORITY` | The `scheme://host` the service uses to reach the provider on the container network. | none |
+| `VCA_OIDC_PUBLIC_URL` | The base URL a browser uses to reach the first provider. The console link of the record derives from it. | none |
 | `VCA_SECRETS_SIGNING_KEY` | The path of the ES256 private key in PEM. Empty makes a key at start. | none |
 | `VCA_SECRETS_SESSION_KEY` | The CSRF key, 16 bytes or more. Empty makes a key at start. | none |
 | `VCA_WALLET_AUTH_SESSION_TTL` | The lifetime of a session JWT. | `15m` |

@@ -63,6 +63,9 @@ type common struct {
 	ClientSecret string `env:"OIDC_CLIENT_SECRET" secret:"true"`
 	// RolesClaimPath is the path of the roles claim.
 	RolesClaimPath string `env:"OIDC_ROLES_CLAIM_PATH" default:"realm_access.roles"`
+	// ProviderPublicURL is the base URL a browser uses to reach the
+	// provider. The console link of the seed provider derives from it.
+	ProviderPublicURL string `env:"OIDC_PUBLIC_URL"`
 }
 
 // Config holds every setting of the service.
@@ -111,6 +114,8 @@ type SeedProvider struct {
 	ClientID       string
 	ClientSecret   string
 	RolesClaimPath string
+	// PublicURL is the base URL a browser uses to reach the provider.
+	PublicURL string
 }
 
 // Lookup reads one environment variable. os.Getenv is the usual value.
@@ -146,6 +151,7 @@ func FromEnv(get Lookup) (Config, error) {
 			ClientID:       k.ClientID,
 			ClientSecret:   k.ClientSecret,
 			RolesClaimPath: k.RolesClaimPath,
+			PublicURL:      k.ProviderPublicURL,
 		},
 	}
 	return c.normalize()

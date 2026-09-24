@@ -3,11 +3,17 @@
 package oidctest_test
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/oidc"
@@ -224,5 +230,162 @@ func TestFakeProviderSwitches(t *testing.T) {
 	}
 	if strings.Contains(string(buf), "end_session_endpoint") {
 		t.Fatal("end session still advertised")
+	}
+}
+
+// tokenStatus posts one token request with an optional Basic header and
+// returns the status.
+func tokenStatus(t *testing.T, idp *oidctest.Provider, form url.Values, basicSecret string) int {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, idp.Server.URL+"/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if basicSecret != "" {
+		req.SetBasicAuth(idp.ClientID, basicSecret)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	return res.StatusCode
+}
+
+// assertion signs a client assertion with key and the given claims.
+func assertion(t *testing.T, key crypto.PrivateKey, claims map[string]any) string {
+	t.Helper()
+	tok, err := jose.Sign(key, "", "JWT", claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tok
+}
+
+// TestFakeProviderClientAuthentication covers the three client
+// authentication methods the fake enforces: the secret in the form, a
+// client assertion, and the default Basic.
+func TestFakeProviderClientAuthentication(t *testing.T) {
+	idp := oidctest.New()
+	defer idp.Close()
+	idp.PromptValuesSupported = []string{"create"}
+	res, err := http.Get(idp.DiscoveryURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if decodeErr := json.NewDecoder(res.Body).Decode(&doc); decodeErr != nil {
+		t.Fatal(decodeErr)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	if prompts, ok := doc["prompt_values_supported"].([]any); !ok || len(prompts) != 1 || prompts[0] != "create" {
+		t.Errorf("discovery = %v", doc)
+	}
+	code := func() string {
+		loc, authErr := idp.Authorize(oidc.AuthorizeURL(idp.Server.URL+"/authorize", idp.ClientID, "https://rp/cb", "s", oidc.NewVerifier(), nil))
+		if authErr != nil {
+			t.Fatal(authErr)
+		}
+		u, parseErr := url.Parse(loc)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		return u.Query().Get("code")
+	}
+	base := func() url.Values {
+		return url.Values{"grant_type": {"authorization_code"}, "code": {code()}, "client_id": {idp.ClientID}}
+	}
+	// The secret in the form: Basic is refused, a wrong secret is refused.
+	idp.ClientSecret = "s3cret"
+	idp.ClientSecretPost = true
+	if got := tokenStatus(t, idp, base(), "s3cret"); got != http.StatusUnauthorized {
+		t.Errorf("basic against post = %d", got)
+	}
+	wrong := base()
+	wrong.Set("client_secret", "nope")
+	if got := tokenStatus(t, idp, wrong, ""); got != http.StatusUnauthorized {
+		t.Errorf("wrong post secret = %d", got)
+	}
+	right := base()
+	right.Set("client_secret", "s3cret")
+	// The code is right but the verifier is missing, so the client passed
+	// and the grant failed.
+	if got := tokenStatus(t, idp, right, ""); got != http.StatusBadRequest {
+		t.Errorf("right post secret = %d", got)
+	}
+	if idp.LastTokenForm.Get("client_secret") != "s3cret" {
+		t.Errorf("LastTokenForm = %v", idp.LastTokenForm)
+	}
+	// A client assertion: the type, the key, iss, sub, aud, jti, and exp
+	// all count. A Basic header or a secret beside it is refused.
+	idp.ClientSecret = ""
+	idp.ClientSecretPost = false
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idp.ClientAssertionKey = &key.PublicKey
+	good := map[string]any{"iss": idp.ClientID, "sub": idp.ClientID, "aud": idp.Server.URL + "/token", "jti": "j", "exp": time.Now().Add(time.Minute).Unix()}
+	with := func(edit func(map[string]any), typ string) url.Values {
+		claims := map[string]any{}
+		for k, v := range good {
+			claims[k] = v
+		}
+		if edit != nil {
+			edit(claims)
+		}
+		form := base()
+		form.Set("client_assertion_type", typ)
+		form.Set("client_assertion", assertion(t, key, claims))
+		return form
+	}
+	if got := tokenStatus(t, idp, with(nil, oidctest.ClientAssertionType), ""); got != http.StatusBadRequest {
+		t.Errorf("good assertion = %d", got)
+	}
+	listed := with(func(c map[string]any) { c["aud"] = []any{"other", idp.Server.URL + "/token"} }, oidctest.ClientAssertionType)
+	if got := tokenStatus(t, idp, listed, ""); got != http.StatusBadRequest {
+		t.Errorf("aud list = %d", got)
+	}
+	bad := map[string]url.Values{
+		"type":    with(nil, "urn:other"),
+		"iss":     with(func(c map[string]any) { c["iss"] = "x" }, oidctest.ClientAssertionType),
+		"sub":     with(func(c map[string]any) { c["sub"] = "x" }, oidctest.ClientAssertionType),
+		"aud":     with(func(c map[string]any) { c["aud"] = "https://other/token" }, oidctest.ClientAssertionType),
+		"aud num": with(func(c map[string]any) { c["aud"] = 7 }, oidctest.ClientAssertionType),
+		"jti":     with(func(c map[string]any) { delete(c, "jti") }, oidctest.ClientAssertionType),
+		"exp":     with(func(c map[string]any) { c["exp"] = time.Now().Add(-time.Minute).Unix() }, oidctest.ClientAssertionType),
+	}
+	empty := base()
+	empty.Set("client_assertion_type", oidctest.ClientAssertionType)
+	bad["empty"] = empty
+	garbage := base()
+	garbage.Set("client_assertion_type", oidctest.ClientAssertionType)
+	garbage.Set("client_assertion", "not.a.jwt")
+	bad["garbage"] = garbage
+	secretToo := with(nil, oidctest.ClientAssertionType)
+	secretToo.Set("client_secret", "s")
+	bad["secret beside it"] = secretToo
+	for name, form := range bad {
+		if got := tokenStatus(t, idp, form, ""); got != http.StatusUnauthorized {
+			t.Errorf("%s = %d", name, got)
+		}
+	}
+	if got := tokenStatus(t, idp, with(nil, oidctest.ClientAssertionType), "s"); got != http.StatusUnauthorized {
+		t.Errorf("basic beside an assertion = %d", got)
+	}
+	other, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := base()
+	form.Set("client_assertion_type", oidctest.ClientAssertionType)
+	form.Set("client_assertion", assertion(t, other, good))
+	if got := tokenStatus(t, idp, form, ""); got != http.StatusUnauthorized {
+		t.Errorf("another key = %d", got)
 	}
 }

@@ -76,9 +76,13 @@ func TestFromEnvValues(t *testing.T) {
 		"VCA_OIDC_CLIENT_SECRET":             "S",
 		"VCA_SECRETS_SIGNING_KEY":            "/k.pem",
 		"VCA_SECRETS_SESSION_KEY":            "0123456789abcdef0123456789abcdef",
+		"VCA_OIDC_PUBLIC_URL":                "http://localhost:17010",
 	}))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if c.Seed.PublicURL != "http://localhost:17010" {
+		t.Errorf("the seed lost the public URL: %+v", c.Seed)
 	}
 	if c.Listen != ":9" || c.RedirectURI != "http://localhost:8083/cb" || c.SessionTTL != 5*time.Minute || !c.InsecureCookie || c.LoginRate != 5 {
 		t.Fatalf("%+v", c)

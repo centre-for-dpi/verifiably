@@ -83,32 +83,29 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 	}), nil
 }
 
-// seed registers the provider from the environment under id "default"
+// seed registers the provider from the environment under the seed id
 // when the environment names one and the registry has no such record.
+// The record is of kind keycloak with the realm of the role when the
+// discovery URL names a Keycloak realm (ADR-035 decision 2).
 func seed(reg *oidcflow.Registry, s config.SeedProvider, internalAuthority string) error {
 	if !s.HasSeed() {
 		return nil
 	}
-	if _, err := reg.Get("default"); err == nil {
-		return nil
-	}
-	p := oidcflow.Provider{
-		ID:                "default",
-		DisplayName:       "Sign in",
-		DiscoveryURL:      s.DiscoveryURL,
-		ClientID:          s.ClientID,
-		RolesClaimPath:    s.RolesClaimPath,
-		Roles:             []string{"issuer"},
-		Enabled:           true,
-		InternalAuthority: internalAuthority,
-	}
+	secretEnv := ""
 	if s.ClientSecret != "" {
 		// The variable holds the secret itself. The reference names the
 		// variable, so the registry never stores the value.
-		p.ClientSecret = oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: config.CommonPrefix + "OIDC_CLIENT_SECRET"}
+		secretEnv = config.CommonPrefix + "OIDC_CLIENT_SECRET"
 	}
-	_, err := reg.Put(p)
-	return err
+	return reg.Seed(oidcflow.SeedProvider(oidcflow.Seed{
+		DiscoveryURL:      s.DiscoveryURL,
+		ClientID:          s.ClientID,
+		ClientSecretEnv:   secretEnv,
+		PublicURL:         s.PublicURL,
+		RolesClaimPath:    s.RolesClaimPath,
+		Roles:             []string{"issuer"},
+		InternalAuthority: internalAuthority,
+	}))
 }
 
 func loadKey(path string, log *slog.Logger) (*ecdsa.PrivateKey, error) {

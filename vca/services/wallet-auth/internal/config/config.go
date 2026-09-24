@@ -48,6 +48,7 @@ type common struct {
 	DiscoveryURL      string `env:"OIDC_DISCOVERY_URL"`
 	ClientID          string `env:"OIDC_CLIENT_ID"`
 	ClientSecret      string `env:"OIDC_CLIENT_SECRET" secret:"true"`
+	ProviderPublicURL string `env:"OIDC_PUBLIC_URL"`
 	RedisURL          string `env:"REDIS_URL"`
 }
 
@@ -111,6 +112,8 @@ type SeedProvider struct {
 	DiscoveryURL string
 	ClientID     string
 	ClientSecret string
+	// PublicURL is the base URL a browser uses to reach the provider.
+	PublicURL string
 }
 
 // HasSeed reports whether the environment names a provider.
@@ -150,6 +153,7 @@ func FromEnv(get Lookup) (Config, error) {
 			DiscoveryURL: k.DiscoveryURL,
 			ClientID:     k.ClientID,
 			ClientSecret: k.ClientSecret,
+			PublicURL:    k.ProviderPublicURL,
 		},
 	}
 	var err error

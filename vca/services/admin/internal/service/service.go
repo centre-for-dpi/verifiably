@@ -349,6 +349,7 @@ func (s *Service) onboardProvider(ctx context.Context, m *adminv1.AuthProvider, 
 		RolesClaimPath: in.RolesClaimPath,
 		Roles:          in.Roles,
 		Enabled:        m.GetEnabled(),
+		Profile:        in.Profile,
 	})
 	if err != nil {
 		return oidcflow.Provider{}, err

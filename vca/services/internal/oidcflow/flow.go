@@ -95,15 +95,42 @@ func (f *Flow) Metadata(ctx context.Context, p Provider) (Metadata, error) {
 // Begin creates a pending login and the authorization URL for the browser.
 // The response type is always code (RFC 9700 forbids the implicit flow).
 func (f *Flow) Begin(ctx context.Context, p Provider, redirectURI, returnTo string) (Pending, string, error) {
+	pend, m, err := f.begin(ctx, p, redirectURI, returnTo)
+	if err != nil {
+		return Pending{}, "", err
+	}
+	u := AuthorizeURL(m.AuthorizationEndpoint, p.ClientID, redirectURI, pend.State, pend.Nonce, pend.Verifier, p.EffectiveScopes())
+	return pend, u, nil
+}
+
+// BeginRegister creates a pending login and the URL that lets a new user
+// register at the provider (ADR-035 decision 3). The registration ends
+// at the same redirect URI as a login, so Complete finishes it. A
+// provider with no register action gives ErrRegisterUnsupported.
+func (f *Flow) BeginRegister(ctx context.Context, p Provider, redirectURI, returnTo string) (Pending, string, error) {
+	pend, m, err := f.begin(ctx, p, redirectURI, returnTo)
+	if err != nil {
+		return Pending{}, "", err
+	}
+	u := RegisterURL(m, p, redirectURI, pend.State, pend.Nonce, pend.Verifier, p.EffectiveScopes())
+	if u == "" {
+		return Pending{}, "", ErrRegisterUnsupported
+	}
+	return pend, u, nil
+}
+
+// begin checks the provider and the return path, reads the metadata,
+// and makes the pending login.
+func (f *Flow) begin(ctx context.Context, p Provider, redirectURI, returnTo string) (Pending, Metadata, error) {
 	if !p.Enabled {
-		return Pending{}, "", ErrProviderDisabled
+		return Pending{}, Metadata{}, ErrProviderDisabled
 	}
 	if returnTo != "" && !ValidReturnTo(returnTo) {
-		return Pending{}, "", ErrReturnTo
+		return Pending{}, Metadata{}, ErrReturnTo
 	}
 	m, err := f.Metadata(ctx, p)
 	if err != nil {
-		return Pending{}, "", err
+		return Pending{}, Metadata{}, err
 	}
 	ttl := f.PendingTTL
 	if ttl <= 0 {
@@ -118,14 +145,39 @@ func (f *Flow) Begin(ctx context.Context, p Provider, redirectURI, returnTo stri
 		ReturnTo:    returnTo,
 		ExpiresAt:   f.now().Add(ttl),
 	}
-	u := AuthorizeURL(m.AuthorizationEndpoint, p.ClientID, redirectURI, pend.State, pend.Nonce, pend.Verifier, p.EffectiveScopes())
-	return pend, u, nil
+	return pend, m, nil
 }
 
 // AuthorizeURL builds the authorization request URL with PKCE S256,
 // state, and nonce (OIDC Core 1.0 section 3.1.2.1).
 func AuthorizeURL(endpoint, clientID, redirectURI, state, nonce, verifier string, scopes []string) string {
-	q := url.Values{
+	return withQuery(endpoint, authorizeQuery(clientID, redirectURI, state, nonce, verifier, scopes))
+}
+
+// RegisterURL builds the URL of the register action of a provider
+// (ADR-035 decision 3): the authorization request with prompt=create
+// when the provider supports it, the registration endpoint of a
+// Keycloak realm with the same parameters as the fallback of kind
+// keycloak, and "" when the provider offers neither.
+func RegisterURL(m Metadata, p Provider, redirectURI, state, nonce, verifier string, scopes []string) string {
+	q := authorizeQuery(p.ClientID, redirectURI, state, nonce, verifier, scopes)
+	switch p.EffectiveRegistration(m) {
+	case RegistrationPromptCreate:
+		q.Set("prompt", "create")
+		return withQuery(m.AuthorizationEndpoint, q)
+	case RegistrationKeycloakEndpoint:
+		return withQuery(strings.TrimRight(m.Issuer, "/")+keycloakRegistrationPath, q)
+	}
+	return ""
+}
+
+// keycloakRegistrationPath is the registration endpoint of a Keycloak
+// realm, under the issuer of the realm. It takes the parameters of an
+// authorization request.
+const keycloakRegistrationPath = "/protocol/openid-connect/registrations"
+
+func authorizeQuery(clientID, redirectURI, state, nonce, verifier string, scopes []string) url.Values {
+	return url.Values{
 		"response_type":         {"code"},
 		"client_id":             {clientID},
 		"redirect_uri":          {redirectURI},
@@ -135,6 +187,9 @@ func AuthorizeURL(endpoint, clientID, redirectURI, state, nonce, verifier string
 		"code_challenge":        {oidc.Challenge(verifier)},
 		"code_challenge_method": {"S256"},
 	}
+}
+
+func withQuery(endpoint string, q url.Values) string {
 	sep := "?"
 	if strings.Contains(endpoint, "?") {
 		sep = "&"
@@ -190,7 +245,9 @@ type tokenResponse struct {
 }
 
 // exchange posts the code to the token endpoint (RFC 6749 section 4.1.3).
-// A confidential client authenticates with HTTP Basic (section 2.3.1).
+// A confidential client authenticates with the method of the record:
+// HTTP Basic or the form body (section 2.3.1), or a signed client
+// assertion (RFC 7523 section 2.2) (ADR-035 decision 4).
 func (f *Flow) exchange(ctx context.Context, p Provider, m Metadata, pend Pending, code string) (tokenResponse, error) {
 	form := url.Values{
 		"grant_type":    {"authorization_code"},
@@ -199,18 +256,34 @@ func (f *Flow) exchange(ctx context.Context, p Provider, m Metadata, pend Pendin
 		"client_id":     {p.ClientID},
 		"code_verifier": {pend.Verifier},
 	}
+	basic := ""
+	switch p.EffectiveTokenAuth() {
+	case TokenAuthClientSecretBasic, TokenAuthClientSecretPost:
+		secret, err := f.secrets()(p.ClientSecret)
+		if err != nil {
+			return tokenResponse{}, err
+		}
+		if p.EffectiveTokenAuth() == TokenAuthClientSecretPost {
+			form.Set("client_secret", secret)
+		} else {
+			basic = secret
+		}
+	case TokenAuthPrivateKeyJWT:
+		assertion, err := f.clientAssertion(p, m.TokenEndpoint)
+		if err != nil {
+			return tokenResponse{}, err
+		}
+		form.Set("client_assertion_type", ClientAssertionType)
+		form.Set("client_assertion", assertion)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return tokenResponse{}, wrap(ErrUpstream, "build token request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	secret, err := f.secrets()(p.ClientSecret)
-	if err != nil {
-		return tokenResponse{}, err
-	}
-	if secret != "" {
-		req.SetBasicAuth(url.QueryEscape(p.ClientID), url.QueryEscape(secret))
+	if basic != "" {
+		req.SetBasicAuth(url.QueryEscape(p.ClientID), url.QueryEscape(basic))
 	}
 	res, err := f.client().Do(req)
 	if err != nil {
@@ -230,6 +303,57 @@ func (f *Flow) exchange(ctx context.Context, p Provider, m Metadata, pend Pendin
 		return tokenResponse{}, wrap(ErrProviderError, "token response has no id_token")
 	}
 	return tok, nil
+}
+
+// ClientAssertionType is the client_assertion_type of a JWT client
+// assertion (RFC 7523 section 2.2).
+const ClientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+// clientAssertionTTL bounds a client assertion. One request needs it.
+const clientAssertionTTL = time.Minute
+
+// clientAssertion signs the client assertion of private_key_jwt with
+// the key behind the private_key reference of the record. The claims
+// follow RFC 7523 section 3: iss and sub are the client id, aud is the
+// token endpoint, jti is unique, exp is one minute away. The key is
+// ES256 or Ed25519 (ADR-011 decision 5).
+func (f *Flow) clientAssertion(p Provider, tokenEndpoint string) (string, error) {
+	pemBytes, err := f.secrets()(p.PrivateKey)
+	if err != nil {
+		return "", err
+	}
+	key, err := ParseKeyPEM([]byte(pemBytes))
+	if err != nil {
+		return "", wrap(ErrSecret, "private_key of %s: %v", p.ID, err)
+	}
+	pub, err := jose.PublicJWK(key, "")
+	if err != nil {
+		return "", wrap(ErrSecret, "private_key of %s: %v", p.ID, err)
+	}
+	kid, err := jose.Thumbprint(pub)
+	if err != nil {
+		return "", wrap(ErrSecret, "private_key of %s: %v", p.ID, err)
+	}
+	now := f.now()
+	claims := map[string]any{
+		"iss": p.ClientID,
+		"sub": p.ClientID,
+		"aud": tokenEndpoint,
+		"jti": oidc.NewState(),
+		"iat": now.Unix(),
+		"exp": now.Add(clientAssertionTTL).Unix(),
+	}
+	token, err := jose.Sign(key, kid, "JWT", claims)
+	if err != nil {
+		return "", wrap(ErrSecret, "sign the client assertion of %s: %v", p.ID, err)
+	}
+	return token, nil
+}
+
+// PeekAssertion returns the claims of a client assertion without
+// verification, for a test or a log line.
+func PeekAssertion(token string) (map[string]any, error) {
+	return jose.PeekPayload(token)
 }
 
 // verifyIDToken checks the token against the provider JWKS. On a missing

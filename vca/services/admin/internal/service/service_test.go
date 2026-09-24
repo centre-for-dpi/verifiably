@@ -17,6 +17,7 @@ import (
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
@@ -464,6 +465,59 @@ func TestAuthProviderRPCsWithDynamicRegistration(t *testing.T) {
 	}
 	if _, err := h.svc.GetAuthProvider(ctx, request(h, &adminv1.GetAuthProviderRequest{Id: p.GetId()})); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Fatalf("GetAuthProvider after delete = %v", err)
+	}
+}
+
+// TestCreateAuthProviderStoresKindAndStacks is ADR-035 decision 2: the
+// record keeps its kind, realm, registration mode, console, stacks,
+// token authentication method, key reference, and default flag.
+func TestCreateAuthProviderStoresKindAndStacks(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	in := &adminv1.AuthProvider{
+		DisplayName: "National IdP", DiscoveryUrl: h.idp.DiscoveryURL(), ClientId: "vca-admin",
+		Roles: []commonv1.Role{commonv1.Role_ROLE_ADMIN, commonv1.Role_ROLE_ISSUER}, Enabled: true,
+		Kind:            adminv1.ProviderKind_PROVIDER_KIND_ESIGNET,
+		Realm:           "national",
+		Registration:    adminv1.Registration_REGISTRATION_NONE,
+		ConsoleUrl:      "https://idp.example/console/",
+		Stacks:          []configv1.Dpg{configv1.Dpg_DPG_INJI, configv1.Dpg_DPG_CREDEBL},
+		TokenAuthMethod: adminv1.TokenAuth_TOKEN_AUTH_PRIVATE_KEY_JWT,
+		PrivateKey:      &commonv1.SecretRef{Store: commonv1.SecretRef_STORE_FILE, Name: "/run/secrets/esignet.pem"},
+		IsDefault:       true,
+	}
+	created, err := h.svc.CreateAuthProvider(ctx, request(h, &adminv1.CreateAuthProviderRequest{Provider: in}))
+	if err != nil {
+		t.Fatalf("CreateAuthProvider: %v", err)
+	}
+	got, err := h.svc.GetAuthProvider(ctx, request(h, &adminv1.GetAuthProviderRequest{Id: created.Msg.GetProvider().GetId()}))
+	if err != nil {
+		t.Fatalf("GetAuthProvider: %v", err)
+	}
+	p := got.Msg.GetProvider()
+	if p.GetKind() != in.GetKind() || p.GetRealm() != "national" || p.GetRegistration() != in.GetRegistration() ||
+		p.GetConsoleUrl() != in.GetConsoleUrl() || len(p.GetStacks()) != 2 || p.GetStacks()[1] != configv1.Dpg_DPG_CREDEBL ||
+		p.GetTokenAuthMethod() != in.GetTokenAuthMethod() || p.GetPrivateKey().GetName() != "/run/secrets/esignet.pem" ||
+		!p.GetIsDefault() {
+		t.Errorf("stored = %+v", p)
+	}
+	// An update keeps the profile when the caller sends the record back
+	// with one change, and takes a new profile when the caller sends one.
+	p.DisplayName = "Renamed"
+	updated, err := h.svc.UpdateAuthProvider(ctx, request(h, &adminv1.UpdateAuthProviderRequest{Provider: p}))
+	if err != nil {
+		t.Fatalf("UpdateAuthProvider: %v", err)
+	}
+	if updated.Msg.GetProvider().GetKind() != in.GetKind() || len(updated.Msg.GetProvider().GetStacks()) != 2 {
+		t.Errorf("the update lost the profile: %+v", updated.Msg.GetProvider())
+	}
+	// private_key_jwt without a key is a bad request.
+	bad := &adminv1.AuthProvider{
+		DisplayName: "Bad", DiscoveryUrl: h.idp.DiscoveryURL(), ClientId: "c", Enabled: true,
+		TokenAuthMethod: adminv1.TokenAuth_TOKEN_AUTH_PRIVATE_KEY_JWT,
+	}
+	if _, err := h.svc.CreateAuthProvider(ctx, request(h, &adminv1.CreateAuthProviderRequest{Provider: bad})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("private_key_jwt with no key = %v", err)
 	}
 }
 

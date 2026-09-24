@@ -50,6 +50,12 @@ It keeps no password and no client secret value. A provider record holds a refer
 | `VCA_ADMIN_SERVICES` | empty | The services to probe as `name=url` pairs, separated by commas. |
 | `VCA_ADMIN_PORTAL_PREFIX` | `/admin` | The URL prefix of the portal pages. |
 | `VCA_ADMIN_LOGOUT_REDIRECT` | `/admin/` | The page the browser opens after a logout. |
+| `VCA_OIDC_DISCOVERY_URL` | empty | The discovery URL of a first provider, registered as `default` with the role `admin`. |
+| `VCA_OIDC_CLIENT_ID` | empty | The client id of the first provider. |
+| `VCA_OIDC_CLIENT_SECRET` | empty | The client secret of the first provider. The record keeps the variable name, never the value. |
+| `VCA_OIDC_ROLES_CLAIM_PATH` | `realm_access.roles` | The dot path of the claim that carries roles. |
+| `VCA_OIDC_PUBLIC_URL` | empty | The base URL a browser uses to reach the first provider. The console link derives from it. |
+| `VCA_OIDC_INTERNAL_AUTHORITY` | empty | The `scheme://host` the service uses to reach the first provider on the container network. |
 
 ## How to run
 

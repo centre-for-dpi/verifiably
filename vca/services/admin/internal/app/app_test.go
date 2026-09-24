@@ -96,6 +96,60 @@ func TestBuildWiresEveryRoute(t *testing.T) {
 	}
 }
 
+// TestSeedProviderIsKeycloakWithRealmAndConsole is ADR-035 decisions 2
+// and 6: the admin service seeds the provider of the stack from the
+// VCA_OIDC_* variables, so the first admin registers in the admin realm
+// and binds with the bootstrap token.
+func TestSeedProviderIsKeycloakWithRealmAndConsole(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Seed = config.SeedProvider{
+		DiscoveryURL:   "http://waltid-keycloak:8080/realms/vca-admin-realm/.well-known/openid-configuration",
+		ClientID:       "vca-admin",
+		ClientSecret:   "S",
+		RolesClaimPath: "realm_access.roles",
+		PublicURL:      "http://localhost:17010",
+	}
+	a, err := app.Build(cfg, app.Deps{Log: quiet()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	p, err := a.Login.Providers().Get(oidcflow.SeedID)
+	if err != nil {
+		t.Fatalf("the seed is missing: %v", err)
+	}
+	if p.Kind != oidcflow.KindKeycloak || p.Realm != "vca-admin-realm" || !p.IsDefault || !p.Enabled ||
+		p.ConsoleURL != "http://localhost:17010/admin/vca-admin-realm/console/" {
+		t.Errorf("seed profile = %+v", p)
+	}
+	if len(p.Roles) != 1 || p.Roles[0] != "admin" || p.ClientID != "vca-admin" ||
+		p.ClientSecret != (oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: "VCA_OIDC_CLIENT_SECRET"}) {
+		t.Errorf("seed record = %+v", p)
+	}
+	// A stored record survives the next start.
+	p.DisplayName = "Kept"
+	if _, putErr := a.Login.Providers().Put(p); putErr != nil {
+		t.Fatal(putErr)
+	}
+	cfg.StateDir = t.TempDir()
+	again, err := app.Build(cfg, app.Deps{Log: quiet()})
+	if err != nil {
+		t.Fatalf("second Build: %v", err)
+	}
+	if _, err := again.Login.Providers().Get(oidcflow.SeedID); err != nil {
+		t.Errorf("the seed is missing with a state directory: %v", err)
+	}
+	// No seed variables, no seed.
+	if none, err := app.Build(baseConfig(), app.Deps{Log: quiet()}); err != nil || len(none.Login.Providers().List()) != 0 {
+		t.Errorf("a build with no seed variables got providers: %v", err)
+	}
+	// A bad seed is a start failure, as in the other auth services.
+	cfg.StateDir = ""
+	cfg.Seed.DiscoveryURL = "nope"
+	if _, err := app.Build(cfg, app.Deps{Log: quiet()}); err == nil {
+		t.Error("a bad seed passed")
+	}
+}
+
 func TestBuildKeepsTheStateOnDisk(t *testing.T) {
 	dir := t.TempDir()
 	cfg := baseConfig()

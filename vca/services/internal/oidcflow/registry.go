@@ -144,6 +144,17 @@ func (r *Registry) Put(p Provider) (Provider, error) {
 	return p, nil
 }
 
+// Seed stores the seeded provider when the registry has no record with
+// its id, so a stored record, edited through the admin RPCs, survives a
+// restart (ADR-035 decision 2).
+func (r *Registry) Seed(p Provider) error {
+	if _, err := r.Get(p.ID); err == nil {
+		return nil
+	}
+	_, err := r.Put(p)
+	return err
+}
+
 // Delete removes a provider.
 func (r *Registry) Delete(id string) error {
 	r.mu.Lock()

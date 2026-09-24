@@ -63,7 +63,36 @@ type Config struct {
 	// LogoutRedirect is the relative path the browser opens after a
 	// logout when the provider has no end session endpoint.
 	LogoutRedirect string `env:"LOGOUT_REDIRECT" default:"/admin/"`
+	// Seed is the provider of the stack from the VCA_OIDC_* variables
+	// that the setup CLI writes. The first admin signs in with it and
+	// binds with the bootstrap token (ADR-035 decision 6).
+	Seed SeedProvider
 }
+
+// CommonPrefix of the variables the deployment shares between services.
+const CommonPrefix = "VCA_"
+
+// SeedProvider is the provider that the setup CLI writes to the
+// environment. The service registers it at start under the seed id.
+type SeedProvider struct {
+	// DiscoveryURL is the discovery document of the provider.
+	DiscoveryURL string `env:"OIDC_DISCOVERY_URL"`
+	// ClientID is the client id at the provider.
+	ClientID string `env:"OIDC_CLIENT_ID"`
+	// ClientSecret is the client secret. The record keeps a reference
+	// to the variable, never the value.
+	ClientSecret string `env:"OIDC_CLIENT_SECRET" secret:"true"`
+	// RolesClaimPath is the path of the roles claim.
+	RolesClaimPath string `env:"OIDC_ROLES_CLAIM_PATH" default:"realm_access.roles"`
+	// PublicURL is the base URL a browser uses to reach the provider.
+	PublicURL string `env:"OIDC_PUBLIC_URL"`
+	// InternalAuthority is the scheme://host that reaches the provider
+	// from the compose network (ADR-012 decision 6).
+	InternalAuthority string `env:"OIDC_INTERNAL_AUTHORITY"`
+}
+
+// HasSeed reports whether the environment names a provider.
+func (s SeedProvider) HasSeed() bool { return s.DiscoveryURL != "" && s.ClientID != "" }
 
 // Service is one deployment service the health RPC probes.
 type Service struct {
@@ -80,6 +109,9 @@ func (s Service) ReadyzURL() string { return s.BaseURL + "/readyz" }
 func Load(getenv func(string) string) (Config, error) {
 	var c Config
 	if err := sharedconfig.Load(Prefix, &c, getenv); err != nil {
+		return Config{}, err
+	}
+	if err := sharedconfig.Load(CommonPrefix, &c.Seed, getenv); err != nil {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))

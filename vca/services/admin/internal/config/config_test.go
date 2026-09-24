@@ -48,6 +48,34 @@ func TestLoadFillsTheDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadReadsTheSeedProvider reads the VCA_OIDC_* variables that the
+// setup CLI writes, so the first admin has a provider to sign in with
+// (ADR-035 decision 6).
+func TestLoadReadsTheSeedProvider(t *testing.T) {
+	c, err := config.Load(env(base(map[string]string{
+		"VCA_OIDC_DISCOVERY_URL":      "http://kc:8080/realms/vca-admin-realm/.well-known/openid-configuration",
+		"VCA_OIDC_CLIENT_ID":          "vca-admin",
+		"VCA_OIDC_CLIENT_SECRET":      "S",
+		"VCA_OIDC_PUBLIC_URL":         "http://localhost:17010",
+		"VCA_OIDC_INTERNAL_AUTHORITY": "http://kc:8080",
+	})))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !c.Seed.HasSeed() || c.Seed.ClientID != "vca-admin" || c.Seed.ClientSecret != "S" ||
+		c.Seed.PublicURL != "http://localhost:17010" || c.Seed.InternalAuthority != "http://kc:8080" ||
+		c.Seed.RolesClaimPath != "realm_access.roles" {
+		t.Errorf("seed = %+v", c.Seed)
+	}
+	plain, err := config.Load(env(base(nil)))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if plain.Seed.HasSeed() {
+		t.Errorf("a configuration with no OIDC variables has a seed: %+v", plain.Seed)
+	}
+}
+
 func TestLoadTrimsAndParsesTheServices(t *testing.T) {
 	c, err := config.Load(env(base(map[string]string{
 		"VCA_ADMIN_PUBLIC_URL":    "https://admin.example/",

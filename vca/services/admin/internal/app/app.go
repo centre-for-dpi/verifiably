@@ -99,6 +99,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	if serr := seed(providers, cfg.Seed); serr != nil {
+		return nil, serr
+	}
 	key, err := loadKey(cfg.SigningKeyPath, deps.Log)
 	if err != nil {
 		return nil, err
@@ -226,6 +229,32 @@ func sessionKey(value string) []byte {
 	// lives until the service restarts.
 	fresh := rand.Text()
 	return []byte(fresh)
+}
+
+// seed registers the provider of the stack from the environment under
+// the seed id when the environment names one and the registry has no
+// such record (ADR-035 decisions 2 and 6). The record is of kind
+// keycloak with the admin realm when the discovery URL names a Keycloak
+// realm.
+func seed(reg *oidcflow.Registry, s config.SeedProvider) error {
+	if !s.HasSeed() {
+		return nil
+	}
+	secretEnv := ""
+	if s.ClientSecret != "" {
+		// The variable holds the secret itself. The reference names the
+		// variable, so the registry never stores the value.
+		secretEnv = config.CommonPrefix + "OIDC_CLIENT_SECRET"
+	}
+	return reg.Seed(oidcflow.SeedProvider(oidcflow.Seed{
+		DiscoveryURL:      s.DiscoveryURL,
+		ClientID:          s.ClientID,
+		ClientSecretEnv:   secretEnv,
+		PublicURL:         s.PublicURL,
+		RolesClaimPath:    s.RolesClaimPath,
+		Roles:             []string{"admin"},
+		InternalAuthority: s.InternalAuthority,
+	}))
 }
 
 // Persister stores the provider registry document in the shared key

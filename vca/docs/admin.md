@@ -78,6 +78,14 @@ The CLI does the same step with the `OnboardAdmin` RPC. The RPC takes the
 bootstrap token, an ID token, and a provider id. It needs no session,
 because no admin exists yet.
 
+The first admin needs a provider before any admin exists.
+The service seeds one from the `VCA_OIDC_*` variables that the setup CLI
+writes, under the id `default` with the role `admin`
+(ADR-035 decision 6).
+The seed of a stack is the admin realm of its Keycloak.
+The first admin registers there and signs in with the bootstrap token.
+A stored record survives a restart, so an edit through the RPCs stays.
+
 ## Provider onboarding
 
 `CreateAuthProvider` onboards one OpenID Connect provider:
@@ -98,6 +106,13 @@ A client secret from a registration goes to the vault. With a state
 directory the vault writes one file with mode 0600. Without a state
 directory the vault keeps the value in memory, and the value ends at a
 restart.
+
+The record carries more than the endpoints (ADR-035 decision 2): the
+kind, the realm label, the registration mode, and the console URL.
+It also carries the stacks, the token endpoint method, the key
+reference of `private_key_jwt`, and the default flag.
+`docs/issuer-auth.md` lists every field and its values.
+An update keeps the fields the caller sends back.
 
 ## CLI login
 

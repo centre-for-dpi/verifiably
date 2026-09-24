@@ -322,6 +322,10 @@ type Options struct {
 	Roles []string
 	// Enabled says whether the provider accepts logins.
 	Enabled bool
+	// Profile describes the provider beyond its endpoints: the kind,
+	// the realm, the registration mode, the console, the stacks, and the
+	// token endpoint authentication (ADR-035 decision 2).
+	Profile oidcflow.Profile
 }
 
 // Result is the outcome of one onboarding.
@@ -359,6 +363,7 @@ func Run(ctx context.Context, client Fetcher, vault *Vault, o Options) (Result, 
 		RolesClaimPath: o.RolesClaimPath,
 		Roles:          o.Roles,
 		Enabled:        o.Enabled,
+		Profile:        o.Profile,
 	}
 	res := Result{Metadata: meta}
 	if o.Dynamic {
