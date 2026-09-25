@@ -25,6 +25,8 @@ const (
 	KindPresentation = "vp"
 	// KindHeld is a credential the citizen pasted into the wallet.
 	KindHeld = "held"
+	// KindSignIn is an authorization code flow that waits for the issuer.
+	KindSignIn = "authz"
 )
 
 // ErrExpired reports a record that is too old to use.
@@ -49,6 +51,12 @@ type record struct {
 	Payload []byte `json:"payload,omitempty"`
 	// Format is the wire format of Payload.
 	Format commonv1.Format `json:"format,omitempty"`
+	// Verifier is the PKCE code verifier of a sign in.
+	Verifier string `json:"verifier,omitempty"`
+	// Token is the token endpoint of a sign in.
+	Token string `json:"token,omitempty"`
+	// Redirect is the redirect URI of a sign in.
+	Redirect string `json:"redirect,omitempty"`
 	// ExpiresAt is the time the record stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 }

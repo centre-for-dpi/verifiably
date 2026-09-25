@@ -23,6 +23,9 @@ service WalletPortalService {
   rpc ListClaimable(ListClaimableRequest) returns (ListClaimableResponse);
   // Claim starts the authorization code flow for one schema.
   rpc Claim(ClaimRequest) returns (ClaimResponse);
+  // ClaimComplete takes the answer of the issuer after the sign in and
+  // claims the credential into the wallet.
+  rpc ClaimComplete(ClaimCompleteRequest) returns (ClaimCompleteResponse);
   // Scan takes the text of a scanned QR code and returns what it is.
   rpc Scan(ScanRequest) returns (ScanResponse);
   // Paste takes pasted text and returns what it is.
@@ -156,6 +159,10 @@ message ClaimRequest {
   string schema_id = 2;
   // The wire format to ask for.
   vca.common.v1.Format format = 3;
+  // The wallet page the issuer sends the browser back to after the sign
+  // in. With it, the service starts the authorization code flow in the
+  // browser when the issuer names an authorization server.
+  string redirect_uri = 4;
 }
 
 // ClaimResponse returns the next step.
@@ -167,6 +174,22 @@ message ClaimResponse {
   Card card = 2;
   // The pending offer id, when the wallet must call Accept.
   string offer_id = 3;
+}
+
+// ClaimCompleteRequest carries the answer of the authorization server.
+message ClaimCompleteRequest {
+  // The state the service sent with the authorization request.
+  string state = 1;
+  // The authorization code.
+  string code = 2;
+  // The error code of the authorization server, when it refused.
+  string error = 3;
+}
+
+// ClaimCompleteResponse returns the credential now in the wallet.
+message ClaimCompleteResponse {
+  // The card of the claimed credential.
+  Card card = 1;
 }
 
 // Detected says what a scanned or pasted text is.

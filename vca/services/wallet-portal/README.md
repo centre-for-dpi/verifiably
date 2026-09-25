@@ -53,6 +53,7 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_WALLET_PORTAL_MAX_BLOB_BYTES` | The size limit of one ciphertext blob. | `262144` |
 | `VCA_WALLET_PORTAL_PENDING_TTL` | How long an offer or a request stays readable. | `15m` |
 | `VCA_WALLET_PORTAL_PAGE_SIZE_MAX` | The maximum page size of a list RPC. | `50` |
+| `VCA_WALLET_PORTAL_CLIENT_ID` | The client id of the wallet at the authorization server of an issuer. | `vca-wallet` |
 | `VCA_WALLET_PORTAL_CRAWL_TTL` | How long the service keeps the issuer metadata it reads with no discovery service. | `5m` |
 | `VCA_WALLET_PORTAL_CRAWL_ALLOWED_HOSTS` | The hosts of the trusted issuers the service reads. | empty: every public host |
 | `VCA_WALLET_PORTAL_CRAWL_ALLOW_PRIVATE_NETWORK` | Read a trusted issuer at a private address. For development only. | `false` |
@@ -67,10 +68,10 @@ The container image is `ghcr.io/centre-for-dpi/vca-wallet-portal`. It listens on
 2. Open `http://localhost:8092/readyz`. The response is `200 OK`.
 3. Log in through the `wallet-auth` service. The browser gets the session cookie `vca_wallet_session`.
 4. Open `http://localhost:8092/wallet/discover`. The table lists the credentials issuers publish.
-5. Open `http://localhost:8092/wallet/claimable`. The table says yes or not now for each credential.
-6. Open `http://localhost:8092/wallet/scan`. Paste a credential offer. The page asks you to accept it.
+5. Open `http://localhost:8092/wallet/discover?claim=1`. The claim card shows the ways the issuer allows.
+6. Open `http://localhost:8092/wallet/claim`. Paste a credential offer and its transaction code. The wallet claims it.
 7. Open `http://localhost:8092/wallet/`. Each card shows the trust badge, the state badge, and the fields.
-8. Paste a presentation request on the scan page. The consent screen lists every field before you send it.
+8. Paste a presentation request on the claim page. The consent screen lists every field before you send it.
 9. Run this command to read the catalogue over the API:
 
 ```sh

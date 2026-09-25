@@ -257,3 +257,31 @@ func TestReadMetadata(t *testing.T) {
 		t.Fatal("want a parse error")
 	}
 }
+
+// TestEndpointsOfTheAuthorizationServer checks that the wallet finds
+// where to send the holder to sign in and where to trade the code: the
+// first authorization server of the issuer, or the issuer itself.
+func TestEndpointsOfTheAuthorizationServer(t *testing.T) {
+	d := &docs{body: map[string]string{
+		"https://b.example/.well-known/openid-credential-issuer": metadata("https://b.example",
+			`"authorization_servers":["https://login.b.example/realms/b"],`),
+		"https://login.b.example/realms/b/.well-known/oauth-authorization-server": `{"authorization_endpoint":"https://login.b.example/auth",` +
+			`"token_endpoint":"https://login.b.example/token"}`,
+		"https://c.example/.well-known/openid-credential-issuer": metadata("https://c.example", ""),
+		"https://c.example/.well-known/openid-configuration":     `{"authorization_endpoint":"https://c.example/authorize"}`,
+		"https://d.example/.well-known/openid-credential-issuer": "{",
+	}}
+	c, err := issuers.New(issuers.Options{Public: d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Endpoints(context.Background(), "https://b.example")
+	if err != nil || got.Authorization != "https://login.b.example/auth" || got.Token != "https://login.b.example/token" {
+		t.Fatalf("b = %+v, %v", got, err)
+	}
+	for _, issuer := range []string{"https://c.example", "https://d.example", "https://gone.example"} {
+		if _, err := c.Endpoints(context.Background(), issuer); err == nil {
+			t.Errorf("%s: want an error", issuer)
+		}
+	}
+}

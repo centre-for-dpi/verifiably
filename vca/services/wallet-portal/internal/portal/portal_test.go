@@ -337,17 +337,26 @@ func TestDiscoverPageWithoutCatalogue(t *testing.T) {
 	}
 }
 
-func TestClaimablePage(t *testing.T) {
-	h := setup(t, nil)
+// TestClaimablePageMoved checks that the old claimable page leads to
+// the claim page, where the eligibility hook decides which credentials
+// the holder can get by a sign in at the issuer (ADR-021 decision 2).
+func TestClaimablePageMoved(t *testing.T) {
+	h := setup(t, func(o *service.Options) {
+		o.Catalogue = ports.CatalogueFunc(func(context.Context) ([]*walletportalv1.Offering, error) {
+			list := offerings()
+			for _, o := range list {
+				o.ClaimMethods = []walletportalv1.ClaimMethod{walletportalv1.ClaimMethod_CLAIM_METHOD_AUTHORIZATION_CODE}
+			}
+			return list, nil
+		})
+	})
 	rec := h.get(t, "/wallet/claimable")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d", rec.Code)
+	if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/wallet/claim" {
+		t.Fatalf("status = %d location = %q", rec.Code, rec.Header().Get("Location"))
 	}
-	body := rec.Body.String()
-	for _, want := range []string{"What I can get", "yes", "not now", "Get it", "Driver licence"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("page misses %q", want)
-		}
+	body := h.get(t, "/wallet/claim").Body.String()
+	if !strings.Contains(body, ">Driver licence from Agency A<") || strings.Contains(body, "Passport") {
+		t.Fatalf("claim page = %s", body)
 	}
 }
 
@@ -357,8 +366,8 @@ func TestClaimablePageProblem(t *testing.T) {
 			return false, errors.New("down")
 		}
 	})
-	rec := h.get(t, "/wallet/claimable")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "not available") {
+	rec := h.get(t, "/wallet/claim")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "lets you sign in now") {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
@@ -390,7 +399,7 @@ func TestClaimInBrowserModeShowsTheOffer(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "Add it to my wallet") {
+	if !strings.Contains(rec.Body.String(), "Add to my wallet") {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
@@ -398,7 +407,7 @@ func TestClaimInBrowserModeShowsTheOffer(t *testing.T) {
 func TestScanFormAndOffer(t *testing.T) {
 	h := setup(t, nil)
 	rec := h.get(t, "/wallet/scan")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Scan or paste a code") {
+	if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/wallet/claim" {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	offer := `{"credential_issuer":"https://a.example",` +
@@ -409,8 +418,8 @@ func TestScanFormAndOffer(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"An issuer offers you a credential", "Agency A",
-		"The code the issuer gave you", "No thank you"} {
+	for _, want := range []string{"A credential offer", "Agency A offers you a credential.",
+		"Transaction code", "Add to my wallet"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page misses %q", want)
 		}
@@ -477,7 +486,7 @@ func TestScanCredentialAndPresentationRequest(t *testing.T) {
 }
 
 func TestRejectAndDelete(t *testing.T) {
-	h := setup(t, nil)
+	h := setupShell(t, nil, holderDeployment(backendv1.Feature_FEATURE_WALLET_REJECT_OFFER))
 	offer := `{"credential_issuer":"https://a.example","credential_configuration_ids":["dl"]}`
 	rec := h.post(t, "/wallet/scan", url.Values{"text": {offer}})
 	id := formValues(t, rec.Body.String()).Get("offer_id")
@@ -486,7 +495,7 @@ func TestRejectAndDelete(t *testing.T) {
 		t.Fatalf("reject status = %d", rec.Code)
 	}
 	rec = h.post(t, "/wallet/reject", url.Values{"offer_id": {"bad/id"}})
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "could not refuse") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "could not decline") {
 		t.Fatalf("bad reject status = %d", rec.Code)
 	}
 	rec = h.post(t, "/wallet/delete", url.Values{"id": {"c1"}})
@@ -501,7 +510,7 @@ func TestRejectAndDelete(t *testing.T) {
 		t.Fatalf("bad delete status = %d", rec.Code)
 	}
 	rec = h.post(t, "/wallet/accept", url.Values{"offer_id": {"missing"}})
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "did not take the credential") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "did not give the credential") {
 		t.Fatalf("bad accept status = %d", rec.Code)
 	}
 }
@@ -633,9 +642,9 @@ func TestSubmitWithRedirectURI(t *testing.T) {
 }
 
 func TestPostsNeedTheToken(t *testing.T) {
-	h := setup(t, nil)
+	h := setupShell(t, nil, holderDeployment(backendv1.Feature_FEATURE_WALLET_REJECT_OFFER))
 	for _, path := range []string{"/wallet/claim", "/wallet/scan", "/wallet/accept",
-		"/wallet/reject", "/wallet/delete", "/wallet/present"} {
+		"/wallet/reject", "/wallet/delete", "/wallet/present", "/wallet/claim/offer", "/wallet/scan/read", "/wallet/signout"} {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("a=b"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()

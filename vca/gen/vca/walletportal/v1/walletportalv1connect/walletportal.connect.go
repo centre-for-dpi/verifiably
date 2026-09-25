@@ -48,6 +48,9 @@ const (
 	// WalletPortalServiceClaimProcedure is the fully-qualified name of the WalletPortalService's Claim
 	// RPC.
 	WalletPortalServiceClaimProcedure = "/vca.walletportal.v1.WalletPortalService/Claim"
+	// WalletPortalServiceClaimCompleteProcedure is the fully-qualified name of the
+	// WalletPortalService's ClaimComplete RPC.
+	WalletPortalServiceClaimCompleteProcedure = "/vca.walletportal.v1.WalletPortalService/ClaimComplete"
 	// WalletPortalServiceScanProcedure is the fully-qualified name of the WalletPortalService's Scan
 	// RPC.
 	WalletPortalServiceScanProcedure = "/vca.walletportal.v1.WalletPortalService/Scan"
@@ -85,6 +88,9 @@ type WalletPortalServiceClient interface {
 	ListClaimable(context.Context, *connect.Request[v1.ListClaimableRequest]) (*connect.Response[v1.ListClaimableResponse], error)
 	// Claim starts the authorization code flow for one schema.
 	Claim(context.Context, *connect.Request[v1.ClaimRequest]) (*connect.Response[v1.ClaimResponse], error)
+	// ClaimComplete takes the answer of the issuer after the sign in and
+	// claims the credential into the wallet.
+	ClaimComplete(context.Context, *connect.Request[v1.ClaimCompleteRequest]) (*connect.Response[v1.ClaimCompleteResponse], error)
 	// Scan takes the text of a scanned QR code and returns what it is.
 	Scan(context.Context, *connect.Request[v1.ScanRequest]) (*connect.Response[v1.ScanResponse], error)
 	// Paste takes pasted text and returns what it is.
@@ -131,6 +137,12 @@ func NewWalletPortalServiceClient(httpClient connect.HTTPClient, baseURL string,
 			httpClient,
 			baseURL+WalletPortalServiceClaimProcedure,
 			connect.WithSchema(walletPortalServiceMethods.ByName("Claim")),
+			connect.WithClientOptions(opts...),
+		),
+		claimComplete: connect.NewClient[v1.ClaimCompleteRequest, v1.ClaimCompleteResponse](
+			httpClient,
+			baseURL+WalletPortalServiceClaimCompleteProcedure,
+			connect.WithSchema(walletPortalServiceMethods.ByName("ClaimComplete")),
 			connect.WithClientOptions(opts...),
 		),
 		scan: connect.NewClient[v1.ScanRequest, v1.ScanResponse](
@@ -189,6 +201,7 @@ type walletPortalServiceClient struct {
 	listDiscoverable *connect.Client[v1.ListDiscoverableRequest, v1.ListDiscoverableResponse]
 	listClaimable    *connect.Client[v1.ListClaimableRequest, v1.ListClaimableResponse]
 	claim            *connect.Client[v1.ClaimRequest, v1.ClaimResponse]
+	claimComplete    *connect.Client[v1.ClaimCompleteRequest, v1.ClaimCompleteResponse]
 	scan             *connect.Client[v1.ScanRequest, v1.ScanResponse]
 	paste            *connect.Client[v1.PasteRequest, v1.PasteResponse]
 	accept           *connect.Client[v1.AcceptRequest, v1.AcceptResponse]
@@ -212,6 +225,11 @@ func (c *walletPortalServiceClient) ListClaimable(ctx context.Context, req *conn
 // Claim calls vca.walletportal.v1.WalletPortalService.Claim.
 func (c *walletPortalServiceClient) Claim(ctx context.Context, req *connect.Request[v1.ClaimRequest]) (*connect.Response[v1.ClaimResponse], error) {
 	return c.claim.CallUnary(ctx, req)
+}
+
+// ClaimComplete calls vca.walletportal.v1.WalletPortalService.ClaimComplete.
+func (c *walletPortalServiceClient) ClaimComplete(ctx context.Context, req *connect.Request[v1.ClaimCompleteRequest]) (*connect.Response[v1.ClaimCompleteResponse], error) {
+	return c.claimComplete.CallUnary(ctx, req)
 }
 
 // Scan calls vca.walletportal.v1.WalletPortalService.Scan.
@@ -266,6 +284,9 @@ type WalletPortalServiceHandler interface {
 	ListClaimable(context.Context, *connect.Request[v1.ListClaimableRequest]) (*connect.Response[v1.ListClaimableResponse], error)
 	// Claim starts the authorization code flow for one schema.
 	Claim(context.Context, *connect.Request[v1.ClaimRequest]) (*connect.Response[v1.ClaimResponse], error)
+	// ClaimComplete takes the answer of the issuer after the sign in and
+	// claims the credential into the wallet.
+	ClaimComplete(context.Context, *connect.Request[v1.ClaimCompleteRequest]) (*connect.Response[v1.ClaimCompleteResponse], error)
 	// Scan takes the text of a scanned QR code and returns what it is.
 	Scan(context.Context, *connect.Request[v1.ScanRequest]) (*connect.Response[v1.ScanResponse], error)
 	// Paste takes pasted text and returns what it is.
@@ -308,6 +329,12 @@ func NewWalletPortalServiceHandler(svc WalletPortalServiceHandler, opts ...conne
 		WalletPortalServiceClaimProcedure,
 		svc.Claim,
 		connect.WithSchema(walletPortalServiceMethods.ByName("Claim")),
+		connect.WithHandlerOptions(opts...),
+	)
+	walletPortalServiceClaimCompleteHandler := connect.NewUnaryHandler(
+		WalletPortalServiceClaimCompleteProcedure,
+		svc.ClaimComplete,
+		connect.WithSchema(walletPortalServiceMethods.ByName("ClaimComplete")),
 		connect.WithHandlerOptions(opts...),
 	)
 	walletPortalServiceScanHandler := connect.NewUnaryHandler(
@@ -366,6 +393,8 @@ func NewWalletPortalServiceHandler(svc WalletPortalServiceHandler, opts ...conne
 			walletPortalServiceListClaimableHandler.ServeHTTP(w, r)
 		case WalletPortalServiceClaimProcedure:
 			walletPortalServiceClaimHandler.ServeHTTP(w, r)
+		case WalletPortalServiceClaimCompleteProcedure:
+			walletPortalServiceClaimCompleteHandler.ServeHTTP(w, r)
 		case WalletPortalServiceScanProcedure:
 			walletPortalServiceScanHandler.ServeHTTP(w, r)
 		case WalletPortalServicePasteProcedure:
@@ -401,6 +430,10 @@ func (UnimplementedWalletPortalServiceHandler) ListClaimable(context.Context, *c
 
 func (UnimplementedWalletPortalServiceHandler) Claim(context.Context, *connect.Request[v1.ClaimRequest]) (*connect.Response[v1.ClaimResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.Claim is not implemented"))
+}
+
+func (UnimplementedWalletPortalServiceHandler) ClaimComplete(context.Context, *connect.Request[v1.ClaimCompleteRequest]) (*connect.Response[v1.ClaimCompleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.ClaimComplete is not implemented"))
 }
 
 func (UnimplementedWalletPortalServiceHandler) Scan(context.Context, *connect.Request[v1.ScanRequest]) (*connect.Response[v1.ScanResponse], error) {

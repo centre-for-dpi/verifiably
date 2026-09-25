@@ -109,8 +109,10 @@ to the same endpoint. An image, a PDF, an XML document, and a pasted
 credential all reach the same decoders. The page uses the vca UI kit. It
 passes the structural WCAG 2.2 checks of `ui/a11ytest`.
 
-The third-party notices of the vendored files sit in
-[`services/verifier-ingest/internal/scanner/NOTICE`](../services/verifier-ingest/internal/scanner/NOTICE).
+The scanner and the QR reader sit in the shared package
+`services/internal/qrscan`, which the wallet uses too. The third-party
+notices of the vendored files sit in
+[`services/internal/qrscan/NOTICE`](../services/internal/qrscan/NOTICE).
 
 ## Storage
 

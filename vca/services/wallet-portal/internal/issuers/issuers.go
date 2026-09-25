@@ -128,20 +128,33 @@ func (c *Crawler) Offerings(ctx context.Context) ([]*walletportalv1.Offering, er
 // and the metadata of its authorization server. A live pair is read at
 // its internal address. An issuer that does not answer gives none.
 func (c *Crawler) Methods(ctx context.Context, issuer string) []walletportalv1.ClaimMethod {
-	getter, endpoint := c.opts.Public, issuer
-	var channels []backendv1.Channel
-	if c.opts.Peers != nil {
-		for _, src := range c.opts.Peers(ctx) {
-			if same(src.Public, issuer) {
-				getter, endpoint, channels = c.opts.Internal, src.Endpoint, src.Channels
-			}
-		}
-	}
-	m, err := c.metadata(ctx, getter, endpoint)
+	src := c.source(ctx, issuer)
+	m, err := c.metadata(ctx, src.getter, src.endpoint)
 	if err != nil {
 		return nil
 	}
-	return merge(c.grants(ctx, m, issuer), channels)
+	return merge(c.grants(ctx, m, issuer), src.channels)
+}
+
+// located is where the crawler reads one issuer.
+type located struct {
+	getter   Getter
+	endpoint string
+	channels []backendv1.Channel
+}
+
+// source returns where to read an issuer: the internal address of a live
+// pair whose public URL it is, or else the issuer URL itself.
+func (c *Crawler) source(ctx context.Context, issuer string) located {
+	out := located{getter: c.opts.Public, endpoint: issuer}
+	if c.opts.Peers != nil {
+		for _, src := range c.opts.Peers(ctx) {
+			if same(src.Public, issuer) {
+				out = located{getter: c.opts.Internal, endpoint: src.Endpoint, channels: src.Channels}
+			}
+		}
+	}
+	return out
 }
 
 // sources returns the live pairs and the trusted issuers. A trusted
@@ -378,6 +391,46 @@ type document struct {
 type authServer struct {
 	GrantTypes       []string `json:"grant_types_supported"`
 	AnonymousPreAuth bool     `json:"pre-authorized_grant_anonymous_access_supported"`
+	Authorization    string   `json:"authorization_endpoint"`
+	Token            string   `json:"token_endpoint"`
+}
+
+// Endpoints are the two addresses of the authorization code flow.
+type Endpoints struct {
+	// Authorization is where the browser signs in.
+	Authorization string
+	// Token is where the wallet trades the code for an access token.
+	Token string
+}
+
+// ErrNoEndpoints reports an issuer whose authorization server names no
+// authorization endpoint or no token endpoint.
+var ErrNoEndpoints = errors.New("issuers: the authorization server names no endpoints")
+
+// Endpoints returns the authorization and token endpoints of the first
+// authorization server of an issuer, or of the issuer itself.
+func (c *Crawler) Endpoints(ctx context.Context, issuer string) (Endpoints, error) {
+	src := c.source(ctx, issuer)
+	m, err := c.metadata(ctx, src.getter, src.endpoint)
+	if err != nil {
+		return Endpoints{}, err
+	}
+	server := issuer
+	if len(m.AuthorizationServers) > 0 {
+		server = m.AuthorizationServers[0]
+	}
+	for _, path := range []string{OAuthPath, OpenIDPath} {
+		doc, err := get(ctx, c.opts.Public, strings.TrimRight(server, "/")+path)
+		if err != nil {
+			continue
+		}
+		var as authServer
+		if json.Unmarshal(doc.Body, &as) != nil || as.Authorization == "" || as.Token == "" {
+			continue
+		}
+		return Endpoints{Authorization: as.Authorization, Token: as.Token}, nil
+	}
+	return Endpoints{}, ErrNoEndpoints
 }
 
 // configuration is the JSON shape of one configuration.

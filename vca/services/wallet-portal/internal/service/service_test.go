@@ -50,13 +50,14 @@ type fakeHolder struct {
 	accepted    bool
 	seenOffer   string
 	seenPin     string
+	seenGrant   string
 	seenPresent *backendv1.PresentRequest
 	deletedID   string
 }
 
 func (f *fakeHolder) AcceptOffer(_ context.Context, req *connect.Request[backendv1.AcceptOfferRequest],
 ) (*connect.Response[backendv1.AcceptOfferResponse], error) {
-	f.seenOffer, f.seenPin = req.Msg.GetOfferUri(), req.Msg.GetPin()
+	f.seenOffer, f.seenPin, f.seenGrant = req.Msg.GetOfferUri(), req.Msg.GetPin(), req.Msg.GetAuthorizationGrant()
 	if f.acceptErr != nil {
 		return nil, f.acceptErr
 	}

@@ -92,6 +92,9 @@ type Config struct {
 	PendingTTL time.Duration `env:"PENDING_TTL" default:"15m"`
 	// PageSizeMax caps the page size of a list RPC.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+	// ClientID is the client id of the wallet at the authorization server
+	// of an issuer, for the sign in at the issuer (spec HO3).
+	ClientID string `env:"CLIENT_ID" default:"vca-wallet"`
 	// CrawlTTL is how long the wallet keeps the issuer metadata it reads
 	// when the deployment runs no discovery service (spec HO1).
 	CrawlTTL time.Duration `env:"CRAWL_TTL" default:"5m"`

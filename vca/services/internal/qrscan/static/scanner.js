@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Camera QR scanner of the verifier ingestion page (ADR-023 decision 6).
+// Camera QR scanner of the verifier ingestion page and the wallet
+// (ADR-023 decision 6).
 // It is lifted from verifiably-go/static/js/scanner.js and reduced to one
 // purpose: read a QR code with the camera and post only the decoded text.
 //
@@ -49,7 +50,15 @@
     var token = scanForm.querySelector('input[name="csrf_token"]');
     if (token) headers['X-CSRF-Token'] = token.value;
     return fetch(scanForm.getAttribute('data-ingest'), { method: 'POST', body: form, headers: headers })
-      .then(function (resp) { return resp.text(); })
+      .then(function (resp) {
+        // A service that names the next page in HX-Redirect sends the
+        // browser there, as htmx does.
+        var next = resp.headers.get('HX-Redirect');
+        if (next && next.charAt(0) === '/' && next.charAt(1) !== '/') {
+          window.location.assign(next);
+        }
+        return resp.text();
+      })
       .then(function (html) {
         var target = el('scan-result');
         if (target) target.innerHTML = html;

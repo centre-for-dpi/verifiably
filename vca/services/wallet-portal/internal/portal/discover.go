@@ -31,6 +31,9 @@ func (p *Portal) discover(w http.ResponseWriter, r *http.Request) error {
 		})
 	} else {
 		content = p.offeringTable(b, resp.Msg.GetOfferings())
+		if o, ok := chosen(r, resp.Msg.GetOfferings()); ok {
+			content = components.Join(content, p.claimCard(b, o))
+		}
 	}
 	return p.render(w, r, b, components.Page{
 		Title:       msg.T("holder.discover.title.label"),

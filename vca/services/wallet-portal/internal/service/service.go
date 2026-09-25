@@ -32,6 +32,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/detect"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/issuers"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/ports"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
@@ -77,8 +78,16 @@ type Options struct {
 	Store store.KeyValue
 	// Fetch reads an OID4VP request object. Nil blocks a request URI.
 	Fetch present.Fetcher
-	// Post sends the direct_post answer. Nil blocks a submit.
+	// Post sends the direct_post answer and the token request of the
+	// authorization code flow. Nil blocks both.
 	Post present.Poster
+	// Endpoints returns the authorization and token endpoints of an
+	// issuer. Nil, or an issuer with none, leaves the sign in to the DPG
+	// wallet.
+	Endpoints func(ctx context.Context, issuer string) (issuers.Endpoints, error)
+	// ClientID is the client id of the wallet at an issuer authorization
+	// server. Empty means DefaultClientID.
+	ClientID string
 	// RequestHosts is the host allowlist of a request URI.
 	RequestHosts []string
 	// PageSizeMax caps the page size. Zero means DefaultPageSizeMax.
@@ -126,6 +135,9 @@ func New(opts Options) (*Service, error) {
 	}
 	if opts.Eligible == nil {
 		opts.Eligible = ports.StaticEligibility(false)
+	}
+	if opts.ClientID == "" {
+		opts.ClientID = DefaultClientID
 	}
 	return &Service{opts: opts}, nil
 }
@@ -273,6 +285,13 @@ func (s *Service) Claim(ctx context.Context, req *connect.Request[walletportalv1
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	next, ok, signErr := s.signIn(ctx, citizen, msg)
+	if signErr != nil {
+		return nil, signErr
+	}
+	if ok {
+		return connect.NewResponse(&walletportalv1.ClaimResponse{AuthorizationUrl: next}), nil
+	}
 	if s.opts.Holder == nil {
 		id := s.opts.NewID()
 		rec := record{ID: id, URI: offerURI, Issuer: msg.GetCredentialIssuer(),
@@ -282,7 +301,7 @@ func (s *Service) Claim(ctx context.Context, req *connect.Request[walletportalv1
 		}
 		return connect.NewResponse(&walletportalv1.ClaimResponse{OfferId: id}), nil
 	}
-	card, err := s.accept(ctx, citizen, offerURI, "")
+	card, err := s.accept(ctx, citizen, offerURI, "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +410,7 @@ func (s *Service) Accept(ctx context.Context, req *connect.Request[walletportalv
 	if err != nil {
 		return nil, recordError(err)
 	}
-	card, err := s.accept(ctx, citizen, rec.URI, req.Msg.GetPin())
+	card, err := s.accept(ctx, citizen, rec.URI, req.Msg.GetPin(), "")
 	if err != nil {
 		return nil, err
 	}
@@ -400,15 +419,16 @@ func (s *Service) Accept(ctx context.Context, req *connect.Request[walletportalv
 	return connect.NewResponse(&walletportalv1.AcceptResponse{Card: card}), nil
 }
 
-// accept calls the holder backend of the DPG.
-func (s *Service) accept(ctx context.Context, citizen session.Citizen, offerURI, pin string,
+// accept calls the holder backend of the DPG. grant is the access token
+// of an authorization code flow, when the wallet ran one.
+func (s *Service) accept(ctx context.Context, citizen session.Citizen, offerURI, pin, grant string,
 ) (*walletportalv1.Card, error) {
 	if s.opts.Holder == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented,
 			errors.New("this deployment keeps the credentials in your browser"))
 	}
 	resp, err := s.opts.Holder.AcceptOffer(ctx, connect.NewRequest(&backendv1.AcceptOfferRequest{
-		WalletId: citizen.WalletID, OfferUri: offerURI, Pin: pin,
+		WalletId: citizen.WalletID, OfferUri: offerURI, Pin: pin, AuthorizationGrant: grant,
 	}))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable,

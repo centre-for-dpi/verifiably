@@ -114,16 +114,44 @@ field:
 
 A deployment with no hook answers with the default, which is no.
 
-## Claim, scan, paste, accept, reject, and delete
+## Claim, scan, paste, accept, decline, and delete
 
 Each of these actions goes to the holder backend of the DPG. The
 adapter name in `DPG` selects the adapter, and `DPG_ADAPTERS` holds the
 base URL of each one.
 
-A claim builds an OID4VCI credential offer that names the authorization
-code grant. The service sends the offer to `AcceptOffer`. The DPG runs
-the flow with the token of the identity provider, as ADR-020 decision 3
-describes.
+The claim page shows two cards side by side (spec HO3). The claim card
+of the discover page shows the same cards for one credential. It shows
+only the ways its issuer allows.
+
+| Card | Flow | What the holder does |
+|---|---|---|
+| Code or QR | OID4VCI pre-authorized code | Paste the offer and its code. Or scan the QR. |
+| Sign in at issuer | OID4VCI authorization code | Pick the credential and sign in at the issuer. |
+
+With the transaction code, or with an offer that needs none, the wallet
+claims the credential at once. An offer that needs a code the holder did
+not give opens the offer page, which asks for the code.
+
+The camera scanner is the shared script of `services/internal/qrscan`.
+The page reads the QR code on the device and posts only the decoded
+text to `/wallet/scan/read`. The answer is the offer card, or a redirect
+to the next page.
+
+The sign in at the issuer runs the authorization code flow with PKCE.
+The wallet reads the authorization server of the issuer from its
+metadata. It sends the browser to the authorization endpoint with the
+configuration id in `authorization_details`. The issuer sends the
+browser back to `/wallet/claim/callback` of the own pair. The wallet
+trades the code for an access token. It hands the token to the DPG
+wallet in `AcceptOffer` as the authorization grant. An issuer with no
+authorization server leaves the flow to the DPG wallet. The DPG wallet
+then uses the token of the identity provider (ADR-020 decision 3). In browser
+storage the wallet runs no sign in, so the card stays hidden.
+
+The offer page shows the button Decline only when the adapter of the own
+pair lists `FEATURE_WALLET_REJECT_OFFER`. Without the feature the
+decline address answers 404.
 
 A scan or a paste goes through the `detect` package first. The package
 reads three kinds of text:

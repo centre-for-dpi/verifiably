@@ -122,6 +122,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Catalogue: catalogue,
 		Fallback:  ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
 		Methods:   crawl.Methods,
+		Endpoints: crawl.Endpoints,
+		ClientID:  cfg.ClientID,
 		Eligible:  eligible,
 		Salt:      cfg.EligibilitySalt,
 		Cards: cards.New(cards.Options{

@@ -16,13 +16,11 @@
 package scanner
 
 import (
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
-	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -31,14 +29,10 @@ import (
 
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
-
-// Static holds the vendored browser assets.
-//
-//go:embed static
-var Static embed.FS
 
 // DefaultPrefix is the URL prefix of the page.
 const DefaultPrefix = "/scan"
@@ -88,20 +82,7 @@ func (p *Page) Prefix() string { return p.opts.Prefix }
 func (p *Page) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.show))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/ingest", p.handle(p.ingest))
-	mux.Handle("GET "+p.opts.Prefix+"/static/", http.StripPrefix(p.opts.Prefix+"/static/", assets()))
-}
-
-// assets serves the vendored files with a long cache lifetime.
-func assets() http.Handler {
-	files, err := fsSub()
-	if err != nil {
-		return http.NotFoundHandler()
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		http.FileServerFS(files).ServeHTTP(w, r)
-	})
+	mux.Handle("GET "+p.opts.Prefix+"/static/", http.StripPrefix(p.opts.Prefix+"/static/", qrscan.Handler()))
 }
 
 // handle answers with a short sentence when a page fails.
@@ -389,9 +370,4 @@ func (b *blocks) add(name string, data any) template.HTML {
 		b.err = err
 	}
 	return h
-}
-
-// fsSub returns the static directory of the embedded file system.
-func fsSub() (fs.FS, error) {
-	return fs.Sub(Static, "static")
 }

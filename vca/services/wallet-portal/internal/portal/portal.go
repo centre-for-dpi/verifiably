@@ -14,12 +14,17 @@
 //	GET  /keys       the holder identifier and key, when the stack manages keys
 //	POST /signout    end the wallet session
 //	GET  /discover   the credentials issuers publish (decision 1)
-//	GET  /claimable  the credentials the citizen can get (decision 2)
-//	POST /claim      start one claim (decision 3)
-//	GET  /scan       the scan, paste, and file form (decision 3)
-//	POST /scan       read a scanned or pasted text
-//	POST /accept     accept a pending offer
-//	POST /reject     discard a pending offer
+//	GET  /claim           the claim page: a code or a QR, or a sign in (spec HO3)
+//	POST /claim           start the sign in at the issuer (decision 3)
+//	GET  /claim/callback  the answer of the issuer after the sign in
+//	POST /claim/offer     claim a pasted offer with its transaction code
+//	GET  /claimable       moved to /claim
+//	GET  /scan            moved to /claim
+//	POST /scan            read a scanned or pasted text
+//	POST /scan/read       read the text of the camera scanner, as a fragment
+//	GET  /static/{file}   the camera scanner and the QR reader
+//	POST /accept          accept a pending offer
+//	POST /reject          decline a pending offer, when the stack can
 //	POST /delete     remove one credential
 //	GET  /present    the consent screen (decision 5)
 //	POST /present    send the presentation
@@ -35,7 +40,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -45,6 +49,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"
@@ -150,11 +155,15 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/keys", p.handle(p.keys))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/signout", p.signOut)
 	mux.HandleFunc("GET "+p.opts.Prefix+"/discover", p.handle(p.discover))
-	mux.HandleFunc("GET "+p.opts.Prefix+"/claimable", p.handle(p.claimable))
-	mux.HandleFunc("GET "+p.opts.Prefix+"/claim", p.handle(p.scanForm))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/claim", p.handle(p.claimPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/claim", p.handle(p.claim))
-	mux.HandleFunc("GET "+p.opts.Prefix+"/scan", p.handle(p.scanForm))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/claim/callback", p.handle(p.callback))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/claim/offer", p.handle(p.claimOffer))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/claimable", p.moved("/claim"))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/scan", p.moved("/claim"))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/scan", p.handle(p.scan))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/scan/read", p.handle(p.scanRead))
+	mux.Handle("GET "+p.opts.Prefix+"/static/", http.StripPrefix(p.opts.Prefix+"/static/", qrscan.Handler()))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/accept", p.handle(p.accept))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/reject", p.handle(p.reject))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/delete", p.handle(p.remove))
@@ -275,183 +284,6 @@ func (p *Portal) browserCard(b *pen) template.HTML {
 			"with a key only it holds.",
 		Body: components.Join(file, paste, save, token, status),
 	})
-}
-
-// claimable renders the credentials the citizen can get (decision 2).
-func (p *Portal) claimable(w http.ResponseWriter, r *http.Request) error {
-	b := p.pen(r)
-	resp, err := p.opts.Service.ListClaimable(r.Context(),
-		connect.NewRequest(&walletportalv1.ListClaimableRequest{}))
-	if err != nil {
-		return p.problem(w, r, "What I can get",
-			"The check is not available", "Try again in a few minutes.")
-	}
-	table := components.Table{
-		ID: "claimable", Caption: "The credentials you can get now",
-		Columns: []string{"Credential", "Issuer", "Can I get it", "Action"},
-		Empty:   "No issuer offers you a credential now",
-	}
-	for _, item := range resp.Msg.GetItems() {
-		answer := b.part("badge", components.Badge{
-			Text: yesNo(item.GetEligible()), Status: okBad(item.GetEligible()),
-		})
-		action := template.HTML("")
-		if item.GetEligible() {
-			action = b.form(p.opts.Prefix+"/claim", map[string]string{
-				"credential_issuer": item.GetOffering().GetCredentialIssuer(),
-				"schema_id":         item.GetOffering().GetSchema().GetId(),
-			}, components.Button{Text: "Get it", Type: "submit", Variant: "primary"})
-		}
-		table.Rows = append(table.Rows, components.Row{
-			{Text: title(item.GetOffering())}, {Text: issuerName(item.GetOffering())},
-			{HTML: answer}, {HTML: action},
-		})
-	}
-	return p.render(w, r, b, components.Page{
-		Title:       "What I can get",
-		Description: "The credentials the issuers say you can get.",
-		Content:     b.part("table", table),
-	})
-}
-
-// claim starts one claim (decision 3).
-func (p *Portal) claim(w http.ResponseWriter, r *http.Request) error {
-	if _, ok := p.writer(w, r); !ok {
-		return nil
-	}
-	resp, err := p.opts.Service.Claim(r.Context(), connect.NewRequest(&walletportalv1.ClaimRequest{
-		CredentialIssuer: r.PostFormValue("credential_issuer"),
-		SchemaId:         r.PostFormValue("schema_id"),
-	}))
-	if err != nil {
-		return p.problem(w, r, "What I can get",
-			"The issuer did not give the credential", "Try again in a few minutes.")
-	}
-	if next := resp.Msg.GetAuthorizationUrl(); next != "" {
-		http.Redirect(w, r, next, http.StatusSeeOther)
-		return nil
-	}
-	if id := resp.Msg.GetOfferId(); id != "" {
-		return p.offerPage(w, r, id, false, "")
-	}
-	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
-	return nil
-}
-
-// scanForm renders the scan, paste, and file form (decision 3).
-func (p *Portal) scanForm(w http.ResponseWriter, r *http.Request) error {
-	return p.renderScan(w, r, "")
-}
-
-// renderScan renders the scan page with an optional problem sentence.
-func (p *Portal) renderScan(w http.ResponseWriter, r *http.Request, problem string) error {
-	b := p.pen(r)
-	field := b.part("field", components.Field{
-		ID: "text", Label: "The text of the code", Type: "textarea", Required: true,
-		Hint:  "Paste the text of a QR code, an offer, or a credential.",
-		Error: problem,
-	})
-	read := b.form(p.opts.Prefix+"/scan", nil,
-		components.Button{Text: "Read it", Type: "submit", Variant: "primary"}, field)
-	card := b.part("card", components.Card{
-		ID: "scan", Title: "Scan or paste a code",
-		Text: "Your camera app reads the QR code. Paste the text it shows here.",
-		Body: read,
-	})
-	return p.render(w, r, b, components.Page{
-		Title:       "Scan a code",
-		Description: "Read a credential offer or a request from a QR code.",
-		Content:     card,
-	})
-}
-
-// scan reads a pasted text and shows the next step.
-func (p *Portal) scan(w http.ResponseWriter, r *http.Request) error {
-	if _, ok := p.writer(w, r); !ok {
-		return nil
-	}
-	resp, err := p.opts.Service.Paste(r.Context(), connect.NewRequest(&walletportalv1.PasteRequest{
-		Text: r.PostFormValue("text"),
-	}))
-	if err != nil {
-		return p.renderScan(w, r, "The wallet could not read that text. Try again.")
-	}
-	found := resp.Msg.GetDetected()
-	switch found.GetKind() {
-	case walletportalv1.Detected_KIND_CREDENTIAL_OFFER:
-		return p.offerPage(w, r, found.GetOfferId(), found.GetOffer().GetNeedsPin(),
-			found.GetOffer().GetIssuerName())
-	case walletportalv1.Detected_KIND_PRESENTATION_REQUEST:
-		http.Redirect(w, r, p.opts.Prefix+"/present?id="+url.QueryEscape(found.GetPresentationId()),
-			http.StatusSeeOther)
-		return nil
-	case walletportalv1.Detected_KIND_CREDENTIAL:
-		http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
-		return nil
-	}
-	return p.renderScan(w, r, found.GetError().GetMessage())
-}
-
-// offerPage renders the accept and reject page of one offer.
-func (p *Portal) offerPage(w http.ResponseWriter, r *http.Request,
-	offerID string, needsPIN bool, issuer string,
-) error {
-	b := p.pen(r)
-	var fields []template.HTML
-	if needsPIN {
-		fields = append(fields, b.part("field", components.Field{
-			ID: "pin", Label: "The code the issuer gave you", Required: true,
-			Hint: "The issuer sent this code to you by another way.",
-		}))
-	}
-	accept := b.form(p.opts.Prefix+"/accept", map[string]string{"offer_id": offerID},
-		components.Button{Text: "Add it to my wallet", Type: "submit", Variant: "primary"}, fields...)
-	reject := b.form(p.opts.Prefix+"/reject", map[string]string{"offer_id": offerID},
-		components.Button{Text: "No thank you", Type: "submit", Variant: "secondary"})
-	text := "Read the issuer name before you accept."
-	if issuer != "" {
-		text = issuer + " offers you a credential. Read the name before you accept."
-	}
-	card := b.part("card", components.Card{
-		ID: "offer", Title: "An issuer offers you a credential", Text: text,
-		Body: components.Join(accept, reject),
-	})
-	return p.render(w, r, b, components.Page{
-		Title:       "An offer for you",
-		Description: "Accept or refuse the credential an issuer offers.",
-		Content:     card,
-	})
-}
-
-// accept accepts a pending offer.
-func (p *Portal) accept(w http.ResponseWriter, r *http.Request) error {
-	if _, ok := p.writer(w, r); !ok {
-		return nil
-	}
-	_, err := p.opts.Service.Accept(r.Context(), connect.NewRequest(&walletportalv1.AcceptRequest{
-		OfferId: r.PostFormValue("offer_id"), Pin: r.PostFormValue("pin"),
-	}))
-	if err != nil {
-		return p.problem(w, r, "An offer for you",
-			"The wallet did not take the credential", message(err))
-	}
-	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
-	return nil
-}
-
-// reject discards a pending offer.
-func (p *Portal) reject(w http.ResponseWriter, r *http.Request) error {
-	if _, ok := p.writer(w, r); !ok {
-		return nil
-	}
-	if _, err := p.opts.Service.Reject(r.Context(), connect.NewRequest(&walletportalv1.RejectRequest{
-		OfferId: r.PostFormValue("offer_id"),
-	})); err != nil {
-		return p.problem(w, r, "An offer for you",
-			"The wallet could not refuse the offer", message(err))
-	}
-	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
-	return nil
 }
 
 // remove deletes one credential.
@@ -698,28 +530,12 @@ func valueText(value string) string {
 	return value
 }
 
-// yesNo returns the plain answer of the eligibility check.
-func yesNo(eligible bool) string {
-	if eligible {
-		return "yes"
-	}
-	return "not now"
-}
-
 // yesNoSent returns the plain outcome of a presentation.
 func yesNoSent(accepted bool) string {
 	if accepted {
 		return "sent"
 	}
 	return "not sent"
-}
-
-// okBad maps a yes or no answer to a badge status.
-func okBad(ok bool) string {
-	if ok {
-		return "ok"
-	}
-	return "warn"
 }
 
 // splitList splits a comma separated list and drops empty items.
