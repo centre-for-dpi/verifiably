@@ -30,10 +30,13 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/preview"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	schemabuilderv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schemabuilder/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/draft"
@@ -66,6 +69,10 @@ type Options struct {
 	RegistryURL string
 	// Catalog tells the import page that a DPG catalogue is configured.
 	Catalog bool
+	// Catalogs returns the catalogue client of a DPG adapter URL. With a
+	// shell, the import page reads the catalogue of each live issuer
+	// stack through it. Nil keeps the one catalogue of the builder.
+	Catalogs func(adapterURL string) backendv1connect.CatalogBackendServiceClient
 	// Shell draws the issuer frame around every page (ADR-044 decision
 	// 5). Nil draws the pages with their own navigation.
 	Shell *staffshell.Shell
@@ -129,14 +136,22 @@ func (p *Pages) page(w http.ResponseWriter, r *http.Request, current string, pag
 		page.Nav = p.nav(current)
 		return p.opts.Kit.RenderPage(w, r, page)
 	}
-	tabs, err := p.opts.Kit.HTML("tabs", components.Tabs{Label: "Builder pages", Links: []components.Link{
-		{Href: p.opts.Prefix + "/", Text: "Builder", Current: current == "builder"},
-		{Href: p.opts.Prefix + "/import", Text: "Import", Current: current == "import"},
+	tabs, err := p.opts.Kit.HTML("tabs", components.Tabs{Label: msg.T("issuer.builder.tabs.label"), Links: []components.Link{
+		{Href: p.opts.Prefix + "/", Text: msg.T("issuer.builder.tab.builder.label"), Current: current == "builder"},
+		{Href: p.opts.Prefix + "/import", Text: msg.T("issuer.builder.tab.import.label"), Current: current == "import"},
 	}})
 	if err != nil {
 		return err
 	}
 	page.Content = components.Join(tabs, page.Content)
+	page.Lead = msg.T("issuer.builder.lead")
+	if p.opts.RegistryURL != "" {
+		back, err := p.opts.Kit.HTML("button", components.Button{Text: msg.T("issuer.builder.registry.label"), Href: p.opts.RegistryURL})
+		if err != nil {
+			return err
+		}
+		page.Actions = back
+	}
 	return p.opts.Shell.Render(p.opts.Kit, w, r, p.opts.Shell.Frame(r.Context()), page)
 }
 
@@ -486,7 +501,7 @@ func (p *Pages) tabs(err *error, view preview.Preview) template.HTML {
 		{id: "tab-pdf", title: "PDF preview", body: pdfTab(view)},
 	}
 	f := p.frag(err)
-	f.raw(`<div class="tabs">`)
+	f.raw(`<div class="preview-tabs">`)
 	for i, t := range list {
 		f.add("button", components.Button{
 			Text: t.title, Controls: t.id, Expanded: i == 0, Variant: "ghost",
@@ -585,6 +600,12 @@ func (p *Pages) editor(err *error, s state, csrf template.HTML) template.HTML {
 	return f.html()
 }
 
+// rowStart and rowEnd wrap related fields, so they sit side by side.
+const (
+	rowStart template.HTML = `<div class="field-row">`
+	rowEnd   template.HTML = `</div>`
+)
+
 // yesNoOptions returns the options of a yes or no select.
 func yesNoOptions(on bool) []components.Option {
 	return []components.Option{
@@ -602,22 +623,31 @@ func (p *Pages) identityCard(err *error, s state) template.HTML {
 		})
 	}
 	f := p.frag(err)
+	f.raw(rowStart)
 	f.add("field", components.Field{ID: "type", Label: "Credential type", Value: s.Draft.Type, Required: true,
 		Hint: "The SD-JWT VC vct, or the VCDM type name.", Attrs: map[string]string{"autocomplete": "off"}})
 	f.add("field", components.Field{ID: "title", Label: "Display name", Value: s.Draft.Title,
 		Hint: "The name a wallet shows on the card."})
+	f.raw(rowEnd)
 	f.add("field", components.Field{ID: "description", Label: "Description", Type: "textarea", Value: s.Draft.Description,
 		Hint: "One sentence under the name.", Attrs: map[string]string{"rows": "2"}})
+	f.raw(rowStart)
 	f.add("field", components.Field{ID: "locale", Label: "Language tag", Value: s.Draft.Locale,
 		Hint: "A BCP 47 tag, for example en or fr."})
-	f.add("field", components.Field{ID: "logo_uri", Label: "Logo URL", Type: "url", Value: s.Draft.LogoURI})
+	f.add("field", components.Field{ID: "logo_uri", Label: "Logo URL", Type: "url", Value: s.Draft.LogoURI,
+		Hint: "An https address of an image."})
+	f.raw(rowEnd)
+	f.raw(rowStart)
 	f.add("field", components.Field{ID: "background_color", Label: "Card background colour", Value: s.Draft.BackgroundColor,
 		Hint: "A CSS hex value, for example #123456."})
 	f.add("field", components.Field{ID: "text_color", Label: "Card text colour", Value: s.Draft.TextColor,
 		Hint: "A CSS hex value."})
+	f.raw(rowEnd)
+	f.raw(rowStart)
 	f.add("field", components.Field{ID: "wire", Label: "Wire format", Type: "select", Options: wireOptions})
 	f.add("field", components.Field{ID: "expires", Label: "The credential expires", Type: "select",
 		Options: yesNoOptions(s.Draft.Expires)})
+	f.raw(rowEnd)
 	return f.card(components.Card{
 		ID: "identity", Title: "Credential", Text: "These values go to the OID4VCI display metadata.",
 	})
@@ -654,19 +684,28 @@ func (p *Pages) fieldCard(err *error, i int, field draft.Field) template.HTML {
 		formats = append(formats, components.Option{Value: t, Text: text, Selected: t == field.Format})
 	}
 	f := p.frag(err)
+	f.raw(rowStart)
 	f.add("field", components.Field{ID: id("name"), Name: name + "name", Label: "Property name", Value: field.Name, Required: true,
 		Hint: "Letters, digits, and underscores. It starts with a letter.", Attrs: map[string]string{"autocomplete": "off"}})
-	f.add("field", components.Field{ID: id("label"), Name: name + "label", Label: "Label", Value: field.Label})
-	f.add("field", components.Field{ID: id("description"), Name: name + "description", Label: "Help text", Value: field.Description})
+	f.add("field", components.Field{ID: id("label"), Name: name + "label", Label: "Label", Value: field.Label,
+		Hint: "The label a wallet shows."})
+	f.raw(rowEnd)
+	f.raw(rowStart)
 	f.add("field", components.Field{ID: id("type"), Name: name + "type", Label: "Type", Type: "select", Options: types})
 	f.add("field", components.Field{ID: id("format"), Name: name + "format", Label: "Format", Type: "select", Options: formats,
 		Hint: "A format applies to a string only."})
+	f.raw(rowEnd)
+	f.raw(rowStart)
+	f.add("field", components.Field{ID: id("description"), Name: name + "description", Label: "Help text", Value: field.Description})
 	f.add("field", components.Field{ID: id("enum"), Name: name + "enum", Label: "Allowed values", Value: draft.EnumText(field.Enum),
 		Hint: "A comma separated list. An empty list allows any value."})
+	f.raw(rowEnd)
+	f.raw(rowStart)
 	f.add("field", components.Field{ID: id("required"), Name: name + "required", Label: "Required", Type: "select",
 		Options: yesNoOptions(field.Required)})
 	f.add("field", components.Field{ID: id("sd"), Name: name + "sd", Label: "Selectively disclosable", Type: "select",
 		Options: yesNoOptions(field.SelectivelyDisclosable), Hint: "The holder can hide this claim in a presentation."})
+	f.raw(rowEnd)
 	f.add("button", components.Button{
 		Text: "Remove this field", Type: "submit", Variant: "danger", Name: "remove", Value: strconv.Itoa(i),
 		AriaLabel: "Remove the field " + field.Name,
@@ -744,6 +783,13 @@ func (p *Pages) documentCard(err *error, csrf template.HTML) template.HTML {
 // catalogCard renders the DPG catalogue import form, or says why the
 // deployment has no catalogue.
 func (p *Pages) catalogCard(err *error, r *http.Request, csrf template.HTML) template.HTML {
+	// A deployment that names its pairs reads the catalogue of each live
+	// issuer stack. One without peers keeps its one catalogue.
+	if p.opts.Shell != nil && p.opts.Catalogs != nil {
+		if f := p.opts.Shell.Frame(r.Context()); len(f.Snapshot().Peers) > 0 {
+			return p.stackCatalogCard(err, r, f, csrf)
+		}
+	}
 	if !p.opts.Catalog {
 		return p.frag(err).card(components.Card{
 			ID: "import-catalog", Title: "From the DPG catalogue",
@@ -797,7 +843,15 @@ func (p *Pages) runImport(w http.ResponseWriter, r *http.Request) error {
 	case strings.TrimSpace(values.Get("catalog_entry_id")) != "":
 		req.Source = &schemabuilderv1.ImportRequest_CatalogEntryId{CatalogEntryId: values.Get("catalog_entry_id")}
 	}
-	d, warnings, err := p.opts.Builder.Read(r.Context(), req)
+	builder := p.opts.Builder
+	if pair := strings.TrimSpace(values.Get("stack")); pair != "" && p.opts.Shell != nil && p.opts.Catalogs != nil {
+		st, ok := p.liveStack(p.opts.Shell.Frame(r.Context()), pair)
+		if !ok {
+			return p.renderImport(w, r, []components.Toast{{Level: "bad", Text: msg.T("issuer.builder.import.stack_down", pair)}})
+		}
+		builder = builder.WithCatalog(p.opts.Catalogs(st.Peer.Adapter()))
+	}
+	d, warnings, err := builder.Read(r.Context(), req)
 	if err != nil {
 		return p.renderImport(w, r, []components.Toast{{Level: "bad", Text: Message(err)}})
 	}

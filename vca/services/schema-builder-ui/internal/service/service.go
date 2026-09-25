@@ -67,6 +67,14 @@ func New(opts Options) (*Service, error) {
 	return &Service{opts: opts}, nil
 }
 
+// WithCatalog returns a copy of the service that reads the catalogue
+// of another DPG adapter. The copy shares the registry and the PDF cache.
+func (s *Service) WithCatalog(c backendv1connect.CatalogBackendServiceClient) *Service {
+	cp := *s
+	cp.opts.Catalog = c
+	return &cp
+}
+
 // Ready reports whether the service can take traffic.
 func (s *Service) Ready() bool { return s.opts.Registry != nil }
 

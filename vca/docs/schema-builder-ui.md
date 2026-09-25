@@ -103,14 +103,22 @@ page renders with the `vca/ui` kit and passes `a11ytest.AssertPage`.
 | `POST /builder/fields` | Add or remove one field, then render the page again. |
 | `POST /builder/sample` | Fill the sample values from the schema. |
 | `POST /builder/save` | Save the draft in the schema registry. |
-| `GET /builder/import` | The import page. |
-| `POST /builder/import` | Import a document or a catalogue entry. |
+| `GET /builder/import` | The import page. The query value `stack` picks the catalogue of one live issuer stack. |
+| `POST /builder/import` | Import a document or a catalogue entry. The field `stack` names the stack of the entry. |
 | `POST /builder/signout` | End the session at `issuer-auth`. |
 | `GET /pdf/preview/{ref}` | The PDF preview document. |
 
 The pages draw inside the issuer shell of `services/internal/staffshell`
 (ADR-044 decision 5). Two tabs lead from the builder to the import page
-and back.
+and back. Related fields sit side by side in a `field-row` of the kit.
+The preview tabs mark the open view with `aria-expanded`.
+
+On a deployment that names its pairs, the import page lists the live
+issuer stacks only (ADR-034 decision 3). A stack that is starting, and
+a pair of another role, never shows. The own stack comes first. The page
+reads the catalogue of the chosen stack from its adapter. The import
+reads the entry from the same adapter. A deployment without peers keeps
+the one catalogue of `VCA_SCHEMABUILDER_CATALOG_URL`.
 
 Add, remove, fill, and save are submit buttons with a `formaction`
 attribute. A browser without JavaScript posts the form and gets a full

@@ -282,3 +282,9 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	_, err := app.Build(cfg, app.Deps{Registry: &fake.Registry{}})
 	uikittest.AssertBadThemeError(t, err, path)
 }
+
+func TestCatalogClients(t *testing.T) {
+	if app.CatalogClients(http.DefaultClient)("http://adapter:8090") == nil {
+		t.Fatal("no catalogue client")
+	}
+}

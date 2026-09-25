@@ -41,6 +41,9 @@ type Deps struct {
 	// Catalog reads the DPG credential types. Nil builds a Connect client
 	// from the configured catalogue URL, when there is one.
 	Catalog backendv1connect.CatalogBackendServiceClient
+	// Catalogs reads the catalogue of each live issuer stack on the import
+	// page. Nil builds a Connect client per adapter URL.
+	Catalogs func(adapterURL string) backendv1connect.CatalogBackendServiceClient
 	// SessionKeys replaces the key set of issuer-auth. Tests set it.
 	SessionKeys staffsession.Keys
 	// Prober replaces the probe of the peers of the issuer shell.
@@ -65,6 +68,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		deps.Catalog = backendv1connect.NewCatalogBackendServiceClient(
 			&http.Client{Timeout: cfg.CatalogTimeout}, cfg.CatalogURL)
 	}
+	if deps.Catalogs == nil {
+		deps.Catalogs = CatalogClients(&http.Client{Timeout: cfg.CatalogTimeout})
+	}
 	svc, svcErr := service.New(service.Options{
 		Registry: deps.Registry, Catalog: deps.Catalog,
 		PDF: pdfcache.New(cfg.PDFCacheSize), Issuer: cfg.Issuer,
@@ -80,7 +86,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	builder, pagesErr := pages.New(pages.Options{
 		Builder: svc, Registry: deps.Registry, Prefix: cfg.Prefix,
 		RegistryURL: cfg.PortalURL, Catalog: deps.Catalog != nil, Kit: kit,
-		Shell: shell, SignOut: signOut,
+		Shell: shell, SignOut: signOut, Catalogs: deps.Catalogs,
 	})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.IssuerRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, Log: deps.Log, MaxFormBytes: pages.MaxFormBytes,
@@ -102,6 +108,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	deps.Log.Info("wired", "pages", builder.Prefix(), "registry", cfg.RegistryURL, "catalog", deps.Catalog != nil)
 	return &App{Mux: mux, Service: svc, Pages: builder}, nil
+}
+
+// CatalogClients returns the function that builds the catalogue client
+// of one DPG adapter URL.
+func CatalogClients(client *http.Client) func(string) backendv1connect.CatalogBackendServiceClient {
+	return func(adapterURL string) backendv1connect.CatalogBackendServiceClient {
+		return backendv1connect.NewCatalogBackendServiceClient(client, adapterURL)
+	}
 }
 
 // first returns the first error of the list, or nil. The wiring builds
