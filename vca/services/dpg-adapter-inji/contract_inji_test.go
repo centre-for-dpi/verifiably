@@ -18,6 +18,7 @@ import (
 	"connectrpc.com/connect"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
 )
@@ -130,4 +131,49 @@ func TestContractCreateRequestAndReadTheResult(t *testing.T) {
 	if result.Msg.GetState() != backendv1.GetResultResponse_STATE_PENDING {
 		t.Fatalf("state = %v, a new transaction is pending", result.Msg.GetState())
 	}
+}
+
+// writeEnv skips a contract case that changes the real stack unless the
+// nightly job allows writes.
+func writeEnv(t *testing.T) config.Config {
+	t.Helper()
+	cfg := contractEnv(t)
+	if cfg.CertifyURL == "" || os.Getenv("VCA_INJI_CONTRACT_WRITE") == "" {
+		t.Skip("set VCA_INJI_CONTRACT_CERTIFY_URL and VCA_INJI_CONTRACT_WRITE to run a contract case that writes")
+	}
+	return cfg
+}
+
+// TestContractRegisterConfiguration creates a configuration through the
+// configuration API, replaces it, and finds it in the issuer metadata.
+func TestContractRegisterConfiguration(t *testing.T) {
+	writeEnv(t)
+	a := newContractApp(t)
+	ctx := context.Background()
+	id := "VcaContract" + time.Now().UTC().Format("20060102150405")
+	cfg := &backendv1.CredentialConfiguration{
+		Id: id, Format: commonv1.Format_FORMAT_LDP_VC, Type: id,
+		JsonSchema: `{"type":"object","properties":{"fullName":{"type":"string"}}}`,
+		Display:    `[{"name":"VCA contract","locale":"en"}]`,
+	}
+	for i := 0; i < 2; i++ {
+		resp, err := a.Service.RegisterCredentialConfiguration(ctx,
+			connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{Configuration: cfg}))
+		if err != nil {
+			t.Fatalf("register %d: %v", i, err)
+		}
+		if resp.Msg.GetId() != id {
+			t.Fatalf("register %d: id = %q", i, resp.Msg.GetId())
+		}
+	}
+	meta, err := a.Service.GetIssuerMetadata(ctx, connect.NewRequest(&backendv1.GetIssuerMetadataRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range meta.Msg.GetConfigurations() {
+		if c.GetId() == id {
+			return
+		}
+	}
+	t.Fatalf("the issuer metadata does not list %s", id)
 }

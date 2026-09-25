@@ -315,6 +315,9 @@ message CredentialConfiguration {
   string display = 5;
   // The claim names the issuer marks as selectively disclosable.
   repeated string sd_claims = 6;
+  // The JSON-LD context extensions of an ldp_vc configuration, in order.
+  // The adapter puts the base context of the data model first.
+  repeated string contexts = 7;
 }
 
 // RegisterCredentialConfigurationRequest carries one configuration to register.

@@ -201,10 +201,7 @@ func TestTheHolderRoleIsNotAvailable(t *testing.T) {
 func TestTheRpcsInjiNeverSupportsAnswerUnimplemented(t *testing.T) {
 	svc, _ := newService(t, both)
 	ctx := context.Background()
-	_, err := svc.RegisterCredentialConfiguration(ctx,
-		connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{}))
-	wantCode(t, err, connect.CodeUnimplemented)
-	_, err = svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{}))
+	_, err := svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{}))
 	wantCode(t, err, connect.CodeUnimplemented)
 	_, err = svc.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{}))
 	wantCode(t, err, connect.CodeUnimplemented)

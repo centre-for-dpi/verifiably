@@ -45,6 +45,14 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_MAX_BYTES` | The bound of a response body. The default is 8 megabytes. |
 | `VCA_INJI_STORE_FILE` | The file that keeps the hosted offers. Empty uses memory. |
 | `VCA_INJI_OFFER_TTL` | The life of a hosted offer. The default is `15m`. |
+| `VCA_INJI_SIGNING_DID_URL` | The issuer DID URL of a configuration the adapter registers. Empty keeps the Certify default. |
+| `VCA_INJI_LDP_KEY_APP_ID` | The Certify key application of `ldp_vc` proofs. The default is `CERTIFY_VC_SIGN_ED25519`. |
+| `VCA_INJI_LDP_KEY_REF_ID` | The Certify key reference of `ldp_vc` proofs. The default is `ED25519_SIGN`. |
+| `VCA_INJI_LDP_SIGNATURE_ALGO` | The signature algorithm of `ldp_vc` proofs. The default is `EdDSA`. |
+| `VCA_INJI_LDP_CRYPTO_SUITE` | The proof type of `ldp_vc` credentials. The default is `Ed25519Signature2020`. |
+| `VCA_INJI_SD_JWT_KEY_APP_ID` | The Certify key application of SD-JWT VCs. The default is `CERTIFY_VC_SIGN_EC_R1`. |
+| `VCA_INJI_SD_JWT_KEY_REF_ID` | The Certify key reference of SD-JWT VCs. The default is `EC_SECP256R1_SIGN`. |
+| `VCA_INJI_SD_JWT_SIGNATURE_ALGO` | The signature algorithm of SD-JWT VCs. The default is `ES256`. |
 
 Run the binary:
 
@@ -92,7 +100,9 @@ go test -tags contract_inji ./services/dpg-adapter-inji/...
 ```
 
 The contract test skips itself when the variables are empty. The script
-`hack/contract-tests.sh` runs it in the nightly job.
+`hack/contract-tests.sh` runs it in the nightly job. A case that changes
+the stack, such as a new credential configuration, also needs
+`VCA_INJI_CONTRACT_WRITE=1`.
 
 ## Reference
 

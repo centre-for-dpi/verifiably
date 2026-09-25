@@ -908,7 +908,10 @@ type CredentialConfiguration struct {
 	// The OID4VCI display metadata, as a JSON string.
 	Display string `protobuf:"bytes,5,opt,name=display,proto3" json:"display,omitempty"`
 	// The claim names the issuer marks as selectively disclosable.
-	SdClaims      []string `protobuf:"bytes,6,rep,name=sd_claims,json=sdClaims,proto3" json:"sd_claims,omitempty"`
+	SdClaims []string `protobuf:"bytes,6,rep,name=sd_claims,json=sdClaims,proto3" json:"sd_claims,omitempty"`
+	// The JSON-LD context extensions of an ldp_vc configuration, in order.
+	// The adapter puts the base context of the data model first.
+	Contexts      []string `protobuf:"bytes,7,rep,name=contexts,proto3" json:"contexts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -981,6 +984,13 @@ func (x *CredentialConfiguration) GetDisplay() string {
 func (x *CredentialConfiguration) GetSdClaims() []string {
 	if x != nil {
 		return x.SdClaims
+	}
+	return nil
+}
+
+func (x *CredentialConfiguration) GetContexts() []string {
+	if x != nil {
+		return x.Contexts
 	}
 	return nil
 }
@@ -5964,7 +5974,7 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12%\n" +
 	"\x0erepository_url\x18\x03 \x01(\tR\rrepositoryUrl\x12\x19\n" +
 	"\bdocs_url\x18\x04 \x01(\tR\adocsUrl\x12\x18\n" +
-	"\alicense\x18\x05 \x01(\tR\alicense\"\xc4\x01\n" +
+	"\alicense\x18\x05 \x01(\tR\alicense\"\xe0\x01\n" +
 	"\x17CredentialConfiguration\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12-\n" +
 	"\x06format\x18\x02 \x01(\x0e2\x15.vca.common.v1.FormatR\x06format\x12\x12\n" +
@@ -5972,7 +5982,8 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\vjson_schema\x18\x04 \x01(\tR\n" +
 	"jsonSchema\x12\x18\n" +
 	"\adisplay\x18\x05 \x01(\tR\adisplay\x12\x1b\n" +
-	"\tsd_claims\x18\x06 \x03(\tR\bsdClaims\"w\n" +
+	"\tsd_claims\x18\x06 \x03(\tR\bsdClaims\x12\x1a\n" +
+	"\bcontexts\x18\a \x03(\tR\bcontexts\"w\n" +
 	"&RegisterCredentialConfigurationRequest\x12M\n" +
 	"\rconfiguration\x18\x01 \x01(\v2'.vca.backend.v1.CredentialConfigurationR\rconfiguration\"9\n" +
 	"'RegisterCredentialConfigurationResponse\x12\x0e\n" +

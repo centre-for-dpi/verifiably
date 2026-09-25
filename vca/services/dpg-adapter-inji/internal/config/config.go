@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 	shared "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 )
 
@@ -59,6 +60,23 @@ type Config struct {
 	StoreFile string `env:"STORE_FILE"`
 	// OfferTTL is the life of a hosted authorization code offer.
 	OfferTTL time.Duration `env:"OFFER_TTL" default:"15m"`
+	// SigningDidURL is the issuer DID URL of a configuration the adapter
+	// registers. Empty keeps the default of Certify.
+	SigningDidURL string `env:"SIGNING_DID_URL"`
+	// LdpKeyAppID names the Certify key application of ldp_vc proofs.
+	LdpKeyAppID string `env:"LDP_KEY_APP_ID" default:"CERTIFY_VC_SIGN_ED25519"`
+	// LdpKeyRefID names the Certify key reference of ldp_vc proofs.
+	LdpKeyRefID string `env:"LDP_KEY_REF_ID" default:"ED25519_SIGN"`
+	// LdpSignatureAlgo is the signature algorithm of ldp_vc proofs.
+	LdpSignatureAlgo string `env:"LDP_SIGNATURE_ALGO" default:"EdDSA"`
+	// LdpCryptoSuite is the proof type of ldp_vc credentials.
+	LdpCryptoSuite string `env:"LDP_CRYPTO_SUITE" default:"Ed25519Signature2020"`
+	// SdJwtKeyAppID names the Certify key application of SD-JWT VCs.
+	SdJwtKeyAppID string `env:"SD_JWT_KEY_APP_ID" default:"CERTIFY_VC_SIGN_EC_R1"`
+	// SdJwtKeyRefID names the Certify key reference of SD-JWT VCs.
+	SdJwtKeyRefID string `env:"SD_JWT_KEY_REF_ID" default:"EC_SECP256R1_SIGN"`
+	// SdJwtSignatureAlgo is the signature algorithm of SD-JWT VCs.
+	SdJwtSignatureAlgo string `env:"SD_JWT_SIGNATURE_ALGO" default:"ES256"`
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -93,6 +111,17 @@ func (c Config) Versions() map[string]string {
 		"verify-service": c.VerifyVersion,
 		"verify-ui":      c.VerifyVersion,
 		"keycloak":       c.KeycloakVersion,
+	}
+}
+
+// Profiles returns the Certify keys that a registered configuration
+// names. The stack keeps the keys (ADR-001 decision 3).
+func (c Config) Profiles() inji.Profiles {
+	return inji.Profiles{
+		DidURL: c.SigningDidURL,
+		Ldp: inji.SigningProfile{AppID: c.LdpKeyAppID, RefID: c.LdpKeyRefID,
+			Algorithm: c.LdpSignatureAlgo, CryptoSuite: c.LdpCryptoSuite},
+		SdJwt: inji.SigningProfile{AppID: c.SdJwtKeyAppID, RefID: c.SdJwtKeyRefID, Algorithm: c.SdJwtSignatureAlgo},
 	}
 }
 

@@ -1,0 +1,21 @@
+{
+  "vcTemplate": "ewogICJAY29udGV4dCI6IFsiaHR0cHM6Ly93d3cudzMub3JnL25zL2NyZWRlbnRpYWxzL3YyIl0sCiAgImlzc3VlciI6ICIke19pc3N1ZXJ9IiwKICAidHlwZSI6IFsiVmVyaWZpYWJsZUNyZWRlbnRpYWwiLCAiRmFybWVyQ3JlZGVudGlhbCJdLAogICJ2YWxpZEZyb20iOiAiJHt2YWxpZEZyb219IiwKICAidmFsaWRVbnRpbCI6ICIke3ZhbGlkVW50aWx9IiwKICAiY3JlZGVudGlhbFN1YmplY3QiOiB7CiAgICAiaWQiOiAiJHtfaG9sZGVySWR9IiwKICAgICJmdWxsTmFtZSI6ICIke2Z1bGxOYW1lfSIsCiAgICAiZmFybWVySUQiOiAiJHtmYXJtZXJJRH0iCiAgfQp9Cg==",
+  "credentialConfigKeyId": "FarmerCredential",
+  "contextURLs": ["https://www.w3.org/ns/credentials/v2"],
+  "credentialTypes": ["VerifiableCredential", "FarmerCredential"],
+  "credentialFormat": "ldp_vc",
+  "keyManagerAppId": "CERTIFY_VC_SIGN_ED25519",
+  "keyManagerRefId": "ED25519_SIGN",
+  "signatureAlgo": "EdDSA",
+  "signatureCryptoSuite": "Ed25519Signature2020",
+  "metaDataDisplay": [
+    {"name": "Farmer Credential", "locale": "en", "background_color": "#12107c", "text_color": "#FFFFFF"}
+  ],
+  "displayOrder": ["fullName", "farmerID"],
+  "scope": "mock_identity_vc_ldp",
+  "credentialSubjectDefinition": {
+    "fullName": {"display": [{"name": "Full Name", "locale": "en"}]},
+    "farmerID": {"display": [{"name": "Farmer ID", "locale": "en"}]}
+  },
+  "credentialStatusPurposes": ["revocation"]
+}

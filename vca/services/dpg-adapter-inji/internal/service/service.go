@@ -51,6 +51,9 @@ type Options struct {
 	OfferTTL time.Duration
 	// PageSizeMax caps a list page.
 	PageSizeMax int
+	// Profiles name the Certify keys of each format. The zero value
+	// selects inji.DefaultProfiles.
+	Profiles inji.Profiles
 	// Versions maps each stack component onto its pinned version for
 	// the capability answer. The configuration supplies it.
 	Versions map[string]string
@@ -73,6 +76,7 @@ type Service struct {
 	offerTTL            time.Duration
 	pageSizeMax         int
 	versions            map[string]string
+	profiles            inji.Profiles
 	now                 func() time.Time
 	newID               func() string
 }
@@ -100,6 +104,11 @@ func New(opts Options) (*Service, error) {
 	if opts.OfferTTL <= 0 {
 		opts.OfferTTL = 15 * time.Minute
 	}
+	if opts.Profiles.Ldp == (inji.SigningProfile{}) && opts.Profiles.SdJwt == (inji.SigningProfile{}) {
+		did := opts.Profiles.DidURL
+		opts.Profiles = inji.DefaultProfiles()
+		opts.Profiles.DidURL = did
+	}
 	return &Service{
 		certify:             opts.Certify,
 		verify:              opts.Verify,
@@ -112,6 +121,7 @@ func New(opts Options) (*Service, error) {
 		offerTTL:            opts.OfferTTL,
 		pageSizeMax:         opts.PageSizeMax,
 		versions:            opts.Versions,
+		profiles:            opts.Profiles,
 		now:                 opts.Now,
 		newID:               opts.NewID,
 	}, nil
@@ -165,11 +175,12 @@ func (s *Service) GetCapabilities(
 			out.Channels = append(out.Channels, backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE)
 		}
 		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VCI)
+		// RegisterCredentialConfiguration writes the configuration API of
+		// Certify (ADR-045 decision 1).
+		out.Features = append(out.Features, backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API)
 		// The staged claims carry the two status markers, so a credential
 		// points at a token status list or a bitstring status list
-		// (ADR-018, ADR-019). RegisterCredentialConfiguration, Revoke,
-		// GetIssuanceStatus, and IssueBatch answer Unimplemented, so no
-		// feature is listed today.
+		// (ADR-018, ADR-019).
 		out.StatusMechanisms = []backendv1.StatusListBinding_Kind{
 			backendv1.StatusListBinding_KIND_BITSTRING,
 			backendv1.StatusListBinding_KIND_TOKEN,

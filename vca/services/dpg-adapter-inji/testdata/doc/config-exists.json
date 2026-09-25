@@ -1,0 +1,9 @@
+{
+  "responseTime": "2026-09-26T10:00:00.000Z",
+  "errors": [
+    {
+      "errorCode": "ldp_vc_config_exists",
+      "errorMessage": "Configuration already exists for the given context and credentialType."
+    }
+  ]
+}

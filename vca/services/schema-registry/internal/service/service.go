@@ -170,6 +170,7 @@ func (s *Service) register(ctx context.Context, r record.Record) (map[string]str
 				Configuration: &backendv1.CredentialConfiguration{
 					Id: id, Format: record.FormatToProto(f), Type: r.Type, JsonSchema: r.JSONSchema,
 					Display: string(display), SdClaims: append([]string(nil), r.SDClaims...),
+					Contexts: append([]string(nil), r.Contexts...),
 				},
 			}))
 			if err != nil {

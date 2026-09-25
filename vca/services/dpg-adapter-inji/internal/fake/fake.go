@@ -64,6 +64,8 @@ type Server struct {
 	requests map[string][]byte
 	// status forces a status code for one path.
 	status map[string]int
+	// configs is the credential configuration store.
+	configs configs
 }
 
 // New starts a fake Inji deployment.
@@ -76,6 +78,7 @@ func New(dir string) *Server {
 		requests:   map[string][]byte{},
 		status:     map[string]int{},
 	}
+	f.configs.seed(dir)
 	f.Server = httptest.NewServer(http.HandlerFunc(f.serve))
 	return f
 }
@@ -140,10 +143,18 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(forced)
 		return
 	}
+	if f.serveConfigs(w, r, body) {
+		return
+	}
 	path := r.URL.Path
 	switch {
 	case strings.HasSuffix(path, "/.well-known/openid-credential-issuer"):
-		f.send(w, "issuer-metadata.json")
+		raw, err := f.metadata()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		f.sendJSON(w, json.RawMessage(raw))
 	case path == "/v1/certify/pre-authorized-data":
 		f.send(w, string(staged))
 	case strings.Contains(path, "/credential-offer/"):

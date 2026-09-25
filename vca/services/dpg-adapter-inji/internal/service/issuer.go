@@ -42,18 +42,6 @@ type hostedOffer struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// RegisterCredentialConfiguration is not available.
-//
-// Inji Certify reads its credential configurations from its own
-// database. The legacy code wrote that database. ADR-002 decision 4
-// forbids it, so the configuration goes in at deploy time (ADR-008).
-func (s *Service) RegisterCredentialConfiguration(
-	context.Context, *connect.Request[backendv1.RegisterCredentialConfigurationRequest],
-) (*connect.Response[backendv1.RegisterCredentialConfigurationResponse], error) {
-	return nil, unimplemented("Inji Certify reads its credential configurations from its own " +
-		"database; apply the configuration at deploy time")
-}
-
 // CreateOffer builds an OID4VCI credential offer for one subject.
 //
 // The pre-authorized channel asks Inji Certify to stage the claims. The

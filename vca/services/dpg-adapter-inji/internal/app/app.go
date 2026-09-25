@@ -57,6 +57,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		AuthorizationServer: cfg.AuthorizationServer,
 		OfferTTL:            cfg.OfferTTL,
 		Versions:            cfg.Versions(),
+		Profiles:            cfg.Profiles(),
 	})
 	if err != nil {
 		return nil, err

@@ -418,3 +418,26 @@ func TestMappingIsStoredAndChecked(t *testing.T) {
 		}
 	}
 }
+
+// TestPublishSendsContexts hands the context extensions of an ldp_vc
+// version to the adapter, which registers them with the stack.
+func TestPublishSendsContexts(t *testing.T) {
+	ctx := context.Background()
+	s, fb := newService(t, &fakeBackend{})
+	m := schema("Degree")
+	m.Contexts = []string{"https://example.org/contexts/degree.jsonld"}
+	if _, err := s.Create(ctx, connect.NewRequest(&schemav1.CreateRequest{Schema: m})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree"})); err != nil {
+		t.Fatal(err)
+	}
+	if len(fb.calls) != 2 {
+		t.Fatalf("calls %d", len(fb.calls))
+	}
+	for _, c := range fb.calls {
+		if len(c.GetContexts()) != 1 || c.GetContexts()[0] != m.Contexts[0] {
+			t.Fatalf("contexts %v", c.GetContexts())
+		}
+	}
+}

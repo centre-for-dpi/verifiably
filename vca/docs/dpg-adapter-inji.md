@@ -34,6 +34,9 @@ Inji database, and it never restarts an Inji container.
 | `POST /v1/certify/oauth/token` | Redeems the code for an access token and a nonce. |
 | `POST /v1/certify/issuance/credential` | Asks for the signed credential. |
 | `GET /v1/certify/issuance/.well-known/openid-credential-issuer` | Reads the catalogue. |
+| `GET /v1/certify/credential-configurations/{id}` | Checks whether Certify holds a configuration. |
+| `POST /v1/certify/credential-configurations` | Creates a configuration. |
+| `PUT /v1/certify/credential-configurations/{id}` | Replaces a configuration. |
 | `POST /v1/verify/vp-request` | Starts an OID4VP transaction. |
 | `GET /v1/verify/vp-result/{id}` | Reads the answer of a transaction. |
 
@@ -47,7 +50,7 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Channels | OID4VCI pre-authorized code and document. An identity provider adds the authorization code flow. |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
-| Features | None today. Every RPC behind a feature answers `unimplemented`. |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API` when the configuration names a Certify URL |
 | DID methods | None. The deployment sets the issuer identity of Inji Certify. |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names a Certify URL |
 | DPG information | The stack name, the Certify release, and one component per wired role plus Keycloak |
@@ -61,7 +64,6 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 
 | RPC | Reason |
 | --- | --- |
-| `RegisterCredentialConfiguration` | Inji Certify reads its configurations from its own database. The deployment applies them. |
 | `GetIssuanceStatus` | Inji Certify reports no state of a staged offer. |
 | `Revoke` | Inji Certify has no revocation API. The status services own the bits. |
 | Every holder RPC | Inji ships no wallet for a citizen. |
@@ -71,6 +73,36 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.
+
+## Credential configurations
+
+`RegisterCredentialConfiguration` writes the configuration API of Inji
+Certify 0.14.0. The adapter reads the id first. It creates a new entry
+and replaces an entry that Certify holds. Certify then lists the entry
+in its issuer metadata, so a wallet sees it at once.
+
+The API takes `ldp_vc` and `vc+sd-jwt` in this release. The adapter
+refuses `dc+sd-jwt` and `jwt_vc_json` with a reason.
+
+Each entry carries a Velocity template. The template places every
+claim of the JSON Schema. A string claim goes in quotes. A number, a
+boolean, an object, or an array goes in as JSON. A claim name must be a
+template variable name, so the adapter refuses a name with a space.
+
+The entry declares the four markers of the staging call beside the
+claims. Certify rejects a staged claim that the entry does not declare.
+The `ldp_vc` template writes a bitstring status list entry of VCA when
+the staging call passes a status address. The SD-JWT template writes a
+token status list claim in the same case. Without an address, the
+credential carries no status.
+
+The entry names the Certify key of each format through the settings
+`VCA_INJI_LDP_*` and `VCA_INJI_SD_JWT_*`. The defaults match the key
+alias mapper of the stack. The stack keeps the keys (ADR-001 decision
+3).
+
+A refusal keeps the Certify code. A duplicate type gives
+`already_exists`. A missing field gives `invalid_argument`.
 
 ## Interoperability knowledge
 

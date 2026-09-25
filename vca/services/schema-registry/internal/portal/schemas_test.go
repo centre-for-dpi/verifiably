@@ -419,3 +419,27 @@ func TestPublishToStackFollowsCapabilities(t *testing.T) {
 		t.Fatal("a starting stack takes a publish")
 	}
 }
+
+// TestPublishOnTheOwnStackOnlyWhenItTakesSchemas turns publish on for an
+// own stack whose adapter starts to list FEATURE_CREDENTIAL_CONFIG_API,
+// with the formats that adapter issues, and keeps it off without it.
+func TestPublishOnTheOwnStackOnlyWhenItTakesSchemas(t *testing.T) {
+	svc, _ := registry(t)
+	formats := []commonv1.Format{commonv1.Format_FORMAT_LDP_VC, commonv1.Format_FORMAT_VC_SD_JWT}
+	with := get(t, staffServer(t, svc, shellOf(
+		stack{dpg: configv1.Dpg_DPG_INJI, name: secondStack, state: topology.Live, features: configAPI, formats: formats},
+	), nil), "/portal/publish")
+	a11ytest.AssertPage(t, with)
+	for _, want := range []string{msg.T("issuer.schemas.target.publish.label", secondStack), `value="ldp_vc"`, `value="vc&#43;sd-jwt"`} {
+		if !strings.Contains(with, want) {
+			t.Errorf("the publish page lacks %q", want)
+		}
+	}
+	without := get(t, staffServer(t, svc, shellOf(
+		stack{dpg: configv1.Dpg_DPG_INJI, name: secondStack, state: topology.Live, formats: formats},
+	), nil), "/portal/publish")
+	if strings.Contains(without, msg.T("issuer.schemas.target.publish.label", secondStack)) ||
+		!strings.Contains(without, msg.T("issuer.schemas.target.none", secondStack)) {
+		t.Error("publish shows for a stack whose adapter takes no schema")
+	}
+}

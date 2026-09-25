@@ -150,3 +150,19 @@ func stackImageTags(t *testing.T, path string) map[string]string {
 	}
 	return out
 }
+
+func TestProfilesNameTheStackKeys(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{
+		"VCA_INJI_CERTIFY_URL":      "http://certify:8090",
+		"VCA_INJI_SIGNING_DID_URL":  "did:web:issuer.example",
+		"VCA_INJI_LDP_CRYPTO_SUITE": "EcdsaSecp256k1Signature2019",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.Profiles()
+	if p.DidURL != "did:web:issuer.example" || p.Ldp.CryptoSuite != "EcdsaSecp256k1Signature2019" ||
+		p.Ldp.AppID != "CERTIFY_VC_SIGN_ED25519" || p.SdJwt.Algorithm != "ES256" {
+		t.Fatalf("profiles %+v", p)
+	}
+}
