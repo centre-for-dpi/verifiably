@@ -16,6 +16,7 @@ import (
 
 	issuerauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuerauth/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuerauth/v1/issuerauthv1connect"
+	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
@@ -156,5 +157,53 @@ func TestSignOutEndsTheSessionAtIssuerAuth(t *testing.T) {
 	a.Mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("sign out without a token: status %d", rec.Code)
+	}
+}
+
+// pageSchemas answers the schema reads of the pages with one schema.
+type pageSchemas struct{ schema *schemav1.Schema }
+
+func (p pageSchemas) List(context.Context, *connect.Request[schemav1.ListRequest]) (*connect.Response[schemav1.ListResponse], error) {
+	return connect.NewResponse(&schemav1.ListResponse{Schemas: []*schemav1.Schema{p.schema}}), nil
+}
+
+func (p pageSchemas) Get(context.Context, *connect.Request[schemav1.GetRequest]) (*connect.Response[schemav1.GetResponse], error) {
+	return connect.NewResponse(&schemav1.GetResponse{Schema: p.schema}), nil
+}
+
+// TestIssueWizardIssuesInProcess walks the last step of the wizard
+// against the real IssuanceService of the app: the pages call it in
+// process, and the result page reads the offer back (ADR-047).
+func TestIssueWizardIssuesInProcess(t *testing.T) {
+	var buf bytes.Buffer
+	issuer := staff(t)
+	d := withSession(&buf, issuer)
+	d.PageSchemas = pageSchemas{schema: &schemav1.Schema{Id: "farmer", Version: 1, Type: "FarmerCredential",
+		JsonSchema: `{"type":"object","properties":{"fullName":{"type":"string"}},"required":["fullName"]}`,
+		Display:    []*schemav1.Display{{Name: "Farmer registration", Locale: "en"}}}}
+	a, err := app.Build(settings(t, map[string]string{"VCA_ISSUANCE_PUBLIC_URL": "https://issuance.example.org"}), d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := issuer.Token(t, "kc|wanjiru", "issuer-operator")
+	page := get(a, "/issue/source?schema=farmer%401", token).Body.String()
+	m := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`).FindStringSubmatch(page)
+	if m == nil {
+		t.Fatalf("the claim form has no synchronizer token\n%s", page)
+	}
+	form := url.Values{staffsession.Field: {m[1]}, "schema": {"farmer@1"}, "claim.fullName": {"Ada Lovelace"}, "channel": {"CHANNEL_PDF"}}
+	req := httptest.NewRequest(http.MethodPost, "/issue/offers", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: staffsession.IssuerCookie, Value: token})
+	rec := httptest.NewRecorder()
+	a.Mux.ServeHTTP(rec, req)
+	location := rec.Header().Get("Location")
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(location, "/issue/offers/") {
+		t.Fatalf("issue: status %d location %q\n%s", rec.Code, location, rec.Body.String())
+	}
+	result := get(a, location, token)
+	if result.Code != http.StatusOK || !strings.Contains(result.Body.String(), `href="/issuance/pdf/`) ||
+		!strings.Contains(result.Body.String(), "Farmer registration") {
+		t.Fatalf("result: status %d\n%s", result.Code, result.Body.String())
 	}
 }

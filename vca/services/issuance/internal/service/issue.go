@@ -36,6 +36,9 @@ type request struct {
 	schemaID      string
 	schemaVersion int32
 	claims        map[string]string
+	// values holds the claims with their JSON types. Nil means the
+	// claims are text, as the rows of a batch are.
+	values        map[string]any
 	subject       *commonv1.Subject
 	format        commonv1.Format
 	channel       backendv1.Channel
@@ -50,7 +53,7 @@ func (s *Service) Issue(
 	ctx context.Context, req *connect.Request[issuancev1.IssueRequest],
 ) (*connect.Response[issuancev1.IssueResponse], error) {
 	msg := req.Msg
-	claims, err := readClaims(msg.GetSubjectData())
+	claims, values, err := readTypedClaims(msg.GetSubjectData())
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +62,7 @@ func (s *Service) Issue(
 		schemaID:      msg.GetSchemaId(),
 		schemaVersion: msg.GetSchemaVersion(),
 		claims:        claims,
+		values:        values,
 		subject:       msg.GetSubject(),
 		format:        msg.GetFormat(),
 		channel:       msg.GetDelivery().GetChannel(),
@@ -73,24 +77,47 @@ func (s *Service) Issue(
 	return connect.NewResponse(&issuancev1.IssueResponse{Offer: view(offer)}), nil
 }
 
-// readClaims reads the subject data of a request.
+// readClaims reads the subject data of a request as text claims.
 func readClaims(raw string) (map[string]string, error) {
-	claims := map[string]string{}
+	claims, _, err := readTypedClaims(raw)
+	return claims, err
+}
+
+// readTypedClaims reads the subject data of a request. It returns the
+// claims as text, for the document and the record, and with their JSON
+// types, for the schema check and the adapter. A number keeps its
+// digits, and an object or a list becomes its JSON text.
+func readTypedClaims(raw string) (map[string]string, map[string]any, error) {
 	text := strings.TrimSpace(raw)
 	if text == "" {
-		return nil, badRequest("the request needs subject_data")
+		return nil, nil, badRequest("the request needs subject_data")
 	}
 	var values map[string]any
-	if err := json.Unmarshal([]byte(text), &values); err != nil {
-		return nil, badRequest("subject_data is not a JSON object")
+	dec := json.NewDecoder(strings.NewReader(text))
+	dec.UseNumber()
+	if err := dec.Decode(&values); err != nil || values == nil || dec.More() {
+		return nil, nil, badRequest("subject_data is not a JSON object")
 	}
+	claims := make(map[string]string, len(values))
 	for name, value := range values {
-		claims[name] = fmt.Sprint(value)
+		claims[name] = claimText(value)
 	}
 	if len(claims) == 0 {
-		return nil, badRequest("subject_data names no claim")
+		return nil, nil, badRequest("subject_data names no claim")
 	}
-	return claims, nil
+	return claims, values, nil
+}
+
+// claimText is the text form of one claim value.
+func claimText(value any) string {
+	switch value.(type) {
+	case map[string]any, []any:
+		raw, err := json.Marshal(value)
+		if err == nil {
+			return string(raw)
+		}
+	}
+	return fmt.Sprint(value)
 }
 
 // issueOne runs the whole issuance of one subject and records it in the
@@ -121,7 +148,7 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	if err != nil {
 		return offers.Offer{}, err
 	}
-	if serr := checkClaims(schema, r.claims); serr != nil {
+	if serr := checkClaims(schema, r.instance()); serr != nil {
 		return offers.Offer{}, serr
 	}
 	format := formatOf(r.format, schema.GetFormats(), caps)
@@ -143,7 +170,7 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	spec := &backendv1.IssueSpec{
 		ConfigurationId: configurationOf(schema),
 		Format:          format,
-		SubjectData:     mustJSON(r.claims),
+		SubjectData:     r.subjectData(),
 		Subject:         r.subject,
 		Validity:        r.validity,
 		Status:          binding,
@@ -163,9 +190,11 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 		ExpiresAt:     now.Add(s.opts.OfferTTL),
 	}
 	r.channel = channel
-	switch channel {
-	case backendv1.Channel_CHANNEL_PDF, backendv1.Channel_CHANNEL_LINK:
+	switch {
+	case isDocument(channel) && caps.SupportsChannel(backendv1.Channel_CHANNEL_PDF):
 		err = s.issueDocument(ctx, &offer, spec, schema, r)
+	case isDocument(channel):
+		err = s.issueOfferDocument(ctx, &offer, spec, schema, r)
 	default:
 		err = s.issueOffer(ctx, &offer, spec, channel, r)
 	}
@@ -181,16 +210,24 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	return offer, nil
 }
 
+// isDocument reports whether the channel carries a rendered page.
+func isDocument(channel backendv1.Channel) bool {
+	return channel == backendv1.Channel_CHANNEL_PDF || channel == backendv1.Channel_CHANNEL_LINK
+}
+
 // checkChannel reports whether the deployment can serve the channel.
 //
-// The document channel and the link channel need a credential from the
-// adapter. The email channel and the SMS channel carry an offer, so they
-// need the pre-authorized channel of the adapter.
+// The document channel and the link channel carry a credential from the
+// adapter, or else a page with a pre-authorized offer, so every stack
+// that builds such an offer has them (ADR-043 decision 2). The email
+// channel and the SMS channel carry an offer, so they need the
+// pre-authorized channel of the adapter.
 func (s *Service) checkChannel(caps clients.Capabilities, channel backendv1.Channel) error {
 	switch channel {
 	case backendv1.Channel_CHANNEL_PDF, backendv1.Channel_CHANNEL_LINK:
-		if !caps.SupportsChannel(backendv1.Channel_CHANNEL_PDF) {
-			return badRequest("the DPG adapter cannot return a credential, so the document channel is off")
+		if !caps.SupportsChannel(backendv1.Channel_CHANNEL_PDF) &&
+			!caps.SupportsChannel(backendv1.Channel_CHANNEL_OID4VCI_PREAUTH) {
+			return badRequest("the DPG adapter can return neither a credential nor an offer, so the document channel is off")
 		}
 	case backendv1.Channel_CHANNEL_EMAIL, backendv1.Channel_CHANNEL_SMS,
 		backendv1.Channel_CHANNEL_OID4VCI_PREAUTH:
@@ -276,15 +313,21 @@ func (s *Service) issueDocument(ctx context.Context, offer *offers.Offer,
 	if rerr != nil {
 		return internal("render the document", rerr)
 	}
+	offer.Credential = credential.GetPayload()
+	offer.Format = int32(credential.GetFormat())
+	offer.State = offers.StateDelivered
+	offer.ClaimedAt = s.opts.Now().UTC()
+	return s.keepDocument(ctx, offer, document, r)
+}
+
+// keepDocument stores a rendered page, links it from the offer, and
+// sends it to the address of the request, when there is one.
+func (s *Service) keepDocument(ctx context.Context, offer *offers.Offer, document []byte, r request) error {
 	ref := s.opts.NewID()
 	if serr := s.opts.Store.PutDocument(ctx, ref, document); serr != nil {
 		return internal("store the document", serr)
 	}
 	offer.PdfRef = ref
-	offer.Credential = credential.GetPayload()
-	offer.Format = int32(credential.GetFormat())
-	offer.State = offers.StateDelivered
-	offer.ClaimedAt = s.opts.Now().UTC()
 	if s.opts.PublicURL != "" {
 		offer.Link = s.opts.PublicURL + DocumentPath + ref
 	}
@@ -305,6 +348,42 @@ func (s *Service) issueDocument(ctx context.Context, offer *offers.Offer,
 		}
 	}
 	return nil
+}
+
+// issueOfferDocument asks the adapter for a pre-authorized offer and
+// renders a page that carries the offer in its QR code. A stack that
+// signs only when a wallet claims gets the document channel this way.
+// The offer stays pending until a wallet claims it.
+func (s *Service) issueOfferDocument(ctx context.Context, offer *offers.Offer,
+	spec *backendv1.IssueSpec, schema *schemav1.Schema, r request,
+) error {
+	resp, err := s.opts.Issuer.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: spec, Channel: backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
+	}))
+	if err != nil {
+		offer.State = offers.StateFailed
+		offer.Error = err.Error()
+		return connect.NewError(connect.CodeOf(err), fmt.Errorf("create the offer: %w", err))
+	}
+	offer.OfferURI = resp.Msg.GetOfferUri()
+	offer.Pin = resp.Msg.GetPin()
+	if expires := resp.Msg.GetExpiresAt(); expires != nil {
+		offer.ExpiresAt = expires.AsTime()
+	}
+	document, rerr := render.Render(render.Document{
+		Title:     displayName(schema, s.opts.DocumentTitle),
+		Issuer:    s.opts.DocumentIssuer,
+		Claims:    r.claims,
+		Order:     schema.GetSdClaims(),
+		Note:      "Scan the QR code with a wallet to get this credential.",
+		Footer:    s.opts.DocumentFooter,
+		QRPayload: render.OfferPayload(offer.OfferURI),
+		IssuedAt:  s.opts.Now().UTC(),
+	})
+	if rerr != nil {
+		return internal("render the document", rerr)
+	}
+	return s.keepDocument(ctx, offer, document, r)
 }
 
 // deliveryError maps a delivery failure onto a Connect error.
@@ -358,8 +437,32 @@ func (s *Service) schema(ctx context.Context, id string, version int32) (*schema
 	return schema, nil
 }
 
+// instance returns the claims as the schema check reads them: with their
+// JSON types when the request has them, else as text.
+func (r request) instance() map[string]any {
+	if r.values != nil {
+		return r.values
+	}
+	instance := make(map[string]any, len(r.claims))
+	for name, value := range r.claims {
+		instance[name] = value
+	}
+	return instance
+}
+
+// subjectData returns the claims as the adapter reads them.
+func (r request) subjectData() string {
+	if r.values != nil {
+		raw, err := json.Marshal(r.values)
+		if err == nil {
+			return string(raw)
+		}
+	}
+	return mustJSON(r.claims)
+}
+
 // checkClaims checks the claims against the JSON Schema of the version.
-func checkClaims(schema *schemav1.Schema, claims map[string]string) error {
+func checkClaims(schema *schemav1.Schema, instance map[string]any) error {
 	raw := strings.TrimSpace(schema.GetJsonSchema())
 	if raw == "" {
 		return nil
@@ -367,10 +470,6 @@ func checkClaims(schema *schemav1.Schema, claims map[string]string) error {
 	parsed, err := jsonschema.Parse([]byte(raw))
 	if err != nil {
 		return internal("read the JSON Schema of the version", err)
-	}
-	instance := make(map[string]any, len(claims))
-	for name, value := range claims {
-		instance[name] = value
 	}
 	problems := parsed.Validate(instance)
 	if len(problems) == 0 {

@@ -89,6 +89,10 @@ message Offer {
   google.protobuf.Timestamp claimed_at = 12;
   // The DPG transaction id for a deferred issuance.
   string transaction_id = 13;
+  // The schema id of the credential.
+  string schema_id = 14;
+  // The schema version of the credential.
+  int32 schema_version = 15;
 
   // State names the offer phase.
   enum State {

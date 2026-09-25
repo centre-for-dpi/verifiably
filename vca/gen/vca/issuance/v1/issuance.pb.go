@@ -316,6 +316,10 @@ type Offer struct {
 	ClaimedAt *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=claimed_at,json=claimedAt,proto3" json:"claimed_at,omitempty"`
 	// The DPG transaction id for a deferred issuance.
 	TransactionId string `protobuf:"bytes,13,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	// The schema id of the credential.
+	SchemaId string `protobuf:"bytes,14,opt,name=schema_id,json=schemaId,proto3" json:"schema_id,omitempty"`
+	// The schema version of the credential.
+	SchemaVersion int32 `protobuf:"varint,15,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -439,6 +443,20 @@ func (x *Offer) GetTransactionId() string {
 		return x.TransactionId
 	}
 	return ""
+}
+
+func (x *Offer) GetSchemaId() string {
+	if x != nil {
+		return x.SchemaId
+	}
+	return ""
+}
+
+func (x *Offer) GetSchemaVersion() int32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
 }
 
 // IssueResponse returns the offer.
@@ -1137,7 +1155,7 @@ const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"\bdelivery\x18\x06 \x01(\v2\x19.vca.issuance.v1.DeliveryR\bdelivery\x129\n" +
 	"\bvalidity\x18\a \x01(\v2\x1d.vca.common.v1.ValidityWindowR\bvalidity\x12%\n" +
 	"\x0estatus_purpose\x18\b \x01(\tR\rstatusPurpose\x12(\n" +
-	"\x10holder_key_proof\x18\t \x01(\tR\x0eholderKeyProof\"\x8b\x05\n" +
+	"\x10holder_key_proof\x18\t \x01(\tR\x0eholderKeyProof\"\xcf\x05\n" +
 	"\x05Offer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x121\n" +
 	"\achannel\x18\x02 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\x122\n" +
@@ -1157,7 +1175,9 @@ const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x129\n" +
 	"\n" +
 	"claimed_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tclaimedAt\x12%\n" +
-	"\x0etransaction_id\x18\r \x01(\tR\rtransactionId\"\x7f\n" +
+	"\x0etransaction_id\x18\r \x01(\tR\rtransactionId\x12\x1b\n" +
+	"\tschema_id\x18\x0e \x01(\tR\bschemaId\x12%\n" +
+	"\x0eschema_version\x18\x0f \x01(\x05R\rschemaVersion\"\x7f\n" +
 	"\x05State\x12\x15\n" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSTATE_PENDING\x10\x01\x12\x13\n" +

@@ -162,7 +162,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	mux.HandleFunc("GET "+service.DocumentPath+"{ref}", documentHandler(svc))
-	if err := mountPages(mux, wiring{cfg: cfg, deps: deps, client: httpClient, capability: capability, events: events}); err != nil {
+	if err := mountPages(mux, wiring{cfg: cfg, deps: deps, client: httpClient, capability: capability, events: events, issuance: svc}); err != nil {
 		return nil, err
 	}
 	if schemas == nil {
@@ -237,6 +237,9 @@ type wiring struct {
 	client     connect.HTTPClient
 	capability clients.Capability
 	events     *auditlog.Log
+	// issuance is the RPC service. The pages call it in process, so the
+	// proxy never publishes it (ADR-047).
+	issuance pages.Issuance
 }
 
 // mountPages adds the issuer home and its pages behind the staff guard,
@@ -261,6 +264,7 @@ func mountPages(mux *http.ServeMux, wr wiring) error {
 	opts := pages.Options{
 		Kit: kit, Shell: shell, Capability: wr.capability, Schemas: deps.PageSchemas, Issued: deps.PageIssued,
 		Identity: deps.PageIdentity, Trust: deps.Trust, Audit: wr.events, PublicURL: cfg.PublicURL, SignOut: signOut,
+		Issuance: wr.issuance,
 	}
 	if opts.Identity == nil {
 		opts.Identity = backendv1connect.NewIssuerBackendServiceClient(httpClient, cfg.AdapterURL)

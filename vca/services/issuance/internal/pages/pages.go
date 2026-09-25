@@ -12,7 +12,13 @@
 //	GET  /identity/        the issuer identity
 //	POST /identity/provision  ask the stack for a new identity
 //	POST /identity/import     check or import a DID or an X.509 chain
-//	GET  /issue/           the published schemas and the channels of the stack
+//	GET  /issue/           step 1 of the issue wizard: the schema
+//	GET  /issue/source     step 2: the source, then the claim form
+//	POST /issue/source     step 2 again, with the claims posted so far
+//	POST /issue/delivery   step 3: the delivery channels of the pair
+//	POST /issue/review     step 4: what the stack will issue
+//	POST /issue/offers     issue, then go to the result
+//	GET  /issue/offers/{id} the result: QR code, code, link, document
 //	GET  /notifications/   the delivery channels of the issuer
 //	GET  /help/            every issuer RPC with its help text
 //
@@ -64,9 +70,10 @@ type Capability interface {
 		*connect.Response[backendv1.GetCapabilitiesResponse], error)
 }
 
-// Schemas lists the schemas of the schema registry of the pair.
+// Schemas lists and reads the schemas of the schema registry of the pair.
 type Schemas interface {
 	List(context.Context, *connect.Request[schemav1.ListRequest]) (*connect.Response[schemav1.ListResponse], error)
+	Get(context.Context, *connect.Request[schemav1.GetRequest]) (*connect.Response[schemav1.GetResponse], error)
 }
 
 // Issued lists the records of the issued credentials service of the pair.
@@ -86,6 +93,9 @@ type Options struct {
 	Schemas Schemas
 	// Issued reads the issued credentials. Nil shows no issued count.
 	Issued Issued
+	// Issuance issues and reads offers, in process. Nil answers the
+	// issue step and the result with 404.
+	Issuance Issuance
 	// Identity reads and changes the issuer identity of the adapter. Nil
 	// shows the identity as kept by the stack.
 	Identity Identity
@@ -127,6 +137,12 @@ func (p *Pages) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+IdentityPath+"provision", p.handle(p.provision))
 	mux.HandleFunc("POST "+IdentityPath+"import", p.handle(p.importIdentity))
 	mux.HandleFunc("GET "+IssuePath+"{$}", p.handle(p.issue))
+	mux.HandleFunc("GET "+IssueSourcePath, p.handle(p.source))
+	mux.HandleFunc("POST "+IssueSourcePath, p.handle(p.source))
+	mux.HandleFunc("POST "+IssueDeliveryPath, p.handle(p.delivery))
+	mux.HandleFunc("POST "+IssueReviewPath, p.handle(p.review))
+	mux.HandleFunc("POST "+IssueOffersPath, p.handle(p.create))
+	mux.HandleFunc("GET "+IssueOffersPath+"/{id}", p.handle(p.result))
 	mux.HandleFunc("GET "+NotificationsPath+"{$}", p.handle(p.notifications))
 	mux.HandleFunc("GET "+HelpPath+"{$}", p.handle(p.help))
 	if p.opts.SignOut != nil {
@@ -145,7 +161,11 @@ type page struct {
 func (p *Pages) handle(fn func(pg page) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pg := page{w: w, r: r, f: p.opts.Shell.Frame(r.Context())}
-		if err := fn(pg); err != nil {
+		err := fn(pg)
+		if connect.CodeOf(err) == connect.CodePermissionDenied {
+			err = p.forbidden(pg)
+		}
+		if err != nil {
 			http.Error(w, msg.T("common.render_failed"), statusOf(err))
 		}
 	}
@@ -158,6 +178,8 @@ func statusOf(err error) int {
 		return http.StatusNotFound
 	case connect.CodeInvalidArgument, connect.CodeFailedPrecondition:
 		return http.StatusBadRequest
+	case connect.CodePermissionDenied:
+		return http.StatusForbidden
 	}
 	return http.StatusInternalServerError
 }
@@ -165,6 +187,38 @@ func statusOf(err error) int {
 // render writes a page inside the issuer frame.
 func (p *Pages) render(pg page, cp components.Page) error {
 	return p.opts.Shell.Render(p.opts.Kit, pg.w, pg.r, pg.f, cp)
+}
+
+// forbidden answers a step the role of the staff member does not allow
+// with 403 and a page that says why.
+func (p *Pages) forbidden(pg page) error {
+	b := p.blocks()
+	note := b.add("block", components.Block{ID: "role", Title: msg.T("issuer.issue.role.label"), Lead: msg.T("issuer.issue.role.text"),
+		Body: b.add("button", components.Button{Text: msg.T("issuer.identity.back.label"), Href: HomePath})})
+	if b.err != nil {
+		return b.err
+	}
+	pg.w = &statusWriter{ResponseWriter: pg.w, status: http.StatusForbidden}
+	return p.render(pg, components.Page{Title: msg.T("issuer.nav.issue.label"), Lead: msg.T("issuer.issue.lead"), Content: note})
+}
+
+// statusWriter writes a fixed status with the first header or body.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+	sent   bool
+}
+
+func (s *statusWriter) WriteHeader(int) {
+	if !s.sent {
+		s.sent = true
+		s.ResponseWriter.WriteHeader(s.status)
+	}
+}
+
+func (s *statusWriter) Write(b []byte) (int, error) {
+	s.WriteHeader(s.status)
+	return s.ResponseWriter.Write(b)
 }
 
 // caps returns the capability answer of the own adapter: from the probe

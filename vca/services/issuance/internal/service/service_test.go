@@ -5,6 +5,7 @@ package service_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -396,15 +397,119 @@ func TestIssueRefusesAChannelTheAdapterLacks(t *testing.T) {
 	_, err := h.service.Issue(ctx, connect.NewRequest(&issuancev1.IssueRequest{
 		SchemaId:    "farmer",
 		SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`,
-		Delivery:    &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_PDF},
-	}))
-	wantCode(t, err, connect.CodeInvalidArgument)
-	_, err = h.service.Issue(ctx, connect.NewRequest(&issuancev1.IssueRequest{
-		SchemaId:    "farmer",
-		SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`,
 		Delivery:    &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE},
 	}))
 	wantCode(t, err, connect.CodeInvalidArgument)
+	// An adapter with neither a document nor a pre-authorized offer
+	// cannot carry the document channel.
+	h = newHarness(t, func(o *service.Options, h *harness) {
+		h.adapter.capabilities = &backendv1.GetCapabilitiesResponse{
+			Formats:  []commonv1.Format{commonv1.Format_FORMAT_VC_SD_JWT},
+			Channels: []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE},
+		}
+	})
+	_, err = h.service.Issue(ctx, connect.NewRequest(&issuancev1.IssueRequest{
+		SchemaId:    "farmer",
+		SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`,
+		Delivery:    &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_PDF},
+	}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+}
+
+// TestIssueRendersAnOfferDocumentOnAStackWithoutDocuments checks that
+// the document channel works on every stack (ADR-043 decision 2). A
+// stack that signs only when a wallet claims gets a page that carries
+// the pre-authorized offer in its QR code.
+func TestIssueRendersAnOfferDocumentOnAStackWithoutDocuments(t *testing.T) {
+	h := newHarness(t, func(o *service.Options, h *harness) {
+		h.adapter.capabilities = &backendv1.GetCapabilitiesResponse{
+			Formats:  []commonv1.Format{commonv1.Format_FORMAT_VC_SD_JWT},
+			Channels: []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_PREAUTH},
+		}
+	})
+	offer := h.issue(t, backendv1.Channel_CHANNEL_PDF, nil)
+	if offer.GetChannel() != backendv1.Channel_CHANNEL_PDF || offer.GetState() != issuancev1.Offer_STATE_PENDING {
+		t.Fatalf("channel %v, state %v: a wallet still claims the offer", offer.GetChannel(), offer.GetState())
+	}
+	if !strings.HasPrefix(offer.GetOfferUri(), "openid-credential-offer://") || offer.GetPin() != "4821" {
+		t.Fatalf("offer %q, pin %q", offer.GetOfferUri(), offer.GetPin())
+	}
+	if got := h.adapter.channels; len(got) != 1 || got[0] != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH {
+		t.Fatalf("adapter channels %v, want one pre-authorized offer", got)
+	}
+	if offer.GetPdfRef() == "" || !strings.HasPrefix(offer.GetLink(), "https://issuance.example.org/issuance/pdf/") {
+		t.Fatalf("pdf %q, link %q", offer.GetPdfRef(), offer.GetLink())
+	}
+	document, ok := h.service.Document(context.Background(), offer.GetPdfRef())
+	if !ok || !bytes.HasPrefix(document, []byte("%PDF-1.4")) || !bytes.Contains(document, []byte("/XObject")) {
+		t.Fatal("the offer document is not a PDF with a QR image")
+	}
+	if len(*h.sent) != 0 {
+		t.Fatal("the offer document sends no message without an address")
+	}
+	// The link channel carries the same page to its address.
+	link := h.issue(t, backendv1.Channel_CHANNEL_LINK, nil)
+	if link.GetPdfRef() == "" || len(*h.sent) != 1 || len((*h.sent)[0].Attachment) == 0 {
+		t.Fatalf("link offer %v, messages %d", link, len(*h.sent))
+	}
+	// A failed offer fails the document.
+	h.adapter.offerErr = connect.NewError(connect.CodeUnavailable, errors.New("down"))
+	_, err := h.service.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
+		SchemaId: "farmer", SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`,
+		Delivery: &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_PDF},
+	}))
+	wantCode(t, err, connect.CodeUnavailable)
+}
+
+// TestIssueKeepsTheTypesOfTheClaims checks that a number, a boolean,
+// and a nested object reach the schema check and the adapter with
+// their JSON types, so a form built from the schema can issue them.
+func TestIssueKeepsTheTypesOfTheClaims(t *testing.T) {
+	h := newHarness(t, nil)
+	h.schemas.schema.JsonSchema = `{"type":"object","properties":{
+	  "fullName":{"type":"string"},"farmerID":{"type":"string"},
+	  "hectares":{"type":"integer","minimum":1},"organic":{"type":"boolean"},
+	  "address":{"type":"object","properties":{"county":{"type":"string"}},"required":["county"]}},
+	  "required":["fullName","farmerID","address"]}`
+	h.schemas.schema.SearchableClaims = []string{"farmerID", "hectares", "address"}
+	offer := h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, func(r *issuancev1.IssueRequest) {
+		r.SubjectData = `{"fullName":"Ada","farmerID":"FM-1","hectares":12,"organic":true,"address":{"county":"Nakuru"}}`
+	})
+	if offer.GetId() == "" {
+		t.Fatal("no offer")
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(h.adapter.lastSpec().GetSubjectData()), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["hectares"] != float64(12) || got["organic"] != true {
+		t.Fatalf("subject data %v lost the types", got)
+	}
+	if addr, ok := got["address"].(map[string]any); !ok || addr["county"] != "Nakuru" {
+		t.Fatalf("subject data %v lost the nested object", got)
+	}
+	claims := h.recorder.last().GetSearchableClaims()
+	if claims["hectares"] != "12" || claims["address"] != `{"county":"Nakuru"}` {
+		t.Fatalf("searchable claims %v", claims)
+	}
+	// A nested rule still holds.
+	_, err := h.service.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
+		SchemaId: "farmer", SubjectData: `{"fullName":"Ada","farmerID":"FM-1","address":{}}`,
+	}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+	if !strings.Contains(err.Error(), "/address/county") {
+		t.Fatalf("the error %q does not name the nested claim", err)
+	}
+}
+
+// TestGetOfferNamesTheSchema checks that an offer names its schema
+// version, so the result page can name it.
+func TestGetOfferNamesTheSchema(t *testing.T) {
+	h := newHarness(t, nil)
+	created := h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, nil)
+	if created.GetSchemaId() != "farmer" || created.GetSchemaVersion() != 3 {
+		t.Fatalf("schema %q version %d", created.GetSchemaId(), created.GetSchemaVersion())
+	}
 }
 
 func TestIssueReportsAFailureOfEveryService(t *testing.T) {

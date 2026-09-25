@@ -214,6 +214,8 @@ func view(o offers.Offer) *issuancev1.Offer {
 		Link:          o.Link,
 		RecordId:      o.RecordID,
 		TransactionId: o.TransactionID,
+		SchemaId:      o.SchemaID,
+		SchemaVersion: o.SchemaVersion,
 		CreatedAt:     timestamp(o.CreatedAt),
 		ExpiresAt:     timestamp(o.ExpiresAt),
 		ClaimedAt:     timestamp(o.ClaimedAt),

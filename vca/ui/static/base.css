@@ -402,6 +402,21 @@ h1,h2,h3,h4{overflow-wrap:break-word}
 .choice-card:has(:disabled){cursor:not-allowed;color:var(--muted)}
 .choice-card:has(:disabled) .choice-text{color:var(--muted)}
 
+/* ---------- form actions: the buttons under a form ---------- */
+.form-actions{display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:center;margin:var(--space-2) 0 var(--space-6)}
+
+/* ---------- media row: a figure such as a QR code beside its text ---------- */
+.media-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--space-5) var(--space-6);align-items:start}
+@media (max-width:40rem){.media-row{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- fieldset ---------- */
+.fieldset{
+  border:1px solid var(--line);border-radius:var(--radius-m);padding:var(--space-3) var(--space-5) 0;
+  margin:0 0 var(--space-5);min-width:0;max-width:44rem;
+}
+.fieldset legend{font-family:var(--font-body);font-weight:600;font-size:.95rem;padding:0 var(--space-2);margin:0 0 0 calc(-1 * var(--space-2))}
+.fieldset .hint{margin:0 0 var(--space-3)}
+
 /* ---------- code ---------- */
 .code{margin:0 0 var(--space-5);min-width:0}
 .code figcaption{

@@ -73,6 +73,36 @@ func samples(t *testing.T, k *Kit) map[string]any {
 			Roles:      []RoleRow{{Label: "Issuer", State: "live", Text: "Live"}, {Label: "Holder", State: "starting", Text: "Starting"}}}}},
 		"cta":  CTA{ID: "start", Title: "Pick a role.", Text: "Walk one flow.", Action: Button{Text: "Start", Href: "/roles/", Variant: "primary"}},
 		"note": Note{Label: "One role", Text: "This deployment runs one role."},
+		"fieldset": Fieldset{ID: "address", Legend: "Address", Hint: "Where the farm is",
+			Body: mustHTML(t, k, "field", Field{ID: "address-county", Name: "claim.address.county", Label: "County", Required: true})},
+	}
+}
+
+// TestFieldsetGroupsFields checks that a fieldset names its group with
+// a legend, links its hint, and holds the fields of its body.
+func TestFieldsetGroupsFields(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "fieldset", samples(t, k)["fieldset"]))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<fieldset class="fieldset" id="address" aria-describedby="address-hint">`,
+		`<legend>Address</legend>`, `<p class="hint" id="address-hint">Where the farm is</p>`,
+		`name="claim.address.county"`, `</fieldset>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("fieldset missing %q\n%s", want, doc)
+		}
+	}
+	bare := string(mustHTML(t, k, "fieldset", Fieldset{ID: "g", Legend: "Group"}))
+	if strings.Contains(bare, "aria-describedby") || strings.Contains(bare, "hint") {
+		t.Errorf("a fieldset without a hint links none:\n%s", bare)
+	}
+	for name, bad := range map[string]Fieldset{
+		"no id": {Legend: "Group"}, "bad id": {ID: "1x", Legend: "Group"}, "no legend": {ID: "g"},
+	} {
+		if _, err := k.HTML("fieldset", bad); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
 	}
 }
 
@@ -803,7 +833,7 @@ func TestWriteErrors(t *testing.T) {
 	if got := Join("<a>", "<b>"); got != "<a>\n<b>\n" {
 		t.Errorf("Join = %q", got)
 	}
-	if len(Names) != 27 {
+	if len(Names) != 28 {
 		t.Errorf("Names = %v", Names)
 	}
 	for _, n := range Names {

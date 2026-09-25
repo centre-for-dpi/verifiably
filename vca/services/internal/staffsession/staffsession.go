@@ -64,6 +64,14 @@ const DefaultKeysTTL = 10 * time.Minute
 // flood of bad tokens does not flood the auth service.
 const refetchHold = 30 * time.Second
 
+// The issuer role names that issuer-auth puts in a session token
+// (ADR-012 decision 3). An operator issues and revokes. An admin does
+// that and manages the issuer as well.
+const (
+	IssuerAdminRole    = "issuer-admin"
+	IssuerOperatorRole = "issuer-operator"
+)
+
 // Errors the package returns.
 var (
 	// ErrNoSession reports a request with no usable session.

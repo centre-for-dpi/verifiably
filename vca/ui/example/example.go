@@ -98,6 +98,10 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		pre[name] = h
 	}
 	okBadge, figure, stacks, note := pre["badge"], pre["figure"], pre["stacks"], pre["note"]
+	county, err := kit.HTML("field", components.Field{ID: "address-county", Name: "claim.address.county", Label: "County", Required: true})
+	if err != nil {
+		return components.Page{}, err
+	}
 	steps := []struct {
 		name string
 		data any
@@ -123,6 +127,8 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 				{Value: "single", Title: "Single credential", Text: "Type the claims in a form built from the schema.", Checked: true},
 				{Value: "bulk", Title: "Bulk from a data source", Text: "One credential per record.", Meta: "3 sources"},
 			}}},
+		{"fieldset", components.Fieldset{ID: "address", Legend: "Address", Hint: "A nested object of the schema becomes one group.",
+			Body: county}},
 		{"code", components.Code{ID: "offer", Label: "Credential offer", Text: "openid-credential-offer://?credential_offer_uri=https://issuer.example/offers/1"}},
 		{"empty", components.Empty{Title: "Nothing issued yet", Text: "The first credential you issue appears here.",
 			Action: components.Button{Text: "Issue the first one", Href: "/", Variant: "primary"}}},

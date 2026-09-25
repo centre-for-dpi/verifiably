@@ -18,6 +18,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
@@ -46,10 +47,28 @@ func (f *fakeCapability) GetCapabilities(context.Context, *connect.Request[backe
 	return connect.NewResponse(f.caps), nil
 }
 
-// fakeSchemas answers SchemaService.List with a fixed count per state.
+// fakeSchemas answers SchemaService.List with a fixed count per state,
+// and SchemaService.Get from the published schemas.
 type fakeSchemas struct {
+	mu        sync.Mutex
 	published []*schemav1.Schema
 	err       error
+	actors    []string
+}
+
+func (f *fakeSchemas) Get(_ context.Context, req *connect.Request[schemav1.GetRequest]) (*connect.Response[schemav1.GetResponse], error) {
+	f.mu.Lock()
+	f.actors = append(f.actors, req.Header().Get(auditlog.ActorHeader))
+	f.mu.Unlock()
+	if f.err != nil {
+		return nil, f.err
+	}
+	for _, s := range f.published {
+		if s.GetId() == req.Msg.GetId() && (req.Msg.GetVersion() == 0 || s.GetVersion() == req.Msg.GetVersion()) {
+			return connect.NewResponse(&schemav1.GetResponse{Schema: s}), nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeNotFound, errors.New("no schema"))
 }
 
 func (f *fakeSchemas) List(_ context.Context, req *connect.Request[schemav1.ListRequest]) (*connect.Response[schemav1.ListResponse], error) {
@@ -79,6 +98,48 @@ func (f *fakeIssued) List(_ context.Context, req *connect.Request[issuedv1.ListR
 		return nil, f.err
 	}
 	return connect.NewResponse(&issuedv1.ListResponse{Page: &commonv1.PageResult{TotalSize: f.total}}), nil
+}
+
+// fakeIssuance stands in for the IssuanceService of the service. It
+// records every request with its actor header.
+type fakeIssuance struct {
+	mu       sync.Mutex
+	requests []*issuancev1.IssueRequest
+	actors   []string
+	offers   map[string]*issuancev1.Offer
+	next     *issuancev1.Offer
+	err      error
+}
+
+func (f *fakeIssuance) Issue(_ context.Context, req *connect.Request[issuancev1.IssueRequest]) (*connect.Response[issuancev1.IssueResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.requests = append(f.requests, req.Msg)
+	f.actors = append(f.actors, req.Header().Get(auditlog.ActorHeader))
+	if f.err != nil {
+		return nil, f.err
+	}
+	offer := f.next
+	if offer == nil {
+		offer = &issuancev1.Offer{Id: "offer-1", OfferUri: "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffers%2F1"}
+	}
+	offer.Channel = req.Msg.GetDelivery().GetChannel()
+	offer.SchemaId, offer.SchemaVersion = req.Msg.GetSchemaId(), req.Msg.GetSchemaVersion()
+	if f.offers == nil {
+		f.offers = map[string]*issuancev1.Offer{}
+	}
+	f.offers[offer.GetId()] = offer
+	return connect.NewResponse(&issuancev1.IssueResponse{Offer: offer}), nil
+}
+
+func (f *fakeIssuance) GetOffer(_ context.Context, req *connect.Request[issuancev1.GetOfferRequest]) (*connect.Response[issuancev1.GetOfferResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	o, ok := f.offers[req.Msg.GetId()]
+	if !ok {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("no offer"))
+	}
+	return connect.NewResponse(&issuancev1.GetOfferResponse{Offer: o}), nil
 }
 
 // fakeIdentity answers the identity RPCs of the adapter and records
@@ -193,6 +254,8 @@ func peerOf(role commonv1.Role, dpg configv1.Dpg, services map[string]string) to
 type harness struct {
 	caps     *fakeCapability
 	schemas  *fakeSchemas
+	issuance *fakeIssuance
+	sess     staffsession.Session
 	issued   *fakeIssued
 	identity *fakeIdentity
 	trust    *fakeTrust
@@ -212,6 +275,8 @@ func newHarness(t *testing.T, features ...backendv1.Feature) *harness {
 	h := &harness{
 		caps:     &fakeCapability{caps: issuerCaps(waltidName, features...)},
 		schemas:  &fakeSchemas{},
+		issuance: &fakeIssuance{},
+		sess:     session,
 		issued:   &fakeIssued{},
 		identity: &fakeIdentity{},
 		trust:    &fakeTrust{},
@@ -228,15 +293,21 @@ func newHarness(t *testing.T, features ...backendv1.Feature) *harness {
 	inji := peerOf(commonv1.Role_ROLE_ISSUER, configv1.Dpg_DPG_INJI, nil)
 	credebl := peerOf(commonv1.Role_ROLE_ISSUER, configv1.Dpg_DPG_CREDEBL, nil)
 	admin := peerOf(commonv1.Role_ROLE_ADMIN, configv1.Dpg_DPG_WALTID, map[string]string{"admin": "http://admin:8093", "trust-registry": h.trustURL})
-	h.peers = []topology.Peer{waltid, inji, credebl, admin}
+	holderWaltid := peerOf(commonv1.Role_ROLE_HOLDER, configv1.Dpg_DPG_WALTID, nil)
+	holderInji := peerOf(commonv1.Role_ROLE_HOLDER, configv1.Dpg_DPG_INJI, nil)
+	holderCredebl := peerOf(commonv1.Role_ROLE_HOLDER, configv1.Dpg_DPG_CREDEBL, nil)
+	h.peers = []topology.Peer{waltid, inji, credebl, admin, holderWaltid, holderInji, holderCredebl}
 	h.snap = topology.Snapshot{Peers: []topology.Status{
 		{Peer: waltid, State: topology.Live, Capabilities: h.caps.caps},
 		{Peer: inji, State: topology.Live, Capabilities: issuerCaps(injiName)},
 		{Peer: credebl, State: topology.Starting},
 		{Peer: admin, State: topology.Live},
+		{Peer: holderWaltid, State: topology.Live, Capabilities: &backendv1.GetCapabilitiesResponse{DpgInfo: &backendv1.DpgInfo{DisplayName: waltidName}}},
+		{Peer: holderInji, State: topology.Live, Capabilities: &backendv1.GetCapabilitiesResponse{DpgInfo: &backendv1.DpgInfo{DisplayName: injiName}}},
+		{Peer: holderCredebl, State: topology.Starting},
 	}}
 	h.opts = pages.Options{
-		Capability: h.caps, Schemas: h.schemas, Issued: h.issued, Identity: h.identity, Audit: h.audit,
+		Capability: h.caps, Schemas: h.schemas, Issued: h.issued, Identity: h.identity, Audit: h.audit, Issuance: h.issuance,
 		Trust: func(url string) pages.Trust {
 			if url != h.trustURL {
 				t.Errorf("trust registry %q, want %q", url, h.trustURL)
@@ -277,7 +348,13 @@ var fixedNow = time.Date(2026, 9, 25, 9, 30, 0, 0, time.UTC)
 // withoutAdmin drops the admin pair from the deployment.
 func (h *harness) withoutAdmin(t *testing.T) {
 	t.Helper()
-	h.snap.Peers = h.snap.Peers[:3]
+	var keep []topology.Status
+	for _, st := range h.snap.Peers {
+		if st.Peer.Role != commonv1.Role_ROLE_ADMIN {
+			keep = append(keep, st)
+		}
+	}
+	h.snap.Peers = keep
 	h.build(t)
 }
 
@@ -289,8 +366,9 @@ func (h *harness) post(t *testing.T, path string, form url.Values) *httptest.Res
 	return h.do(t, r)
 }
 
-// session is the staff member of every request.
-var session = staffsession.Session{Subject: "kc|wanjiru", Name: "Wanjiru Kamau", ID: "sid-1", CSRF: "csrf-1"}
+// session is the staff member of every request: an issuer operator.
+var session = staffsession.Session{Subject: "kc|wanjiru", Name: "Wanjiru Kamau", ID: "sid-1", CSRF: "csrf-1",
+	Roles: []string{staffsession.IssuerOperatorRole}}
 
 // get answers one GET as a signed in staff member.
 func (h *harness) get(t *testing.T, path string) *httptest.ResponseRecorder {
@@ -300,7 +378,7 @@ func (h *harness) get(t *testing.T, path string) *httptest.ResponseRecorder {
 
 func (h *harness) do(t *testing.T, r *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
-	r = r.WithContext(staffsession.With(r.Context(), session))
+	r = r.WithContext(staffsession.With(r.Context(), h.sess))
 	rec := httptest.NewRecorder()
 	h.mux.ServeHTTP(rec, r)
 	return rec

@@ -35,7 +35,12 @@ service sends the browser to `/issuer/`.
 | `POST /identity/provision` | Asks the stack for a new identity. |
 | `POST /identity/import` | Checks or imports a DID or an X.509 chain. |
 | `GET /.well-known/did.json` | The DID document of a `did:web` of the host. It needs no session. |
-| `GET /issue/` | The published schemas and the delivery channels of the stack. |
+| `GET /issue/` | Step 1 of the issue wizard: the published schema to issue. |
+| `GET /issue/source` | Step 2: one credential or a bulk run, then the claim form. |
+| `POST /issue/delivery` | Step 3: the delivery channels of the pair. |
+| `POST /issue/review` | Step 4: what the stack issues. |
+| `POST /issue/offers` | Issues the credential, then opens the result. |
+| `GET /issue/offers/{id}` | The result: the QR code, the code, the link, and the document. |
 | `GET /notifications/` | The delivery channels of the issuer and their state. |
 | `GET /help/` | Every issuer RPC with its help text. |
 | `POST /issuer/signout` | Ends the session at `issuer-auth`. |
@@ -66,6 +71,48 @@ page hides the box when no live admin pair runs a trust registry, and
 says so. The service serves the DID document of a `did:web` of its
 host at `/.well-known/did.json`.
 
+### The issue wizard
+
+The wizard follows board Issuer-Issue in four steps: schema, source,
+delivery, and review. Only an issuer operator or an issuer admin
+issues. A viewer sees the wizard closed, and a posted step answers
+`403`.
+
+The source step offers "Bulk from data sources" only when the data
+source service runs on the pair. The choice leads to the data source
+pages at `/sources/`. Otherwise the step shows the claim form at once.
+
+The page builds the claim form from the JSON Schema 2020-12 of the
+version with `core/jsonschema`:
+
+| Schema | Form |
+| --- | --- |
+| `string` | A text field. The formats `date`, `date-time`, `email`, and `uri` pick the matching input. |
+| `integer`, `number` | A number field with its range. |
+| `boolean` | A list with yes and no. |
+| `enum` | A list of the values. |
+| `array` | A text box with one value on each line. |
+| `object` | A fieldset with a field for each property. |
+| `required` | The field needs a value. |
+
+The label of a claim comes from the claim mapping of the version, then
+from `title`, then from the property name. The page checks the posted
+claims against the schema on the server. Each error names its field
+through `aria-describedby`. A summary above the form links each field
+with an error. Every step after the schema posts the claims it carries.
+No claim reaches a URL.
+
+The delivery step offers the channels that the adapter of the pair
+lists. It also offers the document channel on every stack (ADR-043
+decision 2). The pages call `IssuanceService.Issue` in process. The
+call names the staff member in the `X-Vca-Actor` header. The proxy
+publishes no Connect service of the issuance service (ADR-047).
+
+The result page shows the QR code of the offer. Its text names the
+schema and the issuer. The page also shows the offer link. It shows
+the transaction code when the stack sets one. It shows the document
+when the channel has one. A last block links the wallets of the holder pairs that run.
+
 Each call of the pages to the issued credentials service names the
 staff member in the `X-Vca-Actor` header. The audit log of that service
 then names the staff member (ADR-039 decision 1).
@@ -77,10 +124,14 @@ then names the staff member (ADR-039 decision 1).
 2. It reads the schema from the schema registry, when the deployment has
    one. It checks the claims against the JSON Schema with
    `core/jsonschema`.
-3. It picks the wire format. The request wins. The schema comes next.
+3. It keeps the JSON types of the claims. A number, a list, and a
+   nested object reach the check and the adapter as they are. It then
+   picks the wire format. The request wins. The schema comes next.
    The first format of the adapter comes last.
 4. It refuses a channel the adapter does not support. The document
-   channels need no adapter channel, because the service renders them.
+   channels need no document channel of the adapter, because the
+   service renders them. A stack that signs only when a wallet claims
+   gets a page with the pre-authorized offer in its QR code.
 5. It reserves a status list entry, when the deployment has a status
    service. An SD-JWT credential gets a token status list entry. Another
    format gets a bitstring status list entry.
@@ -116,6 +167,7 @@ symbol grows with its payload, and the service scales it to fit.
 The QR payload holds one of two things:
 
 - The credential offer URI, for an offer channel. A wallet reads it.
+  The document of a stack that signs only on a claim carries it too.
 - The credential in the PixelPass form, for a signed credential. The
   form is CBOR, then zlib, then base45. The MOSIP tools read it.
 

@@ -303,7 +303,7 @@ func TestStylesheetCarriesContentComponents(t *testing.T) {
 		".hero-actions{", ".tiles>li{", ".tile-meta{", ".steps{", ".step-num{", ".step-state{", ".step-locked",
 		".checklist{", ".check-mark{", ".check-done .check-mark", ".stats{", ".stat{", ".stat-value{",
 		".stepper{", ".stepper-num{", ".stepper-current .stepper-num", ".choice{", ".choice-card{", ".choice-card:has(:checked)",
-		".choice-card:has(:focus-visible)", ".code{", ".code pre{", ".empty{", ".empty-title{",
+		".choice-card:has(:focus-visible)", ".fieldset{", ".fieldset legend{", ".form-actions{", ".media-row{", ".code{", ".code pre{", ".empty{", ".empty-title{",
 		// The landing components: page block, diagram figure, stack cards,
 		// the call to action band, and the hero note.
 		".tiles-3{", ".stack-roles-group{", ".block{", ".block-head{", ".block-lead{", ".block-meta{",

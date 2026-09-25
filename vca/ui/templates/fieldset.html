@@ -1,0 +1,5 @@
+{{define "fieldset"}}<fieldset class="fieldset" id="{{.ID}}"{{if .Hint}} aria-describedby="{{.ID}}-hint"{{end}}>
+<legend>{{.Legend}}</legend>
+{{if .Hint}}<p class="hint" id="{{.ID}}-hint">{{.Hint}}</p>
+{{end}}{{.Body}}</fieldset>
+{{end}}

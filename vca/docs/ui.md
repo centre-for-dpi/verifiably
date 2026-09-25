@@ -283,6 +283,7 @@ component. `components.Names` lists every template.
 | `stat` | `Stat` | One summary card: label, value, sentence, link. Put several in `div.stats` for a grid. | `Label`, `Value` |
 | `stepper` | `Stepper` | Progress of a multi step form. The current step carries `aria-current="step"`. | `Label`, `Steps` (two or more), `Current` |
 | `choice` | `Choice` | `fieldset` with a `legend` and radio cards, or checkbox cards with `Multiple`. | `ID`, `Legend`, `Options` |
+| `fieldset` | `Fieldset` | `fieldset` with a `legend`, an optional hint, and the fields of its body. A nested object of a form becomes one. | `ID`, `Legend` |
 | `code` | `Code` | `figure` with a `figcaption` and a `pre` region named by it. | `ID`, `Label`, `Text` |
 | `empty` | `Empty` | Empty state with a title, a sentence, and the one action that fills it. | `Title`, `Action` |
 | `block` | `Block` | One section of a long page: `section` labelled by its `h2`, a lead, a meta line, a body. `Attrs` takes the htmx attributes, so a block can refresh itself. | `ID`, `Title` |
@@ -418,6 +419,9 @@ current one carry a hidden `Done` for screen readers.
 `Choice`: `ID`, `Name` (default `ID`), `Legend`, `Hint`, `Options`,
 `Multiple`. `ChoiceOption`: `Value`, `Title`, `Text`, `Meta`, `Checked`,
 `Disabled`. Every input has an id `<ID>-<n>` and its own `label`.
+
+`Fieldset`: `ID`, `Legend`, `Hint`, `Body`. A hint links to the group
+through `aria-describedby`. Put the fields from `Kit.HTML` in `Body`.
 
 `Code`: `ID`, `Label`, `Text`. `Empty`: `Title`, `Text`, `Action`.
 

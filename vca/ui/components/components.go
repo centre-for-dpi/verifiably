@@ -28,7 +28,7 @@ import (
 // Names lists every template a Kit can render.
 var Names = []string{"layout", "page", "card", "field", "table", "badge", "toast", "dialog", "qr", "json", "button",
 	"hero", "tiles", "steps", "checklist", "stat", "stepper", "choice", "code", "empty",
-	"block", "figure", "stacks", "cta", "note", "signin", "tabs"}
+	"block", "figure", "stacks", "cta", "note", "signin", "tabs", "fieldset"}
 
 // safeAttrNames is the whitelist for the safeAttr template function.
 // Only these attribute names can be added through an Attrs map.
@@ -990,6 +990,25 @@ func (c Code) normalize() (any, error) {
 		return nil, fmt.Errorf("code %q: label and text are required", c.ID)
 	}
 	return c, nil
+}
+
+// Fieldset groups related fields under a legend, for example the parts
+// of an address. Body holds the fields from Kit.HTML.
+type Fieldset struct {
+	ID     string // required
+	Legend string // required, names the group
+	Hint   string
+	Body   template.HTML
+}
+
+func (f Fieldset) normalize() (any, error) {
+	if err := checkID(f.ID); err != nil {
+		return nil, fmt.Errorf("fieldset: %w", err)
+	}
+	if f.Legend == "" {
+		return nil, fmt.Errorf("fieldset %q: legend is required", f.ID)
+	}
+	return f, nil
 }
 
 // Empty is an empty state: what is missing and the one action that fills it.

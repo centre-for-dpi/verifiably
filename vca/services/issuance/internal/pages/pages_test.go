@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
-	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/rolenav"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/pages"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
@@ -68,30 +67,6 @@ func TestPagesSendTheActor(t *testing.T) {
 		if a != session.Subject {
 			t.Errorf("actor %q, want %q", a, session.Subject)
 		}
-	}
-}
-
-func TestIssuePageListsPublishedSchemasAndStackChannels(t *testing.T) {
-	h := newHarness(t)
-	doc := body(t, h.get(t, "/issue/"))
-	// No schema: the empty state leads to the builder.
-	if !strings.Contains(doc, "No schema yet.") || !strings.Contains(doc, `href="/builder/"`) {
-		t.Error("the empty state is missing")
-	}
-	// The channels come from the adapter: pre-authorized and
-	// authorization code, no PDF.
-	if !strings.Contains(doc, "OID4VCI, pre-authorized code") || !strings.Contains(doc, "OID4VCI, authorization code") {
-		t.Error("the stack channels are missing")
-	}
-	if strings.Contains(doc, "QR on a PDF") {
-		t.Error("the page offers a channel the stack lacks")
-	}
-	h.schemas.published = []*schemav1.Schema{{Id: "farmer", Version: 2, Type: "FarmerCredential", Formats: []commonv1.Format{commonv1.Format_FORMAT_DC_SD_JWT},
-		Display: []*schemav1.Display{{Name: "Farmer registration", Locale: "en"}}}}
-	doc = body(t, h.get(t, "/issue/"))
-	a11ytest.AssertPage(t, doc)
-	if !strings.Contains(doc, "Farmer registration") || !strings.Contains(doc, `href="/portal/schemas/farmer"`) {
-		t.Error("the published schema is missing")
 	}
 }
 
