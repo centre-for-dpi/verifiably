@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-046, one row per decision.
+ADR-047, one row per decision.
 
 The status values are:
 
@@ -511,12 +511,21 @@ A row that is not `Done` carries a note.
 | ADR-046 | 3 Trust registry entry in state pending | Done | `vca/services/issuance/internal/pages/identity.go` | The identity page writes a pending entry in the trust registry of the first live admin pair. |
 | ADR-046 | 4 No issuer private key in VCA | Done | `vca/services/dpg-adapter-waltid` | The walt.id key stays in the adapter state file with mode 0600, as the decision records. |
 
+## ADR-047: The public RPC surface of a pair
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-047 | 1 Only services with a caller check go public | Done | `vca/internal/cli/publicrpc_test.go`, `vca/services/internal/rpcguard` | The admin, the three auth services, and their `AdminService` are public. Each has `TestAnonymousRPCsAreRefused`. |
+| ADR-047 | 2 Internal services stay on the compose network | Done | `vca/internal/cli/services.go`, `vca/internal/cli/dpgconfig.go` | The `Caddyfile` answers `404` to `/vca.*`, and the holder pair to `/auth/vca.*` too. |
+| ADR-047 | 3 The CLI uses host ports on `VCA_BIND` | Done | `vca/internal/cli/bootstrap.go` | `vca dpg bootstrap waltid` calls the adapter at `127.0.0.1`. Every other command calls the public `AdminService`. |
+| ADR-047 | 4 Protocol paths stay public | Done | `vca/internal/cli/services.go`, `vca/docs/deploy.md` | The status services and the trust registry publish their lists and key sets only. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 171 |
+| Done | 175 |
 | Partial | 20 |
 | Deferred | 3 |
 | Not started | 70 |
-| Total | 264 |
+| Total | 268 |

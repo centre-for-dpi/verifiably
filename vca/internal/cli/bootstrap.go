@@ -37,7 +37,8 @@ const (
 	// EnvBootstrapOrg is the CREDEBL organisation name.
 	EnvBootstrapOrg = "VCA_BOOTSTRAP_ORG"
 	// EnvBootstrapAdapterURL overrides the address of the walt.id adapter
-	// for the bootstrap run. Empty means the public URL of the pair.
+	// for the bootstrap run. Empty means 127.0.0.1 and the host port of
+	// the adapter of the pair.
 	EnvBootstrapAdapterURL = "VCA_BOOTSTRAP_ADAPTER_URL"
 )
 
@@ -125,15 +126,29 @@ func Bootstrap(ctx context.Context, opts BootstrapOptions) (BootstrapResult, err
 }
 
 // adapterURL returns the address of the walt.id adapter: the override,
-// else the public URL of the pair, where the reverse proxy routes the
-// Connect services of the adapter.
+// else 127.0.0.1 and the host port of the adapter of the pair. The
+// reverse proxy publishes no adapter service, so the CLI reaches the
+// adapter where compose publishes its port on VCA_BIND, as the
+// Caddyfile does (ADR-047 decision 3). The port comes from the port
+// plan and the VCA_HOST_PORT_* overrides of the .env file.
 func (o BootstrapOptions) adapterURL() (string, error) {
-	raw := strings.TrimRight(o.value(EnvBootstrapAdapterURL, o.Values["VCA_PUBLIC_URL"]), "/")
+	raw := strings.TrimRight(o.value(EnvBootstrapAdapterURL, localAdapterURL(o.Pair, o.Values)), "/")
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return "", fmt.Errorf("bootstrap: set %s or VCA_PUBLIC_URL to an absolute http or https URL", EnvBootstrapAdapterURL)
+		return "", fmt.Errorf("bootstrap: set %s to an absolute http or https URL", EnvBootstrapAdapterURL)
 	}
 	return raw, nil
+}
+
+// localAdapterURL returns http://127.0.0.1 and the host port of the DPG
+// adapter of a pair, or "" when the pair runs no adapter.
+func localAdapterURL(p Pair, values map[string]string) string {
+	for _, a := range HostPorts(p, values) {
+		if a.Service.Dpg != configv1.Dpg_DPG_UNSPECIFIED {
+			return fmt.Sprintf("http://%s:%d", LoopbackAddress, a.Host)
+		}
+	}
+	return ""
 }
 
 // BootstrapWaltid gives the issuer of the pair its identity through the

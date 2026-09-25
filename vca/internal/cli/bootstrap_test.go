@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -191,17 +192,41 @@ func TestBootstrapWaltidNeedsAPublicURL(t *testing.T) {
 	}
 }
 
-// TestBootstrapWaltidUsesThePublicURL checks that without an override the
-// run reaches the adapter through the public URL of the pair, where the
-// reverse proxy routes the adapter services.
-func TestBootstrapWaltidUsesThePublicURL(t *testing.T) {
-	adapter := &fakeAdapter{identity: &backendv1.IssuerIdentity{Identifiers: []string{"did:web:127.0.0.1"}}}
+// TestBootstrapWaltidUsesTheHostPort is ADR-047 decision 3: the proxy
+// publishes no adapter service, so without an override the run reaches
+// the adapter on 127.0.0.1 and its host port from the .env of the pair,
+// never on the public URL.
+func TestBootstrapWaltidUsesTheHostPort(t *testing.T) {
+	adapter := &fakeAdapter{identity: &backendv1.IssuerIdentity{Identifiers: []string{"did:web:issuer.example"}}}
 	server := serveAdapter(t, adapter)
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := serveAdapter(t, &fakeAdapter{fail: connect.NewError(connect.CodeNotFound, errors.New("the proxy publishes no adapter"))})
 	var out bytes.Buffer
-	opts := BootstrapOptions{Pair: issuerPair(), Dir: t.TempDir(), Values: map[string]string{"VCA_PUBLIC_URL": server.URL}, Out: &out}
+	opts := BootstrapOptions{Pair: issuerPair(), Dir: t.TempDir(), Out: &out, Values: map[string]string{
+		"VCA_PUBLIC_URL": public.URL, "VCA_HOST_PORT_DPG_ADAPTER_WALTID": u.Port(),
+	}}
 	got, err := BootstrapWaltid(context.Background(), opts)
-	if err != nil || !strings.Contains(got.Steps[0], "present: did:web:127.0.0.1") {
+	if err != nil || !strings.Contains(got.Steps[0], "present: did:web:issuer.example") {
 		t.Fatalf("steps %v: %v", got.Steps, err)
+	}
+	// With no override in the .env file the port plan names the port.
+	base, err := BootstrapOptions{Pair: issuerPair(), Values: map[string]string{}}.adapterURL()
+	want := ""
+	for _, a := range AssignPorts(issuerPair(), nil) {
+		if a.Service.Name == "dpg-adapter-waltid" {
+			want = fmt.Sprintf("http://127.0.0.1:%d", a.Host)
+		}
+	}
+	if err != nil || want == "" || base != want {
+		t.Errorf("adapter URL %q, want %q: %v", base, want, err)
+	}
+	// The override still wins.
+	base, err = BootstrapOptions{Pair: issuerPair(), Values: map[string]string{EnvBootstrapAdapterURL: "http://adapter.internal:8090/"}}.adapterURL()
+	if err != nil || base != "http://adapter.internal:8090" {
+		t.Errorf("override %q: %v", base, err)
 	}
 }
 

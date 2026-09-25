@@ -93,11 +93,14 @@ func hostOf(raw string) string {
 // import <deploy dir>/*/Caddyfile, takes every pair (ADR-007 decision 5).
 //
 // The site holds one handle block per route of the route table, in
-// service name order. A Strip route renders handle_path, so the service
-// sees the path without its prefix. The exact root redirects to the
-// home page of the role, and a final handle block sends every other
-// path to the home service. Caddy sorts handle blocks by the length of
-// their path matcher, so the order in the file does not matter.
+// service name order. A Strip route removes the first segment of its
+// matcher with uri strip_prefix, so the service sees the path without
+// its prefix. A handle block per refused matcher answers 404 to every
+// Connect path that no route names (ADR-047). The exact root redirects
+// to the home page of the role, and a final handle block sends every
+// other path to the home service. Caddy sorts handle blocks by the
+// length of their path matcher, so the order in the file does not
+// matter.
 //
 // The issuer pair of a stack also carries the site of the Keycloak of
 // the stack when the OIDC public URL names a public host.
@@ -115,13 +118,18 @@ func Caddyfile(p Pair, values map[string]string) string {
 	fmt.Fprintf(&b, "%s {\n", host)
 	b.WriteString("\tencode gzip\n")
 	for _, sr := range PairRoutes(p, values) {
-		directive := "handle"
-		if sr.Route.Strip {
-			directive = "handle_path"
-		}
 		fmt.Fprintf(&b, "\t# %s\n", sr.Service)
-		fmt.Fprintf(&b, "\t%s %s {\n", directive, sr.Route.Match)
+		fmt.Fprintf(&b, "\thandle %s {\n", sr.Route.Match)
+		if prefix := sr.Route.StripPrefix(); prefix != "" {
+			fmt.Fprintf(&b, "\t\turi strip_prefix %s\n", prefix)
+		}
 		fmt.Fprintf(&b, "\t\treverse_proxy 127.0.0.1:%d\n", sr.Host)
+		b.WriteString("\t}\n")
+	}
+	b.WriteString("\t# Every other Connect service stays on the compose network (ADR-047)\n")
+	for _, match := range RefusedRoutes(p) {
+		fmt.Fprintf(&b, "\thandle %s {\n", match)
+		b.WriteString("\t\trespond 404\n")
 		b.WriteString("\t}\n")
 	}
 	homePort := 0

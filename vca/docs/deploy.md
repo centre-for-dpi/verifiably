@@ -74,6 +74,8 @@ A public host also gets the three lines that hand the reverse proxy the
 ```
 
 The command calls the DPG HTTP API. It runs again with no harm.
+The `waltid` run calls the adapter on its host port, so run it on the
+machine that runs compose. See "What the proxy publishes".
 
 ### Step 4: check the deployment
 
@@ -326,6 +328,108 @@ components on the loopback address. No other machine reaches them.
 A laptop deployment with a localhost public URL gets no `VCA_BIND`, so
 compose keeps its default, `0.0.0.0`.
 Set `VCA_BIND` by hand in the `.env` file to change it.
+The reverse proxy publishes only the paths of "What the proxy
+publishes".
+
+## What the proxy publishes
+
+The proxy publishes a path on the host name of a pair only for
+a party outside the host (ADR-047).
+That party is a browser, a wallet, an auditor, or the CLI.
+A Connect service goes public only when every RPC of it checks the
+caller.
+Every other Connect service stays on the compose network.
+The pages draw on the server and reach those services by container
+name, so a browser never calls them.
+
+The `Caddyfile` of every pair answers `404` to `/vca.*`, the path of
+every Connect service that no route names.
+The holder pair also refuses `/auth/vca.*`, because its `/auth/*` route
+strips `/auth` before `wallet-auth` sees the path.
+Without these blocks the last `handle` block would send the path to the
+home service of the role.
+
+### Connect services
+
+| Service | Served by | Reach | Why |
+|---|---|---|---|
+| `vca.admin.v1.AdminService` | `admin` | Public | `vca admin` and `vca dpg realm` call it at `VCA_ADMIN_URL`. Each RPC needs an admin session or an API token. `ListCommands` returns the help text. `OnboardAdmin` needs the one time bootstrap token. |
+| `vca.admin.v1.AdminService` | `issuer-auth`, `verifier-auth`, `wallet-auth` | Public | `vca admin --url` manages the providers and the API keys of the pair. Each RPC needs the admin token or an admin session. The auth services of the issuer and the verifier also take a session with their admin role. The other RPCs answer `unimplemented`. |
+| `vca.issuerauth.v1.IssuerAuthService` | `issuer-auth` | Public | A portal that drives the login itself calls it. `ListProviders`, `LoginStart`, `LoginCallback`, and `Introspect` are the login flow, as the `/auth/` pages are. `Logout` needs a session. The role mapping RPCs need an admin. |
+| `vca.verifierauth.v1.VerifierAuthService` | `verifier-auth` | Public | The same RPCs and the same checks as `IssuerAuthService`, for verifier staff. |
+| `vca.walletauth.v1.WalletAuthService` | `wallet-auth` | Public | The login flow, as for `issuer-auth`. `RegisterHolderKey`, `GetAuthorizationGrant`, and `Logout` need a holder session. |
+| `vca.audit.v1.AuditService` | `admin`, `issuance`, `issued-credentials`, `issuer-auth`, `trust-registry`, `verifier-auth`, `verifier-results`, `wallet-auth` | Compose network | It needs an admin session. The admin reads every audit log on the compose network (ADR-039). |
+| `vca.backend.v1.CapabilityService` | `dpg-adapter-*` | Compose network | No caller check. The peer probe of each page service calls it. |
+| `vca.backend.v1.IssuerBackendService` | `dpg-adapter-*` | Compose network | No caller check. `issuance` and `schema-registry` call it. `vca dpg bootstrap waltid` calls the host port of the adapter. |
+| `vca.backend.v1.HolderBackendService` | `dpg-adapter-*` | Compose network | No caller check. `wallet-auth` and `wallet-portal` call it. |
+| `vca.backend.v1.VerifierBackendService` | `dpg-adapter-*` | Compose network | No caller check. No party outside the host calls it. |
+| `vca.backend.v1.CatalogBackendService` | `dpg-adapter-*` | Compose network | No caller check. `schema-builder-ui` calls it. |
+| `vca.backend.v1.TenantBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for tenants and stack credentials. |
+| `vca.backend.v1.NotificationBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for stack webhooks. |
+| `vca.combined.v1.CombinedService` | `verifier-combined` | Compose network | No caller check, and no party outside the host calls it. |
+| `vca.datasource.v1.DataSourceService` | `data-source` | Compose network | Without a key set file it trusts the session header of a gateway. `issuance` is the only caller. |
+| `vca.discovery.v1.DiscoveryService` | `verifier-discovery` | Compose network | No caller check. `verifier-ingest`, `verifier-combined`, and `wallet-portal` call it. A wallet reads `/catalog` instead. |
+| `vca.ingest.v1.IngestService` | `verifier-ingest` | Compose network | No caller check. A wallet posts to `/oid4vp/response`. The scanner page posts to `/scan/ingest`. |
+| `vca.issuance.v1.IssuanceService` | `issuance` | Compose network | No caller check. The issuer pages call it in process. |
+| `vca.issued.v1.IssuedService` | `issued-credentials` | Compose network | No caller check. `issuance` and `schema-registry` call it. An auditor reads `/issued/chain-head` instead. |
+| `vca.policy.v1.PolicyService` | `verifier-policy` | Compose network | No caller check. `verifier-results` and `verifier-combined` call it. |
+| `vca.results.v1.ResultsService` | `verifier-results` | Compose network | No caller check. `verifier-combined` calls it, and the verifier pages call it in process. |
+| `vca.schema.v1.SchemaService` | `schema-registry` | Compose network | No caller check. `issuance` and `schema-builder-ui` call it. A wallet reads the metadata and the schema files instead. |
+| `vca.schemabuilder.v1.SchemaBuilderService` | `schema-builder-ui` | Compose network | No caller check. The builder page calls it in process. |
+| `vca.status.v1.StatusService` | `status-bitstring`, `status-token` | Compose network | No caller check. `issuance` and `issued-credentials` call it. A verifier reads the signed lists instead. |
+| `vca.trust.v1.TrustService` | `trust-registry` | Compose network | No caller check. `admin`, `issuance`, `verifier-discovery`, `verifier-policy`, and `wallet-portal` call it. A verifier reads the signed lists instead. |
+| `vca.walletportal.v1.WalletPortalService` | `wallet-portal` | Compose network | It checks the holder session, but no party outside the host calls it. The pages call it in process, and the browser reads `/wallet/blobs`. |
+
+`TestNoUnguardedRPCIsPublic` in `internal/cli` holds the allowlist of
+the public rows.
+It fails when a route publishes a Connect service outside the list.
+Each public row names a test in its own service,
+`TestAnonymousRPCsAreRefused`.
+That test calls every RPC with no credential through the handler of the
+service.
+Every RPC outside the login flow must answer `unauthenticated`,
+`permission_denied`, or `unimplemented`.
+`TestDeployDocClassifiesEveryRPC` keeps this table in step with the
+generated code and the allowlist.
+
+### Plain HTTP paths
+
+The proxy keeps the paths that a protocol, a browser, or an auditor
+needs.
+Each one checks its caller or serves public data only.
+
+| Path | Service | Why it stays public |
+|---|---|---|
+| `/auth/*`, `/token`, `/.well-known/jwks.json` | the auth service of the role | The login flow. PKCE, the `state`, and the client secret guard each step. The key set is public by design. |
+| `/device_authorization`, `/cli/*` | `admin` | The login of `vca admin login`. |
+| `/admin/*`, `/issuer/*`, `/identity/*`, `/issue/*`, `/notifications/*`, `/help/*`, `/portal/*`, `/builder/*`, `/discovery/*`, `/scan/*` | the page services | The staff pages. Each page needs a staff session of the role. |
+| `/wallet/*` | `wallet-portal` | The wallet pages and `/wallet/blobs`. Each one needs a holder session. |
+| `/verify/*` | `verifier-results` | The citizen check page. It keeps no result. |
+| `/static/*` | the home service | The shared style sheet, fonts, and scripts. |
+| `/issuance/pdf/*` | `issuance` | The document of a citizen. A random 128 bit reference names it, and it expires. |
+| `/pdf/preview/*` | `schema-builder-ui` | The preview of sample data. A hash of the preview names it. |
+| `/.well-known/openid-credential-issuer`, `/.well-known/vct/*`, `/vct/*`, `/schemas/*`, `/api/schemas` | `schema-registry` | The OID4VCI metadata and the published schema documents. `GET` only. |
+| `/.well-known/did.json` | `issuance` | The DID document of a `did:web` issuer. |
+| `/issued/chain-head`, `/issued/jwks.json` | `issued-credentials` | The signed chain head and its key for an auditor. `GET` only. |
+| `/status-bitstring/status/*`, `/status-token/status/*` and the key set under each prefix | the status services | The signed status lists that a verifier reads. `GET` only. The proxy strips the prefix. |
+| `/trust-registry/trust-list/*`, `/trust-registry/.well-known/*`, `/trust-registry/dedi/*`, `/trust-registry/trust/*` | `trust-registry` | The signed trust lists and their key set. `GET` and `HEAD` only. The proxy strips the prefix. |
+| `/catalog`, `/catalog/*` | `verifier-discovery` | The read only catalogue that a wallet reads. |
+| `/oid4vp/*` | `verifier-ingest` | The OID4VP request object and the direct post endpoint. The transaction id and the `state` guard the post. |
+| `/offers/*` | `dpg-adapter-inji` | A hosted credential offer. A random id names it, and it expires. |
+
+### The CLI and the proxy
+
+`vca admin` and `vca dpg realm` call the `AdminService` of the admin at
+`VCA_ADMIN_URL`, with the token of `vca admin login`.
+That service stays public, and each RPC checks the caller.
+`vca dpg bootstrap waltid` reaches the walt.id adapter at
+`http://127.0.0.1:<port>`.
+The port is `VCA_HOST_PORT_DPG_ADAPTER_WALTID` of the `.env` file of the
+pair, or the port plan when the file names none.
+Run the command on the machine that runs compose.
+Set `VCA_BOOTSTRAP_ADAPTER_URL` to reach the adapter at another address.
+`vca dpg bootstrap inji` and `vca dpg bootstrap credebl` call the DPG,
+not a VCA service.
 
 ## The DPG stacks
 
@@ -561,6 +665,7 @@ go test ./internal/cli/
 - ADR-005: one image per service, non-root, read only, no Docker socket.
 - ADR-007: the setup CLI and the files it writes.
 - ADR-008: the profiles, the DPG includes, the bootstrap, and the charts.
+- [ADR-047](adr/ADR-047-public-rpc-surface.md): the paths the reverse proxy publishes.
 - `verifiably-go/docs/dpg-matrix.md`: the DPG versions.
 - [Compose profiles](https://docs.docker.com/compose/how-tos/profiles/)
 - [Helm charts](https://helm.sh/docs/topics/charts/)

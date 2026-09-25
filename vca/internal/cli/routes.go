@@ -18,14 +18,19 @@ import (
 //
 // The table comes from the HTTP mux of each service. The rules:
 //
+//   - The proxy publishes a Connect service only when a browser or a
+//     party outside the host calls it and every RPC of it checks the
+//     caller. Every other Connect service stays on the compose network,
+//     and the Caddyfile answers 404 to its path (ADR-047).
 //   - /static/* is the same embedded asset set in every UI service, so
 //     only the home service of a role lists it.
 //   - /.well-known/jwks.json, /token, and /auth/* belong to the auth
 //     service of the role: issuer-auth, wallet-auth, verifier-auth, or
 //     admin.
 //   - An API only service whose public URLs start with its *_BASE_URL
-//     keeps a prefix route with Strip, and its base URL carries the
-//     prefix: status-bitstring, status-token, and trust-registry.
+//     keeps a prefix, and its base URL carries the prefix:
+//     status-bitstring, status-token, and trust-registry. Their routes
+//     name the protocol paths under the prefix and strip the prefix.
 //   - A service with HTML pages gets root level routes, and the links
 //     that carry its public URL hold the bare VCA_PUBLIC_URL.
 //
@@ -36,53 +41,42 @@ import (
 //	          /identity/*  /issue/*                issuance (identity, issue)
 //	          /notifications/*  /help/*            issuance (notifications, help)
 //	          /static/*                            issuance
+//	          /issuance/pdf/*                      issuance (the document of a citizen)
+//	          /.well-known/did.json                issuance (a did:web issuer)
 //	          /portal/*                            schema-registry (the schemas page)
-//	          /vca.schema.v1.SchemaService/*       schema-registry
 //	          /.well-known/openid-credential-issuer schema-registry
 //	          /.well-known/vct/*  /vct/*           schema-registry
 //	          /schemas/*  /api/schemas             schema-registry
 //	          /builder/*                           schema-builder-ui (the schema builder)
 //	          /pdf/preview/*                       schema-builder-ui
-//	          /vca.schemabuilder.v1.SchemaBuilderService/*  schema-builder-ui
 //	          /auth/*  /token  /.well-known/jwks.json       issuer-auth
 //	          /vca.issuerauth.v1.IssuerAuthService/*        issuer-auth
 //	          /vca.admin.v1.AdminService/*                  issuer-auth
-//	          /vca.issuance.v1.IssuanceService/*   issuance
-//	          /issuance/pdf/*                      issuance
-//	          /vca.issued.v1.IssuedService/*       issued-credentials
 //	          /issued/chain-head  /issued/jwks.json issued-credentials
-//	          /vca.datasource.v1.DataSourceService/*  data-source
-//	          /status-bitstring/*  (strip)         status-bitstring
-//	          /status-token/*  (strip)             status-token
-//	          /vca.backend.v1.*Service/*           dpg-adapter-<dpg>
+//	          /status-bitstring/status/*  (strip)  status-bitstring
+//	          /status-bitstring/.well-known/jwks.json  (strip)
+//	          /status-token/status/*  (strip)      status-token
+//	          /status-token/.well-known/jwks.json  (strip)
 //	          /offers/*                            dpg-adapter-inji
 //	holder    /                                    wallet-portal (redirect to /wallet/)
 //	          /wallet/*                            wallet-portal (the wallet)
 //	          /static/*                            wallet-portal
-//	          /vca.walletportal.v1.WalletPortalService/*  wallet-portal
 //	          /auth/*  (strip)                     wallet-auth
 //	          /.well-known/jwks.json               wallet-auth
 //	          /vca.walletauth.v1.WalletAuthService/*  wallet-auth
 //	          /vca.admin.v1.AdminService/*         wallet-auth
-//	          /vca.backend.v1.*Service/*           dpg-adapter-<dpg>
 //	          /offers/*                            dpg-adapter-inji
 //	verifier  /                                    verifier-results (redirect to /portal/)
 //	          /portal/*                            verifier-results (the results page)
 //	          /verify/*                            verifier-results (the citizen check)
 //	          /static/*                            verifier-results
-//	          /vca.results.v1.ResultsService/*     verifier-results
 //	          /discovery/*                         verifier-discovery (the issuer pages)
 //	          /catalog  /catalog/*                 verifier-discovery
-//	          /vca.discovery.v1.DiscoveryService/* verifier-discovery
 //	          /scan/*                              verifier-ingest (the scanner)
 //	          /oid4vp/*                            verifier-ingest
-//	          /vca.ingest.v1.IngestService/*       verifier-ingest
 //	          /auth/*  /token  /.well-known/jwks.json       verifier-auth
 //	          /vca.verifierauth.v1.VerifierAuthService/*    verifier-auth
 //	          /vca.admin.v1.AdminService/*                  verifier-auth
-//	          /vca.policy.v1.PolicyService/*       verifier-policy
-//	          /vca.combined.v1.CombinedService/*   verifier-combined
-//	          /vca.backend.v1.*Service/*           dpg-adapter-<dpg>
 //	          /offers/*                            dpg-adapter-inji
 //	admin     /                                    admin (redirect to /admin/)
 //	          /admin/*                             admin (the admin portal)
@@ -90,12 +84,20 @@ import (
 //	          /auth/*  /token  /.well-known/jwks.json  admin
 //	          /device_authorization  /cli/*        admin
 //	          /vca.admin.v1.AdminService/*         admin
-//	          /trust-registry/*  (strip)           trust-registry
+//	          /trust-registry/trust-list/*  (strip) trust-registry
+//	          /trust-registry/.well-known/*  (strip)
+//	          /trust-registry/dedi/*  /trust-registry/trust/*  (strip)
+//
+// Every role refuses /vca.* with 404, and the holder refuses
+// /auth/vca.* too. The data-source, verifier-policy, and
+// verifier-combined services and the walt.id and CREDEBL adapters have
+// no route at all.
 type Route struct {
 	// Match is the Caddy path matcher, for example /auth/* or /token.
 	Match string
-	// Strip removes the matched prefix before the request reaches the
-	// service. A Strip route renders handle_path in place of handle.
+	// Strip removes the first segment of the matcher, for example
+	// /status-token, before the request reaches the service. The
+	// service sees /status/<id> for /status-token/status/<id>.
 	Strip bool
 	// Page names the HTML page a browser opens at the route. Empty
 	// means an API route. The entry report after a deploy lists the
@@ -107,19 +109,52 @@ type Route struct {
 // without its wildcard.
 func (r Route) Path() string { return strings.TrimSuffix(r.Match, "*") }
 
+// StripPrefix returns the prefix that the proxy removes before the
+// request reaches the service: the first segment of the matcher. It is
+// empty for a route that does not strip.
+func (r Route) StripPrefix() string {
+	if !r.Strip {
+		return ""
+	}
+	segment, _, _ := strings.Cut(strings.TrimPrefix(r.Match, "/"), "/")
+	return "/" + segment
+}
+
 // rpc returns the route of one Connect service. connect-go mounts a
-// service handler at / plus the full service name plus /.
+// service handler at / plus the full service name plus /. Only a
+// service with a caller check gets one (ADR-047 decision 1).
 func rpc(serviceName string) Route { return Route{Match: "/" + serviceName + "/*"} }
 
-// backendRoutes lists the Connect services every DPG adapter serves.
-func backendRoutes() []Route {
-	return []Route{
-		rpc("vca.backend.v1.CapabilityService"),
-		rpc("vca.backend.v1.IssuerBackendService"),
-		rpc("vca.backend.v1.HolderBackendService"),
-		rpc("vca.backend.v1.VerifierBackendService"),
-		rpc("vca.backend.v1.CatalogBackendService"),
+// statusRoutes lists the public paths of a status service under its
+// prefix: the signed lists and the key set that signs them.
+func statusRoutes(prefix string) []Route {
+	return []Route{{Match: prefix + "/status/*", Strip: true}, {Match: prefix + "/.well-known/jwks.json", Strip: true}}
+}
+
+// connectPrefix is the matcher of every Connect path at the root. The
+// full name of every VCA service starts with vca.
+const connectPrefix = "/vca.*"
+
+// RefusedRoutes lists the matchers that the Caddyfile of a pair answers
+// with 404 (ADR-047 decision 2). The last handle block sends every path
+// that no route names to the home service, so the Caddyfile refuses
+// every Connect path that no route names. A strip route that takes a
+// whole prefix, such as /auth/* of wallet-auth, gets the same refusal
+// under that prefix.
+func RefusedRoutes(p Pair) []string {
+	out := []string{connectPrefix}
+	seen := map[string]bool{connectPrefix: true}
+	for _, sr := range PairRoutes(p, nil) {
+		prefix := sr.Route.StripPrefix()
+		if prefix == "" || sr.Route.Match != prefix+"/*" {
+			continue
+		}
+		if match := prefix + connectPrefix; !seen[match] {
+			seen[match] = true
+			out = append(out, match)
+		}
 	}
+	return out
 }
 
 // Home is where the root of a pair sends the browser.
@@ -218,6 +253,9 @@ func RouteTable() string {
 		for _, row := range routeRows(role) {
 			fmt.Fprintf(&b, "| `%s` | `%s` | %s |\n", row.match, row.service, row.note)
 		}
+		for _, match := range RefusedRoutes(Pair{Role: role, Dpg: Dpgs()[0]}) {
+			fmt.Fprintf(&b, "| `%s` | none | The proxy answers 404. |\n", match)
+		}
 		fmt.Fprintf(&b, "| Every other path | `%s` | |\n", home.Service)
 	}
 	return b.String()
@@ -269,7 +307,7 @@ func routeNote(r Route) string {
 	case r.Page != "":
 		return "A page: " + r.Page + "."
 	case r.Strip:
-		return "The service sees the path without `" + strings.TrimSuffix(r.Path(), "/") + "`."
+		return "The service sees the path without `" + r.StripPrefix() + "`."
 	default:
 		return ""
 	}

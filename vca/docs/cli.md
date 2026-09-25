@@ -375,10 +375,12 @@ Each run checks first, so a second run changes nothing.
 The command reads the `.env` file of the pair.
 
 The `waltid` run calls `GetIssuerIdentity` and then
-`ProvisionIssuerIdentity` of the adapter (ADR-046). It reaches the
-adapter at `VCA_PUBLIC_URL` of the pair, where the reverse proxy routes
-the adapter services. The CLI never holds the issuer key (ADR-001
-decision 3). The identity page of the issuer shows the identity at
+`ProvisionIssuerIdentity` of the adapter (ADR-046). The reverse proxy
+does not publish the adapter services (ADR-047). So the run reaches the
+adapter at `http://127.0.0.1` and its host port, as the `Caddyfile`
+does. The port is `VCA_HOST_PORT_DPG_ADAPTER_WALTID` of the `.env` file
+of the pair, or the port plan. Run the command on the machine that runs
+compose. The CLI never holds the issuer key (ADR-001 decision 3). The identity page of the issuer shows the identity at
 once. An older run left `waltid-issuer.json` beside the `.env` file.
 A new run imports that file into the adapter and says the file can go.
 A pair of another role needs no issuer identity.
@@ -391,7 +393,7 @@ Five more variables steer the run:
 | `VCA_BOOTSTRAP_ADMIN_USER` | The DPG administrator name. |
 | `VCA_BOOTSTRAP_ADMIN_PASSWORD` | The DPG administrator password. |
 | `VCA_BOOTSTRAP_ORG` | The CREDEBL organisation name. |
-| `VCA_BOOTSTRAP_ADAPTER_URL` | The walt.id adapter address for this run. It beats `VCA_PUBLIC_URL`. |
+| `VCA_BOOTSTRAP_ADAPTER_URL` | The walt.id adapter address for this run. It beats the host port of the adapter. |
 
 No service reads these five variables, so they are not in the `Config`
 message.

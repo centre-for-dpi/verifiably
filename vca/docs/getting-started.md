@@ -219,8 +219,14 @@ A service with HTML pages sits at the root, because its pages link
 with absolute paths.
 An API only service whose public URLs come from its `*_BASE_URL`
 setting keeps a prefix.
+Its routes name the protocol paths under the prefix.
 The reverse proxy removes the prefix before the request reaches the
 service.
+The proxy publishes a Connect service only when every RPC of it checks
+the caller (ADR-047).
+It answers `404` to every other `/vca.*` path.
+The section "What the proxy publishes" of `deploy.md` lists each
+service and the reason.
 `/static/*` is the same asset set in every UI service, so the home
 service of the role serves it.
 
@@ -229,8 +235,6 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | Path | Service | Note |
 |---|---|---|
 | `/` | `issuance` | Sends the browser to `/issuer/`. |
-| `/vca.datasource.v1.DataSourceService/*` | `data-source` |  |
-| `/vca.issuance.v1.IssuanceService/*` | `issuance` |  |
 | `/issuance/pdf/*` | `issuance` |  |
 | `/issuer/*` | `issuance` | A page: Issuer portal. |
 | `/identity/*` | `issuance` | A page: Issuer identity. |
@@ -239,7 +243,6 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | `/help/*` | `issuance` | A page: Issuer help. |
 | `/static/*` | `issuance` |  |
 | `/.well-known/did.json` | `issuance` |  |
-| `/vca.issued.v1.IssuedService/*` | `issued-credentials` |  |
 | `/issued/chain-head` | `issued-credentials` |  |
 | `/issued/jwks.json` | `issued-credentials` |  |
 | `/vca.issuerauth.v1.IssuerAuthService/*` | `issuer-auth` |  |
@@ -247,24 +250,20 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | `/.well-known/jwks.json` | `issuer-auth` |  |
 | `/token` | `issuer-auth` |  |
 | `/auth/*` | `issuer-auth` | A page: Sign in. |
-| `/vca.schemabuilder.v1.SchemaBuilderService/*` | `schema-builder-ui` |  |
 | `/builder/*` | `schema-builder-ui` | A page: Schema builder. |
 | `/pdf/preview/*` | `schema-builder-ui` |  |
-| `/vca.schema.v1.SchemaService/*` | `schema-registry` |  |
 | `/.well-known/openid-credential-issuer` | `schema-registry` |  |
 | `/.well-known/vct/*` | `schema-registry` |  |
 | `/vct/*` | `schema-registry` |  |
 | `/schemas/*` | `schema-registry` |  |
 | `/api/schemas` | `schema-registry` |  |
 | `/portal/*` | `schema-registry` | A page: Schemas. |
-| `/status-bitstring/*` | `status-bitstring` | The service sees the path without `/status-bitstring`. |
-| `/status-token/*` | `status-token` | The service sees the path without `/status-token`. |
-| `/vca.backend.v1.CapabilityService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.IssuerBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.HolderBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.VerifierBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.CatalogBackendService/*` | `dpg-adapter-<dpg>` |  |
+| `/status-bitstring/status/*` | `status-bitstring` | The service sees the path without `/status-bitstring`. |
+| `/status-bitstring/.well-known/jwks.json` | `status-bitstring` | The service sees the path without `/status-bitstring`. |
+| `/status-token/status/*` | `status-token` | The service sees the path without `/status-token`. |
+| `/status-token/.well-known/jwks.json` | `status-token` | The service sees the path without `/status-token`. |
 | `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/vca.*` | none | The proxy answers 404. |
 | Every other path | `issuance` | |
 
 The `holder` role. Its home page is `/wallet/` on `wallet-portal`.
@@ -276,15 +275,11 @@ The `holder` role. Its home page is `/wallet/` on `wallet-portal`.
 | `/vca.admin.v1.AdminService/*` | `wallet-auth` |  |
 | `/.well-known/jwks.json` | `wallet-auth` |  |
 | `/auth/*` | `wallet-auth` | A page: Sign in. |
-| `/vca.walletportal.v1.WalletPortalService/*` | `wallet-portal` |  |
 | `/wallet/*` | `wallet-portal` | A page: Wallet. |
 | `/static/*` | `wallet-portal` |  |
-| `/vca.backend.v1.CapabilityService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.IssuerBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.HolderBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.VerifierBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.CatalogBackendService/*` | `dpg-adapter-<dpg>` |  |
 | `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/vca.*` | none | The proxy answers 404. |
+| `/auth/vca.*` | none | The proxy answers 404. |
 | Every other path | `wallet-portal` | |
 
 The `verifier` role. Its home page is `/portal/` on `verifier-results`.
@@ -297,25 +292,16 @@ The `verifier` role. Its home page is `/portal/` on `verifier-results`.
 | `/.well-known/jwks.json` | `verifier-auth` |  |
 | `/token` | `verifier-auth` |  |
 | `/auth/*` | `verifier-auth` | A page: Sign in. |
-| `/vca.combined.v1.CombinedService/*` | `verifier-combined` |  |
-| `/vca.discovery.v1.DiscoveryService/*` | `verifier-discovery` |  |
 | `/catalog` | `verifier-discovery` |  |
 | `/catalog/*` | `verifier-discovery` |  |
 | `/discovery/*` | `verifier-discovery` | A page: Issuer discovery. |
-| `/vca.ingest.v1.IngestService/*` | `verifier-ingest` |  |
 | `/oid4vp/*` | `verifier-ingest` |  |
 | `/scan/*` | `verifier-ingest` | A page: Scanner. |
-| `/vca.policy.v1.PolicyService/*` | `verifier-policy` |  |
-| `/vca.results.v1.ResultsService/*` | `verifier-results` |  |
 | `/portal/*` | `verifier-results` | A page: Verification results. |
 | `/verify/*` | `verifier-results` | A page: Citizen check. |
 | `/static/*` | `verifier-results` |  |
-| `/vca.backend.v1.CapabilityService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.IssuerBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.HolderBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.VerifierBackendService/*` | `dpg-adapter-<dpg>` |  |
-| `/vca.backend.v1.CatalogBackendService/*` | `dpg-adapter-<dpg>` |  |
 | `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/vca.*` | none | The proxy answers 404. |
 | Every other path | `verifier-results` | |
 
 The `admin` role. Its home page is `/admin/` on `admin`.
@@ -331,7 +317,11 @@ The `admin` role. Its home page is `/admin/` on `admin`.
 | `/cli/*` | `admin` |  |
 | `/admin/*` | `admin` | A page: Admin portal. |
 | `/static/*` | `admin` |  |
-| `/trust-registry/*` | `trust-registry` | The service sees the path without `/trust-registry`. |
+| `/trust-registry/trust-list/*` | `trust-registry` | The service sees the path without `/trust-registry`. |
+| `/trust-registry/.well-known/*` | `trust-registry` | The service sees the path without `/trust-registry`. |
+| `/trust-registry/dedi/*` | `trust-registry` | The service sees the path without `/trust-registry`. |
+| `/trust-registry/trust/*` | `trust-registry` | The service sees the path without `/trust-registry`. |
+| `/vca.*` | none | The proxy answers 404. |
 | Every other path | `admin` | |
 
 `vca deploy` prints the pages of each pair from the same table.

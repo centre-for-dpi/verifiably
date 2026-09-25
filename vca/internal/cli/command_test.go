@@ -592,6 +592,8 @@ func TestDpgBootstrapReadsTheKeycloakPassword(t *testing.T) {
 	}
 }
 
+// TestDpgBootstrapCommand reaches the adapter on the host port that
+// the .env file of the pair names, not on the public URL (ADR-047).
 func TestDpgBootstrapCommand(t *testing.T) {
 	root := t.TempDir()
 	calls := 0
@@ -601,7 +603,8 @@ func TestDpgBootstrapCommand(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	body := "VCA_PUBLIC_URL=" + server.URL + "\n"
+	port := server.URL[strings.LastIndex(server.URL, ":")+1:]
+	body := "VCA_PUBLIC_URL=https://issuer.example\nVCA_HOST_PORT_DPG_ADAPTER_WALTID=" + port + "\n"
 	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}

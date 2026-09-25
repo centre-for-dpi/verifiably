@@ -40,7 +40,8 @@ type Service struct {
 	// Fixed lists the variables whose value never changes.
 	Fixed []FixedValue
 	// Routes lists the paths of the service behind the reverse proxy of
-	// the pair. The Route type documents the table and its rules.
+	// the pair. The Route type documents the table and its rules. A
+	// service that only other services call has none (ADR-047).
 	Routes []Route
 	// Scope says whether the service runs once per pair or once per
 	// deployment. The zero value is ScopePair.
@@ -229,11 +230,11 @@ func Catalog() []Service {
 				{Match: "/admin/*", Page: "Admin portal"}, assets,
 			}},
 		{Name: "data-source", ListenEnv: "VCA_DATASOURCE_LISTEN", ExposedPort: 8083, Roles: issuer, Stateful: true,
-			Fixed:  []FixedValue{{Env: "VCA_DATASOURCE_STORE_FILE", Value: "/data/sources.json"}},
-			Routes: []Route{rpc("vca.datasource.v1.DataSourceService")}},
+			// The issuance service is the only caller, on the compose network,
+			// so the proxy publishes nothing of it (ADR-047).
+			Fixed: []FixedValue{{Env: "VCA_DATASOURCE_STORE_FILE", Value: "/data/sources.json"}}},
 		{Name: "dpg-adapter-credebl", ListenEnv: "VCA_CREDEBL_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_CREDEBL,
-			Links:  []Link{dpgURL("VCA_CREDEBL_API_URL")},
-			Routes: backendRoutes()},
+			Links: []Link{dpgURL("VCA_CREDEBL_API_URL")}},
 		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI,
 			Links: []Link{
 				dpgURL("VCA_INJI_CERTIFY_URL", commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER),
@@ -241,8 +242,9 @@ func Catalog() []Service {
 				{Env: "VCA_INJI_PUBLIC_URL", Kind: LinkPublicURL},
 			},
 			// The credential offer of the authorization code channel lives
-			// under the public URL of the adapter.
-			Routes: append(backendRoutes(), Route{Match: "/offers/*"})},
+			// under the public URL of the adapter. The Connect services of
+			// every adapter stay on the compose network (ADR-047).
+			Routes: []Route{{Match: "/offers/*"}}},
 		// The walt.id adapter keeps the issuer identity in its data volume
 		// (ADR-046 decision 4).
 		{Name: "dpg-adapter-waltid", ListenEnv: "VCA_WALTID_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_WALTID,
@@ -251,8 +253,7 @@ func Catalog() []Service {
 				dpgURL("VCA_WALTID_ISSUER_URL", commonv1.Role_ROLE_ISSUER),
 				dpgURL("VCA_WALTID_WALLET_URL", commonv1.Role_ROLE_HOLDER),
 				dpgURL("VCA_WALTID_VERIFIER_URL", commonv1.Role_ROLE_VERIFIER),
-			},
-			Routes: backendRoutes()},
+			}},
 		// The issuance service is the issuer home (ADR-044 decision 1): it
 		// serves the overview, the identity, the issue, the notifications,
 		// and the help pages behind the staff guard, and the shared assets.
@@ -270,8 +271,10 @@ func Catalog() []Service {
 			}, issuanceAudit...),
 			Fixed: []FixedValue{issuanceAuditDir},
 			// The rendered document of a citizen lives under the public URL.
+			// The pages call the IssuanceService in process, so the proxy
+			// does not publish it (ADR-047).
 			Routes: []Route{
-				rpc("vca.issuance.v1.IssuanceService"), {Match: "/issuance/pdf/*"},
+				{Match: "/issuance/pdf/*"},
 				{Match: "/issuer/*", Page: "Issuer portal"}, {Match: "/identity/*", Page: "Issuer identity"},
 				{Match: "/issue/*", Page: "Issue"}, {Match: "/notifications/*", Page: "Issuer notifications"},
 				{Match: "/help/*", Page: "Issuer help"}, assets,
@@ -279,9 +282,11 @@ func Catalog() []Service {
 				{Match: "/.well-known/did.json"},
 			}},
 		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
-			Links:  append([]Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}}, issuedAudit...),
-			Fixed:  []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}, issuedAuditDir},
-			Routes: []Route{rpc("vca.issued.v1.IssuedService"), {Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}}},
+			Links: append([]Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}}, issuedAudit...),
+			Fixed: []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}, issuedAuditDir},
+			// An auditor reads the signed chain head and its key. The
+			// IssuedService stays on the compose network (ADR-047).
+			Routes: []Route{{Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}}},
 		// The auth services draw the sign in chooser (ADR-035), so they
 		// read the theme file like every UI service.
 		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer, Stateful: true, UI: true,
@@ -304,10 +309,7 @@ func Catalog() []Service {
 			},
 			// The root of the service redirects to /builder/, but the home
 			// of the issuer takes the root of the pair.
-			Routes: []Route{
-				rpc("vca.schemabuilder.v1.SchemaBuilderService"),
-				{Match: "/builder/*", Page: "Schema builder"}, {Match: "/pdf/preview/*"},
-			}},
+			Routes: []Route{{Match: "/builder/*", Page: "Schema builder"}, {Match: "/pdf/preview/*"}}},
 		{Name: "schema-registry", ListenEnv: "VCA_SCHEMA_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_SCHEMA_BASE_URL", Kind: LinkPublicURL},
@@ -323,7 +325,6 @@ func Catalog() []Service {
 			// The OID4VCI metadata, the vct documents, and the schema files
 			// live at the root of the public URL, so the base URL is bare.
 			Routes: []Route{
-				rpc("vca.schema.v1.SchemaService"),
 				{Match: "/.well-known/openid-credential-issuer"}, {Match: "/.well-known/vct/*"},
 				{Match: "/vct/*"}, {Match: "/schemas/*"}, {Match: "/api/schemas"},
 				{Match: "/portal/*", Page: "Schemas"},
@@ -336,14 +337,16 @@ func Catalog() []Service {
 			Fixed: state("VCA_STATUS_BITSTRING_STATE_DIR"),
 			// Both status services serve /status/, /.well-known/jwks.json,
 			// and the same Connect service, so each keeps its own prefix.
-			Routes: []Route{{Match: "/status-bitstring/*", Strip: true}}},
+			// The proxy publishes the lists and the key set, never the
+			// Connect service (ADR-047).
+			Routes: statusRoutes("/status-bitstring")},
 		{Name: "status-token", ListenEnv: "VCA_STATUS_TOKEN_LISTEN", ExposedPort: 8085, Roles: issuer, Stateful: true,
 			Links: []Link{
 				{Env: "VCA_STATUS_TOKEN_BASE_URL", Kind: LinkPublicURL, Path: "/status-token"},
 				signingKey("VCA_STATUS_TOKEN_SIGNING_KEY_FILE"),
 			},
 			Fixed:  state("VCA_STATUS_TOKEN_STATE_DIR"),
-			Routes: []Route{{Match: "/status-token/*", Strip: true}}},
+			Routes: statusRoutes("/status-token")},
 		{Name: "trust-registry", ListenEnv: "VCA_TRUST_LISTEN", ExposedPort: 8080, Roles: admin, Stateful: true,
 			Links: append([]Link{
 				{Env: "VCA_TRUST_BASE_URL", Kind: LinkPublicURL, Path: "/trust-registry"},
@@ -352,7 +355,12 @@ func Catalog() []Service {
 			Fixed: []FixedValue{{Env: "VCA_TRUST_STORE_FILE", Value: "/data/trust.json"}, trustAuditDir},
 			// The registry serves all of /.well-known/, which the admin
 			// service needs for its JWKS, so the registry keeps a prefix.
-			Routes: []Route{{Match: "/trust-registry/*", Strip: true}}},
+			// The proxy publishes the signed lists and the key set, never
+			// the Connect service (ADR-047).
+			Routes: []Route{
+				{Match: "/trust-registry/trust-list/*", Strip: true}, {Match: "/trust-registry/.well-known/*", Strip: true},
+				{Match: "/trust-registry/dedi/*", Strip: true}, {Match: "/trust-registry/trust/*", Strip: true},
+			}},
 		// The verifier staff sign in service (ADR-036 decision 1). It shares
 		// the routes of issuer-auth and draws the same chooser.
 		{Name: "verifier-auth", ListenEnv: "VCA_VERIFIER_AUTH_LISTEN", ExposedPort: 8081, Roles: verifier, Stateful: true, UI: true,
@@ -368,8 +376,8 @@ func Catalog() []Service {
 				{Env: "VCA_VERIFIER_COMBINED_RESULTS_URL", Target: "verifier-results", Kind: LinkURL},
 				{Env: "VCA_VERIFIER_COMBINED_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
 			},
-			Fixed:  state("VCA_VERIFIER_COMBINED_STATE_DIR"),
-			Routes: []Route{rpc("vca.combined.v1.CombinedService")}},
+			// No caller outside the compose network exists (ADR-047).
+			Fixed: state("VCA_VERIFIER_COMBINED_STATE_DIR")},
 		{Name: "verifier-discovery", ListenEnv: "VCA_DISCOVERY_LISTEN", ExposedPort: 8090, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL},
@@ -383,10 +391,9 @@ func Catalog() []Service {
 			// with absolute paths, so a prefix that the proxy removes would
 			// break them.
 			Fixed: append(state("VCA_DISCOVERY_STATE_DIR"), FixedValue{Env: "VCA_DISCOVERY_PORTAL_PREFIX", Value: "/discovery"}),
-			Routes: []Route{
-				rpc("vca.discovery.v1.DiscoveryService"),
-				{Match: "/catalog"}, {Match: "/catalog/*"}, {Match: "/discovery/*", Page: "Issuer discovery"},
-			}},
+			// A wallet reads the catalogue over plain HTTP. The pages call
+			// the DiscoveryService in process (ADR-047).
+			Routes: []Route{{Match: "/catalog"}, {Match: "/catalog/*"}, {Match: "/discovery/*", Page: "Issuer discovery"}}},
 		{Name: "verifier-ingest", ListenEnv: "VCA_INGEST_LISTEN", ExposedPort: 8091, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_INGEST_BASE_URL", Kind: LinkPublicURL},
@@ -400,13 +407,12 @@ func Catalog() []Service {
 			// The wallet reaches the OID4VP endpoints under the base URL,
 			// and the scanner page links with absolute paths, so the
 			// service sits at the root.
-			Routes: []Route{
-				rpc("vca.ingest.v1.IngestService"), {Match: "/oid4vp/*"}, {Match: "/scan/*", Page: "Scanner"},
-			}},
+			Routes: []Route{{Match: "/oid4vp/*"}, {Match: "/scan/*", Page: "Scanner"}}},
 		{Name: "verifier-policy", ListenEnv: "VCA_VERIFIER_POLICY_LISTEN", ExposedPort: 8086, Roles: verifier, Stateful: true,
-			Links:  []Link{{Env: "VCA_VERIFIER_POLICY_TRUST_URL", Target: "trust-registry", Kind: LinkURL}},
-			Fixed:  state("VCA_VERIFIER_POLICY_STATE_DIR"),
-			Routes: []Route{rpc("vca.policy.v1.PolicyService")}},
+			// verifier-results and verifier-combined call it on the compose
+			// network (ADR-047).
+			Links: []Link{{Env: "VCA_VERIFIER_POLICY_TRUST_URL", Target: "trust-registry", Kind: LinkURL}},
+			Fixed: state("VCA_VERIFIER_POLICY_STATE_DIR")},
 		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true, UI: true,
 			Links: append([]Link{
 				{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
@@ -416,7 +422,6 @@ func Catalog() []Service {
 			}, resultsAudit...),
 			Fixed: append(state("VCA_VERIFIER_RESULTS_STATE_DIR"), resultsAuditDir),
 			Routes: []Route{
-				rpc("vca.results.v1.ResultsService"),
 				{Match: "/portal/*", Page: "Verification results"}, {Match: "/verify/*", Page: "Citizen check"}, assets,
 			}},
 		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder, Stateful: true, UI: true,
@@ -445,9 +450,10 @@ func Catalog() []Service {
 				peers,
 			},
 			Fixed: state("VCA_WALLET_PORTAL_STATE_DIR"),
-			Routes: []Route{
-				rpc("vca.walletportal.v1.WalletPortalService"), {Match: "/wallet/*", Page: "Wallet"}, assets,
-			}},
+			// The pages call the WalletPortalService in process and the
+			// browser reaches /wallet/blobs, so the proxy does not publish
+			// the Connect service (ADR-047).
+			Routes: []Route{{Match: "/wallet/*", Page: "Wallet"}, assets}},
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

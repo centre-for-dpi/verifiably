@@ -26,3 +26,4 @@ each decision of each record.
 - [ADR-044: Placement of the role pages](adr/ADR-044-role-page-placement.md)
 - [ADR-045: Full DPG surfacing](adr/ADR-045-full-dpg-surfacing.md)
 - [ADR-046: Issuer identity through the DPG](adr/ADR-046-issuer-identity.md)
+- [ADR-047: The public RPC surface of a pair](adr/ADR-047-public-rpc-surface.md)

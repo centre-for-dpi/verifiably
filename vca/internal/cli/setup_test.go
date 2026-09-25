@@ -521,8 +521,9 @@ func TestCaddyfile(t *testing.T) {
 		"\thandle /issuer/* {\n\t\treverse_proxy 127.0.0.1:18002\n\t}\n",
 		"\thandle /builder/* {\n\t\treverse_proxy 127.0.0.1:18005\n\t}\n",
 		"\thandle /issuance/pdf/* {\n\t\treverse_proxy 127.0.0.1:18002\n\t}\n",
-		"\thandle_path /status-bitstring/* {\n\t\treverse_proxy 127.0.0.1:18007\n\t}\n",
-		"\thandle_path /status-token/* {\n\t\treverse_proxy 127.0.0.1:18008\n\t}\n",
+		"\thandle /status-bitstring/status/* {\n\t\turi strip_prefix /status-bitstring\n\t\treverse_proxy 127.0.0.1:18007\n\t}\n",
+		"\thandle /status-token/.well-known/jwks.json {\n\t\turi strip_prefix /status-token\n\t\treverse_proxy 127.0.0.1:18008\n\t}\n",
+		"\thandle /vca.* {\n\t\trespond 404\n\t}\n",
 		"\thandle / {\n\t\tredir * /issuer/ 302\n\t}\n",
 		"\thandle {\n\t\treverse_proxy 127.0.0.1:18002\n\t}\n}\n",
 	} {
@@ -530,12 +531,19 @@ func TestCaddyfile(t *testing.T) {
 			t.Errorf("the Caddyfile has no %q:\n%s", want, got)
 		}
 	}
-	// No route names a service prefix that the services do not know.
-	if strings.Contains(got, "/schema-registry/") || strings.Contains(got, "handle_path /auth") {
-		t.Errorf("a wrong route:\n%s", got)
+	// No route names a service prefix that the services do not know, and
+	// no Connect service without a caller check (ADR-047).
+	for _, wrong := range []string{
+		"/schema-registry/", "strip_prefix /auth", "handle /status-bitstring/* ",
+		"/vca.issuance.", "/vca.issued.", "/vca.schema.", "/vca.backend.", "/vca.datasource.",
+	} {
+		if strings.Contains(got, wrong) {
+			t.Errorf("a wrong route %q:\n%s", wrong, got)
+		}
 	}
 	// The root redirect and the fallback come last.
-	if strings.LastIndex(got, "handle_path") > strings.Index(got, "handle / {") ||
+	if strings.LastIndex(got, "strip_prefix") > strings.Index(got, "handle / {") ||
+		strings.Index(got, "respond 404") > strings.Index(got, "handle / {") ||
 		strings.Index(got, "handle / {") > strings.Index(got, "\thandle {\n") {
 		t.Error("the home routes are not last")
 	}

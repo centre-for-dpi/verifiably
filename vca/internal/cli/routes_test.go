@@ -50,10 +50,13 @@ func TestRoutesDoNotCollideInAPair(t *testing.T) {
 	}
 }
 
+// TestEveryServiceHasAWellFormedRoute checks the shape of each route. A
+// service that only other services call has no route (ADR-047), but a
+// service that draws pages needs one, or no browser reaches it.
 func TestEveryServiceHasAWellFormedRoute(t *testing.T) {
 	for _, s := range Catalog() {
-		if len(s.Routes) == 0 {
-			t.Errorf("%s has no route", s.Name)
+		if s.UI && len(s.Routes) == 0 {
+			t.Errorf("%s draws pages but has no route", s.Name)
 		}
 		for _, r := range s.Routes {
 			if !strings.HasPrefix(r.Match, "/") {
@@ -62,8 +65,8 @@ func TestEveryServiceHasAWellFormedRoute(t *testing.T) {
 			if strings.ContainsAny(r.Match, " \t{}") {
 				t.Errorf("%s: route %q holds a space or a brace", s.Name, r.Match)
 			}
-			if r.Strip && !strings.HasSuffix(r.Match, "/*") {
-				t.Errorf("%s: strip route %q is not a prefix", s.Name, r.Match)
+			if r.Strip && !strings.HasPrefix(r.Match, r.StripPrefix()+"/") {
+				t.Errorf("%s: strip route %q keeps nothing after its prefix", s.Name, r.Match)
 			}
 			if r.Page != "" && !strings.HasSuffix(r.Match, "/*") {
 				t.Errorf("%s: page route %q is not a prefix", s.Name, r.Match)
@@ -72,8 +75,8 @@ func TestEveryServiceHasAWellFormedRoute(t *testing.T) {
 	}
 	for _, p := range AllPairs() {
 		for _, s := range ServicesFor(p) {
-			if len(s.Routes) == 0 {
-				t.Errorf("%s: %s has no route", p.Name(), s.Name)
+			if s.UI && len(s.Routes) == 0 {
+				t.Errorf("%s: %s draws pages but has no route", p.Name(), s.Name)
 			}
 		}
 	}
@@ -110,16 +113,9 @@ func TestConnectRoutesMatchTheGeneratedNames(t *testing.T) {
 			}
 		}
 	}
-	// The status services and the trust registry sit behind a prefix, so
-	// their Connect names do not appear at the root.
-	for _, s := range Catalog() {
-		switch s.Name {
-		case "status-bitstring", "status-token", "trust-registry":
-			if len(s.Routes) != 1 || !s.Routes[0].Strip || s.Routes[0].Match != "/"+s.Name+"/*" {
-				t.Errorf("%s routes = %+v", s.Name, s.Routes)
-			}
-		}
-	}
+	// The status services and the trust registry sit behind a prefix.
+	// TestPlainRoutesPublishNoConnectService checks that the prefix
+	// routes name the protocol paths only.
 }
 
 func TestHomeOfEveryRoleIsARoutedPage(t *testing.T) {
@@ -238,7 +234,9 @@ func TestRouteTableHoldsEveryRoleAndTheDocHoldsIt(t *testing.T) {
 	}
 	for _, want := range []string{
 		"| `/portal/*` | `schema-registry` | A page: Schemas. |",
-		"| `/status-token/*` | `status-token` | The service sees the path without `/status-token`. |",
+		"| `/status-token/status/*` | `status-token` | The service sees the path without `/status-token`. |",
+		"| `/vca.*` | none | The proxy answers 404. |",
+		"| `/auth/vca.*` | none | The proxy answers 404. |",
 		"| `/` | `wallet-portal` | Sends the browser to `/wallet/`. |",
 		"| Every other path | `admin` | |",
 	} {
@@ -273,14 +271,16 @@ func TestCaddyfileEveryPairRendersEveryRoute(t *testing.T) {
 	for _, p := range AllPairs() {
 		got := Caddyfile(p, map[string]string{"VCA_PUBLIC_URL": "https://" + p.Name() + ".example"})
 		for _, sr := range PairRoutes(p, nil) {
-			directive := "handle"
-			if sr.Route.Strip {
-				directive = "handle_path"
+			line := "\thandle " + sr.Route.Match + " {\n"
+			if prefix := sr.Route.StripPrefix(); prefix != "" {
+				line += "\t\turi strip_prefix " + prefix + "\n"
 			}
-			line := "\t" + directive + " " + sr.Route.Match + " {\n"
 			if strings.Count(got, line) != 1 {
 				t.Errorf("%s: %q appears %d times", p.Name(), line, strings.Count(got, line))
 			}
+		}
+		if strings.Contains(got, "handle_path") {
+			t.Errorf("%s: a handle_path block strips the whole matcher:\n%s", p.Name(), got)
 		}
 		home := HomeOf(p.Role)
 		if !strings.Contains(got, "\t\tredir * "+home.Path+" 302\n") {
