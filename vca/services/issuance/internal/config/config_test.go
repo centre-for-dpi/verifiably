@@ -141,6 +141,13 @@ func TestLoadReadsThePageSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+	if cfg.DocsURL != "https://github.com/centre-for-dpi/verifiably/tree/main/vca/docs" {
+		t.Errorf("docs url = %q", cfg.DocsURL)
+	}
+	own, err := config.Load(env(base(map[string]string{"VCA_ISSUANCE_DOCS_URL": "https://docs.example.org/vca/"})))
+	if err != nil || own.DocsURL != "https://docs.example.org/vca" {
+		t.Errorf("own docs url = %q, %v", own.DocsURL, err)
+	}
 	if cfg.ThemeFile != "/etc/vca/theme.yaml" || cfg.Auth.LoginURL != "https://issuer.example/auth/" ||
 		cfg.Auth.JWKSURL == "" || len(cfg.Peers) != 1 || cfg.PublicURL != "https://issuer.example" {
 		t.Fatalf("config = %+v", cfg)

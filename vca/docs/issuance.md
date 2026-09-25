@@ -41,8 +41,8 @@ service sends the browser to `/issuer/`.
 | `POST /issue/review` | Step 4: what the stack issues. |
 | `POST /issue/offers` | Issues the credential, then opens the result. |
 | `GET /issue/offers/{id}` | The result: the QR code, the code, the link, and the document. |
-| `GET /notifications/` | The delivery channels of the issuer and their state. |
-| `GET /help/` | Every issuer RPC with its help text. |
+| `GET /notifications/` | The delivery channels of the issuer and their state, and the events of the stack. |
+| `GET /help/` | What each issuer page does, and every issuer RPC with its help text. |
 | `POST /issuer/signout` | Ends the session at `issuer-auth`. |
 
 Every page draws inside the issuer shell of
@@ -219,6 +219,23 @@ these:
 The email channel and the SMS channel use the stub by default. A
 deployment with a gateway replaces the stub. The service keeps no
 gateway code, so a deployment picks its own.
+
+## Notifications and help
+
+The notifications page follows ADR-040. It lists the VCA delivery
+channels: email, SMS, and webhook. Each row says "Not built in this
+release". No row says when the channel comes. The stack cards show only
+when the adapter of the pair lists the feature. A webhook card needs
+`FEATURE_WEBHOOKS`, and an admin sets the webhook on the admin
+notifications page. A session callbacks card needs
+`FEATURE_SESSION_CALLBACKS`.
+
+The help page lists the issuer pages of `internal/rolenav` that this
+deployment shows. Each row says what the page does and links the
+document that covers it, under `VCA_ISSUANCE_DOCS_URL`. Then the page
+lists every RPC of the schema, issuance, data source, and issued
+credentials services. Each sentence comes from the proto file through
+`services/internal/helptext`, as in the CLI help.
 
 ## Batches
 

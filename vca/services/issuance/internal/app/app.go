@@ -253,7 +253,7 @@ func mountPages(mux *http.ServeMux, wr wiring) error {
 	})
 	opts := pages.Options{
 		Kit: kit, Shell: shell, Capability: wr.capability, Schemas: deps.PageSchemas, Issued: deps.PageIssued,
-		Identity: deps.PageIdentity, Trust: deps.Trust, Audit: wr.events, PublicURL: cfg.PublicURL, SignOut: signOut,
+		Identity: deps.PageIdentity, Trust: deps.Trust, Audit: wr.events, PublicURL: cfg.PublicURL, DocsURL: cfg.DocsURL, SignOut: signOut,
 		Issuance: wr.issuance,
 	}
 	if opts.Identity == nil {

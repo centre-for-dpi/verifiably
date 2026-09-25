@@ -1716,18 +1716,18 @@ const file_vca_issued_v1_issued_proto_rawDesc = "" +
 	"\rSTATUS_ACTIVE\x10\x01\x12\x14\n" +
 	"\x10STATUS_SUSPENDED\x10\x02\x12\x12\n" +
 	"\x0eSTATUS_REVOKED\x10\x03\x12\x12\n" +
-	"\x0eSTATUS_EXPIRED\x10\x042\xef\x05\n" +
-	"\rIssuedService\x12E\n" +
-	"\x06Append\x12\x1c.vca.issued.v1.AppendRequest\x1a\x1d.vca.issued.v1.AppendResponse\x12?\n" +
-	"\x04List\x12\x1a.vca.issued.v1.ListRequest\x1a\x1b.vca.issued.v1.ListResponse\x12E\n" +
-	"\x06Search\x12\x1c.vca.issued.v1.SearchRequest\x1a\x1d.vca.issued.v1.SearchResponse\x12<\n" +
-	"\x03Get\x12\x19.vca.issued.v1.GetRequest\x1a\x1a.vca.issued.v1.GetResponse\x12E\n" +
-	"\x06Revoke\x12\x1c.vca.issued.v1.RevokeRequest\x1a\x1d.vca.issued.v1.RevokeResponse\x12N\n" +
-	"\tReinstate\x12\x1f.vca.issued.v1.ReinstateRequest\x1a .vca.issued.v1.ReinstateResponse\x12G\n" +
-	"\x06Export\x12\x1c.vca.issued.v1.ExportRequest\x1a\x1d.vca.issued.v1.ExportResponse0\x01\x12W\n" +
-	"\fGetChainHead\x12\".vca.issued.v1.GetChainHeadRequest\x1a#.vca.issued.v1.GetChainHeadResponse\x12T\n" +
-	"\vVerifyChain\x12!.vca.issued.v1.VerifyChainRequest\x1a\".vca.issued.v1.VerifyChainResponse\x12B\n" +
-	"\x05Prune\x12\x1b.vca.issued.v1.PruneRequest\x1a\x1c.vca.issued.v1.PruneResponseB\xb8\x01\n" +
+	"\x0eSTATUS_EXPIRED\x10\x042\xee\t\n" +
+	"\rIssuedService\x12k\n" +
+	"\x06Append\x12\x1c.vca.issued.v1.AppendRequest\x1a\x1d.vca.issued.v1.AppendResponse\"$\xca\xf3\x18 Records one issuance in the log.\x12r\n" +
+	"\x04List\x12\x1a.vca.issued.v1.ListRequest\x1a\x1b.vca.issued.v1.ListResponse\"1\xca\xf3\x18-Returns issued records in pages with filters.\x12\x84\x01\n" +
+	"\x06Search\x12\x1c.vca.issued.v1.SearchRequest\x1a\x1d.vca.issued.v1.SearchResponse\"=\xca\xf3\x189Returns the records whose searchable claims match a text.\x12\\\n" +
+	"\x03Get\x12\x19.vca.issued.v1.GetRequest\x1a\x1a.vca.issued.v1.GetResponse\"\x1e\xca\xf3\x18\x1aReturns one issued record.\x12|\n" +
+	"\x06Revoke\x12\x1c.vca.issued.v1.RevokeRequest\x1a\x1d.vca.issued.v1.RevokeResponse\"5\xca\xf3\x181Revokes or suspends one credential with a reason.\x12\x88\x01\n" +
+	"\tReinstate\x12\x1f.vca.issued.v1.ReinstateRequest\x1a .vca.issued.v1.ReinstateResponse\"8\xca\xf3\x184Ends the suspension of one credential with a reason.\x12\x7f\n" +
+	"\x06Export\x12\x1c.vca.issued.v1.ExportRequest\x1a\x1d.vca.issued.v1.ExportResponse\"6\xca\xf3\x182Streams the matching records as CSV or JSON lines.0\x01\x12\x87\x01\n" +
+	"\fGetChainHead\x12\".vca.issued.v1.GetChainHeadRequest\x1a#.vca.issued.v1.GetChainHeadResponse\".\xca\xf3\x18*Returns the signed head of the hash chain.\x12\x90\x01\n" +
+	"\vVerifyChain\x12!.vca.issued.v1.VerifyChainRequest\x1a\".vca.issued.v1.VerifyChainResponse\":\xca\xf3\x186Checks the hash chain and names the first broken link.\x12p\n" +
+	"\x05Prune\x12\x1b.vca.issued.v1.PruneRequest\x1a\x1c.vca.issued.v1.PruneResponse\",\xca\xf3\x18(Drops the records whose retention ended.B\xb8\x01\n" +
 	"\x11com.vca.issued.v1B\vIssuedProtoP\x01Z@github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1;issuedv1\xa2\x02\x03VIX\xaa\x02\rVca.Issued.V1\xca\x02\rVca\\Issued\\V1\xe2\x02\x19Vca\\Issued\\V1\\GPBMetadata\xea\x02\x0fVca::Issued::V1b\x06proto3"
 
 var (

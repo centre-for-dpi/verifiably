@@ -109,6 +109,9 @@ type Options struct {
 	SignOut http.Handler
 	// PublicURL is the public URL of the pair.
 	PublicURL string
+	// DocsURL is the base of the documents the help page links, for
+	// example the docs folder of the repository. Empty means DefaultDocsURL.
+	DocsURL string
 }
 
 // Pages serves the issuer pages of the issuance service.

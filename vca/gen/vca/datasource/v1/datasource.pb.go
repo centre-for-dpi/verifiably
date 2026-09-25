@@ -2236,18 +2236,19 @@ const file_vca_datasource_v1_datasource_proto_rawDesc = "" +
 	"\x12TRANSFORM_CONSTANT\x10\x03\x12\x14\n" +
 	"\x10TRANSFORM_CONCAT\x10\x04\x12\x13\n" +
 	"\x0fTRANSFORM_UPPER\x10\x05\x12\x13\n" +
-	"\x0fTRANSFORM_LOWER\x10\x062\xe1\x06\n" +
-	"\x11DataSourceService\x12M\n" +
-	"\x06Create\x12 .vca.datasource.v1.CreateRequest\x1a!.vca.datasource.v1.CreateResponse\x12M\n" +
-	"\x06Update\x12 .vca.datasource.v1.UpdateRequest\x1a!.vca.datasource.v1.UpdateResponse\x12G\n" +
-	"\x04List\x12\x1e.vca.datasource.v1.ListRequest\x1a\x1f.vca.datasource.v1.ListResponse\x12D\n" +
-	"\x03Get\x12\x1d.vca.datasource.v1.GetRequest\x1a\x1e.vca.datasource.v1.GetResponse\x12M\n" +
-	"\x06Delete\x12 .vca.datasource.v1.DeleteRequest\x1a!.vca.datasource.v1.DeleteResponse\x12b\n" +
-	"\rPreviewFields\x12'.vca.datasource.v1.PreviewFieldsRequest\x1a(.vca.datasource.v1.PreviewFieldsResponse\x12\\\n" +
-	"\vPreviewRows\x12%.vca.datasource.v1.PreviewRowsRequest\x1a&.vca.datasource.v1.PreviewRowsResponse\x12\\\n" +
-	"\vSetFieldMap\x12%.vca.datasource.v1.SetFieldMapRequest\x1a&.vca.datasource.v1.SetFieldMapResponse\x12\\\n" +
-	"\vGetFieldMap\x12%.vca.datasource.v1.GetFieldMapRequest\x1a&.vca.datasource.v1.GetFieldMapResponse\x12R\n" +
-	"\aRunBulk\x12!.vca.datasource.v1.RunBulkRequest\x1a\".vca.datasource.v1.RunBulkResponse0\x01B\xd8\x01\n" +
+	"\x0fTRANSFORM_LOWER\x10\x062\xc7\n" +
+	"\n" +
+	"\x11DataSourceService\x12j\n" +
+	"\x06Create\x12 .vca.datasource.v1.CreateRequest\x1a!.vca.datasource.v1.CreateResponse\"\x1b\xca\xf3\x18\x17Stores one data source.\x12l\n" +
+	"\x06Update\x12 .vca.datasource.v1.UpdateRequest\x1a!.vca.datasource.v1.UpdateResponse\"\x1d\xca\xf3\x18\x19Replaces one data source.\x12k\n" +
+	"\x04List\x12\x1e.vca.datasource.v1.ListRequest\x1a\x1f.vca.datasource.v1.ListResponse\"\"\xca\xf3\x18\x1eReturns data sources in pages.\x12b\n" +
+	"\x03Get\x12\x1d.vca.datasource.v1.GetRequest\x1a\x1e.vca.datasource.v1.GetResponse\"\x1c\xca\xf3\x18\x18Returns one data source.\x12~\n" +
+	"\x06Delete\x12 .vca.datasource.v1.DeleteRequest\x1a!.vca.datasource.v1.DeleteResponse\"/\xca\xf3\x18+Deletes one data source and its field maps.\x12\x96\x01\n" +
+	"\rPreviewFields\x12'.vca.datasource.v1.PreviewFieldsRequest\x1a(.vca.datasource.v1.PreviewFieldsResponse\"2\xca\xf3\x18.Returns the field names and types of a source.\x12\x94\x01\n" +
+	"\vPreviewRows\x12%.vca.datasource.v1.PreviewRowsRequest\x1a&.vca.datasource.v1.PreviewRowsResponse\"6\xca\xf3\x182Returns a few rows of a source with masked values.\x12\x99\x01\n" +
+	"\vSetFieldMap\x12%.vca.datasource.v1.SetFieldMapRequest\x1a&.vca.datasource.v1.SetFieldMapResponse\";\xca\xf3\x187Stores the map from source fields to schema properties.\x12\x95\x01\n" +
+	"\vGetFieldMap\x12%.vca.datasource.v1.GetFieldMapRequest\x1a&.vca.datasource.v1.GetFieldMapResponse\"7\xca\xf3\x183Returns the field map of one source and one schema.\x12\xa2\x01\n" +
+	"\aRunBulk\x12!.vca.datasource.v1.RunBulkRequest\x1a\".vca.datasource.v1.RunBulkResponse\"N\xca\xf3\x18JChecks the issue rule of a source. The data source pages start a bulk run.0\x01B\xd8\x01\n" +
 	"\x15com.vca.datasource.v1B\x0fDatasourceProtoP\x01ZHgithub.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1;datasourcev1\xa2\x02\x03VDX\xaa\x02\x11Vca.Datasource.V1\xca\x02\x11Vca\\Datasource\\V1\xe2\x02\x1dVca\\Datasource\\V1\\GPBMetadata\xea\x02\x13Vca::Datasource::V1b\x06proto3"
 
 var (

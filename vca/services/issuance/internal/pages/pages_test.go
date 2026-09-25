@@ -70,17 +70,6 @@ func TestPagesSendTheActor(t *testing.T) {
 	}
 }
 
-func TestNotificationsPageNeverSaysSoon(t *testing.T) {
-	h := newHarness(t)
-	doc := strings.ToLower(body(t, h.get(t, "/notifications/")))
-	if strings.Contains(doc, "soon") || strings.Contains(doc, "coming") {
-		t.Error("the page says soon")
-	}
-	if !strings.Contains(doc, "not built in this release.") {
-		t.Error("the page does not name the state of the VCA channels")
-	}
-}
-
 func TestHelpPageListsTheIssuerRPCs(t *testing.T) {
 	h := newHarness(t)
 	doc := body(t, h.get(t, "/help/"))

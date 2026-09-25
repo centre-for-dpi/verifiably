@@ -15,36 +15,60 @@ import "vca/common/v1/common.proto";
 // SchemaService manages schema versions and their state.
 service SchemaService {
   // Create stores a new schema as version 1 in the draft state.
-  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Create(CreateRequest) returns (CreateResponse) {
+    option (vca.common.v1.description) = "Stores a new schema as version 1 in the draft state.";
+  }
   // Update stores a new draft version of an existing schema.
-  rpc Update(UpdateRequest) returns (UpdateResponse);
+  rpc Update(UpdateRequest) returns (UpdateResponse) {
+    option (vca.common.v1.description) = "Stores a new draft version of a schema.";
+  }
   // Publish moves one draft version to published and registers it with
   // the DPG through the issuer backend (ADR-013 decision 3).
-  rpc Publish(PublishRequest) returns (PublishResponse);
+  rpc Publish(PublishRequest) returns (PublishResponse) {
+    option (vca.common.v1.description) = "Publishes one draft version and registers it with the stack.";
+  }
   // Retire moves one published version to retired. Issuance with it stops.
-  rpc Retire(RetireRequest) returns (RetireResponse);
+  rpc Retire(RetireRequest) returns (RetireResponse) {
+    option (vca.common.v1.description) = "Retires one published version, so issuance with it stops.";
+  }
   // Get returns one version. An empty version returns the latest one.
-  rpc Get(GetRequest) returns (GetResponse);
+  rpc Get(GetRequest) returns (GetResponse) {
+    option (vca.common.v1.description) = "Returns one schema version, or the latest one.";
+  }
   // List returns schemas in pages with filters.
-  rpc List(ListRequest) returns (ListResponse);
+  rpc List(ListRequest) returns (ListResponse) {
+    option (vca.common.v1.description) = "Returns schemas in pages with filters.";
+  }
   // Search returns schemas whose name, description, or type match a text.
-  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc Search(SearchRequest) returns (SearchResponse) {
+    option (vca.common.v1.description) = "Returns the schemas whose name, description, or type match a text.";
+  }
   // ListPublic returns the published schemas without staff only fields.
   // Wallets and verifiers call it without a session.
-  rpc ListPublic(ListPublicRequest) returns (ListPublicResponse);
+  rpc ListPublic(ListPublicRequest) returns (ListPublicResponse) {
+    option (vca.common.v1.description) = "Returns the published schemas for wallets and verifiers.";
+  }
   // GetIssuerMetadata returns the OID4VCI issuer metadata that the
   // published schemas produce (ADR-013 decision 4). The well-known HTTP
   // handler serves the same document.
-  rpc GetIssuerMetadata(GetIssuerMetadataRequest) returns (GetIssuerMetadataResponse);
+  rpc GetIssuerMetadata(GetIssuerMetadataRequest) returns (GetIssuerMetadataResponse) {
+    option (vca.common.v1.description) = "Returns the OID4VCI issuer metadata of the published schemas.";
+  }
   // GetVct returns the SD-JWT VC type metadata of one published schema
   // (ADR-013 decision 5).
-  rpc GetVct(GetVctRequest) returns (GetVctResponse);
+  rpc GetVct(GetVctRequest) returns (GetVctResponse) {
+    option (vca.common.v1.description) = "Returns the SD-JWT VC type metadata of one published schema.";
+  }
   // ListVersions returns the version history of one schema.
-  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse) {
+    option (vca.common.v1.description) = "Returns the version history of one schema.";
+  }
   // DeleteDraft removes one draft version. A published version cannot go:
   // retire it instead. A retired version stays, so verifiers can read it.
   // When the draft is the only version, the schema goes too.
-  rpc DeleteDraft(DeleteDraftRequest) returns (DeleteDraftResponse);
+  rpc DeleteDraft(DeleteDraftRequest) returns (DeleteDraftResponse) {
+    option (vca.common.v1.description) = "Deletes one draft version of a schema.";
+  }
 }
 
 // State names the life cycle state of a schema version (ADR-013 decision 2).

@@ -12,26 +12,46 @@ import "vca/common/v1/common.proto";
 // DataSourceService manages sources, mappings, and bulk runs.
 service DataSourceService {
   // Create stores one source.
-  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Create(CreateRequest) returns (CreateResponse) {
+    option (vca.common.v1.description) = "Stores one data source.";
+  }
   // Update replaces one source.
-  rpc Update(UpdateRequest) returns (UpdateResponse);
+  rpc Update(UpdateRequest) returns (UpdateResponse) {
+    option (vca.common.v1.description) = "Replaces one data source.";
+  }
   // List returns sources in pages.
-  rpc List(ListRequest) returns (ListResponse);
+  rpc List(ListRequest) returns (ListResponse) {
+    option (vca.common.v1.description) = "Returns data sources in pages.";
+  }
   // Get returns one source.
-  rpc Get(GetRequest) returns (GetResponse);
+  rpc Get(GetRequest) returns (GetResponse) {
+    option (vca.common.v1.description) = "Returns one data source.";
+  }
   // Delete removes one source and its mappings.
-  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {
+    option (vca.common.v1.description) = "Deletes one data source and its field maps.";
+  }
   // PreviewFields returns the field names and types the source exposes.
-  rpc PreviewFields(PreviewFieldsRequest) returns (PreviewFieldsResponse);
+  rpc PreviewFields(PreviewFieldsRequest) returns (PreviewFieldsResponse) {
+    option (vca.common.v1.description) = "Returns the field names and types of a source.";
+  }
   // PreviewRows returns at most limit rows with values masked.
-  rpc PreviewRows(PreviewRowsRequest) returns (PreviewRowsResponse);
+  rpc PreviewRows(PreviewRowsRequest) returns (PreviewRowsResponse) {
+    option (vca.common.v1.description) = "Returns a few rows of a source with masked values.";
+  }
   // SetFieldMap stores the mapping from source fields to schema properties.
-  rpc SetFieldMap(SetFieldMapRequest) returns (SetFieldMapResponse);
+  rpc SetFieldMap(SetFieldMapRequest) returns (SetFieldMapResponse) {
+    option (vca.common.v1.description) = "Stores the map from source fields to schema properties.";
+  }
   // GetFieldMap returns the mapping of one source and schema pair.
-  rpc GetFieldMap(GetFieldMapRequest) returns (GetFieldMapResponse);
+  rpc GetFieldMap(GetFieldMapRequest) returns (GetFieldMapResponse) {
+    option (vca.common.v1.description) = "Returns the field map of one source and one schema.";
+  }
   // RunBulk starts a bulk issuance job and streams its progress
   // (ADR-015 decision 7). The stream ends with a message whose done is true.
-  rpc RunBulk(RunBulkRequest) returns (stream RunBulkResponse);
+  rpc RunBulk(RunBulkRequest) returns (stream RunBulkResponse) {
+    option (vca.common.v1.description) = "Checks the issue rule of a source. The data source pages start a bulk run.";
+  }
 }
 
 // Source is one data source.

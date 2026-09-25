@@ -14,15 +14,25 @@ import "vca/common/v1/common.proto";
 // IssuanceService issues credentials over every supported channel.
 service IssuanceService {
   // Issue issues one credential to one subject.
-  rpc Issue(IssueRequest) returns (IssueResponse);
+  rpc Issue(IssueRequest) returns (IssueResponse) {
+    option (vca.common.v1.description) = "Issues one credential to one subject.";
+  }
   // IssueBatch issues many credentials in one job and streams progress.
-  rpc IssueBatch(IssueBatchRequest) returns (stream IssueBatchResponse);
+  rpc IssueBatch(IssueBatchRequest) returns (stream IssueBatchResponse) {
+    option (vca.common.v1.description) = "Issues many credentials in one job and streams the progress.";
+  }
   // Deferred completes a deferred OID4VCI issuance when the DPG supports it.
-  rpc Deferred(DeferredRequest) returns (DeferredResponse);
+  rpc Deferred(DeferredRequest) returns (DeferredResponse) {
+    option (vca.common.v1.description) = "Completes a deferred OID4VCI issuance when the stack supports it.";
+  }
   // GetOffer returns the state of one offer or delivery.
-  rpc GetOffer(GetOfferRequest) returns (GetOfferResponse);
+  rpc GetOffer(GetOfferRequest) returns (GetOfferResponse) {
+    option (vca.common.v1.description) = "Returns the state of one offer or delivery.";
+  }
   // GetBatch returns the per row results of one batch job in pages.
-  rpc GetBatch(GetBatchRequest) returns (GetBatchResponse);
+  rpc GetBatch(GetBatchRequest) returns (GetBatchResponse) {
+    option (vca.common.v1.description) = "Returns the result of each row of one batch job in pages.";
+  }
 }
 
 // Delivery says where to send the offer or the document (ADR-016 decision 5).

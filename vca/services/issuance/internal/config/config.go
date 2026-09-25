@@ -68,6 +68,8 @@ type Config struct {
 	BatchWorkers int `env:"BATCH_WORKERS" default:"4"`
 	// PageSizeMax caps a list page.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+	// DocsURL is the base of the documents the help page links.
+	DocsURL string `env:"DOCS_URL" default:"https://github.com/centre-for-dpi/verifiably/tree/main/vca/docs"`
 	// AuditDir keeps the audit events of the issues, one file for each
 	// event (ADR-039). Empty keeps them in memory.
 	AuditDir string `env:"AUDIT_DIR"`
@@ -110,6 +112,7 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	c.Peers = peers
 	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
+	c.DocsURL = strings.TrimRight(c.DocsURL, "/")
 	if c.Timeout <= 0 || c.OfferTTL <= 0 {
 		return Config{}, fmt.Errorf("config: %sTIMEOUT and %sOFFER_TTL must be positive durations",
 			Prefix, Prefix)

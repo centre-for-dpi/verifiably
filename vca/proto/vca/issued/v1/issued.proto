@@ -16,29 +16,49 @@ import "vca/common/v1/common.proto";
 service IssuedService {
   // Append records one issuance in the log. The issuance service calls
   // it after a credential reaches the holder (ADR-017 decision 1).
-  rpc Append(AppendRequest) returns (AppendResponse);
+  rpc Append(AppendRequest) returns (AppendResponse) {
+    option (vca.common.v1.description) = "Records one issuance in the log.";
+  }
   // List returns records in pages with filters.
-  rpc List(ListRequest) returns (ListResponse);
+  rpc List(ListRequest) returns (ListResponse) {
+    option (vca.common.v1.description) = "Returns issued records in pages with filters.";
+  }
   // Search returns records whose searchable claims match a text.
-  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc Search(SearchRequest) returns (SearchResponse) {
+    option (vca.common.v1.description) = "Returns the records whose searchable claims match a text.";
+  }
   // Get returns one record.
-  rpc Get(GetRequest) returns (GetResponse);
+  rpc Get(GetRequest) returns (GetResponse) {
+    option (vca.common.v1.description) = "Returns one issued record.";
+  }
   // Revoke sets the status of one credential to revoked or suspended
   // through the status service and records the reason.
-  rpc Revoke(RevokeRequest) returns (RevokeResponse);
+  rpc Revoke(RevokeRequest) returns (RevokeResponse) {
+    option (vca.common.v1.description) = "Revokes or suspends one credential with a reason.";
+  }
   // Reinstate clears a suspension and records the reason.
-  rpc Reinstate(ReinstateRequest) returns (ReinstateResponse);
+  rpc Reinstate(ReinstateRequest) returns (ReinstateResponse) {
+    option (vca.common.v1.description) = "Ends the suspension of one credential with a reason.";
+  }
   // Export streams records that match a filter as CSV or JSON lines.
-  rpc Export(ExportRequest) returns (stream ExportResponse);
+  rpc Export(ExportRequest) returns (stream ExportResponse) {
+    option (vca.common.v1.description) = "Streams the matching records as CSV or JSON lines.";
+  }
   // GetChainHead returns the latest hash chain head and its signature
   // (ADR-017 decision 4).
-  rpc GetChainHead(GetChainHeadRequest) returns (GetChainHeadResponse);
+  rpc GetChainHead(GetChainHeadRequest) returns (GetChainHeadResponse) {
+    option (vca.common.v1.description) = "Returns the signed head of the hash chain.";
+  }
   // VerifyChain walks the chain from one record to the head and reports
   // the first broken link, when any.
-  rpc VerifyChain(VerifyChainRequest) returns (VerifyChainResponse);
+  rpc VerifyChain(VerifyChainRequest) returns (VerifyChainResponse) {
+    option (vca.common.v1.description) = "Checks the hash chain and names the first broken link.";
+  }
   // Prune runs the retention rules and drops the records that the
   // retention window no longer covers (ADR-017 decision 5).
-  rpc Prune(PruneRequest) returns (PruneResponse);
+  rpc Prune(PruneRequest) returns (PruneResponse) {
+    option (vca.common.v1.description) = "Drops the records whose retention ended.";
+  }
 }
 
 // Status names the status of an issued credential.

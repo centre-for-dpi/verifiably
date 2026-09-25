@@ -2012,21 +2012,21 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATE_DRAFT\x10\x01\x12\x13\n" +
 	"\x0fSTATE_PUBLISHED\x10\x02\x12\x11\n" +
-	"\rSTATE_RETIRED\x10\x032\xa5\a\n" +
-	"\rSchemaService\x12E\n" +
-	"\x06Create\x12\x1c.vca.schema.v1.CreateRequest\x1a\x1d.vca.schema.v1.CreateResponse\x12E\n" +
-	"\x06Update\x12\x1c.vca.schema.v1.UpdateRequest\x1a\x1d.vca.schema.v1.UpdateResponse\x12H\n" +
-	"\aPublish\x12\x1d.vca.schema.v1.PublishRequest\x1a\x1e.vca.schema.v1.PublishResponse\x12E\n" +
-	"\x06Retire\x12\x1c.vca.schema.v1.RetireRequest\x1a\x1d.vca.schema.v1.RetireResponse\x12<\n" +
-	"\x03Get\x12\x19.vca.schema.v1.GetRequest\x1a\x1a.vca.schema.v1.GetResponse\x12?\n" +
-	"\x04List\x12\x1a.vca.schema.v1.ListRequest\x1a\x1b.vca.schema.v1.ListResponse\x12E\n" +
-	"\x06Search\x12\x1c.vca.schema.v1.SearchRequest\x1a\x1d.vca.schema.v1.SearchResponse\x12Q\n" +
+	"\rSTATE_RETIRED\x10\x032\xdc\f\n" +
+	"\rSchemaService\x12\x7f\n" +
+	"\x06Create\x12\x1c.vca.schema.v1.CreateRequest\x1a\x1d.vca.schema.v1.CreateResponse\"8\xca\xf3\x184Stores a new schema as version 1 in the draft state.\x12r\n" +
+	"\x06Update\x12\x1c.vca.schema.v1.UpdateRequest\x1a\x1d.vca.schema.v1.UpdateResponse\"+\xca\xf3\x18'Stores a new draft version of a schema.\x12\x8a\x01\n" +
+	"\aPublish\x12\x1d.vca.schema.v1.PublishRequest\x1a\x1e.vca.schema.v1.PublishResponse\"@\xca\xf3\x18<Publishes one draft version and registers it with the stack.\x12\x84\x01\n" +
+	"\x06Retire\x12\x1c.vca.schema.v1.RetireRequest\x1a\x1d.vca.schema.v1.RetireResponse\"=\xca\xf3\x189Retires one published version, so issuance with it stops.\x12p\n" +
+	"\x03Get\x12\x19.vca.schema.v1.GetRequest\x1a\x1a.vca.schema.v1.GetResponse\"2\xca\xf3\x18.Returns one schema version, or the latest one.\x12k\n" +
+	"\x04List\x12\x1a.vca.schema.v1.ListRequest\x1a\x1b.vca.schema.v1.ListResponse\"*\xca\xf3\x18&Returns schemas in pages with filters.\x12\x8d\x01\n" +
+	"\x06Search\x12\x1c.vca.schema.v1.SearchRequest\x1a\x1d.vca.schema.v1.SearchResponse\"F\xca\xf3\x18BReturns the schemas whose name, description, or type match a text.\x12\x8f\x01\n" +
 	"\n" +
-	"ListPublic\x12 .vca.schema.v1.ListPublicRequest\x1a!.vca.schema.v1.ListPublicResponse\x12f\n" +
-	"\x11GetIssuerMetadata\x12'.vca.schema.v1.GetIssuerMetadataRequest\x1a(.vca.schema.v1.GetIssuerMetadataResponse\x12E\n" +
-	"\x06GetVct\x12\x1c.vca.schema.v1.GetVctRequest\x1a\x1d.vca.schema.v1.GetVctResponse\x12W\n" +
-	"\fListVersions\x12\".vca.schema.v1.ListVersionsRequest\x1a#.vca.schema.v1.ListVersionsResponse\x12T\n" +
-	"\vDeleteDraft\x12!.vca.schema.v1.DeleteDraftRequest\x1a\".vca.schema.v1.DeleteDraftResponseB\xb8\x01\n" +
+	"ListPublic\x12 .vca.schema.v1.ListPublicRequest\x1a!.vca.schema.v1.ListPublicResponse\"<\xca\xf3\x188Returns the published schemas for wallets and verifiers.\x12\xa9\x01\n" +
+	"\x11GetIssuerMetadata\x12'.vca.schema.v1.GetIssuerMetadataRequest\x1a(.vca.schema.v1.GetIssuerMetadataResponse\"A\xca\xf3\x18=Returns the OID4VCI issuer metadata of the published schemas.\x12\x87\x01\n" +
+	"\x06GetVct\x12\x1c.vca.schema.v1.GetVctRequest\x1a\x1d.vca.schema.v1.GetVctResponse\"@\xca\xf3\x18<Returns the SD-JWT VC type metadata of one published schema.\x12\x87\x01\n" +
+	"\fListVersions\x12\".vca.schema.v1.ListVersionsRequest\x1a#.vca.schema.v1.ListVersionsResponse\".\xca\xf3\x18*Returns the version history of one schema.\x12\x80\x01\n" +
+	"\vDeleteDraft\x12!.vca.schema.v1.DeleteDraftRequest\x1a\".vca.schema.v1.DeleteDraftResponse\"*\xca\xf3\x18&Deletes one draft version of a schema.B\xb8\x01\n" +
 	"\x11com.vca.schema.v1B\vSchemaProtoP\x01Z@github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1;schemav1\xa2\x02\x03VSX\xaa\x02\rVca.Schema.V1\xca\x02\rVca\\Schema\\V1\xe2\x02\x19Vca\\Schema\\V1\\GPBMetadata\xea\x02\x0fVca::Schema::V1b\x06proto3"
 
 var (

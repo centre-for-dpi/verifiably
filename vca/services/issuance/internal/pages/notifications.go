@@ -4,6 +4,7 @@ package pages
 
 import (
 	"html/template"
+	"strings"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
@@ -15,7 +16,8 @@ import (
 var deliveryChannels = []string{"email", "sms", "webhook"}
 
 // notifications names the delivery channels of the issuer and their
-// state, and the webhooks of the stack when its adapter lists them.
+// state (ADR-040 decision 1). The webhooks and the session callbacks of
+// the stack show only when its adapter lists them (ADR-040 decision 2).
 func (p *Pages) notifications(pg page) error {
 	b := p.blocks()
 	rows := make([]components.Row, 0, len(deliveryChannels))
@@ -24,7 +26,7 @@ func (p *Pages) notifications(pg page) error {
 		rows = append(rows, components.Row{
 			{HTML: template.HTML(`<strong>`) + escape(msg.T(key+".label")) + template.HTML(`</strong>`)}, //nolint:gosec // literal tags around escaped text
 			{Text: msg.T(key + ".text")},
-			{HTML: b.add("badge", components.Badge{Status: "warn", Text: msg.T("admin.notifications.not_built")})},
+			{HTML: b.add("badge", components.Badge{Status: "warn", Text: strings.TrimSuffix(msg.T("admin.notifications.not_built"), ".")})},
 		})
 	}
 	delivery := b.add("block", components.Block{
@@ -38,11 +40,18 @@ func (p *Pages) notifications(pg page) error {
 			Rows: rows,
 		}),
 	})
-	var hooks template.HTML
-	if caps := p.caps(pg); has(caps, backendv1.Feature_FEATURE_WEBHOOKS) {
+	var hooks, callbacks template.HTML
+	caps := p.caps(pg)
+	if has(caps, backendv1.Feature_FEATURE_WEBHOOKS) {
 		hooks = b.add("card", components.Card{
 			ID: "stack-webhooks", Title: msg.T("admin.notifications.webhooks.label"),
 			Text: msg.T("issuer.notifications.webhooks.text", stackName(caps)),
+		})
+	}
+	if has(caps, backendv1.Feature_FEATURE_SESSION_CALLBACKS) {
+		callbacks = b.add("card", components.Card{
+			ID: "session-callbacks", Title: msg.T("issuer.notifications.callbacks.label"),
+			Text: msg.T("issuer.notifications.callbacks.text", stackName(caps)),
 		})
 	}
 	if b.err != nil {
@@ -50,6 +59,6 @@ func (p *Pages) notifications(pg page) error {
 	}
 	return p.render(pg, components.Page{
 		Title: msg.T("common.notifications.label"), Lead: msg.T("issuer.notifications.lead"),
-		Description: msg.T("issuer.notifications.lead"), Content: components.Join(delivery, hooks),
+		Description: msg.T("issuer.notifications.lead"), Content: components.Join(delivery, hooks, callbacks),
 	})
 }

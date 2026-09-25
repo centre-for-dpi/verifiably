@@ -1240,14 +1240,14 @@ const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"\x10GetBatchResponse\x12-\n" +
 	"\x04rows\x18\x01 \x03(\v2\x19.vca.issuance.v1.BatchRowR\x04rows\x12-\n" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\x12?\n" +
-	"\bprogress\x18\x03 \x01(\v2#.vca.issuance.v1.IssueBatchResponseR\bprogress2\xa5\x03\n" +
-	"\x0fIssuanceService\x12F\n" +
-	"\x05Issue\x12\x1d.vca.issuance.v1.IssueRequest\x1a\x1e.vca.issuance.v1.IssueResponse\x12W\n" +
+	"\bprogress\x18\x03 \x01(\v2#.vca.issuance.v1.IssueBatchResponseR\bprogress2\xcd\x05\n" +
+	"\x0fIssuanceService\x12q\n" +
+	"\x05Issue\x12\x1d.vca.issuance.v1.IssueRequest\x1a\x1e.vca.issuance.v1.IssueResponse\")\xca\xf3\x18%Issues one credential to one subject.\x12\x99\x01\n" +
 	"\n" +
-	"IssueBatch\x12\".vca.issuance.v1.IssueBatchRequest\x1a#.vca.issuance.v1.IssueBatchResponse0\x01\x12O\n" +
-	"\bDeferred\x12 .vca.issuance.v1.DeferredRequest\x1a!.vca.issuance.v1.DeferredResponse\x12O\n" +
-	"\bGetOffer\x12 .vca.issuance.v1.GetOfferRequest\x1a!.vca.issuance.v1.GetOfferResponse\x12O\n" +
-	"\bGetBatch\x12 .vca.issuance.v1.GetBatchRequest\x1a!.vca.issuance.v1.GetBatchResponseB\xc8\x01\n" +
+	"IssueBatch\x12\".vca.issuance.v1.IssueBatchRequest\x1a#.vca.issuance.v1.IssueBatchResponse\"@\xca\xf3\x18<Issues many credentials in one job and streams the progress.0\x01\x12\x96\x01\n" +
+	"\bDeferred\x12 .vca.issuance.v1.DeferredRequest\x1a!.vca.issuance.v1.DeferredResponse\"E\xca\xf3\x18ACompletes a deferred OID4VCI issuance when the stack supports it.\x12\x80\x01\n" +
+	"\bGetOffer\x12 .vca.issuance.v1.GetOfferRequest\x1a!.vca.issuance.v1.GetOfferResponse\"/\xca\xf3\x18+Returns the state of one offer or delivery.\x12\x8e\x01\n" +
+	"\bGetBatch\x12 .vca.issuance.v1.GetBatchRequest\x1a!.vca.issuance.v1.GetBatchResponse\"=\xca\xf3\x189Returns the result of each row of one batch job in pages.B\xc8\x01\n" +
 	"\x13com.vca.issuance.v1B\rIssuanceProtoP\x01ZDgithub.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1;issuancev1\xa2\x02\x03VIX\xaa\x02\x0fVca.Issuance.V1\xca\x02\x0fVca\\Issuance\\V1\xe2\x02\x1bVca\\Issuance\\V1\\GPBMetadata\xea\x02\x11Vca::Issuance::V1b\x06proto3"
 
 var (

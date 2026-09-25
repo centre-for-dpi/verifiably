@@ -450,8 +450,8 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-040 | 1 Notifications pages list the channels | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
-| ADR-040 | 2 DPG webhooks and callbacks when the adapter lists them | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-040 | 1 Notifications pages list the channels | Done | `vca/services/admin/internal/portal`, `vca/services/issuance/internal/pages` | The admin and the issuer pages list email, SMS, and the VCA webhook as not built in this release. |
+| ADR-040 | 2 DPG webhooks and callbacks when the adapter lists them | Partial | `vca/services/admin/internal/portal`, `vca/services/issuance/internal/pages` | The pages show the webhook card and the session callbacks card only when the adapter lists the feature. No adapter lists either feature yet. |
 
 ## ADR-041: Verifier trust cache and offline verification window
 

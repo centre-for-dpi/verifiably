@@ -57,6 +57,7 @@ in the log.
 | `VCA_ISSUANCE_STORE_FILE` | The directory that keeps the offers. Empty uses memory. |
 | `VCA_ISSUANCE_OFFER_TTL` | The life of an offer. The default is `24h`. |
 | `VCA_ISSUANCE_TIMEOUT` | The bound of one call. The default is `30s`. |
+| `VCA_ISSUANCE_DOCS_URL` | The base of the documents that the help page links. The default is the docs folder of the repository. |
 | `VCA_ISSUANCE_BATCH_WORKERS` | The number of rows the service issues at once. |
 | `VCA_ISSUANCE_PAGE_SIZE_MAX` | The cap of one page. The default is `50`. |
 | `VCA_ISSUANCE_AUDIT_DIR` | The directory of the audit store. Empty uses memory. |
