@@ -212,7 +212,9 @@ Every admin action writes one record to an append only log: the actor,
 the action, the request id, the target, and the result. The record id
 starts with the time in milliseconds, so the store returns the records in
 time order. The log has an append function and a query function. No
-function changes or removes a record.
+function changes or removes a record. The code is the shared package
+`services/internal/auditlog`. The auth services keep their sign in
+events in the same kind of store (ADR-039).
 
 The actor is `iss|sub` for a session, or `apikey:<id>` for a machine
 key. `QueryAuditLog` filters by actor, action, and time. The

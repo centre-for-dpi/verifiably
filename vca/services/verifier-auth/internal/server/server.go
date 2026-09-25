@@ -16,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/verifierauth/v1/verifierauthv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
@@ -28,17 +29,13 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/ui"
 )
 
-// persister returns the document store of the service. An empty dir
+// keyValue returns the key value store of the service. An empty dir
 // keeps every document in the process.
-func persister(dir string) (oidcflow.Persister, error) {
-	kv := store.Memory()
-	if dir != "" {
-		var err error
-		if kv, err = store.File(dir); err != nil {
-			return nil, err
-		}
+func keyValue(dir string) (store.KeyValue, error) {
+	if dir == "" {
+		return store.Memory(), nil
 	}
-	return store.NewJSON(kv), nil
+	return store.File(dir)
 }
 
 // Audience is the aud claim of every session JWT.
@@ -46,7 +43,12 @@ const Audience = "vca-verifier"
 
 // Build wires the service from the configuration.
 func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
-	persist, err := persister(cfg.StateDir)
+	kv, err := keyValue(cfg.StateDir)
+	if err != nil {
+		return nil, err
+	}
+	persist := store.NewJSON(kv)
+	events, err := auditlog.New(kv, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +101,7 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 		AdminSession: adminSession,
 		Kit:          kit,
 		Assets:       assets,
+		Audit:        events,
 	}), nil
 }
 
@@ -161,6 +164,8 @@ func Handler(svc *service.Service) http.Handler {
 	mux.Handle(path, oidcflow.RejectQueryTokens(h))
 	adminPath, adminH := oidcflow.NewAdminHandler(svc.Admin())
 	mux.Handle(adminPath, oidcflow.RejectQueryTokens(adminH))
+	auditPath, auditH := auditlog.NewHandler(svc.Audit())
+	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditH))
 	mux.Handle("/.well-known/jwks.json", svc.Signer().JWKSHandler())
 	mux.Handle("/token", svc.TokenHandler())
 	handlers := svc.Handlers()

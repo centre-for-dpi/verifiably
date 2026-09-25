@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -29,7 +29,7 @@ type harness struct {
 	svc     *login.Service
 	server  *httptest.Server
 	rec     *records.Store
-	audit   *audit.Log
+	audit   *auditlog.Log
 	cfg     config.Config
 	client  *http.Client
 	handler *http.ServeMux
@@ -118,7 +118,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("records: %v", err)
 	}
-	log, err := audit.New(kv, nil)
+	log, err := auditlog.New(kv, nil)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestLoginWithoutABindingIsRefused(t *testing.T) {
 	if status == http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
-	page, err := h.audit.Query(context.Background(), audit.Filter{Action: "admin.Login"})
+	page, err := h.audit.Query(context.Background(), auditlog.Filter{Action: "admin.Login"})
 	if err != nil || len(page.Records) != 1 || page.Records[0].OK {
 		t.Fatalf("audit = %+v, %v", page.Records, err)
 	}

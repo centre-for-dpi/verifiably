@@ -660,4 +660,17 @@ var en = map[string]string{
 	"verifier.results.empty.text":   "Results appear here as wallets answer your requests.",
 	"verifier.cache.lead":           "Trust list and registry keys, cached for offline checks within your window.",
 	"verifier.cache.window.label":   "Offline window",
+
+	// Audit reasons (ADR-039 decision 3). A reason names the cause of a
+	// failure and never holds a claim value.
+	"audit.reason.state":            "The sign in state was unknown or expired.",
+	"audit.reason.provider":         "The login provider returned an error.",
+	"audit.reason.unknown_provider": "The login provider is not registered.",
+	"audit.reason.disabled":         "The login provider is off.",
+	"audit.reason.role":             "The provider claims map to no role.",
+	"audit.reason.nonce":            "The ID token did not match the sign in.",
+	"audit.reason.upstream":         "The login provider did not answer.",
+	"audit.reason.session":          "The session was not valid.",
+	"audit.reason.register":         "The login provider offers no registration.",
+	"audit.reason.other":            "The service could not complete the action.",
 }

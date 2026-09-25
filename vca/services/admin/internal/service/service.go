@@ -24,7 +24,6 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
-	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/fanout"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/health"
@@ -32,6 +31,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/onboard"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/stacks"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 )
@@ -56,7 +56,7 @@ type Deps struct {
 	// Records holds the tenants, the keys, and the admin bindings.
 	Records *records.Store
 	// Audit is the append only log.
-	Audit *audit.Log
+	Audit *auditlog.Log
 	// Login authenticates the caller.
 	Login *login.Service
 	// Providers holds the OIDC provider records.
@@ -128,7 +128,7 @@ func (s *Service) guard(ctx context.Context, h http.Header) (login.Identity, err
 
 // write records one action that changed state and returns err unchanged.
 func (s *Service) write(ctx context.Context, actor, action, target string, err error) error {
-	_, ignored := s.d.Audit.Append(ctx, audit.Entry{
+	_, ignored := s.d.Audit.Append(ctx, auditlog.Entry{
 		Actor:     actor,
 		Action:    action,
 		RequestID: serve.RequestIDFrom(ctx),
@@ -625,7 +625,7 @@ func (s *Service) QueryAuditLog(ctx context.Context, req *connect.Request[adminv
 	if _, err := s.guard(ctx, req.Header()); err != nil {
 		return nil, err
 	}
-	f := audit.Filter{
+	f := auditlog.Filter{
 		Actor:     req.Msg.GetActor(),
 		Action:    req.Msg.GetAction(),
 		PageSize:  pageSize(req.Msg.GetPage()),

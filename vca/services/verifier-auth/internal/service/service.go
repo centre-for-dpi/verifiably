@@ -15,8 +15,11 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	verifierauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/verifierauth/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-auth/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-auth/internal/roles"
@@ -40,7 +43,13 @@ type Deps struct {
 	// (ADR-035). Both come from the theme file of the deployment.
 	Kit    *components.Kit
 	Assets http.Handler
+	// Audit is the append only store of the sign in events (ADR-039).
+	// Nil keeps the events in memory.
+	Audit *auditlog.Log
 }
+
+// Name is the service name that every audit event carries.
+const Name = "verifier-auth"
 
 // Service is the verifier-auth service.
 type Service struct {
@@ -56,6 +65,10 @@ func New(cfg config.Config, d Deps) *Service {
 	}
 	if d.Pending == nil {
 		d.Pending = oidcflow.NewMemoryPending(d.Now)
+	}
+	if d.Audit == nil {
+		// A memory store with a clock cannot fail to open.
+		d.Audit = anyval.Must(auditlog.New(store.Memory(), d.Now))
 	}
 	return &Service{cfg: cfg, d: d, hints: newHintStore(d.Now)}
 }
@@ -100,6 +113,22 @@ func (s *Service) AdminAuthorizer() oidcflow.Authorizer {
 		list = append(list, s.d.AdminSession)
 	}
 	return oidcflow.AnyAuthorizer(append(list, s.sessionAuthorizer(roles.Admin))...)
+}
+
+// AuditAuthorizer allows the admin service token and the admin session
+// that the admin key set signed. No session of this service opens the
+// audit store, not even one with the verifier-admin role (ADR-039).
+func (s *Service) AuditAuthorizer() oidcflow.Authorizer {
+	list := []oidcflow.Authorizer{oidcflow.BearerAuthorizer(s.cfg.AdminToken)}
+	if s.d.AdminSession != nil {
+		list = append(list, s.d.AdminSession)
+	}
+	return oidcflow.AnyAuthorizer(list...)
+}
+
+// Audit returns the handler of vca.audit.v1.AuditService.
+func (s *Service) Audit() auditlog.Handler {
+	return auditlog.Handler{Log: s.d.Audit, Service: Name, Authorize: s.AuditAuthorizer()}
 }
 
 func (s *Service) sessionAuthorizer(role string) oidcflow.Authorizer {
@@ -226,6 +255,7 @@ func (s *Service) Register(ctx context.Context, providerID, returnTo string) (st
 	if err != nil {
 		return "", err
 	}
+	pend.Register = true
 	if err := s.d.Pending.Put(pend); err != nil {
 		return "", err
 	}
@@ -233,11 +263,25 @@ func (s *Service) Register(ctx context.Context, providerID, returnTo string) (st
 }
 
 // Complete implements oidcflow.Logins. It exchanges the code, maps the
-// roles, and issues the session JWT.
+// roles, and issues the session JWT. The audit log records the sign in,
+// also when it fails.
 func (s *Service) Complete(ctx context.Context, state, code, providerError string) (string, oidcflow.Claims, string, error) {
+	ev := auditlog.Entry{Action: oidcflow.AuditLogin}
+	token, claims, returnTo, err := s.complete(ctx, state, code, providerError, &ev)
+	s.d.Audit.Write(ctx, oidcflow.AuditResult(ev, err))
+	return token, claims, returnTo, err
+}
+
+// complete runs the callback and fills the audit entry as it learns the
+// provider and the subject.
+func (s *Service) complete(ctx context.Context, state, code, providerError string, ev *auditlog.Entry) (string, oidcflow.Claims, string, error) {
 	pend, ok := s.d.Pending.Take(state)
 	if !ok {
 		return "", oidcflow.Claims{}, "", oidcflow.ErrStateUnknown
+	}
+	ev.Target = pend.ProviderID
+	if pend.Register {
+		ev.Action = oidcflow.AuditRegister
 	}
 	if providerError != "" {
 		return "", oidcflow.Claims{}, "", fmt.Errorf("%w: %s", oidcflow.ErrProviderError, providerError)
@@ -250,6 +294,7 @@ func (s *Service) Complete(ctx context.Context, state, code, providerError strin
 	if err != nil {
 		return "", oidcflow.Claims{}, "", err
 	}
+	ev.Actor = oidcflow.PairwiseSubject(res.Issuer, res.Subject)
 	granted, err := roles.Apply(s.d.Mappings.Get(p.ID, p.RolesClaimPath), res.Claims)
 	if err != nil {
 		return "", oidcflow.Claims{}, "", err
@@ -276,6 +321,9 @@ func (s *Service) Complete(ctx context.Context, state, code, providerError strin
 // the RP initiated logout URL when the provider has one.
 func (s *Service) End(ctx context.Context, token string) (string, error) {
 	claims, err := s.d.Signer.Revoke(token)
+	s.d.Audit.Write(ctx, oidcflow.AuditResult(auditlog.Entry{
+		Action: oidcflow.AuditLogout, Actor: claims.Subject, Target: claims.Provider,
+	}, err))
 	if err != nil {
 		return "", err
 	}

@@ -24,6 +24,10 @@ the sign in chooser of `services/internal/signin`.
 | Seed realm | `vca-issuer-realm` | `vca-verifier-realm` |
 | Machine roles of an API key | `admin` gives admin, `issuer` gives operator | `admin` gives admin, `verifier` gives operator |
 
+The audit log of issuer-auth applies here too. The service writes the
+same sign in events and serves them only to the admin (ADR-039). A
+session with `verifier-admin` does not open the audit store.
+
 An issuer session never passes a verifier guard, because the audience
 differs. A verifier staff member who also holds issuer roles at the
 provider gets the verifier roles only: the mapping of this service

@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: Apache-2.0
+// Federated audit log (ADR-039). Each service that changes state keeps its
+// own append only audit store and serves it with this service. The admin
+// portal queries every live peer and merges the answers in time order.
+// Only the admin session and the admin service token open the service.
+// An event carries no claim value (ADR-039 decision 3).
+syntax = "proto3";
+
+package vca.audit.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vca/common/v1/common.proto";
+
+// AuditService returns the audit events of one service.
+service AuditService {
+  // Query returns the events that match a filter, newest first.
+  rpc Query(QueryRequest) returns (QueryResponse) {
+    option (vca.common.v1.description) = "Returns the audit events that match a filter, newest first.";
+  }
+}
+
+// Outcome says whether an action succeeded.
+enum Outcome {
+  OUTCOME_UNSPECIFIED = 0;
+  // The action succeeded.
+  OUTCOME_SUCCESS = 1;
+  // The action failed or the service refused it.
+  OUTCOME_FAILURE = 2;
+}
+
+// AuditEvent is one entry of an audit store.
+message AuditEvent {
+  // The event id. Ids of one store increase over time.
+  string id = 1;
+  // The time of the action.
+  google.protobuf.Timestamp time = 2;
+  // The caller: a pairwise subject, an API key id, or empty when the
+  // service could not name the caller.
+  string actor = 3;
+  // The action, for example auth.Login or issued.Revoke.
+  string action = 4;
+  // The id of the record that the action touched.
+  string target = 5;
+  // Whether the action succeeded.
+  Outcome outcome = 6;
+  // A short reason or note. It never holds a claim value.
+  string detail = 7;
+  // The request id of the call.
+  string request_id = 8;
+  // The service that wrote the event, for example issuer-auth.
+  string source_service = 9;
+  // The pair of the service, for example issuer-waltid. Empty means the
+  // service does not know its pair. The admin fills it from the peer.
+  string pair = 10;
+}
+
+// QueryRequest filters the events. An empty field means no filter.
+message QueryRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+  // The earliest time, inclusive.
+  google.protobuf.Timestamp from = 2;
+  // The latest time, inclusive.
+  google.protobuf.Timestamp to = 3;
+  // The actor filter. It matches the actor exactly.
+  string actor = 4;
+  // The action filter. It matches the action exactly.
+  string action = 5;
+  // The outcome filter.
+  Outcome outcome = 6;
+}
+
+// QueryResponse returns one page of events.
+message QueryResponse {
+  // The events in the page, newest first.
+  repeated AuditEvent events = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}

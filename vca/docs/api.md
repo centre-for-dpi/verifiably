@@ -36,6 +36,7 @@ code lives in `gen/`. The repository commits it.
 | `vca.config.v1` | none | 0 | 0 | The setup Config message and the setting option (ADR-007). |
 | `vca.backend.v1` | CapabilityService, IssuerBackendService, HolderBackendService, VerifierBackendService, CatalogBackendService | 16 | 0 | The DPG adapter contract, one service per role function (ADR-002 decision 2). |
 | `vca.admin.v1` | AdminService | 22 | 0 | Tenants, trust entries, auth providers, API keys, health, audit log, provider and admin onboarding (ADR-009, ADR-010). |
+| `vca.audit.v1` | AuditService | 1 | 0 | The append only audit store of each service, open to the admin only (ADR-039). |
 | `vca.trust.v1` | TrustService | 7 | 0 | Trust entries, publication per method, and TrustLookup with provenance (ADR-011). |
 | `vca.issuerauth.v1` | IssuerAuthService | 7 | 0 | Staff OIDC login, session tokens, role mapping (ADR-012). |
 | `vca.verifierauth.v1` | VerifierAuthService | 7 | 0 | Verifier staff OIDC login, session tokens, role mapping (ADR-036). |
@@ -53,7 +54,7 @@ code lives in `gen/`. The repository commits it.
 | `vca.results.v1` | ResultsService | 5 | 1 | VerificationResult store, query, export, purge (ADR-025). |
 | `vca.combined.v1` | CombinedService | 6 | 0 | Combined templates with cross credential rules (ADR-026). |
 
-Total: 19 packages, 21 services, 146 RPCs, 4 server streaming RPCs.
+Total: 20 packages, 22 services, 147 RPCs, 4 server streaming RPCs.
 
 ## Checks
 

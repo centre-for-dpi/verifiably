@@ -21,7 +21,6 @@ import (
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
-	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/fanout"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/health"
@@ -29,6 +28,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/onboard"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -127,7 +127,7 @@ func (f *fakeTrust) SyncRegistry(_ context.Context, req *connect.Request[trustv1
 type harness struct {
 	svc      *service.Service
 	rec      *records.Store
-	log      *audit.Log
+	log      *auditlog.Log
 	trust    *fakeTrust
 	idp      *oidctest.Provider
 	login    *login.Service
@@ -155,7 +155,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("records: %v", err)
 	}
-	log, err := audit.New(kv, nil)
+	log, err := auditlog.New(kv, nil)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestTenantRPCsAndTheAuditTrail(t *testing.T) {
 	if _, serr := h.svc.DeleteTenant(ctx, request(h, &adminv1.DeleteTenantRequest{Id: id})); serr != nil {
 		t.Fatalf("DeleteTenant: %v", serr)
 	}
-	page, err := h.log.Query(ctx, audit.Filter{})
+	page, err := h.log.Query(ctx, auditlog.Filter{})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -880,7 +880,7 @@ func TestCreateAuthProviderPushesToTheLivePairs(t *testing.T) {
 			t.Fatalf("%s holds %+v", name, list)
 		}
 	}
-	page, err := h.log.Query(ctx, audit.Filter{Action: "admin.PushAuthProvider"})
+	page, err := h.log.Query(ctx, auditlog.Filter{Action: "admin.PushAuthProvider"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -926,7 +926,7 @@ func TestCreateAuthProviderPushesToTheLivePairs(t *testing.T) {
 	if pushes := byKey.Msg.GetPushes(); len(pushes) != 2 || pushes[0].GetOk() || pushes[0].GetError() == "" {
 		t.Fatalf("key pushes %+v, want two failures with a reason", pushes)
 	}
-	page, err = h.log.Query(ctx, audit.Filter{Action: "admin.PushAuthProvider"})
+	page, err = h.log.Query(ctx, auditlog.Filter{Action: "admin.PushAuthProvider"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -953,9 +953,9 @@ func pendingEntry(did string) *trustv1.TrustEntry {
 }
 
 // auditActions returns the actions and outcomes of the audit log.
-func auditActions(t *testing.T, h *harness, action string) []audit.Record {
+func auditActions(t *testing.T, h *harness, action string) []auditlog.Record {
 	t.Helper()
-	page, err := h.log.Query(context.Background(), audit.Filter{Action: action})
+	page, err := h.log.Query(context.Background(), auditlog.Filter{Action: action})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}

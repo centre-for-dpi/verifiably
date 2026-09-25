@@ -75,6 +75,25 @@ and clears the cookie. When the provider advertises
 `end_session_endpoint`, the response redirects the browser to the RP
 initiated logout URL with `id_token_hint`.
 
+## Audit log
+
+The service writes one audit event for each sign in, failed sign in,
+registration, and sign out (ADR-039 decisions 1 and 3). The actions are
+`auth.Login`, `auth.Register`, and `auth.Logout`. The actor is the
+pairwise subject `iss|sub`, and the target is the provider id. A failed
+sign in carries a fixed reason from the message catalogue. The reason
+never holds provider text or a claim value. A callback that fails before
+the ID token check has no actor.
+
+The events live in an append only store under `audit/` in the state
+directory. The code is the shared package `services/internal/auditlog`,
+which the admin service uses too. The service serves the store as
+`vca.audit.v1.AuditService`. Only two callers open it: the admin service
+token and an admin session that the admin key set signed. A staff
+session of this service never opens it, not even with `issuer-admin`.
+The pair proxy does not route the service. The admin reaches it on the
+internal network.
+
 ## Roles
 
 The role mapping of a provider has a claim path, a list of rules, and an
@@ -167,7 +186,8 @@ session endpoints stay public, because the browser uses them.
 ## Storage
 
 The service persists three documents in the state directory:
-`providers.json`, `role_mappings.json`, and `clients.json`. Pending logins
+`providers.json`, `role_mappings.json`, and `clients.json`. The audit
+events sit beside them, one file for each event. Pending logins
 and the deny list live in memory and are short lived. A deployment with
 many replicas needs a shared store for both. The shared store package of
 the services module will replace the local file store.

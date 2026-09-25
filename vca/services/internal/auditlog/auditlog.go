@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package audit is the append only audit log of the admin service
-// (ADR-009 decision 6). Every admin action writes one record with the
-// actor, the action, and the request id.
+// Package auditlog is the append only audit store of a VCA service
+// (ADR-009 decision 6, ADR-039). The admin service, the auth services,
+// and every service that changes state keep one. Each action writes one
+// record with the actor, the action, the target, the outcome, and the
+// request id. A record never holds a claim value (ADR-039 decision 3).
 //
-// The log offers Append and Query only. No function changes or removes
-// a record. Each record id starts with the time in milliseconds, so the
-// store returns the records in time order.
-package audit
+// The log offers Append and Query. No function changes a record. Each
+// record id starts with the time in milliseconds, so the store returns
+// the records in time order. Handler serves the log as
+// vca.audit.v1.AuditService, so the admin portal can merge the logs of
+// every live peer without reading another store (ADR-039 decision 2).
+package auditlog
 
 import (
 	"context"
@@ -20,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
@@ -31,6 +36,19 @@ const DefaultPageSize = 50
 
 // MaxPageSize caps a page.
 const MaxPageSize = 500
+
+// The outcomes of a record, as the Outcome filter names them.
+const (
+	// OutcomeSuccess selects the records of actions that succeeded.
+	OutcomeSuccess = "success"
+	// OutcomeFailure selects the records of actions that failed.
+	OutcomeFailure = "failure"
+)
+
+// ValidOutcome reports whether v is empty or one of the outcomes.
+func ValidOutcome(v string) bool {
+	return v == "" || v == OutcomeSuccess || v == OutcomeFailure
+}
 
 // Record is one entry of the log.
 type Record struct {
@@ -48,15 +66,27 @@ type Record struct {
 	Target string `json:"target,omitempty"`
 	// OK reports whether the action succeeded.
 	OK bool `json:"ok"`
+	// Detail is a short reason or note. It never holds a claim value.
+	Detail string `json:"detail,omitempty"`
 }
 
-// Entry is what a caller appends. The log fills the id and the time.
+// Outcome returns OutcomeSuccess or OutcomeFailure.
+func (r Record) Outcome() string {
+	if r.OK {
+		return OutcomeSuccess
+	}
+	return OutcomeFailure
+}
+
+// Entry is what a caller appends. The log fills the id and the time,
+// and the request id from the context when the entry names none.
 type Entry struct {
 	Actor     string
 	Action    string
 	RequestID string
 	Target    string
 	OK        bool
+	Detail    string
 }
 
 // Filter selects records. An empty field means no filter on that field.
@@ -69,6 +99,8 @@ type Filter struct {
 	Actor string
 	// Action matches the action exactly.
 	Action string
+	// Outcome is OutcomeSuccess, OutcomeFailure, or empty.
+	Outcome string
 	// PageSize is the maximum number of records. Zero selects
 	// DefaultPageSize. The log caps the value at MaxPageSize.
 	PageSize int
@@ -111,6 +143,9 @@ func (l *Log) Append(ctx context.Context, e Entry) (Record, error) {
 		return Record{}, errors.New("audit: the action is required")
 	}
 	at := l.now().UTC()
+	if e.RequestID == "" {
+		e.RequestID = serve.RequestIDFrom(ctx)
+	}
 	rec := Record{
 		ID:        NewID(at),
 		At:        at,
@@ -119,6 +154,7 @@ func (l *Log) Append(ctx context.Context, e Entry) (Record, error) {
 		RequestID: e.RequestID,
 		Target:    e.Target,
 		OK:        e.OK,
+		Detail:    e.Detail,
 	}
 	raw, err := json.Marshal(rec)
 	if err != nil {
@@ -130,6 +166,16 @@ func (l *Log) Append(ctx context.Context, e Entry) (Record, error) {
 		return Record{}, fmt.Errorf("audit: %w", err)
 	}
 	return rec, nil
+}
+
+// Write appends one record and drops a store fault, so an action never
+// fails because its audit store did. A nil log writes nothing.
+func (l *Log) Write(ctx context.Context, e Entry) {
+	if l == nil {
+		return
+	}
+	_, ignored := l.Append(ctx, e)
+	_ = ignored
 }
 
 // Query returns one page of records, newest first.
@@ -188,6 +234,9 @@ func Matches(rec Record, f Filter) bool {
 		return false
 	}
 	if f.Action != "" && rec.Action != f.Action {
+		return false
+	}
+	if f.Outcome != "" && rec.Outcome() != f.Outcome {
 		return false
 	}
 	if !f.From.IsZero() && rec.At.Before(f.From) {

@@ -84,6 +84,15 @@ the cookie. When the provider advertises `end_session_endpoint`, the
 response redirects the browser to the RP initiated logout URL with
 `id_token_hint` (ADR-020 decision 5).
 
+## Audit log
+
+The service writes the sign in events of [issuer-auth](issuer-auth.md)
+(ADR-039). The first sign in of a holder makes the wallet, so its action
+is `auth.Register`. The actor is the salted hash of the subject, the
+same key as the wallet document. The event never holds the subject of
+the provider. The admin service token and an admin session open
+`vca.audit.v1.AuditService`. A holder session never opens it.
+
 ## Rate limit and OTP
 
 The `limits` package defines a `Limiter` and an `OTP` interface with an
@@ -113,7 +122,7 @@ action, and the token endpoint methods of this service too.
 ## Storage
 
 The service persists `providers.json`, `wallets.json`, and `grants.json`
-in the state directory. The wallet document holds the key, the wallet
+in the state directory. The audit events sit beside them. The wallet document holds the key, the wallet
 id, the holder DID, and the key thumbprint. Pending logins and the deny
 list live in memory. The shared store package of the services module
 will replace the local file store.

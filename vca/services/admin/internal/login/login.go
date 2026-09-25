@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/oidc"
-	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 )
 
@@ -71,7 +71,7 @@ type Deps struct {
 	// Records holds the admin bindings and the bootstrap token.
 	Records *records.Store
 	// Audit receives one record for each login and each logout.
-	Audit *audit.Log
+	Audit *auditlog.Log
 	// Client calls the provider endpoints of the device grant.
 	Client *http.Client
 	// Now returns the current time.
@@ -482,7 +482,7 @@ func (s *Service) log(ctx context.Context, actor, action, target string, ok bool
 	if s.d.Audit == nil {
 		return
 	}
-	_, ignored := s.d.Audit.Append(ctx, audit.Entry{Actor: actor, Action: action, Target: target, OK: ok})
+	_, ignored := s.d.Audit.Append(ctx, auditlog.Entry{Actor: actor, Action: action, Target: target, OK: ok})
 	_ = ignored
 }
 

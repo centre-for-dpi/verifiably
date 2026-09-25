@@ -23,7 +23,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
-	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/audit"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/fanout"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/health"
@@ -33,6 +32,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/stacks"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -102,7 +102,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	auditLog, err := audit.New(backend, deps.Now)
+	auditLog, err := auditlog.New(backend, deps.Now)
 	if err != nil {
 		return nil, err
 	}

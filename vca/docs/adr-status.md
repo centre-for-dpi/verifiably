@@ -122,7 +122,7 @@ A row that is not `Done` carries a note.
 | ADR-009 | 3 Portal help page from the same source | Done | `vca/services/admin/internal/portal` | |
 | ADR-009 | 4 A description option on every RPC | Done | `vca/proto/vca/admin/v1/admin.proto` | |
 | ADR-009 | 5 OIDC replaces the shared password | Done | `vca/services/admin/internal/login` | |
-| ADR-009 | 6 Append-only audit log | Done | `vca/services/admin/internal/audit` | |
+| ADR-009 | 6 Append-only audit log | Done | `vca/services/internal/auditlog` | The admin service and the auth services share the store. |
 
 ## ADR-010: Super admin OIDC onboarding
 
@@ -442,9 +442,9 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-039 | 1 An audit service in each recording service | Not started | `vca/proto/vca/audit/v1` | Proposed record. No work exists yet. |
+| ADR-039 | 1 An audit service in each recording service | Partial | `vca/proto/vca/audit/v1`, `vca/services/internal/auditlog` | issuer-auth, wallet-auth, and verifier-auth record the sign in events and serve them to the admin. The other services follow. |
 | ADR-039 | 2 The admin page merges the live peers | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
-| ADR-039 | 3 Events carry no claim values | Not started | `vca/proto/vca/audit/v1` | Proposed record. No work exists yet. |
+| ADR-039 | 3 Events carry no claim values | Partial | `vca/services/internal/oidcflow/audit.go` | A failed sign in carries a fixed reason. The wallet actor is a salted hash. |
 
 ## ADR-040: Notifications page before notification delivery
 

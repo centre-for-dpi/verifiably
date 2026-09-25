@@ -29,6 +29,9 @@ type Pending struct {
 	RedirectURI string    `json:"redirect_uri"`
 	ReturnTo    string    `json:"return_to,omitempty"`
 	ExpiresAt   time.Time `json:"expires_at"`
+	// Register marks a login whose first step was the register action
+	// of the provider. The audit log names it a registration.
+	Register bool `json:"register,omitempty"`
 }
 
 // Result is what a completed login yields.

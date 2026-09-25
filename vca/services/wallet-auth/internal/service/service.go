@@ -15,8 +15,11 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	walletauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/grants"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-auth/internal/limits"
@@ -43,7 +46,13 @@ type Deps struct {
 	// (ADR-035). Both come from the theme file of the deployment.
 	Kit    *components.Kit
 	Assets http.Handler
+	// Audit is the append only store of the sign in events (ADR-039).
+	// Nil keeps the events in memory.
+	Audit *auditlog.Log
 }
+
+// Name is the service name that every audit event carries.
+const Name = "wallet-auth"
 
 // Service is the wallet-auth service.
 type Service struct {
@@ -61,6 +70,10 @@ func New(cfg config.Config, d Deps) *Service {
 	}
 	if d.Registrar == nil {
 		d.Registrar = wallets.LocalRegistrar{}
+	}
+	if d.Audit == nil {
+		// A memory store with a clock cannot fail to open.
+		d.Audit = anyval.Must(auditlog.New(store.Memory(), d.Now))
 	}
 	return &Service{cfg: cfg, d: d}
 }
@@ -104,16 +117,28 @@ func (s *Service) Handlers() oidcflow.Handlers {
 // admin session that the admin key set signed both open them
 // (ADR-035 decision 5).
 func (s *Service) Admin() oidcflow.AdminProviders {
+	return oidcflow.AdminProviders{
+		Registry:          s.d.Providers,
+		Authorize:         s.AdminAuthorizer(),
+		Roles:             []string{"holder"},
+		InternalAuthority: s.cfg.ProviderInternalAuthority,
+	}
+}
+
+// AdminAuthorizer allows the admin service token and the admin session
+// that the admin key set signed. A holder session never passes.
+func (s *Service) AdminAuthorizer() oidcflow.Authorizer {
 	authorize := oidcflow.BearerAuthorizer(s.cfg.AdminToken)
 	if s.d.AdminSession != nil {
 		authorize = oidcflow.AnyAuthorizer(authorize, s.d.AdminSession)
 	}
-	return oidcflow.AdminProviders{
-		Registry:          s.d.Providers,
-		Authorize:         authorize,
-		Roles:             []string{"holder"},
-		InternalAuthority: s.cfg.ProviderInternalAuthority,
-	}
+	return authorize
+}
+
+// Audit returns the handler of vca.audit.v1.AuditService (ADR-039). It
+// opens to the admin only.
+func (s *Service) Audit() auditlog.Handler {
+	return auditlog.Handler{Log: s.d.Audit, Service: Name, Authorize: s.AdminAuthorizer()}
 }
 
 // ListProviders implements WalletAuthServiceHandler.
@@ -244,6 +269,7 @@ func (s *Service) Register(ctx context.Context, providerID, returnTo string) (st
 	if err != nil {
 		return "", err
 	}
+	pend.Register = true
 	if err := s.d.Pending.Put(pend); err != nil {
 		return "", err
 	}
@@ -256,12 +282,31 @@ func (s *Service) Complete(ctx context.Context, state, code, providerError strin
 	return token, claims, returnTo, err
 }
 
-// complete exchanges the code, finds or creates the wallet, seals the
-// IdP tokens, and issues the session JWT.
+// complete runs the callback and records it in the audit log, also
+// when it fails. A sign in that makes the wallet, or that started with
+// the register action of the provider, is a registration.
 func (s *Service) complete(ctx context.Context, state, code, providerError string) (string, oidcflow.Claims, string, bool, error) {
+	ev := auditlog.Entry{Action: oidcflow.AuditLogin}
+	token, claims, returnTo, created, err := s.callback(ctx, state, code, providerError, &ev)
+	if created {
+		ev.Action = oidcflow.AuditRegister
+	}
+	s.d.Audit.Write(ctx, oidcflow.AuditResult(ev, err))
+	return token, claims, returnTo, created, err
+}
+
+// callback exchanges the code, finds or creates the wallet, seals the
+// IdP tokens, and issues the session JWT. It fills the audit entry as
+// it learns the provider and the holder. The actor is the salted hash
+// of the subject, never the subject itself.
+func (s *Service) callback(ctx context.Context, state, code, providerError string, ev *auditlog.Entry) (string, oidcflow.Claims, string, bool, error) {
 	pend, ok := s.d.Pending.Take(state)
 	if !ok {
 		return "", oidcflow.Claims{}, "", false, oidcflow.ErrStateUnknown
+	}
+	ev.Target = pend.ProviderID
+	if pend.Register {
+		ev.Action = oidcflow.AuditRegister
 	}
 	if providerError != "" {
 		return "", oidcflow.Claims{}, "", false, fmt.Errorf("%w: %s", oidcflow.ErrProviderError, providerError)
@@ -275,6 +320,7 @@ func (s *Service) complete(ctx context.Context, state, code, providerError strin
 		return "", oidcflow.Claims{}, "", false, err
 	}
 	key := oidcflow.HashSubject(s.cfg.Salt, oidcflow.PairwiseSubject(res.Issuer, res.Subject))
+	ev.Actor = key
 	w, created, err := s.d.Wallets.Ensure(ctx, key, s.d.Registrar)
 	if err != nil {
 		return "", oidcflow.Claims{}, "", false, err
@@ -304,6 +350,9 @@ func (s *Service) complete(ctx context.Context, state, code, providerError strin
 // provider has one (ADR-020 decision 5).
 func (s *Service) End(ctx context.Context, token string) (string, error) {
 	claims, err := s.d.Signer.Revoke(token)
+	s.d.Audit.Write(ctx, oidcflow.AuditResult(auditlog.Entry{
+		Action: oidcflow.AuditLogout, Actor: claims.Subject, Target: claims.Provider,
+	}, err))
 	if err != nil {
 		return "", err
 	}
