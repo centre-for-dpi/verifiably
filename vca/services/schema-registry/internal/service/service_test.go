@@ -327,3 +327,58 @@ func TestStoreError(t *testing.T) {
 	}
 	_ = record.StateDraft
 }
+
+// TestDeleteDraftOnly checks that only a draft version can go. A
+// published version gives FailedPrecondition with the sentence that
+// names the way out, and the last draft takes the schema with it.
+func TestDeleteDraftOnly(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newService(t, nil)
+	create(t, s, "Degree")
+	if _, err := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: "degree"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: schemaWithID("degree")})); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.DeleteDraft(ctx, connect.NewRequest(&schemav1.DeleteDraftRequest{Id: "degree", Version: 1}))
+	if code(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "Retire a published version.") {
+		t.Fatalf("published version: %v", err)
+	}
+	del, err := s.DeleteDraft(ctx, connect.NewRequest(&schemav1.DeleteDraftRequest{Id: "degree"}))
+	if err != nil || del.Msg.GetSchema().GetVersion() != 2 || del.Msg.GetSchemaRemoved() {
+		t.Fatalf("latest draft: %v %v", del, err)
+	}
+	versions, err := s.ListVersions(ctx, connect.NewRequest(&schemav1.ListVersionsRequest{Id: "degree"}))
+	if err != nil || len(versions.Msg.GetSchemas()) != 1 || versions.Msg.GetSchemas()[0].GetVersion() != 1 {
+		t.Fatalf("versions after delete: %v %v", versions, err)
+	}
+	if _, derr := s.DeleteDraft(ctx, connect.NewRequest(&schemav1.DeleteDraftRequest{Id: "degree"})); code(derr) != connect.CodeFailedPrecondition {
+		t.Fatalf("no draft left: %v", derr)
+	}
+	if _, rerr := s.Retire(ctx, connect.NewRequest(&schemav1.RetireRequest{Id: "degree", Version: 1})); rerr != nil {
+		t.Fatal(rerr)
+	}
+	_, err = s.DeleteDraft(ctx, connect.NewRequest(&schemav1.DeleteDraftRequest{Id: "degree", Version: 1}))
+	if code(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "A retired version stays") {
+		t.Fatalf("retired version: %v", err)
+	}
+	for _, req := range []*schemav1.DeleteDraftRequest{{Id: "degree", Version: 7}, {Id: "ghost"}} {
+		if _, derr := s.DeleteDraft(ctx, connect.NewRequest(req)); code(derr) != connect.CodeNotFound {
+			t.Fatalf("%v: %v", req, derr)
+		}
+	}
+	// The only version of a schema is a draft: the schema goes with it.
+	create(t, s, "Permit")
+	del, err = s.DeleteDraft(ctx, connect.NewRequest(&schemav1.DeleteDraftRequest{Id: "permit", Version: 1}))
+	if err != nil || !del.Msg.GetSchemaRemoved() {
+		t.Fatalf("only draft: %v %v", del, err)
+	}
+	if _, gerr := s.Get(ctx, connect.NewRequest(&schemav1.GetRequest{Id: "permit"})); code(gerr) != connect.CodeNotFound {
+		t.Fatalf("schema after its last draft: %v", gerr)
+	}
+	list, err := s.List(ctx, connect.NewRequest(&schemav1.ListRequest{}))
+	if err != nil || len(list.Msg.GetSchemas()) != 1 {
+		t.Fatalf("list after delete: %v %v", list, err)
+	}
+}

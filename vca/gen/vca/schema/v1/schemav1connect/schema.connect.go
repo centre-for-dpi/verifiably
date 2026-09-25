@@ -66,6 +66,9 @@ const (
 	// SchemaServiceListVersionsProcedure is the fully-qualified name of the SchemaService's
 	// ListVersions RPC.
 	SchemaServiceListVersionsProcedure = "/vca.schema.v1.SchemaService/ListVersions"
+	// SchemaServiceDeleteDraftProcedure is the fully-qualified name of the SchemaService's DeleteDraft
+	// RPC.
+	SchemaServiceDeleteDraftProcedure = "/vca.schema.v1.SchemaService/DeleteDraft"
 )
 
 // SchemaServiceClient is a client for the vca.schema.v1.SchemaService service.
@@ -97,6 +100,10 @@ type SchemaServiceClient interface {
 	GetVct(context.Context, *connect.Request[v1.GetVctRequest]) (*connect.Response[v1.GetVctResponse], error)
 	// ListVersions returns the version history of one schema.
 	ListVersions(context.Context, *connect.Request[v1.ListVersionsRequest]) (*connect.Response[v1.ListVersionsResponse], error)
+	// DeleteDraft removes one draft version. A published version cannot go:
+	// retire it instead. A retired version stays, so verifiers can read it.
+	// When the draft is the only version, the schema goes too.
+	DeleteDraft(context.Context, *connect.Request[v1.DeleteDraftRequest]) (*connect.Response[v1.DeleteDraftResponse], error)
 }
 
 // NewSchemaServiceClient constructs a client for the vca.schema.v1.SchemaService service. By
@@ -176,6 +183,12 @@ func NewSchemaServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(schemaServiceMethods.ByName("ListVersions")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteDraft: connect.NewClient[v1.DeleteDraftRequest, v1.DeleteDraftResponse](
+			httpClient,
+			baseURL+SchemaServiceDeleteDraftProcedure,
+			connect.WithSchema(schemaServiceMethods.ByName("DeleteDraft")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -192,6 +205,7 @@ type schemaServiceClient struct {
 	getIssuerMetadata *connect.Client[v1.GetIssuerMetadataRequest, v1.GetIssuerMetadataResponse]
 	getVct            *connect.Client[v1.GetVctRequest, v1.GetVctResponse]
 	listVersions      *connect.Client[v1.ListVersionsRequest, v1.ListVersionsResponse]
+	deleteDraft       *connect.Client[v1.DeleteDraftRequest, v1.DeleteDraftResponse]
 }
 
 // Create calls vca.schema.v1.SchemaService.Create.
@@ -249,6 +263,11 @@ func (c *schemaServiceClient) ListVersions(ctx context.Context, req *connect.Req
 	return c.listVersions.CallUnary(ctx, req)
 }
 
+// DeleteDraft calls vca.schema.v1.SchemaService.DeleteDraft.
+func (c *schemaServiceClient) DeleteDraft(ctx context.Context, req *connect.Request[v1.DeleteDraftRequest]) (*connect.Response[v1.DeleteDraftResponse], error) {
+	return c.deleteDraft.CallUnary(ctx, req)
+}
+
 // SchemaServiceHandler is an implementation of the vca.schema.v1.SchemaService service.
 type SchemaServiceHandler interface {
 	// Create stores a new schema as version 1 in the draft state.
@@ -278,6 +297,10 @@ type SchemaServiceHandler interface {
 	GetVct(context.Context, *connect.Request[v1.GetVctRequest]) (*connect.Response[v1.GetVctResponse], error)
 	// ListVersions returns the version history of one schema.
 	ListVersions(context.Context, *connect.Request[v1.ListVersionsRequest]) (*connect.Response[v1.ListVersionsResponse], error)
+	// DeleteDraft removes one draft version. A published version cannot go:
+	// retire it instead. A retired version stays, so verifiers can read it.
+	// When the draft is the only version, the schema goes too.
+	DeleteDraft(context.Context, *connect.Request[v1.DeleteDraftRequest]) (*connect.Response[v1.DeleteDraftResponse], error)
 }
 
 // NewSchemaServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -353,6 +376,12 @@ func NewSchemaServiceHandler(svc SchemaServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(schemaServiceMethods.ByName("ListVersions")),
 		connect.WithHandlerOptions(opts...),
 	)
+	schemaServiceDeleteDraftHandler := connect.NewUnaryHandler(
+		SchemaServiceDeleteDraftProcedure,
+		svc.DeleteDraft,
+		connect.WithSchema(schemaServiceMethods.ByName("DeleteDraft")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.schema.v1.SchemaService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SchemaServiceCreateProcedure:
@@ -377,6 +406,8 @@ func NewSchemaServiceHandler(svc SchemaServiceHandler, opts ...connect.HandlerOp
 			schemaServiceGetVctHandler.ServeHTTP(w, r)
 		case SchemaServiceListVersionsProcedure:
 			schemaServiceListVersionsHandler.ServeHTTP(w, r)
+		case SchemaServiceDeleteDraftProcedure:
+			schemaServiceDeleteDraftHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -428,4 +459,8 @@ func (UnimplementedSchemaServiceHandler) GetVct(context.Context, *connect.Reques
 
 func (UnimplementedSchemaServiceHandler) ListVersions(context.Context, *connect.Request[v1.ListVersionsRequest]) (*connect.Response[v1.ListVersionsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.schema.v1.SchemaService.ListVersions is not implemented"))
+}
+
+func (UnimplementedSchemaServiceHandler) DeleteDraft(context.Context, *connect.Request[v1.DeleteDraftRequest]) (*connect.Response[v1.DeleteDraftResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.schema.v1.SchemaService.DeleteDraft is not implemented"))
 }

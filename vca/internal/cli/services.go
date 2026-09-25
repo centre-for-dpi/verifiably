@@ -313,6 +313,8 @@ func Catalog() []Service {
 				{Env: "VCA_SCHEMA_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_SCHEMA_BACKEND_URL", Kind: LinkAdapterURL},
 				{Env: "VCA_SCHEMA_BUILDER_URL", Kind: LinkPublicURL, Path: "/builder/"},
+				// The list page counts the issued credentials of each schema.
+				{Env: "VCA_SCHEMA_ISSUED_URL", Target: "issued-credentials", Kind: LinkURL},
 				staffJWKS("VCA_SCHEMA_AUTH_JWKS_URL", "issuer-auth"),
 				staffLogin("VCA_SCHEMA_LOGIN_URL"),
 				peers,

@@ -44,6 +44,7 @@ func TestEveryValue(t *testing.T) {
 		"VCA_SCHEMA_HTTP_MAX_AGE":          "30s",
 		"VCA_SCHEMA_PORTAL_PREFIX":         "staff/",
 		"VCA_SCHEMA_BUILDER_URL":           "https://builder.example/",
+		"VCA_SCHEMA_ISSUED_URL":            "http://issued:8084/",
 		"VCA_SCHEMA_CREDENTIAL_ISSUER":     "https://issuer.example/",
 		"VCA_SCHEMA_CREDENTIAL_ENDPOINT":   "https://issuer.example/credential",
 		"VCA_SCHEMA_AUTHORIZATION_SERVERS": "https://as.example, ",
@@ -59,7 +60,7 @@ func TestEveryValue(t *testing.T) {
 	if c.BackendURL != "http://adapter:8080" || c.BackendTimeout != 3*time.Second || c.HTTPMaxAge != 30*time.Second {
 		t.Fatalf("backend %+v", c)
 	}
-	if c.PortalPrefix != "/staff" || c.BuilderURL != "https://builder.example/" || c.PageSizeMax != 25 {
+	if c.PortalPrefix != "/staff" || c.BuilderURL != "https://builder.example/" || c.PageSizeMax != 25 || c.IssuedURL != "http://issued:8084" {
 		t.Fatalf("portal %+v", c)
 	}
 	if c.Metadata.CredentialIssuer != "https://issuer.example" || c.Metadata.CredentialEndpoint != "https://issuer.example/credential" {

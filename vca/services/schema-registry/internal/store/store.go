@@ -178,13 +178,44 @@ func (s *Store) Transition(id string, version int, fn func(record.Record) (recor
 	return next, nil
 }
 
-// write saves the versions of id.
+// Remove deletes one version when check accepts it. check gets a copy.
+// It reports whether the schema has no version left, in which case the
+// schema id goes too.
+func (s *Store) Remove(id string, version int, check func(record.Record) error) (record.Record, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	versions := s.doc.Schemas[id]
+	idx := -1
+	for i, v := range versions {
+		if v.Version == version {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return record.Record{}, false, ErrNotFound
+	}
+	removed := versions[idx]
+	if err := check(removed); err != nil {
+		return record.Record{}, false, err
+	}
+	rest := append(append([]record.Record(nil), versions[:idx]...), versions[idx+1:]...)
+	if err := s.write(id, rest); err != nil {
+		return record.Record{}, false, err
+	}
+	return removed, len(rest) == 0, nil
+}
+
+// write saves the versions of id. An empty list removes the id.
 func (s *Store) write(id string, versions []record.Record) error {
 	next := document{Revision: s.doc.Revision + 1, Schemas: make(map[string][]record.Record, len(s.doc.Schemas)+1)}
 	for k, v := range s.doc.Schemas {
 		next.Schemas[k] = v
 	}
-	next.Schemas[id] = versions
+	if len(versions) == 0 {
+		delete(next.Schemas, id)
+	} else {
+		next.Schemas[id] = versions
+	}
 	data, err := json.Marshal(next)
 	if err != nil {
 		return fmt.Errorf("store: encode state: %w", err)

@@ -40,7 +40,7 @@ var safeAttrNames = map[string]bool{
 	"autocomplete": true, "inputmode": true, "placeholder": true, "pattern": true,
 	"minlength": true, "maxlength": true, "min": true, "max": true, "step": true,
 	"rows": true, "readonly": true, "disabled": true, "formaction": true, "form": true,
-	"enterkeyhint": true, "spellcheck": true,
+	"enterkeyhint": true, "spellcheck": true, "accept": true,
 }
 
 var identifier = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)

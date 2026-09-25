@@ -47,6 +47,7 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_SCHEMA_HTTP_MAX_AGE` | The `Cache-Control` max-age of the public documents. | `5m` |
 | `VCA_SCHEMA_PORTAL_PREFIX` | The URL prefix of the staff pages. | `/portal` |
 | `VCA_SCHEMA_BUILDER_URL` | The schema builder URL the portal links to. | empty |
+| `VCA_SCHEMA_ISSUED_URL` | The base URL of `issued-credentials`. The list page counts the issued credentials of each schema there. | empty: no count |
 | `VCA_SCHEMA_PAGE_SIZE_MAX` | The maximum page size of `List` and `Search`. | `200` |
 | `VCA_SCHEMA_AUTH_JWKS_URL` | The JWKS URL of `issuer-auth`. The staff pages accept only a session it signed. | empty: the staff pages accept no session |
 | `VCA_SCHEMA_AUTH_JWKS_FILE` | A JWKS file that replaces the URL, for a test. | empty |

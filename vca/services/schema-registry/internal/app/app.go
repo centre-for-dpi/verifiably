@@ -12,6 +12,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
@@ -40,6 +41,9 @@ type Deps struct {
 	Backend backendv1connect.IssuerBackendServiceClient
 	// SessionKeys replaces the key set of issuer-auth. Tests set it.
 	SessionKeys staffsession.Keys
+	// Issued counts the issued credentials of each schema. Nil builds a
+	// Connect client from the configured issued URL, when there is one.
+	Issued portal.Issued
 	// Prober replaces the probe of the peers of the issuer shell.
 	Prober *topology.Prober
 	// Now returns the current time. Nil means time.Now.
@@ -59,6 +63,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if deps.Backend == nil && cfg.BackendURL != "" {
 		deps.Backend = backendv1connect.NewIssuerBackendServiceClient(
 			&http.Client{Timeout: cfg.BackendTimeout}, cfg.BackendURL)
+	}
+	if deps.Issued == nil && cfg.IssuedURL != "" {
+		deps.Issued = issuedv1connect.NewIssuedServiceClient(
+			&http.Client{Timeout: cfg.BackendTimeout}, cfg.IssuedURL)
 	}
 	backend := sharedstore.MemoryDoc()
 	if cfg.StoreFile != "" {
@@ -85,7 +93,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	pages, err := portal.New(portal.Options{
 		Client: svc, Prefix: cfg.PortalPrefix, BuilderURL: cfg.BuilderURL, Kit: kit,
-		Shell: shell, SignOut: signOut,
+		Shell: shell, SignOut: signOut, Issued: deps.Issued,
 	})
 	if err != nil {
 		return nil, err

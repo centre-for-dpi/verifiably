@@ -19,6 +19,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 )
 
 // State is the life cycle state of a version.
@@ -197,6 +198,18 @@ func (r Record) Retire(now time.Time) (Record, error) {
 	r.State = StateRetired
 	r.RetiredAt = now.UTC()
 	return r, nil
+}
+
+// CanDelete reports whether the version can go. Only a draft can: a
+// published version retires, and a retired version stays for verifiers.
+func (r Record) CanDelete() error {
+	switch r.State {
+	case StateDraft:
+		return nil
+	case StatePublished:
+		return fmt.Errorf("record: version %d of %s is published: %s", r.Version, r.ID, msg.T("schema.delete.published"))
+	}
+	return fmt.Errorf("record: version %d of %s is %s: %s", r.Version, r.ID, r.State, msg.T("schema.delete.retired"))
 }
 
 // ConfigurationID returns the OID4VCI credential configuration id of one

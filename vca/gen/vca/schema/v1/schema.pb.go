@@ -1618,6 +1618,117 @@ func (x *ListVersionsResponse) GetSchemas() []*Schema {
 	return nil
 }
 
+// DeleteDraftRequest selects a draft version.
+type DeleteDraftRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The schema id.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The version. Zero selects the latest draft.
+	Version       int32 `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteDraftRequest) Reset() {
+	*x = DeleteDraftRequest{}
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteDraftRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteDraftRequest) ProtoMessage() {}
+
+func (x *DeleteDraftRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteDraftRequest.ProtoReflect.Descriptor instead.
+func (*DeleteDraftRequest) Descriptor() ([]byte, []int) {
+	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *DeleteDraftRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DeleteDraftRequest) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+// DeleteDraftResponse names the removed version.
+type DeleteDraftResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The version the service removed.
+	Schema *Schema `protobuf:"bytes,1,opt,name=schema,proto3" json:"schema,omitempty"`
+	// True when the schema had no other version, so no schema with this id
+	// remains.
+	SchemaRemoved bool `protobuf:"varint,2,opt,name=schema_removed,json=schemaRemoved,proto3" json:"schema_removed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteDraftResponse) Reset() {
+	*x = DeleteDraftResponse{}
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteDraftResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteDraftResponse) ProtoMessage() {}
+
+func (x *DeleteDraftResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_schema_v1_schema_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteDraftResponse.ProtoReflect.Descriptor instead.
+func (*DeleteDraftResponse) Descriptor() ([]byte, []int) {
+	return file_vca_schema_v1_schema_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *DeleteDraftResponse) GetSchema() *Schema {
+	if x != nil {
+		return x.Schema
+	}
+	return nil
+}
+
+func (x *DeleteDraftResponse) GetSchemaRemoved() bool {
+	if x != nil {
+		return x.SchemaRemoved
+	}
+	return false
+}
+
 var File_vca_schema_v1_schema_proto protoreflect.FileDescriptor
 
 const file_vca_schema_v1_schema_proto_rawDesc = "" +
@@ -1728,12 +1839,18 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"\x13ListVersionsRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"G\n" +
 	"\x14ListVersionsResponse\x12/\n" +
-	"\aschemas\x18\x01 \x03(\v2\x15.vca.schema.v1.SchemaR\aschemas*W\n" +
+	"\aschemas\x18\x01 \x03(\v2\x15.vca.schema.v1.SchemaR\aschemas\">\n" +
+	"\x12DeleteDraftRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x05R\aversion\"k\n" +
+	"\x13DeleteDraftResponse\x12-\n" +
+	"\x06schema\x18\x01 \x01(\v2\x15.vca.schema.v1.SchemaR\x06schema\x12%\n" +
+	"\x0eschema_removed\x18\x02 \x01(\bR\rschemaRemoved*W\n" +
 	"\x05State\x12\x15\n" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATE_DRAFT\x10\x01\x12\x13\n" +
 	"\x0fSTATE_PUBLISHED\x10\x02\x12\x11\n" +
-	"\rSTATE_RETIRED\x10\x032\xcf\x06\n" +
+	"\rSTATE_RETIRED\x10\x032\xa5\a\n" +
 	"\rSchemaService\x12E\n" +
 	"\x06Create\x12\x1c.vca.schema.v1.CreateRequest\x1a\x1d.vca.schema.v1.CreateResponse\x12E\n" +
 	"\x06Update\x12\x1c.vca.schema.v1.UpdateRequest\x1a\x1d.vca.schema.v1.UpdateResponse\x12H\n" +
@@ -1746,7 +1863,8 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"ListPublic\x12 .vca.schema.v1.ListPublicRequest\x1a!.vca.schema.v1.ListPublicResponse\x12f\n" +
 	"\x11GetIssuerMetadata\x12'.vca.schema.v1.GetIssuerMetadataRequest\x1a(.vca.schema.v1.GetIssuerMetadataResponse\x12E\n" +
 	"\x06GetVct\x12\x1c.vca.schema.v1.GetVctRequest\x1a\x1d.vca.schema.v1.GetVctResponse\x12W\n" +
-	"\fListVersions\x12\".vca.schema.v1.ListVersionsRequest\x1a#.vca.schema.v1.ListVersionsResponseB\xb8\x01\n" +
+	"\fListVersions\x12\".vca.schema.v1.ListVersionsRequest\x1a#.vca.schema.v1.ListVersionsResponse\x12T\n" +
+	"\vDeleteDraft\x12!.vca.schema.v1.DeleteDraftRequest\x1a\".vca.schema.v1.DeleteDraftResponseB\xb8\x01\n" +
 	"\x11com.vca.schema.v1B\vSchemaProtoP\x01Z@github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1;schemav1\xa2\x02\x03VSX\xaa\x02\rVca.Schema.V1\xca\x02\rVca\\Schema\\V1\xe2\x02\x19Vca\\Schema\\V1\\GPBMetadata\xea\x02\x0fVca::Schema::V1b\x06proto3"
 
 var (
@@ -1762,7 +1880,7 @@ func file_vca_schema_v1_schema_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_schema_v1_schema_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vca_schema_v1_schema_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_vca_schema_v1_schema_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_vca_schema_v1_schema_proto_goTypes = []any{
 	(State)(0),                        // 0: vca.schema.v1.State
 	(*Display)(nil),                   // 1: vca.schema.v1.Display
@@ -1790,20 +1908,22 @@ var file_vca_schema_v1_schema_proto_goTypes = []any{
 	(*GetVctResponse)(nil),            // 23: vca.schema.v1.GetVctResponse
 	(*ListVersionsRequest)(nil),       // 24: vca.schema.v1.ListVersionsRequest
 	(*ListVersionsResponse)(nil),      // 25: vca.schema.v1.ListVersionsResponse
-	nil,                               // 26: vca.schema.v1.PublicSchema.ConfigurationIdsEntry
-	nil,                               // 27: vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
-	(v1.Format)(0),                    // 28: vca.common.v1.Format
-	(*timestamppb.Timestamp)(nil),     // 29: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),             // 30: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),             // 31: vca.common.v1.PageResult
+	(*DeleteDraftRequest)(nil),        // 26: vca.schema.v1.DeleteDraftRequest
+	(*DeleteDraftResponse)(nil),       // 27: vca.schema.v1.DeleteDraftResponse
+	nil,                               // 28: vca.schema.v1.PublicSchema.ConfigurationIdsEntry
+	nil,                               // 29: vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
+	(v1.Format)(0),                    // 30: vca.common.v1.Format
+	(*timestamppb.Timestamp)(nil),     // 31: google.protobuf.Timestamp
+	(*v1.Pagination)(nil),             // 32: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),             // 33: vca.common.v1.PageResult
 }
 var file_vca_schema_v1_schema_proto_depIdxs = []int32{
 	0,  // 0: vca.schema.v1.Schema.state:type_name -> vca.schema.v1.State
 	1,  // 1: vca.schema.v1.Schema.display:type_name -> vca.schema.v1.Display
-	28, // 2: vca.schema.v1.Schema.formats:type_name -> vca.common.v1.Format
-	29, // 3: vca.schema.v1.Schema.created_at:type_name -> google.protobuf.Timestamp
-	29, // 4: vca.schema.v1.Schema.published_at:type_name -> google.protobuf.Timestamp
-	29, // 5: vca.schema.v1.Schema.retired_at:type_name -> google.protobuf.Timestamp
+	30, // 2: vca.schema.v1.Schema.formats:type_name -> vca.common.v1.Format
+	31, // 3: vca.schema.v1.Schema.created_at:type_name -> google.protobuf.Timestamp
+	31, // 4: vca.schema.v1.Schema.published_at:type_name -> google.protobuf.Timestamp
+	31, // 5: vca.schema.v1.Schema.retired_at:type_name -> google.protobuf.Timestamp
 	2,  // 6: vca.schema.v1.CreateRequest.schema:type_name -> vca.schema.v1.Schema
 	2,  // 7: vca.schema.v1.CreateResponse.schema:type_name -> vca.schema.v1.Schema
 	2,  // 8: vca.schema.v1.UpdateRequest.schema:type_name -> vca.schema.v1.Schema
@@ -1811,50 +1931,53 @@ var file_vca_schema_v1_schema_proto_depIdxs = []int32{
 	2,  // 10: vca.schema.v1.PublishResponse.schema:type_name -> vca.schema.v1.Schema
 	2,  // 11: vca.schema.v1.RetireResponse.schemas:type_name -> vca.schema.v1.Schema
 	2,  // 12: vca.schema.v1.GetResponse.schema:type_name -> vca.schema.v1.Schema
-	30, // 13: vca.schema.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
+	32, // 13: vca.schema.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
 	0,  // 14: vca.schema.v1.ListRequest.state:type_name -> vca.schema.v1.State
-	28, // 15: vca.schema.v1.ListRequest.format:type_name -> vca.common.v1.Format
+	30, // 15: vca.schema.v1.ListRequest.format:type_name -> vca.common.v1.Format
 	2,  // 16: vca.schema.v1.ListResponse.schemas:type_name -> vca.schema.v1.Schema
-	31, // 17: vca.schema.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
-	30, // 18: vca.schema.v1.SearchRequest.page:type_name -> vca.common.v1.Pagination
+	33, // 17: vca.schema.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
+	32, // 18: vca.schema.v1.SearchRequest.page:type_name -> vca.common.v1.Pagination
 	2,  // 19: vca.schema.v1.SearchResponse.schemas:type_name -> vca.schema.v1.Schema
-	31, // 20: vca.schema.v1.SearchResponse.page:type_name -> vca.common.v1.PageResult
+	33, // 20: vca.schema.v1.SearchResponse.page:type_name -> vca.common.v1.PageResult
 	1,  // 21: vca.schema.v1.PublicSchema.display:type_name -> vca.schema.v1.Display
-	28, // 22: vca.schema.v1.PublicSchema.formats:type_name -> vca.common.v1.Format
-	26, // 23: vca.schema.v1.PublicSchema.configuration_ids:type_name -> vca.schema.v1.PublicSchema.ConfigurationIdsEntry
-	30, // 24: vca.schema.v1.ListPublicRequest.page:type_name -> vca.common.v1.Pagination
+	30, // 22: vca.schema.v1.PublicSchema.formats:type_name -> vca.common.v1.Format
+	28, // 23: vca.schema.v1.PublicSchema.configuration_ids:type_name -> vca.schema.v1.PublicSchema.ConfigurationIdsEntry
+	32, // 24: vca.schema.v1.ListPublicRequest.page:type_name -> vca.common.v1.Pagination
 	17, // 25: vca.schema.v1.ListPublicResponse.schemas:type_name -> vca.schema.v1.PublicSchema
-	31, // 26: vca.schema.v1.ListPublicResponse.page:type_name -> vca.common.v1.PageResult
-	27, // 27: vca.schema.v1.GetIssuerMetadataResponse.credential_configurations_supported:type_name -> vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
-	29, // 28: vca.schema.v1.GetIssuerMetadataResponse.generated_at:type_name -> google.protobuf.Timestamp
+	33, // 26: vca.schema.v1.ListPublicResponse.page:type_name -> vca.common.v1.PageResult
+	29, // 27: vca.schema.v1.GetIssuerMetadataResponse.credential_configurations_supported:type_name -> vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
+	31, // 28: vca.schema.v1.GetIssuerMetadataResponse.generated_at:type_name -> google.protobuf.Timestamp
 	2,  // 29: vca.schema.v1.ListVersionsResponse.schemas:type_name -> vca.schema.v1.Schema
-	3,  // 30: vca.schema.v1.SchemaService.Create:input_type -> vca.schema.v1.CreateRequest
-	5,  // 31: vca.schema.v1.SchemaService.Update:input_type -> vca.schema.v1.UpdateRequest
-	7,  // 32: vca.schema.v1.SchemaService.Publish:input_type -> vca.schema.v1.PublishRequest
-	9,  // 33: vca.schema.v1.SchemaService.Retire:input_type -> vca.schema.v1.RetireRequest
-	11, // 34: vca.schema.v1.SchemaService.Get:input_type -> vca.schema.v1.GetRequest
-	13, // 35: vca.schema.v1.SchemaService.List:input_type -> vca.schema.v1.ListRequest
-	15, // 36: vca.schema.v1.SchemaService.Search:input_type -> vca.schema.v1.SearchRequest
-	18, // 37: vca.schema.v1.SchemaService.ListPublic:input_type -> vca.schema.v1.ListPublicRequest
-	20, // 38: vca.schema.v1.SchemaService.GetIssuerMetadata:input_type -> vca.schema.v1.GetIssuerMetadataRequest
-	22, // 39: vca.schema.v1.SchemaService.GetVct:input_type -> vca.schema.v1.GetVctRequest
-	24, // 40: vca.schema.v1.SchemaService.ListVersions:input_type -> vca.schema.v1.ListVersionsRequest
-	4,  // 41: vca.schema.v1.SchemaService.Create:output_type -> vca.schema.v1.CreateResponse
-	6,  // 42: vca.schema.v1.SchemaService.Update:output_type -> vca.schema.v1.UpdateResponse
-	8,  // 43: vca.schema.v1.SchemaService.Publish:output_type -> vca.schema.v1.PublishResponse
-	10, // 44: vca.schema.v1.SchemaService.Retire:output_type -> vca.schema.v1.RetireResponse
-	12, // 45: vca.schema.v1.SchemaService.Get:output_type -> vca.schema.v1.GetResponse
-	14, // 46: vca.schema.v1.SchemaService.List:output_type -> vca.schema.v1.ListResponse
-	16, // 47: vca.schema.v1.SchemaService.Search:output_type -> vca.schema.v1.SearchResponse
-	19, // 48: vca.schema.v1.SchemaService.ListPublic:output_type -> vca.schema.v1.ListPublicResponse
-	21, // 49: vca.schema.v1.SchemaService.GetIssuerMetadata:output_type -> vca.schema.v1.GetIssuerMetadataResponse
-	23, // 50: vca.schema.v1.SchemaService.GetVct:output_type -> vca.schema.v1.GetVctResponse
-	25, // 51: vca.schema.v1.SchemaService.ListVersions:output_type -> vca.schema.v1.ListVersionsResponse
-	41, // [41:52] is the sub-list for method output_type
-	30, // [30:41] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	2,  // 30: vca.schema.v1.DeleteDraftResponse.schema:type_name -> vca.schema.v1.Schema
+	3,  // 31: vca.schema.v1.SchemaService.Create:input_type -> vca.schema.v1.CreateRequest
+	5,  // 32: vca.schema.v1.SchemaService.Update:input_type -> vca.schema.v1.UpdateRequest
+	7,  // 33: vca.schema.v1.SchemaService.Publish:input_type -> vca.schema.v1.PublishRequest
+	9,  // 34: vca.schema.v1.SchemaService.Retire:input_type -> vca.schema.v1.RetireRequest
+	11, // 35: vca.schema.v1.SchemaService.Get:input_type -> vca.schema.v1.GetRequest
+	13, // 36: vca.schema.v1.SchemaService.List:input_type -> vca.schema.v1.ListRequest
+	15, // 37: vca.schema.v1.SchemaService.Search:input_type -> vca.schema.v1.SearchRequest
+	18, // 38: vca.schema.v1.SchemaService.ListPublic:input_type -> vca.schema.v1.ListPublicRequest
+	20, // 39: vca.schema.v1.SchemaService.GetIssuerMetadata:input_type -> vca.schema.v1.GetIssuerMetadataRequest
+	22, // 40: vca.schema.v1.SchemaService.GetVct:input_type -> vca.schema.v1.GetVctRequest
+	24, // 41: vca.schema.v1.SchemaService.ListVersions:input_type -> vca.schema.v1.ListVersionsRequest
+	26, // 42: vca.schema.v1.SchemaService.DeleteDraft:input_type -> vca.schema.v1.DeleteDraftRequest
+	4,  // 43: vca.schema.v1.SchemaService.Create:output_type -> vca.schema.v1.CreateResponse
+	6,  // 44: vca.schema.v1.SchemaService.Update:output_type -> vca.schema.v1.UpdateResponse
+	8,  // 45: vca.schema.v1.SchemaService.Publish:output_type -> vca.schema.v1.PublishResponse
+	10, // 46: vca.schema.v1.SchemaService.Retire:output_type -> vca.schema.v1.RetireResponse
+	12, // 47: vca.schema.v1.SchemaService.Get:output_type -> vca.schema.v1.GetResponse
+	14, // 48: vca.schema.v1.SchemaService.List:output_type -> vca.schema.v1.ListResponse
+	16, // 49: vca.schema.v1.SchemaService.Search:output_type -> vca.schema.v1.SearchResponse
+	19, // 50: vca.schema.v1.SchemaService.ListPublic:output_type -> vca.schema.v1.ListPublicResponse
+	21, // 51: vca.schema.v1.SchemaService.GetIssuerMetadata:output_type -> vca.schema.v1.GetIssuerMetadataResponse
+	23, // 52: vca.schema.v1.SchemaService.GetVct:output_type -> vca.schema.v1.GetVctResponse
+	25, // 53: vca.schema.v1.SchemaService.ListVersions:output_type -> vca.schema.v1.ListVersionsResponse
+	27, // 54: vca.schema.v1.SchemaService.DeleteDraft:output_type -> vca.schema.v1.DeleteDraftResponse
+	43, // [43:55] is the sub-list for method output_type
+	31, // [31:43] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_vca_schema_v1_schema_proto_init() }
@@ -1868,7 +1991,7 @@ func file_vca_schema_v1_schema_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_schema_v1_schema_proto_rawDesc), len(file_vca_schema_v1_schema_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   27,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

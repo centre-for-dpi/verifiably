@@ -51,6 +51,10 @@ type Config struct {
 	PortalPrefix string `env:"PORTAL_PREFIX" default:"/portal"`
 	// BuilderURL links the portal to the schema builder, when there is one.
 	BuilderURL string `env:"BUILDER_URL"`
+	// IssuedURL is the base URL of the issued credentials service. The
+	// list page counts the issued credentials of each schema there. Empty
+	// shows no count.
+	IssuedURL string `env:"ISSUED_URL"`
 	// PageSizeMax caps the page size of List and Search.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"200"`
 
@@ -87,6 +91,7 @@ func Load(getenv func(string) string) (Config, error) {
 func (c Config) normalize() (Config, error) {
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	c.BackendURL = strings.TrimRight(c.BackendURL, "/")
+	c.IssuedURL = strings.TrimRight(c.IssuedURL, "/")
 	c.PortalPrefix = "/" + strings.Trim(c.PortalPrefix, "/")
 	if c.CredentialIssuer == "" {
 		c.CredentialIssuer = c.BaseURL

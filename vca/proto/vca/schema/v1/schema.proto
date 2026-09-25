@@ -41,6 +41,10 @@ service SchemaService {
   rpc GetVct(GetVctRequest) returns (GetVctResponse);
   // ListVersions returns the version history of one schema.
   rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+  // DeleteDraft removes one draft version. A published version cannot go:
+  // retire it instead. A retired version stays, so verifiers can read it.
+  // When the draft is the only version, the schema goes too.
+  rpc DeleteDraft(DeleteDraftRequest) returns (DeleteDraftResponse);
 }
 
 // State names the life cycle state of a schema version (ADR-013 decision 2).
@@ -288,4 +292,21 @@ message ListVersionsRequest {
 message ListVersionsResponse {
   // The versions.
   repeated Schema schemas = 1;
+}
+
+// DeleteDraftRequest selects a draft version.
+message DeleteDraftRequest {
+  // The schema id.
+  string id = 1;
+  // The version. Zero selects the latest draft.
+  int32 version = 2;
+}
+
+// DeleteDraftResponse names the removed version.
+message DeleteDraftResponse {
+  // The version the service removed.
+  Schema schema = 1;
+  // True when the schema had no other version, so no schema with this id
+  // remains.
+  bool schema_removed = 2;
 }

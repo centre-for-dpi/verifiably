@@ -162,3 +162,18 @@ func TestProtoConversion(t *testing.T) {
 		t.Error("unspecified state")
 	}
 }
+
+func TestCanDelete(t *testing.T) {
+	r := Record{ID: "degree", Version: 2, State: StateDraft}
+	if err := r.CanDelete(); err != nil {
+		t.Fatal(err)
+	}
+	r.State = StatePublished
+	if err := r.CanDelete(); err == nil || !strings.Contains(err.Error(), "Retire a published version.") {
+		t.Fatalf("published: %v", err)
+	}
+	r.State = StateRetired
+	if err := r.CanDelete(); err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Fatalf("retired: %v", err)
+	}
+}

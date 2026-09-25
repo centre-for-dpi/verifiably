@@ -268,8 +268,11 @@ func TestConnectHandlerIsMounted(t *testing.T) {
 
 func TestBuildMemoryStoreAndBackendURL(t *testing.T) {
 	cfg, err := config.Load(func(k string) string {
-		if k == "VCA_SCHEMA_BACKEND_URL" {
+		switch k {
+		case "VCA_SCHEMA_BACKEND_URL":
 			return "http://adapter.invalid"
+		case "VCA_SCHEMA_ISSUED_URL":
+			return "http://issued.invalid"
 		}
 		return ""
 	})

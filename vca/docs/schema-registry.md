@@ -34,6 +34,7 @@ or a searchable claim that is not a property of the document.
 stateDiagram-v2
     [*] --> draft: Create, Update
     draft --> published: Publish
+    draft --> [*]: DeleteDraft
     published --> retired: Retire
 ```
 
@@ -45,6 +46,11 @@ does not change and the RPC returns `unavailable`.
 
 `Retire` with version zero retires every published version of the schema.
 Issuance with a retired version stops. Verifiers can still read it.
+
+`DeleteDraft` removes one draft version. Version zero selects the latest
+draft. A published version gives `failed_precondition` with the sentence
+"Retire a published version." A retired version stays, so verifiers can
+read it. When the draft is the only version, the schema goes too.
 
 ## Public documents
 
@@ -101,11 +107,36 @@ of `services/internal/staffshell` (ADR-044 decision 5).
 
 | Path | Page |
 |---|---|
-| `GET /portal/` | The list with a search box, a state filter, and a format filter. |
+| `GET /portal/` | The list with a search box, a status filter, a format filter, and the row actions. |
+| `GET /portal/publish` | The publish from a file form. |
+| `POST /portal/publish` | Store an uploaded JSON Schema document as version 1, then publish it when the form asks. |
 | `GET /portal/schemas/{id}` | The detail of one version, with its claims, its document, and its actions. |
 | `GET /portal/schemas/{id}/versions` | The version history, newest first. |
 | `POST /portal/schemas/{id}/publish` | Publish one draft version. |
 | `POST /portal/schemas/{id}/retire` | Retire one or every published version. |
+| `POST /portal/schemas/{id}/delete` | Delete one draft version. |
+
+Each row shows the schema, its id, the version, and the formats. It
+also shows the status, the issued count, and the last change. The row actions follow
+the state. Every row opens the schema builder for
+a new version. A draft deletes. A published version links to the issue
+page with `?schema=<id>` and to its retire form. The issued count comes
+from `IssuedService.List` of `issued-credentials` with the schema filter,
+through `VCA_SCHEMA_ISSUED_URL`. The call names the staff member in the
+actor header. The column shows a dash when the service does not answer.
+
+The upload reads one JSON Schema file of 256 KiB or less. An empty type
+takes the title of the document with each word capitalised and joined.
+An empty display name takes the title.
+
+The publish target follows the probe of the peers (ADR-034 decision 5).
+A publish registers the version with the adapter of the own pair. The
+form offers only the formats that adapter lists. It offers publish only
+when the adapter lists `FEATURE_CREDENTIAL_CONFIG_API`. Otherwise the
+upload stays a draft. The page also names the other live stacks that
+take schemas. Each link opens the publish page of that stack. The detail
+page of a draft hides the publish form in three cases. The stack takes
+no schema, is not ready, or does not issue a format of the version.
 
 Every page reads through a `SchemaService` client. The in-process service
 satisfies that client, so a page cannot see a state the API does not

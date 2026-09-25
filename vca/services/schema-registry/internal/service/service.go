@@ -201,6 +201,24 @@ func (s *Service) Retire(_ context.Context, req *connect.Request[schemav1.Retire
 	return connect.NewResponse(resp), nil
 }
 
+// DeleteDraft removes one draft version. Version zero selects the latest
+// draft. A published or a retired version gives FailedPrecondition.
+func (s *Service) DeleteDraft(_ context.Context, req *connect.Request[schemav1.DeleteDraftRequest]) (*connect.Response[schemav1.DeleteDraftResponse], error) {
+	id, version := req.Msg.GetId(), int(req.Msg.GetVersion())
+	if version == 0 {
+		r, err := s.selectVersion(id, 0, record.StateDraft)
+		if err != nil {
+			return nil, err
+		}
+		version = r.Version
+	}
+	removed, gone, err := s.opts.Store.Remove(id, version, record.Record.CanDelete)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&schemav1.DeleteDraftResponse{Schema: record.ToProto(removed), SchemaRemoved: gone}), nil
+}
+
 // selectVersion returns the version in state want. Version zero selects
 // the latest version in that state.
 func (s *Service) selectVersion(id string, version int, want record.State) (record.Record, error) {

@@ -8,16 +8,20 @@
 // Paths, under the configured prefix:
 //
 //	GET  /                        the list page with search and filters
+//	GET  /publish                 the publish from a file page
+//	POST /publish                 store an uploaded document, then publish it
 //	GET  /schemas/{id}            the detail page of one version
 //	GET  /schemas/{id}/versions   the version history page
 //	POST /schemas/{id}/publish    publish one draft version
 //	POST /schemas/{id}/retire     retire one or every published version
+//	POST /schemas/{id}/delete     delete one draft version
 package portal
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+
 	"html/template"
 	"net/http"
 	"net/url"
@@ -28,8 +32,10 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -57,6 +63,17 @@ type Options struct {
 	// SignOut answers the sign out form of the shell at <prefix>/signout.
 	// Nil leaves the path unrouted.
 	SignOut http.Handler
+	// Issued counts the issued credentials of each schema. Nil shows no
+	// count.
+	Issued Issued
+	// IssueURL is the issue page of the issuer. Empty means
+	// DefaultIssueURL.
+	IssueURL string
+}
+
+// Issued is the part of the IssuedService client the list page calls.
+type Issued interface {
+	List(context.Context, *connect.Request[issuedv1.ListRequest]) (*connect.Response[issuedv1.ListResponse], error)
 }
 
 // Portal serves the staff pages.
@@ -73,6 +90,9 @@ func New(opts Options) (*Portal, error) {
 		opts.Prefix = DefaultPrefix
 	}
 	opts.Prefix = "/" + strings.Trim(opts.Prefix, "/")
+	if opts.IssueURL == "" {
+		opts.IssueURL = DefaultIssueURL
+	}
 	if opts.Kit == nil {
 		kit, err := components.New()
 		if err != nil {
@@ -89,6 +109,9 @@ func (p *Portal) Prefix() string { return p.opts.Prefix }
 // Register adds the pages to mux.
 func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.list))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/publish", p.handle(p.publishPage))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/publish", p.handle(p.publishFile))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/delete", p.handle(p.deleteDraft))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}", p.handle(p.detail))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}/versions", p.handle(p.versions))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/publish", p.handle(p.publish))
@@ -105,9 +128,18 @@ func (p *Portal) SignOutPath() string { return p.opts.Prefix + "/signout" }
 // else with the navigation of the registry marked at current.
 func (p *Portal) render(w http.ResponseWriter, r *http.Request, current string, page components.Page) error {
 	if p.opts.Shell != nil {
-		return p.opts.Shell.Render(p.opts.Kit, w, r, p.opts.Shell.Frame(r.Context()), page)
+		return p.renderFrame(w, r, p.frame(r), page)
 	}
 	page.Nav = p.nav(current)
+	return p.opts.Kit.RenderPage(w, r, page)
+}
+
+// renderFrame writes a page with a probe the handler already read.
+func (p *Portal) renderFrame(w http.ResponseWriter, r *http.Request, f staffshell.Frame, page components.Page) error {
+	if p.opts.Shell != nil {
+		return p.opts.Shell.Render(p.opts.Kit, w, r, f, page)
+	}
+	page.Nav = p.nav("")
 	return p.opts.Kit.RenderPage(w, r, page)
 }
 
@@ -154,7 +186,7 @@ func StateText(s schemav1.State) string {
 	case schemav1.State_STATE_RETIRED:
 		return "Retired"
 	}
-	return "Any state"
+	return msg.T("issuer.schemas.status.any.label")
 }
 
 // StateStatus returns the badge status of a state.
@@ -231,6 +263,8 @@ func FormatList(m *schemav1.Schema) string {
 var Notices = map[string]components.Toast{
 	"published": {Level: "ok", Text: "The version is published. The DPG can issue it now."},
 	"retired":   {Level: "warn", Text: "The version is retired. Issuance with it stopped."},
+	"deleted":   {Level: "ok", Text: msg.T("issuer.schemas.deleted")},
+	"uploaded":  {Level: "ok", Text: msg.T("issuer.schemas.uploaded")},
 }
 
 // notice returns the toast of the notice query value, when the code is known.
@@ -307,7 +341,9 @@ func (p *Portal) nav(current string) components.Nav {
 	return n
 }
 
-// list renders the list page with the search box and the filters.
+// list renders the list page: the search and the filters, then one row
+// per schema with its latest version, its formats, its status badge, the
+// count of issued credentials, the last change, and the row actions.
 func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	state := ParseState(r.URL.Query().Get("state"))
@@ -326,58 +362,76 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 		}
 		found = resp.Msg.GetSchemas()
 	}
+	b := &blocks{kit: p.opts.Kit}
+	csrf := staffsession.HiddenField(r.Context())
 	rows := make([]components.Row, 0, len(found))
 	for _, m := range found {
-		badge, err := p.opts.Kit.HTML("badge", components.Badge{Status: StateStatus(m.GetState()), Text: StateText(m.GetState())})
-		if err != nil {
-			return err
-		}
 		rows = append(rows, components.Row{
-			{HTML: link(p.detailURL(m.GetId(), m.GetVersion()), Name(m))},
-			{Text: m.GetType()},
-			{Text: strconv.Itoa(int(m.GetVersion()))},
-			{HTML: badge},
-			{Text: FormatList(m)},
+			{HTML: p.schemaCell(m)},
+			{Text: "v" + strconv.Itoa(int(m.GetVersion()))},
+			{Text: FormatLabels(m)},
+			{HTML: b.add("badge", components.Badge{Status: StateStatus(m.GetState()), Text: StateText(m.GetState())})},
+			{Text: p.issuedCount(r, m.GetId())},
+			dateCell(Updated(m)),
+			{HTML: p.rowActions(b, m, csrf)},
 		})
 	}
 	filters, err := p.filterForm(q, state, format)
 	if err != nil {
 		return err
 	}
-	table, err := p.opts.Kit.HTML("table", components.Table{
-		ID: "schemas", Caption: fmt.Sprintf("Schemas, %d found", len(rows)),
-		Columns: []string{"Name", "Type", "Latest version", "State", "Formats"},
-		Rows:    rows, Empty: "No schema matches the search and the filters.",
-	})
-	if err != nil {
-		return err
+	var body template.HTML
+	if len(rows) == 0 && q == "" && state == schemav1.State_STATE_UNSPECIFIED && format == commonv1.Format_FORMAT_UNSPECIFIED {
+		body = b.add("empty", components.Empty{Title: msg.T("issuer.schemas.empty.title"), Text: msg.T("issuer.schemas.empty.text"),
+			Action: components.Button{Text: msg.T("issuer.schemas.publish.label"), Href: p.opts.Prefix + "/publish", Variant: "primary"}})
+	} else {
+		body = components.Join(b.add("table", components.Table{
+			ID: "schemas", Caption: msg.T("issuer.schemas.caption.label", strconv.Itoa(len(rows))),
+			Columns: []string{
+				msg.T("issuer.schemas.column.schema.label"), msg.T("issuer.schemas.column.version.label"),
+				msg.T("issuer.schemas.column.format.label"), msg.T("issuer.schemas.column.status.label"),
+				msg.T("issuer.schemas.column.issued.label"), msg.T("issuer.schemas.column.updated.label"),
+				msg.T("issuer.schemas.column.actions.label"),
+			},
+			Rows: rows, Empty: msg.T("issuer.schemas.none_match"),
+		}), template.HTML(`<p class="hint">`+template.HTMLEscapeString(msg.T("issuer.schemas.rule"))+`</p>`)) //nolint:gosec // the text is escaped
+	}
+	var actions []template.HTML
+	if p.opts.BuilderURL != "" {
+		actions = append(actions, b.add("button", components.Button{Text: msg.T("issuer.schemas.builder.label"), Href: p.opts.BuilderURL}))
+	}
+	actions = append(actions, b.add("button", components.Button{Text: msg.T("issuer.schemas.publish.label"), Href: p.opts.Prefix + "/publish", Variant: "primary"}))
+	if b.err != nil {
+		return b.err
 	}
 	return p.render(w, r, "list", components.Page{
-		Title:       "Schemas",
+		Title:       msg.T("issuer.nav.schemas.label"),
+		Lead:        msg.T("issuer.schemas.lead"),
+		Actions:     components.Join(actions...),
 		Description: "Search, filter, and open the credential schemas of this issuer.",
-		Content:     components.Join(filters, table),
+		Content:     components.Join(filters, body),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
 }
 
 // filterForm renders the search and filter form of the list page.
 func (p *Portal) filterForm(q string, state schemav1.State, format commonv1.Format) (template.HTML, error) {
-	stateOptions := []components.Option{{Value: "", Text: "Any state", Selected: state == schemav1.State_STATE_UNSPECIFIED}}
+	stateOptions := []components.Option{{Value: "", Text: msg.T("issuer.schemas.status.any.label"), Selected: state == schemav1.State_STATE_UNSPECIFIED}}
 	for _, s := range States {
 		stateOptions = append(stateOptions, components.Option{Value: StateValue(s), Text: StateText(s), Selected: s == state})
 	}
-	formatOptions := []components.Option{{Value: "", Text: "Any format", Selected: format == commonv1.Format_FORMAT_UNSPECIFIED}}
+	formatOptions := []components.Option{{Value: "", Text: msg.T("issuer.schemas.format.any.label"), Selected: format == commonv1.Format_FORMAT_UNSPECIFIED}}
 	for _, f := range Formats {
-		formatOptions = append(formatOptions, components.Option{Value: FormatValue(f), Text: FormatValue(f), Selected: f == format})
+		formatOptions = append(formatOptions, components.Option{Value: FormatValue(f), Text: FormatLabel(f) + " (" + FormatValue(f) + ")", Selected: f == format})
 	}
 	parts := []struct {
 		name string
 		data any
 	}{
-		{"field", components.Field{ID: "q", Label: "Search", Value: q, Hint: "The search matches the name, the description, the type, and the id.", Attrs: map[string]string{"autocomplete": "off"}}},
-		{"field", components.Field{ID: "state", Label: "State", Type: "select", Options: stateOptions}},
-		{"field", components.Field{ID: "format", Label: "Format", Type: "select", Options: formatOptions}},
-		{"button", components.Button{Text: "Apply", Type: "submit", Variant: "primary"}},
+		{"field", components.Field{ID: "q", Label: msg.T("issuer.schemas.search.label"), Value: q, Type: "search", Attrs: map[string]string{"autocomplete": "off"}}},
+		{"field", components.Field{ID: "state", Label: msg.T("issuer.schemas.status.label"), Type: "select", Options: stateOptions}},
+		{"field", components.Field{ID: "format", Label: msg.T("issuer.schemas.format.label"), Type: "select", Options: formatOptions}},
+		{"button", components.Button{Text: msg.T("issuer.schemas.apply.label"), Type: "submit"}},
 	}
 	out := []template.HTML{template.HTML(`<form class="filters" action="` + template.HTMLEscapeString(p.opts.Prefix) + `/" method="get">`)} //nolint:gosec // the prefix is escaped
 	for _, part := range parts {
@@ -416,7 +470,8 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	actions, err := p.actionsCard(m, staffsession.HiddenField(r.Context()))
+	f := p.frame(r)
+	actions, err := p.actionsCard(m, staffsession.HiddenField(r.Context()), targetOf(f))
 	if err != nil {
 		return err
 	}
@@ -426,7 +481,7 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return p.render(w, r, "detail", components.Page{
+	return p.renderFrame(w, r, f, components.Page{
 		Title:       Name(m) + ", version " + strconv.Itoa(int(m.GetVersion())),
 		Heading:     Name(m),
 		Description: "The detail of one schema version.",
@@ -552,11 +607,16 @@ func yesNo(v bool) string {
 
 // actionsCard renders the publish and the retire forms that the state
 // allows. csrf is the hidden field that binds each form to the session.
-func (p *Portal) actionsCard(m *schemav1.Schema, csrf template.HTML) (template.HTML, error) {
+// A draft publishes only on a stack that takes schemas in every format
+// of the version.
+func (p *Portal) actionsCard(m *schemav1.Schema, csrf template.HTML, t target) (template.HTML, error) {
 	action := p.opts.Prefix + "/schemas/" + url.PathEscape(m.GetId())
 	hidden := csrf + template.HTML(`<input type="hidden" name="version" value="`+strconv.Itoa(int(m.GetVersion()))+`">`) //nolint:gosec // the value is a number
 	switch m.GetState() {
 	case schemav1.State_STATE_DRAFT:
+		if text, ok := t.blocked(m); !ok {
+			return p.opts.Kit.HTML("card", components.Card{ID: "actions", Title: "Actions", Text: text})
+		}
 		button, err := p.opts.Kit.HTML("button", components.Button{Text: "Publish this version", Type: "submit", Variant: "primary"})
 		if err != nil {
 			return "", err
@@ -564,11 +624,11 @@ func (p *Portal) actionsCard(m *schemav1.Schema, csrf template.HTML) (template.H
 		body := components.Join(
 			template.HTML(`<form action="`+template.HTMLEscapeString(action)+`/publish" method="post">`), //nolint:gosec // the action is escaped
 			hidden, button, template.HTML(`</form>`))
-		return p.opts.Kit.HTML("card", components.Card{
-			ID: "actions", Title: "Actions",
-			Text: "Publish registers this version with the DPG. A published version cannot change.",
-			Body: body,
-		})
+		text := "Publish registers this version with the DPG. A published version cannot change."
+		if t.name != "" {
+			text = msg.T("issuer.schemas.target.text", t.name)
+		}
+		return p.opts.Kit.HTML("card", components.Card{ID: "actions", Title: "Actions", Text: text, Body: body})
 	case schemav1.State_STATE_PUBLISHED:
 		reason, err := p.opts.Kit.HTML("field", components.Field{
 			ID: "reason", Label: "Reason", Hint: "The reason goes to the audit log.", Required: true,

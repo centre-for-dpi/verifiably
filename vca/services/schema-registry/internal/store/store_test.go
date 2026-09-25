@@ -173,3 +173,38 @@ func TestBackendErrors(t *testing.T) {
 		t.Fatal("failed save must not raise the revision")
 	}
 }
+
+// TestRemove checks that Remove drops one version when the check takes
+// it, drops the id with its last version, and keeps the state when the
+// check or the save fails.
+func TestRemove(t *testing.T) {
+	s := open(t, sharedstore.MemoryDoc(), Options{NewID: fixedID("degree")})
+	if _, err := s.Create(sample("Degree"), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddVersion("degree", sample("Degree"), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Remove("degree", 9, record.Record.CanDelete); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing version: %v", err)
+	}
+	refuse := errors.New("no")
+	if _, _, err := s.Remove("degree", 1, func(record.Record) error { return refuse }); !errors.Is(err, refuse) {
+		t.Fatalf("refused: %v", err)
+	}
+	removed, gone, err := s.Remove("degree", 1, record.Record.CanDelete)
+	if err != nil || removed.Version != 1 || gone || len(s.Versions("degree")) != 1 {
+		t.Fatalf("first: %+v %v %v", removed, gone, err)
+	}
+	s.backend = failing{errors.New("boom")}
+	if _, _, err := s.Remove("degree", 2, record.Record.CanDelete); err == nil || len(s.Versions("degree")) != 1 {
+		t.Fatalf("save error: %v", err)
+	}
+	s.backend = sharedstore.MemoryDoc()
+	if _, gone, err := s.Remove("degree", 2, record.Record.CanDelete); err != nil || !gone {
+		t.Fatalf("last: %v %v", gone, err)
+	}
+	if _, ok := s.Get("degree", 0); ok || len(s.Latest()) != 0 {
+		t.Fatal("the id stays after its last version")
+	}
+}

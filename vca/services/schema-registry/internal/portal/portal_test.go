@@ -107,7 +107,7 @@ func TestListPage(t *testing.T) {
 	mux := server(t, svc)
 	body := page(t, do(t, mux, http.MethodGet, DefaultPrefix+"/", nil, nil))
 	// html/template writes a plus sign as the numeric reference &#43;.
-	for _, want := range []string{"Degree", "UniversityDegree", "Draft", "dc&#43;sd-jwt", DefaultPrefix + "/schemas/" + id} {
+	for _, want := range []string{"Degree", "<code>" + id + "</code>", "Draft", "SD-JWT VC", "dc&#43;sd-jwt", DefaultPrefix + "/schemas/" + id} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("list page has no %q", want)
 		}
@@ -136,7 +136,7 @@ func TestListSearchAndFilters(t *testing.T) {
 	}
 	for _, c := range cases {
 		body := page(t, do(t, mux, http.MethodGet, DefaultPrefix+"/?"+c.query, nil, nil))
-		got := strings.Contains(body, "UniversityDegree")
+		got := strings.Contains(body, "<code>degree-a</code>")
 		if got != c.found {
 			t.Fatalf("%s: found=%v want %v", c.query, got, c.found)
 		}
@@ -324,7 +324,7 @@ func TestBackendFailureIsServerError(t *testing.T) {
 }
 
 func TestStateAndFormatHelpers(t *testing.T) {
-	if StateText(schemav1.State_STATE_UNSPECIFIED) != "Any state" || StateStatus(schemav1.State_STATE_UNSPECIFIED) != "info" {
+	if StateText(schemav1.State_STATE_UNSPECIFIED) != "Any status" || StateStatus(schemav1.State_STATE_UNSPECIFIED) != "info" {
 		t.Fatal("unspecified state")
 	}
 	if StateValue(schemav1.State_STATE_UNSPECIFIED) != "" || ParseState("  DRAFT ") != schemav1.State_STATE_DRAFT {
