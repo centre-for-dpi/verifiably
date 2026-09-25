@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
@@ -48,6 +49,7 @@ func response() *policyv1.EvaluateResponse {
 		EvaluatedAt:      timestamppb.New(testNow),
 		PolicySetId:      "built-in",
 		PolicySetVersion: 1,
+		MaterialAge:      durationpb.New(90 * time.Minute),
 		Checks: []*policyv1.CheckResult{
 			{Name: policy.NameAudience, Outcome: policyv1.Outcome_OUTCOME_SKIP, CredentialIndex: -1},
 			{Name: policy.NameSignature, Outcome: policyv1.Outcome_OUTCOME_PASS, CredentialIndex: 0},
@@ -64,8 +66,8 @@ func TestEvaluate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GetVerdict() != policyv1.EvaluateResponse_VERDICT_VALID {
-		t.Fatalf("want VALID, got %s", got.GetVerdict())
+	if got.GetVerdict() != policyv1.EvaluateResponse_VERDICT_VALID || got.GetMaterialAge().AsDuration() != 90*time.Minute {
+		t.Fatalf("want VALID with the material age, got %s %v", got.GetVerdict(), got.GetMaterialAge())
 	}
 	if len(got.GetChecks()) != 1 || len(got.GetCredentials()) != 1 {
 		t.Fatalf("unexpected result: %+v", got)

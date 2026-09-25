@@ -5,6 +5,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // env returns a getenv function for a map.
@@ -74,5 +75,27 @@ func TestDescribeAndRedact(t *testing.T) {
 	}
 	if values[Prefix+"LISTEN"] != ":8086" {
 		t.Fatalf("unexpected values: %v", values)
+	}
+}
+
+// TestCacheSettings reads the trust cache policy of ADR-041 and refuses
+// a window over seven days and a negative tick.
+func TestCacheSettings(t *testing.T) {
+	c, err := Load(env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := c.CachePolicy()
+	if p.TrustRefresh != 6*time.Hour || p.KeysRefresh != 24*time.Hour || p.StatusRefresh != time.Hour ||
+		p.AllowOffline || p.Window != 24*time.Hour || !p.MarkStale || !p.RefuseStaleStatus || c.CacheTick != time.Minute {
+		t.Fatalf("cache defaults = %+v, tick %v", p, c.CacheTick)
+	}
+	c, err = Load(env(map[string]string{"CACHE_ALLOW_OFFLINE": "true", "CACHE_OFFLINE_WINDOW": "72h", "CACHE_TICK": "0s"}))
+	if err != nil || !c.CachePolicy().AllowOffline || c.CachePolicy().Window != 72*time.Hour || c.CacheTick != 0 {
+		t.Fatalf("cache settings = %+v, %v", c, err)
+	}
+	_, err = Load(env(map[string]string{"CACHE_OFFLINE_WINDOW": "200h", "CACHE_TICK": "-1s"}))
+	if err == nil || !strings.Contains(err.Error(), "CACHE_OFFLINE_WINDOW") || !strings.Contains(err.Error(), "CACHE_TICK") {
+		t.Fatalf("want the window and the tick refused, got %v", err)
 	}
 }

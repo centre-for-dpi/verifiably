@@ -457,11 +457,11 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-041 | 1 Signature checked snapshots | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
-| ADR-041 | 2 A refresh schedule per source | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
-| ADR-041 | 3 An offline window of at most seven days | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
-| ADR-041 | 4 A stale status list fails the check | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
-| ADR-041 | 5 Cache RPCs and a caching page | Not started | `vca/proto/vca/policy/v1` | Proposed record. No work exists yet. |
+| ADR-041 | 1 Signature checked snapshots | Done | `vca/services/verifier-policy/internal/cache`, `vca/services/trust-registry/internal/service` | The cache keeps the signed snapshot of `ExportSnapshot`, the registry keys, the X.509 anchor chains, and the status lists. It checks each copy first and keeps the last good copy on a failure. |
+| ADR-041 | 2 A refresh schedule per source | Done | `vca/services/verifier-policy/internal/cache` | Trust list 6 h, keys 24 h, status lists 1 h by default. `SetCachePolicy` changes them. |
+| ADR-041 | 3 An offline window of at most seven days | Done | `vca/services/verifier-policy/internal/cache`, `vca/proto/vca/results/v1` | A check reads a copy only when the source does not answer. The result carries `material_age`. |
+| ADR-041 | 4 A stale status list fails the check | Done | `vca/core/policy`, `vca/services/verifier-policy/internal/cache` | `policy.ErrStale` fails the status check in every fail mode when the policy refuses stale status lists. |
+| ADR-041 | 5 Cache RPCs and a caching page | Done | `vca/proto/vca/policy/v1`, `vca/services/verifier-results/internal/portal` | `/portal/cache/` shows the state, Sync now, and the policy form. The overview card shows the age and the window. |
 
 ## ADR-042: DCQL builder and DIF Presentation Exchange queries
 

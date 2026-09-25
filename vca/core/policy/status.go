@@ -61,6 +61,9 @@ func statusOf(ctx context.Context, index int, c Credential, pc Context, closed b
 		return unreachable("the service has no status list fetcher")
 	}
 	raw, err := pc.Status(ctx, ref.URI)
+	if errors.Is(err, ErrStale) {
+		return result(NameStatus, Fail, index, staleStatusDetail, stale(ev))
+	}
 	if err != nil {
 		return unreachable("the status list is not reachable")
 	}

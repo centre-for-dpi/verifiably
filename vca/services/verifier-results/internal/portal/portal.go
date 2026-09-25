@@ -11,7 +11,9 @@
 //	GET  /results/     the result list with filters and export links
 //	GET  /results/{id} the card list of one result
 //	GET  /export       the CSV or JSON download of the filtered results
-//	GET  /cache/       how the verifier checks trust and status
+//	GET  /cache/       the trust cache: age, counts, sources, and policy
+//	POST /cache/sync   Sync now: read the cache sources at once
+//	POST /cache/policy store the cache policy
 //	GET  /help/        what each verifier page does, and every RPC
 //	POST /signout      end the session at verifier-auth
 //
@@ -106,6 +108,9 @@ type Options struct {
 	// DocsURL is the base of the documents the help page links. Empty
 	// means DefaultDocsURL.
 	DocsURL string
+	// Cache is the trust cache of the policy service. Nil shows its
+	// state as unknown.
+	Cache Cache
 }
 
 // Portal serves the pages.
@@ -160,6 +165,8 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/results/{id}", p.handle(p.detail))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/export", p.handle(p.download))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/cache/{$}", p.handle(p.cache))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/cache/sync", p.handle(p.syncNow))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/cache/policy", p.handle(p.savePolicy))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/help/{$}", p.handle(p.help))
 	if p.opts.SignOut != nil {
 		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)

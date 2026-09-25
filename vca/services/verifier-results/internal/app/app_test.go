@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -55,6 +56,11 @@ func (fakePolicy) Evaluate(context.Context, *connect.Request[policyv1.EvaluateRe
 	return connect.NewResponse(&policyv1.EvaluateResponse{
 		Verdict: policyv1.EvaluateResponse_VERDICT_VALID, EvaluatedAt: timestamppb.New(testNow),
 	}), nil
+}
+
+func (fakePolicy) GetCacheState(context.Context, *connect.Request[policyv1.GetCacheStateRequest]) (
+	*connect.Response[policyv1.GetCacheStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnavailable, errors.New("the cache is not ready"))
 }
 
 func TestBuildMemory(t *testing.T) {

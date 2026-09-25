@@ -16,6 +16,7 @@ import (
 	v11 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -28,6 +29,66 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// CacheKind names one kind of cached trust material (ADR-041 decision 1).
+type CacheKind int32
+
+const (
+	CacheKind_CACHE_KIND_UNSPECIFIED CacheKind = 0
+	// The trust list: the entries of the trust registry and of the
+	// external registries it federates with.
+	CacheKind_CACHE_KIND_TRUST_LIST CacheKind = 1
+	// The registry keys. These are the key set of the trust registry and
+	// the DID documents and key sets of the listed issuers. They also hold
+	// the X.509 anchor chains of the external registries.
+	CacheKind_CACHE_KIND_REGISTRY_KEYS CacheKind = 2
+	// The status lists of the listed issuers and of the credentials the
+	// service checked.
+	CacheKind_CACHE_KIND_STATUS_LIST CacheKind = 3
+)
+
+// Enum value maps for CacheKind.
+var (
+	CacheKind_name = map[int32]string{
+		0: "CACHE_KIND_UNSPECIFIED",
+		1: "CACHE_KIND_TRUST_LIST",
+		2: "CACHE_KIND_REGISTRY_KEYS",
+		3: "CACHE_KIND_STATUS_LIST",
+	}
+	CacheKind_value = map[string]int32{
+		"CACHE_KIND_UNSPECIFIED":   0,
+		"CACHE_KIND_TRUST_LIST":    1,
+		"CACHE_KIND_REGISTRY_KEYS": 2,
+		"CACHE_KIND_STATUS_LIST":   3,
+	}
+)
+
+func (x CacheKind) Enum() *CacheKind {
+	p := new(CacheKind)
+	*p = x
+	return p
+}
+
+func (x CacheKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CacheKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_policy_v1_policy_proto_enumTypes[0].Descriptor()
+}
+
+func (CacheKind) Type() protoreflect.EnumType {
+	return &file_vca_policy_v1_policy_proto_enumTypes[0]
+}
+
+func (x CacheKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CacheKind.Descriptor instead.
+func (CacheKind) EnumDescriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{0}
+}
 
 // Outcome names the result of one check.
 type Outcome int32
@@ -73,11 +134,11 @@ func (x Outcome) String() string {
 }
 
 func (Outcome) Descriptor() protoreflect.EnumDescriptor {
-	return file_vca_policy_v1_policy_proto_enumTypes[0].Descriptor()
+	return file_vca_policy_v1_policy_proto_enumTypes[1].Descriptor()
 }
 
 func (Outcome) Type() protoreflect.EnumType {
-	return &file_vca_policy_v1_policy_proto_enumTypes[0]
+	return &file_vca_policy_v1_policy_proto_enumTypes[1]
 }
 
 func (x Outcome) Number() protoreflect.EnumNumber {
@@ -86,7 +147,7 @@ func (x Outcome) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Outcome.Descriptor instead.
 func (Outcome) EnumDescriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{0}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{1}
 }
 
 // Verdict names the overall result.
@@ -129,11 +190,11 @@ func (x EvaluateResponse_Verdict) String() string {
 }
 
 func (EvaluateResponse_Verdict) Descriptor() protoreflect.EnumDescriptor {
-	return file_vca_policy_v1_policy_proto_enumTypes[1].Descriptor()
+	return file_vca_policy_v1_policy_proto_enumTypes[2].Descriptor()
 }
 
 func (EvaluateResponse_Verdict) Type() protoreflect.EnumType {
-	return &file_vca_policy_v1_policy_proto_enumTypes[1]
+	return &file_vca_policy_v1_policy_proto_enumTypes[2]
 }
 
 func (x EvaluateResponse_Verdict) Number() protoreflect.EnumNumber {
@@ -142,7 +203,634 @@ func (x EvaluateResponse_Verdict) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluateResponse_Verdict.Descriptor instead.
 func (EvaluateResponse_Verdict) EnumDescriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{3, 0}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{12, 0}
+}
+
+// CachePolicy says how often the cache reads each kind. It also says
+// when a check can use a copy with no network (ADR-041 decisions 2 to 4).
+type CachePolicy struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// How often the cache reads the trust list. Empty means 6 hours.
+	TrustListRefresh *durationpb.Duration `protobuf:"bytes,1,opt,name=trust_list_refresh,json=trustListRefresh,proto3" json:"trust_list_refresh,omitempty"`
+	// How often the cache reads the registry keys. Empty means 24 hours.
+	KeysRefresh *durationpb.Duration `protobuf:"bytes,2,opt,name=keys_refresh,json=keysRefresh,proto3" json:"keys_refresh,omitempty"`
+	// How often the cache reads the status lists. Empty means 1 hour.
+	StatusListRefresh *durationpb.Duration `protobuf:"bytes,3,opt,name=status_list_refresh,json=statusListRefresh,proto3" json:"status_list_refresh,omitempty"`
+	// True lets a check read the cache when a source does not answer.
+	AllowOffline bool `protobuf:"varint,4,opt,name=allow_offline,json=allowOffline,proto3" json:"allow_offline,omitempty"`
+	// How long after the last good read a copy stays usable with no
+	// network. At most 7 days.
+	OfflineWindow *durationpb.Duration `protobuf:"bytes,5,opt,name=offline_window,json=offlineWindow,proto3" json:"offline_window,omitempty"`
+	// True marks a result that read a copy older than its refresh interval.
+	MarkStale bool `protobuf:"varint,6,opt,name=mark_stale,json=markStale,proto3" json:"mark_stale,omitempty"`
+	// True makes the status check fail on a status list copy older than
+	// the offline window. This holds in every fail mode.
+	RefuseStaleStatus bool `protobuf:"varint,7,opt,name=refuse_stale_status,json=refuseStaleStatus,proto3" json:"refuse_stale_status,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CachePolicy) Reset() {
+	*x = CachePolicy{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CachePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CachePolicy) ProtoMessage() {}
+
+func (x *CachePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CachePolicy.ProtoReflect.Descriptor instead.
+func (*CachePolicy) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CachePolicy) GetTrustListRefresh() *durationpb.Duration {
+	if x != nil {
+		return x.TrustListRefresh
+	}
+	return nil
+}
+
+func (x *CachePolicy) GetKeysRefresh() *durationpb.Duration {
+	if x != nil {
+		return x.KeysRefresh
+	}
+	return nil
+}
+
+func (x *CachePolicy) GetStatusListRefresh() *durationpb.Duration {
+	if x != nil {
+		return x.StatusListRefresh
+	}
+	return nil
+}
+
+func (x *CachePolicy) GetAllowOffline() bool {
+	if x != nil {
+		return x.AllowOffline
+	}
+	return false
+}
+
+func (x *CachePolicy) GetOfflineWindow() *durationpb.Duration {
+	if x != nil {
+		return x.OfflineWindow
+	}
+	return nil
+}
+
+func (x *CachePolicy) GetMarkStale() bool {
+	if x != nil {
+		return x.MarkStale
+	}
+	return false
+}
+
+func (x *CachePolicy) GetRefuseStaleStatus() bool {
+	if x != nil {
+		return x.RefuseStaleStatus
+	}
+	return false
+}
+
+// CacheSource is the state of one cached source.
+type CacheSource struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The kind of the source.
+	Kind CacheKind `protobuf:"varint,1,opt,name=kind,proto3,enum=vca.policy.v1.CacheKind" json:"kind,omitempty"`
+	// The URL or the DID of the source.
+	Source string `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	// The time of the last good read. Empty means no good read yet.
+	SyncedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=synced_at,json=syncedAt,proto3" json:"synced_at,omitempty"`
+	// The time of the last read, good or failed.
+	ReadAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=read_at,json=readAt,proto3" json:"read_at,omitempty"`
+	// The reason of the last failed read. Empty after a good read.
+	LastError string `protobuf:"bytes,5,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	// The key id or the certificate subject that signed the copy. A
+	// status list without a signature says "not checked".
+	SignedBy string `protobuf:"bytes,6,opt,name=signed_by,json=signedBy,proto3" json:"signed_by,omitempty"`
+	// The number of items in the copy: entries, keys, or certificates.
+	ItemCount int32 `protobuf:"varint,7,opt,name=item_count,json=itemCount,proto3" json:"item_count,omitempty"`
+	// The id of the external registry the source comes from. Empty means
+	// the trust registry of this deployment.
+	RegistryId string `protobuf:"bytes,8,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	// The display name of that external registry.
+	RegistryName  string `protobuf:"bytes,9,opt,name=registry_name,json=registryName,proto3" json:"registry_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CacheSource) Reset() {
+	*x = CacheSource{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CacheSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CacheSource) ProtoMessage() {}
+
+func (x *CacheSource) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CacheSource.ProtoReflect.Descriptor instead.
+func (*CacheSource) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CacheSource) GetKind() CacheKind {
+	if x != nil {
+		return x.Kind
+	}
+	return CacheKind_CACHE_KIND_UNSPECIFIED
+}
+
+func (x *CacheSource) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *CacheSource) GetSyncedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SyncedAt
+	}
+	return nil
+}
+
+func (x *CacheSource) GetReadAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ReadAt
+	}
+	return nil
+}
+
+func (x *CacheSource) GetLastError() string {
+	if x != nil {
+		return x.LastError
+	}
+	return ""
+}
+
+func (x *CacheSource) GetSignedBy() string {
+	if x != nil {
+		return x.SignedBy
+	}
+	return ""
+}
+
+func (x *CacheSource) GetItemCount() int32 {
+	if x != nil {
+		return x.ItemCount
+	}
+	return 0
+}
+
+func (x *CacheSource) GetRegistryId() string {
+	if x != nil {
+		return x.RegistryId
+	}
+	return ""
+}
+
+func (x *CacheSource) GetRegistryName() string {
+	if x != nil {
+		return x.RegistryName
+	}
+	return ""
+}
+
+// CacheKindState sums up the sources of one kind.
+type CacheKindState struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The kind.
+	Kind CacheKind `protobuf:"varint,1,opt,name=kind,proto3,enum=vca.policy.v1.CacheKind" json:"kind,omitempty"`
+	// The time of the oldest good copy of the kind. Empty means no copy.
+	SyncedAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=synced_at,json=syncedAt,proto3" json:"synced_at,omitempty"`
+	// The time the schedule reads the kind next.
+	NextSync *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=next_sync,json=nextSync,proto3" json:"next_sync,omitempty"`
+	// The number of sources with a good copy.
+	Sources int32 `protobuf:"varint,4,opt,name=sources,proto3" json:"sources,omitempty"`
+	// The number of items in the good copies.
+	Items int32 `protobuf:"varint,5,opt,name=items,proto3" json:"items,omitempty"`
+	// The number of issuers the copies cover.
+	Issuers int32 `protobuf:"varint,6,opt,name=issuers,proto3" json:"issuers,omitempty"`
+	// The number of sources whose last read failed.
+	Failed        int32 `protobuf:"varint,7,opt,name=failed,proto3" json:"failed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CacheKindState) Reset() {
+	*x = CacheKindState{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CacheKindState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CacheKindState) ProtoMessage() {}
+
+func (x *CacheKindState) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CacheKindState.ProtoReflect.Descriptor instead.
+func (*CacheKindState) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *CacheKindState) GetKind() CacheKind {
+	if x != nil {
+		return x.Kind
+	}
+	return CacheKind_CACHE_KIND_UNSPECIFIED
+}
+
+func (x *CacheKindState) GetSyncedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SyncedAt
+	}
+	return nil
+}
+
+func (x *CacheKindState) GetNextSync() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NextSync
+	}
+	return nil
+}
+
+func (x *CacheKindState) GetSources() int32 {
+	if x != nil {
+		return x.Sources
+	}
+	return 0
+}
+
+func (x *CacheKindState) GetItems() int32 {
+	if x != nil {
+		return x.Items
+	}
+	return 0
+}
+
+func (x *CacheKindState) GetIssuers() int32 {
+	if x != nil {
+		return x.Issuers
+	}
+	return 0
+}
+
+func (x *CacheKindState) GetFailed() int32 {
+	if x != nil {
+		return x.Failed
+	}
+	return 0
+}
+
+// GetCacheStateRequest has no fields.
+type GetCacheStateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCacheStateRequest) Reset() {
+	*x = GetCacheStateRequest{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCacheStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCacheStateRequest) ProtoMessage() {}
+
+func (x *GetCacheStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCacheStateRequest.ProtoReflect.Descriptor instead.
+func (*GetCacheStateRequest) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{3}
+}
+
+// GetCacheStateResponse returns the policy and the state.
+type GetCacheStateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The cache policy.
+	Policy *CachePolicy `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
+	// One state per kind, in the order of the enum.
+	Kinds []*CacheKindState `protobuf:"bytes,2,rep,name=kinds,proto3" json:"kinds,omitempty"`
+	// Every source, by kind and then by source.
+	Sources       []*CacheSource `protobuf:"bytes,3,rep,name=sources,proto3" json:"sources,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCacheStateResponse) Reset() {
+	*x = GetCacheStateResponse{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCacheStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCacheStateResponse) ProtoMessage() {}
+
+func (x *GetCacheStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCacheStateResponse.ProtoReflect.Descriptor instead.
+func (*GetCacheStateResponse) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetCacheStateResponse) GetPolicy() *CachePolicy {
+	if x != nil {
+		return x.Policy
+	}
+	return nil
+}
+
+func (x *GetCacheStateResponse) GetKinds() []*CacheKindState {
+	if x != nil {
+		return x.Kinds
+	}
+	return nil
+}
+
+func (x *GetCacheStateResponse) GetSources() []*CacheSource {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+// SyncCacheRequest selects what to read.
+type SyncCacheRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The kind to read. Unspecified reads every kind: the trust list
+	// first, then the keys, then the status lists.
+	Kind          CacheKind `protobuf:"varint,1,opt,name=kind,proto3,enum=vca.policy.v1.CacheKind" json:"kind,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncCacheRequest) Reset() {
+	*x = SyncCacheRequest{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncCacheRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncCacheRequest) ProtoMessage() {}
+
+func (x *SyncCacheRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncCacheRequest.ProtoReflect.Descriptor instead.
+func (*SyncCacheRequest) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SyncCacheRequest) GetKind() CacheKind {
+	if x != nil {
+		return x.Kind
+	}
+	return CacheKind_CACHE_KIND_UNSPECIFIED
+}
+
+// SyncCacheResponse returns the state after the read.
+type SyncCacheResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// One state per kind, in the order of the enum.
+	Kinds []*CacheKindState `protobuf:"bytes,1,rep,name=kinds,proto3" json:"kinds,omitempty"`
+	// Every source, by kind and then by source.
+	Sources []*CacheSource `protobuf:"bytes,2,rep,name=sources,proto3" json:"sources,omitempty"`
+	// The number of sources with a failed read or a refused copy.
+	Failed        int32 `protobuf:"varint,3,opt,name=failed,proto3" json:"failed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncCacheResponse) Reset() {
+	*x = SyncCacheResponse{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncCacheResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncCacheResponse) ProtoMessage() {}
+
+func (x *SyncCacheResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncCacheResponse.ProtoReflect.Descriptor instead.
+func (*SyncCacheResponse) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SyncCacheResponse) GetKinds() []*CacheKindState {
+	if x != nil {
+		return x.Kinds
+	}
+	return nil
+}
+
+func (x *SyncCacheResponse) GetSources() []*CacheSource {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+func (x *SyncCacheResponse) GetFailed() int32 {
+	if x != nil {
+		return x.Failed
+	}
+	return 0
+}
+
+// SetCachePolicyRequest carries the policy to store.
+type SetCachePolicyRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The policy. An empty duration keeps the default of the field.
+	Policy        *CachePolicy `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetCachePolicyRequest) Reset() {
+	*x = SetCachePolicyRequest{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetCachePolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetCachePolicyRequest) ProtoMessage() {}
+
+func (x *SetCachePolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetCachePolicyRequest.ProtoReflect.Descriptor instead.
+func (*SetCachePolicyRequest) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SetCachePolicyRequest) GetPolicy() *CachePolicy {
+	if x != nil {
+		return x.Policy
+	}
+	return nil
+}
+
+// SetCachePolicyResponse returns the stored policy.
+type SetCachePolicyResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The policy as stored.
+	Policy        *CachePolicy `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetCachePolicyResponse) Reset() {
+	*x = SetCachePolicyResponse{}
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetCachePolicyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetCachePolicyResponse) ProtoMessage() {}
+
+func (x *SetCachePolicyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetCachePolicyResponse.ProtoReflect.Descriptor instead.
+func (*SetCachePolicyResponse) Descriptor() ([]byte, []int) {
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SetCachePolicyResponse) GetPolicy() *CachePolicy {
+	if x != nil {
+		return x.Policy
+	}
+	return nil
 }
 
 // CheckResult is the outcome of one check (ADR-024 decision 1).
@@ -172,7 +860,7 @@ type CheckResult struct {
 
 func (x *CheckResult) Reset() {
 	*x = CheckResult{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[0]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -184,7 +872,7 @@ func (x *CheckResult) String() string {
 func (*CheckResult) ProtoMessage() {}
 
 func (x *CheckResult) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[0]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -197,7 +885,7 @@ func (x *CheckResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckResult.ProtoReflect.Descriptor instead.
 func (*CheckResult) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{0}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CheckResult) GetName() string {
@@ -265,7 +953,7 @@ type PolicySet struct {
 
 func (x *PolicySet) Reset() {
 	*x = PolicySet{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[1]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -277,7 +965,7 @@ func (x *PolicySet) String() string {
 func (*PolicySet) ProtoMessage() {}
 
 func (x *PolicySet) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[1]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -290,7 +978,7 @@ func (x *PolicySet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicySet.ProtoReflect.Descriptor instead.
 func (*PolicySet) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{1}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *PolicySet) GetId() string {
@@ -363,7 +1051,7 @@ type EvaluateRequest struct {
 
 func (x *EvaluateRequest) Reset() {
 	*x = EvaluateRequest{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[2]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -375,7 +1063,7 @@ func (x *EvaluateRequest) String() string {
 func (*EvaluateRequest) ProtoMessage() {}
 
 func (x *EvaluateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[2]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -388,7 +1076,7 @@ func (x *EvaluateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateRequest.ProtoReflect.Descriptor instead.
 func (*EvaluateRequest) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{2}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *EvaluateRequest) GetPresentation() *v11.RawPresentation {
@@ -445,14 +1133,21 @@ type EvaluateResponse struct {
 	// The policy set version the service used.
 	PolicySetVersion int32 `protobuf:"varint,4,opt,name=policy_set_version,json=policySetVersion,proto3" json:"policy_set_version,omitempty"`
 	// The time of evaluation.
-	EvaluatedAt   *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=evaluated_at,json=evaluatedAt,proto3" json:"evaluated_at,omitempty"`
+	EvaluatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=evaluated_at,json=evaluatedAt,proto3" json:"evaluated_at,omitempty"`
+	// The age of the oldest cached material the evaluation read because a
+	// source did not answer. Empty means every source answered online
+	// (ADR-041 decision 3).
+	MaterialAge *durationpb.Duration `protobuf:"bytes,6,opt,name=material_age,json=materialAge,proto3" json:"material_age,omitempty"`
+	// True when that material was older than its refresh interval and the
+	// cache policy marks such results.
+	MaterialStale bool `protobuf:"varint,7,opt,name=material_stale,json=materialStale,proto3" json:"material_stale,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvaluateResponse) Reset() {
 	*x = EvaluateResponse{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[3]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -464,7 +1159,7 @@ func (x *EvaluateResponse) String() string {
 func (*EvaluateResponse) ProtoMessage() {}
 
 func (x *EvaluateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[3]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -477,7 +1172,7 @@ func (x *EvaluateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateResponse.ProtoReflect.Descriptor instead.
 func (*EvaluateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{3}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *EvaluateResponse) GetVerdict() EvaluateResponse_Verdict {
@@ -515,6 +1210,20 @@ func (x *EvaluateResponse) GetEvaluatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *EvaluateResponse) GetMaterialAge() *durationpb.Duration {
+	if x != nil {
+		return x.MaterialAge
+	}
+	return nil
+}
+
+func (x *EvaluateResponse) GetMaterialStale() bool {
+	if x != nil {
+		return x.MaterialStale
+	}
+	return false
+}
+
 // ListChecksRequest has no fields.
 type ListChecksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -524,7 +1233,7 @@ type ListChecksRequest struct {
 
 func (x *ListChecksRequest) Reset() {
 	*x = ListChecksRequest{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[4]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -536,7 +1245,7 @@ func (x *ListChecksRequest) String() string {
 func (*ListChecksRequest) ProtoMessage() {}
 
 func (x *ListChecksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[4]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -549,7 +1258,7 @@ func (x *ListChecksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChecksRequest.ProtoReflect.Descriptor instead.
 func (*ListChecksRequest) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{4}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{13}
 }
 
 // ListChecksResponse returns the known checks.
@@ -563,7 +1272,7 @@ type ListChecksResponse struct {
 
 func (x *ListChecksResponse) Reset() {
 	*x = ListChecksResponse{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[5]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -575,7 +1284,7 @@ func (x *ListChecksResponse) String() string {
 func (*ListChecksResponse) ProtoMessage() {}
 
 func (x *ListChecksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[5]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -588,7 +1297,7 @@ func (x *ListChecksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChecksResponse.ProtoReflect.Descriptor instead.
 func (*ListChecksResponse) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{5}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListChecksResponse) GetChecks() []*ListChecksResponse_CheckInfo {
@@ -609,7 +1318,7 @@ type CreatePolicySetRequest struct {
 
 func (x *CreatePolicySetRequest) Reset() {
 	*x = CreatePolicySetRequest{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[6]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -621,7 +1330,7 @@ func (x *CreatePolicySetRequest) String() string {
 func (*CreatePolicySetRequest) ProtoMessage() {}
 
 func (x *CreatePolicySetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[6]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -634,7 +1343,7 @@ func (x *CreatePolicySetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePolicySetRequest.ProtoReflect.Descriptor instead.
 func (*CreatePolicySetRequest) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{6}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CreatePolicySetRequest) GetPolicySet() *PolicySet {
@@ -655,7 +1364,7 @@ type CreatePolicySetResponse struct {
 
 func (x *CreatePolicySetResponse) Reset() {
 	*x = CreatePolicySetResponse{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[7]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -667,7 +1376,7 @@ func (x *CreatePolicySetResponse) String() string {
 func (*CreatePolicySetResponse) ProtoMessage() {}
 
 func (x *CreatePolicySetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[7]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -680,7 +1389,7 @@ func (x *CreatePolicySetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePolicySetResponse.ProtoReflect.Descriptor instead.
 func (*CreatePolicySetResponse) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{7}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CreatePolicySetResponse) GetPolicySet() *PolicySet {
@@ -701,7 +1410,7 @@ type UpdatePolicySetRequest struct {
 
 func (x *UpdatePolicySetRequest) Reset() {
 	*x = UpdatePolicySetRequest{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[8]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -713,7 +1422,7 @@ func (x *UpdatePolicySetRequest) String() string {
 func (*UpdatePolicySetRequest) ProtoMessage() {}
 
 func (x *UpdatePolicySetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[8]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -726,7 +1435,7 @@ func (x *UpdatePolicySetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePolicySetRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePolicySetRequest) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{8}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *UpdatePolicySetRequest) GetPolicySet() *PolicySet {
@@ -747,7 +1456,7 @@ type UpdatePolicySetResponse struct {
 
 func (x *UpdatePolicySetResponse) Reset() {
 	*x = UpdatePolicySetResponse{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[9]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -759,7 +1468,7 @@ func (x *UpdatePolicySetResponse) String() string {
 func (*UpdatePolicySetResponse) ProtoMessage() {}
 
 func (x *UpdatePolicySetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[9]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -772,7 +1481,7 @@ func (x *UpdatePolicySetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePolicySetResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePolicySetResponse) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{9}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *UpdatePolicySetResponse) GetPolicySet() *PolicySet {
@@ -795,7 +1504,7 @@ type GetPolicySetRequest struct {
 
 func (x *GetPolicySetRequest) Reset() {
 	*x = GetPolicySetRequest{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[10]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -807,7 +1516,7 @@ func (x *GetPolicySetRequest) String() string {
 func (*GetPolicySetRequest) ProtoMessage() {}
 
 func (x *GetPolicySetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[10]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -820,7 +1529,7 @@ func (x *GetPolicySetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPolicySetRequest.ProtoReflect.Descriptor instead.
 func (*GetPolicySetRequest) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{10}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetPolicySetRequest) GetId() string {
@@ -848,7 +1557,7 @@ type GetPolicySetResponse struct {
 
 func (x *GetPolicySetResponse) Reset() {
 	*x = GetPolicySetResponse{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[11]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -860,7 +1569,7 @@ func (x *GetPolicySetResponse) String() string {
 func (*GetPolicySetResponse) ProtoMessage() {}
 
 func (x *GetPolicySetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[11]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -873,7 +1582,7 @@ func (x *GetPolicySetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPolicySetResponse.ProtoReflect.Descriptor instead.
 func (*GetPolicySetResponse) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{11}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetPolicySetResponse) GetPolicySet() *PolicySet {
@@ -896,7 +1605,7 @@ type ListPolicySetsRequest struct {
 
 func (x *ListPolicySetsRequest) Reset() {
 	*x = ListPolicySetsRequest{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[12]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -908,7 +1617,7 @@ func (x *ListPolicySetsRequest) String() string {
 func (*ListPolicySetsRequest) ProtoMessage() {}
 
 func (x *ListPolicySetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[12]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -921,7 +1630,7 @@ func (x *ListPolicySetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPolicySetsRequest.ProtoReflect.Descriptor instead.
 func (*ListPolicySetsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{12}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListPolicySetsRequest) GetPage() *v1.Pagination {
@@ -951,7 +1660,7 @@ type ListPolicySetsResponse struct {
 
 func (x *ListPolicySetsResponse) Reset() {
 	*x = ListPolicySetsResponse{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[13]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -963,7 +1672,7 @@ func (x *ListPolicySetsResponse) String() string {
 func (*ListPolicySetsResponse) ProtoMessage() {}
 
 func (x *ListPolicySetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[13]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -976,7 +1685,7 @@ func (x *ListPolicySetsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPolicySetsResponse.ProtoReflect.Descriptor instead.
 func (*ListPolicySetsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{13}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListPolicySetsResponse) GetPolicySets() []*PolicySet {
@@ -1004,7 +1713,7 @@ type DeletePolicySetRequest struct {
 
 func (x *DeletePolicySetRequest) Reset() {
 	*x = DeletePolicySetRequest{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[14]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1016,7 +1725,7 @@ func (x *DeletePolicySetRequest) String() string {
 func (*DeletePolicySetRequest) ProtoMessage() {}
 
 func (x *DeletePolicySetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[14]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1029,7 +1738,7 @@ func (x *DeletePolicySetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePolicySetRequest.ProtoReflect.Descriptor instead.
 func (*DeletePolicySetRequest) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{14}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DeletePolicySetRequest) GetId() string {
@@ -1048,7 +1757,7 @@ type DeletePolicySetResponse struct {
 
 func (x *DeletePolicySetResponse) Reset() {
 	*x = DeletePolicySetResponse{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[15]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1060,7 +1769,7 @@ func (x *DeletePolicySetResponse) String() string {
 func (*DeletePolicySetResponse) ProtoMessage() {}
 
 func (x *DeletePolicySetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[15]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1073,7 +1782,7 @@ func (x *DeletePolicySetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePolicySetResponse.ProtoReflect.Descriptor instead.
 func (*DeletePolicySetResponse) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{15}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{24}
 }
 
 // Check is one named check with its parameters.
@@ -1093,7 +1802,7 @@ type PolicySet_Check struct {
 
 func (x *PolicySet_Check) Reset() {
 	*x = PolicySet_Check{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[17]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1105,7 +1814,7 @@ func (x *PolicySet_Check) String() string {
 func (*PolicySet_Check) ProtoMessage() {}
 
 func (x *PolicySet_Check) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[17]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1118,7 +1827,7 @@ func (x *PolicySet_Check) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicySet_Check.ProtoReflect.Descriptor instead.
 func (*PolicySet_Check) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{1, 0}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{10, 0}
 }
 
 func (x *PolicySet_Check) GetName() string {
@@ -1159,7 +1868,7 @@ type ListChecksResponse_CheckInfo struct {
 
 func (x *ListChecksResponse_CheckInfo) Reset() {
 	*x = ListChecksResponse_CheckInfo{}
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[19]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1171,7 +1880,7 @@ func (x *ListChecksResponse_CheckInfo) String() string {
 func (*ListChecksResponse_CheckInfo) ProtoMessage() {}
 
 func (x *ListChecksResponse_CheckInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_policy_v1_policy_proto_msgTypes[19]
+	mi := &file_vca_policy_v1_policy_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1184,7 +1893,7 @@ func (x *ListChecksResponse_CheckInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListChecksResponse_CheckInfo.ProtoReflect.Descriptor instead.
 func (*ListChecksResponse_CheckInfo) Descriptor() ([]byte, []int) {
-	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{5, 0}
+	return file_vca_policy_v1_policy_proto_rawDescGZIP(), []int{14, 0}
 }
 
 func (x *ListChecksResponse_CheckInfo) GetName() string {
@@ -1219,7 +1928,52 @@ var File_vca_policy_v1_policy_proto protoreflect.FileDescriptor
 
 const file_vca_policy_v1_policy_proto_rawDesc = "" +
 	"\n" +
-	"\x1avca/policy/v1/policy.proto\x12\rvca.policy.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/ingest/v1/ingest.proto\"\xc5\x02\n" +
+	"\x1avca/policy/v1/policy.proto\x12\rvca.policy.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/ingest/v1/ingest.proto\"\x95\x03\n" +
+	"\vCachePolicy\x12G\n" +
+	"\x12trust_list_refresh\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\x10trustListRefresh\x12<\n" +
+	"\fkeys_refresh\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\vkeysRefresh\x12I\n" +
+	"\x13status_list_refresh\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x11statusListRefresh\x12#\n" +
+	"\rallow_offline\x18\x04 \x01(\bR\fallowOffline\x12@\n" +
+	"\x0eoffline_window\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\rofflineWindow\x12\x1d\n" +
+	"\n" +
+	"mark_stale\x18\x06 \x01(\bR\tmarkStale\x12.\n" +
+	"\x13refuse_stale_status\x18\a \x01(\bR\x11refuseStaleStatus\"\xe2\x02\n" +
+	"\vCacheSource\x12,\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x18.vca.policy.v1.CacheKindR\x04kind\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x127\n" +
+	"\tsynced_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bsyncedAt\x123\n" +
+	"\aread_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x06readAt\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\x05 \x01(\tR\tlastError\x12\x1b\n" +
+	"\tsigned_by\x18\x06 \x01(\tR\bsignedBy\x12\x1d\n" +
+	"\n" +
+	"item_count\x18\a \x01(\x05R\titemCount\x12\x1f\n" +
+	"\vregistry_id\x18\b \x01(\tR\n" +
+	"registryId\x12#\n" +
+	"\rregistry_name\x18\t \x01(\tR\fregistryName\"\x92\x02\n" +
+	"\x0eCacheKindState\x12,\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x18.vca.policy.v1.CacheKindR\x04kind\x127\n" +
+	"\tsynced_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bsyncedAt\x127\n" +
+	"\tnext_sync\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bnextSync\x12\x18\n" +
+	"\asources\x18\x04 \x01(\x05R\asources\x12\x14\n" +
+	"\x05items\x18\x05 \x01(\x05R\x05items\x12\x18\n" +
+	"\aissuers\x18\x06 \x01(\x05R\aissuers\x12\x16\n" +
+	"\x06failed\x18\a \x01(\x05R\x06failed\"\x16\n" +
+	"\x14GetCacheStateRequest\"\xb6\x01\n" +
+	"\x15GetCacheStateResponse\x122\n" +
+	"\x06policy\x18\x01 \x01(\v2\x1a.vca.policy.v1.CachePolicyR\x06policy\x123\n" +
+	"\x05kinds\x18\x02 \x03(\v2\x1d.vca.policy.v1.CacheKindStateR\x05kinds\x124\n" +
+	"\asources\x18\x03 \x03(\v2\x1a.vca.policy.v1.CacheSourceR\asources\"@\n" +
+	"\x10SyncCacheRequest\x12,\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x18.vca.policy.v1.CacheKindR\x04kind\"\x96\x01\n" +
+	"\x11SyncCacheResponse\x123\n" +
+	"\x05kinds\x18\x01 \x03(\v2\x1d.vca.policy.v1.CacheKindStateR\x05kinds\x124\n" +
+	"\asources\x18\x02 \x03(\v2\x1a.vca.policy.v1.CacheSourceR\asources\x12\x16\n" +
+	"\x06failed\x18\x03 \x01(\x05R\x06failed\"K\n" +
+	"\x15SetCachePolicyRequest\x122\n" +
+	"\x06policy\x18\x01 \x01(\v2\x1a.vca.policy.v1.CachePolicyR\x06policy\"L\n" +
+	"\x16SetCachePolicyResponse\x122\n" +
+	"\x06policy\x18\x01 \x01(\v2\x1a.vca.policy.v1.CachePolicyR\x06policy\"\xc5\x02\n" +
 	"\vCheckResult\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\aoutcome\x18\x02 \x01(\x0e2\x16.vca.policy.v1.OutcomeR\aoutcome\x12\x16\n" +
@@ -1253,13 +2007,15 @@ const file_vca_policy_v1_policy_proto_rawDesc = "" +
 	"\x12policy_set_version\x18\x03 \x01(\x05R\x10policySetVersion\x12\x1a\n" +
 	"\baudience\x18\x04 \x01(\tR\baudience\x12\x14\n" +
 	"\x05nonce\x18\x05 \x01(\tR\x05nonce\x12*\n" +
-	"\x02at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\x81\x03\n" +
+	"\x02at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\xe6\x03\n" +
 	"\x10EvaluateResponse\x12A\n" +
 	"\averdict\x18\x01 \x01(\x0e2'.vca.policy.v1.EvaluateResponse.VerdictR\averdict\x122\n" +
 	"\x06checks\x18\x02 \x03(\v2\x1a.vca.policy.v1.CheckResultR\x06checks\x12\"\n" +
 	"\rpolicy_set_id\x18\x03 \x01(\tR\vpolicySetId\x12,\n" +
 	"\x12policy_set_version\x18\x04 \x01(\x05R\x10policySetVersion\x12=\n" +
-	"\fevaluated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vevaluatedAt\"e\n" +
+	"\fevaluated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vevaluatedAt\x12<\n" +
+	"\fmaterial_age\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\vmaterialAge\x12%\n" +
+	"\x0ematerial_stale\x18\a \x01(\bR\rmaterialStale\"e\n" +
 	"\aVerdict\x12\x17\n" +
 	"\x13VERDICT_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rVERDICT_VALID\x10\x01\x12\x13\n" +
@@ -1303,13 +2059,18 @@ const file_vca_policy_v1_policy_proto_rawDesc = "" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\"(\n" +
 	"\x16DeletePolicySetRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x19\n" +
-	"\x17DeletePolicySetResponse*k\n" +
+	"\x17DeletePolicySetResponse*|\n" +
+	"\tCacheKind\x12\x1a\n" +
+	"\x16CACHE_KIND_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15CACHE_KIND_TRUST_LIST\x10\x01\x12\x1c\n" +
+	"\x18CACHE_KIND_REGISTRY_KEYS\x10\x02\x12\x1a\n" +
+	"\x16CACHE_KIND_STATUS_LIST\x10\x03*k\n" +
 	"\aOutcome\x12\x17\n" +
 	"\x13OUTCOME_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fOUTCOME_PASS\x10\x01\x12\x10\n" +
 	"\fOUTCOME_FAIL\x10\x02\x12\x10\n" +
 	"\fOUTCOME_SKIP\x10\x03\x12\x11\n" +
-	"\rOUTCOME_ERROR\x10\x042\x8d\x05\n" +
+	"\rOUTCOME_ERROR\x10\x042\x98\a\n" +
 	"\rPolicyService\x12K\n" +
 	"\bEvaluate\x12\x1e.vca.policy.v1.EvaluateRequest\x1a\x1f.vca.policy.v1.EvaluateResponse\x12Q\n" +
 	"\n" +
@@ -1318,7 +2079,10 @@ const file_vca_policy_v1_policy_proto_rawDesc = "" +
 	"\x0fUpdatePolicySet\x12%.vca.policy.v1.UpdatePolicySetRequest\x1a&.vca.policy.v1.UpdatePolicySetResponse\x12W\n" +
 	"\fGetPolicySet\x12\".vca.policy.v1.GetPolicySetRequest\x1a#.vca.policy.v1.GetPolicySetResponse\x12]\n" +
 	"\x0eListPolicySets\x12$.vca.policy.v1.ListPolicySetsRequest\x1a%.vca.policy.v1.ListPolicySetsResponse\x12`\n" +
-	"\x0fDeletePolicySet\x12%.vca.policy.v1.DeletePolicySetRequest\x1a&.vca.policy.v1.DeletePolicySetResponseB\xb8\x01\n" +
+	"\x0fDeletePolicySet\x12%.vca.policy.v1.DeletePolicySetRequest\x1a&.vca.policy.v1.DeletePolicySetResponse\x12Z\n" +
+	"\rGetCacheState\x12#.vca.policy.v1.GetCacheStateRequest\x1a$.vca.policy.v1.GetCacheStateResponse\x12N\n" +
+	"\tSyncCache\x12\x1f.vca.policy.v1.SyncCacheRequest\x1a .vca.policy.v1.SyncCacheResponse\x12]\n" +
+	"\x0eSetCachePolicy\x12$.vca.policy.v1.SetCachePolicyRequest\x1a%.vca.policy.v1.SetCachePolicyResponseB\xb8\x01\n" +
 	"\x11com.vca.policy.v1B\vPolicyProtoP\x01Z@github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1;policyv1\xa2\x02\x03VPX\xaa\x02\rVca.Policy.V1\xca\x02\rVca\\Policy\\V1\xe2\x02\x19Vca\\Policy\\V1\\GPBMetadata\xea\x02\x0fVca::Policy::V1b\x06proto3"
 
 var (
@@ -1333,79 +2097,115 @@ func file_vca_policy_v1_policy_proto_rawDescGZIP() []byte {
 	return file_vca_policy_v1_policy_proto_rawDescData
 }
 
-var file_vca_policy_v1_policy_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_vca_policy_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_vca_policy_v1_policy_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_vca_policy_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_vca_policy_v1_policy_proto_goTypes = []any{
-	(Outcome)(0),                         // 0: vca.policy.v1.Outcome
-	(EvaluateResponse_Verdict)(0),        // 1: vca.policy.v1.EvaluateResponse.Verdict
-	(*CheckResult)(nil),                  // 2: vca.policy.v1.CheckResult
-	(*PolicySet)(nil),                    // 3: vca.policy.v1.PolicySet
-	(*EvaluateRequest)(nil),              // 4: vca.policy.v1.EvaluateRequest
-	(*EvaluateResponse)(nil),             // 5: vca.policy.v1.EvaluateResponse
-	(*ListChecksRequest)(nil),            // 6: vca.policy.v1.ListChecksRequest
-	(*ListChecksResponse)(nil),           // 7: vca.policy.v1.ListChecksResponse
-	(*CreatePolicySetRequest)(nil),       // 8: vca.policy.v1.CreatePolicySetRequest
-	(*CreatePolicySetResponse)(nil),      // 9: vca.policy.v1.CreatePolicySetResponse
-	(*UpdatePolicySetRequest)(nil),       // 10: vca.policy.v1.UpdatePolicySetRequest
-	(*UpdatePolicySetResponse)(nil),      // 11: vca.policy.v1.UpdatePolicySetResponse
-	(*GetPolicySetRequest)(nil),          // 12: vca.policy.v1.GetPolicySetRequest
-	(*GetPolicySetResponse)(nil),         // 13: vca.policy.v1.GetPolicySetResponse
-	(*ListPolicySetsRequest)(nil),        // 14: vca.policy.v1.ListPolicySetsRequest
-	(*ListPolicySetsResponse)(nil),       // 15: vca.policy.v1.ListPolicySetsResponse
-	(*DeletePolicySetRequest)(nil),       // 16: vca.policy.v1.DeletePolicySetRequest
-	(*DeletePolicySetResponse)(nil),      // 17: vca.policy.v1.DeletePolicySetResponse
-	nil,                                  // 18: vca.policy.v1.CheckResult.EvidenceEntry
-	(*PolicySet_Check)(nil),              // 19: vca.policy.v1.PolicySet.Check
-	nil,                                  // 20: vca.policy.v1.PolicySet.Check.ParamsEntry
-	(*ListChecksResponse_CheckInfo)(nil), // 21: vca.policy.v1.ListChecksResponse.CheckInfo
-	nil,                                  // 22: vca.policy.v1.ListChecksResponse.CheckInfo.ParamsEntry
-	(*v1.Error)(nil),                     // 23: vca.common.v1.Error
-	(*timestamppb.Timestamp)(nil),        // 24: google.protobuf.Timestamp
-	(*v11.RawPresentation)(nil),          // 25: vca.ingest.v1.RawPresentation
-	(*v1.Pagination)(nil),                // 26: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                // 27: vca.common.v1.PageResult
+	(CacheKind)(0),                       // 0: vca.policy.v1.CacheKind
+	(Outcome)(0),                         // 1: vca.policy.v1.Outcome
+	(EvaluateResponse_Verdict)(0),        // 2: vca.policy.v1.EvaluateResponse.Verdict
+	(*CachePolicy)(nil),                  // 3: vca.policy.v1.CachePolicy
+	(*CacheSource)(nil),                  // 4: vca.policy.v1.CacheSource
+	(*CacheKindState)(nil),               // 5: vca.policy.v1.CacheKindState
+	(*GetCacheStateRequest)(nil),         // 6: vca.policy.v1.GetCacheStateRequest
+	(*GetCacheStateResponse)(nil),        // 7: vca.policy.v1.GetCacheStateResponse
+	(*SyncCacheRequest)(nil),             // 8: vca.policy.v1.SyncCacheRequest
+	(*SyncCacheResponse)(nil),            // 9: vca.policy.v1.SyncCacheResponse
+	(*SetCachePolicyRequest)(nil),        // 10: vca.policy.v1.SetCachePolicyRequest
+	(*SetCachePolicyResponse)(nil),       // 11: vca.policy.v1.SetCachePolicyResponse
+	(*CheckResult)(nil),                  // 12: vca.policy.v1.CheckResult
+	(*PolicySet)(nil),                    // 13: vca.policy.v1.PolicySet
+	(*EvaluateRequest)(nil),              // 14: vca.policy.v1.EvaluateRequest
+	(*EvaluateResponse)(nil),             // 15: vca.policy.v1.EvaluateResponse
+	(*ListChecksRequest)(nil),            // 16: vca.policy.v1.ListChecksRequest
+	(*ListChecksResponse)(nil),           // 17: vca.policy.v1.ListChecksResponse
+	(*CreatePolicySetRequest)(nil),       // 18: vca.policy.v1.CreatePolicySetRequest
+	(*CreatePolicySetResponse)(nil),      // 19: vca.policy.v1.CreatePolicySetResponse
+	(*UpdatePolicySetRequest)(nil),       // 20: vca.policy.v1.UpdatePolicySetRequest
+	(*UpdatePolicySetResponse)(nil),      // 21: vca.policy.v1.UpdatePolicySetResponse
+	(*GetPolicySetRequest)(nil),          // 22: vca.policy.v1.GetPolicySetRequest
+	(*GetPolicySetResponse)(nil),         // 23: vca.policy.v1.GetPolicySetResponse
+	(*ListPolicySetsRequest)(nil),        // 24: vca.policy.v1.ListPolicySetsRequest
+	(*ListPolicySetsResponse)(nil),       // 25: vca.policy.v1.ListPolicySetsResponse
+	(*DeletePolicySetRequest)(nil),       // 26: vca.policy.v1.DeletePolicySetRequest
+	(*DeletePolicySetResponse)(nil),      // 27: vca.policy.v1.DeletePolicySetResponse
+	nil,                                  // 28: vca.policy.v1.CheckResult.EvidenceEntry
+	(*PolicySet_Check)(nil),              // 29: vca.policy.v1.PolicySet.Check
+	nil,                                  // 30: vca.policy.v1.PolicySet.Check.ParamsEntry
+	(*ListChecksResponse_CheckInfo)(nil), // 31: vca.policy.v1.ListChecksResponse.CheckInfo
+	nil,                                  // 32: vca.policy.v1.ListChecksResponse.CheckInfo.ParamsEntry
+	(*durationpb.Duration)(nil),          // 33: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),        // 34: google.protobuf.Timestamp
+	(*v1.Error)(nil),                     // 35: vca.common.v1.Error
+	(*v11.RawPresentation)(nil),          // 36: vca.ingest.v1.RawPresentation
+	(*v1.Pagination)(nil),                // 37: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                // 38: vca.common.v1.PageResult
 }
 var file_vca_policy_v1_policy_proto_depIdxs = []int32{
-	0,  // 0: vca.policy.v1.CheckResult.outcome:type_name -> vca.policy.v1.Outcome
-	18, // 1: vca.policy.v1.CheckResult.evidence:type_name -> vca.policy.v1.CheckResult.EvidenceEntry
-	23, // 2: vca.policy.v1.CheckResult.error:type_name -> vca.common.v1.Error
-	19, // 3: vca.policy.v1.PolicySet.checks:type_name -> vca.policy.v1.PolicySet.Check
-	24, // 4: vca.policy.v1.PolicySet.created_at:type_name -> google.protobuf.Timestamp
-	25, // 5: vca.policy.v1.EvaluateRequest.presentation:type_name -> vca.ingest.v1.RawPresentation
-	24, // 6: vca.policy.v1.EvaluateRequest.at:type_name -> google.protobuf.Timestamp
-	1,  // 7: vca.policy.v1.EvaluateResponse.verdict:type_name -> vca.policy.v1.EvaluateResponse.Verdict
-	2,  // 8: vca.policy.v1.EvaluateResponse.checks:type_name -> vca.policy.v1.CheckResult
-	24, // 9: vca.policy.v1.EvaluateResponse.evaluated_at:type_name -> google.protobuf.Timestamp
-	21, // 10: vca.policy.v1.ListChecksResponse.checks:type_name -> vca.policy.v1.ListChecksResponse.CheckInfo
-	3,  // 11: vca.policy.v1.CreatePolicySetRequest.policy_set:type_name -> vca.policy.v1.PolicySet
-	3,  // 12: vca.policy.v1.CreatePolicySetResponse.policy_set:type_name -> vca.policy.v1.PolicySet
-	3,  // 13: vca.policy.v1.UpdatePolicySetRequest.policy_set:type_name -> vca.policy.v1.PolicySet
-	3,  // 14: vca.policy.v1.UpdatePolicySetResponse.policy_set:type_name -> vca.policy.v1.PolicySet
-	3,  // 15: vca.policy.v1.GetPolicySetResponse.policy_set:type_name -> vca.policy.v1.PolicySet
-	26, // 16: vca.policy.v1.ListPolicySetsRequest.page:type_name -> vca.common.v1.Pagination
-	3,  // 17: vca.policy.v1.ListPolicySetsResponse.policy_sets:type_name -> vca.policy.v1.PolicySet
-	27, // 18: vca.policy.v1.ListPolicySetsResponse.page:type_name -> vca.common.v1.PageResult
-	20, // 19: vca.policy.v1.PolicySet.Check.params:type_name -> vca.policy.v1.PolicySet.Check.ParamsEntry
-	22, // 20: vca.policy.v1.ListChecksResponse.CheckInfo.params:type_name -> vca.policy.v1.ListChecksResponse.CheckInfo.ParamsEntry
-	4,  // 21: vca.policy.v1.PolicyService.Evaluate:input_type -> vca.policy.v1.EvaluateRequest
-	6,  // 22: vca.policy.v1.PolicyService.ListChecks:input_type -> vca.policy.v1.ListChecksRequest
-	8,  // 23: vca.policy.v1.PolicyService.CreatePolicySet:input_type -> vca.policy.v1.CreatePolicySetRequest
-	10, // 24: vca.policy.v1.PolicyService.UpdatePolicySet:input_type -> vca.policy.v1.UpdatePolicySetRequest
-	12, // 25: vca.policy.v1.PolicyService.GetPolicySet:input_type -> vca.policy.v1.GetPolicySetRequest
-	14, // 26: vca.policy.v1.PolicyService.ListPolicySets:input_type -> vca.policy.v1.ListPolicySetsRequest
-	16, // 27: vca.policy.v1.PolicyService.DeletePolicySet:input_type -> vca.policy.v1.DeletePolicySetRequest
-	5,  // 28: vca.policy.v1.PolicyService.Evaluate:output_type -> vca.policy.v1.EvaluateResponse
-	7,  // 29: vca.policy.v1.PolicyService.ListChecks:output_type -> vca.policy.v1.ListChecksResponse
-	9,  // 30: vca.policy.v1.PolicyService.CreatePolicySet:output_type -> vca.policy.v1.CreatePolicySetResponse
-	11, // 31: vca.policy.v1.PolicyService.UpdatePolicySet:output_type -> vca.policy.v1.UpdatePolicySetResponse
-	13, // 32: vca.policy.v1.PolicyService.GetPolicySet:output_type -> vca.policy.v1.GetPolicySetResponse
-	15, // 33: vca.policy.v1.PolicyService.ListPolicySets:output_type -> vca.policy.v1.ListPolicySetsResponse
-	17, // 34: vca.policy.v1.PolicyService.DeletePolicySet:output_type -> vca.policy.v1.DeletePolicySetResponse
-	28, // [28:35] is the sub-list for method output_type
-	21, // [21:28] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	33, // 0: vca.policy.v1.CachePolicy.trust_list_refresh:type_name -> google.protobuf.Duration
+	33, // 1: vca.policy.v1.CachePolicy.keys_refresh:type_name -> google.protobuf.Duration
+	33, // 2: vca.policy.v1.CachePolicy.status_list_refresh:type_name -> google.protobuf.Duration
+	33, // 3: vca.policy.v1.CachePolicy.offline_window:type_name -> google.protobuf.Duration
+	0,  // 4: vca.policy.v1.CacheSource.kind:type_name -> vca.policy.v1.CacheKind
+	34, // 5: vca.policy.v1.CacheSource.synced_at:type_name -> google.protobuf.Timestamp
+	34, // 6: vca.policy.v1.CacheSource.read_at:type_name -> google.protobuf.Timestamp
+	0,  // 7: vca.policy.v1.CacheKindState.kind:type_name -> vca.policy.v1.CacheKind
+	34, // 8: vca.policy.v1.CacheKindState.synced_at:type_name -> google.protobuf.Timestamp
+	34, // 9: vca.policy.v1.CacheKindState.next_sync:type_name -> google.protobuf.Timestamp
+	3,  // 10: vca.policy.v1.GetCacheStateResponse.policy:type_name -> vca.policy.v1.CachePolicy
+	5,  // 11: vca.policy.v1.GetCacheStateResponse.kinds:type_name -> vca.policy.v1.CacheKindState
+	4,  // 12: vca.policy.v1.GetCacheStateResponse.sources:type_name -> vca.policy.v1.CacheSource
+	0,  // 13: vca.policy.v1.SyncCacheRequest.kind:type_name -> vca.policy.v1.CacheKind
+	5,  // 14: vca.policy.v1.SyncCacheResponse.kinds:type_name -> vca.policy.v1.CacheKindState
+	4,  // 15: vca.policy.v1.SyncCacheResponse.sources:type_name -> vca.policy.v1.CacheSource
+	3,  // 16: vca.policy.v1.SetCachePolicyRequest.policy:type_name -> vca.policy.v1.CachePolicy
+	3,  // 17: vca.policy.v1.SetCachePolicyResponse.policy:type_name -> vca.policy.v1.CachePolicy
+	1,  // 18: vca.policy.v1.CheckResult.outcome:type_name -> vca.policy.v1.Outcome
+	28, // 19: vca.policy.v1.CheckResult.evidence:type_name -> vca.policy.v1.CheckResult.EvidenceEntry
+	35, // 20: vca.policy.v1.CheckResult.error:type_name -> vca.common.v1.Error
+	29, // 21: vca.policy.v1.PolicySet.checks:type_name -> vca.policy.v1.PolicySet.Check
+	34, // 22: vca.policy.v1.PolicySet.created_at:type_name -> google.protobuf.Timestamp
+	36, // 23: vca.policy.v1.EvaluateRequest.presentation:type_name -> vca.ingest.v1.RawPresentation
+	34, // 24: vca.policy.v1.EvaluateRequest.at:type_name -> google.protobuf.Timestamp
+	2,  // 25: vca.policy.v1.EvaluateResponse.verdict:type_name -> vca.policy.v1.EvaluateResponse.Verdict
+	12, // 26: vca.policy.v1.EvaluateResponse.checks:type_name -> vca.policy.v1.CheckResult
+	34, // 27: vca.policy.v1.EvaluateResponse.evaluated_at:type_name -> google.protobuf.Timestamp
+	33, // 28: vca.policy.v1.EvaluateResponse.material_age:type_name -> google.protobuf.Duration
+	31, // 29: vca.policy.v1.ListChecksResponse.checks:type_name -> vca.policy.v1.ListChecksResponse.CheckInfo
+	13, // 30: vca.policy.v1.CreatePolicySetRequest.policy_set:type_name -> vca.policy.v1.PolicySet
+	13, // 31: vca.policy.v1.CreatePolicySetResponse.policy_set:type_name -> vca.policy.v1.PolicySet
+	13, // 32: vca.policy.v1.UpdatePolicySetRequest.policy_set:type_name -> vca.policy.v1.PolicySet
+	13, // 33: vca.policy.v1.UpdatePolicySetResponse.policy_set:type_name -> vca.policy.v1.PolicySet
+	13, // 34: vca.policy.v1.GetPolicySetResponse.policy_set:type_name -> vca.policy.v1.PolicySet
+	37, // 35: vca.policy.v1.ListPolicySetsRequest.page:type_name -> vca.common.v1.Pagination
+	13, // 36: vca.policy.v1.ListPolicySetsResponse.policy_sets:type_name -> vca.policy.v1.PolicySet
+	38, // 37: vca.policy.v1.ListPolicySetsResponse.page:type_name -> vca.common.v1.PageResult
+	30, // 38: vca.policy.v1.PolicySet.Check.params:type_name -> vca.policy.v1.PolicySet.Check.ParamsEntry
+	32, // 39: vca.policy.v1.ListChecksResponse.CheckInfo.params:type_name -> vca.policy.v1.ListChecksResponse.CheckInfo.ParamsEntry
+	14, // 40: vca.policy.v1.PolicyService.Evaluate:input_type -> vca.policy.v1.EvaluateRequest
+	16, // 41: vca.policy.v1.PolicyService.ListChecks:input_type -> vca.policy.v1.ListChecksRequest
+	18, // 42: vca.policy.v1.PolicyService.CreatePolicySet:input_type -> vca.policy.v1.CreatePolicySetRequest
+	20, // 43: vca.policy.v1.PolicyService.UpdatePolicySet:input_type -> vca.policy.v1.UpdatePolicySetRequest
+	22, // 44: vca.policy.v1.PolicyService.GetPolicySet:input_type -> vca.policy.v1.GetPolicySetRequest
+	24, // 45: vca.policy.v1.PolicyService.ListPolicySets:input_type -> vca.policy.v1.ListPolicySetsRequest
+	26, // 46: vca.policy.v1.PolicyService.DeletePolicySet:input_type -> vca.policy.v1.DeletePolicySetRequest
+	6,  // 47: vca.policy.v1.PolicyService.GetCacheState:input_type -> vca.policy.v1.GetCacheStateRequest
+	8,  // 48: vca.policy.v1.PolicyService.SyncCache:input_type -> vca.policy.v1.SyncCacheRequest
+	10, // 49: vca.policy.v1.PolicyService.SetCachePolicy:input_type -> vca.policy.v1.SetCachePolicyRequest
+	15, // 50: vca.policy.v1.PolicyService.Evaluate:output_type -> vca.policy.v1.EvaluateResponse
+	17, // 51: vca.policy.v1.PolicyService.ListChecks:output_type -> vca.policy.v1.ListChecksResponse
+	19, // 52: vca.policy.v1.PolicyService.CreatePolicySet:output_type -> vca.policy.v1.CreatePolicySetResponse
+	21, // 53: vca.policy.v1.PolicyService.UpdatePolicySet:output_type -> vca.policy.v1.UpdatePolicySetResponse
+	23, // 54: vca.policy.v1.PolicyService.GetPolicySet:output_type -> vca.policy.v1.GetPolicySetResponse
+	25, // 55: vca.policy.v1.PolicyService.ListPolicySets:output_type -> vca.policy.v1.ListPolicySetsResponse
+	27, // 56: vca.policy.v1.PolicyService.DeletePolicySet:output_type -> vca.policy.v1.DeletePolicySetResponse
+	7,  // 57: vca.policy.v1.PolicyService.GetCacheState:output_type -> vca.policy.v1.GetCacheStateResponse
+	9,  // 58: vca.policy.v1.PolicyService.SyncCache:output_type -> vca.policy.v1.SyncCacheResponse
+	11, // 59: vca.policy.v1.PolicyService.SetCachePolicy:output_type -> vca.policy.v1.SetCachePolicyResponse
+	50, // [50:60] is the sub-list for method output_type
+	40, // [40:50] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_vca_policy_v1_policy_proto_init() }
@@ -1418,8 +2218,8 @@ func file_vca_policy_v1_policy_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_policy_v1_policy_proto_rawDesc), len(file_vca_policy_v1_policy_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   21,
+			NumEnums:      3,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

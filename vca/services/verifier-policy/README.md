@@ -10,6 +10,8 @@ The verifier policy service runs the presentation checks of ADR-024. VCA does th
 - It stores named policy sets with versions. A result carries the set id and the set version.
 - It follows these standards: [RFC 7515](https://www.rfc-editor.org/rfc/rfc7515.html), [RFC 9901](https://www.rfc-editor.org/rfc/rfc9901.html), [Bitstring Status List v1.0](https://www.w3.org/TR/vc-bitstring-status-list/), [Token Status List](https://datatracker.ietf.org/doc/draft-ietf-oauth-status-list/), and [VC JSON Schema](https://www.w3.org/TR/vc-json-schema/).
 
+- It keeps checked copies of the trust list, the registry keys, and the status lists, so a check works with no network inside a set window (ADR-041).
+
 It does not store results. The `verifier-results` service does that.
 
 A Data Integrity proof (`ldp_vc`) gives a `SKIP` with the detail `not implemented: RDF canonicalisation`. See [docs/verifier-policy.md](../../docs/verifier-policy.md).
@@ -38,8 +40,16 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_VERIFIER_POLICY_STATUS_FAIL_MODE` | `open` or `closed` for an unreachable status list. | `closed` |
 | `VCA_VERIFIER_POLICY_LEEWAY` | The clock skew the temporal checks accept. | `60s` |
 | `VCA_VERIFIER_POLICY_PAGE_SIZE_MAX` | The maximum page size of `ListPolicySets`. | `50` |
+| `VCA_VERIFIER_POLICY_CACHE_TRUST_REFRESH` | How often the trust cache reads the trust list. | `6h` |
+| `VCA_VERIFIER_POLICY_CACHE_KEYS_REFRESH` | How often the trust cache reads the registry keys. | `24h` |
+| `VCA_VERIFIER_POLICY_CACHE_STATUS_REFRESH` | How often the trust cache reads the status lists. | `1h` |
+| `VCA_VERIFIER_POLICY_CACHE_ALLOW_OFFLINE` | `true` lets a check read the cache when a source does not answer. | `false` |
+| `VCA_VERIFIER_POLICY_CACHE_OFFLINE_WINDOW` | How long a copy stays usable after its last good read. At most `168h`. | `24h` |
+| `VCA_VERIFIER_POLICY_CACHE_MARK_STALE` | `true` marks a result that read a copy older than its refresh interval. | `true` |
+| `VCA_VERIFIER_POLICY_CACHE_REFUSE_STALE_STATUS` | `true` fails the status check on a status list older than the window. | `true` |
+| `VCA_VERIFIER_POLICY_CACHE_TICK` | How often the schedule looks for a due read. `0s` turns it off. | `1m` |
 
-The container image is `ghcr.io/centre-for-dpi/vca-verifier-policy`. It listens on one port and runs as a non-root user with a read-only file system. Mount a volume at `/data` to keep the policy sets across a restart.
+The container image is `ghcr.io/centre-for-dpi/vca-verifier-policy`. It listens on one port and runs as a non-root user with a read-only file system. Mount a volume at `/data` to keep the policy sets and the trust cache across a restart.
 
 ## How to check it works
 

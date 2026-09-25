@@ -73,6 +73,9 @@ const (
 	// TrustServiceSyncRegistryProcedure is the fully-qualified name of the TrustService's SyncRegistry
 	// RPC.
 	TrustServiceSyncRegistryProcedure = "/vca.trust.v1.TrustService/SyncRegistry"
+	// TrustServiceExportSnapshotProcedure is the fully-qualified name of the TrustService's
+	// ExportSnapshot RPC.
+	TrustServiceExportSnapshotProcedure = "/vca.trust.v1.TrustService/ExportSnapshot"
 )
 
 // TrustServiceClient is a client for the vca.trust.v1.TrustService service.
@@ -108,6 +111,13 @@ type TrustServiceClient interface {
 	// SyncRegistry reads the list of one external registry now. A failed
 	// read keeps the last good copy and sets last_error.
 	SyncRegistry(context.Context, *connect.Request[v1.SyncRegistryRequest]) (*connect.Response[v1.SyncRegistryResponse], error)
+	// ExportSnapshot returns every entry that a lookup reads: the entries
+	// of this registry and the checked copies of the external registries,
+	// each with its provenance. The service signs the answer with the key
+	// of its lists. The verifier policy service checks the signature and
+	// keeps the copy for checks with no network (ADR-041 decision 1).
+	// The RPC stays on the compose network (ADR-047 decision 2).
+	ExportSnapshot(context.Context, *connect.Request[v1.ExportSnapshotRequest]) (*connect.Response[v1.ExportSnapshotResponse], error)
 }
 
 // NewTrustServiceClient constructs a client for the vca.trust.v1.TrustService service. By default,
@@ -187,6 +197,12 @@ func NewTrustServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(trustServiceMethods.ByName("SyncRegistry")),
 			connect.WithClientOptions(opts...),
 		),
+		exportSnapshot: connect.NewClient[v1.ExportSnapshotRequest, v1.ExportSnapshotResponse](
+			httpClient,
+			baseURL+TrustServiceExportSnapshotProcedure,
+			connect.WithSchema(trustServiceMethods.ByName("ExportSnapshot")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -203,6 +219,7 @@ type trustServiceClient struct {
 	listRegistries *connect.Client[v1.ListRegistriesRequest, v1.ListRegistriesResponse]
 	removeRegistry *connect.Client[v1.RemoveRegistryRequest, v1.RemoveRegistryResponse]
 	syncRegistry   *connect.Client[v1.SyncRegistryRequest, v1.SyncRegistryResponse]
+	exportSnapshot *connect.Client[v1.ExportSnapshotRequest, v1.ExportSnapshotResponse]
 }
 
 // UpsertEntry calls vca.trust.v1.TrustService.UpsertEntry.
@@ -260,6 +277,11 @@ func (c *trustServiceClient) SyncRegistry(ctx context.Context, req *connect.Requ
 	return c.syncRegistry.CallUnary(ctx, req)
 }
 
+// ExportSnapshot calls vca.trust.v1.TrustService.ExportSnapshot.
+func (c *trustServiceClient) ExportSnapshot(ctx context.Context, req *connect.Request[v1.ExportSnapshotRequest]) (*connect.Response[v1.ExportSnapshotResponse], error) {
+	return c.exportSnapshot.CallUnary(ctx, req)
+}
+
 // TrustServiceHandler is an implementation of the vca.trust.v1.TrustService service.
 type TrustServiceHandler interface {
 	// UpsertEntry creates or replaces one entry. The entity id is the key.
@@ -293,6 +315,13 @@ type TrustServiceHandler interface {
 	// SyncRegistry reads the list of one external registry now. A failed
 	// read keeps the last good copy and sets last_error.
 	SyncRegistry(context.Context, *connect.Request[v1.SyncRegistryRequest]) (*connect.Response[v1.SyncRegistryResponse], error)
+	// ExportSnapshot returns every entry that a lookup reads: the entries
+	// of this registry and the checked copies of the external registries,
+	// each with its provenance. The service signs the answer with the key
+	// of its lists. The verifier policy service checks the signature and
+	// keeps the copy for checks with no network (ADR-041 decision 1).
+	// The RPC stays on the compose network (ADR-047 decision 2).
+	ExportSnapshot(context.Context, *connect.Request[v1.ExportSnapshotRequest]) (*connect.Response[v1.ExportSnapshotResponse], error)
 }
 
 // NewTrustServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -368,6 +397,12 @@ func NewTrustServiceHandler(svc TrustServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(trustServiceMethods.ByName("SyncRegistry")),
 		connect.WithHandlerOptions(opts...),
 	)
+	trustServiceExportSnapshotHandler := connect.NewUnaryHandler(
+		TrustServiceExportSnapshotProcedure,
+		svc.ExportSnapshot,
+		connect.WithSchema(trustServiceMethods.ByName("ExportSnapshot")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.trust.v1.TrustService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TrustServiceUpsertEntryProcedure:
@@ -392,6 +427,8 @@ func NewTrustServiceHandler(svc TrustServiceHandler, opts ...connect.HandlerOpti
 			trustServiceRemoveRegistryHandler.ServeHTTP(w, r)
 		case TrustServiceSyncRegistryProcedure:
 			trustServiceSyncRegistryHandler.ServeHTTP(w, r)
+		case TrustServiceExportSnapshotProcedure:
+			trustServiceExportSnapshotHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -443,4 +480,8 @@ func (UnimplementedTrustServiceHandler) RemoveRegistry(context.Context, *connect
 
 func (UnimplementedTrustServiceHandler) SyncRegistry(context.Context, *connect.Request[v1.SyncRegistryRequest]) (*connect.Response[v1.SyncRegistryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.trust.v1.TrustService.SyncRegistry is not implemented"))
+}
+
+func (UnimplementedTrustServiceHandler) ExportSnapshot(context.Context, *connect.Request[v1.ExportSnapshotRequest]) (*connect.Response[v1.ExportSnapshotResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.trust.v1.TrustService.ExportSnapshot is not implemented"))
 }

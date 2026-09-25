@@ -176,11 +176,11 @@ func TestKeysFromJWKS(t *testing.T) {
 }
 
 func TestKeysOfDocument(t *testing.T) {
-	if _, err := keysOf(did.Document{ID: "did:web:a"}); err == nil {
+	if _, err := KeysOf(did.Document{ID: "did:web:a"}); err == nil {
 		t.Fatal("want an error for a document without keys")
 	}
 	doc := did.Document{ID: "did:web:a", VerificationMethod: []did.VerificationMethod{{ID: "#1", Type: "JsonWebKey"}}}
-	if _, err := keysOf(doc); err == nil {
+	if _, err := KeysOf(doc); err == nil {
 		t.Fatal("want an error when no method holds a key")
 	}
 }
@@ -205,10 +205,10 @@ func TestTrustLookup(t *testing.T) {
 	trusted := Trust(fakeTrust{resp: &trustv1.TrustLookupResponse{
 		Outcome:    trustv1.TrustLookupResponse_OUTCOME_TRUSTED,
 		Entry:      &trustv1.TrustEntry{DisplayName: "Ministry"},
-		Provenance: &trustv1.TrustLookupResponse_Provenance{ListUrl: "https://trust.example/list"},
+		Provenance: &trustv1.TrustLookupResponse_Provenance{ListUrl: "https://trust.example/list", RegistryName: "Kenya trust registry"},
 	}})
 	got, err := trusted(ctx, "did:web:a", "Passport")
-	if err != nil || !got.Trusted || got.DisplayName != "Ministry" {
+	if err != nil || !got.Trusted || got.DisplayName != "Ministry" || got.Registry != "Kenya trust registry" {
 		t.Fatalf("want a trusted issuer, got %+v %v", got, err)
 	}
 

@@ -388,6 +388,29 @@ func (f *Federation) Lookup(id string, role entry.Role, credentialType string, a
 	return best, found
 }
 
+// Copy is one registry with its last good copy.
+type Copy struct {
+	Registry Registry
+	Snapshot Snapshot
+}
+
+// Copies returns every registry with a good copy that has not expired,
+// in name order. The signed snapshot of the service carries them.
+func (f *Federation) Copies() []Copy {
+	now := f.opts.Now()
+	var out []Copy
+	for _, r := range f.List() {
+		f.mu.RLock()
+		snap, ok := f.doc.Snapshots[r.ID]
+		f.mu.RUnlock()
+		if !ok || (!snap.ExpiresAt.IsZero() && now.After(snap.ExpiresAt)) {
+			continue
+		}
+		out = append(out, Copy{Registry: r, Snapshot: snap})
+	}
+	return out
+}
+
 // update applies change to a copy of the state and saves it.
 func (f *Federation) update(change func(*document)) error {
 	f.mu.Lock()

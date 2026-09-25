@@ -4,6 +4,7 @@ package policy
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
@@ -32,6 +33,9 @@ func issuerTrust(ctx context.Context, index int, c Credential, pc Context) Check
 		return result(NameTrustChain, Error, index, "the service has no trust list lookup", ev)
 	}
 	t, err := pc.Trust(ctx, c.VC.Issuer, c.VC.PrimaryType())
+	if errors.Is(err, ErrStale) {
+		return result(NameTrustChain, Fail, index, staleTrustDetail, stale(ev))
+	}
 	if err != nil {
 		return result(NameTrustChain, Error, index, "the trust registry is not reachable", ev)
 	}
@@ -40,6 +44,9 @@ func issuerTrust(ctx context.Context, index int, c Credential, pc Context) Check
 	}
 	if t.DisplayName != "" {
 		ev["issuer_name"] = t.DisplayName
+	}
+	if t.Registry != "" {
+		ev["registry"] = t.Registry
 	}
 	if !t.Trusted {
 		if t.Reason != "" {

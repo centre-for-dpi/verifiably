@@ -565,3 +565,32 @@ func TestDediFaults(t *testing.T) {
 		t.Fatalf("a bad manifest URL = %+v, %v", r, err)
 	}
 }
+
+// TestCopiesListTheLiveCopiesWithTheirAnchor returns each registry with
+// a good copy that has not expired, in name order, with its anchor.
+func TestCopiesListTheLiveCopiesWithTheirAnchor(t *testing.T) {
+	u := newUpstream(t)
+	f, c := newFederation(t, nil, devFetcher())
+	ctx := context.Background()
+	for _, name := range []string{"lote x509", "lote jwks"} {
+		if _, err := f.Add(ctx, registries(u)[name]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	broken := registries(u)["lote jwks"]
+	broken.Name, broken.URL = "A broken registry", u.srv.URL+"/missing.jws"
+	if _, err := f.Add(ctx, broken); err != nil {
+		t.Fatal(err)
+	}
+	got := f.Copies()
+	if len(got) != 2 || got[0].Registry.Name != "Kenya LoTE" || got[1].Registry.Name != "Kenya LoTE pinned" {
+		t.Fatalf("copies = %+v", got)
+	}
+	if !strings.Contains(got[1].Registry.X509PEM, "BEGIN CERTIFICATE") || len(got[1].Snapshot.Entries) != 2 || got[1].Snapshot.SignedBy == "" {
+		t.Fatalf("the pinned copy = %+v", got[1])
+	}
+	c.t = now.Add(48 * time.Hour)
+	if left := f.Copies(); len(left) != 0 {
+		t.Fatalf("expired copies stay: %+v", left)
+	}
+}

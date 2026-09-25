@@ -58,6 +58,9 @@ func signatureOf(ctx context.Context, index int, c Credential, pc Context) Check
 		return result(NameSignature, Error, index, "the service has no key resolver", ev)
 	}
 	set, err := pc.Keys(ctx, c.VC.Issuer, hdr.Kid)
+	if errors.Is(err, ErrStale) {
+		return result(NameSignature, Fail, index, staleKeysDetail, stale(ev))
+	}
 	if err != nil {
 		return result(NameSignature, Error, index, "the issuer keys are not available", ev)
 	}

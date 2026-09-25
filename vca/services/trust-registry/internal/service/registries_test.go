@@ -16,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/trustsnap"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/entry"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/etsi"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/federation"
@@ -189,3 +190,41 @@ MEUCIC73T2MGFoPRuz/5oMXXclHNPpJwjKdWAOfIW3r7Nis+AiEAwEp+JWrqkvKR
 UDajNP3CHw4K3XIOMjuWSTmYMEUywt0=
 -----END CERTIFICATE-----
 `
+
+// TestExportSnapshotIsSignedWithProvenance exports the local entries and
+// the external copy in one snapshot that the ring of the registry
+// signs. A pending entry stays out, as it stays out of the lists.
+func TestExportSnapshotIsSignedWithProvenance(t *testing.T) {
+	f := withFederation(t)
+	ctx := context.Background()
+	upsert(t, f.svc, protoEntry("did:web:education.go.ke", commonv1.Role_ROLE_ISSUER, trustv1.Status_STATUS_ACTIVE))
+	upsert(t, f.svc, protoEntry("did:web:waiting.example", commonv1.Role_ROLE_ISSUER, trustv1.Status_STATUS_PENDING))
+	srv, key := external(t)
+	added, err := f.svc.AddRegistry(ctx, connect.NewRequest(&trustv1.AddRegistryRequest{Registry: &trustv1.Registry{
+		Name: "Kenya trust registry", Method: trustv1.RegistryMethod_REGISTRY_METHOD_ETSI_LOTE_JSON, Url: srv.URL + etsi.PathJWS,
+		Anchor: &trustv1.Registry_Anchor{Anchor: &trustv1.Registry_Anchor_JwksUrl{JwksUrl: srv.URL + "/jwks.json"}},
+	}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.svc.ExportSnapshot(ctx, connect.NewRequest(&trustv1.ExportSnapshotRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, kid, err := trustsnap.Verify(res.Msg.GetJws(), f.ring.JWKS(), t0)
+	if err != nil || kid != f.ring.Active().ID || res.Msg.GetEntryCount() != 3 || claims.Count() != 3 || len(claims.Lists) != 2 {
+		t.Fatalf("snapshot = %+v, %q, %v", claims, kid, err)
+	}
+	local, ext := claims.Lists[0], claims.Lists[1]
+	if local.RegistryID != "" || local.SignedBy != kid || local.ListURL == "" || len(local.Entities) != 1 ||
+		local.Entities[0].ID() != "did:web:education.go.ke" {
+		t.Fatalf("local list = %+v", local)
+	}
+	if ext.RegistryID != added.Msg.GetRegistry().GetId() || ext.RegistryName != "Kenya trust registry" || ext.SignedBy != key.ID ||
+		ext.ListURL != srv.URL+etsi.PathJWS || len(ext.Entities) != 2 {
+		t.Fatalf("external list = %+v", ext)
+	}
+	if got := claims.Lookup("did:web:registrar.go.ke", "", t0); got.Outcome != trustsnap.Trusted || got.RegistryName != "Kenya trust registry" {
+		t.Fatalf("lookup in the snapshot = %+v", got)
+	}
+}

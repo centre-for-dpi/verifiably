@@ -58,10 +58,7 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request) error {
 	stats := components.Join(
 		b.add("stat", queriesStat(names)),
 		b.add("stat", p.requestsStat(r)),
-		b.add("stat", components.Stat{
-			Label: msg.T("verifier.stat.cache.label"), Value: msg.T("verifier.cache.online.label"),
-			Text: msg.T("verifier.stat.cache.text"), Href: p.opts.Prefix + "/cache/",
-		}),
+		b.add("stat", p.cacheStat(r)),
 	)
 	schemas := p.schemasBlock(r, b)
 	recent := p.recentBlock(r, b, names)

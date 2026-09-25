@@ -7,6 +7,7 @@ syntax = "proto3";
 
 package vca.results.v1;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "vca/common/v1/common.proto";
 import "vca/policy/v1/policy.proto";
@@ -87,6 +88,12 @@ message VerificationResult {
   string tenant_id = 14;
   // The cross credential rule results of a combined presentation (ADR-026).
   repeated vca.policy.v1.CheckResult cross_checks = 15;
+  // The age of the oldest cached trust material the evaluation read
+  // because a source did not answer. Empty means every source answered
+  // online (ADR-041 decision 3).
+  google.protobuf.Duration material_age = 16;
+  // True when that material was older than its refresh interval.
+  bool material_stale = 17;
 }
 
 // Filter narrows a query or an export (ADR-025 decision 4).

@@ -180,7 +180,7 @@ func Keys(resolver did.Resolver, fetch policy.Fetcher) policy.KeyResolver {
 			if err != nil {
 				return jose.JWKS{}, fmt.Errorf("ports: resolve %s: %w", issuer, err)
 			}
-			return keysOf(doc)
+			return KeysOf(doc)
 		case strings.HasPrefix(issuer, "http://"), strings.HasPrefix(issuer, "https://"):
 			raw, err := fetch(ctx, strings.TrimRight(issuer, "/")+JWKSPath)
 			if err != nil {
@@ -192,8 +192,8 @@ func Keys(resolver did.Resolver, fetch policy.Fetcher) policy.KeyResolver {
 	}
 }
 
-// keysOf turns the verification methods of a document into a key set.
-func keysOf(doc did.Document) (jose.JWKS, error) {
+// KeysOf turns the verification methods of a document into a key set.
+func KeysOf(doc did.Document) (jose.JWKS, error) {
 	var set jose.JWKS
 	for _, vm := range doc.VerificationMethod {
 		pub, err := did.PublicKey(vm)
@@ -231,6 +231,7 @@ func Trust(client trustv1connect.TrustServiceClient) policy.TrustLookup {
 			DisplayName: msg.GetEntry().GetDisplayName(),
 			ListURL:     msg.GetProvenance().GetListUrl(),
 			Reason:      msg.GetReason(),
+			Registry:    msg.GetProvenance().GetRegistryName(),
 		}
 		switch msg.GetOutcome() {
 		case trustv1.TrustLookupResponse_OUTCOME_TRUSTED:

@@ -22,6 +22,7 @@ package policy
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -125,6 +126,27 @@ type Trust struct {
 	ListURL string
 	// Reason says why the issuer is not trusted.
 	Reason string
+	// Registry names the external trust registry that gave the answer.
+	// Empty means the lists of this deployment.
+	Registry string
+}
+
+// ErrStale reports material that a trust cache holds for longer than
+// the offline window of its policy (ADR-041 decisions 3 and 4). A port
+// wraps it, and the check that reads the material fails.
+var ErrStale = errors.New("the cached material is older than the offline window")
+
+// The details of a check that failed on stale material.
+const (
+	staleKeysDetail   = "the cached issuer keys are older than the offline window"
+	staleTrustDetail  = "the cached trust list is older than the offline window"
+	staleStatusDetail = "the cached status list is older than the offline window"
+)
+
+// stale marks the evidence of a check that failed on stale material.
+func stale(ev map[string]string) map[string]string {
+	ev["stale"] = "true"
+	return ev
 }
 
 // TrustLookup asks the trust registry about one issuer and one

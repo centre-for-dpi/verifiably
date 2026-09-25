@@ -58,6 +58,14 @@ const (
 	// PolicyServiceDeletePolicySetProcedure is the fully-qualified name of the PolicyService's
 	// DeletePolicySet RPC.
 	PolicyServiceDeletePolicySetProcedure = "/vca.policy.v1.PolicyService/DeletePolicySet"
+	// PolicyServiceGetCacheStateProcedure is the fully-qualified name of the PolicyService's
+	// GetCacheState RPC.
+	PolicyServiceGetCacheStateProcedure = "/vca.policy.v1.PolicyService/GetCacheState"
+	// PolicyServiceSyncCacheProcedure is the fully-qualified name of the PolicyService's SyncCache RPC.
+	PolicyServiceSyncCacheProcedure = "/vca.policy.v1.PolicyService/SyncCache"
+	// PolicyServiceSetCachePolicyProcedure is the fully-qualified name of the PolicyService's
+	// SetCachePolicy RPC.
+	PolicyServiceSetCachePolicyProcedure = "/vca.policy.v1.PolicyService/SetCachePolicy"
 )
 
 // PolicyServiceClient is a client for the vca.policy.v1.PolicyService service.
@@ -79,6 +87,17 @@ type PolicyServiceClient interface {
 	ListPolicySets(context.Context, *connect.Request[v1.ListPolicySetsRequest]) (*connect.Response[v1.ListPolicySetsResponse], error)
 	// DeletePolicySet removes every version of a set.
 	DeletePolicySet(context.Context, *connect.Request[v1.DeletePolicySetRequest]) (*connect.Response[v1.DeletePolicySetResponse], error)
+	// GetCacheState returns the cache policy and the state of each cached
+	// source: the trust list, the registry keys, and the status lists
+	// (ADR-041 decision 5).
+	GetCacheState(context.Context, *connect.Request[v1.GetCacheStateRequest]) (*connect.Response[v1.GetCacheStateResponse], error)
+	// SyncCache reads the sources of one kind now, or of every kind. The
+	// service refuses a copy with a bad signature and keeps the last good
+	// copy (ADR-041 decision 1).
+	SyncCache(context.Context, *connect.Request[v1.SyncCacheRequest]) (*connect.Response[v1.SyncCacheResponse], error)
+	// SetCachePolicy stores the refresh intervals and the offline window
+	// (ADR-041 decisions 2, 3, and 4).
+	SetCachePolicy(context.Context, *connect.Request[v1.SetCachePolicyRequest]) (*connect.Response[v1.SetCachePolicyResponse], error)
 }
 
 // NewPolicyServiceClient constructs a client for the vca.policy.v1.PolicyService service. By
@@ -134,6 +153,24 @@ func NewPolicyServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(policyServiceMethods.ByName("DeletePolicySet")),
 			connect.WithClientOptions(opts...),
 		),
+		getCacheState: connect.NewClient[v1.GetCacheStateRequest, v1.GetCacheStateResponse](
+			httpClient,
+			baseURL+PolicyServiceGetCacheStateProcedure,
+			connect.WithSchema(policyServiceMethods.ByName("GetCacheState")),
+			connect.WithClientOptions(opts...),
+		),
+		syncCache: connect.NewClient[v1.SyncCacheRequest, v1.SyncCacheResponse](
+			httpClient,
+			baseURL+PolicyServiceSyncCacheProcedure,
+			connect.WithSchema(policyServiceMethods.ByName("SyncCache")),
+			connect.WithClientOptions(opts...),
+		),
+		setCachePolicy: connect.NewClient[v1.SetCachePolicyRequest, v1.SetCachePolicyResponse](
+			httpClient,
+			baseURL+PolicyServiceSetCachePolicyProcedure,
+			connect.WithSchema(policyServiceMethods.ByName("SetCachePolicy")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -146,6 +183,9 @@ type policyServiceClient struct {
 	getPolicySet    *connect.Client[v1.GetPolicySetRequest, v1.GetPolicySetResponse]
 	listPolicySets  *connect.Client[v1.ListPolicySetsRequest, v1.ListPolicySetsResponse]
 	deletePolicySet *connect.Client[v1.DeletePolicySetRequest, v1.DeletePolicySetResponse]
+	getCacheState   *connect.Client[v1.GetCacheStateRequest, v1.GetCacheStateResponse]
+	syncCache       *connect.Client[v1.SyncCacheRequest, v1.SyncCacheResponse]
+	setCachePolicy  *connect.Client[v1.SetCachePolicyRequest, v1.SetCachePolicyResponse]
 }
 
 // Evaluate calls vca.policy.v1.PolicyService.Evaluate.
@@ -183,6 +223,21 @@ func (c *policyServiceClient) DeletePolicySet(ctx context.Context, req *connect.
 	return c.deletePolicySet.CallUnary(ctx, req)
 }
 
+// GetCacheState calls vca.policy.v1.PolicyService.GetCacheState.
+func (c *policyServiceClient) GetCacheState(ctx context.Context, req *connect.Request[v1.GetCacheStateRequest]) (*connect.Response[v1.GetCacheStateResponse], error) {
+	return c.getCacheState.CallUnary(ctx, req)
+}
+
+// SyncCache calls vca.policy.v1.PolicyService.SyncCache.
+func (c *policyServiceClient) SyncCache(ctx context.Context, req *connect.Request[v1.SyncCacheRequest]) (*connect.Response[v1.SyncCacheResponse], error) {
+	return c.syncCache.CallUnary(ctx, req)
+}
+
+// SetCachePolicy calls vca.policy.v1.PolicyService.SetCachePolicy.
+func (c *policyServiceClient) SetCachePolicy(ctx context.Context, req *connect.Request[v1.SetCachePolicyRequest]) (*connect.Response[v1.SetCachePolicyResponse], error) {
+	return c.setCachePolicy.CallUnary(ctx, req)
+}
+
 // PolicyServiceHandler is an implementation of the vca.policy.v1.PolicyService service.
 type PolicyServiceHandler interface {
 	// Evaluate runs one policy set over one presentation and returns the
@@ -202,6 +257,17 @@ type PolicyServiceHandler interface {
 	ListPolicySets(context.Context, *connect.Request[v1.ListPolicySetsRequest]) (*connect.Response[v1.ListPolicySetsResponse], error)
 	// DeletePolicySet removes every version of a set.
 	DeletePolicySet(context.Context, *connect.Request[v1.DeletePolicySetRequest]) (*connect.Response[v1.DeletePolicySetResponse], error)
+	// GetCacheState returns the cache policy and the state of each cached
+	// source: the trust list, the registry keys, and the status lists
+	// (ADR-041 decision 5).
+	GetCacheState(context.Context, *connect.Request[v1.GetCacheStateRequest]) (*connect.Response[v1.GetCacheStateResponse], error)
+	// SyncCache reads the sources of one kind now, or of every kind. The
+	// service refuses a copy with a bad signature and keeps the last good
+	// copy (ADR-041 decision 1).
+	SyncCache(context.Context, *connect.Request[v1.SyncCacheRequest]) (*connect.Response[v1.SyncCacheResponse], error)
+	// SetCachePolicy stores the refresh intervals and the offline window
+	// (ADR-041 decisions 2, 3, and 4).
+	SetCachePolicy(context.Context, *connect.Request[v1.SetCachePolicyRequest]) (*connect.Response[v1.SetCachePolicyResponse], error)
 }
 
 // NewPolicyServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -253,6 +319,24 @@ func NewPolicyServiceHandler(svc PolicyServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(policyServiceMethods.ByName("DeletePolicySet")),
 		connect.WithHandlerOptions(opts...),
 	)
+	policyServiceGetCacheStateHandler := connect.NewUnaryHandler(
+		PolicyServiceGetCacheStateProcedure,
+		svc.GetCacheState,
+		connect.WithSchema(policyServiceMethods.ByName("GetCacheState")),
+		connect.WithHandlerOptions(opts...),
+	)
+	policyServiceSyncCacheHandler := connect.NewUnaryHandler(
+		PolicyServiceSyncCacheProcedure,
+		svc.SyncCache,
+		connect.WithSchema(policyServiceMethods.ByName("SyncCache")),
+		connect.WithHandlerOptions(opts...),
+	)
+	policyServiceSetCachePolicyHandler := connect.NewUnaryHandler(
+		PolicyServiceSetCachePolicyProcedure,
+		svc.SetCachePolicy,
+		connect.WithSchema(policyServiceMethods.ByName("SetCachePolicy")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.policy.v1.PolicyService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PolicyServiceEvaluateProcedure:
@@ -269,6 +353,12 @@ func NewPolicyServiceHandler(svc PolicyServiceHandler, opts ...connect.HandlerOp
 			policyServiceListPolicySetsHandler.ServeHTTP(w, r)
 		case PolicyServiceDeletePolicySetProcedure:
 			policyServiceDeletePolicySetHandler.ServeHTTP(w, r)
+		case PolicyServiceGetCacheStateProcedure:
+			policyServiceGetCacheStateHandler.ServeHTTP(w, r)
+		case PolicyServiceSyncCacheProcedure:
+			policyServiceSyncCacheHandler.ServeHTTP(w, r)
+		case PolicyServiceSetCachePolicyProcedure:
+			policyServiceSetCachePolicyHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -304,4 +394,16 @@ func (UnimplementedPolicyServiceHandler) ListPolicySets(context.Context, *connec
 
 func (UnimplementedPolicyServiceHandler) DeletePolicySet(context.Context, *connect.Request[v1.DeletePolicySetRequest]) (*connect.Response[v1.DeletePolicySetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.policy.v1.PolicyService.DeletePolicySet is not implemented"))
+}
+
+func (UnimplementedPolicyServiceHandler) GetCacheState(context.Context, *connect.Request[v1.GetCacheStateRequest]) (*connect.Response[v1.GetCacheStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.policy.v1.PolicyService.GetCacheState is not implemented"))
+}
+
+func (UnimplementedPolicyServiceHandler) SyncCache(context.Context, *connect.Request[v1.SyncCacheRequest]) (*connect.Response[v1.SyncCacheResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.policy.v1.PolicyService.SyncCache is not implemented"))
+}
+
+func (UnimplementedPolicyServiceHandler) SetCachePolicy(context.Context, *connect.Request[v1.SetCachePolicyRequest]) (*connect.Response[v1.SetCachePolicyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.policy.v1.PolicyService.SetCachePolicy is not implemented"))
 }

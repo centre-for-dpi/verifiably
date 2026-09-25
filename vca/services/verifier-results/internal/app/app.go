@@ -139,6 +139,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		SignOut:       signOut,
 		Discovery:     discovery,
 		Requests:      requests,
+		Cache:         cacheOf(policyClient),
 	})
 	if err != nil {
 		return nil, err
@@ -187,6 +188,15 @@ func neighbours(cfg config.Config, deps Deps) (portal.Discovery, portal.Requests
 		requests = ingestv1connect.NewIngestServiceClient(client, cfg.IngestURL)
 	}
 	return discovery, requests
+}
+
+// cacheOf returns the trust cache of the policy service, or nil without
+// a policy service.
+func cacheOf(client policyv1connect.PolicyServiceClient) portal.Cache {
+	if client == nil {
+		return nil
+	}
+	return client
 }
 
 // connectClient returns the client that calls the policy service.

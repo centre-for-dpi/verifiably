@@ -317,6 +317,7 @@ func (s *Service) EvaluateCombined(ctx context.Context, req *connect.Request[com
 		}
 		result.PolicySetId = resp.GetPolicySetId()
 		result.PolicySetVersion = resp.GetPolicySetVersion()
+		keepOldest(result, resp)
 		parsed := parseOrEmpty(cred.GetPayload())
 		role := roleOf(parsed)
 		result.Credentials = append(result.Credentials, summary(ids[i], role, cred, resp))
@@ -482,4 +483,13 @@ func roleOf(parsed vc.Credential) string {
 		return RoleSubject
 	}
 	return ""
+}
+
+// keepOldest keeps the oldest cached material age of the evaluations of
+// one presentation, and the stale mark of any (ADR-041 decision 3).
+func keepOldest(result *resultsv1.VerificationResult, resp *policyv1.EvaluateResponse) {
+	if age := resp.GetMaterialAge(); age != nil && age.AsDuration() > result.GetMaterialAge().AsDuration() {
+		result.MaterialAge = age
+	}
+	result.MaterialStale = result.GetMaterialStale() || resp.GetMaterialStale()
 }

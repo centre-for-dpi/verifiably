@@ -19,6 +19,7 @@ import (
 
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/export"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -285,4 +286,16 @@ func stamp(t time.Time, present bool) string {
 		return "not known"
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+// Age names a duration in its largest whole unit: minutes under an
+// hour, hours under two days, then days. A negative age reads as zero.
+func Age(d time.Duration) string {
+	switch {
+	case d < time.Hour:
+		return msg.T("verifier.age.minutes.label", strconv.Itoa(int(max(d, 0)/time.Minute)))
+	case d < 48*time.Hour:
+		return msg.T("verifier.age.hours.label", strconv.Itoa(int(d/time.Hour)))
+	}
+	return msg.T("verifier.age.days.label", strconv.Itoa(int(d/(24*time.Hour))))
 }

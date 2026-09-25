@@ -193,7 +193,7 @@ func TestOverviewCards(t *testing.T) {
 		"New query", "New request",
 		"Saved queries", "2 DCQL, 1 PE",
 		"Open requests", "3 waiting", "QR or link shown, no presentation yet.",
-		"Trust cache", "Online checks",
+		"Trust cache", "The policy service did not answer.",
 		"Schemas to ask for", "DrivingLicence", "https://issuer.labs.example", "dc&#43;sd-jwt", "given_name, birth_date, licence_class",
 		"Recent results", "Degree check", "Invalid", "The issuer is not on the trust list.", "Valid",
 	} {
@@ -279,7 +279,7 @@ func TestVerifierShellNav(t *testing.T) {
 func TestCacheAndHelpPages(t *testing.T) {
 	f := newShellFixture(t)
 	cache := ok(t, f.get(t, DefaultPrefix+"/cache/"))
-	for _, want := range []string{"Online checks", "Offline window"} {
+	for _, want := range []string{"No cache state now.", "The policy service did not answer."} {
 		if !strings.Contains(cache, want) {
 			t.Errorf("cache page lacks %q", want)
 		}

@@ -67,6 +67,7 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go a.RunCache(ctx)
 	return serve.Run(ctx, serve.Options{
 		Listen: cfg.Listen, Handler: a.Mux, Ready: a.Service.Ready, Log: log,
 	})

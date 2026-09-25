@@ -109,29 +109,3 @@ func (p *Portal) helpPages(r *http.Request, b *blocks) template.HTML {
 		}),
 	})
 }
-
-// cache says how the verifier checks trust and status today: online,
-// at each check, with no offline copy and no offline window.
-func (p *Portal) cache(w http.ResponseWriter, r *http.Request) error {
-	b := &blocks{kit: p.opts.Cards.Kit()}
-	state := b.add("block", components.Block{
-		ID: "cache-state", Title: msg.T("verifier.cache.state.label"), Lead: msg.T("verifier.cache.state.lead"),
-		Body: b.add("table", components.Table{
-			ID: "cache-rows", Caption: msg.T("verifier.cache.caption.label"),
-			Columns: []string{msg.T("verifier.cache.column.item.label"), msg.T("verifier.cache.column.value.label")},
-			Rows: []components.Row{
-				{{Text: msg.T("verifier.cache.trust.label")}, {Text: msg.T("verifier.cache.online.label")}},
-				{{Text: msg.T("verifier.cache.status.label")}, {Text: msg.T("verifier.cache.online.label")}},
-				{{Text: msg.T("verifier.cache.copy.label")}, {Text: msg.T("verifier.cache.copy.none.label")}},
-				{{Text: msg.T("verifier.cache.window.label")}, {Text: msg.T("verifier.cache.window.off.label")}},
-			},
-		}),
-	})
-	if b.err != nil {
-		return b.err
-	}
-	return p.render(w, r, "cache", components.Page{
-		Title: msg.T("verifier.nav.cache.label"), Lead: msg.T("verifier.cache.lead"), Description: msg.T("verifier.cache.lead"),
-		Content: state,
-	})
-}

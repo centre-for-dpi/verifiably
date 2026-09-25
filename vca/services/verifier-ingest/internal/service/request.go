@@ -287,6 +287,7 @@ func ResultOf(raw *ingestv1.RawPresentation, resp *policyv1.EvaluateResponse, re
 		Verdict: resp.GetVerdict(), PolicySetId: resp.GetPolicySetId(), PolicySetVersion: resp.GetPolicySetVersion(),
 		EvaluatedAt: resp.GetEvaluatedAt(), ReceivedAt: raw.GetReceivedAt(), Carrier: CarrierName, RawRef: raw.GetRef(),
 		TemplateId: record.TemplateID, TemplateVersion: record.TemplateVersion,
+		MaterialAge: resp.GetMaterialAge(), MaterialStale: resp.GetMaterialStale(),
 	}
 	for _, c := range resp.GetChecks() {
 		if c.GetCredentialIndex() < 0 {

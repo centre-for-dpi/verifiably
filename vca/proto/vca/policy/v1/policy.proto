@@ -6,6 +6,7 @@ syntax = "proto3";
 
 package vca.policy.v1;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "vca/common/v1/common.proto";
 import "vca/ingest/v1/ingest.proto";
@@ -29,6 +30,137 @@ service PolicyService {
   rpc ListPolicySets(ListPolicySetsRequest) returns (ListPolicySetsResponse);
   // DeletePolicySet removes every version of a set.
   rpc DeletePolicySet(DeletePolicySetRequest) returns (DeletePolicySetResponse);
+  // GetCacheState returns the cache policy and the state of each cached
+  // source: the trust list, the registry keys, and the status lists
+  // (ADR-041 decision 5).
+  rpc GetCacheState(GetCacheStateRequest) returns (GetCacheStateResponse);
+  // SyncCache reads the sources of one kind now, or of every kind. The
+  // service refuses a copy with a bad signature and keeps the last good
+  // copy (ADR-041 decision 1).
+  rpc SyncCache(SyncCacheRequest) returns (SyncCacheResponse);
+  // SetCachePolicy stores the refresh intervals and the offline window
+  // (ADR-041 decisions 2, 3, and 4).
+  rpc SetCachePolicy(SetCachePolicyRequest) returns (SetCachePolicyResponse);
+}
+
+// CacheKind names one kind of cached trust material (ADR-041 decision 1).
+enum CacheKind {
+  CACHE_KIND_UNSPECIFIED = 0;
+  // The trust list: the entries of the trust registry and of the
+  // external registries it federates with.
+  CACHE_KIND_TRUST_LIST = 1;
+  // The registry keys. These are the key set of the trust registry and
+  // the DID documents and key sets of the listed issuers. They also hold
+  // the X.509 anchor chains of the external registries.
+  CACHE_KIND_REGISTRY_KEYS = 2;
+  // The status lists of the listed issuers and of the credentials the
+  // service checked.
+  CACHE_KIND_STATUS_LIST = 3;
+}
+
+// CachePolicy says how often the cache reads each kind. It also says
+// when a check can use a copy with no network (ADR-041 decisions 2 to 4).
+message CachePolicy {
+  // How often the cache reads the trust list. Empty means 6 hours.
+  google.protobuf.Duration trust_list_refresh = 1;
+  // How often the cache reads the registry keys. Empty means 24 hours.
+  google.protobuf.Duration keys_refresh = 2;
+  // How often the cache reads the status lists. Empty means 1 hour.
+  google.protobuf.Duration status_list_refresh = 3;
+  // True lets a check read the cache when a source does not answer.
+  bool allow_offline = 4;
+  // How long after the last good read a copy stays usable with no
+  // network. At most 7 days.
+  google.protobuf.Duration offline_window = 5;
+  // True marks a result that read a copy older than its refresh interval.
+  bool mark_stale = 6;
+  // True makes the status check fail on a status list copy older than
+  // the offline window. This holds in every fail mode.
+  bool refuse_stale_status = 7;
+}
+
+// CacheSource is the state of one cached source.
+message CacheSource {
+  // The kind of the source.
+  CacheKind kind = 1;
+  // The URL or the DID of the source.
+  string source = 2;
+  // The time of the last good read. Empty means no good read yet.
+  google.protobuf.Timestamp synced_at = 3;
+  // The time of the last read, good or failed.
+  google.protobuf.Timestamp read_at = 4;
+  // The reason of the last failed read. Empty after a good read.
+  string last_error = 5;
+  // The key id or the certificate subject that signed the copy. A
+  // status list without a signature says "not checked".
+  string signed_by = 6;
+  // The number of items in the copy: entries, keys, or certificates.
+  int32 item_count = 7;
+  // The id of the external registry the source comes from. Empty means
+  // the trust registry of this deployment.
+  string registry_id = 8;
+  // The display name of that external registry.
+  string registry_name = 9;
+}
+
+// CacheKindState sums up the sources of one kind.
+message CacheKindState {
+  // The kind.
+  CacheKind kind = 1;
+  // The time of the oldest good copy of the kind. Empty means no copy.
+  google.protobuf.Timestamp synced_at = 2;
+  // The time the schedule reads the kind next.
+  google.protobuf.Timestamp next_sync = 3;
+  // The number of sources with a good copy.
+  int32 sources = 4;
+  // The number of items in the good copies.
+  int32 items = 5;
+  // The number of issuers the copies cover.
+  int32 issuers = 6;
+  // The number of sources whose last read failed.
+  int32 failed = 7;
+}
+
+// GetCacheStateRequest has no fields.
+message GetCacheStateRequest {}
+
+// GetCacheStateResponse returns the policy and the state.
+message GetCacheStateResponse {
+  // The cache policy.
+  CachePolicy policy = 1;
+  // One state per kind, in the order of the enum.
+  repeated CacheKindState kinds = 2;
+  // Every source, by kind and then by source.
+  repeated CacheSource sources = 3;
+}
+
+// SyncCacheRequest selects what to read.
+message SyncCacheRequest {
+  // The kind to read. Unspecified reads every kind: the trust list
+  // first, then the keys, then the status lists.
+  CacheKind kind = 1;
+}
+
+// SyncCacheResponse returns the state after the read.
+message SyncCacheResponse {
+  // One state per kind, in the order of the enum.
+  repeated CacheKindState kinds = 1;
+  // Every source, by kind and then by source.
+  repeated CacheSource sources = 2;
+  // The number of sources with a failed read or a refused copy.
+  int32 failed = 3;
+}
+
+// SetCachePolicyRequest carries the policy to store.
+message SetCachePolicyRequest {
+  // The policy. An empty duration keeps the default of the field.
+  CachePolicy policy = 1;
+}
+
+// SetCachePolicyResponse returns the stored policy.
+message SetCachePolicyResponse {
+  // The policy as stored.
+  CachePolicy policy = 1;
 }
 
 // Outcome names the result of one check.
@@ -124,6 +256,13 @@ message EvaluateResponse {
   int32 policy_set_version = 4;
   // The time of evaluation.
   google.protobuf.Timestamp evaluated_at = 5;
+  // The age of the oldest cached material the evaluation read because a
+  // source did not answer. Empty means every source answered online
+  // (ADR-041 decision 3).
+  google.protobuf.Duration material_age = 6;
+  // True when that material was older than its refresh interval and the
+  // cache policy marks such results.
+  bool material_stale = 7;
 
   // Verdict names the overall result.
   enum Verdict {

@@ -6,6 +6,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -15,8 +16,10 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
+	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/cache"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/ports"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/service"
@@ -28,6 +31,11 @@ type App struct {
 	Mux     *http.ServeMux
 	Service *service.Service
 	Sets    *sets.Store
+	// Cache keeps the trust material for checks with no network.
+	Cache *cache.Cache
+	// CacheTick is how often the schedule of the cache looks for a due
+	// read. Zero turns the schedule off.
+	CacheTick time.Duration
 }
 
 // Deps are the side effects the wiring needs. Tests inject fakes.
@@ -68,29 +76,39 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	setStore := sets.New(kv, nil)
 
-	fetch := ports.NewCache(cfg.CacheTTL, cfg.CacheEntries, deps.Now).
-		Wrap(ports.HTTPFetcher(deps.HTTPClient, cfg.FetchMaxBytes))
+	raw := ports.HTTPFetcher(deps.HTTPClient, cfg.FetchMaxBytes)
+	fetch := ports.NewCache(cfg.CacheTTL, cfg.CacheEntries, deps.Now).Wrap(raw)
 	resolver := did.NewResolver(did.Fetcher(fetch), ports.NewDIDCache(cfg.CacheTTL, deps.Now))
 
 	trust := deps.Trust
 	if trust == nil && cfg.TrustURL != "" {
 		trust = trustv1connect.NewTrustServiceClient(connectClient(cfg, deps), cfg.TrustURL)
 	}
+	// The trust cache reads fresh copies, so it takes the fetcher
+	// without the short lived document cache (ADR-041).
+	trustCache, err := cache.New(cache.Options{
+		KV: kv, TrustURL: cfg.TrustURL, Snapshot: snapshot(trust), Fetch: raw,
+		Defaults: cfg.CachePolicy(), Now: deps.Now, Log: deps.Log,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	svc, err := service.New(service.Options{
 		Sets: setStore,
 		Ports: policy.Context{
 			Leeway:  cfg.Leeway,
-			Keys:    ports.Keys(resolver, fetch),
-			Status:  fetch,
+			Keys:    trustCache.Keys(ports.Keys(resolver, fetch)),
+			Status:  trustCache.Status(fetch),
 			Schemas: fetch,
-			Trust:   ports.Trust(trust),
+			Trust:   trustCache.Trust(ports.Trust(trust)),
 		},
 		DefaultSetID:   cfg.DefaultPolicySet,
 		Audience:       cfg.Audience,
 		StatusFailMode: cfg.StatusFailMode,
 		PageSizeMax:    cfg.PageSizeMax,
 		Now:            deps.Now,
+		Cache:          trustCache,
 	})
 	if err != nil {
 		return nil, err
@@ -108,7 +126,31 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	deps.Log.Info("verifier policy ready",
 		"state_dir", cfg.StateDir, "default_policy_set", cfg.DefaultPolicySet,
 		"status_fail_mode", cfg.StatusFailMode, "checks", len(policy.Checks()))
-	return &App{Mux: mux, Service: svc, Sets: setStore}, nil
+	return &App{Mux: mux, Service: svc, Sets: setStore, Cache: trustCache, CacheTick: cfg.CacheTick}, nil
+}
+
+// snapshot returns the reader of the signed trust snapshot, or nil
+// without a trust registry.
+func snapshot(trust trustv1connect.TrustServiceClient) func(context.Context) (string, error) {
+	if trust == nil {
+		return nil
+	}
+	return func(ctx context.Context) (string, error) {
+		resp, err := trust.ExportSnapshot(ctx, connect.NewRequest(&trustv1.ExportSnapshotRequest{}))
+		if err != nil {
+			return "", err
+		}
+		return resp.Msg.GetJws(), nil
+	}
+}
+
+// RunCache reads the trust cache on its schedule until ctx ends. A zero
+// tick returns at once.
+func (a *App) RunCache(ctx context.Context) {
+	if a.CacheTick <= 0 {
+		return
+	}
+	a.Cache.Run(ctx, a.CacheTick)
 }
 
 // connectClient returns the client that calls the trust registry.

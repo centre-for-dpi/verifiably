@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
@@ -49,7 +50,7 @@ func (f *evaluator) Evaluate(_ context.Context, req *connect.Request[policyv1.Ev
 	f.sets = append(f.sets, req.Msg.GetPolicySetId())
 	return connect.NewResponse(&policyv1.EvaluateResponse{Verdict: policyv1.EvaluateResponse_VERDICT_VALID, Checks: []*policyv1.CheckResult{
 		{Name: "nonce", CredentialIndex: -1}, {Name: "signature", CredentialIndex: 0},
-	}}), nil
+	}, MaterialAge: durationpb.New(3 * time.Hour), MaterialStale: true}), nil
 }
 
 // keeper stores a result or fails.
@@ -184,7 +185,8 @@ func TestStackRequestLifecycle(t *testing.T) {
 	if got.GetResultId() != "res-7" || len(got.GetStackChecks()) != 1 || got.GetStackChecks()[0].GetReason() != "bad" {
 		t.Fatalf("answered %+v", got)
 	}
-	if res.kept.GetTemplateVersion() != 4 || res.kept.GetCarrier() != service.CarrierName || len(res.kept.GetChecks()) != 1 || len(pol.sets) != 1 || pol.sets[0] != "query-pid" {
+	if res.kept.GetTemplateVersion() != 4 || res.kept.GetCarrier() != service.CarrierName || len(res.kept.GetChecks()) != 1 || len(pol.sets) != 1 || pol.sets[0] != "query-pid" ||
+		res.kept.GetMaterialAge().AsDuration() != 3*time.Hour || !res.kept.GetMaterialStale() {
 		t.Errorf("kept %+v sets %v", res.kept, pol.sets)
 	}
 	record, err := store.Get(ctx, id)

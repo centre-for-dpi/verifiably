@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/cache"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/sets"
 )
 
@@ -50,6 +52,10 @@ type Options struct {
 	PageSizeMax int
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// Cache keeps the trust material for checks with no network
+	// (ADR-041). Nil turns the cache RPCs off. The ports read it when
+	// the wiring wraps them with it.
+	Cache *cache.Cache
 }
 
 // Service is the PolicyService handler.
@@ -120,14 +126,20 @@ func (s *Service) Evaluate(ctx context.Context, req *connect.Request[policyv1.Ev
 	if pc.Nonce == "" {
 		pc.Nonce = msg.GetPresentation().GetNonce()
 	}
+	ctx, use := cache.Track(ctx)
 	report := policy.Evaluate(ctx, ToPresentation(msg.GetPresentation()), pc, set)
-	return connect.NewResponse(&policyv1.EvaluateResponse{
+	resp := &policyv1.EvaluateResponse{
 		Verdict:          VerdictOf(report.Verdict),
 		Checks:           ToProtoResults(report.Results),
 		PolicySetId:      report.SetID,
 		PolicySetVersion: report.Version,
 		EvaluatedAt:      timestamppb.New(at),
-	}), nil
+	}
+	if age, used := use.Age(); used {
+		resp.MaterialAge = durationpb.New(age)
+		resp.MaterialStale = use.Stale()
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // resolveSet returns the core set the evaluation runs.

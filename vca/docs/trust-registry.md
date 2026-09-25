@@ -142,6 +142,13 @@ wins. The provenance then carries `registry_id` and `registry_name`,
 the list URL, the key id or certificate subject, and the check time. An
 expired copy gives no answer.
 
+`ExportSnapshot` signs every entry a lookup reads with the key of the
+lists. The snapshot holds the published local entries first. Then it
+holds the copy of each external registry. Each copy names its registry,
+list URL, signer, check time, and anchor certificates. The verifier policy service
+checks the signature and keeps the snapshot for checks with no network
+(ADR-041 decision 1). The RPC stays on the compose network.
+
 Nobody edits the entries of an external registry here. `UpsertEntry` and
 `DeleteEntry` refuse an entity that an external registry names, and
 `ImportEtsi` skips it.

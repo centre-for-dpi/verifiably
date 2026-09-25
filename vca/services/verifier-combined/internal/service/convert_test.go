@@ -4,6 +4,9 @@ package service
 
 import (
 	"testing"
+	"time"
+
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
@@ -11,6 +14,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
+	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/rules"
 )
 
@@ -174,5 +178,17 @@ func TestTypeMatchesAndRole(t *testing.T) {
 	}
 	if got := roleOf(vc.Credential{SubjectID: "did:key:a"}); got != RoleSubject {
 		t.Fatalf("want the subject role, got %q", got)
+	}
+}
+
+// TestKeepOldestMaterialAge keeps the oldest cached material age of the
+// evaluations and the stale mark of any.
+func TestKeepOldestMaterialAge(t *testing.T) {
+	r := &resultsv1.VerificationResult{}
+	keepOldest(r, &policyv1.EvaluateResponse{})
+	keepOldest(r, &policyv1.EvaluateResponse{MaterialAge: durationpb.New(2 * time.Hour), MaterialStale: true})
+	keepOldest(r, &policyv1.EvaluateResponse{MaterialAge: durationpb.New(time.Hour)})
+	if r.GetMaterialAge().AsDuration() != 2*time.Hour || !r.GetMaterialStale() {
+		t.Fatalf("result = %+v", r)
 	}
 }

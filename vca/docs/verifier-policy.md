@@ -116,6 +116,39 @@ fetches the document, and validates the credential with
 `core/jsonschema`. The evidence names the number of problems and the
 first one.
 
+## Trust cache
+
+`internal/cache` keeps checked copies of the trust material (ADR-041).
+With them, a verifier can check a presentation with no network for a
+set time. The cache keeps three kinds of copy.
+
+| Kind | Source | Check before the cache keeps the copy |
+|---|---|---|
+| Trust list | `ExportSnapshot` of the trust registry: the local entries and the copy of each external registry, with its registry id and name. | The JWS signature against the key set of the trust registry, the `typ` header, and the `exp` claim. |
+| Registry keys | The key set of the trust registry. The `did:web` documents and key sets of the listed issuers. The X.509 anchor chains of the external registries. | A DID document must name the DID it came from and hold a usable key. A key set must hold a key. Each certificate must be valid now and signed by the next one. |
+| Status lists | The status lists that the listed issuers publish, and each list that a check read online. | The keys of its issuer must check the signature of a status list token. A plain JSON list says `not checked`, as the online check does. |
+
+A read that fails, or a copy that fails its check, keeps the last good
+copy. The source then shows the reason in `last_error`. The copies sit
+in the state directory under `cache/`, so they survive a restart.
+
+A schedule reads each kind on its own interval: the trust list every
+6 hours, the registry keys every 24 hours, and the status lists every
+hour. The schedule looks for a due kind every
+`VCA_VERIFIER_POLICY_CACHE_TICK`. `SyncCache` reads a kind at once.
+
+Each check asks the network first. When a source does not answer and
+the policy allows checks with no network, the check reads the copy.
+
+| Age of the copy | Outcome |
+|---|---|
+| Inside the window | The check uses the copy. The response carries `material_age`, the age of the oldest copy it read. `material_stale` is true when a copy is older than its refresh interval and the policy marks such results. |
+| Older than the window | The signature and trust checks `FAIL` with the evidence `stale: true`. The status check fails too when the policy refuses stale status lists. Otherwise the fail mode decides. |
+
+The window is at most 7 days. `GetCacheState` returns the policy and
+each source. `SetCachePolicy` stores a new policy in the state
+directory. The caching page of `verifier-results` shows both.
+
 ## Policy sets
 
 A policy set is a named list of checks with parameters and a blocking

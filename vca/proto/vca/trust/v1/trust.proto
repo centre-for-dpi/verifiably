@@ -48,6 +48,29 @@ service TrustService {
   // SyncRegistry reads the list of one external registry now. A failed
   // read keeps the last good copy and sets last_error.
   rpc SyncRegistry(SyncRegistryRequest) returns (SyncRegistryResponse);
+  // ExportSnapshot returns every entry that a lookup reads: the entries
+  // of this registry and the checked copies of the external registries,
+  // each with its provenance. The service signs the answer with the key
+  // of its lists. The verifier policy service checks the signature and
+  // keeps the copy for checks with no network (ADR-041 decision 1).
+  // The RPC stays on the compose network (ADR-047 decision 2).
+  rpc ExportSnapshot(ExportSnapshotRequest) returns (ExportSnapshotResponse);
+}
+
+// ExportSnapshotRequest has no fields.
+message ExportSnapshotRequest {}
+
+// ExportSnapshotResponse carries the signed snapshot.
+message ExportSnapshotResponse {
+  // The snapshot as a compact JWS with the typ trust-snapshot+jwt. The
+  // key set at /.well-known/jwks.json checks it. The payload holds iss,
+  // iat, exp, and lists. Each list names its registry and its URL. It
+  // names the key or certificate that signed it and the time of the
+  // check. It holds the PEM anchor certificates of an external registry.
+  // It holds the entities in the JSON form of the ETSI list.
+  string jws = 1;
+  // The number of entries in the snapshot.
+  int32 entry_count = 2;
 }
 
 // RegistryMethod names the format of an external trust list.

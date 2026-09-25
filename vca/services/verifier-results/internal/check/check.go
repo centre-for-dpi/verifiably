@@ -93,6 +93,8 @@ func Build(raw *ingestv1.RawPresentation, resp *policyv1.EvaluateResponse) *resu
 		PolicySetVersion: resp.GetPolicySetVersion(),
 		Carrier:          "paste",
 		RawRef:           raw.GetRef(),
+		MaterialAge:      resp.GetMaterialAge(),
+		MaterialStale:    resp.GetMaterialStale(),
 	}
 	for _, c := range resp.GetChecks() {
 		if c.GetCredentialIndex() < 0 {

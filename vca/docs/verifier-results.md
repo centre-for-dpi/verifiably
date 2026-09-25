@@ -110,7 +110,9 @@ out form ends the session at `verifier-auth` and clears the cookie.
 | `GET /portal/results/` | The result list with the filters and the export links. |
 | `GET /portal/results/{id}` | The card list of one result. |
 | `GET /portal/export` | The CSV or JSON download of the filtered results. |
-| `GET /portal/cache/` | How the verifier reads the trust list and the status lists now. |
+| `GET /portal/cache/` | The trust cache of board Verifier-Caching: the age and the counts of each kind, every source, and the cache policy. |
+| `POST /portal/cache/sync` | Sync now: the policy service reads every source at once. |
+| `POST /portal/cache/policy` | Store the refresh intervals and the offline settings. |
 | `GET /portal/help/` | What each verifier page does, and every verifier RPC. |
 | `POST /portal/signout` | The sign out form of the user menu. |
 
@@ -124,9 +126,9 @@ discovery service at `VCA_VERIFIER_RESULTS_DISCOVERY_URL` give the saved
 queries and the schemas. `ListTransactions` of the ingestion service at
 `VCA_VERIFIER_RESULTS_INGEST_URL` counts the requests that wait for a
 wallet. A card shows "Unknown now" when its service does not answer.
-Each check reads the trust list and the status lists online today, so
-the trust cache card says so. The offline cache of ADR-041 fills it
-later.
+The trust cache card reads `GetCacheState` of the policy service at
+`VCA_VERIFIER_RESULTS_POLICY_URL`. It shows the age of the oldest copy
+and the offline window (ADR-041 decision 5).
 
 ## Audit log
 
