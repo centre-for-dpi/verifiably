@@ -573,3 +573,26 @@ func TestDcApiScriptServed(t *testing.T) {
 		t.Errorf("missing dcapi.js should fail, got %v", err)
 	}
 }
+
+// TestCodeBlockKeepsLongTokensInsideItsBox proves a long value with no
+// spaces, such as an offer link, stays inside the code box on every width.
+// The block wraps anywhere, keeps line breaks, never grows past its column,
+// and still scrolls when a browser cannot wrap.
+func TestCodeBlockKeepsLongTokensInsideItsBox(t *testing.T) {
+	base := baseCSS(t)
+	pre := strings.Join(cssRules(base, ".code pre"), "\n")
+	if pre == "" {
+		t.Fatal("base.css has no .code pre rule")
+	}
+	for _, want := range []string{"white-space:pre-wrap", "overflow-wrap:anywhere", "word-break:break-all", "overflow-x:auto", "max-width:100%"} {
+		if !strings.Contains(pre, want) {
+			t.Errorf(".code pre rules missing %q", want)
+		}
+	}
+	// A fixed width of zero kept the box in its column but hid the
+	// end of the value behind the padding. The box now takes its
+	// column width.
+	if strings.Contains(pre, "width:0") {
+		t.Error(".code pre must not set width:0")
+	}
+}

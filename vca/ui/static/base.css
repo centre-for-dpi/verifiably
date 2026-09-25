@@ -428,7 +428,8 @@ h1,h2,h3,h4{overflow-wrap:break-word}
 }
 .code pre{
   overflow-x:auto;padding:var(--space-4) 1.4rem;border:1px solid var(--line);border-radius:var(--radius-m);
-  font-size:.85rem;line-height:1.6;width:0;min-width:100%;
+  font-size:.85rem;line-height:1.6;max-width:100%;
+  white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;
 }
 
 /* ---------- empty state ---------- */
