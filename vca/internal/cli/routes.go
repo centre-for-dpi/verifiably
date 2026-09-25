@@ -31,9 +31,12 @@ import (
 //
 // The routes per role, with the home of the role first:
 //
-//	issuer    /                                    schema-registry (redirect to /portal/)
+//	issuer    /                                    issuance (redirect to /issuer/)
+//	          /issuer/*                            issuance (the issuer overview)
+//	          /identity/*  /issue/*                issuance (identity, issue)
+//	          /notifications/*  /help/*            issuance (notifications, help)
+//	          /static/*                            issuance
 //	          /portal/*                            schema-registry (the schemas page)
-//	          /static/*                            schema-registry
 //	          /vca.schema.v1.SchemaService/*       schema-registry
 //	          /.well-known/openid-credential-issuer schema-registry
 //	          /.well-known/vct/*  /vct/*           schema-registry
@@ -130,7 +133,8 @@ type Home struct {
 
 // HomeOf returns the home of a role. The page comes from the code of
 // the service: the root of schema-registry and of admin redirect to
-// their portal prefix, wallet-portal serves its pages under /wallet,
+// their portal prefix, issuance serves the issuer home under /issuer,
+// wallet-portal serves its pages under /wallet,
 // and verifier-results serves the staff pages under /portal. The
 // topology package names the service, so a page and the CLI agree.
 func HomeOf(role commonv1.Role) Home {

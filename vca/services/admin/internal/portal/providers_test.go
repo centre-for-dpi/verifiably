@@ -59,7 +59,7 @@ func livePairs(t *testing.T, h *harness) func(*config.Config, *app.Deps) {
 	return func(cfg *config.Config, deps *app.Deps) {
 		cfg.Peers = []topology.Peer{
 			{Pair: "issuer-waltid", Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID, PublicURL: "https://issuer-waltid.example",
-				Services: map[string]string{"schema-registry": ready.URL, "issuer-auth": h.auth["issuer-waltid"].server.URL}},
+				Services: map[string]string{"issuance": ready.URL, "issuer-auth": h.auth["issuer-waltid"].server.URL}},
 			{Pair: "holder-waltid", Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID, PublicURL: "https://holder-waltid.example",
 				Services: map[string]string{"wallet-portal": ready.URL, "wallet-auth": h.auth["holder-waltid"].server.URL}},
 			{Pair: "verifier-inji", Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_INJI, PublicURL: "https://verifier-inji.example",

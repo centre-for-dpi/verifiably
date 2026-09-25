@@ -224,7 +224,7 @@ func TestAuthRootServesChooser(t *testing.T) {
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		return rec
 	}
-	for _, path := range []string{"/auth/?return_to=/portal/", "/"} {
+	for _, path := range []string{"/auth/?return_to=/issuer/", "/"} {
 		rec := get(path)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s: status %d: %s", path, rec.Code, rec.Body.String())
@@ -232,8 +232,8 @@ func TestAuthRootServesChooser(t *testing.T) {
 		doc := rec.Body.String()
 		a11ytest.AssertPage(t, doc)
 		for _, want := range []string{
-			`<h1>Sign in as an issuer.</h1>`, `<span class="signin-meta">vca-issuer-realm</span>`, `href="/auth/login?provider=default&amp;return_to=%2Fportal%2F"`,
-			`href="/auth/register?provider=default&amp;return_to=%2Fportal%2F"`, `<a class="signin-back" href="https://vca.example/roles/"`,
+			`<h1>Sign in as an issuer.</h1>`, `<span class="signin-meta">vca-issuer-realm</span>`, `href="/auth/login?provider=default&amp;return_to=%2Fissuer%2F"`,
+			`href="/auth/register?provider=default&amp;return_to=%2Fissuer%2F"`, `<a class="signin-back" href="https://vca.example/roles/"`,
 		} {
 			if !strings.Contains(doc, want) {
 				t.Errorf("%s missing %q\n%s", path, want, doc)

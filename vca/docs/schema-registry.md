@@ -95,7 +95,9 @@ The staff pages live under the configured prefix, `/portal` by default
 `a11ytest.AssertPage`. Every page needs a session of `issuer-auth`
 (ADR-036 decision 3). `VCA_SCHEMA_AUTH_JWKS_URL` names the key set and
 `VCA_SCHEMA_LOGIN_URL` names the sign in chooser. The public documents
-and the JSON listing stay open.
+and the JSON listing stay open. The pages draw inside the issuer shell
+of `services/internal/staffshell` (ADR-044 decision 5).
+`POST /portal/signout` ends the session at `issuer-auth`.
 
 | Path | Page |
 |---|---|

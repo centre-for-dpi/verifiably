@@ -250,7 +250,10 @@ func Catalog() []Service {
 				dpgURL("VCA_WALTID_VERIFIER_URL", commonv1.Role_ROLE_VERIFIER),
 			},
 			Routes: backendRoutes()},
-		{Name: "issuance", ListenEnv: "VCA_ISSUANCE_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true,
+		// The issuance service is the issuer home (ADR-044 decision 1): it
+		// serves the overview, the identity, the issue, the notifications,
+		// and the help pages behind the staff guard, and the shared assets.
+		{Name: "issuance", ListenEnv: "VCA_ISSUANCE_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true, UI: true,
 			Links: append([]Link{
 				{Env: "VCA_ISSUANCE_PUBLIC_URL", Kind: LinkPublicURL},
 				{Env: "VCA_ISSUANCE_ADAPTER_URL", Kind: LinkAdapterURL},
@@ -258,10 +261,18 @@ func Catalog() []Service {
 				{Env: "VCA_ISSUANCE_STATUS_URL", Target: "status-bitstring", Kind: LinkURL},
 				{Env: "VCA_ISSUANCE_ISSUED_URL", Target: "issued-credentials", Kind: LinkURL},
 				{Env: "VCA_ISSUANCE_DATA_SOURCE_URL", Target: "data-source", Kind: LinkURL},
+				staffJWKS("VCA_ISSUANCE_AUTH_JWKS_URL", "issuer-auth"),
+				staffLogin("VCA_ISSUANCE_LOGIN_URL"),
+				peers,
 			}, issuanceAudit...),
 			Fixed: []FixedValue{issuanceAuditDir},
 			// The rendered document of a citizen lives under the public URL.
-			Routes: []Route{rpc("vca.issuance.v1.IssuanceService"), {Match: "/issuance/pdf/*"}}},
+			Routes: []Route{
+				rpc("vca.issuance.v1.IssuanceService"), {Match: "/issuance/pdf/*"},
+				{Match: "/issuer/*", Page: "Issuer portal"}, {Match: "/identity/*", Page: "Issuer identity"},
+				{Match: "/issue/*", Page: "Issue"}, {Match: "/notifications/*", Page: "Issuer notifications"},
+				{Match: "/help/*", Page: "Issuer help"}, assets,
+			}},
 		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
 			Links:  append([]Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}}, issuedAudit...),
 			Fixed:  []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}, issuedAuditDir},
@@ -308,7 +319,7 @@ func Catalog() []Service {
 				rpc("vca.schema.v1.SchemaService"),
 				{Match: "/.well-known/openid-credential-issuer"}, {Match: "/.well-known/vct/*"},
 				{Match: "/vct/*"}, {Match: "/schemas/*"}, {Match: "/api/schemas"},
-				{Match: "/portal/*", Page: "Schemas"}, assets,
+				{Match: "/portal/*", Page: "Schemas"},
 			}},
 		{Name: "status-bitstring", ListenEnv: "VCA_STATUS_BITSTRING_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
 			Links: []Link{

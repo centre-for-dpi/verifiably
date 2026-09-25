@@ -46,20 +46,21 @@ func TestEntryPointsAndReport(t *testing.T) {
 	if len(points) != 3 {
 		t.Fatalf("got %d entry points", len(points))
 	}
-	if points[0].Pair.Name() != "issuer-waltid" || points[0].Portal != "schema-registry" ||
+	if points[0].Pair.Name() != "issuer-waltid" || points[0].Portal != "issuance" ||
 		points[0].URL != "https://issuer-waltid.labs.example" || points[0].Local {
 		t.Errorf("first = %+v", points[0])
 	}
 	// The pages come from the route table: the home page first, then
-	// the sign in chooser of the role (ADR-035), then the rest.
-	if len(points[0].Pages) != 3 || points[0].Pages[0].URL != "https://issuer-waltid.labs.example/portal/" ||
-		points[0].Pages[1].URL != "https://issuer-waltid.labs.example/auth/" || points[0].Pages[1].Title != "Sign in" ||
-		points[0].Pages[2].URL != "https://issuer-waltid.labs.example/builder/" {
+	// the rest in service order (ADR-035, ADR-044 decision 1).
+	if len(points[0].Pages) != 8 || points[0].Pages[0].URL != "https://issuer-waltid.labs.example/issuer/" ||
+		points[0].Pages[1].URL != "https://issuer-waltid.labs.example/identity/" ||
+		points[0].Pages[5].URL != "https://issuer-waltid.labs.example/auth/" || points[0].Pages[5].Title != "Sign in" ||
+		points[0].Pages[7].URL != "https://issuer-waltid.labs.example/portal/" {
 		t.Errorf("issuer pages = %+v", points[0].Pages)
 	}
 	report := EntryReport("", points)
 	for _, want := range []string{
-		"Open\n  issuer-waltid\n",
+		"Open\n  issuer-waltid\n    Issuer portal          issuance            https://issuer-waltid.labs.example/issuer/\n",
 		"    Schemas                schema-registry     https://issuer-waltid.labs.example/portal/\n",
 		"    Sign in                issuer-auth         https://issuer-waltid.labs.example/auth/\n",
 		"    Schema builder         schema-builder-ui   https://issuer-waltid.labs.example/builder/\n",
@@ -117,7 +118,7 @@ func TestDeployPrintsTheEntryPoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Open\n  issuer-waltid\n    Schemas                schema-registry     https://issuer-waltid.labs.example/portal/") {
+	if !strings.Contains(out.String(), "Open\n  issuer-waltid\n    Issuer portal          issuance            https://issuer-waltid.labs.example/issuer/") {
 		t.Errorf("out:\n%s", out.String())
 	}
 	// A dry run prints the commands only.

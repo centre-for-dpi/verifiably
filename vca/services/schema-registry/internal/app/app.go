@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/config"
@@ -37,6 +40,8 @@ type Deps struct {
 	Backend backendv1connect.IssuerBackendServiceClient
 	// SessionKeys replaces the key set of issuer-auth. Tests set it.
 	SessionKeys staffsession.Keys
+	// Prober replaces the probe of the peers of the issuer shell.
+	Prober *topology.Prober
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives start messages. Nil means slog.Default.
@@ -74,8 +79,13 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	shell, signOut := staffshell.Wire(staffshell.Setup{
+		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
+		SignOut: cfg.PortalPrefix + "/signout", Prober: deps.Prober, Now: deps.Now,
+	})
 	pages, err := portal.New(portal.Options{
 		Client: svc, Prefix: cfg.PortalPrefix, BuilderURL: cfg.BuilderURL, Kit: kit,
+		Shell: shell, SignOut: signOut,
 	})
 	if err != nil {
 		return nil, err

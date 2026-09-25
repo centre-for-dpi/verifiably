@@ -94,19 +94,8 @@ func (p *Portal) stacks(f frame) []components.StackLink {
 	return out
 }
 
-// stackName returns the display name of a stack: the name the first
-// live adapter of the stack reports, or the short name of the enum
-// value until an adapter answers (ADR-001 decision 4).
-func stackName(snap topology.Snapshot, d configv1.Dpg) string {
-	for _, st := range snap.Live() {
-		if st.Peer.Dpg == d {
-			if name := st.Capabilities.GetDpgInfo().GetDisplayName(); name != "" {
-				return name
-			}
-		}
-	}
-	return shortName(d.String())
-}
+// stackName returns the display name of a stack (ADR-001 decision 4).
+func stackName(snap topology.Snapshot, d configv1.Dpg) string { return snap.StackName(d) }
 
 // shortName turns an enum name such as DPG_WALTID into waltid.
 func shortName(name string) string {

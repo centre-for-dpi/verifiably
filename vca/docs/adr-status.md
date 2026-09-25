@@ -421,7 +421,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-036 | 1 A verifier-auth service per verifier pair | Done | `vca/services/verifier-auth` | Audience `vca-verifier`, roles `verifier-admin`, `verifier-operator`, `verifier-viewer`. |
 | ADR-036 | 2 Verifier staff pages need a session | Done | `vca/services/internal/staffsession` | `verifier-results`, `verifier-discovery`, and `verifier-ingest` guard their staff pages. The citizen check, the catalogue, and the OID4VP endpoints stay open. |
-| ADR-036 | 3 Issuer staff pages get the same guard | Partial | `vca/services/internal/staffsession` | `schema-registry` and `schema-builder-ui` guard their pages against `issuer-auth`. The issuer home of `issuance` follows in P3-01. |
+| ADR-036 | 3 Issuer staff pages get the same guard | Done | `vca/services/internal/staffsession` | `schema-registry`, `schema-builder-ui`, and the issuer home of `issuance` guard their pages against `issuer-auth`. |
 
 ## ADR-037: Tenants mapped to DPG tenancy
 
@@ -486,11 +486,11 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-044 | 1 The issuer home moves to issuance | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+| ADR-044 | 1 The issuer home moves to issuance | Done | `vca/services/issuance/internal/pages`, `vca/internal/topology` | `issuance` serves `/issuer/`, `/identity/`, `/issue/`, `/notifications/`, `/help/`, and the shared assets. |
 | ADR-044 | 2 Issued credentials and sources pages | Not started | `vca/services/issued-credentials` | Proposed record. No work exists yet. |
 | ADR-044 | 3 The verifier home stays on verifier-results | Not started | `vca/services/verifier-results` | Proposed record. No work exists yet. |
 | ADR-044 | 4 DCQL, PE, and request pages | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
-| ADR-044 | 5 One role navigation package bound to the routes | Not started | `vca/internal/rolenav` | Proposed record. No work exists yet. |
+| ADR-044 | 5 One role navigation package bound to the routes | Partial | `vca/internal/rolenav`, `vca/services/internal/staffshell` | The admin and the issuer pages draw their side navigation from the package. The holder and the verifier follow. |
 
 ## ADR-045: Full DPG surfacing
 

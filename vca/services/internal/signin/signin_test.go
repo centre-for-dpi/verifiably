@@ -138,8 +138,8 @@ func TestChooserListsEnabledProvidersOfTheRole(t *testing.T) {
 	}
 	// A bad return_to falls back to the home of the role.
 	doc = get(t, mount(c, "/auth"), "/auth/?return_to=https://evil.example/").Body.String()
-	if !strings.Contains(doc, `return_to=%2Fportal%2F"`) {
-		t.Errorf("a bad return_to must fall back to /portal/:\n%s", doc)
+	if !strings.Contains(doc, `return_to=%2Fissuer%2F"`) {
+		t.Errorf("a bad return_to must fall back to /issuer/:\n%s", doc)
 	}
 	// The same page serves at the root prefix.
 	if rec := get(t, mount(c, ""), "/"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `href="/auth/login?provider=default`) {
@@ -164,7 +164,7 @@ func TestChooserShowsRegisterOnlyWhenSupported(t *testing.T) {
 	// A keycloak record gets one.
 	c = chooser(t, signin.Options{Role: commonv1.Role_ROLE_ISSUER, Providers: registry(t, keycloak(idp)), Registrar: &registrar{}, Metadata: flow})
 	doc = get(t, mount(c, "/auth"), "/auth/").Body.String()
-	if !strings.Contains(doc, `<span>or</span>`) || !strings.Contains(doc, `<a class="btn btn-ghost" href="/auth/register?provider=default&amp;return_to=%2Fportal%2F">Register a new account</a>`) {
+	if !strings.Contains(doc, `<span>or</span>`) || !strings.Contains(doc, `<a class="btn btn-ghost" href="/auth/register?provider=default&amp;return_to=%2Fissuer%2F">Register a new account</a>`) {
 		t.Errorf("a keycloak provider offers registration:\n%s", doc)
 	}
 	// Two providers with prompt=create get one button each, named.

@@ -20,6 +20,35 @@ credential. A deployment changes its DPG by changing one URL.
 | `GetOffer` | Returns the state of one offer. |
 | `Deferred` | Reads the state of a deferred issuance at the adapter. |
 
+## The issuer pages
+
+The service is the home of the issuer (ADR-044 decision 1). It serves
+the issuer pages behind the staff guard of `issuer-auth` (ADR-036
+decision 3). `VCA_ISSUANCE_AUTH_JWKS_URL` names the key set and
+`VCA_ISSUANCE_LOGIN_URL` names the sign in chooser. The root of the
+service sends the browser to `/issuer/`.
+
+| Path | Page |
+| --- | --- |
+| `GET /issuer/` | The overview of the issuer. |
+| `GET /identity/` | The issuer identity. |
+| `GET /issue/` | The published schemas and the delivery channels of the stack. |
+| `GET /notifications/` | The delivery channels of the issuer and their state. |
+| `GET /help/` | Every issuer RPC with its help text. |
+| `POST /issuer/signout` | Ends the session at `issuer-auth`. |
+
+Every page draws inside the issuer shell of
+`services/internal/staffshell`. The shell shows the role chip, the
+stack switcher, the user menu, and the side navigation of
+`internal/rolenav`. The stack switcher lists the issuer pairs that run,
+from `VCA_PEERS`. The service also serves the shared assets at
+`/static/`. It reads the theme file of `VCA_THEME_FILE` at start and
+stops when the file is wrong (ADR-032).
+
+Each call of the pages to the issued credentials service names the
+staff member in the `X-Vca-Actor` header. The audit log of that service
+then names the staff member (ADR-039 decision 1).
+
 ## The steps of one issuance
 
 1. The service reads what the adapter supports. It keeps the answer for
@@ -140,4 +169,4 @@ that it is A4, and that the QR payload reads back.
 - Service folder: `services/issuance`
 - Contract: `proto/vca/issuance/v1/issuance.proto`
 - Decisions: ADR-016 decisions 1 to 6, ADR-002 decisions 2 and 5,
-  ADR-017 decision 1
+  ADR-017 decision 1, ADR-044 decision 1

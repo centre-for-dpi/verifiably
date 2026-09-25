@@ -105,8 +105,8 @@ The command prints a summary of every value before it writes.
 
 Open the home page of the role in a browser.
 `vca deploy` prints the pages at the end.
-The schemas page of the first issuer pair is
-`http://localhost:18006/portal/`.
+The issuer home of the first issuer pair is
+`http://localhost:18002/issuer/`.
 The wallet, the verification results, and the admin portal each have
 their own host port.
 `vca ports --role <role> --dpg <dpg>` prints every port of one pair.
@@ -193,7 +193,7 @@ file per pair.
    host ports from the snippet.
 6. Open the pages that `vca deploy` prints at the end.
    The root of a pair sends the browser to the home page of the role.
-   The issuer opens `/portal/` of the schema registry.
+   The issuer opens `/issuer/` of the issuance service.
    The holder opens `/wallet/`.
    The verifier opens `/portal/` of the verification results.
    The admin opens `/admin/`.
@@ -224,14 +224,20 @@ service.
 `/static/*` is the same asset set in every UI service, so the home
 service of the role serves it.
 
-The `issuer` role. Its home page is `/portal/` on `schema-registry`.
+The `issuer` role. Its home page is `/issuer/` on `issuance`.
 
 | Path | Service | Note |
 |---|---|---|
-| `/` | `schema-registry` | Sends the browser to `/portal/`. |
+| `/` | `issuance` | Sends the browser to `/issuer/`. |
 | `/vca.datasource.v1.DataSourceService/*` | `data-source` |  |
 | `/vca.issuance.v1.IssuanceService/*` | `issuance` |  |
 | `/issuance/pdf/*` | `issuance` |  |
+| `/issuer/*` | `issuance` | A page: Issuer portal. |
+| `/identity/*` | `issuance` | A page: Issuer identity. |
+| `/issue/*` | `issuance` | A page: Issue. |
+| `/notifications/*` | `issuance` | A page: Issuer notifications. |
+| `/help/*` | `issuance` | A page: Issuer help. |
+| `/static/*` | `issuance` |  |
 | `/vca.issued.v1.IssuedService/*` | `issued-credentials` |  |
 | `/issued/chain-head` | `issued-credentials` |  |
 | `/issued/jwks.json` | `issued-credentials` |  |
@@ -250,7 +256,6 @@ The `issuer` role. Its home page is `/portal/` on `schema-registry`.
 | `/schemas/*` | `schema-registry` |  |
 | `/api/schemas` | `schema-registry` |  |
 | `/portal/*` | `schema-registry` | A page: Schemas. |
-| `/static/*` | `schema-registry` |  |
 | `/status-bitstring/*` | `status-bitstring` | The service sees the path without `/status-bitstring`. |
 | `/status-token/*` | `status-token` | The service sees the path without `/status-token`. |
 | `/vca.backend.v1.CapabilityService/*` | `dpg-adapter-<dpg>` |  |
@@ -259,7 +264,7 @@ The `issuer` role. Its home page is `/portal/` on `schema-registry`.
 | `/vca.backend.v1.VerifierBackendService/*` | `dpg-adapter-<dpg>` |  |
 | `/vca.backend.v1.CatalogBackendService/*` | `dpg-adapter-<dpg>` |  |
 | `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
-| Every other path | `schema-registry` | |
+| Every other path | `issuance` | |
 
 The `holder` role. Its home page is `/wallet/` on `wallet-portal`.
 
@@ -385,7 +390,7 @@ After a real deploy, open the pages that the command prints:
 
 | Role | Page | What you see |
 |---|---|---|
-| `issuer` | `/portal/` | The schemas of the registry. `/builder/` opens the schema builder. |
+| `issuer` | `/issuer/` | The issuer overview. `/portal/` opens the schemas and `/builder/` opens the schema builder. |
 | `holder` | `/wallet/` | The wallet. It sends a citizen with no session to `/auth/login`. |
 | `verifier` | `/portal/` | The verification results. `/verify/` is the citizen check. |
 | `admin` | `/admin/` | The admin portal. |

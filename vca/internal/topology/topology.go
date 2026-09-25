@@ -71,7 +71,7 @@ func (p Peer) Adapter() string { return p.Services[AdapterService(p.Dpg)] }
 func HomeService(role commonv1.Role) string {
 	switch role {
 	case commonv1.Role_ROLE_ISSUER:
-		return "schema-registry"
+		return "issuance"
 	case commonv1.Role_ROLE_HOLDER:
 		return "wallet-portal"
 	case commonv1.Role_ROLE_VERIFIER:
@@ -88,7 +88,9 @@ func HomeService(role commonv1.Role) string {
 // returns there.
 func HomePath(role commonv1.Role) string {
 	switch role {
-	case commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_VERIFIER:
+	case commonv1.Role_ROLE_ISSUER:
+		return "/issuer/"
+	case commonv1.Role_ROLE_VERIFIER:
 		return "/portal/"
 	case commonv1.Role_ROLE_HOLDER:
 		return "/wallet/"

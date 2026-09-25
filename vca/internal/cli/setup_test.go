@@ -517,13 +517,14 @@ func TestCaddyfile(t *testing.T) {
 		"\thandle /token {\n\t\treverse_proxy 127.0.0.1:18004\n\t}\n",
 		"\thandle /.well-known/jwks.json {\n\t\treverse_proxy 127.0.0.1:18004\n\t}\n",
 		"\thandle /portal/* {\n\t\treverse_proxy 127.0.0.1:18006\n\t}\n",
-		"\thandle /static/* {\n\t\treverse_proxy 127.0.0.1:18006\n\t}\n",
+		"\thandle /static/* {\n\t\treverse_proxy 127.0.0.1:18002\n\t}\n",
+		"\thandle /issuer/* {\n\t\treverse_proxy 127.0.0.1:18002\n\t}\n",
 		"\thandle /builder/* {\n\t\treverse_proxy 127.0.0.1:18005\n\t}\n",
 		"\thandle /issuance/pdf/* {\n\t\treverse_proxy 127.0.0.1:18002\n\t}\n",
 		"\thandle_path /status-bitstring/* {\n\t\treverse_proxy 127.0.0.1:18007\n\t}\n",
 		"\thandle_path /status-token/* {\n\t\treverse_proxy 127.0.0.1:18008\n\t}\n",
-		"\thandle / {\n\t\tredir * /portal/ 302\n\t}\n",
-		"\thandle {\n\t\treverse_proxy 127.0.0.1:18006\n\t}\n}\n",
+		"\thandle / {\n\t\tredir * /issuer/ 302\n\t}\n",
+		"\thandle {\n\t\treverse_proxy 127.0.0.1:18002\n\t}\n}\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the Caddyfile has no %q:\n%s", want, got)
@@ -560,7 +561,7 @@ func TestCaddyfileHonoursAHostPortOverride(t *testing.T) {
 	if !strings.Contains(got, "handle /issuance/pdf/* {\n\t\treverse_proxy 127.0.0.1:28002") {
 		t.Errorf("the override was lost:\n%s", got)
 	}
-	if !strings.Contains(got, "\thandle {\n\t\treverse_proxy 127.0.0.1:28006") {
+	if !strings.Contains(got, "\thandle {\n\t\treverse_proxy 127.0.0.1:28002") {
 		t.Errorf("the home override was lost:\n%s", got)
 	}
 }

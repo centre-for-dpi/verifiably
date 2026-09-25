@@ -9,11 +9,15 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schemabuilder/v1/schemabuilderv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/pages"
@@ -39,6 +43,8 @@ type Deps struct {
 	Catalog backendv1connect.CatalogBackendServiceClient
 	// SessionKeys replaces the key set of issuer-auth. Tests set it.
 	SessionKeys staffsession.Keys
+	// Prober replaces the probe of the peers of the issuer shell.
+	Prober *topology.Prober
 	// Log receives start messages. Nil means slog.Default.
 	Log *slog.Logger
 }
@@ -64,9 +70,17 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		PDF: pdfcache.New(cfg.PDFCacheSize), Issuer: cfg.Issuer,
 	})
 	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
+	// The pages draw inside the issuer shell (ADR-044 decision 5). The
+	// portal URL is under the public URL of the pair, so its scheme
+	// tells whether the cookie that clears the session is Secure.
+	shell, signOut := staffshell.Wire(staffshell.Setup{
+		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PortalURL,
+		SignOut: "/" + strings.Trim(cfg.Prefix, "/") + "/signout", Prober: deps.Prober,
+	})
 	builder, pagesErr := pages.New(pages.Options{
 		Builder: svc, Registry: deps.Registry, Prefix: cfg.Prefix,
 		RegistryURL: cfg.PortalURL, Catalog: deps.Catalog != nil, Kit: kit,
+		Shell: shell, SignOut: signOut,
 	})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.IssuerRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, Log: deps.Log, MaxFormBytes: pages.MaxFormBytes,

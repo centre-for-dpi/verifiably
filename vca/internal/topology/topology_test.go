@@ -34,7 +34,7 @@ func sample() []topology.Peer {
 
 func TestHomePathAndSignInURL(t *testing.T) {
 	for role, want := range map[commonv1.Role]string{
-		commonv1.Role_ROLE_ISSUER: "/portal/", commonv1.Role_ROLE_HOLDER: "/wallet/",
+		commonv1.Role_ROLE_ISSUER: "/issuer/", commonv1.Role_ROLE_HOLDER: "/wallet/",
 		commonv1.Role_ROLE_VERIFIER: "/portal/", commonv1.Role_ROLE_ADMIN: "/admin/", commonv1.Role_ROLE_UNSPECIFIED: "",
 	} {
 		if got := topology.HomePath(role); got != want {
@@ -122,7 +122,9 @@ func TestParseRejectsBadItem(t *testing.T) {
 func TestPeerNamesItsHomeAuthAndAdapter(t *testing.T) {
 	peers := sample()
 	issuer, admin := peers[0], peers[1]
-	if issuer.Home() != "http://issuer-waltid-schema-registry:8103" {
+	// The issuer home is the issuance service at /issuer/ (ADR-044
+	// decision 1).
+	if issuer.Home() != "http://issuer-waltid-issuance:8080" {
 		t.Errorf("issuer home = %q", issuer.Home())
 	}
 	if issuer.Auth() != "http://issuer-waltid-issuer-auth:8081" {

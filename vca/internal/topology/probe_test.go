@@ -299,3 +299,20 @@ func TestProbeMarksABadHomeURLAbsent(t *testing.T) {
 		t.Fatalf("state = %v, err = %v", snap.Peers[0].State, snap.Peers[0].Err)
 	}
 }
+
+// TestStackNameComesFromTheAdapter checks that a stack carries the name
+// its live adapter reports, and the short enum name before it answers
+// (ADR-001 decision 4).
+func TestStackNameComesFromTheAdapter(t *testing.T) {
+	snap := topology.Snapshot{Peers: []topology.Status{
+		{Peer: topology.Peer{Dpg: configv1.Dpg_DPG_INJI}, State: topology.Starting},
+		{Peer: topology.Peer{Dpg: configv1.Dpg_DPG_WALTID}, State: topology.Live,
+			Capabilities: &backendv1.GetCapabilitiesResponse{DpgInfo: &backendv1.DpgInfo{DisplayName: "Test stack"}}},
+	}}
+	if got := snap.StackName(configv1.Dpg_DPG_WALTID); got != "Test stack" {
+		t.Errorf("live stack name = %q", got)
+	}
+	if got := snap.StackName(configv1.Dpg_DPG_INJI); got != "inji" {
+		t.Errorf("starting stack name = %q", got)
+	}
+}

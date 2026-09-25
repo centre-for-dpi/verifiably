@@ -130,3 +130,26 @@ func TestNavMarksCurrentLongestMatch(t *testing.T) {
 		t.Fatal("an unknown role has a nav")
 	}
 }
+
+// TestIssuerNavFollowsTheBoard lists the issuer pages in the order of
+// board Issuer-Portal: overview, identity, schemas, builder, issue,
+// notifications, help (ADR-044 decision 1).
+func TestIssuerNavFollowsTheBoard(t *testing.T) {
+	want := []string{"/issuer/", "/identity/", "/portal/", "/builder/", "/issue/", "/notifications/", "/help/"}
+	got := Paths(commonv1.Role_ROLE_ISSUER)
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("issuer paths %v, want %v", got, want)
+	}
+	nav := Nav(commonv1.Role_ROLE_ISSUER, nil, "/identity/")
+	var current []string
+	for _, s := range nav {
+		for _, l := range s.Links {
+			if l.Current {
+				current = append(current, l.Href)
+			}
+		}
+	}
+	if len(current) != 1 || current[0] != "/identity/" {
+		t.Fatalf("current %v, want /identity/", current)
+	}
+}

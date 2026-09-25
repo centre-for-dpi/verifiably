@@ -66,7 +66,7 @@ func peers(t *testing.T, h *harness) func(*config.Config, *app.Deps) {
 			{Pair: "admin-credebl", Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_CREDEBL, PublicURL: "https://admin-credebl.example",
 				Services: map[string]string{"admin": "http://absent.invalid:1"}},
 			{Pair: "issuer-waltid", Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID, PublicURL: "https://issuer-waltid.example",
-				Services: map[string]string{"schema-registry": ready.URL, "dpg-adapter-waltid": adapter.URL}},
+				Services: map[string]string{"issuance": ready.URL, "dpg-adapter-waltid": adapter.URL}},
 		}
 		deps.Prober = &topology.Prober{Peers: cfg.Peers, Lookup: func(_ context.Context, host string) ([]string, error) {
 			if strings.HasSuffix(host, ".invalid") {

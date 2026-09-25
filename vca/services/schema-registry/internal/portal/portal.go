@@ -31,6 +31,7 @@ import (
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
@@ -50,6 +51,12 @@ type Options struct {
 	Prefix string
 	// BuilderURL links to the schema builder, when the deployment has one.
 	BuilderURL string
+	// Shell draws the issuer frame around every page (ADR-044 decision
+	// 5). Nil draws the pages with their own navigation.
+	Shell *staffshell.Shell
+	// SignOut answers the sign out form of the shell at <prefix>/signout.
+	// Nil leaves the path unrouted.
+	SignOut http.Handler
 }
 
 // Portal serves the staff pages.
@@ -86,6 +93,22 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}/versions", p.handle(p.versions))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/publish", p.handle(p.publish))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/retire", p.handle(p.retire))
+	if p.opts.SignOut != nil {
+		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
+	}
+}
+
+// SignOutPath returns the action of the sign out form of the shell.
+func (p *Portal) SignOutPath() string { return p.opts.Prefix + "/signout" }
+
+// render writes a page: inside the issuer shell when the portal has one,
+// else with the navigation of the registry marked at current.
+func (p *Portal) render(w http.ResponseWriter, r *http.Request, current string, page components.Page) error {
+	if p.opts.Shell != nil {
+		return p.opts.Shell.Render(p.opts.Kit, w, r, p.opts.Shell.Frame(r.Context()), page)
+	}
+	page.Nav = p.nav(current)
+	return p.opts.Kit.RenderPage(w, r, page)
 }
 
 // handle answers 500 when the page fails. The error text stays in the
@@ -329,10 +352,9 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, "list", components.Page{
 		Title:       "Schemas",
 		Description: "Search, filter, and open the credential schemas of this issuer.",
-		Nav:         p.nav("list"),
 		Content:     components.Join(filters, table),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
@@ -404,11 +426,10 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, "detail", components.Page{
 		Title:       Name(m) + ", version " + strconv.Itoa(int(m.GetVersion())),
 		Heading:     Name(m),
 		Description: "The detail of one schema version.",
-		Nav:         p.nav("detail"),
 		Content:     components.Join(summary, claims, document, actions),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
@@ -614,11 +635,10 @@ func (p *Portal) versions(w http.ResponseWriter, r *http.Request) error {
 	if len(list) > 0 {
 		name = Name(list[0])
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, "versions", components.Page{
 		Title:       "Version history of " + name,
 		Heading:     "Version history",
 		Description: "Every version of one schema, newest first.",
-		Nav:         p.nav("versions"),
 		Content:     components.Join(table, back),
 	})
 }

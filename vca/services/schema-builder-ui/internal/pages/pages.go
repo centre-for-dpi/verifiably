@@ -35,6 +35,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	schemabuilderv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schemabuilder/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/draft"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/pdfcache"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-builder-ui/internal/service"
@@ -65,6 +66,12 @@ type Options struct {
 	RegistryURL string
 	// Catalog tells the import page that a DPG catalogue is configured.
 	Catalog bool
+	// Shell draws the issuer frame around every page (ADR-044 decision
+	// 5). Nil draws the pages with their own navigation.
+	Shell *staffshell.Shell
+	// SignOut answers the sign out form of the shell at <prefix>/signout.
+	// Nil leaves the path unrouted.
+	SignOut http.Handler
 }
 
 // Pages serves the builder pages.
@@ -106,6 +113,31 @@ func (p *Pages) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/save", p.handle(p.save))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/import", p.handle(p.importPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/import", p.handle(p.runImport))
+	if p.opts.SignOut != nil {
+		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
+	}
+}
+
+// SignOutPath returns the action of the sign out form of the shell.
+func (p *Pages) SignOutPath() string { return p.opts.Prefix + "/signout" }
+
+// page writes a full page. Inside the issuer shell the tabs lead between
+// the builder and the import page; without it, the navigation of the
+// builder does.
+func (p *Pages) page(w http.ResponseWriter, r *http.Request, current string, page components.Page) error {
+	if p.opts.Shell == nil {
+		page.Nav = p.nav(current)
+		return p.opts.Kit.RenderPage(w, r, page)
+	}
+	tabs, err := p.opts.Kit.HTML("tabs", components.Tabs{Label: "Builder pages", Links: []components.Link{
+		{Href: p.opts.Prefix + "/", Text: "Builder", Current: current == "builder"},
+		{Href: p.opts.Prefix + "/import", Text: "Import", Current: current == "import"},
+	}})
+	if err != nil {
+		return err
+	}
+	page.Content = components.Join(tabs, page.Content)
+	return p.opts.Shell.Render(p.opts.Kit, w, r, p.opts.Shell.Frame(r.Context()), page)
 }
 
 // handle answers with a short sentence when the page fails.
@@ -524,11 +556,10 @@ func (p *Pages) render(w http.ResponseWriter, r *http.Request, s state) error {
 	if s.Draft.Title != "" {
 		title = "Schema builder: " + s.Draft.Title
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.page(w, r, "builder", components.Page{
 		Title:       title,
 		Heading:     "Schema builder",
 		Description: "Build a credential schema and see what a citizen will see.",
-		Nav:         p.nav("builder"),
 		Content:     f.html(),
 		Toasts:      s.Toasts,
 	})
@@ -684,11 +715,10 @@ func (p *Pages) renderImport(w http.ResponseWriter, r *http.Request, toasts []co
 	if err != nil {
 		return err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.page(w, r, "import", components.Page{
 		Title:       "Import a schema",
 		Heading:     "Import a schema",
 		Description: "Import a JSON Schema document, or a credential type of the DPG.",
-		Nav:         p.nav("import"),
 		Content:     f.html(),
 		Toasts:      toasts,
 	})

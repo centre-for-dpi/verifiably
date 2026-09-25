@@ -17,6 +17,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // State says what the probe found for one peer (ADR-034 decision 3).
@@ -98,6 +99,20 @@ func (s Snapshot) ForRole(role commonv1.Role) []Status {
 		}
 	}
 	return out
+}
+
+// StackName returns the display name of a stack: the name the first
+// live adapter of the stack reports, or the short name of the enum value
+// until an adapter answers (ADR-001 decision 4).
+func (s Snapshot) StackName(d configv1.Dpg) string {
+	for _, st := range s.Live() {
+		if st.Peer.Dpg == d {
+			if name := st.Capabilities.GetDpgInfo().GetDisplayName(); name != "" {
+				return name
+			}
+		}
+	}
+	return shortName(d.String())
 }
 
 // Defaults of the prober (ADR-034 decision 2).

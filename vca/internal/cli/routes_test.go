@@ -126,8 +126,18 @@ func TestHomeOfEveryRoleIsARoutedPage(t *testing.T) {
 	if HomeOf(commonv1.Role_ROLE_UNSPECIFIED) != (Home{}) {
 		t.Error("an unknown role has a home")
 	}
+	// ADR-044 decision 1 moves the issuer home to issuance at /issuer/.
+	want := map[commonv1.Role]Home{
+		commonv1.Role_ROLE_ISSUER:   {Service: "issuance", Path: "/issuer/"},
+		commonv1.Role_ROLE_HOLDER:   {Service: "wallet-portal", Path: "/wallet/"},
+		commonv1.Role_ROLE_VERIFIER: {Service: "verifier-results", Path: "/portal/"},
+		commonv1.Role_ROLE_ADMIN:    {Service: "admin", Path: "/admin/"},
+	}
 	for _, r := range Roles() {
 		home := HomeOf(r)
+		if home != want[r] {
+			t.Errorf("HomeOf(%s) = %+v, want %+v", r, home, want[r])
+		}
 		p := Pair{Role: r, Dpg: configv1.Dpg_DPG_WALTID}
 		found := false
 		for _, sr := range PairRoutes(p, nil) {
@@ -370,6 +380,36 @@ func TestDpgStacksMountTheRealmDirectory(t *testing.T) {
 			if strings.Contains(text, banned) {
 				t.Errorf("dpg/%s.yaml still holds %q", name, banned)
 			}
+		}
+	}
+}
+
+// TestIssuancePagesAreRouted checks that the issuance service serves the
+// issuer home and its pages, and that it took the shared assets over
+// from the schema registry (ADR-044 decision 1).
+func TestIssuancePagesAreRouted(t *testing.T) {
+	p := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}
+	pages := map[string]bool{}
+	assets := ""
+	for _, sr := range PairRoutes(p, nil) {
+		if sr.Route.Match == "/static/*" {
+			assets = sr.Service
+		}
+		if sr.Service == "issuance" && sr.Route.Page != "" {
+			pages[sr.Route.Match] = true
+		}
+	}
+	for _, match := range []string{"/issuer/*", "/identity/*", "/issue/*", "/notifications/*", "/help/*"} {
+		if !pages[match] {
+			t.Errorf("issuance does not serve the page %s: %v", match, pages)
+		}
+	}
+	if assets != "issuance" {
+		t.Errorf("/static/* goes to %q, want issuance", assets)
+	}
+	for _, s := range Catalog() {
+		if s.Name == "issuance" && !s.UI {
+			t.Error("issuance draws pages, so it must read the theme file")
 		}
 	}
 }

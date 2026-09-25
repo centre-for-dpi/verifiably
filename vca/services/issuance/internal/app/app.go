@@ -11,19 +11,27 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1/issuancev1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/datasource"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/delivery"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/offers"
+	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/pages"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/service"
+	"github.com/centre-for-dpi/vc-adapters/ui"
 )
 
 // App is the wired service.
@@ -52,6 +60,14 @@ type Deps struct {
 	Recorder clients.Recorder
 	// Rows replaces the data source client.
 	Rows clients.Rows
+	// PageSchemas replaces the schema list of the pages.
+	PageSchemas pages.Schemas
+	// PageIssued replaces the issued credentials list of the pages.
+	PageIssued pages.Issued
+	// SessionKeys replaces the key set of issuer-auth. Tests set it.
+	SessionKeys staffsession.Keys
+	// Prober replaces the probe of the peers.
+	Prober *topology.Prober
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -141,6 +157,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	mux.HandleFunc("GET "+service.DocumentPath+"{ref}", documentHandler(svc))
+	if err := mountPages(mux, cfg, deps, httpClient, capability); err != nil {
+		return nil, err
+	}
 	if schemas == nil {
 		deps.Log.Warn("no schema registry, so the claims of a request are not checked",
 			"setting", config.Prefix+"SCHEMA_URL")
@@ -204,4 +223,48 @@ func openStore(cfg config.Config) (store.KeyValue, error) {
 		return store.Memory(), nil
 	}
 	return store.File(cfg.StoreFile)
+}
+
+// mountPages adds the issuer home and its pages behind the staff guard,
+// the shared assets, and the redirect of the root (ADR-044 decision 1).
+func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, httpClient connect.HTTPClient, capability clients.Capability) error {
+	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
+	if err != nil {
+		return err
+	}
+	guard, err := staffsession.Build(cfg.Auth, staffsession.IssuerRealm(), config.Prefix, staffsession.Deps{
+		Keys: deps.SessionKeys, Now: deps.Now, Log: deps.Log,
+	})
+	if err != nil {
+		return err
+	}
+	shell, signOut := staffshell.Wire(staffshell.Setup{
+		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
+		SignOut: pages.SignOutPath, Prober: deps.Prober, Client: httpClient, Now: deps.Now,
+	})
+	opts := pages.Options{
+		Kit: kit, Shell: shell, Capability: capability, Schemas: deps.PageSchemas, Issued: deps.PageIssued,
+		PublicURL: cfg.PublicURL, SignOut: signOut,
+	}
+	if opts.Schemas == nil && cfg.SchemaURL != "" {
+		opts.Schemas = schemav1connect.NewSchemaServiceClient(httpClient, cfg.SchemaURL)
+	}
+	if opts.Issued == nil && cfg.IssuedURL != "" {
+		opts.Issued = issuedv1connect.NewIssuedServiceClient(httpClient, cfg.IssuedURL)
+	}
+	p, err := pages.New(opts)
+	if err != nil {
+		return err
+	}
+	staff := http.NewServeMux()
+	p.Register(staff)
+	guarded := guard.Wrap(staff)
+	for _, prefix := range pages.Prefixes() {
+		mux.Handle(prefix, guarded)
+	}
+	mux.Handle("GET "+ui.Prefix, assets)
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, pages.HomePath, http.StatusSeeOther)
+	})
+	return nil
 }

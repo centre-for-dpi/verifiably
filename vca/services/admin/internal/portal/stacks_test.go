@@ -169,7 +169,7 @@ func stackPeers(tenancy, plain *fakeStack) func(*testing.T, *harness) func(*conf
 			peers = append(peers, topology.Peer{
 				Pair: topology.PairName(commonv1.Role_ROLE_ISSUER, dpg), Role: commonv1.Role_ROLE_ISSUER, Dpg: dpg,
 				PublicURL: "https://" + topology.PairName(commonv1.Role_ROLE_ISSUER, dpg) + ".example",
-				Services:  map[string]string{"schema-registry": ready.URL, topology.AdapterService(dpg): f.serve(t)},
+				Services:  map[string]string{"issuance": ready.URL, topology.AdapterService(dpg): f.serve(t)},
 			})
 		}
 		add(plain, configv1.Dpg_DPG_WALTID)

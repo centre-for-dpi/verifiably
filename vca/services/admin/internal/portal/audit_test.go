@@ -113,7 +113,7 @@ func auditPeers(stores peerStores) func(*testing.T, *harness) func(*config.Confi
 				}},
 			{Pair: "issuer-waltid", Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID, PublicURL: "https://issuer.vca.example",
 				Services: map[string]string{
-					"schema-registry": ready.URL, "dpg-adapter-waltid": waltid.serve(t),
+					"dpg-adapter-waltid": waltid.serve(t),
 					"issuer-auth": add("issuer-waltid/issuer-auth", false,
 						ok(5, "kc|ada", "auth.Login", "keycloak", ""),
 						bad(3, "", "auth.Login", "keycloak", msg.T("audit.reason.provider"))),

@@ -105,7 +105,12 @@ page renders with the `vca/ui` kit and passes `a11ytest.AssertPage`.
 | `POST /builder/save` | Save the draft in the schema registry. |
 | `GET /builder/import` | The import page. |
 | `POST /builder/import` | Import a document or a catalogue entry. |
+| `POST /builder/signout` | End the session at `issuer-auth`. |
 | `GET /pdf/preview/{ref}` | The PDF preview document. |
+
+The pages draw inside the issuer shell of `services/internal/staffshell`
+(ADR-044 decision 5). Two tabs lead from the builder to the import page
+and back.
 
 Add, remove, fill, and save are submit buttons with a `formaction`
 attribute. A browser without JavaScript posts the form and gets a full

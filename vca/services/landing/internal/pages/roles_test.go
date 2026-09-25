@@ -199,8 +199,8 @@ func TestIntroStackChoiceWithTwoStacks(t *testing.T) {
 	a11ytest.AssertPage(t, doc)
 	for _, want := range []string{
 		`<h2 id="signin-title">Sign in to continue</h2>`, `Each stack signs you in on its own pair.`,
-		`<a class="btn btn-primary" href="https://` + issuerA + `.labs.example/auth/?return_to=%2Fportal%2F">Continue on Alpha Stack</a>`,
-		`<a class="btn btn-secondary" href="https://` + issuerB + `.labs.example/auth/?return_to=%2Fportal%2F">Continue on Beta Stack</a>`,
+		`<a class="btn btn-primary" href="https://` + issuerA + `.labs.example/auth/?return_to=%2Fissuer%2F">Continue on Alpha Stack</a>`,
+		`<a class="btn btn-secondary" href="https://` + issuerB + `.labs.example/auth/?return_to=%2Fissuer%2F">Continue on Beta Stack</a>`,
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("two stacks missing %q\n%s", want, doc)
@@ -211,7 +211,7 @@ func TestIntroStackChoiceWithTwoStacks(t *testing.T) {
 	}
 	// One stack gives one button.
 	doc = get(t, newPages(t, snapshot(only(issuerA))), "/roles/issuer/", false).Body.String()
-	if !strings.Contains(doc, `<a class="btn btn-primary" href="https://`+issuerA+`.labs.example/auth/?return_to=%2Fportal%2F">Continue to sign in</a>`) || strings.Contains(doc, "Continue on") {
+	if !strings.Contains(doc, `<a class="btn btn-primary" href="https://`+issuerA+`.labs.example/auth/?return_to=%2Fissuer%2F">Continue to sign in</a>`) || strings.Contains(doc, "Continue on") {
 		t.Errorf("one stack:\n%s", doc)
 	}
 	// The holder returns to the wallet.

@@ -22,8 +22,8 @@ func TestLocalPublicURLNamesTheHomePort(t *testing.T) {
 	if want == "" || got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
-	// The schema registry serves the staff pages of the issuer.
-	if got != "http://localhost:18006" {
+	// The issuance service serves the issuer home (ADR-044 decision 1).
+	if got != "http://localhost:18002" {
 		t.Errorf("the issuer home is %q", got)
 	}
 }

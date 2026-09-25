@@ -128,3 +128,44 @@ func TestDescribeListsTheVariables(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadReadsThePageSettings reads the theme file, the staff guard,
+// and the peers of the issuer pages (ADR-044 decision 1).
+func TestLoadReadsThePageSettings(t *testing.T) {
+	cfg, err := config.Load(env(base(map[string]string{
+		"VCA_THEME_FILE":             " /etc/vca/theme.yaml ",
+		"VCA_ISSUANCE_AUTH_JWKS_URL": "http://issuer-auth:8081/.well-known/jwks.json",
+		"VCA_ISSUANCE_LOGIN_URL":     "https://issuer.example/auth/",
+		"VCA_ISSUANCE_PUBLIC_URL":    "https://issuer.example/",
+		"VCA_PEERS":                  "issuer-waltid|https://issuer.example|issuance=http://issuance:8080",
+	})))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ThemeFile != "/etc/vca/theme.yaml" || cfg.Auth.LoginURL != "https://issuer.example/auth/" ||
+		cfg.Auth.JWKSURL == "" || len(cfg.Peers) != 1 || cfg.PublicURL != "https://issuer.example" {
+		t.Fatalf("config = %+v", cfg)
+	}
+	for name, value := range map[string]string{
+		"VCA_PEERS":                  "not a peer list",
+		"VCA_ISSUANCE_AUTH_JWKS_TTL": "0s",
+	} {
+		if _, lerr := config.Load(env(base(map[string]string{name: value}))); lerr == nil {
+			t.Errorf("%s=%q was accepted", name, value)
+		}
+	}
+	if _, lerr := config.Load(env(base(map[string]string{"VCA_ISSUANCE_AUTH_JWKS_TTL": "soon"}))); lerr == nil {
+		t.Error("a bad duration was accepted")
+	}
+	vars, err := config.Describe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, v := range vars {
+		names = append(names, v.Name)
+	}
+	if !strings.Contains(strings.Join(names, " "), "VCA_ISSUANCE_AUTH_JWKS_URL") {
+		t.Fatalf("Describe lacks the guard: %v", names)
+	}
+}

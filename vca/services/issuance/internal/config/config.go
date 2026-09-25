@@ -6,9 +6,13 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	shared "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
 
 // Prefix starts every variable name of this service.
@@ -76,6 +80,18 @@ type Config struct {
 	// AdminToken is the admin service token. It opens the audit store
 	// too. Empty accepts no token.
 	AdminToken string `env:"ADMIN_TOKEN" secret:"true"`
+
+	// ThemeFile is the theme file of the deployment, from VCA_THEME_FILE.
+	// Every service that serves HTML reads the same variable, so it
+	// carries no service prefix. Empty selects the embedded default look.
+	ThemeFile string
+	// Auth guards the issuer pages with a session of issuer-auth
+	// (ADR-036 decision 3). Its variables carry the same prefix.
+	Auth staffsession.Settings
+	// Peers are the candidate pairs of the deployment, from VCA_PEERS.
+	// The stack switcher and the trust registry of the identity page
+	// come from them (ADR-034 decision 1).
+	Peers []topology.Peer
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -84,6 +100,19 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := shared.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	if err := shared.Load(Prefix, &c.Auth, getenv); err != nil {
+		return Config{}, err
+	}
+	if err := c.Auth.Check(Prefix); err != nil {
+		return Config{}, err
+	}
+	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
+	peers, err := topology.Parse(getenv(topology.Env))
+	if err != nil {
+		return Config{}, err
+	}
+	c.Peers = peers
+	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
 	if c.Timeout <= 0 || c.OfferTTL <= 0 {
 		return Config{}, fmt.Errorf("config: %sTIMEOUT and %sOFFER_TTL must be positive durations",
 			Prefix, Prefix)
@@ -115,5 +144,13 @@ func Load(getenv func(string) string) (Config, error) {
 
 // Describe lists the variables for the start log and the documentation.
 func Describe() ([]shared.Variable, error) {
-	return shared.Describe(Prefix, &Config{})
+	own, err := shared.Describe(Prefix, &Config{})
+	if err != nil {
+		return nil, err
+	}
+	auth, err := shared.Describe(Prefix, &staffsession.Settings{})
+	if err != nil {
+		return nil, err
+	}
+	return append(own, auth...), nil
 }
