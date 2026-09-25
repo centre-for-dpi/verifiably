@@ -81,6 +81,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.Handle(backendv1connect.NewHolderBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewVerifierBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc))
+	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc))
 	if cfg.PublicURL == "" || cfg.InternalURL == "" {
 		deps.Log.Warn("no public host rewrite, so a wallet outside the deployment may not reach an offer",
 			"settings", config.Prefix+"PUBLIC_URL and "+config.Prefix+"INTERNAL_URL")

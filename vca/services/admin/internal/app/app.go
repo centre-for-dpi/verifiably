@@ -32,6 +32,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/portal"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/stacks"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -143,7 +144,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		prober = &topology.Prober{Peers: cfg.Peers, Client: deps.Client, Now: deps.Now}
 	}
 	var push *fanout.FanOut
+	var dpgs *stacks.Directory
 	if prober != nil {
+		dpgs = stacks.New(prober.Snapshot, deps.Client)
 		if push, err = fanout.New(fanout.Options{Snapshot: prober.Snapshot, Client: deps.Client, Timeout: cfg.Timeout}); err != nil {
 			return nil, err
 		}
@@ -153,7 +156,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	svc, err := service.New(service.Deps{
 		Cfg: cfg, Records: recordStore, Audit: auditLog, Login: loginService, Providers: providers,
 		Vault: vault, Fetch: deps.Client, Trust: trust,
-		Health: health.New(deps.Client, cfg.Timeout, deps.Now), FanOut: push, Now: deps.Now,
+		Health: health.New(deps.Client, cfg.Timeout, deps.Now), FanOut: push, Stacks: dpgs, Now: deps.Now,
 	})
 	if err != nil {
 		return nil, err

@@ -67,6 +67,21 @@ service CatalogBackendService {
   rpc ListCredentialTypes(ListCredentialTypesRequest) returns (ListCredentialTypesResponse);
 }
 
+// TenantBackendService manages the tenants of a DPG that separates
+// tenants (ADR-037 decision 2). An adapter serves it only when its DPG
+// has tenancy and the adapter lists FEATURE_MULTI_TENANCY. Every other
+// adapter returns the Connect code Unimplemented for each RPC.
+service TenantBackendService {
+  // CreateTenant creates one tenant in the DPG.
+  rpc CreateTenant(CreateTenantRequest) returns (CreateTenantResponse);
+  // GetTenant returns one tenant of the DPG with its DIDs.
+  rpc GetTenant(GetTenantRequest) returns (GetTenantResponse);
+  // ListTenants returns the tenants of the DPG in pages.
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  // DeleteTenant removes one tenant from the DPG.
+  rpc DeleteTenant(DeleteTenantRequest) returns (DeleteTenantResponse);
+}
+
 // Channel names a way to deliver a credential to a citizen (ADR-016).
 enum Channel {
   CHANNEL_UNSPECIFIED = 0;
@@ -593,3 +608,74 @@ message ListCredentialTypesResponse {
   // The page description.
   vca.common.v1.PageResult page = 2;
 }
+
+// DpgTenant is one tenant of a DPG, for example one organisation of a
+// platform that separates organisations (ADR-037).
+message DpgTenant {
+  // The DPG assigned id.
+  string id = 1;
+  // The name of the tenant in the DPG.
+  string name = 2;
+  // How the DPG runs the agent of the tenant.
+  AgentType agent_type = 3;
+  // The DIDs the tenant holds in the DPG.
+  repeated string dids = 4;
+
+  // AgentType names how the DPG runs the agent of a tenant.
+  enum AgentType {
+    AGENT_TYPE_UNSPECIFIED = 0;
+    // The tenant shares one agent with other tenants.
+    AGENT_TYPE_SHARED = 1;
+    // The tenant has an agent of its own.
+    AGENT_TYPE_DEDICATED = 2;
+  }
+}
+
+// CreateTenantRequest names the new DPG tenant.
+message CreateTenantRequest {
+  // The name of the tenant. Required.
+  string name = 1;
+  // How the DPG runs the agent. Unspecified selects the DPG default.
+  DpgTenant.AgentType agent_type = 2;
+}
+
+// CreateTenantResponse returns the new DPG tenant.
+message CreateTenantResponse {
+  // The tenant as the DPG stored it.
+  DpgTenant tenant = 1;
+}
+
+// GetTenantRequest selects one DPG tenant.
+message GetTenantRequest {
+  // The DPG assigned id.
+  string id = 1;
+}
+
+// GetTenantResponse returns the DPG tenant.
+message GetTenantResponse {
+  // The tenant.
+  DpgTenant tenant = 1;
+}
+
+// ListTenantsRequest selects a page.
+message ListTenantsRequest {
+  // The page to return.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListTenantsResponse returns a page of DPG tenants.
+message ListTenantsResponse {
+  // The tenants in the page.
+  repeated DpgTenant tenants = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
+
+// DeleteTenantRequest selects one DPG tenant.
+message DeleteTenantRequest {
+  // The DPG assigned id.
+  string id = 1;
+}
+
+// DeleteTenantResponse has no fields.
+message DeleteTenantResponse {}

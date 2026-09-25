@@ -52,6 +52,11 @@ const (
 	// AdminServiceDeleteTenantProcedure is the fully-qualified name of the AdminService's DeleteTenant
 	// RPC.
 	AdminServiceDeleteTenantProcedure = "/vca.admin.v1.AdminService/DeleteTenant"
+	// AdminServiceBindTenantProcedure is the fully-qualified name of the AdminService's BindTenant RPC.
+	AdminServiceBindTenantProcedure = "/vca.admin.v1.AdminService/BindTenant"
+	// AdminServiceUnbindTenantProcedure is the fully-qualified name of the AdminService's UnbindTenant
+	// RPC.
+	AdminServiceUnbindTenantProcedure = "/vca.admin.v1.AdminService/UnbindTenant"
 	// AdminServiceUpsertTrustEntryProcedure is the fully-qualified name of the AdminService's
 	// UpsertTrustEntry RPC.
 	AdminServiceUpsertTrustEntryProcedure = "/vca.admin.v1.AdminService/UpsertTrustEntry"
@@ -135,6 +140,12 @@ type AdminServiceClient interface {
 	UpdateTenant(context.Context, *connect.Request[v1.UpdateTenantRequest]) (*connect.Response[v1.UpdateTenantResponse], error)
 	// DeleteTenant removes one tenant and every record it owns.
 	DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error)
+	// BindTenant creates the tenant on one more stack and records the
+	// binding (ADR-037 decision 1). The stack must list multi tenancy.
+	BindTenant(context.Context, *connect.Request[v1.BindTenantRequest]) (*connect.Response[v1.BindTenantResponse], error)
+	// UnbindTenant removes the tenant from one stack. The stack deletes
+	// its own tenant record.
+	UnbindTenant(context.Context, *connect.Request[v1.UnbindTenantRequest]) (*connect.Response[v1.UnbindTenantResponse], error)
 	// UpsertTrustEntry creates or replaces one trust entry (ADR-011).
 	// The admin service forwards the entry to the trust service, which
 	// publishes it in every enabled method.
@@ -235,6 +246,18 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			httpClient,
 			baseURL+AdminServiceDeleteTenantProcedure,
 			connect.WithSchema(adminServiceMethods.ByName("DeleteTenant")),
+			connect.WithClientOptions(opts...),
+		),
+		bindTenant: connect.NewClient[v1.BindTenantRequest, v1.BindTenantResponse](
+			httpClient,
+			baseURL+AdminServiceBindTenantProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("BindTenant")),
+			connect.WithClientOptions(opts...),
+		),
+		unbindTenant: connect.NewClient[v1.UnbindTenantRequest, v1.UnbindTenantResponse](
+			httpClient,
+			baseURL+AdminServiceUnbindTenantProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("UnbindTenant")),
 			connect.WithClientOptions(opts...),
 		),
 		upsertTrustEntry: connect.NewClient[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse](
@@ -385,6 +408,8 @@ type adminServiceClient struct {
 	listTenants         *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
 	updateTenant        *connect.Client[v1.UpdateTenantRequest, v1.UpdateTenantResponse]
 	deleteTenant        *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
+	bindTenant          *connect.Client[v1.BindTenantRequest, v1.BindTenantResponse]
+	unbindTenant        *connect.Client[v1.UnbindTenantRequest, v1.UnbindTenantResponse]
 	upsertTrustEntry    *connect.Client[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse]
 	getTrustEntry       *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
 	listTrustEntries    *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
@@ -433,6 +458,16 @@ func (c *adminServiceClient) UpdateTenant(ctx context.Context, req *connect.Requ
 // DeleteTenant calls vca.admin.v1.AdminService.DeleteTenant.
 func (c *adminServiceClient) DeleteTenant(ctx context.Context, req *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error) {
 	return c.deleteTenant.CallUnary(ctx, req)
+}
+
+// BindTenant calls vca.admin.v1.AdminService.BindTenant.
+func (c *adminServiceClient) BindTenant(ctx context.Context, req *connect.Request[v1.BindTenantRequest]) (*connect.Response[v1.BindTenantResponse], error) {
+	return c.bindTenant.CallUnary(ctx, req)
+}
+
+// UnbindTenant calls vca.admin.v1.AdminService.UnbindTenant.
+func (c *adminServiceClient) UnbindTenant(ctx context.Context, req *connect.Request[v1.UnbindTenantRequest]) (*connect.Response[v1.UnbindTenantResponse], error) {
+	return c.unbindTenant.CallUnary(ctx, req)
 }
 
 // UpsertTrustEntry calls vca.admin.v1.AdminService.UpsertTrustEntry.
@@ -562,6 +597,12 @@ type AdminServiceHandler interface {
 	UpdateTenant(context.Context, *connect.Request[v1.UpdateTenantRequest]) (*connect.Response[v1.UpdateTenantResponse], error)
 	// DeleteTenant removes one tenant and every record it owns.
 	DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error)
+	// BindTenant creates the tenant on one more stack and records the
+	// binding (ADR-037 decision 1). The stack must list multi tenancy.
+	BindTenant(context.Context, *connect.Request[v1.BindTenantRequest]) (*connect.Response[v1.BindTenantResponse], error)
+	// UnbindTenant removes the tenant from one stack. The stack deletes
+	// its own tenant record.
+	UnbindTenant(context.Context, *connect.Request[v1.UnbindTenantRequest]) (*connect.Response[v1.UnbindTenantResponse], error)
 	// UpsertTrustEntry creates or replaces one trust entry (ADR-011).
 	// The admin service forwards the entry to the trust service, which
 	// publishes it in every enabled method.
@@ -658,6 +699,18 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		AdminServiceDeleteTenantProcedure,
 		svc.DeleteTenant,
 		connect.WithSchema(adminServiceMethods.ByName("DeleteTenant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceBindTenantHandler := connect.NewUnaryHandler(
+		AdminServiceBindTenantProcedure,
+		svc.BindTenant,
+		connect.WithSchema(adminServiceMethods.ByName("BindTenant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceUnbindTenantHandler := connect.NewUnaryHandler(
+		AdminServiceUnbindTenantProcedure,
+		svc.UnbindTenant,
+		connect.WithSchema(adminServiceMethods.ByName("UnbindTenant")),
 		connect.WithHandlerOptions(opts...),
 	)
 	adminServiceUpsertTrustEntryHandler := connect.NewUnaryHandler(
@@ -810,6 +863,10 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceUpdateTenantHandler.ServeHTTP(w, r)
 		case AdminServiceDeleteTenantProcedure:
 			adminServiceDeleteTenantHandler.ServeHTTP(w, r)
+		case AdminServiceBindTenantProcedure:
+			adminServiceBindTenantHandler.ServeHTTP(w, r)
+		case AdminServiceUnbindTenantProcedure:
+			adminServiceUnbindTenantHandler.ServeHTTP(w, r)
 		case AdminServiceUpsertTrustEntryProcedure:
 			adminServiceUpsertTrustEntryHandler.ServeHTTP(w, r)
 		case AdminServiceGetTrustEntryProcedure:
@@ -883,6 +940,14 @@ func (UnimplementedAdminServiceHandler) UpdateTenant(context.Context, *connect.R
 
 func (UnimplementedAdminServiceHandler) DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.DeleteTenant is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) BindTenant(context.Context, *connect.Request[v1.BindTenantRequest]) (*connect.Response[v1.BindTenantResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.BindTenant is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) UnbindTenant(context.Context, *connect.Request[v1.UnbindTenantRequest]) (*connect.Response[v1.UnbindTenantResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.UnbindTenant is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) UpsertTrustEntry(context.Context, *connect.Request[v1.UpsertTrustEntryRequest]) (*connect.Response[v1.UpsertTrustEntryResponse], error) {

@@ -31,6 +31,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/onboard"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/records"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/stacks"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 )
@@ -72,6 +73,9 @@ type Deps struct {
 	// FanOut pushes a provider record to the auth service of every live
 	// pair it names (ADR-035 decision 5). Nil pushes nothing.
 	FanOut *fanout.FanOut
+	// Stacks reaches the adapters of the stacks that run now, for the
+	// tenants of a stack (ADR-037). Nil offers no stack.
+	Stacks *stacks.Directory
 	// Now returns the current time.
 	Now func() time.Time
 }
@@ -144,7 +148,10 @@ func fail(err error) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, records.ErrInvalid):
 		return connect.NewError(connect.CodeInvalidArgument, err)
-	case errors.Is(err, records.ErrBootstrapUsed), errors.Is(err, ErrNoTrustRegistry), errors.Is(err, ErrNotPending):
+	case errors.Is(err, records.ErrExists):
+		return connect.NewError(connect.CodeAlreadyExists, err)
+	case errors.Is(err, records.ErrBootstrapUsed), errors.Is(err, ErrNoTrustRegistry), errors.Is(err, ErrNotPending),
+		errors.Is(err, stacks.ErrNotOffered):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, records.ErrBootstrapToken), errors.Is(err, login.ErrNotAdmin):
 		return connect.NewError(connect.CodePermissionDenied, err)
@@ -155,76 +162,6 @@ func fail(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return oidcflow.ConnectError(err)
-}
-
-// CreateTenant implements AdminServiceHandler.
-func (s *Service) CreateTenant(ctx context.Context, req *connect.Request[adminv1.CreateTenantRequest]) (*connect.Response[adminv1.CreateTenantResponse], error) {
-	id, err := s.guard(ctx, req.Header())
-	if err != nil {
-		return nil, err
-	}
-	tenant, err := s.d.Records.CreateTenant(ctx, req.Msg.GetDisplayName())
-	if serr := s.write(ctx, id.Actor, "admin.CreateTenant", tenant.ID, err); serr != nil {
-		return nil, fail(serr)
-	}
-	return connect.NewResponse(&adminv1.CreateTenantResponse{Tenant: tenantProto(tenant)}), nil
-}
-
-// GetTenant implements AdminServiceHandler.
-func (s *Service) GetTenant(ctx context.Context, req *connect.Request[adminv1.GetTenantRequest]) (*connect.Response[adminv1.GetTenantResponse], error) {
-	id, err := s.guard(ctx, req.Header())
-	if err != nil {
-		return nil, err
-	}
-	tenant, err := s.d.Records.GetTenant(ctx, req.Msg.GetId())
-	if serr := s.write(ctx, id.Actor, "admin.GetTenant", req.Msg.GetId(), err); serr != nil {
-		return nil, fail(serr)
-	}
-	return connect.NewResponse(&adminv1.GetTenantResponse{Tenant: tenantProto(tenant)}), nil
-}
-
-// ListTenants implements AdminServiceHandler.
-func (s *Service) ListTenants(ctx context.Context, req *connect.Request[adminv1.ListTenantsRequest]) (*connect.Response[adminv1.ListTenantsResponse], error) {
-	id, err := s.guard(ctx, req.Header())
-	if err != nil {
-		return nil, err
-	}
-	all, err := s.d.Records.ListTenants(ctx)
-	if serr := s.write(ctx, id.Actor, "admin.ListTenants", "", err); serr != nil {
-		return nil, fail(serr)
-	}
-	page, next := paginate(all, req.Msg.GetPage(), func(t records.Tenant) string { return t.ID })
-	res := &adminv1.ListTenantsResponse{Page: &commonv1.PageResult{NextPageToken: next, TotalSize: int64(len(all))}}
-	for _, t := range page {
-		res.Tenants = append(res.Tenants, tenantProto(t))
-	}
-	return connect.NewResponse(res), nil
-}
-
-// UpdateTenant implements AdminServiceHandler.
-func (s *Service) UpdateTenant(ctx context.Context, req *connect.Request[adminv1.UpdateTenantRequest]) (*connect.Response[adminv1.UpdateTenantResponse], error) {
-	id, err := s.guard(ctx, req.Header())
-	if err != nil {
-		return nil, err
-	}
-	tenant, err := s.d.Records.UpdateTenant(ctx, req.Msg.GetId(), req.Msg.GetDisplayName(), stateName(req.Msg.GetState()))
-	if serr := s.write(ctx, id.Actor, "admin.UpdateTenant", req.Msg.GetId(), err); serr != nil {
-		return nil, fail(serr)
-	}
-	return connect.NewResponse(&adminv1.UpdateTenantResponse{Tenant: tenantProto(tenant)}), nil
-}
-
-// DeleteTenant implements AdminServiceHandler.
-func (s *Service) DeleteTenant(ctx context.Context, req *connect.Request[adminv1.DeleteTenantRequest]) (*connect.Response[adminv1.DeleteTenantResponse], error) {
-	id, err := s.guard(ctx, req.Header())
-	if err != nil {
-		return nil, err
-	}
-	err = s.d.Records.DeleteTenant(ctx, req.Msg.GetId())
-	if serr := s.write(ctx, id.Actor, "admin.DeleteTenant", req.Msg.GetId(), err); serr != nil {
-		return nil, fail(serr)
-	}
-	return connect.NewResponse(&adminv1.DeleteTenantResponse{}), nil
 }
 
 // trust returns the trust registry client.
@@ -767,18 +704,6 @@ func pageSize(page *commonv1.Pagination) int {
 		return MaxPageSize
 	}
 	return size
-}
-
-// tenantProto converts a tenant record into its message.
-func tenantProto(t records.Tenant) *adminv1.Tenant {
-	if t.ID == "" {
-		return nil
-	}
-	m := &adminv1.Tenant{
-		Id: t.ID, DisplayName: t.DisplayName, State: stateValue(t.State),
-		CreatedAt: timestamppb.New(t.CreatedAt), UpdatedAt: timestamppb.New(t.UpdatedAt),
-	}
-	return m
 }
 
 // keyProto converts an API key record into its message. The hash never

@@ -37,6 +37,8 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 		"CreateTenant":       "tenant create",
 		"ListTenants":        "tenant list",
 		"DeleteTenant":       "tenant delete",
+		"BindTenant":         "tenant bind",
+		"UnbindTenant":       "tenant unbind",
 		"UpsertTrustEntry":   "trust add",
 		"ListTrustEntries":   "trust list",
 		"DeleteTrustEntry":   "trust remove",

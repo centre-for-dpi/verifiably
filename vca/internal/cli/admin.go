@@ -63,6 +63,8 @@ var adminPaths = []struct{ path, method string }{
 	{"tenant list", "ListTenants"},
 	{"tenant update", "UpdateTenant"},
 	{"tenant delete", "DeleteTenant"},
+	{"tenant bind", "BindTenant"},
+	{"tenant unbind", "UnbindTenant"},
 	{"trust add", "UpsertTrustEntry"},
 	{"trust get", "GetTrustEntry"},
 	{"trust list", "ListTrustEntries"},

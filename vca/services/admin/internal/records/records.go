@@ -36,6 +36,9 @@ var (
 	ErrBootstrapUsed = errors.New("records: the bootstrap token is used")
 	// ErrBootstrapToken reports a wrong bootstrap token.
 	ErrBootstrapToken = errors.New("records: the bootstrap token is wrong")
+	// ErrExists reports a record that already exists, for example a
+	// second binding of one tenant on one stack.
+	ErrExists = errors.New("records: already exists")
 )
 
 // MaxDisplayName is the length limit of a display name.
@@ -66,6 +69,37 @@ type Tenant struct {
 	State       string    `json:"state"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// Bindings map the tenant onto the tenant of a stack, at most one
+	// per stack (ADR-037 decision 1).
+	Bindings []Binding `json:"bindings,omitempty"`
+}
+
+// Binding maps a VCA tenant onto the tenant of one stack.
+type Binding struct {
+	// Stack is the name of the Dpg enum value, for example DPG_CREDEBL.
+	Stack string `json:"stack"`
+	// StackName is the name the adapter reported at binding time.
+	StackName string `json:"stack_name"`
+	// TenantID is the id the stack gave its tenant.
+	TenantID string `json:"tenant_id"`
+	// Name is the name of the tenant in the stack.
+	Name string `json:"name,omitempty"`
+	// AgentType is shared, dedicated, or empty.
+	AgentType string `json:"agent_type,omitempty"`
+	// DIDs are the DIDs the stack tenant held at binding time.
+	DIDs []string `json:"dids,omitempty"`
+	// BoundAt is the time of the binding.
+	BoundAt time.Time `json:"bound_at"`
+}
+
+// Binding returns the binding of the tenant on one stack.
+func (t Tenant) Binding(stack string) (Binding, bool) {
+	for _, b := range t.Bindings {
+		if b.Stack == stack {
+			return b, true
+		}
+	}
+	return Binding{}, false
 }
 
 // APIKey is one machine credential without its secret value.
@@ -208,6 +242,52 @@ func (s *Store) DeleteTenant(ctx context.Context, id string) error {
 		}
 	}
 	return del(ctx, s.kv, tenantPrefix+id)
+}
+
+// AddBinding records the tenant of one stack for a tenant. A tenant has
+// at most one binding per stack.
+func (s *Store) AddBinding(ctx context.Context, id string, b Binding) (Tenant, error) {
+	if strings.TrimSpace(b.Stack) == "" || strings.TrimSpace(b.TenantID) == "" {
+		return Tenant{}, fmt.Errorf("%w: a binding needs a stack and a stack tenant id", ErrInvalid)
+	}
+	tenant, err := s.GetTenant(ctx, id)
+	if err != nil {
+		return Tenant{}, err
+	}
+	if _, ok := tenant.Binding(b.Stack); ok {
+		return Tenant{}, fmt.Errorf("%w: the tenant is bound on %s", ErrExists, b.Stack)
+	}
+	t := s.now().UTC()
+	b.BoundAt = t
+	tenant.Bindings = append(tenant.Bindings, b)
+	tenant.UpdatedAt = t
+	if err := put(ctx, s.kv, tenantPrefix+tenant.ID, tenant); err != nil {
+		return Tenant{}, err
+	}
+	return tenant, nil
+}
+
+// RemoveBinding drops the binding of a tenant on one stack.
+func (s *Store) RemoveBinding(ctx context.Context, id, stack string) (Tenant, error) {
+	tenant, err := s.GetTenant(ctx, id)
+	if err != nil {
+		return Tenant{}, err
+	}
+	kept := tenant.Bindings[:0:0]
+	for _, b := range tenant.Bindings {
+		if b.Stack != stack {
+			kept = append(kept, b)
+		}
+	}
+	if len(kept) == len(tenant.Bindings) {
+		return Tenant{}, fmt.Errorf("%w: the tenant has no binding on %s", ErrNotFound, stack)
+	}
+	tenant.Bindings = kept
+	tenant.UpdatedAt = s.now().UTC()
+	if err := put(ctx, s.kv, tenantPrefix+tenant.ID, tenant); err != nil {
+		return Tenant{}, err
+	}
+	return tenant, nil
 }
 
 // KeySpec describes a new API key.

@@ -20,6 +20,7 @@ flow, and it checks presentations with DCQL queries.
 | `HolderBackendService` | Never served. CREDEBL ships no wallet for a citizen. |
 | `VerifierBackendService` | Served. |
 | `CatalogBackendService` | Served. |
+| `TenantBackendService` | Never served yet. The adapter acts for the one configured organisation. It lists no multi tenancy. |
 
 ## The CREDEBL endpoints
 
@@ -66,6 +67,7 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | `GetIssuanceStatus` | The api gateway reports no issuance session state. |
 | `Revoke` | The status services own the status bits. |
 | Every holder RPC | CREDEBL ships no wallet for a citizen. |
+| Every tenant RPC | The adapter acts for the one configured organisation. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.

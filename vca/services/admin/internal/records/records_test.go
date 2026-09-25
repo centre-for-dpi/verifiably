@@ -499,3 +499,54 @@ func TestGetTenantReportsAStoreFault(t *testing.T) {
 		t.Fatal("GetTenant accepted a bad key")
 	}
 }
+
+// TestTenantBindings is ADR-037 decision 1: a tenant maps onto at most
+// one tenant per stack, and the binding survives a reload.
+func TestTenantBindings(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	tenant, err := s.CreateTenant(ctx, "Ministry of Health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := records.Binding{
+		Stack: "DPG_CREDEBL", StackName: "Tenancy stack", TenantID: "org-7", Name: "Ministry of Health",
+		AgentType: "shared", DIDs: []string{"did:key:z6Mk"},
+	}
+	got, err := s.AddBinding(ctx, tenant.ID, b)
+	if err != nil {
+		t.Fatalf("AddBinding: %v", err)
+	}
+	if len(got.Bindings) != 1 || !got.Bindings[0].BoundAt.Equal(at) || got.Bindings[0].TenantID != "org-7" {
+		t.Fatalf("bindings = %+v", got.Bindings)
+	}
+	if _, cerr := s.AddBinding(ctx, tenant.ID, b); !errors.Is(cerr, records.ErrExists) {
+		t.Errorf("a second binding on one stack gave %v", cerr)
+	}
+	if _, cerr := s.AddBinding(ctx, tenant.ID, records.Binding{Stack: "DPG_INJI"}); !errors.Is(cerr, records.ErrInvalid) {
+		t.Errorf("a binding without a stack tenant gave %v", cerr)
+	}
+	if _, cerr := s.AddBinding(ctx, "missing", b); !errors.Is(cerr, records.ErrNotFound) {
+		t.Errorf("an unknown tenant gave %v", cerr)
+	}
+	reread, err := s.GetTenant(ctx, tenant.ID)
+	if err != nil || len(reread.Bindings) != 1 || reread.Bindings[0].DIDs[0] != "did:key:z6Mk" {
+		t.Fatalf("GetTenant = %+v, %v", reread, err)
+	}
+	if bound, ok := reread.Binding("DPG_CREDEBL"); !ok || bound.TenantID != "org-7" {
+		t.Errorf("Binding = %+v, %v", bound, ok)
+	}
+	if _, ok := reread.Binding("DPG_INJI"); ok {
+		t.Error("Binding found a stack without a binding")
+	}
+	removed, err := s.RemoveBinding(ctx, tenant.ID, "DPG_CREDEBL")
+	if err != nil || len(removed.Bindings) != 0 {
+		t.Fatalf("RemoveBinding = %+v, %v", removed, err)
+	}
+	if _, err := s.RemoveBinding(ctx, tenant.ID, "DPG_CREDEBL"); !errors.Is(err, records.ErrNotFound) {
+		t.Errorf("a second removal gave %v", err)
+	}
+	if _, err := s.RemoveBinding(ctx, "missing", "DPG_CREDEBL"); !errors.Is(err, records.ErrNotFound) {
+		t.Errorf("an unknown tenant gave %v", err)
+	}
+}

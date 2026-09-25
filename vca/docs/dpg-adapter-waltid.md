@@ -14,7 +14,7 @@ answers `unimplemented` for every other role.
 
 ## What it serves
 
-The service serves five Connect services from `vca.backend.v1`:
+The service serves six Connect services from `vca.backend.v1`:
 
 | Service | State |
 | --- | --- |
@@ -23,6 +23,7 @@ The service serves five Connect services from `vca.backend.v1`:
 | `HolderBackendService` | Served when the configuration names a wallet URL. |
 | `VerifierBackendService` | Served when the configuration names a verifier URL. |
 | `CatalogBackendService` | Served when the configuration names an issuer URL. |
+| `TenantBackendService` | Never served. The community stack keeps no tenants. |
 
 ## The walt.id stack
 
@@ -67,6 +68,7 @@ PDF itself.
 | `IssueBatch` | walt.id has no batch credential endpoint. |
 | `GetIssuanceStatus` | walt.id reports no issuer session state. |
 | `Revoke` | walt.id has no revocation API. The status services own the bits. |
+| Every tenant RPC | The community stack keeps no tenants. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.

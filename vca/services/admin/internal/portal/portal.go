@@ -10,8 +10,11 @@
 //	GET  /                       the dashboard with the service health
 //	GET  /login                  the OpenID Connect login page
 //	GET  /tenants                the tenant list with the create form
-//	POST /tenants                create one tenant
-//	POST /tenants/{id}/delete    remove one tenant
+//	POST /tenants                create one tenant, on the chosen stacks too
+//	GET  /tenants/{id}           one tenant with its stack tenants
+//	POST /tenants/{id}/delete    remove one tenant and its stack tenants
+//	POST /tenants/{id}/bind      create the tenant on one more stack
+//	POST /tenants/{id}/unbind    remove the tenant from one stack
 //	GET  /trust                  the trust entry list with the add form
 //	POST /trust                  create or replace one trust entry
 //	POST /trust/delete           remove one trust entry
@@ -167,9 +170,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+at+"/{$}", p.guarded(p.overview))
 	mux.HandleFunc("GET "+at+"/login", p.chooser.Page)
 	mux.HandleFunc("GET "+at+"/help", p.open(p.help))
-	mux.HandleFunc("GET "+at+"/tenants", p.guarded(p.tenants))
-	mux.HandleFunc("POST "+at+"/tenants", p.posted(p.createTenant))
-	mux.HandleFunc("POST "+at+"/tenants/{id}/delete", p.posted(p.deleteTenant))
+	p.registerTenants(mux)
 	p.registerTrust(mux)
 	p.registerProviders(mux)
 	mux.HandleFunc("GET "+at+"/keys", p.guarded(p.keys))
@@ -315,8 +316,10 @@ func getForm(action string, content ...template.HTML) template.HTML {
 
 // Notices maps a notice code to the sentence the page shows.
 var Notices = map[string]components.Toast{
-	"tenant-created":       {Level: "ok", Text: "The tenant is created."},
-	"tenant-deleted":       {Level: "warn", Text: "The tenant is removed with every record it owns."},
+	"tenant-created":       {Level: "ok", Text: msg.T("admin.tenants.created")},
+	"tenant-deleted":       {Level: "warn", Text: msg.T("admin.tenants.deleted")},
+	"tenant-bound":         {Level: "ok", Text: msg.T("admin.tenants.bound")},
+	"tenant-unbound":       {Level: "warn", Text: msg.T("admin.tenants.unbound")},
 	"trust-saved":          {Level: "ok", Text: msg.T("admin.trust.saved")},
 	"trust-deleted":        {Level: "warn", Text: msg.T("admin.trust.deleted")},
 	"trust-approved":       {Level: "ok", Text: msg.T("admin.trust.approved")},
@@ -393,75 +396,6 @@ func displayName(c oidcflow.Claims) string {
 		return c.Name
 	}
 	return c.Subject
-}
-
-// tenants renders the tenant list with the create form.
-func (p *Portal) tenants(w http.ResponseWriter, r *http.Request, s session) error {
-	res, err := p.opts.Client.ListTenants(r.Context(), call(s, &adminv1.ListTenantsRequest{
-		Page: &commonv1.Pagination{PageToken: r.URL.Query().Get("page_token")},
-	}))
-	if err != nil {
-		return err
-	}
-	b := p.blocks()
-	rows := make([]components.Row, 0, len(res.Msg.GetTenants()))
-	for _, t := range res.Msg.GetTenants() {
-		status, text := "warn", "Suspended"
-		if t.GetState() == adminv1.Tenant_STATE_ACTIVE {
-			status, text = "ok", "Active"
-		}
-		rows = append(rows, components.Row{
-			{Text: t.GetDisplayName()},
-			{Text: t.GetId()},
-			{HTML: b.add("badge", components.Badge{Status: status, Text: text})},
-			{Text: t.GetCreatedAt().AsTime().UTC().Format(TimeFormat)},
-			{HTML: form(p.opts.Prefix+"/tenants/"+t.GetId()+"/delete", s.CSRF,
-				b.add("button", components.Button{Text: "Delete", Type: "submit", Variant: "danger"}))},
-		})
-	}
-	table := b.add("table", components.Table{
-		ID: "tenants", Caption: fmt.Sprintf("Tenants, %d found", res.Msg.GetPage().GetTotalSize()),
-		Columns: []string{"Name", "Id", "State", "Created", "Action"}, Rows: rows,
-		Empty: "No tenant exists. Create the first tenant below.",
-	})
-	create := b.add("card", components.Card{
-		ID: "create-tenant", Title: "New tenant",
-		Body: form(p.opts.Prefix+"/tenants", s.CSRF,
-			b.add("field", components.Field{ID: "display_name", Label: "Display name", Required: true}),
-			b.add("button", components.Button{Text: "Create tenant", Type: "submit", Variant: "primary"}),
-		),
-	})
-	if b.err != nil {
-		return b.err
-	}
-	return p.render(w, r, s, components.Page{
-		Title:       "Tenants",
-		Description: "A tenant is one operator organisation of the deployment.",
-		Content:     components.Join(table, create),
-		Toasts:      notice(r.URL.Query().Get("notice")),
-	})
-}
-
-// createTenant creates one tenant and returns to the list.
-func (p *Portal) createTenant(w http.ResponseWriter, r *http.Request, s session) error {
-	_, err := p.opts.Client.CreateTenant(r.Context(), call(s, &adminv1.CreateTenantRequest{
-		DisplayName: r.PostFormValue("display_name"),
-	}))
-	if err != nil {
-		return err
-	}
-	p.redirect(w, r, "/tenants", "tenant-created")
-	return nil
-}
-
-// deleteTenant removes one tenant.
-func (p *Portal) deleteTenant(w http.ResponseWriter, r *http.Request, s session) error {
-	_, err := p.opts.Client.DeleteTenant(r.Context(), call(s, &adminv1.DeleteTenantRequest{Id: r.PathValue("id")}))
-	if err != nil {
-		return err
-	}
-	p.redirect(w, r, "/tenants", "tenant-deleted")
-	return nil
 }
 
 // keys renders the API key list with the create form.

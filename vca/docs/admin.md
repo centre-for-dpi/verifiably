@@ -255,7 +255,8 @@ trust list has one entry. Every role has one enabled provider.
 |---|---|
 | `/admin/` | The overview: the stat cards, the first run checklist, and the service health. |
 | `/admin/login` | The sign in chooser with the bootstrap card. `/auth/` draws the same page. |
-| `/admin/tenants` | The tenant list with the create form. |
+| `/admin/tenants` | The tenant list with the create form. The form offers the stacks with multi tenancy. |
+| `/admin/tenants/{id}` | One tenant with its tenant on each stack, its DIDs, and the bind form. |
 | `/admin/trust` | The trust list. Pending entries come first, with approve and reject. The add form takes a DID or an X.509 subject. |
 | `/admin/trust/registries` | The local registry with its published lists. Each external registry with its last sync and last error. The add form. |
 | `/admin/providers` | The login provider table: realm or issuer, roles, stacks, state, default flag, and the row actions. |
@@ -264,6 +265,28 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/keys` | The API key list. A new secret appears once. |
 | `/admin/audit` | The audit log with filters. |
 | `/admin/help` | Every command and every RPC with its help text. |
+
+### Tenants on stacks
+
+A VCA tenant maps onto at most one tenant per stack (ADR-037). The
+admin service reaches the adapter of each stack through the peer
+topology. It calls `vca.backend.v1.TenantBackendService` there. The
+pages offer a stack only when its live adapter lists
+`FEATURE_MULTI_TENANCY`. A deployment without such a stack shows no
+tenancy control at all.
+
+The create form takes the display name, the stacks, and the agent type
+of the stack tenants. The service checks every stack before it writes.
+When one stack fails, the service removes the tenant from the stacks
+that took it, and removes the VCA record. The detail page reads each
+stack tenant again, so it shows the DIDs the stack holds now. A stack
+that does not answer shows the reason. Add to stack calls `BindTenant`.
+Remove from stack calls `UnbindTenant`, and the stack deletes its
+tenant. Delete removes the stack tenants first. A stack that does not
+run keeps its tenant, so the delete waits until the stack runs again.
+The admin service writes one audit record for each create, bind,
+unbind, and delete. The CLI has the same actions under
+`vca admin tenant`.
 
 ### Trust review
 

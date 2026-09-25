@@ -558,6 +558,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.IssueBatch(ctx, connect.NewRequest(&backendv1.IssueBatchRequest{}))
 			return err
 		}, false},
+		{backendv1.Feature_FEATURE_MULTI_TENANCY, func() error {
+			_, err := svc.ListTenants(ctx, connect.NewRequest(&backendv1.ListTenantsRequest{}))
+			return err
+		}, true},
 	}
 	listed := map[backendv1.Feature]bool{}
 	for _, f := range resp.Msg.GetFeatures() {
@@ -577,6 +581,49 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 	for f := range listed {
 		if !known[f] {
 			t.Errorf("the feature %v has no RPC behind it yet, so the answer must not list it", f)
+		}
+	}
+}
+
+// TestTenantServiceUnimplementedWithoutFeature is ADR-037 decision 2:
+// the adapter serves no DPG tenancy yet, so every tenant RPC answers
+// Unimplemented with a reason, and the capability answer lists no
+// tenancy feature. The admin pages then offer no tenancy on this stack.
+func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
+	svc, _ := newService(t, nil)
+	ctx := context.Background()
+	calls := []func() error{
+		func() error {
+			_, err := svc.CreateTenant(ctx, connect.NewRequest(&backendv1.CreateTenantRequest{Name: "Ministry"}))
+			return err
+		},
+		func() error {
+			_, err := svc.GetTenant(ctx, connect.NewRequest(&backendv1.GetTenantRequest{Id: "t-1"}))
+			return err
+		},
+		func() error {
+			_, err := svc.ListTenants(ctx, connect.NewRequest(&backendv1.ListTenantsRequest{}))
+			return err
+		},
+		func() error {
+			_, err := svc.DeleteTenant(ctx, connect.NewRequest(&backendv1.DeleteTenantRequest{Id: "t-1"}))
+			return err
+		},
+	}
+	for i, call := range calls {
+		err := call()
+		wantCode(t, err, connect.CodeUnimplemented)
+		if !strings.Contains(err.Error(), "tenant") {
+			t.Errorf("call %d: the message %q does not say why", i, err)
+		}
+	}
+	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range caps.Msg.GetFeatures() {
+		if f == backendv1.Feature_FEATURE_MULTI_TENANCY {
+			t.Errorf("the answer lists %v", f)
 		}
 	}
 }

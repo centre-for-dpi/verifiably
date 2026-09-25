@@ -33,6 +33,8 @@ type flag struct {
 var commands = []command{
 	{path: "admin tenant create", rpc: "CreateTenant", flags: []flag{
 		{name: "name", text: "The display name of the tenant.", mandatory: true},
+		{name: "stack", text: "One stack with multi tenancy, for example DPG_CREDEBL. Repeat the flag for more stacks."},
+		{name: "agent-type", text: "The agent of each stack tenant: shared or dedicated."},
 	}},
 	{path: "admin tenant get", rpc: "GetTenant", flags: []flag{
 		{name: "id", text: "The tenant id.", mandatory: true},
@@ -49,6 +51,19 @@ var commands = []command{
 	{path: "admin tenant delete", rpc: "DeleteTenant", flags: []flag{
 		{name: "id", text: "The tenant id.", mandatory: true},
 	}},
+	{path: "admin tenant bind", rpc: "BindTenant",
+		long: "Creates the tenant on one more stack. The stack must list multi tenancy. The admin service records the binding.",
+		flags: []flag{
+			{name: "id", text: "The tenant id.", mandatory: true},
+			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+			{name: "agent-type", text: "The agent of the stack tenant: shared or dedicated."},
+		}},
+	{path: "admin tenant unbind", rpc: "UnbindTenant",
+		long: "Removes the tenant from one stack. The stack deletes its tenant. The stack must run.",
+		flags: []flag{
+			{name: "id", text: "The tenant id.", mandatory: true},
+			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+		}},
 	{path: "admin trust add", rpc: "UpsertTrustEntry", flags: []flag{
 		{name: "did", text: "The DID of the entity."},
 		{name: "x509-subject", text: "The x509 subject of the entity."},

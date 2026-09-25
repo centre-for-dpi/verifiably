@@ -7,6 +7,7 @@ syntax = "proto3";
 package vca.admin.v1;
 
 import "google/protobuf/timestamp.proto";
+import "vca/backend/v1/backend.proto";
 import "vca/common/v1/common.proto";
 import "vca/config/v1/config.proto";
 import "vca/trust/v1/trust.proto";
@@ -34,6 +35,16 @@ service AdminService {
   // DeleteTenant removes one tenant and every record it owns.
   rpc DeleteTenant(DeleteTenantRequest) returns (DeleteTenantResponse) {
     option (vca.common.v1.description) = "Removes one tenant and every record it owns.";
+  }
+  // BindTenant creates the tenant on one more stack and records the
+  // binding (ADR-037 decision 1). The stack must list multi tenancy.
+  rpc BindTenant(BindTenantRequest) returns (BindTenantResponse) {
+    option (vca.common.v1.description) = "Creates the tenant on one more stack.";
+  }
+  // UnbindTenant removes the tenant from one stack. The stack deletes
+  // its own tenant record.
+  rpc UnbindTenant(UnbindTenantRequest) returns (UnbindTenantResponse) {
+    option (vca.common.v1.description) = "Removes the tenant from one stack.";
   }
 
   // UpsertTrustEntry creates or replaces one trust entry (ADR-011).
@@ -162,6 +173,9 @@ message Tenant {
   google.protobuf.Timestamp created_at = 4;
   // The time of the last change.
   google.protobuf.Timestamp updated_at = 5;
+  // The tenants of the stacks that this tenant maps onto, one per stack
+  // (ADR-037 decision 1).
+  repeated TenantBinding bindings = 6;
 
   // State names whether the tenant can act.
   enum State {
@@ -173,10 +187,31 @@ message Tenant {
   }
 }
 
+// TenantBinding maps a VCA tenant onto the tenant of one stack.
+message TenantBinding {
+  // The stack.
+  vca.config.v1.Dpg stack = 1;
+  // The name of the stack as its adapter reports it.
+  string stack_name = 2;
+  // The tenant in the stack, with its DIDs.
+  vca.backend.v1.DpgTenant tenant = 3;
+  // The time of the binding.
+  google.protobuf.Timestamp bound_at = 4;
+  // Why the service could not read the stack tenant now. Empty when
+  // the read worked or did not run.
+  string error = 5;
+}
+
 // CreateTenantRequest names the new tenant.
 message CreateTenantRequest {
   // The display name. Required. At most 200 characters.
   string display_name = 1;
+  // The stacks on which to create the tenant too. Each stack must list
+  // multi tenancy. Empty creates the tenant in VCA only.
+  repeated vca.config.v1.Dpg stacks = 2;
+  // How each stack runs the agent of the tenant. Unspecified selects
+  // the default of the stack.
+  vca.backend.v1.DpgTenant.AgentType agent_type = 3;
 }
 
 // CreateTenantResponse returns the new tenant.
@@ -235,6 +270,36 @@ message DeleteTenantRequest {
 
 // DeleteTenantResponse has no fields.
 message DeleteTenantResponse {}
+
+// BindTenantRequest selects a tenant and a stack.
+message BindTenantRequest {
+  // The tenant id.
+  string id = 1;
+  // The stack. It must list multi tenancy.
+  vca.config.v1.Dpg stack = 2;
+  // How the stack runs the agent of the tenant.
+  vca.backend.v1.DpgTenant.AgentType agent_type = 3;
+}
+
+// BindTenantResponse returns the tenant with the new binding.
+message BindTenantResponse {
+  // The tenant.
+  Tenant tenant = 1;
+}
+
+// UnbindTenantRequest selects a tenant and a stack.
+message UnbindTenantRequest {
+  // The tenant id.
+  string id = 1;
+  // The stack.
+  vca.config.v1.Dpg stack = 2;
+}
+
+// UnbindTenantResponse returns the tenant without the binding.
+message UnbindTenantResponse {
+  // The tenant.
+  Tenant tenant = 1;
+}
 
 // UpsertTrustEntryRequest carries the entry to create or replace.
 message UpsertTrustEntryRequest {

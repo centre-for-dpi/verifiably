@@ -38,6 +38,8 @@ const (
 	VerifierBackendServiceName = "vca.backend.v1.VerifierBackendService"
 	// CatalogBackendServiceName is the fully-qualified name of the CatalogBackendService service.
 	CatalogBackendServiceName = "vca.backend.v1.CatalogBackendService"
+	// TenantBackendServiceName is the fully-qualified name of the TenantBackendService service.
+	TenantBackendServiceName = "vca.backend.v1.TenantBackendService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -96,6 +98,18 @@ const (
 	// CatalogBackendServiceListCredentialTypesProcedure is the fully-qualified name of the
 	// CatalogBackendService's ListCredentialTypes RPC.
 	CatalogBackendServiceListCredentialTypesProcedure = "/vca.backend.v1.CatalogBackendService/ListCredentialTypes"
+	// TenantBackendServiceCreateTenantProcedure is the fully-qualified name of the
+	// TenantBackendService's CreateTenant RPC.
+	TenantBackendServiceCreateTenantProcedure = "/vca.backend.v1.TenantBackendService/CreateTenant"
+	// TenantBackendServiceGetTenantProcedure is the fully-qualified name of the TenantBackendService's
+	// GetTenant RPC.
+	TenantBackendServiceGetTenantProcedure = "/vca.backend.v1.TenantBackendService/GetTenant"
+	// TenantBackendServiceListTenantsProcedure is the fully-qualified name of the
+	// TenantBackendService's ListTenants RPC.
+	TenantBackendServiceListTenantsProcedure = "/vca.backend.v1.TenantBackendService/ListTenants"
+	// TenantBackendServiceDeleteTenantProcedure is the fully-qualified name of the
+	// TenantBackendService's DeleteTenant RPC.
+	TenantBackendServiceDeleteTenantProcedure = "/vca.backend.v1.TenantBackendService/DeleteTenant"
 )
 
 // CapabilityServiceClient is a client for the vca.backend.v1.CapabilityService service.
@@ -775,4 +789,161 @@ type UnimplementedCatalogBackendServiceHandler struct{}
 
 func (UnimplementedCatalogBackendServiceHandler) ListCredentialTypes(context.Context, *connect.Request[v1.ListCredentialTypesRequest]) (*connect.Response[v1.ListCredentialTypesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.CatalogBackendService.ListCredentialTypes is not implemented"))
+}
+
+// TenantBackendServiceClient is a client for the vca.backend.v1.TenantBackendService service.
+type TenantBackendServiceClient interface {
+	// CreateTenant creates one tenant in the DPG.
+	CreateTenant(context.Context, *connect.Request[v1.CreateTenantRequest]) (*connect.Response[v1.CreateTenantResponse], error)
+	// GetTenant returns one tenant of the DPG with its DIDs.
+	GetTenant(context.Context, *connect.Request[v1.GetTenantRequest]) (*connect.Response[v1.GetTenantResponse], error)
+	// ListTenants returns the tenants of the DPG in pages.
+	ListTenants(context.Context, *connect.Request[v1.ListTenantsRequest]) (*connect.Response[v1.ListTenantsResponse], error)
+	// DeleteTenant removes one tenant from the DPG.
+	DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error)
+}
+
+// NewTenantBackendServiceClient constructs a client for the vca.backend.v1.TenantBackendService
+// service. By default, it uses the Connect protocol with the binary Protobuf Codec, asks for
+// gzipped responses, and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply
+// the connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewTenantBackendServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) TenantBackendServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	tenantBackendServiceMethods := v1.File_vca_backend_v1_backend_proto.Services().ByName("TenantBackendService").Methods()
+	return &tenantBackendServiceClient{
+		createTenant: connect.NewClient[v1.CreateTenantRequest, v1.CreateTenantResponse](
+			httpClient,
+			baseURL+TenantBackendServiceCreateTenantProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("CreateTenant")),
+			connect.WithClientOptions(opts...),
+		),
+		getTenant: connect.NewClient[v1.GetTenantRequest, v1.GetTenantResponse](
+			httpClient,
+			baseURL+TenantBackendServiceGetTenantProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("GetTenant")),
+			connect.WithClientOptions(opts...),
+		),
+		listTenants: connect.NewClient[v1.ListTenantsRequest, v1.ListTenantsResponse](
+			httpClient,
+			baseURL+TenantBackendServiceListTenantsProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("ListTenants")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteTenant: connect.NewClient[v1.DeleteTenantRequest, v1.DeleteTenantResponse](
+			httpClient,
+			baseURL+TenantBackendServiceDeleteTenantProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("DeleteTenant")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// tenantBackendServiceClient implements TenantBackendServiceClient.
+type tenantBackendServiceClient struct {
+	createTenant *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
+	getTenant    *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
+	listTenants  *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
+	deleteTenant *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
+}
+
+// CreateTenant calls vca.backend.v1.TenantBackendService.CreateTenant.
+func (c *tenantBackendServiceClient) CreateTenant(ctx context.Context, req *connect.Request[v1.CreateTenantRequest]) (*connect.Response[v1.CreateTenantResponse], error) {
+	return c.createTenant.CallUnary(ctx, req)
+}
+
+// GetTenant calls vca.backend.v1.TenantBackendService.GetTenant.
+func (c *tenantBackendServiceClient) GetTenant(ctx context.Context, req *connect.Request[v1.GetTenantRequest]) (*connect.Response[v1.GetTenantResponse], error) {
+	return c.getTenant.CallUnary(ctx, req)
+}
+
+// ListTenants calls vca.backend.v1.TenantBackendService.ListTenants.
+func (c *tenantBackendServiceClient) ListTenants(ctx context.Context, req *connect.Request[v1.ListTenantsRequest]) (*connect.Response[v1.ListTenantsResponse], error) {
+	return c.listTenants.CallUnary(ctx, req)
+}
+
+// DeleteTenant calls vca.backend.v1.TenantBackendService.DeleteTenant.
+func (c *tenantBackendServiceClient) DeleteTenant(ctx context.Context, req *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error) {
+	return c.deleteTenant.CallUnary(ctx, req)
+}
+
+// TenantBackendServiceHandler is an implementation of the vca.backend.v1.TenantBackendService
+// service.
+type TenantBackendServiceHandler interface {
+	// CreateTenant creates one tenant in the DPG.
+	CreateTenant(context.Context, *connect.Request[v1.CreateTenantRequest]) (*connect.Response[v1.CreateTenantResponse], error)
+	// GetTenant returns one tenant of the DPG with its DIDs.
+	GetTenant(context.Context, *connect.Request[v1.GetTenantRequest]) (*connect.Response[v1.GetTenantResponse], error)
+	// ListTenants returns the tenants of the DPG in pages.
+	ListTenants(context.Context, *connect.Request[v1.ListTenantsRequest]) (*connect.Response[v1.ListTenantsResponse], error)
+	// DeleteTenant removes one tenant from the DPG.
+	DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error)
+}
+
+// NewTenantBackendServiceHandler builds an HTTP handler from the service implementation. It returns
+// the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	tenantBackendServiceMethods := v1.File_vca_backend_v1_backend_proto.Services().ByName("TenantBackendService").Methods()
+	tenantBackendServiceCreateTenantHandler := connect.NewUnaryHandler(
+		TenantBackendServiceCreateTenantProcedure,
+		svc.CreateTenant,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("CreateTenant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceGetTenantHandler := connect.NewUnaryHandler(
+		TenantBackendServiceGetTenantProcedure,
+		svc.GetTenant,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("GetTenant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceListTenantsHandler := connect.NewUnaryHandler(
+		TenantBackendServiceListTenantsProcedure,
+		svc.ListTenants,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("ListTenants")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceDeleteTenantHandler := connect.NewUnaryHandler(
+		TenantBackendServiceDeleteTenantProcedure,
+		svc.DeleteTenant,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("DeleteTenant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/vca.backend.v1.TenantBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case TenantBackendServiceCreateTenantProcedure:
+			tenantBackendServiceCreateTenantHandler.ServeHTTP(w, r)
+		case TenantBackendServiceGetTenantProcedure:
+			tenantBackendServiceGetTenantHandler.ServeHTTP(w, r)
+		case TenantBackendServiceListTenantsProcedure:
+			tenantBackendServiceListTenantsHandler.ServeHTTP(w, r)
+		case TenantBackendServiceDeleteTenantProcedure:
+			tenantBackendServiceDeleteTenantHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedTenantBackendServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedTenantBackendServiceHandler struct{}
+
+func (UnimplementedTenantBackendServiceHandler) CreateTenant(context.Context, *connect.Request[v1.CreateTenantRequest]) (*connect.Response[v1.CreateTenantResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.CreateTenant is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) GetTenant(context.Context, *connect.Request[v1.GetTenantRequest]) (*connect.Response[v1.GetTenantResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.GetTenant is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) ListTenants(context.Context, *connect.Request[v1.ListTenantsRequest]) (*connect.Response[v1.ListTenantsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.ListTenants is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.DeleteTenant is not implemented"))
 }
