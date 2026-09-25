@@ -85,6 +85,7 @@ gets `304 Not Modified`.
 |---|---|
 | `/static/vca.css` | Font faces, light tokens, dark tokens, brand properties, then the base stylesheet. |
 | `/static/htmx.min.js` | htmx, version in `ui.HTMXVersion`. |
+| `/static/dcapi.js` | The script of the Digital Credentials API channel. Every page loads it. It acts only on a `dcapi` button. |
 | `/static/fonts/<file>.woff2` | One file per font role that has a file: the heading and the body font. |
 | `/static/logo.svg`, `.png`, or `.webp` | The brand logo, when the brand has one. |
 
@@ -283,6 +284,7 @@ component. `components.Names` lists every template.
 | `stat` | `Stat` | One summary card: label, value, sentence, link. Put several in `div.stats` for a grid. | `Label`, `Value` |
 | `stepper` | `Stepper` | Progress of a multi step form. The current step carries `aria-current="step"`. | `Label`, `Steps` (two or more), `Current` |
 | `choice` | `Choice` | `fieldset` with a `legend` and radio cards, or checkbox cards with `Multiple`. | `ID`, `Legend`, `Options` |
+| `dcapi` | `DCAPI` | A hidden `button type="button"` that carries a credential offer. `/static/dcapi.js` shows it when the browser has the Digital Credentials API. | `Text`, `Offer` |
 | `fieldset` | `Fieldset` | `fieldset` with a `legend`, an optional hint, and the fields of its body. A nested object of a form becomes one. | `ID`, `Legend` |
 | `code` | `Code` | `figure` with a `figcaption` and a `pre` region named by it. | `ID`, `Label`, `Text` |
 | `empty` | `Empty` | Empty state with a title, a sentence, and the one action that fills it. | `Title`, `Action` |
@@ -420,6 +422,12 @@ current one carry a hidden `Done` for screen readers.
 `Multiple`. `ChoiceOption`: `Value`, `Title`, `Text`, `Meta`, `Checked`,
 `Disabled`. Every input has an id `<ID>-<n>` and its own `label`.
 
+`DCAPI`: `Text`, `Offer`, `OK`, `Cancel`, `Fail`. The offer is an
+`openid-credential-offer://` or an `https://` URI. The script writes
+`OK`, `Cancel`, or `Fail` into the toast region after the wallet
+answers. Keep the QR code and the link on the same page for every other
+browser (ADR-043 decision 3).
+
 `Fieldset`: `ID`, `Legend`, `Hint`, `Body`. A hint links to the group
 through `aria-describedby`. Put the fields from `Kit.HTML` in `Body`.
 
@@ -441,7 +449,8 @@ the page.
 ### Progressive enhancement
 
 Every page works without JavaScript. Forms post, links navigate, `details`
-opens, and a `dialog` with `Open` shows at once. With JavaScript, htmx swaps
+opens, and a `dialog` with `Open` shows at once. A `dcapi` button stays
+hidden without the script, and its page keeps the QR code and the link. With JavaScript, htmx swaps
 the `main` region, the theme toggle appears, disclosure buttons toggle their
 region, and `Opens` buttons call `showModal`.
 

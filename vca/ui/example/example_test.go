@@ -44,7 +44,7 @@ func TestDemoPageIsAccessible(t *testing.T) {
 		`aria-current="true"`, `stack-starting`, `name="csrf_token"`, `>Sign out</button>`, `<nav aria-label="Portal">`,
 		// The nine content components.
 		`<section class="hero">`, `<ul class="tiles">`, `<ol class="steps">`, `aria-current="step"`, `<section class="checklist"`,
-		`<div class="stats">`, `<span class="stat-value">`, `<ol class="stepper"`, `<fieldset class="choice"`, `<legend>`, `<fieldset class="fieldset"`,
+		`<div class="stats">`, `<span class="stat-value">`, `<ol class="stepper"`, `<fieldset class="choice"`, `<legend>`, `<fieldset class="fieldset"`, `data-dcapi-offer=`,
 		`<figure class="code"`, `<div class="empty">`, `<nav class="tabs" aria-label="Demo views">`,
 	} {
 		if !strings.Contains(doc, want) {

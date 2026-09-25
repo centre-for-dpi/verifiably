@@ -279,7 +279,7 @@ func TestDeliveryOptionsFollowCapabilities(t *testing.T) {
 	h := newHarness(t)
 	h.schemas.published = []*schemav1.Schema{farmer()}
 	doc := body(t, h.post(t, "/issue/delivery", goodClaims()))
-	for _, want := range []string{"CHANNEL_OID4VCI_PREAUTH", "CHANNEL_OID4VCI_AUTHCODE", "CHANNEL_PDF", "This stack shows only the options it can do."} {
+	for _, want := range []string{"CHANNEL_OID4VCI_PREAUTH", "CHANNEL_OID4VCI_AUTHCODE", "CHANNEL_DC_API", "CHANNEL_PDF", "This stack shows only the options it can do."} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("delivery lacks %q", want)
 		}
@@ -287,9 +287,16 @@ func TestDeliveryOptionsFollowCapabilities(t *testing.T) {
 	h.caps.caps.Channels = []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_PREAUTH}
 	h.snap.Peers[0].Capabilities = h.caps.caps
 	doc = body(t, h.post(t, "/issue/delivery", goodClaims()))
-	if strings.Contains(doc, "CHANNEL_OID4VCI_AUTHCODE") || !strings.Contains(doc, "CHANNEL_PDF") {
+	if strings.Contains(doc, "CHANNEL_OID4VCI_AUTHCODE") || !strings.Contains(doc, "CHANNEL_PDF") || !strings.Contains(doc, "CHANNEL_DC_API") {
 		t.Error("the cards do not follow the adapter")
 	}
+	// The browser channel rides on the pre-authorized offer of the stack.
+	h.caps.caps.Channels = []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE}
+	doc = body(t, h.post(t, "/issue/delivery", goodClaims()))
+	if strings.Contains(doc, "CHANNEL_DC_API") || !strings.Contains(doc, "CHANNEL_PDF") {
+		t.Error("the browser channel shows without a pre-authorized offer")
+	}
+	h.caps.caps.Channels = []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_PREAUTH}
 	// A channel the stack lacks goes back to the delivery step.
 	doc = body(t, h.post(t, "/issue/review", with(goodClaims(), "channel", "CHANNEL_OID4VCI_AUTHCODE")))
 	a11ytest.AssertPage(t, doc)
@@ -441,5 +448,58 @@ func TestIssueStepsFailSafely(t *testing.T) {
 	h.schemas.err = connect.NewError(connect.CodeUnavailable, errors.New("down"))
 	if rec := h.get(t, "/issue/"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "The schema registry does not answer.") {
 		t.Errorf("registry down: status %d", rec.Code)
+	}
+}
+
+// dcOffer is the offer of the browser channel in the tests.
+const dcOffer = "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffers%2F9"
+
+// TestDcApiButtonCarriesOffer checks the result of the Digital
+// Credentials API channel: a plain button, hidden until the script
+// finds the API, that carries the offer (ADR-043 decision 3).
+func TestDcApiButtonCarriesOffer(t *testing.T) {
+	h := newHarness(t)
+	h.schemas.published = []*schemav1.Schema{farmer()}
+	h.issuance.next = &issuancev1.Offer{Id: "offer-9", OfferUri: dcOffer}
+	if rec := h.post(t, "/issue/offers", with(goodClaims(), "channel", "CHANNEL_DC_API")); rec.Code != http.StatusSeeOther {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if got := h.issuance.requests[0].GetDelivery().GetChannel(); got != backendv1.Channel_CHANNEL_DC_API {
+		t.Fatalf("channel %v", got)
+	}
+	doc := body(t, h.get(t, "/issue/offers/offer-9"))
+	a11ytest.AssertPage(t, doc)
+	want := `<button type="button" class="btn btn-primary" hidden data-dcapi-offer="` + strings.ReplaceAll(dcOffer, "&", "&amp;") + `"`
+	if !strings.Contains(doc, want) {
+		t.Errorf("result lacks the offer button %q", want)
+	}
+	for _, want := range []string{"Open the device wallet", "Delivery through Digital Credentials API.",
+		`data-dcapi-ok="The wallet on this device has the offer.`, `data-dcapi-fail="This browser did not reach a wallet. Scan the QR code instead."`} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("result lacks %q", want)
+		}
+	}
+	// Another channel gets no button.
+	h.issuance.next = &issuancev1.Offer{Id: "offer-10", OfferUri: dcOffer}
+	h.post(t, "/issue/offers", with(goodClaims(), "channel", "CHANNEL_OID4VCI_PREAUTH"))
+	if doc := body(t, h.get(t, "/issue/offers/offer-10")); strings.Contains(doc, "data-dcapi-offer") {
+		t.Error("a pre-authorized offer carries the browser button")
+	}
+}
+
+// TestDcApiFallbackQRAlwaysPresent checks that the QR code and the link
+// stay on the page of the browser channel, for every browser without
+// the API (ADR-043 decision 3).
+func TestDcApiFallbackQRAlwaysPresent(t *testing.T) {
+	h := newHarness(t)
+	h.schemas.published = []*schemav1.Schema{farmer()}
+	h.issuance.next = &issuancev1.Offer{Id: "offer-9", OfferUri: dcOffer}
+	h.post(t, "/issue/offers", with(goodClaims(), "channel", "CHANNEL_DC_API"))
+	doc := body(t, h.get(t, "/issue/offers/offer-9"))
+	for _, want := range []string{`<img class="qr" src="data:image/svg&#43;xml;base64,`, `<figure class="code" id="offer-link">`,
+		`href="` + strings.ReplaceAll(dcOffer, "&", "&amp;") + `">Open in a wallet</a>`} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the fallback lacks %q", want)
+		}
 	}
 }

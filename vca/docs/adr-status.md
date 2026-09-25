@@ -477,9 +477,9 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-043 | 1 The list of channels | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
-| ADR-043 | 2 The page offers live channels only | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
-| ADR-043 | 3 Digital Credentials API button with a fallback | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
+| ADR-043 | 1 The list of channels | Partial | `vca/services/issuance/internal/pages/issue.go` | The wizard offers both OID4VCI channels, the Digital Credentials API, and QR on a PDF. Claim 169, DIDComm, and email through the DPG wait for the adapter units. |
+| ADR-043 | 2 The page offers live channels only | Done | `vca/services/issuance/internal/pages/issue.go` | `TestDeliveryOptionsFollowCapabilities`. |
+| ADR-043 | 3 Digital Credentials API button with a fallback | Done | `vca/ui/static/dcapi.js`, `vca/services/issuance/internal/pages/result.go` | `TestDcApiButtonCarriesOffer`, `TestDcApiFallbackQRAlwaysPresent`. |
 | ADR-043 | 4 Bulk issuance from data sources | Not started | `vca/services/data-source` | Proposed record. No work exists yet. |
 
 ## ADR-044: Placement of the role pages

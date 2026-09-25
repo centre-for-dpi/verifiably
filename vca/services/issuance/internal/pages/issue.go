@@ -63,6 +63,7 @@ var channels = []struct {
 }{
 	{backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, "issuer.issue.pre_auth"},
 	{backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE, "issuer.issue.auth_code"},
+	{backendv1.Channel_CHANNEL_DC_API, "issuer.issue.dc_api"},
 	{backendv1.Channel_CHANNEL_PDF, "issuer.issue.pdf"},
 }
 
@@ -354,12 +355,16 @@ func (p *Pages) delivery(pg page) error {
 }
 
 // offered lists the channels the wizard offers on the pair: the
-// channels its adapter lists, and the document channel that VCA gives
-// every stack (ADR-043 decision 2).
+// channels its adapter lists, and the two channels that VCA gives every
+// stack (ADR-043 decision 2). The document channel works on every
+// stack. The Digital Credentials API channel hands the pre-authorized
+// offer of the stack to the browser.
 func offered(caps *backendv1.GetCapabilitiesResponse) []backendv1.Channel {
 	var out []backendv1.Channel
 	for _, c := range channels {
-		if c.channel == backendv1.Channel_CHANNEL_PDF || offers(caps, c.channel) {
+		switch {
+		case c.channel == backendv1.Channel_CHANNEL_PDF, offers(caps, c.channel),
+			c.channel == backendv1.Channel_CHANNEL_DC_API && offers(caps, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH):
 			out = append(out, c.channel)
 		}
 	}

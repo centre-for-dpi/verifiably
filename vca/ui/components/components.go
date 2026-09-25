@@ -28,7 +28,7 @@ import (
 // Names lists every template a Kit can render.
 var Names = []string{"layout", "page", "card", "field", "table", "badge", "toast", "dialog", "qr", "json", "button",
 	"hero", "tiles", "steps", "checklist", "stat", "stepper", "choice", "code", "empty",
-	"block", "figure", "stacks", "cta", "note", "signin", "tabs", "fieldset"}
+	"block", "figure", "stacks", "cta", "note", "signin", "tabs", "fieldset", "dcapi"}
 
 // safeAttrNames is the whitelist for the safeAttr template function.
 // Only these attribute names can be added through an Attrs map.
@@ -1009,6 +1009,30 @@ func (f Fieldset) normalize() (any, error) {
 		return nil, fmt.Errorf("fieldset %q: legend is required", f.ID)
 	}
 	return f, nil
+}
+
+// DCAPI is the button of the Digital Credentials API channel (ADR-043
+// decision 3). It renders hidden; the script /static/dcapi.js shows it
+// only when the browser has the API, and hands Offer to the wallet of
+// the device. OK, Cancel and Fail are the words the script writes into
+// the toast region for each outcome. A page keeps the QR code and the
+// link next to it for every other browser.
+type DCAPI struct {
+	Text   string // required, the button label
+	Offer  string // required, an openid-credential-offer:// or https:// URI
+	OK     string
+	Cancel string
+	Fail   string
+}
+
+func (d DCAPI) normalize() (any, error) {
+	if d.Text == "" {
+		return nil, errors.New("dcapi: text is required")
+	}
+	if !strings.HasPrefix(d.Offer, "openid-credential-offer://") && !strings.HasPrefix(d.Offer, "https://") {
+		return nil, errors.New("dcapi: the offer must be an openid-credential-offer:// or https:// URI")
+	}
+	return d, nil
 }
 
 // Empty is an empty state: what is missing and the one action that fills it.

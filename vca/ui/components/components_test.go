@@ -73,8 +73,44 @@ func samples(t *testing.T, k *Kit) map[string]any {
 			Roles:      []RoleRow{{Label: "Issuer", State: "live", Text: "Live"}, {Label: "Holder", State: "starting", Text: "Starting"}}}}},
 		"cta":  CTA{ID: "start", Title: "Pick a role.", Text: "Walk one flow.", Action: Button{Text: "Start", Href: "/roles/", Variant: "primary"}},
 		"note": Note{Label: "One role", Text: "This deployment runs one role."},
+		"dcapi": DCAPI{Text: "Send to a wallet on this device", Offer: "openid-credential-offer://?credential_offer=%7B%7D",
+			OK: "The wallet has the offer.", Cancel: "You closed the wallet.", Fail: "Use the QR code."},
 		"fieldset": Fieldset{ID: "address", Legend: "Address", Hint: "Where the farm is",
 			Body: mustHTML(t, k, "field", Field{ID: "address-county", Name: "claim.address.county", Label: "County", Required: true})},
+	}
+}
+
+// TestDcApiButtonStaysHidden checks the button of the Digital
+// Credentials API channel: a plain button, hidden until the script of
+// the kit finds the API, that carries the offer and the words of each
+// outcome (ADR-043 decision 3).
+func TestDcApiButtonStaysHidden(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "dcapi", samples(t, k)["dcapi"]))
+	a11ytest.AssertFragment(t, doc)
+	want := `<button type="button" class="btn btn-primary" hidden data-dcapi-offer="openid-credential-offer://?credential_offer=%7B%7D"` +
+		` data-dcapi-ok="The wallet has the offer." data-dcapi-cancel="You closed the wallet." data-dcapi-fail="Use the QR code.">Send to a wallet on this device</button>`
+	if doc != want {
+		t.Errorf("dcapi\n got %s\nwant %s", doc, want)
+	}
+	for name, bad := range map[string]DCAPI{
+		"no text":  {Offer: "https://issuer.example/offer"},
+		"no offer": {Text: "Send"},
+		"scheme":   {Text: "Send", Offer: "javascript:alert(1)"},
+	} {
+		if _, err := k.HTML("dcapi", bad); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
+// TestLayoutLoadsDcApiScript checks that every page loads the script,
+// which does nothing on a page without an offer button.
+func TestLayoutLoadsDcApiScript(t *testing.T) {
+	k := newKit(t)
+	doc := renderShellPage(t, k, Page{Title: "x"})
+	if !strings.Contains(doc, `<script src="/static/dcapi.js" defer></script>`) {
+		t.Error("the layout does not load dcapi.js")
 	}
 }
 
@@ -833,7 +869,7 @@ func TestWriteErrors(t *testing.T) {
 	if got := Join("<a>", "<b>"); got != "<a>\n<b>\n" {
 		t.Errorf("Join = %q", got)
 	}
-	if len(Names) != 28 {
+	if len(Names) != 29 {
 		t.Errorf("Names = %v", Names)
 	}
 	for _, n := range Names {

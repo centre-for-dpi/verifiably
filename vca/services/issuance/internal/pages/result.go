@@ -102,6 +102,15 @@ func (p *Pages) offerBlock(b *blocks, offer *issuancev1.Offer, schema, issuer st
 		body = append(body, b.add("code", components.Code{ID: "pin", Label: msg.T("issuer.issue.result.pin.label"), Text: pin}))
 	}
 	var row []template.HTML
+	if uri := offer.GetOfferUri(); uri != "" && offer.GetChannel() == backendv1.Channel_CHANNEL_DC_API && walletLink(uri) {
+		// The button stays hidden until /static/dcapi.js finds the API.
+		// The QR code and the link stay for every other browser (ADR-043
+		// decision 3).
+		row = append(row, b.add("dcapi", components.DCAPI{
+			Text: msg.T("issuer.issue.dc_api.button.label"), Offer: uri, OK: msg.T("issuer.issue.dc_api.ok"),
+			Cancel: msg.T("issuer.issue.dc_api.cancel"), Fail: msg.T("issuer.issue.dc_api.fail"),
+		}))
+	}
 	if uri := offer.GetOfferUri(); uri != "" {
 		body = append(body, b.add("code", components.Code{ID: "offer-link", Label: msg.T("issuer.issue.result.link.label"), Text: uri}))
 		if walletLink(uri) {

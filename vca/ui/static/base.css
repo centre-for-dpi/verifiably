@@ -13,6 +13,9 @@
 
 *,*::before,*::after{box-sizing:border-box}
 *{margin:0;padding:0}
+/* The hidden attribute wins over the display of a component, so a
+   button that a script reveals, such as a dcapi button, stays hidden. */
+[hidden]{display:none!important}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{
   background:var(--paper);

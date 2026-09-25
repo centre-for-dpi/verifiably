@@ -23,7 +23,8 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/ui/theme"
 )
 
-// Static holds the vendored assets: base.css, htmx.min.js, and fonts/.
+// Static holds the vendored assets: base.css, htmx.min.js, dcapi.js, and
+// fonts/.
 //
 //go:embed static
 var Static embed.FS
@@ -117,6 +118,14 @@ func build(static fs.FS, cfg Config) (http.Handler, error) {
 		return nil, fmt.Errorf("ui: %w", err)
 	}
 	files["htmx.min.js"] = newAsset(htmx, "text/javascript; charset=utf-8")
+	// dcapi.js hands a credential offer to the Digital Credentials API of
+	// the browser (ADR-043 decision 3). It does nothing on a page without
+	// an offer button.
+	dcapi, err := fs.ReadFile(static, "static/dcapi.js")
+	if err != nil {
+		return nil, fmt.Errorf("ui: %w", err)
+	}
+	files["dcapi.js"] = newAsset(dcapi, "text/javascript; charset=utf-8")
 	// Validate proved the logo decodes, so OrZero never drops an error here.
 	if logo := anyval.OrZero(cfg.Brand.Logo.File()); logo.Name != "" {
 		a := newAsset(logo.Body, logo.ContentType)

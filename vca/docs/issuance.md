@@ -108,6 +108,32 @@ decision 2). The pages call `IssuanceService.Issue` in process. The
 call names the staff member in the `X-Vca-Actor` header. The proxy
 publishes no Connect service of the issuance service (ADR-047).
 
+### The Digital Credentials API channel
+
+The channel follows ADR-043 decisions 1 to 3 and the W3C Digital
+Credentials draft of September 2026 (open question G.9). The delivery
+step offers it on every stack whose adapter builds a pre-authorized
+offer. The service asks the adapter for that offer and keeps the
+channel on the offer.
+
+The result page of the channel shows a button of type `button`. The
+button starts hidden. The kit script `/static/dcapi.js` shows it only
+when the browser has `DigitalCredential` and allows the protocol
+`openid4vci-v1`. A click reads the credential offer from the offer URI.
+An offer by reference comes from `credential_offer_uri`. The script
+then calls `navigator.credentials.create` with the request below:
+
+```js
+navigator.credentials.create({
+  digital: { requests: [{ protocol: 'openid4vci-v1', data: offer }] }
+});
+```
+
+The wallet of the device takes the offer from there. The script writes
+the outcome into the toast region of the page. The QR code and the link
+stay on the page for every other browser. The draft changes often, so
+the script tests for each part of the API before it uses it.
+
 The result page shows the QR code of the offer. Its text names the
 schema and the issuer. The page also shows the offer link. It shows
 the transaction code when the stack sets one. It shows the document
@@ -142,11 +168,13 @@ then names the staff member (ADR-039 decision 1).
 
 ## The channels
 
-ADR-016 decision 5 names five channels.
+ADR-016 decision 5 names five channels. ADR-043 decision 1 adds the
+Digital Credentials API.
 
 | Channel | What the citizen gets |
 | --- | --- |
 | `oid4vci` | An offer URI. A wallet claims the credential. |
+| `dc_api` | The same offer, which the browser hands to the wallet of the device. |
 | `pdf` | An A4 page with a QR code. |
 | `email` | A message with a link to the page. |
 | `sms` | A short message with the link. |

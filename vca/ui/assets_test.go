@@ -102,6 +102,7 @@ func TestServeAssets(t *testing.T) {
 	cases := map[string]string{
 		"/static/vca.css":                            "text/css; charset=utf-8",
 		"/static/htmx.min.js":                        "text/javascript; charset=utf-8",
+		"/static/dcapi.js":                           "text/javascript; charset=utf-8",
 		"/static/fonts/" + fonts.Default().Body.File: "font/woff2",
 	}
 	for path, ct := range cases {
@@ -536,5 +537,39 @@ func TestNoRemovedFamilyAnywhere(t *testing.T) {
 		if f := hasRemovedFamily(line); f != "" {
 			t.Errorf("docs/ui.md:%d holds %q", i+1, f)
 		}
+	}
+}
+
+// TestDcApiScriptServed checks the vendored script of the Digital
+// Credentials API channel (ADR-043 decision 3): the kit serves it, it
+// tests for the API before it shows a button, it hands the offer to
+// navigator.credentials.create, and it writes into the toast region.
+func TestDcApiScriptServed(t *testing.T) {
+	h := newAssets(t)
+	rec := get(h, http.MethodGet, "/static/dcapi.js", "")
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/javascript; charset=utf-8" || rec.Header().Get("ETag") == "" {
+		t.Fatalf("status %d type %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(baseCSS(t), "[hidden]{display:none!important}") {
+		t.Error("a .btn display rule would show a hidden dcapi button")
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"DigitalCredential", "userAgentAllowsProtocol", "'openid4vci-v1'", "navigator.credentials.create",
+		"digital: { requests: [{ protocol: PROTOCOL, data: offer }] }", "button[data-dcapi-offer]",
+		"getElementById('toasts')", "data-dcapi-ok", "data-dcapi-cancel", "data-dcapi-fail", "htmx:afterSettle",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dcapi.js lacks %q", want)
+		}
+	}
+	// A file system without the script fails at startup.
+	light, dark, pack := theme.DefaultLight(), theme.DefaultDark(), fonts.Default()
+	fsys := fstest.MapFS{"static/base.css": &fstest.MapFile{Data: []byte("body{}")}, "static/htmx.min.js": &fstest.MapFile{Data: []byte("htmx")}}
+	for _, f := range fonts.Files(pack) {
+		fsys["static/fonts/"+f] = &fstest.MapFile{Data: []byte("wOF2")}
+	}
+	if _, err := build(fsys, Config{Light: light, Dark: dark, Fonts: pack, Brand: brand.Default()}); err == nil || !strings.Contains(err.Error(), "dcapi.js") {
+		t.Errorf("missing dcapi.js should fail, got %v", err)
 	}
 }

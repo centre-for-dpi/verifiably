@@ -775,3 +775,29 @@ func TestTheLabelOfAnEmptyRow(t *testing.T) {
 		t.Fatalf("label = %q", page.Msg.GetRows()[0].GetLabel())
 	}
 }
+
+// TestIssueOverTheDigitalCredentialsApi checks the channel of ADR-043
+// decision 2: the adapter builds a pre-authorized offer, and the page
+// hands it to the browser. The offer keeps its channel.
+func TestIssueOverTheDigitalCredentialsApi(t *testing.T) {
+	h := newHarness(t, nil)
+	offer := h.issue(t, backendv1.Channel_CHANNEL_DC_API, nil)
+	if offer.GetChannel() != backendv1.Channel_CHANNEL_DC_API || offer.GetState() != issuancev1.Offer_STATE_PENDING ||
+		!strings.HasPrefix(offer.GetOfferUri(), "openid-credential-offer://") {
+		t.Fatalf("offer %v", offer)
+	}
+	if got := h.adapter.channels; len(got) != 1 || got[0] != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH {
+		t.Fatalf("adapter channels %v", got)
+	}
+	if len(*h.sent) != 0 {
+		t.Fatal("the browser channel sends no message")
+	}
+	h = newHarness(t, func(o *service.Options, h *harness) {
+		h.adapter.capabilities.Channels = []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE}
+	})
+	_, err := h.service.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
+		SchemaId: "farmer", SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`,
+		Delivery: &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_DC_API},
+	}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+}

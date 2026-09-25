@@ -238,6 +238,12 @@ func (s *Service) checkChannel(caps clients.Capabilities, channel backendv1.Chan
 		if !caps.SupportsChannel(channel) {
 			return badRequest("the DPG adapter cannot build an authorization code offer")
 		}
+	case backendv1.Channel_CHANNEL_DC_API:
+		// The browser hands a pre-authorized offer to the wallet of the
+		// device (ADR-043 decision 2), so every stack with such offers has it.
+		if !caps.SupportsChannel(backendv1.Channel_CHANNEL_OID4VCI_PREAUTH) && !caps.SupportsChannel(channel) {
+			return badRequest("the DPG adapter cannot build an offer for the Digital Credentials API")
+		}
 	default:
 		return badRequest(fmt.Sprintf("the channel %s is not a delivery channel", channel))
 	}
@@ -250,7 +256,8 @@ func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
 ) error {
 	adapterChannel := channel
 	switch channel {
-	case backendv1.Channel_CHANNEL_EMAIL, backendv1.Channel_CHANNEL_SMS:
+	case backendv1.Channel_CHANNEL_EMAIL, backendv1.Channel_CHANNEL_SMS, backendv1.Channel_CHANNEL_DC_API:
+		// The message and the browser carry a pre-authorized offer.
 		adapterChannel = backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
 	}
 	resp, err := s.opts.Issuer.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
