@@ -34,26 +34,27 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 		byMethod[c.Method] = c
 	}
 	want := map[string]string{
-		"CreateTenant":       "tenant create",
-		"ListTenants":        "tenant list",
-		"DeleteTenant":       "tenant delete",
-		"BindTenant":         "tenant bind",
-		"UnbindTenant":       "tenant unbind",
-		"UpsertTrustEntry":   "trust add",
-		"ListTrustEntries":   "trust list",
-		"DeleteTrustEntry":   "trust remove",
-		"ApproveTrustEntry":  "trust approve",
-		"RejectTrustEntry":   "trust reject",
-		"AddTrustRegistry":   "registry add",
-		"SyncTrustRegistry":  "registry sync",
-		"CreateAuthProvider": "onboard",
-		"OnboardProvider":    "onboard-provider",
-		"DeleteAuthProvider": "provider remove",
-		"RevokeApiKey":       "apikey revoke",
-		"GetServiceHealth":   "health",
-		"QueryAuditLog":      "audit",
-		"OnboardAdmin":       "bind",
-		"ListCommands":       "help",
+		"CreateTenant":          "tenant create",
+		"ListTenants":           "tenant list",
+		"DeleteTenant":          "tenant delete",
+		"BindTenant":            "tenant bind",
+		"UnbindTenant":          "tenant unbind",
+		"UpsertTrustEntry":      "trust add",
+		"ListTrustEntries":      "trust list",
+		"DeleteTrustEntry":      "trust remove",
+		"ApproveTrustEntry":     "trust approve",
+		"RejectTrustEntry":      "trust reject",
+		"AddTrustRegistry":      "registry add",
+		"SyncTrustRegistry":     "registry sync",
+		"CreateAuthProvider":    "onboard",
+		"OnboardProvider":       "onboard-provider",
+		"DeleteAuthProvider":    "provider remove",
+		"RevokeApiKey":          "apikey revoke",
+		"CreateStackCredential": "stack-credential create",
+		"GetServiceHealth":      "health",
+		"QueryAuditLog":         "audit",
+		"OnboardAdmin":          "bind",
+		"ListCommands":          "help",
 	}
 	for method, path := range want {
 		got, ok := byMethod[method]
@@ -69,7 +70,7 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 
 func TestAdminGroupNames(t *testing.T) {
 	got := AdminGroupNames()
-	want := []string{"tenant", "trust", "registry", "onboard", "onboard-provider", "provider", "apikey", "health", "audit", "bind", "help"}
+	want := []string{"tenant", "trust", "registry", "onboard", "onboard-provider", "provider", "apikey", "stack-credential", "health", "audit", "bind", "help"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("got %v, want %v", got, want)
 	}

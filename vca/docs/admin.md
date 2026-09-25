@@ -262,7 +262,7 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/providers` | The login provider table: realm or issuer, roles, stacks, state, default flag, and the row actions. |
 | `/admin/providers/new` | The provider form with the kind presets and the discovery test. |
 | `/admin/providers/{id}` | The edit form of one provider. |
-| `/admin/keys` | The API key list. A new secret appears once. |
+| `/admin/keys` | The VCA API keys with tenant and expiry, and the stack credentials. A new secret appears once. |
 | `/admin/audit` | The audit log with filters. |
 | `/admin/help` | Every command and every RPC with its help text. |
 
@@ -287,6 +287,23 @@ run keeps its tenant, so the delete waits until the stack runs again.
 The admin service writes one audit record for each create, bind,
 unbind, and delete. The CLI has the same actions under
 `vca admin tenant`.
+
+### API keys and stack credentials
+
+A VCA API key belongs to one tenant and carries one role (ADR-038). The
+form offers the tenants by name and an expiry of 30 days, 90 days, one
+year, or no end. The table names the tenant and the expiry, and marks a
+key past its expiry.
+
+A stack tenant can hold client credentials of its own. The page shows
+them only when a live adapter lists
+`FEATURE_TENANT_CLIENT_CREDENTIALS`. The form offers each tenant on
+such a stack. The stack makes the credential. The answer to the form
+shows the client ID and the secret once. The page never shows the
+secret again, and VCA keeps no copy. The admin service writes one audit
+record for each create and delete, with the credential id and never
+the secret. The CLI has the same actions under
+`vca admin stack-credential`.
 
 ### Trust review
 

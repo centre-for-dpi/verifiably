@@ -37,9 +37,15 @@ type fakeAdapter struct {
 	createErr error
 	// getErr, when set, fails every GetTenant.
 	getErr error
+	// creds holds the client credentials per stack tenant id.
+	creds map[string][]*backendv1.ClientCredential
+	// credErr, when set, fails every credential call.
+	credErr error
 }
 
-func newFakeAdapter() *fakeAdapter { return &fakeAdapter{tenants: map[string]*backendv1.DpgTenant{}} }
+func newFakeAdapter() *fakeAdapter {
+	return &fakeAdapter{tenants: map[string]*backendv1.DpgTenant{}, creds: map[string][]*backendv1.ClientCredential{}}
+}
 
 func (f *fakeAdapter) CreateTenant(_ context.Context, req *connect.Request[backendv1.CreateTenantRequest]) (*connect.Response[backendv1.CreateTenantResponse], error) {
 	f.mu.Lock()
@@ -121,8 +127,9 @@ func livePair(dpg configv1.Dpg, url, name string, features ...backendv1.Feature)
 
 // withStacks rebuilds the service of the harness over a deployment with
 // a tenancy stack on DPG_CREDEBL, served by the returned fake, and a
-// stack without tenancy on DPG_WALTID.
-func withStacks(t *testing.T, h *harness) (*fakeAdapter, *deployment) {
+// stack without tenancy on DPG_WALTID. The tenancy stack lists the
+// extra features too.
+func withStacks(t *testing.T, h *harness, extra ...backendv1.Feature) (*fakeAdapter, *deployment) {
 	t.Helper()
 	fake := newFakeAdapter()
 	mux := http.NewServeMux()
@@ -131,7 +138,7 @@ func withStacks(t *testing.T, h *harness) (*fakeAdapter, *deployment) {
 	t.Cleanup(srv.Close)
 	dep := &deployment{snap: topology.Snapshot{Peers: []topology.Status{
 		livePair(configv1.Dpg_DPG_WALTID, "http://plain.invalid", "Plain stack"),
-		livePair(configv1.Dpg_DPG_CREDEBL, srv.URL, "Tenancy stack", backendv1.Feature_FEATURE_MULTI_TENANCY),
+		livePair(configv1.Dpg_DPG_CREDEBL, srv.URL, "Tenancy stack", append([]backendv1.Feature{backendv1.Feature_FEATURE_MULTI_TENANCY}, extra...)...),
 	}}}
 	svc, err := service.New(service.Deps{
 		Cfg: h.cfg, Records: h.rec, Audit: h.log, Login: h.login, Providers: h.svc.Providers(),

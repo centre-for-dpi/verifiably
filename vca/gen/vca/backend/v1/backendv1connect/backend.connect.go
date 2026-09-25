@@ -110,6 +110,15 @@ const (
 	// TenantBackendServiceDeleteTenantProcedure is the fully-qualified name of the
 	// TenantBackendService's DeleteTenant RPC.
 	TenantBackendServiceDeleteTenantProcedure = "/vca.backend.v1.TenantBackendService/DeleteTenant"
+	// TenantBackendServiceListClientCredentialsProcedure is the fully-qualified name of the
+	// TenantBackendService's ListClientCredentials RPC.
+	TenantBackendServiceListClientCredentialsProcedure = "/vca.backend.v1.TenantBackendService/ListClientCredentials"
+	// TenantBackendServiceCreateClientCredentialProcedure is the fully-qualified name of the
+	// TenantBackendService's CreateClientCredential RPC.
+	TenantBackendServiceCreateClientCredentialProcedure = "/vca.backend.v1.TenantBackendService/CreateClientCredential"
+	// TenantBackendServiceDeleteClientCredentialProcedure is the fully-qualified name of the
+	// TenantBackendService's DeleteClientCredential RPC.
+	TenantBackendServiceDeleteClientCredentialProcedure = "/vca.backend.v1.TenantBackendService/DeleteClientCredential"
 )
 
 // CapabilityServiceClient is a client for the vca.backend.v1.CapabilityService service.
@@ -801,6 +810,15 @@ type TenantBackendServiceClient interface {
 	ListTenants(context.Context, *connect.Request[v1.ListTenantsRequest]) (*connect.Response[v1.ListTenantsResponse], error)
 	// DeleteTenant removes one tenant from the DPG.
 	DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error)
+	// ListClientCredentials returns the client credentials of one tenant
+	// without their secrets (ADR-038 decision 2). The adapter serves it
+	// when it lists FEATURE_TENANT_CLIENT_CREDENTIALS.
+	ListClientCredentials(context.Context, *connect.Request[v1.ListClientCredentialsRequest]) (*connect.Response[v1.ListClientCredentialsResponse], error)
+	// CreateClientCredential creates one client credential for a tenant.
+	// The answer carries the secret once.
+	CreateClientCredential(context.Context, *connect.Request[v1.CreateClientCredentialRequest]) (*connect.Response[v1.CreateClientCredentialResponse], error)
+	// DeleteClientCredential removes one client credential of a tenant.
+	DeleteClientCredential(context.Context, *connect.Request[v1.DeleteClientCredentialRequest]) (*connect.Response[v1.DeleteClientCredentialResponse], error)
 }
 
 // NewTenantBackendServiceClient constructs a client for the vca.backend.v1.TenantBackendService
@@ -838,15 +856,36 @@ func NewTenantBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(tenantBackendServiceMethods.ByName("DeleteTenant")),
 			connect.WithClientOptions(opts...),
 		),
+		listClientCredentials: connect.NewClient[v1.ListClientCredentialsRequest, v1.ListClientCredentialsResponse](
+			httpClient,
+			baseURL+TenantBackendServiceListClientCredentialsProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("ListClientCredentials")),
+			connect.WithClientOptions(opts...),
+		),
+		createClientCredential: connect.NewClient[v1.CreateClientCredentialRequest, v1.CreateClientCredentialResponse](
+			httpClient,
+			baseURL+TenantBackendServiceCreateClientCredentialProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("CreateClientCredential")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteClientCredential: connect.NewClient[v1.DeleteClientCredentialRequest, v1.DeleteClientCredentialResponse](
+			httpClient,
+			baseURL+TenantBackendServiceDeleteClientCredentialProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("DeleteClientCredential")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // tenantBackendServiceClient implements TenantBackendServiceClient.
 type tenantBackendServiceClient struct {
-	createTenant *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
-	getTenant    *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
-	listTenants  *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
-	deleteTenant *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
+	createTenant           *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
+	getTenant              *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
+	listTenants            *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
+	deleteTenant           *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
+	listClientCredentials  *connect.Client[v1.ListClientCredentialsRequest, v1.ListClientCredentialsResponse]
+	createClientCredential *connect.Client[v1.CreateClientCredentialRequest, v1.CreateClientCredentialResponse]
+	deleteClientCredential *connect.Client[v1.DeleteClientCredentialRequest, v1.DeleteClientCredentialResponse]
 }
 
 // CreateTenant calls vca.backend.v1.TenantBackendService.CreateTenant.
@@ -869,6 +908,21 @@ func (c *tenantBackendServiceClient) DeleteTenant(ctx context.Context, req *conn
 	return c.deleteTenant.CallUnary(ctx, req)
 }
 
+// ListClientCredentials calls vca.backend.v1.TenantBackendService.ListClientCredentials.
+func (c *tenantBackendServiceClient) ListClientCredentials(ctx context.Context, req *connect.Request[v1.ListClientCredentialsRequest]) (*connect.Response[v1.ListClientCredentialsResponse], error) {
+	return c.listClientCredentials.CallUnary(ctx, req)
+}
+
+// CreateClientCredential calls vca.backend.v1.TenantBackendService.CreateClientCredential.
+func (c *tenantBackendServiceClient) CreateClientCredential(ctx context.Context, req *connect.Request[v1.CreateClientCredentialRequest]) (*connect.Response[v1.CreateClientCredentialResponse], error) {
+	return c.createClientCredential.CallUnary(ctx, req)
+}
+
+// DeleteClientCredential calls vca.backend.v1.TenantBackendService.DeleteClientCredential.
+func (c *tenantBackendServiceClient) DeleteClientCredential(ctx context.Context, req *connect.Request[v1.DeleteClientCredentialRequest]) (*connect.Response[v1.DeleteClientCredentialResponse], error) {
+	return c.deleteClientCredential.CallUnary(ctx, req)
+}
+
 // TenantBackendServiceHandler is an implementation of the vca.backend.v1.TenantBackendService
 // service.
 type TenantBackendServiceHandler interface {
@@ -880,6 +934,15 @@ type TenantBackendServiceHandler interface {
 	ListTenants(context.Context, *connect.Request[v1.ListTenantsRequest]) (*connect.Response[v1.ListTenantsResponse], error)
 	// DeleteTenant removes one tenant from the DPG.
 	DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error)
+	// ListClientCredentials returns the client credentials of one tenant
+	// without their secrets (ADR-038 decision 2). The adapter serves it
+	// when it lists FEATURE_TENANT_CLIENT_CREDENTIALS.
+	ListClientCredentials(context.Context, *connect.Request[v1.ListClientCredentialsRequest]) (*connect.Response[v1.ListClientCredentialsResponse], error)
+	// CreateClientCredential creates one client credential for a tenant.
+	// The answer carries the secret once.
+	CreateClientCredential(context.Context, *connect.Request[v1.CreateClientCredentialRequest]) (*connect.Response[v1.CreateClientCredentialResponse], error)
+	// DeleteClientCredential removes one client credential of a tenant.
+	DeleteClientCredential(context.Context, *connect.Request[v1.DeleteClientCredentialRequest]) (*connect.Response[v1.DeleteClientCredentialResponse], error)
 }
 
 // NewTenantBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -913,6 +976,24 @@ func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...con
 		connect.WithSchema(tenantBackendServiceMethods.ByName("DeleteTenant")),
 		connect.WithHandlerOptions(opts...),
 	)
+	tenantBackendServiceListClientCredentialsHandler := connect.NewUnaryHandler(
+		TenantBackendServiceListClientCredentialsProcedure,
+		svc.ListClientCredentials,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("ListClientCredentials")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceCreateClientCredentialHandler := connect.NewUnaryHandler(
+		TenantBackendServiceCreateClientCredentialProcedure,
+		svc.CreateClientCredential,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("CreateClientCredential")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceDeleteClientCredentialHandler := connect.NewUnaryHandler(
+		TenantBackendServiceDeleteClientCredentialProcedure,
+		svc.DeleteClientCredential,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("DeleteClientCredential")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.TenantBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TenantBackendServiceCreateTenantProcedure:
@@ -923,6 +1004,12 @@ func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...con
 			tenantBackendServiceListTenantsHandler.ServeHTTP(w, r)
 		case TenantBackendServiceDeleteTenantProcedure:
 			tenantBackendServiceDeleteTenantHandler.ServeHTTP(w, r)
+		case TenantBackendServiceListClientCredentialsProcedure:
+			tenantBackendServiceListClientCredentialsHandler.ServeHTTP(w, r)
+		case TenantBackendServiceCreateClientCredentialProcedure:
+			tenantBackendServiceCreateClientCredentialHandler.ServeHTTP(w, r)
+		case TenantBackendServiceDeleteClientCredentialProcedure:
+			tenantBackendServiceDeleteClientCredentialHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -946,4 +1033,16 @@ func (UnimplementedTenantBackendServiceHandler) ListTenants(context.Context, *co
 
 func (UnimplementedTenantBackendServiceHandler) DeleteTenant(context.Context, *connect.Request[v1.DeleteTenantRequest]) (*connect.Response[v1.DeleteTenantResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.DeleteTenant is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) ListClientCredentials(context.Context, *connect.Request[v1.ListClientCredentialsRequest]) (*connect.Response[v1.ListClientCredentialsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.ListClientCredentials is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) CreateClientCredential(context.Context, *connect.Request[v1.CreateClientCredentialRequest]) (*connect.Response[v1.CreateClientCredentialResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.CreateClientCredential is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) DeleteClientCredential(context.Context, *connect.Request[v1.DeleteClientCredentialRequest]) (*connect.Response[v1.DeleteClientCredentialResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.DeleteClientCredential is not implemented"))
 }

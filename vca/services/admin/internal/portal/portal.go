@@ -35,6 +35,8 @@
 //	GET  /keys                   the API key list with the create form
 //	POST /keys                   create one API key
 //	POST /keys/{id}/revoke       revoke one API key
+//	POST /keys/stack             create one client credential on a stack tenant
+//	POST /keys/stack/delete      remove one client credential of a stack tenant
 //	GET  /audit                  the audit log with filters
 //	GET  /help                   every RPC with its help text
 //
@@ -50,7 +52,6 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -173,9 +174,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	p.registerTenants(mux)
 	p.registerTrust(mux)
 	p.registerProviders(mux)
-	mux.HandleFunc("GET "+at+"/keys", p.guarded(p.keys))
-	mux.HandleFunc("POST "+at+"/keys", p.posted(p.createKey))
-	mux.HandleFunc("POST "+at+"/keys/{id}/revoke", p.posted(p.revokeKey))
+	p.registerKeys(mux)
 	mux.HandleFunc("GET "+at+"/audit", p.guarded(p.auditLog))
 }
 
@@ -316,25 +315,26 @@ func getForm(action string, content ...template.HTML) template.HTML {
 
 // Notices maps a notice code to the sentence the page shows.
 var Notices = map[string]components.Toast{
-	"tenant-created":       {Level: "ok", Text: msg.T("admin.tenants.created")},
-	"tenant-deleted":       {Level: "warn", Text: msg.T("admin.tenants.deleted")},
-	"tenant-bound":         {Level: "ok", Text: msg.T("admin.tenants.bound")},
-	"tenant-unbound":       {Level: "warn", Text: msg.T("admin.tenants.unbound")},
-	"trust-saved":          {Level: "ok", Text: msg.T("admin.trust.saved")},
-	"trust-deleted":        {Level: "warn", Text: msg.T("admin.trust.deleted")},
-	"trust-approved":       {Level: "ok", Text: msg.T("admin.trust.approved")},
-	"trust-rejected":       {Level: "warn", Text: msg.T("admin.trust.rejected")},
-	"registry-added":       {Level: "ok", Text: msg.T("admin.registries.added")},
-	"registry-synced":      {Level: "ok", Text: msg.T("admin.registries.synced")},
-	"registry-sync-failed": {Level: "warn", Text: msg.T("admin.registries.sync_failed")},
-	"registry-removed":     {Level: "warn", Text: msg.T("admin.registries.removed")},
-	"provider-added":       {Level: "ok", Text: "The login provider is ready. Its roles can sign in with it."},
-	"provider-saved":       {Level: "ok", Text: "The login provider is saved."},
-	"provider-enabled":     {Level: "ok", Text: "The login provider is on. Its roles can sign in with it."},
-	"provider-disabled":    {Level: "warn", Text: "The login provider is off. New sign ins with it fail."},
-	"provider-removed":     {Level: "warn", Text: "The login provider is removed. Its sessions end."},
-	"key-revoked":          {Level: "warn", Text: "The API key is revoked. Calls with it fail now."},
-	"signed-out":           {Level: "info", Text: "You are signed out."},
+	"tenant-created":           {Level: "ok", Text: msg.T("admin.tenants.created")},
+	"tenant-deleted":           {Level: "warn", Text: msg.T("admin.tenants.deleted")},
+	"tenant-bound":             {Level: "ok", Text: msg.T("admin.tenants.bound")},
+	"tenant-unbound":           {Level: "warn", Text: msg.T("admin.tenants.unbound")},
+	"trust-saved":              {Level: "ok", Text: msg.T("admin.trust.saved")},
+	"trust-deleted":            {Level: "warn", Text: msg.T("admin.trust.deleted")},
+	"trust-approved":           {Level: "ok", Text: msg.T("admin.trust.approved")},
+	"trust-rejected":           {Level: "warn", Text: msg.T("admin.trust.rejected")},
+	"registry-added":           {Level: "ok", Text: msg.T("admin.registries.added")},
+	"registry-synced":          {Level: "ok", Text: msg.T("admin.registries.synced")},
+	"registry-sync-failed":     {Level: "warn", Text: msg.T("admin.registries.sync_failed")},
+	"registry-removed":         {Level: "warn", Text: msg.T("admin.registries.removed")},
+	"provider-added":           {Level: "ok", Text: "The login provider is ready. Its roles can sign in with it."},
+	"provider-saved":           {Level: "ok", Text: "The login provider is saved."},
+	"provider-enabled":         {Level: "ok", Text: "The login provider is on. Its roles can sign in with it."},
+	"provider-disabled":        {Level: "warn", Text: "The login provider is off. New sign ins with it fail."},
+	"provider-removed":         {Level: "warn", Text: "The login provider is removed. Its sessions end."},
+	"key-revoked":              {Level: "warn", Text: msg.T("admin.keys.revoked")},
+	"stack-credential-deleted": {Level: "warn", Text: msg.T("admin.keys.stack.deleted")},
+	"signed-out":               {Level: "info", Text: "You are signed out."},
 }
 
 // notice returns the toast of a notice query value.
@@ -396,118 +396,6 @@ func displayName(c oidcflow.Claims) string {
 		return c.Name
 	}
 	return c.Subject
-}
-
-// keys renders the API key list with the create form.
-func (p *Portal) keys(w http.ResponseWriter, r *http.Request, s session) error {
-	return p.keysPage(w, r, s, "", nil)
-}
-
-// keysPage renders the key list. A new secret is shown once, in a card.
-func (p *Portal) keysPage(w http.ResponseWriter, r *http.Request, s session, secret string, toasts []components.Toast) error {
-	tenantID := r.FormValue("tenant_id")
-	res, err := p.opts.Client.ListApiKeys(r.Context(), call(s, &adminv1.ListApiKeysRequest{TenantId: tenantID}))
-	if err != nil {
-		return err
-	}
-	tenants, err := p.opts.Client.ListTenants(r.Context(), call(s, &adminv1.ListTenantsRequest{}))
-	if err != nil {
-		return err
-	}
-	b := p.blocks()
-	rows := make([]components.Row, 0, len(res.Msg.GetKeys()))
-	for _, k := range res.Msg.GetKeys() {
-		status, text := "ok", "Active"
-		if k.GetRevokedAt() != nil {
-			status, text = "bad", "Revoked"
-		}
-		rows = append(rows, components.Row{
-			{Text: k.GetDisplayName()},
-			{Text: k.GetPrefix() + "..."},
-			{Text: k.GetTenantId()},
-			{Text: roleText(k.GetRoles())},
-			{HTML: b.add("badge", components.Badge{Status: status, Text: text})},
-			{HTML: form(p.opts.Prefix+"/keys/"+k.GetId()+"/revoke", s.CSRF,
-				b.add("button", components.Button{Text: "Revoke", Type: "submit", Variant: "danger"}))},
-		})
-	}
-	var shown template.HTML
-	if secret != "" {
-		shown = b.add("card", components.Card{
-			ID: "new-secret", Title: "The new key secret",
-			Text:   "Copy the value now. The service shows it once and stores only its hash.",
-			Body:   template.HTML(`<p><code>` + template.HTMLEscapeString(secret) + `</code></p>`), //nolint:gosec // the value is escaped
-			Footer: "Store the value in a secret manager.",
-		})
-	}
-	table := b.add("table", components.Table{
-		ID: "keys", Caption: fmt.Sprintf("API keys, %d found", len(rows)),
-		Columns: []string{"Name", "Prefix", "Tenant", "Roles", "State", "Action"}, Rows: rows,
-		Empty: "No API key exists. Create one below.",
-	})
-	options := make([]components.Option, 0, len(tenants.Msg.GetTenants()))
-	for _, t := range tenants.Msg.GetTenants() {
-		options = append(options, components.Option{Value: t.GetId(), Text: t.GetDisplayName()})
-	}
-	create := b.add("card", components.Card{
-		ID: "create-key", Title: "New API key",
-		Body: form(p.opts.Prefix+"/keys", s.CSRF,
-			b.add("field", components.Field{ID: "display_name", Label: "Display name", Required: true}),
-			b.add("field", components.Field{ID: "tenant_id", Label: "Tenant", Type: "select", Options: options}),
-			b.add("field", components.Field{ID: "role", Label: "Role", Type: "select", Options: []components.Option{
-				{Value: "admin", Text: "Admin", Selected: true},
-				{Value: "issuer", Text: "Issuer"},
-				{Value: "verifier", Text: "Verifier"},
-				{Value: "holder", Text: "Holder"},
-			}}),
-			b.add("field", components.Field{ID: "expires_days", Label: "Days until expiry",
-				Hint: "Leave the field empty for a key with no end."}),
-			b.add("button", components.Button{Text: "Create key", Type: "submit", Variant: "primary"}),
-		),
-	})
-	if b.err != nil {
-		return b.err
-	}
-	if toasts == nil {
-		toasts = notice(r.URL.Query().Get("notice"))
-	}
-	return p.render(w, r, s, components.Page{
-		Title:       "API keys",
-		Description: "A machine client calls the services with an API key.",
-		Content:     components.Join(shown, table, create),
-		Toasts:      toasts,
-	})
-}
-
-// createKey creates one key and shows its secret once.
-func (p *Portal) createKey(w http.ResponseWriter, r *http.Request, s session) error {
-	req := &adminv1.CreateApiKeyRequest{
-		DisplayName: r.PostFormValue("display_name"),
-		TenantId:    r.PostFormValue("tenant_id"),
-		Roles:       []commonv1.Role{service.RoleValue(r.PostFormValue("role"))},
-	}
-	if days := strings.TrimSpace(r.PostFormValue("expires_days")); days != "" {
-		n, err := strconv.Atoi(days)
-		if err != nil || n <= 0 {
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("portal: the days value must be a positive number"))
-		}
-		req.ExpiresAt = timestamp(time.Now().AddDate(0, 0, n))
-	}
-	res, err := p.opts.Client.CreateApiKey(r.Context(), call(s, req))
-	if err != nil {
-		return err
-	}
-	return p.keysPage(w, r, s, res.Msg.GetSecret(), []components.Toast{{Level: "ok", Text: "The API key is created."}})
-}
-
-// revokeKey revokes one key.
-func (p *Portal) revokeKey(w http.ResponseWriter, r *http.Request, s session) error {
-	_, err := p.opts.Client.RevokeApiKey(r.Context(), call(s, &adminv1.RevokeApiKeyRequest{Id: r.PathValue("id")}))
-	if err != nil {
-		return err
-	}
-	p.redirect(w, r, "/keys", "key-revoked")
-	return nil
 }
 
 // auditLog renders the audit log with its filters (ADR-009 decision 6).

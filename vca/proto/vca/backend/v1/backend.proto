@@ -80,6 +80,15 @@ service TenantBackendService {
   rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
   // DeleteTenant removes one tenant from the DPG.
   rpc DeleteTenant(DeleteTenantRequest) returns (DeleteTenantResponse);
+  // ListClientCredentials returns the client credentials of one tenant
+  // without their secrets (ADR-038 decision 2). The adapter serves it
+  // when it lists FEATURE_TENANT_CLIENT_CREDENTIALS.
+  rpc ListClientCredentials(ListClientCredentialsRequest) returns (ListClientCredentialsResponse);
+  // CreateClientCredential creates one client credential for a tenant.
+  // The answer carries the secret once.
+  rpc CreateClientCredential(CreateClientCredentialRequest) returns (CreateClientCredentialResponse);
+  // DeleteClientCredential removes one client credential of a tenant.
+  rpc DeleteClientCredential(DeleteClientCredentialRequest) returns (DeleteClientCredentialResponse);
 }
 
 // Channel names a way to deliver a credential to a citizen (ADR-016).
@@ -679,3 +688,55 @@ message DeleteTenantRequest {
 
 // DeleteTenantResponse has no fields.
 message DeleteTenantResponse {}
+
+// ClientCredential is one machine credential of a DPG tenant, without
+// its secret (ADR-038 decision 2).
+message ClientCredential {
+  // The DPG assigned id of the credential.
+  string id = 1;
+  // The OAuth client id a machine sends to the DPG.
+  string client_id = 2;
+  // The name of the credential.
+  string name = 3;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// ListClientCredentialsRequest selects one DPG tenant.
+message ListClientCredentialsRequest {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+}
+
+// ListClientCredentialsResponse returns the credentials of the tenant.
+message ListClientCredentialsResponse {
+  // The credentials, without their secrets.
+  repeated ClientCredential credentials = 1;
+}
+
+// CreateClientCredentialRequest names the new credential.
+message CreateClientCredentialRequest {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+  // The name of the credential.
+  string name = 2;
+}
+
+// CreateClientCredentialResponse returns the credential and its secret.
+message CreateClientCredentialResponse {
+  // The credential.
+  ClientCredential credential = 1;
+  // The client secret. The DPG does not return it again.
+  string client_secret = 2;
+}
+
+// DeleteClientCredentialRequest selects one credential of a tenant.
+message DeleteClientCredentialRequest {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+  // The DPG assigned id of the credential.
+  string id = 2;
+}
+
+// DeleteClientCredentialResponse has no fields.
+message DeleteClientCredentialResponse {}

@@ -712,6 +712,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.ListTenants(ctx, connect.NewRequest(&backendv1.ListTenantsRequest{}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS, func() error {
+			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{}))
+			return err
+		}, true},
 	}
 	listed := map[backendv1.Feature]bool{}
 	for _, f := range resp.Msg.GetFeatures() {
@@ -768,6 +772,18 @@ func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
 			_, err := svc.DeleteTenant(ctx, connect.NewRequest(&backendv1.DeleteTenantRequest{Id: "t-1"}))
 			return err
 		},
+		func() error {
+			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{TenantId: "t-1"}))
+			return err
+		},
+		func() error {
+			_, err := svc.CreateClientCredential(ctx, connect.NewRequest(&backendv1.CreateClientCredentialRequest{TenantId: "t-1", Name: "ci"}))
+			return err
+		},
+		func() error {
+			_, err := svc.DeleteClientCredential(ctx, connect.NewRequest(&backendv1.DeleteClientCredentialRequest{TenantId: "t-1", Id: "c-1"}))
+			return err
+		},
 	}
 	for i, call := range calls {
 		err := call()
@@ -781,7 +797,7 @@ func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, f := range caps.Msg.GetFeatures() {
-		if f == backendv1.Feature_FEATURE_MULTI_TENANCY {
+		if f == backendv1.Feature_FEATURE_MULTI_TENANCY || f == backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS {
 			t.Errorf("the answer lists %v", f)
 		}
 	}

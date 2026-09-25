@@ -114,6 +114,15 @@ const (
 	// AdminServiceRevokeApiKeyProcedure is the fully-qualified name of the AdminService's RevokeApiKey
 	// RPC.
 	AdminServiceRevokeApiKeyProcedure = "/vca.admin.v1.AdminService/RevokeApiKey"
+	// AdminServiceListStackCredentialsProcedure is the fully-qualified name of the AdminService's
+	// ListStackCredentials RPC.
+	AdminServiceListStackCredentialsProcedure = "/vca.admin.v1.AdminService/ListStackCredentials"
+	// AdminServiceCreateStackCredentialProcedure is the fully-qualified name of the AdminService's
+	// CreateStackCredential RPC.
+	AdminServiceCreateStackCredentialProcedure = "/vca.admin.v1.AdminService/CreateStackCredential"
+	// AdminServiceDeleteStackCredentialProcedure is the fully-qualified name of the AdminService's
+	// DeleteStackCredential RPC.
+	AdminServiceDeleteStackCredentialProcedure = "/vca.admin.v1.AdminService/DeleteStackCredential"
 	// AdminServiceGetServiceHealthProcedure is the fully-qualified name of the AdminService's
 	// GetServiceHealth RPC.
 	AdminServiceGetServiceHealthProcedure = "/vca.admin.v1.AdminService/GetServiceHealth"
@@ -194,6 +203,15 @@ type AdminServiceClient interface {
 	ListApiKeys(context.Context, *connect.Request[v1.ListApiKeysRequest]) (*connect.Response[v1.ListApiKeysResponse], error)
 	// RevokeApiKey disables one API key at once.
 	RevokeApiKey(context.Context, *connect.Request[v1.RevokeApiKeyRequest]) (*connect.Response[v1.RevokeApiKeyResponse], error)
+	// ListStackCredentials returns the client credentials of the stack
+	// tenants that the tenants map onto (ADR-038 decision 2). It reads
+	// every stack that lists tenant client credentials.
+	ListStackCredentials(context.Context, *connect.Request[v1.ListStackCredentialsRequest]) (*connect.Response[v1.ListStackCredentialsResponse], error)
+	// CreateStackCredential creates one client credential for the tenant
+	// of one stack. The response shows the secret once.
+	CreateStackCredential(context.Context, *connect.Request[v1.CreateStackCredentialRequest]) (*connect.Response[v1.CreateStackCredentialResponse], error)
+	// DeleteStackCredential removes one client credential of a stack tenant.
+	DeleteStackCredential(context.Context, *connect.Request[v1.DeleteStackCredentialRequest]) (*connect.Response[v1.DeleteStackCredentialResponse], error)
 	// GetServiceHealth returns the health of every service in the deployment.
 	GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error)
 	// QueryAuditLog returns audit records that match a filter, newest first.
@@ -374,6 +392,24 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("RevokeApiKey")),
 			connect.WithClientOptions(opts...),
 		),
+		listStackCredentials: connect.NewClient[v1.ListStackCredentialsRequest, v1.ListStackCredentialsResponse](
+			httpClient,
+			baseURL+AdminServiceListStackCredentialsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListStackCredentials")),
+			connect.WithClientOptions(opts...),
+		),
+		createStackCredential: connect.NewClient[v1.CreateStackCredentialRequest, v1.CreateStackCredentialResponse](
+			httpClient,
+			baseURL+AdminServiceCreateStackCredentialProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("CreateStackCredential")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteStackCredential: connect.NewClient[v1.DeleteStackCredentialRequest, v1.DeleteStackCredentialResponse](
+			httpClient,
+			baseURL+AdminServiceDeleteStackCredentialProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("DeleteStackCredential")),
+			connect.WithClientOptions(opts...),
+		),
 		getServiceHealth: connect.NewClient[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse](
 			httpClient,
 			baseURL+AdminServiceGetServiceHealthProcedure,
@@ -403,36 +439,39 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // adminServiceClient implements AdminServiceClient.
 type adminServiceClient struct {
-	createTenant        *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
-	getTenant           *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
-	listTenants         *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
-	updateTenant        *connect.Client[v1.UpdateTenantRequest, v1.UpdateTenantResponse]
-	deleteTenant        *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
-	bindTenant          *connect.Client[v1.BindTenantRequest, v1.BindTenantResponse]
-	unbindTenant        *connect.Client[v1.UnbindTenantRequest, v1.UnbindTenantResponse]
-	upsertTrustEntry    *connect.Client[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse]
-	getTrustEntry       *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
-	listTrustEntries    *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
-	deleteTrustEntry    *connect.Client[v1.DeleteTrustEntryRequest, v1.DeleteTrustEntryResponse]
-	approveTrustEntry   *connect.Client[v1.ApproveTrustEntryRequest, v1.ApproveTrustEntryResponse]
-	rejectTrustEntry    *connect.Client[v1.RejectTrustEntryRequest, v1.RejectTrustEntryResponse]
-	addTrustRegistry    *connect.Client[v1.AddTrustRegistryRequest, v1.AddTrustRegistryResponse]
-	listTrustRegistries *connect.Client[v1.ListTrustRegistriesRequest, v1.ListTrustRegistriesResponse]
-	removeTrustRegistry *connect.Client[v1.RemoveTrustRegistryRequest, v1.RemoveTrustRegistryResponse]
-	syncTrustRegistry   *connect.Client[v1.SyncTrustRegistryRequest, v1.SyncTrustRegistryResponse]
-	createAuthProvider  *connect.Client[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse]
-	getAuthProvider     *connect.Client[v1.GetAuthProviderRequest, v1.GetAuthProviderResponse]
-	listAuthProviders   *connect.Client[v1.ListAuthProvidersRequest, v1.ListAuthProvidersResponse]
-	updateAuthProvider  *connect.Client[v1.UpdateAuthProviderRequest, v1.UpdateAuthProviderResponse]
-	deleteAuthProvider  *connect.Client[v1.DeleteAuthProviderRequest, v1.DeleteAuthProviderResponse]
-	onboardProvider     *connect.Client[v1.OnboardProviderRequest, v1.OnboardProviderResponse]
-	createApiKey        *connect.Client[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse]
-	listApiKeys         *connect.Client[v1.ListApiKeysRequest, v1.ListApiKeysResponse]
-	revokeApiKey        *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
-	getServiceHealth    *connect.Client[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse]
-	queryAuditLog       *connect.Client[v1.QueryAuditLogRequest, v1.QueryAuditLogResponse]
-	onboardAdmin        *connect.Client[v1.OnboardAdminRequest, v1.OnboardAdminResponse]
-	listCommands        *connect.Client[v1.ListCommandsRequest, v1.ListCommandsResponse]
+	createTenant          *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
+	getTenant             *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
+	listTenants           *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
+	updateTenant          *connect.Client[v1.UpdateTenantRequest, v1.UpdateTenantResponse]
+	deleteTenant          *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
+	bindTenant            *connect.Client[v1.BindTenantRequest, v1.BindTenantResponse]
+	unbindTenant          *connect.Client[v1.UnbindTenantRequest, v1.UnbindTenantResponse]
+	upsertTrustEntry      *connect.Client[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse]
+	getTrustEntry         *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
+	listTrustEntries      *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
+	deleteTrustEntry      *connect.Client[v1.DeleteTrustEntryRequest, v1.DeleteTrustEntryResponse]
+	approveTrustEntry     *connect.Client[v1.ApproveTrustEntryRequest, v1.ApproveTrustEntryResponse]
+	rejectTrustEntry      *connect.Client[v1.RejectTrustEntryRequest, v1.RejectTrustEntryResponse]
+	addTrustRegistry      *connect.Client[v1.AddTrustRegistryRequest, v1.AddTrustRegistryResponse]
+	listTrustRegistries   *connect.Client[v1.ListTrustRegistriesRequest, v1.ListTrustRegistriesResponse]
+	removeTrustRegistry   *connect.Client[v1.RemoveTrustRegistryRequest, v1.RemoveTrustRegistryResponse]
+	syncTrustRegistry     *connect.Client[v1.SyncTrustRegistryRequest, v1.SyncTrustRegistryResponse]
+	createAuthProvider    *connect.Client[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse]
+	getAuthProvider       *connect.Client[v1.GetAuthProviderRequest, v1.GetAuthProviderResponse]
+	listAuthProviders     *connect.Client[v1.ListAuthProvidersRequest, v1.ListAuthProvidersResponse]
+	updateAuthProvider    *connect.Client[v1.UpdateAuthProviderRequest, v1.UpdateAuthProviderResponse]
+	deleteAuthProvider    *connect.Client[v1.DeleteAuthProviderRequest, v1.DeleteAuthProviderResponse]
+	onboardProvider       *connect.Client[v1.OnboardProviderRequest, v1.OnboardProviderResponse]
+	createApiKey          *connect.Client[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse]
+	listApiKeys           *connect.Client[v1.ListApiKeysRequest, v1.ListApiKeysResponse]
+	revokeApiKey          *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
+	listStackCredentials  *connect.Client[v1.ListStackCredentialsRequest, v1.ListStackCredentialsResponse]
+	createStackCredential *connect.Client[v1.CreateStackCredentialRequest, v1.CreateStackCredentialResponse]
+	deleteStackCredential *connect.Client[v1.DeleteStackCredentialRequest, v1.DeleteStackCredentialResponse]
+	getServiceHealth      *connect.Client[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse]
+	queryAuditLog         *connect.Client[v1.QueryAuditLogRequest, v1.QueryAuditLogResponse]
+	onboardAdmin          *connect.Client[v1.OnboardAdminRequest, v1.OnboardAdminResponse]
+	listCommands          *connect.Client[v1.ListCommandsRequest, v1.ListCommandsResponse]
 }
 
 // CreateTenant calls vca.admin.v1.AdminService.CreateTenant.
@@ -565,6 +604,21 @@ func (c *adminServiceClient) RevokeApiKey(ctx context.Context, req *connect.Requ
 	return c.revokeApiKey.CallUnary(ctx, req)
 }
 
+// ListStackCredentials calls vca.admin.v1.AdminService.ListStackCredentials.
+func (c *adminServiceClient) ListStackCredentials(ctx context.Context, req *connect.Request[v1.ListStackCredentialsRequest]) (*connect.Response[v1.ListStackCredentialsResponse], error) {
+	return c.listStackCredentials.CallUnary(ctx, req)
+}
+
+// CreateStackCredential calls vca.admin.v1.AdminService.CreateStackCredential.
+func (c *adminServiceClient) CreateStackCredential(ctx context.Context, req *connect.Request[v1.CreateStackCredentialRequest]) (*connect.Response[v1.CreateStackCredentialResponse], error) {
+	return c.createStackCredential.CallUnary(ctx, req)
+}
+
+// DeleteStackCredential calls vca.admin.v1.AdminService.DeleteStackCredential.
+func (c *adminServiceClient) DeleteStackCredential(ctx context.Context, req *connect.Request[v1.DeleteStackCredentialRequest]) (*connect.Response[v1.DeleteStackCredentialResponse], error) {
+	return c.deleteStackCredential.CallUnary(ctx, req)
+}
+
 // GetServiceHealth calls vca.admin.v1.AdminService.GetServiceHealth.
 func (c *adminServiceClient) GetServiceHealth(ctx context.Context, req *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error) {
 	return c.getServiceHealth.CallUnary(ctx, req)
@@ -651,6 +705,15 @@ type AdminServiceHandler interface {
 	ListApiKeys(context.Context, *connect.Request[v1.ListApiKeysRequest]) (*connect.Response[v1.ListApiKeysResponse], error)
 	// RevokeApiKey disables one API key at once.
 	RevokeApiKey(context.Context, *connect.Request[v1.RevokeApiKeyRequest]) (*connect.Response[v1.RevokeApiKeyResponse], error)
+	// ListStackCredentials returns the client credentials of the stack
+	// tenants that the tenants map onto (ADR-038 decision 2). It reads
+	// every stack that lists tenant client credentials.
+	ListStackCredentials(context.Context, *connect.Request[v1.ListStackCredentialsRequest]) (*connect.Response[v1.ListStackCredentialsResponse], error)
+	// CreateStackCredential creates one client credential for the tenant
+	// of one stack. The response shows the secret once.
+	CreateStackCredential(context.Context, *connect.Request[v1.CreateStackCredentialRequest]) (*connect.Response[v1.CreateStackCredentialResponse], error)
+	// DeleteStackCredential removes one client credential of a stack tenant.
+	DeleteStackCredential(context.Context, *connect.Request[v1.DeleteStackCredentialRequest]) (*connect.Response[v1.DeleteStackCredentialResponse], error)
 	// GetServiceHealth returns the health of every service in the deployment.
 	GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error)
 	// QueryAuditLog returns audit records that match a filter, newest first.
@@ -827,6 +890,24 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("RevokeApiKey")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceListStackCredentialsHandler := connect.NewUnaryHandler(
+		AdminServiceListStackCredentialsProcedure,
+		svc.ListStackCredentials,
+		connect.WithSchema(adminServiceMethods.ByName("ListStackCredentials")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceCreateStackCredentialHandler := connect.NewUnaryHandler(
+		AdminServiceCreateStackCredentialProcedure,
+		svc.CreateStackCredential,
+		connect.WithSchema(adminServiceMethods.ByName("CreateStackCredential")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceDeleteStackCredentialHandler := connect.NewUnaryHandler(
+		AdminServiceDeleteStackCredentialProcedure,
+		svc.DeleteStackCredential,
+		connect.WithSchema(adminServiceMethods.ByName("DeleteStackCredential")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceGetServiceHealthHandler := connect.NewUnaryHandler(
 		AdminServiceGetServiceHealthProcedure,
 		svc.GetServiceHealth,
@@ -905,6 +986,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceListApiKeysHandler.ServeHTTP(w, r)
 		case AdminServiceRevokeApiKeyProcedure:
 			adminServiceRevokeApiKeyHandler.ServeHTTP(w, r)
+		case AdminServiceListStackCredentialsProcedure:
+			adminServiceListStackCredentialsHandler.ServeHTTP(w, r)
+		case AdminServiceCreateStackCredentialProcedure:
+			adminServiceCreateStackCredentialHandler.ServeHTTP(w, r)
+		case AdminServiceDeleteStackCredentialProcedure:
+			adminServiceDeleteStackCredentialHandler.ServeHTTP(w, r)
 		case AdminServiceGetServiceHealthProcedure:
 			adminServiceGetServiceHealthHandler.ServeHTTP(w, r)
 		case AdminServiceQueryAuditLogProcedure:
@@ -1024,6 +1111,18 @@ func (UnimplementedAdminServiceHandler) ListApiKeys(context.Context, *connect.Re
 
 func (UnimplementedAdminServiceHandler) RevokeApiKey(context.Context, *connect.Request[v1.RevokeApiKeyRequest]) (*connect.Response[v1.RevokeApiKeyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.RevokeApiKey is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListStackCredentials(context.Context, *connect.Request[v1.ListStackCredentialsRequest]) (*connect.Response[v1.ListStackCredentialsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.ListStackCredentials is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) CreateStackCredential(context.Context, *connect.Request[v1.CreateStackCredentialRequest]) (*connect.Response[v1.CreateStackCredentialResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.CreateStackCredential is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) DeleteStackCredential(context.Context, *connect.Request[v1.DeleteStackCredentialRequest]) (*connect.Response[v1.DeleteStackCredentialResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.DeleteStackCredential is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error) {

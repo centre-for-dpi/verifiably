@@ -10,9 +10,11 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 )
 
-// tenantMessage says why the tenant service answers Unimplemented. Inji has no multi tenancy.
-// The capability answer lists no FEATURE_MULTI_TENANCY, so the admin
-// pages offer no tenancy on this stack (ADR-037 decision 3).
+// tenantMessage says why the tenant service answers Unimplemented.
+// Inji has no multi tenancy. The capability answer lists neither
+// FEATURE_MULTI_TENANCY nor FEATURE_TENANT_CLIENT_CREDENTIALS, so the
+// admin pages offer no tenancy and no stack credential on this stack
+// (ADR-037 decision 3, ADR-038 decision 2).
 const tenantMessage = "Inji keeps no tenants; one deployment serves one organisation"
 
 // CreateTenant is not available. See tenantMessage.
@@ -40,5 +42,26 @@ func (s *Service) ListTenants(
 func (s *Service) DeleteTenant(
 	context.Context, *connect.Request[backendv1.DeleteTenantRequest],
 ) (*connect.Response[backendv1.DeleteTenantResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// ListClientCredentials is not available. See tenantMessage.
+func (s *Service) ListClientCredentials(
+	context.Context, *connect.Request[backendv1.ListClientCredentialsRequest],
+) (*connect.Response[backendv1.ListClientCredentialsResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// CreateClientCredential is not available. See tenantMessage.
+func (s *Service) CreateClientCredential(
+	context.Context, *connect.Request[backendv1.CreateClientCredentialRequest],
+) (*connect.Response[backendv1.CreateClientCredentialResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// DeleteClientCredential is not available. See tenantMessage.
+func (s *Service) DeleteClientCredential(
+	context.Context, *connect.Request[backendv1.DeleteClientCredentialRequest],
+) (*connect.Response[backendv1.DeleteClientCredentialResponse], error) {
 	return nil, unimplemented(tenantMessage)
 }

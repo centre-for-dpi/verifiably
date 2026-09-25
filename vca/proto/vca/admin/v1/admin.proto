@@ -136,6 +136,21 @@ service AdminService {
   rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse) {
     option (vca.common.v1.description) = "Disables one API key at once.";
   }
+  // ListStackCredentials returns the client credentials of the stack
+  // tenants that the tenants map onto (ADR-038 decision 2). It reads
+  // every stack that lists tenant client credentials.
+  rpc ListStackCredentials(ListStackCredentialsRequest) returns (ListStackCredentialsResponse) {
+    option (vca.common.v1.description) = "Returns the client credentials of the stack tenants.";
+  }
+  // CreateStackCredential creates one client credential for the tenant
+  // of one stack. The response shows the secret once.
+  rpc CreateStackCredential(CreateStackCredentialRequest) returns (CreateStackCredentialResponse) {
+    option (vca.common.v1.description) = "Creates one client credential on a stack tenant.";
+  }
+  // DeleteStackCredential removes one client credential of a stack tenant.
+  rpc DeleteStackCredential(DeleteStackCredentialRequest) returns (DeleteStackCredentialResponse) {
+    option (vca.common.v1.description) = "Removes one client credential of a stack tenant.";
+  }
 
   // GetServiceHealth returns the health of every service in the deployment.
   rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse) {
@@ -673,6 +688,64 @@ message RevokeApiKeyRequest {
 
 // RevokeApiKeyResponse has no fields.
 message RevokeApiKeyResponse {}
+
+// StackCredential is one client credential of the stack tenant of a
+// VCA tenant, without its secret.
+message StackCredential {
+  // The VCA tenant id.
+  string tenant_id = 1;
+  // The stack.
+  vca.config.v1.Dpg stack = 2;
+  // The name of the stack as its adapter reports it.
+  string stack_name = 3;
+  // The credential.
+  vca.backend.v1.ClientCredential credential = 4;
+}
+
+// ListStackCredentialsRequest selects a tenant filter.
+message ListStackCredentialsRequest {
+  // The VCA tenant filter. Empty returns every tenant.
+  string tenant_id = 1;
+}
+
+// ListStackCredentialsResponse returns the credentials.
+message ListStackCredentialsResponse {
+  // The credentials, in tenant and stack order.
+  repeated StackCredential credentials = 1;
+  // One line per stack tenant the service could not read.
+  repeated string errors = 2;
+}
+
+// CreateStackCredentialRequest names the stack tenant and the credential.
+message CreateStackCredentialRequest {
+  // The VCA tenant id.
+  string tenant_id = 1;
+  // The stack. The tenant must hold a binding on it.
+  vca.config.v1.Dpg stack = 2;
+  // The name of the credential. Required.
+  string display_name = 3;
+}
+
+// CreateStackCredentialResponse returns the credential and its secret once.
+message CreateStackCredentialResponse {
+  // The credential.
+  StackCredential credential = 1;
+  // The client secret. The service does not keep it or return it again.
+  string client_secret = 2;
+}
+
+// DeleteStackCredentialRequest selects one credential.
+message DeleteStackCredentialRequest {
+  // The VCA tenant id.
+  string tenant_id = 1;
+  // The stack.
+  vca.config.v1.Dpg stack = 2;
+  // The DPG assigned id of the credential.
+  string id = 3;
+}
+
+// DeleteStackCredentialResponse has no fields.
+message DeleteStackCredentialResponse {}
 
 // GetServiceHealthRequest has no fields.
 message GetServiceHealthRequest {}

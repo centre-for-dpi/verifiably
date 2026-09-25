@@ -165,6 +165,21 @@ var commands = []command{
 	{path: "admin apikey revoke", rpc: "RevokeApiKey", flags: []flag{
 		{name: "id", text: "The key id.", mandatory: true},
 	}},
+	{path: "admin stack-credential list", rpc: "ListStackCredentials", flags: []flag{
+		{name: "tenant", text: "The tenant filter."},
+	}},
+	{path: "admin stack-credential create", rpc: "CreateStackCredential",
+		long: "Creates one client credential on the tenant of a stack. The answer shows the secret once. The stack must list tenant client credentials.",
+		flags: []flag{
+			{name: "tenant", text: "The tenant id.", mandatory: true},
+			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+			{name: "name", text: "The name of the credential.", mandatory: true},
+		}},
+	{path: "admin stack-credential delete", rpc: "DeleteStackCredential", flags: []flag{
+		{name: "tenant", text: "The tenant id.", mandatory: true},
+		{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+		{name: "id", text: "The credential id.", mandatory: true},
+	}},
 	{path: "admin health", rpc: "GetServiceHealth"},
 	{path: "admin audit", rpc: "QueryAuditLog", flags: []flag{
 		{name: "actor", text: "The actor filter."},
