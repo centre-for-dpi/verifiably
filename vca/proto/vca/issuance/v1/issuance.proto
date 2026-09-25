@@ -130,6 +130,10 @@ message IssueBatchRequest {
   repeated Item items = 5;
   // The data source job id, when the data source service started the batch.
   string source_job_id = 6;
+  // True issues every row through the bulk import of the DPG in one call.
+  // The adapter must list FEATURE_BULK_NATIVE. The rows become documents
+  // that carry the credential, so the channel is CHANNEL_PDF.
+  bool native = 7;
 
   // Item is one subject in the batch.
   message Item {

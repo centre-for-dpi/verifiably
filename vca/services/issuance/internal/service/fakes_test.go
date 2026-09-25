@@ -38,6 +38,13 @@ type fakeAdapter struct {
 	specs []*backendv1.IssueSpec
 	// channels records every channel the service asked for.
 	channels []backendv1.Channel
+	// batches records every native batch the service sent.
+	batches []*backendv1.IssueBatchRequest
+	// batch is the answer of IssueBatch. Nil answers one credential per
+	// spec.
+	batch *backendv1.IssueBatchResponse
+	// batchErr fails IssueBatch.
+	batchErr error
 }
 
 func (f *fakeAdapter) GetCapabilities(
@@ -81,6 +88,27 @@ func (f *fakeAdapter) GetIssuanceStatus(
 		return nil, f.stateErr
 	}
 	return connect.NewResponse(f.state), nil
+}
+
+func (f *fakeAdapter) IssueBatch(
+	_ context.Context, req *connect.Request[backendv1.IssueBatchRequest],
+) (*connect.Response[backendv1.IssueBatchResponse], error) {
+	f.mu.Lock()
+	f.batches = append(f.batches, req.Msg)
+	f.mu.Unlock()
+	if f.batchErr != nil {
+		return nil, f.batchErr
+	}
+	if f.batch != nil {
+		return connect.NewResponse(f.batch), nil
+	}
+	out := &backendv1.IssueBatchResponse{}
+	var position int32
+	for range req.Msg.GetSpecs() {
+		out.Items = append(out.Items, &backendv1.IssueBatchResponse_Item{Position: position, Credential: f.credential.GetCredential()})
+		position++
+	}
+	return connect.NewResponse(out), nil
 }
 
 // lastSpec returns the spec of the last call.

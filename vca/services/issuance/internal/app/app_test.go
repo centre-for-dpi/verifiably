@@ -67,6 +67,12 @@ func (fakeAdapter) GetIssuanceStatus(
 	return connect.NewResponse(&backendv1.GetIssuanceStatusResponse{}), nil
 }
 
+func (fakeAdapter) IssueBatch(
+	context.Context, *connect.Request[backendv1.IssueBatchRequest],
+) (*connect.Response[backendv1.IssueBatchResponse], error) {
+	return connect.NewResponse(&backendv1.IssueBatchResponse{}), nil
+}
+
 // settings returns a configuration with the values on top of the
 // smallest one.
 func settings(t *testing.T, values map[string]string) config.Config {

@@ -78,6 +78,10 @@ func TestCapabilitiesReportWhatTheAdapterSupports(t *testing.T) {
 	if (clients.Capabilities{}).FirstFormat() != commonv1.Format_FORMAT_UNSPECIFIED {
 		t.Fatal("an adapter without a format has no first format")
 	}
+	c.Features = []backendv1.Feature{backendv1.Feature_FEATURE_REVOCATION, backendv1.Feature_FEATURE_BULK_NATIVE}
+	if !c.Has(backendv1.Feature_FEATURE_BULK_NATIVE) || c.Has(backendv1.Feature_FEATURE_WEBHOOKS) {
+		t.Fatal("Has must follow the features of the adapter")
+	}
 }
 
 func TestCapabilityCacheReadsTheAdapterOnce(t *testing.T) {

@@ -519,7 +519,11 @@ type IssueBatchRequest struct {
 	// One item per subject.
 	Items []*IssueBatchRequest_Item `protobuf:"bytes,5,rep,name=items,proto3" json:"items,omitempty"`
 	// The data source job id, when the data source service started the batch.
-	SourceJobId   string `protobuf:"bytes,6,opt,name=source_job_id,json=sourceJobId,proto3" json:"source_job_id,omitempty"`
+	SourceJobId string `protobuf:"bytes,6,opt,name=source_job_id,json=sourceJobId,proto3" json:"source_job_id,omitempty"`
+	// True issues every row through the bulk import of the DPG in one call.
+	// The adapter must list FEATURE_BULK_NATIVE. The rows become documents
+	// that carry the credential, so the channel is CHANNEL_PDF.
+	Native        bool `protobuf:"varint,7,opt,name=native,proto3" json:"native,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -594,6 +598,13 @@ func (x *IssueBatchRequest) GetSourceJobId() string {
 		return x.SourceJobId
 	}
 	return ""
+}
+
+func (x *IssueBatchRequest) GetNative() bool {
+	if x != nil {
+		return x.Native
+	}
+	return false
 }
 
 // IssueBatchResponse is one progress message of a batch job.
@@ -1186,14 +1197,15 @@ const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"\rSTATE_EXPIRED\x10\x04\x12\x10\n" +
 	"\fSTATE_FAILED\x10\x05\"=\n" +
 	"\rIssueResponse\x12,\n" +
-	"\x05offer\x18\x01 \x01(\v2\x16.vca.issuance.v1.OfferR\x05offer\"\x90\x03\n" +
+	"\x05offer\x18\x01 \x01(\v2\x16.vca.issuance.v1.OfferR\x05offer\"\xa8\x03\n" +
 	"\x11IssueBatchRequest\x12\x1b\n" +
 	"\tschema_id\x18\x01 \x01(\tR\bschemaId\x12%\n" +
 	"\x0eschema_version\x18\x02 \x01(\x05R\rschemaVersion\x12-\n" +
 	"\x06format\x18\x03 \x01(\x0e2\x15.vca.common.v1.FormatR\x06format\x121\n" +
 	"\achannel\x18\x04 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\x12=\n" +
 	"\x05items\x18\x05 \x03(\v2'.vca.issuance.v1.IssueBatchRequest.ItemR\x05items\x12\"\n" +
-	"\rsource_job_id\x18\x06 \x01(\tR\vsourceJobId\x1ar\n" +
+	"\rsource_job_id\x18\x06 \x01(\tR\vsourceJobId\x12\x16\n" +
+	"\x06native\x18\a \x01(\bR\x06native\x1ar\n" +
 	"\x04Item\x12\x10\n" +
 	"\x03row\x18\x01 \x01(\x03R\x03row\x12!\n" +
 	"\fsubject_data\x18\x02 \x01(\tR\vsubjectData\x125\n" +

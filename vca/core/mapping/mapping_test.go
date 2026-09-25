@@ -93,3 +93,27 @@ func TestUnmappedAndSourceFields(t *testing.T) {
 		t.Fatalf("fields %v", got)
 	}
 }
+
+// TestLenientKeepsTheSourceTextOfAFailedRule proves that a rule that
+// fails on one row keeps the text of its first source field, so the
+// schema check of the issuance names the claim and the other claims of
+// the row still fill.
+func TestLenientKeepsTheSourceTextOfAFailedRule(t *testing.T) {
+	fm := FieldMap{SourceID: "s", SchemaID: "farmer", Rules: []Rule{
+		rule("fullName", Trim, nil, "name"),
+		rule("dateOfBirth", DateFormat, map[string]string{ParamInputLayout: "02/01/2006", ParamOutputLayout: "2006-01-02"}, "dob"),
+		rule("country", Constant, map[string]string{ParamValue: "KE"}),
+		rule("hectares", Copy, nil, "ha"),
+	}}
+	got, err := Lenient(map[string]string{"name": " Amina ", "dob": "1984-13-40"}, fm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"fullName": "Amina", "dateOfBirth": "1984-13-40", "country": "KE"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("lenient = %v, want %v", got, want)
+	}
+	if _, err := Lenient(nil, FieldMap{Rules: []Rule{{}}}); !errors.Is(err, ErrEmptyProperty) {
+		t.Errorf("a bad map: %v", err)
+	}
+}

@@ -152,6 +152,30 @@ func Apply(row map[string]string, fm FieldMap) (map[string]any, error) {
 	return out, nil
 }
 
+// Lenient fills the properties of fm from row like Apply, for a bulk
+// run where one bad row must not stop the others. A rule that fails
+// keeps the text of its first source field, so a later schema check
+// names the property. A rule whose source field the row lacks fills
+// nothing. Lenient fails only when fm is not valid.
+func Lenient(row map[string]string, fm FieldMap) (map[string]string, error) {
+	if err := fm.Validate(); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(fm.Rules))
+	for _, r := range fm.Rules {
+		v, err := applyRule(row, r)
+		if err != nil {
+			raw, ok := row[r.SourceFields[0]]
+			if !ok {
+				continue
+			}
+			v = raw
+		}
+		out[r.Property] = v
+	}
+	return out, nil
+}
+
 func applyRule(row map[string]string, r Rule) (string, error) {
 	if r.Transform == Constant {
 		return r.Params[ParamValue], nil

@@ -42,6 +42,10 @@ type Issuer interface {
 	// issuance.
 	GetIssuanceStatus(context.Context, *connect.Request[backendv1.GetIssuanceStatusRequest]) (
 		*connect.Response[backendv1.GetIssuanceStatusResponse], error)
+	// IssueBatch issues many credentials through the bulk import of the
+	// DPG, when the adapter lists FEATURE_BULK_NATIVE.
+	IssueBatch(context.Context, *connect.Request[backendv1.IssueBatchRequest]) (
+		*connect.Response[backendv1.IssueBatchResponse], error)
 }
 
 // Schemas reads a published schema.
@@ -83,6 +87,18 @@ type Capabilities struct {
 	Adapter string
 	// DpgVersion is the release of the DPG behind the adapter.
 	DpgVersion string
+	// Features are the optional RPCs the adapter implements.
+	Features []backendv1.Feature
+}
+
+// Has reports whether the adapter lists a feature.
+func (c Capabilities) Has(f backendv1.Feature) bool {
+	for _, item := range c.Features {
+		if item == f {
+			return true
+		}
+	}
+	return false
 }
 
 // SupportsFormat reports whether the adapter can issue the format. An
@@ -166,6 +182,7 @@ func (c *CapabilityCache) Get(ctx context.Context) (Capabilities, error) {
 		Roles:      resp.Msg.GetRoles(),
 		Adapter:    resp.Msg.GetAdapter(),
 		DpgVersion: resp.Msg.GetDpgVersion(),
+		Features:   resp.Msg.GetFeatures(),
 	}
 	c.mu.Lock()
 	c.value, c.expires, c.loaded = value, c.now().Add(c.ttl), true

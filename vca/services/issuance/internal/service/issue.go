@@ -36,8 +36,8 @@ type request struct {
 	schemaID      string
 	schemaVersion int32
 	claims        map[string]string
-	// values holds the claims with their JSON types. Nil means the
-	// claims are text, as the rows of a batch are.
+	// values holds the claims with their JSON types, for the schema
+	// check and the adapter. A single issue and a batch row both have them.
 	values        map[string]any
 	subject       *commonv1.Subject
 	format        commonv1.Format
@@ -75,12 +75,6 @@ func (s *Service) Issue(
 		return nil, err
 	}
 	return connect.NewResponse(&issuancev1.IssueResponse{Offer: view(offer)}), nil
-}
-
-// readClaims reads the subject data of a request as text claims.
-func readClaims(raw string) (map[string]string, error) {
-	claims, _, err := readTypedClaims(raw)
-	return claims, err
 }
 
 // readTypedClaims reads the subject data of a request. It returns the
@@ -125,14 +119,20 @@ func claimText(value any) string {
 // and the channel, never a claim.
 func (s *Service) issueOne(ctx context.Context, r request) (offers.Offer, error) {
 	offer, err := s.issue(ctx, r)
-	target, detail := r.schemaID, ""
+	s.recordIssue(ctx, r.schemaID, offer.ID, offer.SchemaVersion, offer.Channel, err)
+	return offer, err
+}
+
+// recordIssue writes the audit event of one issuance: the offer, the
+// schema version, and the channel, or the schema and the failure.
+func (s *Service) recordIssue(ctx context.Context, schemaID, offerID string, version int32, channel string, err error) {
+	target, detail := schemaID, ""
 	if err == nil {
-		target = offer.ID
-		detail = msg.T("audit.issuance.issue", offer.SchemaID, strconv.Itoa(int(offer.SchemaVersion)),
-			strings.ToLower(strings.TrimPrefix(offer.Channel, "CHANNEL_")))
+		target = offerID
+		detail = msg.T("audit.issuance.issue", schemaID, strconv.Itoa(int(version)),
+			strings.ToLower(strings.TrimPrefix(channel, "CHANNEL_")))
 	}
 	s.opts.Audit.Record(ctx, nil, ActionIssue, target, detail, err)
-	return offer, err
 }
 
 // issue runs the whole issuance of one subject.
@@ -302,7 +302,14 @@ func (s *Service) issueDocument(ctx context.Context, offer *offers.Offer,
 		offer.Error = err.Error()
 		return connect.NewError(connect.CodeOf(err), fmt.Errorf("ask for the credential: %w", err))
 	}
-	credential := resp.Msg.GetCredential()
+	return s.credentialDocument(ctx, offer, resp.Msg.GetCredential(), schema, r)
+}
+
+// credentialDocument renders a page whose QR code carries the
+// credential, and keeps it.
+func (s *Service) credentialDocument(ctx context.Context, offer *offers.Offer,
+	credential *commonv1.Credential, schema *schemav1.Schema, r request,
+) error {
 	payload, perr := render.CredentialPayload(credential.GetPayload())
 	if perr != nil {
 		return internal("build the QR payload", perr)
@@ -444,18 +451,9 @@ func (s *Service) schema(ctx context.Context, id string, version int32) (*schema
 	return schema, nil
 }
 
-// instance returns the claims as the schema check reads them: with their
-// JSON types when the request has them, else as text.
-func (r request) instance() map[string]any {
-	if r.values != nil {
-		return r.values
-	}
-	instance := make(map[string]any, len(r.claims))
-	for name, value := range r.claims {
-		instance[name] = value
-	}
-	return instance
-}
+// instance returns the claims as the schema check reads them, with
+// their JSON types.
+func (r request) instance() map[string]any { return r.values }
 
 // subjectData returns the claims as the adapter reads them.
 func (r request) subjectData() string {
