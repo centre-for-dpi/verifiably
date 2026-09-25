@@ -94,6 +94,23 @@ follows RFC 4180. It has a header row and one row per credential. The
 JSON form writes one compact JSON object per line. The portal serves the
 same two encodings as a download at `GET <prefix>/export`.
 
+## Audit log
+
+The service writes one audit event for each stored result, with its verdict (ADR-039 decision 1).
+The event names the actor, the action, the target, the outcome, and the
+request id. It never holds a claim value. A failure names the Connect
+code of the answer, never the text of the error. The service checks no
+session itself, so the actor is the one its caller names in the
+`X-Vca-Actor` header.
+
+The events live in an append only store under `VCA_VERIFIER_RESULTS_AUDIT_DIR`.
+The CLI sets it to `/data/audit`. The service serves the store as
+`vca.audit.v1.AuditService` on the internal network. Only the admin
+opens it: an admin session that the key set at `VCA_VERIFIER_RESULTS_ADMIN_JWKS_URL`
+signed, or the token in `VCA_VERIFIER_RESULTS_ADMIN_TOKEN`. The pair proxy does not
+route the service. `SetRetention` keeps the events of the last days the
+admin sets and removes older ones.
+
 ## Citizen page
 
 The public page takes one pasted credential or presentation

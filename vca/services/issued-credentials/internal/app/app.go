@@ -19,6 +19,8 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/head"
@@ -81,6 +83,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	events, err := auditlog.Open(cfg.AuditDir, deps.Now)
+	if err != nil {
+		return nil, err
+	}
 	status := deps.Status
 	if status == nil && cfg.StatusURL != "" {
 		status = statusv1connect.NewStatusServiceClient(httpClient(cfg, deps), cfg.StatusURL)
@@ -93,12 +99,17 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Salt:        salt,
 		PageSizeMax: cfg.PageSizeMax,
 		Now:         deps.Now,
+		Audit:       events,
 	})
 	if err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()
 	mux.Handle(issuedv1connect.NewIssuedServiceHandler(svc))
+	auditPath, auditHandler := auditlog.NewHandler(auditlog.Handler{
+		Log: events, Service: service.Name, Authorize: oidcflow.AuditAuthorizer(cfg.AdminToken, cfg.AdminJWKSURL, nil),
+	})
+	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	httpapi.Register(mux, svc, signer)
 	if status == nil {
 		deps.Log.Warn("no status service, revoke and reinstate report a failed precondition",

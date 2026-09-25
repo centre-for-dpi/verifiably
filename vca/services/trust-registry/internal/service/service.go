@@ -18,10 +18,14 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/entry"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/etsi"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/federation"
@@ -52,7 +56,23 @@ type Options struct {
 	PageSizeMax int
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// Audit keeps one event for each trust change and each registry
+	// change (ADR-039 decision 1). Nil keeps the events in memory.
+	Audit *auditlog.Log
 }
+
+// Name is the service name that every audit event carries.
+const Name = "trust-registry"
+
+// The audit actions of the service.
+const (
+	ActionUpsertEntry    = "trust.UpsertEntry"
+	ActionDeleteEntry    = "trust.DeleteEntry"
+	ActionImportEtsi     = "trust.ImportEtsi"
+	ActionAddRegistry    = "trust.AddRegistry"
+	ActionRemoveRegistry = "trust.RemoveRegistry"
+	ActionSyncRegistry   = "trust.SyncRegistry"
+)
 
 // Service is the TrustService handler.
 type Service struct {
@@ -77,6 +97,10 @@ func New(opts Options) (*Service, error) {
 	if opts.ListTTL <= 0 {
 		opts.ListTTL = 24 * time.Hour
 	}
+	if opts.Audit == nil {
+		// A memory store with a clock cannot fail to open.
+		opts.Audit = anyval.Must(auditlog.New(sharedstore.Memory(), opts.Now))
+	}
 	if opts.Federation == nil {
 		fed, err := federation.New(federation.Options{Now: opts.Now})
 		if err != nil {
@@ -90,6 +114,9 @@ func New(opts Options) (*Service, error) {
 	}
 	return s, nil
 }
+
+// Audit returns the audit store of the service.
+func (s *Service) Audit() *auditlog.Log { return s.opts.Audit }
 
 // Snapshot returns the published files. It implements httpapi.Source.
 func (s *Service) Snapshot() *publish.Snapshot { return s.snap.Load() }
@@ -134,7 +161,10 @@ func (s *Service) republish() ([]publish.Publication, error) {
 }
 
 // UpsertEntry validates, resolves the DID, stores, and republishes.
-func (s *Service) UpsertEntry(ctx context.Context, req *connect.Request[trustv1.UpsertEntryRequest]) (*connect.Response[trustv1.UpsertEntryResponse], error) {
+// The audit log records the change, also when it fails.
+func (s *Service) UpsertEntry(ctx context.Context, req *connect.Request[trustv1.UpsertEntryRequest]) (res *connect.Response[trustv1.UpsertEntryResponse], err error) {
+	target, detail := entryTarget(req.Msg.GetEntry().GetIdentifier()), ""
+	defer func() { s.opts.Audit.Record(ctx, req.Header(), ActionUpsertEntry, target, detail, err) }()
 	e, err := entry.FromProto(req.Msg.GetEntry())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -151,9 +181,10 @@ func (s *Service) UpsertEntry(ctx context.Context, req *connect.Request[trustv1.
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	if _, err := s.republish(); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+	if _, perr := s.republish(); perr != nil {
+		return nil, connect.NewError(connect.CodeInternal, perr)
 	}
+	detail = msg.T("audit.trust.entry", string(stored.Status))
 	return connect.NewResponse(&trustv1.UpsertEntryResponse{Entry: entry.ToProto(stored)}), nil
 }
 
@@ -231,8 +262,12 @@ func (s *Service) ListEntries(_ context.Context, req *connect.Request[trustv1.Li
 	return connect.NewResponse(resp), nil
 }
 
-// DeleteEntry removes one entry and republishes.
-func (s *Service) DeleteEntry(_ context.Context, req *connect.Request[trustv1.DeleteEntryRequest]) (*connect.Response[trustv1.DeleteEntryResponse], error) {
+// DeleteEntry removes one entry and republishes. The audit log records
+// the change, also when it fails.
+func (s *Service) DeleteEntry(ctx context.Context, req *connect.Request[trustv1.DeleteEntryRequest]) (res *connect.Response[trustv1.DeleteEntryResponse], err error) {
+	defer func() {
+		s.opts.Audit.Record(ctx, req.Header(), ActionDeleteEntry, entryTarget(req.Msg.GetIdentifier()), "", err)
+	}()
 	id, err := entry.IDFromProto(req.Msg.GetIdentifier())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -247,8 +282,8 @@ func (s *Service) DeleteEntry(_ context.Context, req *connect.Request[trustv1.De
 	if !found {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("service: no entry for %s", id))
 	}
-	if _, err := s.republish(); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+	if _, perr := s.republish(); perr != nil {
+		return nil, connect.NewError(connect.CodeInternal, perr)
 	}
 	return connect.NewResponse(&trustv1.DeleteEntryResponse{}), nil
 }
@@ -338,8 +373,19 @@ func externalAnswer(ext federation.Result) *trustv1.TrustLookupResponse {
 	return resp
 }
 
-// ImportEtsi reads a TS 119 612 XML list and stores its entities.
-func (s *Service) ImportEtsi(_ context.Context, req *connect.Request[trustv1.ImportEtsiRequest]) (*connect.Response[trustv1.ImportEtsiResponse], error) {
+// ImportEtsi reads a TS 119 612 XML list and stores its entities. The
+// audit log records an import that is not a dry run.
+func (s *Service) ImportEtsi(ctx context.Context, req *connect.Request[trustv1.ImportEtsiRequest]) (res *connect.Response[trustv1.ImportEtsiResponse], err error) {
+	defer func() {
+		if req.Msg.GetDryRun() {
+			return
+		}
+		detail := ""
+		if err == nil {
+			detail = msg.T("audit.trust.import", strconv.Itoa(int(res.Msg.GetCreated())), strconv.Itoa(int(res.Msg.GetUpdated())))
+		}
+		s.opts.Audit.Record(ctx, req.Header(), ActionImportEtsi, "", detail, err)
+	}()
 	tl, err := etsi.ParseTrustedList(req.Msg.GetXml())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -363,16 +409,26 @@ func (s *Service) ImportEtsi(_ context.Context, req *connect.Request[trustv1.Imp
 		if req.Msg.GetDryRun() {
 			continue
 		}
-		if _, _, err := s.opts.Store.Upsert(e, now); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
+		if _, _, uerr := s.opts.Store.Upsert(e, now); uerr != nil {
+			return nil, connect.NewError(connect.CodeInternal, uerr)
 		}
 	}
 	if !req.Msg.GetDryRun() && len(entries) > 0 {
-		if _, err := s.republish(); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
+		if _, perr := s.republish(); perr != nil {
+			return nil, connect.NewError(connect.CodeInternal, perr)
 		}
 	}
 	return connect.NewResponse(resp), nil
+}
+
+// entryTarget returns the id of an entry for the audit log, or "" when
+// the identifier is not valid.
+func entryTarget(id *trustv1.TrustEntry_Identifier) string {
+	out, err := entry.IDFromProto(id)
+	if err != nil {
+		return ""
+	}
+	return out
 }
 
 func (s *Service) enabled(method string) bool {

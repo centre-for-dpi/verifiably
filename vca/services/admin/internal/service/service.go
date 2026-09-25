@@ -117,6 +117,29 @@ func (s *Service) Ready() bool {
 // Providers returns the provider registry. The portal reads it.
 func (s *Service) Providers() *oidcflow.Registry { return s.d.Providers }
 
+// AuditName is the service name that every audit event of the admin
+// carries (ADR-039 decision 1).
+const AuditName = "admin"
+
+// Audit returns the handler of the audit store of the admin. A super
+// admin session opens it, so the portal of this pair and the portal of
+// another admin pair that shares the admin key read it.
+func (s *Service) Audit() auditlog.Handler {
+	return auditlog.Handler{Log: s.d.Audit, Service: AuditName, Authorize: s.superAdmin}
+}
+
+// superAdmin allows a caller with the super admin role.
+func (s *Service) superAdmin(ctx context.Context, h http.Header) error {
+	id, err := s.guard(ctx, h)
+	if err != nil {
+		return err
+	}
+	if !id.IsSuperAdmin() {
+		return connect.NewError(connect.CodePermissionDenied, oidcflow.ErrForbidden)
+	}
+	return nil
+}
+
 // guard checks the caller and returns the actor for the audit record.
 func (s *Service) guard(ctx context.Context, h http.Header) (login.Identity, error) {
 	id, err := s.d.Login.Authenticate(ctx, h)
@@ -172,6 +195,15 @@ func (s *Service) trust() (trustv1connect.TrustServiceClient, error) {
 	return s.d.Trust, nil
 }
 
+// asActor returns a request to the trust registry that names the admin
+// as its actor, so the audit log of the registry names the admin too
+// (ADR-039 decision 1).
+func asActor[T any](msg *T, actor string) *connect.Request[T] {
+	req := connect.NewRequest(msg)
+	req.Header().Set(auditlog.ActorHeader, actor)
+	return req
+}
+
 // UpsertTrustEntry implements AdminServiceHandler. It forwards the
 // entry to the trust registry (ADR-011).
 func (s *Service) UpsertTrustEntry(ctx context.Context, req *connect.Request[adminv1.UpsertTrustEntryRequest]) (*connect.Response[adminv1.UpsertTrustEntryResponse], error) {
@@ -183,7 +215,7 @@ func (s *Service) UpsertTrustEntry(ctx context.Context, req *connect.Request[adm
 	if err != nil {
 		return nil, fail(s.write(ctx, id.Actor, "admin.UpsertTrustEntry", "", err))
 	}
-	res, err := client.UpsertEntry(ctx, connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: req.Msg.GetEntry()}))
+	res, err := client.UpsertEntry(ctx, asActor(&trustv1.UpsertEntryRequest{Entry: req.Msg.GetEntry()}, id.Actor))
 	if serr := s.write(ctx, id.Actor, "admin.UpsertTrustEntry", identifierText(req.Msg.GetEntry().GetIdentifier()), err); serr != nil {
 		return nil, fail(serr)
 	}
@@ -258,7 +290,7 @@ func (s *Service) ApproveTrustEntry(ctx context.Context, req *connect.Request[ad
 	if err == nil {
 		entry.Status = trustv1.Status_STATUS_ACTIVE
 		var res *connect.Response[trustv1.UpsertEntryResponse]
-		if res, err = client.UpsertEntry(ctx, connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: entry})); err == nil {
+		if res, err = client.UpsertEntry(ctx, asActor(&trustv1.UpsertEntryRequest{Entry: entry}, id.Actor)); err == nil {
 			stored = res.Msg.GetEntry()
 		}
 	}
@@ -281,7 +313,7 @@ func (s *Service) RejectTrustEntry(ctx context.Context, req *connect.Request[adm
 		return nil, fail(s.write(ctx, id.Actor, "admin.RejectTrustEntry", target, err))
 	}
 	if _, err = pending(ctx, client, req.Msg.GetIdentifier()); err == nil {
-		_, err = client.DeleteEntry(ctx, connect.NewRequest(&trustv1.DeleteEntryRequest{Identifier: req.Msg.GetIdentifier()}))
+		_, err = client.DeleteEntry(ctx, asActor(&trustv1.DeleteEntryRequest{Identifier: req.Msg.GetIdentifier()}, id.Actor))
 	}
 	if serr := s.write(ctx, id.Actor, "admin.RejectTrustEntry", target, err); serr != nil {
 		return nil, fail(serr)
@@ -301,7 +333,7 @@ func (s *Service) AddTrustRegistry(ctx context.Context, req *connect.Request[adm
 	if err != nil {
 		return nil, fail(s.write(ctx, id.Actor, "admin.AddTrustRegistry", "", err))
 	}
-	res, err := client.AddRegistry(ctx, connect.NewRequest(&trustv1.AddRegistryRequest{Registry: req.Msg.GetRegistry()}))
+	res, err := client.AddRegistry(ctx, asActor(&trustv1.AddRegistryRequest{Registry: req.Msg.GetRegistry()}, id.Actor))
 	target := ""
 	if err == nil {
 		target = res.Msg.GetRegistry().GetId()
@@ -341,7 +373,7 @@ func (s *Service) RemoveTrustRegistry(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, fail(s.write(ctx, id.Actor, "admin.RemoveTrustRegistry", req.Msg.GetId(), err))
 	}
-	_, err = client.RemoveRegistry(ctx, connect.NewRequest(&trustv1.RemoveRegistryRequest{Id: req.Msg.GetId()}))
+	_, err = client.RemoveRegistry(ctx, asActor(&trustv1.RemoveRegistryRequest{Id: req.Msg.GetId()}, id.Actor))
 	if serr := s.write(ctx, id.Actor, "admin.RemoveTrustRegistry", req.Msg.GetId(), err); serr != nil {
 		return nil, fail(serr)
 	}
@@ -359,7 +391,7 @@ func (s *Service) SyncTrustRegistry(ctx context.Context, req *connect.Request[ad
 	if err != nil {
 		return nil, fail(s.write(ctx, id.Actor, "admin.SyncTrustRegistry", req.Msg.GetId(), err))
 	}
-	res, err := client.SyncRegistry(ctx, connect.NewRequest(&trustv1.SyncRegistryRequest{Id: req.Msg.GetId()}))
+	res, err := client.SyncRegistry(ctx, asActor(&trustv1.SyncRegistryRequest{Id: req.Msg.GetId()}, id.Actor))
 	if serr := s.write(ctx, id.Actor, "admin.SyncTrustRegistry", req.Msg.GetId(), err); serr != nil {
 		return nil, fail(serr)
 	}
@@ -376,7 +408,7 @@ func (s *Service) DeleteTrustEntry(ctx context.Context, req *connect.Request[adm
 	if err != nil {
 		return nil, fail(s.write(ctx, id.Actor, "admin.DeleteTrustEntry", "", err))
 	}
-	_, err = client.DeleteEntry(ctx, connect.NewRequest(&trustv1.DeleteEntryRequest{Identifier: req.Msg.GetIdentifier()}))
+	_, err = client.DeleteEntry(ctx, asActor(&trustv1.DeleteEntryRequest{Identifier: req.Msg.GetIdentifier()}, id.Actor))
 	if serr := s.write(ctx, id.Actor, "admin.DeleteTrustEntry", identifierText(req.Msg.GetIdentifier()), err); serr != nil {
 		return nil, fail(serr)
 	}

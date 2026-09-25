@@ -24,6 +24,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
@@ -632,7 +633,7 @@ func TestAuditPageShowsEveryAction(t *testing.T) {
 		t.Fatal("the audit page misses the action")
 	}
 	filtered := h.page(t, "/admin/audit?action=admin.CreateTenant&actor=nobody")
-	if !strings.Contains(filtered, "No record matches the filters.") {
+	if !strings.Contains(filtered, msg.T("admin.audit.empty")) {
 		t.Error("the actor filter does not work")
 	}
 }
@@ -646,8 +647,18 @@ func TestAuditPagePages(t *testing.T) {
 		}
 	}
 	page := h.page(t, "/admin/audit")
-	if !strings.Contains(page, "Next page") {
-		t.Fatal("the audit page has no next page link")
+	if !strings.Contains(page, msg.T("admin.audit.older.label")) {
+		t.Fatal("the audit page has no link to older events")
+	}
+	i := strings.Index(page, `href="/admin/audit?before=`)
+	if i < 0 {
+		t.Fatal("the link to older events names no time")
+	}
+	link := page[i+len(`href="`):]
+	link = strings.ReplaceAll(link[:strings.Index(link, `"`)], "&amp;", "&")
+	older := h.page(t, link)
+	if strings.Count(older, "<td>admin.CreateTenant</td>") != 10 {
+		t.Fatalf("the older page shows %d events, want 10", strings.Count(older, "<td>admin.CreateTenant</td>"))
 	}
 }
 

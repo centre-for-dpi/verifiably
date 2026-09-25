@@ -47,6 +47,9 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_TRUST_LOOKUP_MAX_AGE` | How long the lookup cache stays fresh. | `1h` |
 | `VCA_TRUST_RESOLVE_DIDS` | Resolve the DID of an entry on `UpsertEntry`. | `true` |
 | `VCA_TRUST_PAGE_SIZE_MAX` | The maximum page size of `ListEntries`. | `200` |
+| `VCA_TRUST_AUDIT_DIR` | The directory of the audit store. | empty: in memory |
+| `VCA_TRUST_ADMIN_JWKS_URL` | The key set of the admin service. An admin session it signed opens the audit store. | empty: no admin session is accepted |
+| `VCA_TRUST_ADMIN_TOKEN` | The admin service token. It opens the audit store too. | empty: no token is accepted |
 | `VCA_TRUST_REGISTRIES_FILE` | The JSON file of the external registries and their cached copies. | `registries.json` beside the store file, or in memory |
 | `VCA_TRUST_FEDERATION_ALLOW_PRIVATE` | Let the federation reach private and loopback addresses. For development only. | `false` |
 | `VCA_TRUST_FEDERATION_ALLOW_HTTP` | Let the federation read lists over plain http. | `false` |

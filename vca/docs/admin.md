@@ -217,8 +217,29 @@ function changes or removes a record. The code is the shared package
 events in the same kind of store (ADR-039).
 
 The actor is `iss|sub` for a session, or `apikey:<id>` for a machine
-key. `QueryAuditLog` filters by actor, action, and time. The
-`/admin/audit` page shows the same records.
+key. `QueryAuditLog` filters by actor, action, and time. The admin also
+serves its store as `vca.audit.v1.AuditService` to a super admin session.
+
+The `/admin/audit` page merges the events of every audit store of the
+deployment (ADR-039 decision 2). The package
+`services/admin/internal/auditfed` reads the store of this admin in
+process. It asks every live peer of the topology snapshot at the same
+time with the admin session token. The whole query has three seconds. The
+stores are the auth services, `issuance`, and `issued-credentials`.
+`trust-registry`, `verifier-results`, and the admin of another pair keep
+stores too. The
+page merges the answers in time order and shows the pair and the stack
+of each event. A store that does not answer does not fail the page. A
+card names the service, the pair, and the reason.
+
+The filters take a day range, an actor, an action, a result, and a
+source service. "Export CSV" writes the newest 500 events that match the
+same filters, with a header row. A cell that starts like a spreadsheet
+formula gets a leading quote. The retention form sets the days to keep
+in every store through `SetRetention`. Each store removes older events
+at once and again as time passes. Zero keeps every event. The admin
+sends its actor to the trust registry in the `X-Vca-Actor` header, so
+both logs name the same admin.
 
 ## Service health
 
@@ -265,7 +286,7 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/providers/new` | The provider form with the kind presets and the discovery test. |
 | `/admin/providers/{id}` | The edit form of one provider. |
 | `/admin/keys` | The VCA API keys with tenant and expiry, and the stack credentials. A new secret appears once. |
-| `/admin/audit` | The audit log with filters. |
+| `/admin/audit` | The events of every live audit store, with filters, CSV export, and the retention. |
 | `/admin/notifications` | The VCA delivery channels with their state, and the stack webhooks where a stack has them. |
 | `/admin/help` | Every command and every RPC with its help text. |
 

@@ -18,7 +18,9 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/dedi"
@@ -131,6 +133,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	events, err := auditlog.Open(cfg.AuditDir, deps.Now)
+	if err != nil {
+		return nil, err
+	}
 	var resolver *did.Resolver
 	if cfg.ResolveDIDs {
 		r := did.NewResolver(deps.Fetch, nil)
@@ -139,12 +145,17 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	svc, err := service.New(service.Options{
 		Store: st, Ring: ring, Publishers: publishers, Cache: cache, Resolver: resolver, Federation: fed,
 		BaseURL: cfg.BaseURL, Issuer: cfg.Issuer, ListTTL: cfg.ListTTL, PageSizeMax: cfg.PageSizeMax, Now: deps.Now,
+		Audit: events,
 	})
 	if err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()
 	mux.Handle(trustv1connect.NewTrustServiceHandler(svc))
+	auditPath, auditHandler := auditlog.NewHandler(auditlog.Handler{
+		Log: events, Service: service.Name, Authorize: oidcflow.AuditAuthorizer(cfg.AdminToken, cfg.AdminJWKSURL, nil),
+	})
+	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	httpapi.New(svc, cfg.HTTPMaxAge).Register(mux)
 	deps.Log.Info("trust registry ready", "methods", cfg.Methods, "kid", ring.Active().ID, "alg", ring.Active().Alg, "base_url", cfg.BaseURL)
 	return &App{Mux: mux, Service: svc, Ring: ring, Federation: fed, tick: cfg.FederationTick, log: deps.Log}, nil

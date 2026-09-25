@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Federated audit log (ADR-039). Each service that changes state keeps its
-// own append only audit store and serves it with this service. The admin
+// own append only audit store and serves it with this service. No call
+// changes an event. Only the retention removes old events. The admin
 // portal queries every live peer and merges the answers in time order.
 // Only the admin session and the admin service token open the service.
 // An event carries no claim value (ADR-039 decision 3).
@@ -357,6 +358,107 @@ func (x *QueryResponse) GetPage() *v1.PageResult {
 	return nil
 }
 
+// SetRetentionRequest names the retention of the store.
+type SetRetentionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The number of days to keep. Zero keeps every event.
+	Days          int32 `protobuf:"varint,1,opt,name=days,proto3" json:"days,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetRetentionRequest) Reset() {
+	*x = SetRetentionRequest{}
+	mi := &file_vca_audit_v1_audit_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetRetentionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetRetentionRequest) ProtoMessage() {}
+
+func (x *SetRetentionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_audit_v1_audit_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetRetentionRequest.ProtoReflect.Descriptor instead.
+func (*SetRetentionRequest) Descriptor() ([]byte, []int) {
+	return file_vca_audit_v1_audit_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SetRetentionRequest) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+// SetRetentionResponse reports the new retention.
+type SetRetentionResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The number of days the store keeps now.
+	Days int32 `protobuf:"varint,1,opt,name=days,proto3" json:"days,omitempty"`
+	// The number of events that the call removed.
+	Removed       int64 `protobuf:"varint,2,opt,name=removed,proto3" json:"removed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetRetentionResponse) Reset() {
+	*x = SetRetentionResponse{}
+	mi := &file_vca_audit_v1_audit_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetRetentionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetRetentionResponse) ProtoMessage() {}
+
+func (x *SetRetentionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_audit_v1_audit_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetRetentionResponse.ProtoReflect.Descriptor instead.
+func (*SetRetentionResponse) Descriptor() ([]byte, []int) {
+	return file_vca_audit_v1_audit_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SetRetentionResponse) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+func (x *SetRetentionResponse) GetRemoved() int64 {
+	if x != nil {
+		return x.Removed
+	}
+	return 0
+}
+
 var File_vca_audit_v1_audit_proto protoreflect.FileDescriptor
 
 const file_vca_audit_v1_audit_proto_rawDesc = "" +
@@ -385,13 +487,19 @@ const file_vca_audit_v1_audit_proto_rawDesc = "" +
 	"\aoutcome\x18\x06 \x01(\x0e2\x15.vca.audit.v1.OutcomeR\aoutcome\"p\n" +
 	"\rQueryResponse\x120\n" +
 	"\x06events\x18\x01 \x03(\v2\x18.vca.audit.v1.AuditEventR\x06events\x12-\n" +
-	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page*L\n" +
+	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\")\n" +
+	"\x13SetRetentionRequest\x12\x12\n" +
+	"\x04days\x18\x01 \x01(\x05R\x04days\"D\n" +
+	"\x14SetRetentionResponse\x12\x12\n" +
+	"\x04days\x18\x01 \x01(\x05R\x04days\x12\x18\n" +
+	"\aremoved\x18\x02 \x01(\x03R\aremoved*L\n" +
 	"\aOutcome\x12\x17\n" +
 	"\x13OUTCOME_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fOUTCOME_SUCCESS\x10\x01\x12\x13\n" +
-	"\x0fOUTCOME_FAILURE\x10\x022\x92\x01\n" +
+	"\x0fOUTCOME_FAILURE\x10\x022\xb4\x02\n" +
 	"\fAuditService\x12\x81\x01\n" +
-	"\x05Query\x12\x1a.vca.audit.v1.QueryRequest\x1a\x1b.vca.audit.v1.QueryResponse\"?\xca\xf3\x18;Returns the audit events that match a filter, newest first.B\xb0\x01\n" +
+	"\x05Query\x12\x1a.vca.audit.v1.QueryRequest\x1a\x1b.vca.audit.v1.QueryResponse\"?\xca\xf3\x18;Returns the audit events that match a filter, newest first.\x12\x9f\x01\n" +
+	"\fSetRetention\x12!.vca.audit.v1.SetRetentionRequest\x1a\".vca.audit.v1.SetRetentionResponse\"H\xca\xf3\x18DSets the retention days of the audit store and removes older events.B\xb0\x01\n" +
 	"\x10com.vca.audit.v1B\n" +
 	"AuditProtoP\x01Z>github.com/centre-for-dpi/vc-adapters/gen/vca/audit/v1;auditv1\xa2\x02\x03VAX\xaa\x02\fVca.Audit.V1\xca\x02\fVca\\Audit\\V1\xe2\x02\x18Vca\\Audit\\V1\\GPBMetadata\xea\x02\x0eVca::Audit::V1b\x06proto3"
 
@@ -408,32 +516,36 @@ func file_vca_audit_v1_audit_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_audit_v1_audit_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vca_audit_v1_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_vca_audit_v1_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_vca_audit_v1_audit_proto_goTypes = []any{
 	(Outcome)(0),                  // 0: vca.audit.v1.Outcome
 	(*AuditEvent)(nil),            // 1: vca.audit.v1.AuditEvent
 	(*QueryRequest)(nil),          // 2: vca.audit.v1.QueryRequest
 	(*QueryResponse)(nil),         // 3: vca.audit.v1.QueryResponse
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),         // 5: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),         // 6: vca.common.v1.PageResult
+	(*SetRetentionRequest)(nil),   // 4: vca.audit.v1.SetRetentionRequest
+	(*SetRetentionResponse)(nil),  // 5: vca.audit.v1.SetRetentionResponse
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*v1.Pagination)(nil),         // 7: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),         // 8: vca.common.v1.PageResult
 }
 var file_vca_audit_v1_audit_proto_depIdxs = []int32{
-	4, // 0: vca.audit.v1.AuditEvent.time:type_name -> google.protobuf.Timestamp
-	0, // 1: vca.audit.v1.AuditEvent.outcome:type_name -> vca.audit.v1.Outcome
-	5, // 2: vca.audit.v1.QueryRequest.page:type_name -> vca.common.v1.Pagination
-	4, // 3: vca.audit.v1.QueryRequest.from:type_name -> google.protobuf.Timestamp
-	4, // 4: vca.audit.v1.QueryRequest.to:type_name -> google.protobuf.Timestamp
-	0, // 5: vca.audit.v1.QueryRequest.outcome:type_name -> vca.audit.v1.Outcome
-	1, // 6: vca.audit.v1.QueryResponse.events:type_name -> vca.audit.v1.AuditEvent
-	6, // 7: vca.audit.v1.QueryResponse.page:type_name -> vca.common.v1.PageResult
-	2, // 8: vca.audit.v1.AuditService.Query:input_type -> vca.audit.v1.QueryRequest
-	3, // 9: vca.audit.v1.AuditService.Query:output_type -> vca.audit.v1.QueryResponse
-	9, // [9:10] is the sub-list for method output_type
-	8, // [8:9] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	6,  // 0: vca.audit.v1.AuditEvent.time:type_name -> google.protobuf.Timestamp
+	0,  // 1: vca.audit.v1.AuditEvent.outcome:type_name -> vca.audit.v1.Outcome
+	7,  // 2: vca.audit.v1.QueryRequest.page:type_name -> vca.common.v1.Pagination
+	6,  // 3: vca.audit.v1.QueryRequest.from:type_name -> google.protobuf.Timestamp
+	6,  // 4: vca.audit.v1.QueryRequest.to:type_name -> google.protobuf.Timestamp
+	0,  // 5: vca.audit.v1.QueryRequest.outcome:type_name -> vca.audit.v1.Outcome
+	1,  // 6: vca.audit.v1.QueryResponse.events:type_name -> vca.audit.v1.AuditEvent
+	8,  // 7: vca.audit.v1.QueryResponse.page:type_name -> vca.common.v1.PageResult
+	2,  // 8: vca.audit.v1.AuditService.Query:input_type -> vca.audit.v1.QueryRequest
+	4,  // 9: vca.audit.v1.AuditService.SetRetention:input_type -> vca.audit.v1.SetRetentionRequest
+	3,  // 10: vca.audit.v1.AuditService.Query:output_type -> vca.audit.v1.QueryResponse
+	5,  // 11: vca.audit.v1.AuditService.SetRetention:output_type -> vca.audit.v1.SetRetentionResponse
+	10, // [10:12] is the sub-list for method output_type
+	8,  // [8:10] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_vca_audit_v1_audit_proto_init() }
@@ -447,7 +559,7 @@ func file_vca_audit_v1_audit_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_audit_v1_audit_proto_rawDesc), len(file_vca_audit_v1_audit_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

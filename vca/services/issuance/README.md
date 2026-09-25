@@ -60,6 +60,9 @@ in the log.
 | `VCA_ISSUANCE_TIMEOUT` | The bound of one call. The default is `30s`. |
 | `VCA_ISSUANCE_BATCH_WORKERS` | The number of rows the service issues at once. |
 | `VCA_ISSUANCE_PAGE_SIZE_MAX` | The cap of one page. The default is `50`. |
+| `VCA_ISSUANCE_AUDIT_DIR` | The directory of the audit store. Empty uses memory. |
+| `VCA_ISSUANCE_ADMIN_JWKS_URL` | The key set of the admin service. An admin session it signed opens the audit store. |
+| `VCA_ISSUANCE_ADMIN_TOKEN` | The admin service token. It opens the audit store too. |
 
 Run the binary:
 

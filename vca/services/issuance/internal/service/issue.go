@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/delivery"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/offers"
@@ -51,6 +54,7 @@ func (s *Service) Issue(
 	if err != nil {
 		return nil, err
 	}
+	ctx = auditlog.WithActor(ctx, auditlog.ActorFrom(req.Header()))
 	offer, err := s.issueOne(ctx, request{
 		schemaID:      msg.GetSchemaId(),
 		schemaVersion: msg.GetSchemaVersion(),
@@ -89,8 +93,23 @@ func readClaims(raw string) (map[string]string, error) {
 	return claims, nil
 }
 
-// issueOne runs the whole issuance of one subject.
+// issueOne runs the whole issuance of one subject and records it in the
+// audit log, also when it fails. The event names the offer, the schema,
+// and the channel, never a claim.
 func (s *Service) issueOne(ctx context.Context, r request) (offers.Offer, error) {
+	offer, err := s.issue(ctx, r)
+	target, detail := r.schemaID, ""
+	if err == nil {
+		target = offer.ID
+		detail = msg.T("audit.issuance.issue", offer.SchemaID, strconv.Itoa(int(offer.SchemaVersion)),
+			strings.ToLower(strings.TrimPrefix(offer.Channel, "CHANNEL_")))
+	}
+	s.opts.Audit.Record(ctx, nil, ActionIssue, target, detail, err)
+	return offer, err
+}
+
+// issue runs the whole issuance of one subject.
+func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	if strings.TrimSpace(r.schemaID) == "" {
 		return offers.Offer{}, badRequest("the request needs a schema_id")
 	}

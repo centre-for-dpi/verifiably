@@ -442,9 +442,9 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-039 | 1 An audit service in each recording service | Partial | `vca/proto/vca/audit/v1`, `vca/services/internal/auditlog` | issuer-auth, wallet-auth, and verifier-auth record the sign in events and serve them to the admin. The other services follow. |
-| ADR-039 | 2 The admin page merges the live peers | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
-| ADR-039 | 3 Events carry no claim values | Partial | `vca/services/internal/oidcflow/audit.go` | A failed sign in carries a fixed reason. The wallet actor is a salted hash. |
+| ADR-039 | 1 An audit service in each recording service | Done | `vca/proto/vca/audit/v1`, `vca/services/internal/auditlog` | The auth services, `issuance`, `issued-credentials`, `trust-registry`, `verifier-results`, and `admin` record events and serve them to the admin only. The service has a second RPC, `SetRetention`, for the retention of each store. |
+| ADR-039 | 2 The admin page merges the live peers | Done | `vca/services/admin/internal/auditfed`, `vca/services/admin/internal/portal/audit.go` | The page asks every live peer at once within a budget and names each store that does not answer. It exports CSV and sets the retention. |
+| ADR-039 | 3 Events carry no claim values | Done | `vca/services/internal/auditlog`, `vca/services/internal/oidcflow/audit.go` | A failure names a fixed reason or the Connect code, never the error text. The wallet actor is a salted hash. |
 
 ## ADR-040: Notifications page before notification delivery
 

@@ -41,6 +41,9 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_ISSUED_STATUS_URL` | The base URL of the status service. | empty: no status change |
 | `VCA_ISSUED_STATUS_TIMEOUT` | The time limit of one status service call. | `10s` |
 | `VCA_ISSUED_PAGE_SIZE_MAX` | The maximum page size of `List` and `Search`. | `50` |
+| `VCA_ISSUED_AUDIT_DIR` | The directory of the audit store. | empty: in memory |
+| `VCA_ISSUED_ADMIN_JWKS_URL` | The key set of the admin service. An admin session it signed opens the audit store. | empty: no admin session is accepted |
+| `VCA_ISSUED_ADMIN_TOKEN` | The admin service token. It opens the audit store too. | empty: no token is accepted |
 
 Set `VCA_ISSUED_SALT_FILE` in production. Without a salt the subject reference is not hard to guess.
 Set `VCA_ISSUED_HEAD_KEY_FILE` in production. A generated key changes at every restart, so an old head no longer verifies.

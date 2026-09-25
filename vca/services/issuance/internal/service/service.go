@@ -25,9 +25,12 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/delivery"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/offers"
@@ -75,7 +78,16 @@ type Options struct {
 	NewID func() string
 	// Log receives the warnings. Nil means slog.Default.
 	Log *slog.Logger
+	// Audit keeps one event for each issue, alone or in a batch
+	// (ADR-039 decision 1). Nil keeps the events in memory.
+	Audit *auditlog.Log
 }
+
+// Name is the service name that every audit event carries.
+const Name = "issuance"
+
+// ActionIssue is the audit action of one issue.
+const ActionIssue = "issuance.Issue"
 
 // Service implements vca.issuance.v1.IssuanceService.
 type Service struct {
@@ -121,8 +133,15 @@ func New(opts Options) (*Service, error) {
 		opts.DocumentTitle = "Credential"
 	}
 	opts.PublicURL = strings.TrimRight(opts.PublicURL, "/")
+	if opts.Audit == nil {
+		// A memory store with a clock cannot fail to open.
+		opts.Audit = anyval.Must(auditlog.New(store.Memory(), opts.Now))
+	}
 	return &Service{opts: opts}, nil
 }
+
+// Audit returns the audit store of the service.
+func (s *Service) Audit() *auditlog.Log { return s.opts.Audit }
 
 // Ready reports whether the service can take traffic.
 func (s *Service) Ready() bool { return s != nil }

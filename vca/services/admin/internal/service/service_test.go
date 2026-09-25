@@ -43,6 +43,8 @@ type fakeTrust struct {
 	entries    map[string]*trustv1.TrustEntry
 	registries []*trustv1.Registry
 	err        error
+	// actors holds the actor header of each change, in call order.
+	actors []string
 }
 
 func newFakeTrust() *fakeTrust {
@@ -57,6 +59,7 @@ func key(id *trustv1.TrustEntry_Identifier) string {
 }
 
 func (f *fakeTrust) UpsertEntry(_ context.Context, req *connect.Request[trustv1.UpsertEntryRequest]) (*connect.Response[trustv1.UpsertEntryResponse], error) {
+	f.actors = append(f.actors, req.Header().Get(auditlog.ActorHeader))
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -86,11 +89,13 @@ func (f *fakeTrust) ListEntries(_ context.Context, req *connect.Request[trustv1.
 }
 
 func (f *fakeTrust) DeleteEntry(_ context.Context, req *connect.Request[trustv1.DeleteEntryRequest]) (*connect.Response[trustv1.DeleteEntryResponse], error) {
+	f.actors = append(f.actors, req.Header().Get(auditlog.ActorHeader))
 	delete(f.entries, key(req.Msg.GetIdentifier()))
 	return connect.NewResponse(&trustv1.DeleteEntryResponse{}), nil
 }
 
 func (f *fakeTrust) AddRegistry(_ context.Context, req *connect.Request[trustv1.AddRegistryRequest]) (*connect.Response[trustv1.AddRegistryResponse], error) {
+	f.actors = append(f.actors, req.Header().Get(auditlog.ActorHeader))
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -105,6 +110,7 @@ func (f *fakeTrust) ListRegistries(context.Context, *connect.Request[trustv1.Lis
 }
 
 func (f *fakeTrust) RemoveRegistry(_ context.Context, req *connect.Request[trustv1.RemoveRegistryRequest]) (*connect.Response[trustv1.RemoveRegistryResponse], error) {
+	f.actors = append(f.actors, req.Header().Get(auditlog.ActorHeader))
 	for i, r := range f.registries {
 		if r.GetId() == req.Msg.GetId() {
 			f.registries = append(f.registries[:i], f.registries[i+1:]...)
@@ -115,6 +121,7 @@ func (f *fakeTrust) RemoveRegistry(_ context.Context, req *connect.Request[trust
 }
 
 func (f *fakeTrust) SyncRegistry(_ context.Context, req *connect.Request[trustv1.SyncRegistryRequest]) (*connect.Response[trustv1.SyncRegistryResponse], error) {
+	f.actors = append(f.actors, req.Header().Get(auditlog.ActorHeader))
 	for _, r := range f.registries {
 		if r.GetId() == req.Msg.GetId() {
 			return connect.NewResponse(&trustv1.SyncRegistryResponse{Registry: r}), nil
@@ -1116,5 +1123,38 @@ func TestTrustRegistryRPCsNeedARegistry(t *testing.T) {
 	}
 	if _, err := svc.SyncTrustRegistry(ctx, request(h, &adminv1.SyncTrustRegistryRequest{})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("sync = %v", err)
+	}
+}
+
+// TestTrustChangesNameTheAdmin sends the actor of each trust change to
+// the registry, so the audit log of the registry names the admin too
+// (ADR-039 decision 1).
+func TestTrustChangesNameTheAdmin(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	entry := &trustv1.TrustEntry{
+		Identifier:  &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_Did{Did: "did:web:issuer.example"}},
+		DisplayName: "Issuer", Role: commonv1.Role_ROLE_ISSUER, Status: trustv1.Status_STATUS_PENDING,
+	}
+	if _, err := h.svc.UpsertTrustEntry(ctx, request(h, &adminv1.UpsertTrustEntryRequest{Entry: entry})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.ApproveTrustEntry(ctx, request(h, &adminv1.ApproveTrustEntryRequest{Identifier: entry.GetIdentifier()})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.DeleteTrustEntry(ctx, request(h, &adminv1.DeleteTrustEntryRequest{Identifier: entry.GetIdentifier()})); err != nil {
+		t.Fatal(err)
+	}
+	actions := auditActions(t, h, "admin.UpsertTrustEntry")
+	if len(actions) != 1 || actions[0].Actor == "" {
+		t.Fatalf("admin records = %+v", actions)
+	}
+	if len(h.trust.actors) != 3 {
+		t.Fatalf("actors = %q", h.trust.actors)
+	}
+	for _, a := range h.trust.actors {
+		if a != actions[0].Actor {
+			t.Errorf("actor %q, want %q", a, actions[0].Actor)
+		}
 	}
 }

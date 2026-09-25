@@ -35,6 +35,9 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_VERIFIER_RESULTS_POLICY_TIMEOUT` | The time limit of one policy service call. | `10s` |
 | `VCA_VERIFIER_RESULTS_MAX_PASTE_BYTES` | The maximum size of a pasted presentation. | `1048576` |
 | `VCA_VERIFIER_RESULTS_PAGE_SIZE_MAX` | The maximum page size of `Query`. | `50` |
+| `VCA_VERIFIER_RESULTS_AUDIT_DIR` | The directory of the audit store. | empty: in memory |
+| `VCA_VERIFIER_RESULTS_ADMIN_JWKS_URL` | The key set of the admin service. An admin session it signed opens the audit store. | empty: no admin session is accepted |
+| `VCA_VERIFIER_RESULTS_ADMIN_TOKEN` | The admin service token. It opens the audit store too. | empty: no token is accepted |
 | `VCA_VERIFIER_RESULTS_AUTH_JWKS_URL` | The JWKS URL of `verifier-auth`. The staff pages accept only a session it signed. | empty: the staff pages accept no session |
 | `VCA_VERIFIER_RESULTS_AUTH_JWKS_FILE` | A JWKS file that replaces the URL, for a test. | empty |
 | `VCA_VERIFIER_RESULTS_AUTH_JWKS_TTL` | How long a fetched key set stays fresh. | `10m` |

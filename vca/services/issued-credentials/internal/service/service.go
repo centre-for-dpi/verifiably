@@ -10,17 +10,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/export"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/head"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/record"
@@ -61,7 +66,20 @@ type Options struct {
 	ChunkSize int
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// Audit keeps one event for each revoke, suspend, and reinstate
+	// (ADR-039 decision 1). Nil keeps the events in memory.
+	Audit *auditlog.Log
 }
+
+// Name is the service name that every audit event carries.
+const Name = "issued-credentials"
+
+// The audit actions of the service.
+const (
+	ActionRevoke    = "issued.Revoke"
+	ActionSuspend   = "issued.Suspend"
+	ActionReinstate = "issued.Reinstate"
+)
 
 // Service is the IssuedService handler.
 type Service struct {
@@ -83,7 +101,24 @@ func New(opts Options) (*Service, error) {
 	if opts.ChunkSize <= 0 {
 		opts.ChunkSize = export.ChunkSize
 	}
+	if opts.Audit == nil {
+		// A memory store with a clock cannot fail to open.
+		opts.Audit = anyval.Must(auditlog.New(sharedstore.Memory(), opts.Now))
+	}
 	return &Service{opts: opts}, nil
+}
+
+// Audit returns the audit store of the service.
+func (s *Service) Audit() *auditlog.Log { return s.opts.Audit }
+
+// audit records one status change. The detail names the new status and
+// never the reason, which is free text of the operator.
+func (s *Service) audit(ctx context.Context, h http.Header, action, id string, status issuedv1.Status, err error) {
+	detail := ""
+	if err == nil {
+		detail = msg.T("audit.issued.status", string(StatusOf(status)))
+	}
+	s.opts.Audit.Record(ctx, h, action, id, detail, err)
 }
 
 // Ready reports whether the service can take traffic.
@@ -199,8 +234,20 @@ func (s *Service) Get(_ context.Context, req *connect.Request[issuedv1.GetReques
 // Revoke sets the status of one credential to revoked or suspended. It
 // calls the status service first and records the reason
 // (ADR-017 decision 3).
-func (s *Service) Revoke(ctx context.Context, req *connect.Request[issuedv1.RevokeRequest]) (*connect.Response[issuedv1.RevokeResponse], error) {
+// The audit log records the change, also when it fails.
+func (s *Service) Revoke(ctx context.Context, req *connect.Request[issuedv1.RevokeRequest]) (res *connect.Response[issuedv1.RevokeResponse], err error) {
 	want := StatusOf(req.Msg.GetStatus())
+	defer func() {
+		action := ActionRevoke
+		if want == record.Suspended {
+			action = ActionSuspend
+		}
+		var status issuedv1.Status
+		if res != nil {
+			status = res.Msg.GetRecord().GetStatus()
+		}
+		s.audit(ctx, req.Header(), action, req.Msg.GetId(), status, err)
+	}()
 	if want != record.Revoked && want != record.Suspended {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the status must be STATUS_REVOKED or STATUS_SUSPENDED"))
@@ -212,8 +259,16 @@ func (s *Service) Revoke(ctx context.Context, req *connect.Request[issuedv1.Revo
 	return connect.NewResponse(&issuedv1.RevokeResponse{Record: ToProto(r)}), nil
 }
 
-// Reinstate clears a suspension and records the reason.
-func (s *Service) Reinstate(ctx context.Context, req *connect.Request[issuedv1.ReinstateRequest]) (*connect.Response[issuedv1.ReinstateResponse], error) {
+// Reinstate clears a suspension and records the reason. The audit log
+// records the change, also when it fails.
+func (s *Service) Reinstate(ctx context.Context, req *connect.Request[issuedv1.ReinstateRequest]) (res *connect.Response[issuedv1.ReinstateResponse], err error) {
+	defer func() {
+		var status issuedv1.Status
+		if res != nil {
+			status = res.Msg.GetRecord().GetStatus()
+		}
+		s.audit(ctx, req.Header(), ActionReinstate, req.Msg.GetId(), status, err)
+	}()
 	current, err := s.get(req.Msg.GetId())
 	if err != nil {
 		return nil, err

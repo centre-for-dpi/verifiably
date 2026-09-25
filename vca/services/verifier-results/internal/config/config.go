@@ -52,6 +52,15 @@ type Config struct {
 	MaxPasteBytes int64 `env:"MAX_PASTE_BYTES" default:"1048576"`
 	// PageSizeMax caps the page size of Query.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+	// AuditDir keeps the audit events of the stored results, one file
+	// for each event (ADR-039). Empty keeps them in memory.
+	AuditDir string `env:"AUDIT_DIR"`
+	// AdminJWKSURL is the key set of the admin service. An admin session
+	// it signed opens the audit store. Empty accepts no session.
+	AdminJWKSURL string `env:"ADMIN_JWKS_URL"`
+	// AdminToken is the admin service token. It opens the audit store
+	// too. Empty accepts no token.
+	AdminToken string `env:"ADMIN_TOKEN" secret:"true"`
 	// Auth guards the staff pages with a session of verifier-auth
 	// (ADR-036 decision 2). Its variables carry the same prefix. The
 	// citizen check page stays open.

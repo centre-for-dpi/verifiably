@@ -119,6 +119,23 @@ The status client is a `vca.status.v1.StatusService` Connect client. The
 deployment sets its base URL. Without a URL the service reports a failed
 precondition, so an operator sees the missing setting at once.
 
+## Audit log
+
+The service writes one audit event for each revoke, suspend, and reinstate (ADR-039 decision 1).
+The event names the actor, the action, the target, the outcome, and the
+request id. It never holds a claim value. A failure names the Connect
+code of the answer, never the text of the error. The service checks no
+session itself, so the actor is the one its caller names in the
+`X-Vca-Actor` header.
+
+The events live in an append only store under `VCA_ISSUED_AUDIT_DIR`.
+The CLI sets it to `/data/audit`. The service serves the store as
+`vca.audit.v1.AuditService` on the internal network. Only the admin
+opens it: an admin session that the key set at `VCA_ISSUED_ADMIN_JWKS_URL`
+signed, or the token in `VCA_ISSUED_ADMIN_TOKEN`. The pair proxy does not
+route the service. `SetRetention` keeps the events of the last days the
+admin sets and removes older ones.
+
 ## List, search, and export
 
 `List` returns records newest first, in pages. `Search` matches the text

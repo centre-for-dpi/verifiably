@@ -111,6 +111,23 @@ Connect client. The file `services/issuance/internal/clients/recorder.go`
 holds that code alone. A deployment without the issued credentials
 service keeps the record in the log.
 
+## Audit log
+
+The service writes one audit event for each issue, alone or in a batch (ADR-039 decision 1).
+The event names the actor, the action, the target, the outcome, and the
+request id. It never holds a claim value. A failure names the Connect
+code of the answer, never the text of the error. The service checks no
+session itself, so the actor is the one its caller names in the
+`X-Vca-Actor` header.
+
+The events live in an append only store under `VCA_ISSUANCE_AUDIT_DIR`.
+The CLI sets it to `/data/audit`. The service serves the store as
+`vca.audit.v1.AuditService` on the internal network. Only the admin
+opens it: an admin session that the key set at `VCA_ISSUANCE_ADMIN_JWKS_URL`
+signed, or the token in `VCA_ISSUANCE_ADMIN_TOKEN`. The pair proxy does not
+route the service. `SetRetention` keeps the events of the last days the
+admin sets and removes older ones.
+
 ## Tests
 
 Every package has unit tests with fakes. The service tests drive the

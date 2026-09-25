@@ -39,7 +39,9 @@
 //	POST /keys/stack/delete      remove one client credential of a stack tenant
 //	GET  /notifications          the delivery channels and the stack webhooks
 //	POST /notifications/webhook  set or clear the webhook of a stack tenant
-//	GET  /audit                  the audit log with filters
+//	GET  /audit                  the audit log of every live service, with filters
+//	GET  /audit/export.csv       the events that match the filters as CSV
+//	POST /audit/retention        set the retention days of every audit store
 //	GET  /help                   every RPC with its help text
 //
 // Every browser POST carries a synchronizer token and the session
@@ -53,7 +55,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -66,6 +67,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/auditfed"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/helptext"
@@ -113,6 +115,12 @@ type Options struct {
 	// through the guard against server side request forgery. Nil builds
 	// a fetcher that reaches public https hosts only.
 	Fetcher *fetchguard.Fetcher
+	// Audit merges the audit store of this service with the stores of
+	// every live peer (ADR-039 decision 2). Nil turns the audit pages off.
+	Audit *auditfed.Federation
+	// Retention returns the retention days of the audit store of this
+	// service. Nil shows no current value.
+	Retention func(ctx context.Context) (int, error)
 }
 
 // Portal serves the admin pages.
@@ -178,7 +186,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	p.registerProviders(mux)
 	p.registerKeys(mux)
 	p.registerNotifications(mux)
-	mux.HandleFunc("GET "+at+"/audit", p.guarded(p.auditLog))
+	p.registerAudit(mux)
 }
 
 // session is the caller of one page.
@@ -340,6 +348,8 @@ var Notices = map[string]components.Toast{
 	"webhook-saved":            {Level: "ok", Text: msg.T("admin.notifications.webhook.saved")},
 	"webhook-cleared":          {Level: "warn", Text: msg.T("admin.notifications.webhook.cleared")},
 	"signed-out":               {Level: "info", Text: "You are signed out."},
+	"retention-saved":          {Level: "ok", Text: msg.T("admin.audit.retention.saved")},
+	"retention-partial":        {Level: "warn", Text: msg.T("admin.audit.retention.partial")},
 }
 
 // notice returns the toast of a notice query value.
@@ -401,60 +411,6 @@ func displayName(c oidcflow.Claims) string {
 		return c.Name
 	}
 	return c.Subject
-}
-
-// auditLog renders the audit log with its filters (ADR-009 decision 6).
-func (p *Portal) auditLog(w http.ResponseWriter, r *http.Request, s session) error {
-	q := r.URL.Query()
-	res, err := p.opts.Client.QueryAuditLog(r.Context(), call(s, &adminv1.QueryAuditLogRequest{
-		Actor: strings.TrimSpace(q.Get("actor")), Action: strings.TrimSpace(q.Get("action")),
-		Page: &commonv1.Pagination{PageToken: q.Get("page_token")},
-	}))
-	if err != nil {
-		return err
-	}
-	b := p.blocks()
-	rows := make([]components.Row, 0, len(res.Msg.GetRecords()))
-	for _, rec := range res.Msg.GetRecords() {
-		status, text := "bad", "Failed"
-		if rec.GetOk() {
-			status, text = "ok", "Done"
-		}
-		rows = append(rows, components.Row{
-			{Text: rec.GetAt().AsTime().UTC().Format(TimeFormat)},
-			{Text: rec.GetActor()},
-			{Text: rec.GetAction()},
-			{Text: rec.GetTarget()},
-			{Text: rec.GetRequestId()},
-			{HTML: b.add("badge", components.Badge{Status: status, Text: text})},
-		})
-	}
-	filters := getForm(p.opts.Prefix+"/audit",
-		b.add("field", components.Field{ID: "actor", Label: "Actor", Value: q.Get("actor")}),
-		b.add("field", components.Field{ID: "action", Label: "Action", Value: q.Get("action")}),
-		b.add("button", components.Button{Text: "Apply filters", Type: "submit"}),
-	)
-	table := b.add("table", components.Table{
-		ID: "audit", Caption: fmt.Sprintf("Audit records, %d match", res.Msg.GetPage().GetTotalSize()),
-		Columns: []string{"Time", "Actor", "Action", "Target", "Request id", "Result"}, Rows: rows,
-		Empty: "No record matches the filters.",
-	})
-	var more template.HTML
-	if token := res.Msg.GetPage().GetNextPageToken(); token != "" {
-		more = b.add("button", components.Button{
-			Text: "Next page",
-			Href: p.opts.Prefix + "/audit?page_token=" + queryEscape(token) +
-				"&actor=" + queryEscape(q.Get("actor")) + "&action=" + queryEscape(q.Get("action")),
-		})
-	}
-	if b.err != nil {
-		return b.err
-	}
-	return p.render(w, r, s, components.Page{
-		Title:       "Audit log",
-		Description: "Every admin action with its actor, its action, and its request id.",
-		Content:     components.Join(filters, table, more),
-	})
 }
 
 // help renders the help text of every RPC and every command from the
@@ -539,9 +495,6 @@ func (p *Portal) redirect(w http.ResponseWriter, r *http.Request, path, code str
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, p.opts.Prefix+path+"?notice="+code, http.StatusSeeOther)
 }
-
-// queryEscape escapes one query value.
-func queryEscape(value string) string { return url.QueryEscape(value) }
 
 // timestamp returns the protobuf time of t.
 func timestamp(t time.Time) *timestamppb.Timestamp { return timestamppb.New(t) }

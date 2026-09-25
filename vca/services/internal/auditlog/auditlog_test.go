@@ -5,6 +5,7 @@ package auditlog_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -423,5 +424,26 @@ func TestWriteIgnoresANilLogAndAFault(t *testing.T) {
 	page, err := l.Query(context.Background(), auditlog.Filter{})
 	if err != nil || len(page.Records) != 1 {
 		t.Fatalf("Query = %+v, %v", page, err)
+	}
+}
+
+// TestNewIDKeepsTheOrderInsideAMillisecond sorts two events of one
+// millisecond by time, so a page that ends inside that millisecond
+// loses no event. An id of the older form, with milliseconds only,
+// still sorts before every newer id of its millisecond.
+func TestNewIDKeepsTheOrderInsideAMillisecond(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		early := auditlog.NewID(start.Add(10 * time.Microsecond))
+		late := auditlog.NewID(start.Add(900 * time.Microsecond))
+		if early >= late {
+			t.Fatalf("%q is not before %q", early, late)
+		}
+	}
+	old := fmt.Sprintf("%015d-AAAAAAAAAAAA", start.UnixMilli())
+	if newer := auditlog.NewID(start); old >= newer {
+		t.Fatalf("the old id %q is not before %q", old, newer)
+	}
+	if next := auditlog.NewID(start.Add(time.Millisecond)); next <= old {
+		t.Fatalf("%q is not after the old id %q", next, old)
 	}
 }

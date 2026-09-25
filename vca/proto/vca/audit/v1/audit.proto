@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Federated audit log (ADR-039). Each service that changes state keeps its
-// own append only audit store and serves it with this service. The admin
+// own append only audit store and serves it with this service. No call
+// changes an event. Only the retention removes old events. The admin
 // portal queries every live peer and merges the answers in time order.
 // Only the admin session and the admin service token open the service.
 // An event carries no claim value (ADR-039 decision 3).
@@ -16,6 +17,11 @@ service AuditService {
   // Query returns the events that match a filter, newest first.
   rpc Query(QueryRequest) returns (QueryResponse) {
     option (vca.common.v1.description) = "Returns the audit events that match a filter, newest first.";
+  }
+  // SetRetention keeps the events of the last given days. The service
+  // removes older events now and again as time passes.
+  rpc SetRetention(SetRetentionRequest) returns (SetRetentionResponse) {
+    option (vca.common.v1.description) = "Sets the retention days of the audit store and removes older events.";
   }
 }
 
@@ -76,4 +82,18 @@ message QueryResponse {
   repeated AuditEvent events = 1;
   // The page description.
   vca.common.v1.PageResult page = 2;
+}
+
+// SetRetentionRequest names the retention of the store.
+message SetRetentionRequest {
+  // The number of days to keep. Zero keeps every event.
+  int32 days = 1;
+}
+
+// SetRetentionResponse reports the new retention.
+message SetRetentionResponse {
+  // The number of days the store keeps now.
+  int32 days = 1;
+  // The number of events that the call removed.
+  int64 removed = 2;
 }

@@ -61,6 +61,21 @@ func (h Handler) Query(ctx context.Context, req *connect.Request[auditv1.QueryRe
 	return connect.NewResponse(res), nil
 }
 
+// SetRetention implements AuditServiceHandler.
+func (h Handler) SetRetention(ctx context.Context, req *connect.Request[auditv1.SetRetentionRequest]) (*connect.Response[auditv1.SetRetentionResponse], error) {
+	if err := h.authorize(ctx, req.Header()); err != nil {
+		return nil, err
+	}
+	removed, err := h.Log.SetRetention(ctx, int(req.Msg.GetDays()))
+	switch {
+	case errors.Is(err, ErrRetention):
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	case err != nil:
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&auditv1.SetRetentionResponse{Days: req.Msg.GetDays(), Removed: int64(removed)}), nil
+}
+
 // authorize runs the authorizer and maps a refusal to a Connect error.
 func (h Handler) authorize(ctx context.Context, header http.Header) error {
 	if h.Authorize == nil {

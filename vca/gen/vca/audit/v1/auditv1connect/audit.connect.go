@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Federated audit log (ADR-039). Each service that changes state keeps its
-// own append only audit store and serves it with this service. The admin
+// own append only audit store and serves it with this service. No call
+// changes an event. Only the retention removes old events. The admin
 // portal queries every live peer and merges the answers in time order.
 // Only the admin session and the admin service token open the service.
 // An event carries no claim value (ADR-039 decision 3).
@@ -42,12 +43,18 @@ const (
 const (
 	// AuditServiceQueryProcedure is the fully-qualified name of the AuditService's Query RPC.
 	AuditServiceQueryProcedure = "/vca.audit.v1.AuditService/Query"
+	// AuditServiceSetRetentionProcedure is the fully-qualified name of the AuditService's SetRetention
+	// RPC.
+	AuditServiceSetRetentionProcedure = "/vca.audit.v1.AuditService/SetRetention"
 )
 
 // AuditServiceClient is a client for the vca.audit.v1.AuditService service.
 type AuditServiceClient interface {
 	// Query returns the events that match a filter, newest first.
 	Query(context.Context, *connect.Request[v1.QueryRequest]) (*connect.Response[v1.QueryResponse], error)
+	// SetRetention keeps the events of the last given days. The service
+	// removes older events now and again as time passes.
+	SetRetention(context.Context, *connect.Request[v1.SetRetentionRequest]) (*connect.Response[v1.SetRetentionResponse], error)
 }
 
 // NewAuditServiceClient constructs a client for the vca.audit.v1.AuditService service. By default,
@@ -67,12 +74,19 @@ func NewAuditServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(auditServiceMethods.ByName("Query")),
 			connect.WithClientOptions(opts...),
 		),
+		setRetention: connect.NewClient[v1.SetRetentionRequest, v1.SetRetentionResponse](
+			httpClient,
+			baseURL+AuditServiceSetRetentionProcedure,
+			connect.WithSchema(auditServiceMethods.ByName("SetRetention")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // auditServiceClient implements AuditServiceClient.
 type auditServiceClient struct {
-	query *connect.Client[v1.QueryRequest, v1.QueryResponse]
+	query        *connect.Client[v1.QueryRequest, v1.QueryResponse]
+	setRetention *connect.Client[v1.SetRetentionRequest, v1.SetRetentionResponse]
 }
 
 // Query calls vca.audit.v1.AuditService.Query.
@@ -80,10 +94,18 @@ func (c *auditServiceClient) Query(ctx context.Context, req *connect.Request[v1.
 	return c.query.CallUnary(ctx, req)
 }
 
+// SetRetention calls vca.audit.v1.AuditService.SetRetention.
+func (c *auditServiceClient) SetRetention(ctx context.Context, req *connect.Request[v1.SetRetentionRequest]) (*connect.Response[v1.SetRetentionResponse], error) {
+	return c.setRetention.CallUnary(ctx, req)
+}
+
 // AuditServiceHandler is an implementation of the vca.audit.v1.AuditService service.
 type AuditServiceHandler interface {
 	// Query returns the events that match a filter, newest first.
 	Query(context.Context, *connect.Request[v1.QueryRequest]) (*connect.Response[v1.QueryResponse], error)
+	// SetRetention keeps the events of the last given days. The service
+	// removes older events now and again as time passes.
+	SetRetention(context.Context, *connect.Request[v1.SetRetentionRequest]) (*connect.Response[v1.SetRetentionResponse], error)
 }
 
 // NewAuditServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -99,10 +121,18 @@ func NewAuditServiceHandler(svc AuditServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(auditServiceMethods.ByName("Query")),
 		connect.WithHandlerOptions(opts...),
 	)
+	auditServiceSetRetentionHandler := connect.NewUnaryHandler(
+		AuditServiceSetRetentionProcedure,
+		svc.SetRetention,
+		connect.WithSchema(auditServiceMethods.ByName("SetRetention")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.audit.v1.AuditService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuditServiceQueryProcedure:
 			auditServiceQueryHandler.ServeHTTP(w, r)
+		case AuditServiceSetRetentionProcedure:
+			auditServiceSetRetentionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -114,4 +144,8 @@ type UnimplementedAuditServiceHandler struct{}
 
 func (UnimplementedAuditServiceHandler) Query(context.Context, *connect.Request[v1.QueryRequest]) (*connect.Response[v1.QueryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.audit.v1.AuditService.Query is not implemented"))
+}
+
+func (UnimplementedAuditServiceHandler) SetRetention(context.Context, *connect.Request[v1.SetRetentionRequest]) (*connect.Response[v1.SetRetentionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.audit.v1.AuditService.SetRetention is not implemented"))
 }

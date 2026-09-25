@@ -12,6 +12,7 @@ import (
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/offers"
 )
 
@@ -25,6 +26,7 @@ func (s *Service) IssueBatch(
 	stream *connect.ServerStream[issuancev1.IssueBatchResponse],
 ) error {
 	msg := req.Msg
+	ctx = auditlog.WithActor(ctx, auditlog.ActorFrom(req.Header()))
 	items, err := s.batchItems(ctx, msg)
 	if err != nil {
 		return err

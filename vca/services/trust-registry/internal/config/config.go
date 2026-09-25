@@ -66,6 +66,15 @@ type Config struct {
 	// FederationTick is how often the service looks for registries whose
 	// refresh interval passed.
 	FederationTick time.Duration `env:"FEDERATION_TICK" default:"1m"`
+	// AuditDir keeps the audit events of the trust changes, one file for
+	// each event (ADR-039). Empty keeps them in memory.
+	AuditDir string `env:"AUDIT_DIR"`
+	// AdminJWKSURL is the key set of the admin service. An admin session
+	// it signed opens the audit store. Empty accepts no session.
+	AdminJWKSURL string `env:"ADMIN_JWKS_URL"`
+	// AdminToken is the admin service token. It opens the audit store
+	// too. Empty accepts no token.
+	AdminToken string `env:"ADMIN_TOKEN" secret:"true"`
 
 	// Issuer identifies the registry operator in the lists.
 	Issuer publish.Issuer

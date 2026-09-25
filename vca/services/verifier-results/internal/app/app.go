@@ -17,6 +17,8 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
@@ -74,12 +76,17 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		}
 	}
 	st := results.New(kv, nil)
+	events, err := auditlog.Open(cfg.AuditDir, deps.Now)
+	if err != nil {
+		return nil, err
+	}
 	svc, err := service.New(service.Options{
 		Store:        st,
 		Retention:    cfg.Retention,
 		RawRetention: cfg.RawRetention,
 		PageSizeMax:  cfg.PageSizeMax,
 		Now:          deps.Now,
+		Audit:        events,
 	})
 	if err != nil {
 		return nil, err
@@ -122,6 +129,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	mux := http.NewServeMux()
 	mux.Handle(resultsv1connect.NewResultsServiceHandler(svc))
+	auditPath, auditHandler := auditlog.NewHandler(auditlog.Handler{
+		Log: events, Service: service.Name, Authorize: oidcflow.AuditAuthorizer(cfg.AdminToken, cfg.AdminJWKSURL, nil),
+	})
+	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	mux.Handle("GET "+ui.Prefix, assets)
 	// The staff pages sit behind the guard. The citizen check page
 	// stays open (ADR-036 decision 2).

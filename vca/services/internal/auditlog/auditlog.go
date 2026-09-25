@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
@@ -118,10 +119,16 @@ type Page struct {
 	TotalSize int
 }
 
-// Log is the append only log.
+// Log is the append only log. Only the retention removes a record.
 type Log struct {
 	kv  store.KeyValue
 	now func() time.Time
+
+	// mu guards the retention setting and the time of the last prune.
+	mu        sync.Mutex
+	days      int
+	known     bool
+	lastPrune time.Time
 }
 
 // New returns a log over kv. A nil clock selects time.Now.
@@ -165,6 +172,7 @@ func (l *Log) Append(ctx context.Context, e Entry) (Record, error) {
 	if err := l.kv.CompareAndSwap(ctx, Prefix+rec.ID, nil, raw); err != nil {
 		return Record{}, fmt.Errorf("audit: %w", err)
 	}
+	l.pruneDue(ctx)
 	return rec, nil
 }
 
@@ -249,12 +257,17 @@ func Matches(rec Record, f Filter) bool {
 }
 
 // NewID returns a sortable record id for at. The id is the time in
-// milliseconds with 15 digits, a dash, and 12 random characters.
+// milliseconds with 15 digits, the nanoseconds inside that millisecond
+// with 6 digits, a dash, and 12 random characters. An id of the older
+// form has no nanosecond part. It still sorts before every newer id of
+// its millisecond, because a dash sorts before a digit.
 func NewID(at time.Time) string {
 	b := make([]byte, 9)
 	// crypto/rand cannot fail on a platform that Go supports.
 	if _, err := rand.Read(b); err != nil {
 		panic(err)
 	}
-	return fmt.Sprintf("%015d-%s", at.UTC().UnixMilli(), base64.RawURLEncoding.EncodeToString(b))
+	ms := at.UTC().UnixMilli()
+	sub := at.UTC().UnixNano() - ms*int64(time.Millisecond)
+	return fmt.Sprintf("%015d%06d-%s", ms, sub, base64.RawURLEncoding.EncodeToString(b))
 }

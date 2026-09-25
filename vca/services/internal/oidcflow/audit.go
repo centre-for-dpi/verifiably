@@ -58,3 +58,14 @@ func failureKey(err error) string {
 		return "audit.reason.other"
 	}
 }
+
+// AuditAuthorizer opens the audit store of a service to the admin only
+// (ADR-039): the admin service token, or an admin session that the
+// admin key set at jwksURL signed. An empty token or URL allows nothing
+// through that path. A nil cache makes one with the defaults.
+func AuditAuthorizer(token, jwksURL string, cache *Cache) Authorizer {
+	return AnyAuthorizer(
+		BearerAuthorizer(token),
+		JWTAuthorizer{JWKSURL: jwksURL, Audience: AdminAudience, Cache: cache}.Authorize(),
+	)
+}

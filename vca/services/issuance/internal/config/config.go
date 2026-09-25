@@ -67,6 +67,15 @@ type Config struct {
 	BatchWorkers int `env:"BATCH_WORKERS" default:"4"`
 	// PageSizeMax caps a list page.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+	// AuditDir keeps the audit events of the issues, one file for each
+	// event (ADR-039). Empty keeps them in memory.
+	AuditDir string `env:"AUDIT_DIR"`
+	// AdminJWKSURL is the key set of the admin service. An admin session
+	// it signed opens the audit store. Empty accepts no session.
+	AdminJWKSURL string `env:"ADMIN_JWKS_URL"`
+	// AdminToken is the admin service token. It opens the audit store
+	// too. Empty accepts no token.
+	AdminToken string `env:"ADMIN_TOKEN" secret:"true"`
 }
 
 // Load reads the settings with getenv, for example os.Getenv.

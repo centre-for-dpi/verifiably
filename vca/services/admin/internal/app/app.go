@@ -23,6 +23,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
+	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/auditfed"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/fanout"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/health"
@@ -165,8 +166,17 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	fedOpts := auditfed.Options{Local: svc.Audit(), Self: cfg.PublicURL, Client: deps.Client}
+	if prober != nil {
+		fedOpts.Snapshot = prober.Snapshot
+	}
+	federation, err := auditfed.New(fedOpts)
+	if err != nil {
+		return nil, err
+	}
 	pagesOpts := portal.Options{
 		Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit,
+		Audit: federation, Retention: auditLog.Retention,
 		LandingURL: cfg.LandingURL, PublicURL: cfg.PublicURL,
 		Fetcher: fetchguard.New(fetchguard.Options{
 			Guard:  fetchguard.Guard{AllowPrivateNetwork: cfg.AllowPrivateNetwork, AllowPlainHTTP: cfg.AllowPlainHTTP},
@@ -195,6 +205,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 func (a *App) mount(assets http.Handler) {
 	path, handler := adminv1connect.NewAdminServiceHandler(a.Service)
 	a.Mux.Handle(path, oidcflow.RejectQueryTokens(handler))
+	auditPath, auditHandler := auditlog.NewHandler(a.Service.Audit())
+	a.Mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	a.Mux.Handle("GET /.well-known/jwks.json", a.Login.Signer().JWKSHandler())
 	handlers := a.Login.Handlers()
 	a.Mux.Handle("GET /auth/login", oidcflow.RejectQueryTokens(http.HandlerFunc(a.Login.Login)))

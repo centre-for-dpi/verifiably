@@ -68,6 +68,8 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18002}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - issuer-waltid-issuance-data:/data
   issuer-waltid-issued-credentials:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issued-credentials:${VCA_VERSION:-latest}
@@ -182,6 +184,8 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18102}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - issuer-inji-issuance-data:/data
   issuer-inji-issued-credentials:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issued-credentials:${VCA_VERSION:-latest}
@@ -296,6 +300,8 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18202}:${VCA_PORTS_PORTAL:-8080}"
+    volumes:
+      - issuer-credebl-issuance-data:/data
   issuer-credebl-issued-credentials:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issued-credentials:${VCA_VERSION:-latest}
@@ -912,18 +918,21 @@ volumes:
   holder-waltid-wallet-auth-data:
   holder-waltid-wallet-portal-data:
   issuer-credebl-data-source-data:
+  issuer-credebl-issuance-data:
   issuer-credebl-issued-credentials-data:
   issuer-credebl-issuer-auth-data:
   issuer-credebl-schema-registry-data:
   issuer-credebl-status-bitstring-data:
   issuer-credebl-status-token-data:
   issuer-inji-data-source-data:
+  issuer-inji-issuance-data:
   issuer-inji-issued-credentials-data:
   issuer-inji-issuer-auth-data:
   issuer-inji-schema-registry-data:
   issuer-inji-status-bitstring-data:
   issuer-inji-status-token-data:
   issuer-waltid-data-source-data:
+  issuer-waltid-issuance-data:
   issuer-waltid-issued-credentials-data:
   issuer-waltid-issuer-auth-data:
   issuer-waltid-schema-registry-data:

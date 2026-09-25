@@ -146,6 +146,23 @@ Nobody edits the entries of an external registry here. `UpsertEntry` and
 `DeleteEntry` refuse an entity that an external registry names, and
 `ImportEtsi` skips it.
 
+## Audit log
+
+The service writes one audit event for each trust entry change and each registry change (ADR-039 decision 1).
+The event names the actor, the action, the target, the outcome, and the
+request id. It never holds a claim value. A failure names the Connect
+code of the answer, never the text of the error. The service checks no
+session itself, so the actor is the one its caller names in the
+`X-Vca-Actor` header.
+
+The events live in an append only store under `VCA_TRUST_AUDIT_DIR`.
+The CLI sets it to `/data/audit`. The service serves the store as
+`vca.audit.v1.AuditService` on the internal network. Only the admin
+opens it: an admin session that the key set at `VCA_TRUST_ADMIN_JWKS_URL`
+signed, or the token in `VCA_TRUST_ADMIN_TOKEN`. The pair proxy does not
+route the service. `SetRetention` keeps the events of the last days the
+admin sets and removes older ones.
+
 ## DID resolution
 
 `UpsertEntry` resolves the DID of the entry through `core/did` (ADR-011

@@ -17,11 +17,17 @@ import (
 )
 
 // AddRegistry federates with one external registry and reads it once.
-func (s *Service) AddRegistry(ctx context.Context, req *connect.Request[trustv1.AddRegistryRequest]) (*connect.Response[trustv1.AddRegistryResponse], error) {
+// The audit log records the change, also when it fails.
+func (s *Service) AddRegistry(ctx context.Context, req *connect.Request[trustv1.AddRegistryRequest]) (res *connect.Response[trustv1.AddRegistryResponse], err error) {
+	target := ""
+	defer func() {
+		s.opts.Audit.Record(ctx, req.Header(), ActionAddRegistry, target, req.Msg.GetRegistry().GetName(), err)
+	}()
 	r, err := s.opts.Federation.Add(ctx, registryFromProto(req.Msg.GetRegistry()))
 	if err != nil {
 		return nil, registryError(err)
 	}
+	target = r.ID
 	return connect.NewResponse(&trustv1.AddRegistryResponse{Registry: registryProto(r)}), nil
 }
 
@@ -40,7 +46,8 @@ func (s *Service) ListRegistries(context.Context, *connect.Request[trustv1.ListR
 }
 
 // RemoveRegistry stops the federation with one registry.
-func (s *Service) RemoveRegistry(_ context.Context, req *connect.Request[trustv1.RemoveRegistryRequest]) (*connect.Response[trustv1.RemoveRegistryResponse], error) {
+func (s *Service) RemoveRegistry(ctx context.Context, req *connect.Request[trustv1.RemoveRegistryRequest]) (res *connect.Response[trustv1.RemoveRegistryResponse], err error) {
+	defer func() { s.opts.Audit.Record(ctx, req.Header(), ActionRemoveRegistry, req.Msg.GetId(), "", err) }()
 	found, err := s.opts.Federation.Remove(req.Msg.GetId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -53,7 +60,8 @@ func (s *Service) RemoveRegistry(_ context.Context, req *connect.Request[trustv1
 
 // SyncRegistry reads one registry now. A failed read is not an RPC
 // error: the registry carries the reason in last_error.
-func (s *Service) SyncRegistry(ctx context.Context, req *connect.Request[trustv1.SyncRegistryRequest]) (*connect.Response[trustv1.SyncRegistryResponse], error) {
+func (s *Service) SyncRegistry(ctx context.Context, req *connect.Request[trustv1.SyncRegistryRequest]) (res *connect.Response[trustv1.SyncRegistryResponse], err error) {
+	defer func() { s.opts.Audit.Record(ctx, req.Header(), ActionSyncRegistry, req.Msg.GetId(), "", err) }()
 	r, err := s.opts.Federation.Sync(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, registryError(err)

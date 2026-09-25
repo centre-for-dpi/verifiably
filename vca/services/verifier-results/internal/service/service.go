@@ -11,14 +11,20 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/export"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/query"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/results"
@@ -42,7 +48,16 @@ type Options struct {
 	PageSizeMax int
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// Audit keeps one event for each stored result (ADR-039 decision
+	// 1). Nil keeps the events in memory.
+	Audit *auditlog.Log
 }
+
+// Name is the service name that every audit event carries.
+const Name = "verifier-results"
+
+// ActionStore is the audit action of a stored result.
+const ActionStore = "results.Store"
 
 // Service is the ResultsService handler.
 type Service struct {
@@ -67,15 +82,32 @@ func New(opts Options) (*Service, error) {
 	if opts.RawRetention <= 0 || opts.RawRetention > opts.Retention {
 		return nil, errors.New("service: the raw retention window must be positive and not longer than the retention window")
 	}
+	if opts.Audit == nil {
+		// A memory store with a clock cannot fail to open.
+		opts.Audit = anyval.Must(auditlog.New(store.Memory(), opts.Now))
+	}
 	return &Service{opts: opts}, nil
 }
+
+// Audit returns the audit store of the service.
+func (s *Service) Audit() *auditlog.Log { return s.opts.Audit }
 
 // Ready reports whether the service can take traffic.
 func (s *Service) Ready() bool { return s != nil && s.opts.Store != nil }
 
-// Store writes one result (ADR-025 decision 1).
+// Store writes one result (ADR-025 decision 1). The audit log records
+// the result id and the verdict, also when the store fails. It never
+// records a claim of the presentation.
 func (s *Service) Store(ctx context.Context, req *connect.Request[resultsv1.StoreRequest]) (
-	*connect.Response[resultsv1.StoreResponse], error) {
+	res *connect.Response[resultsv1.StoreResponse], err error) {
+	defer func() {
+		target, detail := "", ""
+		if res != nil {
+			target = res.Msg.GetResult().GetId()
+			detail = msg.T("audit.results.verdict", verdictName(res.Msg.GetResult().GetVerdict()))
+		}
+		s.opts.Audit.Record(ctx, req.Header(), ActionStore, target, detail, err)
+	}()
 	in := req.Msg.GetResult()
 	if in == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("service: the request carries no result"))
@@ -95,6 +127,11 @@ func (s *Service) Store(ctx context.Context, req *connect.Request[resultsv1.Stor
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&resultsv1.StoreResponse{Result: stored}), nil
+}
+
+// verdictName returns the short name of a verdict, for example valid.
+func verdictName(v policyv1.EvaluateResponse_Verdict) string {
+	return strings.ToLower(strings.TrimPrefix(v.String(), "VERDICT_"))
 }
 
 // Get returns one result.

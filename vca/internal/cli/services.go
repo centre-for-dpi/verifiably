@@ -192,6 +192,16 @@ func Catalog() []Service {
 	adminJWKS := func(env string) Link {
 		return Link{Env: env, Target: "admin", Path: "/.well-known/jwks.json", Kind: LinkURL}
 	}
+	// audit is the audit store of a service that records changes and
+	// serves them to the admin only (ADR-039 decision 1): the directory
+	// of the store and the admin key set that opens it.
+	audit := func(prefix string) ([]Link, FixedValue) {
+		return []Link{adminJWKS(prefix + "ADMIN_JWKS_URL")}, FixedValue{Env: prefix + "AUDIT_DIR", Value: "/data/audit"}
+	}
+	issuanceAudit, issuanceAuditDir := audit("VCA_ISSUANCE_")
+	issuedAudit, issuedAuditDir := audit("VCA_ISSUED_")
+	trustAudit, trustAuditDir := audit("VCA_TRUST_")
+	resultsAudit, resultsAuditDir := audit("VCA_VERIFIER_RESULTS_")
 	auth := Route{Match: "/auth/*"}
 	signIn := Route{Match: "/auth/*", Page: "Sign in"}
 	assets := Route{Match: "/static/*"}
@@ -240,20 +250,21 @@ func Catalog() []Service {
 				dpgURL("VCA_WALTID_VERIFIER_URL", commonv1.Role_ROLE_VERIFIER),
 			},
 			Routes: backendRoutes()},
-		{Name: "issuance", ListenEnv: "VCA_ISSUANCE_LISTEN", ExposedPort: 8080, Roles: issuer,
-			Links: []Link{
+		{Name: "issuance", ListenEnv: "VCA_ISSUANCE_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true,
+			Links: append([]Link{
 				{Env: "VCA_ISSUANCE_PUBLIC_URL", Kind: LinkPublicURL},
 				{Env: "VCA_ISSUANCE_ADAPTER_URL", Kind: LinkAdapterURL},
 				{Env: "VCA_ISSUANCE_SCHEMA_URL", Target: "schema-registry", Kind: LinkURL},
 				{Env: "VCA_ISSUANCE_STATUS_URL", Target: "status-bitstring", Kind: LinkURL},
 				{Env: "VCA_ISSUANCE_ISSUED_URL", Target: "issued-credentials", Kind: LinkURL},
 				{Env: "VCA_ISSUANCE_DATA_SOURCE_URL", Target: "data-source", Kind: LinkURL},
-			},
+			}, issuanceAudit...),
+			Fixed: []FixedValue{issuanceAuditDir},
 			// The rendered document of a citizen lives under the public URL.
 			Routes: []Route{rpc("vca.issuance.v1.IssuanceService"), {Match: "/issuance/pdf/*"}}},
 		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
-			Links:  []Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}},
-			Fixed:  []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}},
+			Links:  append([]Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}}, issuedAudit...),
+			Fixed:  []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}, issuedAuditDir},
 			Routes: []Route{rpc("vca.issued.v1.IssuedService"), {Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}}},
 		// The auth services draw the sign in chooser (ADR-035), so they
 		// read the theme file like every UI service.
@@ -316,11 +327,11 @@ func Catalog() []Service {
 			Fixed:  state("VCA_STATUS_TOKEN_STATE_DIR"),
 			Routes: []Route{{Match: "/status-token/*", Strip: true}}},
 		{Name: "trust-registry", ListenEnv: "VCA_TRUST_LISTEN", ExposedPort: 8080, Roles: admin, Stateful: true,
-			Links: []Link{
+			Links: append([]Link{
 				{Env: "VCA_TRUST_BASE_URL", Kind: LinkPublicURL, Path: "/trust-registry"},
 				signingKey("VCA_TRUST_SIGNING_KEY_FILE"),
-			},
-			Fixed: []FixedValue{{Env: "VCA_TRUST_STORE_FILE", Value: "/data/trust.json"}},
+			}, trustAudit...),
+			Fixed: []FixedValue{{Env: "VCA_TRUST_STORE_FILE", Value: "/data/trust.json"}, trustAuditDir},
 			// The registry serves all of /.well-known/, which the admin
 			// service needs for its JWKS, so the registry keeps a prefix.
 			Routes: []Route{{Match: "/trust-registry/*", Strip: true}}},
@@ -379,13 +390,13 @@ func Catalog() []Service {
 			Fixed:  state("VCA_VERIFIER_POLICY_STATE_DIR"),
 			Routes: []Route{rpc("vca.policy.v1.PolicyService")}},
 		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true, UI: true,
-			Links: []Link{
+			Links: append([]Link{
 				{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
 				staffJWKS("VCA_VERIFIER_RESULTS_AUTH_JWKS_URL", "verifier-auth"),
 				staffLogin("VCA_VERIFIER_RESULTS_LOGIN_URL"),
 				peers,
-			},
-			Fixed: state("VCA_VERIFIER_RESULTS_STATE_DIR"),
+			}, resultsAudit...),
+			Fixed: append(state("VCA_VERIFIER_RESULTS_STATE_DIR"), resultsAuditDir),
 			Routes: []Route{
 				rpc("vca.results.v1.ResultsService"),
 				{Match: "/portal/*", Page: "Verification results"}, {Match: "/verify/*", Page: "Citizen check"}, assets,
