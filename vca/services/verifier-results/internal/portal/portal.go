@@ -10,6 +10,7 @@
 //	                   and moves to /results/ with the query kept
 //	GET  /results/     the result list with filters and export links
 //	GET  /results/{id} the card list of one result
+//	GET  /results/{id}/report.pdf the PDF report of one result
 //	GET  /export       the CSV or JSON download of the filtered results
 //	GET  /cache/       the trust cache: age, counts, sources, and policy
 //	POST /cache/sync   Sync now: read the cache sources at once
@@ -24,12 +25,14 @@
 package portal
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -44,6 +47,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/export"
+	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/report"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -163,6 +167,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.overview))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/results/{$}", p.handle(p.list))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/results/{id}", p.handle(p.detail))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/results/{id}/report.pdf", p.handle(p.reportPDF))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/export", p.handle(p.download))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/cache/{$}", p.handle(p.cache))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/cache/sync", p.handle(p.syncNow))
@@ -212,13 +217,14 @@ func (p *Portal) render(w http.ResponseWriter, r *http.Request, current string, 
 func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 	filter, problem := filterOf(r.URL.Query())
 	var body []template.HTML
-	form, err := p.filterForm(r.URL.Query(), problem)
+	names := p.templateNames(r)
+	form, err := p.filterForm(r, names, problem)
 	if err != nil {
 		return err
 	}
 	body = append(body, form)
 	if problem == "" {
-		table, terr := p.resultTable(r.Context(), filter)
+		table, terr := p.resultTable(r.Context(), filter, names)
 		if terr != nil {
 			return terr
 		}
@@ -232,9 +238,15 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-// filterForm renders the query form and the export links.
-func (p *Portal) filterForm(values url.Values, problem string) (template.HTML, error) {
+// filterForm renders the query form and the export links. The query
+// and the issuer choices come from the stored results.
+func (p *Portal) filterForm(r *http.Request, names *savedQueries, problem string) (template.HTML, error) {
 	kit := p.opts.Cards.Kit()
+	values := r.URL.Query()
+	templates, issuers, err := p.choices(r.Context(), names)
+	if err != nil {
+		return "", err
+	}
 	fields := []components.Field{
 		{ID: "from", Label: msg.T("verifier.results.from.label"), Type: "date", Value: values.Get("from"),
 			Hint: msg.T("verifier.results.from.hint")},
@@ -242,19 +254,19 @@ func (p *Portal) filterForm(values url.Values, problem string) (template.HTML, e
 			Hint: msg.T("verifier.results.to.hint")},
 		{ID: "verdict", Label: msg.T("verifier.results.verdict.label"), Type: "select", Value: values.Get("verdict"),
 			Options: verdictOptions(values.Get("verdict"))},
-		{ID: "issuer", Label: msg.T("verifier.results.issuer.label"), Value: values.Get("issuer"),
-			Hint: msg.T("verifier.results.issuer.hint")},
-		{ID: "template", Label: msg.T("verifier.results.query.label"), Value: values.Get("template"),
-			Hint: msg.T("verifier.results.query.hint")},
+		{ID: "issuer", Label: msg.T("verifier.results.issuer.label"), Type: "select",
+			Options: selectOptions(issuers, values.Get("issuer"), msg.T("verifier.results.every_issuer.label"))},
+		{ID: "template", Label: msg.T("verifier.results.query.label"), Type: "select",
+			Options: selectOptions(templates, values.Get("template"), msg.T("verifier.results.every_query.label"))},
 	}
 	if problem != "" {
 		fields[0].Error = problem
 	}
 	parts := make([]template.HTML, 0, len(fields)+3)
 	for _, f := range fields {
-		html, err := kit.HTML("field", f)
-		if err != nil {
-			return "", err
+		html, ferr := kit.HTML("field", f)
+		if ferr != nil {
+			return "", ferr
 		}
 		parts = append(parts, html)
 	}
@@ -284,8 +296,75 @@ func (p *Portal) filterForm(values url.Values, problem string) (template.HTML, e
 	})
 }
 
+// choice is one value of a filter with its display text.
+type choice struct{ value, text string }
+
+// choices returns the queries and the issuers of the stored results,
+// each sorted by text.
+func (p *Portal) choices(ctx context.Context, names *savedQueries) ([]choice, []choice, error) {
+	all, err := p.opts.Service.QueryAll(ctx, &resultsv1.Filter{})
+	if err != nil {
+		return nil, nil, err
+	}
+	templates, issuers := map[string]string{}, map[string]string{}
+	for _, r := range all {
+		if id := r.GetTemplateId(); id != "" {
+			templates[id] = names.name(id)
+		}
+		for _, c := range r.GetCredentials() {
+			if c.GetIssuer() == "" {
+				continue
+			}
+			if issuers[c.GetIssuer()] == "" || c.GetIssuerName() != "" {
+				issuers[c.GetIssuer()] = cmp.Or(c.GetIssuerName(), c.GetIssuer())
+			}
+		}
+	}
+	return sorted(templates), sorted(issuers), nil
+}
+
+// sorted returns the choices of a map by text, then value.
+func sorted(m map[string]string) []choice {
+	out := make([]choice, 0, len(m))
+	for v, t := range m {
+		out = append(out, choice{value: v, text: t})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].text != out[j].text {
+			return out[i].text < out[j].text
+		}
+		return out[i].value < out[j].value
+	})
+	return out
+}
+
+// selectOptions returns the options of a filter select: every value
+// first, then the choices. A selected value outside the choices stays.
+func selectOptions(list []choice, selected, every string) []components.Option {
+	out := []components.Option{{Value: "", Text: every, Selected: selected == ""}}
+	found := selected == ""
+	for _, c := range list {
+		out = append(out, components.Option{Value: c.value, Text: c.text, Selected: c.value == selected})
+		found = found || c.value == selected
+	}
+	if !found {
+		out = append(out, components.Option{Value: selected, Text: selected, Selected: true})
+	}
+	return out
+}
+
+// issuerOf names the issuer of the first credential of a result.
+func issuerOf(r *resultsv1.VerificationResult) string {
+	for _, c := range r.GetCredentials() {
+		if c.GetIssuer() != "" {
+			return cmp.Or(c.GetIssuerName(), c.GetIssuer())
+		}
+	}
+	return ""
+}
+
 // resultTable renders the matching results as a table.
-func (p *Portal) resultTable(ctx context.Context, filter *resultsv1.Filter) (template.HTML, error) {
+func (p *Portal) resultTable(ctx context.Context, filter *resultsv1.Filter, names *savedQueries) (template.HTML, error) {
 	page, err := p.opts.Service.QueryAll(ctx, filter)
 	if err != nil {
 		return "", err
@@ -295,7 +374,7 @@ func (p *Portal) resultTable(ctx context.Context, filter *resultsv1.Filter) (tem
 		Columns: []string{
 			msg.T("verifier.results.column.at.label"), msg.T("verifier.results.verdict.label"),
 			msg.T("verifier.results.column.credentials.label"), msg.T("verifier.results.query.label"),
-			msg.T("common.detail.label"),
+			msg.T("verifier.results.issuer.label"), msg.T("common.detail.label"),
 		},
 		Empty: msg.T("verifier.results.none"),
 	}
@@ -310,7 +389,7 @@ func (p *Portal) resultTable(ctx context.Context, filter *resultsv1.Filter) (tem
 		table.Rows = append(table.Rows, components.Row{
 			{Text: at(r)}, {Text: verdictText(r.GetVerdict())},
 			{Text: fmt.Sprint(len(r.GetCredentials()))},
-			{Text: r.GetTemplateId()}, {HTML: link},
+			{Text: names.name(r.GetTemplateId())}, {Text: issuerOf(r)}, {HTML: link},
 		})
 	}
 	return kit.HTML("table", table)
@@ -333,12 +412,51 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	download, err := p.opts.Cards.Kit().HTML("button", components.Button{
+		Text: msg.T("verifier.report.download.label"), Href: p.resultsPath() + url.PathEscape(got.GetId()) + "/report.pdf",
+		Variant: "primary",
+	})
+	if err != nil {
+		return err
+	}
 	return p.render(w, r, "list", components.Page{
 		Title:       msg.T("verifier.results.detail.title", got.GetId()),
 		Heading:     msg.T("verifier.results.detail.label"),
 		Description: msg.T("verifier.results.detail.lead"),
-		Content:     components.Join(back, list),
+		Actions:     components.Join(download, back),
+		Content:     list,
 	})
+}
+
+// reportPDF writes the PDF report of one result. The report never holds
+// the raw presentation or a claim value.
+func (p *Portal) reportPDF(w http.ResponseWriter, r *http.Request) error {
+	got, ok := p.read(r)
+	if !ok {
+		http.Error(w, "no such verification", http.StatusNotFound)
+		return nil
+	}
+	name := ""
+	if id := got.GetTemplateId(); id != "" {
+		if q := p.templateNames(r); q != nil && q.names[id] != "" {
+			name = q.names[id]
+		}
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="verification-`+safeName(got.GetId())+`.pdf"`)
+	_, err := w.Write(report.PDF(got, name, p.opts.Now()))
+	return err
+}
+
+// safeName keeps the letters, digits, dashes and underscores of an id,
+// so it fits a file name.
+func safeName(id string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '-' || r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return -1
+	}, id)
 }
 
 // download writes the export of the filtered results.

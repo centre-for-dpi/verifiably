@@ -48,6 +48,20 @@ enum Role {
   ROLE_ADMIN = 4;
 }
 
+// Verdict names the overall result of a verification. It has the values
+// of vca.policy.v1.EvaluateResponse.Verdict. A message that cannot import
+// the policy package, such as a transaction of the ingestion service,
+// carries it.
+enum Verdict {
+  VERDICT_UNSPECIFIED = 0;
+  // Every blocking check passed or did not apply.
+  VERDICT_VALID = 1;
+  // At least one blocking check failed.
+  VERDICT_INVALID = 2;
+  // No blocking check failed, but at least one could not run.
+  VERDICT_INDETERMINATE = 3;
+}
+
 // Credential carries one credential without changing its bytes.
 message Credential {
   // The encoding of the payload.

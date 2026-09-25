@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
@@ -88,6 +89,7 @@ func (f *policy) Evaluate(_ context.Context, req *connect.Request[policyv1.Evalu
 	f.seen = append(f.seen, req.Msg)
 	return connect.NewResponse(&policyv1.EvaluateResponse{
 		Verdict: policyv1.EvaluateResponse_VERDICT_VALID, PolicySetId: req.Msg.GetPolicySetId(), PolicySetVersion: 1,
+		MaterialAge: durationpb.New(3 * time.Hour),
 		EvaluatedAt: timestamppb.New(time.Unix(1700000030, 0)),
 		Checks: []*policyv1.CheckResult{
 			{Name: "signature", Outcome: policyv1.Outcome_OUTCOME_PASS, Detail: "The signature is valid.", CredentialIndex: 0},
@@ -381,7 +383,8 @@ func TestReceivedPresentationIsEvaluatedAndStored(t *testing.T) {
 	}
 	state := rig.get(t, "/scan/requests/"+record.ID+"/state", true)
 	a11ytest.AssertFragment(t, state)
-	for _, want := range []string{"Verified", "Saved as result res-1", `href="/portal/results/res-1"`, "given_name", "Asha", "signature"} {
+	for _, want := range []string{"Verified", "Saved as result res-1", `href="/portal/results/res-1"`, "given_name", "Asha", "signature",
+		"Download report", `href="/portal/results/res-1/report.pdf"`, "The checks read trust material from the cache, 3 h old."} {
 		if !strings.Contains(state, want) {
 			t.Errorf("the verdict card lacks %q", want)
 		}
@@ -430,6 +433,33 @@ func TestDpgRequestPathPollsGetResult(t *testing.T) {
 	rig.get(t, "/scan/requests/"+id+"/state", true)
 	if rig.modern.polls != 3 || len(rig.policy.seen) != 1 {
 		t.Errorf("a finished request polled again: %d polls, %d evaluations", rig.modern.polls, len(rig.policy.seen))
+	}
+	stored := rig.results.stored["res-1"]
+	if stored.GetStack() != "Modern stack" || len(stored.GetStackChecks()) != 1 || !stored.GetStackChecks()[0].GetPassed() {
+		t.Errorf("the stored result lacks the checks of the stack: %+v", stored)
+	}
+}
+
+// TestRequestsListShowsVerdict shows the verdict of each answered
+// request in the list, and a dash word for a request that waits.
+func TestRequestsListShowsVerdict(t *testing.T) {
+	rig := newRequestRig(t)
+	ctx := context.Background()
+	waiting := rig.create(t, url.Values{"template": {"licence-check"}, "through": {"vca"}})
+	path := rig.create(t, url.Values{"template": {"licence-check"}, "through": {"vca"}})
+	record, err := rig.store.Get(ctx, idOf(t, path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = rig.svc.ReceiveDirectPost(ctx, connect.NewRequest(&ingestv1.ReceiveDirectPostRequest{State: record.StateParam, VpToken: sdjwtAnswer})); err != nil {
+		t.Fatal(err)
+	}
+	list := rig.get(t, "/scan/requests/", false)
+	a11ytest.AssertPage(t, list)
+	for _, want := range []string{"Verdict", "Valid", "Not checked yet", idOf(t, waiting)} {
+		if !strings.Contains(list, want) {
+			t.Errorf("the list lacks %q", want)
+		}
 	}
 }
 

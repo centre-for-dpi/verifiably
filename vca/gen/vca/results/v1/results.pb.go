@@ -13,6 +13,7 @@
 package resultsv1
 
 import (
+	v12 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	v1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	v11 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -261,6 +262,12 @@ type VerificationResult struct {
 	MaterialAge *durationpb.Duration `protobuf:"bytes,16,opt,name=material_age,json=materialAge,proto3" json:"material_age,omitempty"`
 	// True when that material was older than its refresh interval.
 	MaterialStale bool `protobuf:"varint,17,opt,name=material_stale,json=materialStale,proto3" json:"material_stale,omitempty"`
+	// The checks the stack verifier ran, for a request that a stack
+	// verifier answered.
+	StackChecks []*v12.GetResultResponse_DpgCheck `protobuf:"bytes,18,rep,name=stack_checks,json=stackChecks,proto3" json:"stack_checks,omitempty"`
+	// The name of that stack, as its adapter reports it. Empty means the
+	// VCA verifier.
+	Stack         string `protobuf:"bytes,19,opt,name=stack,proto3" json:"stack,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -412,6 +419,20 @@ func (x *VerificationResult) GetMaterialStale() bool {
 		return x.MaterialStale
 	}
 	return false
+}
+
+func (x *VerificationResult) GetStackChecks() []*v12.GetResultResponse_DpgCheck {
+	if x != nil {
+		return x.StackChecks
+	}
+	return nil
+}
+
+func (x *VerificationResult) GetStack() string {
+	if x != nil {
+		return x.Stack
+	}
+	return ""
 }
 
 // Filter narrows a query or an export (ADR-025 decision 4).
@@ -1033,7 +1054,7 @@ var File_vca_results_v1_results_proto protoreflect.FileDescriptor
 
 const file_vca_results_v1_results_proto_rawDesc = "" +
 	"\n" +
-	"\x1cvca/results/v1/results.proto\x12\x0evca.results.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/policy/v1/policy.proto\"\x80\x04\n" +
+	"\x1cvca/results/v1/results.proto\x12\x0evca.results.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/policy/v1/policy.proto\"\x80\x04\n" +
 	"\x11CredentialSummary\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12-\n" +
@@ -1050,7 +1071,7 @@ const file_vca_results_v1_results_proto_rawDesc = "" +
 	"\fdecoded_json\x18\v \x01(\tR\vdecodedJson\x1a@\n" +
 	"\x12DisplayFieldsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xad\x06\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x92\a\n" +
 	"\x12VerificationResult\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12A\n" +
 	"\averdict\x18\x02 \x01(\x0e2'.vca.policy.v1.EvaluateResponse.VerdictR\averdict\x122\n" +
@@ -1071,7 +1092,9 @@ const file_vca_results_v1_results_proto_rawDesc = "" +
 	"\ttenant_id\x18\x0e \x01(\tR\btenantId\x12=\n" +
 	"\fcross_checks\x18\x0f \x03(\v2\x1a.vca.policy.v1.CheckResultR\vcrossChecks\x12<\n" +
 	"\fmaterial_age\x18\x10 \x01(\v2\x19.google.protobuf.DurationR\vmaterialAge\x12%\n" +
-	"\x0ematerial_stale\x18\x11 \x01(\bR\rmaterialStale\"\xfd\x01\n" +
+	"\x0ematerial_stale\x18\x11 \x01(\bR\rmaterialStale\x12M\n" +
+	"\fstack_checks\x18\x12 \x03(\v2*.vca.backend.v1.GetResultResponse.DpgCheckR\vstackChecks\x12\x14\n" +
+	"\x05stack\x18\x13 \x01(\tR\x05stack\"\xfd\x01\n" +
 	"\x06Filter\x12.\n" +
 	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12*\n" +
 	"\x02to\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02to\x12A\n" +
@@ -1136,29 +1159,30 @@ func file_vca_results_v1_results_proto_rawDescGZIP() []byte {
 var file_vca_results_v1_results_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_vca_results_v1_results_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_vca_results_v1_results_proto_goTypes = []any{
-	(ExportRequest_Encoding)(0),       // 0: vca.results.v1.ExportRequest.Encoding
-	(*CredentialSummary)(nil),         // 1: vca.results.v1.CredentialSummary
-	(*VerificationResult)(nil),        // 2: vca.results.v1.VerificationResult
-	(*Filter)(nil),                    // 3: vca.results.v1.Filter
-	(*StoreRequest)(nil),              // 4: vca.results.v1.StoreRequest
-	(*StoreResponse)(nil),             // 5: vca.results.v1.StoreResponse
-	(*GetRequest)(nil),                // 6: vca.results.v1.GetRequest
-	(*GetResponse)(nil),               // 7: vca.results.v1.GetResponse
-	(*QueryRequest)(nil),              // 8: vca.results.v1.QueryRequest
-	(*QueryResponse)(nil),             // 9: vca.results.v1.QueryResponse
-	(*ExportRequest)(nil),             // 10: vca.results.v1.ExportRequest
-	(*ExportResponse)(nil),            // 11: vca.results.v1.ExportResponse
-	(*PurgeRequest)(nil),              // 12: vca.results.v1.PurgeRequest
-	(*PurgeResponse)(nil),             // 13: vca.results.v1.PurgeResponse
-	nil,                               // 14: vca.results.v1.CredentialSummary.DisplayFieldsEntry
-	(v1.Format)(0),                    // 15: vca.common.v1.Format
-	(*v11.CheckResult)(nil),           // 16: vca.policy.v1.CheckResult
-	(*v1.ValidityWindow)(nil),         // 17: vca.common.v1.ValidityWindow
-	(v11.EvaluateResponse_Verdict)(0), // 18: vca.policy.v1.EvaluateResponse.Verdict
-	(*timestamppb.Timestamp)(nil),     // 19: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),       // 20: google.protobuf.Duration
-	(*v1.Pagination)(nil),             // 21: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),             // 22: vca.common.v1.PageResult
+	(ExportRequest_Encoding)(0),            // 0: vca.results.v1.ExportRequest.Encoding
+	(*CredentialSummary)(nil),              // 1: vca.results.v1.CredentialSummary
+	(*VerificationResult)(nil),             // 2: vca.results.v1.VerificationResult
+	(*Filter)(nil),                         // 3: vca.results.v1.Filter
+	(*StoreRequest)(nil),                   // 4: vca.results.v1.StoreRequest
+	(*StoreResponse)(nil),                  // 5: vca.results.v1.StoreResponse
+	(*GetRequest)(nil),                     // 6: vca.results.v1.GetRequest
+	(*GetResponse)(nil),                    // 7: vca.results.v1.GetResponse
+	(*QueryRequest)(nil),                   // 8: vca.results.v1.QueryRequest
+	(*QueryResponse)(nil),                  // 9: vca.results.v1.QueryResponse
+	(*ExportRequest)(nil),                  // 10: vca.results.v1.ExportRequest
+	(*ExportResponse)(nil),                 // 11: vca.results.v1.ExportResponse
+	(*PurgeRequest)(nil),                   // 12: vca.results.v1.PurgeRequest
+	(*PurgeResponse)(nil),                  // 13: vca.results.v1.PurgeResponse
+	nil,                                    // 14: vca.results.v1.CredentialSummary.DisplayFieldsEntry
+	(v1.Format)(0),                         // 15: vca.common.v1.Format
+	(*v11.CheckResult)(nil),                // 16: vca.policy.v1.CheckResult
+	(*v1.ValidityWindow)(nil),              // 17: vca.common.v1.ValidityWindow
+	(v11.EvaluateResponse_Verdict)(0),      // 18: vca.policy.v1.EvaluateResponse.Verdict
+	(*timestamppb.Timestamp)(nil),          // 19: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),            // 20: google.protobuf.Duration
+	(*v12.GetResultResponse_DpgCheck)(nil), // 21: vca.backend.v1.GetResultResponse.DpgCheck
+	(*v1.Pagination)(nil),                  // 22: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                  // 23: vca.common.v1.PageResult
 }
 var file_vca_results_v1_results_proto_depIdxs = []int32{
 	15, // 0: vca.results.v1.CredentialSummary.format:type_name -> vca.common.v1.Format
@@ -1173,34 +1197,35 @@ var file_vca_results_v1_results_proto_depIdxs = []int32{
 	19, // 9: vca.results.v1.VerificationResult.retain_until:type_name -> google.protobuf.Timestamp
 	16, // 10: vca.results.v1.VerificationResult.cross_checks:type_name -> vca.policy.v1.CheckResult
 	20, // 11: vca.results.v1.VerificationResult.material_age:type_name -> google.protobuf.Duration
-	19, // 12: vca.results.v1.Filter.from:type_name -> google.protobuf.Timestamp
-	19, // 13: vca.results.v1.Filter.to:type_name -> google.protobuf.Timestamp
-	18, // 14: vca.results.v1.Filter.verdict:type_name -> vca.policy.v1.EvaluateResponse.Verdict
-	2,  // 15: vca.results.v1.StoreRequest.result:type_name -> vca.results.v1.VerificationResult
-	2,  // 16: vca.results.v1.StoreResponse.result:type_name -> vca.results.v1.VerificationResult
-	2,  // 17: vca.results.v1.GetResponse.result:type_name -> vca.results.v1.VerificationResult
-	3,  // 18: vca.results.v1.QueryRequest.filter:type_name -> vca.results.v1.Filter
-	21, // 19: vca.results.v1.QueryRequest.page:type_name -> vca.common.v1.Pagination
-	2,  // 20: vca.results.v1.QueryResponse.results:type_name -> vca.results.v1.VerificationResult
-	22, // 21: vca.results.v1.QueryResponse.page:type_name -> vca.common.v1.PageResult
-	3,  // 22: vca.results.v1.ExportRequest.filter:type_name -> vca.results.v1.Filter
-	0,  // 23: vca.results.v1.ExportRequest.encoding:type_name -> vca.results.v1.ExportRequest.Encoding
-	19, // 24: vca.results.v1.PurgeRequest.before:type_name -> google.protobuf.Timestamp
-	4,  // 25: vca.results.v1.ResultsService.Store:input_type -> vca.results.v1.StoreRequest
-	6,  // 26: vca.results.v1.ResultsService.Get:input_type -> vca.results.v1.GetRequest
-	8,  // 27: vca.results.v1.ResultsService.Query:input_type -> vca.results.v1.QueryRequest
-	10, // 28: vca.results.v1.ResultsService.Export:input_type -> vca.results.v1.ExportRequest
-	12, // 29: vca.results.v1.ResultsService.Purge:input_type -> vca.results.v1.PurgeRequest
-	5,  // 30: vca.results.v1.ResultsService.Store:output_type -> vca.results.v1.StoreResponse
-	7,  // 31: vca.results.v1.ResultsService.Get:output_type -> vca.results.v1.GetResponse
-	9,  // 32: vca.results.v1.ResultsService.Query:output_type -> vca.results.v1.QueryResponse
-	11, // 33: vca.results.v1.ResultsService.Export:output_type -> vca.results.v1.ExportResponse
-	13, // 34: vca.results.v1.ResultsService.Purge:output_type -> vca.results.v1.PurgeResponse
-	30, // [30:35] is the sub-list for method output_type
-	25, // [25:30] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	21, // 12: vca.results.v1.VerificationResult.stack_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
+	19, // 13: vca.results.v1.Filter.from:type_name -> google.protobuf.Timestamp
+	19, // 14: vca.results.v1.Filter.to:type_name -> google.protobuf.Timestamp
+	18, // 15: vca.results.v1.Filter.verdict:type_name -> vca.policy.v1.EvaluateResponse.Verdict
+	2,  // 16: vca.results.v1.StoreRequest.result:type_name -> vca.results.v1.VerificationResult
+	2,  // 17: vca.results.v1.StoreResponse.result:type_name -> vca.results.v1.VerificationResult
+	2,  // 18: vca.results.v1.GetResponse.result:type_name -> vca.results.v1.VerificationResult
+	3,  // 19: vca.results.v1.QueryRequest.filter:type_name -> vca.results.v1.Filter
+	22, // 20: vca.results.v1.QueryRequest.page:type_name -> vca.common.v1.Pagination
+	2,  // 21: vca.results.v1.QueryResponse.results:type_name -> vca.results.v1.VerificationResult
+	23, // 22: vca.results.v1.QueryResponse.page:type_name -> vca.common.v1.PageResult
+	3,  // 23: vca.results.v1.ExportRequest.filter:type_name -> vca.results.v1.Filter
+	0,  // 24: vca.results.v1.ExportRequest.encoding:type_name -> vca.results.v1.ExportRequest.Encoding
+	19, // 25: vca.results.v1.PurgeRequest.before:type_name -> google.protobuf.Timestamp
+	4,  // 26: vca.results.v1.ResultsService.Store:input_type -> vca.results.v1.StoreRequest
+	6,  // 27: vca.results.v1.ResultsService.Get:input_type -> vca.results.v1.GetRequest
+	8,  // 28: vca.results.v1.ResultsService.Query:input_type -> vca.results.v1.QueryRequest
+	10, // 29: vca.results.v1.ResultsService.Export:input_type -> vca.results.v1.ExportRequest
+	12, // 30: vca.results.v1.ResultsService.Purge:input_type -> vca.results.v1.PurgeRequest
+	5,  // 31: vca.results.v1.ResultsService.Store:output_type -> vca.results.v1.StoreResponse
+	7,  // 32: vca.results.v1.ResultsService.Get:output_type -> vca.results.v1.GetResponse
+	9,  // 33: vca.results.v1.ResultsService.Query:output_type -> vca.results.v1.QueryResponse
+	11, // 34: vca.results.v1.ResultsService.Export:output_type -> vca.results.v1.ExportResponse
+	13, // 35: vca.results.v1.ResultsService.Purge:output_type -> vca.results.v1.PurgeResponse
+	31, // [31:36] is the sub-list for method output_type
+	26, // [26:31] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_vca_results_v1_results_proto_init() }

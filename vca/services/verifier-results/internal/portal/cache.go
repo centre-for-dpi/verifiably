@@ -18,7 +18,6 @@ import (
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
-	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
@@ -156,7 +155,7 @@ func (p *Portal) syncedValue(k *policyv1.CacheKindState) string {
 	if k.GetSyncedAt() == nil {
 		return msg.T("verifier.cache.never.label")
 	}
-	return msg.T("verifier.cache.synced.label", cards.Age(p.opts.Now().Sub(k.GetSyncedAt().AsTime())))
+	return msg.T("verifier.cache.synced.label", msg.Age(p.opts.Now().Sub(k.GetSyncedAt().AsTime())))
 }
 
 // kindLabel names a kind.
@@ -212,7 +211,7 @@ func (p *Portal) sourceTable(b *blocks, state *policyv1.GetCacheStateResponse) t
 			}
 			synced := msg.T("verifier.cache.never.label")
 			if s.GetSyncedAt() != nil {
-				synced = msg.T("verifier.cache.ago.label", cards.Age(p.opts.Now().Sub(s.GetSyncedAt().AsTime())))
+				synced = msg.T("verifier.cache.ago.label", msg.Age(p.opts.Now().Sub(s.GetSyncedAt().AsTime())))
 			}
 			registry := s.GetRegistryName()
 			if registry == "" {
@@ -464,7 +463,7 @@ func (p *Portal) cacheStat(r *http.Request) components.Stat {
 	}
 	s.Text = msg.T("verifier.stat.cache.off")
 	if pol := state.GetPolicy(); pol.GetAllowOffline() {
-		s.Text = msg.T("verifier.stat.cache.on", cards.Age(pol.GetOfflineWindow().AsDuration()))
+		s.Text = msg.T("verifier.stat.cache.on", msg.Age(pol.GetOfflineWindow().AsDuration()))
 	}
 	return s
 }

@@ -271,6 +271,9 @@ message TransactionSummary {
   string result_id = 8;
   // The pair of the stack verifier. Empty means the VCA verifier.
   string stack = 9;
+  // The verdict of the stored result. Unspecified until the service
+  // evaluated the answer.
+  vca.common.v1.Verdict verdict = 10;
 }
 
 // ListTransactionsResponse returns the transactions.

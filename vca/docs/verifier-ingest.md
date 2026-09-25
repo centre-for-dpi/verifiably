@@ -171,7 +171,7 @@ the delivery and the expiry.
 
 | Path | Page |
 |---|---|
-| `GET /scan/requests/` | The requests, newest first, with the verifier, the state, and the result link. |
+| `GET /scan/requests/` | The requests, newest first, with the verifier, the state, the verdict, and the result link. |
 | `GET /scan/requests/new` | The new request form. `?template=<id>` picks a query. |
 | `POST /scan/requests/new/answerers` | The verifier choice of one query, for htmx. |
 | `POST /scan/requests/` | Send the request and open its page. |

@@ -197,8 +197,12 @@ func TestStackRequestLifecycle(t *testing.T) {
 	if len(pol.sets) != 1 {
 		t.Error("a second poll evaluated again")
 	}
+	if res.kept.GetStack() != "DCQL stack" || len(res.kept.GetStackChecks()) != 1 || res.kept.GetStackChecks()[0].GetReason() != "bad" {
+		t.Errorf("kept stack checks %+v", res.kept)
+	}
 	list, err := svc.ListTransactions(ctx, connect.NewRequest(&ingestv1.ListTransactionsRequest{}))
-	if err != nil || list.Msg.GetTransactions()[0].GetResultId() != "res-7" || list.Msg.GetTransactions()[0].GetStack() != "verifier-credebl" {
+	if err != nil || list.Msg.GetTransactions()[0].GetResultId() != "res-7" || list.Msg.GetTransactions()[0].GetStack() != "verifier-credebl" ||
+		list.Msg.GetTransactions()[0].GetVerdict() != commonv1.Verdict_VERDICT_VALID {
 		t.Errorf("list %+v %v", list, err)
 	}
 }

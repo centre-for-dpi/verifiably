@@ -100,11 +100,16 @@ func (c *Cards) summary(d *draft, r *resultsv1.VerificationResult) template.HTML
 			{{Text: "Carrier"}, {Text: orDash(r.GetCarrier())}},
 			{{Text: "Template"}, {Text: versioned(r.GetTemplateId(), r.GetTemplateVersion())}},
 			{{Text: "Policy set"}, {Text: versioned(r.GetPolicySetId(), r.GetPolicySetVersion())}},
+			{{Text: msg.T("verifier.card.material.label")}, {HTML: c.material(d, r)}},
+			{{Text: msg.T("verifier.card.checked_by.label")}, {Text: checkedBy(r)}},
 		},
 	})
 	checks := append(append([]*policyv1.CheckResult{}, r.GetChecks()...), r.GetCrossChecks()...)
 	if len(checks) > 0 {
 		inner.parts = append(inner.parts, c.checks(inner, "summary-checks", "Checks of the presentation", checks))
+	}
+	if len(r.GetStackChecks()) > 0 {
+		inner.parts = append(inner.parts, c.stackChecks(inner, r))
 	}
 	keepError(d, inner)
 	return d.html("card", components.Card{
@@ -157,6 +162,46 @@ func (c *Cards) credential(d *draft, index int, cred *resultsv1.CredentialSummar
 		Text:  orDash(cred.GetIssuerName()),
 		Body:  inner.body(),
 	})
+}
+
+// material says where the trust material of the checks came from:
+// online, or the cache with its age and a stale mark (ADR-041
+// decision 3).
+func (c *Cards) material(d *draft, r *resultsv1.VerificationResult) template.HTML {
+	if r.GetMaterialAge() == nil {
+		return template.HTML(template.HTMLEscapeString(msg.T("verifier.card.material.online.label"))) //nolint:gosec // the text is escaped
+	}
+	out := template.HTML(template.HTMLEscapeString(msg.T("verifier.card.material.cache", msg.Age(r.GetMaterialAge().AsDuration())))) //nolint:gosec // the text is escaped
+	if r.GetMaterialStale() {
+		out += " " + d.html("badge", components.Badge{Status: "warn", Text: msg.T("verifier.card.stale.label")})
+	}
+	return out
+}
+
+// checkedBy names the verifier that received the answer.
+func checkedBy(r *resultsv1.VerificationResult) string {
+	if s := r.GetStack(); s != "" {
+		return s
+	}
+	return msg.T("verifier.card.vca.label")
+}
+
+// stackChecks returns the table of the checks the stack verifier ran.
+func (c *Cards) stackChecks(d *draft, r *resultsv1.VerificationResult) template.HTML {
+	table := components.Table{
+		ID: "summary-stack", Caption: msg.T("verifier.card.stack.caption.label", r.GetStack()),
+		Columns: []string{"Check", "Outcome", "Detail"},
+	}
+	for _, check := range r.GetStackChecks() {
+		badge := components.Badge{Status: "ok", Text: "pass"}
+		if !check.GetPassed() {
+			badge = components.Badge{Status: "bad", Text: "fail"}
+		}
+		table.Rows = append(table.Rows, components.Row{
+			{Text: check.GetName()}, {HTML: d.html("badge", badge)}, {Text: check.GetReason()},
+		})
+	}
+	return d.html("table", table)
 }
 
 // checks returns the table of a check list.
@@ -286,16 +331,4 @@ func stamp(t time.Time, present bool) string {
 		return "not known"
 	}
 	return t.UTC().Format(time.RFC3339)
-}
-
-// Age names a duration in its largest whole unit: minutes under an
-// hour, hours under two days, then days. A negative age reads as zero.
-func Age(d time.Duration) string {
-	switch {
-	case d < time.Hour:
-		return msg.T("verifier.age.minutes.label", strconv.Itoa(int(max(d, 0)/time.Minute)))
-	case d < 48*time.Hour:
-		return msg.T("verifier.age.hours.label", strconv.Itoa(int(d/time.Hour)))
-	}
-	return msg.T("verifier.age.days.label", strconv.Itoa(int(d/(24*time.Hour))))
 }

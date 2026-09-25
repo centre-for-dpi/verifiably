@@ -174,7 +174,7 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 	record := txn.Transaction{
 		ID: id, Nonce: nonce, TemplateID: t.GetId(), TemplateVersion: t.GetVersion(), PolicySetID: t.GetPolicySetId(),
 		State: txn.StatePending, CreatedAt: now, ExpiresAt: now.Add(ttl),
-		Stack: stack.Pair, Adapter: stack.Adapter, StackState: resp.Msg.GetState(), RequestURI: resp.Msg.GetRequestUri(),
+		Stack: stack.Pair, StackName: stack.Name, Adapter: stack.Adapter, StackState: resp.Msg.GetState(), RequestURI: resp.Msg.GetRequestUri(),
 	}
 	if at := resp.Msg.GetExpiresAt(); at != nil {
 		record.ExpiresAt = at.AsTime()
@@ -269,6 +269,7 @@ func (s *Service) finish(ctx context.Context, record *txn.Transaction) {
 		record.Error = "the policy service did not evaluate the answer: " + err.Error()
 		return
 	}
+	record.Verdict = int32(resp.Msg.GetVerdict())
 	if s.opts.Results == nil {
 		return
 	}
@@ -288,6 +289,7 @@ func ResultOf(raw *ingestv1.RawPresentation, resp *policyv1.EvaluateResponse, re
 		EvaluatedAt: resp.GetEvaluatedAt(), ReceivedAt: raw.GetReceivedAt(), Carrier: CarrierName, RawRef: raw.GetRef(),
 		TemplateId: record.TemplateID, TemplateVersion: record.TemplateVersion,
 		MaterialAge: resp.GetMaterialAge(), MaterialStale: resp.GetMaterialStale(),
+		StackChecks: stackChecks(record.StackChecks), Stack: record.StackName,
 	}
 	for _, c := range resp.GetChecks() {
 		if c.GetCredentialIndex() < 0 {

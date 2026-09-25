@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
@@ -177,14 +179,61 @@ func TestBrokenKit(t *testing.T) {
 	}
 }
 
-// TestAgeWords names an age in the largest whole unit.
-func TestAgeWords(t *testing.T) {
-	for d, want := range map[time.Duration]string{
-		-time.Minute: "0 min", 30 * time.Second: "0 min", 59 * time.Minute: "59 min", 2 * time.Hour: "2 h",
-		47 * time.Hour: "47 h", 72 * time.Hour: "3 days", 168 * time.Hour: "7 days",
-	} {
-		if got := Age(d); got != want {
-			t.Errorf("Age(%v) = %q, want %q", d, got, want)
+// TestResultCardShowsCacheAge names where the trust material came from:
+// online, or the cache with its age and a stale mark.
+func TestResultCardShowsCacheAge(t *testing.T) {
+	c := newCards(t)
+	online, err := c.Result(sample())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(online), "Trust material") || !strings.Contains(string(online), "Read online") {
+		t.Fatal("want the online trust material row")
+	}
+	r := sample()
+	r.MaterialAge, r.MaterialStale = durationpb.New(2*time.Hour), true
+	cached, err := c.Result(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(cached)
+	a11ytest.AssertFragment(t, body)
+	for _, want := range []string{"From the cache, 2 h old", "Stale"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the summary lacks %q", want)
 		}
 	}
+}
+
+// TestResultCardShowsStackChecks lists the checks the stack verifier
+// ran beside the checks of VCA.
+func TestResultCardShowsStackChecks(t *testing.T) {
+	r := sample()
+	r.Stack = "Modern stack"
+	r.StackChecks = []*backendv1.GetResultResponse_DpgCheck{
+		{Name: "signature", Passed: true}, {Name: "expired", Passed: false, Reason: "The credential expired."},
+	}
+	got, err := newCards(t).Result(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(got)
+	a11ytest.AssertFragment(t, body)
+	for _, want := range []string{"Checks of Modern stack", "expired", "The credential expired.", "Checked by", "Modern stack"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the summary lacks %q", want)
+		}
+	}
+	if strings.Contains(string(mustResult(t, sample())), "summary-stack") {
+		t.Error("a result without a stack shows stack checks")
+	}
+}
+
+func mustResult(t *testing.T, r *resultsv1.VerificationResult) []byte {
+	t.Helper()
+	got, err := newCards(t).Result(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []byte(got)
 }

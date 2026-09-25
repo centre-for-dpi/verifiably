@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 var (
@@ -194,6 +195,18 @@ func TestKeysAreWellFormed(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("no key with prefix %q", prefix)
+		}
+	}
+}
+
+// TestAgeWords names an age in the largest whole unit.
+func TestAgeWords(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		-time.Minute: "0 min", 30 * time.Second: "0 min", 59 * time.Minute: "59 min", 2 * time.Hour: "2 h",
+		47 * time.Hour: "47 h", 72 * time.Hour: "3 days", 168 * time.Hour: "7 days",
+	} {
+		if got := Age(d); got != want {
+			t.Errorf("Age(%v) = %q, want %q", d, got, want)
 		}
 	}
 }

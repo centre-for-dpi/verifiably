@@ -1187,7 +1187,10 @@ type TransactionSummary struct {
 	// The id of the verification result, once the service stored one.
 	ResultId string `protobuf:"bytes,8,opt,name=result_id,json=resultId,proto3" json:"result_id,omitempty"`
 	// The pair of the stack verifier. Empty means the VCA verifier.
-	Stack         string `protobuf:"bytes,9,opt,name=stack,proto3" json:"stack,omitempty"`
+	Stack string `protobuf:"bytes,9,opt,name=stack,proto3" json:"stack,omitempty"`
+	// The verdict of the stored result. Unspecified until the service
+	// evaluated the answer.
+	Verdict       v1.Verdict `protobuf:"varint,10,opt,name=verdict,proto3,enum=vca.common.v1.Verdict" json:"verdict,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1283,6 +1286,13 @@ func (x *TransactionSummary) GetStack() string {
 		return x.Stack
 	}
 	return ""
+}
+
+func (x *TransactionSummary) GetVerdict() v1.Verdict {
+	if x != nil {
+		return x.Verdict
+	}
+	return v1.Verdict(0)
 }
 
 // ListTransactionsResponse returns the transactions.
@@ -1434,7 +1444,7 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\rSTATE_EXPIRED\x10\x04\"\x8b\x01\n" +
 	"\x17ListTransactionsRequest\x12A\n" +
 	"\x05state\x18\x01 \x01(\x0e2+.vca.ingest.v1.GetTransactionResponse.StateR\x05state\x12-\n" +
-	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"\xb0\x03\n" +
+	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"\xe2\x03\n" +
 	"\x12TransactionSummary\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12A\n" +
 	"\x05state\x18\x02 \x01(\x0e2+.vca.ingest.v1.GetTransactionResponse.StateR\x05state\x12\x1f\n" +
@@ -1448,7 +1458,9 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\vanswered_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"answeredAt\x12\x1b\n" +
 	"\tresult_id\x18\b \x01(\tR\bresultId\x12\x14\n" +
-	"\x05stack\x18\t \x01(\tR\x05stack\"\x90\x01\n" +
+	"\x05stack\x18\t \x01(\tR\x05stack\x120\n" +
+	"\averdict\x18\n" +
+	" \x01(\x0e2\x16.vca.common.v1.VerdictR\averdict\"\x90\x01\n" +
 	"\x18ListTransactionsResponse\x12E\n" +
 	"\ftransactions\x18\x01 \x03(\v2!.vca.ingest.v1.TransactionSummaryR\ftransactions\x12-\n" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page*\xe3\x01\n" +
@@ -1517,7 +1529,8 @@ var file_vca_ingest_v1_ingest_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil),          // 20: google.protobuf.Timestamp
 	(*v11.GetResultResponse_DpgCheck)(nil), // 21: vca.backend.v1.GetResultResponse.DpgCheck
 	(*v1.Pagination)(nil),                  // 22: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                  // 23: vca.common.v1.PageResult
+	(v1.Verdict)(0),                        // 23: vca.common.v1.Verdict
+	(*v1.PageResult)(nil),                  // 24: vca.common.v1.PageResult
 }
 var file_vca_ingest_v1_ingest_proto_depIdxs = []int32{
 	0,  // 0: vca.ingest.v1.RawPresentation.carrier:type_name -> vca.ingest.v1.Carrier
@@ -1542,23 +1555,24 @@ var file_vca_ingest_v1_ingest_proto_depIdxs = []int32{
 	20, // 19: vca.ingest.v1.TransactionSummary.created_at:type_name -> google.protobuf.Timestamp
 	20, // 20: vca.ingest.v1.TransactionSummary.expires_at:type_name -> google.protobuf.Timestamp
 	20, // 21: vca.ingest.v1.TransactionSummary.answered_at:type_name -> google.protobuf.Timestamp
-	15, // 22: vca.ingest.v1.ListTransactionsResponse.transactions:type_name -> vca.ingest.v1.TransactionSummary
-	23, // 23: vca.ingest.v1.ListTransactionsResponse.page:type_name -> vca.common.v1.PageResult
-	6,  // 24: vca.ingest.v1.IngestService.Ingest:input_type -> vca.ingest.v1.IngestRequest
-	8,  // 25: vca.ingest.v1.IngestService.CreateOid4vpRequest:input_type -> vca.ingest.v1.CreateOid4vpRequestRequest
-	10, // 26: vca.ingest.v1.IngestService.ReceiveDirectPost:input_type -> vca.ingest.v1.ReceiveDirectPostRequest
-	12, // 27: vca.ingest.v1.IngestService.GetTransaction:input_type -> vca.ingest.v1.GetTransactionRequest
-	14, // 28: vca.ingest.v1.IngestService.ListTransactions:input_type -> vca.ingest.v1.ListTransactionsRequest
-	7,  // 29: vca.ingest.v1.IngestService.Ingest:output_type -> vca.ingest.v1.IngestResponse
-	9,  // 30: vca.ingest.v1.IngestService.CreateOid4vpRequest:output_type -> vca.ingest.v1.CreateOid4vpRequestResponse
-	11, // 31: vca.ingest.v1.IngestService.ReceiveDirectPost:output_type -> vca.ingest.v1.ReceiveDirectPostResponse
-	13, // 32: vca.ingest.v1.IngestService.GetTransaction:output_type -> vca.ingest.v1.GetTransactionResponse
-	16, // 33: vca.ingest.v1.IngestService.ListTransactions:output_type -> vca.ingest.v1.ListTransactionsResponse
-	29, // [29:34] is the sub-list for method output_type
-	24, // [24:29] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	23, // 22: vca.ingest.v1.TransactionSummary.verdict:type_name -> vca.common.v1.Verdict
+	15, // 23: vca.ingest.v1.ListTransactionsResponse.transactions:type_name -> vca.ingest.v1.TransactionSummary
+	24, // 24: vca.ingest.v1.ListTransactionsResponse.page:type_name -> vca.common.v1.PageResult
+	6,  // 25: vca.ingest.v1.IngestService.Ingest:input_type -> vca.ingest.v1.IngestRequest
+	8,  // 26: vca.ingest.v1.IngestService.CreateOid4vpRequest:input_type -> vca.ingest.v1.CreateOid4vpRequestRequest
+	10, // 27: vca.ingest.v1.IngestService.ReceiveDirectPost:input_type -> vca.ingest.v1.ReceiveDirectPostRequest
+	12, // 28: vca.ingest.v1.IngestService.GetTransaction:input_type -> vca.ingest.v1.GetTransactionRequest
+	14, // 29: vca.ingest.v1.IngestService.ListTransactions:input_type -> vca.ingest.v1.ListTransactionsRequest
+	7,  // 30: vca.ingest.v1.IngestService.Ingest:output_type -> vca.ingest.v1.IngestResponse
+	9,  // 31: vca.ingest.v1.IngestService.CreateOid4vpRequest:output_type -> vca.ingest.v1.CreateOid4vpRequestResponse
+	11, // 32: vca.ingest.v1.IngestService.ReceiveDirectPost:output_type -> vca.ingest.v1.ReceiveDirectPostResponse
+	13, // 33: vca.ingest.v1.IngestService.GetTransaction:output_type -> vca.ingest.v1.GetTransactionResponse
+	16, // 34: vca.ingest.v1.IngestService.ListTransactions:output_type -> vca.ingest.v1.ListTransactionsResponse
+	30, // [30:35] is the sub-list for method output_type
+	25, // [25:30] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_vca_ingest_v1_ingest_proto_init() }

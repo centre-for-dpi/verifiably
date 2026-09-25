@@ -84,6 +84,12 @@ type Transaction struct {
 	StackState string `json:"stack_state,omitempty"`
 	// StackChecks are the checks the stack ran on the answer.
 	StackChecks []StackCheck `json:"stack_checks,omitempty"`
+	// StackName is the display name of the stack verifier, as its
+	// adapter reports it.
+	StackName string `json:"stack_name,omitempty"`
+	// Verdict is the verdict of the evaluation of the answer, as the
+	// number of vca.common.v1.Verdict. Zero until the evaluation.
+	Verdict int32 `json:"verdict,omitempty"`
 }
 
 // StackCheck is one check a stack verifier ran.

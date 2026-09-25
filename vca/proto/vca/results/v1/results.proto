@@ -9,6 +9,7 @@ package vca.results.v1;
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
+import "vca/backend/v1/backend.proto";
 import "vca/common/v1/common.proto";
 import "vca/policy/v1/policy.proto";
 
@@ -94,6 +95,12 @@ message VerificationResult {
   google.protobuf.Duration material_age = 16;
   // True when that material was older than its refresh interval.
   bool material_stale = 17;
+  // The checks the stack verifier ran, for a request that a stack
+  // verifier answered.
+  repeated vca.backend.v1.GetResultResponse.DpgCheck stack_checks = 18;
+  // The name of that stack, as its adapter reports it. Empty means the
+  // VCA verifier.
+  string stack = 19;
 }
 
 // Filter narrows a query or an export (ADR-025 decision 4).

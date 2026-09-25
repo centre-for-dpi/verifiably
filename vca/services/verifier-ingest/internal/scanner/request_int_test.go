@@ -33,7 +33,7 @@ func TestRequestWords(t *testing.T) {
 		t.Error("stack word")
 	}
 	for s, want := range map[*ingestv1.TransactionSummary]string{
-		{ResultId: "r"}: "Verified",
+		{ResultId: "r"}: "Checked",
 		{State: ingestv1.GetTransactionResponse_STATE_RECEIVED}: "Received",
 		{State: ingestv1.GetTransactionResponse_STATE_REFUSED}:  "Refused",
 		{State: ingestv1.GetTransactionResponse_STATE_EXPIRED}:  "Expired",

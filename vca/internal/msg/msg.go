@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // T returns the English text of key with the placeholders {1}, {2} and so
@@ -55,4 +56,16 @@ func substitute(v string, args []string) string {
 		pairs = append(pairs, "{"+strconv.Itoa(i+1)+"}", a)
 	}
 	return strings.NewReplacer(pairs...).Replace(v)
+}
+
+// Age names a duration in its largest whole unit: minutes under an
+// hour, hours under two days, then days. A negative age reads as zero.
+func Age(d time.Duration) string {
+	switch {
+	case d < time.Hour:
+		return T("verifier.age.minutes.label", strconv.Itoa(int(max(d, 0)/time.Minute)))
+	case d < 48*time.Hour:
+		return T("verifier.age.hours.label", strconv.Itoa(int(d/time.Hour)))
+	}
+	return T("verifier.age.days.label", strconv.Itoa(int(d/(24*time.Hour))))
 }

@@ -36,7 +36,10 @@ validity window and the decoded credential as JSON.
 The `cards` package renders one result as a card list (ADR-025 decision 2):
 
 1. A summary card. It shows the verdict badge and the check time. It also
-   shows the carrier, the template, and the policy set.
+   shows the carrier, the template, and the policy set. The trust material
+   row says "Read online", or the age of the cached material with a stale
+   badge (ADR-041 decision 3). The checked by row names the stack verifier
+   that received the answer. A table then lists the checks of that stack.
 2. One card per credential. It shows the issuer name and a trust badge.
    It also shows the type, the role, and the validity window. It ends with
    the subject display fields and the check list.
@@ -94,6 +97,20 @@ follows RFC 4180. It has a header row and one row per credential. The
 JSON form writes one compact JSON object per line. The portal serves the
 same two encodings as a download at `GET <prefix>/export`.
 
+The filter form of the list offers the verdicts as choices. It also
+offers the saved queries and the issuers of the stored results. The list names the
+query and the issuer of each result.
+
+## Report
+
+`GET <prefix>/results/{id}/report.pdf` downloads the report of one
+result. The report is a one page PDF of `core/pdf`. It holds the verdict and
+the facts. It holds the checks of VCA and of the stack verifier, and the
+age of the trust material. Each credential block names the issuer, the trust
+word, the validity, and the disclosed claims by name. The report never
+holds the raw presentation, the decoded credential, or a claim value.
+A long result stops at the foot of the page with a note.
+
 ## Staff pages
 
 The staff pages sit in the verifier frame of
@@ -108,7 +125,8 @@ out form ends the session at `verifier-auth` and clears the cookie.
 |---|---|
 | `GET /portal/` | The overview: the saved queries, the open requests, the trust cache state, the schemas you can ask for, and the recent results. |
 | `GET /portal/results/` | The result list with the filters and the export links. |
-| `GET /portal/results/{id}` | The card list of one result. |
+| `GET /portal/results/{id}` | The card list of one result, with the report download. |
+| `GET /portal/results/{id}/report.pdf` | The PDF report of one result. |
 | `GET /portal/export` | The CSV or JSON download of the filtered results. |
 | `GET /portal/cache/` | The trust cache of board Verifier-Caching: the age and the counts of each kind, every source, and the cache policy. |
 | `POST /portal/cache/sync` | Sync now: the policy service reads every source at once. |

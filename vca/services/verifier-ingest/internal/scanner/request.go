@@ -19,6 +19,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/pdf"
 	"github.com/centre-for-dpi/vc-adapters/core/qr"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
@@ -554,8 +555,13 @@ func (p *Page) verdictCard(ctx context.Context, b *blocks, tx *ingestv1.GetTrans
 	claimTable := b.add("table", components.Table{ID: "verdict-claims", Caption: msg.T("verifier.request.claims.label"),
 		Columns: []string{msg.T("verifier.request.claims.column.claim.label"), msg.T("verifier.request.claims.column.value.label")},
 		Rows:    claims, Empty: msg.T("verifier.request.claims.none")})
+	if age := result.GetMaterialAge(); age != nil {
+		badge += template.HTML(`<p>` + template.HTMLEscapeString(msg.T("verifier.request.material", msg.Age(age.AsDuration()))) + `</p>`) //nolint:gosec // the text is escaped
+	}
+	report := b.add("button", components.Button{Text: msg.T("verifier.report.download.label"),
+		Href: p.opts.ResultsPath + url.PathEscape(id) + "/report.pdf"})
 	return b.add("card", components.Card{ID: "verdict", Title: msg.T("verifier.request.step.verified.label"), Text: meta,
-		Body: components.Join(badge, table, p.stackChecks(ctx, b, tx), claimTable, saved, done)})
+		Body: components.Join(badge, table, p.stackChecks(ctx, b, tx), claimTable, saved, report, done)})
 }
 
 // stackChecks renders the checks the stack ran, or nothing.
@@ -608,7 +614,7 @@ func outcomeWord(o policyv1.Outcome) string {
 func stateWord(s *ingestv1.TransactionSummary) components.Badge {
 	switch {
 	case s.GetResultId() != "":
-		return components.Badge{Status: "ok", Text: msg.T("verifier.request.step.verified.label")}
+		return components.Badge{Status: "info", Text: msg.T("verifier.request.state.checked.label")}
 	case s.GetState() == ingestv1.GetTransactionResponse_STATE_RECEIVED:
 		return components.Badge{Status: "info", Text: msg.T("verifier.request.step.received.label")}
 	case s.GetState() == ingestv1.GetTransactionResponse_STATE_REFUSED:
@@ -648,6 +654,7 @@ func (p *Page) requestList(w http.ResponseWriter, r *http.Request) error {
 			{HTML: link(p.requestsPath()+url.PathEscape(s.GetTransactionId()), name)},
 			{Text: p.throughName(r.Context(), s.GetStack())},
 			{HTML: b.add("badge", stateWord(s))},
+			{HTML: b.add("badge", listVerdict(s.GetVerdict()))},
 			{Text: clock(s.GetCreatedAt().AsTime())},
 			result,
 		})
@@ -655,7 +662,7 @@ func (p *Page) requestList(w http.ResponseWriter, r *http.Request) error {
 	table := b.add("table", components.Table{ID: "requests", Caption: msg.T("verifier.request.list.caption.label"),
 		Columns: []string{
 			msg.T("verifier.request.query.label"), msg.T("verifier.request.column.through.label"), msg.T("verifier.request.column.state.label"),
-			msg.T("verifier.request.column.created.label"), msg.T("verifier.request.column.result.label"),
+			msg.T("verifier.results.verdict.label"), msg.T("verifier.request.column.created.label"), msg.T("verifier.request.column.result.label"),
 		},
 		Rows: rows, Empty: msg.T("verifier.request.list.empty")})
 	action := b.add("button", components.Button{Text: msg.T("verifier.request.tab.new.label"), Href: p.requestsPath() + "new", Variant: "primary"})
@@ -666,6 +673,15 @@ func (p *Page) requestList(w http.ResponseWriter, r *http.Request) error {
 		Title: msg.T("verifier.request.list.title.label"), Lead: msg.T("verifier.request.list.lead"), Description: msg.T("verifier.request.list.lead"),
 		Content: components.Join(p.scanTabs(b, "list"), template.HTML(`<div class="form-actions">`), action, template.HTML(`</div>`), table),
 	})
+}
+
+// listVerdict is the verdict of a request in the list, or a word that
+// says no evaluation ran yet. The verdict enums share their values.
+func listVerdict(v commonv1.Verdict) components.Badge {
+	if v == commonv1.Verdict_VERDICT_UNSPECIFIED {
+		return components.Badge{Status: "info", Text: msg.T("verifier.request.verdict.none.label")}
+	}
+	return verdictBadge(policyv1.EvaluateResponse_Verdict(v))
 }
 
 // link renders one anchor. Both parts are escaped.

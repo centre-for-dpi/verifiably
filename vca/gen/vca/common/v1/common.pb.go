@@ -159,6 +159,65 @@ func (Role) EnumDescriptor() ([]byte, []int) {
 	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{1}
 }
 
+// Verdict names the overall result of a verification. It has the values
+// of vca.policy.v1.EvaluateResponse.Verdict. A message that cannot import
+// the policy package, such as a transaction of the ingestion service,
+// carries it.
+type Verdict int32
+
+const (
+	Verdict_VERDICT_UNSPECIFIED Verdict = 0
+	// Every blocking check passed or did not apply.
+	Verdict_VERDICT_VALID Verdict = 1
+	// At least one blocking check failed.
+	Verdict_VERDICT_INVALID Verdict = 2
+	// No blocking check failed, but at least one could not run.
+	Verdict_VERDICT_INDETERMINATE Verdict = 3
+)
+
+// Enum value maps for Verdict.
+var (
+	Verdict_name = map[int32]string{
+		0: "VERDICT_UNSPECIFIED",
+		1: "VERDICT_VALID",
+		2: "VERDICT_INVALID",
+		3: "VERDICT_INDETERMINATE",
+	}
+	Verdict_value = map[string]int32{
+		"VERDICT_UNSPECIFIED":   0,
+		"VERDICT_VALID":         1,
+		"VERDICT_INVALID":       2,
+		"VERDICT_INDETERMINATE": 3,
+	}
+)
+
+func (x Verdict) Enum() *Verdict {
+	p := new(Verdict)
+	*p = x
+	return p
+}
+
+func (x Verdict) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Verdict) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_common_v1_common_proto_enumTypes[2].Descriptor()
+}
+
+func (Verdict) Type() protoreflect.EnumType {
+	return &file_vca_common_v1_common_proto_enumTypes[2]
+}
+
+func (x Verdict) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Verdict.Descriptor instead.
+func (Verdict) EnumDescriptor() ([]byte, []int) {
+	return file_vca_common_v1_common_proto_rawDescGZIP(), []int{2}
+}
+
 // Store names where a secret lives.
 type SecretRef_Store int32
 
@@ -199,11 +258,11 @@ func (x SecretRef_Store) String() string {
 }
 
 func (SecretRef_Store) Descriptor() protoreflect.EnumDescriptor {
-	return file_vca_common_v1_common_proto_enumTypes[2].Descriptor()
+	return file_vca_common_v1_common_proto_enumTypes[3].Descriptor()
 }
 
 func (SecretRef_Store) Type() protoreflect.EnumType {
-	return &file_vca_common_v1_common_proto_enumTypes[2]
+	return &file_vca_common_v1_common_proto_enumTypes[3]
 }
 
 func (x SecretRef_Store) Number() protoreflect.EnumNumber {
@@ -774,7 +833,12 @@ const file_vca_common_v1_common_proto_rawDesc = "" +
 	"\vROLE_HOLDER\x10\x02\x12\x11\n" +
 	"\rROLE_VERIFIER\x10\x03\x12\x0e\n" +
 	"\n" +
-	"ROLE_ADMIN\x10\x04:B\n" +
+	"ROLE_ADMIN\x10\x04*e\n" +
+	"\aVerdict\x12\x17\n" +
+	"\x13VERDICT_UNSPECIFIED\x10\x00\x12\x11\n" +
+	"\rVERDICT_VALID\x10\x01\x12\x13\n" +
+	"\x0fVERDICT_INVALID\x10\x02\x12\x19\n" +
+	"\x15VERDICT_INDETERMINATE\x10\x03:B\n" +
 	"\vdescription\x12\x1e.google.protobuf.MethodOptions\x18\xb9\x8e\x03 \x01(\tR\vdescriptionB\xb8\x01\n" +
 	"\x11com.vca.common.v1B\vCommonProtoP\x01Z@github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1;commonv1\xa2\x02\x03VCX\xaa\x02\rVca.Common.V1\xca\x02\rVca\\Common\\V1\xe2\x02\x19Vca\\Common\\V1\\GPBMetadata\xea\x02\x0fVca::Common::V1b\x06proto3"
 
@@ -790,32 +854,33 @@ func file_vca_common_v1_common_proto_rawDescGZIP() []byte {
 	return file_vca_common_v1_common_proto_rawDescData
 }
 
-var file_vca_common_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_vca_common_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_vca_common_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_vca_common_v1_common_proto_goTypes = []any{
 	(Format)(0),                        // 0: vca.common.v1.Format
 	(Role)(0),                          // 1: vca.common.v1.Role
-	(SecretRef_Store)(0),               // 2: vca.common.v1.SecretRef.Store
-	(*Credential)(nil),                 // 3: vca.common.v1.Credential
-	(*Presentation)(nil),               // 4: vca.common.v1.Presentation
-	(*Pagination)(nil),                 // 5: vca.common.v1.Pagination
-	(*PageResult)(nil),                 // 6: vca.common.v1.PageResult
-	(*Error)(nil),                      // 7: vca.common.v1.Error
-	(*Subject)(nil),                    // 8: vca.common.v1.Subject
-	(*ValidityWindow)(nil),             // 9: vca.common.v1.ValidityWindow
-	(*SecretRef)(nil),                  // 10: vca.common.v1.SecretRef
-	nil,                                // 11: vca.common.v1.Error.ParamsEntry
-	(*timestamppb.Timestamp)(nil),      // 12: google.protobuf.Timestamp
-	(*descriptorpb.MethodOptions)(nil), // 13: google.protobuf.MethodOptions
+	(Verdict)(0),                       // 2: vca.common.v1.Verdict
+	(SecretRef_Store)(0),               // 3: vca.common.v1.SecretRef.Store
+	(*Credential)(nil),                 // 4: vca.common.v1.Credential
+	(*Presentation)(nil),               // 5: vca.common.v1.Presentation
+	(*Pagination)(nil),                 // 6: vca.common.v1.Pagination
+	(*PageResult)(nil),                 // 7: vca.common.v1.PageResult
+	(*Error)(nil),                      // 8: vca.common.v1.Error
+	(*Subject)(nil),                    // 9: vca.common.v1.Subject
+	(*ValidityWindow)(nil),             // 10: vca.common.v1.ValidityWindow
+	(*SecretRef)(nil),                  // 11: vca.common.v1.SecretRef
+	nil,                                // 12: vca.common.v1.Error.ParamsEntry
+	(*timestamppb.Timestamp)(nil),      // 13: google.protobuf.Timestamp
+	(*descriptorpb.MethodOptions)(nil), // 14: google.protobuf.MethodOptions
 }
 var file_vca_common_v1_common_proto_depIdxs = []int32{
 	0,  // 0: vca.common.v1.Credential.format:type_name -> vca.common.v1.Format
 	0,  // 1: vca.common.v1.Presentation.format:type_name -> vca.common.v1.Format
-	11, // 2: vca.common.v1.Error.params:type_name -> vca.common.v1.Error.ParamsEntry
-	12, // 3: vca.common.v1.ValidityWindow.valid_from:type_name -> google.protobuf.Timestamp
-	12, // 4: vca.common.v1.ValidityWindow.valid_until:type_name -> google.protobuf.Timestamp
-	2,  // 5: vca.common.v1.SecretRef.store:type_name -> vca.common.v1.SecretRef.Store
-	13, // 6: vca.common.v1.description:extendee -> google.protobuf.MethodOptions
+	12, // 2: vca.common.v1.Error.params:type_name -> vca.common.v1.Error.ParamsEntry
+	13, // 3: vca.common.v1.ValidityWindow.valid_from:type_name -> google.protobuf.Timestamp
+	13, // 4: vca.common.v1.ValidityWindow.valid_until:type_name -> google.protobuf.Timestamp
+	3,  // 5: vca.common.v1.SecretRef.store:type_name -> vca.common.v1.SecretRef.Store
+	14, // 6: vca.common.v1.description:extendee -> google.protobuf.MethodOptions
 	7,  // [7:7] is the sub-list for method output_type
 	7,  // [7:7] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
@@ -833,7 +898,7 @@ func file_vca_common_v1_common_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_common_v1_common_proto_rawDesc), len(file_vca_common_v1_common_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      4,
 			NumMessages:   9,
 			NumExtensions: 1,
 			NumServices:   0,
