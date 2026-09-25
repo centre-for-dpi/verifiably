@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strconv"
 
-	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/rolenav"
@@ -83,37 +82,6 @@ func (p *Portal) help(w http.ResponseWriter, r *http.Request) error {
 	})
 	return p.render(w, r, b, components.Page{
 		Title: msg.T("common.help.label"), Lead: msg.T("holder.help.lead"), Description: msg.T("holder.help.lead"),
-		Content: table,
-	})
-}
-
-// keys renders the holder identifier and the holder key of the wallet.
-// The page exists only when the wallet of the own stack manages keys
-// (ADR-034 decision 5).
-func (p *Portal) keys(w http.ResponseWriter, r *http.Request) error {
-	b := p.pen(r)
-	if !b.frame.Has(backendv1.Feature_FEATURE_WALLET_KEYS) {
-		http.NotFound(w, r)
-		return nil
-	}
-	did := b.who.HolderDID
-	if did == "" {
-		did = msg.T("holder.keys.none")
-	}
-	key := msg.T("holder.keys.key.stack")
-	if b.who.HasHolderKey {
-		key = msg.T("holder.keys.key.browser")
-	}
-	table := b.part("table", components.Table{
-		ID: "holder-keys", Caption: msg.T("holder.keys.caption.label"),
-		Columns: []string{msg.T("holder.keys.column.item.label"), msg.T("holder.keys.column.value.label")},
-		Rows: []components.Row{
-			{{Text: msg.T("holder.keys.did.label")}, {HTML: b.raw(`<span class="mono">` + template.HTMLEscapeString(did) + `</span>`)}},
-			{{Text: msg.T("holder.keys.key.label")}, {Text: key}},
-		},
-	})
-	return p.render(w, r, b, components.Page{
-		Title: msg.T("holder.nav.keys.label"), Lead: msg.T("holder.keys.lead"), Description: msg.T("holder.keys.lead"),
 		Content: table,
 	})
 }

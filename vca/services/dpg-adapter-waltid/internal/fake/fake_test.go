@@ -260,3 +260,49 @@ func TestFakeOnboardEveryMethod(t *testing.T) {
 		t.Fatalf("a key that is not an object: %s", body)
 	}
 }
+
+// TestFakeServesTheWalletKeys answers the key, DID, pending offer, and
+// event log calls of the wallet.
+func TestFakeServesTheWalletKeys(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	for path, want := range map[string]string{
+		"/wallet-api/wallet/w/keys":     "algorithm",
+		"/wallet-api/wallet/w/dids":     "Onboarding",
+		"/wallet-api/wallet/w/eventlog": "Receive",
+	} {
+		if got := get(t, f, path); !strings.Contains(got, want) {
+			t.Errorf("%s: %s", path, got)
+		}
+	}
+	if code, body := postBody(t, f, "/wallet-api/wallet/w/keys/generate", `{}`); code != http.StatusCreated || body == "" {
+		t.Errorf("generate: %d %q", code, body)
+	}
+	if _, body := postBody(t, f, "/wallet-api/wallet/w/dids/create/key", ``); !strings.HasPrefix(body, "did:key:") {
+		t.Errorf("create: %q", body)
+	}
+	if code, _ := postBody(t, f, "/wallet-api/wallet/w/dids/default?did=x", ``); code != http.StatusAccepted || f.LastQuery().Get("did") != "x" {
+		t.Errorf("default: %d", code)
+	}
+	if _, body := postBody(t, f, "/wallet-api/wallet/w/exchange/useOfferRequest?requireUserInput=true", `offer`); !strings.Contains(body, `"pending": true`) {
+		t.Errorf("pending: %q", body)
+	}
+	if f.LastClaimQuery().Get("requireUserInput") != "true" {
+		t.Error("the claim query is lost")
+	}
+	if !strings.Contains(get(t, f, "/wallet-api/wallet/w/credentials"), "UniversityDegree") {
+		t.Error("a pending claim put a credential in the wallet")
+	}
+	if code, _ := postBody(t, f, "/wallet-api/wallet/w/credentials/c/reject", `{}`); code != http.StatusAccepted {
+		t.Errorf("reject: %d", code)
+	}
+	f.SetResolved("doc/resolve-offer-authcode.json")
+	if _, body := postBody(t, f, "/wallet-api/wallet/w/exchange/resolveCredentialOffer", `offer`); !strings.Contains(body, "authorization_code") {
+		t.Errorf("resolved: %q", body)
+	}
+	missing := fake.New(t.TempDir())
+	defer missing.Close()
+	if code, body := postBody(t, missing, "/wallet-api/wallet/w/keys/generate", `{}`); code != http.StatusCreated || body != "" {
+		t.Errorf("a missing recording: %d %q", code, body)
+	}
+}

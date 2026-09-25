@@ -101,6 +101,27 @@ const (
 	// HolderBackendServiceDeleteCredentialProcedure is the fully-qualified name of the
 	// HolderBackendService's DeleteCredential RPC.
 	HolderBackendServiceDeleteCredentialProcedure = "/vca.backend.v1.HolderBackendService/DeleteCredential"
+	// HolderBackendServiceListKeysProcedure is the fully-qualified name of the HolderBackendService's
+	// ListKeys RPC.
+	HolderBackendServiceListKeysProcedure = "/vca.backend.v1.HolderBackendService/ListKeys"
+	// HolderBackendServiceCreateKeyProcedure is the fully-qualified name of the HolderBackendService's
+	// CreateKey RPC.
+	HolderBackendServiceCreateKeyProcedure = "/vca.backend.v1.HolderBackendService/CreateKey"
+	// HolderBackendServiceListDidsProcedure is the fully-qualified name of the HolderBackendService's
+	// ListDids RPC.
+	HolderBackendServiceListDidsProcedure = "/vca.backend.v1.HolderBackendService/ListDids"
+	// HolderBackendServiceCreateDidProcedure is the fully-qualified name of the HolderBackendService's
+	// CreateDid RPC.
+	HolderBackendServiceCreateDidProcedure = "/vca.backend.v1.HolderBackendService/CreateDid"
+	// HolderBackendServiceSetDefaultDidProcedure is the fully-qualified name of the
+	// HolderBackendService's SetDefaultDid RPC.
+	HolderBackendServiceSetDefaultDidProcedure = "/vca.backend.v1.HolderBackendService/SetDefaultDid"
+	// HolderBackendServiceRejectOfferProcedure is the fully-qualified name of the
+	// HolderBackendService's RejectOffer RPC.
+	HolderBackendServiceRejectOfferProcedure = "/vca.backend.v1.HolderBackendService/RejectOffer"
+	// HolderBackendServiceListEventsProcedure is the fully-qualified name of the HolderBackendService's
+	// ListEvents RPC.
+	HolderBackendServiceListEventsProcedure = "/vca.backend.v1.HolderBackendService/ListEvents"
 	// VerifierBackendServiceCreateRequestProcedure is the fully-qualified name of the
 	// VerifierBackendService's CreateRequest RPC.
 	VerifierBackendServiceCreateRequestProcedure = "/vca.backend.v1.VerifierBackendService/CreateRequest"
@@ -575,6 +596,24 @@ type HolderBackendServiceClient interface {
 	Present(context.Context, *connect.Request[v1.PresentRequest]) (*connect.Response[v1.PresentResponse], error)
 	// DeleteCredential removes one credential from the wallet.
 	DeleteCredential(context.Context, *connect.Request[v1.DeleteCredentialRequest]) (*connect.Response[v1.DeleteCredentialResponse], error)
+	// ListKeys lists the keys of a wallet. An adapter serves it when it
+	// lists FEATURE_WALLET_KEYS.
+	ListKeys(context.Context, *connect.Request[v1.ListKeysRequest]) (*connect.Response[v1.ListKeysResponse], error)
+	// CreateKey makes a key in a wallet, of one of wallet_key_types.
+	CreateKey(context.Context, *connect.Request[v1.CreateKeyRequest]) (*connect.Response[v1.CreateKeyResponse], error)
+	// ListDids lists the DIDs of a wallet. An adapter serves it when it
+	// lists FEATURE_WALLET_DIDS.
+	ListDids(context.Context, *connect.Request[v1.ListDidsRequest]) (*connect.Response[v1.ListDidsResponse], error)
+	// CreateDid makes a DID in a wallet, of one of wallet_did_methods.
+	CreateDid(context.Context, *connect.Request[v1.CreateDidRequest]) (*connect.Response[v1.CreateDidResponse], error)
+	// SetDefaultDid picks the DID a wallet binds new credentials to.
+	SetDefaultDid(context.Context, *connect.Request[v1.SetDefaultDidRequest]) (*connect.Response[v1.SetDefaultDidResponse], error)
+	// RejectOffer declines a credential offer in the wallet. An adapter
+	// serves it when it lists FEATURE_WALLET_REJECT_OFFER.
+	RejectOffer(context.Context, *connect.Request[v1.RejectOfferRequest]) (*connect.Response[v1.RejectOfferResponse], error)
+	// ListEvents lists the event log of a wallet, newest first. An adapter
+	// serves it when it lists FEATURE_WALLET_EVENTS.
+	ListEvents(context.Context, *connect.Request[v1.ListEventsRequest]) (*connect.Response[v1.ListEventsResponse], error)
 }
 
 // NewHolderBackendServiceClient constructs a client for the vca.backend.v1.HolderBackendService
@@ -618,6 +657,48 @@ func NewHolderBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(holderBackendServiceMethods.ByName("DeleteCredential")),
 			connect.WithClientOptions(opts...),
 		),
+		listKeys: connect.NewClient[v1.ListKeysRequest, v1.ListKeysResponse](
+			httpClient,
+			baseURL+HolderBackendServiceListKeysProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("ListKeys")),
+			connect.WithClientOptions(opts...),
+		),
+		createKey: connect.NewClient[v1.CreateKeyRequest, v1.CreateKeyResponse](
+			httpClient,
+			baseURL+HolderBackendServiceCreateKeyProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("CreateKey")),
+			connect.WithClientOptions(opts...),
+		),
+		listDids: connect.NewClient[v1.ListDidsRequest, v1.ListDidsResponse](
+			httpClient,
+			baseURL+HolderBackendServiceListDidsProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("ListDids")),
+			connect.WithClientOptions(opts...),
+		),
+		createDid: connect.NewClient[v1.CreateDidRequest, v1.CreateDidResponse](
+			httpClient,
+			baseURL+HolderBackendServiceCreateDidProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("CreateDid")),
+			connect.WithClientOptions(opts...),
+		),
+		setDefaultDid: connect.NewClient[v1.SetDefaultDidRequest, v1.SetDefaultDidResponse](
+			httpClient,
+			baseURL+HolderBackendServiceSetDefaultDidProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("SetDefaultDid")),
+			connect.WithClientOptions(opts...),
+		),
+		rejectOffer: connect.NewClient[v1.RejectOfferRequest, v1.RejectOfferResponse](
+			httpClient,
+			baseURL+HolderBackendServiceRejectOfferProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("RejectOffer")),
+			connect.WithClientOptions(opts...),
+		),
+		listEvents: connect.NewClient[v1.ListEventsRequest, v1.ListEventsResponse](
+			httpClient,
+			baseURL+HolderBackendServiceListEventsProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("ListEvents")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -628,6 +709,13 @@ type holderBackendServiceClient struct {
 	acceptOffer      *connect.Client[v1.AcceptOfferRequest, v1.AcceptOfferResponse]
 	present          *connect.Client[v1.PresentRequest, v1.PresentResponse]
 	deleteCredential *connect.Client[v1.DeleteCredentialRequest, v1.DeleteCredentialResponse]
+	listKeys         *connect.Client[v1.ListKeysRequest, v1.ListKeysResponse]
+	createKey        *connect.Client[v1.CreateKeyRequest, v1.CreateKeyResponse]
+	listDids         *connect.Client[v1.ListDidsRequest, v1.ListDidsResponse]
+	createDid        *connect.Client[v1.CreateDidRequest, v1.CreateDidResponse]
+	setDefaultDid    *connect.Client[v1.SetDefaultDidRequest, v1.SetDefaultDidResponse]
+	rejectOffer      *connect.Client[v1.RejectOfferRequest, v1.RejectOfferResponse]
+	listEvents       *connect.Client[v1.ListEventsRequest, v1.ListEventsResponse]
 }
 
 // Register calls vca.backend.v1.HolderBackendService.Register.
@@ -655,6 +743,41 @@ func (c *holderBackendServiceClient) DeleteCredential(ctx context.Context, req *
 	return c.deleteCredential.CallUnary(ctx, req)
 }
 
+// ListKeys calls vca.backend.v1.HolderBackendService.ListKeys.
+func (c *holderBackendServiceClient) ListKeys(ctx context.Context, req *connect.Request[v1.ListKeysRequest]) (*connect.Response[v1.ListKeysResponse], error) {
+	return c.listKeys.CallUnary(ctx, req)
+}
+
+// CreateKey calls vca.backend.v1.HolderBackendService.CreateKey.
+func (c *holderBackendServiceClient) CreateKey(ctx context.Context, req *connect.Request[v1.CreateKeyRequest]) (*connect.Response[v1.CreateKeyResponse], error) {
+	return c.createKey.CallUnary(ctx, req)
+}
+
+// ListDids calls vca.backend.v1.HolderBackendService.ListDids.
+func (c *holderBackendServiceClient) ListDids(ctx context.Context, req *connect.Request[v1.ListDidsRequest]) (*connect.Response[v1.ListDidsResponse], error) {
+	return c.listDids.CallUnary(ctx, req)
+}
+
+// CreateDid calls vca.backend.v1.HolderBackendService.CreateDid.
+func (c *holderBackendServiceClient) CreateDid(ctx context.Context, req *connect.Request[v1.CreateDidRequest]) (*connect.Response[v1.CreateDidResponse], error) {
+	return c.createDid.CallUnary(ctx, req)
+}
+
+// SetDefaultDid calls vca.backend.v1.HolderBackendService.SetDefaultDid.
+func (c *holderBackendServiceClient) SetDefaultDid(ctx context.Context, req *connect.Request[v1.SetDefaultDidRequest]) (*connect.Response[v1.SetDefaultDidResponse], error) {
+	return c.setDefaultDid.CallUnary(ctx, req)
+}
+
+// RejectOffer calls vca.backend.v1.HolderBackendService.RejectOffer.
+func (c *holderBackendServiceClient) RejectOffer(ctx context.Context, req *connect.Request[v1.RejectOfferRequest]) (*connect.Response[v1.RejectOfferResponse], error) {
+	return c.rejectOffer.CallUnary(ctx, req)
+}
+
+// ListEvents calls vca.backend.v1.HolderBackendService.ListEvents.
+func (c *holderBackendServiceClient) ListEvents(ctx context.Context, req *connect.Request[v1.ListEventsRequest]) (*connect.Response[v1.ListEventsResponse], error) {
+	return c.listEvents.CallUnary(ctx, req)
+}
+
 // HolderBackendServiceHandler is an implementation of the vca.backend.v1.HolderBackendService
 // service.
 type HolderBackendServiceHandler interface {
@@ -668,6 +791,24 @@ type HolderBackendServiceHandler interface {
 	Present(context.Context, *connect.Request[v1.PresentRequest]) (*connect.Response[v1.PresentResponse], error)
 	// DeleteCredential removes one credential from the wallet.
 	DeleteCredential(context.Context, *connect.Request[v1.DeleteCredentialRequest]) (*connect.Response[v1.DeleteCredentialResponse], error)
+	// ListKeys lists the keys of a wallet. An adapter serves it when it
+	// lists FEATURE_WALLET_KEYS.
+	ListKeys(context.Context, *connect.Request[v1.ListKeysRequest]) (*connect.Response[v1.ListKeysResponse], error)
+	// CreateKey makes a key in a wallet, of one of wallet_key_types.
+	CreateKey(context.Context, *connect.Request[v1.CreateKeyRequest]) (*connect.Response[v1.CreateKeyResponse], error)
+	// ListDids lists the DIDs of a wallet. An adapter serves it when it
+	// lists FEATURE_WALLET_DIDS.
+	ListDids(context.Context, *connect.Request[v1.ListDidsRequest]) (*connect.Response[v1.ListDidsResponse], error)
+	// CreateDid makes a DID in a wallet, of one of wallet_did_methods.
+	CreateDid(context.Context, *connect.Request[v1.CreateDidRequest]) (*connect.Response[v1.CreateDidResponse], error)
+	// SetDefaultDid picks the DID a wallet binds new credentials to.
+	SetDefaultDid(context.Context, *connect.Request[v1.SetDefaultDidRequest]) (*connect.Response[v1.SetDefaultDidResponse], error)
+	// RejectOffer declines a credential offer in the wallet. An adapter
+	// serves it when it lists FEATURE_WALLET_REJECT_OFFER.
+	RejectOffer(context.Context, *connect.Request[v1.RejectOfferRequest]) (*connect.Response[v1.RejectOfferResponse], error)
+	// ListEvents lists the event log of a wallet, newest first. An adapter
+	// serves it when it lists FEATURE_WALLET_EVENTS.
+	ListEvents(context.Context, *connect.Request[v1.ListEventsRequest]) (*connect.Response[v1.ListEventsResponse], error)
 }
 
 // NewHolderBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -707,6 +848,48 @@ func NewHolderBackendServiceHandler(svc HolderBackendServiceHandler, opts ...con
 		connect.WithSchema(holderBackendServiceMethods.ByName("DeleteCredential")),
 		connect.WithHandlerOptions(opts...),
 	)
+	holderBackendServiceListKeysHandler := connect.NewUnaryHandler(
+		HolderBackendServiceListKeysProcedure,
+		svc.ListKeys,
+		connect.WithSchema(holderBackendServiceMethods.ByName("ListKeys")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceCreateKeyHandler := connect.NewUnaryHandler(
+		HolderBackendServiceCreateKeyProcedure,
+		svc.CreateKey,
+		connect.WithSchema(holderBackendServiceMethods.ByName("CreateKey")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceListDidsHandler := connect.NewUnaryHandler(
+		HolderBackendServiceListDidsProcedure,
+		svc.ListDids,
+		connect.WithSchema(holderBackendServiceMethods.ByName("ListDids")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceCreateDidHandler := connect.NewUnaryHandler(
+		HolderBackendServiceCreateDidProcedure,
+		svc.CreateDid,
+		connect.WithSchema(holderBackendServiceMethods.ByName("CreateDid")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceSetDefaultDidHandler := connect.NewUnaryHandler(
+		HolderBackendServiceSetDefaultDidProcedure,
+		svc.SetDefaultDid,
+		connect.WithSchema(holderBackendServiceMethods.ByName("SetDefaultDid")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceRejectOfferHandler := connect.NewUnaryHandler(
+		HolderBackendServiceRejectOfferProcedure,
+		svc.RejectOffer,
+		connect.WithSchema(holderBackendServiceMethods.ByName("RejectOffer")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceListEventsHandler := connect.NewUnaryHandler(
+		HolderBackendServiceListEventsProcedure,
+		svc.ListEvents,
+		connect.WithSchema(holderBackendServiceMethods.ByName("ListEvents")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.HolderBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case HolderBackendServiceRegisterProcedure:
@@ -719,6 +902,20 @@ func NewHolderBackendServiceHandler(svc HolderBackendServiceHandler, opts ...con
 			holderBackendServicePresentHandler.ServeHTTP(w, r)
 		case HolderBackendServiceDeleteCredentialProcedure:
 			holderBackendServiceDeleteCredentialHandler.ServeHTTP(w, r)
+		case HolderBackendServiceListKeysProcedure:
+			holderBackendServiceListKeysHandler.ServeHTTP(w, r)
+		case HolderBackendServiceCreateKeyProcedure:
+			holderBackendServiceCreateKeyHandler.ServeHTTP(w, r)
+		case HolderBackendServiceListDidsProcedure:
+			holderBackendServiceListDidsHandler.ServeHTTP(w, r)
+		case HolderBackendServiceCreateDidProcedure:
+			holderBackendServiceCreateDidHandler.ServeHTTP(w, r)
+		case HolderBackendServiceSetDefaultDidProcedure:
+			holderBackendServiceSetDefaultDidHandler.ServeHTTP(w, r)
+		case HolderBackendServiceRejectOfferProcedure:
+			holderBackendServiceRejectOfferHandler.ServeHTTP(w, r)
+		case HolderBackendServiceListEventsProcedure:
+			holderBackendServiceListEventsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -746,6 +943,34 @@ func (UnimplementedHolderBackendServiceHandler) Present(context.Context, *connec
 
 func (UnimplementedHolderBackendServiceHandler) DeleteCredential(context.Context, *connect.Request[v1.DeleteCredentialRequest]) (*connect.Response[v1.DeleteCredentialResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.DeleteCredential is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) ListKeys(context.Context, *connect.Request[v1.ListKeysRequest]) (*connect.Response[v1.ListKeysResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.ListKeys is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) CreateKey(context.Context, *connect.Request[v1.CreateKeyRequest]) (*connect.Response[v1.CreateKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.CreateKey is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) ListDids(context.Context, *connect.Request[v1.ListDidsRequest]) (*connect.Response[v1.ListDidsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.ListDids is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) CreateDid(context.Context, *connect.Request[v1.CreateDidRequest]) (*connect.Response[v1.CreateDidResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.CreateDid is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) SetDefaultDid(context.Context, *connect.Request[v1.SetDefaultDidRequest]) (*connect.Response[v1.SetDefaultDidResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.SetDefaultDid is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) RejectOffer(context.Context, *connect.Request[v1.RejectOfferRequest]) (*connect.Response[v1.RejectOfferResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.RejectOffer is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) ListEvents(context.Context, *connect.Request[v1.ListEventsRequest]) (*connect.Response[v1.ListEventsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.ListEvents is not implemented"))
 }
 
 // VerifierBackendServiceClient is a client for the vca.backend.v1.VerifierBackendService service.

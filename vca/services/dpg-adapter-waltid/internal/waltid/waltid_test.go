@@ -66,7 +66,7 @@ func TestEveryCallNeedsItsRole(t *testing.T) {
 	if _, err := c.ResolveOffer(ctx, s, "x"); !errors.Is(err, ErrNoWallet) {
 		t.Fatalf("ResolveOffer error = %v", err)
 	}
-	if err := c.AcceptOffer(ctx, s, "x"); !errors.Is(err, ErrNoWallet) {
+	if err := c.AcceptOffer(ctx, s, "x", ""); !errors.Is(err, ErrNoWallet) {
 		t.Fatalf("AcceptOffer error = %v", err)
 	}
 	if _, err := c.Present(ctx, s, "x", nil, nil); !errors.Is(err, ErrNoWallet) {
@@ -267,7 +267,7 @@ func TestListAndDeleteAndResolveAndAcceptReachTheWallet(t *testing.T) {
 	if _, err := c.ResolveOffer(ctx, s, "offer"); err != nil {
 		t.Fatalf("ResolveOffer: %v", err)
 	}
-	if err := c.AcceptOffer(ctx, s, "offer"); err != nil {
+	if err := c.AcceptOffer(ctx, s, "offer", ""); err != nil {
 		t.Fatalf("AcceptOffer: %v", err)
 	}
 	want := []string{

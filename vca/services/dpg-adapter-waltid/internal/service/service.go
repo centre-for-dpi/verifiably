@@ -191,6 +191,11 @@ func (s *Service) GetCapabilities(
 	}
 	if s.client.HasWallet() {
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_HOLDER)
+		// The wallet-api manages keys, DIDs, pending offers, and an event
+		// log (P6-W4).
+		out.Features = append(out.Features, walletFeatures...)
+		out.WalletKeyTypes = append([]string(nil), WalletKeyTypes...)
+		out.WalletDidMethods = append([]string(nil), WalletDidMethods...)
 	}
 	if s.client.HasVerifier() || s.client.HasVerifier2() {
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_VERIFIER)

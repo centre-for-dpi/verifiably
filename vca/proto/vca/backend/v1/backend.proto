@@ -64,6 +64,24 @@ service HolderBackendService {
   rpc Present(PresentRequest) returns (PresentResponse);
   // DeleteCredential removes one credential from the wallet.
   rpc DeleteCredential(DeleteCredentialRequest) returns (DeleteCredentialResponse);
+  // ListKeys lists the keys of a wallet. An adapter serves it when it
+  // lists FEATURE_WALLET_KEYS.
+  rpc ListKeys(ListKeysRequest) returns (ListKeysResponse);
+  // CreateKey makes a key in a wallet, of one of wallet_key_types.
+  rpc CreateKey(CreateKeyRequest) returns (CreateKeyResponse);
+  // ListDids lists the DIDs of a wallet. An adapter serves it when it
+  // lists FEATURE_WALLET_DIDS.
+  rpc ListDids(ListDidsRequest) returns (ListDidsResponse);
+  // CreateDid makes a DID in a wallet, of one of wallet_did_methods.
+  rpc CreateDid(CreateDidRequest) returns (CreateDidResponse);
+  // SetDefaultDid picks the DID a wallet binds new credentials to.
+  rpc SetDefaultDid(SetDefaultDidRequest) returns (SetDefaultDidResponse);
+  // RejectOffer declines a credential offer in the wallet. An adapter
+  // serves it when it lists FEATURE_WALLET_REJECT_OFFER.
+  rpc RejectOffer(RejectOfferRequest) returns (RejectOfferResponse);
+  // ListEvents lists the event log of a wallet, newest first. An adapter
+  // serves it when it lists FEATURE_WALLET_EVENTS.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
 }
 
 // VerifierBackendService drives the verifier side of a DPG.
@@ -251,6 +269,10 @@ message GetCapabilitiesResponse {
   repeated StatusListBinding.Kind status_mechanisms = 10;
   // The key types ProvisionIssuerIdentity accepts, such as Ed25519.
   repeated string key_types = 11;
+  // The key types CreateKey accepts in a wallet.
+  repeated string wallet_key_types = 12;
+  // The DID methods CreateDid accepts in a wallet, such as did:key.
+  repeated string wallet_did_methods = 13;
 }
 
 // DpgInfo names the DPG behind an adapter. The pages show it, so a
@@ -665,6 +687,144 @@ message DeleteCredentialRequest {
 
 // DeleteCredentialResponse has no fields.
 message DeleteCredentialResponse {}
+
+// WalletKey is one key of a wallet. It never carries a private key.
+message WalletKey {
+  // The DPG assigned key id.
+  string id = 1;
+  // The key type, such as Ed25519.
+  string type = 2;
+  // The key store of the DPG that keeps the key.
+  string backend = 3;
+  // The name of the key, when the wallet has one.
+  string name = 4;
+}
+
+// ListKeysRequest selects a wallet.
+message ListKeysRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+}
+
+// ListKeysResponse returns the keys of the wallet.
+message ListKeysResponse {
+  // The keys.
+  repeated WalletKey keys = 1;
+}
+
+// CreateKeyRequest makes one key.
+message CreateKeyRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The key type, one of wallet_key_types.
+  string key_type = 2;
+}
+
+// CreateKeyResponse returns the new key.
+message CreateKeyResponse {
+  // The key.
+  WalletKey key = 1;
+}
+
+// WalletDid is one DID of a wallet.
+message WalletDid {
+  // The DID.
+  string did = 1;
+  // The name the holder gave the DID.
+  string alias = 2;
+  // The id of the key of the DID.
+  string key_id = 3;
+  // True for the DID the wallet binds new credentials to.
+  bool default = 4;
+  // The time the wallet made the DID.
+  google.protobuf.Timestamp created_at = 5;
+}
+
+// ListDidsRequest selects a wallet.
+message ListDidsRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+}
+
+// ListDidsResponse returns the DIDs of the wallet.
+message ListDidsResponse {
+  // The DIDs.
+  repeated WalletDid dids = 1;
+}
+
+// CreateDidRequest makes one DID.
+message CreateDidRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The DID method, one of wallet_did_methods.
+  string method = 2;
+  // The id of an existing key. Empty makes a new key.
+  string key_id = 3;
+  // A name for the DID.
+  string alias = 4;
+}
+
+// CreateDidResponse returns the new DID.
+message CreateDidResponse {
+  // The DID.
+  WalletDid did = 1;
+}
+
+// SetDefaultDidRequest picks the default DID.
+message SetDefaultDidRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // One DID of the wallet.
+  string did = 2;
+}
+
+// SetDefaultDidResponse has no fields.
+message SetDefaultDidResponse {}
+
+// RejectOfferRequest declines one offer.
+message RejectOfferRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The openid-credential-offer URI.
+  string offer_uri = 2;
+  // Why the holder declined, for the event log of the wallet.
+  string reason = 3;
+}
+
+// RejectOfferResponse has no fields.
+message RejectOfferResponse {}
+
+// WalletEvent is one entry of the event log of a wallet.
+message WalletEvent {
+  // The DPG assigned id.
+  string id = 1;
+  // The time of the event.
+  google.protobuf.Timestamp at = 2;
+  // The kind of event, such as Credential or Key.
+  string event = 3;
+  // What happened, such as Receive, Present, or Create.
+  string action = 4;
+  // The credential the event concerns, when there is one.
+  string credential_id = 5;
+  // The party on the other side, such as the issuer or the verifier.
+  string counterpart = 6;
+}
+
+// ListEventsRequest selects a wallet and a page.
+message ListEventsRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The page to return.
+  vca.common.v1.Pagination page = 2;
+}
+
+// ListEventsResponse returns one page of the event log.
+message ListEventsResponse {
+  // The events, newest first.
+  repeated WalletEvent events = 1;
+  // The page description.
+  vca.common.v1.PageResult page = 2;
+}
 
 // CreateRequestRequest starts an OID4VP transaction.
 message CreateRequestRequest {

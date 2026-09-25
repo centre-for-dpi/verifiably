@@ -138,13 +138,18 @@ func (c *Client) ResolveOffer(ctx context.Context, s WalletSession, offerURI str
 	return resp.Body, nil
 }
 
-// AcceptOffer claims one credential offer into the wallet.
-func (c *Client) AcceptOffer(ctx context.Context, s WalletSession, offerURI string) error {
+// AcceptOffer claims one credential offer into the wallet. pin is the
+// transaction code of the offer, or "".
+func (c *Client) AcceptOffer(ctx context.Context, s WalletSession, offerURI, pin string) error {
 	if c.wallet == nil {
 		return ErrNoWallet
 	}
-	path := fmt.Sprintf("/wallet-api/wallet/%s/exchange/useOfferRequest?requireUserInput=false",
-		url.PathEscape(s.WalletID))
+	q := url.Values{"requireUserInput": {"false"}}
+	if pin != "" {
+		q.Set("pinOrTxCode", pin)
+	}
+	path := fmt.Sprintf("/wallet-api/wallet/%s/exchange/useOfferRequest?%s",
+		url.PathEscape(s.WalletID), q.Encode())
 	_, err := c.wallet.WithToken(s.Token).Do(ctx, dpgclient.Request{
 		Method: http.MethodPost, Path: path, Body: []byte(offerURI), ContentType: "text/plain",
 	})

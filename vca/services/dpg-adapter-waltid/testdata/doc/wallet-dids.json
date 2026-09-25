@@ -1,0 +1,4 @@
+[
+  {"did": "did:key:z6MkjoRhq1jSNJdLiruSXrFFxagqrztZaXHqHGUTKJbcNywp", "alias": "Onboarding", "document": "{}", "keyId": "v1sbluyFJrMT6Lt46S4N_CBH1g7OWHpm_f3uK93dSLE", "default": true, "createdOn": "2026-09-20T10:00:00Z"},
+  {"did": "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkdfVGdCYzBCa21NaXBpUV82Z2thbUluM21tcDdoY1RyWnV5ckxUbWtuUDAiLCJ5IjoiVmtSTVpkWFlYU01mZjVBSkxybkhpTjB4NU1WNnVfOHZyQWN5dEdVZTR6NCJ9", "alias": "Travel", "document": "{}", "keyId": "_nd-T2YRYLSmuKkJZlRI641zrCIJLTpiHeqMwXuvdug", "default": false, "createdOn": "2026-09-22T14:30:00Z"}
+]

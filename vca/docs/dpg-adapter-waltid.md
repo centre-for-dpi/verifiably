@@ -113,6 +113,35 @@ the browser to `/verification-session/{id}/response` of the browser
 session. `GetResult` reads both sessions. The first session with an
 answer decides. The request expires when both expire.
 
+## The wallet of the stack
+
+With a wallet URL the answer lists `FEATURE_WALLET_KEYS`,
+`FEATURE_WALLET_DIDS`, `FEATURE_WALLET_EVENTS`, and
+`FEATURE_WALLET_REJECT_OFFER`. It lists the key types and the DID
+methods of the wallet in `wallet_key_types` and `wallet_did_methods`.
+
+| RPC | What the adapter calls |
+| --- | --- |
+| `ListKeys` | `GET /wallet-api/wallet/{wallet}/keys` |
+| `CreateKey` | `POST /wallet-api/wallet/{wallet}/keys/generate` with a `jwk` key of the type |
+| `ListDids` | `GET /wallet-api/wallet/{wallet}/dids` |
+| `CreateDid` | `POST /wallet-api/wallet/{wallet}/dids/create/{method}` with the key id and the name |
+| `SetDefaultDid` | `POST /wallet-api/wallet/{wallet}/dids/default` |
+| `RejectOffer` | `useOfferRequest` with `requireUserInput=true`, then `POST .../credentials/{id}/reject` with the note |
+| `ListEvents` | `GET /wallet-api/wallet/{wallet}/eventlog`, newest first |
+
+The wallet API has no decline of an offer as such. It takes an offer
+as pending credentials, and the adapter rejects each of them at once.
+No declined credential reaches the wallet.
+
+The wallet offers `did:key`, `did:jwk`, and `did:cheqd`. A `did:web`
+needs a host that the holder serves, so the adapter does not offer it.
+
+`AcceptOffer` sends the transaction code as `pinOrTxCode`. The wallet
+API of 0.18.2 redeems a pre-authorized code only. It takes no access
+token of the issuer. A request with an `authorization_grant` for an
+offer without a pre-authorized code answers `failed_precondition`.
+
 ## The issuer identity
 
 The identity page of the issuer calls three RPCs (ADR-046).
@@ -176,6 +205,7 @@ With a pinned identity, provision and import answer
 | Every tenant RPC | The community stack keeps no tenants. |
 | Every webhook RPC | The community stack keeps no tenants to hold a webhook. |
 | `VerifyCredential` | The adapter does not send an uploaded credential to the verifier of the stack. The scanner shows no stack check. |
+| `AcceptOffer` with a sign in grant | The wallet API of 0.18.2 redeems a pre-authorized code only. The adapter answers `failed_precondition`. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.

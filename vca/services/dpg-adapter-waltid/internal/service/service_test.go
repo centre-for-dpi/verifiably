@@ -735,6 +735,22 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_WALLET_KEYS, func() error {
+			_, err := svc.ListKeys(ctx, connect.NewRequest(&backendv1.ListKeysRequest{WalletId: "probe"}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_WALLET_DIDS, func() error {
+			_, err := svc.ListDids(ctx, connect.NewRequest(&backendv1.ListDidsRequest{WalletId: "probe"}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_WALLET_EVENTS, func() error {
+			_, err := svc.ListEvents(ctx, connect.NewRequest(&backendv1.ListEventsRequest{WalletId: "probe"}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_WALLET_REJECT_OFFER, func() error {
+			_, err := svc.RejectOffer(ctx, connect.NewRequest(&backendv1.RejectOfferRequest{WalletId: "probe"}))
+			return err
+		}, true},
 		{backendv1.Feature_FEATURE_DC_API_VERIFY, func() error {
 			_, err := svc.SubmitBrowserAnswer(ctx, connect.NewRequest(&backendv1.SubmitBrowserAnswerRequest{State: "v2:probe", Response: "{}"}))
 			return err

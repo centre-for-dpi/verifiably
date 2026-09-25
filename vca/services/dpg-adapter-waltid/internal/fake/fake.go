@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +66,12 @@ type Server struct {
 	session2 Session2State
 	// last is the path of the last call.
 	last string
+	// lastQuery is the query of the last call.
+	lastQuery url.Values
+	// claimQuery is the query of the last claim of an offer.
+	claimQuery url.Values
+	// resolved is the answer of resolveCredentialOffer.
+	resolved string
 	// claimed reports whether a wallet claimed an offer.
 	claimed bool
 	// requests records the body of every write call by path.
@@ -82,6 +89,7 @@ func New(dir string) *Server {
 		dir:      dir,
 		session:  SessionPending,
 		session2: Session2Active,
+		resolved: "resolve-offer.json",
 		requests: map[string][]byte{},
 		history:  map[string][][]byte{},
 		status:   map[string]int{},
@@ -114,6 +122,27 @@ func (f *Server) SetSession2(state Session2State) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.session2 = state
+}
+
+// LastQuery returns the query of the last call.
+func (f *Server) LastQuery() url.Values {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastQuery
+}
+
+// LastClaimQuery returns the query of the last claim of an offer.
+func (f *Server) LastClaimQuery() url.Values {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.claimQuery
+}
+
+// SetResolved selects the answer of resolveCredentialOffer.
+func (f *Server) SetResolved(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.resolved = name
 }
 
 // LastPath returns the path of the last call.
@@ -165,6 +194,8 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	f.requests[r.URL.Path] = body
 	f.history[r.URL.Path] = append(f.history[r.URL.Path], body)
 	f.last = r.URL.Path
+	f.lastQuery = r.URL.Query()
+	resolved := f.resolved
 	forced := f.status[r.URL.Path]
 	session := f.session
 	session2 := f.session2
@@ -203,12 +234,33 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/wallet-api/wallet/accounts/wallets":
 		f.send(w, "wallet-wallets.json", "application/json")
 	case strings.HasSuffix(path, "/exchange/resolveCredentialOffer"):
-		f.send(w, "resolve-offer.json", "application/json")
+		f.send(w, resolved, "application/json")
 	case strings.HasSuffix(path, "/exchange/useOfferRequest"):
 		f.mu.Lock()
-		f.claimed = true
+		f.claimQuery = r.URL.Query()
+		pending := r.URL.Query().Get("requireUserInput") == "true"
+		f.claimed = f.claimed || !pending
 		f.mu.Unlock()
+		if pending {
+			f.send(w, "doc/wallet-pending.json", "application/json")
+			return
+		}
 		w.WriteHeader(http.StatusOK)
+	case strings.HasSuffix(path, "/keys/generate"):
+		w.WriteHeader(http.StatusCreated)
+		f.sendBody(w, "doc/wallet-key-generate.txt")
+	case strings.HasSuffix(path, "/keys"):
+		f.send(w, "doc/wallet-keys.json", "application/json")
+	case strings.Contains(path, "/dids/create/"):
+		f.send(w, "doc/wallet-did-create.txt", "text/plain")
+	case strings.HasSuffix(path, "/dids/default"):
+		w.WriteHeader(http.StatusAccepted)
+	case strings.HasSuffix(path, "/dids"):
+		f.send(w, "doc/wallet-dids.json", "application/json")
+	case strings.HasSuffix(path, "/eventlog"):
+		f.send(w, "doc/wallet-events.json", "application/json")
+	case strings.HasSuffix(path, "/reject"):
+		w.WriteHeader(http.StatusAccepted)
 	case strings.HasSuffix(path, "/exchange/usePresentationRequest"):
 		f.send(w, "present-result.json", "application/json")
 	case strings.Contains(path, "/credentials/"):
@@ -299,6 +351,17 @@ func publicJWK(key json.RawMessage) []byte {
 	}
 	delete(obj.JWK, "d")
 	return anyval.Must(json.Marshal(obj.JWK))
+}
+
+// sendBody writes one recorded answer after the status line.
+func (f *Server) sendBody(w http.ResponseWriter, name string) {
+	raw, err := f.file(name)
+	if err != nil {
+		return
+	}
+	if _, err := w.Write(raw); err != nil {
+		return
+	}
 }
 
 // send writes one recorded answer.

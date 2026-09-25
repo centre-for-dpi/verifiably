@@ -234,3 +234,48 @@ func TestContractProvisionEveryMethod(t *testing.T) {
 		}
 	}
 }
+
+// TestContractWalletKeysAndDids makes a key and a DID in a real wallet,
+// picks the DID as the default, and reads the event log.
+func TestContractWalletKeysAndDids(t *testing.T) {
+	cfg := contractEnv(t)
+	if cfg.WalletURL == "" {
+		t.Skip("set VCA_WALTID_CONTRACT_WALLET_URL to run the wallet contract test")
+	}
+	a := newContractApp(t)
+	ctx := context.Background()
+	reg, err := a.Service.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: "contract|wallet-keys"}))
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	wallet := reg.Msg.GetWalletId()
+	key, err := a.Service.CreateKey(ctx, connect.NewRequest(&backendv1.CreateKeyRequest{WalletId: wallet, KeyType: "Ed25519"}))
+	if err != nil {
+		t.Fatalf("CreateKey: %v", err)
+	}
+	keys, err := a.Service.ListKeys(ctx, connect.NewRequest(&backendv1.ListKeysRequest{WalletId: wallet}))
+	if err != nil || len(keys.Msg.GetKeys()) == 0 {
+		t.Fatalf("ListKeys: %v %v", keys, err)
+	}
+	did, err := a.Service.CreateDid(ctx, connect.NewRequest(&backendv1.CreateDidRequest{WalletId: wallet, Method: "did:key", KeyId: key.Msg.GetKey().GetId(), Alias: "Contract"}))
+	if err != nil || !strings.HasPrefix(did.Msg.GetDid().GetDid(), "did:key:") {
+		t.Fatalf("CreateDid: %v %v", did, err)
+	}
+	if _, err := a.Service.SetDefaultDid(ctx, connect.NewRequest(&backendv1.SetDefaultDidRequest{WalletId: wallet, Did: did.Msg.GetDid().GetDid()})); err != nil {
+		t.Fatalf("SetDefaultDid: %v", err)
+	}
+	dids, err := a.Service.ListDids(ctx, connect.NewRequest(&backendv1.ListDidsRequest{WalletId: wallet}))
+	if err != nil {
+		t.Fatalf("ListDids: %v", err)
+	}
+	found := false
+	for _, d := range dids.Msg.GetDids() {
+		found = found || d.GetDid() == did.Msg.GetDid().GetDid() && d.GetDefault()
+	}
+	if !found {
+		t.Fatalf("the new DID is not the default: %v", dids.Msg.GetDids())
+	}
+	if _, err := a.Service.ListEvents(ctx, connect.NewRequest(&backendv1.ListEventsRequest{WalletId: wallet})); err != nil {
+		t.Fatalf("ListEvents: %v", err)
+	}
+}

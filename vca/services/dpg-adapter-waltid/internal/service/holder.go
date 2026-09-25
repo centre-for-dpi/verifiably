@@ -239,10 +239,18 @@ func (s *Service) AcceptOffer(
 	}
 	// The wallet reads the offer first. A bad offer fails here with the
 	// text of walt.id, which the citizen can act on.
-	if _, rerr := s.client.ResolveOffer(ctx, session, offerURI); rerr != nil {
+	resolved, rerr := s.client.ResolveOffer(ctx, session, offerURI)
+	if rerr != nil {
 		return nil, failed("read the offer", rerr)
 	}
-	if aerr := s.client.AcceptOffer(ctx, session, offerURI); aerr != nil {
+	// The wallet-api of 0.18.2 redeems a pre-authorized code only; it
+	// takes no access token of the issuer. A sign in grant for an offer
+	// without such a code cannot reach the wallet (P6-W4).
+	if req.Msg.GetAuthorizationGrant() != "" && !preAuthorized(resolved) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+			"the walt.id wallet claims offers with a pre-authorized code only; ask the issuer for such an offer"))
+	}
+	if aerr := s.client.AcceptOffer(ctx, session, offerURI, strings.TrimSpace(req.Msg.GetPin())); aerr != nil {
 		return nil, failed("claim the offer", aerr)
 	}
 	after, aerr := s.client.ListCredentials(ctx, session)
@@ -255,6 +263,19 @@ func (s *Service) AcceptOffer(
 			errors.New("the wallet claimed the offer but holds no new credential"))
 	}
 	return connect.NewResponse(&backendv1.AcceptOfferResponse{Credential: walletCredential(*claimed)}), nil
+}
+
+// preAuthorized reports whether a resolved offer carries a pre-authorized
+// code grant.
+func preAuthorized(offer json.RawMessage) bool {
+	var body struct {
+		Grants map[string]json.RawMessage `json:"grants"`
+	}
+	if err := json.Unmarshal(offer, &body); err != nil {
+		return false
+	}
+	_, ok := body.Grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
+	return ok
 }
 
 // newCredential returns the credential that the wallet gained. walt.id

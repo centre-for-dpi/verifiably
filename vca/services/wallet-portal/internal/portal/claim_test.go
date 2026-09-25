@@ -172,6 +172,11 @@ func TestClaimDeclineOnlyWithFeature(t *testing.T) {
 	if rec := withFeature.post(t, "/wallet/reject", url.Values{"offer_id": {id}}); rec.Code != http.StatusSeeOther {
 		t.Fatalf("reject with the feature: status = %d", rec.Code)
 	}
+	// Decline reaches the wallet of the stack through RejectOffer (P6-W4).
+	if len(withFeature.holder.rejected) != 1 || withFeature.holder.rejected[0].GetOfferUri() != pinOffer ||
+		withFeature.holder.rejected[0].GetWalletId() != "wallet-1" {
+		t.Fatalf("the stack wallet got %+v", withFeature.holder.rejected)
+	}
 }
 
 // TestScanReadAnswersTheScanner checks the endpoint of the camera

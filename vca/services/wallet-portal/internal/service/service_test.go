@@ -53,6 +53,51 @@ type fakeHolder struct {
 	seenGrant   string
 	seenPresent *backendv1.PresentRequest
 	deletedID   string
+	rejected    []*backendv1.RejectOfferRequest
+	rejectErr   error
+	keyCalls    []string
+	keysErr     error
+}
+
+func (f *fakeHolder) RejectOffer(_ context.Context, req *connect.Request[backendv1.RejectOfferRequest]) (*connect.Response[backendv1.RejectOfferResponse], error) {
+	if f.rejectErr != nil {
+		return nil, f.rejectErr
+	}
+	f.rejected = append(f.rejected, req.Msg)
+	return connect.NewResponse(&backendv1.RejectOfferResponse{}), nil
+}
+
+func (f *fakeHolder) ListKeys(_ context.Context, req *connect.Request[backendv1.ListKeysRequest]) (*connect.Response[backendv1.ListKeysResponse], error) {
+	f.keyCalls = append(f.keyCalls, "keys:"+req.Msg.GetWalletId())
+	if f.keysErr != nil {
+		return nil, f.keysErr
+	}
+	return connect.NewResponse(&backendv1.ListKeysResponse{Keys: []*backendv1.WalletKey{{Id: "k1", Type: "Ed25519"}}}), nil
+}
+
+func (f *fakeHolder) ListDids(context.Context, *connect.Request[backendv1.ListDidsRequest]) (*connect.Response[backendv1.ListDidsResponse], error) {
+	f.keyCalls = append(f.keyCalls, "dids")
+	return connect.NewResponse(&backendv1.ListDidsResponse{Dids: []*backendv1.WalletDid{{Did: "did:key:z1", Default: true}}}), nil
+}
+
+func (f *fakeHolder) ListEvents(context.Context, *connect.Request[backendv1.ListEventsRequest]) (*connect.Response[backendv1.ListEventsResponse], error) {
+	f.keyCalls = append(f.keyCalls, "events")
+	return connect.NewResponse(&backendv1.ListEventsResponse{Events: []*backendv1.WalletEvent{{Id: "1", Action: "Receive"}}}), nil
+}
+
+func (f *fakeHolder) CreateKey(_ context.Context, req *connect.Request[backendv1.CreateKeyRequest]) (*connect.Response[backendv1.CreateKeyResponse], error) {
+	f.keyCalls = append(f.keyCalls, "key:"+req.Msg.GetKeyType())
+	return connect.NewResponse(&backendv1.CreateKeyResponse{}), nil
+}
+
+func (f *fakeHolder) CreateDid(_ context.Context, req *connect.Request[backendv1.CreateDidRequest]) (*connect.Response[backendv1.CreateDidResponse], error) {
+	f.keyCalls = append(f.keyCalls, "did:"+req.Msg.GetMethod()+":"+req.Msg.GetKeyId()+":"+req.Msg.GetAlias())
+	return connect.NewResponse(&backendv1.CreateDidResponse{}), nil
+}
+
+func (f *fakeHolder) SetDefaultDid(_ context.Context, req *connect.Request[backendv1.SetDefaultDidRequest]) (*connect.Response[backendv1.SetDefaultDidResponse], error) {
+	f.keyCalls = append(f.keyCalls, "default:"+req.Msg.GetDid())
+	return connect.NewResponse(&backendv1.SetDefaultDidResponse{}), nil
 }
 
 func (f *fakeHolder) AcceptOffer(_ context.Context, req *connect.Request[backendv1.AcceptOfferRequest],
@@ -441,8 +486,17 @@ func TestRejectAndDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := scan.Msg.GetDetected().GetOfferId()
+	holder.rejectErr = errors.New("down")
+	if _, err := svc.Reject(ctx(), connect.NewRequest(&walletportalv1.RejectRequest{OfferId: id})); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("a failed decline at the stack: %v", err)
+	}
+	holder.rejectErr = nil
 	if _, err := svc.Reject(ctx(), connect.NewRequest(&walletportalv1.RejectRequest{OfferId: id})); err != nil {
 		t.Fatal(err)
+	}
+	// The decline reaches the wallet of the stack (P6-W4).
+	if len(holder.rejected) != 1 || holder.rejected[0].GetOfferUri() != offerText || holder.rejected[0].GetWalletId() != citizen().WalletID {
+		t.Fatalf("the stack got %+v", holder.rejected)
 	}
 	if _, err := svc.Accept(ctx(), connect.NewRequest(&walletportalv1.AcceptRequest{
 		OfferId: id,

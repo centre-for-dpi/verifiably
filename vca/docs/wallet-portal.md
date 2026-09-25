@@ -36,7 +36,12 @@ the wallet session and never a staff session.
 The own pair is the holder pair whose `wallet-auth` serves the key set
 in `AUTH_JWKS_URL`. The page "Keys and identifiers" shows only when the
 adapter of the own pair lists `FEATURE_WALLET_KEYS`. The page shows the
-holder identifier and where the holder key sits.
+holder identifier and where the holder key sits. It lists the keys of
+the wallet of the stack and makes a key of a type the adapter lists.
+With `FEATURE_WALLET_DIDS` it lists the identifiers, marks the default,
+makes an identifier, and picks a new default. With
+`FEATURE_WALLET_EVENTS` it shows the latest events of that wallet. A
+form of a part the adapter does not list answers 404.
 
 The sign out form posts to `/wallet/signout` with the page token. The
 wallet asks `wallet-auth` of the own pair to end the session. It clears
@@ -151,7 +156,8 @@ storage the wallet runs no sign in, so the card stays hidden.
 
 The offer page shows the button Decline only when the adapter of the own
 pair lists `FEATURE_WALLET_REJECT_OFFER`. Without the feature the
-decline address answers 404.
+decline address answers 404. A decline reaches the wallet of the stack
+through `RejectOffer`, so its event log holds the decline.
 
 A scan or a paste goes through the `detect` package first. The package
 reads three kinds of text:

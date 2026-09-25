@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
@@ -50,6 +51,55 @@ type fakeHolder struct {
 	deleteErr  error
 	accepted   bool
 	deletedID  string
+	// The wallet key, DID, decline, and event calls (P6-W4).
+	rejected   []*backendv1.RejectOfferRequest
+	madeKeys   []*backendv1.CreateKeyRequest
+	madeDids   []*backendv1.CreateDidRequest
+	defaultDid string
+	keysErr    error
+}
+
+func (f *fakeHolder) ListKeys(context.Context, *connect.Request[backendv1.ListKeysRequest]) (*connect.Response[backendv1.ListKeysResponse], error) {
+	if f.keysErr != nil {
+		return nil, f.keysErr
+	}
+	return connect.NewResponse(&backendv1.ListKeysResponse{Keys: []*backendv1.WalletKey{
+		{Id: "v1sbluyFJrMT6Lt46S4N_CBH1g7OWHpm_f3uK93dSLE", Type: "Ed25519", Backend: "LocalKey"},
+		{Id: "_nd-T2YRYLSmuKkJZlRI641zrCIJLTpiHeqMwXuvdug", Type: "secp256r1", Backend: "LocalKey", Name: "Travel"},
+	}}), nil
+}
+
+func (f *fakeHolder) CreateKey(_ context.Context, req *connect.Request[backendv1.CreateKeyRequest]) (*connect.Response[backendv1.CreateKeyResponse], error) {
+	f.madeKeys = append(f.madeKeys, req.Msg)
+	return connect.NewResponse(&backendv1.CreateKeyResponse{Key: &backendv1.WalletKey{Id: "k-new", Type: req.Msg.GetKeyType()}}), nil
+}
+
+func (f *fakeHolder) ListDids(context.Context, *connect.Request[backendv1.ListDidsRequest]) (*connect.Response[backendv1.ListDidsResponse], error) {
+	return connect.NewResponse(&backendv1.ListDidsResponse{Dids: []*backendv1.WalletDid{
+		{Did: "did:key:z6MkjoRhq1jSNJdLiruSXrFFxagqrztZaXHqHGUTKJbcNywp", Alias: "Onboarding", KeyId: "v1sbluyFJrMT6Lt46S4N_CBH1g7OWHpm_f3uK93dSLE", Default: true},
+		{Did: "did:jwk:eyJrdHkiOiJFQyJ9", Alias: "Travel", KeyId: "_nd-T2YRYLSmuKkJZlRI641zrCIJLTpiHeqMwXuvdug"},
+	}}), nil
+}
+
+func (f *fakeHolder) CreateDid(_ context.Context, req *connect.Request[backendv1.CreateDidRequest]) (*connect.Response[backendv1.CreateDidResponse], error) {
+	f.madeDids = append(f.madeDids, req.Msg)
+	return connect.NewResponse(&backendv1.CreateDidResponse{Did: &backendv1.WalletDid{Did: "did:key:z6MkNew"}}), nil
+}
+
+func (f *fakeHolder) SetDefaultDid(_ context.Context, req *connect.Request[backendv1.SetDefaultDidRequest]) (*connect.Response[backendv1.SetDefaultDidResponse], error) {
+	f.defaultDid = req.Msg.GetDid()
+	return connect.NewResponse(&backendv1.SetDefaultDidResponse{}), nil
+}
+
+func (f *fakeHolder) RejectOffer(_ context.Context, req *connect.Request[backendv1.RejectOfferRequest]) (*connect.Response[backendv1.RejectOfferResponse], error) {
+	f.rejected = append(f.rejected, req.Msg)
+	return connect.NewResponse(&backendv1.RejectOfferResponse{}), nil
+}
+
+func (f *fakeHolder) ListEvents(context.Context, *connect.Request[backendv1.ListEventsRequest]) (*connect.Response[backendv1.ListEventsResponse], error) {
+	return connect.NewResponse(&backendv1.ListEventsResponse{Events: []*backendv1.WalletEvent{
+		{Id: "12", At: timestamppb.New(clock), Event: "Credential", Action: "Receive", Counterpart: "Ministry of Transport"},
+	}}), nil
 }
 
 func (f *fakeHolder) ListCredentials(_ context.Context, _ *connect.Request[backendv1.ListCredentialsRequest],

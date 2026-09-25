@@ -1,0 +1,9 @@
+{
+  "items": [
+    {"id": 12, "event": "Credential", "action": "Receive", "timestamp": "2026-09-25T09:00:00Z", "tenant": "", "originator": "https://walt-issuer.example.org", "account": "0d2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b", "wallet": "7d0f9c1e-5b2a-4c8d-9e3f-1a2b3c4d5e6f", "credentialId": "urn:uuid:9a8b7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d", "data": {"organization": {"name": "Ministry of Transport"}}},
+    {"id": 11, "event": "Key", "action": "Create", "timestamp": "2026-09-22T14:30:00Z", "tenant": "", "originator": null, "account": "0d2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b", "wallet": "7d0f9c1e-5b2a-4c8d-9e3f-1a2b3c4d5e6f", "data": {}}
+  ],
+  "count": 2,
+  "currentStartingAfter": null,
+  "nextStartingAfter": null
+}

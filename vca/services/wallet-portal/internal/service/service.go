@@ -452,6 +452,21 @@ func (s *Service) Reject(ctx context.Context, req *connect.Request[walletportalv
 	if err != nil {
 		return nil, err
 	}
+	// The wallet of the stack hears of the decline too, so its event log
+	// holds it and no pending credential stays behind (P6-W4). A browser
+	// held wallet only forgets the offer.
+	if s.opts.Holder != nil {
+		rec, gerr := s.get(ctx, KindOffer, citizen.WalletKey(), req.Msg.GetOfferId())
+		if gerr != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, gerr)
+		}
+		if _, rerr := s.opts.Holder.RejectOffer(ctx, connect.NewRequest(&backendv1.RejectOfferRequest{
+			WalletId: citizen.WalletID, OfferUri: rec.URI, Reason: "The holder declined the offer.",
+		})); rerr != nil {
+			return nil, connect.NewError(connect.CodeUnavailable,
+				errors.New("the wallet did not decline the offer, try again later"))
+		}
+	}
 	if err := s.drop(ctx, KindOffer, citizen.WalletKey(), req.Msg.GetOfferId()); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
