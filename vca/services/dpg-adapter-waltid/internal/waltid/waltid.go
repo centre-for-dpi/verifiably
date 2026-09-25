@@ -43,6 +43,11 @@ type Client struct {
 	mu        sync.Mutex
 	issuerKey json.RawMessage
 	issuerDid string
+	x5c       []string
+	// pinned reports that the configuration named the key and the DID.
+	pinned bool
+	// onboarded receives a key that EnsureIssuerKey onboarded.
+	onboarded func(key json.RawMessage, did string)
 }
 
 // Options configure New.
@@ -76,7 +81,35 @@ func New(opts Options) *Client {
 	if key := strings.TrimSpace(opts.IssuerKey); key != "" {
 		c.issuerKey = json.RawMessage(key)
 	}
+	c.pinned = len(c.issuerKey) > 0 && c.issuerDid != ""
 	return c
+}
+
+// Pinned reports whether the configuration named the signing key and
+// the DID. A pinned identity never changes at run time.
+func (c *Client) Pinned() bool { return c.pinned }
+
+// SetIssuer replaces the signing key, the DID, and the X.509 chain the
+// issuance requests carry. The chain entries are base64 DER, leaf first.
+func (c *Client) SetIssuer(key json.RawMessage, did string, x5c []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.issuerKey, c.issuerDid, c.x5c = key, did, x5c
+}
+
+// Issuer returns the signing key, the DID, and the X.509 chain.
+func (c *Client) Issuer() (json.RawMessage, string, []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.issuerKey, c.issuerDid, c.x5c
+}
+
+// OnOnboard sets the function that receives a key EnsureIssuerKey
+// onboards, so the caller can keep it.
+func (c *Client) OnOnboard(fn func(key json.RawMessage, did string)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onboarded = fn
 }
 
 // HasIssuer reports whether the issuer role is configured.
@@ -143,33 +176,71 @@ type onboardResponse struct {
 	IssuerDid string `json:"issuerDid"`
 }
 
-// EnsureIssuerKey returns the signing key and the DID. It onboards a new
-// key at the first call when the configuration pins none.
-func (c *Client) EnsureIssuerKey(ctx context.Context) (json.RawMessage, string, error) {
-	c.mu.Lock()
-	key, did := c.issuerKey, c.issuerDid
-	c.mu.Unlock()
-	if len(key) > 0 && did != "" {
-		return key, did, nil
-	}
+// OnboardRequest is the body of POST /onboard/issuer.
+type OnboardRequest struct {
+	Key OnboardKey `json:"key"`
+	Did OnboardDid `json:"did"`
+}
+
+// OnboardKey names the key walt.id makes: the key store and the type.
+type OnboardKey struct {
+	Backend string `json:"backend"`
+	KeyType string `json:"keyType"`
+}
+
+// OnboardDid names the DID method and, for did:web, the host and path.
+type OnboardDid struct {
+	Method string            `json:"method"`
+	Config *OnboardDidConfig `json:"config,omitempty"`
+}
+
+// OnboardDidConfig is the configuration of a did:web.
+type OnboardDidConfig struct {
+	Domain string `json:"domain"`
+	Path   string `json:"path"`
+}
+
+// Onboard asks walt.id to make a key and a DID. walt.id answers with the
+// key, private part included, and the DID.
+func (c *Client) Onboard(ctx context.Context, req OnboardRequest) (json.RawMessage, string, error) {
 	if c.issuer == nil {
 		return nil, "", ErrNoIssuer
 	}
-	body := map[string]any{
-		"key": map[string]any{"backend": "jwk", "keyType": "secp256r1"},
-		"did": map[string]any{"method": "key"},
-	}
 	var out onboardResponse
-	if err := c.issuer.JSON(ctx, http.MethodPost, "/onboard/issuer", body, &out); err != nil {
+	if err := c.issuer.JSON(ctx, http.MethodPost, "/onboard/issuer", req, &out); err != nil {
 		return nil, "", fmt.Errorf("waltid: onboard the issuer: %w", err)
 	}
 	if len(out.IssuerKey) == 0 || out.IssuerDid == "" {
 		return nil, "", fmt.Errorf("waltid: the onboard answer has no key or no DID")
 	}
-	c.mu.Lock()
-	c.issuerKey, c.issuerDid = out.IssuerKey, out.IssuerDid
-	c.mu.Unlock()
 	return out.IssuerKey, out.IssuerDid, nil
+}
+
+// EnsureIssuerKey returns the signing key and the DID. A key with an
+// X.509 chain needs no DID. It onboards a new did:key at the first call
+// when no identity exists, and hands it to the function of OnOnboard.
+func (c *Client) EnsureIssuerKey(ctx context.Context) (json.RawMessage, string, error) {
+	c.mu.Lock()
+	key, did, chain := c.issuerKey, c.issuerDid, len(c.x5c) > 0
+	c.mu.Unlock()
+	if len(key) > 0 && (did != "" || chain) {
+		return key, did, nil
+	}
+	key, did, err := c.Onboard(ctx, OnboardRequest{
+		Key: OnboardKey{Backend: "jwk", KeyType: "secp256r1"},
+		Did: OnboardDid{Method: "key"},
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	c.mu.Lock()
+	c.issuerKey, c.issuerDid = key, did
+	keep := c.onboarded
+	c.mu.Unlock()
+	if keep != nil {
+		keep(key, did)
+	}
+	return key, did, nil
 }
 
 // IssuanceRequest is the body of POST /openid4vc/{format}/issue. Only
@@ -187,6 +258,9 @@ type IssuanceRequest struct {
 	// stays in the signed JWT in the clear and the holder can hide
 	// nothing at presentation time.
 	SelectiveDisclosure json.RawMessage `json:"selectiveDisclosure,omitempty"`
+	// X5Chain is the X.509 chain of an imported identity, base64 DER,
+	// leaf first. walt.id puts it in the x5c header.
+	X5Chain []string `json:"x5Chain,omitempty"`
 }
 
 // CreateOffer posts one issuance request and returns the offer URI.

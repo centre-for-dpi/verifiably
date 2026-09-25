@@ -60,6 +60,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		StandardVersion: cfg.StandardVersion,
 		VctBase:         cfg.VctBase,
 		Versions:        cfg.Versions(),
+		IdentityFile:    cfg.IdentityFile,
 	})
 	if err != nil {
 		return nil, err

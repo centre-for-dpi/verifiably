@@ -1,0 +1,13 @@
+{
+  "issuerDid": "did:key:z6MknMPNnbfMgsLj4nSUib4BjiPuvbZ4o7SRwQGcDU1nT9js",
+  "issuerKey": {
+    "jwk": {
+      "crv": "Ed25519",
+      "d": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw",
+      "kid": "0f7a3c5e9b2d4f6a8c1e3b5d7f9a2c4e",
+      "kty": "OKP",
+      "x": "dVxMuSVsp83ErP3Gz-7ahJAX5bn5UU6ZGRvWfgsNQnY"
+    },
+    "type": "jwk"
+  }
+}

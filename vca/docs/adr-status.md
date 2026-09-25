@@ -506,10 +506,10 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-046 | 1 Issuer identity RPCs | Not started | `vca/proto/vca/backend/v1` | Proposed record. No work exists yet. |
-| ADR-046 | 2 One click provision or an import | Not started | `vca/services/issuance` | Proposed record. No work exists yet. |
-| ADR-046 | 3 Trust registry entry in state pending | Not started | `vca/services/trust-registry` | Proposed record. No work exists yet. |
-| ADR-046 | 4 No issuer private key in VCA | Not started | `vca/services/dpg-adapter-*` | Proposed record. No work exists yet. |
+| ADR-046 | 1 Issuer identity RPCs | Done | `vca/proto/vca/backend/v1` | `GetIssuerIdentity`, `ProvisionIssuerIdentity`, and `ImportIssuerIdentity`. The Inji and CREDEBL adapters answer `unimplemented` until P6-I9 and P6-C1. |
+| ADR-046 | 2 One click provision or an import | Partial | `vca/services/issuance/internal/pages`, `vca/services/dpg-adapter-waltid` | walt.id provisions and imports a DID or an X.509 chain. Inji and CREDEBL follow. |
+| ADR-046 | 3 Trust registry entry in state pending | Done | `vca/services/issuance/internal/pages/identity.go` | The identity page writes a pending entry in the trust registry of the first live admin pair. |
+| ADR-046 | 4 No issuer private key in VCA | Done | `vca/services/dpg-adapter-waltid` | The walt.id key stays in the adapter state file with mode 0600, as the decision records. |
 
 ## Counts
 

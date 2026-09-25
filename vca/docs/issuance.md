@@ -32,6 +32,9 @@ service sends the browser to `/issuer/`.
 | --- | --- |
 | `GET /issuer/` | The overview of the issuer. |
 | `GET /identity/` | The issuer identity. |
+| `POST /identity/provision` | Asks the stack for a new identity. |
+| `POST /identity/import` | Checks or imports a DID or an X.509 chain. |
+| `GET /.well-known/did.json` | The DID document of a `did:web` of the host. It needs no session. |
 | `GET /issue/` | The published schemas and the delivery channels of the stack. |
 | `GET /notifications/` | The delivery channels of the issuer and their state. |
 | `GET /help/` | Every issuer RPC with its help text. |
@@ -44,6 +47,17 @@ stack switcher, the user menu, and the side navigation of
 from `VCA_PEERS`. The service also serves the shared assets at
 `/static/`. It reads the theme file of `VCA_THEME_FILE` at start and
 stops when the file is wrong (ADR-032).
+
+The identity page shows the identity the stack signs with. It also
+shows its entry in the trust registry of the first live admin pair.
+"Start instantly" asks the stack for a key and an identifier. "Bring
+your own" checks a DID or an X.509 chain. It then binds the identifier
+to a key reference in the key store of the stack. The stack keeps the key; VCA stores no issuer
+private key (ADR-001 decision 3, ADR-046). A box asks the trust
+registry for an entry in state `pending`, which an admin approves. The
+page hides the box when no live admin pair runs a trust registry, and
+says so. The service serves the DID document of a `did:web` of its
+host at `/.well-known/did.json`.
 
 Each call of the pages to the issued credentials service names the
 staff member in the `X-Vca-Actor` header. The audit log of that service

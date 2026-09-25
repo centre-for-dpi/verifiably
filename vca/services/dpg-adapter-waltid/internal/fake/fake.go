@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // SessionState names which recorded verifier session the fake serves.
@@ -125,7 +127,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(path, "/.well-known/openid-credential-issuer"):
 		f.send(w, "issuer-metadata.json", "application/json")
 	case path == "/onboard/issuer":
-		f.send(w, "onboard-issuer.json", "application/json")
+		f.onboard(w, body)
 	case strings.HasPrefix(path, "/openid4vc/") && strings.HasSuffix(path, "/issue"):
 		f.send(w, "offer.txt", "text/plain")
 	case path == "/openid4vc/verify":
@@ -157,6 +159,56 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		f.send(w, name, "application/json")
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+// onboard answers POST /onboard/issuer like walt.id: the recorded key of
+// the asked key type, and the DID of the asked method. A did:web answer
+// names the domain and the path of the request, as walt.id builds it.
+func (f *Server) onboard(w http.ResponseWriter, body []byte) {
+	var req struct {
+		Key struct {
+			KeyType string `json:"keyType"`
+		} `json:"key"`
+		Did struct {
+			Method string `json:"method"`
+			Config struct {
+				Domain string `json:"domain"`
+				Path   string `json:"path"`
+			} `json:"config"`
+		} `json:"did"`
+	}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "the onboarding request is not JSON", http.StatusBadRequest)
+			return
+		}
+	}
+	name := "onboard-issuer.json"
+	if req.Key.KeyType == "Ed25519" {
+		name = "doc/onboard-issuer-ed25519.json"
+	}
+	if req.Did.Method != "web" {
+		f.send(w, name, "application/json")
+		return
+	}
+	raw, err := f.file(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var answer map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &answer); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// did:web encodes the port colon of the host as %3A.
+	did := "did:web:" + strings.ReplaceAll(req.Did.Config.Domain, ":", "%3A") +
+		strings.ReplaceAll(strings.TrimRight(req.Did.Config.Path, "/"), "/", ":")
+	answer["issuerDid"] = anyval.Must(json.Marshal(did))
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(answer); err != nil {
+		return
 	}
 }
 

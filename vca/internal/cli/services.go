@@ -243,7 +243,10 @@ func Catalog() []Service {
 			// The credential offer of the authorization code channel lives
 			// under the public URL of the adapter.
 			Routes: append(backendRoutes(), Route{Match: "/offers/*"})},
+		// The walt.id adapter keeps the issuer identity in its data volume
+		// (ADR-046 decision 4).
 		{Name: "dpg-adapter-waltid", ListenEnv: "VCA_WALTID_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_WALTID,
+			Stateful: true, Fixed: []FixedValue{{Env: "VCA_WALTID_IDENTITY_FILE", Value: "/data/issuer-identity.json"}},
 			Links: []Link{
 				dpgURL("VCA_WALTID_ISSUER_URL", commonv1.Role_ROLE_ISSUER),
 				dpgURL("VCA_WALTID_WALLET_URL", commonv1.Role_ROLE_HOLDER),
@@ -272,6 +275,8 @@ func Catalog() []Service {
 				{Match: "/issuer/*", Page: "Issuer portal"}, {Match: "/identity/*", Page: "Issuer identity"},
 				{Match: "/issue/*", Page: "Issue"}, {Match: "/notifications/*", Page: "Issuer notifications"},
 				{Match: "/help/*", Page: "Issuer help"}, assets,
+				// A did:web issuer of the host resolves here (ADR-046).
+				{Match: "/.well-known/did.json"},
 			}},
 		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
 			Links:  append([]Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}}, issuedAudit...),

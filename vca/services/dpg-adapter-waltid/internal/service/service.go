@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -47,6 +48,10 @@ type Options struct {
 	// Versions maps each stack component onto its pinned version for
 	// the capability answer. The configuration supplies it.
 	Versions map[string]string
+	// IdentityFile keeps the issuer identity with mode 0600 (ADR-046
+	// decision 4). Empty keeps it in memory. The service reads the file
+	// at start.
+	IdentityFile string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 }
@@ -61,6 +66,11 @@ type Service struct {
 	pageSizeMax     int
 	versions        map[string]string
 	now             func() time.Time
+	identityFile    string
+
+	idMu        sync.Mutex
+	identity    identityState
+	hasIdentity bool
 }
 
 // New returns the service.
@@ -80,7 +90,7 @@ func New(opts Options) (*Service, error) {
 	if opts.StandardVersion == "" {
 		opts.StandardVersion = "draft13"
 	}
-	return &Service{
+	s := &Service{
 		client:          opts.Client,
 		store:           opts.Store,
 		dpgVersion:      opts.DpgVersion,
@@ -89,7 +99,13 @@ func New(opts Options) (*Service, error) {
 		pageSizeMax:     opts.PageSizeMax,
 		versions:        opts.Versions,
 		now:             opts.Now,
-	}, nil
+		identityFile:    opts.IdentityFile,
+	}
+	if err := s.loadStateFile(); err != nil {
+		return nil, err
+	}
+	opts.Client.OnOnboard(s.keepOnboarded)
+	return s, nil
 }
 
 // Ready reports whether the service can take traffic.
@@ -140,11 +156,19 @@ func (s *Service) GetCapabilities(
 		}
 		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VCI)
 		// RegisterCredentialConfiguration works, so a schema can go to
-		// the stack. Revoke, GetIssuanceStatus, and IssueBatch answer
-		// Unimplemented, so their features stay off the list.
-		out.Features = []backendv1.Feature{backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API}
-		// The adapter onboards a did:key issuer at first use.
-		out.DidMethods = []string{"did:key"}
+		// the stack. The onboarding endpoint makes an identity, and every
+		// issuance request takes a key object with a DID or an X.509
+		// chain, so both imports work (ADR-046). Revoke,
+		// GetIssuanceStatus, and IssueBatch answer Unimplemented, so their
+		// features stay off the list.
+		out.Features = []backendv1.Feature{
+			backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API,
+			backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION,
+			backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_DID,
+			backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509,
+		}
+		out.DidMethods = append([]string(nil), DidMethods...)
+		out.KeyTypes = append([]string(nil), KeyTypes...)
 		// The issued credential carries the status entry the caller
 		// binds, of either list kind (ADR-018, ADR-019).
 		out.StatusMechanisms = []backendv1.StatusListBinding_Kind{

@@ -87,6 +87,9 @@ func (s *Service) buildIssuance(ctx context.Context, spec *backendv1.IssueSpec, 
 		AuthenticationMethod:      waltid.AuthenticationMethod(preAuthorized),
 		StandardVersion:           strings.ToUpper(s.standardVersion),
 	}
+	if _, _, x5c := s.client.Issuer(); len(x5c) > 0 {
+		request.X5Chain = x5c
+	}
 	status := statusEntry(spec.GetStatus())
 	validity := validityWindow(spec.GetValidity())
 	switch {

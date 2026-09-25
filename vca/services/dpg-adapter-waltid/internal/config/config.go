@@ -38,6 +38,10 @@ type Config struct {
 	// IssuerKey is the JWK wrapper of the signing key, as JSON. Empty
 	// onboards a key at first use.
 	IssuerKey string `env:"ISSUER_KEY" secret:"true"`
+	// IdentityFile keeps the issuer identity that the identity page makes
+	// or imports, with mode 0600 (ADR-046 decision 4). The adapter reads
+	// it at start. Empty keeps the identity in memory.
+	IdentityFile string `env:"IDENTITY_FILE"`
 	// VctBase is the base URL of the vct of a custom SD-JWT credential.
 	VctBase string `env:"VCT_BASE"`
 	// Timeout bounds one call to walt.id.

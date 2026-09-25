@@ -643,8 +643,8 @@ func TestCapabilitiesCarryDpgInfo(t *testing.T) {
 		!hasStatusKind(resp.Msg.GetStatusMechanisms(), backendv1.StatusListBinding_KIND_TOKEN) {
 		t.Errorf("status mechanisms = %v, want both list kinds", resp.Msg.GetStatusMechanisms())
 	}
-	if len(resp.Msg.GetDidMethods()) != 1 || resp.Msg.GetDidMethods()[0] != "did:key" {
-		t.Errorf("DID methods = %v, want the onboarded did:key", resp.Msg.GetDidMethods())
+	if strings.Join(resp.Msg.GetDidMethods(), " ") != "did:web did:key did:jwk" {
+		t.Errorf("DID methods = %v, want the three the onboarding endpoint makes", resp.Msg.GetDidMethods())
 	}
 }
 
@@ -700,6 +700,22 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 		}, true},
 		{backendv1.Feature_FEATURE_REVOCATION, revoke, true},
 		{backendv1.Feature_FEATURE_SUSPENSION, revoke, false},
+		{backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION, func() error {
+			_, err := svc.ProvisionIssuerIdentity(ctx, connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{Method: "did:key", KeyType: "Ed25519"}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_DID, func() error {
+			_, err := svc.ImportIssuerIdentity(ctx, connect.NewRequest(&backendv1.ImportIssuerIdentityRequest{
+				Subject: &backendv1.ImportIssuerIdentityRequest_Did{Did: "did:web:issuer.example"}, KeyReference: `{"type":"tse","id":"k"}`,
+			}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509, func() error {
+			_, err := svc.ImportIssuerIdentity(ctx, connect.NewRequest(&backendv1.ImportIssuerIdentityRequest{
+				Subject: &backendv1.ImportIssuerIdentityRequest_X509ChainPem{X509ChainPem: "none"}, KeyReference: `{"type":"tse","id":"k"}`,
+			}))
+			return err
+		}, true},
 		{backendv1.Feature_FEATURE_ISSUANCE_STATUS, func() error {
 			_, err := svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{}))
 			return err

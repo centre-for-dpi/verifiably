@@ -46,8 +46,9 @@ The answer of `GetCapabilities` reports what the release supports.
 | Channels | OID4VCI pre-authorized code, OID4VCI authorization code |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API` when the configuration names an issuer URL |
-| DID methods | `did:key`, which the adapter onboards at first use |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUER_IDENTITY_IMPORT_DID`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` when the configuration names an issuer URL |
+| DID methods | `did:web`, `did:key`, `did:jwk` |
+| Key types | `Ed25519`, `secp256r1`, `secp256k1`, `RSA` |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names an issuer URL |
 | DPG information | The stack name, the release, and one component per wired role plus Keycloak |
 
@@ -60,6 +61,31 @@ Release 0.18.2 has no DCQL query support, so the answer never lists
 `PROTOCOL_OID4VP_DCQL`. The release has no document export, so the
 answer never lists the PDF channel. The issuance service renders the
 PDF itself.
+
+## The issuer identity
+
+The identity page of the issuer calls three RPCs (ADR-046).
+
+| RPC | What the adapter does |
+| --- | --- |
+| `GetIssuerIdentity` | Returns the DID or the X.509 chain, the key type, the key store, the metadata, and the DID document. |
+| `ProvisionIssuerIdentity` | Posts `/onboard/issuer` with the method and the key type of the request. A `did:web` names the host of the pair. |
+| `ImportIssuerIdentity` | Binds a DID or an X.509 chain to a walt.id key object. The key object can name an external key store. |
+
+The community release takes the key in each issuance request. So the
+adapter keeps the identity in the file that
+`VCA_WALTID_IDENTITY_FILE` names, with mode 0600, and reads it at
+start (ADR-046 decision 4). Compose and Helm put the file in the data
+volume of the adapter. The file has the shape of the onboarding answer,
+so the file of `vca dpg bootstrap waltid` works too. A key of an
+external key store keeps the private key out of the adapter.
+
+An import checks that a jwk key belongs to a `did:key` or a `did:jwk`.
+An X.509 import sends the chain as `x5Chain` in each issuance request.
+`VCA_WALTID_ISSUER_KEY` and `VCA_WALTID_ISSUER_DID` pin the identity.
+With a pinned identity, provision and import answer
+`failed_precondition`. Without any identity, the first offer onboards a
+`did:key` and keeps it in the file.
 
 ## What the adapter does not do
 

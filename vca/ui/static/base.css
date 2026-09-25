@@ -574,6 +574,8 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
    the heading, and a body. */
 .block{padding:var(--space-7) 0 var(--space-6);border-top:1px solid var(--line)}
 .block:first-child{border-top:none}
+/* The page header draws its own rule, so the first block after it needs none. */
+.pg-header + .block{border-top:none;padding-top:0}
 .block-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:var(--space-3) var(--space-6);margin:0 0 var(--space-6)}
 .block-head h2{font-size:clamp(1.5rem,3vw,2.2rem);margin:0}
 .block-lead{margin:var(--space-2) 0 0;color:var(--secondary);max-width:52ch}

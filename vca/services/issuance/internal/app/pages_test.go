@@ -96,6 +96,11 @@ func TestPublicRoutesStayOpen(t *testing.T) {
 	if rec := get(a, "/issuance/pdf/unknown", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("document: status %d", rec.Code)
 	}
+	// The DID document of a did:web issuer needs no session. The test
+	// adapter has no identity, so the answer is 404, not a sign in.
+	if rec := get(a, "/.well-known/did.json", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("did document: status %d", rec.Code)
+	}
 }
 
 // authStub stands in for issuer-auth: it records the session a logout ends.

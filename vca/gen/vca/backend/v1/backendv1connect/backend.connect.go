@@ -77,6 +77,15 @@ const (
 	// IssuerBackendServiceGetIssuerMetadataProcedure is the fully-qualified name of the
 	// IssuerBackendService's GetIssuerMetadata RPC.
 	IssuerBackendServiceGetIssuerMetadataProcedure = "/vca.backend.v1.IssuerBackendService/GetIssuerMetadata"
+	// IssuerBackendServiceGetIssuerIdentityProcedure is the fully-qualified name of the
+	// IssuerBackendService's GetIssuerIdentity RPC.
+	IssuerBackendServiceGetIssuerIdentityProcedure = "/vca.backend.v1.IssuerBackendService/GetIssuerIdentity"
+	// IssuerBackendServiceProvisionIssuerIdentityProcedure is the fully-qualified name of the
+	// IssuerBackendService's ProvisionIssuerIdentity RPC.
+	IssuerBackendServiceProvisionIssuerIdentityProcedure = "/vca.backend.v1.IssuerBackendService/ProvisionIssuerIdentity"
+	// IssuerBackendServiceImportIssuerIdentityProcedure is the fully-qualified name of the
+	// IssuerBackendService's ImportIssuerIdentity RPC.
+	IssuerBackendServiceImportIssuerIdentityProcedure = "/vca.backend.v1.IssuerBackendService/ImportIssuerIdentity"
 	// HolderBackendServiceRegisterProcedure is the fully-qualified name of the HolderBackendService's
 	// Register RPC.
 	HolderBackendServiceRegisterProcedure = "/vca.backend.v1.HolderBackendService/Register"
@@ -223,6 +232,19 @@ type IssuerBackendServiceClient interface {
 	Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error)
 	// GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
 	GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error)
+	// GetIssuerIdentity returns the identifiers, the key, and the metadata
+	// the DPG signs with. An empty answer means the DPG has no identity
+	// yet (ADR-046 decision 1).
+	GetIssuerIdentity(context.Context, *connect.Request[v1.GetIssuerIdentityRequest]) (*connect.Response[v1.GetIssuerIdentityResponse], error)
+	// ProvisionIssuerIdentity asks the DPG to make a key and an identifier
+	// in one step. The DPG keeps the key (ADR-046 decision 2). An adapter
+	// serves it only when it lists FEATURE_ISSUER_IDENTITY_PROVISION.
+	ProvisionIssuerIdentity(context.Context, *connect.Request[v1.ProvisionIssuerIdentityRequest]) (*connect.Response[v1.ProvisionIssuerIdentityResponse], error)
+	// ImportIssuerIdentity binds an existing DID or X.509 chain to a key in
+	// the key store of the DPG (ADR-046 decision 2). An adapter serves it
+	// only when it lists FEATURE_ISSUER_IDENTITY_IMPORT_DID or
+	// FEATURE_ISSUER_IDENTITY_IMPORT_X509.
+	ImportIssuerIdentity(context.Context, *connect.Request[v1.ImportIssuerIdentityRequest]) (*connect.Response[v1.ImportIssuerIdentityResponse], error)
 }
 
 // NewIssuerBackendServiceClient constructs a client for the vca.backend.v1.IssuerBackendService
@@ -278,6 +300,24 @@ func NewIssuerBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(issuerBackendServiceMethods.ByName("GetIssuerMetadata")),
 			connect.WithClientOptions(opts...),
 		),
+		getIssuerIdentity: connect.NewClient[v1.GetIssuerIdentityRequest, v1.GetIssuerIdentityResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceGetIssuerIdentityProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("GetIssuerIdentity")),
+			connect.WithClientOptions(opts...),
+		),
+		provisionIssuerIdentity: connect.NewClient[v1.ProvisionIssuerIdentityRequest, v1.ProvisionIssuerIdentityResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceProvisionIssuerIdentityProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("ProvisionIssuerIdentity")),
+			connect.WithClientOptions(opts...),
+		),
+		importIssuerIdentity: connect.NewClient[v1.ImportIssuerIdentityRequest, v1.ImportIssuerIdentityResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceImportIssuerIdentityProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("ImportIssuerIdentity")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -290,6 +330,9 @@ type issuerBackendServiceClient struct {
 	getIssuanceStatus               *connect.Client[v1.GetIssuanceStatusRequest, v1.GetIssuanceStatusResponse]
 	revoke                          *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
 	getIssuerMetadata               *connect.Client[v1.GetIssuerMetadataRequest, v1.GetIssuerMetadataResponse]
+	getIssuerIdentity               *connect.Client[v1.GetIssuerIdentityRequest, v1.GetIssuerIdentityResponse]
+	provisionIssuerIdentity         *connect.Client[v1.ProvisionIssuerIdentityRequest, v1.ProvisionIssuerIdentityResponse]
+	importIssuerIdentity            *connect.Client[v1.ImportIssuerIdentityRequest, v1.ImportIssuerIdentityResponse]
 }
 
 // RegisterCredentialConfiguration calls
@@ -328,6 +371,21 @@ func (c *issuerBackendServiceClient) GetIssuerMetadata(ctx context.Context, req 
 	return c.getIssuerMetadata.CallUnary(ctx, req)
 }
 
+// GetIssuerIdentity calls vca.backend.v1.IssuerBackendService.GetIssuerIdentity.
+func (c *issuerBackendServiceClient) GetIssuerIdentity(ctx context.Context, req *connect.Request[v1.GetIssuerIdentityRequest]) (*connect.Response[v1.GetIssuerIdentityResponse], error) {
+	return c.getIssuerIdentity.CallUnary(ctx, req)
+}
+
+// ProvisionIssuerIdentity calls vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity.
+func (c *issuerBackendServiceClient) ProvisionIssuerIdentity(ctx context.Context, req *connect.Request[v1.ProvisionIssuerIdentityRequest]) (*connect.Response[v1.ProvisionIssuerIdentityResponse], error) {
+	return c.provisionIssuerIdentity.CallUnary(ctx, req)
+}
+
+// ImportIssuerIdentity calls vca.backend.v1.IssuerBackendService.ImportIssuerIdentity.
+func (c *issuerBackendServiceClient) ImportIssuerIdentity(ctx context.Context, req *connect.Request[v1.ImportIssuerIdentityRequest]) (*connect.Response[v1.ImportIssuerIdentityResponse], error) {
+	return c.importIssuerIdentity.CallUnary(ctx, req)
+}
+
 // IssuerBackendServiceHandler is an implementation of the vca.backend.v1.IssuerBackendService
 // service.
 type IssuerBackendServiceHandler interface {
@@ -346,6 +404,19 @@ type IssuerBackendServiceHandler interface {
 	Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error)
 	// GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
 	GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error)
+	// GetIssuerIdentity returns the identifiers, the key, and the metadata
+	// the DPG signs with. An empty answer means the DPG has no identity
+	// yet (ADR-046 decision 1).
+	GetIssuerIdentity(context.Context, *connect.Request[v1.GetIssuerIdentityRequest]) (*connect.Response[v1.GetIssuerIdentityResponse], error)
+	// ProvisionIssuerIdentity asks the DPG to make a key and an identifier
+	// in one step. The DPG keeps the key (ADR-046 decision 2). An adapter
+	// serves it only when it lists FEATURE_ISSUER_IDENTITY_PROVISION.
+	ProvisionIssuerIdentity(context.Context, *connect.Request[v1.ProvisionIssuerIdentityRequest]) (*connect.Response[v1.ProvisionIssuerIdentityResponse], error)
+	// ImportIssuerIdentity binds an existing DID or X.509 chain to a key in
+	// the key store of the DPG (ADR-046 decision 2). An adapter serves it
+	// only when it lists FEATURE_ISSUER_IDENTITY_IMPORT_DID or
+	// FEATURE_ISSUER_IDENTITY_IMPORT_X509.
+	ImportIssuerIdentity(context.Context, *connect.Request[v1.ImportIssuerIdentityRequest]) (*connect.Response[v1.ImportIssuerIdentityResponse], error)
 }
 
 // NewIssuerBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -397,6 +468,24 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 		connect.WithSchema(issuerBackendServiceMethods.ByName("GetIssuerMetadata")),
 		connect.WithHandlerOptions(opts...),
 	)
+	issuerBackendServiceGetIssuerIdentityHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceGetIssuerIdentityProcedure,
+		svc.GetIssuerIdentity,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("GetIssuerIdentity")),
+		connect.WithHandlerOptions(opts...),
+	)
+	issuerBackendServiceProvisionIssuerIdentityHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceProvisionIssuerIdentityProcedure,
+		svc.ProvisionIssuerIdentity,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("ProvisionIssuerIdentity")),
+		connect.WithHandlerOptions(opts...),
+	)
+	issuerBackendServiceImportIssuerIdentityHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceImportIssuerIdentityProcedure,
+		svc.ImportIssuerIdentity,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("ImportIssuerIdentity")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.IssuerBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IssuerBackendServiceRegisterCredentialConfigurationProcedure:
@@ -413,6 +502,12 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 			issuerBackendServiceRevokeHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceGetIssuerMetadataProcedure:
 			issuerBackendServiceGetIssuerMetadataHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceGetIssuerIdentityProcedure:
+			issuerBackendServiceGetIssuerIdentityHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceProvisionIssuerIdentityProcedure:
+			issuerBackendServiceProvisionIssuerIdentityHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceImportIssuerIdentityProcedure:
+			issuerBackendServiceImportIssuerIdentityHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -448,6 +543,18 @@ func (UnimplementedIssuerBackendServiceHandler) Revoke(context.Context, *connect
 
 func (UnimplementedIssuerBackendServiceHandler) GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.GetIssuerMetadata is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) GetIssuerIdentity(context.Context, *connect.Request[v1.GetIssuerIdentityRequest]) (*connect.Response[v1.GetIssuerIdentityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.GetIssuerIdentity is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) ProvisionIssuerIdentity(context.Context, *connect.Request[v1.ProvisionIssuerIdentityRequest]) (*connect.Response[v1.ProvisionIssuerIdentityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) ImportIssuerIdentity(context.Context, *connect.Request[v1.ImportIssuerIdentityRequest]) (*connect.Response[v1.ImportIssuerIdentityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.ImportIssuerIdentity is not implemented"))
 }
 
 // HolderBackendServiceClient is a client for the vca.backend.v1.HolderBackendService service.

@@ -37,6 +37,19 @@ service IssuerBackendService {
   rpc Revoke(RevokeRequest) returns (RevokeResponse);
   // GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
   rpc GetIssuerMetadata(GetIssuerMetadataRequest) returns (GetIssuerMetadataResponse);
+  // GetIssuerIdentity returns the identifiers, the key, and the metadata
+  // the DPG signs with. An empty answer means the DPG has no identity
+  // yet (ADR-046 decision 1).
+  rpc GetIssuerIdentity(GetIssuerIdentityRequest) returns (GetIssuerIdentityResponse);
+  // ProvisionIssuerIdentity asks the DPG to make a key and an identifier
+  // in one step. The DPG keeps the key (ADR-046 decision 2). An adapter
+  // serves it only when it lists FEATURE_ISSUER_IDENTITY_PROVISION.
+  rpc ProvisionIssuerIdentity(ProvisionIssuerIdentityRequest) returns (ProvisionIssuerIdentityResponse);
+  // ImportIssuerIdentity binds an existing DID or X.509 chain to a key in
+  // the key store of the DPG (ADR-046 decision 2). An adapter serves it
+  // only when it lists FEATURE_ISSUER_IDENTITY_IMPORT_DID or
+  // FEATURE_ISSUER_IDENTITY_IMPORT_X509.
+  rpc ImportIssuerIdentity(ImportIssuerIdentityRequest) returns (ImportIssuerIdentityResponse);
 }
 
 // HolderBackendService drives the wallet side of a DPG.
@@ -227,6 +240,8 @@ message GetCapabilitiesResponse {
   repeated string did_methods = 9;
   // The status list kinds the adapter can embed in a credential.
   repeated StatusListBinding.Kind status_mechanisms = 10;
+  // The key types ProvisionIssuerIdentity accepts, such as Ed25519.
+  repeated string key_types = 11;
 }
 
 // DpgInfo names the DPG behind an adapter. The pages show it, so a
@@ -447,6 +462,100 @@ message GetIssuerMetadataResponse {
   string metadata_json = 3;
   // The credential configurations the DPG offers.
   repeated CredentialConfiguration configurations = 4;
+}
+
+// IssuerIdentity is the identity a DPG signs credentials with
+// (ADR-046). It never carries a private key.
+message IssuerIdentity {
+  // The identifiers of the issuer: each DID, then the subject of the
+  // X.509 leaf certificate as a distinguished name.
+  repeated string identifiers = 1;
+  // The DID document of the first DID, as JSON. Empty when the identity
+  // has no DID or the adapter cannot build the document.
+  string did_document = 2;
+  // The X.509 chain, leaf first. Each entry is one certificate as
+  // base64 DER, as the x5c header of RFC 7515 carries it.
+  repeated string x5c = 3;
+  // The issuer metadata of the identity.
+  Metadata metadata = 4;
+  // The signing key. The DPG keeps it.
+  Key key = 5;
+
+  // Metadata names the organisation behind the identity.
+  message Metadata {
+    // The name of the organisation as a page shows it.
+    string display_name = 1;
+    // The legal identifier of the organisation, such as a registration
+    // number or an LEI.
+    string legal_identifier = 2;
+  }
+
+  // Key describes the signing key without its private part.
+  message Key {
+    // The key type, such as Ed25519 or secp256r1.
+    string type = 1;
+    // The key store of the DPG that keeps the key, such as jwk.
+    string backend = 2;
+  }
+}
+
+// GetIssuerIdentityRequest has no fields.
+message GetIssuerIdentityRequest {}
+
+// GetIssuerIdentityResponse returns the identity of the DPG.
+message GetIssuerIdentityResponse {
+  // The identity. Unset when the DPG has none yet.
+  IssuerIdentity identity = 1;
+}
+
+// ProvisionIssuerIdentityRequest names the identifier and the key the
+// DPG makes.
+message ProvisionIssuerIdentityRequest {
+  // The DID method, as one of the did_methods that GetCapabilities
+  // lists, such as did:web.
+  string method = 1;
+  // The key type, as one of the key_types that GetCapabilities lists.
+  string key_type = 2;
+  // The key store of the DPG. Empty selects the default of the adapter.
+  string key_backend = 3;
+  // The host of a did:web, with its port. The adapter needs it for
+  // did:web only.
+  string domain = 4;
+  // The name of the organisation.
+  string display_name = 5;
+  // The legal identifier of the organisation.
+  string legal_identifier = 6;
+}
+
+// ProvisionIssuerIdentityResponse returns the new identity.
+message ProvisionIssuerIdentityResponse {
+  // The identity the DPG signs with from now on.
+  IssuerIdentity identity = 1;
+}
+
+// ImportIssuerIdentityRequest binds an identifier that exists to a key in
+// the key store of the DPG.
+message ImportIssuerIdentityRequest {
+  // The caller sets exactly one of did or x509_chain_pem.
+  oneof subject {
+    // A DID the issuer controls, such as did:web:issuer.example.
+    string did = 1;
+    // The X.509 chain in PEM, leaf first.
+    string x509_chain_pem = 2;
+  }
+  // The reference of the signing key in the key store of the DPG, in the
+  // form the DPG reads. The DPG keeps the key; VCA stores no private key.
+  string key_reference = 3;
+  // The name of the organisation.
+  string display_name = 4;
+  // The legal identifier of the organisation.
+  string legal_identifier = 5;
+}
+
+// ImportIssuerIdentityResponse returns the imported identity.
+message ImportIssuerIdentityResponse {
+  // The identity the DPG signs with from now on.
+  IssuerIdentity identity = 1;
 }
 
 // RegisterRequest creates a wallet for one citizen.

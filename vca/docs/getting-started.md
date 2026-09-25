@@ -238,6 +238,7 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | `/notifications/*` | `issuance` | A page: Issuer notifications. |
 | `/help/*` | `issuance` | A page: Issuer help. |
 | `/static/*` | `issuance` |  |
+| `/.well-known/did.json` | `issuance` |  |
 | `/vca.issued.v1.IssuedService/*` | `issued-credentials` |  |
 | `/issued/chain-head` | `issued-credentials` |  |
 | `/issued/jwks.json` | `issued-credentials` |  |

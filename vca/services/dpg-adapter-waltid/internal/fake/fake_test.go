@@ -150,3 +150,45 @@ func status(t *testing.T, f *fake.Server, path string) int {
 	}()
 	return resp.StatusCode
 }
+
+// postBody posts a JSON body and returns the status and the answer.
+func postBody(t *testing.T, f *fake.Server, path, body string) (int, string) {
+	t.Helper()
+	resp, err := f.Client().Post(f.URL()+path, "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post %s: %v", path, err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
+	raw, rerr := io.ReadAll(resp.Body)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	return resp.StatusCode, string(raw)
+}
+
+// TestFakeOnboardFollowsTheRequest checks the onboarding answer: the key
+// of the asked type, and a did:web of the asked host.
+func TestFakeOnboardFollowsTheRequest(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	code, body := postBody(t, f, "/onboard/issuer", `{"key":{"backend":"jwk","keyType":"Ed25519"},"did":{"method":"key"}}`)
+	if code != http.StatusOK || !strings.Contains(body, "did:key:z6Mk") {
+		t.Fatalf("Ed25519 did:key: %d %s", code, body)
+	}
+	code, body = postBody(t, f, "/onboard/issuer", `{"key":{"backend":"jwk","keyType":"secp256r1"},"did":{"method":"web","config":{"domain":"localhost:18002","path":"/issuer"}}}`)
+	if code != http.StatusOK || !strings.Contains(body, `"did:web:localhost%3A18002:issuer"`) || !strings.Contains(body, `"P-256"`) {
+		t.Fatalf("did:web: %d %s", code, body)
+	}
+	if code, _ := postBody(t, f, "/onboard/issuer", `{`); code != http.StatusBadRequest {
+		t.Fatalf("a broken body: %d", code)
+	}
+	missing := fake.New(t.TempDir())
+	defer missing.Close()
+	if code, _ := postBody(t, missing, "/onboard/issuer", `{"did":{"method":"web","config":{"domain":"a"}}}`); code != http.StatusInternalServerError {
+		t.Fatalf("a missing recording: %d", code)
+	}
+}

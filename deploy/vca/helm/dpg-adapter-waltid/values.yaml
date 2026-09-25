@@ -24,7 +24,7 @@ config: {}
 existingSecret: vca-secrets
 
 persistence:
-  enabled: false
+  enabled: true
   mountPath: /data
   existingClaim: ""
 

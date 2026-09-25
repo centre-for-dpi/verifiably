@@ -10,6 +10,8 @@
 //	GET  /issuer/          the overview: the steps, the counts, the activity
 //	POST /issuer/signout   end the session at issuer-auth
 //	GET  /identity/        the issuer identity
+//	POST /identity/provision  ask the stack for a new identity
+//	POST /identity/import     check or import a DID or an X.509 chain
 //	GET  /issue/           the published schemas and the channels of the stack
 //	GET  /notifications/   the delivery channels of the issuer
 //	GET  /help/            every issuer RPC with its help text
@@ -31,6 +33,7 @@ import (
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -83,6 +86,15 @@ type Options struct {
 	Schemas Schemas
 	// Issued reads the issued credentials. Nil shows no issued count.
 	Issued Issued
+	// Identity reads and changes the issuer identity of the adapter. Nil
+	// shows the identity as kept by the stack.
+	Identity Identity
+	// Trust returns the client of the trust registry at a URL. Nil asks
+	// no registry for an entry.
+	Trust func(url string) Trust
+	// Audit keeps the events of the pages (ADR-039 decision 1). Nil
+	// writes none.
+	Audit *auditlog.Log
 	// SignOut ends the session. Nil answers the sign out form with 404.
 	SignOut http.Handler
 	// PublicURL is the public URL of the pair.
@@ -112,6 +124,8 @@ func New(opts Options) (*Pages, error) {
 func (p *Pages) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+HomePath+"{$}", p.handle(p.overview))
 	mux.HandleFunc("GET "+IdentityPath+"{$}", p.handle(p.identity))
+	mux.HandleFunc("POST "+IdentityPath+"provision", p.handle(p.provision))
+	mux.HandleFunc("POST "+IdentityPath+"import", p.handle(p.importIdentity))
 	mux.HandleFunc("GET "+IssuePath+"{$}", p.handle(p.issue))
 	mux.HandleFunc("GET "+NotificationsPath+"{$}", p.handle(p.notifications))
 	mux.HandleFunc("GET "+HelpPath+"{$}", p.handle(p.help))

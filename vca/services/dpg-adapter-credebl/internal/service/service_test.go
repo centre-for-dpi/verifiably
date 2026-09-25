@@ -672,3 +672,47 @@ func TestWebhookServiceUnimplementedWithoutFeature(t *testing.T) {
 		}
 	}
 }
+
+// TestIssuerIdentityUnimplementedWithoutFeature is ADR-046 decision 1:
+// the adapter does not manage the issuer identity through the stack yet,
+// so the three identity RPCs answer Unimplemented with a reason, and the
+// capability answer lists no identity feature. The identity page then
+// offers no action on this stack.
+func TestIssuerIdentityUnimplementedWithoutFeature(t *testing.T) {
+	svc, _ := newService(t, nil)
+	ctx := context.Background()
+	calls := []func() error{
+		func() error {
+			_, err := svc.GetIssuerIdentity(ctx, connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
+			return err
+		},
+		func() error {
+			_, err := svc.ProvisionIssuerIdentity(ctx, connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{Method: "did:web"}))
+			return err
+		},
+		func() error {
+			_, err := svc.ImportIssuerIdentity(ctx, connect.NewRequest(&backendv1.ImportIssuerIdentityRequest{
+				Subject: &backendv1.ImportIssuerIdentityRequest_Did{Did: "did:web:issuer.example"},
+			}))
+			return err
+		},
+	}
+	for i, call := range calls {
+		err := call()
+		wantCode(t, err, connect.CodeUnimplemented)
+		if !strings.Contains(err.Error(), "identity") {
+			t.Errorf("call %d: the message %q does not say why", i, err)
+		}
+	}
+	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range caps.Msg.GetFeatures() {
+		switch f {
+		case backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION, backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_DID,
+			backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509:
+			t.Errorf("the answer lists %v", f)
+		}
+	}
+}

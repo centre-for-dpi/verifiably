@@ -17,6 +17,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
@@ -64,6 +65,10 @@ type Deps struct {
 	PageSchemas pages.Schemas
 	// PageIssued replaces the issued credentials list of the pages.
 	PageIssued pages.Issued
+	// PageIdentity replaces the identity client of the pages.
+	PageIdentity pages.Identity
+	// Trust replaces the trust registry client of the identity page.
+	Trust func(url string) pages.Trust
 	// SessionKeys replaces the key set of issuer-auth. Tests set it.
 	SessionKeys staffsession.Keys
 	// Prober replaces the probe of the peers.
@@ -157,7 +162,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	mux.HandleFunc("GET "+service.DocumentPath+"{ref}", documentHandler(svc))
-	if err := mountPages(mux, cfg, deps, httpClient, capability); err != nil {
+	if err := mountPages(mux, wiring{cfg: cfg, deps: deps, client: httpClient, capability: capability, events: events}); err != nil {
 		return nil, err
 	}
 	if schemas == nil {
@@ -225,9 +230,20 @@ func openStore(cfg config.Config) (store.KeyValue, error) {
 	return store.File(cfg.StoreFile)
 }
 
+// wiring is what the pages share with the RPC service.
+type wiring struct {
+	cfg        config.Config
+	deps       Deps
+	client     connect.HTTPClient
+	capability clients.Capability
+	events     *auditlog.Log
+}
+
 // mountPages adds the issuer home and its pages behind the staff guard,
-// the shared assets, and the redirect of the root (ADR-044 decision 1).
-func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, httpClient connect.HTTPClient, capability clients.Capability) error {
+// the shared assets, the DID document of a did:web issuer, and the
+// redirect of the root (ADR-044 decision 1, ADR-046).
+func mountPages(mux *http.ServeMux, wr wiring) error {
+	cfg, deps, httpClient := wr.cfg, wr.deps, wr.client
 	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
 	if err != nil {
 		return err
@@ -243,8 +259,14 @@ func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, httpClient con
 		SignOut: pages.SignOutPath, Prober: deps.Prober, Client: httpClient, Now: deps.Now,
 	})
 	opts := pages.Options{
-		Kit: kit, Shell: shell, Capability: capability, Schemas: deps.PageSchemas, Issued: deps.PageIssued,
-		PublicURL: cfg.PublicURL, SignOut: signOut,
+		Kit: kit, Shell: shell, Capability: wr.capability, Schemas: deps.PageSchemas, Issued: deps.PageIssued,
+		Identity: deps.PageIdentity, Trust: deps.Trust, Audit: wr.events, PublicURL: cfg.PublicURL, SignOut: signOut,
+	}
+	if opts.Identity == nil {
+		opts.Identity = backendv1connect.NewIssuerBackendServiceClient(httpClient, cfg.AdapterURL)
+	}
+	if opts.Trust == nil {
+		opts.Trust = func(url string) pages.Trust { return trustv1connect.NewTrustServiceClient(httpClient, url) }
 	}
 	if opts.Schemas == nil && cfg.SchemaURL != "" {
 		opts.Schemas = schemav1connect.NewSchemaServiceClient(httpClient, cfg.SchemaURL)
@@ -263,6 +285,7 @@ func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, httpClient con
 		mux.Handle(prefix, guarded)
 	}
 	mux.Handle("GET "+ui.Prefix, assets)
+	mux.Handle("GET "+pages.DIDDocumentPath, p.DIDDocument())
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, pages.HomePath, http.StatusSeeOther)
 	})
