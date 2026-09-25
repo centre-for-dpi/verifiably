@@ -19,14 +19,18 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/config"
@@ -67,6 +71,8 @@ type Deps struct {
 	ReadFile func(string) ([]byte, error)
 	// SessionKeys replaces the key set of verifier-auth. Tests set it.
 	SessionKeys staffsession.Keys
+	// Prober replaces the probe of the peers.
+	Prober *topology.Prober
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -121,7 +127,12 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	wallet, walletErr := httpapi.New(svc)
 	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
-	page, pageErr := scanner.New(scanner.Options{Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit})
+	shell, signOut := staffshell.Wire(staffshell.Setup{
+		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
+		SignOut: "/" + strings.Trim(cfg.ScannerPrefix, "/") + "/signout", Prober: deps.Prober,
+		Client: &http.Client{Timeout: cfg.DiscoveryTimeout}, Now: deps.Now,
+	})
+	page, pageErr := scanner.New(scanner.Options{Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit, Shell: shell, SignOut: signOut})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, ReadFile: deps.ReadFile, Now: deps.Now, Log: deps.Log, MaxFormBytes: scanner.MaxUploadBytes,
 	})

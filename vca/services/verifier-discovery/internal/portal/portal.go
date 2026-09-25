@@ -15,6 +15,11 @@
 //	GET  /templates             the template list
 //	GET  /templates/{id}        one template with its DCQL and its history
 //	POST /templates/{id}/delete remove every version of one template
+//	GET  /pe/                   the DIF PE form of every saved query
+//	POST /signout               end the session at verifier-auth
+//
+// With a shell the pages sit in the verifier frame of
+// services/internal/staffshell (board Verifier-Portal).
 //
 // Every action calls a DiscoveryService RPC, so the pages and the API
 // cannot diverge.
@@ -39,6 +44,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/catalog"
 	tmpl "github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/template"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -59,6 +65,11 @@ type Options struct {
 	Kit *components.Kit
 	// Prefix is the URL prefix of the pages. Empty means DefaultPrefix.
 	Prefix string
+	// Shell draws the verifier frame. Nil draws the plain navigation of
+	// the service.
+	Shell *staffshell.Shell
+	// SignOut ends the session. Nil answers the sign out form with 404.
+	SignOut http.Handler
 }
 
 // Portal serves the verifier pages.
@@ -98,6 +109,23 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/templates", p.handle(p.saveTemplate))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/templates/{id}", p.handle(p.templateDetail))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/templates/{id}/delete", p.handle(p.deleteTemplate))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/pe/{$}", p.handle(p.exchangeList))
+	if p.opts.SignOut != nil {
+		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
+	}
+}
+
+// SignOutPath returns the action of the sign out form of the shell.
+func (p *Portal) SignOutPath() string { return p.opts.Prefix + "/signout" }
+
+// render writes a page: inside the verifier frame when the portal has a
+// shell, else with the navigation of the service marked at current.
+func (p *Portal) render(w http.ResponseWriter, r *http.Request, current string, page components.Page) error {
+	if p.opts.Shell != nil {
+		return p.opts.Shell.Render(p.opts.Kit, w, r, p.opts.Shell.Frame(r.Context()), page)
+	}
+	page.Nav = p.nav(current)
+	return p.opts.Kit.RenderPage(w, r, page)
 }
 
 // handle answers with a short sentence when a page fails. The error text
@@ -253,10 +281,9 @@ func (p *Portal) issuers(w http.ResponseWriter, r *http.Request) error {
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, "issuers", components.Page{
 		Title:       "Trusted issuers",
 		Description: "Browse the issuers the trust registry lists and the credential types each one offers.",
-		Nav:         p.nav("issuers"),
 		Content:     components.Join(form(r.Context(), p.opts.Prefix+"/crawl", "post", action), table),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
@@ -328,10 +355,9 @@ func (p *Portal) types(w http.ResponseWriter, r *http.Request) error {
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, "types", components.Page{
 		Title:       "Credential types",
 		Description: "Find the credential type a presentation request asks for.",
-		Nav:         p.nav("types"),
 		Content:     components.Join(filters, table),
 	})
 }
@@ -378,11 +404,10 @@ func (p *Portal) fields(w http.ResponseWriter, r *http.Request) error {
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, "types", components.Page{
 		Title:       "Claims of " + typeName,
 		Heading:     "Claims of " + typeName,
 		Description: "Tick the claims the presentation request asks for, then save the request as a template.",
-		Nav:         p.nav("types"),
 		Content:     components.Join(selection, schema),
 	})
 }
@@ -475,10 +500,9 @@ func (p *Portal) templates(w http.ResponseWriter, r *http.Request) error {
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, "templates", components.Page{
 		Title:       "Presentation templates",
 		Description: "Reuse a saved presentation request in the ingestion service and the combined presentation service.",
-		Nav:         p.nav("templates"),
 		Content:     table,
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
@@ -520,10 +544,9 @@ func (p *Portal) templateDetail(w http.ResponseWriter, r *http.Request) error {
 	if b.err != nil {
 		return b.err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, "templates", components.Page{
 		Title:       t.GetDisplayName(),
 		Description: "Read the stored presentation request and remove it when no service uses it.",
-		Nav:         p.nav("templates"),
 		Content: components.Join(summary, claims, query, exchange,
 			form(r.Context(), p.opts.Prefix+"/templates/"+url.PathEscape(id)+"/delete", "post", remove)),
 		Toasts: notice(r.URL.Query().Get("notice")),

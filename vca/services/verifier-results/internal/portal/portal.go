@@ -3,11 +3,17 @@
 // Package portal renders the pages of the verifier results service with
 // the vca UI kit (ADR-025 decisions 2, 4, 5, and 6).
 //
-// Staff pages, under the configured prefix:
+// Staff pages, under the configured prefix, inside the verifier frame of
+// services/internal/staffshell (board Verifier-Portal):
 //
-//	GET  /            the result list with filters and export links
+//	GET  /             the overview; a URL with a query is an old list URL
+//	                   and moves to /results/ with the query kept
+//	GET  /results/     the result list with filters and export links
 //	GET  /results/{id} the card list of one result
-//	GET  /export      the CSV or JSON download of the filtered results
+//	GET  /export       the CSV or JSON download of the filtered results
+//	GET  /cache/       how the verifier checks trust and status
+//	GET  /help/        what each verifier page does, and every RPC
+//	POST /signout      end the session at verifier-auth
 //
 // Citizen page, under the public prefix:
 //
@@ -25,10 +31,15 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
+	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/export"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/service"
@@ -49,6 +60,20 @@ const DefaultMaxPasteBytes = 1 << 20
 // (ADR-025 decision 5).
 type Evaluator func(ctx context.Context, payload []byte) (*resultsv1.VerificationResult, error)
 
+// Discovery reads the saved queries and the catalogue of the discovery
+// service of the pair. The overview counts and lists from it.
+type Discovery interface {
+	ListTemplates(context.Context, *connect.Request[discoveryv1.ListTemplatesRequest]) (*connect.Response[discoveryv1.ListTemplatesResponse], error)
+	ListCredentialTypes(context.Context, *connect.Request[discoveryv1.ListCredentialTypesRequest]) (*connect.Response[discoveryv1.ListCredentialTypesResponse], error)
+	GetFields(context.Context, *connect.Request[discoveryv1.GetFieldsRequest]) (*connect.Response[discoveryv1.GetFieldsResponse], error)
+}
+
+// Requests lists the OID4VP transactions of the ingestion service of the
+// pair. The overview counts the open requests from it.
+type Requests interface {
+	ListTransactions(context.Context, *connect.Request[ingestv1.ListTransactionsRequest]) (*connect.Response[ingestv1.ListTransactionsResponse], error)
+}
+
 // Options configure the portal.
 type Options struct {
 	// Service answers the queries. The in process service satisfies it.
@@ -67,6 +92,20 @@ type Options struct {
 	MaxPasteBytes int64
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// Shell draws the verifier frame of the staff pages. Nil draws the
+	// plain navigation of the service.
+	Shell *staffshell.Shell
+	// SignOut ends the session. Nil answers the sign out form with 404.
+	SignOut http.Handler
+	// Discovery reads the saved queries and the catalogue. Nil shows
+	// them as unknown.
+	Discovery Discovery
+	// Requests lists the requests of the ingestion service. Nil shows
+	// the open requests as unknown.
+	Requests Requests
+	// DocsURL is the base of the documents the help page links. Empty
+	// means DefaultDocsURL.
+	DocsURL string
 }
 
 // Portal serves the pages.
@@ -111,11 +150,20 @@ func (p *Portal) Prefix() string { return p.opts.Prefix }
 // PublicPrefix returns the URL prefix of the citizen page.
 func (p *Portal) PublicPrefix() string { return p.opts.PublicPrefix }
 
+// resultsPath returns the path of the result list.
+func (p *Portal) resultsPath() string { return p.opts.Prefix + "/results/" }
+
 // Register adds every page to mux.
 func (p *Portal) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.list))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.overview))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/results/{$}", p.handle(p.list))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/results/{id}", p.handle(p.detail))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/export", p.handle(p.download))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/cache/{$}", p.handle(p.cache))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/help/{$}", p.handle(p.help))
+	if p.opts.SignOut != nil {
+		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
+	}
 	mux.HandleFunc("GET "+p.opts.PublicPrefix+"/{$}", p.handle(p.publicForm))
 	mux.HandleFunc("POST "+p.opts.PublicPrefix+"/{$}", p.handle(p.publicCheck))
 }
@@ -124,21 +172,33 @@ func (p *Portal) Register(mux *http.ServeMux) {
 func (p *Portal) handle(fn func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := fn(w, r); err != nil {
-			http.Error(w, "the page could not render", http.StatusInternalServerError)
+			http.Error(w, msg.T("common.render_failed"), http.StatusInternalServerError)
 		}
 	}
 }
 
-// nav returns the navigation of a staff page.
+// nav returns the navigation of a staff page without the shell.
 func (p *Portal) nav(current string) components.Nav {
 	return components.Nav{
 		Label: "Main",
-		Brand: components.Link{Href: p.opts.Prefix + "/", Text: "Verifier results"},
+		Brand: components.Link{Href: p.opts.Prefix + "/", Text: msg.T("verifier.results.brand.label")},
 		Links: []components.Link{
-			{Href: p.opts.Prefix + "/", Text: "Verifications", Current: current == "list"},
-			{Href: p.opts.PublicPrefix + "/", Text: "Citizen check", Current: current == "public"},
+			{Href: p.opts.Prefix + "/", Text: msg.T("common.overview.label"), Current: current == "overview"},
+			{Href: p.resultsPath(), Text: msg.T("verifier.nav.results.label"), Current: current == "list"},
+			{Href: p.opts.PublicPrefix + "/", Text: msg.T("verifier.check.nav.label"), Current: current == "public"},
 		},
 	}
+}
+
+// render writes a staff page: inside the verifier frame when the portal
+// has a shell, else with the navigation of the service.
+func (p *Portal) render(w http.ResponseWriter, r *http.Request, current string, page components.Page) error {
+	kit := p.opts.Cards.Kit()
+	if p.opts.Shell != nil {
+		return p.opts.Shell.Render(kit, w, r, p.opts.Shell.Frame(r.Context()), page)
+	}
+	page.Nav = p.nav(current)
+	return kit.RenderPage(w, r, page)
 }
 
 // list renders the result list with the filter form.
@@ -157,10 +217,10 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 		}
 		body = append(body, table)
 	}
-	return p.opts.Cards.Kit().RenderPage(w, r, components.Page{
-		Title:       "Verifications",
-		Description: "The verifications this deployment stored.",
-		Nav:         p.nav("list"),
+	return p.render(w, r, "list", components.Page{
+		Title:       msg.T("verifier.nav.results.label"),
+		Lead:        msg.T("verifier.results.lead"),
+		Description: msg.T("verifier.results.lead"),
 		Content:     components.Join(body...),
 	})
 }
@@ -169,16 +229,16 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 func (p *Portal) filterForm(values url.Values, problem string) (template.HTML, error) {
 	kit := p.opts.Cards.Kit()
 	fields := []components.Field{
-		{ID: "from", Label: "From", Type: "date", Value: values.Get("from"),
-			Hint: "The earliest check date."},
-		{ID: "to", Label: "To", Type: "date", Value: values.Get("to"),
-			Hint: "The latest check date."},
-		{ID: "verdict", Label: "Verdict", Type: "select", Value: values.Get("verdict"),
+		{ID: "from", Label: msg.T("verifier.results.from.label"), Type: "date", Value: values.Get("from"),
+			Hint: msg.T("verifier.results.from.hint")},
+		{ID: "to", Label: msg.T("verifier.results.to.label"), Type: "date", Value: values.Get("to"),
+			Hint: msg.T("verifier.results.to.hint")},
+		{ID: "verdict", Label: msg.T("verifier.results.verdict.label"), Type: "select", Value: values.Get("verdict"),
 			Options: verdictOptions(values.Get("verdict"))},
-		{ID: "issuer", Label: "Issuer", Value: values.Get("issuer"),
-			Hint: "The issuer DID or URL."},
-		{ID: "template", Label: "Template", Value: values.Get("template"),
-			Hint: "The presentation template id."},
+		{ID: "issuer", Label: msg.T("verifier.results.issuer.label"), Value: values.Get("issuer"),
+			Hint: msg.T("verifier.results.issuer.hint")},
+		{ID: "template", Label: msg.T("verifier.results.query.label"), Value: values.Get("template"),
+			Hint: msg.T("verifier.results.query.hint")},
 	}
 	if problem != "" {
 		fields[0].Error = problem
@@ -191,13 +251,15 @@ func (p *Portal) filterForm(values url.Values, problem string) (template.HTML, e
 		}
 		parts = append(parts, html)
 	}
-	apply, err := kit.HTML("button", components.Button{Text: "Apply", Type: "submit", Variant: "primary"})
+	apply, err := kit.HTML("button", components.Button{Text: msg.T("verifier.results.apply.label"), Type: "submit", Variant: "primary"})
 	if err != nil {
 		return "", err
 	}
 	parts = append(parts, apply)
 	query := values.Encode()
-	for _, e := range []struct{ encoding, text string }{{"csv", "Download CSV"}, {"json", "Download JSON"}} {
+	for _, e := range []struct{ encoding, text string }{
+		{"csv", msg.T("verifier.results.csv.label")}, {"json", msg.T("verifier.results.json.label")},
+	} {
 		link, lerr := kit.HTML("button", components.Button{
 			Text: e.text, Href: p.opts.Prefix + "/export?encoding=" + e.encoding + "&" + query,
 		})
@@ -208,9 +270,9 @@ func (p *Portal) filterForm(values url.Values, problem string) (template.HTML, e
 	}
 	return kit.HTML("card", components.Card{
 		ID:    "filters",
-		Title: "Filter",
-		Text:  "Narrow the list by time, verdict, issuer, or template.",
-		Body: template.HTML(`<form method="get" action="`+template.HTMLEscapeString(p.opts.Prefix)+`/">`) + //nolint:gosec // the prefix is escaped
+		Title: msg.T("verifier.results.filter.label"),
+		Text:  msg.T("verifier.results.filter.text"),
+		Body: template.HTML(`<form method="get" action="`+template.HTMLEscapeString(p.resultsPath())+`">`) + //nolint:gosec // the path is escaped
 			components.Join(parts...) + template.HTML(`</form>`),
 	})
 }
@@ -222,20 +284,24 @@ func (p *Portal) resultTable(ctx context.Context, filter *resultsv1.Filter) (tem
 		return "", err
 	}
 	table := components.Table{
-		ID: "results", Caption: "Verifications, newest first",
-		Columns: []string{"Checked at", "Verdict", "Credentials", "Template", "Detail"},
-		Empty:   "No verification matches the filter",
+		ID: "results", Caption: msg.T("verifier.results.caption.label"),
+		Columns: []string{
+			msg.T("verifier.results.column.at.label"), msg.T("verifier.results.verdict.label"),
+			msg.T("verifier.results.column.credentials.label"), msg.T("verifier.results.query.label"),
+			msg.T("common.detail.label"),
+		},
+		Empty: msg.T("verifier.results.none"),
 	}
 	kit := p.opts.Cards.Kit()
 	for _, r := range page {
 		link, lerr := kit.HTML("button", components.Button{
-			Text: "Open", Href: p.opts.Prefix + "/results/" + url.PathEscape(r.GetId()),
+			Text: msg.T("common.open.label"), Href: p.resultsPath() + url.PathEscape(r.GetId()),
 		})
 		if lerr != nil {
 			return "", lerr
 		}
 		table.Rows = append(table.Rows, components.Row{
-			{Text: at(r)}, {Text: export.VerdictWord(r.GetVerdict())},
+			{Text: at(r)}, {Text: verdictText(r.GetVerdict())},
 			{Text: fmt.Sprint(len(r.GetCredentials()))},
 			{Text: r.GetTemplateId()}, {HTML: link},
 		})
@@ -255,16 +321,15 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	back, err := p.opts.Cards.Kit().HTML("button", components.Button{
-		Text: "Back to the list", Href: p.opts.Prefix + "/",
+		Text: msg.T("verifier.results.back.label"), Href: p.resultsPath(),
 	})
 	if err != nil {
 		return err
 	}
-	return p.opts.Cards.Kit().RenderPage(w, r, components.Page{
-		Title:       "Verification " + got.GetId(),
-		Heading:     "Verification detail",
-		Description: "The cards of one verification.",
-		Nav:         p.nav("list"),
+	return p.render(w, r, "list", components.Page{
+		Title:       msg.T("verifier.results.detail.title", got.GetId()),
+		Heading:     msg.T("verifier.results.detail.label"),
+		Description: msg.T("verifier.results.detail.lead"),
 		Content:     components.Join(back, list),
 	})
 }
@@ -374,9 +439,9 @@ func verdictOptions(selected string) []components.Option {
 	words := []string{"", "valid", "invalid", "indeterminate"}
 	out := make([]components.Option, 0, len(words))
 	for _, w := range words {
-		text := w
+		text := verdictText(verdictOf(w))
 		if w == "" {
-			text = "Every verdict"
+			text = msg.T("verifier.results.every_verdict.label")
 		}
 		out = append(out, components.Option{Value: w, Text: text, Selected: w == selected})
 	}
@@ -421,12 +486,15 @@ func verdictOf(word string) policyv1.EvaluateResponse_Verdict {
 	return policyv1.EvaluateResponse_VERDICT_UNSPECIFIED
 }
 
+// TimeFormat is how the pages print a check time.
+const TimeFormat = "2006-01-02 15:04 UTC"
+
 // at returns the check time of a result as text.
 func at(r *resultsv1.VerificationResult) string {
 	if r.GetEvaluatedAt() == nil {
 		return "not known"
 	}
-	return r.GetEvaluatedAt().AsTime().UTC().Format(time.RFC3339)
+	return r.GetEvaluatedAt().AsTime().UTC().Format(TimeFormat)
 }
 
 // read returns one result by the id in the path. A result that is

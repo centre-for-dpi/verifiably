@@ -94,6 +94,40 @@ follows RFC 4180. It has a header row and one row per credential. The
 JSON form writes one compact JSON object per line. The portal serves the
 same two encodings as a download at `GET <prefix>/export`.
 
+## Staff pages
+
+The staff pages sit in the verifier frame of
+`services/internal/staffshell` (board Verifier-Portal, ADR-044 decisions
+3 and 5). The frame shows the role chip and the switcher of the
+verifier pairs that run. It also shows the user menu of the
+`verifier-auth` session and the side navigation of `internal/rolenav`.
+The sign
+out form ends the session at `verifier-auth` and clears the cookie.
+
+| Path | Page |
+|---|---|
+| `GET /portal/` | The overview: the saved queries, the open requests, the trust cache state, the schemas you can ask for, and the recent results. |
+| `GET /portal/results/` | The result list with the filters and the export links. |
+| `GET /portal/results/{id}` | The card list of one result. |
+| `GET /portal/export` | The CSV or JSON download of the filtered results. |
+| `GET /portal/cache/` | How the verifier reads the trust list and the status lists now. |
+| `GET /portal/help/` | What each verifier page does, and every verifier RPC. |
+| `POST /portal/signout` | The sign out form of the user menu. |
+
+The result list moved from `/portal/` to `/portal/results/`. An old
+list URL with a query answers `301` to the new path with the query
+kept.
+
+The overview reads its counts on the compose network (ADR-047 decision
+2). `ListTemplates`, `ListCredentialTypes`, and `GetFields` of the
+discovery service at `VCA_VERIFIER_RESULTS_DISCOVERY_URL` give the saved
+queries and the schemas. `ListTransactions` of the ingestion service at
+`VCA_VERIFIER_RESULTS_INGEST_URL` counts the requests that wait for a
+wallet. A card shows "Unknown now" when its service does not answer.
+Each check reads the trust list and the status lists online today, so
+the trust cache card says so. The offline cache of ADR-041 fills it
+later.
+
 ## Audit log
 
 The service writes one audit event for each stored result, with its verdict (ADR-039 decision 1).

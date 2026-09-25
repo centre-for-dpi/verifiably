@@ -14,9 +14,12 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/config"
@@ -50,6 +53,8 @@ type Deps struct {
 	Client *http.Client
 	// SessionKeys replaces the key set of verifier-auth. Tests set it.
 	SessionKeys staffsession.Keys
+	// Prober replaces the probe of the peers.
+	Prober *topology.Prober
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -93,7 +98,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	crawler, crawlErr := crawl.New(crawl.Options{Trust: trust, Fetch: fetcher, Store: st, Now: deps.Now})
 	svc, serviceErr := service.New(service.Options{Store: st, Crawler: crawler, PageSizeMax: cfg.PageSizeMax, Now: deps.Now})
 	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
-	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit})
+	shell, signOut := staffshell.Wire(staffshell.Setup{
+		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
+		SignOut: cfg.PortalPrefix + "/signout", Prober: deps.Prober, Client: &http.Client{Timeout: cfg.TrustTimeout}, Now: deps.Now,
+	})
+	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit, Shell: shell, SignOut: signOut})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, Now: deps.Now, Log: deps.Log, MaxFormBytes: portal.MaxFormBytes,
 	})

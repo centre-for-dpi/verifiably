@@ -438,6 +438,11 @@ func Catalog() []Service {
 		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true, UI: true,
 			Links: append([]Link{
 				{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
+				// The overview counts the saved queries and the open
+				// requests on the compose network (P5-01, ADR-047).
+				{Env: "VCA_VERIFIER_RESULTS_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
+				{Env: "VCA_VERIFIER_RESULTS_INGEST_URL", Target: "verifier-ingest", Kind: LinkURL},
+				{Env: "VCA_VERIFIER_RESULTS_PUBLIC_URL", Kind: LinkPublicURL},
 				staffJWKS("VCA_VERIFIER_RESULTS_AUTH_JWKS_URL", "verifier-auth"),
 				staffLogin("VCA_VERIFIER_RESULTS_LOGIN_URL"),
 				peers,

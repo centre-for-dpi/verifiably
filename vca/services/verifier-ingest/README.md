@@ -58,6 +58,7 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_INGEST_AUTH_JWKS_TTL` | How long a fetched key set stays fresh. | `10m` |
 | `VCA_INGEST_AUTH_ISSUER` | The `iss` claim every session must carry. | empty: any issuer of the key set |
 | `VCA_INGEST_LOGIN_URL` | The sign in chooser a page request without a session goes to, with `return_to`. | empty: answer 401 |
+| `VCA_PEERS` | The candidate pairs of the deployment. The stack switcher of the verifier shell comes from them. | empty: no stack switcher |
 
 The container image is `ghcr.io/centre-for-dpi/vca-verifier-ingest`. It listens on
 one port and runs as a non-root user with a read-only file system.

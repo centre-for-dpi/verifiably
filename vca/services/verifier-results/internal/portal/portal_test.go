@@ -101,7 +101,7 @@ func TestPrefixes(t *testing.T) {
 
 func TestListPage(t *testing.T) {
 	f := newFixture(t, nil)
-	rec := f.get(t, DefaultPrefix+"/")
+	rec := f.get(t, DefaultPrefix+"/results/")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rec.Code)
 	}
@@ -116,21 +116,21 @@ func TestListPage(t *testing.T) {
 
 func TestListPageFilters(t *testing.T) {
 	f := newFixture(t, nil)
-	ok := f.get(t, DefaultPrefix+"/?from=2026-01-01&to=2026-12-31&verdict=valid&issuer=did:web:issuer&template=age")
+	ok := f.get(t, DefaultPrefix+"/results/?from=2026-01-01&to=2026-12-31&verdict=valid&issuer=did:web:issuer&template=age")
 	if !strings.Contains(ok.Body.String(), "Open") {
 		t.Fatal("want the result to match the filter")
 	}
-	none := f.get(t, DefaultPrefix+"/?verdict=invalid")
+	none := f.get(t, DefaultPrefix+"/results/?verdict=invalid")
 	if !strings.Contains(none.Body.String(), "No verification matches") {
 		t.Fatal("want the empty message")
 	}
-	bad := f.get(t, DefaultPrefix+"/?from=yesterday")
+	bad := f.get(t, DefaultPrefix+"/results/?from=yesterday")
 	body := bad.Body.String()
 	if !strings.Contains(body, "YYYY-MM-DD") {
 		t.Fatal("want the date problem on the page")
 	}
 	a11ytest.AssertPage(t, body)
-	if badTo := f.get(t, DefaultPrefix+"/?to=soon"); !strings.Contains(badTo.Body.String(), "YYYY-MM-DD") {
+	if badTo := f.get(t, DefaultPrefix+"/results/?to=soon"); !strings.Contains(badTo.Body.String(), "YYYY-MM-DD") {
 		t.Fatal("want the date problem for the second field")
 	}
 }
@@ -272,7 +272,7 @@ func TestPageErrors(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	p.Register(mux)
-	for _, path := range []string{DefaultPrefix + "/", DefaultPrefix + "/export"} {
+	for _, path := range []string{DefaultPrefix + "/results/", DefaultPrefix + "/export"} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusInternalServerError {

@@ -10,16 +10,22 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-results/internal/cards"
@@ -51,6 +57,12 @@ type Deps struct {
 	Policy policyv1connect.PolicyServiceClient
 	// SessionKeys replaces the key set of verifier-auth. Tests set it.
 	SessionKeys staffsession.Keys
+	// Discovery replaces the discovery service client. Tests set it.
+	Discovery portal.Discovery
+	// Requests replaces the ingestion service client. Tests set it.
+	Requests portal.Requests
+	// Prober replaces the probe of the peers.
+	Prober *topology.Prober
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -109,6 +121,12 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	shell, signOut := staffshell.Wire(staffshell.Setup{
+		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
+		SignOut: "/" + strings.Trim(cfg.PortalPrefix, "/") + "/signout", Prober: deps.Prober,
+		Client: &http.Client{Timeout: cfg.Timeout}, Now: deps.Now,
+	})
+	discovery, requests := neighbours(cfg, deps)
 	pages, err := portal.New(portal.Options{
 		Service:       svc,
 		Prefix:        cfg.PortalPrefix,
@@ -117,6 +135,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		MaxPasteBytes: cfg.MaxPasteBytes,
 		Now:           deps.Now,
 		Cards:         renderer,
+		Shell:         shell,
+		SignOut:       signOut,
+		Discovery:     discovery,
+		Requests:      requests,
 	})
 	if err != nil {
 		return nil, err
@@ -150,6 +172,21 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	return &App{
 		Mux: mux, Service: svc, Store: st, Portal: pages, PurgeInterval: cfg.PurgeInterval,
 	}, nil
+}
+
+// neighbours returns the clients of the discovery and the ingestion
+// services of the pair. The pages call them on the compose network
+// (ADR-047 decision 2).
+func neighbours(cfg config.Config, deps Deps) (portal.Discovery, portal.Requests) {
+	discovery, requests := deps.Discovery, deps.Requests
+	client := &http.Client{Timeout: cfg.Timeout}
+	if discovery == nil && cfg.DiscoveryURL != "" {
+		discovery = discoveryv1connect.NewDiscoveryServiceClient(client, cfg.DiscoveryURL)
+	}
+	if requests == nil && cfg.IngestURL != "" {
+		requests = ingestv1connect.NewIngestServiceClient(client, cfg.IngestURL)
+	}
+	return discovery, requests
 }
 
 // connectClient returns the client that calls the policy service.

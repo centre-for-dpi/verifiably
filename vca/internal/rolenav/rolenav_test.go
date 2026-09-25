@@ -185,3 +185,24 @@ func TestHolderNavFollowsTheBoard(t *testing.T) {
 		t.Fatalf("holder nav with keys: %s", got)
 	}
 }
+
+// TestVerifierNavFollowsTheBoard pins the side navigation of board
+// Verifier-Portal (P5-01): the overview, the schemas, the query pages,
+// the requests, the results, the caching, and the help. A result detail
+// marks Results, not the overview.
+func TestVerifierNavFollowsTheBoard(t *testing.T) {
+	var got []string
+	for _, s := range Nav(commonv1.Role_ROLE_VERIFIER, nil, "/portal/results/abc") {
+		for _, l := range s.Links {
+			text := l.Text
+			if l.Current {
+				text += "*"
+			}
+			got = append(got, text)
+		}
+	}
+	want := "Overview, Discover schemas, DCQL builder, DIF PE queries, Requests, Results*, Caching, Help"
+	if strings.Join(got, ", ") != want {
+		t.Fatalf("verifier nav %s, want %s", strings.Join(got, ", "), want)
+	}
+}

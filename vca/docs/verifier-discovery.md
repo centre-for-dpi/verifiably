@@ -125,6 +125,13 @@ structural WCAG 2.2 checks of `ui/a11ytest`.
 | `GET /portal/fields` | The claims of one type. Each claim has a tick box. The form below them saves a template. |
 | `GET /portal/templates` | The template list. |
 | `GET /portal/templates/{id}` | One template with its claims, its DCQL query, the generated older definition, and the delete action. |
+| `GET /portal/pe/` | The DIF Presentation Exchange 2.0 form of every saved query, for stacks that read only that form. |
+| `POST /portal/signout` | The sign out form of the user menu. |
+
+A pair sets the prefix to `/discovery`. The pages then sit in the
+verifier frame of `services/internal/staffshell` (board
+Verifier-Portal). The frame shows the role chip, the switcher of the
+live verifier pairs, the user menu, and the side navigation.
 
 Every page calls a `DiscoveryService` RPC in process, so the pages and
 the API cannot diverge.

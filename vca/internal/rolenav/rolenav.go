@@ -106,10 +106,20 @@ func Sections(role commonv1.Role) []Section {
 			{Path: "/wallet/help", Key: "common.help.label"},
 		}}}
 	case commonv1.Role_ROLE_VERIFIER:
+		// Board Verifier-Portal. The results service serves the overview,
+		// the results, the caching, and the help pages; the discovery
+		// service serves the schemas and the queries; the ingestion
+		// service serves the requests and the scanner (ADR-044 decisions
+		// 1 and 2).
 		return []Section{{Pages: []Page{
-			{Path: "/portal/", Key: "verifier.nav.results.label"},
+			{Path: "/portal/", Key: "common.overview.label"},
 			{Path: "/discovery/", Key: "verifier.nav.discover.label"},
+			{Path: "/discovery/templates", Key: "verifier.nav.dcql.label"},
+			{Path: "/discovery/pe/", Key: "verifier.nav.pe.label"},
 			{Path: "/scan/", Key: "verifier.nav.requests.label"},
+			{Path: "/portal/results/", Key: "verifier.nav.results.label"},
+			{Path: "/portal/cache/", Key: "verifier.nav.cache.label"},
+			{Path: "/portal/help/", Key: "common.help.label"},
 		}}}
 	default:
 		return nil

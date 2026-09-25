@@ -109,3 +109,35 @@ func TestDescribeAndRedact(t *testing.T) {
 		t.Fatalf("unexpected values: %v", values)
 	}
 }
+
+// TestLoadShellSettings reads the peers and the neighbour URLs of the
+// verifier shell (P5-01), and refuses a bad peer list.
+func TestLoadShellSettings(t *testing.T) {
+	c, err := Load(func(k string) string {
+		return map[string]string{
+			Prefix + "DISCOVERY_URL": "http://discovery:8090/", Prefix + "INGEST_URL": "http://ingest:8091",
+			Prefix + "PUBLIC_URL": "https://verifier.example/",
+			"VCA_PEERS":           "verifier-waltid|https://verifier.example|verifier-auth=http://auth:8081",
+		}[k]
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DiscoveryURL != "http://discovery:8090" || c.IngestURL != "http://ingest:8091" || c.PublicURL != "https://verifier.example" {
+		t.Errorf("urls = %q %q %q", c.DiscoveryURL, c.IngestURL, c.PublicURL)
+	}
+	if len(c.Peers) != 1 || c.Timeout != 10*time.Second {
+		t.Errorf("peers %d timeout %s", len(c.Peers), c.Timeout)
+	}
+	if _, err := Load(func(k string) string {
+		if k == "VCA_PEERS" {
+			return "nonsense"
+		}
+		return ""
+	}); err == nil {
+		t.Error("a bad peer list loaded")
+	}
+	if !strings.Contains(Config{}.Check().Error(), Prefix+"TIMEOUT") {
+		t.Error("want a timeout problem")
+	}
+}

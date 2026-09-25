@@ -13,6 +13,10 @@
 //	GET  /                 the camera page
 //	POST /ingest           decode one upload, one paste, or one QR text
 //	GET  /static/{file}    the vendored scanner and QR reader
+//	POST /signout          end the session at verifier-auth
+//
+// With a shell the page sits in the verifier frame of
+// services/internal/staffshell (board Verifier-Portal).
 package scanner
 
 import (
@@ -31,6 +35,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
@@ -49,6 +54,11 @@ type Options struct {
 	Kit *components.Kit
 	// Prefix is the URL prefix of the page. Empty means DefaultPrefix.
 	Prefix string
+	// Shell draws the verifier frame. Nil draws the plain navigation of
+	// the service.
+	Shell *staffshell.Shell
+	// SignOut ends the session. Nil answers the sign out form with 404.
+	SignOut http.Handler
 }
 
 // Page serves the camera page.
@@ -83,6 +93,22 @@ func (p *Page) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.show))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/ingest", p.handle(p.ingest))
 	mux.Handle("GET "+p.opts.Prefix+"/static/", http.StripPrefix(p.opts.Prefix+"/static/", qrscan.Handler()))
+	if p.opts.SignOut != nil {
+		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
+	}
+}
+
+// SignOutPath returns the action of the sign out form of the shell.
+func (p *Page) SignOutPath() string { return p.opts.Prefix + "/signout" }
+
+// render writes a page: inside the verifier frame when the page has a
+// shell, else with the navigation of the service.
+func (p *Page) render(w http.ResponseWriter, r *http.Request, page components.Page) error {
+	if p.opts.Shell != nil {
+		return p.opts.Shell.Render(p.opts.Kit, w, r, p.opts.Shell.Frame(r.Context()), page)
+	}
+	page.Nav = p.nav()
+	return p.opts.Kit.RenderPage(w, r, page)
 }
 
 // handle answers with a short sentence when a page fails.
@@ -116,10 +142,9 @@ func (p *Page) show(w http.ResponseWriter, r *http.Request) error {
 	scripts := template.HTML(`<script src="` + template.HTMLEscapeString(p.opts.Prefix) + `/static/jsqr.min.js" defer></script>` + //nolint:gosec // the prefix is escaped
 		`<script src="` + template.HTMLEscapeString(p.opts.Prefix) + `/static/scanner.js" defer></script>`)
 	result := template.HTML(`<div id="scan-result" role="status" aria-live="polite"></div>`) //nolint:gosec // literal
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, components.Page{
 		Title:       "Scan or upload a credential",
 		Description: "Read a QR code with the camera, upload an image or a PDF, or paste a credential.",
-		Nav:         p.nav(),
 		Content:     components.Join(camera, result, upload, paste, scripts),
 	})
 }
@@ -254,10 +279,9 @@ func (p *Page) answer(w http.ResponseWriter, r *http.Request, msg *ingestv1.Inge
 		_, err := w.Write([]byte(body))
 		return err
 	}
-	return p.opts.Kit.RenderPage(w, r, components.Page{
+	return p.render(w, r, components.Page{
 		Title:       "Ingestion result",
 		Description: "What the decoders found in the input.",
-		Nav:         p.nav(),
 		Content:     body,
 	})
 }

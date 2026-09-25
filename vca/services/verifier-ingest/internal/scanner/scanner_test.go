@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -327,5 +328,30 @@ func TestIngestJSONPayload(t *testing.T) {
 	a11ytest.AssertPage(t, body)
 	if !strings.Contains(body, "VerifiableCredential") {
 		t.Errorf("the page shows the decoded payload, got %s", body)
+	}
+}
+
+// TestScannerUsesShell draws the scanner and its result page in the
+// verifier frame: the role chip, the live stacks, the user menu with
+// sign out, and Requests marked in the side navigation (P5-01, P5-05).
+func TestScannerUsesShell(t *testing.T) {
+	mux := shellMux(t, nil)
+	for _, rec := range []*httptest.ResponseRecorder{
+		staffDo(t, mux, httptest.NewRequest(http.MethodGet, "/scan/", nil)),
+		staffDo(t, mux, formPost("/scan/ingest", url.Values{"payload": {sdjwtSample}})),
+	} {
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		a11ytest.AssertPage(t, body)
+		for _, want := range []string{"Verifier", "First stack", "Second stack", "Akinyi Otieno", `action="/scan/signout"`, "Discover schemas", "Caching"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("the page lacks %q", want)
+			}
+		}
+		if !regexp.MustCompile(`aria-current="page"[^>]*>Requests</a>`).MatchString(body) {
+			t.Error("want Requests marked current")
+		}
 	}
 }

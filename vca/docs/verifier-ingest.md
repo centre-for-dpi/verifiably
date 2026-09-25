@@ -84,6 +84,7 @@ caller sends one.
 | Read | `GET /oid4vp/request/{id}` answers with the request object as a JWT, signed with ES256, `typ` `oauth-authz-req+jwt`. |
 | Answer | `POST /oid4vp/response` takes the form of the wallet and calls `ReceiveDirectPost`. |
 | Poll | `GetTransaction` answers pending, received, refused, or expired. |
+| List | `ListTransactions` lists the transactions, newest first, with a state filter and an offset page token. A pending request past its expiry reads as expired. The verifier overview counts the open requests with it. |
 
 The request object carries `client_id`, `response_type` `vp_token`, and
 `response_mode` `direct_post`. It also carries `response_uri`, the nonce,
@@ -108,6 +109,10 @@ The page works without a camera too. A file upload and a paste box post
 to the same endpoint. An image, a PDF, an XML document, and a pasted
 credential all reach the same decoders. The page uses the vca UI kit. It
 passes the structural WCAG 2.2 checks of `ui/a11ytest`.
+
+The page sits in the verifier frame of `services/internal/staffshell`,
+with Requests marked in the side navigation. `POST /scan/signout` is the
+sign out form of the user menu.
 
 The scanner and the QR reader sit in the shared package
 `services/internal/qrscan`, which the wallet uses too. The third-party

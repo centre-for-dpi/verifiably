@@ -38,6 +38,11 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_VERIFIER_RESULTS_AUDIT_DIR` | The directory of the audit store. | empty: in memory |
 | `VCA_VERIFIER_RESULTS_ADMIN_JWKS_URL` | The key set of the admin service. An admin session it signed opens the audit store. | empty: no admin session is accepted |
 | `VCA_VERIFIER_RESULTS_ADMIN_TOKEN` | The admin service token. It opens the audit store too. | empty: no token is accepted |
+| `VCA_VERIFIER_RESULTS_PUBLIC_URL` | The public URL of the verifier pair. An https URL makes the sign out cookie Secure. | empty |
+| `VCA_VERIFIER_RESULTS_DISCOVERY_URL` | The base URL of the discovery service. The overview reads the saved queries and the catalogue from it. | empty: the overview shows them as unknown |
+| `VCA_VERIFIER_RESULTS_INGEST_URL` | The base URL of the ingestion service. The overview counts the open requests from it. | empty: the overview shows them as unknown |
+| `VCA_VERIFIER_RESULTS_TIMEOUT` | The time limit of one call to the discovery service, the ingestion service, or `verifier-auth`. | `10s` |
+| `VCA_PEERS` | The candidate pairs of the deployment. The stack switcher of the verifier shell comes from them. | empty: no stack switcher |
 | `VCA_VERIFIER_RESULTS_AUTH_JWKS_URL` | The JWKS URL of `verifier-auth`. The staff pages accept only a session it signed. | empty: the staff pages accept no session |
 | `VCA_VERIFIER_RESULTS_AUTH_JWKS_FILE` | A JWKS file that replaces the URL, for a test. | empty |
 | `VCA_VERIFIER_RESULTS_AUTH_JWKS_TTL` | How long a fetched key set stays fresh. | `10m` |

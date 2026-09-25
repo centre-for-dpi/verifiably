@@ -95,3 +95,18 @@ func TestAuthSettings(t *testing.T) {
 		t.Fatalf("auth %+v", c.Auth)
 	}
 }
+
+// TestLoadPeers reads the pairs of the verifier shell and refuses a bad
+// list (P5-01).
+func TestLoadPeers(t *testing.T) {
+	c, err := config.Load(env(map[string]string{"VCA_PEERS": "verifier-waltid|https://verifier.example|verifier-auth=http://auth:8081"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Peers) != 1 || c.Peers[0].Pair != "verifier-waltid" {
+		t.Errorf("peers = %+v", c.Peers)
+	}
+	if _, err := config.Load(env(map[string]string{"VCA_PEERS": "nonsense"})); err == nil {
+		t.Error("a bad peer list loaded")
+	}
+}

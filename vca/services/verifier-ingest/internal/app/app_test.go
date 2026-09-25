@@ -142,7 +142,8 @@ func TestPortalNeedsSession(t *testing.T) {
 	if page.Code != http.StatusOK {
 		t.Fatalf("page: status %d", page.Code)
 	}
-	if n := strings.Count(page.Body.String(), `name="`+staffsession.Field+`"`); n != 3 {
+	// Three page forms and the sign out form of the user menu.
+	if n := strings.Count(page.Body.String(), `name="`+staffsession.Field+`"`); n != 4 {
 		t.Fatalf("the page has %d form tokens, want one per form", n)
 	}
 	_, after, _ := strings.Cut(page.Body.String(), `name="`+staffsession.Field+`" value="`)

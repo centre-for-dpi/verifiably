@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
@@ -61,10 +62,27 @@ type Config struct {
 	// AdminToken is the admin service token. It opens the audit store
 	// too. Empty accepts no token.
 	AdminToken string `env:"ADMIN_TOKEN" secret:"true"`
+	// PublicURL is the public URL of the verifier pair. An https URL
+	// makes the cookie that clears a session Secure.
+	PublicURL string `env:"PUBLIC_URL"`
+	// DiscoveryURL is the base URL of the discovery service of the pair.
+	// The overview reads the saved queries and the catalogue from it.
+	// Empty shows them as unknown.
+	DiscoveryURL string `env:"DISCOVERY_URL"`
+	// IngestURL is the base URL of the ingestion service of the pair. The
+	// overview counts the open requests from it. Empty shows them as
+	// unknown.
+	IngestURL string `env:"INGEST_URL"`
+	// Timeout bounds one call to the discovery service, the ingestion
+	// service, or verifier-auth.
+	Timeout time.Duration `env:"TIMEOUT" default:"10s"`
 	// Auth guards the staff pages with a session of verifier-auth
 	// (ADR-036 decision 2). Its variables carry the same prefix. The
 	// citizen check page stays open.
 	Auth staffsession.Settings
+	// Peers are the candidate pairs of the deployment, from VCA_PEERS.
+	// The stack switcher of the verifier shell comes from them.
+	Peers []topology.Peer
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -77,6 +95,14 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
+	peers, err := topology.Parse(getenv(topology.Env))
+	if err != nil {
+		return Config{}, err
+	}
+	c.Peers = peers
+	for _, u := range []*string{&c.PublicURL, &c.DiscoveryURL, &c.IngestURL} {
+		*u = strings.TrimRight(*u, "/")
+	}
 	return c, c.Check()
 }
 
@@ -94,6 +120,9 @@ func (c Config) Check() error {
 	}
 	if c.PurgeInterval < 0 {
 		problems = append(problems, Prefix+"PURGE_INTERVAL must not be negative")
+	}
+	if c.Timeout <= 0 {
+		problems = append(problems, Prefix+"TIMEOUT must be positive")
 	}
 	if c.PolicyTimeout <= 0 {
 		problems = append(problems, Prefix+"POLICY_TIMEOUT must be positive")

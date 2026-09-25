@@ -51,6 +51,9 @@ const (
 	// IngestServiceGetTransactionProcedure is the fully-qualified name of the IngestService's
 	// GetTransaction RPC.
 	IngestServiceGetTransactionProcedure = "/vca.ingest.v1.IngestService/GetTransaction"
+	// IngestServiceListTransactionsProcedure is the fully-qualified name of the IngestService's
+	// ListTransactions RPC.
+	IngestServiceListTransactionsProcedure = "/vca.ingest.v1.IngestService/ListTransactions"
 )
 
 // IngestServiceClient is a client for the vca.ingest.v1.IngestService service.
@@ -65,6 +68,9 @@ type IngestServiceClient interface {
 	ReceiveDirectPost(context.Context, *connect.Request[v1.ReceiveDirectPostRequest]) (*connect.Response[v1.ReceiveDirectPostResponse], error)
 	// GetTransaction returns the state of one OID4VP transaction.
 	GetTransaction(context.Context, *connect.Request[v1.GetTransactionRequest]) (*connect.Response[v1.GetTransactionResponse], error)
+	// ListTransactions lists the OID4VP transactions, newest first. The
+	// verifier overview counts the open requests with it.
+	ListTransactions(context.Context, *connect.Request[v1.ListTransactionsRequest]) (*connect.Response[v1.ListTransactionsResponse], error)
 }
 
 // NewIngestServiceClient constructs a client for the vca.ingest.v1.IngestService service. By
@@ -102,6 +108,12 @@ func NewIngestServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(ingestServiceMethods.ByName("GetTransaction")),
 			connect.WithClientOptions(opts...),
 		),
+		listTransactions: connect.NewClient[v1.ListTransactionsRequest, v1.ListTransactionsResponse](
+			httpClient,
+			baseURL+IngestServiceListTransactionsProcedure,
+			connect.WithSchema(ingestServiceMethods.ByName("ListTransactions")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -111,6 +123,7 @@ type ingestServiceClient struct {
 	createOid4VpRequest *connect.Client[v1.CreateOid4VpRequestRequest, v1.CreateOid4VpRequestResponse]
 	receiveDirectPost   *connect.Client[v1.ReceiveDirectPostRequest, v1.ReceiveDirectPostResponse]
 	getTransaction      *connect.Client[v1.GetTransactionRequest, v1.GetTransactionResponse]
+	listTransactions    *connect.Client[v1.ListTransactionsRequest, v1.ListTransactionsResponse]
 }
 
 // Ingest calls vca.ingest.v1.IngestService.Ingest.
@@ -133,6 +146,11 @@ func (c *ingestServiceClient) GetTransaction(ctx context.Context, req *connect.R
 	return c.getTransaction.CallUnary(ctx, req)
 }
 
+// ListTransactions calls vca.ingest.v1.IngestService.ListTransactions.
+func (c *ingestServiceClient) ListTransactions(ctx context.Context, req *connect.Request[v1.ListTransactionsRequest]) (*connect.Response[v1.ListTransactionsResponse], error) {
+	return c.listTransactions.CallUnary(ctx, req)
+}
+
 // IngestServiceHandler is an implementation of the vca.ingest.v1.IngestService service.
 type IngestServiceHandler interface {
 	// Ingest decodes bytes from one carrier into a RawPresentation.
@@ -145,6 +163,9 @@ type IngestServiceHandler interface {
 	ReceiveDirectPost(context.Context, *connect.Request[v1.ReceiveDirectPostRequest]) (*connect.Response[v1.ReceiveDirectPostResponse], error)
 	// GetTransaction returns the state of one OID4VP transaction.
 	GetTransaction(context.Context, *connect.Request[v1.GetTransactionRequest]) (*connect.Response[v1.GetTransactionResponse], error)
+	// ListTransactions lists the OID4VP transactions, newest first. The
+	// verifier overview counts the open requests with it.
+	ListTransactions(context.Context, *connect.Request[v1.ListTransactionsRequest]) (*connect.Response[v1.ListTransactionsResponse], error)
 }
 
 // NewIngestServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -178,6 +199,12 @@ func NewIngestServiceHandler(svc IngestServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(ingestServiceMethods.ByName("GetTransaction")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ingestServiceListTransactionsHandler := connect.NewUnaryHandler(
+		IngestServiceListTransactionsProcedure,
+		svc.ListTransactions,
+		connect.WithSchema(ingestServiceMethods.ByName("ListTransactions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.ingest.v1.IngestService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IngestServiceIngestProcedure:
@@ -188,6 +215,8 @@ func NewIngestServiceHandler(svc IngestServiceHandler, opts ...connect.HandlerOp
 			ingestServiceReceiveDirectPostHandler.ServeHTTP(w, r)
 		case IngestServiceGetTransactionProcedure:
 			ingestServiceGetTransactionHandler.ServeHTTP(w, r)
+		case IngestServiceListTransactionsProcedure:
+			ingestServiceListTransactionsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -211,4 +240,8 @@ func (UnimplementedIngestServiceHandler) ReceiveDirectPost(context.Context, *con
 
 func (UnimplementedIngestServiceHandler) GetTransaction(context.Context, *connect.Request[v1.GetTransactionRequest]) (*connect.Response[v1.GetTransactionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.ingest.v1.IngestService.GetTransaction is not implemented"))
+}
+
+func (UnimplementedIngestServiceHandler) ListTransactions(context.Context, *connect.Request[v1.ListTransactionsRequest]) (*connect.Response[v1.ListTransactionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.ingest.v1.IngestService.ListTransactions is not implemented"))
 }

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,9 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
+	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
@@ -308,4 +312,82 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	cfg.ThemeFile = path
 	_, err := Build(cfg, Deps{Log: quiet()})
 	uikittest.AssertBadThemeError(t, err, path)
+}
+
+// TestStaffPagesInTheVerifierShell draws the overview in the verifier
+// frame with the counts of the neighbour services, and the sign out
+// form clears the session cookie (P5-01).
+func TestStaffPagesInTheVerifierShell(t *testing.T) {
+	cfg := base(t)
+	cfg.Auth.LoginURL = "https://verifier-waltid.example/auth/"
+	cfg.PublicURL = "https://verifier-waltid.example"
+	issuer := staff(t)
+	a, err := Build(cfg, Deps{Log: quiet(), SessionKeys: issuer.Keys(), Now: func() time.Time { return testNow },
+		Discovery: stubDiscovery{}, Requests: stubRequests{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := issuer.Token(t, "kc|carol")
+	rec := serve(a, http.MethodGet, a.Portal.Prefix()+"/", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("overview: status %d", rec.Code)
+	}
+	for _, want := range []string{"Overview", "4 waiting", "1 DCQL, 0 PE", `action="/portal/signout"`, "Discover schemas"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("overview lacks %q", want)
+		}
+	}
+	if list := serve(a, http.MethodGet, a.Portal.Prefix()+"/results/", token); list.Code != http.StatusOK {
+		t.Fatalf("results: status %d", list.Code)
+	}
+	m := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`).FindStringSubmatch(rec.Body.String())
+	if m == nil {
+		t.Fatal("the user menu has no synchronizer token")
+	}
+	req := httptest.NewRequest(http.MethodPost, a.Portal.Prefix()+"/signout", strings.NewReader(url.Values{staffsession.Field: {m[1]}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: staffsession.VerifierCookie, Value: token})
+	out := httptest.NewRecorder()
+	a.Mux.ServeHTTP(out, req)
+	if out.Code != http.StatusSeeOther || out.Header().Get("Location") != cfg.Auth.LoginURL {
+		t.Fatalf("sign out: status %d location %q", out.Code, out.Header().Get("Location"))
+	}
+	if c := out.Header().Get("Set-Cookie"); !strings.Contains(c, staffsession.VerifierCookie+"=;") || !strings.Contains(c, "Secure") {
+		t.Errorf("sign out cookie %q, want a cleared Secure cookie", c)
+	}
+}
+
+// TestNeighbourClientsFromConfig builds the clients of the discovery
+// and the ingestion services from their URLs.
+func TestNeighbourClientsFromConfig(t *testing.T) {
+	cfg := base(t)
+	if d, r := neighbours(cfg, Deps{}); d != nil || r != nil {
+		t.Fatal("want no clients without URLs")
+	}
+	cfg.DiscoveryURL, cfg.IngestURL = "http://discovery:8090", "http://ingest:8091"
+	if d, r := neighbours(cfg, Deps{}); d == nil || r == nil {
+		t.Fatal("want both clients")
+	}
+}
+
+// stubDiscovery answers one saved query and an empty catalogue.
+type stubDiscovery struct{}
+
+func (stubDiscovery) ListTemplates(context.Context, *connect.Request[discoveryv1.ListTemplatesRequest]) (*connect.Response[discoveryv1.ListTemplatesResponse], error) {
+	return connect.NewResponse(&discoveryv1.ListTemplatesResponse{Templates: []*discoveryv1.PresentationTemplate{{Id: "age", DisplayName: "Age check"}}}), nil
+}
+
+func (stubDiscovery) ListCredentialTypes(context.Context, *connect.Request[discoveryv1.ListCredentialTypesRequest]) (*connect.Response[discoveryv1.ListCredentialTypesResponse], error) {
+	return connect.NewResponse(&discoveryv1.ListCredentialTypesResponse{}), nil
+}
+
+func (stubDiscovery) GetFields(context.Context, *connect.Request[discoveryv1.GetFieldsRequest]) (*connect.Response[discoveryv1.GetFieldsResponse], error) {
+	return connect.NewResponse(&discoveryv1.GetFieldsResponse{}), nil
+}
+
+// stubRequests answers four open requests.
+type stubRequests struct{}
+
+func (stubRequests) ListTransactions(context.Context, *connect.Request[ingestv1.ListTransactionsRequest]) (*connect.Response[ingestv1.ListTransactionsResponse], error) {
+	return connect.NewResponse(&ingestv1.ListTransactionsResponse{Page: &commonv1.PageResult{TotalSize: 4}}), nil
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
@@ -74,6 +75,9 @@ type Config struct {
 	// (ADR-036 decision 2). Its variables carry the same prefix. The
 	// OID4VP endpoints of the wallet stay open.
 	Auth staffsession.Settings
+	// Peers are the candidate pairs of the deployment, from VCA_PEERS.
+	// The stack switcher of the verifier shell comes from them.
+	Peers []topology.Peer
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -91,6 +95,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if c.ClientID == "" {
 		c.ClientID = c.BaseURL
 	}
+	peers, err := topology.Parse(getenv(topology.Env))
+	if err != nil {
+		return Config{}, err
+	}
+	c.Peers = peers
 	return c, c.Check()
 }
 

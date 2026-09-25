@@ -23,6 +23,9 @@ service IngestService {
   rpc ReceiveDirectPost(ReceiveDirectPostRequest) returns (ReceiveDirectPostResponse);
   // GetTransaction returns the state of one OID4VP transaction.
   rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
+  // ListTransactions lists the OID4VP transactions, newest first. The
+  // verifier overview counts the open requests with it.
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
 }
 
 // Carrier names how a presentation arrived (ADR-023 decision 1).
@@ -209,4 +212,39 @@ message GetTransactionResponse {
     // The request expired.
     STATE_EXPIRED = 4;
   }
+}
+
+// ListTransactionsRequest selects transactions.
+message ListTransactionsRequest {
+  // The state filter. Unspecified returns every state.
+  GetTransactionResponse.State state = 1;
+  // The page to return. The page token is the offset in the list.
+  vca.common.v1.Pagination page = 2;
+}
+
+// TransactionSummary is one transaction without the presentation.
+message TransactionSummary {
+  // The transaction id.
+  string transaction_id = 1;
+  // The state at the time of the call. A pending request past its
+  // expiry reads as expired.
+  GetTransactionResponse.State state = 2;
+  // The template id the transaction used.
+  string template_id = 3;
+  // The template version.
+  int32 template_version = 4;
+  // The creation time.
+  google.protobuf.Timestamp created_at = 5;
+  // The time at which the request stops working.
+  google.protobuf.Timestamp expires_at = 6;
+  // The time the wallet answered, when it did.
+  google.protobuf.Timestamp answered_at = 7;
+}
+
+// ListTransactionsResponse returns the transactions.
+message ListTransactionsResponse {
+  // The transactions in the page, newest first.
+  repeated TransactionSummary transactions = 1;
+  // The page description. total_size counts every match.
+  vca.common.v1.PageResult page = 2;
 }

@@ -488,9 +488,9 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-044 | 1 The issuer home moves to issuance | Done | `vca/services/issuance/internal/pages`, `vca/internal/topology` | `issuance` serves `/issuer/`, `/identity/`, `/issue/`, `/notifications/`, `/help/`, and the shared assets. |
 | ADR-044 | 2 Issued credentials and sources pages | Done | `vca/services/data-source/internal/pages`, `vca/services/issued-credentials/internal/pages` | Both run in the issuer shell behind the staff guard. |
-| ADR-044 | 3 The verifier home stays on verifier-results | Not started | `vca/services/verifier-results` | Proposed record. No work exists yet. |
-| ADR-044 | 4 DCQL, PE, and request pages | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
-| ADR-044 | 5 One role navigation package bound to the routes | Partial | `vca/internal/rolenav`, `vca/services/internal/staffshell` | The admin and the issuer pages draw their side navigation from the package. The holder and the verifier follow. |
+| ADR-044 | 3 The verifier home stays on verifier-results | Done | `vca/services/verifier-results/internal/portal` | The overview sits at `/portal/`, the results at `/portal/results/`, the caching page at `/portal/cache/`. An old list URL moves with a `301`. |
+| ADR-044 | 4 DCQL, PE, and request pages | Partial | `vca/services/verifier-discovery` | `/discovery/pe/` lists the PE form of every saved query. The DCQL builder and the request pages follow. |
+| ADR-044 | 5 One role navigation package bound to the routes | Done | `vca/internal/rolenav`, `vca/services/internal/staffshell` | The admin, issuer, holder, and verifier pages draw their side navigation from the package. |
 
 ## ADR-045: Full DPG surfacing
 
