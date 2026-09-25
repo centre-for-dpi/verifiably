@@ -23,6 +23,15 @@ A record never changes after the store writes it, except for its state.
 | `searchable_claims` | The property names the issued credentials log indexes (ADR-017 decision 2). |
 | `retention_days` | How long an issued record stays. Zero means the deployment default. |
 | `configuration_ids` | The DPG configuration id per format, set at publish time. |
+| `contexts` | The JSON-LD context IRIs that extend the VCDM 2.0 context. |
+| `claim_mappings` | Per claim: the term IRI and the labels per locale. |
+
+The service checks the contexts and the claim mappings before it stores
+a version. Each context is an absolute http or https IRI with a host,
+named once, and never the VCDM 2.0 context itself. Each mapped claim is
+a property of the document. Each term IRI is absolute. Each label has a
+language tag and a text, one per language. A broken rule gives
+`invalid_argument`.
 
 The store validates every record before it writes it. It parses the JSON
 Schema with `core/jsonschema`. It rejects a selectively disclosable claim
@@ -80,7 +89,11 @@ carries `format`, `scope`, the binding methods, and the signing
 algorithms. It also carries the display metadata and the claims with
 their `mandatory` flag. The `credential_metadata.schema_uri` field points
 at the version document. An SD-JWT VC entry carries `vct`. An mdoc entry
-carries `doctype`. A VCDM entry carries `credential_definition`.
+carries `doctype`. A VCDM entry carries `credential_definition`. The
+`@context` of an `ldp_vc` entry holds the VCDM 2.0 context, then each
+context extension in order. When a claim maps to a term IRI, one object
+with the term of each such claim comes last. The claim display of an
+entry takes the labels of the claim mapping, when the claim has one.
 
 ### Type metadata
 
@@ -89,7 +102,9 @@ the description (ADR-013 decision 5). It also carries the schema
 document, the display entries with their rendering, and one claim entry
 per property. A claim
 the issuer marks as selectively disclosable has `sd: allowed`. Every
-other claim has `sd: never`.
+other claim has `sd: never`. The display of a claim takes the labels of
+its mapping, one entry per language. A claim with no mapping shows the
+title of its property.
 
 The `vct` of a schema is the type when the type is a URL. It is the
 registry URL `<base>/.well-known/vct/<type>` otherwise.
@@ -115,6 +130,8 @@ of `services/internal/staffshell` (ADR-044 decision 5).
 | `POST /portal/schemas/{id}/publish` | Publish one draft version. |
 | `POST /portal/schemas/{id}/retire` | Retire one or every published version. |
 | `POST /portal/schemas/{id}/delete` | Delete one draft version. |
+| `GET /portal/schemas/{id}/mapping` | The context extensions and the claim mapping of one version. |
+| `POST /portal/schemas/{id}/mapping` | Check the mapping and save it as the next draft version. |
 
 Each row shows the schema, its id, the version, and the formats. It
 also shows the status, the issued count, and the last change. The row actions follow
@@ -124,6 +141,12 @@ page with `?schema=<id>` and to its retire form. The issued count comes
 from `IssuedService.List` of `issued-credentials` with the schema filter,
 through `VCA_SCHEMA_ISSUED_URL`. The call names the staff member in the
 actor header. The column shows a dash when the service does not answer.
+
+The mapping page shows the VCDM 2.0 context and a box of context IRIs,
+one per line. Each claim gets a term IRI and a label and a description
+per display language. A save writes the next draft version, because a
+version never changes. A field that breaks a rule shows the reason next
+to it, and no version appears.
 
 The upload reads one JSON Schema file of 256 KiB or less. An empty type
 takes the title of the document with each word capitalised and joined.

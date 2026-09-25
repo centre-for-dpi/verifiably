@@ -382,3 +382,39 @@ func TestDeleteDraftOnly(t *testing.T) {
 		t.Fatalf("list after delete: %v %v", list, err)
 	}
 }
+
+// TestMappingIsStoredAndChecked checks that a version keeps its context
+// extensions and its claim mappings, and that the service refuses a
+// mapping that breaks a rule with InvalidArgument.
+func TestMappingIsStoredAndChecked(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newService(t, nil)
+	create(t, s, "Degree")
+	m := schemaWithID("degree")
+	m.Contexts = []string{" https://schema.org/ ", ""}
+	m.ClaimMappings = []*schemav1.ClaimMapping{{Claim: "name", Iri: "https://schema.org/name", Labels: []*schemav1.ClaimLabel{{Locale: "en", Label: "Name"}}}}
+	up, err := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: m}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, connect.NewRequest(&schemav1.GetRequest{Id: "degree", Version: up.Msg.GetSchema().GetVersion()}))
+	if err != nil || len(got.Msg.GetSchema().GetContexts()) != 1 || got.Msg.GetSchema().GetContexts()[0] != "https://schema.org/" ||
+		got.Msg.GetSchema().GetClaimMappings()[0].GetLabels()[0].GetLabel() != "Name" {
+		t.Fatalf("stored %v %v", got, err)
+	}
+	for _, bad := range []*schemav1.Schema{
+		func() *schemav1.Schema { b := schemaWithID("degree"); b.Contexts = []string{"schema.org"}; return b }(),
+		func() *schemav1.Schema {
+			b := schemaWithID("degree")
+			b.ClaimMappings = []*schemav1.ClaimMapping{{Claim: "ghost"}}
+			return b
+		}(),
+	} {
+		if _, err := s.Update(ctx, connect.NewRequest(&schemav1.UpdateRequest{Schema: bad})); code(err) != connect.CodeInvalidArgument {
+			t.Fatalf("update %v: %v", bad.GetContexts(), err)
+		}
+		if _, err := s.Create(ctx, connect.NewRequest(&schemav1.CreateRequest{Schema: bad})); code(err) != connect.CodeInvalidArgument {
+			t.Fatalf("create %v: %v", bad.GetContexts(), err)
+		}
+	}
+}

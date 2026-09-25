@@ -77,7 +77,7 @@ func TestConfigurations(t *testing.T) {
 		t.Fatal("mdoc")
 	}
 	ldp := mustAs[map[string]any](t, configs["UniversityDegree_ldp_vc"]["credential_definition"])
-	if mustAs[[]string](t, ldp["@context"])[0] != VCDMContext {
+	if ctx := mustAs[[]any](t, ldp["@context"]); len(ctx) != 1 || ctx[0] != VCDMContext {
 		t.Fatal("ldp context")
 	}
 	jwt := mustAs[map[string]any](t, configs["UniversityDegree_jwt_vc_json"]["credential_definition"])
@@ -196,5 +196,120 @@ func TestTypeMetadataAndFindVct(t *testing.T) {
 	}
 	if _, ok := FindVct(nil, "x", opts); ok {
 		t.Fatal("missing")
+	}
+}
+
+// mapped returns the published record with two context extensions and
+// a mapping of the name claim.
+func mapped() record.Record {
+	r := published()
+	r.Contexts = []string{"https://w3id.org/citizenship/v1", "https://schema.org/"}
+	r.ClaimMappings = []record.ClaimMapping{{
+		Claim: "name", IRI: "https://schema.org/name",
+		Labels: []record.ClaimLabel{{Locale: "en", Label: "Name", Description: "The name on the card"}, {Locale: "sw", Label: "Jina"}},
+	}}
+	return r
+}
+
+// TestLdpConfigurationCarriesContexts checks that an ldp_vc
+// configuration carries the VCDM 2.0 context, then each context
+// extension in order, then the term IRIs of the mapping, and that the
+// other formats carry no context.
+func TestLdpConfigurationCarriesContexts(t *testing.T) {
+	cfg := Configuration(mapped(), record.FormatLdpVc, Options{BaseURL: "https://r"})
+	def := mustAs[map[string]any](t, cfg["credential_definition"])
+	ctx := mustAs[[]any](t, def["@context"])
+	if len(ctx) != 4 || ctx[0] != VCDMContext || ctx[1] != "https://w3id.org/citizenship/v1" || ctx[2] != "https://schema.org/" {
+		t.Fatalf("context %v", ctx)
+	}
+	terms := mustAs[map[string]any](t, ctx[3])
+	if terms["name"] != "https://schema.org/name" || len(terms) != 1 {
+		t.Fatalf("terms %v", terms)
+	}
+	// Without a mapped IRI the context holds the IRIs only.
+	plain := mapped()
+	plain.ClaimMappings[0].IRI = ""
+	ctx = mustAs[[]any](t, mustAs[map[string]any](t, Configuration(plain, record.FormatLdpVc, Options{})["credential_definition"])["@context"])
+	if len(ctx) != 3 {
+		t.Fatalf("context without terms %v", ctx)
+	}
+	jwt := mustAs[map[string]any](t, Configuration(mapped(), record.FormatJwtVcJSON, Options{})["credential_definition"])
+	if _, ok := jwt["@context"]; ok {
+		t.Fatal("a jwt_vc_json configuration carries a context")
+	}
+	// The issuer metadata shows the mapped labels of a claim.
+	claims := mustAs[[]map[string]any](t, cfg["claims"])
+	labels := mustAs[[]map[string]any](t, claims[0]["display"])
+	if len(labels) != 2 || labels[0]["name"] != "Name" || labels[1]["locale"] != "sw" || labels[1]["name"] != "Jina" {
+		t.Fatalf("claim display %v", labels)
+	}
+}
+
+// TestVctCarriesClaimMapping checks that the vct document shows the
+// labels of the mapping, and the title of the property without one.
+func TestVctCarriesClaimMapping(t *testing.T) {
+	doc := TypeMetadata(mapped(), Options{BaseURL: "https://r"})
+	claims := mustAs[[]map[string]any](t, doc["claims"])
+	name := mustAs[[]map[string]any](t, claims[0]["display"])
+	if len(name) != 2 || name[0]["label"] != "Name" || name[0]["description"] != "The name on the card" || name[1]["lang"] != "sw" || name[1]["label"] != "Jina" {
+		t.Fatalf("name display %v", name)
+	}
+	if _, ok := name[1]["description"]; ok {
+		t.Fatal("an empty description shows")
+	}
+	age := mustAs[[]map[string]any](t, claims[1]["display"])
+	if age[0]["label"] != "age" {
+		t.Fatalf("age display %v", age)
+	}
+}
+
+// TestMappingValidatesIRIs checks every rule of a mapping: each context
+// is an absolute http or https IRI with a host, named once; each term
+// IRI is absolute; each mapped claim is a property of the document and
+// named once; each label has a locale and a text, one per locale.
+func TestMappingValidatesIRIs(t *testing.T) {
+	if got := CheckMapping(mapped()); len(got) != 0 {
+		t.Fatalf("a good mapping: %v", got)
+	}
+	for _, iri := range []string{"https://schema.org/name", "urn:example:term", "https://example.org/terms#given-name", "https://例え.jp/語"} {
+		if err := CheckIRI(iri); err != nil {
+			t.Errorf("CheckIRI(%q): %v", iri, err)
+		}
+	}
+	for _, iri := range []string{"", "name", "/terms/name", "#name", "https://exa mple.org/", "https://example.org/<x>", "https://example.org/{x}", "1ab:c", strings.Repeat("a", MaxIRILength) + ":x"} {
+		if CheckIRI(iri) == nil {
+			t.Errorf("CheckIRI(%q) took a bad IRI", iri)
+		}
+	}
+	for _, iri := range []string{"urn:example:ctx", "ftp://example.org/ctx", "https:///ctx", "https://example.org/ctx#frag x"} {
+		if CheckContext(iri) == nil {
+			t.Errorf("CheckContext(%q) took a bad context", iri)
+		}
+	}
+	cases := []struct {
+		name  string
+		edit  func(*record.Record)
+		field string
+	}{
+		{"relative context", func(r *record.Record) { r.Contexts = []string{"citizenship/v1"} }, "contexts"},
+		{"twice", func(r *record.Record) { r.Contexts = []string{"https://schema.org/", "https://schema.org/"} }, "contexts"},
+		{"base context", func(r *record.Record) { r.Contexts = []string{VCDMContext} }, "contexts"},
+		{"bad term", func(r *record.Record) { r.ClaimMappings[0].IRI = "given name" }, "claim.name.iri"},
+		{"no property", func(r *record.Record) { r.ClaimMappings[0].Claim = "ghost" }, "claim.ghost"},
+		{"claim twice", func(r *record.Record) { r.ClaimMappings = append(r.ClaimMappings, r.ClaimMappings[0]) }, "claim.name"},
+		{"no locale", func(r *record.Record) { r.ClaimMappings[0].Labels[1].Locale = "" }, "claim.name.labels"},
+		{"no label", func(r *record.Record) { r.ClaimMappings[0].Labels[0].Label = " " }, "claim.name.labels"},
+		{"locale twice", func(r *record.Record) { r.ClaimMappings[0].Labels[1].Locale = "en" }, "claim.name.labels"},
+	}
+	for _, c := range cases {
+		r := mapped()
+		c.edit(&r)
+		got := CheckMapping(r)
+		if len(got) != 1 || got[0].Field != c.field || got[0].Text == "" {
+			t.Errorf("%s: %+v", c.name, got)
+		}
+	}
+	if got := CheckMapping(record.Record{JSONSchema: "{", ClaimMappings: []record.ClaimMapping{{Claim: "x"}}}); len(got) != 1 {
+		t.Fatalf("a broken document: %v", got)
 	}
 }

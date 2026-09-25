@@ -9,12 +9,15 @@ package metadata
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/record"
 )
 
@@ -166,7 +169,15 @@ func claimsMetadata(r record.Record) []map[string]any {
 	for _, c := range Claims(r) {
 		e := map[string]any{"path": []string{c.Name}, "mandatory": c.Required}
 		var texts []map[string]any
+		if m, ok := r.Mapping(c.Name); ok && len(m.Labels) > 0 {
+			for _, l := range m.Labels {
+				texts = append(texts, map[string]any{"name": l.Label, "locale": l.Locale})
+			}
+		}
 		for _, d := range r.Display {
+			if len(texts) > 0 {
+				break
+			}
 			texts = append(texts, map[string]any{"name": c.Title, "locale": d.Locale})
 		}
 		if len(texts) == 0 {
@@ -197,13 +208,33 @@ func Configuration(r record.Record, format string, opts Options) map[string]any 
 		e["doctype"] = r.Type
 	case record.FormatLdpVc:
 		e["credential_definition"] = map[string]any{
-			"@context": []string{VCDMContext},
+			"@context": LdpContext(r),
 			"type":     []string{"VerifiableCredential", r.Type},
 		}
 	default:
 		e["credential_definition"] = map[string]any{"type": []string{"VerifiableCredential", r.Type}}
 	}
 	return e
+}
+
+// LdpContext returns the @context of an ldp_vc credential of r: the
+// VCDM 2.0 context, then each context extension in order, then one
+// object with the term IRI of each mapped claim, when any.
+func LdpContext(r record.Record) []any {
+	out := []any{VCDMContext}
+	for _, c := range r.Contexts {
+		out = append(out, c)
+	}
+	terms := map[string]any{}
+	for _, m := range r.ClaimMappings {
+		if m.IRI != "" {
+			terms[m.Claim] = m.IRI
+		}
+	}
+	if len(terms) > 0 {
+		out = append(out, terms)
+	}
+	return out
 }
 
 // ConfigurationID returns the id of the entry of one format. A published
@@ -331,14 +362,7 @@ func TypeMetadata(r record.Record, opts Options) map[string]any {
 		if c.SD {
 			e["sd"] = "allowed"
 		}
-		var texts []map[string]any
-		for _, d := range r.Display {
-			t := map[string]any{"lang": d.Locale, "label": c.Title}
-			if c.Description != "" {
-				t["description"] = c.Description
-			}
-			texts = append(texts, t)
-		}
+		texts := typeLabels(r, c)
 		if len(texts) == 0 {
 			texts = []map[string]any{{"label": c.Title}}
 		}
@@ -347,6 +371,31 @@ func TypeMetadata(r record.Record, opts Options) map[string]any {
 	}
 	doc["claims"] = claims
 	return doc
+}
+
+// typeLabels returns the display entries of one claim in the type
+// metadata: the labels of the claim mapping, else the title of the
+// property in each display locale.
+func typeLabels(r record.Record, c Claim) []map[string]any {
+	var out []map[string]any
+	if m, ok := r.Mapping(c.Name); ok && len(m.Labels) > 0 {
+		for _, l := range m.Labels {
+			t := map[string]any{"lang": l.Locale, "label": l.Label}
+			if l.Description != "" {
+				t["description"] = l.Description
+			}
+			out = append(out, t)
+		}
+		return out
+	}
+	for _, d := range r.Display {
+		t := map[string]any{"lang": d.Locale, "label": c.Title}
+		if c.Description != "" {
+			t["description"] = c.Description
+		}
+		out = append(out, t)
+	}
+	return out
 }
 
 // FindVct returns the newest published version whose vct is vct. The
@@ -370,4 +419,106 @@ func stringField(doc map[string]any, key string) string {
 		return ""
 	}
 	return value
+}
+
+// MaxIRILength caps an IRI of a mapping.
+const MaxIRILength = 2048
+
+// Problem is one rule a mapping breaks. Field names the part of the
+// mapping page that holds the value.
+type Problem struct {
+	Field string
+	Text  string
+}
+
+// schemeRE matches the scheme of an IRI (RFC 3987 section 2.2).
+var schemeRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
+
+// CheckIRI reports whether iri is an absolute IRI: a scheme, a colon,
+// and a rest with no space and none of the characters an IRI excludes.
+func CheckIRI(iri string) error {
+	if iri == "" || len(iri) > MaxIRILength {
+		return fmt.Errorf("metadata: an IRI has 1 to %d characters", MaxIRILength)
+	}
+	for _, c := range iri {
+		if c <= ' ' || c == 0x7f || strings.ContainsRune("<>\"{}|\\^`", c) {
+			return fmt.Errorf("metadata: the IRI %q holds the character %q", iri, c)
+		}
+	}
+	i := strings.IndexByte(iri, ':')
+	if i <= 0 || i == len(iri)-1 || !schemeRE.MatchString(iri[:i]) {
+		return fmt.Errorf("metadata: the IRI %q has no scheme", iri)
+	}
+	return nil
+}
+
+// CheckContext reports whether iri is a context a JSON-LD processor can
+// load: an absolute http or https IRI with a host.
+func CheckContext(iri string) error {
+	if err := CheckIRI(iri); err != nil {
+		return err
+	}
+	u, err := url.Parse(iri)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return fmt.Errorf("metadata: the context %q is not an http or https IRI with a host", iri)
+	}
+	return nil
+}
+
+// CheckMapping returns every rule the contexts and the claim mappings of
+// r break: each context loads and appears once, after the VCDM 2.0
+// context; each mapped claim is a property of the document and appears
+// once; each term IRI is absolute; each label has a locale and a text,
+// one per locale.
+func CheckMapping(r record.Record) []Problem {
+	var out []Problem
+	seen := map[string]bool{}
+	for _, c := range r.Contexts {
+		switch {
+		case c == VCDMContext:
+			out = append(out, Problem{Field: "contexts", Text: msg.T("issuer.mapping.error.context_base")})
+		case CheckContext(c) != nil:
+			out = append(out, Problem{Field: "contexts", Text: msg.T("issuer.mapping.error.context", c)})
+		case seen[c]:
+			out = append(out, Problem{Field: "contexts", Text: msg.T("issuer.mapping.error.context_twice", c)})
+		}
+		seen[c] = true
+	}
+	properties := map[string]bool{}
+	for _, c := range Claims(r) {
+		properties[c.Name] = true
+	}
+	mapped := map[string]bool{}
+	for _, m := range r.ClaimMappings {
+		field := "claim." + m.Claim
+		switch {
+		case !properties[m.Claim]:
+			out = append(out, Problem{Field: field, Text: msg.T("issuer.mapping.error.claim", m.Claim)})
+			continue
+		case mapped[m.Claim]:
+			out = append(out, Problem{Field: field, Text: msg.T("issuer.mapping.error.claim_twice", m.Claim)})
+			continue
+		}
+		mapped[m.Claim] = true
+		if m.IRI != "" && CheckIRI(m.IRI) != nil {
+			out = append(out, Problem{Field: field + ".iri", Text: msg.T("issuer.mapping.error.iri", m.Claim)})
+		}
+		if !labelsOK(m.Labels) {
+			out = append(out, Problem{Field: field + ".labels", Text: msg.T("issuer.mapping.error.labels", m.Claim)})
+		}
+	}
+	return out
+}
+
+// labelsOK reports whether every label has a locale and a text, and no
+// locale appears twice.
+func labelsOK(list []record.ClaimLabel) bool {
+	seen := map[string]bool{}
+	for _, l := range list {
+		if strings.TrimSpace(l.Locale) == "" || strings.TrimSpace(l.Label) == "" || seen[l.Locale] {
+			return false
+		}
+		seen[l.Locale] = true
+	}
+	return true
 }

@@ -68,6 +68,20 @@ type Display struct {
 	TextColor       string `json:"text_color,omitempty"`
 }
 
+// ClaimLabel is the display text of one claim in one language.
+type ClaimLabel struct {
+	Locale      string `json:"locale"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// ClaimMapping maps one top level claim to a term IRI and to its labels.
+type ClaimMapping struct {
+	Claim  string       `json:"claim"`
+	IRI    string       `json:"iri,omitempty"`
+	Labels []ClaimLabel `json:"labels,omitempty"`
+}
+
 // Record is one version of one schema.
 type Record struct {
 	ID               string            `json:"id"`
@@ -87,6 +101,18 @@ type Record struct {
 	RetiredAt        time.Time         `json:"retired_at,omitempty"`
 	RetentionDays    int               `json:"retention_days,omitempty"`
 	ConfigurationIDs map[string]string `json:"configuration_ids,omitempty"`
+	Contexts         []string          `json:"contexts,omitempty"`
+	ClaimMappings    []ClaimMapping    `json:"claim_mappings,omitempty"`
+}
+
+// Mapping returns the mapping of one claim, when the version has one.
+func (r Record) Mapping(claim string) (ClaimMapping, bool) {
+	for _, m := range r.ClaimMappings {
+		if m.Claim == claim {
+			return m, true
+		}
+	}
+	return ClaimMapping{}, false
 }
 
 // Validate checks the fields a caller sets. It parses the JSON Schema.
@@ -316,6 +342,8 @@ func FromProto(m *schemav1.Schema) (Record, error) {
 		TenantID:         m.GetTenantId(),
 		CreatedBy:        m.GetCreatedBy(),
 		RetentionDays:    int(m.GetRetentionDays()),
+		Contexts:         trimmed(m.GetContexts()),
+		ClaimMappings:    MappingsFromProto(m.GetClaimMappings()),
 	}
 	for _, d := range m.GetDisplay() {
 		r.Display = append(r.Display, Display{
@@ -345,6 +373,7 @@ func ToProto(r Record) *schemav1.Schema {
 		SdClaims: append([]string(nil), r.SDClaims...), Expires: r.Expires,
 		SearchableClaims: append([]string(nil), r.SearchableClaims...), TenantId: r.TenantID, CreatedBy: r.CreatedBy,
 		RetentionDays: toInt32(int64(r.RetentionDays)), Display: DisplayToProto(r.Display),
+		Contexts: append([]string(nil), r.Contexts...), ClaimMappings: MappingsToProto(r.ClaimMappings),
 	}
 	for _, f := range r.Formats {
 		m.Formats = append(m.Formats, FormatToProto(f))
@@ -363,6 +392,47 @@ func DisplayToProto(list []Display) []*schemav1.Display {
 			Name: d.Name, Description: d.Description, Locale: d.Locale,
 			LogoUri: d.LogoURI, BackgroundColor: d.BackgroundColor, TextColor: d.TextColor,
 		})
+	}
+	return out
+}
+
+// MappingsFromProto reads the claim mappings of a message. It trims the
+// spaces around every value.
+func MappingsFromProto(list []*schemav1.ClaimMapping) []ClaimMapping {
+	var out []ClaimMapping
+	for _, m := range list {
+		cm := ClaimMapping{Claim: strings.TrimSpace(m.GetClaim()), IRI: strings.TrimSpace(m.GetIri())}
+		for _, l := range m.GetLabels() {
+			cm.Labels = append(cm.Labels, ClaimLabel{
+				Locale: strings.TrimSpace(l.GetLocale()), Label: strings.TrimSpace(l.GetLabel()), Description: strings.TrimSpace(l.GetDescription()),
+			})
+		}
+		out = append(out, cm)
+	}
+	return out
+}
+
+// MappingsToProto renders the claim mappings as messages.
+func MappingsToProto(list []ClaimMapping) []*schemav1.ClaimMapping {
+	var out []*schemav1.ClaimMapping
+	for _, m := range list {
+		pm := &schemav1.ClaimMapping{Claim: m.Claim, Iri: m.IRI}
+		for _, l := range m.Labels {
+			pm.Labels = append(pm.Labels, &schemav1.ClaimLabel{Locale: l.Locale, Label: l.Label, Description: l.Description})
+		}
+		out = append(out, pm)
+	}
+	return out
+}
+
+// trimmed returns the values with the spaces around each removed and the
+// empty values dropped.
+func trimmed(list []string) []string {
+	var out []string
+	for _, v := range list {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
 	}
 	return out
 }

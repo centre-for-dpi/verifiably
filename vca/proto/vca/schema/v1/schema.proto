@@ -110,6 +110,35 @@ message Schema {
   // The number of days the issued record of a credential stays
   // (ADR-017 decision 5). Zero means the deployment default.
   int32 retention_days = 16;
+  // The JSON-LD context IRIs that extend the VCDM 2.0 context. An
+  // ldp_vc credential of this version carries them after the base
+  // context, in this order.
+  repeated string contexts = 17;
+  // The mapping of each claim to a term IRI and to its display labels.
+  // The vct document and the issuer metadata carry the labels.
+  repeated ClaimMapping claim_mappings = 18;
+}
+
+// ClaimMapping maps one top level claim of a schema to a JSON-LD term.
+// It also holds the labels a wallet shows for the claim.
+message ClaimMapping {
+  // The property name of the claim in the JSON Schema document.
+  string claim = 1;
+  // The absolute IRI of the term, such as https://schema.org/givenName.
+  // Empty keeps the term that the contexts give the property name.
+  string iri = 2;
+  // The display labels of the claim, at most one per locale.
+  repeated ClaimLabel labels = 3;
+}
+
+// ClaimLabel is the display text of one claim in one language.
+message ClaimLabel {
+  // The BCP 47 language tag.
+  string locale = 1;
+  // The label a wallet shows.
+  string label = 2;
+  // The one sentence description, when any.
+  string description = 3;
 }
 
 // CreateRequest carries the first version.

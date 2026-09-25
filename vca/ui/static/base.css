@@ -479,9 +479,12 @@ th{
 }
 /* filters: the search and the filter fields of a list page on one
    row above its table; they wrap on a narrow screen. */
-.filters{display:flex;flex-wrap:wrap;gap:var(--space-3) var(--space-4);align-items:flex-end;margin:0 0 var(--space-6)}
-.filters .field{flex:1 1 11rem;margin:0}
+/* field-row: related fields of a form side by side, such as a label
+   and its description; they wrap on a narrow screen. */
+.filters,.field-row{display:flex;flex-wrap:wrap;gap:var(--space-3) var(--space-4);align-items:flex-end;margin:0 0 var(--space-6)}
+.filters .field,.field-row .field{flex:1 1 11rem;margin:0;max-width:none}
 .filters .field:first-child{flex:2 1 16rem}
+.field-row{margin-bottom:var(--space-4)}
 /* row-actions: the buttons of one table row on one line; each
    POST form inside it takes no space of its own. */
 .row-actions{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}

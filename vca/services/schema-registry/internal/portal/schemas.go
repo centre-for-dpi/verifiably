@@ -219,6 +219,9 @@ func (p *Portal) rowActions(b *blocks, m *schemav1.Schema, csrf template.HTML) t
 	if href := p.builderURL(m.GetId()); href != "" {
 		parts = append(parts, b.add("button", components.Button{Text: msg.T("issuer.schemas.action.version.label"), Href: href}))
 	}
+	if m.GetState() != schemav1.State_STATE_RETIRED {
+		parts = append(parts, b.add("button", components.Button{Text: msg.T("issuer.schemas.action.mapping.label"), Href: p.mappingURL(m.GetId(), m.GetVersion())}))
+	}
 	switch m.GetState() {
 	case schemav1.State_STATE_DRAFT:
 		parts = append(parts, p.postForm(m.GetId(), "delete", csrf, m.GetVersion(),

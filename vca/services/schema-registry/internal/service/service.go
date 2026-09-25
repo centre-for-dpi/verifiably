@@ -88,9 +88,9 @@ func (s *Service) MetadataOptions() metadata.Options {
 
 // Create stores version 1 of a new schema.
 func (s *Service) Create(_ context.Context, req *connect.Request[schemav1.CreateRequest]) (*connect.Response[schemav1.CreateResponse], error) {
-	r, err := record.FromProto(req.Msg.GetSchema())
+	r, err := fromProto(req.Msg.GetSchema())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		return nil, err
 	}
 	stored, err := s.opts.Store.Create(r, s.opts.Now())
 	if err != nil {
@@ -105,15 +105,32 @@ func (s *Service) Update(_ context.Context, req *connect.Request[schemav1.Update
 	if !record.ValidID(id) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("service: the schema id is not valid"))
 	}
-	r, err := record.FromProto(req.Msg.GetSchema())
+	r, err := fromProto(req.Msg.GetSchema())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		return nil, err
 	}
 	stored, err := s.opts.Store.AddVersion(id, r, s.opts.Now())
 	if err != nil {
 		return nil, storeError(err)
 	}
 	return connect.NewResponse(&schemav1.UpdateResponse{Schema: record.ToProto(stored)}), nil
+}
+
+// fromProto reads a schema message and checks its context extensions
+// and its claim mappings. Every problem gives InvalidArgument.
+func fromProto(m *schemav1.Schema) (record.Record, error) {
+	r, err := record.FromProto(m)
+	if err != nil {
+		return record.Record{}, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if problems := metadata.CheckMapping(r); len(problems) > 0 {
+		texts := make([]string, 0, len(problems))
+		for _, p := range problems {
+			texts = append(texts, p.Text)
+		}
+		return record.Record{}, connect.NewError(connect.CodeInvalidArgument, errors.New(strings.Join(texts, " ")))
+	}
+	return r, nil
 }
 
 // Publish moves one draft to published and registers it with the DPG.

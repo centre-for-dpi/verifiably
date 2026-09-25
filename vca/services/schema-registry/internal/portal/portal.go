@@ -15,6 +15,8 @@
 //	POST /schemas/{id}/publish    publish one draft version
 //	POST /schemas/{id}/retire     retire one or every published version
 //	POST /schemas/{id}/delete     delete one draft version
+//	GET  /schemas/{id}/mapping    the context and mapping page of a version
+//	POST /schemas/{id}/mapping    save the mapping as the next draft version
 package portal
 
 import (
@@ -112,6 +114,8 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/publish", p.handle(p.publishPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/publish", p.handle(p.publishFile))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/delete", p.handle(p.deleteDraft))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}/mapping", p.handle(p.mappingPage))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/mapping", p.handle(p.saveMapping))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}", p.handle(p.detail))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}/versions", p.handle(p.versions))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/publish", p.handle(p.publish))
@@ -265,6 +269,7 @@ var Notices = map[string]components.Toast{
 	"retired":   {Level: "warn", Text: "The version is retired. Issuance with it stopped."},
 	"deleted":   {Level: "ok", Text: msg.T("issuer.schemas.deleted")},
 	"uploaded":  {Level: "ok", Text: msg.T("issuer.schemas.uploaded")},
+	"mapped":    {Level: "ok", Text: msg.T("issuer.mapping.saved")},
 }
 
 // notice returns the toast of the notice query value, when the code is known.
@@ -551,6 +556,7 @@ func (p *Portal) summaryCard(m *schemav1.Schema) (template.HTML, error) {
 		{{Text: "Published"}, {Text: stamp(m.GetPublishedAt().AsTime().String(), m.GetPublishedAt() != nil)}},
 		{{Text: "Retired"}, {Text: stamp(m.GetRetiredAt().AsTime().String(), m.GetRetiredAt() != nil)}},
 		{{Text: "Version history"}, {HTML: link(p.versionsURL(m.GetId()), "Every version of this schema")}},
+		{{Text: msg.T("issuer.mapping.title.label")}, {HTML: link(p.mappingURL(m.GetId(), m.GetVersion()), msg.T("issuer.schemas.action.mapping.label"))}},
 	}
 	table, err := p.opts.Kit.HTML("table", components.Table{
 		ID: "summary-table", Caption: "Schema summary", Columns: []string{"Field", "Value"}, Rows: rows,

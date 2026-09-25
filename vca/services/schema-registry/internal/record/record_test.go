@@ -177,3 +177,31 @@ func TestCanDelete(t *testing.T) {
 		t.Fatalf("retired: %v", err)
 	}
 }
+
+func TestMappingRoundTrip(t *testing.T) {
+	m := &schemav1.Schema{
+		Type: "Degree", JsonSchema: `{"type":"object","properties":{"name":{"type":"string"}}}`,
+		Formats:  []commonv1.Format{commonv1.Format_FORMAT_LDP_VC},
+		Contexts: []string{" https://schema.org/ ", " "},
+		ClaimMappings: []*schemav1.ClaimMapping{{Claim: " name ", Iri: " https://schema.org/name ",
+			Labels: []*schemav1.ClaimLabel{{Locale: " en ", Label: " Name ", Description: " The name. "}}}},
+	}
+	r, err := FromProto(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Contexts) != 1 || r.Contexts[0] != "https://schema.org/" {
+		t.Fatalf("contexts %v", r.Contexts)
+	}
+	got, ok := r.Mapping("name")
+	if !ok || got.IRI != "https://schema.org/name" || got.Labels[0] != (ClaimLabel{Locale: "en", Label: "Name", Description: "The name."}) {
+		t.Fatalf("mapping %+v %v", got, ok)
+	}
+	if _, ok := r.Mapping("age"); ok {
+		t.Fatal("a claim without a mapping")
+	}
+	back := ToProto(r)
+	if back.GetContexts()[0] != "https://schema.org/" || back.GetClaimMappings()[0].GetLabels()[0].GetDescription() != "The name." {
+		t.Fatalf("back %v", back)
+	}
+}
