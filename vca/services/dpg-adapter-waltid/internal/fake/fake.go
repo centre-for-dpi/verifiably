@@ -34,6 +34,22 @@ const (
 	SessionRejected SessionState = "session-rejected.json"
 )
 
+// Session2State names which verifier 2 session the fake serves. The
+// answers follow the verifier 2 documentation (testdata/doc/SOURCE.md).
+type Session2State string
+
+// The verifier 2 sessions.
+const (
+	// Session2Active is a session that no wallet answered.
+	Session2Active Session2State = "doc/verifier2-session-active.json"
+	// Session2Successful is a session whose checks all passed.
+	Session2Successful Session2State = "doc/verifier2-session-successful.json"
+	// Session2Failed is a session with a failed check.
+	Session2Failed Session2State = "doc/verifier2-session-failed.json"
+	// Session2Expired is a session that expired unused.
+	Session2Expired Session2State = "doc/verifier2-session-expired.json"
+)
+
 // Server is a running fake walt.id stack.
 type Server struct {
 	// Server is the HTTP test server.
@@ -44,6 +60,10 @@ type Server struct {
 	dir string
 	// session selects the verifier session answer.
 	session SessionState
+	// session2 selects the verifier 2 session answer.
+	session2 Session2State
+	// last is the path of the last call.
+	last string
 	// claimed reports whether a wallet claimed an offer.
 	claimed bool
 	// requests records the body of every write call by path.
@@ -58,6 +78,7 @@ func New(dir string) *Server {
 	f := &Server{
 		dir:      dir,
 		session:  SessionPending,
+		session2: Session2Active,
 		requests: map[string][]byte{},
 		status:   map[string]int{},
 	}
@@ -79,6 +100,20 @@ func (f *Server) SetSession(state SessionState) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.session = state
+}
+
+// SetSession2 selects the verifier 2 session answer.
+func (f *Server) SetSession2(state Session2State) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.session2 = state
+}
+
+// LastPath returns the path of the last call.
+func (f *Server) LastPath() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.last
 }
 
 // SetStatus makes the fake answer one path with a status code. An empty
@@ -114,8 +149,10 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
+	f.last = r.URL.Path
 	forced := f.status[r.URL.Path]
 	session := f.session
+	session2 := f.session2
 	claimed := f.claimed
 	f.mu.Unlock()
 	if forced != 0 {
@@ -134,6 +171,10 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		f.send(w, "verify-authorize.txt", "text/plain")
 	case strings.HasPrefix(path, "/openid4vc/session/"):
 		f.send(w, string(session), "application/json")
+	case path == "/verification-session/create" && r.Method == http.MethodPost:
+		f.send(w, "doc/verifier2-create.json", "application/json")
+	case strings.HasPrefix(path, "/verification-session/") && strings.HasSuffix(path, "/info"):
+		f.send(w, string(session2), "application/json")
 	case path == "/wallet-api/auth/register":
 		w.WriteHeader(http.StatusCreated)
 	case path == "/wallet-api/auth/login":

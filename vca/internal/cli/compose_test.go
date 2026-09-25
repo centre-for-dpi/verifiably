@@ -201,6 +201,7 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 	wantImages := map[string][]string{
 		"dpg/waltid.yaml": {
 			"waltid/issuer-api:0.18.2", "waltid/verifier-api:0.18.2", "waltid/wallet-api:0.18.2",
+			"waltid/verifier-api2:0.18.2",
 		},
 		"dpg/inji.yaml": {
 			"injistack/inji-certify-with-plugins:0.14.0",

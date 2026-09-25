@@ -79,6 +79,26 @@ services:
     networks:
       - vca
 
+  # Verifier API 2 of the same release answers OID4VP 1.0 requests with
+  # DCQL and the Digital Credentials API (ADR-045 decision 5). The
+  # service reads its settings from command line flags, so it needs no
+  # mounted configuration. urlPrefix is the address a wallet opens.
+  waltid-verifier-api2:
+    image: waltid/verifier-api2:0.18.2
+    profiles: [verifier-waltid]
+    container_name: waltid-verifier-api2
+    restart: unless-stopped
+    command:
+      - "--webPort=7004"
+      - "--clientId=verifier2"
+      - "--clientMetadata.client_name=${WALTID_VERIFIER2_CLIENT_NAME:-Verifier}"
+      - "--urlPrefix=${WALTID_VERIFIER2_BASE_URL:-http://waltid-verifier-api2:7004}/verification-session"
+      - "--urlHost=openid4vp://authorize"
+    ports:
+      - "${VCA_BIND:-0.0.0.0}:${WALTID_VERIFIER2_HOST_PORT:-17004}:7004"
+    networks:
+      - vca
+
   waltid-wallet-api:
     image: waltid/wallet-api:0.18.2
     profiles: [holder-waltid]

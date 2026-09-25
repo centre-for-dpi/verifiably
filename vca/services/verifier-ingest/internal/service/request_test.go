@@ -122,6 +122,7 @@ func licenceTemplate() *discoveryv1.PresentationTemplate {
 // query only when it loses nothing.
 func TestQueryForReadsTheProtocols(t *testing.T) {
 	pe := &discoveryv1.PresentationTemplate{Kind: discoveryv1.TemplateKind_TEMPLATE_KIND_PE, PresentationDefinition: `{"id":"x"}`}
+	both := []backendv1.Protocol{backendv1.Protocol_PROTOCOL_OID4VP, backendv1.Protocol_PROTOCOL_OID4VP_DCQL, backendv1.Protocol_PROTOCOL_OID4VP_PEX}
 	lossy := &discoveryv1.PresentationTemplate{Dcql: strings.Replace(query, `"format"`, `"multiple":true,"format"`, 1)}
 	cases := []struct {
 		name      string
@@ -136,6 +137,10 @@ func TestQueryForReadsTheProtocols(t *testing.T) {
 		{"pe to dcql", pe, dcqlStack.Protocols, false, false},
 		{"empty pe", &discoveryv1.PresentationTemplate{Kind: discoveryv1.TemplateKind_TEMPLATE_KIND_PE}, peStack.Protocols, false, false},
 		{"bad dcql", &discoveryv1.PresentationTemplate{Dcql: "{"}, peStack.Protocols, false, false},
+		// A stack with two verifiers, one per query language, gets the
+		// DCQL query as written and the stored definition of a PE query.
+		{"dcql to both", licenceTemplate(), both, true, false},
+		{"pe to both", pe, both, false, true},
 	}
 	for _, c := range cases {
 		d, p, ok := service.QueryFor(c.t, c.protocols)

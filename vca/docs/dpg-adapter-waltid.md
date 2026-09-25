@@ -21,19 +21,20 @@ The service serves seven Connect services from `vca.backend.v1`:
 | `CapabilityService` | Always served. |
 | `IssuerBackendService` | Served when the configuration names an issuer URL. |
 | `HolderBackendService` | Served when the configuration names a wallet URL. |
-| `VerifierBackendService` | Served when the configuration names a verifier URL. |
+| `VerifierBackendService` | Served when the configuration names a verifier URL or a verifier 2 URL. |
 | `CatalogBackendService` | Served when the configuration names an issuer URL. |
 | `TenantBackendService` | Never served. The community stack keeps no tenants. |
 | `NotificationBackendService` | Never served. The community stack keeps no tenants to hold a webhook. |
 
 ## The walt.id stack
 
-The stack of release 0.18.2 has three HTTP services.
+The stack of release 0.18.2 has four HTTP services.
 
 | Service | What the adapter calls |
 | --- | --- |
 | Issuer API | `POST /onboard/issuer`, `POST /openid4vc/{jwt,sdjwt,mdoc}/issue`, `GET /{draft}/.well-known/openid-credential-issuer` |
 | Verifier API | `POST /openid4vc/verify`, `GET /openid4vc/session/{id}` |
+| Verifier API 2 | `POST /verification-session/create`, `GET /verification-session/{id}/info` |
 | Wallet API | `POST /wallet-api/auth/{register,login}`, `GET /wallet-api/wallet/accounts/wallets`, the exchange endpoints, and the credential endpoints |
 
 ## What the adapter can do
@@ -44,7 +45,7 @@ The answer of `GetCapabilities` reports what the release supports.
 | --- | --- |
 | Formats | `jwt_vc_json`, `vc+sd-jwt`, `dc+sd-jwt`, `mso_mdoc` |
 | Channels | OID4VCI pre-authorized code, OID4VCI authorization code |
-| Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
+| Protocols | OID4VCI and OID4VP. A verifier URL adds Presentation Exchange. A verifier 2 URL adds DCQL. |
 | Roles | The roles whose URL the configuration sets |
 | Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUER_IDENTITY_IMPORT_DID`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` when the configuration names an issuer URL |
 | DID methods | `did:web`, `did:key`, `did:jwk` |
@@ -57,10 +58,44 @@ documentation, and its licence. The versions come from the
 configuration, and a test binds the defaults to the stack file. A page
 shows a feature on this stack only when the answer lists it (ADR-034).
 
-Release 0.18.2 has no DCQL query support, so the answer never lists
+The Verifier API reads a Presentation Exchange definition only. Verifier
+API 2 of the same release reads a DCQL query over OID4VP 1.0. The stack
+file runs both in the `verifier-waltid` profile, and the CLI gives the
+verifier pair `VCA_WALTID_VERIFIER2_URL`. The answer then lists
 `PROTOCOL_OID4VP_DCQL`. The release has no document export, so the
 answer never lists the PDF channel. The issuance service renders the
 PDF itself.
+
+## Requests through Verifier API 2
+
+`CreateRequest` sends a DCQL query to Verifier API 2 as a cross device
+session. The body carries the query as the caller wrote it. The check
+names map onto the `vc_policies` of Verifier API 2:
+
+| Check name | Policy of Verifier API 2 |
+| --- | --- |
+| `signature` | `signature` |
+| `expired` | `expiration` |
+| `not-before` | `not-before` |
+| The webhook URL | `webhook` with the URL |
+
+The adapter leaves `status-list` out. The VCA policy service checks the
+status of every credential itself. A Presentation Exchange definition
+still goes to the Verifier API.
+
+The state of a Verifier API 2 session starts with `v2:`. `GetResult`
+reads `/verification-session/{id}/info` for such a state:
+
+| Session status | Result state |
+| --- | --- |
+| `SUCCESSFUL` | Accepted |
+| `FAILED` | Rejected |
+| `EXPIRED` | Expired |
+| Any other status | Pending |
+
+The presented credentials come from `presented_raw_data`. The format of
+each comes from the DCQL query of the session. The checks come from
+`policy_results`.
 
 ## The issuer identity
 
@@ -157,11 +192,15 @@ gained.
 The service has two test sets.
 
 The recorded set replays answers of walt.id 0.18.2 from `testdata`
-through an `httptest` fake. It runs in every build.
+through an `httptest` fake. It runs in every build. The files under
+`testdata/doc` follow the upstream documentation. `testdata/doc/SOURCE.md`
+names the page and the date of each. The nightly contract run replaces
+them with recordings.
 
 The contract set targets a real walt.id stack. It carries the build tag
 `contract_waltid`. It skips itself when the variable
-`VCA_WALTID_CONTRACT_ISSUER_URL` holds no value.
+`VCA_WALTID_CONTRACT_ISSUER_URL` holds no value. The DCQL case also
+needs `VCA_WALTID_CONTRACT_VERIFIER2_URL`.
 
 ## Reference
 

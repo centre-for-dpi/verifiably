@@ -88,3 +88,28 @@ func TestBuildReportsABadStoreDirectory(t *testing.T) {
 func writeFile(path string) error {
 	return osWriteFile(path)
 }
+
+func TestBuildWiresVerifier2(t *testing.T) {
+	f := fake.New("../../testdata")
+	defer f.Close()
+	a, err := app.Build(config.Config{Verifier2URL: f.URL(), DpgVersion: "0.18.2"}, app.Deps{HTTP: f.Client()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	resp, err := srv.Client().Post(srv.URL+"/vca.backend.v1.VerifierBackendService/CreateRequest", "application/json",
+		strings.NewReader(`{"dcql":"{\"credentials\":[{\"id\":\"a\",\"format\":\"dc+sd-jwt\"}]}"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	if cerr := resp.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if f.LastPath() != "/verification-session/create" {
+		t.Fatalf("the adapter called %q", f.LastPath())
+	}
+}

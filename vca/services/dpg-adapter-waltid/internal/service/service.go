@@ -179,12 +179,17 @@ func (s *Service) GetCapabilities(
 	if s.client.HasWallet() {
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_HOLDER)
 	}
-	if s.client.HasVerifier() {
+	if s.client.HasVerifier() || s.client.HasVerifier2() {
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_VERIFIER)
-		// Release 0.18.2 answers a Presentation Exchange request only.
-		// It has no DCQL query support.
-		out.Protocols = append(out.Protocols,
-			backendv1.Protocol_PROTOCOL_OID4VP, backendv1.Protocol_PROTOCOL_OID4VP_PEX)
+		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP)
+	}
+	if s.client.HasVerifier2() {
+		// The verifier-api2 speaks OID4VP 1.0 with DCQL.
+		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP_DCQL)
+	}
+	if s.client.HasVerifier() {
+		// The verifier-api reads a Presentation Exchange request only.
+		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP_PEX)
 	}
 	out.DpgInfo = s.dpgInfo()
 	return connect.NewResponse(out), nil

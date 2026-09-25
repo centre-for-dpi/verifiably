@@ -10,7 +10,8 @@ It serves these roles:
 
 - Issuer: it builds OID4VCI credential offers.
 - Holder: it drives the walt.id hosted wallet.
-- Verifier: it starts and reads OID4VP transactions.
+- Verifier: it starts and reads OID4VP transactions. Presentation
+  Exchange goes to the verifier API, DCQL to the verifier API 2.
 - Catalogue: it lists the credential configurations of the issuer.
 
 The service reaches walt.id over the HTTP API of walt.id only. It never
@@ -28,6 +29,7 @@ Set at least one walt.id URL. Each URL turns on one role.
 | `VCA_WALTID_LISTEN` | The address to bind. The default is `:8080`. |
 | `VCA_WALTID_ISSUER_URL` | The base URL of the walt.id issuer API. |
 | `VCA_WALTID_VERIFIER_URL` | The base URL of the walt.id verifier API. |
+| `VCA_WALTID_VERIFIER2_URL` | The base URL of the walt.id verifier API 2. It answers DCQL requests. |
 | `VCA_WALTID_WALLET_URL` | The base URL of the walt.id wallet API. |
 | `VCA_WALTID_STANDARD_VERSION` | The OID4VCI draft name. The default is `draft13`. |
 | `VCA_WALTID_DPG_VERSION` | The walt.id release the answer of `GetCapabilities` reports. |

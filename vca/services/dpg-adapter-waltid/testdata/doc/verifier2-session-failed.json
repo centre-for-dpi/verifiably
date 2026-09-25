@@ -1,0 +1,87 @@
+{
+  "id": "14d60fa2-4e7d-4a34-a291-80da0e053fab",
+  "setup": {
+    "flow_type": "cross_device",
+    "core_flow": {
+      "dcql_query": {
+        "credentials": [
+          {
+            "id": "credential_1",
+            "format": "dc+sd-jwt",
+            "meta": {
+              "vct_values": [
+                "https://walt-issuer.example.org/identity_credential"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "creationDate": "2026-04-01T12:00:00Z",
+  "expirationDate": "2026-04-01T12:10:00Z",
+  "retentionDate": "2036-04-01T12:00:00Z",
+  "status": "FAILED",
+  "attempted": true,
+  "reattemptable": true,
+  "bootstrapAuthorizationRequestUrl": "openid4vp://authorize?client_id=verifier2&request_uri=http%3A%2F%2Fwaltid-verifier-api2%3A7004%2Fverification-session%2F14d60fa2-4e7d-4a34-a291-80da0e053fab%2Frequest",
+  "requestMode": "REQUEST_URI",
+  "presented_raw_data": {
+    "vpToken": {
+      "credential_1": [
+        "eyJhbGciOiJFUzI1NiIsInR5cCI6ImRjK3NkLWp3dCJ9.eyJ2Y3QiOiJodHRwczovL3dhbHQtaXNzdWVyLmV4YW1wbGUub3JnL2lkZW50aXR5X2NyZWRlbnRpYWwifQ.c2ln~WyJzYWx0IiwiYWdlX292ZXJfMTgiLHRydWVd~"
+      ]
+    },
+    "state": "a697ef7d-fc66-4ccd-b79a-3aa1b93836df"
+  },
+  "policy_results": {
+    "vp_policies": {
+      "credential_1": {
+        "dc+sd-jwt/audience-check": {
+          "policy_executed": {
+            "policy": "dc+sd-jwt/audience-check",
+            "id": "dc+sd-jwt/audience-check"
+          },
+          "success": true,
+          "results": {},
+          "errors": []
+        },
+        "dc+sd-jwt/nonce-check": {
+          "policy_executed": {
+            "policy": "dc+sd-jwt/nonce-check"
+          },
+          "success": false,
+          "results": {},
+          "errors": [
+            {
+              "error": "nonce mismatch"
+            }
+          ]
+        }
+      }
+    },
+    "vc_policies": [
+      {
+        "policy": {
+          "policy": "signature",
+          "id": "signature"
+        },
+        "success": true,
+        "result": {
+          "verification_result": true
+        }
+      },
+      {
+        "policy": {
+          "policy": "expiration",
+          "id": "expiration"
+        },
+        "success": false,
+        "error": "the credential expired"
+      }
+    ],
+    "specific_vc_policies": {},
+    "overallSuccess": false
+  },
+  "statusReason": "Presentation validation failed"
+}

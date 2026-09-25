@@ -1,0 +1,5 @@
+{
+  "sessionId": "14d60fa2-4e7d-4a34-a291-80da0e053fab",
+  "bootstrapAuthorizationRequestUrl": "openid4vp://authorize?client_id=verifier2&request_uri=http%3A%2F%2Fwaltid-verifier-api2%3A7004%2Fverification-session%2F14d60fa2-4e7d-4a34-a291-80da0e053fab%2Frequest",
+  "fullAuthorizationRequestUrl": "openid4vp://authorize?response_type=vp_token&client_id=verifier2&state=a697ef7d-fc66-4ccd-b79a-3aa1b93836df&response_mode=direct_post&nonce=4c44c117-2d26-4838-b42f-52b0e0faa070&response_uri=http%3A%2F%2Fwaltid-verifier-api2%3A7004%2Fverification-session%2F14d60fa2-4e7d-4a34-a291-80da0e053fab%2Fresponse"
+}

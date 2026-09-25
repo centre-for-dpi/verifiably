@@ -10,14 +10,18 @@
 //     GET /{standardVersion}/.well-known/openid-credential-issuer.
 //   - verifier-api: POST /openid4vc/verify, GET /openid4vc/session/{id}.
 //     Release 0.18.2 has no endpoint that checks one pasted credential.
+//   - verifier-api2: POST /verification-session/create,
+//     GET /verification-session/{id}/info and /request. It speaks
+//     OID4VP 1.0 with DCQL and the Digital Credentials API.
 //   - wallet-api: POST /wallet-api/auth/{register,login},
 //     GET /wallet-api/wallet/accounts/wallets,
 //     POST /wallet-api/wallet/{id}/exchange/{resolveCredentialOffer,
 //     useOfferRequest,usePresentationRequest},
 //     GET and DELETE /wallet-api/wallet/{id}/credentials.
 //
-// Release 0.18.2 speaks OID4VCI draft 13 and OID4VP with Presentation
-// Exchange 2.0. It has no DCQL query support.
+// Release 0.18.2 speaks OID4VCI draft 13. The verifier-api speaks OID4VP
+// with Presentation Exchange 2.0; the verifier-api2 of the same release
+// speaks OID4VP 1.0 with DCQL.
 package waltid
 
 import (
@@ -37,6 +41,8 @@ type Client struct {
 	issuer   *dpgclient.Client
 	verifier *dpgclient.Client
 	wallet   *dpgclient.Client
+	// verifier2 calls the verifier-api2. Nil turns DCQL off.
+	verifier2 *dpgclient.Client
 	// standardVersion is the draft name in the metadata path.
 	standardVersion string
 
@@ -58,6 +64,8 @@ type Options struct {
 	Verifier *dpgclient.Client
 	// Wallet calls the wallet-api. Nil turns the holder role off.
 	Wallet *dpgclient.Client
+	// Verifier2 calls the verifier-api2. Nil turns DCQL requests off.
+	Verifier2 *dpgclient.Client
 	// StandardVersion is the draft name, for example draft13.
 	StandardVersion string
 	// IssuerKey is the JWK wrapper of the signing key, as JSON.
@@ -72,6 +80,7 @@ func New(opts Options) *Client {
 		issuer:          opts.Issuer,
 		verifier:        opts.Verifier,
 		wallet:          opts.Wallet,
+		verifier2:       opts.Verifier2,
 		standardVersion: opts.StandardVersion,
 		issuerDid:       opts.IssuerDid,
 	}
@@ -117,6 +126,9 @@ func (c *Client) HasIssuer() bool { return c.issuer != nil }
 
 // HasVerifier reports whether the verifier role is configured.
 func (c *Client) HasVerifier() bool { return c.verifier != nil }
+
+// HasVerifier2 reports whether the verifier-api2 is configured.
+func (c *Client) HasVerifier2() bool { return c.verifier2 != nil }
 
 // HasWallet reports whether the holder role is configured.
 func (c *Client) HasWallet() bool { return c.wallet != nil }

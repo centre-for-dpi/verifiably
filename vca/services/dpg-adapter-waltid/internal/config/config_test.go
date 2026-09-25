@@ -151,3 +151,18 @@ func stackImageTags(t *testing.T, path string) map[string]string {
 	}
 	return out
 }
+
+func TestLoadAcceptsVerifier2Alone(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{
+		"VCA_WALTID_VERIFIER2_URL": "http://waltid-verifier-api2:7004",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Verifier2URL != "http://waltid-verifier-api2:7004" {
+		t.Fatalf("verifier 2 URL = %q", cfg.Verifier2URL)
+	}
+	if cfg.Versions()["verifier-api2"] != "0.18.2" {
+		t.Fatalf("versions = %v", cfg.Versions())
+	}
+}

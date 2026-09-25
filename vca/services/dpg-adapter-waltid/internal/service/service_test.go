@@ -28,9 +28,10 @@ const testdata = "../../testdata"
 
 // roles says which walt.id services the test wires.
 type roles struct {
-	issuer   bool
-	verifier bool
-	wallet   bool
+	issuer    bool
+	verifier  bool
+	wallet    bool
+	verifier2 bool
 }
 
 // all wires every role.
@@ -55,12 +56,14 @@ func newService(t *testing.T, r roles) (*service.Service, *fake.Server) {
 			Issuer:          client(r.issuer),
 			Verifier:        client(r.verifier),
 			Wallet:          client(r.wallet),
+			Verifier2:       client(r.verifier2),
 			StandardVersion: "draft13",
 		}),
 		Store:      store.Memory(),
 		DpgVersion: "0.18.2",
 		Versions: map[string]string{
 			"issuer-api": "0.18.2", "verifier-api": "0.18.2", "wallet-api": "0.18.2", "keycloak": "25.0",
+			"verifier-api2": "0.18.2",
 		},
 		VctBase:     "https://issuer.example.org",
 		PageSizeMax: 1,

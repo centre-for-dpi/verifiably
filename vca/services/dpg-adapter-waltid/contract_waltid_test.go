@@ -34,6 +34,7 @@ func contractEnv(t *testing.T) config.Config {
 	return config.Config{
 		IssuerURL:       issuer,
 		VerifierURL:     os.Getenv("VCA_WALTID_CONTRACT_VERIFIER_URL"),
+		Verifier2URL:    os.Getenv("VCA_WALTID_CONTRACT_VERIFIER2_URL"),
 		WalletURL:       os.Getenv("VCA_WALTID_CONTRACT_WALLET_URL"),
 		StandardVersion: envOr("VCA_WALTID_CONTRACT_STANDARD_VERSION", "draft13"),
 		DpgVersion:      envOr("VCA_WALTID_CONTRACT_DPG_VERSION", "0.18.2"),
@@ -134,5 +135,45 @@ func TestContractCreateRequestAndReadTheSession(t *testing.T) {
 	}
 	if result.Msg.GetState() != backendv1.GetResultResponse_STATE_PENDING {
 		t.Fatalf("state = %v, a new transaction is pending", result.Msg.GetState())
+	}
+}
+
+// TestContractDcqlRoundTrip sends a DCQL query to the real verifier-api2
+// and reads the new session back. The fixtures in testdata/doc follow the
+// documentation; this test proves their shape against the release.
+func TestContractDcqlRoundTrip(t *testing.T) {
+	cfg := contractEnv(t)
+	if cfg.Verifier2URL == "" {
+		t.Skip("set VCA_WALTID_CONTRACT_VERIFIER2_URL to run the verifier 2 contract test")
+	}
+	a := newContractApp(t)
+	ctx := context.Background()
+	caps, err := a.Service.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatalf("GetCapabilities: %v", err)
+	}
+	listed := false
+	for _, p := range caps.Msg.GetProtocols() {
+		listed = listed || p == backendv1.Protocol_PROTOCOL_OID4VP_DCQL
+	}
+	if !listed {
+		t.Fatal("the adapter does not list DCQL with verifier 2 configured")
+	}
+	query := `{"credentials":[{"id":"contract","format":"dc+sd-jwt","meta":{"vct_values":["https://example.org/contract"]}}]}`
+	created, err := a.Service.CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{
+		Dcql: query, DpgPolicies: []string{"signature"},
+	}))
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+	if !strings.HasPrefix(created.Msg.GetRequestUri(), "openid4vp://") {
+		t.Fatalf("request URI = %q", created.Msg.GetRequestUri())
+	}
+	result, err := a.Service.GetResult(ctx, connect.NewRequest(&backendv1.GetResultRequest{State: created.Msg.GetState()}))
+	if err != nil {
+		t.Fatalf("GetResult: %v", err)
+	}
+	if result.Msg.GetState() != backendv1.GetResultResponse_STATE_PENDING {
+		t.Fatalf("state = %v, a new session is pending", result.Msg.GetState())
 	}
 }

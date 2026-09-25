@@ -439,7 +439,7 @@ The versions come from `verifiably-go/docs/dpg-matrix.md`:
 
 | File | What it holds | Version |
 |---|---|---|
-| `dpg/waltid.yaml` | Issuer API, verifier API, wallet API | 0.18.2 |
+| `dpg/waltid.yaml` | Issuer API, verifier API, verifier API 2, wallet API | 0.18.2 |
 | `dpg/inji.yaml` | Inji Certify | 0.14.0 |
 | `dpg/inji.yaml` | Inji Web and Mimoto | 0.16.0 and 0.21.0 |
 | `dpg/inji.yaml` | Inji Verify UI and service | 0.16.0 |
@@ -556,6 +556,11 @@ The value is the container URL of the DPG API on the `vca` network:
 | `verifier-credebl` | `http://credebl-api-gateway:5000` |
 
 The admin role calls no DPG, so it has no default.
+The walt.id verifier pair also gets `VCA_WALTID_VERIFIER2_URL`, the
+address `http://waltid-verifier-api2:7004` of verifier API 2.
+Verifier API 2 answers DCQL requests.
+Its host port is 17004, and `WALTID_VERIFIER2_HOST_PORT` changes it.
+`WALTID_VERIFIER2_BASE_URL` sets the address a wallet opens.
 Set `VCA_DPG_URL` yourself when the DPG runs on another host.
 Your value always wins over the default.
 

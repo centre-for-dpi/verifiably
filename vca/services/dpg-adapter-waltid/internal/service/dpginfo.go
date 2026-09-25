@@ -36,6 +36,8 @@ var components = []component{
 		repo: repositoryURL, docs: docsURL + "/issuer", lic: licence},
 	{name: "verifier-api", wired: func(s *Service) bool { return s.client.HasVerifier() },
 		repo: repositoryURL, docs: "https://docs.walt.id/verifier", lic: licence},
+	{name: "verifier-api2", wired: func(s *Service) bool { return s.client.HasVerifier2() },
+		repo: repositoryURL, docs: docsURL + "/verifier2/getting-started", lic: licence},
 	{name: "wallet-api", wired: func(s *Service) bool { return s.client.HasWallet() },
 		repo: repositoryURL, docs: docsURL + "/wallet/getting-started", lic: licence},
 }

@@ -7,7 +7,24 @@ run replaces each file with a recording.
 | File | Endpoint | Source | Date |
 | --- | --- | --- | --- |
 | `onboard-issuer-ed25519.json` | `POST /onboard/issuer` with `keyType` `Ed25519` and `method` `key` | https://docs.walt.id/community-stack/issuer/api/onboarding | 2026-09-25 |
+| `verifier2-create.json` | Verifier API 2 `POST /verification-session/create` with `flow_type` `cross_device` | https://docs.walt.id/community-stack/verifier2/credential-verification/sd-jwt-vc-oid4vp and https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp-verifier/src/commonMain/kotlin/id/walt/verifier2/handlers/sessioncreation/VerificationSessionCreationResponse.kt | 2026-09-25 |
+| `verifier2-session-active.json` | Verifier API 2 `GET /verification-session/{id}/info`, status `ACTIVE` | https://docs.walt.id/community-stack/verifier2/credential-verification/sd-jwt-vc-oid4vp and https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp-verifier/src/commonMain/kotlin/id/walt/verifier2/data/Verification2Session.kt | 2026-09-25 |
+| `verifier2-session-successful.json` | The same, status `SUCCESSFUL`, with `presented_raw_data` and `policy_results` | as above, plus https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp-verifier/src/commonMain/kotlin/id/walt/verifier2/verification2/Verifier2PolicyResults.kt | 2026-09-25 |
+| `verifier2-session-failed.json` | The same, status `FAILED`, with a failed check | as above | 2026-09-25 |
+| `verifier2-session-expired.json` | The same, status `EXPIRED` | as above | 2026-09-25 |
 
 The answer has the shape of `onboard-issuer.json`: the key as a walt.id
 JWK key object, and the DID. The test key is fixed, so the did:key in
 the file matches the public key in it.
+
+Verifier API 2 notes (release 0.18.2):
+
+- The service and its endpoints: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-verifier-api2/README.md
+- The settings `clientId`, `clientMetadata`, `urlPrefix`, and `urlHost`: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-verifier-api2/src/main/kotlin/id/walt/verifier2/OSSVerifier2ServiceConfig.kt
+- The settings come from files and from command line flags: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-service-commons/src/main/kotlin/id/walt/commons/config/ConfigManager.kt
+- The port 7004 of the stack: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/docker-compose/verifier-api2/config/web.conf
+- The policy names `signature`, `expiration`, `not-before`, `webhook`: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/credentials/waltid-verification-policies2/src/commonMain/kotlin/id/walt/policies2/vc/policies/ (one file per policy)
+
+The session status values are the enum `VerificationSessionStatus` of
+`Verification2Session.kt`. The field `vpToken` of `presented_raw_data`
+has no serial name, so it keeps its camel case.

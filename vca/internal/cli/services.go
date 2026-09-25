@@ -146,6 +146,14 @@ type FixedValue struct {
 	Env string
 	// Value is the value.
 	Value string
+	// Roles limits the value to some roles. Empty means every role that
+	// runs the service.
+	Roles []commonv1.Role
+}
+
+// appliesTo reports whether a fixed value is written for one role.
+func (f FixedValue) appliesTo(r commonv1.Role) bool {
+	return Link{Roles: f.Roles}.appliesTo(r)
 }
 
 // Image returns the image reference of the service without a tag.
@@ -262,8 +270,13 @@ func Catalog() []Service {
 			Routes: []Route{{Match: "/offers/*"}}},
 		// The walt.id adapter keeps the issuer identity in its data volume
 		// (ADR-046 decision 4).
+		// The verifier pair also reaches verifier-api2 of the stack file,
+		// which answers DCQL requests (ADR-045 decision 5).
 		{Name: "dpg-adapter-waltid", ListenEnv: "VCA_WALTID_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_WALTID,
-			Stateful: true, Fixed: []FixedValue{{Env: "VCA_WALTID_IDENTITY_FILE", Value: "/data/issuer-identity.json"}},
+			Stateful: true, Fixed: []FixedValue{
+				{Env: "VCA_WALTID_IDENTITY_FILE", Value: "/data/issuer-identity.json"},
+				{Env: "VCA_WALTID_VERIFIER2_URL", Value: "http://waltid-verifier-api2:7004", Roles: verifier},
+			},
 			Links: []Link{
 				dpgURL("VCA_WALTID_ISSUER_URL", commonv1.Role_ROLE_ISSUER),
 				dpgURL("VCA_WALTID_WALLET_URL", commonv1.Role_ROLE_HOLDER),
@@ -738,7 +751,9 @@ func LinkValuesWith(p Pair, values map[string]string, peers PeerOverrides) map[s
 	out := map[string]string{}
 	for _, s := range ServicesFor(p) {
 		for _, f := range s.Fixed {
-			out[f.Env] = f.Value
+			if f.appliesTo(p.Role) {
+				out[f.Env] = f.Value
+			}
 		}
 		for _, link := range s.Links {
 			if !link.appliesTo(p.Role) {

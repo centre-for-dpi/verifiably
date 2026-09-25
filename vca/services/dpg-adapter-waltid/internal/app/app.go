@@ -49,6 +49,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Issuer:          dpgClient(cfg, deps, cfg.IssuerURL),
 		Verifier:        dpgClient(cfg, deps, cfg.VerifierURL),
 		Wallet:          dpgClient(cfg, deps, cfg.WalletURL),
+		Verifier2:       dpgClient(cfg, deps, cfg.Verifier2URL),
 		StandardVersion: cfg.StandardVersion,
 		IssuerKey:       cfg.IssuerKey,
 		IssuerDid:       cfg.IssuerDid,
@@ -74,7 +75,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc))
 	deps.Log.Info("walt.id adapter ready",
-		"issuer", cfg.IssuerURL != "", "verifier", cfg.VerifierURL != "", "wallet", cfg.WalletURL != "")
+		"issuer", cfg.IssuerURL != "", "verifier", cfg.VerifierURL != "", "verifier2", cfg.Verifier2URL != "", "wallet", cfg.WalletURL != "")
 	return &App{Mux: mux, Service: svc}, nil
 }
 

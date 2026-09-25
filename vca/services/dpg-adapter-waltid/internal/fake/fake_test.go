@@ -192,3 +192,26 @@ func TestFakeOnboardFollowsTheRequest(t *testing.T) {
 		t.Fatalf("a missing recording: %d", code)
 	}
 }
+
+func TestFakeServesVerifier2Sessions(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	code, body := postBody(t, f, "/verification-session/create", `{"flow_type":"cross_device"}`)
+	if code != http.StatusOK || !strings.Contains(body, "bootstrapAuthorizationRequestUrl") {
+		t.Fatalf("create = %d %q", code, body)
+	}
+	if f.LastPath() != "/verification-session/create" {
+		t.Fatalf("last path = %q", f.LastPath())
+	}
+	for state, want := range map[fake.Session2State]string{
+		fake.Session2Active:     `"ACTIVE"`,
+		fake.Session2Successful: `"SUCCESSFUL"`,
+		fake.Session2Failed:     `"FAILED"`,
+		fake.Session2Expired:    `"EXPIRED"`,
+	} {
+		f.SetSession2(state)
+		if got := get(t, f, "/verification-session/s/info"); !strings.Contains(got, want) {
+			t.Errorf("%s: %q", state, got)
+		}
+	}
+}

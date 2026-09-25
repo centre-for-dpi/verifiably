@@ -22,6 +22,9 @@ type Config struct {
 	IssuerURL string `env:"ISSUER_URL"`
 	// VerifierURL is the base URL of the walt.id verifier-api.
 	VerifierURL string `env:"VERIFIER_URL"`
+	// Verifier2URL is the base URL of the walt.id verifier-api2. It
+	// answers DCQL requests over OID4VP 1.0. Empty turns DCQL off.
+	Verifier2URL string `env:"VERIFIER2_URL"`
 	// WalletURL is the base URL of the walt.id wallet-api.
 	WalletURL string `env:"WALLET_URL"`
 	// StandardVersion is the OID4VCI draft the issuer serves. walt.id
@@ -61,9 +64,9 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := shared.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
-	if c.IssuerURL == "" && c.VerifierURL == "" && c.WalletURL == "" {
-		return Config{}, fmt.Errorf("config: set at least one of %sISSUER_URL, %sVERIFIER_URL, or %sWALLET_URL",
-			Prefix, Prefix, Prefix)
+	if c.IssuerURL == "" && c.VerifierURL == "" && c.Verifier2URL == "" && c.WalletURL == "" {
+		return Config{}, fmt.Errorf("config: set at least one of %sISSUER_URL, %sVERIFIER_URL, %sVERIFIER2_URL, or %sWALLET_URL",
+			Prefix, Prefix, Prefix, Prefix)
 	}
 	if c.Timeout <= 0 {
 		return Config{}, fmt.Errorf("config: %sTIMEOUT must be a positive duration", Prefix)
@@ -81,8 +84,10 @@ func (c Config) Versions() map[string]string {
 	return map[string]string{
 		"issuer-api":   c.DpgVersion,
 		"verifier-api": c.DpgVersion,
-		"wallet-api":   c.DpgVersion,
-		"keycloak":     c.KeycloakVersion,
+		// verifier-api2 ships with the same release (ADR-045 decision 5).
+		"verifier-api2": c.DpgVersion,
+		"wallet-api":    c.DpgVersion,
+		"keycloak":      c.KeycloakVersion,
 	}
 }
 

@@ -849,3 +849,20 @@ func TestLandingValuesHoldThePeersAndTheAddress(t *testing.T) {
 		t.Error("LandingPublicURL")
 	}
 }
+
+// TestWaltidVerifierPairReachesVerifier2 gives the walt.id adapter of the
+// verifier pair the URL of verifier-api2 of the stack file, so DCQL
+// requests work (P6-W1). The other roles never get it.
+func TestWaltidVerifierPairReachesVerifier2(t *testing.T) {
+	values := map[string]string{"VCA_DPG_URL": "http://waltid-verifier-api:7003"}
+	got := LinkValues(Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_WALTID}, values)
+	if got["VCA_WALTID_VERIFIER2_URL"] != "http://waltid-verifier-api2:7004" {
+		t.Errorf("VCA_WALTID_VERIFIER2_URL = %q", got["VCA_WALTID_VERIFIER2_URL"])
+	}
+	for _, role := range []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER} {
+		got := LinkValues(Pair{Role: role, Dpg: configv1.Dpg_DPG_WALTID}, values)
+		if _, ok := got["VCA_WALTID_VERIFIER2_URL"]; ok {
+			t.Errorf("%v got the verifier 2 URL", role)
+		}
+	}
+}
