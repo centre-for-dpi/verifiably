@@ -72,6 +72,11 @@ service VerifierBackendService {
   rpc CreateRequest(CreateRequestRequest) returns (CreateRequestResponse);
   // GetResult returns the state of one OID4VP transaction.
   rpc GetResult(GetResultRequest) returns (GetResultResponse);
+  // VerifyCredential checks one credential, presentation, QR text,
+  // image, or PDF with the verifier of the DPG. An adapter that lists
+  // FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
+  // Unimplemented.
+  rpc VerifyCredential(VerifyCredentialRequest) returns (VerifyCredentialResponse);
 }
 
 // CatalogBackendService reads the credential types a DPG knows.
@@ -893,4 +898,21 @@ message SetWebhookRequest {
 message SetWebhookResponse {
   // The webhook as the DPG stored it.
   Webhook webhook = 1;
+}
+
+// VerifyCredentialRequest carries one input as the staff member gave it.
+message VerifyCredentialRequest {
+  // The bytes: a compact token, a JSON document, QR text, an image, or a PDF.
+  bytes payload = 1;
+  // The media type of the bytes, when the caller knows it.
+  string media_type = 2;
+}
+
+// VerifyCredentialResponse returns the verdict of the DPG.
+message VerifyCredentialResponse {
+  // True when every check of the DPG passed.
+  bool verified = 1;
+  // The checks the DPG ran, as the DPG reported them. VCA runs its own
+  // checks too (ADR-024 decision 2).
+  repeated GetResultResponse.DpgCheck dpg_checks = 2;
 }

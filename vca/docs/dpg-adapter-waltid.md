@@ -98,6 +98,7 @@ With a pinned identity, provision and import answer
 | `Revoke` | walt.id has no revocation API. The status services own the bits. |
 | Every tenant RPC | The community stack keeps no tenants. |
 | Every webhook RPC | The community stack keeps no tenants to hold a webhook. |
+| `VerifyCredential` | The adapter does not send an uploaded credential to the verifier of the stack. The scanner shows no stack check. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.

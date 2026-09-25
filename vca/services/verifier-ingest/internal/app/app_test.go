@@ -142,8 +142,9 @@ func TestPortalNeedsSession(t *testing.T) {
 	if page.Code != http.StatusOK {
 		t.Fatalf("page: status %d", page.Code)
 	}
-	// Three page forms and the sign out form of the user menu.
-	if n := strings.Count(page.Body.String(), `name="`+staffsession.Field+`"`); n != 4 {
+	// The camera, upload, paste, and link forms, and the sign out form
+	// of the user menu.
+	if n := strings.Count(page.Body.String(), `name="`+staffsession.Field+`"`); n != 5 {
 		t.Fatalf("the page has %d form tokens, want one per form", n)
 	}
 	_, after, _ := strings.Cut(page.Body.String(), `name="`+staffsession.Field+`" value="`)
@@ -366,4 +367,21 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	cfg.ThemeFile = path
 	_, err := app.Build(cfg, app.Deps{Log: quiet()})
 	uikittest.AssertBadThemeError(t, err, path)
+}
+
+// TestScannerOffersLinksAndStackCheck wires the link fetcher and the
+// stack check of the scanner (P5-05): the page shows the link field,
+// and a link to a private address stays unfetched by default.
+func TestScannerOffersLinksAndStackCheck(t *testing.T) {
+	cfg := settings(t, map[string]string{"VCA_INGEST_LOGIN_URL": "https://verifier-waltid.example/auth/"})
+	auth := staff(t)
+	a, err := app.Build(cfg, app.Deps{Log: quiet(), SessionKeys: auth.Keys(), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := auth.Token(t, "kc|carol", "verifier-operator")
+	page := serve(a, http.MethodGet, "/scan/", token).Body.String()
+	if !strings.Contains(page, `name="link"`) || !strings.Contains(page, `id="scan-start"`) {
+		t.Fatal("the scanner lacks the link field or the camera button")
+	}
 }

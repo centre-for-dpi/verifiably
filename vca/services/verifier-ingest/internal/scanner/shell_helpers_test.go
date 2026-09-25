@@ -47,7 +47,7 @@ func shellMux(t *testing.T, change func(*scanner.Options), features ...backendv1
 	pair := func(dpg configv1.Dpg) topology.Peer {
 		name := topology.PairName(commonv1.Role_ROLE_VERIFIER, dpg)
 		return topology.Peer{Pair: name, Role: commonv1.Role_ROLE_VERIFIER, Dpg: dpg, PublicURL: "https://" + name + ".labs.example",
-			Services: map[string]string{"verifier-auth": "http://" + name + "-auth:8081"}}
+			Services: map[string]string{"verifier-auth": "http://" + name + "-auth:8081", topology.AdapterService(dpg): "http://" + name + "-adapter:8080"}}
 	}
 	first, second := pair(configv1.Dpg_DPG_WALTID), pair(configv1.Dpg_DPG_INJI)
 	snap := topology.Snapshot{Peers: []topology.Status{

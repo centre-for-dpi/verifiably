@@ -67,6 +67,7 @@ func TestLoadRejects(t *testing.T) {
 		"request uri time":  {"VCA_INGEST_REQUEST_URI_TIMEOUT": "0s"},
 		"xml encoding":      {"VCA_INGEST_XML_ENCODING": "hex"},
 		"scanner prefix":    {"VCA_INGEST_SCANNER_PREFIX": "scan"},
+		"stack timeout":     {"VCA_INGEST_STACK_TIMEOUT": "0s"},
 		"bad number":        {"VCA_INGEST_MAX_INPUT_BYTES": "many"},
 		"key set ttl":       {"VCA_INGEST_AUTH_JWKS_TTL": "0s"},
 		"bad key set ttl":   {"VCA_INGEST_AUTH_JWKS_TTL": "soon"},

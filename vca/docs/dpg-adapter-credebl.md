@@ -70,6 +70,7 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | Every holder RPC | CREDEBL ships no wallet for a citizen. |
 | Every tenant RPC | The adapter acts for the one configured organisation. |
 | Every webhook RPC | The adapter sets no organisation webhook. |
+| `VerifyCredential` | The adapter does not send an uploaded credential to the platform. The scanner shows no stack check. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.

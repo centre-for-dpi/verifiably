@@ -105,10 +105,29 @@ opens the camera. It draws each frame on an offscreen canvas. It gives
 the pixels to the vendored jsQR reader. The camera frames never leave the
 device. Only the decoded text reaches `POST /scan/ingest`.
 
-The page works without a camera too. A file upload and a paste box post
-to the same endpoint. An image, a PDF, an XML document, and a pasted
-credential all reach the same decoders. The page uses the vca UI kit. It
-passes the structural WCAG 2.2 checks of `ui/a11ytest`.
+The page works without a camera too. A file upload, a paste box, and a
+link field post to the same endpoint. An image, a PDF, an XML document,
+a pasted credential, and a fetched link all reach the same decoders. The
+page uses the vca UI kit. It passes the structural WCAG 2.2 checks of
+`ui/a11ytest`.
+
+The camera button is a plain button with the id `scan-start`, as on the
+wallet pages. It carries no `aria-controls`, so the disclosure script of
+the kit does not toggle the video against the scanner. The script sends
+every field of the scan form with the decoded text.
+
+The service fetches a pasted link, never the browser. The fetch goes
+through `core/fetchguard` (ADR-002 decision 7). The guard refuses a
+private or a loopback address, `http` without `ALLOW_PLAIN_HTTP`, and a
+host off `LINK_HOSTS` when that list names hosts. A pasted text that is one
+`http` or `https` URL counts as a link too. The result names the source.
+
+When the live adapter of the own pair lists `FEATURE_VERIFY_UPLOAD`,
+each form offers "Check with the stack". The service then sends the
+input to `VerifyCredential` of the adapter as well. The answer shows the
+checks of the stack beside the decoders. The option stays hidden when
+the adapter does not list the feature, and a posted choice then does
+nothing.
 
 The page sits in the verifier frame of `services/internal/staffshell`,
 with Requests marked in the side navigation. `POST /scan/signout` is the

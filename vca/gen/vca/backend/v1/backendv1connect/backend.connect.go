@@ -107,6 +107,9 @@ const (
 	// VerifierBackendServiceGetResultProcedure is the fully-qualified name of the
 	// VerifierBackendService's GetResult RPC.
 	VerifierBackendServiceGetResultProcedure = "/vca.backend.v1.VerifierBackendService/GetResult"
+	// VerifierBackendServiceVerifyCredentialProcedure is the fully-qualified name of the
+	// VerifierBackendService's VerifyCredential RPC.
+	VerifierBackendServiceVerifyCredentialProcedure = "/vca.backend.v1.VerifierBackendService/VerifyCredential"
 	// CatalogBackendServiceListCredentialTypesProcedure is the fully-qualified name of the
 	// CatalogBackendService's ListCredentialTypes RPC.
 	CatalogBackendServiceListCredentialTypesProcedure = "/vca.backend.v1.CatalogBackendService/ListCredentialTypes"
@@ -748,6 +751,11 @@ type VerifierBackendServiceClient interface {
 	CreateRequest(context.Context, *connect.Request[v1.CreateRequestRequest]) (*connect.Response[v1.CreateRequestResponse], error)
 	// GetResult returns the state of one OID4VP transaction.
 	GetResult(context.Context, *connect.Request[v1.GetResultRequest]) (*connect.Response[v1.GetResultResponse], error)
+	// VerifyCredential checks one credential, presentation, QR text,
+	// image, or PDF with the verifier of the DPG. An adapter that lists
+	// FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
+	// Unimplemented.
+	VerifyCredential(context.Context, *connect.Request[v1.VerifyCredentialRequest]) (*connect.Response[v1.VerifyCredentialResponse], error)
 }
 
 // NewVerifierBackendServiceClient constructs a client for the vca.backend.v1.VerifierBackendService
@@ -773,13 +781,20 @@ func NewVerifierBackendServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(verifierBackendServiceMethods.ByName("GetResult")),
 			connect.WithClientOptions(opts...),
 		),
+		verifyCredential: connect.NewClient[v1.VerifyCredentialRequest, v1.VerifyCredentialResponse](
+			httpClient,
+			baseURL+VerifierBackendServiceVerifyCredentialProcedure,
+			connect.WithSchema(verifierBackendServiceMethods.ByName("VerifyCredential")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // verifierBackendServiceClient implements VerifierBackendServiceClient.
 type verifierBackendServiceClient struct {
-	createRequest *connect.Client[v1.CreateRequestRequest, v1.CreateRequestResponse]
-	getResult     *connect.Client[v1.GetResultRequest, v1.GetResultResponse]
+	createRequest    *connect.Client[v1.CreateRequestRequest, v1.CreateRequestResponse]
+	getResult        *connect.Client[v1.GetResultRequest, v1.GetResultResponse]
+	verifyCredential *connect.Client[v1.VerifyCredentialRequest, v1.VerifyCredentialResponse]
 }
 
 // CreateRequest calls vca.backend.v1.VerifierBackendService.CreateRequest.
@@ -792,6 +807,11 @@ func (c *verifierBackendServiceClient) GetResult(ctx context.Context, req *conne
 	return c.getResult.CallUnary(ctx, req)
 }
 
+// VerifyCredential calls vca.backend.v1.VerifierBackendService.VerifyCredential.
+func (c *verifierBackendServiceClient) VerifyCredential(ctx context.Context, req *connect.Request[v1.VerifyCredentialRequest]) (*connect.Response[v1.VerifyCredentialResponse], error) {
+	return c.verifyCredential.CallUnary(ctx, req)
+}
+
 // VerifierBackendServiceHandler is an implementation of the vca.backend.v1.VerifierBackendService
 // service.
 type VerifierBackendServiceHandler interface {
@@ -799,6 +819,11 @@ type VerifierBackendServiceHandler interface {
 	CreateRequest(context.Context, *connect.Request[v1.CreateRequestRequest]) (*connect.Response[v1.CreateRequestResponse], error)
 	// GetResult returns the state of one OID4VP transaction.
 	GetResult(context.Context, *connect.Request[v1.GetResultRequest]) (*connect.Response[v1.GetResultResponse], error)
+	// VerifyCredential checks one credential, presentation, QR text,
+	// image, or PDF with the verifier of the DPG. An adapter that lists
+	// FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
+	// Unimplemented.
+	VerifyCredential(context.Context, *connect.Request[v1.VerifyCredentialRequest]) (*connect.Response[v1.VerifyCredentialResponse], error)
 }
 
 // NewVerifierBackendServiceHandler builds an HTTP handler from the service implementation. It
@@ -820,12 +845,20 @@ func NewVerifierBackendServiceHandler(svc VerifierBackendServiceHandler, opts ..
 		connect.WithSchema(verifierBackendServiceMethods.ByName("GetResult")),
 		connect.WithHandlerOptions(opts...),
 	)
+	verifierBackendServiceVerifyCredentialHandler := connect.NewUnaryHandler(
+		VerifierBackendServiceVerifyCredentialProcedure,
+		svc.VerifyCredential,
+		connect.WithSchema(verifierBackendServiceMethods.ByName("VerifyCredential")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.VerifierBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case VerifierBackendServiceCreateRequestProcedure:
 			verifierBackendServiceCreateRequestHandler.ServeHTTP(w, r)
 		case VerifierBackendServiceGetResultProcedure:
 			verifierBackendServiceGetResultHandler.ServeHTTP(w, r)
+		case VerifierBackendServiceVerifyCredentialProcedure:
+			verifierBackendServiceVerifyCredentialHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -841,6 +874,10 @@ func (UnimplementedVerifierBackendServiceHandler) CreateRequest(context.Context,
 
 func (UnimplementedVerifierBackendServiceHandler) GetResult(context.Context, *connect.Request[v1.GetResultRequest]) (*connect.Response[v1.GetResultResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.VerifierBackendService.GetResult is not implemented"))
+}
+
+func (UnimplementedVerifierBackendServiceHandler) VerifyCredential(context.Context, *connect.Request[v1.VerifyCredentialRequest]) (*connect.Response[v1.VerifyCredentialResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.VerifierBackendService.VerifyCredential is not implemented"))
 }
 
 // CatalogBackendServiceClient is a client for the vca.backend.v1.CatalogBackendService service.

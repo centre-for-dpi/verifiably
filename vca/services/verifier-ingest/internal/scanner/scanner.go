@@ -4,9 +4,15 @@
 // (ADR-023 decision 6). The page reads a QR code in the browser and
 // posts only the decoded text. The camera frames never leave the device.
 //
-// The page also works without a camera. A file upload and a paste box
-// post to the same endpoint, so an image, a PDF, an XML document, or a
-// pasted credential all reach the same decoders.
+// The page also works without a camera. A file upload, a paste box, and
+// a link field post to the same endpoint, so an image, a PDF, an XML
+// document, a pasted credential, or a fetched link all reach the same
+// decoders. The service fetches a pasted link through core/fetchguard.
+//
+// When the live adapter of the own pair lists FEATURE_VERIFY_UPLOAD, each
+// form offers "Check with the stack": the input then goes to
+// VerifyCredential of the adapter too, and the answer shows the checks of
+// the DPG beside the decoders.
 //
 // Paths, under the configured prefix:
 //
@@ -20,6 +26,7 @@
 package scanner
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,11 +35,16 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
@@ -59,6 +71,24 @@ type Options struct {
 	Shell *staffshell.Shell
 	// SignOut ends the session. Nil answers the sign out form with 404.
 	SignOut http.Handler
+	// Links fetches a pasted link through the guard of core/fetchguard.
+	// Nil hides the link field and refuses a link.
+	Links Getter
+	// Stack returns the verifier of the adapter at a URL. Nil means a
+	// Connect client with StackTimeout.
+	Stack func(adapterURL string) StackVerifier
+	// StackTimeout bounds one call to the adapter. Zero means 30 seconds.
+	StackTimeout time.Duration
+}
+
+// Getter reads one document. A fetchguard.Fetcher is one.
+type Getter interface {
+	Get(ctx context.Context, url string) (fetchguard.Doc, error)
+}
+
+// StackVerifier checks an input with the verifier of a DPG.
+type StackVerifier interface {
+	VerifyCredential(context.Context, *connect.Request[backendv1.VerifyCredentialRequest]) (*connect.Response[backendv1.VerifyCredentialResponse], error)
 }
 
 // Page serves the camera page.
@@ -81,6 +111,15 @@ func New(opts Options) (*Page, error) {
 			return nil, err
 		}
 		opts.Kit = kit
+	}
+	if opts.StackTimeout <= 0 {
+		opts.StackTimeout = 30 * time.Second
+	}
+	if opts.Stack == nil {
+		client := &http.Client{Timeout: opts.StackTimeout}
+		opts.Stack = func(adapterURL string) StackVerifier {
+			return backendv1connect.NewVerifierBackendServiceClient(client, adapterURL)
+		}
 	}
 	return &Page{opts: opts}, nil
 }
@@ -123,78 +162,119 @@ func (p *Page) handle(fn func(http.ResponseWriter, *http.Request) error) http.Ha
 // nav returns the navigation of the page.
 func (p *Page) nav() components.Nav {
 	return components.Nav{
-		Label: "Verifier ingestion",
-		Brand: components.Link{Href: p.opts.Prefix + "/", Text: "Verifier ingestion"},
-		Links: []components.Link{{Href: p.opts.Prefix + "/", Text: "Scan or upload", Current: true}},
+		Label: msg.T("verifier.scan.brand.label"),
+		Brand: components.Link{Href: p.opts.Prefix + "/", Text: msg.T("verifier.scan.brand.label")},
+		Links: []components.Link{{Href: p.opts.Prefix + "/", Text: msg.T("verifier.scan.nav.label"), Current: true}},
 	}
+}
+
+// stackOffer returns the name of the own stack when its live adapter
+// lists FEATURE_VERIFY_UPLOAD, else "".
+func (p *Page) stackOffer(ctx context.Context) (name, adapter string) {
+	if p.opts.Shell == nil {
+		return "", ""
+	}
+	f := p.opts.Shell.Frame(ctx)
+	own, ok := f.Own()
+	if !ok || !f.Has(backendv1.Feature_FEATURE_VERIFY_UPLOAD) || own.Peer.Adapter() == "" {
+		return "", ""
+	}
+	return f.Snapshot().StackName(own.Peer.Dpg), own.Peer.Adapter()
 }
 
 // show renders the camera page.
 func (p *Page) show(w http.ResponseWriter, r *http.Request) error {
 	b := &blocks{kit: p.opts.Kit}
 	csrf := staffsession.HiddenField(r.Context())
-	camera := p.cameraCard(b, csrf)
-	upload := p.uploadCard(b, csrf)
-	paste := p.pasteCard(b, csrf)
+	stack, _ := p.stackOffer(r.Context())
+	parts := []template.HTML{p.cameraCard(b, csrf, stack)}
+	parts = append(parts, template.HTML(`<div id="scan-result" role="status" aria-live="polite"></div>`)) //nolint:gosec // literal
+	parts = append(parts, template.HTML(`<div class="split">`), p.uploadCard(b, csrf, stack), p.pasteCard(b, csrf, stack))
+	if p.opts.Links != nil {
+		parts = append(parts, p.linkCard(b, csrf, stack))
+	}
+	parts = append(parts, template.HTML(`</div>`))
 	if b.err != nil {
 		return b.err
 	}
-	scripts := template.HTML(`<script src="` + template.HTMLEscapeString(p.opts.Prefix) + `/static/jsqr.min.js" defer></script>` + //nolint:gosec // the prefix is escaped
-		`<script src="` + template.HTMLEscapeString(p.opts.Prefix) + `/static/scanner.js" defer></script>`)
-	result := template.HTML(`<div id="scan-result" role="status" aria-live="polite"></div>`) //nolint:gosec // literal
+	static := template.HTMLEscapeString(p.opts.Prefix) + "/static/"
+	parts = append(parts, template.HTML(`<script src="`+static+qrscan.Reader+`" defer></script>`+ //nolint:gosec // the prefix is escaped
+		`<script src="`+static+qrscan.Script+`" defer></script>`))
 	return p.render(w, r, components.Page{
-		Title:       "Scan or upload a credential",
-		Description: "Read a QR code with the camera, upload an image or a PDF, or paste a credential.",
-		Content:     components.Join(camera, result, upload, paste, scripts),
+		Title: msg.T("verifier.scan.title.label"), Lead: msg.T("verifier.scan.lead"), Description: msg.T("verifier.scan.lead"),
+		Content: components.Join(parts...),
 	})
 }
 
-// cameraCard renders the camera part of the page. csrf is the hidden
-// field that binds the posts of the page to the session; the script
-// sends its value in the token header.
-func (p *Page) cameraCard(b *blocks, csrf template.HTML) template.HTML {
-	button := b.add("button", components.Button{
-		Text: "Start camera", Variant: "primary", Controls: "scan-video", Expanded: false,
+// stackChoice renders the "Check with the stack" box of one form, or
+// nothing when the own stack does not check uploads.
+func stackChoice(b *blocks, id, stack string) template.HTML {
+	if stack == "" {
+		return ""
+	}
+	return b.add("choice", components.Choice{
+		ID: "stack-check-" + id, Name: "stack_check", Legend: msg.T("verifier.scan.stack.legend.label"), Multiple: true,
+		Options: []components.ChoiceOption{{Value: "on", Title: msg.T("verifier.scan.stack.label"), Text: msg.T("verifier.scan.stack.hint", stack)}},
 	})
-	video := template.HTML(`<video id="scan-video" hidden playsinline muted aria-label="Camera view"></video>` + //nolint:gosec // literal
-		`<p id="scan-status" role="status" aria-live="polite">The camera is off.</p>`)
-	body := components.Join(button, video)
-	card := b.add("card", components.Card{
-		ID: "camera", Title: "Scan with the camera",
-		Text: "The page reads the QR code on this device. Only the decoded text reaches the service.",
-		Body: body, Footer: "The camera needs a secure origin, so use https or localhost.",
-	})
-	open := `<form id="scan-form" data-ingest="` + template.HTMLEscapeString(p.opts.Prefix+"/ingest") + `">`
-	return components.Join(template.HTML(open), csrf, card, template.HTML(`</form>`)) //nolint:gosec // the value is escaped
 }
 
-// uploadCard renders the file upload fallback.
-func (p *Page) uploadCard(b *blocks, csrf template.HTML) template.HTML {
+// cameraCard renders the camera part of the page. The start button is a
+// plain button with the id the shared scanner script reads; the kit
+// disclosure script leaves it alone, because it has no aria-controls.
+// csrf is the hidden field that binds the posts of the page to the
+// session; the script sends it with the other fields of the scan form.
+func (p *Page) cameraCard(b *blocks, csrf template.HTML, stack string) template.HTML {
+	esc := template.HTMLEscapeString
+	body := template.HTML(`<form id="scan-form" data-ingest="`+esc(p.opts.Prefix+"/ingest")+`">`) + csrf + //nolint:gosec // the values are escaped
+		stackChoice(b, "camera", stack) +
+		template.HTML(`<div class="form-actions"><button type="button" id="scan-start" class="btn btn-primary">`+ //nolint:gosec // the text is escaped
+			esc(msg.T("verifier.scan.camera.start.label"))+`</button></div></form>`+
+			`<video id="scan-video" hidden playsinline muted aria-label="`+esc(msg.T("verifier.scan.camera.video.label"))+`"></video>`+
+			`<p id="scan-status" class="hint" role="status" aria-live="polite">`+esc(msg.T("verifier.scan.camera.off"))+`</p>`)
+	return b.add("card", components.Card{
+		ID: "camera", Title: msg.T("verifier.scan.camera.label"), Text: msg.T("verifier.scan.camera.text"),
+		Body: body, Footer: msg.T("verifier.scan.camera.footer"),
+	})
+}
+
+// uploadCard renders the file upload.
+func (p *Page) uploadCard(b *blocks, csrf template.HTML, stack string) template.HTML {
 	field := b.add("field", components.Field{
-		ID: "upload", Name: "upload", Label: "Image, PDF, or XML file", Type: "file",
-		Hint: "The service reads the QR code of an image or a PDF, or the credential of an XML document.",
+		ID: "upload", Name: "upload", Label: msg.T("verifier.scan.upload.field.label"), Type: "file",
+		Hint: msg.T("verifier.scan.upload.hint"),
 	})
-	button := b.add("button", components.Button{Text: "Check the file", Type: "submit", Variant: "primary"})
-	card := b.add("card", components.Card{
-		ID: "upload-card", Title: "Upload a file",
-		Text: "Use this when the device has no camera.",
-		Body: components.Join(field, button),
+	button := b.add("button", components.Button{Text: msg.T("verifier.scan.upload.submit.label"), Type: "submit", Variant: "primary"})
+	return b.add("card", components.Card{
+		ID: "upload-card", Title: msg.T("verifier.scan.upload.label"), Text: msg.T("verifier.scan.upload.text"),
+		Body: formOf(p.opts.Prefix+"/ingest", "multipart/form-data", components.Join(csrf, field, stackChoice(b, "upload", stack), button)),
 	})
-	return formOf(p.opts.Prefix+"/ingest", "multipart/form-data", components.Join(csrf, card))
 }
 
 // pasteCard renders the paste box.
-func (p *Page) pasteCard(b *blocks, csrf template.HTML) template.HTML {
+func (p *Page) pasteCard(b *blocks, csrf template.HTML, stack string) template.HTML {
 	field := b.add("field", components.Field{
-		ID: "payload", Name: "payload", Label: "Credential or QR text", Type: "textarea",
-		Hint: "Paste a credential, a presentation, an OID4VP request, or the text of a QR code.",
+		ID: "payload", Name: "payload", Label: msg.T("verifier.scan.paste.field.label"), Type: "textarea",
+		Hint: msg.T("verifier.scan.paste.hint"),
 	})
-	button := b.add("button", components.Button{Text: "Check the text", Type: "submit", Variant: "primary"})
-	card := b.add("card", components.Card{
-		ID: "paste-card", Title: "Paste a credential",
-		Body: components.Join(field, button),
+	button := b.add("button", components.Button{Text: msg.T("verifier.scan.paste.submit.label"), Type: "submit", Variant: "primary"})
+	return b.add("card", components.Card{
+		ID: "paste-card", Title: msg.T("verifier.scan.paste.label"),
+		Body: formOf(p.opts.Prefix+"/ingest", "", components.Join(csrf, field, stackChoice(b, "paste", stack), button)),
 	})
-	return formOf(p.opts.Prefix+"/ingest", "", components.Join(csrf, card))
+}
+
+// linkCard renders the link field. The service fetches the link through
+// the guard, never the browser.
+func (p *Page) linkCard(b *blocks, csrf template.HTML, stack string) template.HTML {
+	field := b.add("field", components.Field{
+		ID: "link", Name: "link", Label: msg.T("verifier.scan.link.field.label"), Type: "url",
+		Hint: msg.T("verifier.scan.link.hint"), Attrs: map[string]string{"placeholder": "https://", "spellcheck": "false"},
+	})
+	button := b.add("button", components.Button{Text: msg.T("verifier.scan.link.submit.label"), Type: "submit", Variant: "primary"})
+	return b.add("card", components.Card{
+		ID: "link-card", Title: msg.T("verifier.scan.link.label"), Text: msg.T("verifier.scan.link.text"),
+		Body: formOf(p.opts.Prefix+"/ingest", "", components.Join(csrf, field, stackChoice(b, "link", stack), button)),
+	})
 }
 
 // formOf wraps content in a post form.
@@ -207,20 +287,108 @@ func formOf(action, encoding string, content template.HTML) template.HTML {
 	return components.Join(template.HTML(open), content, template.HTML(`</form>`)) //nolint:gosec // both parts are escaped
 }
 
-// ingest decodes one upload, one paste, or one decoded QR text.
+// outcome is what one post found: the decoder answer or a problem,
+// the link the service fetched, and the answer of the stack.
+type outcome struct {
+	msg     *ingestv1.IngestResponse
+	problem string
+	source  string
+	stack   *stackAnswer
+}
+
+// stackAnswer is the answer of the verifier of the own stack.
+type stackAnswer struct {
+	name  string
+	reply *backendv1.VerifyCredentialResponse
+}
+
+// ingest decodes one upload, one paste, one link, or one decoded QR
+// text, and asks the stack too when the staff member chose that.
 func (p *Page) ingest(w http.ResponseWriter, r *http.Request) error {
 	r.Body = http.MaxBytesReader(w, r.Body, MaxUploadBytes)
 	payload, mediaType, err := readInput(r)
 	if err != nil {
-		return p.answer(w, r, nil, err.Error())
+		return p.answer(w, r, outcome{problem: err.Error()})
+	}
+	var out outcome
+	if link := linkOf(r, payload); link != "" {
+		out.source = link
+		if payload, err = p.fetch(r.Context(), link); err != nil {
+			return p.answer(w, r, outcome{problem: msg.T("verifier.scan.link.refused") + " " + reasonOf(err)})
+		}
+		mediaType = ""
 	}
 	resp, err := p.opts.Client.Ingest(r.Context(), connect.NewRequest(&ingestv1.IngestRequest{
 		Payload: payload, MediaType: mediaType,
 	}))
 	if err != nil {
-		return p.answer(w, r, nil, "The service could not read the input: "+connectReason(err))
+		return p.answer(w, r, outcome{problem: "The service could not read the input: " + connectReason(err)})
 	}
-	return p.answer(w, r, resp.Msg, "")
+	out.msg = resp.Msg
+	if r.PostFormValue("stack_check") == "on" {
+		out.stack = p.askStack(r.Context(), payload, mediaType)
+	}
+	return p.answer(w, r, out)
+}
+
+// linkOf returns the link of the post: the link field, or pasted text
+// that is one http or https URL. Other pasted text gives "".
+func linkOf(r *http.Request, payload []byte) string {
+	if link := strings.TrimSpace(r.PostFormValue("link")); link != "" {
+		return link
+	}
+	text := strings.TrimSpace(string(payload))
+	if strings.ContainsAny(text, " \n\t") {
+		return ""
+	}
+	lower := strings.ToLower(text)
+	if strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") {
+		return text
+	}
+	return ""
+}
+
+// fetch reads a link through the guard. A page without a fetcher takes
+// no link.
+func (p *Page) fetch(ctx context.Context, link string) ([]byte, error) {
+	if p.opts.Links == nil {
+		return nil, errors.New(msg.T("verifier.scan.link.off"))
+	}
+	doc, err := p.opts.Links.Get(ctx, link)
+	if err != nil {
+		return nil, err
+	}
+	return doc.Body, nil
+}
+
+// reasonOf returns the sentence of a fetch error for the page. A refusal
+// of the guard names the rule; any other fault stays general, so no
+// internal address reaches the page.
+func reasonOf(err error) string {
+	switch {
+	case errors.Is(err, fetchguard.ErrRefused):
+		return msg.T("verifier.scan.link.guard")
+	case strings.HasPrefix(err.Error(), msg.T("verifier.scan.link.off")):
+		return err.Error()
+	}
+	return msg.T("verifier.scan.link.failed")
+}
+
+// askStack sends the input to VerifyCredential of the own adapter, when
+// its live adapter lists FEATURE_VERIFY_UPLOAD. A failed call gives an
+// answer without a reply.
+func (p *Page) askStack(ctx context.Context, payload []byte, mediaType string) *stackAnswer {
+	name, adapter := p.stackOffer(ctx)
+	if name == "" {
+		return nil
+	}
+	res, err := p.opts.Stack(adapter).VerifyCredential(ctx, connect.NewRequest(&backendv1.VerifyCredentialRequest{
+		Payload: payload, MediaType: mediaType,
+	}))
+	if err != nil {
+		return &stackAnswer{name: name}
+	}
+	return &stackAnswer{name: name, reply: res.Msg}
 }
 
 // readInput reads the posted file or text.
@@ -243,10 +411,11 @@ func readInput(r *http.Request) ([]byte, string, error) {
 	return textOf(r)
 }
 
-// textOf reads the pasted text of a form.
+// textOf reads the pasted text of a form. A form with only a link gives
+// no text; the caller fetches the link.
 func textOf(r *http.Request) ([]byte, string, error) {
 	text := strings.TrimSpace(r.PostFormValue("payload"))
-	if text == "" {
+	if text == "" && strings.TrimSpace(r.PostFormValue("link")) == "" {
 		return nil, "", errors.New("the page received no file and no text")
 	}
 	return []byte(text), "", nil
@@ -269,9 +438,12 @@ func readFile(file multipart.File, header *multipart.FileHeader) ([]byte, string
 
 // answer renders the result fragment, or the full page for a plain form
 // post without htmx.
-func (p *Page) answer(w http.ResponseWriter, r *http.Request, msg *ingestv1.IngestResponse, problem string) error {
+func (p *Page) answer(w http.ResponseWriter, r *http.Request, out outcome) error {
 	b := &blocks{kit: p.opts.Kit}
-	body := p.resultCard(b, msg, problem)
+	body := p.resultCard(b, out)
+	if out.stack != nil {
+		body += p.stackCard(b, out.stack)
+	}
 	if b.err != nil {
 		return b.err
 	}
@@ -279,11 +451,38 @@ func (p *Page) answer(w http.ResponseWriter, r *http.Request, msg *ingestv1.Inge
 		_, err := w.Write([]byte(body))
 		return err
 	}
+	back := b.add("button", components.Button{Text: msg.T("verifier.scan.again.label"), Href: p.opts.Prefix + "/"})
 	return p.render(w, r, components.Page{
-		Title:       "Ingestion result",
-		Description: "What the decoders found in the input.",
-		Content:     body,
+		Title: msg.T("verifier.scan.result.label"), Lead: msg.T("verifier.scan.result.lead"), Description: msg.T("verifier.scan.result.lead"),
+		Content: components.Join(body, back),
 	})
+}
+
+// stackCard renders the answer of the verifier of the own stack.
+func (p *Page) stackCard(b *blocks, a *stackAnswer) template.HTML {
+	title := msg.T("verifier.scan.stack.title.label", a.name)
+	if a.reply == nil {
+		return b.add("card", components.Card{ID: "stack-result", Title: title, Text: msg.T("verifier.scan.stack.failed"),
+			Body: b.add("badge", components.Badge{Status: "warn", Text: msg.T("common.unknown.label")})})
+	}
+	badge := components.Badge{Status: "bad", Text: msg.T("verifier.scan.stack.rejected.label")}
+	if a.reply.GetVerified() {
+		badge = components.Badge{Status: "ok", Text: msg.T("verifier.scan.stack.accepted.label")}
+	}
+	rows := make([]components.Row, 0, len(a.reply.GetDpgChecks()))
+	for _, c := range a.reply.GetDpgChecks() {
+		word := msg.T("verifier.scan.stack.passed.label")
+		if !c.GetPassed() {
+			word = msg.T("verifier.scan.stack.failed.label")
+		}
+		rows = append(rows, components.Row{{Text: c.GetName()}, {Text: word}, {Text: c.GetReason()}})
+	}
+	table := b.add("table", components.Table{
+		ID: "stack-checks", Caption: msg.T("verifier.scan.stack.caption.label"),
+		Columns: []string{msg.T("verifier.scan.stack.column.check.label"), msg.T("verifier.scan.stack.column.outcome.label"), msg.T("verifier.scan.stack.column.reason.label")},
+		Rows:    rows, Empty: msg.T("verifier.scan.stack.none"),
+	})
+	return b.add("card", components.Card{ID: "stack-result", Title: title, Body: components.Join(b.add("badge", badge), table)})
 }
 
 // isFetch reports whether the browser script sent the request.
@@ -292,18 +491,21 @@ func isFetch(r *http.Request) bool {
 }
 
 // resultCard renders what the decoders found.
-func (p *Page) resultCard(b *blocks, msg *ingestv1.IngestResponse, problem string) template.HTML {
-	if problem != "" {
+func (p *Page) resultCard(b *blocks, out outcome) template.HTML {
+	if out.problem != "" {
 		badge := b.add("badge", components.Badge{Status: "bad", Text: "Not read"})
-		return b.add("card", components.Card{ID: "result", Title: "The input did not decode", Text: problem, Body: badge})
+		return b.add("card", components.Card{ID: "result", Title: "The input did not decode", Text: out.problem, Body: badge})
 	}
-	presentation := msg.GetPresentation()
+	presentation := out.msg.GetPresentation()
 	rows := []components.Row{
 		{{Text: "Carrier"}, {Text: CarrierText(presentation.GetCarrier())}},
 		{{Text: "Content"}, {Text: DetectedText(presentation.GetDetectedType())}},
 		{{Text: "Credentials"}, {Text: fmt.Sprint(len(presentation.GetCredentials()))}},
-		{{Text: "Decoder steps"}, {Text: strings.Join(msg.GetSteps(), ", ")}},
+		{{Text: "Decoder steps"}, {Text: strings.Join(out.msg.GetSteps(), ", ")}},
 		{{Text: "Input hash"}, {Text: presentation.GetInputHash()}},
+	}
+	if out.source != "" {
+		rows = append(rows, components.Row{{Text: msg.T("verifier.scan.link.source.label")}, {Text: out.source}})
 	}
 	table := b.add("table", components.Table{
 		ID: "result-table", Caption: "What the decoders found",

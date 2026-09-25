@@ -69,6 +69,16 @@ type Config struct {
 	// RedirectURI is the URI the wallet opens after a direct post.
 	// Empty sends no redirect.
 	RedirectURI string `env:"REDIRECT_URI"`
+	// LinkHosts lists the hosts a pasted link may reach. An entry that
+	// starts with a dot matches the domain and every name below it. Empty
+	// allows every host the address rules accept.
+	LinkHosts []string `env:"LINK_HOSTS"`
+	// LinkAllowPrivateNetwork lets a pasted link reach a private or a
+	// loopback address. Development only.
+	LinkAllowPrivateNetwork bool `env:"LINK_ALLOW_PRIVATE_NETWORK" default:"false"`
+	// StackTimeout bounds one stack check of an upload through the
+	// adapter of the pair.
+	StackTimeout time.Duration `env:"STACK_TIMEOUT" default:"30s"`
 	// ScannerPrefix is the URL prefix of the camera page.
 	ScannerPrefix string `env:"SCANNER_PREFIX" default:"/scan"`
 	// Auth guards the camera page with a session of verifier-auth
@@ -120,6 +130,9 @@ func (c Config) Check() error {
 	}
 	if c.MaxRequestURIBytes <= 0 {
 		problems = append(problems, Prefix+"MAX_REQUEST_URI_BYTES must be positive")
+	}
+	if c.StackTimeout <= 0 {
+		problems = append(problems, Prefix+"STACK_TIMEOUT must be positive")
 	}
 	if c.RequestURITimeout <= 0 {
 		problems = append(problems, Prefix+"REQUEST_URI_TIMEOUT must be positive")

@@ -48,10 +48,13 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_INGEST_REQUEST_URI_HOSTS` | The hosts a request object may come from, comma separated. An entry that starts with a dot matches the domain and every name below it. | empty: no request URI is read |
 | `VCA_INGEST_MAX_REQUEST_URI_BYTES` | The size limit of a fetched request object. | `131072` |
 | `VCA_INGEST_REQUEST_URI_TIMEOUT` | The time limit of one request object fetch. | `10s` |
-| `VCA_INGEST_ALLOW_PLAIN_HTTP` | Let the request URI fetcher use `http`. Development only. | `false` |
+| `VCA_INGEST_ALLOW_PLAIN_HTTP` | Let the request URI fetcher and the link fetcher use `http`. Development only. | `false` |
 | `VCA_INGEST_XML_PATH` | The default dotted path of a credential in an XML document. | empty |
 | `VCA_INGEST_XML_ENCODING` | The default encoding of the XML text: `text` or `base64`. | `text` |
 | `VCA_INGEST_REDIRECT_URI` | The URI the wallet opens after a direct post. | empty |
+| `VCA_INGEST_LINK_HOSTS` | The hosts a pasted link may reach. A leading dot matches the domain and every name below it. | empty: every public host |
+| `VCA_INGEST_LINK_ALLOW_PRIVATE_NETWORK` | Let a pasted link reach a private or a loopback address. Development only. | `false` |
+| `VCA_INGEST_STACK_TIMEOUT` | The time limit of one stack check of an upload through the adapter of the pair. | `30s` |
 | `VCA_INGEST_SCANNER_PREFIX` | The URL prefix of the camera page. | `/scan` |
 | `VCA_INGEST_AUTH_JWKS_URL` | The JWKS URL of `verifier-auth`. The camera page accept only a session it signed. | empty: the camera page accept no session |
 | `VCA_INGEST_AUTH_JWKS_FILE` | A JWKS file that replaces the URL, for a test. | empty |

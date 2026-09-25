@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -73,6 +74,8 @@ type Deps struct {
 	SessionKeys staffsession.Keys
 	// Prober replaces the probe of the peers.
 	Prober *topology.Prober
+	// Stack replaces the verifier client of the adapter. Tests set it.
+	Stack func(adapterURL string) scanner.StackVerifier
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -132,7 +135,18 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		SignOut: "/" + strings.Trim(cfg.ScannerPrefix, "/") + "/signout", Prober: deps.Prober,
 		Client: &http.Client{Timeout: cfg.DiscoveryTimeout}, Now: deps.Now,
 	})
-	page, pageErr := scanner.New(scanner.Options{Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit, Shell: shell, SignOut: signOut})
+	// A pasted link goes through the shared guard (ADR-002 decision 7).
+	links := fetchguard.New(fetchguard.Options{
+		Guard: fetchguard.Guard{
+			AllowedHosts: cfg.LinkHosts, AllowPrivateNetwork: cfg.LinkAllowPrivateNetwork, AllowPlainHTTP: cfg.AllowPlainHTTP,
+		},
+		Client: deps.Client, Timeout: cfg.RequestURITimeout, MaxBytes: cfg.MaxInputBytes,
+		Accept: "application/dc+sd-jwt, application/vc+sd-jwt, application/jwt, application/json, application/pdf, image/*, */*;q=0.5",
+	})
+	page, pageErr := scanner.New(scanner.Options{
+		Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit, Shell: shell, SignOut: signOut,
+		Links: links, Stack: deps.Stack, StackTimeout: cfg.StackTimeout,
+	})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, ReadFile: deps.ReadFile, Now: deps.Now, Log: deps.Log, MaxFormBytes: scanner.MaxUploadBytes,
 	})

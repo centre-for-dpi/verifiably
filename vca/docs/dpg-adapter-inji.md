@@ -67,6 +67,7 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | Every holder RPC | Inji ships no wallet for a citizen. |
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
+| `VerifyCredential` | The adapter does not call the credential check of Inji Verify yet. The scanner shows no stack check. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.

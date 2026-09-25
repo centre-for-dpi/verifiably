@@ -43,9 +43,11 @@
   // token of the page travels in the header, so the service can bind
   // the post to the session.
   function post(text) {
-    var form = new FormData();
-    form.append('payload', text);
     var scanForm = el('scan-form');
+    // The other fields of the scan form, such as a choice of the page,
+    // travel with the decoded text.
+    var form = scanForm.tagName === 'FORM' ? new FormData(scanForm) : new FormData();
+    form.set('payload', text);
     var headers = {};
     var token = scanForm.querySelector('input[name="csrf_token"]');
     if (token) headers['X-CSRF-Token'] = token.value;
