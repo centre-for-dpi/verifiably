@@ -18,6 +18,7 @@
 //
 //	GET  /                 the camera page
 //	POST /ingest           decode one upload, one paste, or one QR text
+//	/requests/...          the presentation request pages (request.go)
 //	GET  /static/{file}    the vendored scanner and QR reader
 //	POST /signout          end the session at verifier-auth
 //
@@ -48,6 +49,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
+	"github.com/centre-for-dpi/vc-adapters/services/verifier-ingest/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
@@ -79,6 +81,18 @@ type Options struct {
 	Stack func(adapterURL string) StackVerifier
 	// StackTimeout bounds one call to the adapter. Zero means 30 seconds.
 	StackTimeout time.Duration
+	// Discovery reads the saved queries of the request pages. Nil offers
+	// no query.
+	Discovery Templates
+	// Results reads the stored result of a request for the verdict card.
+	// Nil shows the result id only.
+	Results Results
+	// Stacks returns the live verifier stacks that can answer a request.
+	// Nil offers the VCA verifier only.
+	Stacks func(ctx context.Context) []service.Stack
+	// ResultsPath is the page of one result, before its id. Empty means
+	// DefaultResultsPath.
+	ResultsPath string
 }
 
 // Getter reads one document. A fetchguard.Fetcher is one.
@@ -115,6 +129,9 @@ func New(opts Options) (*Page, error) {
 	if opts.StackTimeout <= 0 {
 		opts.StackTimeout = 30 * time.Second
 	}
+	if opts.ResultsPath == "" {
+		opts.ResultsPath = DefaultResultsPath
+	}
 	if opts.Stack == nil {
 		client := &http.Client{Timeout: opts.StackTimeout}
 		opts.Stack = func(adapterURL string) StackVerifier {
@@ -132,6 +149,7 @@ func (p *Page) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.show))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/ingest", p.handle(p.ingest))
 	mux.Handle("GET "+p.opts.Prefix+"/static/", http.StripPrefix(p.opts.Prefix+"/static/", qrscan.Handler()))
+	p.registerRequests(mux)
 	if p.opts.SignOut != nil {
 		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
 	}
@@ -187,7 +205,7 @@ func (p *Page) show(w http.ResponseWriter, r *http.Request) error {
 	b := &blocks{kit: p.opts.Kit}
 	csrf := staffsession.HiddenField(r.Context())
 	stack, _ := p.stackOffer(r.Context())
-	parts := []template.HTML{p.cameraCard(b, csrf, stack)}
+	parts := []template.HTML{p.scanTabs(b, "scan"), p.cameraCard(b, csrf, stack)}
 	parts = append(parts, template.HTML(`<div id="scan-result" role="status" aria-live="polite"></div>`)) //nolint:gosec // literal
 	parts = append(parts, template.HTML(`<div class="split">`), p.uploadCard(b, csrf, stack), p.pasteCard(b, csrf, stack))
 	if p.opts.Links != nil {

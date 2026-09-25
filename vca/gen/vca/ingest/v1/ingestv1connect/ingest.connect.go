@@ -65,8 +65,12 @@ type IngestServiceClient interface {
 	CreateOid4VpRequest(context.Context, *connect.Request[v1.CreateOid4VpRequestRequest]) (*connect.Response[v1.CreateOid4VpRequestResponse], error)
 	// ReceiveDirectPost takes the wallet response of one transaction.
 	// The HTTP direct_post handler calls it after it parsed the form body.
+	// The service then evaluates the answer with the policy set of the
+	// template and stores the result.
 	ReceiveDirectPost(context.Context, *connect.Request[v1.ReceiveDirectPostRequest]) (*connect.Response[v1.ReceiveDirectPostResponse], error)
-	// GetTransaction returns the state of one OID4VP transaction.
+	// GetTransaction returns the state of one OID4VP transaction. For a
+	// request through a stack verifier it asks the adapter for the result
+	// while the request is pending.
 	GetTransaction(context.Context, *connect.Request[v1.GetTransactionRequest]) (*connect.Response[v1.GetTransactionResponse], error)
 	// ListTransactions lists the OID4VP transactions, newest first. The
 	// verifier overview counts the open requests with it.
@@ -160,8 +164,12 @@ type IngestServiceHandler interface {
 	CreateOid4VpRequest(context.Context, *connect.Request[v1.CreateOid4VpRequestRequest]) (*connect.Response[v1.CreateOid4VpRequestResponse], error)
 	// ReceiveDirectPost takes the wallet response of one transaction.
 	// The HTTP direct_post handler calls it after it parsed the form body.
+	// The service then evaluates the answer with the policy set of the
+	// template and stores the result.
 	ReceiveDirectPost(context.Context, *connect.Request[v1.ReceiveDirectPostRequest]) (*connect.Response[v1.ReceiveDirectPostResponse], error)
-	// GetTransaction returns the state of one OID4VP transaction.
+	// GetTransaction returns the state of one OID4VP transaction. For a
+	// request through a stack verifier it asks the adapter for the result
+	// while the request is pending.
 	GetTransaction(context.Context, *connect.Request[v1.GetTransactionRequest]) (*connect.Response[v1.GetTransactionResponse], error)
 	// ListTransactions lists the OID4VP transactions, newest first. The
 	// verifier overview counts the open requests with it.

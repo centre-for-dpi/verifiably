@@ -40,6 +40,9 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_INGEST_STATE_DIR` | The directory of the transactions. | empty: in memory |
 | `VCA_INGEST_DISCOVERY_URL` | The base URL of the discovery service. | empty: a template cannot be read |
 | `VCA_INGEST_DISCOVERY_TIMEOUT` | The time limit of one discovery call. | `10s` |
+| `VCA_INGEST_POLICY_URL` | The base URL of the policy service. It evaluates the answer of a request. | empty: no verdict |
+| `VCA_INGEST_RESULTS_URL` | The base URL of the results service. It keeps the result of a request. | empty: no stored result |
+| `VCA_INGEST_EVALUATE_TIMEOUT` | The time limit of one call to the policy service or the results service. | `30s` |
 | `VCA_INGEST_CLIENT_ID` | The OID4VP client identifier of the verifier. | the base URL |
 | `VCA_INGEST_SIGNING_KEY_FILE` | A PKCS 8 PEM file with the request object key. | empty: one key for this process |
 | `VCA_INGEST_REQUEST_TTL` | How long an OID4VP request works. | `5m` |

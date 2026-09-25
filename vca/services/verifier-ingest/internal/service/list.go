@@ -71,6 +71,7 @@ func summary(t txn.Transaction, state ingestv1.GetTransactionResponse_State) *in
 	out := &ingestv1.TransactionSummary{
 		TransactionId: t.ID, State: state, TemplateId: t.TemplateID, TemplateVersion: t.TemplateVersion,
 		CreatedAt: timestamppb.New(t.CreatedAt), ExpiresAt: timestamppb.New(t.ExpiresAt),
+		ResultId: t.ResultID, Stack: t.Stack,
 	}
 	if !t.AnsweredAt.IsZero() {
 		out.AnsweredAt = timestamppb.New(t.AnsweredAt)

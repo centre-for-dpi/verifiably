@@ -90,6 +90,28 @@ The request object carries `client_id`, `response_type` `vp_token`, and
 `response_mode` `direct_post`. It also carries `response_uri`, the nonce,
 the state, the DCQL query, and the validity times.
 
+`ReceiveDirectPost` then evaluates the answer. It calls `Evaluate` of the
+policy service at `VCA_INGEST_POLICY_URL` with the policy set of the
+template. The DCQL builder names that set `query-<template id>`, so a
+date rule of the query holds end to end. The service then calls `Store`
+of the results service at `VCA_INGEST_RESULTS_URL`. The transaction
+keeps the result id. A failed call keeps the answer and names the
+failure on the transaction. Both services sit on the compose network
+(ADR-047).
+
+A request can go through the verifier of a live stack instead. The
+request names the pair in `stack`. The adapter must read the query kind
+of the template: `PROTOCOL_OID4VP_DCQL` for a DCQL query, or
+`PROTOCOL_OID4VP_PEX` for a PE query. A DCQL query goes to a PE stack
+only when its PE form loses nothing. The service calls `CreateRequest`
+of the adapter. Each `GetTransaction` of a pending request calls
+`GetResult` of the adapter. An answer with credentials takes the same
+evaluate and store steps. The checks of the stack stay on the
+transaction.
+
+A request lives for the default `REQUEST_TTL`, or for the pick of the
+staff member up to one hour. A stack sets its own expiry.
+
 A `request_uri` of another party is different. Three rules apply. The
 host must sit on `REQUEST_URI_HOSTS`. The scheme must be https, unless a
 development setting allows http. The body stops at
@@ -137,6 +159,32 @@ The scanner and the QR reader sit in the shared package
 `services/internal/qrscan`, which the wallet uses too. The third-party
 notices of the vendored files sit in
 [`services/internal/qrscan/NOTICE`](../services/internal/qrscan/NOTICE).
+
+## The request pages
+
+The pages under `/scan/requests/` follow board Verifier-Request (spec
+VE4). The new request form lists the saved queries of the discovery
+service. "Answer through" lists the VCA verifier when the query has a
+DCQL form. It also lists each live stack whose adapter reads the query.
+A change of the query swaps that list with htmx. The form also picks
+the delivery and the expiry.
+
+| Path | Page |
+|---|---|
+| `GET /scan/requests/` | The requests, newest first, with the verifier, the state, and the result link. |
+| `GET /scan/requests/new` | The new request form. `?template=<id>` picks a query. |
+| `POST /scan/requests/new/answerers` | The verifier choice of one query, for htmx. |
+| `POST /scan/requests/` | Send the request and open its page. |
+| `GET /scan/requests/{id}` | One request. `?as=qr`, `link`, or `document` picks the delivery. |
+| `GET /scan/requests/{id}/state` | The state block, for htmx. |
+| `GET /scan/requests/{id}/document.pdf` | The request as a PDF document of `core/pdf`, with the QR code and the link. |
+
+The state block shows Waiting, Received, and Verified. While the request
+waits, htmx asks for the block every 2 seconds. A refresh link does the
+same without JavaScript. When the request no longer waits, the poll
+stops and the delivery goes away. The verdict card shows the verdict,
+the checks, the checks of the stack, and the claims. It ends with "Saved
+as result" and a link to the result page of `verifier-results`.
 
 ## Storage
 

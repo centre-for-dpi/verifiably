@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -20,7 +21,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
-	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
@@ -61,6 +61,17 @@ type Options struct {
 	RedirectURI string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// Policy evaluates the answer of a request with the policy set of
+	// the template. Nil stores the answer without a verdict.
+	Policy Evaluator
+	// Results keeps the verification result. Nil keeps none.
+	Results ResultStore
+	// Stacks returns the live verifier stacks that can answer a
+	// request. Nil offers the VCA verifier only.
+	Stacks func(ctx context.Context) []Stack
+	// StackClient returns the verifier of the adapter at a URL. Stacks
+	// needs it.
+	StackClient func(adapterURL string) StackVerifier
 }
 
 // Service is the IngestService handler. It also satisfies the client
@@ -68,6 +79,9 @@ type Options struct {
 type Service struct {
 	ingestv1connect.UnimplementedIngestServiceHandler
 	opts Options
+	// mu makes one poll of a stack finish a request at a time, so an
+	// answer is evaluated and stored once.
+	mu sync.Mutex
 }
 
 var _ ingestv1connect.IngestServiceClient = (*Service)(nil)
@@ -88,6 +102,9 @@ func New(opts Options) (*Service, error) {
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
+	}
+	if opts.Stacks != nil && opts.StackClient == nil {
+		return nil, errors.New("service: a stack client is required with the stacks")
 	}
 	return &Service{opts: opts}, nil
 }
@@ -170,69 +187,54 @@ func (s *Service) xmlConfig(m *ingestv1.XmlConfig) ingest.XMLConfig {
 }
 
 // CreateOid4VpRequest starts a transaction and returns the request URI.
+// With a stack, the verifier of that stack makes the request and the
+// service polls it for the answer. Without one, the VCA verifier serves
+// a signed request object and takes the direct post.
 func (s *Service) CreateOid4VpRequest(ctx context.Context, req *connect.Request[ingestv1.CreateOid4VpRequestRequest]) (*connect.Response[ingestv1.CreateOid4VpRequestResponse], error) {
 	mode, err := oid4vp.ParseResponseMode(req.Msg.GetResponseMode())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	query, version, err := s.query(ctx, req.Msg)
+	ttl, err := s.ttl(req.Msg.GetExpiresInSeconds())
 	if err != nil {
 		return nil, err
 	}
-	id, err := txn.NewID()
+	t, err := s.template(ctx, req.Msg)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, err
 	}
-	nonce, err := txn.NewID()
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+	if req.Msg.GetStack() != "" {
+		return s.createThroughStack(ctx, req.Msg, t, ttl)
 	}
-	state, err := txn.NewID()
-	if err != nil {
+	if !VCAReads(t) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("service: the query %q has no DCQL form, so send it through a stack that reads PE", t.GetId()))
+	}
+	id, idErr := txn.NewID()
+	nonce, nonceErr := txn.NewID()
+	state, stateErr := txn.NewID()
+	if err := errors.Join(idErr, nonceErr, stateErr); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	now := s.opts.Now()
+	requestURI := s.opts.BaseURL + RequestPath + id
 	record := txn.Transaction{
 		ID: id, Nonce: nonce, StateParam: state,
-		TemplateID: req.Msg.GetTemplateId(), TemplateVersion: version,
-		DCQL: query, ResponseMode: mode, State: txn.StatePending,
-		CreatedAt: now, ExpiresAt: now.Add(s.opts.RequestTTL),
+		TemplateID: req.Msg.GetTemplateId(), TemplateVersion: t.GetVersion(), PolicySetID: t.GetPolicySetId(),
+		DCQL: t.GetDcql(), ResponseMode: mode, State: txn.StatePending,
+		CreatedAt: now, ExpiresAt: now.Add(ttl),
+		RequestURI: oid4vp.AuthorizeURL(oid4vp.DefaultScheme, s.opts.ClientID, requestURI),
 	}
 	if err := s.opts.Store.Put(ctx, record); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	requestURI := s.opts.BaseURL + RequestPath + id
 	return connect.NewResponse(&ingestv1.CreateOid4VpRequestResponse{
 		TransactionId: id,
 		RequestUri:    requestURI,
-		QrPayload:     oid4vp.AuthorizeURL(oid4vp.DefaultScheme, s.opts.ClientID, requestURI),
+		QrPayload:     record.RequestURI,
 		Nonce:         nonce,
 		ExpiresAt:     timestamppb.New(record.ExpiresAt),
 	}), nil
-}
-
-// query returns the DCQL of a request and the template version it used.
-func (s *Service) query(ctx context.Context, msg *ingestv1.CreateOid4VpRequestRequest) (string, int32, error) {
-	if raw := strings.TrimSpace(msg.GetDcql()); raw != "" {
-		if err := checkQuery(raw); err != nil {
-			return "", 0, connect.NewError(connect.CodeInvalidArgument, err)
-		}
-		return raw, 0, nil
-	}
-	id := strings.TrimSpace(msg.GetTemplateId())
-	if id == "" {
-		return "", 0, connect.NewError(connect.CodeInvalidArgument, errors.New("service: the request names no template and carries no query"))
-	}
-	if s.opts.Discovery == nil {
-		return "", 0, connect.NewError(connect.CodeFailedPrecondition, errors.New("service: no discovery service is configured, so a template cannot be read"))
-	}
-	resp, err := s.opts.Discovery.GetTemplate(ctx, connect.NewRequest(&discoveryv1.GetTemplateRequest{
-		Id: id, Version: msg.GetTemplateVersion(),
-	}))
-	if err != nil {
-		return "", 0, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("service: read the template %q: %w", id, err))
-	}
-	return resp.Msg.GetTemplate().GetDcql(), resp.Msg.GetTemplate().GetVersion(), nil
 }
 
 // ReceiveDirectPost takes the answer of a wallet.
@@ -274,6 +276,7 @@ func (s *Service) ReceiveDirectPost(ctx context.Context, req *connect.Request[in
 	}
 	record.State, record.AnsweredAt = txn.StateReceived, now
 	record.Presentation = ToRecord(res, record.ID, record.Nonce, now)
+	s.finish(ctx, &record)
 	if err := s.opts.Store.Put(ctx, record); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -286,6 +289,9 @@ func (s *Service) ReceiveDirectPost(ctx context.Context, req *connect.Request[in
 // GetTransaction returns the state of one transaction.
 func (s *Service) GetTransaction(ctx context.Context, req *connect.Request[ingestv1.GetTransactionRequest]) (*connect.Response[ingestv1.GetTransactionResponse], error) {
 	record, err := s.opts.Store.Get(ctx, req.Msg.GetTransactionId())
+	if err == nil && record.Stack != "" && record.StateAt(s.opts.Now()) == txn.StatePending {
+		record, err = s.poll(ctx, record.ID)
+	}
 	if errors.Is(err, txn.ErrNotFound) {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
@@ -297,6 +303,12 @@ func (s *Service) GetTransaction(ctx context.Context, req *connect.Request[inges
 		Presentation:    RecordToProto(record.Presentation, record.ID),
 		TemplateId:      record.TemplateID,
 		TemplateVersion: record.TemplateVersion,
+		ResultId:        record.ResultID,
+		Stack:           record.Stack,
+		ExpiresAt:       timestamppb.New(record.ExpiresAt),
+		RequestUri:      record.RequestURI,
+		Error:           record.Error,
+		StackChecks:     stackChecks(record.StackChecks),
 	}), nil
 }
 

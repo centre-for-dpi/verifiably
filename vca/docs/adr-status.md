@@ -469,7 +469,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-042 | 1 A template has a kind | Partial | `vca/proto/vca/discovery/v1`, `vca/services/verifier-discovery/internal/template` | `TemplateKind` holds DCQL, PE, and native. The service stores DCQL and PE templates. The native kind has no page yet. |
 | ADR-042 | 2 A DCQL builder with a live query view | Done | `vca/core/dcql`, `vca/services/verifier-discovery/internal/portal` | Values, claim sets, and credential sets in `core/dcql`. The preview works without JavaScript. |
-| ADR-042 | 3 A claim predicate policy check | Done | `vca/core/policy`, `vca/services/verifier-discovery/internal/service` | The rules of a query become the policy set `query-<id>`. |
+| ADR-042 | 3 A claim predicate policy check | Done | `vca/core/policy`, `vca/services/verifier-discovery/internal/service`, `vca/services/verifier-ingest/internal/service` | The rules of a query become the policy set `query-<id>`. The ingestion service evaluates each answer of a request with that set. |
 | ADR-042 | 4 PE authoring, validation, and conversion | Done | `vca/services/verifier-discovery/internal/portal`, `vca/services/verifier-discovery/internal/template` | The page at `/discovery/pe/` authors, imports, checks, converts, and versions PE queries. Each conversion shows its loss report. |
 | ADR-042 | 5 A pure core package for PE | Done | `vca/core/pex` | Validation against the vendored PE 2.0 schema, and conversion both ways with a loss report. |
 

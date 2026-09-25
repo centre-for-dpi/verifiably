@@ -65,8 +65,35 @@ type Transaction struct {
 	AnsweredAt time.Time `json:"answered_at,omitempty"`
 	// Presentation is the normalised answer of the wallet.
 	Presentation *Presentation `json:"presentation,omitempty"`
-	// Error is the error parameter of a refused answer.
+	// Error is the error parameter of a refused answer, or why the
+	// service could not evaluate or store the answer.
 	Error string `json:"error,omitempty"`
+	// RequestURI is the URI the wallet opens. The QR code carries it.
+	RequestURI string `json:"request_uri,omitempty"`
+	// PolicySetID is the policy set of the template. The evaluation of
+	// the answer uses it. Empty uses the default set.
+	PolicySetID string `json:"policy_set_id,omitempty"`
+	// ResultID is the id of the stored verification result.
+	ResultID string `json:"result_id,omitempty"`
+	// Stack is the pair of the stack verifier that answers the request.
+	// Empty means the VCA verifier.
+	Stack string `json:"stack,omitempty"`
+	// Adapter is the internal URL of the adapter of the stack.
+	Adapter string `json:"adapter,omitempty"`
+	// StackState is the state GetResult of the adapter takes.
+	StackState string `json:"stack_state,omitempty"`
+	// StackChecks are the checks the stack ran on the answer.
+	StackChecks []StackCheck `json:"stack_checks,omitempty"`
+}
+
+// StackCheck is one check a stack verifier ran.
+type StackCheck struct {
+	// Name is the name of the check at the stack.
+	Name string `json:"name"`
+	// Passed is true when the check passed.
+	Passed bool `json:"passed"`
+	// Reason is the text of the stack when the check failed.
+	Reason string `json:"reason,omitempty"`
 }
 
 // Presentation is the stored form of a decoded wallet answer.

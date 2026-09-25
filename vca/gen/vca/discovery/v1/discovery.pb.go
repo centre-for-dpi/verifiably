@@ -1072,7 +1072,8 @@ func (x *GetFieldsResponse) GetJsonSchema() string {
 type CreateTemplateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The template. The service ignores id, version, and timestamps.
-	// When dcql is empty the service builds it from queries.
+	// When dcql is empty the service builds it from queries, or from
+	// presentation_definition for a PE template.
 	Template      *PresentationTemplate `protobuf:"bytes,1,opt,name=template,proto3" json:"template,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

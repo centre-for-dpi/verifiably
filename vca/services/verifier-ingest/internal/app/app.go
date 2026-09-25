@@ -25,9 +25,12 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
@@ -76,6 +79,9 @@ type Deps struct {
 	Prober *topology.Prober
 	// Stack replaces the verifier client of the adapter. Tests set it.
 	Stack func(adapterURL string) scanner.StackVerifier
+	// Requests replaces the client that sends a request through the
+	// verifier of an adapter. Tests set it.
+	Requests func(adapterURL string) service.StackVerifier
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -108,8 +114,31 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if discovery == nil && cfg.DiscoveryURL != "" {
 		discovery = discoveryv1connect.NewDiscoveryServiceClient(&http.Client{Timeout: cfg.DiscoveryTimeout}, cfg.DiscoveryURL)
 	}
+	shell, signOut := staffshell.Wire(staffshell.Setup{
+		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
+		SignOut: "/" + strings.Trim(cfg.ScannerPrefix, "/") + "/signout", Prober: deps.Prober,
+		Client: &http.Client{Timeout: cfg.DiscoveryTimeout}, Now: deps.Now,
+	})
+	internal := &http.Client{Timeout: cfg.EvaluateTimeout}
+	var policy service.Evaluator
+	if cfg.PolicyURL != "" {
+		policy = policyv1connect.NewPolicyServiceClient(internal, cfg.PolicyURL)
+	}
+	var results resultsv1connect.ResultsServiceClient
+	if cfg.ResultsURL != "" {
+		results = resultsv1connect.NewResultsServiceClient(internal, cfg.ResultsURL)
+	}
+	requests := deps.Requests
+	if requests == nil {
+		stackClient := &http.Client{Timeout: cfg.StackTimeout}
+		requests = func(adapterURL string) service.StackVerifier {
+			return backendv1connect.NewVerifierBackendServiceClient(stackClient, adapterURL)
+		}
+	}
+	stacks := StacksOf(shell)
 	store, storeErr := txn.NewStore(backend)
 	svc, serviceErr := service.New(service.Options{
+		Policy: policy, Results: resultsStore(results), Stacks: stacks, StackClient: requests,
 		Store:     store,
 		Discovery: discovery,
 		Fetcher: oid4vp.Fetcher{
@@ -130,11 +159,6 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	wallet, walletErr := httpapi.New(svc)
 	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
-	shell, signOut := staffshell.Wire(staffshell.Setup{
-		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
-		SignOut: "/" + strings.Trim(cfg.ScannerPrefix, "/") + "/signout", Prober: deps.Prober,
-		Client: &http.Client{Timeout: cfg.DiscoveryTimeout}, Now: deps.Now,
-	})
 	// A pasted link goes through the shared guard (ADR-002 decision 7).
 	links := fetchguard.New(fetchguard.Options{
 		Guard: fetchguard.Guard{
@@ -146,6 +170,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	page, pageErr := scanner.New(scanner.Options{
 		Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit, Shell: shell, SignOut: signOut,
 		Links: links, Stack: deps.Stack, StackTimeout: cfg.StackTimeout,
+		Discovery: discovery, Results: resultsReader(results), Stacks: stacks,
 	})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, ReadFile: deps.ReadFile, Now: deps.Now, Log: deps.Log, MaxFormBytes: scanner.MaxUploadBytes,
@@ -166,6 +191,43 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		"base_url", cfg.BaseURL, "client_id", cfg.ClientID, "discovery_url", cfg.DiscoveryURL,
 		"scanner", page.Prefix(), "request_uri_hosts", cfg.RequestURIHosts, "kid", kid)
 	return &App{Mux: mux, Service: svc, Store: store, Config: cfg, PruneInterval: DefaultPruneInterval}, nil
+}
+
+// StacksOf returns the live verifier stacks of the probe that have an
+// adapter: the stacks a request can go through (spec VE4).
+func StacksOf(shell *staffshell.Shell) func(ctx context.Context) []service.Stack {
+	return func(ctx context.Context) []service.Stack {
+		if shell == nil {
+			return nil
+		}
+		f := shell.Frame(ctx)
+		var out []service.Stack
+		for _, st := range f.Live(commonv1.Role_ROLE_VERIFIER) {
+			if adapter := st.Peer.Adapter(); adapter != "" {
+				out = append(out, service.Stack{
+					Pair: st.Peer.Pair, Name: f.Snapshot().StackName(st.Peer.Dpg), Adapter: adapter,
+					Protocols: st.Capabilities.GetProtocols(),
+				})
+			}
+		}
+		return out
+	}
+}
+
+// resultsStore returns the store side of a results client, or nil.
+func resultsStore(c resultsv1connect.ResultsServiceClient) service.ResultStore {
+	if c == nil {
+		return nil
+	}
+	return c
+}
+
+// resultsReader returns the read side of a results client, or nil.
+func resultsReader(c resultsv1connect.ResultsServiceClient) scanner.Results {
+	if c == nil {
+		return nil
+	}
+	return c
 }
 
 // xmlConfig returns the default XML configuration of the deployment.

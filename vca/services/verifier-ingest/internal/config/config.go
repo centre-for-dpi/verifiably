@@ -37,6 +37,16 @@ type Config struct {
 	DiscoveryURL string `env:"DISCOVERY_URL"`
 	// DiscoveryTimeout bounds one discovery service call.
 	DiscoveryTimeout time.Duration `env:"DISCOVERY_TIMEOUT" default:"10s"`
+	// PolicyURL is the base URL of the policy service. The service
+	// evaluates the answer of a request there. Empty stores the answer
+	// without a verdict.
+	PolicyURL string `env:"POLICY_URL"`
+	// ResultsURL is the base URL of the results service. The service
+	// stores the result of a request there. Empty stores no result.
+	ResultsURL string `env:"RESULTS_URL"`
+	// EvaluateTimeout bounds one call to the policy service or the
+	// results service.
+	EvaluateTimeout time.Duration `env:"EVALUATE_TIMEOUT" default:"30s"`
 	// ClientID is the OID4VP client identifier of the verifier. Empty
 	// means the base URL.
 	ClientID string `env:"CLIENT_ID"`
@@ -102,6 +112,8 @@ func Load(getenv func(string) string) (Config, error) {
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	c.DiscoveryURL = strings.TrimRight(c.DiscoveryURL, "/")
+	c.PolicyURL = strings.TrimRight(c.PolicyURL, "/")
+	c.ResultsURL = strings.TrimRight(c.ResultsURL, "/")
 	if c.ClientID == "" {
 		c.ClientID = c.BaseURL
 	}
@@ -118,6 +130,9 @@ func (c Config) Check() error {
 	var problems []string
 	if c.DiscoveryTimeout <= 0 {
 		problems = append(problems, Prefix+"DISCOVERY_TIMEOUT must be positive")
+	}
+	if c.EvaluateTimeout <= 0 {
+		problems = append(problems, Prefix+"EVALUATE_TIMEOUT must be positive")
 	}
 	if c.RequestTTL <= 0 {
 		problems = append(problems, Prefix+"REQUEST_TTL must be positive")

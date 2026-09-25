@@ -124,3 +124,23 @@ func TestLoadPeers(t *testing.T) {
 		t.Error("a bad peer list loaded")
 	}
 }
+
+// TestLoadPolicyAndResults reads the two links the request pages need:
+// the policy service evaluates an answer and the results service keeps
+// the result.
+func TestLoadPolicyAndResults(t *testing.T) {
+	c, err := config.Load(env(map[string]string{
+		"VCA_INGEST_POLICY_URL":       "http://verifier-policy:8086/",
+		"VCA_INGEST_RESULTS_URL":      "http://verifier-results:8087/",
+		"VCA_INGEST_EVALUATE_TIMEOUT": "5s",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PolicyURL != "http://verifier-policy:8086" || c.ResultsURL != "http://verifier-results:8087" || c.EvaluateTimeout != 5*time.Second {
+		t.Errorf("config = %+v", c)
+	}
+	if _, err := config.Load(env(map[string]string{"VCA_INGEST_EVALUATE_TIMEOUT": "0s"})); err == nil {
+		t.Error("a zero evaluate timeout wants an error")
+	}
+}

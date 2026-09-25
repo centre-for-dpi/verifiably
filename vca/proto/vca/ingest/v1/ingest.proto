@@ -9,6 +9,7 @@ syntax = "proto3";
 package vca.ingest.v1;
 
 import "google/protobuf/timestamp.proto";
+import "vca/backend/v1/backend.proto";
 import "vca/common/v1/common.proto";
 
 // IngestService turns any supported carrier into a RawPresentation.
@@ -20,8 +21,12 @@ service IngestService {
   rpc CreateOid4vpRequest(CreateOid4vpRequestRequest) returns (CreateOid4vpRequestResponse);
   // ReceiveDirectPost takes the wallet response of one transaction.
   // The HTTP direct_post handler calls it after it parsed the form body.
+  // The service then evaluates the answer with the policy set of the
+  // template and stores the result.
   rpc ReceiveDirectPost(ReceiveDirectPostRequest) returns (ReceiveDirectPostResponse);
-  // GetTransaction returns the state of one OID4VP transaction.
+  // GetTransaction returns the state of one OID4VP transaction. For a
+  // request through a stack verifier it asks the adapter for the result
+  // while the request is pending.
   rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   // ListTransactions lists the OID4VP transactions, newest first. The
   // verifier overview counts the open requests with it.
@@ -145,6 +150,14 @@ message CreateOid4vpRequestRequest {
   string dcql = 3;
   // The response mode. direct_post or direct_post.jwt. Empty selects direct_post.
   string response_mode = 4;
+  // The pair of a live verifier stack that answers the request, for
+  // example verifier-inji. Its adapter must read the query kind of the
+  // template. Empty answers through the VCA verifier.
+  string stack = 5;
+  // How long the request works, in seconds. Zero takes the default of
+  // the service. The service caps it at one hour. A stack sets its own
+  // expiry.
+  int32 expires_in_seconds = 6;
 }
 
 // CreateOid4vpRequestResponse describes the transaction.
@@ -199,6 +212,21 @@ message GetTransactionResponse {
   string template_id = 3;
   // The template version.
   int32 template_version = 4;
+  // The id of the verification result in the results service, once
+  // the service evaluated and stored the answer.
+  string result_id = 5;
+  // The pair of the stack verifier that answers the request. Empty
+  // means the VCA verifier.
+  string stack = 6;
+  // The time at which the request stops working.
+  google.protobuf.Timestamp expires_at = 7;
+  // The request URI the wallet opens. The QR code carries it.
+  string request_uri = 8;
+  // Why the request ended without a result: the refusal of the wallet
+  // or of the stack, or the failure of the evaluation.
+  string error = 9;
+  // The checks the stack ran, for a request through a stack verifier.
+  repeated vca.backend.v1.GetResultResponse.DpgCheck stack_checks = 10;
 
   // State names the transaction phase.
   enum State {
@@ -239,6 +267,10 @@ message TransactionSummary {
   google.protobuf.Timestamp expires_at = 6;
   // The time the wallet answered, when it did.
   google.protobuf.Timestamp answered_at = 7;
+  // The id of the verification result, once the service stored one.
+  string result_id = 8;
+  // The pair of the stack verifier. Empty means the VCA verifier.
+  string stack = 9;
 }
 
 // ListTransactionsResponse returns the transactions.

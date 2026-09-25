@@ -423,6 +423,11 @@ func Catalog() []Service {
 			Links: []Link{
 				{Env: "VCA_INGEST_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_INGEST_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
+				// The request pages evaluate an answer with the policy set
+				// of the query and store the result, on the compose network
+				// (P5-04, ADR-047).
+				{Env: "VCA_INGEST_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
+				{Env: "VCA_INGEST_RESULTS_URL", Target: "verifier-results", Kind: LinkURL},
 				signingKey("VCA_INGEST_SIGNING_KEY_FILE"),
 				staffJWKS("VCA_INGEST_AUTH_JWKS_URL", "verifier-auth"),
 				staffLogin("VCA_INGEST_LOGIN_URL"),
