@@ -805,7 +805,7 @@ func newDpgCommand(env *Environment) *cobra.Command {
 		Use:   "bootstrap [<dpg>]",
 		Short: "Apply the post boot configuration of one DPG.",
 		Long: "bootstrap applies the post boot steps of the chosen DPG. It " +
-			"provisions the did:web issuer and its key, imports the generated " +
+			"asks the DPG adapter for the did:web issuer, imports the generated " +
 			"Keycloak realm, or creates the organisation, as that DPG needs. " +
 			"Each run checks first, so a second run changes nothing.\n\n" +
 			"<dpg> is one of " + strings.Join(DpgNames(), ", ") +
@@ -949,7 +949,7 @@ func bootstrapValues(env *Environment, deploy string, pair Pair) (map[string]str
 			values[name] = v
 		}
 	}
-	for _, name := range []string{EnvBootstrapURL, EnvBootstrapUser, EnvBootstrapSecret, EnvBootstrapOrg} {
+	for _, name := range []string{EnvBootstrapURL, EnvBootstrapUser, EnvBootstrapSecret, EnvBootstrapOrg, EnvBootstrapAdapterURL} {
 		if v := env.Getenv(name); v != "" {
 			values[name] = v
 		}

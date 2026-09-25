@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,145 +16,213 @@ import (
 	"strings"
 	"testing"
 
+	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
-// fakeWaltid answers the walt.id onboarding call.
-func fakeWaltid(t *testing.T, calls *int) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/onboard/issuer" || r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		did := anyval.As[map[string]any](body["did"])
-		cfg := anyval.As[map[string]any](did["config"])
-		*calls++
-		w.Header().Set("Content-Type", "application/json")
-		_, errAssign := io.WriteString(w, `{"issuerDid":"did:web:`+anyval.As[string](cfg["domain"])+`:issuer","issuerKey":{"kty":"EC"}}`)
-		if errAssign != nil {
-			t.Fatalf("io.WriteString: %v", errAssign)
-		}
-	}))
+// fakeAdapter is the issuer side of the walt.id adapter: it keeps the
+// identity it provisions or imports, as the adapter keeps it in its
+// data volume (ADR-046 decision 4).
+type fakeAdapter struct {
+	backendv1connect.UnimplementedIssuerBackendServiceHandler
+	identity   *backendv1.IssuerIdentity
+	provisions []*backendv1.ProvisionIssuerIdentityRequest
+	imports    []*backendv1.ImportIssuerIdentityRequest
+	fail       error
 }
 
-func waltidOptions(t *testing.T, base string, out io.Writer) BootstrapOptions {
+func (f *fakeAdapter) GetIssuerIdentity(context.Context, *connect.Request[backendv1.GetIssuerIdentityRequest]) (*connect.Response[backendv1.GetIssuerIdentityResponse], error) {
+	if f.fail != nil {
+		return nil, f.fail
+	}
+	return connect.NewResponse(&backendv1.GetIssuerIdentityResponse{Identity: f.identity}), nil
+}
+
+func (f *fakeAdapter) ProvisionIssuerIdentity(_ context.Context, req *connect.Request[backendv1.ProvisionIssuerIdentityRequest]) (*connect.Response[backendv1.ProvisionIssuerIdentityResponse], error) {
+	f.provisions = append(f.provisions, req.Msg)
+	f.identity = &backendv1.IssuerIdentity{Identifiers: []string{"did:web:" + req.Msg.GetDomain()}}
+	return connect.NewResponse(&backendv1.ProvisionIssuerIdentityResponse{Identity: f.identity}), nil
+}
+
+func (f *fakeAdapter) ImportIssuerIdentity(_ context.Context, req *connect.Request[backendv1.ImportIssuerIdentityRequest]) (*connect.Response[backendv1.ImportIssuerIdentityResponse], error) {
+	f.imports = append(f.imports, req.Msg)
+	f.identity = &backendv1.IssuerIdentity{Identifiers: []string{req.Msg.GetDid()}}
+	return connect.NewResponse(&backendv1.ImportIssuerIdentityResponse{Identity: f.identity}), nil
+}
+
+// serveAdapter serves the fake adapter as the pair routes it.
+func serveAdapter(t *testing.T, h backendv1connect.IssuerBackendServiceHandler) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.Handle(backendv1connect.NewIssuerBackendServiceHandler(h))
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server
+}
+
+func waltidOptions(t *testing.T, adapter string, out io.Writer) BootstrapOptions {
 	t.Helper()
 	return BootstrapOptions{
 		Pair:   issuerPair(),
 		Dir:    t.TempDir(),
-		Values: map[string]string{"VCA_PUBLIC_URL": "https://issuer.example", "VCA_DPG_URL": base},
-		Client: base2Client(),
+		Values: map[string]string{"VCA_PUBLIC_URL": "https://issuer.example", EnvBootstrapAdapterURL: adapter},
+		Client: &http.Client{},
 		Out:    out,
 	}
 }
 
-func base2Client() *http.Client { return &http.Client{} }
-
-func TestBootstrapWaltidCreatesAndIsIdempotent(t *testing.T) {
-	calls := 0
-	server := fakeWaltid(t, &calls)
-	defer server.Close()
+// TestBootstrapWaltidProvisionsThroughTheAdapter checks that the run asks
+// the adapter to make a did:web of the host of the pair, so the stack
+// keeps the key and the host keeps no key file (ADR-001 decision 3). A
+// second run finds the identity and changes nothing.
+func TestBootstrapWaltidProvisionsThroughTheAdapter(t *testing.T) {
+	adapter := &fakeAdapter{}
 	var out bytes.Buffer
-	opts := waltidOptions(t, server.URL, &out)
+	opts := waltidOptions(t, serveAdapter(t, adapter).URL, &out)
 	got, err := Bootstrap(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
-	if len(got.Steps) != 1 || !strings.Contains(got.Steps[0], "created") {
+	if len(got.Steps) != 1 || !strings.Contains(got.Steps[0], "created") || !strings.Contains(got.Steps[0], "did:web:issuer.example") {
 		t.Fatalf("steps = %v", got.Steps)
 	}
-	if !strings.Contains(got.Steps[0], "did:web:issuer.example") {
-		t.Errorf("the DID is missing: %v", got.Steps)
+	if len(adapter.provisions) != 1 {
+		t.Fatalf("provisions = %d", len(adapter.provisions))
 	}
-	info, err := os.Stat(filepath.Join(opts.Dir, IssuerFile))
-	if err != nil {
-		t.Fatalf("stat %s: %v", IssuerFile, err)
+	p := adapter.provisions[0]
+	if p.GetMethod() != "did:web" || p.GetKeyType() != "secp256r1" || p.GetDomain() != "issuer.example" || p.GetKeyBackend() != "" {
+		t.Errorf("provision = %v", p)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("%s has mode %04o", IssuerFile, info.Mode().Perm())
+	if _, serr := os.Stat(filepath.Join(opts.Dir, IssuerFile)); serr == nil {
+		t.Errorf("the run wrote %s on the host", IssuerFile)
 	}
-	// A second run changes nothing.
 	again, err := Bootstrap(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("second Bootstrap: %v", err)
 	}
-	if !strings.Contains(again.Steps[0], "present") {
-		t.Errorf("the second run said %v", again.Steps)
-	}
-	if calls != 1 {
-		t.Errorf("the server saw %d onboarding calls, want 1", calls)
+	if !strings.Contains(again.Steps[0], "present") || len(adapter.provisions) != 1 {
+		t.Errorf("the second run said %v after %d provisions", again.Steps, len(adapter.provisions))
 	}
 }
 
-func TestBootstrapWaltidReportsServerProblems(t *testing.T) {
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer bad.Close()
+// TestBootstrapWaltidImportsAnEarlierFile checks that the file an older
+// run left on the host goes into the adapter, and that the run says the
+// file can go.
+func TestBootstrapWaltidImportsAnEarlierFile(t *testing.T) {
+	adapter := &fakeAdapter{}
 	var out bytes.Buffer
-	if _, err := BootstrapWaltid(context.Background(), waltidOptions(t, bad.URL, &out)); err == nil {
-		t.Fatal("a 500 answer passed")
+	opts := waltidOptions(t, serveAdapter(t, adapter).URL, &out)
+	legacy := `{"issuerDid":"did:web:issuer.example:issuer","issuerKey":{"type":"jwk","jwk":{"kty":"EC","crv":"P-256"}}}`
+	path := filepath.Join(opts.Dir, IssuerFile)
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, errAssign := io.WriteString(w, `{}`)
-		if errAssign != nil {
-			t.Fatalf("io.WriteString: %v", errAssign)
+	got, err := Bootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	if len(adapter.imports) != 1 || len(adapter.provisions) != 0 {
+		t.Fatalf("imports %d, provisions %d", len(adapter.imports), len(adapter.provisions))
+	}
+	in := adapter.imports[0]
+	if in.GetDid() != "did:web:issuer.example:issuer" || !strings.Contains(in.GetKeyReference(), `"type":"jwk"`) {
+		t.Errorf("import = %v", in)
+	}
+	if !strings.Contains(got.Steps[0], "imported") || !strings.Contains(got.Steps[0], path) {
+		t.Errorf("steps = %v", got.Steps)
+	}
+	// A file with no DID or no key is not an earlier answer.
+	for _, bad := range []string{`{`, `{"issuerDid":"did:web:x"}`, `{"issuerKey":{}}`} {
+		if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
+			t.Fatal(err)
 		}
-	}))
-	defer empty.Close()
-	if _, err := BootstrapWaltid(context.Background(), waltidOptions(t, empty.URL, &out)); err == nil {
-		t.Fatal("an answer with no DID passed")
+		if _, _, ok := readIssuerFile(path); ok {
+			t.Errorf("%s reads as an earlier answer", bad)
+		}
 	}
+}
+
+// TestBootstrapWaltidReportsAdapterProblems checks that a run that cannot
+// reach the adapter fails and writes no key on the host.
+func TestBootstrapWaltidReportsAdapterProblems(t *testing.T) {
+	var out bytes.Buffer
+	down := &fakeAdapter{fail: connect.NewError(connect.CodeUnavailable, errors.New("down"))}
+	opts := waltidOptions(t, serveAdapter(t, down).URL, &out)
+	if _, err := BootstrapWaltid(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "issuer adapter") {
+		t.Fatalf("a failing adapter passed: %v", err)
+	}
+	refused := &refusingAdapter{}
+	opts = waltidOptions(t, serveAdapter(t, refused).URL, &out)
+	if _, err := BootstrapWaltid(context.Background(), opts); err == nil {
+		t.Fatal("a refused provision passed")
+	}
+	if err := os.WriteFile(filepath.Join(opts.Dir, IssuerFile), []byte(`{"issuerDid":"did:key:z","issuerKey":{"type":"jwk"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BootstrapWaltid(context.Background(), opts); err == nil {
+		t.Fatal("a refused import passed")
+	}
+	if _, err := os.Stat(filepath.Join(opts.Dir, OnboardFile)); err == nil {
+		t.Fatal("the run wrote a file")
+	}
+}
+
+// refusingAdapter has no identity and refuses every change.
+type refusingAdapter struct {
+	backendv1connect.UnimplementedIssuerBackendServiceHandler
+}
+
+func (refusingAdapter) GetIssuerIdentity(context.Context, *connect.Request[backendv1.GetIssuerIdentityRequest]) (*connect.Response[backendv1.GetIssuerIdentityResponse], error) {
+	return connect.NewResponse(&backendv1.GetIssuerIdentityResponse{}), nil
 }
 
 func TestBootstrapWaltidNeedsAPublicURL(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	defer server.Close()
-	opts := BootstrapOptions{
-		Pair:   issuerPair(),
-		Dir:    t.TempDir(),
-		Values: map[string]string{"VCA_DPG_URL": server.URL},
-	}
-	if _, err := BootstrapWaltid(context.Background(), opts); err == nil {
-		t.Fatal("a run with no public URL passed")
-	}
-}
-
-func TestBootstrapNeedsABaseURL(t *testing.T) {
-	for _, values := range []map[string]string{nil, {"VCA_DPG_URL": "not a url"}, {"VCA_DPG_URL": "ftp://h"}} {
+	for _, values := range []map[string]string{nil, {"VCA_PUBLIC_URL": "not a url"}, {"VCA_PUBLIC_URL": "ftp://h"},
+		{"VCA_PUBLIC_URL": "https://issuer.example", EnvBootstrapAdapterURL: "nope"}} {
 		opts := BootstrapOptions{Pair: issuerPair(), Dir: t.TempDir(), Values: values}
-		if _, err := Bootstrap(context.Background(), opts); err == nil {
+		if _, err := BootstrapWaltid(context.Background(), opts); err == nil {
 			t.Errorf("values %v passed", values)
 		}
 	}
 }
 
-func TestBootstrapUsesTheOverrideURL(t *testing.T) {
-	calls := 0
-	server := fakeWaltid(t, &calls)
-	defer server.Close()
-	opts := BootstrapOptions{
-		Pair: issuerPair(),
-		Dir:  t.TempDir(),
-		Values: map[string]string{
-			"VCA_PUBLIC_URL": "https://issuer.example",
-			"VCA_DPG_URL":    "https://wrong.example",
-			EnvBootstrapURL:  server.URL,
-		},
+// TestBootstrapWaltidUsesThePublicURL checks that without an override the
+// run reaches the adapter through the public URL of the pair, where the
+// reverse proxy routes the adapter services.
+func TestBootstrapWaltidUsesThePublicURL(t *testing.T) {
+	adapter := &fakeAdapter{identity: &backendv1.IssuerIdentity{Identifiers: []string{"did:web:127.0.0.1"}}}
+	server := serveAdapter(t, adapter)
+	var out bytes.Buffer
+	opts := BootstrapOptions{Pair: issuerPair(), Dir: t.TempDir(), Values: map[string]string{"VCA_PUBLIC_URL": server.URL}, Out: &out}
+	got, err := BootstrapWaltid(context.Background(), opts)
+	if err != nil || !strings.Contains(got.Steps[0], "present: did:web:127.0.0.1") {
+		t.Fatalf("steps %v: %v", got.Steps, err)
 	}
-	if _, err := Bootstrap(context.Background(), opts); err != nil {
-		t.Fatalf("Bootstrap: %v", err)
+}
+
+// TestBootstrapWaltidSkipsOtherRoles checks that a pair of another role
+// needs no issuer identity.
+func TestBootstrapWaltidSkipsOtherRoles(t *testing.T) {
+	adapter := &fakeAdapter{}
+	opts := waltidOptions(t, serveAdapter(t, adapter).URL, nil)
+	opts.Pair.Role = commonv1.Role_ROLE_HOLDER
+	got, err := BootstrapWaltid(context.Background(), opts)
+	if err != nil || len(adapter.provisions) != 0 || !strings.Contains(got.Steps[0], "needs no issuer identity") {
+		t.Fatalf("steps %v: %v", got.Steps, err)
 	}
-	if calls != 1 {
-		t.Errorf("the override URL was not used")
+}
+
+func TestBootstrapNeedsABaseURL(t *testing.T) {
+	for _, values := range []map[string]string{nil, {"VCA_DPG_URL": "not a url"}, {"VCA_DPG_URL": "ftp://h"}} {
+		opts := BootstrapOptions{Pair: Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}, Dir: t.TempDir(), Values: values}
+		if _, err := Bootstrap(context.Background(), opts); err == nil {
+			t.Errorf("values %v passed", values)
+		}
 	}
 }
 
@@ -550,16 +619,16 @@ func TestDoStatusReportsAnUnreachableServer(t *testing.T) {
 	}
 }
 
-func TestReadIssuerDid(t *testing.T) {
+func TestReadIssuerFile(t *testing.T) {
 	dir := t.TempDir()
-	if _, ok := readIssuerDid(filepath.Join(dir, "missing.json")); ok {
+	if _, _, ok := readIssuerFile(filepath.Join(dir, "missing.json")); ok {
 		t.Error("a missing file reported a DID")
 	}
 	path := filepath.Join(dir, "bad.json")
 	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := readIssuerDid(path); ok {
+	if _, _, ok := readIssuerFile(path); ok {
 		t.Error("a file that is not JSON reported a DID")
 	}
 }

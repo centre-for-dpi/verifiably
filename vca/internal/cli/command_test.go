@@ -595,13 +595,13 @@ func TestDpgBootstrapReadsTheKeycloakPassword(t *testing.T) {
 func TestDpgBootstrapCommand(t *testing.T) {
 	root := t.TempDir()
 	calls := 0
-	server := fakeWaltid(t, &calls)
-	defer server.Close()
+	adapter := &fakeAdapter{}
+	server := serveAdapter(t, adapter)
 	dir := filepath.Join(root, "deploy", "issuer-waltid")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	body := "VCA_PUBLIC_URL=https://issuer.example\nVCA_DPG_URL=" + server.URL + "\n"
+	body := "VCA_PUBLIC_URL=" + server.URL + "\n"
 	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -612,16 +612,15 @@ func TestDpgBootstrapCommand(t *testing.T) {
 	if !strings.Contains(out, "walt.id issuer created") {
 		t.Errorf("out = %s", out)
 	}
-	if calls != 1 {
-		t.Errorf("the server saw %d calls", calls)
+	if calls = len(adapter.provisions); calls != 1 {
+		t.Errorf("the adapter saw %d calls", calls)
 	}
 }
 
 func TestDpgBootstrapUsesTheOverrideEnvironment(t *testing.T) {
 	root := t.TempDir()
-	calls := 0
-	server := fakeWaltid(t, &calls)
-	defer server.Close()
+	adapter := &fakeAdapter{}
+	server := serveAdapter(t, adapter)
 	dir := filepath.Join(root, "deploy", "issuer-waltid")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
@@ -631,7 +630,7 @@ func TestDpgBootstrapUsesTheOverrideEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	getenv := func(k string) string {
-		if k == EnvBootstrapURL {
+		if k == EnvBootstrapAdapterURL {
 			return server.URL
 		}
 		return ""
@@ -641,7 +640,7 @@ func TestDpgBootstrapUsesTheOverrideEnvironment(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d\n%s\n%s", status, out, errOut)
 	}
-	if calls != 1 {
+	if len(adapter.provisions) != 1 {
 		t.Errorf("the override URL was not used")
 	}
 }

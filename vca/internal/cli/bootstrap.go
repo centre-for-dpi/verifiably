@@ -9,14 +9,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
@@ -32,10 +36,15 @@ const (
 	EnvBootstrapSecret = "VCA_BOOTSTRAP_ADMIN_PASSWORD" //nolint:gosec // G101: this is a variable name, not a credential.
 	// EnvBootstrapOrg is the CREDEBL organisation name.
 	EnvBootstrapOrg = "VCA_BOOTSTRAP_ORG"
+	// EnvBootstrapAdapterURL overrides the address of the walt.id adapter
+	// for the bootstrap run. Empty means the public URL of the pair.
+	EnvBootstrapAdapterURL = "VCA_BOOTSTRAP_ADAPTER_URL"
 )
 
-// IssuerFile holds the walt.id onboarding answer, with the DID and the
-// issuer key. The adapter service reads it.
+// IssuerFile is the walt.id onboarding answer that an older bootstrap
+// run wrote beside the .env file of the pair. It holds the issuer key.
+// A run that finds it imports it into the adapter and says the file can
+// go, because the adapter keeps the key now (ADR-046 decision 4).
 const IssuerFile = "waltid-issuer.json"
 
 // BootstrapOptions holds one DPG bootstrap run.
@@ -115,57 +124,84 @@ func Bootstrap(ctx context.Context, opts BootstrapOptions) (BootstrapResult, err
 	}
 }
 
-// BootstrapWaltid provisions a did:web issuer and its key on the walt.id
-// issuer API. The run writes the answer to waltid-issuer.json. A second
-// run finds that file and does nothing (ADR-008 decision 4).
+// adapterURL returns the address of the walt.id adapter: the override,
+// else the public URL of the pair, where the reverse proxy routes the
+// Connect services of the adapter.
+func (o BootstrapOptions) adapterURL() (string, error) {
+	raw := strings.TrimRight(o.value(EnvBootstrapAdapterURL, o.Values["VCA_PUBLIC_URL"]), "/")
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", fmt.Errorf("bootstrap: set %s or VCA_PUBLIC_URL to an absolute http or https URL", EnvBootstrapAdapterURL)
+	}
+	return raw, nil
+}
+
+// BootstrapWaltid gives the issuer of the pair its identity through the
+// walt.id adapter (ADR-046). The adapter makes a did:web of the host of
+// the pair and a secp256r1 key through the walt.id onboarding endpoint,
+// and keeps the key in its data volume. The CLI never holds the key
+// (ADR-001 decision 3). A file of an older run moves into the adapter by
+// import. A second run finds the identity and does nothing (ADR-008
+// decision 4).
 func BootstrapWaltid(ctx context.Context, opts BootstrapOptions) (BootstrapResult, error) {
 	var result BootstrapResult
-	base, err := opts.baseURL()
-	if err != nil {
-		return result, err
-	}
-	path := filepath.Join(opts.Dir, IssuerFile)
-	if did, ok := readIssuerDid(path); ok {
-		result.step(opts.Out, "walt.id issuer present: %s", did)
+	if opts.Pair.Role != commonv1.Role_ROLE_ISSUER {
+		result.step(opts.Out, "bootstrap: the %s pair needs no issuer identity", ShortName(opts.Pair.Role.String()))
 		return result, nil
 	}
-	body, err := WaltidOnboard(opts.Values)
+	base, err := opts.adapterURL()
 	if err != nil {
 		return result, err
 	}
-	answer, err := doJSON(ctx, opts.client(), http.MethodPost, base+"/onboard/issuer", "", body)
+	domain := hostOf(opts.Values["VCA_PUBLIC_URL"])
+	if domain == "" {
+		return result, errors.New("bootstrap: VCA_PUBLIC_URL is not an absolute URL, so the did:web has no host")
+	}
+	adapter := backendv1connect.NewIssuerBackendServiceClient(opts.client(), base)
+	current, err := adapter.GetIssuerIdentity(ctx, connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
 	if err != nil {
-		return result, fmt.Errorf("walt.id onboard: %w", err)
+		return result, fmt.Errorf("the issuer adapter at %s: %w", base, err)
 	}
-	var parsed struct {
-		IssuerDid string `json:"issuerDid"`
+	if ids := current.Msg.GetIdentity().GetIdentifiers(); len(ids) > 0 {
+		result.step(opts.Out, "walt.id issuer present: %s", ids[0])
+		return result, nil
 	}
-	if err := json.Unmarshal(answer, &parsed); err != nil || parsed.IssuerDid == "" {
-		return result, errors.New("walt.id onboard: the answer holds no issuerDid")
+	path := filepath.Join(opts.Dir, IssuerFile)
+	if did, key, ok := readIssuerFile(path); ok {
+		if _, ierr := adapter.ImportIssuerIdentity(ctx, connect.NewRequest(&backendv1.ImportIssuerIdentityRequest{
+			Subject: &backendv1.ImportIssuerIdentityRequest_Did{Did: did}, KeyReference: key,
+		})); ierr != nil {
+			return result, fmt.Errorf("the issuer adapter import: %w", ierr)
+		}
+		result.step(opts.Out, "walt.id issuer imported: %s. The adapter keeps the key now, so delete %s", did, path)
+		return result, nil
 	}
-	if err := os.WriteFile(path, answer, 0o600); err != nil {
-		return result, fmt.Errorf("write %s: %w", path, err)
+	made, err := adapter.ProvisionIssuerIdentity(ctx, connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{
+		Method: "did:web", KeyType: "secp256r1", Domain: domain,
+	}))
+	if err != nil {
+		return result, fmt.Errorf("the issuer adapter provision: %w", err)
 	}
-	result.step(opts.Out, "walt.id issuer created: %s", parsed.IssuerDid)
+	result.step(opts.Out, "walt.id issuer created: %s", strings.Join(made.Msg.GetIdentity().GetIdentifiers(), ", "))
 	return result, nil
 }
 
-// readIssuerDid reads the DID out of an earlier onboarding answer.
-func readIssuerDid(path string) (string, bool) {
+// readIssuerFile reads the DID and the key object out of the answer an
+// older run wrote. A missing file, or one with no DID or no key, gives
+// nothing.
+func readIssuerFile(path string) (string, string, bool) {
 	data, err := os.ReadFile(path) // #nosec G304 -- the path comes from the pair
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			return "", false
-		}
-		return "", false
+		return "", "", false
 	}
 	var parsed struct {
-		IssuerDid string `json:"issuerDid"`
+		IssuerDid string          `json:"issuerDid"`
+		IssuerKey json.RawMessage `json:"issuerKey"`
 	}
-	if err := json.Unmarshal(data, &parsed); err != nil || parsed.IssuerDid == "" {
-		return "", false
+	if err := json.Unmarshal(data, &parsed); err != nil || parsed.IssuerDid == "" || len(parsed.IssuerKey) == 0 || string(parsed.IssuerKey) == "{}" {
+		return "", "", false
 	}
-	return parsed.IssuerDid, true
+	return parsed.IssuerDid, string(parsed.IssuerKey), true
 }
 
 // BootstrapInji imports the generated Keycloak realm that Inji and

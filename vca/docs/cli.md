@@ -367,13 +367,23 @@ A terminal run with no DPG name and no `--role` asks for both.
 
 | DPG | What the command does |
 |---|---|
-| `waltid` | Provisions a `did:web` issuer and its key. Saves `waltid-issuer.json`. |
+| `waltid` | Asks the walt.id adapter of the issuer pair for its identity. The adapter provisions a `did:web` of the host and a key, and keeps the key. |
 | `inji` | Creates or updates the realm of the role in Keycloak. |
 | `credebl` | Signs in and creates the organisation of the deployment. |
 
 Each run checks first, so a second run changes nothing.
 The command reads the `.env` file of the pair.
-Four more variables steer the run:
+
+The `waltid` run calls `GetIssuerIdentity` and then
+`ProvisionIssuerIdentity` of the adapter (ADR-046). It reaches the
+adapter at `VCA_PUBLIC_URL` of the pair, where the reverse proxy routes
+the adapter services. The CLI never holds the issuer key (ADR-001
+decision 3). The identity page of the issuer shows the identity at
+once. An older run left `waltid-issuer.json` beside the `.env` file.
+A new run imports that file into the adapter and says the file can go.
+A pair of another role needs no issuer identity.
+
+Five more variables steer the run:
 
 | Variable | What it holds |
 |---|---|
@@ -381,8 +391,9 @@ Four more variables steer the run:
 | `VCA_BOOTSTRAP_ADMIN_USER` | The DPG administrator name. |
 | `VCA_BOOTSTRAP_ADMIN_PASSWORD` | The DPG administrator password. |
 | `VCA_BOOTSTRAP_ORG` | The CREDEBL organisation name. |
+| `VCA_BOOTSTRAP_ADAPTER_URL` | The walt.id adapter address for this run. It beats `VCA_PUBLIC_URL`. |
 
-No service reads these four variables, so they are not in the `Config`
+No service reads these five variables, so they are not in the `Config`
 message.
 
 ## dpg realm

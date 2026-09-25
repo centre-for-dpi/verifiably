@@ -76,8 +76,9 @@ The community release takes the key in each issuance request. So the
 adapter keeps the identity in the file that
 `VCA_WALTID_IDENTITY_FILE` names, with mode 0600, and reads it at
 start (ADR-046 decision 4). Compose and Helm put the file in the data
-volume of the adapter. The file has the shape of the onboarding answer,
-so the file of `vca dpg bootstrap waltid` works too. A key of an
+volume of the adapter. The file has the shape of the onboarding answer.
+`vca dpg bootstrap waltid` calls `ProvisionIssuerIdentity`, so the key
+goes from the stack into this file and never into the deploy directory. A key of an
 external key store keeps the private key out of the adapter.
 
 An import checks that a jwk key belongs to a `did:key` or a `did:jwk`.
