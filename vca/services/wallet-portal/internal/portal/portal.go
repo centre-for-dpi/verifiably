@@ -26,8 +26,11 @@
 //	POST /accept          accept a pending offer
 //	POST /reject          decline a pending offer, when the stack can
 //	POST /delete     remove one credential
-//	GET  /present    the consent screen (decision 5)
-//	POST /present    send the presentation
+//	GET  /present          the intake and the request card (spec HO4, decision 5)
+//	POST /present          share the selected claims
+//	POST /present/read     open a pasted request link
+//	POST /present/upload   open an uploaded request file
+//	POST /present/decline  refuse the request
 //	GET  /wallet.js  the browser script (decision 4)
 //
 // Every POST carries a synchronizer token. Every page passes the
@@ -37,7 +40,6 @@ package portal
 import (
 	"context"
 	"errors"
-	"fmt"
 	"html/template"
 	"net/http"
 	"sort"
@@ -52,7 +54,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
-	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/static"
@@ -167,8 +168,11 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/accept", p.handle(p.accept))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/reject", p.handle(p.reject))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/delete", p.handle(p.remove))
-	mux.HandleFunc("GET "+p.opts.Prefix+"/present", p.handle(p.consent))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/present", p.handle(p.presentPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present", p.handle(p.submit))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/present/read", p.handle(p.presentRead))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/present/upload", p.handle(p.presentUpload))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/present/decline", p.handle(p.decline))
 }
 
 // handle answers with one sentence when a page fails.
@@ -301,135 +305,6 @@ func (p *Portal) remove(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// consent renders the consent screen of a presentation request
-// (decision 5).
-func (p *Portal) consent(w http.ResponseWriter, r *http.Request) error {
-	b := p.pen(r)
-	resp, err := p.opts.Service.PresentStart(r.Context(),
-		connect.NewRequest(&walletportalv1.PresentStartRequest{
-			PresentationId: r.URL.Query().Get("id"),
-		}))
-	if err != nil {
-		return p.problem(w, r, "A request for your credential",
-			"The wallet could not read the request", message(err))
-	}
-	msg := resp.Msg
-	parts := []template.HTML{b.part("badge", components.Badge{
-		Text:   "Who asks: " + verifierName(msg) + ", " + cards.TrustWord(msg.GetTrust()),
-		Status: cards.TrustStatus(msg.GetTrust()),
-	})}
-	if msg.GetPurpose() != "" {
-		parts = append(parts, b.raw("<p>Why: "+template.HTMLEscapeString(msg.GetPurpose())+"</p>"))
-	}
-	var fields []template.HTML
-	for i, entry := range msg.GetRequested() {
-		fields = append(fields, p.requested(b, i, entry))
-	}
-	parts = append(parts, b.form(p.opts.Prefix+"/present",
-		map[string]string{"id": msg.GetPresentationId()},
-		components.Button{Text: "Send these fields", Type: "submit", Variant: "primary"}, fields...))
-	card := b.part("card", components.Card{
-		ID: "consent", Title: "A verifier asks for your credential",
-		Text: present.Summary(msg.GetRequested()) + " Read every field before you agree.",
-		Body: components.Join(parts...),
-	})
-	return p.render(w, r, b, components.Page{
-		Title:       "A request for your credential",
-		Description: "Read every field the verifier asks for, then agree or leave.",
-		Content:     card,
-	})
-}
-
-// requested renders one requested credential with its claim list.
-func (p *Portal) requested(b *pen, index int,
-	entry *walletportalv1.PresentStartResponse_RequestedCredential,
-) template.HTML {
-	id := fmt.Sprintf("query-%d", index)
-	options := make([]components.Option, 0, len(entry.GetMatches()))
-	for i, match := range entry.GetMatches() {
-		options = append(options, components.Option{
-			Value: match.GetId(), Text: match.GetTitle(), Selected: i == 0,
-		})
-	}
-	choose := b.part("field", components.Field{
-		ID: id, Label: "The credential to show for " + word(entry.GetType()), Type: "select",
-		Name: "card." + entry.GetQueryId(), Options: options,
-		Hint: "Choose the credential you want to show.",
-	})
-	table := components.Table{
-		ID: id + "-claims", Caption: "The fields the verifier reads",
-		Columns: []string{"Field", "Value the verifier reads"},
-		Empty:   "The verifier asks for no field",
-	}
-	paths := make([]string, 0, len(entry.GetClaims()))
-	for _, claim := range entry.GetClaims() {
-		table.Rows = append(table.Rows, components.Row{
-			{Text: claim.GetPath()}, {Text: valueText(claim.GetValue())},
-		})
-		paths = append(paths, claim.GetPath())
-	}
-	return components.Join(choose, b.part("table", table),
-		b.hidden("claims."+entry.GetQueryId(), strings.Join(paths, ",")))
-}
-
-// submit sends the presentation the citizen agreed to.
-func (p *Portal) submit(w http.ResponseWriter, r *http.Request) error {
-	if _, ok := p.writer(w, r); !ok {
-		return nil
-	}
-	req := &walletportalv1.PresentConfirmRequest{
-		PresentationId: r.PostFormValue("id"),
-		SelectedCards:  map[string]string{},
-		Disclosed:      map[string]*walletportalv1.PresentConfirmRequest_ClaimPaths{},
-	}
-	for name, values := range r.PostForm {
-		if len(values) == 0 {
-			continue
-		}
-		switch {
-		case strings.HasPrefix(name, "card."):
-			req.SelectedCards[strings.TrimPrefix(name, "card.")] = values[0]
-		case strings.HasPrefix(name, "claims."):
-			req.Disclosed[strings.TrimPrefix(name, "claims.")] =
-				&walletportalv1.PresentConfirmRequest_ClaimPaths{Paths: splitList(values[0])}
-		}
-	}
-	resp, err := p.opts.Service.PresentConfirm(r.Context(), connect.NewRequest(req))
-	if err != nil {
-		return p.problem(w, r, "A request for your credential",
-			"The wallet did not send the credential", message(err))
-	}
-	if uri := resp.Msg.GetRedirectUri(); uri != "" && resp.Msg.GetAccepted() {
-		http.Redirect(w, r, uri, http.StatusSeeOther)
-		return nil
-	}
-	return p.outcome(w, r, resp.Msg)
-}
-
-// outcome renders the result of a presentation.
-func (p *Portal) outcome(w http.ResponseWriter, r *http.Request,
-	msg *walletportalv1.PresentConfirmResponse,
-) error {
-	b := p.pen(r)
-	status := "bad"
-	if msg.GetAccepted() {
-		status = "ok"
-	}
-	badge := b.part("badge", components.Badge{Text: yesNoSent(msg.GetAccepted()), Status: status})
-	back := b.part("button", components.Button{
-		Text: "Back to my credentials", Href: p.opts.Prefix + "/",
-	})
-	card := b.part("card", components.Card{
-		ID: "outcome", Title: "The result of your answer", Text: msg.GetMessage(),
-		Body: components.Join(badge, back),
-	})
-	return p.render(w, r, b, components.Page{
-		Title:       "The result of your answer",
-		Description: "What the verifier said about your credential.",
-		Content:     card,
-	})
-}
-
 // problem renders one page that names a problem and the next step.
 func (p *Portal) problem(w http.ResponseWriter, r *http.Request, name, heading, next string) error {
 	b := p.pen(r)
@@ -513,14 +388,6 @@ func verifierName(msg *walletportalv1.PresentStartResponse) string {
 	return "an unnamed verifier"
 }
 
-// word returns a credential type name for a label.
-func word(credentialType string) string {
-	if credentialType == "" {
-		return "this request"
-	}
-	return credentialType
-}
-
 // valueText returns the value of a claim, or a sentence when the wallet
 // holds no value.
 func valueText(value string) string {
@@ -528,23 +395,4 @@ func valueText(value string) string {
 		return "no value in your wallet"
 	}
 	return value
-}
-
-// yesNoSent returns the plain outcome of a presentation.
-func yesNoSent(accepted bool) string {
-	if accepted {
-		return "sent"
-	}
-	return "not sent"
-}
-
-// splitList splits a comma separated list and drops empty items.
-func splitList(raw string) []string {
-	var out []string
-	for _, item := range strings.Split(raw, ",") {
-		if item = strings.TrimSpace(item); item != "" {
-			out = append(out, item)
-		}
-	}
-	return out
 }

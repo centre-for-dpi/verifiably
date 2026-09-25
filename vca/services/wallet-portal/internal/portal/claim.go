@@ -339,7 +339,7 @@ func (p *Portal) scanRead(w http.ResponseWriter, r *http.Request) error {
 		_, werr := w.Write([]byte(card))
 		return werr
 	case walletportalv1.Detected_KIND_PRESENTATION_REQUEST:
-		next = p.opts.Prefix + "/present?id=" + url.QueryEscape(found.GetPresentationId())
+		next = p.opts.Prefix + "/present?id=" + url.QueryEscape(found.GetPresentationId()) + "#request"
 	case walletportalv1.Detected_KIND_CREDENTIAL:
 		next = p.opts.Prefix + "/"
 	default:

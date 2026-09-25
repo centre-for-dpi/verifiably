@@ -43,6 +43,13 @@ service WalletPortalService {
   rpc PresentStart(PresentStartRequest) returns (PresentStartResponse);
   // PresentConfirm sends the presentation after the citizen consented.
   rpc PresentConfirm(PresentConfirmRequest) returns (PresentConfirmResponse);
+  // PresentDecline refuses a presentation request. The wallet tells the
+  // verifier and keeps a record of the refusal.
+  rpc PresentDecline(PresentDeclineRequest) returns (PresentDeclineResponse);
+  // ListPresentations returns the presentation records of the wallet,
+  // newest first. A record names the verifier, the shared claim names,
+  // and the result, and never a claim value.
+  rpc ListPresentations(ListPresentationsRequest) returns (ListPresentationsResponse);
 }
 
 // Card is one credential as the wallet shows it (ADR-021 decision 6).
@@ -375,4 +382,62 @@ message PresentConfirmResponse {
   string redirect_uri = 2;
   // The plain language outcome text.
   string message = 3;
+  // The record the wallet keeps of this presentation.
+  PresentationRecord record = 4;
+}
+
+// PresentationRecord is what the wallet keeps of one answer to a
+// verifier. It holds claim names only, never a claim value.
+message PresentationRecord {
+  // The record id.
+  string id = 1;
+  // The time of the answer.
+  google.protobuf.Timestamp at = 2;
+  // The verifier identifier, the client_id of the request.
+  string verifier = 3;
+  // The verifier display name from the trust list, when known.
+  string verifier_name = 4;
+  // The names of the claims the wallet shared. Empty after a refusal.
+  repeated string claims = 5;
+  // The result of the answer.
+  Result result = 6;
+
+  // Result names the outcome of one answer.
+  enum Result {
+    RESULT_UNSPECIFIED = 0;
+    // The verifier took the presentation.
+    RESULT_ACCEPTED = 1;
+    // The verifier refused the presentation.
+    RESULT_REJECTED = 2;
+    // The citizen refused the request.
+    RESULT_DECLINED = 3;
+    // The wallet could not send the presentation.
+    RESULT_FAILED = 4;
+  }
+}
+
+// PresentDeclineRequest names the request the citizen refuses.
+message PresentDeclineRequest {
+  // The presentation id from Scan, Paste, or PresentStart.
+  string presentation_id = 1;
+}
+
+// PresentDeclineResponse returns the record of the refusal.
+message PresentDeclineResponse {
+  // The record the wallet keeps.
+  PresentationRecord record = 1;
+}
+
+// ListPresentationsRequest asks for the presentation records.
+message ListPresentationsRequest {
+  // The page to read. The page size caps the number of records.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListPresentationsResponse returns the records, newest first.
+message ListPresentationsResponse {
+  // The records.
+  repeated PresentationRecord records = 1;
+  // The page result.
+  vca.common.v1.PageResult page = 2;
 }

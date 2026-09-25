@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -108,6 +109,8 @@ type Options struct {
 type Service struct {
 	walletportalv1connect.UnimplementedWalletPortalServiceHandler
 	opts Options
+	// seq orders the presentation records of one moment.
+	seq atomic.Int64
 }
 
 // New builds the service.
@@ -354,6 +357,11 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	id := s.opts.NewID()
+	// A request object with no link, from a request file or a paste,
+	// goes to the consent screen as it is.
+	if object, ok := present.RequestObjectText(text); ok {
+		got = detect.Result{Kind: detect.Request, RequestURI: object}
+	}
 	switch got.Kind {
 	case detect.Offer:
 		rec := record{ID: id, URI: got.Offer.URI, Issuer: got.Offer.CredentialIssuer,
@@ -600,7 +608,7 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	_, parsed, err := s.request(ctx, citizen, req.Msg.GetPresentationId())
+	id, parsed, err := s.request(ctx, citizen, req.Msg.GetPresentationId())
 	if err != nil {
 		return nil, err
 	}
@@ -609,10 +617,31 @@ func (s *Service) PresentConfirm(ctx context.Context,
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("choose one credential first"))
 	}
+	var answer *walletportalv1.PresentConfirmResponse
 	if s.opts.Holder != nil {
-		return s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
+		answer, err = s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
+	} else {
+		answer, err = s.presentDirect(ctx, citizen, parsed, chosen, disclosed)
 	}
-	return s.presentDirect(ctx, citizen, parsed, chosen, disclosed)
+	result := walletportalv1.PresentationRecord_RESULT_FAILED
+	switch {
+	case err == nil && answer.GetAccepted():
+		result = walletportalv1.PresentationRecord_RESULT_ACCEPTED
+	case err == nil:
+		result = walletportalv1.PresentationRecord_RESULT_REJECTED
+	}
+	names := disclosed
+	if len(names) == 0 {
+		names = requestedNames(parsed)
+	}
+	record := s.remember(ctx, citizen, parsed, names, result)
+	ignored := s.drop(ctx, KindPresentation, citizen.WalletKey(), id)
+	_ = ignored
+	if err != nil {
+		return nil, err
+	}
+	answer.Record = record
+	return connect.NewResponse(answer), nil
 }
 
 // selections returns the chosen card ids and the disclosed claim paths
@@ -635,7 +664,7 @@ func selections(msg *walletportalv1.PresentConfirmRequest) ([]string, []string) 
 // presentWithBackend asks the holder backend to answer the request.
 func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citizen,
 	parsed present.Request, chosen, disclosed []string,
-) (*connect.Response[walletportalv1.PresentConfirmResponse], error) {
+) (*walletportalv1.PresentConfirmResponse, error) {
 	uri := parsed.RequestURI
 	if uri == "" {
 		uri = parsed.ResponseURI
@@ -652,18 +681,18 @@ func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citize
 	if resp.Msg.GetAccepted() {
 		message = "You sent the credential. The verifier has your answer."
 	}
-	return connect.NewResponse(&walletportalv1.PresentConfirmResponse{
+	return &walletportalv1.PresentConfirmResponse{
 		Accepted:    resp.Msg.GetAccepted(),
 		RedirectUri: resp.Msg.GetRedirectUri(),
 		Message:     message,
-	}), nil
+	}, nil
 }
 
 // presentDirect builds the vp_token from a credential the citizen
 // pasted and posts it with direct_post (ADR-021 decision 5).
 func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
 	parsed present.Request, chosen, disclosed []string,
-) (*connect.Response[walletportalv1.PresentConfirmResponse], error) {
+) (*walletportalv1.PresentConfirmResponse, error) {
 	rec, err := s.get(ctx, KindHeld, citizen.WalletKey(), chosen[0])
 	if err != nil {
 		return nil, recordError(err)
@@ -679,9 +708,9 @@ func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New(result.Message))
 	}
-	return connect.NewResponse(&walletportalv1.PresentConfirmResponse{
+	return &walletportalv1.PresentConfirmResponse{
 		Accepted: result.Accepted, RedirectUri: result.RedirectURI, Message: result.Message,
-	}), nil
+	}, nil
 }
 
 // recordError maps a record problem to a Connect error.

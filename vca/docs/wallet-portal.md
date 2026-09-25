@@ -200,21 +200,34 @@ with no camera still loads a credential that way.
 
 ## Presentation
 
-The presentation follows OpenID for Verifiable Presentations 1.0.
+The presentation follows OpenID for Verifiable Presentations 1.0. The
+present page follows board Holder-Present and spec HO4. A request comes
+in one of three ways:
 
-1. The wallet reads the `openid4vp` URI. A URI with a `request_uri`
-   names the address of the request object.
-2. The host of that address must be on the allowlist in
+1. The camera reads the QR code of the verifier.
+2. The holder pastes the request link.
+3. The holder uploads a request file. The file holds a request link, or
+   a request object as JSON or as a signed request.
+
+The wallet then reads the request:
+
+1. A link with a `request_uri` names the address of the request object.
+   The host of that address must be on the allowlist in
    `REQUEST_HOSTS`. The allowlist stops a request URI that points at a
    private address.
-3. The wallet reads the request object. The object is a JSON document or
-   a signed request object. The wallet reads a DCQL query, or a
+2. The wallet reads the request object. It reads a DCQL query, or a
    Presentation Exchange definition, which it maps to the same shape.
-4. The consent screen lists every requested claim with the value the
-   wallet would send. The screen names the verifier and its trust
-   status.
-5. After the citizen agrees, the wallet sends the `vp_token` to the
-   response address with `direct_post`.
+   An optional field of a definition becomes a claim that a smaller
+   claim set leaves out.
+3. The request card names the verifier and its identifier. A badge says
+   whether the trust list names the verifier. The card shows the
+   purpose and the matched credential.
+4. The list "They ask for" shows each claim with the value the wallet
+   would send. The page ticks and locks each required claim. An optional
+   claim stays off until the holder turns it on.
+5. Share selected sends the `vp_token` to the response address with
+   `direct_post`. Decline sends the OID4VP error `access_denied` to the
+   same address.
 
 With a DPG wallet the `Present` RPC of the holder backend does the
 submit. Without one the service builds the SD-JWT presentation itself.
@@ -223,6 +236,12 @@ reads nothing more.
 
 The response mode is `direct_post` only. The wallet refuses another
 response mode.
+
+Each answer leaves a presentation record: the time, the verifier, the
+names of the shared claims, and the result. The result takes one of
+four words: Accepted, Refused, Declined, or Not sent. A record holds no claim value. The
+wallet keeps the newest 100 records of each wallet. The home page lists
+the newest five under "Recent presentations".
 
 ## Cards
 
@@ -248,5 +267,6 @@ or not checked.
 - It never holds a holder private key.
 - It never reads a ciphertext blob of browser storage.
 - It never sends the citizen subject to the eligibility hook.
+- It never keeps a claim value in a presentation record.
 - It never fetches a request object from a host that is not on the
   allowlist.

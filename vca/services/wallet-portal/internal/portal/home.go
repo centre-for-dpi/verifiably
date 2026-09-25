@@ -31,6 +31,7 @@ func (p *Portal) mine(w http.ResponseWriter, r *http.Request) error {
 	} else {
 		parts = append(parts, p.cardList(b, resp.Msg.GetCards()))
 	}
+	parts = append(parts, p.recent(b, r))
 	if p.opts.Service.BrowserStorage() {
 		parts = append(parts, p.browserCard(b))
 	}

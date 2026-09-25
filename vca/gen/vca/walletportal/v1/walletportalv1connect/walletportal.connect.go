@@ -75,6 +75,12 @@ const (
 	// WalletPortalServicePresentConfirmProcedure is the fully-qualified name of the
 	// WalletPortalService's PresentConfirm RPC.
 	WalletPortalServicePresentConfirmProcedure = "/vca.walletportal.v1.WalletPortalService/PresentConfirm"
+	// WalletPortalServicePresentDeclineProcedure is the fully-qualified name of the
+	// WalletPortalService's PresentDecline RPC.
+	WalletPortalServicePresentDeclineProcedure = "/vca.walletportal.v1.WalletPortalService/PresentDecline"
+	// WalletPortalServiceListPresentationsProcedure is the fully-qualified name of the
+	// WalletPortalService's ListPresentations RPC.
+	WalletPortalServiceListPresentationsProcedure = "/vca.walletportal.v1.WalletPortalService/ListPresentations"
 )
 
 // WalletPortalServiceClient is a client for the vca.walletportal.v1.WalletPortalService service.
@@ -108,6 +114,13 @@ type WalletPortalServiceClient interface {
 	PresentStart(context.Context, *connect.Request[v1.PresentStartRequest]) (*connect.Response[v1.PresentStartResponse], error)
 	// PresentConfirm sends the presentation after the citizen consented.
 	PresentConfirm(context.Context, *connect.Request[v1.PresentConfirmRequest]) (*connect.Response[v1.PresentConfirmResponse], error)
+	// PresentDecline refuses a presentation request. The wallet tells the
+	// verifier and keeps a record of the refusal.
+	PresentDecline(context.Context, *connect.Request[v1.PresentDeclineRequest]) (*connect.Response[v1.PresentDeclineResponse], error)
+	// ListPresentations returns the presentation records of the wallet,
+	// newest first. A record names the verifier, the shared claim names,
+	// and the result, and never a claim value.
+	ListPresentations(context.Context, *connect.Request[v1.ListPresentationsRequest]) (*connect.Response[v1.ListPresentationsResponse], error)
 }
 
 // NewWalletPortalServiceClient constructs a client for the vca.walletportal.v1.WalletPortalService
@@ -193,23 +206,37 @@ func NewWalletPortalServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(walletPortalServiceMethods.ByName("PresentConfirm")),
 			connect.WithClientOptions(opts...),
 		),
+		presentDecline: connect.NewClient[v1.PresentDeclineRequest, v1.PresentDeclineResponse](
+			httpClient,
+			baseURL+WalletPortalServicePresentDeclineProcedure,
+			connect.WithSchema(walletPortalServiceMethods.ByName("PresentDecline")),
+			connect.WithClientOptions(opts...),
+		),
+		listPresentations: connect.NewClient[v1.ListPresentationsRequest, v1.ListPresentationsResponse](
+			httpClient,
+			baseURL+WalletPortalServiceListPresentationsProcedure,
+			connect.WithSchema(walletPortalServiceMethods.ByName("ListPresentations")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // walletPortalServiceClient implements WalletPortalServiceClient.
 type walletPortalServiceClient struct {
-	listDiscoverable *connect.Client[v1.ListDiscoverableRequest, v1.ListDiscoverableResponse]
-	listClaimable    *connect.Client[v1.ListClaimableRequest, v1.ListClaimableResponse]
-	claim            *connect.Client[v1.ClaimRequest, v1.ClaimResponse]
-	claimComplete    *connect.Client[v1.ClaimCompleteRequest, v1.ClaimCompleteResponse]
-	scan             *connect.Client[v1.ScanRequest, v1.ScanResponse]
-	paste            *connect.Client[v1.PasteRequest, v1.PasteResponse]
-	accept           *connect.Client[v1.AcceptRequest, v1.AcceptResponse]
-	reject           *connect.Client[v1.RejectRequest, v1.RejectResponse]
-	delete           *connect.Client[v1.DeleteRequest, v1.DeleteResponse]
-	listMine         *connect.Client[v1.ListMineRequest, v1.ListMineResponse]
-	presentStart     *connect.Client[v1.PresentStartRequest, v1.PresentStartResponse]
-	presentConfirm   *connect.Client[v1.PresentConfirmRequest, v1.PresentConfirmResponse]
+	listDiscoverable  *connect.Client[v1.ListDiscoverableRequest, v1.ListDiscoverableResponse]
+	listClaimable     *connect.Client[v1.ListClaimableRequest, v1.ListClaimableResponse]
+	claim             *connect.Client[v1.ClaimRequest, v1.ClaimResponse]
+	claimComplete     *connect.Client[v1.ClaimCompleteRequest, v1.ClaimCompleteResponse]
+	scan              *connect.Client[v1.ScanRequest, v1.ScanResponse]
+	paste             *connect.Client[v1.PasteRequest, v1.PasteResponse]
+	accept            *connect.Client[v1.AcceptRequest, v1.AcceptResponse]
+	reject            *connect.Client[v1.RejectRequest, v1.RejectResponse]
+	delete            *connect.Client[v1.DeleteRequest, v1.DeleteResponse]
+	listMine          *connect.Client[v1.ListMineRequest, v1.ListMineResponse]
+	presentStart      *connect.Client[v1.PresentStartRequest, v1.PresentStartResponse]
+	presentConfirm    *connect.Client[v1.PresentConfirmRequest, v1.PresentConfirmResponse]
+	presentDecline    *connect.Client[v1.PresentDeclineRequest, v1.PresentDeclineResponse]
+	listPresentations *connect.Client[v1.ListPresentationsRequest, v1.ListPresentationsResponse]
 }
 
 // ListDiscoverable calls vca.walletportal.v1.WalletPortalService.ListDiscoverable.
@@ -272,6 +299,16 @@ func (c *walletPortalServiceClient) PresentConfirm(ctx context.Context, req *con
 	return c.presentConfirm.CallUnary(ctx, req)
 }
 
+// PresentDecline calls vca.walletportal.v1.WalletPortalService.PresentDecline.
+func (c *walletPortalServiceClient) PresentDecline(ctx context.Context, req *connect.Request[v1.PresentDeclineRequest]) (*connect.Response[v1.PresentDeclineResponse], error) {
+	return c.presentDecline.CallUnary(ctx, req)
+}
+
+// ListPresentations calls vca.walletportal.v1.WalletPortalService.ListPresentations.
+func (c *walletPortalServiceClient) ListPresentations(ctx context.Context, req *connect.Request[v1.ListPresentationsRequest]) (*connect.Response[v1.ListPresentationsResponse], error) {
+	return c.listPresentations.CallUnary(ctx, req)
+}
+
 // WalletPortalServiceHandler is an implementation of the vca.walletportal.v1.WalletPortalService
 // service.
 type WalletPortalServiceHandler interface {
@@ -304,6 +341,13 @@ type WalletPortalServiceHandler interface {
 	PresentStart(context.Context, *connect.Request[v1.PresentStartRequest]) (*connect.Response[v1.PresentStartResponse], error)
 	// PresentConfirm sends the presentation after the citizen consented.
 	PresentConfirm(context.Context, *connect.Request[v1.PresentConfirmRequest]) (*connect.Response[v1.PresentConfirmResponse], error)
+	// PresentDecline refuses a presentation request. The wallet tells the
+	// verifier and keeps a record of the refusal.
+	PresentDecline(context.Context, *connect.Request[v1.PresentDeclineRequest]) (*connect.Response[v1.PresentDeclineResponse], error)
+	// ListPresentations returns the presentation records of the wallet,
+	// newest first. A record names the verifier, the shared claim names,
+	// and the result, and never a claim value.
+	ListPresentations(context.Context, *connect.Request[v1.ListPresentationsRequest]) (*connect.Response[v1.ListPresentationsResponse], error)
 }
 
 // NewWalletPortalServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -385,6 +429,18 @@ func NewWalletPortalServiceHandler(svc WalletPortalServiceHandler, opts ...conne
 		connect.WithSchema(walletPortalServiceMethods.ByName("PresentConfirm")),
 		connect.WithHandlerOptions(opts...),
 	)
+	walletPortalServicePresentDeclineHandler := connect.NewUnaryHandler(
+		WalletPortalServicePresentDeclineProcedure,
+		svc.PresentDecline,
+		connect.WithSchema(walletPortalServiceMethods.ByName("PresentDecline")),
+		connect.WithHandlerOptions(opts...),
+	)
+	walletPortalServiceListPresentationsHandler := connect.NewUnaryHandler(
+		WalletPortalServiceListPresentationsProcedure,
+		svc.ListPresentations,
+		connect.WithSchema(walletPortalServiceMethods.ByName("ListPresentations")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.walletportal.v1.WalletPortalService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WalletPortalServiceListDiscoverableProcedure:
@@ -411,6 +467,10 @@ func NewWalletPortalServiceHandler(svc WalletPortalServiceHandler, opts ...conne
 			walletPortalServicePresentStartHandler.ServeHTTP(w, r)
 		case WalletPortalServicePresentConfirmProcedure:
 			walletPortalServicePresentConfirmHandler.ServeHTTP(w, r)
+		case WalletPortalServicePresentDeclineProcedure:
+			walletPortalServicePresentDeclineHandler.ServeHTTP(w, r)
+		case WalletPortalServiceListPresentationsProcedure:
+			walletPortalServiceListPresentationsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -466,4 +526,12 @@ func (UnimplementedWalletPortalServiceHandler) PresentStart(context.Context, *co
 
 func (UnimplementedWalletPortalServiceHandler) PresentConfirm(context.Context, *connect.Request[v1.PresentConfirmRequest]) (*connect.Response[v1.PresentConfirmResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.PresentConfirm is not implemented"))
+}
+
+func (UnimplementedWalletPortalServiceHandler) PresentDecline(context.Context, *connect.Request[v1.PresentDeclineRequest]) (*connect.Response[v1.PresentDeclineResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.PresentDecline is not implemented"))
+}
+
+func (UnimplementedWalletPortalServiceHandler) ListPresentations(context.Context, *connect.Request[v1.ListPresentationsRequest]) (*connect.Response[v1.ListPresentationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.ListPresentations is not implemented"))
 }

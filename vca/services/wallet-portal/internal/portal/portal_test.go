@@ -522,8 +522,8 @@ func TestConsentAndSubmit(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"A verifier asks for your credential", "Who asks: Agency A, trusted",
-		"given_name", "Ada", "no value in your wallet", "Send these fields",
+	for _, want := range []string{"Request from Agency A", "Verifier identity checked",
+		"given_name", "Ada", "no value in your wallet", "Share selected",
 		"The verifier asks for one credential and 2 fields."} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page misses %q", want)
@@ -531,9 +531,9 @@ func TestConsentAndSubmit(t *testing.T) {
 	}
 	hidden := formValues(t, body)
 	form := url.Values{
-		"id":             {hidden.Get("id")},
-		"card.licence":   {"c1"},
-		"claims.licence": {hidden.Get("claims.licence")},
+		"id":            {hidden.Get("id")},
+		"card.licence":  {"c1"},
+		"claim.licence": {hidden.Get("claim.licence")},
 	}
 	rec = h.post(t, "/wallet/present", form)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "sent") {
@@ -574,7 +574,7 @@ func TestConsentShowsThePurpose(t *testing.T) {
 		o.Fetch = func(context.Context, string) ([]byte, error) { return raw, nil }
 	})
 	rec := h.get(t, "/wallet/present?id="+url.QueryEscape(requestURI))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Why: Prove your age") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Purpose: Prove your age") {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 }
@@ -584,9 +584,9 @@ func TestSubmitRefused(t *testing.T) {
 		o.Holder = &fakeHolder{credential: credential(t), accepted: false}
 	})
 	rec := h.post(t, "/wallet/present", url.Values{
-		"id": {requestURI}, "card.licence": {"c1"}, "claims.licence": {"given_name"},
+		"id": {requestURI}, "card.licence": {"c1"}, "claim.licence": {"given_name"},
 	})
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "not sent") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Refused") {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), "did not accept") {
@@ -604,7 +604,7 @@ func TestSubmitRedirects(t *testing.T) {
 	id := between(mine.Body.String(), `name="id" value="`, `"`)
 	_ = id
 	posted := h.post(t, "/wallet/present", url.Values{
-		"id": {requestURI}, "card.licence": {"missing"}, "claims.licence": {"given_name"},
+		"id": {requestURI}, "card.licence": {"missing"}, "claim.licence": {"given_name"},
 	})
 	if posted.Code != http.StatusOK || !strings.Contains(posted.Body.String(), "did not send") {
 		t.Fatalf("status = %d body = %s", posted.Code, posted.Body.String())
@@ -626,11 +626,10 @@ func TestSubmitWithRedirectURI(t *testing.T) {
 	}
 	consent := h.get(t, "/wallet/present?id="+url.QueryEscape(requestURI))
 	hidden := formValues(t, consent.Body.String())
-	cardID := between(consent.Body.String(), `<option value="`, `"`)
 	sent := h.post(t, "/wallet/present", url.Values{
-		"id":             {hidden.Get("id")},
-		"card.licence":   {cardID},
-		"claims.licence": {hidden.Get("claims.licence")},
+		"id":            {hidden.Get("id")},
+		"card.licence":  {hidden.Get("card.licence")},
+		"claim.licence": {hidden.Get("claim.licence")},
 	})
 	if sent.Code != http.StatusSeeOther ||
 		sent.Header().Get("Location") != "https://verifier.example/done" {
@@ -644,7 +643,8 @@ func TestSubmitWithRedirectURI(t *testing.T) {
 func TestPostsNeedTheToken(t *testing.T) {
 	h := setupShell(t, nil, holderDeployment(backendv1.Feature_FEATURE_WALLET_REJECT_OFFER))
 	for _, path := range []string{"/wallet/claim", "/wallet/scan", "/wallet/accept",
-		"/wallet/reject", "/wallet/delete", "/wallet/present", "/wallet/claim/offer", "/wallet/scan/read", "/wallet/signout"} {
+		"/wallet/reject", "/wallet/delete", "/wallet/present", "/wallet/claim/offer", "/wallet/scan/read", "/wallet/signout",
+		"/wallet/present/read", "/wallet/present/decline"} {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("a=b"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
@@ -759,7 +759,7 @@ func TestConsentWithoutAVerifierName(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"an unnamed verifier", "this request", "asks for no field"} {
+	for _, want := range []string{"an unnamed verifier", "Identity not checked", "asks for no single claim"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page misses %q", want)
 		}

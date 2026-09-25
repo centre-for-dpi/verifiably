@@ -71,7 +71,7 @@ The container image is `ghcr.io/centre-for-dpi/vca-wallet-portal`. It listens on
 5. Open `http://localhost:8092/wallet/discover?claim=1`. The claim card shows the ways the issuer allows.
 6. Open `http://localhost:8092/wallet/claim`. Paste a credential offer and its transaction code. The wallet claims it.
 7. Open `http://localhost:8092/wallet/`. Each card shows the trust badge, the state badge, and the fields.
-8. Paste a presentation request on the claim page. The consent screen lists every field before you send it.
+8. Open `http://localhost:8092/wallet/present` and paste a presentation request link. The request card lists every claim before you share it. The home page then lists the answer under Recent presentations.
 9. Run this command to read the catalogue over the API:
 
 ```sh

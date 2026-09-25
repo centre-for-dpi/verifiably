@@ -481,3 +481,74 @@ func TestTrustOf(t *testing.T) {
 		t.Fatal("want no trust after an error")
 	}
 }
+
+// TestOptionalFieldsStayOptional checks that an optional field of a
+// Presentation Exchange definition, and a claim that a DCQL claim set
+// can leave out, reach the consent screen as optional.
+func TestOptionalFieldsStayOptional(t *testing.T) {
+	def := map[string]any{"id": "pd", "input_descriptors": []any{map[string]any{
+		"id": "licence", "format": map[string]any{"dc+sd-jwt": map[string]any{}},
+		"constraints": map[string]any{"fields": []any{
+			map[string]any{"path": []string{"$.birth_date"}},
+			map[string]any{"path": []string{"$.given_name"}, "optional": true},
+		}},
+	}}}
+	req, err := present.ParseObject(object(map[string]any{"dcql_query": nil, "presentation_definition": def}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	required := func(entries []*walletportalv1.PresentStartResponse_RequestedCredential) map[string]bool {
+		out := map[string]bool{}
+		for _, c := range entries[0].GetClaims() {
+			out[c.GetPath()] = c.GetMandatory()
+		}
+		return out
+	}
+	if got := required(present.Consent(req, nil)); !got["birth_date"] || got["given_name"] {
+		t.Fatalf("definition: %v", got)
+	}
+	query := `{"credentials":[{"id":"licence","format":"dc+sd-jwt","claims":[{"id":"a","path":["birth_date"]},` +
+		`{"id":"b","path":["given_name"]}],"claim_sets":[["a","b"],["a"]]}]}`
+	var q any
+	if qerr := json.Unmarshal([]byte(query), &q); qerr != nil {
+		t.Fatal(qerr)
+	}
+	dq, err := present.ParseObject(object(map[string]any{"dcql_query": q}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := required(present.Consent(dq, nil)); !got["birth_date"] || got["given_name"] {
+		t.Fatalf("claim sets: %v", got)
+	}
+}
+
+// TestRequestObjectText checks that a request file holds a request
+// object as JSON or as a signed request, and that other text does not.
+func TestRequestObjectText(t *testing.T) {
+	key, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims map[string]any
+	if cerr := json.Unmarshal(object(nil), &claims); cerr != nil {
+		t.Fatal(cerr)
+	}
+	signed, err := jose.Sign(key, "k1", "oauth-authz-req+jwt", claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{"json": string(object(nil)), "signed": "  " + signed + "\n"} {
+		got, ok := present.RequestObjectText(text)
+		if !ok || !strings.HasPrefix(got, "{") {
+			t.Fatalf("%s: %q %v", name, got, ok)
+		}
+		if parsed, perr := present.Parse(got); perr != nil || parsed.Nonce != "n-1" {
+			t.Fatalf("%s: parse %v %+v", name, perr, parsed)
+		}
+	}
+	for _, text := range []string{"openid4vp://?request_uri=https://v.example/r", `{"vct":"x"}`, "a.b.c", ""} {
+		if _, ok := present.RequestObjectText(text); ok {
+			t.Fatalf("%q reads as a request object", text)
+		}
+	}
+}

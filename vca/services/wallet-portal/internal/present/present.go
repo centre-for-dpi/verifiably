@@ -23,6 +23,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/dcql"
@@ -271,6 +273,7 @@ func fromDefinition(raw []byte) (dcql.Query, string, string, error) {
 	var query dcql.Query
 	for _, d := range def.InputDescriptors {
 		cq := dcql.CredentialQuery{ID: dcql.CleanID(d.ID), Format: formatOf(d.Format)}
+		var all, required []string
 		for _, f := range d.Constraints.Fields {
 			name := claimName(f.Path)
 			switch name {
@@ -285,8 +288,18 @@ func fromDefinition(raw []byte) (dcql.Query, string, string, error) {
 				if err != nil {
 					continue
 				}
-				cq.Claims = append(cq.Claims, dcql.ClaimQuery{Path: path})
+				id := "c" + strconv.Itoa(len(cq.Claims)+1)
+				cq.Claims = append(cq.Claims, dcql.ClaimQuery{ID: id, Path: path})
+				all = append(all, id)
+				if !f.Optional {
+					required = append(required, id)
+				}
 			}
+		}
+		// An optional field becomes a claim that the smaller claim set
+		// leaves out, so the consent screen offers it off by default.
+		if len(required) < len(all) {
+			cq.ClaimSets = [][]string{all, required}
 		}
 		query.Credentials = append(query.Credentials, cq)
 	}
@@ -350,12 +363,51 @@ func Consent(r Request, held []*walletportalv1.Card) []*walletportalv1.PresentSt
 			entry.Claims = append(entry.Claims, &walletportalv1.PresentStartResponse_RequestedCredential_Claim{
 				Path:      path,
 				Value:     valueOf(first, path),
-				Mandatory: true,
+				Mandatory: mandatory(cq, claim.ID),
 			})
 		}
 		out = append(out, entry)
 	}
 	return out
+}
+
+// mandatory reports whether every claim set of a credential query holds
+// the claim. A query with no claim set needs every claim (OID4VP 1.0
+// section 6.4).
+func mandatory(cq dcql.CredentialQuery, id string) bool {
+	for _, set := range cq.ClaimSets {
+		if !slices.Contains(set, id) {
+			return false
+		}
+	}
+	return true
+}
+
+// RequestObjectText returns a request object as JSON text when text is
+// one: a JSON document or a signed request object that names a nonce, a
+// response address, and a query. Parse reads the JSON text. Any other
+// text gives false.
+func RequestObjectText(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	if text == "" || (!strings.HasPrefix(text, "{") && strings.Contains(text, "://")) {
+		return "", false
+	}
+	req, err := ParseObject([]byte(text))
+	if err != nil || req.Nonce == "" {
+		return "", false
+	}
+	if strings.HasPrefix(text, "{") {
+		return text, true
+	}
+	payload, err := jose.PeekPayload(text)
+	if err != nil {
+		return "", false
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
 }
 
 // Matches returns the cards that answer one credential query.
