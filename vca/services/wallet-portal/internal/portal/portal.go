@@ -277,35 +277,6 @@ func (p *Portal) browserCard(b *pen) template.HTML {
 	})
 }
 
-// discover renders the credentials issuers publish (decision 1).
-func (p *Portal) discover(w http.ResponseWriter, r *http.Request) error {
-	b := p.pen(r)
-	resp, err := p.opts.Service.ListDiscoverable(r.Context(),
-		connect.NewRequest(&walletportalv1.ListDiscoverableRequest{}))
-	if err != nil {
-		return p.problem(w, r, "What issuers offer",
-			"The catalogue is not available", "Try again in a few minutes.")
-	}
-	table := components.Table{
-		ID: "offerings", Caption: "The credentials issuers publish",
-		Columns: []string{"Credential", "Issuer", "Trust"},
-		Empty:   "No issuer publishes a credential now",
-	}
-	for _, o := range resp.Msg.GetOfferings() {
-		badge := b.part("badge", components.Badge{
-			Text: cards.TrustWord(o.GetTrust()), Status: cards.TrustStatus(o.GetTrust()),
-		})
-		table.Rows = append(table.Rows, components.Row{
-			{Text: title(o)}, {Text: issuerName(o)}, {HTML: badge},
-		})
-	}
-	return p.render(w, r, b, components.Page{
-		Title:       "What issuers offer",
-		Description: "The credentials that issuers of this country publish.",
-		Content:     b.part("table", table),
-	})
-}
-
 // claimable renders the credentials the citizen can get (decision 2).
 func (p *Portal) claimable(w http.ResponseWriter, r *http.Request) error {
 	b := p.pen(r)

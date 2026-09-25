@@ -13,12 +13,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -33,6 +35,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/blobs"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/issuers"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/portal"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/ports"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"
@@ -106,9 +109,19 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	holder := holderClient(cfg, deps)
+	snapshot := probe(cfg, deps)
+	crawl, err := issuers.New(issuers.Options{
+		Peers: peerSources(snapshot), Trust: trustClient(cfg, deps), Lookup: trustLookup,
+		Internal: internalFetcher(cfg, deps), Public: publicFetcher(cfg, deps),
+	})
+	if err != nil {
+		return nil, err
+	}
 	svc, err := service.New(service.Options{
 		Holder:    holder,
 		Catalogue: catalogue,
+		Fallback:  ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
+		Methods:   crawl.Methods,
 		Eligible:  eligible,
 		Salt:      cfg.EligibilitySalt,
 		Cards: cards.New(cards.Options{
@@ -134,7 +147,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	pages, err := portal.New(portal.Options{
 		Service: svc, Guard: guard, Prefix: cfg.PortalPrefix,
-		LoginPath: cfg.LoginURL, Now: deps.Now, Kit: kit, Topology: frame(cfg, deps),
+		LoginPath: cfg.LoginURL, Now: deps.Now, Kit: kit, Topology: frame(cfg, deps, snapshot),
 	})
 	if err != nil {
 		return nil, err
@@ -170,11 +183,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 // frame returns the topology of the holder frame: the peers, their
 // probe, the own pair by the key set of wallet-auth, and the logout call
 // of the sign out form (ADR-034, ADR-044 decision 5).
-func frame(cfg config.Config, deps Deps) portal.Topology {
-	snapshot := deps.Snapshot
-	if snapshot == nil && len(cfg.Peers) > 0 {
-		snapshot = (&topology.Prober{Peers: cfg.Peers, Now: deps.Now}).Snapshot
-	}
+func frame(cfg config.Config, deps Deps, snapshot func(context.Context) topology.Snapshot) portal.Topology {
 	secure := false
 	for _, p := range cfg.Peers {
 		if auth := p.Auth(); auth != "" && strings.TrimRight(auth, "/")+"/.well-known/jwks.json" == cfg.AuthJWKSURL {
@@ -193,6 +202,74 @@ func frame(cfg config.Config, deps Deps) portal.Topology {
 			return res.Msg.GetProviderLogoutUrl(), nil
 		},
 	}
+}
+
+// probe returns the snapshot of the peers: the one of the test, a
+// prober when the deployment names peers, or nil.
+func probe(cfg config.Config, deps Deps) func(context.Context) topology.Snapshot {
+	if deps.Snapshot != nil {
+		return deps.Snapshot
+	}
+	if len(cfg.Peers) == 0 {
+		return nil
+	}
+	return (&topology.Prober{Peers: cfg.Peers, Now: deps.Now}).Snapshot
+}
+
+// registryService is the service of an issuer pair that serves the
+// issuer metadata.
+const registryService = "schema-registry"
+
+// peerSources returns the live issuer pairs that serve issuer metadata,
+// with the channels their adapters list (spec HO1).
+func peerSources(snapshot func(context.Context) topology.Snapshot) func(context.Context) []issuers.Source {
+	if snapshot == nil {
+		return nil
+	}
+	return func(ctx context.Context) []issuers.Source {
+		var out []issuers.Source
+		for _, st := range snapshot(ctx).Live() {
+			registry := st.Peer.Services[registryService]
+			if st.Peer.Role != commonv1.Role_ROLE_ISSUER || registry == "" {
+				continue
+			}
+			out = append(out, issuers.Source{
+				Endpoint: registry, Public: st.Peer.PublicURL, Peer: true, Channels: st.Capabilities.GetChannels(),
+			})
+		}
+		return out
+	}
+}
+
+// internalFetcher reads the metadata of the live issuer pairs on the
+// compose network. It reaches only the registry hosts the operator names
+// in VCA_PEERS, so the private address rule can stay off.
+func internalFetcher(cfg config.Config, deps Deps) issuers.Getter {
+	var hosts []string
+	for _, p := range cfg.Peers {
+		if u, err := url.Parse(p.Services[registryService]); err == nil && p.Role == commonv1.Role_ROLE_ISSUER && u.Hostname() != "" {
+			hosts = append(hosts, u.Hostname())
+		}
+	}
+	if len(hosts) == 0 {
+		return nil
+	}
+	return fetchguard.New(fetchguard.Options{
+		Guard:  fetchguard.Guard{AllowedHosts: hosts, AllowPrivateNetwork: true, AllowPlainHTTP: true},
+		Client: deps.HTTP, TTL: cfg.CrawlTTL, MaxBytes: int(cfg.FetchMaxBytes), Now: deps.Now,
+	})
+}
+
+// publicFetcher reads the metadata of a trusted issuer and of an
+// authorization server under the address rules of the deployment.
+func publicFetcher(cfg config.Config, deps Deps) issuers.Getter {
+	return fetchguard.New(fetchguard.Options{
+		Guard: fetchguard.Guard{
+			AllowedHosts: cfg.CrawlAllowedHosts, AllowPrivateNetwork: cfg.CrawlAllowPrivateNetwork,
+			AllowPlainHTTP: cfg.CrawlAllowPlainHTTP,
+		},
+		Client: deps.HTTP, TTL: cfg.CrawlTTL, MaxBytes: int(cfg.FetchMaxBytes), Now: deps.Now,
+	})
 }
 
 // withDefaults fills the side effects the caller left empty.
@@ -314,7 +391,7 @@ func eligibility(cfg config.Config, deps Deps) (ports.Eligibility, error) {
 // warn writes one log line per setting an operator left empty.
 func warn(cfg config.Config, deps Deps, svc *service.Service) {
 	if cfg.DiscoveryURL == "" && deps.Catalogue == nil {
-		deps.Log.Warn("no discovery service, the catalogue pages are empty",
+		deps.Log.Warn("no discovery service, the wallet reads the metadata of the issuers itself",
 			"setting", config.Prefix+"DISCOVERY_URL")
 	}
 	if cfg.TrustURL == "" && deps.Trust == nil {

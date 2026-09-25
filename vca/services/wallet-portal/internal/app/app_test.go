@@ -18,6 +18,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
@@ -508,4 +509,52 @@ func between(text, start, end string) string {
 	}
 	out, _, _ := strings.Cut(rest, end)
 	return out
+}
+
+// TestBuildCrawlsLiveIssuersWithoutDiscovery checks spec HO1 end to
+// end: with no discovery service the discover page reads the metadata
+// of the live issuer pair at its internal address.
+func TestBuildCrawlsLiveIssuersWithoutDiscovery(t *testing.T) {
+	k := newKeys(t)
+	registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-credential-issuer" {
+			http.NotFound(w, r)
+			return
+		}
+		anyval.DiscardWrite(w.Write([]byte(`{"credential_issuer":"https://issuer-waltid.example","display":[{"name":"Ministry of Health"}],` +
+			`"credential_configurations_supported":{"nurse":{"format":"dc+sd-jwt","vct":"NurseLicence"}}}`)))
+	}))
+	defer registry.Close()
+	peers := "issuer-waltid|https://issuer-waltid.example|issuance=http://issuance:8080,schema-registry=" + registry.URL
+	cfg := load(t, map[string]string{"VCA_WALLET_PORTAL_AUTH_JWKS_FILE": k.file(t), "VCA_PEERS": peers})
+	a, err := app.Build(cfg, app.Deps{
+		Holder: fakeHolder{},
+		Snapshot: func(context.Context) topology.Snapshot {
+			return topology.Snapshot{Peers: []topology.Status{{Peer: cfg.Peers[0], State: topology.Live,
+				Capabilities: &backendv1.GetCapabilitiesResponse{Channels: []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_PREAUTH}}}}}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/wallet/discover", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: session.CookieName, Value: k.token(t)})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if cerr := resp.Body.Close(); cerr != nil || err != nil {
+		t.Fatal(err, cerr)
+	}
+	for _, want := range []string{"NurseLicence", "Ministry of Health"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("discover misses %s\n%s", want, raw)
+		}
+	}
 }

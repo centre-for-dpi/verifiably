@@ -66,10 +66,41 @@ id, so a token of one session does not work in another session.
 
 ## Discovery and claimable
 
-The discovery page lists the credentials that issuers publish. The
-list comes from the catalogue of the `verifier-discovery` service, which
-crawls the issuer metadata (ADR-022 decision 5). The page needs no
-personal data.
+The discovery page lists the credentials that issuers publish. The page
+follows board Holder-Discover. Each row names the issuer and whether the
+trust list names it, the credential, the format, and how to claim. The
+page needs no personal data.
+
+The list comes from one of two places (spec HO1):
+
+1. The catalogue of the `verifier-discovery` service, which crawls the
+   issuer metadata (ADR-022 decision 5). The wallet uses it when it
+   answers.
+2. A crawl of its own, when the deployment runs no verifier pair or the
+   catalogue does not answer. The package `issuers` reads
+   `/.well-known/openid-credential-issuer` of each live issuer pair at
+   its internal address. It also reads the metadata of each issuer on
+   the trust list at its public address.
+
+Every read goes through `core/fetchguard` with a cache. The time in
+`CRAWL_TTL` bounds the cache. The wallet reads a live pair only at the
+registry host that `VCA_PEERS` names. It reads a trusted issuer under
+the address rules of `CRAWL_ALLOWED_HOSTS`, `CRAWL_ALLOW_PRIVATE_NETWORK`,
+and `CRAWL_ALLOW_PLAIN_HTTP`.
+
+The column "How to claim" comes from the grants of the metadata:
+
+| Grant | Words on the page |
+|---|---|
+| `urn:ietf:params:oauth:grant-type:pre-authorized_code` | Code |
+| `authorization_code` | Sign in at issuer |
+
+The wallet reads `grant_types_supported` of the issuer metadata first.
+Without it, the wallet reads the metadata of the first authorization
+server, or of the issuer. An authorization server that names no grant
+supports the authorization code grant (RFC 8414). For a live pair, the
+channels of its adapter add to the list. An issuer that names no grant
+still sends offers, so the page shows Code.
 
 The claimable page shows the same list with one answer per credential:
 yes or not now. The answer comes from the eligibility hook. The hook

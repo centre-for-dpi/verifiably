@@ -53,6 +53,11 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_WALLET_PORTAL_MAX_BLOB_BYTES` | The size limit of one ciphertext blob. | `262144` |
 | `VCA_WALLET_PORTAL_PENDING_TTL` | How long an offer or a request stays readable. | `15m` |
 | `VCA_WALLET_PORTAL_PAGE_SIZE_MAX` | The maximum page size of a list RPC. | `50` |
+| `VCA_WALLET_PORTAL_CRAWL_TTL` | How long the service keeps the issuer metadata it reads with no discovery service. | `5m` |
+| `VCA_WALLET_PORTAL_CRAWL_ALLOWED_HOSTS` | The hosts of the trusted issuers the service reads. | empty: every public host |
+| `VCA_WALLET_PORTAL_CRAWL_ALLOW_PRIVATE_NETWORK` | Read a trusted issuer at a private address. For development only. | `false` |
+| `VCA_WALLET_PORTAL_CRAWL_ALLOW_PLAIN_HTTP` | Read a trusted issuer over http. For development only. | `false` |
+| `VCA_PEERS` | The candidate pairs of the deployment. The CLI writes it. | empty: no stack switcher |
 
 The container image is `ghcr.io/centre-for-dpi/vca-wallet-portal`. It listens on one port and runs as a non-root user with a read-only file system. Mount a volume at `/data` to keep the pending records and the blobs across a restart.
 

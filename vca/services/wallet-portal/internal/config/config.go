@@ -92,6 +92,18 @@ type Config struct {
 	PendingTTL time.Duration `env:"PENDING_TTL" default:"15m"`
 	// PageSizeMax caps the page size of a list RPC.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+	// CrawlTTL is how long the wallet keeps the issuer metadata it reads
+	// when the deployment runs no discovery service (spec HO1).
+	CrawlTTL time.Duration `env:"CRAWL_TTL" default:"5m"`
+	// CrawlAllowedHosts limits the trusted issuers the wallet reads.
+	// Empty allows every host the address rules accept.
+	CrawlAllowedHosts []string `env:"CRAWL_ALLOWED_HOSTS"`
+	// CrawlAllowPrivateNetwork lets the wallet read a trusted issuer at a
+	// private or loopback address. Turn it on for development only.
+	CrawlAllowPrivateNetwork bool `env:"CRAWL_ALLOW_PRIVATE_NETWORK" default:"false"`
+	// CrawlAllowPlainHTTP lets the wallet read a trusted issuer over
+	// http. Turn it on for development only.
+	CrawlAllowPlainHTTP bool `env:"CRAWL_ALLOW_PLAIN_HTTP" default:"false"`
 	// Peers are the candidate pairs of the deployment, from VCA_PEERS.
 	// The frame of the pages lists the holder pairs that run, and the
 	// wallet finds its own pair by the key set of its auth service.
@@ -130,6 +142,7 @@ func (c Config) Check() error {
 		{c.MaxBlobBytes > 0, "MAX_BLOB_BYTES must be positive"},
 		{c.PendingTTL > 0, "PENDING_TTL must be positive"},
 		{c.PageSizeMax > 0, "PAGE_SIZE_MAX must be positive"},
+		{c.CrawlTTL > 0, "CRAWL_TTL must be positive"},
 		{c.CSRFKey == "" || len(c.CSRFKey) >= 16, "CSRF_KEY must have 16 bytes or more"},
 	} {
 		if !p.ok {

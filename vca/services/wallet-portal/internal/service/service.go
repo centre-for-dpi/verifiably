@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
@@ -51,9 +52,19 @@ type Options struct {
 	// Holder is the holder backend of the DPG. A nil client selects the
 	// browser storage of ADR-021 decision 4.
 	Holder backendv1connect.HolderBackendServiceClient
-	// Catalogue reads the published credential types. Nil turns the
-	// discovery page and the claimable page off.
+	// Catalogue reads the published credential types from the verifier
+	// discovery service. Nil, or a catalogue that does not answer, hands
+	// the pages to Fallback.
 	Catalogue ports.Catalogue
+	// Fallback reads the credential types when the catalogue is absent,
+	// for example the metadata of the live issuer pairs (spec HO1). Nil
+	// with no catalogue turns the discovery page and the claimable page
+	// off.
+	Fallback ports.Catalogue
+	// Methods returns the ways to claim from one issuer. The catalogue
+	// does not carry them, so the service adds them to each catalogue
+	// offering. Nil leaves them out.
+	Methods func(ctx context.Context, issuer string) []walletportalv1.ClaimMethod
 	// Eligible answers yes or no per schema. Nil answers no.
 	Eligible ports.Eligibility
 	// Salt hides the citizen subject from the eligibility hook.
@@ -175,13 +186,23 @@ func (s *Service) ListClaimable(ctx context.Context,
 	}), nil
 }
 
-// offerings reads the catalogue.
+// offerings reads the catalogue, or the fallback when the catalogue is
+// absent or does not answer.
 func (s *Service) offerings(ctx context.Context) ([]*walletportalv1.Offering, error) {
-	if s.opts.Catalogue == nil {
+	if s.opts.Catalogue == nil && s.opts.Fallback == nil {
 		return nil, connect.NewError(connect.CodeUnavailable,
 			errors.New("this deployment has no credential catalogue"))
 	}
-	items, err := s.opts.Catalogue.Offerings(ctx)
+	var items []*walletportalv1.Offering
+	err := errors.New("no catalogue")
+	if s.opts.Catalogue != nil {
+		if items, err = s.opts.Catalogue.Offerings(ctx); err == nil {
+			items = s.withMethods(ctx, items)
+		}
+	}
+	if err != nil && s.opts.Fallback != nil {
+		items, err = s.opts.Fallback.Offerings(ctx)
+	}
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("the catalogue is not available"))
 	}
@@ -189,6 +210,32 @@ func (s *Service) offerings(ctx context.Context) ([]*walletportalv1.Offering, er
 		return items[i].GetSchema().GetType() < items[j].GetSchema().GetType()
 	})
 	return items, nil
+}
+
+// withMethods adds the ways to claim to catalogue offerings that carry
+// none. It asks once per issuer and copies each offering, so a cached
+// catalogue stays as it was.
+func (s *Service) withMethods(ctx context.Context, items []*walletportalv1.Offering) []*walletportalv1.Offering {
+	if s.opts.Methods == nil {
+		return items
+	}
+	known := map[string][]walletportalv1.ClaimMethod{}
+	out := make([]*walletportalv1.Offering, 0, len(items))
+	for _, o := range items {
+		if len(o.GetClaimMethods()) > 0 {
+			out = append(out, o)
+			continue
+		}
+		methods, ok := known[o.GetCredentialIssuer()]
+		if !ok {
+			methods = s.opts.Methods(ctx, o.GetCredentialIssuer())
+			known[o.GetCredentialIssuer()] = methods
+		}
+		copied := proto.CloneOf(o)
+		copied.ClaimMethods = methods
+		out = append(out, copied)
+	}
+	return out
 }
 
 // page returns one page of the offerings and the next page token.

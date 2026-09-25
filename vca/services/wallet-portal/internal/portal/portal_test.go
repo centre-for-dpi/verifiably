@@ -321,7 +321,7 @@ func TestDiscoverPage(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"What issuers offer", "Driver licence", "Agency A",
+	for _, want := range []string{"Discover and claim", "Driver licence", "Agency A",
 		"https://b.example", "Passport"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page misses %q", want)

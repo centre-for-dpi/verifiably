@@ -87,6 +87,16 @@ message Card {
   }
 }
 
+// ClaimMethod names one OID4VCI grant a holder can use to claim.
+enum ClaimMethod {
+  CLAIM_METHOD_UNSPECIFIED = 0;
+  // The issuer sends an offer with a pre-authorized code. The holder
+  // scans or pastes the offer and enters a transaction code when asked.
+  CLAIM_METHOD_PRE_AUTHORIZED_CODE = 1;
+  // The holder signs in at the issuer with the authorization code flow.
+  CLAIM_METHOD_AUTHORIZATION_CODE = 2;
+}
+
 // Offering is one schema an issuer offers.
 message Offering {
   // The issuer URL.
@@ -97,6 +107,9 @@ message Offering {
   vca.trust.v1.TrustLookupResponse.Outcome trust = 3;
   // The schema.
   vca.schema.v1.PublicSchema schema = 4;
+  // The ways the holder can claim the credential, from the grants the
+  // issuer metadata names. An empty list names no grant.
+  repeated ClaimMethod claim_methods = 5;
 }
 
 // ListDiscoverableRequest selects a page.
