@@ -10,6 +10,7 @@
 package fake
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -91,6 +92,9 @@ func New(dir string) *Server {
 
 // Close stops the fake.
 func (f *Server) Close() { f.Server.Close() }
+
+// Dir is the directory of the recorded answers.
+func (f *Server) Dir() string { return f.dir }
 
 // URL is the base URL of the fake.
 func (f *Server) URL() string { return f.Server.URL }
@@ -226,13 +230,15 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 func (f *Server) onboard(w http.ResponseWriter, body []byte) {
 	var req struct {
 		Key struct {
+			Backend string `json:"backend"`
 			KeyType string `json:"keyType"`
 		} `json:"key"`
 		Did struct {
 			Method string `json:"method"`
 			Config struct {
-				Domain string `json:"domain"`
-				Path   string `json:"path"`
+				Domain  string `json:"domain"`
+				Path    string `json:"path"`
+				Network string `json:"network"`
 			} `json:"config"`
 		} `json:"did"`
 	}
@@ -243,10 +249,13 @@ func (f *Server) onboard(w http.ResponseWriter, body []byte) {
 		}
 	}
 	name := "onboard-issuer.json"
-	if req.Key.KeyType == "Ed25519" {
+	switch {
+	case req.Key.Backend == "tse":
+		name = "doc/onboard-issuer-tse.json"
+	case req.Key.KeyType == "Ed25519":
 		name = "doc/onboard-issuer-ed25519.json"
 	}
-	if req.Did.Method != "web" {
+	if req.Did.Method == "key" || req.Did.Method == "" {
 		f.send(w, name, "application/json")
 		return
 	}
@@ -260,14 +269,36 @@ func (f *Server) onboard(w http.ResponseWriter, body []byte) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// did:web encodes the port colon of the host as %3A.
-	did := "did:web:" + strings.ReplaceAll(req.Did.Config.Domain, ":", "%3A") +
-		strings.ReplaceAll(strings.TrimRight(req.Did.Config.Path, "/"), "/", ":")
+	var did string
+	switch req.Did.Method {
+	case "web":
+		// did:web encodes the port colon of the host as %3A.
+		did = "did:web:" + strings.ReplaceAll(req.Did.Config.Domain, ":", "%3A") +
+			strings.ReplaceAll(strings.TrimRight(req.Did.Config.Path, "/"), "/", ":")
+	case "jwk":
+		did = "did:jwk:" + base64.RawURLEncoding.EncodeToString(publicJWK(answer["issuerKey"]))
+	default:
+		// A cheqd DID names its network and a UUID.
+		did = "did:" + req.Did.Method + ":" + req.Did.Config.Network + ":5e5d0e2c-5ea0-4b39-a2b6-3c1f1ab44c8e"
+	}
 	answer["issuerDid"] = anyval.Must(json.Marshal(did))
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(answer); err != nil {
 		return
 	}
+}
+
+// publicJWK returns the public members of the JWK of a key object, as
+// JSON with sorted keys.
+func publicJWK(key json.RawMessage) []byte {
+	var obj struct {
+		JWK map[string]any `json:"jwk"`
+	}
+	if err := json.Unmarshal(key, &obj); err != nil {
+		return nil
+	}
+	delete(obj.JWK, "d")
+	return anyval.Must(json.Marshal(obj.JWK))
 }
 
 // send writes one recorded answer.

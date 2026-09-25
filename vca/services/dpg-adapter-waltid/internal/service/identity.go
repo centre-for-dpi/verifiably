@@ -23,18 +23,43 @@ import (
 )
 
 // DidMethods are the DID methods the adapter provisions through the
-// onboarding endpoint of walt.id, in the order a page offers them.
-// did:cheqd needs a cheqd network, which the stack file does not run.
-var DidMethods = []string{"did:web", "did:key", "did:jwk"}
+// onboarding endpoint of walt.id, in the order a page offers them. A
+// did:cheqd goes through the public cheqd registrar that walt.id calls,
+// on the network of VCA_WALTID_CHEQD_NETWORK.
+var DidMethods = []string{"did:web", "did:key", "did:jwk", "did:cheqd"}
 
-// KeyTypes are the key types the onboarding endpoint makes, as walt.id
-// names them.
+// KeyTypes are the key types the onboarding endpoint makes in a jwk key,
+// as walt.id names them.
 var KeyTypes = []string{"Ed25519", "secp256r1", "secp256k1", "RSA"}
 
-// DefaultKeyBackend is the key store of a provisioned key. The community
-// release keeps a jwk key in each request; an external key store is a
-// deployment choice (ADR-046 decision 4).
+// tseKeyTypes are the key types the HashiCorp Vault transit engine makes.
+// walt.id refuses secp256k1 there.
+var tseKeyTypes = []string{"Ed25519", "secp256r1", "RSA"}
+
+// cheqdKeyType is the only key type of a did:cheqd.
+const cheqdKeyType = "Ed25519"
+
+// DefaultKeyBackend is the key store of a provisioned key without an
+// external key store. The community release then keeps a jwk key in
+// each request (ADR-046 decision 4).
 const DefaultKeyBackend = "jwk"
+
+// defaultBackend is the key store of a provisioned key: the external key
+// store when the configuration names one.
+func (s *Service) defaultBackend() string {
+	if s.keyStore != nil {
+		return s.keyStore.Backend
+	}
+	return DefaultKeyBackend
+}
+
+// keyTypesOf lists the key types a key store makes.
+func keyTypesOf(backend string) []string {
+	if backend == "tse" {
+		return tseKeyTypes
+	}
+	return KeyTypes
+}
 
 // identityState is the identity the adapter signs with. The file that
 // holds it has mode 0600, because the community release of walt.id takes
@@ -298,7 +323,7 @@ func (s *Service) ProvisionIssuerIdentity(
 	if err := s.identityGuard(); err != nil {
 		return nil, err
 	}
-	body, err := onboardRequest(req.Msg)
+	body, err := s.onboardRequest(req.Msg)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -317,30 +342,41 @@ func (s *Service) ProvisionIssuerIdentity(
 }
 
 // onboardRequest checks a provision request against what the adapter
-// makes and builds the walt.id body.
-func onboardRequest(m *backendv1.ProvisionIssuerIdentityRequest) (waltid.OnboardRequest, error) {
+// makes and builds the walt.id body. The key goes to the external key
+// store of the configuration unless the request names jwk.
+func (s *Service) onboardRequest(m *backendv1.ProvisionIssuerIdentityRequest) (waltid.OnboardRequest, error) {
 	var out waltid.OnboardRequest
 	if !contains(DidMethods, m.GetMethod()) {
 		return out, fmt.Errorf("the method %q is not one of %s", m.GetMethod(), strings.Join(DidMethods, ", "))
 	}
-	if !contains(KeyTypes, m.GetKeyType()) {
-		return out, fmt.Errorf("the key type %q is not one of %s", m.GetKeyType(), strings.Join(KeyTypes, ", "))
-	}
 	backend := m.GetKeyBackend()
 	if backend == "" {
-		backend = DefaultKeyBackend
-	}
-	if backend != DefaultKeyBackend {
-		return out, fmt.Errorf("the key backend %q needs an external key store; import its key instead", backend)
+		backend = s.defaultBackend()
 	}
 	out.Key = waltid.OnboardKey{Backend: backend, KeyType: m.GetKeyType()}
+	switch {
+	case backend == DefaultKeyBackend:
+	case s.keyStore != nil && backend == s.keyStore.Backend:
+		out.Key.Config = s.keyStore.Config
+	default:
+		return out, fmt.Errorf("the key backend %q is not configured; set VCA_WALTID_KMS_BACKEND or import its key", backend)
+	}
+	if types := keyTypesOf(backend); !contains(types, m.GetKeyType()) {
+		return out, fmt.Errorf("the key store %s makes no key type %q; it makes %s", backend, m.GetKeyType(), strings.Join(types, ", "))
+	}
 	out.Did.Method = strings.TrimPrefix(m.GetMethod(), "did:")
-	if m.GetMethod() == "did:web" {
+	switch m.GetMethod() {
+	case "did:web":
 		domain := strings.TrimSpace(m.GetDomain())
 		if domain == "" || strings.ContainsAny(domain, "/ ") {
 			return out, errors.New("a did:web needs the host of the issuer, such as issuer.example")
 		}
 		out.Did.Config = &waltid.OnboardDidConfig{Domain: domain}
+	case "did:cheqd":
+		if m.GetKeyType() != cheqdKeyType {
+			return out, fmt.Errorf("a did:cheqd needs an %s key", cheqdKeyType)
+		}
+		out.Did.Config = &waltid.OnboardDidConfig{Network: s.cheqdNetwork}
 	}
 	return out, nil
 }

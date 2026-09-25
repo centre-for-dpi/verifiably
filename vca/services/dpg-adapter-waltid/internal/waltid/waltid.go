@@ -194,10 +194,21 @@ type OnboardRequest struct {
 	Did OnboardDid `json:"did"`
 }
 
-// OnboardKey names the key walt.id makes: the key store and the type.
+// OnboardKey names the key walt.id makes: the key store, the type, and
+// the settings of an external key store.
 type OnboardKey struct {
-	Backend string `json:"backend"`
-	KeyType string `json:"keyType"`
+	Backend string          `json:"backend"`
+	KeyType string          `json:"keyType"`
+	Config  json.RawMessage `json:"config,omitempty"`
+}
+
+// KeyStore is an external key store of walt.id, such as tse for the
+// HashiCorp Vault transit engine. Config is the key store settings the
+// onboarding endpoint takes: for tse the server, the auth object, and
+// the namespace.
+type KeyStore struct {
+	Backend string
+	Config  json.RawMessage
 }
 
 // OnboardDid names the DID method and, for did:web, the host and path.
@@ -206,10 +217,12 @@ type OnboardDid struct {
 	Config *OnboardDidConfig `json:"config,omitempty"`
 }
 
-// OnboardDidConfig is the configuration of a did:web.
+// OnboardDidConfig is the configuration of a did:web, or the network of
+// a did:cheqd.
 type OnboardDidConfig struct {
-	Domain string `json:"domain"`
-	Path   string `json:"path"`
+	Domain  string `json:"domain,omitempty"`
+	Path    string `json:"path,omitempty"`
+	Network string `json:"network,omitempty"`
 }
 
 // Onboard asks walt.id to make a key and a DID. walt.id answers with the

@@ -179,9 +179,13 @@ func TestProvisionIdentityDidKeyEd25519(t *testing.T) {
 func TestProvisionRejectsWhatTheStackLacks(t *testing.T) {
 	svc, _ := identityService(t, filepath.Join(t.TempDir(), "issuer.json"), "", "")
 	for _, req := range []*backendv1.ProvisionIssuerIdentityRequest{
-		{Method: "did:cheqd", KeyType: "Ed25519"},
+		{Method: "did:ion", KeyType: "Ed25519"},
 		{Method: "did:key", KeyType: "P-521"},
 		{Method: "did:key", KeyType: "Ed25519", KeyBackend: "vault"},
+		// cheqd signs with Ed25519 only.
+		{Method: "did:cheqd", KeyType: "secp256k1"},
+		// No external key store is configured.
+		{Method: "did:key", KeyType: "Ed25519", KeyBackend: "tse"},
 	} {
 		if _, err := provision(t, svc, req); connect.CodeOf(err) != connect.CodeInvalidArgument {
 			t.Errorf("%+v: %v", req, err)
@@ -375,7 +379,7 @@ func TestCapabilitiesListIdentityFeatures(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing features %v", want)
 	}
-	if strings.Join(res.Msg.GetDidMethods(), " ") != "did:web did:key did:jwk" {
+	if strings.Join(res.Msg.GetDidMethods(), " ") != "did:web did:key did:jwk did:cheqd" {
 		t.Fatalf("did methods = %v", res.Msg.GetDidMethods())
 	}
 	if strings.Join(res.Msg.GetKeyTypes(), " ") != "Ed25519 secp256r1 secp256k1 RSA" {

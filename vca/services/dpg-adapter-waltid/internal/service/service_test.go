@@ -646,8 +646,8 @@ func TestCapabilitiesCarryDpgInfo(t *testing.T) {
 		!hasStatusKind(resp.Msg.GetStatusMechanisms(), backendv1.StatusListBinding_KIND_TOKEN) {
 		t.Errorf("status mechanisms = %v, want both list kinds", resp.Msg.GetStatusMechanisms())
 	}
-	if strings.Join(resp.Msg.GetDidMethods(), " ") != "did:web did:key did:jwk" {
-		t.Errorf("DID methods = %v, want the three the onboarding endpoint makes", resp.Msg.GetDidMethods())
+	if strings.Join(resp.Msg.GetDidMethods(), " ") != "did:web did:key did:jwk did:cheqd" {
+		t.Errorf("DID methods = %v, want the four the onboarding endpoint makes", resp.Msg.GetDidMethods())
 	}
 }
 

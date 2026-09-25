@@ -1150,6 +1150,7 @@ var en = map[string]string{
 	"issuer.identity.identifier.label":             "Identifier",
 	"issuer.identity.key.label":                    "Key",
 	"issuer.identity.key.text":                     "{1}. The stack keeps the key.",
+	"issuer.identity.key.store.text":               "{1}. The key store {2} of the stack keeps the key.",
 	"issuer.identity.x509.label":                   "Certificate chain",
 	"issuer.identity.x509.value.label":             "{1} certificates",
 	"issuer.identity.org.label":                    "Organisation name",

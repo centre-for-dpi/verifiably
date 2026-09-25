@@ -210,11 +210,15 @@ func (p *Pages) identityTable(b *blocks, v identityView) template.HTML {
 		return components.Row{{Text: msg.T(key)}, cell}
 	}
 	rows := []components.Row{row("issuer.identity.identifier.label", components.Cell{Text: strings.Join(id.GetIdentifiers(), ", ")})}
-	keyText := id.GetKey().GetType()
-	if keyText == "" {
-		keyText = id.GetKey().GetBackend()
+	keyText := msg.T("issuer.identity.key.text", id.GetKey().GetType())
+	switch backend := id.GetKey().GetBackend(); {
+	case id.GetKey().GetType() == "":
+		keyText = msg.T("issuer.identity.key.text", backend)
+	case backend != "" && backend != "jwk":
+		// An external key store of the stack keeps the key (P6-W3).
+		keyText = msg.T("issuer.identity.key.store.text", id.GetKey().GetType(), backend)
 	}
-	rows = append(rows, row("issuer.identity.key.label", components.Cell{Text: msg.T("issuer.identity.key.text", keyText)}))
+	rows = append(rows, row("issuer.identity.key.label", components.Cell{Text: keyText}))
 	if n := len(id.GetX5C()); n > 0 {
 		rows = append(rows, row("issuer.identity.x509.label", components.Cell{Text: msg.T("issuer.identity.x509.value.label", strconv.Itoa(n))}))
 	}

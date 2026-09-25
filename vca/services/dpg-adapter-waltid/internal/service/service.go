@@ -52,6 +52,12 @@ type Options struct {
 	// decision 4). Empty keeps it in memory. The service reads the file
 	// at start.
 	IdentityFile string
+	// KeyStore is the external key store of a provisioned key. Nil keeps
+	// a jwk key in the identity file (ADR-046 decision 4).
+	KeyStore *waltid.KeyStore
+	// CheqdNetwork is the cheqd network of a did:cheqd. Empty means
+	// testnet.
+	CheqdNetwork string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 }
@@ -67,6 +73,8 @@ type Service struct {
 	versions        map[string]string
 	now             func() time.Time
 	identityFile    string
+	keyStore        *waltid.KeyStore
+	cheqdNetwork    string
 
 	idMu        sync.Mutex
 	identity    identityState
@@ -90,6 +98,9 @@ func New(opts Options) (*Service, error) {
 	if opts.StandardVersion == "" {
 		opts.StandardVersion = "draft13"
 	}
+	if opts.CheqdNetwork == "" {
+		opts.CheqdNetwork = "testnet"
+	}
 	s := &Service{
 		client:          opts.Client,
 		store:           opts.Store,
@@ -100,6 +111,8 @@ func New(opts Options) (*Service, error) {
 		versions:        opts.Versions,
 		now:             opts.Now,
 		identityFile:    opts.IdentityFile,
+		keyStore:        opts.KeyStore,
+		cheqdNetwork:    opts.CheqdNetwork,
 	}
 	if err := s.loadStateFile(); err != nil {
 		return nil, err
@@ -168,7 +181,7 @@ func (s *Service) GetCapabilities(
 			backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509,
 		}
 		out.DidMethods = append([]string(nil), DidMethods...)
-		out.KeyTypes = append([]string(nil), KeyTypes...)
+		out.KeyTypes = append([]string(nil), keyTypesOf(s.defaultBackend())...)
 		// The issued credential carries the status entry the caller
 		// binds, of either list kind (ADR-018, ADR-019).
 		out.StatusMechanisms = []backendv1.StatusListBinding_Kind{

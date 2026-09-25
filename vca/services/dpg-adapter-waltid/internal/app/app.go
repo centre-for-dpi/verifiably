@@ -62,6 +62,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		VctBase:         cfg.VctBase,
 		Versions:        cfg.Versions(),
 		IdentityFile:    cfg.IdentityFile,
+		KeyStore:        cfg.KeyStore(),
+		CheqdNetwork:    cfg.CheqdNetwork,
 	})
 	if err != nil {
 		return nil, err

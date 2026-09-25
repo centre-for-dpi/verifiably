@@ -48,8 +48,8 @@ The answer of `GetCapabilities` reports what the release supports.
 | Protocols | OID4VCI and OID4VP. A verifier URL adds Presentation Exchange. A verifier 2 URL adds DCQL. |
 | Roles | The roles whose URL the configuration sets |
 | Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUER_IDENTITY_IMPORT_DID`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` when the configuration names an issuer URL |
-| DID methods | `did:web`, `did:key`, `did:jwk` |
-| Key types | `Ed25519`, `secp256r1`, `secp256k1`, `RSA` |
+| DID methods | `did:web`, `did:key`, `did:jwk`, `did:cheqd` |
+| Key types | `Ed25519`, `secp256r1`, `secp256k1`, `RSA`. With a key store: `Ed25519`, `secp256r1`, `RSA`. |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names an issuer URL |
 | DPG information | The stack name, the release, and one component per wired role plus Keycloak |
 
@@ -131,6 +131,32 @@ volume of the adapter. The file has the shape of the onboarding answer.
 `vca dpg bootstrap waltid` calls `ProvisionIssuerIdentity`, so the key
 goes from the stack into this file and never into the deploy directory. A key of an
 external key store keeps the private key out of the adapter.
+
+### Methods, key types, and the key store
+
+`ProvisionIssuerIdentity` takes every pair of a listed method and a
+listed key type, with one rule. A `did:cheqd` needs an `Ed25519` key.
+walt.id registers a `did:cheqd` through the public cheqd registrar. The
+issuer API then needs a route to the internet.
+`VCA_WALTID_CHEQD_NETWORK` picks `testnet` or `mainnet`.
+
+An external key store keeps the private key out of the adapter. Set
+these variables to make every new key in the HashiCorp Vault transit
+engine of walt.id, the key store `tse`:
+
+| Variable | Meaning |
+| --- | --- |
+| `VCA_WALTID_KMS_BACKEND` | `tse` |
+| `VCA_WALTID_KMS_SERVER` | The transit URL, such as `http://vault:8200/v1/transit` |
+| `VCA_WALTID_KMS_TOKEN` | A token of the key store. It is a secret. |
+| `VCA_WALTID_KMS_ROLE_ID`, `VCA_WALTID_KMS_SECRET_ID` | An AppRole login in place of the token |
+| `VCA_WALTID_KMS_NAMESPACE` | The namespace, when the key store uses one |
+
+The onboarding request then names the key store and its settings. The
+answer holds a key reference with the login of the key store, and no
+private key. The identity file keeps that reference with mode 0600. The
+transit engine makes no `secp256k1` key, so the answer lists the three
+other key types. A request can still name `jwk` for a local key.
 
 An import checks that a jwk key belongs to a `did:key` or a `did:jwk`.
 An X.509 import sends the chain as `x5Chain` in each issuance request.

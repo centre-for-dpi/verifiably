@@ -5,9 +5,11 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
 	shared "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 )
 
@@ -56,6 +58,24 @@ type Config struct {
 	// StoreFile keeps the wallet sessions and the registered
 	// configurations between restarts. Empty keeps them in memory.
 	StoreFile string `env:"STORE_FILE"`
+	// KMSBackend names the external key store of a provisioned issuer
+	// key. tse is the HashiCorp Vault transit engine of walt.id. Empty
+	// keeps a jwk key in the identity file (ADR-046 decision 4).
+	KMSBackend string `env:"KMS_BACKEND"`
+	// KMSServer is the transit URL of the key store, such as
+	// http://vault:8200/v1/transit.
+	KMSServer string `env:"KMS_SERVER"`
+	// KMSToken is a token of the key store.
+	KMSToken string `env:"KMS_TOKEN" secret:"true"`
+	// KMSRoleID and KMSSecretID are an AppRole login of the key store,
+	// in place of a token.
+	KMSRoleID   string `env:"KMS_ROLE_ID"`
+	KMSSecretID string `env:"KMS_SECRET_ID" secret:"true"`
+	// KMSNamespace is the namespace of the key store. Empty uses none.
+	KMSNamespace string `env:"KMS_NAMESPACE"`
+	// CheqdNetwork is the cheqd network of a did:cheqd: testnet or
+	// mainnet.
+	CheqdNetwork string `env:"CHEQD_NETWORK" default:"testnet"`
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -74,7 +94,59 @@ func Load(getenv func(string) string) (Config, error) {
 	if c.MaxBytes <= 0 {
 		return Config{}, fmt.Errorf("config: %sMAX_BYTES must be a positive number", Prefix)
 	}
+	if c.CheqdNetwork != "testnet" && c.CheqdNetwork != "mainnet" {
+		return Config{}, fmt.Errorf("config: %sCHEQD_NETWORK must be testnet or mainnet", Prefix)
+	}
+	if err := c.checkKeyStore(); err != nil {
+		return Config{}, err
+	}
 	return c, nil
+}
+
+// checkKeyStore checks the settings of the external key store.
+func (c Config) checkKeyStore() error {
+	switch {
+	case c.KMSBackend == "" && c.KMSServer == "":
+		return nil
+	case c.KMSBackend != "tse":
+		return fmt.Errorf("config: %sKMS_BACKEND must be tse, the HashiCorp Vault transit engine", Prefix)
+	case c.KMSServer == "":
+		return fmt.Errorf("config: %sKMS_BACKEND needs %sKMS_SERVER", Prefix, Prefix)
+	case c.KMSToken == "" && (c.KMSRoleID == "" || c.KMSSecretID == ""):
+		return fmt.Errorf("config: the key store needs %sKMS_TOKEN, or %sKMS_ROLE_ID and %sKMS_SECRET_ID", Prefix, Prefix, Prefix)
+	}
+	return nil
+}
+
+// tseAuth is the auth object of a tse key store in walt.id.
+type tseAuth struct {
+	AccessKey string `json:"accessKey,omitempty"`
+	RoleID    string `json:"roleId,omitempty"`
+	SecretID  string `json:"secretId,omitempty"`
+}
+
+// tseConfig is the key store config of POST /onboard/issuer for tse.
+type tseConfig struct {
+	Server    string  `json:"server"`
+	Auth      tseAuth `json:"auth"`
+	Namespace string  `json:"namespace,omitempty"`
+}
+
+// KeyStore returns the external key store, or nil when the settings name
+// none.
+func (c Config) KeyStore() *waltid.KeyStore {
+	if c.KMSBackend == "" {
+		return nil
+	}
+	auth := tseAuth{AccessKey: c.KMSToken}
+	if c.KMSToken == "" {
+		auth = tseAuth{RoleID: c.KMSRoleID, SecretID: c.KMSSecretID}
+	}
+	raw, err := json.Marshal(tseConfig{Server: c.KMSServer, Auth: auth, Namespace: c.KMSNamespace})
+	if err != nil {
+		return nil
+	}
+	return &waltid.KeyStore{Backend: c.KMSBackend, Config: raw}
 }
 
 // Versions maps every component of the stack, named as the stack file

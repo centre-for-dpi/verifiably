@@ -197,3 +197,40 @@ func TestContractDcApiSession(t *testing.T) {
 		t.Fatalf("the DC API request has no protocol: %q", created.Msg.GetDcApiRequest())
 	}
 }
+
+// TestContractProvisionEveryMethod asks the real issuer for a key and a
+// DID of each local method and key type. did:cheqd calls the public
+// cheqd registrar, so it runs only with VCA_WALTID_CONTRACT_CHEQD=1. A
+// key store runs with the VCA_WALTID_CONTRACT_KMS_* variables.
+func TestContractProvisionEveryMethod(t *testing.T) {
+	cfg := contractEnv(t)
+	cfg.KMSBackend = os.Getenv("VCA_WALTID_CONTRACT_KMS_BACKEND")
+	cfg.KMSServer = os.Getenv("VCA_WALTID_CONTRACT_KMS_SERVER")
+	cfg.KMSToken = os.Getenv("VCA_WALTID_CONTRACT_KMS_TOKEN")
+	cfg.CheqdNetwork = "testnet"
+	a, err := app.Build(cfg, app.Deps{HTTP: &http.Client{Timeout: 60 * time.Second}})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	caps, err := a.Service.GetCapabilities(context.Background(), connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatalf("GetCapabilities: %v", err)
+	}
+	for _, method := range caps.Msg.GetDidMethods() {
+		for _, keyType := range caps.Msg.GetKeyTypes() {
+			if method == "did:cheqd" && (keyType != "Ed25519" || os.Getenv("VCA_WALTID_CONTRACT_CHEQD") != "1") {
+				continue
+			}
+			res, err := a.Service.ProvisionIssuerIdentity(context.Background(), connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{
+				Method: method, KeyType: keyType, Domain: "issuer.contract.example",
+			}))
+			if err != nil {
+				t.Errorf("%s %s: %v", method, keyType, err)
+				continue
+			}
+			if got := res.Msg.GetIdentity().GetIdentifiers(); len(got) == 0 || !strings.HasPrefix(got[0], method+":") {
+				t.Errorf("%s %s: identifiers %v", method, keyType, got)
+			}
+		}
+	}
+}

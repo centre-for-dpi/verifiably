@@ -5,6 +5,8 @@ package fake_test
 import (
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -229,5 +231,32 @@ func TestFakeServesTheDcApiFlow(t *testing.T) {
 	}
 	if len(f.Bodies("/verification-session/create")) != 1 {
 		t.Fatal("the history lost the create body")
+	}
+}
+
+// TestFakeOnboardEveryMethod answers a did:jwk with the public key of the
+// answer, a did:cheqd on the asked network, and a tse key from the store.
+func TestFakeOnboardEveryMethod(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	_, body := postBody(t, f, "/onboard/issuer", `{"key":{"backend":"jwk","keyType":"Ed25519"},"did":{"method":"jwk"}}`)
+	if !strings.Contains(body, `"did:jwk:eyJ`) {
+		t.Fatalf("did:jwk: %s", body)
+	}
+	_, body = postBody(t, f, "/onboard/issuer", `{"key":{"backend":"jwk","keyType":"Ed25519"},"did":{"method":"cheqd","config":{"network":"testnet"}}}`)
+	if !strings.Contains(body, `"did:cheqd:testnet:`) {
+		t.Fatalf("did:cheqd: %s", body)
+	}
+	_, body = postBody(t, f, "/onboard/issuer", `{"key":{"backend":"tse","keyType":"Ed25519"},"did":{"method":"key"}}`)
+	if !strings.Contains(body, `"type": "tse"`) {
+		t.Fatalf("tse: %s", body)
+	}
+	broken := fake.New(t.TempDir())
+	defer broken.Close()
+	if err := os.WriteFile(filepath.Join(broken.Dir(), "onboard-issuer.json"), []byte(`{"issuerKey":"not an object"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, body := postBody(t, broken, "/onboard/issuer", `{"key":{"keyType":"secp256r1"},"did":{"method":"jwk"}}`); !strings.Contains(body, `"did:jwk:"`) {
+		t.Fatalf("a key that is not an object: %s", body)
 	}
 }

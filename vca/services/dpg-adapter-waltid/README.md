@@ -41,6 +41,13 @@ Set at least one walt.id URL. Each URL turns on one role.
 | `VCA_WALTID_RETRIES` | The number of extra attempts. The default is `2`. |
 | `VCA_WALTID_MAX_BYTES` | The bound of a response body. The default is 8 megabytes. |
 | `VCA_WALTID_STORE_FILE` | The file that keeps the wallet sessions. Empty uses memory. |
+| `VCA_WALTID_KMS_BACKEND` | `tse` makes every new issuer key in HashiCorp Vault. Empty keeps a local key. |
+| `VCA_WALTID_KMS_SERVER` | The transit URL of the key store. |
+| `VCA_WALTID_KMS_TOKEN` | A token of the key store. It is a secret. |
+| `VCA_WALTID_KMS_ROLE_ID` | The AppRole id of the key store, in place of a token. |
+| `VCA_WALTID_KMS_SECRET_ID` | The AppRole secret of the key store. It is a secret. |
+| `VCA_WALTID_KMS_NAMESPACE` | The namespace of the key store. |
+| `VCA_WALTID_CHEQD_NETWORK` | The cheqd network of a `did:cheqd`: `testnet` or `mainnet`. |
 
 Run the binary:
 

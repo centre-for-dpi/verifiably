@@ -353,3 +353,23 @@ func TestDidWebDocumentIsServed(t *testing.T) {
 		t.Fatal("a page without an identity client offers actions")
 	}
 }
+
+// TestIdentityPageNamesMethodsAndKeyStoreOfTheStack offers did:cheqd when
+// the adapter lists it (P6-W3), and names the key store of the stack
+// when the key sits in an external store.
+func TestIdentityPageNamesMethodsAndKeyStoreOfTheStack(t *testing.T) {
+	h := newHarness(t, allIdentity...)
+	h.caps.caps.DidMethods = []string{"did:web", "did:key", "did:jwk", "did:cheqd"}
+	h.build(t)
+	doc := body(t, h.get(t, "/identity/"))
+	if !strings.Contains(doc, `<option value="did:cheqd">did:cheqd</option>`) {
+		t.Error("the page hides a method the stack lists")
+	}
+	h.identity.identity = &backendv1.IssuerIdentity{Identifiers: []string{"did:key:z6MkkJ3JAhCpSGe5QD9UQ2WGzna7kcswa9ahMC2o3Dd1KRXb"},
+		Key: &backendv1.IssuerIdentity_Key{Type: "Ed25519", Backend: "tse"}}
+	doc = body(t, h.get(t, "/identity/"))
+	a11ytest.AssertPage(t, doc)
+	if !strings.Contains(doc, "Ed25519. The key store tse of the stack keeps the key.") {
+		t.Errorf("the page does not name the key store\n%s", doc)
+	}
+}

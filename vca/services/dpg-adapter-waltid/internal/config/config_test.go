@@ -166,3 +166,51 @@ func TestLoadAcceptsVerifier2Alone(t *testing.T) {
 		t.Fatalf("versions = %v", cfg.Versions())
 	}
 }
+
+func TestLoadReadsTheKeyStore(t *testing.T) {
+	base := map[string]string{"VCA_WALTID_ISSUER_URL": "http://issuer-api:7002"}
+	with := func(extra map[string]string) map[string]string {
+		out := map[string]string{}
+		for k, v := range base {
+			out[k] = v
+		}
+		for k, v := range extra {
+			out[k] = v
+		}
+		return out
+	}
+	cfg, err := config.Load(env(base))
+	if err != nil || cfg.KeyStore() != nil || cfg.CheqdNetwork != "testnet" {
+		t.Fatalf("without a key store: %+v %v", cfg.KeyStore(), err)
+	}
+	cfg, err = config.Load(env(with(map[string]string{
+		"VCA_WALTID_KMS_BACKEND": "tse", "VCA_WALTID_KMS_SERVER": "http://vault:8200/v1/transit",
+		"VCA_WALTID_KMS_TOKEN": "dev-only-token", "VCA_WALTID_KMS_NAMESPACE": "vca", "VCA_WALTID_CHEQD_NETWORK": "mainnet",
+	})))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	ks := cfg.KeyStore()
+	if ks == nil || ks.Backend != "tse" || cfg.CheqdNetwork != "mainnet" ||
+		string(ks.Config) != `{"server":"http://vault:8200/v1/transit","auth":{"accessKey":"dev-only-token"},"namespace":"vca"}` {
+		t.Fatalf("key store = %+v %s", ks, ks.Config)
+	}
+	cfg, err = config.Load(env(with(map[string]string{
+		"VCA_WALTID_KMS_BACKEND": "tse", "VCA_WALTID_KMS_SERVER": "http://vault:8200/v1/transit",
+		"VCA_WALTID_KMS_ROLE_ID": "role", "VCA_WALTID_KMS_SECRET_ID": "secret",
+	})))
+	if err != nil || string(cfg.KeyStore().Config) != `{"server":"http://vault:8200/v1/transit","auth":{"roleId":"role","secretId":"secret"}}` {
+		t.Fatalf("app role: %v", err)
+	}
+	for name, extra := range map[string]map[string]string{
+		"unknown backend":        {"VCA_WALTID_KMS_BACKEND": "oci"},
+		"no server":              {"VCA_WALTID_KMS_BACKEND": "tse", "VCA_WALTID_KMS_TOKEN": "x"},
+		"no auth":                {"VCA_WALTID_KMS_BACKEND": "tse", "VCA_WALTID_KMS_SERVER": "http://vault:8200/v1/transit"},
+		"server without backend": {"VCA_WALTID_KMS_SERVER": "http://vault:8200/v1/transit"},
+		"bad network":            {"VCA_WALTID_CHEQD_NETWORK": "devnet"},
+	} {
+		if _, err := config.Load(env(with(extra))); err == nil {
+			t.Errorf("%s: Load accepted it", name)
+		}
+	}
+}

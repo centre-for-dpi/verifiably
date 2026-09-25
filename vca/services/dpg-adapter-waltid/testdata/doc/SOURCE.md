@@ -7,6 +7,7 @@ run replaces each file with a recording.
 | File | Endpoint | Source | Date |
 | --- | --- | --- | --- |
 | `onboard-issuer-ed25519.json` | `POST /onboard/issuer` with `keyType` `Ed25519` and `method` `key` | https://docs.walt.id/community-stack/issuer/api/onboarding | 2026-09-25 |
+| `onboard-issuer-tse.json` | `POST /onboard/issuer` with `backend` `tse` and its `config` | https://docs.walt.id/community-stack/issuer/key-management/hashicorp-vault and https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/crypto/waltid-crypto/src/commonMain/kotlin/id/walt/crypto/keys/tse/TSEKey.kt | 2026-09-25 |
 | `verifier2-create.json` | Verifier API 2 `POST /verification-session/create` with `flow_type` `cross_device` | https://docs.walt.id/community-stack/verifier2/credential-verification/sd-jwt-vc-oid4vp and https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp-verifier/src/commonMain/kotlin/id/walt/verifier2/handlers/sessioncreation/VerificationSessionCreationResponse.kt | 2026-09-25 |
 | `verifier2-session-active.json` | Verifier API 2 `GET /verification-session/{id}/info`, status `ACTIVE` | https://docs.walt.id/community-stack/verifier2/credential-verification/sd-jwt-vc-oid4vp and https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp-verifier/src/commonMain/kotlin/id/walt/verifier2/data/Verification2Session.kt | 2026-09-25 |
 | `verifier2-session-successful.json` | The same, status `SUCCESSFUL`, with `presented_raw_data` and `policy_results` | as above, plus https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp-verifier/src/commonMain/kotlin/id/walt/verifier2/verification2/Verifier2PolicyResults.kt | 2026-09-25 |
@@ -35,3 +36,9 @@ The flow type name `dc_api_openid4vp` comes from the OpenAPI examples of
 the live demo verifier, which runs a later release. Release 0.18.2 has
 the request mode `DC_API` in `Verification2Session.kt`. The contract
 case `TestContractDcApiSession` confirms the name against 0.18.2.
+
+Issuer identity notes (release 0.18.2):
+
+- The key store settings `server`, `auth` with `accessKey` or `roleId` and `secretId`, and `namespace`: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/crypto/waltid-crypto/src/commonMain/kotlin/id/walt/crypto/keys/tse/TSEKeyMetadata.kt and TSEAuth.kt in the same folder
+- The transit engine refuses `secp256k1`: `keyTypeToTseKeyMapping` in TSEKey.kt
+- A did:cheqd takes `{"network": ...}` and an Ed25519 key through the public registrar: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/waltid-did/src/commonMain/kotlin/id/walt/did/dids/registrar/dids/DidCheqdCreateOptions.kt and registrar/local/cheqd/DidCheqdRegistrar.kt

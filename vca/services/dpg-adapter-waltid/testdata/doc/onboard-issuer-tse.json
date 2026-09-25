@@ -1,0 +1,13 @@
+{
+  "issuerKey": {
+    "type": "tse",
+    "server": "http://vault:8200/v1/transit",
+    "auth": {
+      "accessKey": "dev-only-token"
+    },
+    "id": "k732628061",
+    "_publicKey": [86, -55, 122, -77, 109, -60, 61, -40, -122, -57, -101, -53, 69, -125, 12, 92, -9, 89, 61, -78, 116, -76, 111, -58, -63, -122, -26, 79, -110, -32, -73, -98],
+    "_keyType": "Ed25519"
+  },
+  "issuerDid": "did:key:z6MkkJ3JAhCpSGe5QD9UQ2WGzna7kcswa9ahMC2o3Dd1KRXb"
+}
