@@ -40,6 +40,9 @@ const (
 	CatalogBackendServiceName = "vca.backend.v1.CatalogBackendService"
 	// TenantBackendServiceName is the fully-qualified name of the TenantBackendService service.
 	TenantBackendServiceName = "vca.backend.v1.TenantBackendService"
+	// NotificationBackendServiceName is the fully-qualified name of the NotificationBackendService
+	// service.
+	NotificationBackendServiceName = "vca.backend.v1.NotificationBackendService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -119,6 +122,12 @@ const (
 	// TenantBackendServiceDeleteClientCredentialProcedure is the fully-qualified name of the
 	// TenantBackendService's DeleteClientCredential RPC.
 	TenantBackendServiceDeleteClientCredentialProcedure = "/vca.backend.v1.TenantBackendService/DeleteClientCredential"
+	// NotificationBackendServiceGetWebhookProcedure is the fully-qualified name of the
+	// NotificationBackendService's GetWebhook RPC.
+	NotificationBackendServiceGetWebhookProcedure = "/vca.backend.v1.NotificationBackendService/GetWebhook"
+	// NotificationBackendServiceSetWebhookProcedure is the fully-qualified name of the
+	// NotificationBackendService's SetWebhook RPC.
+	NotificationBackendServiceSetWebhookProcedure = "/vca.backend.v1.NotificationBackendService/SetWebhook"
 )
 
 // CapabilityServiceClient is a client for the vca.backend.v1.CapabilityService service.
@@ -1045,4 +1054,106 @@ func (UnimplementedTenantBackendServiceHandler) CreateClientCredential(context.C
 
 func (UnimplementedTenantBackendServiceHandler) DeleteClientCredential(context.Context, *connect.Request[v1.DeleteClientCredentialRequest]) (*connect.Response[v1.DeleteClientCredentialResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.DeleteClientCredential is not implemented"))
+}
+
+// NotificationBackendServiceClient is a client for the vca.backend.v1.NotificationBackendService
+// service.
+type NotificationBackendServiceClient interface {
+	// GetWebhook returns the webhook of one DPG tenant.
+	GetWebhook(context.Context, *connect.Request[v1.GetWebhookRequest]) (*connect.Response[v1.GetWebhookResponse], error)
+	// SetWebhook sets or clears the webhook of one DPG tenant.
+	SetWebhook(context.Context, *connect.Request[v1.SetWebhookRequest]) (*connect.Response[v1.SetWebhookResponse], error)
+}
+
+// NewNotificationBackendServiceClient constructs a client for the
+// vca.backend.v1.NotificationBackendService service. By default, it uses the Connect protocol with
+// the binary Protobuf Codec, asks for gzipped responses, and sends uncompressed requests. To use
+// the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewNotificationBackendServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) NotificationBackendServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	notificationBackendServiceMethods := v1.File_vca_backend_v1_backend_proto.Services().ByName("NotificationBackendService").Methods()
+	return &notificationBackendServiceClient{
+		getWebhook: connect.NewClient[v1.GetWebhookRequest, v1.GetWebhookResponse](
+			httpClient,
+			baseURL+NotificationBackendServiceGetWebhookProcedure,
+			connect.WithSchema(notificationBackendServiceMethods.ByName("GetWebhook")),
+			connect.WithClientOptions(opts...),
+		),
+		setWebhook: connect.NewClient[v1.SetWebhookRequest, v1.SetWebhookResponse](
+			httpClient,
+			baseURL+NotificationBackendServiceSetWebhookProcedure,
+			connect.WithSchema(notificationBackendServiceMethods.ByName("SetWebhook")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// notificationBackendServiceClient implements NotificationBackendServiceClient.
+type notificationBackendServiceClient struct {
+	getWebhook *connect.Client[v1.GetWebhookRequest, v1.GetWebhookResponse]
+	setWebhook *connect.Client[v1.SetWebhookRequest, v1.SetWebhookResponse]
+}
+
+// GetWebhook calls vca.backend.v1.NotificationBackendService.GetWebhook.
+func (c *notificationBackendServiceClient) GetWebhook(ctx context.Context, req *connect.Request[v1.GetWebhookRequest]) (*connect.Response[v1.GetWebhookResponse], error) {
+	return c.getWebhook.CallUnary(ctx, req)
+}
+
+// SetWebhook calls vca.backend.v1.NotificationBackendService.SetWebhook.
+func (c *notificationBackendServiceClient) SetWebhook(ctx context.Context, req *connect.Request[v1.SetWebhookRequest]) (*connect.Response[v1.SetWebhookResponse], error) {
+	return c.setWebhook.CallUnary(ctx, req)
+}
+
+// NotificationBackendServiceHandler is an implementation of the
+// vca.backend.v1.NotificationBackendService service.
+type NotificationBackendServiceHandler interface {
+	// GetWebhook returns the webhook of one DPG tenant.
+	GetWebhook(context.Context, *connect.Request[v1.GetWebhookRequest]) (*connect.Response[v1.GetWebhookResponse], error)
+	// SetWebhook sets or clears the webhook of one DPG tenant.
+	SetWebhook(context.Context, *connect.Request[v1.SetWebhookRequest]) (*connect.Response[v1.SetWebhookResponse], error)
+}
+
+// NewNotificationBackendServiceHandler builds an HTTP handler from the service implementation. It
+// returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewNotificationBackendServiceHandler(svc NotificationBackendServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	notificationBackendServiceMethods := v1.File_vca_backend_v1_backend_proto.Services().ByName("NotificationBackendService").Methods()
+	notificationBackendServiceGetWebhookHandler := connect.NewUnaryHandler(
+		NotificationBackendServiceGetWebhookProcedure,
+		svc.GetWebhook,
+		connect.WithSchema(notificationBackendServiceMethods.ByName("GetWebhook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationBackendServiceSetWebhookHandler := connect.NewUnaryHandler(
+		NotificationBackendServiceSetWebhookProcedure,
+		svc.SetWebhook,
+		connect.WithSchema(notificationBackendServiceMethods.ByName("SetWebhook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/vca.backend.v1.NotificationBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case NotificationBackendServiceGetWebhookProcedure:
+			notificationBackendServiceGetWebhookHandler.ServeHTTP(w, r)
+		case NotificationBackendServiceSetWebhookProcedure:
+			notificationBackendServiceSetWebhookHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedNotificationBackendServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedNotificationBackendServiceHandler struct{}
+
+func (UnimplementedNotificationBackendServiceHandler) GetWebhook(context.Context, *connect.Request[v1.GetWebhookRequest]) (*connect.Response[v1.GetWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.NotificationBackendService.GetWebhook is not implemented"))
+}
+
+func (UnimplementedNotificationBackendServiceHandler) SetWebhook(context.Context, *connect.Request[v1.SetWebhookRequest]) (*connect.Response[v1.SetWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.NotificationBackendService.SetWebhook is not implemented"))
 }

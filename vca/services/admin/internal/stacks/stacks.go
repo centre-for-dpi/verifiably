@@ -142,3 +142,8 @@ func (d *Directory) Find(ctx context.Context, dpg configv1.Dpg, f backendv1.Feat
 func (d *Directory) Tenants(s Stack) backendv1connect.TenantBackendServiceClient {
 	return backendv1connect.NewTenantBackendServiceClient(d.client, s.Adapter)
 }
+
+// Notifications returns a client of the notification service of a stack.
+func (d *Directory) Notifications(s Stack) backendv1connect.NotificationBackendServiceClient {
+	return backendv1connect.NewNotificationBackendServiceClient(d.client, s.Adapter)
+}

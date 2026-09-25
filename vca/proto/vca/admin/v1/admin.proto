@@ -152,6 +152,16 @@ service AdminService {
     option (vca.common.v1.description) = "Removes one client credential of a stack tenant.";
   }
 
+  // ListStackWebhooks returns the webhook of every stack tenant on a
+  // stack that lists webhooks (ADR-040 decision 2).
+  rpc ListStackWebhooks(ListStackWebhooksRequest) returns (ListStackWebhooksResponse) {
+    option (vca.common.v1.description) = "Returns the webhook of each stack tenant.";
+  }
+  // SetStackWebhook sets or clears the webhook of the tenant of one stack.
+  rpc SetStackWebhook(SetStackWebhookRequest) returns (SetStackWebhookResponse) {
+    option (vca.common.v1.description) = "Sets or clears the webhook of a stack tenant.";
+  }
+
   // GetServiceHealth returns the health of every service in the deployment.
   rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse) {
     option (vca.common.v1.description) = "Returns the health of every service in the deployment.";
@@ -746,6 +756,47 @@ message DeleteStackCredentialRequest {
 
 // DeleteStackCredentialResponse has no fields.
 message DeleteStackCredentialResponse {}
+
+// StackWebhook is the webhook of the stack tenant of a VCA tenant.
+message StackWebhook {
+  // The VCA tenant id.
+  string tenant_id = 1;
+  // The VCA tenant name.
+  string tenant_name = 2;
+  // The stack.
+  vca.config.v1.Dpg stack = 3;
+  // The name of the stack as its adapter reports it.
+  string stack_name = 4;
+  // The webhook. An empty URL means none.
+  vca.backend.v1.Webhook webhook = 5;
+  // Why the service could not read the webhook. Empty when it could.
+  string error = 6;
+}
+
+// ListStackWebhooksRequest has no fields.
+message ListStackWebhooksRequest {}
+
+// ListStackWebhooksResponse returns one entry per stack tenant.
+message ListStackWebhooksResponse {
+  // The webhooks, in tenant and stack order.
+  repeated StackWebhook webhooks = 1;
+}
+
+// SetStackWebhookRequest sets the webhook of one stack tenant.
+message SetStackWebhookRequest {
+  // The VCA tenant id.
+  string tenant_id = 1;
+  // The stack. The tenant must hold a binding on it.
+  vca.config.v1.Dpg stack = 2;
+  // The https URL. Empty clears the webhook.
+  string url = 3;
+}
+
+// SetStackWebhookResponse returns the stored webhook.
+message SetStackWebhookResponse {
+  // The webhook.
+  StackWebhook webhook = 1;
+}
 
 // GetServiceHealthRequest has no fields.
 message GetServiceHealthRequest {}

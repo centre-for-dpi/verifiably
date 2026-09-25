@@ -91,6 +91,17 @@ service TenantBackendService {
   rpc DeleteClientCredential(DeleteClientCredentialRequest) returns (DeleteClientCredentialResponse);
 }
 
+// NotificationBackendService reads and sets the webhook that a DPG calls
+// on events, per DPG tenant (ADR-040 decision 2). An adapter serves it
+// only when it lists FEATURE_WEBHOOKS. Every other adapter returns the
+// Connect code Unimplemented for each RPC.
+service NotificationBackendService {
+  // GetWebhook returns the webhook of one DPG tenant.
+  rpc GetWebhook(GetWebhookRequest) returns (GetWebhookResponse);
+  // SetWebhook sets or clears the webhook of one DPG tenant.
+  rpc SetWebhook(SetWebhookRequest) returns (SetWebhookResponse);
+}
+
 // Channel names a way to deliver a credential to a citizen (ADR-016).
 enum Channel {
   CHANNEL_UNSPECIFIED = 0;
@@ -740,3 +751,37 @@ message DeleteClientCredentialRequest {
 
 // DeleteClientCredentialResponse has no fields.
 message DeleteClientCredentialResponse {}
+
+// Webhook is the address a DPG calls on the events of one tenant.
+message Webhook {
+  // The https URL. Empty means the tenant has no webhook.
+  string url = 1;
+  // The time of the last change, when the DPG reports it.
+  google.protobuf.Timestamp updated_at = 2;
+}
+
+// GetWebhookRequest selects one DPG tenant.
+message GetWebhookRequest {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+}
+
+// GetWebhookResponse returns the webhook.
+message GetWebhookResponse {
+  // The webhook. An empty URL means none.
+  Webhook webhook = 1;
+}
+
+// SetWebhookRequest sets the webhook of one DPG tenant.
+message SetWebhookRequest {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+  // The https URL. Empty clears the webhook.
+  string url = 2;
+}
+
+// SetWebhookResponse returns the stored webhook.
+message SetWebhookResponse {
+  // The webhook as the DPG stored it.
+  Webhook webhook = 1;
+}

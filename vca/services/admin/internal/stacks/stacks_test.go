@@ -120,6 +120,9 @@ func TestDirectoryFindsAStackAndCallsItsAdapter(t *testing.T) {
 	if err != nil || res.Msg.GetTenants()[0].GetId() != "org-1" {
 		t.Fatalf("ListTenants = %v, %v", res, err)
 	}
+	if _, err := d.Notifications(st).GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{})); connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("the notification client reached %v", err)
+	}
 	if _, err := d.Find(ctx, configv1.Dpg_DPG_WALTID, backendv1.Feature_FEATURE_MULTI_TENANCY); !errors.Is(err, stacks.ErrNotOffered) {
 		t.Errorf("a stack without the feature gave %v", err)
 	}

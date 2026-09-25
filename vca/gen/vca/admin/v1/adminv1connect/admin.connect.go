@@ -123,6 +123,12 @@ const (
 	// AdminServiceDeleteStackCredentialProcedure is the fully-qualified name of the AdminService's
 	// DeleteStackCredential RPC.
 	AdminServiceDeleteStackCredentialProcedure = "/vca.admin.v1.AdminService/DeleteStackCredential"
+	// AdminServiceListStackWebhooksProcedure is the fully-qualified name of the AdminService's
+	// ListStackWebhooks RPC.
+	AdminServiceListStackWebhooksProcedure = "/vca.admin.v1.AdminService/ListStackWebhooks"
+	// AdminServiceSetStackWebhookProcedure is the fully-qualified name of the AdminService's
+	// SetStackWebhook RPC.
+	AdminServiceSetStackWebhookProcedure = "/vca.admin.v1.AdminService/SetStackWebhook"
 	// AdminServiceGetServiceHealthProcedure is the fully-qualified name of the AdminService's
 	// GetServiceHealth RPC.
 	AdminServiceGetServiceHealthProcedure = "/vca.admin.v1.AdminService/GetServiceHealth"
@@ -212,6 +218,11 @@ type AdminServiceClient interface {
 	CreateStackCredential(context.Context, *connect.Request[v1.CreateStackCredentialRequest]) (*connect.Response[v1.CreateStackCredentialResponse], error)
 	// DeleteStackCredential removes one client credential of a stack tenant.
 	DeleteStackCredential(context.Context, *connect.Request[v1.DeleteStackCredentialRequest]) (*connect.Response[v1.DeleteStackCredentialResponse], error)
+	// ListStackWebhooks returns the webhook of every stack tenant on a
+	// stack that lists webhooks (ADR-040 decision 2).
+	ListStackWebhooks(context.Context, *connect.Request[v1.ListStackWebhooksRequest]) (*connect.Response[v1.ListStackWebhooksResponse], error)
+	// SetStackWebhook sets or clears the webhook of the tenant of one stack.
+	SetStackWebhook(context.Context, *connect.Request[v1.SetStackWebhookRequest]) (*connect.Response[v1.SetStackWebhookResponse], error)
 	// GetServiceHealth returns the health of every service in the deployment.
 	GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error)
 	// QueryAuditLog returns audit records that match a filter, newest first.
@@ -410,6 +421,18 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("DeleteStackCredential")),
 			connect.WithClientOptions(opts...),
 		),
+		listStackWebhooks: connect.NewClient[v1.ListStackWebhooksRequest, v1.ListStackWebhooksResponse](
+			httpClient,
+			baseURL+AdminServiceListStackWebhooksProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListStackWebhooks")),
+			connect.WithClientOptions(opts...),
+		),
+		setStackWebhook: connect.NewClient[v1.SetStackWebhookRequest, v1.SetStackWebhookResponse](
+			httpClient,
+			baseURL+AdminServiceSetStackWebhookProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("SetStackWebhook")),
+			connect.WithClientOptions(opts...),
+		),
 		getServiceHealth: connect.NewClient[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse](
 			httpClient,
 			baseURL+AdminServiceGetServiceHealthProcedure,
@@ -468,6 +491,8 @@ type adminServiceClient struct {
 	listStackCredentials  *connect.Client[v1.ListStackCredentialsRequest, v1.ListStackCredentialsResponse]
 	createStackCredential *connect.Client[v1.CreateStackCredentialRequest, v1.CreateStackCredentialResponse]
 	deleteStackCredential *connect.Client[v1.DeleteStackCredentialRequest, v1.DeleteStackCredentialResponse]
+	listStackWebhooks     *connect.Client[v1.ListStackWebhooksRequest, v1.ListStackWebhooksResponse]
+	setStackWebhook       *connect.Client[v1.SetStackWebhookRequest, v1.SetStackWebhookResponse]
 	getServiceHealth      *connect.Client[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse]
 	queryAuditLog         *connect.Client[v1.QueryAuditLogRequest, v1.QueryAuditLogResponse]
 	onboardAdmin          *connect.Client[v1.OnboardAdminRequest, v1.OnboardAdminResponse]
@@ -619,6 +644,16 @@ func (c *adminServiceClient) DeleteStackCredential(ctx context.Context, req *con
 	return c.deleteStackCredential.CallUnary(ctx, req)
 }
 
+// ListStackWebhooks calls vca.admin.v1.AdminService.ListStackWebhooks.
+func (c *adminServiceClient) ListStackWebhooks(ctx context.Context, req *connect.Request[v1.ListStackWebhooksRequest]) (*connect.Response[v1.ListStackWebhooksResponse], error) {
+	return c.listStackWebhooks.CallUnary(ctx, req)
+}
+
+// SetStackWebhook calls vca.admin.v1.AdminService.SetStackWebhook.
+func (c *adminServiceClient) SetStackWebhook(ctx context.Context, req *connect.Request[v1.SetStackWebhookRequest]) (*connect.Response[v1.SetStackWebhookResponse], error) {
+	return c.setStackWebhook.CallUnary(ctx, req)
+}
+
 // GetServiceHealth calls vca.admin.v1.AdminService.GetServiceHealth.
 func (c *adminServiceClient) GetServiceHealth(ctx context.Context, req *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error) {
 	return c.getServiceHealth.CallUnary(ctx, req)
@@ -714,6 +749,11 @@ type AdminServiceHandler interface {
 	CreateStackCredential(context.Context, *connect.Request[v1.CreateStackCredentialRequest]) (*connect.Response[v1.CreateStackCredentialResponse], error)
 	// DeleteStackCredential removes one client credential of a stack tenant.
 	DeleteStackCredential(context.Context, *connect.Request[v1.DeleteStackCredentialRequest]) (*connect.Response[v1.DeleteStackCredentialResponse], error)
+	// ListStackWebhooks returns the webhook of every stack tenant on a
+	// stack that lists webhooks (ADR-040 decision 2).
+	ListStackWebhooks(context.Context, *connect.Request[v1.ListStackWebhooksRequest]) (*connect.Response[v1.ListStackWebhooksResponse], error)
+	// SetStackWebhook sets or clears the webhook of the tenant of one stack.
+	SetStackWebhook(context.Context, *connect.Request[v1.SetStackWebhookRequest]) (*connect.Response[v1.SetStackWebhookResponse], error)
 	// GetServiceHealth returns the health of every service in the deployment.
 	GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error)
 	// QueryAuditLog returns audit records that match a filter, newest first.
@@ -908,6 +948,18 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("DeleteStackCredential")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceListStackWebhooksHandler := connect.NewUnaryHandler(
+		AdminServiceListStackWebhooksProcedure,
+		svc.ListStackWebhooks,
+		connect.WithSchema(adminServiceMethods.ByName("ListStackWebhooks")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceSetStackWebhookHandler := connect.NewUnaryHandler(
+		AdminServiceSetStackWebhookProcedure,
+		svc.SetStackWebhook,
+		connect.WithSchema(adminServiceMethods.ByName("SetStackWebhook")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceGetServiceHealthHandler := connect.NewUnaryHandler(
 		AdminServiceGetServiceHealthProcedure,
 		svc.GetServiceHealth,
@@ -992,6 +1044,10 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceCreateStackCredentialHandler.ServeHTTP(w, r)
 		case AdminServiceDeleteStackCredentialProcedure:
 			adminServiceDeleteStackCredentialHandler.ServeHTTP(w, r)
+		case AdminServiceListStackWebhooksProcedure:
+			adminServiceListStackWebhooksHandler.ServeHTTP(w, r)
+		case AdminServiceSetStackWebhookProcedure:
+			adminServiceSetStackWebhookHandler.ServeHTTP(w, r)
 		case AdminServiceGetServiceHealthProcedure:
 			adminServiceGetServiceHealthHandler.ServeHTTP(w, r)
 		case AdminServiceQueryAuditLogProcedure:
@@ -1123,6 +1179,14 @@ func (UnimplementedAdminServiceHandler) CreateStackCredential(context.Context, *
 
 func (UnimplementedAdminServiceHandler) DeleteStackCredential(context.Context, *connect.Request[v1.DeleteStackCredentialRequest]) (*connect.Response[v1.DeleteStackCredentialResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.DeleteStackCredential is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListStackWebhooks(context.Context, *connect.Request[v1.ListStackWebhooksRequest]) (*connect.Response[v1.ListStackWebhooksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.ListStackWebhooks is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) SetStackWebhook(context.Context, *connect.Request[v1.SetStackWebhookRequest]) (*connect.Response[v1.SetStackWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.SetStackWebhook is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error) {

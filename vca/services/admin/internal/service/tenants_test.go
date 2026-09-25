@@ -41,10 +41,14 @@ type fakeAdapter struct {
 	creds map[string][]*backendv1.ClientCredential
 	// credErr, when set, fails every credential call.
 	credErr error
+	// hooks holds the webhook URL per stack tenant id.
+	hooks map[string]string
+	// hookErr, when set, fails every webhook call.
+	hookErr error
 }
 
 func newFakeAdapter() *fakeAdapter {
-	return &fakeAdapter{tenants: map[string]*backendv1.DpgTenant{}, creds: map[string][]*backendv1.ClientCredential{}}
+	return &fakeAdapter{tenants: map[string]*backendv1.DpgTenant{}, creds: map[string][]*backendv1.ClientCredential{}, hooks: map[string]string{}}
 }
 
 func (f *fakeAdapter) CreateTenant(_ context.Context, req *connect.Request[backendv1.CreateTenantRequest]) (*connect.Response[backendv1.CreateTenantResponse], error) {
@@ -134,6 +138,7 @@ func withStacks(t *testing.T, h *harness, extra ...backendv1.Feature) (*fakeAdap
 	fake := newFakeAdapter()
 	mux := http.NewServeMux()
 	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(fake))
+	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(fake))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	dep := &deployment{snap: topology.Snapshot{Peers: []topology.Status{

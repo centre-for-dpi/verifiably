@@ -21,6 +21,7 @@ flow, and it checks presentations with DCQL queries.
 | `VerifierBackendService` | Served. |
 | `CatalogBackendService` | Served. |
 | `TenantBackendService` | Never served yet. The adapter acts for the one configured organisation. It lists no multi tenancy. |
+| `NotificationBackendService` | Never served yet. The adapter sets no organisation webhook. It lists no webhooks. |
 
 ## The CREDEBL endpoints
 
@@ -68,6 +69,7 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | `Revoke` | The status services own the status bits. |
 | Every holder RPC | CREDEBL ships no wallet for a citizen. |
 | Every tenant RPC | The adapter acts for the one configured organisation. |
+| Every webhook RPC | The adapter sets no organisation webhook. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.

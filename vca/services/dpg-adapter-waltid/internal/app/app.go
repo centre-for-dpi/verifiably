@@ -71,6 +71,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.Handle(backendv1connect.NewVerifierBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc))
+	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc))
 	deps.Log.Info("walt.id adapter ready",
 		"issuer", cfg.IssuerURL != "", "verifier", cfg.VerifierURL != "", "wallet", cfg.WalletURL != "")
 	return &App{Mux: mux, Service: svc}, nil

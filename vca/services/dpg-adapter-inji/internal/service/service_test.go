@@ -601,6 +601,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_WEBHOOKS, func() error {
+			_, err := svc.GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{}))
+			return err
+		}, true},
 	}
 	listed := map[backendv1.Feature]bool{}
 	for _, f := range resp.Msg.GetFeatures() {
@@ -683,6 +687,31 @@ func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
 	}
 	for _, f := range caps.Msg.GetFeatures() {
 		if f == backendv1.Feature_FEATURE_MULTI_TENANCY || f == backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS {
+			t.Errorf("the answer lists %v", f)
+		}
+	}
+}
+
+// TestWebhookServiceUnimplementedWithoutFeature is ADR-040 decision 2:
+// the adapter sets no DPG webhook yet, so both notification RPCs answer
+// Unimplemented with a reason, and the answer lists no webhooks. The
+// admin notifications page then shows no webhook form for this stack.
+func TestWebhookServiceUnimplementedWithoutFeature(t *testing.T) {
+	svc, _ := newService(t, both)
+	ctx := context.Background()
+	_, err := svc.GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{TenantId: "t-1"}))
+	wantCode(t, err, connect.CodeUnimplemented)
+	if !strings.Contains(err.Error(), "webhook") {
+		t.Errorf("the message %q does not say why", err)
+	}
+	_, err = svc.SetWebhook(ctx, connect.NewRequest(&backendv1.SetWebhookRequest{TenantId: "t-1", Url: "https://hooks.example/vca"}))
+	wantCode(t, err, connect.CodeUnimplemented)
+	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range caps.Msg.GetFeatures() {
+		if f == backendv1.Feature_FEATURE_WEBHOOKS {
 			t.Errorf("the answer lists %v", f)
 		}
 	}

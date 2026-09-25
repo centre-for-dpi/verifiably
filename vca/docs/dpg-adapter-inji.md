@@ -23,6 +23,7 @@ Inji database, and it never restarts an Inji container.
 | `VerifierBackendService` | Served when the configuration names an Inji Verify URL. |
 | `CatalogBackendService` | Served when the configuration names an Inji Certify URL. |
 | `TenantBackendService` | Never served. Inji keeps no tenants. |
+| `NotificationBackendService` | Never served. Inji keeps no tenants to hold a webhook. |
 
 ## The Inji endpoints
 
@@ -65,6 +66,7 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | `Revoke` | Inji Certify has no revocation API. The status services own the bits. |
 | Every holder RPC | Inji ships no wallet for a citizen. |
 | Every tenant RPC | Inji keeps no tenants. |
+| Every webhook RPC | Inji keeps no tenants to hold a webhook. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.

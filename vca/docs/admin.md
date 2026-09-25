@@ -264,6 +264,7 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/providers/{id}` | The edit form of one provider. |
 | `/admin/keys` | The VCA API keys with tenant and expiry, and the stack credentials. A new secret appears once. |
 | `/admin/audit` | The audit log with filters. |
+| `/admin/notifications` | The VCA delivery channels with their state, and the stack webhooks where a stack has them. |
 | `/admin/help` | Every command and every RPC with its help text. |
 
 ### Tenants on stacks
@@ -304,6 +305,20 @@ secret again, and VCA keeps no copy. The admin service writes one audit
 record for each create and delete, with the credential id and never
 the secret. The CLI has the same actions under
 `vca admin stack-credential`.
+
+### Notifications
+
+The notifications page lists the VCA delivery channels: email, SMS, and
+a VCA webhook (ADR-040). Each row says "Not built in this release". The
+page names what is not built in plain words and gives no date.
+
+A stack can call a webhook on the events of one tenant. The page shows
+the stack webhooks only when a live adapter lists `FEATURE_WEBHOOKS`.
+The admin service reads each webhook through
+`vca.backend.v1.NotificationBackendService` and sets it with
+`SetStackWebhook`. A webhook must use https. An empty URL clears it.
+Each change writes one audit record. The CLI has the same actions under
+`vca admin webhook`.
 
 ### Trust review
 

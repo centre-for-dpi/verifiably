@@ -70,7 +70,7 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 
 func TestAdminGroupNames(t *testing.T) {
 	got := AdminGroupNames()
-	want := []string{"tenant", "trust", "registry", "onboard", "onboard-provider", "provider", "apikey", "stack-credential", "health", "audit", "bind", "help"}
+	want := []string{"tenant", "trust", "registry", "onboard", "onboard-provider", "provider", "apikey", "stack-credential", "webhook", "health", "audit", "bind", "help"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("got %v, want %v", got, want)
 	}

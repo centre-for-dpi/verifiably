@@ -68,6 +68,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.Handle(backendv1connect.NewVerifierBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc))
+	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc))
 	// The credential offer endpoint is standards defined, so it stays a
 	// plain HTTP handler (ADR-003 decision 7).
 	mux.HandleFunc("GET /offers/{id}", offerHandler(svc))

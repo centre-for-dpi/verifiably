@@ -180,6 +180,14 @@ var commands = []command{
 		{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
 		{name: "id", text: "The credential id.", mandatory: true},
 	}},
+	{path: "admin webhook list", rpc: "ListStackWebhooks"},
+	{path: "admin webhook set", rpc: "SetStackWebhook",
+		long: "Sets the webhook that a stack calls on the events of one tenant. An empty URL clears it. The stack must list webhooks.",
+		flags: []flag{
+			{name: "tenant", text: "The tenant id.", mandatory: true},
+			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+			{name: "url", text: "The https URL. Leave it out to clear the webhook."},
+		}},
 	{path: "admin health", rpc: "GetServiceHealth"},
 	{path: "admin audit", rpc: "QueryAuditLog", flags: []flag{
 		{name: "actor", text: "The actor filter."},

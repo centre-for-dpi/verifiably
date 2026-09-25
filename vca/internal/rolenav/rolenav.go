@@ -73,6 +73,7 @@ func Sections(role commonv1.Role) []Section {
 			}},
 			{Key: "admin.nav.section.records.label", Pages: []Page{
 				{Path: "/admin/audit", Key: "admin.nav.audit.label"},
+				{Path: "/admin/notifications", Key: "common.notifications.label"},
 			}},
 			{Pages: []Page{{Path: "/admin/help", Key: "common.help.label"}}},
 		}

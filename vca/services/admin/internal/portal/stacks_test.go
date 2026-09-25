@@ -39,12 +39,15 @@ type fakeStack struct {
 	mint func(n int) (string, []string)
 	// creds holds the client credentials per stack tenant id.
 	creds map[string][]*backendv1.ClientCredential
+	// hooks holds the webhook URL per stack tenant id.
+	hooks map[string]string
 }
 
 func newFakeStack(name string, features ...backendv1.Feature) *fakeStack {
 	return &fakeStack{
 		name: name, features: features,
 		tenants: map[string]*backendv1.DpgTenant{}, creds: map[string][]*backendv1.ClientCredential{},
+		hooks: map[string]string{},
 	}
 }
 
@@ -114,6 +117,19 @@ func (f *fakeStack) DeleteClientCredential(_ context.Context, req *connect.Reque
 	return connect.NewResponse(&backendv1.DeleteClientCredentialResponse{}), nil
 }
 
+func (f *fakeStack) GetWebhook(_ context.Context, req *connect.Request[backendv1.GetWebhookRequest]) (*connect.Response[backendv1.GetWebhookResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return connect.NewResponse(&backendv1.GetWebhookResponse{Webhook: &backendv1.Webhook{Url: f.hooks[req.Msg.GetTenantId()]}}), nil
+}
+
+func (f *fakeStack) SetWebhook(_ context.Context, req *connect.Request[backendv1.SetWebhookRequest]) (*connect.Response[backendv1.SetWebhookResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hooks[req.Msg.GetTenantId()] = req.Msg.GetUrl()
+	return connect.NewResponse(&backendv1.SetWebhookResponse{Webhook: &backendv1.Webhook{Url: req.Msg.GetUrl()}}), nil
+}
+
 func (f *fakeStack) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -126,6 +142,7 @@ func (f *fakeStack) serve(t *testing.T) string {
 	mux := http.NewServeMux()
 	mux.Handle(backendv1connect.NewCapabilityServiceHandler(f))
 	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(f))
+	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(f))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv.URL

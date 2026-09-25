@@ -37,6 +37,8 @@
 //	POST /keys/{id}/revoke       revoke one API key
 //	POST /keys/stack             create one client credential on a stack tenant
 //	POST /keys/stack/delete      remove one client credential of a stack tenant
+//	GET  /notifications          the delivery channels and the stack webhooks
+//	POST /notifications/webhook  set or clear the webhook of a stack tenant
 //	GET  /audit                  the audit log with filters
 //	GET  /help                   every RPC with its help text
 //
@@ -175,6 +177,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	p.registerTrust(mux)
 	p.registerProviders(mux)
 	p.registerKeys(mux)
+	p.registerNotifications(mux)
 	mux.HandleFunc("GET "+at+"/audit", p.guarded(p.auditLog))
 }
 
@@ -334,6 +337,8 @@ var Notices = map[string]components.Toast{
 	"provider-removed":         {Level: "warn", Text: "The login provider is removed. Its sessions end."},
 	"key-revoked":              {Level: "warn", Text: msg.T("admin.keys.revoked")},
 	"stack-credential-deleted": {Level: "warn", Text: msg.T("admin.keys.stack.deleted")},
+	"webhook-saved":            {Level: "ok", Text: msg.T("admin.notifications.webhook.saved")},
+	"webhook-cleared":          {Level: "warn", Text: msg.T("admin.notifications.webhook.cleared")},
 	"signed-out":               {Level: "info", Text: "You are signed out."},
 }
 
