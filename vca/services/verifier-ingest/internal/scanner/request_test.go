@@ -126,20 +126,35 @@ func (f *results) Get(_ context.Context, req *connect.Request[resultsv1.GetReque
 // stackVerifier is the verifier of one adapter. It answers pending until
 // the test sets an answer.
 type stackVerifier struct {
-	mu      sync.Mutex
-	created []*backendv1.CreateRequestRequest
-	polls   int
-	answer  *backendv1.GetResultResponse
+	mu        sync.Mutex
+	created   []*backendv1.CreateRequestRequest
+	submitted []*backendv1.SubmitBrowserAnswerRequest
+	polls     int
+	answer    *backendv1.GetResultResponse
+}
+
+// dcRequest is the Digital Credentials API request a stack answers with.
+const dcRequest = `{"protocol":"openid4vp-v1-unsigned","data":{"response_mode":"dc_api","nonce":"n-1"}}`
+
+func (f *stackVerifier) SubmitBrowserAnswer(_ context.Context, req *connect.Request[backendv1.SubmitBrowserAnswerRequest]) (*connect.Response[backendv1.SubmitBrowserAnswerResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.submitted = append(f.submitted, req.Msg)
+	return connect.NewResponse(&backendv1.SubmitBrowserAnswerResponse{}), nil
 }
 
 func (f *stackVerifier) CreateRequest(_ context.Context, req *connect.Request[backendv1.CreateRequestRequest]) (*connect.Response[backendv1.CreateRequestResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.created = append(f.created, req.Msg)
-	return connect.NewResponse(&backendv1.CreateRequestResponse{
+	out := &backendv1.CreateRequestResponse{
 		RequestUri: "openid4vp://authorize?client_id=stack&request_uri=https%3A%2F%2Fstack.example%2Fr%2F1", State: "stack-state-1",
 		ExpiresAt: timestamppb.New(time.Unix(1700000600, 0)),
-	}), nil
+	}
+	if req.Msg.GetDcApi() {
+		out.DcApiRequest = dcRequest
+	}
+	return connect.NewResponse(out), nil
 }
 
 func (f *stackVerifier) GetResult(_ context.Context, req *connect.Request[backendv1.GetResultRequest]) (*connect.Response[backendv1.GetResultResponse], error) {
@@ -165,11 +180,20 @@ type requestRig struct {
 	legacy  *stackVerifier
 	modern  *stackVerifier
 	now     *time.Time
+	// dcapi makes the modern stack list FEATURE_DC_API_VERIFY.
+	dcapi bool
 }
 
 // newRequestRig wires the pages in the verifier frame with two live
 // stacks: one reads PE only, one reads DCQL.
 func newRequestRig(t *testing.T) *requestRig {
+	t.Helper()
+	return newRequestRigWith(t, false)
+}
+
+// newRequestRigWith is newRequestRig with the Digital Credentials API
+// feature on the modern stack when dcapi is true.
+func newRequestRigWith(t *testing.T, dcapi bool) *requestRig {
 	t.Helper()
 	store, err := txn.NewStore(shared.Memory())
 	if err != nil {
@@ -181,14 +205,15 @@ func newRequestRig(t *testing.T) *requestRig {
 	}
 	now := time.Unix(1700000000, 0).UTC()
 	rig := &requestRig{store: store, now: &now, policy: &policy{}, results: &results{stored: map[string]*resultsv1.VerificationResult{}},
-		legacy: &stackVerifier{}, modern: &stackVerifier{}}
+		legacy: &stackVerifier{}, modern: &stackVerifier{}, dcapi: dcapi}
 	clock := func() time.Time { return *rig.now }
 	stacks := func(context.Context) []service.Stack {
 		return []service.Stack{
 			{Pair: "verifier-waltid", Name: "Legacy stack", Adapter: "http://legacy:8080",
 				Protocols: []backendv1.Protocol{backendv1.Protocol_PROTOCOL_OID4VP, backendv1.Protocol_PROTOCOL_OID4VP_PEX}},
 			{Pair: "verifier-credebl", Name: "Modern stack", Adapter: "http://modern:8080",
-				Protocols: []backendv1.Protocol{backendv1.Protocol_PROTOCOL_OID4VP, backendv1.Protocol_PROTOCOL_OID4VP_DCQL}},
+				Protocols: []backendv1.Protocol{backendv1.Protocol_PROTOCOL_OID4VP, backendv1.Protocol_PROTOCOL_OID4VP_DCQL},
+				Features:  modernFeatures(rig.dcapi)},
 		}
 	}
 	client := func(adapter string) service.StackVerifier {
@@ -568,5 +593,91 @@ func TestRequestPagesWithoutLinks(t *testing.T) {
 	answerers := staffDo(t, mux, formPost("/scan/requests/new/answerers", url.Values{"template": {"x"}}))
 	if !strings.Contains(answerers.Body.String(), "No live verifier reads this query.") {
 		t.Errorf("answerers: %s", answerers.Body.String())
+	}
+}
+
+// modernFeatures lists FEATURE_DC_API_VERIFY when on is true.
+func modernFeatures(on bool) []backendv1.Feature {
+	if !on {
+		return nil
+	}
+	return []backendv1.Feature{backendv1.Feature_FEATURE_DC_API_VERIFY}
+}
+
+// TestDcApiDeliveryOnlyWithFeature offers the Digital Credentials API
+// delivery only when a live stack adapter lists FEATURE_DC_API_VERIFY,
+// and sends such a request only through that stack.
+func TestDcApiDeliveryOnlyWithFeature(t *testing.T) {
+	without := newRequestRig(t)
+	form := without.get(t, "/scan/requests/new", false)
+	if strings.Contains(form, `value="dcapi"`) || strings.Contains(form, "Digital Credentials API") {
+		t.Error("the form offers the Digital Credentials API without a stack that lists it")
+	}
+	refused := staffDo(t, without.mux, formPost("/scan/requests/", url.Values{"template": {"licence-check"}, "through": {"verifier-credebl"}, "deliver": {"dcapi"}}))
+	if refused.Code != http.StatusBadRequest {
+		t.Errorf("a DC API request through a stack without the feature: %d", refused.Code)
+	}
+	a11ytest.AssertPage(t, refused.Body.String())
+
+	rig := newRequestRigWith(t, true)
+	form = rig.get(t, "/scan/requests/new", false)
+	a11ytest.AssertPage(t, form)
+	if !strings.Contains(form, `value="dcapi"`) || !strings.Contains(form, "Modern stack") {
+		t.Error("the form lacks the Digital Credentials API delivery of the stack that lists it")
+	}
+	vca := staffDo(t, rig.mux, formPost("/scan/requests/", url.Values{"template": {"licence-check"}, "through": {"vca"}, "deliver": {"dcapi"}}))
+	if vca.Code != http.StatusBadRequest {
+		t.Errorf("a DC API request through the VCA verifier: %d", vca.Code)
+	}
+	path := rig.create(t, url.Values{"template": {"licence-check"}, "through": {"verifier-credebl"}, "deliver": {"dcapi"}})
+	if !strings.Contains(path, "as=dcapi") {
+		t.Errorf("location %q", path)
+	}
+	if len(rig.modern.created) != 1 || !rig.modern.created[0].GetDcApi() ||
+		strings.Join(rig.modern.created[0].GetExpectedOrigins(), ",") != "https://verify.example" {
+		t.Fatalf("the stack got %+v", rig.modern.created)
+	}
+	page := rig.get(t, path, false)
+	a11ytest.AssertPage(t, page)
+	for _, want := range []string{`data-dcapi-request="`, `hidden`, `action="/scan/requests/` + idOf(t, path) + `/dc-api"`, "Digital Credentials API"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page lacks %q", want)
+		}
+	}
+	// A request without a DC API request object has no such tab.
+	plain := rig.create(t, url.Values{"template": {"licence-check"}, "through": {"verifier-credebl"}, "deliver": {"qr"}})
+	if strings.Contains(rig.get(t, plain, false), "?as=dcapi") {
+		t.Error("a QR request offers the Digital Credentials API tab")
+	}
+}
+
+// TestDcApiFallbackQR keeps the QR code of the same request beside the
+// browser button, for a browser without the API, and hands the answer of
+// the browser to the stack.
+func TestDcApiFallbackQR(t *testing.T) {
+	rig := newRequestRigWith(t, true)
+	path := rig.create(t, url.Values{"template": {"licence-check"}, "through": {"verifier-credebl"}, "deliver": {"dcapi"}})
+	page := rig.get(t, path, false)
+	for _, want := range []string{`alt="QR code of the presentation request."`, "openid4vp://authorize?client_id=stack", "has no Digital Credentials API"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the fallback lacks %q", want)
+		}
+	}
+	id := idOf(t, path)
+	empty := staffDo(t, rig.mux, formPost("/scan/requests/"+id+"/dc-api", url.Values{"response": {""}}))
+	if empty.Code != http.StatusBadRequest {
+		t.Errorf("an empty answer: %d", empty.Code)
+	}
+	answer := `{"protocol":"openid4vp-v1-unsigned","data":{"vp_token":{"licence":["x"]}}}`
+	rec := staffDo(t, rig.mux, formPost("/scan/requests/"+id+"/dc-api", url.Values{"response": {answer}}))
+	if rec.Code != http.StatusSeeOther || !strings.HasSuffix(rec.Header().Get("Location"), id+"?as=dcapi") {
+		t.Fatalf("submit: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if len(rig.modern.submitted) != 1 || rig.modern.submitted[0].GetState() != "stack-state-1" || rig.modern.submitted[0].GetResponse() != answer {
+		t.Errorf("the stack got %+v", rig.modern.submitted)
+	}
+	missing := staffDo(t, rig.mux, formPost("/scan/requests/nope/dc-api", url.Values{"response": {answer}}))
+	if missing.Code != http.StatusNotFound {
+		t.Errorf("an unknown request: %d", missing.Code)
 	}
 }

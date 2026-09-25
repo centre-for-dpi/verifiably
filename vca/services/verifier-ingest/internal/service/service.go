@@ -206,6 +206,10 @@ func (s *Service) CreateOid4VpRequest(ctx context.Context, req *connect.Request[
 	if req.Msg.GetStack() != "" {
 		return s.createThroughStack(ctx, req.Msg, t, ttl)
 	}
+	if req.Msg.GetDcApi() {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("service: the VCA verifier has no Digital Credentials API flow; send the request through a stack that lists it"))
+	}
 	if !VCAReads(t) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("service: the query %q has no DCQL form, so send it through a stack that reads PE", t.GetId()))
@@ -309,6 +313,7 @@ func (s *Service) GetTransaction(ctx context.Context, req *connect.Request[inges
 		RequestUri:      record.RequestURI,
 		Error:           record.Error,
 		StackChecks:     stackChecks(record.StackChecks),
+		DcApiRequest:    record.DcAPIRequest,
 	}), nil
 }
 

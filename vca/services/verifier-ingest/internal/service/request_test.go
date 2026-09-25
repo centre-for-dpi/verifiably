@@ -72,15 +72,31 @@ func (f *keeper) Store(_ context.Context, req *connect.Request[resultsv1.StoreRe
 type adapter struct {
 	createErr error
 	getErr    error
+	submitErr error
 	answer    *backendv1.GetResultResponse
 	expires   *timestamppb.Timestamp
+	created   []*backendv1.CreateRequestRequest
+	submitted []*backendv1.SubmitBrowserAnswerRequest
 }
 
-func (f *adapter) CreateRequest(context.Context, *connect.Request[backendv1.CreateRequestRequest]) (*connect.Response[backendv1.CreateRequestResponse], error) {
+func (f *adapter) SubmitBrowserAnswer(_ context.Context, req *connect.Request[backendv1.SubmitBrowserAnswerRequest]) (*connect.Response[backendv1.SubmitBrowserAnswerResponse], error) {
+	if f.submitErr != nil {
+		return nil, f.submitErr
+	}
+	f.submitted = append(f.submitted, req.Msg)
+	return connect.NewResponse(&backendv1.SubmitBrowserAnswerResponse{}), nil
+}
+
+func (f *adapter) CreateRequest(_ context.Context, req *connect.Request[backendv1.CreateRequestRequest]) (*connect.Response[backendv1.CreateRequestResponse], error) {
 	if f.createErr != nil {
 		return nil, f.createErr
 	}
-	return connect.NewResponse(&backendv1.CreateRequestResponse{RequestUri: "openid4vp://stack", State: "s", ExpiresAt: f.expires}), nil
+	f.created = append(f.created, req.Msg)
+	out := &backendv1.CreateRequestResponse{RequestUri: "openid4vp://stack", State: "s", ExpiresAt: f.expires}
+	if req.Msg.GetDcApi() {
+		out.DcApiRequest = `{"protocol":"openid4vp-v1-unsigned","data":{}}`
+	}
+	return connect.NewResponse(out), nil
 }
 
 func (f *adapter) GetResult(context.Context, *connect.Request[backendv1.GetResultRequest]) (*connect.Response[backendv1.GetResultResponse], error) {
@@ -96,6 +112,9 @@ func (f *adapter) GetResult(context.Context, *connect.Request[backendv1.GetResul
 var (
 	dcqlStack = service.Stack{Pair: "verifier-credebl", Name: "DCQL stack", Adapter: "http://dcql",
 		Protocols: []backendv1.Protocol{backendv1.Protocol_PROTOCOL_OID4VP_DCQL}}
+	dcAPIStack = service.Stack{Pair: "verifier-waltid", Name: "DC API stack", Adapter: "http://dcapi",
+		Protocols: []backendv1.Protocol{backendv1.Protocol_PROTOCOL_OID4VP_DCQL, backendv1.Protocol_PROTOCOL_DC_API},
+		Features:  []backendv1.Feature{backendv1.Feature_FEATURE_DC_API_VERIFY}}
 	peStack = service.Stack{Pair: "verifier-waltid", Name: "PE stack", Adapter: "http://pe",
 		Protocols: []backendv1.Protocol{backendv1.Protocol_PROTOCOL_OID4VP_PEX}}
 )
@@ -310,5 +329,67 @@ func TestEvaluateFailuresKeepTheAnswer(t *testing.T) {
 			!strings.HasPrefix(got.Msg.GetError(), c.want) {
 			t.Errorf("%s: %+v %v", name, got.Msg, err)
 		}
+	}
+}
+
+// TestDcApiRequestThroughAStack sends a Digital Credentials API request
+// only through a stack that lists the feature, with the origin of the
+// service, and hands the answer of the browser to that stack.
+func TestDcApiRequestThroughAStack(t *testing.T) {
+	ctx := context.Background()
+	a := &adapter{}
+	svc, _ := build(t, service.Options{
+		Discovery: templateOf{t: licenceTemplate()}, RequestTTL: time.Minute,
+		Stacks:      func(context.Context) []service.Stack { return []service.Stack{dcqlStack, dcAPIStack} },
+		StackClient: func(string) service.StackVerifier { return a },
+	})
+	for _, stack := range []string{"", "verifier-credebl"} {
+		_, err := svc.CreateOid4VpRequest(ctx, connect.NewRequest(&ingestv1.CreateOid4VpRequestRequest{TemplateId: "pid", Stack: stack, DcApi: true}))
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Errorf("DC API through %q: %v", stack, err)
+		}
+	}
+	created, err := svc.CreateOid4VpRequest(ctx, connect.NewRequest(&ingestv1.CreateOid4VpRequestRequest{TemplateId: "pid", Stack: "verifier-waltid", DcApi: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Msg.GetDcApiRequest() == "" || len(a.created) != 1 || !a.created[0].GetDcApi() || a.created[0].GetDcql() == "" {
+		t.Fatalf("created %+v, the stack got %+v", created.Msg, a.created)
+	}
+	if got := a.created[0].GetExpectedOrigins(); len(got) != 1 || got[0] != "https://verify.example" {
+		t.Errorf("origins = %v", got)
+	}
+	id := created.Msg.GetTransactionId()
+	tx, err := svc.GetTransaction(ctx, connect.NewRequest(&ingestv1.GetTransactionRequest{TransactionId: id}))
+	if err != nil || tx.Msg.GetDcApiRequest() != created.Msg.GetDcApiRequest() {
+		t.Fatalf("transaction %+v %v", tx, err)
+	}
+	submit := func(id, response string) error {
+		_, serr := svc.SubmitBrowserAnswer(ctx, connect.NewRequest(&ingestv1.SubmitBrowserAnswerRequest{TransactionId: id, Response: response}))
+		return serr
+	}
+	if connect.CodeOf(submit(id, " ")) != connect.CodeInvalidArgument {
+		t.Error("an empty answer was taken")
+	}
+	if connect.CodeOf(submit("missing", "{}")) != connect.CodeNotFound {
+		t.Error("an unknown request took an answer")
+	}
+	a.submitErr = errors.New("down")
+	if connect.CodeOf(submit(id, "{}")) != connect.CodeUnavailable {
+		t.Error("a failed stack call was hidden")
+	}
+	a.submitErr = nil
+	if serr := submit(id, `{"protocol":"p"}`); serr != nil {
+		t.Fatal(serr)
+	}
+	if len(a.submitted) != 1 || a.submitted[0].GetState() != "s" || a.submitted[0].GetResponse() != `{"protocol":"p"}` {
+		t.Errorf("the stack got %+v", a.submitted)
+	}
+	plain, err := svc.CreateOid4VpRequest(ctx, connect.NewRequest(&ingestv1.CreateOid4VpRequestRequest{TemplateId: "pid", Stack: "verifier-waltid"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connect.CodeOf(submit(plain.Msg.GetTransactionId(), "{}")) != connect.CodeFailedPrecondition {
+		t.Error("a QR request took a DC API answer")
 	}
 }

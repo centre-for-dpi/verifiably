@@ -97,6 +97,22 @@ The presented credentials come from `presented_raw_data`. The format of
 each comes from the DCQL query of the session. The checks come from
 `policy_results`.
 
+## The Digital Credentials API
+
+With a verifier 2 URL the answer lists `FEATURE_DC_API_VERIFY` and
+`PROTOCOL_DC_API`. A `CreateRequest` with `dc_api` and the expected
+origins starts two sessions of the same query:
+
+| Session | Flow type | What the page gets |
+| --- | --- | --- |
+| The browser session | `dc_api_openid4vp` with `expectedOrigins` | The request object in `dc_api_request` |
+| The fallback session | `cross_device` | The request URI of the QR code |
+
+The state names both sessions. `SubmitBrowserAnswer` posts the answer of
+the browser to `/verification-session/{id}/response` of the browser
+session. `GetResult` reads both sessions. The first session with an
+answer decides. The request expires when both expire.
+
 ## The issuer identity
 
 The identity page of the issuer calls three RPCs (ADR-046).

@@ -1,0 +1,17 @@
+{
+  "sessionId": "ff4f0c86-56ce-4e4a-a137-dd5569049ff3",
+  "data": {
+    "protocol": "openid4vp-v1-unsigned",
+    "data": {
+      "response_type": "vp_token",
+      "response_mode": "dc_api",
+      "nonce": "8054f259-7101-4fa5-9336-362999f17ecb",
+      "dcql_query": {
+        "credentials": [
+          {"id": "credential_1", "format": "dc+sd-jwt", "meta": {"vct_values": ["https://walt-issuer.example.org/identity_credential"]}}
+        ]
+      },
+      "client_metadata": {"vp_formats_supported": {"dc+sd-jwt": {}}}
+    }
+  }
+}

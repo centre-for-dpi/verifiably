@@ -498,7 +498,7 @@ func (x GetResultResponse_State) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GetResultResponse_State.Descriptor instead.
 func (GetResultResponse_State) EnumDescriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{42, 0}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{44, 0}
 }
 
 // AgentType names how the DPG runs the agent of a tenant.
@@ -550,7 +550,7 @@ func (x DpgTenant_AgentType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DpgTenant_AgentType.Descriptor instead.
 func (DpgTenant_AgentType) EnumDescriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{45, 0}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{47, 0}
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -3063,9 +3063,15 @@ type CreateRequestRequest struct {
 	// The URL the verifier calls back with the result, when present.
 	WebhookUrl string `protobuf:"bytes,4,opt,name=webhook_url,json=webhookUrl,proto3" json:"webhook_url,omitempty"`
 	// The DPG side check names to run, for example signature or expired.
-	DpgPolicies   []string `protobuf:"bytes,5,rep,name=dpg_policies,json=dpgPolicies,proto3" json:"dpg_policies,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DpgPolicies []string `protobuf:"bytes,5,rep,name=dpg_policies,json=dpgPolicies,proto3" json:"dpg_policies,omitempty"`
+	// Ask for a request object of the Digital Credentials API as well. The
+	// caller sets it only for an adapter that lists FEATURE_DC_API_VERIFY.
+	DcApi bool `protobuf:"varint,6,opt,name=dc_api,json=dcApi,proto3" json:"dc_api,omitempty"`
+	// The web origins that can pass the request to the Digital Credentials
+	// API, such as https://verifier.example.
+	ExpectedOrigins []string `protobuf:"bytes,7,rep,name=expected_origins,json=expectedOrigins,proto3" json:"expected_origins,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CreateRequestRequest) Reset() {
@@ -3133,6 +3139,20 @@ func (x *CreateRequestRequest) GetDpgPolicies() []string {
 	return nil
 }
 
+func (x *CreateRequestRequest) GetDcApi() bool {
+	if x != nil {
+		return x.DcApi
+	}
+	return false
+}
+
+func (x *CreateRequestRequest) GetExpectedOrigins() []string {
+	if x != nil {
+		return x.ExpectedOrigins
+	}
+	return nil
+}
+
 // CreateRequestResponse describes the transaction.
 type CreateRequestResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -3141,7 +3161,10 @@ type CreateRequestResponse struct {
 	// The server side state that GetResult takes.
 	State string `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
 	// The time at which the request stops working.
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// The request object for navigator.credentials.get, as a JSON string,
+	// when the request asked for the Digital Credentials API.
+	DcApiRequest  string `protobuf:"bytes,4,opt,name=dc_api_request,json=dcApiRequest,proto3" json:"dc_api_request,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3197,6 +3220,107 @@ func (x *CreateRequestResponse) GetExpiresAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *CreateRequestResponse) GetDcApiRequest() string {
+	if x != nil {
+		return x.DcApiRequest
+	}
+	return ""
+}
+
+// SubmitBrowserAnswerRequest carries the answer of the browser.
+type SubmitBrowserAnswerRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The state from CreateRequest.
+	State string `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	// The credential the browser returned, with its protocol and data, as
+	// a JSON string.
+	Response      string `protobuf:"bytes,2,opt,name=response,proto3" json:"response,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitBrowserAnswerRequest) Reset() {
+	*x = SubmitBrowserAnswerRequest{}
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitBrowserAnswerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitBrowserAnswerRequest) ProtoMessage() {}
+
+func (x *SubmitBrowserAnswerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitBrowserAnswerRequest.ProtoReflect.Descriptor instead.
+func (*SubmitBrowserAnswerRequest) Descriptor() ([]byte, []int) {
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *SubmitBrowserAnswerRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *SubmitBrowserAnswerRequest) GetResponse() string {
+	if x != nil {
+		return x.Response
+	}
+	return ""
+}
+
+// SubmitBrowserAnswerResponse has no fields. GetResult reports the
+// verdict.
+type SubmitBrowserAnswerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitBrowserAnswerResponse) Reset() {
+	*x = SubmitBrowserAnswerResponse{}
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitBrowserAnswerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitBrowserAnswerResponse) ProtoMessage() {}
+
+func (x *SubmitBrowserAnswerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitBrowserAnswerResponse.ProtoReflect.Descriptor instead.
+func (*SubmitBrowserAnswerResponse) Descriptor() ([]byte, []int) {
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{42}
+}
+
 // GetResultRequest selects a transaction.
 type GetResultRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -3208,7 +3332,7 @@ type GetResultRequest struct {
 
 func (x *GetResultRequest) Reset() {
 	*x = GetResultRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[41]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3220,7 +3344,7 @@ func (x *GetResultRequest) String() string {
 func (*GetResultRequest) ProtoMessage() {}
 
 func (x *GetResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[41]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3233,7 +3357,7 @@ func (x *GetResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResultRequest.ProtoReflect.Descriptor instead.
 func (*GetResultRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{41}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *GetResultRequest) GetState() string {
@@ -3260,7 +3384,7 @@ type GetResultResponse struct {
 
 func (x *GetResultResponse) Reset() {
 	*x = GetResultResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[42]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3272,7 +3396,7 @@ func (x *GetResultResponse) String() string {
 func (*GetResultResponse) ProtoMessage() {}
 
 func (x *GetResultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[42]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3285,7 +3409,7 @@ func (x *GetResultResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResultResponse.ProtoReflect.Descriptor instead.
 func (*GetResultResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{42}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetResultResponse) GetState() GetResultResponse_State {
@@ -3327,7 +3451,7 @@ type ListCredentialTypesRequest struct {
 
 func (x *ListCredentialTypesRequest) Reset() {
 	*x = ListCredentialTypesRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[43]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3339,7 +3463,7 @@ func (x *ListCredentialTypesRequest) String() string {
 func (*ListCredentialTypesRequest) ProtoMessage() {}
 
 func (x *ListCredentialTypesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[43]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3352,7 +3476,7 @@ func (x *ListCredentialTypesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCredentialTypesRequest.ProtoReflect.Descriptor instead.
 func (*ListCredentialTypesRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{43}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ListCredentialTypesRequest) GetPage() *v1.Pagination {
@@ -3375,7 +3499,7 @@ type ListCredentialTypesResponse struct {
 
 func (x *ListCredentialTypesResponse) Reset() {
 	*x = ListCredentialTypesResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[44]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3387,7 +3511,7 @@ func (x *ListCredentialTypesResponse) String() string {
 func (*ListCredentialTypesResponse) ProtoMessage() {}
 
 func (x *ListCredentialTypesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[44]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3400,7 +3524,7 @@ func (x *ListCredentialTypesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCredentialTypesResponse.ProtoReflect.Descriptor instead.
 func (*ListCredentialTypesResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{44}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ListCredentialTypesResponse) GetConfigurations() []*CredentialConfiguration {
@@ -3435,7 +3559,7 @@ type DpgTenant struct {
 
 func (x *DpgTenant) Reset() {
 	*x = DpgTenant{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[45]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3447,7 +3571,7 @@ func (x *DpgTenant) String() string {
 func (*DpgTenant) ProtoMessage() {}
 
 func (x *DpgTenant) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[45]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3460,7 +3584,7 @@ func (x *DpgTenant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DpgTenant.ProtoReflect.Descriptor instead.
 func (*DpgTenant) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{45}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *DpgTenant) GetId() string {
@@ -3504,7 +3628,7 @@ type CreateTenantRequest struct {
 
 func (x *CreateTenantRequest) Reset() {
 	*x = CreateTenantRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[46]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3516,7 +3640,7 @@ func (x *CreateTenantRequest) String() string {
 func (*CreateTenantRequest) ProtoMessage() {}
 
 func (x *CreateTenantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[46]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3529,7 +3653,7 @@ func (x *CreateTenantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTenantRequest.ProtoReflect.Descriptor instead.
 func (*CreateTenantRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{46}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *CreateTenantRequest) GetName() string {
@@ -3557,7 +3681,7 @@ type CreateTenantResponse struct {
 
 func (x *CreateTenantResponse) Reset() {
 	*x = CreateTenantResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[47]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3569,7 +3693,7 @@ func (x *CreateTenantResponse) String() string {
 func (*CreateTenantResponse) ProtoMessage() {}
 
 func (x *CreateTenantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[47]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3582,7 +3706,7 @@ func (x *CreateTenantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTenantResponse.ProtoReflect.Descriptor instead.
 func (*CreateTenantResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{47}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CreateTenantResponse) GetTenant() *DpgTenant {
@@ -3603,7 +3727,7 @@ type GetTenantRequest struct {
 
 func (x *GetTenantRequest) Reset() {
 	*x = GetTenantRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[48]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3615,7 +3739,7 @@ func (x *GetTenantRequest) String() string {
 func (*GetTenantRequest) ProtoMessage() {}
 
 func (x *GetTenantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[48]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3628,7 +3752,7 @@ func (x *GetTenantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTenantRequest.ProtoReflect.Descriptor instead.
 func (*GetTenantRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{48}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *GetTenantRequest) GetId() string {
@@ -3649,7 +3773,7 @@ type GetTenantResponse struct {
 
 func (x *GetTenantResponse) Reset() {
 	*x = GetTenantResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[49]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3661,7 +3785,7 @@ func (x *GetTenantResponse) String() string {
 func (*GetTenantResponse) ProtoMessage() {}
 
 func (x *GetTenantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[49]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3674,7 +3798,7 @@ func (x *GetTenantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTenantResponse.ProtoReflect.Descriptor instead.
 func (*GetTenantResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{49}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *GetTenantResponse) GetTenant() *DpgTenant {
@@ -3695,7 +3819,7 @@ type ListTenantsRequest struct {
 
 func (x *ListTenantsRequest) Reset() {
 	*x = ListTenantsRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[50]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3707,7 +3831,7 @@ func (x *ListTenantsRequest) String() string {
 func (*ListTenantsRequest) ProtoMessage() {}
 
 func (x *ListTenantsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[50]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3720,7 +3844,7 @@ func (x *ListTenantsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTenantsRequest.ProtoReflect.Descriptor instead.
 func (*ListTenantsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{50}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ListTenantsRequest) GetPage() *v1.Pagination {
@@ -3743,7 +3867,7 @@ type ListTenantsResponse struct {
 
 func (x *ListTenantsResponse) Reset() {
 	*x = ListTenantsResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[51]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3755,7 +3879,7 @@ func (x *ListTenantsResponse) String() string {
 func (*ListTenantsResponse) ProtoMessage() {}
 
 func (x *ListTenantsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[51]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3768,7 +3892,7 @@ func (x *ListTenantsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTenantsResponse.ProtoReflect.Descriptor instead.
 func (*ListTenantsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{51}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ListTenantsResponse) GetTenants() []*DpgTenant {
@@ -3796,7 +3920,7 @@ type DeleteTenantRequest struct {
 
 func (x *DeleteTenantRequest) Reset() {
 	*x = DeleteTenantRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[52]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3808,7 +3932,7 @@ func (x *DeleteTenantRequest) String() string {
 func (*DeleteTenantRequest) ProtoMessage() {}
 
 func (x *DeleteTenantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[52]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3821,7 +3945,7 @@ func (x *DeleteTenantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTenantRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTenantRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{52}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *DeleteTenantRequest) GetId() string {
@@ -3840,7 +3964,7 @@ type DeleteTenantResponse struct {
 
 func (x *DeleteTenantResponse) Reset() {
 	*x = DeleteTenantResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[53]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3852,7 +3976,7 @@ func (x *DeleteTenantResponse) String() string {
 func (*DeleteTenantResponse) ProtoMessage() {}
 
 func (x *DeleteTenantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[53]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3865,7 +3989,7 @@ func (x *DeleteTenantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTenantResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTenantResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{53}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{55}
 }
 
 // ClientCredential is one machine credential of a DPG tenant, without
@@ -3886,7 +4010,7 @@ type ClientCredential struct {
 
 func (x *ClientCredential) Reset() {
 	*x = ClientCredential{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[54]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3898,7 +4022,7 @@ func (x *ClientCredential) String() string {
 func (*ClientCredential) ProtoMessage() {}
 
 func (x *ClientCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[54]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3911,7 +4035,7 @@ func (x *ClientCredential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClientCredential.ProtoReflect.Descriptor instead.
 func (*ClientCredential) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{54}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ClientCredential) GetId() string {
@@ -3953,7 +4077,7 @@ type ListClientCredentialsRequest struct {
 
 func (x *ListClientCredentialsRequest) Reset() {
 	*x = ListClientCredentialsRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[55]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3965,7 +4089,7 @@ func (x *ListClientCredentialsRequest) String() string {
 func (*ListClientCredentialsRequest) ProtoMessage() {}
 
 func (x *ListClientCredentialsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[55]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3978,7 +4102,7 @@ func (x *ListClientCredentialsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListClientCredentialsRequest.ProtoReflect.Descriptor instead.
 func (*ListClientCredentialsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{55}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ListClientCredentialsRequest) GetTenantId() string {
@@ -3999,7 +4123,7 @@ type ListClientCredentialsResponse struct {
 
 func (x *ListClientCredentialsResponse) Reset() {
 	*x = ListClientCredentialsResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[56]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4011,7 +4135,7 @@ func (x *ListClientCredentialsResponse) String() string {
 func (*ListClientCredentialsResponse) ProtoMessage() {}
 
 func (x *ListClientCredentialsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[56]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4024,7 +4148,7 @@ func (x *ListClientCredentialsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListClientCredentialsResponse.ProtoReflect.Descriptor instead.
 func (*ListClientCredentialsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{56}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ListClientCredentialsResponse) GetCredentials() []*ClientCredential {
@@ -4047,7 +4171,7 @@ type CreateClientCredentialRequest struct {
 
 func (x *CreateClientCredentialRequest) Reset() {
 	*x = CreateClientCredentialRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[57]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4059,7 +4183,7 @@ func (x *CreateClientCredentialRequest) String() string {
 func (*CreateClientCredentialRequest) ProtoMessage() {}
 
 func (x *CreateClientCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[57]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4072,7 +4196,7 @@ func (x *CreateClientCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateClientCredentialRequest.ProtoReflect.Descriptor instead.
 func (*CreateClientCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{57}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *CreateClientCredentialRequest) GetTenantId() string {
@@ -4102,7 +4226,7 @@ type CreateClientCredentialResponse struct {
 
 func (x *CreateClientCredentialResponse) Reset() {
 	*x = CreateClientCredentialResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[58]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4114,7 +4238,7 @@ func (x *CreateClientCredentialResponse) String() string {
 func (*CreateClientCredentialResponse) ProtoMessage() {}
 
 func (x *CreateClientCredentialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[58]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4127,7 +4251,7 @@ func (x *CreateClientCredentialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateClientCredentialResponse.ProtoReflect.Descriptor instead.
 func (*CreateClientCredentialResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{58}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *CreateClientCredentialResponse) GetCredential() *ClientCredential {
@@ -4157,7 +4281,7 @@ type DeleteClientCredentialRequest struct {
 
 func (x *DeleteClientCredentialRequest) Reset() {
 	*x = DeleteClientCredentialRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[59]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4169,7 +4293,7 @@ func (x *DeleteClientCredentialRequest) String() string {
 func (*DeleteClientCredentialRequest) ProtoMessage() {}
 
 func (x *DeleteClientCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[59]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4182,7 +4306,7 @@ func (x *DeleteClientCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteClientCredentialRequest.ProtoReflect.Descriptor instead.
 func (*DeleteClientCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{59}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *DeleteClientCredentialRequest) GetTenantId() string {
@@ -4208,7 +4332,7 @@ type DeleteClientCredentialResponse struct {
 
 func (x *DeleteClientCredentialResponse) Reset() {
 	*x = DeleteClientCredentialResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[60]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4220,7 +4344,7 @@ func (x *DeleteClientCredentialResponse) String() string {
 func (*DeleteClientCredentialResponse) ProtoMessage() {}
 
 func (x *DeleteClientCredentialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[60]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4233,7 +4357,7 @@ func (x *DeleteClientCredentialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteClientCredentialResponse.ProtoReflect.Descriptor instead.
 func (*DeleteClientCredentialResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{60}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{62}
 }
 
 // Webhook is the address a DPG calls on the events of one tenant.
@@ -4249,7 +4373,7 @@ type Webhook struct {
 
 func (x *Webhook) Reset() {
 	*x = Webhook{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[61]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4261,7 +4385,7 @@ func (x *Webhook) String() string {
 func (*Webhook) ProtoMessage() {}
 
 func (x *Webhook) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[61]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4274,7 +4398,7 @@ func (x *Webhook) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Webhook.ProtoReflect.Descriptor instead.
 func (*Webhook) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{61}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *Webhook) GetUrl() string {
@@ -4302,7 +4426,7 @@ type GetWebhookRequest struct {
 
 func (x *GetWebhookRequest) Reset() {
 	*x = GetWebhookRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[62]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4314,7 +4438,7 @@ func (x *GetWebhookRequest) String() string {
 func (*GetWebhookRequest) ProtoMessage() {}
 
 func (x *GetWebhookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[62]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4327,7 +4451,7 @@ func (x *GetWebhookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWebhookRequest.ProtoReflect.Descriptor instead.
 func (*GetWebhookRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{62}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *GetWebhookRequest) GetTenantId() string {
@@ -4348,7 +4472,7 @@ type GetWebhookResponse struct {
 
 func (x *GetWebhookResponse) Reset() {
 	*x = GetWebhookResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[63]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4360,7 +4484,7 @@ func (x *GetWebhookResponse) String() string {
 func (*GetWebhookResponse) ProtoMessage() {}
 
 func (x *GetWebhookResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[63]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4373,7 +4497,7 @@ func (x *GetWebhookResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWebhookResponse.ProtoReflect.Descriptor instead.
 func (*GetWebhookResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{63}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *GetWebhookResponse) GetWebhook() *Webhook {
@@ -4396,7 +4520,7 @@ type SetWebhookRequest struct {
 
 func (x *SetWebhookRequest) Reset() {
 	*x = SetWebhookRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[64]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4408,7 +4532,7 @@ func (x *SetWebhookRequest) String() string {
 func (*SetWebhookRequest) ProtoMessage() {}
 
 func (x *SetWebhookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[64]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4421,7 +4545,7 @@ func (x *SetWebhookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWebhookRequest.ProtoReflect.Descriptor instead.
 func (*SetWebhookRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{64}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *SetWebhookRequest) GetTenantId() string {
@@ -4449,7 +4573,7 @@ type SetWebhookResponse struct {
 
 func (x *SetWebhookResponse) Reset() {
 	*x = SetWebhookResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[65]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4461,7 +4585,7 @@ func (x *SetWebhookResponse) String() string {
 func (*SetWebhookResponse) ProtoMessage() {}
 
 func (x *SetWebhookResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[65]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4474,7 +4598,7 @@ func (x *SetWebhookResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWebhookResponse.ProtoReflect.Descriptor instead.
 func (*SetWebhookResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{65}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *SetWebhookResponse) GetWebhook() *Webhook {
@@ -4497,7 +4621,7 @@ type VerifyCredentialRequest struct {
 
 func (x *VerifyCredentialRequest) Reset() {
 	*x = VerifyCredentialRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[66]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4509,7 +4633,7 @@ func (x *VerifyCredentialRequest) String() string {
 func (*VerifyCredentialRequest) ProtoMessage() {}
 
 func (x *VerifyCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[66]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4522,7 +4646,7 @@ func (x *VerifyCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyCredentialRequest.ProtoReflect.Descriptor instead.
 func (*VerifyCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{66}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *VerifyCredentialRequest) GetPayload() []byte {
@@ -4553,7 +4677,7 @@ type VerifyCredentialResponse struct {
 
 func (x *VerifyCredentialResponse) Reset() {
 	*x = VerifyCredentialResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[67]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4565,7 +4689,7 @@ func (x *VerifyCredentialResponse) String() string {
 func (*VerifyCredentialResponse) ProtoMessage() {}
 
 func (x *VerifyCredentialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[67]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4578,7 +4702,7 @@ func (x *VerifyCredentialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyCredentialResponse.ProtoReflect.Descriptor instead.
 func (*VerifyCredentialResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{67}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *VerifyCredentialResponse) GetVerified() bool {
@@ -4610,7 +4734,7 @@ type IssueBatchResponse_Item struct {
 
 func (x *IssueBatchResponse_Item) Reset() {
 	*x = IssueBatchResponse_Item{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[68]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4622,7 +4746,7 @@ func (x *IssueBatchResponse_Item) String() string {
 func (*IssueBatchResponse_Item) ProtoMessage() {}
 
 func (x *IssueBatchResponse_Item) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[68]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4673,7 +4797,7 @@ type IssuerIdentity_Metadata struct {
 
 func (x *IssuerIdentity_Metadata) Reset() {
 	*x = IssuerIdentity_Metadata{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[69]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4685,7 +4809,7 @@ func (x *IssuerIdentity_Metadata) String() string {
 func (*IssuerIdentity_Metadata) ProtoMessage() {}
 
 func (x *IssuerIdentity_Metadata) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[69]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4728,7 +4852,7 @@ type IssuerIdentity_Key struct {
 
 func (x *IssuerIdentity_Key) Reset() {
 	*x = IssuerIdentity_Key{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[70]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4740,7 +4864,7 @@ func (x *IssuerIdentity_Key) String() string {
 func (*IssuerIdentity_Key) ProtoMessage() {}
 
 func (x *IssuerIdentity_Key) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[70]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4786,7 +4910,7 @@ type GetResultResponse_DpgCheck struct {
 
 func (x *GetResultResponse_DpgCheck) Reset() {
 	*x = GetResultResponse_DpgCheck{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[71]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4798,7 +4922,7 @@ func (x *GetResultResponse_DpgCheck) String() string {
 func (*GetResultResponse_DpgCheck) ProtoMessage() {}
 
 func (x *GetResultResponse_DpgCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[71]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4811,7 +4935,7 @@ func (x *GetResultResponse_DpgCheck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResultResponse_DpgCheck.ProtoReflect.Descriptor instead.
 func (*GetResultResponse_DpgCheck) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{42, 0}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{44, 0}
 }
 
 func (x *GetResultResponse_DpgCheck) GetName() string {
@@ -5039,20 +5163,27 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x17DeleteCredentialRequest\x12\x1b\n" +
 	"\twallet_id\x18\x01 \x01(\tR\bwalletId\x12#\n" +
 	"\rcredential_id\x18\x02 \x01(\tR\fcredentialId\"\x1a\n" +
-	"\x18DeleteCredentialResponse\"\xbd\x01\n" +
+	"\x18DeleteCredentialResponse\"\xff\x01\n" +
 	"\x14CreateRequestRequest\x12\x12\n" +
 	"\x04dcql\x18\x01 \x01(\tR\x04dcql\x127\n" +
 	"\x17presentation_definition\x18\x02 \x01(\tR\x16presentationDefinition\x12\x14\n" +
 	"\x05nonce\x18\x03 \x01(\tR\x05nonce\x12\x1f\n" +
 	"\vwebhook_url\x18\x04 \x01(\tR\n" +
 	"webhookUrl\x12!\n" +
-	"\fdpg_policies\x18\x05 \x03(\tR\vdpgPolicies\"\x89\x01\n" +
+	"\fdpg_policies\x18\x05 \x03(\tR\vdpgPolicies\x12\x15\n" +
+	"\x06dc_api\x18\x06 \x01(\bR\x05dcApi\x12)\n" +
+	"\x10expected_origins\x18\a \x03(\tR\x0fexpectedOrigins\"\xaf\x01\n" +
 	"\x15CreateRequestResponse\x12\x1f\n" +
 	"\vrequest_uri\x18\x01 \x01(\tR\n" +
 	"requestUri\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x129\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"(\n" +
+	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12$\n" +
+	"\x0edc_api_request\x18\x04 \x01(\tR\fdcApiRequest\"N\n" +
+	"\x1aSubmitBrowserAnswerRequest\x12\x14\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\x12\x1a\n" +
+	"\bresponse\x18\x02 \x01(\tR\bresponse\"\x1d\n" +
+	"\x1bSubmitBrowserAnswerResponse\"(\n" +
 	"\x10GetResultRequest\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\"\xd1\x03\n" +
 	"\x11GetResultResponse\x12=\n" +
@@ -5214,10 +5345,11 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x0fListCredentials\x12&.vca.backend.v1.ListCredentialsRequest\x1a'.vca.backend.v1.ListCredentialsResponse\x12V\n" +
 	"\vAcceptOffer\x12\".vca.backend.v1.AcceptOfferRequest\x1a#.vca.backend.v1.AcceptOfferResponse\x12J\n" +
 	"\aPresent\x12\x1e.vca.backend.v1.PresentRequest\x1a\x1f.vca.backend.v1.PresentResponse\x12e\n" +
-	"\x10DeleteCredential\x12'.vca.backend.v1.DeleteCredentialRequest\x1a(.vca.backend.v1.DeleteCredentialResponse2\xaf\x02\n" +
+	"\x10DeleteCredential\x12'.vca.backend.v1.DeleteCredentialRequest\x1a(.vca.backend.v1.DeleteCredentialResponse2\x9f\x03\n" +
 	"\x16VerifierBackendService\x12\\\n" +
 	"\rCreateRequest\x12$.vca.backend.v1.CreateRequestRequest\x1a%.vca.backend.v1.CreateRequestResponse\x12P\n" +
-	"\tGetResult\x12 .vca.backend.v1.GetResultRequest\x1a!.vca.backend.v1.GetResultResponse\x12e\n" +
+	"\tGetResult\x12 .vca.backend.v1.GetResultRequest\x1a!.vca.backend.v1.GetResultResponse\x12n\n" +
+	"\x13SubmitBrowserAnswer\x12*.vca.backend.v1.SubmitBrowserAnswerRequest\x1a+.vca.backend.v1.SubmitBrowserAnswerResponse\x12e\n" +
 	"\x10VerifyCredential\x12'.vca.backend.v1.VerifyCredentialRequest\x1a(.vca.backend.v1.VerifyCredentialResponse2\x87\x01\n" +
 	"\x15CatalogBackendService\x12n\n" +
 	"\x13ListCredentialTypes\x12*.vca.backend.v1.ListCredentialTypesRequest\x1a+.vca.backend.v1.ListCredentialTypesResponse2\xde\x05\n" +
@@ -5249,7 +5381,7 @@ func file_vca_backend_v1_backend_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_backend_v1_backend_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_vca_backend_v1_backend_proto_msgTypes = make([]protoimpl.MessageInfo, 72)
+var file_vca_backend_v1_backend_proto_msgTypes = make([]protoimpl.MessageInfo, 74)
 var file_vca_backend_v1_backend_proto_goTypes = []any{
 	(Channel)(0),                                    // 0: vca.backend.v1.Channel
 	(Protocol)(0),                                   // 1: vca.backend.v1.Protocol
@@ -5299,113 +5431,115 @@ var file_vca_backend_v1_backend_proto_goTypes = []any{
 	(*DeleteCredentialResponse)(nil),                // 45: vca.backend.v1.DeleteCredentialResponse
 	(*CreateRequestRequest)(nil),                    // 46: vca.backend.v1.CreateRequestRequest
 	(*CreateRequestResponse)(nil),                   // 47: vca.backend.v1.CreateRequestResponse
-	(*GetResultRequest)(nil),                        // 48: vca.backend.v1.GetResultRequest
-	(*GetResultResponse)(nil),                       // 49: vca.backend.v1.GetResultResponse
-	(*ListCredentialTypesRequest)(nil),              // 50: vca.backend.v1.ListCredentialTypesRequest
-	(*ListCredentialTypesResponse)(nil),             // 51: vca.backend.v1.ListCredentialTypesResponse
-	(*DpgTenant)(nil),                               // 52: vca.backend.v1.DpgTenant
-	(*CreateTenantRequest)(nil),                     // 53: vca.backend.v1.CreateTenantRequest
-	(*CreateTenantResponse)(nil),                    // 54: vca.backend.v1.CreateTenantResponse
-	(*GetTenantRequest)(nil),                        // 55: vca.backend.v1.GetTenantRequest
-	(*GetTenantResponse)(nil),                       // 56: vca.backend.v1.GetTenantResponse
-	(*ListTenantsRequest)(nil),                      // 57: vca.backend.v1.ListTenantsRequest
-	(*ListTenantsResponse)(nil),                     // 58: vca.backend.v1.ListTenantsResponse
-	(*DeleteTenantRequest)(nil),                     // 59: vca.backend.v1.DeleteTenantRequest
-	(*DeleteTenantResponse)(nil),                    // 60: vca.backend.v1.DeleteTenantResponse
-	(*ClientCredential)(nil),                        // 61: vca.backend.v1.ClientCredential
-	(*ListClientCredentialsRequest)(nil),            // 62: vca.backend.v1.ListClientCredentialsRequest
-	(*ListClientCredentialsResponse)(nil),           // 63: vca.backend.v1.ListClientCredentialsResponse
-	(*CreateClientCredentialRequest)(nil),           // 64: vca.backend.v1.CreateClientCredentialRequest
-	(*CreateClientCredentialResponse)(nil),          // 65: vca.backend.v1.CreateClientCredentialResponse
-	(*DeleteClientCredentialRequest)(nil),           // 66: vca.backend.v1.DeleteClientCredentialRequest
-	(*DeleteClientCredentialResponse)(nil),          // 67: vca.backend.v1.DeleteClientCredentialResponse
-	(*Webhook)(nil),                                 // 68: vca.backend.v1.Webhook
-	(*GetWebhookRequest)(nil),                       // 69: vca.backend.v1.GetWebhookRequest
-	(*GetWebhookResponse)(nil),                      // 70: vca.backend.v1.GetWebhookResponse
-	(*SetWebhookRequest)(nil),                       // 71: vca.backend.v1.SetWebhookRequest
-	(*SetWebhookResponse)(nil),                      // 72: vca.backend.v1.SetWebhookResponse
-	(*VerifyCredentialRequest)(nil),                 // 73: vca.backend.v1.VerifyCredentialRequest
-	(*VerifyCredentialResponse)(nil),                // 74: vca.backend.v1.VerifyCredentialResponse
-	(*IssueBatchResponse_Item)(nil),                 // 75: vca.backend.v1.IssueBatchResponse.Item
-	(*IssuerIdentity_Metadata)(nil),                 // 76: vca.backend.v1.IssuerIdentity.Metadata
-	(*IssuerIdentity_Key)(nil),                      // 77: vca.backend.v1.IssuerIdentity.Key
-	(*GetResultResponse_DpgCheck)(nil),              // 78: vca.backend.v1.GetResultResponse.DpgCheck
-	(v1.Format)(0),                                  // 79: vca.common.v1.Format
-	(v1.Role)(0),                                    // 80: vca.common.v1.Role
-	(*v1.Subject)(nil),                              // 81: vca.common.v1.Subject
-	(*v1.ValidityWindow)(nil),                       // 82: vca.common.v1.ValidityWindow
-	(*timestamppb.Timestamp)(nil),                   // 83: google.protobuf.Timestamp
-	(*v1.Credential)(nil),                           // 84: vca.common.v1.Credential
-	(*v1.Pagination)(nil),                           // 85: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                           // 86: vca.common.v1.PageResult
-	(*v1.Error)(nil),                                // 87: vca.common.v1.Error
+	(*SubmitBrowserAnswerRequest)(nil),              // 48: vca.backend.v1.SubmitBrowserAnswerRequest
+	(*SubmitBrowserAnswerResponse)(nil),             // 49: vca.backend.v1.SubmitBrowserAnswerResponse
+	(*GetResultRequest)(nil),                        // 50: vca.backend.v1.GetResultRequest
+	(*GetResultResponse)(nil),                       // 51: vca.backend.v1.GetResultResponse
+	(*ListCredentialTypesRequest)(nil),              // 52: vca.backend.v1.ListCredentialTypesRequest
+	(*ListCredentialTypesResponse)(nil),             // 53: vca.backend.v1.ListCredentialTypesResponse
+	(*DpgTenant)(nil),                               // 54: vca.backend.v1.DpgTenant
+	(*CreateTenantRequest)(nil),                     // 55: vca.backend.v1.CreateTenantRequest
+	(*CreateTenantResponse)(nil),                    // 56: vca.backend.v1.CreateTenantResponse
+	(*GetTenantRequest)(nil),                        // 57: vca.backend.v1.GetTenantRequest
+	(*GetTenantResponse)(nil),                       // 58: vca.backend.v1.GetTenantResponse
+	(*ListTenantsRequest)(nil),                      // 59: vca.backend.v1.ListTenantsRequest
+	(*ListTenantsResponse)(nil),                     // 60: vca.backend.v1.ListTenantsResponse
+	(*DeleteTenantRequest)(nil),                     // 61: vca.backend.v1.DeleteTenantRequest
+	(*DeleteTenantResponse)(nil),                    // 62: vca.backend.v1.DeleteTenantResponse
+	(*ClientCredential)(nil),                        // 63: vca.backend.v1.ClientCredential
+	(*ListClientCredentialsRequest)(nil),            // 64: vca.backend.v1.ListClientCredentialsRequest
+	(*ListClientCredentialsResponse)(nil),           // 65: vca.backend.v1.ListClientCredentialsResponse
+	(*CreateClientCredentialRequest)(nil),           // 66: vca.backend.v1.CreateClientCredentialRequest
+	(*CreateClientCredentialResponse)(nil),          // 67: vca.backend.v1.CreateClientCredentialResponse
+	(*DeleteClientCredentialRequest)(nil),           // 68: vca.backend.v1.DeleteClientCredentialRequest
+	(*DeleteClientCredentialResponse)(nil),          // 69: vca.backend.v1.DeleteClientCredentialResponse
+	(*Webhook)(nil),                                 // 70: vca.backend.v1.Webhook
+	(*GetWebhookRequest)(nil),                       // 71: vca.backend.v1.GetWebhookRequest
+	(*GetWebhookResponse)(nil),                      // 72: vca.backend.v1.GetWebhookResponse
+	(*SetWebhookRequest)(nil),                       // 73: vca.backend.v1.SetWebhookRequest
+	(*SetWebhookResponse)(nil),                      // 74: vca.backend.v1.SetWebhookResponse
+	(*VerifyCredentialRequest)(nil),                 // 75: vca.backend.v1.VerifyCredentialRequest
+	(*VerifyCredentialResponse)(nil),                // 76: vca.backend.v1.VerifyCredentialResponse
+	(*IssueBatchResponse_Item)(nil),                 // 77: vca.backend.v1.IssueBatchResponse.Item
+	(*IssuerIdentity_Metadata)(nil),                 // 78: vca.backend.v1.IssuerIdentity.Metadata
+	(*IssuerIdentity_Key)(nil),                      // 79: vca.backend.v1.IssuerIdentity.Key
+	(*GetResultResponse_DpgCheck)(nil),              // 80: vca.backend.v1.GetResultResponse.DpgCheck
+	(v1.Format)(0),                                  // 81: vca.common.v1.Format
+	(v1.Role)(0),                                    // 82: vca.common.v1.Role
+	(*v1.Subject)(nil),                              // 83: vca.common.v1.Subject
+	(*v1.ValidityWindow)(nil),                       // 84: vca.common.v1.ValidityWindow
+	(*timestamppb.Timestamp)(nil),                   // 85: google.protobuf.Timestamp
+	(*v1.Credential)(nil),                           // 86: vca.common.v1.Credential
+	(*v1.Pagination)(nil),                           // 87: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                           // 88: vca.common.v1.PageResult
+	(*v1.Error)(nil),                                // 89: vca.common.v1.Error
 }
 var file_vca_backend_v1_backend_proto_depIdxs = []int32{
-	79, // 0: vca.backend.v1.GetCapabilitiesResponse.formats:type_name -> vca.common.v1.Format
+	81, // 0: vca.backend.v1.GetCapabilitiesResponse.formats:type_name -> vca.common.v1.Format
 	0,  // 1: vca.backend.v1.GetCapabilitiesResponse.channels:type_name -> vca.backend.v1.Channel
-	80, // 2: vca.backend.v1.GetCapabilitiesResponse.roles:type_name -> vca.common.v1.Role
+	82, // 2: vca.backend.v1.GetCapabilitiesResponse.roles:type_name -> vca.common.v1.Role
 	1,  // 3: vca.backend.v1.GetCapabilitiesResponse.protocols:type_name -> vca.backend.v1.Protocol
 	2,  // 4: vca.backend.v1.GetCapabilitiesResponse.features:type_name -> vca.backend.v1.Feature
 	9,  // 5: vca.backend.v1.GetCapabilitiesResponse.dpg_info:type_name -> vca.backend.v1.DpgInfo
 	3,  // 6: vca.backend.v1.GetCapabilitiesResponse.status_mechanisms:type_name -> vca.backend.v1.StatusListBinding.Kind
 	10, // 7: vca.backend.v1.DpgInfo.components:type_name -> vca.backend.v1.Component
-	79, // 8: vca.backend.v1.CredentialConfiguration.format:type_name -> vca.common.v1.Format
+	81, // 8: vca.backend.v1.CredentialConfiguration.format:type_name -> vca.common.v1.Format
 	11, // 9: vca.backend.v1.RegisterCredentialConfigurationRequest.configuration:type_name -> vca.backend.v1.CredentialConfiguration
 	3,  // 10: vca.backend.v1.StatusListBinding.kind:type_name -> vca.backend.v1.StatusListBinding.Kind
-	79, // 11: vca.backend.v1.IssueSpec.format:type_name -> vca.common.v1.Format
-	81, // 12: vca.backend.v1.IssueSpec.subject:type_name -> vca.common.v1.Subject
-	82, // 13: vca.backend.v1.IssueSpec.validity:type_name -> vca.common.v1.ValidityWindow
+	81, // 11: vca.backend.v1.IssueSpec.format:type_name -> vca.common.v1.Format
+	83, // 12: vca.backend.v1.IssueSpec.subject:type_name -> vca.common.v1.Subject
+	84, // 13: vca.backend.v1.IssueSpec.validity:type_name -> vca.common.v1.ValidityWindow
 	14, // 14: vca.backend.v1.IssueSpec.status:type_name -> vca.backend.v1.StatusListBinding
 	15, // 15: vca.backend.v1.CreateOfferRequest.spec:type_name -> vca.backend.v1.IssueSpec
 	0,  // 16: vca.backend.v1.CreateOfferRequest.channel:type_name -> vca.backend.v1.Channel
 	0,  // 17: vca.backend.v1.CreateOfferResponse.channel:type_name -> vca.backend.v1.Channel
-	83, // 18: vca.backend.v1.CreateOfferResponse.expires_at:type_name -> google.protobuf.Timestamp
+	85, // 18: vca.backend.v1.CreateOfferResponse.expires_at:type_name -> google.protobuf.Timestamp
 	15, // 19: vca.backend.v1.IssueRequest.spec:type_name -> vca.backend.v1.IssueSpec
-	84, // 20: vca.backend.v1.IssueResponse.credential:type_name -> vca.common.v1.Credential
+	86, // 20: vca.backend.v1.IssueResponse.credential:type_name -> vca.common.v1.Credential
 	15, // 21: vca.backend.v1.IssueBatchRequest.specs:type_name -> vca.backend.v1.IssueSpec
-	75, // 22: vca.backend.v1.IssueBatchResponse.items:type_name -> vca.backend.v1.IssueBatchResponse.Item
+	77, // 22: vca.backend.v1.IssueBatchResponse.items:type_name -> vca.backend.v1.IssueBatchResponse.Item
 	14, // 23: vca.backend.v1.RevokeRequest.status:type_name -> vca.backend.v1.StatusListBinding
-	83, // 24: vca.backend.v1.RevokeResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	85, // 24: vca.backend.v1.RevokeResponse.revoked_at:type_name -> google.protobuf.Timestamp
 	4,  // 25: vca.backend.v1.GetIssuanceStatusResponse.state:type_name -> vca.backend.v1.GetIssuanceStatusResponse.State
-	84, // 26: vca.backend.v1.GetIssuanceStatusResponse.credential:type_name -> vca.common.v1.Credential
-	83, // 27: vca.backend.v1.GetIssuanceStatusResponse.claimed_at:type_name -> google.protobuf.Timestamp
-	83, // 28: vca.backend.v1.GetIssuanceStatusResponse.expires_at:type_name -> google.protobuf.Timestamp
+	86, // 26: vca.backend.v1.GetIssuanceStatusResponse.credential:type_name -> vca.common.v1.Credential
+	85, // 27: vca.backend.v1.GetIssuanceStatusResponse.claimed_at:type_name -> google.protobuf.Timestamp
+	85, // 28: vca.backend.v1.GetIssuanceStatusResponse.expires_at:type_name -> google.protobuf.Timestamp
 	11, // 29: vca.backend.v1.GetIssuerMetadataResponse.configurations:type_name -> vca.backend.v1.CredentialConfiguration
-	76, // 30: vca.backend.v1.IssuerIdentity.metadata:type_name -> vca.backend.v1.IssuerIdentity.Metadata
-	77, // 31: vca.backend.v1.IssuerIdentity.key:type_name -> vca.backend.v1.IssuerIdentity.Key
+	78, // 30: vca.backend.v1.IssuerIdentity.metadata:type_name -> vca.backend.v1.IssuerIdentity.Metadata
+	79, // 31: vca.backend.v1.IssuerIdentity.key:type_name -> vca.backend.v1.IssuerIdentity.Key
 	28, // 32: vca.backend.v1.GetIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
 	28, // 33: vca.backend.v1.ProvisionIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
 	28, // 34: vca.backend.v1.ImportIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
-	84, // 35: vca.backend.v1.WalletCredential.credential:type_name -> vca.common.v1.Credential
-	83, // 36: vca.backend.v1.WalletCredential.received_at:type_name -> google.protobuf.Timestamp
-	85, // 37: vca.backend.v1.ListCredentialsRequest.page:type_name -> vca.common.v1.Pagination
+	86, // 35: vca.backend.v1.WalletCredential.credential:type_name -> vca.common.v1.Credential
+	85, // 36: vca.backend.v1.WalletCredential.received_at:type_name -> google.protobuf.Timestamp
+	87, // 37: vca.backend.v1.ListCredentialsRequest.page:type_name -> vca.common.v1.Pagination
 	37, // 38: vca.backend.v1.ListCredentialsResponse.credentials:type_name -> vca.backend.v1.WalletCredential
-	86, // 39: vca.backend.v1.ListCredentialsResponse.page:type_name -> vca.common.v1.PageResult
+	88, // 39: vca.backend.v1.ListCredentialsResponse.page:type_name -> vca.common.v1.PageResult
 	37, // 40: vca.backend.v1.AcceptOfferResponse.credential:type_name -> vca.backend.v1.WalletCredential
-	83, // 41: vca.backend.v1.CreateRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
+	85, // 41: vca.backend.v1.CreateRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
 	5,  // 42: vca.backend.v1.GetResultResponse.state:type_name -> vca.backend.v1.GetResultResponse.State
-	84, // 43: vca.backend.v1.GetResultResponse.presented:type_name -> vca.common.v1.Credential
-	78, // 44: vca.backend.v1.GetResultResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
-	83, // 45: vca.backend.v1.GetResultResponse.received_at:type_name -> google.protobuf.Timestamp
-	85, // 46: vca.backend.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
+	86, // 43: vca.backend.v1.GetResultResponse.presented:type_name -> vca.common.v1.Credential
+	80, // 44: vca.backend.v1.GetResultResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
+	85, // 45: vca.backend.v1.GetResultResponse.received_at:type_name -> google.protobuf.Timestamp
+	87, // 46: vca.backend.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
 	11, // 47: vca.backend.v1.ListCredentialTypesResponse.configurations:type_name -> vca.backend.v1.CredentialConfiguration
-	86, // 48: vca.backend.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
+	88, // 48: vca.backend.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
 	6,  // 49: vca.backend.v1.DpgTenant.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
 	6,  // 50: vca.backend.v1.CreateTenantRequest.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
-	52, // 51: vca.backend.v1.CreateTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
-	52, // 52: vca.backend.v1.GetTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
-	85, // 53: vca.backend.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
-	52, // 54: vca.backend.v1.ListTenantsResponse.tenants:type_name -> vca.backend.v1.DpgTenant
-	86, // 55: vca.backend.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
-	83, // 56: vca.backend.v1.ClientCredential.created_at:type_name -> google.protobuf.Timestamp
-	61, // 57: vca.backend.v1.ListClientCredentialsResponse.credentials:type_name -> vca.backend.v1.ClientCredential
-	61, // 58: vca.backend.v1.CreateClientCredentialResponse.credential:type_name -> vca.backend.v1.ClientCredential
-	83, // 59: vca.backend.v1.Webhook.updated_at:type_name -> google.protobuf.Timestamp
-	68, // 60: vca.backend.v1.GetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
-	68, // 61: vca.backend.v1.SetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
-	78, // 62: vca.backend.v1.VerifyCredentialResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
-	84, // 63: vca.backend.v1.IssueBatchResponse.Item.credential:type_name -> vca.common.v1.Credential
-	87, // 64: vca.backend.v1.IssueBatchResponse.Item.error:type_name -> vca.common.v1.Error
+	54, // 51: vca.backend.v1.CreateTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
+	54, // 52: vca.backend.v1.GetTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
+	87, // 53: vca.backend.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
+	54, // 54: vca.backend.v1.ListTenantsResponse.tenants:type_name -> vca.backend.v1.DpgTenant
+	88, // 55: vca.backend.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
+	85, // 56: vca.backend.v1.ClientCredential.created_at:type_name -> google.protobuf.Timestamp
+	63, // 57: vca.backend.v1.ListClientCredentialsResponse.credentials:type_name -> vca.backend.v1.ClientCredential
+	63, // 58: vca.backend.v1.CreateClientCredentialResponse.credential:type_name -> vca.backend.v1.ClientCredential
+	85, // 59: vca.backend.v1.Webhook.updated_at:type_name -> google.protobuf.Timestamp
+	70, // 60: vca.backend.v1.GetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
+	70, // 61: vca.backend.v1.SetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
+	80, // 62: vca.backend.v1.VerifyCredentialResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
+	86, // 63: vca.backend.v1.IssueBatchResponse.Item.credential:type_name -> vca.common.v1.Credential
+	89, // 64: vca.backend.v1.IssueBatchResponse.Item.error:type_name -> vca.common.v1.Error
 	7,  // 65: vca.backend.v1.CapabilityService.GetCapabilities:input_type -> vca.backend.v1.GetCapabilitiesRequest
 	12, // 66: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:input_type -> vca.backend.v1.RegisterCredentialConfigurationRequest
 	16, // 67: vca.backend.v1.IssuerBackendService.CreateOffer:input_type -> vca.backend.v1.CreateOfferRequest
@@ -5423,49 +5557,51 @@ var file_vca_backend_v1_backend_proto_depIdxs = []int32{
 	42, // 79: vca.backend.v1.HolderBackendService.Present:input_type -> vca.backend.v1.PresentRequest
 	44, // 80: vca.backend.v1.HolderBackendService.DeleteCredential:input_type -> vca.backend.v1.DeleteCredentialRequest
 	46, // 81: vca.backend.v1.VerifierBackendService.CreateRequest:input_type -> vca.backend.v1.CreateRequestRequest
-	48, // 82: vca.backend.v1.VerifierBackendService.GetResult:input_type -> vca.backend.v1.GetResultRequest
-	73, // 83: vca.backend.v1.VerifierBackendService.VerifyCredential:input_type -> vca.backend.v1.VerifyCredentialRequest
-	50, // 84: vca.backend.v1.CatalogBackendService.ListCredentialTypes:input_type -> vca.backend.v1.ListCredentialTypesRequest
-	53, // 85: vca.backend.v1.TenantBackendService.CreateTenant:input_type -> vca.backend.v1.CreateTenantRequest
-	55, // 86: vca.backend.v1.TenantBackendService.GetTenant:input_type -> vca.backend.v1.GetTenantRequest
-	57, // 87: vca.backend.v1.TenantBackendService.ListTenants:input_type -> vca.backend.v1.ListTenantsRequest
-	59, // 88: vca.backend.v1.TenantBackendService.DeleteTenant:input_type -> vca.backend.v1.DeleteTenantRequest
-	62, // 89: vca.backend.v1.TenantBackendService.ListClientCredentials:input_type -> vca.backend.v1.ListClientCredentialsRequest
-	64, // 90: vca.backend.v1.TenantBackendService.CreateClientCredential:input_type -> vca.backend.v1.CreateClientCredentialRequest
-	66, // 91: vca.backend.v1.TenantBackendService.DeleteClientCredential:input_type -> vca.backend.v1.DeleteClientCredentialRequest
-	69, // 92: vca.backend.v1.NotificationBackendService.GetWebhook:input_type -> vca.backend.v1.GetWebhookRequest
-	71, // 93: vca.backend.v1.NotificationBackendService.SetWebhook:input_type -> vca.backend.v1.SetWebhookRequest
-	8,  // 94: vca.backend.v1.CapabilityService.GetCapabilities:output_type -> vca.backend.v1.GetCapabilitiesResponse
-	13, // 95: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:output_type -> vca.backend.v1.RegisterCredentialConfigurationResponse
-	17, // 96: vca.backend.v1.IssuerBackendService.CreateOffer:output_type -> vca.backend.v1.CreateOfferResponse
-	19, // 97: vca.backend.v1.IssuerBackendService.Issue:output_type -> vca.backend.v1.IssueResponse
-	21, // 98: vca.backend.v1.IssuerBackendService.IssueBatch:output_type -> vca.backend.v1.IssueBatchResponse
-	25, // 99: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:output_type -> vca.backend.v1.GetIssuanceStatusResponse
-	23, // 100: vca.backend.v1.IssuerBackendService.Revoke:output_type -> vca.backend.v1.RevokeResponse
-	27, // 101: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:output_type -> vca.backend.v1.GetIssuerMetadataResponse
-	30, // 102: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:output_type -> vca.backend.v1.GetIssuerIdentityResponse
-	32, // 103: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:output_type -> vca.backend.v1.ProvisionIssuerIdentityResponse
-	34, // 104: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:output_type -> vca.backend.v1.ImportIssuerIdentityResponse
-	36, // 105: vca.backend.v1.HolderBackendService.Register:output_type -> vca.backend.v1.RegisterResponse
-	39, // 106: vca.backend.v1.HolderBackendService.ListCredentials:output_type -> vca.backend.v1.ListCredentialsResponse
-	41, // 107: vca.backend.v1.HolderBackendService.AcceptOffer:output_type -> vca.backend.v1.AcceptOfferResponse
-	43, // 108: vca.backend.v1.HolderBackendService.Present:output_type -> vca.backend.v1.PresentResponse
-	45, // 109: vca.backend.v1.HolderBackendService.DeleteCredential:output_type -> vca.backend.v1.DeleteCredentialResponse
-	47, // 110: vca.backend.v1.VerifierBackendService.CreateRequest:output_type -> vca.backend.v1.CreateRequestResponse
-	49, // 111: vca.backend.v1.VerifierBackendService.GetResult:output_type -> vca.backend.v1.GetResultResponse
-	74, // 112: vca.backend.v1.VerifierBackendService.VerifyCredential:output_type -> vca.backend.v1.VerifyCredentialResponse
-	51, // 113: vca.backend.v1.CatalogBackendService.ListCredentialTypes:output_type -> vca.backend.v1.ListCredentialTypesResponse
-	54, // 114: vca.backend.v1.TenantBackendService.CreateTenant:output_type -> vca.backend.v1.CreateTenantResponse
-	56, // 115: vca.backend.v1.TenantBackendService.GetTenant:output_type -> vca.backend.v1.GetTenantResponse
-	58, // 116: vca.backend.v1.TenantBackendService.ListTenants:output_type -> vca.backend.v1.ListTenantsResponse
-	60, // 117: vca.backend.v1.TenantBackendService.DeleteTenant:output_type -> vca.backend.v1.DeleteTenantResponse
-	63, // 118: vca.backend.v1.TenantBackendService.ListClientCredentials:output_type -> vca.backend.v1.ListClientCredentialsResponse
-	65, // 119: vca.backend.v1.TenantBackendService.CreateClientCredential:output_type -> vca.backend.v1.CreateClientCredentialResponse
-	67, // 120: vca.backend.v1.TenantBackendService.DeleteClientCredential:output_type -> vca.backend.v1.DeleteClientCredentialResponse
-	70, // 121: vca.backend.v1.NotificationBackendService.GetWebhook:output_type -> vca.backend.v1.GetWebhookResponse
-	72, // 122: vca.backend.v1.NotificationBackendService.SetWebhook:output_type -> vca.backend.v1.SetWebhookResponse
-	94, // [94:123] is the sub-list for method output_type
-	65, // [65:94] is the sub-list for method input_type
+	50, // 82: vca.backend.v1.VerifierBackendService.GetResult:input_type -> vca.backend.v1.GetResultRequest
+	48, // 83: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:input_type -> vca.backend.v1.SubmitBrowserAnswerRequest
+	75, // 84: vca.backend.v1.VerifierBackendService.VerifyCredential:input_type -> vca.backend.v1.VerifyCredentialRequest
+	52, // 85: vca.backend.v1.CatalogBackendService.ListCredentialTypes:input_type -> vca.backend.v1.ListCredentialTypesRequest
+	55, // 86: vca.backend.v1.TenantBackendService.CreateTenant:input_type -> vca.backend.v1.CreateTenantRequest
+	57, // 87: vca.backend.v1.TenantBackendService.GetTenant:input_type -> vca.backend.v1.GetTenantRequest
+	59, // 88: vca.backend.v1.TenantBackendService.ListTenants:input_type -> vca.backend.v1.ListTenantsRequest
+	61, // 89: vca.backend.v1.TenantBackendService.DeleteTenant:input_type -> vca.backend.v1.DeleteTenantRequest
+	64, // 90: vca.backend.v1.TenantBackendService.ListClientCredentials:input_type -> vca.backend.v1.ListClientCredentialsRequest
+	66, // 91: vca.backend.v1.TenantBackendService.CreateClientCredential:input_type -> vca.backend.v1.CreateClientCredentialRequest
+	68, // 92: vca.backend.v1.TenantBackendService.DeleteClientCredential:input_type -> vca.backend.v1.DeleteClientCredentialRequest
+	71, // 93: vca.backend.v1.NotificationBackendService.GetWebhook:input_type -> vca.backend.v1.GetWebhookRequest
+	73, // 94: vca.backend.v1.NotificationBackendService.SetWebhook:input_type -> vca.backend.v1.SetWebhookRequest
+	8,  // 95: vca.backend.v1.CapabilityService.GetCapabilities:output_type -> vca.backend.v1.GetCapabilitiesResponse
+	13, // 96: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:output_type -> vca.backend.v1.RegisterCredentialConfigurationResponse
+	17, // 97: vca.backend.v1.IssuerBackendService.CreateOffer:output_type -> vca.backend.v1.CreateOfferResponse
+	19, // 98: vca.backend.v1.IssuerBackendService.Issue:output_type -> vca.backend.v1.IssueResponse
+	21, // 99: vca.backend.v1.IssuerBackendService.IssueBatch:output_type -> vca.backend.v1.IssueBatchResponse
+	25, // 100: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:output_type -> vca.backend.v1.GetIssuanceStatusResponse
+	23, // 101: vca.backend.v1.IssuerBackendService.Revoke:output_type -> vca.backend.v1.RevokeResponse
+	27, // 102: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:output_type -> vca.backend.v1.GetIssuerMetadataResponse
+	30, // 103: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:output_type -> vca.backend.v1.GetIssuerIdentityResponse
+	32, // 104: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:output_type -> vca.backend.v1.ProvisionIssuerIdentityResponse
+	34, // 105: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:output_type -> vca.backend.v1.ImportIssuerIdentityResponse
+	36, // 106: vca.backend.v1.HolderBackendService.Register:output_type -> vca.backend.v1.RegisterResponse
+	39, // 107: vca.backend.v1.HolderBackendService.ListCredentials:output_type -> vca.backend.v1.ListCredentialsResponse
+	41, // 108: vca.backend.v1.HolderBackendService.AcceptOffer:output_type -> vca.backend.v1.AcceptOfferResponse
+	43, // 109: vca.backend.v1.HolderBackendService.Present:output_type -> vca.backend.v1.PresentResponse
+	45, // 110: vca.backend.v1.HolderBackendService.DeleteCredential:output_type -> vca.backend.v1.DeleteCredentialResponse
+	47, // 111: vca.backend.v1.VerifierBackendService.CreateRequest:output_type -> vca.backend.v1.CreateRequestResponse
+	51, // 112: vca.backend.v1.VerifierBackendService.GetResult:output_type -> vca.backend.v1.GetResultResponse
+	49, // 113: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:output_type -> vca.backend.v1.SubmitBrowserAnswerResponse
+	76, // 114: vca.backend.v1.VerifierBackendService.VerifyCredential:output_type -> vca.backend.v1.VerifyCredentialResponse
+	53, // 115: vca.backend.v1.CatalogBackendService.ListCredentialTypes:output_type -> vca.backend.v1.ListCredentialTypesResponse
+	56, // 116: vca.backend.v1.TenantBackendService.CreateTenant:output_type -> vca.backend.v1.CreateTenantResponse
+	58, // 117: vca.backend.v1.TenantBackendService.GetTenant:output_type -> vca.backend.v1.GetTenantResponse
+	60, // 118: vca.backend.v1.TenantBackendService.ListTenants:output_type -> vca.backend.v1.ListTenantsResponse
+	62, // 119: vca.backend.v1.TenantBackendService.DeleteTenant:output_type -> vca.backend.v1.DeleteTenantResponse
+	65, // 120: vca.backend.v1.TenantBackendService.ListClientCredentials:output_type -> vca.backend.v1.ListClientCredentialsResponse
+	67, // 121: vca.backend.v1.TenantBackendService.CreateClientCredential:output_type -> vca.backend.v1.CreateClientCredentialResponse
+	69, // 122: vca.backend.v1.TenantBackendService.DeleteClientCredential:output_type -> vca.backend.v1.DeleteClientCredentialResponse
+	72, // 123: vca.backend.v1.NotificationBackendService.GetWebhook:output_type -> vca.backend.v1.GetWebhookResponse
+	74, // 124: vca.backend.v1.NotificationBackendService.SetWebhook:output_type -> vca.backend.v1.SetWebhookResponse
+	95, // [95:125] is the sub-list for method output_type
+	65, // [65:95] is the sub-list for method input_type
 	65, // [65:65] is the sub-list for extension type_name
 	65, // [65:65] is the sub-list for extension extendee
 	0,  // [0:65] is the sub-list for field type_name
@@ -5486,7 +5622,7 @@ func file_vca_backend_v1_backend_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_backend_v1_backend_proto_rawDesc), len(file_vca_backend_v1_backend_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   72,
+			NumMessages:   74,
 			NumExtensions: 0,
 			NumServices:   7,
 		},

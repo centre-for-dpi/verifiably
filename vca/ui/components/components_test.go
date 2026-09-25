@@ -109,6 +109,37 @@ func TestDcApiButtonStaysHidden(t *testing.T) {
 	}
 }
 
+// TestDcApiRequestButtonPostsTheAnswer checks the verify mode of the
+// button: a form that posts the answer of navigator.credentials.get to
+// the page, with the hidden fields of the page, and a button that stays
+// hidden until the script finds the API (P6-W2).
+func TestDcApiRequestButtonPostsTheAnswer(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "dcapi", DCAPI{
+		Text: "Ask the browser wallet", Request: `{"protocol":"openid4vp-v1-unsigned","data":{}}`,
+		Action: "/scan/requests/r1/dc-api", Hidden: template.HTML(`<input type="hidden" name="csrf" value="t">`),
+		Cancel: "You closed the wallet.", Fail: "Use the QR code.",
+	}))
+	a11ytest.AssertFragment(t, doc)
+	want := `<form method="post" action="/scan/requests/r1/dc-api" class="dcapi-form"><input type="hidden" name="csrf" value="t">` +
+		`<input type="hidden" name="response" value="">` +
+		`<button type="button" class="btn btn-primary" hidden data-dcapi-request="{&#34;protocol&#34;:&#34;openid4vp-v1-unsigned&#34;,&#34;data&#34;:{}}"` +
+		` data-dcapi-cancel="You closed the wallet." data-dcapi-fail="Use the QR code.">Ask the browser wallet</button></form>`
+	if doc != want {
+		t.Errorf("dcapi request\n got %s\nwant %s", doc, want)
+	}
+	for name, bad := range map[string]DCAPI{
+		"both":      {Text: "Send", Offer: "https://issuer.example/offer", Request: "{}", Action: "/a"},
+		"no action": {Text: "Send", Request: "{}"},
+		"not json":  {Text: "Send", Request: "{", Action: "/a"},
+		"action":    {Text: "Send", Request: "{}", Action: "javascript:alert(1)"},
+	} {
+		if _, err := k.HTML("dcapi", bad); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
 // TestLayoutLoadsDcApiScript checks that every page loads the script,
 // which does nothing on a page without an offer button.
 func TestLayoutLoadsDcApiScript(t *testing.T) {

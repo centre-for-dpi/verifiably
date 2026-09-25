@@ -68,6 +68,8 @@ type Server struct {
 	claimed bool
 	// requests records the body of every write call by path.
 	requests map[string][]byte
+	// history records every body by path, oldest first.
+	history map[string][][]byte
 	// status forces a status code for one path.
 	status map[string]int
 }
@@ -80,6 +82,7 @@ func New(dir string) *Server {
 		session:  SessionPending,
 		session2: Session2Active,
 		requests: map[string][]byte{},
+		history:  map[string][][]byte{},
 		status:   map[string]int{},
 	}
 	f.Server = httptest.NewServer(http.HandlerFunc(f.serve))
@@ -135,6 +138,13 @@ func (f *Server) Request(path string) []byte {
 	return f.requests[path]
 }
 
+// Bodies returns every body sent to the path, oldest first.
+func (f *Server) Bodies(path string) [][]byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([][]byte(nil), f.history[path]...)
+}
+
 // RequestJSON reads the recorded body of the path into out.
 func (f *Server) RequestJSON(path string, out any) error {
 	return json.Unmarshal(f.Request(path), out)
@@ -149,6 +159,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
+	f.history[r.URL.Path] = append(f.history[r.URL.Path], body)
 	f.last = r.URL.Path
 	forced := f.status[r.URL.Path]
 	session := f.session
@@ -172,7 +183,13 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, "/openid4vc/session/"):
 		f.send(w, string(session), "application/json")
 	case path == "/verification-session/create" && r.Method == http.MethodPost:
-		f.send(w, "doc/verifier2-create.json", "application/json")
+		name := "doc/verifier2-create.json"
+		if strings.Contains(string(body), `"flow_type":"dc_api`) {
+			name = "doc/verifier2-create-dcapi.json"
+		}
+		f.send(w, name, "application/json")
+	case strings.HasPrefix(path, "/verification-session/") && strings.HasSuffix(path, "/response"):
+		f.send(w, "doc/verifier2-response.json", "application/json")
 	case strings.HasPrefix(path, "/verification-session/") && strings.HasSuffix(path, "/info"):
 		f.send(w, string(session2), "application/json")
 	case path == "/wallet-api/auth/register":

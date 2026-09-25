@@ -107,6 +107,9 @@ const (
 	// VerifierBackendServiceGetResultProcedure is the fully-qualified name of the
 	// VerifierBackendService's GetResult RPC.
 	VerifierBackendServiceGetResultProcedure = "/vca.backend.v1.VerifierBackendService/GetResult"
+	// VerifierBackendServiceSubmitBrowserAnswerProcedure is the fully-qualified name of the
+	// VerifierBackendService's SubmitBrowserAnswer RPC.
+	VerifierBackendServiceSubmitBrowserAnswerProcedure = "/vca.backend.v1.VerifierBackendService/SubmitBrowserAnswer"
 	// VerifierBackendServiceVerifyCredentialProcedure is the fully-qualified name of the
 	// VerifierBackendService's VerifyCredential RPC.
 	VerifierBackendServiceVerifyCredentialProcedure = "/vca.backend.v1.VerifierBackendService/VerifyCredential"
@@ -751,6 +754,10 @@ type VerifierBackendServiceClient interface {
 	CreateRequest(context.Context, *connect.Request[v1.CreateRequestRequest]) (*connect.Response[v1.CreateRequestResponse], error)
 	// GetResult returns the state of one OID4VP transaction.
 	GetResult(context.Context, *connect.Request[v1.GetResultRequest]) (*connect.Response[v1.GetResultResponse], error)
+	// SubmitBrowserAnswer hands the answer of the Digital Credentials API
+	// of a browser to the verifier of the DPG. An adapter serves it when
+	// it lists FEATURE_DC_API_VERIFY.
+	SubmitBrowserAnswer(context.Context, *connect.Request[v1.SubmitBrowserAnswerRequest]) (*connect.Response[v1.SubmitBrowserAnswerResponse], error)
 	// VerifyCredential checks one credential, presentation, QR text,
 	// image, or PDF with the verifier of the DPG. An adapter that lists
 	// FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
@@ -781,6 +788,12 @@ func NewVerifierBackendServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(verifierBackendServiceMethods.ByName("GetResult")),
 			connect.WithClientOptions(opts...),
 		),
+		submitBrowserAnswer: connect.NewClient[v1.SubmitBrowserAnswerRequest, v1.SubmitBrowserAnswerResponse](
+			httpClient,
+			baseURL+VerifierBackendServiceSubmitBrowserAnswerProcedure,
+			connect.WithSchema(verifierBackendServiceMethods.ByName("SubmitBrowserAnswer")),
+			connect.WithClientOptions(opts...),
+		),
 		verifyCredential: connect.NewClient[v1.VerifyCredentialRequest, v1.VerifyCredentialResponse](
 			httpClient,
 			baseURL+VerifierBackendServiceVerifyCredentialProcedure,
@@ -792,9 +805,10 @@ func NewVerifierBackendServiceClient(httpClient connect.HTTPClient, baseURL stri
 
 // verifierBackendServiceClient implements VerifierBackendServiceClient.
 type verifierBackendServiceClient struct {
-	createRequest    *connect.Client[v1.CreateRequestRequest, v1.CreateRequestResponse]
-	getResult        *connect.Client[v1.GetResultRequest, v1.GetResultResponse]
-	verifyCredential *connect.Client[v1.VerifyCredentialRequest, v1.VerifyCredentialResponse]
+	createRequest       *connect.Client[v1.CreateRequestRequest, v1.CreateRequestResponse]
+	getResult           *connect.Client[v1.GetResultRequest, v1.GetResultResponse]
+	submitBrowserAnswer *connect.Client[v1.SubmitBrowserAnswerRequest, v1.SubmitBrowserAnswerResponse]
+	verifyCredential    *connect.Client[v1.VerifyCredentialRequest, v1.VerifyCredentialResponse]
 }
 
 // CreateRequest calls vca.backend.v1.VerifierBackendService.CreateRequest.
@@ -805,6 +819,11 @@ func (c *verifierBackendServiceClient) CreateRequest(ctx context.Context, req *c
 // GetResult calls vca.backend.v1.VerifierBackendService.GetResult.
 func (c *verifierBackendServiceClient) GetResult(ctx context.Context, req *connect.Request[v1.GetResultRequest]) (*connect.Response[v1.GetResultResponse], error) {
 	return c.getResult.CallUnary(ctx, req)
+}
+
+// SubmitBrowserAnswer calls vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer.
+func (c *verifierBackendServiceClient) SubmitBrowserAnswer(ctx context.Context, req *connect.Request[v1.SubmitBrowserAnswerRequest]) (*connect.Response[v1.SubmitBrowserAnswerResponse], error) {
+	return c.submitBrowserAnswer.CallUnary(ctx, req)
 }
 
 // VerifyCredential calls vca.backend.v1.VerifierBackendService.VerifyCredential.
@@ -819,6 +838,10 @@ type VerifierBackendServiceHandler interface {
 	CreateRequest(context.Context, *connect.Request[v1.CreateRequestRequest]) (*connect.Response[v1.CreateRequestResponse], error)
 	// GetResult returns the state of one OID4VP transaction.
 	GetResult(context.Context, *connect.Request[v1.GetResultRequest]) (*connect.Response[v1.GetResultResponse], error)
+	// SubmitBrowserAnswer hands the answer of the Digital Credentials API
+	// of a browser to the verifier of the DPG. An adapter serves it when
+	// it lists FEATURE_DC_API_VERIFY.
+	SubmitBrowserAnswer(context.Context, *connect.Request[v1.SubmitBrowserAnswerRequest]) (*connect.Response[v1.SubmitBrowserAnswerResponse], error)
 	// VerifyCredential checks one credential, presentation, QR text,
 	// image, or PDF with the verifier of the DPG. An adapter that lists
 	// FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
@@ -845,6 +868,12 @@ func NewVerifierBackendServiceHandler(svc VerifierBackendServiceHandler, opts ..
 		connect.WithSchema(verifierBackendServiceMethods.ByName("GetResult")),
 		connect.WithHandlerOptions(opts...),
 	)
+	verifierBackendServiceSubmitBrowserAnswerHandler := connect.NewUnaryHandler(
+		VerifierBackendServiceSubmitBrowserAnswerProcedure,
+		svc.SubmitBrowserAnswer,
+		connect.WithSchema(verifierBackendServiceMethods.ByName("SubmitBrowserAnswer")),
+		connect.WithHandlerOptions(opts...),
+	)
 	verifierBackendServiceVerifyCredentialHandler := connect.NewUnaryHandler(
 		VerifierBackendServiceVerifyCredentialProcedure,
 		svc.VerifyCredential,
@@ -857,6 +886,8 @@ func NewVerifierBackendServiceHandler(svc VerifierBackendServiceHandler, opts ..
 			verifierBackendServiceCreateRequestHandler.ServeHTTP(w, r)
 		case VerifierBackendServiceGetResultProcedure:
 			verifierBackendServiceGetResultHandler.ServeHTTP(w, r)
+		case VerifierBackendServiceSubmitBrowserAnswerProcedure:
+			verifierBackendServiceSubmitBrowserAnswerHandler.ServeHTTP(w, r)
 		case VerifierBackendServiceVerifyCredentialProcedure:
 			verifierBackendServiceVerifyCredentialHandler.ServeHTTP(w, r)
 		default:
@@ -874,6 +905,10 @@ func (UnimplementedVerifierBackendServiceHandler) CreateRequest(context.Context,
 
 func (UnimplementedVerifierBackendServiceHandler) GetResult(context.Context, *connect.Request[v1.GetResultRequest]) (*connect.Response[v1.GetResultResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.VerifierBackendService.GetResult is not implemented"))
+}
+
+func (UnimplementedVerifierBackendServiceHandler) SubmitBrowserAnswer(context.Context, *connect.Request[v1.SubmitBrowserAnswerRequest]) (*connect.Response[v1.SubmitBrowserAnswerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer is not implemented"))
 }
 
 func (UnimplementedVerifierBackendServiceHandler) VerifyCredential(context.Context, *connect.Request[v1.VerifyCredentialRequest]) (*connect.Response[v1.VerifyCredentialResponse], error) {

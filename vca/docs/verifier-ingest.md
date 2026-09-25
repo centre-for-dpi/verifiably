@@ -178,6 +178,17 @@ the delivery and the expiry.
 | `GET /scan/requests/{id}` | One request. `?as=qr`, `link`, or `document` picks the delivery. |
 | `GET /scan/requests/{id}/state` | The state block, for htmx. |
 | `GET /scan/requests/{id}/document.pdf` | The request as a PDF document of `core/pdf`, with the QR code and the link. |
+| `POST /scan/requests/{id}/dc-api` | The answer of the Digital Credentials API. The kit script posts it with the form token. |
+
+A stack adapter that lists `FEATURE_DC_API_VERIFY` adds the delivery
+"Digital Credentials API". The form shows it only then. Such a request
+goes through that stack only. The service asks the adapter for a
+request object and names its own origin as the expected origin. The
+page `?as=dcapi` shows a button that `/static/dcapi.js` reveals when the
+browser has the API. The button passes the request object to
+`navigator.credentials.get`. The script posts the answer to the page,
+and the service hands it to the adapter. The QR code of the same
+request stays beside the button for every other browser.
 
 The state block shows Waiting, Received, and Verified. While the request
 waits, htmx asks for the block every 2 seconds. A refresh link does the

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -44,12 +45,21 @@ type Stack struct {
 	Adapter string
 	// Protocols are the exchange protocols the adapter lists.
 	Protocols []backendv1.Protocol
+	// Features are the features the adapter lists.
+	Features []backendv1.Feature
+}
+
+// DcAPI reports whether the adapter of the stack takes a request of the
+// Digital Credentials API.
+func (st Stack) DcAPI() bool {
+	return slices.Contains(st.Features, backendv1.Feature_FEATURE_DC_API_VERIFY)
 }
 
 // StackVerifier is the verifier service of an adapter.
 type StackVerifier interface {
 	CreateRequest(context.Context, *connect.Request[backendv1.CreateRequestRequest]) (*connect.Response[backendv1.CreateRequestResponse], error)
 	GetResult(context.Context, *connect.Request[backendv1.GetResultRequest]) (*connect.Response[backendv1.GetResultResponse], error)
+	SubmitBrowserAnswer(context.Context, *connect.Request[backendv1.SubmitBrowserAnswerRequest]) (*connect.Response[backendv1.SubmitBrowserAnswerResponse], error)
 }
 
 // Evaluator runs the checks of a policy set. The policy service is one.
@@ -159,13 +169,25 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 	if !ok {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("service: the stack %q reads no form of the query", msg.GetStack()))
 	}
+	var origins []string
+	if msg.GetDcApi() {
+		if !stack.DcAPI() || dcqlText == "" {
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				fmt.Errorf("service: the stack %q takes no Digital Credentials API request for this query", msg.GetStack()))
+		}
+		origin := msg.GetOrigin()
+		if origin == "" {
+			origin = originOf(s.opts.BaseURL)
+		}
+		origins = []string{origin}
+	}
 	id, idErr := txn.NewID()
 	nonce, nonceErr := txn.NewID()
 	if err := errors.Join(idErr, nonceErr); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	resp, err := s.opts.StackClient(stack.Adapter).CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{
-		Dcql: dcqlText, PresentationDefinition: peText, Nonce: nonce,
+		Dcql: dcqlText, PresentationDefinition: peText, Nonce: nonce, DcApi: msg.GetDcApi(), ExpectedOrigins: origins,
 	}))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("service: the stack %q did not create the request: %w", stack.Pair, err))
@@ -175,6 +197,7 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 		ID: id, Nonce: nonce, TemplateID: t.GetId(), TemplateVersion: t.GetVersion(), PolicySetID: t.GetPolicySetId(),
 		State: txn.StatePending, CreatedAt: now, ExpiresAt: now.Add(ttl),
 		Stack: stack.Pair, StackName: stack.Name, Adapter: stack.Adapter, StackState: resp.Msg.GetState(), RequestURI: resp.Msg.GetRequestUri(),
+		DcAPIRequest: resp.Msg.GetDcApiRequest(),
 	}
 	if at := resp.Msg.GetExpiresAt(); at != nil {
 		record.ExpiresAt = at.AsTime()
@@ -184,8 +207,47 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 	}
 	return connect.NewResponse(&ingestv1.CreateOid4VpRequestResponse{
 		TransactionId: id, RequestUri: record.RequestURI, QrPayload: record.RequestURI, Nonce: nonce,
-		ExpiresAt: timestamppb.New(record.ExpiresAt),
+		ExpiresAt: timestamppb.New(record.ExpiresAt), DcApiRequest: record.DcAPIRequest,
 	}), nil
+}
+
+// originOf returns the scheme and the host of a URL, the web origin a
+// browser reports.
+func originOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// SubmitBrowserAnswer hands the answer of the Digital Credentials API of
+// the browser to the stack of a pending request, then polls the stack
+// once, so the state moves on without waiting for the next poll.
+func (s *Service) SubmitBrowserAnswer(ctx context.Context, req *connect.Request[ingestv1.SubmitBrowserAnswerRequest]) (*connect.Response[ingestv1.SubmitBrowserAnswerResponse], error) {
+	if strings.TrimSpace(req.Msg.GetResponse()) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("service: the answer of the browser is empty"))
+	}
+	record, err := s.opts.Store.Get(ctx, req.Msg.GetTransactionId())
+	if errors.Is(err, txn.ErrNotFound) {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if record.DcAPIRequest == "" || record.StateAt(s.opts.Now()) != txn.StatePending {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("service: the request takes no Digital Credentials API answer now"))
+	}
+	if _, err := s.opts.StackClient(record.Adapter).SubmitBrowserAnswer(ctx, connect.NewRequest(&backendv1.SubmitBrowserAnswerRequest{
+		State: record.StackState, Response: req.Msg.GetResponse(),
+	})); err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("service: the stack %q did not take the answer: %w", record.Stack, err))
+	}
+	if _, err := s.poll(ctx, record.ID); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&ingestv1.SubmitBrowserAnswerResponse{}), nil
 }
 
 // poll asks the stack of a pending request for the answer. A pending

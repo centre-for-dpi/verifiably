@@ -184,8 +184,10 @@ func (s *Service) GetCapabilities(
 		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP)
 	}
 	if s.client.HasVerifier2() {
-		// The verifier-api2 speaks OID4VP 1.0 with DCQL.
-		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP_DCQL)
+		// The verifier-api2 speaks OID4VP 1.0 with DCQL, also through the
+		// Digital Credentials API of a browser.
+		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP_DCQL, backendv1.Protocol_PROTOCOL_DC_API)
+		out.Features = append(out.Features, backendv1.Feature_FEATURE_DC_API_VERIFY)
 	}
 	if s.client.HasVerifier() {
 		// The verifier-api reads a Presentation Exchange request only.

@@ -11,6 +11,14 @@
    the words the page puts in data-dcapi-ok, data-dcapi-cancel and
    data-dcapi-fail.
 
+   A page that asks for a presentation marks a button with
+   data-dcapi-request, the request object as JSON, inside a POST form. The
+   script shows it when the browser has navigator.credentials.get and
+   allows the protocol of the request. A click passes the request to the
+   wallet of the device. The answer goes into the field response of the
+   form, and the script submits the form. A closed or a failed wallet
+   writes data-dcapi-cancel or data-dcapi-fail into the toast region.
+
    The script has no dependency and no build step. It does nothing on a page
    without such a button. */
 (function(){
@@ -29,6 +37,49 @@
       try { return DC.userAgentAllowsProtocol(PROTOCOL) === true; } catch (e) { return false; }
     }
     return true;
+  }
+
+  /* requestOf reads the request object of a verify button, or null. */
+  function requestOf(button) {
+    try { return JSON.parse(button.getAttribute('data-dcapi-request') || ''); } catch (e) { return null; }
+  }
+
+  /* canGet is the feature test of a verify button: the browser has the
+     API and allows the protocol of the request. */
+  function canGet(button) {
+    var DC = window.DigitalCredential;
+    var request = requestOf(button);
+    if (typeof DC !== 'function' || !navigator.credentials || typeof navigator.credentials.get !== 'function' || !request) {
+      return false;
+    }
+    if (typeof DC.userAgentAllowsProtocol === 'function' && request.protocol) {
+      try { return DC.userAgentAllowsProtocol(request.protocol) === true; } catch (e) { return false; }
+    }
+    return true;
+  }
+
+  /* ask passes the request to the wallet and posts the answer with the
+     form of the button. */
+  function ask(button) {
+    var request = requestOf(button);
+    var form = button.form || (button.closest ? button.closest('form') : null);
+    if (!request || !form) { return; }
+    button.disabled = true;
+    navigator.credentials.get({ digital: { requests: [request] } })
+      .then(function(credential){
+        if (!credential) { throw new Error('no credential'); }
+        form.elements.response.value = JSON.stringify({ protocol: credential.protocol, data: credential.data });
+        form.submit();
+      }, function(err){
+        var name = err && err.name;
+        toast(name === 'NotAllowedError' || name === 'AbortError' ? 'info' : 'bad',
+          button.getAttribute(name === 'NotAllowedError' || name === 'AbortError' ? 'data-dcapi-cancel' : 'data-dcapi-fail'));
+        button.disabled = false;
+      })
+      .catch(function(){
+        toast('bad', button.getAttribute('data-dcapi-fail'));
+        button.disabled = false;
+      });
   }
 
   /* offerOf reads the credential offer object from an offer URI: by value
@@ -81,8 +132,11 @@
       .then(function(){ button.disabled = false; });
   }
 
-  /* reveal shows every offer button of the document when the API is there. */
+  /* reveal shows every button of the document that the browser can
+     serve. */
   function reveal() {
+    var asks = document.querySelectorAll('button[data-dcapi-request]');
+    for (var j = 0; j < asks.length; j++) { if (canGet(asks[j])) { asks[j].hidden = false; } }
     if (!supported()) { return; }
     var buttons = document.querySelectorAll('button[data-dcapi-offer]');
     for (var i = 0; i < buttons.length; i++) { buttons[i].hidden = false; }
@@ -91,6 +145,8 @@
   document.addEventListener('click', function(e){
     var b = e.target.closest ? e.target.closest('button[data-dcapi-offer]') : null;
     if (b && !b.hidden && supported()) { start(b); }
+    var q = e.target.closest ? e.target.closest('button[data-dcapi-request]') : null;
+    if (q && !q.hidden && canGet(q)) { ask(q); }
   });
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', reveal);

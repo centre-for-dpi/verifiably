@@ -285,7 +285,7 @@ component. `components.Names` lists every template.
 | `stepper` | `Stepper` | Progress of a multi step form. The current step carries `aria-current="step"`. | `Label`, `Steps` (two or more), `Current` |
 | `choice` | `Choice` | `fieldset` with a `legend` and radio cards, or checkbox cards with `Multiple`. | `ID`, `Legend`, `Options` |
 | `credentials` | `Credentials` | A list of wallet cards. Each card names the issuer, the type, the status as a badge word, and one meta line. The stripe on top takes the tone of the status. An optional last tile leads to more. | `Label`, `Items` or `Add` |
-| `dcapi` | `DCAPI` | A hidden `button type="button"` that carries a credential offer. `/static/dcapi.js` shows it when the browser has the Digital Credentials API. | `Text`, `Offer` |
+| `dcapi` | `DCAPI` | A hidden `button type="button"` that carries a credential offer or a presentation request. `/static/dcapi.js` shows it when the browser has the Digital Credentials API. | `Text`, and `Offer` or `Request` with `Action` |
 | `fieldset` | `Fieldset` | `fieldset` with a `legend`, an optional hint, and the fields of its body. A nested object of a form becomes one. | `ID`, `Legend` |
 | `code` | `Code` | `figure` with a `figcaption` and a `pre` region named by it. | `ID`, `Label`, `Text` |
 | `empty` | `Empty` | Empty state with a title, a sentence, and the one action that fills it. | `Title`, `Action` |
@@ -423,11 +423,17 @@ current one carry a hidden `Done` for screen readers.
 `Multiple`. `ChoiceOption`: `Value`, `Title`, `Text`, `Meta`, `Checked`,
 `Disabled`. Every input has an id `<ID>-<n>` and its own `label`.
 
-`DCAPI`: `Text`, `Offer`, `OK`, `Cancel`, `Fail`. The offer is an
-`openid-credential-offer://` or an `https://` URI. The script writes
-`OK`, `Cancel`, or `Fail` into the toast region after the wallet
-answers. Keep the QR code and the link on the same page for every other
-browser (ADR-043 decision 3).
+`DCAPI`: `Text`, `Offer`, `Request`, `Action`, `Hidden`, `OK`, `Cancel`,
+`Fail`. The offer is an `openid-credential-offer://` or an `https://`
+URI. The script writes `OK`, `Cancel`, or `Fail` into the toast region
+after the wallet answers. Keep the QR code and the link on the same page
+for every other browser (ADR-043 decision 3).
+
+A request is the request object of a presentation, as JSON. The button
+then sits in a POST form to `Action`, a path of the page. The form holds
+the `Hidden` fields, such as the form token. The script passes the request to
+`navigator.credentials.get`. It puts the answer in the field `response`
+and submits the form. Set an offer or a request, not both.
 
 `Fieldset`: `ID`, `Legend`, `Hint`, `Body`. A hint links to the group
 through `aria-describedby`. Put the fields from `Kit.HTML` in `Body`.

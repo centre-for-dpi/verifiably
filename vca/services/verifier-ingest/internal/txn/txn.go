@@ -90,6 +90,9 @@ type Transaction struct {
 	// Verdict is the verdict of the evaluation of the answer, as the
 	// number of vca.common.v1.Verdict. Zero until the evaluation.
 	Verdict int32 `json:"verdict,omitempty"`
+	// DcAPIRequest is the request object of the Digital Credentials API
+	// that the stack made, as JSON. Empty for any other request.
+	DcAPIRequest string `json:"dc_api_request,omitempty"`
 }
 
 // StackCheck is one check a stack verifier ran.

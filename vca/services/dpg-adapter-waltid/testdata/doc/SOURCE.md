@@ -11,6 +11,8 @@ run replaces each file with a recording.
 | `verifier2-session-active.json` | Verifier API 2 `GET /verification-session/{id}/info`, status `ACTIVE` | https://docs.walt.id/community-stack/verifier2/credential-verification/sd-jwt-vc-oid4vp and https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp-verifier/src/commonMain/kotlin/id/walt/verifier2/data/Verification2Session.kt | 2026-09-25 |
 | `verifier2-session-successful.json` | The same, status `SUCCESSFUL`, with `presented_raw_data` and `policy_results` | as above, plus https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp-verifier/src/commonMain/kotlin/id/walt/verifier2/verification2/Verifier2PolicyResults.kt | 2026-09-25 |
 | `verifier2-session-failed.json` | The same, status `FAILED`, with a failed check | as above | 2026-09-25 |
+| `verifier2-create-dcapi.json` | Verifier API 2 `POST /verification-session/create` with `flow_type` `dc_api_openid4vp` and `expectedOrigins` | https://docs.walt.id/community-stack/verifier2/credential-verification/dc-api and the OpenAPI examples of https://verifier2.demo.walt.id/api.json | 2026-09-25 |
+| `verifier2-response.json` | Verifier API 2 `POST /verification-session/{id}/response` with the JSON answer of the browser | https://docs.walt.id/community-stack/verifier2/credential-verification/dc-api | 2026-09-25 |
 | `verifier2-session-expired.json` | The same, status `EXPIRED` | as above | 2026-09-25 |
 
 The answer has the shape of `onboard-issuer.json`: the key as a walt.id
@@ -28,3 +30,8 @@ Verifier API 2 notes (release 0.18.2):
 The session status values are the enum `VerificationSessionStatus` of
 `Verification2Session.kt`. The field `vpToken` of `presented_raw_data`
 has no serial name, so it keeps its camel case.
+
+The flow type name `dc_api_openid4vp` comes from the OpenAPI examples of
+the live demo verifier, which runs a later release. Release 0.18.2 has
+the request mode `DC_API` in `Verification2Session.kt`. The contract
+case `TestContractDcApiSession` confirms the name against 0.18.2.

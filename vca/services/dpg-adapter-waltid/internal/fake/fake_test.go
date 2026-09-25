@@ -215,3 +215,19 @@ func TestFakeServesVerifier2Sessions(t *testing.T) {
 		}
 	}
 }
+
+func TestFakeServesTheDcApiFlow(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	_, body := postBody(t, f, "/verification-session/create", `{"flow_type":"dc_api_openid4vp"}`)
+	if !strings.Contains(body, `"protocol"`) {
+		t.Fatalf("create = %q", body)
+	}
+	code, answer := postBody(t, f, "/verification-session/s/response", `{"protocol":"p"}`)
+	if code != http.StatusOK || !strings.Contains(answer, "received") {
+		t.Fatalf("response = %d %q", code, answer)
+	}
+	if len(f.Bodies("/verification-session/create")) != 1 {
+		t.Fatal("the history lost the create body")
+	}
+}

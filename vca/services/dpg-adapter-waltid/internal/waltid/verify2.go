@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 )
 
 // ErrNoVerifier2 reports that the verifier-api2 is not configured.
@@ -21,6 +23,9 @@ const (
 	// FlowCrossDevice sends the request to a wallet on another device
 	// through a QR code or a link.
 	FlowCrossDevice = "cross_device"
+	// FlowDcAPI hands the request to the Digital Credentials API of the
+	// browser, as OID4VP 1.0 over that API.
+	FlowDcAPI = "dc_api_openid4vp"
 )
 
 // The session states of verifier 2 that end a session.
@@ -156,6 +161,20 @@ func (c *Client) SessionInfo2(ctx context.Context, id string) (Session2, error) 
 		return Session2{}, err
 	}
 	return out, nil
+}
+
+// SubmitResponse2 posts the answer of the Digital Credentials API to a
+// session. The answer is the credential object of the browser, with its
+// protocol and data.
+func (c *Client) SubmitResponse2(ctx context.Context, id string, answer json.RawMessage) error {
+	if c.verifier2 == nil {
+		return ErrNoVerifier2
+	}
+	_, err := c.verifier2.Do(ctx, dpgclient.Request{
+		Method: http.MethodPost, Path: "/verification-session/" + url.PathEscape(id) + "/response",
+		Body: answer, ContentType: "application/json", Accept: "application/json",
+	})
+	return err
 }
 
 // VCPolicies2 maps the check names of the caller onto the vc_policies of

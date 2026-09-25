@@ -32,8 +32,13 @@ func (s *Service) CreateRequest(
 	if !s.client.HasVerifier() && !s.client.HasVerifier2() {
 		return nil, unimplemented("this adapter has no verifier URL, so it serves no verifier role")
 	}
-	if query := strings.TrimSpace(req.Msg.GetDcql()); query != "" && s.client.HasVerifier2() {
+	query := strings.TrimSpace(req.Msg.GetDcql())
+	if query != "" && s.client.HasVerifier2() {
 		return s.createSession2(ctx, req.Msg, query)
+	}
+	if req.Msg.GetDcApi() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(
+			"a Digital Credentials API request needs a DCQL query and the walt.id verifier 2"))
 	}
 	if !s.client.HasVerifier() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(
@@ -71,28 +76,70 @@ func (s *Service) CreateRequest(
 }
 
 // createSession2 starts a cross device session of the verifier-api2 with
-// the DCQL query as the caller wrote it.
+// the DCQL query as the caller wrote it. A Digital Credentials API
+// request also starts a session of that flow first. The cross device
+// session then serves the QR code for a browser without the API, and
+// the state names both sessions.
 func (s *Service) createSession2(
 	ctx context.Context, msg *backendv1.CreateRequestRequest, query string,
 ) (*connect.Response[backendv1.CreateRequestResponse], error) {
 	if !json.Valid([]byte(query)) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the DCQL query is not JSON"))
 	}
-	setup := waltid.Session2Setup{
-		FlowType: waltid.FlowCrossDevice,
-		CoreFlow: waltid.CoreFlow{DcqlQuery: json.RawMessage(query)},
-	}
+	core := waltid.CoreFlow{DcqlQuery: json.RawMessage(query)}
 	if policies := waltid.VCPolicies2(msg.GetDpgPolicies(), msg.GetWebhookUrl()); len(policies) > 0 {
-		setup.CoreFlow.Policies = &waltid.Policies2{VCPolicies: policies}
+		core.Policies = &waltid.Policies2{VCPolicies: policies}
 	}
-	created, err := s.client.CreateSession2(ctx, setup)
+	out := &backendv1.CreateRequestResponse{}
+	var ids []string
+	if msg.GetDcApi() {
+		if len(msg.GetExpectedOrigins()) == 0 {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				errors.New("a Digital Credentials API request needs the expected origins"))
+		}
+		dc, err := s.client.CreateSession2(ctx, waltid.Session2Setup{
+			FlowType: waltid.FlowDcAPI, CoreFlow: core, ExpectedOrigins: msg.GetExpectedOrigins(),
+		})
+		if err != nil {
+			return nil, failed("create the Digital Credentials API session", err)
+		}
+		if len(dc.Data) == 0 {
+			return nil, connect.NewError(connect.CodeUnavailable,
+				errors.New("the verifier 2 answer has no Digital Credentials API request"))
+		}
+		out.DcApiRequest = string(dc.Data)
+		ids = append(ids, dc.SessionID)
+	}
+	created, err := s.client.CreateSession2(ctx, waltid.Session2Setup{FlowType: waltid.FlowCrossDevice, CoreFlow: core})
 	if err != nil {
 		return nil, failed("create the verifier 2 session", err)
 	}
-	return connect.NewResponse(&backendv1.CreateRequestResponse{
-		RequestUri: created.RequestURL(),
-		State:      v2Prefix + created.SessionID,
-	}), nil
+	out.RequestUri = created.RequestURL()
+	out.State = v2Prefix + strings.Join(append(ids, created.SessionID), ",")
+	return connect.NewResponse(out), nil
+}
+
+// SubmitBrowserAnswer posts the answer of the browser to the Digital
+// Credentials API session of a state. GetResult then reads the verdict.
+func (s *Service) SubmitBrowserAnswer(
+	ctx context.Context, req *connect.Request[backendv1.SubmitBrowserAnswerRequest],
+) (*connect.Response[backendv1.SubmitBrowserAnswerResponse], error) {
+	if !s.client.HasVerifier2() {
+		return nil, unimplemented("this adapter has no verifier 2 URL, so it takes no Digital Credentials API answer")
+	}
+	rest, ok := strings.CutPrefix(req.Msg.GetState(), v2Prefix)
+	if !ok || rest == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the state names no verifier 2 session"))
+	}
+	var answer map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(req.Msg.GetResponse()), &answer); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the answer of the browser is not a JSON object"))
+	}
+	id, _, _ := strings.Cut(rest, ",")
+	if err := s.client.SubmitResponse2(ctx, id, json.RawMessage(req.Msg.GetResponse())); err != nil {
+		return nil, failed("hand the answer to verifier 2", err)
+	}
+	return connect.NewResponse(&backendv1.SubmitBrowserAnswerResponse{}), nil
 }
 
 // GetResult reads the state of one OID4VP transaction.
@@ -107,8 +154,8 @@ func (s *Service) GetResult(
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the request needs a state"))
 	}
-	if id, ok := strings.CutPrefix(state, v2Prefix); ok {
-		return s.result2(ctx, id)
+	if ids, ok := strings.CutPrefix(state, v2Prefix); ok {
+		return s.results2(ctx, strings.Split(ids, ","))
 	}
 	if !s.client.HasVerifier() {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
@@ -140,28 +187,39 @@ func (s *Service) GetResult(
 	return connect.NewResponse(out), nil
 }
 
-// result2 reads one verifier 2 session. A session that has not ended is
-// pending.
-func (s *Service) result2(ctx context.Context, id string) (*connect.Response[backendv1.GetResultResponse], error) {
+// results2 reads the verifier 2 sessions of one request. The first
+// session with an answer decides. The request expired when every
+// session expired; otherwise it is pending.
+func (s *Service) results2(ctx context.Context, ids []string) (*connect.Response[backendv1.GetResultResponse], error) {
 	if !s.client.HasVerifier2() {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("this deployment runs no walt.id verifier-api2, so it holds no such session"))
 	}
-	session, err := s.client.SessionInfo2(ctx, id)
-	if err != nil {
-		return nil, failed("read the verifier 2 session", err)
+	expired := 0
+	for _, id := range ids {
+		session, err := s.client.SessionInfo2(ctx, id)
+		if err != nil {
+			return nil, failed("read the verifier 2 session", err)
+		}
+		switch session.Status {
+		case waltid.Status2Successful, waltid.Status2Failed:
+			return connect.NewResponse(s.answered2(session)), nil
+		case waltid.Status2Expired:
+			expired++
+		}
 	}
 	out := &backendv1.GetResultResponse{State: backendv1.GetResultResponse_STATE_PENDING}
-	switch session.Status {
-	case waltid.Status2Expired:
+	if expired == len(ids) {
 		out.State = backendv1.GetResultResponse_STATE_EXPIRED
-		return connect.NewResponse(out), nil
-	case waltid.Status2Successful:
+	}
+	return connect.NewResponse(out), nil
+}
+
+// answered2 maps a verifier 2 session with an answer onto the result.
+func (s *Service) answered2(session waltid.Session2) *backendv1.GetResultResponse {
+	out := &backendv1.GetResultResponse{State: backendv1.GetResultResponse_STATE_REJECTED}
+	if session.Status == waltid.Status2Successful {
 		out.State = backendv1.GetResultResponse_STATE_ACCEPTED
-	case waltid.Status2Failed:
-		out.State = backendv1.GetResultResponse_STATE_REJECTED
-	default:
-		return connect.NewResponse(out), nil
 	}
 	out.DpgChecks = dpgChecks(session.Checks())
 	ids, tokens := session.Credentials()
@@ -172,7 +230,7 @@ func (s *Service) result2(ctx context.Context, id string) (*connect.Response[bac
 		})
 	}
 	out.ReceivedAt = timestamp(s.now().UTC())
-	return connect.NewResponse(out), nil
+	return out
 }
 
 // dpgChecks maps the walt.id policy verdicts onto the contract message.

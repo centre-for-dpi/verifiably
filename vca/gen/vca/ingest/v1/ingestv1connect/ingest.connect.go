@@ -54,6 +54,9 @@ const (
 	// IngestServiceListTransactionsProcedure is the fully-qualified name of the IngestService's
 	// ListTransactions RPC.
 	IngestServiceListTransactionsProcedure = "/vca.ingest.v1.IngestService/ListTransactions"
+	// IngestServiceSubmitBrowserAnswerProcedure is the fully-qualified name of the IngestService's
+	// SubmitBrowserAnswer RPC.
+	IngestServiceSubmitBrowserAnswerProcedure = "/vca.ingest.v1.IngestService/SubmitBrowserAnswer"
 )
 
 // IngestServiceClient is a client for the vca.ingest.v1.IngestService service.
@@ -75,6 +78,10 @@ type IngestServiceClient interface {
 	// ListTransactions lists the OID4VP transactions, newest first. The
 	// verifier overview counts the open requests with it.
 	ListTransactions(context.Context, *connect.Request[v1.ListTransactionsRequest]) (*connect.Response[v1.ListTransactionsResponse], error)
+	// SubmitBrowserAnswer hands the answer of the Digital Credentials API
+	// of the browser to the stack verifier of one transaction. The request
+	// page posts it after navigator.credentials.get.
+	SubmitBrowserAnswer(context.Context, *connect.Request[v1.SubmitBrowserAnswerRequest]) (*connect.Response[v1.SubmitBrowserAnswerResponse], error)
 }
 
 // NewIngestServiceClient constructs a client for the vca.ingest.v1.IngestService service. By
@@ -118,6 +125,12 @@ func NewIngestServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(ingestServiceMethods.ByName("ListTransactions")),
 			connect.WithClientOptions(opts...),
 		),
+		submitBrowserAnswer: connect.NewClient[v1.SubmitBrowserAnswerRequest, v1.SubmitBrowserAnswerResponse](
+			httpClient,
+			baseURL+IngestServiceSubmitBrowserAnswerProcedure,
+			connect.WithSchema(ingestServiceMethods.ByName("SubmitBrowserAnswer")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -128,6 +141,7 @@ type ingestServiceClient struct {
 	receiveDirectPost   *connect.Client[v1.ReceiveDirectPostRequest, v1.ReceiveDirectPostResponse]
 	getTransaction      *connect.Client[v1.GetTransactionRequest, v1.GetTransactionResponse]
 	listTransactions    *connect.Client[v1.ListTransactionsRequest, v1.ListTransactionsResponse]
+	submitBrowserAnswer *connect.Client[v1.SubmitBrowserAnswerRequest, v1.SubmitBrowserAnswerResponse]
 }
 
 // Ingest calls vca.ingest.v1.IngestService.Ingest.
@@ -155,6 +169,11 @@ func (c *ingestServiceClient) ListTransactions(ctx context.Context, req *connect
 	return c.listTransactions.CallUnary(ctx, req)
 }
 
+// SubmitBrowserAnswer calls vca.ingest.v1.IngestService.SubmitBrowserAnswer.
+func (c *ingestServiceClient) SubmitBrowserAnswer(ctx context.Context, req *connect.Request[v1.SubmitBrowserAnswerRequest]) (*connect.Response[v1.SubmitBrowserAnswerResponse], error) {
+	return c.submitBrowserAnswer.CallUnary(ctx, req)
+}
+
 // IngestServiceHandler is an implementation of the vca.ingest.v1.IngestService service.
 type IngestServiceHandler interface {
 	// Ingest decodes bytes from one carrier into a RawPresentation.
@@ -174,6 +193,10 @@ type IngestServiceHandler interface {
 	// ListTransactions lists the OID4VP transactions, newest first. The
 	// verifier overview counts the open requests with it.
 	ListTransactions(context.Context, *connect.Request[v1.ListTransactionsRequest]) (*connect.Response[v1.ListTransactionsResponse], error)
+	// SubmitBrowserAnswer hands the answer of the Digital Credentials API
+	// of the browser to the stack verifier of one transaction. The request
+	// page posts it after navigator.credentials.get.
+	SubmitBrowserAnswer(context.Context, *connect.Request[v1.SubmitBrowserAnswerRequest]) (*connect.Response[v1.SubmitBrowserAnswerResponse], error)
 }
 
 // NewIngestServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -213,6 +236,12 @@ func NewIngestServiceHandler(svc IngestServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(ingestServiceMethods.ByName("ListTransactions")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ingestServiceSubmitBrowserAnswerHandler := connect.NewUnaryHandler(
+		IngestServiceSubmitBrowserAnswerProcedure,
+		svc.SubmitBrowserAnswer,
+		connect.WithSchema(ingestServiceMethods.ByName("SubmitBrowserAnswer")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.ingest.v1.IngestService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IngestServiceIngestProcedure:
@@ -225,6 +254,8 @@ func NewIngestServiceHandler(svc IngestServiceHandler, opts ...connect.HandlerOp
 			ingestServiceGetTransactionHandler.ServeHTTP(w, r)
 		case IngestServiceListTransactionsProcedure:
 			ingestServiceListTransactionsHandler.ServeHTTP(w, r)
+		case IngestServiceSubmitBrowserAnswerProcedure:
+			ingestServiceSubmitBrowserAnswerHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -252,4 +283,8 @@ func (UnimplementedIngestServiceHandler) GetTransaction(context.Context, *connec
 
 func (UnimplementedIngestServiceHandler) ListTransactions(context.Context, *connect.Request[v1.ListTransactionsRequest]) (*connect.Response[v1.ListTransactionsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.ingest.v1.IngestService.ListTransactions is not implemented"))
+}
+
+func (UnimplementedIngestServiceHandler) SubmitBrowserAnswer(context.Context, *connect.Request[v1.SubmitBrowserAnswerRequest]) (*connect.Response[v1.SubmitBrowserAnswerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.ingest.v1.IngestService.SubmitBrowserAnswer is not implemented"))
 }

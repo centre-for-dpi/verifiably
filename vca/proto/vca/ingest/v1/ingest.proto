@@ -31,6 +31,10 @@ service IngestService {
   // ListTransactions lists the OID4VP transactions, newest first. The
   // verifier overview counts the open requests with it.
   rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+  // SubmitBrowserAnswer hands the answer of the Digital Credentials API
+  // of the browser to the stack verifier of one transaction. The request
+  // page posts it after navigator.credentials.get.
+  rpc SubmitBrowserAnswer(SubmitBrowserAnswerRequest) returns (SubmitBrowserAnswerResponse);
 }
 
 // Carrier names how a presentation arrived (ADR-023 decision 1).
@@ -158,6 +162,11 @@ message CreateOid4vpRequestRequest {
   // the service. The service caps it at one hour. A stack sets its own
   // expiry.
   int32 expires_in_seconds = 6;
+  // Ask the stack for a request of the Digital Credentials API as well.
+  // The stack adapter must list FEATURE_DC_API_VERIFY.
+  bool dc_api = 7;
+  // The web origin of the page that calls the Digital Credentials API.
+  string origin = 8;
 }
 
 // CreateOid4vpRequestResponse describes the transaction.
@@ -172,7 +181,22 @@ message CreateOid4vpRequestResponse {
   string nonce = 4;
   // The time at which the request stops working.
   google.protobuf.Timestamp expires_at = 5;
+  // The request object of the Digital Credentials API, as a JSON string,
+  // for a request that asked for it.
+  string dc_api_request = 6;
 }
+
+// SubmitBrowserAnswerRequest carries the answer of the browser.
+message SubmitBrowserAnswerRequest {
+  // The transaction id.
+  string transaction_id = 1;
+  // The credential the browser returned, as a JSON string.
+  string response = 2;
+}
+
+// SubmitBrowserAnswerResponse has no fields. GetTransaction reports the
+// state.
+message SubmitBrowserAnswerResponse {}
 
 // ReceiveDirectPostRequest carries the parsed wallet response.
 message ReceiveDirectPostRequest {
@@ -227,6 +251,9 @@ message GetTransactionResponse {
   string error = 9;
   // The checks the stack ran, for a request through a stack verifier.
   repeated vca.backend.v1.GetResultResponse.DpgCheck stack_checks = 10;
+  // The request object of the Digital Credentials API, as a JSON string,
+  // for a request that asked for it.
+  string dc_api_request = 11;
 
   // State names the transaction phase.
   enum State {

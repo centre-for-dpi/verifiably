@@ -72,6 +72,10 @@ service VerifierBackendService {
   rpc CreateRequest(CreateRequestRequest) returns (CreateRequestResponse);
   // GetResult returns the state of one OID4VP transaction.
   rpc GetResult(GetResultRequest) returns (GetResultResponse);
+  // SubmitBrowserAnswer hands the answer of the Digital Credentials API
+  // of a browser to the verifier of the DPG. An adapter serves it when
+  // it lists FEATURE_DC_API_VERIFY.
+  rpc SubmitBrowserAnswer(SubmitBrowserAnswerRequest) returns (SubmitBrowserAnswerResponse);
   // VerifyCredential checks one credential, presentation, QR text,
   // image, or PDF with the verifier of the DPG. An adapter that lists
   // FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
@@ -675,6 +679,12 @@ message CreateRequestRequest {
   string webhook_url = 4;
   // The DPG side check names to run, for example signature or expired.
   repeated string dpg_policies = 5;
+  // Ask for a request object of the Digital Credentials API as well. The
+  // caller sets it only for an adapter that lists FEATURE_DC_API_VERIFY.
+  bool dc_api = 6;
+  // The web origins that can pass the request to the Digital Credentials
+  // API, such as https://verifier.example.
+  repeated string expected_origins = 7;
 }
 
 // CreateRequestResponse describes the transaction.
@@ -685,7 +695,23 @@ message CreateRequestResponse {
   string state = 2;
   // The time at which the request stops working.
   google.protobuf.Timestamp expires_at = 3;
+  // The request object for navigator.credentials.get, as a JSON string,
+  // when the request asked for the Digital Credentials API.
+  string dc_api_request = 4;
 }
+
+// SubmitBrowserAnswerRequest carries the answer of the browser.
+message SubmitBrowserAnswerRequest {
+  // The state from CreateRequest.
+  string state = 1;
+  // The credential the browser returned, with its protocol and data, as
+  // a JSON string.
+  string response = 2;
+}
+
+// SubmitBrowserAnswerResponse has no fields. GetResult reports the
+// verdict.
+message SubmitBrowserAnswerResponse {}
 
 // GetResultRequest selects a transaction.
 message GetResultRequest {

@@ -177,3 +177,23 @@ func TestContractDcqlRoundTrip(t *testing.T) {
 		t.Fatalf("state = %v, a new session is pending", result.Msg.GetState())
 	}
 }
+
+// TestContractDcApiSession starts a Digital Credentials API session of
+// the real verifier-api2. The page needs a request object back.
+func TestContractDcApiSession(t *testing.T) {
+	cfg := contractEnv(t)
+	if cfg.Verifier2URL == "" {
+		t.Skip("set VCA_WALTID_CONTRACT_VERIFIER2_URL to run the verifier 2 contract test")
+	}
+	a := newContractApp(t)
+	query := `{"credentials":[{"id":"contract","format":"dc+sd-jwt","meta":{"vct_values":["https://example.org/contract"]}}]}`
+	created, err := a.Service.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{
+		Dcql: query, DcApi: true, ExpectedOrigins: []string{envOr("VCA_WALTID_CONTRACT_ORIGIN", "http://localhost:17004")},
+	}))
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+	if !strings.Contains(created.Msg.GetDcApiRequest(), "protocol") {
+		t.Fatalf("the DC API request has no protocol: %q", created.Msg.GetDcApiRequest())
+	}
+}

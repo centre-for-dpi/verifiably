@@ -4,6 +4,7 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -219,5 +220,142 @@ func TestCapabilitiesListDcqlWhenV2Configured(t *testing.T) {
 				t.Errorf("verifier-api2 component = %v, want %v", found, row.component)
 			}
 		})
+	}
+}
+
+func TestDcApiRequestCreated(t *testing.T) {
+	svc, f := newService(t, withV2)
+	ctx := context.Background()
+	resp, err := svc.CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{
+		Dcql: dcqlQuery, DcApi: true, ExpectedOrigins: []string{"https://verifier-waltid.labs.example"},
+		DpgPolicies: []string{"signature"},
+	}))
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+	var request struct {
+		Protocol string         `json:"protocol"`
+		Data     map[string]any `json:"data"`
+	}
+	if uerr := json.Unmarshal([]byte(resp.Msg.GetDcApiRequest()), &request); uerr != nil {
+		t.Fatalf("the DC API request is not JSON: %v", uerr)
+	}
+	if request.Protocol != "openid4vp-v1-unsigned" || request.Data["response_mode"] != "dc_api" {
+		t.Errorf("DC API request = %+v", request)
+	}
+	if !strings.HasPrefix(resp.Msg.GetRequestUri(), "openid4vp://authorize?client_id=verifier2") {
+		t.Errorf("the QR fallback has no request URI: %q", resp.Msg.GetRequestUri())
+	}
+	if resp.Msg.GetState() != "v2:ff4f0c86-56ce-4e4a-a137-dd5569049ff3,14d60fa2-4e7d-4a34-a291-80da0e053fab" {
+		t.Errorf("state = %q", resp.Msg.GetState())
+	}
+	bodies := f.Bodies("/verification-session/create")
+	if len(bodies) != 2 {
+		t.Fatalf("created %d sessions, want a DC API session and a cross device session", len(bodies))
+	}
+	var dc struct {
+		FlowType string   `json:"flow_type"`
+		Origins  []string `json:"expectedOrigins"`
+		Core     struct {
+			Dcql json.RawMessage `json:"dcql_query"`
+		} `json:"core_flow"`
+	}
+	if uerr := json.Unmarshal(bodies[0], &dc); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if dc.FlowType != "dc_api_openid4vp" || len(dc.Origins) != 1 || dc.Origins[0] != "https://verifier-waltid.labs.example" || len(dc.Core.Dcql) == 0 {
+		t.Errorf("DC API session body = %s", bodies[0])
+	}
+
+	// The browser answer goes to the DC API session.
+	if _, serr := svc.SubmitBrowserAnswer(ctx, connect.NewRequest(&backendv1.SubmitBrowserAnswerRequest{
+		State: resp.Msg.GetState(), Response: `{"protocol":"openid4vp-v1-unsigned","data":{"vp_token":{"credential_1":["eyJ"]}}}`,
+	})); serr != nil {
+		t.Fatalf("SubmitBrowserAnswer: %v", serr)
+	}
+	var answer map[string]any
+	if rerr := f.RequestJSON("/verification-session/ff4f0c86-56ce-4e4a-a137-dd5569049ff3/response", &answer); rerr != nil {
+		t.Fatalf("the answer did not reach verifier 2: %v", rerr)
+	}
+	if answer["protocol"] != "openid4vp-v1-unsigned" {
+		t.Errorf("answer = %v", answer)
+	}
+
+	// Either session answers the result.
+	f.SetSession2(fake.Session2Successful)
+	result, err := svc.GetResult(ctx, connect.NewRequest(&backendv1.GetResultRequest{State: resp.Msg.GetState()}))
+	if err != nil || result.Msg.GetState() != backendv1.GetResultResponse_STATE_ACCEPTED {
+		t.Fatalf("GetResult = %v %v", result, err)
+	}
+}
+
+func TestDcApiNeedsOriginsAndQuery(t *testing.T) {
+	svc, _ := newService(t, withV2)
+	ctx := context.Background()
+	_, err := svc.CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{Dcql: dcqlQuery, DcApi: true}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+	_, err = svc.CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{
+		PresentationDefinition: sdJwtDefinition, DcApi: true, ExpectedOrigins: []string{"https://v.example"},
+	}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+	v1, _ := newService(t, roles{verifier: true})
+	_, err = v1.CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{
+		Dcql: dcqlQuery, DcApi: true, ExpectedOrigins: []string{"https://v.example"},
+	}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+}
+
+func TestSubmitBrowserAnswerChecksItsInput(t *testing.T) {
+	ctx := context.Background()
+	v1, _ := newService(t, roles{verifier: true})
+	_, err := v1.SubmitBrowserAnswer(ctx, connect.NewRequest(&backendv1.SubmitBrowserAnswerRequest{State: "v2:a", Response: "{}"}))
+	wantCode(t, err, connect.CodeUnimplemented)
+	svc, f := newService(t, withV2)
+	for _, req := range []*backendv1.SubmitBrowserAnswerRequest{
+		{State: "plain", Response: "{}"},
+		{State: "v2:a", Response: "not json"},
+		{State: "v2:a", Response: "[1]"},
+	} {
+		_, serr := svc.SubmitBrowserAnswer(ctx, connect.NewRequest(req))
+		wantCode(t, serr, connect.CodeInvalidArgument)
+	}
+	f.SetStatus("/verification-session/a/response", 400)
+	_, err = svc.SubmitBrowserAnswer(ctx, connect.NewRequest(&backendv1.SubmitBrowserAnswerRequest{State: "v2:a", Response: "{}"}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+}
+
+func TestGetResultOfTwoSessionsWaitsForBoth(t *testing.T) {
+	svc, f := newService(t, withV2)
+	ctx := context.Background()
+	for session, want := range map[fake.Session2State]backendv1.GetResultResponse_State{
+		fake.Session2Active:  backendv1.GetResultResponse_STATE_PENDING,
+		fake.Session2Expired: backendv1.GetResultResponse_STATE_EXPIRED,
+		fake.Session2Failed:  backendv1.GetResultResponse_STATE_REJECTED,
+	} {
+		f.SetSession2(session)
+		resp, err := svc.GetResult(ctx, connect.NewRequest(&backendv1.GetResultRequest{State: "v2:a,b"}))
+		if err != nil || resp.Msg.GetState() != want {
+			t.Errorf("%s: %v %v", session, resp, err)
+		}
+	}
+}
+
+func TestCapabilitiesListDcApiWithVerifier2(t *testing.T) {
+	for _, row := range []struct {
+		r    roles
+		want bool
+	}{{withV2, true}, {roles{verifier: true}, false}} {
+		svc, _ := newService(t, row.r)
+		resp, err := svc.GetCapabilities(context.Background(), connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed := false
+		for _, f := range resp.Msg.GetFeatures() {
+			listed = listed || f == backendv1.Feature_FEATURE_DC_API_VERIFY
+		}
+		if listed != row.want || hasProtocol(resp.Msg.GetProtocols(), backendv1.Protocol_PROTOCOL_DC_API) != row.want {
+			t.Errorf("%+v: DC API listed = %v", row.r, listed)
+		}
 	}
 }

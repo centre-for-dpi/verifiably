@@ -206,7 +206,7 @@ func StacksOf(shell *staffshell.Shell) func(ctx context.Context) []service.Stack
 			if adapter := st.Peer.Adapter(); adapter != "" {
 				out = append(out, service.Stack{
 					Pair: st.Peer.Pair, Name: f.Snapshot().StackName(st.Peer.Dpg), Adapter: adapter,
-					Protocols: st.Capabilities.GetProtocols(),
+					Protocols: st.Capabilities.GetProtocols(), Features: st.Capabilities.GetFeatures(),
 				})
 			}
 		}

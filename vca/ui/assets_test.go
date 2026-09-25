@@ -558,6 +558,9 @@ func TestDcApiScriptServed(t *testing.T) {
 		"DigitalCredential", "userAgentAllowsProtocol", "'openid4vci-v1'", "navigator.credentials.create",
 		"digital: { requests: [{ protocol: PROTOCOL, data: offer }] }", "button[data-dcapi-offer]",
 		"getElementById('toasts')", "data-dcapi-ok", "data-dcapi-cancel", "data-dcapi-fail", "htmx:afterSettle",
+		// The verify mode: navigator.credentials.get with the request of
+		// the page, and a form post of the answer (P6-W2).
+		"button[data-dcapi-request]", "navigator.credentials.get", "digital: { requests: [request] }", "form.submit()",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dcapi.js lacks %q", want)

@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,6 +47,12 @@ import (
 //	GET  /requests/{id}                one request, ?as=qr, link, or document
 //	GET  /requests/{id}/state          the state block, for htmx
 //	GET  /requests/{id}/document.pdf   the request as a PDF document
+//	POST /requests/{id}/dc-api         the answer of the Digital Credentials API
+//
+// A stack whose adapter lists FEATURE_DC_API_VERIFY also offers the
+// delivery "Digital Credentials API" (P6-W2). The page then shows a
+// button that the kit script reveals when the browser has the API, and
+// the QR code of the same request for every other browser.
 
 // DefaultResultsPath is the page of one result in the results service.
 const DefaultResultsPath = "/portal/results/"
@@ -66,6 +73,7 @@ const (
 	deliverQR       = "qr"
 	deliverLink     = "link"
 	deliverDocument = "document"
+	deliverDCAPI    = "dcapi"
 )
 
 // vcaVerifier is the form value of the VCA verifier.
@@ -87,6 +95,7 @@ func (p *Page) registerRequests(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+base+"{id}", p.handle(p.requestPage))
 	mux.HandleFunc("GET "+base+"{id}/state", p.handle(p.requestState))
 	mux.HandleFunc("GET "+base+"{id}/document.pdf", p.handle(p.requestDocument))
+	mux.HandleFunc("POST "+base+"{id}/dc-api", p.handle(p.submitDcAPI))
 }
 
 // scanTabs renders the tabs between the scanner, a new request, and the
@@ -108,6 +117,18 @@ func (p *Page) stacks(ctx context.Context) []service.Stack {
 		return nil
 	}
 	return p.opts.Stacks(ctx)
+}
+
+// dcAPIStacks names the live stacks whose adapter takes a request of the
+// Digital Credentials API.
+func (p *Page) dcAPIStacks(ctx context.Context) []string {
+	var out []string
+	for _, st := range p.stacks(ctx) {
+		if st.DcAPI() {
+			out = append(out, st.Name)
+		}
+	}
+	return out
 }
 
 // throughName names the verifier of a request.
@@ -240,10 +261,16 @@ func (p *Page) renderForm(w http.ResponseWriter, r *http.Request, f requestForm)
 			Action: components.Button{Text: msg.T("verifier.nav.dcql.label"), Href: "/discovery/dcql/", Variant: "primary"}})
 	} else {
 		esc := template.HTMLEscapeString
-		delivery := make([]components.ChoiceOption, 0, 3)
+		delivery := make([]components.ChoiceOption, 0, 4)
 		for _, d := range []string{deliverQR, deliverLink, deliverDocument} {
 			delivery = append(delivery, components.ChoiceOption{Value: d, Title: msg.T("verifier.request.deliver." + d + ".label"),
 				Text: msg.T("verifier.request.deliver." + d + ".text"), Checked: d == f.deliver})
+		}
+		// The Digital Credentials API delivery shows only when a live
+		// stack adapter lists FEATURE_DC_API_VERIFY (P6-W2).
+		if names := p.dcAPIStacks(r.Context()); len(names) > 0 {
+			delivery = append(delivery, components.ChoiceOption{Value: deliverDCAPI, Title: msg.T("verifier.request.deliver.dcapi.label"),
+				Text: msg.T("verifier.request.deliver.dcapi.text", strings.Join(names, ", ")), Checked: f.deliver == deliverDCAPI})
 		}
 		times := make([]components.Option, 0, len(expiries))
 		for _, n := range expiries {
@@ -305,7 +332,7 @@ func (p *Page) createRequest(w http.ResponseWriter, r *http.Request) error {
 		f.expires = n
 	}
 	switch f.deliver {
-	case deliverLink, deliverDocument:
+	case deliverLink, deliverDocument, deliverDCAPI:
 	default:
 		f.deliver = deliverQR
 	}
@@ -315,6 +342,7 @@ func (p *Page) createRequest(w http.ResponseWriter, r *http.Request) error {
 	}
 	resp, err := p.opts.Client.CreateOid4VpRequest(r.Context(), connect.NewRequest(&ingestv1.CreateOid4VpRequestRequest{
 		TemplateId: f.template, Stack: stack, ExpiresInSeconds: int32(min(max(f.expires, 0), 3600)), //nolint:gosec // the value is clamped to one hour
+		DcApi: f.deliver == deliverDCAPI,
 	}))
 	if err != nil {
 		f.problem = msg.T("verifier.request.problem.send") + " " + connectReason(err)
@@ -346,9 +374,11 @@ func (p *Page) requestPage(w http.ResponseWriter, r *http.Request) error {
 	}
 	id := r.PathValue("id")
 	as := r.URL.Query().Get("as")
-	switch as {
-	case deliverLink, deliverDocument:
-	default:
+	ways := []string{deliverQR, deliverLink, deliverDocument}
+	if tx.GetDcApiRequest() != "" {
+		ways = append(ways, deliverDCAPI)
+	}
+	if !slices.Contains(ways, as) {
 		as = deliverQR
 	}
 	t := p.templateOf(r.Context(), tx.GetTemplateId())
@@ -357,13 +387,13 @@ func (p *Page) requestPage(w http.ResponseWriter, r *http.Request) error {
 	summary := b.add("card", components.Card{ID: "request-query", Title: msg.T("verifier.request.query.label"),
 		Text:   msg.T("verifier.request.query.text", t.GetDisplayName(), kindLabel(t), through),
 		Footer: footerOf(tx)})
-	links := make([]components.Link, 0, 3)
-	for _, d := range []string{deliverQR, deliverLink, deliverDocument} {
+	links := make([]components.Link, 0, len(ways))
+	for _, d := range ways {
 		links = append(links, components.Link{Href: p.requestsPath() + url.PathEscape(id) + "?as=" + d,
 			Text: msg.T("verifier.request.deliver." + d + ".label"), Current: d == as})
 	}
 	tabs := b.add("tabs", components.Tabs{Label: msg.T("verifier.request.deliver.label"), Links: links})
-	delivery := template.HTML(`<div id="request-delivery">`) + p.delivery(b, tx, id, as) + template.HTML(`</div>`)
+	delivery := template.HTML(`<div id="request-delivery">`) + p.delivery(b, tx, id, as, staffsession.HiddenField(r.Context())) + template.HTML(`</div>`)
 	state := p.stateBlock(r.Context(), b, tx, id)
 	if b.err != nil {
 		return b.err
@@ -395,13 +425,21 @@ func pending(tx *ingestv1.GetTransactionResponse) bool {
 }
 
 // delivery renders the request the way the holder gets it. A request
-// that no longer waits shows a sentence instead.
-func (p *Page) delivery(b *blocks, tx *ingestv1.GetTransactionResponse, id, as string) template.HTML {
+// that no longer waits shows a sentence instead. hidden holds the form
+// token of the Digital Credentials API form.
+func (p *Page) delivery(b *blocks, tx *ingestv1.GetTransactionResponse, id, as string, hidden template.HTML) template.HTML {
 	if !pending(tx) {
 		return paragraph(msg.T("verifier.request.delivery.closed"))
 	}
 	uri := tx.GetRequestUri()
 	switch as {
+	case deliverDCAPI:
+		button := b.add("dcapi", components.DCAPI{Text: msg.T("verifier.request.dcapi.button.label"), Request: tx.GetDcApiRequest(),
+			Action: p.requestsPath() + url.PathEscape(id) + "/dc-api", Hidden: hidden,
+			Cancel: msg.T("verifier.request.dcapi.cancel"), Fail: msg.T("verifier.request.dcapi.fail")})
+		return paragraph(msg.T("verifier.request.dcapi.text")) + button +
+			template.HTML(`<p class="hint">`+template.HTMLEscapeString(msg.T("verifier.request.dcapi.fallback"))+`</p>`) + //nolint:gosec // the text is escaped
+			p.qrBlock(b, uri)
 	case deliverLink:
 		return b.add("field", components.Field{ID: "request-link", Label: msg.T("verifier.request.link.label"), Value: uri,
 			Hint: msg.T("verifier.request.link.hint"), Attrs: map[string]string{"readonly": "readonly", "spellcheck": "false"}}) +
@@ -410,6 +448,11 @@ func (p *Page) delivery(b *blocks, tx *ingestv1.GetTransactionResponse, id, as s
 		return paragraph(msg.T("verifier.request.document.text")) +
 			b.add("button", components.Button{Text: msg.T("verifier.request.document.label"), Href: p.requestsPath() + url.PathEscape(id) + "/document.pdf", Variant: "primary"})
 	}
+	return p.qrBlock(b, uri)
+}
+
+// qrBlock renders the QR code of a request URI, its hint, and the link.
+func (p *Page) qrBlock(b *blocks, uri string) template.HTML {
 	src, ok := qrImage(uri)
 	if !ok {
 		return paragraph(msg.T("verifier.request.qr.long"))
@@ -418,6 +461,39 @@ func (p *Page) delivery(b *blocks, tx *ingestv1.GetTransactionResponse, id, as s
 		template.HTML(`<p class="hint">`+template.HTMLEscapeString(msg.T("verifier.request.qr.hint"))+`</p>`) + //nolint:gosec // the text is escaped
 		b.add("field", components.Field{ID: "request-link", Label: msg.T("verifier.request.link.label"), Value: uri,
 			Attrs: map[string]string{"readonly": "readonly", "spellcheck": "false"}})
+}
+
+// submitDcAPI takes the answer that the kit script posts after
+// navigator.credentials.get and hands it to the stack of the request.
+func (p *Page) submitDcAPI(w http.ResponseWriter, r *http.Request) error {
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+	id := r.PathValue("id")
+	_, err := p.opts.Client.SubmitBrowserAnswer(r.Context(), connect.NewRequest(&ingestv1.SubmitBrowserAnswerRequest{
+		TransactionId: id, Response: r.PostForm.Get("response"),
+	}))
+	switch connect.CodeOf(err) {
+	case connect.CodeNotFound:
+		http.NotFound(w, r)
+		return nil
+	case connect.CodeInvalidArgument, connect.CodeFailedPrecondition, connect.CodeUnavailable:
+		b := &blocks{kit: p.opts.Kit}
+		card := b.add("card", components.Card{ID: "dcapi-problem", Title: msg.T("verifier.request.title.label"),
+			Body: template.HTML(`<p class="error" role="alert">`+template.HTMLEscapeString(msg.T("verifier.request.problem.dcapi")+" "+connectReason(err))+`</p>`) + //nolint:gosec // the text is escaped
+				b.add("button", components.Button{Text: msg.T("verifier.request.dcapi.back.label"), Href: p.requestsPath() + url.PathEscape(id) + "?as=" + deliverDCAPI})})
+		if b.err != nil {
+			return b.err
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return p.render(w, r, components.Page{Title: msg.T("verifier.request.title.label"), Lead: msg.T("verifier.request.page.lead"),
+			Description: msg.T("verifier.request.page.lead"), Content: card})
+	}
+	if err != nil {
+		return err
+	}
+	http.Redirect(w, r, p.requestsPath()+url.PathEscape(id)+"?as="+deliverDCAPI, http.StatusSeeOther)
+	return nil
 }
 
 // qrQuiet is the margin of a QR image in modules.

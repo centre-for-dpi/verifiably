@@ -735,6 +735,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_DC_API_VERIFY, func() error {
+			_, err := svc.SubmitBrowserAnswer(ctx, connect.NewRequest(&backendv1.SubmitBrowserAnswerRequest{State: "v2:probe", Response: "{}"}))
+			return err
+		}, true},
 		{backendv1.Feature_FEATURE_WEBHOOKS, func() error {
 			_, err := svc.GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{}))
 			return err

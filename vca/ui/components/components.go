@@ -1011,23 +1011,47 @@ func (f Fieldset) normalize() (any, error) {
 	return f, nil
 }
 
-// DCAPI is the button of the Digital Credentials API channel (ADR-043
-// decision 3). It renders hidden; the script /static/dcapi.js shows it
-// only when the browser has the API, and hands Offer to the wallet of
-// the device. OK, Cancel and Fail are the words the script writes into
-// the toast region for each outcome. A page keeps the QR code and the
-// link next to it for every other browser.
+// DCAPI is the button of the Digital Credentials API (ADR-043 decision
+// 3). It renders hidden; the script /static/dcapi.js shows it only when
+// the browser has the API. A page keeps the QR code and the link next to
+// it for every other browser.
+//
+// With Offer the button hands a credential offer to the wallet of the
+// device through navigator.credentials.create. OK, Cancel and Fail are
+// the words the script writes into the toast region for each outcome.
+//
+// With Request the button asks the wallet for a presentation through
+// navigator.credentials.get. Request is the request object as JSON. The
+// button sits in a POST form to Action with the Hidden fields of the
+// page, such as the form token. The script puts the answer of the wallet
+// in the field response and submits the form. Cancel and Fail are the
+// toast words of a closed or a failed wallet.
 type DCAPI struct {
-	Text   string // required, the button label
-	Offer  string // required, an openid-credential-offer:// or https:// URI
-	OK     string
-	Cancel string
-	Fail   string
+	Text    string // required, the button label
+	Offer   string // an openid-credential-offer:// or https:// URI
+	Request string // a request object as JSON
+	Action  string // required with Request, a path of the page
+	Hidden  template.HTML
+	OK      string
+	Cancel  string
+	Fail    string
 }
 
 func (d DCAPI) normalize() (any, error) {
 	if d.Text == "" {
 		return nil, errors.New("dcapi: text is required")
+	}
+	if d.Request != "" {
+		if d.Offer != "" {
+			return nil, errors.New("dcapi: set an offer or a request, not both")
+		}
+		if !json.Valid([]byte(d.Request)) {
+			return nil, errors.New("dcapi: the request must be JSON")
+		}
+		if !strings.HasPrefix(d.Action, "/") {
+			return nil, errors.New("dcapi: the action must be a path of the page")
+		}
+		return d, nil
 	}
 	if !strings.HasPrefix(d.Offer, "openid-credential-offer://") && !strings.HasPrefix(d.Offer, "https://") {
 		return nil, errors.New("dcapi: the offer must be an openid-credential-offer:// or https:// URI")
