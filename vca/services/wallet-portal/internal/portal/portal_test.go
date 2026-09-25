@@ -37,7 +37,8 @@ var clock = time.Date(2026, 9, 19, 10, 0, 0, 0, time.UTC)
 func now() time.Time { return clock }
 
 func citizen() session.Citizen {
-	return session.Citizen{Subject: "https://idp|abc", WalletID: "wallet-1", SessionID: "sid-1"}
+	return session.Citizen{Subject: "https://idp|abc", WalletID: "wallet-1", SessionID: "sid-1",
+		Name: "Wanjiku Njeri", HolderDID: "did:jwk:holder-1", HasHolderKey: true}
 }
 
 // fakeHolder answers the holder backend RPCs.
@@ -167,7 +168,16 @@ type harness struct {
 	svc     *service.Service
 }
 
+// serviceOptions is the options type of the service a test changes.
+type serviceOptions = service.Options
+
 func setup(t *testing.T, change func(*service.Options)) *harness {
+	t.Helper()
+	return setupShell(t, change, portal.Topology{})
+}
+
+// setupShell builds the harness with the topology of the frame.
+func setupShell(t *testing.T, change func(*service.Options), topo portal.Topology) *harness {
 	t.Helper()
 	holder := &fakeHolder{credential: credential(t), accepted: true}
 	opts := service.Options{
@@ -200,7 +210,7 @@ func setup(t *testing.T, change func(*service.Options)) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, err := portal.New(portal.Options{Service: svc, Guard: guard, Now: now})
+	pages, err := portal.New(portal.Options{Service: svc, Guard: guard, Now: now, Topology: topo})
 	if err != nil {
 		t.Fatal(err)
 	}

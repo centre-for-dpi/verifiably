@@ -127,6 +127,10 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 				{Value: "single", Title: "Single credential", Text: "Type the claims in a form built from the schema.", Checked: true},
 				{Value: "bulk", Title: "Bulk from a data source", Text: "One credential per record.", Meta: "3 sources"},
 			}}},
+		{"credentials", components.Credentials{Label: "Credentials in this wallet", Items: []components.CredentialCard{
+			{ID: "cred-licence", Issuer: "Ministry of Health", Title: "Nurse licence", Status: "ok", StatusText: "Valid", Meta: "Expires 1 Oct 2027"},
+			{ID: "cred-farmer", Issuer: "Ministry of Agriculture", Title: "Farmer registration", Status: "warn", StatusText: "Suspended", Meta: "Issued 6 Sep 2026"}},
+			Add: components.Link{Href: "/", Text: "Discover what you can claim"}}},
 		{"dcapi", components.DCAPI{Text: "Open the device wallet", Offer: "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffers%2F1",
 			OK: "The wallet on this device has the offer.", Cancel: "You closed the wallet.", Fail: "Scan the QR code instead."}},
 		{"fieldset", components.Fieldset{ID: "address", Legend: "Address", Hint: "A nested object of the schema becomes one group.",

@@ -75,6 +75,11 @@ func samples(t *testing.T, k *Kit) map[string]any {
 		"note": Note{Label: "One role", Text: "This deployment runs one role."},
 		"dcapi": DCAPI{Text: "Send to a wallet on this device", Offer: "openid-credential-offer://?credential_offer=%7B%7D",
 			OK: "The wallet has the offer.", Cancel: "You closed the wallet.", Fail: "Use the QR code."},
+		"credentials": Credentials{Label: "Your credentials", Items: []CredentialCard{
+			{ID: "cred-1", Issuer: "Ministry of Health", Title: "Nurse licence", Status: "ok", StatusText: "Valid", Meta: "Expires 1 Oct 2027",
+				Summary: "What it says", Body: mustHTML(t, k, "badge", Badge{Status: "info", Text: "Two fields"})},
+			{ID: "cred-2", Issuer: "Ministry of Agriculture", Title: "Farmer registration", Status: "warn", StatusText: "Suspended"}},
+			Add: Link{Href: "/wallet/discover", Text: "Discover what you can claim"}},
 		"fieldset": Fieldset{ID: "address", Legend: "Address", Hint: "Where the farm is",
 			Body: mustHTML(t, k, "field", Field{ID: "address-county", Name: "claim.address.county", Label: "County", Required: true})},
 	}
@@ -869,7 +874,7 @@ func TestWriteErrors(t *testing.T) {
 	if got := Join("<a>", "<b>"); got != "<a>\n<b>\n" {
 		t.Errorf("Join = %q", got)
 	}
-	if len(Names) != 29 {
+	if len(Names) != 30 {
 		t.Errorf("Names = %v", Names)
 	}
 	for _, n := range Names {
@@ -1214,6 +1219,50 @@ func TestTabsMarkTheCurrentView(t *testing.T) {
 	} {
 		if _, err := k.HTML("tabs", data); err == nil {
 			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+// TestCredentialCardsCarryTheirTone checks the wallet cards: the stripe
+// class follows the status, the badge names the status in words, the
+// detail sits in a disclosure, and the add tile leads on.
+func TestCredentialCardsCarryTheirTone(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "credentials", samples(t, k)["credentials"]))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<ul class="credentials" aria-label="Your credentials">`,
+		`<article class="credential credential-ok" id="cred-1" aria-labelledby="cred-1-title">`,
+		`<span class="credential-issuer">Ministry of Health</span><span class="badge badge-ok">Valid</span>`,
+		`<h2 class="credential-title" id="cred-1-title">Nurse licence</h2>`,
+		`<p class="credential-meta">Expires 1 Oct 2027</p>`,
+		`<details class="credential-more"><summary>What it says</summary>`,
+		`<article class="credential credential-warn" id="cred-2"`,
+		`<a class="credential-add" href="/wallet/discover"><span aria-hidden="true">+</span> Discover what you can claim</a>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("credentials miss %s\n%s", want, doc)
+		}
+	}
+	if strings.Count(doc, "<details") != 1 {
+		t.Errorf("a card without a body has no disclosure:\n%s", doc)
+	}
+	only := string(mustHTML(t, k, "credentials", Credentials{Label: "Empty", Add: Link{Href: "/d", Text: "Discover"}}))
+	if strings.Contains(only, "<article") || !strings.Contains(only, "credential-add") {
+		t.Errorf("add tile only:\n%s", only)
+	}
+	for name, bad := range map[string]Credentials{
+		"no label":    {Items: []CredentialCard{{ID: "a", Title: "T", Status: "ok", StatusText: "Valid"}}},
+		"nothing":     {Label: "L"},
+		"add no text": {Label: "L", Add: Link{Href: "/d"}},
+		"bad id":      {Label: "L", Items: []CredentialCard{{ID: "1a", Title: "T", Status: "ok", StatusText: "Valid"}}},
+		"no title":    {Label: "L", Items: []CredentialCard{{ID: "a", Status: "ok", StatusText: "Valid"}}},
+		"no word":     {Label: "L", Items: []CredentialCard{{ID: "a", Title: "T", Status: "ok"}}},
+		"bad status":  {Label: "L", Items: []CredentialCard{{ID: "a", Title: "T", Status: "green", StatusText: "Valid"}}},
+		"no summary":  {Label: "L", Items: []CredentialCard{{ID: "a", Title: "T", Status: "ok", StatusText: "Valid", Body: "<p>x</p>"}}},
+	} {
+		if _, err := k.HTML("credentials", bad); err == nil {
+			t.Errorf("%s: want an error", name)
 		}
 	}
 }

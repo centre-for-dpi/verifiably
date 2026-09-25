@@ -154,3 +154,34 @@ func TestIssuerNavFollowsTheBoard(t *testing.T) {
 		t.Fatalf("current %v, want /identity/", current)
 	}
 }
+
+// TestHolderNavFollowsTheBoard lists the wallet pages in the order of
+// board Holder-Portal: my credentials, discover, claim, present, then
+// keys and identifiers when the wallet of the stack manages keys, then
+// help.
+func TestHolderNavFollowsTheBoard(t *testing.T) {
+	want := []string{"/wallet/", "/wallet/discover", "/wallet/claim", "/wallet/present", "/wallet/keys", "/wallet/help"}
+	if got := Paths(commonv1.Role_ROLE_HOLDER); strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("holder paths %v, want %v", got, want)
+	}
+	labels := func(has Has) []string {
+		var out []string
+		for _, s := range Nav(commonv1.Role_ROLE_HOLDER, has, "/wallet/claim?offer=1") {
+			for _, l := range s.Links {
+				text := l.Text
+				if l.Current {
+					text += "*"
+				}
+				out = append(out, text)
+			}
+		}
+		return out
+	}
+	if got := strings.Join(labels(nil), ", "); got != "My credentials, Discover, Claim*, Present, Help" {
+		t.Fatalf("holder nav without keys: %s", got)
+	}
+	keys := func(f backendv1.Feature) bool { return f == backendv1.Feature_FEATURE_WALLET_KEYS }
+	if got := strings.Join(labels(keys), ", "); got != "My credentials, Discover, Claim*, Present, Keys and identifiers, Help" {
+		t.Fatalf("holder nav with keys: %s", got)
+	}
+}

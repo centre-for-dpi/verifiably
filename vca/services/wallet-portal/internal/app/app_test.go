@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,8 +24,11 @@ import (
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	walletauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1/walletportalv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/app"
@@ -408,4 +412,100 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	cfg.ThemeFile = path
 	_, err := app.Build(cfg, app.Deps{})
 	uikittest.AssertBadThemeError(t, err, path)
+}
+
+// fakeAuth answers the logout RPC of wallet-auth.
+type fakeAuth struct {
+	walletauthv1connect.UnimplementedWalletAuthServiceHandler
+	token string
+}
+
+func (f *fakeAuth) Logout(_ context.Context, req *connect.Request[walletauthv1.LogoutRequest],
+) (*connect.Response[walletauthv1.LogoutResponse], error) {
+	f.token = req.Msg.GetSessionToken()
+	return connect.NewResponse(&walletauthv1.LogoutResponse{ProviderLogoutUrl: "https://idp.example/logout"}), nil
+}
+
+// TestBuildWiresTheHolderFrame checks the frame of the pages: the probe
+// of the peers names the stacks, and the sign out form ends the session
+// at the wallet-auth service of the own pair.
+func TestBuildWiresTheHolderFrame(t *testing.T) {
+	k := newKeys(t)
+	auth := &fakeAuth{}
+	mux := http.NewServeMux()
+	mux.Handle(walletauthv1connect.NewWalletAuthServiceHandler(auth))
+	authSrv := httptest.NewServer(mux)
+	defer authSrv.Close()
+	peers := "holder-waltid|https://holder-waltid.example|wallet-auth=" + authSrv.URL + ",wallet-portal=http://portal:8092;" +
+		"holder-inji|https://holder-inji.example|wallet-auth=http://inji-auth:8083,wallet-portal=http://inji-portal:8092"
+	cfg := load(t, map[string]string{
+		"VCA_WALLET_PORTAL_AUTH_JWKS_FILE": k.file(t),
+		"VCA_WALLET_PORTAL_AUTH_JWKS_URL":  authSrv.URL + "/.well-known/jwks.json",
+		"VCA_PEERS":                        peers,
+	})
+	a, err := app.Build(cfg, app.Deps{
+		Holder: fakeHolder{},
+		Snapshot: func(context.Context) topology.Snapshot {
+			var s topology.Snapshot
+			for i, p := range cfg.Peers {
+				name := []string{"First stack", "Second stack"}[i]
+				s.Peers = append(s.Peers, topology.Status{Peer: p, State: topology.Live,
+					Capabilities: &backendv1.GetCapabilitiesResponse{DpgInfo: &backendv1.DpgInfo{DisplayName: name}}})
+			}
+			return s
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/wallet/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: session.CookieName, Value: k.token(t)})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if cerr := resp.Body.Close(); cerr != nil || err != nil {
+		t.Fatal(err, cerr)
+	}
+	body := string(raw)
+	for _, want := range []string{"First stack", "Second stack", `action="/wallet/signout"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("home misses %s", want)
+		}
+	}
+	token := between(body, `name="csrf_token" value="`, `"`)
+	form := strings.NewReader("csrf_token=" + token)
+	out, err := http.NewRequest(http.MethodPost, srv.URL+"/wallet/signout", form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	out.AddCookie(&http.Cookie{Name: session.CookieName, Value: k.token(t)})
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	done, err := noFollow.Do(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := done.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	if done.StatusCode != http.StatusSeeOther || done.Header.Get("Location") != "https://idp.example/logout" || auth.token == "" {
+		t.Fatalf("sign out = %d %q token %q", done.StatusCode, done.Header.Get("Location"), auth.token)
+	}
+}
+
+// between returns the text between start and end.
+func between(text, start, end string) string {
+	_, rest, ok := strings.Cut(text, start)
+	if !ok {
+		return ""
+	}
+	out, _, _ := strings.Cut(rest, end)
+	return out
 }

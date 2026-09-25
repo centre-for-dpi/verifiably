@@ -261,3 +261,37 @@ func TestSignOutFallsBackToTheChooser(t *testing.T) {
 		t.Fatalf("location %q", rec.Header().Get("Location"))
 	}
 }
+
+// TestUserHookDrawsAnotherSession checks the frame of a role that signs
+// in through its own session, such as the holder: the hook names the
+// user menu, and a staff session on the request does not leak into it.
+// Without the hook the staff session still names the menu.
+func TestUserHookDrawsAnotherSession(t *testing.T) {
+	wallet := topology.Peer{
+		Pair: "holder-waltid", Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID,
+		PublicURL: "https://holder-waltid.labs.example",
+		Services:  map[string]string{"wallet-auth": "http://holder-waltid-auth:8083"},
+	}
+	snap := topology.Snapshot{Peers: []topology.Status{{Peer: wallet, State: topology.Live, Capabilities: caps("First stack")}}}
+	calls := 0
+	sh := staffshell.New(staffshell.Options{
+		Role: commonv1.Role_ROLE_HOLDER, Peers: []topology.Peer{wallet},
+		Snapshot: func(context.Context) topology.Snapshot { return snap },
+		JWKSURL:  "http://holder-waltid-auth:8083/.well-known/jwks.json",
+		User: func(*http.Request) components.User {
+			calls++
+			return components.User{Name: "Wanjiku Njeri", SignOut: "/wallet/signout", CSRF: "w-1"}
+		},
+	})
+	if sh.Pair() != "holder-waltid" {
+		t.Fatalf("pair = %q", sh.Pair())
+	}
+	r := session("/wallet/")
+	got := sh.Build(r, sh.Frame(r.Context()))
+	if calls != 1 || got.User.Name != "Wanjiku Njeri" || got.User.SignOut != "/wallet/signout" || got.User.CSRF != "w-1" {
+		t.Fatalf("user = %+v, calls = %d", got.User, calls)
+	}
+	if got.Role != "holder" || len(got.Sections) == 0 {
+		t.Fatalf("shell = %+v", got)
+	}
+}

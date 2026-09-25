@@ -325,8 +325,15 @@ func (s *Service) callback(ctx context.Context, state, code, providerError strin
 	if err != nil {
 		return "", oidcflow.Claims{}, "", false, err
 	}
+	// The display name only greets the holder in the wallet menu. It sits
+	// in the session token and never in the store.
+	name := claimText(res.Claims, "name")
+	if name == "" {
+		name = claimText(res.Claims, "preferred_username")
+	}
 	token, claims, err := s.d.Signer.Issue(oidcflow.Claims{
 		Subject:      key,
+		Name:         name,
 		Provider:     p.ID,
 		WalletID:     w.WalletID,
 		HolderDID:    w.HolderDID,
@@ -416,4 +423,14 @@ func toProto(c oidcflow.Claims) *walletauthv1.Session {
 		ExpiresAt:       timestamppb.New(c.Expiry()),
 		ProviderId:      c.Provider,
 	}
+}
+
+// claimText returns one claim as a string. A missing claim, or a claim
+// of another type, gives an empty string.
+func claimText(claims map[string]any, key string) string {
+	value, ok := claims[key].(string)
+	if !ok {
+		return ""
+	}
+	return value
 }

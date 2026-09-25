@@ -46,6 +46,9 @@ var (
 type Citizen struct {
 	// Subject is the pairwise subject, formed as iss|sub of the IdP.
 	Subject string
+	// Name is the display name of the holder, when the IdP gave one. The
+	// wallet menu shows it.
+	Name string
 	// WalletID is the wallet id at the holder backend.
 	WalletID string
 	// HolderDID is the holder DID, when one exists.
@@ -157,6 +160,7 @@ func NewVerifier(opts Options) (Verifier, error) {
 		}
 		return Citizen{
 			Subject:      claims.Subject,
+			Name:         claims.Name,
 			WalletID:     claims.WalletID,
 			HolderDID:    claims.HolderDID,
 			HasHolderKey: claims.HasHolderKey,

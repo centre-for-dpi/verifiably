@@ -284,6 +284,7 @@ component. `components.Names` lists every template.
 | `stat` | `Stat` | One summary card: label, value, sentence, link. Put several in `div.stats` for a grid. | `Label`, `Value` |
 | `stepper` | `Stepper` | Progress of a multi step form. The current step carries `aria-current="step"`. | `Label`, `Steps` (two or more), `Current` |
 | `choice` | `Choice` | `fieldset` with a `legend` and radio cards, or checkbox cards with `Multiple`. | `ID`, `Legend`, `Options` |
+| `credentials` | `Credentials` | A list of wallet cards. Each card names the issuer, the type, the status as a badge word, and one meta line. The stripe on top takes the tone of the status. An optional last tile leads to more. | `Label`, `Items` or `Add` |
 | `dcapi` | `DCAPI` | A hidden `button type="button"` that carries a credential offer. `/static/dcapi.js` shows it when the browser has the Digital Credentials API. | `Text`, `Offer` |
 | `fieldset` | `Fieldset` | `fieldset` with a `legend`, an optional hint, and the fields of its body. A nested object of a form becomes one. | `ID`, `Legend` |
 | `code` | `Code` | `figure` with a `figcaption` and a `pre` region named by it. | `ID`, `Label`, `Text` |
@@ -432,6 +433,13 @@ browser (ADR-043 decision 3).
 through `aria-describedby`. Put the fields from `Kit.HTML` in `Body`.
 
 `Code`: `ID`, `Label`, `Text`. `Empty`: `Title`, `Text`, `Action`.
+
+`Credentials`: `Label`, `Items`, `Add` (a `Link`). `CredentialCard`: `ID`,
+`Issuer`, `Title`, `Status` (one of the badge statuses), `StatusText`,
+`Meta`, `Summary`, `Body`. A body sits in a `details` disclosure that
+the summary names. The layout classes `split` and `mono` sit in the kit
+stylesheet too: `split` puts blocks side by side on a wide screen, and
+`mono` sets an identifier in the monospace stack.
 
 `Tabs`: `Label`, `Links`. Each link needs `Href` and `Text`. At most one
 link is current. The label must differ from the other nav landmarks of

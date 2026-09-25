@@ -28,7 +28,7 @@ import (
 // Names lists every template a Kit can render.
 var Names = []string{"layout", "page", "card", "field", "table", "badge", "toast", "dialog", "qr", "json", "button",
 	"hero", "tiles", "steps", "checklist", "stat", "stepper", "choice", "code", "empty",
-	"block", "figure", "stacks", "cta", "note", "signin", "tabs", "fieldset", "dcapi"}
+	"block", "figure", "stacks", "cta", "note", "signin", "tabs", "fieldset", "dcapi", "credentials"}
 
 // safeAttrNames is the whitelist for the safeAttr template function.
 // Only these attribute names can be added through an Attrs map.
@@ -1113,6 +1113,55 @@ func (f Figure) normalize() (any, error) {
 		return nil, fmt.Errorf("figure %q: the svg holds a script, a handler, or a foreign object", f.ID)
 	}
 	return f, nil
+}
+
+// CredentialCard is one credential of a wallet: the issuer, the type,
+// the status as a badge word, and one meta line such as the expiry. The
+// stripe on top of the card takes the tone of the status.
+type CredentialCard struct {
+	ID         string        // required
+	Issuer     string        // the issuer name
+	Title      string        // required, the credential type
+	Status     string        // one of Statuses
+	StatusText string        // required, the word of the status
+	Meta       string        // for example "Expires 1 Oct 2027"
+	Summary    string        // required with Body, the text of the disclosure
+	Body       template.HTML // optional detail inside a disclosure
+}
+
+// Credentials is the grid of credential cards of a wallet. Add is an
+// optional last tile that leads to where the holder gets more.
+type Credentials struct {
+	Label string // required, aria-label of the list
+	Items []CredentialCard
+	Add   Link // a tile with Href and Text, or nothing
+}
+
+func (c Credentials) normalize() (any, error) {
+	if c.Label == "" {
+		return nil, errors.New("credentials: label is required")
+	}
+	if len(c.Items) == 0 && c.Add.Href == "" {
+		return nil, errors.New("credentials: at least one card or the add tile is required")
+	}
+	if c.Add.Href != "" && c.Add.Text == "" {
+		return nil, errors.New("credentials: the add tile needs text")
+	}
+	for _, it := range c.Items {
+		if err := checkID(it.ID); err != nil {
+			return nil, fmt.Errorf("credentials: %w", err)
+		}
+		if it.Title == "" || it.StatusText == "" {
+			return nil, fmt.Errorf("credentials: card %q needs a title and a status word", it.ID)
+		}
+		if err := checkStatus(it.Status); err != nil {
+			return nil, fmt.Errorf("credentials: card %q: %w", it.ID, err)
+		}
+		if it.Body != "" && it.Summary == "" {
+			return nil, fmt.Errorf("credentials: card %q: a body needs a summary", it.ID)
+		}
+	}
+	return c, nil
 }
 
 // RoleStates lists the values RoleRow.State accepts.

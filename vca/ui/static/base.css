@@ -367,6 +367,36 @@ h1,h2,h3,h4{overflow-wrap:break-word}
 .stat-link{margin-top:auto;font-size:.85rem;font-weight:600;text-decoration:none}
 .stat-link:hover{text-decoration:underline}
 
+/* ---------- credentials: the cards of a wallet ----------
+   The stripe on top of a card takes the tone of its status. */
+.credentials{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(16rem,1fr));gap:var(--space-4);margin:0 0 var(--space-6);padding:0}
+.credentials>li{display:flex;min-width:0}
+.credential{
+  flex:1;display:flex;flex-direction:column;gap:var(--space-3);min-width:0;min-height:11rem;
+  padding:var(--space-5) 1.4rem;border:1px solid var(--line);border-top:4px solid var(--muted);
+  border-radius:var(--radius-m);background:var(--paper);
+}
+.credential-ok{border-top-color:var(--ok)}
+.credential-warn{border-top-color:var(--warn)}
+.credential-bad{border-top-color:var(--bad)}
+.credential-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:var(--space-2) var(--space-3)}
+.credential-issuer{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--secondary);overflow-wrap:anywhere}
+.credential-title{margin:0;font-size:1.35rem;line-height:1.2;overflow-wrap:anywhere}
+.credential-meta{margin:auto 0 0;font-size:.85rem;color:var(--muted)}
+.credential-more summary{cursor:pointer;font-size:.85rem;font-weight:600;color:var(--primary)}
+.credential-more[open] summary{margin-bottom:var(--space-3)}
+.credential-add{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:11rem;
+  padding:var(--space-5);border:1px dashed var(--muted);border-radius:var(--radius-m);
+  color:var(--primary);font-weight:600;text-decoration:none;transition:background .3s ease,color .3s ease;
+}
+.credential-add:hover,.credential-add:focus-visible{background:var(--invert-bg);color:var(--invert-fg)}
+@media (max-width:40rem){.credential,.credential-add{min-height:0}}
+/* split: two or more blocks side by side that stack on a narrow screen. */
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:var(--space-5);align-items:start;margin:0 0 var(--space-5)}
+.split>.card{margin:0}
+.mono{font-family:var(--font-mono);font-size:.85rem;overflow-wrap:anywhere}
+
 /* ---------- stepper ---------- */
 .stepper{list-style:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-4);margin:0 0 var(--space-6)}
 .stepper-step{display:flex;align-items:center;gap:var(--space-2);color:var(--muted)}

@@ -727,3 +727,21 @@ func TestAdminSessionRegistersProviders(t *testing.T) {
 		t.Fatalf("token: %v", err)
 	}
 }
+
+// TestSessionNamesTheHolder checks that the session carries the display
+// name of the ID token, so the wallet menu can greet the holder. The
+// store still holds no personal data.
+func TestSessionNamesTheHolder(t *testing.T) {
+	f := newFixture(t)
+	f.idp.Claims["name"] = "Wanjiku Njeri"
+	body, _ := f.login(t)
+	if body.Claims.Name != "Wanjiku Njeri" {
+		t.Fatalf("name = %q", body.Claims.Name)
+	}
+	delete(f.idp.Claims, "name")
+	f.idp.Claims["preferred_username"] = "wanjiku"
+	body, _ = f.login(t)
+	if body.Claims.Name != "wanjiku" {
+		t.Fatalf("name = %q", body.Claims.Name)
+	}
+}

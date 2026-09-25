@@ -8,11 +8,13 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -22,7 +24,10 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	walletauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1/walletportalv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/blobs"
@@ -65,6 +70,9 @@ type Deps struct {
 	Trust trustv1connect.TrustServiceClient
 	// ReadFile reads the JWKS file. Nil means os.ReadFile.
 	ReadFile func(string) ([]byte, error)
+	// Snapshot replaces the probe of the peers. Tests set it. Nil builds a
+	// prober when the deployment names peers.
+	Snapshot func(ctx context.Context) topology.Snapshot
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -126,7 +134,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	pages, err := portal.New(portal.Options{
 		Service: svc, Guard: guard, Prefix: cfg.PortalPrefix,
-		LoginPath: cfg.LoginURL, Now: deps.Now, Kit: kit,
+		LoginPath: cfg.LoginURL, Now: deps.Now, Kit: kit, Topology: frame(cfg, deps),
 	})
 	if err != nil {
 		return nil, err
@@ -157,6 +165,34 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		"portal", pages.Prefix(), "browser_storage", svc.BrowserStorage(),
 		"state_dir", cfg.StateDir, "dpg", cfg.DPG)
 	return app, nil
+}
+
+// frame returns the topology of the holder frame: the peers, their
+// probe, the own pair by the key set of wallet-auth, and the logout call
+// of the sign out form (ADR-034, ADR-044 decision 5).
+func frame(cfg config.Config, deps Deps) portal.Topology {
+	snapshot := deps.Snapshot
+	if snapshot == nil && len(cfg.Peers) > 0 {
+		snapshot = (&topology.Prober{Peers: cfg.Peers, Now: deps.Now}).Snapshot
+	}
+	secure := false
+	for _, p := range cfg.Peers {
+		if auth := p.Auth(); auth != "" && strings.TrimRight(auth, "/")+"/.well-known/jwks.json" == cfg.AuthJWKSURL {
+			secure = strings.HasPrefix(p.PublicURL, "https://")
+		}
+	}
+	client := deps.ConnectClient
+	return portal.Topology{
+		Peers: cfg.Peers, Snapshot: snapshot, JWKSURL: cfg.AuthJWKSURL, SecureCookie: secure,
+		Logout: func(ctx context.Context, authURL, token string) (string, error) {
+			c := walletauthv1connect.NewWalletAuthServiceClient(client, authURL)
+			res, err := c.Logout(ctx, connect.NewRequest(&walletauthv1.LogoutRequest{SessionToken: token}))
+			if err != nil {
+				return "", err
+			}
+			return res.Msg.GetProviderLogoutUrl(), nil
+		},
+	}
 }
 
 // withDefaults fills the side effects the caller left empty.

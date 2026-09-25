@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package staffshell builds the portal frame of the staff pages of a role
-// that signs in through its own auth service: the issuer and the
-// verifier. Every service that draws pages for the role uses it, so the
-// role chip, the stack switcher, the user menu, and the side navigation
-// look the same on every page of the role (ADR-044 decision 5).
+// Package staffshell builds the portal frame of the pages of a role
+// that signs in through its own auth service: the staff of the issuer
+// and the verifier, and the holder, whose wallet draws its user menu
+// through the User hook. Every service that draws pages for the role
+// uses it, so the role chip, the stack switcher, the user menu, and the
+// side navigation look the same on every page of the role (ADR-044
+// decision 5).
 //
 // The stack switcher lists the pairs of the role that are not absent,
 // from the peer probe (ADR-034 decision 3). The user menu shows the staff
@@ -51,6 +53,11 @@ type Options struct {
 	Home string
 	// SignOut is the action of the sign out form of the user menu.
 	SignOut string
+	// User draws the user menu of a role that signs in through its own
+	// session, such as the holder. Nil draws the staff member of the
+	// staff session. The hook only draws the menu: the guard of each
+	// page still decides who may read it.
+	User func(r *http.Request) components.User
 }
 
 // Shell draws the frame of the staff pages of one pair.
@@ -142,6 +149,10 @@ func (s *Shell) Build(r *http.Request, f Frame) *components.Shell {
 		RoleLabel: msg.T("role." + role + ".label"),
 		Stacks:    s.stacks(f),
 		Sections:  rolenav.Nav(s.opts.Role, f.Has, r.URL.Path),
+	}
+	if s.opts.User != nil {
+		sh.User = s.opts.User(r)
+		return sh
 	}
 	if sess, ok := staffsession.User(r.Context()); ok && sess.Subject != "" {
 		name := sess.Name

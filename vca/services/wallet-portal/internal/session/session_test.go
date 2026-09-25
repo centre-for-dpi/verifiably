@@ -57,7 +57,7 @@ func (f fixture) token(t *testing.T, c oidcflow.Claims) string {
 func claims(exp time.Time) oidcflow.Claims {
 	return oidcflow.Claims{
 		Issuer: "https://auth.example", Subject: "https://idp|abc", ID: "jti-1", SID: "sid-1",
-		WalletID: "wallet-1", HolderDID: "did:jwk:x", HasHolderKey: true,
+		WalletID: "wallet-1", HolderDID: "did:jwk:x", HasHolderKey: true, Name: "Wanjiku Njeri",
 		ExpiresAt: exp.Unix(), IssuedAt: exp.Add(-time.Hour).Unix(),
 	}
 }
@@ -91,7 +91,7 @@ func TestVerifierAccepts(t *testing.T) {
 	if got.Subject != "https://idp|abc" || got.WalletID != "wallet-1" || !got.HasHolderKey {
 		t.Fatalf("citizen = %+v", got)
 	}
-	if got.SessionID != "sid-1" || got.HolderDID != "did:jwk:x" {
+	if got.SessionID != "sid-1" || got.HolderDID != "did:jwk:x" || got.Name != "Wanjiku Njeri" {
 		t.Fatalf("citizen = %+v", got)
 	}
 	if got.WalletKey() != "wallet-1" {

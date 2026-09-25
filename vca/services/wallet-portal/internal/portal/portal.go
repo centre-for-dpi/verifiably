@@ -3,9 +3,16 @@
 // Package portal renders the citizen pages of the wallet with the vca
 // UI kit (ADR-021, ADR-027).
 //
+// Every page sits in the holder frame of board Holder-Portal: the role
+// chip, the stack switcher of the holder pairs that run, the user menu
+// of the wallet session, and the side navigation of internal/rolenav.
+//
 // The pages, under the configured prefix:
 //
 //	GET  /           the credentials of the citizen, with trust and status
+//	GET  /help       what each wallet page does
+//	GET  /keys       the holder identifier and key, when the stack manages keys
+//	POST /signout    end the wallet session
 //	GET  /discover   the credentials issuers publish (decision 1)
 //	GET  /claimable  the credentials the citizen can get (decision 2)
 //	POST /claim      start one claim (decision 3)
@@ -23,6 +30,7 @@
 package portal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html/template"
@@ -34,7 +42,10 @@ import (
 
 	"connectrpc.com/connect"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/service"
@@ -60,6 +71,28 @@ type Options struct {
 	LoginPath string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// Topology places the wallet among the pairs of the deployment. The
+	// zero value draws the frame with no stack switcher and no gated page.
+	Topology Topology
+}
+
+// Topology is what the frame knows about the pairs of the deployment.
+type Topology struct {
+	// Peers are the candidate pairs, from VCA_PEERS.
+	Peers []topology.Peer
+	// Snapshot returns the probe of every peer. Nil means no stack
+	// switcher and no gated page.
+	Snapshot func(ctx context.Context) topology.Snapshot
+	// JWKSURL is the key set of the wallet authentication service. The
+	// holder pair whose wallet-auth serves it is the own pair.
+	JWKSURL string
+	// Logout ends a session at the wallet-auth service of authURL and
+	// returns the logout URL of the provider, or "". Nil only clears the
+	// cookie.
+	Logout func(ctx context.Context, authURL, token string) (string, error)
+	// SecureCookie sets the Secure attribute of the cookie that clears
+	// the session.
+	SecureCookie bool
 }
 
 // Portal serves the pages.
@@ -67,6 +100,7 @@ type Portal struct {
 	opts   Options
 	kit    *components.Kit
 	script http.Handler
+	shell  *staffshell.Shell
 }
 
 // New builds the portal.
@@ -92,7 +126,13 @@ func New(opts Options) (*Portal, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Portal{opts: opts, kit: opts.Kit, script: script}, nil
+	p := &Portal{opts: opts, kit: opts.Kit, script: script}
+	p.shell = staffshell.New(staffshell.Options{
+		Role: commonv1.Role_ROLE_HOLDER, Peers: opts.Topology.Peers, Snapshot: opts.Topology.Snapshot,
+		JWKSURL: opts.Topology.JWKSURL, Home: opts.Prefix + "/", SignOut: opts.Prefix + "/signout",
+		User: p.user,
+	})
+	return p, nil
 }
 
 // Prefix returns the URL prefix of the pages.
@@ -106,8 +146,12 @@ func (p *Portal) Script() http.Handler { return p.script }
 // Register adds every page to mux.
 func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.mine))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/help", p.handle(p.help))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/keys", p.handle(p.keys))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/signout", p.signOut)
 	mux.HandleFunc("GET "+p.opts.Prefix+"/discover", p.handle(p.discover))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/claimable", p.handle(p.claimable))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/claim", p.handle(p.scanForm))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/claim", p.handle(p.claim))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/scan", p.handle(p.scanForm))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/scan", p.handle(p.scan))
@@ -133,13 +177,15 @@ type pen struct {
 	kit   *components.Kit
 	guard session.Guard
 	who   session.Citizen
+	frame staffshell.Frame
 	err   error
 }
 
-// pen returns a pen for one request.
+// pen returns a pen for one request. It reads the probe of the peers
+// once, for the frame and the feature gates of the page.
 func (p *Portal) pen(r *http.Request) *pen {
 	who, _ := session.From(r.Context())
-	return &pen{kit: p.kit, guard: p.opts.Guard, who: who}
+	return &pen{kit: p.kit, guard: p.opts.Guard, who: who, frame: p.shell.Frame(r.Context())}
 }
 
 // part renders one component. It returns empty markup after an error.
@@ -185,106 +231,12 @@ func (b *pen) form(action string, values map[string]string, submit components.Bu
 		components.Join(parts...) + b.raw(`</form>`)
 }
 
-// nav returns the navigation of the citizen pages.
-func (p *Portal) nav(current string) components.Nav {
-	return components.Nav{
-		Label: "Main",
-		Brand: components.Link{Href: p.opts.Prefix + "/", Text: "My wallet"},
-		Links: []components.Link{
-			{Href: p.opts.Prefix + "/", Text: "My credentials", Current: current == "mine"},
-			{Href: p.opts.Prefix + "/discover", Text: "What issuers offer", Current: current == "discover"},
-			{Href: p.opts.Prefix + "/claimable", Text: "What I can get", Current: current == "claimable"},
-			{Href: p.opts.Prefix + "/scan", Text: "Scan a code", Current: current == "scan"},
-		},
-	}
-}
-
 // render writes one page, or returns the render error of the pen.
 func (p *Portal) render(w http.ResponseWriter, r *http.Request, b *pen, page components.Page) error {
 	if b.err != nil {
 		return b.err
 	}
-	return p.kit.RenderPage(w, r, page)
-}
-
-// mine renders the credentials of the citizen (ADR-021 decision 6).
-func (p *Portal) mine(w http.ResponseWriter, r *http.Request) error {
-	b := p.pen(r)
-	resp, err := p.opts.Service.ListMine(r.Context(),
-		connect.NewRequest(&walletportalv1.ListMineRequest{}))
-	var parts []template.HTML
-	if err != nil {
-		parts = append(parts, b.part("card", components.Card{
-			ID: "wallet-problem", Title: "The wallet is not available",
-			Text: "Try again in a few minutes.",
-		}))
-	} else {
-		parts = append(parts, p.cardList(b, resp.Msg.GetCards()))
-	}
-	if p.opts.Service.BrowserStorage() {
-		parts = append(parts, p.browserCard(b))
-	}
-	return p.render(w, r, b, components.Page{
-		Title:       "My credentials",
-		Description: "The credentials in your wallet, with the state of each one.",
-		Nav:         p.nav("mine"),
-		Content:     components.Join(parts...),
-	})
-}
-
-// cardList renders one card per credential.
-func (p *Portal) cardList(b *pen, list []*walletportalv1.Card) template.HTML {
-	if len(list) == 0 {
-		return b.part("card", components.Card{
-			ID: "no-credentials", Title: "You hold no credential yet",
-			Text: "Open the page What I can get, or scan a code an issuer gave you.",
-		})
-	}
-	parts := make([]template.HTML, 0, len(list))
-	for i, card := range list {
-		parts = append(parts, p.card(b, card, i))
-	}
-	return components.Join(parts...)
-}
-
-// card renders one credential card with its badges and its claims.
-func (p *Portal) card(b *pen, card *walletportalv1.Card, index int) template.HTML {
-	id := fmt.Sprintf("card-%d", index)
-	trust := b.part("badge", components.Badge{
-		Text: "Issuer: " + cards.TrustWord(card.GetTrust()), Status: cards.TrustStatus(card.GetTrust()),
-	})
-	state := b.part("badge", components.Badge{
-		Text:   "Credential: " + cards.RevocationWord(card.GetRevocation()),
-		Status: cards.RevocationStatus(card.GetRevocation()),
-	})
-	table := b.part("table", claimTable(id, card))
-	remove := b.form(p.opts.Prefix+"/delete", map[string]string{"id": card.GetId()},
-		components.Button{Text: "Remove from my wallet", Type: "submit", Variant: "danger"})
-	return b.part("card", components.Card{
-		ID:    id,
-		Title: card.GetTitle(),
-		Text:  card.GetStatusText(),
-		Body:  components.Join(trust, state, b.raw(validity(card)), table, remove),
-	})
-}
-
-// validity returns the validity window of a card in plain words.
-func validity(card *walletportalv1.Card) string {
-	window := card.GetValidity()
-	from, until := window.GetValidFrom(), window.GetValidUntil()
-	if from == nil && until == nil {
-		return "<p>This credential names no end date.</p>"
-	}
-	var b strings.Builder
-	b.WriteString("<p>")
-	if from != nil {
-		b.WriteString("Valid from " + from.AsTime().UTC().Format(time.DateOnly) + ". ")
-	}
-	if until != nil {
-		b.WriteString("Valid until " + until.AsTime().UTC().Format(time.DateOnly) + ".")
-	}
-	b.WriteString("</p>")
-	return b.String()
+	return p.shell.Render(p.kit, w, r, b.frame, page)
 }
 
 // claimTable returns the claim table of a card.
@@ -331,7 +283,7 @@ func (p *Portal) discover(w http.ResponseWriter, r *http.Request) error {
 	resp, err := p.opts.Service.ListDiscoverable(r.Context(),
 		connect.NewRequest(&walletportalv1.ListDiscoverableRequest{}))
 	if err != nil {
-		return p.problem(w, r, "What issuers offer", "discover",
+		return p.problem(w, r, "What issuers offer",
 			"The catalogue is not available", "Try again in a few minutes.")
 	}
 	table := components.Table{
@@ -350,7 +302,6 @@ func (p *Portal) discover(w http.ResponseWriter, r *http.Request) error {
 	return p.render(w, r, b, components.Page{
 		Title:       "What issuers offer",
 		Description: "The credentials that issuers of this country publish.",
-		Nav:         p.nav("discover"),
 		Content:     b.part("table", table),
 	})
 }
@@ -361,7 +312,7 @@ func (p *Portal) claimable(w http.ResponseWriter, r *http.Request) error {
 	resp, err := p.opts.Service.ListClaimable(r.Context(),
 		connect.NewRequest(&walletportalv1.ListClaimableRequest{}))
 	if err != nil {
-		return p.problem(w, r, "What I can get", "claimable",
+		return p.problem(w, r, "What I can get",
 			"The check is not available", "Try again in a few minutes.")
 	}
 	table := components.Table{
@@ -388,7 +339,6 @@ func (p *Portal) claimable(w http.ResponseWriter, r *http.Request) error {
 	return p.render(w, r, b, components.Page{
 		Title:       "What I can get",
 		Description: "The credentials the issuers say you can get.",
-		Nav:         p.nav("claimable"),
 		Content:     b.part("table", table),
 	})
 }
@@ -403,7 +353,7 @@ func (p *Portal) claim(w http.ResponseWriter, r *http.Request) error {
 		SchemaId:         r.PostFormValue("schema_id"),
 	}))
 	if err != nil {
-		return p.problem(w, r, "What I can get", "claimable",
+		return p.problem(w, r, "What I can get",
 			"The issuer did not give the credential", "Try again in a few minutes.")
 	}
 	if next := resp.Msg.GetAuthorizationUrl(); next != "" {
@@ -440,7 +390,6 @@ func (p *Portal) renderScan(w http.ResponseWriter, r *http.Request, problem stri
 	return p.render(w, r, b, components.Page{
 		Title:       "Scan a code",
 		Description: "Read a credential offer or a request from a QR code.",
-		Nav:         p.nav("scan"),
 		Content:     card,
 	})
 }
@@ -499,7 +448,6 @@ func (p *Portal) offerPage(w http.ResponseWriter, r *http.Request,
 	return p.render(w, r, b, components.Page{
 		Title:       "An offer for you",
 		Description: "Accept or refuse the credential an issuer offers.",
-		Nav:         p.nav("scan"),
 		Content:     card,
 	})
 }
@@ -513,7 +461,7 @@ func (p *Portal) accept(w http.ResponseWriter, r *http.Request) error {
 		OfferId: r.PostFormValue("offer_id"), Pin: r.PostFormValue("pin"),
 	}))
 	if err != nil {
-		return p.problem(w, r, "An offer for you", "scan",
+		return p.problem(w, r, "An offer for you",
 			"The wallet did not take the credential", message(err))
 	}
 	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
@@ -528,7 +476,7 @@ func (p *Portal) reject(w http.ResponseWriter, r *http.Request) error {
 	if _, err := p.opts.Service.Reject(r.Context(), connect.NewRequest(&walletportalv1.RejectRequest{
 		OfferId: r.PostFormValue("offer_id"),
 	})); err != nil {
-		return p.problem(w, r, "An offer for you", "scan",
+		return p.problem(w, r, "An offer for you",
 			"The wallet could not refuse the offer", message(err))
 	}
 	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
@@ -543,7 +491,7 @@ func (p *Portal) remove(w http.ResponseWriter, r *http.Request) error {
 	if _, err := p.opts.Service.Delete(r.Context(), connect.NewRequest(&walletportalv1.DeleteRequest{
 		Id: r.PostFormValue("id"),
 	})); err != nil {
-		return p.problem(w, r, "My credentials", "mine",
+		return p.problem(w, r, "My credentials",
 			"The wallet did not remove the credential", message(err))
 	}
 	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
@@ -559,7 +507,7 @@ func (p *Portal) consent(w http.ResponseWriter, r *http.Request) error {
 			PresentationId: r.URL.Query().Get("id"),
 		}))
 	if err != nil {
-		return p.problem(w, r, "A request for your credential", "scan",
+		return p.problem(w, r, "A request for your credential",
 			"The wallet could not read the request", message(err))
 	}
 	msg := resp.Msg
@@ -585,7 +533,6 @@ func (p *Portal) consent(w http.ResponseWriter, r *http.Request) error {
 	return p.render(w, r, b, components.Page{
 		Title:       "A request for your credential",
 		Description: "Read every field the verifier asks for, then agree or leave.",
-		Nav:         p.nav("scan"),
 		Content:     card,
 	})
 }
@@ -646,7 +593,7 @@ func (p *Portal) submit(w http.ResponseWriter, r *http.Request) error {
 	}
 	resp, err := p.opts.Service.PresentConfirm(r.Context(), connect.NewRequest(req))
 	if err != nil {
-		return p.problem(w, r, "A request for your credential", "scan",
+		return p.problem(w, r, "A request for your credential",
 			"The wallet did not send the credential", message(err))
 	}
 	if uri := resp.Msg.GetRedirectUri(); uri != "" && resp.Msg.GetAccepted() {
@@ -676,19 +623,17 @@ func (p *Portal) outcome(w http.ResponseWriter, r *http.Request,
 	return p.render(w, r, b, components.Page{
 		Title:       "The result of your answer",
 		Description: "What the verifier said about your credential.",
-		Nav:         p.nav("scan"),
 		Content:     card,
 	})
 }
 
 // problem renders one page that names a problem and the next step.
-func (p *Portal) problem(w http.ResponseWriter, r *http.Request, name, current, heading, next string) error {
+func (p *Portal) problem(w http.ResponseWriter, r *http.Request, name, heading, next string) error {
 	b := p.pen(r)
 	card := b.part("card", components.Card{ID: "problem", Title: heading, Text: next})
 	return p.render(w, r, b, components.Page{
 		Title:       name,
 		Description: "The wallet met a problem.",
-		Nav:         p.nav(current),
 		Content:     card,
 	})
 }

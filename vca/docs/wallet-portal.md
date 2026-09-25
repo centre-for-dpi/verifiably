@@ -19,6 +19,37 @@ says how to run it. This page says how it works.
 | `service` | It answers the RPCs. |
 | `portal` | It renders the citizen pages. |
 
+## The holder frame
+
+Every page sits in the holder frame of board Holder-Portal. The frame
+comes from the shared shell package `services/internal/staffshell`. The
+wallet gives the shell a user hook. The menu then shows the holder of
+the wallet session and never a staff session.
+
+| Part | Source |
+|---|---|
+| Role chip | The holder role. |
+| Stack switcher | The holder pairs in `VCA_PEERS` that run. The probe of the peers names each stack. A pair that starts shows as text. |
+| User menu | The name in the wallet session and a sign out form. |
+| Side navigation | The holder pages of `internal/rolenav`. These are My credentials, Discover, Claim, Present, and Help. |
+
+The own pair is the holder pair whose `wallet-auth` serves the key set
+in `AUTH_JWKS_URL`. The page "Keys and identifiers" shows only when the
+adapter of the own pair lists `FEATURE_WALLET_KEYS`. The page shows the
+holder identifier and where the holder key sits.
+
+The sign out form posts to `/wallet/signout` with the page token. The
+wallet asks `wallet-auth` of the own pair to end the session. It clears
+the session cookie and sends the browser to the logout page of the
+provider. When `wallet-auth` does not answer, the browser goes to the
+login page.
+
+The home page shows one card per credential. A card names the issuer,
+the type, the status, and the expiry. The stripe on top of the card
+takes the tone of the status: valid, suspended, revoked, expired, not
+yet valid, or not checked. The detail of the card holds the trust, the
+claims, and the remove button.
+
 ## Sessions
 
 Every RPC and every page needs a session. The middleware reads the

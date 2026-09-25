@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
@@ -91,6 +92,10 @@ type Config struct {
 	PendingTTL time.Duration `env:"PENDING_TTL" default:"15m"`
 	// PageSizeMax caps the page size of a list RPC.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+	// Peers are the candidate pairs of the deployment, from VCA_PEERS.
+	// The frame of the pages lists the holder pairs that run, and the
+	// wallet finds its own pair by the key set of its auth service.
+	Peers []topology.Peer
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -100,6 +105,11 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
+	peers, err := topology.Parse(getenv(topology.Env))
+	if err != nil {
+		return Config{}, fmt.Errorf("config: %w", err)
+	}
+	c.Peers = peers
 	return c, c.Check()
 }
 

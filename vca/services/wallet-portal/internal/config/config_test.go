@@ -95,3 +95,28 @@ func TestHolderBackendURLMisses(t *testing.T) {
 		t.Fatal("want no URL for a broken list")
 	}
 }
+
+// TestLoadPeers reads the candidate pairs of the frame from VCA_PEERS
+// and names a bad value.
+func TestLoadPeers(t *testing.T) {
+	c, err := config.Load(func(k string) string {
+		if k == "VCA_PEERS" {
+			return "holder-waltid|https://holder.example|wallet-auth=http://auth:8083,wallet-portal=http://portal:8092"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Peers) != 1 || c.Peers[0].Pair != "holder-waltid" || c.Peers[0].Auth() != "http://auth:8083" {
+		t.Fatalf("peers = %+v", c.Peers)
+	}
+	if _, err := config.Load(func(k string) string {
+		if k == "VCA_PEERS" {
+			return "nonsense"
+		}
+		return ""
+	}); err == nil || !strings.Contains(err.Error(), "VCA_PEERS") {
+		t.Fatalf("err = %v", err)
+	}
+}
