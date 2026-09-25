@@ -258,6 +258,17 @@ func Checks() []Check {
 			Run:         schema,
 		},
 		{
+			Name:        NameClaimPredicate,
+			Description: "Check a claim against a rule that DCQL cannot hold, for example a date range.",
+			Params: map[string]string{
+				"path":  "the dotted claim path, for example birth_date",
+				"op":    "before, after, at_least_years, or at_most_years",
+				"value": "a date such as 2008-01-31, or a whole number of years",
+				"type":  "the credential type the rule applies to; empty applies it to every credential with the claim",
+			},
+			Run: claimPredicate,
+		},
+		{
 			Name:        NameDerivedProof,
 			Description: "Check a BBS derived proof. The check is reserved and returns SKIP.",
 			Run:         derivedProof,

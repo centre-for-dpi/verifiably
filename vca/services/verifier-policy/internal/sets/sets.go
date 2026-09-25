@@ -33,6 +33,9 @@ var ErrNotFound = errors.New("sets: no such policy set version")
 // ErrBadID reports an id that the key rules do not allow.
 var ErrBadID = errors.New("sets: the id must hold letters, digits, dots, dashes, or underscores")
 
+// ErrExists reports that a set with the id exists.
+var ErrExists = errors.New("sets: the policy set exists")
+
 var idRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // Store reads and writes policy sets.
@@ -92,7 +95,7 @@ func (s *Store) Create(ctx context.Context, set *policyv1.PolicySet) (*policyv1.
 		return nil, ErrBadID
 	}
 	if _, err := s.Get(ctx, out.GetId(), 0); err == nil {
-		return nil, fmt.Errorf("sets: the policy set %s exists", out.GetId())
+		return nil, fmt.Errorf("%w: %s", ErrExists, out.GetId())
 	}
 	out.Version = 1
 	return out, s.put(ctx, out)

@@ -110,6 +110,20 @@ message PresentationTemplate {
   string created_by = 8;
   // The creation time of this version.
   google.protobuf.Timestamp created_at = 9;
+  // The query language of the template (ADR-042 decision 1). The
+  // service reads unspecified as DCQL.
+  TemplateKind kind = 10;
+  // The claim rules that DCQL cannot hold, for example a date range.
+  // The policy service enforces them (ADR-042 decision 3).
+  repeated ClaimPredicate predicates = 11;
+  // True when the issuer must sit on an enabled trust list.
+  bool require_trusted_issuer = 12;
+  // True when the credential must pass its status check: not revoked
+  // and not suspended.
+  bool require_status = 13;
+  // The policy set that holds the rules of the template. The service
+  // sets it when the template has a rule. Empty uses the default set.
+  string policy_set_id = 14;
 
   // CredentialQuery is one credential the template asks for.
   message CredentialQuery {
@@ -123,7 +137,62 @@ message PresentationTemplate {
     repeated string claims = 4;
     // The issuer URLs to accept. Empty accepts every trusted issuer.
     repeated string issuers = 5;
+    // The accepted values of a claim, for the claims that limit them.
+    repeated ClaimValues values = 6;
+    // The acceptable combinations of claims, in order of preference.
+    repeated ClaimSet claim_sets = 7;
   }
+
+  // ClaimValues limits the accepted values of one claim.
+  message ClaimValues {
+    // The claim path.
+    string path = 1;
+    // The accepted values, as text.
+    repeated string values = 2;
+  }
+
+  // ClaimSet is one acceptable combination of claims.
+  message ClaimSet {
+    // The claim paths.
+    repeated string claims = 1;
+  }
+
+  // ClaimPredicate is one claim rule that DCQL cannot hold.
+  message ClaimPredicate {
+    // The credential query the rule applies to.
+    string query_id = 1;
+    // The claim path.
+    string path = 2;
+    // The operator.
+    Op op = 3;
+    // A date such as 2008-01-31, or a whole number of years.
+    string value = 4;
+
+    // Op names the comparison.
+    enum Op {
+      OP_UNSPECIFIED = 0;
+      // The claim date is before the value date.
+      OP_DATE_BEFORE = 1;
+      // The claim date is after the value date.
+      OP_DATE_AFTER = 2;
+      // The claim date is at least value years before the check.
+      OP_AT_LEAST_YEARS = 3;
+      // The claim date is at most value years before the check.
+      OP_AT_MOST_YEARS = 4;
+    }
+  }
+}
+
+// TemplateKind names the query language of a template (ADR-042
+// decision 1).
+enum TemplateKind {
+  TEMPLATE_KIND_UNSPECIFIED = 0;
+  // A DCQL query of OpenID for Verifiable Presentations 1.0.
+  TEMPLATE_KIND_DCQL = 1;
+  // A DIF Presentation Exchange 2.0 definition.
+  TEMPLATE_KIND_PE = 2;
+  // A proof request in the native form of a stack.
+  TEMPLATE_KIND_NATIVE = 3;
 }
 
 // CrawlRequest selects issuers.

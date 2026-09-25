@@ -38,14 +38,14 @@ var helpServices = []struct {
 // helpPages says what each verifier page does and which document covers
 // it, by the path of the page in internal/rolenav.
 var helpPages = map[string]struct{ key, doc string }{
-	"/portal/":             {"verifier.help.page.overview", "verifier-results.md"},
-	"/discovery/":          {"verifier.help.page.discover", "verifier-discovery.md"},
-	"/discovery/templates": {"verifier.help.page.dcql", "verifier-discovery.md"},
-	"/discovery/pe/":       {"verifier.help.page.pe", "verifier-discovery.md"},
-	"/scan/":               {"verifier.help.page.requests", "verifier-ingest.md"},
-	"/portal/results/":     {"verifier.help.page.results", "verifier-results.md"},
-	"/portal/cache/":       {"verifier.help.page.cache", "verifier-policy.md"},
-	"/portal/help/":        {"verifier.help.page.help", "verifier-results.md"},
+	"/portal/":         {"verifier.help.page.overview", "verifier-results.md"},
+	"/discovery/":      {"verifier.help.page.discover", "verifier-discovery.md"},
+	"/discovery/dcql/": {"verifier.help.page.dcql", "verifier-discovery.md"},
+	"/discovery/pe/":   {"verifier.help.page.pe", "verifier-discovery.md"},
+	"/scan/":           {"verifier.help.page.requests", "verifier-ingest.md"},
+	"/portal/results/": {"verifier.help.page.results", "verifier-results.md"},
+	"/portal/cache/":   {"verifier.help.page.cache", "verifier-policy.md"},
+	"/portal/help/":    {"verifier.help.page.help", "verifier-results.md"},
 }
 
 // help lists what each verifier page does with a link to its document,

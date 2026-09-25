@@ -16,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
@@ -55,6 +56,8 @@ type Deps struct {
 	SessionKeys staffsession.Keys
 	// Prober replaces the probe of the peers.
 	Prober *topology.Prober
+	// Policy replaces the policy service client. Tests set it.
+	Policy service.PolicySets
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives the start messages. Nil means slog.Default.
@@ -96,7 +99,12 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		trust = trustv1connect.NewTrustServiceClient(&http.Client{Timeout: cfg.TrustTimeout}, cfg.TrustURL)
 	}
 	crawler, crawlErr := crawl.New(crawl.Options{Trust: trust, Fetch: fetcher, Store: st, Now: deps.Now})
-	svc, serviceErr := service.New(service.Options{Store: st, Crawler: crawler, PageSizeMax: cfg.PageSizeMax, Now: deps.Now})
+	opts := service.Options{Store: st, Crawler: crawler, PageSizeMax: cfg.PageSizeMax, Now: deps.Now, Policy: deps.Policy}
+	if opts.Policy == nil && cfg.PolicyURL != "" {
+		// The policy service stays on the compose network (ADR-047).
+		opts.Policy = policyv1connect.NewPolicyServiceClient(&http.Client{Timeout: cfg.PolicyTimeout}, cfg.PolicyURL)
+	}
+	svc, serviceErr := service.New(opts)
 	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
 	shell, signOut := staffshell.Wire(staffshell.Setup{
 		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,

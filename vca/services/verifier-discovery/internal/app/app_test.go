@@ -18,6 +18,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
@@ -322,4 +323,21 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	cfg.ThemeFile = path
 	_, err := app.Build(cfg, app.Deps{Log: quiet()})
 	uikittest.AssertBadThemeError(t, err, path)
+}
+
+// TestBuildWithPolicyURL builds the policy client of the query rules: a
+// query with a rule then reaches the policy service, which here does
+// not answer.
+func TestBuildWithPolicyURL(t *testing.T) {
+	a, err := app.Build(settings(t, map[string]string{"VCA_DISCOVERY_POLICY_URL": "http://127.0.0.1:1/"}), app.Deps{Log: quiet()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.Service.CreateTemplate(context.Background(), connect.NewRequest(&discoveryv1.CreateTemplateRequest{
+		Template: &discoveryv1.PresentationTemplate{DisplayName: "Rules", RequireStatus: true,
+			Queries: []*discoveryv1.PresentationTemplate_CredentialQuery{{Type: "T", Claims: []string{"a"}}}},
+	}))
+	if connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("want the policy service to be asked, got %v", err)
+	}
 }

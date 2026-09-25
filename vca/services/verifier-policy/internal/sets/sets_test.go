@@ -39,8 +39,8 @@ func TestCreateWithID(t *testing.T) {
 	if _, err := s.Create(ctx, &policyv1.PolicySet{Id: "default"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Create(ctx, &policyv1.PolicySet{Id: "default"}); err == nil {
-		t.Fatal("want an error for a set that exists")
+	if _, err := s.Create(ctx, &policyv1.PolicySet{Id: "default"}); !errors.Is(err, ErrExists) {
+		t.Fatalf("want an exists error for a set that exists, got %v", err)
 	}
 	if _, err := s.Create(ctx, &policyv1.PolicySet{Id: "no spaces"}); !errors.Is(err, ErrBadID) {
 		t.Fatalf("want a bad id error, got %v", err)

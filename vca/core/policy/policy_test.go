@@ -11,8 +11,8 @@ import (
 
 func TestChecksAndFind(t *testing.T) {
 	checks := Checks()
-	if len(checks) != 10 {
-		t.Fatalf("want ten checks, got %d", len(checks))
+	if len(checks) != 11 {
+		t.Fatalf("want eleven checks, got %d", len(checks))
 	}
 	mandatory := 0
 	for _, c := range checks {
@@ -35,8 +35,8 @@ func TestChecksAndFind(t *testing.T) {
 	if _, ok := Find("nothing"); ok {
 		t.Fatal("want no check with an unknown name")
 	}
-	if names := Names(); len(names) != 10 || names[0] != NameAudience {
-		t.Fatalf("want ten sorted names, got %v", names)
+	if names := Names(); len(names) != 11 || names[0] != NameAudience {
+		t.Fatalf("want eleven sorted names, got %v", names)
 	}
 }
 

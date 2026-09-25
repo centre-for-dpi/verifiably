@@ -404,6 +404,9 @@ func Catalog() []Service {
 			Links: []Link{
 				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL},
 				{Env: "VCA_DISCOVERY_TRUST_URL", Target: "trust-registry", Kind: LinkURL},
+				// The rules of a query become a policy set (ADR-042
+				// decision 3), on the compose network (ADR-047).
+				{Env: "VCA_DISCOVERY_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
 				staffJWKS("VCA_DISCOVERY_AUTH_JWKS_URL", "verifier-auth"),
 				staffLogin("VCA_DISCOVERY_LOGIN_URL"),
 				peers,

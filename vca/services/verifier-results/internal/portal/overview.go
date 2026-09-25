@@ -27,10 +27,8 @@ const (
 	DiscoveryPath = "/discovery/"
 	// QueriesPath is the list of saved queries.
 	QueriesPath = "/discovery/templates"
-	// NewQueryPath is where a new query starts: the credential types.
-	NewQueryPath = "/discovery/types"
-	// FieldsPath is the claim page of one credential type.
-	FieldsPath = "/discovery/fields"
+	// NewQueryPath is the DCQL builder, where a new query starts.
+	NewQueryPath = "/discovery/dcql/"
 	// RequestsPath is the request and scanner page of verifier-ingest.
 	RequestsPath = "/scan/"
 )
@@ -77,9 +75,17 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-// templateNames reads the saved queries by id, or nil when the discovery
+// savedQueries are the saved queries of the discovery service: the
+// name of each id and the count of each kind. A nil value means the
+// service did not answer.
+type savedQueries struct {
+	names    map[string]string
+	dcql, pe int
+}
+
+// templateNames reads the saved queries, or nil when the discovery
 // service does not answer.
-func (p *Portal) templateNames(r *http.Request) map[string]string {
+func (p *Portal) templateNames(r *http.Request) *savedQueries {
 	if p.opts.Discovery == nil {
 		return nil
 	}
@@ -87,22 +93,34 @@ func (p *Portal) templateNames(r *http.Request) map[string]string {
 	if err != nil {
 		return nil
 	}
-	out := make(map[string]string, len(res.Msg.GetTemplates()))
+	out := &savedQueries{names: make(map[string]string, len(res.Msg.GetTemplates()))}
 	for _, t := range res.Msg.GetTemplates() {
-		out[t.GetId()] = t.GetDisplayName()
+		out.names[t.GetId()] = t.GetDisplayName()
+		if t.GetKind() == discoveryv1.TemplateKind_TEMPLATE_KIND_PE {
+			out.pe++
+			continue
+		}
+		out.dcql++
 	}
 	return out
 }
 
-// queriesStat is the card of the saved queries. Every saved query is a
-// DCQL query; the service generates the DIF PE form from it.
-func queriesStat(names map[string]string) components.Stat {
+// name returns the name of a saved query, or its id.
+func (q *savedQueries) name(id string) string {
+	if q != nil && q.names[id] != "" {
+		return q.names[id]
+	}
+	return id
+}
+
+// queriesStat is the card of the saved queries by kind.
+func queriesStat(q *savedQueries) components.Stat {
 	s := components.Stat{Label: msg.T("verifier.stat.queries.label"), Text: msg.T("verifier.stat.queries.text"), Href: QueriesPath}
-	if names == nil {
+	if q == nil {
 		s.Value = msg.T("common.unknown.label")
 		return s
 	}
-	s.Value = msg.T("verifier.stat.queries.value.label", strconv.Itoa(len(names)), "0")
+	s.Value = msg.T("verifier.stat.queries.value.label", strconv.Itoa(q.dcql), strconv.Itoa(q.pe))
 	return s
 }
 
@@ -168,7 +186,7 @@ func (p *Portal) schemaRow(r *http.Request, b *blocks, t *discoveryv1.Credential
 		}
 		claims = strings.Join(paths, ", ")
 	}
-	href := FieldsPath + "?credential_issuer=" + url.QueryEscape(t.GetCredentialIssuer()) +
+	href := NewQueryPath + "?credential_issuer=" + url.QueryEscape(t.GetCredentialIssuer()) +
 		"&type=" + url.QueryEscape(t.GetType()) + "&format=" + url.QueryEscape(format)
 	return components.Row{
 		{Text: t.GetCredentialIssuer()}, {Text: t.GetType()}, {Text: format}, {Text: claims},
@@ -178,7 +196,7 @@ func (p *Portal) schemaRow(r *http.Request, b *blocks, t *discoveryv1.Credential
 
 // recentBlock lists the newest results with the query, the issuer, and
 // the verdict with the reason of the first failed check.
-func (p *Portal) recentBlock(r *http.Request, b *blocks, names map[string]string) template.HTML {
+func (p *Portal) recentBlock(r *http.Request, b *blocks, names *savedQueries) template.HTML {
 	list, err := p.opts.Service.QueryAll(r.Context(), &resultsv1.Filter{})
 	if err != nil {
 		list = nil
@@ -188,10 +206,7 @@ func (p *Portal) recentBlock(r *http.Request, b *blocks, names map[string]string
 	}
 	rows := make([]components.Row, 0, len(list))
 	for _, res := range list {
-		query := names[res.GetTemplateId()]
-		if query == "" {
-			query = res.GetTemplateId()
-		}
+		query := names.name(res.GetTemplateId())
 		issuer := ""
 		if creds := res.GetCredentials(); len(creds) > 0 {
 			issuer = creds[0].GetIssuerName()

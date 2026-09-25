@@ -129,6 +129,7 @@ func newShellFixture(t *testing.T) *shellFixture {
 			templates: []*discoveryv1.PresentationTemplate{
 				{Id: "licence", DisplayName: "Driving licence check", Version: 1},
 				{Id: "degree", DisplayName: "Degree check", Version: 2},
+				{Id: "legacy", DisplayName: "Legacy check", Kind: discoveryv1.TemplateKind_TEMPLATE_KIND_PE},
 			},
 			types: []*discoveryv1.CredentialType{
 				{CredentialIssuer: "https://issuer.labs.example", Type: "DrivingLicence", Format: commonv1.Format_FORMAT_DC_SD_JWT},
@@ -190,7 +191,7 @@ func TestOverviewCards(t *testing.T) {
 	for _, want := range []string{
 		"<h1", "Overview", "Queries you saved, requests in flight and recent results.",
 		"New query", "New request",
-		"Saved queries", "2 DCQL, 0 PE",
+		"Saved queries", "2 DCQL, 1 PE",
 		"Open requests", "3 waiting", "QR or link shown, no presentation yet.",
 		"Trust cache", "Online checks",
 		"Schemas to ask for", "DrivingLicence", "https://issuer.labs.example", "dc&#43;sd-jwt", "given_name, birth_date, licence_class",

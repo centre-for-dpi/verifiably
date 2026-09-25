@@ -78,7 +78,8 @@ func TestDiscoveryPagesInVerifierShell(t *testing.T) {
 	for path, current := range map[string]string{
 		"/discovery/":          "Discover schemas",
 		"/discovery/types":     "Discover schemas",
-		"/discovery/templates": "DCQL builder",
+		"/discovery/templates": "Discover schemas",
+		"/discovery/dcql/":     "DCQL builder",
 		"/discovery/pe/":       "DIF PE queries",
 	} {
 		body := staffGet(t, mux, path)

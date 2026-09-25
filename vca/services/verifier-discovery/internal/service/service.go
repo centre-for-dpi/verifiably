@@ -18,9 +18,11 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
+	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/catalog"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/crawl"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/store"
@@ -43,7 +45,20 @@ type Options struct {
 	PageSizeMax int
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// Policy stores the policy set of a template with rules (ADR-042
+	// decision 3). Nil refuses a template with a rule.
+	Policy PolicySets
 }
+
+// PolicySets writes the policy sets of the verifier policy service.
+type PolicySets interface {
+	CreatePolicySet(context.Context, *connect.Request[policyv1.CreatePolicySetRequest]) (*connect.Response[policyv1.CreatePolicySetResponse], error)
+	UpdatePolicySet(context.Context, *connect.Request[policyv1.UpdatePolicySetRequest]) (*connect.Response[policyv1.UpdatePolicySetResponse], error)
+	DeletePolicySet(context.Context, *connect.Request[policyv1.DeletePolicySetRequest]) (*connect.Response[policyv1.DeletePolicySetResponse], error)
+}
+
+// PolicySetPrefix starts the id of the policy set of a template.
+const PolicySetPrefix = "query-"
 
 // Service is the DiscoveryService handler. It also satisfies the client
 // interface, so the portal calls it in process.
@@ -195,6 +210,9 @@ func (s *Service) CreateTemplate(ctx context.Context, req *connect.Request[disco
 	if err != nil {
 		return nil, err
 	}
+	if stored, err = s.writeRules(ctx, stored); err != nil {
+		return nil, err
+	}
 	if err := s.opts.Store.PutTemplate(ctx, stored); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -218,10 +236,37 @@ func (s *Service) VersionTemplate(ctx context.Context, req *connect.Request[disc
 	if err != nil {
 		return nil, err
 	}
+	if stored, err = s.writeRules(ctx, stored); err != nil {
+		return nil, err
+	}
 	if err := s.opts.Store.PutTemplate(ctx, stored); err != nil {
 		return nil, connect.NewError(connect.CodeAborted, err)
 	}
 	return connect.NewResponse(&discoveryv1.VersionTemplateResponse{Template: stored.ToProto()}), nil
+}
+
+// writeRules stores the rules of a template as a policy set of its own
+// and names the set on the template (ADR-042 decision 3). A set of the
+// same id takes a new version. A template without a rule needs no set.
+func (s *Service) writeRules(ctx context.Context, t template.Template) (template.Template, error) {
+	t.PolicySetID = ""
+	if !t.HasRules() {
+		return t, nil
+	}
+	if s.opts.Policy == nil {
+		return template.Template{}, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("service: no policy service is configured, so the rules of the template cannot run"))
+	}
+	set := &policyv1.PolicySet{Id: PolicySetPrefix + t.ID, DisplayName: t.DisplayName, Checks: t.PolicyChecks(), TenantId: t.TenantID, CreatedBy: t.CreatedBy}
+	_, err := s.opts.Policy.CreatePolicySet(ctx, connect.NewRequest(&policyv1.CreatePolicySetRequest{PolicySet: set}))
+	if connect.CodeOf(err) == connect.CodeAlreadyExists {
+		_, err = s.opts.Policy.UpdatePolicySet(ctx, connect.NewRequest(&policyv1.UpdatePolicySetRequest{PolicySet: set}))
+	}
+	if err != nil {
+		return template.Template{}, connect.NewError(connect.CodeOf(err), fmt.Errorf("service: the policy service did not store the rules: %w", err))
+	}
+	t.PolicySetID = set.GetId()
+	return t, nil
 }
 
 // build validates a template and stamps the version and the time.
@@ -274,12 +319,22 @@ func (s *Service) GetTemplate(ctx context.Context, req *connect.Request[discover
 
 // DeleteTemplate removes every version of a template.
 func (s *Service) DeleteTemplate(ctx context.Context, req *connect.Request[discoveryv1.DeleteTemplateRequest]) (*connect.Response[discoveryv1.DeleteTemplateResponse], error) {
+	// A missing template leaves previous empty; the delete below names
+	// the fault.
+	previous, lookupErr := s.opts.Store.GetTemplate(ctx, req.Msg.GetId(), 0)
+	anyval.Discard(lookupErr)
 	removed, err := s.opts.Store.DeleteTemplate(ctx, req.Msg.GetId())
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	// The rules go with the template. A set the policy service lost
+	// already is no fault.
+	if previous.PolicySetID != "" && s.opts.Policy != nil {
+		_, delErr := s.opts.Policy.DeletePolicySet(ctx, connect.NewRequest(&policyv1.DeletePolicySetRequest{Id: previous.PolicySetID}))
+		anyval.Discard(delErr)
 	}
 	return connect.NewResponse(&discoveryv1.DeleteTemplateResponse{VersionsRemoved: toInt32(int64(removed))}), nil
 }

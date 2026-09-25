@@ -31,6 +31,123 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// TemplateKind names the query language of a template (ADR-042
+// decision 1).
+type TemplateKind int32
+
+const (
+	TemplateKind_TEMPLATE_KIND_UNSPECIFIED TemplateKind = 0
+	// A DCQL query of OpenID for Verifiable Presentations 1.0.
+	TemplateKind_TEMPLATE_KIND_DCQL TemplateKind = 1
+	// A DIF Presentation Exchange 2.0 definition.
+	TemplateKind_TEMPLATE_KIND_PE TemplateKind = 2
+	// A proof request in the native form of a stack.
+	TemplateKind_TEMPLATE_KIND_NATIVE TemplateKind = 3
+)
+
+// Enum value maps for TemplateKind.
+var (
+	TemplateKind_name = map[int32]string{
+		0: "TEMPLATE_KIND_UNSPECIFIED",
+		1: "TEMPLATE_KIND_DCQL",
+		2: "TEMPLATE_KIND_PE",
+		3: "TEMPLATE_KIND_NATIVE",
+	}
+	TemplateKind_value = map[string]int32{
+		"TEMPLATE_KIND_UNSPECIFIED": 0,
+		"TEMPLATE_KIND_DCQL":        1,
+		"TEMPLATE_KIND_PE":          2,
+		"TEMPLATE_KIND_NATIVE":      3,
+	}
+)
+
+func (x TemplateKind) Enum() *TemplateKind {
+	p := new(TemplateKind)
+	*p = x
+	return p
+}
+
+func (x TemplateKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TemplateKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_discovery_v1_discovery_proto_enumTypes[0].Descriptor()
+}
+
+func (TemplateKind) Type() protoreflect.EnumType {
+	return &file_vca_discovery_v1_discovery_proto_enumTypes[0]
+}
+
+func (x TemplateKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TemplateKind.Descriptor instead.
+func (TemplateKind) EnumDescriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{0}
+}
+
+// Op names the comparison.
+type PresentationTemplate_ClaimPredicate_Op int32
+
+const (
+	PresentationTemplate_ClaimPredicate_OP_UNSPECIFIED PresentationTemplate_ClaimPredicate_Op = 0
+	// The claim date is before the value date.
+	PresentationTemplate_ClaimPredicate_OP_DATE_BEFORE PresentationTemplate_ClaimPredicate_Op = 1
+	// The claim date is after the value date.
+	PresentationTemplate_ClaimPredicate_OP_DATE_AFTER PresentationTemplate_ClaimPredicate_Op = 2
+	// The claim date is at least value years before the check.
+	PresentationTemplate_ClaimPredicate_OP_AT_LEAST_YEARS PresentationTemplate_ClaimPredicate_Op = 3
+	// The claim date is at most value years before the check.
+	PresentationTemplate_ClaimPredicate_OP_AT_MOST_YEARS PresentationTemplate_ClaimPredicate_Op = 4
+)
+
+// Enum value maps for PresentationTemplate_ClaimPredicate_Op.
+var (
+	PresentationTemplate_ClaimPredicate_Op_name = map[int32]string{
+		0: "OP_UNSPECIFIED",
+		1: "OP_DATE_BEFORE",
+		2: "OP_DATE_AFTER",
+		3: "OP_AT_LEAST_YEARS",
+		4: "OP_AT_MOST_YEARS",
+	}
+	PresentationTemplate_ClaimPredicate_Op_value = map[string]int32{
+		"OP_UNSPECIFIED":    0,
+		"OP_DATE_BEFORE":    1,
+		"OP_DATE_AFTER":     2,
+		"OP_AT_LEAST_YEARS": 3,
+		"OP_AT_MOST_YEARS":  4,
+	}
+)
+
+func (x PresentationTemplate_ClaimPredicate_Op) Enum() *PresentationTemplate_ClaimPredicate_Op {
+	p := new(PresentationTemplate_ClaimPredicate_Op)
+	*p = x
+	return p
+}
+
+func (x PresentationTemplate_ClaimPredicate_Op) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PresentationTemplate_ClaimPredicate_Op) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_discovery_v1_discovery_proto_enumTypes[1].Descriptor()
+}
+
+func (PresentationTemplate_ClaimPredicate_Op) Type() protoreflect.EnumType {
+	return &file_vca_discovery_v1_discovery_proto_enumTypes[1]
+}
+
+func (x PresentationTemplate_ClaimPredicate_Op) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PresentationTemplate_ClaimPredicate_Op.Descriptor instead.
+func (PresentationTemplate_ClaimPredicate_Op) EnumDescriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{3, 3, 0}
+}
+
 // Issuer is one crawled issuer.
 type Issuer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -343,7 +460,21 @@ type PresentationTemplate struct {
 	// The staff subject that created this version.
 	CreatedBy string `protobuf:"bytes,8,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	// The creation time of this version.
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// The query language of the template (ADR-042 decision 1). The
+	// service reads unspecified as DCQL.
+	Kind TemplateKind `protobuf:"varint,10,opt,name=kind,proto3,enum=vca.discovery.v1.TemplateKind" json:"kind,omitempty"`
+	// The claim rules that DCQL cannot hold, for example a date range.
+	// The policy service enforces them (ADR-042 decision 3).
+	Predicates []*PresentationTemplate_ClaimPredicate `protobuf:"bytes,11,rep,name=predicates,proto3" json:"predicates,omitempty"`
+	// True when the issuer must sit on an enabled trust list.
+	RequireTrustedIssuer bool `protobuf:"varint,12,opt,name=require_trusted_issuer,json=requireTrustedIssuer,proto3" json:"require_trusted_issuer,omitempty"`
+	// True when the credential must pass its status check: not revoked
+	// and not suspended.
+	RequireStatus bool `protobuf:"varint,13,opt,name=require_status,json=requireStatus,proto3" json:"require_status,omitempty"`
+	// The policy set that holds the rules of the template. The service
+	// sets it when the template has a rule. Empty uses the default set.
+	PolicySetId   string `protobuf:"bytes,14,opt,name=policy_set_id,json=policySetId,proto3" json:"policy_set_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -439,6 +570,41 @@ func (x *PresentationTemplate) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *PresentationTemplate) GetKind() TemplateKind {
+	if x != nil {
+		return x.Kind
+	}
+	return TemplateKind_TEMPLATE_KIND_UNSPECIFIED
+}
+
+func (x *PresentationTemplate) GetPredicates() []*PresentationTemplate_ClaimPredicate {
+	if x != nil {
+		return x.Predicates
+	}
+	return nil
+}
+
+func (x *PresentationTemplate) GetRequireTrustedIssuer() bool {
+	if x != nil {
+		return x.RequireTrustedIssuer
+	}
+	return false
+}
+
+func (x *PresentationTemplate) GetRequireStatus() bool {
+	if x != nil {
+		return x.RequireStatus
+	}
+	return false
+}
+
+func (x *PresentationTemplate) GetPolicySetId() string {
+	if x != nil {
+		return x.PolicySetId
+	}
+	return ""
 }
 
 // CrawlRequest selects issuers.
@@ -1390,7 +1556,11 @@ type PresentationTemplate_CredentialQuery struct {
 	// The claim paths to ask for.
 	Claims []string `protobuf:"bytes,4,rep,name=claims,proto3" json:"claims,omitempty"`
 	// The issuer URLs to accept. Empty accepts every trusted issuer.
-	Issuers       []string `protobuf:"bytes,5,rep,name=issuers,proto3" json:"issuers,omitempty"`
+	Issuers []string `protobuf:"bytes,5,rep,name=issuers,proto3" json:"issuers,omitempty"`
+	// The accepted values of a claim, for the claims that limit them.
+	Values []*PresentationTemplate_ClaimValues `protobuf:"bytes,6,rep,name=values,proto3" json:"values,omitempty"`
+	// The acceptable combinations of claims, in order of preference.
+	ClaimSets     []*PresentationTemplate_ClaimSet `protobuf:"bytes,7,rep,name=claim_sets,json=claimSets,proto3" json:"claim_sets,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1460,6 +1630,194 @@ func (x *PresentationTemplate_CredentialQuery) GetIssuers() []string {
 	return nil
 }
 
+func (x *PresentationTemplate_CredentialQuery) GetValues() []*PresentationTemplate_ClaimValues {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+func (x *PresentationTemplate_CredentialQuery) GetClaimSets() []*PresentationTemplate_ClaimSet {
+	if x != nil {
+		return x.ClaimSets
+	}
+	return nil
+}
+
+// ClaimValues limits the accepted values of one claim.
+type PresentationTemplate_ClaimValues struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The claim path.
+	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// The accepted values, as text.
+	Values        []string `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PresentationTemplate_ClaimValues) Reset() {
+	*x = PresentationTemplate_ClaimValues{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PresentationTemplate_ClaimValues) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PresentationTemplate_ClaimValues) ProtoMessage() {}
+
+func (x *PresentationTemplate_ClaimValues) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PresentationTemplate_ClaimValues.ProtoReflect.Descriptor instead.
+func (*PresentationTemplate_ClaimValues) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{3, 1}
+}
+
+func (x *PresentationTemplate_ClaimValues) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *PresentationTemplate_ClaimValues) GetValues() []string {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+// ClaimSet is one acceptable combination of claims.
+type PresentationTemplate_ClaimSet struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The claim paths.
+	Claims        []string `protobuf:"bytes,1,rep,name=claims,proto3" json:"claims,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PresentationTemplate_ClaimSet) Reset() {
+	*x = PresentationTemplate_ClaimSet{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PresentationTemplate_ClaimSet) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PresentationTemplate_ClaimSet) ProtoMessage() {}
+
+func (x *PresentationTemplate_ClaimSet) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PresentationTemplate_ClaimSet.ProtoReflect.Descriptor instead.
+func (*PresentationTemplate_ClaimSet) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{3, 2}
+}
+
+func (x *PresentationTemplate_ClaimSet) GetClaims() []string {
+	if x != nil {
+		return x.Claims
+	}
+	return nil
+}
+
+// ClaimPredicate is one claim rule that DCQL cannot hold.
+type PresentationTemplate_ClaimPredicate struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The credential query the rule applies to.
+	QueryId string `protobuf:"bytes,1,opt,name=query_id,json=queryId,proto3" json:"query_id,omitempty"`
+	// The claim path.
+	Path string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// The operator.
+	Op PresentationTemplate_ClaimPredicate_Op `protobuf:"varint,3,opt,name=op,proto3,enum=vca.discovery.v1.PresentationTemplate_ClaimPredicate_Op" json:"op,omitempty"`
+	// A date such as 2008-01-31, or a whole number of years.
+	Value         string `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PresentationTemplate_ClaimPredicate) Reset() {
+	*x = PresentationTemplate_ClaimPredicate{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PresentationTemplate_ClaimPredicate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PresentationTemplate_ClaimPredicate) ProtoMessage() {}
+
+func (x *PresentationTemplate_ClaimPredicate) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PresentationTemplate_ClaimPredicate.ProtoReflect.Descriptor instead.
+func (*PresentationTemplate_ClaimPredicate) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{3, 3}
+}
+
+func (x *PresentationTemplate_ClaimPredicate) GetQueryId() string {
+	if x != nil {
+		return x.QueryId
+	}
+	return ""
+}
+
+func (x *PresentationTemplate_ClaimPredicate) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *PresentationTemplate_ClaimPredicate) GetOp() PresentationTemplate_ClaimPredicate_Op {
+	if x != nil {
+		return x.Op
+	}
+	return PresentationTemplate_ClaimPredicate_OP_UNSPECIFIED
+}
+
+func (x *PresentationTemplate_ClaimPredicate) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
 var File_vca_discovery_v1_discovery_proto protoreflect.FileDescriptor
 
 const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
@@ -1490,7 +1848,8 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x06format\x18\x03 \x01(\tR\x06format\x12\x14\n" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x1c\n" +
 	"\tmandatory\x18\x05 \x01(\bR\tmandatory\x127\n" +
-	"\x17selectively_disclosable\x18\x06 \x01(\bR\x16selectivelyDisclosable\"\xfe\x03\n" +
+	"\x17selectively_disclosable\x18\x06 \x01(\bR\x16selectivelyDisclosable\"\x95\n" +
+	"\n" +
 	"\x14PresentationTemplate\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x05R\aversion\x12!\n" +
@@ -1502,13 +1861,40 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\n" +
 	"created_by\x18\b \x01(\tR\tcreatedBy\x129\n" +
 	"\n" +
-	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x1a\xa1\x01\n" +
+	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x122\n" +
+	"\x04kind\x18\n" +
+	" \x01(\x0e2\x1e.vca.discovery.v1.TemplateKindR\x04kind\x12U\n" +
+	"\n" +
+	"predicates\x18\v \x03(\v25.vca.discovery.v1.PresentationTemplate.ClaimPredicateR\n" +
+	"predicates\x124\n" +
+	"\x16require_trusted_issuer\x18\f \x01(\bR\x14requireTrustedIssuer\x12%\n" +
+	"\x0erequire_status\x18\r \x01(\bR\rrequireStatus\x12\"\n" +
+	"\rpolicy_set_id\x18\x0e \x01(\tR\vpolicySetId\x1a\xbd\x02\n" +
 	"\x0fCredentialQuery\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12-\n" +
 	"\x06format\x18\x03 \x01(\x0e2\x15.vca.common.v1.FormatR\x06format\x12\x16\n" +
 	"\x06claims\x18\x04 \x03(\tR\x06claims\x12\x18\n" +
-	"\aissuers\x18\x05 \x03(\tR\aissuers\"=\n" +
+	"\aissuers\x18\x05 \x03(\tR\aissuers\x12J\n" +
+	"\x06values\x18\x06 \x03(\v22.vca.discovery.v1.PresentationTemplate.ClaimValuesR\x06values\x12N\n" +
+	"\n" +
+	"claim_sets\x18\a \x03(\v2/.vca.discovery.v1.PresentationTemplate.ClaimSetR\tclaimSets\x1a9\n" +
+	"\vClaimValues\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06values\x18\x02 \x03(\tR\x06values\x1a\"\n" +
+	"\bClaimSet\x12\x16\n" +
+	"\x06claims\x18\x01 \x03(\tR\x06claims\x1a\x8d\x02\n" +
+	"\x0eClaimPredicate\x12\x19\n" +
+	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12H\n" +
+	"\x02op\x18\x03 \x01(\x0e28.vca.discovery.v1.PresentationTemplate.ClaimPredicate.OpR\x02op\x12\x14\n" +
+	"\x05value\x18\x04 \x01(\tR\x05value\"l\n" +
+	"\x02Op\x12\x12\n" +
+	"\x0eOP_UNSPECIFIED\x10\x00\x12\x12\n" +
+	"\x0eOP_DATE_BEFORE\x10\x01\x12\x11\n" +
+	"\rOP_DATE_AFTER\x10\x02\x12\x15\n" +
+	"\x11OP_AT_LEAST_YEARS\x10\x03\x12\x14\n" +
+	"\x10OP_AT_MOST_YEARS\x10\x04\"=\n" +
 	"\fCrawlRequest\x12-\n" +
 	"\x12credential_issuers\x18\x01 \x03(\tR\x11credentialIssuers\"\xe4\x01\n" +
 	"\rCrawlResponse\x12\x18\n" +
@@ -1561,7 +1947,12 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x16VersionTemplateRequest\x12B\n" +
 	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate\"]\n" +
 	"\x17VersionTemplateResponse\x12B\n" +
-	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate2\xf2\x06\n" +
+	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate*u\n" +
+	"\fTemplateKind\x12\x1d\n" +
+	"\x19TEMPLATE_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12TEMPLATE_KIND_DCQL\x10\x01\x12\x14\n" +
+	"\x10TEMPLATE_KIND_PE\x10\x02\x12\x18\n" +
+	"\x14TEMPLATE_KIND_NATIVE\x10\x032\xf2\x06\n" +
 	"\x10DiscoveryService\x12H\n" +
 	"\x05Crawl\x12\x1e.vca.discovery.v1.CrawlRequest\x1a\x1f.vca.discovery.v1.CrawlResponse\x12Z\n" +
 	"\vListIssuers\x12$.vca.discovery.v1.ListIssuersRequest\x1a%.vca.discovery.v1.ListIssuersResponse\x12r\n" +
@@ -1586,88 +1977,99 @@ func file_vca_discovery_v1_discovery_proto_rawDescGZIP() []byte {
 	return file_vca_discovery_v1_discovery_proto_rawDescData
 }
 
-var file_vca_discovery_v1_discovery_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_vca_discovery_v1_discovery_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_vca_discovery_v1_discovery_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_vca_discovery_v1_discovery_proto_goTypes = []any{
-	(*Issuer)(nil),                               // 0: vca.discovery.v1.Issuer
-	(*CredentialType)(nil),                       // 1: vca.discovery.v1.CredentialType
-	(*Field)(nil),                                // 2: vca.discovery.v1.Field
-	(*PresentationTemplate)(nil),                 // 3: vca.discovery.v1.PresentationTemplate
-	(*CrawlRequest)(nil),                         // 4: vca.discovery.v1.CrawlRequest
-	(*CrawlResponse)(nil),                        // 5: vca.discovery.v1.CrawlResponse
-	(*ListIssuersRequest)(nil),                   // 6: vca.discovery.v1.ListIssuersRequest
-	(*ListIssuersResponse)(nil),                  // 7: vca.discovery.v1.ListIssuersResponse
-	(*ListCredentialTypesRequest)(nil),           // 8: vca.discovery.v1.ListCredentialTypesRequest
-	(*ListCredentialTypesResponse)(nil),          // 9: vca.discovery.v1.ListCredentialTypesResponse
-	(*GetFieldsRequest)(nil),                     // 10: vca.discovery.v1.GetFieldsRequest
-	(*GetFieldsResponse)(nil),                    // 11: vca.discovery.v1.GetFieldsResponse
-	(*CreateTemplateRequest)(nil),                // 12: vca.discovery.v1.CreateTemplateRequest
-	(*CreateTemplateResponse)(nil),               // 13: vca.discovery.v1.CreateTemplateResponse
-	(*ListTemplatesRequest)(nil),                 // 14: vca.discovery.v1.ListTemplatesRequest
-	(*ListTemplatesResponse)(nil),                // 15: vca.discovery.v1.ListTemplatesResponse
-	(*GetTemplateRequest)(nil),                   // 16: vca.discovery.v1.GetTemplateRequest
-	(*DeleteTemplateRequest)(nil),                // 17: vca.discovery.v1.DeleteTemplateRequest
-	(*DeleteTemplateResponse)(nil),               // 18: vca.discovery.v1.DeleteTemplateResponse
-	(*GetTemplateResponse)(nil),                  // 19: vca.discovery.v1.GetTemplateResponse
-	(*VersionTemplateRequest)(nil),               // 20: vca.discovery.v1.VersionTemplateRequest
-	(*VersionTemplateResponse)(nil),              // 21: vca.discovery.v1.VersionTemplateResponse
-	(*PresentationTemplate_CredentialQuery)(nil), // 22: vca.discovery.v1.PresentationTemplate.CredentialQuery
-	nil,                                 // 23: vca.discovery.v1.CrawlResponse.FailedEntry
-	(v1.TrustLookupResponse_Outcome)(0), // 24: vca.trust.v1.TrustLookupResponse.Outcome
-	(*timestamppb.Timestamp)(nil),       // 25: google.protobuf.Timestamp
-	(v11.Format)(0),                     // 26: vca.common.v1.Format
-	(*v12.Display)(nil),                 // 27: vca.schema.v1.Display
-	(*v11.Pagination)(nil),              // 28: vca.common.v1.Pagination
-	(*v11.PageResult)(nil),              // 29: vca.common.v1.PageResult
+	(TemplateKind)(0), // 0: vca.discovery.v1.TemplateKind
+	(PresentationTemplate_ClaimPredicate_Op)(0), // 1: vca.discovery.v1.PresentationTemplate.ClaimPredicate.Op
+	(*Issuer)(nil),                               // 2: vca.discovery.v1.Issuer
+	(*CredentialType)(nil),                       // 3: vca.discovery.v1.CredentialType
+	(*Field)(nil),                                // 4: vca.discovery.v1.Field
+	(*PresentationTemplate)(nil),                 // 5: vca.discovery.v1.PresentationTemplate
+	(*CrawlRequest)(nil),                         // 6: vca.discovery.v1.CrawlRequest
+	(*CrawlResponse)(nil),                        // 7: vca.discovery.v1.CrawlResponse
+	(*ListIssuersRequest)(nil),                   // 8: vca.discovery.v1.ListIssuersRequest
+	(*ListIssuersResponse)(nil),                  // 9: vca.discovery.v1.ListIssuersResponse
+	(*ListCredentialTypesRequest)(nil),           // 10: vca.discovery.v1.ListCredentialTypesRequest
+	(*ListCredentialTypesResponse)(nil),          // 11: vca.discovery.v1.ListCredentialTypesResponse
+	(*GetFieldsRequest)(nil),                     // 12: vca.discovery.v1.GetFieldsRequest
+	(*GetFieldsResponse)(nil),                    // 13: vca.discovery.v1.GetFieldsResponse
+	(*CreateTemplateRequest)(nil),                // 14: vca.discovery.v1.CreateTemplateRequest
+	(*CreateTemplateResponse)(nil),               // 15: vca.discovery.v1.CreateTemplateResponse
+	(*ListTemplatesRequest)(nil),                 // 16: vca.discovery.v1.ListTemplatesRequest
+	(*ListTemplatesResponse)(nil),                // 17: vca.discovery.v1.ListTemplatesResponse
+	(*GetTemplateRequest)(nil),                   // 18: vca.discovery.v1.GetTemplateRequest
+	(*DeleteTemplateRequest)(nil),                // 19: vca.discovery.v1.DeleteTemplateRequest
+	(*DeleteTemplateResponse)(nil),               // 20: vca.discovery.v1.DeleteTemplateResponse
+	(*GetTemplateResponse)(nil),                  // 21: vca.discovery.v1.GetTemplateResponse
+	(*VersionTemplateRequest)(nil),               // 22: vca.discovery.v1.VersionTemplateRequest
+	(*VersionTemplateResponse)(nil),              // 23: vca.discovery.v1.VersionTemplateResponse
+	(*PresentationTemplate_CredentialQuery)(nil), // 24: vca.discovery.v1.PresentationTemplate.CredentialQuery
+	(*PresentationTemplate_ClaimValues)(nil),     // 25: vca.discovery.v1.PresentationTemplate.ClaimValues
+	(*PresentationTemplate_ClaimSet)(nil),        // 26: vca.discovery.v1.PresentationTemplate.ClaimSet
+	(*PresentationTemplate_ClaimPredicate)(nil),  // 27: vca.discovery.v1.PresentationTemplate.ClaimPredicate
+	nil,                                 // 28: vca.discovery.v1.CrawlResponse.FailedEntry
+	(v1.TrustLookupResponse_Outcome)(0), // 29: vca.trust.v1.TrustLookupResponse.Outcome
+	(*timestamppb.Timestamp)(nil),       // 30: google.protobuf.Timestamp
+	(v11.Format)(0),                     // 31: vca.common.v1.Format
+	(*v12.Display)(nil),                 // 32: vca.schema.v1.Display
+	(*v11.Pagination)(nil),              // 33: vca.common.v1.Pagination
+	(*v11.PageResult)(nil),              // 34: vca.common.v1.PageResult
 }
 var file_vca_discovery_v1_discovery_proto_depIdxs = []int32{
-	24, // 0: vca.discovery.v1.Issuer.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	25, // 1: vca.discovery.v1.Issuer.crawled_at:type_name -> google.protobuf.Timestamp
-	26, // 2: vca.discovery.v1.CredentialType.format:type_name -> vca.common.v1.Format
-	27, // 3: vca.discovery.v1.CredentialType.display:type_name -> vca.schema.v1.Display
-	22, // 4: vca.discovery.v1.PresentationTemplate.queries:type_name -> vca.discovery.v1.PresentationTemplate.CredentialQuery
-	25, // 5: vca.discovery.v1.PresentationTemplate.created_at:type_name -> google.protobuf.Timestamp
-	23, // 6: vca.discovery.v1.CrawlResponse.failed:type_name -> vca.discovery.v1.CrawlResponse.FailedEntry
-	25, // 7: vca.discovery.v1.CrawlResponse.crawled_at:type_name -> google.protobuf.Timestamp
-	28, // 8: vca.discovery.v1.ListIssuersRequest.page:type_name -> vca.common.v1.Pagination
-	0,  // 9: vca.discovery.v1.ListIssuersResponse.issuers:type_name -> vca.discovery.v1.Issuer
-	29, // 10: vca.discovery.v1.ListIssuersResponse.page:type_name -> vca.common.v1.PageResult
-	28, // 11: vca.discovery.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
-	26, // 12: vca.discovery.v1.ListCredentialTypesRequest.format:type_name -> vca.common.v1.Format
-	1,  // 13: vca.discovery.v1.ListCredentialTypesResponse.types:type_name -> vca.discovery.v1.CredentialType
-	29, // 14: vca.discovery.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
-	2,  // 15: vca.discovery.v1.GetFieldsResponse.fields:type_name -> vca.discovery.v1.Field
-	3,  // 16: vca.discovery.v1.CreateTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
-	3,  // 17: vca.discovery.v1.CreateTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
-	28, // 18: vca.discovery.v1.ListTemplatesRequest.page:type_name -> vca.common.v1.Pagination
-	3,  // 19: vca.discovery.v1.ListTemplatesResponse.templates:type_name -> vca.discovery.v1.PresentationTemplate
-	29, // 20: vca.discovery.v1.ListTemplatesResponse.page:type_name -> vca.common.v1.PageResult
-	3,  // 21: vca.discovery.v1.GetTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
-	3,  // 22: vca.discovery.v1.VersionTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
-	3,  // 23: vca.discovery.v1.VersionTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
-	26, // 24: vca.discovery.v1.PresentationTemplate.CredentialQuery.format:type_name -> vca.common.v1.Format
-	4,  // 25: vca.discovery.v1.DiscoveryService.Crawl:input_type -> vca.discovery.v1.CrawlRequest
-	6,  // 26: vca.discovery.v1.DiscoveryService.ListIssuers:input_type -> vca.discovery.v1.ListIssuersRequest
-	8,  // 27: vca.discovery.v1.DiscoveryService.ListCredentialTypes:input_type -> vca.discovery.v1.ListCredentialTypesRequest
-	10, // 28: vca.discovery.v1.DiscoveryService.GetFields:input_type -> vca.discovery.v1.GetFieldsRequest
-	12, // 29: vca.discovery.v1.DiscoveryService.CreateTemplate:input_type -> vca.discovery.v1.CreateTemplateRequest
-	14, // 30: vca.discovery.v1.DiscoveryService.ListTemplates:input_type -> vca.discovery.v1.ListTemplatesRequest
-	16, // 31: vca.discovery.v1.DiscoveryService.GetTemplate:input_type -> vca.discovery.v1.GetTemplateRequest
-	20, // 32: vca.discovery.v1.DiscoveryService.VersionTemplate:input_type -> vca.discovery.v1.VersionTemplateRequest
-	17, // 33: vca.discovery.v1.DiscoveryService.DeleteTemplate:input_type -> vca.discovery.v1.DeleteTemplateRequest
-	5,  // 34: vca.discovery.v1.DiscoveryService.Crawl:output_type -> vca.discovery.v1.CrawlResponse
-	7,  // 35: vca.discovery.v1.DiscoveryService.ListIssuers:output_type -> vca.discovery.v1.ListIssuersResponse
-	9,  // 36: vca.discovery.v1.DiscoveryService.ListCredentialTypes:output_type -> vca.discovery.v1.ListCredentialTypesResponse
-	11, // 37: vca.discovery.v1.DiscoveryService.GetFields:output_type -> vca.discovery.v1.GetFieldsResponse
-	13, // 38: vca.discovery.v1.DiscoveryService.CreateTemplate:output_type -> vca.discovery.v1.CreateTemplateResponse
-	15, // 39: vca.discovery.v1.DiscoveryService.ListTemplates:output_type -> vca.discovery.v1.ListTemplatesResponse
-	19, // 40: vca.discovery.v1.DiscoveryService.GetTemplate:output_type -> vca.discovery.v1.GetTemplateResponse
-	21, // 41: vca.discovery.v1.DiscoveryService.VersionTemplate:output_type -> vca.discovery.v1.VersionTemplateResponse
-	18, // 42: vca.discovery.v1.DiscoveryService.DeleteTemplate:output_type -> vca.discovery.v1.DeleteTemplateResponse
-	34, // [34:43] is the sub-list for method output_type
-	25, // [25:34] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	29, // 0: vca.discovery.v1.Issuer.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	30, // 1: vca.discovery.v1.Issuer.crawled_at:type_name -> google.protobuf.Timestamp
+	31, // 2: vca.discovery.v1.CredentialType.format:type_name -> vca.common.v1.Format
+	32, // 3: vca.discovery.v1.CredentialType.display:type_name -> vca.schema.v1.Display
+	24, // 4: vca.discovery.v1.PresentationTemplate.queries:type_name -> vca.discovery.v1.PresentationTemplate.CredentialQuery
+	30, // 5: vca.discovery.v1.PresentationTemplate.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 6: vca.discovery.v1.PresentationTemplate.kind:type_name -> vca.discovery.v1.TemplateKind
+	27, // 7: vca.discovery.v1.PresentationTemplate.predicates:type_name -> vca.discovery.v1.PresentationTemplate.ClaimPredicate
+	28, // 8: vca.discovery.v1.CrawlResponse.failed:type_name -> vca.discovery.v1.CrawlResponse.FailedEntry
+	30, // 9: vca.discovery.v1.CrawlResponse.crawled_at:type_name -> google.protobuf.Timestamp
+	33, // 10: vca.discovery.v1.ListIssuersRequest.page:type_name -> vca.common.v1.Pagination
+	2,  // 11: vca.discovery.v1.ListIssuersResponse.issuers:type_name -> vca.discovery.v1.Issuer
+	34, // 12: vca.discovery.v1.ListIssuersResponse.page:type_name -> vca.common.v1.PageResult
+	33, // 13: vca.discovery.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
+	31, // 14: vca.discovery.v1.ListCredentialTypesRequest.format:type_name -> vca.common.v1.Format
+	3,  // 15: vca.discovery.v1.ListCredentialTypesResponse.types:type_name -> vca.discovery.v1.CredentialType
+	34, // 16: vca.discovery.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
+	4,  // 17: vca.discovery.v1.GetFieldsResponse.fields:type_name -> vca.discovery.v1.Field
+	5,  // 18: vca.discovery.v1.CreateTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
+	5,  // 19: vca.discovery.v1.CreateTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
+	33, // 20: vca.discovery.v1.ListTemplatesRequest.page:type_name -> vca.common.v1.Pagination
+	5,  // 21: vca.discovery.v1.ListTemplatesResponse.templates:type_name -> vca.discovery.v1.PresentationTemplate
+	34, // 22: vca.discovery.v1.ListTemplatesResponse.page:type_name -> vca.common.v1.PageResult
+	5,  // 23: vca.discovery.v1.GetTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
+	5,  // 24: vca.discovery.v1.VersionTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
+	5,  // 25: vca.discovery.v1.VersionTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
+	31, // 26: vca.discovery.v1.PresentationTemplate.CredentialQuery.format:type_name -> vca.common.v1.Format
+	25, // 27: vca.discovery.v1.PresentationTemplate.CredentialQuery.values:type_name -> vca.discovery.v1.PresentationTemplate.ClaimValues
+	26, // 28: vca.discovery.v1.PresentationTemplate.CredentialQuery.claim_sets:type_name -> vca.discovery.v1.PresentationTemplate.ClaimSet
+	1,  // 29: vca.discovery.v1.PresentationTemplate.ClaimPredicate.op:type_name -> vca.discovery.v1.PresentationTemplate.ClaimPredicate.Op
+	6,  // 30: vca.discovery.v1.DiscoveryService.Crawl:input_type -> vca.discovery.v1.CrawlRequest
+	8,  // 31: vca.discovery.v1.DiscoveryService.ListIssuers:input_type -> vca.discovery.v1.ListIssuersRequest
+	10, // 32: vca.discovery.v1.DiscoveryService.ListCredentialTypes:input_type -> vca.discovery.v1.ListCredentialTypesRequest
+	12, // 33: vca.discovery.v1.DiscoveryService.GetFields:input_type -> vca.discovery.v1.GetFieldsRequest
+	14, // 34: vca.discovery.v1.DiscoveryService.CreateTemplate:input_type -> vca.discovery.v1.CreateTemplateRequest
+	16, // 35: vca.discovery.v1.DiscoveryService.ListTemplates:input_type -> vca.discovery.v1.ListTemplatesRequest
+	18, // 36: vca.discovery.v1.DiscoveryService.GetTemplate:input_type -> vca.discovery.v1.GetTemplateRequest
+	22, // 37: vca.discovery.v1.DiscoveryService.VersionTemplate:input_type -> vca.discovery.v1.VersionTemplateRequest
+	19, // 38: vca.discovery.v1.DiscoveryService.DeleteTemplate:input_type -> vca.discovery.v1.DeleteTemplateRequest
+	7,  // 39: vca.discovery.v1.DiscoveryService.Crawl:output_type -> vca.discovery.v1.CrawlResponse
+	9,  // 40: vca.discovery.v1.DiscoveryService.ListIssuers:output_type -> vca.discovery.v1.ListIssuersResponse
+	11, // 41: vca.discovery.v1.DiscoveryService.ListCredentialTypes:output_type -> vca.discovery.v1.ListCredentialTypesResponse
+	13, // 42: vca.discovery.v1.DiscoveryService.GetFields:output_type -> vca.discovery.v1.GetFieldsResponse
+	15, // 43: vca.discovery.v1.DiscoveryService.CreateTemplate:output_type -> vca.discovery.v1.CreateTemplateResponse
+	17, // 44: vca.discovery.v1.DiscoveryService.ListTemplates:output_type -> vca.discovery.v1.ListTemplatesResponse
+	21, // 45: vca.discovery.v1.DiscoveryService.GetTemplate:output_type -> vca.discovery.v1.GetTemplateResponse
+	23, // 46: vca.discovery.v1.DiscoveryService.VersionTemplate:output_type -> vca.discovery.v1.VersionTemplateResponse
+	20, // 47: vca.discovery.v1.DiscoveryService.DeleteTemplate:output_type -> vca.discovery.v1.DeleteTemplateResponse
+	39, // [39:48] is the sub-list for method output_type
+	30, // [30:39] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_vca_discovery_v1_discovery_proto_init() }
@@ -1680,13 +2082,14 @@ func file_vca_discovery_v1_discovery_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_discovery_v1_discovery_proto_rawDesc), len(file_vca_discovery_v1_discovery_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   24,
+			NumEnums:      2,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_vca_discovery_v1_discovery_proto_goTypes,
 		DependencyIndexes: file_vca_discovery_v1_discovery_proto_depIdxs,
+		EnumInfos:         file_vca_discovery_v1_discovery_proto_enumTypes,
 		MessageInfos:      file_vca_discovery_v1_discovery_proto_msgTypes,
 	}.Build()
 	File_vca_discovery_v1_discovery_proto = out.File

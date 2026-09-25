@@ -114,7 +114,7 @@ func Sections(role commonv1.Role) []Section {
 		return []Section{{Pages: []Page{
 			{Path: "/portal/", Key: "common.overview.label"},
 			{Path: "/discovery/", Key: "verifier.nav.discover.label"},
-			{Path: "/discovery/templates", Key: "verifier.nav.dcql.label"},
+			{Path: "/discovery/dcql/", Key: "verifier.nav.dcql.label"},
 			{Path: "/discovery/pe/", Key: "verifier.nav.pe.label"},
 			{Path: "/scan/", Key: "verifier.nav.requests.label"},
 			{Path: "/portal/results/", Key: "verifier.nav.results.label"},

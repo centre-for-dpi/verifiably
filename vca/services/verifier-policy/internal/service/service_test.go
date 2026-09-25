@@ -282,6 +282,14 @@ func TestPolicySetErrors(t *testing.T) {
 	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("want a missing id error, got %v", err)
 	}
+	// A second set with the same id answers already exists, so a caller
+	// can take a new version instead.
+	for range 2 {
+		_, err := f.svc.CreatePolicySet(ctx, connect.NewRequest(&policyv1.CreatePolicySetRequest{PolicySet: &policyv1.PolicySet{Id: "twice"}}))
+		if err != nil && connect.CodeOf(err) != connect.CodeAlreadyExists {
+			t.Fatalf("want already exists, got %v", err)
+		}
+	}
 	if _, err := f.svc.UpdatePolicySet(ctx, connect.NewRequest(&policyv1.UpdatePolicySetRequest{
 		PolicySet: &policyv1.PolicySet{Id: "missing"},
 	})); connect.CodeOf(err) != connect.CodeNotFound {
@@ -364,5 +372,38 @@ func TestListBackendError(t *testing.T) {
 	if _, err := svc.DeletePolicySet(context.Background(),
 		connect.NewRequest(&policyv1.DeletePolicySetRequest{Id: "a"})); connect.CodeOf(err) != connect.CodeInternal {
 		t.Fatalf("want an internal error, got %v", err)
+	}
+}
+
+// TestClaimPredicateCheckThroughEvaluate stores a set with a date rule
+// and enforces it at evaluation (ADR-042 decision 3): a presentation
+// without the claim fails the blocking rule.
+func TestClaimPredicateCheckThroughEvaluate(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	if _, err := f.svc.CreatePolicySet(ctx, connect.NewRequest(&policyv1.CreatePolicySetRequest{
+		PolicySet: &policyv1.PolicySet{Id: "query-licence", DisplayName: "Driving licence check",
+			Checks: []*policyv1.PolicySet_Check{{Name: policy.NameClaimPredicate, Blocking: true,
+				Params: map[string]string{"path": "birth_date", "op": policy.OpAtLeastYears, "value": "18"}}}},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := f.svc.Evaluate(ctx, connect.NewRequest(&policyv1.EvaluateRequest{
+		Presentation: f.presentation(t, "verifier", "n1"), PolicySetId: "query-licence", Nonce: "n1",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, c := range resp.Msg.GetChecks() {
+		if c.GetName() == policy.NameClaimPredicate {
+			found = true
+			if c.GetOutcome() != policyv1.Outcome_OUTCOME_FAIL || c.GetEvidence()["op"] != policy.OpAtLeastYears {
+				t.Errorf("predicate result %+v", c)
+			}
+		}
+	}
+	if !found || resp.Msg.GetVerdict() != policyv1.EvaluateResponse_VERDICT_INVALID {
+		t.Fatalf("found %v verdict %s, want the failed rule and invalid", found, resp.Msg.GetVerdict())
 	}
 }

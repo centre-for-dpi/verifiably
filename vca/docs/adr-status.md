@@ -467,9 +467,9 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-042 | 1 A template has a kind | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
-| ADR-042 | 2 A DCQL builder with a live query view | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
-| ADR-042 | 3 A claim predicate policy check | Not started | `vca/services/verifier-policy` | Proposed record. No work exists yet. |
+| ADR-042 | 1 A template has a kind | Partial | `vca/proto/vca/discovery/v1`, `vca/services/verifier-discovery/internal/template` | `TemplateKind` holds DCQL, PE, and native. The service stores DCQL templates. PE follows in P5-03. |
+| ADR-042 | 2 A DCQL builder with a live query view | Done | `vca/core/dcql`, `vca/services/verifier-discovery/internal/portal` | Values, claim sets, and credential sets in `core/dcql`. The preview works without JavaScript. |
+| ADR-042 | 3 A claim predicate policy check | Done | `vca/core/policy`, `vca/services/verifier-discovery/internal/service` | The rules of a query become the policy set `query-<id>`. |
 | ADR-042 | 4 PE authoring, validation, and conversion | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
 | ADR-042 | 5 A pure core package for PE | Not started | `vca/core/pex` | Proposed record. No work exists yet. |
 

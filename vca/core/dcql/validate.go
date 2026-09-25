@@ -3,7 +3,9 @@
 package dcql
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -109,6 +111,9 @@ func validateClaims(c CredentialQuery) (map[string]bool, error) {
 				return nil, fmt.Errorf("dcql: claim %d of %q has the negative array index %d", i+1, c.ID, s.Index)
 			}
 		}
+		if err := validateValues(c.ID, i, cl.Values); err != nil {
+			return nil, err
+		}
 		if cl.ID == "" {
 			continue
 		}
@@ -135,13 +140,50 @@ func validateClaimSets(c CredentialQuery, ids map[string]bool) error {
 		if len(set) == 0 {
 			return fmt.Errorf("dcql: a claim set of %q is empty", c.ID)
 		}
+		seen := map[string]bool{}
 		for _, id := range set {
 			if !ids[id] {
 				return fmt.Errorf("dcql: the claim set of %q names the unknown claim id %q", c.ID, id)
 			}
+			if seen[id] {
+				return fmt.Errorf("dcql: a claim set of %q names the claim id %q twice", c.ID, id)
+			}
+			seen[id] = true
 		}
 	}
 	return nil
+}
+
+// validateValues checks the accepted values of one claim. The
+// specification allows strings, integers, and booleans, and a list that
+// is present holds at least one value.
+func validateValues(credential string, index int, values []any) error {
+	if values == nil {
+		return nil
+	}
+	if len(values) == 0 {
+		return fmt.Errorf("dcql: claim %d of %q has an empty value list", index+1, credential)
+	}
+	for _, v := range values {
+		if !scalar(v) {
+			return fmt.Errorf("dcql: claim %d of %q has the value %v, use a string, a whole number, or a boolean", index+1, credential, v)
+		}
+	}
+	return nil
+}
+
+// scalar reports whether v is a string, a whole number, or a boolean.
+func scalar(v any) bool {
+	switch x := v.(type) {
+	case string, bool, int, int64:
+		return true
+	case float64:
+		return x == math.Trunc(x)
+	case json.Number:
+		_, err := x.Int64()
+		return err == nil
+	}
+	return false
 }
 
 // validateSets checks the credential sets against the credential ids.
@@ -154,10 +196,15 @@ func validateSets(q Query, ids map[string]bool) error {
 			if len(option) == 0 {
 				return fmt.Errorf("dcql: an option of credential set %d is empty", i+1)
 			}
+			seen := map[string]bool{}
 			for _, id := range option {
 				if !ids[id] {
 					return fmt.Errorf("dcql: credential set %d names the unknown credential query id %q", i+1, id)
 				}
+				if seen[id] {
+					return fmt.Errorf("dcql: an option of credential set %d names %q twice", i+1, id)
+				}
+				seen[id] = true
 			}
 		}
 	}

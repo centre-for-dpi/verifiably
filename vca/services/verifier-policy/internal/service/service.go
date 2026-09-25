@@ -211,6 +211,8 @@ func (s *Service) write(ctx context.Context, in *policyv1.PolicySet,
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, sets.ErrBadID):
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, sets.ErrExists):
+		return nil, connect.NewError(connect.CodeAlreadyExists, err)
 	case err != nil:
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

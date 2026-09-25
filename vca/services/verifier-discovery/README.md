@@ -40,6 +40,8 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_DISCOVERY_STATE_DIR` | The directory of the catalogue and the templates. | empty: in memory |
 | `VCA_DISCOVERY_TRUST_URL` | The base URL of the trust registry. | empty: the crawler is off |
 | `VCA_DISCOVERY_TRUST_TIMEOUT` | The time limit of one trust registry call. | `10s` |
+| `VCA_DISCOVERY_POLICY_URL` | The base URL of the verifier policy service. The rules of a query become a policy set there. | empty: a query with a rule is refused |
+| `VCA_DISCOVERY_POLICY_TIMEOUT` | The time limit of one policy service call. | `10s` |
 | `VCA_DISCOVERY_CRAWL_INTERVAL` | The time between two scheduled crawls. | `1h`, `0s` turns the job off |
 | `VCA_DISCOVERY_CACHE_TTL` | How long a fetched document stays fresh. | `15m` |
 | `VCA_DISCOVERY_FETCH_TIMEOUT` | The time limit of one issuer fetch. | `10s` |

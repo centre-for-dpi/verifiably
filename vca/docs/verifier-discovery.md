@@ -86,8 +86,36 @@ the reader, the writer, and the rules of OpenID4VP 1.0.
 | `format` | One of `vc+sd-jwt`, `dc+sd-jwt`, `jwt_vc_json`, `ldp_vc`, `mso_mdoc`. |
 | `meta` | `vct_values` for an SD-JWT VC, `type_values` for a W3C credential, `doctype_value` for a mobile document. |
 | `claims` | Each claim has a path. A path segment is a name, an array index, or null for every element. A mobile document path has two segments: the namespace and the name. |
-| `claim_sets` | Each entry names a claim id the credential query defines. |
-| `credential_sets` | Each option names a credential query id the query defines. |
+| `claims[].values` | A list of at least one accepted value. Each value is a string, a whole number, or a boolean. |
+| `claim_sets` | Each entry names a claim id the credential query defines, each id once. |
+| `credential_sets` | Each option names a credential query id the query defines, each id once. |
+
+A template has a kind (ADR-042 decision 1). The service stores DCQL
+templates now. The kinds PE and native wait for their pages.
+
+## The DCQL builder
+
+The page at `/discovery/dcql/` follows board Verifier-DCQL (ADR-042
+decision 2). Staff pick a credential type of the catalogue and tick its
+claims. A claim takes a list of accepted values, or a date rule when it
+holds a date. Two trust rules ask for an issuer on the trust list and a
+status check. The overview links each catalogue type to the builder.
+
+The page works without JavaScript. The form posts to the page, and the
+server draws the `dcql_query` of the form on each post. With htmx, a
+change of the form posts to `/discovery/dcql/preview`. The answer swaps
+the preview in place. A change of the credential type also swaps the
+claims. "Save as query" stores exactly the query the preview shows.
+
+DCQL cannot hold a date range. So a date rule and the trust rules
+become a policy set of the query (ADR-042 decision 3). `CreateTemplate`
+and `VersionTemplate` write the set `query-<template id>`. The policy
+service at `VCA_DISCOVERY_POLICY_URL` keeps it. The set holds `trust_chain`,
+`status` with `fail_mode` `closed`, and one `claim_predicate` check for
+each date rule, every one blocking. The template names the set in
+`policy_set_id`. A query with a rule and no policy service answers
+`FailedPrecondition`, and a failed write stores nothing.
+`DeleteTemplate` removes the set too. The query page lists the rules.
 
 The service also generates a Presentation Exchange 2.0 definition from
 the same query, because walt.id 0.18 still needs the older language. One
@@ -125,6 +153,9 @@ structural WCAG 2.2 checks of `ui/a11ytest`.
 | `GET /portal/fields` | The claims of one type. Each claim has a tick box. The form below them saves a template. |
 | `GET /portal/templates` | The template list. |
 | `GET /portal/templates/{id}` | One template with its claims, its DCQL query, the generated older definition, and the delete action. |
+| `GET /portal/dcql/` | The DCQL builder with the live query preview. |
+| `POST /portal/dcql/` | Draw the preview again, or save the query. |
+| `POST /portal/dcql/preview` | The preview fragment for htmx. |
 | `GET /portal/pe/` | The DIF Presentation Exchange 2.0 form of every saved query, for stacks that read only that form. |
 | `POST /portal/signout` | The sign out form of the user menu. |
 

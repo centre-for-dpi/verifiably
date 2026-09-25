@@ -16,6 +16,9 @@
 //	GET  /templates/{id}        one template with its DCQL and its history
 //	POST /templates/{id}/delete remove every version of one template
 //	GET  /pe/                   the DIF PE form of every saved query
+//	GET  /dcql/                 the DCQL builder (dcql.go)
+//	POST /dcql/                 draw the preview again, or save the query
+//	POST /dcql/preview          the preview fragment for htmx
 //	POST /signout               end the session at verifier-auth
 //
 // With a shell the pages sit in the verifier frame of
@@ -43,6 +46,7 @@ import (
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/catalog"
@@ -110,6 +114,9 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/templates/{id}", p.handle(p.templateDetail))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/templates/{id}/delete", p.handle(p.deleteTemplate))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/pe/{$}", p.handle(p.exchangeList))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/dcql/{$}", p.handle(p.dcqlPage))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/dcql/{$}", p.handle(p.dcqlPage))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/dcql/preview", p.handle(p.dcqlPreview))
 	if p.opts.SignOut != nil {
 		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
 	}
@@ -206,6 +213,7 @@ func (p *Portal) nav(current string) components.Nav {
 			{Href: p.opts.Prefix + "/", Text: "Issuers", Current: current == "issuers"},
 			{Href: p.opts.Prefix + "/types", Text: "Credential types", Current: current == "types"},
 			{Href: p.opts.Prefix + "/templates", Text: "Templates", Current: current == "templates"},
+			{Href: p.opts.Prefix + "/dcql/", Text: msg.T("verifier.nav.dcql.label"), Current: current == "dcql"},
 		},
 	}
 }
@@ -538,6 +546,7 @@ func (p *Portal) templateDetail(w http.ResponseWriter, r *http.Request) error {
 		Footer: fmt.Sprintf("Version %d, asks for %s", t.GetVersion(), queryText(t)),
 	})
 	claims := p.claimsTable(b, t)
+	rules := rulesTable(b, t)
 	query := b.add("json", components.JSON{ID: "dcql", Summary: "DCQL query the wallet receives", Open: true, Data: rawJSON(t.GetDcql())})
 	exchange := p.presentationExchange(b, t)
 	remove := b.add("button", components.Button{Text: "Delete template", Type: "submit", Variant: "danger"})
@@ -547,7 +556,7 @@ func (p *Portal) templateDetail(w http.ResponseWriter, r *http.Request) error {
 	return p.render(w, r, "templates", components.Page{
 		Title:       t.GetDisplayName(),
 		Description: "Read the stored presentation request and remove it when no service uses it.",
-		Content: components.Join(summary, claims, query, exchange,
+		Content: components.Join(summary, claims, rules, query, exchange,
 			form(r.Context(), p.opts.Prefix+"/templates/"+url.PathEscape(id)+"/delete", "post", remove)),
 		Toasts: notice(r.URL.Query().Get("notice")),
 	})

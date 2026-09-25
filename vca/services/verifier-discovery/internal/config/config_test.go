@@ -110,3 +110,17 @@ func TestLoadPeers(t *testing.T) {
 		t.Error("a bad peer list loaded")
 	}
 }
+
+// TestLoadPolicy reads the policy service of the query rules.
+func TestLoadPolicy(t *testing.T) {
+	c, err := config.Load(env(map[string]string{"VCA_DISCOVERY_POLICY_URL": "http://policy:8086/"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PolicyURL != "http://policy:8086" || c.PolicyTimeout != 10*time.Second {
+		t.Errorf("policy = %q %s", c.PolicyURL, c.PolicyTimeout)
+	}
+	if _, err := config.Load(env(map[string]string{"VCA_DISCOVERY_POLICY_TIMEOUT": "0s"})); err == nil {
+		t.Error("a zero policy timeout loaded")
+	}
+}

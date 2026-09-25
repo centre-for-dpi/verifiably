@@ -60,6 +60,12 @@ type Config struct {
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
 	// CatalogMaxAge is the Cache-Control max-age of GET /catalog.
 	CatalogMaxAge time.Duration `env:"CATALOG_MAX_AGE" default:"5m"`
+	// PolicyURL is the base URL of the verifier policy service. The rules
+	// of a query become a policy set there (ADR-042 decision 3). Empty
+	// refuses a query with a rule.
+	PolicyURL string `env:"POLICY_URL"`
+	// PolicyTimeout bounds one call to the policy service.
+	PolicyTimeout time.Duration `env:"POLICY_TIMEOUT" default:"10s"`
 	// PortalPrefix is the URL prefix of the staff pages.
 	PortalPrefix string `env:"PORTAL_PREFIX" default:"/portal"`
 	// Auth guards the staff pages with a session of verifier-auth
@@ -83,6 +89,7 @@ func Load(getenv func(string) string) (Config, error) {
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	c.TrustURL = strings.TrimRight(c.TrustURL, "/")
+	c.PolicyURL = strings.TrimRight(c.PolicyURL, "/")
 	peers, err := topology.Parse(getenv(topology.Env))
 	if err != nil {
 		return Config{}, err
@@ -96,6 +103,9 @@ func (c Config) Check() error {
 	var problems []string
 	if c.TrustTimeout <= 0 {
 		problems = append(problems, Prefix+"TRUST_TIMEOUT must be positive")
+	}
+	if c.PolicyTimeout <= 0 {
+		problems = append(problems, Prefix+"POLICY_TIMEOUT must be positive")
 	}
 	if c.CrawlInterval < 0 {
 		problems = append(problems, Prefix+"CRAWL_INTERVAL must not be negative")

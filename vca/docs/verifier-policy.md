@@ -54,6 +54,7 @@ Everything else gives `VALID`.
 | `status` | no | Reads the status list entry of each credential. |
 | `trust_chain` | no | Looks each issuer up on the trust lists and checks the chain links. |
 | `schema` | no | Validates each credential against the schema it declares. |
+| `claim_predicate` | no | Checks a claim against a rule that DCQL cannot hold (ADR-042 decision 3). The parameters are `path`, `op`, `value`, and `type`. The operators are `before` and `after` a date, and `at_least_years` and `at_most_years` before the time of evaluation. A credential outside `type` does not apply. The check fails when no credential carries the claim. The evidence names the rule and never the claim value. |
 | `derived_proof` | no | Reserved for BBS selective disclosure (ADR-031 decision 2). It returns `SKIP` with the detail "reserved for BBS: not implemented". |
 
 A mandatory check always runs, and a `FAIL` of it always blocks

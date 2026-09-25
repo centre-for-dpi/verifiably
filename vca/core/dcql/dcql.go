@@ -376,22 +376,59 @@ type Selection struct {
 	Type string
 	// Claims holds the dotted claim paths.
 	Claims []string
+	// Values limits the accepted values of a claim, keyed by a dotted
+	// path of Claims. A value is a string, a whole number, or a boolean.
+	Values map[string][]any
+	// ClaimSets lists the acceptable combinations of claims, as dotted
+	// paths of Claims, in order of preference.
+	ClaimSets [][]string
 	// Issuers limits the accepted issuers. Empty accepts every trusted
 	// issuer.
 	Issuers []string
-	// Optional makes the credential optional in the credential set.
+	// Optional makes the credential optional in the credential set. A
+	// request with its own sets ignores it.
 	Optional bool
+}
+
+// Set is one acceptable combination of the credentials of a request.
+type Set struct {
+	// Options lists the acceptable combinations of selection ids, in
+	// order of preference. BuildRequest cleans the ids as it cleans the
+	// ids of the selections.
+	Options [][]string
+	// Required says whether the wallet must satisfy the set.
+	Required bool
+	// Purpose is the reason for the set. Empty takes the purpose of the
+	// request.
+	Purpose string
+}
+
+// Request is the whole query the verifier builds: the credentials, the
+// sets, and the purpose.
+type Request struct {
+	// Selections are the credentials, in order.
+	Selections []Selection
+	// Sets are the credential sets. Empty derives them from the Optional
+	// flag of each selection.
+	Sets []Set
+	// Purpose is the reason the verifier shows the citizen.
+	Purpose string
 }
 
 // Build turns selections into a query. purpose is the reason the verifier
 // shows the citizen. Build validates the result.
 func Build(selections []Selection, purpose string) (Query, error) {
-	if len(selections) == 0 {
+	return BuildRequest(Request{Selections: selections, Purpose: purpose})
+}
+
+// BuildRequest turns a request into a query and validates it.
+func BuildRequest(r Request) (Query, error) {
+	if len(r.Selections) == 0 {
 		return Query{}, fmt.Errorf("dcql: the request selects no credential")
 	}
 	var q Query
 	var required, optional []string
-	for i, sel := range selections {
+	for i, sel := range r.Selections {
 		c, err := buildCredential(sel, i)
 		if err != nil {
 			return Query{}, err
@@ -403,17 +440,44 @@ func Build(selections []Selection, purpose string) (Query, error) {
 		}
 		required = append(required, c.ID)
 	}
-	no := false
-	if len(required) > 0 {
-		q.CredentialSets = append(q.CredentialSets, CredentialSetQuery{Options: [][]string{required}, Purpose: purpose})
-	}
-	for _, id := range optional {
-		q.CredentialSets = append(q.CredentialSets, CredentialSetQuery{Options: [][]string{{id}}, Required: &no, Purpose: purpose})
+	switch {
+	case len(r.Sets) > 0:
+		for _, set := range r.Sets {
+			q.CredentialSets = append(q.CredentialSets, setOf(set, r.Purpose))
+		}
+	default:
+		no := false
+		if len(required) > 0 {
+			q.CredentialSets = append(q.CredentialSets, CredentialSetQuery{Options: [][]string{required}, Purpose: r.Purpose})
+		}
+		for _, id := range optional {
+			q.CredentialSets = append(q.CredentialSets, CredentialSetQuery{Options: [][]string{{id}}, Required: &no, Purpose: r.Purpose})
+		}
 	}
 	if err := Validate(q); err != nil {
 		return Query{}, err
 	}
 	return q, nil
+}
+
+// setOf turns one set of a request into a credential set query.
+func setOf(set Set, purpose string) CredentialSetQuery {
+	out := CredentialSetQuery{Purpose: set.Purpose}
+	if out.Purpose == "" {
+		out.Purpose = purpose
+	}
+	if !set.Required {
+		no := false
+		out.Required = &no
+	}
+	for _, option := range set.Options {
+		ids := make([]string, 0, len(option))
+		for _, id := range option {
+			ids = append(ids, CleanID(id))
+		}
+		out.Options = append(out.Options, ids)
+	}
+	return out
 }
 
 // buildCredential turns one selection into a credential query.
@@ -426,17 +490,48 @@ func buildCredential(sel Selection, position int) (CredentialQuery, error) {
 		id = "credential" + strconv.Itoa(position+1)
 	}
 	c := CredentialQuery{ID: id, Format: sel.Format, Meta: metaFor(sel.Format, sel.Type)}
+	ids := map[string]string{}
 	for _, value := range sel.Claims {
 		path, err := parseClaim(sel.Format, value)
 		if err != nil {
 			return CredentialQuery{}, err
 		}
-		c.Claims = append(c.Claims, ClaimQuery{ID: CleanID(path.String()), Path: path})
+		claim := ClaimQuery{ID: CleanID(path.String()), Path: path}
+		if values, ok := sel.Values[value]; ok {
+			claim.Values = values
+		}
+		ids[value] = claim.ID
+		c.Claims = append(c.Claims, claim)
+	}
+	for value := range sel.Values {
+		if _, ok := ids[value]; !ok {
+			return CredentialQuery{}, fmt.Errorf("dcql: the values name the claim %q, which the selection %q does not ask for", value, id)
+		}
+	}
+	for _, set := range sel.ClaimSets {
+		var out []string
+		for _, value := range set {
+			claimID, ok := ids[value]
+			if !ok {
+				return CredentialQuery{}, fmt.Errorf("dcql: a claim set names the claim %q, which the selection %q does not ask for", value, id)
+			}
+			out = append(out, claimID)
+		}
+		c.ClaimSets = append(c.ClaimSets, out)
 	}
 	if len(sel.Issuers) > 0 {
 		c.TrustedAuthorities = []TrustedAuthority{{Type: AuthorityETSITrustedList, Values: sel.Issuers}}
 	}
 	return c, nil
+}
+
+// ValueStrings returns the accepted values of a claim as text.
+func (c ClaimQuery) ValueStrings() []string {
+	out := make([]string, 0, len(c.Values))
+	for _, v := range c.Values {
+		out = append(out, fmt.Sprint(v))
+	}
+	return out
 }
 
 // parseClaim reads one selected claim. A mobile document claim needs a
