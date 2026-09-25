@@ -177,3 +177,52 @@ func TestContractRegisterConfiguration(t *testing.T) {
 	}
 	t.Fatalf("the issuer metadata does not list %s", id)
 }
+
+// ledgerEnv reads the ledger search of the contract run.
+func ledgerEnv(t *testing.T) *backendv1.ListIssuedCredentialsRequest {
+	t.Helper()
+	typ, attr, value := os.Getenv("VCA_INJI_CONTRACT_LEDGER_TYPE"), os.Getenv("VCA_INJI_CONTRACT_LEDGER_ATTRIBUTE"),
+		os.Getenv("VCA_INJI_CONTRACT_LEDGER_VALUE")
+	if contractEnv(t).CertifyURL == "" || typ == "" || attr == "" || value == "" {
+		t.Skip("set VCA_INJI_CONTRACT_LEDGER_TYPE, _ATTRIBUTE, and _VALUE to run the ledger contract case")
+	}
+	return &backendv1.ListIssuedCredentialsRequest{CredentialType: typ, Attributes: map[string]string{attr: value}}
+}
+
+// TestContractLedgerSearch finds issued credentials in the Certify
+// ledger by type and one indexed attribute.
+func TestContractLedgerSearch(t *testing.T) {
+	req := ledgerEnv(t)
+	a := newContractApp(t)
+	resp, err := a.Service.ListIssuedCredentials(context.Background(), connect.NewRequest(req))
+	if err != nil {
+		t.Fatalf("ListIssuedCredentials: %v", err)
+	}
+	for _, e := range resp.Msg.GetCredentials() {
+		if e.GetCredentialId() == "" || e.GetIssuedAt() == nil {
+			t.Fatalf("a ledger entry without an id or a time: %v", e)
+		}
+	}
+}
+
+// TestContractRevokeLedgerCredential revokes the first credential the
+// ledger search finds. It needs writes, since a revoke is final.
+func TestContractRevokeLedgerCredential(t *testing.T) {
+	writeEnv(t)
+	req := ledgerEnv(t)
+	a := newContractApp(t)
+	ctx := context.Background()
+	resp, err := a.Service.ListIssuedCredentials(ctx, connect.NewRequest(req))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Msg.GetCredentials()) == 0 {
+		t.Skip("the ledger holds no credential for the search")
+	}
+	e := resp.Msg.GetCredentials()[0]
+	if _, err := a.Service.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{
+		CredentialId: e.GetCredentialId(), Status: e.GetStatus(), Reason: "contract",
+	})); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+}

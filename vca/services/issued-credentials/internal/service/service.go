@@ -71,9 +71,10 @@ type Options struct {
 	// Audit keeps one event for each revoke, suspend, reinstate, and
 	// export (ADR-039 decision 1). Nil keeps the events in memory.
 	Audit *auditlog.Log
-	// Stack is the DPG adapter of the pair. A revoke goes through it when
-	// the adapter lists FEATURE_REVOCATION (ADR-034 decision 5). Nil keeps every
-	// change on the status services of VCA.
+	// Stack is the DPG adapter of the pair. It changes the status of a
+	// record that came from its ledger when it lists the feature of the
+	// change (ADR-034 decision 5). Nil keeps every change on the status
+	// services of VCA.
 	Stack Stack
 }
 
@@ -82,8 +83,24 @@ type Options struct {
 type Stack interface {
 	// Has reports whether the adapter lists a feature now.
 	Has(ctx context.Context, feature backendv1.Feature) bool
-	// Revoke revokes the credential at a status entry in the stack.
-	Revoke(ctx context.Context, binding *backendv1.StatusListBinding, reason string) error
+	// Name is the name of the stack as its adapter reports it.
+	Name(ctx context.Context) string
+	// Change sets the status of one credential of the stack ledger.
+	Change(ctx context.Context, c StackChange) error
+	// Ledger returns one page of the stack ledger.
+	Ledger(ctx context.Context, req *backendv1.ListIssuedCredentialsRequest) (*backendv1.ListIssuedCredentialsResponse, error)
+}
+
+// StackChange is one status change the DPG adapter makes.
+type StackChange struct {
+	// Binding is the status entry of the credential.
+	Binding *backendv1.StatusListBinding
+	// CredentialID is the id of the credential in the stack ledger.
+	CredentialID string
+	// Action is the change.
+	Action backendv1.RevokeRequest_Action
+	// Reason is the reason for the audit log.
+	Reason string
 }
 
 // Name is the service name that every audit event carries.
@@ -95,6 +112,7 @@ const (
 	ActionSuspend   = "issued.Suspend"
 	ActionReinstate = "issued.Reinstate"
 	ActionExport    = "issued.Export"
+	ActionSync      = "issued.Sync"
 )
 
 // Service is the IssuedService handler.
@@ -294,7 +312,8 @@ func (s *Service) Get(_ context.Context, req *connect.Request[issuedv1.GetReques
 // The audit log records the change, also when it fails.
 func (s *Service) Revoke(ctx context.Context, req *connect.Request[issuedv1.RevokeRequest]) (res *connect.Response[issuedv1.RevokeResponse], err error) {
 	want := StatusOf(req.Msg.GetStatus())
-	stack := want == record.Revoked && s.stackRevokes(ctx)
+	current, known := s.opts.Store.Get(req.Msg.GetId())
+	stack := known && s.stackChanges(ctx, current, want)
 	defer func() {
 		action := ActionRevoke
 		if want == record.Suspended {
@@ -320,12 +339,14 @@ func (s *Service) Revoke(ctx context.Context, req *connect.Request[issuedv1.Revo
 // Reinstate clears a suspension and records the reason. The audit log
 // records the change, also when it fails.
 func (s *Service) Reinstate(ctx context.Context, req *connect.Request[issuedv1.ReinstateRequest]) (res *connect.Response[issuedv1.ReinstateResponse], err error) {
+	known, found := s.opts.Store.Get(req.Msg.GetId())
+	stack := found && s.stackChanges(ctx, known, record.Active)
 	defer func() {
 		var status issuedv1.Status
 		if res != nil {
 			status = res.Msg.GetRecord().GetStatus()
 		}
-		s.audit(ctx, req.Header(), ActionReinstate, req.Msg.GetId(), status, false, err)
+		s.audit(ctx, req.Header(), ActionReinstate, req.Msg.GetId(), status, stack, err)
 	}()
 	current, err := s.get(req.Msg.GetId())
 	if err != nil {
@@ -335,7 +356,7 @@ func (s *Service) Reinstate(ctx context.Context, req *connect.Request[issuedv1.R
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("only a suspended credential can go back to active"))
 	}
-	r, err := s.change(ctx, req.Msg.GetId(), record.Active, req.Msg.GetReason(), StatusValueClear, false)
+	r, err := s.change(ctx, req.Msg.GetId(), record.Active, req.Msg.GetReason(), StatusValueClear, stack)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +490,7 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition, record.ErrNoBinding)
 	}
 	if stack {
-		return s.revokeInStack(ctx, id, current, reason)
+		return s.changeInStack(ctx, id, current, want, reason)
 	}
 	if s.opts.Status == nil {
 		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition,
@@ -491,24 +512,43 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 	return changed, nil
 }
 
-// revokeInStack revokes the credential through the DPG adapter, which
-// lists FEATURE_REVOCATION (ADR-034 decision 5). The log writes the event only
-// after the stack took the change, as with the status service.
-func (s *Service) revokeInStack(ctx context.Context, id string, current record.Record, reason string) (record.Record, error) {
-	if err := s.opts.Stack.Revoke(ctx, bindingProto(current.Binding), reason); err != nil {
+// changeInStack changes the status of a ledger record through the DPG
+// adapter (ADR-034 decision 5). The log writes the event only after the
+// stack took the change, as with the status service.
+func (s *Service) changeInStack(ctx context.Context, id string, current record.Record, want record.Status, reason string) (record.Record, error) {
+	action := backendv1.RevokeRequest_ACTION_REVOKE
+	switch want {
+	case record.Suspended:
+		action = backendv1.RevokeRequest_ACTION_SUSPEND
+	case record.Active:
+		action = backendv1.RevokeRequest_ACTION_REINSTATE
+	}
+	if err := s.opts.Stack.Change(ctx, StackChange{
+		Binding: bindingProto(current.Binding), CredentialID: current.DPGCredentialID, Action: action, Reason: reason,
+	}); err != nil {
 		return record.Record{}, unavailable("the DPG adapter", err)
 	}
-	changed, err := s.opts.Store.SetStatus(id, record.Revoked, reason, s.opts.Now())
+	changed, err := s.opts.Store.SetStatus(id, want, reason, s.opts.Now())
 	if err != nil {
 		return record.Record{}, connect.NewError(connect.CodeInternal, err)
 	}
 	return changed, nil
 }
 
-// stackRevokes reports whether the DPG adapter of the pair revokes a
-// credential itself: it lists FEATURE_REVOCATION (ADR-034 decision 5).
-func (s *Service) stackRevokes(ctx context.Context) bool {
-	return s.opts.Stack != nil && s.opts.Stack.Has(ctx, backendv1.Feature_FEATURE_REVOCATION)
+// stackChanges reports whether the DPG adapter of the pair makes a
+// change itself: the record came from the stack ledger, and the adapter
+// lists FEATURE_REVOCATION for a revoke or FEATURE_SUSPENSION for a
+// suspension and a reinstatement (ADR-034 decision 5). A record with a
+// status entry of VCA stays with the status services.
+func (s *Service) stackChanges(ctx context.Context, r record.Record, want record.Status) bool {
+	if s.opts.Stack == nil || r.DPGCredentialID == "" {
+		return false
+	}
+	feature := backendv1.Feature_FEATURE_SUSPENSION
+	if want == record.Revoked {
+		feature = backendv1.Feature_FEATURE_REVOCATION
+	}
+	return s.opts.Stack.Has(ctx, feature)
 }
 
 // get returns one record with its status brought up to date.

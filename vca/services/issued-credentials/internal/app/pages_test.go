@@ -86,8 +86,8 @@ func (f *fakeAdapter) Revoke(_ context.Context, req *connect.Request[backendv1.R
 	return connect.NewResponse(&backendv1.RevokeResponse{}), nil
 }
 
-// TestBuildWiresTheStackFromTheAdapterURL sends a revoke to the adapter
-// of the pair when it lists FEATURE_REVOCATION.
+// TestBuildWiresTheStackFromTheAdapterURL sends the revoke of a ledger
+// record to the adapter of the pair when it lists FEATURE_REVOCATION.
 func TestBuildWiresTheStackFromTheAdapterURL(t *testing.T) {
 	f := &fakeAdapter{revoked: make(chan *backendv1.RevokeRequest, 1)}
 	mux := http.NewServeMux()
@@ -97,7 +97,7 @@ func TestBuildWiresTheStackFromTheAdapterURL(t *testing.T) {
 	defer srv.Close()
 	a := build(t, map[string]string{"VCA_ISSUED_ADAPTER_URL": srv.URL}, app.Deps{})
 	if _, err := a.Service.AppendRecord(record.Record{ID: "rec-1", SchemaID: "farmer", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
-		Binding: record.Binding{Kind: record.KindBitstring, ListID: "list-1", Index: 4}}); err != nil {
+		DPGCredentialID: "urn:uuid:4", Binding: record.Binding{Kind: record.KindBitstring, ListID: "list-1", Index: 4}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.Service.Revoke(context.Background(), connect.NewRequest(&issuedv1.RevokeRequest{Id: "rec-1", Status: issuedv1.Status_STATUS_REVOKED, Reason: "Lost"})); err != nil {
@@ -105,7 +105,7 @@ func TestBuildWiresTheStackFromTheAdapterURL(t *testing.T) {
 	}
 	select {
 	case got := <-f.revoked:
-		if got.GetStatus().GetIndex() != 4 || got.GetReason() != "Lost" {
+		if got.GetStatus().GetIndex() != 4 || got.GetReason() != "Lost" || got.GetCredentialId() != "urn:uuid:4" {
 			t.Fatalf("revoke = %v", got)
 		}
 	default:

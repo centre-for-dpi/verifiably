@@ -316,15 +316,6 @@ func (s *Service) GetIssuanceStatus(
 		"Inji Certify reports no offer state; read the record in the issued credentials service")
 }
 
-// Revoke is not available. The status list services of VCA own the
-// status bits (ADR-018, ADR-019).
-func (s *Service) Revoke(
-	context.Context, *connect.Request[backendv1.RevokeRequest],
-) (*connect.Response[backendv1.RevokeResponse], error) {
-	return nil, unimplemented(
-		"Inji Certify has no revocation API; call the status list service that owns the list")
-}
-
 // GetIssuerMetadata returns the OID4VCI issuer metadata of Inji Certify.
 func (s *Service) GetIssuerMetadata(
 	ctx context.Context, _ *connect.Request[backendv1.GetIssuerMetadataRequest],

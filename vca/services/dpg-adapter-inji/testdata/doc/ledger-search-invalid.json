@@ -1,0 +1,9 @@
+{
+  "responseTime": "2026-09-26T10:00:00.000Z",
+  "errors": [
+    {
+      "errorCode": "invalid_search_criteria",
+      "errorMessage": "At least one indexed attribute with a value is needed."
+    }
+  ]
+}

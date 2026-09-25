@@ -177,7 +177,11 @@ func (s *Service) GetCapabilities(
 		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VCI)
 		// RegisterCredentialConfiguration writes the configuration API of
 		// Certify (ADR-045 decision 1).
-		out.Features = append(out.Features, backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API)
+		// Revoke and ListIssuedCredentials drive the ledger and the
+		// status API of Certify. The stack allows the revocation purpose
+		// only, so FEATURE_SUSPENSION stays off.
+		out.Features = append(out.Features, backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API,
+			backendv1.Feature_FEATURE_REVOCATION, backendv1.Feature_FEATURE_ISSUED_LEDGER)
 		// The staged claims carry the two status markers, so a credential
 		// points at a token status list or a bitstring status list
 		// (ADR-018, ADR-019).

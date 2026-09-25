@@ -1,0 +1,17 @@
+{
+  "@context": ["https://www.w3.org/ns/did/v1"],
+  "alsoKnownAs": [],
+  "service": [],
+  "id": "did:web:certify.inji.example",
+  "verificationMethod": [
+    {
+      "id": "did:web:certify.inji.example#KrV8AWnS3mBQFzNQn_kUVHYx4hJmZ2JFJ7mT3a1pS0c",
+      "type": "Ed25519VerificationKey2020",
+      "@context": "https://w3id.org/security/suites/ed25519-2020/v1",
+      "controller": "did:web:certify.inji.example",
+      "publicKeyMultibase": "z6MkqRYqQiSgvZQdnBytw86Qbs2ZWUkGv22od935YF4s8M7V"
+    }
+  ],
+  "authentication": ["did:web:certify.inji.example"],
+  "assertionMethod": ["did:web:certify.inji.example"]
+}

@@ -121,18 +121,33 @@ The status client is a `vca.status.v1.StatusService` Connect client. The
 deployment sets its base URL. Without a URL the service reports a failed
 precondition, so an operator sees the missing setting at once.
 
-A stack can revoke a credential itself. The adapter of the pair then
-lists `FEATURE_REVOCATION`. A revoke goes to `Revoke` of the adapter in
-place of the status service (ADR-034 decision 5). The service reads the
-features from `GetCapabilities` of `VCA_ISSUED_ADAPTER_URL` and keeps
-the answer for one minute. The rule of the order holds: the log writes
-the event only after the stack took the change. A suspension and a
-reinstatement always go to the status service, because the revoke of an
-adapter carries no suspension.
+A stack can change the status of a credential in its own ledger. A
+record from that ledger carries the ledger id in `dpg_credential_id`.
+For such a record, a revoke goes to `Revoke` of the adapter when it
+lists `FEATURE_REVOCATION` (ADR-034 decision 5). A suspension and a
+reinstatement go there when it lists `FEATURE_SUSPENSION`. The request
+carries the action and the ledger id. Every other change goes to the
+status service. A record with a status entry of VCA has its bit in a
+VCA list. The service reads the features from `GetCapabilities` of
+`VCA_ISSUED_ADAPTER_URL` and keeps the answer for one minute. The rule
+of the order holds: the log writes the event only after the stack took
+the change.
+
+## Sync from the stack ledger
+
+A stack can keep a ledger of the credentials it issued. Its adapter
+then lists `FEATURE_ISSUED_LEDGER` and serves `ListIssuedCredentials`.
+The sync reads every page of one search: a credential type, one
+indexed attribute, and its value. It adds each entry the log lacks as a
+record of the stack. The record holds the ledger id and the status
+entry of the stack. A second sync adds nothing twice. The schema of an
+added record is the credential type of the search, version 1. The
+ledger names no VCA schema. The subject reference is the salted reference of
+the value. The log keeps no claim value of the ledger.
 
 ## Audit log
 
-The service writes one audit event for each revoke, suspend, reinstate, and export (ADR-039 decision 1).
+The service writes one audit event for each revoke, suspend, reinstate, export, and sync (ADR-039 decision 1).
 The detail of a status change names the new status, and the stack when
 the stack made the change. The detail of an export names the count and
 the encoding.
@@ -191,6 +206,8 @@ guard.
 | `GET /issued/{id}` | The stored fields, the record, and the history. |
 | `GET /issued/{id}?action=` | The same page with the reason dialog of `suspend`, `revoke`, or `reinstate` open. |
 | `POST /issued/{id}/suspend`, `/revoke`, `/reinstate` | The status change with its reason. |
+| `GET /issued/sync` | The ledger search of the stack. It exists only while the adapter lists `FEATURE_ISSUED_LEDGER`. |
+| `POST /issued/sync` | The sync of one search, with a table of each entry and its result. |
 
 The search matches the searchable claims. The filters are the schema,
 the status, and a range of issuance days. The export buttons carry the
@@ -208,8 +225,12 @@ Only an issuer operator or an issuer admin changes a status. A viewer
 sees the record and a sentence that says who can act. Each action opens
 a dialog with a reason field and the synchronizer token of the session.
 An empty reason stays in the dialog with the error on the field. The
-dialog of a revoke names the stack when the adapter lists
-`FEATURE_REVOCATION`.
+dialog of a revoke names the stack for a record of the stack ledger
+when the adapter lists `FEATURE_REVOCATION`.
+
+The list offers "Sync from stack" only when the adapter lists
+`FEATURE_ISSUED_LEDGER`. Only an issuer operator or an issuer admin
+runs a sync, because a sync adds records to the log.
 
 The state "Offered, not claimed" shows only when the adapter lists
 `FEATURE_ISSUANCE_STATUS`. The page then asks `GetIssuanceStatus` of the

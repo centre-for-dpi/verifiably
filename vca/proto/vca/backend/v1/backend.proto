@@ -35,6 +35,10 @@ service IssuerBackendService {
   rpc GetIssuanceStatus(GetIssuanceStatusRequest) returns (GetIssuanceStatusResponse);
   // Revoke sets the status bit of one credential through its status index.
   rpc Revoke(RevokeRequest) returns (RevokeResponse);
+  // ListIssuedCredentials searches the ledger of issued credentials that
+  // the DPG keeps. An adapter serves it only when it lists
+  // FEATURE_ISSUED_LEDGER.
+  rpc ListIssuedCredentials(ListIssuedCredentialsRequest) returns (ListIssuedCredentialsResponse);
   // GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
   rpc GetIssuerMetadata(GetIssuerMetadataRequest) returns (GetIssuerMetadataResponse);
   // GetIssuerIdentity returns the identifiers, the key, and the metadata
@@ -438,6 +442,24 @@ message RevokeRequest {
   StatusListBinding status = 1;
   // The reason for the audit log. Never a secret.
   string reason = 2;
+  // The change. ACTION_UNSPECIFIED revokes, as before the field existed.
+  Action action = 3;
+  // The id of the credential in the ledger of the DPG, when the DPG
+  // keeps one. An adapter that lists FEATURE_ISSUED_LEDGER needs it.
+  string credential_id = 4;
+
+  // Action names the status change.
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    // Revoke the credential. This is final.
+    ACTION_REVOKE = 1;
+    // Suspend the credential. The adapter serves it when it lists
+    // FEATURE_SUSPENSION.
+    ACTION_SUSPEND = 2;
+    // End a suspension. The adapter serves it when it lists
+    // FEATURE_SUSPENSION.
+    ACTION_REINSTATE = 3;
+  }
 }
 
 // RevokeResponse confirms the change.
@@ -481,6 +503,46 @@ message GetIssuanceStatusResponse {
     // The DPG could not issue the credential.
     STATE_FAILED = 5;
   }
+}
+
+// ListIssuedCredentialsRequest selects entries of the DPG ledger.
+message ListIssuedCredentialsRequest {
+  // The credential type, as a configuration id or a type name.
+  string credential_type = 1;
+  // The indexed attributes to match, by name. Some DPGs need at least
+  // one.
+  map<string, string> attributes = 2;
+  // The id of one credential. Empty matches every credential.
+  string credential_id = 3;
+  // The page to return.
+  vca.common.v1.Pagination page = 4;
+}
+
+// ListIssuedCredentialsResponse returns one page of ledger entries.
+message ListIssuedCredentialsResponse {
+  // The entries, oldest issuance first.
+  repeated LedgerEntry credentials = 1;
+  // The paging state.
+  vca.common.v1.PageResult page = 2;
+}
+
+// LedgerEntry is one issued credential as the DPG ledger holds it. It
+// carries no claim value.
+message LedgerEntry {
+  // The id of the credential in the ledger.
+  string credential_id = 1;
+  // The credential type as the ledger stores it.
+  string credential_type = 2;
+  // The issuance time.
+  google.protobuf.Timestamp issued_at = 3;
+  // The end of the validity window. Empty when the credential has none.
+  google.protobuf.Timestamp expires_at = 4;
+  // The status list entry the DPG holds for the credential.
+  StatusListBinding status = 5;
+  // The purpose of the status entry, such as revocation.
+  string status_purpose = 6;
+  // The time of the last status change the ledger knows.
+  google.protobuf.Timestamp status_changed_at = 7;
 }
 
 // GetIssuerMetadataRequest has no fields.

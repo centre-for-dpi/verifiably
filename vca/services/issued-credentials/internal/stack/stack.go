@@ -17,6 +17,7 @@ import (
 	"connectrpc.com/connect"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/service"
 )
 
 // DefaultTTL is how long one capability answer stays fresh.
@@ -33,6 +34,8 @@ type Capabilities interface {
 // calls. The generated Connect client fits it.
 type Issuer interface {
 	Revoke(context.Context, *connect.Request[backendv1.RevokeRequest]) (*connect.Response[backendv1.RevokeResponse], error)
+	ListIssuedCredentials(context.Context, *connect.Request[backendv1.ListIssuedCredentialsRequest]) (
+		*connect.Response[backendv1.ListIssuedCredentialsResponse], error)
 	GetIssuanceStatus(context.Context, *connect.Request[backendv1.GetIssuanceStatusRequest]) (
 		*connect.Response[backendv1.GetIssuanceStatusResponse], error)
 }
@@ -101,10 +104,22 @@ func (a *Adapter) Name(ctx context.Context) string {
 	return strings.TrimSpace(a.capabilities(ctx).GetDpgInfo().GetDisplayName())
 }
 
-// Revoke revokes the credential at a status entry in the stack.
-func (a *Adapter) Revoke(ctx context.Context, binding *backendv1.StatusListBinding, reason string) error {
-	_, err := a.issuer.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{Status: binding, Reason: reason}))
+// Change asks the stack to change the status of one credential of its
+// ledger.
+func (a *Adapter) Change(ctx context.Context, c service.StackChange) error {
+	_, err := a.issuer.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{
+		Status: c.Binding, Reason: c.Reason, Action: c.Action, CredentialId: c.CredentialID,
+	}))
 	return err
+}
+
+// Ledger returns one page of the ledger of the stack.
+func (a *Adapter) Ledger(ctx context.Context, req *backendv1.ListIssuedCredentialsRequest) (*backendv1.ListIssuedCredentialsResponse, error) {
+	res, err := a.issuer.ListIssuedCredentials(ctx, connect.NewRequest(req))
+	if err != nil {
+		return nil, err
+	}
+	return res.Msg, nil
 }
 
 // Pending reports whether the offer with the adapter id exists and no

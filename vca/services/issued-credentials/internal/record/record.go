@@ -81,7 +81,11 @@ type Record struct {
 	OfferID          string            `json:"offer_id,omitempty"`
 	// DPGOfferID is the offer id of the DPG adapter. The field is new, so
 	// an older record leaves it out and keeps its hash.
-	DPGOfferID      string    `json:"dpg_offer_id,omitempty"`
+	DPGOfferID string `json:"dpg_offer_id,omitempty"`
+	// DPGCredentialID is the id of the credential in the ledger of the
+	// DPG. Only a record from the ledger carries it, so an older record
+	// keeps its hash.
+	DPGCredentialID string    `json:"dpg_credential_id,omitempty"`
 	StatusChangedAt time.Time `json:"status_changed_at,omitempty"`
 	StatusReason    string    `json:"status_reason,omitempty"`
 	RetainUntil     time.Time `json:"retain_until,omitempty"`

@@ -120,7 +120,7 @@ func (p *Pages) list(pg page) error {
 	}
 	return p.render(pg, components.Page{
 		Title: msg.T("issuer.nav.issued.label"), Lead: msg.T("issuer.issued.lead"),
-		Actions: p.exportButtons(b, q), Content: content,
+		Actions: components.Join(p.syncButton(pg, b), p.exportButtons(b, q)), Content: content,
 	})
 }
 

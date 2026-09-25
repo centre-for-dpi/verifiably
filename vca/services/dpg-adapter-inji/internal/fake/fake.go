@@ -143,7 +143,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(forced)
 		return
 	}
-	if f.serveConfigs(w, r, body) {
+	if f.serveConfigs(w, r, body) || f.serveLedger(w, r, body) {
 		return
 	}
 	path := r.URL.Path

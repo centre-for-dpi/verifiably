@@ -37,6 +37,9 @@ Inji database, and it never restarts an Inji container.
 | `GET /v1/certify/credential-configurations/{id}` | Checks whether Certify holds a configuration. |
 | `POST /v1/certify/credential-configurations` | Creates a configuration. |
 | `PUT /v1/certify/credential-configurations/{id}` | Replaces a configuration. |
+| `POST /v1/certify/v2/ledger-search` | Finds issued credentials in the ledger of Certify. |
+| `POST /v1/certify/credentials/status` | Sets the revocation bit of a credential of the ledger. |
+| `GET /v1/certify/.well-known/did.json` | Reads the issuer DID, which the ledger search needs. |
 | `POST /v1/verify/vp-request` | Starts an OID4VP transaction. |
 | `GET /v1/verify/vp-result/{id}` | Reads the answer of a transaction. |
 
@@ -50,7 +53,7 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Channels | OID4VCI pre-authorized code and document. An identity provider adds the authorization code flow. |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API` when the configuration names a Certify URL |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, and `FEATURE_ISSUED_LEDGER` when the configuration names a Certify URL |
 | DID methods | None. The deployment sets the issuer identity of Inji Certify. |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names a Certify URL |
 | DPG information | The stack name, the Certify release, and one component per wired role plus Keycloak |
@@ -65,7 +68,8 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | RPC | Reason |
 | --- | --- |
 | `GetIssuanceStatus` | Inji Certify reports no state of a staged offer. |
-| `Revoke` | Inji Certify has no revocation API. The status services own the bits. |
+| `Revoke` of a VCA status entry | The status service that owns the list changes the bit. The adapter answers `failed_precondition` without a ledger id. |
+| `Revoke` with a suspension or a reinstatement | The Certify configuration of the stack allows the revocation purpose only. The answer lists no `FEATURE_SUSPENSION`. |
 | Every holder RPC | Inji ships no wallet for a citizen. |
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
@@ -103,6 +107,22 @@ alias mapper of the stack. The stack keeps the keys (ADR-001 decision
 
 A refusal keeps the Certify code. A duplicate type gives
 `already_exists`. A missing field gives `invalid_argument`.
+
+## The ledger and revocation
+
+Inji Certify keeps a ledger of the credentials it issues with a status
+entry of its own. `ListIssuedCredentials` searches it. Certify needs
+the issuer DID, the type list, and one indexed attribute with a value.
+The adapter reads the DID from the DID document of Certify. A
+configuration id becomes the sorted type list of its definition. A bare
+type name joins `VerifiableCredential`. Certify returns every match at
+once, so the adapter sorts the entries by issuance and pages them.
+
+`Revoke` takes the ledger id of a credential. It sets the bit of the
+revocation purpose through the credential status API. Certify writes
+the status list credential in its next scheduled run. The issued
+credentials pages send only a record of the ledger this way. A record
+with a status entry of VCA keeps its bit in a VCA list.
 
 ## Interoperability knowledge
 

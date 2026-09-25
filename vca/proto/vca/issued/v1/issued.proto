@@ -116,6 +116,10 @@ message IssuedRecord {
   // the credential went out without an offer, such as on a document. The
   // issued credentials pages read the claim state of the offer with it.
   string dpg_offer_id = 19;
+  // The id of the credential in the ledger of the DPG. Only a record that
+  // came from the ledger carries it. The DPG adapter changes the status
+  // of such a record when it lists the feature of the change.
+  string dpg_credential_id = 20;
 }
 
 // AppendRequest carries one issuance to record.

@@ -203,8 +203,6 @@ func TestTheRpcsInjiNeverSupportsAnswerUnimplemented(t *testing.T) {
 	ctx := context.Background()
 	_, err := svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{}))
 	wantCode(t, err, connect.CodeUnimplemented)
-	_, err = svc.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{}))
-	wantCode(t, err, connect.CodeUnimplemented)
 }
 
 func TestEveryIssuerCallNeedsTheIssuerUrl(t *testing.T) {
@@ -582,6 +580,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 		}, true},
 		{backendv1.Feature_FEATURE_REVOCATION, revoke, true},
 		{backendv1.Feature_FEATURE_SUSPENSION, revoke, false},
+		{backendv1.Feature_FEATURE_ISSUED_LEDGER, func() error {
+			_, err := svc.ListIssuedCredentials(ctx, connect.NewRequest(&backendv1.ListIssuedCredentialsRequest{}))
+			return err
+		}, true},
 		{backendv1.Feature_FEATURE_ISSUANCE_STATUS, func() error {
 			_, err := svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{}))
 			return err

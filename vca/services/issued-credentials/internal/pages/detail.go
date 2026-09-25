@@ -50,6 +50,8 @@ type view struct {
 	reasonErr string
 	toasts    []components.Toast
 	status    int
+	// ledger is true for a record that came from the stack ledger.
+	ledger bool
 }
 
 // detail draws one record. ?action= opens the reason dialog of an
@@ -145,6 +147,7 @@ func (p *Pages) renderDetail(pg page, id string, v view) error {
 		parts = append(parts, b.add("card", components.Card{ID: "read-only", Title: msg.T("issuer.issued.role.label"), Text: msg.T("issuer.issued.role.text")}))
 	}
 	if act && contains(actions, v.action) {
+		v.ledger = r.GetDpgCredentialId() != ""
 		parts = append(parts, p.dialog(ctx, b, pg, id, v))
 	}
 	status := p.statusBadge(ctx, b, r, p.has(ctx, backendv1.Feature_FEATURE_ISSUANCE_STATUS))
@@ -199,7 +202,7 @@ func contains(list []string, v string) bool {
 // does, and the POST form with the reason and the synchronizer token.
 func (p *Pages) dialog(ctx context.Context, b *blocks, pg page, id string, v view) template.HTML {
 	text := msg.T("issuer.issued.dialog." + v.action + ".text")
-	if v.action == actRevoke && p.has(ctx, backendv1.Feature_FEATURE_REVOCATION) {
+	if v.action == actRevoke && v.ledger && p.has(ctx, backendv1.Feature_FEATURE_REVOCATION) {
 		text = msg.T("issuer.issued.dialog.revoke.stack", p.stackName(ctx))
 	}
 	action := Prefix + url.PathEscape(id) + "/" + v.action
@@ -260,6 +263,7 @@ func (p *Pages) recordBlock(b *blocks, r *issuedv1.IssuedRecord, status template
 		{"issuer.issued.record.valid_until.label", day(r.GetValidity().GetValidUntil()), false},
 		{"issuer.issued.record.reason.label", r.GetStatusReason(), false},
 		{"issuer.issued.record.offer.label", r.GetOfferId(), true},
+		{"issuer.issued.record.ledger.label", r.GetDpgCredentialId(), true},
 		{"issuer.issued.record.hash.label", r.GetHash(), true},
 		{"issuer.issued.record.retain.label", day(r.GetRetainUntil()), false},
 	}

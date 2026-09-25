@@ -98,3 +98,45 @@ func TestFakeMetadataNeedsItsRecording(t *testing.T) {
 		t.Fatalf("status = %d", code)
 	}
 }
+
+func TestFakeServesTheLedger(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	const search = "/v1/certify/v2/ledger-search"
+	q := `{"issuerId":"did:web:certify.inji.example","credentialType":"` + fake.LedgerType + `","indexedAttributesEquals":{"farmerID":"F-1"}}`
+	if code, body := call(t, f, http.MethodPost, search, q); code != http.StatusOK || strings.Count(body, "credentialId") != 3 {
+		t.Fatalf("search: %d %s", code, body)
+	}
+	one := `{"issuerId":"did:web:certify.inji.example","credentialType":"` + fake.LedgerType + `","credentialId":"` + fake.LedgerCredential + `","indexedAttributesEquals":{"farmerID":"F-1"}}`
+	if _, body := call(t, f, http.MethodPost, search, one); strings.Count(body, "credentialId") != 1 {
+		t.Fatalf("one: %s", body)
+	}
+	other := `{"issuerId":"did:web:certify.inji.example","credentialType":"Other","indexedAttributesEquals":{"farmerID":"F-1"}}`
+	if code, _ := call(t, f, http.MethodPost, search, other); code != http.StatusNoContent {
+		t.Fatalf("no match: %d", code)
+	}
+	if _, body := call(t, f, http.MethodPost, search, `{"issuerId":"x","credentialType":"y"}`); !strings.Contains(body, "invalid_search_criteria") {
+		t.Fatalf("no attribute: %s", body)
+	}
+	const status = "/v1/certify/credentials/status"
+	if code, body := call(t, f, http.MethodPost, status, `{"credentialId":"`+fake.LedgerCredential+`","credentialStatus":{"statusPurpose":"revocation"},"status":true}`); code != http.StatusOK || !strings.Contains(body, "2026-09-26T10:00:00") {
+		t.Fatalf("update: %d %s", code, body)
+	}
+	if code, _ := call(t, f, http.MethodPost, status, `{"credentialId":"nope","credentialStatus":{},"status":true}`); code != http.StatusNotFound {
+		t.Fatalf("unknown: %d", code)
+	}
+	if code, _ := call(t, f, http.MethodPost, status, `{"credentialId":"x"}`); code != http.StatusBadRequest {
+		t.Fatalf("no status: %d", code)
+	}
+	if _, body := call(t, f, http.MethodGet, "/v1/certify/.well-known/did.json", ""); !strings.Contains(body, "did:web:certify.inji.example") {
+		t.Fatalf("did: %s", body)
+	}
+	missing := fake.New("testdata-that-does-not-exist")
+	defer missing.Close()
+	if code, _ := call(t, missing, http.MethodPost, search, q); code != http.StatusInternalServerError {
+		t.Fatalf("missing ledger: %d", code)
+	}
+	if code, _ := call(t, missing, http.MethodPost, status, `{"credentialId":"x","status":true}`); code != http.StatusInternalServerError {
+		t.Fatalf("missing ledger: %d", code)
+	}
+}

@@ -12,6 +12,8 @@
 //	GET  /issued/                     the list: search, filters, table
 //	GET  /issued/export.csv           the rows of the filters as CSV
 //	GET  /issued/export.json          the rows of the filters as JSON lines
+//	GET  /issued/sync                 the ledger search, with FEATURE_ISSUED_LEDGER
+//	POST /issued/sync                 add the ledger entries the log lacks
 //	GET  /issued/{id}                 the stored fields, the record, the history
 //	GET  /issued/{id}?action=         the same page with the reason dialog open
 //	POST /issued/{id}/suspend         suspend with a reason
@@ -72,6 +74,8 @@ type Records interface {
 	History(ctx context.Context, id string) ([]auditlog.Record, error)
 	// SchemaIDs returns the schema of every record, once each.
 	SchemaIDs() []string
+	// Sync adds the entries of the stack ledger that the log lacks.
+	Sync(ctx context.Context, q service.SyncQuery) ([]service.SyncRow, error)
 }
 
 // Stack is the DPG adapter of the pair as the pages see it.
@@ -128,6 +132,8 @@ func (p *Pages) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+Prefix+"{$}", p.handle(p.list))
 	mux.HandleFunc("GET "+ExportCSVPath, p.handle(p.exportAs(issuedv1.ExportRequest_ENCODING_CSV)))
 	mux.HandleFunc("GET "+ExportJSONPath, p.handle(p.exportAs(issuedv1.ExportRequest_ENCODING_JSON)))
+	mux.HandleFunc("GET "+SyncPath, p.handle(p.syncPage))
+	mux.HandleFunc("POST "+SyncPath, p.handle(p.sync))
 	mux.HandleFunc("GET "+Prefix+"{id}", p.handle(p.detail))
 	mux.HandleFunc("POST "+Prefix+"{id}/{action}", p.handle(p.change))
 	if p.opts.SignOut != nil {

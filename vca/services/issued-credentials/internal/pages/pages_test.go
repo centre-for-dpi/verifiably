@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
@@ -288,9 +290,10 @@ func TestExportCSV(t *testing.T) {
 	}
 }
 
-// TestDpgRevokeUsedWhenListed sends a revoke to the stack when its
-// adapter lists FEATURE_REVOCATION, and to the status service of VCA
-// otherwise. The dialog names the path.
+// TestDpgRevokeUsedWhenListed sends the revoke of a record from the
+// stack ledger to the stack when its adapter lists FEATURE_REVOCATION,
+// and every other revoke to the status service of VCA. The dialog names
+// the path.
 func TestDpgRevokeUsedWhenListed(t *testing.T) {
 	h := newHarness(t, backendv1.Feature_FEATURE_REVOCATION)
 	doc := body(t, h.get(t, "/issued/"+recWanjiku+"?action=revoke"))
@@ -306,6 +309,17 @@ func TestDpgRevokeUsedWhenListed(t *testing.T) {
 	doc = body(t, h.get(t, "/issued/"+recWanjiku))
 	if !strings.Contains(doc, msg.T("audit.issued.stack", "revoked")) || strings.Contains(doc, msg.T("issuer.issued.action.reinstate.label")+"<") {
 		t.Error("the history does not name the stack, or a revoked credential offers an action")
+	}
+	// A record with a status entry of VCA stays with the status service.
+	doc = body(t, h.get(t, "/issued/"+recOtieno+"?action=revoke"))
+	if strings.Contains(doc, msg.T("issuer.issued.dialog.revoke.stack", stackName)) {
+		t.Error("the dialog of a record with a VCA status entry names the stack")
+	}
+	if rec := h.post(t, "/issued/"+recOtieno+"/revoke", url.Values{"reason": {"Fraud"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("revoke: %d", rec.Code)
+	}
+	if len(h.stack.revokes) != 1 || len(h.status.calls) != 1 {
+		t.Fatalf("stack %d, status %d", len(h.stack.revokes), len(h.status.calls))
 	}
 
 	plain := newHarness(t)
@@ -413,4 +427,87 @@ func TestSignOutEndsTheSession(t *testing.T) {
 // connectReq is a Get request for one record.
 func connectReq(id string) *connect.Request[issuedv1.GetRequest] {
 	return connect.NewRequest(&issuedv1.GetRequest{Id: id})
+}
+
+// ledger returns two entries of the stack ledger.
+func ledger() []*backendv1.LedgerEntry {
+	entry := func(id string, index int64, day int) *backendv1.LedgerEntry {
+		return &backendv1.LedgerEntry{
+			CredentialId: id, CredentialType: "FarmerCredential,VerifiableCredential", StatusPurpose: "revocation",
+			IssuedAt: timestamppb.New(fixedNow.AddDate(0, 0, day)),
+			Status: &backendv1.StatusListBinding{Kind: backendv1.StatusListBinding_KIND_BITSTRING,
+				ListId: "https://stack.example/status/1", Index: index, PublishUrl: "https://stack.example/status/1"},
+		}
+	}
+	return []*backendv1.LedgerEntry{entry("urn:uuid:wanjiku", 9, -5), entry("urn:uuid:new", 17, -1)}
+}
+
+// TestIssuedSyncOnlyWithFeature offers "Sync from stack" only when the
+// adapter lists FEATURE_ISSUED_LEDGER. The sync adds the entries the log
+// lacks and says what it did with each one.
+func TestIssuedSyncOnlyWithFeature(t *testing.T) {
+	plain := newHarness(t)
+	if strings.Contains(body(t, plain.get(t, "/issued/")), `href="/issued/sync"`) {
+		t.Fatal("the list offers a sync without the feature")
+	}
+	if rec := plain.get(t, "/issued/sync"); rec.Code != http.StatusNotFound {
+		t.Fatalf("the sync page answers %d without the feature", rec.Code)
+	}
+	if rec := plain.post(t, "/issued/sync", url.Values{"type": {"FarmerCredential"}}); rec.Code != http.StatusNotFound {
+		t.Fatalf("the sync form answers %d without the feature", rec.Code)
+	}
+
+	h := newHarness(t, backendv1.Feature_FEATURE_ISSUED_LEDGER, backendv1.Feature_FEATURE_REVOCATION)
+	h.stack.ledger = ledger()
+	list := body(t, h.get(t, "/issued/"))
+	if !strings.Contains(list, `href="/issued/sync"`) || !strings.Contains(list, msg.T("issuer.issued.sync.action.label")) {
+		t.Fatal("the list does not offer the sync")
+	}
+	form := body(t, h.get(t, "/issued/sync"))
+	a11ytest.AssertPage(t, form)
+	for _, want := range []string{`name="type"`, `name="attribute"`, `name="value"`, `name="csrf_token"`, msg.T("issuer.issued.sync.submit.label", stackName)} {
+		if !strings.Contains(form, want) {
+			t.Errorf("the sync page lacks %q", want)
+		}
+	}
+	rec := h.post(t, "/issued/sync", url.Values{"type": {"FarmerCredential"}})
+	missing := rec.Body.String()
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("a missing field gives %d", rec.Code)
+	}
+	a11ytest.AssertPage(t, missing)
+	if !strings.Contains(missing, msg.T("issuer.issued.sync.required")) || !strings.Contains(missing, `aria-invalid="true"`) {
+		t.Fatal("a missing field has no error")
+	}
+	done := body(t, h.post(t, "/issued/sync", url.Values{"type": {"FarmerCredential"}, "attribute": {"farmerID"}, "value": {"FM-0042"}}))
+	a11ytest.AssertPage(t, done)
+	for _, want := range []string{
+		msg.T("issuer.issued.sync.notice", "1", "2"), msg.T("issuer.issued.sync.added.label"), msg.T("issuer.issued.sync.kept.label"),
+		"urn:uuid:new", `href="/issued/` + recWanjiku + `"`,
+	} {
+		if !strings.Contains(done, want) {
+			t.Errorf("the sync result lacks %q", want)
+		}
+	}
+	if got := body(t, h.get(t, "/issued/")); !strings.Contains(got, "FarmerCredential") {
+		t.Error("the added record is not in the list")
+	}
+	h.stack.ledger = nil
+	if none := body(t, h.post(t, "/issued/sync", url.Values{"type": {"Other"}, "attribute": {"farmerID"}, "value": {"FM-9"}})); !strings.Contains(none, msg.T("issuer.issued.sync.none")) {
+		t.Error("an empty answer does not say so")
+	}
+	h.stack.ledgerErr = connect.NewError(connect.CodeUnavailable, errors.New("down"))
+	if rec := h.post(t, "/issued/sync", url.Values{"type": {"Other"}, "attribute": {"farmerID"}, "value": {"FM-9"}}); rec.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(rec.Body.String(), msg.T("issuer.issued.sync.failed")) {
+		t.Errorf("a stack failure gives %d without the reason", rec.Code)
+	}
+	h.stack.ledgerErr = connect.NewError(connect.CodeInvalidArgument, errors.New("bad attribute"))
+	if rec := h.post(t, "/issued/sync", url.Values{"type": {"Other"}, "attribute": {"x"}, "value": {"FM-9"}}); rec.Code != http.StatusBadRequest ||
+		!strings.Contains(rec.Body.String(), msg.T("issuer.issued.sync.refused")) {
+		t.Errorf("a refused search gives %d without the reason", rec.Code)
+	}
+	h.sess = viewer
+	if rec := h.post(t, "/issued/sync", url.Values{"type": {"Other"}, "attribute": {"x"}, "value": {"FM-9"}}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a viewer syncs: %d", rec.Code)
+	}
 }

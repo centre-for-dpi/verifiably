@@ -185,9 +185,13 @@ type IssuedRecord struct {
 	// The offer id that the DPG adapter assigned in CreateOffer. Empty when
 	// the credential went out without an offer, such as on a document. The
 	// issued credentials pages read the claim state of the offer with it.
-	DpgOfferId    string `protobuf:"bytes,19,opt,name=dpg_offer_id,json=dpgOfferId,proto3" json:"dpg_offer_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DpgOfferId string `protobuf:"bytes,19,opt,name=dpg_offer_id,json=dpgOfferId,proto3" json:"dpg_offer_id,omitempty"`
+	// The id of the credential in the ledger of the DPG. Only a record that
+	// came from the ledger carries it. The DPG adapter changes the status
+	// of such a record when it lists the feature of the change.
+	DpgCredentialId string `protobuf:"bytes,20,opt,name=dpg_credential_id,json=dpgCredentialId,proto3" json:"dpg_credential_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *IssuedRecord) Reset() {
@@ -349,6 +353,13 @@ func (x *IssuedRecord) GetRetainUntil() *timestamppb.Timestamp {
 func (x *IssuedRecord) GetDpgOfferId() string {
 	if x != nil {
 		return x.DpgOfferId
+	}
+	return ""
+}
+
+func (x *IssuedRecord) GetDpgCredentialId() string {
+	if x != nil {
+		return x.DpgCredentialId
 	}
 	return ""
 }
@@ -1606,7 +1617,7 @@ var File_vca_issued_v1_issued_proto protoreflect.FileDescriptor
 
 const file_vca_issued_v1_issued_proto_rawDesc = "" +
 	"\n" +
-	"\x1avca/issued/v1/issued.proto\x12\rvca.issued.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\xaa\a\n" +
+	"\x1avca/issued/v1/issued.proto\x12\rvca.issued.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\xd6\a\n" +
 	"\fIssuedRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tschema_id\x18\x02 \x01(\tR\bschemaId\x12%\n" +
@@ -1629,7 +1640,8 @@ const file_vca_issued_v1_issued_proto_rawDesc = "" +
 	"\rstatus_reason\x18\x11 \x01(\tR\fstatusReason\x12=\n" +
 	"\fretain_until\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\vretainUntil\x12 \n" +
 	"\fdpg_offer_id\x18\x13 \x01(\tR\n" +
-	"dpgOfferId\x1aC\n" +
+	"dpgOfferId\x12*\n" +
+	"\x11dpg_credential_id\x18\x14 \x01(\tR\x0fdpgCredentialId\x1aC\n" +
 	"\x15SearchableClaimsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"D\n" +

@@ -74,6 +74,9 @@ const (
 	// IssuerBackendServiceRevokeProcedure is the fully-qualified name of the IssuerBackendService's
 	// Revoke RPC.
 	IssuerBackendServiceRevokeProcedure = "/vca.backend.v1.IssuerBackendService/Revoke"
+	// IssuerBackendServiceListIssuedCredentialsProcedure is the fully-qualified name of the
+	// IssuerBackendService's ListIssuedCredentials RPC.
+	IssuerBackendServiceListIssuedCredentialsProcedure = "/vca.backend.v1.IssuerBackendService/ListIssuedCredentials"
 	// IssuerBackendServiceGetIssuerMetadataProcedure is the fully-qualified name of the
 	// IssuerBackendService's GetIssuerMetadata RPC.
 	IssuerBackendServiceGetIssuerMetadataProcedure = "/vca.backend.v1.IssuerBackendService/GetIssuerMetadata"
@@ -257,6 +260,10 @@ type IssuerBackendServiceClient interface {
 	GetIssuanceStatus(context.Context, *connect.Request[v1.GetIssuanceStatusRequest]) (*connect.Response[v1.GetIssuanceStatusResponse], error)
 	// Revoke sets the status bit of one credential through its status index.
 	Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error)
+	// ListIssuedCredentials searches the ledger of issued credentials that
+	// the DPG keeps. An adapter serves it only when it lists
+	// FEATURE_ISSUED_LEDGER.
+	ListIssuedCredentials(context.Context, *connect.Request[v1.ListIssuedCredentialsRequest]) (*connect.Response[v1.ListIssuedCredentialsResponse], error)
 	// GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
 	GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error)
 	// GetIssuerIdentity returns the identifiers, the key, and the metadata
@@ -321,6 +328,12 @@ func NewIssuerBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(issuerBackendServiceMethods.ByName("Revoke")),
 			connect.WithClientOptions(opts...),
 		),
+		listIssuedCredentials: connect.NewClient[v1.ListIssuedCredentialsRequest, v1.ListIssuedCredentialsResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceListIssuedCredentialsProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("ListIssuedCredentials")),
+			connect.WithClientOptions(opts...),
+		),
 		getIssuerMetadata: connect.NewClient[v1.GetIssuerMetadataRequest, v1.GetIssuerMetadataResponse](
 			httpClient,
 			baseURL+IssuerBackendServiceGetIssuerMetadataProcedure,
@@ -356,6 +369,7 @@ type issuerBackendServiceClient struct {
 	issueBatch                      *connect.Client[v1.IssueBatchRequest, v1.IssueBatchResponse]
 	getIssuanceStatus               *connect.Client[v1.GetIssuanceStatusRequest, v1.GetIssuanceStatusResponse]
 	revoke                          *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
+	listIssuedCredentials           *connect.Client[v1.ListIssuedCredentialsRequest, v1.ListIssuedCredentialsResponse]
 	getIssuerMetadata               *connect.Client[v1.GetIssuerMetadataRequest, v1.GetIssuerMetadataResponse]
 	getIssuerIdentity               *connect.Client[v1.GetIssuerIdentityRequest, v1.GetIssuerIdentityResponse]
 	provisionIssuerIdentity         *connect.Client[v1.ProvisionIssuerIdentityRequest, v1.ProvisionIssuerIdentityResponse]
@@ -391,6 +405,11 @@ func (c *issuerBackendServiceClient) GetIssuanceStatus(ctx context.Context, req 
 // Revoke calls vca.backend.v1.IssuerBackendService.Revoke.
 func (c *issuerBackendServiceClient) Revoke(ctx context.Context, req *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error) {
 	return c.revoke.CallUnary(ctx, req)
+}
+
+// ListIssuedCredentials calls vca.backend.v1.IssuerBackendService.ListIssuedCredentials.
+func (c *issuerBackendServiceClient) ListIssuedCredentials(ctx context.Context, req *connect.Request[v1.ListIssuedCredentialsRequest]) (*connect.Response[v1.ListIssuedCredentialsResponse], error) {
+	return c.listIssuedCredentials.CallUnary(ctx, req)
 }
 
 // GetIssuerMetadata calls vca.backend.v1.IssuerBackendService.GetIssuerMetadata.
@@ -429,6 +448,10 @@ type IssuerBackendServiceHandler interface {
 	GetIssuanceStatus(context.Context, *connect.Request[v1.GetIssuanceStatusRequest]) (*connect.Response[v1.GetIssuanceStatusResponse], error)
 	// Revoke sets the status bit of one credential through its status index.
 	Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error)
+	// ListIssuedCredentials searches the ledger of issued credentials that
+	// the DPG keeps. An adapter serves it only when it lists
+	// FEATURE_ISSUED_LEDGER.
+	ListIssuedCredentials(context.Context, *connect.Request[v1.ListIssuedCredentialsRequest]) (*connect.Response[v1.ListIssuedCredentialsResponse], error)
 	// GetIssuerMetadata returns the OID4VCI issuer metadata of the DPG.
 	GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error)
 	// GetIssuerIdentity returns the identifiers, the key, and the metadata
@@ -489,6 +512,12 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 		connect.WithSchema(issuerBackendServiceMethods.ByName("Revoke")),
 		connect.WithHandlerOptions(opts...),
 	)
+	issuerBackendServiceListIssuedCredentialsHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceListIssuedCredentialsProcedure,
+		svc.ListIssuedCredentials,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("ListIssuedCredentials")),
+		connect.WithHandlerOptions(opts...),
+	)
 	issuerBackendServiceGetIssuerMetadataHandler := connect.NewUnaryHandler(
 		IssuerBackendServiceGetIssuerMetadataProcedure,
 		svc.GetIssuerMetadata,
@@ -527,6 +556,8 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 			issuerBackendServiceGetIssuanceStatusHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceRevokeProcedure:
 			issuerBackendServiceRevokeHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceListIssuedCredentialsProcedure:
+			issuerBackendServiceListIssuedCredentialsHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceGetIssuerMetadataProcedure:
 			issuerBackendServiceGetIssuerMetadataHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceGetIssuerIdentityProcedure:
@@ -566,6 +597,10 @@ func (UnimplementedIssuerBackendServiceHandler) GetIssuanceStatus(context.Contex
 
 func (UnimplementedIssuerBackendServiceHandler) Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.Revoke is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) ListIssuedCredentials(context.Context, *connect.Request[v1.ListIssuedCredentialsRequest]) (*connect.Response[v1.ListIssuedCredentialsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.ListIssuedCredentials is not implemented"))
 }
 
 func (UnimplementedIssuerBackendServiceHandler) GetIssuerMetadata(context.Context, *connect.Request[v1.GetIssuerMetadataRequest]) (*connect.Response[v1.GetIssuerMetadataResponse], error) {

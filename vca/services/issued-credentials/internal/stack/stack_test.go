@@ -12,6 +12,7 @@ import (
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/stack"
 )
 
@@ -26,6 +27,20 @@ type fakeAdapter struct {
 	state    backendv1.GetIssuanceStatusResponse_State
 	stateErr error
 	asked    []string
+	// ledger is the answer of ListIssuedCredentials.
+	ledger     []*backendv1.LedgerEntry
+	ledgerErr  error
+	ledgerType string
+}
+
+func (f *fakeAdapter) ListIssuedCredentials(_ context.Context, req *connect.Request[backendv1.ListIssuedCredentialsRequest]) (
+	*connect.Response[backendv1.ListIssuedCredentialsResponse], error,
+) {
+	f.ledgerType = req.Msg.GetCredentialType()
+	if f.ledgerErr != nil {
+		return nil, f.ledgerErr
+	}
+	return connect.NewResponse(&backendv1.ListIssuedCredentialsResponse{Credentials: f.ledger}), nil
 }
 
 func (f *fakeAdapter) GetCapabilities(context.Context, *connect.Request[backendv1.GetCapabilitiesRequest]) (*connect.Response[backendv1.GetCapabilitiesResponse], error) {
@@ -99,17 +114,34 @@ func TestHasListsNothingWhenTheAdapterIsDown(t *testing.T) {
 	}
 }
 
-// TestRevokeSendsTheBindingAndTheReason is the call for a
-// stack that revokes itself.
-func TestRevokeSendsTheBindingAndTheReason(t *testing.T) {
+// TestChangeSendsTheBindingTheIdAndTheAction is the call for a stack
+// that changes a status itself.
+func TestChangeSendsTheBindingTheIdAndTheAction(t *testing.T) {
 	f := &fakeAdapter{answer: listing()}
 	a := stack.New(f, f, 0, nil)
 	binding := &backendv1.StatusListBinding{ListId: "v1", Index: 7}
-	if err := a.Revoke(context.Background(), binding, "Lost card"); err != nil {
+	if err := a.Change(context.Background(), service.StackChange{Binding: binding, Reason: "Lost card",
+		CredentialID: "urn:uuid:1", Action: backendv1.RevokeRequest_ACTION_SUSPEND}); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.revoked) != 1 || f.revoked[0].GetStatus().GetIndex() != 7 || f.revoked[0].GetReason() != "Lost card" {
+	if len(f.revoked) != 1 || f.revoked[0].GetStatus().GetIndex() != 7 || f.revoked[0].GetReason() != "Lost card" ||
+		f.revoked[0].GetCredentialId() != "urn:uuid:1" || f.revoked[0].GetAction() != backendv1.RevokeRequest_ACTION_SUSPEND {
 		t.Fatalf("revoked = %v", f.revoked)
+	}
+}
+
+// TestLedgerReadsOnePage passes the query to the adapter and returns
+// its answer, or its error.
+func TestLedgerReadsOnePage(t *testing.T) {
+	f := &fakeAdapter{answer: listing(), ledger: []*backendv1.LedgerEntry{{CredentialId: "urn:uuid:1"}}}
+	a := stack.New(f, f, 0, nil)
+	got, err := a.Ledger(context.Background(), &backendv1.ListIssuedCredentialsRequest{CredentialType: "T"})
+	if err != nil || len(got.GetCredentials()) != 1 || f.ledgerType != "T" {
+		t.Fatalf("ledger %v %v", got, err)
+	}
+	f.ledgerErr = errors.New("down")
+	if _, err := a.Ledger(context.Background(), &backendv1.ListIssuedCredentialsRequest{}); err == nil {
+		t.Fatal("the error is lost")
 	}
 }
 

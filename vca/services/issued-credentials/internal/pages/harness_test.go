@@ -71,6 +71,9 @@ type fakeStack struct {
 	revokes  []*backendv1.StatusListBinding
 	pending  map[string]bool
 	asked    []string
+	// ledger is the ledger of the stack, and ledgerErr its failure.
+	ledger    []*backendv1.LedgerEntry
+	ledgerErr error
 }
 
 func (f *fakeStack) Has(_ context.Context, feature backendv1.Feature) bool {
@@ -79,11 +82,18 @@ func (f *fakeStack) Has(_ context.Context, feature backendv1.Feature) bool {
 
 func (f *fakeStack) Name(context.Context) string { return f.name }
 
-func (f *fakeStack) Revoke(_ context.Context, binding *backendv1.StatusListBinding, _ string) error {
+func (f *fakeStack) Change(_ context.Context, c service.StackChange) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.revokes = append(f.revokes, binding)
+	f.revokes = append(f.revokes, c.Binding)
 	return nil
+}
+
+func (f *fakeStack) Ledger(context.Context, *backendv1.ListIssuedCredentialsRequest) (*backendv1.ListIssuedCredentialsResponse, error) {
+	if f.ledgerErr != nil {
+		return nil, f.ledgerErr
+	}
+	return &backendv1.ListIssuedCredentialsResponse{Credentials: f.ledger}, nil
 }
 
 func (f *fakeStack) Pending(_ context.Context, offerID string) bool {
@@ -174,6 +184,7 @@ func (h *harness) seed(t *testing.T) {
 	t.Helper()
 	for i, r := range []record.Record{
 		{ID: recWanjiku, SchemaID: "farmer", SchemaVersion: 2, IssuedAt: fixedNow.AddDate(0, 0, -5), OfferID: "offer-1", DPGOfferID: "dpg-offer-1",
+			DPGCredentialID:  "urn:uuid:wanjiku",
 			SearchableClaims: map[string]string{"fullName": "Wanjiku Njeri", "farmerID": "FM-0042"}},
 		{ID: recOtieno, SchemaID: "farmer", SchemaVersion: 2, IssuedAt: fixedNow.AddDate(0, 0, -15), OfferID: "offer-2", DPGOfferID: "dpg-offer-2",
 			SearchableClaims: map[string]string{"fullName": "=Otieno Ouma", "farmerID": "FM-0043"}},

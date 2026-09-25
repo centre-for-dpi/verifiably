@@ -43,3 +43,29 @@ Facts the adapter relies on:
 - The pre-authorized data API rejects a claim that the configuration
   does not declare (`unknown_claims`), from
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/PreAuthorizedCodeService.java
+
+## Ledger, credential status, and DID document (Certify 0.14.0)
+
+| File | Source |
+| --- | --- |
+| `ledger-search.json` | The list of `CredentialStatusResponse` that `POST /v2/ledger-search` returns: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/controller/CredentialLedgerController.java and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/CredentialStatusResponse.java |
+| `ledger-search-invalid.json` | The error body with the code `invalid_search_criteria`, thrown when no indexed attribute has a value: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/CredentialLedgerServiceImpl.java |
+| `status-update.json` | The `CredentialStatusResponse` of `POST /credentials/status`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/controller/CredentialStatusController.java and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/UpdateCredentialStatusRequest.java |
+| `did.json` | The DID document of `GET /.well-known/did.json`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/controller/WellKnownController.java and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/utils/DIDDocumentUtil.java |
+
+Facts the adapter relies on:
+
+- The ledger search needs `issuerId` and `credentialType`, and at least
+  one entry of `indexedAttributesEquals` with a value. It answers 204
+  when nothing matches. It has no paging.
+- The ledger stores the issuer DID URL as `issuerId`, and the credential
+  types sorted and joined with commas as `credentialType`
+  (`LedgerUtils.extractCredentialType`):
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/utils/LedgerUtils.java
+- A time is a `LocalDateTime` in the pattern `yyyy-MM-dd'T'HH:mm:ss`.
+- The first version of the status update finds the credential by
+  `credentialId` in the ledger and sets `status` for the purpose. An
+  unknown id answers 404. A scheduled job then writes the status list:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/CredentialStatusServiceImpl.java
+- The stack opens `/ledger-search/**` and `/credentials/**` without a
+  token (`certify-default.properties`, as above).

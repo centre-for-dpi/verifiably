@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
@@ -21,26 +22,50 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/store"
 )
 
-// fakeStack is the DPG adapter of the pair: the features it lists and
-// the revokes it took.
+// fakeStack is the DPG adapter of the pair: the features it lists, the
+// changes it took, and its ledger.
 type fakeStack struct {
 	features map[backendv1.Feature]bool
 	revokes  []*backendv1.StatusListBinding
+	changes  []service.StackChange
 	reasons  []string
 	err      error
+	ledger   []*backendv1.LedgerEntry
+	asked    []*backendv1.ListIssuedCredentialsRequest
 }
 
 func (f *fakeStack) Has(_ context.Context, feature backendv1.Feature) bool {
 	return f.features[feature]
 }
 
-func (f *fakeStack) Revoke(_ context.Context, binding *backendv1.StatusListBinding, reason string) error {
+func (f *fakeStack) Name(context.Context) string { return "First stack" }
+
+func (f *fakeStack) Change(_ context.Context, c service.StackChange) error {
 	if f.err != nil {
 		return f.err
 	}
-	f.revokes = append(f.revokes, binding)
-	f.reasons = append(f.reasons, reason)
+	f.revokes = append(f.revokes, c.Binding)
+	f.changes = append(f.changes, c)
+	f.reasons = append(f.reasons, c.Reason)
 	return nil
+}
+
+// Ledger pages the ledger two entries at a time.
+func (f *fakeStack) Ledger(_ context.Context, req *backendv1.ListIssuedCredentialsRequest) (*backendv1.ListIssuedCredentialsResponse, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.asked = append(f.asked, req)
+	start := 0
+	if req.GetPage().GetPageToken() != "" {
+		start = 2
+	}
+	end := min(start+2, len(f.ledger))
+	out := &backendv1.ListIssuedCredentialsResponse{Credentials: f.ledger[start:end], Page: &commonv1.PageResult{TotalSize: int64(len(f.ledger))}}
+	if end < len(f.ledger) {
+		out.Page.NextPageToken = "2"
+	}
+	return out, nil
 }
 
 // withStack rebuilds the service of f over the same store with a stack.
@@ -60,7 +85,7 @@ func TestRevokeGoesThroughTheStackWhenListed(t *testing.T) {
 	f := newFixture(t)
 	stack := &fakeStack{features: map[backendv1.Feature]bool{backendv1.Feature_FEATURE_REVOCATION: true}}
 	withStack(t, f, stack)
-	f.add(t, "rec-1", "farmer", 3, nil)
+	f.addLedger(t, "rec-1", "urn:uuid:ledger-1", 3)
 	res, err := f.svc.Revoke(context.Background(), staff(&issuedv1.RevokeRequest{Id: "rec-1", Status: issuedv1.Status_STATUS_REVOKED, Reason: "Lost card"}))
 	if err != nil {
 		t.Fatal(err)
@@ -68,8 +93,9 @@ func TestRevokeGoesThroughTheStackWhenListed(t *testing.T) {
 	if res.Msg.GetRecord().GetStatus() != issuedv1.Status_STATUS_REVOKED || res.Msg.GetRecord().GetStatusReason() != "Lost card" {
 		t.Fatalf("record = %v", res.Msg.GetRecord())
 	}
-	if len(stack.revokes) != 1 || stack.revokes[0].GetListId() != "v1" || stack.revokes[0].GetIndex() != 3 || stack.reasons[0] != "Lost card" {
-		t.Fatalf("stack revokes = %v %v", stack.revokes, stack.reasons)
+	if len(stack.changes) != 1 || stack.revokes[0].GetIndex() != 3 || stack.reasons[0] != "Lost card" ||
+		stack.changes[0].CredentialID != "urn:uuid:ledger-1" || stack.changes[0].Action != backendv1.RevokeRequest_ACTION_REVOKE {
+		t.Fatalf("stack changes = %+v", stack.changes)
 	}
 	if len(f.status.calls) != 0 {
 		t.Fatalf("the status service took %d calls", len(f.status.calls))
@@ -117,7 +143,7 @@ func TestRevokeUsesTheStatusServiceWithoutTheFeature(t *testing.T) {
 func TestStackRevokeFailureLeavesTheLog(t *testing.T) {
 	f := newFixture(t)
 	withStack(t, f, &fakeStack{features: map[backendv1.Feature]bool{backendv1.Feature_FEATURE_REVOCATION: true}, err: errors.New("down")})
-	f.add(t, "rec-1", "farmer", 1, nil)
+	f.addLedger(t, "rec-1", "urn:uuid:ledger-1", 1)
 	_, err := f.svc.Revoke(context.Background(), staff(&issuedv1.RevokeRequest{Id: "rec-1", Status: issuedv1.Status_STATUS_REVOKED, Reason: "Fraud"}))
 	if connect.CodeOf(err) != connect.CodeUnavailable {
 		t.Fatalf("err = %v", err)
