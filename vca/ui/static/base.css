@@ -547,6 +547,9 @@ dialog{
   border-radius:var(--radius-m);padding:var(--space-5);max-width:32rem;width:calc(100% - 2rem);
 }
 dialog::backdrop{background:rgba(0,0,0,.6)}
+/* A dialog that a page renders open, with no script to make it modal,
+   sits in the flow of the page instead of over the side navigation. */
+dialog[open]:not(:modal){position:static;margin:0 0 var(--space-6);max-width:40rem}
 .dialog-actions{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-4)}
 
 /* ---------- qr ---------- */

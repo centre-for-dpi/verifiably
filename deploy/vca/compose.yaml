@@ -88,8 +88,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18003}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-waltid-issued-credentials-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-issuer-auth:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issuer-auth:${VCA_VERSION:-latest}
@@ -210,8 +213,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18103}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-inji-issued-credentials-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-issuer-auth:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issuer-auth:${VCA_VERSION:-latest}
@@ -332,8 +338,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18203}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-credebl-issued-credentials-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-issuer-auth:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issuer-auth:${VCA_VERSION:-latest}

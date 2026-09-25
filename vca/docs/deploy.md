@@ -367,11 +367,11 @@ home service of the role.
 | `vca.backend.v1.TenantBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for tenants and stack credentials. |
 | `vca.backend.v1.NotificationBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for stack webhooks. |
 | `vca.combined.v1.CombinedService` | `verifier-combined` | Compose network | No caller check, and no party outside the host calls it. |
-| `vca.datasource.v1.DataSourceService` | `data-source` | Compose network | Without a key set file it trusts the session header of a gateway. `issuance` is the only caller. |
+| `vca.datasource.v1.DataSourceService` | `data-source` | Compose network | Without a key set file it trusts the session header of a gateway. The data source pages call it in process. No other service calls it. |
 | `vca.discovery.v1.DiscoveryService` | `verifier-discovery` | Compose network | No caller check. `verifier-ingest`, `verifier-combined`, and `wallet-portal` call it. A wallet reads `/catalog` instead. |
 | `vca.ingest.v1.IngestService` | `verifier-ingest` | Compose network | No caller check. A wallet posts to `/oid4vp/response`. The scanner page posts to `/scan/ingest`. |
 | `vca.issuance.v1.IssuanceService` | `issuance` | Compose network | No caller check. The issuer pages call it in process. |
-| `vca.issued.v1.IssuedService` | `issued-credentials` | Compose network | No caller check. `issuance` and `schema-registry` call it. An auditor reads `/issued/chain-head` instead. |
+| `vca.issued.v1.IssuedService` | `issued-credentials` | Compose network | No caller check. `issuance` and `schema-registry` call it. The issued credentials pages call it in process. An auditor reads `/issued/chain-head` instead. |
 | `vca.policy.v1.PolicyService` | `verifier-policy` | Compose network | No caller check. `verifier-results` and `verifier-combined` call it. |
 | `vca.results.v1.ResultsService` | `verifier-results` | Compose network | No caller check. `verifier-combined` calls it, and the verifier pages call it in process. |
 | `vca.schema.v1.SchemaService` | `schema-registry` | Compose network | No caller check. `issuance` and `schema-builder-ui` call it. A wallet reads the metadata and the schema files instead. |

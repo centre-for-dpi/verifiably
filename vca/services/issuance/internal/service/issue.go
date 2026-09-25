@@ -270,6 +270,7 @@ func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
 	}
 	offer.OfferURI = resp.Msg.GetOfferUri()
 	offer.Pin = resp.Msg.GetPin()
+	offer.DPGOfferID = resp.Msg.GetOfferId()
 	if expires := resp.Msg.GetExpiresAt(); expires != nil {
 		offer.ExpiresAt = expires.AsTime()
 	}
@@ -597,6 +598,7 @@ func (s *Service) record(ctx context.Context, offer *offers.Offer,
 		SearchableClaims: offer.Claims,
 		Validity:         validity,
 		OfferId:          offer.ID,
+		DpgOfferId:       offer.DPGOfferID,
 	})
 	if err != nil {
 		return err
@@ -656,9 +658,15 @@ func (s *Service) Deferred(
 	if err != nil {
 		return nil, internal("read the offer", err)
 	}
+	// The adapter knows the offer by the id it assigned. An offer from
+	// before that id was kept falls back to the VCA id.
+	adapterID := offer.DPGOfferID
+	if adapterID == "" {
+		adapterID = offer.ID
+	}
 	resp, serr := s.opts.Issuer.GetIssuanceStatus(ctx,
 		connect.NewRequest(&backendv1.GetIssuanceStatusRequest{
-			OfferId: offer.ID, TransactionId: offer.TransactionID,
+			OfferId: adapterID, TransactionId: offer.TransactionID,
 		}))
 	if serr != nil {
 		return nil, connect.NewError(connect.CodeOf(serr),

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/record"
@@ -38,6 +39,7 @@ var Columns = []string{
 	"valid_from",
 	"valid_until",
 	"offer_id",
+	"dpg_offer_id",
 	"status_list_kind",
 	"status_list_id",
 	"status_list_index",
@@ -48,7 +50,8 @@ var Columns = []string{
 	"record_hash",
 }
 
-// CSV writes rs to out as RFC 4180 CSV with a header row.
+// CSV writes rs to out as RFC 4180 CSV with a header row. A cell that
+// a spreadsheet would read as a formula gets a leading quote.
 func CSV(out io.Writer, rs []record.Record) error {
 	claims := record.ClaimNames(rs)
 	w := csv.NewWriter(out)
@@ -59,6 +62,9 @@ func CSV(out io.Writer, rs []record.Record) error {
 		row := fixed(r)
 		for _, name := range claims {
 			row = append(row, r.SearchableClaims[name])
+		}
+		for i, v := range row {
+			row[i] = safeCell(v)
 		}
 		if err := w.Write(row); err != nil {
 			return fmt.Errorf("export: write a row: %w", err)
@@ -89,6 +95,7 @@ func fixed(r record.Record) []string {
 		stamp(r.ValidFrom),
 		stamp(r.ValidUntil),
 		r.OfferID,
+		r.DPGOfferID,
 		string(r.Binding.Kind),
 		r.Binding.ListID,
 		index,
@@ -98,6 +105,16 @@ func fixed(r record.Record) []string {
 		r.PreviousHash,
 		r.RecordHash,
 	}
+}
+
+// safeCell keeps a spreadsheet from reading a value as a formula: a
+// value that starts with =, +, -, @, a tab, or a carriage return gets a
+// leading quote.
+func safeCell(v string) string {
+	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
+		return "'" + v
+	}
+	return v
 }
 
 // stamp returns t in RFC 3339. A zero time returns an empty string.

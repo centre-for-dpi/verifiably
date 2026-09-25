@@ -145,3 +145,40 @@ func TestWriteErrorsReachTheCaller(t *testing.T) {
 		t.Error("Bytes must return the write error")
 	}
 }
+
+// TestCSVGuardsFormulas keeps a spreadsheet from running a value of the
+// export: a cell that starts with =, +, -, @, a tab, or a carriage
+// return gets a leading quote. The JSON lines keep the value as it is.
+func TestCSVGuardsFormulas(t *testing.T) {
+	rs := sample()
+	rs[0].SearchableClaims = map[string]string{"name": "=HYPERLINK(\"https://evil.example\")", "course": "+254 700 000"}
+	rs[0].StatusReason = "@SUM(A1)"
+	rs[0].DPGOfferID = "-offer"
+	data, err := export.Bytes(rs, export.CSV)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := map[string]int{}
+	for i, name := range rows[0] {
+		index[name] = i
+	}
+	for col, want := range map[string]string{
+		"name": "'=HYPERLINK(\"https://evil.example\")", "course": "'+254 700 000",
+		"status_reason": "'@SUM(A1)", "dpg_offer_id": "'-offer", "id": "r1",
+	} {
+		if got := rows[1][index[col]]; got != want {
+			t.Errorf("%s = %q, want %q", col, got, want)
+		}
+	}
+	lines, err := export.Bytes(rs, export.JSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(lines), `"name":"=HYPERLINK`) {
+		t.Errorf("the JSON lines changed the value: %s", lines)
+	}
+}

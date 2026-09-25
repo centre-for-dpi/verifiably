@@ -260,6 +260,12 @@ Connect client. The file `services/issuance/internal/clients/recorder.go`
 holds that code alone. A deployment without the issued credentials
 service keeps the record in the log.
 
+The record carries two offer ids. `offer_id` is the id of the offer in
+this service. `dpg_offer_id` is the id the adapter returned from
+`CreateOffer`. The issued credentials pages ask the adapter for the
+claim state of an offer with it. `Deferred` asks the adapter with the
+same id, and falls back to the VCA id for an offer that has none.
+
 ## Audit log
 
 The service writes one audit event for each issue, alone or in a batch (ADR-039 decision 1).

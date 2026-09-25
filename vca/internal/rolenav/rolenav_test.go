@@ -133,9 +133,10 @@ func TestNavMarksCurrentLongestMatch(t *testing.T) {
 
 // TestIssuerNavFollowsTheBoard lists the issuer pages in the order of
 // board Issuer-Portal: overview, identity, schemas, builder, issue,
-// notifications, help (ADR-044 decision 1).
+// the bulk issuance sources, issued credentials, notifications, help
+// (ADR-044 decisions 1 and 2).
 func TestIssuerNavFollowsTheBoard(t *testing.T) {
-	want := []string{"/issuer/", "/identity/", "/portal/", "/builder/", "/issue/", "/sources/", "/notifications/", "/help/"}
+	want := []string{"/issuer/", "/identity/", "/portal/", "/builder/", "/issue/", "/sources/", "/issued/", "/notifications/", "/help/"}
 	got := Paths(commonv1.Role_ROLE_ISSUER)
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("issuer paths %v, want %v", got, want)

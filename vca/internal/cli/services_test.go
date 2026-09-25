@@ -581,7 +581,7 @@ func TestUIServicesAreTheOnesWithPages(t *testing.T) {
 			ui = append(ui, s.Name)
 		}
 	}
-	want := []string{"admin", "data-source", "issuance", "issuer-auth", "landing", "schema-builder-ui", "schema-registry", "verifier-auth", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-auth", "wallet-portal"}
+	want := []string{"admin", "data-source", "issuance", "issued-credentials", "issuer-auth", "landing", "schema-builder-ui", "schema-registry", "verifier-auth", "verifier-discovery", "verifier-ingest", "verifier-results", "wallet-auth", "wallet-portal"}
 	if strings.Join(ui, ",") != strings.Join(want, ",") {
 		t.Errorf("UI services = %v, want %v", ui, want)
 	}
@@ -703,7 +703,7 @@ func TestPeersReachTheRightServices(t *testing.T) {
 		"admin": true, "schema-builder-ui": true, "schema-registry": true, "verifier-discovery": true,
 		"verifier-ingest": true, "verifier-results": true, "wallet-portal": true,
 		"issuer-auth": true, "wallet-auth": true, "verifier-auth": true, "landing": true, "issuance": true,
-		"data-source": true,
+		"data-source": true, "issued-credentials": true,
 	}
 	for _, s := range Catalog() {
 		has := false

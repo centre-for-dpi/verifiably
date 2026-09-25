@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package config reads the issued credentials settings from the
-// environment with the shared config package (ADR-017).
+// environment with the shared config package (ADR-017), with the staff
+// guard, the theme file, the adapter, and the peers of the pages.
 package config
 
 import (
@@ -9,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/retention"
 )
 
@@ -56,9 +60,31 @@ type Config struct {
 	// AdminToken is the admin service token. It opens the audit store
 	// too. Empty accepts no token.
 	AdminToken string `env:"ADMIN_TOKEN" secret:"true"`
+	// PublicURL is the public URL of the issuer pair. An https URL makes
+	// the cookie that clears a session Secure.
+	PublicURL string `env:"PUBLIC_URL"`
+	// AdapterURL is the base URL of the DPG adapter of the pair. A revoke
+	// goes through the adapter when it lists FEATURE_REVOCATION, and the
+	// pages read the claim state of an offer when it lists
+	// FEATURE_ISSUANCE_STATUS. Empty keeps every change on the status
+	// service.
+	AdapterURL string `env:"ADAPTER_URL"`
+	// Timeout bounds one call to the adapter or to issuer-auth.
+	Timeout time.Duration `env:"TIMEOUT" default:"10s"`
 
 	// Retention is the parsed form of RetentionRules.
 	Retention retention.Policy
+	// ThemeFile is the theme file of the deployment, from VCA_THEME_FILE.
+	// Every service that serves HTML reads the same variable, so it
+	// carries no service prefix. Empty selects the embedded default look.
+	ThemeFile string
+	// Auth checks the session of issuer-auth on the pages (ADR-036
+	// decision 3). Its variables carry the same prefix: AUTH_JWKS_URL,
+	// AUTH_JWKS_FILE, AUTH_ISSUER, and LOGIN_URL.
+	Auth staffsession.Settings
+	// Peers are the candidate pairs of the deployment, from VCA_PEERS.
+	// The stack switcher of the issuer shell comes from them.
+	Peers []topology.Peer
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -67,12 +93,26 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := sharedconfig.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	if err := sharedconfig.Load(Prefix, &c.Auth, getenv); err != nil {
+		return Config{}, err
+	}
+	if err := c.Auth.Check(Prefix); err != nil {
+		return Config{}, err
+	}
+	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
+	peers, err := topology.Parse(getenv(topology.Env))
+	if err != nil {
+		return Config{}, err
+	}
+	c.Peers = peers
 	return c.normalize()
 }
 
 // normalize checks the values and fills the derived fields.
 func (c Config) normalize() (Config, error) {
 	c.StatusURL = strings.TrimRight(c.StatusURL, "/")
+	c.AdapterURL = strings.TrimRight(c.AdapterURL, "/")
+	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
 	var err error
 	if c.Retention, err = retention.Parse(c.RetentionRules); err != nil {
 		return Config{}, fmt.Errorf("config: %sRETENTION: %w", Prefix, err)
@@ -83,6 +123,7 @@ func (c Config) normalize() (Config, error) {
 	}{
 		{"HEAD_PERIOD", c.HeadPeriod},
 		{"STATUS_TIMEOUT", c.StatusTimeout},
+		{"TIMEOUT", c.Timeout},
 	} {
 		if d.value <= 0 {
 			return Config{}, fmt.Errorf("config: %s%s must be a positive duration such as 24h", Prefix, d.name)

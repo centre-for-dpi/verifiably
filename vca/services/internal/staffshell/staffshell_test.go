@@ -140,7 +140,7 @@ func TestSideNavComesFromRolenav(t *testing.T) {
 			}
 		}
 	}
-	if strings.Join(hrefs, " ") != "/issuer/ /identity/ /portal/ /builder/ /issue/ /sources/ /notifications/ /help/" {
+	if strings.Join(hrefs, " ") != "/issuer/ /identity/ /portal/ /builder/ /issue/ /sources/ /issued/ /notifications/ /help/" {
 		t.Errorf("links = %v", hrefs)
 	}
 	if len(current) != 1 || current[0] != "/identity/" {

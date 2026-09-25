@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
@@ -66,9 +68,22 @@ type Options struct {
 	ChunkSize int
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
-	// Audit keeps one event for each revoke, suspend, and reinstate
-	// (ADR-039 decision 1). Nil keeps the events in memory.
+	// Audit keeps one event for each revoke, suspend, reinstate, and
+	// export (ADR-039 decision 1). Nil keeps the events in memory.
 	Audit *auditlog.Log
+	// Stack is the DPG adapter of the pair. A revoke goes through it when
+	// the adapter lists FEATURE_REVOCATION (ADR-034 decision 5). Nil keeps every
+	// change on the status services of VCA.
+	Stack Stack
+}
+
+// Stack is the part of the DPG adapter of the pair that the service
+// calls.
+type Stack interface {
+	// Has reports whether the adapter lists a feature now.
+	Has(ctx context.Context, feature backendv1.Feature) bool
+	// Revoke revokes the credential at a status entry in the stack.
+	Revoke(ctx context.Context, binding *backendv1.StatusListBinding, reason string) error
 }
 
 // Name is the service name that every audit event carries.
@@ -79,6 +94,7 @@ const (
 	ActionRevoke    = "issued.Revoke"
 	ActionSuspend   = "issued.Suspend"
 	ActionReinstate = "issued.Reinstate"
+	ActionExport    = "issued.Export"
 )
 
 // Service is the IssuedService handler.
@@ -111,14 +127,51 @@ func New(opts Options) (*Service, error) {
 // Audit returns the audit store of the service.
 func (s *Service) Audit() *auditlog.Log { return s.opts.Audit }
 
-// audit records one status change. The detail names the new status and
-// never the reason, which is free text of the operator.
-func (s *Service) audit(ctx context.Context, h http.Header, action, id string, status issuedv1.Status, err error) {
+// audit records one status change. The detail names the new status,
+// and the stack when the stack made the change. It never names the
+// reason, which is free text of the operator.
+func (s *Service) audit(ctx context.Context, h http.Header, action, id string, status issuedv1.Status, stack bool, err error) {
 	detail := ""
 	if err == nil {
-		detail = msg.T("audit.issued.status", string(StatusOf(status)))
+		key := "audit.issued.status"
+		if stack {
+			key = "audit.issued.stack"
+		}
+		detail = msg.T(key, string(StatusOf(status)))
 	}
 	s.opts.Audit.Record(ctx, h, action, id, detail, err)
+}
+
+// History returns the audit events of one record, oldest first: each
+// revoke, suspend, and reinstate with its actor and outcome.
+func (s *Service) History(ctx context.Context, id string) ([]auditlog.Record, error) {
+	if _, err := s.get(id); err != nil {
+		return nil, err
+	}
+	page, err := s.opts.Audit.Query(ctx, auditlog.Filter{Target: id, PageSize: auditlog.MaxPageSize})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	out := make([]auditlog.Record, 0, len(page.Records))
+	for i := len(page.Records) - 1; i >= 0; i-- {
+		out = append(out, page.Records[i])
+	}
+	return out, nil
+}
+
+// SchemaIDs returns the schema id of every record, sorted and once
+// each. The schema filter of the pages offers them.
+func (s *Service) SchemaIDs() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range s.opts.Store.All() {
+		if !seen[r.SchemaID] {
+			seen[r.SchemaID] = true
+			out = append(out, r.SchemaID)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Ready reports whether the service can take traffic.
@@ -222,11 +275,15 @@ func (s *Service) Search(_ context.Context, req *connect.Request[issuedv1.Search
 	return connect.NewResponse(resp), nil
 }
 
-// Get returns one record.
+// Get returns one record. An active record whose validity window ended
+// reads as expired, as in a list.
 func (s *Service) Get(_ context.Context, req *connect.Request[issuedv1.GetRequest]) (*connect.Response[issuedv1.GetResponse], error) {
 	r, err := s.get(req.Msg.GetId())
 	if err != nil {
 		return nil, err
+	}
+	if r.Status == record.Active && r.Expired(s.opts.Now()) {
+		r.Status = record.Expired
 	}
 	return connect.NewResponse(&issuedv1.GetResponse{Record: ToProto(r)}), nil
 }
@@ -237,6 +294,7 @@ func (s *Service) Get(_ context.Context, req *connect.Request[issuedv1.GetReques
 // The audit log records the change, also when it fails.
 func (s *Service) Revoke(ctx context.Context, req *connect.Request[issuedv1.RevokeRequest]) (res *connect.Response[issuedv1.RevokeResponse], err error) {
 	want := StatusOf(req.Msg.GetStatus())
+	stack := want == record.Revoked && s.stackRevokes(ctx)
 	defer func() {
 		action := ActionRevoke
 		if want == record.Suspended {
@@ -246,13 +304,13 @@ func (s *Service) Revoke(ctx context.Context, req *connect.Request[issuedv1.Revo
 		if res != nil {
 			status = res.Msg.GetRecord().GetStatus()
 		}
-		s.audit(ctx, req.Header(), action, req.Msg.GetId(), status, err)
+		s.audit(ctx, req.Header(), action, req.Msg.GetId(), status, stack, err)
 	}()
 	if want != record.Revoked && want != record.Suspended {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the status must be STATUS_REVOKED or STATUS_SUSPENDED"))
 	}
-	r, err := s.change(ctx, req.Msg.GetId(), want, req.Msg.GetReason(), StatusValueSet)
+	r, err := s.change(ctx, req.Msg.GetId(), want, req.Msg.GetReason(), StatusValueSet, stack)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +325,7 @@ func (s *Service) Reinstate(ctx context.Context, req *connect.Request[issuedv1.R
 		if res != nil {
 			status = res.Msg.GetRecord().GetStatus()
 		}
-		s.audit(ctx, req.Header(), ActionReinstate, req.Msg.GetId(), status, err)
+		s.audit(ctx, req.Header(), ActionReinstate, req.Msg.GetId(), status, false, err)
 	}()
 	current, err := s.get(req.Msg.GetId())
 	if err != nil {
@@ -277,7 +335,7 @@ func (s *Service) Reinstate(ctx context.Context, req *connect.Request[issuedv1.R
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("only a suspended credential can go back to active"))
 	}
-	r, err := s.change(ctx, req.Msg.GetId(), record.Active, req.Msg.GetReason(), StatusValueClear)
+	r, err := s.change(ctx, req.Msg.GetId(), record.Active, req.Msg.GetReason(), StatusValueClear, false)
 	if err != nil {
 		return nil, err
 	}
@@ -289,19 +347,34 @@ type Sender interface {
 	Send(*issuedv1.ExportResponse) error
 }
 
-// Export streams the records that match a filter.
+// Export streams the records that match a filter. The audit log names
+// the actor of the X-Vca-Actor header.
 func (s *Service) Export(ctx context.Context, req *connect.Request[issuedv1.ExportRequest], stream *connect.ServerStream[issuedv1.ExportResponse]) error {
+	if actor := auditlog.ActorFrom(req.Header()); actor != "" {
+		ctx = auditlog.WithActor(ctx, actor)
+	}
 	return s.ExportTo(ctx, req.Msg, stream)
 }
 
-// ExportTo streams the export to out. Export and the tests call it.
-func (s *Service) ExportTo(ctx context.Context, msg *issuedv1.ExportRequest, out Sender) error {
-	rs := s.match(FilterOf(msg.GetFilter()), "")
+// ExportTo streams the export to out. Export and the pages call it. The
+// audit log records the actor of ctx, the count, and the encoding.
+func (s *Service) ExportTo(ctx context.Context, m *issuedv1.ExportRequest, out Sender) (err error) {
+	var rs []record.Record
+	encoding := "csv"
+	defer func() {
+		s.opts.Audit.Record(ctx, nil, ActionExport, "", msg.T("audit.issued.export", strconv.Itoa(len(rs)), encoding), err)
+	}()
+	query := strings.TrimSpace(m.GetQuery())
+	if len(query) > record.MaxQuery {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("the query must hold at most %d characters", record.MaxQuery))
+	}
+	rs = s.match(FilterOf(m.GetFilter()), query)
 	write := export.CSV
-	switch msg.GetEncoding() {
+	switch m.GetEncoding() {
 	case issuedv1.ExportRequest_ENCODING_UNSPECIFIED, issuedv1.ExportRequest_ENCODING_CSV:
 	case issuedv1.ExportRequest_ENCODING_JSON:
-		write = export.JSON
+		write, encoding = export.JSON, "json"
 	default:
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("the encoding must be CSV or JSON"))
 	}
@@ -378,7 +451,9 @@ func (s *Service) signedHead() (headView, error) {
 
 // change writes one status change. It calls the status service first, so
 // the log never claims a change the status list does not hold.
-func (s *Service) change(ctx context.Context, id string, want record.Status, reason string, value int32) (record.Record, error) {
+// With stack set, the DPG adapter makes the change in place of the
+// status service.
+func (s *Service) change(ctx context.Context, id string, want record.Status, reason string, value int32, stack bool) (record.Record, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return record.Record{}, connect.NewError(connect.CodeInvalidArgument, record.ErrNoReason)
@@ -392,6 +467,9 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 	}
 	if current.Binding.IsZero() {
 		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition, record.ErrNoBinding)
+	}
+	if stack {
+		return s.revokeInStack(ctx, id, current, reason)
 	}
 	if s.opts.Status == nil {
 		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition,
@@ -411,6 +489,26 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 		return record.Record{}, connect.NewError(connect.CodeInternal, err)
 	}
 	return changed, nil
+}
+
+// revokeInStack revokes the credential through the DPG adapter, which
+// lists FEATURE_REVOCATION (ADR-034 decision 5). The log writes the event only
+// after the stack took the change, as with the status service.
+func (s *Service) revokeInStack(ctx context.Context, id string, current record.Record, reason string) (record.Record, error) {
+	if err := s.opts.Stack.Revoke(ctx, bindingProto(current.Binding), reason); err != nil {
+		return record.Record{}, unavailable("the DPG adapter", err)
+	}
+	changed, err := s.opts.Store.SetStatus(id, record.Revoked, reason, s.opts.Now())
+	if err != nil {
+		return record.Record{}, connect.NewError(connect.CodeInternal, err)
+	}
+	return changed, nil
+}
+
+// stackRevokes reports whether the DPG adapter of the pair revokes a
+// credential itself: it lists FEATURE_REVOCATION (ADR-034 decision 5).
+func (s *Service) stackRevokes(ctx context.Context) bool {
+	return s.opts.Stack != nil && s.opts.Stack.Has(ctx, backendv1.Feature_FEATURE_REVOCATION)
 }
 
 // get returns one record with its status brought up to date.

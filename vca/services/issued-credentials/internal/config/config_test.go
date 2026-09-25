@@ -79,10 +79,43 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		{"VCA_ISSUED_STATUS_TIMEOUT": "soon"},
 		{"VCA_ISSUED_PRUNE_INTERVAL": "-1h"},
 		{"VCA_ISSUED_PAGE_SIZE_MAX": "0"},
+		{"VCA_ISSUED_TIMEOUT": "0s"},
+		{"VCA_ISSUED_AUTH_JWKS_TTL": "0s"},
+		{"VCA_PEERS": "not a peer"},
 	}
 	for _, c := range cases {
 		if _, err := config.Load(env(c)); err == nil {
 			t.Errorf("%v: want an error", c)
 		}
+	}
+}
+
+// TestLoadReadsThePageSettings reads the settings of the issued
+// credentials pages: the public URL, the adapter, the staff guard, the
+// theme file, and the peers (P3-10).
+func TestLoadReadsThePageSettings(t *testing.T) {
+	c, err := config.Load(env(map[string]string{
+		"VCA_ISSUED_PUBLIC_URL":    "https://issuer.example/",
+		"VCA_ISSUED_ADAPTER_URL":   "http://dpg-adapter:8080/",
+		"VCA_ISSUED_TIMEOUT":       "4s",
+		"VCA_ISSUED_AUTH_JWKS_URL": "http://issuer-auth:8081/.well-known/jwks.json",
+		"VCA_ISSUED_LOGIN_URL":     "https://issuer.example/auth/",
+		"VCA_THEME_FILE":           " /etc/vca/theme.yaml ",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PublicURL != "https://issuer.example" || c.AdapterURL != "http://dpg-adapter:8080" || c.Timeout != 4*time.Second {
+		t.Errorf("config = %+v", c)
+	}
+	if c.Auth.JWKSURL != "http://issuer-auth:8081/.well-known/jwks.json" || c.Auth.LoginURL != "https://issuer.example/auth/" {
+		t.Errorf("auth = %+v", c.Auth)
+	}
+	if c.ThemeFile != "/etc/vca/theme.yaml" || len(c.Peers) != 0 {
+		t.Errorf("theme %q, peers %v", c.ThemeFile, c.Peers)
+	}
+	d, err := config.Load(env(nil))
+	if err != nil || d.Timeout != 10*time.Second || d.AdapterURL != "" {
+		t.Errorf("defaults = %+v, %v", d, err)
 	}
 }

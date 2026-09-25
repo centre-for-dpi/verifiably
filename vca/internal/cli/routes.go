@@ -53,6 +53,7 @@ import (
 //	          /auth/*  /token  /.well-known/jwks.json       issuer-auth
 //	          /vca.issuerauth.v1.IssuerAuthService/*        issuer-auth
 //	          /vca.admin.v1.AdminService/*                  issuer-auth
+//	          /issued/*                            issued-credentials (the issued credentials pages)
 //	          /issued/chain-head  /issued/jwks.json issued-credentials
 //	          /status-bitstring/status/*  (strip)  status-bitstring
 //	          /status-bitstring/.well-known/jwks.json  (strip)

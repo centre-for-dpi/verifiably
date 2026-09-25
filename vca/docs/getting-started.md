@@ -246,6 +246,7 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | `/.well-known/did.json` | `issuance` |  |
 | `/issued/chain-head` | `issued-credentials` |  |
 | `/issued/jwks.json` | `issued-credentials` |  |
+| `/issued/*` | `issued-credentials` | A page: Issued credentials. |
 | `/vca.issuerauth.v1.IssuerAuthService/*` | `issuer-auth` |  |
 | `/vca.admin.v1.AdminService/*` | `issuer-auth` |  |
 | `/.well-known/jwks.json` | `issuer-auth` |  |

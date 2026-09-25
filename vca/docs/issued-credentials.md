@@ -26,6 +26,8 @@ the credential without holding it.
 | `validity` | The validity window of the credential. |
 | `status_changed_at`, `status_reason` | The last status change and its reason. |
 | `retain_until` | The time after which the prune job can drop the record. |
+| `offer_id` | The offer id in the issuance service. |
+| `dpg_offer_id` | The offer id that the DPG adapter assigned. The pages read the claim state of the offer with it. Empty for a credential without an offer. |
 
 ## Data minimisation
 
@@ -119,9 +121,21 @@ The status client is a `vca.status.v1.StatusService` Connect client. The
 deployment sets its base URL. Without a URL the service reports a failed
 precondition, so an operator sees the missing setting at once.
 
+A stack can revoke a credential itself. The adapter of the pair then
+lists `FEATURE_REVOCATION`. A revoke goes to `Revoke` of the adapter in
+place of the status service (ADR-034 decision 5). The service reads the
+features from `GetCapabilities` of `VCA_ISSUED_ADAPTER_URL` and keeps
+the answer for one minute. The rule of the order holds: the log writes
+the event only after the stack took the change. A suspension and a
+reinstatement always go to the status service, because the revoke of an
+adapter carries no suspension.
+
 ## Audit log
 
-The service writes one audit event for each revoke, suspend, and reinstate (ADR-039 decision 1).
+The service writes one audit event for each revoke, suspend, reinstate, and export (ADR-039 decision 1).
+The detail of a status change names the new status, and the stack when
+the stack made the change. The detail of an export names the count and
+the encoding.
 The event names the actor, the action, the target, the outcome, and the
 request id. It never holds a claim value. A failure names the Connect
 code of the answer, never the text of the error. The service checks no
@@ -143,14 +157,63 @@ against the searchable claims, ignoring case. The query holds at most
 200 characters. A filter narrows both by schema, status, format,
 subject reference, and time window.
 
-`Export` streams the matching records. The encoding is RFC 4180 CSV with
+`Export` streams the matching records. The field `query` matches the
+searchable claims, as `Search` does, so an export holds the rows of a
+search. The encoding is RFC 4180 CSV with
 a header row, or one JSON object per line. The service writes the same
 CSV columns every time. The searchable claim columns follow them, sorted
-by name. The service sends the bytes in chunks. It marks the last chunk
-`done`.
+by name. A CSV cell can start with `=`, `+`, `-`, `@`, a tab, or a
+carriage return. Such a cell gets a leading quote, so a spreadsheet does
+not read it as a formula. The JSON lines keep every value as it is. The service
+sends the bytes in chunks. It marks the last chunk `done`.
+
+`Get` and every list report an active record whose validity window
+ended as expired.
 
 A record whose validity window ended reads as expired in every list,
 search, and export, even before a status change.
+
+## Pages
+
+The service draws the issued credentials pages of the issuer at
+`/issued/` (P3-10, ADR-044 decision 2, board `Issuer-Issued`). The pages
+sit behind the staff guard of `issuer-auth` and draw the issuer shell.
+They call the service in process. Every call names the staff member in
+`X-Vca-Actor`, so the audit log holds the actor of each change and each
+export. The chain head endpoints keep their own routes outside the
+guard.
+
+| Path | Page |
+|---|---|
+| `GET /issued/` | The search, the filters, and one page of the records, newest first. |
+| `GET /issued/export.csv` | The rows of the search and the filters as CSV. |
+| `GET /issued/export.json` | The same rows as one JSON object per line. |
+| `GET /issued/{id}` | The stored fields, the record, and the history. |
+| `GET /issued/{id}?action=` | The same page with the reason dialog of `suspend`, `revoke`, or `reinstate` open. |
+| `POST /issued/{id}/suspend`, `/revoke`, `/reinstate` | The status change with its reason. |
+
+The search matches the searchable claims. The filters are the schema,
+the status, and a range of issuance days. The export buttons carry the
+search and the filters, so a file holds the rows of the page.
+
+The detail page lists the stored fields and the log entry. Above the
+fields it says "VCA stores only the fields you mark as searchable." That
+sentence follows ADR-017 decision 2. The entry holds the record id, the
+format, the adapter, and the status list entry. It also holds the last reason, the offer id, the
+hash, and the retention. The history starts with the issuance. Then it
+lists each audit event of this service for the record, with its actor
+and its result.
+
+Only an issuer operator or an issuer admin changes a status. A viewer
+sees the record and a sentence that says who can act. Each action opens
+a dialog with a reason field and the synchronizer token of the session.
+An empty reason stays in the dialog with the error on the field. The
+dialog of a revoke names the stack when the adapter lists
+`FEATURE_REVOCATION`.
+
+The state "Offered, not claimed" shows only when the adapter lists
+`FEATURE_ISSUANCE_STATUS`. The page then asks `GetIssuanceStatus` of the
+adapter with the `dpg_offer_id` of each active record in view.
 
 ## Retention
 

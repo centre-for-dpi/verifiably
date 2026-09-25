@@ -92,6 +92,10 @@ message IssuedRecord {
   string status_reason = 17;
   // The time after which the scheduled job prunes the record.
   google.protobuf.Timestamp retain_until = 18;
+  // The offer id that the DPG adapter assigned in CreateOffer. Empty when
+  // the credential went out without an offer, such as on a document. The
+  // issued credentials pages read the claim state of the offer with it.
+  string dpg_offer_id = 19;
 }
 
 // AppendRequest carries one issuance to record.
@@ -224,6 +228,9 @@ message ExportRequest {
   Filter filter = 1;
   // The output encoding.
   Encoding encoding = 2;
+  // The text to match against searchable claims, as in Search. Empty
+  // exports every record that passes the filter. At most 200 characters.
+  string query = 3;
 
   // Encoding names the export format.
   enum Encoding {

@@ -132,6 +132,17 @@ func TestPlainRoutesPublishNoConnectService(t *testing.T) {
 			if len(s.Routes) != 1 || s.Routes[0].Match != "/sources/*" || s.Routes[0].Page == "" {
 				t.Errorf("data-source routes %+v, want its page only", s.Routes)
 			}
+		case "issued-credentials":
+			// The auditor reads the chain head and its key set; the pages
+			// sit behind the staff guard; the IssuedService stays on the
+			// compose network.
+			var got []string
+			for _, r := range s.Routes {
+				got = append(got, r.Match+"|"+r.Page)
+			}
+			if strings.Join(got, " ") != "/issued/chain-head| /issued/jwks.json| /issued/*|Issued credentials" {
+				t.Errorf("issued-credentials routes %v", got)
+			}
 		}
 	}
 }

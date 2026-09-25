@@ -295,12 +295,20 @@ func Catalog() []Service {
 				// A did:web issuer of the host resolves here (ADR-046).
 				{Match: "/.well-known/did.json"},
 			}},
-		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
-			Links: append([]Link{{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL}}, issuedAudit...),
+		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true, UI: true,
+			Links: append([]Link{
+				{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL},
+				{Env: "VCA_ISSUED_PUBLIC_URL", Kind: LinkPublicURL},
+				{Env: "VCA_ISSUED_ADAPTER_URL", Kind: LinkAdapterURL},
+				staffJWKS("VCA_ISSUED_AUTH_JWKS_URL", "issuer-auth"),
+				staffLogin("VCA_ISSUED_LOGIN_URL"),
+				peers,
+			}, issuedAudit...),
 			Fixed: []FixedValue{{Env: "VCA_ISSUED_STORE_FILE", Value: "/data/issued.json"}, issuedAuditDir},
 			// An auditor reads the signed chain head and its key. The
-			// IssuedService stays on the compose network (ADR-047).
-			Routes: []Route{{Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}}},
+			// issued credentials pages sit behind the staff guard (P3-10).
+			// The IssuedService stays on the compose network (ADR-047).
+			Routes: []Route{{Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}, {Match: "/issued/*", Page: "Issued credentials"}}},
 		// The auth services draw the sign in chooser (ADR-035), so they
 		// read the theme file like every UI service.
 		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer, Stateful: true, UI: true,

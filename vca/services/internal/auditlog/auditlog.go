@@ -102,6 +102,9 @@ type Filter struct {
 	Action string
 	// Outcome is OutcomeSuccess, OutcomeFailure, or empty.
 	Outcome string
+	// Target matches the target exactly, so a page can show the history
+	// of one record.
+	Target string
 	// PageSize is the maximum number of records. Zero selects
 	// DefaultPageSize. The log caps the value at MaxPageSize.
 	PageSize int
@@ -245,6 +248,9 @@ func Matches(rec Record, f Filter) bool {
 		return false
 	}
 	if f.Outcome != "" && rec.Outcome() != f.Outcome {
+		return false
+	}
+	if f.Target != "" && rec.Target != f.Target {
 		return false
 	}
 	if !f.From.IsZero() && rec.At.Before(f.From) {

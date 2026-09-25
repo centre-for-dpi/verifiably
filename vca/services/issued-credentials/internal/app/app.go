@@ -2,7 +2,9 @@
 
 // Package app wires the issued credentials service from its
 // configuration: the hash chain store, the head signer, the status
-// service client, the Connect handler, and the chain head endpoints.
+// service client, the adapter of the pair, the Connect handler, the
+// chain head endpoints, and the issued credentials pages behind the
+// staff guard (P3-10).
 package app
 
 import (
@@ -17,16 +19,25 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/head"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/httpapi"
+	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/pages"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/service"
+	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/stack"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/ui"
 )
 
 // App is the wired service.
@@ -54,6 +65,10 @@ type Deps struct {
 	Now func() time.Time
 	// Log receives start messages. Nil means slog.Default.
 	Log *slog.Logger
+	// SessionKeys replaces the key set of issuer-auth. Tests set it.
+	SessionKeys staffsession.Keys
+	// Prober replaces the probe of the peers.
+	Prober *topology.Prober
 }
 
 // Build wires the service from cfg.
@@ -91,7 +106,13 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if status == nil && cfg.StatusURL != "" {
 		status = statusv1connect.NewStatusServiceClient(httpClient(cfg, deps), cfg.StatusURL)
 	}
-	svc, err := service.New(service.Options{
+	var adapter *stack.Adapter
+	if cfg.AdapterURL != "" {
+		client := &http.Client{Timeout: cfg.Timeout}
+		adapter = stack.New(backendv1connect.NewCapabilityServiceClient(client, cfg.AdapterURL),
+			backendv1connect.NewIssuerBackendServiceClient(client, cfg.AdapterURL), stack.DefaultTTL, deps.Now)
+	}
+	opts := service.Options{
 		Store:       st,
 		Status:      status,
 		Head:        signer,
@@ -100,7 +121,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		PageSizeMax: cfg.PageSizeMax,
 		Now:         deps.Now,
 		Audit:       events,
-	})
+	}
+	if adapter != nil {
+		opts.Stack = adapter
+	}
+	svc, err := service.New(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +136,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	httpapi.Register(mux, svc, signer)
+	if err := mountPages(mux, cfg, deps, svc, adapter); err != nil {
+		return nil, err
+	}
 	if status == nil {
 		deps.Log.Warn("no status service, revoke and reinstate report a failed precondition",
 			"setting", config.Prefix+"STATUS_URL")
@@ -122,6 +150,40 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	deps.Log.Info("issued credentials ready",
 		"store_file", cfg.StoreFile, "key_id", signer.KeyID(), "schemas", cfg.Retention.Schemas())
 	return &App{Mux: mux, Service: svc, Store: st, Signer: signer, PruneInterval: cfg.PruneInterval}, nil
+}
+
+// mountPages adds the issued credentials pages behind the staff guard
+// of issuer-auth and the shared assets (P3-10, ADR-044 decision 2). The
+// chain head endpoints keep their own, more specific routes, so they
+// stay public.
+func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, svc *service.Service, adapter *stack.Adapter) error {
+	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
+	if err != nil {
+		return err
+	}
+	guard, err := staffsession.Build(cfg.Auth, staffsession.IssuerRealm(), config.Prefix, staffsession.Deps{
+		Keys: deps.SessionKeys, ReadFile: deps.ReadFile, Now: deps.Now, Log: deps.Log,
+	})
+	if err != nil {
+		return err
+	}
+	shell, signOut := staffshell.Wire(staffshell.Setup{
+		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
+		SignOut: pages.SignOutPath, Prober: deps.Prober, Client: &http.Client{Timeout: cfg.Timeout}, Now: deps.Now,
+	})
+	opts := pages.Options{Kit: kit, Shell: shell, Records: svc, SignOut: signOut}
+	if adapter != nil {
+		opts.Stack = adapter
+	}
+	p, err := pages.New(opts)
+	if err != nil {
+		return err
+	}
+	staff := http.NewServeMux()
+	p.Register(staff)
+	mux.Handle(pages.Prefix, guard.Wrap(staff))
+	mux.Handle("GET "+ui.Prefix, assets)
+	return nil
 }
 
 // httpClient returns the client that calls the status service.

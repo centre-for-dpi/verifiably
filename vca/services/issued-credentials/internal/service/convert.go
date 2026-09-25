@@ -124,22 +124,28 @@ func ToProto(r record.Record) *issuedv1.IssuedRecord {
 		RecordHash:       r.RecordHash,
 		SearchableClaims: r.SearchableClaims,
 		OfferId:          r.OfferID,
+		DpgOfferId:       r.DPGOfferID,
 		StatusChangedAt:  stamp(r.StatusChangedAt),
 		StatusReason:     r.StatusReason,
 		RetainUntil:      stamp(r.RetainUntil),
 	}
 	if !r.Binding.IsZero() {
-		out.StatusBinding = &backendv1.StatusListBinding{
-			Kind:       KindEnum(r.Binding.Kind),
-			ListId:     r.Binding.ListID,
-			Index:      r.Binding.Index,
-			PublishUrl: r.Binding.PublishURL,
-		}
+		out.StatusBinding = bindingProto(r.Binding)
 	}
 	if !r.ValidFrom.IsZero() || !r.ValidUntil.IsZero() {
 		out.Validity = &commonv1.ValidityWindow{ValidFrom: stamp(r.ValidFrom), ValidUntil: stamp(r.ValidUntil)}
 	}
 	return out
+}
+
+// bindingProto converts one status list binding.
+func bindingProto(b record.Binding) *backendv1.StatusListBinding {
+	return &backendv1.StatusListBinding{
+		Kind:       KindEnum(b.Kind),
+		ListId:     b.ListID,
+		Index:      b.Index,
+		PublishUrl: b.PublishURL,
+	}
 }
 
 // FromProto converts one record. The service uses it to take a record
@@ -163,6 +169,7 @@ func FromProto(p *issuedv1.IssuedRecord) record.Record {
 		ValidFrom:        timeOf(p.GetValidity().GetValidFrom()),
 		ValidUntil:       timeOf(p.GetValidity().GetValidUntil()),
 		OfferID:          p.GetOfferId(),
+		DPGOfferID:       p.GetDpgOfferId(),
 		StatusChangedAt:  timeOf(p.GetStatusChangedAt()),
 		StatusReason:     p.GetStatusReason(),
 		RetainUntil:      timeOf(p.GetRetainUntil()),

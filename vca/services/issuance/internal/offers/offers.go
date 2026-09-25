@@ -53,6 +53,7 @@ type Offer struct {
 	Link          string            `json:"link,omitempty"`
 	RecordID      string            `json:"record_id,omitempty"`
 	TransactionID string            `json:"transaction_id,omitempty"`
+	DPGOfferID    string            `json:"dpg_offer_id,omitempty"`
 	Credential    []byte            `json:"credential,omitempty"`
 	Format        int32             `json:"format,omitempty"`
 	SchemaID      string            `json:"schema_id,omitempty"`

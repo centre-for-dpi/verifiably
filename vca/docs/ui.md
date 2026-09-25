@@ -449,7 +449,10 @@ the page.
 ### Progressive enhancement
 
 Every page works without JavaScript. Forms post, links navigate, `details`
-opens, and a `dialog` with `Open` shows at once. A `dcapi` button stays
+opens, and a `dialog` with `Open` shows at once. Such a dialog is not
+modal, so it sits in the flow of the page where the page puts it. Some
+pages need a reason before a change. Such a page links to itself with
+the dialog open, and the dialog holds the POST form. A `dcapi` button stays
 hidden without the script, and its page keeps the QR code and the link. With JavaScript, htmx swaps
 the `main` region, the theme toggle appears, disclosure buttons toggle their
 region, and `Opens` buttons call `showModal`.

@@ -178,6 +178,32 @@ func TestQueryFiltersByActorActionAndTime(t *testing.T) {
 	}
 }
 
+// TestQueryFiltersByTarget returns the events of one target only, so a
+// page can show the history of one record.
+func TestQueryFiltersByTarget(t *testing.T) {
+	clock := start
+	l := newLog(t, &clock)
+	ctx := context.Background()
+	for _, target := range []string{"rec-1", "rec-2", "rec-1", "rec-10"} {
+		clock = clock.Add(time.Minute)
+		if _, err := l.Append(ctx, auditlog.Entry{Actor: "one", Action: "issued.Revoke", Target: target}); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+	page, err := l.Query(ctx, auditlog.Filter{Target: "rec-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Records) != 2 || page.TotalSize != 2 {
+		t.Fatalf("records = %+v", page.Records)
+	}
+	for _, r := range page.Records {
+		if r.Target != "rec-1" {
+			t.Errorf("target %q passed the filter", r.Target)
+		}
+	}
+}
+
 func TestQueryCapsThePageSize(t *testing.T) {
 	clock := start
 	l := newLog(t, &clock)

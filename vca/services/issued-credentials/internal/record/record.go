@@ -79,9 +79,12 @@ type Record struct {
 	ValidFrom        time.Time         `json:"valid_from,omitempty"`
 	ValidUntil       time.Time         `json:"valid_until,omitempty"`
 	OfferID          string            `json:"offer_id,omitempty"`
-	StatusChangedAt  time.Time         `json:"status_changed_at,omitempty"`
-	StatusReason     string            `json:"status_reason,omitempty"`
-	RetainUntil      time.Time         `json:"retain_until,omitempty"`
+	// DPGOfferID is the offer id of the DPG adapter. The field is new, so
+	// an older record leaves it out and keeps its hash.
+	DPGOfferID      string    `json:"dpg_offer_id,omitempty"`
+	StatusChangedAt time.Time `json:"status_changed_at,omitempty"`
+	StatusReason    string    `json:"status_reason,omitempty"`
+	RetainUntil     time.Time `json:"retain_until,omitempty"`
 }
 
 // EventKind names what an event does.

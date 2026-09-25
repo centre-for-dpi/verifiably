@@ -108,3 +108,16 @@ func TestFromProtoIgnoresAnInvalidTimestamp(t *testing.T) {
 		t.Errorf("issued at = %v, want a zero time", got.IssuedAt)
 	}
 }
+
+// TestDpgOfferIDRoundTrips keeps the offer id of the adapter, which the
+// pages need to read the claim state of an offer.
+func TestDpgOfferIDRoundTrips(t *testing.T) {
+	in := &issuedv1.IssuedRecord{Id: "r1", SchemaId: "farmer", SchemaVersion: 1, OfferId: "vca-1", DpgOfferId: "dpg-7"}
+	r := service.FromProto(in)
+	if r.DPGOfferID != "dpg-7" || r.OfferID != "vca-1" {
+		t.Fatalf("record = %+v", r)
+	}
+	if got := service.ToProto(r).GetDpgOfferId(); got != "dpg-7" {
+		t.Fatalf("proto dpg_offer_id = %q", got)
+	}
+}

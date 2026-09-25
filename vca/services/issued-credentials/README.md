@@ -15,6 +15,7 @@ The issued credentials service keeps the tamper evident log of every credential 
 - An auditor reads the signed head and proves that no record went missing.
 - It prunes records whose per schema retention ended. The chain keeps every entry, so the head stays provable.
 - It owns one file: the log `issued.json` with every chain entry.
+- It draws the issued credentials pages of the issuer at `/issued/`: search, filters, detail, history, the status actions, and the export.
 
 It does not issue credentials. The issuance service writes the records.
 
@@ -44,6 +45,15 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_ISSUED_AUDIT_DIR` | The directory of the audit store. | empty: in memory |
 | `VCA_ISSUED_ADMIN_JWKS_URL` | The key set of the admin service. An admin session it signed opens the audit store. | empty: no admin session is accepted |
 | `VCA_ISSUED_ADMIN_TOKEN` | The admin service token. It opens the audit store too. | empty: no token is accepted |
+| `VCA_ISSUED_PUBLIC_URL` | The public URL of the issuer pair. An `https` URL makes the sign out cookie `Secure`. | empty |
+| `VCA_ISSUED_ADAPTER_URL` | The DPG adapter of the pair. It gives the features of the stack. | empty: every change goes to the status service |
+| `VCA_ISSUED_TIMEOUT` | The time limit of one call to the adapter or to `issuer-auth`. | `10s` |
+| `VCA_ISSUED_AUTH_JWKS_URL` | The key set of `issuer-auth`. The pages accept only a session it signed. | empty: the pages accept no session |
+| `VCA_ISSUED_AUTH_JWKS_FILE` | A key set file in place of the URL. | empty |
+| `VCA_ISSUED_AUTH_ISSUER` | The `iss` claim every session must carry. | empty: any issuer of the key set |
+| `VCA_ISSUED_LOGIN_URL` | The sign in chooser of the pair. A page request with no session goes there. | empty: `401` |
+| `VCA_THEME_FILE` | The theme file of every page. | empty: the shipped look |
+| `VCA_PEERS` | The candidate pairs of the deployment, for the stack switcher of the issuer shell. | empty |
 
 Set `VCA_ISSUED_SALT_FILE` in production. Without a salt the subject reference is not hard to guess.
 Set `VCA_ISSUED_HEAD_KEY_FILE` in production. A generated key changes at every restart, so an old head no longer verifies.

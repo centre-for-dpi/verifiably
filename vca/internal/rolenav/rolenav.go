@@ -80,8 +80,9 @@ func Sections(role commonv1.Role) []Section {
 	case commonv1.Role_ROLE_ISSUER:
 		// Board Issuer-Portal. The issuance service serves the overview,
 		// the identity, the issue, the notifications, and the help pages;
-		// the schema registry, the builder, and the data source service
-		// serve theirs (ADR-044 decision 1).
+		// the schema registry, the builder, the data source service, and
+		// the issued credentials service serve theirs (ADR-044 decisions
+		// 1 and 2).
 		return []Section{{Pages: []Page{
 			{Path: "/issuer/", Key: "common.overview.label"},
 			{Path: "/identity/", Key: "issuer.nav.identity.label"},
@@ -89,6 +90,7 @@ func Sections(role commonv1.Role) []Section {
 			{Path: "/builder/", Key: "issuer.nav.builder.label"},
 			{Path: "/issue/", Key: "issuer.nav.issue.label"},
 			{Path: "/sources/", Key: "issuer.nav.sources.label"},
+			{Path: "/issued/", Key: "issuer.nav.issued.label"},
 			{Path: "/notifications/", Key: "common.notifications.label"},
 			{Path: "/help/", Key: "common.help.label"},
 		}}}

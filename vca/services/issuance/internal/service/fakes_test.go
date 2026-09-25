@@ -34,6 +34,8 @@ type fakeAdapter struct {
 	state *backendv1.GetIssuanceStatusResponse
 	// stateErr fails GetIssuanceStatus.
 	stateErr error
+	// asked records the offer id of every GetIssuanceStatus call.
+	asked []string
 	// specs records every spec the service sent.
 	specs []*backendv1.IssueSpec
 	// channels records every channel the service asked for.
@@ -82,8 +84,11 @@ func (f *fakeAdapter) Issue(
 }
 
 func (f *fakeAdapter) GetIssuanceStatus(
-	context.Context, *connect.Request[backendv1.GetIssuanceStatusRequest],
+	_ context.Context, req *connect.Request[backendv1.GetIssuanceStatusRequest],
 ) (*connect.Response[backendv1.GetIssuanceStatusResponse], error) {
+	f.mu.Lock()
+	f.asked = append(f.asked, req.Msg.GetOfferId())
+	f.mu.Unlock()
 	if f.stateErr != nil {
 		return nil, f.stateErr
 	}

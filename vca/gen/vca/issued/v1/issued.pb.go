@@ -181,7 +181,11 @@ type IssuedRecord struct {
 	// The reason of the last status change.
 	StatusReason string `protobuf:"bytes,17,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"`
 	// The time after which the scheduled job prunes the record.
-	RetainUntil   *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=retain_until,json=retainUntil,proto3" json:"retain_until,omitempty"`
+	RetainUntil *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=retain_until,json=retainUntil,proto3" json:"retain_until,omitempty"`
+	// The offer id that the DPG adapter assigned in CreateOffer. Empty when
+	// the credential went out without an offer, such as on a document. The
+	// issued credentials pages read the claim state of the offer with it.
+	DpgOfferId    string `protobuf:"bytes,19,opt,name=dpg_offer_id,json=dpgOfferId,proto3" json:"dpg_offer_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -340,6 +344,13 @@ func (x *IssuedRecord) GetRetainUntil() *timestamppb.Timestamp {
 		return x.RetainUntil
 	}
 	return nil
+}
+
+func (x *IssuedRecord) GetDpgOfferId() string {
+	if x != nil {
+		return x.DpgOfferId
+	}
+	return ""
 }
 
 // AppendRequest carries one issuance to record.
@@ -1184,7 +1195,10 @@ type ExportRequest struct {
 	// The filter.
 	Filter *Filter `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
 	// The output encoding.
-	Encoding      ExportRequest_Encoding `protobuf:"varint,2,opt,name=encoding,proto3,enum=vca.issued.v1.ExportRequest_Encoding" json:"encoding,omitempty"`
+	Encoding ExportRequest_Encoding `protobuf:"varint,2,opt,name=encoding,proto3,enum=vca.issued.v1.ExportRequest_Encoding" json:"encoding,omitempty"`
+	// The text to match against searchable claims, as in Search. Empty
+	// exports every record that passes the filter. At most 200 characters.
+	Query         string `protobuf:"bytes,3,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1231,6 +1245,13 @@ func (x *ExportRequest) GetEncoding() ExportRequest_Encoding {
 		return x.Encoding
 	}
 	return ExportRequest_ENCODING_UNSPECIFIED
+}
+
+func (x *ExportRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
 }
 
 // ExportResponse is one chunk of the export.
@@ -1585,7 +1606,7 @@ var File_vca_issued_v1_issued_proto protoreflect.FileDescriptor
 
 const file_vca_issued_v1_issued_proto_rawDesc = "" +
 	"\n" +
-	"\x1avca/issued/v1/issued.proto\x12\rvca.issued.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\x88\a\n" +
+	"\x1avca/issued/v1/issued.proto\x12\rvca.issued.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\xaa\a\n" +
 	"\fIssuedRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tschema_id\x18\x02 \x01(\tR\bschemaId\x12%\n" +
@@ -1606,7 +1627,9 @@ const file_vca_issued_v1_issued_proto_rawDesc = "" +
 	"\boffer_id\x18\x0f \x01(\tR\aofferId\x12F\n" +
 	"\x11status_changed_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\x0fstatusChangedAt\x12#\n" +
 	"\rstatus_reason\x18\x11 \x01(\tR\fstatusReason\x12=\n" +
-	"\fretain_until\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\vretainUntil\x1aC\n" +
+	"\fretain_until\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\vretainUntil\x12 \n" +
+	"\fdpg_offer_id\x18\x13 \x01(\tR\n" +
+	"dpgOfferId\x1aC\n" +
 	"\x15SearchableClaimsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"D\n" +
@@ -1658,10 +1681,11 @@ const file_vca_issued_v1_issued_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"H\n" +
 	"\x11ReinstateResponse\x123\n" +
-	"\x06record\x18\x01 \x01(\v2\x1b.vca.issued.v1.IssuedRecordR\x06record\"\xcc\x01\n" +
+	"\x06record\x18\x01 \x01(\v2\x1b.vca.issued.v1.IssuedRecordR\x06record\"\xe2\x01\n" +
 	"\rExportRequest\x12-\n" +
 	"\x06filter\x18\x01 \x01(\v2\x15.vca.issued.v1.FilterR\x06filter\x12A\n" +
-	"\bencoding\x18\x02 \x01(\x0e2%.vca.issued.v1.ExportRequest.EncodingR\bencoding\"I\n" +
+	"\bencoding\x18\x02 \x01(\x0e2%.vca.issued.v1.ExportRequest.EncodingR\bencoding\x12\x14\n" +
+	"\x05query\x18\x03 \x01(\tR\x05query\"I\n" +
 	"\bEncoding\x12\x18\n" +
 	"\x14ENCODING_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fENCODING_CSV\x10\x01\x12\x11\n" +

@@ -210,7 +210,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-017 | 1 One record per issuance in a hash chain | Partial | `vca/core/hashchain`, `vca/services/issued-credentials/internal/record` | The chain runs on the shared store. The move to PostgreSQL waits for the store backend. |
 | ADR-017 | 2 A salted subject reference, no personal data | Done | `vca/services/issued-credentials/internal/record` | |
-| ADR-017 | 3 Portal with revoke and reinstate | Partial | `vca/proto/vca/issued/v1`, `vca/services/issued-credentials/internal/export` | The RPCs and the export work. No portal page of the UI kit renders them yet. |
+| ADR-017 | 3 Portal with revoke and reinstate | Done | `vca/services/issued-credentials/internal/pages`, `vca/services/issued-credentials/internal/service` | List, search, filters, detail, history, suspend, revoke, reinstate with a reason, and CSV and JSON export. A revoke goes through the stack when its adapter lists `FEATURE_REVOCATION`. |
 | ADR-017 | 4 A signed chain head each day | Done | `vca/services/issued-credentials/internal/head` | |
 | ADR-017 | 5 Retention per schema with a prune job | Done | `vca/services/issued-credentials/internal/retention` | |
 
@@ -487,7 +487,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-044 | 1 The issuer home moves to issuance | Done | `vca/services/issuance/internal/pages`, `vca/internal/topology` | `issuance` serves `/issuer/`, `/identity/`, `/issue/`, `/notifications/`, `/help/`, and the shared assets. |
-| ADR-044 | 2 Issued credentials and sources pages | Partial | `vca/services/data-source/internal/pages` | The sources pages run in the issuer shell. The issued credentials pages follow in P3-10. |
+| ADR-044 | 2 Issued credentials and sources pages | Done | `vca/services/data-source/internal/pages`, `vca/services/issued-credentials/internal/pages` | Both run in the issuer shell behind the staff guard. |
 | ADR-044 | 3 The verifier home stays on verifier-results | Not started | `vca/services/verifier-results` | Proposed record. No work exists yet. |
 | ADR-044 | 4 DCQL, PE, and request pages | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
 | ADR-044 | 5 One role navigation package bound to the routes | Partial | `vca/internal/rolenav`, `vca/services/internal/staffshell` | The admin and the issuer pages draw their side navigation from the package. The holder and the verifier follow. |

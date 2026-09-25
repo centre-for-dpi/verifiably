@@ -166,6 +166,26 @@ func TestDeferredReadsTheAdapterState(t *testing.T) {
 	}
 }
 
+// TestOfferKeepsTheOfferIDOfTheAdapter writes the offer id of the
+// adapter into the issued record, so the issued credentials pages can
+// read the claim state. Deferred asks the adapter with the same id.
+func TestOfferKeepsTheOfferIDOfTheAdapter(t *testing.T) {
+	h := newHarness(t, nil)
+	h.adapter.offer.OfferId = "dpg-offer-9"
+	created := h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, nil)
+	if got := h.recorder.last(); got.GetDpgOfferId() != "dpg-offer-9" || got.GetOfferId() != created.GetId() {
+		t.Fatalf("record = %v", got)
+	}
+	h.adapter.state = &backendv1.GetIssuanceStatusResponse{State: backendv1.GetIssuanceStatusResponse_STATE_PENDING}
+	if _, err := h.service.Deferred(context.Background(),
+		connect.NewRequest(&issuancev1.DeferredRequest{OfferId: created.GetId()})); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.adapter.asked) != 1 || h.adapter.asked[0] != "dpg-offer-9" {
+		t.Fatalf("Deferred asked %v", h.adapter.asked)
+	}
+}
+
 func TestDeferredMapsEveryState(t *testing.T) {
 	cases := map[backendv1.GetIssuanceStatusResponse_State]issuancev1.Offer_State{
 		backendv1.GetIssuanceStatusResponse_STATE_PENDING:  issuancev1.Offer_STATE_PENDING,
