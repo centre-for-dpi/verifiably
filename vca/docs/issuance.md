@@ -48,6 +48,13 @@ from `VCA_PEERS`. The service also serves the shared assets at
 `/static/`. It reads the theme file of `VCA_THEME_FILE` at start and
 stops when the file is wrong (ADR-032).
 
+The overview shows four steps: identity registered, schema published,
+first credential issued, and manage. A step unlocks when the staff
+member finishes every step before it. The cards count the published schemas through
+`SchemaService.List` and the issued credentials through
+`IssuedService.List`. The recent activity comes from the audit log of
+the service.
+
 The identity page shows the identity the stack signs with. It also
 shows its entry in the trust registry of the first live admin pair.
 "Start instantly" asks the stack for a key and an identifier. "Bring
