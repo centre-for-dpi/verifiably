@@ -155,7 +155,14 @@ The service returns the shared error codes of
 
 `RunBulk` checks the `issue` rule and then reports unimplemented. Bulk
 issuance is a job of the issuance service (ADR-015 decision 7). The
-pages of this service start it (ADR-043 decision 4).
+pages of this service start it (ADR-043 decision 4). They are the only
+starter of a bulk run from a source. They send the rows with their JSON
+types as items of `IssueBatch`.
+
+The issuance service never reads the rows of a source. It refuses a
+batch that names a source job with `FailedPrecondition`, and the answer
+points at `/sources/`. `PreviewRows` is for the masked preview alone. It
+masks every value and returns at most 20 rows.
 
 ## Pages
 

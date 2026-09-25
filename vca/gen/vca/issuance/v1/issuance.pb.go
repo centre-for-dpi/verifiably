@@ -518,7 +518,9 @@ type IssueBatchRequest struct {
 	Channel v1.Channel `protobuf:"varint,4,opt,name=channel,proto3,enum=vca.backend.v1.Channel" json:"channel,omitempty"`
 	// One item per subject.
 	Items []*IssueBatchRequest_Item `protobuf:"bytes,5,rep,name=items,proto3" json:"items,omitempty"`
-	// The data source job id, when the data source service started the batch.
+	// Refused. The data source pages at /sources/ start every bulk run from a
+	// source. They send the rows as items with their JSON types. A request
+	// that sets this field fails with FAILED_PRECONDITION and reads no row.
 	SourceJobId string `protobuf:"bytes,6,opt,name=source_job_id,json=sourceJobId,proto3" json:"source_job_id,omitempty"`
 	// True issues every row through the bulk import of the DPG in one call.
 	// The adapter must list FEATURE_BULK_NATIVE. The rows become documents

@@ -279,7 +279,6 @@ func Catalog() []Service {
 				{Env: "VCA_ISSUANCE_SCHEMA_URL", Target: "schema-registry", Kind: LinkURL},
 				{Env: "VCA_ISSUANCE_STATUS_URL", Target: "status-bitstring", Kind: LinkURL},
 				{Env: "VCA_ISSUANCE_ISSUED_URL", Target: "issued-credentials", Kind: LinkURL},
-				{Env: "VCA_ISSUANCE_DATA_SOURCE_URL", Target: "data-source", Kind: LinkURL},
 				staffJWKS("VCA_ISSUANCE_AUTH_JWKS_URL", "issuer-auth"),
 				staffLogin("VCA_ISSUANCE_LOGIN_URL"),
 				peers,

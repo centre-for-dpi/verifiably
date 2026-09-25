@@ -436,7 +436,6 @@ func TestLinkValuesFeedEveryService(t *testing.T) {
 		"VCA_ISSUANCE_SCHEMA_URL":               "http://issuer-waltid-schema-registry:8103",
 		"VCA_ISSUANCE_STATUS_URL":               "http://issuer-waltid-status-bitstring:8104",
 		"VCA_ISSUANCE_ISSUED_URL":               "http://issuer-waltid-issued-credentials:8101",
-		"VCA_ISSUANCE_DATA_SOURCE_URL":          "http://issuer-waltid-data-source:8100",
 		"VCA_ISSUANCE_PUBLIC_URL":               "https://issuer-waltid.labs.example",
 		"VCA_SCHEMABUILDER_REGISTRY_URL":        "http://issuer-waltid-schema-registry:8103",
 		"VCA_SCHEMABUILDER_CATALOG_URL":         "http://issuer-waltid-dpg-adapter-waltid:8090",

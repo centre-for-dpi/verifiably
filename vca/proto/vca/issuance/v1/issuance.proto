@@ -128,7 +128,9 @@ message IssueBatchRequest {
   vca.backend.v1.Channel channel = 4;
   // One item per subject.
   repeated Item items = 5;
-  // The data source job id, when the data source service started the batch.
+  // Refused. The data source pages at /sources/ start every bulk run from a
+  // source. They send the rows as items with their JSON types. A request
+  // that sets this field fails with FAILED_PRECONDITION and reads no row.
   string source_job_id = 6;
   // True issues every row through the bulk import of the DPG in one call.
   // The adapter must list FEATURE_BULK_NATIVE. The rows become documents

@@ -174,7 +174,6 @@ func TestBuildUsesTheConfiguredClients(t *testing.T) {
 		"VCA_ISSUANCE_SCHEMA_URL":      "http://schema:8080",
 		"VCA_ISSUANCE_STATUS_URL":      "http://status:8080",
 		"VCA_ISSUANCE_ISSUED_URL":      "http://issued:8080",
-		"VCA_ISSUANCE_DATA_SOURCE_URL": "http://data-source:8080",
 		"VCA_ISSUANCE_DELIVERY_SENDER": "file",
 		"VCA_ISSUANCE_EMAIL_SENDER":    "log",
 		"VCA_ISSUANCE_SMS_SENDER":      "file",

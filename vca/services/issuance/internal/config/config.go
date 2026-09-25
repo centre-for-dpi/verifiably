@@ -39,9 +39,6 @@ type Config struct {
 	// IssuedURL is the base URL of the issued credentials service. Empty
 	// writes the record to the log only.
 	IssuedURL string `env:"ISSUED_URL"`
-	// DataSourceURL is the base URL of the data source service. A batch
-	// with a source job id needs it.
-	DataSourceURL string `env:"DATA_SOURCE_URL"`
 	// DeliverySender names the sender of the offer and the document
 	// channels. The values are log and file.
 	DeliverySender string `env:"DELIVERY_SENDER" default:"log"`

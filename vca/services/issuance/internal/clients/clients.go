@@ -69,12 +69,6 @@ type Recorder interface {
 	Record(ctx context.Context, r *issuedv1.IssuedRecord) (string, error)
 }
 
-// Rows reads the rows of a data source job.
-type Rows interface {
-	// Rows returns the rows of one data source job.
-	Rows(ctx context.Context, sourceJobID string) ([]map[string]string, error)
-}
-
 // Capabilities is the answer of a DPG adapter with the time it arrived.
 type Capabilities struct {
 	// Formats are the wire formats the adapter can issue.

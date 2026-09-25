@@ -180,19 +180,6 @@ func (f *fakeRecorder) last() *issuedv1.IssuedRecord {
 	return f.records[len(f.records)-1]
 }
 
-// fakeRows answers as the data source service.
-type fakeRows struct {
-	rows []map[string]string
-	err  error
-}
-
-func (f *fakeRows) Rows(context.Context, string) ([]map[string]string, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.rows, nil
-}
-
 // allChannels is the capability answer of an adapter that can do
 // everything the issuance service offers.
 func allChannels() *backendv1.GetCapabilitiesResponse {

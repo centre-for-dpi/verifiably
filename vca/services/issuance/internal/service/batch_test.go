@@ -14,7 +14,6 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
-	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/service"
 )
 
 func TestIssueBatchStreamsTheProgress(t *testing.T) {
@@ -88,23 +87,26 @@ func TestIssueBatchStreamsTheProgress(t *testing.T) {
 	}
 }
 
-func TestIssueBatchReadsTheRowsOfASourceJob(t *testing.T) {
+// TestIssueBatchRefusesASourceJob covers the old source job path. The
+// data source pages start every bulk run and send typed rows, so a
+// request that names a source job fails before it reads any row. The
+// answer names the pages.
+func TestIssueBatchRefusesASourceJob(t *testing.T) {
 	h := newHarness(t, nil)
-	h.rows.rows = []map[string]string{
-		{"fullName": "Ada Lovelace", "farmerID": "FM-0001"},
-		{"fullName": "Grace Hopper", "farmerID": "FM-0002"},
-	}
-	sent, err := h.batch(t, &issuancev1.IssueBatchRequest{
-		SchemaId:    "farmer",
-		Channel:     backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
-		SourceJobId: "source-1",
-	})
-	if err != nil {
-		t.Fatalf("IssueBatch: %v", err)
-	}
-	last := sent[len(sent)-1]
-	if last.GetAccepted() != 2 || last.GetTotal() != 2 {
-		t.Fatalf("progress = %v", last)
+	for _, req := range []*issuancev1.IssueBatchRequest{
+		{SchemaId: "farmer", SourceJobId: "source-1"},
+		{SchemaId: "farmer", SourceJobId: "source-1", Items: []*issuancev1.IssueBatchRequest_Item{
+			{Row: 1, SubjectData: `{"fullName":"Ada Lovelace","farmerID":"FM-0001"}`},
+		}},
+	} {
+		sent, err := h.batch(t, req)
+		wantCode(t, err, connect.CodeFailedPrecondition)
+		if !strings.Contains(err.Error(), "/sources/") {
+			t.Fatalf("the refusal does not name the data source pages: %v", err)
+		}
+		if len(sent) != 0 {
+			t.Fatalf("the refused batch sent %d messages", len(sent))
+		}
 	}
 }
 
@@ -112,18 +114,8 @@ func TestIssueBatchChecksItsInput(t *testing.T) {
 	h := newHarness(t, nil)
 	_, err := h.batch(t, &issuancev1.IssueBatchRequest{SchemaId: "farmer"})
 	wantCode(t, err, connect.CodeInvalidArgument)
-	h.rows.rows = nil
-	_, err = h.batch(t, &issuancev1.IssueBatchRequest{SchemaId: "farmer", SourceJobId: "source-1"})
+	_, err = h.batch(t, &issuancev1.IssueBatchRequest{SchemaId: "farmer", SourceJobId: "  "})
 	wantCode(t, err, connect.CodeInvalidArgument)
-	h.rows.err = connect.NewError(connect.CodeUnavailable, errors.New("down"))
-	_, err = h.batch(t, &issuancev1.IssueBatchRequest{SchemaId: "farmer", SourceJobId: "source-1"})
-	wantCode(t, err, connect.CodeUnavailable)
-}
-
-func TestIssueBatchNeedsADataSourceServiceForASourceJob(t *testing.T) {
-	h := newHarness(t, func(o *service.Options, _ *harness) { o.Rows = nil })
-	_, err := h.batch(t, &issuancev1.IssueBatchRequest{SchemaId: "farmer", SourceJobId: "source-1"})
-	wantCode(t, err, connect.CodeFailedPrecondition)
 }
 
 func TestGetBatchChecksItsInput(t *testing.T) {

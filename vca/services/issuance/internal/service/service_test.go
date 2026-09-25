@@ -53,7 +53,6 @@ type harness struct {
 	schemas  *fakeSchemas
 	status   *fakeStatus
 	recorder *fakeRecorder
-	rows     *fakeRows
 	sent     *[]delivery.Message
 	store    *offers.Store
 	rpc      issuancev1connect.IssuanceServiceClient
@@ -82,7 +81,6 @@ func newHarness(t *testing.T, change func(*service.Options, *harness)) *harness 
 		schemas:  &fakeSchemas{schema: farmerSchema()},
 		status:   &fakeStatus{answer: &statusv1.AllocateIndexResponse{ListId: "list-1", Index: 12, Url: "https://status.example.org/token/1"}},
 		recorder: &fakeRecorder{},
-		rows:     &fakeRows{},
 	}
 	h.sent = sent
 	kv := store.Memory()
@@ -101,7 +99,6 @@ func newHarness(t *testing.T, change func(*service.Options, *harness)) *harness 
 		Schemas:      h.schemas,
 		Status:       h.status,
 		Recorder:     h.recorder,
-		Rows:         h.rows,
 		Delivery: delivery.NewRegistry(map[delivery.Channel]delivery.Sender{
 			delivery.ChannelOID4VCI: recorder,
 			delivery.ChannelPDF:     recorder,

@@ -12,7 +12,6 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
-	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1/issuancev1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
@@ -27,7 +26,6 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/config"
-	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/datasource"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/delivery"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/offers"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/pages"
@@ -59,8 +57,6 @@ type Deps struct {
 	Status clients.Status
 	// Recorder replaces the issued credentials client.
 	Recorder clients.Recorder
-	// Rows replaces the data source client.
-	Rows clients.Rows
 	// PageSchemas replaces the schema list of the pages.
 	PageSchemas pages.Schemas
 	// PageIssued replaces the issued credentials list of the pages.
@@ -114,11 +110,6 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if status == nil && cfg.StatusURL != "" {
 		status = statusv1connect.NewStatusServiceClient(httpClient, cfg.StatusURL)
 	}
-	rows := deps.Rows
-	if rows == nil && cfg.DataSourceURL != "" {
-		rows = datasource.New(datasourcev1connect.NewDataSourceServiceClient(
-			httpClient, cfg.DataSourceURL), "")
-	}
 	recorder := deps.Recorder
 	if recorder == nil {
 		if cfg.IssuedURL != "" {
@@ -137,7 +128,6 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Schemas:        schemas,
 		Status:         status,
 		Recorder:       recorder,
-		Rows:           rows,
 		Delivery:       senders(cfg, deps),
 		Store:          offers.New(backend, deps.Now),
 		AdapterName:    cfg.AdapterName,

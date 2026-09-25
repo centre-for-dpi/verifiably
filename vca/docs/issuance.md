@@ -222,10 +222,16 @@ gateway code, so a deployment picks its own.
 
 ## Batches
 
-`IssueBatch` takes rows in the request, or the id of a data source job.
-With a job id the service reads the field map and the rows from the data
-source service. It maps the columns onto the properties with
-`core/mapping`.
+`IssueBatch` takes the rows in the request. The pages of the data source
+service start every bulk run from a source (P3-08). They read the rows
+as the staff member of the session, and they map the fields there.
+
+A request that sets `source_job_id` fails with `FailedPrecondition`. The
+answer names the data source pages at `/sources/`. The service reads no
+row of a source itself. An earlier build read the rows through
+`PreviewRows`. That call masks every value and returns at most 20 rows
+as text. It also carried no session, so the rule of the source did not
+hold.
 
 A row keeps the JSON types of its subject data, as a single issue does.
 A number, a boolean, a list, and a nested object reach the schema check

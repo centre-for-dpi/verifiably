@@ -20,9 +20,9 @@ import (
 
 // IssueBatch issues many credentials in one job and streams progress.
 //
-// The rows come from the request, or from the data source service when
-// the request names a source job (ADR-014). A row keeps the JSON types
-// of its subject data, as a single issue does. The stream carries one
+// The rows come from the request. The data source pages send them with
+// the JSON types of the subject data, as a single issue does. A request
+// that names a source job fails with FailedPrecondition. The stream carries one
 // message per row and one final message. With native set, the rows go
 // to the bulk import of the DPG in one call (ADR-043 decision 4).
 func (s *Service) IssueBatch(
@@ -31,7 +31,7 @@ func (s *Service) IssueBatch(
 ) error {
 	msg := req.Msg
 	ctx = auditlog.WithActor(ctx, auditlog.ActorFrom(req.Header()))
-	items, err := s.batchItems(ctx, msg)
+	items, err := batchItems(msg)
 	if err != nil {
 		return err
 	}
@@ -262,39 +262,21 @@ func (s *Service) keepNative(ctx context.Context, bulk *nativeRun, n nativeRow, 
 	return offer, nil
 }
 
-// batchItems returns the items of a batch. A request with a source job
-// id reads its rows from the data source service.
-func (s *Service) batchItems(ctx context.Context, msg *issuancev1.IssueBatchRequest) (
-	[]*issuancev1.IssueBatchRequest_Item, error,
-) {
+// batchItems returns the items of a batch. The pages of the data source
+// service start every bulk run from a source, and they send typed rows.
+// So a request that names a source job gets a refusal that points at
+// those pages. The old path read masked text through the preview and
+// sent no session.
+func batchItems(msg *issuancev1.IssueBatchRequest) ([]*issuancev1.IssueBatchRequest_Item, error) {
+	if strings.TrimSpace(msg.GetSourceJobId()) != "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+			"start a bulk run from a data source on the data source pages at /sources/, which send typed rows"))
+	}
 	items := msg.GetItems()
-	sourceJob := strings.TrimSpace(msg.GetSourceJobId())
-	if sourceJob == "" {
-		if len(items) == 0 {
-			return nil, badRequest("the request needs items or a source_job_id")
-		}
-		return items, nil
+	if len(items) == 0 {
+		return nil, badRequest("the request needs items")
 	}
-	if s.opts.Rows == nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("this deployment has no data source service, so a source job has no rows"))
-	}
-	rows, err := s.opts.Rows.Rows(ctx, sourceJob)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeOf(err),
-			fmt.Errorf("read the rows of the source job: %w", err))
-	}
-	if len(rows) == 0 {
-		return nil, badRequest("the source job has no row")
-	}
-	out := make([]*issuancev1.IssueBatchRequest_Item, 0, len(rows))
-	for i, row := range rows {
-		out = append(out, &issuancev1.IssueBatchRequest_Item{
-			Row:         int64(i + 1),
-			SubjectData: mustJSON(row),
-		})
-	}
-	return out, nil
+	return items, nil
 }
 
 // progress returns the progress message of a job.

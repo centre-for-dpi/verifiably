@@ -49,9 +49,6 @@ type Options struct {
 	Status clients.Status
 	// Recorder writes the issued record.
 	Recorder clients.Recorder
-	// Rows reads the rows of a data source job. Nil rejects a batch with
-	// a source job id.
-	Rows clients.Rows
 	// Delivery sends a message to a citizen.
 	Delivery *delivery.Registry
 	// Store keeps the offers and the batch jobs.

@@ -47,7 +47,6 @@ in the log.
 | `VCA_ISSUANCE_SCHEMA_URL` | The base URL of the schema registry. Empty skips the claim check. |
 | `VCA_ISSUANCE_STATUS_URL` | The base URL of the status service. Empty makes every credential permanent. |
 | `VCA_ISSUANCE_ISSUED_URL` | The base URL of the issued credentials service. |
-| `VCA_ISSUANCE_DATA_SOURCE_URL` | The base URL of the data source service. |
 | `VCA_ISSUANCE_DELIVERY_SENDER` | The sender of the offer channels. The values are `log` and `file`. |
 | `VCA_ISSUANCE_EMAIL_SENDER` | The sender of the email channel. The values are `stub`, `log`, and `file`. |
 | `VCA_ISSUANCE_SMS_SENDER` | The sender of the SMS channel. The values are `stub`, `log`, and `file`. |
