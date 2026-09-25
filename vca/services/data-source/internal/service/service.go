@@ -285,6 +285,15 @@ func (s *Service) RunBulk(ctx context.Context, req *connect.Request[datasourcev1
 	return connect.NewError(connect.CodeUnimplemented, errors.New("bulk jobs run in the issuance service (ADR-015 decision 7)"))
 }
 
+// IssueRows returns every row of a source with its values, for a bulk
+// run. It checks the issue rule of the source. No RPC serves it: the
+// pages of the service call it in process and hand the rows to the
+// issuance service of the pair, so no unmasked row leaves through the
+// API of this service (ADR-015 decisions 3 and 4).
+func (s *Service) IssueRows(ctx context.Context, id string) (table.Table, error) {
+	return s.read(ctx, id, func(a source.Access) []string { return a.Issue }, "issue")
+}
+
 // read loads the source, checks the rule that pick selects, and reads it.
 func (s *Service) read(ctx context.Context, id string, pick func(source.Access) []string, action string) (table.Table, error) {
 	p, err := authz.Require(ctx)

@@ -235,6 +235,7 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | Path | Service | Note |
 |---|---|---|
 | `/` | `issuance` | Sends the browser to `/issuer/`. |
+| `/sources/*` | `data-source` | A page: Data sources. |
 | `/issuance/pdf/*` | `issuance` |  |
 | `/issuer/*` | `issuance` | A page: Issuer portal. |
 | `/identity/*` | `issuance` | A page: Issuer identity. |

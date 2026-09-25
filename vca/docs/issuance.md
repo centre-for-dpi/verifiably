@@ -80,7 +80,9 @@ issues. A viewer sees the wizard closed, and a posted step answers
 
 The source step offers "Bulk from data sources" only when the data
 source service runs on the pair. The choice leads to the data source
-pages at `/sources/`. Otherwise the step shows the claim form at once.
+pages at `/sources/`, with the schema of the wizard. Otherwise the step
+shows the claim form at once. [`data-source.md`](data-source.md) says
+how a bulk run works.
 
 The page builds the claim form from the JSON Schema 2020-12 of the
 version with `core/jsonschema`:
@@ -224,6 +226,17 @@ gateway code, so a deployment picks its own.
 With a job id the service reads the field map and the rows from the data
 source service. It maps the columns onto the properties with
 `core/mapping`.
+
+A row keeps the JSON types of its subject data, as a single issue does.
+A number, a boolean, a list, and a nested object reach the schema check
+and the adapter with their types. The pages of the data source service
+send rows that way (P3-08).
+
+With `native` set, the service checks every row against the schema. It
+sends the rows that pass to the bulk import of the stack in one call. The adapter must list
+`FEATURE_BULK_NATIVE`, and the channel is `CHANNEL_PDF`. Each credential
+becomes a document, as on the document channel. A row the schema
+or the stack refuses fails alone, with the reason.
 
 The answer streams one message at the start, one message for each row,
 and one message at the end. Each message carries the counts. The service

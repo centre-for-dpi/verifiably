@@ -6,13 +6,14 @@ The data source service keeps the CSV files, HTTP APIs, and databases that issue
 
 - It stores one typed `Source` per connector: `CsvSource`, `HttpSource`, or `SqlSource`.
 - It holds a secret reference for every credential. It never stores or returns a secret value.
-- It checks a role rule per source before it reads one row.
+- It checks a role rule per source before it reads one row. The session comes from `issuer-auth`.
+- It draws the bulk issuance pages of the issuer at `/sources/`: sources, masked preview, field map, run, and progress.
 - It returns the field names with inferred types, and at most 20 masked rows.
 - It stores one `FieldMap` per source and schema pair, with the pure transforms of `core/mapping`.
 - It guards every HTTP source with a scheme check, a host allowlist, and a private address check.
 - It owns one file: the source store `sources.json` with the sources and the field maps.
 
-It does not issue credentials. `RunBulk` belongs to the issuance service (ADR-015 decision 7).
+It does not issue credentials. A bulk run calls `IssueBatch` of the issuance service (ADR-015 decision 7).
 
 ## How to run
 
@@ -37,10 +38,23 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_DATASOURCE_CSV_MAX_BYTES` | The size cap of one CSV file. | `33554432` |
 | `VCA_DATASOURCE_SQL_MAX_ROWS` | The row cap of one SQL query. | `10000` |
 | `VCA_DATASOURCE_PAGE_SIZE_MAX` | The maximum page size of `List`. | `50` |
-| `VCA_DATASOURCE_AUTH_JWKS_FILE` | The JWKS file of `issuer-auth`. | empty: header mode |
+| `VCA_DATASOURCE_AUTH_JWKS_URL` | The key set of `issuer-auth`. | empty: no session passes |
+| `VCA_DATASOURCE_AUTH_JWKS_FILE` | A JWKS file in place of the URL, for a test. | empty |
+| `VCA_DATASOURCE_AUTH_JWKS_TTL` | How long a fetched key set stays fresh. | `10m` |
+| `VCA_DATASOURCE_AUTH_ISSUER` | The `iss` claim every session must carry. | empty: any issuer of the key set |
+| `VCA_DATASOURCE_LOGIN_URL` | The sign in chooser of the pair. A page without a session goes there. | empty: `401` |
+| `VCA_DATASOURCE_PUBLIC_URL` | The public URL of the pair. | empty |
+| `VCA_DATASOURCE_SCHEMA_URL` | The schema registry of the pair. | empty: no schema |
+| `VCA_DATASOURCE_ISSUANCE_URL` | The issuance service of the pair. A bulk run calls it. | empty: no run |
+| `VCA_DATASOURCE_TIMEOUT` | The time limit of one call to another service. | `30s` |
+| `VCA_DATASOURCE_RUN_TIMEOUT` | The time limit of one bulk run. | `2h` |
+| `VCA_THEME_FILE` | The theme file of the pages. | empty: the embedded default |
+| `VCA_PEERS` | The pairs of the deployment, for the issuer shell. | empty |
 
-With `VCA_DATASOURCE_AUTH_JWKS_FILE` the service verifies the session JWT itself and reads the `roles` claim.
-Without it the service runs in header mode. A gateway verifies the session and sends `X-VCA-Roles`, `X-VCA-Subject`, and `X-VCA-Tenant`.
+Every RPC and every page needs a session JWT of `issuer-auth`. The staff guard checks it against the key set of `issuer-auth` and reads the `roles` claim.
+No header stands in for a session. Without a key set the service accepts no call.
+
+The service draws the bulk issuance pages at `/sources/`. The document [`docs/data-source.md`](../../docs/data-source.md) lists them.
 
 The container image is `ghcr.io/centre-for-dpi/vca-data-source`.
 It listens on one port and runs as a non-root user with a read-only file system.
@@ -53,18 +67,19 @@ This keeps the default image free of a database client.
 
 1. Open `http://localhost:8080/healthz`. The response is `200 OK`.
 2. Open `http://localhost:8080/readyz`. The response is `200 OK`.
-3. Run this command to add a CSV source:
+3. Sign in to the issuer pair and copy the session token into `TOKEN`. Run this command to add a CSV source:
 
 ```sh
 curl -X POST http://localhost:8080/vca.datasource.v1.DataSourceService/Create \
   -H 'Content-Type: application/json' \
-  -H 'X-VCA-Roles: issuer-admin' \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"source":{"displayName":"Staff","csv":{"fileRef":"data:text/csv;base64,bmFtZSxhZ2UKQWRhLDM2Cg==","hasHeader":true},"access":{"viewFields":["issuer-viewer"],"previewRows":["issuer-operator"],"issue":["issuer-operator"]}}}'
 ```
 
 4. Call `PreviewFields` with the returned id. The response names `name` and `age` with the types `string` and `integer`.
 5. Call `PreviewRows`. The service masks every value, for example `A*a`.
-6. Repeat step 4 with `X-VCA-Roles: issuer-viewer` removed. The response is `VCA-302`, permission denied.
+6. Repeat step 4 without the `Authorization` header. The response is `unauthenticated`.
+7. Open `http://localhost:8080/sources/` in a browser with a session. The page lists the source.
 
 ## Reference
 

@@ -52,10 +52,11 @@ func TestEntryPointsAndReport(t *testing.T) {
 	}
 	// The pages come from the route table: the home page first, then
 	// the rest in service order (ADR-035, ADR-044 decision 1).
-	if len(points[0].Pages) != 8 || points[0].Pages[0].URL != "https://issuer-waltid.labs.example/issuer/" ||
-		points[0].Pages[1].URL != "https://issuer-waltid.labs.example/identity/" ||
-		points[0].Pages[5].URL != "https://issuer-waltid.labs.example/auth/" || points[0].Pages[5].Title != "Sign in" ||
-		points[0].Pages[7].URL != "https://issuer-waltid.labs.example/portal/" {
+	if len(points[0].Pages) != 9 || points[0].Pages[0].URL != "https://issuer-waltid.labs.example/issuer/" ||
+		points[0].Pages[1].URL != "https://issuer-waltid.labs.example/sources/" || points[0].Pages[1].Title != "Data sources" ||
+		points[0].Pages[2].URL != "https://issuer-waltid.labs.example/identity/" ||
+		points[0].Pages[6].URL != "https://issuer-waltid.labs.example/auth/" || points[0].Pages[6].Title != "Sign in" ||
+		points[0].Pages[8].URL != "https://issuer-waltid.labs.example/portal/" {
 		t.Errorf("issuer pages = %+v", points[0].Pages)
 	}
 	report := EntryReport("", points)

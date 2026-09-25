@@ -596,3 +596,13 @@ func TestCodeBlockKeepsLongTokensInsideItsBox(t *testing.T) {
 		t.Error(".code pre must not set width:0")
 	}
 }
+
+// TestFieldsetOfARowTakesTheColumn proves a fieldset whose body is a
+// field row is not held to the width of a single column of fields, so
+// the fields of the row sit side by side.
+func TestFieldsetOfARowTakesTheColumn(t *testing.T) {
+	rules := strings.Join(cssRules(baseCSS(t), ".fieldset:has(>.field-row)"), "\n")
+	if !strings.Contains(rules, "max-width:none") {
+		t.Error("a fieldset of a field row must drop the max width of a fieldset")
+	}
+}

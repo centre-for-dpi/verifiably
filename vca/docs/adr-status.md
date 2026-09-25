@@ -480,14 +480,14 @@ A row that is not `Done` carries a note.
 | ADR-043 | 1 The list of channels | Partial | `vca/services/issuance/internal/pages/issue.go` | The wizard offers both OID4VCI channels, the Digital Credentials API, and QR on a PDF. Claim 169, DIDComm, and email through the DPG wait for the adapter units. |
 | ADR-043 | 2 The page offers live channels only | Done | `vca/services/issuance/internal/pages/issue.go` | `TestDeliveryOptionsFollowCapabilities`. |
 | ADR-043 | 3 Digital Credentials API button with a fallback | Done | `vca/ui/static/dcapi.js`, `vca/services/issuance/internal/pages/result.go` | `TestDcApiButtonCarriesOffer`, `TestDcApiFallbackQRAlwaysPresent`. |
-| ADR-043 | 4 Bulk issuance from data sources | Not started | `vca/services/data-source` | Proposed record. No work exists yet. |
+| ADR-043 | 4 Bulk issuance from data sources | Done | `vca/services/data-source/internal/pages`, `vca/services/issuance/internal/service/batch.go` | CSV, SQL, and HTTP sources, field map, run, progress, and export. The native import shows when the adapter lists `FEATURE_BULK_NATIVE`; no adapter lists it yet. |
 
 ## ADR-044: Placement of the role pages
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-044 | 1 The issuer home moves to issuance | Done | `vca/services/issuance/internal/pages`, `vca/internal/topology` | `issuance` serves `/issuer/`, `/identity/`, `/issue/`, `/notifications/`, `/help/`, and the shared assets. |
-| ADR-044 | 2 Issued credentials and sources pages | Not started | `vca/services/issued-credentials` | Proposed record. No work exists yet. |
+| ADR-044 | 2 Issued credentials and sources pages | Partial | `vca/services/data-source/internal/pages` | The sources pages run in the issuer shell. The issued credentials pages follow in P3-10. |
 | ADR-044 | 3 The verifier home stays on verifier-results | Not started | `vca/services/verifier-results` | Proposed record. No work exists yet. |
 | ADR-044 | 4 DCQL, PE, and request pages | Not started | `vca/services/verifier-discovery` | Proposed record. No work exists yet. |
 | ADR-044 | 5 One role navigation package bound to the routes | Partial | `vca/internal/rolenav`, `vca/services/internal/staffshell` | The admin and the issuer pages draw their side navigation from the package. The holder and the verifier follow. |

@@ -504,6 +504,8 @@ th{
 .filters .field,.field-row .field{flex:1 1 11rem;margin:0;max-width:none}
 .filters .field:first-child{flex:2 1 16rem}
 .field-row{margin-bottom:var(--space-4);align-items:flex-start}
+/* A fieldset whose fields sit in one row takes the width of its column. */
+.fieldset:has(>.field-row){max-width:none}
 /* Two forms in one card, such as a choice and the action it opens. */
 .card form+form{margin-top:var(--space-5)}
 /* preview-tabs: the buttons that open the views of one preview; the

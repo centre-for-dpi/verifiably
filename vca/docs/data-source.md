@@ -68,11 +68,15 @@ Each source carries three role lists (ADR-015 decision 3).
 |---|---|
 | `view_fields` | `Get`, `PreviewFields`, `GetFieldMap`, and `SetFieldMap`. |
 | `preview_rows` | `PreviewRows`. |
-| `issue` | `RunBulk`. |
+| `issue` | `RunBulk`, and the bulk run of the pages. |
 
-The caller sends a session JWT from `issuer-auth`. The service verifies
-it against the JWKS of `issuer-auth` and reads the `roles` claim. In
-header mode a gateway verified the session and sends `X-VCA-Roles`.
+The caller sends a session JWT from `issuer-auth` as a bearer token.
+The staff guard of the service checks the token against the key set of
+`issuer-auth`. It checks the issuer audience and reads the `roles` claim.
+The pages and the RPCs use the same guard. No header stands in for a
+session. The old header mode with `X-VCA-Roles` no longer exists. A service
+without `VCA_DATASOURCE_AUTH_JWKS_URL` or `VCA_DATASOURCE_AUTH_JWKS_FILE`
+accepts no call.
 
 The role `issuer-admin` passes every rule. Another role passes a rule
 only when the rule names it. An empty rule admits admins only. A caller
@@ -151,6 +155,60 @@ The service returns the shared error codes of
 
 `RunBulk` checks the `issue` rule and then reports unimplemented. Bulk
 issuance is a job of the issuance service (ADR-015 decision 7). The
-legacy handler at `verifiably-go/internal/handlers/bulk.go` streamed
-progress over server sent events. The replacement is the server
-streaming RPC in this proto.
+pages of this service start it (ADR-043 decision 4).
+
+## Pages
+
+The service draws the bulk issuance pages of the issuer at `/sources/`
+(P3-08). The pages sit behind the staff guard of `issuer-auth` and draw
+the issuer shell. They call the service in process as the staff member
+of the session. So the role rules above hold on every page.
+
+| Path | Page |
+|---|---|
+| `GET /sources/` | The sources. With `?schema=` from the issue wizard, the source step of a bulk run. |
+| `GET /sources/new?kind=` | The form of a CSV file, a database query, or an HTTP API. |
+| `POST /sources/new/csv` | Adds a CSV source from an upload. |
+| `POST /sources/new/sql` | Adds a database query with a secret reference. |
+| `POST /sources/new/http` | Adds an HTTP API on the host allowlist. |
+| `GET /sources/{id}` | The fields with their types, and a masked preview. |
+| `GET`, `POST /sources/{id}/map` | The field map onto the claims of a schema. |
+| `GET`, `POST /sources/{id}/run` | The delivery channel, then the start of a run. |
+| `GET /sources/{id}/runs/{job}` | The progress and the result of each row. |
+| `GET /sources/{id}/runs/{job}/progress` | The progress block alone, for htmx. |
+| `GET /sources/{id}/runs/{job}/offers.csv` | The offers of the run as CSV. |
+
+An upload has a cap of `VCA_DATASOURCE_CSV_MAX_BYTES`. The page parses
+the file once, so a file that is not CSV never becomes a source. The
+file goes to `VCA_DATASOURCE_CSV_DIR`, or into the source as a data URL
+when the directory is empty. A database source and an HTTP source take
+the name of a secret, never a value. The HTTP form lists the hosts of
+the allowlist and refuses any other host.
+
+The field map offers one fieldset per claim of the schema. It holds the
+source field, a transform, and a setting. The transforms copy, trim, or
+change the case of a value. They also read a date in `DD/MM/YYYY` or
+`MM/DD/YYYY`, set a fixed value, or join fields with a space. A claim the schema needs must have a
+field. A nested claim takes its path, such as `address.county`.
+
+A run reads every row of the source with the `issue` rule. The service
+fills the claims with `mapping.Lenient` and then gives each value the
+JSON type of its claim with `jsonschema.Typed`. So the text `12` reaches
+an integer claim as `12`, `true` a boolean claim as `true`, and
+`tea;maize` a list claim as a list. A value that does not fit stays
+text, so the schema check of the issuance service names the claim. A
+transform that fails on one row keeps the source text of that row.
+
+The page calls `IssueBatch` of the issuance service of the pair. The
+call sets `X-Vca-Actor` to the staff member. The page reads the progress
+with `GetBatch`. While the run goes on, the progress block asks htmx to
+load it again every two seconds. A refresh link does the same without
+JavaScript. The failed rows show with their problem. When the run is
+over, the page offers the offers as CSV: the offer link, the transaction
+code, the document link, and the problem of each row. A value that
+starts with `=`, `+`, `-`, or `@` gets a leading quote, so a spreadsheet
+does not read it as a formula.
+
+The bulk import of the stack shows only when the adapter of the pair
+lists `FEATURE_BULK_NATIVE`. It then sends the rows to `IssueBatch` with
+`native` set, and each row gets a PDF that carries its credential.

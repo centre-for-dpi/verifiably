@@ -26,6 +26,12 @@ func TestLoadDefaults(t *testing.T) {
 	if c.HTTPTimeout != 30*time.Second || c.HTTPMaxBytes != 8<<20 || c.CSVMaxBytes != 32<<20 {
 		t.Fatalf("limits: %+v", c)
 	}
+	if c.RunTimeout != 2*time.Hour || c.Timeout != 30*time.Second || c.Auth.JWKSTTL != 10*time.Minute {
+		t.Fatalf("timeouts: %+v", c)
+	}
+	if _, bad := Load(env(map[string]string{"VCA_PEERS": "not a peer"})); bad == nil {
+		t.Fatal("a bad peer list must fail")
+	}
 }
 
 func TestLoadValues(t *testing.T) {
@@ -43,6 +49,14 @@ func TestLoadValues(t *testing.T) {
 		Prefix + "SQL_MAX_ROWS":   "7",
 		Prefix + "PAGE_SIZE_MAX":  "11",
 		Prefix + "AUTH_JWKS_FILE": "/run/jwks.json",
+		Prefix + "AUTH_JWKS_URL":  "http://issuer-auth:8081/.well-known/jwks.json",
+		Prefix + "LOGIN_URL":      "https://issuer.example/auth/",
+		Prefix + "PUBLIC_URL":     "https://issuer.example/",
+		Prefix + "SCHEMA_URL":     "http://schema-registry:8080",
+		Prefix + "ISSUANCE_URL":   "http://issuance:8080",
+		Prefix + "RUN_TIMEOUT":    "30m",
+		"VCA_THEME_FILE":          " /etc/vca/theme.yaml ",
+		"VCA_PEERS":               "issuer-waltid|https://issuer.example|data-source=http://data-source:8083",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -56,8 +70,19 @@ func TestLoadValues(t *testing.T) {
 	if c.HTTPMaxBytes != 1024 || c.CSVMaxBytes != 2048 || c.HTTPTimeout != 5*time.Second {
 		t.Fatalf("limits: %+v", c)
 	}
-	if c.StoreFile != "/data/sources.json" || c.CSVDir != "/data/csv" || c.SecretsDir != "/run/secrets" || c.AuthJWKSFile != "/run/jwks.json" {
+	if c.StoreFile != "/data/sources.json" || c.CSVDir != "/data/csv" || c.SecretsDir != "/run/secrets" || c.Auth.JWKSFile != "/run/jwks.json" {
 		t.Fatalf("paths: %+v", c)
+	}
+	// The pages sit behind the staff guard of issuer-auth, read the theme
+	// file, and reach the schema registry and the issuance service.
+	if c.Auth.JWKSURL != "http://issuer-auth:8081/.well-known/jwks.json" || c.Auth.LoginURL != "https://issuer.example/auth/" {
+		t.Fatalf("auth: %+v", c.Auth)
+	}
+	if c.ThemeFile != "/etc/vca/theme.yaml" || c.PublicURL != "https://issuer.example" || len(c.Peers) != 1 {
+		t.Fatalf("pages: %+v", c)
+	}
+	if c.SchemaURL != "http://schema-registry:8080" || c.IssuanceURL != "http://issuance:8080" || c.RunTimeout != 30*time.Minute {
+		t.Fatalf("links: %+v", c)
 	}
 }
 
@@ -70,6 +95,9 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		"HTTP_TIMEOUT":   "soon",
 		"SQL_MAX_ROWS":   "none",
 		"PAGE_SIZE_MAX":  "0",
+		"RUN_TIMEOUT":    "0s",
+		"TIMEOUT":        "-1s",
+		"AUTH_JWKS_TTL":  "0s",
 	} {
 		if _, err := Load(env(map[string]string{Prefix + name: value})); err == nil {
 			t.Fatalf("%s=%q must fail", name, value)

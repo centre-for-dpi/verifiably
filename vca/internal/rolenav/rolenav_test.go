@@ -135,7 +135,7 @@ func TestNavMarksCurrentLongestMatch(t *testing.T) {
 // board Issuer-Portal: overview, identity, schemas, builder, issue,
 // notifications, help (ADR-044 decision 1).
 func TestIssuerNavFollowsTheBoard(t *testing.T) {
-	want := []string{"/issuer/", "/identity/", "/portal/", "/builder/", "/issue/", "/notifications/", "/help/"}
+	want := []string{"/issuer/", "/identity/", "/portal/", "/builder/", "/issue/", "/sources/", "/notifications/", "/help/"}
 	got := Paths(commonv1.Role_ROLE_ISSUER)
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("issuer paths %v, want %v", got, want)

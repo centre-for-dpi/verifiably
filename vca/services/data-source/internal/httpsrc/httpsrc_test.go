@@ -293,3 +293,28 @@ func TestFetchTLSAndMTLS(t *testing.T) {
 		t.Fatal("untrusted root must fail")
 	}
 }
+
+// TestCheckURLNeedsNoLookup proves the page can check the scheme and the
+// allowlist of a new HTTP source without a DNS lookup.
+func TestCheckURLNeedsNoLookup(t *testing.T) {
+	g := Guard{AllowHosts: []string{".gov.example"}, LookupIP: func(context.Context, string) ([]net.IP, error) {
+		t.Fatal("CheckURL must not resolve the host")
+		return nil, nil
+	}}
+	if _, err := g.CheckURL("https://registry.gov.example/farmers"); err != nil {
+		t.Fatal(err)
+	}
+	for raw, want := range map[string]error{
+		"http://registry.gov.example/x":    ErrScheme,
+		"https://api.other.example/x":      ErrHost,
+		"https://u:p@registry.gov.example": ErrUserInfo,
+		"https:///x":                       ErrHost,
+	} {
+		if _, err := g.CheckURL(raw); !errors.Is(err, want) {
+			t.Errorf("%s: %v, want %v", raw, err, want)
+		}
+	}
+	if _, err := g.CheckURL("::"); err == nil {
+		t.Error("a URL that does not parse must fail")
+	}
+}

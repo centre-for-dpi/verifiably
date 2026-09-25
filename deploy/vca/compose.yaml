@@ -46,8 +46,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18000}:${VCA_PORTS_DATA_SOURCE:-8100}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-waltid-data-source-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-dpg-adapter-waltid:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-dpg-adapter-waltid:${VCA_VERSION:-latest}
@@ -167,8 +170,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18100}:${VCA_PORTS_DATA_SOURCE:-8100}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-inji-data-source-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-dpg-adapter-inji:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-dpg-adapter-inji:${VCA_VERSION:-latest}
@@ -286,8 +292,11 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18200}:${VCA_PORTS_DATA_SOURCE:-8100}"
+    environment:
+      VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
       - issuer-credebl-data-source-data:/data
+      - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-dpg-adapter-credebl:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-dpg-adapter-credebl:${VCA_VERSION:-latest}

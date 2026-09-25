@@ -47,6 +47,7 @@ import (
 //	          /.well-known/openid-credential-issuer schema-registry
 //	          /.well-known/vct/*  /vct/*           schema-registry
 //	          /schemas/*  /api/schemas             schema-registry
+//	          /sources/*                           data-source (the bulk issuance pages)
 //	          /builder/*                           schema-builder-ui (the schema builder)
 //	          /pdf/preview/*                       schema-builder-ui
 //	          /auth/*  /token  /.well-known/jwks.json       issuer-auth

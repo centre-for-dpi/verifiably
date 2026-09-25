@@ -361,3 +361,29 @@ func TestPage(t *testing.T) {
 		t.Fatal("negative token")
 	}
 }
+
+// TestIssueRowsNeedsTheIssueRule proves a bulk run reads the rows of a
+// source unmasked only for a role on the issue rule of the source.
+func TestIssueRowsNeedsTheIssueRule(t *testing.T) {
+	s := newService(t, nil)
+	s.opts.Reader = reader.Reader{}
+	access := &datasourcev1.Source_Access{ViewFields: []string{authz.Viewer, authz.Operator}, PreviewRows: []string{authz.Viewer}, Issue: []string{authz.Operator}}
+	created, err := s.Create(as(operator), connect.NewRequest(&datasourcev1.CreateRequest{Source: csvSource("farmers", access)}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.Msg.GetSource().GetId()
+	tb, err := s.IssueRows(as(operator), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tb.Rows) != 3 || tb.Rows[0]["name"] != "Ada Lovelace" {
+		t.Fatalf("rows = %v, want the values as the source holds them", tb.Rows)
+	}
+	if _, err := s.IssueRows(as(viewer), id); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a viewer must not read the rows: %v", err)
+	}
+	if _, err := s.IssueRows(context.Background(), id); code(err) != connect.CodeUnauthenticated {
+		t.Fatalf("no principal: %v", err)
+	}
+}

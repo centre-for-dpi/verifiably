@@ -122,9 +122,15 @@ func TestPlainRoutesPublishNoConnectService(t *testing.T) {
 	// A service with no public caller keeps no route at all.
 	for _, s := range Catalog() {
 		switch s.Name {
-		case "data-source", "verifier-combined", "verifier-policy", "dpg-adapter-waltid", "dpg-adapter-credebl":
+		case "verifier-combined", "verifier-policy", "dpg-adapter-waltid", "dpg-adapter-credebl":
 			if len(s.Routes) != 0 {
 				t.Errorf("%s is internal but routes %+v", s.Name, s.Routes)
+			}
+		case "data-source":
+			// The bulk issuance pages are public behind the staff guard;
+			// the DataSourceService stays on the compose network.
+			if len(s.Routes) != 1 || s.Routes[0].Match != "/sources/*" || s.Routes[0].Page == "" {
+				t.Errorf("data-source routes %+v, want its page only", s.Routes)
 			}
 		}
 	}

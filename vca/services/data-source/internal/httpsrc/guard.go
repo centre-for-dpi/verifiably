@@ -47,33 +47,44 @@ type Guard struct {
 // Check parses rawURL and returns it with the addresses the client may
 // dial. Every returned address passed the checks.
 func (g Guard) Check(ctx context.Context, rawURL string) (*url.URL, []net.IP, error) {
-	u, err := url.Parse(rawURL)
+	u, err := g.CheckURL(rawURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("httpsrc: parse URL: %w", err)
-	}
-	switch u.Scheme {
-	case "https":
-	case "http":
-		if !g.AllowHTTP {
-			return nil, nil, fmt.Errorf("%w: %s, use https", ErrScheme, u.Scheme)
-		}
-	default:
-		return nil, nil, fmt.Errorf("%w: %q", ErrScheme, u.Scheme)
-	}
-	if u.User != nil {
-		return nil, nil, ErrUserInfo
-	}
-	if u.Hostname() == "" {
-		return nil, nil, fmt.Errorf("%w: empty host", ErrHost)
-	}
-	if serr := g.checkAllowlist(u); serr != nil {
-		return nil, nil, serr
+		return nil, nil, err
 	}
 	ips, err := g.Resolve(ctx, u.Hostname())
 	if err != nil {
 		return nil, nil, err
 	}
 	return u, ips, nil
+}
+
+// CheckURL parses rawURL and checks its scheme, its user information,
+// and the allowlist, without a DNS lookup. The page that adds a source
+// calls it; Check calls it before it resolves the host.
+func (g Guard) CheckURL(rawURL string) (*url.URL, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("httpsrc: parse URL: %w", err)
+	}
+	switch u.Scheme {
+	case "https":
+	case "http":
+		if !g.AllowHTTP {
+			return nil, fmt.Errorf("%w: %s, use https", ErrScheme, u.Scheme)
+		}
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrScheme, u.Scheme)
+	}
+	if u.User != nil {
+		return nil, ErrUserInfo
+	}
+	if u.Hostname() == "" {
+		return nil, fmt.Errorf("%w: empty host", ErrHost)
+	}
+	if err := g.checkAllowlist(u); err != nil {
+		return nil, err
+	}
+	return u, nil
 }
 
 func (g Guard) checkAllowlist(u *url.URL) error {

@@ -4,38 +4,29 @@
 // role rules of a source (ADR-015 decision 3, ADR-012 decision 3).
 //
 // A request carries a session JWT from issuer-auth in the Authorization
-// header. The JWT has a roles claim. The interceptor verifies the JWT
-// against the JWKS of issuer-auth and puts a Principal on the context.
-// In header mode, for a deployment where a gateway already verified the
-// session, the interceptor reads the X-VCA-Roles header instead.
+// header. The JWT has a roles claim. The interceptor checks the JWT with
+// the staff guard of the service, against the key set of issuer-auth,
+// and puts a Principal on the context. The pages of the service put the
+// principal of the page session there too.
 package authz
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"connectrpc.com/connect"
 
-	"github.com/centre-for-dpi/vc-adapters/core/jose"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 )
 
 // Role names as issuer-auth writes them in session tokens.
 const (
-	Admin    = "issuer-admin"
-	Operator = "issuer-operator"
+	Admin    = staffsession.IssuerAdminRole
+	Operator = staffsession.IssuerOperatorRole
 	Viewer   = "issuer-viewer"
-)
-
-// Header names of header mode.
-const (
-	HeaderRoles   = "X-VCA-Roles"
-	HeaderSubject = "X-VCA-Subject"
-	HeaderTenant  = "X-VCA-Tenant"
 )
 
 // Errors the package returns.
@@ -99,57 +90,33 @@ func Require(ctx context.Context) (Principal, error) {
 }
 
 // Verifier turns a bearer token into a principal.
-type Verifier func(token string) (Principal, error)
+type Verifier func(ctx context.Context, token string) (Principal, error)
 
-// claims are the fields of the session JWT the service reads.
-type claims struct {
-	Subject   string   `json:"sub"`
-	ExpiresAt int64    `json:"exp"`
-	Roles     []string `json:"roles"`
-	Tenant    string   `json:"tenant"`
+// FromSession returns the principal of a staff session.
+func FromSession(s staffsession.Session) Principal {
+	return Principal{Subject: s.Subject, Tenant: s.Tenant, Roles: s.Roles}
 }
 
-// JWKSVerifier verifies ES256 or EdDSA session tokens against set.
-func JWKSVerifier(set jose.JWKS, now func() time.Time) Verifier {
-	return func(token string) (Principal, error) {
-		raw, _, err := jose.VerifyWithJWKS(token, set, []jose.Algorithm{jose.ES256, jose.EdDSA})
+// SessionVerifier checks a session of issuer-auth with the verify call of
+// the staff guard of the service, so the RPCs and the pages trust one key
+// set (ADR-036 decision 3). No header can stand in for the session.
+func SessionVerifier(verify func(ctx context.Context, token string) (staffsession.Session, error)) Verifier {
+	return func(ctx context.Context, token string) (Principal, error) {
+		s, err := verify(ctx, token)
 		if err != nil {
 			return Principal{}, fmt.Errorf("%w: %w", ErrNoSession, err)
 		}
-		var c claims
-		if err := json.Unmarshal(raw, &c); err != nil {
-			return Principal{}, fmt.Errorf("%w: claims: %w", ErrNoSession, err)
-		}
-		if !now().Before(time.Unix(c.ExpiresAt, 0)) {
-			return Principal{}, fmt.Errorf("%w: expired", ErrNoSession)
-		}
-		return Principal{Subject: c.Subject, Tenant: c.Tenant, Roles: c.Roles}, nil
+		return FromSession(s), nil
 	}
 }
 
-// FromHeaders reads the principal of header mode. ok is false when the
-// roles header is missing.
-func FromHeaders(h http.Header) (Principal, bool) {
-	raw := strings.TrimSpace(h.Get(HeaderRoles))
-	if raw == "" {
-		return Principal{}, false
-	}
-	var roles []string
-	for _, r := range strings.Split(raw, ",") {
-		if r = strings.TrimSpace(r); r != "" {
-			roles = append(roles, r)
-		}
-	}
-	return Principal{Subject: h.Get(HeaderSubject), Tenant: h.Get(HeaderTenant), Roles: roles}, true
-}
-
-// Interceptor returns a Connect interceptor. With a verifier, it reads
-// the bearer token. With a nil verifier, it reads the headers of header
-// mode. A request with no principal gets an unauthenticated error.
+// Interceptor returns a Connect interceptor that reads the bearer token
+// of a request, checks it with verify, and puts the principal on the
+// context. A request with no valid session gets an unauthenticated error.
 func Interceptor(verify Verifier) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			p, err := principalOf(req.Header(), verify)
+			p, err := principalOf(ctx, req.Header(), verify)
 			if err != nil {
 				return nil, connect.NewError(connect.CodeUnauthenticated, err)
 			}
@@ -158,17 +125,10 @@ func Interceptor(verify Verifier) connect.UnaryInterceptorFunc {
 	}
 }
 
-func principalOf(h http.Header, verify Verifier) (Principal, error) {
-	if verify == nil {
-		p, ok := FromHeaders(h)
-		if !ok {
-			return Principal{}, ErrNoSession
-		}
-		return p, nil
-	}
+func principalOf(ctx context.Context, h http.Header, verify Verifier) (Principal, error) {
 	auth := h.Get("Authorization")
 	if len(auth) < 7 || !strings.EqualFold(auth[:7], "Bearer ") {
 		return Principal{}, ErrNoSession
 	}
-	return verify(strings.TrimSpace(auth[7:]))
+	return verify(ctx, strings.TrimSpace(auth[7:]))
 }

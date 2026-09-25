@@ -229,10 +229,25 @@ func Catalog() []Service {
 				{Match: "/device_authorization"}, {Match: "/token"}, {Match: "/cli/*"},
 				{Match: "/admin/*", Page: "Admin portal"}, assets,
 			}},
-		{Name: "data-source", ListenEnv: "VCA_DATASOURCE_LISTEN", ExposedPort: 8083, Roles: issuer, Stateful: true,
-			// The issuance service is the only caller, on the compose network,
-			// so the proxy publishes nothing of it (ADR-047).
-			Fixed: []FixedValue{{Env: "VCA_DATASOURCE_STORE_FILE", Value: "/data/sources.json"}}},
+		// The data source service draws the bulk issuance pages at
+		// /sources/ behind the staff guard of issuer-auth (P3-08). Its
+		// RPCs take the same session and stay on the compose network, so
+		// the proxy publishes only the pages (ADR-047). A run calls the
+		// issuance service of the pair.
+		{Name: "data-source", ListenEnv: "VCA_DATASOURCE_LISTEN", ExposedPort: 8083, Roles: issuer, Stateful: true, UI: true,
+			Links: []Link{
+				{Env: "VCA_DATASOURCE_PUBLIC_URL", Kind: LinkPublicURL},
+				{Env: "VCA_DATASOURCE_SCHEMA_URL", Target: "schema-registry", Kind: LinkURL},
+				{Env: "VCA_DATASOURCE_ISSUANCE_URL", Target: "issuance", Kind: LinkURL},
+				staffJWKS("VCA_DATASOURCE_AUTH_JWKS_URL", "issuer-auth"),
+				staffLogin("VCA_DATASOURCE_LOGIN_URL"),
+				peers,
+			},
+			Fixed: []FixedValue{
+				{Env: "VCA_DATASOURCE_STORE_FILE", Value: "/data/sources.json"},
+				{Env: "VCA_DATASOURCE_CSV_DIR", Value: "/data/csv"},
+			},
+			Routes: []Route{{Match: "/sources/*", Page: "Data sources"}}},
 		{Name: "dpg-adapter-credebl", ListenEnv: "VCA_CREDEBL_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_CREDEBL,
 			Links: []Link{dpgURL("VCA_CREDEBL_API_URL")}},
 		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI,
