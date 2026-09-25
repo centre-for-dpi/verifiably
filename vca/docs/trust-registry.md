@@ -107,6 +107,45 @@ A copy is stale when it is older than `VCA_TRUST_LOOKUP_MAX_AGE` or when
 the list expired. With `fail-open` the service answers from the stale
 copy. With `fail-closed` it answers `UNAVAILABLE`.
 
+## Federation
+
+The service can read the trust lists of external registries (ADR-011
+decision 7). An admin adds a registry with a name, a format, a list URL,
+a trust anchor, and a refresh interval. The service reads the list at
+once and then on each refresh. `internal/federation` holds the code.
+
+| Format | What the service reads | Anchor |
+|---|---|---|
+| `etsi-lote-json` | An ETSI TS 119 602 list as a compact JWS. | A JWKS URL, or an X.509 certificate whose key signs the list. |
+| `etsi-tsl-xml` | An ETSI TS 119 612 XML list with an enveloped XML signature. | An X.509 certificate that signs the list or issued its signer. |
+| `dedi` | A DeDi manifest and every directory file it lists. | A JWKS URL, or an X.509 certificate whose key signs the files. |
+
+Every read goes through `core/fetchguard`. The guard refuses private,
+loopback, and link local addresses and plain http unless the settings
+allow them. A DeDi directory file must sit on the host of its manifest.
+The service checks every signature against the anchor. A changed list
+fails the check. The service keeps the last good copy of each registry
+with the time of the check. A failed read puts its reason in
+`last_error`. The copies live in `registries.json` beside the store
+file, so a lookup works offline after a restart.
+
+`internal/xmldsig` checks the XML signature. It supports the profile
+that trusted lists use. That is exclusive canonicalization without
+comments and the enveloped signature transform. The digest is SHA-256,
+SHA-384 or SHA-512, and the signature is RSA or ECDSA. One reference must cover the document element. Any other
+shape is an error. The test fixtures come from `testdata/gen.py`, which
+signs with lxml, so the Go code checks a signature it did not make.
+
+`TrustLookup` asks the local lists first. When they do not name the
+entity, it asks the copies of the external registries. A trusted answer
+wins. The provenance then carries `registry_id` and `registry_name`,
+the list URL, the key id or certificate subject, and the check time. An
+expired copy gives no answer.
+
+Nobody edits the entries of an external registry here. `UpsertEntry` and
+`DeleteEntry` refuse an entity that an external registry names, and
+`ImportEtsi` skips it.
+
 ## DID resolution
 
 `UpsertEntry` resolves the DID of the entry through `core/did` (ADR-011
@@ -126,6 +165,8 @@ in a test network.
 | `internal/etsi` | The etsi publisher and the TS 119 612 XML import. |
 | `internal/dedi` | The dedi publisher. The file layout is in `schema.go`. |
 | `internal/lookup` | The signature checked cache and the stale policy. |
+| `internal/federation` | The external registries, their checked copies, and the external lookup. |
+| `internal/xmldsig` | The XML signature check of ETSI TS 119 612 lists. |
 | `internal/httpapi` | The plain HTTP endpoints with `ETag` and cache headers. |
 | `internal/service` | The Connect handler of `TrustService`. |
 | `internal/app` | The wiring from configuration to handler. |

@@ -170,3 +170,66 @@ func TestHTTPFetcher(t *testing.T) {
 		t.Fatal("connection error")
 	}
 }
+
+// TestFederationPersistsAndSyncsOnATick keeps the registries in their
+// file and reads the due ones on each tick until the context ends.
+func TestFederationPersistsAndSyncsOnATick(t *testing.T) {
+	dir := t.TempDir()
+	cfg := load(t, map[string]string{
+		"VCA_TRUST_STORE_FILE":               filepath.Join(dir, "trust.json"),
+		"VCA_TRUST_FEDERATION_ALLOW_PRIVATE": "true",
+		"VCA_TRUST_FEDERATION_ALLOW_HTTP":    "true",
+		"VCA_TRUST_FEDERATION_TICK":          "10ms",
+	})
+	hits := make(chan struct{}, 16)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		select {
+		case hits <- struct{}{}:
+		default:
+		}
+		http.NotFound(w, nil)
+	}))
+	defer srv.Close()
+	a, err := Build(cfg, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.Service.AddRegistry(context.Background(), connect.NewRequest(&trustv1.AddRegistryRequest{Registry: &trustv1.Registry{
+		Name: "Test registry", Method: trustv1.RegistryMethod_REGISTRY_METHOD_ETSI_LOTE_JSON, Url: srv.URL + "/list.jws",
+		Anchor: &trustv1.Registry_Anchor{Anchor: &trustv1.Registry_Anchor_JwksUrl{JwksUrl: srv.URL + "/jwks.json"}},
+	}}))
+	if err != nil || !strings.Contains(res.Msg.GetRegistry().GetLastError(), "404") {
+		t.Fatalf("add = %+v, %v", res, err)
+	}
+	<-hits
+	again, err := Build(cfg, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Federation.List()) != 1 {
+		t.Fatal("the registries file does not persist")
+	}
+	// The clock of quiet() stands still, so a registry is due only once
+	// its refresh passed. Make it due with a clock one day later.
+	deps := quiet()
+	deps.Now = func() time.Time { return t0.Add(48 * time.Hour) }
+	later, err := Build(cfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { later.RunSync(ctx); close(done) }()
+	select {
+	case <-hits:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the tick read no registry")
+	}
+	cancel()
+	<-done
+	bad := cfg
+	bad.RegistriesFile = dir
+	if _, err := Build(bad, quiet()); err == nil {
+		t.Fatal("a registries file that is a directory loaded")
+	}
+}

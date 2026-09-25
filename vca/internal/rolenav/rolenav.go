@@ -64,6 +64,7 @@ func Sections(role commonv1.Role) []Section {
 			{Pages: []Page{{Path: "/admin/", Key: "common.overview.label"}}},
 			{Key: "admin.nav.section.trust.label", Pages: []Page{
 				{Path: "/admin/trust", Key: "admin.nav.trust_lists.label"},
+				{Path: "/admin/trust/registries", Key: "admin.nav.trust_registries.label"},
 			}},
 			{Key: "admin.nav.section.access.label", Pages: []Page{
 				{Path: "/admin/providers", Key: "admin.nav.providers.label"},

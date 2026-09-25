@@ -30,6 +30,7 @@ var checklistRoles = []string{"admin", "issuer", "holder", "verifier"}
 // the RPCs of the service.
 type counts struct {
 	trust       int
+	external    int
 	hasRegistry bool
 	providers   []oidcflow.Provider
 	tenants     int
@@ -59,8 +60,8 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request, s session) err
 	stats := components.Join(
 		b.add("stat", components.Stat{Label: msg.T("admin.stat.trust_list.label"), Value: c.trustValue(),
 			Text: msg.T("admin.stat.trust_list.text"), Href: at + "/trust"}),
-		b.add("stat", components.Stat{Label: msg.T("admin.nav.trust_registries.label"), Value: msg.T("admin.stat.registries.value.label"),
-			Text: msg.T("admin.stat.registries.text"), Href: at + "/trust"}),
+		b.add("stat", components.Stat{Label: msg.T("admin.nav.trust_registries.label"), Value: c.registriesValue(),
+			Text: msg.T("admin.stat.registries.text"), Href: at + "/trust/registries"}),
 		b.add("stat", components.Stat{Label: msg.T("admin.nav.providers.label"), Value: plural(len(c.providers), "admin.stat.providers"),
 			Text: plural(c.realms(), "admin.stat.providers.realm") + ". " + msg.T("admin.stat.providers.text"), Href: at + "/providers"}),
 		b.add("stat", components.Stat{Label: msg.T("admin.nav.tenants.label"), Value: plural(c.tenants, "admin.stat.tenants"),
@@ -103,6 +104,11 @@ func (p *Portal) counts(ctx context.Context, s session) (counts, error) {
 	default:
 		c.hasRegistry = true
 		c.trust = int(trust.Msg.GetPage().GetTotalSize())
+		regs, rerr := p.opts.Client.ListTrustRegistries(ctx, call(s, &adminv1.ListTrustRegistriesRequest{}))
+		if rerr != nil {
+			return c, rerr
+		}
+		c.external = len(regs.Msg.GetRegistries())
 	}
 	providers, err := p.opts.Client.ListAuthProviders(ctx, call(s, &adminv1.ListAuthProvidersRequest{
 		Page: &commonv1.Pagination{PageSize: 500},
@@ -138,6 +144,14 @@ func (p *Portal) counts(ctx context.Context, s session) (counts, error) {
 	}
 	c.events = int(events.Msg.GetPage().GetTotalSize())
 	return c, nil
+}
+
+// registriesValue is the value of the registries card.
+func (c counts) registriesValue() string {
+	if c.external == 0 {
+		return msg.T("admin.stat.registries.value.label")
+	}
+	return msg.T("admin.stat.registries.external.label", strconv.Itoa(c.external))
 }
 
 // trustValue is the value of the trust list card.

@@ -40,8 +40,9 @@ var _ adminv1connect.AdminServiceHandler = (*service.Service)(nil)
 // fakeTrust is a trust registry client in process.
 type fakeTrust struct {
 	trustv1connect.TrustServiceClient
-	entries map[string]*trustv1.TrustEntry
-	err     error
+	entries    map[string]*trustv1.TrustEntry
+	registries []*trustv1.Registry
+	err        error
 }
 
 func newFakeTrust() *fakeTrust {
@@ -87,6 +88,39 @@ func (f *fakeTrust) ListEntries(_ context.Context, req *connect.Request[trustv1.
 func (f *fakeTrust) DeleteEntry(_ context.Context, req *connect.Request[trustv1.DeleteEntryRequest]) (*connect.Response[trustv1.DeleteEntryResponse], error) {
 	delete(f.entries, key(req.Msg.GetIdentifier()))
 	return connect.NewResponse(&trustv1.DeleteEntryResponse{}), nil
+}
+
+func (f *fakeTrust) AddRegistry(_ context.Context, req *connect.Request[trustv1.AddRegistryRequest]) (*connect.Response[trustv1.AddRegistryResponse], error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	r := req.Msg.GetRegistry()
+	r.Id = "reg-1"
+	f.registries = append(f.registries, r)
+	return connect.NewResponse(&trustv1.AddRegistryResponse{Registry: r}), nil
+}
+
+func (f *fakeTrust) ListRegistries(context.Context, *connect.Request[trustv1.ListRegistriesRequest]) (*connect.Response[trustv1.ListRegistriesResponse], error) {
+	return connect.NewResponse(&trustv1.ListRegistriesResponse{Registries: f.registries, JwksUrl: "https://trust.example/.well-known/jwks.json"}), nil
+}
+
+func (f *fakeTrust) RemoveRegistry(_ context.Context, req *connect.Request[trustv1.RemoveRegistryRequest]) (*connect.Response[trustv1.RemoveRegistryResponse], error) {
+	for i, r := range f.registries {
+		if r.GetId() == req.Msg.GetId() {
+			f.registries = append(f.registries[:i], f.registries[i+1:]...)
+			return connect.NewResponse(&trustv1.RemoveRegistryResponse{}), nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeNotFound, errors.New("no registry"))
+}
+
+func (f *fakeTrust) SyncRegistry(_ context.Context, req *connect.Request[trustv1.SyncRegistryRequest]) (*connect.Response[trustv1.SyncRegistryResponse], error) {
+	for _, r := range f.registries {
+		if r.GetId() == req.Msg.GetId() {
+			return connect.NewResponse(&trustv1.SyncRegistryResponse{Registry: r}), nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeNotFound, errors.New("no registry"))
 }
 
 // harness holds the service and the values a test needs.
@@ -995,5 +1029,92 @@ func TestListTrustEntriesForwardsTheStatusFilter(t *testing.T) {
 	res, err := h.svc.ListTrustEntries(context.Background(), request(h, &adminv1.ListTrustEntriesRequest{Status: trustv1.Status_STATUS_PENDING}))
 	if err != nil || len(res.Msg.GetEntries()) != 1 || res.Msg.GetEntries()[0].GetStatus() != trustv1.Status_STATUS_PENDING {
 		t.Fatalf("ListTrustEntries = %+v, %v", res, err)
+	}
+}
+
+// TestTrustRegistryRPCsForwardAndAudit forwards the four registry RPCs
+// to the trust registry and writes one audit record for each change.
+func TestTrustRegistryRPCsForwardAndAudit(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	reg := &trustv1.Registry{
+		Name: "Kenya trust registry", Method: trustv1.RegistryMethod_REGISTRY_METHOD_DEDI, Url: "https://trust.go.ke",
+		Anchor: &trustv1.Registry_Anchor{Anchor: &trustv1.Registry_Anchor_JwksUrl{JwksUrl: "https://trust.go.ke/jwks.json"}},
+	}
+	added, err := h.svc.AddTrustRegistry(ctx, request(h, &adminv1.AddTrustRegistryRequest{Registry: reg}))
+	if err != nil || added.Msg.GetRegistry().GetId() != "reg-1" {
+		t.Fatalf("AddTrustRegistry = %+v, %v", added, err)
+	}
+	list, err := h.svc.ListTrustRegistries(ctx, request(h, &adminv1.ListTrustRegistriesRequest{}))
+	if err != nil || len(list.Msg.GetRegistries()) != 1 || list.Msg.GetJwksUrl() == "" {
+		t.Fatalf("ListTrustRegistries = %+v, %v", list, err)
+	}
+	if _, err := h.svc.SyncTrustRegistry(ctx, request(h, &adminv1.SyncTrustRegistryRequest{Id: "reg-1"})); err != nil {
+		t.Fatalf("SyncTrustRegistry: %v", err)
+	}
+	if _, err := h.svc.RemoveTrustRegistry(ctx, request(h, &adminv1.RemoveTrustRegistryRequest{Id: "reg-1"})); err != nil {
+		t.Fatalf("RemoveTrustRegistry: %v", err)
+	}
+	if _, err := h.svc.RemoveTrustRegistry(ctx, request(h, &adminv1.RemoveTrustRegistryRequest{Id: "reg-1"})); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("a second remove = %v", err)
+	}
+	if _, err := h.svc.SyncTrustRegistry(ctx, request(h, &adminv1.SyncTrustRegistryRequest{Id: "reg-1"})); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("sync of a removed registry = %v", err)
+	}
+	for action, n := range map[string]int{"admin.AddTrustRegistry": 1, "admin.SyncTrustRegistry": 2, "admin.RemoveTrustRegistry": 2} {
+		recs := auditActions(t, h, action)
+		if len(recs) != n {
+			t.Errorf("%s has %d audit records, want %d", action, len(recs), n)
+		}
+	}
+	if recs := auditActions(t, h, "admin.AddTrustRegistry"); recs[0].Target != "reg-1" {
+		t.Errorf("the add record names %q", recs[0].Target)
+	}
+	h.trust.err = errors.New("registry down")
+	if _, err := h.svc.AddTrustRegistry(ctx, request(h, &adminv1.AddTrustRegistryRequest{Registry: reg})); err == nil {
+		t.Error("AddTrustRegistry hid a registry error")
+	}
+	for _, rpc := range []func() error{
+		func() error {
+			_, err := h.svc.AddTrustRegistry(ctx, connect.NewRequest(&adminv1.AddTrustRegistryRequest{}))
+			return err
+		},
+		func() error {
+			_, err := h.svc.ListTrustRegistries(ctx, connect.NewRequest(&adminv1.ListTrustRegistriesRequest{}))
+			return err
+		},
+		func() error {
+			_, err := h.svc.RemoveTrustRegistry(ctx, connect.NewRequest(&adminv1.RemoveTrustRegistryRequest{}))
+			return err
+		},
+		func() error {
+			_, err := h.svc.SyncTrustRegistry(ctx, connect.NewRequest(&adminv1.SyncTrustRegistryRequest{}))
+			return err
+		},
+	} {
+		if rpc() == nil {
+			t.Error("a registry RPC accepted an anonymous caller")
+		}
+	}
+}
+
+func TestTrustRegistryRPCsNeedARegistry(t *testing.T) {
+	h := newHarness(t)
+	svc, err := service.New(service.Deps{Cfg: h.cfg, Records: h.rec, Audit: h.log, Login: h.login, Providers: h.svc.Providers()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := svc.AddTrustRegistry(ctx, request(h, &adminv1.AddTrustRegistryRequest{})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("add = %v", err)
+	}
+	if _, err := svc.ListTrustRegistries(ctx, request(h, &adminv1.ListTrustRegistriesRequest{})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("list = %v", err)
+	}
+	if _, err := svc.RemoveTrustRegistry(ctx, request(h, &adminv1.RemoveTrustRegistryRequest{})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("remove = %v", err)
+	}
+	if _, err := svc.SyncTrustRegistry(ctx, request(h, &adminv1.SyncTrustRegistryRequest{})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("sync = %v", err)
 	}
 }

@@ -11,6 +11,7 @@ syntax = "proto3";
 
 package vca.trust.v1;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "vca/common/v1/common.proto";
 
@@ -34,6 +35,119 @@ service TrustService {
   // ImportEtsi reads an ETSI TS 119 612 XML trusted list and creates
   // entries for its entities (ADR-011 decision 2).
   rpc ImportEtsi(ImportEtsiRequest) returns (ImportEtsiResponse);
+  // AddRegistry federates with one external trust registry (ADR-011
+  // decision 7). The service reads the list at once and then on the
+  // refresh interval. It checks each copy against the anchor.
+  rpc AddRegistry(AddRegistryRequest) returns (AddRegistryResponse);
+  // ListRegistries returns the external registries with their last sync,
+  // and the lists that this registry publishes.
+  rpc ListRegistries(ListRegistriesRequest) returns (ListRegistriesResponse);
+  // RemoveRegistry stops the federation with one external registry and
+  // drops its cached entries.
+  rpc RemoveRegistry(RemoveRegistryRequest) returns (RemoveRegistryResponse);
+  // SyncRegistry reads the list of one external registry now. A failed
+  // read keeps the last good copy and sets last_error.
+  rpc SyncRegistry(SyncRegistryRequest) returns (SyncRegistryResponse);
+}
+
+// RegistryMethod names the format of an external trust list.
+enum RegistryMethod {
+  REGISTRY_METHOD_UNSPECIFIED = 0;
+  // ETSI TS 119 602 List of Trusted Entities in JSON, signed as a
+  // compact JWS. The URL serves the JWS.
+  REGISTRY_METHOD_ETSI_LOTE_JSON = 1;
+  // ETSI TS 119 612 trusted list in XML with an enveloped XML signature.
+  // The anchor must be an X.509 certificate.
+  REGISTRY_METHOD_ETSI_TSL_XML = 2;
+  // Decentralized Directory: a signed manifest and signed directory
+  // files. The URL serves the manifest or the root of the directory.
+  REGISTRY_METHOD_DEDI = 3;
+}
+
+// Registry is one external trust registry that this registry federates
+// with. The service never edits its entries. A lookup reads them after the
+// local lists and names the registry in the provenance.
+message Registry {
+  // The id that the service assigns.
+  string id = 1;
+  // The display name, for example a national registry.
+  string name = 2;
+  // The list format.
+  RegistryMethod method = 3;
+  // The URL of the list or manifest.
+  string url = 4;
+  // The trust anchor that must sign the list.
+  Anchor anchor = 5;
+  // How often the service reads the list. Empty means 24 hours.
+  google.protobuf.Duration refresh = 6;
+  // The time of the last good read.
+  google.protobuf.Timestamp last_sync = 7;
+  // The reason of the last failed read. Empty after a good read.
+  string last_error = 8;
+  // The number of entries in the cached copy.
+  int32 entry_count = 9;
+  // The key id or certificate subject that signed the cached copy.
+  string signed_by = 10;
+  // The time of the last read, good or failed.
+  google.protobuf.Timestamp last_read = 11;
+
+  // Anchor names the key that signs the external list.
+  message Anchor {
+    // The caller sets exactly one of jwks_url or x509_certificate.
+    oneof anchor {
+      // The URL of a JWK Set (RFC 7517) with the signing keys.
+      string jwks_url = 1;
+      // A PEM X.509 certificate. It signs the list, or it issued the
+      // certificate that signs the list.
+      string x509_certificate = 2;
+    }
+  }
+}
+
+// AddRegistryRequest carries the registry to add.
+message AddRegistryRequest {
+  // The registry. The service sets the id and the sync fields.
+  Registry registry = 1;
+}
+
+// AddRegistryResponse returns the registry after its first read.
+message AddRegistryResponse {
+  // The registry as stored.
+  Registry registry = 1;
+}
+
+// ListRegistriesRequest has no fields.
+message ListRegistriesRequest {}
+
+// ListRegistriesResponse lists the external registries and the local lists.
+message ListRegistriesResponse {
+  // The external registries.
+  repeated Registry registries = 1;
+  // The lists that this registry publishes, one per enabled method.
+  repeated PublishResponse.Publication local = 2;
+  // The URL of the JWK Set that signs the local lists.
+  string jwks_url = 3;
+}
+
+// RemoveRegistryRequest selects a registry.
+message RemoveRegistryRequest {
+  // The registry id.
+  string id = 1;
+}
+
+// RemoveRegistryResponse has no fields.
+message RemoveRegistryResponse {}
+
+// SyncRegistryRequest selects a registry.
+message SyncRegistryRequest {
+  // The registry id.
+  string id = 1;
+}
+
+// SyncRegistryResponse returns the registry after the read.
+message SyncRegistryResponse {
+  // The registry with its sync fields.
+  Registry registry = 1;
 }
 
 // Method names a trust list publication format (ADR-011 decisions 2 and 3).
@@ -224,6 +338,11 @@ message TrustLookupResponse {
     google.protobuf.Timestamp checked_at = 4;
     // True when the answer came from the local cache.
     bool cached = 5;
+    // The id of the external registry that gave the answer. Empty
+    // means the lists of this registry.
+    string registry_id = 6;
+    // The display name of that external registry.
+    string registry_name = 7;
   }
 }
 

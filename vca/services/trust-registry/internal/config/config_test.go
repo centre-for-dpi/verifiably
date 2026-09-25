@@ -81,3 +81,35 @@ func TestErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestFederationSettings keeps the fetch guard strict by default and
+// puts the registries file beside the store file.
+func TestFederationSettings(t *testing.T) {
+	c, err := Load(env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.RegistriesFile != "" || c.FederationAllowPrivate || c.FederationAllowHTTP || len(c.FederationHosts) != 0 || c.FederationTick != time.Minute {
+		t.Fatalf("defaults = %+v", c)
+	}
+	c, err = Load(env(map[string]string{
+		"VCA_TRUST_STORE_FILE":               "/data/trust.json",
+		"VCA_TRUST_FEDERATION_ALLOW_PRIVATE": "true",
+		"VCA_TRUST_FEDERATION_ALLOW_HTTP":    "true",
+		"VCA_TRUST_FEDERATION_ALLOWED_HOSTS": "trust.go.ke,.europa.eu",
+		"VCA_TRUST_FEDERATION_TICK":          "30s",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.RegistriesFile != "/data/registries.json" || !c.FederationAllowPrivate || !c.FederationAllowHTTP || len(c.FederationHosts) != 2 || c.FederationTick != 30*time.Second {
+		t.Fatalf("overrides = %+v", c)
+	}
+	c, err = Load(env(map[string]string{"VCA_TRUST_STORE_FILE": "/data/trust.json", "VCA_TRUST_REGISTRIES_FILE": "/other/r.json"}))
+	if err != nil || c.RegistriesFile != "/other/r.json" {
+		t.Fatalf("explicit file = %+v, %v", c, err)
+	}
+	if _, err := Load(env(map[string]string{"VCA_TRUST_FEDERATION_TICK": "0s"})); err == nil {
+		t.Fatal("a zero tick passed")
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/did"
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
@@ -22,6 +23,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/dedi"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/etsi"
+	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/federation"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/httpapi"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/keys"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/lookup"
@@ -33,11 +35,34 @@ import (
 // MaxDocumentSize caps a fetched DID document.
 const MaxDocumentSize = 1 << 20
 
+// MaxListSize caps one external list, JWKS, or manifest.
+const MaxListSize = 16 << 20
+
 // App is the wired service.
 type App struct {
-	Mux     *http.ServeMux
-	Service *service.Service
-	Ring    *keys.Ring
+	Mux        *http.ServeMux
+	Service    *service.Service
+	Ring       *keys.Ring
+	Federation *federation.Federation
+	tick       time.Duration
+	log        *slog.Logger
+}
+
+// RunSync reads the external registries whose refresh passed, once per
+// tick, until ctx ends.
+func (a *App) RunSync(ctx context.Context) {
+	t := time.NewTicker(a.tick)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if n := a.Federation.SyncDue(ctx); n > 0 {
+				a.log.Info("external registries read", "count", n)
+			}
+		}
+	}
 }
 
 // Deps are the side effects the wiring needs. Tests inject fakes.
@@ -88,13 +113,31 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		}
 	}
 	cache := lookup.New(publishers, ring.JWKS, lookup.Options{Policy: cfg.LookupPolicy, MaxAge: cfg.LookupMaxAge, Now: deps.Now})
+	regBackend := sharedstore.MemoryDoc()
+	if cfg.RegistriesFile != "" {
+		regBackend = sharedstore.FileDoc(cfg.RegistriesFile)
+	}
+	fed, err := federation.New(federation.Options{
+		Backend: regBackend,
+		Fetcher: fetchguard.New(fetchguard.Options{
+			Guard: fetchguard.Guard{
+				AllowedHosts: cfg.FederationHosts, AllowPrivateNetwork: cfg.FederationAllowPrivate, AllowPlainHTTP: cfg.FederationAllowHTTP,
+			},
+			MaxBytes: MaxListSize,
+			Accept:   "application/jose, application/json, application/xml, text/xml",
+		}),
+		Now: deps.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
 	var resolver *did.Resolver
 	if cfg.ResolveDIDs {
 		r := did.NewResolver(deps.Fetch, nil)
 		resolver = &r
 	}
 	svc, err := service.New(service.Options{
-		Store: st, Ring: ring, Publishers: publishers, Cache: cache, Resolver: resolver,
+		Store: st, Ring: ring, Publishers: publishers, Cache: cache, Resolver: resolver, Federation: fed,
 		BaseURL: cfg.BaseURL, Issuer: cfg.Issuer, ListTTL: cfg.ListTTL, PageSizeMax: cfg.PageSizeMax, Now: deps.Now,
 	})
 	if err != nil {
@@ -104,7 +147,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.Handle(trustv1connect.NewTrustServiceHandler(svc))
 	httpapi.New(svc, cfg.HTTPMaxAge).Register(mux)
 	deps.Log.Info("trust registry ready", "methods", cfg.Methods, "kid", ring.Active().ID, "alg", ring.Active().Alg, "base_url", cfg.BaseURL)
-	return &App{Mux: mux, Service: svc, Ring: ring}, nil
+	return &App{Mux: mux, Service: svc, Ring: ring, Federation: fed, tick: cfg.FederationTick, log: deps.Log}, nil
 }
 
 // loadRing reads the PEM file or generates one key for development.

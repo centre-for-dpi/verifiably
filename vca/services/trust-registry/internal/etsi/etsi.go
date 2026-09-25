@@ -11,6 +11,7 @@
 package etsi
 
 import (
+	"crypto"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -270,6 +271,21 @@ func VerifyJWS(token string, set jose.JWKS, now time.Time) (Claims, jose.Header,
 	if err != nil {
 		return Claims{}, hdr, fmt.Errorf("etsi: %w", err)
 	}
+	return claimsOf(raw, hdr, now)
+}
+
+// VerifyJWSKey checks a list with one public key, for example the key of
+// an X.509 trust anchor, and then the typ header and the exp claim.
+func VerifyJWSKey(token string, key crypto.PublicKey, now time.Time) (Claims, jose.Header, error) {
+	raw, hdr, err := jose.Verify(token, key, jose.SigningAlgorithms)
+	if err != nil {
+		return Claims{}, hdr, fmt.Errorf("etsi: %w", err)
+	}
+	return claimsOf(raw, hdr, now)
+}
+
+// claimsOf checks the typ header and decodes the claims of a checked list.
+func claimsOf(raw []byte, hdr jose.Header, now time.Time) (Claims, jose.Header, error) {
 	if hdr.Typ != TypeJWS {
 		return Claims{}, hdr, fmt.Errorf("etsi: typ %q is not %s", hdr.Typ, TypeJWS)
 	}

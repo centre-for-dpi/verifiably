@@ -6,7 +6,8 @@ The trust registry publishes the signed list of trusted issuers, holders, and ve
 
 - It keeps one canonical trust entry per entity and publishes it as an ETSI list and as DeDi directory files.
 - It works with every DPG: walt.id, Inji, and CREDEBL read the same lists.
-- It owns one file: the trust store `trust.json` with the entries and their versions.
+- It owns two files: the trust store `trust.json` with the entries and their versions, and `registries.json` with the external registries and their checked copies.
+- It federates with external registries: ETSI TS 119 602 JSON lists, ETSI TS 119 612 XML lists, and DeDi directories.
 - It follows these standards: [ETSI TS 119 602](https://www.etsi.org/deliver/etsi_ts/119600_119699/119602/01.01.01_60/ts_119602v010101p.pdf), [ETSI TS 119 612](https://www.etsi.org/deliver/etsi_ts/119600_119699/119612/02.03.01_60/ts_119612v020301p.pdf), [RFC 7515](https://www.rfc-editor.org/rfc/rfc7515.html), [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517.html), [DID Core 1.0](https://www.w3.org/TR/did-1.0/), and the [Decentralized Directory protocol](https://github.com/LF-Decentralized-Trust-labs/decentralized-directory-protocol).
 
 It does not check credentials. The verifier policy service calls `TrustLookup` for that.
@@ -46,6 +47,11 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_TRUST_LOOKUP_MAX_AGE` | How long the lookup cache stays fresh. | `1h` |
 | `VCA_TRUST_RESOLVE_DIDS` | Resolve the DID of an entry on `UpsertEntry`. | `true` |
 | `VCA_TRUST_PAGE_SIZE_MAX` | The maximum page size of `ListEntries`. | `200` |
+| `VCA_TRUST_REGISTRIES_FILE` | The JSON file of the external registries and their cached copies. | `registries.json` beside the store file, or in memory |
+| `VCA_TRUST_FEDERATION_ALLOW_PRIVATE` | Let the federation reach private and loopback addresses. For development only. | `false` |
+| `VCA_TRUST_FEDERATION_ALLOW_HTTP` | Let the federation read lists over plain http. | `false` |
+| `VCA_TRUST_FEDERATION_ALLOWED_HOSTS` | The hosts of external lists, comma separated. A leading dot matches a domain. | empty: every public host |
+| `VCA_TRUST_FEDERATION_TICK` | How often the service looks for registries whose refresh passed. | `1m` |
 
 The container image is `ghcr.io/centre-for-dpi/vca-trust-registry`. It listens on
 one port and runs as a non-root user with a read-only file system.

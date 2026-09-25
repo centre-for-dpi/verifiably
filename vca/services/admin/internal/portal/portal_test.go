@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
@@ -34,7 +36,11 @@ import (
 // fakeTrust is a trust registry client in process.
 type fakeTrust struct {
 	trustv1connect.TrustServiceClient
-	entries map[string]*trustv1.TrustEntry
+	entries    map[string]*trustv1.TrustEntry
+	registries []*trustv1.Registry
+	local      []*trustv1.PublishResponse_Publication
+	// syncErr, when set, is the last_error a sync reports.
+	syncErr string
 	// listErr, when set, makes ListEntries fail.
 	listErr error
 }
@@ -81,6 +87,42 @@ func (f *fakeTrust) ListEntries(_ context.Context, req *connect.Request[trustv1.
 func (f *fakeTrust) DeleteEntry(_ context.Context, req *connect.Request[trustv1.DeleteEntryRequest]) (*connect.Response[trustv1.DeleteEntryResponse], error) {
 	delete(f.entries, keyOf(req.Msg.GetIdentifier()))
 	return connect.NewResponse(&trustv1.DeleteEntryResponse{}), nil
+}
+
+func (f *fakeTrust) AddRegistry(_ context.Context, req *connect.Request[trustv1.AddRegistryRequest]) (*connect.Response[trustv1.AddRegistryResponse], error) {
+	r := req.Msg.GetRegistry()
+	r.Id = fmt.Sprintf("reg-%d", len(f.registries)+1)
+	f.registries = append(f.registries, r)
+	return connect.NewResponse(&trustv1.AddRegistryResponse{Registry: r}), nil
+}
+
+func (f *fakeTrust) ListRegistries(context.Context, *connect.Request[trustv1.ListRegistriesRequest]) (*connect.Response[trustv1.ListRegistriesResponse], error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return connect.NewResponse(&trustv1.ListRegistriesResponse{
+		Registries: f.registries, Local: f.local, JwksUrl: "https://admin.vca.example/trust-registry/.well-known/jwks.json",
+	}), nil
+}
+
+func (f *fakeTrust) RemoveRegistry(_ context.Context, req *connect.Request[trustv1.RemoveRegistryRequest]) (*connect.Response[trustv1.RemoveRegistryResponse], error) {
+	for i, r := range f.registries {
+		if r.GetId() == req.Msg.GetId() {
+			f.registries = append(f.registries[:i], f.registries[i+1:]...)
+			return connect.NewResponse(&trustv1.RemoveRegistryResponse{}), nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeNotFound, errors.New("no registry"))
+}
+
+func (f *fakeTrust) SyncRegistry(_ context.Context, req *connect.Request[trustv1.SyncRegistryRequest]) (*connect.Response[trustv1.SyncRegistryResponse], error) {
+	for _, r := range f.registries {
+		if r.GetId() == req.Msg.GetId() {
+			r.LastError = f.syncErr
+			return connect.NewResponse(&trustv1.SyncRegistryResponse{Registry: r}), nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeNotFound, errors.New("no registry"))
 }
 
 // harness holds the whole service behind an HTTP server.
@@ -321,7 +363,7 @@ func TestNewChecksItsOptions(t *testing.T) {
 
 func TestEveryPageWithoutASessionGoesToTheLogin(t *testing.T) {
 	h := newHarness(t, true)
-	for _, path := range []string{"/admin/", "/admin/tenants", "/admin/trust", "/admin/providers", "/admin/providers/new", "/admin/keys", "/admin/audit"} {
+	for _, path := range []string{"/admin/", "/admin/tenants", "/admin/trust", "/admin/trust/registries", "/admin/providers", "/admin/providers/new", "/admin/keys", "/admin/audit"} {
 		status, _ := h.get(t, path)
 		if status != http.StatusSeeOther {
 			t.Errorf("%s status = %d, want a redirect to the login page", path, status)
@@ -393,7 +435,7 @@ func TestEveryPageIsAccessible(t *testing.T) {
 	h := newHarness(t, true)
 	h.signIn(t)
 	for _, path := range []string{
-		"/admin/", "/admin/tenants", "/admin/trust", "/admin/providers",
+		"/admin/", "/admin/tenants", "/admin/trust", "/admin/trust/registries", "/admin/providers",
 		"/admin/providers/new", "/admin/keys", "/admin/audit", "/admin/help", "/admin/login",
 	} {
 		body := h.page(t, path)
@@ -877,5 +919,163 @@ func TestApproveNeedsTheSynchronizerToken(t *testing.T) {
 	}
 	if h.trust.entries["did:web:approve.example"].GetStatus() != trustv1.Status_STATUS_PENDING {
 		t.Fatal("a refused approval changed the entry")
+	}
+}
+
+// seedRegistries gives the fake registry its two local lists and two
+// external registries: one read well, one whose last read failed.
+func (h *harness) seedRegistries() {
+	at := timestamppb.New(time.Date(2026, 9, 24, 6, 0, 0, 0, time.UTC))
+	h.trust.local = []*trustv1.PublishResponse_Publication{
+		{Method: trustv1.Method_METHOD_DEDI, Url: "https://admin.vca.example/trust-registry/.well-known/dedi.index.json", EntryCount: 3, PublishedAt: at, KeyId: "kid-local"},
+		{Method: trustv1.Method_METHOD_ETSI, Url: "https://admin.vca.example/trust-registry/trust-list/etsi.jws", EntryCount: 3, PublishedAt: at, KeyId: "kid-local"},
+	}
+	h.trust.registries = []*trustv1.Registry{
+		{Id: "reg-ke", Name: "Kenya national trust registry", Method: trustv1.RegistryMethod_REGISTRY_METHOD_ETSI_LOTE_JSON,
+			Url:      "https://trust.go.ke/trust-list/etsi.jws",
+			Anchor:   &trustv1.Registry_Anchor{Anchor: &trustv1.Registry_Anchor_JwksUrl{JwksUrl: "https://trust.go.ke/.well-known/jwks.json"}},
+			LastSync: at, LastRead: at, EntryCount: 12, SignedBy: "kid-ke", Refresh: durationpb.New(24 * time.Hour)},
+		{Id: "reg-eu", Name: "EU list of trusted lists", Method: trustv1.RegistryMethod_REGISTRY_METHOD_ETSI_TSL_XML,
+			Url:      "https://ec.europa.eu/tools/lotl/eu-lotl.xml",
+			Anchor:   &trustv1.Registry_Anchor{Anchor: &trustv1.Registry_Anchor_X509Certificate{X509Certificate: "PEM"}},
+			LastRead: at, LastError: "xmldsig: no trust anchor vouches for the signing certificate", Refresh: durationpb.New(6 * time.Hour)},
+	}
+}
+
+// TestRegistriesPageListsLocalAndExternal shows the local registry with
+// its published lists and every external registry with its last sync,
+// its last error, and its actions.
+func TestRegistriesPageListsLocalAndExternal(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	h.seedRegistries()
+	page := h.page(t, "/admin/trust/registries")
+	for _, want := range []string{
+		"Trust lists and registries", `<nav class="tabs" aria-label="Trust views">`,
+		`<a href="/admin/trust/registries" aria-current="page">Registries</a>`, `<a href="/admin/trust">Trust list</a>`,
+		`<a href="/admin/trust/registries" aria-current="page"`,
+		"Local registry", "https://admin.vca.example/trust-registry/trust-list/etsi.jws",
+		"https://admin.vca.example/trust-registry/.well-known/dedi.index.json",
+		"https://admin.vca.example/trust-registry/.well-known/jwks.json",
+		"Kenya national trust registry", "ETSI LoTE JSON", "JWKS URL", "2026-09-24 06:00 UTC", "12 entries", "X.509 certificate",
+		"EU list of trusted lists", "ETSI TS 119612 XML", "no trust anchor vouches",
+		`action="/admin/trust/registries/reg-ke/sync"`, `action="/admin/trust/registries/reg-eu/delete"`,
+		`name="` + oidcflow.CSRFField + `"`, `id="add-registry"`, `name="anchor_kind"`, `name="x509_certificate"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the registries page misses %q", want)
+		}
+	}
+	// The trust list page carries the same tabs with the list current.
+	list := h.page(t, "/admin/trust")
+	if !strings.Contains(list, `<a href="/admin/trust" aria-current="page">Trust list</a>`) {
+		t.Error("the trust list page has no tabs")
+	}
+	// No external registry: an empty state with the add action.
+	h.trust.registries = nil
+	if empty := h.page(t, "/admin/trust/registries"); !strings.Contains(empty, "No external registry") {
+		t.Error("the page has no empty state")
+	}
+}
+
+func TestAddRegistryFromThePage(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	form := url.Values{
+		"name": {"Kenya national trust registry"}, "method": {"dedi"}, "url": {"https://trust.go.ke"},
+		"anchor_kind": {"jwks"}, "jwks_url": {"https://trust.go.ke/.well-known/jwks.json"}, "refresh": {"6h"},
+	}
+	if status, body := h.post(t, "/admin/trust/registries", form); status != http.StatusSeeOther {
+		t.Fatalf("add = %d %s", status, body)
+	}
+	got := h.trust.registries[0]
+	if got.GetMethod() != trustv1.RegistryMethod_REGISTRY_METHOD_DEDI || got.GetAnchor().GetJwksUrl() == "" ||
+		got.GetAnchor().GetX509Certificate() != "" || got.GetRefresh().AsDuration() != 6*time.Hour {
+		t.Fatalf("the registry = %+v", got)
+	}
+	form = url.Values{
+		"name": {"EU list"}, "method": {"etsi-tsl-xml"}, "url": {"https://ec.europa.eu/tools/lotl/eu-lotl.xml"},
+		"anchor_kind": {"x509"}, "jwks_url": {"https://ignored.example"}, "x509_certificate": {"-----BEGIN CERTIFICATE-----"},
+	}
+	if status, _ := h.post(t, "/admin/trust/registries", form); status != http.StatusSeeOther {
+		t.Fatalf("add x509 = %d", status)
+	}
+	if x := h.trust.registries[1]; x.GetAnchor().GetX509Certificate() == "" || x.GetAnchor().GetJwksUrl() != "" || x.GetRefresh() != nil {
+		t.Fatalf("the x509 registry = %+v", x)
+	}
+	form.Set("refresh", "soon")
+	if status, _ := h.post(t, "/admin/trust/registries", form); status != http.StatusBadRequest {
+		t.Fatalf("a bad refresh = %d, want 400", status)
+	}
+	if page := h.page(t, "/admin/trust/registries?notice=registry-added"); !strings.Contains(page, "reads the list") {
+		t.Error("the added notice is missing")
+	}
+}
+
+func TestSyncAndRemoveRegistryWriteAudit(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	h.seedRegistries()
+	res, err := h.client.Post(h.server.URL+"/admin/trust/registries/reg-ke/sync", "application/x-www-form-urlencoded", strings.NewReader(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Error(cerr)
+	}
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("a sync without a token = %d", res.StatusCode)
+	}
+	status, _ := h.post(t, "/admin/trust/registries/reg-ke/sync", nil)
+	if status != http.StatusSeeOther {
+		t.Fatalf("sync = %d", status)
+	}
+	h.trust.syncErr = "fetchguard: https://trust.go.ke answered 503"
+	loc := h.postLocation(t, "/admin/trust/registries/reg-ke/sync")
+	if !strings.Contains(loc, "registry-sync-failed") {
+		t.Fatalf("a failed sync goes to %q", loc)
+	}
+	if status, _ := h.post(t, "/admin/trust/registries/reg-eu/delete", nil); status != http.StatusSeeOther {
+		t.Fatalf("remove = %d", status)
+	}
+	if len(h.trust.registries) != 1 {
+		t.Fatal("the registry is still there")
+	}
+	if status, _ := h.post(t, "/admin/trust/registries/missing/delete", nil); status != http.StatusNotFound {
+		t.Fatalf("remove of an unknown id = %d", status)
+	}
+	audit := h.page(t, "/admin/audit")
+	for _, want := range []string{"admin.SyncTrustRegistry", "admin.RemoveTrustRegistry", "reg-eu"} {
+		if !strings.Contains(audit, want) {
+			t.Errorf("the audit page misses %q", want)
+		}
+	}
+}
+
+// postLocation posts an empty form and returns the redirect target.
+func (h *harness) postLocation(t *testing.T, path string) string {
+	t.Helper()
+	form := url.Values{oidcflow.CSRFField: {h.csrf}}
+	res, err := h.client.Post(h.server.URL+path, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := res.Body.Close(); cerr != nil {
+		t.Error(cerr)
+	}
+	return res.Header.Get("Location")
+}
+
+func TestRegistriesPageWithoutARegistryExplainsIt(t *testing.T) {
+	h := newHarness(t, false)
+	h.signIn(t)
+	if page := h.page(t, "/admin/trust/registries"); !strings.Contains(page, "No trust registry") {
+		t.Fatal("the page does not name the missing registry")
+	}
+	h = newHarness(t, true)
+	h.signIn(t)
+	h.trust.listErr = connect.NewError(connect.CodeUnavailable, errors.New("down"))
+	if status, _ := h.get(t, "/admin/trust/registries"); status != http.StatusInternalServerError {
+		t.Fatalf("a registry fault = %d", status)
 	}
 }

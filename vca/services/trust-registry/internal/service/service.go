@@ -24,6 +24,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/entry"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/etsi"
+	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/federation"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/keys"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/lookup"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/publish"
@@ -39,6 +40,9 @@ type Options struct {
 	Ring       *keys.Ring
 	Publishers []publish.Publisher
 	Cache      *lookup.Cache
+	// Federation holds the external registries. Nil builds one in
+	// memory that reaches public https hosts only.
+	Federation *federation.Federation
 	// Resolver resolves DIDs on UpsertEntry. Nil skips resolution.
 	Resolver *did.Resolver
 	BaseURL  string
@@ -72,6 +76,13 @@ func New(opts Options) (*Service, error) {
 	}
 	if opts.ListTTL <= 0 {
 		opts.ListTTL = 24 * time.Hour
+	}
+	if opts.Federation == nil {
+		fed, err := federation.New(federation.Options{Now: opts.Now})
+		if err != nil {
+			return nil, err
+		}
+		opts.Federation = fed
 	}
 	s := &Service{opts: opts}
 	if _, err := s.republish(); err != nil {
@@ -127,6 +138,9 @@ func (s *Service) UpsertEntry(ctx context.Context, req *connect.Request[trustv1.
 	e, err := entry.FromProto(req.Msg.GetEntry())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if werr := s.opts.Federation.CheckWritable(e.ID()); werr != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, werr)
 	}
 	if e.DID != "" && s.opts.Resolver != nil {
 		if _, serr := s.opts.Resolver.Resolve(ctx, e.DID); serr != nil {
@@ -223,6 +237,9 @@ func (s *Service) DeleteEntry(_ context.Context, req *connect.Request[trustv1.De
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if werr := s.opts.Federation.CheckWritable(id); werr != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, werr)
+	}
 	found, err := s.opts.Store.Delete(id)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -277,6 +294,13 @@ func (s *Service) TrustLookup(_ context.Context, req *connect.Request[trustv1.Tr
 		at = req.Msg.GetAt().AsTime()
 	}
 	r := s.opts.Cache.Lookup(id, role, req.Msg.GetCredentialType(), at)
+	// The local lists answer first. When they do not name the entity, the
+	// copies of the external registries answer, with their provenance.
+	if r.Outcome != lookup.Trusted && r.Outcome != lookup.Untrusted {
+		if ext, ok := s.opts.Federation.Lookup(id, role, req.Msg.GetCredentialType(), at); ok {
+			return connect.NewResponse(externalAnswer(ext)), nil
+		}
+	}
 	resp := &trustv1.TrustLookupResponse{Outcome: outcomeProto(r.Outcome), Reason: r.Reason}
 	if r.Entry != nil {
 		resp.Entry = entry.ToProto(*r.Entry)
@@ -293,6 +317,27 @@ func (s *Service) TrustLookup(_ context.Context, req *connect.Request[trustv1.Tr
 	return connect.NewResponse(resp), nil
 }
 
+// externalAnswer is the lookup answer of an external registry.
+func externalAnswer(ext federation.Result) *trustv1.TrustLookupResponse {
+	resp := &trustv1.TrustLookupResponse{
+		Outcome: outcomeProto(lookup.Outcome(ext.Outcome)),
+		Reason:  ext.Reason,
+		Provenance: &trustv1.TrustLookupResponse_Provenance{
+			Method:       lookupMethod(ext.Method),
+			ListUrl:      ext.ListURL,
+			KeyId:        ext.SignedBy,
+			CheckedAt:    timestamppb.New(ext.CheckedAt),
+			Cached:       true,
+			RegistryId:   ext.Registry.ID,
+			RegistryName: ext.Registry.Name,
+		},
+	}
+	if ext.Entry != nil {
+		resp.Entry = entry.ToProto(*ext.Entry)
+	}
+	return resp
+}
+
 // ImportEtsi reads a TS 119 612 XML list and stores its entities.
 func (s *Service) ImportEtsi(_ context.Context, req *connect.Request[trustv1.ImportEtsiRequest]) (*connect.Response[trustv1.ImportEtsiResponse], error) {
 	tl, err := etsi.ParseTrustedList(req.Msg.GetXml())
@@ -306,6 +351,10 @@ func (s *Service) ImportEtsi(_ context.Context, req *connect.Request[trustv1.Imp
 		resp.Skipped = append(resp.Skipped, sk.String())
 	}
 	for _, e := range entries {
+		if err := s.opts.Federation.CheckWritable(e.ID()); err != nil {
+			resp.Skipped = append(resp.Skipped, err.Error())
+			continue
+		}
 		if _, exists := s.opts.Store.Get(e.ID()); exists {
 			resp.Updated++
 		} else {

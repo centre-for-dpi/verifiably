@@ -286,3 +286,28 @@ func TestParseTrustedListErrors(t *testing.T) {
 		t.Fatal("english name")
 	}
 }
+
+// TestVerifyJWSKeyChecksWithOneKey checks a list with the public key of
+// an X.509 anchor instead of a JWK Set. Another key fails.
+func TestVerifyJWSKeyChecksWithOneKey(t *testing.T) {
+	in := input(t, entry.Entry{DID: "did:web:issuer.example", Role: entry.RoleIssuer, Status: entry.StatusActive})
+	pub, err := Publisher{}.Publish(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := string(pub.Files[PathJWS].Body)
+	claims, hdr, err := VerifyJWSKey(token, in.Signer.Public().Key, t0)
+	if err != nil || hdr.Kid != in.Signer.ID || len(claims.Entities) == 0 {
+		t.Fatalf("VerifyJWSKey = %v, %v, %v", claims, hdr, err)
+	}
+	other, err := keys.Generate("ES256", t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := VerifyJWSKey(token, other.Public().Key, t0); err == nil {
+		t.Fatal("another key passed")
+	}
+	if _, _, err := VerifyJWSKey(token, in.Signer.Public().Key, t0.Add(48*time.Hour)); err == nil {
+		t.Fatal("an expired list passed")
+	}
+}

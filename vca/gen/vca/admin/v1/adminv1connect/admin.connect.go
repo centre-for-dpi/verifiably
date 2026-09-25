@@ -70,6 +70,18 @@ const (
 	// AdminServiceRejectTrustEntryProcedure is the fully-qualified name of the AdminService's
 	// RejectTrustEntry RPC.
 	AdminServiceRejectTrustEntryProcedure = "/vca.admin.v1.AdminService/RejectTrustEntry"
+	// AdminServiceAddTrustRegistryProcedure is the fully-qualified name of the AdminService's
+	// AddTrustRegistry RPC.
+	AdminServiceAddTrustRegistryProcedure = "/vca.admin.v1.AdminService/AddTrustRegistry"
+	// AdminServiceListTrustRegistriesProcedure is the fully-qualified name of the AdminService's
+	// ListTrustRegistries RPC.
+	AdminServiceListTrustRegistriesProcedure = "/vca.admin.v1.AdminService/ListTrustRegistries"
+	// AdminServiceRemoveTrustRegistryProcedure is the fully-qualified name of the AdminService's
+	// RemoveTrustRegistry RPC.
+	AdminServiceRemoveTrustRegistryProcedure = "/vca.admin.v1.AdminService/RemoveTrustRegistry"
+	// AdminServiceSyncTrustRegistryProcedure is the fully-qualified name of the AdminService's
+	// SyncTrustRegistry RPC.
+	AdminServiceSyncTrustRegistryProcedure = "/vca.admin.v1.AdminService/SyncTrustRegistry"
 	// AdminServiceCreateAuthProviderProcedure is the fully-qualified name of the AdminService's
 	// CreateAuthProvider RPC.
 	AdminServiceCreateAuthProviderProcedure = "/vca.admin.v1.AdminService/CreateAuthProvider"
@@ -139,6 +151,15 @@ type AdminServiceClient interface {
 	// RejectTrustEntry removes a pending trust entry. The audit log
 	// records the decision.
 	RejectTrustEntry(context.Context, *connect.Request[v1.RejectTrustEntryRequest]) (*connect.Response[v1.RejectTrustEntryResponse], error)
+	// AddTrustRegistry federates with one external trust registry
+	// (ADR-011 decision 7). The trust registry reads and checks its list.
+	AddTrustRegistry(context.Context, *connect.Request[v1.AddTrustRegistryRequest]) (*connect.Response[v1.AddTrustRegistryResponse], error)
+	// ListTrustRegistries returns the external registries and the local lists.
+	ListTrustRegistries(context.Context, *connect.Request[v1.ListTrustRegistriesRequest]) (*connect.Response[v1.ListTrustRegistriesResponse], error)
+	// RemoveTrustRegistry stops the federation with one external registry.
+	RemoveTrustRegistry(context.Context, *connect.Request[v1.RemoveTrustRegistryRequest]) (*connect.Response[v1.RemoveTrustRegistryResponse], error)
+	// SyncTrustRegistry reads the list of one external registry now.
+	SyncTrustRegistry(context.Context, *connect.Request[v1.SyncTrustRegistryRequest]) (*connect.Response[v1.SyncTrustRegistryResponse], error)
 	// CreateAuthProvider registers one OIDC provider (ADR-012 decision 5).
 	// The service fetches the discovery document to check the URL.
 	CreateAuthProvider(context.Context, *connect.Request[v1.CreateAuthProviderRequest]) (*connect.Response[v1.CreateAuthProviderResponse], error)
@@ -252,6 +273,30 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("RejectTrustEntry")),
 			connect.WithClientOptions(opts...),
 		),
+		addTrustRegistry: connect.NewClient[v1.AddTrustRegistryRequest, v1.AddTrustRegistryResponse](
+			httpClient,
+			baseURL+AdminServiceAddTrustRegistryProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("AddTrustRegistry")),
+			connect.WithClientOptions(opts...),
+		),
+		listTrustRegistries: connect.NewClient[v1.ListTrustRegistriesRequest, v1.ListTrustRegistriesResponse](
+			httpClient,
+			baseURL+AdminServiceListTrustRegistriesProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListTrustRegistries")),
+			connect.WithClientOptions(opts...),
+		),
+		removeTrustRegistry: connect.NewClient[v1.RemoveTrustRegistryRequest, v1.RemoveTrustRegistryResponse](
+			httpClient,
+			baseURL+AdminServiceRemoveTrustRegistryProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("RemoveTrustRegistry")),
+			connect.WithClientOptions(opts...),
+		),
+		syncTrustRegistry: connect.NewClient[v1.SyncTrustRegistryRequest, v1.SyncTrustRegistryResponse](
+			httpClient,
+			baseURL+AdminServiceSyncTrustRegistryProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("SyncTrustRegistry")),
+			connect.WithClientOptions(opts...),
+		),
 		createAuthProvider: connect.NewClient[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse](
 			httpClient,
 			baseURL+AdminServiceCreateAuthProviderProcedure,
@@ -335,30 +380,34 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // adminServiceClient implements AdminServiceClient.
 type adminServiceClient struct {
-	createTenant       *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
-	getTenant          *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
-	listTenants        *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
-	updateTenant       *connect.Client[v1.UpdateTenantRequest, v1.UpdateTenantResponse]
-	deleteTenant       *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
-	upsertTrustEntry   *connect.Client[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse]
-	getTrustEntry      *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
-	listTrustEntries   *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
-	deleteTrustEntry   *connect.Client[v1.DeleteTrustEntryRequest, v1.DeleteTrustEntryResponse]
-	approveTrustEntry  *connect.Client[v1.ApproveTrustEntryRequest, v1.ApproveTrustEntryResponse]
-	rejectTrustEntry   *connect.Client[v1.RejectTrustEntryRequest, v1.RejectTrustEntryResponse]
-	createAuthProvider *connect.Client[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse]
-	getAuthProvider    *connect.Client[v1.GetAuthProviderRequest, v1.GetAuthProviderResponse]
-	listAuthProviders  *connect.Client[v1.ListAuthProvidersRequest, v1.ListAuthProvidersResponse]
-	updateAuthProvider *connect.Client[v1.UpdateAuthProviderRequest, v1.UpdateAuthProviderResponse]
-	deleteAuthProvider *connect.Client[v1.DeleteAuthProviderRequest, v1.DeleteAuthProviderResponse]
-	onboardProvider    *connect.Client[v1.OnboardProviderRequest, v1.OnboardProviderResponse]
-	createApiKey       *connect.Client[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse]
-	listApiKeys        *connect.Client[v1.ListApiKeysRequest, v1.ListApiKeysResponse]
-	revokeApiKey       *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
-	getServiceHealth   *connect.Client[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse]
-	queryAuditLog      *connect.Client[v1.QueryAuditLogRequest, v1.QueryAuditLogResponse]
-	onboardAdmin       *connect.Client[v1.OnboardAdminRequest, v1.OnboardAdminResponse]
-	listCommands       *connect.Client[v1.ListCommandsRequest, v1.ListCommandsResponse]
+	createTenant        *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
+	getTenant           *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
+	listTenants         *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
+	updateTenant        *connect.Client[v1.UpdateTenantRequest, v1.UpdateTenantResponse]
+	deleteTenant        *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
+	upsertTrustEntry    *connect.Client[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse]
+	getTrustEntry       *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
+	listTrustEntries    *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
+	deleteTrustEntry    *connect.Client[v1.DeleteTrustEntryRequest, v1.DeleteTrustEntryResponse]
+	approveTrustEntry   *connect.Client[v1.ApproveTrustEntryRequest, v1.ApproveTrustEntryResponse]
+	rejectTrustEntry    *connect.Client[v1.RejectTrustEntryRequest, v1.RejectTrustEntryResponse]
+	addTrustRegistry    *connect.Client[v1.AddTrustRegistryRequest, v1.AddTrustRegistryResponse]
+	listTrustRegistries *connect.Client[v1.ListTrustRegistriesRequest, v1.ListTrustRegistriesResponse]
+	removeTrustRegistry *connect.Client[v1.RemoveTrustRegistryRequest, v1.RemoveTrustRegistryResponse]
+	syncTrustRegistry   *connect.Client[v1.SyncTrustRegistryRequest, v1.SyncTrustRegistryResponse]
+	createAuthProvider  *connect.Client[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse]
+	getAuthProvider     *connect.Client[v1.GetAuthProviderRequest, v1.GetAuthProviderResponse]
+	listAuthProviders   *connect.Client[v1.ListAuthProvidersRequest, v1.ListAuthProvidersResponse]
+	updateAuthProvider  *connect.Client[v1.UpdateAuthProviderRequest, v1.UpdateAuthProviderResponse]
+	deleteAuthProvider  *connect.Client[v1.DeleteAuthProviderRequest, v1.DeleteAuthProviderResponse]
+	onboardProvider     *connect.Client[v1.OnboardProviderRequest, v1.OnboardProviderResponse]
+	createApiKey        *connect.Client[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse]
+	listApiKeys         *connect.Client[v1.ListApiKeysRequest, v1.ListApiKeysResponse]
+	revokeApiKey        *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
+	getServiceHealth    *connect.Client[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse]
+	queryAuditLog       *connect.Client[v1.QueryAuditLogRequest, v1.QueryAuditLogResponse]
+	onboardAdmin        *connect.Client[v1.OnboardAdminRequest, v1.OnboardAdminResponse]
+	listCommands        *connect.Client[v1.ListCommandsRequest, v1.ListCommandsResponse]
 }
 
 // CreateTenant calls vca.admin.v1.AdminService.CreateTenant.
@@ -414,6 +463,26 @@ func (c *adminServiceClient) ApproveTrustEntry(ctx context.Context, req *connect
 // RejectTrustEntry calls vca.admin.v1.AdminService.RejectTrustEntry.
 func (c *adminServiceClient) RejectTrustEntry(ctx context.Context, req *connect.Request[v1.RejectTrustEntryRequest]) (*connect.Response[v1.RejectTrustEntryResponse], error) {
 	return c.rejectTrustEntry.CallUnary(ctx, req)
+}
+
+// AddTrustRegistry calls vca.admin.v1.AdminService.AddTrustRegistry.
+func (c *adminServiceClient) AddTrustRegistry(ctx context.Context, req *connect.Request[v1.AddTrustRegistryRequest]) (*connect.Response[v1.AddTrustRegistryResponse], error) {
+	return c.addTrustRegistry.CallUnary(ctx, req)
+}
+
+// ListTrustRegistries calls vca.admin.v1.AdminService.ListTrustRegistries.
+func (c *adminServiceClient) ListTrustRegistries(ctx context.Context, req *connect.Request[v1.ListTrustRegistriesRequest]) (*connect.Response[v1.ListTrustRegistriesResponse], error) {
+	return c.listTrustRegistries.CallUnary(ctx, req)
+}
+
+// RemoveTrustRegistry calls vca.admin.v1.AdminService.RemoveTrustRegistry.
+func (c *adminServiceClient) RemoveTrustRegistry(ctx context.Context, req *connect.Request[v1.RemoveTrustRegistryRequest]) (*connect.Response[v1.RemoveTrustRegistryResponse], error) {
+	return c.removeTrustRegistry.CallUnary(ctx, req)
+}
+
+// SyncTrustRegistry calls vca.admin.v1.AdminService.SyncTrustRegistry.
+func (c *adminServiceClient) SyncTrustRegistry(ctx context.Context, req *connect.Request[v1.SyncTrustRegistryRequest]) (*connect.Response[v1.SyncTrustRegistryResponse], error) {
+	return c.syncTrustRegistry.CallUnary(ctx, req)
 }
 
 // CreateAuthProvider calls vca.admin.v1.AdminService.CreateAuthProvider.
@@ -509,6 +578,15 @@ type AdminServiceHandler interface {
 	// RejectTrustEntry removes a pending trust entry. The audit log
 	// records the decision.
 	RejectTrustEntry(context.Context, *connect.Request[v1.RejectTrustEntryRequest]) (*connect.Response[v1.RejectTrustEntryResponse], error)
+	// AddTrustRegistry federates with one external trust registry
+	// (ADR-011 decision 7). The trust registry reads and checks its list.
+	AddTrustRegistry(context.Context, *connect.Request[v1.AddTrustRegistryRequest]) (*connect.Response[v1.AddTrustRegistryResponse], error)
+	// ListTrustRegistries returns the external registries and the local lists.
+	ListTrustRegistries(context.Context, *connect.Request[v1.ListTrustRegistriesRequest]) (*connect.Response[v1.ListTrustRegistriesResponse], error)
+	// RemoveTrustRegistry stops the federation with one external registry.
+	RemoveTrustRegistry(context.Context, *connect.Request[v1.RemoveTrustRegistryRequest]) (*connect.Response[v1.RemoveTrustRegistryResponse], error)
+	// SyncTrustRegistry reads the list of one external registry now.
+	SyncTrustRegistry(context.Context, *connect.Request[v1.SyncTrustRegistryRequest]) (*connect.Response[v1.SyncTrustRegistryResponse], error)
 	// CreateAuthProvider registers one OIDC provider (ADR-012 decision 5).
 	// The service fetches the discovery document to check the URL.
 	CreateAuthProvider(context.Context, *connect.Request[v1.CreateAuthProviderRequest]) (*connect.Response[v1.CreateAuthProviderResponse], error)
@@ -618,6 +696,30 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("RejectTrustEntry")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceAddTrustRegistryHandler := connect.NewUnaryHandler(
+		AdminServiceAddTrustRegistryProcedure,
+		svc.AddTrustRegistry,
+		connect.WithSchema(adminServiceMethods.ByName("AddTrustRegistry")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceListTrustRegistriesHandler := connect.NewUnaryHandler(
+		AdminServiceListTrustRegistriesProcedure,
+		svc.ListTrustRegistries,
+		connect.WithSchema(adminServiceMethods.ByName("ListTrustRegistries")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceRemoveTrustRegistryHandler := connect.NewUnaryHandler(
+		AdminServiceRemoveTrustRegistryProcedure,
+		svc.RemoveTrustRegistry,
+		connect.WithSchema(adminServiceMethods.ByName("RemoveTrustRegistry")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceSyncTrustRegistryHandler := connect.NewUnaryHandler(
+		AdminServiceSyncTrustRegistryProcedure,
+		svc.SyncTrustRegistry,
+		connect.WithSchema(adminServiceMethods.ByName("SyncTrustRegistry")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceCreateAuthProviderHandler := connect.NewUnaryHandler(
 		AdminServiceCreateAuthProviderProcedure,
 		svc.CreateAuthProvider,
@@ -720,6 +822,14 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceApproveTrustEntryHandler.ServeHTTP(w, r)
 		case AdminServiceRejectTrustEntryProcedure:
 			adminServiceRejectTrustEntryHandler.ServeHTTP(w, r)
+		case AdminServiceAddTrustRegistryProcedure:
+			adminServiceAddTrustRegistryHandler.ServeHTTP(w, r)
+		case AdminServiceListTrustRegistriesProcedure:
+			adminServiceListTrustRegistriesHandler.ServeHTTP(w, r)
+		case AdminServiceRemoveTrustRegistryProcedure:
+			adminServiceRemoveTrustRegistryHandler.ServeHTTP(w, r)
+		case AdminServiceSyncTrustRegistryProcedure:
+			adminServiceSyncTrustRegistryHandler.ServeHTTP(w, r)
 		case AdminServiceCreateAuthProviderProcedure:
 			adminServiceCreateAuthProviderHandler.ServeHTTP(w, r)
 		case AdminServiceGetAuthProviderProcedure:
@@ -797,6 +907,22 @@ func (UnimplementedAdminServiceHandler) ApproveTrustEntry(context.Context, *conn
 
 func (UnimplementedAdminServiceHandler) RejectTrustEntry(context.Context, *connect.Request[v1.RejectTrustEntryRequest]) (*connect.Response[v1.RejectTrustEntryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.RejectTrustEntry is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) AddTrustRegistry(context.Context, *connect.Request[v1.AddTrustRegistryRequest]) (*connect.Response[v1.AddTrustRegistryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.AddTrustRegistry is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListTrustRegistries(context.Context, *connect.Request[v1.ListTrustRegistriesRequest]) (*connect.Response[v1.ListTrustRegistriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.ListTrustRegistries is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) RemoveTrustRegistry(context.Context, *connect.Request[v1.RemoveTrustRegistryRequest]) (*connect.Response[v1.RemoveTrustRegistryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.RemoveTrustRegistry is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) SyncTrustRegistry(context.Context, *connect.Request[v1.SyncTrustRegistryRequest]) (*connect.Response[v1.SyncTrustRegistryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.SyncTrustRegistry is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) CreateAuthProvider(context.Context, *connect.Request[v1.CreateAuthProviderRequest]) (*connect.Response[v1.CreateAuthProviderResponse], error) {

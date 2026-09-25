@@ -65,6 +65,24 @@ service AdminService {
     option (vca.common.v1.description) = "Rejects and removes a pending trust entry.";
   }
 
+  // AddTrustRegistry federates with one external trust registry
+  // (ADR-011 decision 7). The trust registry reads and checks its list.
+  rpc AddTrustRegistry(AddTrustRegistryRequest) returns (AddTrustRegistryResponse) {
+    option (vca.common.v1.description) = "Adds one external trust registry.";
+  }
+  // ListTrustRegistries returns the external registries and the local lists.
+  rpc ListTrustRegistries(ListTrustRegistriesRequest) returns (ListTrustRegistriesResponse) {
+    option (vca.common.v1.description) = "Returns the trust registries with their last sync.";
+  }
+  // RemoveTrustRegistry stops the federation with one external registry.
+  rpc RemoveTrustRegistry(RemoveTrustRegistryRequest) returns (RemoveTrustRegistryResponse) {
+    option (vca.common.v1.description) = "Removes one external trust registry.";
+  }
+  // SyncTrustRegistry reads the list of one external registry now.
+  rpc SyncTrustRegistry(SyncTrustRegistryRequest) returns (SyncTrustRegistryResponse) {
+    option (vca.common.v1.description) = "Reads the list of one external trust registry now.";
+  }
+
   // CreateAuthProvider registers one OIDC provider (ADR-012 decision 5).
   // The service fetches the discovery document to check the URL.
   rpc CreateAuthProvider(CreateAuthProviderRequest) returns (CreateAuthProviderResponse) {
@@ -289,6 +307,52 @@ message RejectTrustEntryRequest {
 
 // RejectTrustEntryResponse has no fields.
 message RejectTrustEntryResponse {}
+
+// AddTrustRegistryRequest carries the registry to add.
+message AddTrustRegistryRequest {
+  // The registry. The trust registry sets the id and the sync fields.
+  vca.trust.v1.Registry registry = 1;
+}
+
+// AddTrustRegistryResponse returns the registry after its first read.
+message AddTrustRegistryResponse {
+  // The registry as stored.
+  vca.trust.v1.Registry registry = 1;
+}
+
+// ListTrustRegistriesRequest has no fields.
+message ListTrustRegistriesRequest {}
+
+// ListTrustRegistriesResponse lists the registries and the local lists.
+message ListTrustRegistriesResponse {
+  // The external registries.
+  repeated vca.trust.v1.Registry registries = 1;
+  // The lists that the local registry publishes.
+  repeated vca.trust.v1.PublishResponse.Publication local = 2;
+  // The URL of the JWK Set that signs the local lists.
+  string jwks_url = 3;
+}
+
+// RemoveTrustRegistryRequest selects a registry.
+message RemoveTrustRegistryRequest {
+  // The registry id.
+  string id = 1;
+}
+
+// RemoveTrustRegistryResponse has no fields.
+message RemoveTrustRegistryResponse {}
+
+// SyncTrustRegistryRequest selects a registry.
+message SyncTrustRegistryRequest {
+  // The registry id.
+  string id = 1;
+}
+
+// SyncTrustRegistryResponse returns the registry after the read.
+message SyncTrustRegistryResponse {
+  // The registry with its sync fields.
+  vca.trust.v1.Registry registry = 1;
+}
 
 // ProviderKind names the product behind a provider record. The kind
 // selects a fallback, such as the Keycloak registration endpoint, and

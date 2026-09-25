@@ -41,6 +41,7 @@ func (p *Portal) registerTrust(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+at+"/trust/delete", p.posted(p.deleteTrust))
 	mux.HandleFunc("POST "+at+"/trust/approve", p.posted(p.approveTrust))
 	mux.HandleFunc("POST "+at+"/trust/reject", p.posted(p.rejectTrust))
+	p.registerRegistries(mux)
 }
 
 // trust renders the trust list: the entries with the pending ones first,
@@ -64,7 +65,8 @@ func (p *Portal) trust(w http.ResponseWriter, r *http.Request, s session) error 
 		table = p.trustTable(b, res.Msg.GetEntries(), s.CSRF)
 	}
 	add := p.trustForm(b, s.CSRF)
-	actions := b.add("button", components.Button{Text: msg.T("admin.trust.add.label"), Href: "#add-entry", Variant: "primary"})
+	tabs := p.trustTabs(b, "list")
+	actions := p.trustHeaderActions(b)
 	if b.err != nil {
 		return b.err
 	}
@@ -74,7 +76,7 @@ func (p *Portal) trust(w http.ResponseWriter, r *http.Request, s session) error 
 		Lead:        msg.T("admin.trust.lead"),
 		Actions:     actions,
 		Description: msg.T("admin.trust.lead"),
-		Content:     components.Join(table, add),
+		Content:     components.Join(tabs, table, add),
 		Toasts:      notice(q.Get("notice")),
 	})
 }

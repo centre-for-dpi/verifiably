@@ -61,6 +61,18 @@ const (
 	TrustServiceTrustLookupProcedure = "/vca.trust.v1.TrustService/TrustLookup"
 	// TrustServiceImportEtsiProcedure is the fully-qualified name of the TrustService's ImportEtsi RPC.
 	TrustServiceImportEtsiProcedure = "/vca.trust.v1.TrustService/ImportEtsi"
+	// TrustServiceAddRegistryProcedure is the fully-qualified name of the TrustService's AddRegistry
+	// RPC.
+	TrustServiceAddRegistryProcedure = "/vca.trust.v1.TrustService/AddRegistry"
+	// TrustServiceListRegistriesProcedure is the fully-qualified name of the TrustService's
+	// ListRegistries RPC.
+	TrustServiceListRegistriesProcedure = "/vca.trust.v1.TrustService/ListRegistries"
+	// TrustServiceRemoveRegistryProcedure is the fully-qualified name of the TrustService's
+	// RemoveRegistry RPC.
+	TrustServiceRemoveRegistryProcedure = "/vca.trust.v1.TrustService/RemoveRegistry"
+	// TrustServiceSyncRegistryProcedure is the fully-qualified name of the TrustService's SyncRegistry
+	// RPC.
+	TrustServiceSyncRegistryProcedure = "/vca.trust.v1.TrustService/SyncRegistry"
 )
 
 // TrustServiceClient is a client for the vca.trust.v1.TrustService service.
@@ -83,6 +95,19 @@ type TrustServiceClient interface {
 	// ImportEtsi reads an ETSI TS 119 612 XML trusted list and creates
 	// entries for its entities (ADR-011 decision 2).
 	ImportEtsi(context.Context, *connect.Request[v1.ImportEtsiRequest]) (*connect.Response[v1.ImportEtsiResponse], error)
+	// AddRegistry federates with one external trust registry (ADR-011
+	// decision 7). The service reads the list at once and then on the
+	// refresh interval. It checks each copy against the anchor.
+	AddRegistry(context.Context, *connect.Request[v1.AddRegistryRequest]) (*connect.Response[v1.AddRegistryResponse], error)
+	// ListRegistries returns the external registries with their last sync,
+	// and the lists that this registry publishes.
+	ListRegistries(context.Context, *connect.Request[v1.ListRegistriesRequest]) (*connect.Response[v1.ListRegistriesResponse], error)
+	// RemoveRegistry stops the federation with one external registry and
+	// drops its cached entries.
+	RemoveRegistry(context.Context, *connect.Request[v1.RemoveRegistryRequest]) (*connect.Response[v1.RemoveRegistryResponse], error)
+	// SyncRegistry reads the list of one external registry now. A failed
+	// read keeps the last good copy and sets last_error.
+	SyncRegistry(context.Context, *connect.Request[v1.SyncRegistryRequest]) (*connect.Response[v1.SyncRegistryResponse], error)
 }
 
 // NewTrustServiceClient constructs a client for the vca.trust.v1.TrustService service. By default,
@@ -138,18 +163,46 @@ func NewTrustServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(trustServiceMethods.ByName("ImportEtsi")),
 			connect.WithClientOptions(opts...),
 		),
+		addRegistry: connect.NewClient[v1.AddRegistryRequest, v1.AddRegistryResponse](
+			httpClient,
+			baseURL+TrustServiceAddRegistryProcedure,
+			connect.WithSchema(trustServiceMethods.ByName("AddRegistry")),
+			connect.WithClientOptions(opts...),
+		),
+		listRegistries: connect.NewClient[v1.ListRegistriesRequest, v1.ListRegistriesResponse](
+			httpClient,
+			baseURL+TrustServiceListRegistriesProcedure,
+			connect.WithSchema(trustServiceMethods.ByName("ListRegistries")),
+			connect.WithClientOptions(opts...),
+		),
+		removeRegistry: connect.NewClient[v1.RemoveRegistryRequest, v1.RemoveRegistryResponse](
+			httpClient,
+			baseURL+TrustServiceRemoveRegistryProcedure,
+			connect.WithSchema(trustServiceMethods.ByName("RemoveRegistry")),
+			connect.WithClientOptions(opts...),
+		),
+		syncRegistry: connect.NewClient[v1.SyncRegistryRequest, v1.SyncRegistryResponse](
+			httpClient,
+			baseURL+TrustServiceSyncRegistryProcedure,
+			connect.WithSchema(trustServiceMethods.ByName("SyncRegistry")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // trustServiceClient implements TrustServiceClient.
 type trustServiceClient struct {
-	upsertEntry *connect.Client[v1.UpsertEntryRequest, v1.UpsertEntryResponse]
-	getEntry    *connect.Client[v1.GetEntryRequest, v1.GetEntryResponse]
-	listEntries *connect.Client[v1.ListEntriesRequest, v1.ListEntriesResponse]
-	deleteEntry *connect.Client[v1.DeleteEntryRequest, v1.DeleteEntryResponse]
-	publish     *connect.Client[v1.PublishRequest, v1.PublishResponse]
-	trustLookup *connect.Client[v1.TrustLookupRequest, v1.TrustLookupResponse]
-	importEtsi  *connect.Client[v1.ImportEtsiRequest, v1.ImportEtsiResponse]
+	upsertEntry    *connect.Client[v1.UpsertEntryRequest, v1.UpsertEntryResponse]
+	getEntry       *connect.Client[v1.GetEntryRequest, v1.GetEntryResponse]
+	listEntries    *connect.Client[v1.ListEntriesRequest, v1.ListEntriesResponse]
+	deleteEntry    *connect.Client[v1.DeleteEntryRequest, v1.DeleteEntryResponse]
+	publish        *connect.Client[v1.PublishRequest, v1.PublishResponse]
+	trustLookup    *connect.Client[v1.TrustLookupRequest, v1.TrustLookupResponse]
+	importEtsi     *connect.Client[v1.ImportEtsiRequest, v1.ImportEtsiResponse]
+	addRegistry    *connect.Client[v1.AddRegistryRequest, v1.AddRegistryResponse]
+	listRegistries *connect.Client[v1.ListRegistriesRequest, v1.ListRegistriesResponse]
+	removeRegistry *connect.Client[v1.RemoveRegistryRequest, v1.RemoveRegistryResponse]
+	syncRegistry   *connect.Client[v1.SyncRegistryRequest, v1.SyncRegistryResponse]
 }
 
 // UpsertEntry calls vca.trust.v1.TrustService.UpsertEntry.
@@ -187,6 +240,26 @@ func (c *trustServiceClient) ImportEtsi(ctx context.Context, req *connect.Reques
 	return c.importEtsi.CallUnary(ctx, req)
 }
 
+// AddRegistry calls vca.trust.v1.TrustService.AddRegistry.
+func (c *trustServiceClient) AddRegistry(ctx context.Context, req *connect.Request[v1.AddRegistryRequest]) (*connect.Response[v1.AddRegistryResponse], error) {
+	return c.addRegistry.CallUnary(ctx, req)
+}
+
+// ListRegistries calls vca.trust.v1.TrustService.ListRegistries.
+func (c *trustServiceClient) ListRegistries(ctx context.Context, req *connect.Request[v1.ListRegistriesRequest]) (*connect.Response[v1.ListRegistriesResponse], error) {
+	return c.listRegistries.CallUnary(ctx, req)
+}
+
+// RemoveRegistry calls vca.trust.v1.TrustService.RemoveRegistry.
+func (c *trustServiceClient) RemoveRegistry(ctx context.Context, req *connect.Request[v1.RemoveRegistryRequest]) (*connect.Response[v1.RemoveRegistryResponse], error) {
+	return c.removeRegistry.CallUnary(ctx, req)
+}
+
+// SyncRegistry calls vca.trust.v1.TrustService.SyncRegistry.
+func (c *trustServiceClient) SyncRegistry(ctx context.Context, req *connect.Request[v1.SyncRegistryRequest]) (*connect.Response[v1.SyncRegistryResponse], error) {
+	return c.syncRegistry.CallUnary(ctx, req)
+}
+
 // TrustServiceHandler is an implementation of the vca.trust.v1.TrustService service.
 type TrustServiceHandler interface {
 	// UpsertEntry creates or replaces one entry. The entity id is the key.
@@ -207,6 +280,19 @@ type TrustServiceHandler interface {
 	// ImportEtsi reads an ETSI TS 119 612 XML trusted list and creates
 	// entries for its entities (ADR-011 decision 2).
 	ImportEtsi(context.Context, *connect.Request[v1.ImportEtsiRequest]) (*connect.Response[v1.ImportEtsiResponse], error)
+	// AddRegistry federates with one external trust registry (ADR-011
+	// decision 7). The service reads the list at once and then on the
+	// refresh interval. It checks each copy against the anchor.
+	AddRegistry(context.Context, *connect.Request[v1.AddRegistryRequest]) (*connect.Response[v1.AddRegistryResponse], error)
+	// ListRegistries returns the external registries with their last sync,
+	// and the lists that this registry publishes.
+	ListRegistries(context.Context, *connect.Request[v1.ListRegistriesRequest]) (*connect.Response[v1.ListRegistriesResponse], error)
+	// RemoveRegistry stops the federation with one external registry and
+	// drops its cached entries.
+	RemoveRegistry(context.Context, *connect.Request[v1.RemoveRegistryRequest]) (*connect.Response[v1.RemoveRegistryResponse], error)
+	// SyncRegistry reads the list of one external registry now. A failed
+	// read keeps the last good copy and sets last_error.
+	SyncRegistry(context.Context, *connect.Request[v1.SyncRegistryRequest]) (*connect.Response[v1.SyncRegistryResponse], error)
 }
 
 // NewTrustServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -258,6 +344,30 @@ func NewTrustServiceHandler(svc TrustServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(trustServiceMethods.ByName("ImportEtsi")),
 		connect.WithHandlerOptions(opts...),
 	)
+	trustServiceAddRegistryHandler := connect.NewUnaryHandler(
+		TrustServiceAddRegistryProcedure,
+		svc.AddRegistry,
+		connect.WithSchema(trustServiceMethods.ByName("AddRegistry")),
+		connect.WithHandlerOptions(opts...),
+	)
+	trustServiceListRegistriesHandler := connect.NewUnaryHandler(
+		TrustServiceListRegistriesProcedure,
+		svc.ListRegistries,
+		connect.WithSchema(trustServiceMethods.ByName("ListRegistries")),
+		connect.WithHandlerOptions(opts...),
+	)
+	trustServiceRemoveRegistryHandler := connect.NewUnaryHandler(
+		TrustServiceRemoveRegistryProcedure,
+		svc.RemoveRegistry,
+		connect.WithSchema(trustServiceMethods.ByName("RemoveRegistry")),
+		connect.WithHandlerOptions(opts...),
+	)
+	trustServiceSyncRegistryHandler := connect.NewUnaryHandler(
+		TrustServiceSyncRegistryProcedure,
+		svc.SyncRegistry,
+		connect.WithSchema(trustServiceMethods.ByName("SyncRegistry")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.trust.v1.TrustService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TrustServiceUpsertEntryProcedure:
@@ -274,6 +384,14 @@ func NewTrustServiceHandler(svc TrustServiceHandler, opts ...connect.HandlerOpti
 			trustServiceTrustLookupHandler.ServeHTTP(w, r)
 		case TrustServiceImportEtsiProcedure:
 			trustServiceImportEtsiHandler.ServeHTTP(w, r)
+		case TrustServiceAddRegistryProcedure:
+			trustServiceAddRegistryHandler.ServeHTTP(w, r)
+		case TrustServiceListRegistriesProcedure:
+			trustServiceListRegistriesHandler.ServeHTTP(w, r)
+		case TrustServiceRemoveRegistryProcedure:
+			trustServiceRemoveRegistryHandler.ServeHTTP(w, r)
+		case TrustServiceSyncRegistryProcedure:
+			trustServiceSyncRegistryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -309,4 +427,20 @@ func (UnimplementedTrustServiceHandler) TrustLookup(context.Context, *connect.Re
 
 func (UnimplementedTrustServiceHandler) ImportEtsi(context.Context, *connect.Request[v1.ImportEtsiRequest]) (*connect.Response[v1.ImportEtsiResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.trust.v1.TrustService.ImportEtsi is not implemented"))
+}
+
+func (UnimplementedTrustServiceHandler) AddRegistry(context.Context, *connect.Request[v1.AddRegistryRequest]) (*connect.Response[v1.AddRegistryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.trust.v1.TrustService.AddRegistry is not implemented"))
+}
+
+func (UnimplementedTrustServiceHandler) ListRegistries(context.Context, *connect.Request[v1.ListRegistriesRequest]) (*connect.Response[v1.ListRegistriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.trust.v1.TrustService.ListRegistries is not implemented"))
+}
+
+func (UnimplementedTrustServiceHandler) RemoveRegistry(context.Context, *connect.Request[v1.RemoveRegistryRequest]) (*connect.Response[v1.RemoveRegistryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.trust.v1.TrustService.RemoveRegistry is not implemented"))
+}
+
+func (UnimplementedTrustServiceHandler) SyncRegistry(context.Context, *connect.Request[v1.SyncRegistryRequest]) (*connect.Response[v1.SyncRegistryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.trust.v1.TrustService.SyncRegistry is not implemented"))
 }

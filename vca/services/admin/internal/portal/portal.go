@@ -17,6 +17,10 @@
 //	POST /trust/delete           remove one trust entry
 //	POST /trust/approve          set one pending trust entry active
 //	POST /trust/reject           remove one pending trust entry
+//	GET  /trust/registries       the local registry and the external registries
+//	POST /trust/registries       add one external registry
+//	POST /trust/registries/{id}/sync    read one external registry now
+//	POST /trust/registries/{id}/delete  remove one external registry
 //	GET  /providers              the login provider table (board Admin-Providers)
 //	GET  /providers/new          the provider form with the kind presets
 //	POST /providers              save a new provider and push it to the live pairs
@@ -311,19 +315,23 @@ func getForm(action string, content ...template.HTML) template.HTML {
 
 // Notices maps a notice code to the sentence the page shows.
 var Notices = map[string]components.Toast{
-	"tenant-created":    {Level: "ok", Text: "The tenant is created."},
-	"tenant-deleted":    {Level: "warn", Text: "The tenant is removed with every record it owns."},
-	"trust-saved":       {Level: "ok", Text: msg.T("admin.trust.saved")},
-	"trust-deleted":     {Level: "warn", Text: msg.T("admin.trust.deleted")},
-	"trust-approved":    {Level: "ok", Text: msg.T("admin.trust.approved")},
-	"trust-rejected":    {Level: "warn", Text: msg.T("admin.trust.rejected")},
-	"provider-added":    {Level: "ok", Text: "The login provider is ready. Its roles can sign in with it."},
-	"provider-saved":    {Level: "ok", Text: "The login provider is saved."},
-	"provider-enabled":  {Level: "ok", Text: "The login provider is on. Its roles can sign in with it."},
-	"provider-disabled": {Level: "warn", Text: "The login provider is off. New sign ins with it fail."},
-	"provider-removed":  {Level: "warn", Text: "The login provider is removed. Its sessions end."},
-	"key-revoked":       {Level: "warn", Text: "The API key is revoked. Calls with it fail now."},
-	"signed-out":        {Level: "info", Text: "You are signed out."},
+	"tenant-created":       {Level: "ok", Text: "The tenant is created."},
+	"tenant-deleted":       {Level: "warn", Text: "The tenant is removed with every record it owns."},
+	"trust-saved":          {Level: "ok", Text: msg.T("admin.trust.saved")},
+	"trust-deleted":        {Level: "warn", Text: msg.T("admin.trust.deleted")},
+	"trust-approved":       {Level: "ok", Text: msg.T("admin.trust.approved")},
+	"trust-rejected":       {Level: "warn", Text: msg.T("admin.trust.rejected")},
+	"registry-added":       {Level: "ok", Text: msg.T("admin.registries.added")},
+	"registry-synced":      {Level: "ok", Text: msg.T("admin.registries.synced")},
+	"registry-sync-failed": {Level: "warn", Text: msg.T("admin.registries.sync_failed")},
+	"registry-removed":     {Level: "warn", Text: msg.T("admin.registries.removed")},
+	"provider-added":       {Level: "ok", Text: "The login provider is ready. Its roles can sign in with it."},
+	"provider-saved":       {Level: "ok", Text: "The login provider is saved."},
+	"provider-enabled":     {Level: "ok", Text: "The login provider is on. Its roles can sign in with it."},
+	"provider-disabled":    {Level: "warn", Text: "The login provider is off. New sign ins with it fail."},
+	"provider-removed":     {Level: "warn", Text: "The login provider is removed. Its sessions end."},
+	"key-revoked":          {Level: "warn", Text: "The API key is revoked. Calls with it fail now."},
+	"signed-out":           {Level: "info", Text: "You are signed out."},
 }
 
 // notice returns the toast of a notice query value.

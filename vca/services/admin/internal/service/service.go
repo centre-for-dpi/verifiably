@@ -352,6 +352,83 @@ func (s *Service) RejectTrustEntry(ctx context.Context, req *connect.Request[adm
 	return connect.NewResponse(&adminv1.RejectTrustEntryResponse{}), nil
 }
 
+// AddTrustRegistry implements AdminServiceHandler. It forwards the
+// registry to the trust registry, which reads and checks its list
+// (ADR-011 decision 7).
+func (s *Service) AddTrustRegistry(ctx context.Context, req *connect.Request[adminv1.AddTrustRegistryRequest]) (*connect.Response[adminv1.AddTrustRegistryResponse], error) {
+	id, err := s.guard(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.trust()
+	if err != nil {
+		return nil, fail(s.write(ctx, id.Actor, "admin.AddTrustRegistry", "", err))
+	}
+	res, err := client.AddRegistry(ctx, connect.NewRequest(&trustv1.AddRegistryRequest{Registry: req.Msg.GetRegistry()}))
+	target := ""
+	if err == nil {
+		target = res.Msg.GetRegistry().GetId()
+	}
+	if serr := s.write(ctx, id.Actor, "admin.AddTrustRegistry", target, err); serr != nil {
+		return nil, fail(serr)
+	}
+	return connect.NewResponse(&adminv1.AddTrustRegistryResponse{Registry: res.Msg.GetRegistry()}), nil
+}
+
+// ListTrustRegistries implements AdminServiceHandler.
+func (s *Service) ListTrustRegistries(ctx context.Context, req *connect.Request[adminv1.ListTrustRegistriesRequest]) (*connect.Response[adminv1.ListTrustRegistriesResponse], error) {
+	id, err := s.guard(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.trust()
+	if err != nil {
+		return nil, fail(s.write(ctx, id.Actor, "admin.ListTrustRegistries", "", err))
+	}
+	res, err := client.ListRegistries(ctx, connect.NewRequest(&trustv1.ListRegistriesRequest{}))
+	if serr := s.write(ctx, id.Actor, "admin.ListTrustRegistries", "", err); serr != nil {
+		return nil, fail(serr)
+	}
+	return connect.NewResponse(&adminv1.ListTrustRegistriesResponse{
+		Registries: res.Msg.GetRegistries(), Local: res.Msg.GetLocal(), JwksUrl: res.Msg.GetJwksUrl(),
+	}), nil
+}
+
+// RemoveTrustRegistry implements AdminServiceHandler.
+func (s *Service) RemoveTrustRegistry(ctx context.Context, req *connect.Request[adminv1.RemoveTrustRegistryRequest]) (*connect.Response[adminv1.RemoveTrustRegistryResponse], error) {
+	id, err := s.guard(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.trust()
+	if err != nil {
+		return nil, fail(s.write(ctx, id.Actor, "admin.RemoveTrustRegistry", req.Msg.GetId(), err))
+	}
+	_, err = client.RemoveRegistry(ctx, connect.NewRequest(&trustv1.RemoveRegistryRequest{Id: req.Msg.GetId()}))
+	if serr := s.write(ctx, id.Actor, "admin.RemoveTrustRegistry", req.Msg.GetId(), err); serr != nil {
+		return nil, fail(serr)
+	}
+	return connect.NewResponse(&adminv1.RemoveTrustRegistryResponse{}), nil
+}
+
+// SyncTrustRegistry implements AdminServiceHandler. A failed read is
+// not an error: the registry carries the reason in last_error.
+func (s *Service) SyncTrustRegistry(ctx context.Context, req *connect.Request[adminv1.SyncTrustRegistryRequest]) (*connect.Response[adminv1.SyncTrustRegistryResponse], error) {
+	id, err := s.guard(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.trust()
+	if err != nil {
+		return nil, fail(s.write(ctx, id.Actor, "admin.SyncTrustRegistry", req.Msg.GetId(), err))
+	}
+	res, err := client.SyncRegistry(ctx, connect.NewRequest(&trustv1.SyncRegistryRequest{Id: req.Msg.GetId()}))
+	if serr := s.write(ctx, id.Actor, "admin.SyncTrustRegistry", req.Msg.GetId(), err); serr != nil {
+		return nil, fail(serr)
+	}
+	return connect.NewResponse(&adminv1.SyncTrustRegistryResponse{Registry: res.Msg.GetRegistry()}), nil
+}
+
 // DeleteTrustEntry implements AdminServiceHandler.
 func (s *Service) DeleteTrustEntry(ctx context.Context, req *connect.Request[adminv1.DeleteTrustEntryRequest]) (*connect.Response[adminv1.DeleteTrustEntryResponse], error) {
 	id, err := s.guard(ctx, req.Header())

@@ -20,6 +20,7 @@ import (
 	v1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -32,6 +33,65 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// RegistryMethod names the format of an external trust list.
+type RegistryMethod int32
+
+const (
+	RegistryMethod_REGISTRY_METHOD_UNSPECIFIED RegistryMethod = 0
+	// ETSI TS 119 602 List of Trusted Entities in JSON, signed as a
+	// compact JWS. The URL serves the JWS.
+	RegistryMethod_REGISTRY_METHOD_ETSI_LOTE_JSON RegistryMethod = 1
+	// ETSI TS 119 612 trusted list in XML with an enveloped XML signature.
+	// The anchor must be an X.509 certificate.
+	RegistryMethod_REGISTRY_METHOD_ETSI_TSL_XML RegistryMethod = 2
+	// Decentralized Directory: a signed manifest and signed directory
+	// files. The URL serves the manifest or the root of the directory.
+	RegistryMethod_REGISTRY_METHOD_DEDI RegistryMethod = 3
+)
+
+// Enum value maps for RegistryMethod.
+var (
+	RegistryMethod_name = map[int32]string{
+		0: "REGISTRY_METHOD_UNSPECIFIED",
+		1: "REGISTRY_METHOD_ETSI_LOTE_JSON",
+		2: "REGISTRY_METHOD_ETSI_TSL_XML",
+		3: "REGISTRY_METHOD_DEDI",
+	}
+	RegistryMethod_value = map[string]int32{
+		"REGISTRY_METHOD_UNSPECIFIED":    0,
+		"REGISTRY_METHOD_ETSI_LOTE_JSON": 1,
+		"REGISTRY_METHOD_ETSI_TSL_XML":   2,
+		"REGISTRY_METHOD_DEDI":           3,
+	}
+)
+
+func (x RegistryMethod) Enum() *RegistryMethod {
+	p := new(RegistryMethod)
+	*p = x
+	return p
+}
+
+func (x RegistryMethod) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RegistryMethod) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_trust_v1_trust_proto_enumTypes[0].Descriptor()
+}
+
+func (RegistryMethod) Type() protoreflect.EnumType {
+	return &file_vca_trust_v1_trust_proto_enumTypes[0]
+}
+
+func (x RegistryMethod) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RegistryMethod.Descriptor instead.
+func (RegistryMethod) EnumDescriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{0}
+}
 
 // Method names a trust list publication format (ADR-011 decisions 2 and 3).
 type Method int32
@@ -69,11 +129,11 @@ func (x Method) String() string {
 }
 
 func (Method) Descriptor() protoreflect.EnumDescriptor {
-	return file_vca_trust_v1_trust_proto_enumTypes[0].Descriptor()
+	return file_vca_trust_v1_trust_proto_enumTypes[1].Descriptor()
 }
 
 func (Method) Type() protoreflect.EnumType {
-	return &file_vca_trust_v1_trust_proto_enumTypes[0]
+	return &file_vca_trust_v1_trust_proto_enumTypes[1]
 }
 
 func (x Method) Number() protoreflect.EnumNumber {
@@ -82,7 +142,7 @@ func (x Method) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Method.Descriptor instead.
 func (Method) EnumDescriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{0}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{1}
 }
 
 // Status names the trust state of an entity.
@@ -132,11 +192,11 @@ func (x Status) String() string {
 }
 
 func (Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_vca_trust_v1_trust_proto_enumTypes[1].Descriptor()
+	return file_vca_trust_v1_trust_proto_enumTypes[2].Descriptor()
 }
 
 func (Status) Type() protoreflect.EnumType {
-	return &file_vca_trust_v1_trust_proto_enumTypes[1]
+	return &file_vca_trust_v1_trust_proto_enumTypes[2]
 }
 
 func (x Status) Number() protoreflect.EnumNumber {
@@ -145,7 +205,7 @@ func (x Status) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Status.Descriptor instead.
 func (Status) EnumDescriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{1}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{2}
 }
 
 // Outcome names the lookup result.
@@ -193,11 +253,11 @@ func (x TrustLookupResponse_Outcome) String() string {
 }
 
 func (TrustLookupResponse_Outcome) Descriptor() protoreflect.EnumDescriptor {
-	return file_vca_trust_v1_trust_proto_enumTypes[2].Descriptor()
+	return file_vca_trust_v1_trust_proto_enumTypes[3].Descriptor()
 }
 
 func (TrustLookupResponse_Outcome) Type() protoreflect.EnumType {
-	return &file_vca_trust_v1_trust_proto_enumTypes[2]
+	return &file_vca_trust_v1_trust_proto_enumTypes[3]
 }
 
 func (x TrustLookupResponse_Outcome) Number() protoreflect.EnumNumber {
@@ -206,7 +266,513 @@ func (x TrustLookupResponse_Outcome) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TrustLookupResponse_Outcome.Descriptor instead.
 func (TrustLookupResponse_Outcome) EnumDescriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{12, 0}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{21, 0}
+}
+
+// Registry is one external trust registry that this registry federates
+// with. The service never edits its entries. A lookup reads them after the
+// local lists and names the registry in the provenance.
+type Registry struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The id that the service assigns.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The display name, for example a national registry.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// The list format.
+	Method RegistryMethod `protobuf:"varint,3,opt,name=method,proto3,enum=vca.trust.v1.RegistryMethod" json:"method,omitempty"`
+	// The URL of the list or manifest.
+	Url string `protobuf:"bytes,4,opt,name=url,proto3" json:"url,omitempty"`
+	// The trust anchor that must sign the list.
+	Anchor *Registry_Anchor `protobuf:"bytes,5,opt,name=anchor,proto3" json:"anchor,omitempty"`
+	// How often the service reads the list. Empty means 24 hours.
+	Refresh *durationpb.Duration `protobuf:"bytes,6,opt,name=refresh,proto3" json:"refresh,omitempty"`
+	// The time of the last good read.
+	LastSync *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_sync,json=lastSync,proto3" json:"last_sync,omitempty"`
+	// The reason of the last failed read. Empty after a good read.
+	LastError string `protobuf:"bytes,8,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	// The number of entries in the cached copy.
+	EntryCount int32 `protobuf:"varint,9,opt,name=entry_count,json=entryCount,proto3" json:"entry_count,omitempty"`
+	// The key id or certificate subject that signed the cached copy.
+	SignedBy string `protobuf:"bytes,10,opt,name=signed_by,json=signedBy,proto3" json:"signed_by,omitempty"`
+	// The time of the last read, good or failed.
+	LastRead      *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=last_read,json=lastRead,proto3" json:"last_read,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Registry) Reset() {
+	*x = Registry{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Registry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Registry) ProtoMessage() {}
+
+func (x *Registry) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Registry.ProtoReflect.Descriptor instead.
+func (*Registry) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *Registry) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Registry) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Registry) GetMethod() RegistryMethod {
+	if x != nil {
+		return x.Method
+	}
+	return RegistryMethod_REGISTRY_METHOD_UNSPECIFIED
+}
+
+func (x *Registry) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *Registry) GetAnchor() *Registry_Anchor {
+	if x != nil {
+		return x.Anchor
+	}
+	return nil
+}
+
+func (x *Registry) GetRefresh() *durationpb.Duration {
+	if x != nil {
+		return x.Refresh
+	}
+	return nil
+}
+
+func (x *Registry) GetLastSync() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastSync
+	}
+	return nil
+}
+
+func (x *Registry) GetLastError() string {
+	if x != nil {
+		return x.LastError
+	}
+	return ""
+}
+
+func (x *Registry) GetEntryCount() int32 {
+	if x != nil {
+		return x.EntryCount
+	}
+	return 0
+}
+
+func (x *Registry) GetSignedBy() string {
+	if x != nil {
+		return x.SignedBy
+	}
+	return ""
+}
+
+func (x *Registry) GetLastRead() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastRead
+	}
+	return nil
+}
+
+// AddRegistryRequest carries the registry to add.
+type AddRegistryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The registry. The service sets the id and the sync fields.
+	Registry      *Registry `protobuf:"bytes,1,opt,name=registry,proto3" json:"registry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddRegistryRequest) Reset() {
+	*x = AddRegistryRequest{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddRegistryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddRegistryRequest) ProtoMessage() {}
+
+func (x *AddRegistryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddRegistryRequest.ProtoReflect.Descriptor instead.
+func (*AddRegistryRequest) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *AddRegistryRequest) GetRegistry() *Registry {
+	if x != nil {
+		return x.Registry
+	}
+	return nil
+}
+
+// AddRegistryResponse returns the registry after its first read.
+type AddRegistryResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The registry as stored.
+	Registry      *Registry `protobuf:"bytes,1,opt,name=registry,proto3" json:"registry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddRegistryResponse) Reset() {
+	*x = AddRegistryResponse{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddRegistryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddRegistryResponse) ProtoMessage() {}
+
+func (x *AddRegistryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddRegistryResponse.ProtoReflect.Descriptor instead.
+func (*AddRegistryResponse) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AddRegistryResponse) GetRegistry() *Registry {
+	if x != nil {
+		return x.Registry
+	}
+	return nil
+}
+
+// ListRegistriesRequest has no fields.
+type ListRegistriesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRegistriesRequest) Reset() {
+	*x = ListRegistriesRequest{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRegistriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRegistriesRequest) ProtoMessage() {}
+
+func (x *ListRegistriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRegistriesRequest.ProtoReflect.Descriptor instead.
+func (*ListRegistriesRequest) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{3}
+}
+
+// ListRegistriesResponse lists the external registries and the local lists.
+type ListRegistriesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The external registries.
+	Registries []*Registry `protobuf:"bytes,1,rep,name=registries,proto3" json:"registries,omitempty"`
+	// The lists that this registry publishes, one per enabled method.
+	Local []*PublishResponse_Publication `protobuf:"bytes,2,rep,name=local,proto3" json:"local,omitempty"`
+	// The URL of the JWK Set that signs the local lists.
+	JwksUrl       string `protobuf:"bytes,3,opt,name=jwks_url,json=jwksUrl,proto3" json:"jwks_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRegistriesResponse) Reset() {
+	*x = ListRegistriesResponse{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRegistriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRegistriesResponse) ProtoMessage() {}
+
+func (x *ListRegistriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRegistriesResponse.ProtoReflect.Descriptor instead.
+func (*ListRegistriesResponse) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListRegistriesResponse) GetRegistries() []*Registry {
+	if x != nil {
+		return x.Registries
+	}
+	return nil
+}
+
+func (x *ListRegistriesResponse) GetLocal() []*PublishResponse_Publication {
+	if x != nil {
+		return x.Local
+	}
+	return nil
+}
+
+func (x *ListRegistriesResponse) GetJwksUrl() string {
+	if x != nil {
+		return x.JwksUrl
+	}
+	return ""
+}
+
+// RemoveRegistryRequest selects a registry.
+type RemoveRegistryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The registry id.
+	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveRegistryRequest) Reset() {
+	*x = RemoveRegistryRequest{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveRegistryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveRegistryRequest) ProtoMessage() {}
+
+func (x *RemoveRegistryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveRegistryRequest.ProtoReflect.Descriptor instead.
+func (*RemoveRegistryRequest) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RemoveRegistryRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+// RemoveRegistryResponse has no fields.
+type RemoveRegistryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveRegistryResponse) Reset() {
+	*x = RemoveRegistryResponse{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveRegistryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveRegistryResponse) ProtoMessage() {}
+
+func (x *RemoveRegistryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveRegistryResponse.ProtoReflect.Descriptor instead.
+func (*RemoveRegistryResponse) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{6}
+}
+
+// SyncRegistryRequest selects a registry.
+type SyncRegistryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The registry id.
+	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncRegistryRequest) Reset() {
+	*x = SyncRegistryRequest{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncRegistryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncRegistryRequest) ProtoMessage() {}
+
+func (x *SyncRegistryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncRegistryRequest.ProtoReflect.Descriptor instead.
+func (*SyncRegistryRequest) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SyncRegistryRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+// SyncRegistryResponse returns the registry after the read.
+type SyncRegistryResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The registry with its sync fields.
+	Registry      *Registry `protobuf:"bytes,1,opt,name=registry,proto3" json:"registry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncRegistryResponse) Reset() {
+	*x = SyncRegistryResponse{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncRegistryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncRegistryResponse) ProtoMessage() {}
+
+func (x *SyncRegistryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncRegistryResponse.ProtoReflect.Descriptor instead.
+func (*SyncRegistryResponse) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SyncRegistryResponse) GetRegistry() *Registry {
+	if x != nil {
+		return x.Registry
+	}
+	return nil
 }
 
 // TrustEntry is the canonical trust record of one entity (ADR-011 decision 1).
@@ -237,7 +803,7 @@ type TrustEntry struct {
 
 func (x *TrustEntry) Reset() {
 	*x = TrustEntry{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[0]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -249,7 +815,7 @@ func (x *TrustEntry) String() string {
 func (*TrustEntry) ProtoMessage() {}
 
 func (x *TrustEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[0]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -262,7 +828,7 @@ func (x *TrustEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrustEntry.ProtoReflect.Descriptor instead.
 func (*TrustEntry) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{0}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TrustEntry) GetIdentifier() *TrustEntry_Identifier {
@@ -339,7 +905,7 @@ type UpsertEntryRequest struct {
 
 func (x *UpsertEntryRequest) Reset() {
 	*x = UpsertEntryRequest{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[1]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -351,7 +917,7 @@ func (x *UpsertEntryRequest) String() string {
 func (*UpsertEntryRequest) ProtoMessage() {}
 
 func (x *UpsertEntryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[1]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -364,7 +930,7 @@ func (x *UpsertEntryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertEntryRequest.ProtoReflect.Descriptor instead.
 func (*UpsertEntryRequest) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{1}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UpsertEntryRequest) GetEntry() *TrustEntry {
@@ -385,7 +951,7 @@ type UpsertEntryResponse struct {
 
 func (x *UpsertEntryResponse) Reset() {
 	*x = UpsertEntryResponse{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[2]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -397,7 +963,7 @@ func (x *UpsertEntryResponse) String() string {
 func (*UpsertEntryResponse) ProtoMessage() {}
 
 func (x *UpsertEntryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[2]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -410,7 +976,7 @@ func (x *UpsertEntryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertEntryResponse.ProtoReflect.Descriptor instead.
 func (*UpsertEntryResponse) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{2}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UpsertEntryResponse) GetEntry() *TrustEntry {
@@ -431,7 +997,7 @@ type GetEntryRequest struct {
 
 func (x *GetEntryRequest) Reset() {
 	*x = GetEntryRequest{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[3]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -443,7 +1009,7 @@ func (x *GetEntryRequest) String() string {
 func (*GetEntryRequest) ProtoMessage() {}
 
 func (x *GetEntryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[3]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -456,7 +1022,7 @@ func (x *GetEntryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntryRequest.ProtoReflect.Descriptor instead.
 func (*GetEntryRequest) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{3}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetEntryRequest) GetIdentifier() *TrustEntry_Identifier {
@@ -477,7 +1043,7 @@ type GetEntryResponse struct {
 
 func (x *GetEntryResponse) Reset() {
 	*x = GetEntryResponse{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[4]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -489,7 +1055,7 @@ func (x *GetEntryResponse) String() string {
 func (*GetEntryResponse) ProtoMessage() {}
 
 func (x *GetEntryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[4]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -502,7 +1068,7 @@ func (x *GetEntryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntryResponse.ProtoReflect.Descriptor instead.
 func (*GetEntryResponse) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{4}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetEntryResponse) GetEntry() *TrustEntry {
@@ -529,7 +1095,7 @@ type ListEntriesRequest struct {
 
 func (x *ListEntriesRequest) Reset() {
 	*x = ListEntriesRequest{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[5]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -541,7 +1107,7 @@ func (x *ListEntriesRequest) String() string {
 func (*ListEntriesRequest) ProtoMessage() {}
 
 func (x *ListEntriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[5]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -554,7 +1120,7 @@ func (x *ListEntriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntriesRequest.ProtoReflect.Descriptor instead.
 func (*ListEntriesRequest) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{5}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListEntriesRequest) GetPage() *v1.Pagination {
@@ -598,7 +1164,7 @@ type ListEntriesResponse struct {
 
 func (x *ListEntriesResponse) Reset() {
 	*x = ListEntriesResponse{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[6]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -610,7 +1176,7 @@ func (x *ListEntriesResponse) String() string {
 func (*ListEntriesResponse) ProtoMessage() {}
 
 func (x *ListEntriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[6]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -623,7 +1189,7 @@ func (x *ListEntriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntriesResponse.ProtoReflect.Descriptor instead.
 func (*ListEntriesResponse) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{6}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListEntriesResponse) GetEntries() []*TrustEntry {
@@ -651,7 +1217,7 @@ type DeleteEntryRequest struct {
 
 func (x *DeleteEntryRequest) Reset() {
 	*x = DeleteEntryRequest{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[7]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -663,7 +1229,7 @@ func (x *DeleteEntryRequest) String() string {
 func (*DeleteEntryRequest) ProtoMessage() {}
 
 func (x *DeleteEntryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[7]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -676,7 +1242,7 @@ func (x *DeleteEntryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEntryRequest.ProtoReflect.Descriptor instead.
 func (*DeleteEntryRequest) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{7}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DeleteEntryRequest) GetIdentifier() *TrustEntry_Identifier {
@@ -695,7 +1261,7 @@ type DeleteEntryResponse struct {
 
 func (x *DeleteEntryResponse) Reset() {
 	*x = DeleteEntryResponse{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[8]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -707,7 +1273,7 @@ func (x *DeleteEntryResponse) String() string {
 func (*DeleteEntryResponse) ProtoMessage() {}
 
 func (x *DeleteEntryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[8]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -720,7 +1286,7 @@ func (x *DeleteEntryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEntryResponse.ProtoReflect.Descriptor instead.
 func (*DeleteEntryResponse) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{8}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{17}
 }
 
 // PublishRequest selects a method.
@@ -734,7 +1300,7 @@ type PublishRequest struct {
 
 func (x *PublishRequest) Reset() {
 	*x = PublishRequest{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[9]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -746,7 +1312,7 @@ func (x *PublishRequest) String() string {
 func (*PublishRequest) ProtoMessage() {}
 
 func (x *PublishRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[9]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -759,7 +1325,7 @@ func (x *PublishRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishRequest.ProtoReflect.Descriptor instead.
 func (*PublishRequest) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{9}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PublishRequest) GetMethod() Method {
@@ -780,7 +1346,7 @@ type PublishResponse struct {
 
 func (x *PublishResponse) Reset() {
 	*x = PublishResponse{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[10]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -792,7 +1358,7 @@ func (x *PublishResponse) String() string {
 func (*PublishResponse) ProtoMessage() {}
 
 func (x *PublishResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[10]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -805,7 +1371,7 @@ func (x *PublishResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishResponse.ProtoReflect.Descriptor instead.
 func (*PublishResponse) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{10}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PublishResponse) GetPublications() []*PublishResponse_Publication {
@@ -832,7 +1398,7 @@ type TrustLookupRequest struct {
 
 func (x *TrustLookupRequest) Reset() {
 	*x = TrustLookupRequest{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[11]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -844,7 +1410,7 @@ func (x *TrustLookupRequest) String() string {
 func (*TrustLookupRequest) ProtoMessage() {}
 
 func (x *TrustLookupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[11]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -857,7 +1423,7 @@ func (x *TrustLookupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrustLookupRequest.ProtoReflect.Descriptor instead.
 func (*TrustLookupRequest) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{11}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *TrustLookupRequest) GetIdentifier() *TrustEntry_Identifier {
@@ -906,7 +1472,7 @@ type TrustLookupResponse struct {
 
 func (x *TrustLookupResponse) Reset() {
 	*x = TrustLookupResponse{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[12]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -918,7 +1484,7 @@ func (x *TrustLookupResponse) String() string {
 func (*TrustLookupResponse) ProtoMessage() {}
 
 func (x *TrustLookupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[12]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -931,7 +1497,7 @@ func (x *TrustLookupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrustLookupResponse.ProtoReflect.Descriptor instead.
 func (*TrustLookupResponse) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{12}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *TrustLookupResponse) GetOutcome() TrustLookupResponse_Outcome {
@@ -975,7 +1541,7 @@ type ImportEtsiRequest struct {
 
 func (x *ImportEtsiRequest) Reset() {
 	*x = ImportEtsiRequest{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[13]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -987,7 +1553,7 @@ func (x *ImportEtsiRequest) String() string {
 func (*ImportEtsiRequest) ProtoMessage() {}
 
 func (x *ImportEtsiRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[13]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1000,7 +1566,7 @@ func (x *ImportEtsiRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportEtsiRequest.ProtoReflect.Descriptor instead.
 func (*ImportEtsiRequest) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{13}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ImportEtsiRequest) GetXml() []byte {
@@ -1032,7 +1598,7 @@ type ImportEtsiResponse struct {
 
 func (x *ImportEtsiResponse) Reset() {
 	*x = ImportEtsiResponse{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[14]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1044,7 +1610,7 @@ func (x *ImportEtsiResponse) String() string {
 func (*ImportEtsiResponse) ProtoMessage() {}
 
 func (x *ImportEtsiResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[14]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1057,7 +1623,7 @@ func (x *ImportEtsiResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportEtsiResponse.ProtoReflect.Descriptor instead.
 func (*ImportEtsiResponse) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{14}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ImportEtsiResponse) GetCreated() int32 {
@@ -1081,6 +1647,94 @@ func (x *ImportEtsiResponse) GetSkipped() []string {
 	return nil
 }
 
+// Anchor names the key that signs the external list.
+type Registry_Anchor struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The caller sets exactly one of jwks_url or x509_certificate.
+	//
+	// Types that are valid to be assigned to Anchor:
+	//
+	//	*Registry_Anchor_JwksUrl
+	//	*Registry_Anchor_X509Certificate
+	Anchor        isRegistry_Anchor_Anchor `protobuf_oneof:"anchor"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Registry_Anchor) Reset() {
+	*x = Registry_Anchor{}
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Registry_Anchor) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Registry_Anchor) ProtoMessage() {}
+
+func (x *Registry_Anchor) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Registry_Anchor.ProtoReflect.Descriptor instead.
+func (*Registry_Anchor) Descriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{0, 0}
+}
+
+func (x *Registry_Anchor) GetAnchor() isRegistry_Anchor_Anchor {
+	if x != nil {
+		return x.Anchor
+	}
+	return nil
+}
+
+func (x *Registry_Anchor) GetJwksUrl() string {
+	if x != nil {
+		if x, ok := x.Anchor.(*Registry_Anchor_JwksUrl); ok {
+			return x.JwksUrl
+		}
+	}
+	return ""
+}
+
+func (x *Registry_Anchor) GetX509Certificate() string {
+	if x != nil {
+		if x, ok := x.Anchor.(*Registry_Anchor_X509Certificate); ok {
+			return x.X509Certificate
+		}
+	}
+	return ""
+}
+
+type isRegistry_Anchor_Anchor interface {
+	isRegistry_Anchor_Anchor()
+}
+
+type Registry_Anchor_JwksUrl struct {
+	// The URL of a JWK Set (RFC 7517) with the signing keys.
+	JwksUrl string `protobuf:"bytes,1,opt,name=jwks_url,json=jwksUrl,proto3,oneof"`
+}
+
+type Registry_Anchor_X509Certificate struct {
+	// A PEM X.509 certificate. It signs the list, or it issued the
+	// certificate that signs the list.
+	X509Certificate string `protobuf:"bytes,2,opt,name=x509_certificate,json=x509Certificate,proto3,oneof"`
+}
+
+func (*Registry_Anchor_JwksUrl) isRegistry_Anchor_Anchor() {}
+
+func (*Registry_Anchor_X509Certificate) isRegistry_Anchor_Anchor() {}
+
 // Identifier names an entity by DID or by x509 subject.
 type TrustEntry_Identifier struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1097,7 +1751,7 @@ type TrustEntry_Identifier struct {
 
 func (x *TrustEntry_Identifier) Reset() {
 	*x = TrustEntry_Identifier{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[15]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1109,7 +1763,7 @@ func (x *TrustEntry_Identifier) String() string {
 func (*TrustEntry_Identifier) ProtoMessage() {}
 
 func (x *TrustEntry_Identifier) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[15]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1122,7 +1776,7 @@ func (x *TrustEntry_Identifier) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrustEntry_Identifier.ProtoReflect.Descriptor instead.
 func (*TrustEntry_Identifier) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{0, 0}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{9, 0}
 }
 
 func (x *TrustEntry_Identifier) GetId() isTrustEntry_Identifier_Id {
@@ -1187,7 +1841,7 @@ type PublishResponse_Publication struct {
 
 func (x *PublishResponse_Publication) Reset() {
 	*x = PublishResponse_Publication{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[16]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1199,7 +1853,7 @@ func (x *PublishResponse_Publication) String() string {
 func (*PublishResponse_Publication) ProtoMessage() {}
 
 func (x *PublishResponse_Publication) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[16]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1212,7 +1866,7 @@ func (x *PublishResponse_Publication) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishResponse_Publication.ProtoReflect.Descriptor instead.
 func (*PublishResponse_Publication) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{10, 0}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{19, 0}
 }
 
 func (x *PublishResponse_Publication) GetMethod() Method {
@@ -1262,14 +1916,19 @@ type TrustLookupResponse_Provenance struct {
 	// The time the service last checked the list signature.
 	CheckedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
 	// True when the answer came from the local cache.
-	Cached        bool `protobuf:"varint,5,opt,name=cached,proto3" json:"cached,omitempty"`
+	Cached bool `protobuf:"varint,5,opt,name=cached,proto3" json:"cached,omitempty"`
+	// The id of the external registry that gave the answer. Empty
+	// means the lists of this registry.
+	RegistryId string `protobuf:"bytes,6,opt,name=registry_id,json=registryId,proto3" json:"registry_id,omitempty"`
+	// The display name of that external registry.
+	RegistryName  string `protobuf:"bytes,7,opt,name=registry_name,json=registryName,proto3" json:"registry_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TrustLookupResponse_Provenance) Reset() {
 	*x = TrustLookupResponse_Provenance{}
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[17]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1281,7 +1940,7 @@ func (x *TrustLookupResponse_Provenance) String() string {
 func (*TrustLookupResponse_Provenance) ProtoMessage() {}
 
 func (x *TrustLookupResponse_Provenance) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_trust_v1_trust_proto_msgTypes[17]
+	mi := &file_vca_trust_v1_trust_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1294,7 +1953,7 @@ func (x *TrustLookupResponse_Provenance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrustLookupResponse_Provenance.ProtoReflect.Descriptor instead.
 func (*TrustLookupResponse_Provenance) Descriptor() ([]byte, []int) {
-	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{12, 0}
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{21, 0}
 }
 
 func (x *TrustLookupResponse_Provenance) GetMethod() Method {
@@ -1332,11 +1991,62 @@ func (x *TrustLookupResponse_Provenance) GetCached() bool {
 	return false
 }
 
+func (x *TrustLookupResponse_Provenance) GetRegistryId() string {
+	if x != nil {
+		return x.RegistryId
+	}
+	return ""
+}
+
+func (x *TrustLookupResponse_Provenance) GetRegistryName() string {
+	if x != nil {
+		return x.RegistryName
+	}
+	return ""
+}
+
 var File_vca_trust_v1_trust_proto protoreflect.FileDescriptor
 
 const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\n" +
-	"\x18vca/trust/v1/trust.proto\x12\fvca.trust.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\"\x98\x04\n" +
+	"\x18vca/trust/v1/trust.proto\x12\fvca.trust.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\"\x8f\x04\n" +
+	"\bRegistry\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x124\n" +
+	"\x06method\x18\x03 \x01(\x0e2\x1c.vca.trust.v1.RegistryMethodR\x06method\x12\x10\n" +
+	"\x03url\x18\x04 \x01(\tR\x03url\x125\n" +
+	"\x06anchor\x18\x05 \x01(\v2\x1d.vca.trust.v1.Registry.AnchorR\x06anchor\x123\n" +
+	"\arefresh\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\arefresh\x127\n" +
+	"\tlast_sync\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\blastSync\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\b \x01(\tR\tlastError\x12\x1f\n" +
+	"\ventry_count\x18\t \x01(\x05R\n" +
+	"entryCount\x12\x1b\n" +
+	"\tsigned_by\x18\n" +
+	" \x01(\tR\bsignedBy\x127\n" +
+	"\tlast_read\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\blastRead\x1a\\\n" +
+	"\x06Anchor\x12\x1b\n" +
+	"\bjwks_url\x18\x01 \x01(\tH\x00R\ajwksUrl\x12+\n" +
+	"\x10x509_certificate\x18\x02 \x01(\tH\x00R\x0fx509CertificateB\b\n" +
+	"\x06anchor\"H\n" +
+	"\x12AddRegistryRequest\x122\n" +
+	"\bregistry\x18\x01 \x01(\v2\x16.vca.trust.v1.RegistryR\bregistry\"I\n" +
+	"\x13AddRegistryResponse\x122\n" +
+	"\bregistry\x18\x01 \x01(\v2\x16.vca.trust.v1.RegistryR\bregistry\"\x17\n" +
+	"\x15ListRegistriesRequest\"\xac\x01\n" +
+	"\x16ListRegistriesResponse\x126\n" +
+	"\n" +
+	"registries\x18\x01 \x03(\v2\x16.vca.trust.v1.RegistryR\n" +
+	"registries\x12?\n" +
+	"\x05local\x18\x02 \x03(\v2).vca.trust.v1.PublishResponse.PublicationR\x05local\x12\x19\n" +
+	"\bjwks_url\x18\x03 \x01(\tR\ajwksUrl\"'\n" +
+	"\x15RemoveRegistryRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x18\n" +
+	"\x16RemoveRegistryResponse\"%\n" +
+	"\x13SyncRegistryRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"J\n" +
+	"\x14SyncRegistryResponse\x122\n" +
+	"\bregistry\x18\x01 \x01(\v2\x16.vca.trust.v1.RegistryR\bregistry\"\x98\x04\n" +
 	"\n" +
 	"TrustEntry\x12C\n" +
 	"\n" +
@@ -1396,14 +2106,14 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"identifier\x12'\n" +
 	"\x04role\x18\x02 \x01(\x0e2\x13.vca.common.v1.RoleR\x04role\x12'\n" +
 	"\x0fcredential_type\x18\x03 \x01(\tR\x0ecredentialType\x12*\n" +
-	"\x02at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\xb0\x04\n" +
+	"\x02at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"\xf6\x04\n" +
 	"\x13TrustLookupResponse\x12C\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2).vca.trust.v1.TrustLookupResponse.OutcomeR\aoutcome\x12.\n" +
 	"\x05entry\x18\x02 \x01(\v2\x18.vca.trust.v1.TrustEntryR\x05entry\x12L\n" +
 	"\n" +
 	"provenance\x18\x03 \x01(\v2,.vca.trust.v1.TrustLookupResponse.ProvenanceR\n" +
 	"provenance\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\x1a\xbf\x01\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x1a\x85\x02\n" +
 	"\n" +
 	"Provenance\x12,\n" +
 	"\x06method\x18\x01 \x01(\x0e2\x14.vca.trust.v1.MethodR\x06method\x12\x19\n" +
@@ -1411,7 +2121,10 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\x06key_id\x18\x03 \x01(\tR\x05keyId\x129\n" +
 	"\n" +
 	"checked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAt\x12\x16\n" +
-	"\x06cached\x18\x05 \x01(\bR\x06cached\"|\n" +
+	"\x06cached\x18\x05 \x01(\bR\x06cached\x12\x1f\n" +
+	"\vregistry_id\x18\x06 \x01(\tR\n" +
+	"registryId\x12#\n" +
+	"\rregistry_name\x18\a \x01(\tR\fregistryName\"|\n" +
 	"\aOutcome\x12\x17\n" +
 	"\x13OUTCOME_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fOUTCOME_TRUSTED\x10\x01\x12\x15\n" +
@@ -1424,7 +2137,12 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\x12ImportEtsiResponse\x12\x18\n" +
 	"\acreated\x18\x01 \x01(\x05R\acreated\x12\x18\n" +
 	"\aupdated\x18\x02 \x01(\x05R\aupdated\x12\x18\n" +
-	"\askipped\x18\x03 \x03(\tR\askipped*B\n" +
+	"\askipped\x18\x03 \x03(\tR\askipped*\x91\x01\n" +
+	"\x0eRegistryMethod\x12\x1f\n" +
+	"\x1bREGISTRY_METHOD_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eREGISTRY_METHOD_ETSI_LOTE_JSON\x10\x01\x12 \n" +
+	"\x1cREGISTRY_METHOD_ETSI_TSL_XML\x10\x02\x12\x18\n" +
+	"\x14REGISTRY_METHOD_DEDI\x10\x03*B\n" +
 	"\x06Method\x12\x16\n" +
 	"\x12METHOD_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vMETHOD_ETSI\x10\x01\x12\x0f\n" +
@@ -1434,7 +2152,7 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\rSTATUS_ACTIVE\x10\x01\x12\x14\n" +
 	"\x10STATUS_SUSPENDED\x10\x02\x12\x12\n" +
 	"\x0eSTATUS_REVOKED\x10\x03\x12\x12\n" +
-	"\x0eSTATUS_PENDING\x10\x042\xc2\x04\n" +
+	"\x0eSTATUS_PENDING\x10\x042\xa7\a\n" +
 	"\fTrustService\x12R\n" +
 	"\vUpsertEntry\x12 .vca.trust.v1.UpsertEntryRequest\x1a!.vca.trust.v1.UpsertEntryResponse\x12I\n" +
 	"\bGetEntry\x12\x1d.vca.trust.v1.GetEntryRequest\x1a\x1e.vca.trust.v1.GetEntryResponse\x12R\n" +
@@ -1443,7 +2161,11 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\aPublish\x12\x1c.vca.trust.v1.PublishRequest\x1a\x1d.vca.trust.v1.PublishResponse\x12R\n" +
 	"\vTrustLookup\x12 .vca.trust.v1.TrustLookupRequest\x1a!.vca.trust.v1.TrustLookupResponse\x12O\n" +
 	"\n" +
-	"ImportEtsi\x12\x1f.vca.trust.v1.ImportEtsiRequest\x1a .vca.trust.v1.ImportEtsiResponseB\xb0\x01\n" +
+	"ImportEtsi\x12\x1f.vca.trust.v1.ImportEtsiRequest\x1a .vca.trust.v1.ImportEtsiResponse\x12R\n" +
+	"\vAddRegistry\x12 .vca.trust.v1.AddRegistryRequest\x1a!.vca.trust.v1.AddRegistryResponse\x12[\n" +
+	"\x0eListRegistries\x12#.vca.trust.v1.ListRegistriesRequest\x1a$.vca.trust.v1.ListRegistriesResponse\x12[\n" +
+	"\x0eRemoveRegistry\x12#.vca.trust.v1.RemoveRegistryRequest\x1a$.vca.trust.v1.RemoveRegistryResponse\x12U\n" +
+	"\fSyncRegistry\x12!.vca.trust.v1.SyncRegistryRequest\x1a\".vca.trust.v1.SyncRegistryResponseB\xb0\x01\n" +
 	"\x10com.vca.trust.v1B\n" +
 	"TrustProtoP\x01Z>github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1;trustv1\xa2\x02\x03VTX\xaa\x02\fVca.Trust.V1\xca\x02\fVca\\Trust\\V1\xe2\x02\x18Vca\\Trust\\V1\\GPBMetadata\xea\x02\x0eVca::Trust::V1b\x06proto3"
 
@@ -1459,83 +2181,113 @@ func file_vca_trust_v1_trust_proto_rawDescGZIP() []byte {
 	return file_vca_trust_v1_trust_proto_rawDescData
 }
 
-var file_vca_trust_v1_trust_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_vca_trust_v1_trust_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_vca_trust_v1_trust_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_vca_trust_v1_trust_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_vca_trust_v1_trust_proto_goTypes = []any{
-	(Method)(0),                            // 0: vca.trust.v1.Method
-	(Status)(0),                            // 1: vca.trust.v1.Status
-	(TrustLookupResponse_Outcome)(0),       // 2: vca.trust.v1.TrustLookupResponse.Outcome
-	(*TrustEntry)(nil),                     // 3: vca.trust.v1.TrustEntry
-	(*UpsertEntryRequest)(nil),             // 4: vca.trust.v1.UpsertEntryRequest
-	(*UpsertEntryResponse)(nil),            // 5: vca.trust.v1.UpsertEntryResponse
-	(*GetEntryRequest)(nil),                // 6: vca.trust.v1.GetEntryRequest
-	(*GetEntryResponse)(nil),               // 7: vca.trust.v1.GetEntryResponse
-	(*ListEntriesRequest)(nil),             // 8: vca.trust.v1.ListEntriesRequest
-	(*ListEntriesResponse)(nil),            // 9: vca.trust.v1.ListEntriesResponse
-	(*DeleteEntryRequest)(nil),             // 10: vca.trust.v1.DeleteEntryRequest
-	(*DeleteEntryResponse)(nil),            // 11: vca.trust.v1.DeleteEntryResponse
-	(*PublishRequest)(nil),                 // 12: vca.trust.v1.PublishRequest
-	(*PublishResponse)(nil),                // 13: vca.trust.v1.PublishResponse
-	(*TrustLookupRequest)(nil),             // 14: vca.trust.v1.TrustLookupRequest
-	(*TrustLookupResponse)(nil),            // 15: vca.trust.v1.TrustLookupResponse
-	(*ImportEtsiRequest)(nil),              // 16: vca.trust.v1.ImportEtsiRequest
-	(*ImportEtsiResponse)(nil),             // 17: vca.trust.v1.ImportEtsiResponse
-	(*TrustEntry_Identifier)(nil),          // 18: vca.trust.v1.TrustEntry.Identifier
-	(*PublishResponse_Publication)(nil),    // 19: vca.trust.v1.PublishResponse.Publication
-	(*TrustLookupResponse_Provenance)(nil), // 20: vca.trust.v1.TrustLookupResponse.Provenance
-	(v1.Role)(0),                           // 21: vca.common.v1.Role
-	(*v1.ValidityWindow)(nil),              // 22: vca.common.v1.ValidityWindow
-	(*timestamppb.Timestamp)(nil),          // 23: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),                  // 24: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                  // 25: vca.common.v1.PageResult
+	(RegistryMethod)(0),                    // 0: vca.trust.v1.RegistryMethod
+	(Method)(0),                            // 1: vca.trust.v1.Method
+	(Status)(0),                            // 2: vca.trust.v1.Status
+	(TrustLookupResponse_Outcome)(0),       // 3: vca.trust.v1.TrustLookupResponse.Outcome
+	(*Registry)(nil),                       // 4: vca.trust.v1.Registry
+	(*AddRegistryRequest)(nil),             // 5: vca.trust.v1.AddRegistryRequest
+	(*AddRegistryResponse)(nil),            // 6: vca.trust.v1.AddRegistryResponse
+	(*ListRegistriesRequest)(nil),          // 7: vca.trust.v1.ListRegistriesRequest
+	(*ListRegistriesResponse)(nil),         // 8: vca.trust.v1.ListRegistriesResponse
+	(*RemoveRegistryRequest)(nil),          // 9: vca.trust.v1.RemoveRegistryRequest
+	(*RemoveRegistryResponse)(nil),         // 10: vca.trust.v1.RemoveRegistryResponse
+	(*SyncRegistryRequest)(nil),            // 11: vca.trust.v1.SyncRegistryRequest
+	(*SyncRegistryResponse)(nil),           // 12: vca.trust.v1.SyncRegistryResponse
+	(*TrustEntry)(nil),                     // 13: vca.trust.v1.TrustEntry
+	(*UpsertEntryRequest)(nil),             // 14: vca.trust.v1.UpsertEntryRequest
+	(*UpsertEntryResponse)(nil),            // 15: vca.trust.v1.UpsertEntryResponse
+	(*GetEntryRequest)(nil),                // 16: vca.trust.v1.GetEntryRequest
+	(*GetEntryResponse)(nil),               // 17: vca.trust.v1.GetEntryResponse
+	(*ListEntriesRequest)(nil),             // 18: vca.trust.v1.ListEntriesRequest
+	(*ListEntriesResponse)(nil),            // 19: vca.trust.v1.ListEntriesResponse
+	(*DeleteEntryRequest)(nil),             // 20: vca.trust.v1.DeleteEntryRequest
+	(*DeleteEntryResponse)(nil),            // 21: vca.trust.v1.DeleteEntryResponse
+	(*PublishRequest)(nil),                 // 22: vca.trust.v1.PublishRequest
+	(*PublishResponse)(nil),                // 23: vca.trust.v1.PublishResponse
+	(*TrustLookupRequest)(nil),             // 24: vca.trust.v1.TrustLookupRequest
+	(*TrustLookupResponse)(nil),            // 25: vca.trust.v1.TrustLookupResponse
+	(*ImportEtsiRequest)(nil),              // 26: vca.trust.v1.ImportEtsiRequest
+	(*ImportEtsiResponse)(nil),             // 27: vca.trust.v1.ImportEtsiResponse
+	(*Registry_Anchor)(nil),                // 28: vca.trust.v1.Registry.Anchor
+	(*TrustEntry_Identifier)(nil),          // 29: vca.trust.v1.TrustEntry.Identifier
+	(*PublishResponse_Publication)(nil),    // 30: vca.trust.v1.PublishResponse.Publication
+	(*TrustLookupResponse_Provenance)(nil), // 31: vca.trust.v1.TrustLookupResponse.Provenance
+	(*durationpb.Duration)(nil),            // 32: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 33: google.protobuf.Timestamp
+	(v1.Role)(0),                           // 34: vca.common.v1.Role
+	(*v1.ValidityWindow)(nil),              // 35: vca.common.v1.ValidityWindow
+	(*v1.Pagination)(nil),                  // 36: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                  // 37: vca.common.v1.PageResult
 }
 var file_vca_trust_v1_trust_proto_depIdxs = []int32{
-	18, // 0: vca.trust.v1.TrustEntry.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	21, // 1: vca.trust.v1.TrustEntry.role:type_name -> vca.common.v1.Role
-	1,  // 2: vca.trust.v1.TrustEntry.status:type_name -> vca.trust.v1.Status
-	22, // 3: vca.trust.v1.TrustEntry.validity:type_name -> vca.common.v1.ValidityWindow
-	23, // 4: vca.trust.v1.TrustEntry.updated_at:type_name -> google.protobuf.Timestamp
-	3,  // 5: vca.trust.v1.UpsertEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
-	3,  // 6: vca.trust.v1.UpsertEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	18, // 7: vca.trust.v1.GetEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	3,  // 8: vca.trust.v1.GetEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	24, // 9: vca.trust.v1.ListEntriesRequest.page:type_name -> vca.common.v1.Pagination
-	21, // 10: vca.trust.v1.ListEntriesRequest.role:type_name -> vca.common.v1.Role
-	1,  // 11: vca.trust.v1.ListEntriesRequest.status:type_name -> vca.trust.v1.Status
-	3,  // 12: vca.trust.v1.ListEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
-	25, // 13: vca.trust.v1.ListEntriesResponse.page:type_name -> vca.common.v1.PageResult
-	18, // 14: vca.trust.v1.DeleteEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	0,  // 15: vca.trust.v1.PublishRequest.method:type_name -> vca.trust.v1.Method
-	19, // 16: vca.trust.v1.PublishResponse.publications:type_name -> vca.trust.v1.PublishResponse.Publication
-	18, // 17: vca.trust.v1.TrustLookupRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	21, // 18: vca.trust.v1.TrustLookupRequest.role:type_name -> vca.common.v1.Role
-	23, // 19: vca.trust.v1.TrustLookupRequest.at:type_name -> google.protobuf.Timestamp
-	2,  // 20: vca.trust.v1.TrustLookupResponse.outcome:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	3,  // 21: vca.trust.v1.TrustLookupResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	20, // 22: vca.trust.v1.TrustLookupResponse.provenance:type_name -> vca.trust.v1.TrustLookupResponse.Provenance
-	0,  // 23: vca.trust.v1.PublishResponse.Publication.method:type_name -> vca.trust.v1.Method
-	23, // 24: vca.trust.v1.PublishResponse.Publication.published_at:type_name -> google.protobuf.Timestamp
-	0,  // 25: vca.trust.v1.TrustLookupResponse.Provenance.method:type_name -> vca.trust.v1.Method
-	23, // 26: vca.trust.v1.TrustLookupResponse.Provenance.checked_at:type_name -> google.protobuf.Timestamp
-	4,  // 27: vca.trust.v1.TrustService.UpsertEntry:input_type -> vca.trust.v1.UpsertEntryRequest
-	6,  // 28: vca.trust.v1.TrustService.GetEntry:input_type -> vca.trust.v1.GetEntryRequest
-	8,  // 29: vca.trust.v1.TrustService.ListEntries:input_type -> vca.trust.v1.ListEntriesRequest
-	10, // 30: vca.trust.v1.TrustService.DeleteEntry:input_type -> vca.trust.v1.DeleteEntryRequest
-	12, // 31: vca.trust.v1.TrustService.Publish:input_type -> vca.trust.v1.PublishRequest
-	14, // 32: vca.trust.v1.TrustService.TrustLookup:input_type -> vca.trust.v1.TrustLookupRequest
-	16, // 33: vca.trust.v1.TrustService.ImportEtsi:input_type -> vca.trust.v1.ImportEtsiRequest
-	5,  // 34: vca.trust.v1.TrustService.UpsertEntry:output_type -> vca.trust.v1.UpsertEntryResponse
-	7,  // 35: vca.trust.v1.TrustService.GetEntry:output_type -> vca.trust.v1.GetEntryResponse
-	9,  // 36: vca.trust.v1.TrustService.ListEntries:output_type -> vca.trust.v1.ListEntriesResponse
-	11, // 37: vca.trust.v1.TrustService.DeleteEntry:output_type -> vca.trust.v1.DeleteEntryResponse
-	13, // 38: vca.trust.v1.TrustService.Publish:output_type -> vca.trust.v1.PublishResponse
-	15, // 39: vca.trust.v1.TrustService.TrustLookup:output_type -> vca.trust.v1.TrustLookupResponse
-	17, // 40: vca.trust.v1.TrustService.ImportEtsi:output_type -> vca.trust.v1.ImportEtsiResponse
-	34, // [34:41] is the sub-list for method output_type
-	27, // [27:34] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	0,  // 0: vca.trust.v1.Registry.method:type_name -> vca.trust.v1.RegistryMethod
+	28, // 1: vca.trust.v1.Registry.anchor:type_name -> vca.trust.v1.Registry.Anchor
+	32, // 2: vca.trust.v1.Registry.refresh:type_name -> google.protobuf.Duration
+	33, // 3: vca.trust.v1.Registry.last_sync:type_name -> google.protobuf.Timestamp
+	33, // 4: vca.trust.v1.Registry.last_read:type_name -> google.protobuf.Timestamp
+	4,  // 5: vca.trust.v1.AddRegistryRequest.registry:type_name -> vca.trust.v1.Registry
+	4,  // 6: vca.trust.v1.AddRegistryResponse.registry:type_name -> vca.trust.v1.Registry
+	4,  // 7: vca.trust.v1.ListRegistriesResponse.registries:type_name -> vca.trust.v1.Registry
+	30, // 8: vca.trust.v1.ListRegistriesResponse.local:type_name -> vca.trust.v1.PublishResponse.Publication
+	4,  // 9: vca.trust.v1.SyncRegistryResponse.registry:type_name -> vca.trust.v1.Registry
+	29, // 10: vca.trust.v1.TrustEntry.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	34, // 11: vca.trust.v1.TrustEntry.role:type_name -> vca.common.v1.Role
+	2,  // 12: vca.trust.v1.TrustEntry.status:type_name -> vca.trust.v1.Status
+	35, // 13: vca.trust.v1.TrustEntry.validity:type_name -> vca.common.v1.ValidityWindow
+	33, // 14: vca.trust.v1.TrustEntry.updated_at:type_name -> google.protobuf.Timestamp
+	13, // 15: vca.trust.v1.UpsertEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
+	13, // 16: vca.trust.v1.UpsertEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	29, // 17: vca.trust.v1.GetEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	13, // 18: vca.trust.v1.GetEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	36, // 19: vca.trust.v1.ListEntriesRequest.page:type_name -> vca.common.v1.Pagination
+	34, // 20: vca.trust.v1.ListEntriesRequest.role:type_name -> vca.common.v1.Role
+	2,  // 21: vca.trust.v1.ListEntriesRequest.status:type_name -> vca.trust.v1.Status
+	13, // 22: vca.trust.v1.ListEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
+	37, // 23: vca.trust.v1.ListEntriesResponse.page:type_name -> vca.common.v1.PageResult
+	29, // 24: vca.trust.v1.DeleteEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	1,  // 25: vca.trust.v1.PublishRequest.method:type_name -> vca.trust.v1.Method
+	30, // 26: vca.trust.v1.PublishResponse.publications:type_name -> vca.trust.v1.PublishResponse.Publication
+	29, // 27: vca.trust.v1.TrustLookupRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	34, // 28: vca.trust.v1.TrustLookupRequest.role:type_name -> vca.common.v1.Role
+	33, // 29: vca.trust.v1.TrustLookupRequest.at:type_name -> google.protobuf.Timestamp
+	3,  // 30: vca.trust.v1.TrustLookupResponse.outcome:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	13, // 31: vca.trust.v1.TrustLookupResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	31, // 32: vca.trust.v1.TrustLookupResponse.provenance:type_name -> vca.trust.v1.TrustLookupResponse.Provenance
+	1,  // 33: vca.trust.v1.PublishResponse.Publication.method:type_name -> vca.trust.v1.Method
+	33, // 34: vca.trust.v1.PublishResponse.Publication.published_at:type_name -> google.protobuf.Timestamp
+	1,  // 35: vca.trust.v1.TrustLookupResponse.Provenance.method:type_name -> vca.trust.v1.Method
+	33, // 36: vca.trust.v1.TrustLookupResponse.Provenance.checked_at:type_name -> google.protobuf.Timestamp
+	14, // 37: vca.trust.v1.TrustService.UpsertEntry:input_type -> vca.trust.v1.UpsertEntryRequest
+	16, // 38: vca.trust.v1.TrustService.GetEntry:input_type -> vca.trust.v1.GetEntryRequest
+	18, // 39: vca.trust.v1.TrustService.ListEntries:input_type -> vca.trust.v1.ListEntriesRequest
+	20, // 40: vca.trust.v1.TrustService.DeleteEntry:input_type -> vca.trust.v1.DeleteEntryRequest
+	22, // 41: vca.trust.v1.TrustService.Publish:input_type -> vca.trust.v1.PublishRequest
+	24, // 42: vca.trust.v1.TrustService.TrustLookup:input_type -> vca.trust.v1.TrustLookupRequest
+	26, // 43: vca.trust.v1.TrustService.ImportEtsi:input_type -> vca.trust.v1.ImportEtsiRequest
+	5,  // 44: vca.trust.v1.TrustService.AddRegistry:input_type -> vca.trust.v1.AddRegistryRequest
+	7,  // 45: vca.trust.v1.TrustService.ListRegistries:input_type -> vca.trust.v1.ListRegistriesRequest
+	9,  // 46: vca.trust.v1.TrustService.RemoveRegistry:input_type -> vca.trust.v1.RemoveRegistryRequest
+	11, // 47: vca.trust.v1.TrustService.SyncRegistry:input_type -> vca.trust.v1.SyncRegistryRequest
+	15, // 48: vca.trust.v1.TrustService.UpsertEntry:output_type -> vca.trust.v1.UpsertEntryResponse
+	17, // 49: vca.trust.v1.TrustService.GetEntry:output_type -> vca.trust.v1.GetEntryResponse
+	19, // 50: vca.trust.v1.TrustService.ListEntries:output_type -> vca.trust.v1.ListEntriesResponse
+	21, // 51: vca.trust.v1.TrustService.DeleteEntry:output_type -> vca.trust.v1.DeleteEntryResponse
+	23, // 52: vca.trust.v1.TrustService.Publish:output_type -> vca.trust.v1.PublishResponse
+	25, // 53: vca.trust.v1.TrustService.TrustLookup:output_type -> vca.trust.v1.TrustLookupResponse
+	27, // 54: vca.trust.v1.TrustService.ImportEtsi:output_type -> vca.trust.v1.ImportEtsiResponse
+	6,  // 55: vca.trust.v1.TrustService.AddRegistry:output_type -> vca.trust.v1.AddRegistryResponse
+	8,  // 56: vca.trust.v1.TrustService.ListRegistries:output_type -> vca.trust.v1.ListRegistriesResponse
+	10, // 57: vca.trust.v1.TrustService.RemoveRegistry:output_type -> vca.trust.v1.RemoveRegistryResponse
+	12, // 58: vca.trust.v1.TrustService.SyncRegistry:output_type -> vca.trust.v1.SyncRegistryResponse
+	48, // [48:59] is the sub-list for method output_type
+	37, // [37:48] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_vca_trust_v1_trust_proto_init() }
@@ -1543,7 +2295,11 @@ func file_vca_trust_v1_trust_proto_init() {
 	if File_vca_trust_v1_trust_proto != nil {
 		return
 	}
-	file_vca_trust_v1_trust_proto_msgTypes[15].OneofWrappers = []any{
+	file_vca_trust_v1_trust_proto_msgTypes[24].OneofWrappers = []any{
+		(*Registry_Anchor_JwksUrl)(nil),
+		(*Registry_Anchor_X509Certificate)(nil),
+	}
+	file_vca_trust_v1_trust_proto_msgTypes[25].OneofWrappers = []any{
 		(*TrustEntry_Identifier_Did)(nil),
 		(*TrustEntry_Identifier_X509Subject)(nil),
 	}
@@ -1552,8 +2308,8 @@ func file_vca_trust_v1_trust_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_trust_v1_trust_proto_rawDesc), len(file_vca_trust_v1_trust_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   18,
+			NumEnums:      4,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -84,6 +84,23 @@ var commands = []command{
 			{name: "did", text: "The DID of the entity."},
 			{name: "x509-subject", text: "The x509 subject of the entity."},
 		}},
+	{path: "admin registry add", rpc: "AddTrustRegistry",
+		long: "Federates with one external trust registry. The trust registry reads its list at once and checks it against the anchor.",
+		flags: []flag{
+			{name: "name", text: "The display name of the registry.", mandatory: true},
+			{name: "method", text: "The list format: etsi-lote-json, etsi-tsl-xml, or dedi.", mandatory: true},
+			{name: "url", text: "The URL of the list or manifest.", mandatory: true},
+			{name: "jwks-url", text: "The URL of the JWK Set that signs the list."},
+			{name: "x509-certificate", text: "A PEM file with the X.509 anchor certificate."},
+			{name: "refresh", text: "How often the service reads the list.", value: "24h"},
+		}},
+	{path: "admin registry list", rpc: "ListTrustRegistries"},
+	{path: "admin registry remove", rpc: "RemoveTrustRegistry", flags: []flag{
+		{name: "id", text: "The registry id.", mandatory: true},
+	}},
+	{path: "admin registry sync", rpc: "SyncTrustRegistry", flags: []flag{
+		{name: "id", text: "The registry id.", mandatory: true},
+	}},
 	{path: "admin onboard", rpc: "CreateAuthProvider",
 		long: "Reads the provider metadata and registers a client. The command uses dynamic client registration when the provider supports it.",
 		flags: []flag{

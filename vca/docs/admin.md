@@ -257,6 +257,7 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/login` | The sign in chooser with the bootstrap card. `/auth/` draws the same page. |
 | `/admin/tenants` | The tenant list with the create form. |
 | `/admin/trust` | The trust list. Pending entries come first, with approve and reject. The add form takes a DID or an X.509 subject. |
+| `/admin/trust/registries` | The local registry with its published lists. Each external registry with its last sync and last error. The add form. |
 | `/admin/providers` | The login provider table: realm or issuer, roles, stacks, state, default flag, and the row actions. |
 | `/admin/providers/new` | The provider form with the kind presets and the discovery test. |
 | `/admin/providers/{id}` | The edit form of one provider. |
@@ -275,6 +276,13 @@ not pending. Each button is a POST form with the synchronizer token. The
 admin service writes one audit record for each decision, also when it
 fails. The CLI has the same two actions: `vca admin trust approve` and
 `vca admin trust reject`.
+
+The registries tab shows the local registry with the URLs of its lists
+and its key set. Each external registry shows its format, its anchor,
+its last sync, and the reason of a failed read. Sync now reads the list
+at once. Remove stops the federation. The CLI has the same actions under
+`vca admin registry`. The admin service writes one audit record for each
+change.
 
 The add form has an identifier type: DID or X.509 subject. The type
 decides how the registry reads the value, so a subject never reads as a

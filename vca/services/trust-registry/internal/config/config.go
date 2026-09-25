@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -50,6 +51,21 @@ type Config struct {
 	ResolveDIDs bool `env:"RESOLVE_DIDS" default:"true"`
 	// PageSizeMax caps the page size of ListEntries.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"200"`
+	// RegistriesFile keeps the external registries and their cached
+	// copies. Empty puts registries.json beside StoreFile, or keeps them
+	// in memory without a store file.
+	RegistriesFile string `env:"REGISTRIES_FILE"`
+	// FederationAllowPrivate lets the federation reach private and
+	// loopback addresses. Use it for development only.
+	FederationAllowPrivate bool `env:"FEDERATION_ALLOW_PRIVATE" default:"false"`
+	// FederationAllowHTTP lets the federation read lists over plain http.
+	FederationAllowHTTP bool `env:"FEDERATION_ALLOW_HTTP" default:"false"`
+	// FederationHosts limits the hosts of external lists. Empty allows
+	// every public host.
+	FederationHosts []string `env:"FEDERATION_ALLOWED_HOSTS"`
+	// FederationTick is how often the service looks for registries whose
+	// refresh interval passed.
+	FederationTick time.Duration `env:"FEDERATION_TICK" default:"1m"`
 
 	// Issuer identifies the registry operator in the lists.
 	Issuer publish.Issuer
@@ -99,6 +115,7 @@ func (c Config) normalize() (Config, error) {
 		{"LIST_TTL", c.ListTTL},
 		{"HTTP_MAX_AGE", c.HTTPMaxAge},
 		{"LOOKUP_MAX_AGE", c.LookupMaxAge},
+		{"FEDERATION_TICK", c.FederationTick},
 	} {
 		if d.value <= 0 {
 			return Config{}, fmt.Errorf("config: %s%s must be a positive duration such as 24h", Prefix, d.name)
@@ -110,6 +127,9 @@ func (c Config) normalize() (Config, error) {
 	}
 	if c.PageSizeMax <= 0 {
 		return Config{}, fmt.Errorf("config: %sPAGE_SIZE_MAX must be a positive number", Prefix)
+	}
+	if c.RegistriesFile == "" && c.StoreFile != "" {
+		c.RegistriesFile = filepath.Join(filepath.Dir(c.StoreFile), "registries.json")
 	}
 	return c, nil
 }

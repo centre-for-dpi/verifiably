@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tsl:TrustServiceStatusList xmlns:tsl="http://uri.etsi.org/02231/v2#" Id="tsl" TSLTag="http://uri.etsi.org/19612/TSLTag">
+  <tsl:SchemeInformation>
+    <tsl:TSLVersionIdentifier>5</tsl:TSLVersionIdentifier>
+    <tsl:TSLSequenceNumber>42</tsl:TSLSequenceNumber>
+    <tsl:TSLType>http://uri.etsi.org/TrstSvc/TrustedList/TSLType/EUgeneric</tsl:TSLType>
+    <tsl:SchemeOperatorName><tsl:Name xml:lang="en">Communications Authority of Kenya</tsl:Name></tsl:SchemeOperatorName>
+    <tsl:SchemeTerritory>KE</tsl:SchemeTerritory>
+    <tsl:ListIssueDateTime>2026-09-01T00:00:00Z</tsl:ListIssueDateTime>
+    <tsl:NextUpdate><tsl:dateTime>2027-03-01T00:00:00Z</tsl:dateTime></tsl:NextUpdate>
+  </tsl:SchemeInformation>
+  <tsl:TrustServiceProviderList>
+    <tsl:TrustServiceProvider>
+      <tsl:TSPInformation><tsl:TSPName><tsl:Name xml:lang="en">National Registration Bureau</tsl:Name></tsl:TSPName></tsl:TSPInformation>
+      <tsl:TSPServices>
+        <tsl:TSPService><tsl:ServiceInformation>
+          <tsl:ServiceTypeIdentifier>http://uri.etsi.org/TrstSvc/Svctype/CA/QC</tsl:ServiceTypeIdentifier>
+          <tsl:ServiceName><tsl:Name xml:lang="en">Birth &amp; identity credentials</tsl:Name></tsl:ServiceName>
+          <tsl:ServiceDigitalIdentity><tsl:DigitalId><tsl:X509SubjectName>CN=Registrar, O=National Registration Bureau, C=KE</tsl:X509SubjectName></tsl:DigitalId></tsl:ServiceDigitalIdentity>
+          <tsl:ServiceStatus>http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/granted</tsl:ServiceStatus>
+        </tsl:ServiceInformation></tsl:TSPService>
+        <tsl:TSPService><tsl:ServiceInformation>
+          <tsl:ServiceTypeIdentifier>http://uri.etsi.org/TrstSvc/Svctype/CA/QC</tsl:ServiceTypeIdentifier>
+          <tsl:ServiceName><tsl:Name xml:lang="en">Old seal service</tsl:Name></tsl:ServiceName>
+          <tsl:ServiceDigitalIdentity><tsl:DigitalId><tsl:X509SubjectName>CN=Old Seal, O=National Registration Bureau, C=KE</tsl:X509SubjectName></tsl:DigitalId></tsl:ServiceDigitalIdentity>
+          <tsl:ServiceStatus>http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/withdrawn</tsl:ServiceStatus>
+        </tsl:ServiceInformation></tsl:TSPService>
+      </tsl:TSPServices>
+    </tsl:TrustServiceProvider>
+  </tsl:TrustServiceProviderList>
+  <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="signature"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference URI=""><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/><ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>o9QEzguOuNA2huGCQyVRrdeB3cCmyTDsYQqUGGW32lk=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue>LcKIqjR/i+lm2a6jH2FqYbmhBPOtz0wtRhQ1QxpRW16V+lO9pb4WFYiY3bglSTOTvFZZjs8N1UaXylN1aMBNeOpU0bn1i3NlvFXwENJbAHFqedOi4JojYIMOfC2OCgrE9/qujw0DfFd0z9zGy1sdZIOEpdGdh116wuKDAzrOyqInKmXhlTUgmKnHn+ddnPclRgD7lfBmS6bdp75h/A8ooJiwfMFiGTETWZ1ptlOrgN3vJB5OL19jFkWsVp112+ni0FCW189PrDO3ZnkIOIOmgR2kK6UrmhTxylVNoVbRZD8bgIr1A958nMz6K6G1yNSEzI2qPB2/Id8Ov/RrE8/tLw==</ds:SignatureValue><ds:KeyInfo><ds:X509Data><ds:X509Certificate>MIICjDCCAjGgAwIBAgIUPCmBxXO8zHOuuqtN8zfTpTuV9rYwCgYIKoZIzj0EAwIwVzELMAkGA1UEBhMCS0UxKjAoBgNVBAoMIUNvbW11bmljYXRpb25zIEF1dGhvcml0eSBvZiBLZW55YTEcMBoGA1UEAwwTVHJ1c3RlZCBMaXN0IEFuY2hvcjAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMFcxCzAJBgNVBAYTAktFMSowKAYDVQQKDCFDb21tdW5pY2F0aW9ucyBBdXRob3JpdHkgb2YgS2VueWExHDAaBgNVBAMME1RydXN0ZWQgTGlzdCBTaWduZXIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDbYu2sn2FaRUvANgYQt/SVCr+xZTr61nrzljA8DooIHo96jV71bbdt05vHQn1e/cwvQkh1GsFi78rzt0IWjvcGzUFwmGPB3kU8GJsya08CQKVeZu1WIRcOU3QaaUyAoihyTHmHkrhbhPSyhIUdUY4L2//vLJV9VEJ0AJSlAnq/jh+DunWDRIQn43rkVFg9WGakWc2ManT9UnixEdmNFvgIeTKFoc64DK87gSeFgvqjxKAOKYTz91mC38MZpNhQTN2K7vsyxj4rHB8qrQZMgDEyhNfL8mBp2I7cse2neECD36Bx5UYw9aBaigw3qshmLmKLwWOjKrVcKaMT53GdYratAgMBAAGjEDAOMAwGA1UdEwEB/wQCMAAwCgYIKoZIzj0EAwIDSQAwRgIhAP3DsuSzdjcOdkFKZRNQEdCYQyRddi5LgTh0Nz030+FuAiEAoDzJ7CVuZRwzfNHCMnMJDEoF+75okQbl42qBDdfvkgs=</ds:X509Certificate></ds:X509Data></ds:KeyInfo></ds:Signature>
+</tsl:TrustServiceStatusList>

@@ -349,4 +349,13 @@ func TestOverviewCountsOnlyTrustedIssuers(t *testing.T) {
 	if page := h.page(t, "/admin/"); !strings.Contains(page, `<span class="stat-value">1 trusted issuer</span>`) {
 		t.Error("the trust card counts more than the active issuers")
 	}
+	// The registries card counts the external registries and opens the
+	// registries tab.
+	h.seedRegistries()
+	page := h.page(t, "/admin/")
+	for _, want := range []string{`<span class="stat-value">Local and 2 external</span>`, `<a class="stat-link" href="/admin/trust/registries">`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the overview misses %q", want)
+		}
+	}
 }
