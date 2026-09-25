@@ -44,7 +44,7 @@ func TestEveryCallNeedsItsRole(t *testing.T) {
 	if _, _, err := c.EnsureIssuerKey(ctx); !errors.Is(err, ErrNoIssuer) {
 		t.Fatalf("EnsureIssuerKey error = %v", err)
 	}
-	if _, err := c.CreateOffer(ctx, "/x", IssuanceRequest{}); !errors.Is(err, ErrNoIssuer) {
+	if _, err := c.CreateOffer(ctx, "/x", IssuanceRequest{}, ""); !errors.Is(err, ErrNoIssuer) {
 		t.Fatalf("CreateOffer error = %v", err)
 	}
 	if _, err := c.Verify(ctx, VerifyRequest{}); !errors.Is(err, ErrNoVerifier) {
@@ -167,7 +167,7 @@ func TestCreateOfferReportsAnEmptyAnswer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 	c := newClient(t, srv, Options{})
-	if _, err := c.CreateOffer(context.Background(), "/x", IssuanceRequest{}); err == nil {
+	if _, err := c.CreateOffer(context.Background(), "/x", IssuanceRequest{}, ""); err == nil {
 		t.Fatal("CreateOffer accepted an empty answer")
 	}
 }

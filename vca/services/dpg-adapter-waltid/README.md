@@ -47,6 +47,7 @@ Set at least one walt.id URL. Each URL turns on one role.
 | `VCA_WALTID_KMS_ROLE_ID` | The AppRole id of the key store, in place of a token. |
 | `VCA_WALTID_KMS_SECRET_ID` | The AppRole secret of the key store. It is a secret. |
 | `VCA_WALTID_KMS_NAMESPACE` | The namespace of the key store. |
+| `VCA_WALTID_CALLBACK_URL` | The address of this adapter as the walt.id issuer reaches it. walt.id posts the session events there. |
 | `VCA_WALTID_CHEQD_NETWORK` | The cheqd network of a `did:cheqd`: `testnet` or `mainnet`. |
 
 Run the binary:

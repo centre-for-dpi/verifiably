@@ -1,0 +1,11 @@
+{
+  "id": "a1b2c3d4-0000-4000-8000-000000000001",
+  "type": "issuance_status",
+  "data": {
+    "sessionId": "a1b2c3d4-0000-4000-8000-000000000001",
+    "status": "UNSUCCESSFUL",
+    "reason": "The proof of possession is not valid",
+    "closed": true,
+    "credentialConfigurationId": "UniversityDegree_jwt_vc_json"
+  }
+}

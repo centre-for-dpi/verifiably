@@ -46,13 +46,20 @@ func (s *Service) CreateOffer(
 	if perr != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, perr)
 	}
-	uri, cerr := s.client.CreateOffer(ctx, path, issuance.request)
+	offerID, callbackURL, err := s.newCallback(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	uri, cerr := s.client.CreateOffer(ctx, path, issuance.request, callbackURL)
 	if cerr != nil {
 		return nil, failed("create the offer", cerr)
 	}
+	if offerID == "" {
+		offerID = waltid.StateFromAuthorizeURL(uri)
+	}
 	return connect.NewResponse(&backendv1.CreateOfferResponse{
 		OfferUri: uri,
-		OfferId:  waltid.StateFromAuthorizeURL(uri),
+		OfferId:  offerID,
 		Channel:  channel,
 	}), nil
 }
@@ -234,16 +241,6 @@ func (s *Service) IssueBatch(
 ) (*connect.Response[backendv1.IssueBatchResponse], error) {
 	return nil, unimplemented(
 		"walt.id 0.18.2 has no batch credential endpoint; call CreateOffer once per subject")
-}
-
-// GetIssuanceStatus is not available. walt.id 0.18.2 has no issuer side
-// session endpoint, so the adapter cannot see whether a wallet claimed
-// an offer.
-func (s *Service) GetIssuanceStatus(
-	context.Context, *connect.Request[backendv1.GetIssuanceStatusRequest],
-) (*connect.Response[backendv1.GetIssuanceStatusResponse], error) {
-	return nil, unimplemented(
-		"walt.id 0.18.2 reports no issuer session state; read the record in the issued credentials service")
 }
 
 // Revoke is not available. The status list services of VCA own the

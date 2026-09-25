@@ -281,6 +281,10 @@ func Catalog() []Service {
 				dpgURL("VCA_WALTID_ISSUER_URL", commonv1.Role_ROLE_ISSUER),
 				dpgURL("VCA_WALTID_WALLET_URL", commonv1.Role_ROLE_HOLDER),
 				dpgURL("VCA_WALTID_VERIFIER_URL", commonv1.Role_ROLE_VERIFIER),
+				// walt.id posts the events of each issuance session to the
+				// adapter on the compose network. No public route leads
+				// there (ADR-047, P6-W5).
+				{Env: "VCA_WALTID_CALLBACK_URL", Kind: LinkAdapterURL, Roles: issuer},
 			}},
 		// The issuance service is the issuer home (ADR-044 decision 1): it
 		// serves the overview, the identity, the issue, the notifications,

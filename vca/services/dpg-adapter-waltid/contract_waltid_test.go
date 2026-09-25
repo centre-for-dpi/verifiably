@@ -279,3 +279,40 @@ func TestContractWalletKeysAndDids(t *testing.T) {
 		t.Fatalf("ListEvents: %v", err)
 	}
 }
+
+// TestContractCallbackHeaderAccepted creates an offer with the header
+// statusCallbackUri. It needs VCA_WALTID_CONTRACT_CALLBACK_URL, the
+// address of this test as the real issuer reaches it, and
+// VCA_WALTID_CONTRACT_CALLBACK_LISTEN, where the test listens. With a
+// wallet URL the wallet reads the offer, and walt.id posts the event
+// resolved_credential_offer, which leaves the offer pending.
+func TestContractCallbackHeaderAccepted(t *testing.T) {
+	cfg := contractEnv(t)
+	cfg.CallbackURL = os.Getenv("VCA_WALTID_CONTRACT_CALLBACK_URL")
+	listen := os.Getenv("VCA_WALTID_CONTRACT_CALLBACK_LISTEN")
+	if cfg.CallbackURL == "" || listen == "" {
+		t.Skip("set VCA_WALTID_CONTRACT_CALLBACK_URL and VCA_WALTID_CONTRACT_CALLBACK_LISTEN to run the callback contract test")
+	}
+	a, err := app.Build(cfg, app.Deps{HTTP: &http.Client{Timeout: 30 * time.Second}})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	srv := &http.Server{Addr: listen, Handler: a.Mux, ReadHeaderTimeout: 5 * time.Second}
+	go func() { _ = srv.ListenAndServe() }()
+	defer func() { _ = srv.Close() }()
+	ctx := context.Background()
+	meta, err := a.Service.GetIssuerMetadata(ctx, connect.NewRequest(&backendv1.GetIssuerMetadataRequest{}))
+	if err != nil || len(meta.Msg.GetConfigurations()) == 0 {
+		t.Fatalf("GetIssuerMetadata: %v", err)
+	}
+	created, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{Spec: &backendv1.IssueSpec{
+		ConfigurationId: meta.Msg.GetConfigurations()[0].GetId(), SubjectData: `{"holder":"Contract test"}`,
+	}}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	st, err := a.Service.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{OfferId: created.Msg.GetOfferId()}))
+	if err != nil || st.Msg.GetState() != backendv1.GetIssuanceStatusResponse_STATE_PENDING {
+		t.Fatalf("GetIssuanceStatus: %v %v", st, err)
+	}
+}

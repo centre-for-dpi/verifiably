@@ -73,6 +73,10 @@ type Config struct {
 	KMSSecretID string `env:"KMS_SECRET_ID" secret:"true"`
 	// KMSNamespace is the namespace of the key store. Empty uses none.
 	KMSNamespace string `env:"KMS_NAMESPACE"`
+	// CallbackURL is the base URL of this adapter as the walt.id issuer
+	// reaches it on the compose network. walt.id posts the events of each
+	// issuance session there. Empty turns the issuance state off.
+	CallbackURL string `env:"CALLBACK_URL"`
 	// CheqdNetwork is the cheqd network of a did:cheqd: testnet or
 	// mainnet.
 	CheqdNetwork string `env:"CHEQD_NETWORK" default:"testnet"`

@@ -1,0 +1,10 @@
+{
+  "id": "a1b2c3d4-0000-4000-8000-000000000001",
+  "type": "issuance_status",
+  "data": {
+    "sessionId": "a1b2c3d4-0000-4000-8000-000000000001",
+    "status": "EXPIRED",
+    "reason": "Issuance session expired",
+    "closed": true
+  }
+}

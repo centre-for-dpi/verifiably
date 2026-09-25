@@ -113,6 +113,36 @@ the browser to `/verification-session/{id}/response` of the browser
 session. `GetResult` reads both sessions. The first session with an
 answer decides. The request expires when both expire.
 
+## Issuance sessions and callbacks
+
+The issue request can carry the header `statusCallbackUri`. The issuer
+API of 0.18.2 then posts each event of the session to that URL. The body
+is `{"id", "type", "data"}`. The events are:
+
+| Event | What the adapter does |
+| --- | --- |
+| `resolved_credential_offer`, `requested_token` | The offer stays pending. |
+| `jwt_issue`, `sdjwt_issue`, `generated_mdoc` | The adapter marks the offer issued. It keeps the credential and the time. |
+| `issuance_status` `SUCCESSFUL` | The adapter marks the offer issued. |
+| `issuance_status` `UNSUCCESSFUL` | The offer failed, with the reason of walt.id. |
+| `issuance_status` `EXPIRED` | The offer expired. |
+
+An issued offer stays issued. `VCA_WALTID_CALLBACK_URL` is the address
+of the adapter on the compose network, and the CLI writes it for the
+issuer pair. With it the answer lists `FEATURE_ISSUANCE_STATUS` and
+`FEATURE_SESSION_CALLBACKS`. `CreateOffer` then gives each offer its
+own id and a random token of 128 bits. The callback URL is
+`<VCA_WALTID_CALLBACK_URL>/callbacks/issuance/<offer>/<token>`. The
+adapter keeps the SHA-256 of the token and compares it in constant
+time. A wrong token or an unknown offer answers 404. The route is no
+public route of the pair, so only the stack on the compose network
+reaches it (ADR-047).
+
+`GetIssuanceStatus` reads the state of an offer. The issued credentials
+page then shows "Offered, not claimed" for an offer no wallet claimed.
+The claimed credential carries the status entry that `CreateOffer` put
+in the offer. Revocation stays with the status services of VCA.
+
 ## The wallet of the stack
 
 With a wallet URL the answer lists `FEATURE_WALLET_KEYS`,
@@ -200,8 +230,8 @@ With a pinned identity, provision and import answer
 | --- | --- |
 | `Issue` | walt.id signs a credential only when a wallet claims an offer. |
 | `IssueBatch` | walt.id has no batch credential endpoint. |
-| `GetIssuanceStatus` | walt.id reports no issuer session state. |
-| `Revoke` | walt.id has no revocation API. The status services own the bits. |
+| `GetIssuanceStatus` without `VCA_WALTID_CALLBACK_URL` | The adapter learns the state of an offer from the callbacks of walt.id only. |
+| `Revoke` | The community stack hosts no status list and has no revocation API. The status services of VCA own the bits. The answer lists no `FEATURE_REVOCATION`. |
 | Every tenant RPC | The community stack keeps no tenants. |
 | Every webhook RPC | The community stack keeps no tenants to hold a webhook. |
 | `VerifyCredential` | The adapter does not send an uploaded credential to the verifier of the stack. The scanner shows no stack check. |

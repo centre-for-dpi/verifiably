@@ -289,8 +289,9 @@ type IssuanceRequest struct {
 }
 
 // CreateOffer posts one issuance request and returns the offer URI.
-// walt.id answers with the URI as plain text.
-func (c *Client) CreateOffer(ctx context.Context, path string, req IssuanceRequest) (string, error) {
+// walt.id answers with the URI as plain text. A callback URL goes in the
+// header statusCallbackUri; walt.id then posts each session event there.
+func (c *Client) CreateOffer(ctx context.Context, path string, req IssuanceRequest, callbackURL string) (string, error) {
 	if c.issuer == nil {
 		return "", ErrNoIssuer
 	}
@@ -298,10 +299,15 @@ func (c *Client) CreateOffer(ctx context.Context, path string, req IssuanceReque
 	if err != nil {
 		return "", fmt.Errorf("waltid: encode the issuance request: %w", err)
 	}
-	uri, err := c.issuer.Text(ctx, http.MethodPost, path, "application/json", raw)
+	r := dpgclient.Request{Method: http.MethodPost, Path: path, Body: raw, ContentType: "application/json"}
+	if callbackURL != "" {
+		r.Header = http.Header{"statusCallbackUri": {callbackURL}}
+	}
+	resp, err := c.issuer.Do(ctx, r)
 	if err != nil {
 		return "", err
 	}
+	uri := strings.TrimSpace(string(resp.Body))
 	if uri == "" {
 		return "", fmt.Errorf("waltid: the issue answer has no offer URI")
 	}

@@ -866,3 +866,18 @@ func TestWaltidVerifierPairReachesVerifier2(t *testing.T) {
 		}
 	}
 }
+
+// TestWaltidIssuerPairGetsTheCallbackURL gives the walt.id adapter of the
+// issuer pair its own compose URL, where walt.id posts the session
+// events (P6-W5). The URL stays on the compose network (ADR-047).
+func TestWaltidIssuerPairGetsTheCallbackURL(t *testing.T) {
+	values := map[string]string{"VCA_DPG_URL": "http://waltid-issuer-api:7002"}
+	got := LinkValues(Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}, values)
+	if got["VCA_WALTID_CALLBACK_URL"] != "http://issuer-waltid-dpg-adapter-waltid:8090" {
+		t.Errorf("VCA_WALTID_CALLBACK_URL = %q", got["VCA_WALTID_CALLBACK_URL"])
+	}
+	holder := LinkValues(Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}, values)
+	if _, ok := holder["VCA_WALTID_CALLBACK_URL"]; ok {
+		t.Error("the holder pair got the callback URL")
+	}
+}

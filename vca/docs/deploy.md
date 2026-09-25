@@ -366,6 +366,7 @@ home service of the role.
 | `vca.backend.v1.CatalogBackendService` | `dpg-adapter-*` | Compose network | No caller check. `schema-builder-ui` calls it. |
 | `vca.backend.v1.TenantBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for tenants and stack credentials. |
 | `vca.backend.v1.NotificationBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for stack webhooks. |
+| `POST /callbacks/issuance/*`, no RPC | `dpg-adapter-waltid` | Compose network | The walt.id issuer posts session events there. Each offer has its own random token in the path, and a wrong token answers 404. |
 | `vca.combined.v1.CombinedService` | `verifier-combined` | Compose network | No caller check, and no party outside the host calls it. |
 | `vca.datasource.v1.DataSourceService` | `data-source` | Compose network | Without a key set file it trusts the session header of a gateway. The data source pages call it in process. No other service calls it. |
 | `vca.discovery.v1.DiscoveryService` | `verifier-discovery` | Compose network | No caller check. `verifier-ingest`, `verifier-combined`, and `wallet-portal` call it. A wallet reads `/catalog` instead. |

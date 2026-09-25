@@ -64,6 +64,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		IdentityFile:    cfg.IdentityFile,
 		KeyStore:        cfg.KeyStore(),
 		CheqdNetwork:    cfg.CheqdNetwork,
+		CallbackURL:     cfg.CallbackURL,
 	})
 	if err != nil {
 		return nil, err
@@ -76,6 +77,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc))
+	// walt.id posts session events here on the compose network (P6-W5).
+	mux.Handle("POST "+service.CallbackPrefix, svc.CallbackHandler())
 	deps.Log.Info("walt.id adapter ready",
 		"issuer", cfg.IssuerURL != "", "verifier", cfg.VerifierURL != "", "verifier2", cfg.Verifier2URL != "", "wallet", cfg.WalletURL != "")
 	return &App{Mux: mux, Service: svc}, nil

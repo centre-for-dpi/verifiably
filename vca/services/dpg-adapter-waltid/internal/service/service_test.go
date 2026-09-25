@@ -32,6 +32,8 @@ type roles struct {
 	verifier  bool
 	wallet    bool
 	verifier2 bool
+	// callbacks sets the callback URL, so walt.id reports the sessions.
+	callbacks bool
 }
 
 // all wires every role.
@@ -51,7 +53,12 @@ func newService(t *testing.T, r roles) (*service.Service, *fake.Server) {
 			Sleep: func(time.Duration) {},
 		})
 	}
+	callback := ""
+	if r.callbacks {
+		callback = "http://issuer-waltid-dpg-adapter-waltid:8090"
+	}
 	svc, err := service.New(service.Options{
+		CallbackURL: callback,
 		Client: waltid.New(waltid.Options{
 			Issuer:          client(r.issuer),
 			Verifier:        client(r.verifier),

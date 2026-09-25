@@ -68,6 +68,8 @@ type Server struct {
 	last string
 	// lastQuery is the query of the last call.
 	lastQuery url.Values
+	// lastHeader holds the headers of the last call.
+	lastHeader http.Header
 	// claimQuery is the query of the last claim of an offer.
 	claimQuery url.Values
 	// resolved is the answer of resolveCredentialOffer.
@@ -129,6 +131,13 @@ func (f *Server) LastQuery() url.Values {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.lastQuery
+}
+
+// LastHeader returns one header of the last call.
+func (f *Server) LastHeader(name string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastHeader.Get(name)
 }
 
 // LastClaimQuery returns the query of the last claim of an offer.
@@ -195,6 +204,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	f.history[r.URL.Path] = append(f.history[r.URL.Path], body)
 	f.last = r.URL.Path
 	f.lastQuery = r.URL.Query()
+	f.lastHeader = r.Header.Clone()
 	resolved := f.resolved
 	forced := f.status[r.URL.Path]
 	session := f.session

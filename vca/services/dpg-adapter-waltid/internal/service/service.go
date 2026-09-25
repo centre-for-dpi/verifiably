@@ -58,6 +58,10 @@ type Options struct {
 	// CheqdNetwork is the cheqd network of a did:cheqd. Empty means
 	// testnet.
 	CheqdNetwork string
+	// CallbackURL is the base URL of this adapter as walt.id reaches it.
+	// walt.id then posts the events of each issuance session there.
+	// Empty turns GetIssuanceStatus off.
+	CallbackURL string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 }
@@ -75,6 +79,7 @@ type Service struct {
 	identityFile    string
 	keyStore        *waltid.KeyStore
 	cheqdNetwork    string
+	callbackURL     string
 
 	idMu        sync.Mutex
 	identity    identityState
@@ -113,6 +118,7 @@ func New(opts Options) (*Service, error) {
 		identityFile:    opts.IdentityFile,
 		keyStore:        opts.KeyStore,
 		cheqdNetwork:    opts.CheqdNetwork,
+		callbackURL:     strings.TrimRight(opts.CallbackURL, "/"),
 	}
 	if err := s.loadStateFile(); err != nil {
 		return nil, err
@@ -171,14 +177,19 @@ func (s *Service) GetCapabilities(
 		// RegisterCredentialConfiguration works, so a schema can go to
 		// the stack. The onboarding endpoint makes an identity, and every
 		// issuance request takes a key object with a DID or an X.509
-		// chain, so both imports work (ADR-046). Revoke,
-		// GetIssuanceStatus, and IssueBatch answer Unimplemented, so their
-		// features stay off the list.
+		// chain, so both imports work (ADR-046). Revoke and IssueBatch
+		// answer Unimplemented: the community stack hosts no status list
+		// and has no batch endpoint, so their features stay off the list.
 		out.Features = []backendv1.Feature{
 			backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API,
 			backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION,
 			backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_DID,
 			backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509,
+		}
+		if s.callbacks() {
+			// walt.id posts each session event to the adapter, so the
+			// state of an offer is known (P6-W5).
+			out.Features = append(out.Features, backendv1.Feature_FEATURE_ISSUANCE_STATUS, backendv1.Feature_FEATURE_SESSION_CALLBACKS)
 		}
 		out.DidMethods = append([]string(nil), DidMethods...)
 		out.KeyTypes = append([]string(nil), keyTypesOf(s.defaultBackend())...)

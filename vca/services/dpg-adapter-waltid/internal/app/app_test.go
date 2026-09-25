@@ -113,3 +113,24 @@ func TestBuildWiresVerifier2(t *testing.T) {
 		t.Fatalf("the adapter called %q", f.LastPath())
 	}
 }
+
+func TestBuildServesTheCallbackRoute(t *testing.T) {
+	f := fake.New("../../testdata")
+	defer f.Close()
+	a, err := app.Build(config.Config{IssuerURL: f.URL(), CallbackURL: "http://adapter:8090"}, app.Deps{HTTP: f.Client()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	resp, err := srv.Client().Post(srv.URL+"/callbacks/issuance/unknown/token", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := resp.Body.Close(); cerr != nil {
+		t.Error(cerr)
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("an unknown offer: %d", resp.StatusCode)
+	}
+}
