@@ -474,9 +474,14 @@ type PresentationTemplate struct {
 	RequireStatus bool `protobuf:"varint,13,opt,name=require_status,json=requireStatus,proto3" json:"require_status,omitempty"`
 	// The policy set that holds the rules of the template. The service
 	// sets it when the template has a rule. Empty uses the default set.
-	PolicySetId   string `protobuf:"bytes,14,opt,name=policy_set_id,json=policySetId,proto3" json:"policy_set_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PolicySetId string `protobuf:"bytes,14,opt,name=policy_set_id,json=policySetId,proto3" json:"policy_set_id,omitempty"`
+	// The DIF Presentation Exchange 2.0 definition as a JSON string. Only
+	// a PE template holds one (ADR-042 decision 4). The service validates
+	// it and fills dcql and queries from it. It leaves dcql empty when the
+	// conversion to DCQL loses a part.
+	PresentationDefinition string `protobuf:"bytes,15,opt,name=presentation_definition,json=presentationDefinition,proto3" json:"presentation_definition,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *PresentationTemplate) Reset() {
@@ -603,6 +608,13 @@ func (x *PresentationTemplate) GetRequireStatus() bool {
 func (x *PresentationTemplate) GetPolicySetId() string {
 	if x != nil {
 		return x.PolicySetId
+	}
+	return ""
+}
+
+func (x *PresentationTemplate) GetPresentationDefinition() string {
+	if x != nil {
+		return x.PresentationDefinition
 	}
 	return ""
 }
@@ -1848,7 +1860,7 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x06format\x18\x03 \x01(\tR\x06format\x12\x14\n" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x1c\n" +
 	"\tmandatory\x18\x05 \x01(\bR\tmandatory\x127\n" +
-	"\x17selectively_disclosable\x18\x06 \x01(\bR\x16selectivelyDisclosable\"\x95\n" +
+	"\x17selectively_disclosable\x18\x06 \x01(\bR\x16selectivelyDisclosable\"\xce\n" +
 	"\n" +
 	"\x14PresentationTemplate\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
@@ -1869,7 +1881,8 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"predicates\x124\n" +
 	"\x16require_trusted_issuer\x18\f \x01(\bR\x14requireTrustedIssuer\x12%\n" +
 	"\x0erequire_status\x18\r \x01(\bR\rrequireStatus\x12\"\n" +
-	"\rpolicy_set_id\x18\x0e \x01(\tR\vpolicySetId\x1a\xbd\x02\n" +
+	"\rpolicy_set_id\x18\x0e \x01(\tR\vpolicySetId\x127\n" +
+	"\x17presentation_definition\x18\x0f \x01(\tR\x16presentationDefinition\x1a\xbd\x02\n" +
 	"\x0fCredentialQuery\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12-\n" +

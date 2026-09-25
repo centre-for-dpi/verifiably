@@ -91,7 +91,7 @@ the reader, the writer, and the rules of OpenID4VP 1.0.
 | `credential_sets` | Each option names a credential query id the query defines, each id once. |
 
 A template has a kind (ADR-042 decision 1). The service stores DCQL
-templates now. The kinds PE and native wait for their pages.
+templates and PE templates. The native kind waits for its page.
 
 ## The DCQL builder
 
@@ -125,6 +125,48 @@ with more options becomes a `pick` rule of one. The generator sets
 `limit_disclosure` to `required` for a format that discloses single
 claims. It sets it to `preferred` for every other format.
 
+## DIF Presentation Exchange queries
+
+Some stacks read a Presentation Exchange 2.0 definition and not a DCQL
+query (ADR-042 decision 4). A PE template holds a definition in
+`presentation_definition`. `CreateTemplate` and `VersionTemplate`
+check it and store it in a compact form. They also convert it to
+DCQL. The DCQL form fills `queries`. It fills `dcql` too, but only when
+the conversion loses nothing. A request through the VCA verifier needs
+`dcql`.
+
+The pure package `core/pex` holds the rules (ADR-042 decision 5).
+
+| Function | Behaviour |
+|---|---|
+| `Validate` | Checks the text against the vendored PE 2.0 JSON Schema. Then it checks the rules the schema cannot hold: one descriptor or more, unique descriptor ids, paths that start at `$`, and requirements that name a group. Each problem names a JSON Pointer. |
+| `FromDCQL` | Generates the definition of a DCQL query, and a report of the parts PE cannot hold. |
+| `ToDCQL` | Converts a definition to a DCQL query, and a report of the parts DCQL cannot hold. |
+
+The schema files come from the DIF repositories at a fixed commit.
+`core/pex/schema/SOURCE.md` names the commits and the hashes. A test
+checks the hashes. The registry file does not list the formats of
+OpenID4VP. So the file `oid4vp-formats.json` adds `jwt_vc_json`,
+`jwt_vp_json`, `vc+sd-jwt`, and `dc+sd-jwt`.
+
+A report lists each lost part and the place of the part. Examples from
+DCQL to PE: a list of trusted issuers, an optional credential set, and
+claim sets PE cannot order. Examples from PE to DCQL: a status
+directive, a filter other than `const` or `enum`, and a predicate.
+Others are a JSON-LD frame, a nested submission rule, and an algorithm
+limit.
+
+The page at `/discovery/pe/` names the live verifier stacks whose
+adapter lists `PROTOCOL_OID4VP_PEX` but not `PROTOCOL_OID4VP_DCQL`. It
+lists the saved PE queries with the state of their DCQL form. It shows
+the PE form of each DCQL query with its loss report. The editor at
+`/discovery/pe/new` takes a pasted definition or a JSON file. Its
+actions check the definition and convert it to DCQL with the loss
+report. Two more actions save it as a PE query, or save its DCQL form
+as a DCQL query. The editor
+of a saved query at `/discovery/pe/edit/{id}` saves a new version. Every
+action is a plain form post, so the editor works without JavaScript.
+
 ## Versions
 
 A template version never changes (ADR-022 decision 4).
@@ -156,7 +198,11 @@ structural WCAG 2.2 checks of `ui/a11ytest`.
 | `GET /portal/dcql/` | The DCQL builder with the live query preview. |
 | `POST /portal/dcql/` | Draw the preview again, or save the query. |
 | `POST /portal/dcql/preview` | The preview fragment for htmx. |
-| `GET /portal/pe/` | The DIF Presentation Exchange 2.0 form of every saved query, for stacks that read only that form. |
+| `GET /portal/pe/` | The stacks that need PE and the saved PE queries. Then the PE form of each DCQL query with its loss report. |
+| `GET /portal/pe/new` | The PE editor. `?from=<id>` loads the PE form of a DCQL query. |
+| `POST /portal/pe/new` | Import a file, check, convert, save as a PE query, or save as a DCQL query. |
+| `GET /portal/pe/edit/{id}` | The PE editor of a saved PE query. |
+| `POST /portal/pe/edit/{id}` | The same actions. Save stores a new version. |
 | `POST /portal/signout` | The sign out form of the user menu. |
 
 A pair sets the prefix to `/discovery`. The pages then sit in the

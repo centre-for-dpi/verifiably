@@ -124,6 +124,11 @@ message PresentationTemplate {
   // The policy set that holds the rules of the template. The service
   // sets it when the template has a rule. Empty uses the default set.
   string policy_set_id = 14;
+  // The DIF Presentation Exchange 2.0 definition as a JSON string. Only
+  // a PE template holds one (ADR-042 decision 4). The service validates
+  // it and fills dcql and queries from it. It leaves dcql empty when the
+  // conversion to DCQL loses a part.
+  string presentation_definition = 15;
 
   // CredentialQuery is one credential the template asks for.
   message CredentialQuery {
@@ -264,7 +269,8 @@ message GetFieldsResponse {
 // CreateTemplateRequest carries the first version.
 message CreateTemplateRequest {
   // The template. The service ignores id, version, and timestamps.
-  // When dcql is empty the service builds it from queries.
+  // When dcql is empty the service builds it from queries, or from
+  // presentation_definition for a PE template.
   PresentationTemplate template = 1;
 }
 

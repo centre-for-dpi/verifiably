@@ -2,8 +2,9 @@
 
 // Package template holds the presentation template record and its pure
 // rules (ADR-022 decisions 3 and 4). A template stores the request as a
-// DCQL query. The package also generates a Presentation Exchange 2.0
-// definition for a Digital Public Good that needs the older language.
+// DCQL query, or a Presentation Exchange 2.0 definition for a PE
+// template. The package also generates a definition from a DCQL query
+// for a Digital Public Good that needs the older language.
 package template
 
 import (
@@ -16,7 +17,9 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/dcql"
+	"github.com/centre-for-dpi/vc-adapters/core/pex"
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
@@ -63,6 +66,9 @@ type Template struct {
 	// PolicySetID is the policy set that holds the rules. The service
 	// sets it when the template has a rule.
 	PolicySetID string `json:"policy_set_id,omitempty"`
+	// PresentationDefinition is the Presentation Exchange 2.0
+	// definition of a PE template, as a JSON string (ADR-042 decision 4).
+	PresentationDefinition string `json:"presentation_definition,omitempty"`
 }
 
 // The kinds of a template.
@@ -157,8 +163,17 @@ func IDFrom(name string) string {
 }
 
 // Build fills the DCQL of a template from its queries, or reads the DCQL
-// the caller sent. It validates the result and the rules.
+// the caller sent. A PE template holds a definition instead: Build
+// validates it and fills the DCQL from it when the conversion loses
+// nothing. Build validates the result and the rules.
 func Build(t Template) (Template, error) {
+	if t.Kind == KindPE {
+		pe, err := buildPE(t)
+		if err != nil {
+			return Template{}, err
+		}
+		t = pe
+	}
 	if strings.TrimSpace(t.DisplayName) == "" {
 		return Template{}, errors.New("template: the display name is required")
 	}
@@ -172,9 +187,15 @@ func Build(t Template) (Template, error) {
 	case "":
 		t.Kind = KindDCQL
 	case KindDCQL:
+	case KindPE:
+		if err := checkPredicates(t); err != nil {
+			return Template{}, err
+		}
+		return t, nil
 	default:
-		return Template{}, fmt.Errorf("template: the service stores DCQL templates, not %q", t.Kind)
+		return Template{}, fmt.Errorf("template: the service stores DCQL and PE templates, not %q", t.Kind)
 	}
+	t.PresentationDefinition = ""
 	q, err := queryOf(t)
 	if err != nil {
 		return Template{}, err
@@ -189,6 +210,46 @@ func Build(t Template) (Template, error) {
 		return Template{}, err
 	}
 	return t, nil
+}
+
+// buildPE validates the definition of a PE template and stores it in a
+// compact form. The name and the purpose of the definition fill empty
+// fields of the template. The DCQL form fills the queries, and the DCQL
+// too when the conversion loses nothing.
+func buildPE(t Template) (Template, error) {
+	if strings.TrimSpace(t.PresentationDefinition) == "" {
+		return Template{}, errors.New("template: a PE template needs a presentation definition")
+	}
+	d, problems := pex.Validate([]byte(t.PresentationDefinition))
+	if len(problems) > 0 {
+		return Template{}, fmt.Errorf("template: the presentation definition is not valid: %w", problems[0])
+	}
+	t.PresentationDefinition = string(pex.Marshal(d))
+	if strings.TrimSpace(t.DisplayName) == "" {
+		t.DisplayName = firstOf(d.Name, d.ID)
+	}
+	if t.Purpose == "" {
+		t.Purpose = d.Purpose
+	}
+	t.DCQL, t.Queries = "", nil
+	// A definition that no DCQL query holds stays a PE query only.
+	if converted, report, convErr := pex.ToDCQL(d); convErr == nil {
+		t.Queries = QueriesOf(converted.Query)
+		if report.Lossless() {
+			t.DCQL = string(anyval.Must(dcql.Marshal(converted.Query)))
+		}
+	}
+	return t, nil
+}
+
+// firstOf returns the first value that is not empty.
+func firstOf(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // queryOf reads the DCQL of a template, or builds it from the queries.
@@ -315,9 +376,13 @@ func QueriesOf(q dcql.Query) []Query {
 	return out
 }
 
-// PresentationExchange generates the Presentation Exchange 2.0
-// definition of a template.
+// PresentationExchange returns the Presentation Exchange 2.0
+// definition of a template: the stored one of a PE template, or one
+// generated from the DCQL.
 func (t Template) PresentationExchange() ([]byte, error) {
+	if t.Kind == KindPE {
+		return []byte(t.PresentationDefinition), nil
+	}
 	q, err := dcql.Parse([]byte(t.DCQL))
 	if err != nil {
 		return nil, err
@@ -346,9 +411,10 @@ func FromProto(m *discoveryv1.PresentationTemplate) Template {
 		CreatedBy:   m.GetCreatedBy(),
 		Kind:        kindName(m.GetKind()),
 
-		RequireTrustedIssuer: m.GetRequireTrustedIssuer(),
-		RequireStatus:        m.GetRequireStatus(),
-		PolicySetID:          m.GetPolicySetId(),
+		RequireTrustedIssuer:   m.GetRequireTrustedIssuer(),
+		RequireStatus:          m.GetRequireStatus(),
+		PolicySetID:            m.GetPolicySetId(),
+		PresentationDefinition: m.GetPresentationDefinition(),
 	}
 	for _, q := range m.GetQueries() {
 		item := Query{
@@ -375,6 +441,7 @@ func (t Template) ToProto() *discoveryv1.PresentationTemplate {
 		Id: t.ID, Version: t.Version, DisplayName: t.DisplayName, Dcql: t.DCQL,
 		Purpose: t.Purpose, TenantId: t.TenantID, CreatedBy: t.CreatedBy, Kind: kindOf(t.Kind),
 		RequireTrustedIssuer: t.RequireTrustedIssuer, RequireStatus: t.RequireStatus, PolicySetId: t.PolicySetID,
+		PresentationDefinition: t.PresentationDefinition,
 	}
 	for _, p := range t.Predicates {
 		out.Predicates = append(out.Predicates, &discoveryv1.PresentationTemplate_ClaimPredicate{

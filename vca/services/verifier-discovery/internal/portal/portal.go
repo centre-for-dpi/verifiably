@@ -15,7 +15,11 @@
 //	GET  /templates             the template list
 //	GET  /templates/{id}        one template with its DCQL and its history
 //	POST /templates/{id}/delete remove every version of one template
-//	GET  /pe/                   the DIF PE form of every saved query
+//	GET  /pe/                   the PE queries and the PE form of every DCQL query (pe.go)
+//	GET  /pe/new                the PE editor, empty or from a DCQL query
+//	POST /pe/new                import, validate, convert, or save a definition
+//	GET  /pe/edit/{id}          the PE editor of a saved PE query
+//	POST /pe/edit/{id}          the same actions; save stores a new version
 //	GET  /dcql/                 the DCQL builder (dcql.go)
 //	POST /dcql/                 draw the preview again, or save the query
 //	POST /dcql/preview          the preview fragment for htmx
@@ -114,6 +118,10 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/templates/{id}", p.handle(p.templateDetail))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/templates/{id}/delete", p.handle(p.deleteTemplate))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/pe/{$}", p.handle(p.exchangeList))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/pe/new", p.handle(p.peNew))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/pe/new", p.handle(p.pePost))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/pe/edit/{id}", p.handle(p.peEdit))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/pe/edit/{id}", p.handle(p.pePost))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/dcql/{$}", p.handle(p.dcqlPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/dcql/{$}", p.handle(p.dcqlPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/dcql/preview", p.handle(p.dcqlPreview))
