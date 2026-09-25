@@ -102,6 +102,9 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		name string
 		data any
 	}{
+		{"tabs", components.Tabs{Label: "Demo views", Links: []components.Link{
+			{Href: "/", Text: "Components", Current: true}, {Href: "/signin", Text: "Sign in"},
+		}}},
 		{"stepper", components.Stepper{Label: "Demo progress", Steps: []string{"Source", "Claims", "Delivery"}, Current: 2}},
 		{"steps", components.Steps{Items: []components.Step{
 			{Title: "Identify your organisation", Text: "Register keys and metadata with the trust registry.", State: "done"},

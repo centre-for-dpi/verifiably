@@ -290,6 +290,7 @@ component. `components.Names` lists every template.
 | `stacks` | `Stacks` | One `article` per stack: name, version, components with links, and one row per role with its state as a word. | `Items` with `ID`, `Name`, `Roles` |
 | `cta` | `CTA` | Call to action band: `section` labelled by its `h2`, a sentence, and one button. | `ID`, `Title`, `Action` |
 | `note` | `Note` | Small aside of a hero: a tracked label, a sentence, and the accent line. Set it as `Hero.Aside`. | `Text` |
+| `tabs` | `Tabs` | A labelled nav landmark with a row of links between the views of one page group. The current view carries `aria-current="page"`. Each link loads a full page. | `Label`, two or more `Links` |
 | `signin` | `SignIn` | The sign in chooser of a role. Left: role, `h1`, lead and back link. Right: provider buttons with the realm in the monospace stack, a callout, and an extra block. Then a rule, the register actions, and a note. Set `Page.SignIn`; it replaces the page header. | `Title` |
 
 ### Data structs
@@ -419,6 +420,10 @@ current one carry a hidden `Done` for screen readers.
 `Disabled`. Every input has an id `<ID>-<n>` and its own `label`.
 
 `Code`: `ID`, `Label`, `Text`. `Empty`: `Title`, `Text`, `Action`.
+
+`Tabs`: `Label`, `Links`. Each link needs `Href` and `Text`. At most one
+link is current. The label must differ from the other nav landmarks of
+the page.
 
 ### Rendering
 

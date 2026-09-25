@@ -54,6 +54,16 @@ service AdminService {
   rpc DeleteTrustEntry(DeleteTrustEntryRequest) returns (DeleteTrustEntryResponse) {
     option (vca.common.v1.description) = "Removes one trust entry.";
   }
+  // ApproveTrustEntry sets a pending trust entry to active, so relying
+  // parties trust the entity. The audit log records the decision.
+  rpc ApproveTrustEntry(ApproveTrustEntryRequest) returns (ApproveTrustEntryResponse) {
+    option (vca.common.v1.description) = "Approves a pending trust entry.";
+  }
+  // RejectTrustEntry removes a pending trust entry. The audit log
+  // records the decision.
+  rpc RejectTrustEntry(RejectTrustEntryRequest) returns (RejectTrustEntryResponse) {
+    option (vca.common.v1.description) = "Rejects and removes a pending trust entry.";
+  }
 
   // CreateAuthProvider registers one OIDC provider (ADR-012 decision 5).
   // The service fetches the discovery document to check the URL.
@@ -232,12 +242,14 @@ message GetTrustEntryResponse {
   vca.trust.v1.TrustEntry entry = 1;
 }
 
-// ListTrustEntriesRequest selects a page and a role filter.
+// ListTrustEntriesRequest selects a page and filters.
 message ListTrustEntriesRequest {
   // The page to return.
   vca.common.v1.Pagination page = 1;
   // The role filter. Unspecified returns every role.
   vca.common.v1.Role role = 2;
+  // The status filter. Unspecified returns every status.
+  vca.trust.v1.Status status = 3;
 }
 
 // ListTrustEntriesResponse returns a page of entries.
@@ -256,6 +268,27 @@ message DeleteTrustEntryRequest {
 
 // DeleteTrustEntryResponse has no fields.
 message DeleteTrustEntryResponse {}
+
+// ApproveTrustEntryRequest selects a pending entry.
+message ApproveTrustEntryRequest {
+  // The entity identifier.
+  vca.trust.v1.TrustEntry.Identifier identifier = 1;
+}
+
+// ApproveTrustEntryResponse returns the entry, now active.
+message ApproveTrustEntryResponse {
+  // The entry.
+  vca.trust.v1.TrustEntry entry = 1;
+}
+
+// RejectTrustEntryRequest selects a pending entry.
+message RejectTrustEntryRequest {
+  // The entity identifier.
+  vca.trust.v1.TrustEntry.Identifier identifier = 1;
+}
+
+// RejectTrustEntryResponse has no fields.
+message RejectTrustEntryResponse {}
 
 // ProviderKind names the product behind a provider record. The kind
 // selects a fallback, such as the Keycloak registration endpoint, and

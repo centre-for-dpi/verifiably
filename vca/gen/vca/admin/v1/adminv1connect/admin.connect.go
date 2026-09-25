@@ -64,6 +64,12 @@ const (
 	// AdminServiceDeleteTrustEntryProcedure is the fully-qualified name of the AdminService's
 	// DeleteTrustEntry RPC.
 	AdminServiceDeleteTrustEntryProcedure = "/vca.admin.v1.AdminService/DeleteTrustEntry"
+	// AdminServiceApproveTrustEntryProcedure is the fully-qualified name of the AdminService's
+	// ApproveTrustEntry RPC.
+	AdminServiceApproveTrustEntryProcedure = "/vca.admin.v1.AdminService/ApproveTrustEntry"
+	// AdminServiceRejectTrustEntryProcedure is the fully-qualified name of the AdminService's
+	// RejectTrustEntry RPC.
+	AdminServiceRejectTrustEntryProcedure = "/vca.admin.v1.AdminService/RejectTrustEntry"
 	// AdminServiceCreateAuthProviderProcedure is the fully-qualified name of the AdminService's
 	// CreateAuthProvider RPC.
 	AdminServiceCreateAuthProviderProcedure = "/vca.admin.v1.AdminService/CreateAuthProvider"
@@ -127,6 +133,12 @@ type AdminServiceClient interface {
 	ListTrustEntries(context.Context, *connect.Request[v1.ListTrustEntriesRequest]) (*connect.Response[v1.ListTrustEntriesResponse], error)
 	// DeleteTrustEntry removes one trust entry.
 	DeleteTrustEntry(context.Context, *connect.Request[v1.DeleteTrustEntryRequest]) (*connect.Response[v1.DeleteTrustEntryResponse], error)
+	// ApproveTrustEntry sets a pending trust entry to active, so relying
+	// parties trust the entity. The audit log records the decision.
+	ApproveTrustEntry(context.Context, *connect.Request[v1.ApproveTrustEntryRequest]) (*connect.Response[v1.ApproveTrustEntryResponse], error)
+	// RejectTrustEntry removes a pending trust entry. The audit log
+	// records the decision.
+	RejectTrustEntry(context.Context, *connect.Request[v1.RejectTrustEntryRequest]) (*connect.Response[v1.RejectTrustEntryResponse], error)
 	// CreateAuthProvider registers one OIDC provider (ADR-012 decision 5).
 	// The service fetches the discovery document to check the URL.
 	CreateAuthProvider(context.Context, *connect.Request[v1.CreateAuthProviderRequest]) (*connect.Response[v1.CreateAuthProviderResponse], error)
@@ -228,6 +240,18 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("DeleteTrustEntry")),
 			connect.WithClientOptions(opts...),
 		),
+		approveTrustEntry: connect.NewClient[v1.ApproveTrustEntryRequest, v1.ApproveTrustEntryResponse](
+			httpClient,
+			baseURL+AdminServiceApproveTrustEntryProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ApproveTrustEntry")),
+			connect.WithClientOptions(opts...),
+		),
+		rejectTrustEntry: connect.NewClient[v1.RejectTrustEntryRequest, v1.RejectTrustEntryResponse](
+			httpClient,
+			baseURL+AdminServiceRejectTrustEntryProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("RejectTrustEntry")),
+			connect.WithClientOptions(opts...),
+		),
 		createAuthProvider: connect.NewClient[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse](
 			httpClient,
 			baseURL+AdminServiceCreateAuthProviderProcedure,
@@ -320,6 +344,8 @@ type adminServiceClient struct {
 	getTrustEntry      *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
 	listTrustEntries   *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
 	deleteTrustEntry   *connect.Client[v1.DeleteTrustEntryRequest, v1.DeleteTrustEntryResponse]
+	approveTrustEntry  *connect.Client[v1.ApproveTrustEntryRequest, v1.ApproveTrustEntryResponse]
+	rejectTrustEntry   *connect.Client[v1.RejectTrustEntryRequest, v1.RejectTrustEntryResponse]
 	createAuthProvider *connect.Client[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse]
 	getAuthProvider    *connect.Client[v1.GetAuthProviderRequest, v1.GetAuthProviderResponse]
 	listAuthProviders  *connect.Client[v1.ListAuthProvidersRequest, v1.ListAuthProvidersResponse]
@@ -378,6 +404,16 @@ func (c *adminServiceClient) ListTrustEntries(ctx context.Context, req *connect.
 // DeleteTrustEntry calls vca.admin.v1.AdminService.DeleteTrustEntry.
 func (c *adminServiceClient) DeleteTrustEntry(ctx context.Context, req *connect.Request[v1.DeleteTrustEntryRequest]) (*connect.Response[v1.DeleteTrustEntryResponse], error) {
 	return c.deleteTrustEntry.CallUnary(ctx, req)
+}
+
+// ApproveTrustEntry calls vca.admin.v1.AdminService.ApproveTrustEntry.
+func (c *adminServiceClient) ApproveTrustEntry(ctx context.Context, req *connect.Request[v1.ApproveTrustEntryRequest]) (*connect.Response[v1.ApproveTrustEntryResponse], error) {
+	return c.approveTrustEntry.CallUnary(ctx, req)
+}
+
+// RejectTrustEntry calls vca.admin.v1.AdminService.RejectTrustEntry.
+func (c *adminServiceClient) RejectTrustEntry(ctx context.Context, req *connect.Request[v1.RejectTrustEntryRequest]) (*connect.Response[v1.RejectTrustEntryResponse], error) {
+	return c.rejectTrustEntry.CallUnary(ctx, req)
 }
 
 // CreateAuthProvider calls vca.admin.v1.AdminService.CreateAuthProvider.
@@ -467,6 +503,12 @@ type AdminServiceHandler interface {
 	ListTrustEntries(context.Context, *connect.Request[v1.ListTrustEntriesRequest]) (*connect.Response[v1.ListTrustEntriesResponse], error)
 	// DeleteTrustEntry removes one trust entry.
 	DeleteTrustEntry(context.Context, *connect.Request[v1.DeleteTrustEntryRequest]) (*connect.Response[v1.DeleteTrustEntryResponse], error)
+	// ApproveTrustEntry sets a pending trust entry to active, so relying
+	// parties trust the entity. The audit log records the decision.
+	ApproveTrustEntry(context.Context, *connect.Request[v1.ApproveTrustEntryRequest]) (*connect.Response[v1.ApproveTrustEntryResponse], error)
+	// RejectTrustEntry removes a pending trust entry. The audit log
+	// records the decision.
+	RejectTrustEntry(context.Context, *connect.Request[v1.RejectTrustEntryRequest]) (*connect.Response[v1.RejectTrustEntryResponse], error)
 	// CreateAuthProvider registers one OIDC provider (ADR-012 decision 5).
 	// The service fetches the discovery document to check the URL.
 	CreateAuthProvider(context.Context, *connect.Request[v1.CreateAuthProviderRequest]) (*connect.Response[v1.CreateAuthProviderResponse], error)
@@ -562,6 +604,18 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		AdminServiceDeleteTrustEntryProcedure,
 		svc.DeleteTrustEntry,
 		connect.WithSchema(adminServiceMethods.ByName("DeleteTrustEntry")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceApproveTrustEntryHandler := connect.NewUnaryHandler(
+		AdminServiceApproveTrustEntryProcedure,
+		svc.ApproveTrustEntry,
+		connect.WithSchema(adminServiceMethods.ByName("ApproveTrustEntry")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceRejectTrustEntryHandler := connect.NewUnaryHandler(
+		AdminServiceRejectTrustEntryProcedure,
+		svc.RejectTrustEntry,
+		connect.WithSchema(adminServiceMethods.ByName("RejectTrustEntry")),
 		connect.WithHandlerOptions(opts...),
 	)
 	adminServiceCreateAuthProviderHandler := connect.NewUnaryHandler(
@@ -662,6 +716,10 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceListTrustEntriesHandler.ServeHTTP(w, r)
 		case AdminServiceDeleteTrustEntryProcedure:
 			adminServiceDeleteTrustEntryHandler.ServeHTTP(w, r)
+		case AdminServiceApproveTrustEntryProcedure:
+			adminServiceApproveTrustEntryHandler.ServeHTTP(w, r)
+		case AdminServiceRejectTrustEntryProcedure:
+			adminServiceRejectTrustEntryHandler.ServeHTTP(w, r)
 		case AdminServiceCreateAuthProviderProcedure:
 			adminServiceCreateAuthProviderHandler.ServeHTTP(w, r)
 		case AdminServiceGetAuthProviderProcedure:
@@ -731,6 +789,14 @@ func (UnimplementedAdminServiceHandler) ListTrustEntries(context.Context, *conne
 
 func (UnimplementedAdminServiceHandler) DeleteTrustEntry(context.Context, *connect.Request[v1.DeleteTrustEntryRequest]) (*connect.Response[v1.DeleteTrustEntryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.DeleteTrustEntry is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ApproveTrustEntry(context.Context, *connect.Request[v1.ApproveTrustEntryRequest]) (*connect.Response[v1.ApproveTrustEntryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.ApproveTrustEntry is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) RejectTrustEntry(context.Context, *connect.Request[v1.RejectTrustEntryRequest]) (*connect.Response[v1.RejectTrustEntryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.RejectTrustEntry is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) CreateAuthProvider(context.Context, *connect.Request[v1.CreateAuthProviderRequest]) (*connect.Response[v1.CreateAuthProviderResponse], error) {

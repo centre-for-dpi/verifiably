@@ -16,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -91,14 +92,17 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request, s session) err
 // counts reads every number of the overview through the RPCs.
 func (p *Portal) counts(ctx context.Context, s session) (counts, error) {
 	var c counts
-	trust, err := p.opts.Client.ListTrustEntries(ctx, call(s, &adminv1.ListTrustEntriesRequest{}))
+	// The card counts the issuers a verifier accepts: active issuers.
+	trust, err := p.opts.Client.ListTrustEntries(ctx, call(s, &adminv1.ListTrustEntriesRequest{
+		Role: commonv1.Role_ROLE_ISSUER, Status: trustv1.Status_STATUS_ACTIVE,
+	}))
 	switch {
 	case err != nil && connect.CodeOf(err) == connect.CodeFailedPrecondition:
 	case err != nil:
 		return c, err
 	default:
 		c.hasRegistry = true
-		c.trust = len(trust.Msg.GetEntries())
+		c.trust = int(trust.Msg.GetPage().GetTotalSize())
 	}
 	providers, err := p.opts.Client.ListAuthProviders(ctx, call(s, &adminv1.ListAuthProvidersRequest{
 		Page: &commonv1.Pagination{PageSize: 500},

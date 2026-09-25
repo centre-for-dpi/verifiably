@@ -1,0 +1,9 @@
+{{/* tabs: a row of links between the views of one page group. Each
+     link loads its view as a full page, so the side navigation marks
+     the right page too. */}}
+{{define "tabs"}}<nav class="tabs" aria-label="{{.Label}}">
+<ul>
+{{range .Links}}<li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Text}}</a></li>
+{{end}}</ul>
+</nav>
+{{end}}

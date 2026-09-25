@@ -45,7 +45,7 @@ func TestDemoPageIsAccessible(t *testing.T) {
 		// The nine content components.
 		`<section class="hero">`, `<ul class="tiles">`, `<ol class="steps">`, `aria-current="step"`, `<section class="checklist"`,
 		`<div class="stats">`, `<span class="stat-value">`, `<ol class="stepper"`, `<fieldset class="choice"`, `<legend>`,
-		`<figure class="code"`, `<div class="empty">`,
+		`<figure class="code"`, `<div class="empty">`, `<nav class="tabs" aria-label="Demo views">`,
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("demo page missing %q", want)

@@ -15,6 +15,8 @@
 //	GET  /trust                  the trust entry list with the add form
 //	POST /trust                  create or replace one trust entry
 //	POST /trust/delete           remove one trust entry
+//	POST /trust/approve          set one pending trust entry active
+//	POST /trust/reject           remove one pending trust entry
 //	GET  /providers              the login provider table (board Admin-Providers)
 //	GET  /providers/new          the provider form with the kind presets
 //	POST /providers              save a new provider and push it to the live pairs
@@ -52,7 +54,6 @@ import (
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
-	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
@@ -165,9 +166,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+at+"/tenants", p.guarded(p.tenants))
 	mux.HandleFunc("POST "+at+"/tenants", p.posted(p.createTenant))
 	mux.HandleFunc("POST "+at+"/tenants/{id}/delete", p.posted(p.deleteTenant))
-	mux.HandleFunc("GET "+at+"/trust", p.guarded(p.trust))
-	mux.HandleFunc("POST "+at+"/trust", p.posted(p.addTrust))
-	mux.HandleFunc("POST "+at+"/trust/delete", p.posted(p.deleteTrust))
+	p.registerTrust(mux)
 	p.registerProviders(mux)
 	mux.HandleFunc("GET "+at+"/keys", p.guarded(p.keys))
 	mux.HandleFunc("POST "+at+"/keys", p.posted(p.createKey))
@@ -314,8 +313,10 @@ func getForm(action string, content ...template.HTML) template.HTML {
 var Notices = map[string]components.Toast{
 	"tenant-created":    {Level: "ok", Text: "The tenant is created."},
 	"tenant-deleted":    {Level: "warn", Text: "The tenant is removed with every record it owns."},
-	"trust-saved":       {Level: "ok", Text: "The trust entry is saved. The registry publishes it again."},
-	"trust-deleted":     {Level: "warn", Text: "The trust entry is removed from the lists."},
+	"trust-saved":       {Level: "ok", Text: msg.T("admin.trust.saved")},
+	"trust-deleted":     {Level: "warn", Text: msg.T("admin.trust.deleted")},
+	"trust-approved":    {Level: "ok", Text: msg.T("admin.trust.approved")},
+	"trust-rejected":    {Level: "warn", Text: msg.T("admin.trust.rejected")},
 	"provider-added":    {Level: "ok", Text: "The login provider is ready. Its roles can sign in with it."},
 	"provider-saved":    {Level: "ok", Text: "The login provider is saved."},
 	"provider-enabled":  {Level: "ok", Text: "The login provider is on. Its roles can sign in with it."},
@@ -452,99 +453,6 @@ func (p *Portal) deleteTenant(w http.ResponseWriter, r *http.Request, s session)
 		return err
 	}
 	p.redirect(w, r, "/tenants", "tenant-deleted")
-	return nil
-}
-
-// trust renders the trust entry list with the add form.
-func (p *Portal) trust(w http.ResponseWriter, r *http.Request, s session) error {
-	b := p.blocks()
-	role := service.RoleValue(r.URL.Query().Get("role"))
-	res, err := p.opts.Client.ListTrustEntries(r.Context(), call(s, &adminv1.ListTrustEntriesRequest{Role: role}))
-	var table template.HTML
-	switch {
-	case err != nil && connect.CodeOf(err) == connect.CodeFailedPrecondition:
-		table = b.add("card", components.Card{
-			ID: "no-registry", Title: "No trust registry",
-			Text: "Set VCA_ADMIN_TRUST_URL to the trust registry service. The portal edits the trust list through that service.",
-		})
-	case err != nil:
-		return err
-	default:
-		rows := make([]components.Row, 0, len(res.Msg.GetEntries()))
-		for _, e := range res.Msg.GetEntries() {
-			rows = append(rows, components.Row{
-				{Text: e.GetDisplayName()},
-				{Text: identifierText(e.GetIdentifier())},
-				{Text: service.RoleName(e.GetRole())},
-				{HTML: b.add("badge", components.Badge{Status: statusBadge(e.GetStatus()), Text: statusText(e.GetStatus())})},
-				{HTML: form(p.opts.Prefix+"/trust/delete", s.CSRF,
-					template.HTML(`<input type="hidden" name="identifier" value="`+template.HTMLEscapeString(identifierText(e.GetIdentifier()))+`">`), //nolint:gosec // the value is escaped
-					b.add("button", components.Button{Text: "Remove", Type: "submit", Variant: "danger"}))},
-			})
-		}
-		table = b.add("table", components.Table{
-			ID: "entries", Caption: fmt.Sprintf("Trust entries, %d found", len(rows)),
-			Columns: []string{"Entity", "Identifier", "Role", "Status", "Action"}, Rows: rows,
-			Empty: "The trust list is empty. Add the first entity below.",
-		})
-	}
-	add := b.add("card", components.Card{
-		ID: "add-entry", Title: "New trust entry",
-		Text: "The registry publishes every enabled method again after the change.",
-		Body: form(p.opts.Prefix+"/trust", s.CSRF,
-			b.add("field", components.Field{ID: "identifier", Label: "DID or x509 subject", Required: true,
-				Hint: "A value that starts with did: is a DID. Any other value is an x509 subject."}),
-			b.add("field", components.Field{ID: "display_name", Label: "Display name", Required: true}),
-			b.add("field", components.Field{ID: "role", Label: "Role", Type: "select", Options: []components.Option{
-				{Value: "issuer", Text: "Issuer", Selected: true},
-				{Value: "verifier", Text: "Verifier"},
-				{Value: "holder", Text: "Holder"},
-			}}),
-			b.add("field", components.Field{ID: "status", Label: "Status", Type: "select", Options: []components.Option{
-				{Value: "active", Text: "Active", Selected: true},
-				{Value: "suspended", Text: "Suspended"},
-				{Value: "revoked", Text: "Revoked"},
-			}}),
-			b.add("field", components.Field{ID: "service_endpoint", Label: "Service endpoint"}),
-			b.add("button", components.Button{Text: "Save entry", Type: "submit", Variant: "primary"}),
-		),
-	})
-	if b.err != nil {
-		return b.err
-	}
-	return p.render(w, r, s, components.Page{
-		Title:       "Trust list",
-		Description: "Edit the entities the deployment trusts. The trust registry signs and publishes the lists.",
-		Content:     components.Join(table, add),
-		Toasts:      notice(r.URL.Query().Get("notice")),
-	})
-}
-
-// addTrust creates or replaces one trust entry.
-func (p *Portal) addTrust(w http.ResponseWriter, r *http.Request, s session) error {
-	entry := &trustv1.TrustEntry{
-		Identifier:      identifierOf(r.PostFormValue("identifier")),
-		DisplayName:     r.PostFormValue("display_name"),
-		Role:            service.RoleValue(r.PostFormValue("role")),
-		Status:          statusValue(r.PostFormValue("status")),
-		ServiceEndpoint: r.PostFormValue("service_endpoint"),
-	}
-	if _, err := p.opts.Client.UpsertTrustEntry(r.Context(), call(s, &adminv1.UpsertTrustEntryRequest{Entry: entry})); err != nil {
-		return err
-	}
-	p.redirect(w, r, "/trust", "trust-saved")
-	return nil
-}
-
-// deleteTrust removes one trust entry.
-func (p *Portal) deleteTrust(w http.ResponseWriter, r *http.Request, s session) error {
-	_, err := p.opts.Client.DeleteTrustEntry(r.Context(), call(s, &adminv1.DeleteTrustEntryRequest{
-		Identifier: identifierOf(r.PostFormValue("identifier")),
-	}))
-	if err != nil {
-		return err
-	}
-	p.redirect(w, r, "/trust", "trust-deleted")
 	return nil
 }
 
@@ -802,60 +710,3 @@ func queryEscape(value string) string { return url.QueryEscape(value) }
 
 // timestamp returns the protobuf time of t.
 func timestamp(t time.Time) *timestamppb.Timestamp { return timestamppb.New(t) }
-
-// identifierOf returns the trust identifier of a form value. A value
-// that starts with did: is a DID.
-func identifierOf(value string) *trustv1.TrustEntry_Identifier {
-	value = strings.TrimSpace(value)
-	if strings.HasPrefix(value, "did:") {
-		return &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_Did{Did: value}}
-	}
-	return &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_X509Subject{X509Subject: value}}
-}
-
-// identifierText returns the reader facing identifier of an entry.
-func identifierText(id *trustv1.TrustEntry_Identifier) string {
-	if id.GetDid() != "" {
-		return id.GetDid()
-	}
-	return id.GetX509Subject()
-}
-
-// statusValue returns the trust status of a form value.
-func statusValue(value string) trustv1.Status {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "active":
-		return trustv1.Status_STATUS_ACTIVE
-	case "suspended":
-		return trustv1.Status_STATUS_SUSPENDED
-	case "revoked":
-		return trustv1.Status_STATUS_REVOKED
-	}
-	return trustv1.Status_STATUS_UNSPECIFIED
-}
-
-// statusText returns the reader facing words of a trust status.
-func statusText(s trustv1.Status) string {
-	switch s {
-	case trustv1.Status_STATUS_ACTIVE:
-		return "Active"
-	case trustv1.Status_STATUS_SUSPENDED:
-		return "Suspended"
-	case trustv1.Status_STATUS_REVOKED:
-		return "Revoked"
-	}
-	return "Unknown"
-}
-
-// statusBadge returns the badge status of a trust status.
-func statusBadge(s trustv1.Status) string {
-	switch s {
-	case trustv1.Status_STATUS_ACTIVE:
-		return "ok"
-	case trustv1.Status_STATUS_SUSPENDED:
-		return "warn"
-	case trustv1.Status_STATUS_REVOKED:
-		return "bad"
-	}
-	return "info"
-}

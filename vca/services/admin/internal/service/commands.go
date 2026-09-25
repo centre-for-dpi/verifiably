@@ -54,7 +54,7 @@ var commands = []command{
 		{name: "x509-subject", text: "The x509 subject of the entity."},
 		{name: "name", text: "The display name of the entity.", mandatory: true},
 		{name: "role", text: "The role: issuer, holder, or verifier.", mandatory: true},
-		{name: "status", text: "The trust status: active, suspended, or revoked.", value: "active"},
+		{name: "status", text: "The trust status: active, suspended, revoked, or pending.", value: "active"},
 		{name: "credential-type", text: "One credential type. Repeat the flag for more types."},
 		{name: "service-endpoint", text: "The base URL of the entity deployment."},
 	}},
@@ -64,6 +64,7 @@ var commands = []command{
 	}},
 	{path: "admin trust list", rpc: "ListTrustEntries", flags: []flag{
 		{name: "role", text: "The role filter."},
+		{name: "status", text: "The status filter, for example pending."},
 		{name: "page-size", text: "The number of entries in one page.", value: "50"},
 		{name: "page-token", text: "The token of the next page."},
 	}},
@@ -71,6 +72,18 @@ var commands = []command{
 		{name: "did", text: "The DID of the entity."},
 		{name: "x509-subject", text: "The x509 subject of the entity."},
 	}},
+	{path: "admin trust approve", rpc: "ApproveTrustEntry",
+		long: "Sets a pending trust entry to active. The registry then publishes it. The audit log records the decision.",
+		flags: []flag{
+			{name: "did", text: "The DID of the entity."},
+			{name: "x509-subject", text: "The x509 subject of the entity."},
+		}},
+	{path: "admin trust reject", rpc: "RejectTrustEntry",
+		long: "Removes a pending trust entry. The audit log records the decision.",
+		flags: []flag{
+			{name: "did", text: "The DID of the entity."},
+			{name: "x509-subject", text: "The x509 subject of the entity."},
+		}},
 	{path: "admin onboard", rpc: "CreateAuthProvider",
 		long: "Reads the provider metadata and registers a client. The command uses dynamic client registration when the provider supports it.",
 		flags: []flag{

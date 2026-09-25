@@ -17,6 +17,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
+	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/rolenav"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
@@ -332,5 +333,20 @@ func TestStackSwitcherListsAdminPairs(t *testing.T) {
 	alone.signIn(t)
 	if page := alone.page(t, "/admin/"); strings.Contains(page, `class="stack-nav"`) {
 		t.Error("a deployment without peers draws a stack switcher")
+	}
+}
+
+// TestOverviewCountsOnlyTrustedIssuers keeps a pending issuer and a
+// verifier out of the trusted issuer count.
+func TestOverviewCountsOnlyTrustedIssuers(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	h.seedTrust(didOf("did:web:active.example"), "Active issuer", trustv1.Status_STATUS_ACTIVE)
+	h.seedTrust(didOf("did:web:pending.example"), "Pending issuer", trustv1.Status_STATUS_PENDING)
+	h.trust.entries["did:web:verifier.example"] = &trustv1.TrustEntry{
+		Identifier: didOf("did:web:verifier.example"), Role: commonv1.Role_ROLE_VERIFIER, Status: trustv1.Status_STATUS_ACTIVE,
+	}
+	if page := h.page(t, "/admin/"); !strings.Contains(page, `<span class="stat-value">1 trusted issuer</span>`) {
+		t.Error("the trust card counts more than the active issuers")
 	}
 }

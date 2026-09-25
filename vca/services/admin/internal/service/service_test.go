@@ -72,11 +72,15 @@ func (f *fakeTrust) GetEntry(_ context.Context, req *connect.Request[trustv1.Get
 	return connect.NewResponse(&trustv1.GetEntryResponse{Entry: entry}), nil
 }
 
-func (f *fakeTrust) ListEntries(_ context.Context, _ *connect.Request[trustv1.ListEntriesRequest]) (*connect.Response[trustv1.ListEntriesResponse], error) {
-	res := &trustv1.ListEntriesResponse{Page: &commonv1.PageResult{TotalSize: int64(len(f.entries))}}
+func (f *fakeTrust) ListEntries(_ context.Context, req *connect.Request[trustv1.ListEntriesRequest]) (*connect.Response[trustv1.ListEntriesResponse], error) {
+	res := &trustv1.ListEntriesResponse{Page: &commonv1.PageResult{}}
 	for _, e := range f.entries {
+		if st := req.Msg.GetStatus(); st != trustv1.Status_STATUS_UNSPECIFIED && e.GetStatus() != st {
+			continue
+		}
 		res.Entries = append(res.Entries, e)
 	}
+	res.Page.TotalSize = int64(len(res.Entries))
 	return connect.NewResponse(res), nil
 }
 
@@ -250,6 +254,12 @@ func TestEveryRPCNeedsASuperAdmin(t *testing.T) {
 	if _, err := h.svc.UpsertTrustEntry(ctx, connect.NewRequest(&adminv1.UpsertTrustEntryRequest{})); err == nil {
 		t.Error("UpsertTrustEntry accepted an anonymous caller")
 	}
+	if _, err := h.svc.ApproveTrustEntry(ctx, connect.NewRequest(&adminv1.ApproveTrustEntryRequest{})); err == nil {
+		t.Error("ApproveTrustEntry accepted an anonymous caller")
+	}
+	if _, err := h.svc.RejectTrustEntry(ctx, connect.NewRequest(&adminv1.RejectTrustEntryRequest{})); err == nil {
+		t.Error("RejectTrustEntry accepted an anonymous caller")
+	}
 	if _, err := h.svc.ListAuthProviders(ctx, connect.NewRequest(&adminv1.ListAuthProvidersRequest{})); err == nil {
 		t.Error("ListAuthProviders accepted an anonymous caller")
 	}
@@ -411,6 +421,18 @@ func TestTrustRPCsNeedARegistry(t *testing.T) {
 			req := connect.NewRequest(&adminv1.DeleteTrustEntryRequest{})
 			req.Header().Set("Authorization", header.Get("Authorization"))
 			_, err := svc.DeleteTrustEntry(ctx, req)
+			return err
+		},
+		"approve": func() error {
+			req := connect.NewRequest(&adminv1.ApproveTrustEntryRequest{})
+			req.Header().Set("Authorization", header.Get("Authorization"))
+			_, err := svc.ApproveTrustEntry(ctx, req)
+			return err
+		},
+		"reject": func() error {
+			req := connect.NewRequest(&adminv1.RejectTrustEntryRequest{})
+			req.Header().Set("Authorization", header.Get("Authorization"))
+			_, err := svc.RejectTrustEntry(ctx, req)
 			return err
 		},
 	}
@@ -885,5 +907,93 @@ func TestCreateAuthProviderPushesToTheLivePairs(t *testing.T) {
 	}
 	if list := issuer.registry.List(); len(list) != 1 {
 		t.Fatalf("the key call reached issuer-waltid: %+v", list)
+	}
+}
+
+// pendingEntry is an issuer that asked for trust and waits for review.
+func pendingEntry(did string) *trustv1.TrustEntry {
+	return &trustv1.TrustEntry{
+		Identifier:  &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_Did{Did: did}},
+		DisplayName: "Pending issuer", Role: commonv1.Role_ROLE_ISSUER, Status: trustv1.Status_STATUS_PENDING,
+	}
+}
+
+// auditActions returns the actions and outcomes of the audit log.
+func auditActions(t *testing.T, h *harness, action string) []audit.Record {
+	t.Helper()
+	page, err := h.log.Query(context.Background(), audit.Filter{Action: action})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	return page.Records
+}
+
+func TestApproveTrustEntrySetsActiveAndWritesAudit(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	e := pendingEntry("did:web:pending.example")
+	h.trust.entries[key(e.GetIdentifier())] = e
+	res, err := h.svc.ApproveTrustEntry(ctx, request(h, &adminv1.ApproveTrustEntryRequest{Identifier: e.GetIdentifier()}))
+	if err != nil {
+		t.Fatalf("ApproveTrustEntry: %v", err)
+	}
+	if res.Msg.GetEntry().GetStatus() != trustv1.Status_STATUS_ACTIVE ||
+		h.trust.entries["did:web:pending.example"].GetStatus() != trustv1.Status_STATUS_ACTIVE {
+		t.Fatalf("the entry is %v, want active", res.Msg.GetEntry().GetStatus())
+	}
+	recs := auditActions(t, h, "admin.ApproveTrustEntry")
+	if len(recs) != 1 || !recs[0].OK || recs[0].Target != "did:web:pending.example" {
+		t.Fatalf("audit = %+v", recs)
+	}
+	// An active entry is not pending, so a second approval fails and
+	// the audit log records the refusal.
+	if _, err := h.svc.ApproveTrustEntry(ctx, request(h, &adminv1.ApproveTrustEntryRequest{Identifier: e.GetIdentifier()})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("a second approval = %v, want failed precondition", err)
+	}
+	if recs := auditActions(t, h, "admin.ApproveTrustEntry"); len(recs) != 2 {
+		t.Fatalf("audit after the refusal = %d records", len(recs))
+	}
+}
+
+func TestRejectTrustEntryRemovesAndWritesAudit(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	e := pendingEntry("did:web:reject.example")
+	h.trust.entries[key(e.GetIdentifier())] = e
+	if _, err := h.svc.RejectTrustEntry(ctx, request(h, &adminv1.RejectTrustEntryRequest{Identifier: e.GetIdentifier()})); err != nil {
+		t.Fatalf("RejectTrustEntry: %v", err)
+	}
+	if _, ok := h.trust.entries["did:web:reject.example"]; ok {
+		t.Fatal("the rejected entry is still in the registry")
+	}
+	recs := auditActions(t, h, "admin.RejectTrustEntry")
+	if len(recs) != 1 || !recs[0].OK || recs[0].Target != "did:web:reject.example" {
+		t.Fatalf("audit = %+v", recs)
+	}
+	// An unknown entry is not found. An active entry cannot be rejected.
+	if _, err := h.svc.RejectTrustEntry(ctx, request(h, &adminv1.RejectTrustEntryRequest{Identifier: e.GetIdentifier()})); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("an unknown entry = %v, want not found", err)
+	}
+	active := pendingEntry("did:web:active.example")
+	active.Status = trustv1.Status_STATUS_ACTIVE
+	h.trust.entries[key(active.GetIdentifier())] = active
+	if _, err := h.svc.RejectTrustEntry(ctx, request(h, &adminv1.RejectTrustEntryRequest{Identifier: active.GetIdentifier()})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("an active entry = %v, want failed precondition", err)
+	}
+	if _, ok := h.trust.entries["did:web:active.example"]; !ok {
+		t.Fatal("the refused rejection removed an active entry")
+	}
+}
+
+func TestListTrustEntriesForwardsTheStatusFilter(t *testing.T) {
+	h := newHarness(t)
+	e := pendingEntry("did:web:pending.example")
+	h.trust.entries[key(e.GetIdentifier())] = e
+	active := pendingEntry("did:web:active.example")
+	active.Status = trustv1.Status_STATUS_ACTIVE
+	h.trust.entries[key(active.GetIdentifier())] = active
+	res, err := h.svc.ListTrustEntries(context.Background(), request(h, &adminv1.ListTrustEntriesRequest{Status: trustv1.Status_STATUS_PENDING}))
+	if err != nil || len(res.Msg.GetEntries()) != 1 || res.Msg.GetEntries()[0].GetStatus() != trustv1.Status_STATUS_PENDING {
+		t.Fatalf("ListTrustEntries = %+v, %v", res, err)
 	}
 }

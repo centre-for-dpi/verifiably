@@ -14,7 +14,7 @@ An entry has these fields.
 | `did` or `x509_subject` | The entity identifier. The caller sets exactly one. ETSI imports set the x509 subject. |
 | `display_name` | The name shown to people. |
 | `role` | `issuer`, `holder`, or `verifier`. |
-| `status` | `active`, `suspended`, or `revoked`. |
+| `status` | `active`, `suspended`, `revoked`, or `pending`. A pending entry waits for review. The lists never carry it. |
 | `valid_from`, `valid_until` | The validity window. Empty means open. |
 | `credential_types` | The VCDM types or SD-JWT VC `vct` values the entity can use. Empty means every type. |
 | `service_endpoint` | The base URL of the entity deployment. |
@@ -71,6 +71,14 @@ publisher and the verifier in `dedi.go` use the exported types only.
 The manifest declares the signing key as a JWK and the JWKS URL. It has
 one row per directory file. A row holds the URL, the SHA-256 digest, and
 the entry count of the file.
+
+### Pending entries
+
+The service publishes every entry except the pending ones. An admin
+approves a pending entry, which sets it to `active`, or rejects it, which
+removes it. The lookup reads the published lists, so a pending entry
+gives `UNKNOWN`. The entry evaluation also answers `UNTRUSTED` for a
+pending entry, so no path trusts it.
 
 ## Keys
 

@@ -58,6 +58,7 @@ func samples(t *testing.T, k *Kit) map[string]any {
 			Items: []Check{{Text: "Register the first admin", Detail: "Done in the admin realm", Done: true}, {Text: "Turn off self registration"}}},
 		"stat":    Stat{Label: "Trust list", Value: "12 trusted issuers", Text: "Issuers a verifier accepts.", Href: "/trust", LinkText: "Open trust list"},
 		"stepper": Stepper{Label: "Issue progress", Steps: []string{"Source", "Claims", "Delivery"}, Current: 2},
+		"tabs":    Tabs{Label: "Views", Links: []Link{{Href: "/a", Text: "A", Current: true}, {Href: "/b", Text: "B"}}},
 		"choice": Choice{ID: "source", Legend: "Source", Hint: "Pick one", Options: []ChoiceOption{
 			{Value: "single", Title: "Single credential", Text: "Type the claims.", Checked: true},
 			{Value: "bulk", Title: "Bulk", Text: "One credential per record.", Meta: "3 sources", Disabled: true}}},
@@ -802,7 +803,7 @@ func TestWriteErrors(t *testing.T) {
 	if got := Join("<a>", "<b>"); got != "<a>\n<b>\n" {
 		t.Errorf("Join = %q", got)
 	}
-	if len(Names) != 26 {
+	if len(Names) != 27 {
 		t.Errorf("Names = %v", Names)
 	}
 	for _, n := range Names {
@@ -1119,5 +1120,34 @@ func TestSignInRendersProvidersAndRegister(t *testing.T) {
 	}
 	if err := k.RenderPage(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), Page{Title: "x", SignIn: &SignIn{}}); err == nil {
 		t.Error("a page with a bad sign in block should fail")
+	}
+}
+
+func TestTabsMarkTheCurrentView(t *testing.T) {
+	k := newKit(t)
+	doc := string(mustHTML(t, k, "tabs", Tabs{Label: "Trust views", Links: []Link{
+		{Href: "/admin/trust", Text: "Trust list", Current: true},
+		{Href: "/admin/trust/registries", Text: "Registries"},
+	}}))
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`<nav class="tabs" aria-label="Trust views">`,
+		`<a href="/admin/trust" aria-current="page">Trust list</a>`,
+		`<a href="/admin/trust/registries">Registries</a>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("tabs missing %q\n%s", want, doc)
+		}
+	}
+	for name, data := range map[string]any{
+		"no label":  Tabs{Links: []Link{{Href: "/a", Text: "A"}, {Href: "/b", Text: "B"}}},
+		"one link":  Tabs{Label: "Views", Links: []Link{{Href: "/a", Text: "A"}}},
+		"no text":   Tabs{Label: "Views", Links: []Link{{Href: "/a", Text: "A"}, {Href: "/b"}}},
+		"no href":   Tabs{Label: "Views", Links: []Link{{Href: "/a", Text: "A"}, {Text: "B"}}},
+		"two marks": Tabs{Label: "Views", Links: []Link{{Href: "/a", Text: "A", Current: true}, {Href: "/b", Text: "B", Current: true}}},
+	} {
+		if _, err := k.HTML("tabs", data); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
 	}
 }

@@ -212,3 +212,27 @@ func TestIDFromProto(t *testing.T) {
 		}
 	}
 }
+
+// TestPendingIsNotTrusted keeps a pending entry out of trust: it is a
+// valid entry, the lookup answers untrusted, and Published drops it.
+func TestPendingIsNotTrusted(t *testing.T) {
+	pending := Entry{DID: "did:web:pending.example", Role: RoleIssuer, Status: StatusPending}
+	if err := pending.Validate(); err != nil {
+		t.Fatalf("a pending entry is not valid: %v", err)
+	}
+	r := Evaluate([]Entry{pending}, pending.ID(), RoleIssuer, "", t0)
+	if r.Outcome != Untrusted || !strings.Contains(r.Reason, "review") {
+		t.Fatalf("got %s %q, want untrusted with a review reason", r.Outcome, r.Reason)
+	}
+	got, err := StatusFromProto(trustv1.Status_STATUS_PENDING)
+	if err != nil || got != StatusPending {
+		t.Fatalf("StatusFromProto = %q, %v", got, err)
+	}
+	if StatusToProto(StatusPending) != trustv1.Status_STATUS_PENDING {
+		t.Fatal("StatusToProto misses pending")
+	}
+	out := Published([]Entry{issuer(), pending})
+	if len(out) != 1 || out[0].Status != StatusActive {
+		t.Fatalf("Published = %v, want only the active entry", out)
+	}
+}

@@ -96,6 +96,11 @@ const (
 	Status_STATUS_SUSPENDED Status = 2
 	// Relying parties no longer trust the entity.
 	Status_STATUS_REVOKED Status = 3
+	// The entity asked for trust and waits for review. Relying parties
+	// do not trust it. The published lists do not carry it. An admin
+	// approves it, which sets STATUS_ACTIVE, or rejects it, which removes
+	// the entry.
+	Status_STATUS_PENDING Status = 4
 )
 
 // Enum value maps for Status.
@@ -105,12 +110,14 @@ var (
 		1: "STATUS_ACTIVE",
 		2: "STATUS_SUSPENDED",
 		3: "STATUS_REVOKED",
+		4: "STATUS_PENDING",
 	}
 	Status_value = map[string]int32{
 		"STATUS_UNSPECIFIED": 0,
 		"STATUS_ACTIVE":      1,
 		"STATUS_SUSPENDED":   2,
 		"STATUS_REVOKED":     3,
+		"STATUS_PENDING":     4,
 	}
 )
 
@@ -1421,12 +1428,13 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\x06Method\x12\x16\n" +
 	"\x12METHOD_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vMETHOD_ETSI\x10\x01\x12\x0f\n" +
-	"\vMETHOD_DEDI\x10\x02*]\n" +
+	"\vMETHOD_DEDI\x10\x02*q\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSTATUS_ACTIVE\x10\x01\x12\x14\n" +
 	"\x10STATUS_SUSPENDED\x10\x02\x12\x12\n" +
-	"\x0eSTATUS_REVOKED\x10\x032\xc2\x04\n" +
+	"\x0eSTATUS_REVOKED\x10\x03\x12\x12\n" +
+	"\x0eSTATUS_PENDING\x10\x042\xc2\x04\n" +
 	"\fTrustService\x12R\n" +
 	"\vUpsertEntry\x12 .vca.trust.v1.UpsertEntryRequest\x1a!.vca.trust.v1.UpsertEntryResponse\x12I\n" +
 	"\bGetEntry\x12\x1d.vca.trust.v1.GetEntryRequest\x1a\x1e.vca.trust.v1.GetEntryResponse\x12R\n" +

@@ -28,7 +28,7 @@ import (
 // Names lists every template a Kit can render.
 var Names = []string{"layout", "page", "card", "field", "table", "badge", "toast", "dialog", "qr", "json", "button",
 	"hero", "tiles", "steps", "checklist", "stat", "stepper", "choice", "code", "empty",
-	"block", "figure", "stacks", "cta", "note", "signin"}
+	"block", "figure", "stacks", "cta", "note", "signin", "tabs"}
 
 // safeAttrNames is the whitelist for the safeAttr template function.
 // Only these attribute names can be added through an Attrs map.
@@ -864,6 +864,36 @@ func (s Stat) normalize() (any, error) {
 	}
 	fill(&s.LinkText, "Open")
 	return s, nil
+}
+
+// Tabs is a row of links between the views of one page group, for
+// example the trust list and the registries. The current view carries
+// aria-current="page".
+type Tabs struct {
+	Label string // required, aria-label of the nav landmark
+	Links []Link // two or more, each with Href and Text; at most one current
+}
+
+func (t Tabs) normalize() (any, error) {
+	if t.Label == "" {
+		return nil, errors.New("tabs: label is required")
+	}
+	if len(t.Links) < 2 {
+		return nil, errors.New("tabs: two or more links are required")
+	}
+	current := 0
+	for i, l := range t.Links {
+		if l.Href == "" || l.Text == "" {
+			return nil, fmt.Errorf("tabs: link %d needs href and text", i)
+		}
+		if l.Current {
+			current++
+		}
+	}
+	if current > 1 {
+		return nil, errors.New("tabs: at most one link is current")
+	}
+	return t, nil
 }
 
 // Stepper shows where a multi step form stands. Current counts from 1.

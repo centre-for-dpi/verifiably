@@ -40,6 +40,8 @@ func TestAdminCommandsComeFromTheProto(t *testing.T) {
 		"UpsertTrustEntry":   "trust add",
 		"ListTrustEntries":   "trust list",
 		"DeleteTrustEntry":   "trust remove",
+		"ApproveTrustEntry":  "trust approve",
+		"RejectTrustEntry":   "trust reject",
 		"CreateAuthProvider": "onboard",
 		"OnboardProvider":    "onboard-provider",
 		"DeleteAuthProvider": "provider remove",

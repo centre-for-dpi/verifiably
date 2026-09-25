@@ -44,6 +44,10 @@ const MaxPageSize = 500
 // ErrNoTrustRegistry reports a deployment without a trust registry URL.
 var ErrNoTrustRegistry = errors.New("service: the trust registry URL is not configured")
 
+// ErrNotPending reports an approval or a rejection of a trust entry that
+// does not wait for review.
+var ErrNotPending = errors.New("service: the trust entry is not pending review")
+
 // Deps are the collaborators of the service.
 type Deps struct {
 	// Cfg is the service configuration.
@@ -140,7 +144,7 @@ func fail(err error) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, records.ErrInvalid):
 		return connect.NewError(connect.CodeInvalidArgument, err)
-	case errors.Is(err, records.ErrBootstrapUsed), errors.Is(err, ErrNoTrustRegistry):
+	case errors.Is(err, records.ErrBootstrapUsed), errors.Is(err, ErrNoTrustRegistry), errors.Is(err, ErrNotPending):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, records.ErrBootstrapToken), errors.Is(err, login.ErrNotAdmin):
 		return connect.NewError(connect.CodePermissionDenied, err)
@@ -277,7 +281,7 @@ func (s *Service) ListTrustEntries(ctx context.Context, req *connect.Request[adm
 		return nil, fail(s.write(ctx, id.Actor, "admin.ListTrustEntries", "", err))
 	}
 	res, err := client.ListEntries(ctx, connect.NewRequest(&trustv1.ListEntriesRequest{
-		Page: req.Msg.GetPage(), Role: req.Msg.GetRole(),
+		Page: req.Msg.GetPage(), Role: req.Msg.GetRole(), Status: req.Msg.GetStatus(),
 	}))
 	if serr := s.write(ctx, id.Actor, "admin.ListTrustEntries", "", err); serr != nil {
 		return nil, fail(serr)
@@ -285,6 +289,67 @@ func (s *Service) ListTrustEntries(ctx context.Context, req *connect.Request[adm
 	return connect.NewResponse(&adminv1.ListTrustEntriesResponse{
 		Entries: res.Msg.GetEntries(), Page: res.Msg.GetPage(),
 	}), nil
+}
+
+// pending reads one trust entry and checks that it waits for review.
+func pending(ctx context.Context, client trustv1connect.TrustServiceClient, id *trustv1.TrustEntry_Identifier) (*trustv1.TrustEntry, error) {
+	res, err := client.GetEntry(ctx, connect.NewRequest(&trustv1.GetEntryRequest{Identifier: id}))
+	if err != nil {
+		return nil, err
+	}
+	if res.Msg.GetEntry().GetStatus() != trustv1.Status_STATUS_PENDING {
+		return nil, ErrNotPending
+	}
+	return res.Msg.GetEntry(), nil
+}
+
+// ApproveTrustEntry implements AdminServiceHandler. It sets a pending
+// entry to active, so the registry publishes it (ADR-011 decision 1).
+// The audit log records the decision, also when it fails.
+func (s *Service) ApproveTrustEntry(ctx context.Context, req *connect.Request[adminv1.ApproveTrustEntryRequest]) (*connect.Response[adminv1.ApproveTrustEntryResponse], error) {
+	id, err := s.guard(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	target := identifierText(req.Msg.GetIdentifier())
+	client, err := s.trust()
+	if err != nil {
+		return nil, fail(s.write(ctx, id.Actor, "admin.ApproveTrustEntry", target, err))
+	}
+	var stored *trustv1.TrustEntry
+	entry, err := pending(ctx, client, req.Msg.GetIdentifier())
+	if err == nil {
+		entry.Status = trustv1.Status_STATUS_ACTIVE
+		var res *connect.Response[trustv1.UpsertEntryResponse]
+		if res, err = client.UpsertEntry(ctx, connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: entry})); err == nil {
+			stored = res.Msg.GetEntry()
+		}
+	}
+	if serr := s.write(ctx, id.Actor, "admin.ApproveTrustEntry", target, err); serr != nil {
+		return nil, fail(serr)
+	}
+	return connect.NewResponse(&adminv1.ApproveTrustEntryResponse{Entry: stored}), nil
+}
+
+// RejectTrustEntry implements AdminServiceHandler. It removes a pending
+// entry. The audit log records the decision, also when it fails.
+func (s *Service) RejectTrustEntry(ctx context.Context, req *connect.Request[adminv1.RejectTrustEntryRequest]) (*connect.Response[adminv1.RejectTrustEntryResponse], error) {
+	id, err := s.guard(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	target := identifierText(req.Msg.GetIdentifier())
+	client, err := s.trust()
+	if err != nil {
+		return nil, fail(s.write(ctx, id.Actor, "admin.RejectTrustEntry", target, err))
+	}
+	if _, err = pending(ctx, client, req.Msg.GetIdentifier()); err == nil {
+		_, err = client.DeleteEntry(ctx, connect.NewRequest(&trustv1.DeleteEntryRequest{Identifier: req.Msg.GetIdentifier()}))
+	}
+	if serr := s.write(ctx, id.Actor, "admin.RejectTrustEntry", target, err); serr != nil {
+		return nil, fail(serr)
+	}
+	return connect.NewResponse(&adminv1.RejectTrustEntryResponse{}), nil
 }
 
 // DeleteTrustEntry implements AdminServiceHandler.

@@ -54,6 +54,11 @@ enum Status {
   STATUS_SUSPENDED = 2;
   // Relying parties no longer trust the entity.
   STATUS_REVOKED = 3;
+  // The entity asked for trust and waits for review. Relying parties
+  // do not trust it. The published lists do not carry it. An admin
+  // approves it, which sets STATUS_ACTIVE, or rejects it, which removes
+  // the entry.
+  STATUS_PENDING = 4;
 }
 
 // TrustEntry is the canonical trust record of one entity (ADR-011 decision 1).

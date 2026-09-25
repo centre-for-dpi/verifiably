@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -59,14 +60,21 @@ func (f *fakeTrust) GetEntry(_ context.Context, req *connect.Request[trustv1.Get
 	return connect.NewResponse(&trustv1.GetEntryResponse{Entry: entry}), nil
 }
 
-func (f *fakeTrust) ListEntries(_ context.Context, _ *connect.Request[trustv1.ListEntriesRequest]) (*connect.Response[trustv1.ListEntriesResponse], error) {
+func (f *fakeTrust) ListEntries(_ context.Context, req *connect.Request[trustv1.ListEntriesRequest]) (*connect.Response[trustv1.ListEntriesResponse], error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
-	res := &trustv1.ListEntriesResponse{Page: &commonv1.PageResult{TotalSize: int64(len(f.entries))}}
+	res := &trustv1.ListEntriesResponse{Page: &commonv1.PageResult{}}
 	for _, e := range f.entries {
+		if st := req.Msg.GetStatus(); st != trustv1.Status_STATUS_UNSPECIFIED && e.GetStatus() != st {
+			continue
+		}
+		if r := req.Msg.GetRole(); r != commonv1.Role_ROLE_UNSPECIFIED && e.GetRole() != r {
+			continue
+		}
 		res.Entries = append(res.Entries, e)
 	}
+	res.Page.TotalSize = int64(len(res.Entries))
 	return connect.NewResponse(res), nil
 }
 
@@ -626,7 +634,7 @@ func TestTrustPageShowsEveryStatusAndRole(t *testing.T) {
 	cases := []struct {
 		id, role, status, want string
 	}{
-		{"did:web:one.example", "issuer", "active", "Active"},
+		{"did:web:one.example", "issuer", "active", "Trusted"},
 		{"did:web:two.example", "verifier", "suspended", "Suspended"},
 		{"did:web:three.example", "holder", "revoked", "Revoked"},
 		{"did:web:four.example", "issuer", "unknown", "Unknown"},
@@ -720,5 +728,154 @@ func TestDashboardNamesTheProbeFault(t *testing.T) {
 	}
 	if !strings.Contains(page, "Not ready") {
 		t.Fatal("the dashboard does not mark the service")
+	}
+}
+
+// seedTrust puts one entry straight into the fake registry, the way an
+// issuer registration would.
+func (h *harness) seedTrust(id *trustv1.TrustEntry_Identifier, name string, status trustv1.Status) {
+	h.trust.entries[keyOf(id)] = &trustv1.TrustEntry{
+		Identifier: id, DisplayName: name, Role: commonv1.Role_ROLE_ISSUER, Status: status,
+		UpdatedAt: timestamppb.New(time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC)),
+	}
+}
+
+func didOf(v string) *trustv1.TrustEntry_Identifier {
+	return &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_Did{Did: v}}
+}
+
+func x509Of(v string) *trustv1.TrustEntry_Identifier {
+	return &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_X509Subject{X509Subject: v}}
+}
+
+// TestTrustListShowsPendingWithApprove puts a pending entry first, with
+// approve and reject forms that carry the synchronizer token. A trusted
+// entry has no approve button.
+func TestTrustListShowsPendingWithApprove(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	h.seedTrust(didOf("did:web:active.example"), "Active issuer", trustv1.Status_STATUS_ACTIVE)
+	h.seedTrust(x509Of("CN=Registrar, O=Ministry of Health"), "Ministry of Health", trustv1.Status_STATUS_PENDING)
+	page := h.page(t, "/admin/trust")
+	for _, want := range []string{
+		"Trust lists and registries", "Pending review", "Trusted", "X.509", "did:web",
+		`action="/admin/trust/approve"`, `action="/admin/trust/reject"`, ">Approve<", ">Reject<",
+		`name="` + oidcflow.CSRFField + `"`, "2026-09-20", "1 pending review",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the trust page misses %q", want)
+		}
+	}
+	if strings.Index(page, "Ministry of Health") > strings.Index(page, "Active issuer") {
+		t.Error("the pending entry does not come first")
+	}
+	if strings.Count(page, ">Approve<") != 1 {
+		t.Errorf("the page has %d approve buttons, want one for the pending entry", strings.Count(page, ">Approve<"))
+	}
+	pendingOnly := h.page(t, "/admin/trust?status=pending")
+	if strings.Contains(pendingOnly, "Active issuer") || !strings.Contains(pendingOnly, "Ministry of Health") {
+		t.Error("the status filter does not work")
+	}
+}
+
+// TestAddX509Entry adds an entry by X.509 subject beside a DID entry.
+// The form names the kind, so a subject never reads as a DID.
+func TestAddX509Entry(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	page := h.page(t, "/admin/trust")
+	for _, want := range []string{`name="kind"`, `value="did"`, `value="x509"`, "X.509 subject"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the add form misses %q", want)
+		}
+	}
+	form := url.Values{
+		"kind": {"x509"}, "identifier": {"CN=Registrar, O=Ministry of Health, C=KE"}, "display_name": {"Ministry of Health"},
+		"role": {"issuer"}, "status": {"active"},
+	}
+	if status, body := h.post(t, "/admin/trust", form); status != http.StatusSeeOther {
+		t.Fatalf("add = %d %s", status, body)
+	}
+	got, ok := h.trust.entries["CN=Registrar, O=Ministry of Health, C=KE"]
+	if !ok || got.GetIdentifier().GetX509Subject() == "" {
+		t.Fatalf("the registry holds %v, want an x509 entry", got)
+	}
+	form = url.Values{
+		"kind": {"did"}, "identifier": {"did:web:issuer.example"}, "display_name": {"Issuer"},
+		"role": {"issuer"}, "status": {"pending"},
+	}
+	if status, body := h.post(t, "/admin/trust", form); status != http.StatusSeeOther {
+		t.Fatalf("add = %d %s", status, body)
+	}
+	if e := h.trust.entries["did:web:issuer.example"]; e.GetIdentifier().GetDid() == "" || e.GetStatus() != trustv1.Status_STATUS_PENDING {
+		t.Fatalf("the registry holds %v, want a pending DID entry", e)
+	}
+	// A DID kind with a value that is not a DID is a bad request.
+	form.Set("identifier", "issuer.example")
+	if status, _ := h.post(t, "/admin/trust", form); status != http.StatusBadRequest {
+		t.Fatalf("a DID without did: = %d, want 400", status)
+	}
+	listed := h.page(t, "/admin/trust")
+	if !strings.Contains(listed, "CN=Registrar, O=Ministry of Health, C=KE") || !strings.Contains(listed, "X.509") {
+		t.Error("the x509 entry is not on the page")
+	}
+}
+
+// TestApproveWritesAudit approves one pending entry and rejects another
+// through the page. The registry changes and the audit log names both.
+func TestApproveWritesAudit(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	h.seedTrust(didOf("did:web:approve.example"), "To approve", trustv1.Status_STATUS_PENDING)
+	h.seedTrust(x509Of("CN=Reject, O=Example"), "To reject", trustv1.Status_STATUS_PENDING)
+	status, _ := h.post(t, "/admin/trust/approve", url.Values{"kind": {"did"}, "identifier": {"did:web:approve.example"}})
+	if status != http.StatusSeeOther {
+		t.Fatalf("approve = %d", status)
+	}
+	if h.trust.entries["did:web:approve.example"].GetStatus() != trustv1.Status_STATUS_ACTIVE {
+		t.Fatal("the approved entry is not active")
+	}
+	status, _ = h.post(t, "/admin/trust/reject", url.Values{"kind": {"x509"}, "identifier": {"CN=Reject, O=Example"}})
+	if status != http.StatusSeeOther {
+		t.Fatalf("reject = %d", status)
+	}
+	if _, ok := h.trust.entries["CN=Reject, O=Example"]; ok {
+		t.Fatal("the rejected entry is still in the registry")
+	}
+	audit := h.page(t, "/admin/audit")
+	for _, want := range []string{"admin.ApproveTrustEntry", "did:web:approve.example", "admin.RejectTrustEntry", "CN=Reject, O=Example"} {
+		if !strings.Contains(audit, want) {
+			t.Errorf("the audit page misses %q", want)
+		}
+	}
+	if page := h.page(t, "/admin/trust?notice=trust-approved"); !strings.Contains(page, "active") {
+		t.Error("the approve notice is missing")
+	}
+	// An approval of an entry that is not pending fails and is audited.
+	if status, _ := h.post(t, "/admin/trust/approve", url.Values{"kind": {"did"}, "identifier": {"did:web:approve.example"}}); status != http.StatusBadRequest {
+		t.Fatalf("a second approval = %d, want 400", status)
+	}
+}
+
+// TestApproveNeedsTheSynchronizerToken refuses a cross site approval.
+func TestApproveNeedsTheSynchronizerToken(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	h.seedTrust(didOf("did:web:approve.example"), "To approve", trustv1.Status_STATUS_PENDING)
+	for _, path := range []string{"/admin/trust/approve", "/admin/trust/reject"} {
+		form := url.Values{"kind": {"did"}, "identifier": {"did:web:approve.example"}}
+		res, err := h.client.Post(h.server.URL+path, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		if cerr := res.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+		if res.StatusCode != http.StatusForbidden {
+			t.Errorf("%s without a token = %d, want 403", path, res.StatusCode)
+		}
+	}
+	if h.trust.entries["did:web:approve.example"].GetStatus() != trustv1.Status_STATUS_PENDING {
+		t.Fatal("a refused approval changed the entry")
 	}
 }

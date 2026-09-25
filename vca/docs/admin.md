@@ -243,8 +243,8 @@ the sign out form. The pages of the side navigation come from
 console that a provider record of kind `keycloak` names. A deployment
 with another provider shows no such link (ADR-035 decision 2).
 
-The overview shows six cards. They cover the trust list, the trust
-registry, the providers with their realms, the tenants, and the API keys.
+The overview shows six cards. The trust card counts the active issuers.
+The other cards cover the trust registry, the providers with their realms, the tenants, and the API keys.
 The sixth card counts the audit events of the day. The first run checklist sits
 below the cards (ADR-035 decision 6). It stays until the operator
 completes four steps. The bootstrap token bound the first admin. No
@@ -256,13 +256,29 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/` | The overview: the stat cards, the first run checklist, and the service health. |
 | `/admin/login` | The sign in chooser with the bootstrap card. `/auth/` draws the same page. |
 | `/admin/tenants` | The tenant list with the create form. |
-| `/admin/trust` | The trust entry list with the add form. |
+| `/admin/trust` | The trust list. Pending entries come first, with approve and reject. The add form takes a DID or an X.509 subject. |
 | `/admin/providers` | The login provider table: realm or issuer, roles, stacks, state, default flag, and the row actions. |
 | `/admin/providers/new` | The provider form with the kind presets and the discovery test. |
 | `/admin/providers/{id}` | The edit form of one provider. |
 | `/admin/keys` | The API key list. A new secret appears once. |
 | `/admin/audit` | The audit log with filters. |
 | `/admin/help` | Every command and every RPC with its help text. |
+
+### Trust review
+
+An entry with the status `pending` waits for review. The trust registry
+publishes no pending entry, and a lookup never trusts one. The trust
+page lists the pending entries first. Each one has two buttons. Approve
+calls `ApproveTrustEntry`, which sets the entry to `active`. Reject calls
+`RejectTrustEntry`, which removes the entry. Both refuse an entry that is
+not pending. Each button is a POST form with the synchronizer token. The
+admin service writes one audit record for each decision, also when it
+fails. The CLI has the same two actions: `vca admin trust approve` and
+`vca admin trust reject`.
+
+The add form has an identifier type: DID or X.509 subject. The type
+decides how the registry reads the value, so a subject never reads as a
+DID.
 
 Every page meets the structural rules of WCAG 2.2 AA that the UI kit
 guarantees. The tests check each page with `a11ytest.AssertPage`.

@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -459,3 +460,50 @@ func TestOverConnect(t *testing.T) {
 		t.Fatal("enum helpers")
 	}
 }
+
+// TestUpsertPendingThenApprove stores a pending entry that no published
+// list carries and no lookup trusts. Setting it active publishes it.
+func TestUpsertPendingThenApprove(t *testing.T) {
+	f := newFixture(t, nil)
+	ctx := context.Background()
+	upsert(t, f.svc, protoEntry("did:web:pending.example", commonv1.Role_ROLE_ISSUER, trustv1.Status_STATUS_PENDING))
+	got, err := f.svc.GetEntry(ctx, connect.NewRequest(&trustv1.GetEntryRequest{Identifier: didID("did:web:pending.example")}))
+	if err != nil || got.Msg.GetEntry().GetStatus() != trustv1.Status_STATUS_PENDING {
+		t.Fatalf("GetEntry = %v, %v", got, err)
+	}
+	listed, err := f.svc.ListEntries(ctx, connect.NewRequest(&trustv1.ListEntriesRequest{Status: trustv1.Status_STATUS_PENDING}))
+	if err != nil || len(listed.Msg.GetEntries()) != 1 {
+		t.Fatalf("the pending filter found %v, %v", listed, err)
+	}
+	for _, path := range f.svc.Snapshot().Paths() {
+		file, _ := f.svc.Snapshot().File(path)
+		if strings.Contains(string(file.Body), "pending.example") {
+			t.Fatalf("the published file %s carries the pending entry", path)
+		}
+		if strings.HasSuffix(path, ".jws") {
+			if payload, perr := jose.PeekPayload(string(file.Body)); perr == nil && strings.Contains(fmtAny(payload), "pending.example") {
+				t.Fatalf("the signed list %s carries the pending entry", path)
+			}
+		}
+	}
+	lookup := func() trustv1.TrustLookupResponse_Outcome {
+		t.Helper()
+		res, lerr := f.svc.TrustLookup(ctx, connect.NewRequest(&trustv1.TrustLookupRequest{
+			Identifier: didID("did:web:pending.example"), Role: commonv1.Role_ROLE_ISSUER,
+		}))
+		if lerr != nil {
+			t.Fatal(lerr)
+		}
+		return res.Msg.GetOutcome()
+	}
+	if o := lookup(); o == trustv1.TrustLookupResponse_OUTCOME_TRUSTED {
+		t.Fatal("the lookup trusts a pending entry")
+	}
+	upsert(t, f.svc, protoEntry("did:web:pending.example", commonv1.Role_ROLE_ISSUER, trustv1.Status_STATUS_ACTIVE))
+	if o := lookup(); o != trustv1.TrustLookupResponse_OUTCOME_TRUSTED {
+		t.Fatalf("after approval the lookup answers %s", o)
+	}
+}
+
+// fmtAny prints a decoded JSON value for a text search.
+func fmtAny(v any) string { return fmt.Sprint(v) }

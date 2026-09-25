@@ -36,6 +36,9 @@ const (
 	StatusActive    Status = "active"
 	StatusSuspended Status = "suspended"
 	StatusRevoked   Status = "revoked"
+	// StatusPending marks an entity that waits for review. No lookup
+	// trusts it and no published list carries it.
+	StatusPending Status = "pending"
 )
 
 // Outcome names the result of a lookup.
@@ -109,7 +112,7 @@ func (e Entry) Validate() error {
 		return fmt.Errorf("entry: unknown role %q", e.Role)
 	}
 	switch e.Status {
-	case StatusActive, StatusSuspended, StatusRevoked:
+	case StatusActive, StatusSuspended, StatusRevoked, StatusPending:
 	default:
 		return fmt.Errorf("entry: unknown status %q", e.Status)
 	}
@@ -152,6 +155,18 @@ func Sorted(entries []Entry) []Entry {
 	return out
 }
 
+// Published returns the entries that a published list carries: every
+// entry except the pending ones, in the input order.
+func Published(entries []Entry) []Entry {
+	out := make([]Entry, 0, len(entries))
+	for _, e := range entries {
+		if e.Status != StatusPending {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // Result is the outcome of Evaluate.
 type Result struct {
 	Outcome Outcome
@@ -188,6 +203,8 @@ func Evaluate(entries []Entry, id string, role Role, credentialType string, at t
 		return Result{Outcome: Untrusted, Entry: found, Reason: "The entry is suspended."}
 	case StatusRevoked:
 		return Result{Outcome: Untrusted, Entry: found, Reason: "The entry is revoked."}
+	case StatusPending:
+		return Result{Outcome: Untrusted, Entry: found, Reason: "The entry waits for review."}
 	}
 	if !found.ValidAt(at) {
 		return Result{Outcome: Untrusted, Entry: found, Reason: "The entry is not valid at the requested time."}
@@ -233,6 +250,8 @@ func StatusFromProto(s trustv1.Status) (Status, error) {
 		return StatusSuspended, nil
 	case trustv1.Status_STATUS_REVOKED:
 		return StatusRevoked, nil
+	case trustv1.Status_STATUS_PENDING:
+		return StatusPending, nil
 	}
 	return "", fmt.Errorf("entry: status %s is not allowed", s)
 }
@@ -246,6 +265,8 @@ func StatusToProto(s Status) trustv1.Status {
 		return trustv1.Status_STATUS_SUSPENDED
 	case StatusRevoked:
 		return trustv1.Status_STATUS_REVOKED
+	case StatusPending:
+		return trustv1.Status_STATUS_PENDING
 	}
 	return trustv1.Status_STATUS_UNSPECIFIED
 }

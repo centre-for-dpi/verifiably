@@ -89,12 +89,13 @@ func (s *Service) JWKSJSON() []byte { return s.opts.Ring.JWKSJSON() }
 // Ready reports whether a publication exists.
 func (s *Service) Ready() bool { return s.snap.Load() != nil }
 
-// republish signs every enabled method and refreshes the cache.
+// republish signs every enabled method and refreshes the cache. The
+// lists never carry a pending entry.
 func (s *Service) republish() ([]publish.Publication, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	in := publish.Input{
-		Entries:  s.opts.Store.List(),
+		Entries:  entry.Published(s.opts.Store.List()),
 		Sequence: s.opts.Store.Revision(),
 		Now:      s.opts.Now(),
 		TTL:      s.opts.ListTTL,
