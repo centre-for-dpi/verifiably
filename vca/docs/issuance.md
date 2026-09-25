@@ -69,7 +69,8 @@ private key (ADR-001 decision 3, ADR-046). A box asks the trust
 registry for an entry in state `pending`, which an admin approves. The
 page hides the box when no live admin pair runs a trust registry, and
 says so. The service serves the DID document of a `did:web` of its
-host at `/.well-known/did.json`.
+host at `/.well-known/did.json`. When the adapter names the plugins of
+its stack in the DPG information, the page lists them read only.
 
 ### The issue wizard
 

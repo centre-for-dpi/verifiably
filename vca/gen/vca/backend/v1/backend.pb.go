@@ -813,7 +813,10 @@ type DpgInfo struct {
 	// The release of the DPG.
 	Version string `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
 	// The components the stack runs for the roles this adapter serves.
-	Components    []*Component `protobuf:"bytes,3,rep,name=components,proto3" json:"components,omitempty"`
+	Components []*Component `protobuf:"bytes,3,rep,name=components,proto3" json:"components,omitempty"`
+	// The plugins the DPG runs, such as a data provider plugin. Empty when
+	// the DPG has none or the adapter cannot name them.
+	Plugins       []string `protobuf:"bytes,4,rep,name=plugins,proto3" json:"plugins,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -865,6 +868,13 @@ func (x *DpgInfo) GetVersion() string {
 func (x *DpgInfo) GetComponents() []*Component {
 	if x != nil {
 		return x.Components
+	}
+	return nil
+}
+
+func (x *DpgInfo) GetPlugins() []string {
+	if x != nil {
+		return x.Plugins
 	}
 	return nil
 }
@@ -6353,13 +6363,14 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	" \x03(\x0e2&.vca.backend.v1.StatusListBinding.KindR\x10statusMechanisms\x12\x1b\n" +
 	"\tkey_types\x18\v \x03(\tR\bkeyTypes\x12(\n" +
 	"\x10wallet_key_types\x18\f \x03(\tR\x0ewalletKeyTypes\x12,\n" +
-	"\x12wallet_did_methods\x18\r \x03(\tR\x10walletDidMethods\"\x81\x01\n" +
+	"\x12wallet_did_methods\x18\r \x03(\tR\x10walletDidMethods\"\x9b\x01\n" +
 	"\aDpgInfo\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x129\n" +
 	"\n" +
 	"components\x18\x03 \x03(\v2\x19.vca.backend.v1.ComponentR\n" +
-	"components\"\x95\x01\n" +
+	"components\x12\x18\n" +
+	"\aplugins\x18\x04 \x03(\tR\aplugins\"\x95\x01\n" +
 	"\tComponent\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12%\n" +

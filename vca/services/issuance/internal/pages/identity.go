@@ -170,6 +170,16 @@ func (p *Pages) renderIdentity(pg page, v identityView) error {
 			parts = append(parts, p.ownBlock(b, v, kinds, csrf))
 		}
 	}
+	if plugins := v.caps.GetDpgInfo().GetPlugins(); len(plugins) > 0 {
+		// The plugins of the stack, read only (ADR-045 decision 1).
+		parts = append(parts, b.add("block", components.Block{
+			ID: "plugins", Title: msg.T("issuer.identity.plugins.label"), Lead: msg.T("issuer.identity.plugins.lead", stackName(v.caps)),
+			Body: b.add("table", components.Table{
+				ID: "stack-plugins", Caption: msg.T("issuer.identity.plugins.caption.label"),
+				Columns: []string{msg.T("issuer.identity.plugins.column.label")}, Rows: pluginRows(plugins),
+			}),
+		}))
+	}
 	back := b.add("button", components.Button{Text: msg.T("issuer.identity.back.label"), Href: HomePath})
 	if b.err != nil {
 		return b.err
@@ -606,4 +616,13 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// pluginRows puts each plugin name in a row.
+func pluginRows(plugins []string) []components.Row {
+	rows := make([]components.Row, 0, len(plugins))
+	for _, name := range plugins {
+		rows = append(rows, components.Row{{HTML: template.HTML("<code>" + template.HTMLEscapeString(name) + "</code>")}}) //nolint:gosec // the name is escaped
+	}
+	return rows
 }

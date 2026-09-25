@@ -51,6 +51,9 @@ var components = []component{
 // (ADR-034 decision 4).
 func (s *Service) dpgInfo() *backendv1.DpgInfo {
 	info := &backendv1.DpgInfo{DisplayName: DisplayName, Version: s.dpgVersion}
+	if hasIssuer(s) {
+		info.Plugins = append(info.Plugins, s.plugins...)
+	}
 	for _, c := range components {
 		if c.wired != nil && !c.wired(s) {
 			continue

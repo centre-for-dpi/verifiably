@@ -110,3 +110,28 @@ Facts the adapter relies on:
 - A revoked credential answers `REVOKED` whatever the other checks say
   (`Utils.getVcVerificationStatus`):
   https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/verify-service/src/main/java/io/inji/verify/utils/Utils.java
+
+## Key manager (Certify 0.14.0)
+
+| File | Source |
+| --- | --- |
+| `key-certificate.json` | `ResponseWrapper<KeyPairGenerateResponseDto>` of `GET /system-info/certificate`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/controller/SystemInfoController.java, fields from https://raw.githubusercontent.com/mosip/keymanager/master/kernel/kernel-keymanager-service/src/main/java/io/mosip/kernel/keymanagerservice/service/impl/KeymanagerServiceImpl.java. The certificate is a self signed test certificate with the default subject of the key manager. |
+| `upload-certificate.json`, `upload-ca-certificate.json` | `ResponseWrapper` of `POST /system-info/uploadCertificate` and `POST /system-info/upload-ca-certificate` with a status. |
+| `key-not-matching.json` | The error `KER-KMS-014` of a certificate of another key: https://raw.githubusercontent.com/mosip/keymanager/master/kernel/kernel-keymanager-service/src/main/java/io/mosip/kernel/keymanagerservice/constant/KeymanagerErrorConstant.java |
+| `x509-chain.pem`, `x509-other.pem` | Test chains: a leaf on the key of `key-certificate.json` with its CA, and a certificate of another key. No private key is kept. |
+
+Facts the adapter relies on:
+
+- `getCertificate` makes the key pair when none exists for the
+  application id and the reference id, and returns the certificate in
+  PEM. `generateCSR` reuses the key. `uploadCertificate` checks that
+  the certificate holds the stored public key (KeymanagerServiceImpl
+  above).
+- The stack allows the partner domain `DEVICE`
+  (`mosip.kernel.partner.allowed.domains` in `certify-default.properties`
+  above), and opens `/system-info/**` without a token.
+- The key alias mapper of the stack names the keys of `RS256`, `EdDSA`,
+  `ES256K`, and `ES256` (`certify-default.properties` above).
+- The stack sample runs `MockCSVDataProviderPlugin` and
+  `LoggerAuditService` in the `DataProvider` plugin mode:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-csvdp-farmer.properties

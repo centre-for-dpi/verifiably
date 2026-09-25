@@ -23,6 +23,10 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
+// DefaultCADomain is the partner domain the stack allows for a CA
+// certificate (mosip.kernel.partner.allowed.domains).
+const DefaultCADomain = "DEVICE"
+
 // AdapterName is the name the capability answer carries.
 const AdapterName = "dpg-adapter-inji"
 
@@ -51,6 +55,11 @@ type Options struct {
 	OfferTTL time.Duration
 	// PageSizeMax caps a list page.
 	PageSizeMax int
+	// Plugins name the plugins of the Certify deployment for the DPG
+	// information.
+	Plugins []string
+	// CADomain is the partner domain of an uploaded CA certificate.
+	CADomain string
 	// RenderingTemplateID names the SVG template of the Certify
 	// deployment. A registered ldp_vc configuration then names it as its
 	// render method. Empty names none.
@@ -82,6 +91,8 @@ type Service struct {
 	versions            map[string]string
 	profiles            inji.Profiles
 	renderingTemplateID string
+	plugins             []string
+	caDomain            string
 	now                 func() time.Time
 	newID               func() string
 }
@@ -109,6 +120,9 @@ func New(opts Options) (*Service, error) {
 	if opts.OfferTTL <= 0 {
 		opts.OfferTTL = 15 * time.Minute
 	}
+	if opts.CADomain == "" {
+		opts.CADomain = DefaultCADomain
+	}
 	if opts.Profiles.Ldp == (inji.SigningProfile{}) && opts.Profiles.SdJwt == (inji.SigningProfile{}) &&
 		opts.Profiles.Mdoc == (inji.SigningProfile{}) {
 		did := opts.Profiles.DidURL
@@ -129,6 +143,8 @@ func New(opts Options) (*Service, error) {
 		versions:            opts.Versions,
 		profiles:            opts.Profiles,
 		renderingTemplateID: opts.RenderingTemplateID,
+		plugins:             opts.Plugins,
+		caDomain:            opts.CADomain,
 		now:                 opts.Now,
 		newID:               opts.NewID,
 	}, nil
@@ -191,7 +207,15 @@ func (s *Service) GetCapabilities(
 		// status API of Certify. The stack allows the revocation purpose
 		// only, so FEATURE_SUSPENSION stays off.
 		out.Features = append(out.Features, backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API,
-			backendv1.Feature_FEATURE_REVOCATION, backendv1.Feature_FEATURE_ISSUED_LEDGER)
+			backendv1.Feature_FEATURE_REVOCATION, backendv1.Feature_FEATURE_ISSUED_LEDGER,
+			// The identity RPCs read the did:web of Certify and drive its
+			// key manager. Certify reads its DID from its configuration,
+			// so a DID import is not listed.
+			backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION, backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509)
+		out.DidMethods = []string{didWeb}
+		for _, k := range inji.KeyTypes {
+			out.KeyTypes = append(out.KeyTypes, k.Type)
+		}
 		// The staged claims carry the two status markers, so a credential
 		// points at a token status list or a bitstring status list
 		// (ADR-018, ADR-019).

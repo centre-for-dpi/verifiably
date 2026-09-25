@@ -59,6 +59,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Versions:            cfg.Versions(),
 		Profiles:            cfg.Profiles(),
 		RenderingTemplateID: cfg.RenderingTemplateID,
+		Plugins:             cfg.Plugins(),
+		CADomain:            cfg.CADomain,
 	})
 	if err != nil {
 		return nil, err

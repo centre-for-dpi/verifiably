@@ -288,6 +288,9 @@ message DpgInfo {
   string version = 2;
   // The components the stack runs for the roles this adapter serves.
   repeated Component components = 3;
+  // The plugins the DPG runs, such as a data provider plugin. Empty when
+  // the DPG has none or the adapter cannot name them.
+  repeated string plugins = 4;
 }
 
 // Component is one deployed part of a DPG stack.

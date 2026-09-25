@@ -166,3 +166,13 @@ func TestProfilesNameTheStackKeys(t *testing.T) {
 		t.Fatalf("profiles %+v", p)
 	}
 }
+
+func TestPluginsSplitTheList(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{"VCA_INJI_CERTIFY_URL": "http://c", "VCA_INJI_CERTIFY_PLUGINS": " A, ,B "}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Plugins(); len(got) != 2 || got[0] != "A" || got[1] != "B" || cfg.CADomain != "DEVICE" {
+		t.Fatalf("plugins %v, domain %q", got, cfg.CADomain)
+	}
+}

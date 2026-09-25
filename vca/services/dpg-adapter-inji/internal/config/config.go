@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
@@ -87,6 +88,23 @@ type Config struct {
 	// deployment, as mosip.certify.data-provider-plugin.rendering-template-id
 	// sets it. A registered ldp_vc configuration then names it.
 	RenderingTemplateID string `env:"RENDERING_TEMPLATE_ID"`
+	// CertifyPlugins names the plugins of the Certify deployment, comma
+	// separated, as its properties set them. The DPG information lists
+	// them. The default is the plugin set of the stack sample.
+	CertifyPlugins string `env:"CERTIFY_PLUGINS" default:"MockCSVDataProviderPlugin,LoggerAuditService"`
+	// CADomain is the partner domain of an uploaded CA certificate.
+	CADomain string `env:"CA_DOMAIN" default:"DEVICE"`
+}
+
+// Plugins returns the plugin names of CertifyPlugins.
+func (c Config) Plugins() []string {
+	var out []string
+	for _, p := range strings.Split(c.CertifyPlugins, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Load reads the settings with getenv, for example os.Getenv.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -112,6 +113,55 @@ func TestCheckCredentialReadsTheStatus(t *testing.T) {
 	}
 	var none *Verify
 	if _, err := none.CheckCredential(ctx, nil, ""); !errors.Is(err, ErrNoVerify) {
+		t.Fatal(err)
+	}
+}
+
+func TestKeyManagerCallsReadTheWrapper(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 9, 26, 10, 0, 0, 0, time.UTC)
+	ref := KeyRef{AppID: "CERTIFY_VC_SIGN_RSA"}
+	if r, ok := KeyRefOf("RSA"); !ok || r != ref || KeyTypeOf(ref) != "RSA" || KeyTypeOf(KeyRef{AppID: "x"}) != "" {
+		t.Fatal("key types")
+	}
+	if _, ok := KeyRefOf("P-521"); ok {
+		t.Fatal("an unknown type has a key")
+	}
+	c := NewCertify(newHTTP(answerWith(t, 200, `{"response":{"certificate":"PEM"},"errors":[]}`)), "")
+	if got, err := c.Certificate(ctx, ref); err != nil || got.Certificate != "PEM" {
+		t.Fatalf("%v %v", got, err)
+	}
+	c = NewCertify(newHTTP(answerWith(t, 200, `{"response":{"certificate":""}}`)), "")
+	if _, err := c.Certificate(ctx, ref); err == nil {
+		t.Fatal("an empty certificate passed")
+	}
+	c = NewCertify(newHTTP(answerWith(t, 200, `{"response":null,"errors":[{"errorCode":"KER-KMS-010","message":"no"}]}`)), "")
+	if _, err := c.Certificate(ctx, ref); !IsAPIError(err, "KER-KMS-010") || !strings.Contains(err.Error(), "no") {
+		t.Fatalf("errors: %v", err)
+	}
+	if err := c.UploadCertificate(ctx, ref, "PEM", now); !IsAPIError(err, "KER-KMS-010") {
+		t.Fatalf("upload: %v", err)
+	}
+	c = NewCertify(newHTTP(answerWith(t, 200, `{"response":null}`)), "")
+	if err := c.UploadCACertificate(ctx, "PEM", "DEVICE", now); err == nil {
+		t.Fatal("an empty answer passed")
+	}
+	c = NewCertify(newHTTP(answerWith(t, 200, `[`)), "")
+	if err := c.UploadCACertificate(ctx, "PEM", "DEVICE", now); err == nil {
+		t.Fatal("a broken answer passed")
+	}
+	c = NewCertify(newHTTP(answerWith(t, 500, "")), "")
+	if _, err := c.Certificate(ctx, ref); err == nil {
+		t.Fatal("a server error passed")
+	}
+	if err := c.UploadCACertificate(ctx, "PEM", "DEVICE", now); err == nil {
+		t.Fatal("a server error passed")
+	}
+	var none *Certify
+	if _, err := none.Certificate(ctx, ref); !errors.Is(err, ErrNoCertify) {
+		t.Fatal(err)
+	}
+	if err := none.UploadCertificate(ctx, ref, "", now); !errors.Is(err, ErrNoCertify) {
 		t.Fatal(err)
 	}
 }

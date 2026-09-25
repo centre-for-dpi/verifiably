@@ -24,6 +24,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
@@ -371,5 +372,24 @@ func TestIdentityPageNamesMethodsAndKeyStoreOfTheStack(t *testing.T) {
 	a11ytest.AssertPage(t, doc)
 	if !strings.Contains(doc, "Ed25519. The key store tse of the stack keeps the key.") {
 		t.Errorf("the page does not name the key store\n%s", doc)
+	}
+}
+
+// TestIdentityPageListsStackPlugins names the plugins the adapter lists
+// in the DPG information, read only, and nothing without them.
+func TestIdentityPageListsStackPlugins(t *testing.T) {
+	h := newHarness(t, backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION)
+	doc := body(t, h.get(t, "/identity/"))
+	if strings.Contains(doc, msg.T("issuer.identity.plugins.label")) {
+		t.Fatal("the page lists plugins the adapter did not name")
+	}
+	h.caps.caps.DpgInfo = &backendv1.DpgInfo{DisplayName: "First stack", Plugins: []string{"CsvDataProvider", "AuditLogger"}}
+	h.build(t)
+	doc = body(t, h.get(t, "/identity/"))
+	a11ytest.AssertPage(t, doc)
+	for _, want := range []string{msg.T("issuer.identity.plugins.label"), "CsvDataProvider", "AuditLogger"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the page lacks %q", want)
+		}
 	}
 }

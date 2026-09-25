@@ -274,3 +274,31 @@ func TestContractVerifyCredential(t *testing.T) {
 		t.Fatal("the answer holds no check")
 	}
 }
+
+// TestContractIssuerIdentity reads the did:web and the signing key of a
+// real Certify.
+func TestContractIssuerIdentity(t *testing.T) {
+	if contractEnv(t).CertifyURL == "" {
+		t.Skip("set VCA_INJI_CONTRACT_CERTIFY_URL to run the identity contract case")
+	}
+	a := newContractApp(t)
+	resp, err := a.Service.GetIssuerIdentity(context.Background(), connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
+	if err != nil {
+		t.Fatalf("GetIssuerIdentity: %v", err)
+	}
+	if ids := resp.Msg.GetIdentity().GetIdentifiers(); len(ids) == 0 || !strings.HasPrefix(ids[0], "did:web:") {
+		t.Fatalf("identifiers = %v", ids)
+	}
+}
+
+// TestContractProvisionIdentity asks the real key manager for the key of
+// one type. It needs writes, since the key manager may make a key.
+func TestContractProvisionIdentity(t *testing.T) {
+	writeEnv(t)
+	a := newContractApp(t)
+	if _, err := a.Service.ProvisionIssuerIdentity(context.Background(), connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{
+		Method: "did:web", KeyType: "Ed25519",
+	})); err != nil {
+		t.Fatalf("ProvisionIssuerIdentity: %v", err)
+	}
+}

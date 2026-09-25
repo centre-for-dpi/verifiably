@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,6 +79,8 @@ type Server struct {
 	verification Answer
 	// types records the Content-Type of every call by path.
 	types map[string]string
+	// queries records the query of every call by path.
+	queries map[string]url.Values
 }
 
 // New starts a fake Inji deployment.
@@ -89,6 +92,7 @@ func New(dir string) *Server {
 		result:       ResultPending,
 		requests:     map[string][]byte{},
 		types:        map[string]string{},
+		queries:      map[string]url.Values{},
 		verification: VerificationSuccess,
 		status:       map[string]int{},
 	}
@@ -114,6 +118,13 @@ func (f *Server) SetCredential(a Answer) { f.set(&f.credential, a) }
 
 // SetVerification selects the answer of the credential check.
 func (f *Server) SetVerification(a Answer) { f.set(&f.verification, a) }
+
+// Query returns the query of the last call to the path.
+func (f *Server) Query(path string) url.Values {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.queries[path]
+}
 
 // ContentType returns the Content-Type of the last call to the path.
 func (f *Server) ContentType(path string) string {
@@ -161,6 +172,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
 	f.types[r.URL.Path] = r.Header.Get("Content-Type")
+	f.queries[r.URL.Path] = r.URL.Query()
 	forced := f.status[r.URL.Path]
 	staged, credential, result, verification := f.staged, f.credential, f.result, f.verification
 	f.mu.Unlock()
@@ -168,7 +180,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(forced)
 		return
 	}
-	if f.serveConfigs(w, r, body) || f.serveLedger(w, r, body) {
+	if f.serveConfigs(w, r, body) || f.serveLedger(w, r, body) || f.serveKeys(w, r, body) {
 		return
 	}
 	path := r.URL.Path

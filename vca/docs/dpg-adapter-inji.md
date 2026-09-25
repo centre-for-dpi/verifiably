@@ -41,6 +41,9 @@ Inji database, and it never restarts an Inji container.
 | `POST /v1/certify/credentials/status` | Sets the revocation bit of a credential of the ledger. |
 | `GET /v1/certify/.well-known/did.json` | Reads the issuer DID, which the ledger search needs. |
 | `GET /v1/certify/rendering-template/{id}` | Reads the SVG card template a credential template names. |
+| `GET /v1/certify/system-info/certificate` | Reads the certificate of a signing key. The key manager makes the key when it has none. |
+| `POST /v1/certify/system-info/upload-ca-certificate` | Adds a CA certificate to the trust store of the stack. |
+| `POST /v1/certify/system-info/uploadCertificate` | Puts a CA signed certificate on a signing key. |
 | `POST /v1/verify/vp-request` | Starts an OID4VP transaction. |
 | `GET /v1/verify/vp-result/{id}` | Reads the answer of a transaction. |
 | `POST /v1/verify/vc-verification` | Checks one uploaded or scanned credential. |
@@ -55,10 +58,11 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Channels | OID4VCI pre-authorized code and document. An identity provider adds the authorization code flow. |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, and `FEATURE_ISSUED_LEDGER` with a Certify URL. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. |
-| DID methods | None. The deployment sets the issuer identity of Inji Certify. |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. |
+| DID methods | `did:web`, the one DID of the Certify configuration |
+| Key types | `Ed25519`, `secp256r1`, `secp256k1`, `RSA` |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names a Certify URL |
-| DPG information | The stack name, the Certify release, and one component per wired role plus Keycloak |
+| DPG information | The stack name, the Certify release, one component per wired role plus Keycloak, and the Certify plugins of `VCA_INJI_CERTIFY_PLUGINS` |
 
 Each component carries its pinned version, its repository, its
 documentation, and its licence. The versions come from the
@@ -72,6 +76,7 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | `GetIssuanceStatus` | Inji Certify reports no state of a staged offer. |
 | `Revoke` of a VCA status entry | The status service that owns the list changes the bit. The adapter answers `failed_precondition` without a ledger id. |
 | `Revoke` with a suspension or a reinstatement | The Certify configuration of the stack allows the revocation purpose only. The answer lists no `FEATURE_SUSPENSION`. |
+| `ImportIssuerIdentity` of a DID | Certify reads its DID from its configuration. The adapter lists no `FEATURE_ISSUER_IDENTITY_IMPORT_DID`. |
 | Every holder RPC | Inji ships no wallet for a citizen. |
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
@@ -171,6 +176,39 @@ checks it covers and leaves out a check the status says nothing of.
 Every answer also carries the status itself as the check
 `inji-verification-status`. VCA runs its own checks too (ADR-024
 decision 2).
+
+## The issuer identity
+
+Inji Certify signs with keys of its MOSIP key manager and serves one
+`did:web`. The stack keeps every key (ADR-001 decision 3).
+
+`GetIssuerIdentity` reads the DID document at `/.well-known/did.json`.
+It adds the certificate of the signing key from the key manager. The
+subject of that certificate becomes the second identifier.
+
+`ProvisionIssuerIdentity` takes the method `did:web` and a key type. It
+asks the key manager for the certificate of the key of that type. The
+key manager makes the key when it has none. The key names follow the
+key alias mapper of the stack.
+
+| Key type | Application id | Reference id |
+| --- | --- | --- |
+| `Ed25519` | `CERTIFY_VC_SIGN_ED25519` | `ED25519_SIGN` |
+| `secp256r1` | `CERTIFY_VC_SIGN_EC_R1` | `EC_SECP256R1_SIGN` |
+| `secp256k1` | `CERTIFY_VC_SIGN_EC_K1` | `EC_SECP256K1_SIGN` |
+| `RSA` | `CERTIFY_VC_SIGN_RSA` | none |
+
+`ImportIssuerIdentity` takes an X.509 chain in PEM, leaf first, and a
+key reference such as
+`{"applicationId":"CERTIFY_VC_SIGN_ED25519","referenceId":"ED25519_SIGN"}`.
+It uploads each CA certificate to the partner domain of
+`VCA_INJI_CA_DOMAIN`. It then puts the leaf on the key. The key manager
+refuses a leaf of another key with `KER-KMS-014`, and the adapter
+answers `failed_precondition` with that code.
+
+A credential configuration names its key through `VCA_INJI_LDP_*`,
+`VCA_INJI_SD_JWT_*`, and `VCA_INJI_MDOC_*`. A new key type takes effect
+for the configurations that name it.
 
 ## Interoperability knowledge
 

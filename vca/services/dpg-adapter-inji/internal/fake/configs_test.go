@@ -162,3 +162,24 @@ func TestFakeServesTheMdocAndTheSvg(t *testing.T) {
 		t.Fatalf("missing svg: %d", code)
 	}
 }
+
+func TestFakeServesTheKeyManager(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	if _, body := call(t, f, http.MethodGet, "/v1/certify/system-info/certificate?applicationId=A", ""); !strings.Contains(body, "BEGIN CERTIFICATE") {
+		t.Fatalf("certificate: %s", body)
+	}
+	if _, body := call(t, f, http.MethodPost, "/v1/certify/system-info/upload-ca-certificate", `{"request":{}}`); !strings.Contains(body, "Upload Success") {
+		t.Fatalf("ca: %s", body)
+	}
+	for _, body := range []string{"{", `{"request":{"certificateData":"nope"}}`} {
+		if _, got := call(t, f, http.MethodPost, "/v1/certify/system-info/uploadCertificate", body); !strings.Contains(got, "KER-KMS-014") {
+			t.Fatalf("%s: %s", body, got)
+		}
+	}
+	missing := fake.New("testdata-that-does-not-exist")
+	defer missing.Close()
+	if _, got := call(t, missing, http.MethodPost, "/v1/certify/system-info/uploadCertificate", `{"request":{"certificateData":"x"}}`); strings.Contains(got, "Upload Success") {
+		t.Fatal("a missing store accepted an upload")
+	}
+}
