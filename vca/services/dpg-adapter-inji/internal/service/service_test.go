@@ -594,6 +594,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 		}, true},
 		{backendv1.Feature_FEATURE_REVOCATION, revoke, true},
 		{backendv1.Feature_FEATURE_SUSPENSION, revoke, false},
+		{backendv1.Feature_FEATURE_VERIFY_UPLOAD, func() error {
+			_, err := svc.VerifyCredential(ctx, connect.NewRequest(&backendv1.VerifyCredentialRequest{}))
+			return err
+		}, true},
 		{backendv1.Feature_FEATURE_ISSUED_LEDGER, func() error {
 			_, err := svc.ListIssuedCredentials(ctx, connect.NewRequest(&backendv1.ListIssuedCredentialsRequest{}))
 			return err

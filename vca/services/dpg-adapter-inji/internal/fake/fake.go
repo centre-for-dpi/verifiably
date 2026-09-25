@@ -44,6 +44,14 @@ const (
 	ResultWrongCredential Answer = "vp-result-wrong-credential.json"
 	// ResultInvalid is a transaction that Inji Verify rejected.
 	ResultInvalid Answer = "vp-result-invalid.json"
+	// VerificationSuccess is a credential check that passed.
+	VerificationSuccess Answer = "doc/vc-verification-success.json"
+	// VerificationExpired is a credential check of an expired credential.
+	VerificationExpired Answer = "doc/vc-verification-expired.json"
+	// VerificationRevoked is a credential check of a revoked credential.
+	VerificationRevoked Answer = "doc/vc-verification-revoked.json"
+	// VerificationInvalid is a credential check whose proof failed.
+	VerificationInvalid Answer = "doc/vc-verification-invalid.json"
 )
 
 // Server is a running fake Inji deployment.
@@ -66,17 +74,23 @@ type Server struct {
 	status map[string]int
 	// configs is the credential configuration store.
 	configs configs
+	// verification selects the answer of the credential check.
+	verification Answer
+	// types records the Content-Type of every call by path.
+	types map[string]string
 }
 
 // New starts a fake Inji deployment.
 func New(dir string) *Server {
 	f := &Server{
-		dir:        dir,
-		staged:     StagedOffer,
-		credential: CredentialLdp,
-		result:     ResultPending,
-		requests:   map[string][]byte{},
-		status:     map[string]int{},
+		dir:          dir,
+		staged:       StagedOffer,
+		credential:   CredentialLdp,
+		result:       ResultPending,
+		requests:     map[string][]byte{},
+		types:        map[string]string{},
+		verification: VerificationSuccess,
+		status:       map[string]int{},
 	}
 	f.configs.seed(dir)
 	f.Server = httptest.NewServer(http.HandlerFunc(f.serve))
@@ -97,6 +111,16 @@ func (f *Server) SetStaged(a Answer) { f.set(&f.staged, a) }
 
 // SetCredential selects the credential answer.
 func (f *Server) SetCredential(a Answer) { f.set(&f.credential, a) }
+
+// SetVerification selects the answer of the credential check.
+func (f *Server) SetVerification(a Answer) { f.set(&f.verification, a) }
+
+// ContentType returns the Content-Type of the last call to the path.
+func (f *Server) ContentType(path string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.types[path]
+}
 
 // SetResult selects the presentation result.
 func (f *Server) SetResult(a Answer) { f.set(&f.result, a) }
@@ -136,8 +160,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	_ = ignored
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
+	f.types[r.URL.Path] = r.Header.Get("Content-Type")
 	forced := f.status[r.URL.Path]
-	staged, credential, result := f.staged, f.credential, f.result
+	staged, credential, result, verification := f.staged, f.credential, f.result, f.verification
 	f.mu.Unlock()
 	if forced != 0 {
 		w.WriteHeader(forced)
@@ -169,6 +194,8 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		f.send(w, "vp-request.json")
 	case strings.HasPrefix(path, "/v1/verify/vp-result/"):
 		f.send(w, string(result))
+	case path == "/v1/verify/vc-verification" && r.Method == http.MethodPost:
+		f.send(w, string(verification))
 	default:
 		http.NotFound(w, r)
 	}

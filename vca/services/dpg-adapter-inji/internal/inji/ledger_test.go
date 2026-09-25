@@ -93,3 +93,25 @@ func TestLedgerCallsReadEveryAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCheckCredentialReadsTheStatus(t *testing.T) {
+	ctx := context.Background()
+	v := NewVerify(newHTTP(answerWith(t, 200, `{"verificationStatus":"expired"}`)), "did:x", "")
+	if got, err := v.CheckCredential(ctx, []byte("{}"), "application/json"); err != nil || got != StatusExpired {
+		t.Fatalf("%q %v", got, err)
+	}
+	for _, body := range []string{"[", `{}`} {
+		v = NewVerify(newHTTP(answerWith(t, 200, body)), "did:x", "")
+		if _, err := v.CheckCredential(ctx, []byte("{}"), "application/json"); err == nil {
+			t.Fatalf("%s passed", body)
+		}
+	}
+	v = NewVerify(newHTTP(answerWith(t, 500, "")), "did:x", "")
+	if _, err := v.CheckCredential(ctx, []byte("{}"), "application/json"); err == nil {
+		t.Fatal("a server error passed")
+	}
+	var none *Verify
+	if _, err := none.CheckCredential(ctx, nil, ""); !errors.Is(err, ErrNoVerify) {
+		t.Fatal(err)
+	}
+}

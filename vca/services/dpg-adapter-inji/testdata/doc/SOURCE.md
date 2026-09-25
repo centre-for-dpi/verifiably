@@ -94,3 +94,19 @@ Facts the adapter relies on:
   `/rendering-template/**` without a token.
 - The features page lists JSON-LD, JWS, SD-JWT, mDoc, and mDL, and SVG
   rendering: https://docs.inji.io/inji-certify/overview/features
+
+## Credential check (Verify 0.16.0)
+
+| File | Source |
+| --- | --- |
+| `vc-verification-success.json`, `-expired.json`, `-revoked.json`, `-invalid.json` | `VCVerificationStatusDto` of `POST /vc-verification`: https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/verify-service/src/main/java/io/inji/verify/controller/VCVerificationController.java and https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/verify-service/src/main/java/io/inji/verify/dto/verification/VCVerificationStatusDto.java, with the values of `VerificationStatus` from https://raw.githubusercontent.com/mosip/vc-verifier/master/vc-verifier/kotlin/vcverifier/src/main/java/io/mosip/vercred/vcverifier/data/Data.kt |
+
+Facts the adapter relies on:
+
+- The body is the credential text. `application/vc+sd-jwt` and
+  `application/dc+sd-jwt` select SD-JWT; every other Content-Type
+  selects `ldp_vc`, and the check reads the revocation purpose:
+  https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/verify-service/src/main/java/io/inji/verify/services/impl/VCVerificationServiceImpl.java
+- A revoked credential answers `REVOKED` whatever the other checks say
+  (`Utils.getVcVerificationStatus`):
+  https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/verify-service/src/main/java/io/inji/verify/utils/Utils.java

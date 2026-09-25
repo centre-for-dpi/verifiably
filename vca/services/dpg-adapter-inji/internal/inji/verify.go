@@ -253,3 +253,41 @@ func collectKeys(value any, out map[string]bool) {
 		}
 	}
 }
+
+// The verification statuses of the credential check of Inji Verify
+// 0.16.0 (VerificationStatus of the MOSIP vc-verifier library).
+const (
+	StatusSuccess = "SUCCESS"
+	StatusExpired = "EXPIRED"
+	StatusRevoked = "REVOKED"
+	StatusInvalid = "INVALID"
+)
+
+// verificationPath checks one credential. The Content-Type names the
+// format: application/vc+sd-jwt or application/dc+sd-jwt selects SD-JWT,
+// and every other type selects a JSON-LD credential.
+const verificationPath = "/v1/verify/vc-verification"
+
+// CheckCredential sends one credential to the credential check and
+// returns its verification status.
+func (v *Verify) CheckCredential(ctx context.Context, credential []byte, contentType string) (string, error) {
+	if v == nil {
+		return "", ErrNoVerify
+	}
+	resp, err := v.client.Do(ctx, dpgclient.Request{
+		Method: http.MethodPost, Path: verificationPath, Body: credential, ContentType: contentType, Accept: "application/json",
+	})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		VerificationStatus string `json:"verificationStatus"`
+	}
+	if err := json.Unmarshal(resp.Body, &out); err != nil {
+		return "", fmt.Errorf("inji: read the credential check: %w", err)
+	}
+	if out.VerificationStatus == "" {
+		return "", errors.New("inji: the credential check has no verification status")
+	}
+	return strings.ToUpper(out.VerificationStatus), nil
+}

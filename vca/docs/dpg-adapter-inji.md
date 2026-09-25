@@ -43,6 +43,7 @@ Inji database, and it never restarts an Inji container.
 | `GET /v1/certify/rendering-template/{id}` | Reads the SVG card template a credential template names. |
 | `POST /v1/verify/vp-request` | Starts an OID4VP transaction. |
 | `GET /v1/verify/vp-result/{id}` | Reads the answer of a transaction. |
+| `POST /v1/verify/vc-verification` | Checks one uploaded or scanned credential. |
 
 ## What the adapter can do
 
@@ -54,7 +55,7 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Channels | OID4VCI pre-authorized code and document. An identity provider adds the authorization code flow. |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, and `FEATURE_ISSUED_LEDGER` when the configuration names a Certify URL |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, and `FEATURE_ISSUED_LEDGER` with a Certify URL. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. |
 | DID methods | None. The deployment sets the issuer identity of Inji Certify. |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names a Certify URL |
 | DPG information | The stack name, the Certify release, and one component per wired role plus Keycloak |
@@ -74,7 +75,7 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | Every holder RPC | Inji ships no wallet for a citizen. |
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
-| `VerifyCredential` | The adapter does not call the credential check of Inji Verify yet. The scanner shows no stack check. |
+| `VerifyCredential` of a JWT VC, an mDoc, or a Claim 169 QR code | Inji Verify 0.16.0 checks JSON-LD and SD-JWT credentials only. The adapter answers `invalid_argument`. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.
@@ -147,6 +148,29 @@ revocation purpose through the credential status API. Certify writes
 the status list credential in its next scheduled run. The issued
 credentials pages send only a record of the ledger this way. A record
 with a status entry of VCA keeps its bit in a VCA list.
+
+## The credential check
+
+`VerifyCredential` serves the stack check of the scanner. The adapter
+reads the carrier with `core/ingest` first. It takes a QR image, a PDF,
+a PixelPass text, a JSON-LD document, or an SD-JWT. It sends each
+credential to `POST /v1/verify/vc-verification`. The Content-Type names
+the format: `application/vc+sd-jwt` for an SD-JWT and
+`application/json` for a JSON-LD credential.
+
+Inji Verify answers with one status. The adapter maps it onto the
+checks it covers and leaves out a check the status says nothing of.
+
+| Status | Checks |
+| --- | --- |
+| `SUCCESS` | Signature, expiry, and revocation pass. |
+| `EXPIRED` | The signature passes. The expiry fails. |
+| `REVOKED` | The revocation fails. |
+| `INVALID` | The signature fails. |
+
+Every answer also carries the status itself as the check
+`inji-verification-status`. VCA runs its own checks too (ADR-024
+decision 2).
 
 ## Interoperability knowledge
 

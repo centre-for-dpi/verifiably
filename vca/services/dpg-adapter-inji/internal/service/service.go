@@ -204,6 +204,8 @@ func (s *Service) GetCapabilities(
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_VERIFIER)
 		out.Protocols = append(out.Protocols,
 			backendv1.Protocol_PROTOCOL_OID4VP, backendv1.Protocol_PROTOCOL_OID4VP_PEX)
+		// VerifyCredential calls the credential check of Inji Verify.
+		out.Features = append(out.Features, backendv1.Feature_FEATURE_VERIFY_UPLOAD)
 	}
 	out.DpgInfo = s.dpgInfo()
 	return connect.NewResponse(out), nil

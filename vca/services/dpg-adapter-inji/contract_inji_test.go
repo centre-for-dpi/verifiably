@@ -252,3 +252,25 @@ func TestContractIssueMdoc(t *testing.T) {
 		t.Fatalf("format = %v", resp.Msg.GetCredential().GetFormat())
 	}
 }
+
+// TestContractVerifyCredential checks a credential through the credential
+// check of Inji Verify. The nightly job names a file that holds one.
+func TestContractVerifyCredential(t *testing.T) {
+	cfg := contractEnv(t)
+	path := os.Getenv("VCA_INJI_CONTRACT_CREDENTIAL_FILE")
+	if cfg.VerifyURL == "" || path == "" {
+		t.Skip("set VCA_INJI_CONTRACT_VERIFY_URL and VCA_INJI_CONTRACT_CREDENTIAL_FILE to run the credential check")
+	}
+	payload, err := os.ReadFile(path) //nolint:gosec // G304: the nightly job names the file
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newContractApp(t)
+	resp, err := a.Service.VerifyCredential(context.Background(), connect.NewRequest(&backendv1.VerifyCredentialRequest{Payload: payload}))
+	if err != nil {
+		t.Fatalf("VerifyCredential: %v", err)
+	}
+	if len(resp.Msg.GetDpgChecks()) == 0 {
+		t.Fatal("the answer holds no check")
+	}
+}
