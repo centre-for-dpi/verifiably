@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
@@ -232,6 +233,8 @@ type Profiles struct {
 	Ldp SigningProfile
 	// SdJwt signs vc+sd-jwt credentials.
 	SdJwt SigningProfile
+	// Mdoc signs mso_mdoc credentials.
+	Mdoc SigningProfile
 }
 
 // DefaultProfiles are the keys of the stack defaults: the key alias
@@ -241,6 +244,8 @@ func DefaultProfiles() Profiles {
 		Ldp: SigningProfile{AppID: "CERTIFY_VC_SIGN_ED25519", RefID: "ED25519_SIGN",
 			Algorithm: "EdDSA", CryptoSuite: "Ed25519Signature2020"},
 		SdJwt: SigningProfile{AppID: "CERTIFY_VC_SIGN_EC_R1", RefID: "EC_SECP256R1_SIGN", Algorithm: "ES256"},
+		Mdoc: SigningProfile{AppID: "CERTIFY_VC_SIGN_EC_R1", RefID: "EC_SECP256R1_SIGN",
+			Algorithm: "ES256", CryptoSuite: "ES256"},
 	}
 }
 
@@ -260,16 +265,43 @@ type ConfigInput struct {
 	SDClaims []string
 	// Contexts lists the JSON-LD context extensions.
 	Contexts []string
+	// RenderURL is the address of the SVG template of the stack. An
+	// ldp_vc template then names it as its render method. Empty names
+	// none.
+	RenderURL string
+	// RenderName is the name of the render method.
+	RenderName string
 }
 
 // ErrUnsupportedFormat reports a format the configuration API refuses.
-var ErrUnsupportedFormat = errors.New("inji: Certify 0.14.0 registers ldp_vc and vc+sd-jwt configurations")
+var ErrUnsupportedFormat = errors.New("inji: Certify 0.14.0 registers ldp_vc, vc+sd-jwt, and mso_mdoc configurations")
 
 // VCDMContext is the base context of the W3C data model 2.0.
 const VCDMContext = "https://www.w3.org/ns/credentials/v2"
 
 // Ed25519Context defines the terms of an Ed25519Signature2020 proof.
 const Ed25519Context = "https://w3id.org/security/suites/ed25519-2020/v1"
+
+// suiteContexts maps each Linked Data proof suite of Certify 0.14.0 onto
+// the context that defines its terms. The 2018 and 2019 suites carry a
+// detached JWS. A data integrity proof needs no context beyond the data
+// model 2.0 context.
+var suiteContexts = map[string]string{
+	"Ed25519Signature2020":        Ed25519Context,
+	"Ed25519Signature2018":        "https://w3id.org/security/suites/ed25519-2018/v1",
+	"RsaSignature2018":            "https://w3id.org/security/v2",
+	"EcdsaSecp256k1Signature2019": "https://w3id.org/security/suites/secp256k1-2019/v1",
+	"EcdsaKoblitzSignature2016":   "https://w3id.org/security/v2",
+}
+
+// MdocNamespace returns the namespace of the claims of an mDoc type: the
+// ISO 18013-5 namespace for an mDL, and the type itself otherwise.
+func MdocNamespace(doctype string) string {
+	if ns, ok := strings.CutSuffix(doctype, ".mDL"); ok && ns != "" {
+		return ns
+	}
+	return doctype
+}
 
 // templateName is a claim name that a Velocity template can read.
 var templateName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
@@ -304,7 +336,7 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.Ldp.AppID, p.Ldp.RefID
 		dto.SignatureAlgo, dto.SignatureCryptoSuite = p.Ldp.Algorithm, p.Ldp.CryptoSuite
 		dto.CredentialSubjectDefinition = claimDisplays(claims, locales, markers)
-		dto.VcTemplate = encodeTemplate(ldpTemplate(dto.ContextURLs, in.Type, claims))
+		dto.VcTemplate = encodeTemplate(ldpTemplate(dto.ContextURLs, in, claims))
 	case "vc+sd-jwt":
 		dto.SdJwtVct = in.Type
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.SdJwt.AppID, p.SdJwt.RefID
@@ -312,6 +344,13 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		dto.SdClaim = strings.Join(in.SDClaims, ",")
 		dto.SdJwtClaims = claimDisplays(claims, locales, []string{StatusIndexClaim, StatusURIClaim})
 		dto.VcTemplate = encodeTemplate(sdJwtTemplate(claims))
+	case "mso_mdoc":
+		ns := MdocNamespace(in.Type)
+		dto.DocType = in.Type
+		dto.KeyManagerAppID, dto.KeyManagerRefID = p.Mdoc.AppID, p.Mdoc.RefID
+		dto.SignatureAlgo, dto.SignatureCryptoSuite = p.Mdoc.Algorithm, p.Mdoc.CryptoSuite
+		dto.MsoMdocClaims = map[string]map[string]ClaimDisplay{ns: claimDisplays(claims, locales, nil)}
+		dto.VcTemplate = encodeTemplate(mdocTemplate(in.Type, ns, claims))
 	default:
 		return ConfigurationDTO{}, fmt.Errorf("%w, not %q", ErrUnsupportedFormat, in.Format)
 	}
@@ -448,8 +487,8 @@ func ldpContexts(extensions []string, p SigningProfile) []string {
 			out = append(out, c)
 		}
 	}
-	if p.CryptoSuite == "Ed25519Signature2020" {
-		out = append(out, Ed25519Context)
+	if suite, ok := suiteContexts[p.CryptoSuite]; ok {
+		out = append(out, suite)
 	}
 	return out
 }
@@ -478,7 +517,7 @@ const statusGuard = `#if($` + StatusURIClaim + ` && $` + StatusURIClaim + ` != "
 // ldpTemplate returns the Velocity template of a JSON-LD credential. It
 // follows the sample template of the Certify stack, with the data model
 // 2.0 context and the bitstring status list entry of VCA (ADR-018).
-func ldpTemplate(contexts []string, typ string, claims []claim) string {
+func ldpTemplate(contexts []string, in ConfigInput, claims []claim) string {
 	var b strings.Builder
 	b.WriteString("{\n  \"@context\": [")
 	for i, c := range contexts {
@@ -488,7 +527,7 @@ func ldpTemplate(contexts []string, typ string, claims []claim) string {
 		b.WriteString(quote(c))
 	}
 	b.WriteString("],\n")
-	b.WriteString("  \"type\": [\"VerifiableCredential\", " + quote(typ) + "],\n")
+	b.WriteString("  \"type\": [\"VerifiableCredential\", " + quote(in.Type) + "],\n")
 	b.WriteString("  \"issuer\": \"${_issuer}\",\n")
 	b.WriteString("  \"validFrom\": \"${" + ValidFromClaim + "}\",\n")
 	b.WriteString("  \"validUntil\": \"${" + ValidUntilClaim + "}\",\n")
@@ -500,6 +539,10 @@ func ldpTemplate(contexts []string, typ string, claims []claim) string {
 	b.WriteString("    \"statusListIndex\": \"${" + StatusIndexClaim + "}\",\n")
 	b.WriteString("    \"statusListCredential\": \"${" + StatusURIClaim + "}\"\n")
 	b.WriteString("  },\n#end\n")
+	if in.RenderURL != "" {
+		b.WriteString("  \"renderMethod\": [{\"id\": " + quote(in.RenderURL) +
+			", \"type\": \"SvgRenderingTemplate\", \"name\": " + quote(in.RenderName) + "}],\n")
+	}
 	b.WriteString("  \"credentialSubject\": {\n    \"id\": \"${_holderId}\"")
 	for _, c := range claims {
 		b.WriteString(",\n    " + quote(c.name) + ": " + placeholder(c))
@@ -524,6 +567,25 @@ func sdJwtTemplate(claims []claim) string {
 		b.WriteString("  " + quote(c.name) + ": " + placeholder(c))
 	}
 	b.WriteString("\n}\n")
+	return b.String()
+}
+
+// mdocTemplate returns the template of an mDoc. Certify reads docType,
+// validityInfo, and one list of elements per namespace, and it fills
+// _validFrom and _validUntil itself.
+func mdocTemplate(doctype, ns string, claims []claim) string {
+	var b strings.Builder
+	b.WriteString("{\n  \"docType\": " + quote(doctype) + ",\n")
+	b.WriteString("  \"validityInfo\": {\"validFrom\": \"${_validFrom}\", \"validUntil\": \"${_validUntil}\"},\n")
+	b.WriteString("  \"namespaces\": {\n    " + quote(ns) + ": [")
+	for i, c := range claims {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n      {\"digestId\": " + strconv.Itoa(i) + ", \"elementIdentifier\": " + quote(c.name) +
+			", \"elementValue\": " + placeholder(c) + "}")
+	}
+	b.WriteString("\n    ]\n  }\n}\n")
 	return b.String()
 }
 

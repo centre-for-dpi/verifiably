@@ -36,8 +36,18 @@ type roles struct {
 // both wires the issuer and the verifier.
 var both = roles{certify: true, verify: true}
 
+// serviceOptions are the options a test can change.
+type serviceOptions = service.Options
+
 // newService starts the fake and returns the service under test.
 func newService(t *testing.T, r roles) (*service.Service, *fake.Server) {
+	t.Helper()
+	return newServiceWith(t, r, nil)
+}
+
+// newServiceWith starts the fake and returns the service under test with
+// the options that change sets.
+func newServiceWith(t *testing.T, r roles, change func(*serviceOptions)) (*service.Service, *fake.Server) {
 	t.Helper()
 	f := fake.New(testdata)
 	t.Cleanup(f.Close)
@@ -50,7 +60,7 @@ func newService(t *testing.T, r roles) (*service.Service, *fake.Server) {
 		})
 	}
 	ids := 0
-	svc, err := service.New(service.Options{
+	opts := service.Options{
 		Certify:    inji.NewCertify(client(r.certify), ""),
 		Verify:     inji.NewVerify(client(r.verify), "did:web:verify.example:v1:verify", f.URL()),
 		Store:      store.Memory(),
@@ -68,7 +78,11 @@ func newService(t *testing.T, r roles) (*service.Service, *fake.Server) {
 			ids++
 			return "id-" + string(rune('0'+ids))
 		},
-	})
+	}
+	if change != nil {
+		change(&opts)
+	}
+	svc, err := service.New(opts)
 	if err != nil {
 		t.Fatalf("service.New: %v", err)
 	}

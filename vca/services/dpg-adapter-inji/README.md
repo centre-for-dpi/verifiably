@@ -53,6 +53,10 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_SD_JWT_KEY_APP_ID` | The Certify key application of SD-JWT VCs. The default is `CERTIFY_VC_SIGN_EC_R1`. |
 | `VCA_INJI_SD_JWT_KEY_REF_ID` | The Certify key reference of SD-JWT VCs. The default is `EC_SECP256R1_SIGN`. |
 | `VCA_INJI_SD_JWT_SIGNATURE_ALGO` | The signature algorithm of SD-JWT VCs. The default is `ES256`. |
+| `VCA_INJI_MDOC_KEY_APP_ID` | The Certify key application of mDocs. The default is `CERTIFY_VC_SIGN_EC_R1`. |
+| `VCA_INJI_MDOC_KEY_REF_ID` | The Certify key reference of mDocs. The default is `EC_SECP256R1_SIGN`. |
+| `VCA_INJI_MDOC_SIGNATURE_ALGO` | The COSE signature algorithm of mDocs. The default is `ES256`. |
+| `VCA_INJI_RENDERING_TEMPLATE_ID` | The SVG template id of the Certify deployment. A registered `ldp_vc` configuration names it as its render method. |
 
 Run the binary:
 

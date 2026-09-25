@@ -58,6 +58,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		OfferTTL:            cfg.OfferTTL,
 		Versions:            cfg.Versions(),
 		Profiles:            cfg.Profiles(),
+		RenderingTemplateID: cfg.RenderingTemplateID,
 	})
 	if err != nil {
 		return nil, err

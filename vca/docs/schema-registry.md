@@ -125,7 +125,7 @@ of `services/internal/staffshell` (ADR-044 decision 5).
 | `GET /portal/` | The list with a search box, a status filter, a format filter, and the row actions. |
 | `GET /portal/publish` | The publish from a file form. |
 | `POST /portal/publish` | Store an uploaded JSON Schema document as version 1, then publish it when the form asks. |
-| `GET /portal/schemas/{id}` | The detail of one version, with its claims, its document, and its actions. |
+| `GET /portal/schemas/{id}` | The detail of one version, with its claims, its display, its document, and its actions. |
 | `GET /portal/schemas/{id}/versions` | The version history, newest first. |
 | `POST /portal/schemas/{id}/publish` | Publish one draft version. |
 | `POST /portal/schemas/{id}/retire` | Retire one or every published version. |
@@ -160,6 +160,14 @@ upload stays a draft. The page also names the other live stacks that
 take schemas. Each link opens the publish page of that stack. The detail
 page of a draft hides the publish form in three cases. The stack takes
 no schema, is not ready, or does not issue a format of the version.
+
+The display block of the detail lists the display entries of the
+version. For a published version it also shows the card templates of
+the stack. The page asks `GetIssuerMetadata` of the adapter of the
+pair. It shows each render template of a configuration of the same
+type. The SVG goes in as an image from a data URL. No
+script of the stack runs in the page. A template above 256 KiB stays
+out. A failed call shows the display entries only.
 
 Every page reads through a `SchemaService` client. The in-process service
 satisfies that client, so a page cannot see a state the API does not

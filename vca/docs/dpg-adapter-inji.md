@@ -40,6 +40,7 @@ Inji database, and it never restarts an Inji container.
 | `POST /v1/certify/v2/ledger-search` | Finds issued credentials in the ledger of Certify. |
 | `POST /v1/certify/credentials/status` | Sets the revocation bit of a credential of the ledger. |
 | `GET /v1/certify/.well-known/did.json` | Reads the issuer DID, which the ledger search needs. |
+| `GET /v1/certify/rendering-template/{id}` | Reads the SVG card template a credential template names. |
 | `POST /v1/verify/vp-request` | Starts an OID4VP transaction. |
 | `GET /v1/verify/vp-result/{id}` | Reads the answer of a transaction. |
 
@@ -49,7 +50,7 @@ The answer of `GetCapabilities` reports what the deployment supports.
 
 | Item | Value |
 | --- | --- |
-| Formats | `ldp_vc`, `vc+sd-jwt` |
+| Formats | `ldp_vc`, `vc+sd-jwt`, `mso_mdoc` |
 | Channels | OID4VCI pre-authorized code and document. An identity provider adds the authorization code flow. |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
@@ -85,8 +86,25 @@ Certify 0.14.0. The adapter reads the id first. It creates a new entry
 and replaces an entry that Certify holds. Certify then lists the entry
 in its issuer metadata, so a wallet sees it at once.
 
-The API takes `ldp_vc` and `vc+sd-jwt` in this release. The adapter
-refuses `dc+sd-jwt` and `jwt_vc_json` with a reason.
+The API takes `ldp_vc`, `vc+sd-jwt`, and `mso_mdoc` in this release.
+The adapter refuses `dc+sd-jwt` and `jwt_vc_json` with a reason.
+
+| Contract format | Certify format | What the entry carries |
+| --- | --- | --- |
+| `FORMAT_LDP_VC` | `ldp_vc` | The data model 2.0 context, the extensions, and the context of the proof suite |
+| `FORMAT_VC_SD_JWT` | `vc+sd-jwt` | The `vct`, the disclosable claims, and a token status list claim |
+| `FORMAT_MSO_MDOC` | `mso_mdoc` | The `doctype`, one namespace of elements, and the COSE algorithm |
+| `FORMAT_JWT_VC_JSON` | none | Refused. Certify 0.14.0 registers no JWT VC. |
+
+A signed JWS proof of a JSON-LD credential is a proof suite, not a
+format. `VCA_INJI_LDP_CRYPTO_SUITE` selects it. `Ed25519Signature2018`,
+`RsaSignature2018`, and `EcdsaSecp256k1Signature2019` carry a detached
+JWS. The entry then names the context of that suite.
+
+An mDoc keeps its claims in one namespace. An mDL type such as
+`org.iso.18013.5.1.mDL` uses the namespace `org.iso.18013.5.1`. Another
+type uses itself as the namespace. Certify fills the validity itself.
+The staging call of an mDoc carries no status marker.
 
 Each entry carries a Velocity template. The template places every
 claim of the JSON Schema. A string claim goes in quotes. A number, a
@@ -104,6 +122,12 @@ The entry names the Certify key of each format through the settings
 `VCA_INJI_LDP_*` and `VCA_INJI_SD_JWT_*`. The defaults match the key
 alias mapper of the stack. The stack keeps the keys (ADR-001 decision
 3).
+
+When `VCA_INJI_RENDERING_TEMPLATE_ID` names the SVG template of the
+deployment, an `ldp_vc` template names it as its render method.
+`GetIssuerMetadata` returns the template with each configuration whose
+credential template names one. The adapter reads each entry and each
+template once per call. It caps a template at 256 KiB.
 
 A refusal keeps the Certify code. A duplicate type gives
 `already_exists`. A missing field gives `invalid_argument`.

@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -31,10 +32,19 @@ func (s *Service) RegisterCredentialConfiguration(
 			errors.New("the request needs a configuration with an id and a type"))
 	}
 	format := wireFormat(cfg.GetFormat())
-	dto, err := inji.BuildConfiguration(inji.ConfigInput{
+	in := inji.ConfigInput{
 		ID: cfg.GetId(), Format: format, Type: cfg.GetType(), JSONSchema: cfg.GetJsonSchema(),
 		Display: cfg.GetDisplay(), SDClaims: cfg.GetSdClaims(), Contexts: cfg.GetContexts(),
-	}, s.profiles)
+	}
+	if s.renderingTemplateID != "" && format == "ldp_vc" {
+		meta, err := s.certify.Metadata(ctx)
+		if err != nil {
+			return nil, failed("read the issuer metadata", err)
+		}
+		in.RenderURL = inji.RenderingTemplateURL(meta.CredentialIssuer, s.renderingTemplateID)
+		in.RenderName = displayName(cfg)
+	}
+	dto, err := inji.BuildConfiguration(in, s.profiles)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -83,7 +93,67 @@ func wireFormat(f commonv1.Format) string {
 		return "ldp_vc"
 	case commonv1.Format_FORMAT_VC_SD_JWT:
 		return "vc+sd-jwt"
+	case commonv1.Format_FORMAT_MSO_MDOC:
+		return "mso_mdoc"
+	case commonv1.Format_FORMAT_JWT_VC_JSON:
+		return "jwt_vc_json"
+	case commonv1.Format_FORMAT_DC_SD_JWT:
+		return "dc+sd-jwt"
 	default:
 		return f.String()
+	}
+}
+
+// displayName returns the first display name of a configuration, or its
+// type.
+func displayName(cfg *backendv1.CredentialConfiguration) string {
+	var list []struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal([]byte(cfg.GetDisplay()), &list) == nil && len(list) > 0 && list[0].Name != "" {
+		return list[0].Name
+	}
+	return cfg.GetType()
+}
+
+// attachRenders adds the rendering templates of the stack to each
+// configuration whose credential template names one. Certify keeps the
+// template of a configuration in its configuration API. A configuration
+// that API does not know, or a template the stack does not serve, stays
+// without a render template, so the metadata still answers.
+func (s *Service) attachRenders(ctx context.Context, cfgs []*backendv1.CredentialConfiguration, issuer string) {
+	svgs := map[string]string{}
+	for _, cfg := range cfgs {
+		if cfg.GetFormat() != commonv1.Format_FORMAT_LDP_VC {
+			continue
+		}
+		entry, err := s.certify.GetConfiguration(ctx, cfg.GetId())
+		if err != nil {
+			continue
+		}
+		text, err := inji.DecodeTemplate(entry.VcTemplate)
+		if err != nil {
+			continue
+		}
+		for _, id := range inji.RenderRefs(text) {
+			svg, seen := svgs[id]
+			if !seen {
+				svg, err = s.certify.RenderingTemplate(ctx, id)
+				if err != nil {
+					svg = ""
+				}
+				svgs[id] = svg
+			}
+			if svg == "" {
+				continue
+			}
+			name := ""
+			if len(entry.MetaDataDisplay) > 0 {
+				name = entry.MetaDataDisplay[0].Name
+			}
+			cfg.RenderTemplates = append(cfg.RenderTemplates, &backendv1.RenderTemplate{
+				Url: inji.RenderingTemplateURL(issuer, id), MediaType: "image/svg+xml", Content: svg, Name: name,
+			})
+		}
 	}
 }

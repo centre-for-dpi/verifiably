@@ -33,6 +33,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
@@ -71,6 +72,17 @@ type Options struct {
 	// IssueURL is the issue page of the issuer. Empty means
 	// DefaultIssueURL.
 	IssueURL string
+	// Catalog is the issuer backend of the pair. The detail of a
+	// published version shows the render templates it returns for the
+	// type. Nil shows none.
+	Catalog Catalog
+}
+
+// Catalog is the part of the issuer backend the detail page calls. The
+// generated Connect client fits it.
+type Catalog interface {
+	GetIssuerMetadata(context.Context, *connect.Request[backendv1.GetIssuerMetadataRequest]) (
+		*connect.Response[backendv1.GetIssuerMetadataResponse], error)
 }
 
 // Issued is the part of the IssuedService client the list page calls.
@@ -480,6 +492,10 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	display, err := p.displayBlock(r.Context(), m, targetOf(f))
+	if err != nil {
+		return err
+	}
 	document, err := p.opts.Kit.HTML("json", components.JSON{
 		ID: "document", Summary: "JSON Schema 2020-12 document", Data: rawJSON(m.GetJsonSchema()),
 	})
@@ -490,7 +506,7 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 		Title:       Name(m) + ", version " + strconv.Itoa(int(m.GetVersion())),
 		Heading:     Name(m),
 		Description: "The detail of one schema version.",
-		Content:     components.Join(summary, claims, document, actions),
+		Content:     components.Join(summary, claims, display, document, actions),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
 }

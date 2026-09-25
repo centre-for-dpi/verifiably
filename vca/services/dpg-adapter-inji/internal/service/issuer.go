@@ -327,10 +327,12 @@ func (s *Service) GetIssuerMetadata(
 	if err != nil {
 		return nil, failed("read the issuer metadata", err)
 	}
+	cfgs := configurations(meta)
+	s.attachRenders(ctx, cfgs, meta.CredentialIssuer)
 	return connect.NewResponse(&backendv1.GetIssuerMetadataResponse{
 		Issuer:         meta.CredentialIssuer,
 		MetadataJson:   string(meta.Raw),
-		Configurations: configurations(meta),
+		Configurations: cfgs,
 	}), nil
 }
 

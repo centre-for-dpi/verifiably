@@ -106,3 +106,69 @@ func TestBuildConfigurationChecksItsInput(t *testing.T) {
 		t.Fatal("a broken template decoded")
 	}
 }
+
+func TestJwsSuitesCarryTheirContext(t *testing.T) {
+	schema := `{"type":"object","properties":{"name":{"type":"string"}}}`
+	for suite, want := range map[string]string{
+		"Ed25519Signature2018": "https://w3id.org/security/suites/ed25519-2018/v1",
+		"RsaSignature2018":     "https://w3id.org/security/v2",
+		"DataIntegrityProof":   "",
+	} {
+		p := DefaultProfiles()
+		p.Ldp.CryptoSuite = suite
+		dto, err := BuildConfiguration(ConfigInput{ID: "x", Format: "ldp_vc", Type: "X", JSONSchema: schema}, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		last := dto.ContextURLs[len(dto.ContextURLs)-1]
+		if (want == "" && last != VCDMContext) || (want != "" && last != want) {
+			t.Errorf("%s: contexts %v", suite, dto.ContextURLs)
+		}
+	}
+}
+
+func TestMdocNamespaceAndTemplate(t *testing.T) {
+	if MdocNamespace("org.iso.18013.5.1.mDL") != "org.iso.18013.5.1" || MdocNamespace("org.example.degree") != "org.example.degree" ||
+		MdocNamespace(".mDL") != ".mDL" {
+		t.Fatal("namespace")
+	}
+	dto, err := BuildConfiguration(ConfigInput{ID: "x", Format: "mso_mdoc", Type: "org.example.degree",
+		JSONSchema: `{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}}}`}, DefaultProfiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := DecodeTemplate(dto.VcTemplate)
+	if err != nil || !strings.Contains(tmpl, `"elementValue": ${age}`) || !strings.Contains(tmpl, `"digestId": 1`) {
+		t.Fatalf("template %s %v", tmpl, err)
+	}
+}
+
+func TestRenderingTemplateReadsAnSvg(t *testing.T) {
+	ctx := context.Background()
+	if got := RenderRefs(`"id": "https://c.example/v1/certify/rendering-template/card-1"}, {"id": "https://c.example/v1/certify/rendering-template/card-1"`); len(got) != 1 || got[0] != "card-1" {
+		t.Fatalf("refs %v", got)
+	}
+	if RenderingTemplateURL("https://c.example/", "a b") != "https://c.example/v1/certify/rendering-template/a%20b" {
+		t.Fatal(RenderingTemplateURL("https://c.example/", "a b"))
+	}
+	c := NewCertify(newHTTP(answerWith(t, 200, `<svg xmlns="http://www.w3.org/2000/svg"/>`)), "")
+	if svg, err := c.RenderingTemplate(ctx, "card"); err != nil || !strings.HasPrefix(svg, "<svg") {
+		t.Fatalf("%q %v", svg, err)
+	}
+	c = NewCertify(newHTTP(answerWith(t, 200, `{"not":"svg"}`)), "")
+	if _, err := c.RenderingTemplate(ctx, "card"); err == nil {
+		t.Fatal("a JSON answer passed as an SVG")
+	}
+	c = NewCertify(newHTTP(answerWith(t, 200, "<svg>"+strings.Repeat("x", MaxRenderBytes)+"</svg>")), "")
+	if _, err := c.RenderingTemplate(ctx, "card"); !errors.Is(err, ErrRenderTooLarge) {
+		t.Fatalf("a large template: %v", err)
+	}
+	c = NewCertify(newHTTP(answerWith(t, 404, "")), "")
+	if _, err := c.RenderingTemplate(ctx, "card"); err == nil {
+		t.Fatal("a 404 passed")
+	}
+	var none *Certify
+	if _, err := none.RenderingTemplate(ctx, "card"); !errors.Is(err, ErrNoCertify) {
+		t.Fatal(err)
+	}
+}

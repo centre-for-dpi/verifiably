@@ -91,10 +91,15 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
 		SignOut: cfg.PortalPrefix + "/signout", Prober: deps.Prober, Now: deps.Now,
 	})
-	pages, err := portal.New(portal.Options{
+	popts := portal.Options{
 		Client: svc, Prefix: cfg.PortalPrefix, BuilderURL: cfg.BuilderURL, Kit: kit,
 		Shell: shell, SignOut: signOut, Issued: deps.Issued,
-	})
+	}
+	if deps.Backend != nil {
+		// The detail page shows the card templates of the stack.
+		popts.Catalog = deps.Backend
+	}
+	pages, err := portal.New(popts)
 	if err != nil {
 		return nil, err
 	}

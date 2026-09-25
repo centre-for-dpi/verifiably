@@ -77,6 +77,16 @@ type Config struct {
 	SdJwtKeyRefID string `env:"SD_JWT_KEY_REF_ID" default:"EC_SECP256R1_SIGN"`
 	// SdJwtSignatureAlgo is the signature algorithm of SD-JWT VCs.
 	SdJwtSignatureAlgo string `env:"SD_JWT_SIGNATURE_ALGO" default:"ES256"`
+	// MdocKeyAppID names the Certify key application of mDocs.
+	MdocKeyAppID string `env:"MDOC_KEY_APP_ID" default:"CERTIFY_VC_SIGN_EC_R1"`
+	// MdocKeyRefID names the Certify key reference of mDocs.
+	MdocKeyRefID string `env:"MDOC_KEY_REF_ID" default:"EC_SECP256R1_SIGN"`
+	// MdocSignatureAlgo is the COSE signature algorithm of mDocs.
+	MdocSignatureAlgo string `env:"MDOC_SIGNATURE_ALGO" default:"ES256"`
+	// RenderingTemplateID names the SVG template of the Certify
+	// deployment, as mosip.certify.data-provider-plugin.rendering-template-id
+	// sets it. A registered ldp_vc configuration then names it.
+	RenderingTemplateID string `env:"RENDERING_TEMPLATE_ID"`
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -122,6 +132,8 @@ func (c Config) Profiles() inji.Profiles {
 		Ldp: inji.SigningProfile{AppID: c.LdpKeyAppID, RefID: c.LdpKeyRefID,
 			Algorithm: c.LdpSignatureAlgo, CryptoSuite: c.LdpCryptoSuite},
 		SdJwt: inji.SigningProfile{AppID: c.SdJwtKeyAppID, RefID: c.SdJwtKeyRefID, Algorithm: c.SdJwtSignatureAlgo},
+		Mdoc: inji.SigningProfile{AppID: c.MdocKeyAppID, RefID: c.MdocKeyRefID,
+			Algorithm: c.MdocSignatureAlgo, CryptoSuite: c.MdocSignatureAlgo},
 	}
 }
 

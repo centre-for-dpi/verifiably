@@ -162,7 +162,7 @@ func TestProfilesNameTheStackKeys(t *testing.T) {
 	}
 	p := cfg.Profiles()
 	if p.DidURL != "did:web:issuer.example" || p.Ldp.CryptoSuite != "EcdsaSecp256k1Signature2019" ||
-		p.Ldp.AppID != "CERTIFY_VC_SIGN_ED25519" || p.SdJwt.Algorithm != "ES256" {
+		p.Ldp.AppID != "CERTIFY_VC_SIGN_ED25519" || p.SdJwt.Algorithm != "ES256" || p.Mdoc.CryptoSuite != "ES256" {
 		t.Fatalf("profiles %+v", p)
 	}
 }

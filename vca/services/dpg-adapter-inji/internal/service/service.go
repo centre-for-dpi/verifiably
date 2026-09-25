@@ -51,6 +51,10 @@ type Options struct {
 	OfferTTL time.Duration
 	// PageSizeMax caps a list page.
 	PageSizeMax int
+	// RenderingTemplateID names the SVG template of the Certify
+	// deployment. A registered ldp_vc configuration then names it as its
+	// render method. Empty names none.
+	RenderingTemplateID string
 	// Profiles name the Certify keys of each format. The zero value
 	// selects inji.DefaultProfiles.
 	Profiles inji.Profiles
@@ -77,6 +81,7 @@ type Service struct {
 	pageSizeMax         int
 	versions            map[string]string
 	profiles            inji.Profiles
+	renderingTemplateID string
 	now                 func() time.Time
 	newID               func() string
 }
@@ -104,7 +109,8 @@ func New(opts Options) (*Service, error) {
 	if opts.OfferTTL <= 0 {
 		opts.OfferTTL = 15 * time.Minute
 	}
-	if opts.Profiles.Ldp == (inji.SigningProfile{}) && opts.Profiles.SdJwt == (inji.SigningProfile{}) {
+	if opts.Profiles.Ldp == (inji.SigningProfile{}) && opts.Profiles.SdJwt == (inji.SigningProfile{}) &&
+		opts.Profiles.Mdoc == (inji.SigningProfile{}) {
 		did := opts.Profiles.DidURL
 		opts.Profiles = inji.DefaultProfiles()
 		opts.Profiles.DidURL = did
@@ -122,6 +128,7 @@ func New(opts Options) (*Service, error) {
 		pageSizeMax:         opts.PageSizeMax,
 		versions:            opts.Versions,
 		profiles:            opts.Profiles,
+		renderingTemplateID: opts.RenderingTemplateID,
 		now:                 opts.Now,
 		newID:               opts.NewID,
 	}, nil
@@ -160,9 +167,12 @@ func (s *Service) GetCapabilities(
 	}
 	if s.certify != nil {
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_ISSUER)
+		// The three formats the configuration API of Certify 0.14.0
+		// registers and its credential endpoint issues.
 		out.Formats = []commonv1.Format{
 			commonv1.Format_FORMAT_LDP_VC,
 			commonv1.Format_FORMAT_VC_SD_JWT,
+			commonv1.Format_FORMAT_MSO_MDOC,
 		}
 		// The adapter runs the pre-authorized flow end to end, so the
 		// deployment can hand a citizen a paper document as well
@@ -266,6 +276,9 @@ func configurations(meta inji.Metadata) []*backendv1.CredentialConfiguration {
 			types := entry.CredentialDefinition.Type
 			cfg.Type = types[len(types)-1]
 		}
+		if entry.Doctype != "" {
+			cfg.Type = entry.Doctype
+		}
 		if len(entry.Display) > 0 {
 			cfg.Display = string(entry.Display[0])
 		}
@@ -286,6 +299,8 @@ func contractFormat(format string) commonv1.Format {
 		return commonv1.Format_FORMAT_DC_SD_JWT
 	case "jwt_vc_json":
 		return commonv1.Format_FORMAT_JWT_VC_JSON
+	case "mso_mdoc":
+		return commonv1.Format_FORMAT_MSO_MDOC
 	default:
 		return commonv1.Format_FORMAT_UNSPECIFIED
 	}

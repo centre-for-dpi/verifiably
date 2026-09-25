@@ -69,3 +69,28 @@ Facts the adapter relies on:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/CredentialStatusServiceImpl.java
 - The stack opens `/ledger-search/**` and `/credentials/**` without a
   token (`certify-default.properties`, as above).
+
+## mDoc and rendering templates (Certify 0.14.0)
+
+| File | Source |
+| --- | --- |
+| `credential-mdoc.json` | The credential answer of an `mso_mdoc` request: the IssuerSigned CBOR, base64url without padding, from https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/credential/MDocCredential.java. The fixture holds three elements of the `org.iso.18013.5.1` namespace and an unsigned MSO. |
+| `rendering-template.svg` | The body of `GET /rendering-template/{id}` (`image/svg+xml`), from https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/controller/RenderingTemplateController.java. The drawing is a sample card. |
+
+Facts the adapter relies on:
+
+- The mDoc template names `docType`, `validityInfo` with `${_validFrom}`
+  and `${_validUntil}`, and `namespaces`: one list of elements per
+  namespace, each with `digestId`, `elementIdentifier`, and
+  `elementValue` (`MDocProcessor.processTemplatedJson`):
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/utils/MDocProcessor.java
+- Certify 0.14.0 skips the claim check of an mDoc staging call (release
+  note INJICERT-1282): https://docs.inji.io/inji-certify/releases/version-0.14.0
+- The Linked Data proof suites of the release are in
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/constants/SignatureAlg.java
+- The deployment names one rendering template in
+  `mosip.certify.data-provider-plugin.rendering-template-id`
+  (`CertifyIssuanceServiceImpl`), and the stack opens
+  `/rendering-template/**` without a token.
+- The features page lists JSON-LD, JWS, SD-JWT, mDoc, and mDL, and SVG
+  rendering: https://docs.inji.io/inji-certify/overview/features

@@ -322,6 +322,22 @@ message CredentialConfiguration {
   // The JSON-LD context extensions of an ldp_vc configuration, in order.
   // The adapter puts the base context of the data model first.
   repeated string contexts = 7;
+  // The render templates the DPG puts in the credentials of this
+  // configuration, such as an SVG card. Empty when the DPG has none.
+  repeated RenderTemplate render_templates = 8;
+}
+
+// RenderTemplate is one render method of a credential, as the DPG hosts
+// it.
+message RenderTemplate {
+  // The URL the credential names for the template.
+  string url = 1;
+  // The media type, such as image/svg+xml.
+  string media_type = 2;
+  // The template as the DPG serves it. The adapter caps its size.
+  string content = 3;
+  // The name of the render method, when the credential gives one.
+  string name = 4;
 }
 
 // RegisterCredentialConfigurationRequest carries one configuration to register.

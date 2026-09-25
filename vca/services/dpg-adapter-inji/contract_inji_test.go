@@ -226,3 +226,29 @@ func TestContractRevokeLedgerCredential(t *testing.T) {
 		t.Fatalf("Revoke: %v", err)
 	}
 }
+
+// TestContractIssueMdoc registers an mDL configuration and issues one
+// credential of it. It needs writes.
+func TestContractIssueMdoc(t *testing.T) {
+	writeEnv(t)
+	a := newContractApp(t)
+	ctx := context.Background()
+	id := "VcaContractMdl" + time.Now().UTC().Format("20060102150405")
+	if _, err := a.Service.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+		Configuration: &backendv1.CredentialConfiguration{
+			Id: id, Format: commonv1.Format_FORMAT_MSO_MDOC, Type: "org.iso.18013.5.1.mDL",
+			JsonSchema: `{"type":"object","properties":{"family_name":{"type":"string"},"given_name":{"type":"string"}}}`,
+		},
+	})); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	resp, err := a.Service.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{Spec: &backendv1.IssueSpec{
+		ConfigurationId: id, SubjectData: `{"family_name":"Njeri","given_name":"Wanjiku"}`,
+	}}))
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if resp.Msg.GetCredential().GetFormat() != commonv1.Format_FORMAT_MSO_MDOC {
+		t.Fatalf("format = %v", resp.Msg.GetCredential().GetFormat())
+	}
+}

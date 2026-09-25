@@ -140,3 +140,25 @@ func TestFakeServesTheLedger(t *testing.T) {
 		t.Fatalf("missing ledger: %d", code)
 	}
 }
+
+func TestFakeServesTheMdocAndTheSvg(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	if _, body := call(t, f, http.MethodPost, "/v1/certify/issuance/credential", `{"format":"mso_mdoc","doctype":"org.iso.18013.5.1.mDL"}`); !strings.Contains(body, `"mso_mdoc"`) {
+		t.Fatalf("mdoc: %s", body)
+	}
+	if _, body := call(t, f, http.MethodPost, "/v1/certify/issuance/credential", `{"format":"ldp_vc"}`); !strings.Contains(body, "credentialSubject") {
+		t.Fatalf("ldp: %s", body)
+	}
+	if code, body := call(t, f, http.MethodGet, "/v1/certify/rendering-template/"+fake.RenderingTemplate, ""); code != http.StatusOK || !strings.Contains(body, "<svg") {
+		t.Fatalf("svg: %d", code)
+	}
+	if code, _ := call(t, f, http.MethodGet, "/v1/certify/rendering-template/other", ""); code != http.StatusNotFound {
+		t.Fatalf("unknown svg: %d", code)
+	}
+	missing := fake.New("testdata-that-does-not-exist")
+	defer missing.Close()
+	if code, _ := call(t, missing, http.MethodGet, "/v1/certify/rendering-template/"+fake.RenderingTemplate, ""); code != http.StatusInternalServerError {
+		t.Fatalf("missing svg: %d", code)
+	}
+}

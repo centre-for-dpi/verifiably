@@ -162,7 +162,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/v1/certify/oauth/token":
 		f.send(w, "token.json")
 	case path == "/v1/certify/issuance/credential":
-		f.send(w, string(credential))
+		f.send(w, credentialAnswer(body, credential))
+	case strings.HasPrefix(path, "/v1/certify/rendering-template/"):
+		f.renderingTemplate(w, strings.TrimPrefix(path, "/v1/certify/rendering-template/"))
 	case path == "/v1/verify/vp-request":
 		f.send(w, "vp-request.json")
 	case strings.HasPrefix(path, "/v1/verify/vp-result/"):

@@ -89,6 +89,8 @@ type Configuration struct {
 	Scope string `json:"scope,omitempty"`
 	// Vct is the SD-JWT VC type.
 	Vct string `json:"vct,omitempty"`
+	// Doctype is the ISO mDoc type.
+	Doctype string `json:"doctype,omitempty"`
 	// Order lists the claim names in display order.
 	Order []string `json:"order,omitempty"`
 	// Display holds the display metadata.
@@ -248,6 +250,7 @@ func (c *Certify) Redeem(ctx context.Context, code string) (Token, error) {
 type CredentialRequest struct {
 	Format               string                `json:"format"`
 	Vct                  string                `json:"vct,omitempty"`
+	Doctype              string                `json:"doctype,omitempty"`
 	CredentialDefinition *CredentialDefinition `json:"credential_definition,omitempty"`
 	Proof                ProofBody             `json:"proof"`
 }
@@ -274,6 +277,10 @@ func BuildCredentialRequest(cfg Configuration, proofJWT string) CredentialReques
 			Type:    cfg.CredentialDefinition.Type,
 			Context: cfg.CredentialDefinition.Context,
 		}
+		return req
+	}
+	if cfg.Format == "mso_mdoc" {
+		req.Doctype = cfg.Doctype
 		return req
 	}
 	req.Vct = cfg.Vct
