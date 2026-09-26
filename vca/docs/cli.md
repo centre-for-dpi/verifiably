@@ -502,7 +502,8 @@ It compares that time with `VCA_STACK_SECRETS_SINCE` of
 For each older volume, it writes the old password into the `.env`.
 It keeps every other value and prints no password.
 No `--dpg` means every stack.
-Run it once after the upgrade, before `vca deploy`.
+The first `vca setup` run already does this for a stack with no `.env`.
+Run the command when the `.env` exists, before `vca deploy`.
 `vca doctor` names each volume that needs it.
 Rotate the old passwords later, as `docs/deploy.md` says.
 

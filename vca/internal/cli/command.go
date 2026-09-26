@@ -420,6 +420,12 @@ func newSetupCommand(env *Environment) *cobra.Command {
 				if stacksErr != nil {
 					return stacksErr
 				}
+				// A stack without a .env on a host with its volumes
+				// keeps the old passwords of those volumes (ADR-055
+				// decision 1).
+				if missingStackEnv(stacks) {
+					KeepOldSecrets(env.NewProbe(cmd.Context()), stacks, cmd.OutOrStdout())
+				}
 				// The key of the Inji Web client that the holder
 				// bootstrap wrote (ADR-052 decision 5).
 				walletJWK, jwkErr := ReadWalletJWK(root)

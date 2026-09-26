@@ -142,6 +142,50 @@ func stackVolumeCheck(probe Probe, d configv1.Dpg, values map[string]string) Che
 	return Check{Name: name, OK: true, Detail: "no volume predates the generated secrets"}
 }
 
+// KeepOldSecrets is the upgrade path of vca setup. A stack with no .env
+// yet gets one on this run. When Docker already holds a volume of that
+// stack, the volume comes from a release before generated secrets and
+// keeps its old password. KeepOldSecrets puts that password into the
+// values of the stack, so the new .env holds it, and names each one on
+// out without the password. A stack that has a .env stays as it is:
+// vca dpg upgrade-secrets and vca doctor handle it. A probe that cannot
+// read Docker leaves every value as it is and says so. It returns the
+// number of values it set.
+func KeepOldSecrets(probe Probe, stacks map[configv1.Dpg]map[string]string, out io.Writer) int {
+	var lines []string
+	for _, d := range StackDpgs() {
+		if len(stacks[d]) > 0 {
+			continue
+		}
+		values := map[string]string{}
+		for _, v := range StackVolumes(d) {
+			_, exists, err := probe.VolumeCreated(v.Docker())
+			if err != nil {
+				anyval.DiscardWrite(fmt.Fprintf(out, "vca setup cannot read the volumes of Docker: %v. "+
+					"If this host ran an earlier release, run vca dpg upgrade-secrets before vca deploy.\n", err))
+				return 0
+			}
+			if !exists {
+				continue
+			}
+			values[v.Env] = v.Old
+			lines = append(lines, fmt.Sprintf("%s: %s keeps the password of %s from before generated secrets.",
+				ShortName(d.String()), v.Env, v.Docker()))
+		}
+		if len(values) > 0 {
+			stacks[d] = values
+		}
+	}
+	if len(lines) == 0 {
+		return 0
+	}
+	for _, line := range lines {
+		anyval.DiscardWrite(fmt.Fprintln(out, line))
+	}
+	anyval.DiscardWrite(fmt.Fprintln(out, rotateHint))
+	return len(lines)
+}
+
 // UpgradeOptions holds everything one upgrade run needs.
 type UpgradeOptions struct {
 	// Deploy is the deploy directory under the repository root.

@@ -356,3 +356,70 @@ func TestSystemProbeReadsTheVolumeTime(t *testing.T) {
 		t.Errorf("calls = %v", calls)
 	}
 }
+
+// TestSetupKeepsTheOldPasswordsOfExistingVolumes: the first setup run
+// on a host whose stack volumes predate generated secrets finds no stack
+// .env. It writes the old passwords of the volumes it finds into the new
+// .env, names each one, and asks the operator to rotate them. A stack
+// without volumes gets new passwords, and a host without Docker keeps
+// the run going with a warning.
+func TestSetupKeepsTheOldPasswordsOfExistingVolumes(t *testing.T) {
+	root := t.TempDir()
+	deploy := filepath.Join(root, "deploy")
+	probe := healthyProbe()
+	// The volumes are a year older than the run.
+	old := time.Now().UTC().AddDate(-1, 0, 0)
+	probe.volumes = map[string]time.Time{"vca_inji-certify-db": old, "vca_inji-mimoto-keys": old}
+	env := Environment{Root: root, NewProbe: func(context.Context) Probe { return probe }}
+	status, out, errOut := run(t, env, "setup", "--role", "issuer", "--dpg", "inji", "--non-interactive")
+	if status != 0 {
+		t.Fatalf("setup = %d\n%s\n%s", status, out, errOut)
+	}
+	inji, err := ReadStackEnv(deploy, configv1.Dpg_DPG_INJI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inji["INJI_DB_PASSWORD"] != "certify" || inji["INJI_MIMOTO_KEYSTORE_PASSWORD"] != "mimoto" {
+		t.Fatalf("the old passwords are lost: %v", inji)
+	}
+	if inji["INJI_VERIFY_DB_PASSWORD"] == "injiverify" || len(inji["INJI_VERIFY_DB_PASSWORD"]) != stackSecretLength {
+		t.Fatalf("a stack secret without a volume is not new: %q", inji["INJI_VERIFY_DB_PASSWORD"])
+	}
+	waltid, err := ReadStackEnv(deploy, configv1.Dpg_DPG_WALTID)
+	if err != nil || waltid["WALTID_DB_PASSWORD"] == "waltid" {
+		t.Fatalf("waltid = %v %v", waltid, err)
+	}
+	for _, want := range []string{"INJI_DB_PASSWORD", "vca_inji-certify-db", "INJI_MIMOTO_KEYSTORE_PASSWORD", rotateHint} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the run does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "=certify") {
+		t.Error("the run printed a password")
+	}
+	// The doctor then passes the stack and asks for a rotation.
+	status, out, _ = run(t, env, "doctor", "--role", "issuer", "--dpg", "inji")
+	if !strings.Contains(out, "pass  stack secrets inji") || !strings.Contains(out, "rotate") {
+		t.Errorf("doctor = %d\n%s", status, out)
+	}
+	// A later run keeps the values and reads no volume.
+	probe.volumeErr = errors.New("docker is gone")
+	status, _, errOut = run(t, env, "setup", "--role", "issuer", "--dpg", "inji", "--non-interactive")
+	if status != 0 {
+		t.Fatalf("second setup = %d\n%s", status, errOut)
+	}
+	again, err := ReadStackEnv(deploy, configv1.Dpg_DPG_INJI)
+	if err != nil || again["INJI_DB_PASSWORD"] != "certify" {
+		t.Fatalf("again = %v %v", again, err)
+	}
+	// A first run without Docker writes new secrets and says so.
+	other := t.TempDir()
+	env = Environment{Root: other, NewProbe: func(context.Context) Probe { return probe }}
+	status, out, errOut = run(t, env, "setup", "--role", "issuer", "--dpg", "inji", "--non-interactive")
+	if status != 0 {
+		t.Fatalf("setup without Docker = %d\n%s", status, errOut)
+	}
+	if !strings.Contains(out+errOut, "vca dpg upgrade-secrets") {
+		t.Errorf("the run does not name the upgrade:\n%s\n%s", out, errOut)
+	}
+}

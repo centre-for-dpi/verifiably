@@ -246,3 +246,13 @@ func roleTitle(role commonv1.Role) string {
 	}
 	return strings.ToUpper(name[:1]) + name[1:]
 }
+
+// missingStackEnv reports whether a stack has no .env yet.
+func missingStackEnv(stacks map[configv1.Dpg]map[string]string) bool {
+	for _, d := range StackDpgs() {
+		if len(stacks[d]) == 0 {
+			return true
+		}
+	}
+	return false
+}

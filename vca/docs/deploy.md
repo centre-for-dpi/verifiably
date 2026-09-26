@@ -498,7 +498,17 @@ vca doctor --role <role> --dpg <dpg>
 vca deploy --role <role> --dpg <dpg>
 ```
 
-`vca dpg upgrade-secrets` reads the creation time of each volume below.
+The first `vca setup` run on such a host finds no stack `.env`.
+It asks Docker for the volumes below.
+For each volume it finds, it writes the old password into the new
+stack `.env`.
+It names the variable and asks you to rotate it.
+It prints no password.
+A host where setup cannot reach Docker gets new passwords and a line
+that names `vca dpg upgrade-secrets`.
+
+`vca dpg upgrade-secrets` handles a stack `.env` that already exists.
+It reads the creation time of each volume below.
 A volume older than `VCA_STACK_SECRETS_SINCE` gets its old password in
 the stack `.env`.
 Other values stay.
