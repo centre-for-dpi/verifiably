@@ -311,7 +311,8 @@ func (s *Server) mint(client Client, subject string) (map[string]any, error) {
 		"c_nonce":            nonce,
 		"c_nonce_expires_in": int64(NonceTTL / time.Second),
 	}
-	token, err := jose.SignRS256(s.key.private, s.key.public.KeyID, "JWT", claims)
+	key := s.keyRing().signer(now)
+	token, err := jose.SignRS256(key.private, key.public.KeyID, "JWT", claims)
 	if err != nil {
 		return nil, err
 	}

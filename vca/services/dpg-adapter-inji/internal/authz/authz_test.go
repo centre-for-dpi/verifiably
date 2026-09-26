@@ -52,6 +52,8 @@ type fakeIssuer struct {
 	finished []string
 	reopened []string
 	lookups  int
+	// brokenReopen makes Reopen and Unstage fail.
+	brokenReopen bool
 }
 
 func (f *fakeIssuer) Offer(_ context.Context, id string) (authz.Offer, bool) {
@@ -89,6 +91,9 @@ func (f *fakeIssuer) StageSubject(_ context.Context, configID, subject, key stri
 func (f *fakeIssuer) Reopen(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.brokenReopen {
+		return errBroken
+	}
 	f.reopened = append(f.reopened, id)
 	delete(f.claimed, id)
 	return nil
@@ -104,6 +109,9 @@ func (f *fakeIssuer) Finish(_ context.Context, id string) error {
 func (f *fakeIssuer) Unstage(_ context.Context, key string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.brokenReopen {
+		return errBroken
+	}
 	f.unstaged = append(f.unstaged, key)
 	delete(f.staged, key)
 	return nil
@@ -223,6 +231,7 @@ func newHarnessWith(t *testing.T, o harnessOptions) *harness {
 	}
 	t.Cleanup(h.idp.Close)
 	h.idp.ClientID = "vca-inji-authz"
+	h.idp.Now = h.clock
 	h.idp.Claims = map[string]any{"email": "amina@example.org", "email_verified": true}
 	h.walletKey = anyval.Must(rsa.GenerateKey(rand.Reader, 2048))
 	mux := http.NewServeMux()
@@ -233,8 +242,22 @@ func newHarnessWith(t *testing.T, o harnessOptions) *harness {
 	return h
 }
 
+// storeMemory is a memory store for a test that wraps one.
+func storeMemory() store.KeyValue { return store.Memory() }
+
 // build makes a server on one store, as a start of the adapter does.
 func (h *harness) build(t *testing.T, kv store.KeyValue) *authz.Server {
+	t.Helper()
+	srv, err := authz.New(context.Background(), h.options(kv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return srv
+}
+
+// options are the options of a server of the harness on one store.
+func (h *harness) options(kv store.KeyValue) authz.Options {
+	t := h.t
 	t.Helper()
 	reg := anyval.Must(oidcflow.NewRegistry(nil, nil))
 	if err := reg.Seed(oidcflow.SeedProvider(oidcflow.Seed{
@@ -245,7 +268,7 @@ func (h *harness) build(t *testing.T, kv store.KeyValue) *authz.Server {
 	}
 	pub := anyval.Must(jose.PublicJWK(h.walletKey, ""))
 	raw := anyval.Must(json.Marshal(pub))
-	srv, err := authz.New(context.Background(), authz.Options{
+	return authz.Options{
 		Issuer:    h.web.URL + "/authz",
 		Audience:  audience,
 		Store:     kv,
@@ -262,11 +285,7 @@ func (h *harness) build(t *testing.T, kv store.KeyValue) *authz.Server {
 		Limits:   h.limits,
 		Now:      h.clock,
 		Log:      slog.New(slog.NewTextHandler(&h.logs, nil)),
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	return srv
 }
 
 // reply is an answer that the harness read and closed.
@@ -918,7 +937,7 @@ func TestTokenKeySurvivesRestart(t *testing.T) {
 	if jwks(second) != jwks(h.srv) {
 		t.Fatal("a second start made another key")
 	}
-	raw, err := h.kv.Get(context.Background(), "authz/key")
+	raw, err := h.kv.Get(context.Background(), "authz/keys")
 	if err != nil {
 		t.Fatal(err)
 	}

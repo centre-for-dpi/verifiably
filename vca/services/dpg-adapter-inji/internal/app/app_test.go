@@ -22,6 +22,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -487,5 +488,41 @@ func TestBuildStopsWhenTheVerifiedClaimsDoNotStay(t *testing.T) {
 	_, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Store: refusingStore{store.Memory()}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err == nil || !strings.Contains(err.Error(), "verified claims") {
 		t.Fatalf("Build = %v", err)
+	}
+}
+
+// TestBuildServesTheKeyRotation: the adapter serves the rotation of the
+// token key at its own path, outside the issuer path that the proxy
+// publishes (ADR-056 decision 6).
+func TestBuildServesTheKeyRotation(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	secret := "0123456789abcdef0123456789abcdef"
+	a := build(t, f, func(c *config.Config) {
+		c.AuthzIssuer = "https://adapter.example/authz"
+		c.AuthzKeySecret = secret
+	})
+	if strings.HasPrefix(authz.RotatePath, "/authz/") {
+		t.Fatalf("the rotation sits under the public path: %s", authz.RotatePath)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+authz.RotatePath+"?immediate=true", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+authz.RotationToken([]byte(secret)))
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Error(cerr)
+		}
+	}()
+	var rot authz.Rotation
+	if err := json.NewDecoder(resp.Body).Decode(&rot); err != nil || resp.StatusCode != http.StatusOK || rot.Kid == "" {
+		t.Fatalf("rotation = %d %+v %v", resp.StatusCode, rot, err)
 	}
 }

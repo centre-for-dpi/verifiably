@@ -15,6 +15,7 @@ The source is `vca/cmd/vca` and `vca/internal/cli`.
 - `vca dpg bootstrap` configures a DPG after it boots.
 - `vca dpg realm` turns self registration of a realm on or off.
 - `vca dpg upgrade-secrets` keeps the old passwords of volumes from an earlier release.
+- `vca dpg rotate-authz-key` rotates the token key of the Inji holder authorization server.
 - `vca admin` calls the admin service.
 - `vca migrate` carries the data of a legacy deployment into the services.
 - `vca theme` checks and applies the theme file of every page.
@@ -506,6 +507,30 @@ The first `vca setup` run already does this for a stack with no `.env`.
 Run the command when the `.env` exists, before `vca deploy`.
 `vca doctor` names each volume that needs it.
 Rotate the old passwords later, as `docs/deploy.md` says.
+
+## dpg rotate-authz-key
+
+```sh
+vca dpg rotate-authz-key inji
+vca dpg rotate-authz-key inji --now
+```
+
+The Inji adapter of the issuer pair signs its access tokens with a
+token key (ADR-056 decision 6). The command asks the adapter for a new
+key. The adapter puts the new key in its key set at once. It signs with
+it six minutes later, when the key set cache of Certify has ended. The
+old key leaves the key set when its last token expires.
+
+Use `--now` when somebody else holds the old key. The new key then signs at
+once, and the old key leaves at once. Certify refuses new tokens until
+its key set cache ends, five minutes at most. Restart
+`inji-certify-authcode` to end that sooner.
+
+The run reads the `.env` of the issuer pair. It reaches the adapter on
+its host port, as `vca dpg bootstrap` does, or at
+`VCA_BOOTSTRAP_ADAPTER_URL`. It proves that it holds the pair session
+key with a token derived from it. The proxy of the pair does not publish
+the rotation.
 
 ## admin
 

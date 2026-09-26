@@ -126,9 +126,13 @@ func consume[T any](ctx context.Context, kv store.KeyValue, key string, rec *T, 
 	return true, false, nil
 }
 
-// Sweep deletes the logins, codes and assertion ids that have expired.
-// It returns the number it deleted.
+// Sweep deletes the logins, codes and assertion ids that have expired,
+// and reads the key ring again, so a rotation through another replica
+// reaches this one. It returns the number of records it deleted.
 func (s *Server) Sweep(ctx context.Context) (int, error) {
+	if err := s.reloadKeys(ctx); err != nil {
+		return 0, err
+	}
 	now := s.now()
 	removed := 0
 	for _, prefix := range []string{loginPrefix, codePrefix, jtiPrefix} {

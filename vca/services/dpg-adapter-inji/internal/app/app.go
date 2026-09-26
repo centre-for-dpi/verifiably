@@ -152,6 +152,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		// decision 1).
 		prefix := pathOf(issuer)
 		mux.Handle(prefix+"/", http.StripPrefix(prefix, holder.Handler()))
+		// vca dpg rotate-authz-key reaches the rotation of the token key
+		// on the host port of the adapter. The proxy does not publish it
+		// (ADR-056 decision 6).
+		mux.Handle(authz.RotatePath, holder.RotationHandler())
 	}
 	if cfg.CertifyURL != "" && cfg.PublicURL == "" {
 		deps.Log.Warn("no public URL, so the authorization code channel is off",

@@ -527,6 +527,15 @@ start. It keeps the key in its store under AES-256-GCM. The sealing key
 comes from the pair session key through HKDF-SHA256. Another session key
 cannot open it, so the start fails. The key signs access tokens only.
 
+The store holds a key ring (ADR-056 decision 6). `vca dpg
+rotate-authz-key inji` adds a key. The key set lists the new key at
+once, and the new key signs six minutes later. Certify keeps the key set
+five minutes, so it knows the key first. The old key leaves the key set
+when its last token expires. `--now` signs with the new key at once and
+drops the old key. The key set allows a cache of one minute. Each sweep
+reads the ring again, so every replica follows a rotation. The key of an
+earlier release moves into the ring at the first start.
+
 | Setting | What it sets |
 | --- | --- |
 | `VCA_INJI_AUTHZ_ISSUER` | The issuer. Empty turns the server off. It needs a path. |
@@ -555,6 +564,7 @@ cannot open it, so the start fails. The key signs access tokens only.
 | A holder registers the user name or the attribute of another person | Such a claim never binds unless the provider record lists it as verified. The holder realm verifies every email. |
 | A look alike address matches | Only ASCII letters of an email compare without case, so the Kelvin sign is not `k`. |
 | A copy of the store gives codes or keys | The store keeps the SHA-256 of each code, state, and `jti`. The token key sits under AES-256-GCM with the pair session key. |
+| A token key leaks | `vca dpg rotate-authz-key inji --now` replaces it without a restart. The rotation needs a token derived from the pair session key, and the proxy does not publish it. |
 | A token reaches another service | `aud` names the credential endpoint of one Certify. The token lives five minutes and carries the scope `vca_credential` only. |
 | A token for one credential asks for another type | The template of every configuration renders only a row of that configuration (ADR-056 decision 1). A farmer row gives no medical licence. |
 | A mix up of servers | The redirect carries `iss` (RFC 9207). |

@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
@@ -190,7 +191,9 @@ type Server struct {
 	stack    string
 	now      func() time.Time
 	log      *slog.Logger
-	key      tokenKey
+	secret   []byte
+	keysMu   sync.RWMutex
+	ring     keyRing
 	clients  map[string]Client
 	limits   Limits
 }
@@ -226,7 +229,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	s := &Server{
 		issuer: issuer, audience: opts.Audience, kv: opts.Store, registry: opts.Registry, flow: opts.Flow,
 		offers: opts.Offers, lookup: opts.Lookup, stack: opts.Stack, now: opts.Now, log: opts.Log, clients: clients,
-		limits: opts.Limits,
+		limits: opts.Limits, secret: opts.KeySecret,
 	}
 	if s.stack == "" {
 		s.stack = "inji"
@@ -237,11 +240,11 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if s.log == nil {
 		s.log = slog.Default()
 	}
-	key, err := loadKey(ctx, opts.Store, opts.KeySecret)
+	ring, err := loadRing(ctx, opts.Store, opts.KeySecret)
 	if err != nil {
 		return nil, err
 	}
-	s.key = key
+	s.ring = ring
 	return s, nil
 }
 
@@ -280,9 +283,15 @@ func (s *Server) metadata(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// jwks serves the public key of the token key.
+// jwks serves the public keys of the ring: the key that signs, a next
+// key during a rotation, and an old key until its last token expires. A
+// cache may keep the set one minute (ADR-056 decision 6).
 func (s *Server) jwks(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"keys": []any{s.key.public}})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "max-age=60")
+	// A failed write leaves the client without an answer; nothing else
+	// can be done.
+	anyval.Discard(json.NewEncoder(w).Encode(map[string]any{"keys": s.keyRing().published(s.now())}))
 }
 
 // holderProvider returns the provider the holder signs in at: the

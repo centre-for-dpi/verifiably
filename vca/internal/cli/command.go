@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra/doc"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/themefile"
 )
@@ -880,7 +881,53 @@ func newDpgCommand(env *Environment) *cobra.Command {
 	dpg.AddCommand(bootstrap)
 	dpg.AddCommand(newDpgRealmCommand(env))
 	dpg.AddCommand(newDpgUpgradeSecretsCommand(env))
+	dpg.AddCommand(newDpgRotateAuthzKeyCommand(env))
 	return dpg
+}
+
+// newDpgRotateAuthzKeyCommand builds vca dpg rotate-authz-key (ADR-056
+// decision 6).
+func newDpgRotateAuthzKeyCommand(env *Environment) *cobra.Command {
+	var immediate bool
+	cmd := &cobra.Command{
+		Use:   "rotate-authz-key <dpg> [--now]",
+		Short: "Rotate the token key of the holder authorization server.",
+		Long: "rotate-authz-key asks the adapter of the issuer pair for a new token " +
+			"key of its holder authorization server. The adapter publishes the new " +
+			"key in its key set at once. It signs with it after six minutes, when " +
+			"the key set cache of Certify has ended. The old key leaves the key set " +
+			"when its last token expires.\n\n" +
+			"--now is for a compromised key. The new key signs at once, and the old " +
+			"key leaves the key set at once. Certify then refuses new tokens for up " +
+			"to five minutes; restart inji-certify-authcode to end that sooner.\n\n" +
+			"The run reaches the adapter on its host port and proves that it holds " +
+			"the pair session key of the .env. Only the Inji stack runs the server.",
+		Example: "  vca dpg rotate-authz-key inji",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			d, err := ParseDpg(args[0])
+			if err != nil {
+				return err
+			}
+			pair := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: d}
+			deploy := filepath.Join(env.Root, "deploy")
+			values := map[string]string{}
+			if d == configv1.Dpg_DPG_INJI {
+				if values, err = bootstrapValues(env, deploy, pair); err != nil {
+					return err
+				}
+			}
+			_, err = RotateAuthzKey(cmd.Context(), RotateOptions{
+				BootstrapOptions: BootstrapOptions{Pair: pair, Dir: OutputDir(deploy, pair), Values: values,
+					Client: env.HTTP, Out: cmd.OutOrStdout()},
+				Immediate: immediate,
+			})
+			return err
+		},
+	}
+	cmd.Flags().BoolVar(&immediate, "now", false,
+		"Sign with the new key at once and drop the old key, for a compromised key.")
+	return cmd
 }
 
 // newDpgRealmCommand builds vca dpg realm (ADR-035 decision 6).

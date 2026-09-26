@@ -608,15 +608,15 @@ A row that is not `Done` carries a note.
 | ADR-056 | 3 The row lives as long as its token | Done | `vca/services/dpg-adapter-inji/internal/authz`, `deploy/vca/dpg/inji/certify/certify-vca-store.properties` | The row lives `RowTTL`, seven minutes. The query casts `expires_at` and compares it with `now()`. `TestCertifyPropertiesNameThePostgresProvider` pins it. |
 | ADR-056 | 4 Offer claims go at the token or at expiry | Done | `vca/services/dpg-adapter-inji/internal/service/holderclaim.go`, `vca/services/dpg-adapter-inji/internal/authz/token.go`, `vca/services/dpg-adapter-inji/internal/app/app.go` | `Finish` drops the subject after the token. `SweepOffers` deletes expired offers. A code that fails before any token reopens its offer and logs at Warn. |
 | ADR-056 | 5 Bounded parameters, a rate limit, no store walk | Done | `vca/services/dpg-adapter-inji/internal/authz/limit.go`, `vca/services/dpg-adapter-inji/internal/authz/authorize.go`, `vca/services/internal/store/store.go` | The limit sits in the handler, because the stock Caddy has no rate limit module. The file store walks only the folder of a prefix. |
-| ADR-056 | 6 A key ring and a rotation command | Not started | `vca/services/dpg-adapter-inji/internal/authz/keys.go`, `vca/internal/cli` | |
+| ADR-056 | 6 A key ring and a rotation command | Done | `vca/services/dpg-adapter-inji/internal/authz/keys.go`, `vca/internal/cli/rotate.go` | The adapter serves the rotation at `/internal/authz/rotate-key` on its host port. `TestNoPublicRouteReachesTheRotation` pins that no route leads there. |
 | ADR-056 | 7 Claim values without control characters | Done | `vca/services/dpg-adapter-inji/internal/claims/claims.go`, `vca/services/dpg-adapter-inji/internal/inji/claims.go` | `CreateOffer` refuses the value with the claim name. `Put` refuses any field. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 245 |
+| Done | 246 |
 | Partial | 29 |
 | Deferred | 3 |
-| Not started | 37 |
+| Not started | 36 |
 | Total | 314 |
