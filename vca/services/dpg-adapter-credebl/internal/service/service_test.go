@@ -217,6 +217,10 @@ func TestRegisterCredentialConfigurationStoresTheSchemaAndTheTemplate(t *testing
 	if schema["type"] != "json" {
 		t.Fatalf("schema = %v", schema)
 	}
+	// The platform takes a W3C schema of the type no_ledger only.
+	if payload := mustAs[map[string]any](t, schema["schemaPayload"]); payload["schemaType"] != "no_ledger" {
+		t.Fatalf("schemaPayload = %v", payload)
+	}
 }
 
 func TestRegisterCredentialConfigurationKeepsAnExistingTemplate(t *testing.T) {

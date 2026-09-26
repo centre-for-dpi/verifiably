@@ -33,3 +33,23 @@ a seed for `did:indy` and `did:web`, which is the private key
 ([DidController.ts](https://raw.githubusercontent.com/credebl/agent-controller/main/src/controllers/did/DidController.ts)
 `handleIndy`, `handleWeb`). The adapter never sends key material
 (ADR-001 decision 3), so it makes `did:key` identities only.
+
+## The schema body of an SD-JWT template
+
+The adapter stores the schema of an SD-JWT template as a W3C schema
+with no ledger. The body follows `GenericSchemaDTO` and
+`CreateW3CSchemaDto` of
+[create-schema.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/dtos/create-schema.dto.ts),
+read on 2026-09-27. The enums come from
+[enum.ts](https://raw.githubusercontent.com/credebl/platform/main/libs/enum/src/enum.ts):
+
+| Field | Enum | Values |
+| --- | --- | --- |
+| `type` | `SchemaTypeEnum` | `json`, `indy` |
+| `schemaPayload.schemaType` | `JSONSchemaType` | `polygon`, `no_ledger` |
+| `schemaPayload.attributes[].schemaDataType` | `W3CSchemaDataType` | `number`, `integer`, `string`, `datetime-local`, `array`, `object`, `boolean` |
+
+The payload needs a description that is not empty. The gateway strips
+a member that the DTO does not name, such as `orgId`.
+`TestCreateSchemaSendsTheSchemaTypeOfThePlatform` checks the body
+against these values.

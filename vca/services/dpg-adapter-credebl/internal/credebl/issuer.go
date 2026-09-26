@@ -146,22 +146,23 @@ func RewritePublic(uri, internal, public string) string {
 	return strings.ReplaceAll(out, url.QueryEscape(internal), url.QueryEscape(public))
 }
 
-// schemaRequest is the body of the schema endpoint.
+// schemaRequest is the body of the schema endpoint: GenericSchemaDTO of
+// apps/api-gateway/src/dtos/create-schema.dto.ts.
 type schemaRequest struct {
 	Type    string        `json:"type"`
 	Payload schemaPayload `json:"schemaPayload"`
 }
 
-// schemaPayload is the schema CREDEBL stores.
+// schemaPayload is the W3C schema the platform stores for a template:
+// CreateW3CSchemaDto of the same file.
 type schemaPayload struct {
 	SchemaName  string             `json:"schemaName"`
 	SchemaType  string             `json:"schemaType"`
 	Description string             `json:"description"`
-	OrgID       string             `json:"orgId"`
 	Attributes  []schemaAttributes `json:"attributes"`
 }
 
-// schemaAttributes is one claim of a schema.
+// schemaAttributes is one claim of a schema: W3CAttributeValue.
 type schemaAttributes struct {
 	AttributeName string `json:"attributeName"`
 	DataType      string `json:"schemaDataType"`
@@ -178,28 +179,55 @@ type schemaResponse struct {
 	} `json:"data"`
 }
 
-// CreateSchema stores one schema in CREDEBL and returns its identifier.
+// The values of the schema body that the enums of the platform allow
+// (libs/enum/src/enum.ts): SchemaTypeEnum.JSON for the type, and
+// JSONSchemaType.LEDGER_LESS for the schemaType. The platform refuses any
+// other schemaType, and the stack runs no Polygon ledger.
+const (
+	schemaTypeJSON     = "json"
+	schemaTypeNoLedger = "no_ledger"
+)
+
+// w3cDataTypes are the values of W3CSchemaDataType.
+var w3cDataTypes = map[string]bool{
+	"number": true, "integer": true, "string": true, "datetime-local": true, "array": true, "object": true, "boolean": true,
+}
+
+// w3cDataType maps the JSON Schema type of a claim onto W3CSchemaDataType.
+// A type the enum lacks is a string.
+func w3cDataType(t string) string {
+	if w3cDataTypes[t] {
+		return t
+	}
+	return "string"
+}
+
+// CreateSchema stores the W3C schema of an SD-JWT template in CREDEBL,
+// with no ledger, and returns its identifier. The platform needs a
+// description, so an empty one takes the name.
 func (c *Client) CreateSchema(ctx context.Context, name, description string, attributes []Attribute) (string, error) {
 	if c == nil {
 		return "", ErrNoPlatform
 	}
+	if strings.TrimSpace(description) == "" {
+		description = name
+	}
 	payload := schemaPayload{
 		SchemaName:  name,
-		SchemaType:  "json",
+		SchemaType:  schemaTypeNoLedger,
 		Description: description,
-		OrgID:       c.orgID,
 	}
 	for _, a := range attributes {
 		payload.Attributes = append(payload.Attributes, schemaAttributes{
 			AttributeName: a.Key,
-			DataType:      a.ValueType,
+			DataType:      w3cDataType(a.ValueType),
 			DisplayName:   a.Key,
 			IsRequired:    true,
 		})
 	}
 	var out schemaResponse
 	path := fmt.Sprintf("/v1/orgs/%s/schemas", c.orgID)
-	if err := c.call(ctx, http.MethodPost, path, schemaRequest{Type: "json", Payload: payload}, &out); err != nil {
+	if err := c.call(ctx, http.MethodPost, path, schemaRequest{Type: schemaTypeJSON, Payload: payload}, &out); err != nil {
 		return "", err
 	}
 	for _, id := range []string{out.Data.ID, out.Data.SchemaID, out.Data.SchemaLedgerID} {

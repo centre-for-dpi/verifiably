@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -372,4 +373,84 @@ func TestFindTemplateMatchesTheNameOrTheIdentifier(t *testing.T) {
 	if _, ok := FindTemplate(list, "other"); ok {
 		t.Fatal("an unknown name must not match")
 	}
+}
+
+// The enums of the schema body of the api gateway, read on 2026-09-27
+// from libs/enum/src/enum.ts of the platform (testdata/doc/SOURCE.md):
+// the type of GenericSchemaDTO, the schemaType of CreateW3CSchemaDto,
+// and the schemaDataType of W3CAttributeValue.
+var (
+	platformSchemaTypes     = []string{"json", "indy"}
+	platformJSONSchemaTypes = []string{"polygon", "no_ledger"}
+	platformW3CDataTypes    = []string{"number", "integer", "string", "datetime-local", "array", "object", "boolean"}
+)
+
+// TestCreateSchemaSendsTheSchemaTypeOfThePlatform: the schema of an
+// SD-JWT template is a W3C schema of the type json. Its schemaType must
+// be a value of the JSONSchemaType enum; the platform refuses "json".
+// The stack runs no Polygon ledger, so the value is no_ledger. The
+// description must not be empty, and each data type is a value of the
+// W3C enum.
+func TestCreateSchemaSendsTheSchemaTypeOfThePlatform(t *testing.T) {
+	var sent []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/auth/signin" {
+			mustWrite(t, w, []byte(`{"data":{"access_token":"t"}}`))
+			return
+		}
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read the body: %v", err)
+		}
+		sent = raw
+		mustWrite(t, w, []byte(`{"data":{"schemaLedgerId":"http://credebl-schema-file-server:4000/schemas/s-1"}}`))
+	}))
+	defer srv.Close()
+	c := newClient(srv, nil)
+	if _, err := c.CreateSchema(context.Background(), "FarmerCredential", "",
+		[]Attribute{{Key: "fullName", ValueType: "string"}, {Key: "acres", ValueType: "number"}, {Key: "notes", ValueType: "null"}}); err != nil {
+		t.Fatalf("CreateSchema: %v", err)
+	}
+	var body struct {
+		Type    string `json:"type"`
+		Payload struct {
+			SchemaName  string `json:"schemaName"`
+			SchemaType  string `json:"schemaType"`
+			Description string `json:"description"`
+			Attributes  []struct {
+				AttributeName  string `json:"attributeName"`
+				SchemaDataType string `json:"schemaDataType"`
+				DisplayName    string `json:"displayName"`
+			} `json:"attributes"`
+		} `json:"schemaPayload"`
+	}
+	if err := json.Unmarshal(sent, &body); err != nil {
+		t.Fatalf("the body %s: %v", sent, err)
+	}
+	if !contains(platformSchemaTypes, body.Type) || body.Type != "json" {
+		t.Errorf("type = %q, want json", body.Type)
+	}
+	if !contains(platformJSONSchemaTypes, body.Payload.SchemaType) || body.Payload.SchemaType != "no_ledger" {
+		t.Errorf("schemaType = %q, want no_ledger of %v", body.Payload.SchemaType, platformJSONSchemaTypes)
+	}
+	if body.Payload.Description == "" {
+		t.Error("the description is empty; the platform needs one")
+	}
+	if len(body.Payload.Attributes) != 3 {
+		t.Fatalf("attributes = %+v", body.Payload.Attributes)
+	}
+	for _, a := range body.Payload.Attributes {
+		if !contains(platformW3CDataTypes, a.SchemaDataType) || a.DisplayName == "" {
+			t.Errorf("attribute %+v breaks the W3C enum of the platform", a)
+		}
+	}
+}
+
+func contains(list []string, value string) bool {
+	for _, v := range list {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }

@@ -149,6 +149,13 @@ unauthorized signs in again once and then gives up.
 a template in a column named `attributes`. A read returns the body under
 that name, although a write sends it under the name `template`.
 
+**The schema of a template is a W3C schema with no ledger.** The adapter
+stores a schema before each SD-JWT template. The body has the type `json`
+and the schema type `no_ledger`, as the enums of the api gateway allow.
+The platform refuses any other schema type. The adapter maps each claim
+type onto the W3C data types of the platform. A type outside that list
+becomes a string. An empty description takes the schema name.
+
 **The payload carries the claims of the template and nothing else.** The
 platform checks the payload against the declared attributes. An extra
 member, such as a subject identifier, makes the check fail. The
