@@ -271,6 +271,10 @@ func Catalog() []Service {
 			Stateful: true, Fixed: []FixedValue{
 				{Env: "VCA_INJI_STORE_FILE", Value: "/data/inji-state"},
 				{Env: "VCA_INJI_WEB_URL", Value: "http://localhost:17085", Roles: holder},
+				// The issuer profile of the stack file runs Inji Verify, and
+				// Certify reaches it, so a presentation during issuance
+				// works (P6-I4b).
+				{Env: "VCA_INJI_PRESENTATION_DURING_ISSUANCE", Value: "true", Roles: issuer},
 			},
 			// The credential offer of the authorization code channel lives
 			// under the public URL of the adapter. The Connect services of

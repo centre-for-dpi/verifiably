@@ -94,7 +94,7 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
 | `VerifyCredential` of a JWT VC, an mDoc, or a Claim 169 QR code | Inji Verify 0.16.0 checks JSON-LD and SD-JWT credentials only. The adapter answers `invalid_argument`. |
-| A presentation during issuance without `VCA_INJI_PRESENTATION_DURING_ISSUANCE` | Certify checks the presentation with Inji Verify, and the stack file does not point it there. The adapter answers `failed_precondition` and lists no `FEATURE_PRESENTATION_DURING_ISSUANCE`. |
+| A presentation during issuance without `VCA_INJI_PRESENTATION_DURING_ISSUANCE` | Certify checks the presentation with Inji Verify. A deployment outside the stack file can leave it unset. The adapter then answers `failed_precondition` and lists no `FEATURE_PRESENTATION_DURING_ISSUANCE`. The stack file points it there, and `vca setup` sets the value. |
 | A presentation definition per offer | Certify 0.14.0 reads one definition for the deployment from `vp_request_config.json`. The offer cannot name another. |
 | An identity QR code beside an mDoc | The adapter asks for the code in `ldp_vc` and `vc+sd-jwt` entries only. An mDoc element needs a digest of its own. |
 | An identity QR code of a schema without identity claims | Claim 169 names identity attributes only. The adapter asks for no code, and `Issue` returns none. |
@@ -313,9 +313,22 @@ the identity of the presented credential. The claims of the staging
 call do not reach such a credential.
 
 The setting `VCA_INJI_PRESENTATION_DURING_ISSUANCE` turns the feature
-on. Set it once Certify reaches Inji Verify through
-`mosip.certify.verify.service.base-url` and holds a
-`vp_request_config.json`.
+on. The stack file points Certify at Inji Verify through
+`mosip.certify.verify.service.*` and serves `vp_request_config.json`
+(P6-I4b). The issuer profile runs Inji Verify for that, so `vca setup`
+sets the value to `true` for the Inji issuer pair. A deployment outside
+the stack file sets it once its Certify reaches an Inji Verify.
+
+P6-I4b read the error path in the Certify 0.14.0 sources. Certify
+answers 400 in two shapes:
+
+| Case | Body |
+| --- | --- |
+| Inji Verify refused the presentation | `{"status":"error","code":null}` |
+| A presentation without identity attributes, an unknown session, or another Certify error | `{"error":"invalid_request","error_description":"..."}` |
+
+The wallet reads both. It claims nothing and shows the description
+when Certify gives one.
 
 ## The identity QR channel
 

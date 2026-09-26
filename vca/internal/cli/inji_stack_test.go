@@ -11,6 +11,9 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // injiService is the part of one service of the Inji stack file that
@@ -270,4 +273,76 @@ func networkAliases(networks any, name string) []string {
 		}
 	}
 	return out
+}
+
+// TestInjiStackPointsCertifyAtInjiVerify is P6-I4b: Certify 0.14.0 asks
+// Inji Verify for the presentation it wants before it issues, so the
+// issuer profile runs Inji Verify 0.16.0 too, on its real port 8080
+// with its database. Certify reads the definition over HTTP from a
+// small nginx, as the injistack compose file does. The Inji issuer pair
+// then turns the feature on.
+func TestInjiStackPointsCertifyAtInjiVerify(t *testing.T) {
+	stack := readInjiStack(t)
+	certify := stack["inji-certify"]
+	for key, want := range map[string]string{
+		"MOSIP_CERTIFY_VERIFY_SERVICE_BASE_URL":            "http://inji-verify-service:8080",
+		"MOSIP_CERTIFY_VERIFY_SERVICE_VP_REQUEST_ENDPOINT": "http://inji-verify-service:8080/v1/verify/vp-request",
+		"MOSIP_CERTIFY_VERIFY_SERVICE_VP_RESULT_ENDPOINT":  "http://inji-verify-service:8080/v1/verify/vp-result",
+		"MOSIP_CERTIFY_VERIFY_SERVICE_VERIFIER_CLIENT_ID":  "certify-verifier-client",
+		"MOSIP_CERTIFY_VP_REQUEST_CONFIG_FILE_URL":         "http://inji-certify-nginx/vp_request_config.json",
+	} {
+		if certify.Environment[key] != want {
+			t.Errorf("inji-certify %s = %q, want %q", key, certify.Environment[key], want)
+		}
+	}
+	if _, ok := certify.DependsOn["inji-verify-service"]; !ok {
+		t.Error("inji-certify does not wait for Inji Verify")
+	}
+	nginx := stack["inji-certify-nginx"]
+	if strings.Join(nginx.Profiles, ",") != "issuer-inji" || nginx.Image != "nginx:1.27.2-alpine" {
+		t.Errorf("inji-certify-nginx = %+v", nginx)
+	}
+	config := mountSource(nginx.Volumes, "/usr/share/nginx/html/vp_request_config.json")
+	raw, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", filepath.FromSlash(config))) // #nosec G304 -- a path of the stack file
+	if err != nil {
+		t.Fatalf("the nginx serves no vp_request_config.json: %v", err)
+	}
+	var vp struct {
+		Definition struct {
+			ID     string            `json:"id"`
+			Inputs []json.RawMessage `json:"input_descriptors"`
+		} `json:"presentation_definition"`
+	}
+	if err := json.Unmarshal(raw, &vp); err != nil || vp.Definition.ID == "" || len(vp.Definition.Inputs) == 0 {
+		t.Fatalf("vp_request_config.json = %s %v", raw, err)
+	}
+	for _, name := range []string{"inji-verify-service", "inji-verify-postgres"} {
+		if got := strings.Join(stack[name].Profiles, ","); got != "issuer-inji,verifier-inji" {
+			t.Errorf("%s profiles = %s", name, got)
+		}
+	}
+	verify := stack["inji-verify-service"]
+	if len(verify.Ports) != 1 || !strings.HasSuffix(verify.Ports[0], ":8080") {
+		t.Errorf("inji-verify-service ports = %v; the service listens on 8080", verify.Ports)
+	}
+	for key, want := range map[string]string{
+		"DATABASE_HOST": "inji-verify-postgres", "DATABASE_PORT": "5432", "DATABASE_NAME": "injiverify",
+		"DATABASE_SCHEMA": "verify", "DATABASE_USERNAME": "injiverify",
+	} {
+		if verify.Environment[key] != want {
+			t.Errorf("inji-verify-service %s = %q, want %q", key, verify.Environment[key], want)
+		}
+	}
+	initSQL := mountSource(stack["inji-verify-postgres"].Volumes, "/docker-entrypoint-initdb.d/init.sql")
+	if sql, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", filepath.FromSlash(initSQL))); err != nil || // #nosec G304 -- a path of the stack file
+		!strings.Contains(string(sql), "CREATE TABLE IF NOT EXISTS verify.vp_submission") {
+		t.Fatalf("the Inji Verify database runs no init script of the release: %v", err)
+	}
+	ui := stack["inji-verify-ui"]
+	if len(ui.Ports) != 1 || !strings.HasSuffix(ui.Ports[0], ":8000") {
+		t.Errorf("inji-verify-ui ports = %v; its nginx listens on 8000", ui.Ports)
+	}
+	if got := DefaultDpgURL(Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_INJI}); got != "http://inji-verify-service:8080" {
+		t.Errorf("the verifier DPG URL = %s", got)
+	}
 }

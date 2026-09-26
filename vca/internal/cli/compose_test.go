@@ -211,6 +211,9 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 			// database and the session store Mimoto needs (P6-I7d).
 			"injistack/mimoto:0.21.0", "injistack/inji-web:0.16.0",
 			"image: postgres:15.8\n", "redis:7.4.1-alpine",
+			// Certify reads the presentation definition from this nginx
+			// (P6-I4b).
+			"nginx:1.27.2-alpine",
 		},
 		"dpg/credebl.yaml": {"quay.io/keycloak/keycloak:25.0"},
 	}

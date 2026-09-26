@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/issuers"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/ports"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/service"
 )
 
@@ -31,6 +33,9 @@ type iarStack struct {
 	calls  []url.Values
 	urls   []string
 	finish string
+	// finishStatus is the HTTP status of the finish answer. Certify
+	// 0.14.0 sends a refusal with 400.
+	finishStatus int
 }
 
 func (s *iarStack) post(_ context.Context, address string, form url.Values) ([]byte, error) {
@@ -40,6 +45,9 @@ func (s *iarStack) post(_ context.Context, address string, form url.Values) ([]b
 	case address == iarToken:
 		return []byte(`{"access_token":"at-iar","token_type":"Bearer","c_nonce":"n"}`), nil
 	case address == iarEndpoint && form.Get("auth_session") != "":
+		if s.finishStatus >= 400 {
+			return nil, &ports.StatusError{Status: s.finishStatus, Body: []byte(s.finish)}
+		}
 		if s.finish != "" {
 			return []byte(s.finish), nil
 		}
@@ -174,10 +182,64 @@ func TestWalletAnswersPresentationDuringIssuance(t *testing.T) {
 	}
 }
 
+// TestWalletReadsTheRefusalsOfCertify reads the two refusal shapes that
+// P6-I4b confirmed in the Certify 0.14.0 sources: a presentation that
+// Inji Verify refused (400, status error, no code), and a Certify error
+// under /oauth/ (400, error and error_description). The wallet claims
+// nothing and says why. A server error stays a problem of the issuer.
+func TestWalletReadsTheRefusalsOfCertify(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		body   string
+		want   string
+	}{
+		{http.StatusBadRequest, `{"status":"error","code":null}`, "The issuer did not accept the credential, so it gave you no new one."},
+		{http.StatusBadRequest, `{"error":"invalid_request","error_description":"VP does not contain identity attributes (UIN/VID)"}`,
+			"The issuer said: VP does not contain identity attributes (UIN/VID)."},
+	} {
+		stack := &iarStack{finish: tc.body, finishStatus: tc.status}
+		holder := &fakeHolder{credential: credential(t)}
+		confirm, err := confirmIssuance(t, iarService(t, stack, holder))
+		if err != nil || confirm.GetAccepted() || holder.seenOffer != "" || !strings.Contains(confirm.GetMessage(), tc.want) {
+			t.Fatalf("%s: confirm = %+v %v", tc.body, confirm, err)
+		}
+	}
+	stack := &iarStack{finish: `oops`, finishStatus: http.StatusInternalServerError}
+	if _, err := confirmIssuance(t, iarService(t, stack, &fakeHolder{credential: credential(t)})); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("a server error = %v", err)
+	}
+}
+
+// confirmIssuance pastes the interactive offer, accepts it, and shares
+// the one credential it asks for.
+func confirmIssuance(t *testing.T, svc *service.Service) (*walletportalv1.PresentConfirmResponse, error) {
+	t.Helper()
+	pasted, err := svc.Paste(ctx(), connect.NewRequest(&walletportalv1.PasteRequest{Text: iarOffer}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := svc.Accept(ctx(), connect.NewRequest(&walletportalv1.AcceptRequest{OfferId: pasted.Msg.GetDetected().GetOfferId()}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := accepted.Msg.GetPresentationId()
+	start, err := svc.PresentStart(ctx(), connect.NewRequest(&walletportalv1.PresentStartRequest{PresentationId: id}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirm, err := svc.PresentConfirm(ctx(), connect.NewRequest(&walletportalv1.PresentConfirmRequest{
+		PresentationId: id, SelectedCards: map[string]string{start.Msg.GetRequested()[0].GetQueryId(): "c1"},
+	}))
+	if err != nil {
+		return nil, err
+	}
+	return confirm.Msg, nil
+}
+
 // TestWalletPresentationDuringIssuanceRefused reports a presentation the
 // issuer does not accept, and claims nothing.
 func TestWalletPresentationDuringIssuanceRefused(t *testing.T) {
-	stack := &iarStack{finish: `{"status":"error","error":"invalid_vp"}`}
+	stack := &iarStack{finish: `{"status":"error","code":null}`, finishStatus: http.StatusBadRequest}
 	holder := &fakeHolder{credential: credential(t)}
 	svc := iarService(t, stack, holder)
 	pasted, err := svc.Paste(ctx(), connect.NewRequest(&walletportalv1.PasteRequest{Text: iarOffer}))

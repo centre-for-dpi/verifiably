@@ -884,3 +884,23 @@ func TestWaltidIssuerPairGetsTheCallbackURL(t *testing.T) {
 		t.Error("the holder pair got the callback URL")
 	}
 }
+
+// TestInjiIssuerTurnsOnPresentationDuringIssuance: the issuer profile
+// of the Inji stack runs Inji Verify, and Certify reaches it, so the
+// issuer pair turns the feature on by default (P6-I4b). The other Inji
+// pairs run no Certify and get no setting.
+func TestInjiIssuerTurnsOnPresentationDuringIssuance(t *testing.T) {
+	values := map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"}
+	for _, p := range PairsForDpg(configv1.Dpg_DPG_INJI) {
+		got, ok := LinkValues(p, values)["VCA_INJI_PRESENTATION_DURING_ISSUANCE"]
+		if p.Role == commonv1.Role_ROLE_ISSUER {
+			if got != "true" {
+				t.Errorf("%s: VCA_INJI_PRESENTATION_DURING_ISSUANCE = %q", p.Name(), got)
+			}
+			continue
+		}
+		if ok {
+			t.Errorf("%s gets VCA_INJI_PRESENTATION_DURING_ISSUANCE", p.Name())
+		}
+	}
+}

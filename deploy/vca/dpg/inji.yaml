@@ -66,12 +66,38 @@ services:
     depends_on:
       inji-certify-postgres:
         condition: service_healthy
+      inji-verify-service:
+        condition: service_started
+      inji-certify-nginx:
+        condition: service_started
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://inji-certify-postgres:5432/certify
       SPRING_DATASOURCE_USERNAME: certify
       SPRING_DATASOURCE_PASSWORD: ${INJI_DB_PASSWORD:-certify}
+      # Presentation during issuance (P6-I4b). Certify asks Inji Verify
+      # of this stack for the presentation it wants before it issues,
+      # and reads the definition over HTTP. The names are the
+      # "Verify Service Configuration" of certify-default.properties of
+      # the injistack compose folder of Certify v0.14.0.
+      MOSIP_CERTIFY_VERIFY_SERVICE_BASE_URL: http://inji-verify-service:8080
+      MOSIP_CERTIFY_VERIFY_SERVICE_VP_REQUEST_ENDPOINT: http://inji-verify-service:8080/v1/verify/vp-request
+      MOSIP_CERTIFY_VERIFY_SERVICE_VP_RESULT_ENDPOINT: http://inji-verify-service:8080/v1/verify/vp-result
+      MOSIP_CERTIFY_VERIFY_SERVICE_VERIFIER_CLIENT_ID: certify-verifier-client
+      MOSIP_CERTIFY_VP_REQUEST_CONFIG_FILE_URL: http://inji-certify-nginx/vp_request_config.json
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_CERTIFY_HOST_PORT:-17081}:8090"
+    networks:
+      - vca
+
+  # The presentation definition of the interactive authorization, served
+  # over HTTP as the certify-nginx of the injistack compose file does.
+  inji-certify-nginx:
+    image: nginx:1.27.2-alpine
+    profiles: [issuer-inji]
+    container_name: inji-certify-nginx
+    restart: unless-stopped
+    volumes:
+      - ./dpg/inji/certify/vp_request_config.json:/usr/share/nginx/html/vp_request_config.json:ro
     networks:
       - vca
 
@@ -208,9 +234,12 @@ services:
     networks:
       - vca
 
+  # Inji Verify runs for the verifier pair and for Certify, which checks
+  # a presentation during issuance with it (P6-I4b). The settings follow
+  # docker-compose/docker-compose.yml of mosip/inji-verify v0.16.0.
   inji-verify-postgres:
     image: postgres:13.16-alpine
-    profiles: [verifier-inji]
+    profiles: [issuer-inji, verifier-inji]
     container_name: inji-verify-postgres
     restart: unless-stopped
     environment:
@@ -219,6 +248,7 @@ services:
       POSTGRES_DB: injiverify
     volumes:
       - inji-verify-db:/var/lib/postgresql/data
+      - ./dpg/inji/verify/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - vca
     healthcheck:
@@ -229,14 +259,28 @@ services:
 
   inji-verify-service:
     image: mosipid/inji-verify-service:0.16.0
-    profiles: [verifier-inji]
+    profiles: [issuer-inji, verifier-inji]
     container_name: inji-verify-service
     restart: unless-stopped
     depends_on:
       inji-verify-postgres:
         condition: service_healthy
+    environment:
+      active_profile_env: default
+      DATABASE_HOST: inji-verify-postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: injiverify
+      DATABASE_SCHEMA: verify
+      DATABASE_USERNAME: injiverify
+      DATABASE_PASSWORD: ${INJI_VERIFY_DB_PASSWORD:-injiverify}
+      INJI_VP_REQUEST_LONG_POLLING_TIMEOUT: "55000"
+      # A wallet posts its answer here, so the address is public.
+      INJI_VP_SUBMISSION_BASE_URL: ${INJI_VERIFY_PUBLIC_URL:-http://localhost:17086}/v1/verify
+      INJI_DID_VERIFY_URI: did:web:${INJI_VERIFY_DID_HOST:-localhost%3A17086}:v1:verify
+      INJI_DID_VERIFY_PUBLIC_KEY_URI: did:web:${INJI_VERIFY_DID_HOST:-localhost%3A17086}:v1:verify#key-0
+      INJI_VERIFY_REDIRECT_URI: ${INJI_VERIFY_PUBLIC_URL:-http://localhost:17086}
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${INJI_VERIFY_SERVICE_HOST_PORT:-17086}:8000"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_VERIFY_SERVICE_HOST_PORT:-17086}:8080"
     networks:
       - vca
 
@@ -245,8 +289,14 @@ services:
     profiles: [verifier-inji]
     container_name: inji-verify-ui
     restart: unless-stopped
+    environment:
+      DEFAULT_TITLE: Inji Verify
+      DEFAULT_LANG: en
+      VP_SUBMISSION_SUPPORTED: "false"
+      CLIENT_ID: inji-verify-ui
+      CLIENT_ID_DID: did:web:${INJI_VERIFY_DID_HOST:-localhost%3A17086}:v1:verify
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${INJI_VERIFY_UI_HOST_PORT:-17087}:3000"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_VERIFY_UI_HOST_PORT:-17087}:8000"
     networks:
       - vca
 

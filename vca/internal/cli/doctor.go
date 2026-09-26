@@ -104,16 +104,18 @@ func MemoryFloorMiB(p Pair) int { return Floor(p).TotalMemoryMiB() }
 
 // SelectionFloorMiB returns the memory floor of a list of pairs. The
 // doctor command adds only the pairs the operator selected. The roles
-// of one DPG share one DPG stack and one Keycloak, so the DPG figure of
-// a stack counts once, at the largest figure of the selected roles.
+// of one DPG share one DPG stack and one Keycloak, so the shared figure
+// of a stack counts once, at the largest figure of the selected roles.
+// The containers that one role adds, such as Mimoto for the Inji
+// holder, count for each selected role.
 func SelectionFloorMiB(pairs []Pair) int {
 	total := 0
 	stacks := map[configv1.Dpg]int{}
 	for _, p := range pairs {
-		f := Floor(p)
-		total += f.VcaMemoryMiB
-		if f.DpgMemoryMiB > stacks[p.Dpg] {
-			stacks[p.Dpg] = f.DpgMemoryMiB
+		base, extra := dpgFloorParts(p)
+		total += Floor(p).VcaMemoryMiB + extra
+		if base > stacks[p.Dpg] {
+			stacks[p.Dpg] = base
 		}
 	}
 	for _, m := range stacks {

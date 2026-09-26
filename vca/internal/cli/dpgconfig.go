@@ -479,8 +479,11 @@ var dpgMemoryMiB = map[configv1.Dpg]int{
 // dpgRoleMemoryMiB is the memory that one role adds to the floor of its
 // stack. The Inji holder profile runs Mimoto 0.21.0 (768 MiB), its
 // Postgres (128 MiB), its Redis (64 MiB), and Inji Web 0.16.0 (64 MiB).
+// The Inji issuer profile runs Inji Verify 0.16.0 (512 MiB), its
+// Postgres (128 MiB), and the nginx of the presentation definition
+// (32 MiB), because Certify checks a presentation during issuance.
 var dpgRoleMemoryMiB = map[configv1.Dpg]map[commonv1.Role]int{
-	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_HOLDER: 1024},
+	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_HOLDER: 1024, commonv1.Role_ROLE_ISSUER: 672},
 }
 
 // keycloakMemoryMiB is the memory floor of the Keycloak of one stack.
@@ -490,19 +493,25 @@ const keycloakMemoryMiB = 512
 // decision 7 is under 4 GB for a single role with one DPG.
 func Floor(p Pair) ResourceFloor {
 	services := len(ServicesFor(p))
-	dpg := dpgMemoryMiB[p.Dpg] + dpgRoleMemoryMiB[p.Dpg][p.Role]
-	if p.Role == commonv1.Role_ROLE_ADMIN {
-		// The admin role talks to no DPG. Its profile starts only the
-		// Keycloak of the stack, which logs the admins in.
-		dpg = keycloakMemoryMiB
-	}
+	base, extra := dpgFloorParts(p)
 	return ResourceFloor{
 		Role:         p.Role,
 		Services:     services,
 		VcaMemoryMiB: services * perServiceMemoryMiB,
-		DpgMemoryMiB: dpg,
+		DpgMemoryMiB: base + extra,
 		Cpus:         1 + float64(services)/4,
 	}
+}
+
+// dpgFloorParts returns the memory of the stack that every role of the
+// DPG shares, and the memory that the role adds on top of it.
+func dpgFloorParts(p Pair) (int, int) {
+	if p.Role == commonv1.Role_ROLE_ADMIN {
+		// The admin role talks to no DPG. Its profile starts only the
+		// Keycloak of the stack, which logs the admins in.
+		return keycloakMemoryMiB, 0
+	}
+	return dpgMemoryMiB[p.Dpg], dpgRoleMemoryMiB[p.Dpg][p.Role]
 }
 
 // LandingMemoryMiB is the memory the landing adds to a deployment, once.

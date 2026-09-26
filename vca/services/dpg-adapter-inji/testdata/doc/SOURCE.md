@@ -143,7 +143,8 @@ Facts the adapter relies on:
 | `oauth-authorization-server.json` | `OAuthAuthorizationServerMetadataDTO` of `GET /.well-known/oauth-authorization-server`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/controller/OAuthController.java and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/OAuthAuthorizationServerMetadataDTO.java |
 | `iar-require-interaction.json` | `IarPresentationResponse` of the first `POST /oauth/iar`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/IarPresentationResponse.java, with the request of `IarVpRequestService.convertToOpenId4VpRequest` and the definition of https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/vp_request_config.json |
 | `iar-ok.json` | `IarAuthorizationResponse` of the second call: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/IarAuthorizationResponse.java |
-| `iar-error.json` | The status `error` of `IarStatus` with the code `invalid_vp` of `IarPresentationService`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/IarPresentationService.java |
+| `iar-error.json` | The body of a presentation that Inji Verify refused: `IarAuthorizationResponse` with the status `error` and no code, sent with 400 by `OAuthController.handleIarRequest`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/controller/OAuthController.java, https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/IarAuthorizationResponse.java, and `IarPresentationService.processVpPresentation`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/IarPresentationService.java |
+| `iar-error-session.json` | The body of a `CertifyException` on a path under `/oauth/`: `OAuthTokenError` (`error`, `error_description`) with 400, here for an unknown `auth_session`. `handleOAuthControllerExceptions` maps the Certify code, and `invalid_vp` becomes `invalid_request`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/advice/ExceptionHandlerAdvice.java and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/ErrorResponse.java |
 | `token-iar.json` | `OAuthTokenResponse` of the authorization code grant of `IarServiceImpl.processTokenRequest`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/IarServiceImpl.java |
 
 Facts the adapter relies on:
@@ -164,9 +165,18 @@ Facts the adapter relies on:
   `mosip.certify.oauth.interactive-authorization-endpoint` and the
   definition file in `mosip.certify.vp-request.config-file-url`:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties
-- The error body of a refused presentation is not in the DTOs. The
-  fixture uses the OAuth fields `error` and `error_description`. The
-  nightly contract run confirms it.
+- P6-I4b read the error path in the 0.14.0 sources. A presentation
+  that Inji Verify refused answers 400 with `{"status":"error"}` and a
+  null `code`. A presentation without identity attributes throws
+  `invalid_vp`, and every other refusal throws a `CertifyException`.
+  The OAuth branch of `ExceptionHandlerAdvice` answers those with 400
+  and `error` and `error_description`, where `invalid_vp` becomes
+  `invalid_request`. A wallet reads both shapes.
+- The stack properties point Certify at Inji Verify with
+  `mosip.certify.verify.service.*` and read the definition from
+  `mosip.certify.vp-request.config-file-url` over HTTP
+  (`IarVpRequestService` uses a `RestTemplate`):
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/IarVpRequestService.java
 
 ## Mimoto 0.21.0, the backend of Inji Web 0.16.0
 

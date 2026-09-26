@@ -64,9 +64,13 @@ func (f *Server) interactive(w http.ResponseWriter, body []byte) {
 		var answer struct {
 			VPToken json.RawMessage `json:"vp_token"`
 		}
-		if session != AuthSession || json.Unmarshal([]byte(form.Get("openid4vp_response")), &answer) != nil ||
+		if session != AuthSession {
+			f.sendHosted(w, http.StatusBadRequest, "doc/iar-error-session.json")
+			return
+		}
+		if json.Unmarshal([]byte(form.Get("openid4vp_response")), &answer) != nil ||
 			len(answer.VPToken) == 0 || string(answer.VPToken) == `""` {
-			f.sendHosted(w, http.StatusOK, "doc/iar-error.json")
+			f.sendHosted(w, http.StatusBadRequest, "doc/iar-error.json")
 			return
 		}
 		f.sendHosted(w, http.StatusOK, "doc/iar-ok.json")

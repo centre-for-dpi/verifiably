@@ -389,8 +389,13 @@ func TestHTTPPosterAndFormPoster(t *testing.T) {
 	if len(bodies) != 1 || bodies[0] != "token" {
 		t.Fatalf("bodies = %v", bodies)
 	}
-	if _, err := form(context.Background(), srv.URL+"/bad", nil); err == nil {
-		t.Fatal("want a status error")
+	// A refusal keeps its status and its body, so a caller reads an
+	// OAuth error or the IAR status error of Certify.
+	_, err = form(context.Background(), srv.URL+"/bad", nil)
+	var status *ports.StatusError
+	if !errors.As(err, &status) || status.Status != http.StatusBadRequest || strings.TrimSpace(string(status.Body)) != "no" ||
+		!strings.Contains(status.Error(), "400") {
+		t.Fatalf("want a status error with the body: %v", err)
 	}
 	if _, err := form(context.Background(), "http://%zz/", nil); err == nil {
 		t.Fatal("want a request error")

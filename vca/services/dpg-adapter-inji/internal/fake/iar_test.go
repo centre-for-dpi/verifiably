@@ -77,14 +77,20 @@ func TestInteractiveAuthorization(t *testing.T) {
 	if first["status"] != "require_interaction" {
 		t.Fatalf("first = %v", first)
 	}
+	// Certify 0.14.0 answers a presentation that Inji Verify refused
+	// with 400 and the status error alone (OAuthController), and an
+	// unknown session with 400 and an OAuth error (ExceptionHandlerAdvice).
 	for _, bad := range []url.Values{
-		{"auth_session": {"other"}, "openid4vp_response": {`{"vp_token":"x"}`}},
 		{"auth_session": {fake.AuthSession}, "openid4vp_response": {`{"vp_token":""}`}},
 		{"auth_session": {fake.AuthSession}, "openid4vp_response": {`not json`}},
 	} {
-		if _, out := form(t, f, fake.IARPath, bad); out["status"] != "error" {
-			t.Fatalf("%v = %v", bad, out)
+		if status, out := form(t, f, fake.IARPath, bad); status != http.StatusBadRequest || out["status"] != "error" || out["error"] != nil {
+			t.Fatalf("%v = %d %v", bad, status, out)
 		}
+	}
+	if status, out := form(t, f, fake.IARPath, url.Values{"auth_session": {"other"}, "openid4vp_response": {`{"vp_token":"x"}`}}); status != http.StatusBadRequest ||
+		out["error"] != "invalid_request" || out["error_description"] != "Invalid auth_session" || out["status"] != nil {
+		t.Fatalf("an unknown session = %d %v", status, out)
 	}
 	_, ok := form(t, f, fake.IARPath, url.Values{"auth_session": {fake.AuthSession}, "openid4vp_response": {`{"vp_token":{"type":"VerifiablePresentation"}}`}})
 	if ok["status"] != "ok" {

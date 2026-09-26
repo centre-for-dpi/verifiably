@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -17,6 +18,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/issuers"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/ports"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
 )
@@ -47,6 +49,7 @@ type iarAnswer struct {
 	Request     json.RawMessage `json:"openid4vp_request"`
 	Code        string          `json:"code"`
 	Error       string          `json:"error"`
+	Description string          `json:"error_description"`
 }
 
 // offerGrant is the part of a credential offer the interactive flow
@@ -152,6 +155,13 @@ func (s *Service) readOffer(ctx context.Context, uri string) (offerGrant, bool) 
 // answer.
 func (s *Service) askIssuer(ctx context.Context, endpoint string, form url.Values) (iarAnswer, error) {
 	raw, err := s.opts.Post(ctx, endpoint, form)
+	// Certify 0.14.0 sends a refusal with 400: the status error of a
+	// presentation that Inji Verify refused, or an OAuth error of a
+	// CertifyException (P6-I4b). The body then is the answer.
+	var status *ports.StatusError
+	if errors.As(err, &status) && status.Status == http.StatusBadRequest && len(status.Body) > 0 {
+		raw, err = status.Body, nil
+	}
 	if err != nil {
 		return iarAnswer{}, connect.NewError(connect.CodeUnavailable,
 			errors.New("the issuer did not answer, try again later"))
@@ -192,6 +202,9 @@ func (s *Service) presentForIssuance(ctx context.Context, citizen session.Citize
 	}
 	refused := &walletportalv1.PresentConfirmResponse{Message: "The issuer did not accept the credential, so it gave you no new one."}
 	if answer.Status != "ok" || answer.Code == "" {
+		if why := strings.TrimSpace(answer.Description); why != "" {
+			refused.Message += " The issuer said: " + strings.TrimSuffix(why, ".") + "."
+		}
 		return refused, nil
 	}
 	access, err := s.token(ctx, rec, answer.Code)

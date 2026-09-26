@@ -181,7 +181,9 @@ func TestDoctorComparesTheMemoryFloor(t *testing.T) {
 
 func TestMemoryFloorOfEveryPairMatchesTheDocument(t *testing.T) {
 	want := map[string]int{
-		"issuer-waltid": 2912, "issuer-inji": 3424, "holder-waltid": 2336,
+		// Inji Verify, its database, and the nginx of the presentation
+		// definition add 672 MiB to the Inji issuer (P6-I4b).
+		"issuer-waltid": 2912, "issuer-inji": 4096, "holder-waltid": 2336,
 		"verifier-waltid": 2720, "admin-waltid": 704, "admin-inji": 704,
 		// Mimoto, its database and Redis, and Inji Web add 1024 MiB (P6-I7d).
 		"holder-inji": 3872,

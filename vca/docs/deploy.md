@@ -502,6 +502,23 @@ It also edits the issuer list and the trusted verifiers of
 `deploy/vca/dpg/inji/mimoto/`.
 `vca doctor` checks the Inji Web port of a holder pair.
 
+### Presentation during issuance on the Inji stack
+
+Certify 0.14.0 can ask the holder to present a credential before it
+issues. It asks Inji Verify for the request and checks the answer there.
+So the `issuer-inji` profile runs Inji Verify too, with its
+database. Certify reads the presentation definition from
+`deploy/vca/dpg/inji/certify/vp_request_config.json` over HTTP, through
+the small `inji-certify-nginx` container. `vca setup` sets
+`VCA_INJI_PRESENTATION_DURING_ISSUANCE=true` for the Inji issuer pair,
+so the issue page offers the step. The folder `SOURCE.md` names the
+upstream files.
+
+Inji Verify listens on 8080 and its UI on 8000, as the release does.
+The host ports stay 17086 and 17087. A wallet posts its answer to the
+address of `INJI_VERIFY_PUBLIC_URL`, `http://localhost:17086` by
+default. `INJI_VERIFY_DID_HOST` sets the host of its `did:web`.
+
 ### The identity provider
 
 Every stack ships Keycloak 25.0.
@@ -599,7 +616,7 @@ The value is the container URL of the DPG API on the `vca` network:
 | `holder-inji` | `http://inji-mimoto:8099` |
 | `holder-credebl` | `http://credebl-api-gateway:5000` |
 | `verifier-waltid` | `http://waltid-verifier-api:7003` |
-| `verifier-inji` | `http://inji-verify-service:8000` |
+| `verifier-inji` | `http://inji-verify-service:8080` |
 | `verifier-credebl` | `http://credebl-api-gateway:5000` |
 
 The admin role calls no DPG, so it has no default.
@@ -619,7 +636,7 @@ The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 | Role and DPG | VCA services | VCA memory | DPG memory | Total memory | CPUs |
 |---|---|---|---|---|---|
 | `issuer-waltid` | 9 | 864 MiB | 2048 MiB | 2912 MiB | 3.25 |
-| `issuer-inji` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
+| `issuer-inji` | 9 | 864 MiB | 3232 MiB | 4096 MiB | 3.25 |
 | `issuer-credebl` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
 | `holder-waltid` | 3 | 288 MiB | 2048 MiB | 2336 MiB | 1.75 |
 | `holder-inji` | 3 | 288 MiB | 3584 MiB | 3872 MiB | 1.75 |
@@ -635,9 +652,9 @@ One stack is the four roles of one DPG together:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 4064 MiB | 5600 MiB | 4576 MiB |
+| `--all --dpg <dpg>` | 4064 MiB | 6272 MiB | 4576 MiB |
 
-`--all` alone starts every role of every DPG and needs 14240 MiB.
+`--all` alone starts every role of every DPG and needs 14912 MiB.
 The four roles of one DPG share one DPG stack and one Keycloak, so a
 stack counts once.
 
@@ -649,6 +666,10 @@ Each service is one static Go binary in a distroless image.
 The DPG figure is the floor of the stack in `deploy/vca/dpg/`.
 The Inji holder role adds 1024 MiB to the Inji stack.
 It runs Mimoto with its Postgres and its Redis, and Inji Web.
+The Inji issuer role adds 672 MiB.
+It runs Inji Verify with its Postgres, and the nginx of the presentation definition.
+Certify checks a presentation during issuance with them.
+An added figure counts for each role that brings it.
 The admin role talks to no DPG.
 Its profile starts only the Keycloak of the stack.
 The landing adds 96 MiB once, whatever the selection, because every profile starts the one landing container.

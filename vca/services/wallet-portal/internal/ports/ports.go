@@ -357,7 +357,14 @@ func HTTPPoster(client *http.Client, maxBytes int64) Poster {
 		// Nothing can act on a close fault of a response body.
 		defer func() { ignored := resp.Body.Close(); _ = ignored }()
 		if resp.StatusCode >= 400 {
-			return nil, fmt.Errorf("ports: %s returned %d", target, resp.StatusCode)
+			// The body of a refusal names the reason, such as an OAuth
+			// error, so the caller gets it. A body that does not read
+			// leaves the status alone.
+			body, rerr := read(resp.Body, maxBytes)
+			if rerr != nil {
+				body = nil
+			}
+			return nil, &StatusError{URL: target, Status: resp.StatusCode, Body: body}
 		}
 		return read(resp.Body, maxBytes)
 	}
@@ -383,11 +390,32 @@ func FormPoster(client *http.Client, maxBytes int64) func(context.Context, strin
 		// Nothing can act on a close fault of a response body.
 		defer func() { ignored := resp.Body.Close(); _ = ignored }()
 		if resp.StatusCode >= 400 {
-			return nil, fmt.Errorf("ports: %s returned %d", target, resp.StatusCode)
+			// The body of a refusal names the reason, such as an OAuth
+			// error, so the caller gets it. A body that does not read
+			// leaves the status alone.
+			body, rerr := read(resp.Body, maxBytes)
+			if rerr != nil {
+				body = nil
+			}
+			return nil, &StatusError{URL: target, Status: resp.StatusCode, Body: body}
 		}
 		return read(resp.Body, maxBytes)
 	}
 }
+
+// StatusError is an answer with an HTTP status of 400 or more. It keeps
+// the body up to the size cap.
+type StatusError struct {
+	// URL is the address of the call.
+	URL string
+	// Status is the HTTP status.
+	Status int
+	// Body is the answer body.
+	Body []byte
+}
+
+// Error returns the address and the status.
+func (e *StatusError) Error() string { return fmt.Sprintf("ports: %s returned %d", e.URL, e.Status) }
 
 // read reads a body up to the size cap.
 func read(body io.Reader, maxBytes int64) ([]byte, error) {
