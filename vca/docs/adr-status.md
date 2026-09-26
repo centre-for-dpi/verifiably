@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-049, one row per decision.
+ADR-055, one row per decision.
 
 The status values are:
 
@@ -533,17 +533,78 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-049 | 1 Two Certify containers on one database and one key store | Done | `deploy/vca/dpg/inji.yaml` | The volume `inji-certify-keys` holds the key store of both. |
-| ADR-049 | 2 `inji-certify` is its own authorization server | Done | `deploy/vca/dpg/inji/certify/certify-preauth.properties` | The pre-authorized data provider reads the staged claims. |
-| ADR-049 | 3 `inji-certify-esignet` takes eSignet tokens | Done | `deploy/vca/dpg/inji/certify/certify-csvdp-farmer.properties`, `vca/services/dpg-adapter-inji` | An authorization code offer names it through `VCA_INJI_OFFER_ISSUER`. |
+| ADR-049 | 2 `inji-certify` is its own authorization server | Done | `deploy/vca/dpg/inji/certify/certify-preauth.properties` | Superseded by ADR-051. The data provider becomes the VCA claims store. |
+| ADR-049 | 3 `inji-certify-esignet` takes eSignet tokens | Done | `deploy/vca/dpg/inji/certify/certify-csvdp-farmer.properties`, `vca/services/dpg-adapter-inji` | Superseded by ADR-051. The second container takes the tokens of the holder authorization server. |
 | ADR-049 | 4 The second container waits for the keys | Done | `deploy/vca/dpg/inji.yaml` | It waits for the readiness check of `inji-certify`. |
 | ADR-049 | 5 The doctor names a floor above the target | Done | `vca/internal/cli/dpgconfig.go`, `vca/internal/cli/doctor.go` | The floor report marks `issuer-inji` and `holder-inji`. |
+
+## ADR-050: No mock or sample data in anything VCA ships or deploys
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-050 | 1 No mock artefact or sample data set ships | Not started | `vca/`, `deploy/` | The Inji stack still runs the mock identity system and the farmer sample. |
+| ADR-050 | 2 A configurable workflow replaces each artefact | Not started | `vca/services`, `vca/internal/cli` | Follows the records ADR-051 to ADR-055. |
+| ADR-050 | 3 Test doubles stay in test paths | Not started | `vca/internal/cli/nomock_test.go` | The guard test checks that no deployment file names them. |
+| ADR-050 | 4 A guard test scans the tree | Not started | `vca/internal/cli/nomock_test.go` | The test does not exist yet. |
+| ADR-050 | 5 A stack secret has no default | Not started | `deploy/vca/dpg/*.yaml` | Compose files still carry default passwords. |
+
+## ADR-051: The VCA claims store is the data provider of Inji Certify
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-051 | 1 Certify reads `certify.vca_claims` | Not started | `deploy/vca/dpg/inji/certify` | Both containers still run on the release plugins. |
+| ADR-051 | 2 The adapter writes one file per subject | Not started | `vca/services/dpg-adapter-inji` | No claims package exists yet. |
+| ADR-051 | 3 One scope for every configuration | Not started | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | The scope is the configuration id today. |
+| ADR-051 | 4 Templates read the columns `c1` to `c64` | Not started | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | Templates read claim names today. |
+| ADR-051 | 5 The subject key per flow | Not started | `vca/services/dpg-adapter-inji/internal/service/issuer.go` | The pre-authorized offer stages the full claims today. |
+| ADR-051 | 6 The adapter serves the presentation definition | Not started | `vca/services/dpg-adapter-inji/internal/service` | The stack serves a fixed file today. |
+
+## ADR-052: The holder authorization server of the Inji adapter
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-052 | 1 An authorization server under `/authz` | Not started | `vca/services/dpg-adapter-inji/internal/authz` | The package does not exist yet. |
+| ADR-052 | 2 The holder signs in at the configured provider | Not started | `vca/services/dpg-adapter-inji/internal/authz` | Offers still name the stack eSignet. |
+| ADR-052 | 3 Offer bound and wallet initiated claims | Not started | `vca/services/dpg-adapter-inji/internal/authz` | Needs the data source lookup. |
+| ADR-052 | 4 A JWT whose subject is the staging id | Not started | `vca/services/dpg-adapter-inji/internal/authz` |  |
+| ADR-052 | 5 Registered wallet clients | Not started | `vca/services/dpg-adapter-inji/internal/authz` |  |
+| ADR-052 | 6 The token key signs access tokens only | Not started | `vca/services/dpg-adapter-inji/internal/authz` |  |
+
+## ADR-053: eSignet runs only with a real authenticator
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-053 | 1 eSignet under the profile `esignet-inji` | Not started | `deploy/vca/dpg/inji.yaml` | Every Inji pair runs eSignet today. |
+| ADR-053 | 2 The mock components leave the stack | Not started | `deploy/vca/dpg/inji.yaml` | The stack still runs `inji-mock-identity`. |
+| ADR-053 | 3 The operator supplies the plugin file | Not started | `vca/internal/cli/setup.go` | No setting exists yet. |
+| ADR-053 | 4 Bootstrap registers the client only when eSignet runs | Not started | `vca/internal/cli/bootstrap.go` | Bootstrap always registers it today. |
+| ADR-053 | 5 The feature answer lists eSignet only when it runs | Not started | `vca/services/dpg-adapter-inji/internal/service/dpginfo.go` | It lists eSignet and the mock identity system for every pair today. |
+
+## ADR-054: VCA writes the walt.id catalogue and wallet configuration
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-054 | 1 Setup writes the issuer catalogue | Not started | `vca/internal/cli/dpgconfig.go` | The issuer API runs on its release catalogue today. |
+| ADR-054 | 2 The adapter answers discovery from its registrations | Not started | `vca/services/dpg-adapter-waltid` | The verifier list comes from the walt.id catalogue today. |
+| ADR-054 | 3 Setup writes the wallet configuration | Not started | `vca/internal/cli/dpgconfig.go` | The wallet API runs on code defaults today. |
+| ADR-054 | 4 The CLI writes files and restarts containers | Not started | `vca/internal/cli` |  |
+
+## ADR-055: Stack secrets and identities come from setup or the operator
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-055 | 1 Setup generates every stack secret | Not started | `vca/internal/cli/dpgconfig.go`, `deploy/vca/dpg/*.yaml` | Compose files carry default passwords today. |
+| ADR-055 | 2 Empty values for platform services the stack does not run | Not started | `deploy/vca/dpg/inji/mimoto/mimoto-default.properties` | The file holds upstream literals today. |
+| ADR-055 | 3 The certificate subject names the issuer | Not started | `deploy/vca/dpg/inji/certify/certify-default.properties` | The subject is an example host today. |
+| ADR-055 | 4 The CREDEBL platform admin is a required setting | Not started | `vca/internal/cli/bootstrap.go` | Bootstrap signs in as a placeholder user today. |
+| ADR-055 | 5 The secret scan checks `key=value` files | Not started | `vca/hack/secret-scan.sh` | The scan checks `key: value` only today. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 183 |
-| Partial | 20 |
+| Done | 222 |
+| Partial | 25 |
 | Deferred | 3 |
-| Not started | 70 |
-| Total | 276 |
+| Not started | 57 |
+| Total | 307 |
