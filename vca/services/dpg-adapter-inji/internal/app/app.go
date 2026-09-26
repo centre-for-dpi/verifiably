@@ -41,9 +41,11 @@ type App struct {
 	Authz *authz.Server
 }
 
-// Sweep deletes the expired rows of the claims store every interval
-// until ctx ends. A write sweeps too, so a row never outlives its offer
-// by more than one interval.
+// Sweep deletes the expired rows of the claims store, the expired
+// offers with the subjects they hold, and the expired records of the
+// holder authorization server every interval until ctx ends (ADR-056
+// decision 4). A write sweeps the rows too, so a row never outlives its
+// end by more than one interval.
 func (a *App) Sweep(ctx context.Context, log *slog.Logger) {
 	if a.Claims == nil {
 		return
@@ -57,6 +59,9 @@ func (a *App) Sweep(ctx context.Context, log *slog.Logger) {
 		case <-ticker.C:
 			if _, err := a.Claims.Sweep(); err != nil {
 				log.Warn("the sweep of the claims store failed", "error", err)
+			}
+			if _, err := a.Service.SweepOffers(ctx); err != nil {
+				log.Warn("the sweep of the offers failed", "error", err)
 			}
 			if a.Authz != nil {
 				if _, err := a.Authz.Sweep(ctx); err != nil {

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
@@ -187,9 +188,13 @@ func TestNewFailsOnAStoreThatCannotKeepTheKey(t *testing.T) {
 // failingIssuer fails the writes of the issuer side.
 type failingIssuer struct{ fakeIssuer }
 
-func (f *failingIssuer) StageOffer(context.Context, string, string) error { return errBroken }
+func (f *failingIssuer) StageOffer(context.Context, string, string, time.Time) error {
+	return errBroken
+}
 
-func (f *failingIssuer) StageSubject(context.Context, string, string, string) error { return errBroken }
+func (f *failingIssuer) StageSubject(context.Context, string, string, string, time.Time) error {
+	return errBroken
+}
 
 // failingLookup cannot reach the data source.
 type failingLookup struct{}

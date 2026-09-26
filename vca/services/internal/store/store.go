@@ -221,11 +221,26 @@ func (f *file) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+// walkRoot returns the folder that holds every key with the prefix: the
+// folder of the part of the prefix up to its last slash.
+func walkRoot(dir, prefix string) string {
+	i := strings.LastIndex(prefix, "/")
+	if i < 0 {
+		return dir
+	}
+	return filepath.Join(dir, filepath.FromSlash(prefix[:i]))
+}
+
 func (f *file) List(_ context.Context, prefix string) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []string
-	err := filepath.WalkDir(f.dir, func(p string, d os.DirEntry, err error) error {
+	root := walkRoot(f.dir, prefix)
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if errors.Is(err, os.ErrNotExist) && p == root {
+			// No key has the prefix yet.
+			return filepath.SkipDir
+		}
 		if err != nil {
 			return err
 		}

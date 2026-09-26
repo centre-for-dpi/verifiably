@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Answer names one recorded file the fake can serve.
@@ -89,6 +90,8 @@ type Server struct {
 	// claimsDir is the VCA claims store the credential endpoint reads.
 	// Empty serves the recorded credential.
 	claimsDir string
+	// now is the clock of the database. Nil reads the real clock.
+	now func() time.Time
 }
 
 // New starts a fake Inji deployment.

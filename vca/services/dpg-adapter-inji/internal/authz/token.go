@@ -124,7 +124,18 @@ func (s *Server) exchange(r *http.Request) (map[string]any, error) {
 	case !verifierPattern.MatchString(form.Get("code_verifier")) || !oidc.VerifyChallenge(form.Get("code_verifier"), c.Challenge):
 		return nil, badGrant("The PKCE code verifier does not match.")
 	}
-	return s.mint(client, c.Subject)
+	answer, err := s.mint(client, c.Subject)
+	if err != nil {
+		return nil, err
+	}
+	// The holder has the token, so the offer keeps nothing of its
+	// subject (ADR-056 decision 4). The row serves the credential.
+	if c.OfferID != "" {
+		if ferr := s.offers.Finish(ctx, c.OfferID); ferr != nil {
+			s.log.Warn("the claimed offer still holds its subject", "offer", c.OfferID, "error", ferr)
+		}
+	}
+	return answer, nil
 }
 
 // authenticate finds the client of a token request and checks its

@@ -19,19 +19,16 @@ import (
 // The store keys of the records. A key holds the SHA-256 of a secret
 // value, never the value, so a copy of the store gives no code.
 const (
-	loginPrefix  = "authz/logins/"
-	codePrefix   = "authz/codes/"
-	jtiPrefix    = "authz/jti/"
-	signInPrefix = "authz/signin/"
+	loginPrefix = "authz/logins/"
+	codePrefix  = "authz/codes/"
+	jtiPrefix   = "authz/jti/"
+	// signInKey holds every sign in source in one document.
+	signInKey = "authz/signin-sources"
 )
 
 func hashed(prefix, value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return prefix + hex.EncodeToString(sum[:])
-}
-
-func signInKey(configID string) string {
-	return signInPrefix + hex.EncodeToString([]byte(configID))
 }
 
 // authRequest is the authorization request of a wallet.
@@ -58,6 +55,7 @@ type code struct {
 	RedirectURI string    `json:"redirect_uri"`
 	Challenge   string    `json:"challenge"`
 	Subject     string    `json:"subject"`
+	OfferID     string    `json:"offer_id,omitempty"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	Used        bool      `json:"used,omitempty"`
 }

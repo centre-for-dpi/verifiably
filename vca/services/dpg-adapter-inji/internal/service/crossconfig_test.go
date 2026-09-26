@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/service"
 )
@@ -88,6 +90,7 @@ func TestARowOfOneConfigurationIssuesNoOtherConfiguration(t *testing.T) {
 		dir = o.Claims.Dir
 	})
 	f.SetClaimsDir(dir)
+	f.SetNow(func() time.Time { return fixedTime })
 	ctx := context.Background()
 	registerLdp(t, svc, "farmer-registration_ldp_vc", "FarmerRegistration",
 		`{"type":"object","properties":{"fullName":{"type":"string"},"email":{"type":"string"},"plotID":{"type":"string"}}}`)
@@ -106,7 +109,7 @@ func TestARowOfOneConfigurationIssuesNoOtherConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateOffer: %v", err)
 	}
-	if serr := svc.StageOffer(ctx, offer.Msg.GetOfferId(), "holder-row"); serr != nil {
+	if serr := svc.StageOffer(ctx, offer.Msg.GetOfferId(), "holder-row", fixedTime.Add(authz.RowTTL)); serr != nil {
 		t.Fatalf("StageOffer: %v", serr)
 	}
 	if status, body := askCredential(t, f, "holder-row", "MedicalLicence"); status == http.StatusOK ||

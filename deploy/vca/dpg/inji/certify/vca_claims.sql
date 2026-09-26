@@ -9,6 +9,9 @@
 -- the directory at each query, so a new file needs no reload. Both Certify
 -- containers run the Postgres data provider with one query on this table:
 -- select * from certify.vca_claims where subject = :id
+--   and cast(expires_at as timestamptz) > now()
+-- The time bound keeps a row from serving past its end, before the sweep of
+-- the adapter deletes the file (ADR-056 decision 3).
 --
 -- The adapter quotes every field, so an empty value is an empty string.
 -- The program ends with status 0 when the directory holds no file.

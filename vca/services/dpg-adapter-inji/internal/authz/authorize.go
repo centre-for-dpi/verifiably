@@ -17,6 +17,20 @@ import (
 // (RFC 7636 section 4.2).
 var challengePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
+// offerIDPattern is the shape of an offer id: a store key segment of at
+// most 64 characters. The adapter makes 32 hex characters.
+var offerIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// The bounds of an authorization request (ADR-056 decision 5). The
+// server checks them before it reads or writes the store.
+const (
+	maxQuery       = 8 << 10
+	maxClientID    = 128
+	maxState       = 512
+	maxScope       = 1024
+	maxAuthDetails = 4 << 10
+)
+
 // The descriptions a wallet shows when the server denies a claim.
 const (
 	// DeniedAnotherPerson is the answer to a holder whose ID token does
@@ -41,7 +55,16 @@ const (
 // (RFC 6749 section 4.1.2.1), so the server never sends a code or an
 // error to an address the operator did not approve.
 func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
+	if len(r.URL.RawQuery) > maxQuery {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Error(w, "The request was refused: the query is too long.", http.StatusRequestURITooLong)
+		return
+	}
 	q := r.URL.Query()
+	if id := q.Get("client_id"); len(id) > maxClientID {
+		s.refuse(w, "unknown client", "client_id_bytes", len(id))
+		return
+	}
 	c, ok := s.clients[q.Get("client_id")]
 	if !ok {
 		s.refuse(w, "unknown client", "client_id", q.Get("client_id"))
@@ -57,7 +80,20 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 		Challenge: q.Get("code_challenge"), IssuerState: q.Get("issuer_state"),
 	}
 	back := func(code, description string) { s.redirectError(w, r, req, code, description) }
+	if len(req.State) > maxState {
+		// The state goes back to the wallet in the redirect, so an
+		// oversized one stays out of it.
+		req.State = ""
+		back("invalid_request", "The state is too long.")
+		return
+	}
 	switch {
+	case req.IssuerState != "" && !offerIDPattern.MatchString(req.IssuerState):
+		back("invalid_request", "The issuer_state is not an offer id.")
+		return
+	case len(q.Get("scope")) > maxScope || len(q.Get("authorization_details")) > maxAuthDetails:
+		back("invalid_request", "The scope or the authorization_details is too long.")
+		return
 	case q.Get("response_type") != "code":
 		back("unsupported_response_type", "The server gives codes only.")
 		return
@@ -173,7 +209,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	value := oidc.NewVerifier()
 	c := code{
 		ClientID: req.ClientID, RedirectURI: req.RedirectURI, Challenge: req.Challenge,
-		Subject: subject, ExpiresAt: s.now().Add(CodeTTL),
+		Subject: subject, OfferID: req.IssuerState, ExpiresAt: s.now().Add(CodeTTL),
 	}
 	if err := putJSON(ctx, s.kv, hashed(codePrefix, value), c); err != nil {
 		s.redirectError(w, r, req, "server_error", "The code could not be kept.")
@@ -196,7 +232,7 @@ func (s *Server) stage(r *http.Request, req authRequest, claims map[string]any, 
 		if !offer.Binding.matches(claims, offer.Subject, vouched) {
 			return DeniedAnotherPerson, false
 		}
-		if err := s.offers.StageOffer(ctx, req.IssuerState, subject); err != nil {
+		if err := s.offers.StageOffer(ctx, req.IssuerState, subject, s.now().Add(RowTTL)); err != nil {
 			s.log.Warn("the claims row of an offer was not written", "error", err)
 			return "The offer has expired or was claimed.", false
 		}
@@ -221,7 +257,7 @@ func (s *Server) stage(r *http.Request, req authRequest, claims map[string]any, 
 	if !found {
 		return DeniedNoRecord, false
 	}
-	if err := s.offers.StageSubject(ctx, src.ConfigID, row, subject); err != nil {
+	if err := s.offers.StageSubject(ctx, src.ConfigID, row, subject, s.now().Add(RowTTL)); err != nil {
 		s.log.Warn("the claims row of a sign in was not written", "error", err)
 		return "The issuer cannot write the credential now.", false
 	}

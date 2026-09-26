@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 // The Service is the issuer side of the holder authorization server
@@ -107,8 +109,10 @@ func (s *Service) Offer(ctx context.Context, id string) (authz.Offer, bool) {
 }
 
 // StageOffer writes the claims row of an offer under key and closes the
-// offer. The compare and swap lets one holder claim it, once.
-func (s *Service) StageOffer(ctx context.Context, id, key string) error {
+// offer. The row lives until expires, the end the authorization server
+// gives it (ADR-056 decision 3). The compare and swap lets one holder
+// claim it, once.
+func (s *Service) StageOffer(ctx context.Context, id, key string, expires time.Time) error {
 	offer, raw, spec, ok := s.openOffer(ctx, id)
 	if !ok {
 		return errors.New("the offer is not open")
@@ -117,6 +121,7 @@ func (s *Service) StageOffer(ctx context.Context, id, key string) error {
 	if err != nil {
 		return err
 	}
+	row.ExpiresAt = expires
 	offer.Claimed = true
 	next, err := json.Marshal(offer)
 	if err != nil {
@@ -129,10 +134,70 @@ func (s *Service) StageOffer(ctx context.Context, id, key string) error {
 }
 
 // StageSubject writes the claims row of a holder that a sign in source
-// found, for one configuration.
-func (s *Service) StageSubject(ctx context.Context, configID, subject, key string) error {
-	_, err := s.stageRow(ctx, &backendv1.IssueSpec{ConfigurationId: configID, SubjectData: subject}, key)
-	return err
+// found, for one configuration. The row lives until expires.
+func (s *Service) StageSubject(ctx context.Context, configID, subject, key string, expires time.Time) error {
+	row, _, err := s.buildRow(ctx, &backendv1.IssueSpec{ConfigurationId: configID, SubjectData: subject}, key)
+	if err != nil {
+		return err
+	}
+	row.ExpiresAt = expires
+	if err := s.claims.Put(row); err != nil {
+		return fmt.Errorf("write the claims row: %w", err)
+	}
+	return nil
+}
+
+// Finish drops the subject and the binding rule of a claimed offer once
+// the holder has the token (ADR-056 decision 4). The claims row serves
+// the credential, so the offer keeps only its document until it
+// expires. A missing offer is not an error: the sweep removed it.
+func (s *Service) Finish(ctx context.Context, id string) error {
+	raw, err := s.store.Get(ctx, offerKey(id))
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var offer hostedOffer
+	if uerr := json.Unmarshal(raw, &offer); uerr != nil {
+		return fmt.Errorf("read the offer: %w", uerr)
+	}
+	if offer.Spec == "" && offer.Binding == nil {
+		return nil
+	}
+	next, err := json.Marshal(hostedOffer{Document: offer.Document, ExpiresAt: offer.ExpiresAt, Claimed: true})
+	if err != nil {
+		return err
+	}
+	return s.store.CompareAndSwap(ctx, offerKey(id), raw, next)
+}
+
+// SweepOffers deletes every hosted offer whose end has passed, and every
+// document that does not read as an offer. It returns the number it
+// deleted. The subject of an offer never claimed goes with it (ADR-056
+// decision 4).
+func (s *Service) SweepOffers(ctx context.Context) (int, error) {
+	keys, err := s.store.List(ctx, offerKey(""))
+	if err != nil {
+		return 0, err
+	}
+	now := s.now().UTC()
+	removed := 0
+	for _, k := range keys {
+		raw, gerr := s.store.Get(ctx, k)
+		if gerr != nil {
+			continue
+		}
+		var offer hostedOffer
+		if json.Unmarshal(raw, &offer) == nil && now.Before(offer.ExpiresAt) {
+			continue
+		}
+		if s.store.Delete(ctx, k) == nil {
+			removed++
+		}
+	}
+	return removed, nil
 }
 
 // Unstage removes the claims row under key.

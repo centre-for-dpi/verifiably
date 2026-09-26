@@ -380,14 +380,16 @@ The adapter writes one file per staged subject into
 `VCA_INJI_CLAIMS_DIR`. The name of the file is the SHA-256 of the
 subject, and it holds one row. The adapter writes a temporary file and
 renames it, so the database never reads half a row. A sweep at each
-write and every `VCA_INJI_CLAIMS_SWEEP` deletes a row when its offer
-expires. The adapter opens no database connection.
+write and every `VCA_INJI_CLAIMS_SWEEP` deletes a row when it expires.
+The query of Certify reads only a row whose `expires_at` lies ahead.
+So a row serves nothing past its end, even before the sweep (ADR-056
+decision 3). The adapter opens no database connection.
 
 | Column | What it holds |
 | --- | --- |
 | `subject` | The key of the row: the `sub` of the token |
 | `config_id` | The credential configuration |
-| `expires_at` | The end of the offer |
+| `expires_at` | The end of the row: the end of the offer, or seven minutes after the sign in for the holder authorization server |
 | `v_valid_from`, `v_valid_until` | The validity window |
 | `v_status_uri`, `v_status_index` | The status list entry |
 | `c1` to `c64` | The claims, in the order of the schema |
@@ -445,6 +447,25 @@ is the credential endpoint of `inji-certify-authcode`. It also carries
 the scope `vca_credential`, the client, and a `c_nonce`. It lives five minutes.
 Certify reads the key set on the compose network, at
 `INJI_ADAPTER_URL`.
+
+**How long the data stays.** The claims row of a sign in lives for the
+code, the token, and one more minute: seven minutes in all. Certify does
+not tell the adapter that it issued. So a wallet can ask for the
+credential more than once while its token lives. An offer keeps its
+subject until the holder gets the token. It then keeps only its
+document. The sweep deletes every offer when it expires, claimed or not
+(ADR-056 decisions 3 and 4).
+
+**Bounds and rate limits.** The server refuses a query over 8 KiB, a
+`client_id` over 128 bytes, a `state` over 512 bytes, a `scope` over
+1 KiB, and `authorization_details` over 4 KiB. An `issuer_state` must
+look like an offer id. The server checks all this before it reads or
+writes the store. Each source can send one sign in request a second,
+20 at once. Authorize takes 20 requests a second from all sources
+together. The token endpoint and the metadata take 20 a second per
+source. A request over a limit gets 429. The source is the last entry
+of `X-Forwarded-For` that the proxy sets. The sign in sources sit in
+one document, so no request walks the store (ADR-056 decision 5).
 
 **Which claims.** A request that names an offer in `issuer_state`
 issues the claims of that offer. The issuer set a binding rule in the
@@ -514,6 +535,9 @@ cannot open it, so the start fails. The key signs access tokens only.
 
 | Threat | Guard |
 | --- | --- |
+| A flood of authorization requests fills the volume | Each parameter has a bound. Each source and authorize as a whole have a rate limit. A sign in record lives ten minutes. |
+| A copy of the volume gives the subjects of old offers | An offer drops its subject when the holder gets the token. The sweep deletes it when it expires. A row lives seven minutes. |
+| A row serves after its token ended | The query of Certify reads only a row whose `expires_at` lies ahead. |
 | A code or an error goes to an address of an attacker | The redirect URI must equal a registered one, byte for byte. An unknown client or a wrong redirect URI gets an error page and no redirect. |
 | A stolen code works | PKCE S256 binds the code to the verifier of the wallet. The code works once, for one minute, for its client and its redirect URI. A code that comes back removes the claims row of its first token. |
 | The plain PKCE method weakens the check | The server takes S256 only. |

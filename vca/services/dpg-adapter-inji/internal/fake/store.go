@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 )
@@ -31,6 +32,22 @@ func (f *Server) SetClaimsDir(dir string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.claimsDir = dir
+}
+
+// SetNow sets the clock of the database, which the query of the claims
+// store compares expires_at with. Nil reads the real clock.
+func (f *Server) SetNow(now func() time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.now = now
+}
+
+// dbNow reads the clock of the database. The caller holds the lock.
+func (f *Server) dbNow() time.Time {
+	if f.now != nil {
+		return f.now()
+	}
+	return time.Now()
 }
 
 // stagedSubject returns the subject of a token for the last staging
@@ -107,7 +124,7 @@ func tokenSubject(header string) (string, bool) {
 func (f *Server) fromStore(w http.ResponseWriter, r *http.Request, body []byte) bool {
 	var req credentialRequest
 	f.mu.Lock()
-	dir, subject := f.claimsDir, f.stagedSubject()
+	dir, subject, now := f.claimsDir, f.stagedSubject(), f.dbNow()
 	f.mu.Unlock()
 	if sub, ok := tokenSubject(r.Header.Get("Authorization")); ok {
 		subject = sub
@@ -125,9 +142,10 @@ func (f *Server) fromStore(w http.ResponseWriter, r *http.Request, body []byte) 
 		return true
 	}
 	row, ok, err := claims.Writer{Dir: dir}.Find(subject)
-	if err != nil || !ok {
+	if err != nil || !ok || !now.Before(row.ExpiresAt) {
 		// The plugin answers ERROR_FETCHING_DATA_RECORD_FROM_TABLE when
-		// the query finds no row.
+		// the query finds no row. The query reads only a row whose
+		// expires_at lies ahead (ADR-056 decision 3).
 		http.Error(w, `{"error":"ERROR_FETCHING_DATA_RECORD_FROM_TABLE"}`, http.StatusBadRequest)
 		return true
 	}

@@ -46,18 +46,22 @@ type fakeIssuer struct {
 	mu       sync.Mutex
 	offers   map[string]authz.Offer
 	staged   map[string]string
+	expires  map[string]time.Time
 	unstaged []string
 	claimed  map[string]bool
+	finished []string
+	lookups  int
 }
 
 func (f *fakeIssuer) Offer(_ context.Context, id string) (authz.Offer, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.lookups++
 	o, ok := f.offers[id]
 	return o, ok && !f.claimed[id]
 }
 
-func (f *fakeIssuer) StageOffer(_ context.Context, id, key string) error {
+func (f *fakeIssuer) StageOffer(_ context.Context, id, key string, expires time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.claimed[id] {
@@ -65,13 +69,26 @@ func (f *fakeIssuer) StageOffer(_ context.Context, id, key string) error {
 	}
 	f.claimed[id] = true
 	f.staged[key] = "offer:" + id
+	if f.expires != nil {
+		f.expires[key] = expires
+	}
 	return nil
 }
 
-func (f *fakeIssuer) StageSubject(_ context.Context, configID, subject, key string) error {
+func (f *fakeIssuer) StageSubject(_ context.Context, configID, subject, key string, expires time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.staged[key] = configID + ":" + subject
+	if f.expires != nil {
+		f.expires[key] = expires
+	}
+	return nil
+}
+
+func (f *fakeIssuer) Finish(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.finished = append(f.finished, id)
 	return nil
 }
 
@@ -111,6 +128,7 @@ type harness struct {
 	walletKey *rsa.PrivateKey
 	browser   *http.Client
 	verified  []string
+	limits    authz.Limits
 }
 
 func (h *harness) clock() time.Time {
@@ -127,21 +145,50 @@ func (h *harness) advance(d time.Duration) {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	return newHarnessVouching(t)
+	return newHarnessWith(t, harnessOptions{})
 }
 
 // newHarnessVouching is a harness whose holder provider record lists
 // the claims it verifies beyond the standard ones.
 func newHarnessVouching(t *testing.T, verified ...string) *harness {
 	t.Helper()
+	return newHarnessWith(t, harnessOptions{verified: verified})
+}
+
+// harnessOptions change the server a harness builds.
+type harnessOptions struct {
+	// verified lists the claims the provider record vouches for.
+	verified []string
+	// kv replaces the memory store.
+	kv store.KeyValue
+	// limits replaces the rate limits, which the harness lifts.
+	limits *authz.Limits
+}
+
+// noLimits lets every test request through.
+var noLimits = authz.Limits{
+	Browser: authz.RateLimit{PerSecond: 1000, Burst: 100000}, Client: authz.RateLimit{PerSecond: 1000, Burst: 100000},
+	Authorize: authz.RateLimit{PerSecond: 1000, Burst: 100000},
+}
+
+func newHarnessWith(t *testing.T, o harnessOptions) *harness {
+	t.Helper()
+	if o.kv == nil {
+		o.kv = store.Memory()
+	}
+	if o.limits == nil {
+		o.limits = &noLimits
+	}
 	h := &harness{
-		verified: verified,
+		verified: o.verified,
+		limits:   *o.limits,
 		t:        t,
 		idp:      oidctest.New(),
-		issuer:   &fakeIssuer{offers: map[string]authz.Offer{}, staged: map[string]string{}, claimed: map[string]bool{}},
-		lookup:   &fakeLookup{rows: map[string]string{}},
-		kv:       store.Memory(),
-		now:      time.Now().UTC().Truncate(time.Second),
+		issuer: &fakeIssuer{offers: map[string]authz.Offer{}, staged: map[string]string{}, claimed: map[string]bool{},
+			expires: map[string]time.Time{}},
+		lookup: &fakeLookup{rows: map[string]string{}},
+		kv:     o.kv,
+		now:    time.Now().UTC().Truncate(time.Second),
 		browser: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}},
@@ -184,6 +231,7 @@ func (h *harness) build(t *testing.T, kv store.KeyValue) *authz.Server {
 		Flow:     &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0), Now: h.clock},
 		Offers:   h.issuer,
 		Lookup:   h.lookup,
+		Limits:   h.limits,
 		Now:      h.clock,
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
@@ -1023,5 +1071,212 @@ func TestWalletInitiatedClaimNeedsAVouchedClaim(t *testing.T) {
 	wantError(t, back, "access_denied", r.state)
 	if len(h.issuer.staged) != 0 {
 		t.Fatalf("a row was staged: %v", h.issuer.staged)
+	}
+}
+
+// countingStore counts the walks of the store.
+type countingStore struct {
+	store.KeyValue
+	mu    sync.Mutex
+	lists int
+}
+
+func (c *countingStore) List(ctx context.Context, prefix string) ([]string, error) {
+	c.mu.Lock()
+	c.lists++
+	c.mu.Unlock()
+	return c.KeyValue.List(ctx, prefix)
+}
+
+func (c *countingStore) walks() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lists
+}
+
+// logins returns the number of stored sign ins.
+func (h *harness) logins() int {
+	h.t.Helper()
+	keys, err := h.kv.List(context.Background(), "authz/logins")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return len(keys)
+}
+
+// TestAuthorizeBoundsItsParametersBeforeAnyWrite is finding 4 of the
+// review: an authorization request that anybody can send kept its whole
+// state for ten minutes. The server now refuses an oversized parameter
+// or an issuer_state that is no offer id before it reads or writes the
+// store, and it does not echo such a value (ADR-056 decision 5).
+func TestAuthorizeBoundsItsParametersBeforeAnyWrite(t *testing.T) {
+	h := newHarness(t)
+	h.addOffer("offer-1", "amina@example.org")
+	long := strings.Repeat("s", 513)
+	r := newRequest(publicClient, walletCallback)
+	r.state = long
+	res := h.authorize(r.query())
+	back := anyval.Must(url.Parse(res.Header.Get("Location")))
+	if back.Query().Get("error") != "invalid_request" || back.Query().Has("state") || strings.Contains(res.Header.Get("Location"), long) {
+		t.Errorf("a long state = %d %s", res.StatusCode, back)
+	}
+	for name, change := range map[string]func(*request){
+		"an issuer_state with a slash": func(r *request) { r.issuerState = "../offer-1" },
+		"a long issuer_state":          func(r *request) { r.issuerState = strings.Repeat("a", 65) },
+		"long authorization_details": func(r *request) {
+			r.extra = url.Values{"authorization_details": {`[{"type":"openid_credential","x":"` + strings.Repeat("d", 4096) + `"}]`}}
+		},
+		"a long scope": func(r *request) { r.extra = url.Values{"scope": {strings.Repeat("vca_credential ", 80)}} },
+	} {
+		r := newRequest(publicClient, walletCallback)
+		change(&r)
+		back := anyval.Must(url.Parse(h.authorize(r.query()).Header.Get("Location")))
+		wantError(t, back, "invalid_request", r.state)
+		if name != "long authorization_details" && name != "a long scope" && h.issuer.lookups != 0 {
+			t.Errorf("%s: the server read the offers", name)
+		}
+	}
+	// An oversized client id or query gets a page, and no echo.
+	longClient := strings.Repeat("c", 129)
+	res = h.authorize(url.Values{"client_id": {longClient}})
+	if res.StatusCode != http.StatusBadRequest || strings.Contains(res.Body, longClient) {
+		t.Errorf("a long client = %d %s", res.StatusCode, res.Body)
+	}
+	q := newRequest(publicClient, walletCallback).query()
+	q.Set("padding", strings.Repeat("p", 8200))
+	if res = h.authorize(q); res.StatusCode != http.StatusRequestURITooLong {
+		t.Errorf("a long query = %d", res.StatusCode)
+	}
+	if n := h.logins(); n != 0 {
+		t.Fatalf("%d sign ins were stored", n)
+	}
+}
+
+// TestAuthzRoutesLimitTheRateOfASource: every public route limits the
+// requests of one source, and authorize limits all sources together.
+// A request over the limit gets 429 and writes nothing (ADR-056
+// decision 5).
+func TestAuthzRoutesLimitTheRateOfASource(t *testing.T) {
+	limits := authz.Limits{
+		Browser: authz.RateLimit{PerSecond: 1, Burst: 3}, Client: authz.RateLimit{PerSecond: 1, Burst: 2},
+		Authorize: authz.RateLimit{PerSecond: 1, Burst: 5},
+	}
+	h := newHarnessWith(t, harnessOptions{limits: &limits})
+	send := func(path, source string) int {
+		t.Helper()
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, h.web.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if source != "" {
+			req.Header.Set("X-Forwarded-For", "198.51.100.1, "+source)
+		}
+		res, err := h.browser.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		anyval.Discard(res.Body.Close())
+		if res.StatusCode == http.StatusTooManyRequests && res.Header.Get("Retry-After") == "" {
+			t.Error("a 429 without Retry-After")
+		}
+		return res.StatusCode
+	}
+	authorize := "/authz/authorize?" + newRequest(publicClient, walletCallback).query().Encode()
+	for i := range 3 {
+		if got := send(authorize, "203.0.113.1"); got != http.StatusFound {
+			t.Fatalf("request %d = %d", i, got)
+		}
+	}
+	if got := send(authorize, "203.0.113.1"); got != http.StatusTooManyRequests {
+		t.Fatalf("the fourth request = %d", got)
+	}
+	// Another source has its own bucket, until authorize as a whole runs dry.
+	if got := send(authorize, "203.0.113.2"); got != http.StatusFound {
+		t.Fatalf("another source = %d", got)
+	}
+	if got := send(authorize, "203.0.113.3"); got != http.StatusFound {
+		t.Fatalf("a third source = %d", got)
+	}
+	if got := send(authorize, "203.0.113.4"); got != http.StatusTooManyRequests {
+		t.Fatalf("authorize over the total = %d", got)
+	}
+	if n := h.logins(); n != 5 {
+		t.Fatalf("%d sign ins, want 5", n)
+	}
+	// The client routes have their own budget per source.
+	for i := range 2 {
+		if got := send("/authz/.well-known/jwks.json", "203.0.113.1"); got != http.StatusOK {
+			t.Fatalf("jwks %d = %d", i, got)
+		}
+	}
+	if got := send("/authz/.well-known/jwks.json", "203.0.113.1"); got != http.StatusTooManyRequests {
+		t.Fatalf("jwks over the limit = %d", got)
+	}
+	// Without a forwarded address the peer is the source. Time refills.
+	h.advance(10 * time.Second)
+	if got := send("/authz/.well-known/jwks.json", ""); got != http.StatusOK {
+		t.Fatalf("the peer = %d", got)
+	}
+	if got := send(authorize, "203.0.113.1"); got != http.StatusFound {
+		t.Fatalf("after a pause = %d", got)
+	}
+}
+
+// TestAClaimWalksNoStore: a wallet initiated claim reads its sign in
+// source from one document, so no request lists the store (ADR-056
+// decision 5).
+func TestAClaimWalksNoStore(t *testing.T) {
+	kv := &countingStore{KeyValue: store.Memory()}
+	h := newHarnessWith(t, harnessOptions{kv: kv})
+	for _, src := range []authz.SignInSource{
+		{ConfigID: "ResidencePermit", SourceID: "registry", Field: "email", TokenClaim: "email"},
+		{ConfigID: "Other", SourceID: "registry", Field: "email", TokenClaim: "email"},
+		{ConfigID: "ResidencePermit", SourceID: "registry-2", Field: "email", TokenClaim: "email"},
+	} {
+		if err := h.srv.SetSignInSource(context.Background(), src); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.lookup.rows["amina@example.org"] = `{"fullName":"Amina Njeri"}`
+	before := kv.walks()
+	r := newRequest(publicClient, walletCallback)
+	r.extra = url.Values{"authorization_details": {`[{"type":"openid_credential","credential_configuration_id":"ResidencePermit"}]`}}
+	back := h.signIn(r)
+	if back.Query().Get("code") == "" {
+		t.Fatalf("redirect = %s", back)
+	}
+	if got := kv.walks() - before; got != 0 {
+		t.Fatalf("the claim listed the store %d times", got)
+	}
+	if calls := strings.Join(h.lookup.calls, " "); calls != "registry-2/email=amina@example.org" {
+		t.Fatalf("lookups = %s, want the last source of the configuration", calls)
+	}
+}
+
+// TestTheRowLivesAsLongAsItsCodeAndToken is finding 7 of the review: the
+// row of a claim lived as long as the offer, well past its token. The
+// server now gives each row the life of its code and its token, and it
+// ends the offer data once the token is out (ADR-056 decisions 3 and 4).
+func TestTheRowLivesAsLongAsItsCodeAndToken(t *testing.T) {
+	h := newHarness(t)
+	h.addOffer("offer-1", "amina@example.org")
+	start := h.clock()
+	_, answer := h.claimToken("offer-1")
+	if answer["access_token"] == "" {
+		t.Fatal("no token")
+	}
+	if len(h.issuer.expires) != 1 {
+		t.Fatalf("expires = %v", h.issuer.expires)
+	}
+	for _, at := range h.issuer.expires {
+		if !at.Equal(start.Add(authz.RowTTL)) {
+			t.Fatalf("the row ends at %v, want %v", at, start.Add(authz.RowTTL))
+		}
+	}
+	if authz.RowTTL < authz.CodeTTL+authz.TokenTTL || authz.RowTTL > authz.CodeTTL+authz.TokenTTL+2*time.Minute {
+		t.Fatalf("RowTTL = %v", authz.RowTTL)
+	}
+	if strings.Join(h.issuer.finished, ",") != "offer-1" {
+		t.Fatalf("finished = %v, want the offer after the token", h.issuer.finished)
 	}
 }

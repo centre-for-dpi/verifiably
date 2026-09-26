@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -48,6 +49,10 @@ const (
 	// TokenTTL bounds an access token. The wallet calls the credential
 	// endpoint of Certify right after the token endpoint.
 	TokenTTL = 5 * time.Minute
+	// RowTTL bounds the claims row of a claim: the code, then the token,
+	// and a minute for the clocks of the adapter and the database
+	// (ADR-056 decision 3).
+	RowTTL = CodeTTL + TokenTTL + time.Minute
 	// NonceTTL is the life of the c_nonce of a token.
 	NonceTTL = 5 * time.Minute
 	// maxAssertionLife bounds the exp of a client assertion, so a stolen
@@ -91,12 +96,16 @@ type Offers interface {
 	// Offer returns an open offer by its id, the issuer_state of the
 	// offer document. A claimed or expired offer is not open.
 	Offer(ctx context.Context, id string) (Offer, bool)
-	// StageOffer writes the claims row of the offer under key and
-	// closes the offer. A second call for the same offer fails.
-	StageOffer(ctx context.Context, id, key string) error
-	// StageSubject writes a claims row of one configuration under key.
-	// subject is a JSON object of the claims.
-	StageSubject(ctx context.Context, configID, subject, key string) error
+	// StageOffer writes the claims row of the offer under key, to live
+	// until expires, and closes the offer. A second call for the same
+	// offer fails.
+	StageOffer(ctx context.Context, id, key string, expires time.Time) error
+	// StageSubject writes a claims row of one configuration under key,
+	// to live until expires. subject is a JSON object of the claims.
+	StageSubject(ctx context.Context, configID, subject, key string, expires time.Time) error
+	// Finish deletes what a claimed offer still holds of its subject,
+	// once the holder has the token (ADR-056 decision 4).
+	Finish(ctx context.Context, id string) error
 	// Unstage removes the claims row under key.
 	Unstage(ctx context.Context, key string) error
 }
@@ -154,6 +163,9 @@ type Options struct {
 	// Stack is the short name of the stack. A provider limited to other
 	// stacks does not serve it. Empty means inji.
 	Stack string
+	// Limits are the rate limits of the routes. A zero limit takes the
+	// value of DefaultLimits.
+	Limits Limits
 	// Now reads the clock. Nil reads the real clock.
 	Now func() time.Time
 	// Log receives the refusals. Nil means slog.Default.
@@ -174,6 +186,7 @@ type Server struct {
 	log      *slog.Logger
 	key      tokenKey
 	clients  map[string]Client
+	limits   Limits
 }
 
 // New checks the options and loads the token key, or makes and seals
@@ -207,6 +220,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	s := &Server{
 		issuer: issuer, audience: opts.Audience, kv: opts.Store, registry: opts.Registry, flow: opts.Flow,
 		offers: opts.Offers, lookup: opts.Lookup, stack: opts.Stack, now: opts.Now, log: opts.Log, clients: clients,
+		limits: opts.Limits,
 	}
 	if s.stack == "" {
 		s.stack = "inji"
@@ -230,7 +244,8 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 func (s *Server) Issuer() string { return s.issuer }
 
 // Handler serves the endpoints at the paths under the issuer. The
-// caller strips the path of the issuer.
+// caller strips the path of the issuer. Each route has a rate limit per
+// source (ADR-056 decision 5).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+MetadataPath, s.metadata)
@@ -238,7 +253,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+AuthorizePath, s.authorize)
 	mux.HandleFunc("GET "+CallbackPath, s.callback)
 	mux.HandleFunc("POST "+TokenPath, s.token)
-	return mux
+	return newGuard(s.limits, s.now).wrap(mux)
 }
 
 // metadata serves the RFC 8414 document. Mimoto 0.21.0 reads the
@@ -297,28 +312,53 @@ func contains(list []string, v string) bool {
 }
 
 // SetSignInSource stores the holder sign in source of one credential
-// configuration (ADR-052 decision 3).
+// configuration (ADR-052 decision 3). Every source sits in one document,
+// so a claim reads one record and walks no store (ADR-056 decision 5).
 func (s *Server) SetSignInSource(ctx context.Context, src SignInSource) error {
 	if strings.TrimSpace(src.ConfigID) == "" || strings.TrimSpace(src.SourceID) == "" ||
 		strings.TrimSpace(src.Field) == "" || strings.TrimSpace(src.TokenClaim) == "" {
 		return errors.New("authz: a sign in source needs the configuration, the source, the field, and the ID token claim")
 	}
-	return putJSON(ctx, s.kv, signInKey(src.ConfigID), src)
+	for range 3 {
+		old, err := s.kv.Get(ctx, signInKey)
+		index := map[string]SignInSource{}
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			old = nil
+		case err != nil:
+			return err
+		default:
+			if uerr := json.Unmarshal(old, &index); uerr != nil {
+				return fmt.Errorf("authz: read the sign in sources: %w", uerr)
+			}
+		}
+		index[src.ConfigID] = src
+		next, err := json.Marshal(index)
+		if err != nil {
+			return err
+		}
+		if err := s.kv.CompareAndSwap(ctx, signInKey, old, next); !errors.Is(err, store.ErrConflict) {
+			return err
+		}
+	}
+	return errors.New("authz: the sign in sources changed three times during the write")
 }
 
-// signInSources returns every stored sign in source.
+// signInSources returns every stored sign in source, in the order of
+// the configuration ids.
 func (s *Server) signInSources(ctx context.Context) ([]SignInSource, error) {
-	keys, err := s.kv.List(ctx, signInPrefix)
-	if err != nil {
+	index := map[string]SignInSource{}
+	if _, err := getJSON(ctx, s.kv, signInKey, &index); err != nil {
 		return nil, err
 	}
-	out := make([]SignInSource, 0, len(keys))
-	for _, k := range keys {
-		var src SignInSource
-		if ok, gerr := getJSON(ctx, s.kv, k, &src); gerr != nil || !ok {
-			continue
-		}
-		out = append(out, src)
+	ids := make([]string, 0, len(index))
+	for id := range index {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]SignInSource, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, index[id])
 	}
 	return out, nil
 }

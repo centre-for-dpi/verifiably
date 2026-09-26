@@ -4,6 +4,7 @@ package app_test
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -302,16 +303,34 @@ func TestSweepRemovesExpiredRows(t *testing.T) {
 	f := fake.New(testdata)
 	defer f.Close()
 	dir := t.TempDir()
-	a := build(t, f, func(c *config.Config) {
-		c.ClaimsDir = dir
-		c.ClaimsSweep = time.Millisecond
-	})
+	kv := store.Memory()
+	a, err := app.Build(config.Config{
+		CertifyURL: f.URL(), PublicURL: "https://adapter.example", Timeout: time.Second, MaxBytes: 1 << 20,
+		ClaimsDir: dir, ClaimsSweep: time.Millisecond, OfferTTL: time.Millisecond,
+		AuthzIssuer: "https://adapter.example/authz", AuthzKeySecret: "0123456789abcdef0123456789abcdef",
+	}, app.Deps{HTTP: f.Client(), Store: kv, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if a.Claims == nil || a.Claims.Dir != dir {
 		t.Fatalf("claims = %+v", a.Claims)
 	}
 	stale := filepath.Join(dir, "stale.csv")
-	if err := os.WriteFile(stale, []byte("not a row\n"), 0o600); err != nil {
-		t.Fatal(err)
+	if werr := os.WriteFile(stale, []byte("not a row\n"), 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	// An expired offer goes with its subject (ADR-056 decision 4).
+	if perr := kv.Put(t.Context(), "columns/"+hex.EncodeToString([]byte("FarmerCredential")),
+		[]byte(`["fullName","farmerID","district","email"]`)); perr != nil {
+		t.Fatal(perr)
+	}
+	offerID, err := a.Service.CreateOffer(t.Context(), connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: &backendv1.IssueSpec{ConfigurationId: "FarmerCredential",
+			SubjectData: `{"fullName":"Ada Lovelace","farmerID":"FM-0001","district":"Nakuru","email":"ada@example.org"}`},
+		Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -321,7 +340,8 @@ func TestSweepRemovesExpiredRows(t *testing.T) {
 	}()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := os.Stat(stale); os.IsNotExist(err) {
+		_, kept := kv.Get(t.Context(), "offer/"+offerID.Msg.GetOfferId())
+		if _, err := os.Stat(stale); os.IsNotExist(err) && kept != nil {
 			break
 		}
 		if time.Now().After(deadline) {

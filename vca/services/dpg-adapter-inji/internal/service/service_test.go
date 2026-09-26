@@ -333,6 +333,7 @@ func TestIssueReadsTheClaimsBackFromTheRow(t *testing.T) {
 	var dir string
 	svc, f := newServiceWith(t, both, func(o *serviceOptions) { dir = o.Claims.Dir })
 	f.SetClaimsDir(dir)
+	f.SetNow(func() time.Time { return fixedTime })
 	ctx := context.Background()
 	schema := `{"type":"object","properties":{"fullName":{"type":"string"},"credits":{"type":"integer"}}}`
 	if _, err := svc.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{

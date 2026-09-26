@@ -200,6 +200,13 @@ func TestFakePicksTheTemplateFromTheRequest(t *testing.T) {
 	if status, body := ask("GuardedLicence"); status != http.StatusOK || !strings.Contains(body, "licence 9") {
 		t.Errorf("own row = %d %s", status, body)
 	}
+	// The query reads only a row whose end lies ahead (ADR-056
+	// decision 3), so an expired row gives no credential.
+	f.SetNow(func() time.Time { return time.Now().Add(2 * time.Hour) })
+	if status, body := ask("GuardedLicence"); status != http.StatusBadRequest || !strings.Contains(body, "ERROR_FETCHING_DATA_RECORD_FROM_TABLE") {
+		t.Errorf("expired row = %d %s", status, body)
+	}
+	f.SetNow(nil)
 	// A request that names no type finds no configuration.
 	if status, _ := postJSON(t, f, "/v1/certify/issuance/credential", `{"format":"ldp_vc"}`); status != http.StatusBadRequest {
 		t.Errorf("no type = %d", status)

@@ -537,7 +537,7 @@ func TestCertifyPropertiesNameThePostgresProvider(t *testing.T) {
 		"mosip.certify.integration.data-provider-plugin":                  "PostgresDataProviderPlugin",
 		"mosip.certify.integration.audit-plugin":                          "LoggerAuditService",
 		"mosip.certify.plugin-mode":                                       "DataProvider",
-		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping": "{'vca_credential': 'select * from certify.vca_claims where subject = :id'}",
+		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping": "{'vca_credential': 'select * from certify.vca_claims where subject = :id and cast(expires_at as timestamptz) > now()'}",
 		"mosip.certify.iar.identity-data":                                 "${INJI_IAR_IDENTITY_CLAIMS}",
 		"mosip.certify.data-provider-plugin.did-url":                      "${INJI_CERTIFY_DID}",
 		"mosip.certify.authn.issuer-uri":                                  "${mosip.certify.oauth.issuer}",
