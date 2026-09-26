@@ -25,6 +25,10 @@ import (
 
 const testdata = "../../testdata"
 
+// recordedConfiguration is the configuration of the recorded catalogue
+// in testdata/issuer-metadata.json.
+const recordedConfiguration = "FarmerCredential"
+
 // fixedTime is the clock of the tests.
 var fixedTime = time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
 
@@ -84,11 +88,12 @@ func newServiceWith(t *testing.T, r roles, change func(*serviceOptions)) (*servi
 			return "id-" + string(rune('0'+ids))
 		},
 	}
-	// The claims store of the test. The seeded configuration of the fake
-	// came from no registration, so the test gives its claim order.
+	// The claims store of the test. The configurations of the recorded
+	// catalogue came from no registration, so the test gives their claim
+	// order.
 	opts.Claims = &claims.Writer{Dir: t.TempDir(), Now: func() time.Time { return fixedTime }}
 	f.SetClaimsDir("")
-	seedColumns(t, opts.Store, fake.SeededConfiguration, "fullName", "farmerID", "district")
+	seedColumns(t, opts.Store, recordedConfiguration, "fullName", "farmerID", "district")
 	seedColumns(t, opts.Store, "IdentityCredential", "given_name", "family_name", "birth_date")
 	if change != nil {
 		change(&opts)

@@ -14,9 +14,10 @@ import (
 // configsPath is the credential configuration API of Certify 0.14.0.
 const configsPath = "/v1/certify/credential-configurations"
 
-// SeededConfiguration is the entry the fake holds from the start, as the
-// stack sample does (testdata/doc/config-farmer.json).
-const SeededConfiguration = "FarmerCredential"
+// SeededConfiguration is the entry the fake holds from the start, as a
+// Certify with one published configuration does
+// (testdata/doc/config-example.json).
+const SeededConfiguration = "RegistrationCredential"
 
 // configs is the credential configuration store of the fake. Certify
 // keeps it in its database and builds its issuer metadata from it.
@@ -28,10 +29,10 @@ type configs struct {
 	written []string
 }
 
-// seed loads the entry of the stack sample.
+// seed loads the entry of testdata/doc/config-example.json.
 func (c *configs) seed(dir string) {
 	c.stored = map[string]json.RawMessage{}
-	raw, err := os.ReadFile(filepath.Join(dir, "doc", "config-farmer.json")) //nolint:gosec // G304: a fixed fixture name
+	raw, err := os.ReadFile(filepath.Join(dir, "doc", "config-example.json")) //nolint:gosec // G304: a fixed fixture name
 	if err == nil {
 		c.stored[SeededConfiguration] = raw
 	}

@@ -3,7 +3,8 @@
 // Package clients holds the interfaces the issuance service needs from
 // the other services, and the capability cache of the DPG adapter.
 //
-// Every interface is small, so a test passes a fake and needs no server.
+// Every interface is small, so a test passes a test double and needs no
+// server.
 // The wiring gives each interface a Connect client (ADR-002 decision 5).
 package clients
 

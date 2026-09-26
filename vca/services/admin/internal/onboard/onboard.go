@@ -113,7 +113,7 @@ func DiscoveryURL(issuer string) string {
 }
 
 // Fetcher does one HTTP request. The http.Client of the service
-// satisfies it, and a test supplies a fake.
+// satisfies it, and a test supplies a test double.
 type Fetcher interface {
 	Do(req *http.Request) (*http.Response, error)
 }

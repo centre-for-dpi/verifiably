@@ -6,7 +6,7 @@
 // JWKS, and a trust list lookup over the trust registry service
 // (ADR-024 decision 4).
 //
-// Every port is a function value, so a test injects a fake.
+// Every port is a function value, so a test injects a test double.
 package ports
 
 import (

@@ -4,7 +4,7 @@
 // fetches the metadata and the schemas of each one (ADR-022 decision 1).
 //
 // The crawler calls the trust registry through the injected Connect
-// client, so a test injects a fake. It fetches through the injected
+// client, so a test injects a test double. It fetches through the injected
 // fetcher, which guards against server side request forgery and caches
 // with a time to live and an entity tag.
 package crawl

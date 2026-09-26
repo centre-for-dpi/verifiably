@@ -603,9 +603,10 @@ func guarded(id, template string) string {
 const statusGuard = `#if($` + claimstore.StatusURIColumn + ` && $` + claimstore.StatusURIColumn + ` != "")`
 
 // ldpTemplate returns the Velocity template of a JSON-LD credential. It
-// follows the sample template of the Certify stack, with the data model
-// 2.0 context and the bitstring status list entry of VCA (ADR-018). With
-// qrSettings, the subject carries the identity QR code Certify signs.
+// follows the JSON-LD template of the Certify 0.14.0 release, with the
+// data model 2.0 context and the bitstring status list entry of VCA
+// (ADR-018). With qrSettings, the subject carries the identity QR code
+// Certify signs.
 func ldpTemplate(contexts []string, in ConfigInput, claims []claim, qr []map[string]string) string {
 	var b strings.Builder
 	b.WriteString("{\n  \"@context\": [")

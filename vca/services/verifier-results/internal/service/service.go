@@ -215,7 +215,8 @@ func (s *Service) Export(ctx context.Context, req *connect.Request[resultsv1.Exp
 	return s.SendExport(ctx, req.Msg, stream)
 }
 
-// SendExport writes the export to any sender. Tests inject a fake.
+// SendExport writes the export to any sender. Tests inject a test
+// double.
 func (s *Service) SendExport(ctx context.Context, req *resultsv1.ExportRequest, out Sender) error {
 	matched, err := s.matching(ctx, req.GetFilter())
 	if err != nil {

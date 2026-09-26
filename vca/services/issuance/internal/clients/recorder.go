@@ -40,7 +40,8 @@ func (f recorderFunc) Record(ctx context.Context, r *issuedv1.IssuedRecord) (str
 }
 
 // Appender is the part of the issued credentials contract that the
-// issuance service calls. A test passes a fake and needs no server.
+// issuance service calls. A test passes a test double and needs no
+// server.
 type Appender interface {
 	// Append records one issuance and returns its id and hash.
 	Append(context.Context, *connect.Request[issuedv1.AppendRequest]) (

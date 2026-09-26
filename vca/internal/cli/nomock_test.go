@@ -5,6 +5,10 @@ package cli
 import (
 	"bytes"
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,8 +56,9 @@ var mockWordRe = regexp.MustCompile(`(?i)\b(mock|dummy|fake|sample|seed|demo)\b`
 
 // The token scan skips _test.go and _test.sh files, .proto files (an
 // RPC name is an API name), testdata and gen folders, docs/adr (the
-// records describe what was removed) and internal/fake packages (test
-// doubles that no binary imports, see TestNoBinaryImportsAFakePackage).
+// records describe what was removed), and the internal/fake and
+// oidcflow/oidctest packages (test doubles that no binary imports, see
+// TestNoBinaryImportsAFakePackage).
 
 // nomockException names one line pattern in one file that the word
 // rule or the token rule accepts, with the reason.
@@ -76,15 +81,26 @@ var nomockAllowlist = []nomockException{
 	{"vca/hack/contract-tests.sh", "esignet-mock", "The contract script refuses a deployment that runs the mock plugin of an old release."},
 	{"vca/hack/contract-tests.sh", "farmer_identity_data", "The contract script refuses a deployment that holds the sample identities of an old release."},
 	{"vca/hack/contract-tests.sh", "FarmerCredential", "The contract script refuses a deployment that holds the sample credential of an old release."},
+	// The login provider that setup names for a service. The code calls
+	// it the seed of the provider registry. It holds no data.
+	{"vca/services/internal/oidcflow/provider.go", "seed", "Seed is the login provider that setup names, not a data set."},
+	{"vca/services/internal/oidcflow/registry.go", "seed", "Registry.Seed stores the login provider that setup names."},
+	{"vca/services/admin/internal/app/app.go", "seed", "The admin service stores the login provider that setup names."},
+	{"vca/services/admin/internal/config/config.go", "seed", "The login provider that setup names."},
+	{"vca/services/issuer-auth/internal/config/config.go", "seed", "The login provider that setup names."},
+	{"vca/services/issuer-auth/internal/server/server.go", "seed", "The service stores the login provider that setup names."},
+	{"vca/services/verifier-auth/internal/config/config.go", "seed", "The login provider that setup names."},
+	{"vca/services/verifier-auth/internal/server/server.go", "seed", "The service stores the login provider that setup names."},
+	{"vca/services/wallet-auth/internal/config/config.go", "seed", "The login provider that setup names."},
+	{"vca/services/wallet-auth/internal/server/server.go", "seed", "The service stores the login provider that setup names."},
+	{"vca/services/dpg-adapter-inji/internal/app/app.go", "seed", "The holder authorization server stores the holder provider that setup names."},
+	{"vca/services/dpg-adapter-inji/internal/config/config.go", "seed", "The holder provider that setup names."},
+	// Values derived at request time, and the word of an image format.
+	{"vca/core/preview/preview.go", "sample", "SampleData derives preview values from the schema of the issuer. Nothing issues them."},
+	{"vca/services/schema-builder-ui/internal/service/service.go", "sample", "The RPC SampleData and its field sample are API names. The values come from the schema."},
+	{"vca/services/data-source/internal/table/table.go", "sample", "Infer reads a sample of the rows of the operator to find the fields."},
+	{"vca/core/ingest/pdf.go", "sample", "A sample is one colour value of an image in a PDF."},
 }
-
-// pendingRemovals are the findings of the tree when the guard landed.
-// Each later unit of the no mock plan deletes its entries.
-// TestPendingRemovalsAreStillFound fails when an entry no longer
-// matches, so nobody forgets to delete it. The last unit empties the
-// list.
-// The reason column names the unit that deletes the entry.
-var pendingRemovals = []nomockException{}
 
 // trackedFiles lists the committed files under deploy/ and vca/,
 // relative to the repository root, without the folders the scan skips.
@@ -129,7 +145,8 @@ func nomockSkipsFile(rel string) bool {
 		if p == "testdata" || p == "gen" {
 			return true
 		}
-		if i > 0 && (p == "adr" && parts[i-1] == "docs" || p == "fake" && parts[i-1] == "internal") {
+		if i > 0 && (p == "adr" && parts[i-1] == "docs" || p == "fake" && parts[i-1] == "internal" ||
+			p == "oidctest" && parts[i-1] == "oidcflow") {
 			return true
 		}
 	}
@@ -137,14 +154,18 @@ func nomockSkipsFile(rel string) bool {
 }
 
 // wordRuleApplies says whether the word rule covers a file: every
-// deployment file, every CLI source, and the operator documents.
+// deployment file, every Go source that a binary of VCA compiles, every
+// Dockerfile, and the documents that tell an operator what to run.
 func wordRuleApplies(rel string) bool {
+	base := rel[strings.LastIndex(rel, "/")+1:]
 	switch {
 	case strings.HasPrefix(rel, "deploy/"):
 		return true
-	case strings.HasPrefix(rel, "vca/internal/cli/") && strings.HasSuffix(rel, ".go"):
+	case strings.HasPrefix(rel, "vca/") && strings.HasSuffix(rel, ".go"):
 		return true
-	case rel == "vca/docs/deploy.md", rel == "vca/docs/cli.md":
+	case base == "Dockerfile" || strings.HasPrefix(base, "Dockerfile."):
+		return true
+	case rel == "vca/docs/deploy.md", rel == "vca/docs/cli.md", rel == "vca/docs/getting-started.md", rel == "vca/docs/admin.md":
 		return true
 	case strings.HasPrefix(rel, "vca/docs/dpg-adapter-") && strings.HasSuffix(rel, ".md"):
 		return true
@@ -228,27 +249,62 @@ func scanTree(t *testing.T) []nomockFinding {
 }
 
 func TestNoMockArtefactInShippedFiles(t *testing.T) {
-	pending := 0
 	for _, f := range scanTree(t) {
 		if excepted(nomockAllowlist, f) {
 			continue
 		}
-		if excepted(pendingRemovals, f) {
-			pending++
-			continue
-		}
 		t.Errorf("%s:%d names %q: %s", f.path, f.line, f.token, strings.TrimSpace(f.text))
 	}
-	t.Logf("pending removals: %d entries cover %d lines", len(pendingRemovals), pending)
 }
 
-func TestPendingRemovalsAreStillFound(t *testing.T) {
-	findings := scanTree(t)
-	for _, e := range pendingRemovals {
-		if !anyFinding(findings, e) {
-			t.Errorf("pending entry %s %q matches nothing; delete it", e.path, e.token)
+// TestNoPendingRemovals closes the guard (ADR-050 decision 4). The only
+// list of exceptions is the allowlist, where each entry has a reason.
+// No other list of findings may come back, so a new mock or sample
+// artefact fails at once.
+func TestNoPendingRemovals(t *testing.T) {
+	names, err := filepath.Glob("*_test.go")
+	if err != nil || len(names) == 0 {
+		t.Fatalf("list the test files: %v", err)
+	}
+	fset := token.NewFileSet()
+	for _, name := range names {
+		file, err := parser.ParseFile(fset, name, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				value, isValue := spec.(*ast.ValueSpec)
+				if !isValue {
+					continue
+				}
+				for _, id := range value.Names {
+					if exceptionList(value) && id.Name != "nomockAllowlist" {
+						t.Errorf("%s declares the exception list %s; put a lasting exception in nomockAllowlist with a reason", name, id.Name)
+					}
+					if strings.HasPrefix(strings.ToLower(id.Name), "pending") {
+						t.Errorf("%s declares %s; the guard keeps no pending findings", name, id.Name)
+					}
+				}
+			}
 		}
 	}
+}
+
+// exceptionList says whether a variable holds nomockException values.
+func exceptionList(spec *ast.ValueSpec) bool {
+	text := ""
+	if spec.Type != nil {
+		text = types.ExprString(spec.Type)
+	}
+	for _, v := range spec.Values {
+		text += " " + types.ExprString(v)
+	}
+	return strings.Contains(text, "nomockException")
 }
 
 func TestAllowlistEntriesExist(t *testing.T) {
@@ -315,7 +371,7 @@ func TestNoBinaryImportsAFakePackage(t *testing.T) {
 			t.Fatalf("read %s: %v", rel, err)
 		}
 		for i, line := range strings.Split(string(data), "\n") {
-			if strings.Contains(line, "/internal/fake\"") {
+			if strings.Contains(line, "/internal/fake\"") || strings.Contains(line, "/oidcflow/oidctest\"") {
 				t.Errorf("%s:%d imports a fake package", rel, i+1)
 			}
 		}
@@ -361,8 +417,16 @@ func TestScanFileFindsEachRule(t *testing.T) {
 	if len(got) != len(want) {
 		t.Errorf("findings %v, want %v (a KEYCLOAK URL default is not a secret)", got, want)
 	}
-	if n := len(scanFile("vca/services/x/app.go", []byte("// a sample\n"))); n != 0 {
-		t.Errorf("the word rule fired %d times on a service source; it covers deployment files only", n)
+	// Every source a binary compiles, every Dockerfile, and the
+	// documents of the operator carry the word rule. A design note does
+	// not.
+	for _, rel := range []string{"vca/services/x/app.go", "vca/core/x/x.go", "vca/services/x/Dockerfile", "vca/docs/getting-started.md"} {
+		if n := len(scanFile(rel, []byte("// a sample\n"))); n != 1 {
+			t.Errorf("the word rule fired %d times on %s, want once", n, rel)
+		}
+	}
+	if n := len(scanFile("vca/docs/ui.md", []byte("a sample\n"))); n != 0 {
+		t.Errorf("the word rule fired %d times on a design note", n)
 	}
 	if n := len(scanFile("deploy/x.bin", append([]byte{0}, text...))); n != 0 {
 		t.Errorf("the scan read %d findings from a binary file", n)
@@ -397,6 +461,7 @@ func TestNomockSkipsTestPathsOnly(t *testing.T) {
 	for _, rel := range []string{
 		"vca/internal/cli/x_test.go", "vca/hack/x_test.sh", "vca/proto/x.proto", "vca/services/a/testdata/x.json",
 		"vca/gen/x.pb.go", "vca/docs/adr/ADR-050-no-mock-data.md", "vca/services/a/internal/fake/fake.go",
+		"vca/services/internal/oidcflow/oidctest/provider.go",
 	} {
 		if !nomockSkipsFile(rel) {
 			t.Errorf("%s is scanned, want skipped", rel)

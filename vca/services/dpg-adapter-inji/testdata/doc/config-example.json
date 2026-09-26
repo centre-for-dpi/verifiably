@@ -1,0 +1,21 @@
+{
+  "vcTemplate": "ewogICJAY29udGV4dCI6IFsiaHR0cHM6Ly93d3cudzMub3JnL25zL2NyZWRlbnRpYWxzL3YyIl0sCiAgImlzc3VlciI6ICIke19pc3N1ZXJ9IiwKICAidHlwZSI6IFsiVmVyaWZpYWJsZUNyZWRlbnRpYWwiLCAiUmVnaXN0cmF0aW9uQ3JlZGVudGlhbCJdLAogICJ2YWxpZEZyb20iOiAiJHt2YWxpZEZyb219IiwKICAidmFsaWRVbnRpbCI6ICIke3ZhbGlkVW50aWx9IiwKICAiY3JlZGVudGlhbFN1YmplY3QiOiB7CiAgICAiaWQiOiAiJHtfaG9sZGVySWR9IiwKICAgICJmdWxsTmFtZSI6ICIke2Z1bGxOYW1lfSIsCiAgICAicmVnaXN0cmF0aW9uSUQiOiAiJHtyZWdpc3RyYXRpb25JRH0iCiAgfQp9Cg==",
+  "credentialConfigKeyId": "RegistrationCredential",
+  "contextURLs": ["https://www.w3.org/ns/credentials/v2"],
+  "credentialTypes": ["VerifiableCredential", "RegistrationCredential"],
+  "credentialFormat": "ldp_vc",
+  "keyManagerAppId": "CERTIFY_VC_SIGN_ED25519",
+  "keyManagerRefId": "ED25519_SIGN",
+  "signatureAlgo": "EdDSA",
+  "signatureCryptoSuite": "Ed25519Signature2020",
+  "metaDataDisplay": [
+    {"name": "Registration Credential", "locale": "en", "background_color": "#12107c", "text_color": "#FFFFFF"}
+  ],
+  "displayOrder": ["fullName", "registrationID"],
+  "scope": "vca_credential",
+  "credentialSubjectDefinition": {
+    "fullName": {"display": [{"name": "Full Name", "locale": "en"}]},
+    "registrationID": {"display": [{"name": "Registration ID", "locale": "en"}]}
+  },
+  "credentialStatusPurposes": ["revocation"]
+}

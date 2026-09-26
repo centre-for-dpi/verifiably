@@ -7,7 +7,7 @@
 //
 // The package holds the decoding and the wording. The two side effects,
 // the trust lookup and the status list fetch, come in as function
-// values. A test injects a fake for each one.
+// values. A test injects a test double for each one.
 package cards
 
 import (

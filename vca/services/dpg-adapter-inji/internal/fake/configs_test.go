@@ -38,8 +38,8 @@ func TestFakeKeepsCredentialConfigurations(t *testing.T) {
 	f := fake.New(testdata)
 	defer f.Close()
 	const api = "/v1/certify/credential-configurations"
-	if _, body := call(t, f, http.MethodGet, api+"/"+fake.SeededConfiguration, ""); !strings.Contains(body, "FarmerCredential") {
-		t.Fatalf("the sample entry is missing: %s", body)
+	if _, body := call(t, f, http.MethodGet, api+"/"+fake.SeededConfiguration, ""); !strings.Contains(body, "RegistrationCredential") {
+		t.Fatalf("the seeded entry is missing: %s", body)
 	}
 	if _, body := call(t, f, http.MethodGet, api+"/Nope", ""); !strings.Contains(body, "config_not_found_by_id") {
 		t.Fatalf("an unknown id: %s", body)

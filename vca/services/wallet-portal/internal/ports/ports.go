@@ -5,7 +5,7 @@
 // registry lookup, and a size limited HTTP fetcher with a cache.
 //
 // Every port is an interface or a function value. A test injects a
-// fake, so no test needs a network (ADR-004).
+// test double, so no test needs a network (ADR-004).
 package ports
 
 import (

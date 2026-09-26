@@ -24,7 +24,7 @@ const (
 )
 
 // Queryer is the part of *sql.DB the reader needs. A test injects a
-// fake.
+// test double.
 type Queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }

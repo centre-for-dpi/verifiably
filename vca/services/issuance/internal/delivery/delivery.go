@@ -90,8 +90,9 @@ type SenderFunc func(ctx context.Context, m Message) error
 // Send calls the function.
 func (f SenderFunc) Send(ctx context.Context, m Message) error { return f(ctx, m) }
 
-// Log returns a sender that writes the message to the log. It sends
-// nothing, so a demo deployment needs no gateway.
+// Log returns a sender that writes the message to the log and sends
+// nothing. The page shows the offer, the document and the link, so
+// those channels need no gateway.
 func Log(log *slog.Logger) Sender {
 	if log == nil {
 		log = slog.Default()

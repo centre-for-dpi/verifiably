@@ -96,7 +96,7 @@ The first admin needs a provider before any admin exists.
 The service seeds one from the `VCA_OIDC_*` variables that the setup CLI
 writes, under the id `default` with the role `admin`
 (ADR-035 decision 6).
-The seed of a stack is the admin realm of its Keycloak.
+Setup names the admin realm of the Keycloak of the stack.
 The first admin registers there and signs in with the bootstrap token.
 A stored record survives a restart, so an edit through the RPCs stays.
 

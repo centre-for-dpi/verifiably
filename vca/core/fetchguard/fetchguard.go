@@ -45,7 +45,7 @@ type Guard struct {
 	// AllowPlainHTTP lets the fetcher use http as well as https.
 	AllowPlainHTTP bool
 	// Resolve returns the addresses of a host. Nil means the system
-	// resolver. Tests inject a fake.
+	// resolver. Tests inject a test double.
 	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
 }
 

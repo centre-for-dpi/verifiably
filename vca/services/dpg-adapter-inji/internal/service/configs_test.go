@@ -129,9 +129,9 @@ func TestRegisterCreatesConfiguration(t *testing.T) {
 func TestRegisterUpdatesExisting(t *testing.T) {
 	svc, f := newService(t, both)
 	cfg := &backendv1.CredentialConfiguration{
-		Id: fake.SeededConfiguration, Format: commonv1.Format_FORMAT_LDP_VC, Type: "FarmerCredential",
-		JsonSchema: `{"type":"object","properties":{"fullName":{"type":"string"},"farmerID":{"type":"string"},"acres":{"type":"number"}}}`,
-		Display:    `[{"name":"Farmer","locale":"en"}]`,
+		Id: fake.SeededConfiguration, Format: commonv1.Format_FORMAT_LDP_VC, Type: "RegistrationCredential",
+		JsonSchema: `{"type":"object","properties":{"fullName":{"type":"string"},"registrationID":{"type":"string"},"acres":{"type":"number"}}}`,
+		Display:    `[{"name":"Registration","locale":"en"}]`,
 	}
 	id, err := register(svc, cfg)
 	if err != nil || id != fake.SeededConfiguration {
@@ -141,14 +141,14 @@ func TestRegisterUpdatesExisting(t *testing.T) {
 		t.Fatal("the adapter created a second entry for an id the stack holds")
 	}
 	got := stored(t, f, fake.SeededConfiguration)
-	if _, ok := got.CredentialSubjectDefinition["acres"]; !ok || got.MetaDataDisplay[0].Name != "Farmer" {
+	if _, ok := got.CredentialSubjectDefinition["acres"]; !ok || got.MetaDataDisplay[0].Name != "Registration" {
 		t.Fatalf("the entry was not replaced: %+v", got)
 	}
-	cfg.Display = `[{"name":"Farmer card","locale":"en"}]`
+	cfg.Display = `[{"name":"Registration card","locale":"en"}]`
 	if _, err := register(svc, cfg); err != nil {
 		t.Fatal(err)
 	}
-	if got := stored(t, f, fake.SeededConfiguration); got.MetaDataDisplay[0].Name != "Farmer card" {
+	if got := stored(t, f, fake.SeededConfiguration); got.MetaDataDisplay[0].Name != "Registration card" {
 		t.Fatalf("the second update did not land: %+v", got.MetaDataDisplay)
 	}
 }

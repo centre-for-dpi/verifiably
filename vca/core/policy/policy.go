@@ -6,8 +6,8 @@
 // context. It returns one CheckResult per credential, or one result for
 // the whole presentation. A check never writes state. Every side effect
 // is an injected port on Context: key resolution, status list fetching,
-// schema fetching, and the trust list lookup. A test injects a fake port
-// and gets a pure function.
+// schema fetching, and the trust list lookup. A test injects a test
+// double for each port and gets a pure function.
 //
 // The mandatory checks of ADR-024 decision 2 always run. VCA does them
 // itself, so a fault in a backend cannot make a bad presentation pass.

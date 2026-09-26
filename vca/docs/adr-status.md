@@ -542,10 +542,10 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-050 | 1 No mock artefact or sample data set ships | Partial | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack runs no mock identity system. The pending list of `nomock_test.go` names each one. |
+| ADR-050 | 1 No mock artefact or sample data set ships | Done | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack runs no mock identity system. The guard finds no artefact, and `TestNoPendingRemovals` keeps a list of pending findings out. `hack/contract-tests.sh` refuses a deployment with sample data. |
 | ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). Certify issues from the claims store (ADR-051), and the holder authorization server replaces eSignet for a claim (ADR-052). eSignet runs only with a real authenticator (ADR-053). Setup writes the walt.id catalogue and wallet files (ADR-054). |
 | ADR-050 | 3 Test doubles stay in test paths | Done | `vca/internal/cli/nomock_test.go` | `TestNoDeploymentReachesTestdata` and `TestNoBinaryImportsAFakePackage` keep test doubles out of every deployment. |
-| ADR-050 | 4 A guard test scans the tree | Done | `vca/internal/cli/nomock_test.go` | The allowlist gives a reason per entry. The pending list shrinks with each unit and fails on an entry that matches nothing. |
+| ADR-050 | 4 A guard test scans the tree | Done | `vca/internal/cli/nomock_test.go` | The word rule covers every stack file, every Go source that a binary compiles, every Dockerfile, and the operator documents. The allowlist gives a reason per entry and fails on an entry that matches nothing. |
 | ADR-050 | 5 A stack secret has no default | Done | `deploy/vca/dpg/*.yaml`, `vca/internal/cli/stackenv.go` | Every stack file requires its passwords with `${NAME:?set by vca setup}`. `TestStackFilesHaveNoSecretDefault` pins it. |
 
 ## ADR-051: The VCA claims store is the data provider of Inji Certify
@@ -626,8 +626,8 @@ A row that is not `Done` carries a note.
 
 | Status | Decisions |
 |---|---|
-| Done | 257 |
-| Partial | 29 |
+| Done | 263 |
+| Partial | 28 |
 | Deferred | 3 |
-| Not started | 31 |
+| Not started | 26 |
 | Total | 320 |
