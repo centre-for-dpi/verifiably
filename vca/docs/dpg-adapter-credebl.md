@@ -20,7 +20,7 @@ flow, and it checks presentations with DCQL queries.
 | `HolderBackendService` | Never served. CREDEBL ships no wallet for a citizen. |
 | `VerifierBackendService` | Served. |
 | `CatalogBackendService` | Served. |
-| `TenantBackendService` | Never served yet. The adapter acts for the one configured organisation. It lists no multi tenancy. |
+| `TenantBackendService` | Served for organisations. The client credential RPCs answer `unimplemented`. |
 | `NotificationBackendService` | Never served yet. The adapter sets no organisation webhook. It lists no webhooks. |
 
 ## The CREDEBL endpoints
@@ -32,6 +32,14 @@ flow, and it checks presentations with DCQL queries.
 | `POST /v1/orgs/{org}/schemas` | Stores one schema. |
 | `POST /v1/orgs/{org}/oid4vc/{issuer}/template` | Stores one credential template. |
 | `POST /v1/orgs/{org}/oid4vc/{issuer}/create-offer` | Builds a pre-authorized code offer. |
+| `POST /v1/orgs` | Creates the organisation of a tenant. |
+| `GET /v1/orgs` | Lists the organisations. The platform answers not found for none. |
+| `GET /v1/orgs/{org}` | Reads one organisation with its agent and primary DID. |
+| `DELETE /v1/orgs/{org}` | Removes the organisation of a tenant. |
+| `GET /v1/orgs/{org}/dids` | Reads the DIDs of an organisation. |
+| `GET /v1/orgs/{org}/users` | Reads the members of an organisation with their roles. |
+| `POST /v1/orgs/{org}/agents/wallet` | Gives an organisation a wallet in the shared agent. |
+| `POST /v1/orgs/{org}/agents/did` | Asks the agent for a new primary `did:key`. |
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
 | `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
@@ -46,8 +54,9 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Channels | OID4VCI pre-authorized code |
 | Protocols | OID4VCI, OID4VP, OID4VP with DCQL |
 | Roles | Issuer and verifier |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API` |
-| DID methods | None. The organisation of the platform holds the issuer DID. |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION` |
+| DID methods | `did:key` |
+| Key types | `Ed25519`, `secp256r1`, `secp256k1` |
 | Status mechanisms | None. The platform embeds no status entry of VCA. |
 | DPG information | The platform name, `main at 2026-09-26` with the digest of the api gateway, every platform service, the shared Credo agent, and Keycloak |
 
@@ -70,7 +79,10 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | `GetIssuanceStatus` | The api gateway reports no issuance session state. |
 | `Revoke` | The status services own the status bits. |
 | Every holder RPC | CREDEBL ships no wallet for a citizen. |
-| Every tenant RPC | The adapter acts for the one configured organisation. |
+| Every client credential RPC | The adapter makes no client credential of an organisation yet. The admin pages offer no stack credential. |
+| `CreateTenant` with a dedicated agent | The platform starts a dedicated agent through the Docker socket. The stack file mounts none, so every tenant gets the shared agent. |
+| `ImportIssuerIdentity` | The agent keeps every key and takes no key reference. Set another primary DID in the platform. |
+| `ProvisionIssuerIdentity` for `did:indy` and `did:web` | The agent takes the private key in the request for those methods. The adapter never holds a key, so it makes `did:key` only. |
 | Every webhook RPC | The adapter sets no organisation webhook. |
 | `VerifyCredential` | The adapter does not send an uploaded credential to the platform. The scanner shows no stack check. |
 
@@ -120,6 +132,22 @@ name into the offer, and a wallet outside the deployment cannot reach
 that name. The adapter swaps the internal host for the public one. The
 address sits in a query parameter, so the swap covers the percent
 encoded form as well.
+
+**Organisations are the tenants.** A new tenant is an organisation with
+a wallet in the shared agent and a primary `did:key` that the agent
+makes. The adapter creates them in that order. When the wallet or the
+DID fails, it deletes the organisation again. The tenant list leaves out
+the organisation `Platform-admin`, which holds the shared agent. Delete
+refuses that organisation and the organisation of the adapter.
+
+**The adapter only reads the members.** The platform lists each person of an
+organisation with the roles in every organisation. The adapter keeps the
+roles of the organisation it reads.
+
+**The issuer identity is the primary DID.** The identity lists the DIDs
+of the organisation of the adapter, the primary DID first. A new
+identity is a `did:key` that the agent makes and marks primary. The key
+stays in the Askar wallet of the agent.
 
 **The adapter creates the verifier once.** It creates the OID4VP
 verifier at the first request. It then stores the identifier. After a

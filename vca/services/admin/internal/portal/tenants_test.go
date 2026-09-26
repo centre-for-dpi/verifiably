@@ -13,6 +13,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/portal"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
 // tenancyHarness is a signed in harness over a tenancy stack and a plain
@@ -20,6 +21,7 @@ import (
 func tenancyHarness(t *testing.T) (*harness, *fakeStack) {
 	t.Helper()
 	tenancy := newFakeStack("Tenancy stack", backendv1.Feature_FEATURE_MULTI_TENANCY)
+	tenancy.agentTypes = []backendv1.DpgTenant_AgentType{backendv1.DpgTenant_AGENT_TYPE_SHARED, backendv1.DpgTenant_AGENT_TYPE_DEDICATED}
 	plain := newFakeStack("Plain stack")
 	h := newHarnessWith(t, true, stackPeers(tenancy, plain))
 	h.signIn(t)
@@ -188,4 +190,61 @@ func (h *harness) tenantIDOrCreate(t *testing.T) string {
 		}
 	}
 	return h.tenantID(t)
+}
+
+// TestTenantDetailShowsMembersAndPrimaryDid is P6-C1: a stack that keeps
+// people per tenant shows them with their roles, read only, and marks
+// the primary DID of the stack tenant. A stack that keeps no people
+// shows no member column.
+func TestTenantDetailShowsMembersAndPrimaryDid(t *testing.T) {
+	h, tenancy := tenancyHarness(t)
+	tenancy.mint = func(int) (string, []string) {
+		return "0b6c2f0e", []string{"did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH", "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS"}
+	}
+	if status, _ := h.post(t, "/admin/tenants", url.Values{"display_name": {"[ORGANISATION]"}, "stacks": {"DPG_CREDEBL"}}); status != http.StatusSeeOther {
+		t.Fatal("the create failed")
+	}
+	id := h.tenantID(t)
+	plain := h.page(t, "/admin/tenants/"+id)
+	if strings.Contains(plain, msg.T("admin.tenants.column.members.label")) {
+		t.Error("a stack with no members shows the member column")
+	}
+	tenancy.members = []*backendv1.TenantMember{
+		{Login: "[PLATFORM ADMIN EMAIL]", Roles: []string{"owner"}},
+		{Login: "[ISSUER EMAIL]", Roles: []string{"issuer", "verifier"}},
+	}
+	page := h.page(t, "/admin/tenants/"+id)
+	for _, want := range []string{
+		msg.T("admin.tenants.column.members.label"), "[PLATFORM ADMIN EMAIL]", "owner", "[ISSUER EMAIL]", "issuer, verifier",
+		msg.T("admin.tenants.primary_did.label"),
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the detail misses %q", want)
+		}
+	}
+	if strings.Count(page, msg.T("admin.tenants.primary_did.label")) != 1 {
+		t.Error("the page marks more or less than one primary DID")
+	}
+	a11ytest.AssertPage(t, page)
+}
+
+// TestAgentChoiceOffersOnlyListedAgentTypes is P6-C1: the form offers an
+// agent type only when a stack of the form lists it. A stack that runs
+// one shared agent offers no dedicated agent, and the choice of the stack
+// always stays.
+func TestAgentChoiceOffersOnlyListedAgentTypes(t *testing.T) {
+	shared := newFakeStack("Shared agent stack", backendv1.Feature_FEATURE_MULTI_TENANCY)
+	shared.agentTypes = []backendv1.DpgTenant_AgentType{backendv1.DpgTenant_AGENT_TYPE_SHARED}
+	h := newHarnessWith(t, true, stackPeers(shared, newFakeStack("Plain stack")))
+	h.signIn(t)
+	page := h.page(t, "/admin/tenants")
+	for _, want := range []string{`name="agent_type" value="default"`, `name="agent_type" value="shared"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the form misses %q", want)
+		}
+	}
+	if strings.Contains(page, `name="agent_type" value="dedicated"`) {
+		t.Error("the form offers a dedicated agent that no stack lists")
+	}
+	a11ytest.AssertPage(t, page)
 }

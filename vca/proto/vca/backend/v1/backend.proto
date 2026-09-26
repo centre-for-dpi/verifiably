@@ -319,6 +319,10 @@ message GetCapabilitiesResponse {
   repeated string wallet_key_types = 12;
   // The DID methods CreateDid accepts in a wallet, such as did:key.
   repeated string wallet_did_methods = 13;
+  // The agent types CreateTenant accepts. Empty when the adapter lists
+  // no multi tenancy. AGENT_TYPE_UNSPECIFIED is always accepted and
+  // lets the DPG pick.
+  repeated DpgTenant.AgentType tenant_agent_types = 14;
 }
 
 // DpgInfo names the DPG behind an adapter. The pages show it, so a
@@ -1254,6 +1258,12 @@ message DpgTenant {
   AgentType agent_type = 3;
   // The DIDs the tenant holds in the DPG.
   repeated string dids = 4;
+  // The DID the tenant signs with by default, one of dids. Empty when
+  // the DPG marks no DID so.
+  string primary_did = 5;
+  // The members of the tenant in the DPG with their roles, read only.
+  // Empty when the DPG keeps no members per tenant.
+  repeated TenantMember members = 6;
 
   // AgentType names how the DPG runs the agent of a tenant.
   enum AgentType {
@@ -1263,6 +1273,14 @@ message DpgTenant {
     // The tenant has an agent of its own.
     AGENT_TYPE_DEDICATED = 2;
   }
+}
+
+// TenantMember is one person of a DPG tenant, as the DPG lists it.
+message TenantMember {
+  // The login name the DPG shows, such as an email address.
+  string login = 1;
+  // The roles of the person in the tenant, as the DPG names them.
+  repeated string roles = 2;
 }
 
 // CreateTenantRequest names the new DPG tenant.

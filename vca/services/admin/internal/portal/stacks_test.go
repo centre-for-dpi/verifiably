@@ -37,6 +37,11 @@ type fakeStack struct {
 	n        int
 	// mint, when set, makes the id and the DIDs of a new tenant.
 	mint func(n int) (string, []string)
+	// agentTypes are the agent types the capability answer lists.
+	agentTypes []backendv1.DpgTenant_AgentType
+	// members, when set, are the members every tenant reads with, and
+	// the first DID reads as the primary DID.
+	members []*backendv1.TenantMember
 	// creds holds the client credentials per stack tenant id.
 	creds map[string][]*backendv1.ClientCredential
 	// hooks holds the webhook URL per stack tenant id.
@@ -54,6 +59,7 @@ func newFakeStack(name string, features ...backendv1.Feature) *fakeStack {
 func (f *fakeStack) GetCapabilities(context.Context, *connect.Request[backendv1.GetCapabilitiesRequest]) (*connect.Response[backendv1.GetCapabilitiesResponse], error) {
 	return connect.NewResponse(&backendv1.GetCapabilitiesResponse{
 		Features: f.features, DpgInfo: &backendv1.DpgInfo{DisplayName: f.name, Version: f.version},
+		TenantAgentTypes: f.agentTypes,
 	}), nil
 }
 
@@ -76,6 +82,12 @@ func (f *fakeStack) GetTenant(_ context.Context, req *connect.Request[backendv1.
 	t, ok := f.tenants[req.Msg.GetId()]
 	if !ok {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("no tenant"))
+	}
+	if f.members != nil {
+		t = &backendv1.DpgTenant{Id: t.GetId(), Name: t.GetName(), AgentType: t.GetAgentType(), Dids: t.GetDids(), Members: f.members}
+		if len(t.GetDids()) > 0 {
+			t.PrimaryDid = t.GetDids()[0]
+		}
 	}
 	return connect.NewResponse(&backendv1.GetTenantResponse{Tenant: t}), nil
 }

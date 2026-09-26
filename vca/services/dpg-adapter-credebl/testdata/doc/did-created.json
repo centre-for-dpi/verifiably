@@ -1,0 +1,23 @@
+{
+  "statusCode": 201,
+  "message": "DID created successfully",
+  "data": {
+    "id": "5e0f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+    "createDateTime": "2026-09-26T09:00:06.000Z",
+    "orgId": "0b6c2f0e-5a38-4a1e-9d2b-3f7c1e6a9d41",
+    "isPrimaryDid": true,
+    "did": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+    "didDocument": {
+      "id": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+      "verificationMethod": [
+        {
+          "id": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH#z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+          "type": "Ed25519VerificationKey2018",
+          "controller": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+          "publicKeyBase58": "2WRmZJmpbZ3qgCHt9UpHWdpp4bMhThhhzDnHh5XUVi3T"
+        }
+      ]
+    },
+    "orgAgentId": "3e7a9c1b-2d4f-4a6b-8c0e-1f3a5b7c9d2e"
+  }
+}

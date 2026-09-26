@@ -1,0 +1,11 @@
+{
+  "statusCode": 201,
+  "message": "Agent spun up successfully",
+  "data": {
+    "agentSpinupStatus": 1,
+    "agentEndPoint": "http://credebl-agent.vca.internal:8001",
+    "orgId": "0b6c2f0e-5a38-4a1e-9d2b-3f7c1e6a9d41",
+    "tenantId": "8c1f5d2e-6b3a-4f7c-9e0d-2a4b6c8e0f13",
+    "walletName": "[ORGANISATION]"
+  }
+}

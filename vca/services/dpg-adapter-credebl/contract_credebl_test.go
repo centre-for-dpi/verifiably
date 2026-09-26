@@ -122,3 +122,51 @@ func TestContractCreateRequestAndReadTheResult(t *testing.T) {
 		t.Fatalf("state = %v, a new transaction is pending", result.Msg.GetState())
 	}
 }
+
+// TestContractTenantLifecycle creates an organisation with a wallet in
+// the shared agent and a did:key, reads it with its members, and
+// deletes it (P6-C1). It needs a platform that vca dpg bootstrap
+// credebl prepared, so the shared agent is bound.
+func TestContractTenantLifecycle(t *testing.T) {
+	a := newContractApp(t)
+	if os.Getenv("VCA_CREDEBL_CONTRACT_TENANTS") == "" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_TENANTS to create and delete an organisation on the real platform")
+	}
+	ctx := context.Background()
+	name := "vca-contract-" + time.Now().UTC().Format("150405")
+	created, err := a.Service.CreateTenant(ctx, connect.NewRequest(&backendv1.CreateTenantRequest{Name: name}))
+	if err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	id := created.Msg.GetTenant().GetId()
+	t.Cleanup(func() {
+		if _, err := a.Service.DeleteTenant(context.Background(), connect.NewRequest(&backendv1.DeleteTenantRequest{Id: id})); err != nil {
+			t.Errorf("DeleteTenant: %v", err)
+		}
+	})
+	if !strings.HasPrefix(created.Msg.GetTenant().GetPrimaryDid(), "did:key:") {
+		t.Errorf("tenant = %v, want a primary did:key", created.Msg.GetTenant())
+	}
+	got, err := a.Service.GetTenant(ctx, connect.NewRequest(&backendv1.GetTenantRequest{Id: id}))
+	if err != nil {
+		t.Fatalf("GetTenant: %v", err)
+	}
+	if got.Msg.GetTenant().GetName() != name || len(got.Msg.GetTenant().GetMembers()) == 0 {
+		t.Errorf("tenant = %v, want the name and the platform admin as a member", got.Msg.GetTenant())
+	}
+}
+
+// TestContractIssuerIdentity reads the DIDs of the organisation of the
+// adapter (P6-C1).
+func TestContractIssuerIdentity(t *testing.T) {
+	a := newContractApp(t)
+	res, err := a.Service.GetIssuerIdentity(context.Background(), connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
+	if err != nil {
+		t.Fatalf("GetIssuerIdentity: %v", err)
+	}
+	for _, id := range res.Msg.GetIdentity().GetIdentifiers() {
+		if !strings.HasPrefix(id, "did:") {
+			t.Errorf("identifier %q is not a DID", id)
+		}
+	}
+}

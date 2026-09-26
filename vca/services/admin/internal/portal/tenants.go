@@ -112,7 +112,7 @@ func (p *Portal) tenants(w http.ResponseWriter, r *http.Request, s session) erro
 		fields = append(fields,
 			b.add("choice", components.Choice{ID: "stacks", Legend: msg.T("admin.tenants.stacks.label"), Hint: msg.T("admin.tenants.stacks.hint"),
 				Options: options, Multiple: true}),
-			p.agentChoice(b),
+			p.agentChoice(b, offered),
 		)
 	}
 	fields = append(fields, b.add("button", components.Button{Text: msg.T("admin.tenants.create.label"), Type: "submit", Variant: "primary"}))
@@ -122,7 +122,7 @@ func (p *Portal) tenants(w http.ResponseWriter, r *http.Request, s session) erro
 	}
 	create := b.add("card", components.Card{
 		ID: "create-tenant", Title: msg.T("admin.tenants.new.label"), Text: text,
-		Body: form(at+"/tenants", s.CSRF, fields...),
+		Body: stackedForm(at+"/tenants", s.CSRF, components.Join(fields...)),
 	})
 	actions := b.add("button", components.Button{Text: msg.T("admin.tenants.new.label"), Href: "#create-tenant", Variant: "primary"})
 	if b.err != nil {
@@ -138,10 +138,21 @@ func (p *Portal) tenants(w http.ResponseWriter, r *http.Request, s session) erro
 	})
 }
 
-// agentChoice is the agent type choice of the tenant forms.
-func (p *Portal) agentChoice(b *blocks) template.HTML {
+// agentChoice is the agent type choice of the tenant forms. It offers
+// the choice of the stack and each agent type that one of the stacks
+// lists (P6-C1), so the form offers no agent a stack cannot run.
+func (p *Portal) agentChoice(b *blocks, offered []stacks.Stack) template.HTML {
+	listed := map[backendv1.DpgTenant_AgentType]bool{backendv1.DpgTenant_AGENT_TYPE_UNSPECIFIED: true}
+	for _, st := range offered {
+		for _, a := range st.Capabilities.GetTenantAgentTypes() {
+			listed[a] = true
+		}
+	}
 	options := make([]components.ChoiceOption, 0, len(agentTypes))
 	for i, a := range agentTypes {
+		if !listed[a.proto] {
+			continue
+		}
 		value := a.value
 		if value == "" {
 			value = "default"
@@ -217,11 +228,11 @@ func (p *Portal) tenant(w http.ResponseWriter, r *http.Request, s session) error
 		}
 		bind = b.add("card", components.Card{
 			ID: "bind-stack", Title: msg.T("admin.tenants.bind.label"), Text: msg.T("admin.tenants.bind.text"),
-			Body: form(base+"/bind", s.CSRF,
+			Body: stackedForm(base+"/bind", s.CSRF, components.Join(
 				b.add("choice", components.Choice{ID: "stack", Legend: msg.T("admin.tenants.stack.label"), Options: options}),
-				p.agentChoice(b),
+				p.agentChoice(b, unbound),
 				b.add("button", components.Button{Text: msg.T("admin.tenants.bind.label"), Type: "submit", Variant: "primary"}),
-			),
+			)),
 		})
 	}
 	actions := b.add("button", components.Button{Text: msg.T("admin.tenants.back.label"), Href: at + "/tenants", Variant: "secondary"})
@@ -248,16 +259,26 @@ func (p *Portal) bindingsBlock(b *blocks, t *adminv1.Tenant, csrf string) templa
 			ID: "on-stacks", Title: msg.T("admin.tenants.on_stacks.label"), Lead: msg.T("admin.tenants.no_bindings.text"),
 		})
 	}
+	// The member column shows when a stack keeps people per tenant
+	// (P6-C1). The stack owns them, so the page only reads them.
+	withMembers := false
+	for _, bd := range t.GetBindings() {
+		withMembers = withMembers || len(bd.GetTenant().GetMembers()) > 0
+	}
 	rows := make([]components.Row, 0, len(t.GetBindings()))
 	for _, bd := range t.GetBindings() {
 		dids := make([]template.HTML, 0, len(bd.GetTenant().GetDids()))
 		for _, d := range bd.GetTenant().GetDids() {
-			dids = append(dids, shortCode(d), template.HTML(`<br>`))
+			dids = append(dids, shortCode(d))
+			if d == bd.GetTenant().GetPrimaryDid() {
+				dids = append(dids, template.HTML(" "), b.add("badge", components.Badge{Status: "info", Text: msg.T("admin.tenants.primary_did.label")}))
+			}
+			dids = append(dids, template.HTML(`<br>`))
 		}
 		if len(dids) == 0 {
 			dids = append(dids, template.HTML(template.HTMLEscapeString(msg.T("admin.tenants.no_dids.label")))) //nolint:gosec // the text is escaped
 		}
-		rows = append(rows, components.Row{
+		row := components.Row{
 			{HTML: components.Join(
 				template.HTML(`<strong>`+template.HTMLEscapeString(bd.GetStackName())+`</strong><br>`), //nolint:gosec // the name is escaped
 				bindingState(b, bd),
@@ -269,22 +290,44 @@ func (p *Portal) bindingsBlock(b *blocks, t *adminv1.Tenant, csrf string) templa
 				hint(agentLabel(bd.GetTenant().GetAgentType())),
 			)},
 			{HTML: components.Join(dids...)},
-			{HTML: form(base+"/unbind", csrf,
-				template.HTML(`<input type="hidden" name="stack" value="`+template.HTMLEscapeString(bd.GetStack().String())+`">`), //nolint:gosec // the value is escaped
-				b.add("button", components.Button{Text: msg.T("admin.tenants.unbind.label"), Type: "submit", Variant: "danger"}))},
-		})
+		}
+		if withMembers {
+			row = append(row, components.Cell{HTML: membersCell(bd.GetTenant().GetMembers())})
+		}
+		row = append(row, components.Cell{HTML: form(base+"/unbind", csrf,
+			template.HTML(`<input type="hidden" name="stack" value="`+template.HTMLEscapeString(bd.GetStack().String())+`">`), //nolint:gosec // the value is escaped
+			b.add("button", components.Button{Text: msg.T("admin.tenants.unbind.label"), Type: "submit", Variant: "danger"}))})
+		rows = append(rows, row)
 	}
+	columns := []string{
+		msg.T("admin.tenants.column.stack.label"), msg.T("admin.tenants.column.stack_tenant.label"),
+		msg.T("admin.tenants.column.dids.label"),
+	}
+	if withMembers {
+		columns = append(columns, msg.T("admin.tenants.column.members.label"))
+	}
+	columns = append(columns, msg.T("admin.tenants.column.actions.label"))
 	table := b.add("table", components.Table{
 		ID: "bindings", Caption: msg.T("admin.tenants.bindings.caption.label", strconv.Itoa(len(rows))),
-		Columns: []string{
-			msg.T("admin.tenants.column.stack.label"), msg.T("admin.tenants.column.stack_tenant.label"),
-			msg.T("admin.tenants.column.dids.label"), msg.T("admin.tenants.column.actions.label"),
-		},
-		Rows: rows,
+		Columns: columns, Rows: rows,
 	})
 	return b.add("block", components.Block{
 		ID: "on-stacks", Title: msg.T("admin.tenants.on_stacks.label"), Lead: msg.T("admin.tenants.on_stacks.lead"), Body: table,
 	})
+}
+
+// membersCell lists the members of one stack tenant with their roles,
+// one per line.
+func membersCell(members []*backendv1.TenantMember) template.HTML {
+	if len(members) == 0 {
+		return template.HTML(template.HTMLEscapeString(msg.T("admin.tenants.no_members.label"))) //nolint:gosec // the text is escaped
+	}
+	parts := make([]template.HTML, 0, len(members))
+	for _, m := range members {
+		parts = append(parts, template.HTML(template.HTMLEscapeString(m.GetLogin())+`<br>`), //nolint:gosec // the login is escaped
+			hint(strings.Join(m.GetRoles(), ", ")))
+	}
+	return components.Join(parts...)
 }
 
 // bindingState is the badge of one binding: read now, or the reason

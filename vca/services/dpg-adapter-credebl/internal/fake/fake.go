@@ -32,6 +32,12 @@ const (
 	SessionError Answer = "session-error.json"
 	// Templates is the list of credential templates.
 	Templates Answer = "templates.json"
+	// OrgList is the list of organisations with a tenant and the
+	// platform admin organisation.
+	OrgList Answer = "doc/org-list.json"
+	// NoOrgs makes the list of organisations answer the status not
+	// found, as the platform does for an empty list.
+	NoOrgs Answer = ""
 )
 
 // Server is a running fake CREDEBL platform.
@@ -48,6 +54,12 @@ type Server struct {
 	templates Answer
 	// signins counts the sign in calls.
 	signins int
+	// orgs selects the organisation listing.
+	orgs Answer
+	// deleted holds the organisations the fake deleted.
+	deleted map[string]bool
+	// calls records the method and path of every call, in order.
+	calls []string
 	// requests records the body of every write call by path.
 	requests map[string][]byte
 	// status forces a status code for one path. A path can carry more
@@ -61,6 +73,8 @@ func New(dir string) *Server {
 		dir:       dir,
 		session:   SessionPending,
 		templates: Templates,
+		orgs:      OrgList,
+		deleted:   map[string]bool{},
 		requests:  map[string][]byte{},
 		status:    map[string][]int{},
 	}
@@ -89,6 +103,20 @@ func (f *Server) SetTemplates(a Answer) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.templates = a
+}
+
+// SetOrgs selects the organisation listing.
+func (f *Server) SetOrgs(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.orgs = a
+}
+
+// Calls returns the method and path of every call, in order.
+func (f *Server) Calls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.calls...)
 }
 
 // SetStatus makes the fake answer the path with the statuses in order.
@@ -138,8 +166,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	_ = ignored
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
+	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
 	forced := f.take(r.URL.Path)
-	session, templates := f.session, f.templates
+	session, templates, orgs := f.session, f.templates, f.orgs
 	if r.URL.Path == "/v1/auth/signin" {
 		f.signins++
 	}
@@ -149,6 +178,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if f.serveOrgs(w, r, orgs) {
+		return
+	}
 	switch {
 	case path == "/v1/auth/signin":
 		f.send(w, "signin.json")
@@ -170,6 +202,75 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		f.send(w, string(session))
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+// serveOrgs answers the organisation and agent calls of P6-C1 from the
+// answers written from the platform sources (testdata/doc). It reports
+// whether it answered.
+func (f *Server) serveOrgs(w http.ResponseWriter, r *http.Request, orgs Answer) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 2 || parts[0] != "v1" || parts[1] != "orgs" {
+		return false
+	}
+	switch {
+	case len(parts) == 2 && r.Method == http.MethodGet:
+		if orgs == NoOrgs {
+			http.NotFound(w, r)
+			return true
+		}
+		f.send(w, string(orgs))
+	case len(parts) == 2 && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/org-created.json")
+	case len(parts) == 3 && r.Method == http.MethodGet:
+		if f.isDeleted(parts[2]) {
+			http.NotFound(w, r)
+			return true
+		}
+		f.send(w, "doc/org.json")
+	case len(parts) == 3 && r.Method == http.MethodDelete:
+		if f.isDeleted(parts[2]) {
+			http.NotFound(w, r)
+			return true
+		}
+		f.mu.Lock()
+		f.deleted[parts[2]] = true
+		f.mu.Unlock()
+		f.sendStatus(w, http.StatusAccepted, "doc/org-deleted.json")
+	case len(parts) == 4 && parts[3] == "dids" && r.Method == http.MethodGet:
+		f.send(w, "doc/org-dids.json")
+	case len(parts) == 4 && parts[3] == "users" && r.Method == http.MethodGet:
+		f.send(w, "doc/org-users.json")
+	case len(parts) == 4 && parts[3] == "primary-did" && r.Method == http.MethodPut:
+		f.sendStatus(w, http.StatusCreated, "doc/primary-did.json")
+	case len(parts) == 5 && parts[3] == "agents" && parts[4] == "wallet" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/wallet-created.json")
+	case len(parts) == 5 && parts[3] == "agents" && parts[4] == "did" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/did-created.json")
+	default:
+		return false
+	}
+	return true
+}
+
+// isDeleted reports whether the fake deleted the organisation.
+func (f *Server) isDeleted(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.deleted[id]
+}
+
+// sendStatus writes one recorded answer with a status code.
+func (f *Server) sendStatus(w http.ResponseWriter, status int, name string) {
+	raw, err := os.ReadFile(filepath.Join(f.dir, name)) //nolint:gosec // G304: the name is one of the fixed answers
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(raw); err != nil {
+		return
 	}
 }
 

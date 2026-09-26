@@ -1,0 +1,20 @@
+{
+  "statusCode": 200,
+  "message": "Organization DIDs fetched successfully",
+  "data": [
+    {
+      "id": "6f1a2b3c-4d5e-4f6a-8b7c-9d0e1f2a3b4c",
+      "createDateTime": "2026-09-26T09:05:00.000Z",
+      "did": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS",
+      "lastChangedDateTime": "2026-09-26T09:05:00.000Z",
+      "isPrimaryDid": false
+    },
+    {
+      "id": "5e0f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+      "createDateTime": "2026-09-26T09:00:06.000Z",
+      "did": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+      "lastChangedDateTime": "2026-09-26T09:00:06.000Z",
+      "isPrimaryDid": true
+    }
+  ]
+}

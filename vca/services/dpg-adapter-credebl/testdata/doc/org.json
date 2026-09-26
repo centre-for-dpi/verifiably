@@ -1,0 +1,45 @@
+{
+  "statusCode": 200,
+  "message": "Organization details fetched successfully",
+  "data": {
+    "id": "0b6c2f0e-5a38-4a1e-9d2b-3f7c1e6a9d41",
+    "name": "[ORGANISATION]",
+    "description": "[ORGANISATION DESCRIPTION]",
+    "orgSlug": "organisation",
+    "logoUrl": "",
+    "website": "",
+    "publicProfile": false,
+    "schema": [],
+    "userOrgRoles": [{ "orgRole": { "id": "7a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d", "name": "owner", "description": "Organization Owner" } }],
+    "org_agents": [
+      {
+        "id": "3e7a9c1b-2d4f-4a6b-8c0e-1f3a5b7c9d2e",
+        "orgDid": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+        "didDocument": {
+          "@context": ["https://w3id.org/did/v1", "https://w3id.org/security/suites/ed25519-2018/v1", "https://w3id.org/security/suites/x25519-2019/v1"],
+          "id": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+          "verificationMethod": [
+            {
+              "id": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH#z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+              "type": "Ed25519VerificationKey2018",
+              "controller": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+              "publicKeyBase58": "2WRmZJmpbZ3qgCHt9UpHWdpp4bMhThhhzDnHh5XUVi3T"
+            }
+          ],
+          "authentication": ["did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH#z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH"],
+          "assertionMethod": ["did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH#z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH"]
+        },
+        "walletName": "[ORGANISATION]",
+        "agentEndPoint": "http://credebl-agent.vca.internal:8001",
+        "agentSpinUpStatus": 2,
+        "agentsTypeId": "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+        "orgAgentTypeId": "2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a",
+        "createDateTime": "2026-09-26T09:00:05.000Z",
+        "tenantId": "8c1f5d2e-6b3a-4f7c-9e0d-2a4b6c8e0f13",
+        "agent_invitations": [],
+        "org_agent_type": { "id": "2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a", "agent": "SHARED" },
+        "ledgers": null
+      }
+    ]
+  }
+}

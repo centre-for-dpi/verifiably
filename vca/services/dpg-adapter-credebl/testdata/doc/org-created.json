@@ -1,0 +1,13 @@
+{
+  "statusCode": 201,
+  "message": "Organization created successfully",
+  "data": {
+    "id": "0b6c2f0e-5a38-4a1e-9d2b-3f7c1e6a9d41",
+    "name": "[ORGANISATION]",
+    "description": "[ORGANISATION DESCRIPTION]",
+    "orgSlug": "organisation",
+    "logoUrl": "",
+    "website": "",
+    "createDateTime": "2026-09-26T09:00:00.000Z"
+  }
+}

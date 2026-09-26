@@ -3,6 +3,7 @@
 package fake_test
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -167,4 +168,71 @@ func status(t *testing.T, f *fake.Server, path string) int {
 		}
 	}()
 	return resp.StatusCode
+}
+
+// call sends one request and returns the status and the body.
+func call(t *testing.T, f *fake.Server, method, path string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, f.URL()+path, strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := f.Client().Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Errorf("the close failed: %v", cerr)
+		}
+	}()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(body)
+}
+
+// TestFakeServesTheOrganisationCalls covers the answers written from
+// the platform sources (P6-C1).
+func TestFakeServesTheOrganisationCalls(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	org := "/v1/orgs/0b6c2f0e-5a38-4a1e-9d2b-3f7c1e6a9d41"
+	cases := []struct {
+		method, path string
+		status       int
+		want         string
+	}{
+		{http.MethodGet, "/v1/orgs", 200, "Platform-admin"},
+		{http.MethodPost, "/v1/orgs", 201, "[ORGANISATION]"},
+		{http.MethodGet, org, 200, "SHARED"},
+		{http.MethodGet, org + "/dids", 200, "isPrimaryDid"},
+		{http.MethodGet, org + "/users", 200, "[ISSUER EMAIL]"},
+		{http.MethodPut, org + "/primary-did", 201, "Primary DID"},
+		{http.MethodPost, org + "/agents/wallet", 201, "tenantId"},
+		{http.MethodPost, org + "/agents/did", 201, "did:key"},
+		{http.MethodDelete, org, 202, "deleted"},
+		{http.MethodDelete, org, 404, ""},
+		{http.MethodGet, org, 404, ""},
+		{http.MethodPatch, org, 404, ""},
+	}
+	for _, c := range cases {
+		code, body := call(t, f, c.method, c.path)
+		if code != c.status || !strings.Contains(body, c.want) {
+			t.Errorf("%s %s = %d %q, want %d with %q", c.method, c.path, code, body, c.status, c.want)
+		}
+	}
+	f.SetOrgs(fake.NoOrgs)
+	if code, _ := call(t, f, http.MethodGet, "/v1/orgs"); code != 404 {
+		t.Errorf("an empty platform answered %d", code)
+	}
+	if calls := f.Calls(); len(calls) != len(cases)+1 || calls[0] != "GET /v1/orgs" {
+		t.Errorf("calls = %v", calls)
+	}
+	missing := fake.New(t.TempDir())
+	defer missing.Close()
+	if code, _ := call(t, missing, http.MethodPost, "/v1/orgs"); code != 500 {
+		t.Errorf("a missing answer gave %d", code)
+	}
 }

@@ -461,20 +461,30 @@ func TestListCredentialTypesReportsAFailure(t *testing.T) {
 }
 
 func TestRecordedAnswersAreValidJson(t *testing.T) {
-	entries, err := os.ReadDir(testdata)
-	if err != nil {
-		t.Fatalf("read the testdata directory: %v", err)
-	}
+	// The answers written from the platform sources sit in testdata/doc
+	// beside their SOURCE.md (plan section 0.4).
 	count := 0
-	for _, e := range entries {
-		raw, err := os.ReadFile(filepath.Join(testdata, e.Name()))
+	for _, dir := range []string{testdata, filepath.Join(testdata, "doc")} {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			t.Fatalf("read %s: %v", e.Name(), err)
+			t.Fatalf("read the testdata directory: %v", err)
 		}
-		if !json.Valid(raw) {
-			t.Fatalf("%s is not valid JSON", e.Name())
+		for _, e := range entries {
+			if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+				continue
+			}
+			raw, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304: a file of the testdata folder
+			if err != nil {
+				t.Fatalf("read %s: %v", e.Name(), err)
+			}
+			if !json.Valid(raw) {
+				t.Fatalf("%s is not valid JSON", e.Name())
+			}
+			count++
 		}
-		count++
+	}
+	if _, err := os.Stat(filepath.Join(testdata, "doc", "SOURCE.md")); err != nil {
+		t.Errorf("testdata/doc has no SOURCE.md: %v", err)
 	}
 	if count < 10 {
 		t.Fatalf("the recorded answers are %d, want at least 10", count)
@@ -521,8 +531,13 @@ func TestCapabilitiesCarryDpgInfo(t *testing.T) {
 	if seen["api-gateway"] != "v2.1.3-hotfix.2@sha256:c6c203ffe437" {
 		t.Errorf("api-gateway = %q", seen["api-gateway"])
 	}
-	if len(resp.Msg.GetStatusMechanisms()) != 0 || len(resp.Msg.GetDidMethods()) != 0 {
-		t.Errorf("the adapter embeds no status entry and manages no DID today: %v", resp.Msg)
+	if len(resp.Msg.GetStatusMechanisms()) != 0 {
+		t.Errorf("the adapter embeds no status entry: %v", resp.Msg)
+	}
+	// The agent makes a did:key without key material from the adapter
+	// (P6-C1, ADR-001 decision 3).
+	if strings.Join(resp.Msg.GetDidMethods(), ",") != "did:key" || strings.Join(resp.Msg.GetKeyTypes(), ",") != "Ed25519,secp256r1,secp256k1" {
+		t.Errorf("DID methods %v, key types %v", resp.Msg.GetDidMethods(), resp.Msg.GetKeyTypes())
 	}
 }
 
@@ -578,6 +593,16 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION, func() error {
+			_, err := svc.ProvisionIssuerIdentity(ctx, connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{Method: "did:key", KeyType: "Ed25519"}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_DID, func() error {
+			_, err := svc.ImportIssuerIdentity(ctx, connect.NewRequest(&backendv1.ImportIssuerIdentityRequest{
+				Subject: &backendv1.ImportIssuerIdentityRequest_Did{Did: fixtureDid},
+			}))
+			return err
+		}, true},
 		{backendv1.Feature_FEATURE_WEBHOOKS, func() error {
 			_, err := svc.GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{}))
 			return err
@@ -605,30 +630,14 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 	}
 }
 
-// TestTenantServiceUnimplementedWithoutFeature is ADR-037 decision 2:
-// the adapter serves no DPG tenancy yet, so every tenant RPC answers
-// Unimplemented with a reason, and the capability answer lists no
-// tenancy feature. The admin pages then offer no tenancy on this stack.
-func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
+// TestClientCredentialsUnimplementedWithoutFeature is ADR-038 decision
+// 2: the adapter makes no client credential of an organisation yet, so
+// the three credential RPCs answer Unimplemented with a reason, and the
+// answer lists no stack credential. Tenancy works (P6-C1).
+func TestClientCredentialsUnimplementedWithoutFeature(t *testing.T) {
 	svc, _ := newService(t, nil)
 	ctx := context.Background()
 	calls := []func() error{
-		func() error {
-			_, err := svc.CreateTenant(ctx, connect.NewRequest(&backendv1.CreateTenantRequest{Name: "Ministry"}))
-			return err
-		},
-		func() error {
-			_, err := svc.GetTenant(ctx, connect.NewRequest(&backendv1.GetTenantRequest{Id: "t-1"}))
-			return err
-		},
-		func() error {
-			_, err := svc.ListTenants(ctx, connect.NewRequest(&backendv1.ListTenantsRequest{}))
-			return err
-		},
-		func() error {
-			_, err := svc.DeleteTenant(ctx, connect.NewRequest(&backendv1.DeleteTenantRequest{Id: "t-1"}))
-			return err
-		},
 		func() error {
 			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{TenantId: "t-1"}))
 			return err
@@ -645,7 +654,7 @@ func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
 	for i, call := range calls {
 		err := call()
 		wantCode(t, err, connect.CodeUnimplemented)
-		if !strings.Contains(err.Error(), "tenant") {
+		if !strings.Contains(err.Error(), "client credential") {
 			t.Errorf("call %d: the message %q does not say why", i, err)
 		}
 	}
@@ -653,10 +662,12 @@ func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	listed := map[backendv1.Feature]bool{}
 	for _, f := range caps.Msg.GetFeatures() {
-		if f == backendv1.Feature_FEATURE_MULTI_TENANCY || f == backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS {
-			t.Errorf("the answer lists %v", f)
-		}
+		listed[f] = true
+	}
+	if listed[backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS] || !listed[backendv1.Feature_FEATURE_MULTI_TENANCY] {
+		t.Errorf("features = %v, want tenancy without client credentials", caps.Msg.GetFeatures())
 	}
 }
 
@@ -685,46 +696,31 @@ func TestWebhookServiceUnimplementedWithoutFeature(t *testing.T) {
 	}
 }
 
-// TestIssuerIdentityUnimplementedWithoutFeature is ADR-046 decision 1:
-// the adapter does not manage the issuer identity through the stack yet,
-// so the three identity RPCs answer Unimplemented with a reason, and the
-// capability answer lists no identity feature. The identity page then
-// offers no action on this stack.
-func TestIssuerIdentityUnimplementedWithoutFeature(t *testing.T) {
+// TestImportIdentityUnimplementedWithoutFeature is ADR-046 decision 1:
+// the agent keeps every key of the organisation, and the platform takes
+// no key reference for a DID it did not make. So import answers
+// Unimplemented with a reason, and the answer lists no import feature.
+// Provisioning works (P6-C1).
+func TestImportIdentityUnimplementedWithoutFeature(t *testing.T) {
 	svc, _ := newService(t, nil)
 	ctx := context.Background()
-	calls := []func() error{
-		func() error {
-			_, err := svc.GetIssuerIdentity(ctx, connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
-			return err
-		},
-		func() error {
-			_, err := svc.ProvisionIssuerIdentity(ctx, connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{Method: "did:web"}))
-			return err
-		},
-		func() error {
-			_, err := svc.ImportIssuerIdentity(ctx, connect.NewRequest(&backendv1.ImportIssuerIdentityRequest{
-				Subject: &backendv1.ImportIssuerIdentityRequest_Did{Did: "did:web:issuer.example"},
-			}))
-			return err
-		},
-	}
-	for i, call := range calls {
-		err := call()
-		wantCode(t, err, connect.CodeUnimplemented)
-		if !strings.Contains(err.Error(), "identity") {
-			t.Errorf("call %d: the message %q does not say why", i, err)
-		}
+	_, err := svc.ImportIssuerIdentity(ctx, connect.NewRequest(&backendv1.ImportIssuerIdentityRequest{
+		Subject: &backendv1.ImportIssuerIdentityRequest_Did{Did: "did:web:issuer.example"},
+	}))
+	wantCode(t, err, connect.CodeUnimplemented)
+	if !strings.Contains(err.Error(), "identity") {
+		t.Errorf("the message %q does not say why", err)
 	}
 	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
 	if err != nil {
 		t.Fatal(err)
 	}
+	listed := map[backendv1.Feature]bool{}
 	for _, f := range caps.Msg.GetFeatures() {
-		switch f {
-		case backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION, backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_DID,
-			backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509:
-			t.Errorf("the answer lists %v", f)
-		}
+		listed[f] = true
+	}
+	if listed[backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_DID] || listed[backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509] ||
+		!listed[backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION] {
+		t.Errorf("features = %v, want provisioning without import", caps.Msg.GetFeatures())
 	}
 }

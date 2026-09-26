@@ -149,11 +149,22 @@ func (s *Service) GetCapabilities(
 			backendv1.Protocol_PROTOCOL_OID4VP_DCQL,
 		},
 		// RegisterCredentialConfiguration writes a schema and a template
-		// to the platform. Revoke, GetIssuanceStatus, and IssueBatch
-		// answer Unimplemented, so their features stay off the list.
-		// The platform embeds no status entry of VCA in what it signs.
-		Features: []backendv1.Feature{backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API},
-		DpgInfo:  s.dpgInfo(),
+		// to the platform. The organisations of the platform are the
+		// tenants, and the agent makes the issuer DID (P6-C1). Revoke,
+		// GetIssuanceStatus, and IssueBatch answer Unimplemented, so
+		// their features stay off the list. The platform embeds no
+		// status entry of VCA in what it signs.
+		Features: []backendv1.Feature{
+			backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API,
+			backendv1.Feature_FEATURE_MULTI_TENANCY,
+			backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION,
+		},
+		// The stack file runs one shared agent and no Docker socket, so
+		// a tenant gets a wallet in the shared agent only.
+		TenantAgentTypes: []backendv1.DpgTenant_AgentType{backendv1.DpgTenant_AGENT_TYPE_SHARED},
+		DidMethods:       append([]string(nil), DidMethods...),
+		KeyTypes:         append([]string(nil), KeyTypes...),
+		DpgInfo:          s.dpgInfo(),
 	}), nil
 }
 
