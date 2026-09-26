@@ -311,6 +311,7 @@ func fullProvider() oidcflow.Provider {
 			TokenAuthMethod: oidcflow.TokenAuthPrivateKeyJWT,
 			PrivateKey:      oidcflow.SecretRef{Store: oidcflow.SecretFile, Name: "/run/secrets/client.pem"},
 			IsDefault:       true,
+			VerifiedClaims:  []string{"national_id"},
 		},
 	}
 }
@@ -347,7 +348,7 @@ func TestProviderRoundTripKeepsNewFields(t *testing.T) {
 		m.GetStacks()[0] != configv1.Dpg_DPG_WALTID || m.GetStacks()[1] != configv1.Dpg_DPG_INJI ||
 		m.GetTokenAuthMethod() != adminv1.TokenAuth_TOKEN_AUTH_PRIVATE_KEY_JWT ||
 		m.GetPrivateKey().GetStore() != commonv1.SecretRef_STORE_FILE || m.GetPrivateKey().GetName() != "/run/secrets/client.pem" ||
-		!m.GetIsDefault() {
+		!m.GetIsDefault() || len(m.GetVerifiedClaims()) != 1 || m.GetVerifiedClaims()[0] != "national_id" {
 		t.Errorf("to proto = %+v", m)
 	}
 	back := oidcflow.FromAdminProto(m)

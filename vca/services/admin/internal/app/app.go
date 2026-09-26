@@ -177,7 +177,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	pagesOpts := portal.Options{
 		Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit,
 		Audit: federation, Retention: auditLog.Retention,
-		LandingURL: cfg.LandingURL, PublicURL: cfg.PublicURL,
+		LandingURL: cfg.LandingURL, PublicURL: cfg.PublicURL, PeerClient: deps.Client,
 		Fetcher: fetchguard.New(fetchguard.Options{
 			Guard:  fetchguard.Guard{AllowPrivateNetwork: cfg.AllowPrivateNetwork, AllowPlainHTTP: cfg.AllowPlainHTTP},
 			Client: deps.Client, Timeout: cfg.Timeout,

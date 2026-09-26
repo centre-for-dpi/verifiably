@@ -121,6 +121,10 @@ type Options struct {
 	// Retention returns the retention days of the audit store of this
 	// service. Nil shows no current value.
 	Retention func(ctx context.Context) (int, error)
+	// PeerClient calls the provider RPCs of the holder authorization
+	// server of an issuer pair on the compose network. Nil means a client
+	// with a ten second timeout.
+	PeerClient *http.Client
 }
 
 // Portal serves the admin pages.
@@ -343,6 +347,7 @@ var Notices = map[string]components.Toast{
 	"provider-enabled":         {Level: "ok", Text: "The login provider is on. Its roles can sign in with it."},
 	"provider-disabled":        {Level: "warn", Text: "The login provider is off. New sign ins with it fail."},
 	"provider-removed":         {Level: "warn", Text: "The login provider is removed. Its sessions end."},
+	"signin-claims-saved":      {Level: "ok", Text: msg.T("admin.signin.saved")},
 	"key-revoked":              {Level: "warn", Text: msg.T("admin.keys.revoked")},
 	"stack-credential-deleted": {Level: "warn", Text: msg.T("admin.keys.stack.deleted")},
 	"webhook-saved":            {Level: "ok", Text: msg.T("admin.notifications.webhook.saved")},

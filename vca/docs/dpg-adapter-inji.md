@@ -487,9 +487,13 @@ a claim that the provider vouches for (ADR-056 decision 2):
 | `sub` | Always. It is the account at the provider. |
 | Any other claim | The provider record lists it in `verified_claims` |
 
-A user name or an attribute that the holder picks never binds. Set
-`VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` only for a provider that proves
-those claims, such as an eSignet with a real authenticator. The wizard
+A user name or an attribute that the holder picks never binds. List a
+claim only for a provider that proves it, such as an eSignet with a
+real authenticator. The admin portal edits the list under "Holder sign
+in claims" of the login providers page. The adapter serves the provider
+RPCs of `vca.admin.v1.AdminService` on the compose network for it. They
+take a session that the admin key set at `VCA_INJI_ADMIN_JWKS_URL`
+signed. The proxy of the pair publishes no path to them. The wizard
 offers `email`, `sub` and `phone_number`, and it warns about any claim
 other than `email` and `sub`.
 
@@ -551,7 +555,8 @@ earlier release moves into the ring at the first start.
 | `VCA_INJI_AUTHZ_AUDIENCE` | The credential endpoint in `aud`. The default follows `VCA_INJI_OFFER_ISSUER`. |
 | `VCA_INJI_WALLET_CLIENTS` | The wallet clients |
 | `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The seeded holder provider |
-| `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` | The claims beyond `email`, `phone_number` and `sub` that the holder provider verifies, comma separated. Each start writes them into the seeded record. Empty clears them. |
+| `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` | The claims beyond `email`, `phone_number` and `sub` that the holder provider verifies, comma separated. A start writes them into the seeded record while it lists none. After that the admin portal owns the list. |
+| `VCA_INJI_ADMIN_JWKS_URL` | The key set of the admin pair. The admin portal edits the provider registry of the server with a session it signed. Empty serves no provider RPC. |
 | `VCA_INJI_DATA_SOURCE_URL` | The data source service of a claim without an offer |
 
 ### Threat model

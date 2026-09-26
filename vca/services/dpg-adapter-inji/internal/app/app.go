@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -146,8 +145,18 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.HandleFunc("GET /iar/presentation-definition.json", definitionHandler(svc))
 	var holder *authz.Server
 	if issuer := authzIssuer(cfg); issuer != "" {
-		if holder, err = buildAuthz(cfg, deps, backend, svc); err != nil {
+		var registry *oidcflow.Registry
+		if holder, registry, err = buildAuthz(cfg, deps, backend, svc); err != nil {
 			return nil, err
+		}
+		// The admin portal edits the holder provider, such as the
+		// claims it verifies, with an admin session on the compose
+		// network. The proxy publishes no path to it (ADR-047, ADR-056
+		// decision 2).
+		if cfg.AdminJWKSURL != "" {
+			mux.Handle(oidcflow.NewAdminHandler(oidcflow.AdminProviders{
+				Registry: registry, Authorize: oidcflow.AdminJWTAuthorizer(cfg.AdminJWKSURL), Roles: []string{"holder"},
+			}))
 		}
 		// The issuer page names the data source of a claim without an
 		// offer through the issuer RPCs of the service (ADR-052
@@ -207,32 +216,32 @@ func pathOf(issuer string) string {
 // provider registry in the store of the adapter, seeded with the holder
 // provider that setup names, the login flow, the wallet clients, and
 // the data source of a claim without an offer.
-func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *service.Service) (*authz.Server, error) {
+func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *service.Service) (*authz.Server, *oidcflow.Registry, error) {
 	issuer := authzIssuer(cfg)
 	if pathOf(issuer) == "" {
-		return nil, fmt.Errorf("app: %sAUTHZ_ISSUER needs a path such as /authz, so the server does not take the root", config.Prefix)
+		return nil, nil, fmt.Errorf("app: %sAUTHZ_ISSUER needs a path such as /authz, so the server does not take the root", config.Prefix)
 	}
 	if cfg.AuthzKeySecret == "" {
-		return nil, fmt.Errorf("app: %sAUTHZ_KEY_SECRET is empty; it seals the token key of the holder authorization server", config.Prefix)
+		return nil, nil, fmt.Errorf("app: %sAUTHZ_KEY_SECRET is empty; it seals the token key of the holder authorization server", config.Prefix)
 	}
 	clients, err := authz.ParseClients(cfg.WalletClients)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	registry, err := oidcflow.NewRegistry(store.NewJSON(backend), nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if cfg.HolderOIDCDiscoveryURL != "" && cfg.HolderOIDCClientID != "" {
-		if err := registry.Seed(oidcflow.SeedProvider(oidcflow.Seed{
+		if serr := registry.Seed(oidcflow.SeedProvider(oidcflow.Seed{
 			DiscoveryURL: cfg.HolderOIDCDiscoveryURL, ClientID: cfg.HolderOIDCClientID,
 			PublicURL: cfg.HolderOIDCPublicURL, InternalAuthority: cfg.HolderOIDCInternalAuthority,
 			Roles: []string{"holder"}, Scopes: []string{"openid", "email", "profile"},
-		})); err != nil {
-			return nil, fmt.Errorf("app: seed the holder provider: %w", err)
+		})); serr != nil {
+			return nil, nil, fmt.Errorf("app: seed the holder provider: %w", serr)
 		}
-		if err := syncVerifiedClaims(registry, cfg.VerifiedClaims()); err != nil {
-			return nil, err
+		if verr := syncVerifiedClaims(registry, cfg.VerifiedClaims()); verr != nil {
+			return nil, nil, verr
 		}
 	} else {
 		deps.Log.Warn("no holder provider is seeded, so a holder signs in only at a provider an admin adds",
@@ -251,20 +260,22 @@ func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *servi
 			Token:  servicetoken.Derive(cfg.AuthzKeySecret, servicetoken.DataSourceLookup),
 		}
 	}
-	return authz.New(context.Background(), authz.Options{
+	server, err := authz.New(context.Background(), authz.Options{
 		Issuer: issuer, Audience: cfg.Audience(), Store: backend, KeySecret: []byte(cfg.AuthzKeySecret),
 		Clients: clients, Registry: registry, Flow: &oidcflow.Flow{Cache: oidcflow.NewCache(client, 0), Client: client},
 		Offers: svc, Lookup: lookup, Log: deps.Log,
 	})
+	return server, registry, err
 }
 
-// syncVerifiedClaims makes the seeded holder provider list the claims
-// of the setting. Seed keeps a record it finds, so each start writes
-// the list, and an empty setting clears it (ADR-056 decision 2).
+// syncVerifiedClaims fills the verified claims of the seeded holder
+// provider from the setting while the record lists none. Once it lists
+// claims, the admin portal owns the list, so a restart keeps an edit of
+// the admin (ADR-056 decision 2).
 func syncVerifiedClaims(registry *oidcflow.Registry, verified []string) error {
 	// Seed wrote the record or found it, so it exists.
 	p, err := registry.Get(oidcflow.SeedID)
-	if err != nil || slices.Equal(p.VerifiedClaims, verified) {
+	if err != nil || len(verified) == 0 || len(p.VerifiedClaims) > 0 {
 		return err
 	}
 	p.VerifiedClaims = verified

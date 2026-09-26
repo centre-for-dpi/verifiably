@@ -20,12 +20,16 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
@@ -440,8 +444,9 @@ func TestBuildRefusesAHolderServerWithoutItsSettings(t *testing.T) {
 
 // TestBuildSeedsTheVerifiedClaimsOfTheHolderProvider: the setting lists
 // the claims the holder provider verifies beyond email, phone_number
-// and sub. The seeded record follows it at each start, so a binding
-// rule on those claims matches (ADR-056 decision 2).
+// and sub. It fills the list of the seeded record while the list is
+// empty. Once the record holds a list, the admin portal owns it, so a
+// restart keeps an edit of the admin (ADR-056 decision 2).
 func TestBuildSeedsTheVerifiedClaimsOfTheHolderProvider(t *testing.T) {
 	f := fake.New(testdata)
 	defer f.Close()
@@ -470,11 +475,86 @@ func TestBuildSeedsTheVerifiedClaimsOfTheHolderProvider(t *testing.T) {
 		}
 		return records[0].Verified
 	}
+	if got := start(""); len(got) != 0 {
+		t.Fatalf("an empty setting gave %v", got)
+	}
 	if got := start(" national_id, member_no ,"); len(got) != 2 || got[0] != "national_id" || got[1] != "member_no" {
 		t.Fatalf("verified claims = %v", got)
 	}
-	if got := start(""); len(got) != 0 {
-		t.Fatalf("an empty setting kept %v", got)
+	if got := start(""); len(got) != 2 {
+		t.Fatalf("an empty setting cleared the list of the record: %v", got)
+	}
+	if got := start("other"); len(got) != 2 || got[0] != "national_id" {
+		t.Fatalf("the setting replaced the list of the record: %v", got)
+	}
+}
+
+// TestBuildServesTheHolderProviderToTheAdmin: the admin portal edits the
+// provider registry of the holder authorization server on the compose
+// network with an admin session, and a restart keeps the edit. The
+// proxy of the pair publishes no path to it (ADR-047).
+func TestBuildServesTheHolderProviderToTheAdmin(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	key := anyval.Must(oidcflow.GenerateKey())
+	signer := anyval.Must(oidcflow.NewSigner(key, "https://admin.test", oidcflow.AdminAudience, 15*time.Minute, nil))
+	jwks := httptest.NewServer(signer.JWKSHandler())
+	defer jwks.Close()
+	kv := store.Memory()
+	build := func(adminJWKS string) *httptest.Server {
+		t.Helper()
+		cfg := config.Config{
+			CertifyURL: f.URL(), PublicURL: "https://adapter.example", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
+			AuthzIssuer: "https://adapter.example/authz", AuthzKeySecret: "0123456789abcdef0123456789abcdef",
+			HolderOIDCDiscoveryURL: "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration",
+			HolderOIDCClientID:     "vca-inji-authz", AdminJWKSURL: adminJWKS,
+		}
+		a, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Store: kv, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(a.Mux)
+		t.Cleanup(srv.Close)
+		return srv
+	}
+	srv := build(jwks.URL)
+	client := adminv1connect.NewAdminServiceClient(srv.Client(), srv.URL)
+	if _, err := client.ListAuthProviders(context.Background(), connect.NewRequest(&adminv1.ListAuthProvidersRequest{})); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("a call without a session: %v", err)
+	}
+	token, _, err := signer.Issue(oidcflow.Claims{Subject: "kc|admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withToken := func(req connect.AnyRequest) {
+		req.Header().Set("Authorization", "Bearer "+token)
+	}
+	list := connect.NewRequest(&adminv1.ListAuthProvidersRequest{})
+	withToken(list)
+	got, err := client.ListAuthProviders(context.Background(), list)
+	if err != nil || len(got.Msg.GetProviders()) != 1 {
+		t.Fatalf("list = %v %v", got, err)
+	}
+	record := got.Msg.GetProviders()[0]
+	record.VerifiedClaims = []string{"national_id"}
+	update := connect.NewRequest(&adminv1.UpdateAuthProviderRequest{Provider: record})
+	withToken(update)
+	if _, uerr := client.UpdateAuthProvider(context.Background(), update); uerr != nil {
+		t.Fatalf("update: %v", uerr)
+	}
+	// A restart keeps the edit, and the server offers the claim.
+	again := build("")
+	resp, err := again.Client().Post(again.URL+"/vca.admin.v1.AdminService/ListAuthProviders", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	anyval.Discard(resp.Body.Close())
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("without an admin key set the adapter serves the provider RPCs: %d", resp.StatusCode)
+	}
+	raw, err := kv.Get(context.Background(), "providers")
+	if err != nil || !strings.Contains(string(raw), `"national_id"`) {
+		t.Fatalf("the edit did not stay: %s %v", raw, err)
 	}
 }
 

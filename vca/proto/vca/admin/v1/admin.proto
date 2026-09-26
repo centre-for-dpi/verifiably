@@ -531,6 +531,11 @@ message AuthProvider {
   vca.common.v1.SecretRef private_key = 16;
   // True for the provider that the setup CLI seeded from the stack.
   bool is_default = 17;
+  // The ID token claims beyond email, phone_number and sub that the
+  // provider verifies. A binding rule or a holder sign in source can
+  // name them (ADR-056 decision 2). Name a claim only when the provider
+  // proves it, never for a claim a person picks at registration.
+  repeated string verified_claims = 18;
 }
 
 // CreateAuthProviderRequest carries the provider to register.

@@ -325,6 +325,10 @@ func Catalog() []Service {
 				{Env: "VCA_INJI_AUTHZ_KEY_SECRET", Target: "VCA_SECRETS_SESSION_KEY", Kind: LinkCopy, Roles: issuer},
 				{Env: "VCA_INJI_HOLDER_OIDC_PUBLIC_URL", Target: "VCA_OIDC_PUBLIC_URL", Kind: LinkCopy, Roles: issuer},
 				{Env: "VCA_INJI_DATA_SOURCE_URL", Target: "data-source", Kind: LinkURL, Roles: issuer},
+				// The admin portal edits the holder provider of the server,
+				// such as the claims it verifies, with an admin session on
+				// the compose network (ADR-056 decision 2).
+				{Env: "VCA_INJI_ADMIN_JWKS_URL", Target: "admin", Path: "/.well-known/jwks.json", Kind: LinkURL, Roles: issuer},
 			},
 			// The data volume keeps the hosted offers and the Mimoto wallet
 			// PINs of the holder role. A holder claims in Inji Web, which

@@ -471,6 +471,17 @@ var en = map[string]string{
 
 	// Admin login providers (board Admin-Providers).
 	"admin.providers.lead":                    "Who signs in each role, on which stacks. VCA speaks OIDC, so the provider is yours to choose.",
+	"admin.signin.title.label":                "Holder sign in claims",
+	"admin.signin.lead":                       "The holder sign in of an issuer stack binds an offer or finds a holder only on verified claims. Email and phone number count when the provider verified them. List another claim only when the provider proves it.",
+	"admin.signin.caption.label":              "Holder sign in, {1}",
+	"admin.signin.column.issuer.label":        "Issuer",
+	"admin.signin.column.claims.label":        "Verified claims",
+	"admin.signin.claims.label":               "Verified claims of {1}",
+	"admin.signin.claims.hint":                "Claim names, separated by commas. Never list a claim that a person picks at registration.",
+	"admin.signin.save.label":                 "Save the claims",
+	"admin.signin.empty":                      "This holder sign in has no provider.",
+	"admin.signin.down":                       "The page cannot reach the holder sign in of this stack now. Wait one minute, then try again.",
+	"admin.signin.saved":                      "The holder sign in of the stack trusts these claims now.",
 	"admin.providers.add.label":               "Add provider",
 	"admin.providers.new.label":               "New provider",
 	"admin.providers.edit.label":              "Edit provider",

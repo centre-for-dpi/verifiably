@@ -2122,9 +2122,14 @@ type AuthProvider struct {
 	// private_key_jwt. Required for that method.
 	PrivateKey *v12.SecretRef `protobuf:"bytes,16,opt,name=private_key,json=privateKey,proto3" json:"private_key,omitempty"`
 	// True for the provider that the setup CLI seeded from the stack.
-	IsDefault     bool `protobuf:"varint,17,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	IsDefault bool `protobuf:"varint,17,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
+	// The ID token claims beyond email, phone_number and sub that the
+	// provider verifies. A binding rule or a holder sign in source can
+	// name them (ADR-056 decision 2). Name a claim only when the provider
+	// proves it, never for a claim a person picks at registration.
+	VerifiedClaims []string `protobuf:"bytes,18,rep,name=verified_claims,json=verifiedClaims,proto3" json:"verified_claims,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AuthProvider) Reset() {
@@ -2274,6 +2279,13 @@ func (x *AuthProvider) GetIsDefault() bool {
 		return x.IsDefault
 	}
 	return false
+}
+
+func (x *AuthProvider) GetVerifiedClaims() []string {
+	if x != nil {
+		return x.VerifiedClaims
+	}
+	return nil
 }
 
 // CreateAuthProviderRequest carries the provider to register.
@@ -4941,7 +4953,7 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\x18SyncTrustRegistryRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"O\n" +
 	"\x19SyncTrustRegistryResponse\x122\n" +
-	"\bregistry\x18\x01 \x01(\v2\x16.vca.trust.v1.RegistryR\bregistry\"\xde\x05\n" +
+	"\bregistry\x18\x01 \x01(\v2\x16.vca.trust.v1.RegistryR\bregistry\"\x87\x06\n" +
 	"\fAuthProvider\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12#\n" +
@@ -4964,7 +4976,8 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\vprivate_key\x18\x10 \x01(\v2\x18.vca.common.v1.SecretRefR\n" +
 	"privateKey\x12\x1d\n" +
 	"\n" +
-	"is_default\x18\x11 \x01(\bR\tisDefault\"\x86\x01\n" +
+	"is_default\x18\x11 \x01(\bR\tisDefault\x12'\n" +
+	"\x0fverified_claims\x18\x12 \x03(\tR\x0everifiedClaims\"\x86\x01\n" +
 	"\x19CreateAuthProviderRequest\x126\n" +
 	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\x121\n" +
 	"\x14dynamic_registration\x18\x02 \x01(\bR\x13dynamicRegistration\"\x86\x01\n" +

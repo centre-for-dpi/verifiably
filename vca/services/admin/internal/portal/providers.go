@@ -35,6 +35,7 @@ func (p *Portal) registerProviders(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+at+"/providers/{id}", p.posted(p.updateProvider))
 	mux.HandleFunc("POST "+at+"/providers/{id}/enable", p.posted(p.toggleProvider))
 	mux.HandleFunc("POST "+at+"/providers/{id}/delete", p.posted(p.deleteProvider))
+	mux.HandleFunc("POST "+at+"/providers/signin/{pair}/{id}", p.posted(p.saveSignInClaims))
 }
 
 // providers renders the provider table with its row actions.
@@ -76,6 +77,9 @@ func (p *Portal) providersPage(w http.ResponseWriter, r *http.Request, s session
 			Rows: rows,
 		})
 	}
+	// The holder authorization servers keep providers of their own
+	// (ADR-056 decision 2).
+	content = components.Join(content, p.signInBlock(r.Context(), b, f, s))
 	if b.err != nil {
 		return b.err
 	}

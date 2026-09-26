@@ -183,6 +183,19 @@ RPC answer carries the stored record and one `PushResult` per target.
 Each result names the pair, the outcome, and the reason of a failure.
 The portal shows one line per target after a save.
 
+### Holder sign in claims
+
+The holder authorization server of an issuer stack keeps a provider
+registry of its own (ADR-052). It binds an offer or finds a holder only
+on a claim the provider vouches for (ADR-056 decision 2). The providers
+page shows a card for each live issuer pair whose adapter lists
+`FEATURE_HOLDER_SIGN_IN_SOURCE`. The card lists its providers with the
+claims each one verifies beyond `email`, `phone_number` and `sub`. A
+save calls `GetAuthProvider` and `UpdateAuthProvider` of the adapter on
+the compose network, with the admin session. The adapter checks the
+session against the admin key set. List a claim only when the provider
+proves it, never for a claim a person picks at registration.
+
 ## CLI login
 
 The CLI logs in without a browser redirect of its own:

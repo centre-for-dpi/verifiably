@@ -139,6 +139,9 @@ type harness struct {
 	// auth holds the fake auth service of every live pair, by pair name,
 	// when the harness has peers.
 	auth map[string]*pairAuth
+	// signInRegistry is the provider registry of the holder
+	// authorization server of the adapter, when the harness has one.
+	signInRegistry *oidcflow.Registry
 }
 
 // newHarness wires the service, logs one super admin in, and returns the

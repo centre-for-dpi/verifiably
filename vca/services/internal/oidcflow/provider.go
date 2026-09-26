@@ -5,6 +5,7 @@ package oidcflow
 import (
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -333,6 +334,18 @@ func isAbsoluteHTTP(raw string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
+// cleanClaims trims the claim names, drops the empty ones and the
+// repeats, and keeps the order.
+func cleanClaims(list []string) []string {
+	var out []string
+	for _, c := range list {
+		if c = strings.TrimSpace(c); c != "" && !slices.Contains(out, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // FromAdminProto converts an admin AuthProvider message into a Provider.
 func FromAdminProto(m *adminv1.AuthProvider) Provider {
 	p := Provider{
@@ -349,6 +362,7 @@ func FromAdminProto(m *adminv1.AuthProvider) Provider {
 			ConsoleURL:      m.GetConsoleUrl(),
 			TokenAuthMethod: tokenAuthFromProto(m.GetTokenAuthMethod()),
 			IsDefault:       m.GetIsDefault(),
+			VerifiedClaims:  cleanClaims(m.GetVerifiedClaims()),
 		},
 	}
 	if ref := m.GetClientSecret(); ref != nil {
@@ -386,6 +400,7 @@ func ToAdminProto(p Provider) *adminv1.AuthProvider {
 		ConsoleUrl:      p.ConsoleURL,
 		TokenAuthMethod: tokenAuthToProto(p.TokenAuthMethod),
 		IsDefault:       p.IsDefault,
+		VerifiedClaims:  append([]string(nil), p.VerifiedClaims...),
 	}
 	if !p.ClientSecret.IsZero() {
 		m.ClientSecret = &commonv1.SecretRef{Store: secretStoreToProto(p.ClientSecret.Store), Name: p.ClientSecret.Name}

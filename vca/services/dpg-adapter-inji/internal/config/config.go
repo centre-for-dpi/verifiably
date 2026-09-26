@@ -72,6 +72,11 @@ type Config struct {
 	// decision 2). Name a claim only when the provider proves it, never
 	// for a claim the holder picks at registration.
 	HolderOIDCVerifiedClaims string `env:"HOLDER_OIDC_VERIFIED_CLAIMS"`
+	// AdminJWKSURL is the key set of the admin pair. The admin portal
+	// edits the provider registry of the holder authorization server
+	// with a session that key set signed, on the compose network. Empty
+	// serves no provider RPC.
+	AdminJWKSURL string `env:"ADMIN_JWKS_URL"`
 	// DataSourceURL is the data source service of the pair. A claim that
 	// no offer names finds its subject there. Empty turns such claims
 	// off.
