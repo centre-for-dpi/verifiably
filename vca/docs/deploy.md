@@ -735,7 +735,12 @@ The issuer run adds the callback of the holder authorization server as
 a redirect URI.
 The claims of a person come from the userinfo endpoint of eSignet, not
 from the ID token.
-So a binding rule or a sign in source can match only `sub` for now.
+The server reads that signed answer and checks it against the key set
+of eSignet.
+It keeps only the claims that the provider record vouches for.
+eSignet sends `phone_number_verified` but no `email_verified`.
+So list a claim such as `individual_id` in the admin portal to bind on
+it.
 The run adds no identity anywhere (ADR-050).
 The people who sign in come from the identity system of the operator.
 `INJI_ESIGNET_DB_PASSWORD` sets the password of the database.

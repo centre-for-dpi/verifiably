@@ -3,16 +3,10 @@
 package authz
 
 import (
-	"slices"
 	"strings"
-)
 
-// The claims whose verified flag a provider sends (OpenID Connect Core
-// 1.0 section 5.1). The value counts only when the flag says true.
-var verifiedFlags = map[string]string{
-	"email":        "email_verified",
-	"phone_number": "phone_number_verified",
-}
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+)
 
 // matches reports whether the ID token of the holder meets the binding
 // rule of an offer: the token claim and the subject claim hold the same
@@ -39,33 +33,10 @@ func (b Binding) matches(claims, subject map[string]any, vouched []string) bool 
 	return got == want
 }
 
-// tokenValue returns the text of one claim of an ID token when the
-// provider vouches for it: sub always, email and phone_number only when
-// their verified flag is true, and any other claim only when the
-// provider record lists it. A missing flag is no assertion, so it
-// counts as unverified.
+// tokenValue returns the text of one claim of the sign in when the
+// provider vouches for it (ADR-056 decision 2, oidcflow.VouchedValue).
 func tokenValue(claims map[string]any, name string, vouched []string) (string, bool) {
-	v, ok := claims[name].(string)
-	v = strings.TrimSpace(v)
-	if !ok || v == "" {
-		return "", false
-	}
-	if flag, known := verifiedFlags[name]; known {
-		return v, isTrue(claims[flag])
-	}
-	return v, name == "sub" || slices.Contains(vouched, name)
-}
-
-// isTrue reports whether a verified flag says true: the JSON true, or
-// the text true that some providers send.
-func isTrue(v any) bool {
-	switch t := v.(type) {
-	case bool:
-		return t
-	case string:
-		return strings.EqualFold(t, "true")
-	}
-	return false
+	return oidcflow.VouchedValue(claims, name, vouched)
 }
 
 // asciiLower folds the ASCII capitals of s and nothing else. Unicode

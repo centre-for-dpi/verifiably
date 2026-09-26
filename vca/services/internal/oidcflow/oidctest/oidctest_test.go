@@ -389,3 +389,87 @@ func TestFakeProviderClientAuthentication(t *testing.T) {
 		t.Errorf("another key = %d", got)
 	}
 }
+
+// TestFakeProviderUserinfo: the userinfo endpoint answers the holder of
+// an issued access token with plain JSON, a signed JWT with iss and
+// aud, or a signed JWT without them, and refuses any other token.
+func TestFakeProviderUserinfo(t *testing.T) {
+	idp := oidctest.New()
+	defer idp.Close()
+	verifier := oidc.NewVerifier()
+	loc, err := idp.Authorize(oidc.AuthorizeURL(idp.Server.URL+"/authorize", "client", "https://rp/cb", "s", verifier, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.PostForm(idp.Server.URL+"/token", url.Values{"grant_type": {"authorization_code"}, "code": {u.Query().Get("code")}, "redirect_uri": {"https://rp/cb"}, "code_verifier": {verifier}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tok struct {
+		AccessToken string `json:"access_token"`
+	}
+	if derr := json.NewDecoder(res.Body).Decode(&tok); derr != nil || res.Body.Close() != nil {
+		t.Fatalf("token: %v", derr)
+	}
+	get := func(access string) (int, string, string) {
+		req, rerr := http.NewRequest(http.MethodGet, idp.Server.URL+"/userinfo", nil)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		req.Header.Set("Authorization", "Bearer "+access)
+		answer, rerr := http.DefaultClient.Do(req)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		body, rerr := io.ReadAll(answer.Body)
+		if rerr != nil || answer.Body.Close() != nil {
+			t.Fatalf("read: %v", rerr)
+		}
+		return answer.StatusCode, answer.Header.Get("Content-Type"), string(body)
+	}
+	if status, _, _ := get("at-unknown"); status != http.StatusUnauthorized {
+		t.Fatalf("an unknown token = %d", status)
+	}
+	idp.Userinfo = map[string]any{"name": "Ada"}
+	if status, media, body := get(tok.AccessToken); status != 200 || media != "application/json" || !strings.Contains(body, `"name":"Ada"`) {
+		t.Fatalf("JSON = %d %s %s", status, media, body)
+	}
+	idp.UserinfoSigned = true
+	status, media, body := get(tok.AccessToken)
+	claims, perr := jose.PeekPayload(body)
+	if status != 200 || media != "application/jwt" || perr != nil || claims["aud"] != "client" || claims["iss"] != idp.Issuer() || claims["name"] != "Ada" {
+		t.Fatalf("JWT = %d %s %v %v", status, media, claims, perr)
+	}
+	idp.UserinfoBare = true
+	idp.UserinfoKey = mustKey(t)
+	_, _, body = get(tok.AccessToken)
+	if claims, perr = jose.PeekPayload(body); perr != nil || claims["iss"] != nil || claims["sub"] != "user-1" {
+		t.Fatalf("bare JWT = %v %v", claims, perr)
+	}
+	idp.UserinfoBody, idp.UserinfoType = "raw", "text/plain"
+	if _, media, body = get(tok.AccessToken); media != "text/plain" || body != "raw" {
+		t.Fatalf("raw = %s %s", media, body)
+	}
+	idp.NoUserinfo = true
+	res, err = http.Get(idp.DiscoveryURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := io.ReadAll(res.Body)
+	if err != nil || res.Body.Close() != nil || strings.Contains(string(doc), "userinfo_endpoint") {
+		t.Fatalf("discovery still names userinfo: %s %v", doc, err)
+	}
+}
+
+func mustKey(t *testing.T) crypto.PrivateKey {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key
+}

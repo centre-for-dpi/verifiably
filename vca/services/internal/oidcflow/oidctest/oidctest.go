@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +49,8 @@ type Provider struct {
 	WrongNonce bool
 	// NoEndSession removes end_session_endpoint from discovery.
 	NoEndSession bool
+	// NoUserinfo removes userinfo_endpoint from discovery.
+	NoUserinfo bool
 	// PromptValuesSupported is advertised in discovery when set, so a
 	// test can offer prompt=create (OpenID Connect Prompt Create 1.0).
 	PromptValuesSupported []string
@@ -62,11 +65,28 @@ type Provider struct {
 	LastTokenForm url.Values
 	// Now returns the time the ID tokens are issued at.
 	Now func() time.Time
+	// Userinfo holds the claims of the userinfo answer beyond sub. The
+	// answer carries the Subject unless Userinfo names another sub.
+	Userinfo map[string]any
+	// UserinfoSigned answers userinfo with a JWT of the provider key
+	// (application/jwt) that carries iss and aud (OpenID Connect Core
+	// 1.0 section 5.3.2), instead of plain JSON.
+	UserinfoSigned bool
+	// UserinfoBare leaves iss and aud out of a signed userinfo answer,
+	// as the authenticator plugins of eSignet 1.5.1 sign it.
+	UserinfoBare bool
+	// UserinfoKey, when set, signs the userinfo answer in place of the
+	// key the JWKS publishes.
+	UserinfoKey crypto.PrivateKey
+	// UserinfoBody, when set, is the raw userinfo answer with its media
+	// type, in place of the claims.
+	UserinfoBody, UserinfoType string
 
-	mu    sync.Mutex
-	key   crypto.PrivateKey
-	kid   string
-	codes map[string]authRequest
+	mu     sync.Mutex
+	key    crypto.PrivateKey
+	kid    string
+	codes  map[string]authRequest
+	tokens map[string]string
 	// Requests counts calls per path.
 	Requests map[string]int
 }
@@ -97,6 +117,7 @@ func start(key crypto.PrivateKey) *Provider {
 		ExpiresIn: 300,
 		Now:       time.Now,
 		codes:     map[string]authRequest{},
+		tokens:    map[string]string{},
 		Requests:  map[string]int{},
 		Claims:    map[string]any{},
 	}
@@ -106,6 +127,7 @@ func start(key crypto.PrivateKey) *Provider {
 	mux.HandleFunc("/jwks", p.jwks)
 	mux.HandleFunc("/authorize", p.authorize)
 	mux.HandleFunc("/token", p.token)
+	mux.HandleFunc("/userinfo", p.userinfo)
 	mux.HandleFunc("/logout", p.logout)
 	p.Server = httptest.NewServer(p.count(mux))
 	return p
@@ -165,6 +187,9 @@ func (p *Provider) discovery(w http.ResponseWriter, _ *http.Request) {
 	}
 	if !p.NoEndSession {
 		doc["end_session_endpoint"] = p.Server.URL + "/logout"
+	}
+	if !p.NoUserinfo {
+		doc["userinfo_endpoint"] = p.Server.URL + "/userinfo"
 	}
 	if len(p.PromptValuesSupported) > 0 {
 		doc["prompt_values_supported"] = p.PromptValuesSupported
@@ -233,7 +258,11 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	if p.WrongNonce {
 		nonce = "wrong"
 	}
-	body := map[string]any{"access_token": "at-" + oidc.NewState(), "token_type": "Bearer", "expires_in": p.ExpiresIn}
+	access := "at-" + oidc.NewState()
+	p.mu.Lock()
+	p.tokens[access] = req.clientID
+	p.mu.Unlock()
+	body := map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": p.ExpiresIn}
 	if !p.OmitIDToken {
 		body["id_token"] = p.IDToken(req.clientID, nonce)
 	}
@@ -328,6 +357,45 @@ func (p *Provider) IDToken(aud, nonce string) string {
 	defer p.mu.Unlock()
 	tok := anyval.Must(signAny(p.key, p.kid, claims))
 	return tok
+}
+
+// userinfo answers the claims of the holder of an access token that
+// the token endpoint issued (OpenID Connect Core 1.0 section 5.3).
+func (p *Provider) userinfo(w http.ResponseWriter, r *http.Request) {
+	access, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	p.mu.Lock()
+	clientID, known := p.tokens[access]
+	p.mu.Unlock()
+	if !ok || !known {
+		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
+		return
+	}
+	if p.UserinfoBody != "" {
+		w.Header().Set("Content-Type", p.UserinfoType)
+		anyval.DiscardWrite(w.Write([]byte(p.UserinfoBody)))
+		return
+	}
+	claims := map[string]any{"sub": p.Subject}
+	if p.UserinfoSigned && !p.UserinfoBare {
+		claims["iss"] = p.Server.URL
+		claims["aud"] = clientID
+	}
+	for k, v := range p.Userinfo {
+		claims[k] = v
+	}
+	if !p.UserinfoSigned {
+		writeJSON(w, http.StatusOK, claims)
+		return
+	}
+	p.mu.Lock()
+	key, kid := p.key, p.kid
+	p.mu.Unlock()
+	if p.UserinfoKey != nil {
+		key = p.UserinfoKey
+	}
+	w.Header().Set("Content-Type", "application/jwt")
+	anyval.DiscardWrite(w.Write([]byte(anyval.Must(signAny(key, kid, claims)))))
 }
 
 func (p *Provider) logout(w http.ResponseWriter, r *http.Request) {

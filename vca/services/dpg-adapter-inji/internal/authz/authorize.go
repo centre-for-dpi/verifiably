@@ -201,8 +201,19 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		s.redirectError(w, r, req, "access_denied", DeniedSignIn)
 		return
 	}
+	// The claims of the binding rule or the sign in source may sit in
+	// the userinfo answer only, as with eSignet. The flow reads it when
+	// the ID token does not vouch for the claim.
+	claimsFor := func(name string) (map[string]any, bool) {
+		claims, verr := s.flow.Vouched(ctx, p, result, name)
+		if verr != nil {
+			s.log.Info("the holder provider sent a userinfo answer the server cannot trust", "provider", p.ID, "error", verr)
+			return nil, false
+		}
+		return claims, true
+	}
 	subject := oidc.NewState()
-	if description, ok := s.stage(r, req, result.Claims, p.VerifiedClaims, subject); !ok {
+	if description, ok := s.stage(r, req, claimsFor, p.VerifiedClaims, subject); !ok {
 		s.redirectError(w, r, req, "access_denied", description)
 		return
 	}
@@ -220,14 +231,19 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 
 // stage writes the claims row of the holder under subject: the row of
 // the offer after its binding rule matched, or the row the sign in
-// source holds for the holder. vouched lists the claims the provider
+// source holds for the holder. claimsFor returns the claims of the sign
+// in that vouch for one claim. vouched lists the claims the provider
 // record names as verified. It returns the description of a denial.
-func (s *Server) stage(r *http.Request, req authRequest, claims map[string]any, vouched []string, subject string) (string, bool) {
+func (s *Server) stage(r *http.Request, req authRequest, claimsFor func(string) (map[string]any, bool), vouched []string, subject string) (string, bool) {
 	ctx := r.Context()
 	if req.IssuerState != "" {
 		offer, open := s.offers.Offer(ctx, req.IssuerState)
 		if !open {
 			return "The offer has expired or was claimed.", false
+		}
+		claims, ok := claimsFor(offer.Binding.TokenClaim)
+		if !ok {
+			return DeniedSignIn, false
 		}
 		if !offer.Binding.matches(claims, offer.Subject, vouched) {
 			return DeniedAnotherPerson, false
@@ -244,6 +260,10 @@ func (s *Server) stage(r *http.Request, req authRequest, claims map[string]any, 
 	src, description, ok := s.sourceFor(r, req.ConfigID)
 	if !ok {
 		return description, false
+	}
+	claims, ok := claimsFor(src.TokenClaim)
+	if !ok {
+		return DeniedSignIn, false
 	}
 	value, ok := tokenValue(claims, src.TokenClaim, vouched)
 	if !ok {

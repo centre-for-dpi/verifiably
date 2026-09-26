@@ -536,9 +536,25 @@ call and the key set go to eSignet on the compose network. The
 audience of the assertion is the token endpoint that eSignet
 publishes. The first start with eSignet turns
 the seeded realm off, so holders sign in at eSignet. An admin can turn
-the realm on again, and a later start keeps that choice. The claims of
-the person come from the userinfo answer of eSignet, not from the ID
-token. So a binding rule can match only `sub` for now.
+the realm on again, and a later start keeps that choice.
+
+**Claims from userinfo.** eSignet returns the claims of a person only in
+its signed userinfo answer. The ID token carries the pairwise `sub`
+alone. The server reads userinfo with the access token of the sign in.
+It calls only when the ID token does not vouch for the claim of the
+rule. A JWT answer needs a signature of a key in the key set of the
+provider. Its `iss` must name the provider
+and its `aud` the client whenever the answer carries them. The
+authenticator plugins of eSignet 1.5.1 sign without `iss` and `aud`. So
+the server takes such an answer from its own call over the channel of
+the provider. Its `sub` must equal the `sub` of the ID token, or no claim
+counts. The server refuses an encrypted answer, and plain JSON from any
+other provider works too. Only a claim the provider vouches for joins
+the claims of the ID token. That is `email` or `phone_number` with its
+flag true, or a claim the provider record lists. A claim of the ID token
+always wins. The eSignet client of `vca dpg bootstrap` asks for `name`,
+`email` and `phone_number`. Add another claim to that client in eSignet
+before you list it.
 
 **Wallet clients.** `VCA_INJI_WALLET_CLIENTS` lists them as JSON:
 `client_id`, `redirect_uris`, and an optional public `jwk`. A client
