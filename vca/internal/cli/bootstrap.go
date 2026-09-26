@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -393,9 +394,11 @@ type credeblOrg struct {
 
 // BootstrapCredebl initialises the CREDEBL database once, signs in to
 // the CREDEBL API as the platform admin of setup, and creates the
-// organisation of the deployment. A second run finds the marker and the
-// organisation and does nothing (ADR-008 decision 4, ADR-055
-// decision 4).
+// organisation of the deployment. It binds the shared agent of the stack
+// file to the platform admin organisation and gives the organisation of
+// the deployment a wallet in it. A second run finds the marker, the
+// organisation, the agent and the wallet, and does nothing (ADR-008
+// decision 4, ADR-055 decision 4, ADR-045 decision 4).
 func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResult, error) {
 	var result BootstrapResult
 	base, baseErr := opts.baseURL()
@@ -410,11 +413,24 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 	if password == "" {
 		return result, fmt.Errorf("CREDEBL sign in: set %s to the password of the platform admin %s", EnvBootstrapSecret, admin)
 	}
+	stack, err := ReadStackEnv(filepath.Dir(opts.Dir), configv1.Dpg_DPG_CREDEBL)
+	if err != nil {
+		return result, err
+	}
+	if strings.TrimSpace(stack["CRYPTO_PRIVATE_KEY"]) == "" {
+		return result, fmt.Errorf("CREDEBL sign in: CRYPTO_PRIVATE_KEY is missing from %s; run vca setup", StackEnvFile(configv1.Dpg_DPG_CREDEBL))
+	}
 	if initErr := initCredebl(ctx, opts, &result); initErr != nil {
 		return result, initErr
 	}
 	name := opts.value(EnvBootstrapOrg, "vca-"+ShortName(opts.Pair.Role.String()))
-	signin, err := json.Marshal(map[string]string{"email": admin, "password": password})
+	// The sign in of the platform decrypts the password with
+	// CRYPTO_PRIVATE_KEY, so the password travels encrypted.
+	secret, err := credeblPassword(password, stack["CRYPTO_PRIVATE_KEY"], rand.Reader)
+	if err != nil {
+		return result, fmt.Errorf("CREDEBL sign in: %w", err)
+	}
+	signin, err := json.Marshal(map[string]string{"email": admin, "password": secret})
 	if err != nil {
 		return result, fmt.Errorf("build the sign in request: %w", err)
 	}
@@ -430,38 +446,42 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 	if gotErr := json.Unmarshal(answer, &session); gotErr != nil || session.Data.AccessToken == "" {
 		return result, errors.New("CREDEBL sign in: the answer holds no access_token")
 	}
+	token := session.Data.AccessToken
 	result.step(opts.Out, "CREDEBL sign in done")
-	listed, err := doJSON(ctx, opts.client(), http.MethodGet,
-		base+"/v1/orgs?search="+url.QueryEscape(name), session.Data.AccessToken, nil)
+	org, err := findCredeblOrg(ctx, opts, base, token, name)
 	if err != nil {
-		return result, fmt.Errorf("list the organisations: %w", err)
+		return result, err
 	}
-	var orgs struct {
-		Data struct {
-			Organizations []credeblOrg `json:"organizations"`
-		} `json:"data"`
-	}
-	if gotErr := json.Unmarshal(listed, &orgs); gotErr != nil {
-		return result, fmt.Errorf("list the organisations: %w", gotErr)
-	}
-	for _, org := range orgs.Data.Organizations {
-		if org.Name == name {
-			result.step(opts.Out, "CREDEBL organisation present: %s", name)
-			return result, nil
+	if org.ID != "" {
+		result.step(opts.Out, "CREDEBL organisation present: %s", name)
+	} else {
+		body, marshalErr := json.Marshal(map[string]string{
+			"name":        name,
+			"description": "Verifiable Credentials Adapters " + ShortName(opts.Pair.Role.String()),
+			"website":     opts.Values["VCA_PUBLIC_URL"],
+		})
+		if marshalErr != nil {
+			return result, fmt.Errorf("build the organisation request: %w", marshalErr)
 		}
+		created, createErr := doJSON(ctx, opts.client(), http.MethodPost, base+"/v1/orgs", token, body)
+		if createErr != nil {
+			return result, fmt.Errorf("create the organisation: %w", createErr)
+		}
+		var made struct {
+			Data credeblOrg `json:"data"`
+		}
+		if gotErr := json.Unmarshal(created, &made); gotErr != nil || made.Data.ID == "" {
+			return result, errors.New("create the organisation: the answer holds no id")
+		}
+		org = credeblOrg{ID: made.Data.ID, Name: name}
+		result.step(opts.Out, "CREDEBL organisation created: %s", name)
 	}
-	body, err := json.Marshal(map[string]string{
-		"name":        name,
-		"description": "Verifiable Credentials Adapters " + ShortName(opts.Pair.Role.String()),
-		"website":     opts.Values["VCA_PUBLIC_URL"],
-	})
-	if err != nil {
-		return result, fmt.Errorf("build the organisation request: %w", err)
+	if err := bindSharedAgent(ctx, opts, base, token, stack, &result); err != nil {
+		return result, err
 	}
-	if _, err := doJSON(ctx, opts.client(), http.MethodPost, base+"/v1/orgs", session.Data.AccessToken, body); err != nil {
-		return result, fmt.Errorf("create the organisation: %w", err)
+	if err := createOrgWallet(ctx, opts, base, token, org, &result); err != nil {
+		return result, err
 	}
-	result.step(opts.Out, "CREDEBL organisation created: %s", name)
 	return result, nil
 }
 

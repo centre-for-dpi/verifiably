@@ -77,6 +77,7 @@ var nomockAllowlist = []nomockException{
 	{"vca/docs/dpg-adapter-inji.md", "fake", "The document describes the test double of the adapter tests."},
 	{"vca/docs/dpg-adapter-waltid.md", "fake", "The document describes the test double of the adapter tests."},
 	{"vca/internal/cli/credebl.go", "seed", "The CREDEBL release names its database initialisation script prisma db seed. The data comes from setup."},
+	{"deploy/vca/dpg/credebl.yaml", "seed", "The CREDEBL release names the image of its database initialisation seed. It makes the roles, the agent types and the ledgers of the platform, and the platform admin of setup. It holds no sample data set."},
 	{"vca/hack/contract-tests.sh", "mock-identity", "The contract script refuses a deployment that runs the mock identity system of an old release."},
 	{"vca/hack/contract-tests.sh", "esignet-mock", "The contract script refuses a deployment that runs the mock plugin of an old release."},
 	{"vca/hack/contract-tests.sh", "farmer_identity_data", "The contract script refuses a deployment that holds the sample identities of an old release."},

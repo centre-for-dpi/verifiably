@@ -86,10 +86,17 @@ func stackKeys(d configv1.Dpg) []stackKey {
 			{WaltidWalletPepperEnv, stackSecretLength},
 		}
 	case configv1.Dpg_DPG_CREDEBL:
+		// The shared Credo agent of the stack file encrypts its wallet
+		// with a key and guards its admin port with an API key of 16
+		// characters or more. The schema file server signs the upload
+		// tokens of the platform with a secret (P6-C0).
 		return []stackKey{
 			{"CRYPTO_PRIVATE_KEY", stackSecretLength},
 			{"PLATFORM_WALLET_PASSWORD", stackSecretLength},
 			{"PLATFORM_SEED", stackSecretLength},
+			{SharedAgentWalletKeyEnv, stackSecretLength},
+			{SharedAgentAPIKeyEnv, stackSecretLength},
+			{SchemaFileServerSecretEnv, stackSecretLength},
 		}
 	}
 	return nil
@@ -163,9 +170,10 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader, now 
 		}
 		b.WriteString(name + "=" + quoteValue(value) + "\n")
 	}
-	if keys := stackKeys(d); len(keys) > 0 {
+	keys := map[string]string{}
+	if list := stackKeys(d); len(list) > 0 {
 		b.WriteString("# The keys of the configuration files that setup writes for the stack.\n")
-		for _, k := range keys {
+		for _, k := range list {
 			value := existing[k.name]
 			if value == "" {
 				generated, err := randomAlphanumeric(random, k.length)
@@ -174,8 +182,18 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader, now 
 				}
 				value = generated
 			}
+			keys[k.name] = value
 			b.WriteString(k.name + "=" + quoteValue(value) + "\n")
 		}
+	}
+	if d == configv1.Dpg_DPG_CREDEBL {
+		// The upload token of the platform, signed with the secret of the
+		// schema file server. A later run keeps it.
+		token := existing[SchemaFileServerTokenEnv]
+		if token == "" {
+			token = schemaFileServerToken(keys[SchemaFileServerSecretEnv], now)
+		}
+		b.WriteString(SchemaFileServerTokenEnv + "=" + quoteValue(token) + "\n")
 	}
 	var settings []string
 	for _, name := range stackSettingNames(d) {

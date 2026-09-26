@@ -449,13 +449,34 @@ The versions come from `verifiably-go/docs/dpg-matrix.md`:
 | `dpg/inji.yaml` | Inji Web and Mimoto | 0.16.0 and 0.21.0 |
 | `dpg/inji.yaml` | Inji Verify UI and service | 0.16.0 |
 | `dpg/inji.yaml` | eSignet and its login page, with an authenticator only | 1.5.1 |
-| `dpg/credebl.yaml` | API gateway and agent provisioning | `CREDEBL_VERSION` |
+| `dpg/credebl.yaml` | The whole CREDEBL platform and its shared Credo agent | `main` at 2026-09-26, by digest |
 | Every `dpg/*.yaml` file | Keycloak | 25.0 |
 
-CREDEBL publishes no version tag.
-The DPG matrix records `ghcr.io/credebl/*:latest`.
-The compose file reads the tag from `CREDEBL_VERSION`.
-Set it to a digest before you go to production.
+CREDEBL publishes from its main branch.
+The stack file pins each platform image by the digest that `latest` named on 2026-09-26.
+The release tag of the same image stands beside the digest.
+Most images carry `v2.1.3-hotfix.2`.
+The ecosystem and OpenID for Verifiable Credentials images carry `v2.2.1-alpha.4`.
+The X.509 image carries `v2.2.1-alpha.3`.
+The Credo agent carries `v2.2.1-alpha-jsonld-vc.2.1`.
+The schema file server has only `latest`.
+The adapter reports `main at 2026-09-26` and the digest of the API gateway.
+Change a digest in the stack file and in the adapter together.
+A test binds the two.
+
+The file runs the 23 services of the upstream compose file.
+It also runs the shared Credo agent in multi tenancy mode.
+Upstream, agent provisioning starts that agent through the Docker socket.
+Here compose starts it, and no container mounts the socket.
+Without the socket, the platform cannot start a dedicated agent.
+`vca dpg bootstrap credebl` binds the shared agent to the organisation `Platform-admin`.
+It then gives the organisation of the deployment a wallet in the agent.
+The platform checks an agent address with a pattern that needs dots.
+So the agent has the network alias `credebl-agent.vca.internal`.
+The agent reads its transports and Indy ledgers from `dpg/credebl-agent.json`.
+Its keys come from `deploy/credebl/.env`.
+Set `CREDEBL_AGENT_ENDPOINT` to the public address of its port 9001 on a public host.
+The host port is 17182, and `CREDEBL_AGENT_HOST_PORT` changes it.
 
 A VCA service never needs a DPG rebuild.
 A DPG upgrade is a version change in one file.
@@ -481,7 +502,7 @@ A later run keeps that time.
 |---|---|
 | `deploy/waltid/.env` | `WALTID_DB_PASSWORD` and the four `WALTID_WALLET_*` keys |
 | `deploy/inji/.env` | `INJI_DB_PASSWORD`, `INJI_CERTIFY_KEYSTORE_PASSWORD`, `INJI_ESIGNET_DB_PASSWORD`, `INJI_MIMOTO_DB_PASSWORD`, `INJI_MIMOTO_KEYSTORE_PASSWORD`, `INJI_VERIFY_DB_PASSWORD` |
-| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED` |
+| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED`, `CREDEBL_AGENT_WALLET_KEY`, `CREDEBL_AGENT_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`, `CREDEBL_SCHEMA_FILE_SERVER_TOKEN` |
 
 A database volume keeps the password of its first start.
 If you remove a stack `.env`, remove the volumes of that stack too.
@@ -492,9 +513,12 @@ A CREDEBL issuer, holder or verifier pair needs
 `VCA_CREDEBL_PLATFORM_ADMIN_EMAIL` (ADR-055 decision 4).
 It has no default, so setup stops without it.
 Setup writes it as `PLATFORM_ADMIN_EMAIL` into `deploy/credebl/.env`.
-The API gateway and the agent provisioning read that file.
+Every platform service reads that file.
 `vca dpg bootstrap credebl` initialises the CREDEBL database once.
-It then signs in as that platform admin.
+It runs the initialisation image of the release in the profile `credebl-init` for that.
+No pair names the profile, so `docker compose up` never starts it.
+The run then signs in as that platform admin.
+It encrypts the password with `CRYPTO_PRIVATE_KEY`, as the platform expects.
 Set `VCA_BOOTSTRAP_ADMIN_PASSWORD` to the password of the platform admin
 for that run.
 
@@ -949,20 +973,21 @@ Your value always wins over the default.
 ## The resource floor
 
 One role with one DPG stays under 4 GB of memory (ADR-008 decision 7).
-The Inji issuer is the exception (ADR-049).
+The Inji issuer is one exception (ADR-049).
+Every CREDEBL role that calls the platform is the other (ADR-045).
 The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 
 | Role and DPG | VCA services | VCA memory | DPG memory | Total memory | CPUs |
 |---|---|---|---|---|---|
 | `issuer-waltid` | 9 | 864 MiB | 2048 MiB | 2912 MiB | 3.25 |
 | `issuer-inji` | 9 | 864 MiB | 4000 MiB | 4864 MiB | 3.25 |
-| `issuer-credebl` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
+| `issuer-credebl` | 9 | 864 MiB | 5184 MiB | 6048 MiB | 3.25 |
 | `holder-waltid` | 3 | 288 MiB | 2048 MiB | 2336 MiB | 1.75 |
 | `holder-inji` | 3 | 288 MiB | 3584 MiB | 3872 MiB | 1.75 |
-| `holder-credebl` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
+| `holder-credebl` | 3 | 288 MiB | 5184 MiB | 5472 MiB | 1.75 |
 | `verifier-waltid` | 7 | 672 MiB | 2048 MiB | 2720 MiB | 2.75 |
 | `verifier-inji` | 7 | 672 MiB | 2560 MiB | 3232 MiB | 2.75 |
-| `verifier-credebl` | 7 | 672 MiB | 2560 MiB | 3232 MiB | 2.75 |
+| `verifier-credebl` | 7 | 672 MiB | 5184 MiB | 5856 MiB | 2.75 |
 | `admin-waltid` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 | `admin-inji` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 | `admin-credebl` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
@@ -971,9 +996,9 @@ One stack is the four roles of one DPG together:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 4064 MiB | 7040 MiB | 4576 MiB |
+| `--all --dpg <dpg>` | 4064 MiB | 7040 MiB | 7200 MiB |
 
-`--all` alone starts every role of every DPG and needs 15680 MiB.
+`--all` alone starts every role of every DPG and needs 18304 MiB.
 The four roles of one DPG share one DPG stack and one Keycloak, so a
 stack counts once.
 
@@ -992,6 +1017,14 @@ It also runs the second Certify, which takes the tokens of the holder authorizat
 Certify 0.14.0 takes the tokens of one authorization server only, so the stack runs it twice (ADR-049).
 So the `issuer-inji` pair needs more than the 4 GB target of ADR-008 decision 7.
 `vca doctor` marks it in the floor report.
+The CREDEBL figure is the sum of the services of `dpg/credebl.yaml`.
+Keycloak takes 512 MiB, PostgreSQL 256 MiB, NATS 64 MiB, Redis 64 MiB.
+The schema file server takes 128 MiB and the API gateway 384 MiB.
+Each of the 17 other platform services takes 192 MiB.
+The shared Credo agent takes 512 MiB.
+So every CREDEBL pair except the admin needs more than the 4 GB target (ADR-045 consequence 2).
+These figures are estimates until the nightly run measures the stack.
+`vca doctor` marks those pairs in the floor report.
 eSignet runs only with an authenticator (ADR-053).
 It adds 1024 MiB to an Inji issuer or holder: eSignet, its Postgres, its Redis, and its login page.
 The floor report of `vca doctor` shows both floors of those pairs.

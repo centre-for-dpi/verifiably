@@ -49,13 +49,15 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Features | `FEATURE_CREDENTIAL_CONFIG_API` |
 | DID methods | None. The organisation of the platform holds the issuer DID. |
 | Status mechanisms | None. The platform embeds no status entry of VCA. |
-| DPG information | The platform name, the image tag, the api gateway, agent provisioning, and Keycloak |
+| DPG information | The platform name, `main at 2026-09-26` with the digest of the api gateway, every platform service, the shared Credo agent, and Keycloak |
 
 Each component carries its pinned version, its repository, its
-documentation, and its licence. CREDEBL publishes no version tag, so
-the default version is the image tag `latest` of the stack file. A
-test binds the defaults to the stack file. A page shows a feature on
-this stack only when the answer lists it (ADR-034).
+documentation, and its licence. CREDEBL publishes from its main branch.
+The stack file pins each image by the digest that `latest` named on
+2026-09-26, beside the release tag of that image. A component shows the
+tag and the first twelve digits of the digest. A test binds the adapter
+to the stack file. A page shows a feature on this stack only when the
+answer lists it (ADR-034).
 
 CREDEBL is the only one of the three DPGs that reads DCQL.
 

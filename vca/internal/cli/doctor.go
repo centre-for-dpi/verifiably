@@ -232,7 +232,7 @@ func FloorReport(pairs []Pair) string {
 	for _, p := range pairs {
 		note := ""
 		if AboveFloorTarget(p) {
-			note = fmt.Sprintf("  above the %d MiB target (ADR-049)", FloorTargetMiB)
+			note = fmt.Sprintf("  above the %d MiB target (%s)", FloorTargetMiB, floorTargetRecord(p))
 		}
 		fmt.Fprintf(&b, "  %-18s %5d MiB%s\n", p.Name(), MemoryFloorMiB(p), note)
 		if with := EsignetFloorMiB(p); with > 0 {

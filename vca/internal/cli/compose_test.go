@@ -225,8 +225,11 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 			// (P6-I7f).
 			"mosipid/oidc-ui:1.5.1",
 		},
-		"dpg/credebl.yaml": {"quay.io/keycloak/keycloak:25.0"},
+		// CREDEBL publishes from main. The platform images carry the
+		// digest of the day (open question G.5, P6-C0).
+		"dpg/credebl.yaml": {"quay.io/keycloak/keycloak:25.0", "postgres:16.4-alpine", "nats:2.10.22-alpine", "redis:7.4.1-alpine"},
 	}
+	digestRe := regexp.MustCompile(`^ghcr\.io/credebl/[a-z0-9-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$`)
 	for name, images := range wantImages {
 		path := filepath.Join(repoRoot(), "deploy", "vca", name)
 		data, err := os.ReadFile(path) // #nosec G304 -- a fixed test path
@@ -255,6 +258,9 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 			if strings.HasSuffix(svc.Image, ":latest") && !strings.Contains(svc.Image, "${") {
 				t.Errorf("%s: %s image %q is not pinned", name, svcName, svc.Image)
 			}
+			if strings.HasPrefix(svc.Image, "ghcr.io/credebl/") && !digestRe.MatchString(svc.Image) {
+				t.Errorf("%s: %s image %q is not pinned by digest", name, svcName, svc.Image)
+			}
 			if len(svc.Profiles) == 0 {
 				t.Errorf("%s: %s has no profile", name, svcName)
 			}
@@ -268,6 +274,11 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 }
 
 func knownProfile(name string) bool {
+	if name == PlatformInitProfile {
+		// The CREDEBL initialisation runs once through vca dpg
+		// bootstrap credebl (P6-C0).
+		return true
+	}
 	if name == EsignetProfile {
 		// eSignet runs only when the pair names an authenticator
 		// (ADR-053 decision 1).

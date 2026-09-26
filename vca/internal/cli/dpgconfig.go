@@ -494,7 +494,53 @@ const perServiceMemoryMiB = 96
 var dpgMemoryMiB = map[configv1.Dpg]int{
 	configv1.Dpg_DPG_WALTID:  2048,
 	configv1.Dpg_DPG_INJI:    2560,
-	configv1.Dpg_DPG_CREDEBL: 2560,
+	configv1.Dpg_DPG_CREDEBL: sumMiB(credeblServiceMemoryMiB),
+}
+
+// credeblServiceMemoryMiB is the memory of each service of the CREDEBL
+// stack file, which runs the whole platform (ADR-045 decision 4). Each
+// NestJS service of the platform is one Node.js process that holds a
+// NATS client and a Prisma client, so it gets 192 MiB. The api gateway
+// also holds the HTTP server and the socket server, so it gets 384 MiB.
+// The shared Credo agent holds every tenant wallet and the Indy ledger
+// pools, so it gets 512 MiB. The initialisation runs once and exits, so
+// it has no figure. These are estimates until the nightly run measures
+// the stack (open question G.11). The sum passes the 4096 MiB target of
+// ADR-008 decision 7 on its own (ADR-045 consequence 2).
+var credeblServiceMemoryMiB = map[string]int{
+	"credebl-keycloak":            keycloakMemoryMiB,
+	"credebl-postgres":            256,
+	"credebl-nats":                64,
+	"credebl-redis":               64,
+	"credebl-schema-file-server":  128,
+	"credebl-api-gateway":         384,
+	"credebl-user":                192,
+	"credebl-utility":             192,
+	"credebl-connection":          192,
+	"credebl-issuance":            192,
+	"credebl-ledger":              192,
+	"credebl-organization":        192,
+	"credebl-verification":        192,
+	"credebl-agent-provisioning":  192,
+	"credebl-agent-service":       192,
+	"credebl-cloud-wallet":        192,
+	"credebl-geolocation":         192,
+	"credebl-notification":        192,
+	"credebl-webhook":             192,
+	"credebl-ecosystem":           192,
+	"credebl-oid4vc-issuance":     192,
+	"credebl-oid4vc-verification": 192,
+	"credebl-x509":                192,
+	"credebl-agent":               512,
+}
+
+// sumMiB adds the figures of a memory table.
+func sumMiB(table map[string]int) int {
+	total := 0
+	for _, mib := range table {
+		total += mib
+	}
+	return total
 }
 
 // dpgRoleMemoryMiB is the memory that one role adds to the floor of its
@@ -533,16 +579,27 @@ func EsignetFloorMiB(p Pair) int {
 // (ADR-008 decision 7).
 const FloorTargetMiB = 4096
 
-// floorAboveTarget lists the pairs whose floor rises above the target.
-// ADR-049 names them: the Inji issuer runs Certify twice. The Inji
-// holder stays under the target without eSignet (ADR-053).
-var floorAboveTarget = map[configv1.Dpg]map[commonv1.Role]bool{
-	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_ISSUER: true},
+// floorAboveTarget lists the pairs whose floor rises above the target,
+// with the record that lets it. ADR-049: the Inji issuer runs Certify
+// twice. The Inji holder stays under the target without eSignet
+// (ADR-053). ADR-045 consequence 2: every CREDEBL role that calls the
+// platform runs the whole platform. The admin role starts Keycloak only.
+var floorAboveTarget = map[configv1.Dpg]map[commonv1.Role]string{
+	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_ISSUER: "ADR-049"},
+	configv1.Dpg_DPG_CREDEBL: {
+		commonv1.Role_ROLE_ISSUER:   "ADR-045",
+		commonv1.Role_ROLE_HOLDER:   "ADR-045",
+		commonv1.Role_ROLE_VERIFIER: "ADR-045",
+	},
 }
 
-// AboveFloorTarget reports a pair whose floor ADR-049 lets rise above
+// AboveFloorTarget reports a pair whose floor a record lets rise above
 // FloorTargetMiB.
-func AboveFloorTarget(p Pair) bool { return floorAboveTarget[p.Dpg][p.Role] }
+func AboveFloorTarget(p Pair) bool { return floorAboveTarget[p.Dpg][p.Role] != "" }
+
+// floorTargetRecord names the record that lets the floor of a pair rise
+// above FloorTargetMiB, or "" for a pair under the target.
+func floorTargetRecord(p Pair) string { return floorAboveTarget[p.Dpg][p.Role] }
 
 // keycloakMemoryMiB is the memory floor of the Keycloak of one stack.
 const keycloakMemoryMiB = 512

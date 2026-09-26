@@ -1,0 +1,35 @@
+{
+  "walletType": "postgres",
+  "walletScheme": "ProfilePerWallet",
+  "indyLedger": [
+    {
+      "genesisTransactions": "https://raw.githubusercontent.com/bcgov/von-network/main/BCovrin/genesis_test",
+      "indyNamespace": "bcovrin:testnet"
+    },
+    {
+      "genesisTransactions": "https://raw.githubusercontent.com/Indicio-tech/indicio-network/main/genesis_files/pool_transactions_testnet_genesis",
+      "indyNamespace": "indicio:testnet"
+    },
+    {
+      "genesisTransactions": "https://raw.githubusercontent.com/Indicio-tech/indicio-network/main/genesis_files/pool_transactions_demonet_genesis",
+      "indyNamespace": "indicio:demonet"
+    },
+    {
+      "genesisTransactions": "https://raw.githubusercontent.com/Indicio-tech/indicio-network/main/genesis_files/pool_transactions_mainnet_genesis",
+      "indyNamespace": "indicio:mainnet"
+    }
+  ],
+  "autoAcceptConnections": true,
+  "autoAcceptCredentials": "contentApproved",
+  "autoAcceptProofs": "contentApproved",
+  "logLevel": 2,
+  "inboundTransport": [
+    {
+      "transport": "http",
+      "port": 9001
+    }
+  ],
+  "outboundTransport": ["http"],
+  "adminPort": 8001,
+  "tenancy": true
+}

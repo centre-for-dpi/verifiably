@@ -17,6 +17,7 @@ import (
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/credebl"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/fake"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/service"
@@ -27,6 +28,9 @@ import (
 const testdata = "../../testdata"
 
 // newService starts the fake and returns the service under test.
+// testDpgVersion is the release the stack file pins (open question G.5).
+const testDpgVersion = "main at 2026-09-26, sha256:c6c203ffe437"
+
 func newService(t *testing.T, change func(*service.Options)) (*service.Service, *fake.Server) {
 	t.Helper()
 	f := fake.New(testdata)
@@ -42,8 +46,8 @@ func newService(t *testing.T, change func(*service.Options)) (*service.Service, 
 	opts := service.Options{
 		Client:      client,
 		Store:       store.Memory(),
-		DpgVersion:  "latest",
-		Versions:    map[string]string{"api-gateway": "latest", "agent-provisioning": "latest", "keycloak": "25.0"},
+		DpgVersion:  testDpgVersion,
+		Versions:    config.Config{KeycloakVersion: "25.0"}.Versions(),
 		PublicURL:   "https://credebl.example.org",
 		InternalURL: "http://credebl-agent:8001",
 		DefaultPin:  "0000",
@@ -96,7 +100,7 @@ func TestGetCapabilitiesReportsTheDcqlSupport(t *testing.T) {
 		t.Fatalf("GetCapabilities: %v", err)
 	}
 	msg := resp.Msg
-	if msg.GetAdapter() != service.AdapterName || msg.GetDpgVersion() != "latest" {
+	if msg.GetAdapter() != service.AdapterName || msg.GetDpgVersion() != testDpgVersion {
 		t.Fatalf("adapter %q version %q", msg.GetAdapter(), msg.GetDpgVersion())
 	}
 	if !hasProtocol(msg.GetProtocols(), backendv1.Protocol_PROTOCOL_OID4VP_DCQL) {
@@ -485,7 +489,7 @@ func TestCapabilitiesCarryDpgInfo(t *testing.T) {
 		t.Fatalf("GetCapabilities: %v", err)
 	}
 	info := resp.Msg.GetDpgInfo()
-	if info.GetDisplayName() == "" || info.GetVersion() != "latest" {
+	if info.GetDisplayName() == "" || info.GetVersion() != testDpgVersion {
 		t.Fatalf("dpg info = %v", info)
 	}
 	seen := map[string]string{}
@@ -503,11 +507,19 @@ func TestCapabilitiesCarryDpgInfo(t *testing.T) {
 		}
 		seen[c.GetName()] = c.GetVersion()
 	}
-	want := map[string]string{"api-gateway": "latest", "agent-provisioning": "latest", "keycloak": "25.0"}
+	// Every platform service, the shared agent and the identity
+	// provider carry the reference the stack file pins (P6-C0).
+	want := config.Config{KeycloakVersion: "25.0"}.Versions()
+	if len(seen) != len(want) {
+		t.Errorf("components = %v, want %v", seen, want)
+	}
 	for name, version := range want {
 		if seen[name] != version {
 			t.Errorf("component %s = %q, want %q", name, seen[name], version)
 		}
+	}
+	if seen["api-gateway"] != "v2.1.3-hotfix.2@sha256:c6c203ffe437" {
+		t.Errorf("api-gateway = %q", seen["api-gateway"])
 	}
 	if len(resp.Msg.GetStatusMechanisms()) != 0 || len(resp.Msg.GetDidMethods()) != 0 {
 		t.Errorf("the adapter embeds no status entry and manages no DID today: %v", resp.Msg)

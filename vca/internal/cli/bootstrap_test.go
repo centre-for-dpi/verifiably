@@ -569,13 +569,54 @@ func TestBootstrapInjiReportsAnUnexpectedStatus(t *testing.T) {
 type credeblState struct {
 	orgs    []string
 	created int
+	// signin is the body of the last sign in.
+	signin map[string]string
+	// noPlatform leaves out the platform admin organisation that the
+	// database initialisation of the release makes.
+	noPlatform bool
+	// configured holds the body of each agent configuration by
+	// organisation. A second configuration of one organisation gets the
+	// status conflict, as the platform answers.
+	configured map[string]map[string]string
+	// wallets holds the body of each shared agent wallet by
+	// organisation, with the same conflict rule.
+	wallets map[string]map[string]string
 }
+
+// credeblPlatformOrgID is the id of the platform admin organisation of
+// the fake.
+const credeblPlatformOrgID = "platform-org"
 
 func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 	t.Helper()
+	if state.configured == nil {
+		state.configured = map[string]map[string]string{}
+	}
+	if state.wallets == nil {
+		state.wallets = map[string]map[string]string{}
+	}
+	// record reads one agent call into the map of its organisation. A
+	// second call for one organisation gets the status conflict.
+	record := func(w http.ResponseWriter, r *http.Request, into map[string]map[string]string, org string) {
+		if _, done := into[org]; done {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode %s: %v", r.URL.Path, err)
+		}
+		into[org] = body
+		w.WriteHeader(http.StatusCreated)
+		anyval.DiscardWrite(io.WriteString(w, `{"data":{}}`))
+	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		switch {
 		case r.URL.Path == "/v1/auth/signin":
+			if err := json.NewDecoder(r.Body).Decode(&state.signin); err != nil {
+				t.Errorf("decode the sign in: %v", err)
+			}
 			_, errAssign := io.WriteString(w, `{"data":{"access_token":"a-token"}}`)
 			if errAssign != nil {
 				t.Fatalf("io.WriteString: %v", errAssign)
@@ -586,8 +627,11 @@ func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 					Organizations []credeblOrg `json:"organizations"`
 				} `json:"data"`
 			}{}
+			if !state.noPlatform {
+				out.Data.Organizations = append(out.Data.Organizations, credeblOrg{ID: credeblPlatformOrgID, Name: PlatformOrgName})
+			}
 			for _, name := range state.orgs {
-				out.Data.Organizations = append(out.Data.Organizations, credeblOrg{ID: name, Name: name})
+				out.Data.Organizations = append(out.Data.Organizations, credeblOrg{ID: "id-" + name, Name: name})
 			}
 			if err := json.NewEncoder(w).Encode(out); err != nil {
 				t.Fatalf("json.NewEncoder: %v", err)
@@ -600,10 +644,14 @@ func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 			state.orgs = append(state.orgs, body["name"])
 			state.created++
 			w.WriteHeader(http.StatusCreated)
-			_, errAssign2 := io.WriteString(w, `{"data":{"id":"1"}}`)
+			_, errAssign2 := io.WriteString(w, `{"data":{"id":"id-`+body["name"]+`"}}`)
 			if errAssign2 != nil {
 				t.Fatalf("io.WriteString: %v", errAssign2)
 			}
+		case len(parts) == 5 && parts[1] == "orgs" && parts[3] == "agents" && parts[4] == "configure" && r.Method == http.MethodPost:
+			record(w, r, state.configured, parts[2])
+		case len(parts) == 5 && parts[1] == "orgs" && parts[3] == "agents" && parts[4] == "wallet" && r.Method == http.MethodPost:
+			record(w, r, state.wallets, parts[2])
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -697,8 +745,7 @@ func TestBootstrapCredeblRunsTheSeedOnce(t *testing.T) {
 		t.Fatalf("runs = %v, want one seed", runs)
 	}
 	cmd := strings.Join(runs[0], " ")
-	for _, want := range []string{"docker compose", "--profile issuer-credebl", "run --rm credebl-api-gateway",
-		"sh -c cd libs/prisma-service && npx prisma db seed"} {
+	for _, want := range []string{"docker compose", "--profile issuer-credebl", "--profile credebl-init run --rm credebl-seed"} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("the seed command %q lacks %q", cmd, want)
 		}

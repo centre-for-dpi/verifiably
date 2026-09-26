@@ -110,8 +110,8 @@ Use --all --dpg <dpg> for one stack (<n> MiB) or --role admin --dpg <dpg> for on
 ```
 
 The hint names the largest DPG that fits and the memory it needs.
-One stack needs 3968 MiB with `waltid` and 4480 MiB with `inji` or
-`credebl`. One admin pair needs 704 MiB with any DPG.
+One stack needs 4064 MiB with `waltid`, 7040 MiB with `inji`, and
+7200 MiB with `credebl`. One admin pair needs 704 MiB with any DPG.
 `vca doctor --suggest` prints the selection that fits the free memory of
 this host, with the two commands that start it.
 
@@ -283,6 +283,11 @@ It holds the database and key store passwords of the stack file
 (ADR-055 decision 1). The CREDEBL file also holds the platform admin of
 `VCA_CREDEBL_PLATFORM_ADMIN_EMAIL`, and the generated
 `CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD` and `PLATFORM_SEED`.
+It holds the wallet key and the API key of the shared Credo agent,
+`CREDEBL_AGENT_WALLET_KEY` and `CREDEBL_AGENT_API_KEY`. It holds the
+secret of the schema file server, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`.
+Setup signs the upload token of the platform with it, into
+`CREDEBL_SCHEMA_FILE_SERVER_TOKEN`.
 Every CREDEBL pair but the admin one needs the email. It has no
 default. Each has 32 random letters and digits. A later run keeps
 every value it finds. The main compose file includes every stack file.
@@ -409,7 +414,7 @@ A terminal run with no DPG name and no `--role` asks for both.
 |---|---|
 | `waltid` | Asks the walt.id adapter of the issuer pair for its identity. The adapter provisions a `did:web` of the host and a key, and keeps the key. |
 | `inji` | Creates or updates the realm of the role in Keycloak. An issuer or a holder pair with an eSignet authenticator then registers the VCA client in eSignet. The run adds no identity anywhere. |
-| `credebl` | Initialises the CREDEBL database once, signs in as the platform admin of setup, and creates the organisation of the deployment. |
+| `credebl` | Initialises the CREDEBL database once and signs in as the platform admin of setup. Creates the organisation of the deployment. Binds the shared agent and gives the organisation a wallet in it. |
 
 Each run checks first, so a second run changes nothing.
 The command reads the `.env` file of the pair.
@@ -473,9 +478,10 @@ credential come from the systems of the operator (ADR-050).
 
 The `credebl` run starts with the database initialisation of the
 CREDEBL release (ADR-055 decision 4). The API gateway runs the
-migrations only. So the run starts the initialisation script of the
-release once with `docker compose run` in the container of the API
-gateway. That container reads `deploy/credebl/.env`: the platform admin
+migrations only. So the run starts the initialisation image of the
+release once with `docker compose run`, in the profile `credebl-init`.
+The image of the API gateway lacks the tools of the script. That
+container reads `deploy/credebl/.env`: the platform admin
 `PLATFORM_ADMIN_EMAIL` and the generated secrets. The script makes the
 platform admin, the roles, the agent types and the ledgers. The file
 `deploy/credebl/initialised` records the run, so a later run skips it.
@@ -486,7 +492,20 @@ The run then signs in as the platform admin. The name comes from
 password comes from `VCA_BOOTSTRAP_ADMIN_PASSWORD` only. Set it to the
 password that the platform admin has in the Keycloak of CREDEBL. No
 default user and no default password exist. The run never signs in as
-the administrator of the Keycloak of the stack.
+the administrator of the Keycloak of the stack. The platform decrypts
+the password of a sign in with `CRYPTO_PRIVATE_KEY`, so the run sends
+it encrypted with that key.
+
+The run then creates the organisation of the deployment when it is
+missing. It binds the shared Credo agent of the stack file to the
+organisation `Platform-admin` that the initialisation made. It calls
+`POST /v1/orgs/{org}/agents/configure` with the address
+`http://credebl-agent.vca.internal:8001` and `CREDEBL_AGENT_API_KEY`.
+`VCA_CREDEBL_AGENT_ADMIN_URL` changes the address. It then gives the
+organisation of the deployment a wallet in the shared agent with
+`POST /v1/orgs/{org}/agents/wallet`. The platform answers a second
+binding and a second wallet with the status conflict. The run then
+reports each as present.
 
 Seven more variables steer the run:
 

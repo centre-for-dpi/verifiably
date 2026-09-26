@@ -119,9 +119,9 @@ One pair needs 704 MiB to 3424 MiB of free memory:
 
 | Role | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `issuer` | 2912 MiB | 3424 MiB | 3424 MiB |
-| `holder` | 2336 MiB | 2848 MiB | 2848 MiB |
-| `verifier` | 2720 MiB | 3232 MiB | 3232 MiB |
+| `issuer` | 2912 MiB | 4864 MiB | 6048 MiB |
+| `holder` | 2336 MiB | 3872 MiB | 5472 MiB |
+| `verifier` | 2720 MiB | 3232 MiB | 5856 MiB |
 | `admin` | 704 MiB | 704 MiB | 704 MiB |
 
 `docs/deploy.md` holds the full table.
@@ -132,9 +132,9 @@ One pair needs 704 MiB to 3424 MiB of free memory:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 3968 MiB | 4480 MiB | 4480 MiB |
+| `--all --dpg <dpg>` | 4064 MiB | 7040 MiB | 7200 MiB |
 
-`--all` alone starts every role of every DPG and needs 12928 MiB.
+`--all` alone starts every role of every DPG and needs 18304 MiB.
 The four roles of one DPG share one DPG stack and one Keycloak, so a
 stack counts once.
 

@@ -32,7 +32,7 @@ func TestLoadFillsTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Listen != ":8080" || cfg.DpgVersion != "latest" {
+	if cfg.Listen != ":8080" || cfg.DpgVersion != "main at 2026-09-26, sha256:c6c203ffe437" {
 		t.Fatalf("config = %+v", cfg)
 	}
 	if cfg.VerifierName != "verifiable-credentials-adapters" {
@@ -117,35 +117,49 @@ func TestDescribeMarksTheSecrets(t *testing.T) {
 }
 
 // TestDefaultVersionsMatchTheStackFile binds the versions the capability
-// answer reports to the image tags of the stack file, so a bump of one
-// without the other fails here (ADR-034 decision 4). CREDEBL publishes
-// no version tag, so the tag is the default of CREDEBL_VERSION until a
-// digest pins it.
+// answer reports to the image references of the stack file, so a bump
+// of one without the other fails here (ADR-034 decision 4). CREDEBL
+// publishes from main, so each platform image carries the digest of the
+// day the stack file pinned it (open question G.5).
 func TestDefaultVersionsMatchTheStackFile(t *testing.T) {
 	cfg, err := config.Load(env(required()))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	tags := stackImageTags(t, "../../../../../deploy/vca/dpg/credebl.yaml")
+	refs := stackImageRefs(t, "../../../../../deploy/vca/dpg/credebl.yaml")
 	versions := cfg.Versions()
-	if len(versions) < 3 {
-		t.Fatalf("versions = %v, want the platform services and the identity provider", versions)
+	if len(versions) < 20 {
+		t.Fatalf("versions = %v, want every platform service, the agent and the identity provider", versions)
 	}
 	for name, version := range versions {
-		tag, ok := tags["credebl-"+name]
+		ref, ok := refs["credebl-"+name]
 		if !ok {
 			t.Errorf("the stack file runs no service credebl-%s", name)
 			continue
 		}
-		if tag != version {
-			t.Errorf("%s: the answer says %s but the stack file runs %s", name, version, tag)
+		if config.ShortRef(ref) != version {
+			t.Errorf("%s: the answer says %s but the stack file runs %s", name, version, ref)
 		}
+	}
+	for name, ref := range config.Images {
+		if refs["credebl-"+name] != ref {
+			t.Errorf("%s: the adapter pins %s but the stack file runs %s", name, ref, refs["credebl-"+name])
+		}
+	}
+	// The release names the day and the digest of the api gateway.
+	_, digest, _ := strings.Cut(config.Images["api-gateway"], "@")
+	if want := "main at 2026-09-26, " + digest[:len("sha256:")+12]; cfg.DpgVersion != want {
+		t.Errorf("DpgVersion = %q, want %q", cfg.DpgVersion, want)
+	}
+	if config.ShortRef("25.0") != "25.0" || config.ShortRef("v1@sha256:abc") != "v1@sha256:abc" {
+		t.Error("ShortRef changed a reference with no full digest")
 	}
 }
 
-// stackImageTags reads the image tag of every service of a compose file.
-// A tag of the form ${NAME:-default} resolves to its default.
-func stackImageTags(t *testing.T, path string) map[string]string {
+// stackImageRefs reads the image reference after the repository of
+// every service of a compose file: the tag, and the digest when the file
+// pins one.
+func stackImageRefs(t *testing.T, path string) map[string]string {
 	t.Helper()
 	raw, err := os.ReadFile(path) //nolint:gosec // G304: the path is a test constant
 	if err != nil {
@@ -160,14 +174,8 @@ func stackImageTags(t *testing.T, path string) map[string]string {
 			service = strings.TrimSuffix(trimmed, ":")
 		case strings.HasPrefix(trimmed, "image:") && service != "":
 			image := strings.TrimSpace(strings.TrimPrefix(trimmed, "image:"))
-			tag := image[strings.LastIndex(image, ":")+1:]
-			if strings.HasPrefix(image[strings.Index(image, ":")+1:], "${") {
-				tag = image[strings.Index(image, ":")+1:]
-			}
-			if strings.HasPrefix(tag, "${") {
-				tag = strings.TrimSuffix(tag[strings.Index(tag, ":-")+2:], "}")
-			}
-			out[service] = tag
+			slash := strings.LastIndex(image, "/")
+			out[service] = image[slash+1+strings.Index(image[slash+1:], ":")+1:]
 		}
 	}
 	return out
