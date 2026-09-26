@@ -385,9 +385,9 @@ that P6-I7b builds.
    an authorization code flow of its own client in the browser. The
    VCA wallet links the holder to Inji Web for a claim, and the
    credential then shows in the list.
-6. The operator points the token login of Mimoto at the identity
-   provider of the holder realm. Without that setting Mimoto refuses
-   the token, `Register` fails, and the wallet keeps the browser store.
+6. The stack file points the token login of Mimoto at the holder realm
+   of the stack Keycloak. Without that setting Mimoto refuses the
+   token, `Register` fails, and the wallet keeps the browser store.
 
 ### What P6-I7b built
 
@@ -408,6 +408,22 @@ It keeps the browser store for what Mimoto does not do. A credential
 that the holder loads from a file or a paste stays in the browser store.
 For an offer, a link sends the holder to Inji Web to claim into the
 stack.
+
+### The stack that runs Mimoto
+
+The `holder-inji` profile of `deploy/vca/dpg/inji.yaml` runs Mimoto
+0.21.0 with what it needs (P6-I7d). The files sit in
+`deploy/vca/dpg/inji/mimoto/`, and their `SOURCE.md` names the upstream
+files.
+
+| Need | How the stack meets it |
+| --- | --- |
+| Database | A Postgres of its own, prepared by `mimoto_init.sql` of the release |
+| Sessions | A Redis, as `application-default.properties` of the release sets it |
+| Token login | The provider `google` trusts `vca-holder-realm` of the stack Keycloak, the client `vca-holder`, and the key set of that realm |
+| Browser login | Inji Web signs the holder in through the same realm and client |
+| eSignet | `mosip.esignet.host` and the issuer list name the eSignet of the stack. `vca dpg bootstrap` writes the key of `vca-inji` into the client key store. |
+| Inji Web | Port 3004. It serves the issuer list to Mimoto and sends `/v1/mimoto/` to it. |
 
 ## The paper document channel
 

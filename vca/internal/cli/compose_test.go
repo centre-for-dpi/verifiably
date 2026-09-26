@@ -207,6 +207,10 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 			"injistack/inji-certify-with-plugins:0.14.0",
 			"mosipid/esignet-with-plugins:1.5.1",
 			"quay.io/keycloak/keycloak:25.0",
+			// The holder part: Mimoto 0.21.0 and Inji Web 0.16.0 with the
+			// database and the session store Mimoto needs (P6-I7d).
+			"injistack/mimoto:0.21.0", "injistack/inji-web:0.16.0",
+			"image: postgres:15.8\n", "redis:7.4.1-alpine",
 		},
 		"dpg/credebl.yaml": {"quay.io/keycloak/keycloak:25.0"},
 	}

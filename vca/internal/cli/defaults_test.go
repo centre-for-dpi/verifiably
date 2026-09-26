@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // stackFile reads the compose file of one DPG stack.
@@ -309,5 +310,30 @@ func TestBuildPlanDerivesTheOidcPublicURLFromThePublicURL(t *testing.T) {
 	}
 	if got := Values(plan.Resolutions)["VCA_OIDC_PUBLIC_URL"]; got != "https://idp.example" {
 		t.Errorf("a given value lost: %q", got)
+	}
+}
+
+// TestDpgHostPortsOfTheInjiHolderNameInjiWeb: the holder pair of the
+// Inji stack needs the host port of Inji Web too, because the browser
+// of the holder claims there (P6-I7d). Inji Web 0.16.0 listens on 3004.
+func TestDpgHostPortsOfTheInjiHolderNameInjiWeb(t *testing.T) {
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
+	ports := DpgHostPorts(holder)
+	if len(ports) != 2 {
+		t.Fatalf("got %+v", ports)
+	}
+	if ports[0].Container != "inji-keycloak" || ports[0].Port != 8080 {
+		t.Errorf("port 0 = %+v", ports[0])
+	}
+	web := ports[1]
+	if web.Container != "inji-web" || web.Host != 17085 || web.Port != 3004 || web.Env != "INJI_WEB_HOST_PORT" {
+		t.Errorf("port 1 = %+v", web)
+	}
+	if DefaultInjiWebURL != "http://localhost:17085" {
+		t.Errorf("DefaultInjiWebURL = %q", DefaultInjiWebURL)
+	}
+	issuer := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
+	if len(DpgHostPorts(issuer)) != 1 {
+		t.Error("the Inji issuer pair names the Inji Web port")
 	}
 }

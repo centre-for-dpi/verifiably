@@ -398,6 +398,15 @@ run adds the redirect URI of its pair with a `PUT`. The file
 names the client, the key file, and the eSignet issuer. The provider
 form of the admin portal takes them.
 
+The holder run also adds the redirect page of Inji Web,
+`http://localhost:17085/redirect` or `VCA_INJI_WEB_URL` with
+`/redirect`. It writes the same key into
+`deploy/mimoto-inji/oidckeystore.p12` under the alias `vca-inji`.
+Mimoto signs its eSignet token call with that key when a holder claims
+in Inji Web. The password sits in `deploy/mimoto-inji/.env`. Both files
+have mode 0600, and a later run keeps the password. Run `vca deploy`
+again afterwards, so Mimoto reads the password.
+
 The run reaches eSignet at `http://127.0.0.1` and
 `INJI_ESIGNET_HOST_PORT`, or 17082. An eSignet whose client API needs a
 token answers 401. The run then names `VCA_BOOTSTRAP_ESIGNET_TOKEN`.

@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // fakeProbe answers the doctor checks from fields, so a test needs no
@@ -180,6 +183,8 @@ func TestMemoryFloorOfEveryPairMatchesTheDocument(t *testing.T) {
 	want := map[string]int{
 		"issuer-waltid": 2912, "issuer-inji": 3424, "holder-waltid": 2336,
 		"verifier-waltid": 2720, "admin-waltid": 704, "admin-inji": 704,
+		// Mimoto, its database and Redis, and Inji Web add 1024 MiB (P6-I7d).
+		"holder-inji": 3872,
 	}
 	for _, p := range AllPairs() {
 		if got, ok := want[p.Name()]; ok && MemoryFloorMiB(p) != got {
@@ -737,5 +742,25 @@ func TestFloorTableNamesTheLanding(t *testing.T) {
 	}
 	if !strings.Contains(string(doc), note) {
 		t.Errorf("docs/deploy.md does not hold the floor note:\n%s", note)
+	}
+}
+
+// TestDoctorChecksTheInjiWebPort: the Inji holder pair runs Inji Web on
+// host port 17085, where the browser of the holder claims (P6-I7d).
+// vca doctor reports a held port with the variable that moves it, and
+// counts the memory of Mimoto and Inji Web in the floor.
+func TestDoctorChecksTheInjiWebPort(t *testing.T) {
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
+	probe := healthyProbe()
+	probe.busyPorts = map[int]bool{17085: true}
+	var out strings.Builder
+	err := Doctor(DoctorOptions{Pairs: []Pair{holder}, Probe: probe, Out: &out})
+	if !errors.Is(err, ErrDoctorFailed) {
+		t.Fatalf("err = %v", err)
+	}
+	for _, want := range []string{"port 17085", "inji-web: another program holds it", "INJI_WEB_HOST_PORT", "holder-inji", "3872 MiB"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("the report lacks %q:\n%s", want, out.String())
+		}
 	}
 }

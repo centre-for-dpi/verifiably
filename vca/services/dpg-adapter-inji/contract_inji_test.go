@@ -471,12 +471,15 @@ func TestContractAuthCodeOfferNamesEsignet(t *testing.T) {
 // with the ID token of a login that the Mimoto token login trusts. It
 // lists the held credentials, reads the PDF of the first, and checks
 // that the list carries names only. It needs the Mimoto URL and a fresh
-// ID token.
+// ID token, or a test holder of the holder realm (holderIDToken).
 func TestContractHolderThroughMimoto(t *testing.T) {
 	mimoto := os.Getenv("VCA_INJI_CONTRACT_MIMOTO_URL")
-	token := os.Getenv("VCA_INJI_CONTRACT_ID_TOKEN")
-	if mimoto == "" || token == "" {
-		t.Skip("set VCA_INJI_CONTRACT_MIMOTO_URL and _ID_TOKEN to run the holder case")
+	if mimoto == "" {
+		t.Skip("set VCA_INJI_CONTRACT_MIMOTO_URL, and _ID_TOKEN or a test holder, to run the holder case")
+	}
+	token := holderIDToken(t)
+	if token == "" {
+		t.Skip("set VCA_INJI_CONTRACT_ID_TOKEN, or _HOLDER_USER, _HOLDER_PASSWORD, and _HOLDER_REDIRECT_URI, to run the holder case")
 	}
 	a, err := app.Build(config.Config{
 		MimotoURL: mimoto, MimotoProvider: envOr("VCA_INJI_CONTRACT_MIMOTO_PROVIDER", "google"),

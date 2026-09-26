@@ -187,6 +187,21 @@ The spike P6-I7a read these sources.
 - The session store, the Google registration, and the PIN rule:
   https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/resources/application-default.properties
 
+The stack file runs Mimoto and Inji Web from the deployment files of
+the releases (P6-I7d). `deploy/vca/dpg/inji/mimoto/SOURCE.md` lists
+each copied or derived file. These are the files it read:
+
+- https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/docker-compose.yml
+- https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/mimoto-default.properties
+- https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/mimoto-bootstrap.properties
+- https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/mimoto_init.sql
+- https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/config/JwtConfig.java
+- https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/docker-compose/docker-compose.yml
+- https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/docker-compose/README.md
+- https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/inji-web/nginx.conf
+- https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/inji-web/Dockerfile
+- https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/inji-web/src/utils/api.ts
+
 The holder role of P6-I7b replays these answers.
 
 | File | Source |

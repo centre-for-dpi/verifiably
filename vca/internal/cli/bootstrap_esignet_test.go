@@ -146,7 +146,10 @@ func TestBootstrapRegistersEsignetClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Bootstrap: %v", err)
 	}
-	if len(es.updates) != 1 || !sameList(es.updates[0]["redirectUris"], "https://issuer.example/auth/callback", "https://holder.example/auth/callback") {
+	// The holder run adds the redirect page of Inji Web, where Mimoto
+	// claims a credential with the same client (P6-I7d).
+	if len(es.updates) != 1 || !sameList(es.updates[0]["redirectUris"], "https://issuer.example/auth/callback",
+		"https://holder.example/auth/callback", DefaultInjiWebURL+"/redirect") {
 		t.Fatalf("updates = %v", es.updates)
 	}
 	second, err := os.ReadFile(path) // #nosec G304 -- a test path
@@ -242,4 +245,92 @@ func sameList(v any, want ...string) bool {
 		got = append(got, anyval.As[string](item))
 	}
 	return slices.Equal(got, want)
+}
+
+// TestBootstrapInjiHolderWritesTheMimotoKeystore: Mimoto signs the
+// client assertion of its eSignet token call with the key of the
+// client_alias of its issuer list, which it reads from
+// certs/oidckeystore.p12 (Mimoto 0.21.0, mosip.oidc.p12.*). The holder
+// run writes that key store with the key of the VCA client under the
+// alias vca-inji, and the password in the .env that the stack file
+// reads, both with mode 0600. A second run keeps the password and the
+// key. An issuer run writes no key store.
+func TestBootstrapInjiHolderWritesTheMimotoKeystore(t *testing.T) {
+	kc := &keycloakState{}
+	keycloak := fakeKeycloak(t, kc)
+	defer keycloak.Close()
+	var out bytes.Buffer
+	holder := injiRoleOptions(t, commonv1.Role_ROLE_HOLDER, keycloak.URL, &out)
+	holder.Values["VCA_INJI_WEB_URL"] = "https://wallet.example"
+	got, err := Bootstrap(context.Background(), holder)
+	if err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	dir := filepath.Join(filepath.Dir(holder.Dir), MimotoDir)
+	env := readMode0600(t, filepath.Join(dir, EnvFileName))
+	values, err := ParseDotenv(bytes.NewReader(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := values[MimotoKeystorePasswordEnv]
+	if len(password) < 32 {
+		t.Fatalf("the key store password = %q", password)
+	}
+	store := readMode0600(t, filepath.Join(dir, MimotoKeystoreFile))
+	alias, key, cert, err := decodeTestPKCS12(store, password)
+	if err != nil {
+		t.Fatalf("decode the key store: %v", err)
+	}
+	pemKey, err := os.ReadFile(filepath.Join(filepath.Dir(holder.Dir), EsignetDir, EsignetKeyFile)) // #nosec G304 -- a test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode(pemKey)
+	want, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias != EsignetClientID || !key.Equal(want) || !want.PublicKey.Equal(cert.PublicKey) {
+		t.Fatalf("the key store holds %q with another key", alias)
+	}
+	if !strings.Contains(strings.Join(got.Steps, "\n"), filepath.Join(dir, MimotoKeystoreFile)) {
+		t.Errorf("steps = %v", got.Steps)
+	}
+	ignore, gerr := os.ReadFile(filepath.Join(dir, ".gitignore")) // #nosec G304 -- a test path
+	if gerr != nil || string(ignore) != "*\n" {
+		t.Errorf("the key store directory is not ignored: %q %v", ignore, gerr)
+	}
+
+	if _, err = Bootstrap(context.Background(), holder); err != nil {
+		t.Fatalf("second Bootstrap: %v", err)
+	}
+	again, err := ParseDotenv(bytes.NewReader(readMode0600(t, filepath.Join(dir, EnvFileName))))
+	if err != nil || again[MimotoKeystorePasswordEnv] != password {
+		t.Fatalf("the second run changed the password: %v", err)
+	}
+	if _, key2, _, err := decodeTestPKCS12(readMode0600(t, filepath.Join(dir, MimotoKeystoreFile)), password); err != nil || !key2.Equal(want) {
+		t.Fatalf("the second key store: %v", err)
+	}
+
+	issuer := injiOptions(t, keycloak.URL, &out)
+	if _, err := Bootstrap(context.Background(), issuer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(issuer.Dir), MimotoDir)); !os.IsNotExist(err) {
+		t.Errorf("an issuer run wrote the Mimoto key store: %v", err)
+	}
+}
+
+// readMode0600 reads a file and checks that only its owner reads it.
+func readMode0600(t *testing.T, path string) []byte {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("%s: %v %v", path, info, err)
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- a test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

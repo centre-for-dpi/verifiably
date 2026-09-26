@@ -97,23 +97,114 @@ services:
     networks:
       - vca
 
+  # The holder part: Mimoto 0.21.0 and Inji Web 0.16.0 (P6-I7d). The
+  # layout follows docker-compose/docker-compose.yml of mosip/mimoto
+  # v0.21.0 and of mosip/inji-web v0.16.0, and dpg/inji/mimoto/SOURCE.md
+  # names every file. Mimoto keeps its data in a Postgres of its own,
+  # which the init script of the release prepares, and its sessions in
+  # Redis. Its token login provider "google" trusts the holder realm of
+  # the stack Keycloak, so the adapter opens the wallet of the holder
+  # with the ID token of the holder login.
+  inji-mimoto-postgres:
+    # The init script names the locale en_US.UTF-8, so the image is the
+    # Debian one.
+    image: postgres:15.8
+    profiles: [holder-inji]
+    container_name: inji-mimoto-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${INJI_MIMOTO_DB_PASSWORD:-mimoto}
+    volumes:
+      - inji-mimoto-db:/var/lib/postgresql/data
+      - ./dpg/inji/mimoto/mimoto_init.sql:/docker-entrypoint-initdb.d/mimoto_init.sql:ro
+    networks:
+      - vca
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inji_mimoto"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  inji-mimoto-redis:
+    image: redis:7.4.1-alpine
+    profiles: [holder-inji]
+    container_name: inji-mimoto-redis
+    restart: unless-stopped
+    volumes:
+      - inji-mimoto-redis:/data
+    networks:
+      - vca
+
   inji-mimoto:
     image: injistack/mimoto:0.21.0
     profiles: [holder-inji]
     container_name: inji-mimoto
     restart: unless-stopped
+    # The release runs as root in its own compose file and writes the
+    # key store of its key manager.
+    user: root
+    depends_on:
+      inji-mimoto-postgres:
+        condition: service_healthy
+      inji-mimoto-redis:
+        condition: service_started
+      inji-web:
+        condition: service_started
+    # vca dpg bootstrap inji --role holder writes the password of the
+    # client key store here. Mimoto starts without it, and a claim in
+    # Inji Web needs it.
+    env_file:
+      - path: ../mimoto-inji/.env
+        required: false
+    environment:
+      container_user: mosip
+      active_profile_env: default
+      SPRING_CONFIG_NAME: mimoto
+      SPRING_CONFIG_LOCATION: /home/mosip/
+      SPRING_CLOUD_BOOTSTRAP_LOCATION: /home/mosip/mimoto-bootstrap.properties
+      SPRING_DATASOURCE_URL: jdbc:postgresql://inji-mimoto-postgres:5432/inji_mimoto
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${INJI_MIMOTO_DB_PASSWORD:-mimoto}
+      MIMOTO_KEYMANAGER_PASSWORD: ${INJI_MIMOTO_KEYSTORE_PASSWORD:-mimoto}
+      # The browser reaches Mimoto through Inji Web, and the holder
+      # realm through the host port of the stack Keycloak.
+      INJI_WEB_PUBLIC_URL: ${INJI_WEB_PUBLIC_URL:-http://localhost:17085}
+      MIMOTO_HOLDER_LOGIN_URL: ${INJI_MIMOTO_HOLDER_LOGIN_URL:-http://localhost:17080}
+      MIMOTO_TOKEN_LOGIN_ISSUER: ${INJI_MIMOTO_TOKEN_LOGIN_ISSUER:-http://inji-keycloak:8080/realms/vca-holder-realm}
+      MIMOTO_TOKEN_LOGIN_CLIENT_ID: ${INJI_MIMOTO_TOKEN_LOGIN_CLIENT_ID:-vca-holder}
+    volumes:
+      - ./dpg/inji/mimoto/mimoto-default.properties:/home/mosip/mimoto-default.properties:ro
+      - ./dpg/inji/mimoto/mimoto-bootstrap.properties:/home/mosip/mimoto-bootstrap.properties:ro
+      - ./dpg/inji/mimoto/mimoto-issuers-config.json:/home/mosip/mimoto-issuers-config.json:ro
+      - ./dpg/inji/mimoto/mimoto-trusted-verifiers.json:/home/mosip/mimoto-trusted-verifiers.json:ro
+      - ../mimoto-inji:/home/mosip/certs:ro
+      - inji-mimoto-keys:/home/mosip/keymanager
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_MIMOTO_HOST_PORT:-17084}:8099"
     networks:
-      - vca
+      vca:
+        # The nginx file of Inji Web 0.16.0 sends /v1/mimoto/ to
+        # mimoto-service:8099.
+        aliases: [mimoto-service]
 
   inji-web:
     image: injistack/inji-web:0.16.0
     profiles: [holder-inji]
     container_name: inji-web
     restart: unless-stopped
+    environment:
+      DEFAULT_LANG: en
+      # The browser calls Mimoto on the address of Inji Web.
+      MIMOTO_URL: ${INJI_WEB_PUBLIC_URL:-http://localhost:17085}/v1/mimoto
+    volumes:
+      # Inji Web serves these files to the browser and to Mimoto, whose
+      # bootstrap properties name http://inji-web:3004/.
+      - ./dpg/inji/mimoto/mimoto-issuers-config.json:/home/mosip/mimoto-issuers-config.json:ro
+      - ./dpg/inji/mimoto/mimoto-trusted-verifiers.json:/home/mosip/mimoto-trusted-verifiers.json:ro
+      - ./dpg/inji/mimoto/credential-template.html:/home/mosip/credential-template.html:ro
     ports:
-      - "${VCA_BIND:-0.0.0.0}:${INJI_WEB_HOST_PORT:-17085}:3000"
+      - "${VCA_BIND:-0.0.0.0}:${INJI_WEB_HOST_PORT:-17085}:3004"
     networks:
       - vca
 
@@ -162,3 +253,6 @@ services:
 volumes:
   inji-certify-db:
   inji-verify-db:
+  inji-mimoto-db:
+  inji-mimoto-redis:
+  inji-mimoto-keys:

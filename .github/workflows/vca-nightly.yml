@@ -69,6 +69,11 @@ jobs:
           # Space separated DPG names, for example "waltid inji credebl esignet".
           # Empty until the first dpg-adapter service ships its compose file.
           VCA_CONTRACT_DPGS: ${{ vars.VCA_CONTRACT_DPGS }}
+          # The Inji holder case signs this test holder in at the holder
+          # realm and opens the Mimoto wallet (P6-I7d).
+          VCA_INJI_CONTRACT_HOLDER_USER: ${{ vars.VCA_INJI_CONTRACT_HOLDER_USER }}
+          VCA_INJI_CONTRACT_HOLDER_PASSWORD: ${{ secrets.VCA_INJI_CONTRACT_HOLDER_PASSWORD }}
+          VCA_INJI_CONTRACT_HOLDER_REDIRECT_URI: ${{ vars.VCA_INJI_CONTRACT_HOLDER_REDIRECT_URI }}
         run: ./hack/contract-tests.sh
 
   k8s:

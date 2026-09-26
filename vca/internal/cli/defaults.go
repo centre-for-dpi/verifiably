@@ -138,17 +138,24 @@ type DpgPort struct {
 	Host int
 	// Env is the compose variable that overrides the host port.
 	Env string
+	// Port is the port the container listens on.
+	Port int
 }
 
 // DpgHostPorts lists the host ports of the DPG stack of one pair that
 // the deployment itself needs. The Keycloak of the stack is one, because
-// a browser reaches the login page there.
+// a browser reaches the login page there. The Inji holder pair adds
+// Inji Web, where the browser of the holder claims (P6-I7d).
 func DpgHostPorts(p Pair) []DpgPort {
 	name := KeycloakContainer(p.Dpg)
 	if name == "" {
 		return nil
 	}
-	return []DpgPort{{Container: name, Host: KeycloakHostPort(p.Dpg), Env: KeycloakHostPortEnv(p.Dpg)}}
+	out := []DpgPort{{Container: name, Host: KeycloakHostPort(p.Dpg), Env: KeycloakHostPortEnv(p.Dpg), Port: 8080}}
+	if isInjiHolder(p) {
+		out = append(out, DpgPort{Container: "inji-web", Host: 17085, Env: "INJI_WEB_HOST_PORT", Port: 3004})
+	}
+	return out
 }
 
 // IdpTable renders the Keycloak of every DPG stack as a Markdown table.

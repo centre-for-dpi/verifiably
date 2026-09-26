@@ -456,6 +456,52 @@ Set it to a digest before you go to production.
 A VCA service never needs a DPG rebuild.
 A DPG upgrade is a version change in one file.
 
+### The Inji holder stack
+
+The `holder-inji` profile runs Mimoto 0.21.0 and Inji Web 0.16.0.
+`deploy/vca/dpg/inji/mimoto/` holds their files, and its `SOURCE.md`
+names the upstream files of each release.
+
+| Container | What it does | Host port |
+|---|---|---|
+| `inji-mimoto` | The wallet backend of Inji Web | 17084, `INJI_MIMOTO_HOST_PORT` |
+| `inji-mimoto-postgres` | The Mimoto database, from the init script of the release | none |
+| `inji-mimoto-redis` | The Mimoto sessions | none |
+| `inji-web` | The wallet of the holder in the browser | 17085, `INJI_WEB_HOST_PORT` |
+
+Mimoto opens a wallet session from the ID token of the holder login.
+Its token login provider `google` trusts the realm `vca-holder-realm`
+of the stack Keycloak with the client `vca-holder`.
+The browser signs in to Inji Web through the same realm.
+`vca setup` adds the Mimoto callback of Inji Web to that client.
+
+`vca dpg bootstrap inji --role holder` writes the key of the eSignet
+client `vca-inji` into `deploy/mimoto-inji/oidckeystore.p12`.
+Mimoto signs its eSignet token call with that key when the holder
+claims in Inji Web.
+The password sits in `deploy/mimoto-inji/.env`, and both files have
+mode 0600.
+Run `vca deploy --role holder --dpg inji` again after the bootstrap, so
+Mimoto reads the password.
+
+The stack file reads these variables:
+
+| Variable | Default | What it sets |
+|---|---|---|
+| `INJI_WEB_PUBLIC_URL` | `http://localhost:17085` | The address of Inji Web in the browser |
+| `INJI_MIMOTO_HOLDER_LOGIN_URL` | `http://localhost:17080` | The address of the stack Keycloak in the browser |
+| `INJI_MIMOTO_TOKEN_LOGIN_ISSUER` | `http://inji-keycloak:8080/realms/vca-holder-realm` | The issuer that the token login accepts |
+| `INJI_MIMOTO_TOKEN_LOGIN_CLIENT_ID` | `vca-holder` | The audience that the token login accepts |
+| `INJI_MIMOTO_DB_PASSWORD` | `mimoto` | The password of the Mimoto database |
+| `INJI_MIMOTO_KEYSTORE_PASSWORD` | `mimoto` | The password of the key store of the Mimoto key manager |
+
+A public deployment sets the first two variables.
+It then adds `<Inji Web address>/v1/mimoto/oauth2/callback/google` to
+the redirect URIs of the client `vca-holder`.
+It also edits the issuer list and the trusted verifiers of
+`deploy/vca/dpg/inji/mimoto/`.
+`vca doctor` checks the Inji Web port of a holder pair.
+
 ### The identity provider
 
 Every stack ships Keycloak 25.0.
@@ -576,7 +622,7 @@ The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 | `issuer-inji` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
 | `issuer-credebl` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
 | `holder-waltid` | 3 | 288 MiB | 2048 MiB | 2336 MiB | 1.75 |
-| `holder-inji` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
+| `holder-inji` | 3 | 288 MiB | 3584 MiB | 3872 MiB | 1.75 |
 | `holder-credebl` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
 | `verifier-waltid` | 7 | 672 MiB | 2048 MiB | 2720 MiB | 2.75 |
 | `verifier-inji` | 7 | 672 MiB | 2560 MiB | 3232 MiB | 2.75 |
@@ -589,9 +635,9 @@ One stack is the four roles of one DPG together:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 3968 MiB | 4480 MiB | 4480 MiB |
+| `--all --dpg <dpg>` | 4064 MiB | 5600 MiB | 4576 MiB |
 
-`--all` alone starts every role of every DPG and needs 12928 MiB.
+`--all` alone starts every role of every DPG and needs 14240 MiB.
 The four roles of one DPG share one DPG stack and one Keycloak, so a
 stack counts once.
 
@@ -601,6 +647,8 @@ The holder role runs the wallet portal, the wallet auth service, and one
 DPG adapter.
 Each service is one static Go binary in a distroless image.
 The DPG figure is the floor of the stack in `deploy/vca/dpg/`.
+The Inji holder role adds 1024 MiB to the Inji stack.
+It runs Mimoto with its Postgres and its Redis, and Inji Web.
 The admin role talks to no DPG.
 Its profile starts only the Keycloak of the stack.
 The landing adds 96 MiB once, whatever the selection, because every profile starts the one landing container.

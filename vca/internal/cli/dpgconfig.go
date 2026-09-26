@@ -313,6 +313,14 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 		RedirectUris:        []string{redirect},
 		WebOrigins:          []string{public},
 	}
+	if isInjiHolder(p) {
+		// Inji Web logs the holder in through Mimoto, whose provider
+		// "google" uses this client. Its callback sits under the address
+		// of Inji Web (P6-I7d).
+		web := injiWebURL(values)
+		client.RedirectUris = append(client.RedirectUris, web+"/v1/mimoto/oauth2/callback/google")
+		client.WebOrigins = append(client.WebOrigins, web)
+	}
 	client.Attributes.PkceCodeChallengeMethod = "S256"
 	roles, selfRegistered := roleRealmRoles(p.Role)
 	defaultRole := realmRole{
@@ -468,6 +476,13 @@ var dpgMemoryMiB = map[configv1.Dpg]int{
 	configv1.Dpg_DPG_CREDEBL: 2560,
 }
 
+// dpgRoleMemoryMiB is the memory that one role adds to the floor of its
+// stack. The Inji holder profile runs Mimoto 0.21.0 (768 MiB), its
+// Postgres (128 MiB), its Redis (64 MiB), and Inji Web 0.16.0 (64 MiB).
+var dpgRoleMemoryMiB = map[configv1.Dpg]map[commonv1.Role]int{
+	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_HOLDER: 1024},
+}
+
 // keycloakMemoryMiB is the memory floor of the Keycloak of one stack.
 const keycloakMemoryMiB = 512
 
@@ -475,7 +490,7 @@ const keycloakMemoryMiB = 512
 // decision 7 is under 4 GB for a single role with one DPG.
 func Floor(p Pair) ResourceFloor {
 	services := len(ServicesFor(p))
-	dpg := dpgMemoryMiB[p.Dpg]
+	dpg := dpgMemoryMiB[p.Dpg] + dpgRoleMemoryMiB[p.Dpg][p.Role]
 	if p.Role == commonv1.Role_ROLE_ADMIN {
 		// The admin role talks to no DPG. Its profile starts only the
 		// Keycloak of the stack, which logs the admins in.

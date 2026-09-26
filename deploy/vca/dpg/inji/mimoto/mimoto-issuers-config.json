@@ -1,0 +1,31 @@
+{
+  "issuers": [
+    {
+      "issuer_id": "InjiCertify",
+      "credential_issuer": "InjiCertify",
+      "display": [
+        {
+          "name": "Inji Certify",
+          "logo": {
+            "url": "https://inji.github.io/inji-config/logos/mosipid-logo.png",
+            "alt_text": "The logo of the issuer"
+          },
+          "language": "en",
+          "title": "Inji Certify of this stack",
+          "description": "Claim a credential of the Inji Certify of this stack"
+        }
+      ],
+      "protocol": "OpenId4VCI",
+      "client_id": "vca-inji",
+      "client_alias": "vca-inji",
+      "wellknown_endpoint": "http://inji-certify:8090/v1/certify/issuance/.well-known/openid-credential-issuer",
+      "redirect_uri": "http://localhost:17085/redirect",
+      "authorization_audience": "http://inji-esignet:8088/v1/esignet/oauth/v2/token",
+      "token_endpoint": "http://localhost:17085/v1/mimoto/get-token/InjiCertify",
+      "proxy_token_endpoint": "http://inji-esignet:8088/v1/esignet/oauth/v2/token",
+      "qr_code_type": "EmbeddedVC",
+      "credential_issuer_host": "http://inji-certify:8090",
+      "enabled": "true"
+    }
+  ]
+}

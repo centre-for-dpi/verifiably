@@ -94,8 +94,16 @@ func registerEsignetClient(ctx context.Context, opts BootstrapOptions, result *B
 	}
 	state := readEsignetState(filepath.Join(dir, EsignetStateFile))
 	redirect := opts.value("VCA_OIDC_REDIRECT_URI", strings.TrimRight(opts.Values["VCA_PUBLIC_URL"], "/")+"/auth/callback")
-	if !slices.Contains(state.RedirectURIs, redirect) {
-		state.RedirectURIs = append(state.RedirectURIs, redirect)
+	redirects := []string{redirect}
+	if isInjiHolder(opts.Pair) {
+		// Mimoto claims into the stack wallet with the same client and
+		// the redirect page of Inji Web 0.16.0 (P6-I7d).
+		redirects = append(redirects, injiWebURL(opts.Values)+"/redirect")
+	}
+	for _, r := range redirects {
+		if !slices.Contains(state.RedirectURIs, r) {
+			state.RedirectURIs = append(state.RedirectURIs, r)
+		}
 	}
 	state.ClientID = EsignetClientID
 	details := esignetClient(opts, key, state)
@@ -121,6 +129,11 @@ func registerEsignetClient(ctx context.Context, opts BootstrapOptions, result *B
 		return err
 	}
 	result.step(opts.Out, "eSignet client %s %s", EsignetClientID, verb)
+	if isInjiHolder(opts.Pair) {
+		if err := writeMimotoKeystore(opts, key, result); err != nil {
+			return err
+		}
+	}
 	result.step(opts.Out, "Add eSignet as a login provider with the client %s, private_key_jwt, and the key file %s. "+
 		"Its issuer is %s%s", EsignetClientID, keyPath, base, esignetPath)
 	return nil

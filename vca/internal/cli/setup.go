@@ -180,6 +180,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	shared = append(shared, keycloak...)
+	shared = append(shared, mimotoSharedFiles(req.Pair)...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files, Shared: shared}, nil
 }
 

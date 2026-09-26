@@ -466,6 +466,40 @@ func TestGeneratedRealmIsValidJSON(t *testing.T) {
 	}
 }
 
+// TestInjiHolderRealmAllowsTheMimotoLogin: Inji Web logs the holder in
+// through Mimoto, whose provider "google" points at the holder realm
+// with the client of the holder pair (P6-I7d). The realm then allows
+// the callback of Mimoto under the address of Inji Web, and the
+// public client of the pair keeps PKCE. A holder realm of another
+// stack has only the VCA callback.
+func TestInjiHolderRealmAllowsTheMimotoLogin(t *testing.T) {
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
+	for web, want := range map[string]string{
+		"":                        DefaultInjiWebURL + "/v1/mimoto/oauth2/callback/google",
+		"https://wallet.example/": "https://wallet.example/v1/mimoto/oauth2/callback/google",
+	} {
+		body, err := KeycloakRealm(holder, map[string]string{"VCA_PUBLIC_URL": "https://holder.example", "VCA_INJI_WEB_URL": web})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got realm
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatal(err)
+		}
+		client := got.Clients[0]
+		if len(client.RedirectUris) != 2 || client.RedirectUris[0] != "https://holder.example/auth/callback" || client.RedirectUris[1] != want {
+			t.Errorf("redirect URIs = %v, want the VCA callback and %s", client.RedirectUris, want)
+		}
+		if !client.PublicClient || client.Attributes.PkceCodeChallengeMethod != "S256" {
+			t.Errorf("client = %+v", client)
+		}
+	}
+	other, err := KeycloakRealm(Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_WALTID}, map[string]string{"VCA_PUBLIC_URL": "https://holder.example"})
+	if err != nil || strings.Contains(string(other), "mimoto") {
+		t.Errorf("the walt.id holder realm = %s, %v", other, err)
+	}
+}
+
 func TestKeycloakRealmUsesTheSuppliedClientAndRedirect(t *testing.T) {
 	body, err := KeycloakRealm(issuerPair(), map[string]string{
 		"VCA_PUBLIC_URL":        "https://issuer.example",
@@ -1169,5 +1203,35 @@ func TestKeycloakAdminPasswordIsGenerated(t *testing.T) {
 	none, err := ReadKeycloakEnv(t.TempDir(), configv1.Dpg_DPG_INJI)
 	if err != nil || len(none) != 0 {
 		t.Errorf("ReadKeycloakEnv of a fresh root = %v, %v", none, err)
+	}
+}
+
+// TestSetupMakesTheMimotoDirectory: the holder pair of the Inji stack
+// gets the directory that vca dpg bootstrap later fills with the client
+// key store of Mimoto (P6-I7d). setup makes it, so it belongs to the
+// operator and not to the Docker daemon, and git ignores it. The other
+// pairs get no such directory.
+func TestSetupMakesTheMimotoDirectory(t *testing.T) {
+	flags := issuerFlags()
+	flags["VCA_PUBLIC_URL"] = "https://holder.example"
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
+	plan, err := BuildPlan(SetupRequest{Pair: holder, Flags: flags, Random: rand.Reader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ignore := sharedFile(t, plan, filepath.Join(MimotoDir, ".gitignore"))
+	if string(ignore.Data) != "*\n" || ignore.Mode != 0o600 {
+		t.Errorf("the ignore file = %q %o", ignore.Data, ignore.Mode)
+	}
+	for _, p := range []Pair{issuerPair(), {Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}} {
+		other, err := BuildPlan(SetupRequest{Pair: p, Flags: issuerFlags(), Random: rand.Reader})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range sharedNames(other) {
+			if strings.HasPrefix(name, MimotoDir) {
+				t.Errorf("%s gets %s", p.Name(), name)
+			}
+		}
 	}
 }
