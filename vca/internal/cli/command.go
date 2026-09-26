@@ -439,23 +439,31 @@ func newSetupCommand(env *Environment) *cobra.Command {
 				if idErr != nil {
 					return idErr
 				}
+				// The key of the VCA client of eSignet, which the
+				// holder authorization server signs with (ADR-053
+				// decision 4).
+				esignetKey, keyErr := ReadEsignetClientKey(root)
+				if keyErr != nil {
+					return keyErr
+				}
 				plan, err := BuildPlan(SetupRequest{
-					Pair:        p,
-					Flags:       flags,
-					Env:         env.Getenv,
-					File:        file,
-					Existing:    existing,
-					Interactive: !sel.nonInteractive,
-					Prompter:    prompter,
-					Offers:      offers,
-					Random:      env.Random,
-					Domain:      base,
-					Peers:       peers,
-					Keycloak:    keycloak,
-					Stacks:      stacks,
-					WalletJWK:   walletJWK,
-					InjiIssuer:  injiIssuerID,
-					Brand:       ReadInjiBrand(ThemePath(env.Root, "", env.Getenv)),
+					Pair:             p,
+					Flags:            flags,
+					Env:              env.Getenv,
+					File:             file,
+					Existing:         existing,
+					Interactive:      !sel.nonInteractive,
+					Prompter:         prompter,
+					Offers:           offers,
+					Random:           env.Random,
+					Domain:           base,
+					Peers:            peers,
+					Keycloak:         keycloak,
+					Stacks:           stacks,
+					WalletJWK:        walletJWK,
+					InjiIssuer:       injiIssuerID,
+					EsignetClientKey: esignetKey,
+					Brand:            ReadInjiBrand(ThemePath(env.Root, "", env.Getenv)),
 				})
 				if err != nil {
 					return err

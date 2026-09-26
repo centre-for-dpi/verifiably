@@ -26,6 +26,10 @@ const maxBody = 1 << 20
 // endpoint that core/oidc does not carry.
 type Metadata struct {
 	oidc.Discovery
+	// PublishedTokenEndpoint is the token endpoint as the provider
+	// publishes it, before Rebase moves it to the internal authority. A
+	// client assertion names it as its audience (RFC 7523 section 3).
+	PublishedTokenEndpoint string `json:"-"`
 	// EndSessionEndpoint is the RP initiated logout endpoint, when any.
 	EndSessionEndpoint string `json:"end_session_endpoint,omitempty"`
 	// PromptValuesSupported lists the prompt values the provider accepts.
@@ -56,10 +60,24 @@ func (m Metadata) Rebase(authority string) Metadata {
 	if authority == "" {
 		return m
 	}
+	if m.PublishedTokenEndpoint == "" {
+		m.PublishedTokenEndpoint = m.TokenEndpoint
+	}
 	m.TokenEndpoint = oidc.SwapAuthority(m.TokenEndpoint, authority)
 	m.UserinfoEndpoint = oidc.SwapAuthority(m.UserinfoEndpoint, authority)
 	m.JWKSURI = oidc.SwapAuthority(m.JWKSURI, authority)
 	return m
+}
+
+// AssertionAudience returns the audience of a client assertion: the
+// token endpoint that the provider publishes. A provider checks the
+// audience against its own address, not against the internal address
+// that a container uses to reach it.
+func (m Metadata) AssertionAudience() string {
+	if m.PublishedTokenEndpoint != "" {
+		return m.PublishedTokenEndpoint
+	}
+	return m.TokenEndpoint
 }
 
 type entry[T any] struct {

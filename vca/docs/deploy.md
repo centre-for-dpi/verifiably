@@ -719,11 +719,24 @@ the adapter, not eSignet (ADR-052).
 `vca setup` also writes `VCA_INJI_ESIGNET_URL`, so the adapter lists
 eSignet among the components of the stack.
 
-`vca dpg bootstrap inji` registers the VCA client in eSignet when
-eSignet runs.
-Then add eSignet as a login provider for holders in the admin portal.
-Name the client `vca-inji`, `private_key_jwt`, and the key file of the run.
-It adds no identity anywhere (ADR-050).
+eSignet becomes the holder provider of the holder authorization server
+of the issuer pair (ADR-053 decision 4).
+`vca setup` of the issuer pair makes the key of the VCA client once, in
+`deploy/esignet-inji/vca-client.pem` with mode 0600.
+It writes the client and the key into the `.env` of the pair, the key
+on one line.
+The adapter then adds eSignet to its provider registry with
+`private_key_jwt`.
+It turns the seeded holder realm of the stack Keycloak off once.
+The admin portal can turn that realm on again.
+`vca dpg bootstrap inji` registers the VCA client in eSignet with the
+same key.
+The issuer run adds the callback of the holder authorization server as
+a redirect URI.
+The claims of a person come from the userinfo endpoint of eSignet, not
+from the ID token.
+So a binding rule or a sign in source can match only `sub` for now.
+The run adds no identity anywhere (ADR-050).
 The people who sign in come from the identity system of the operator.
 `INJI_ESIGNET_DB_PASSWORD` sets the password of the database.
 `vca setup` generates it.

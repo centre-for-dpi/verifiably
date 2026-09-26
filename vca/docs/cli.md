@@ -432,14 +432,19 @@ run asks no eSignet. The holder run still writes the key and the Mimoto
 key store. eSignet 1.5.1 takes
 `private_key_jwt` only, with an RS256 assertion from an RSA key. The
 first run makes a 2048 bit RSA key in `deploy/esignet-inji/vca-client.pem`
-with mode 0600. The directory holds a `.gitignore` that ignores all of
+with mode 0600, unless `vca setup` of the issuer pair made it first. The directory holds a `.gitignore` that ignores all of
 it, so the key never reaches a tracked file. The run sends only the
 public key, with `POST /v1/esignet/client-mgmt/oauth-client`. A later
 run keeps the key. eSignet then answers `duplicate_client_id`, and the
 run adds the redirect URI of its pair with a `PUT`. The file
-`vca-client.json` keeps the redirect URIs of the runs. The last line
-names the client, the key file, and the eSignet issuer. The provider
-form of the admin portal takes them.
+`vca-client.json` keeps the redirect URIs of the runs.
+
+The issuer run also adds the callback of the holder authorization
+server, `VCA_INJI_AUTHZ_ISSUER` with `/callback`. Setup names eSignet
+as the holder provider of that server, with the same key (ADR-053
+decision 4). A holder or verifier run ends with the client, the key
+file, and the eSignet issuer. The provider form of the admin portal
+takes them.
 
 The holder run also adds the redirect page of Inji Web,
 `http://localhost:17085/redirect` or `VCA_INJI_WEB_URL` with

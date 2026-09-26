@@ -7,6 +7,7 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -277,7 +278,7 @@ func (f *Flow) exchange(ctx context.Context, p Provider, m Metadata, pend Pendin
 			basic = secret
 		}
 	case TokenAuthPrivateKeyJWT:
-		assertion, err := f.clientAssertion(p, m.TokenEndpoint)
+		assertion, err := f.clientAssertion(p, m.AssertionAudience())
 		if err != nil {
 			return tokenResponse{}, err
 		}
@@ -367,19 +368,24 @@ func (f *Flow) clientAssertion(p Provider, tokenEndpoint string) (string, error)
 
 // ParseClientKeyPEM reads the private key of a client assertion: an EC
 // key, an RSA key in PKCS #1, or a PKCS #8 key of either type or of
-// Ed25519.
+// Ed25519. The key is a PEM block, or the standard base64 text of the
+// DER bytes on one line, as an environment variable holds it.
 func ParseClientKeyPEM(raw []byte) (crypto.PrivateKey, error) {
-	block, _ := pem.Decode(raw)
-	if block == nil {
-		return nil, errors.New("oidcflow: no PEM block in the client key")
+	var der []byte
+	if block, _ := pem.Decode(raw); block != nil {
+		der = block.Bytes
+	} else if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw))); err == nil && len(decoded) > 0 {
+		der = decoded
+	} else {
+		return nil, errors.New("oidcflow: no PEM block and no base64 DER in the client key")
 	}
-	if k, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+	if k, err := x509.ParseECPrivateKey(der); err == nil {
 		return k, nil
 	}
-	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+	if k, err := x509.ParsePKCS1PrivateKey(der); err == nil {
 		return k, nil
 	}
-	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	k, err := x509.ParsePKCS8PrivateKey(der)
 	if err != nil {
 		return nil, fmt.Errorf("oidcflow: parse the client key: %w", err)
 	}

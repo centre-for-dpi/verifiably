@@ -543,7 +543,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-050 | 1 No mock artefact or sample data set ships | Done | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack runs no mock identity system. The guard finds no artefact, and `TestNoPendingRemovals` keeps a list of pending findings out. `hack/contract-tests.sh` refuses a deployment with sample data. |
-| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). Certify issues from the claims store (ADR-051), and the holder authorization server replaces eSignet for a claim (ADR-052). eSignet runs only with a real authenticator (ADR-053). Setup writes the walt.id catalogue and wallet files (ADR-054). |
+| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). Certify issues from the claims store (ADR-051), and the holder authorization server replaces eSignet for a claim (ADR-052). eSignet runs only with a real authenticator and signs holders in (ADR-053). Setup writes the walt.id catalogue and wallet files (ADR-054). The admin portal cannot add a holder provider to the Inji adapter yet (ADR-052 decision 2). |
 | ADR-050 | 3 Test doubles stay in test paths | Done | `vca/internal/cli/nomock_test.go` | `TestNoDeploymentReachesTestdata` and `TestNoBinaryImportsAFakePackage` keep test doubles out of every deployment. |
 | ADR-050 | 4 A guard test scans the tree | Done | `vca/internal/cli/nomock_test.go` | The word rule covers every stack file, every Go source that a binary compiles, every Dockerfile, and the operator documents. The allowlist gives a reason per entry and fails on an entry that matches nothing. |
 | ADR-050 | 5 A stack secret has no default | Done | `deploy/vca/dpg/*.yaml`, `vca/internal/cli/stackenv.go` | Every stack file requires its passwords with `${NAME:?set by vca setup}`. `TestStackFilesHaveNoSecretDefault` pins it. |
@@ -564,7 +564,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-052 | 1 An authorization server under `/authz` | Done | `vca/services/dpg-adapter-inji/internal/authz`, `vca/internal/cli/services.go` | RFC 8414 metadata, a key set, authorize, callback, and token. The proxy of the issuer pair publishes `/authz/*`. |
-| ADR-052 | 2 The holder signs in at the configured provider | Partial | `vca/services/dpg-adapter-inji/internal/app/app.go`, `vca/internal/cli/dpgconfig.go` | Setup seeds the holder realm of the stack Keycloak and the client `vca-inji-authz`. The registry lives in the store of the adapter. The admin portal edits the claims its providers vouch for. |
+| ADR-052 | 2 The holder signs in at the configured provider | Partial | `vca/services/dpg-adapter-inji/internal/app/app.go`, `vca/internal/cli/dpgconfig.go` | Setup seeds the holder realm of the stack Keycloak and the client `vca-inji-authz`. The registry lives in the store of the adapter. With eSignet, setup names it as the holder provider (ADR-053 decision 4). The admin portal edits the claims its providers vouch for and cannot add a provider yet. |
 | ADR-052 | 3 Offer bound and wallet initiated claims | Done | `vca/services/dpg-adapter-inji/internal/authz/authorize.go`, `vca/services/issuance/internal/pages/issue.go`, `vca/services/schema-registry/internal/portal/signin.go` | The binding rule works end to end. The tab "Claims by sign in" names the source of a claim without an offer, and `DataSourceService.Lookup` answers it (ADR-057). |
 | ADR-052 | 4 A JWT whose subject is the staging id | Done | `vca/services/dpg-adapter-inji/internal/authz/token.go` | RS256, five minutes, `aud` the credential endpoint of `inji-certify-authcode`. |
 | ADR-052 | 5 Registered wallet clients | Done | `vca/services/dpg-adapter-inji/internal/authz/clients.go`, `vca/internal/cli/inji_public.go` | `vca-inji` of Inji Web uses `private_key_jwt` with the key that the holder bootstrap wrote. |
@@ -577,7 +577,7 @@ A row that is not `Done` carries a note.
 | ADR-053 | 1 eSignet under the profile `esignet-inji` | Done | `deploy/vca/dpg/inji.yaml`, `vca/internal/cli/deploy.go`, `vca/internal/cli/esignet.go` | `vca deploy` adds the profile when the pair names an authenticator. `TestDeployAddsTheEsignetProfile` pins it. |
 | ADR-053 | 2 The mock components leave the stack | Done | `deploy/vca/dpg/inji.yaml`, `deploy/vca/dpg/inji/esignet/init.sql` | `TestInjiStackRunsEsignetOnlyWithAnAuthenticator` pins it. |
 | ADR-053 | 3 The operator supplies the plugin file | Done | `vca/internal/cli/esignet.go`, `proto/vca/config/v1/config.proto` | Setup copies the properties and a custom jar to `deploy/esignet-inji` with mode 0600. |
-| ADR-053 | 4 Bootstrap registers the client only when eSignet runs | Partial | `vca/internal/cli/bootstrap.go` | Bootstrap registers the client only then. Setup does not seed eSignet as a holder provider yet; the admin adds it in the admin portal. |
+| ADR-053 | 4 Bootstrap registers the client only when eSignet runs | Done | `vca/internal/cli/bootstrap.go`, `vca/internal/cli/esignet.go`, `vca/services/dpg-adapter-inji/internal/app/app.go` | Bootstrap registers the client only then, with the callback of the holder authorization server. Setup names the client and its key, and the adapter adds eSignet as a holder provider with `private_key_jwt`. `TestBuildSeedsEsignetAsTheHolderProvider` pins it. The claims of eSignet come from its userinfo answer, which the server does not read yet. |
 | ADR-053 | 5 The feature answer lists eSignet only when it runs | Done | `vca/services/dpg-adapter-inji/internal/service/dpginfo.go` | `VCA_INJI_ESIGNET_URL` turns it on. `TestCapabilitiesListEsignetOnlyWhenConfigured` pins it. |
 
 ## ADR-054: VCA writes the walt.id catalogue and wallet configuration
@@ -626,8 +626,8 @@ A row that is not `Done` carries a note.
 
 | Status | Decisions |
 |---|---|
-| Done | 263 |
-| Partial | 28 |
+| Done | 264 |
+| Partial | 27 |
 | Deferred | 3 |
 | Not started | 26 |
 | Total | 320 |

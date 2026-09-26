@@ -74,6 +74,10 @@ type SetupRequest struct {
 	// Brand is the logo and the wordmark of the theme, from
 	// ReadInjiBrand. Inji Web shows the logo of the issuer pair.
 	Brand InjiBrand
+	// EsignetClientKey is the key file of the VCA client of eSignet
+	// from an earlier run, from ReadEsignetClientKey. Setup and
+	// bootstrap share it (ADR-053 decision 4).
+	EsignetClientKey []byte
 	// ReadFile reads a file that a setting names, such as the plugin
 	// properties of eSignet. Nil means os.ReadFile.
 	ReadFile func(string) ([]byte, error)
@@ -194,6 +198,16 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range esignet {
 		extra[name] = value
 	}
+	// The holder authorization server signs holders in at that eSignet
+	// (ADR-053 decision 4).
+	holderEsignet, keyFiles, err := EsignetHolderValues(req.Pair, values, req.EsignetClientKey, req.Random)
+	if err != nil {
+		return Plan{}, err
+	}
+	for name, value := range holderEsignet {
+		extra[name] = value
+	}
+	esignetFiles = append(esignetFiles, keyFiles...)
 	if clients, ok := InjiWalletClients(req.Pair, values, req.Domain, req.Peers, req.WalletJWK); ok {
 		extra[InjiWalletClientsEnv] = clients
 	}

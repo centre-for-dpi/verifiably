@@ -3,7 +3,13 @@
 package cli
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +51,13 @@ const (
 	// EsignetCustomPluginDir holds a custom plugin jar under the eSignet
 	// directory. The stack file mounts it under the plugins of the image.
 	EsignetCustomPluginDir = "vca"
+	// EsignetHolderClientEnv and EsignetHolderKeyEnv name eSignet as the
+	// holder provider of the holder authorization server of the Inji
+	// issuer pair (ADR-053 decision 4): the client id of VCA at eSignet,
+	// and the private key of its client assertion as the base64 text of
+	// the DER bytes on one line.
+	EsignetHolderClientEnv = "VCA_INJI_HOLDER_ESIGNET_CLIENT_ID"
+	EsignetHolderKeyEnv    = "VCA_INJI_HOLDER_ESIGNET_CLIENT_KEY" //nolint:gosec // G101: this is a variable name, not a credential.
 	// EsignetNone is the authenticator that runs no eSignet.
 	EsignetNone = "none"
 	// maxEsignetFile caps a file that setup copies.
@@ -100,7 +113,12 @@ func EsignetValues(p Pair, values map[string]string, read func(string) ([]byte, 
 	if err != nil {
 		return nil, nil, err
 	}
-	files := []File{{Name: filepath.Join(EsignetDir, EsignetPropertiesFile), Data: props, Mode: 0o600}}
+	// The directory holds the secrets of the plugin and the client key,
+	// so git ignores all of it.
+	files := []File{
+		{Name: filepath.Join(EsignetDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600},
+		{Name: filepath.Join(EsignetDir, EsignetPropertiesFile), Data: props, Mode: 0o600},
+	}
 	plugin, bundled := esignetBundledPlugins[authenticator]
 	if !bundled {
 		jarPath := strings.TrimSpace(values[EsignetPluginFileEnv])
@@ -155,4 +173,59 @@ func esignetProfileOf(root string, p Pair) bool {
 		return false
 	}
 	return esignetOn(values)
+}
+
+// ReadEsignetClientKey reads the key of the VCA client of eSignet under
+// the deploy root, the file that setup and bootstrap share. A missing
+// file gives nil and no error.
+func ReadEsignetClientKey(root string) ([]byte, error) {
+	path := filepath.Join(root, EsignetDir, EsignetKeyFile)
+	raw, err := os.ReadFile(path) // #nosec G304 -- the path comes from the deploy root
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return raw, nil
+}
+
+// EsignetHolderValues names eSignet as the holder provider of the holder
+// authorization server of the Inji issuer pair when the pair runs eSignet
+// (ADR-053 decision 4). The adapter signs its client assertion with the
+// key of the VCA client, which bootstrap registers at eSignet. existing is
+// the key file of an earlier run, from ReadEsignetClientKey. Without one,
+// the run makes a key from random and writes the file with mode 0600.
+func EsignetHolderValues(p Pair, values map[string]string, existing []byte, random io.Reader) (map[string]string, []File, error) {
+	if p != injiIssuer || !esignetOn(values) {
+		return nil, nil, nil
+	}
+	var files []File
+	var key *rsa.PrivateKey
+	if len(existing) > 0 {
+		block, _ := pem.Decode(existing)
+		if block == nil {
+			return nil, nil, fmt.Errorf("the eSignet client key %s holds no PEM block", filepath.Join(EsignetDir, EsignetKeyFile))
+		}
+		parsed, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, nil, fmt.Errorf("the eSignet client key %s: %w", filepath.Join(EsignetDir, EsignetKeyFile), err)
+		}
+		key = parsed
+	} else {
+		made, err := rsa.GenerateKey(random, esignetKeyBits)
+		if err != nil {
+			return nil, nil, fmt.Errorf("make the eSignet client key: %w", err)
+		}
+		key = made
+		files = append(files, File{
+			Name: filepath.Join(EsignetDir, EsignetKeyFile),
+			Data: pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}),
+			Mode: 0o600,
+		})
+	}
+	return map[string]string{
+		EsignetHolderClientEnv: EsignetClientID,
+		EsignetHolderKeyEnv:    base64.StdEncoding.EncodeToString(x509.MarshalPKCS1PrivateKey(key)),
+	}, files, nil
 }

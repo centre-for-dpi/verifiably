@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -247,6 +248,9 @@ func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *servi
 		deps.Log.Warn("no holder provider is seeded, so a holder signs in only at a provider an admin adds",
 			"setting", config.Prefix+"HOLDER_OIDC_DISCOVERY_URL")
 	}
+	if serr := seedEsignet(registry, cfg, deps.Log); serr != nil {
+		return nil, nil, serr
+	}
 	client := deps.HTTP
 	if client == nil {
 		client = &http.Client{Timeout: cfg.Timeout}
@@ -266,6 +270,71 @@ func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *servi
 		Offers: svc, Lookup: lookup, Log: deps.Log,
 	})
 	return server, registry, err
+}
+
+// EsignetProviderID is the id of the holder provider record of the
+// eSignet of the stack.
+const EsignetProviderID = "esignet"
+
+// esignetDiscoveryPath is the OpenID Connect discovery document of
+// eSignet 1.5.1 under its servlet path.
+const esignetDiscoveryPath = "/v1/esignet/oidc/.well-known/openid-configuration"
+
+// seedEsignet seeds the eSignet of the stack as the holder provider of
+// the holder authorization server when the pair runs it (ADR-053
+// decision 4). eSignet takes private_key_jwt only, so the record names
+// the key of the VCA client in the environment, never its value. The
+// adapter reaches the token endpoint and the key set on the compose
+// network, and the browser opens the login page that eSignet publishes.
+// The first seed turns the seeded realm of the stack Keycloak off, so
+// holders sign in at eSignet. The admin portal can turn it on again, and
+// a later start keeps that choice.
+func seedEsignet(registry *oidcflow.Registry, cfg config.Config, log *slog.Logger) error {
+	if cfg.EsignetURL == "" {
+		return nil
+	}
+	id, key := strings.TrimSpace(cfg.HolderEsignetClientID), strings.TrimSpace(cfg.HolderEsignetClientKey)
+	if id == "" && key == "" {
+		log.Warn("the pair runs eSignet, but setup named no client for the holder authorization server; run vca setup again",
+			"setting", config.Prefix+"HOLDER_ESIGNET_CLIENT_ID")
+		return nil
+	}
+	if id == "" || key == "" {
+		return fmt.Errorf("app: %sHOLDER_ESIGNET_CLIENT_ID and %sHOLDER_ESIGNET_CLIENT_KEY go together; run vca setup again",
+			config.Prefix, config.Prefix)
+	}
+	if _, err := registry.Get(EsignetProviderID); err == nil {
+		return nil
+	}
+	base := strings.TrimRight(cfg.EsignetURL, "/")
+	if err := registry.Seed(oidcflow.Provider{
+		ID: EsignetProviderID, DisplayName: "eSignet", DiscoveryURL: base + esignetDiscoveryPath,
+		ClientID: id, Scopes: []string{"openid", "profile", "email"}, Roles: []string{"holder"},
+		Enabled: true, InternalAuthority: base,
+		Profile: oidcflow.Profile{
+			Kind: oidcflow.KindESignet, IsDefault: true, Registration: oidcflow.RegistrationNone,
+			TokenAuthMethod: oidcflow.TokenAuthPrivateKeyJWT,
+			PrivateKey:      oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: config.Prefix + "HOLDER_ESIGNET_CLIENT_KEY"},
+		},
+	}); err != nil {
+		return fmt.Errorf("app: seed eSignet as the holder provider: %w", err)
+	}
+	// A registry without the realm seed, or with the seed off, needs no
+	// change.
+	realm, err := registry.Get(oidcflow.SeedID)
+	if errors.Is(err, oidcflow.ErrProviderNotFound) || err == nil && !realm.Enabled {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("app: read the realm seed: %w", err)
+	}
+	realm.Enabled = false
+	if _, err := registry.Put(realm); err != nil {
+		return fmt.Errorf("app: turn the realm seed off beside eSignet: %w", err)
+	}
+	log.Info("holders sign in at eSignet; the admin portal can turn the realm of the stack Keycloak on again",
+		"provider", EsignetProviderID)
+	return nil
 }
 
 // syncVerifiedClaims fills the verified claims of the seeded holder

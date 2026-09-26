@@ -102,6 +102,13 @@ type Config struct {
 	// Setup sets it only when the operator names a real authenticator,
 	// and the feature answer lists eSignet only then (ADR-053).
 	EsignetURL string `env:"ESIGNET_URL"`
+	// HolderEsignetClientID and HolderEsignetClientKey seed the eSignet
+	// of the stack as the holder provider of the holder authorization
+	// server (ADR-053 decision 4). The key is the base64 text of the DER
+	// bytes of the RSA key that signs the client assertion. vca setup
+	// sets both only when the pair runs eSignet.
+	HolderEsignetClientID  string `env:"HOLDER_ESIGNET_CLIENT_ID"`
+	HolderEsignetClientKey string `env:"HOLDER_ESIGNET_CLIENT_KEY" secret:"true"`
 	// KeycloakVersion names the Keycloak release of the stack.
 	KeycloakVersion string `env:"KEYCLOAK_VERSION" default:"25.0"`
 	// Timeout bounds one call to Inji.

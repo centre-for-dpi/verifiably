@@ -527,6 +527,19 @@ store. Setup seeds it with the holder realm of the stack Keycloak and
 the public client `vca-inji-authz`. The server takes the enabled
 provider of the holder role for the Inji stack, the seeded one first.
 
+The pair can run eSignet with a real authenticator. Then setup also
+names the VCA client of eSignet and its key (ADR-053 decision 4). The
+adapter adds the record `esignet` of kind `esignet` with the default
+flag. The key in `VCA_INJI_HOLDER_ESIGNET_CLIENT_KEY` signs the client
+assertion. The record keeps only the name of that variable. The token
+call and the key set go to eSignet on the compose network. The
+audience of the assertion is the token endpoint that eSignet
+publishes. The first start with eSignet turns
+the seeded realm off, so holders sign in at eSignet. An admin can turn
+the realm on again, and a later start keeps that choice. The claims of
+the person come from the userinfo answer of eSignet, not from the ID
+token. So a binding rule can match only `sub` for now.
+
 **Wallet clients.** `VCA_INJI_WALLET_CLIENTS` lists them as JSON:
 `client_id`, `redirect_uris`, and an optional public `jwk`. A client
 with a key signs a client assertion. A client without one is public and
@@ -555,6 +568,7 @@ earlier release moves into the ring at the first start.
 | `VCA_INJI_AUTHZ_AUDIENCE` | The credential endpoint in `aud`. The default follows `VCA_INJI_OFFER_ISSUER`. |
 | `VCA_INJI_WALLET_CLIENTS` | The wallet clients |
 | `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The seeded holder provider |
+| `VCA_INJI_HOLDER_ESIGNET_CLIENT_ID`, `VCA_INJI_HOLDER_ESIGNET_CLIENT_KEY` | The VCA client of eSignet and the base64 text of its RSA key. With `VCA_INJI_ESIGNET_URL` too, the adapter adds eSignet as a holder provider. Set both or neither. |
 | `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` | The claims beyond `email`, `phone_number` and `sub` that the holder provider verifies, comma separated. A start writes them into the seeded record while it lists none. After that the admin portal owns the list. |
 | `VCA_INJI_ADMIN_JWKS_URL` | The key set of the admin pair. The admin portal edits the provider registry of the server with a session it signed. Empty serves no provider RPC. |
 | `VCA_INJI_DATA_SOURCE_URL` | The data source service of a claim without an offer |

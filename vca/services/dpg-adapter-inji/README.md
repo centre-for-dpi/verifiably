@@ -42,6 +42,7 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_AUTHZ_AUDIENCE` | The credential endpoint the tokens name. The default follows `VCA_INJI_OFFER_ISSUER`. |
 | `VCA_INJI_WALLET_CLIENTS` | The wallet clients of the server, as a JSON array with `client_id`, `redirect_uris`, and an optional public `jwk`. |
 | `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The holder provider that the server seeds into its registry. |
+| `VCA_INJI_HOLDER_ESIGNET_CLIENT_ID`, `VCA_INJI_HOLDER_ESIGNET_CLIENT_KEY` | The VCA client of eSignet and the base64 text of its RSA key. With `VCA_INJI_ESIGNET_URL` the server adds eSignet as a holder provider and turns the seeded realm off once (ADR-053 decision 4). |
 | `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` | The claims beyond `email`, `phone_number` and `sub` that the holder provider verifies. A binding rule matches only verified claims. The setting fills an empty list; the admin portal edits it later. |
 | `VCA_INJI_ADMIN_JWKS_URL` | The key set of the admin pair. The admin portal edits the holder providers of the server with an admin session. |
 | `VCA_INJI_DATA_SOURCE_URL` | The data source service that finds the subject of a claim without an offer. |

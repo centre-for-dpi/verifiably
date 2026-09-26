@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"net/http"
@@ -698,5 +699,76 @@ func TestTokenExchangePrivateKeyJWTWithRSA(t *testing.T) {
 	p.PrivateKey = oidcflow.SecretRef{Store: oidcflow.SecretFile, Name: smallPath}
 	if _, lerr := runLogin(t, newFlow(t), idp, p); !errors.Is(lerr, oidcflow.ErrSecret) {
 		t.Fatalf("a small RSA key = %v", lerr)
+	}
+}
+
+// TestClientAssertionNamesThePublishedTokenEndpoint: a container reaches
+// the token endpoint at an internal address, but the provider checks
+// the audience of the assertion against the address it publishes, as
+// eSignet 1.5.1 does (RFC 7523 section 3).
+func TestClientAssertionNamesThePublishedTokenEndpoint(t *testing.T) {
+	idp := oidctest.New()
+	defer idp.Close()
+	key, err := oidcflow.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	idp.ClientAssertionKey = &key.PublicKey
+	pemBytes, err := oidcflow.EncodeKeyPEM(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "client.pem")
+	if werr := os.WriteFile(path, pemBytes, 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	p := testProvider(idp)
+	p.TokenAuthMethod = oidcflow.TokenAuthPrivateKeyJWT
+	p.PrivateKey = oidcflow.SecretRef{Store: oidcflow.SecretFile, Name: path}
+	// The same server under another name stands for the compose network.
+	p.InternalAuthority = strings.Replace(idp.Issuer(), "127.0.0.1", "localhost", 1)
+	if _, lerr := runLogin(t, newFlow(t), idp, p); lerr != nil {
+		t.Fatalf("login through the internal authority: %v", lerr)
+	}
+	claims, err := oidcflow.PeekAssertion(idp.LastTokenForm.Get("client_assertion"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims["aud"] != idp.Issuer()+"/token" {
+		t.Errorf("aud = %v, want the published token endpoint %s/token", claims["aud"], idp.Issuer())
+	}
+	if got := (oidcflow.Metadata{}).AssertionAudience(); got != "" {
+		t.Errorf("empty metadata audience = %q", got)
+	}
+}
+
+// TestClientKeyFromOneLine: an environment variable holds one line, so
+// the key may be the base64 text of its DER bytes. A PEM block still
+// works, and text that is neither is a secret fault.
+func TestClientKeyFromOneLine(t *testing.T) {
+	idp := oidctest.New()
+	defer idp.Close()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idp.ClientAssertionKey = &key.PublicKey
+	t.Setenv("VCA_TEST_CLIENT_KEY", base64.StdEncoding.EncodeToString(x509.MarshalPKCS1PrivateKey(key)))
+	p := testProvider(idp)
+	p.TokenAuthMethod = oidcflow.TokenAuthPrivateKeyJWT
+	p.PrivateKey = oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: "VCA_TEST_CLIENT_KEY"}
+	if _, lerr := runLogin(t, newFlow(t), idp, p); lerr != nil {
+		t.Fatalf("login with a base64 DER key: %v", lerr)
+	}
+	if hdr, herr := jose.PeekHeader(idp.LastTokenForm.Get("client_assertion")); herr != nil || hdr.Alg != "RS256" {
+		t.Fatalf("header %+v %v", hdr, herr)
+	}
+	for _, bad := range []string{"not base64 !", ""} {
+		if _, perr := oidcflow.ParseClientKeyPEM([]byte(bad)); perr == nil {
+			t.Errorf("%q parsed as a key", bad)
+		}
+	}
+	if _, perr := oidcflow.ParseClientKeyPEM([]byte(base64.StdEncoding.EncodeToString([]byte("not der")))); perr == nil {
+		t.Error("base64 of text that is not DER parsed as a key")
 	}
 }

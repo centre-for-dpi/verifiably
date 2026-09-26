@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"os"
 	"path/filepath"
@@ -198,6 +201,102 @@ func TestBootstrapInjiSkipsEsignetWithoutAnAuthenticator(t *testing.T) {
 		store := filepath.Join(filepath.Dir(opts.Dir), MimotoDir, MimotoKeystoreFile)
 		if _, err := os.Stat(store); (err == nil) != (role == commonv1.Role_ROLE_HOLDER) {
 			t.Errorf("%v: the Mimoto key store exists = %v", role, err == nil)
+		}
+	}
+}
+
+// TestSetupSeedsEsignetAsTheHolderProvider is ADR-053 decision 4 at
+// setup time. With a real authenticator the Inji issuer pair tells its
+// adapter to seed eSignet as the holder provider of the holder
+// authorization server: the client id and the key of the client
+// assertion on one line. Setup makes the key of the VCA client once, in
+// deploy/esignet-inji/vca-client.pem with mode 0600, and a later run
+// reads it. So bootstrap registers the same key at eSignet. The holder
+// pair and a pair without eSignet get no key.
+func TestSetupSeedsEsignetAsTheHolderProvider(t *testing.T) {
+	issuer, holder := injiPair(commonv1.Role_ROLE_ISSUER), injiPair(commonv1.Role_ROLE_HOLDER)
+	props, _ := esignetFiles(t)
+	flags := withFlag(withFlag(baseFlags(), EsignetAuthenticatorEnv, "mosip-ida"), EsignetPropertiesEnv, props)
+	keyName := filepath.Join(EsignetDir, EsignetKeyFile)
+
+	plan := planOf(t, SetupRequest{Pair: issuer, Flags: flags})
+	env, err := ParseDotenv(bytes.NewReader(plan.Files[0].Data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, ok := sharedPlanFile(plan, keyName)
+	if !ok || f.Mode != 0o600 {
+		t.Fatalf("the client key file = %v, mode %04o", ok, f.Mode)
+	}
+	block, _ := pem.Decode(f.Data)
+	if block == nil {
+		t.Fatal("the client key file holds no PEM block")
+	}
+	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil || key.N.BitLen() < 2048 {
+		t.Fatalf("the client key: %v", err)
+	}
+	if env[EsignetHolderClientEnv] != EsignetClientID ||
+		env[EsignetHolderKeyEnv] != base64.StdEncoding.EncodeToString(x509.MarshalPKCS1PrivateKey(key)) {
+		t.Errorf("the holder provider values: client %q, key of %d characters", env[EsignetHolderClientEnv], len(env[EsignetHolderKeyEnv]))
+	}
+	if g, ok := sharedPlanFile(plan, filepath.Join(EsignetDir, ".gitignore")); !ok || string(g.Data) != "*\n" {
+		t.Error("the eSignet directory holds a key and a secret, but git does not ignore it")
+	}
+	if strings.Contains(plan.Summary(), env[EsignetHolderKeyEnv]) {
+		t.Error("the plan summary shows the client key")
+	}
+
+	// A later run reads the key and writes no new one.
+	again := planOf(t, SetupRequest{Pair: issuer, Flags: flags, EsignetClientKey: f.Data})
+	if _, rewrote := sharedPlanFile(again, keyName); rewrote {
+		t.Error("a later run writes the client key again")
+	}
+	againEnv, err := ParseDotenv(bytes.NewReader(again.Files[0].Data))
+	if err != nil || againEnv[EsignetHolderKeyEnv] != env[EsignetHolderKeyEnv] {
+		t.Errorf("a later run changed the key: %v", err)
+	}
+	if _, err := BuildPlan(SetupRequest{Pair: issuer, Flags: flags, Random: rand.Reader, EsignetClientKey: []byte("not a key")}); err == nil ||
+		!strings.Contains(err.Error(), EsignetKeyFile) {
+		t.Errorf("a broken key file = %v, want an error that names %s", err, EsignetKeyFile)
+	}
+
+	// ReadEsignetClientKey reads the file that setup and bootstrap share.
+	root := t.TempDir()
+	if got, err := ReadEsignetClientKey(root); err != nil || got != nil {
+		t.Errorf("no key file = %q %v", got, err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, EsignetDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, keyName), f.Data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReadEsignetClientKey(root); err != nil || !bytes.Equal(got, f.Data) {
+		t.Errorf("the key file = %v", err)
+	}
+	// A key path that holds a directory cannot be read.
+	other := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(other, keyName), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadEsignetClientKey(other); err == nil {
+		t.Error("an unreadable key file gives no error")
+	}
+
+	for name, req := range map[string]SetupRequest{
+		"the holder pair":        {Pair: holder, Flags: flags},
+		"a pair with no eSignet": {Pair: issuer},
+	} {
+		got := planEnv(t, req)
+		if _, has := got[EsignetHolderKeyEnv]; has {
+			t.Errorf("%s names the client key", name)
+		}
+		if _, has := got[EsignetHolderClientEnv]; has {
+			t.Errorf("%s names the client", name)
+		}
+		if _, wrote := sharedPlanFile(planOf(t, req), keyName); wrote {
+			t.Errorf("%s writes the client key", name)
 		}
 	}
 }

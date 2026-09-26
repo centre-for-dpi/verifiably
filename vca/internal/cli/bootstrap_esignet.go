@@ -115,6 +115,13 @@ func registerEsignetClient(ctx context.Context, opts BootstrapOptions, result *B
 		// the redirect page of Inji Web 0.16.0 (P6-I7d).
 		redirects = append(redirects, injiWebURL(opts.Values)+"/redirect")
 	}
+	authz := strings.TrimRight(opts.Values[InjiAuthzIssuerEnv], "/")
+	if opts.Pair == injiIssuer && authz != "" {
+		// Setup names eSignet as the holder provider of the holder
+		// authorization server, which signs holders in with this client
+		// (ADR-053 decision 4).
+		redirects = append(redirects, authz+"/callback")
+	}
 	for _, r := range redirects {
 		if !slices.Contains(state.RedirectURIs, r) {
 			state.RedirectURIs = append(state.RedirectURIs, r)
@@ -148,6 +155,10 @@ func registerEsignetClient(ctx context.Context, opts BootstrapOptions, result *B
 		if err := writeMimotoKeystore(opts, key, result); err != nil {
 			return err
 		}
+	}
+	if opts.Pair == injiIssuer && authz != "" {
+		result.step(opts.Out, "eSignet signs holders in for the holder authorization server %s with the client %s", authz, EsignetClientID)
+		return nil
 	}
 	result.step(opts.Out, "Add eSignet as a login provider with the client %s, private_key_jwt, and the key file %s. "+
 		"Its issuer is %s%s", EsignetClientID, keyPath, base, esignetPath)

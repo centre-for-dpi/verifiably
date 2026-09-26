@@ -408,3 +408,31 @@ func TestBootstrapInjiAddsNoIdentity(t *testing.T) {
 		}
 	}
 }
+
+// TestBootstrapRegistersTheAuthzCallbackAtEsignet is ADR-053 decision 4
+// at bootstrap time. Setup seeds eSignet as the holder provider of the
+// holder authorization server, so the issuer run registers the callback
+// of that server as a redirect URI of the VCA client too.
+func TestBootstrapRegistersTheAuthzCallbackAtEsignet(t *testing.T) {
+	kc := &keycloakState{}
+	keycloak := fakeKeycloak(t, kc)
+	defer keycloak.Close()
+	es := &esignetFake{}
+	esignet := fakeEsignet(t, es)
+	var out bytes.Buffer
+	opts := injiOptions(t, keycloak.URL, &out)
+	opts.Values[EnvBootstrapEsignetURL] = esignet.URL
+	opts.Values[InjiAuthzIssuerEnv] = "https://issuer.example/authz/"
+	got, err := Bootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	if len(es.creates) != 1 || !sameList(es.creates[0]["redirectUris"],
+		"https://issuer.example/auth/callback", "https://issuer.example/authz/callback") {
+		t.Fatalf("creates = %v", es.creates)
+	}
+	steps := strings.Join(got.Steps, "\n")
+	if !strings.Contains(steps, "holder authorization server") || strings.Contains(steps, "Add eSignet as a login provider") {
+		t.Errorf("steps = %s", steps)
+	}
+}

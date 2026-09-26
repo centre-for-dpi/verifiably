@@ -655,3 +655,94 @@ func TestBuildServesTheMetadataWhereRfc8414PutsIt(t *testing.T) {
 		t.Errorf("WellKnownPaths = %v", got)
 	}
 }
+
+// TestBuildSeedsEsignetAsTheHolderProvider is ADR-053 decision 4. When
+// the pair runs eSignet with a real authenticator, setup names the VCA
+// client and its key, and the adapter seeds eSignet as the holder
+// provider of the holder authorization server: private_key_jwt with the
+// key in the environment, the compose address of eSignet for the back
+// channel, and the default flag. The first seed turns the seeded realm
+// of the stack Keycloak off, so holders sign in at eSignet. An admin who
+// turns the realm on again keeps it on after a restart. Without eSignet
+// nothing changes, and half of the settings stop the start.
+func TestBuildSeedsEsignetAsTheHolderProvider(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	kv := store.Memory()
+	base := config.Config{
+		CertifyURL: f.URL(), PublicURL: "https://adapter.example", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
+		AuthzIssuer: "https://adapter.example/authz", AuthzKeySecret: "0123456789abcdef0123456789abcdef",
+		HolderOIDCDiscoveryURL: "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration",
+		HolderOIDCClientID:     "vca-inji-authz",
+	}
+	start := func(cfg config.Config) (map[string]oidcflow.Provider, error) {
+		t.Helper()
+		if _, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Store: kv, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}); err != nil {
+			return nil, err
+		}
+		registry, err := oidcflow.NewRegistry(store.NewJSON(kv), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]oidcflow.Provider{}
+		for _, p := range registry.List() {
+			out[p.ID] = p
+		}
+		return out, nil
+	}
+	got, err := start(base)
+	if err != nil || len(got) != 1 || !got[oidcflow.SeedID].Enabled {
+		t.Fatalf("without eSignet: %v %v", got, err)
+	}
+
+	withEsignet := base
+	withEsignet.EsignetURL = "http://inji-esignet:8088"
+	withEsignet.HolderEsignetClientID = "vca-inji"
+	withEsignet.HolderEsignetClientKey = "MIIEpAIBAAKCAQEA"
+	got, err = start(withEsignet)
+	if err != nil {
+		t.Fatalf("with eSignet: %v", err)
+	}
+	es, ok := got[app.EsignetProviderID]
+	if !ok {
+		t.Fatalf("no eSignet record: %v", got)
+	}
+	if es.Kind != oidcflow.KindESignet || !es.Enabled || !es.IsDefault || es.ClientID != "vca-inji" ||
+		es.DiscoveryURL != "http://inji-esignet:8088/v1/esignet/oidc/.well-known/openid-configuration" ||
+		es.InternalAuthority != "http://inji-esignet:8088" || es.TokenAuthMethod != oidcflow.TokenAuthPrivateKeyJWT ||
+		es.PrivateKey != (oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: config.Prefix + "HOLDER_ESIGNET_CLIENT_KEY"}) ||
+		!slices.Equal(es.Roles, []string{"holder"}) || !es.ClientSecret.IsZero() {
+		t.Errorf("the eSignet record = %+v", es)
+	}
+	if got[oidcflow.SeedID].Enabled {
+		t.Error("the realm of the stack Keycloak still signs holders in beside eSignet")
+	}
+
+	// The admin turns the realm on again, and a restart keeps it on.
+	registry, err := oidcflow.NewRegistry(store.NewJSON(kv), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	realm, err := registry.Get(oidcflow.SeedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	realm.Enabled = true
+	if _, perr := registry.Put(realm); perr != nil {
+		t.Fatal(perr)
+	}
+	if got, err = start(withEsignet); err != nil || !got[oidcflow.SeedID].Enabled || !got[app.EsignetProviderID].Enabled {
+		t.Fatalf("a restart undid the edit of the admin: %v %v", got, err)
+	}
+
+	for name, change := range map[string]func(*config.Config){
+		"a key without a client": func(c *config.Config) { c.HolderEsignetClientID = "" },
+		"a client without a key": func(c *config.Config) { c.HolderEsignetClientKey = "" },
+	} {
+		cfg := withEsignet
+		change(&cfg)
+		if _, err := start(cfg); err == nil || !strings.Contains(err.Error(), "HOLDER_ESIGNET_CLIENT") {
+			t.Errorf("%s: Build = %v", name, err)
+		}
+	}
+}
