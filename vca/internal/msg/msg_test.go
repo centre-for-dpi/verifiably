@@ -210,3 +210,15 @@ func TestAgeWords(t *testing.T) {
 		}
 	}
 }
+
+// TestNoSentenceNamesASampleOrAnExampleIssuer: page copy names no
+// sample, no placeholder account and no example issuer or credential
+// type (ADR-050 decision 1). A hint gives a neutral example.
+func TestNoSentenceNamesASampleOrAnExampleIssuer(t *testing.T) {
+	banned := regexp.MustCompile(`(?i)\b(sample|samples|mock|dummy|demo)\b|farmer|FarmerCredential|OpenBadgeCredential|Kiambu`)
+	for _, k := range Keys() {
+		if m := banned.FindString(en[k]); m != "" {
+			t.Errorf("%s names %q: %s", k, m, en[k])
+		}
+	}
+}

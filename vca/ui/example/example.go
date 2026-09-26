@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package example builds a demo page that uses every component of the kit.
-// It shows how a service mounts the assets and composes a page.
+// Package example builds the kit page: one page that uses every
+// component of the kit. It shows how a service mounts the assets and
+// composes a page. The content names the components, not a person, an
+// issuer or a credential (ADR-050 decision 1). No service imports the
+// package.
 package example
 
 import (
@@ -13,10 +16,10 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
-// Handler returns the demo server: assets under /static/, the demo page at
-// /, the sign in chooser at /signin, and a toast partial at /toast for the
-// htmx button. The assets and the kit share one config, so the layout
-// draws the brand the assets serve.
+// Handler returns the kit server: assets under /static/, the kit page
+// at /, the sign in chooser at /signin, and a toast partial at /toast
+// for the htmx button. The assets and the kit share one config, so the
+// layout draws the brand the assets serve.
 func Handler() (http.Handler, error) {
 	cfg := ui.DefaultConfig()
 	assets, err := ui.AssetsFor(cfg)
@@ -27,7 +30,7 @@ func Handler() (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Mux(assets, kit, DemoPage), nil
+	return Mux(assets, kit, KitPage), nil
 }
 
 // PageFunc builds the page a request shows.
@@ -57,7 +60,7 @@ func Mux(assets http.Handler, kit *components.Kit, build PageFunc) http.Handler 
 	})
 	mux.HandleFunc("GET /toast", func(w http.ResponseWriter, r *http.Request) {
 		serve(w, func() error {
-			toast := components.Toast{Level: "ok", Text: "Checked at " + r.URL.Query().Get("t"), OOB: true}
+			toast := components.Toast{Level: "ok", Text: "Toast text " + r.URL.Query().Get("t"), OOB: true}
 			return kit.Render(w, "toast", toast)
 		})
 	})
@@ -72,22 +75,23 @@ func serve(w http.ResponseWriter, fn func() error) {
 	}
 }
 
-// DemoPage composes one page from every component.
-func DemoPage(kit *components.Kit) (components.Page, error) {
+// KitPage composes one page from every component. Each text names the
+// part of the component it fills.
+func KitPage(kit *components.Kit) (components.Page, error) {
 	// The parts other components embed render first, in one pass.
 	pre := map[string]template.HTML{}
 	for name, data := range map[string]any{
-		"badge": components.Badge{Status: "ok", Text: "Valid"},
-		"figure": components.Figure{ID: "triangle", Title: "The triangle of trust", ViewBox: "0 0 320 200",
-			Caption: "Issuer, holder and verifier, with the trust registry between them.",
+		"badge": components.Badge{Status: "ok", Text: "Badge text"},
+		"figure": components.Figure{ID: "triangle", Title: "Figure title", ViewBox: "0 0 320 200",
+			Caption: "Figure caption.",
 			SVG: `<path class="fig-edge" d="M60 160 L160 40 L260 160 Z"/><circle class="fig-node" cx="60" cy="160" r="26"/>` +
 				`<circle class="fig-node" cx="160" cy="40" r="26"/><circle class="fig-node" cx="260" cy="160" r="26"/>` +
-				`<text class="fig-text" x="60" y="164">Issuer</text><text class="fig-text" x="160" y="44">Holder</text>` +
-				`<text class="fig-text" x="260" y="164">Verifier</text><text class="fig-label" x="160" y="180" text-anchor="middle">trusts</text>`},
+				`<text class="fig-text" x="60" y="164">Node 1</text><text class="fig-text" x="160" y="44">Node 2</text>` +
+				`<text class="fig-text" x="260" y="164">Node 3</text><text class="fig-label" x="160" y="180" text-anchor="middle">Edge label</text>`},
 		"stacks": components.Stacks{Items: []components.StackCard{{
-			ID: "stack-a", Name: "Alpha Stack", Version: "Pinned 1.2.3",
-			Components: []components.Component{{Name: "issuer-api", Version: "pinned 1.2.3", RepoHref: "https://example.org/repo", RepoText: "GitHub", DocsHref: "https://example.org/docs", DocsText: "Documentation"}},
-			Roles:      []components.RoleRow{{Label: "Issuer", State: "live", Text: "Live"}, {Label: "Holder", State: "starting", Text: "Starting"}},
+			ID: "stack-card", Name: "Stack name", Version: "Version text",
+			Components: []components.Component{{Name: "component-name", Version: "version text", RepoHref: "/", RepoText: "Repository link", DocsHref: "/", DocsText: "Documentation link"}},
+			Roles:      []components.RoleRow{{Label: "Role 1", State: "live", Text: "Live"}, {Label: "Role 2", State: "starting", Text: "Starting"}},
 		}}},
 		"note": components.Note{Label: "Note", Text: "Every component renders on this page, in both themes."},
 	} {
@@ -98,7 +102,7 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		pre[name] = h
 	}
 	okBadge, figure, stacks, note := pre["badge"], pre["figure"], pre["stacks"], pre["note"]
-	county, err := kit.HTML("field", components.Field{ID: "address-county", Name: "claim.address.county", Label: "County", Required: true})
+	nested, err := kit.HTML("field", components.Field{ID: "group-field", Name: "group.field", Label: "Field in a group", Required: true})
 	if err != nil {
 		return components.Page{}, err
 	}
@@ -106,59 +110,59 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		name string
 		data any
 	}{
-		{"tabs", components.Tabs{Label: "Demo views", Links: []components.Link{
+		{"tabs", components.Tabs{Label: "Kit views", Links: []components.Link{
 			{Href: "/", Text: "Components", Current: true}, {Href: "/signin", Text: "Sign in"},
 		}}},
-		{"stepper", components.Stepper{Label: "Demo progress", Steps: []string{"Source", "Claims", "Delivery"}, Current: 2}},
+		{"stepper", components.Stepper{Label: "Stepper label", Steps: []string{"Step 1", "Step 2", "Step 3"}, Current: 2}},
 		{"steps", components.Steps{Items: []components.Step{
-			{Title: "Identify your organisation", Text: "Register keys and metadata with the trust registry.", State: "done"},
-			{Title: "Define what you issue", Text: "Publish a schema, or build one.", State: "current", Href: "/", LinkText: "Open schemas"},
-			{Title: "Issue", Text: "One credential by hand, or many from a data source.", State: "locked"},
-			{Title: "Manage what you issued", Text: "Search, review, suspend or revoke."},
+			{Title: "Step title 1", Text: "Step text of a done step.", State: "done"},
+			{Title: "Step title 2", Text: "Step text of the current step.", State: "current", Href: "/", LinkText: "Step link"},
+			{Title: "Step title 3", Text: "Step text of a locked step.", State: "locked"},
+			{Title: "Step title 4", Text: "Step text of a step with no state."},
 		}}},
-		{"stat", components.Stat{Label: "Trust list", Value: "12 trusted issuers", Text: "Issuers a verifier on this deployment accepts.", Href: "/", LinkText: "Open trust list"}},
-		{"checklist", components.Checklist{ID: "first-run", Title: "First run checklist", Note: "Steps stay until done",
+		{"stat", components.Stat{Label: "Stat label", Value: "Stat value", Text: "Stat text.", Href: "/", LinkText: "Stat link"}},
+		{"checklist", components.Checklist{ID: "checklist", Title: "Checklist title", Note: "Checklist note",
 			Items: []components.Check{
-				{Text: "Register the first admin account", Detail: "Done through the admin realm", Done: true},
-				{Text: "Turn off self registration for admins", Detail: "Realm settings, Login, User registration"},
+				{Text: "Check text 1", Detail: "Check detail 1", Done: true},
+				{Text: "Check text 2", Detail: "Check detail 2"},
 			}}},
-		{"choice", components.Choice{ID: "source", Legend: "Source", Hint: "Options a stack cannot do are hidden for that stack.",
+		{"choice", components.Choice{ID: "choice", Legend: "Choice legend", Hint: "Choice hint.",
 			Options: []components.ChoiceOption{
-				{Value: "single", Title: "Single credential", Text: "Type the claims in a form built from the schema.", Checked: true},
-				{Value: "bulk", Title: "Bulk from a data source", Text: "One credential per record.", Meta: "3 sources"},
+				{Value: "one", Title: "Option title 1", Text: "Option text 1.", Checked: true},
+				{Value: "two", Title: "Option title 2", Text: "Option text 2.", Meta: "Option meta"},
 			}}},
-		{"credentials", components.Credentials{Label: "Credentials in this wallet", Items: []components.CredentialCard{
-			{ID: "cred-licence", Issuer: "Ministry of Health", Title: "Nurse licence", Status: "ok", StatusText: "Valid", Meta: "Expires 1 Oct 2027"},
-			{ID: "cred-farmer", Issuer: "Ministry of Agriculture", Title: "Farmer registration", Status: "warn", StatusText: "Suspended", Meta: "Issued 6 Sep 2026"}},
-			Add: components.Link{Href: "/", Text: "Discover what you can claim"}}},
-		{"dcapi", components.DCAPI{Text: "Open the device wallet", Offer: "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffers%2F1",
-			OK: "The wallet on this device has the offer.", Cancel: "You closed the wallet.", Fail: "Scan the QR code instead."}},
-		{"fieldset", components.Fieldset{ID: "address", Legend: "Address", Hint: "A nested object of the schema becomes one group.",
-			Body: county}},
-		{"code", components.Code{ID: "offer", Label: "Credential offer", Text: "openid-credential-offer://?credential_offer_uri=https://issuer.example/offers/1"}},
-		{"empty", components.Empty{Title: "Nothing issued yet", Text: "The first credential you issue appears here.",
-			Action: components.Button{Text: "Issue the first one", Href: "/", Variant: "primary"}}},
+		{"credentials", components.Credentials{Label: "Card list label", Items: []components.CredentialCard{
+			{ID: "card-1", Issuer: "Card source 1", Title: "Card title 1", Status: "ok", StatusText: "Status text", Meta: "Card meta 1"},
+			{ID: "card-2", Issuer: "Card source 2", Title: "Card title 2", Status: "warn", StatusText: "Status text", Meta: "Card meta 2"}},
+			Add: components.Link{Href: "/", Text: "Add link"}}},
+		{"dcapi", components.DCAPI{Text: "Device wallet button", Offer: "openid-credential-offer://?credential_offer_uri=%2Foffers%2F1",
+			OK: "Success text.", Cancel: "Cancel text.", Fail: "Failure text."}},
+		{"fieldset", components.Fieldset{ID: "group", Legend: "Group legend", Hint: "Group hint.",
+			Body: nested}},
+		{"code", components.Code{ID: "code", Label: "Code label", Text: "openid-credential-offer://?credential_offer_uri=/offers/1"}},
+		{"empty", components.Empty{Title: "Empty title", Text: "Empty text.",
+			Action: components.Button{Text: "Empty action", Href: "/", Variant: "primary"}}},
 		{"tiles", components.Tiles{Items: []components.Tile{
-			{Num: "Issuer", Title: "Proceed as issuer", Text: "Register your organisation, define what you issue, then issue credentials.", Meta: "On two stacks", Href: "/"},
-			{Num: "Holder", Title: "Proceed as holder", Text: "Discover offers, claim credentials into a wallet and present them.", Href: "/"},
-			{Num: "03", Title: "The triangle of trust", Text: "An issuer signs, a holder presents, a verifier checks.", Figure: figure, Meta: "Read more", Href: "https://www.w3.org/TR/vc-data-model-2.0/"},
+			{Num: "Tile 1", Title: "Tile title 1", Text: "Tile text 1.", Meta: "Tile meta", Href: "/"},
+			{Num: "Tile 2", Title: "Tile title 2", Text: "Tile text 2.", Href: "/"},
+			{Num: "03", Title: "Tile title 3", Text: "Tile text with a figure.", Figure: figure, Meta: "Tile meta", Href: "/"},
 		}}},
-		{"block", components.Block{ID: "stacks", Title: "Stacks on this deployment", Lead: "Only running services appear.", Meta: "Updated now", Body: stacks}},
-		{"cta", components.CTA{ID: "start", Title: "Pick a role.", Text: "Walk one flow end to end.", Action: components.Button{Text: "Start", Href: "/", Variant: "primary"}}},
-		{"card", components.Card{ID: "verdict", Title: "Verification result", Text: "The credential is valid.", Body: okBadge, Footer: "Checked today"}},
-		{"table", components.Table{Caption: "Checks", Columns: []string{"Check", "Result"}, Rows: []components.Row{
-			{{Text: "Signature"}, {HTML: okBadge}},
-			{{Text: "Status list"}, {HTML: okBadge}},
+		{"block", components.Block{ID: "block", Title: "Block title", Lead: "Block lead.", Meta: "Block meta", Body: stacks}},
+		{"cta", components.CTA{ID: "cta", Title: "Call to action title.", Text: "Call to action text.", Action: components.Button{Text: "Start", Href: "/", Variant: "primary"}}},
+		{"card", components.Card{ID: "card", Title: "Card title", Text: "Card text.", Body: okBadge, Footer: "Card footer"}},
+		{"table", components.Table{Caption: "Table caption", Columns: []string{"Column 1", "Column 2"}, Rows: []components.Row{
+			{{Text: "Row 1"}, {HTML: okBadge}},
+			{{Text: "Row 2"}, {HTML: okBadge}},
 		}}},
-		{"field", components.Field{ID: "issuer", Label: "Issuer DID", Hint: "Starts with did:", Required: true, Autocomplete: "off"}},
-		{"field", components.Field{ID: "kind", Label: "Credential type", Type: "select", Options: []components.Option{{Value: "degree", Text: "Degree", Selected: true}}}},
-		{"button", components.Button{Text: "Check now", Type: "submit", Variant: "primary", Attrs: map[string]string{"hx-get": "/toast?t=now", "hx-swap": "none"}}},
-		{"button", components.Button{Text: "Raw credential", Controls: "raw", Expanded: true}},
-		{"json", components.JSON{ID: "raw", Summary: "Raw credential JSON", Open: true, Data: map[string]any{"type": []string{"VerifiableCredential"}, "issuer": "did:example:123"}}},
-		{"qr", components.QR{Src: "data:image/gif;base64,R0lGODlhAQABAAAAACw=", Alt: "QR code: open the credential offer in a wallet", Size: 160}},
-		{"button", components.Button{Text: "Revoke", Variant: "danger", Opens: "confirm"}},
-		{"dialog", components.Dialog{ID: "confirm", Title: "Revoke credential", Text: "This cannot be undone.",
-			Actions: []components.Button{{Text: "Revoke", Type: "submit", Variant: "danger", Value: "revoke"}}}},
+		{"field", components.Field{ID: "text-field", Label: "Text field", Hint: "Field hint.", Required: true, Autocomplete: "off"}},
+		{"field", components.Field{ID: "select-field", Label: "Select field", Type: "select", Options: []components.Option{{Value: "one", Text: "Option 1", Selected: true}}}},
+		{"button", components.Button{Text: "Show a toast", Type: "submit", Variant: "primary", Attrs: map[string]string{"hx-get": "/toast?t=now", "hx-swap": "none"}}},
+		{"button", components.Button{Text: "Toggle the JSON", Controls: "raw", Expanded: true}},
+		{"json", components.JSON{ID: "raw", Summary: "JSON summary", Open: true, Data: map[string]any{"key": "value", "list": []string{"item"}}}},
+		{"qr", components.QR{Src: "data:image/gif;base64,R0lGODlhAQABAAAAACw=", Alt: "QR code: the code text", Size: 160}},
+		{"button", components.Button{Text: "Open the dialog", Variant: "danger", Opens: "confirm"}},
+		{"dialog", components.Dialog{ID: "confirm", Title: "Dialog title", Text: "Dialog text.",
+			Actions: []components.Button{{Text: "Dialog action", Type: "submit", Variant: "danger", Value: "confirm"}}}},
 	}
 	parts := make([]template.HTML, 0, len(steps)+4)
 	parts = append(parts, template.HTML(`<form action="/" method="get">`)) //nolint:gosec // literal
@@ -180,13 +184,13 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 		Aside:   note,
 	}
 	return components.Page{
-		Title:       "vca UI kit demo",
+		Title:       "vca UI kit",
 		Hero:        hero,
 		Description: "Every component of the vca UI kit on one page.",
 		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "UI kit"},
-			Links: []components.Link{{Href: "/", Text: "Demo", Current: true}, {Href: "/signin", Text: "Sign in"}, {Href: "/static/vca.css", Text: "Stylesheet"}}},
-		Shell:   demoShell(),
-		Toasts:  []components.Toast{{Level: "info", Text: "Demo page loaded"}},
+			Links: []components.Link{{Href: "/", Text: "Components", Current: true}, {Href: "/signin", Text: "Sign in"}, {Href: "/static/vca.css", Text: "Stylesheet"}}},
+		Shell:   kitShell(),
+		Toasts:  []components.Toast{{Level: "info", Text: "Toast text"}},
 		Footer:  fmt.Sprintf("vca UI kit, htmx %s", ui.HTMXVersion),
 		Content: components.Join(parts...),
 	}, nil
@@ -196,7 +200,7 @@ func DemoPage(kit *components.Kit) (components.Page, error) {
 // the h1, so the page has no other header.
 func SignInPage(kit *components.Kit) (components.Page, error) {
 	extra, err := kit.HTML("card", components.Card{
-		ID: "bootstrap", Title: "First super admin", Text: "Paste the bootstrap token that the service printed at its first start.",
+		ID: "bootstrap", Title: "Card title", Text: "Card text under the providers.",
 	})
 	if err != nil {
 		return components.Page{}, err
@@ -205,35 +209,36 @@ func SignInPage(kit *components.Kit) (components.Page, error) {
 		Title:       "Sign in",
 		Description: "The sign in chooser of the vca UI kit.",
 		Nav: components.Nav{Brand: components.Link{Href: "/", Text: "UI kit"},
-			Links: []components.Link{{Href: "/", Text: "Demo"}, {Href: "/signin", Text: "Sign in", Current: true}}},
+			Links: []components.Link{{Href: "/", Text: "Components"}, {Href: "/signin", Text: "Sign in", Current: true}}},
 		SignIn: &components.SignIn{
 			Role: "Admin", Title: "Sign in as an admin.",
-			Lead: "You return to the admin portal after sign in. The admin sets the login providers.",
+			Lead: "Lead text of the sign in chooser.",
 			Back: components.Link{Href: "/", Text: "Choose another role"}, Label: "Continue with",
 			Providers: []components.SignInProvider{
-				{Text: "Keycloak", Href: "/", Meta: "vca-admin-realm"},
-				{Text: "Identity Server", Href: "/", Meta: "oidc"},
+				{Text: "Provider 1", Href: "/", Meta: "Provider meta 1"},
+				{Text: "Provider 2", Href: "/", Meta: "Provider meta 2"},
 			},
-			CalloutLabel: "First admin after deployment?", Callout: "Paste the bootstrap token, then register. Then turn off self registration in the realm settings.",
+			CalloutLabel: "Callout label", Callout: "Callout text.",
 			Extra:    extra,
 			Register: []components.Button{{Text: "Register a new account", Href: "/", Variant: "ghost"}},
-			Note:     "VCA is not tied to Keycloak. Any OIDC provider the admin adds appears here.",
+			Note:     "Note text of the sign in chooser.",
 		},
 		Footer: fmt.Sprintf("vca UI kit, htmx %s", ui.HTMXVersion),
 	}, nil
 }
 
-// demoShell frames the demo page as an issuer portal with two live stacks,
-// one starting stack, a user, and two navigation sections.
-func demoShell() *components.Shell {
+// kitShell frames the kit page with the portal shell: three stack
+// links, one of them starting, the user of the kit page, and two
+// navigation sections.
+func kitShell() *components.Shell {
 	return &components.Shell{
 		Role: "issuer",
 		Stacks: []components.StackLink{
-			{Name: "Stack A", Href: "/", Current: true},
-			{Name: "Stack B", Href: "/?stack=b"},
-			{Name: "Stack C", State: "starting"},
+			{Name: "Stack 1", Href: "/", Current: true},
+			{Name: "Stack 2", Href: "/?stack=2"},
+			{Name: "Stack 3", State: "starting"},
 		},
-		User: components.User{Name: "Demo user", SignOut: "/auth/logout", CSRF: "demo-token"},
+		User: components.User{Name: "Kit page", SignOut: "/auth/logout", CSRF: "kit-page"},
 		Sections: []components.NavSection{
 			{Links: []components.Link{{Href: "/", Text: "Overview", Current: true}}},
 			{Label: "Kit", Links: []components.Link{{Href: "/static/vca.css", Text: "Stylesheet"}, {Href: "/toast?t=nav", Text: "Toast"}}},

@@ -81,14 +81,9 @@ var nomockAllowlist = []nomockException{
 // list.
 // The reason column names the unit that deletes the entry.
 var pendingRemovals = []nomockException{
-	{"vca/core/vc/title.go", "OpenBadgeCredential", "N11"},
 	{"vca/docs/deploy.md", "mock", "N12"},
 	{"vca/docs/deploy.md", "sample", "N12"},
 	{"vca/docs/dpg-adapter-inji.md", "sample", "N12"},
-	{"vca/docs/ui.md", "OpenBadgeCredential", "N11"},
-	{"vca/internal/msg/en.go", "FarmerCredential", "N11"},
-	{"vca/ui/example/example.go", "Demo user", "N11"},
-	{"vca/ui/example/example.go", "demo-token", "N11"},
 }
 
 // trackedFiles lists the committed files under deploy/ and vca/,

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -80,7 +81,7 @@ func formValues() url.Values {
 		"wire": {"dc+sd-jwt"}, "expires": {"no"},
 		"field.0.name": {"given_name"}, "field.0.label": {"Given name"},
 		"field.0.type": {"string"}, "field.0.required": {"yes"}, "field.0.sd": {"yes"},
-		"sample": {`{"given_name":"Ada"}`},
+		"preview_values": {`{"given_name":"Ada"}`},
 	}
 }
 
@@ -120,7 +121,7 @@ func TestBuilderPage(t *testing.T) {
 		`hx-post="/builder/preview"`,
 		`aria-live="polite"`,
 		`id="preview"`,
-		`Sample credential JSON`,
+		`Preview credential JSON`,
 		`Wallet card`,
 		`PDF preview`,
 		`Selectively disclosable`,
@@ -188,7 +189,7 @@ func TestPreviewFragment(t *testing.T) {
 	if !strings.HasPrefix(strings.TrimSpace(body), `<div id="preview"`) {
 		t.Errorf("the fragment must be the preview region: %q", body[:60])
 	}
-	for _, want := range []string{`aria-live="polite"`, "Ada", "/pdf/preview/", "The sample credential matches the schema."} {
+	for _, want := range []string{`aria-live="polite"`, "Ada", "/pdf/preview/", "The preview credential matches the schema."} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the fragment has no %q", want)
 		}
@@ -216,7 +217,7 @@ func TestPreviewServesThePDFDocument(t *testing.T) {
 func TestPreviewReportsProblems(t *testing.T) {
 	h := build(t, false)
 	values := formValues()
-	values.Set("sample", `{"grade":"not a number"}`)
+	values.Set("preview_values", `{"grade":"not a number"}`)
 	body := post(t, h, "/builder/preview", values).Body.String()
 	a11ytest.AssertFragment(t, body)
 	if !strings.Contains(body, "Fix these points before you save.") {
@@ -227,21 +228,21 @@ func TestPreviewReportsProblems(t *testing.T) {
 func TestPreviewWithoutASample(t *testing.T) {
 	h := build(t, false)
 	values := formValues()
-	values.Set("sample", "")
+	values.Set("preview_values", "")
 	body := post(t, h, "/builder/preview", values).Body.String()
 	if !strings.Contains(body, "given_name") {
-		t.Errorf("the generated sample must show: %s", body)
+		t.Errorf("the derived preview values must show: %s", body)
 	}
 }
 
 func TestPreviewWithABrokenSample(t *testing.T) {
 	h := build(t, false)
 	values := formValues()
-	values.Set("sample", "{not json")
+	values.Set("preview_values", "{not json")
 	body := post(t, h, "/builder/preview", values).Body.String()
 	a11ytest.AssertFragment(t, body)
 	if !strings.Contains(body, "Fix these points before you save.") {
-		t.Errorf("a broken sample must give problems: %s", body)
+		t.Errorf("broken preview values must give problems: %s", body)
 	}
 }
 
@@ -300,17 +301,17 @@ func TestAddGivesAFreeName(t *testing.T) {
 	}
 }
 
-func TestFillTheSample(t *testing.T) {
+func TestFillThePreviewValues(t *testing.T) {
 	h := build(t, false)
 	values := formValues()
-	values.Set("sample", `{"given_name":"kept"}`)
-	body := post(t, h, "/builder/sample", values).Body.String()
+	values.Set("preview_values", `{"given_name":"kept"}`)
+	body := post(t, h, "/builder/fill", values).Body.String()
 	a11ytest.AssertPage(t, body)
 	if strings.Contains(body, "kept") {
-		t.Error("the fill button must replace the sample")
+		t.Error("the fill button must replace the preview values")
 	}
 	if !strings.Contains(body, "given_name") {
-		t.Error("the generated sample must show")
+		t.Error("the derived preview values must show")
 	}
 }
 
@@ -521,7 +522,7 @@ func TestABrokenKitFailsEveryPage(t *testing.T) {
 		{"builder", http.MethodGet, "/builder/", nil},
 		{"preview", http.MethodPost, "/builder/preview", formValues()},
 		{"fields", http.MethodPost, "/builder/fields", formValues()},
-		{"sample", http.MethodPost, "/builder/sample", formValues()},
+		{"fill", http.MethodPost, "/builder/fill", formValues()},
 		{"import page", http.MethodGet, "/builder/import", nil},
 		{"import", http.MethodPost, "/builder/import", url.Values{"json_schema": {document}}},
 		{"import problem", http.MethodPost, "/builder/import", url.Values{}},
@@ -565,5 +566,36 @@ func TestABrokenKitFailsTheNoPreviewCard(t *testing.T) {
 func TestMessageOfAPlainError(t *testing.T) {
 	if got := pages.Message(errors.New("plain")); got != "plain" {
 		t.Errorf("message = %q", got)
+	}
+}
+
+// TestBuilderCopySaysPreview: the values of the builder come from the
+// schema of the issuer at request time. The page calls them preview
+// values, never a sample (ADR-050 decision 1).
+func TestBuilderCopySaysPreview(t *testing.T) {
+	h := build(t, false)
+	values := formValues()
+	values.Set("preview_values", `{"given_name":"kept"}`)
+	fill := post(t, h, "/builder/fill", values)
+	region := post(t, h, "/builder/preview", formValues()).Body.String()
+	for name, body := range map[string]string{
+		"builder": get(t, h, "/builder/").Body.String(),
+		"preview": region,
+		"fill":    fill.Body.String(),
+	} {
+		if m := regexp.MustCompile(`(?i)sample`).FindString(body); m != "" {
+			t.Errorf("the %s page names %q", name, m)
+		}
+		if name != "preview" && !strings.Contains(body, "Preview values") {
+			t.Errorf("the %s page has no box of preview values", name)
+		}
+	}
+	if !strings.Contains(region, "Preview credential JSON") {
+		t.Error("the preview region does not name the preview credential")
+	}
+	a11ytest.AssertFragment(t, region)
+	a11ytest.AssertPage(t, fill.Body.String())
+	if strings.Contains(fill.Body.String(), "kept") || !strings.Contains(fill.Body.String(), "given_name") {
+		t.Error("the fill button must replace the values with ones from the schema")
 	}
 }

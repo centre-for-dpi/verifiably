@@ -27,7 +27,7 @@ This document covers ADR-027 decisions 3 to 9 and ADR-032.
 | `ui/fonts` | `Pack` type with three roles, `Default`, `Shipped`, `Validate`, `CSS`, `Files`. |
 | `ui/components` | `Kit` with one template and one data struct per component. `WithBrand` sets the brand of the layout. |
 | `ui/a11ytest` | `AssertPage`, `AssertFragment`, and `Check` for tests. |
-| `ui/example` | Demo page that uses every component. `cmd/demo` serves it. |
+| `ui/example` | The kit page that uses every component. Its texts name the parts of each component, not a person or an issuer. `cmd/kitpage` serves it. No service imports it. |
 
 ## How to use the kit
 
@@ -70,10 +70,10 @@ mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-Run the demo and open `http://localhost:8080/`:
+Run the kit page and open `http://localhost:8080/`:
 
 ```sh
-cd vca && go run ./ui/example/cmd/demo
+cd vca && go run ./ui/example/cmd/kitpage
 ```
 
 The asset handler answers `GET` and `HEAD` only. Every response carries an
@@ -445,7 +445,7 @@ through `aria-describedby`. Put the fields from `Kit.HTML` in `Body`.
 `Meta`, `Summary`, `Body`. A body sits in a `details` disclosure that
 the summary names. A title wraps between words and never breaks a word
 early. Pass a type name through `vc.TypeTitle` first, so
-`OpenBadgeCredential` shows as "Open badge credential". The wallet
+`ResidencePermitCredential` shows as "Residence permit credential". The wallet
 cards, the issued list, and the verifier result cards do this. A display
 name of the issuer stays as the issuer wrote it. The layout classes `split` and `mono` sit in the kit
 stylesheet too: `split` puts blocks side by side on a wide screen, and

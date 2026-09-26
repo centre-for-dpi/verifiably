@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Command demo serves the vca UI kit demo page on the PORT address (default 8080).
+// Command kitpage serves the vca UI kit page on the PORT address (default 8080).
 package main
 
 import (
@@ -21,7 +21,7 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	log.Printf("demo on http://localhost:%s/", port)
+	log.Printf("kit page on http://localhost:%s/", port)
 	srv := &http.Server{Addr: ":" + port, Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())
 }

@@ -417,9 +417,9 @@ func sampleString(sub map[string]any, name string) string {
 	case "uri":
 		return "https://example.org/" + name
 	}
-	text := "Sample " + name
+	text := "Preview " + name
 	if t, ok := sub["title"].(string); ok && t != "" {
-		text = "Sample " + t
+		text = "Preview " + t
 	}
 	if m, ok := sub["minLength"].(float64); ok {
 		for len([]rune(text)) < int(m) {

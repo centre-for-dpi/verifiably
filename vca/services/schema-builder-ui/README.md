@@ -6,7 +6,7 @@ The schema builder is the page where issuer staff build a credential schema. It 
 
 - It builds a JSON Schema 2020-12 document from a form. Field types, required flags, enums, formats, and selective disclosure flags are first class.
 - It renders a live preview on every edit. The form posts to the preview endpoint with the htmx trigger `input changed delay:250ms`.
-- The live view holds three tabs: the sample credential JSON, the wallet card from the OID4VCI display metadata, and the PDF preview.
+- The live view holds three tabs: the preview credential JSON, the wallet card from the OID4VCI display metadata, and the PDF preview.
 - The preview comes from the pure function `PreviewCredential` in `core/preview`. The service holds no preview logic of its own.
 - The preview region is an `aria-live="polite"` region. Every control is a labelled form control, so the pages work with the keyboard.
 - Save stores a draft version in the schema registry. The DPG learns nothing until staff publish the version there.

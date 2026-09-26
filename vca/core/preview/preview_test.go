@@ -58,28 +58,28 @@ func TestSampleData(t *testing.T) {
 		t.Fatal(sampleErr)
 	}
 	want := map[string]any{
-		"name": "Sample Full name", "degree": "BSc", "year": 1900.0, "gpa": 1.5, "honours": true,
+		"name": "Preview Full name", "degree": "BSc", "year": 1900.0, "gpa": 1.5, "honours": true,
 		"email": "citizen@example.org", "born": "1990-01-31", "seen": "2024-01-31T10:00:00Z", "site": "https://example.org/site",
-		"fixed": "X", "ex": "from example", "def": 7.0, "nothing": nil, "either": 1.0, "short": "Sam", "titled": "Sample T",
+		"fixed": "X", "ex": "from example", "def": 7.0, "nothing": nil, "either": 1.0, "short": "Pre", "titled": "Preview T",
 	}
 	for k, v := range want {
 		if sample[k] != v {
 			t.Errorf("%s: got %#v want %#v", k, sample[k], v)
 		}
 	}
-	if tags := anyval.As[[]any](sample["tags"]); len(tags) != 1 || tags[0] != "Sample tags" {
+	if tags := anyval.As[[]any](sample["tags"]); len(tags) != 1 || tags[0] != "Preview tags" {
 		t.Errorf("tags: %v", sample["tags"])
 	}
 	if empty := anyval.As[[]any](sample["empty"]); len(empty) != 0 {
 		t.Errorf("empty: %v", sample["empty"])
 	}
-	if addr := anyval.As[map[string]any](sample["addr"]); addr["street"] != "Sample street" {
+	if addr := anyval.As[map[string]any](sample["addr"]); addr["street"] != "Preview street" {
 		t.Errorf("addr: %v", sample["addr"])
 	}
-	if bad := sample["bad"]; bad != "Sample bad" {
+	if bad := sample["bad"]; bad != "Preview bad" {
 		t.Errorf("bad ref: %v", bad)
 	}
-	if sub := anyval.As[map[string]any](sample["sub"]); sub["a"] != "Sample a" || len(sub) != 1 {
+	if sub := anyval.As[map[string]any](sample["sub"]); sub["a"] != "Preview a" || len(sub) != 1 {
 		t.Errorf("sub: %v", sub)
 	}
 	if _, has := sample["flag"]; has {
@@ -97,7 +97,7 @@ func TestSampleData(t *testing.T) {
 		t.Fatalf("loop: %v %v", loop, err)
 	}
 	num, err := SampleData(`{"properties": {"n": {"type": "number", "minimum": 2}, "s": {"$ref": "#/title"}}, "title": "x"}`)
-	if err != nil || num["n"] != 2.0 || num["s"] != "Sample s" {
+	if err != nil || num["n"] != 2.0 || num["s"] != "Preview s" {
 		t.Fatalf("minimum: %v %v", num, err)
 	}
 }
@@ -128,7 +128,7 @@ func TestPreviewCredentialFormats(t *testing.T) {
 	if anyval.As[map[string]any](vc["credentialSchema"])["id"] != "https://issuer.example/schemas/1" {
 		t.Fatalf("schema: %v", vc["credentialSchema"])
 	}
-	if anyval.As[map[string]any](vc["credentialSubject"])["name"] != "Sample Full name" {
+	if anyval.As[map[string]any](vc["credentialSubject"])["name"] != "Preview Full name" {
 		t.Fatalf("subject: %v", vc["credentialSubject"])
 	}
 	if p.Card.Title != "Degree" || p.Card.BackgroundColor != "#112233" || len(p.Card.Rows) == 0 {

@@ -12,7 +12,7 @@
 //	GET  /                the builder page, with ?id= to open a stored schema
 //	POST /preview         the live preview region
 //	POST /fields          add or remove one field
-//	POST /sample          fill the sample values from the schema
+//	POST /fill            fill the preview values from the schema
 //	POST /save            save the draft in the schema registry
 //	GET  /import          the import page
 //	POST /import          import a JSON Schema document or a catalogue entry
@@ -116,7 +116,7 @@ func (p *Pages) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.builder))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/preview", p.handle(p.preview))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/fields", p.handle(p.fields))
-	mux.HandleFunc("POST "+p.opts.Prefix+"/sample", p.handle(p.sample))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/fill", p.handle(p.fill))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/save", p.handle(p.save))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/import", p.handle(p.importPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/import", p.handle(p.runImport))
@@ -206,7 +206,7 @@ func (p *Pages) nav(current string) components.Nav {
 // state is everything one builder page shows.
 type state struct {
 	Draft  draft.Draft
-	Sample string
+	Values string
 	Format string
 	Locale string
 	Toasts []components.Toast
@@ -216,7 +216,7 @@ type state struct {
 func read(values url.Values) state {
 	return state{
 		Draft:  draft.Parse(values),
-		Sample: values.Get("sample"),
+		Values: values.Get("preview_values"),
 		Format: values.Get("format"),
 		Locale: values.Get("locale"),
 	}
@@ -309,14 +309,14 @@ func newName(d draft.Draft) string {
 	}
 }
 
-// sample fills the sample values from the schema document.
-func (p *Pages) sample(w http.ResponseWriter, r *http.Request) error {
+// fill replaces the preview values with values the schema derives.
+func (p *Pages) fill(w http.ResponseWriter, r *http.Request) error {
 	values, err := form(r)
 	if err != nil {
 		return err
 	}
 	s := read(values)
-	s.Sample = ""
+	s.Values = ""
 	return p.render(w, r, s)
 }
 
@@ -415,14 +415,14 @@ func (p *Pages) preview(w http.ResponseWriter, r *http.Request) error {
 	return err
 }
 
-// values returns the sample values of the state. An empty sample box
-// takes the values the schema generates.
+// values returns the preview values of the state. An empty box takes
+// the values the schema derives. Nothing issues them.
 func (s state) values() (map[string]any, string) {
-	if strings.TrimSpace(s.Sample) != "" {
+	if strings.TrimSpace(s.Values) != "" {
 		out := map[string]any{}
-		ignored2 := json.Unmarshal([]byte(s.Sample), &out)
+		ignored2 := json.Unmarshal([]byte(s.Values), &out)
 		_ = ignored2
-		return out, s.Sample
+		return out, s.Values
 	}
 	out, err := preview.SampleData(s.Draft.Document())
 	if err != nil {
@@ -462,11 +462,11 @@ func (p *Pages) previewBody(err *error, s state, values map[string]any) template
 	return f.html()
 }
 
-// problemsCard lists the problems of the draft and of the sample.
+// problemsCard lists the problems of the draft and of the preview values.
 func (p *Pages) problemsCard(err *error, problems []string) template.HTML {
 	if len(problems) == 0 {
 		return p.frag(err).card(components.Card{
-			ID: "problems", Title: "Checks", Text: "The sample credential matches the schema.",
+			ID: "problems", Title: "Checks", Text: "The preview credential matches the schema.",
 		})
 	}
 	items := make([]string, 0, len(problems))
@@ -492,11 +492,11 @@ type tab struct {
 func (p *Pages) tabs(err *error, view preview.Preview) template.HTML {
 	document := p.frag(err)
 	document.add("json", components.JSON{
-		ID: "sample-json", Summary: "The sample credential document",
+		ID: "preview-json", Summary: "The preview credential document",
 		Data: json.RawMessage(view.CredentialJSON), Open: true,
 	})
 	list := []tab{
-		{id: "tab-json", title: "Sample credential JSON", body: document.html()},
+		{id: "tab-json", title: "Preview credential JSON", body: document.html()},
 		{id: "tab-card", title: "Wallet card", body: p.cardTab(err, view)},
 		{id: "tab-pdf", title: "PDF preview", body: pdfTab(view)},
 	}
@@ -558,8 +558,8 @@ func yesNo(v bool) string {
 
 // render writes the whole builder page.
 func (p *Pages) render(w http.ResponseWriter, r *http.Request, s state) error {
-	_, sample := s.values()
-	s.Sample = sample
+	_, shown := s.values()
+	s.Values = shown
 	var err error
 	f := p.frag(&err)
 	f.raw(p.editor(&err, s, staffsession.HiddenField(r.Context())))
@@ -594,7 +594,7 @@ func (p *Pages) editor(err *error, s state, csrf template.HTML) template.HTML {
 	f.raw(template.HTML(`<input type="hidden" name="id" value="` + template.HTMLEscapeString(s.Draft.ID) + `">`)) //nolint:gosec // the id is escaped
 	f.raw(p.identityCard(err, s))
 	f.raw(p.fieldCards(err, s.Draft))
-	f.raw(p.sampleCard(err, s))
+	f.raw(p.valuesCard(err, s))
 	f.raw(p.actions(err))
 	f.raw(`</form>`)
 	return f.html()
@@ -714,19 +714,21 @@ func (p *Pages) fieldCard(err *error, i int, field draft.Field) template.HTML {
 	return f.card(components.Card{ID: "field-" + strconv.Itoa(i), Title: "Field " + strconv.Itoa(i+1)})
 }
 
-// sampleCard renders the sample values box and the fill button.
-func (p *Pages) sampleCard(err *error, s state) template.HTML {
+// valuesCard renders the box of preview values and the fill button.
+// The values show what a credential of the schema looks like. Nothing
+// issues them.
+func (p *Pages) valuesCard(err *error, s state) template.HTML {
 	f := p.frag(err)
 	f.add("field", components.Field{
-		ID: "sample", Label: "Sample values", Type: "textarea", Value: s.Sample,
-		Hint:  "A JSON object. The preview uses these values.",
+		ID: "preview_values", Label: "Preview values", Type: "textarea", Value: s.Values,
+		Hint:  "A JSON object. The preview uses these values. Nothing issues them.",
 		Attrs: map[string]string{"rows": "8", "spellcheck": "false"},
 	})
 	f.add("button", components.Button{
-		Text: "Fill the sample from the schema", Type: "submit",
-		Attrs: map[string]string{"formaction": p.opts.Prefix + "/sample"},
+		Text: "Fill the preview values from the schema", Type: "submit",
+		Attrs: map[string]string{"formaction": p.opts.Prefix + "/fill"},
 	})
-	return f.card(components.Card{ID: "sample-card", Title: "Sample values"})
+	return f.card(components.Card{ID: "values-card", Title: "Preview values"})
 }
 
 // actions renders the save button.

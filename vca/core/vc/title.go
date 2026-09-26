@@ -19,8 +19,8 @@ var shortForms = map[string]string{
 }
 
 // TypeTitle turns a credential type name into a title that reads as
-// words in sentence case. OpenBadgeCredential becomes "Open badge
-// credential". A URL or URN style type keeps its last part that is not
+// words in sentence case. ResidencePermitCredential becomes "Residence
+// permit credential". A URL or URN style type keeps its last part that is not
 // a version number. A name that holds a space already reads as words
 // and stays as it is, so a display name of the issuer never changes.
 // A name with no word in it stays as it is.

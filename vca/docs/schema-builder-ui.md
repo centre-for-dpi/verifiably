@@ -42,7 +42,7 @@ sequenceDiagram
     participant Core as core/preview
     Author->>Form: types a value
     Form->>Service: POST /builder/preview after 250 ms
-    Service->>Core: PreviewCredential(schema, sample)
+    Service->>Core: PreviewCredential(schema, preview values)
     Core-->>Service: JSON, card, PDF reference
     Service-->>Form: the preview region
 ```
@@ -57,7 +57,7 @@ The live view holds three tabs (ADR-014 decision 3).
 
 | Tab | Content |
 |---|---|
-| Sample credential JSON | The sample credential in the selected wire format. |
+| Preview credential JSON | The preview credential in the selected wire format. |
 | Wallet card | The title, the description, and the claim rows from the OID4VCI display metadata. |
 | PDF preview | The reference and a link to the PDF document (ADR-016). |
 
@@ -101,7 +101,7 @@ page renders with the `vca/ui` kit and passes `a11ytest.AssertPage`.
 | `GET /builder/` | The builder. The query value `id` opens a stored version. |
 | `POST /builder/preview` | The live preview region. |
 | `POST /builder/fields` | Add or remove one field, then render the page again. |
-| `POST /builder/sample` | Fill the sample values from the schema. |
+| `POST /builder/fill` | Fill the preview values from the schema. The schema derives them at request time, and nothing issues them. |
 | `POST /builder/save` | Save the draft in the schema registry. |
 | `GET /builder/import` | The import page. The query value `stack` picks the catalogue of one live issuer stack. |
 | `POST /builder/import` | Import a document or a catalogue entry. The field `stack` names the stack of the entry. |

@@ -41,7 +41,7 @@ code lives in `gen/`. The repository commits it.
 | `vca.issuerauth.v1` | IssuerAuthService | 7 | 0 | Staff OIDC login, session tokens, role mapping (ADR-012). |
 | `vca.verifierauth.v1` | VerifierAuthService | 7 | 0 | Verifier staff OIDC login, session tokens, role mapping (ADR-036). |
 | `vca.schema.v1` | SchemaService | 11 | 0 | Schema versions, publish and retire, issuer metadata, vct documents (ADR-013). |
-| `vca.schemabuilder.v1` | SchemaBuilderService | 3 | 0 | Pure preview of a schema with sample data (ADR-014). |
+| `vca.schemabuilder.v1` | SchemaBuilderService | 3 | 0 | Pure preview of a schema with preview values that the schema derives (ADR-014). |
 | `vca.datasource.v1` | DataSourceService | 10 | 1 | CSV, HTTP, and SQL sources, previews, field maps, bulk runs (ADR-015). |
 | `vca.issuance.v1` | IssuanceService | 5 | 1 | Single and batch issuance over every channel (ADR-016). |
 | `vca.issued.v1` | IssuedService | 10 | 1 | The hash chained issued record log with append, revoke, export, and retention (ADR-017). |

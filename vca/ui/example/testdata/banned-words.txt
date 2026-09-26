@@ -1,0 +1,14 @@
+# Words the kit page never shows: a person, an issuer, a credential
+# name, a stack name, a placeholder account, or an example identifier.
+# One entry per line, matched case insensitive.
+demo
+Ministry
+Health
+Agriculture
+Nurse
+Farmer
+Degree
+Alpha Stack
+Stack A
+did:example:123
+issuer.example

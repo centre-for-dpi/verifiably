@@ -221,7 +221,7 @@ func TestPortalNeedsSession(t *testing.T) {
 			t.Fatalf("%s: location %q", path, got)
 		}
 	}
-	for _, path := range []string{"/builder/preview", "/builder/fields", "/builder/sample", "/builder/save", "/builder/import"} {
+	for _, path := range []string{"/builder/preview", "/builder/fields", "/builder/fill", "/builder/save", "/builder/import"} {
 		rec := httptest.NewRecorder()
 		a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
 		if rec.Code != http.StatusUnauthorized {
