@@ -71,6 +71,7 @@ var nomockAllowlist = []nomockException{
 	{"vca/docs/dpg-adapter-credebl.md", "fake", "The document describes the test double of the adapter tests."},
 	{"vca/docs/dpg-adapter-inji.md", "fake", "The document describes the test double of the adapter tests."},
 	{"vca/docs/dpg-adapter-waltid.md", "fake", "The document describes the test double of the adapter tests."},
+	{"vca/internal/cli/credebl.go", "seed", "The CREDEBL release names its database initialisation script prisma db seed. The data comes from setup."},
 }
 
 // pendingRemovals are the findings of the tree when the guard landed.
@@ -85,7 +86,6 @@ var pendingRemovals = []nomockException{
 	{"vca/docs/deploy.md", "sample", "N12"},
 	{"vca/docs/dpg-adapter-inji.md", "sample", "N12"},
 	{"vca/docs/ui.md", "OpenBadgeCredential", "N11"},
-	{"vca/internal/cli/bootstrap.go", "admin@example.com", "N10"},
 	{"vca/internal/msg/en.go", "FarmerCredential", "N11"},
 	{"vca/ui/example/example.go", "Demo user", "N11"},
 	{"vca/ui/example/example.go", "demo-token", "N11"},

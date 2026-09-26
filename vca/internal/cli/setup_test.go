@@ -234,12 +234,22 @@ func TestBuildPlanInteractive(t *testing.T) {
 // TestBuildPlanEveryPairNeedsNoValue is ADR-007 decision 3. A run with
 // no flag, no environment, and no env file must pass for each of the
 // twelve pairs. Every required value has a default, a derived value, or
-// a generated secret.
+// a generated secret. The one exception is the platform admin of a
+// CREDEBL pair that runs the API gateway: it has no default
+// (ADR-055 decision 4), so that run fails on it alone.
 func TestBuildPlanEveryPairNeedsNoValue(t *testing.T) {
 	for _, p := range AllPairs() {
 		t.Run(p.Name(), func(t *testing.T) {
-			plan, err := BuildPlan(SetupRequest{Pair: p, Random: rand.Reader})
+			_, err := BuildPlan(SetupRequest{Pair: p, Random: rand.Reader})
 			var missing *MissingValuesError
+			var flags map[string]string
+			if p.Dpg == configv1.Dpg_DPG_CREDEBL && p.Role != commonv1.Role_ROLE_ADMIN {
+				if !errors.As(err, &missing) || len(missing.Settings) != 1 || missing.Settings[0].Env != PlatformAdminEmailSetting {
+					t.Fatalf("%s: err = %v, want the platform admin alone", p.Name(), err)
+				}
+				flags = map[string]string{PlatformAdminEmailSetting: credeblAdmin}
+			}
+			plan, err := BuildPlan(SetupRequest{Pair: p, Flags: flags, Random: rand.Reader})
 			if errors.As(err, &missing) {
 				t.Fatalf("%s needs a value:\n%v", p.Name(), err)
 			}
@@ -736,6 +746,7 @@ func TestPassthroughWritesUndeclaredVariables(t *testing.T) {
 		}
 	}
 	p := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_CREDEBL}
+	flags[PlatformAdminEmailSetting] = credeblAdmin
 	plan, err := BuildPlan(SetupRequest{Pair: p, Flags: flags, Random: rand.Reader})
 	if err != nil {
 		t.Fatal(err)

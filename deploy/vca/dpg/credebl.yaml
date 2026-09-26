@@ -9,6 +9,8 @@
 # The database password comes from ../credebl/.env, which vca setup
 # generates with mode 0600 and the include reads. The file requires it,
 # so no container starts on a default password (ADR-055 decision 1).
+# The same file names the platform admin that setup collected. No
+# placeholder user exists (ADR-055 decision 4).
 # Every host port binds to VCA_BIND, which vca setup sets to 127.0.0.1
 # on a public host.
 #
@@ -79,6 +81,14 @@ services:
     depends_on:
       credebl-postgres:
         condition: service_healthy
+    # The platform admin of setup and the generated secrets of the
+    # platform: CRYPTO_PRIVATE_KEY, PLATFORM_WALLET_PASSWORD and
+    # PLATFORM_SEED. vca dpg bootstrap credebl runs the database
+    # initialisation of the release once in this container
+    # (ADR-055 decision 4).
+    env_file:
+      - path: ../credebl/.env
+        required: true
     environment:
       DATABASE_URL: postgresql://credebl:${CREDEBL_DB_PASSWORD:?set by vca setup}@credebl-postgres:5432/credebl
       NATS_URL: nats://credebl-nats:4222
@@ -93,6 +103,9 @@ services:
     profiles: [issuer-credebl, holder-credebl]
     container_name: credebl-agent-provisioning
     restart: unless-stopped
+    env_file:
+      - path: ../credebl/.env
+        required: true
     environment:
       NATS_URL: nats://credebl-nats:4222
     networks:

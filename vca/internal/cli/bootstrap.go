@@ -62,6 +62,10 @@ type BootstrapOptions struct {
 	Client *http.Client
 	// Out receives one line per step.
 	Out io.Writer
+	// Run runs docker compose for a step that needs a container, such
+	// as the database initialisation of CREDEBL. A test records the
+	// command.
+	Run Runner
 }
 
 // BootstrapResult lists what the run did. A step that found the object
@@ -387,20 +391,30 @@ type credeblOrg struct {
 	Name string `json:"name"`
 }
 
-// BootstrapCredebl signs in to the CREDEBL API and creates the
-// organisation of the deployment. A second run finds the organisation
-// and does nothing (ADR-008 decision 4).
+// BootstrapCredebl initialises the CREDEBL database once, signs in to
+// the CREDEBL API as the platform admin of setup, and creates the
+// organisation of the deployment. A second run finds the marker and the
+// organisation and does nothing (ADR-008 decision 4, ADR-055
+// decision 4).
 func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResult, error) {
 	var result BootstrapResult
 	base, baseErr := opts.baseURL()
 	if baseErr != nil {
 		return result, baseErr
 	}
+	admin, err := credeblPlatformAdmin(opts)
+	if err != nil {
+		return result, err
+	}
+	password := opts.value(EnvBootstrapSecret, "")
+	if password == "" {
+		return result, fmt.Errorf("CREDEBL sign in: set %s to the password of the platform admin %s", EnvBootstrapSecret, admin)
+	}
+	if initErr := initCredebl(ctx, opts, &result); initErr != nil {
+		return result, initErr
+	}
 	name := opts.value(EnvBootstrapOrg, "vca-"+ShortName(opts.Pair.Role.String()))
-	signin, err := json.Marshal(map[string]string{
-		"email":    opts.value(EnvBootstrapUser, "admin@example.com"),
-		"password": opts.value(EnvBootstrapSecret, ""),
-	})
+	signin, err := json.Marshal(map[string]string{"email": admin, "password": password})
 	if err != nil {
 		return result, fmt.Errorf("build the sign in request: %w", err)
 	}

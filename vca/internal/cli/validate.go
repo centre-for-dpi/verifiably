@@ -5,6 +5,7 @@ package cli
 import (
 	"fmt"
 	"net"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -100,7 +101,23 @@ func checksFor(s Setting) []check {
 	case strings.Contains(rule, "host and port or a url"):
 		out = append(out, isHostPortOrURL)
 	}
+	if strings.Contains(rule, "an email address") {
+		out = append(out, isEmailAddress)
+	}
 	return out
+}
+
+// isEmailAddress accepts one bare address, such as a@b.org, without a
+// display name or angle brackets.
+func isEmailAddress(value string) string {
+	addr, err := mail.ParseAddress(value)
+	if err != nil || addr.Address != value || addr.Name != "" {
+		return "the value is not an email address"
+	}
+	if at := strings.LastIndex(value, "@"); !strings.Contains(value[at+1:], ".") {
+		return "the email address needs a domain with a dot"
+	}
+	return ""
 }
 
 // splitNames turns "etsi and dedi" or "debug, info, warn, error" into a

@@ -280,7 +280,11 @@ of any role of the stack writes it, and every later run keeps it
 
 Every run also writes `deploy/<dpg>/.env` for each of the three stacks.
 It holds the database and key store passwords of the stack file
-(ADR-055 decision 1). Each has 32 random letters and digits. A later run keeps
+(ADR-055 decision 1). The CREDEBL file also holds the platform admin of
+`VCA_CREDEBL_PLATFORM_ADMIN_EMAIL`, and the generated
+`CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD` and `PLATFORM_SEED`.
+Every CREDEBL pair but the admin one needs the email. It has no
+default. Each has 32 random letters and digits. A later run keeps
 every value it finds. The main compose file includes every stack file.
 Compose checks the values of each, so the run writes all three.
 The `.gitignore` beside it keeps the file out of git.
@@ -405,7 +409,7 @@ A terminal run with no DPG name and no `--role` asks for both.
 |---|---|
 | `waltid` | Asks the walt.id adapter of the issuer pair for its identity. The adapter provisions a `did:web` of the host and a key, and keeps the key. |
 | `inji` | Creates or updates the realm of the role in Keycloak. An issuer or a holder pair with an eSignet authenticator then registers the VCA client in eSignet. The run adds no identity anywhere. |
-| `credebl` | Signs in and creates the organisation of the deployment. |
+| `credebl` | Initialises the CREDEBL database once, signs in as the platform admin of setup, and creates the organisation of the deployment. |
 
 Each run checks first, so a second run changes nothing.
 The command reads the `.env` file of the pair.
@@ -461,6 +465,23 @@ token answers 401. The run then names `VCA_BOOTSTRAP_ESIGNET_TOKEN`.
 
 The `inji` run adds no identity anywhere. The people who claim a
 credential come from the systems of the operator (ADR-050).
+
+The `credebl` run starts with the database initialisation of the
+CREDEBL release (ADR-055 decision 4). The API gateway runs the
+migrations only. So the run starts the initialisation script of the
+release once with `docker compose run` in the container of the API
+gateway. That container reads `deploy/credebl/.env`: the platform admin
+`PLATFORM_ADMIN_EMAIL` and the generated secrets. The script makes the
+platform admin, the roles, the agent types and the ledgers. The file
+`deploy/credebl/initialised` records the run, so a later run skips it.
+A failed run writes no such file.
+
+The run then signs in as the platform admin. The name comes from
+`VCA_BOOTSTRAP_ADMIN_USER`, else from `PLATFORM_ADMIN_EMAIL`. The
+password comes from `VCA_BOOTSTRAP_ADMIN_PASSWORD` only. Set it to the
+password that the platform admin has in the Keycloak of CREDEBL. No
+default user and no default password exist. The run never signs in as
+the administrator of the Keycloak of the stack.
 
 Seven more variables steer the run:
 

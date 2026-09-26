@@ -481,10 +481,22 @@ A later run keeps that time.
 |---|---|
 | `deploy/waltid/.env` | `WALTID_DB_PASSWORD` and the four `WALTID_WALLET_*` keys |
 | `deploy/inji/.env` | `INJI_DB_PASSWORD`, `INJI_CERTIFY_KEYSTORE_PASSWORD`, `INJI_ESIGNET_DB_PASSWORD`, `INJI_MIMOTO_DB_PASSWORD`, `INJI_MIMOTO_KEYSTORE_PASSWORD`, `INJI_VERIFY_DB_PASSWORD` |
-| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD` |
+| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED` |
 
 A database volume keeps the password of its first start.
 If you remove a stack `.env`, remove the volumes of that stack too.
+
+### CREDEBL platform admin
+
+A CREDEBL issuer, holder or verifier pair needs
+`VCA_CREDEBL_PLATFORM_ADMIN_EMAIL` (ADR-055 decision 4).
+It has no default, so setup stops without it.
+Setup writes it as `PLATFORM_ADMIN_EMAIL` into `deploy/credebl/.env`.
+The API gateway and the agent provisioning read that file.
+`vca dpg bootstrap credebl` initialises the CREDEBL database once.
+It then signs in as that platform admin.
+Set `VCA_BOOTSTRAP_ADMIN_PASSWORD` to the password of the platform admin
+for that run.
 
 ### walt.id configuration
 

@@ -206,6 +206,17 @@ message Config {
     roles: ROLE_HOLDER
     dpgs: DPG_INJI
   }];
+  // The CREDEBL platform (ADR-055 decision 4). Every CREDEBL pair that
+  // runs the API gateway names the platform admin. So the order of the
+  // setup runs does not matter.
+  Credebl credebl = 18 [(setting) = {
+    description: "The settings of the CREDEBL platform."
+    env: "VCA_CREDEBL"
+    roles: ROLE_ISSUER
+    roles: ROLE_HOLDER
+    roles: ROLE_VERIFIER
+    dpgs: DPG_CREDEBL
+  }];
 
   // Oidc describes one OpenID Connect provider.
   message Oidc {
@@ -391,6 +402,19 @@ message Config {
       description: "The properties file of the authenticator plugin, on the host."
       env: "VCA_ESIGNET_PROPERTIES_FILE"
       validation: "An absolute path to a properties file. Every authenticator but none needs it."
+    }];
+  }
+
+  // Credebl holds the settings of the CREDEBL platform.
+  message Credebl {
+    // The email of the platform admin. The CREDEBL seed makes the
+    // platform admin with it, and vca dpg bootstrap credebl signs in as
+    // that user. Required. No default exists.
+    string platform_admin_email = 1 [(setting) = {
+      description: "The email of the platform admin of CREDEBL."
+      env: "VCA_CREDEBL_PLATFORM_ADMIN_EMAIL"
+      required: true
+      validation: "An email address of the operator. No default exists."
     }];
   }
 

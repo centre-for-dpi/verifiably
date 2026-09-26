@@ -596,7 +596,7 @@ A row that is not `Done` carries a note.
 | ADR-055 | 1 Setup generates every stack secret | Done | `vca/internal/cli/stackenv.go`, `deploy/vca/compose.yaml` | Every setup run writes `deploy/<dpg>/.env` for each stack with mode 0600 and keeps the values it finds. The include of each stack file reads it. |
 | ADR-055 | 2 Empty values for platform services the stack does not run | Done | `deploy/vca/dpg/inji/mimoto/mimoto-default.properties`, `deploy/vca/dpg/inji/certify/certify-default.properties` | `TestMimotoRunsNoPlatformSecret` pins the empty values. |
 | ADR-055 | 3 The certificate subject names the issuer | Done | `vca/internal/cli/stackenv.go`, `deploy/vca/dpg/inji` | Setup asks for the organisation and the unit of an Inji issuer or holder pair. The common name is the public host. |
-| ADR-055 | 4 The CREDEBL platform admin is a required setting | Not started | `vca/internal/cli/bootstrap.go` | Bootstrap signs in as a placeholder user today. |
+| ADR-055 | 4 The CREDEBL platform admin is a required setting | Done | `proto/vca/config/v1/config.proto`, `vca/internal/cli/credebl.go`, `vca/internal/cli/bootstrap.go`, `deploy/vca/dpg/credebl.yaml` | `VCA_CREDEBL_PLATFORM_ADMIN_EMAIL` has no default. Bootstrap runs the database initialisation of the release once and signs in as that admin. `TestBootstrapCredeblRunsTheSeedOnce` pins it. |
 | ADR-055 | 5 The secret scan checks `key=value` files | Done | `vca/hack/secret-scan.sh`, `vca/hack/secret-scan_test.sh` | The rule covers `.properties`, `.conf`, `.ini` and `.env` files. `TestSecretScanScript` runs the cases. |
 
 ## ADR-056: The claims store and the holder authorization server refuse what a claim did not stage

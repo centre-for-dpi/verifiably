@@ -4,10 +4,7 @@ package cli
 
 import (
 	"fmt"
-	"io"
-	"path/filepath"
 	"strings"
-	"time"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
@@ -202,25 +199,4 @@ func WaltidFiles(p Pair, stack map[string]string) ([]File, error) {
 		return waltidWalletFiles(stack)
 	}
 	return nil, nil
-}
-
-// CompleteStacks returns the values of every stack .env after a setup
-// run: the values of existing, and a generated value for each missing
-// secret and key. The files of a pair that hold a stack value, such as
-// the walt.id wallet files, read them from here, so they always match
-// the .env that the same run writes.
-func CompleteStacks(existing map[configv1.Dpg]map[string]string, random io.Reader, now time.Time) (map[configv1.Dpg]map[string]string, error) {
-	out := make(map[configv1.Dpg]map[string]string, len(StackDpgs()))
-	for _, d := range StackDpgs() {
-		text, err := StackEnv(d, existing[d], random, now)
-		if err != nil {
-			return nil, err
-		}
-		values, err := ParseDotenv(strings.NewReader(text))
-		if err != nil {
-			return nil, fmt.Errorf("read the %s stack .env: %w", filepath.Base(StackDir(d)), err)
-		}
-		out[d] = values
-	}
-	return out, nil
 }

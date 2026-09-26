@@ -876,7 +876,7 @@ func newDpgCommand(env *Environment) *cobra.Command {
 			}
 			_, err = Bootstrap(cmd.Context(), BootstrapOptions{
 				Pair: pair, Dir: dir, Values: values,
-				Client: env.HTTP, Out: cmd.OutOrStdout(),
+				Client: env.HTTP, Out: cmd.OutOrStdout(), Run: env.Run,
 			})
 			return err
 		},
@@ -1103,8 +1103,10 @@ func bootstrapValues(env *Environment, deploy string, pair Pair) (map[string]str
 	if err != nil {
 		return nil, err
 	}
+	// CREDEBL signs in as its platform admin, never as the administrator
+	// of the Keycloak of the stack (ADR-055 decision 4).
 	for name, from := range map[string]string{EnvBootstrapUser: KeycloakAdminEnv, EnvBootstrapSecret: KeycloakAdminPasswordEnv} {
-		if v := keycloak[from]; v != "" && values[name] == "" {
+		if v := keycloak[from]; v != "" && values[name] == "" && pair.Dpg != configv1.Dpg_DPG_CREDEBL {
 			values[name] = v
 		}
 	}

@@ -210,3 +210,17 @@ func TestSplitNames(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+func TestValidateEmailAddress(t *testing.T) {
+	s := Setting{Env: "X", Validation: "An email address of the operator."}
+	for _, ok := range []string{"admin@registry.gov.ke", "a.b+c@d.org"} {
+		if err := Validate(s, ok); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"admin", "Admin <admin@registry.gov.ke>", "admin@localhost", "@x.org"} {
+		if err := Validate(s, bad); err == nil {
+			t.Errorf("%q passed", bad)
+		}
+	}
+}

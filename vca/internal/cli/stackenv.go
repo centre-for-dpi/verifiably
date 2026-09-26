@@ -71,16 +71,53 @@ type stackKey struct {
 // walt.id wallet API reads its keys and the hash pepper from the files
 // of ADR-054 decision 3. An AES-128 key and an HMAC key of the legacy
 // login take 16 characters.
+//
+// The database initialisation of CREDEBL encrypts with
+// CRYPTO_PRIVATE_KEY and makes the platform wallet with
+// PLATFORM_WALLET_PASSWORD and PLATFORM_SEED, which an Indy wallet
+// takes as 32 characters (plan section 3.8).
 func stackKeys(d configv1.Dpg) []stackKey {
-	if d == configv1.Dpg_DPG_WALTID {
+	switch d {
+	case configv1.Dpg_DPG_WALTID:
 		return []stackKey{
 			{WaltidWalletEncryptionKeyEnv, 16},
 			{WaltidWalletSignKeyEnv, 16},
 			{WaltidWalletTokenKeyEnv, 48},
 			{WaltidWalletPepperEnv, stackSecretLength},
 		}
+	case configv1.Dpg_DPG_CREDEBL:
+		return []stackKey{
+			{"CRYPTO_PRIVATE_KEY", stackSecretLength},
+			{"PLATFORM_WALLET_PASSWORD", stackSecretLength},
+			{"PLATFORM_SEED", stackSecretLength},
+		}
 	}
 	return nil
+}
+
+// stackSettingNames returns the values of the operator that the .env of
+// a stack carries for its containers, such as the platform admin of
+// CREDEBL. A setup run of a pair of the stack writes them. A run of any
+// other pair keeps them.
+func stackSettingNames(d configv1.Dpg) []string {
+	if d == configv1.Dpg_DPG_CREDEBL {
+		return []string{PlatformAdminEmailEnv}
+	}
+	return nil
+}
+
+// StackSettings returns the values of the operator that one pair puts in
+// the .env of its stack, keyed by DPG. A value the run left empty is
+// left out, so an earlier value stays.
+func StackSettings(p Pair, values map[string]string) map[configv1.Dpg]map[string]string {
+	if p.Dpg != configv1.Dpg_DPG_CREDEBL {
+		return nil
+	}
+	email := strings.TrimSpace(values[PlatformAdminEmailSetting])
+	if email == "" {
+		return nil
+	}
+	return map[configv1.Dpg]map[string]string{p.Dpg: {PlatformAdminEmailEnv: email}}
 }
 
 // StackDir returns the directory of the secrets of one stack under the
@@ -139,6 +176,16 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader, now 
 			}
 			b.WriteString(k.name + "=" + quoteValue(value) + "\n")
 		}
+	}
+	var settings []string
+	for _, name := range stackSettingNames(d) {
+		if value := existing[name]; value != "" {
+			settings = append(settings, name+"="+quoteValue(value)+"\n")
+		}
+	}
+	if len(settings) > 0 {
+		b.WriteString("# The settings of the operator for the containers of the stack.\n")
+		b.WriteString(strings.Join(settings, ""))
 	}
 	since := existing[StackSecretsSinceEnv]
 	if since == "" {
@@ -294,4 +341,33 @@ func missingStackEnv(stacks map[configv1.Dpg]map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// CompleteStacks returns the values of every stack .env after a setup
+// run: the values of existing, the settings of the pair from
+// StackSettings, and a generated value for each missing secret and key.
+// The files of a pair that hold a stack value, such as the walt.id
+// wallet files, read them from here, so they always match the .env that
+// the same run writes.
+func CompleteStacks(existing, settings map[configv1.Dpg]map[string]string, random io.Reader, now time.Time) (map[configv1.Dpg]map[string]string, error) {
+	out := make(map[configv1.Dpg]map[string]string, len(StackDpgs()))
+	for _, d := range StackDpgs() {
+		merged := make(map[string]string, len(existing[d])+len(settings[d]))
+		for name, value := range existing[d] {
+			merged[name] = value
+		}
+		for name, value := range settings[d] {
+			merged[name] = value
+		}
+		text, err := StackEnv(d, merged, random, now)
+		if err != nil {
+			return nil, err
+		}
+		values, err := ParseDotenv(strings.NewReader(text))
+		if err != nil {
+			return nil, fmt.Errorf("read the %s stack .env: %w", filepath.Base(StackDir(d)), err)
+		}
+		out[d] = values
+	}
+	return out, nil
 }

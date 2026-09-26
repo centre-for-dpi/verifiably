@@ -86,6 +86,14 @@ first. CryptoJS encrypts the JSON form of the value, so the plain text
 carries the quotation marks of a JSON string. The platform accepts no
 other form.
 
+**The platform admin comes from setup.** The API gateway runs the
+migrations only. `vca dpg bootstrap credebl` runs the database
+initialisation of the release once. That script makes the platform
+admin from `PLATFORM_ADMIN_EMAIL` of `deploy/credebl/.env`, which setup
+writes from `VCA_CREDEBL_PLATFORM_ADMIN_EMAIL`. Setup also generates
+`CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD` and `PLATFORM_SEED`
+there. No placeholder user exists (ADR-055 decision 4).
+
 **The token comes back once and lasts.** The adapter caches the token
 until one minute before its end. A call that gets the status
 unauthorized signs in again once and then gives up.

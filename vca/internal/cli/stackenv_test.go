@@ -119,7 +119,11 @@ func TestSetupGeneratesStackSecrets(t *testing.T) {
 // of the setup runs does not matter.
 func TestEveryStackHasItsSecrets(t *testing.T) {
 	for _, p := range AllPairs() {
-		plan, err := BuildPlan(SetupRequest{Pair: p, Flags: baseFlags(), Random: rand.Reader})
+		flags := baseFlags()
+		if p.Dpg == configv1.Dpg_DPG_CREDEBL {
+			flags = credeblFlags()
+		}
+		plan, err := BuildPlan(SetupRequest{Pair: p, Flags: flags, Random: rand.Reader})
 		if err != nil {
 			t.Fatalf("%s: BuildPlan: %v", p.Name(), err)
 		}

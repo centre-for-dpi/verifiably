@@ -202,7 +202,9 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range KeyCertValues(req.Pair, values) {
 		extra[name] = value
 	}
-	for name, value := range Passthrough(settings, req.Flags, req.File) {
+	// A setting of another pair, such as the platform admin of CREDEBL
+	// in a shared env file, is declared, so it never passes through.
+	for name, value := range Passthrough(Settings(), req.Flags, req.File) {
 		extra[name] = value
 	}
 	if bind, ok := BindAddress(values); ok {
@@ -234,7 +236,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	// Every stack .env holds its secrets and keys before any file that
 	// reads them renders, so the files and the .env agree.
-	stackValuesByDpg, err := CompleteStacks(req.Stacks, req.Random, now())
+	stackValuesByDpg, err := CompleteStacks(req.Stacks, StackSettings(req.Pair, values), req.Random, now())
 	if err != nil {
 		return Plan{}, err
 	}

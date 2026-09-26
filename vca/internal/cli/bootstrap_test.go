@@ -610,11 +610,127 @@ func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 	}))
 }
 
-func credeblOptions(base string, out io.Writer) BootstrapOptions {
+// credeblAdmin is the platform admin that the setup of the tests names.
+const credeblAdmin = "platform.admin@registry.gov.test"
+
+// credeblOptions returns a CREDEBL bootstrap run under a deploy root
+// whose stack .env names the platform admin, with a runner that records
+// every command.
+func credeblOptions(t *testing.T, base string, out io.Writer) BootstrapOptions {
+	t.Helper()
+	root := t.TempDir()
+	deploy := filepath.Join(root, "deploy")
+	writeStackEnvAt(t, deploy, configv1.Dpg_DPG_CREDEBL, secretsTime, map[string]string{PlatformAdminEmailEnv: credeblAdmin})
+	pair := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_CREDEBL}
 	return BootstrapOptions{
-		Pair:   Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_CREDEBL},
-		Values: map[string]string{"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example"},
-		Out:    out,
+		Pair: pair,
+		Dir:  OutputDir(deploy, pair),
+		Values: map[string]string{
+			"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example",
+			EnvBootstrapSecret: "a-password-the-operator-set",
+		},
+		Out: out,
+		Run: func(context.Context, string, []string) error { return nil },
+	}
+}
+
+// TestBootstrapCredeblNeedsThePlatformAdmin: the sign in names the
+// platform admin of setup. No placeholder user exists (ADR-055
+// decision 4).
+func TestBootstrapCredeblNeedsThePlatformAdmin(t *testing.T) {
+	var signedIn map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/auth/signin" {
+			if err := json.NewDecoder(r.Body).Decode(&signedIn); err != nil {
+				t.Errorf("decode the sign in: %v", err)
+			}
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	opts := credeblOptions(t, server.URL, &out)
+	if _, err := BootstrapCredebl(context.Background(), opts); err == nil {
+		t.Fatal("a refused sign in passed")
+	}
+	if signedIn["email"] != credeblAdmin {
+		t.Errorf("the sign in named %q, want the platform admin of setup", signedIn["email"])
+	}
+	// A deployment whose setup named no platform admin stops before any
+	// call, and the error names the setting.
+	bare := opts
+	bare.Dir = OutputDir(filepath.Join(t.TempDir(), "deploy"), opts.Pair)
+	signedIn = nil
+	_, err := BootstrapCredebl(context.Background(), bare)
+	if err == nil || !strings.Contains(err.Error(), PlatformAdminEmailSetting) {
+		t.Fatalf("err = %v, want the name of the setting", err)
+	}
+	if signedIn != nil || strings.Contains(err.Error(), "example.com") {
+		t.Errorf("the run signed in as %v: %v", signedIn, err)
+	}
+	// The password of the platform admin has no default either.
+	noSecret := opts
+	noSecret.Values = map[string]string{"VCA_DPG_URL": server.URL}
+	if _, err := BootstrapCredebl(context.Background(), noSecret); err == nil || !strings.Contains(err.Error(), EnvBootstrapSecret) {
+		t.Errorf("err = %v, want the name of %s", err, EnvBootstrapSecret)
+	}
+}
+
+// TestBootstrapCredeblRunsTheSeedOnce: the first run seeds the CREDEBL
+// database through compose, and a later run finds the marker and skips
+// the seed (plan section 3.8).
+func TestBootstrapCredeblRunsTheSeedOnce(t *testing.T) {
+	state := &credeblState{}
+	server := fakeCredebl(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	opts := credeblOptions(t, server.URL, &out)
+	var runs [][]string
+	opts.Run = func(_ context.Context, name string, args []string) error {
+		runs = append(runs, append([]string{name}, args...))
+		return nil
+	}
+	if _, err := BootstrapCredebl(context.Background(), opts); err != nil {
+		t.Fatalf("BootstrapCredebl: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("runs = %v, want one seed", runs)
+	}
+	cmd := strings.Join(runs[0], " ")
+	for _, want := range []string{"docker compose", "--profile issuer-credebl", "run --rm credebl-api-gateway",
+		"sh -c cd libs/prisma-service && npx prisma db seed"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("the seed command %q lacks %q", cmd, want)
+		}
+	}
+	deploy := filepath.Dir(opts.Dir)
+	info, err := os.Stat(filepath.Join(deploy, PlatformInitMarker))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("marker: %v, %v", info, err)
+	}
+	if _, err := BootstrapCredebl(context.Background(), opts); err != nil {
+		t.Fatalf("second BootstrapCredebl: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Errorf("the second run seeded again: %v", runs)
+	}
+	if !strings.Contains(out.String(), "initialisation present") {
+		t.Errorf("out = %s", out.String())
+	}
+	// A failed seed writes no marker and stops the run.
+	failing := credeblOptions(t, server.URL, &out)
+	failing.Run = func(context.Context, string, []string) error { return errors.New("exit 1") }
+	if _, err := BootstrapCredebl(context.Background(), failing); err == nil {
+		t.Fatal("a failed seed passed")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(failing.Dir), PlatformInitMarker)); !os.IsNotExist(err) {
+		t.Errorf("a failed seed wrote the marker: %v", err)
+	}
+	// A run without a command runner cannot seed.
+	noRun := credeblOptions(t, server.URL, &out)
+	noRun.Run = nil
+	if _, err := BootstrapCredebl(context.Background(), noRun); err == nil {
+		t.Error("a run without a runner passed")
 	}
 }
 
@@ -623,7 +739,7 @@ func TestBootstrapCredeblCreatesAndIsIdempotent(t *testing.T) {
 	server := fakeCredebl(t, state)
 	defer server.Close()
 	var out bytes.Buffer
-	opts := credeblOptions(server.URL, &out)
+	opts := credeblOptions(t, server.URL, &out)
 	got, err := Bootstrap(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("Bootstrap: %v", err)
@@ -651,7 +767,7 @@ func TestBootstrapCredeblUsesTheNamedOrganisation(t *testing.T) {
 	server := fakeCredebl(t, state)
 	defer server.Close()
 	var out bytes.Buffer
-	opts := credeblOptions(server.URL, &out)
+	opts := credeblOptions(t, server.URL, &out)
 	opts.Values[EnvBootstrapOrg] = "ministry"
 	if _, err := BootstrapCredebl(context.Background(), opts); err != nil {
 		t.Fatalf("BootstrapCredebl: %v", err)
@@ -670,7 +786,7 @@ func TestBootstrapCredeblReportsProblems(t *testing.T) {
 		}
 	}))
 	defer noToken.Close()
-	if _, err := BootstrapCredebl(context.Background(), credeblOptions(noToken.URL, &out)); err == nil {
+	if _, err := BootstrapCredebl(context.Background(), credeblOptions(t, noToken.URL, &out)); err == nil {
 		t.Error("an answer with no token passed")
 	}
 
@@ -688,7 +804,7 @@ func TestBootstrapCredeblReportsProblems(t *testing.T) {
 		}
 	}))
 	defer badList.Close()
-	if _, err := BootstrapCredebl(context.Background(), credeblOptions(badList.URL, &out)); err == nil {
+	if _, err := BootstrapCredebl(context.Background(), credeblOptions(t, badList.URL, &out)); err == nil {
 		t.Error("an answer that is not JSON passed")
 	}
 
@@ -709,7 +825,7 @@ func TestBootstrapCredeblReportsProblems(t *testing.T) {
 		}
 	}))
 	defer failCreate.Close()
-	if _, err := BootstrapCredebl(context.Background(), credeblOptions(failCreate.URL, &out)); err == nil {
+	if _, err := BootstrapCredebl(context.Background(), credeblOptions(t, failCreate.URL, &out)); err == nil {
 		t.Error("a 409 answer passed")
 	}
 }
